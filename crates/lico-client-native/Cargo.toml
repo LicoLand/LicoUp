@@ -1,0 +1,45 @@
+[package]
+name = "lico-client-native"
+version = "0.0.1"
+edition = "2024"
+license-file = "../../LICENSE"
+publish = false
+
+[lib]
+crate-type = ["rlib", "cdylib"]
+
+[dependencies]
+anyhow = "1.0"
+base64 = "0.22"
+chacha20poly1305 = { version = "0.10", features = ["std"] }
+directories = "6.0"
+hkdf = "0.12"
+mime_guess = "2.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+sha2 = "0.10"
+fs2 = "0.4"
+notify = "6.1"
+interprocess = "2.4"
+icu_segmenter = { version = "2", features = ["compiled_data", "lstm"] }
+openmls = { version = "0.8", features = ["openmls_rust_crypto"] }
+openmls_basic_credential = "0.5"
+openmls_memory_storage = { version = "0.5", features = ["persistence"] }
+openmls_rust_crypto = "0.5"
+openmls_traits = "0.5"
+rusqlite = { version = "0.32", features = ["bundled"] }
+log = "0.4"
+env_logger = "0.11"
+time = { version = "0.3", features = ["formatting", "parsing"] }
+ureq = { version = "2.10", features = ["json"] }
+uuid = { version = "1.11", features = ["v4", "serde"] }
+toml = "0.8"
+ed25519-dalek = { version = "2", features = ["rand_core"] }
+rand = "0.8"
+regex = "1.11"
+x25519-dalek = { version = "2.0", features = ["static_secrets", "zeroize"] }
+zeroize = "1.8"
+
+[[bin]]
+name = "lico-client"
+path = "src/bin/lico-client.rs"

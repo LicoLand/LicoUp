@@ -1,0 +1,6 @@
+{
+  "schema": "licoup.gateway-runtime.v1",
+  "gateway_runtime": {
+    "default_port": 15722
+  }
+}

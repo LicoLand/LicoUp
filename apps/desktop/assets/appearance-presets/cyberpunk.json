@@ -1,0 +1,39 @@
+{
+  "schemaVersion": "v0.0.1:client-desktop:appearance-preset-1",
+  "id": "cyberpunk",
+  "label": {
+    "en": "Cyberpunk",
+    "zh-CN": "赛博朋克"
+  },
+  "mode": "dark",
+  "tokens": {
+    "bg-base": "#080816",
+    "bg-surface": "#10142b",
+    "bg-subtle": "#181c3a",
+    "bg-inset": "#05050f",
+    "border-subtle": "#2d3563",
+    "border-strong": "#4b5bb2",
+    "text-primary": "#f4f7ff",
+    "text-secondary": "#c9d4ff",
+    "text-muted": "#9aa7c7",
+    "text-disabled": "#657094",
+    "text-on-brand": "#031018",
+    "brand": "#00e5ff",
+    "brand-strong": "#5cf4ff",
+    "brand-subtle": "#08233c",
+    "brand-muted": "#12415f",
+    "info": "#00e5ff",
+    "info-surface": "#062a3d",
+    "info-border": "#0e7490",
+    "success": "#39ff88",
+    "success-surface": "#09351f",
+    "success-border": "#15803d",
+    "warning": "#fcee09",
+    "warning-text": "#fff6a3",
+    "warning-surface": "#3d3303",
+    "warning-border": "#a88600",
+    "danger": "#ff2a6d",
+    "danger-surface": "#4a0a24",
+    "danger-border": "#b8174b"
+  }
+}

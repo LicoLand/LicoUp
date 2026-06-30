@@ -1,0 +1,4 @@
+interface:
+  display_name: "LicoLite Mail Import Ops"
+  short_description: "Help with LicoLite Mail Import Ops tasks"
+  default_prompt: "Use $lico-mail-import-ops to handle this LicoLite platform task."

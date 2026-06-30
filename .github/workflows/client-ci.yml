@@ -1,0 +1,58 @@
+name: Client CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: client-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  client-gate:
+    name: Client gate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: "npm"
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: subosito/flutter-action@v3
+        with:
+          channel: stable
+          cache: true
+      - uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            build/crates/lico-client-native/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-
+      - name: Install Node dependencies
+        run: npm ci
+      - name: Install pinned cargo-audit
+        run: cargo install cargo-audit --version 0.22.2 --locked --force
+      - name: Run client merge gate
+        run: npm run client:verify
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: client-gate-reports
+          path: |
+            build/reports/
+            build/test-reports/
+          if-no-files-found: ignore
+          retention-days: 14

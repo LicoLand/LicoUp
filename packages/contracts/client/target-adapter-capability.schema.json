@@ -1,0 +1,21 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "packages/contracts/client/target-adapter-capability.schema.json",
+  "title": "TargetAdapterCapability",
+  "type": "object",
+  "description": "Configuration DTO for target-specific adapters (Antigravity, Claude Code, Codex, Cursor, GitHub Copilot, Hermes Agent, Kilo Code, OpenClaw, OpenCode). Defines per-target file paths, CLI invocation patterns, and native config read/write rules.",
+  "properties": {
+    "target_id": {
+      "type": "string",
+      "description": "Unique identifier for the target adapter (e.g. 'claude-code', 'cursor')."
+    },
+    "capabilities": {
+      "type": "array",
+      "description": "List of capability declarations supported by this target adapter.",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "required": ["target_id", "capabilities"]
+}

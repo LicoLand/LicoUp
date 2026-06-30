@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "packages/contracts/client/mcp-plugin-plan.schema.json",
+  "title": "McpPluginPlan",
+  "type": "object",
+  "description": "MCP plugin registration plan: plugin ID, source URI, capability declarations, trust level, and lifecycle hooks.",
+  "properties": {
+    "plugin_id": {
+      "type": "string",
+      "description": "Unique identifier for the MCP plugin."
+    },
+    "source_uri": {
+      "type": "string",
+      "format": "uri",
+      "description": "Source URI from which the plugin is loaded."
+    }
+  },
+  "required": ["plugin_id", "source_uri"]
+}
