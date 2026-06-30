@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "packages/contracts/client/mobile-relay-command.schema.json",
+  "title": "MobileRelayCommand",
+  "type": "object",
+  "description": "Mobile relay configuration: relay endpoint, keep-alive interval, supported device profiles, connection credentials.",
+  "properties": {
+    "command_id": {
+      "type": "string",
+      "description": "Unique identifier for the relay command."
+    },
+    "relay_endpoint": {
+      "type": "string",
+      "format": "uri",
+      "description": "URI of the mobile relay endpoint."
+    }
+  },
+  "required": ["command_id", "relay_endpoint"]
+}

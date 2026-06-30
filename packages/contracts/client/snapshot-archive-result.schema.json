@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "packages/contracts/client/snapshot-archive-result.schema.json",
+  "title": "SnapshotArchiveResult",
+  "type": "object",
+  "description": "Snapshot archive descriptor for config/state restore operations. Lists bundled files, metadata, timestamps, and restore order.",
+  "properties": {
+    "archive_id": {
+      "type": "string",
+      "description": "Unique identifier for the snapshot archive."
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp when the archive was created."
+    }
+  },
+  "required": ["archive_id", "created_at"]
+}

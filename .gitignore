@@ -1,0 +1,60 @@
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Local env / secrets
+.env
+.env.local
+.env.*.local
+
+# Logs / reports / local data
+*.log
+build/
+coverage/
+.cache/
+outputs/
+reports/
+
+# Node / Rust / Flutter
+node_modules/
+target/
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+apps/desktop/.dart_tool/
+apps/desktop/.flutter-plugins
+apps/desktop/.flutter-plugins-dependencies
+apps/desktop/build/
+apps/desktop/coverage/
+crates/lico-client-native/target/
+
+# Platform generated outputs
+apps/desktop/android/.gradle/
+apps/desktop/android/build/
+apps/desktop/ios/build/
+apps/desktop/linux/flutter/ephemeral/
+apps/desktop/macos/Flutter/ephemeral/
+apps/desktop/macos/Pods/
+apps/desktop/windows/flutter/ephemeral/
+
+# Generated archives / binaries
+*.app
+*.AppImage
+*.asar
+*.dmg
+*.exe
+*.msi
+*.zip
+*.tar.gz
+*.tar.xz
+*.rar
+
+# Local browser/test artifacts
+.playwright-cli/
+test-results/

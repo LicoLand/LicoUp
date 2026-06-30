@@ -1,0 +1,271 @@
+{
+  "schemaVersion": "v0.0.1:client-desktop:packaging-modules-1",
+  "description": "LicoLite desktop client packaging. Modules are organized by runtime function.",
+  "packageProfile": "future-client",
+  "bundle": {
+    "moduleResourceDirectory": "modules",
+    "manifestPath": "package-metadata/future-client/packaging-modules.json"
+  },
+  "modules": {
+    "portable-data": {
+      "label": "Future client local state, mobile relay, activity, snapshots, and target config cache",
+      "category": "storage",
+      "enabled": true,
+      "required": true,
+      "platforms": [
+        "macos",
+        "linux",
+        "windows"
+      ],
+      "packaging": "portable-data",
+      "portableDirectories": [
+        "future-client",
+        "future-client/settings",
+        "future-client/targets",
+        "future-client/pairings",
+        "future-client/skills",
+        "future-client/pins",
+        "future-client/mobile-relay",
+        "future-client/activity",
+        "future-client/snapshots",
+        "future-client/source-queue",
+        "future-client/connectors",
+        "future-client/knowledge-cache",
+        "future-client/mcp-local-bridge",
+        "target-config-cache"
+      ]
+    },
+    "target-adapters": {
+      "label": "Target adapters for Antigravity, Claude Code, Codex, Cursor, GitHub Copilot, Hermes Agent, Kilo Code, OpenClaw, and OpenCode",
+      "category": "agents",
+      "enabled": true,
+      "required": true,
+      "platforms": [
+        "macos",
+        "linux",
+        "windows"
+      ],
+      "packaging": "runtime-capability",
+      "requires": [
+        "native-sidecar",
+        "portable-data"
+      ],
+      "targetAdapters": [
+        "openclaw",
+        "claude-code",
+        "codex",
+        "antigravity",
+        "opencode",
+        "copilot",
+        "kilo-code",
+        "cursor",
+        "hermes"
+      ]
+    },
+    "mcp-plugins": {
+      "label": "Peer MCP plugin lifecycle",
+      "category": "mcp-plugins",
+      "enabled": true,
+      "required": true,
+      "platforms": [
+        "macos",
+        "linux",
+        "windows"
+      ],
+      "packaging": "runtime-capability",
+      "requires": [
+        "target-adapters",
+        "portable-data"
+      ]
+    },
+    "skill-hub": {
+      "label": "Passive Skill Hub boundary",
+      "category": "skill-hub",
+      "enabled": true,
+      "required": true,
+      "platforms": [
+        "macos",
+        "linux",
+        "windows"
+      ],
+      "packaging": "runtime-capability",
+      "requires": [
+        "native-sidecar",
+        "portable-data"
+      ]
+    },
+    "model-forwarding": {
+      "label": "Thin model forwarding profiles and command routing",
+      "category": "model-forwarding",
+      "enabled": true,
+      "required": true,
+      "platforms": [
+        "macos",
+        "linux",
+        "windows"
+      ],
+      "packaging": "runtime-capability",
+      "requires": [
+        "native-sidecar",
+        "portable-data"
+      ]
+    },
+    "mobile-relay": {
+      "label": "Mobile pairing and command relay control plane",
+      "category": "mobile-relay",
+      "enabled": true,
+      "required": true,
+      "platforms": [
+        "macos",
+        "linux",
+        "windows"
+      ],
+      "packaging": "runtime-capability",
+      "requires": [
+        "portable-data",
+        "target-adapters"
+      ]
+    },
+    "activity-snapshots": {
+      "label": "Activity log and independent snapshot store",
+      "category": "activity",
+      "enabled": true,
+      "required": true,
+      "platforms": [
+        "macos",
+        "linux",
+        "windows"
+      ],
+      "packaging": "runtime-capability",
+      "requires": [
+        "portable-data"
+      ]
+    },
+    "settings": {
+      "label": "Future client settings store",
+      "category": "settings",
+      "enabled": true,
+      "required": true,
+      "platforms": [
+        "macos",
+        "linux",
+        "windows"
+      ],
+      "packaging": "runtime-capability",
+      "requires": [
+        "portable-data"
+      ]
+    },
+    "source-queue": {
+      "label": "Source Queue durable upload submission sidecar",
+      "category": "ingestion",
+      "enabled": true,
+      "required": true,
+      "platforms": [
+        "macos",
+        "linux",
+        "windows"
+      ],
+      "packaging": "runtime-capability",
+      "requires": [
+        "native-sidecar",
+        "portable-data"
+      ]
+    },
+    "client-connectors": {
+      "label": "Built-in local connector host",
+      "category": "connectors",
+      "enabled": true,
+      "required": true,
+      "platforms": [
+        "macos",
+        "linux",
+        "windows"
+      ],
+      "packaging": "runtime-capability",
+      "requires": [
+        "source-queue",
+        "portable-data"
+      ]
+    },
+    "knowledge-cache": {
+      "label": "Authorized KnowledgeCore mirror cache",
+      "category": "knowledge",
+      "enabled": true,
+      "required": true,
+      "platforms": [
+        "macos",
+        "linux",
+        "windows"
+      ],
+      "packaging": "runtime-capability",
+      "requires": [
+        "native-sidecar",
+        "portable-data"
+      ]
+    },
+    "mail-import-runtime": {
+      "label": "macOS Mail scoped preview and Source Queue handoff",
+      "category": "connectors",
+      "enabled": true,
+      "required": true,
+      "platforms": [
+        "macos"
+      ],
+      "packaging": "swift-sidecar",
+      "artifactName": "lico-mail-helper",
+      "swiftSource": "apps/desktop/macos/MailHelper/LicoMailHelper.swift",
+      "requires": [
+        "source-queue",
+        "native-sidecar"
+      ]
+    },
+    "mcp-local-bridge": {
+      "label": "Client-local-runtime MCP HTTP bridge registration",
+      "category": "mcp",
+      "enabled": true,
+      "required": true,
+      "platforms": [
+        "macos",
+        "linux",
+        "windows"
+      ],
+      "packaging": "runtime-capability",
+      "requires": [
+        "native-sidecar",
+        "portable-data"
+      ]
+    },
+    "desktop-app": {
+      "label": "Flutter future desktop frontend",
+      "category": "core",
+      "enabled": true,
+      "required": true,
+      "platforms": [
+        "macos",
+        "linux",
+        "windows"
+      ],
+      "packaging": "flutter-app"
+    },
+    "native-sidecar": {
+      "label": "Rust future client CLI sidecar",
+      "category": "core",
+      "enabled": true,
+      "required": true,
+      "platforms": [
+        "macos",
+        "linux",
+        "windows"
+      ],
+      "packaging": "sidecar-binary",
+      "cargoBin": "lico-client"
+    }
+  },
+  "deferredCapabilities": {
+    "clientd": {
+      "status": "todo",
+      "reason": "The current client has no background daemon; GUI and lico-client use explicit local commands and portable state."
+    }
+  }
+}

@@ -1,0 +1,15 @@
+[workspace]
+members = ["crates/lico-client-native"]
+resolver = "3"
+
+[workspace.package]
+version = "0.0.1"
+edition = "2024"
+repository = "https://github.com/LicoLite/Lico-Arc.git"
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "z"
+panic = "abort"
+strip = true
