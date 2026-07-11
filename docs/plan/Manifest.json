@@ -107,7 +107,7 @@
   },
   {
     "id": "d164083f-9c75-4ff1-a2bf-3d512343ffe2",
-    "status": "in_progress",
+    "status": "completed",
     "title": "Agent Conversation Dispatch Parity",
     "directory": "agent-conversation-dispatch",
     "source_files": [

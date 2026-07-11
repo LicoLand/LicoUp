@@ -342,7 +342,7 @@
   },
   {
     "id": "f5b1477a-9279-4c02-bc41-b1ed0ebeba1b",
-    "status": "pending",
+    "status": "completed",
     "role": "final_validation",
     "prerequisites": [
       "e13375fa-3066-40dc-8446-921943decf6f",
@@ -365,22 +365,26 @@
     ],
     "acceptance_criteria": [
       {
-        "checked": false,
-        "text": "Every check in Validation.md runs with its result recorded against its REQ-ACD label, and all pass or carry an explicit blocked verdict with cause."
+        "checked": true,
+        "text": "Every check in Validation.md runs with its result recorded against its REQ-ACD label, and all pass or carry an explicit blocked verdict with cause.",
+        "evidence": "Validation.md Acceptance Run Record: all CI/fixture checks pass (V-DART/ARCH/RUST/FIX/RED/BOUND/UI); V-LIVE-001/002 blocked-host with fixtures green; V-E2E-001 pass."
       },
       {
-        "checked": false,
-        "text": "The final readiness report states each adapter's delivered tier with current evidence, and sendEnabled reflects only evidence-backed adapters."
+        "checked": true,
+        "text": "The final readiness report states each adapter's delivered tier with current evidence, and sendEnabled reflects only evidence-backed adapters.",
+        "evidence": "Readiness report: ready=0 blocked=3 unverified=7 sendEnabled=0; evidence adapters=[]; no adapter claims parity without evidence."
       },
       {
-        "checked": false,
-        "text": "The desktop client rebuilds and launches after delivery; build or launch failures are reported before handoff."
+        "checked": true,
+        "text": "The desktop client rebuilds and launches after delivery; build or launch failures are reported before handoff.",
+        "evidence": "npm run client:run:macos built Arc.app; open exit 0; flutter_client+lico-client present. Sidecar target-scan reported failure with empty detail (non-blocking for launch); prior kLSNoExecutableErr not reproduced."
       }
     ],
     "commit": {
       "repository": ".git",
       "message": "Run dispatch parity final validation matrix",
-      "target": "docs/plan/agent-conversation-dispatch validation evidence"
+      "target": "docs/plan/agent-conversation-dispatch validation evidence",
+      "delivered": "a95e7b0acbcee00a2697ca9798aa57f68254eb7b"
     },
     "next": []
   }
