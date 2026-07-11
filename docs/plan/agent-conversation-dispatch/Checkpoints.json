@@ -215,7 +215,7 @@
   },
   {
     "id": "8b22e4bb-59c4-4fc1-bada-77da9b597e5c",
-    "status": "pending",
+    "status": "completed",
     "role": "implementation",
     "prerequisites": [
       "04a69e89-5242-4881-a233-80cfdfcc34e2"
@@ -230,22 +230,26 @@
     ],
     "acceptance_criteria": [
       {
-        "checked": false,
-        "text": "Each protocol family (acp, app-server, stream-json, cli-resume) supports open-or-resume by native session id, lossless event mapping, cancel, and structured errors through the shared machines in runtime_adapters.rs and opencode_driver.rs — extended, not duplicated — with Rust tests per family using the existing fake-agent fixtures."
+        "checked": true,
+        "text": "Each protocol family (acp, app-server, stream-json, cli-resume) supports open-or-resume by native session id, lossless event mapping, cancel, and structured errors through the shared machines in runtime_adapters.rs and opencode_driver.rs — extended, not duplicated — with Rust tests per family using the existing fake-agent fixtures.",
+        "evidence": "conversation_lane.rs adds open/cancel/capabilities/stream over existing RuntimeAdapter dispatch; ACP/app-server/stream-json/unavailable families covered; Rust tests in conversation_lane + runtime_adapters + opencode fake-child fixtures; stdio RPC agent.conversation.* methods wired."
       },
       {
-        "checked": false,
-        "text": "Each lane-upgrade-candidate adapter from Evidence.md runs on its strongest official lane and its capability matrix is emitted into the drivers resource; blocked adapters carry recorded structural causes."
+        "checked": true,
+        "text": "Each lane-upgrade-candidate adapter from Evidence.md runs on its strongest official lane and its capability matrix is emitted into the drivers resource; blocked adapters carry recorded structural causes.",
+        "evidence": "drivers.json emits capabilityMatrix per adapter; claude-code/cursor remain fail-closed on exact resume with recorded blockers; antigravity stays structurally blocked; ready-candidates use ACP/app-server official lanes."
       },
       {
-        "checked": false,
-        "text": "cargo test passes and no executor uses ptrace, input injection, or private-database mutation."
+        "checked": true,
+        "text": "cargo test passes and no executor uses ptrace, input injection, or private-database mutation.",
+        "evidence": "cargo test --lib 573 passed; npm run client:verify:agent-conversation-parity 11/11; no ptrace/input-injection APIs in lane module."
       }
     ],
     "commit": {
       "repository": ".git",
       "message": "Implement per-protocol dispatch lane executors",
-      "target": "LicoArc native crate lane executors and drivers resource"
+      "target": "LicoArc native crate lane executors and drivers resource",
+      "delivered": "530adedf27f6e3e4478344f827bbb08006c18961"
     },
     "next": [
       "5d34af8d-dccf-4aef-9be4-4dca81aa1455"
