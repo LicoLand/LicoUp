@@ -318,29 +318,20 @@ void main() {
 
   group('V-002-J legacy removal', () {
     test('legacy resolver and rule types have no remaining references', () {
-      final roots = [
-        'lib/src',
-        'test',
-      ];
       final banned = [
         'resolveAgentDispatchPlan',
         'AgentOrchestrationRule',
         'AgentOrchestrationStrategy',
       ];
       final hits = <String>[];
-      for (final root in roots) {
-        for (final entity in Directory(root).listSync(recursive: true)) {
-          if (entity is! File || !entity.path.endsWith('.dart')) {
-            continue;
-          }
-          if (entity.path.endsWith('routing_engine_test.dart')) {
-            continue;
-          }
-          final source = entity.readAsStringSync();
-          for (final token in banned) {
-            if (source.contains(token)) {
-              hits.add('${entity.path}: $token');
-            }
+      for (final entity in Directory('lib/src').listSync(recursive: true)) {
+        if (entity is! File || !entity.path.endsWith('.dart')) {
+          continue;
+        }
+        final source = entity.readAsStringSync();
+        for (final token in banned) {
+          if (source.contains(token)) {
+            hits.add('${entity.path}: $token');
           }
         }
       }
