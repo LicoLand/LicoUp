@@ -360,7 +360,7 @@
   },
   {
     "id": "5b8f9227-9c7f-4c36-b203-e367334911d0",
-    "status": "pending",
+    "status": "completed",
     "role": "implementation",
     "prerequisites": [
       "9f5022e3-01c7-41ca-8152-9cd93795fb51",
@@ -375,22 +375,47 @@
     ],
     "acceptance_criteria": [
       {
-        "checked": false,
-        "text": "Integration tests with deterministic fake agents prove mid-task re-routing at message boundaries, distilled handoff on agent change, no mid-stream interruption, and route history recording."
+        "checked": true,
+        "text": "Integration tests with deterministic fake agents prove mid-task re-routing at message boundaries, distilled handoff on agent change, no mid-stream interruption, and route history recording.",
+        "evidence_refs": [
+          {
+            "type": "command",
+            "command": "cd apps/desktop && flutter test test/task_route_coordinator_test.dart --name 'V-004-A|V-004-B|V-004-C'",
+            "exit_code": 0,
+            "recorded_at": "2026-07-11T04:21:57Z"
+          }
+        ]
       },
       {
-        "checked": false,
-        "text": "Concurrency tests prove policy swaps during distillation queue safely, switch frequency is bounded, and failed switches keep the task on the source agent with a surfaced reason."
+        "checked": true,
+        "text": "Concurrency tests prove policy swaps during distillation queue safely, switch frequency is bounded, and failed switches keep the task on the source agent with a surfaced reason.",
+        "evidence_refs": [
+          {
+            "type": "command",
+            "command": "cd apps/desktop && flutter test test/task_route_coordinator_test.dart --name 'V-004-F|V-004-G|V-004-H'",
+            "exit_code": 0,
+            "recorded_at": "2026-07-11T04:21:58Z"
+          }
+        ]
       },
       {
-        "checked": false,
-        "text": "Both source and target sessions remain resumable after a switch, verified against session mapping state."
+        "checked": true,
+        "text": "Both source and target sessions remain resumable after a switch, verified against session mapping state.",
+        "evidence_refs": [
+          {
+            "type": "command",
+            "command": "cd apps/desktop && flutter test test/task_route_coordinator_test.dart --name 'V-004-D'",
+            "exit_code": 0,
+            "recorded_at": "2026-07-11T04:22:00Z"
+          }
+        ]
       }
     ],
     "commit": {
       "repository": ".git",
       "message": "Add mid-task hot switching with distilled handoffs",
-      "target": "LicoArc task-session routing coordinator"
+      "target": "LicoArc task-session routing coordinator",
+      "delivered": "18effa89ff58c43e06ec81456a6df9859efb41bc"
     },
     "next": [
       "0a2098da-dd24-44ed-ad5d-b45e05e343b4",
