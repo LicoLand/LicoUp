@@ -45,7 +45,7 @@
   },
   {
     "id": "9c9fef0f-4378-48da-9072-02dd3b599bc1",
-    "status": "pending",
+    "status": "completed",
     "role": "evidence",
     "prerequisites": [
       "d7f25317-c717-4a26-80f4-fc6efe848d32"
@@ -60,22 +60,26 @@
     ],
     "acceptance_criteria": [
       {
-        "checked": false,
-        "text": "Evidence.md covers all ten driver adapters with cited source files, the official lane available, capability mapping against P-01..P-10, and the current reducer verdict."
+        "checked": true,
+        "text": "Evidence.md covers all ten driver adapters with cited source files, the official lane available, capability mapping against P-01..P-10, and the current reducer verdict.",
+        "evidence": "Evidence.md covers all 10 adapters with driver source paths, official lane, P-01..P-10 mapping, and reducer verdicts from readiness.json."
       },
       {
-        "checked": false,
-        "text": "Each adapter is classified ready-candidate, lane-upgrade-candidate, or structurally blocked, with the blocking cause cited for the blocked class."
+        "checked": true,
+        "text": "Each adapter is classified ready-candidate, lane-upgrade-candidate, or structurally blocked, with the blocking cause cited for the blocked class.",
+        "evidence": "Each adapter classified: 7 ready-candidate, claude-code+cursor lane-upgrade-candidate, antigravity structurally-blocked with cited blocker codes."
       },
       {
-        "checked": false,
-        "text": "Observed tool versions are recorded per adapter so evidence staleness is detectable."
+        "checked": true,
+        "text": "Observed tool versions are recorded per adapter so evidence staleness is detectable.",
+        "evidence": "Observed tool versions recorded per adapter for 2026-07-11 (installed versions or not-installed)."
       }
     ],
     "commit": {
       "repository": ".git",
       "message": "Record per-adapter dispatch lane evidence",
-      "target": "docs/plan/agent-conversation-dispatch/Evidence.md"
+      "target": "docs/plan/agent-conversation-dispatch/Evidence.md",
+      "delivered": "72737716be084af679513f92dbbb60bd00aa010d"
     },
     "next": [
       "e13375fa-3066-40dc-8446-921943decf6f"
