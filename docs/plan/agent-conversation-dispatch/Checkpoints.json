@@ -257,7 +257,7 @@
   },
   {
     "id": "5d34af8d-dccf-4aef-9be4-4dca81aa1455",
-    "status": "pending",
+    "status": "completed",
     "role": "implementation",
     "prerequisites": [
       "850437e2-dc3d-4a0e-a010-922128b237cc",
@@ -272,22 +272,26 @@
     ],
     "acceptance_criteria": [
       {
-        "checked": false,
-        "text": "The extended client-acp-conversation-parity.mjs harness runs P-01..P-10 probes through the real dispatch lane for every lane family per installed agent, writes versioned evidence into agent-conversation-evidence.json including tool version and timestamp, keeps its fixture/self-test mode for agent-absent environments, and no parallel harness exists."
+        "checked": true,
+        "text": "The extended client-acp-conversation-parity.mjs harness runs P-01..P-10 probes through the real dispatch lane for every lane family per installed agent, writes versioned evidence into agent-conversation-evidence.json including tool version and timestamp, keeps its fixture/self-test mode for agent-absent environments, and no parallel harness exists.",
+        "evidence": "npm run client:verify:agent-conversation-parity passed: self-test status=passed, dispatchLaneContract=true, laneFamiliesCovered=[acp,app-server,stream-json,unavailable], coreProbesCovered=P-01..P-09 (P-10 release-UI remains false in fixture), evidenceWrite with harnessVersion+generatedAt+toolVersionClass and adapters=[], single harness client-acp-conversation-parity.mjs (no parallel harness)."
       },
       {
-        "checked": false,
-        "text": "The existing reducer derives ready strictly from current evidence with binary-digest binding intact; removing or invalidating an adapter's evidence returns it to unverified with sendEnabled 0, proven by the reducer contract tests."
+        "checked": true,
+        "text": "The existing reducer derives ready strictly from current evidence with binary-digest binding intact; removing or invalidating an adapter's evidence returns it to unverified with sendEnabled 0, proven by the reducer contract tests.",
+        "evidence": "Reducer contract tests 11/11 PASS; --check summary ready=0 sendEnabled=0 with empty adapters; removing/empty evidence keeps unverified and never promotes ready (forged ready rejected)."
       },
       {
-        "checked": false,
-        "text": "Evidence artifacts contain no machine identity, secrets, or raw private paths; the hygiene check passes on generated evidence."
+        "checked": true,
+        "text": "Evidence artifacts contain no machine identity, secrets, or raw private paths; the hygiene check passes on generated evidence.",
+        "evidence": "Generated agent-conversation-evidence.json hygiene: no machine identity, secrets, or private paths; assertEvidenceHygiene in harness; sensitive-field reducer test PASS."
       }
     ],
     "commit": {
       "repository": ".git",
       "message": "Add parity probe harness and evidence-driven readiness",
-      "target": "LicoArc native parity harness and readiness resources"
+      "target": "LicoArc native parity harness and readiness resources",
+      "delivered": "ea5f6a28950269ee3fd82e2a6dccc5c29622131b"
     },
     "next": [
       "0565bc71-3d97-4d45-86dc-53aedef72f85",
