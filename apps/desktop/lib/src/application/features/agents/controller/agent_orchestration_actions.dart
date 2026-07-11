@@ -27,35 +27,15 @@ extension FutureClientAgentOrchestrationActions on FutureClientController {
 
   List<String> get effectiveAgentOrchestrationSelectedAgentIds {
     final policy = effectiveAgentOrchestrationPolicy;
-    final rule = selectAgentOrchestrationRule(
-      targets: scannedTargets,
-      policy: policy,
-      prompt: '',
-    );
-    if (rule == null) {
-      return const [];
-    }
-    return agentOrchestrationRuleEntries(
-      rule,
-      agentOrchestrationDispatchModelLibrary(policy),
-      fillDefaults: false,
-    ).map((entry) => entry.agentId).toSet().toList(growable: false);
+    return agentOrchestrationDispatchModelLibrary(policy)
+        .map((entry) => entry.agentId)
+        .toSet()
+        .toList(growable: false);
   }
 
   String get effectiveAgentOrchestrationPrimaryAgentId {
-    final policy = effectiveAgentOrchestrationPolicy;
-    final rule = selectAgentOrchestrationRule(
-      targets: scannedTargets,
-      policy: policy,
-      prompt: '',
-    );
-    if (rule == null) {
-      return '';
-    }
-    final entries = agentOrchestrationRuleEntries(
-      rule,
-      agentOrchestrationDispatchModelLibrary(policy),
-      fillDefaults: false,
+    final entries = agentOrchestrationDispatchModelLibrary(
+      effectiveAgentOrchestrationPolicy,
     );
     return entries.isEmpty ? '' : entries.first.agentId;
   }
@@ -94,13 +74,6 @@ extension FutureClientAgentOrchestrationActions on FutureClientController {
       ),
     );
     final selected = {
-      for (final rule in agentOrchestrationPolicy.rules)
-        for (final entry in agentOrchestrationRuleEntries(
-          rule,
-          agentOrchestrationDispatchModelLibrary(agentOrchestrationPolicy),
-          fillDefaults: false,
-        ))
-          entry.agentId,
       for (final entry in agentOrchestrationDispatchModelLibrary(
         agentOrchestrationPolicy,
       ))
@@ -141,17 +114,6 @@ extension FutureClientAgentOrchestrationActions on FutureClientController {
     }
   }
 
-  AgentOrchestrationRule createAgentOrchestrationDraftRule({
-    AgentOrchestrationStrategy strategy = AgentOrchestrationStrategy.fallback,
-  }) {
-    final policy = effectiveAgentOrchestrationPolicy;
-    return defaultAgentOrchestrationRule(
-      scannedTargets,
-      strategy: strategy,
-      modelLibrary: agentOrchestrationDispatchModelLibrary(policy),
-    );
-  }
-
   void resetAgentOrchestrationCircuitBreakers() {
     if (agentOrchestrationCircuitBrokenAgentIds.isEmpty) {
       return;
@@ -167,18 +129,23 @@ extension FutureClientAgentOrchestrationActions on FutureClientController {
 
   AgentDispatchPlan previewAgentDispatchPlan(String prompt) {
     final policy = effectiveAgentOrchestrationPolicy;
-    return resolveAgentDispatchPlan(
+    final modelLibrary = agentOrchestrationDispatchModelLibrary(policy);
+    final routingPolicy = routingPolicyFromModelLibrary(
+      policyId: policy.id,
+      policyLabel: policy.label,
+      modelLibrary: modelLibrary,
+    );
+    final decision = planRouteDecision(
       targets: scannedTargets,
-      rule: selectAgentOrchestrationRule(
-        targets: scannedTargets,
-        policy: policy,
-        prompt: prompt,
-      ),
-      prompt: prompt,
-      modelLibrary: agentOrchestrationDispatchModelLibrary(policy),
+      policy: routingPolicy,
+      task: RoutingTaskMetadata(prompt: prompt),
       usageReport: agentUsageReport,
       allowanceOverrides: agentAllowanceOverrides,
       circuitBrokenAgentIds: agentOrchestrationCircuitBrokenAgentIds,
+    );
+    return agentDispatchPlanFromDecision(
+      decision: decision,
+      modelLibrary: modelLibrary,
     );
   }
 
@@ -188,13 +155,6 @@ extension FutureClientAgentOrchestrationActions on FutureClientController {
       agentOrchestrationPolicy,
     );
     final selected = {
-      for (final rule in agentOrchestrationPolicy.rules)
-        for (final entry in agentOrchestrationRuleEntries(
-          rule,
-          agentOrchestrationDispatchModelLibrary(agentOrchestrationPolicy),
-          fillDefaults: false,
-        ))
-          entry.agentId,
       for (final entry in agentOrchestrationDispatchModelLibrary(
         agentOrchestrationPolicy,
       ))
@@ -330,7 +290,7 @@ extension FutureClientAgentOrchestrationActions on FutureClientController {
           if (!ok) {
             newlyCircuitBroken.add(route.agentId);
           }
-          if (plan.strategy == AgentOrchestrationStrategy.fallback && ok) {
+          if (plan.strategy == 'priority-fallback' && ok) {
             break;
           }
         } catch (error) {
@@ -562,17 +522,20 @@ $userText
     return compact.isEmpty ? '默认智能体编排' : compact;
   }
 
-  String _strategyStatusLabel(AgentOrchestrationStrategy strategy) {
+  String _strategyStatusLabel(String strategy) {
     return switch (strategy) {
-      AgentOrchestrationStrategy.fallback => '顺序降级',
-      AgentOrchestrationStrategy.dynamicAllocation => '动态分配',
+      'priority-fallback' || 'fallback' => '顺序降级',
+      'dynamicAllocation' => '动态分配',
+      _ => strategy,
     };
   }
 
   String _skipReasonLabel(String reason) {
     return switch (reason) {
-      'quota-insufficient' => '额度不足，已跳过并熔断',
-      'circuit-open' => '熔断中，已跳过',
+      'quota-insufficient' || 'allowance_exhausted' => '额度不足，已跳过并熔断',
+      'circuit-open' || 'circuit_broken' => '熔断中，已跳过',
+      'not_ready' => '未就绪，已跳过',
+      'allowance_data_stale' => '额度数据过期，已跳过',
       'model-library-excluded' => '不在模型库中，已跳过',
       _ => '不可用，已跳过',
     };
