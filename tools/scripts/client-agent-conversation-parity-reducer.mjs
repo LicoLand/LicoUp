@@ -114,6 +114,9 @@ const SENSITIVE_KEY_FRAGMENTS = Object.freeze([
 const EVIDENCE_TOP_LEVEL_FIELDS = new Set([
   "schemaVersion",
   "contractVersion",
+  "harnessVersion",
+  "toolVersionClass",
+  "generatedAt",
   "adapters",
 ]);
 const ADAPTER_EVIDENCE_FIELDS = new Set([
