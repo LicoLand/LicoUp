@@ -1,14 +1,542 @@
 use anyhow::Result;
-use serde_json::Value;
-use std::env;
+use serde_json::{Value, json};
+use std::{
+    env,
+    io::{self, BufRead, Write},
+    panic::{self, AssertUnwindSafe, catch_unwind},
+    path::PathBuf,
+};
+
+const STDIO_RPC_PROTOCOL: &str = "lico-client.stdio.v1";
+const STDIO_RPC_MAX_REQUEST_BYTES: usize = 16 * 1024 * 1024;
+const STDIO_RPC_MAX_RESPONSE_BYTES: usize = 16 * 1024 * 1024;
+const STDIO_RPC_MAX_ID_BYTES: usize = 128;
+const STDIO_RPC_MAX_ARGS: usize = 256;
 
 fn main() -> Result<()> {
-    env_logger::init();
-    match lico_client_native::commands::execute_cli(env::args().skip(1).collect::<Vec<_>>())? {
-        lico_client_native::commands::CliExecution::Usage => print_usage(),
-        lico_client_native::commands::CliExecution::Json(value) => print_json(&value),
+    env_logger::Builder::from_default_env()
+        .target(env_logger::Target::Stderr)
+        .init();
+    let args = env::args().skip(1).collect::<Vec<_>>();
+    if args.as_slice() == ["rpc", "stdio"] {
+        // The RPC wire response is already fail-closed and redacted. Keep the
+        // process panic hook equally bounded so a panic payload cannot leak a
+        // path, command argument, or secret to the parent application's logs.
+        panic::set_hook(Box::new(|_| {
+            eprintln!("lico-client RPC command terminated unexpectedly");
+        }));
+        let stdin = io::stdin();
+        let stdout = io::stdout();
+        return serve_stdio_rpc(stdin.lock(), stdout.lock(), execute_rpc_cli);
+    }
+    match lico_client_native::ffi::commands::execute_cli(args)? {
+        lico_client_native::ffi::commands::CliExecution::Usage => print_usage(),
+        lico_client_native::ffi::commands::CliExecution::Json(value) => print_json(&value),
+        lico_client_native::ffi::commands::CliExecution::Streamed => {}
     }
     Ok(())
+}
+
+fn execute_rpc_cli(
+    args: Vec<String>,
+    portable_data_dir: Option<PathBuf>,
+) -> Result<lico_client_native::ffi::commands::CliExecution> {
+    let _portable_data_dir = PortableDataDirOverrideGuard::set(portable_data_dir);
+    lico_client_native::ffi::commands::execute_cli(args)
+}
+
+struct PortableDataDirOverrideGuard {
+    previous: Option<PathBuf>,
+}
+
+impl PortableDataDirOverrideGuard {
+    fn set(path: Option<PathBuf>) -> Self {
+        let previous = lico_client_native::platform::paths::set_portable_data_dir_override(path);
+        Self { previous }
+    }
+}
+
+impl Drop for PortableDataDirOverrideGuard {
+    fn drop(&mut self) {
+        lico_client_native::platform::paths::set_portable_data_dir_override(self.previous.take());
+    }
+}
+
+enum StdioRpcLine {
+    Eof,
+    Request(Vec<u8>),
+    TooLarge,
+}
+
+enum StdioRpcMethod {
+    Execute {
+        args: Vec<String>,
+        portable_data_dir: Option<PathBuf>,
+    },
+    Conversation {
+        operation: String,
+        params: Value,
+        portable_data_dir: Option<PathBuf>,
+    },
+    Shutdown,
+}
+
+struct StdioRpcRequest {
+    id: String,
+    workflow_id: String,
+    method: StdioRpcMethod,
+}
+
+struct StdioRpcRequestError {
+    id: Option<String>,
+    workflow_id: Option<String>,
+    code: &'static str,
+}
+
+fn serve_stdio_rpc<R, W, F>(mut reader: R, mut writer: W, mut execute: F) -> Result<()>
+where
+    R: BufRead,
+    W: Write,
+    F: FnMut(
+        Vec<String>,
+        Option<PathBuf>,
+    ) -> Result<lico_client_native::ffi::commands::CliExecution>,
+{
+    let mut bound_workflow_id: Option<String> = None;
+    loop {
+        let line = read_stdio_rpc_line(&mut reader, STDIO_RPC_MAX_REQUEST_BYTES)?;
+        let bytes = match line {
+            StdioRpcLine::Eof => return Ok(()),
+            StdioRpcLine::TooLarge => {
+                write_stdio_rpc_error(
+                    &mut writer,
+                    None,
+                    bound_workflow_id.as_deref(),
+                    "request_too_large",
+                )?;
+                continue;
+            }
+            StdioRpcLine::Request(bytes) => bytes,
+        };
+        let request = match parse_stdio_rpc_request(&bytes) {
+            Ok(request) => request,
+            Err(error) => {
+                write_stdio_rpc_error(
+                    &mut writer,
+                    error.id.as_deref(),
+                    error.workflow_id.as_deref(),
+                    error.code,
+                )?;
+                continue;
+            }
+        };
+        if bound_workflow_id
+            .as_deref()
+            .is_some_and(|workflow_id| workflow_id != request.workflow_id.as_str())
+        {
+            write_stdio_rpc_error(
+                &mut writer,
+                Some(&request.id),
+                Some(&request.workflow_id),
+                "workflow_mismatch",
+            )?;
+            continue;
+        }
+        if bound_workflow_id.is_none() {
+            bound_workflow_id = Some(request.workflow_id.clone());
+        }
+
+        match request.method {
+            StdioRpcMethod::Shutdown => {
+                write_stdio_rpc_success(
+                    &mut writer,
+                    &request.id,
+                    &request.workflow_id,
+                    json!({"status": "shutdown"}),
+                )?;
+                return Ok(());
+            }
+            StdioRpcMethod::Conversation {
+                operation,
+                params,
+                portable_data_dir,
+            } => {
+                let execution = catch_unwind(AssertUnwindSafe(|| {
+                    let _guard = PortableDataDirOverrideGuard::set(portable_data_dir);
+                    lico_client_native::platform::dispatch_lane_operation(&operation, &params)
+                        .map(lico_client_native::ffi::commands::CliExecution::Json)
+                }));
+                match execution {
+                    Ok(Ok(lico_client_native::ffi::commands::CliExecution::Json(value))) => {
+                        write_stdio_rpc_success(
+                            &mut writer,
+                            &request.id,
+                            &request.workflow_id,
+                            value,
+                        )?;
+                    }
+                    Ok(Err(error)) => {
+                        write_stdio_rpc_error(
+                            &mut writer,
+                            Some(&request.id),
+                            Some(&request.workflow_id),
+                            stdio_rpc_command_error_code(&error),
+                        )?;
+                    }
+                    Err(_) => {
+                        write_stdio_rpc_error(
+                            &mut writer,
+                            Some(&request.id),
+                            Some(&request.workflow_id),
+                            "command_panicked",
+                        )?;
+                    }
+                    Ok(Ok(_)) => {
+                        write_stdio_rpc_error(
+                            &mut writer,
+                            Some(&request.id),
+                            Some(&request.workflow_id),
+                            "command_failed",
+                        )?;
+                    }
+                }
+            }
+            StdioRpcMethod::Execute {
+                args,
+                portable_data_dir,
+            } => {
+                if rpc_command_writes_external_stdout(&args) {
+                    write_stdio_rpc_error(
+                        &mut writer,
+                        Some(&request.id),
+                        Some(&request.workflow_id),
+                        "streaming_command_unsupported",
+                    )?;
+                    continue;
+                }
+                let execution = catch_unwind(AssertUnwindSafe(|| execute(args, portable_data_dir)));
+                match execution {
+                    Ok(Ok(lico_client_native::ffi::commands::CliExecution::Json(value))) => {
+                        write_stdio_rpc_success(
+                            &mut writer,
+                            &request.id,
+                            &request.workflow_id,
+                            value,
+                        )?;
+                    }
+                    Ok(Ok(lico_client_native::ffi::commands::CliExecution::Usage)) => {
+                        write_stdio_rpc_error(
+                            &mut writer,
+                            Some(&request.id),
+                            Some(&request.workflow_id),
+                            "command_usage",
+                        )?;
+                    }
+                    Ok(Ok(lico_client_native::ffi::commands::CliExecution::Streamed)) => {
+                        write_stdio_rpc_error(
+                            &mut writer,
+                            Some(&request.id),
+                            Some(&request.workflow_id),
+                            "streaming_command_unsupported",
+                        )?;
+                    }
+                    Ok(Err(error)) => {
+                        write_stdio_rpc_error(
+                            &mut writer,
+                            Some(&request.id),
+                            Some(&request.workflow_id),
+                            stdio_rpc_command_error_code(&error),
+                        )?;
+                    }
+                    Err(_) => {
+                        write_stdio_rpc_error(
+                            &mut writer,
+                            Some(&request.id),
+                            Some(&request.workflow_id),
+                            "command_panicked",
+                        )?;
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn read_stdio_rpc_line(reader: &mut impl BufRead, max_bytes: usize) -> io::Result<StdioRpcLine> {
+    let mut line = Vec::new();
+    let mut saw_bytes = false;
+    let mut too_large = false;
+    loop {
+        let available = reader.fill_buf()?;
+        if available.is_empty() {
+            if !saw_bytes {
+                return Ok(StdioRpcLine::Eof);
+            }
+            break;
+        }
+        saw_bytes = true;
+        let newline = available.iter().position(|byte| *byte == b'\n');
+        let consumed = newline.map_or(available.len(), |index| index + 1);
+        if !too_large {
+            if line.len().saturating_add(consumed) > max_bytes {
+                too_large = true;
+                line.clear();
+            } else {
+                line.extend_from_slice(&available[..consumed]);
+            }
+        }
+        reader.consume(consumed);
+        if newline.is_some() {
+            break;
+        }
+    }
+    if too_large {
+        return Ok(StdioRpcLine::TooLarge);
+    }
+    while line
+        .last()
+        .is_some_and(|byte| matches!(*byte, b'\n' | b'\r'))
+    {
+        line.pop();
+    }
+    Ok(StdioRpcLine::Request(line))
+}
+
+fn parse_stdio_rpc_request(
+    bytes: &[u8],
+) -> std::result::Result<StdioRpcRequest, StdioRpcRequestError> {
+    let value = serde_json::from_slice::<Value>(bytes).map_err(|_| StdioRpcRequestError {
+        id: None,
+        workflow_id: None,
+        code: "invalid_json",
+    })?;
+    let object = value.as_object().ok_or_else(|| StdioRpcRequestError {
+        id: None,
+        workflow_id: None,
+        code: "invalid_request",
+    })?;
+    if object.get("protocol").and_then(Value::as_str) != Some(STDIO_RPC_PROTOCOL) {
+        return Err(StdioRpcRequestError {
+            id: None,
+            workflow_id: None,
+            code: "invalid_protocol",
+        });
+    }
+    let id = object
+        .get("id")
+        .and_then(Value::as_str)
+        .filter(|value| valid_rpc_identifier(value))
+        .map(str::to_string);
+    let workflow_id = object
+        .get("workflowId")
+        .and_then(Value::as_str)
+        .filter(|value| valid_rpc_identifier(value))
+        .map(str::to_string);
+    let invalid = |code| StdioRpcRequestError {
+        id: id.clone(),
+        workflow_id: workflow_id.clone(),
+        code,
+    };
+    let request_id = id.clone().ok_or_else(|| invalid("invalid_request_id"))?;
+    let request_workflow_id = workflow_id
+        .clone()
+        .ok_or_else(|| invalid("invalid_workflow_id"))?;
+    let method = object
+        .get("method")
+        .and_then(Value::as_str)
+        .ok_or_else(|| invalid("invalid_method"))?;
+    let method = match method {
+        "execute" => {
+            let args = object
+                .get("args")
+                .and_then(Value::as_array)
+                .filter(|args| !args.is_empty() && args.len() <= STDIO_RPC_MAX_ARGS)
+                .ok_or_else(|| invalid("invalid_args"))?
+                .iter()
+                .map(|value| value.as_str().map(str::to_string))
+                .collect::<Option<Vec<_>>>()
+                .ok_or_else(|| invalid("invalid_args"))?;
+            let portable_data_dir = match object.get("portableDataDir") {
+                None | Some(Value::Null) => None,
+                Some(Value::String(value)) if !value.trim().is_empty() => {
+                    let path = PathBuf::from(value);
+                    if !path.is_absolute() {
+                        return Err(invalid("invalid_portable_data_dir"));
+                    }
+                    Some(path)
+                }
+                _ => return Err(invalid("invalid_portable_data_dir")),
+            };
+            StdioRpcMethod::Execute {
+                args,
+                portable_data_dir,
+            }
+        }
+        "agent.conversation.open"
+        | "agent.conversation.send"
+        | "agent.conversation.cancel"
+        | "agent.conversation.capabilities"
+        | "agent.conversation.stream" => {
+            let operation = method
+                .strip_prefix("agent.conversation.")
+                .unwrap_or(method)
+                .to_string();
+            let params = object.get("params").cloned().unwrap_or_else(|| json!({}));
+            if !params.is_object() {
+                return Err(invalid("invalid_params"));
+            }
+            let portable_data_dir = match object.get("portableDataDir") {
+                None | Some(Value::Null) => None,
+                Some(Value::String(value)) if !value.trim().is_empty() => {
+                    let path = PathBuf::from(value);
+                    if !path.is_absolute() {
+                        return Err(invalid("invalid_portable_data_dir"));
+                    }
+                    Some(path)
+                }
+                _ => return Err(invalid("invalid_portable_data_dir")),
+            };
+            StdioRpcMethod::Conversation {
+                operation,
+                params,
+                portable_data_dir,
+            }
+        }
+        "shutdown" => StdioRpcMethod::Shutdown,
+        _ => return Err(invalid("invalid_method")),
+    };
+    Ok(StdioRpcRequest {
+        id: request_id,
+        workflow_id: request_workflow_id,
+        method,
+    })
+}
+
+fn valid_rpc_identifier(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= STDIO_RPC_MAX_ID_BYTES
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'))
+}
+
+fn rpc_command_writes_external_stdout(args: &[String]) -> bool {
+    args.first().map(String::as_str) == Some("conversations")
+        && args.get(1).map(String::as_str) == Some("stream")
+}
+
+fn write_stdio_rpc_success(
+    writer: &mut impl Write,
+    id: &str,
+    workflow_id: &str,
+    result: Value,
+) -> io::Result<()> {
+    write_stdio_rpc_success_with_limit(
+        writer,
+        id,
+        workflow_id,
+        result,
+        STDIO_RPC_MAX_RESPONSE_BYTES,
+    )
+}
+
+fn write_stdio_rpc_success_with_limit(
+    writer: &mut impl Write,
+    id: &str,
+    workflow_id: &str,
+    result: Value,
+    max_response_bytes: usize,
+) -> io::Result<()> {
+    let response = json!({
+        "protocol": STDIO_RPC_PROTOCOL,
+        "id": id,
+        "workflowId": workflow_id,
+        "ok": true,
+        "result": result,
+    });
+    if try_write_stdio_rpc_response(writer, &response, max_response_bytes)? {
+        return Ok(());
+    }
+    write_stdio_rpc_error(writer, Some(id), Some(workflow_id), "response_too_large")
+}
+
+fn write_stdio_rpc_error(
+    writer: &mut impl Write,
+    id: Option<&str>,
+    workflow_id: Option<&str>,
+    code: &'static str,
+) -> io::Result<()> {
+    let response = json!({
+        "protocol": STDIO_RPC_PROTOCOL,
+        "id": id,
+        "workflowId": workflow_id,
+        "ok": false,
+        "error": {
+            "code": code,
+            "message": stdio_rpc_error_message(code),
+        },
+    });
+    if try_write_stdio_rpc_response(writer, &response, STDIO_RPC_MAX_RESPONSE_BYTES)? {
+        Ok(())
+    } else {
+        Err(io::Error::other("stdio RPC error response exceeds limit"))
+    }
+}
+
+// Serialize before touching stdout so every response is one bounded, atomic JSON line.
+fn try_write_stdio_rpc_response(
+    writer: &mut impl Write,
+    response: &Value,
+    max_response_bytes: usize,
+) -> io::Result<bool> {
+    let encoded = serde_json::to_vec(response).map_err(io::Error::other)?;
+    if encoded.len().saturating_add(1) > max_response_bytes {
+        return Ok(false);
+    }
+    writer.write_all(&encoded)?;
+    writer.write_all(b"\n")?;
+    writer.flush()?;
+    Ok(true)
+}
+
+fn stdio_rpc_error_message(code: &str) -> &'static str {
+    match code {
+        "request_too_large" => "request exceeds the protocol limit",
+        "response_too_large" => "response exceeds the protocol limit",
+        "invalid_json" => "request is not valid JSON",
+        "invalid_request"
+        | "invalid_protocol"
+        | "invalid_request_id"
+        | "invalid_workflow_id"
+        | "invalid_method"
+        | "invalid_args"
+        | "invalid_portable_data_dir" | "invalid_params" => "request does not match the protocol",
+        "workflow_mismatch" => "request does not belong to this RPC workflow",
+        "command_usage" => "command requires different arguments",
+        "streaming_command_unsupported" => "command is not compatible with framed RPC output",
+        "authorization_required" => "user authorization is required",
+        "authorization_failed" => "user authorization did not complete",
+        "command_panicked" => "command terminated unexpectedly",
+        _ => "command failed",
+    }
+}
+
+fn stdio_rpc_command_error_code(error: &anyhow::Error) -> &'static str {
+    if error.chain().any(|cause| {
+        cause
+            .to_string()
+            .contains("secure_mesh_authorization_required")
+    }) {
+        return "authorization_required";
+    }
+    if error.chain().any(|cause| {
+        let message = cause.to_string();
+        message.contains("system authentication failed closed")
+            || message.contains("system authentication timed out")
+    }) {
+        return "authorization_failed";
+    }
+    "command_failed"
 }
 
 fn print_json(value: &Value) {
@@ -21,14 +549,15 @@ fn print_json(value: &Value) {
 fn print_usage() {
     eprintln!(
         "Usage:
+  lico-client rpc stdio  # lico-client.stdio.v1 line-delimited JSON RPC
   lico-client model profiles list
-  lico-client model profiles set <profile-id> [--command CMD|--url URL] [--args JSON] [--api-key KEY]
+  lico-client model profiles set <profile-id> [--command CMD|--url URL] [--args JSON] [--api-key KEY|--api-key-env ENV_NAME]
   lico-client forward --profile <profile-id> --text <input>
   lico-client state get|set <settings|targets|pairings|skills|pins|identities|snapshot-bridges|conversation-archive-profiles|agent-usage-reports> [json]
   lico-client process-identity bootstrap claim --server-url URL --claim-token TOKEN --default-identity-hash HASH [--client-id ID]
   lico-client process-identity request sign --request-url URL [--method POST] [--body-text JSON]
   lico-client process-identity status [--server-url URL|--package-id ID]
-  lico-client local-runtime ensure|build [--port 17328] [--rebuild true]
+  lico-client local-runtime ensure|build --source-root PATH --preset-config PATH [--port 17328] [--rebuild true]
   lico-client local-runtime start|restart [--port 17328]
   lico-client local-runtime stop|status|logs [--tail N]
   lico-client source-queue add|list|status|pause|resume|retry|cancel|drain [--path PATH|--text TEXT] [--server-url URL]
@@ -56,10 +585,11 @@ fn print_usage() {
   lico-client snapshots curation candidate expand --curation-session-id ID --candidate-id ID
   lico-client snapshots curation submit-result --curation-session-id ID [--curation-result-json JSON|--curation-result-file PATH]
   lico-client snapshots collect --topic TOPIC [--agent AGENT] [--curation true|false] [--curation-result-json JSON|--curation-result-file PATH]
-  lico-client conversations list|append|delete --agent AGENT [--session-id ID] [--text TEXT]
-  lico-client agent-usage scan [--agent AGENT] [--observe-ms MS] [--state-root PATH]
+  lico-client conversations list|append|delete|stream --agent AGENT [--limit N] [--offset N] [--session-id ID] [--text TEXT]
+  lico-client agent-usage scan [--agent AGENT] [--history-days DAYS] [--timezone-offset-minutes MINUTES] [--timezone-transitions-json JSON] [--force-refresh] [--allowances-only|--include-allowances] [--include-billing-history] [--include-target-status] [--state-root PATH]
   lico-client agent-usage report [--agent AGENT] [--limit N] [--state-root PATH]
-  lico-client agent message send --agent AGENT --text TEXT [--session-id ID] [--cwd PATH] [--command CMD] [--args JSON]
+  lico-client agent message send --stdin-json true  # request JSON is read from stdin
+  lico-client agent conversation open|send|cancel|capabilities|stream [--stdin-json true]
   lico-client agents pair request|approve|revoke|list --agent AGENT [--target TARGET]
   lico-client skill list --agent AGENT
   lico-client skill get <skill-id> --agent AGENT --json
@@ -67,16 +597,18 @@ fn print_usage() {
   lico-client skill install rollback --agent AGENT --snapshot-id ID
   lico-client skill visibility set <skill-id> --agent AGENT --hidden true|false
   lico-client skill pin set <skill-id> --agent AGENT --version VERSION
-  lico-client targets scan [--state-root PATH] [--include-accessible-environments true|false] [--installer-scan-command PATH]
+  lico-client targets scan [--state-root PATH] [--include-accessible-environments true|false] [--include-history-model-catalog true|false] [--installer-scan-command PATH]
   lico-client targets add --target <target> [--config-path PATH] [--binary-path PATH] [--history-root PATH] [--state-root PATH]
   lico-client targets inspect <target> [--state-root PATH]
   lico-client mobile relay config get|set [--use-custom-gateway true|false] [--custom-gateway-url URL] [--relay-enabled true|false]
   lico-client mobile relay pairing create|status|claim|revoke [--pairing-code CODE] [--pairing-id ID] [--mobile-token TOKEN]
   lico-client mobile relay pc check-in
-  lico-client mobile relay commands poll|sync|complete|create|result [--command-id ID] [--type TYPE] [--payload JSON] [--mobile-token TOKEN]
-  lico-client secure-mesh status|envelope validate|payload seal|payload open|command policy|command evaluate|command execute [--payload JSON] [--context JSON] [--ledger-path PATH]
-  lico-client secure-mesh device-trust evaluate --identity JSON [--previous-identity JSON] [--trust-state verified|cross_signed|unverified|key_changed|revoked]
+  lico-client mobile relay commands poll|sync|complete|create|result|result-secure|result-replay-proof [--command-id ID] [--type TYPE] [--payload JSON] [--mobile-token TOKEN]
+  lico-client mobile relay e2ee secret-store-cleanup --disposable-proof true
+  lico-client secure-mesh status|envelope validate|command policy|command evaluate|command execute [--payload JSON] [--context JSON] [--ledger-path PATH]
+  lico-client secure-mesh device-trust evaluate --identity JSON [--previous-identity JSON] [--trust-state verified|cross_signed|unverified|key_changed|revoked]  # caller state is advisory and cannot authorize
   lico-client secure-mesh file route --manifest JSON
+  lico-client secure-mesh file receive-destination --manifest JSON --approved-root PATH [--conflict-policy fail_if_exists|rename|overwrite_after_confirm]
   lico-client mcp plugin status|update|rollback --target <target> [--config-path PATH] [--discovery-file PATH] [--registry-file PATH] [--state-root PATH]
   lico-client mcp config plan --target <target> [--config-path PATH] [--base-url URL|--discovery-file PATH|--registry-file PATH] [--state-root PATH]
   lico-client mcp config apply --target <target> [--config-path PATH] [--base-url URL|--discovery-file PATH|--registry-file PATH] [--token TOKEN] [--state-root PATH]
@@ -86,19 +618,19 @@ fn print_usage() {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use rand::RngCore;
     use serde_json::{Value, json};
     use std::env;
     use std::fs;
-    #[cfg(unix)]
-    use std::os::unix::fs::PermissionsExt;
+    use std::io::Cursor;
     use std::path::{Path, PathBuf};
     use std::time::{SystemTime, UNIX_EPOCH};
 
     fn execute_cli(
         args: Vec<String>,
-    ) -> anyhow::Result<lico_client_native::commands::CliExecution> {
-        lico_client_native::commands::execute_cli(args)
+    ) -> anyhow::Result<lico_client_native::ffi::commands::CliExecution> {
+        lico_client_native::ffi::commands::execute_cli(args)
     }
 
     fn stdin_echo_command_args() -> (&'static str, Option<String>) {
@@ -117,7 +649,7 @@ mod tests {
         rand::thread_rng().fill_bytes(&mut bytes);
         let secret_bytes = bytes;
         let mcp_url = format!("{}/mcp", endpoint.trim_end_matches('/'));
-        let (receipt, public_key) = lico_client_native::mcp_trust::test_signed_receipt(
+        let (receipt, public_key) = lico_client_native::domain::mcp_trust::test_signed_receipt(
             endpoint,
             &mcp_url,
             "test-key",
@@ -131,6 +663,213 @@ mod tests {
             "pinnedPublicKey": public_key
         });
         fs::write(path, serde_json::to_string_pretty(&doc).unwrap()).unwrap();
+    }
+
+    #[test]
+    fn stdio_rpc_frames_results_and_isolates_request_errors() {
+        let portable_dir = env::temp_dir().join("lico-stdio-rpc-portable");
+        let requests = [
+            json!({
+                "protocol": STDIO_RPC_PROTOCOL,
+                "id": "request-1",
+                "workflowId": "workflow-native-e2e",
+                "method": "execute",
+                "args": ["ok"],
+                "portableDataDir": portable_dir,
+            })
+            .to_string(),
+            "{not-json".to_string(),
+            json!({
+                "protocol": STDIO_RPC_PROTOCOL,
+                "id": "request-2",
+                "workflowId": "workflow-native-e2e",
+                "method": "execute",
+                "args": ["fail"],
+            })
+            .to_string(),
+            json!({
+                "protocol": STDIO_RPC_PROTOCOL,
+                "id": "request-3",
+                "workflowId": "workflow-native-e2e",
+                "method": "execute",
+                "args": ["ok-again"],
+            })
+            .to_string(),
+            json!({
+                "protocol": STDIO_RPC_PROTOCOL,
+                "id": "request-4",
+                "workflowId": "workflow-native-e2e",
+                "method": "shutdown",
+            })
+            .to_string(),
+            json!({
+                "protocol": STDIO_RPC_PROTOCOL,
+                "id": "request-after-shutdown",
+                "workflowId": "workflow-native-e2e",
+                "method": "execute",
+                "args": ["must-not-run"],
+            })
+            .to_string(),
+        ]
+        .join("\n");
+        let mut output = Vec::new();
+        serve_stdio_rpc(
+            Cursor::new(requests),
+            &mut output,
+            |args, portable_data_dir| match args.first().map(String::as_str) {
+                Some("fail") => Err(anyhow::anyhow!("sensitive-rpc-detail-must-not-escape")),
+                Some("must-not-run") => panic!("request after shutdown executed"),
+                _ => Ok(lico_client_native::ffi::commands::CliExecution::Json(
+                    json!({
+                        "command": args.first(),
+                        "portableDataDirBound": portable_data_dir
+                            .as_ref()
+                            .is_some_and(|path| path.is_absolute()),
+                    }),
+                )),
+            },
+        )
+        .unwrap();
+
+        let text = String::from_utf8(output).unwrap();
+        assert!(!text.contains("sensitive-rpc-detail-must-not-escape"));
+        let responses = text
+            .lines()
+            .map(|line| serde_json::from_str::<Value>(line).unwrap())
+            .collect::<Vec<_>>();
+        assert_eq!(responses.len(), 5);
+        assert!(responses.iter().all(|response| {
+            response["protocol"] == STDIO_RPC_PROTOCOL
+                && (response["workflowId"].is_string() || response["workflowId"].is_null())
+        }));
+        assert_eq!(responses[0]["id"], "request-1");
+        assert_eq!(responses[0]["ok"], true);
+        assert_eq!(responses[0]["result"]["portableDataDirBound"], true);
+        assert_eq!(responses[1]["error"]["code"], "invalid_json");
+        assert_eq!(responses[2]["id"], "request-2");
+        assert_eq!(responses[2]["error"]["code"], "command_failed");
+        assert_eq!(responses[3]["result"]["command"], "ok-again");
+        assert_eq!(responses[4]["result"]["status"], "shutdown");
+    }
+
+    #[test]
+    fn stdio_rpc_classifies_authorization_without_exposing_error_details() {
+        let required =
+            anyhow::anyhow!("secure_mesh_authorization_required: private detail must stay local");
+        let failed = anyhow::anyhow!(
+            "secure mesh macOS system authentication failed closed: user_cancelled"
+        );
+        let unrelated = anyhow::anyhow!("private command detail");
+
+        assert_eq!(
+            stdio_rpc_command_error_code(&required),
+            "authorization_required"
+        );
+        assert_eq!(
+            stdio_rpc_command_error_code(&failed),
+            "authorization_failed"
+        );
+        assert_eq!(stdio_rpc_command_error_code(&unrelated), "command_failed");
+        assert_eq!(
+            stdio_rpc_error_message("authorization_required"),
+            "user authorization is required"
+        );
+        assert!(!stdio_rpc_error_message("authorization_required").contains("private"));
+    }
+
+    #[test]
+    fn stdio_rpc_rejects_cross_workflow_and_streaming_then_exits_on_eof() {
+        let requests = [
+            json!({
+                "protocol": STDIO_RPC_PROTOCOL,
+                "id": "stream",
+                "workflowId": "workflow-a",
+                "method": "execute",
+                "args": ["conversations", "stream", "--agent", "codex"],
+            })
+            .to_string(),
+            json!({
+                "protocol": STDIO_RPC_PROTOCOL,
+                "id": "wrong-workflow",
+                "workflowId": "workflow-b",
+                "method": "execute",
+                "args": ["must-not-run"],
+            })
+            .to_string(),
+            json!({
+                "protocol": STDIO_RPC_PROTOCOL,
+                "id": "eof-request",
+                "workflowId": "workflow-a",
+                "method": "execute",
+                "args": ["memory-only"],
+            })
+            .to_string(),
+        ]
+        .join("\n");
+        let mut call_count = 0usize;
+        let mut output = Vec::new();
+        serve_stdio_rpc(Cursor::new(requests), &mut output, |args, _| {
+            call_count += 1;
+            Ok(lico_client_native::ffi::commands::CliExecution::Json(
+                json!({"command": args.first()}),
+            ))
+        })
+        .unwrap();
+
+        assert_eq!(call_count, 1);
+        let responses = String::from_utf8(output)
+            .unwrap()
+            .lines()
+            .map(|line| serde_json::from_str::<Value>(line).unwrap())
+            .collect::<Vec<_>>();
+        assert_eq!(responses.len(), 3);
+        assert_eq!(
+            responses[0]["error"]["code"],
+            "streaming_command_unsupported"
+        );
+        assert_eq!(responses[1]["error"]["code"], "workflow_mismatch");
+        assert_eq!(responses[2]["result"]["command"], "memory-only");
+    }
+
+    #[test]
+    fn stdio_rpc_discards_oversized_line_without_losing_next_request() {
+        let mut input = Cursor::new(b"123456789\n{}\n".to_vec());
+        assert!(matches!(
+            read_stdio_rpc_line(&mut input, 4).unwrap(),
+            StdioRpcLine::TooLarge
+        ));
+        match read_stdio_rpc_line(&mut input, 4).unwrap() {
+            StdioRpcLine::Request(line) => assert_eq!(line, b"{}"),
+            _ => panic!("next bounded RPC line was not preserved"),
+        }
+        assert!(matches!(
+            read_stdio_rpc_line(&mut input, 4).unwrap(),
+            StdioRpcLine::Eof
+        ));
+    }
+
+    #[test]
+    fn stdio_rpc_replaces_oversized_response_with_fixed_error_frame() {
+        let mut output = Vec::new();
+        write_stdio_rpc_success_with_limit(
+            &mut output,
+            "bounded-response",
+            "workflow-bounded-response",
+            json!({"value": "x".repeat(512)}),
+            128,
+        )
+        .unwrap();
+
+        let response = serde_json::from_slice::<Value>(&output).unwrap();
+        assert_eq!(response["id"], "bounded-response");
+        assert_eq!(response["workflowId"], "workflow-bounded-response");
+        assert_eq!(response["ok"], false);
+        assert_eq!(response["error"]["code"], "response_too_large");
+        assert!(
+            !String::from_utf8(output)
+                .unwrap()
+                .contains(&"x".repeat(128))
+        );
     }
 
     #[test]
@@ -660,7 +1399,7 @@ mod tests {
                 "snapshots".into(),
                 "collect".into(),
                 "--topic".into(),
-                "dispatch topic".into(),
+                "LicoLite".into(),
                 "--agent".into(),
                 "codex".into(),
                 "--curation".into(),
@@ -748,6 +1487,8 @@ mod tests {
                 "licolite".into(),
                 "--home-dir".into(),
                 home.display().to_string(),
+                "--curation".into(),
+                "false".into(),
                 "--state-root".into(),
                 state_root.display().to_string(),
             ])
@@ -1063,25 +1804,25 @@ mod tests {
             let empty = execute_cli(vec![]);
             assert!(matches!(
                 empty.unwrap(),
-                lico_client_native::commands::CliExecution::Usage
+                lico_client_native::ffi::commands::CliExecution::Usage
             ));
 
             let help = execute_cli(vec!["help".into()]);
             assert!(matches!(
                 help.unwrap(),
-                lico_client_native::commands::CliExecution::Usage
+                lico_client_native::ffi::commands::CliExecution::Usage
             ));
 
             let flag_help = execute_cli(vec!["--help".into()]);
             assert!(matches!(
                 flag_help.unwrap(),
-                lico_client_native::commands::CliExecution::Usage
+                lico_client_native::ffi::commands::CliExecution::Usage
             ));
 
             let unknown = execute_cli(vec!["unknown".into()]);
             assert!(matches!(
                 unknown.unwrap(),
-                lico_client_native::commands::CliExecution::Usage
+                lico_client_native::ffi::commands::CliExecution::Usage
             ));
 
             let bad_state =
@@ -1093,43 +1834,9 @@ mod tests {
         }
     }
 
-    #[cfg(unix)]
-    #[test]
-    fn cli_dispatches_agent_message_send_runtime_adapter() {
-        let dir = temp_cli_dir("dispatch-runtime");
-        let script = dir.join("echo-agent.sh");
-        fs::write(&script, "#!/bin/sh\nprintf 'cli-runtime:%s' \"$1\"\n").unwrap();
-        let mut permissions = fs::metadata(&script).unwrap().permissions();
-        permissions.set_mode(0o755);
-        fs::set_permissions(&script, permissions).unwrap();
-
-        let result = execute_cli(vec![
-            "agent".into(),
-            "message".into(),
-            "send".into(),
-            "--agent".into(),
-            "codex".into(),
-            "--text".into(),
-            "hello-cli-runtime".into(),
-            "--command".into(),
-            script.display().to_string(),
-            "--args".into(),
-            r#"["{prompt}"]"#.into(),
-            "--timeout-ms".into(),
-            "5000".into(),
-        ])
-        .unwrap();
-
-        let payload = json_payload(&result);
-        assert_eq!(payload["ok"], true);
-        assert_eq!(payload["mode"], "runtime-adapter");
-        assert_eq!(payload["runtimeProtocol"], "configured-command");
-        assert_eq!(payload["output"], "cli-runtime:hello-cli-runtime");
-    }
-
     #[test]
     fn cli_parse_json_args_and_keys() {
-        use lico_client_native::commands;
+        use lico_client_native::ffi::commands;
         assert_eq!(commands::parse_json_arg("{\"x\":1}")["x"], json!(1));
         assert_eq!(commands::parse_json_arg("bad json"), json!({}));
         let params = commands::cli_params(&[
@@ -1150,10 +1857,15 @@ mod tests {
         PortableDirGuard::set(path)
     }
 
-    fn json_payload(result: &lico_client_native::commands::CliExecution) -> &Value {
+    fn json_payload(result: &lico_client_native::ffi::commands::CliExecution) -> &Value {
         match result {
-            lico_client_native::commands::CliExecution::Json(value) => value,
-            lico_client_native::commands::CliExecution::Usage => panic!("expected json result"),
+            lico_client_native::ffi::commands::CliExecution::Json(value) => value,
+            lico_client_native::ffi::commands::CliExecution::Usage => {
+                panic!("expected json result")
+            }
+            lico_client_native::ffi::commands::CliExecution::Streamed => {
+                panic!("expected json result")
+            }
         }
     }
 
@@ -1182,15 +1894,18 @@ mod tests {
 
     impl PortableDirGuard {
         fn set(path: &Path) -> Self {
-            let previous =
-                lico_client_native::paths::set_portable_data_dir_override(Some(path.to_path_buf()));
+            let previous = lico_client_native::platform::paths::set_portable_data_dir_override(
+                Some(path.to_path_buf()),
+            );
             Self { previous }
         }
     }
 
     impl Drop for PortableDirGuard {
         fn drop(&mut self) {
-            lico_client_native::paths::set_portable_data_dir_override(self.previous.take());
+            lico_client_native::platform::paths::set_portable_data_dir_override(
+                self.previous.take(),
+            );
         }
     }
 }
