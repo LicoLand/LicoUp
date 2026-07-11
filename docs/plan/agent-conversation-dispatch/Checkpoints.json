@@ -129,7 +129,7 @@
   },
   {
     "id": "04a69e89-5242-4881-a233-80cfdfcc34e2",
-    "status": "pending",
+    "status": "completed",
     "role": "architecture_scaffold",
     "prerequisites": [
       "d7f25317-c717-4a26-80f4-fc6efe848d32",
@@ -145,22 +145,26 @@
     ],
     "acceptance_criteria": [
       {
-        "checked": false,
-        "text": "Architecture.md records the module and file map, layer boundaries, dependency direction, lane executor strategy, and evidence artifact schema with rationale for each chosen pattern."
+        "checked": true,
+        "text": "Architecture.md records the module and file map, layer boundaries, dependency direction, lane executor strategy, and evidence artifact schema with rationale for each chosen pattern.",
+        "evidence": "Architecture.md records module/file map, layer dependency direction, strategy pattern for lane executors, evidence schema, and pattern rationale."
       },
       {
-        "checked": false,
-        "text": "Interface contracts for the dispatch lane (Dart) and lane executors (Rust) are specified with method signatures and the stdio RPC additions named."
+        "checked": true,
+        "text": "Interface contracts for the dispatch lane (Dart) and lane executors (Rust) are specified with method signatures and the stdio RPC additions named.",
+        "evidence": "Dart AgentDispatchLane signatures and Rust executor surface specified; stdio RPC methods agent.conversation.open/send/stream/cancel/capabilities named under lico-client.stdio.v1."
       },
       {
-        "checked": false,
-        "text": "The document states which implementation nodes own which modules so parallel nodes touch disjoint files."
+        "checked": true,
+        "text": "The document states which implementation nodes own which modules so parallel nodes touch disjoint files.",
+        "evidence": "Implementation Node Ownership table assigns disjoint write scopes to Dart, Rust, probe, and UI nodes."
       }
     ],
     "commit": {
       "repository": ".git",
       "message": "Define dispatch parity architecture and module map",
-      "target": "docs/plan/agent-conversation-dispatch/Architecture.md"
+      "target": "docs/plan/agent-conversation-dispatch/Architecture.md",
+      "delivered": "e45e9ba568c99e5c029576dbb441d0770ade92ed"
     },
     "next": [
       "850437e2-dc3d-4a0e-a010-922128b237cc",
