@@ -45,6 +45,7 @@ final class AgentDispatchTurnResult {
     this.status = '',
     this.errorCode = '',
     this.errorMessage = '',
+    this.raw = const <String, dynamic>{},
   });
 
   final bool ok;
@@ -53,6 +54,9 @@ final class AgentDispatchTurnResult {
   final String status;
   final String errorCode;
   final String errorMessage;
+
+  /// Sidecar payload for callers that still inspect effective settings.
+  final Map<String, dynamic> raw;
 }
 
 final class AgentDispatchCancelResult {
@@ -126,6 +130,8 @@ abstract class AgentDispatchLane {
     required String text,
     required String sessionId,
     AgentDispatchBind bind = const AgentDispatchBind(),
+    String conversationReadiness = 'unverified',
+    bool requireReady = true,
   });
 
   Stream<AgentDispatchEvent> stream({
@@ -146,5 +152,6 @@ abstract class AgentDispatchLane {
     required AgentCommandRunner runner,
     required String agentId,
     AgentDispatchBind bind = const AgentDispatchBind(),
+    String conversationReadiness = 'unverified',
   });
 }
