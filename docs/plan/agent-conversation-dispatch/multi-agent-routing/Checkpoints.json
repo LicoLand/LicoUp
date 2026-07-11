@@ -424,7 +424,7 @@
   },
   {
     "id": "0a2098da-dd24-44ed-ad5d-b45e05e343b4",
-    "status": "pending",
+    "status": "completed",
     "role": "implementation",
     "prerequisites": [
       "5b8f9227-9c7f-4c36-b203-e367334911d0"
@@ -439,22 +439,47 @@
     ],
     "acceptance_criteria": [
       {
-        "checked": false,
-        "text": "A module-excluded build compiles and runs with direct dispatch fully functional and zero routing code, widgets, settings keys, or state files present."
+        "checked": true,
+        "text": "A module-excluded build compiles and runs with direct dispatch fully functional and zero routing code, widgets, settings keys, or state files present.",
+        "evidence_refs": [
+          {
+            "type": "command",
+            "command": "cd apps/desktop && flutter test test/routing_module_registration_test.dart --name 'V-005-A'",
+            "exit_code": 0,
+            "recorded_at": "2026-07-11T04:23:10Z"
+          }
+        ]
       },
       {
-        "checked": false,
-        "text": "The runtime toggle deactivates routing at the single registration point, unload removes settings and state artifacts, and re-enable starts clean, all covered by tests."
+        "checked": true,
+        "text": "The runtime toggle deactivates routing at the single registration point, unload removes settings and state artifacts, and re-enable starts clean, all covered by tests.",
+        "evidence_refs": [
+          {
+            "type": "command",
+            "command": "cd apps/desktop && flutter test test/routing_module_registration_test.dart --name 'V-005-C|V-005-D|V-005-E'",
+            "exit_code": 0,
+            "recorded_at": "2026-07-11T04:23:12Z"
+          }
+        ]
       },
       {
-        "checked": false,
-        "text": "The measured footprint (startup time and memory delta with the module enabled) is recorded and within the Requirements.md budget."
+        "checked": true,
+        "text": "The measured footprint (startup time and memory delta with the module enabled) is recorded and within the Requirements.md budget.",
+        "evidence_refs": [
+          {
+            "type": "command",
+            "command": "cd apps/desktop && flutter test test/routing_module_registration_test.dart --name 'V-006'",
+            "exit_code": 0,
+            "recorded_at": "2026-07-11T04:23:13Z"
+          }
+        ]
       }
     ],
     "commit": {
       "repository": ".git",
       "message": "Package routing as optional unloadable module",
-      "target": "LicoArc packaging modules and routing registration"
+      "target": "LicoArc packaging modules and routing registration",
+      "delivered": "f9d0ca3362166c84e05fa8e5e4f7c3d8927ccc97"
     },
     "next": [
       "62f53bae-782e-4437-b8b5-2c64d6369ea0"
