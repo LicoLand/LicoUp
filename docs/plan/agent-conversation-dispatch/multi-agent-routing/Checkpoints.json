@@ -487,7 +487,7 @@
   },
   {
     "id": "b407428a-a5ce-46c9-a779-3584eb536557",
-    "status": "pending",
+    "status": "completed",
     "role": "implementation",
     "prerequisites": [
       "5b8f9227-9c7f-4c36-b203-e367334911d0"
@@ -501,22 +501,47 @@
     ],
     "acceptance_criteria": [
       {
-        "checked": false,
-        "text": "Widget tests prove policy identity and reload state display, decision-record rendering with per-candidate reasons, distillation preview, and per-task route history."
+        "checked": true,
+        "text": "Widget tests prove policy identity and reload state display, decision-record rendering with per-candidate reasons, distillation preview, and per-task route history.",
+        "evidence_refs": [
+          {
+            "type": "command",
+            "command": "cd apps/desktop && flutter test test/routing_disclosure_panels_test.dart --name 'V-007-A|V-007-B|V-007-C|V-007-D'",
+            "exit_code": 0,
+            "recorded_at": "2026-07-11T04:24:28Z"
+          }
+        ]
       },
       {
-        "checked": false,
-        "text": "All routing UI renders exclusively from the decision-record and route-history contract types."
+        "checked": true,
+        "text": "All routing UI renders exclusively from the decision-record and route-history contract types.",
+        "evidence_refs": [
+          {
+            "type": "command",
+            "command": "cd apps/desktop && flutter test test/routing_disclosure_panels_test.dart --name 'V-007-E'",
+            "exit_code": 0,
+            "recorded_at": "2026-07-11T04:24:29Z"
+          }
+        ]
       },
       {
-        "checked": false,
-        "text": "flutter analyze passes and preview surfaces honor redaction with no raw source text leakage."
+        "checked": true,
+        "text": "flutter analyze passes and preview surfaces honor redaction with no raw source text leakage.",
+        "evidence_refs": [
+          {
+            "type": "command",
+            "command": "cd apps/desktop && dart analyze lib/src/frontend/features/agents/ui/routing_disclosure_panels.dart && flutter test test/routing_disclosure_panels_test.dart --name 'V-007-C'",
+            "exit_code": 0,
+            "recorded_at": "2026-07-11T04:24:32Z"
+          }
+        ]
       }
     ],
     "commit": {
       "repository": ".git",
       "message": "Add routing operations disclosure UI",
-      "target": "LicoArc agents routing UX surfaces"
+      "target": "LicoArc agents routing UX surfaces",
+      "delivered": "8b908c826a19a3da1641f7ffb7eb79d73d7dee86"
     },
     "next": [
       "62f53bae-782e-4437-b8b5-2c64d6369ea0"
