@@ -115,7 +115,6 @@ class _AgentOrchestrationPolicyDialogState
     extends State<AgentOrchestrationPolicyDialog> {
   late AgentOrchestrationPolicy _policy;
   late List<AgentModelLibraryEntry> _modelLibrary;
-  late List<AgentOrchestrationRule> _rules;
 
   @override
   void initState() {
@@ -124,19 +123,6 @@ class _AgentOrchestrationPolicyDialogState
       widget.controller.effectiveAgentOrchestrationPolicy,
     );
     _modelLibrary = _policy.modelLibrary.toList(growable: true);
-    _rules = _policy.rules.isEmpty
-        ? [_createDraftRule()]
-        : _policy.rules.toList(growable: true);
-  }
-
-  AgentOrchestrationRule _createDraftRule({
-    AgentOrchestrationStrategy strategy = AgentOrchestrationStrategy.fallback,
-  }) {
-    return defaultAgentOrchestrationRule(
-      widget.controller.scannedTargets,
-      strategy: strategy,
-      modelLibrary: _modelLibrary,
-    );
   }
 
   AgentOrchestrationPolicy _policyWithCommanderDefaults(
@@ -208,27 +194,6 @@ class _AgentOrchestrationPolicyDialogState
     return const [];
   }
 
-  void _updateRule(int index, AgentOrchestrationRule rule) {
-    setState(() {
-      _rules[index] = rule;
-    });
-  }
-
-  void _removeRule(int index) {
-    setState(() {
-      _rules.removeAt(index);
-      if (_rules.isEmpty) {
-        _rules.add(_createDraftRule());
-      }
-    });
-  }
-
-  void _addRule() {
-    setState(() {
-      _rules.add(_createDraftRule());
-    });
-  }
-
   void _selectPolicy(String policyId) {
     AgentOrchestrationPolicy? policy;
     for (final item in widget.controller.agentOrchestrationPolicies) {
@@ -244,9 +209,6 @@ class _AgentOrchestrationPolicyDialogState
     setState(() {
       _policy = _policyWithCommanderDefaults(selectedPolicy);
       _modelLibrary = _policy.modelLibrary.toList(growable: true);
-      _rules = selectedPolicy.rules.isEmpty
-          ? [_createDraftRule()]
-          : selectedPolicy.rules.toList(growable: true);
     });
   }
 
@@ -292,12 +254,6 @@ class _AgentOrchestrationPolicyDialogState
         next.add(entry);
       }
       _modelLibrary = next;
-      _rules = [
-        for (final rule in _rules)
-          rule.routeKeys.contains(selectedKey)
-              ? rule
-              : rule.copyWith(routeKeys: [...rule.routeKeys, selectedKey]),
-      ];
       _policy = _policy.copyWith(modelLibrary: List.unmodifiable(next));
     });
   }
@@ -308,15 +264,6 @@ class _AgentOrchestrationPolicyDialogState
           .where((item) => item.key != entry.key)
           .toList(growable: false);
       _modelLibrary = next;
-      _rules = [
-        for (final rule in _rules)
-          rule.copyWith(
-            routeKeys: [
-              for (final key in rule.routeKeys)
-                if (key != entry.key) key,
-            ],
-          ),
-      ];
       _policy = _policy.copyWith(modelLibrary: List.unmodifiable(next));
     });
   }
@@ -348,17 +295,6 @@ class _AgentOrchestrationPolicyDialogState
     Navigator.of(context).pop(
       _policy.copyWith(
         modelLibrary: modelLibrary,
-        rules: List.unmodifiable(
-          [
-            for (final rule in _rules)
-              normalizeAgentOrchestrationRule(
-                widget.controller.scannedTargets,
-                rule,
-                modelLibrary: modelLibrary,
-                fillDefaults: true,
-              ),
-          ].where((rule) => rule.configured),
-        ),
       ),
     );
   }
@@ -431,22 +367,6 @@ class _AgentOrchestrationPolicyDialogState
                     onAdd: _addModelLibraryEntry,
                     onRemove: _removeModelLibraryEntry,
                   ),
-                  const SizedBox(height: 12),
-                  for (var index = 0; index < _rules.length; index += 1) ...[
-                    _AgentOrchestrationRuleEditor(
-                      key: Key('agent-orchestration-rule-$index'),
-                      index: index,
-                      rule: _rules[index],
-                      modelLibrary: _modelLibrary,
-                      targets: agentOrchestrationCommanderTargets(
-                        widget.controller.orchestrationAvailableTargets,
-                      ),
-                      removable: _rules.length > 1,
-                      onChanged: (rule) => _updateRule(index, rule),
-                      onRemove: () => _removeRule(index),
-                    ),
-                    if (index != _rules.length - 1) const SizedBox(height: 12),
-                  ],
                 ],
               ),
             ),
@@ -455,12 +375,6 @@ class _AgentOrchestrationPolicyDialogState
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
               child: Row(
                 children: [
-                  TextButton.icon(
-                    key: const Key('agent-orchestration-add-rule'),
-                    onPressed: _addRule,
-                    icon: const Icon(Icons.add, size: 18),
-                    label: Text(strings.addRule),
-                  ),
                   const Spacer(),
                   if (widget
                       .controller
@@ -1135,263 +1049,6 @@ class _CommanderDropdown<T> extends StatelessWidget {
       hint: hint == null ? null : Text(hint!),
       items: items,
       onChanged: onChanged,
-    );
-  }
-}
-
-class _AgentOrchestrationRuleEditor extends StatelessWidget {
-  const _AgentOrchestrationRuleEditor({
-    super.key,
-    required this.index,
-    required this.rule,
-    required this.modelLibrary,
-    required this.targets,
-    required this.removable,
-    required this.onChanged,
-    required this.onRemove,
-  });
-
-  final int index;
-  final AgentOrchestrationRule rule;
-  final List<AgentModelLibraryEntry> modelLibrary;
-  final List<TargetCandidate> targets;
-  final bool removable;
-  final ValueChanged<AgentOrchestrationRule> onChanged;
-  final VoidCallback onRemove;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.licoColors;
-    final strings = LicoStrings.of(context);
-    final targetsById = {for (final target in targets) target.target: target};
-    final orderedEntries = agentOrchestrationRuleEntries(
-      rule,
-      modelLibrary,
-      fillDefaults: true,
-    );
-    final canReorder =
-        rule.strategy == AgentOrchestrationStrategy.fallback &&
-        orderedEntries.length > 1;
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: colors.surfaceLow,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: colors.line),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    strings.ruleLabel(index + 1),
-                    style: TextStyle(
-                      color: colors.text,
-                      fontWeight: FontWeight.w700,
-                      fontSize: 14,
-                    ),
-                  ),
-                ),
-                Flexible(
-                  child: Align(
-                    alignment: Alignment.centerRight,
-                    child: FittedBox(
-                      fit: BoxFit.scaleDown,
-                      alignment: Alignment.centerRight,
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          SegmentedButton<AgentOrchestrationStrategy>(
-                            key: Key(
-                              'agent-orchestration-rule-strategy-$index',
-                            ),
-                            segments: [
-                              ButtonSegment(
-                                value: AgentOrchestrationStrategy.fallback,
-                                icon: const Icon(
-                                  Icons.keyboard_double_arrow_down,
-                                  size: 16,
-                                ),
-                                label: Text(
-                                  strings.orchestrationSequentialFallback,
-                                ),
-                              ),
-                              ButtonSegment(
-                                value: AgentOrchestrationStrategy
-                                    .dynamicAllocation,
-                                icon: const Icon(
-                                  Icons.route_outlined,
-                                  size: 16,
-                                ),
-                                label: Text(
-                                  strings.orchestrationDynamicAllocation,
-                                ),
-                              ),
-                            ],
-                            selected: {rule.strategy},
-                            showSelectedIcon: false,
-                            onSelectionChanged: (value) => onChanged(
-                              rule.copyWith(strategy: value.single),
-                            ),
-                          ),
-                          if (removable) ...[
-                            const SizedBox(width: 8),
-                            IconButton(
-                              tooltip: strings.delete,
-                              onPressed: onRemove,
-                              icon: const Icon(Icons.delete_outline, size: 18),
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            if (orderedEntries.isEmpty)
-              Text(
-                strings.noModelLibraryEntries,
-                style: TextStyle(color: colors.textMuted, fontSize: 13),
-              )
-            else
-              ReorderableListView.builder(
-                key: Key('agent-orchestration-rule-routes-$index'),
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                buildDefaultDragHandles: false,
-                itemCount: orderedEntries.length,
-                proxyDecorator: (child, _, animation) => FadeTransition(
-                  opacity: animation.drive(Tween(begin: 0.86, end: 1.0)),
-                  child: Material(
-                    color: Colors.transparent,
-                    elevation: 6,
-                    child: child,
-                  ),
-                ),
-                onReorderItem: (oldIndex, newIndex) {
-                  if (canReorder) {
-                    _reorder(oldIndex, newIndex);
-                  }
-                },
-                itemBuilder: (context, routeIndex) {
-                  final entry = orderedEntries[routeIndex];
-                  return _RuleRouteRow(
-                    key: ValueKey(
-                      'agent-orchestration-rule-$index-route-${_modelLibraryEntryDomKey(entry)}',
-                    ),
-                    index: routeIndex,
-                    entry: entry,
-                    target: targetsById[entry.agentId],
-                    draggable: canReorder,
-                  );
-                },
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _reorder(int oldIndex, int newIndex) {
-    final orderedEntries = agentOrchestrationRuleEntries(
-      rule,
-      modelLibrary,
-      fillDefaults: true,
-    ).toList(growable: true);
-    final entry = orderedEntries.removeAt(oldIndex);
-    orderedEntries.insert(newIndex, entry);
-    onChanged(
-      rule.copyWith(routeKeys: [for (final entry in orderedEntries) entry.key]),
-    );
-  }
-}
-
-class _RuleRouteRow extends StatelessWidget {
-  const _RuleRouteRow({
-    required this.index,
-    required this.entry,
-    required this.target,
-    required this.draggable,
-    super.key,
-  });
-
-  final int index;
-  final AgentModelLibraryEntry entry;
-  final TargetCandidate? target;
-  final bool draggable;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.licoColors;
-    final modelLabel = target == null
-        ? entry.modelName
-        : agentOrchestrationModelDisplayName(target!, entry.modelName);
-    final subtitle = [
-      modelLabel,
-      if (entry.reasoningEffort.trim().isNotEmpty) entry.reasoningEffort.trim(),
-    ].join(' · ');
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: colors.surface,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: colors.line),
-        ),
-        child: ListTile(
-          key: Key(
-            'agent-orchestration-rule-route-$index-${_modelLibraryEntryDomKey(entry)}',
-          ),
-          dense: true,
-          contentPadding: const EdgeInsets.symmetric(
-            horizontal: 10,
-            vertical: 2,
-          ),
-          leading: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              SizedBox(
-                width: 28,
-                child: Text(
-                  '#${index + 1}',
-                  style: TextStyle(
-                    color: colors.textMuted,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-              target == null
-                  ? const Icon(Icons.memory_outlined, size: 20)
-                  : AgentBrandIcon(target: target!, size: 22, iconSize: 16),
-            ],
-          ),
-          title: Text(
-            target?.label ?? entry.agentId,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(color: colors.text, fontWeight: FontWeight.w700),
-          ),
-          subtitle: Text(
-            subtitle,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(color: colors.textMuted, fontSize: 12),
-          ),
-          trailing: draggable
-              ? ReorderableDragStartListener(
-                  index: index,
-                  child: Icon(
-                    Icons.drag_indicator,
-                    color: colors.textMuted,
-                    size: 20,
-                  ),
-                )
-              : null,
-        ),
-      ),
     );
   }
 }
