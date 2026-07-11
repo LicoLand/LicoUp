@@ -236,7 +236,7 @@
   },
   {
     "id": "9f5022e3-01c7-41ca-8152-9cd93795fb51",
-    "status": "in_progress",
+    "status": "completed",
     "role": "implementation",
     "prerequisites": [
       "402e4e92-7174-463f-9141-297091379e4c"
@@ -250,22 +250,47 @@
     ],
     "acceptance_criteria": [
       {
-        "checked": false,
-        "text": "Decision-table tests cover role/capability matching, priority ordering, allowance exhaustion, circuit-breaker exclusion, readiness hard-exclusion, and deterministic tiebreak."
+        "checked": true,
+        "text": "Decision-table tests cover role/capability matching, priority ordering, allowance exhaustion, circuit-breaker exclusion, readiness hard-exclusion, and deterministic tiebreak.",
+        "evidence_refs": [
+          {
+            "type": "command",
+            "command": "cd apps/desktop && flutter test test/routing_engine_test.dart --name 'V-002'",
+            "exit_code": 0,
+            "recorded_at": "2026-07-11T04:19:42Z"
+          }
+        ]
       },
       {
-        "checked": false,
-        "text": "Route decisions carry per-candidate reasons and policy identity; the legacy resolver and its rule types have no remaining references."
+        "checked": true,
+        "text": "Route decisions carry per-candidate reasons and policy identity; the legacy resolver and its rule types have no remaining references.",
+        "evidence_refs": [
+          {
+            "type": "command",
+            "command": "cd apps/desktop && flutter test test/routing_engine_test.dart --name 'V-002-J|V-002-I'",
+            "exit_code": 0,
+            "recorded_at": "2026-07-11T04:19:43Z"
+          }
+        ]
       },
       {
-        "checked": false,
-        "text": "flutter analyze and existing orchestration tests pass against the new engine."
+        "checked": true,
+        "text": "flutter analyze and existing orchestration tests pass against the new engine.",
+        "evidence_refs": [
+          {
+            "type": "command",
+            "command": "cd apps/desktop && dart analyze lib/src/application/features/routing/engine lib/src/contracts/agent_orchestration_policy.dart lib/src/application/features/agents/controller/agent_orchestration_actions.dart && flutter test test/future_client_controller_test.dart --name 'orchestration'",
+            "exit_code": 0,
+            "recorded_at": "2026-07-11T04:19:46Z"
+          }
+        ]
       }
     ],
     "commit": {
       "repository": ".git",
       "message": "Replace dispatch planner with explainable routing engine",
-      "target": "LicoArc routing engine and orchestration call sites"
+      "target": "LicoArc routing engine and orchestration call sites",
+      "delivered": "c19e3ebcaa63be368fc7e71f13eac067156243f4"
     },
     "next": [
       "5b8f9227-9c7f-4c36-b203-e367334911d0"
