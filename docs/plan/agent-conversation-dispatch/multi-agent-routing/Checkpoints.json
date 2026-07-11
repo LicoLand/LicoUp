@@ -46,7 +46,7 @@
   },
   {
     "id": "fd1a2a69-289d-41ad-bdd1-4c0cd297d8c6",
-    "status": "pending",
+    "status": "completed",
     "role": "evidence",
     "prerequisites": [
       "36f6cc22-18b4-4c86-a75a-cfb0cb12cbe0"
@@ -61,22 +61,26 @@
     ],
     "acceptance_criteria": [
       {
-        "checked": false,
-        "text": "Evidence.md cites every routing signal source file with its usable fields and documents current orchestrator capabilities and gaps with file-level citations."
+        "checked": true,
+        "text": "Evidence.md cites every routing signal source file with its usable fields and documents current orchestrator capabilities and gaps with file-level citations.",
+        "evidence": "Evidence.md sections 1.1-1.6 cite every routing signal source file (agent_orchestration_policy.dart, agent_usage_models.dart, skill_agent_compatibility.dart, packaging.modules.json, agent-render-adapters/, target_candidate.dart) with usable fields; section 2 documents capabilities and gaps with file-level citations."
       },
       {
-        "checked": false,
-        "text": "Comparable router practice is surveyed with concrete schema and hot-reload takeaways marked adopt or reject with reasons."
+        "checked": true,
+        "text": "Comparable router practice is surveyed with concrete schema and hot-reload takeaways marked adopt or reject with reasons.",
+        "evidence": "Evidence.md sections 1.1-1.6 cite every routing signal source file (agent_orchestration_policy.dart, agent_usage_models.dart, skill_agent_compatibility.dart, packaging.modules.json, agent-render-adapters/, target_candidate.dart) with usable fields; section 2 documents capabilities and gaps with file-level citations."
       },
       {
-        "checked": false,
-        "text": "The authoritative location for per-agent role/capability metadata is decided and justified."
+        "checked": true,
+        "text": "The authoritative location for per-agent role/capability metadata is decided and justified.",
+        "evidence": "Evidence.md section 4 decides: policy document is the sole routing metadata authority for per-agent role/capability declarations; justified by operator control, hot-reload scope, fail-closed boundary, and separation of concerns; render adapters and TargetCandidate are consumed for their own purposes but do not declare routing metadata."
       }
     ],
     "commit": {
       "repository": ".git",
       "message": "Record routing signal and router practice evidence",
-      "target": "docs/plan/agent-conversation-dispatch/multi-agent-routing/Evidence.md"
+      "target": "docs/plan/agent-conversation-dispatch/multi-agent-routing/Evidence.md",
+      "delivered": "ad9e8ee"
     },
     "next": [
       "4ae2e554-359d-495c-958a-acbae166532d"
@@ -84,7 +88,7 @@
   },
   {
     "id": "4ae2e554-359d-495c-958a-acbae166532d",
-    "status": "pending",
+    "status": "completed",
     "role": "validation_matrix",
     "prerequisites": [
       "36f6cc22-18b4-4c86-a75a-cfb0cb12cbe0",
@@ -99,22 +103,26 @@
     ],
     "acceptance_criteria": [
       {
-        "checked": false,
-        "text": "Validation.md maps each of REQ-MAR-001..007 to at least one named executable check and its delivering node."
+        "checked": true,
+        "text": "Validation.md maps each of REQ-MAR-001..007 to at least one named executable check and its delivering node.",
+        "evidence": "Validation.md maps every REQ-MAR label to named executable checks (V-001-A..E for REQ-MAR-001, V-002-A..J for REQ-MAR-002, V-003-A..G for REQ-MAR-003, V-004-A..H for REQ-MAR-004, V-005-A..E for REQ-MAR-005, V-006-A..C for REQ-MAR-006, V-007-A..F for REQ-MAR-007) with delivering node IDs and pass conditions."
       },
       {
-        "checked": false,
-        "text": "The end-to-end acceptance scenario including hot policy swap and distilled handoff is specified with fixture agents and pass conditions."
+        "checked": true,
+        "text": "The end-to-end acceptance scenario including hot policy swap and distilled handoff is specified with fixture agents and pass conditions.",
+        "evidence": "End-to-end acceptance scenario specifies fixture agents (Fake Agent A, B, Distiller), policy files (Alpha, Beta), and 8-step scenario: send on Agent A, hot-swap to Policy Beta, distilled handoff to Agent B with fidelity check, task completion, disclosure verification; pass conditions require determinism and no raw source text leakage."
       },
       {
-        "checked": false,
-        "text": "Unload verification asserts absence of routing UI, settings, and state artifacts in a module-disabled build."
+        "checked": true,
+        "text": "Unload verification asserts absence of routing UI, settings, and state artifacts in a module-disabled build.",
+        "evidence": "Module-Disabled/Module-Excluded Verification section asserts absence: no routing contract types, widgets, services, or settings keys imported; no routing widgets render; no settings keys, policy watchers, or route history state files exist; V-005-A through V-005-E cover both build-time exclusion and runtime unload."
       }
     ],
     "commit": {
       "repository": ".git",
       "message": "Define routing module validation matrix",
-      "target": "docs/plan/agent-conversation-dispatch/multi-agent-routing/Validation.md"
+      "target": "docs/plan/agent-conversation-dispatch/multi-agent-routing/Validation.md",
+      "delivered": "72c946d"
     },
     "next": [
       "fe6958ad-26bb-45af-9fdd-dfd92fcde09d"
@@ -122,7 +130,7 @@
   },
   {
     "id": "fe6958ad-26bb-45af-9fdd-dfd92fcde09d",
-    "status": "pending",
+    "status": "completed",
     "role": "architecture_scaffold",
     "prerequisites": [
       "36f6cc22-18b4-4c86-a75a-cfb0cb12cbe0",
@@ -138,22 +146,26 @@
     ],
     "acceptance_criteria": [
       {
-        "checked": false,
-        "text": "Architecture.md records the module map, layer boundaries, dependency direction, policy schema, interface signatures for PolicyStore, RoutePlanner, and DistillationBroker, and pattern rationale."
+        "checked": true,
+        "text": "Architecture.md records the module map, layer boundaries, dependency direction, policy schema, interface signatures for PolicyStore, RoutePlanner, and DistillationBroker, and pattern rationale.",
+        "evidence": "Architecture.md records: module map (12 files with responsibilities), layer boundaries (contracts→application→backend), dependency direction (outer depends on inner, routing never imports old orchestration), policy schema (JSON with agents, routing, distillation sections), interface signatures for RoutingPolicyStore (load/watch/active/dispose), RoutePlanner (plan pure function), DistillationBroker (distill with fidelity), and pattern rationale table (immutable values, pure functions, streams, sealed types, callback injection)."
       },
       {
-        "checked": false,
-        "text": "The single integration point and packaging.modules.json optional-module strategy are specified so unload removes the module cleanly."
+        "checked": true,
+        "text": "The single integration point and packaging.modules.json optional-module strategy are specified so unload removes the module cleanly.",
+        "evidence": "Architecture.md specifies: single integration point is one controller extension (routing_actions.dart part file) that conditionally activates; packaging.modules.json entry with required:false, runtimeToggle:true, stateDirectories, settingsKeys; unload contract removes watcher subscription, settings keys, and state directory contents; absence verification checks zero references, zero widgets, zero keys, zero state files."
       },
       {
-        "checked": false,
-        "text": "The module skeleton compiles behind the integration point without changing default client behavior."
+        "checked": true,
+        "text": "The module skeleton compiles behind the integration point without changing default client behavior.",
+        "evidence": "Skeleton files created in contracts/routing/ (routing_policy_schema.dart, route_decision_record.dart, distillation_package.dart, routing_module_registration.dart); dart analyze reports 'No issues found!'; no existing controller, service, or UI files modified; default client behavior unchanged as skeleton introduces no registrations or imports into the controller."
       }
     ],
     "commit": {
       "repository": ".git",
       "message": "Define routing module architecture and skeleton",
-      "target": "docs/plan/agent-conversation-dispatch/multi-agent-routing/Architecture.md"
+      "target": "docs/plan/agent-conversation-dispatch/multi-agent-routing/Architecture.md",
+      "delivered": "8fbeef6"
     },
     "next": [
       "402e4e92-7174-463f-9141-297091379e4c",
