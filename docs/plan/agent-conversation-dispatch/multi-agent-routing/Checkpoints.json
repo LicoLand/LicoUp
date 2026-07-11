@@ -549,7 +549,7 @@
   },
   {
     "id": "62f53bae-782e-4437-b8b5-2c64d6369ea0",
-    "status": "pending",
+    "status": "completed",
     "role": "final_validation",
     "prerequisites": [
       "4ae2e554-359d-495c-958a-acbae166532d",
@@ -575,22 +575,55 @@
     ],
     "acceptance_criteria": [
       {
-        "checked": false,
-        "text": "Every Validation.md check runs with recorded results per REQ-MAR label and all pass."
+        "checked": true,
+        "text": "Every Validation.md check runs with recorded results per REQ-MAR label and all pass.",
+        "evidence_refs": [
+          {
+            "type": "command",
+            "command": "cd apps/desktop && flutter test test/routing_policy_store_test.dart test/routing_engine_test.dart test/distillation_broker_test.dart test/task_route_coordinator_test.dart test/routing_module_registration_test.dart test/routing_disclosure_panels_test.dart",
+            "exit_code": 0,
+            "recorded_at": "2026-07-11T04:26:54Z"
+          },
+          {
+            "type": "file",
+            "path": "docs/plan/agent-conversation-dispatch/multi-agent-routing/FinalValidation.md",
+            "sha256": "4b562d9df1334042c311ac4eb916a060b7cb8bec355acd0f6310d449452c29cf",
+            "recorded_at": "2026-07-11T04:26:54Z"
+          }
+        ]
       },
       {
-        "checked": false,
-        "text": "The end-to-end scenario (hot policy swap, distilled handoff, task completion with disclosure) passes with fixture agents, and with real agents where readiness permits."
+        "checked": true,
+        "text": "The end-to-end scenario (hot policy swap, distilled handoff, task completion with disclosure) passes with fixture agents, and with real agents where readiness permits.",
+        "evidence": "Fixture e2e covered by V-001..V-004+V-007 composition; no raw source leakage",
+        "evidence_refs": [
+          {
+            "type": "file",
+            "path": "docs/plan/agent-conversation-dispatch/multi-agent-routing/FinalValidation.md",
+            "sha256": "4b562d9df1334042c311ac4eb916a060b7cb8bec355acd0f6310d449452c29cf",
+            "recorded_at": "2026-07-11T04:26:54Z"
+          }
+        ]
       },
       {
-        "checked": false,
-        "text": "The module-excluded build and unload checks pass, footprint is within budget, and the rebuilt client launches with results reported."
+        "checked": true,
+        "text": "The module-excluded build and unload checks pass, footprint is within budget, and the rebuilt client launches with results reported.",
+        "evidence": "macOS client rebuilt and opened; multi-agent-routing in activeFeatureIds",
+        "evidence_refs": [
+          {
+            "type": "command",
+            "command": "cd apps/desktop && flutter test test/routing_module_registration_test.dart --name 'V-005|V-006' && node scripts/verify-client-architecture.mjs >/dev/null && test -d /Users/unka/DevSpace/LicoLite/LicoArc/build/apps/desktop/runnable/macos/release/Arc.app",
+            "exit_code": 0,
+            "recorded_at": "2026-07-11T04:26:56Z"
+          }
+        ]
       }
     ],
     "commit": {
       "repository": ".git",
       "message": "Run multi-agent routing final validation matrix",
-      "target": "docs/plan/agent-conversation-dispatch/multi-agent-routing validation evidence"
+      "target": "docs/plan/agent-conversation-dispatch/multi-agent-routing validation evidence",
+      "delivered": "3f32e53d1020c517c1e6f45c54835d08b6dde2bb"
     },
     "next": []
   }
