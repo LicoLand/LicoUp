@@ -173,7 +173,7 @@
   },
   {
     "id": "850437e2-dc3d-4a0e-a010-922128b237cc",
-    "status": "pending",
+    "status": "completed",
     "role": "implementation",
     "prerequisites": [
       "04a69e89-5242-4881-a233-80cfdfcc34e2"
@@ -187,22 +187,26 @@
     ],
     "acceptance_criteria": [
       {
-        "checked": false,
-        "text": "A dispatch lane contract exists in contracts/, the backend service implements it, and direct, orchestrated, and mobile-relay senders all call it; the previous runCliWithStdin call shape has no remaining callers in messaging paths."
+        "checked": true,
+        "text": "A dispatch lane contract exists in contracts/, the backend service implements it, and direct, orchestrated, and mobile-relay senders all call it; the previous runCliWithStdin call shape has no remaining callers in messaging paths.",
+        "evidence": "AgentDispatchLane implemented by AgentConversationService; messaging and orchestration call conversationService.send; no sendRuntimeMessage callers remain in dart messaging paths."
       },
       {
-        "checked": false,
-        "text": "Dart tests cover open/resume, send, stream, cancel, capability discovery, and prove the readiness gate inside the lane rejects sends for non-ready adapters."
+        "checked": true,
+        "text": "Dart tests cover open/resume, send, stream, cancel, capability discovery, and prove the readiness gate inside the lane rejects sends for non-ready adapters.",
+        "evidence": "agent_conversation_service_test.dart covers openOrResume, send, stream, cancel, capabilities, and readiness gate rejection without sidecar call."
       },
       {
-        "checked": false,
-        "text": "flutter analyze and the client architecture verifier pass."
+        "checked": true,
+        "text": "flutter analyze and the client architecture verifier pass.",
+        "evidence": "npm run client:analyze reported no issues; npm run client:verify:architecture ok."
       }
     ],
     "commit": {
       "repository": ".git",
       "message": "Unify conversation sending behind dispatch lane contract",
-      "target": "LicoArc desktop dispatch lane contract and backend service"
+      "target": "LicoArc desktop dispatch lane contract and backend service",
+      "delivered": "e44afd80fbc4e00da7f50d1a16140ed57f994ab7"
     },
     "next": [
       "5d34af8d-dccf-4aef-9be4-4dca81aa1455",
