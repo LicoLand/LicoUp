@@ -1,6 +1,6 @@
 {
   "schemaVersion": "v0.0.1:client-desktop:packaging-modules-1",
-  "description": "LicoLite desktop client packaging. Modules are organized by runtime function.",
+  "description": "Lico Arc desktop client packaging. Modules are organized by runtime function.",
   "packageProfile": "future-client",
   "bundle": {
     "moduleResourceDirectory": "modules",
@@ -8,7 +8,7 @@
   },
   "modules": {
     "portable-data": {
-      "label": "Future client local state, mobile relay, activity, snapshots, and target config cache",
+      "label": "Future client local state, mobile relay, activity, snapshots, scoped mail imports, and target config cache",
       "category": "storage",
       "enabled": true,
       "required": true,
@@ -29,6 +29,7 @@
         "future-client/activity",
         "future-client/snapshots",
         "future-client/source-queue",
+        "future-client/mail-imports",
         "future-client/connectors",
         "future-client/knowledge-cache",
         "future-client/mcp-local-bridge",
@@ -36,7 +37,7 @@
       ]
     },
     "target-adapters": {
-      "label": "Target adapters for Antigravity, Claude Code, Codex, Cursor, GitHub Copilot, Hermes Agent, Kilo Code, OpenClaw, and OpenCode",
+      "label": "Target adapters for Antigravity, Claude Code, Codex, Cursor, GitHub Copilot, Hermes Agent, Kilo Code, Kimi Code, OpenClaw, and OpenCode",
       "category": "agents",
       "enabled": true,
       "required": true,
@@ -59,7 +60,8 @@
         "copilot",
         "kilo-code",
         "cursor",
-        "hermes"
+        "hermes",
+        "kimi-code"
       ]
     },
     "mcp-plugins": {
@@ -220,6 +222,21 @@
         "native-sidecar"
       ]
     },
+    "openai-dashboard-runtime": {
+      "label": "OpenAI dashboard background usage probe",
+      "category": "usage",
+      "enabled": true,
+      "required": true,
+      "platforms": [
+        "macos"
+      ],
+      "packaging": "swift-sidecar",
+      "artifactName": "lico-openai-dashboard-helper",
+      "swiftSource": "apps/desktop/macos/OpenAIDashboardHelper/LicoOpenAIDashboardHelper.swift",
+      "requires": [
+        "native-sidecar"
+      ]
+    },
     "mcp-local-bridge": {
       "label": "Client-local-runtime MCP HTTP bridge registration",
       "category": "mcp",
@@ -247,6 +264,30 @@
         "windows"
       ],
       "packaging": "flutter-app"
+    },
+    "multi-agent-routing": {
+      "label": "Multi-agent routing and context distillation",
+      "category": "routing",
+      "enabled": true,
+      "required": false,
+      "platforms": [
+        "macos",
+        "linux",
+        "windows"
+      ],
+      "packaging": "runtime-capability",
+      "requires": [
+        "target-adapters",
+        "portable-data"
+      ],
+      "runtimeToggle": true,
+      "stateDirectories": [
+        "future-client/routing"
+      ],
+      "settingsKeys": [
+        "routing.enabled",
+        "routing.policyPath"
+      ]
     },
     "native-sidecar": {
       "label": "Rust future client CLI sidecar",
