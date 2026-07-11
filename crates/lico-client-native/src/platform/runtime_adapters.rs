@@ -79,6 +79,10 @@ pub(crate) struct RuntimeDriverProfile {
     pub(crate) protocol: String,
     pub(crate) blocker: Option<String>,
     pub(crate) runtime_version_digest: Option<String>,
+    pub(crate) capability_matrix: Option<Value>,
+    pub(crate) summary_codes: Vec<String>,
+    pub(crate) consecutive_passes: usize,
+    pub(crate) evidence_age_class: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -782,6 +786,23 @@ impl RuntimeDriverRegistry {
         } else {
             readiness.summary_codes.first().cloned()
         };
+        let evidence_age_class = if readiness.evidence_binding.is_some() {
+            "current".to_string()
+        } else if readiness
+            .summary_codes
+            .iter()
+            .any(|code| code == "evidence_stale_or_incomplete")
+        {
+            "stale".to_string()
+        } else if readiness
+            .summary_codes
+            .iter()
+            .any(|code| code == "evidence_missing" || code == "evidence_incomplete")
+        {
+            "missing".to_string()
+        } else {
+            "absent".to_string()
+        };
         Some(RuntimeDriverProfile {
             driver_status: driver_status_for_mode(&driver.driver_mode)?.to_string(),
             readiness: readiness.status.clone(),
@@ -791,6 +812,10 @@ impl RuntimeDriverRegistry {
                 .evidence_binding
                 .as_ref()
                 .map(|binding| binding.runtime_version_digest.clone()),
+            capability_matrix: driver.capability_matrix.clone(),
+            summary_codes: readiness.summary_codes.clone(),
+            consecutive_passes: readiness.consecutive_passes,
+            evidence_age_class,
         })
     }
 }
@@ -1509,6 +1534,16 @@ mod tests {
         assert_eq!(opencode.readiness, "unverified");
         assert_eq!(opencode.protocol, opencode_driver::RUNTIME_PROTOCOL);
         assert_eq!(opencode.blocker.as_deref(), Some("evidence_missing"));
+        assert_eq!(opencode.evidence_age_class, "missing");
+        assert!(opencode.summary_codes.contains(&"evidence_missing".to_string()));
+        assert_eq!(
+            opencode
+                .capability_matrix
+                .as_ref()
+                .and_then(|matrix| matrix.get("laneFamily"))
+                .and_then(Value::as_str),
+            Some("acp")
+        );
 
         let antigravity = registry.profile("antigravity").unwrap();
         assert_eq!(antigravity.driver_status, "blocked");
@@ -1516,6 +1551,14 @@ mod tests {
         assert_eq!(
             antigravity.blocker.as_deref(),
             Some("antigravity_public_transport_unavailable")
+        );
+        assert_eq!(
+            antigravity
+                .capability_matrix
+                .as_ref()
+                .and_then(|matrix| matrix.get("laneFamily"))
+                .and_then(Value::as_str),
+            Some("unavailable")
         );
         assert!(registry.readiness.values().all(|entry| !entry.send_enabled));
     }
