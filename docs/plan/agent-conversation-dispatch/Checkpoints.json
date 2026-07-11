@@ -87,7 +87,7 @@
   },
   {
     "id": "e13375fa-3066-40dc-8446-921943decf6f",
-    "status": "pending",
+    "status": "completed",
     "role": "validation_matrix",
     "prerequisites": [
       "d7f25317-c717-4a26-80f4-fc6efe848d32",
@@ -102,22 +102,26 @@
     ],
     "acceptance_criteria": [
       {
-        "checked": false,
-        "text": "Validation.md maps each of REQ-ACD-001..006 to at least one named executable check and states which node delivers that check."
+        "checked": true,
+        "text": "Validation.md maps each of REQ-ACD-001..006 to at least one named executable check and states which node delivers that check.",
+        "evidence": "Validation.md maps REQ-ACD-001..006 to named checks (V-DART/ARCH/RUST/LIVE/FIX/RED/BOUND/UI/E2E) with delivering node ids."
       },
       {
-        "checked": false,
-        "text": "Environment-dependent checks (installed agents required) each declare a deterministic fixture-based counterpart."
+        "checked": true,
+        "text": "Environment-dependent checks (installed agents required) each declare a deterministic fixture-based counterpart.",
+        "evidence": "V-LIVE-001/002 declare fixture counterparts V-FIX-001/002 for CI without installed agents."
       },
       {
-        "checked": false,
-        "text": "The end-to-end acceptance run and its pass condition are defined, including the fail-closed reducer assertion."
+        "checked": true,
+        "text": "The end-to-end acceptance run and its pass condition are defined, including the fail-closed reducer assertion.",
+        "evidence": "End-to-End Acceptance Run defines sequence and pass condition including fail-closed sendEnabled assertion."
       }
     ],
     "commit": {
       "repository": ".git",
       "message": "Define dispatch parity validation matrix",
-      "target": "docs/plan/agent-conversation-dispatch/Validation.md"
+      "target": "docs/plan/agent-conversation-dispatch/Validation.md",
+      "delivered": "88c947e1908d6c022746be43144d20da851d2ac6"
     },
     "next": [
       "04a69e89-5242-4881-a233-80cfdfcc34e2"
