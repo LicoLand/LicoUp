@@ -130,7 +130,7 @@
   },
   {
     "id": "46840f3d-6190-41a9-8a8c-3f098ecbb187",
-    "status": "pending",
+    "status": "in_progress",
     "title": "Multi-Agent Routing And Context Distillation",
     "directory": "agent-conversation-dispatch/multi-agent-routing",
     "source_files": [

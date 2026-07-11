@@ -1,0 +1,434 @@
+[
+  {
+    "id": "36f6cc22-18b4-4c86-a75a-cfb0cb12cbe0",
+    "status": "in_progress",
+    "role": "product_requirements",
+    "prerequisites": [],
+    "platform": "any",
+    "difficulty": "deep",
+    "goal": "Define the routing and distillation product contract in Requirements.md.",
+    "description": "Scope: docs/plan/agent-conversation-dispatch/multi-agent-routing/Requirements.md. Context: the user mandate is routing by role, capability, priority, and remaining allowance, with dynamically loaded hot-reloadable policy files, mid-task switching, distilled context handoff, and a lightweight pluggable module; the existing orchestrator (agent_orchestration_policy.dart) covers only hardcoded fallback and allowance skipping. Target: a Requirements.md that fixes REQ-MAR-001..007 (tabled in Plan.md) into testable statements, defines target workflows (single prompt auto-routed, long task surviving an agent switch, operator editing policy mid-task, module disabled entirely), scope, non-goals (result merging across parallel agents unless evidence proves demand), and acceptance targets including the lightweight footprint budget. Design Considerations: requirements must state routing operates strictly above the parent plan's parity-gated dispatch lane; distillation fidelity needs a testable definition (goals, decisions, constraints preserved) rather than a vibe. Design Value: fixes the contract so the module cannot grow into a heavyweight always-on subsystem. Constraints & Risks: quota semantics depend on CL-13 usage metering accuracy; the requirement must state how stale usage data degrades routing (conservative skip versus best-effort).",
+    "requirements": [
+      "REQ-MAR-001",
+      "REQ-MAR-002",
+      "REQ-MAR-003",
+      "REQ-MAR-004",
+      "REQ-MAR-005",
+      "REQ-MAR-006",
+      "REQ-MAR-007"
+    ],
+    "acceptance_criteria": [
+      {
+        "checked": true,
+        "text": "Requirements.md exists in the plan directory, restates REQ-MAR-001..007 as testable statements with workflows, scope, non-goals, and the footprint budget.",
+        "evidence": "Requirements.md restates REQ-MAR-001..007 as testable statements with workflows, scope, non-goals, and footprint budget (50ms/8MiB)."
+      },
+      {
+        "checked": true,
+        "text": "Distillation fidelity is defined testably and the stale-usage-data degradation policy is stated.",
+        "evidence": "Distillation fidelity defined as goals/decisions/constraints fields with fidelity check; stale usage uses conservative skip with allowStaleUsage override rule."
+      },
+      {
+        "checked": true,
+        "text": "The dependency on the parent dispatch parity plan is recorded as a consumed interface, not duplicated scope.",
+        "evidence": "Parent Dispatch Dependency section records AgentDispatchLane and readiness as consumed interfaces; parity implementation out of scope."
+      }
+    ],
+    "commit": {
+      "repository": ".git",
+      "message": "Define multi-agent routing requirements contract",
+      "target": "docs/plan/agent-conversation-dispatch/multi-agent-routing/Requirements.md"
+    },
+    "next": [
+      "fd1a2a69-289d-41ad-bdd1-4c0cd297d8c6"
+    ]
+  },
+  {
+    "id": "fd1a2a69-289d-41ad-bdd1-4c0cd297d8c6",
+    "status": "pending",
+    "role": "evidence",
+    "prerequisites": [
+      "36f6cc22-18b4-4c86-a75a-cfb0cb12cbe0"
+    ],
+    "platform": "any",
+    "difficulty": "deep",
+    "goal": "Ground routing design in current code and comparable router practice in Evidence.md.",
+    "description": "Scope: docs/plan/agent-conversation-dispatch/multi-agent-routing/Evidence.md. Context: routing decisions need grounded signal sources: agent_orchestration_policy.dart (fallback, dynamicAllocation, circuit breaker), agent_usage_models.dart and agent usage actions for allowance data, skill_agent_compatibility.dart for the only existing agent-capability mapping, packaging.modules.json for module packaging, and assets/agent-render-adapters/ for per-agent metadata shape precedent. Target: an Evidence.md that cites each signal source with its exact fields, documents what the current orchestrator can and cannot do, surveys comparable open router practice (policy-file model routers and fallback routers) for schema and hot-reload precedent, and identifies where role/capability metadata should authoritatively live, closing the open point in Plan.md. Design Considerations: separate verifiable local facts from external practice references; every gap claim must cite the file proving the gap. Design Value: the policy schema and engine design inherit proven shapes instead of invented ones, and the metadata-authority decision stops being an open question. Constraints & Risks: external router comparisons inform but do not bind; anything adopted must fit the fail-closed dispatch lane and privacy rules.",
+    "requirements": [
+      "REQ-MAR-001",
+      "REQ-MAR-002"
+    ],
+    "acceptance_criteria": [
+      {
+        "checked": false,
+        "text": "Evidence.md cites every routing signal source file with its usable fields and documents current orchestrator capabilities and gaps with file-level citations."
+      },
+      {
+        "checked": false,
+        "text": "Comparable router practice is surveyed with concrete schema and hot-reload takeaways marked adopt or reject with reasons."
+      },
+      {
+        "checked": false,
+        "text": "The authoritative location for per-agent role/capability metadata is decided and justified."
+      }
+    ],
+    "commit": {
+      "repository": ".git",
+      "message": "Record routing signal and router practice evidence",
+      "target": "docs/plan/agent-conversation-dispatch/multi-agent-routing/Evidence.md"
+    },
+    "next": [
+      "4ae2e554-359d-495c-958a-acbae166532d"
+    ]
+  },
+  {
+    "id": "4ae2e554-359d-495c-958a-acbae166532d",
+    "status": "pending",
+    "role": "validation_matrix",
+    "prerequisites": [
+      "36f6cc22-18b4-4c86-a75a-cfb0cb12cbe0",
+      "fd1a2a69-289d-41ad-bdd1-4c0cd297d8c6"
+    ],
+    "platform": "any",
+    "difficulty": "deep",
+    "goal": "Map REQ-MAR-001..007 to executable checks in Validation.md.",
+    "description": "Scope: docs/plan/agent-conversation-dispatch/multi-agent-routing/Validation.md. Context: the module's promises — hot reload, mid-task switch, distillation fidelity, clean unload, bounded footprint — are exactly the kind of claims that go unverified without a pre-committed matrix. Target: a Validation.md mapping each REQ-MAR label to named checks: policy schema validation tests, loader hot-reload tests with a live file change, routing engine decision-table tests including allowance exhaustion and circuit-breaker paths, distillation fidelity contract tests with fixture conversations, mid-task switch integration tests at message boundaries, module-disabled builds proving direct dispatch works and no routing residue ships, and a measured footprint check against the budget; defines the end-to-end acceptance scenario (task starts on agent A, policy hot-swaps, distilled handoff to agent B, task completes). Design Considerations: distillation checks compare preserved goals/decisions/constraints against fixture ground truth; unload checks assert absence (no routing widgets, settings keys, or state files) not just feature-flag off. Design Value: each later node lands with its verification already named, keeping commit-sized scope honest. Constraints & Risks: mid-task switch tests need deterministic fake agents; the matrix must specify those fixtures so integration tests do not depend on installed agents.",
+    "requirements": [
+      "REQ-MAR-006"
+    ],
+    "acceptance_criteria": [
+      {
+        "checked": false,
+        "text": "Validation.md maps each of REQ-MAR-001..007 to at least one named executable check and its delivering node."
+      },
+      {
+        "checked": false,
+        "text": "The end-to-end acceptance scenario including hot policy swap and distilled handoff is specified with fixture agents and pass conditions."
+      },
+      {
+        "checked": false,
+        "text": "Unload verification asserts absence of routing UI, settings, and state artifacts in a module-disabled build."
+      }
+    ],
+    "commit": {
+      "repository": ".git",
+      "message": "Define routing module validation matrix",
+      "target": "docs/plan/agent-conversation-dispatch/multi-agent-routing/Validation.md"
+    },
+    "next": [
+      "fe6958ad-26bb-45af-9fdd-dfd92fcde09d"
+    ]
+  },
+  {
+    "id": "fe6958ad-26bb-45af-9fdd-dfd92fcde09d",
+    "status": "pending",
+    "role": "architecture_scaffold",
+    "prerequisites": [
+      "36f6cc22-18b4-4c86-a75a-cfb0cb12cbe0",
+      "fd1a2a69-289d-41ad-bdd1-4c0cd297d8c6",
+      "4ae2e554-359d-495c-958a-acbae166532d"
+    ],
+    "platform": "any",
+    "difficulty": "deep",
+    "goal": "Fix the routing module boundary, policy schema, and interfaces in Architecture.md.",
+    "description": "Scope: docs/plan/agent-conversation-dispatch/multi-agent-routing/Architecture.md plus the module skeleton it prescribes. Context: the module must be optional and unloadable, which makes its boundary the central design act; the existing orchestrator lives inside required controller code, exactly what this plan must not repeat. Target: an Architecture.md fixing the module map with one responsibility per file: policy document schema and parser in contracts/, a PolicyStore (load, validate, watch, hot-reload) in backend services, a RoutePlanner engine in application logic consuming policy plus usage/readiness signals through declared interfaces, a DistillationBroker orchestrating handoff sends through the parent dispatch lane, controller extension registration as the single integration point, and the packaging.modules.json optional-module entry; records dependency direction (routing depends on dispatch contracts, never the reverse), the route decision record shape, and which parts stay pattern-free. Design Considerations: the engine is a pure function from (prompt metadata, policy, signals) to an explainable decision, so it is trivially testable; hot reload uses the existing file-watch precedent in the codebase; the only mutable state is the active policy snapshot and per-task route history. Design Value: the boundary decided here is what makes REQ-MAR-005 unload and REQ-MAR-006 lightweight achievable rather than aspirational. Constraints & Risks: registration must fail soft — a broken policy file degrades to direct dispatch with a surfaced error, never a crash; the skeleton must not pretend behavior exists before the implementation nodes land.",
+    "requirements": [
+      "REQ-MAR-005"
+    ],
+    "acceptance_criteria": [
+      {
+        "checked": false,
+        "text": "Architecture.md records the module map, layer boundaries, dependency direction, policy schema, interface signatures for PolicyStore, RoutePlanner, and DistillationBroker, and pattern rationale."
+      },
+      {
+        "checked": false,
+        "text": "The single integration point and packaging.modules.json optional-module strategy are specified so unload removes the module cleanly."
+      },
+      {
+        "checked": false,
+        "text": "The module skeleton compiles behind the integration point without changing default client behavior."
+      }
+    ],
+    "commit": {
+      "repository": ".git",
+      "message": "Define routing module architecture and skeleton",
+      "target": "docs/plan/agent-conversation-dispatch/multi-agent-routing/Architecture.md"
+    },
+    "next": [
+      "402e4e92-7174-463f-9141-297091379e4c",
+      "979a3024-351c-4f3f-a4a1-91aa7062396b"
+    ]
+  },
+  {
+    "id": "402e4e92-7174-463f-9141-297091379e4c",
+    "status": "pending",
+    "role": "implementation",
+    "prerequisites": [
+      "fe6958ad-26bb-45af-9fdd-dfd92fcde09d"
+    ],
+    "platform": "any",
+    "difficulty": "high",
+    "goal": "Implement the policy document schema, store, and hot reload.",
+    "description": "Scope: the policy schema contract file in apps/desktop/lib/src/contracts/, the PolicyStore service in apps/desktop/lib/src/backend/, and schema fixture files. Context: policy is the module's external surface — roles, capability requirements, priority tiers, allowance thresholds, distillation directives (which agent distills, target length, required preserved fields), and default routes must all be declarative per REQ-MAR-001. Target: a versioned policy document schema with a validating parser producing typed policy objects and precise error positions; a PolicyStore that loads policy files from the configured directory, watches for changes, atomically swaps the active snapshot on valid updates, and surfaces validation failures without dropping the last good policy; malformed policy never crashes routing. Design Considerations: schema validation is pure Dart with no new dependencies (REQ-MAR-006); snapshot swap is atomic by construction (immutable policy objects, single reference swap) so mid-task readers never see a torn policy; policy identity (name plus version) is recorded into route decisions for auditability. Design Value: every routing behavior becomes data-driven, which is what makes hot switching and operator control possible at all. Constraints & Risks: file watching must debounce editor write bursts; policy files are user-owned configuration and must never receive secret material — the parser rejects fields resembling credentials.",
+    "requirements": [
+      "REQ-MAR-001"
+    ],
+    "acceptance_criteria": [
+      {
+        "checked": false,
+        "text": "Schema tests validate the full policy surface (roles, capabilities, priorities, allowance thresholds, distillation directives) with precise errors for malformed documents."
+      },
+      {
+        "checked": false,
+        "text": "Hot-reload tests prove a live file change atomically swaps the active snapshot, an invalid change keeps the last good policy with a surfaced error, and write bursts are debounced."
+      },
+      {
+        "checked": false,
+        "text": "flutter analyze passes and the policy module adds no new package dependencies."
+      }
+    ],
+    "commit": {
+      "repository": ".git",
+      "message": "Add routing policy schema, store, and hot reload",
+      "target": "LicoArc routing policy contracts and store"
+    },
+    "next": [
+      "9f5022e3-01c7-41ca-8152-9cd93795fb51"
+    ]
+  },
+  {
+    "id": "9f5022e3-01c7-41ca-8152-9cd93795fb51",
+    "status": "pending",
+    "role": "implementation",
+    "prerequisites": [
+      "402e4e92-7174-463f-9141-297091379e4c"
+    ],
+    "platform": "any",
+    "difficulty": "deep",
+    "goal": "Implement the explainable routing engine as the single dispatch planner.",
+    "description": "Scope: the RoutePlanner engine module in application logic, replacing resolveAgentDispatchPlan in apps/desktop/lib/src/contracts/agent_orchestration_policy.dart and its call sites in agent_orchestration_actions.dart. Context: the current resolver walks hardcoded rule lists with allowance skips and a circuit breaker; REQ-MAR-002 requires role/capability matching, priority ordering, allowance thresholds, and health to combine into one explainable decision, and the migration-completion rule requires the old resolver to be removed in the same pass. Target: a pure decision function from (task metadata, policy snapshot, usage reports, readiness states, breaker states) to a route decision containing the chosen agent, ordered alternatives, and per-candidate reasons (matched role, capability satisfaction, priority tier, allowance headroom, health); candidates failing capability or readiness are excluded with recorded causes; the circuit-breaker behavior is preserved as a policy-tunable health signal; existing orchestration call sites consume the new decision shape and the old resolver is deleted. Design Considerations: scoring is deterministic and total-ordered so identical inputs give identical routes (stable tiebreak by policy order); allowance evaluation reuses AgentUsageAllowance semantics rather than re-deriving quota math; the decision record is a contract type so UX and audit consume the same explanation. Design Value: explainability turns routing from a black box into an auditable product surface, and determinism makes it testable by decision table. Constraints & Risks: readiness signals come from the parent plan's reducer — the engine must treat non-ready adapters as hard-excluded to preserve fail-closed dispatch; stale usage data follows the degradation policy fixed in Requirements.md.",
+    "requirements": [
+      "REQ-MAR-002"
+    ],
+    "acceptance_criteria": [
+      {
+        "checked": false,
+        "text": "Decision-table tests cover role/capability matching, priority ordering, allowance exhaustion, circuit-breaker exclusion, readiness hard-exclusion, and deterministic tiebreak."
+      },
+      {
+        "checked": false,
+        "text": "Route decisions carry per-candidate reasons and policy identity; the legacy resolver and its rule types have no remaining references."
+      },
+      {
+        "checked": false,
+        "text": "flutter analyze and existing orchestration tests pass against the new engine."
+      }
+    ],
+    "commit": {
+      "repository": ".git",
+      "message": "Replace dispatch planner with explainable routing engine",
+      "target": "LicoArc routing engine and orchestration call sites"
+    },
+    "next": [
+      "5b8f9227-9c7f-4c36-b203-e367334911d0"
+    ]
+  },
+  {
+    "id": "979a3024-351c-4f3f-a4a1-91aa7062396b",
+    "status": "pending",
+    "role": "implementation",
+    "prerequisites": [
+      "fe6958ad-26bb-45af-9fdd-dfd92fcde09d"
+    ],
+    "platform": "any",
+    "difficulty": "deep",
+    "goal": "Implement the context distillation broker for agent handoffs.",
+    "description": "Scope: the DistillationBroker module in application logic plus its handoff package contract type; consumes the parent plan's dispatch lane and agent_conversation_models.dart session data through declared interfaces only. Context: REQ-MAR-003 requires that before a conversation enters a different agent, the next agent or a policy-designated distiller compresses prior context into a handoff package preserving goals, decisions, and constraints; nothing like this exists — orchestration today just wraps the raw prompt. Target: a broker that assembles the source conversation (thread plus relevant execution outcomes), issues a distillation prompt through the normal parity-gated dispatch lane to the policy-selected distiller, validates the returned package against the fidelity contract (required sections present: objective, current state, decisions, constraints, open items), retries once with a corrective prompt on failure, and stores the package with source-session references for audit; the package becomes the opening context of the next agent's session. Design Considerations: the distillation prompt template and fidelity contract are policy-configurable but ship with defaults matching the requirements; package validation is structural (required sections, source references, length budget) because semantic fidelity is enforced by the distiller-agent choice; audit records store the package and its check results, never the full raw source text beyond references. Design Value: handoffs preserve core logic by contract instead of hoping a truncated transcript survives, which is the difference between agent switching and context loss. Constraints & Risks: distillation consumes real agent quota — the broker must report its cost through usage metering and respect allowance thresholds; a distiller that is itself non-ready must cause fallback to the policy's alternate distiller or a surfaced failure, never a silent raw-context handoff.",
+    "requirements": [
+      "REQ-MAR-003"
+    ],
+    "acceptance_criteria": [
+      {
+        "checked": false,
+        "text": "Broker tests with fixture conversations prove package assembly, fidelity validation, single corrective retry, alternate-distiller fallback, and audit storage with source references only."
+      },
+      {
+        "checked": false,
+        "text": "Distillation sends run through the parity-gated dispatch lane and their cost is reported into usage metering."
+      },
+      {
+        "checked": false,
+        "text": "No path hands raw undistilled context to the next agent when policy requires distillation; failure surfaces to the caller."
+      }
+    ],
+    "commit": {
+      "repository": ".git",
+      "message": "Add context distillation broker for agent handoffs",
+      "target": "LicoArc distillation broker and handoff contract"
+    },
+    "next": [
+      "5b8f9227-9c7f-4c36-b203-e367334911d0"
+    ]
+  },
+  {
+    "id": "5b8f9227-9c7f-4c36-b203-e367334911d0",
+    "status": "pending",
+    "role": "implementation",
+    "prerequisites": [
+      "9f5022e3-01c7-41ca-8152-9cd93795fb51",
+      "979a3024-351c-4f3f-a4a1-91aa7062396b"
+    ],
+    "platform": "any",
+    "difficulty": "deep",
+    "goal": "Deliver mid-task hot switching that combines routing decisions with distilled handoffs.",
+    "description": "Scope: the task-session coordination logic in the agents controller layer (agent_orchestration_actions.dart successor module and agent conversation session actions), integrating RoutePlanner and DistillationBroker. Context: REQ-MAR-004 requires policy changes and agent switches to apply during a running task at message boundaries without losing session continuity; today a task is pinned to whatever the initial dispatch chose. Target: between messages, the coordinator re-evaluates the route against the current policy snapshot and signals (allowance drain, breaker trips, hot-swapped policy); when the route moves to a different agent, it runs the distillation broker, opens or resumes the target agent session with the handoff package, records the switch with its decision record in the task's route history, and continues the task; in-flight messages are never interrupted mid-stream, and both source and target native sessions stay resumable per the parent plan's continuity guarantees. Design Considerations: switch evaluation is event-driven off policy-swap and usage-update signals rather than polling; route history is an append-only per-task record enabling audit and UX playback; the coordinator owns no routing logic itself — it sequences engine and broker through their interfaces. Design Value: this is the node that turns routing from a static launch decision into live orchestration, which is the user's core ask. Constraints & Risks: concurrency is the main hazard — a policy swap arriving during distillation must queue, not race; switch storms are bounded by a policy-tunable minimum interval; a failed switch leaves the task on the source agent with a surfaced reason.",
+    "requirements": [
+      "REQ-MAR-004"
+    ],
+    "acceptance_criteria": [
+      {
+        "checked": false,
+        "text": "Integration tests with deterministic fake agents prove mid-task re-routing at message boundaries, distilled handoff on agent change, no mid-stream interruption, and route history recording."
+      },
+      {
+        "checked": false,
+        "text": "Concurrency tests prove policy swaps during distillation queue safely, switch frequency is bounded, and failed switches keep the task on the source agent with a surfaced reason."
+      },
+      {
+        "checked": false,
+        "text": "Both source and target sessions remain resumable after a switch, verified against session mapping state."
+      }
+    ],
+    "commit": {
+      "repository": ".git",
+      "message": "Add mid-task hot switching with distilled handoffs",
+      "target": "LicoArc task-session routing coordinator"
+    },
+    "next": [
+      "0a2098da-dd24-44ed-ad5d-b45e05e343b4",
+      "b407428a-a5ce-46c9-a779-3584eb536557"
+    ]
+  },
+  {
+    "id": "0a2098da-dd24-44ed-ad5d-b45e05e343b4",
+    "status": "pending",
+    "role": "implementation",
+    "prerequisites": [
+      "5b8f9227-9c7f-4c36-b203-e367334911d0"
+    ],
+    "platform": "any",
+    "difficulty": "high",
+    "goal": "Package routing as one optional module with a clean unload path.",
+    "description": "Scope: apps/desktop/packaging.modules.json (first optional module entry), the module registration point from Architecture.md, the runtime settings toggle, and the module's state-file locations. Context: REQ-MAR-005 demands pluggable and unloadable; today every packaged module is required:true and the build tooling has never exercised an optional module, so this node establishes that mechanism with routing as its first consumer. Target: a routing module entry marked optional in packaging.modules.json honored by the build so an excluded build compiles without any routing code; a runtime toggle that deactivates registration so direct dispatch runs exactly as the parent plan delivered it; an unload path that removes routing settings keys, policy watch handles, and per-task route history files; enabling again starts clean without stale state. Design Considerations: absence is the design goal — verification asserts no routing widgets, settings keys, or state files exist when disabled or excluded, aligning with the retired-artifacts rule; the toggle gates registration at the single integration point rather than scattering feature checks. Design Value: proves the module boundary is real, and establishes optional-module packaging every future optional capability will reuse. Constraints & Risks: build tooling changes affect all modules — the required-module path must stay byte-identical when the optional mechanism is unused; partial unloads that orphan state files are the main failure mode and must be tested directly.",
+    "requirements": [
+      "REQ-MAR-005",
+      "REQ-MAR-006"
+    ],
+    "acceptance_criteria": [
+      {
+        "checked": false,
+        "text": "A module-excluded build compiles and runs with direct dispatch fully functional and zero routing code, widgets, settings keys, or state files present."
+      },
+      {
+        "checked": false,
+        "text": "The runtime toggle deactivates routing at the single registration point, unload removes settings and state artifacts, and re-enable starts clean, all covered by tests."
+      },
+      {
+        "checked": false,
+        "text": "The measured footprint (startup time and memory delta with the module enabled) is recorded and within the Requirements.md budget."
+      }
+    ],
+    "commit": {
+      "repository": ".git",
+      "message": "Package routing as optional unloadable module",
+      "target": "LicoArc packaging modules and routing registration"
+    },
+    "next": [
+      "62f53bae-782e-4437-b8b5-2c64d6369ea0"
+    ]
+  },
+  {
+    "id": "b407428a-a5ce-46c9-a779-3584eb536557",
+    "status": "pending",
+    "role": "implementation",
+    "prerequisites": [
+      "5b8f9227-9c7f-4c36-b203-e367334911d0"
+    ],
+    "platform": "any",
+    "difficulty": "high",
+    "goal": "Disclose routing operations in the client UI.",
+    "description": "Scope: routing UX surfaces inside the agents feature UI (apps/desktop/lib/src/frontend/features/agents/ui/), reusing the toolbar, workspace, and feed patterns; owns only routing widgets, no changes to core conversation rendering. Context: REQ-MAR-007 requires that active policy, route decisions with reasons, allowance state, and distillation previews are visible where dispatch happens; the decision record contract from the routing engine and the route history from the coordinator already carry everything the UI needs. Target: a policy selector showing the active policy identity and reload state with validation errors surfaced; per-dispatch route disclosure rendering the decision record (chosen agent, alternatives, per-candidate reasons, allowance headroom); a distillation preview showing the handoff package before or as it is sent, honoring redaction; route history visible per task in the existing feed or workspace panels. Design Considerations: render from contract types only — no UI-side re-derivation of routing logic; follow Design.md process-disclosure conventions and the appearance preset system; distillation preview is read-only disclosure, not an editing surface, to keep scope commit-sized. Design Value: operators trust automatic routing only when every decision shows its reasons, and disclosure UX is what makes hot policy editing usable in practice. Constraints & Risks: decision records may reference many agents — the UI must stay legible at ten candidates; previews must respect privacy redaction rules and never render raw source conversation text beyond the package content.",
+    "requirements": [
+      "REQ-MAR-007"
+    ],
+    "acceptance_criteria": [
+      {
+        "checked": false,
+        "text": "Widget tests prove policy identity and reload state display, decision-record rendering with per-candidate reasons, distillation preview, and per-task route history."
+      },
+      {
+        "checked": false,
+        "text": "All routing UI renders exclusively from the decision-record and route-history contract types."
+      },
+      {
+        "checked": false,
+        "text": "flutter analyze passes and preview surfaces honor redaction with no raw source text leakage."
+      }
+    ],
+    "commit": {
+      "repository": ".git",
+      "message": "Add routing operations disclosure UI",
+      "target": "LicoArc agents routing UX surfaces"
+    },
+    "next": [
+      "62f53bae-782e-4437-b8b5-2c64d6369ea0"
+    ]
+  },
+  {
+    "id": "62f53bae-782e-4437-b8b5-2c64d6369ea0",
+    "status": "pending",
+    "role": "final_validation",
+    "prerequisites": [
+      "4ae2e554-359d-495c-958a-acbae166532d",
+      "402e4e92-7174-463f-9141-297091379e4c",
+      "9f5022e3-01c7-41ca-8152-9cd93795fb51",
+      "979a3024-351c-4f3f-a4a1-91aa7062396b",
+      "5b8f9227-9c7f-4c36-b203-e367334911d0",
+      "0a2098da-dd24-44ed-ad5d-b45e05e343b4",
+      "b407428a-a5ce-46c9-a779-3584eb536557"
+    ],
+    "platform": "macos",
+    "difficulty": "deep",
+    "goal": "Run the routing Validation.md matrix end to end and prove REQ-MAR-001..007.",
+    "description": "Scope: execution of docs/plan/agent-conversation-dispatch/multi-agent-routing/Validation.md across all delivered suites, the module-excluded build, the footprint measurement, and the end-to-end acceptance scenario. Context: the validation matrix fixed every check before implementation; this node runs that matrix unchanged and records results per REQ-MAR label. Target: a recorded acceptance run covering policy schema and hot-reload tests, routing decision tables, distillation fidelity checks, mid-task switch integration with fake agents, the module-disabled and module-excluded verification, footprint measurement against budget, and the full scenario — task starts on agent A, policy hot-swaps mid-task, distilled handoff moves it to agent B, task completes with route history and disclosure intact; the desktop client is rebuilt and opened per the repository delivery rule with any failure reported. Design Considerations: run the scenario with fixture agents for determinism, then once against real installed agents where the parent plan's readiness permits, recording which mode produced which evidence. Design Value: proves the user's three mandates — parity-preserving routing, live policy control with faithful handoffs, and a genuinely removable module — as one verified state. Constraints & Risks: any unchecked REQ label returns to its owning node rather than being waived here; reported evidence must pass privacy redaction.",
+    "requirements": [
+      "REQ-MAR-001",
+      "REQ-MAR-002",
+      "REQ-MAR-003",
+      "REQ-MAR-004",
+      "REQ-MAR-005",
+      "REQ-MAR-006",
+      "REQ-MAR-007"
+    ],
+    "acceptance_criteria": [
+      {
+        "checked": false,
+        "text": "Every Validation.md check runs with recorded results per REQ-MAR label and all pass."
+      },
+      {
+        "checked": false,
+        "text": "The end-to-end scenario (hot policy swap, distilled handoff, task completion with disclosure) passes with fixture agents, and with real agents where readiness permits."
+      },
+      {
+        "checked": false,
+        "text": "The module-excluded build and unload checks pass, footprint is within budget, and the rebuilt client launches with results reported."
+      }
+    ],
+    "commit": {
+      "repository": ".git",
+      "message": "Run multi-agent routing final validation matrix",
+      "target": "docs/plan/agent-conversation-dispatch/multi-agent-routing validation evidence"
+    },
+    "next": []
+  }
+]
