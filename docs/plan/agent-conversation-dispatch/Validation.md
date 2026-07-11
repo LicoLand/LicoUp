@@ -95,6 +95,33 @@ Executed by final-validation node `f5b1477a-9279-4c02-bc41-b1ed0ebeba1b`.
 - A check invents readiness without going through the reducer.
 - Official-lane boundary violated (prohibited techniques used or argv session-id resume enabled as production path).
 
+## Acceptance Run Record (final-validation node)
+
+Recorded by `f5b1477a-9279-4c02-bc41-b1ed0ebeba1b`. Host date: 2026-07-11. Live promotion not authorized in this session; fixture counterparts used for env-dependent checks.
+
+| Check id | REQ | Result | Notes |
+| --- | --- | --- | --- |
+| Better Plan validate | — | **pass** | `manifest_tool.py validate docs/plan` OK |
+| Foundation docs present | — | **pass** | Requirements/Evidence/Architecture/Validation present; REQ-ACD-001..006 mapped |
+| V-ARCH-001 | REQ-ACD-001/004 | **pass** | `npm run client:verify:architecture` ok |
+| V-DART-001 | REQ-ACD-001 | **pass** | `agent_conversation_service_test.dart` dispatch lane contract + readiness reject + open/stream/cancel/capabilities |
+| V-RUST-001 | REQ-ACD-002 | **pass** | `conversation_lane` 7/7; `runtime_adapters::tests` 12/12 |
+| V-FIX-001 | REQ-ACD-002 | **pass** | ACP `--self-test` status=passed; `cl06Ready:false`; `dispatchLaneContract:true`; lane families covered |
+| V-RED-001 | REQ-ACD-003 | **pass** | Reducer contract 11/11; `--check` ok |
+| V-RED-002 | REQ-ACD-003 | **pass** | readiness summary `ready:0` `sendEnabled:0`; evidence `adapters:[]` |
+| V-FIX-002 | REQ-ACD-003 | **pass** | Reducer fixtures prove forged ready rejected; empty evidence never promotes |
+| V-BOUND-001 | REQ-ACD-004 | **pass** | Resume fail-closed for claude/cursor; antigravity structurally blocked; architecture argv/privacy gates green |
+| V-BOUND-002 | REQ-ACD-004 | **pass** | Static scan of dispatch/lane/driver sources: no ptrace / input-injection / private-DB mutation APIs |
+| V-UI-001 | REQ-ACD-005 | **pass** | `agent_conversation_parity_disclosure_test.dart` 2/2 |
+| V-LIVE-001 | REQ-ACD-002 | **blocked-host** | Agents present on PATH for some ready-candidates; authorized live A/B not run this session; V-FIX-001 green |
+| V-LIVE-002 | REQ-ACD-003 | **blocked-host** | Release-UI P-10 evidence promotion not run; V-FIX-002 + fail-closed readiness green |
+| V-E2E-001 | REQ-ACD-006 | **pass** | All CI/fixture checks green; live checks explicitly blocked-host with fixtures green |
+| Client rebuild/launch | delivery rule | **pass-with-note** | `npm run client:run:macos` built Arc.app and `open` succeeded (exit 0). Sidecar target-scan step reported failure with empty detail during packaging; app executable present and launched. Earlier `kLSNoExecutableErr` not reproduced on this rebuild. |
+
+### Delivered adapter tiers (current evidence)
+
+From checked-in readiness with empty evidence adapters: **0 ready**, **3 blocked**, **7 unverified**, **sendEnabled 0**. No adapter claims native-conversation parity.
+
 ## Traceability to Evidence Scope
 
 Evidence.md locks implementation priority: ready-candidates get harness/evidence work; lane-upgrade-candidates stay blocked until official resume gaps close; antigravity stays structurally blocked. Validation must not require antigravity live pass for plan completion — V-BOUND-001 fail-closed codes are sufficient for that adapter under REQ-ACD-004.
