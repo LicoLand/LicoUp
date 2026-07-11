@@ -1,7 +1,7 @@
 [
   {
     "id": "36f6cc22-18b4-4c86-a75a-cfb0cb12cbe0",
-    "status": "in_progress",
+    "status": "completed",
     "role": "product_requirements",
     "prerequisites": [],
     "platform": "any",
@@ -37,7 +37,8 @@
     "commit": {
       "repository": ".git",
       "message": "Define multi-agent routing requirements contract",
-      "target": "docs/plan/agent-conversation-dispatch/multi-agent-routing/Requirements.md"
+      "target": "docs/plan/agent-conversation-dispatch/multi-agent-routing/Requirements.md",
+      "delivered": "1c4f31003690bcdd69a6dadc63926183ba83018c"
     },
     "next": [
       "fd1a2a69-289d-41ad-bdd1-4c0cd297d8c6"
