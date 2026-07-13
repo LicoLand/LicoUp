@@ -1,7 +1,7 @@
 [
   {
     "id": "b23a6034-c7c0-4dbd-a751-a7b4dec1d7d5",
-    "status": "in_progress",
+    "status": "completed",
     "role": "product_requirements",
     "prerequisites": [],
     "platform": "any",
@@ -49,7 +49,8 @@
     "commit": {
       "repository": ".git",
       "message": "docs(plan): ratify android release requirements",
-      "target": "docs/plan/client-release/android/Requirements.md"
+      "target": "docs/plan/client-release/android/Requirements.md",
+      "delivered": "db2fab6"
     },
     "next": [
       "37c74b2e-98f5-46a6-80b9-540c69ba0604"

@@ -1,7 +1,7 @@
 [
   {
     "id": "2f808751-523f-464e-bbaf-8d3a6394b8aa",
-    "status": "in_progress",
+    "status": "completed",
     "role": "product_requirements",
     "prerequisites": [],
     "platform": "any",
@@ -88,7 +88,8 @@
     "commit": {
       "repository": ".git",
       "message": "docs(plan): ratify unified client release contract",
-      "target": "docs/plan/client-release/Requirements.md and Decisions.md"
+      "target": "docs/plan/client-release/Requirements.md and Decisions.md",
+      "delivered": "db2fab6"
     },
     "next": [
       "8051cea0-dba7-4228-bd52-531287eaaf8e"

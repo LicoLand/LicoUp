@@ -1,7 +1,7 @@
 [
   {
     "id": "c53b05e8-fb84-4dff-ac78-fbd3c1de01e9",
-    "status": "in_progress",
+    "status": "completed",
     "role": "product_requirements",
     "prerequisites": [],
     "platform": "any",
@@ -49,7 +49,8 @@
     "commit": {
       "repository": ".git",
       "message": "docs(plan): ratify ios release requirements",
-      "target": "docs/plan/client-release/ios/Requirements.md"
+      "target": "docs/plan/client-release/ios/Requirements.md",
+      "delivered": "db2fab6"
     },
     "next": [
       "0245950c-4565-484f-99c8-9b8da00ed84e"
