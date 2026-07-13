@@ -1,0 +1,311 @@
+[
+  {
+    "id": "c53b05e8-fb84-4dff-ac78-fbd3c1de01e9",
+    "status": "in_progress",
+    "role": "product_requirements",
+    "prerequisites": [],
+    "platform": "any",
+    "difficulty": "deep",
+    "goal": "Ratify iOS builder, native custody, distribution and physical acceptance requirements.",
+    "description": "Scope: iOS Requirements.md and target catalog. Context: simulator builder and native bridge can be proven locally while physical custody and distribution evidence are unavailable. Target: approve REQ-IOS-001..004 plus a simulator-build verdict for the iOS child. Design Considerations: callback and simulator projection never substitute measured physical Keychain, Secure Enclave or biometric facts. Design Value: closes local app integration without overstating an absent physical platform authority. Constraints & Risks: Better Plan lacks an iOS enum, so every Node explicitly targets iOS despite platform any; physical encryption and distribution remain blocked.",
+    "requirements": [
+      "REQ-IOS-001",
+      "REQ-IOS-002",
+      "REQ-IOS-003",
+      "REQ-IOS-004"
+    ],
+    "acceptance_criteria": [
+      {
+        "checked": true,
+        "text": "All iOS labels define observable fail-closed builder, custody, channel and physical outcomes.",
+        "evidence_refs": [
+          {
+            "type": "file",
+            "path": "docs/plan/client-release/ios/Requirements.md",
+            "sha256": "a4ac7203a6200e6fa59e3ca1414df98b32d31e52973d52f8b358104d4e9719d7",
+            "recorded_at": "2026-07-13T03:48:24Z"
+          }
+        ]
+      },
+      {
+        "checked": true,
+        "text": "The iOS labels separate simulator build/install/launch and FFI authorization closure from blocked physical Keychain, Secure Enclave, biometric and channel evidence.",
+        "evidence_refs": [
+          {
+            "type": "file",
+            "path": "docs/plan/client-release/ios/Requirements.md",
+            "sha256": "a4ac7203a6200e6fa59e3ca1414df98b32d31e52973d52f8b358104d4e9719d7",
+            "recorded_at": "2026-07-13T03:48:24Z"
+          },
+          {
+            "type": "file",
+            "path": "docs/plan/client-release/ios/Validation.md",
+            "sha256": "45f764521fc5b6c2fb45acf7f075e83e35964d70eb19e78c91b0104175fa1b00",
+            "recorded_at": "2026-07-13T03:48:24Z"
+          }
+        ]
+      }
+    ],
+    "commit": {
+      "repository": ".git",
+      "message": "docs(plan): ratify ios release requirements",
+      "target": "docs/plan/client-release/ios/Requirements.md"
+    },
+    "next": [
+      "0245950c-4565-484f-99c8-9b8da00ed84e"
+    ]
+  },
+  {
+    "id": "0245950c-4565-484f-99c8-9b8da00ed84e",
+    "status": "pending",
+    "role": "evidence",
+    "prerequisites": [
+      "c53b05e8-fb84-4dff-ac78-fbd3c1de01e9"
+    ],
+    "platform": "any",
+    "difficulty": "deep",
+    "goal": "Reproduce iOS builder, FFI capability, native-test and distribution gaps.",
+    "description": "Scope: iOS Evidence.md, Xcode project, Swift bridge, Rust FFI and target catalog. Context: callbacks exist but measured capability and physical proof do not. Target: bind each blocker to current source and list external device/channel gaps. Design Considerations: distinguish source presence from executed behavior. Design Value: prevents template code from becoming readiness. Constraints & Risks: do not access personal signing or device data.",
+    "requirements": [
+      "REQ-IOS-001",
+      "REQ-IOS-002",
+      "REQ-IOS-003",
+      "REQ-IOS-004"
+    ],
+    "acceptance_criteria": [
+      {
+        "checked": false,
+        "text": "Every iOS blocker and external boundary has current minimum evidence with no projected completion."
+      }
+    ],
+    "commit": {
+      "repository": ".git",
+      "message": "docs(plan): bind fresh ios evidence",
+      "target": "docs/plan/client-release/ios/Evidence.md"
+    },
+    "next": [
+      "4350bae0-85bd-4888-ac13-90d602d11f16"
+    ]
+  },
+  {
+    "id": "4350bae0-85bd-4888-ac13-90d602d11f16",
+    "status": "pending",
+    "role": "validation_matrix",
+    "prerequisites": [
+      "0245950c-4565-484f-99c8-9b8da00ed84e"
+    ],
+    "platform": "any",
+    "difficulty": "deep",
+    "goal": "Freeze clean iOS build, native authorization, channel and physical protocol validation.",
+    "description": "Scope: iOS Validation.md and child receipt schema. Context: no current executable closure exists. Target: map requirements to Xcode build, Swift/Rust FFI, LocalAuthentication/Keychain, TestFlight/store and physical E2EE proof. Design Considerations: exact artifact and parent/shared ids. Design Value: defines the missing platform path without pretending it ran. Constraints & Risks: all hardware/channel work remains pending until authorized.",
+    "requirements": [
+      "REQ-IOS-001",
+      "REQ-IOS-002",
+      "REQ-IOS-003",
+      "REQ-IOS-004"
+    ],
+    "acceptance_criteria": [
+      {
+        "checked": false,
+        "text": "Validation covers every iOS label, negative native case and parent/shared dependency id."
+      }
+    ],
+    "commit": {
+      "repository": ".git",
+      "message": "docs(plan): define ios proof matrix",
+      "target": "docs/plan/client-release/ios/Validation.md"
+    },
+    "next": [
+      "bb5c6381-3820-4a0b-9354-34a1627364c2"
+    ]
+  },
+  {
+    "id": "bb5c6381-3820-4a0b-9354-34a1627364c2",
+    "status": "pending",
+    "role": "architecture_scaffold",
+    "prerequisites": [
+      "4350bae0-85bd-4888-ac13-90d602d11f16"
+    ],
+    "platform": "any",
+    "difficulty": "deep",
+    "goal": "Establish iOS artifact and typed Swift/Rust custody ownership.",
+    "description": "Scope: iOS Architecture.md, Xcode/Flutter builder, Swift Keychain/LocalAuthentication adapter and Rust FFI. Context: supported callback projection and memory-only fact model disagree. Target: one arm64 lineage and typed capability/session contract consume parent interfaces. Design Considerations: infrastructure adapter behind shared Rust policy; no secret in Flutter DTO. Design Value: aligns native behavior and shared readiness. Constraints & Risks: remove template-only and projected-supported paths once real evidence exists.",
+    "requirements": [
+      "REQ-IOS-001",
+      "REQ-IOS-002",
+      "REQ-IOS-003",
+      "REQ-IOS-004"
+    ],
+    "acceptance_criteria": [
+      {
+        "checked": false,
+        "text": "Architecture names one owner and failure state for iOS build, FFI custody, channel and physical receipts."
+      }
+    ],
+    "commit": {
+      "repository": ".git",
+      "message": "docs(plan): establish ios release architecture",
+      "target": "docs/plan/client-release/ios/Architecture.md"
+    },
+    "next": [
+      "55a4fa54-62d0-4d4d-a91f-7e92178708d0",
+      "3bd8d814-a2f0-4031-9208-ea1d008c7850"
+    ]
+  },
+  {
+    "id": "55a4fa54-62d0-4d4d-a91f-7e92178708d0",
+    "status": "pending",
+    "role": "implementation",
+    "prerequisites": [
+      "bb5c6381-3820-4a0b-9354-34a1627364c2"
+    ],
+    "platform": "any",
+    "difficulty": "deep",
+    "goal": "Implement and verify a real clean iOS arm64 builder and artifact manifest.",
+    "description": "Scope: pinned Xcode/Flutter toolchain, project settings, builder, bundle/entitlement/native verifier and target catalog. Context: no complete iOS builder authority exists. Target: clean source emits one verified arm64 artifact with exact source/profile digest. Design Considerations: content-addressed manifest and explicit target. Design Value: creates the prerequisite for all real iOS evidence. Constraints & Risks: simulator builds cannot satisfy physical or publication criteria.",
+    "requirements": [
+      "REQ-IOS-001"
+    ],
+    "acceptance_criteria": [
+      {
+        "checked": false,
+        "text": "Clean build verifies arm64, bundle id, entitlements, native libraries, profile, source and artifact digest, and rejects mismatch."
+      }
+    ],
+    "commit": {
+      "repository": ".git",
+      "message": "feat(ios): add deterministic release builder",
+      "target": "iOS toolchain, builder, manifest and verifier"
+    },
+    "next": [
+      "5c851cff-7e14-4151-befa-6b2a945917b3",
+      "0864d622-df01-48fb-b463-d18f5f51964c"
+    ]
+  },
+  {
+    "id": "3bd8d814-a2f0-4031-9208-ea1d008c7850",
+    "status": "pending",
+    "role": "implementation",
+    "prerequisites": [
+      "bb5c6381-3820-4a0b-9354-34a1627364c2"
+    ],
+    "platform": "any",
+    "difficulty": "deep",
+    "goal": "Make iOS LocalAuthentication, Keychain and Rust FFI capability truth complete.",
+    "description": "Scope: Swift bridge, LocalAuthentication context, Keychain callbacks, Rust FFI/facts and native tests. Context: callback store may report supported without capability facts and tests are templates. Target: measured facts and bounded opaque authorization sessions drive the shared policy. Design Considerations: typed FFI values and explicit memory-only fallback. Design Value: eliminates projection and secret-bearing generic bridges. Constraints & Risks: background requests never prompt; physical tests are required.",
+    "requirements": [
+      "REQ-IOS-002"
+    ],
+    "acceptance_criteria": [
+      {
+        "checked": false,
+        "text": "Swift/Rust and physical tests cover success, denial, cancellation, background, capability change, expiry, delete and memory-only behavior with truthful facts."
+      }
+    ],
+    "commit": {
+      "repository": ".git",
+      "message": "fix(ios): close native custody and FFI truth",
+      "target": "iOS Keychain, LocalAuthentication, FFI and native tests"
+    },
+    "next": [
+      "0864d622-df01-48fb-b463-d18f5f51964c"
+    ]
+  },
+  {
+    "id": "5c851cff-7e14-4151-befa-6b2a945917b3",
+    "status": "pending",
+    "role": "implementation",
+    "prerequisites": [
+      "55a4fa54-62d0-4d4d-a91f-7e92178708d0"
+    ],
+    "platform": "any",
+    "difficulty": "deep",
+    "goal": "Sign and publish the exact iOS artifact through the approved Apple channel.",
+    "description": "Scope: signing profile, protected workflow, TestFlight/store publication and update/rollback receipts. Context: no current production distribution path exists. Target: the exact build lineage is signed, published, downloaded and continuity-verified. Design Considerations: protected external authority and immutable provenance. Design Value: separates real distribution from simulator/local build. Constraints & Risks: Apple identities and approvals are external and cannot be mocked.",
+    "requirements": [
+      "REQ-IOS-003"
+    ],
+    "acceptance_criteria": [
+      {
+        "checked": false,
+        "text": "Production signature, TestFlight/store publication, download and update/rollback records bind the exact source/artifact lineage."
+      }
+    ],
+    "commit": {
+      "repository": ".git",
+      "message": "feat(ios): establish production distribution",
+      "target": "iOS signing, publication and continuity receipts"
+    },
+    "next": [
+      "0864d622-df01-48fb-b463-d18f5f51964c"
+    ]
+  },
+  {
+    "id": "0864d622-df01-48fb-b463-d18f5f51964c",
+    "status": "pending",
+    "role": "implementation",
+    "prerequisites": [
+      "55a4fa54-62d0-4d4d-a91f-7e92178708d0",
+      "3bd8d814-a2f0-4031-9208-ea1d008c7850",
+      "5c851cff-7e14-4151-befa-6b2a945917b3"
+    ],
+    "platform": "any",
+    "difficulty": "deep",
+    "goal": "Produce authorized physical iOS install, launch, custody and Secure Mesh evidence.",
+    "description": "Scope: device install/launch harness, native custody, pairwise/trust/restart flows and privacy scan. Context: source and simulator evidence cannot prove physical iOS behavior. Target: an authorized device runs the downloaded exact artifact through the shared protocol. Design Considerations: event-driven readiness and minimum redacted receipt. Design Value: supplies the missing product-line platform input. Constraints & Risks: missing hardware/authorization leaves the Node pending.",
+    "requirements": [
+      "REQ-IOS-001",
+      "REQ-IOS-002",
+      "REQ-IOS-003",
+      "REQ-IOS-004"
+    ],
+    "acceptance_criteria": [
+      {
+        "checked": false,
+        "text": "Authorized physical acceptance proves install, launch, custody, pairwise, trust change, restart and privacy for the exact channel artifact."
+      }
+    ],
+    "commit": {
+      "repository": ".git",
+      "message": "test(ios): record physical protocol acceptance",
+      "target": "iOS device install, launch and Secure Mesh receipt"
+    },
+    "next": [
+      "0a9a48be-a2a5-436a-90d2-a4bc7a7702b7"
+    ]
+  },
+  {
+    "id": "0a9a48be-a2a5-436a-90d2-a4bc7a7702b7",
+    "status": "pending",
+    "role": "final_validation",
+    "prerequisites": [
+      "0864d622-df01-48fb-b463-d18f5f51964c"
+    ],
+    "platform": "any",
+    "difficulty": "deep",
+    "goal": "Emit the final iOS target receipt consumed by the parent product-line reducer.",
+    "description": "Scope: iOS child plan, parent architecture/shared status and exact artifact/device/channel receipts. Context: iOS is mandatory for the broad claim. Target: one terminal receipt explicitly names iOS, parent/shared ids, source, artifact and evidence digests. Design Considerations: validate current Manifest/Checkpoints. Design Value: creates a machine-verifiable cross-plan edge. Constraints & Risks: any absent external authority keeps the Node pending.",
+    "requirements": [
+      "REQ-IOS-001",
+      "REQ-IOS-002",
+      "REQ-IOS-003",
+      "REQ-IOS-004"
+    ],
+    "acceptance_criteria": [
+      {
+        "checked": false,
+        "text": "Parent architecture and required shared custody, protocol, support, release and privacy Nodes are completed at the named source revision."
+      },
+      {
+        "checked": false,
+        "text": "One iOS digest passes clean build, native authorization, Apple publication, physical install/launch, Secure Mesh, update and privacy proof."
+      }
+    ],
+    "commit": {
+      "repository": ".git",
+      "message": "test(ios): record final target receipt",
+      "target": "iOS child final reducer and redacted receipt"
+    },
+    "next": []
+  }
+]

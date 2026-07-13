@@ -1,0 +1,85 @@
+[
+  {
+    "id": "19616613-a5b6-46b3-b834-291ac6852f4a", "status": "pending", "role": "product_requirements", "prerequisites": [], "platform": "macos", "difficulty": "deep",
+    "goal": "Ratify exact macOS artifact, custody, publication and launch requirements.",
+    "description": "Scope: macOS Requirements.md and target catalog entries. Context: current acceptance, receipts and native authorization disagree. Target: approve REQ-MAC-001..004 as the complete macOS child contract. Design Considerations: local topology and production publication are separate typed receipts. Design Value: prevents a local app from being promoted to a published release. Constraints & Risks: real signing, notarization and publication require external authority.",
+    "requirements": ["REQ-MAC-001", "REQ-MAC-002", "REQ-MAC-003", "REQ-MAC-004"],
+    "acceptance_criteria": [{"checked": false, "text": "All four macOS labels define observable fail-closed target, authorization, publication and launch behavior."}],
+    "commit": {"repository": ".git", "message": "docs(plan): ratify macos release requirements", "target": "docs/plan/client-release/macos/Requirements.md"}, "next": ["8d4e50ea-3d7b-4f41-beee-3139b0415f0d"]
+  },
+  {
+    "id": "8d4e50ea-3d7b-4f41-beee-3139b0415f0d", "status": "pending", "role": "evidence", "prerequisites": ["19616613-a5b6-46b3-b834-291ac6852f4a"], "platform": "macos", "difficulty": "deep",
+    "goal": "Reproduce macOS artifact-kind, self-test, support and Keychain authorization blockers.",
+    "description": "Scope: macOS Evidence.md, workflow, acceptance/receipt config, distribution helpers and secret store. Context: fresh self-tests fail and the native store silently downgrades. Target: bind every macOS blocker to current source or a fresh command and list external gaps. Design Considerations: distinguish local baselines from production proof. Design Value: platform work starts from current facts. Constraints & Risks: do not access signing secrets or retain machine-specific output.",
+    "requirements": ["REQ-MAC-001", "REQ-MAC-002", "REQ-MAC-003", "REQ-MAC-004"],
+    "acceptance_criteria": [{"checked": false, "text": "Every macOS blocker and unverified authority has current minimum redacted evidence; no old receipt is cited as completion."}],
+    "commit": {"repository": ".git", "message": "docs(plan): bind fresh macos evidence", "target": "docs/plan/client-release/macos/Evidence.md"}, "next": ["c1eef047-fea0-40fe-bb9c-cef1d3786e63"]
+  },
+  {
+    "id": "c1eef047-fea0-40fe-bb9c-cef1d3786e63", "status": "pending", "role": "validation_matrix", "prerequisites": ["8d4e50ea-3d7b-4f41-beee-3139b0415f0d"], "platform": "macos", "difficulty": "deep",
+    "goal": "Freeze digest-linked macOS build, authorization and publication validation.",
+    "description": "Scope: macOS Validation.md and child receipt schema. Context: local and production checks validate different artifacts and identities. Target: one matrix covers target rejection, clean build, Keychain/LocalAuthentication, install/launch, Developer ID, notarization, publication and continuity. Design Considerations: every stage names one digest and source revision. Design Value: platform completion becomes rerunnable. Constraints & Risks: external stages stay pending until authorized.",
+    "requirements": ["REQ-MAC-001", "REQ-MAC-002", "REQ-MAC-003", "REQ-MAC-004"],
+    "acceptance_criteria": [{"checked": false, "text": "Validation maps every macOS requirement to positive, failure and exact-artifact checks, including parent/shared dependency ids."}],
+    "commit": {"repository": ".git", "message": "docs(plan): define macos proof matrix", "target": "docs/plan/client-release/macos/Validation.md"}, "next": ["a09b2109-113c-4ca8-8bf5-d435e39812f2"]
+  },
+  {
+    "id": "a09b2109-113c-4ca8-8bf5-d435e39812f2", "status": "pending", "role": "architecture_scaffold", "prerequisites": ["c1eef047-fea0-40fe-bb9c-cef1d3786e63"], "platform": "macos", "difficulty": "deep",
+    "goal": "Establish one macOS distribution lineage and one native authorization owner.",
+    "description": "Scope: macOS Architecture.md, distribution producer/verifier and native authorization port. Context: ZIP/app-bundle and protected/ordinary store semantics diverge. Target: one immutable ZIP manifest and bounded LocalAuthentication session handle implement the parent contracts. Design Considerations: ports/adapters and typed unavailable or memory-only facts. Design Value: eliminates ambiguous artifact and custody authority. Constraints & Risks: implementation removes superseded kinds and silent fallback in one pass.",
+    "requirements": ["REQ-MAC-001", "REQ-MAC-002", "REQ-MAC-003", "REQ-MAC-004"],
+    "acceptance_criteria": [{"checked": false, "text": "Architecture names one owner and failure state for distribution, authorization, install, launch and publication receipts."}],
+    "commit": {"repository": ".git", "message": "docs(plan): establish macos release architecture", "target": "docs/plan/client-release/macos/Architecture.md"}, "next": ["7b575773-4de2-4690-92c7-16978ab8c6c9", "10df2914-5c8f-4d80-9860-d9eabce5bbb2"]
+  },
+  {
+    "id": "7b575773-4de2-4690-92c7-16978ab8c6c9", "status": "pending", "role": "implementation", "prerequisites": ["a09b2109-113c-4ca8-8bf5-d435e39812f2"], "platform": "macos", "difficulty": "deep",
+    "goal": "Unify macOS target catalog, distribution ZIP, manifest and verifier lineage.",
+    "description": "Scope: target catalog, build-macos-distribution, bundle verifier, acceptance and receipt config. Context: current artifact kinds and positive fixtures mismatch. Target: each declared architecture produces one ZIP whose app and native binaries bind the parent source/profile schema. Design Considerations: content-addressed manifest and exact typed dispatcher. Design Value: every later receipt verifies the same object. Constraints & Risks: delete app-bundle aliases and stale fixtures after migration.",
+    "requirements": ["REQ-MAC-001"],
+    "acceptance_criteria": [{"checked": false, "text": "Clean builds and self-tests pass for declared targets, while kind, architecture, profile, source and digest substitutions fail."}],
+    "commit": {"repository": ".git", "message": "fix(macos): unify distribution artifact lineage", "target": "macOS builders, verifiers and release configs"}, "next": ["52315162-f133-4535-b546-b13956a48f73", "04ed3e53-de23-4ddd-be09-efd95e91f134"]
+  },
+  {
+    "id": "10df2914-5c8f-4d80-9860-d9eabce5bbb2", "status": "pending", "role": "implementation", "prerequisites": ["a09b2109-113c-4ca8-8bf5-d435e39812f2"], "platform": "macos", "difficulty": "deep",
+    "goal": "Make macOS Keychain custody fail closed under one LocalAuthentication session.",
+    "description": "Scope: secure_mesh_secret_store, macOS bridge, capability facts and integration tests. Context: noninteractive or unavailable LocalAuthentication silently falls back to ordinary keyring and still reports available. Target: one user action creates a bounded user-presence context for all related operations; unavailable protection yields typed memory-only or unavailable state. Design Considerations: opaque session handles and explicit close/expiry. Design Value: enforces client authorization without repeated prompts. Constraints & Risks: background work never prompts; remove unused environment-policy projection and generic fallback.",
+    "requirements": ["REQ-MAC-002"],
+    "acceptance_criteria": [{"checked": false, "text": "Real and integration cases prove success, denial, cancellation, unavailable interaction, background access, expiry and delete with no ordinary-store downgrade."}],
+    "commit": {"repository": ".git", "message": "fix(macos): enforce user-presence Keychain sessions", "target": "macOS secure store, bridge and capability facts"}, "next": ["04ed3e53-de23-4ddd-be09-efd95e91f134"]
+  },
+  {
+    "id": "52315162-f133-4535-b546-b13956a48f73", "status": "pending", "role": "implementation", "prerequisites": ["7b575773-4de2-4690-92c7-16978ab8c6c9"], "platform": "macos", "difficulty": "deep",
+    "goal": "Implement production Developer ID, notarization, stapling and update authority for the exact ZIP.",
+    "description": "Scope: release workflow, signing/notarization helpers, entitlements, publication and update receipt producers. Context: current workflow uploads transient artifacts with no production identity or channel. Target: protected environment signs and notarizes one digest and records publisher/update continuity. Design Considerations: attest source/build provenance and separate secrets from receipts. Design Value: turns local artifact closure into real distribution authority. Constraints & Risks: no credential collection; external approval remains pending until run.",
+    "requirements": ["REQ-MAC-003"],
+    "acceptance_criteria": [{"checked": false, "text": "Production workflow rejects ad-hoc/local identity and binds Developer ID, notarization, staple, channel and update records to one digest."}],
+    "commit": {"repository": ".git", "message": "feat(macos): add production distribution authority", "target": "macOS release workflow, entitlements and receipt producers"}, "next": ["9adde0bb-2c5c-4efe-afaf-4e08e8a5609a"]
+  },
+  {
+    "id": "04ed3e53-de23-4ddd-be09-efd95e91f134", "status": "pending", "role": "implementation", "prerequisites": ["7b575773-4de2-4690-92c7-16978ab8c6c9", "10df2914-5c8f-4d80-9860-d9eabce5bbb2"], "platform": "macos", "difficulty": "deep",
+    "goal": "Prove clean macOS installation, launch, native CLI and authorization truth.",
+    "description": "Scope: isolated install/launch harness, startup UI, embedded CLI and privacy smoke. Context: local build checks do not prove a distribution ZIP starts without source-tree state. Target: exact artifact installs and launches with correct architectures, truthful blockers and bounded native authorization. Design Considerations: isolated data root and event-driven readiness. Design Value: validates the user path and topology input. Constraints & Risks: local identity proof remains distinct from publication.",
+    "requirements": ["REQ-MAC-001", "REQ-MAC-004"],
+    "acceptance_criteria": [{"checked": false, "text": "The exact ZIP installs and launches in isolated state, embedded binaries match target/source, and startup/authorization/privacy smoke passes."}],
+    "commit": {"repository": ".git", "message": "test(macos): prove clean install and launch", "target": "macOS install, launch and local topology acceptance"}, "next": ["9adde0bb-2c5c-4efe-afaf-4e08e8a5609a"]
+  },
+  {
+    "id": "9adde0bb-2c5c-4efe-afaf-4e08e8a5609a", "status": "pending", "role": "implementation", "prerequisites": ["52315162-f133-4535-b546-b13956a48f73", "04ed3e53-de23-4ddd-be09-efd95e91f134"], "platform": "macos", "difficulty": "deep",
+    "goal": "Publish, download, install, launch and update the production macOS digest.",
+    "description": "Scope: protected publication environment, user channel, downloaded-artifact acceptance and final privacy scan. Context: transient CI upload is not publication and local launch does not prove the user artifact. Target: publish the signed/notarized digest, download it through the declared channel and repeat trust, install, launch and continuity proof. Design Considerations: immutable receipt chain. Design Value: closes the last user-visible distribution gap. Constraints & Risks: requires authorized external identities and channel; no substitute fixture.",
+    "requirements": ["REQ-MAC-003", "REQ-MAC-004"],
+    "acceptance_criteria": [{"checked": false, "text": "The same digest is publicly retrieved, trusted, installed, launched and verified for update/rollback, followed by the final privacy scan."}],
+    "commit": {"repository": ".git", "message": "test(macos): prove public distribution continuity", "target": "macOS publication and downloaded-artifact receipts"}, "next": ["9be8b758-e905-43bd-b17e-1d42f4086726"]
+  },
+  {
+    "id": "9be8b758-e905-43bd-b17e-1d42f4086726", "status": "pending", "role": "final_validation", "prerequisites": ["9adde0bb-2c5c-4efe-afaf-4e08e8a5609a"], "platform": "macos", "difficulty": "deep",
+    "goal": "Emit the final macOS target receipt consumed by the parent reducers.",
+    "description": "Scope: macOS child plan, parent architecture/shared Node status and exact-artifact receipts. Context: a child cannot self-promote without proving its parent contract. Target: one redacted terminal receipt names parent architecture, required shared Nodes, target, source and artifact/evidence digests. Design Considerations: validate current Manifest and Checkpoints before reduction. Design Value: creates a machine-verifiable cross-plan edge. Constraints & Risks: missing signing/publication authority leaves this pending.",
+    "requirements": ["REQ-MAC-001", "REQ-MAC-002", "REQ-MAC-003", "REQ-MAC-004"],
+    "acceptance_criteria": [
+      {"checked": false, "text": "Parent architecture and required shared release, custody, protocol, support and privacy Nodes are completed at the named source revision."},
+      {"checked": false, "text": "One exact digest passes target build, Keychain authorization, signing, notarization, publication, download, install, launch, update and privacy proof."}
+    ],
+    "commit": {"repository": ".git", "message": "test(macos): record final target receipt", "target": "macOS child final reducer and redacted receipt"}, "next": []
+  }
+]

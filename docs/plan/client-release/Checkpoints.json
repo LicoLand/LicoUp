@@ -1,0 +1,1556 @@
+[
+  {
+    "id": "2f808751-523f-464e-bbaf-8d3a6394b8aa",
+    "status": "in_progress",
+    "role": "product_requirements",
+    "prerequisites": [],
+    "platform": "any",
+    "difficulty": "deep",
+    "goal": "Ratify one end-to-end client release contract and two non-interchangeable final verdicts.",
+    "description": "Scope: Requirements.md and Decisions.md at the root of this plan. Context: fresh audit disproves inherited completion and exposes conflicting release, simulator-build and security-claim semantics. Target: approve REQ-REL, REQ-PROD, REQ-AGENT, REQ-ROUTE, REQ-SEC and REQ-E2EE labels plus D1-D20. Design Considerations: selected-target release, mobile simulator-build closure and five-platform product-line claim remain separate authorities. Design Value: prevents a local or simulator artifact from promoting physical custody, production release or a security claim. Constraints & Risks: server policy, external KT, physical hardware custody, publication and independent audit remain external evidence inputs.",
+    "requirements": [
+      "REQ-REL-001",
+      "REQ-REL-002",
+      "REQ-REL-003",
+      "REQ-REL-004",
+      "REQ-REL-005",
+      "REQ-REL-006",
+      "REQ-REL-007",
+      "REQ-PROD-001",
+      "REQ-PROD-002",
+      "REQ-PROD-003",
+      "REQ-PROD-004",
+      "REQ-AGENT-001",
+      "REQ-AGENT-002",
+      "REQ-ROUTE-001",
+      "REQ-ROUTE-002",
+      "REQ-SEC-001",
+      "REQ-SEC-002",
+      "REQ-E2EE-001",
+      "REQ-E2EE-002",
+      "REQ-E2EE-003",
+      "REQ-E2EE-004",
+      "REQ-E2EE-005",
+      "REQ-E2EE-006",
+      "REQ-E2EE-007",
+      "REQ-E2EE-008"
+    ],
+    "acceptance_criteria": [
+      {
+        "checked": true,
+        "text": "Every requirement has an observable fail-closed outcome and D1-D17 resolve release, custody, topology and claim boundaries.",
+        "evidence_refs": [
+          {
+            "type": "file",
+            "path": "docs/plan/client-release/Requirements.md",
+            "sha256": "3b60eaf07a317f608bc016f8d091553763cad182c7ad088e09d4b263fc178954",
+            "recorded_at": "2026-07-13T03:48:23Z"
+          },
+          {
+            "type": "file",
+            "path": "docs/plan/client-release/Decisions.md",
+            "sha256": "29a67cde6e8b7445ed0c8cd55a69ff29099b1ff1687fbac6c235f21e03befddb",
+            "recorded_at": "2026-07-13T03:48:23Z"
+          }
+        ]
+      },
+      {
+        "checked": true,
+        "text": "Consolidation coverage proves that every product invariant from the retired plans maps to a current requirement without importing status.",
+        "evidence_refs": [
+          {
+            "type": "file",
+            "path": "docs/plan/client-release/Requirements.md",
+            "sha256": "3b60eaf07a317f608bc016f8d091553763cad182c7ad088e09d4b263fc178954",
+            "recorded_at": "2026-07-13T03:48:23Z"
+          },
+          {
+            "type": "file",
+            "path": "docs/plan/client-release/Evidence.md",
+            "sha256": "52e91efc2590502386c00a9c9e2223aa321031e0d0a0bde88f7f988b6fccdb8a",
+            "recorded_at": "2026-07-13T03:48:23Z"
+          }
+        ]
+      },
+      {
+        "checked": true,
+        "text": "D20 defines observable Android Emulator and iOS Simulator build closure while physical key custody, real biometrics and production distribution remain blocked.",
+        "evidence_refs": [
+          {
+            "type": "file",
+            "path": "docs/plan/client-release/Decisions.md",
+            "sha256": "29a67cde6e8b7445ed0c8cd55a69ff29099b1ff1687fbac6c235f21e03befddb",
+            "recorded_at": "2026-07-13T03:47:57Z"
+          }
+        ]
+      }
+    ],
+    "commit": {
+      "repository": ".git",
+      "message": "docs(plan): ratify unified client release contract",
+      "target": "docs/plan/client-release/Requirements.md and Decisions.md"
+    },
+    "next": [
+      "8051cea0-dba7-4228-bd52-531287eaaf8e"
+    ]
+  },
+  {
+    "id": "8051cea0-dba7-4228-bd52-531287eaaf8e",
+    "status": "pending",
+    "role": "evidence",
+    "prerequisites": [
+      "2f808751-523f-464e-bbaf-8d3a6394b8aa"
+    ],
+    "platform": "any",
+    "difficulty": "deep",
+    "goal": "Reproduce every release blocker from current source and fresh commands with minimum redacted evidence.",
+    "description": "Scope: Evidence.md, source-owned tests, configurations and fresh command probes. Context: the initial audit found release, UI, dispatch, secret, filesystem, protocol, adapter and platform failures before old plans were read. Target: bind each BLK code to current source or a rerunnable command and classify unverified physical or external boundaries. Design Considerations: generated readiness is observable state, never proof; command evidence is source-revision bound. Design Value: remediation can be audited without trusting narrative progress. Constraints & Risks: do not retain raw runtime output, machine identity, paths, accounts, payloads, ciphertext or secrets.",
+    "requirements": [
+      "REQ-REL-001",
+      "REQ-REL-002",
+      "REQ-REL-003",
+      "REQ-REL-004",
+      "REQ-REL-005",
+      "REQ-REL-006",
+      "REQ-REL-007",
+      "REQ-PROD-001",
+      "REQ-PROD-002",
+      "REQ-PROD-003",
+      "REQ-PROD-004",
+      "REQ-AGENT-001",
+      "REQ-AGENT-002",
+      "REQ-ROUTE-001",
+      "REQ-ROUTE-002",
+      "REQ-SEC-001",
+      "REQ-SEC-002",
+      "REQ-E2EE-001",
+      "REQ-E2EE-002",
+      "REQ-E2EE-003",
+      "REQ-E2EE-004",
+      "REQ-E2EE-005",
+      "REQ-E2EE-006",
+      "REQ-E2EE-007",
+      "REQ-E2EE-008"
+    ],
+    "acceptance_criteria": [
+      {
+        "checked": false,
+        "text": "Every BLK entry is reproduced against the same current source state and records severity, requirement and release impact."
+      },
+      {
+        "checked": false,
+        "text": "Physical, signing, publication, trusted-server and audit gaps remain explicitly unverified rather than projected."
+      }
+    ],
+    "commit": {
+      "repository": ".git",
+      "message": "docs(plan): bind fresh client release evidence",
+      "target": "docs/plan/client-release/Evidence.md"
+    },
+    "next": [
+      "aa23d435-0d0f-44a7-9d42-40576f4bba13"
+    ]
+  },
+  {
+    "id": "aa23d435-0d0f-44a7-9d42-40576f4bba13",
+    "status": "pending",
+    "role": "validation_matrix",
+    "prerequisites": [
+      "8051cea0-dba7-4228-bd52-531287eaaf8e"
+    ],
+    "platform": "any",
+    "difficulty": "deep",
+    "goal": "Freeze an executable validation matrix that cannot promote stale, projected or wrong-artifact evidence.",
+    "description": "Scope: Validation.md, canonical lico-dev task selection and evidence schema. Context: existing gates disagree, tests touch real state, and local acceptance is confused with publication. Target: map every requirement to positive, negative, migration, privacy and exact-artifact proof. Design Considerations: use clean temporary checkouts, behavior-aware gates and typed source-bound receipts. Design Value: a single deterministic proof path removes contradictory green signals. Constraints & Risks: destructive worktree commands are forbidden; real-device and external-authority stages remain pending until authorized.",
+    "requirements": [
+      "REQ-REL-001",
+      "REQ-REL-002",
+      "REQ-REL-003",
+      "REQ-REL-004",
+      "REQ-REL-005",
+      "REQ-REL-006",
+      "REQ-REL-007",
+      "REQ-PROD-001",
+      "REQ-PROD-002",
+      "REQ-PROD-003",
+      "REQ-PROD-004",
+      "REQ-AGENT-001",
+      "REQ-AGENT-002",
+      "REQ-ROUTE-001",
+      "REQ-ROUTE-002",
+      "REQ-SEC-001",
+      "REQ-SEC-002",
+      "REQ-E2EE-001",
+      "REQ-E2EE-002",
+      "REQ-E2EE-003",
+      "REQ-E2EE-004",
+      "REQ-E2EE-005",
+      "REQ-E2EE-006",
+      "REQ-E2EE-007",
+      "REQ-E2EE-008"
+    ],
+    "acceptance_criteria": [
+      {
+        "checked": false,
+        "text": "Validation.md maps every current requirement to rerunnable positive and relevant negative, migration and privacy checks."
+      },
+      {
+        "checked": false,
+        "text": "Cross-plan receipt schema proves parent/shared Node, child terminal, source revision, target and artifact digest dependencies."
+      }
+    ],
+    "commit": {
+      "repository": ".git",
+      "message": "docs(plan): define executable release validation",
+      "target": "docs/plan/client-release/Validation.md"
+    },
+    "next": [
+      "5d0e8d21-71ba-4a6a-9ef9-6a6806e5f7ba"
+    ]
+  },
+  {
+    "id": "5d0e8d21-71ba-4a6a-9ef9-6a6806e5f7ba",
+    "status": "pending",
+    "role": "architecture_scaffold",
+    "prerequisites": [
+      "aa23d435-0d0f-44a7-9d42-40576f4bba13"
+    ],
+    "platform": "any",
+    "difficulty": "deep",
+    "goal": "Establish single owners, dependency direction and complete-migration boundaries before implementation.",
+    "description": "Scope: Architecture.md, shared Dart/Rust modules, platform ports, reducer schemas and parent/child plan tree. Context: current failures arise from dual envelope models, global completion state, generic secret bridges, unsafe filesystem fallbacks and split artifact authority. Target: one owner for each mutable state and a provable DAG from product contracts through five platform receipts to two verdicts. Design Considerations: ports/adapters, immutable reducers, bounded ledgers, O(V+E) capability closure and content-addressed evidence are used only where they preserve real invariants. Design Value: fixes root ownership conflicts and unlocks disjoint parallel branches. Constraints & Risks: implementation must remove every superseded internal path in the same migration.",
+    "requirements": [
+      "REQ-REL-001",
+      "REQ-REL-002",
+      "REQ-REL-003",
+      "REQ-REL-004",
+      "REQ-REL-005",
+      "REQ-REL-006",
+      "REQ-REL-007",
+      "REQ-PROD-001",
+      "REQ-PROD-002",
+      "REQ-PROD-003",
+      "REQ-PROD-004",
+      "REQ-AGENT-001",
+      "REQ-AGENT-002",
+      "REQ-ROUTE-001",
+      "REQ-ROUTE-002",
+      "REQ-SEC-001",
+      "REQ-SEC-002",
+      "REQ-E2EE-001",
+      "REQ-E2EE-002",
+      "REQ-E2EE-003",
+      "REQ-E2EE-004",
+      "REQ-E2EE-005",
+      "REQ-E2EE-006",
+      "REQ-E2EE-007",
+      "REQ-E2EE-008"
+    ],
+    "acceptance_criteria": [
+      {
+        "checked": false,
+        "text": "Architecture.md names one owner, state model and dependency direction for every product, security, filesystem and release authority."
+      },
+      {
+        "checked": false,
+        "text": "The DAG exposes all platform and external inputs and the migration table removes superseded code, tests, gates and names."
+      }
+    ],
+    "commit": {
+      "repository": ".git",
+      "message": "docs(plan): establish release dependency architecture",
+      "target": "docs/plan/client-release/Architecture.md"
+    },
+    "next": [
+      "dc80097b-b69f-4f6d-be89-90c1d6891be2",
+      "95bb98b7-e3bb-4a0f-956a-79dbe9a52286",
+      "6325350e-7b9f-45b9-9c15-99c30e473312",
+      "fb8abf45-be00-4b68-9273-6b93147ad90b",
+      "04bf513e-4ecf-4e29-9309-a50d61a30af8",
+      "8fd4c0d5-0ab3-4c90-a237-ababcda49e25",
+      "d60242cd-c88a-44bb-a10b-29525021ad69"
+    ]
+  },
+  {
+    "id": "dc80097b-b69f-4f6d-be89-90c1d6891be2",
+    "status": "pending",
+    "role": "implementation",
+    "prerequisites": [
+      "5d0e8d21-71ba-4a6a-9ef9-6a6806e5f7ba"
+    ],
+    "platform": "any",
+    "difficulty": "deep",
+    "goal": "Make the release closure reproducible from one tracked clean source snapshot.",
+    "description": "Scope: workflows, package scripts, catalogs, schemas, lockfiles and generated-contract owners. Context: tracked callers depend on untracked release inputs and artifact kinds diverge. Target: track every required input and generate one immutable source/profile/target/artifact lineage. Design Considerations: canonical typed schemas replace filename inference and artifact aliases. Design Value: clean checkout and CI become equivalent evidence producers. Constraints & Risks: do not stage unrelated user changes; remove old receipt kinds when the current kind lands.",
+    "requirements": [
+      "REQ-REL-001",
+      "REQ-REL-005"
+    ],
+    "acceptance_criteria": [
+      {
+        "checked": false,
+        "text": "A clean temporary checkout resolves dependencies and reaches the canonical gate without a missing or untracked release input."
+      },
+      {
+        "checked": false,
+        "text": "Acceptance and receipts reject artifact-kind, profile, target, source and digest substitution."
+      }
+    ],
+    "commit": {
+      "repository": ".git",
+      "message": "fix(release): close tracked artifact lineage",
+      "target": "release workflows, catalogs, schemas and producers"
+    },
+    "next": [
+      "604f3e17-834a-4f07-bc18-b466ffef8a5e",
+      "d19ad309-7c33-484d-8a1e-ab268ba9a674"
+    ]
+  },
+  {
+    "id": "95bb98b7-e3bb-4a0f-956a-79dbe9a52286",
+    "status": "pending",
+    "role": "implementation",
+    "prerequisites": [
+      "5d0e8d21-71ba-4a6a-9ef9-6a6806e5f7ba"
+    ],
+    "platform": "any",
+    "difficulty": "high",
+    "goal": "Isolate all client tests and make the shared quality gate deterministic.",
+    "description": "Scope: Flutter and native test harnesses, portable-data providers, caches, clocks, random ids, format/analyze/test/Clippy gates and architecture verifiers. Context: tests read real portable state, 13 Flutter and 40 native cases fail, and text gates encode retired UI. Target: temporary or in-memory state, stable fixtures and behavior-aware verifiers under one gate. Design Considerations: inject roots, caches, clocks and transport dependencies; avoid global mutable test state. Design Value: failures become source-reproducible and cannot pollute user data. Constraints & Risks: golden changes require explicit current-contract review, not blind regeneration.",
+    "requirements": [
+      "REQ-REL-002",
+      "REQ-REL-003",
+      "REQ-REL-006"
+    ],
+    "acceptance_criteria": [
+      {
+        "checked": false,
+        "text": "No test reads or writes a real portable root, target cache, identity or account store; poisoned-state tests prove isolation."
+      },
+      {
+        "checked": false,
+        "text": "Dart/Rust format, Flutter analyze/tests, native tests, Clippy and behavior-aware architecture gates all pass from clean source."
+      }
+    ],
+    "commit": {
+      "repository": ".git",
+      "message": "test(client): isolate deterministic release gates",
+      "target": "test harnesses and canonical quality gate"
+    },
+    "next": [
+      "de4a4286-bb22-4405-9967-3417e435e84c",
+      "49094caf-785a-49ff-a0ab-b4e5233a9178",
+      "b43c2769-9f88-4126-aee9-26f581fe9fb9",
+      "77659ba9-799b-4d60-9c45-e16d7396d04a",
+      "8d04c82f-400d-4ba3-b261-9be44c98770a",
+      "402ef729-7319-46c3-bc60-7565fa14f292",
+      "86e11c2d-686f-437b-9652-764738fbdd67",
+      "a3dbf8d9-4850-43b5-a156-1af5db938098",
+      "cfeb63fe-981b-4732-9044-628f2656fd14",
+      "9d293a27-d060-4838-ae21-058c2e866e52",
+      "5b8f22d1-86cb-4f45-b64c-8829f7530426"
+    ]
+  },
+  {
+    "id": "6325350e-7b9f-45b9-9c15-99c30e473312",
+    "status": "pending",
+    "role": "implementation",
+    "prerequisites": [
+      "5d0e8d21-71ba-4a6a-9ef9-6a6806e5f7ba"
+    ],
+    "platform": "any",
+    "difficulty": "deep",
+    "goal": "Establish canonical agent dispatch, exact-session continue, and fail-closed readiness.",
+    "description": "Scope: conversation application port, runtime adapter registry, evidence schema, controller boundary, packaging readiness, conversations list|stream and agent conversation send. Context: zero send-enabled adapters; history is readable; exact native session resume is the only supported continue path and mid-run inject is out of scope. Target: direct, routed and relay flows share open/resume/send/stream/cancel/cleanup; list returns nativeSessionId; send with sessionId continues that session only when readiness allows. Design Considerations: strategy adapters behind one port; immutable source-bound reducer; never resume newest for a stale selection. Design Value: removes parallel dispatch semantics and makes specified-conversation continue the single continue contract. Constraints & Risks: zero ready adapters must block send packaging; C-05 mid-run inject is a blocked leaf, not an adapter gap.",
+    "requirements": [
+      "REQ-AGENT-001"
+    ],
+    "acceptance_criteria": [
+      {
+        "checked": false,
+        "text": "All three dispatch entry paths execute the same contract and zero, stale, partial or blocked evidence disables send and packaging."
+      },
+      {
+        "checked": false,
+        "text": "Exact nativeSessionId list and resume-send contracts are enforced; newest-session substitution is rejected; retired parallel dispatch paths are removed."
+      }
+    ],
+    "commit": {
+      "repository": ".git",
+      "message": "refactor(agent): establish canonical dispatch authority",
+      "target": "agent conversation application and native adapter boundary"
+    },
+    "next": [
+      "de4a4286-bb22-4405-9967-3417e435e84c",
+      "49094caf-785a-49ff-a0ab-b4e5233a9178",
+      "b43c2769-9f88-4126-aee9-26f581fe9fb9",
+      "77659ba9-799b-4d60-9c45-e16d7396d04a",
+      "8d04c82f-400d-4ba3-b261-9be44c98770a",
+      "402ef729-7319-46c3-bc60-7565fa14f292",
+      "86e11c2d-686f-437b-9652-764738fbdd67",
+      "a3dbf8d9-4850-43b5-a156-1af5db938098",
+      "04bf513e-4ecf-4e29-9309-a50d61a30af8",
+      "5b8f22d1-86cb-4f45-b64c-8829f7530426",
+      "7f713f0c-be4b-4f98-b43b-28f0b2cce22f",
+      "d024ade1-4ee3-4a82-bb9b-3b67b53464fb"
+    ]
+  },
+  {
+    "id": "d024ade1-4ee3-4a82-bb9b-3b67b53464fb",
+    "status": "blocked",
+    "role": "implementation",
+    "prerequisites": [
+      "6325350e-7b9f-45b9-9c15-99c30e473312"
+    ],
+    "platform": "any",
+    "difficulty": "high",
+    "goal": "Mid-run interrupt and steer into an in-flight agent turn.",
+    "description": "Scope: CL-06 C-05 Interrupt/steer; TaskRouteCoordinator message-boundary policy; conversation_lane cancel without supervised handle. Context: product sends are one-shot; in-flight streams are never interrupted; cancel returns dispatch_cancel_no_active_turn. Target: would need a supervised turn API and explicit product decision. Design Considerations: routing already event-driven at message boundaries only. Design Value: keeps real-time inject explicitly out of the current release contract. Constraints & Risks: BLOCKED HERE — REQ-AGENT-001 non-goal for mid-run inject; do not implement under current one-shot dispatch.",
+    "requirements": [
+      "REQ-AGENT-001"
+    ],
+    "status_reason": "BLOCKED: mid-run inject/steer is out of scope for the current one-shot dispatch model (CL-06 C-05). No supervised in-flight turn exists to steer. Unblock only after an explicit product decision and supervised-turn architecture.",
+    "acceptance_criteria": [
+      {
+        "checked": false,
+        "text": "Only after a new product decision: supervised in-flight interrupt/steer with live evidence for each claiming adapter."
+      }
+    ],
+    "commit": {
+      "repository": ".git",
+      "message": "feat(agent): supervised mid-run steer after product decision",
+      "target": "dispatch lane supervised-turn architecture"
+    },
+    "next": []
+  },
+  {
+    "id": "7f713f0c-be4b-4f98-b43b-28f0b2cce22f",
+    "status": "pending",
+    "role": "implementation",
+    "prerequisites": [
+      "6325350e-7b9f-45b9-9c15-99c30e473312",
+      "95bb98b7-e3bb-4a0f-956a-79dbe9a52286"
+    ],
+    "platform": "any",
+    "difficulty": "medium",
+    "goal": "Prove read-only exact session retrieval for all packaged agents.",
+    "description": "Scope: conversations.rs; lico-client conversations list|stream; Flutter loadSessions/streamSessions. Context: historyReadable is true for all ten packaged drivers; append/delete already fail closed; send remains gated. Target: documented and tested list/stream by agent and optional session-id without inventing local threads. Design Considerations: keep history read-only. Design Value: unblocks operator inspection of finished/interrupted sessions immediately. Constraints & Risks: do not retain message bodies in evidence.",
+    "requirements": [
+      "REQ-AGENT-001"
+    ],
+    "acceptance_criteria": [
+      {
+        "checked": false,
+        "text": "CLI list/stream covers packaged agents, supports session-id filter, and rejects append/delete."
+      },
+      {
+        "checked": false,
+        "text": "A redacted smoke or test proves nativeSessionId presence for retrieved sessions."
+      }
+    ],
+    "commit": {
+      "repository": ".git",
+      "message": "test(agent): prove read-only exact session retrieval",
+      "target": "conversations list/stream path and tests"
+    },
+    "next": [
+      "6e67e7f6-53b9-45b5-bcef-dd4f2602225b",
+      "20bc9af9-069a-47ee-bbc4-dcc7ac823df1"
+    ]
+  },
+  {
+    "id": "763f73a4-8548-42b4-a100-4579cb59f873",
+    "status": "blocked",
+    "role": "implementation",
+    "prerequisites": [
+      "95bb98b7-e3bb-4a0f-956a-79dbe9a52286",
+      "6325350e-7b9f-45b9-9c15-99c30e473312"
+    ],
+    "platform": "any",
+    "difficulty": "high",
+    "goal": "Antigravity exact-resume send on a public local lane.",
+    "description": "Scope: Antigravity adapter leaf for specified-conversation send/resume. Context: historyReadable true; exactResume false; readiness blocked antigravity_public_transport_unavailable; openNew false. Target: would require an official public transport then full parity including exact resume. Design Considerations: no private transport fork. Design Value: records the structural stop instead of a fake pending parity path. Constraints & Risks: BLOCKED HERE — no public local conversation transport; keep history-only / excluded from send-capable packaging and UI claims until a vendor public lane ships.",
+    "requirements": [
+      "REQ-AGENT-002"
+    ],
+    "acceptance_criteria": [
+      {
+        "checked": false,
+        "text": "Public transport exists with live exact-resume evidence, or Antigravity remains excluded from send-capable packaging/UI with this blocker disclosed."
+      }
+    ],
+    "commit": {
+      "repository": ".git",
+      "message": "fix(agent): unblock Antigravity when public transport exists",
+      "target": "Antigravity adapter and evidence"
+    },
+    "next": [],
+    "status_reason": "BLOCKED: antigravity_public_transport_unavailable — no safe public local conversation transport. Unblock only when an official public lane exists, then prove full parity including exact resume or keep honest exclusion."
+  },
+  {
+    "id": "560beb7d-7136-4cc9-afbc-46ff4cd070fc",
+    "status": "blocked",
+    "role": "implementation",
+    "prerequisites": [
+      "95bb98b7-e3bb-4a0f-956a-79dbe9a52286",
+      "6325350e-7b9f-45b9-9c15-99c30e473312"
+    ],
+    "platform": "any",
+    "difficulty": "high",
+    "goal": "Claude Code exact-resume send on a secure non-argv lane.",
+    "description": "Scope: Claude Code adapter leaf for specified-conversation exact resume. Context: historyReadable true; exactResume false; readiness blocked official_native_lane_missing; non-empty sessionId fails with claude_code_secure_resume_unavailable because public resume is argv-bound. Target: official non-argv resume lane then live P-03 exact resume. Design Considerations: argv --resume is not an acceptable secure lane; secrets must not enter process arguments. Design Value: leaf records the structural stop. Constraints & Risks: BLOCKED HERE — cannot implement exact-resume send until a non-argv official resume API exists; until then disclose history-only / new-session-only.",
+    "requirements": [
+      "REQ-AGENT-002"
+    ],
+    "acceptance_criteria": [
+      {
+        "checked": false,
+        "text": "Official non-argv resume lane exists and live exact-resume evidence promotes Claude Code, or packaging/UI exclude exact-resume claims with this blocker disclosed."
+      }
+    ],
+    "commit": {
+      "repository": ".git",
+      "message": "fix(agent): unblock Claude Code exact resume when official lane exists",
+      "target": "Claude Code driver and evidence"
+    },
+    "next": [],
+    "status_reason": "BLOCKED: official_native_lane_missing / claude_code_secure_resume_unavailable — public resume is argv-bound; no secure non-argv exact-resume lane. Unblock only when an official non-argv resume API exists, then re-run live parity."
+  },
+  {
+    "id": "de4a4286-bb22-4405-9967-3417e435e84c",
+    "status": "pending",
+    "role": "implementation",
+    "prerequisites": [
+      "95bb98b7-e3bb-4a0f-956a-79dbe9a52286",
+      "6325350e-7b9f-45b9-9c15-99c30e473312"
+    ],
+    "platform": "any",
+    "difficulty": "high",
+    "goal": "Prove Codex native conversation parity or exclude it honestly.",
+    "description": "Scope: Codex adapter, official app-server lane, fixtures and readiness evidence; CLI list→send with exact thread id. Context: exactResume true but unverified/evidence_missing; sendEnabled false. Target: fresh bidirectional, exact resume (P-03), streaming, cancellation, permission, cleanup, history and privacy parity; first adapter to enable specified-conversation continue. Design Considerations: persistent RPC and session identity remain adapter-owned; Flutter must not infer thread precedence. Design Value: preserves exact native semantics and unlocks operator CLI continue. Constraints & Risks: fixture success alone cannot enable send; needs authorized live side effects.",
+    "requirements": [
+      "REQ-AGENT-002"
+    ],
+    "acceptance_criteria": [
+      {
+        "checked": false,
+        "text": "A source-bound official-lane receipt proves every parity behavior including exact sessionId resume send, or Codex is absent from supported packaging and UI claims."
+      },
+      {
+        "checked": false,
+        "text": "Readiness marks Codex sendEnabled true only after required consecutive live passes."
+      }
+    ],
+    "commit": {
+      "repository": ".git",
+      "message": "test(agent): close Codex native parity",
+      "target": "Codex adapter and evidence producer"
+    },
+    "next": [
+      "20bc9af9-069a-47ee-bbc4-dcc7ac823df1",
+      "6e67e7f6-53b9-45b5-bcef-dd4f2602225b"
+    ]
+  },
+  {
+    "id": "6e67e7f6-53b9-45b5-bcef-dd4f2602225b",
+    "status": "pending",
+    "role": "implementation",
+    "prerequisites": [
+      "7f713f0c-be4b-4f98-b43b-28f0b2cce22f",
+      "de4a4286-bb22-4405-9967-3417e435e84c"
+    ],
+    "platform": "any",
+    "difficulty": "medium",
+    "goal": "Verify the operator CLI list→exact-send continue path for ready adapters.",
+    "description": "Scope: lico-client operator docs/runbook; smoke using a ready adapter (Codex first). Context: commands already exist; send is readiness-gated. Target: verified sequence conversations list then agent conversation send with sessionId. Design Considerations: examples use placeholders only. Design Value: makes specified-conversation continue usable without relying on UI alone. Constraints & Risks: if no adapter is sendEnabled yet, keep this Node incomplete rather than faking success.",
+    "requirements": [
+      "REQ-AGENT-001",
+      "REQ-AGENT-002"
+    ],
+    "acceptance_criteria": [
+      {
+        "checked": false,
+        "text": "Operator docs show conversations list then agent conversation send with sessionId."
+      },
+      {
+        "checked": false,
+        "text": "Smoke against a ready adapter passes, or the Node remains incomplete while sendEnabled stays 0."
+      }
+    ],
+    "commit": {
+      "repository": ".git",
+      "message": "docs(client): verify CLI specified-conversation continue path",
+      "target": "operator docs and CLI smoke"
+    },
+    "next": [
+      "20bc9af9-069a-47ee-bbc4-dcc7ac823df1"
+    ]
+  },
+  {
+    "id": "49094caf-785a-49ff-a0ab-b4e5233a9178",
+    "status": "blocked",
+    "role": "implementation",
+    "prerequisites": [
+      "95bb98b7-e3bb-4a0f-956a-79dbe9a52286",
+      "6325350e-7b9f-45b9-9c15-99c30e473312"
+    ],
+    "platform": "any",
+    "difficulty": "high",
+    "goal": "Prove Cursor native conversation parity or exclude it honestly.",
+    "description": "Scope: Cursor adapter, ACP session/load|resume, fixtures and readiness evidence. Context: exactResume true; evidence_missing; second priority after Codex for specified-conversation continue. Target: fresh bidirectional, exact resume, streaming, cancellation, permission, cleanup, history and privacy parity. Design Considerations: keep process and workspace discovery adapter-local and bounded. Design Value: prevents discovery quirks from forking the application contract. Constraints & Risks: missing official capability must remain disclosed and disabled; authorized live runtime required.",
+    "requirements": [
+      "REQ-AGENT-002"
+    ],
+    "acceptance_criteria": [
+      {
+        "checked": false,
+        "text": "A source-bound official-lane receipt proves every parity behavior, or Cursor is absent from supported packaging and UI claims."
+      }
+    ],
+    "commit": {
+      "repository": ".git",
+      "message": "test(agent): close Cursor native parity",
+      "target": "Cursor adapter and evidence producer"
+    },
+    "next": [
+      "20bc9af9-069a-47ee-bbc4-dcc7ac823df1"
+    ],
+    "status_reason": "Cursor native CLI validation now runs instead of preflight-blocking. Latest strict run attempted 5 sessions and 10 requests with 9 successful requests (90%); two conversation rounds passed, the third had a request failure, and official scripted cleanup remains unavailable/manual-required. Readiness remains fail-closed."
+  },
+  {
+    "id": "b43c2769-9f88-4126-aee9-26f581fe9fb9",
+    "status": "pending",
+    "role": "implementation",
+    "prerequisites": [
+      "95bb98b7-e3bb-4a0f-956a-79dbe9a52286",
+      "6325350e-7b9f-45b9-9c15-99c30e473312"
+    ],
+    "platform": "any",
+    "difficulty": "high",
+    "goal": "Prove Copilot native conversation parity or exclude it honestly.",
+    "description": "Scope: Copilot adapter, official native-first lane (SDK session-state + CLI resume semantics), fixtures and readiness evidence. Context: exactResume declared; readiness unverified; sendEnabled false. Prefer SDK session.list/delete and session-state identity; reject --continue (newest); treat argv --resume=<id>/-p as non-preferred; keep ACP only as thin turn/stream bridge (authenticate + load/new) without expanding ACP surface. Target: watchable stream during a turn, then follow-up on exact nativeSessionId after finish/interrupt; full parity or honest exclusion. Design Considerations: typed auth/capability failures; no credential or account data in evidence. Design Value: truthful native-first continue without newest substitution. Constraints & Risks: CLI -p currently model-class fail on probe host; SDK connect flaky in short probes; fixture-only cannot enable send.",
+    "requirements": [
+      "REQ-AGENT-002"
+    ],
+    "acceptance_criteria": [
+      {
+        "checked": false,
+        "text": "A source-bound official-lane receipt proves every parity behavior, or Copilot is absent from supported packaging and UI claims."
+      }
+    ],
+    "commit": {
+      "repository": ".git",
+      "message": "test(agent): close Copilot native parity",
+      "target": "Copilot adapter and evidence producer"
+    },
+    "next": [
+      "20bc9af9-069a-47ee-bbc4-dcc7ac823df1"
+    ]
+  },
+  {
+    "id": "77659ba9-799b-4d60-9c45-e16d7396d04a",
+    "status": "blocked",
+    "role": "implementation",
+    "prerequisites": [
+      "95bb98b7-e3bb-4a0f-956a-79dbe9a52286",
+      "6325350e-7b9f-45b9-9c15-99c30e473312"
+    ],
+    "platform": "any",
+    "difficulty": "high",
+    "goal": "Prove Hermes native conversation parity or exclude it honestly.",
+    "description": "Scope: Hermes adapter, official lane, fixtures and readiness evidence. Context: current packaged evidence is empty and sending is disabled. Target: fresh bidirectional, resume, streaming, cancellation, permission, cleanup, history and privacy parity. Design Considerations: isolate protocol translation behind the backend Strategy. Design Value: makes adapter-specific limitations explicit instead of weakening the common port. Constraints & Risks: unavailable official lane remains unsupported.",
+    "requirements": [
+      "REQ-AGENT-002"
+    ],
+    "acceptance_criteria": [
+      {
+        "checked": false,
+        "text": "A source-bound official-lane receipt proves every parity behavior, or Hermes is absent from supported packaging and UI claims."
+      }
+    ],
+    "commit": {
+      "repository": ".git",
+      "message": "test(agent): close Hermes native parity",
+      "target": "Hermes adapter and evidence producer"
+    },
+    "next": [
+      "20bc9af9-069a-47ee-bbc4-dcc7ac823df1"
+    ],
+    "status_reason": "Live release-UI validation is blocked because the Hermes executable was unavailable in the authorized environment."
+  },
+  {
+    "id": "8d04c82f-400d-4ba3-b261-9be44c98770a",
+    "status": "blocked",
+    "role": "implementation",
+    "prerequisites": [
+      "95bb98b7-e3bb-4a0f-956a-79dbe9a52286",
+      "6325350e-7b9f-45b9-9c15-99c30e473312"
+    ],
+    "platform": "any",
+    "difficulty": "high",
+    "goal": "Prove Kilo native conversation parity or exclude it honestly.",
+    "description": "Scope: Kilo adapter, official serve/attach HTTP lane (ports 4097–4116), fixtures and readiness evidence. Context: Kilo mirrors OpenCode serve/attach; ACP is secondary; exactResume declared; sendEnabled false until live evidence. Target: fresh bidirectional, exact nativeSessionId resume (not --continue newest), streaming SSE/chunk echo, cancellation, permission, cleanup, history and privacy parity. Design Considerations: stable session and cancellation mapping remain adapter-local; binary absence fails closed. Design Value: prevents a partial adapter from being promoted by structural parity. Constraints & Risks: unsupported results must flow into packaging and UI disclosure.",
+    "requirements": [
+      "REQ-AGENT-002"
+    ],
+    "acceptance_criteria": [
+      {
+        "checked": false,
+        "text": "A source-bound official-lane receipt proves every parity behavior, or Kilo is absent from supported packaging and UI claims."
+      }
+    ],
+    "commit": {
+      "repository": ".git",
+      "message": "test(agent): close Kilo native parity",
+      "target": "Kilo adapter and evidence producer"
+    },
+    "next": [
+      "20bc9af9-069a-47ee-bbc4-dcc7ac823df1"
+    ],
+    "status_reason": "Live release-UI validation is blocked because the Kilo Code executable was unavailable under the canonical verifier discovery rules."
+  },
+  {
+    "id": "402ef729-7319-46c3-bc60-7565fa14f292",
+    "status": "pending",
+    "role": "implementation",
+    "prerequisites": [
+      "95bb98b7-e3bb-4a0f-956a-79dbe9a52286",
+      "6325350e-7b9f-45b9-9c15-99c30e473312"
+    ],
+    "platform": "any",
+    "difficulty": "high",
+    "goal": "Prove Kimi native conversation parity or keep it deferred and excluded.",
+    "description": "Scope: Kimi adapter declaration, official lane availability, packaging, UI and evidence. Context: prior product requirements defer Kimi and current packaged evidence is empty. Target: either full canonical parity from an official lane or explicit unsupported exclusion everywhere. Design Considerations: do not add a compatibility shim or mock lane to satisfy the reducer. Design Value: honest exclusion preserves product truth while leaving a bounded future branch. Constraints & Risks: deferred status cannot satisfy release-blocking adapter readiness.",
+    "requirements": [
+      "REQ-AGENT-002"
+    ],
+    "acceptance_criteria": [
+      {
+        "checked": false,
+        "text": "Kimi has a complete source-bound parity receipt or is consistently excluded and disclosed as deferred in catalog, package and UI."
+      }
+    ],
+    "commit": {
+      "repository": ".git",
+      "message": "fix(agent): close or exclude Kimi adapter",
+      "target": "Kimi adapter declaration and support authority"
+    },
+    "next": [
+      "20bc9af9-069a-47ee-bbc4-dcc7ac823df1"
+    ]
+  },
+  {
+    "id": "4f813b2d-5e8c-476a-93c4-5c1ae72c7040",
+    "status": "pending",
+    "role": "implementation",
+    "prerequisites": [
+      "95bb98b7-e3bb-4a0f-956a-79dbe9a52286",
+      "6325350e-7b9f-45b9-9c15-99c30e473312"
+    ],
+    "platform": "any",
+    "difficulty": "high",
+    "goal": "Prove Pi Agent native RPC conversation parity or exclude it honestly.",
+    "description": "Scope: Pi Agent RPC exact-session continuation, streaming, cleanup, packaging, UI, and release evidence. Context: the adapter is packaged and static RPC tests pass, but the canonical live verifier reports live_harness_unavailable. Target: add a source-bound live RPC harness and achieve canonical parity or consistently exclude Pi from supported send claims. Design Considerations: use Pi's native RPC switch_session identity; do not substitute newest-session or synthetic history. Design Value: closes the only packaged adapter without a live harness. Constraints & Risks: readiness stays fail-closed until three release-UI passes, cleanup, and privacy evidence exist.",
+    "requirements": [
+      "REQ-AGENT-002"
+    ],
+    "acceptance_criteria": [
+      {
+        "checked": false,
+        "text": "A source-bound Pi RPC receipt proves exact session continuation, streaming, cleanup, history, and redaction, or Pi is absent from supported packaging and UI claims."
+      }
+    ],
+    "commit": {
+      "repository": ".git",
+      "message": "feat(agent): verify Pi native conversation parity",
+      "target": "Pi RPC parity harness and readiness evidence"
+    },
+    "next": [
+      "20bc9af9-069a-47ee-bbc4-dcc7ac823df1"
+    ]
+  },
+  {
+    "id": "86e11c2d-686f-437b-9652-764738fbdd67",
+    "status": "blocked",
+    "role": "implementation",
+    "prerequisites": [
+      "95bb98b7-e3bb-4a0f-956a-79dbe9a52286",
+      "6325350e-7b9f-45b9-9c15-99c30e473312"
+    ],
+    "platform": "any",
+    "difficulty": "high",
+    "goal": "Prove OpenClaw native conversation parity or exclude it honestly.",
+    "description": "Scope: OpenClaw Gateway-native attach (prefer vendor 18789 reuse/status/install; never steal 18789; Arc fallback uncommon port), ACP attach via --url, fixtures and readiness evidence. Context: exactResume+streaming declared; prior ACP cold-start alone is insufficient. Target: ensure/attach Gateway, streaming echo, exact nativeSessionId continue after finish/interrupt boundary, then full parity or honest exclusion. Design Considerations: Gateway sessions are the continuity authority; ACP is the attach bridge. Design Value: keeps application semantics provider-neutral and Gateway-backed. Constraints & Risks: evidence must omit provider runtime data and secrets.",
+    "requirements": [
+      "REQ-AGENT-002"
+    ],
+    "acceptance_criteria": [
+      {
+        "checked": false,
+        "text": "A source-bound official-lane receipt proves every parity behavior, or OpenClaw is absent from supported packaging and UI claims."
+      }
+    ],
+    "commit": {
+      "repository": ".git",
+      "message": "test(agent): close OpenClaw native parity",
+      "target": "OpenClaw adapter and evidence producer"
+    },
+    "next": [
+      "20bc9af9-069a-47ee-bbc4-dcc7ac823df1"
+    ],
+    "status_reason": "Live release-UI validation is blocked because the OpenClaw executable was unavailable in the authorized environment."
+  },
+  {
+    "id": "a3dbf8d9-4850-43b5-a156-1af5db938098",
+    "status": "pending",
+    "role": "implementation",
+    "prerequisites": [
+      "95bb98b7-e3bb-4a0f-956a-79dbe9a52286",
+      "6325350e-7b9f-45b9-9c15-99c30e473312"
+    ],
+    "platform": "any",
+    "difficulty": "high",
+    "goal": "Prove OpenCode native conversation parity or exclude it honestly.",
+    "description": "Scope: OpenCode adapter, official lane, fixtures and readiness evidence. Context: current packaged evidence is empty and sending is disabled. Target: fresh bidirectional, resume, streaming, cancellation, permission, cleanup, history and privacy parity. Design Considerations: lifecycle and stream translation remain within the backend Strategy. Design Value: complete proof replaces structural readiness. Constraints & Risks: unsupported results require consistent package and UI exclusion.",
+    "requirements": [
+      "REQ-AGENT-002"
+    ],
+    "acceptance_criteria": [
+      {
+        "checked": false,
+        "text": "A source-bound official-lane receipt proves every parity behavior, or OpenCode is absent from supported packaging and UI claims."
+      }
+    ],
+    "commit": {
+      "repository": ".git",
+      "message": "test(agent): close OpenCode native parity",
+      "target": "OpenCode adapter and evidence producer"
+    },
+    "next": [
+      "20bc9af9-069a-47ee-bbc4-dcc7ac823df1"
+    ]
+  },
+  {
+    "id": "fb8abf45-be00-4b68-9273-6b93147ad90b",
+    "status": "pending",
+    "role": "implementation",
+    "prerequisites": [
+      "5d0e8d21-71ba-4a6a-9ef9-6a6806e5f7ba"
+    ],
+    "platform": "any",
+    "difficulty": "deep",
+    "goal": "Establish one bounded, no-follow, crash-consistent filesystem authority.",
+    "description": "Scope: safe archive, file security, log export, conversation snapshots, skill install/rollback and journals. Context: destination-parent symlinks, unchecked snapshot paths, direct export writes, untrusted journals and non-atomic rename fallback allow escape or corruption. Target: typed Rust operations enforce containment, ownership, bounds, private durable journals and atomic commit. Design Considerations: stream archives; inspect every ancestor no-follow; use operation-specific transactions behind one port. Design Value: centralizes security invariants and removes duplicated unsafe recovery code. Constraints & Risks: hostile tests must exercise the operation rather than panic during fixture construction; remove every fallback that follows links.",
+    "requirements": [
+      "REQ-SEC-002"
+    ],
+    "acceptance_criteria": [
+      {
+        "checked": false,
+        "text": "Hostile archive, export, rollback, journal and rename tests prove traversal, link, race, bomb and crash containment."
+      },
+      {
+        "checked": false,
+        "text": "Superseded per-feature journals and copy-over-symlink or unchecked absolute-path fallbacks are removed."
+      }
+    ],
+    "commit": {
+      "repository": ".git",
+      "message": "fix(storage): unify bounded atomic filesystem operations",
+      "target": "native filesystem, archive, export and skill transaction modules"
+    },
+    "next": [
+      "cfeb63fe-981b-4732-9044-628f2656fd14",
+      "d19ad309-7c33-484d-8a1e-ab268ba9a674",
+      "70b59023-da2a-4608-b9e6-5ec97aaa0228"
+    ]
+  },
+  {
+    "id": "cfeb63fe-981b-4732-9044-628f2656fd14",
+    "status": "pending",
+    "role": "implementation",
+    "prerequisites": [
+      "95bb98b7-e3bb-4a0f-956a-79dbe9a52286",
+      "fb8abf45-be00-4b68-9273-6b93147ad90b"
+    ],
+    "platform": "any",
+    "difficulty": "deep",
+    "goal": "Complete one semantic conversation and archive model across native sources and Flutter.",
+    "description": "Scope: native conversation snapshots/events, archive materialization and Flutter renderer. Context: prior plan required five semantic layers but current completion cannot be inherited and product/gate wording still reflects retired shell assumptions. Target: thread, execution, artifacts, audit and raw layers share one immutable model; raw/audit are explicit and paths are relative/digest-bound. Design Considerations: one reducer and read-only projections; no provider-specific UI DTO. Design Value: preserves meaning without flattening or leaking diagnostic evidence. Constraints & Risks: remove the old renderer, schema, fixture and gate in the same migration.",
+    "requirements": [
+      "REQ-PROD-003"
+    ],
+    "acceptance_criteria": [
+      {
+        "checked": false,
+        "text": "Every supported adapter fixture and streaming event produces the same five-layer semantic model and safe default rendering."
+      },
+      {
+        "checked": false,
+        "text": "No parallel flattened renderer, provider-specific UI model, personal-path default or retired archive schema remains."
+      }
+    ],
+    "commit": {
+      "repository": ".git",
+      "message": "refactor(conversation): complete semantic archive authority",
+      "target": "conversation snapshot, archive and Flutter rendering modules"
+    },
+    "next": [
+      "20bc9af9-069a-47ee-bbc4-dcc7ac823df1",
+      "560add12-b3e5-4913-b8a5-4d0872f7291a",
+      "70b59023-da2a-4608-b9e6-5ec97aaa0228"
+    ]
+  },
+  {
+    "id": "20bc9af9-069a-47ee-bbc4-dcc7ac823df1",
+    "status": "pending",
+    "role": "implementation",
+    "prerequisites": [
+      "de4a4286-bb22-4405-9967-3417e435e84c",
+      "49094caf-785a-49ff-a0ab-b4e5233a9178",
+      "b43c2769-9f88-4126-aee9-26f581fe9fb9",
+      "77659ba9-799b-4d60-9c45-e16d7396d04a",
+      "8d04c82f-400d-4ba3-b261-9be44c98770a",
+      "402ef729-7319-46c3-bc60-7565fa14f292",
+      "86e11c2d-686f-437b-9652-764738fbdd67",
+      "a3dbf8d9-4850-43b5-a156-1af5db938098",
+      "cfeb63fe-981b-4732-9044-628f2656fd14",
+      "7f713f0c-be4b-4f98-b43b-28f0b2cce22f",
+      "6e67e7f6-53b9-45b5-bcef-dd4f2602225b",
+      "4f813b2d-5e8c-476a-93c4-5c1ae72c7040"
+    ],
+    "platform": "any",
+    "difficulty": "deep",
+    "goal": "Aggregate adapter evidence into truthful registry, shell, conversation and support behavior.",
+    "description": "Scope: adapter catalog, readiness reducer, New Conversation, current shell/search/usage/accessibility and support matrix rows; disclose blocked Claude Code / Antigravity / mid-run inject leaves. Context: package validation accepts zero ready adapters; specified-conversation continue requires truthful per-adapter list vs exact-send state. Target: each adapter exposes exact state and reason, core entry points consume the reducer, and current UI contracts are tested behaviorally. Design Considerations: derive UI from immutable authority rather than duplicate booleans; blocked leaves are not join prerequisites. Design Value: a zero-capability build cannot look usable or releasable. Constraints & Risks: deferred adapters remain visible only where honest disclosure adds value; remove all Future client and retired tab contracts.",
+    "requirements": [
+      "REQ-AGENT-001",
+      "REQ-AGENT-002",
+      "REQ-PROD-001"
+    ],
+    "acceptance_criteria": [
+      {
+        "checked": false,
+        "text": "Registry, package, support matrix and UI consume one reducer and expose exact ready, blocked, deferred or excluded state per adapter including Claude Code and Antigravity blocker codes."
+      },
+      {
+        "checked": false,
+        "text": "Search, usage, accessibility, current shell and reviewed goldens pass; mid-run inject is not advertised; retired product strings and structural gates are absent."
+      }
+    ],
+    "commit": {
+      "repository": ".git",
+      "message": "fix(product): bind shell to agent readiness truth",
+      "target": "agent registry, support matrix and current Flutter shell"
+    },
+    "next": [
+      "a7fd4bb7-365c-431c-b4ca-9950a3540af2",
+      "70b59023-da2a-4608-b9e6-5ec97aaa0228"
+    ]
+  },
+  {
+    "id": "04bf513e-4ecf-4e29-9309-a50d61a30af8",
+    "status": "pending",
+    "role": "implementation",
+    "prerequisites": [
+      "5d0e8d21-71ba-4a6a-9ef9-6a6806e5f7ba",
+      "6325350e-7b9f-45b9-9c15-99c30e473312"
+    ],
+    "platform": "any",
+    "difficulty": "deep",
+    "goal": "Replace parallel routing behavior with one deterministic explainable engine and handoff contract.",
+    "description": "Scope: routing policy schema, engine, capability inputs, handoff, history and controller integration. Context: old plan semantics require atomic reload and explainability, but completion evidence is not current and usage data can be false-empty. Target: one immutable policy revision per message yields selected/rejected reasons and a validated handoff. Design Considerations: stable candidate order, bounded capability cache and logical digest handles; no raw text or native session history. Design Value: deterministic routing is testable and prevents mutable UI selection from becoming authority. Constraints & Risks: runtime capability is non-overridable; remove parallel route resolvers completely.",
+    "requirements": [
+      "REQ-ROUTE-001"
+    ],
+    "acceptance_criteria": [
+      {
+        "checked": false,
+        "text": "Fixture ground truth proves deterministic selection, rejection reasons, allowance boundaries, atomic reload and message-boundary switching."
+      },
+      {
+        "checked": false,
+        "text": "Handoff preserves goals, decisions and constraints while route history contains no private session id or raw conversation text."
+      }
+    ],
+    "commit": {
+      "repository": ".git",
+      "message": "refactor(routing): establish deterministic routing authority",
+      "target": "routing policy, engine, handoff and controller modules"
+    },
+    "next": [
+      "ec602a16-6608-4b49-947a-3d6bc745badb"
+    ]
+  },
+  {
+    "id": "ec602a16-6608-4b49-947a-3d6bc745badb",
+    "status": "pending",
+    "role": "implementation",
+    "prerequisites": [
+      "04bf513e-4ecf-4e29-9309-a50d61a30af8"
+    ],
+    "platform": "any",
+    "difficulty": "deep",
+    "goal": "Prove routing is a truly optional same-source release package.",
+    "description": "Scope: module catalog, included/excluded profiles, packaging, runtime lifecycle and performance harness. Context: only an excluded compile branch currently passes; no artifact absence, unload or budget evidence exists. Target: excluded artifacts start with direct dispatch while routing code/resources/UI/settings/watchers/caches are absent; disable releases all owned state. Design Considerations: build profiles derive from one catalog and source revision; five bounded runs report medians. Design Value: optionality reduces attack surface and resource cost without a source fork. Constraints & Risks: disabling does not delete user policy without consent; remove disabled-but-loaded compatibility wiring.",
+    "requirements": [
+      "REQ-ROUTE-002"
+    ],
+    "acceptance_criteria": [
+      {
+        "checked": false,
+        "text": "Same-source included/excluded artifacts prove physical presence/absence and direct dispatch works in the excluded artifact."
+      },
+      {
+        "checked": false,
+        "text": "Disable/re-enable releases owned resources and five runs prove median cold-start overhead ≤50 ms and RSS delta ≤8 MiB."
+      }
+    ],
+    "commit": {
+      "repository": ".git",
+      "message": "feat(routing): prove optional release package",
+      "target": "module catalog, packaging profiles and routing lifecycle"
+    },
+    "next": [
+      "70b59023-da2a-4608-b9e6-5ec97aaa0228"
+    ]
+  },
+  {
+    "id": "8fd4c0d5-0ab3-4c90-a237-ababcda49e25",
+    "status": "pending",
+    "role": "implementation",
+    "prerequisites": [
+      "5d0e8d21-71ba-4a6a-9ef9-6a6806e5f7ba"
+    ],
+    "platform": "any",
+    "difficulty": "deep",
+    "goal": "Enforce opaque native secrets and one exact-request local authorization flow.",
+    "description": "Scope: secure command policy, forwarding, native secret traits, bridge DTOs, process launch and delete lifecycle. Context: a remote can export raw credentials without local confirmation, macOS silently downgrades, and desktop deletion is fake success. Target: opaque handles, exact-request local confirmation, one bounded OS authorization session and real native deletion. Design Considerations: capability-based ports; background work cannot prompt; no secret-bearing generic payload. Design Value: transport encryption cannot be confused with endpoint authorization. Constraints & Risks: platform implementations live in child plans; remove every CLI/bridge/plain fallback and fake-success path.",
+    "requirements": [
+      "REQ-SEC-001"
+    ],
+    "acceptance_criteria": [
+      {
+        "checked": false,
+        "text": "Credential export, read, write and delete require the correct local authority and hostile scans find no secret in args, bridges, logs, reports or errors."
+      },
+      {
+        "checked": false,
+        "text": "Denial, cancellation, unavailable presence, expiry and background requests fail closed or use explicit memory-only custody."
+      }
+    ],
+    "commit": {
+      "repository": ".git",
+      "message": "fix(security): require opaque locally authorized secrets",
+      "target": "secure command, forwarding, secret ports and bridge DTOs"
+    },
+    "next": [
+      "9d293a27-d060-4838-ae21-058c2e866e52",
+      "8303cd1c-38b3-440c-803b-e39183ccbbe7",
+      "d19ad309-7c33-484d-8a1e-ab268ba9a674"
+    ]
+  },
+  {
+    "id": "9d293a27-d060-4838-ae21-058c2e866e52",
+    "status": "pending",
+    "role": "implementation",
+    "prerequisites": [
+      "95bb98b7-e3bb-4a0f-956a-79dbe9a52286",
+      "8fd4c0d5-0ab3-4c90-a237-ababcda49e25"
+    ],
+    "platform": "any",
+    "difficulty": "deep",
+    "goal": "Complete account-scoped mobile provider and relay lifecycle without diagnostic disclosure.",
+    "description": "Scope: account model, Flutter/native bridge, relay metadata, OAuth attempts, send/history/delete/callback and gateway parser. Context: account semantics were planned but production writes sensitive diagnostics, URL parsing is late, and desktop delete is synthetic. Target: account id is independent of provider, all operations are account-scoped, secrets remain native, sync is explicit and gateway validation precedes persistence. Design Considerations: normalized URI value object and repository keyed by account id; no provider singleton. Design Value: multi-account correctness and privacy become structural. Constraints & Risks: deferred providers remain fail-closed; remove provider-keyed records and unconditional diagnostic writer.",
+    "requirements": [
+      "REQ-PROD-004",
+      "REQ-REL-006"
+    ],
+    "acceptance_criteria": [
+      {
+        "checked": false,
+        "text": "Two accounts for one provider remain independent through send, history, delete, callback, relay echo and grants, with native secret deletion observed."
+      },
+      {
+        "checked": false,
+        "text": "Malformed/deceptive gateways fail before persistence and production startup emits no sensitive diagnostic without bounded explicit consent."
+      }
+    ],
+    "commit": {
+      "repository": ".git",
+      "message": "refactor(accounts): complete account-scoped relay lifecycle",
+      "target": "mobile account, relay bridge, gateway parser and diagnostics"
+    },
+    "next": [
+      "8303cd1c-38b3-440c-803b-e39183ccbbe7",
+      "d19ad309-7c33-484d-8a1e-ab268ba9a674",
+      "70b59023-da2a-4608-b9e6-5ec97aaa0228"
+    ]
+  },
+  {
+    "id": "5b8f22d1-86cb-4f45-b64c-8829f7530426",
+    "status": "pending",
+    "role": "implementation",
+    "prerequisites": [
+      "95bb98b7-e3bb-4a0f-956a-79dbe9a52286",
+      "6325350e-7b9f-45b9-9c15-99c30e473312"
+    ],
+    "platform": "any",
+    "difficulty": "deep",
+    "goal": "Replace Feed aggregate completion with durable per-target idempotent delivery.",
+    "description": "Scope: Feed post model, controller actions, dispatch persistence, retry scheduler, attachment contract and UI. Context: one dispatch id is reused for all targets; the first completion suppresses later sends while every branch is reported successful. Target: a transactional outbox keyed by dispatch and target records explicit outcomes and derives aggregate state. Design Considerations: bounded retry queue, immutable outcomes, idempotency and typed bounded attachment references; avoid synchronous unbounded reads. Design Value: partial failure and recovery become correct and visible without repeated work. Constraints & Risks: empty/missing/active targets are explicit failures or no-op results, never success; migrate stored posts in one pass.",
+    "requirements": [
+      "REQ-PROD-002"
+    ],
+    "acceptance_criteria": [
+      {
+        "checked": false,
+        "text": "Multi-target tests prove actual delivery, partial failure, retry, duplicate suppression, cancellation, empty selection and restart recovery per target."
+      },
+      {
+        "checked": false,
+        "text": "Text, binary, missing and oversize attachments obey typed bounds and the UI derives aggregate state only from durable outcomes."
+      }
+    ],
+    "commit": {
+      "repository": ".git",
+      "message": "fix(feed): implement per-target transactional dispatch",
+      "target": "Feed model, outbox, retry scheduler and attachment contract"
+    },
+    "next": [
+      "70b59023-da2a-4608-b9e6-5ec97aaa0228"
+    ]
+  },
+  {
+    "id": "d60242cd-c88a-44bb-a10b-29525021ad69",
+    "status": "pending",
+    "role": "implementation",
+    "prerequisites": [
+      "5d0e8d21-71ba-4a6a-9ef9-6a6806e5f7ba"
+    ],
+    "platform": "any",
+    "difficulty": "deep",
+    "goal": "Repair and complete the canonical relay-envelope v2 migration across every payload path.",
+    "description": "Scope: mobile relay serializer/open path, registry, FFI, receipts, fixtures and every command/result/file/group/ACP caller. Context: serializer emits v2 while open reads removed v1 fields, causing 34 native failures; old parameter documents conflict. Target: one six-field v2 shape and one serializer/deserializer round-trip all payloads with strict failure semantics. Design Considerations: non-semantic delivery id, directional rotating mailbox token, encrypted typed header, authenticated bounded ciphertext and wire-byte goldens. Design Value: eliminates the central protocol split that invalidates all higher evidence. Constraints & Risks: remove v1 fields, registry, fixtures and compatibility parsers in the same migration; do not infer production readiness from unit round-trip alone.",
+    "requirements": [
+      "REQ-E2EE-001"
+    ],
+    "acceptance_criteria": [
+      {
+        "checked": false,
+        "text": "Every protected payload class round-trips through one canonical v2 wire format and malformed, tampered, stale, duplicate, expired or wrong-recipient input fails closed."
+      },
+      {
+        "checked": false,
+        "text": "Source, tests, FFI, docs and gates contain no retired envelope fields or v1 internal registry."
+      }
+    ],
+    "commit": {
+      "repository": ".git",
+      "message": "fix(secure-mesh): complete relay envelope v2 migration",
+      "target": "relay envelope serializer, parser, registry, FFI and fixtures"
+    },
+    "next": [
+      "daa74d6b-6017-4117-8ada-16e04805f6d0",
+      "560add12-b3e5-4913-b8a5-4d0872f7291a"
+    ]
+  },
+  {
+    "id": "daa74d6b-6017-4117-8ada-16e04805f6d0",
+    "status": "pending",
+    "role": "implementation",
+    "prerequisites": [
+      "d60242cd-c88a-44bb-a10b-29525021ad69"
+    ],
+    "platform": "any",
+    "difficulty": "deep",
+    "goal": "Close identity, verify-before-send, pairwise ratchet, replay and lifecycle semantics in the shared Rust core.",
+    "description": "Scope: identity/trust records, pairing, prekeys, Double Ratchet state, replay/skipped-key ledgers, file and lifecycle operations. Context: the envelope break invalidates existing protocol completion claims and current KT evidence is missing. Target: locally authorized trust gates send; restart-safe monotonic state and bounded ledgers protect command, result, file, TTL, delete, resend and acknowledgement flows. Design Considerations: Signal-style ratchet owner in Rust, atomic persistence, one-time prekeys and AAD-bound typed identity. Design Value: keeps cryptographic state consistent across clients and restarts. Constraints & Risks: no clock or plaintext fallback; external directory authority is completed in the next branch.",
+    "requirements": [
+      "REQ-E2EE-002",
+      "REQ-E2EE-003"
+    ],
+    "acceptance_criteria": [
+      {
+        "checked": false,
+        "text": "Identity, trust change, revoke, one-time prekey, restart, rollback, replay, skipped-key bounds and lifecycle vectors pass through the shared owner."
+      },
+      {
+        "checked": false,
+        "text": "Unverified, changed or revoked peers cannot send or receive protected work through UI, native or relay entry paths."
+      }
+    ],
+    "commit": {
+      "repository": ".git",
+      "message": "feat(secure-mesh): close pairwise trust and lifecycle",
+      "target": "shared identity, ratchet, replay and lifecycle modules"
+    },
+    "next": [
+      "b4fe5861-3e10-4878-ac57-f14d704bf0d7",
+      "8303cd1c-38b3-440c-803b-e39183ccbbe7"
+    ]
+  },
+  {
+    "id": "b4fe5861-3e10-4878-ac57-f14d704bf0d7",
+    "status": "pending",
+    "role": "implementation",
+    "prerequisites": [
+      "daa74d6b-6017-4117-8ada-16e04805f6d0"
+    ],
+    "platform": "any",
+    "difficulty": "deep",
+    "goal": "Make external Key Transparency and MLS product readiness real rather than projected.",
+    "description": "Scope: typed directory authority, persisted checkpoints, gossip/witness, OpenMLS authentication service, product wiring, FFI and readiness evidence. Context: production uses missing evidence and MLS readiness is hard-coded false; prior completed claim conflicts with current source. Target: pinned external log evidence authorizes identity and MLS membership; OpenMLS owns RFC 9420 mechanics and product policy emits current transitions. Design Considerations: RFC 9162 inclusion/consistency, atomic checkpoints, typed AuthorizedDirectoryLeaf and one-time KeyPackage. Design Value: removes self-derived trust and turns group readiness into auditable state. Constraints & Risks: client cannot own the production log signing key; unavailable server evidence blocks the broad claim.",
+    "requirements": [
+      "REQ-E2EE-004",
+      "REQ-E2EE-005"
+    ],
+    "acceptance_criteria": [
+      {
+        "checked": false,
+        "text": "Pinned external signatures, inclusion/non-inclusion, consistency, checkpoint persistence and equivocation cases produce typed directory authorization."
+      },
+      {
+        "checked": false,
+        "text": "MLS invitation, credentials, commit authorization, one-time KeyPackage, removal, epoch secrecy and FFI transitions drive readiness without constants."
+      }
+    ],
+    "commit": {
+      "repository": ".git",
+      "message": "feat(secure-mesh): establish real KT and MLS readiness",
+      "target": "directory authority, OpenMLS policy, FFI and readiness producer"
+    },
+    "next": [
+      "8303cd1c-38b3-440c-803b-e39183ccbbe7",
+      "a7fd4bb7-365c-431c-b4ca-9950a3540af2"
+    ]
+  },
+  {
+    "id": "560add12-b3e5-4913-b8a5-4d0872f7291a",
+    "status": "pending",
+    "role": "implementation",
+    "prerequisites": [
+      "d60242cd-c88a-44bb-a10b-29525021ad69",
+      "cfeb63fe-981b-4732-9044-628f2656fd14"
+    ],
+    "platform": "any",
+    "difficulty": "deep",
+    "goal": "Protect the complete ACP payload taxonomy and side-effect lifecycle.",
+    "description": "Scope: ACP prompt/update/reasoning/tool/filesystem/terminal/permission/approval/artifact/callback/retry/archive payloads, policy and semantic archive integration. Context: old plans grouped ACP closure too coarsely and current envelope failure invalidates transport proof. Target: every protected class has typed encrypted context and side effects authorize the exact digest, policy revision and expiry. Design Considerations: bounded pending-reference map, idempotency keys and explicit cancel/deny/close cleanup. Design Value: permission decisions cannot be detached from the operation users approved. Constraints & Risks: reasoning is absent unless requested and policy-allowed; raw archive access remains explicit.",
+    "requirements": [
+      "REQ-E2EE-006",
+      "REQ-PROD-003"
+    ],
+    "acceptance_criteria": [
+      {
+        "checked": false,
+        "text": "Every ACP family has positive wire, tamper, replay, expiry and authorization tests bound to typed encrypted context."
+      },
+      {
+        "checked": false,
+        "text": "Denied, cancelled, closed and expired operations forget sensitive references and no reasoning appears without explicit policy."
+      }
+    ],
+    "commit": {
+      "repository": ".git",
+      "message": "feat(acp): close protected payload and approval lifecycle",
+      "target": "ACP payload, policy, pending-reference and archive modules"
+    },
+    "next": [
+      "8303cd1c-38b3-440c-803b-e39183ccbbe7"
+    ]
+  },
+  {
+    "id": "8303cd1c-38b3-440c-803b-e39183ccbbe7",
+    "status": "pending",
+    "role": "implementation",
+    "prerequisites": [
+      "9d293a27-d060-4838-ae21-058c2e866e52",
+      "8fd4c0d5-0ab3-4c90-a237-ababcda49e25",
+      "daa74d6b-6017-4117-8ada-16e04805f6d0",
+      "b4fe5861-3e10-4878-ac57-f14d704bf0d7",
+      "560add12-b3e5-4913-b8a5-4d0872f7291a"
+    ],
+    "platform": "any",
+    "difficulty": "deep",
+    "goal": "Prove metadata resistance and privacy against an adversarial opaque relay across all payload families.",
+    "description": "Scope: production serializer, mailbox rotation, padding/buckets, local adversarial relay, capture harness and redaction scanners. Context: historical hostile-relay commands are stale and allowed-cleartext documents conflict; current envelope is broken. Target: real bytes expose no stable business identifier, plaintext, key, token, path or backend data beyond measured transport residuals. Design Considerations: directional keyed mailbox tokens, bounded rotation overlap, fixed header bucket, authenticated ciphertext buckets and multi-encoding canary scan. Design Value: tests the actual observation surface instead of boolean privacy flags. Constraints & Risks: evidence retains only allowlisted metrics and digests; timing and traffic volume are reported, not overclaimed away.",
+    "requirements": [
+      "REQ-E2EE-007",
+      "REQ-REL-006"
+    ],
+    "acceptance_criteria": [
+      {
+        "checked": false,
+        "text": "Adversarial captures for every connected payload family pass raw, base64, hex and escaped canary scans on real serialized bytes."
+      },
+      {
+        "checked": false,
+        "text": "Residual timing, direction, bucket and retry metadata is measured and the retired allowed-cleartext contract is removed."
+      }
+    ],
+    "commit": {
+      "repository": ".git",
+      "message": "test(secure-mesh): prove hostile-relay metadata boundary",
+      "target": "relay serializer, adversarial harness and privacy scanners"
+    },
+    "next": [
+      "c0627f06-eadb-4c9f-a9c5-d3b0cbe992b3",
+      "d19ad309-7c33-484d-8a1e-ab268ba9a674"
+    ]
+  },
+  {
+    "id": "c0627f06-eadb-4c9f-a9c5-d3b0cbe992b3",
+    "status": "pending",
+    "role": "implementation",
+    "prerequisites": [
+      "8303cd1c-38b3-440c-803b-e39183ccbbe7"
+    ],
+    "platform": "any",
+    "difficulty": "deep",
+    "goal": "Build a source-bound product-line protocol proof machine independent of release packaging.",
+    "description": "Scope: protocol-proof state machine, evidence ledger, blocker taxonomy, trusted-server and independent-audit inputs. Context: old final Nodes could complete without adaptive or platform terminals and mixed selected release with the broad claim. Target: a deterministic reducer binds all E2EE requirements, current source, five platform terminals, external KT, trusted-server authority and independent audit. Design Considerations: typed immutable receipt references and explicit missing/stale/projected blocker states. Design Value: no aggregate score or client artifact can self-certify the claim. Constraints & Risks: this Node implements the reducer, not external evidence; product-line verdict remains false until those authorities complete.",
+    "requirements": [
+      "REQ-E2EE-008",
+      "REQ-REL-004"
+    ],
+    "acceptance_criteria": [
+      {
+        "checked": false,
+        "text": "The proof machine rejects missing, stale, projected, preview, skipped or wrong-source evidence and emits stable blocker codes."
+      },
+      {
+        "checked": false,
+        "text": "Tests prove the selected-target release verdict cannot set or imply the product-line security claim."
+      }
+    ],
+    "commit": {
+      "repository": ".git",
+      "message": "feat(security): add independent product-line proof reducer",
+      "target": "protocol proof machine and evidence schema"
+    },
+    "next": [
+      "a7fd4bb7-365c-431c-b4ca-9950a3540af2"
+    ]
+  },
+  {
+    "id": "604f3e17-834a-4f07-bc18-b466ffef8a5e",
+    "status": "pending",
+    "role": "implementation",
+    "prerequisites": [
+      "dc80097b-b69f-4f6d-be89-90c1d6891be2"
+    ],
+    "platform": "any",
+    "difficulty": "deep",
+    "goal": "Implement the exact-artifact selected-target release reducer.",
+    "description": "Scope: target catalog, acceptance and publication receipt schemas, release workflow and reducer. Context: current releaseReady stops at local artifact closure, artifact kinds diverge and support preview is not closed. Target: one reducer requires supported release-blocking services and the same digest through build, architecture, signing, install, launch, publication, download, update, rollback and privacy. Design Considerations: content-addressed immutable receipts and protected-environment provenance. Design Value: publication truth cannot be inferred from transient CI upload or local identity. Constraints & Risks: unselected targets do not block this verdict; unknown or unsupported selections fail closed.",
+    "requirements": [
+      "REQ-REL-004",
+      "REQ-REL-005"
+    ],
+    "acceptance_criteria": [
+      {
+        "checked": false,
+        "text": "Reducer rejects target, source, profile, artifact-kind, digest, identity, channel, support or continuity mismatch."
+      },
+      {
+        "checked": false,
+        "text": "Transient upload, local identity and validation-only signature never produce publication-ready status."
+      }
+    ],
+    "commit": {
+      "repository": ".git",
+      "message": "feat(release): add exact-artifact target reducer",
+      "target": "release catalog, receipt schemas, workflow and reducer"
+    },
+    "next": [
+      "a7fd4bb7-365c-431c-b4ca-9950a3540af2",
+      "d19ad309-7c33-484d-8a1e-ab268ba9a674"
+    ]
+  },
+  {
+    "id": "a7fd4bb7-365c-431c-b4ca-9950a3540af2",
+    "status": "pending",
+    "role": "implementation",
+    "prerequisites": [
+      "20bc9af9-069a-47ee-bbc4-dcc7ac823df1",
+      "b4fe5861-3e10-4878-ac57-f14d704bf0d7",
+      "c0627f06-eadb-4c9f-a9c5-d3b0cbe992b3",
+      "604f3e17-834a-4f07-bc18-b466ffef8a5e"
+    ],
+    "platform": "any",
+    "difficulty": "deep",
+    "goal": "Make support and product claims consume the exact current evidence authorities.",
+    "description": "Scope: support matrix, target services, adapter catalog, UI disclosures and both reducer inputs. Context: release-blocking services remain preview, conversation readiness is absent from support authority, and product constants overclaim or underclaim. Target: every target, adapter and security capability has one supported/preview/deferred/unsupported/unverified state and actionable reason derived from current receipts. Design Considerations: normalized catalog joins with referential-integrity checks; no prose or generated-summary feedback. Design Value: packaging and UI cannot disagree about availability. Constraints & Risks: optional external services and deferred voice remain honest non-blockers unless selected.",
+    "requirements": [
+      "REQ-REL-004",
+      "REQ-PROD-001",
+      "REQ-AGENT-002",
+      "REQ-E2EE-005"
+    ],
+    "acceptance_criteria": [
+      {
+        "checked": false,
+        "text": "Support matrix covers shell, Feed, conversation, adapters, routing and Secure Mesh requirements for every target with referential integrity."
+      },
+      {
+        "checked": false,
+        "text": "Package and UI consume the same state, and preview, missing or stale release-blocking evidence fails selected-target reduction."
+      }
+    ],
+    "commit": {
+      "repository": ".git",
+      "message": "fix(product): unify support and claim authority",
+      "target": "support matrix, product state, package gate and UI disclosure"
+    },
+    "next": [
+      "70b59023-da2a-4608-b9e6-5ec97aaa0228"
+    ]
+  },
+  {
+    "id": "d19ad309-7c33-484d-8a1e-ab268ba9a674",
+    "status": "pending",
+    "role": "implementation",
+    "prerequisites": [
+      "dc80097b-b69f-4f6d-be89-90c1d6891be2",
+      "fb8abf45-be00-4b68-9273-6b93147ad90b",
+      "8fd4c0d5-0ab3-4c90-a237-ababcda49e25",
+      "9d293a27-d060-4838-ae21-058c2e866e52",
+      "8303cd1c-38b3-440c-803b-e39183ccbbe7",
+      "604f3e17-834a-4f07-bc18-b466ffef8a5e"
+    ],
+    "platform": "any",
+    "difficulty": "deep",
+    "goal": "Create a minimum redacted, source-bound evidence ledger and final-producer privacy gate.",
+    "description": "Scope: evidence schema, producers, scanners, release workflow ordering and retention. Context: production diagnostics leak metadata and historical command/file evidence is stale or unsupported. Target: allowlisted digest receipts bind source, Node, target and artifact while the final privacy scan runs immediately before upload. Design Considerations: immutable content-addressed records, bounded sanitized errors and multi-encoding canary scans. Design Value: proof remains reproducible without exposing protected runtime data. Constraints & Risks: no workspace-wide historical scan is used as readiness; raw outputs and personal paths are never retained.",
+    "requirements": [
+      "REQ-REL-006",
+      "REQ-E2EE-007"
+    ],
+    "acceptance_criteria": [
+      {
+        "checked": false,
+        "text": "Every producer emits only schema-allowlisted bounded fields tied to current source, Node and artifact digests."
+      },
+      {
+        "checked": false,
+        "text": "The last producer is followed immediately by a passing privacy scan before upload, and seeded raw/encoded canaries fail the gate."
+      }
+    ],
+    "commit": {
+      "repository": ".git",
+      "message": "feat(evidence): bind redacted release receipts",
+      "target": "evidence schema, producers, privacy scanners and workflow ordering"
+    },
+    "next": [
+      "70b59023-da2a-4608-b9e6-5ec97aaa0228"
+    ]
+  },
+  {
+    "id": "70b59023-da2a-4608-b9e6-5ec97aaa0228",
+    "status": "pending",
+    "role": "implementation",
+    "prerequisites": [
+      "5b8f22d1-86cb-4f45-b64c-8829f7530426",
+      "cfeb63fe-981b-4732-9044-628f2656fd14",
+      "9d293a27-d060-4838-ae21-058c2e866e52",
+      "ec602a16-6608-4b49-947a-3d6bc745badb",
+      "20bc9af9-069a-47ee-bbc4-dcc7ac823df1",
+      "8fd4c0d5-0ab3-4c90-a237-ababcda49e25",
+      "fb8abf45-be00-4b68-9273-6b93147ad90b",
+      "c0627f06-eadb-4c9f-a9c5-d3b0cbe992b3",
+      "a7fd4bb7-365c-431c-b4ca-9950a3540af2",
+      "d19ad309-7c33-484d-8a1e-ab268ba9a674"
+    ],
+    "platform": "any",
+    "difficulty": "deep",
+    "goal": "Close the deterministic shared quality gate and prove every platform child consumes the current parent contract.",
+    "description": "Scope: canonical client verification, generated contracts, package profiles, integration tests and child-receipt schema. Context: independent branches can pass locally yet still disagree at package or platform boundaries. Target: one clean-source gate covers product, protocol, privacy and migration invariants, and each child receipt names completed parent/shared Nodes. Design Considerations: aggregate typed results without score-based overrides; parallel branches join only through immutable interfaces. Design Value: prevents a green leaf from masking a red dependency. Constraints & Risks: physical and external child criteria remain pending, not skipped or mocked.",
+    "requirements": [
+      "REQ-REL-002",
+      "REQ-REL-003",
+      "REQ-PROD-001"
+    ],
+    "acceptance_criteria": [
+      {
+        "checked": false,
+        "text": "The canonical clean-source quality gate passes every required format, analysis, test, lint, boundary, migration, generated-contract and privacy check."
+      },
+      {
+        "checked": false,
+        "text": "All five child receipt schemas validate parent architecture and required shared Node ids; stale or missing dependencies fail closed."
+      }
+    ],
+    "commit": {
+      "repository": ".git",
+      "message": "test(release): close aggregate client quality gate",
+      "target": "canonical verification and cross-plan receipt validation"
+    },
+    "next": [
+      "65884d8f-0691-4264-aaa1-d8a02bcf7d5c"
+    ]
+  },
+  {
+    "id": "65884d8f-0691-4264-aaa1-d8a02bcf7d5c",
+    "status": "pending",
+    "role": "final_validation",
+    "prerequisites": [
+      "70b59023-da2a-4608-b9e6-5ec97aaa0228"
+    ],
+    "platform": "any",
+    "difficulty": "deep",
+    "goal": "Emit final selected-target release and product-line security decisions from current dependency-complete evidence.",
+    "description": "Scope: entire Better Plan workspace, five child terminal receipts, exact-artifact reducer, product-line proof machine and final privacy scan. Context: old finals could complete without child or adaptive closure and collapsed distinct meanings. Target: selected targets publish only with their exact child receipts; the broader claim requires all five children, external KT, trusted-server authority and independent audit. Design Considerations: validate Manifest and Checkpoints ids/digests before reducing immutable blocker codes. Design Value: the final decision is explainable and cannot self-promote. Constraints & Risks: any unavailable external authority keeps only its dependent verdict false; no required criterion may be skipped.",
+    "requirements": [
+      "REQ-REL-001",
+      "REQ-REL-002",
+      "REQ-REL-003",
+      "REQ-REL-004",
+      "REQ-REL-005",
+      "REQ-REL-006",
+      "REQ-REL-007",
+      "REQ-PROD-001",
+      "REQ-PROD-002",
+      "REQ-PROD-003",
+      "REQ-PROD-004",
+      "REQ-AGENT-001",
+      "REQ-AGENT-002",
+      "REQ-ROUTE-001",
+      "REQ-ROUTE-002",
+      "REQ-SEC-001",
+      "REQ-SEC-002",
+      "REQ-E2EE-001",
+      "REQ-E2EE-002",
+      "REQ-E2EE-003",
+      "REQ-E2EE-004",
+      "REQ-E2EE-005",
+      "REQ-E2EE-006",
+      "REQ-E2EE-007",
+      "REQ-E2EE-008"
+    ],
+    "acceptance_criteria": [
+      {
+        "checked": false,
+        "text": "Better Plan validation and label coverage pass for the parent and every child, and every selected target terminal names the same current source and artifact chain."
+      },
+      {
+        "checked": false,
+        "text": "Selected-target reducer passes only fully published selected children; missing unselected targets do not alter that verdict."
+      },
+      {
+        "checked": false,
+        "text": "Product-line reducer passes only after macOS, Android, Linux, iOS and Windows terminals plus external KT, trusted-server and independent-audit evidence complete."
+      },
+      {
+        "checked": false,
+        "text": "A final privacy scan passes immediately before minimum redacted receipts are published, and the rebuilt client launches successfully."
+      }
+    ],
+    "commit": {
+      "repository": ".git",
+      "message": "test(release): record final client release decisions",
+      "target": "canonical final reducers and redacted receipts"
+    },
+    "next": []
+  }
+]
