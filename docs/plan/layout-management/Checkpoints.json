@@ -251,8 +251,8 @@
           {
             "type": "file",
             "path": "docs/plan/layout-management/Architecture.md",
-            "sha256": "37c3584a9c962279f4466a9ea44d5782dc79211d7c5783db585adcee302a76a5",
-            "recorded_at": "2026-07-14T11:28:22Z"
+            "sha256": "d164a0aba73b6d6843cb970544cfe933e7bc63e51812d6f6db3c61a5a4209124",
+            "recorded_at": "2026-07-14T12:12:38Z"
           }
         ]
       },
@@ -263,8 +263,8 @@
           {
             "type": "file",
             "path": "docs/plan/layout-management/Architecture.md",
-            "sha256": "37c3584a9c962279f4466a9ea44d5782dc79211d7c5783db585adcee302a76a5",
-            "recorded_at": "2026-07-14T11:28:22Z"
+            "sha256": "d164a0aba73b6d6843cb970544cfe933e7bc63e51812d6f6db3c61a5a4209124",
+            "recorded_at": "2026-07-14T12:12:38Z"
           }
         ]
       },
@@ -317,8 +317,8 @@
           {
             "type": "file",
             "path": "docs/plan/layout-management/Architecture.md",
-            "sha256": "37c3584a9c962279f4466a9ea44d5782dc79211d7c5783db585adcee302a76a5",
-            "recorded_at": "2026-07-14T11:28:23Z"
+            "sha256": "d164a0aba73b6d6843cb970544cfe933e7bc63e51812d6f6db3c61a5a4209124",
+            "recorded_at": "2026-07-14T12:12:38Z"
           }
         ]
       },
@@ -329,8 +329,8 @@
           {
             "type": "file",
             "path": "docs/plan/layout-management/Architecture.md",
-            "sha256": "37c3584a9c962279f4466a9ea44d5782dc79211d7c5783db585adcee302a76a5",
-            "recorded_at": "2026-07-14T11:28:23Z"
+            "sha256": "d164a0aba73b6d6843cb970544cfe933e7bc63e51812d6f6db3c61a5a4209124",
+            "recorded_at": "2026-07-14T12:12:38Z"
           }
         ]
       }
@@ -813,7 +813,7 @@
   },
   {
     "id": "1ce402ea-c375-44d2-a96b-9f1df8e6200e",
-    "status": "pending",
+    "status": "completed",
     "role": "implementation",
     "prerequisites": [
       "66b9a5a8-ce4e-4a23-8063-8c184da42287"
@@ -835,26 +835,155 @@
     ],
     "acceptance_criteria": [
       {
-        "checked": false,
-        "text": "LayoutSurfaceBundle, LayoutDefinition, LayoutRegistry, LayoutHost, LayoutScope, LayoutVisualTokens, LayoutComponentKit, and LayoutFocusCoordinator compile without importing built-in profiles, ClientController, legacy shell, backend, or platform implementations."
+        "checked": true,
+        "text": "LayoutSurfaceBundle, LayoutDefinition, LayoutRegistry, LayoutHost, LayoutScope, LayoutVisualTokens, LayoutComponentKit, and LayoutFocusCoordinator compile without importing built-in profiles, ClientController, legacy shell, backend, or platform implementations.",
+        "evidence_refs": [
+          {
+            "type": "command",
+            "command": "cd apps/desktop && flutter analyze --no-pub lib/src/frontend/layout",
+            "exit_code": 0,
+            "recorded_at": "2026-07-14T12:11:54Z"
+          },
+          {
+            "type": "command",
+            "command": "python3 -c \"from pathlib import Path; fs=list(Path('apps/desktop/lib/src/frontend/layout').glob('*.dart')); forbidden=('profiles/workbench','profiles/studio','client_controller.dart','frontend/shell/','src/backend/','src/platform/'); assert not [(str(f),x) for f in fs for x in forbidden if x in f.read_text()]\"",
+            "exit_code": 0,
+            "recorded_at": "2026-07-14T12:11:54Z"
+          },
+          {
+            "type": "file",
+            "path": "apps/desktop/lib/src/frontend/layout/layout_surface_bundle.dart",
+            "sha256": "25e93db6264b5a0f2c25e0e61d617ff8b5a42f7e6e1fd0ce9bc6917faead30cc",
+            "recorded_at": "2026-07-14T12:11:54Z"
+          },
+          {
+            "type": "file",
+            "path": "apps/desktop/lib/src/frontend/layout/layout_definition.dart",
+            "sha256": "9fd94f338a19d56f09c046021682d729ea8877fc9cf36f3e6bd2aaf232243d95",
+            "recorded_at": "2026-07-14T12:11:54Z"
+          },
+          {
+            "type": "file",
+            "path": "apps/desktop/lib/src/frontend/layout/layout_registry.dart",
+            "sha256": "f7a6745a7c1b222b5fe20e99af953db48752ca068ccd5a3e6f8f036838dbfe69",
+            "recorded_at": "2026-07-14T12:11:54Z"
+          },
+          {
+            "type": "file",
+            "path": "apps/desktop/lib/src/frontend/layout/layout_host.dart",
+            "sha256": "66debad6cebfd534dbc0131a013e40fa72521ff8a81bf9504414da34d9071cc4",
+            "recorded_at": "2026-07-14T12:11:54Z"
+          },
+          {
+            "type": "file",
+            "path": "apps/desktop/lib/src/frontend/layout/layout_scope.dart",
+            "sha256": "a33f725c7617a3826d640a75cca8322c60c7dc8b45a99cdf8bd7c328760714c1",
+            "recorded_at": "2026-07-14T12:11:54Z"
+          },
+          {
+            "type": "file",
+            "path": "apps/desktop/lib/src/frontend/layout/layout_visual_tokens.dart",
+            "sha256": "b86d39307924f9d631e72f2668cdd070892a07d1ed35a1d92cb77f6200dcb3fd",
+            "recorded_at": "2026-07-14T12:11:54Z"
+          },
+          {
+            "type": "file",
+            "path": "apps/desktop/lib/src/frontend/layout/layout_component_kit.dart",
+            "sha256": "4b4519a1b1e34ad3ab823ed5c510c09303ad213da5d9d1064a6facc766430aca",
+            "recorded_at": "2026-07-14T12:11:54Z"
+          },
+          {
+            "type": "file",
+            "path": "apps/desktop/lib/src/frontend/layout/layout_focus_coordinator.dart",
+            "sha256": "a9b00874f9165030483bdf3ee63cf4f78a947c0fb61c75783817c15c8b9b41bc",
+            "recorded_at": "2026-07-14T12:11:54Z"
+          }
+        ]
       },
       {
-        "checked": false,
-        "text": "Fixture tests prove exact profile/surface/viewport/destination parity, one active tree, deterministic token composition, semantic focus fallback, bounded restoration namespaces, and scoped rebuilds."
+        "checked": true,
+        "text": "Fixture tests prove exact profile/surface/viewport/destination parity, one active tree, deterministic token composition, semantic focus fallback, bounded restoration namespaces, and scoped rebuilds.",
+        "evidence_refs": [
+          {
+            "type": "command",
+            "command": "cd apps/desktop && flutter test test/layout/layout_host_fixture_test.dart",
+            "exit_code": 0,
+            "recorded_at": "2026-07-14T12:12:11Z"
+          },
+          {
+            "type": "file",
+            "path": "apps/desktop/test/layout/layout_host_fixture_test.dart",
+            "sha256": "d93f829d6a21ed9607bf5578b31961d04a60722e0760410c28edd0c6cdd3d160",
+            "recorded_at": "2026-07-14T12:12:11Z"
+          },
+          {
+            "type": "file",
+            "path": "apps/desktop/test/layout/layout_host_test_fixtures.dart",
+            "sha256": "2dac0b263aa00dbc3079913d6e8490e6e6b4a5ab0c45231fdf80b7bbdb52bcc8",
+            "recorded_at": "2026-07-14T12:12:11Z"
+          }
+        ]
       },
       {
-        "checked": false,
-        "text": "npm run client:verify:layouts runs a self-tested owned-path and import verifier that rejects cross-profile dependencies, complete-controller imports, legacy shell imports, backend/platform imports, shared styled components, mutable registration, and unauthorized composition-root imports."
+        "checked": true,
+        "text": "npm run client:verify:layouts runs a self-tested owned-path and import verifier that rejects cross-profile dependencies, complete-controller imports, legacy shell imports, backend/platform imports, shared styled components, mutable registration, and unauthorized composition-root imports.",
+        "evidence_refs": [
+          {
+            "type": "command",
+            "command": "npm run client:verify:layouts",
+            "exit_code": 0,
+            "recorded_at": "2026-07-14T12:12:18Z"
+          },
+          {
+            "type": "file",
+            "path": "apps/desktop/scripts/verify-layout-boundaries.mjs",
+            "sha256": "87efcf383751b12de55a1099defa046aa2be5d7e0b968adb39d013a0e89b020c",
+            "recorded_at": "2026-07-14T12:12:18Z"
+          },
+          {
+            "type": "file",
+            "path": "package.json",
+            "sha256": "7472b86e42aca97aa7bc9cc4becd0e22e92e137f15539408e770d0733eb0ac0f",
+            "recorded_at": "2026-07-14T12:12:18Z"
+          }
+        ]
       },
       {
-        "checked": false,
-        "text": "Desktop and mobile architecture documents can name these exact current interfaces while retaining disjoint renderer-owned paths."
+        "checked": true,
+        "text": "Desktop and mobile architecture documents can name these exact current interfaces while retaining disjoint renderer-owned paths.",
+        "evidence_refs": [
+          {
+            "type": "file",
+            "path": "docs/plan/layout-management/desktop/Architecture.md",
+            "sha256": "3a466e7d194b4f33e410bb53e45969e1b318a98b60ad90d0ef06551c45e9babd",
+            "recorded_at": "2026-07-14T12:12:25Z"
+          },
+          {
+            "type": "file",
+            "path": "docs/plan/layout-management/mobile/Architecture.md",
+            "sha256": "4dc2a894ac1003554a2b4f20761af1b0bafc5b90a1c076f92ae8916a1b1e5f22",
+            "recorded_at": "2026-07-14T12:12:25Z"
+          },
+          {
+            "type": "file",
+            "path": "docs/plan/layout-management/desktop/Checkpoints.json",
+            "sha256": "b963a78e5cb5f26463483846a10d7aa761e20323e20e766ff7798882ce79d055",
+            "recorded_at": "2026-07-14T12:12:25Z"
+          },
+          {
+            "type": "file",
+            "path": "docs/plan/layout-management/mobile/Checkpoints.json",
+            "sha256": "6de3ef3679ac996d8ea38ff8a36cc07e7d652268bf413e9ef84c71a278d387a3",
+            "recorded_at": "2026-07-14T12:12:25Z"
+          }
+        ]
       }
     ],
     "commit": {
       "repository": ".git",
       "message": "feat(client): add isolated layout host interfaces",
-      "target": "apps/desktop/lib/src/frontend/layout, layout fixtures, and layout boundary verifier"
+      "target": "apps/desktop/lib/src/frontend/layout, layout fixtures, and layout boundary verifier",
+      "delivered": "4a27f75"
     },
     "next": [
       "f7afd453-e92f-4905-b26b-69a6ecba6b51"
