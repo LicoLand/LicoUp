@@ -561,7 +561,7 @@
   },
   {
     "id": "3fd85695-c89c-4150-be56-dc244e973446",
-    "status": "pending",
+    "status": "completed",
     "role": "implementation",
     "prerequisites": [
       "d551944b-f509-44f9-9bec-921e435c4a3a"
@@ -580,22 +580,47 @@
     ],
     "acceptance_criteria": [
       {
-        "checked": false,
-        "text": "Every parent-declared mobile destination has exactly one studio-owned adapter and no undeclared or sibling fallback key."
+        "checked": true,
+        "text": "Every parent-declared mobile destination has exactly one studio-owned adapter and no undeclared or sibling fallback key.",
+        "evidence_refs": [
+          {
+            "type": "command",
+            "command": "cd apps/desktop && flutter analyze lib/src/frontend/layout/profiles/studio/mobile/destinations lib/src/frontend/layout/profiles/studio/mobile/studio_mobile_bundle.dart",
+            "exit_code": 0,
+            "recorded_at": "2026-07-14T13:20:16Z"
+          }
+        ]
       },
       {
-        "checked": false,
-        "text": "studio_mobile_bundle.dart exposes exactly one immutable mobile LayoutSurfaceBundle with compact/medium builders, preview, tokens, and unique restoration metadata."
+        "checked": true,
+        "text": "studio_mobile_bundle.dart exposes exactly one immutable mobile LayoutSurfaceBundle with compact/medium builders, preview, tokens, and unique restoration metadata.",
+        "evidence_refs": [
+          {
+            "type": "file",
+            "path": "apps/desktop/lib/src/frontend/layout/profiles/studio/mobile/studio_mobile_bundle.dart",
+            "sha256": "e59bf3a6e832dae01fe050a54dbb15a42bf62758f0d44c1c564195c60db52792",
+            "recorded_at": "2026-07-14T13:20:16Z"
+          }
+        ]
       },
       {
-        "checked": false,
-        "text": "Adapters use only narrow immutable state/command ports and preserve parent capability/readiness results without controller, backend, platform, or central integration imports."
+        "checked": true,
+        "text": "Adapters use only narrow immutable state/command ports and preserve parent capability/readiness results without controller, backend, platform, or central integration imports.",
+        "evidence_refs": [
+          {
+            "type": "command",
+            "command": "npm run client:verify:layouts",
+            "exit_code": 0,
+            "recorded_at": "2026-07-14T13:20:17Z"
+          }
+        ]
       }
     ],
     "commit": {
       "repository": ".git",
       "message": "feat(client): export studio mobile bundle",
-      "target": "studio mobile destinations and bundle entry"
+      "target": "studio mobile destinations and bundle entry",
+      "delivered": "4771627"
     },
     "next": [
       "0ad479f5-a770-4c75-acca-35ced7ed1da8"
