@@ -1,0 +1,522 @@
+[
+  {
+    "id": "cb32357a-794c-4a2b-80e3-6b4e55f9c3d5",
+    "status": "completed",
+    "role": "product_requirements",
+    "prerequisites": [],
+    "platform": "any",
+    "difficulty": "deep",
+    "goal": "Lock the renderer-only desktop contract for two complete and independently owned layout profiles.",
+    "description": "Scope: `docs/plan/layout-management/desktop/Requirements.md` and the desktop handoff clauses in the parent requirements. Context: the prior child contract mixed renderer work with central Settings, app cutover, migration, build, and launch responsibilities owned by the parent join. Target: define REQ-001 through REQ-009 for complete workbench/studio bundles, exact parity, switch-ready state boundaries, adaptive/accessibility proof, renderer-only handoff, and independent profile isolation. Design Considerations: requirements distinguish what an isolated bundle can prove from what needs a mounted production integration; each profile remains a complete presentation system rather than a shell skin. Design Value: a precise child boundary lets both profiles develop independently while preserving one central authority. Constraints & Risks: do not authorize edits to the registry, app, ClientShell, Settings, preferences, migration, build, or launch paths.",
+    "requirements": [
+      "REQ-001",
+      "REQ-002",
+      "REQ-003",
+      "REQ-004",
+      "REQ-005",
+      "REQ-006",
+      "REQ-007",
+      "REQ-008",
+      "REQ-009"
+    ],
+    "acceptance_criteria": [
+      {
+        "checked": true,
+        "text": "Requirements.md defines the complete renderer product, users/workflows, all nine local requirements, scope, non-goals, parent handoff, and child acceptance target.",
+        "evidence_refs": [
+          {
+            "type": "file",
+            "path": "docs/plan/layout-management/desktop/Requirements.md",
+            "sha256": "8d9fa61e085340788a1eb3b8e21d408f22313a29c0ba942ed4c6817e021724e2",
+            "recorded_at": "2026-07-14T12:18:55Z"
+          }
+        ]
+      },
+      {
+        "checked": true,
+        "text": "REQ-009 explicitly requires source, asset, state, fixture, test, and golden isolation plus static and change-impact proof.",
+        "evidence_refs": [
+          {
+            "type": "file",
+            "path": "docs/plan/layout-management/desktop/Requirements.md",
+            "sha256": "8d9fa61e085340788a1eb3b8e21d408f22313a29c0ba942ed4c6817e021724e2",
+            "recorded_at": "2026-07-14T12:18:55Z"
+          }
+        ]
+      },
+      {
+        "checked": true,
+        "text": "REQ-008 assigns central composition, app/shell/Settings integration, migration, rebuild, and launch exclusively to the parent integration join.",
+        "evidence_refs": [
+          {
+            "type": "file",
+            "path": "docs/plan/layout-management/desktop/Requirements.md",
+            "sha256": "8d9fa61e085340788a1eb3b8e21d408f22313a29c0ba942ed4c6817e021724e2",
+            "recorded_at": "2026-07-14T12:18:55Z"
+          }
+        ]
+      }
+    ],
+    "commit": {
+      "repository": ".git",
+      "message": "docs(plan): define isolated desktop renderer requirements",
+      "target": "docs/plan/layout-management/desktop/Requirements.md",
+      "delivered": "3126b2d"
+    },
+    "next": [
+      "6f585f95-9832-4949-827d-a42ea07d5b4b"
+    ]
+  },
+  {
+    "id": "6f585f95-9832-4949-827d-a42ea07d5b4b",
+    "status": "pending",
+    "role": "evidence",
+    "prerequisites": [
+      "cb32357a-794c-4a2b-80e3-6b4e55f9c3d5"
+    ],
+    "platform": "any",
+    "difficulty": "deep",
+    "goal": "Revalidate desktop renderer gaps and the ownership boundary with the parent integration join.",
+    "description": "Scope: `docs/plan/layout-management/desktop/Evidence.md`, current shell/navigation, Agents workspace, Settings, existing layout tests, absent profile bundle roots, and parent layout artifacts. Context: existing shell IDs select shared central builders and tests prove only isolated landmarks, so they do not establish complete or independent profiles. Target: ground the renderer-only split, identify shared mutation hotspots, and show why disjoint bundle roots and profile-owned evidence are required for REQ-001 through REQ-009. Design Considerations: separate observed repository facts from planned parent contracts and distinguish renderer evidence from mounted integration evidence. Design Value: evidence prevents cosmetic wrappers and prevents the desktop child from taking ownership of central files. Constraints & Risks: preserve current semantics, avoid turning retired mistakes into permanent fixtures, and record no sensitive runtime or machine data.",
+    "requirements": [
+      "REQ-001",
+      "REQ-002",
+      "REQ-003",
+      "REQ-004",
+      "REQ-005",
+      "REQ-006",
+      "REQ-007",
+      "REQ-008",
+      "REQ-009"
+    ],
+    "acceptance_criteria": [
+      {
+        "checked": false,
+        "text": "Evidence.md cites concrete shell, feature, Settings, test, planned profile, and parent-contract paths with observed behavior and planning consequences."
+      },
+      {
+        "checked": false,
+        "text": "Evidence explains why profile-local source/tests/goldens and one bundle entry per profile enable independent development."
+      },
+      {
+        "checked": false,
+        "text": "Evidence explicitly limits child claims to renderer bundles and assigns wired switching, migration, build, and launch to the parent."
+      }
+    ],
+    "commit": {
+      "repository": ".git",
+      "message": "docs(plan): ground desktop renderer isolation evidence",
+      "target": "docs/plan/layout-management/desktop/Evidence.md"
+    },
+    "next": [
+      "704d9bf2-6f48-41a8-b30a-5da934d7eaec"
+    ]
+  },
+  {
+    "id": "704d9bf2-6f48-41a8-b30a-5da934d7eaec",
+    "status": "pending",
+    "role": "validation_matrix",
+    "prerequisites": [
+      "6f585f95-9832-4949-827d-a42ea07d5b4b"
+    ],
+    "platform": "any",
+    "difficulty": "deep",
+    "goal": "Define the desktop renderer parity, difference, accessibility, adaptation, and isolation proof matrix.",
+    "description": "Scope: `docs/plan/layout-management/desktop/Validation.md`, profile-only Flutter selectors, deterministic goldens, fake-port fixture scenarios, the parent boundary verifier, and scoped Better Plan gates. Context: current tests assign retired IDs and cannot prove exact bundle coverage, material difference, state boundaries, or sibling independence. Target: map every local requirement to reproducible renderer evidence and separately name the parent-integration proof that completes mounted behavior. Design Considerations: use identical fake inputs for parity, structural landmarks plus goldens for difference, and owned-path/import/digest checks for isolation. Design Value: the matrix prevents a capability-incomplete, merely recolored, or cross-coupled profile from passing. Constraints & Risks: do not cite app cutover, Settings, build, launch, release, or store commands as desktop-child evidence.",
+    "requirements": [
+      "REQ-001",
+      "REQ-002",
+      "REQ-003",
+      "REQ-004",
+      "REQ-005",
+      "REQ-006",
+      "REQ-007",
+      "REQ-008",
+      "REQ-009"
+    ],
+    "acceptance_criteria": [
+      {
+        "checked": false,
+        "text": "Validation.md maps all nine requirements to profile-owned tests/goldens, static boundaries, and any required parent-integration evidence."
+      },
+      {
+        "checked": false,
+        "text": "The planned commands contain separate workbench and studio test selectors, layout-boundary verification, analysis/format checks, and scoped Better Plan gates."
+      },
+      {
+        "checked": false,
+        "text": "The matrix excludes client rebuild/open and production cutover from the child final-validation claim."
+      }
+    ],
+    "commit": {
+      "repository": ".git",
+      "message": "docs(plan): define desktop renderer validation",
+      "target": "docs/plan/layout-management/desktop/Validation.md"
+    },
+    "next": [
+      "435e546f-1591-4b38-bfdf-eabf644d5ee1"
+    ]
+  },
+  {
+    "id": "435e546f-1591-4b38-bfdf-eabf644d5ee1",
+    "status": "pending",
+    "role": "architecture_scaffold",
+    "prerequisites": [
+      "704d9bf2-6f48-41a8-b30a-5da934d7eaec"
+    ],
+    "platform": "any",
+    "difficulty": "deep",
+    "goal": "Lock one-bundle public APIs, inward dependencies, and disjoint desktop profile ownership before implementation.",
+    "description": "Scope: `docs/plan/layout-management/desktop/Architecture.md`, planned workbench/studio source, asset, test, fixture, and golden roots, plus the parent LayoutSurfaceBundle and fake-host contracts. Context: independent Nodes are unsafe unless every writable path and public interface is assigned before code begins. Target: define one public desktop bundle entry per profile, private shell/components/adapters, immutable manifests, bounded restoration namespaces, and six non-overlapping implementation ownership sets for REQ-001 through REQ-009. Design Considerations: dependencies point from bundle entry to profile internals to parent interfaces; Strategy, Adapter, Factory, and immutable maps are used only where they remove real coupling. Design Value: exact paths and a narrow API allow two profile branches to be implemented and reviewed without merge hotspots. Constraints & Risks: this Node changes plan architecture only; implementation may start only after parent contracts, fixture host, and boundary verifier exist and pass their own foundation checks.",
+    "requirements": [
+      "REQ-001",
+      "REQ-002",
+      "REQ-003",
+      "REQ-004",
+      "REQ-005",
+      "REQ-006",
+      "REQ-007",
+      "REQ-008",
+      "REQ-009"
+    ],
+    "acceptance_criteria": [
+      {
+        "checked": false,
+        "text": "Architecture.md records the exact module map, one-responsibility files/directories, dependency direction, interfaces, patterns, state/adaptation rules, and isolation invariants."
+      },
+      {
+        "checked": false,
+        "text": "The ownership table assigns shell/components, destination adapters, and bundle tests/goldens to six mutually disjoint path sets."
+      },
+      {
+        "checked": false,
+        "text": "Architecture names central registry, composition, app, shell, Settings, package aggregation, docs, build, and launch paths as parent-owned and outside every implementation Node."
+      }
+    ],
+    "commit": {
+      "repository": ".git",
+      "message": "docs(plan): lock desktop bundle architecture",
+      "target": "docs/plan/layout-management/desktop/Architecture.md"
+    },
+    "next": [
+      "a58737ef-7f7f-492f-91bd-94c44a236da5",
+      "68ed782d-4c4e-48f9-8571-cf7ac5b3ebec"
+    ]
+  },
+  {
+    "id": "a58737ef-7f7f-492f-91bd-94c44a236da5",
+    "status": "pending",
+    "role": "implementation",
+    "prerequisites": [
+      "435e546f-1591-4b38-bfdf-eabf644d5ee1"
+    ],
+    "platform": "any",
+    "difficulty": "high",
+    "goal": "Implement workbench desktop shell, component recipes, tokens, preview, and optional assets.",
+    "description": "Scope: exclusively `profiles/workbench/desktop/{shell,components,tokens,preview}/**` and `assets/layout-profiles/workbench/desktop/**`; consume parent layout interfaces and layout-neutral ports but do not edit the bundle entry or tests. Context: workbench needs a coherent spacious card/floating system independent of the existing shared shell and of studio internals. Target: implement the private command/search shell, responsive composition primitives, styled recipes, non-color tokens, deterministic preview factory, and medium/expanded behavior for REQ-001, REQ-004 through REQ-007, and REQ-009. Design Considerations: use const/local widgets, constraint-based composition, palette-independent tokens, semantic landmarks, and private factories; avoid shared styled bases and catalog scans in build. Design Value: a self-contained visual system permits genuine profile variation and bounded rebuilds without business duplication. Constraints & Risks: do not import studio, controller, legacy shell, backend/platform code, or edit destinations, `workbench_desktop.dart`, tests, goldens, registry, app, ClientShell, or Settings.",
+    "requirements": [
+      "REQ-001",
+      "REQ-004",
+      "REQ-005",
+      "REQ-006",
+      "REQ-007",
+      "REQ-009"
+    ],
+    "acceptance_criteria": [
+      {
+        "checked": false,
+        "text": "Private workbench shell/components/tokens/preview modules implement a coherent medium/expanded desktop identity using only permitted parent interfaces."
+      },
+      {
+        "checked": false,
+        "text": "Focused component checks prove constraints, semantics, appearance-token composition, and reduced-motion behavior without a controller or sibling import."
+      },
+      {
+        "checked": false,
+        "text": "The delivered diff is confined to the Node's exclusive workbench shell/component/token/preview/asset paths."
+      }
+    ],
+    "commit": {
+      "repository": ".git",
+      "message": "feat(client): implement workbench desktop components",
+      "target": "workbench desktop shell, components, tokens, preview, and assets"
+    },
+    "next": [
+      "26ac0203-77e8-4377-992c-eaab281ded7d"
+    ]
+  },
+  {
+    "id": "68ed782d-4c4e-48f9-8571-cf7ac5b3ebec",
+    "status": "pending",
+    "role": "implementation",
+    "prerequisites": [
+      "435e546f-1591-4b38-bfdf-eabf644d5ee1"
+    ],
+    "platform": "any",
+    "difficulty": "high",
+    "goal": "Implement studio desktop shell, component recipes, tokens, preview, and optional assets.",
+    "description": "Scope: exclusively `profiles/studio/desktop/{shell,components,tokens,preview}/**` and `assets/layout-profiles/studio/desktop/**`; consume parent layout interfaces and layout-neutral ports but do not edit the bundle entry or tests. Context: studio needs a dense rail/dock system that does not reuse or observe workbench internals. Target: implement private contextual navigation, responsive dock/split primitives, styled recipes, non-color tokens, deterministic preview factory, and medium/expanded behavior for REQ-002, REQ-004 through REQ-007, and REQ-009. Design Considerations: use const/local widgets, constraint-based dock collapse, palette-independent tokens, semantic landmarks, and private factories; avoid shared styled bases and catalog scans in build. Design Value: a separate component system proves structural variation and keeps profile evolution independent. Constraints & Risks: do not import workbench, controller, legacy shell, backend/platform code, or edit destinations, `studio_desktop.dart`, tests, goldens, registry, app, ClientShell, or Settings.",
+    "requirements": [
+      "REQ-002",
+      "REQ-004",
+      "REQ-005",
+      "REQ-006",
+      "REQ-007",
+      "REQ-009"
+    ],
+    "acceptance_criteria": [
+      {
+        "checked": false,
+        "text": "Private studio shell/components/tokens/preview modules implement a coherent medium/expanded desktop identity using only permitted parent interfaces."
+      },
+      {
+        "checked": false,
+        "text": "Focused component checks prove constraints, semantics, appearance-token composition, and reduced-motion behavior without a controller or sibling import."
+      },
+      {
+        "checked": false,
+        "text": "The delivered diff is confined to the Node's exclusive studio shell/component/token/preview/asset paths."
+      }
+    ],
+    "commit": {
+      "repository": ".git",
+      "message": "feat(client): implement studio desktop components",
+      "target": "studio desktop shell, components, tokens, preview, and assets"
+    },
+    "next": [
+      "26a2e535-904e-448e-93a0-196e8b59aed0"
+    ]
+  },
+  {
+    "id": "26ac0203-77e8-4377-992c-eaab281ded7d",
+    "status": "pending",
+    "role": "implementation",
+    "prerequisites": [
+      "a58737ef-7f7f-492f-91bd-94c44a236da5"
+    ],
+    "platform": "any",
+    "difficulty": "high",
+    "goal": "Implement all workbench desktop semantic destination adapters.",
+    "description": "Scope: exclusively `profiles/workbench/desktop/destinations/**`, split by Home/control, Agents/conversations, Feed, monitoring/usage, Extensions/skills, Runtime, Mobile Relay, and Settings content. Context: a complete profile must compose every parent-declared desktop capability without reaching into central shell/controller code or borrowing studio builders. Target: map the exact semantic destination/action set from immutable feature ports into workbench-local components for REQ-001, REQ-003, REQ-005 through REQ-007, and REQ-009. Design Considerations: one responsibility per adapter, exhaustive immutable builder maps, typed callbacks, stable semantic landmarks, and no capability policy or persistence logic. Design Value: adapters isolate feature semantics from workbench composition and make missing/extra coverage deterministic. Constraints & Risks: do not edit shell/components/tokens/preview, the bundle entry, tests/goldens, sibling paths, central registry, app, ClientShell, or Settings.",
+    "requirements": [
+      "REQ-001",
+      "REQ-003",
+      "REQ-005",
+      "REQ-006",
+      "REQ-007",
+      "REQ-009"
+    ],
+    "acceptance_criteria": [
+      {
+        "checked": false,
+        "text": "Workbench adapters cover the exact parent-declared desktop destination and action set with exhaustive typed builders and no fallback."
+      },
+      {
+        "checked": false,
+        "text": "Adapter-focused checks prove commands and semantic landmarks against fake ports without controller, backend/platform, legacy shell, or studio imports."
+      },
+      {
+        "checked": false,
+        "text": "The delivered diff is confined to the workbench destination adapter root."
+      }
+    ],
+    "commit": {
+      "repository": ".git",
+      "message": "feat(client): add workbench desktop destinations",
+      "target": "workbench desktop destination adapters"
+    },
+    "next": [
+      "085d6570-3b34-4760-95d3-089514b44a5c"
+    ]
+  },
+  {
+    "id": "26a2e535-904e-448e-93a0-196e8b59aed0",
+    "status": "pending",
+    "role": "implementation",
+    "prerequisites": [
+      "68ed782d-4c4e-48f9-8571-cf7ac5b3ebec"
+    ],
+    "platform": "any",
+    "difficulty": "high",
+    "goal": "Implement all studio desktop semantic destination adapters.",
+    "description": "Scope: exclusively `profiles/studio/desktop/destinations/**`, split by Home/control, Agents/conversations, Feed, monitoring/usage, Extensions/skills, Runtime, Mobile Relay, and Settings content. Context: a complete profile must compose every parent-declared desktop capability without reaching into central shell/controller code or borrowing workbench builders. Target: map the exact semantic destination/action set from immutable feature ports into studio-local components for REQ-002, REQ-003, REQ-005 through REQ-007, and REQ-009. Design Considerations: one responsibility per adapter, exhaustive immutable builder maps, typed callbacks, stable semantic landmarks, and no capability policy or persistence logic. Design Value: adapters isolate feature semantics from studio composition and make missing/extra coverage deterministic. Constraints & Risks: do not edit shell/components/tokens/preview, the bundle entry, tests/goldens, sibling paths, central registry, app, ClientShell, or Settings.",
+    "requirements": [
+      "REQ-002",
+      "REQ-003",
+      "REQ-005",
+      "REQ-006",
+      "REQ-007",
+      "REQ-009"
+    ],
+    "acceptance_criteria": [
+      {
+        "checked": false,
+        "text": "Studio adapters cover the exact parent-declared desktop destination and action set with exhaustive typed builders and no fallback."
+      },
+      {
+        "checked": false,
+        "text": "Adapter-focused checks prove commands and semantic landmarks against fake ports without controller, backend/platform, legacy shell, or workbench imports."
+      },
+      {
+        "checked": false,
+        "text": "The delivered diff is confined to the studio destination adapter root."
+      }
+    ],
+    "commit": {
+      "repository": ".git",
+      "message": "feat(client): add studio desktop destinations",
+      "target": "studio desktop destination adapters"
+    },
+    "next": [
+      "04a1b9c9-c9f9-4f83-bc45-e0f1f5e53148"
+    ]
+  },
+  {
+    "id": "085d6570-3b34-4760-95d3-089514b44a5c",
+    "status": "pending",
+    "role": "implementation",
+    "prerequisites": [
+      "26ac0203-77e8-4377-992c-eaab281ded7d"
+    ],
+    "platform": "any",
+    "difficulty": "high",
+    "goal": "Assemble and prove the single workbench desktop bundle with profile-owned tests and goldens.",
+    "description": "Scope: exclusively `profiles/workbench/desktop/workbench_desktop.dart`, `test/layout/profiles/workbench/desktop/**`, and `test/goldens/layout/workbench/desktop/**`; consume completed private workbench factories and parent fixture host. Context: shell/components and adapters remain private until one immutable bundle entry assembles and proves their exact contract. Target: export exactly one workbench desktop LayoutSurfaceBundle and prove REQ-001, REQ-003 through REQ-009 with exact coverage, fake-port actions/state, adaptation, accessibility, deterministic goldens, and isolation metadata. Design Considerations: immutable manifest assembly, no extra public exports, fixed golden environment, bounded restoration IDs, and tests that never import studio internals. Design Value: one reviewed entry plus profile-owned evidence creates a portable renderer receipt for the parent join. Constraints & Risks: do not edit earlier workbench implementation paths, studio paths, shared fixtures, registry, app, ClientShell, Settings, package scripts, or product docs.",
+    "requirements": [
+      "REQ-001",
+      "REQ-003",
+      "REQ-004",
+      "REQ-005",
+      "REQ-006",
+      "REQ-007",
+      "REQ-008",
+      "REQ-009"
+    ],
+    "acceptance_criteria": [
+      {
+        "checked": false,
+        "text": "workbench_desktop.dart exports one immutable desktop LayoutSurfaceBundle with exact variants/destinations, preview, tokens, components, asset namespace, and restoration namespace."
+      },
+      {
+        "checked": false,
+        "text": "Profile-only behavior, state, adaptive, semantics, keyboard/pointer, text-scale, contrast, reduced-motion, appearance, and golden tests pass."
+      },
+      {
+        "checked": false,
+        "text": "Boundary checks prove no forbidden/cross-profile imports, no extra public API, and an owned path set disjoint from every studio Node."
+      },
+      {
+        "checked": false,
+        "text": "The delivered diff is confined to the workbench bundle entry and workbench-owned test/golden roots."
+      }
+    ],
+    "commit": {
+      "repository": ".git",
+      "message": "test(client): prove workbench desktop bundle",
+      "target": "workbench desktop bundle entry, profile tests, and goldens"
+    },
+    "next": [
+      "696a2dac-843f-413a-bba7-eef09ac54641"
+    ]
+  },
+  {
+    "id": "04a1b9c9-c9f9-4f83-bc45-e0f1f5e53148",
+    "status": "pending",
+    "role": "implementation",
+    "prerequisites": [
+      "26a2e535-904e-448e-93a0-196e8b59aed0"
+    ],
+    "platform": "any",
+    "difficulty": "high",
+    "goal": "Assemble and prove the single studio desktop bundle with profile-owned tests and goldens.",
+    "description": "Scope: exclusively `profiles/studio/desktop/studio_desktop.dart`, `test/layout/profiles/studio/desktop/**`, and `test/goldens/layout/studio/desktop/**`; consume completed private studio factories and parent fixture host. Context: shell/components and adapters remain private until one immutable bundle entry assembles and proves their exact contract. Target: export exactly one studio desktop LayoutSurfaceBundle and prove REQ-002 through REQ-009 with exact coverage, fake-port actions/state, adaptation, accessibility, deterministic goldens, and isolation metadata. Design Considerations: immutable manifest assembly, no extra public exports, fixed golden environment, bounded restoration IDs, and tests that never import workbench internals. Design Value: one reviewed entry plus profile-owned evidence creates a portable renderer receipt for the parent join. Constraints & Risks: do not edit earlier studio implementation paths, workbench paths, shared fixtures, registry, app, ClientShell, Settings, package scripts, or product docs.",
+    "requirements": [
+      "REQ-002",
+      "REQ-003",
+      "REQ-004",
+      "REQ-005",
+      "REQ-006",
+      "REQ-007",
+      "REQ-008",
+      "REQ-009"
+    ],
+    "acceptance_criteria": [
+      {
+        "checked": false,
+        "text": "studio_desktop.dart exports one immutable desktop LayoutSurfaceBundle with exact variants/destinations, preview, tokens, components, asset namespace, and restoration namespace."
+      },
+      {
+        "checked": false,
+        "text": "Profile-only behavior, state, adaptive, semantics, keyboard/pointer, text-scale, contrast, reduced-motion, appearance, and golden tests pass."
+      },
+      {
+        "checked": false,
+        "text": "Boundary checks prove no forbidden/cross-profile imports, no extra public API, and an owned path set disjoint from every workbench Node."
+      },
+      {
+        "checked": false,
+        "text": "The delivered diff is confined to the studio bundle entry and studio-owned test/golden roots."
+      }
+    ],
+    "commit": {
+      "repository": ".git",
+      "message": "test(client): prove studio desktop bundle",
+      "target": "studio desktop bundle entry, profile tests, and goldens"
+    },
+    "next": [
+      "696a2dac-843f-413a-bba7-eef09ac54641"
+    ]
+  },
+  {
+    "id": "696a2dac-843f-413a-bba7-eef09ac54641",
+    "status": "pending",
+    "role": "final_validation",
+    "prerequisites": [
+      "085d6570-3b34-4760-95d3-089514b44a5c",
+      "04a1b9c9-c9f9-4f83-bc45-e0f1f5e53148"
+    ],
+    "platform": "any",
+    "difficulty": "deep",
+    "goal": "Prove both isolated desktop renderer bundles and hand their receipts to the parent integration join.",
+    "description": "Scope: all renderer commands and requirement mappings in desktop Validation.md, both profile-only suites/golden roots, the parent layout-boundary verifier, scoped Better Plan checks, and privacy-minimal receipts. Context: both profiles now export independent bundles, but the desktop child cannot claim production wiring, migration, build, or launch. Target: prove REQ-001 through REQ-009 for exact parity, material difference, switch-ready fake-host behavior, adaptation, accessibility, owned-path isolation, and unchanged sibling digests, then provide two bundle receipts to the parent join. Design Considerations: run profile selectors separately, use deterministic inputs and hashes, and distinguish renderer success from app integration status. Design Value: a narrow final receipt lets the parent compose verified outputs without weakening profile independence or duplicating validation. Constraints & Risks: do not edit or test-drive central registry/app/ClientShell/Settings changes here; do not run or claim client rebuild/open, packaging, release, store, device, or backend behavior; redact sensitive evidence.",
+    "requirements": [
+      "REQ-001",
+      "REQ-002",
+      "REQ-003",
+      "REQ-004",
+      "REQ-005",
+      "REQ-006",
+      "REQ-007",
+      "REQ-008",
+      "REQ-009"
+    ],
+    "acceptance_criteria": [
+      {
+        "checked": false,
+        "text": "Separate workbench and studio profile-only suites pass the exact destination/action, fake-state, adaptive, accessibility, appearance, and deterministic golden matrices."
+      },
+      {
+        "checked": false,
+        "text": "client:verify:layouts passes owned-path, forbidden-import, one-bundle export, restoration namespace, and deterministic sibling source/golden digest checks."
+      },
+      {
+        "checked": false,
+        "text": "Format and analysis gates pass for the current renderer sources and tests without requiring production app cutover."
+      },
+      {
+        "checked": false,
+        "text": "Scoped Better Plan validate --check-sources and check-labels pass for layout-management/desktop."
+      },
+      {
+        "checked": false,
+        "text": "The handoff records exactly two desktop LayoutSurfaceBundle entry points and explicitly leaves registry composition, app cutover, Settings, migration, rebuild, and launch to the parent integration join."
+      }
+    ],
+    "commit": {
+      "repository": ".git",
+      "message": "test(client): validate isolated desktop bundles",
+      "target": "desktop renderer bundle receipts and Better Plan evidence"
+    },
+    "next": []
+  }
+]
