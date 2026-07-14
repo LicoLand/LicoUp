@@ -284,7 +284,7 @@
   },
   {
     "id": "76a7f6dc-2911-4ddb-b18c-d137ab04a1ea",
-    "status": "pending",
+    "status": "completed",
     "role": "implementation",
     "prerequisites": [
       "f169649a-6dac-4177-8cf4-174ee06bc789"
@@ -304,22 +304,47 @@
     ],
     "acceptance_criteria": [
       {
-        "checked": false,
-        "text": "The four owned workbench files compile against parent contracts and contain compact/medium shell, private styled components/tokens, preview, and restoration behavior."
+        "checked": true,
+        "text": "The four owned workbench files compile against parent contracts and contain compact/medium shell, private styled components/tokens, preview, and restoration behavior.",
+        "evidence_refs": [
+          {
+            "type": "command",
+            "command": "cd apps/desktop && flutter analyze lib/src/frontend/layout/profiles/workbench/mobile",
+            "exit_code": 0,
+            "recorded_at": "2026-07-14T12:35:28Z"
+          }
+        ]
       },
       {
-        "checked": false,
-        "text": "Source inspection proves contextual navigation leaves composer clearance and uses constraints, insets, text scale, input facts, and reduced motion without persisting identity."
+        "checked": true,
+        "text": "Source inspection proves contextual navigation leaves composer clearance and uses constraints, insets, text scale, input facts, and reduced motion without persisting identity.",
+        "evidence_refs": [
+          {
+            "type": "command",
+            "command": "node -e \"const f=require('fs');const d='apps/desktop/lib/src/frontend/layout/profiles/workbench/mobile/';const s=['workbench_mobile_shell.dart','workbench_mobile_components.dart','workbench_mobile_tokens.dart','workbench_mobile_preview.dart'].map(x=>f.readFileSync(d+x,'utf8')).join('');process.exit(['keyboardInset','safeInsets','textScale','hasTouch','hasPointer','reducedMotion','destinationLabel'].every(x=>s.includes(x))?0:1)\"",
+            "exit_code": 0,
+            "recorded_at": "2026-07-14T12:35:54Z"
+          }
+        ]
       },
       {
-        "checked": false,
-        "text": "Boundary verification reports no studio, ClientController, legacy shell, Settings, backend/platform, central registry, or shared styled-component import."
+        "checked": true,
+        "text": "Boundary verification reports no studio, ClientController, legacy shell, Settings, backend/platform, central registry, or shared styled-component import.",
+        "evidence_refs": [
+          {
+            "type": "command",
+            "command": "npm run client:verify:layouts",
+            "exit_code": 0,
+            "recorded_at": "2026-07-14T12:35:28Z"
+          }
+        ]
       }
     ],
     "commit": {
       "repository": ".git",
       "message": "feat(client): add workbench mobile presentation",
-      "target": "workbench mobile shell, components, tokens, and preview"
+      "target": "workbench mobile shell, components, tokens, and preview",
+      "delivered": "0482ed6"
     },
     "next": [
       "349535e1-e4c6-4096-bd6f-2967ef629d6a"
