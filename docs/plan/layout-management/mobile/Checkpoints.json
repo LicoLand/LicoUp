@@ -790,7 +790,7 @@
   },
   {
     "id": "8784c7fe-f1fc-491f-a1f9-039fec55e5d6",
-    "status": "in_progress",
+    "status": "completed",
     "role": "final_validation",
     "prerequisites": [
       "86ec0e2a-296f-4cbf-99dd-747aef69be8e",
@@ -915,7 +915,8 @@
     "commit": {
       "repository": ".git",
       "message": "test(client): validate isolated mobile layout bundles",
-      "target": "mobile renderer bundle evidence and Better Plan state"
+      "target": "mobile renderer bundle evidence and Better Plan state",
+      "delivered": "28409e2"
     },
     "next": []
   }
