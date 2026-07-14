@@ -1,0 +1,457 @@
+[
+  {
+    "id": "07db8d6b-ff4c-4c67-b00e-1b555599d855",
+    "status": "completed",
+    "role": "product_requirements",
+    "prerequisites": [],
+    "platform": "any",
+    "difficulty": "deep",
+    "goal": "Review and lock the complete product contract for switchable, semantically equivalent layout profiles.",
+    "description": "Scope: `docs/plan/layout-management/Requirements.md` and the client-facing layout terminology in `PRODUCT.md`, `docs/functionality/CLIENT-DESKTOP.md`, `apps/desktop/README.md`, and `apps/desktop/Design.md`. Context: the current code exposes two partial desktop shell strings while the requested product behavior covers complete desktop and mobile presentation systems. Target: confirm REQ-001 through REQ-014, users, workflows, scope, non-goals, and final acceptance without redefining feature capability or server policy. Design Considerations: keep profile identity semantic, separate user selection from responsive variants, and define capability parity across layouts. Design Value: a fixed product contract prevents renderer work from silently weakening state continuity or calling a shell-only change complete. Constraints & Risks: preserve the current client product boundary, do not add remote layout code, and update requirements before implementation if evidence changes the target.",
+    "requirements": [
+      "REQ-001",
+      "REQ-002",
+      "REQ-003",
+      "REQ-004",
+      "REQ-005",
+      "REQ-006",
+      "REQ-007",
+      "REQ-008",
+      "REQ-009",
+      "REQ-010",
+      "REQ-011",
+      "REQ-012",
+      "REQ-013",
+      "REQ-014"
+    ],
+    "acceptance_criteria": [
+      {
+        "checked": true,
+        "text": "Requirements.md defines the user problem, desktop/mobile workflows, scope, non-goals, fourteen stable requirement labels, and one final acceptance target.",
+        "evidence_refs": [
+          {
+            "type": "file",
+            "path": "docs/plan/layout-management/Requirements.md",
+            "sha256": "11e000dd14208dcdead291cb7311aed504361e32ac1fa5a1ca12edacc73c8c3f",
+            "recorded_at": "2026-07-14T10:57:25Z"
+          }
+        ]
+      },
+      {
+        "checked": true,
+        "text": "The contract requires whole-presentation profiles and explicitly preserves layout-neutral product capabilities, authorization, and active task state.",
+        "evidence_refs": [
+          {
+            "type": "file",
+            "path": "docs/plan/layout-management/Requirements.md",
+            "sha256": "11e000dd14208dcdead291cb7311aed504361e32ac1fa5a1ca12edacc73c8c3f",
+            "recorded_at": "2026-07-14T10:57:25Z"
+          }
+        ]
+      },
+      {
+        "checked": true,
+        "text": "The contract defines workbench and studio as semantic current identities and contains no numbered, versioned, legacy, or compatibility plan structure.",
+        "evidence_refs": [
+          {
+            "type": "file",
+            "path": "docs/plan/layout-management/Requirements.md",
+            "sha256": "11e000dd14208dcdead291cb7311aed504361e32ac1fa5a1ca12edacc73c8c3f",
+            "recorded_at": "2026-07-14T10:57:25Z"
+          }
+        ]
+      }
+    ],
+    "commit": {
+      "repository": ".git",
+      "message": "docs(plan): lock layout management requirements",
+      "target": "docs/plan/layout-management/Requirements.md",
+      "delivered": "a0629d8"
+    },
+    "next": [
+      "0d8436d8-f953-47c4-bd17-8e3d7387a1a0"
+    ]
+  },
+  {
+    "id": "0d8436d8-f953-47c4-bd17-8e3d7387a1a0",
+    "status": "pending",
+    "role": "evidence",
+    "prerequisites": [
+      "07db8d6b-ff4c-4c67-b00e-1b555599d855"
+    ],
+    "platform": "any",
+    "difficulty": "deep",
+    "goal": "Revalidate repository gaps and primary framework practices behind the layout design.",
+    "description": "Scope: `docs/plan/layout-management/Evidence.md` plus current shell, appearance, controller, preference, settings, tests, architecture verifier, product docs, and official Flutter/first-party workbench references. Context: direct IDs, uncoordinated writes, asynchronous hydration, feature-level branches, a fixed mobile shell, and contradictory design text are observable in the working tree. Target: keep every major requirement and architecture choice tied to a file, symbol, test gap, user fact, or primary/open-source practice. Design Considerations: distinguish evidence from inference; compare adaptive resolution, state identity, restoration, theme extension, registry, and reset practices. Design Value: evidence prevents a generic plugin-style abstraction and justifies only the patterns that remove observed coupling or races. Constraints & Risks: cite relative repository paths and public sources only; do not record local identity, raw runtime data, conversations, devices, or secrets.",
+    "requirements": [
+      "REQ-002",
+      "REQ-004",
+      "REQ-005",
+      "REQ-006",
+      "REQ-007",
+      "REQ-009",
+      "REQ-011",
+      "REQ-012",
+      "REQ-013"
+    ],
+    "acceptance_criteria": [
+      {
+        "checked": false,
+        "text": "Evidence.md traces the current selection, rendering, persistence, theme, mobile, test, and verifier paths with observed gaps."
+      },
+      {
+        "checked": false,
+        "text": "Primary Flutter sources support adaptive constraint resolution, state ownership/restoration, ThemeExtension composition, and bounded widget work."
+      },
+      {
+        "checked": false,
+        "text": "Contradictory documentation, the missing coverage command, dirty-worktree constraint, and seven pre-existing sibling-plan validation issues are recorded without being reclassified as layout deliverables."
+      }
+    ],
+    "commit": {
+      "repository": ".git",
+      "message": "docs(plan): ground layout management evidence",
+      "target": "docs/plan/layout-management/Evidence.md"
+    },
+    "next": [
+      "3bd2d5b2-21f7-4c80-a442-b0b30f4ae3c5"
+    ]
+  },
+  {
+    "id": "3bd2d5b2-21f7-4c80-a442-b0b30f4ae3c5",
+    "status": "pending",
+    "role": "validation_matrix",
+    "prerequisites": [
+      "0d8436d8-f953-47c4-bd17-8e3d7387a1a0"
+    ],
+    "platform": "any",
+    "difficulty": "deep",
+    "goal": "Finalize the requirement-to-evidence matrix before layout code changes begin.",
+    "description": "Scope: `docs/plan/layout-management/Validation.md`, planned layout contract/manager/store/widget tests, architecture checks, Better Plan checks, and existing client commands. Context: current tests prove static shell shapes but not live switching, atomicity, recovery, state continuity, full destination coverage, visual difference, or mobile behavior. Target: map every LAY requirement to deterministic foundation evidence and named desktop/mobile child evidence. Design Considerations: separate unit, widget, golden, integration, build, launch, and authorized-device claims; establish a real coverage command before using coverage as evidence. Design Value: agreeing on proof before implementation prevents easy structural tests from replacing product behavior. Constraints & Risks: aggregate `client:verify` has runtime-data side effects and requires later explicit authorization; store/channel publication is not layout validation.",
+    "requirements": [
+      "REQ-001",
+      "REQ-002",
+      "REQ-003",
+      "REQ-004",
+      "REQ-005",
+      "REQ-006",
+      "REQ-007",
+      "REQ-008",
+      "REQ-009",
+      "REQ-010",
+      "REQ-011",
+      "REQ-012",
+      "REQ-013",
+      "REQ-014"
+    ],
+    "acceptance_criteria": [
+      {
+        "checked": false,
+        "text": "Validation.md maps all fourteen requirements to concrete foundation and child-plan evidence."
+      },
+      {
+        "checked": false,
+        "text": "The matrix covers registry, transaction, corruption, concurrency, destination parity, adaptive resize, state/focus continuity, accessibility, goldens, integration, architecture, build, and launch."
+      },
+      {
+        "checked": false,
+        "text": "Every listed current command exists; any planned coverage or layout-integration command is explicitly identified as work to establish rather than existing evidence."
+      }
+    ],
+    "commit": {
+      "repository": ".git",
+      "message": "docs(plan): define layout validation matrix",
+      "target": "docs/plan/layout-management/Validation.md"
+    },
+    "next": [
+      "fb9651ea-10da-42b9-9312-21d45e93952d"
+    ]
+  },
+  {
+    "id": "fb9651ea-10da-42b9-9312-21d45e93952d",
+    "status": "pending",
+    "role": "architecture_scaffold",
+    "prerequisites": [
+      "3bd2d5b2-21f7-4c80-a442-b0b30f4ae3c5"
+    ],
+    "platform": "any",
+    "difficulty": "deep",
+    "goal": "Lock the module map, contracts, state machine, data structures, patterns, and child-plan boundaries.",
+    "description": "Scope: `docs/plan/layout-management/Architecture.md` and initial directories/interfaces under contracts/presentation, application/features/layout, platform/presentation, frontend/layout, and profile variants. Context: one string and direct widget conditions cannot scale to full presentation systems, while an unconstrained plugin framework would exceed the product need. Target: establish inward dependencies, one responsibility per module, registry/factory and strategy boundaries, the preview/commit state machine, typed preference repository, semantic destination coverage, ThemeExtension composition, bounded restoration, and desktop/mobile ownership. Design Considerations: immutable O(1) maps, O(P×V×D) startup validation, one active resolution cache, serialized writes, one active widget tree, and complete-removal rules. Design Value: the selected patterns directly remove branch leakage, stale writes, hidden routes, theme duplication, and state loss. Constraints & Risks: child renderers must not be imported by the parent; no service locator, codegen layer, remote code, versioned directory, or long-lived compatibility path.",
+    "requirements": [
+      "REQ-001",
+      "REQ-002",
+      "REQ-003",
+      "REQ-004",
+      "REQ-005",
+      "REQ-006",
+      "REQ-007",
+      "REQ-008",
+      "REQ-009",
+      "REQ-010",
+      "REQ-011",
+      "REQ-012",
+      "REQ-013"
+    ],
+    "acceptance_criteria": [
+      {
+        "checked": false,
+        "text": "Architecture.md records the module/file map, responsibility boundaries, dependency direction, interface contracts, state machine, algorithms, and complexity."
+      },
+      {
+        "checked": false,
+        "text": "Registry/Factory, Strategy, State Machine/Command, Repository, and ThemeExtension choices are justified against simpler alternatives; deliberately simple areas stay pattern-free."
+      },
+      {
+        "checked": false,
+        "text": "Desktop and mobile child plans own disjoint variant modules and their architecture criteria verify the parent contract before implementation."
+      },
+      {
+        "checked": false,
+        "text": "Initial scaffold compiles without moving business logic into frontend profile modules."
+      }
+    ],
+    "commit": {
+      "repository": ".git",
+      "message": "feat(client): scaffold layout management architecture",
+      "target": "apps/desktop/lib/src/{contracts/presentation,application/features/layout,platform/presentation,frontend/layout} and docs/plan/layout-management/Architecture.md"
+    },
+    "next": [
+      "129c6757-2206-4894-84e9-ca308586f962"
+    ]
+  },
+  {
+    "id": "129c6757-2206-4894-84e9-ca308586f962",
+    "status": "pending",
+    "role": "implementation",
+    "prerequisites": [
+      "fb9651ea-10da-42b9-9312-21d45e93952d"
+    ],
+    "platform": "any",
+    "difficulty": "high",
+    "goal": "Implement pure presentation contracts and one canonical semantic destination catalog.",
+    "description": "Scope: `apps/desktop/lib/src/contracts/presentation/*.dart`, `application/features/navigation/semantic_destination_catalog.dart`, localized metadata keys, and focused tests. Context: destination lists and aliases are distributed across models, shell navigation, search, README text, and source-string verifiers. Target: immutable profile/environment/selection/preferences/destination values and one exact current destination authority consumed through declared interfaces. Design Considerations: enum/value identities remain semantic; aliases resolve before layout composition; sets/maps use deterministic ordering for tests; contracts import no implementation layer. Design Value: one semantic catalog lets every layout prove equivalent reachability without duplicating navigation policy. Constraints & Risks: preserve current section behavior and capability filtering; do not add feature availability or server policy to presentation descriptors.",
+    "requirements": [
+      "REQ-001",
+      "REQ-003",
+      "REQ-004",
+      "REQ-005",
+      "REQ-010",
+      "REQ-012"
+    ],
+    "acceptance_criteria": [
+      {
+        "checked": false,
+        "text": "Contract tests prove immutable parsing/validation, semantic names, deterministic equality/order, viewport classification inputs, and safe error codes."
+      },
+      {
+        "checked": false,
+        "text": "The destination catalog exactly represents current reachable client surfaces and aliases without importing frontend/platform/backend implementations."
+      },
+      {
+        "checked": false,
+        "text": "No duplicate shell module list is introduced in the new layout modules."
+      }
+    ],
+    "commit": {
+      "repository": ".git",
+      "message": "feat(client): add layout and destination contracts",
+      "target": "apps/desktop/lib/src/contracts/presentation and application/features/navigation"
+    },
+    "next": [
+      "57e8b062-f130-4b61-83dd-13b0d220e285"
+    ]
+  },
+  {
+    "id": "57e8b062-f130-4b61-83dd-13b0d220e285",
+    "status": "pending",
+    "role": "implementation",
+    "prerequisites": [
+      "129c6757-2206-4894-84e9-ca308586f962"
+    ],
+    "platform": "any",
+    "difficulty": "high",
+    "goal": "Implement the immutable profile catalog, exact-set validator, adaptive resolver, and bounded presentation-state store.",
+    "description": "Scope: `application/features/layout/layout_catalog.dart`, `layout_resolver.dart`, `layout_state_store.dart`, and focused unit tests. Context: `ShellLayoutIds.all` performs a linear membership check and carries no coverage, default uniqueness, viewport, or state-boundary contract. Target: one immutable map keyed by profile ID, cached ordered metadata, deterministic catalog validation, O(1) active resolution, and bounded presentation-only state keyed by registered profile/destination/surface. Design Considerations: validate once per catalog revision in O(P×V×D); cache only the active resolution tuple; fail registration rather than falling back across profiles for a missing destination. Design Value: map lookup and exact-set validation prevent branch scans and incomplete layouts while keeping runtime cost constant. Constraints & Risks: no unbounded LRU is needed because valid keys are catalog-bounded; state values cannot contain business data, conversation content, paths, or secrets.",
+    "requirements": [
+      "REQ-001",
+      "REQ-002",
+      "REQ-003",
+      "REQ-005",
+      "REQ-009",
+      "REQ-011",
+      "REQ-012"
+    ],
+    "acceptance_criteria": [
+      {
+        "checked": false,
+        "text": "Catalog tests reject duplicate IDs, missing/duplicate defaults, numbered identities, incomplete viewport or destination coverage, and mismatched revisions."
+      },
+      {
+        "checked": false,
+        "text": "Resolver tests prove stable selected identity across resize, deterministic default recovery, and O(1) map-based active lookup without catalog scans in build paths."
+      },
+      {
+        "checked": false,
+        "text": "Presentation-state tests prove valid-key bounds, per-profile isolation, deterministic reset, and rejection of unregistered keys."
+      }
+    ],
+    "commit": {
+      "repository": ".git",
+      "message": "feat(client): add deterministic layout catalog and resolver",
+      "target": "apps/desktop/lib/src/application/features/layout"
+    },
+    "next": [
+      "9463f15f-53ca-45be-a177-03e0dfc2c1a2"
+    ]
+  },
+  {
+    "id": "9463f15f-53ca-45be-a177-03e0dfc2c1a2",
+    "status": "pending",
+    "role": "implementation",
+    "prerequisites": [
+      "57e8b062-f130-4b61-83dd-13b0d220e285"
+    ],
+    "platform": "any",
+    "difficulty": "deep",
+    "goal": "Implement transactional presentation preferences and the preview/commit layout manager.",
+    "description": "Scope: `contracts/presentation/presentation_preferences.dart`, `platform/presentation/presentation_preferences_repository.dart`, `application/features/layout/layout_manager.dart`, controller composition, startup hydration, and tests. Context: three uncoordinated read-modify-write setters can lose fields; layout UI is notified before persistence succeeds; non-default startup can flash the default shell. Target: one typed canonical preference document, serialized atomic commits, loading/stable/previewing/committing/error states, monotonic operation epochs, confirm/cancel/reset, deterministic default recovery, and first-shell hydration. Design Considerations: preview is memory-only; confirm persists before promotion; stale completions cannot win; safe errors are bounded codes; appearance catalog loading remains separate. Design Value: the transaction converts a race-prone mutable string into an auditable user action with rollback. Constraints & Risks: ignore and remove the retired `shellLayoutId` field rather than dual-reading it; preserve appearance and locale values; do not log raw documents or local paths.",
+    "requirements": [
+      "REQ-004",
+      "REQ-006",
+      "REQ-007",
+      "REQ-008",
+      "REQ-009",
+      "REQ-011",
+      "REQ-013"
+    ],
+    "acceptance_criteria": [
+      {
+        "checked": false,
+        "text": "Repository tests prove serialized concurrent layout/appearance/locale updates, atomic replacement, canonical output, corrupt-file recovery, and no retired field on write."
+      },
+      {
+        "checked": false,
+        "text": "Manager tests prove initialize, preview, confirm, cancel, reset, timeout, invalid/unavailable ID, save failure rollback, and stale-operation suppression."
+      },
+      {
+        "checked": false,
+        "text": "The first meaningful shell waits for preference hydration and failures expose only a localized safe error state."
+      },
+      {
+        "checked": false,
+        "text": "ClientController no longer owns a second mutable layout string or independent layout preference setter."
+      }
+    ],
+    "commit": {
+      "repository": ".git",
+      "message": "feat(client): make layout selection transactional",
+      "target": "apps/desktop/lib/src/{application/features/layout,platform/presentation,application/controller}"
+    },
+    "next": [
+      "f7afd453-e92f-4905-b26b-69a6ecba6b51"
+    ]
+  },
+  {
+    "id": "f7afd453-e92f-4905-b26b-69a6ecba6b51",
+    "status": "pending",
+    "role": "implementation",
+    "prerequisites": [
+      "9463f15f-53ca-45be-a177-03e0dfc2c1a2"
+    ],
+    "platform": "any",
+    "difficulty": "deep",
+    "goal": "Implement the single frontend layout host, typed widget registry, visual-token composition, focus continuity, and architecture gates.",
+    "description": "Scope: `frontend/layout/layout_definition.dart`, `layout_registry.dart`, `layout_host.dart`, `layout_visual_tokens.dart`, `layout_component_kit.dart`, `layout_focus_coordinator.dart`, `lib/app.dart`, theme composition, architecture verifier, and focused tests. Context: current ID checks sit in shell and feature code, appearance owns only colors, and root replacement can discard focus/local state. Target: one widget registry matching the pure catalog, one active layout host, ThemeExtension-based non-color tokens, semantic focus capture/restore, stable restoration keys, reduced-motion-safe switching, and verifier rules that ban profile branches elsewhere. Design Considerations: builders are frontend-only; only genuinely different component roles use a kit; const/shared leaf widgets remain simple; `ValueKey(profileId)` identifies a switch and transitions cannot accumulate outgoing trees. Design Value: the host centralizes variation while keeping feature logic testable and preventing a profile matrix from infecting every page. Constraints & Risks: do not keep every profile alive, use whole-tree GlobalKeys, or add a runtime layout plugin loader; child variant definitions remain in child-owned files.",
+    "requirements": [
+      "REQ-002",
+      "REQ-003",
+      "REQ-004",
+      "REQ-005",
+      "REQ-006",
+      "REQ-009",
+      "REQ-010",
+      "REQ-011",
+      "REQ-012",
+      "REQ-013"
+    ],
+    "acceptance_criteria": [
+      {
+        "checked": false,
+        "text": "Frontend registry tests prove exact ID parity with the pure catalog, exact destination/viewport builders, one default, and deterministic previews."
+      },
+      {
+        "checked": false,
+        "text": "Theme tests compose every built-in appearance palette with both layout token families without resetting the appearance selection."
+      },
+      {
+        "checked": false,
+        "text": "Focus/restoration tests prove semantic restoration without a whole-tree GlobalKey or permanently mounted inactive profiles."
+      },
+      {
+        "checked": false,
+        "text": "Architecture verification forbids profile-ID checks outside registration/tests and validates destination coverage through structure rather than source-string placement."
+      }
+    ],
+    "commit": {
+      "repository": ".git",
+      "message": "feat(client): centralize profile rendering in layout host",
+      "target": "apps/desktop/lib/src/frontend/layout, apps/desktop/lib/app.dart, apps/desktop/scripts/verify-client-architecture.mjs"
+    },
+    "next": [
+      "977d966b-018c-49df-810d-90a68699abb8"
+    ]
+  },
+  {
+    "id": "977d966b-018c-49df-810d-90a68699abb8",
+    "status": "pending",
+    "role": "final_validation",
+    "prerequisites": [
+      "f7afd453-e92f-4905-b26b-69a6ecba6b51"
+    ],
+    "platform": "any",
+    "difficulty": "deep",
+    "goal": "Prove the platform-neutral layout foundation and hand stable contracts to both renderer child plans.",
+    "description": "Scope: all foundation files, mapped tests from `Validation.md`, architecture/plan/contracts gates, plan-scoped manifest validation, label traceability, and child architecture contract checks. Context: foundation completion is not a claim that desktop/mobile renderers or public releases are complete; it proves the shared authority they consume. Target: run the deterministic foundation matrix, confirm no retired layout selection path remains, and verify both child plans reference the current contracts and can own disjoint renderer files. Design Considerations: evidence should be command/file-backed and privacy-minimal; full `client:verify` requires explicit side-effect authorization. Design Value: a separate foundation receipt makes platform branches independently reviewable without duplicating selection and persistence logic. Constraints & Risks: do not claim full-workspace Better Plan closure while the seven pre-existing sibling issues remain; do not mark child renderer requirements complete from foundation tests.",
+    "requirements": [
+      "REQ-001",
+      "REQ-002",
+      "REQ-003",
+      "REQ-004",
+      "REQ-005",
+      "REQ-006",
+      "REQ-007",
+      "REQ-008",
+      "REQ-009",
+      "REQ-010",
+      "REQ-011",
+      "REQ-012",
+      "REQ-013",
+      "REQ-014"
+    ],
+    "acceptance_criteria": [
+      {
+        "checked": false,
+        "text": "All foundation unit/widget/architecture checks mapped in Validation.md pass with command or file evidence."
+      },
+      {
+        "checked": false,
+        "text": "Static evidence proves ShellLayoutIds, shellLayoutId, old preference read/write methods, numbered layout labels, and direct profile branches are absent from current implementation paths."
+      },
+      {
+        "checked": false,
+        "text": "npm run client:format:check, client:analyze, client:test, client:verify:architecture, client:verify:plan, and client:contracts:test pass."
+      },
+      {
+        "checked": false,
+        "text": "Scoped Better Plan validate --check-sources and check-labels pass for layout-management, and desktop/mobile child architecture criteria resolve against the same current contract files."
+      }
+    ],
+    "commit": {
+      "repository": ".git",
+      "message": "test(client): validate layout management foundation",
+      "target": "layout foundation validation evidence and docs/plan/layout-management state"
+    },
+    "next": []
+  }
+]
