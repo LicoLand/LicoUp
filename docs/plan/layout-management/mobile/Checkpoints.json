@@ -141,7 +141,7 @@
   },
   {
     "id": "2aa6a521-5e45-4dae-9093-3c112fe46c8f",
-    "status": "pending",
+    "status": "completed",
     "role": "validation_matrix",
     "prerequisites": [
       "485479c3-3921-4366-a546-878d200406ca"
@@ -164,22 +164,47 @@
     ],
     "acceptance_criteria": [
       {
-        "checked": false,
-        "text": "Validation.md maps REQ-001 through REQ-010 to concrete renderer evidence and identifies the parent proof boundary."
+        "checked": true,
+        "text": "Validation.md maps REQ-001 through REQ-010 to concrete renderer evidence and identifies the parent proof boundary.",
+        "evidence_refs": [
+          {
+            "type": "file",
+            "path": "docs/plan/layout-management/mobile/Validation.md",
+            "sha256": "2b2b6afffc179c09dc91e89c5d1ad44ef90d2767d825b90a7ba01c0ccefd7563",
+            "recorded_at": "2026-07-14T12:22:37Z"
+          }
+        ]
       },
       {
-        "checked": false,
-        "text": "Profile-owned test/golden paths cover exact bundles, destinations, compact/medium constraints, state snapshots, accessibility, material difference, and change impact."
+        "checked": true,
+        "text": "Profile-owned test/golden paths cover exact bundles, destinations, compact/medium constraints, state snapshots, accessibility, material difference, and change impact.",
+        "evidence_refs": [
+          {
+            "type": "file",
+            "path": "docs/plan/layout-management/mobile/Validation.md",
+            "sha256": "2b2b6afffc179c09dc91e89c5d1ad44ef90d2767d825b90a7ba01c0ccefd7563",
+            "recorded_at": "2026-07-14T12:22:37Z"
+          }
+        ]
       },
       {
-        "checked": false,
-        "text": "Final commands are limited to scoped format, static analysis, profile tests/goldens, boundary verification, bundle manifests, and scoped Better Plan gates."
+        "checked": true,
+        "text": "Final commands are limited to scoped format, static analysis, profile tests/goldens, boundary verification, bundle manifests, and scoped Better Plan gates.",
+        "evidence_refs": [
+          {
+            "type": "file",
+            "path": "docs/plan/layout-management/mobile/Validation.md",
+            "sha256": "2b2b6afffc179c09dc91e89c5d1ad44ef90d2767d825b90a7ba01c0ccefd7563",
+            "recorded_at": "2026-07-14T12:22:37Z"
+          }
+        ]
       }
     ],
     "commit": {
       "repository": ".git",
       "message": "docs(client): map mobile renderer validation",
-      "target": "docs/plan/layout-management/mobile/Validation.md"
+      "target": "docs/plan/layout-management/mobile/Validation.md",
+      "delivered": "5d1b8ad"
     },
     "next": [
       "f169649a-6dac-4177-8cf4-174ee06bc789"
