@@ -487,7 +487,7 @@
   },
   {
     "id": "d551944b-f509-44f9-9bec-921e435c4a3a",
-    "status": "pending",
+    "status": "completed",
     "role": "implementation",
     "prerequisites": [
       "f169649a-6dac-4177-8cf4-174ee06bc789"
@@ -507,22 +507,53 @@
     ],
     "acceptance_criteria": [
       {
-        "checked": false,
-        "text": "The four owned studio files compile against parent contracts and contain compact/medium shell, private styled components/tokens, preview, and restoration behavior."
+        "checked": true,
+        "text": "The four owned studio files compile against parent contracts and contain compact/medium shell, private styled components/tokens, preview, and restoration behavior.",
+        "evidence_refs": [
+          {
+            "type": "command",
+            "command": "cd apps/desktop && flutter analyze lib/src/frontend/layout/profiles/studio/mobile",
+            "exit_code": 0,
+            "recorded_at": "2026-07-14T13:12:26Z"
+          }
+        ]
       },
       {
-        "checked": false,
-        "text": "Source inspection proves drawer/overlay and rail/dock structures remain clear of the composer and react to constraints, insets, text scale, input facts, and reduced motion."
+        "checked": true,
+        "text": "Source inspection proves drawer/overlay and rail/dock structures remain clear of the composer and react to constraints, insets, text scale, input facts, and reduced motion.",
+        "evidence_refs": [
+          {
+            "type": "file",
+            "path": "apps/desktop/lib/src/frontend/layout/profiles/studio/mobile/studio_mobile_shell.dart",
+            "sha256": "02d051b7a8958d66baee55a7406e4c0014fea196fa47834a930992ddd4022efa",
+            "recorded_at": "2026-07-14T13:12:27Z"
+          },
+          {
+            "type": "file",
+            "path": "apps/desktop/lib/src/frontend/layout/profiles/studio/mobile/studio_mobile_tokens.dart",
+            "sha256": "a0beb5bae54b4c51b3797d879e93f86a8eb1ff2a4f9ad0b06a37345a8a1bf997",
+            "recorded_at": "2026-07-14T13:12:27Z"
+          }
+        ]
       },
       {
-        "checked": false,
-        "text": "Boundary verification reports no workbench, ClientController, legacy shell, Settings, backend/platform, central registry, or shared styled-component import."
+        "checked": true,
+        "text": "Boundary verification reports no workbench, ClientController, legacy shell, Settings, backend/platform, central registry, or shared styled-component import.",
+        "evidence_refs": [
+          {
+            "type": "command",
+            "command": "npm run client:verify:layouts",
+            "exit_code": 0,
+            "recorded_at": "2026-07-14T13:12:27Z"
+          }
+        ]
       }
     ],
     "commit": {
       "repository": ".git",
       "message": "feat(client): add studio mobile presentation",
-      "target": "studio mobile shell, components, tokens, and preview"
+      "target": "studio mobile shell, components, tokens, and preview",
+      "delivered": "bdfa5bb"
     },
     "next": [
       "3fd85695-c89c-4150-be56-dc244e973446"
