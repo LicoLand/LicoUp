@@ -352,7 +352,7 @@
   },
   {
     "id": "349535e1-e4c6-4096-bd6f-2967ef629d6a",
-    "status": "pending",
+    "status": "completed",
     "role": "implementation",
     "prerequisites": [
       "76a7f6dc-2911-4ddb-b18c-d137ab04a1ea"
@@ -371,22 +371,47 @@
     ],
     "acceptance_criteria": [
       {
-        "checked": false,
-        "text": "Every parent-declared mobile destination has exactly one workbench-owned adapter and no undeclared or sibling fallback key."
+        "checked": true,
+        "text": "Every parent-declared mobile destination has exactly one workbench-owned adapter and no undeclared or sibling fallback key.",
+        "evidence_refs": [
+          {
+            "type": "command",
+            "command": "cd apps/desktop && flutter analyze lib/src/frontend/layout/profiles/workbench/mobile",
+            "exit_code": 0,
+            "recorded_at": "2026-07-14T12:42:47Z"
+          }
+        ]
       },
       {
-        "checked": false,
-        "text": "workbench_mobile_bundle.dart exposes exactly one immutable mobile LayoutSurfaceBundle with compact/medium builders, preview, tokens, and unique restoration metadata."
+        "checked": true,
+        "text": "workbench_mobile_bundle.dart exposes exactly one immutable mobile LayoutSurfaceBundle with compact/medium builders, preview, tokens, and unique restoration metadata.",
+        "evidence_refs": [
+          {
+            "type": "file",
+            "path": "apps/desktop/lib/src/frontend/layout/profiles/workbench/mobile/workbench_mobile_bundle.dart",
+            "sha256": "60cd158732bf864543a5f9bccd9e978075625830eddbf5f69d58894d2fe6fe5d",
+            "recorded_at": "2026-07-14T12:42:47Z"
+          }
+        ]
       },
       {
-        "checked": false,
-        "text": "Adapters use only narrow immutable state/command ports and preserve parent capability/readiness results without controller, backend, platform, or central integration imports."
+        "checked": true,
+        "text": "Adapters use only narrow immutable state/command ports and preserve parent capability/readiness results without controller, backend, platform, or central integration imports.",
+        "evidence_refs": [
+          {
+            "type": "command",
+            "command": "npm run client:verify:layouts",
+            "exit_code": 0,
+            "recorded_at": "2026-07-14T12:42:47Z"
+          }
+        ]
       }
     ],
     "commit": {
       "repository": ".git",
       "message": "feat(client): export workbench mobile bundle",
-      "target": "workbench mobile destinations and bundle entry"
+      "target": "workbench mobile destinations and bundle entry",
+      "delivered": "9a95f44"
     },
     "next": [
       "86ec0e2a-296f-4cbf-99dd-747aef69be8e"
