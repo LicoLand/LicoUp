@@ -21,6 +21,7 @@ final class LayoutHost extends StatefulWidget {
     required this.environment,
     required this.destination,
     required this.onSelectDestination,
+    required this.destinationLabel,
     required this.content,
     required this.focusCoordinator,
     required this.availableFocusTargets,
@@ -34,6 +35,7 @@ final class LayoutHost extends StatefulWidget {
   final LayoutEnvironment environment;
   final ClientSection destination;
   final ValueChanged<ClientSection> onSelectDestination;
+  final LayoutDestinationLabelResolver destinationLabel;
   final LayoutDestinationContentPort content;
   final LayoutFocusCoordinator focusCoordinator;
   final Set<String> availableFocusTargets;
@@ -143,6 +145,7 @@ final class _LayoutHostState extends State<LayoutHost> {
                   availableDestinations: destinations,
                   destination: destination,
                   onSelectDestination: widget.onSelectDestination,
+                  destinationLabel: widget.destinationLabel,
                   components: registered.bundle.components,
                   tokens: registered.bundle.tokens,
                   initialFocusTarget: initialFocusTarget,
