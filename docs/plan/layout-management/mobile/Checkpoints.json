@@ -702,7 +702,7 @@
   },
   {
     "id": "aaf51817-ecec-4bf7-aa67-d2bf83899587",
-    "status": "pending",
+    "status": "completed",
     "role": "implementation",
     "prerequisites": [
       "0ad479f5-a770-4c75-acca-35ced7ed1da8"
@@ -718,22 +718,71 @@
     ],
     "acceptance_criteria": [
       {
-        "checked": false,
-        "text": "Compact Studio header and navigation overlay share one bounded text-scale-aware extent and render without overflow at 1.0x, 2.0x, and 2.2x."
+        "checked": true,
+        "text": "Compact Studio header and navigation overlay share one bounded text-scale-aware extent and render without overflow at 1.0x, 2.0x, and 2.2x.",
+        "evidence_refs": [
+          {
+            "type": "file",
+            "path": "apps/desktop/lib/src/frontend/layout/profiles/studio/mobile/studio_mobile_tokens.dart",
+            "sha256": "0ef103625b8bd32f081fa46051f2c35e33c06afcca7ed10c9ce75bc1e3a72ae2",
+            "recorded_at": "2026-07-14T13:51:15Z"
+          },
+          {
+            "type": "file",
+            "path": "apps/desktop/test/layout/profiles/studio/mobile/studio_mobile_shell_test.dart",
+            "sha256": "d5713801a5887a652eaba82a26263c45df4ac28322aaf074951de0656e28bbd1",
+            "recorded_at": "2026-07-14T13:51:15Z"
+          }
+        ]
       },
       {
-        "checked": false,
-        "text": "Safe-area, keyboard/composer clearance, restoration, semantics, and compact/medium navigation tests still pass after the geometry correction."
+        "checked": true,
+        "text": "Safe-area, keyboard/composer clearance, restoration, semantics, and compact/medium navigation tests still pass after the geometry correction.",
+        "evidence_refs": [
+          {
+            "type": "command",
+            "command": "cd apps/desktop && flutter test test/layout/profiles/studio/mobile",
+            "exit_code": 0,
+            "recorded_at": "2026-07-14T13:51:33Z"
+          }
+        ]
       },
       {
-        "checked": false,
-        "text": "Scoped analysis, Studio mobile tests, and layout-boundary verification pass with the diff confined to Studio mobile source/test ownership."
+        "checked": true,
+        "text": "Scoped analysis, Studio mobile tests, and layout-boundary verification pass with the diff confined to Studio mobile source/test ownership.",
+        "evidence_refs": [
+          {
+            "type": "command",
+            "command": "cd apps/desktop && flutter analyze lib/src/frontend/layout/profiles/studio/mobile test/layout/profiles/studio/mobile",
+            "exit_code": 0,
+            "recorded_at": "2026-07-14T13:52:13Z"
+          },
+          {
+            "type": "command",
+            "command": "cd apps/desktop && flutter test test/layout/profiles/studio/mobile",
+            "exit_code": 0,
+            "recorded_at": "2026-07-14T13:52:19Z"
+          },
+          {
+            "type": "command",
+            "command": "npm run client:verify:layouts",
+            "exit_code": 0,
+            "recorded_at": "2026-07-14T13:52:19Z"
+          },
+          {
+            "type": "command",
+            "command": "! git diff-tree --no-commit-id --name-only -r a5bc953 -- . \":(exclude)apps/desktop/lib/src/frontend/layout/profiles/studio/mobile/studio_mobile_tokens.dart\" \":(exclude)apps/desktop/lib/src/frontend/layout/profiles/studio/mobile/studio_mobile_shell.dart\" \":(exclude)apps/desktop/test/layout/profiles/studio/mobile/studio_mobile_shell_test.dart\" \":(exclude)apps/desktop/test/layout/profiles/studio/mobile/studio_mobile_sha256_manifest.json\" | rg .",
+            "exit_code": 0,
+            "recorded_at": "2026-07-14T13:52:19Z"
+          }
+        ]
       }
     ],
     "commit": {
       "repository": ".git",
       "message": "fix(client): harden studio mobile text scaling",
-      "target": "studio mobile header geometry and profile-owned tests"
+      "target": "studio mobile header geometry and profile-owned tests",
+      "delivered": "a5bc953"
     },
     "next": [
       "8784c7fe-f1fc-491f-a1f9-039fec55e5d6"
@@ -741,7 +790,7 @@
   },
   {
     "id": "8784c7fe-f1fc-491f-a1f9-039fec55e5d6",
-    "status": "pending",
+    "status": "in_progress",
     "role": "final_validation",
     "prerequisites": [
       "86ec0e2a-296f-4cbf-99dd-747aef69be8e",
