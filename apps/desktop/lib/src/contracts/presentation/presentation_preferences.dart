@@ -1,5 +1,19 @@
 import 'layout_profile.dart';
 
+enum PresentationPreferencesLoadIssue { invalidDocument }
+
+enum PresentationPreferencesRepositoryErrorCode { readFailed, writeFailed }
+
+final class PresentationPreferencesRepositoryException implements Exception {
+  const PresentationPreferencesRepositoryException(this.code);
+
+  final PresentationPreferencesRepositoryErrorCode code;
+
+  @override
+  String toString() =>
+      'PresentationPreferencesRepositoryException(${code.name})';
+}
+
 final class PresentationPreferences {
   factory PresentationPreferences({
     required LayoutProfileId layoutProfileId,
@@ -88,4 +102,26 @@ final class PresentationPreferences {
   @override
   int get hashCode =>
       Object.hash(layoutProfileId, appearancePresetId, localePreference);
+}
+
+final class PresentationPreferencesLoadResult {
+  const PresentationPreferencesLoadResult({
+    required this.preferences,
+    this.issue,
+  });
+
+  final PresentationPreferences preferences;
+  final PresentationPreferencesLoadIssue? issue;
+
+  bool get recovered => issue != null;
+}
+
+abstract interface class PresentationPreferencesRepository {
+  Future<PresentationPreferencesLoadResult> load();
+
+  Future<PresentationPreferences> setLayoutProfile(LayoutProfileId id);
+
+  Future<PresentationPreferences> setAppearancePreset(String id);
+
+  Future<PresentationPreferences> setLocalePreference(String preference);
 }
