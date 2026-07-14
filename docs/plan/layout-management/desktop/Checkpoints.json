@@ -710,7 +710,7 @@
   },
   {
     "id": "696a2dac-843f-413a-bba7-eef09ac54641",
-    "status": "pending",
+    "status": "in_progress",
     "role": "final_validation",
     "prerequisites": [
       "085d6570-3b34-4760-95d3-089514b44a5c",
@@ -733,24 +733,89 @@
     ],
     "acceptance_criteria": [
       {
-        "checked": false,
-        "text": "Separate workbench and studio profile-only suites pass the exact destination/action, fake-state, adaptive, accessibility, appearance, and deterministic golden matrices."
+        "checked": true,
+        "text": "Separate workbench and studio profile-only suites pass the exact destination/action, fake-state, adaptive, accessibility, appearance, and deterministic golden matrices.",
+        "evidence_refs": [
+          {
+            "type": "command",
+            "command": "cd apps/desktop && flutter test test/layout/profiles/workbench/desktop",
+            "exit_code": 0,
+            "recorded_at": "2026-07-14T13:53:17Z"
+          },
+          {
+            "type": "command",
+            "command": "cd apps/desktop && flutter test test/layout/profiles/studio/desktop",
+            "exit_code": 0,
+            "recorded_at": "2026-07-14T13:53:22Z"
+          }
+        ]
       },
       {
-        "checked": false,
-        "text": "client:verify:layouts passes owned-path, forbidden-import, one-bundle export, restoration namespace, and deterministic sibling source/golden digest checks."
+        "checked": true,
+        "text": "client:verify:layouts passes owned-path, forbidden-import, one-bundle export, restoration namespace, and deterministic sibling source/golden digest checks.",
+        "evidence_refs": [
+          {
+            "type": "command",
+            "command": "npm run client:verify:layouts",
+            "exit_code": 0,
+            "recorded_at": "2026-07-14T13:53:29Z"
+          }
+        ]
       },
       {
-        "checked": false,
-        "text": "Format and analysis gates pass for the current renderer sources and tests without requiring production app cutover."
+        "checked": true,
+        "text": "Format and analysis gates pass for the current renderer sources and tests without requiring production app cutover.",
+        "evidence_refs": [
+          {
+            "type": "command",
+            "command": "cd apps/desktop && dart format --output=none --set-exit-if-changed lib/src/frontend/layout/profiles/workbench/desktop lib/src/frontend/layout/profiles/studio/desktop test/layout/profiles/workbench/desktop test/layout/profiles/studio/desktop",
+            "exit_code": 0,
+            "recorded_at": "2026-07-14T13:53:43Z"
+          },
+          {
+            "type": "command",
+            "command": "cd apps/desktop && flutter analyze lib/src/frontend/layout/profiles/workbench/desktop lib/src/frontend/layout/profiles/studio/desktop test/layout/profiles/workbench/desktop test/layout/profiles/studio/desktop",
+            "exit_code": 0,
+            "recorded_at": "2026-07-14T13:53:46Z"
+          }
+        ]
       },
       {
-        "checked": false,
-        "text": "Scoped Better Plan validate --check-sources and check-labels pass for layout-management/desktop."
+        "checked": true,
+        "text": "Scoped Better Plan validate --check-sources and check-labels pass for layout-management/desktop.",
+        "evidence_refs": [
+          {
+            "type": "command",
+            "command": "python3 \"$HOME/.agents/skills/better-plan/scripts/manifest_tool.py\" validate docs/plan --plan layout-management/desktop --check-sources --no-git",
+            "exit_code": 0,
+            "recorded_at": "2026-07-14T13:54:01Z"
+          },
+          {
+            "type": "command",
+            "command": "python3 \"$HOME/.agents/skills/better-plan/scripts/manifest_tool.py\" check-labels docs/plan --plan layout-management/desktop",
+            "exit_code": 0,
+            "recorded_at": "2026-07-14T13:54:01Z"
+          }
+        ]
       },
       {
-        "checked": false,
-        "text": "The handoff records exactly two desktop LayoutSurfaceBundle entry points and explicitly leaves registry composition, app cutover, Settings, migration, rebuild, and launch to the parent integration join."
+        "checked": true,
+        "text": "The handoff records exactly two desktop LayoutSurfaceBundle entry points and explicitly leaves registry composition, app cutover, Settings, migration, rebuild, and launch to the parent integration join.",
+        "evidence": "Exactly two desktop bundle entry points are handed to the parent join; registry composition, app cutover, Settings, migration, rebuild, and launch remain parent-owned.",
+        "evidence_refs": [
+          {
+            "type": "file",
+            "path": "apps/desktop/lib/src/frontend/layout/profiles/workbench/desktop/workbench_desktop.dart",
+            "sha256": "0443e3f401c9354be241c0bf62f8e97c344f7b6834757dd4c01f2ff94580bf37",
+            "recorded_at": "2026-07-14T13:54:09Z"
+          },
+          {
+            "type": "file",
+            "path": "apps/desktop/lib/src/frontend/layout/profiles/studio/desktop/studio_desktop.dart",
+            "sha256": "eb1d4d968f218b766ddcb7e4c56fa7a7460593a0e37e6dfa7d97d36668837de7",
+            "recorded_at": "2026-07-14T13:54:09Z"
+          }
+        ]
       }
     ],
     "commit": {
