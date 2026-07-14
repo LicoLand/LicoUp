@@ -159,6 +159,47 @@ void main() {
     expect(tester.getBottomRight(barrier).dy, lessThanOrEqualTo(420));
   });
 
+  testWidgets('compact header and overlay share a bounded scaled extent', (
+    tester,
+  ) async {
+    const cases = [
+      (scale: 1.0, extent: 52.0),
+      (scale: 2.0, extent: 52.0),
+      (scale: 2.2, extent: 54.0),
+      (scale: 4.0, extent: 61.0),
+    ];
+
+    for (final testCase in cases) {
+      final harness = StudioMobileHarness();
+      await pumpStudioMobileHarness(
+        tester,
+        harness: harness,
+        environment: studioMobileEnvironment(
+          width: 320,
+          height: 420,
+          textScale: testCase.scale,
+          safeInsets: LayoutInsets(top: 7),
+        ),
+      );
+
+      final header = find.byKey(const Key('studio-mobile-compact-header'));
+      expect(tester.getSize(header).height, testCase.extent);
+      expect(tester.getSize(header).height, inInclusiveRange(52, 64));
+      await tester.tap(find.byKey(const Key('studio-mobile-menu-button')));
+      await tester.pumpAndSettle();
+
+      final barrier = find.byKey(const Key('studio-mobile-overlay-barrier'));
+      expect(
+        tester.getTopLeft(barrier).dy,
+        closeTo(tester.getBottomLeft(header).dy, 0.01),
+      );
+      expect(tester.takeException(), isNull);
+
+      await tester.tap(find.byKey(const Key('studio-mobile-menu-button')));
+      await tester.pumpAndSettle();
+    }
+  });
+
   testWidgets('large text remains overflow-safe in compact and medium', (
     tester,
   ) async {
@@ -169,7 +210,7 @@ void main() {
       environment: studioMobileEnvironment(
         width: 320,
         height: 420,
-        textScale: 2,
+        textScale: 2.2,
       ),
     );
     await tester.tap(find.byKey(const Key('studio-mobile-menu-button')));
@@ -183,7 +224,7 @@ void main() {
       environment: studioMobileEnvironment(
         width: 620,
         height: 420,
-        textScale: 2,
+        textScale: 2.2,
         hasPointer: true,
       ),
     );

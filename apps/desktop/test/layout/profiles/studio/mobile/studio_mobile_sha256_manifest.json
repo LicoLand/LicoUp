@@ -13,7 +13,7 @@
       "lib/src/frontend/layout/profiles/studio/mobile/studio_mobile_shell.dart",
       "lib/src/frontend/layout/profiles/studio/mobile/studio_mobile_tokens.dart"
     ],
-    "digest": "86024962b206fa0aadf94c3d30dd544d818886f2b5726cd673a8d9d8fbdafd82"
+    "digest": "b1f8bd7845ae54cd5947f13eb2597a8475f082acbefc67aca04d7ae4dde5c6ae"
   },
   "goldens": {
     "files": [
