@@ -1,0 +1,519 @@
+[
+  {
+    "id": "61ab58a5-4f3e-477b-972f-72a2140ec207",
+    "status": "completed",
+    "role": "product_requirements",
+    "prerequisites": [],
+    "platform": "any",
+    "difficulty": "deep",
+    "goal": "Lock the renderer-only mobile product contract and independent profile isolation boundary.",
+    "description": "Scope: docs/plan/layout-management/mobile/Requirements.md only; define users, workflows, REQ-001 through REQ-010, scope, non-goals, and final acceptance. Context: the prior child plan mixed profile rendering with parent-owned registration, Settings, cutover, migration, and native verification. Target: one delivery contract for two isolated mobile LayoutSurfaceBundle exports and a renderer receipt. Design Considerations: retain shared semantic identity and parent state authority while making isolation a first-class local requirement. Design Value: a narrow contract lets workbench and studio develop independently and prevents duplicated integration ownership. Constraints & Risks: do not weaken whole-product behavior; route central composition, fixed-shell deletion, app cutover, build, and launch to the parent integration join.",
+    "requirements": [
+      "REQ-001",
+      "REQ-002",
+      "REQ-003",
+      "REQ-004",
+      "REQ-005",
+      "REQ-006",
+      "REQ-007",
+      "REQ-008",
+      "REQ-009",
+      "REQ-010"
+    ],
+    "acceptance_criteria": [
+      {
+        "checked": true,
+        "text": "Requirements.md defines the mobile renderer problem, users, workflows, scope, non-goals, and final acceptance target.",
+        "evidence_refs": [
+          {
+            "type": "file",
+            "path": "docs/plan/layout-management/mobile/Requirements.md",
+            "sha256": "69b1b801c62ac244bfdb6bc98727873c3659dd2bb3bbc7678f4f9d3af44a9473",
+            "recorded_at": "2026-07-14T12:21:30Z"
+          }
+        ]
+      },
+      {
+        "checked": true,
+        "text": "REQ-001 through REQ-010 define two complete bundles, exact destination adapters, state/environment behavior, renderer-only ownership, evidence, and independent profile isolation.",
+        "evidence_refs": [
+          {
+            "type": "file",
+            "path": "docs/plan/layout-management/mobile/Requirements.md",
+            "sha256": "69b1b801c62ac244bfdb6bc98727873c3659dd2bb3bbc7678f4f9d3af44a9473",
+            "recorded_at": "2026-07-14T12:21:30Z"
+          }
+        ]
+      },
+      {
+        "checked": true,
+        "text": "The contract explicitly assigns registry, app, ClientShell, Settings, old-shell removal, integration, Android/iOS build, device, and launch work to the parent join.",
+        "evidence_refs": [
+          {
+            "type": "file",
+            "path": "docs/plan/layout-management/mobile/Requirements.md",
+            "sha256": "69b1b801c62ac244bfdb6bc98727873c3659dd2bb3bbc7678f4f9d3af44a9473",
+            "recorded_at": "2026-07-14T12:21:30Z"
+          }
+        ]
+      }
+    ],
+    "commit": {
+      "repository": ".git",
+      "message": "docs(client): define mobile layout renderer contract",
+      "target": "docs/plan/layout-management/mobile/Requirements.md",
+      "delivered": "f41d779"
+    },
+    "next": [
+      "485479c3-3921-4366-a546-878d200406ca"
+    ]
+  },
+  {
+    "id": "485479c3-3921-4366-a546-878d200406ca",
+    "status": "pending",
+    "role": "evidence",
+    "prerequisites": [
+      "61ab58a5-4f3e-477b-972f-72a2140ec207"
+    ],
+    "platform": "any",
+    "difficulty": "deep",
+    "goal": "Ground the mobile bundle design and renderer-only boundary in parent contracts and current source evidence.",
+    "description": "Scope: docs/plan/layout-management/mobile/Evidence.md only; inspect the parent requirements, architecture, validation, fixed client shell/navigation, controller destination filtering, Settings, mobile tests, PRODUCT.md, and Flutter asset configuration. Context: current mobile presentation is one controller-coupled fixed shell and existing tests do not prove isolated profile bundles. Target: document the renderer gaps, inherited primary-framework decisions, ownership correction, and privacy constraints behind all local requirements. Design Considerations: distinguish current source facts from parent contract decisions and avoid treating an unregistered bundle as an integrated app. Design Value: evidence prevents profile Nodes from absorbing convenient but overlapping central work. Constraints & Risks: current working-tree changes are authoritative and unrelated changes must remain untouched; do not record runtime or private data.",
+    "requirements": [
+      "REQ-001",
+      "REQ-002",
+      "REQ-003",
+      "REQ-004",
+      "REQ-005",
+      "REQ-006",
+      "REQ-007",
+      "REQ-008",
+      "REQ-009",
+      "REQ-010"
+    ],
+    "acceptance_criteria": [
+      {
+        "checked": false,
+        "text": "Evidence.md cites parent-plan contracts and concrete current mobile source/test paths for every major gap and ownership decision."
+      },
+      {
+        "checked": false,
+        "text": "Evidence distinguishes bundle completeness from central registration, live switching, migration, build, simulator, device, and launch proof."
+      },
+      {
+        "checked": false,
+        "text": "The gap analysis justifies disjoint shell/component, destination/bundle, and profile-test/golden ownership without inventing backend behavior."
+      }
+    ],
+    "commit": {
+      "repository": ".git",
+      "message": "docs(client): ground mobile renderer plan",
+      "target": "docs/plan/layout-management/mobile/Evidence.md"
+    },
+    "next": [
+      "2aa6a521-5e45-4dae-9093-3c112fe46c8f"
+    ]
+  },
+  {
+    "id": "2aa6a521-5e45-4dae-9093-3c112fe46c8f",
+    "status": "pending",
+    "role": "validation_matrix",
+    "prerequisites": [
+      "485479c3-3921-4366-a546-878d200406ca"
+    ],
+    "platform": "any",
+    "difficulty": "deep",
+    "goal": "Define the complete mobile renderer evidence matrix before profile code begins.",
+    "description": "Scope: docs/plan/layout-management/mobile/Validation.md only; map every local requirement to bundle, widget, semantics, adaptive, restoration, golden, isolation, and static evidence. Context: the earlier matrix claimed Settings, cutover, migration, builds, simulators, and physical-device behavior that only the parent can prove. Target: establish profile-owned test paths, deterministic fixtures, renderer-only commands, parent handoff boundaries, and scoped Better Plan gates. Design Considerations: both profiles use the same narrow fake-port contract while retaining disjoint tests and outputs; command claims must remain planned until their owner creates them. Design Value: an upfront matrix makes final validation prove the original child requirements rather than an integrated-app target. Constraints & Risks: no aggregate app, native, simulator, device, packaging, or launch command belongs in this child receipt.",
+    "requirements": [
+      "REQ-001",
+      "REQ-002",
+      "REQ-003",
+      "REQ-004",
+      "REQ-005",
+      "REQ-006",
+      "REQ-007",
+      "REQ-008",
+      "REQ-009",
+      "REQ-010"
+    ],
+    "acceptance_criteria": [
+      {
+        "checked": false,
+        "text": "Validation.md maps REQ-001 through REQ-010 to concrete renderer evidence and identifies the parent proof boundary."
+      },
+      {
+        "checked": false,
+        "text": "Profile-owned test/golden paths cover exact bundles, destinations, compact/medium constraints, state snapshots, accessibility, material difference, and change impact."
+      },
+      {
+        "checked": false,
+        "text": "Final commands are limited to scoped format, static analysis, profile tests/goldens, boundary verification, bundle manifests, and scoped Better Plan gates."
+      }
+    ],
+    "commit": {
+      "repository": ".git",
+      "message": "docs(client): map mobile renderer validation",
+      "target": "docs/plan/layout-management/mobile/Validation.md"
+    },
+    "next": [
+      "f169649a-6dac-4177-8cf4-174ee06bc789"
+    ]
+  },
+  {
+    "id": "f169649a-6dac-4177-8cf4-174ee06bc789",
+    "status": "pending",
+    "role": "architecture_scaffold",
+    "prerequisites": [
+      "2aa6a521-5e45-4dae-9093-3c112fe46c8f"
+    ],
+    "platform": "any",
+    "difficulty": "deep",
+    "goal": "Lock the mobile profile module map, one-way dependencies, public bundle interfaces, and disjoint owned paths.",
+    "description": "Scope: docs/plan/layout-management/mobile/Architecture.md only; define both profile trees, test trees, bundle entry points, layer dependencies, adapter/state/environment contracts, patterns, complexity, isolation, and parent receipt. Context: profile implementation can proceed in parallel only after exact file and interface ownership is fixed. Target: each profile exposes one immutable mobile LayoutSurfaceBundle and keeps shell, components, tokens, preview, destinations, restoration, tests, and goldens private and independent. Design Considerations: local bundle factory plus destination adapters earn their complexity; plain immutable records/maps remain sufficient elsewhere; builder maps provide deterministic O(1) lookup. Design Value: explicit boundaries eliminate source overlap and make sibling change impact mechanically testable. Constraints & Risks: architecture consumes completed parent interfaces and may not scaffold or edit a central registry, app, shell, Settings, legacy migration, package integration test, or native project.",
+    "requirements": [
+      "REQ-001",
+      "REQ-002",
+      "REQ-003",
+      "REQ-004",
+      "REQ-005",
+      "REQ-006",
+      "REQ-007",
+      "REQ-008",
+      "REQ-009",
+      "REQ-010"
+    ],
+    "acceptance_criteria": [
+      {
+        "checked": false,
+        "text": "Architecture.md records one-responsibility source/test maps, layer boundaries, one-way dependencies, and exactly two public mobile bundle entry points."
+      },
+      {
+        "checked": false,
+        "text": "The owned-path table gives every implementation branch an explicit non-overlapping source, destination/bundle, or test/golden scope."
+      },
+      {
+        "checked": false,
+        "text": "Architecture documents deliberate Factory, Adapter, and Strategy use, simpler pattern-free records/maps, bounded state, O(1) lookups, hard imports, and parent integration ownership."
+      }
+    ],
+    "commit": {
+      "repository": ".git",
+      "message": "docs(client): design isolated mobile layout bundles",
+      "target": "docs/plan/layout-management/mobile/Architecture.md"
+    },
+    "next": [
+      "76a7f6dc-2911-4ddb-b18c-d137ab04a1ea",
+      "d551944b-f509-44f9-9bec-921e435c4a3a"
+    ]
+  },
+  {
+    "id": "76a7f6dc-2911-4ddb-b18c-d137ab04a1ea",
+    "status": "pending",
+    "role": "implementation",
+    "prerequisites": [
+      "f169649a-6dac-4177-8cf4-174ee06bc789"
+    ],
+    "platform": "any",
+    "difficulty": "deep",
+    "goal": "Implement workbench mobile shell, component recipes, tokens, and preview within its exclusive source files.",
+    "description": "Scope: exclusively workbench_mobile_shell.dart, workbench_mobile_components.dart, workbench_mobile_tokens.dart, and workbench_mobile_preview.dart under apps/desktop/lib/src/frontend/layout/profiles/workbench/mobile; consume completed parent layout contracts and narrow ports. Context: workbench needs a complete spacious mobile presentation without sharing the fixed shell or studio styling. Target: compact/medium card-and-stack composition, contextual navigation, composer clearance, profile tokens, accessible component recipes, public-metadata preview, and a workbench-only restoration prefix. Design Considerations: render immutable supplied state; use constraints/insets/input facts locally; keep styled recipes private; build no registry or domain authority. Design Value: this coherent visual slice can be reviewed and changed without touching destination mapping or studio. Constraints & Risks: do not edit destinations, bundle entry, tests, goldens, assets outside an approved namespace, sibling profile, central integration, ClientController, shell, Settings, or platform code.",
+    "requirements": [
+      "REQ-001",
+      "REQ-002",
+      "REQ-005",
+      "REQ-006",
+      "REQ-007",
+      "REQ-008",
+      "REQ-010"
+    ],
+    "acceptance_criteria": [
+      {
+        "checked": false,
+        "text": "The four owned workbench files compile against parent contracts and contain compact/medium shell, private styled components/tokens, preview, and restoration behavior."
+      },
+      {
+        "checked": false,
+        "text": "Source inspection proves contextual navigation leaves composer clearance and uses constraints, insets, text scale, input facts, and reduced motion without persisting identity."
+      },
+      {
+        "checked": false,
+        "text": "Boundary verification reports no studio, ClientController, legacy shell, Settings, backend/platform, central registry, or shared styled-component import."
+      }
+    ],
+    "commit": {
+      "repository": ".git",
+      "message": "feat(client): add workbench mobile presentation",
+      "target": "workbench mobile shell, components, tokens, and preview"
+    },
+    "next": [
+      "349535e1-e4c6-4096-bd6f-2967ef629d6a"
+    ]
+  },
+  {
+    "id": "349535e1-e4c6-4096-bd6f-2967ef629d6a",
+    "status": "pending",
+    "role": "implementation",
+    "prerequisites": [
+      "76a7f6dc-2911-4ddb-b18c-d137ab04a1ea"
+    ],
+    "platform": "any",
+    "difficulty": "deep",
+    "goal": "Implement exact workbench mobile destination adapters and its sole LayoutSurfaceBundle entry point.",
+    "description": "Scope: exclusively apps/desktop/lib/src/frontend/layout/profiles/workbench/mobile/destinations/** and workbench_mobile_bundle.dart; consume the workbench shell/component files and parent destination/port contracts. Context: the local composition root becomes valid only when every parent-declared mobile destination has a profile adapter. Target: adapter builders for agents/conversation, feed, pairing entry, and Settings plus one immutable workbench mobile bundle declaring exact compact/medium coverage, preview, tokens, and restoration namespace. Design Considerations: immutable destination maps validate missing/extra keys once and allow O(1) lookup; adapters forward semantic commands without deciding capability/readiness. Design Value: the bundle is a small auditable handoff that hides all profile internals. Constraints & Risks: export no second public object, fallback, mutable registration, sibling adapter, controller, backend/platform service, central registry, app, ClientShell, or Settings implementation.",
+    "requirements": [
+      "REQ-001",
+      "REQ-004",
+      "REQ-005",
+      "REQ-006",
+      "REQ-008",
+      "REQ-010"
+    ],
+    "acceptance_criteria": [
+      {
+        "checked": false,
+        "text": "Every parent-declared mobile destination has exactly one workbench-owned adapter and no undeclared or sibling fallback key."
+      },
+      {
+        "checked": false,
+        "text": "workbench_mobile_bundle.dart exposes exactly one immutable mobile LayoutSurfaceBundle with compact/medium builders, preview, tokens, and unique restoration metadata."
+      },
+      {
+        "checked": false,
+        "text": "Adapters use only narrow immutable state/command ports and preserve parent capability/readiness results without controller, backend, platform, or central integration imports."
+      }
+    ],
+    "commit": {
+      "repository": ".git",
+      "message": "feat(client): export workbench mobile bundle",
+      "target": "workbench mobile destinations and bundle entry"
+    },
+    "next": [
+      "86ec0e2a-296f-4cbf-99dd-747aef69be8e"
+    ]
+  },
+  {
+    "id": "86ec0e2a-296f-4cbf-99dd-747aef69be8e",
+    "status": "pending",
+    "role": "implementation",
+    "prerequisites": [
+      "349535e1-e4c6-4096-bd6f-2967ef629d6a"
+    ],
+    "platform": "any",
+    "difficulty": "high",
+    "goal": "Prove the workbench mobile bundle through profile-owned tests and deterministic goldens.",
+    "description": "Scope: exclusively apps/desktop/test/layout/profiles/workbench/mobile/** including its goldens; import only the workbench bundle and shared parent fake-port contracts. Context: source completion is insufficient without exact manifest, adaptive, state, accessibility, visual, and isolation evidence. Target: a profile-only bundle suite, compact/medium shell suite, and deterministic golden matrix covering representative appearance, inset, keyboard, text-scale, and reduced-motion inputs. Design Considerations: use fixed locale/font/pixel ratio/animation state; assert semantic outputs and bounded restoration rather than widget-instance retention; record normalized source/golden digests. Design Value: workbench can change and validate without running or importing studio. Constraints & Risks: do not edit production source, central fixtures, studio tests/goldens, integration tests, registry, app, shell, Settings, or native projects; goldens contain no user/runtime data.",
+    "requirements": [
+      "REQ-002",
+      "REQ-004",
+      "REQ-005",
+      "REQ-006",
+      "REQ-007",
+      "REQ-009",
+      "REQ-010"
+    ],
+    "acceptance_criteria": [
+      {
+        "checked": false,
+        "text": "Profile-only tests prove workbench identity/surface/variant metadata, exact destinations/actions, immutable fake-port rendering, and bounded workbench restoration keys."
+      },
+      {
+        "checked": false,
+        "text": "Constraint, semantics, touch/focus, overflow, composer-clearance, text-scale, inset, appearance-token, and reduced-motion matrices pass."
+      },
+      {
+        "checked": false,
+        "text": "Deterministic workbench goldens and normalized source/golden digests are recorded entirely under the workbench test root."
+      }
+    ],
+    "commit": {
+      "repository": ".git",
+      "message": "test(client): prove workbench mobile bundle",
+      "target": "workbench mobile tests and goldens"
+    },
+    "next": [
+      "8784c7fe-f1fc-491f-a1f9-039fec55e5d6"
+    ]
+  },
+  {
+    "id": "d551944b-f509-44f9-9bec-921e435c4a3a",
+    "status": "pending",
+    "role": "implementation",
+    "prerequisites": [
+      "f169649a-6dac-4177-8cf4-174ee06bc789"
+    ],
+    "platform": "any",
+    "difficulty": "deep",
+    "goal": "Implement studio mobile shell, component recipes, tokens, and preview within its exclusive source files.",
+    "description": "Scope: exclusively studio_mobile_shell.dart, studio_mobile_components.dart, studio_mobile_tokens.dart, and studio_mobile_preview.dart under apps/desktop/lib/src/frontend/layout/profiles/studio/mobile; consume completed parent layout contracts and narrow ports. Context: studio must be materially different from workbench without borrowing its source or state. Target: compact dense edge-to-edge composition with contextual drawer/overlay, medium rail/dock composition, composer clearance, distinct tokens/components, public-metadata preview, and studio-only restoration prefix. Design Considerations: render immutable supplied state; use constraints/insets/input facts locally; keep all styled recipes private; create no registry or domain authority. Design Value: an independently owned visual system makes divergence intentional and testable. Constraints & Risks: do not edit destinations, bundle entry, tests, goldens, sibling profile, central integration, ClientController, shell, Settings, or platform code.",
+    "requirements": [
+      "REQ-001",
+      "REQ-003",
+      "REQ-005",
+      "REQ-006",
+      "REQ-007",
+      "REQ-008",
+      "REQ-010"
+    ],
+    "acceptance_criteria": [
+      {
+        "checked": false,
+        "text": "The four owned studio files compile against parent contracts and contain compact/medium shell, private styled components/tokens, preview, and restoration behavior."
+      },
+      {
+        "checked": false,
+        "text": "Source inspection proves drawer/overlay and rail/dock structures remain clear of the composer and react to constraints, insets, text scale, input facts, and reduced motion."
+      },
+      {
+        "checked": false,
+        "text": "Boundary verification reports no workbench, ClientController, legacy shell, Settings, backend/platform, central registry, or shared styled-component import."
+      }
+    ],
+    "commit": {
+      "repository": ".git",
+      "message": "feat(client): add studio mobile presentation",
+      "target": "studio mobile shell, components, tokens, and preview"
+    },
+    "next": [
+      "3fd85695-c89c-4150-be56-dc244e973446"
+    ]
+  },
+  {
+    "id": "3fd85695-c89c-4150-be56-dc244e973446",
+    "status": "pending",
+    "role": "implementation",
+    "prerequisites": [
+      "d551944b-f509-44f9-9bec-921e435c4a3a"
+    ],
+    "platform": "any",
+    "difficulty": "deep",
+    "goal": "Implement exact studio mobile destination adapters and its sole LayoutSurfaceBundle entry point.",
+    "description": "Scope: exclusively apps/desktop/lib/src/frontend/layout/profiles/studio/mobile/destinations/** and studio_mobile_bundle.dart; consume the studio shell/component files and parent destination/port contracts. Context: studio needs the same semantic destination product through its own composition and no workbench fallback. Target: adapter builders for agents/conversation, feed, pairing entry, and Settings plus one immutable studio mobile bundle declaring exact compact/medium coverage, preview, tokens, and restoration namespace. Design Considerations: immutable destination maps validate missing/extra keys once and allow O(1) lookup; adapters forward semantic commands without deciding capability/readiness. Design Value: the bundle is a small auditable handoff that hides studio internals. Constraints & Risks: export no second public object, fallback, mutable registration, sibling adapter, controller, backend/platform service, central registry, app, ClientShell, or Settings implementation.",
+    "requirements": [
+      "REQ-001",
+      "REQ-004",
+      "REQ-005",
+      "REQ-006",
+      "REQ-008",
+      "REQ-010"
+    ],
+    "acceptance_criteria": [
+      {
+        "checked": false,
+        "text": "Every parent-declared mobile destination has exactly one studio-owned adapter and no undeclared or sibling fallback key."
+      },
+      {
+        "checked": false,
+        "text": "studio_mobile_bundle.dart exposes exactly one immutable mobile LayoutSurfaceBundle with compact/medium builders, preview, tokens, and unique restoration metadata."
+      },
+      {
+        "checked": false,
+        "text": "Adapters use only narrow immutable state/command ports and preserve parent capability/readiness results without controller, backend, platform, or central integration imports."
+      }
+    ],
+    "commit": {
+      "repository": ".git",
+      "message": "feat(client): export studio mobile bundle",
+      "target": "studio mobile destinations and bundle entry"
+    },
+    "next": [
+      "0ad479f5-a770-4c75-acca-35ced7ed1da8"
+    ]
+  },
+  {
+    "id": "0ad479f5-a770-4c75-acca-35ced7ed1da8",
+    "status": "pending",
+    "role": "implementation",
+    "prerequisites": [
+      "3fd85695-c89c-4150-be56-dc244e973446"
+    ],
+    "platform": "any",
+    "difficulty": "high",
+    "goal": "Prove the studio mobile bundle through profile-owned tests and deterministic goldens.",
+    "description": "Scope: exclusively apps/desktop/test/layout/profiles/studio/mobile/** including its goldens; import only the studio bundle and shared parent fake-port contracts. Context: studio requires exact manifest, adaptive, state, accessibility, visual, and isolation evidence independent of workbench. Target: a profile-only bundle suite, compact/medium shell suite, and deterministic golden matrix covering representative appearance, inset, keyboard, text-scale, and reduced-motion inputs. Design Considerations: use fixed locale/font/pixel ratio/animation state; assert semantic outputs and bounded restoration rather than widget-instance retention; record normalized source/golden digests. Design Value: studio can change and validate without running or importing workbench. Constraints & Risks: do not edit production source, central fixtures, workbench tests/goldens, integration tests, registry, app, shell, Settings, or native projects; goldens contain no user/runtime data.",
+    "requirements": [
+      "REQ-003",
+      "REQ-004",
+      "REQ-005",
+      "REQ-006",
+      "REQ-007",
+      "REQ-009",
+      "REQ-010"
+    ],
+    "acceptance_criteria": [
+      {
+        "checked": false,
+        "text": "Profile-only tests prove studio identity/surface/variant metadata, exact destinations/actions, immutable fake-port rendering, and bounded studio restoration keys."
+      },
+      {
+        "checked": false,
+        "text": "Constraint, semantics, touch/focus, overflow, composer-clearance, text-scale, inset, appearance-token, and reduced-motion matrices pass."
+      },
+      {
+        "checked": false,
+        "text": "Deterministic studio goldens and normalized source/golden digests are recorded entirely under the studio test root."
+      }
+    ],
+    "commit": {
+      "repository": ".git",
+      "message": "test(client): prove studio mobile bundle",
+      "target": "studio mobile tests and goldens"
+    },
+    "next": [
+      "8784c7fe-f1fc-491f-a1f9-039fec55e5d6"
+    ]
+  },
+  {
+    "id": "8784c7fe-f1fc-491f-a1f9-039fec55e5d6",
+    "status": "pending",
+    "role": "final_validation",
+    "prerequisites": [
+      "86ec0e2a-296f-4cbf-99dd-747aef69be8e",
+      "0ad479f5-a770-4c75-acca-35ced7ed1da8"
+    ],
+    "platform": "any",
+    "difficulty": "deep",
+    "goal": "Produce the renderer-only receipt for both isolated mobile LayoutSurfaceBundle exports.",
+    "description": "Scope: run the renderer commands and record command/file evidence in this Checkpoints state; inspect only both profile source roots, both profile test/golden roots, public bundle manifests, the parent boundary verifier, and scoped plan files. Context: both branches are complete, but central registration and runnable-app behavior deliberately remain unmodified and unproven. Target: prove all local requirements through two immutable complete bundles, exact mobile destination products, material visual difference, accessibility/adaptation/state contracts, disjoint ownership, and sibling change-impact stability. Design Considerations: compare only public normalized manifests and digests; preserve separate workbench/studio commands so one suite cannot mask the other. Design Value: a narrow terminal receipt is sufficient for the parent join without overstating integration or platform results. Constraints & Risks: do not edit or run app cutover, ClientShell, Settings, old-shell removal, integration tests, Android/iOS builds, simulators, devices, packaging, release, or launch; keep evidence privacy-minimal.",
+    "requirements": [
+      "REQ-001",
+      "REQ-002",
+      "REQ-003",
+      "REQ-004",
+      "REQ-005",
+      "REQ-006",
+      "REQ-007",
+      "REQ-008",
+      "REQ-009",
+      "REQ-010"
+    ],
+    "acceptance_criteria": [
+      {
+        "checked": false,
+        "text": "Scoped format and client static analysis pass for the two profile source and test roots."
+      },
+      {
+        "checked": false,
+        "text": "Workbench and studio profile-only widget, semantics, adaptive, state, and golden suites pass independently with deterministic artifacts."
+      },
+      {
+        "checked": false,
+        "text": "Public manifests prove exactly one immutable mobile LayoutSurfaceBundle per semantic profile and exact compact/medium destination coverage."
+      },
+      {
+        "checked": false,
+        "text": "The self-tested layout-boundary verifier proves disjoint owned paths, allowed imports only, unique restoration namespaces, no mutable/central registration, and unchanged sibling source/golden digests under the change-impact fixture."
+      },
+      {
+        "checked": false,
+        "text": "Scoped validate --check-sources and check-labels pass for layout-management/mobile, and terminal evidence is ready for the parent integration join without any integration, migration, build, device, or launch claim."
+      }
+    ],
+    "commit": {
+      "repository": ".git",
+      "message": "test(client): validate isolated mobile layout bundles",
+      "target": "mobile renderer bundle evidence and Better Plan state"
+    },
+    "next": []
+  }
+]
