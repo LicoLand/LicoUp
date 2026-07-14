@@ -24,6 +24,7 @@ Foundation core modules do not import a built-in profile. Desktop and mobile may
 - `lib/src/contracts/presentation/layout_profile.dart` — validated `LayoutProfileId`, immutable `LayoutProfileDescriptor`, localized metadata keys, unique-default metadata, style identity, and safe validation codes.
 - `lib/src/contracts/presentation/layout_environment.dart` — `LayoutRuntimeSurface` (`desktop`, `mobile`), `LayoutViewportClass` (`compact`, `medium`, `expanded`), the immutable surface viewport policy (`desktop = {medium, expanded}`, `mobile = {compact, medium}`), constraints, input capabilities, safe insets, text scale, and reduced-motion facts.
 - `lib/src/contracts/presentation/layout_variant.dart` — immutable `LayoutVariantKey(profileId, surface, viewport)` and coverage manifest keyed by semantic destination.
+- `lib/src/contracts/presentation/layout_state_namespace.dart` — validated profile/surface/destination-local presentation-state addresses that cannot carry arbitrary paths or business identifiers.
 - `lib/src/contracts/presentation/layout_selection.dart` — immutable manager state, resolution values, operation status, and bounded user-safe error codes.
 - `lib/src/contracts/presentation/presentation_preferences.dart` — the one current document containing `layoutProfileId`, `appearancePresetId`, and `localePreference`.
 - `lib/src/contracts/presentation/semantic_destination.dart` — the canonical current destination identity and surface capability metadata. Existing `ClientSection` ownership moves here rather than being aliased or duplicated.
