@@ -627,12 +627,13 @@
       "delivered": "58e46a6"
     },
     "next": [
-      "9463f15f-53ca-45be-a177-03e0dfc2c1a2"
+      "9463f15f-53ca-45be-a177-03e0dfc2c1a2",
+      "66b9a5a8-ce4e-4a23-8063-8c184da42287"
     ]
   },
   {
     "id": "9463f15f-53ca-45be-a177-03e0dfc2c1a2",
-    "status": "pending",
+    "status": "skipped",
     "role": "implementation",
     "prerequisites": [
       "57e8b062-f130-4b61-83dd-13b0d220e285"
@@ -673,6 +674,139 @@
       "message": "feat(client): make layout selection transactional",
       "target": "apps/desktop/lib/src/{application/features/layout,platform/presentation,application/controller}"
     },
+    "next": [],
+    "status_reason": "Superseded before implementation: transactional foundation was split from integration-owned ClientController hydration and retired-shell cutover to preserve the one-way plan boundary."
+  },
+  {
+    "id": "66b9a5a8-ce4e-4a23-8063-8c184da42287",
+    "status": "completed",
+    "role": "implementation",
+    "prerequisites": [
+      "57e8b062-f130-4b61-83dd-13b0d220e285"
+    ],
+    "platform": "any",
+    "difficulty": "deep",
+    "goal": "Implement the typed presentation-preferences repository and standalone transactional layout manager.",
+    "description": "Scope: contracts/presentation/presentation_preferences.dart, platform/presentation/presentation_preferences_repository.dart, application/features/layout/layout_manager.dart, and focused tests only. Context: independent read-modify-write setters can lose fields and notify-before-save can diverge memory from disk, while production controller hydration cannot occur until renderer bundles exist. Target: one canonical typed document, serialized atomic mutations, loading/stable/previewing/committing/error states, monotonic epochs, preview/confirm/cancel/reset/timeout, deterministic recovery, and bounded safe errors. Design Considerations: preview stays memory-only; confirmation persists before promotion; a serialized repository tail prevents stale snapshots; fake repositories prove races without importing frontend/controller code. Design Value: the runtime becomes independently testable and the final integration join receives one stable injection boundary. Constraints & Risks: ignore and omit shellLayoutId, preserve appearance and locale, never record documents or paths, and do not edit ClientController, app, Settings, shell, or built-in renderer composition in this Node.",
+    "requirements": [
+      "REQ-004",
+      "REQ-006",
+      "REQ-007",
+      "REQ-008",
+      "REQ-009",
+      "REQ-011",
+      "REQ-013"
+    ],
+    "acceptance_criteria": [
+      {
+        "checked": true,
+        "text": "Repository tests prove serialized concurrent layout, appearance, and locale updates, atomic replacement, canonical output, corrupt-file recovery, and omission of the retired field.",
+        "evidence_refs": [
+          {
+            "type": "command",
+            "command": "cd apps/desktop && flutter test test/layout/presentation_preferences_repository_test.dart",
+            "exit_code": 0,
+            "recorded_at": "2026-07-14T11:53:40Z"
+          },
+          {
+            "type": "file",
+            "path": "apps/desktop/lib/src/platform/presentation/presentation_preferences_repository.dart",
+            "sha256": "5b60d16759e2c79952a4014a1f8885659b8eb94ac68003ad16d572f83c1856d1",
+            "recorded_at": "2026-07-14T11:53:40Z"
+          },
+          {
+            "type": "file",
+            "path": "apps/desktop/test/layout/presentation_preferences_repository_test.dart",
+            "sha256": "36e9f7dc1b56e1388d7fbf9c10f407a94c91d96bcd32d0652cd19d55037c1b8b",
+            "recorded_at": "2026-07-14T11:53:40Z"
+          }
+        ]
+      },
+      {
+        "checked": true,
+        "text": "Manager tests prove initialize, preview, confirm, cancel, reset, timeout, invalid or unavailable IDs, save-failure rollback, and stale-operation suppression.",
+        "evidence_refs": [
+          {
+            "type": "command",
+            "command": "cd apps/desktop && flutter test test/layout/layout_manager_test.dart",
+            "exit_code": 0,
+            "recorded_at": "2026-07-14T11:54:03Z"
+          },
+          {
+            "type": "file",
+            "path": "apps/desktop/lib/src/application/features/layout/layout_manager.dart",
+            "sha256": "9532bbd025f69a2dd47c25bb3cc75311752f93107658e6c713624bafcebec49d",
+            "recorded_at": "2026-07-14T11:54:03Z"
+          },
+          {
+            "type": "file",
+            "path": "apps/desktop/test/layout/layout_manager_test.dart",
+            "sha256": "e97bf7c0e03302bb29acbb45b4eb8dbee3ec6bcdbdd0070a076b56c317f18d5f",
+            "recorded_at": "2026-07-14T11:54:03Z"
+          }
+        ]
+      },
+      {
+        "checked": true,
+        "text": "The repository and manager expose only typed injection interfaces and bounded localized-safe error codes; they do not import frontend, controller, backend, or renderer implementations.",
+        "evidence_refs": [
+          {
+            "type": "command",
+            "command": "python3 -c \"from pathlib import Path; fs=[Path('apps/desktop/lib/src/application/features/layout/layout_manager.dart'),Path('apps/desktop/lib/src/contracts/presentation/presentation_preferences.dart'),Path('apps/desktop/lib/src/platform/presentation/presentation_preferences_repository.dart')]; forbidden=('src/frontend/','src/application/controller/','src/backend/','src/frontend/layout/profiles/'); assert not [(str(f),x) for f in fs for x in forbidden if x in f.read_text()]\"",
+            "exit_code": 0,
+            "recorded_at": "2026-07-14T11:54:15Z"
+          },
+          {
+            "type": "file",
+            "path": "apps/desktop/lib/src/application/features/layout/layout_manager.dart",
+            "sha256": "9532bbd025f69a2dd47c25bb3cc75311752f93107658e6c713624bafcebec49d",
+            "recorded_at": "2026-07-14T11:54:15Z"
+          },
+          {
+            "type": "file",
+            "path": "apps/desktop/lib/src/contracts/presentation/presentation_preferences.dart",
+            "sha256": "e7be5f351eecac336d65033ab9259996499077f965adec5edbc9d5f7feb33f33",
+            "recorded_at": "2026-07-14T11:54:15Z"
+          },
+          {
+            "type": "file",
+            "path": "apps/desktop/lib/src/platform/presentation/presentation_preferences_repository.dart",
+            "sha256": "5b60d16759e2c79952a4014a1f8885659b8eb94ac68003ad16d572f83c1856d1",
+            "recorded_at": "2026-07-14T11:54:15Z"
+          }
+        ]
+      },
+      {
+        "checked": true,
+        "text": "Preview performs no write, confirmation persists before promotion, and rapid mutations retain all independently updated preference fields.",
+        "evidence_refs": [
+          {
+            "type": "file",
+            "path": "apps/desktop/test/layout/layout_manager_test.dart",
+            "sha256": "e97bf7c0e03302bb29acbb45b4eb8dbee3ec6bcdbdd0070a076b56c317f18d5f",
+            "recorded_at": "2026-07-14T11:54:15Z"
+          },
+          {
+            "type": "file",
+            "path": "apps/desktop/test/layout/presentation_preferences_repository_test.dart",
+            "sha256": "36e9f7dc1b56e1388d7fbf9c10f407a94c91d96bcd32d0652cd19d55037c1b8b",
+            "recorded_at": "2026-07-14T11:54:15Z"
+          },
+          {
+            "type": "file",
+            "path": "apps/desktop/lib/src/platform/presentation/presentation_preferences_repository.dart",
+            "sha256": "5b60d16759e2c79952a4014a1f8885659b8eb94ac68003ad16d572f83c1856d1",
+            "recorded_at": "2026-07-14T11:54:15Z"
+          }
+        ]
+      }
+    ],
+    "commit": {
+      "repository": ".git",
+      "message": "feat(client): make layout selection transactional",
+      "target": "apps/desktop/lib/src/{application/features/layout,platform/presentation} and focused tests",
+      "delivered": "4a83dec"
+    },
     "next": [
       "1ce402ea-c375-44d2-a96b-9f1df8e6200e"
     ]
@@ -682,7 +816,7 @@
     "status": "pending",
     "role": "implementation",
     "prerequisites": [
-      "9463f15f-53ca-45be-a177-03e0dfc2c1a2"
+      "66b9a5a8-ce4e-4a23-8063-8c184da42287"
     ],
     "platform": "any",
     "difficulty": "deep",
@@ -785,6 +919,14 @@
       {
         "checked": false,
         "text": "ShellLayoutIds, shellLayoutId, old preference methods/key, direct profile branches, old desktop/mobile shell builders, fixed bottom navigation, numbered labels/tests, and contradictory documentation are removed with no compatibility path."
+      },
+      {
+        "checked": false,
+        "text": "The first meaningful shell waits for typed preference hydration; corrupt or failed loads recover deterministically and expose only localized safe error state."
+      },
+      {
+        "checked": false,
+        "text": "ClientController and Settings use the injected LayoutManager as the sole selection authority, with no second mutable layout string or independent preference setter."
       }
     ],
     "commit": {
