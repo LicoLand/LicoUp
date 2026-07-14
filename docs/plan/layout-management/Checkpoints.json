@@ -74,7 +74,7 @@
   },
   {
     "id": "0d8436d8-f953-47c4-bd17-8e3d7387a1a0",
-    "status": "pending",
+    "status": "completed",
     "role": "evidence",
     "prerequisites": [
       "07db8d6b-ff4c-4c67-b00e-1b555599d855"
@@ -96,22 +96,47 @@
     ],
     "acceptance_criteria": [
       {
-        "checked": false,
-        "text": "Evidence.md traces the current selection, rendering, persistence, theme, mobile, test, and verifier paths with observed gaps."
+        "checked": true,
+        "text": "Evidence.md traces the current selection, rendering, persistence, theme, mobile, test, and verifier paths with observed gaps.",
+        "evidence_refs": [
+          {
+            "type": "file",
+            "path": "docs/plan/layout-management/Evidence.md",
+            "sha256": "45acc034b90b2b626e0e4c8226369856a548bfe5cfb15c85a78bb24ac2cbf794",
+            "recorded_at": "2026-07-14T10:59:52Z"
+          }
+        ]
       },
       {
-        "checked": false,
-        "text": "Primary Flutter sources support adaptive constraint resolution, state ownership/restoration, ThemeExtension composition, and bounded widget work."
+        "checked": true,
+        "text": "Primary Flutter sources support adaptive constraint resolution, state ownership/restoration, ThemeExtension composition, and bounded widget work.",
+        "evidence_refs": [
+          {
+            "type": "file",
+            "path": "docs/plan/layout-management/Evidence.md",
+            "sha256": "45acc034b90b2b626e0e4c8226369856a548bfe5cfb15c85a78bb24ac2cbf794",
+            "recorded_at": "2026-07-14T10:59:52Z"
+          }
+        ]
       },
       {
-        "checked": false,
-        "text": "Contradictory documentation, the missing coverage command, dirty-worktree constraint, and seven pre-existing sibling-plan validation issues are recorded without being reclassified as layout deliverables."
+        "checked": true,
+        "text": "Contradictory documentation, the missing coverage command, dirty-worktree constraint, and seven pre-existing sibling-plan validation issues are recorded without being reclassified as layout deliverables.",
+        "evidence_refs": [
+          {
+            "type": "file",
+            "path": "docs/plan/layout-management/Evidence.md",
+            "sha256": "45acc034b90b2b626e0e4c8226369856a548bfe5cfb15c85a78bb24ac2cbf794",
+            "recorded_at": "2026-07-14T10:59:53Z"
+          }
+        ]
       }
     ],
     "commit": {
       "repository": ".git",
       "message": "docs(plan): ground layout management evidence",
-      "target": "docs/plan/layout-management/Evidence.md"
+      "target": "docs/plan/layout-management/Evidence.md",
+      "delivered": "e89b1c1"
     },
     "next": [
       "3bd2d5b2-21f7-4c80-a442-b0b30f4ae3c5"
