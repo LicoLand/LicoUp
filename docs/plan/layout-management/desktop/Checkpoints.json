@@ -710,7 +710,7 @@
   },
   {
     "id": "696a2dac-843f-413a-bba7-eef09ac54641",
-    "status": "in_progress",
+    "status": "completed",
     "role": "final_validation",
     "prerequisites": [
       "085d6570-3b34-4760-95d3-089514b44a5c",
@@ -821,7 +821,8 @@
     "commit": {
       "repository": ".git",
       "message": "test(client): validate isolated desktop bundles",
-      "target": "desktop renderer bundle receipts and Better Plan evidence"
+      "target": "desktop renderer bundle receipts and Better Plan evidence",
+      "delivered": "826ff95"
     },
     "next": []
   }
