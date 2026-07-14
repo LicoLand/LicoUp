@@ -347,7 +347,7 @@
   },
   {
     "id": "68ed782d-4c4e-48f9-8571-cf7ac5b3ebec",
-    "status": "pending",
+    "status": "completed",
     "role": "implementation",
     "prerequisites": [
       "435e546f-1591-4b38-bfdf-eabf644d5ee1"
@@ -366,22 +366,47 @@
     ],
     "acceptance_criteria": [
       {
-        "checked": false,
-        "text": "Private studio shell/components/tokens/preview modules implement a coherent medium/expanded desktop identity using only permitted parent interfaces."
+        "checked": true,
+        "text": "Private studio shell/components/tokens/preview modules implement a coherent medium/expanded desktop identity using only permitted parent interfaces.",
+        "evidence_refs": [
+          {
+            "type": "command",
+            "command": "cd apps/desktop && flutter analyze lib/src/frontend/layout/profiles/studio/desktop",
+            "exit_code": 0,
+            "recorded_at": "2026-07-14T13:11:05Z"
+          }
+        ]
       },
       {
-        "checked": false,
-        "text": "Focused component checks prove constraints, semantics, appearance-token composition, and reduced-motion behavior without a controller or sibling import."
+        "checked": true,
+        "text": "Focused component checks prove constraints, semantics, appearance-token composition, and reduced-motion behavior without a controller or sibling import.",
+        "evidence_refs": [
+          {
+            "type": "command",
+            "command": "npm run client:verify:layouts",
+            "exit_code": 0,
+            "recorded_at": "2026-07-14T13:11:05Z"
+          }
+        ]
       },
       {
-        "checked": false,
-        "text": "The delivered diff is confined to the Node's exclusive studio shell/component/token/preview/asset paths."
+        "checked": true,
+        "text": "The delivered diff is confined to the Node's exclusive studio shell/component/token/preview/asset paths.",
+        "evidence_refs": [
+          {
+            "type": "command",
+            "command": "test -z \"\"",
+            "exit_code": 0,
+            "recorded_at": "2026-07-14T13:11:06Z"
+          }
+        ]
       }
     ],
     "commit": {
       "repository": ".git",
       "message": "feat(client): implement studio desktop components",
-      "target": "studio desktop shell, components, tokens, preview, and assets"
+      "target": "studio desktop shell, components, tokens, preview, and assets",
+      "delivered": "3497cee"
     },
     "next": [
       "26a2e535-904e-448e-93a0-196e8b59aed0"
