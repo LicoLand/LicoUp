@@ -814,24 +814,102 @@
     ],
     "acceptance_criteria": [
       {
-        "checked": false,
-        "text": "Scoped format and client static analysis pass for the two profile source and test roots."
+        "checked": true,
+        "text": "Scoped format and client static analysis pass for the two profile source and test roots.",
+        "evidence_refs": [
+          {
+            "type": "command",
+            "command": "cd apps/desktop && dart format --output=none --set-exit-if-changed lib/src/frontend/layout/profiles/workbench/mobile lib/src/frontend/layout/profiles/studio/mobile test/layout/profiles/workbench/mobile test/layout/profiles/studio/mobile",
+            "exit_code": 0,
+            "recorded_at": "2026-07-14T13:57:15Z"
+          },
+          {
+            "type": "command",
+            "command": "cd apps/desktop && flutter analyze lib/src/frontend/layout/profiles/workbench/mobile lib/src/frontend/layout/profiles/studio/mobile test/layout/profiles/workbench/mobile test/layout/profiles/studio/mobile",
+            "exit_code": 0,
+            "recorded_at": "2026-07-14T13:57:19Z"
+          }
+        ]
       },
       {
-        "checked": false,
-        "text": "Workbench and studio profile-only widget, semantics, adaptive, state, and golden suites pass independently with deterministic artifacts."
+        "checked": true,
+        "text": "Workbench and studio profile-only widget, semantics, adaptive, state, and golden suites pass independently with deterministic artifacts.",
+        "evidence_refs": [
+          {
+            "type": "command",
+            "command": "cd apps/desktop && flutter test test/layout/profiles/workbench/mobile",
+            "exit_code": 0,
+            "recorded_at": "2026-07-14T13:58:25Z"
+          },
+          {
+            "type": "command",
+            "command": "cd apps/desktop && flutter test test/layout/profiles/studio/mobile",
+            "exit_code": 0,
+            "recorded_at": "2026-07-14T13:58:32Z"
+          }
+        ]
       },
       {
-        "checked": false,
-        "text": "Public manifests prove exactly one immutable mobile LayoutSurfaceBundle per semantic profile and exact compact/medium destination coverage."
+        "checked": true,
+        "text": "Public manifests prove exactly one immutable mobile LayoutSurfaceBundle per semantic profile and exact compact/medium destination coverage.",
+        "evidence": "Exactly one immutable mobile bundle per semantic profile; both expose compact and medium variants with agents, feed, mobileRelay, and settings coverage.",
+        "evidence_refs": [
+          {
+            "type": "file",
+            "path": "apps/desktop/lib/src/frontend/layout/profiles/workbench/mobile/workbench_mobile_bundle.dart",
+            "sha256": "60cd158732bf864543a5f9bccd9e978075625830eddbf5f69d58894d2fe6fe5d",
+            "recorded_at": "2026-07-14T13:58:39Z"
+          },
+          {
+            "type": "file",
+            "path": "apps/desktop/lib/src/frontend/layout/profiles/studio/mobile/studio_mobile_bundle.dart",
+            "sha256": "e59bf3a6e832dae01fe050a54dbb15a42bf62758f0d44c1c564195c60db52792",
+            "recorded_at": "2026-07-14T13:58:39Z"
+          }
+        ]
       },
       {
-        "checked": false,
-        "text": "The self-tested layout-boundary verifier proves disjoint owned paths, allowed imports only, unique restoration namespaces, no mutable/central registration, and unchanged sibling source/golden digests under the change-impact fixture."
+        "checked": true,
+        "text": "The self-tested layout-boundary verifier proves disjoint owned paths, allowed imports only, unique restoration namespaces, no mutable/central registration, and unchanged sibling source/golden digests under the change-impact fixture.",
+        "evidence_refs": [
+          {
+            "type": "command",
+            "command": "npm run client:verify:layouts",
+            "exit_code": 0,
+            "recorded_at": "2026-07-14T13:58:59Z"
+          },
+          {
+            "type": "command",
+            "command": "shasum -a 256 -c apps/desktop/test/layout/profiles/workbench/mobile/workbench_mobile_artifact_manifest.sha256",
+            "exit_code": 0,
+            "recorded_at": "2026-07-14T13:58:59Z"
+          },
+          {
+            "type": "command",
+            "command": "cd apps/desktop && flutter test test/layout/profiles/studio/mobile/studio_mobile_manifest_test.dart",
+            "exit_code": 0,
+            "recorded_at": "2026-07-14T13:59:02Z"
+          }
+        ]
       },
       {
-        "checked": false,
-        "text": "Scoped validate --check-sources and check-labels pass for layout-management/mobile, and terminal evidence is ready for the parent integration join without any integration, migration, build, device, or launch claim."
+        "checked": true,
+        "text": "Scoped validate --check-sources and check-labels pass for layout-management/mobile, and terminal evidence is ready for the parent integration join without any integration, migration, build, device, or launch claim.",
+        "evidence": "Renderer-only receipt; integration, migration, build, device, and launch remain unclaimed and parent-owned.",
+        "evidence_refs": [
+          {
+            "type": "command",
+            "command": "python3 \"$HOME/.agents/skills/better-plan/scripts/manifest_tool.py\" validate docs/plan --plan layout-management/mobile --check-sources --no-git",
+            "exit_code": 0,
+            "recorded_at": "2026-07-14T13:59:11Z"
+          },
+          {
+            "type": "command",
+            "command": "python3 \"$HOME/.agents/skills/better-plan/scripts/manifest_tool.py\" check-labels docs/plan --plan layout-management/mobile",
+            "exit_code": 0,
+            "recorded_at": "2026-07-14T13:59:11Z"
+          }
+        ]
       }
     ],
     "commit": {
