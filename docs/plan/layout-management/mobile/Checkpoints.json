@@ -628,7 +628,7 @@
   },
   {
     "id": "0ad479f5-a770-4c75-acca-35ced7ed1da8",
-    "status": "pending",
+    "status": "completed",
     "role": "implementation",
     "prerequisites": [
       "3fd85695-c89c-4150-be56-dc244e973446"
@@ -648,22 +648,92 @@
     ],
     "acceptance_criteria": [
       {
-        "checked": false,
-        "text": "Profile-only tests prove studio identity/surface/variant metadata, exact destinations/actions, immutable fake-port rendering, and bounded studio restoration keys."
+        "checked": true,
+        "text": "Profile-only tests prove studio identity/surface/variant metadata, exact destinations/actions, immutable fake-port rendering, and bounded studio restoration keys.",
+        "evidence_refs": [
+          {
+            "type": "file",
+            "path": "apps/desktop/test/layout/profiles/studio/mobile/studio_mobile_bundle_test.dart",
+            "sha256": "98474b01925f250bc5bafc6dabfe840c9253ed11483683e4c87af4ad9f3432ac",
+            "recorded_at": "2026-07-14T13:44:25Z"
+          }
+        ]
       },
       {
-        "checked": false,
-        "text": "Constraint, semantics, touch/focus, overflow, composer-clearance, text-scale, inset, appearance-token, and reduced-motion matrices pass."
+        "checked": true,
+        "text": "Constraint, semantics, touch/focus, overflow, composer-clearance, text-scale, inset, appearance-token, and reduced-motion matrices pass.",
+        "evidence_refs": [
+          {
+            "type": "command",
+            "command": "cd apps/desktop && flutter test test/layout/profiles/studio/mobile",
+            "exit_code": 0,
+            "recorded_at": "2026-07-14T13:44:48Z"
+          }
+        ]
       },
       {
-        "checked": false,
-        "text": "Deterministic studio goldens and normalized source/golden digests are recorded entirely under the studio test root."
+        "checked": true,
+        "text": "Deterministic studio goldens and normalized source/golden digests are recorded entirely under the studio test root.",
+        "evidence_refs": [
+          {
+            "type": "command",
+            "command": "cd apps/desktop && flutter test test/layout/profiles/studio/mobile/studio_mobile_manifest_test.dart",
+            "exit_code": 0,
+            "recorded_at": "2026-07-14T13:44:55Z"
+          },
+          {
+            "type": "file",
+            "path": "apps/desktop/test/layout/profiles/studio/mobile/studio_mobile_sha256_manifest.json",
+            "sha256": "1f78b136ef0561ce7c6fd177076ba041287de5cee423721757823ff05817a0e3",
+            "recorded_at": "2026-07-14T13:44:55Z"
+          }
+        ]
       }
     ],
     "commit": {
       "repository": ".git",
       "message": "test(client): prove studio mobile bundle",
-      "target": "studio mobile tests and goldens"
+      "target": "studio mobile tests and goldens",
+      "delivered": "38948d0"
+    },
+    "next": [
+      "aaf51817-ecec-4bf7-aa67-d2bf83899587"
+    ]
+  },
+  {
+    "id": "aaf51817-ecec-4bf7-aa67-d2bf83899587",
+    "status": "pending",
+    "role": "implementation",
+    "prerequisites": [
+      "0ad479f5-a770-4c75-acca-35ced7ed1da8"
+    ],
+    "platform": "any",
+    "difficulty": "high",
+    "goal": "Eliminate Studio compact-header overflow at high text scales without weakening profile isolation.",
+    "description": "Scope: Studio mobile shell/tokens plus Studio-owned mobile tests only. Context: independent validation exposed a reproducible one-pixel compact-header overflow at 2.2x text scale after the original renderer and test Nodes were bounded. Target: derive header and overlay geometry from one text-scale-aware extent, preserve safe-area and keyboard clearance, and pass compact/medium semantics and restoration tests at representative high scales. Design Considerations: keep one O(1) geometry calculation, avoid clipping text or relaxing assertions, and update every dependent offset from the same value. Design Value: the corrective checkpoint converts discovered accessibility evidence into a durable renderer guarantee. Constraints & Risks: no Workbench, central registry, app, shell, Settings, controller, backend/platform, shared fixture, or compatibility edits.",
+    "requirements": [
+      "REQ-006",
+      "REQ-007",
+      "REQ-010"
+    ],
+    "acceptance_criteria": [
+      {
+        "checked": false,
+        "text": "Compact Studio header and navigation overlay share one bounded text-scale-aware extent and render without overflow at 1.0x, 2.0x, and 2.2x."
+      },
+      {
+        "checked": false,
+        "text": "Safe-area, keyboard/composer clearance, restoration, semantics, and compact/medium navigation tests still pass after the geometry correction."
+      },
+      {
+        "checked": false,
+        "text": "Scoped analysis, Studio mobile tests, and layout-boundary verification pass with the diff confined to Studio mobile source/test ownership."
+      }
+    ],
+    "commit": {
+      "repository": ".git",
+      "message": "fix(client): harden studio mobile text scaling",
+      "target": "studio mobile header geometry and profile-owned tests"
     },
     "next": [
       "8784c7fe-f1fc-491f-a1f9-039fec55e5d6"
@@ -675,7 +745,7 @@
     "role": "final_validation",
     "prerequisites": [
       "86ec0e2a-296f-4cbf-99dd-747aef69be8e",
-      "0ad479f5-a770-4c75-acca-35ced7ed1da8"
+      "aaf51817-ecec-4bf7-aa67-d2bf83899587"
     ],
     "platform": "any",
     "difficulty": "deep",
