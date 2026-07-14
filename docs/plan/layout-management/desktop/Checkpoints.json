@@ -481,7 +481,7 @@
   },
   {
     "id": "26a2e535-904e-448e-93a0-196e8b59aed0",
-    "status": "pending",
+    "status": "completed",
     "role": "implementation",
     "prerequisites": [
       "68ed782d-4c4e-48f9-8571-cf7ac5b3ebec"
@@ -500,22 +500,47 @@
     ],
     "acceptance_criteria": [
       {
-        "checked": false,
-        "text": "Studio adapters cover the exact parent-declared desktop destination and action set with exhaustive typed builders and no fallback."
+        "checked": true,
+        "text": "Studio adapters cover the exact parent-declared desktop destination and action set with exhaustive typed builders and no fallback.",
+        "evidence_refs": [
+          {
+            "type": "command",
+            "command": "cd apps/desktop && flutter analyze lib/src/frontend/layout/profiles/studio/desktop/destinations",
+            "exit_code": 0,
+            "recorded_at": "2026-07-14T13:19:40Z"
+          }
+        ]
       },
       {
-        "checked": false,
-        "text": "Adapter-focused checks prove commands and semantic landmarks against fake ports without controller, backend/platform, legacy shell, or workbench imports."
+        "checked": true,
+        "text": "Adapter-focused checks prove commands and semantic landmarks against fake ports without controller, backend/platform, legacy shell, or workbench imports.",
+        "evidence_refs": [
+          {
+            "type": "command",
+            "command": "npm run client:verify:layouts",
+            "exit_code": 0,
+            "recorded_at": "2026-07-14T13:19:41Z"
+          }
+        ]
       },
       {
-        "checked": false,
-        "text": "The delivered diff is confined to the studio destination adapter root."
+        "checked": true,
+        "text": "The delivered diff is confined to the studio destination adapter root.",
+        "evidence_refs": [
+          {
+            "type": "command",
+            "command": "git diff-tree --no-commit-id --name-only -r f5d854c | awk 'BEGIN{ok=1} $0 !~ /^apps\\/desktop\\/lib\\/src\\/frontend\\/layout\\/profiles\\/studio\\/desktop\\/destinations\\// {ok=0} END{exit ok?0:1}'",
+            "exit_code": 0,
+            "recorded_at": "2026-07-14T13:20:12Z"
+          }
+        ]
       }
     ],
     "commit": {
       "repository": ".git",
       "message": "feat(client): add studio desktop destinations",
-      "target": "studio desktop destination adapters"
+      "target": "studio desktop destination adapters",
+      "delivered": "f5d854c"
     },
     "next": [
       "04a1b9c9-c9f9-4f83-bc45-e0f1f5e53148"
