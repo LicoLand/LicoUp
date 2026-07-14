@@ -20,6 +20,7 @@ typedef LayoutDestinationBuilder =
 typedef LayoutShellBuilder =
     Widget Function(BuildContext context, LayoutShellBuildContext data);
 typedef LayoutPreviewBuilder = Widget Function(BuildContext context);
+typedef LayoutDestinationLabelResolver = String Function(ClientSection value);
 
 final class LayoutDestinationBuildContext {
   const LayoutDestinationBuildContext({
@@ -42,6 +43,7 @@ final class LayoutShellBuildContext {
     required Iterable<ClientSection> availableDestinations,
     required this.destination,
     required this.onSelectDestination,
+    required this.destinationLabel,
     required this.components,
     required this.tokens,
     required this.initialFocusTarget,
@@ -54,6 +56,7 @@ final class LayoutShellBuildContext {
   final List<ClientSection> availableDestinations;
   final Widget destination;
   final ValueChanged<ClientSection> onSelectDestination;
+  final LayoutDestinationLabelResolver destinationLabel;
   final LayoutComponentKit components;
   final LayoutVisualTokens tokens;
   final String initialFocusTarget;
