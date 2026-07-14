@@ -1,0 +1,25 @@
+{
+  "algorithm": "SHA-256",
+  "normalization": "sorted-relative-path+NUL+LF-bytes+NUL",
+  "source": {
+    "files": [
+      "lib/src/frontend/layout/profiles/studio/mobile/destinations/studio_agents_destination.dart",
+      "lib/src/frontend/layout/profiles/studio/mobile/destinations/studio_feed_destination.dart",
+      "lib/src/frontend/layout/profiles/studio/mobile/destinations/studio_pairing_destination.dart",
+      "lib/src/frontend/layout/profiles/studio/mobile/destinations/studio_settings_destination.dart",
+      "lib/src/frontend/layout/profiles/studio/mobile/studio_mobile_bundle.dart",
+      "lib/src/frontend/layout/profiles/studio/mobile/studio_mobile_components.dart",
+      "lib/src/frontend/layout/profiles/studio/mobile/studio_mobile_preview.dart",
+      "lib/src/frontend/layout/profiles/studio/mobile/studio_mobile_shell.dart",
+      "lib/src/frontend/layout/profiles/studio/mobile/studio_mobile_tokens.dart"
+    ],
+    "digest": "86024962b206fa0aadf94c3d30dd544d818886f2b5726cd673a8d9d8fbdafd82"
+  },
+  "goldens": {
+    "files": [
+      "test/layout/profiles/studio/mobile/goldens/studio_mobile_preview_dark.png",
+      "test/layout/profiles/studio/mobile/goldens/studio_mobile_preview_light.png"
+    ],
+    "digest": "2bb811656a8d25354bab037d5c36683fc61073f66760a6b2c89fcb20656649cf"
+  }
+}
