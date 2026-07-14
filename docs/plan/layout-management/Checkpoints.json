@@ -492,7 +492,7 @@
   },
   {
     "id": "57e8b062-f130-4b61-83dd-13b0d220e285",
-    "status": "pending",
+    "status": "completed",
     "role": "implementation",
     "prerequisites": [
       "129c6757-2206-4894-84e9-ca308586f962"
@@ -512,30 +512,119 @@
     ],
     "acceptance_criteria": [
       {
-        "checked": false,
-        "text": "Catalog tests reject duplicate IDs, missing/duplicate defaults, numbered identities, incomplete viewport or destination coverage, and mismatched revisions."
+        "checked": true,
+        "text": "Catalog tests reject duplicate IDs, missing/duplicate defaults, numbered identities, incomplete viewport or destination coverage, and mismatched revisions.",
+        "evidence_refs": [
+          {
+            "type": "command",
+            "command": "cd apps/desktop && flutter test test/layout/layout_catalog_test.dart test/layout/layout_resolver_state_store_test.dart",
+            "exit_code": 0,
+            "recorded_at": "2026-07-14T11:43:55Z"
+          },
+          {
+            "type": "file",
+            "path": "apps/desktop/lib/src/application/features/layout/layout_catalog.dart",
+            "sha256": "11653c956fdaac946f96fd49f3642e705561660a7cf99e17de32a7cf91e5d843",
+            "recorded_at": "2026-07-14T11:43:55Z"
+          },
+          {
+            "type": "file",
+            "path": "apps/desktop/test/layout/layout_catalog_test.dart",
+            "sha256": "19c9c2dae3a2cefeeeffda03cffc1b9fb5797c5c0dbfb6c9b3e48adfabe4653a",
+            "recorded_at": "2026-07-14T11:43:55Z"
+          }
+        ]
       },
       {
-        "checked": false,
-        "text": "Resolver tests prove stable selected identity across resize, deterministic default recovery, and O(1) map-based active lookup without catalog scans in build paths."
+        "checked": true,
+        "text": "Resolver tests prove stable selected identity across resize, deterministic default recovery, and O(1) map-based active lookup without catalog scans in build paths.",
+        "evidence_refs": [
+          {
+            "type": "file",
+            "path": "apps/desktop/lib/src/application/features/layout/layout_resolver.dart",
+            "sha256": "b89d37641adae30e543df71376f866435697c377e62cacb3dac8d6d02d466a82",
+            "recorded_at": "2026-07-14T11:44:22Z"
+          },
+          {
+            "type": "file",
+            "path": "apps/desktop/test/layout/layout_resolver_state_store_test.dart",
+            "sha256": "2cce9e52725cdd5be2fa2b76277f3980dd2485f0a64858613481b494d0a1f97e",
+            "recorded_at": "2026-07-14T11:44:22Z"
+          }
+        ]
       },
       {
-        "checked": false,
-        "text": "Presentation-state tests prove valid-key bounds, per-profile isolation, deterministic reset, and rejection of unregistered keys."
+        "checked": true,
+        "text": "Presentation-state tests prove valid-key bounds, per-profile isolation, deterministic reset, and rejection of unregistered keys.",
+        "evidence_refs": [
+          {
+            "type": "file",
+            "path": "apps/desktop/lib/src/application/features/layout/layout_state_store.dart",
+            "sha256": "b83ae5f3f21ca1c9a7d2fecdb8afd64bd754acea5f932b42349446f95e6c8a16",
+            "recorded_at": "2026-07-14T11:44:23Z"
+          },
+          {
+            "type": "file",
+            "path": "apps/desktop/test/layout/layout_resolver_state_store_test.dart",
+            "sha256": "2cce9e52725cdd5be2fa2b76277f3980dd2485f0a64858613481b494d0a1f97e",
+            "recorded_at": "2026-07-14T11:44:23Z"
+          }
+        ]
       },
       {
-        "checked": false,
-        "text": "Catalog tests prove the complete profile × surface × viewport × destination product and reject desktop/mobile medium-key collisions, missing surfaces, and extra surface coverage."
+        "checked": true,
+        "text": "Catalog tests prove the complete profile × surface × viewport × destination product and reject desktop/mobile medium-key collisions, missing surfaces, and extra surface coverage.",
+        "evidence_refs": [
+          {
+            "type": "file",
+            "path": "apps/desktop/lib/src/application/features/layout/layout_catalog.dart",
+            "sha256": "11653c956fdaac946f96fd49f3642e705561660a7cf99e17de32a7cf91e5d843",
+            "recorded_at": "2026-07-14T11:44:23Z"
+          },
+          {
+            "type": "file",
+            "path": "apps/desktop/test/layout/layout_catalog_test.dart",
+            "sha256": "19c9c2dae3a2cefeeeffda03cffc1b9fb5797c5c0dbfb6c9b3e48adfabe4653a",
+            "recorded_at": "2026-07-14T11:44:23Z"
+          },
+          {
+            "type": "file",
+            "path": "apps/desktop/lib/src/application/features/navigation/semantic_destination_catalog.dart",
+            "sha256": "7804a2aff3b6b323b7a290d163af2a3971e1e9a6e1384e5bf1a64b237d9bd2be",
+            "recorded_at": "2026-07-14T11:44:23Z"
+          }
+        ]
       },
       {
-        "checked": false,
-        "text": "Catalog and resolver tests prove the exact desktop medium/expanded and mobile compact/medium products with no unsupported viewport or cross-surface fallback."
+        "checked": true,
+        "text": "Catalog and resolver tests prove the exact desktop medium/expanded and mobile compact/medium products with no unsupported viewport or cross-surface fallback.",
+        "evidence_refs": [
+          {
+            "type": "file",
+            "path": "apps/desktop/lib/src/contracts/presentation/layout_environment.dart",
+            "sha256": "33d05909e2b68f3a6f3234baaa1067acb9c9393fd511b626960bd3d643323d12",
+            "recorded_at": "2026-07-14T11:44:24Z"
+          },
+          {
+            "type": "file",
+            "path": "apps/desktop/test/layout/layout_catalog_test.dart",
+            "sha256": "19c9c2dae3a2cefeeeffda03cffc1b9fb5797c5c0dbfb6c9b3e48adfabe4653a",
+            "recorded_at": "2026-07-14T11:44:24Z"
+          },
+          {
+            "type": "file",
+            "path": "apps/desktop/test/layout/layout_resolver_state_store_test.dart",
+            "sha256": "2cce9e52725cdd5be2fa2b76277f3980dd2485f0a64858613481b494d0a1f97e",
+            "recorded_at": "2026-07-14T11:44:24Z"
+          }
+        ]
       }
     ],
     "commit": {
       "repository": ".git",
       "message": "feat(client): add deterministic layout catalog and resolver",
-      "target": "apps/desktop/lib/src/application/features/layout"
+      "target": "apps/desktop/lib/src/application/features/layout",
+      "delivered": "58e46a6"
     },
     "next": [
       "9463f15f-53ca-45be-a177-03e0dfc2c1a2"
