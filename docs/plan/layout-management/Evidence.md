@@ -47,9 +47,9 @@ The current code proves only a partial desktop shell variant. It does not provid
 ## Constraints and contradictions
 
 - The repository has a valid Better Plan workspace at `docs/plan`. Existing release plans are separate delivery contracts and are not the parent of this UI capability.
-- Desktop and mobile currently have different shell directions. The plan family therefore uses one platform-neutral foundation, desktop/mobile renderer children, and one integration child that alone owns composition-root registration, app cutover, and complete retired-path removal.
+- Desktop and mobile currently have different shell directions. The plan family therefore uses one platform-neutral parent, desktop/mobile renderer children, and one parent integration join Node that alone owns composition-root registration, app cutover, and complete retired-path removal.
 - Desktop and mobile both require a `medium` viewport. A registry keyed only by `(profile, viewport)` would collide; the architecture must key variants by `(profile, surface, viewport)` and validate coverage in `O(P × S × V × D)` at composition time.
-- Parent fixtures can prove contracts, manager, repository, and host behavior, but cannot claim real profile tokens, complete built-in registration, or old-renderer removal before child bundles exist. Those claims belong to the integration child after both renderer children finish.
+- Parent fixtures can prove contracts, manager, repository, and host behavior, but cannot claim real profile tokens, complete built-in registration, or old-renderer removal before child bundles exist. Those claims belong to the parent integration join after both renderer children finish.
 - The full existing Better Plan workspace has seven pre-existing unstartable sibling nodes in release platform plans. Layout work can use plan-scoped validation, but cannot claim a full-workspace close-out until that independent debt is repaired.
 - `apps/desktop/AGENTS.md` names `npm run client:test:coverage`, but `package.json` currently lacks that script. The validation-matrix work must establish a real executable coverage entry or correct the contract before coverage is used as evidence.
 - The client working tree contains extensive user changes. This plan is grounded in the current tree and must preserve unrelated work.
