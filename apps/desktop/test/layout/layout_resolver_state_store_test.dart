@@ -1,9 +1,9 @@
-import 'package:flutter_client/src/application/features/layout/layout_catalog.dart';
 import 'package:flutter_client/src/application/features/layout/layout_resolver.dart';
 import 'package:flutter_client/src/application/features/layout/layout_state_store.dart';
 import 'package:flutter_client/src/contracts/presentation/layout_environment.dart';
 import 'package:flutter_client/src/contracts/presentation/layout_profile.dart';
 import 'package:flutter_client/src/contracts/presentation/layout_selection.dart';
+import 'package:flutter_client/src/contracts/presentation/layout_state_namespace.dart';
 import 'package:flutter_client/src/contracts/presentation/semantic_destination.dart';
 import 'package:flutter_test/flutter_test.dart';
 
