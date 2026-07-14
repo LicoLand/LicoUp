@@ -629,7 +629,7 @@
   },
   {
     "id": "04a1b9c9-c9f9-4f83-bc45-e0f1f5e53148",
-    "status": "pending",
+    "status": "completed",
     "role": "implementation",
     "prerequisites": [
       "26a2e535-904e-448e-93a0-196e8b59aed0"
@@ -650,26 +650,59 @@
     ],
     "acceptance_criteria": [
       {
-        "checked": false,
-        "text": "studio_desktop.dart exports one immutable desktop LayoutSurfaceBundle with exact variants/destinations, preview, tokens, components, asset namespace, and restoration namespace."
+        "checked": true,
+        "text": "studio_desktop.dart exports one immutable desktop LayoutSurfaceBundle with exact variants/destinations, preview, tokens, components, asset namespace, and restoration namespace.",
+        "evidence_refs": [
+          {
+            "type": "file",
+            "path": "apps/desktop/lib/src/frontend/layout/profiles/studio/desktop/studio_desktop.dart",
+            "sha256": "eb1d4d968f218b766ddcb7e4c56fa7a7460593a0e37e6dfa7d97d36668837de7",
+            "recorded_at": "2026-07-14T13:42:44Z"
+          }
+        ]
       },
       {
-        "checked": false,
-        "text": "Profile-only behavior, state, adaptive, semantics, keyboard/pointer, text-scale, contrast, reduced-motion, appearance, and golden tests pass."
+        "checked": true,
+        "text": "Profile-only behavior, state, adaptive, semantics, keyboard/pointer, text-scale, contrast, reduced-motion, appearance, and golden tests pass.",
+        "evidence_refs": [
+          {
+            "type": "command",
+            "command": "cd apps/desktop && flutter test test/layout/profiles/studio/desktop",
+            "exit_code": 0,
+            "recorded_at": "2026-07-14T13:43:18Z"
+          }
+        ]
       },
       {
-        "checked": false,
-        "text": "Boundary checks prove no forbidden/cross-profile imports, no extra public API, and an owned path set disjoint from every workbench Node."
+        "checked": true,
+        "text": "Boundary checks prove no forbidden/cross-profile imports, no extra public API, and an owned path set disjoint from every workbench Node.",
+        "evidence_refs": [
+          {
+            "type": "command",
+            "command": "npm run client:verify:layouts",
+            "exit_code": 0,
+            "recorded_at": "2026-07-14T13:43:29Z"
+          }
+        ]
       },
       {
-        "checked": false,
-        "text": "The delivered diff is confined to the studio bundle entry and studio-owned test/golden roots."
+        "checked": true,
+        "text": "The delivered diff is confined to the studio bundle entry and studio-owned test/golden roots.",
+        "evidence_refs": [
+          {
+            "type": "command",
+            "command": "! git diff-tree --no-commit-id --name-only -r 198b674 -- . \":(exclude)apps/desktop/lib/src/frontend/layout/profiles/studio/desktop/studio_desktop.dart\" \":(exclude)apps/desktop/test/layout/profiles/studio/desktop/**\" \":(exclude)apps/desktop/test/goldens/layout/studio/desktop/**\" | rg .",
+            "exit_code": 0,
+            "recorded_at": "2026-07-14T13:43:29Z"
+          }
+        ]
       }
     ],
     "commit": {
       "repository": ".git",
       "message": "test(client): prove studio desktop bundle",
-      "target": "studio desktop bundle entry, profile tests, and goldens"
+      "target": "studio desktop bundle entry, profile tests, and goldens",
+      "delivered": "198b674"
     },
     "next": [
       "696a2dac-843f-413a-bba7-eef09ac54641"
