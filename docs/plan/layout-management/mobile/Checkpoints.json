@@ -70,7 +70,7 @@
   },
   {
     "id": "485479c3-3921-4366-a546-878d200406ca",
-    "status": "pending",
+    "status": "completed",
     "role": "evidence",
     "prerequisites": [
       "61ab58a5-4f3e-477b-972f-72a2140ec207"
@@ -93,22 +93,47 @@
     ],
     "acceptance_criteria": [
       {
-        "checked": false,
-        "text": "Evidence.md cites parent-plan contracts and concrete current mobile source/test paths for every major gap and ownership decision."
+        "checked": true,
+        "text": "Evidence.md cites parent-plan contracts and concrete current mobile source/test paths for every major gap and ownership decision.",
+        "evidence_refs": [
+          {
+            "type": "file",
+            "path": "docs/plan/layout-management/mobile/Evidence.md",
+            "sha256": "114f8b122e5df54abf82c57087123575379eaf849335b189c1d3e795370e3662",
+            "recorded_at": "2026-07-14T12:22:04Z"
+          }
+        ]
       },
       {
-        "checked": false,
-        "text": "Evidence distinguishes bundle completeness from central registration, live switching, migration, build, simulator, device, and launch proof."
+        "checked": true,
+        "text": "Evidence distinguishes bundle completeness from central registration, live switching, migration, build, simulator, device, and launch proof.",
+        "evidence_refs": [
+          {
+            "type": "file",
+            "path": "docs/plan/layout-management/mobile/Evidence.md",
+            "sha256": "114f8b122e5df54abf82c57087123575379eaf849335b189c1d3e795370e3662",
+            "recorded_at": "2026-07-14T12:22:04Z"
+          }
+        ]
       },
       {
-        "checked": false,
-        "text": "The gap analysis justifies disjoint shell/component, destination/bundle, and profile-test/golden ownership without inventing backend behavior."
+        "checked": true,
+        "text": "The gap analysis justifies disjoint shell/component, destination/bundle, and profile-test/golden ownership without inventing backend behavior.",
+        "evidence_refs": [
+          {
+            "type": "file",
+            "path": "docs/plan/layout-management/mobile/Evidence.md",
+            "sha256": "114f8b122e5df54abf82c57087123575379eaf849335b189c1d3e795370e3662",
+            "recorded_at": "2026-07-14T12:22:04Z"
+          }
+        ]
       }
     ],
     "commit": {
       "repository": ".git",
       "message": "docs(client): ground mobile renderer plan",
-      "target": "docs/plan/layout-management/mobile/Evidence.md"
+      "target": "docs/plan/layout-management/mobile/Evidence.md",
+      "delivered": "ddb2905"
     },
     "next": [
       "2aa6a521-5e45-4dae-9093-3c112fe46c8f"
