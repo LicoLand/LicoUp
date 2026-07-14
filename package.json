@@ -26,6 +26,7 @@
     "client:native:smoke": "node tests/smoke/native-client-smoke.mjs",
     "client:contracts:test": "node tests/contract/client/contracts-client.test.mjs",
     "client:verify:architecture": "node apps/desktop/scripts/verify-client-architecture.mjs",
+    "client:verify:layouts": "node apps/desktop/scripts/verify-layout-boundaries.mjs",
     "client:verify:plan": "node apps/desktop/scripts/verify-client-plan.mjs",
     "client:verify:targets": "node apps/desktop/scripts/verify-client-architecture.mjs",
     "client:verify:config-writes": "node apps/desktop/scripts/verify-client-architecture.mjs",
