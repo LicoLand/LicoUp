@@ -144,7 +144,7 @@
   },
   {
     "id": "3bd2d5b2-21f7-4c80-a442-b0b30f4ae3c5",
-    "status": "pending",
+    "status": "completed",
     "role": "validation_matrix",
     "prerequisites": [
       "0d8436d8-f953-47c4-bd17-8e3d7387a1a0"
@@ -171,22 +171,47 @@
     ],
     "acceptance_criteria": [
       {
-        "checked": false,
-        "text": "Validation.md maps all fourteen requirements to concrete foundation and child-plan evidence."
+        "checked": true,
+        "text": "Validation.md maps all fourteen requirements to concrete foundation and child-plan evidence.",
+        "evidence_refs": [
+          {
+            "type": "file",
+            "path": "docs/plan/layout-management/Validation.md",
+            "sha256": "1337ec7e83bdd913ddafca43da284653494ae3c75b77025908c0c7d7f207209d",
+            "recorded_at": "2026-07-14T11:02:07Z"
+          }
+        ]
       },
       {
-        "checked": false,
-        "text": "The matrix covers registry, transaction, corruption, concurrency, destination parity, adaptive resize, state/focus continuity, accessibility, goldens, integration, architecture, build, and launch."
+        "checked": true,
+        "text": "The matrix covers registry, transaction, corruption, concurrency, destination parity, adaptive resize, state/focus continuity, accessibility, goldens, integration, architecture, build, and launch.",
+        "evidence_refs": [
+          {
+            "type": "file",
+            "path": "docs/plan/layout-management/Validation.md",
+            "sha256": "1337ec7e83bdd913ddafca43da284653494ae3c75b77025908c0c7d7f207209d",
+            "recorded_at": "2026-07-14T11:02:07Z"
+          }
+        ]
       },
       {
-        "checked": false,
-        "text": "Every listed current command exists; any planned coverage or layout-integration command is explicitly identified as work to establish rather than existing evidence."
+        "checked": true,
+        "text": "Every listed current command exists; any planned coverage or layout-integration command is explicitly identified as work to establish rather than existing evidence.",
+        "evidence_refs": [
+          {
+            "type": "file",
+            "path": "docs/plan/layout-management/Validation.md",
+            "sha256": "1337ec7e83bdd913ddafca43da284653494ae3c75b77025908c0c7d7f207209d",
+            "recorded_at": "2026-07-14T11:02:07Z"
+          }
+        ]
       }
     ],
     "commit": {
       "repository": ".git",
       "message": "docs(plan): define layout validation matrix",
-      "target": "docs/plan/layout-management/Validation.md"
+      "target": "docs/plan/layout-management/Validation.md",
+      "delivered": "19c397c"
     },
     "next": [
       "fb9651ea-10da-42b9-9312-21d45e93952d"
