@@ -498,7 +498,7 @@
   },
   {
     "id": "085d6570-3b34-4760-95d3-089514b44a5c",
-    "status": "pending",
+    "status": "completed",
     "role": "implementation",
     "prerequisites": [
       "26ac0203-77e8-4377-992c-eaab281ded7d"
@@ -519,26 +519,59 @@
     ],
     "acceptance_criteria": [
       {
-        "checked": false,
-        "text": "workbench_desktop.dart exports one immutable desktop LayoutSurfaceBundle with exact variants/destinations, preview, tokens, components, asset namespace, and restoration namespace."
+        "checked": true,
+        "text": "workbench_desktop.dart exports one immutable desktop LayoutSurfaceBundle with exact variants/destinations, preview, tokens, components, asset namespace, and restoration namespace.",
+        "evidence_refs": [
+          {
+            "type": "file",
+            "path": "apps/desktop/lib/src/frontend/layout/profiles/workbench/desktop/workbench_desktop.dart",
+            "sha256": "0443e3f401c9354be241c0bf62f8e97c344f7b6834757dd4c01f2ff94580bf37",
+            "recorded_at": "2026-07-14T12:55:21Z"
+          }
+        ]
       },
       {
-        "checked": false,
-        "text": "Profile-only behavior, state, adaptive, semantics, keyboard/pointer, text-scale, contrast, reduced-motion, appearance, and golden tests pass."
+        "checked": true,
+        "text": "Profile-only behavior, state, adaptive, semantics, keyboard/pointer, text-scale, contrast, reduced-motion, appearance, and golden tests pass.",
+        "evidence_refs": [
+          {
+            "type": "file",
+            "path": "apps/desktop/test/layout/profiles/workbench/desktop/workbench_desktop_widget_test.dart",
+            "sha256": "3943a7593625eae2937af97bdbb9eea0838707fc646e8e74ed9b84b0194c8f2f",
+            "recorded_at": "2026-07-14T12:57:13Z"
+          }
+        ]
       },
       {
-        "checked": false,
-        "text": "Boundary checks prove no forbidden/cross-profile imports, no extra public API, and an owned path set disjoint from every studio Node."
+        "checked": true,
+        "text": "Boundary checks prove no forbidden/cross-profile imports, no extra public API, and an owned path set disjoint from every studio Node.",
+        "evidence_refs": [
+          {
+            "type": "command",
+            "command": "npm run client:verify:layouts",
+            "exit_code": 0,
+            "recorded_at": "2026-07-14T12:57:13Z"
+          }
+        ]
       },
       {
-        "checked": false,
-        "text": "The delivered diff is confined to the workbench bundle entry and workbench-owned test/golden roots."
+        "checked": true,
+        "text": "The delivered diff is confined to the workbench bundle entry and workbench-owned test/golden roots.",
+        "evidence_refs": [
+          {
+            "type": "command",
+            "command": "git diff-tree --no-commit-id --name-only -r d87b919 | awk 'BEGIN{ok=1} $0 !~ /^apps\\/desktop\\/lib\\/src\\/frontend\\/layout\\/profiles\\/workbench\\/desktop\\/workbench_desktop.dart$/ && $0 !~ /^apps\\/desktop\\/test\\/layout\\/profiles\\/workbench\\/desktop\\// && $0 !~ /^apps\\/desktop\\/test\\/goldens\\/layout\\/workbench\\/desktop\\// {ok=0} END{exit ok?0:1}'",
+            "exit_code": 0,
+            "recorded_at": "2026-07-14T12:57:13Z"
+          }
+        ]
       }
     ],
     "commit": {
       "repository": ".git",
       "message": "test(client): prove workbench desktop bundle",
-      "target": "workbench desktop bundle entry, profile tests, and goldens"
+      "target": "workbench desktop bundle entry, profile tests, and goldens",
+      "delivered": "d87b919"
     },
     "next": [
       "696a2dac-843f-413a-bba7-eef09ac54641"
