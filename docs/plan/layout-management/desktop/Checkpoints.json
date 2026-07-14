@@ -69,7 +69,7 @@
   },
   {
     "id": "6f585f95-9832-4949-827d-a42ea07d5b4b",
-    "status": "pending",
+    "status": "completed",
     "role": "evidence",
     "prerequisites": [
       "cb32357a-794c-4a2b-80e3-6b4e55f9c3d5"
@@ -91,22 +91,47 @@
     ],
     "acceptance_criteria": [
       {
-        "checked": false,
-        "text": "Evidence.md cites concrete shell, feature, Settings, test, planned profile, and parent-contract paths with observed behavior and planning consequences."
+        "checked": true,
+        "text": "Evidence.md cites concrete shell, feature, Settings, test, planned profile, and parent-contract paths with observed behavior and planning consequences.",
+        "evidence_refs": [
+          {
+            "type": "file",
+            "path": "docs/plan/layout-management/desktop/Evidence.md",
+            "sha256": "347ade6e733f50d8ad717a38a43ac7c342f87b4bde60d106e494072d83f55115",
+            "recorded_at": "2026-07-14T12:19:42Z"
+          }
+        ]
       },
       {
-        "checked": false,
-        "text": "Evidence explains why profile-local source/tests/goldens and one bundle entry per profile enable independent development."
+        "checked": true,
+        "text": "Evidence explains why profile-local source/tests/goldens and one bundle entry per profile enable independent development.",
+        "evidence_refs": [
+          {
+            "type": "file",
+            "path": "docs/plan/layout-management/desktop/Evidence.md",
+            "sha256": "347ade6e733f50d8ad717a38a43ac7c342f87b4bde60d106e494072d83f55115",
+            "recorded_at": "2026-07-14T12:19:42Z"
+          }
+        ]
       },
       {
-        "checked": false,
-        "text": "Evidence explicitly limits child claims to renderer bundles and assigns wired switching, migration, build, and launch to the parent."
+        "checked": true,
+        "text": "Evidence explicitly limits child claims to renderer bundles and assigns wired switching, migration, build, and launch to the parent.",
+        "evidence_refs": [
+          {
+            "type": "file",
+            "path": "docs/plan/layout-management/desktop/Evidence.md",
+            "sha256": "347ade6e733f50d8ad717a38a43ac7c342f87b4bde60d106e494072d83f55115",
+            "recorded_at": "2026-07-14T12:19:43Z"
+          }
+        ]
       }
     ],
     "commit": {
       "repository": ".git",
       "message": "docs(plan): ground desktop renderer isolation evidence",
-      "target": "docs/plan/layout-management/desktop/Evidence.md"
+      "target": "docs/plan/layout-management/desktop/Evidence.md",
+      "delivered": "9a96a87"
     },
     "next": [
       "704d9bf2-6f48-41a8-b30a-5da934d7eaec"
