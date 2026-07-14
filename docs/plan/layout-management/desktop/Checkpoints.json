@@ -209,7 +209,7 @@
   },
   {
     "id": "435e546f-1591-4b38-bfdf-eabf644d5ee1",
-    "status": "pending",
+    "status": "completed",
     "role": "architecture_scaffold",
     "prerequisites": [
       "704d9bf2-6f48-41a8-b30a-5da934d7eaec"
@@ -231,22 +231,47 @@
     ],
     "acceptance_criteria": [
       {
-        "checked": false,
-        "text": "Architecture.md records the exact module map, one-responsibility files/directories, dependency direction, interfaces, patterns, state/adaptation rules, and isolation invariants."
+        "checked": true,
+        "text": "Architecture.md records the exact module map, one-responsibility files/directories, dependency direction, interfaces, patterns, state/adaptation rules, and isolation invariants.",
+        "evidence_refs": [
+          {
+            "type": "file",
+            "path": "docs/plan/layout-management/desktop/Architecture.md",
+            "sha256": "3a466e7d194b4f33e410bb53e45969e1b318a98b60ad90d0ef06551c45e9babd",
+            "recorded_at": "2026-07-14T12:20:53Z"
+          }
+        ]
       },
       {
-        "checked": false,
-        "text": "The ownership table assigns shell/components, destination adapters, and bundle tests/goldens to six mutually disjoint path sets."
+        "checked": true,
+        "text": "The ownership table assigns shell/components, destination adapters, and bundle tests/goldens to six mutually disjoint path sets.",
+        "evidence_refs": [
+          {
+            "type": "file",
+            "path": "docs/plan/layout-management/desktop/Architecture.md",
+            "sha256": "3a466e7d194b4f33e410bb53e45969e1b318a98b60ad90d0ef06551c45e9babd",
+            "recorded_at": "2026-07-14T12:20:53Z"
+          }
+        ]
       },
       {
-        "checked": false,
-        "text": "Architecture names central registry, composition, app, shell, Settings, package aggregation, docs, build, and launch paths as parent-owned and outside every implementation Node."
+        "checked": true,
+        "text": "Architecture names central registry, composition, app, shell, Settings, package aggregation, docs, build, and launch paths as parent-owned and outside every implementation Node.",
+        "evidence_refs": [
+          {
+            "type": "file",
+            "path": "docs/plan/layout-management/desktop/Architecture.md",
+            "sha256": "3a466e7d194b4f33e410bb53e45969e1b318a98b60ad90d0ef06551c45e9babd",
+            "recorded_at": "2026-07-14T12:20:53Z"
+          }
+        ]
       }
     ],
     "commit": {
       "repository": ".git",
       "message": "docs(plan): lock desktop bundle architecture",
-      "target": "docs/plan/layout-management/desktop/Architecture.md"
+      "target": "docs/plan/layout-management/desktop/Architecture.md",
+      "delivered": "4ad821b"
     },
     "next": [
       "a58737ef-7f7f-492f-91bd-94c44a236da5",
