@@ -139,7 +139,7 @@
   },
   {
     "id": "704d9bf2-6f48-41a8-b30a-5da934d7eaec",
-    "status": "pending",
+    "status": "completed",
     "role": "validation_matrix",
     "prerequisites": [
       "6f585f95-9832-4949-827d-a42ea07d5b4b"
@@ -161,22 +161,47 @@
     ],
     "acceptance_criteria": [
       {
-        "checked": false,
-        "text": "Validation.md maps all nine requirements to profile-owned tests/goldens, static boundaries, and any required parent-integration evidence."
+        "checked": true,
+        "text": "Validation.md maps all nine requirements to profile-owned tests/goldens, static boundaries, and any required parent-integration evidence.",
+        "evidence_refs": [
+          {
+            "type": "file",
+            "path": "docs/plan/layout-management/desktop/Validation.md",
+            "sha256": "692d20071b0ac2c245947273c915a44f721993b1af333b04af901fae479ae990",
+            "recorded_at": "2026-07-14T12:20:16Z"
+          }
+        ]
       },
       {
-        "checked": false,
-        "text": "The planned commands contain separate workbench and studio test selectors, layout-boundary verification, analysis/format checks, and scoped Better Plan gates."
+        "checked": true,
+        "text": "The planned commands contain separate workbench and studio test selectors, layout-boundary verification, analysis/format checks, and scoped Better Plan gates.",
+        "evidence_refs": [
+          {
+            "type": "file",
+            "path": "docs/plan/layout-management/desktop/Validation.md",
+            "sha256": "692d20071b0ac2c245947273c915a44f721993b1af333b04af901fae479ae990",
+            "recorded_at": "2026-07-14T12:20:16Z"
+          }
+        ]
       },
       {
-        "checked": false,
-        "text": "The matrix excludes client rebuild/open and production cutover from the child final-validation claim."
+        "checked": true,
+        "text": "The matrix excludes client rebuild/open and production cutover from the child final-validation claim.",
+        "evidence_refs": [
+          {
+            "type": "file",
+            "path": "docs/plan/layout-management/desktop/Validation.md",
+            "sha256": "692d20071b0ac2c245947273c915a44f721993b1af333b04af901fae479ae990",
+            "recorded_at": "2026-07-14T12:20:16Z"
+          }
+        ]
       }
     ],
     "commit": {
       "repository": ".git",
       "message": "docs(plan): define desktop renderer validation",
-      "target": "docs/plan/layout-management/desktop/Validation.md"
+      "target": "docs/plan/layout-management/desktop/Validation.md",
+      "delivered": "aff0541"
     },
     "next": [
       "435e546f-1591-4b38-bfdf-eabf644d5ee1"
