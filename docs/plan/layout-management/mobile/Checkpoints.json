@@ -419,7 +419,7 @@
   },
   {
     "id": "86ec0e2a-296f-4cbf-99dd-747aef69be8e",
-    "status": "pending",
+    "status": "completed",
     "role": "implementation",
     "prerequisites": [
       "349535e1-e4c6-4096-bd6f-2967ef629d6a"
@@ -439,22 +439,47 @@
     ],
     "acceptance_criteria": [
       {
-        "checked": false,
-        "text": "Profile-only tests prove workbench identity/surface/variant metadata, exact destinations/actions, immutable fake-port rendering, and bounded workbench restoration keys."
+        "checked": true,
+        "text": "Profile-only tests prove workbench identity/surface/variant metadata, exact destinations/actions, immutable fake-port rendering, and bounded workbench restoration keys.",
+        "evidence_refs": [
+          {
+            "type": "file",
+            "path": "apps/desktop/test/layout/profiles/workbench/mobile/workbench_mobile_bundle_test.dart",
+            "sha256": "2a37c358a5b82f674cb5ae126d6ad9e8d7010308f3d0fd44910e9ca218c7d1fc",
+            "recorded_at": "2026-07-14T12:53:32Z"
+          }
+        ]
       },
       {
-        "checked": false,
-        "text": "Constraint, semantics, touch/focus, overflow, composer-clearance, text-scale, inset, appearance-token, and reduced-motion matrices pass."
+        "checked": true,
+        "text": "Constraint, semantics, touch/focus, overflow, composer-clearance, text-scale, inset, appearance-token, and reduced-motion matrices pass.",
+        "evidence_refs": [
+          {
+            "type": "command",
+            "command": "cd apps/desktop && flutter test test/layout/profiles/workbench/mobile",
+            "exit_code": 0,
+            "recorded_at": "2026-07-14T12:53:40Z"
+          }
+        ]
       },
       {
-        "checked": false,
-        "text": "Deterministic workbench goldens and normalized source/golden digests are recorded entirely under the workbench test root."
+        "checked": true,
+        "text": "Deterministic workbench goldens and normalized source/golden digests are recorded entirely under the workbench test root.",
+        "evidence_refs": [
+          {
+            "type": "command",
+            "command": "shasum -a 256 -c apps/desktop/test/layout/profiles/workbench/mobile/workbench_mobile_artifact_manifest.sha256",
+            "exit_code": 0,
+            "recorded_at": "2026-07-14T12:53:40Z"
+          }
+        ]
       }
     ],
     "commit": {
       "repository": ".git",
       "message": "test(client): prove workbench mobile bundle",
-      "target": "workbench mobile tests and goldens"
+      "target": "workbench mobile tests and goldens",
+      "delivered": "e6bf280"
     },
     "next": [
       "8784c7fe-f1fc-491f-a1f9-039fec55e5d6"
