@@ -347,7 +347,7 @@
   },
   {
     "id": "129c6757-2206-4894-84e9-ca308586f962",
-    "status": "pending",
+    "status": "completed",
     "role": "implementation",
     "prerequisites": [
       "fb9651ea-10da-42b9-9312-21d45e93952d"
@@ -366,30 +366,125 @@
     ],
     "acceptance_criteria": [
       {
-        "checked": false,
-        "text": "Contract tests prove immutable parsing/validation, semantic names, deterministic equality/order, viewport classification inputs, and safe error codes."
+        "checked": true,
+        "text": "Contract tests prove immutable parsing/validation, semantic names, deterministic equality/order, viewport classification inputs, and safe error codes.",
+        "evidence_refs": [
+          {
+            "type": "command",
+            "command": "cd apps/desktop && flutter test test/layout/layout_profile_contract_test.dart test/layout/semantic_destination_catalog_test.dart",
+            "exit_code": 0,
+            "recorded_at": "2026-07-14T11:37:29Z"
+          },
+          {
+            "type": "file",
+            "path": "apps/desktop/lib/src/contracts/presentation/layout_profile.dart",
+            "sha256": "e6087c7898369b8c3e362412743d449a5bb3aedd4f858d4b62ab51ef4790c0d3",
+            "recorded_at": "2026-07-14T11:37:29Z"
+          },
+          {
+            "type": "file",
+            "path": "apps/desktop/test/layout/layout_profile_contract_test.dart",
+            "sha256": "9a1f383c22ff9e154f9e4856bbfac91f82de7242e2a5427b06292c20699aa50f",
+            "recorded_at": "2026-07-14T11:37:29Z"
+          }
+        ]
       },
       {
-        "checked": false,
-        "text": "The destination catalog exactly represents current reachable client surfaces and aliases without importing frontend/platform/backend implementations."
+        "checked": true,
+        "text": "The destination catalog exactly represents current reachable client surfaces and aliases without importing frontend/platform/backend implementations.",
+        "evidence_refs": [
+          {
+            "type": "command",
+            "command": "python3 -c \"from pathlib import Path; fs=list(Path('apps/desktop/lib/src/contracts/presentation').glob('*.dart'))+[Path('apps/desktop/lib/src/application/features/navigation/semantic_destination_catalog.dart')]; forbidden=('src/frontend/','src/platform/','src/backend/'); assert not [(str(f),x) for f in fs for x in forbidden if x in f.read_text()]\"",
+            "exit_code": 0,
+            "recorded_at": "2026-07-14T11:36:50Z"
+          },
+          {
+            "type": "file",
+            "path": "apps/desktop/lib/src/application/features/navigation/semantic_destination_catalog.dart",
+            "sha256": "7804a2aff3b6b323b7a290d163af2a3971e1e9a6e1384e5bf1a64b237d9bd2be",
+            "recorded_at": "2026-07-14T11:36:50Z"
+          },
+          {
+            "type": "file",
+            "path": "apps/desktop/test/layout/semantic_destination_catalog_test.dart",
+            "sha256": "866c94a599643db07b14bd8823c39def82d87125a2f82deae26f0f07a9ef920c",
+            "recorded_at": "2026-07-14T11:36:50Z"
+          }
+        ]
       },
       {
-        "checked": false,
-        "text": "No duplicate shell module list is introduced in the new layout modules."
+        "checked": true,
+        "text": "No duplicate shell module list is introduced in the new layout modules.",
+        "evidence_refs": [
+          {
+            "type": "command",
+            "command": "python3 -c \"from pathlib import Path; roots=[Path('apps/desktop/lib/src/application/features/layout'),Path('apps/desktop/lib/src/frontend/layout')]; fs=[f for r in roots if r.exists() for f in r.rglob('*.dart')]; assert not [str(f) for f in fs if 'ClientSection.' in f.read_text()]\"",
+            "exit_code": 0,
+            "recorded_at": "2026-07-14T11:36:50Z"
+          },
+          {
+            "type": "file",
+            "path": "apps/desktop/lib/src/contracts/presentation/semantic_destination.dart",
+            "sha256": "84724d32c684ae2d02272f00d87f686810fef11bac31274ad5dc69ccd8cac3bb",
+            "recorded_at": "2026-07-14T11:36:50Z"
+          },
+          {
+            "type": "file",
+            "path": "apps/desktop/lib/src/application/features/navigation/semantic_destination_catalog.dart",
+            "sha256": "7804a2aff3b6b323b7a290d163af2a3971e1e9a6e1384e5bf1a64b237d9bd2be",
+            "recorded_at": "2026-07-14T11:36:50Z"
+          }
+        ]
       },
       {
-        "checked": false,
-        "text": "Contract tests prove desktop/medium and mobile/medium produce distinct LayoutVariantKey values while persisting only the shared semantic profile ID."
+        "checked": true,
+        "text": "Contract tests prove desktop/medium and mobile/medium produce distinct LayoutVariantKey values while persisting only the shared semantic profile ID.",
+        "evidence_refs": [
+          {
+            "type": "file",
+            "path": "apps/desktop/test/layout/layout_profile_contract_test.dart",
+            "sha256": "9a1f383c22ff9e154f9e4856bbfac91f82de7242e2a5427b06292c20699aa50f",
+            "recorded_at": "2026-07-14T11:36:50Z"
+          },
+          {
+            "type": "file",
+            "path": "apps/desktop/lib/src/contracts/presentation/layout_variant.dart",
+            "sha256": "e3ae89c62b9096951dae4e9f9985ab34ab1d738f0f29ad99f8a3e8b536e63856",
+            "recorded_at": "2026-07-14T11:36:50Z"
+          },
+          {
+            "type": "file",
+            "path": "apps/desktop/lib/src/contracts/presentation/presentation_preferences.dart",
+            "sha256": "ece9ca876b358846ccb9d1158de469a4920ab8a14fad5277cb5dda77f831efc6",
+            "recorded_at": "2026-07-14T11:36:50Z"
+          }
+        ]
       },
       {
-        "checked": false,
-        "text": "Environment contract tests prove surface-bounded viewport classification: narrow desktop remains desktop/medium and large mobile remains mobile/medium."
+        "checked": true,
+        "text": "Environment contract tests prove surface-bounded viewport classification: narrow desktop remains desktop/medium and large mobile remains mobile/medium.",
+        "evidence_refs": [
+          {
+            "type": "file",
+            "path": "apps/desktop/test/layout/layout_profile_contract_test.dart",
+            "sha256": "9a1f383c22ff9e154f9e4856bbfac91f82de7242e2a5427b06292c20699aa50f",
+            "recorded_at": "2026-07-14T11:36:51Z"
+          },
+          {
+            "type": "file",
+            "path": "apps/desktop/lib/src/contracts/presentation/layout_environment.dart",
+            "sha256": "33d05909e2b68f3a6f3234baaa1067acb9c9393fd511b626960bd3d643323d12",
+            "recorded_at": "2026-07-14T11:36:51Z"
+          }
+        ]
       }
     ],
     "commit": {
       "repository": ".git",
       "message": "feat(client): add layout and destination contracts",
-      "target": "apps/desktop/lib/src/contracts/presentation and application/features/navigation"
+      "target": "apps/desktop/lib/src/contracts/presentation and application/features/navigation",
+      "delivered": "4456c84"
     },
     "next": [
       "57e8b062-f130-4b61-83dd-13b0d220e285"
