@@ -212,7 +212,7 @@
   },
   {
     "id": "f169649a-6dac-4177-8cf4-174ee06bc789",
-    "status": "pending",
+    "status": "completed",
     "role": "architecture_scaffold",
     "prerequisites": [
       "2aa6a521-5e45-4dae-9093-3c112fe46c8f"
@@ -235,22 +235,47 @@
     ],
     "acceptance_criteria": [
       {
-        "checked": false,
-        "text": "Architecture.md records one-responsibility source/test maps, layer boundaries, one-way dependencies, and exactly two public mobile bundle entry points."
+        "checked": true,
+        "text": "Architecture.md records one-responsibility source/test maps, layer boundaries, one-way dependencies, and exactly two public mobile bundle entry points.",
+        "evidence_refs": [
+          {
+            "type": "file",
+            "path": "docs/plan/layout-management/mobile/Architecture.md",
+            "sha256": "4dc2a894ac1003554a2b4f20761af1b0bafc5b90a1c076f92ae8916a1b1e5f22",
+            "recorded_at": "2026-07-14T12:23:14Z"
+          }
+        ]
       },
       {
-        "checked": false,
-        "text": "The owned-path table gives every implementation branch an explicit non-overlapping source, destination/bundle, or test/golden scope."
+        "checked": true,
+        "text": "The owned-path table gives every implementation branch an explicit non-overlapping source, destination/bundle, or test/golden scope.",
+        "evidence_refs": [
+          {
+            "type": "file",
+            "path": "docs/plan/layout-management/mobile/Architecture.md",
+            "sha256": "4dc2a894ac1003554a2b4f20761af1b0bafc5b90a1c076f92ae8916a1b1e5f22",
+            "recorded_at": "2026-07-14T12:23:14Z"
+          }
+        ]
       },
       {
-        "checked": false,
-        "text": "Architecture documents deliberate Factory, Adapter, and Strategy use, simpler pattern-free records/maps, bounded state, O(1) lookups, hard imports, and parent integration ownership."
+        "checked": true,
+        "text": "Architecture documents deliberate Factory, Adapter, and Strategy use, simpler pattern-free records/maps, bounded state, O(1) lookups, hard imports, and parent integration ownership.",
+        "evidence_refs": [
+          {
+            "type": "file",
+            "path": "docs/plan/layout-management/mobile/Architecture.md",
+            "sha256": "4dc2a894ac1003554a2b4f20761af1b0bafc5b90a1c076f92ae8916a1b1e5f22",
+            "recorded_at": "2026-07-14T12:23:14Z"
+          }
+        ]
       }
     ],
     "commit": {
       "repository": ".git",
       "message": "docs(client): design isolated mobile layout bundles",
-      "target": "docs/plan/layout-management/mobile/Architecture.md"
+      "target": "docs/plan/layout-management/mobile/Architecture.md",
+      "delivered": "c8298e2"
     },
     "next": [
       "76a7f6dc-2911-4ddb-b18c-d137ab04a1ea",
