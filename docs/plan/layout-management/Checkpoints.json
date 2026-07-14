@@ -986,6 +986,71 @@
       "delivered": "4a27f75"
     },
     "next": [
+      "906cf091-673a-420a-a1d3-dc3ae55437cc"
+    ]
+  },
+  {
+    "id": "906cf091-673a-420a-a1d3-dc3ae55437cc",
+    "status": "completed",
+    "role": "implementation",
+    "prerequisites": [
+      "1ce402ea-c375-44d2-a96b-9f1df8e6200e"
+    ],
+    "platform": "any",
+    "difficulty": "medium",
+    "goal": "Provide one layout-neutral scoped-state fixture for isolated profile adapter tests.",
+    "description": "Scope: apps/desktop/test/layout/fixtures/layout_scoped_state_fixture.dart, one focused foundation test, and the existing layout-boundary verifier command only. Context: Studio adapter validation revealed that profile-owned tests cannot legally import application catalog/state implementations, while the architecture already allowlists a parent fixture root. Target: construct a bounded LayoutScopedState from a supplied descriptor, surface, and declared namespaces without importing any built-in profile, then let profile tests exercise adapters through the narrow content port. Design Considerations: synthesize the exact finite catalog product once in O(SxVxD), retain immutable declarations, and expose no registry or production mutation. Design Value: the fixture preserves hard isolation without weakening verification or duplicating application internals in each profile. Constraints & Risks: do not import profile bundles, edit renderer production, broaden the allowlist, or carry business/runtime data.",
+    "requirements": [
+      "REQ-003",
+      "REQ-009",
+      "REQ-012",
+      "REQ-014"
+    ],
+    "acceptance_criteria": [
+      {
+        "checked": true,
+        "text": "The shared fixture constructs a bounded scoped state from supplied pure descriptor/surface/namespaces without importing a built-in profile.",
+        "evidence_refs": [
+          {
+            "type": "file",
+            "path": "apps/desktop/test/layout/fixtures/layout_scoped_state_fixture.dart",
+            "sha256": "345825cb201d9d7d5773b93a7e7ede13c551ae3084d572955f37f6a119edadee",
+            "recorded_at": "2026-07-14T13:35:21Z"
+          }
+        ]
+      },
+      {
+        "checked": true,
+        "text": "A focused foundation test proves declared read/write succeeds and undeclared state fails closed.",
+        "evidence_refs": [
+          {
+            "type": "command",
+            "command": "cd apps/desktop && flutter test test/layout/layout_scoped_state_fixture_test.dart",
+            "exit_code": 0,
+            "recorded_at": "2026-07-14T13:35:26Z"
+          }
+        ]
+      },
+      {
+        "checked": true,
+        "text": "Studio profile tests can import the fixture through the existing allowlist and client:verify:layouts still passes without a broader rule.",
+        "evidence_refs": [
+          {
+            "type": "command",
+            "command": "npm run client:verify:layouts",
+            "exit_code": 0,
+            "recorded_at": "2026-07-14T13:39:58Z"
+          }
+        ]
+      }
+    ],
+    "commit": {
+      "repository": ".git",
+      "message": "test(client): add isolated layout state fixture",
+      "target": "layout-neutral scoped-state fixture and focused test",
+      "delivered": "e894994"
+    },
+    "next": [
       "f7afd453-e92f-4905-b26b-69a6ecba6b51"
     ]
   },
@@ -994,7 +1059,7 @@
     "status": "pending",
     "role": "implementation",
     "prerequisites": [
-      "1ce402ea-c375-44d2-a96b-9f1df8e6200e"
+      "906cf091-673a-420a-a1d3-dc3ae55437cc"
     ],
     "platform": "any",
     "difficulty": "deep",
