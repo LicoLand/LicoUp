@@ -280,7 +280,7 @@
   },
   {
     "id": "a58737ef-7f7f-492f-91bd-94c44a236da5",
-    "status": "pending",
+    "status": "completed",
     "role": "implementation",
     "prerequisites": [
       "435e546f-1591-4b38-bfdf-eabf644d5ee1"
@@ -299,22 +299,47 @@
     ],
     "acceptance_criteria": [
       {
-        "checked": false,
-        "text": "Private workbench shell/components/tokens/preview modules implement a coherent medium/expanded desktop identity using only permitted parent interfaces."
+        "checked": true,
+        "text": "Private workbench shell/components/tokens/preview modules implement a coherent medium/expanded desktop identity using only permitted parent interfaces.",
+        "evidence_refs": [
+          {
+            "type": "command",
+            "command": "cd apps/desktop && flutter analyze lib/src/frontend/layout/profiles/workbench/desktop",
+            "exit_code": 0,
+            "recorded_at": "2026-07-14T12:33:31Z"
+          }
+        ]
       },
       {
-        "checked": false,
-        "text": "Focused component checks prove constraints, semantics, appearance-token composition, and reduced-motion behavior without a controller or sibling import."
+        "checked": true,
+        "text": "Focused component checks prove constraints, semantics, appearance-token composition, and reduced-motion behavior without a controller or sibling import.",
+        "evidence_refs": [
+          {
+            "type": "command",
+            "command": "npm run client:verify:layouts",
+            "exit_code": 0,
+            "recorded_at": "2026-07-14T12:33:32Z"
+          }
+        ]
       },
       {
-        "checked": false,
-        "text": "The delivered diff is confined to the Node's exclusive workbench shell/component/token/preview/asset paths."
+        "checked": true,
+        "text": "The delivered diff is confined to the Node's exclusive workbench shell/component/token/preview/asset paths.",
+        "evidence_refs": [
+          {
+            "type": "command",
+            "command": "git diff-tree --no-commit-id --name-only -r 48f80b1 | awk 'BEGIN{ok=1} $0 !~ /^apps\\/desktop\\/lib\\/src\\/frontend\\/layout\\/profiles\\/workbench\\/desktop\\/(shell|components|tokens|preview)\\// && $0 !~ /^apps\\/desktop\\/assets\\/layout-profiles\\/workbench\\/desktop\\// {ok=0} END{exit ok?0:1}'",
+            "exit_code": 0,
+            "recorded_at": "2026-07-14T12:33:32Z"
+          }
+        ]
       }
     ],
     "commit": {
       "repository": ".git",
       "message": "feat(client): implement workbench desktop components",
-      "target": "workbench desktop shell, components, tokens, preview, and assets"
+      "target": "workbench desktop shell, components, tokens, preview, and assets",
+      "delivered": "48f80b1"
     },
     "next": [
       "26ac0203-77e8-4377-992c-eaab281ded7d"
