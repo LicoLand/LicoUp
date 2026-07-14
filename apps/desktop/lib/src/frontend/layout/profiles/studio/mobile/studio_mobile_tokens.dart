@@ -19,7 +19,13 @@ final LayoutVisualTokens studioMobileVisualTokens = LayoutVisualTokens(
 
 /// Non-color measurements for the dense mobile Studio presentation.
 abstract final class StudioMobileMetrics {
-  static const double compactHeaderExtent = 52;
+  static const double compactHeaderMinExtent = 52;
+  static const double compactHeaderMaxExtent = 64;
+  static const double compactHeaderTextScaleCeiling = 2.5;
+  static const double compactHeaderEyebrowFontSize = 9;
+  static const double compactHeaderTitleFontSize = 13;
+  static const double compactHeaderTitleHeight = 1.05;
+  static const double compactHeaderLineGap = 3;
   static const double mediumRailExtent = 68;
   static const double compactDrawerMaxWidth = 304;
   static const double compactDrawerWidthFactor = 0.84;
@@ -30,6 +36,24 @@ abstract final class StudioMobileMetrics {
   static const double controlRadius = 5;
   static const double contentEdge = 8;
   static const double denseGap = 4;
+
+  static double compactHeaderExtentFor(double textScale) {
+    if (!textScale.isFinite || textScale <= 0) {
+      throw const FormatException('studio_mobile_text_scale_invalid');
+    }
+    final effectiveScale = textScale > compactHeaderTextScaleCeiling
+        ? compactHeaderTextScaleCeiling
+        : textScale;
+    final eyebrowExtent = (compactHeaderEyebrowFontSize * effectiveScale)
+        .ceilToDouble();
+    final titleExtent =
+        (compactHeaderTitleFontSize * compactHeaderTitleHeight * effectiveScale)
+            .ceilToDouble();
+    final requiredExtent = eyebrowExtent + compactHeaderLineGap + titleExtent;
+    return requiredExtent
+        .clamp(compactHeaderMinExtent, compactHeaderMaxExtent)
+        .toDouble();
+  }
 
   static double targetExtent(LayoutEnvironment environment) {
     return environment.hasTouch ? touchTargetExtent : pointerTargetExtent;

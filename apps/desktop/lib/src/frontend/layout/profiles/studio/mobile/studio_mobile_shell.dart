@@ -73,6 +73,9 @@ final class _StudioCompactMobileShellState
     final colors = context.licoColors;
     final contentInsets = StudioMobileMetrics.safeContentInsets(environment);
     final motion = StudioMobileMetrics.motion(environment);
+    final headerExtent = StudioMobileMetrics.compactHeaderExtentFor(
+      environment.textScale,
+    );
 
     final shell = Semantics(
       key: const Key('studio-mobile-compact-shell'),
@@ -101,6 +104,7 @@ final class _StudioCompactMobileShellState
                             data.activeDestination,
                           ),
                           menuLabel: strings.features,
+                          extent: headerExtent,
                           targetExtent: StudioMobileMetrics.targetExtent(
                             environment,
                           ),
@@ -129,7 +133,7 @@ final class _StudioCompactMobileShellState
                     ],
                   ),
                   Positioned.fill(
-                    top: StudioMobileMetrics.compactHeaderExtent,
+                    top: headerExtent,
                     child: AnimatedSwitcher(
                       duration: motion,
                       reverseDuration: motion,
@@ -179,6 +183,7 @@ final class _StudioCompactHeader extends StatelessWidget {
   const _StudioCompactHeader({
     required this.activeLabel,
     required this.menuLabel,
+    required this.extent,
     required this.targetExtent,
     required this.open,
     required this.onPressed,
@@ -186,6 +191,7 @@ final class _StudioCompactHeader extends StatelessWidget {
 
   final String activeLabel;
   final String menuLabel;
+  final double extent;
   final double targetExtent;
   final bool open;
   final VoidCallback onPressed;
@@ -195,7 +201,7 @@ final class _StudioCompactHeader extends StatelessWidget {
     final colors = context.licoColors;
     return SizedBox(
       key: const Key('studio-mobile-compact-header'),
-      height: StudioMobileMetrics.compactHeaderExtent,
+      height: extent,
       child: DecoratedBox(
         decoration: BoxDecoration(
           color: colors.surface,
@@ -222,32 +228,41 @@ final class _StudioCompactHeader extends StatelessWidget {
             ),
             const SizedBox(width: 4),
             Expanded(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'STUDIO',
-                    maxLines: 1,
-                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                      color: colors.primary,
-                      fontWeight: FontWeight.w800,
-                      fontSize: 9,
-                      letterSpacing: 1.5,
-                      height: 1,
+              child: MediaQuery.withClampedTextScaling(
+                maxScaleFactor:
+                    StudioMobileMetrics.compactHeaderTextScaleCeiling,
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'STUDIO',
+                      maxLines: 1,
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        color: colors.primary,
+                        fontWeight: FontWeight.w800,
+                        fontSize:
+                            StudioMobileMetrics.compactHeaderEyebrowFontSize,
+                        letterSpacing: 1.5,
+                        height: 1,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 3),
-                  Text(
-                    activeLabel,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w700,
-                      height: 1.05,
+                    const SizedBox(
+                      height: StudioMobileMetrics.compactHeaderLineGap,
                     ),
-                  ),
-                ],
+                    Text(
+                      activeLabel,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        fontSize:
+                            StudioMobileMetrics.compactHeaderTitleFontSize,
+                        fontWeight: FontWeight.w700,
+                        height: StudioMobileMetrics.compactHeaderTitleHeight,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
             const SizedBox(width: 10),
