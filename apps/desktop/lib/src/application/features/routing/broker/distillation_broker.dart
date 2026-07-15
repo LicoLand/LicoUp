@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter_client/src/application/features/routing/broker/distillation_prompt.dart';
 import 'package:flutter_client/src/contracts/routing/distillation_package.dart';
 import 'package:flutter_client/src/contracts/routing/routing_policy_schema.dart';
@@ -26,7 +28,18 @@ class DefaultDistillationBroker implements DistillationBroker {
     final createdAt = now.toIso8601String();
     var usage = const DistillationUsage();
 
-    final distiller = _selectDistiller(request: request, policy: policy);
+    final execution = _resolveExecution(request: request, policy: policy);
+    final inputWindow = buildDistillationInputWindow(
+      request.turns,
+      preserveFields: execution.preserveFields,
+    );
+    final boundedRequest = request.withTurns(inputWindow.turns);
+
+    final distiller = _selectDistiller(
+      request: boundedRequest,
+      policy: policy,
+      preferredDistiller: execution.distiller,
+    );
     if (distiller == null) {
       final audit = DistillationAuditRecord(
         sourceSessionId: request.sourceSessionId,
@@ -47,11 +60,9 @@ class DefaultDistillationBroker implements DistillationBroker {
       );
     }
 
-    final contract = policy.distillation.fidelityContract;
-    final sourceClasses = request.contentClasses;
-    final sessionId = request.distillerSessionId.trim().isEmpty
-        ? 'distill-${request.sourceSessionId}'
-        : request.distillerSessionId;
+    final contract = execution.contract;
+    final sourceClasses = boundedRequest.contentClasses;
+    var sessionId = request.distillerSessionId.trim();
 
     final maxAttempts = contract.retryOnFailure
         ? (1 + contract.maxRetries.clamp(0, 8))
@@ -64,8 +75,11 @@ class DefaultDistillationBroker implements DistillationBroker {
     for (var attempt = 0; attempt < maxAttempts; attempt++) {
       final corrective = attempt > 0;
       final prompt = _promptBuilder.build(
-        request: request,
+        request: boundedRequest,
         policy: policy,
+        contract: contract,
+        preserveFields: execution.preserveFields,
+        inputWindow: inputWindow,
         corrective: corrective,
         missingSections: missingSections,
       );
@@ -78,11 +92,14 @@ class DefaultDistillationBroker implements DistillationBroker {
           corrective: corrective,
         ),
       );
+      if (response.sessionId.trim().isNotEmpty) {
+        sessionId = response.sessionId.trim();
+      }
       usage = usage + response.usage;
 
       if (!response.ok) {
         final audit = _buildAudit(
-          request: request,
+          request: boundedRequest,
           distillerAgentId: distiller,
           package: lastPackage,
           fidelity: lastFidelity,
@@ -101,8 +118,8 @@ class DefaultDistillationBroker implements DistillationBroker {
 
       final package = parseDistillationPackageResponse(
         response.text,
-        sourceSessionId: request.sourceSessionId,
-        sourceAgentId: request.sourceAgentId,
+        sourceSessionId: boundedRequest.sourceSessionId,
+        sourceAgentId: boundedRequest.sourceAgentId,
         createdAt: createdAt,
       );
       if (package == null) {
@@ -127,8 +144,8 @@ class DefaultDistillationBroker implements DistillationBroker {
         decisions: package.decisions,
         constraints: package.constraints,
         openItems: package.openItems,
-        sourceSessionId: request.sourceSessionId,
-        sourceAgentId: request.sourceAgentId,
+        sourceSessionId: boundedRequest.sourceSessionId,
+        sourceAgentId: boundedRequest.sourceAgentId,
         createdAt: createdAt,
       );
       lastPackage = normalized;
@@ -142,7 +159,7 @@ class DefaultDistillationBroker implements DistillationBroker {
 
       if (fidelity.passed) {
         final audit = _buildAudit(
-          request: request,
+          request: boundedRequest,
           distillerAgentId: distiller,
           package: normalized,
           fidelity: fidelity,
@@ -159,7 +176,10 @@ class DefaultDistillationBroker implements DistillationBroker {
         );
       }
 
-      missingSections = fidelity.missingSections;
+      missingSections = List.unmodifiable({
+        ...fidelity.missingSections,
+        ...fidelity.uncoveredSections,
+      });
       if (attempt + 1 >= maxAttempts) {
         break;
       }
@@ -167,7 +187,7 @@ class DefaultDistillationBroker implements DistillationBroker {
 
     final retriesExhausted = contract.retryOnFailure && maxAttempts > 1;
     final audit = _buildAudit(
-      request: request,
+      request: boundedRequest,
       distillerAgentId: distiller,
       package: lastPackage,
       fidelity: lastFidelity,
@@ -188,9 +208,15 @@ class DefaultDistillationBroker implements DistillationBroker {
   String? _selectDistiller({
     required DistillationRequest request,
     required RoutingPolicyDocument policy,
+    required String preferredDistiller,
   }) {
     final ready = request.isDistillerReady ?? (_) => true;
-    final primary = policy.distillation.defaultDistiller.trim();
+    final configured = preferredDistiller.trim();
+    final primary = configured == 'self'
+        ? request.sourceAgentId.trim()
+        : configured.isNotEmpty
+        ? configured
+        : policy.distillation.defaultDistiller.trim();
     final alternate = policy.distillation.alternateDistiller.trim();
 
     if (primary.isNotEmpty && ready(primary)) {
@@ -199,10 +225,6 @@ class DefaultDistillationBroker implements DistillationBroker {
     if (alternate.isNotEmpty && ready(alternate)) {
       return alternate;
     }
-    // Agent-level distillation directive: "self" means source agent.
-    if (primary == 'self' && ready(request.sourceAgentId)) {
-      return request.sourceAgentId;
-    }
     if (primary.isEmpty && alternate.isEmpty) {
       // Fall back to source agent when policy omits distillers.
       if (ready(request.sourceAgentId)) {
@@ -210,6 +232,51 @@ class DefaultDistillationBroker implements DistillationBroker {
       }
     }
     return null;
+  }
+
+  _DistillationExecution _resolveExecution({
+    required DistillationRequest request,
+    required RoutingPolicyDocument policy,
+  }) {
+    RoutingPolicyAgent? sourceAgent;
+    for (final agent in policy.agents) {
+      if (agent.id == request.sourceAgentId) {
+        sourceAgent = agent;
+        break;
+      }
+    }
+    final directive = sourceAgent?.distillation;
+    final global = policy.distillation.fidelityContract;
+    final supportedSections = const {
+      'objective',
+      'currentState',
+      'decisions',
+      'constraints',
+      'openItems',
+    };
+    final preserveFields = <String>{
+      ...global.requiredSections,
+      ...?directive?.preserveFields.where(supportedSections.contains),
+      'objective',
+      'decisions',
+      'constraints',
+    };
+    final maxLength = math.min(
+      global.maxPackageLength,
+      directive?.maxLength ?? global.maxPackageLength,
+    );
+    return _DistillationExecution(
+      distiller:
+          directive?.distiller.trim() ??
+          policy.distillation.defaultDistiller.trim(),
+      preserveFields: Set.unmodifiable(preserveFields),
+      contract: RoutingFidelityContract(
+        requiredSections: List.unmodifiable(preserveFields),
+        maxPackageLength: maxLength,
+        retryOnFailure: global.retryOnFailure,
+        maxRetries: global.maxRetries,
+      ),
+    );
   }
 
   DistillationAuditRecord _buildAudit({
@@ -235,4 +302,16 @@ class DefaultDistillationBroker implements DistillationBroker {
     audits.add(audit);
     _auditSink?.add(audit);
   }
+}
+
+class _DistillationExecution {
+  const _DistillationExecution({
+    required this.distiller,
+    required this.preserveFields,
+    required this.contract,
+  });
+
+  final String distiller;
+  final Set<String> preserveFields;
+  final RoutingFidelityContract contract;
 }

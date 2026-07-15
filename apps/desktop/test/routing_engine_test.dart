@@ -22,14 +22,20 @@ void main() {
         roles: ['implementation'],
         capabilities: ['tool-use'],
         priority: 2,
-        allowanceThreshold: RoutingAllowanceThreshold(kind: 'token', minimum: 1),
+        allowanceThreshold: RoutingAllowanceThreshold(
+          kind: 'token',
+          minimum: 1,
+        ),
       ),
       RoutingPolicyAgent(
         id: 'agent-a',
         roles: ['architecture', 'implementation'],
         capabilities: ['reasoning-deep', 'tool-use'],
         priority: 1,
-        allowanceThreshold: RoutingAllowanceThreshold(kind: 'token', minimum: 1),
+        allowanceThreshold: RoutingAllowanceThreshold(
+          kind: 'token',
+          minimum: 1,
+        ),
       ),
       RoutingPolicyAgent(
         id: 'agent-c',
@@ -51,16 +57,32 @@ void main() {
     required String id,
     String? label,
     bool ready = true,
-    bool circuitBroken = false,
+    int circuitFailureCount = 0,
+    DateTime? circuitLastFailureAt,
     bool usageFresh = true,
     bool usageAvailable = true,
-    List<AgentUsageAllowance> allowances = const [],
+    List<AgentUsageAllowance> allowances = const [
+      AgentUsageAllowance(
+        kind: 'token',
+        label: 'tokens',
+        provider: 'x',
+        period: 'week',
+        status: 'available',
+        value: '100',
+        unit: 'tokens',
+        source: 'test',
+        message: '',
+      ),
+    ],
   }) {
     return RoutingAgentSignal(
       agentId: id,
       agentLabel: label ?? id,
       ready: ready,
-      circuitBroken: circuitBroken,
+      circuitBreaker: RoutingCircuitBreakerState(
+        failureCount: circuitFailureCount,
+        lastFailureAt: circuitLastFailureAt,
+      ),
       usageFresh: usageFresh,
       usageAvailable: usageAvailable,
       allowances: allowances,
@@ -123,11 +145,14 @@ void main() {
       );
       // agent-a priority 1 before agent-b priority 2, despite agent-b listed first.
       expect(decision.chosenAgentId, 'agent-a');
+      expect(decision.alternatives.map((c) => c.agentId).toList(), [
+        'agent-a',
+        'agent-b',
+      ]);
       expect(
-        decision.alternatives.map((c) => c.agentId).toList(),
-        ['agent-a', 'agent-b'],
+        decision.alternatives.first.priority,
+        lessThan(decision.alternatives.last.priority),
       );
-      expect(decision.alternatives.first.priority, lessThan(decision.alternatives.last.priority));
     });
 
     test('V-002-D allowance exhaustion exclusion', () {
@@ -166,14 +191,19 @@ void main() {
       );
     });
 
-    test('V-002-E circuit-breaker exclusion is policy-tunable', () {
+    test('V-002-E circuit-breaker uses failure count and cooldown TTL', () {
+      final clock = DateTime.utc(2026, 7, 11, 5);
       final signals = RoutingSignals(
         byAgentId: {
-          'agent-a': signal(id: 'agent-a', circuitBroken: true),
+          'agent-a': signal(
+            id: 'agent-a',
+            circuitFailureCount: 4,
+            circuitLastFailureAt: clock.subtract(const Duration(seconds: 30)),
+          ),
           'agent-b': signal(id: 'agent-b'),
           'agent-c': signal(id: 'agent-c'),
         },
-        now: () => DateTime.utc(2026, 7, 11, 5),
+        now: () => clock,
       );
       final decision = planner.plan(
         task: const RoutingTaskMetadata(requiredRoles: ['implementation']),
@@ -185,7 +215,83 @@ void main() {
       );
       expect(exclusion.reason, RouteReasonCode.circuitBroken);
       expect(exclusion.detail, contains('cooldownSeconds=90'));
+      expect(exclusion.detail, contains('failures=4'));
       expect(decision.chosenAgentId, 'agent-b');
+
+      final cooledDown = planner.plan(
+        task: const RoutingTaskMetadata(requiredRoles: ['implementation']),
+        policy: policy,
+        signals: RoutingSignals(
+          byAgentId: signals.byAgentId,
+          now: () => clock.add(const Duration(seconds: 61)),
+        ),
+      );
+      expect(cooledDown.chosenAgentId, 'agent-a');
+    });
+
+    test('allowance threshold compares matching kind against minimum', () {
+      final signals = RoutingSignals(
+        byAgentId: {
+          'agent-a': signal(
+            id: 'agent-a',
+            allowances: const [
+              AgentUsageAllowance(
+                kind: 'token',
+                label: 'tokens',
+                provider: 'x',
+                period: 'week',
+                status: 'available',
+                value: '0',
+                unit: 'tokens',
+                source: 'test',
+                message: '',
+              ),
+            ],
+          ),
+          'agent-b': signal(
+            id: 'agent-b',
+            allowances: const [
+              AgentUsageAllowance(
+                kind: 'token',
+                label: 'tokens',
+                provider: 'x',
+                period: 'week',
+                status: 'available',
+                value: '1',
+                unit: 'tokens',
+                source: 'test',
+                message: '',
+              ),
+            ],
+          ),
+          'agent-c': signal(id: 'agent-c'),
+        },
+        now: () => DateTime.utc(2026, 7, 11, 5),
+      );
+      final decision = planner.plan(
+        task: const RoutingTaskMetadata(requiredRoles: ['implementation']),
+        policy: policy,
+        signals: signals,
+      );
+      expect(decision.chosenAgentId, 'agent-b');
+      final excluded = decision.excluded.singleWhere(
+        (entry) => entry.agentId == 'agent-a',
+      );
+      expect(excluded.reason, RouteReasonCode.allowanceExhausted);
+      expect(excluded.detail, contains('minimum=1'));
+    });
+
+    test('prompt and content class derive explainable requirements', () {
+      final requirements = inferRoutingTaskRequirements(
+        const RoutingTaskMetadata(
+          prompt: 'Please implement the approved system design.',
+          contentClass: 'architecture',
+        ),
+      );
+      expect(requirements.roles, ['architecture', 'implementation']);
+      expect(requirements.capabilities, ['reasoning-deep', 'tool-use']);
+      expect(requirements.reasons, contains('content_class:architecture'));
+      expect(requirements.reasons, contains('prompt_keyword:implementation'));
     });
 
     test('V-002-F readiness hard-exclusion', () {
@@ -206,7 +312,10 @@ void main() {
         decision.excluded.singleWhere((e) => e.agentId == 'agent-a').reason,
         RouteReasonCode.notReady,
       );
-      expect(decision.alternatives.map((c) => c.agentId), isNot(contains('agent-a')));
+      expect(
+        decision.alternatives.map((c) => c.agentId),
+        isNot(contains('agent-a')),
+      );
       expect(decision.chosenAgentId, isNot('agent-a'));
     });
 
@@ -268,7 +377,10 @@ void main() {
       expect(decision.alternatives, isNotEmpty);
       expect(decision.alternatives.first.reason, RouteReasonCode.selected);
       expect(decision.alternatives.first.matchedRoles, isNotEmpty);
-      expect(decision.alternatives.first.satisfiedCapabilities, contains('tool-use'));
+      expect(
+        decision.alternatives.first.satisfiedCapabilities,
+        contains('tool-use'),
+      );
       expect(decision.alternatives.first.allowanceHeadroom, isA<int>());
       expect(decision.timestamp, isNotEmpty);
     });
@@ -285,9 +397,7 @@ void main() {
           configured: true,
           confidence: 1,
           adapterStatus: 'ready',
-          adapterCapabilities: const {
-            'conversationReadiness': 'ready',
-          },
+          adapterCapabilities: const {'conversationReadiness': 'ready'},
           supportedActions: const ['runtime.message.send'],
           scanSource: 'test',
         ),
@@ -299,43 +409,41 @@ void main() {
           configured: true,
           confidence: 1,
           adapterStatus: 'blocked',
-          adapterCapabilities: const {
-            'conversationReadiness': 'blocked',
-          },
+          adapterCapabilities: const {'conversationReadiness': 'blocked'},
           supportedActions: const ['runtime.message.send'],
           scanSource: 'test',
         ),
       ];
       final signals = evaluator.evaluate(
         targets: targets,
-        circuitBrokenAgentIds: {'agent-a'},
+        circuitBreakerStates: {
+          'agent-a': RoutingCircuitBreakerState(
+            failureCount: 4,
+            lastFailureAt: DateTime.utc(2026, 7, 11, 5),
+          ),
+        },
       );
       expect(signals['agent-a']!.ready, isTrue);
-      expect(signals['agent-a']!.circuitBroken, isTrue);
+      expect(signals['agent-a']!.circuitBreaker.failureCount, 4);
       expect(signals['agent-b']!.ready, isFalse);
     });
   });
 
-  group('V-002-J legacy removal', () {
-    test('legacy resolver and rule types have no remaining references', () {
-      final banned = [
-        'resolveAgentDispatchPlan',
-        'AgentOrchestrationRule',
-        'AgentOrchestrationStrategy',
-      ];
-      final hits = <String>[];
-      for (final entity in Directory('lib/src').listSync(recursive: true)) {
-        if (entity is! File || !entity.path.endsWith('.dart')) {
-          continue;
-        }
-        final source = entity.readAsStringSync();
-        for (final token in banned) {
-          if (source.contains(token)) {
-            hits.add('${entity.path}: $token');
-          }
-        }
-      }
-      expect(hits, isEmpty, reason: hits.join('\n'));
+  group('V-002-J production wiring', () {
+    test('controller lifecycle uses the canonical routing authority', () {
+      final controller = File(
+        'lib/src/application/controller/client_controller.dart',
+      ).readAsStringSync();
+      final lifecycle = File(
+        'lib/src/application/controller/controller_lifecycle_actions.dart',
+      ).readAsStringSync();
+      final orchestration = File(
+        'lib/src/application/features/agents/controller/agent_orchestration_actions.dart',
+      ).readAsStringSync();
+      expect(controller, contains('RoutingModuleRegistration'));
+      expect(lifecycle, contains('await registration.activate()'));
+      expect(orchestration, contains('_routingModule?.activePolicy'));
+      expect(orchestration, contains('planRoutingDispatch('));
     });
   });
 }

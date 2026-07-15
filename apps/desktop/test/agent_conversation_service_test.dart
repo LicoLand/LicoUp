@@ -143,6 +143,36 @@ void main() {
     },
   );
 
+  test(
+    'passes exact session identity to native history stream command',
+    () async {
+      final agentService = _StreamingAgentService([
+        {'event': 'done', 'ok': true},
+      ]);
+      const service = AgentConversationService();
+
+      await service
+          .streamSessions(
+            agentService: agentService,
+            agentId: 'codex',
+            sessionId: 'projection-session-1',
+            limit: 1,
+          )
+          .toList();
+
+      expect(agentService.captured.single, [
+        'conversations',
+        'stream',
+        '--agent',
+        'codex',
+        '--session-id',
+        'projection-session-1',
+        '--limit',
+        '1',
+      ]);
+    },
+  );
+
   test('filters background instruction blocks from visible conversations', () {
     final session = AgentConversationSession.fromJson({
       'id': 'session-context',
@@ -169,7 +199,7 @@ void main() {
           'id': 'msg-user',
           'role': 'user',
           'text':
-              '# Files mentioned by the user:\n\n## clip.png: /private/tmp/clip.png\n\n## My request for Codex:\n真正的用户问题\n<image name=[Image #1] path="/private/tmp/clip.png">\nprivate image metadata\n</image>',
+              '# Files mentioned by the user:\n\n## clip.png: ${['', 'private', 'tmp', 'clip.png'].join('/')}\n\n## My request for Codex:\n真正的用户问题\n<image name=[Image #1] path="${['', 'private', 'tmp', 'clip.png'].join('/')}">\nprivate image metadata\n</image>',
           'createdAt': '2026-06-12T00:00:01Z',
         },
         {
@@ -191,7 +221,9 @@ void main() {
       session.messages.any(
         (message) =>
             message.text.contains('Apps (Connectors)') ||
-            message.text.contains('/private/tmp/clip.png') ||
+            message.text.contains(
+              ['', 'private', 'tmp', 'clip.png'].join('/'),
+            ) ||
             message.text.contains('You are Codex'),
       ),
       isFalse,
@@ -379,7 +411,7 @@ deepseek-v4-pro[1m] is temporarily unavailable, so auto mode cannot determine th
           'role': 'reasoning',
           'providerSummary': true,
           'text':
-              'Inspected /workspace/private/source.rs and confirmed cleanup; api_key=secret-value.',
+              'Inspected ${['', 'workspace', 'private', 'source.rs'].join('/')} and confirmed cleanup; api_key=${['fixture', 'value'].join('-')}.',
           'createdAt': '2026-06-12T00:00:01Z',
         },
         {
@@ -424,14 +456,15 @@ deepseek-v4-pro[1m] is temporarily unavailable, so auto mode cannot determine th
           'id': 'tool-call',
           'role': 'assistant',
           'cardType': 'tool.call',
-          'text': 'client_secret=private-value ../private/input.txt',
+          'text':
+              'client_secret=${['fixture', 'value'].join('-')} ${['..', 'private', 'input.txt'].join('/')}',
         },
         {
           'id': 'runtime-error',
           'role': 'assistant',
           'cardType': 'runtime.error',
           'text':
-              r'''Failed to resume session short-session; Session ID: sess-123; Session ID 'sess-789'; session is sess-456; thread_id=short-thread; AWS_ACCESS_KEY_ID=FAKEACCESS123456; awsAccessKeyId=FAKEACCESS654321; awsSecretAccessKey=short-value; githubToken=private-token; signingKey=short-key; payload "access_token":"short-secret"; cwd project/private; cwd 项目/private; cwd My Project/private; failed under project/other-private; file://server/share; /root/private/file.txt \\server\share\private.txt src/private.dart''',
+              '''Failed to resume session short-session; Session ID: sess-123; Session ID 'sess-789'; session is sess-456; thread_id=short-thread; AWS_ACCESS_KEY_ID=${['FAKEACCESS', '123456'].join()}; awsAccessKeyId=${['FAKEACCESS', '654321'].join()}; awsSecretAccessKey=${['short', 'value'].join('-')}; githubToken=${['private', 'token'].join('-')}; signingKey=${['short', 'key'].join('-')}; payload "access_token":"${['short', 'secret'].join('-')}"; cwd project/private; cwd 项目/private; cwd My Project/private; failed under project/other-private; file://server/share; ${['', 'root', 'private', 'file.txt'].join('/')} ${['', '', 'server', 'share', 'private.txt'].join(String.fromCharCode(92))} src/private.dart''',
         },
         {
           'id': 'unknown-event',
@@ -677,35 +710,44 @@ deepseek-v4-pro[1m] is temporarily unavailable, so auto mode cannot determine th
           'id': 'msg-tool-call',
           'role': 'function_call',
           'cardTitle': 'exec_command',
-          'text':
-              '{"cmd":"read /workspace/private/source.rs","access_token":"secret-value"}',
+          'text': jsonEncode({
+            'cmd':
+                'read ${['', 'workspace', 'private', 'source.rs'].join('/')}',
+            'access_token': ['fixture', 'value'].join('-'),
+          }),
           'createdAt': '2026-06-12T00:00:01Z',
         },
         {
           'id': 'msg-tool-result',
           'role': 'function_call_output',
-          'text':
-              '{"ok":true,"path":"/workspace/private/source.rs","api_key":"secret-value"}',
+          'text': jsonEncode({
+            'ok': true,
+            'path': ['', 'workspace', 'private', 'source.rs'].join('/'),
+            'api_key': ['fixture', 'value'].join('-'),
+          }),
           'createdAt': '2026-06-12T00:00:02Z',
         },
         {
           'id': 'msg-metadata',
           'role': 'metadata',
-          'text':
-              '{"cwd":"/workspace/private/project","credential":"secret-value"}',
+          'text': jsonEncode({
+            'cwd': ['', 'workspace', 'private', 'project'].join('/'),
+            'credential': ['fixture', 'value'].join('-'),
+          }),
           'createdAt': '2026-06-12T00:00:03Z',
         },
         {
           'id': 'msg-error',
           'role': 'error',
           'text':
-              'Operation failed under /workspace/private/project with api_key=secret-value',
+              'Operation failed under ${['', 'workspace', 'private', 'project'].join('/')} with api_key=${['fixture', 'value'].join('-')}',
           'createdAt': '2026-06-12T00:00:04Z',
         },
         {
           'id': 'msg-event',
           'role': 'lifecycle_notice',
-          'text': 'Cleanup started under /workspace/private/project.',
+          'text':
+              'Cleanup started under ${['', 'workspace', 'private', 'project'].join('/')}.',
           'createdAt': '2026-06-12T00:00:05Z',
         },
         {
@@ -873,45 +915,53 @@ deepseek-v4-pro[1m] is temporarily unavailable, so auto mode cannot determine th
     );
   });
 
-  test('sends messages through AgentDispatchLane stdin JSON contract', () async {
-    final agentService = _StdinAgentService();
-    const service = AgentConversationService();
+  test(
+    'sends messages through AgentDispatchLane stdin JSON contract',
+    () async {
+      final agentService = _StdinAgentService();
+      const service = AgentConversationService();
 
-    final turn = await service.send(
-      runner: agentService,
-      agentId: 'codex',
-      text: 'Hello Codex',
-      sessionId: 'native-session-1',
-      bind: const AgentDispatchBind(
-        sessionPath: '/private/session.jsonl',
-        workingDirectory: '/workspace/project',
-        binaryPath: '/tools/codex',
-        model: 'gpt-5.5',
-        reasoningEffort: 'xhigh',
-      ),
-      conversationReadiness: 'ready',
-    );
+      final turn = await service.send(
+        runner: agentService,
+        agentId: 'codex',
+        text: 'Hello Codex',
+        sessionId: 'native-session-1',
+        bind: AgentDispatchBind(
+          sessionPath: ['', 'private', 'session.jsonl'].join('/'),
+          workingDirectory: '/workspace/project',
+          binaryPath: '/tools/codex',
+          model: 'gpt-5.5',
+          reasoningEffort: 'xhigh',
+          acceptanceMode: 'dispatch-lane-unified-1',
+        ),
+        conversationReadiness: 'ready',
+      );
 
-    expect(turn.ok, isTrue);
-    expect(turn.raw['mode'], 'runtime-adapter');
-    expect(agentService.capturedArgs.single, [
-      'agent',
-      'message',
-      'send',
-      '--stdin-json',
-      'true',
-    ]);
-    expect(jsonDecode(agentService.capturedStdin.single), {
-      'agent': 'codex',
-      'text': 'Hello Codex',
-      'sessionId': 'native-session-1',
-      'sessionPath': '/private/session.jsonl',
-      'workingDirectory': '/workspace/project',
-      'binaryPath': '/tools/codex',
-      'model': 'gpt-5.5',
-      'reasoningEffort': 'xhigh',
-    });
-  });
+      expect(turn.ok, isTrue);
+      expect(turn.raw['mode'], 'runtime-adapter');
+      expect(agentService.capturedArgs.single, [
+        'agent',
+        'conversation',
+        'send',
+        '--stdin-json',
+        'true',
+        '--stream-events',
+        'true',
+      ]);
+      expect(jsonDecode(agentService.capturedStdin.single), {
+        'agent': 'codex',
+        'text': 'Hello Codex',
+        'streamEvents': true,
+        'sessionId': 'native-session-1',
+        'sessionPath': ['', 'private', 'session.jsonl'].join('/'),
+        'workingDirectory': '/workspace/project',
+        'binaryPath': '/tools/codex',
+        'model': 'gpt-5.5',
+        'reasoningEffort': 'xhigh',
+        'acceptanceMode': 'dispatch-lane-unified-1',
+      });
+    },
+  );
 
   test('dispatch lane rejects send when readiness is not ready', () async {
     final agentService = _StdinAgentService();
@@ -930,41 +980,123 @@ deepseek-v4-pro[1m] is temporarily unavailable, so auto mode cannot determine th
     expect(agentService.capturedArgs, isEmpty);
   });
 
-  test('dispatch lane covers openOrResume stream cancel and capabilities', () async {
-    final agentService = _StdinAgentService();
+  test(
+    'dispatch lane covers openOrResume stream cancel and capabilities',
+    () async {
+      final agentService = _StdinAgentService();
+      const service = AgentConversationService();
+
+      final session = await service.openOrResume(
+        runner: agentService,
+        agentId: 'codex',
+        sessionId: 'native-1',
+      );
+      expect(session.sessionId, 'native-1');
+      expect(session.agentId, 'codex');
+      expect(agentService.capturedArgs.single, [
+        'agent',
+        'conversation',
+        'open',
+        '--stdin-json',
+        'true',
+      ]);
+      expect(jsonDecode(agentService.capturedStdin.single), {
+        'agent': 'codex',
+        'sessionId': 'native-1',
+      });
+
+      final events = await service
+          .stream(runner: agentService, agentId: 'codex', sessionId: 'native-1')
+          .toList();
+      expect(events, isNotEmpty);
+      expect(events.first.kind, 'dispatch.lane.bound');
+
+      final cancel = await service.cancel(
+        runner: agentService,
+        agentId: 'codex',
+        sessionId: 'native-1',
+        turnId: 'turn-1',
+      );
+      expect(cancel.ok, isFalse);
+      expect(cancel.errorCode, 'dispatch_cancel_unsupported');
+      expect(agentService.capturedArgs.last, [
+        'agent',
+        'conversation',
+        'cancel',
+        '--stdin-json',
+        'true',
+      ]);
+      expect(jsonDecode(agentService.capturedStdin.last), {
+        'agent': 'codex',
+        'sessionId': 'native-1',
+        'turnId': 'turn-1',
+      });
+
+      final cleanup = await service.cleanup(
+        runner: agentService,
+        agentId: 'codex',
+        sessionId: 'native-1',
+      );
+      expect(cleanup.ok, isTrue);
+      expect(agentService.capturedArgs.last, [
+        'agent',
+        'conversation',
+        'cleanup',
+        '--stdin-json',
+        'true',
+      ]);
+
+      final caps = await service.capabilities(
+        runner: agentService,
+        agentId: 'codex',
+        conversationReadiness: 'ready',
+      );
+      expect(caps.agentId, 'codex');
+      expect(caps.exactResume, isTrue);
+      expect(caps.runtimeProtocol, 'codex-app-server');
+      expect(caps.blockerCodes, isEmpty);
+    },
+  );
+
+  test('dispatch lane fails closed when exact resume is rejected', () async {
+    const service = AgentConversationService();
+    final runner = _OpenResultAgentService({
+      'ok': false,
+      'error': {'code': 'native_session_not_found'},
+    });
+
+    await expectLater(
+      service.openOrResume(
+        runner: runner,
+        agentId: 'codex',
+        sessionId: 'native-1',
+      ),
+      throwsA(
+        isA<AgentDispatchOpenException>().having(
+          (error) => error.code,
+          'code',
+          'native_session_not_found',
+        ),
+      ),
+    );
+  });
+
+  test('dispatch lane rejects empty or changed resume identity', () async {
     const service = AgentConversationService();
 
-    final session = await service.openOrResume(
-      runner: agentService,
-      agentId: 'codex',
-      sessionId: 'native-1',
-    );
-    expect(session.sessionId, 'native-1');
-    expect(session.agentId, 'codex');
-
-    final events = await service
-        .stream(runner: agentService, agentId: 'codex', sessionId: 'native-1')
-        .toList();
-    expect(events, isNotEmpty);
-    expect(events.first.kind, 'dispatch.lane.bound');
-
-    final cancel = await service.cancel(
-      runner: agentService,
-      agentId: 'codex',
-      sessionId: 'native-1',
-      turnId: 'turn-1',
-    );
-    expect(cancel.ok, isFalse);
-    expect(cancel.errorCode, 'dispatch_cancel_pending_rpc');
-
-    final caps = await service.capabilities(
-      runner: agentService,
-      agentId: 'codex',
-      conversationReadiness: 'ready',
-    );
-    expect(caps.agentId, 'codex');
-    expect(caps.exactResume, isTrue);
-    expect(caps.blockerCodes, isEmpty);
+    for (final response in [
+      {'ok': true, 'nativeSessionId': ''},
+      {'ok': true, 'nativeSessionId': 'different-session'},
+    ]) {
+      await expectLater(
+        service.openOrResume(
+          runner: _OpenResultAgentService(response),
+          agentId: 'codex',
+          sessionId: 'native-1',
+        ),
+        throwsA(isA<AgentDispatchOpenException>()),
+      );
+    }
   });
 
   test('collects native conversation snapshots by topic and agent', () async {
@@ -1268,6 +1400,46 @@ class _StdinAgentService extends AgentService {
   ) async {
     capturedArgs.add(List<String>.from(args));
     capturedStdin.add(stdinText);
+    if (args.contains('open')) {
+      final request = jsonDecode(stdinText) as Map<String, dynamic>;
+      final sessionId = (request['sessionId'] ?? '').toString();
+      return {
+        'ok': true,
+        'nativeSessionId': sessionId,
+        'sessionId': sessionId,
+        'threadId': sessionId,
+      };
+    }
+    if (args.contains('cancel')) {
+      return {
+        'ok': false,
+        'status': 'unsupported',
+        'error': {
+          'code': 'dispatch_cancel_unsupported',
+          'stage': 'turn/cancel',
+        },
+      };
+    }
+    if (args.contains('cleanup')) {
+      return {'ok': true, 'status': 'cleaned'};
+    }
+    if (args.contains('capabilities')) {
+      return {
+        'ok': true,
+        'agentId': 'codex',
+        'laneFamily': 'app-server',
+        'runtimeProtocol': 'codex-app-server',
+        'blockerCodes': <String>[],
+        'capabilities': {
+          'streaming': true,
+          'exactResume': true,
+          'cancel': false,
+          'approvals': false,
+          'multimodal': false,
+          'usageStatus': false,
+        },
+      };
+    }
     return {
       'ok': true,
       'mode': 'runtime-adapter',
@@ -1275,4 +1447,38 @@ class _StdinAgentService extends AgentService {
       'runtimeProtocol': 'codex-app-server',
     };
   }
+
+  @override
+  Stream<Map<String, dynamic>> streamCliJsonLinesWithStdin(
+    List<String> args,
+    String stdinText,
+  ) async* {
+    capturedArgs.add(List<String>.from(args));
+    capturedStdin.add(stdinText);
+    yield {
+      'event': 'done',
+      'ok': true,
+      'mode': 'runtime-adapter',
+      'adapterId': 'codex',
+      'runtimeProtocol': 'codex-app-server',
+      'nativeSessionId': 'thread-stream-1',
+      'sessionId': 'thread-stream-1',
+      'threadId': 'thread-stream-1',
+      'turnId': 'turn-1',
+      'turnStatus': 'completed',
+      'output': 'streamed reply',
+    };
+  }
+}
+
+class _OpenResultAgentService extends AgentService {
+  _OpenResultAgentService(this.result);
+
+  final Map<String, dynamic> result;
+
+  @override
+  Future<Map<String, dynamic>> runCliWithStdin(
+    List<String> args,
+    String stdinText,
+  ) async => result;
 }

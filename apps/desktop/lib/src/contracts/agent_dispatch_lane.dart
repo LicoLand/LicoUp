@@ -16,6 +16,7 @@ final class AgentDispatchBind {
     this.sessionPath = '',
     this.model = '',
     this.reasoningEffort = '',
+    this.acceptanceMode = '',
   });
 
   final String workingDirectory;
@@ -23,6 +24,7 @@ final class AgentDispatchBind {
   final String sessionPath;
   final String model;
   final String reasoningEffort;
+  final String acceptanceMode;
 }
 
 final class AgentDispatchSession {
@@ -35,6 +37,17 @@ final class AgentDispatchSession {
   final String sessionId;
   final String threadId;
   final String agentId;
+}
+
+/// Fail-closed open/resume failure. Callers must not turn this into a send
+/// with an empty session id because that would silently create a new branch.
+final class AgentDispatchOpenException implements Exception {
+  const AgentDispatchOpenException(this.code);
+
+  final String code;
+
+  @override
+  String toString() => 'AgentDispatchOpenException($code)';
 }
 
 final class AgentDispatchTurnResult {
@@ -61,6 +74,18 @@ final class AgentDispatchTurnResult {
 
 final class AgentDispatchCancelResult {
   const AgentDispatchCancelResult({
+    required this.ok,
+    this.status = '',
+    this.errorCode = '',
+  });
+
+  final bool ok;
+  final String status;
+  final String errorCode;
+}
+
+final class AgentDispatchCleanupResult {
+  const AgentDispatchCleanupResult({
     required this.ok,
     this.status = '',
     this.errorCode = '',
@@ -134,6 +159,16 @@ abstract class AgentDispatchLane {
     bool requireReady = true,
   });
 
+  Stream<AgentDispatchEvent> sendStreaming({
+    required AgentCommandRunner runner,
+    required String agentId,
+    required String text,
+    required String sessionId,
+    AgentDispatchBind bind = const AgentDispatchBind(),
+    String conversationReadiness = 'unverified',
+    bool requireReady = true,
+  });
+
   Stream<AgentDispatchEvent> stream({
     required AgentCommandRunner runner,
     required String agentId,
@@ -146,6 +181,12 @@ abstract class AgentDispatchLane {
     required String agentId,
     required String sessionId,
     String turnId = '',
+  });
+
+  Future<AgentDispatchCleanupResult> cleanup({
+    required AgentCommandRunner runner,
+    required String agentId,
+    required String sessionId,
   });
 
   Future<AgentDispatchCapabilities> capabilities({

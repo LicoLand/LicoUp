@@ -14,11 +14,15 @@ import 'package:flutter_client/src/frontend/layout/profiles/workbench/mobile/wor
 
 final LayoutSurfaceBundle workbenchMobileBundle = LayoutSurfaceBundle(
   profile: LayoutProfileDescriptor(
-    id: LayoutProfileId.workbench,
-    labelKey: 'layout.profile.workbench.label',
-    descriptionKey: 'layout.profile.workbench.description',
+    id: LayoutProfileId.parse('workbench'),
+    label: LayoutProfileCopy(english: 'Lico Arc', chinese: 'Lico Arc'),
+    description: LayoutProfileCopy(
+      english:
+          'Lico Arc standard layout (fallback): the cross-platform product shell used when Native is not the platform default.',
+      chinese: 'Lico Arc 标准布局（缺省）：跨平台产品壳，在无原生系统风格时作为 Native 的回退。',
+    ),
     styleIdentity: workbenchMobileStyleIdentity,
-    isDefault: true,
+    isDefault: false,
   ),
   surface: LayoutRuntimeSurface.mobile,
   variants: {
@@ -39,22 +43,38 @@ final LayoutSurfaceBundle workbenchMobileBundle = LayoutSurfaceBundle(
   assetNamespace: 'layout-profiles/workbench/mobile',
   restorationNamespace: workbenchMobileRestorationPrefix,
   stateNamespaces: {
-    for (final destination in _workbenchMobileDestinations)
-      LayoutStateNamespace(
-        profileId: LayoutProfileId.workbench,
-        surface: LayoutRuntimeSurface.mobile,
-        destination: destination,
-        surfaceId: 'content-scroll',
-      ),
+    LayoutStateNamespace(
+      profileId: LayoutProfileId.parse('workbench'),
+      surface: LayoutRuntimeSurface.mobile,
+      destination: ClientSection.agents,
+      channel: LayoutStateChannels.agentsHistory,
+    ),
+    LayoutStateNamespace(
+      profileId: LayoutProfileId.parse('workbench'),
+      surface: LayoutRuntimeSurface.mobile,
+      destination: ClientSection.agents,
+      channel: LayoutStateChannels.agentsSidebar,
+    ),
+    LayoutStateNamespace(
+      profileId: LayoutProfileId.parse('workbench'),
+      surface: LayoutRuntimeSurface.mobile,
+      destination: ClientSection.agents,
+      channel: LayoutStateChannels.agentsDestination,
+    ),
+    LayoutStateNamespace(
+      profileId: LayoutProfileId.parse('workbench'),
+      surface: LayoutRuntimeSurface.mobile,
+      destination: ClientSection.settings,
+      channel: LayoutStateChannels.settingsScroll,
+    ),
+    LayoutStateNamespace(
+      profileId: LayoutProfileId.parse('workbench'),
+      surface: LayoutRuntimeSurface.mobile,
+      destination: ClientSection.settings,
+      channel: LayoutStateChannels.settingsSection,
+    ),
   },
 );
-
-const Set<ClientSection> _workbenchMobileDestinations = {
-  ClientSection.agents,
-  ClientSection.feed,
-  ClientSection.mobileRelay,
-  ClientSection.settings,
-};
 
 Map<ClientSection, LayoutDestinationBuilder>
 _workbenchMobileDestinationBuilders() => {

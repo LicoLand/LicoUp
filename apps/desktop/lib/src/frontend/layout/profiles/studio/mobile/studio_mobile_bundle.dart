@@ -37,11 +37,15 @@ final LayoutSurfaceBundle studioMobileBundle = LayoutSurfaceBundle(
 );
 
 final LayoutProfileDescriptor _studioProfile = LayoutProfileDescriptor(
-  id: LayoutProfileId.studio,
-  labelKey: 'layout.profile.studio.label',
-  descriptionKey: 'layout.profile.studio.description',
+  id: LayoutProfileId.parse('studio'),
+  label: LayoutProfileCopy(english: 'Native', chinese: 'Native'),
+  description: LayoutProfileCopy(
+    english:
+        'Native layout (default): Safari-style left navigation card framing traffic lights and page switching.',
+    chinese: 'Native 布局（默认）：Safari 式左侧导航卡片，框住红绿灯与页面切换。',
+  ),
   styleIdentity: studioMobileStyleIdentity,
-  isDefault: false,
+  isDefault: true,
   revision: 1,
 );
 
@@ -55,27 +59,33 @@ _studioMobileDestinationBuilders = {
 
 final Set<LayoutStateNamespace> _studioMobileStateNamespaces = {
   LayoutStateNamespace(
-    profileId: LayoutProfileId.studio,
+    profileId: LayoutProfileId.parse('studio'),
     surface: LayoutRuntimeSurface.mobile,
     destination: ClientSection.agents,
-    surfaceId: 'conversation-scroll',
+    channel: LayoutStateChannels.agentsHistory,
   ),
   LayoutStateNamespace(
-    profileId: LayoutProfileId.studio,
+    profileId: LayoutProfileId.parse('studio'),
     surface: LayoutRuntimeSurface.mobile,
-    destination: ClientSection.feed,
-    surfaceId: 'feed-scroll',
+    destination: ClientSection.agents,
+    channel: LayoutStateChannels.agentsSidebar,
   ),
   LayoutStateNamespace(
-    profileId: LayoutProfileId.studio,
+    profileId: LayoutProfileId.parse('studio'),
     surface: LayoutRuntimeSurface.mobile,
-    destination: ClientSection.mobileRelay,
-    surfaceId: 'pairing-flow',
+    destination: ClientSection.agents,
+    channel: LayoutStateChannels.agentsDestination,
   ),
   LayoutStateNamespace(
-    profileId: LayoutProfileId.studio,
+    profileId: LayoutProfileId.parse('studio'),
     surface: LayoutRuntimeSurface.mobile,
     destination: ClientSection.settings,
-    surfaceId: 'settings-scroll',
+    channel: LayoutStateChannels.settingsScroll,
+  ),
+  LayoutStateNamespace(
+    profileId: LayoutProfileId.parse('studio'),
+    surface: LayoutRuntimeSurface.mobile,
+    destination: ClientSection.settings,
+    channel: LayoutStateChannels.settingsSection,
   ),
 };

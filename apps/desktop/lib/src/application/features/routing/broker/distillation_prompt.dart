@@ -10,11 +10,14 @@ class DistillationPromptBuilder {
   String build({
     required DistillationRequest request,
     required RoutingPolicyDocument policy,
+    RoutingFidelityContract? contract,
+    Set<String> preserveFields = const {},
+    DistillationInputWindow? inputWindow,
     bool corrective = false,
     List<String> missingSections = const [],
   }) {
-    final contract = policy.distillation.fidelityContract;
-    final sections = contract.requiredSections.join(', ');
+    final effectiveContract = contract ?? policy.distillation.fidelityContract;
+    final sections = effectiveContract.requiredSections.join(', ');
     final buffer = StringBuffer();
 
     if (corrective) {
@@ -44,7 +47,21 @@ class DistillationPromptBuilder {
     buffer.writeln(
       'Also include sourceSessionId and sourceAgentId when known.',
     );
-    buffer.writeln('Max package length: ${contract.maxPackageLength} characters.');
+    buffer.writeln(
+      'Max package length: ${effectiveContract.maxPackageLength} characters.',
+    );
+    if (preserveFields.isNotEmpty) {
+      buffer.writeln(
+        'Policy-preserved fields: ${(preserveFields.toList()..sort()).join(', ')}.',
+      );
+    }
+    if (inputWindow != null) {
+      buffer.writeln(
+        'Bounded source window: ${inputWindow.turns.length}/${inputWindow.sourceTurnCount} turns, '
+        '${inputWindow.byteCount}/$distillationInputMaxBytes UTF-8 bytes, '
+        '${inputWindow.approxTokenCount}/$distillationInputMaxApproxTokens approximate tokens.',
+      );
+    }
     buffer.writeln();
     buffer.writeln('Source session: ${request.sourceSessionId}');
     buffer.writeln('Source agent: ${request.sourceAgentId}');

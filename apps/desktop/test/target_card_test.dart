@@ -1,12 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_client/src/services/agent_service.dart';
-import 'package:flutter_client/src/ui/target_card.dart';
+import 'package:flutter_client/src/platform/native_client/agent_service.dart';
+import 'package:flutter_client/src/frontend/features/targets/ui/target_card.dart';
+import 'package:flutter_client/src/frontend/shared/ui/agent_brand_icon.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  testWidgets('TargetCard displays status labels and callbacks', (
-    tester,
-  ) async {
+  testWidgets('TargetCard displays kind labels and callbacks', (tester) async {
     final inspected = <String>[];
     final planned = <String>[];
 
@@ -69,11 +68,12 @@ void main() {
       ),
     );
 
-    expect(find.text('Detected'), findsOneWidget);
-    expect(find.text('Configured'), findsAtLeastNWidgets(2));
-    expect(find.text('Manual'), findsOneWidget);
-    expect(find.text('Unavailable'), findsOneWidget);
-    expect(find.byType(Image), findsAtLeastNWidgets(3));
+    expect(find.text('Detected'), findsNothing);
+    expect(find.text('Manual'), findsNothing);
+    expect(find.text('Unavailable'), findsNothing);
+    expect(find.text('Configured'), findsOneWidget);
+    expect(find.text('CLI'), findsNWidgets(4));
+    expect(find.byType(AgentBrandIcon), findsNWidgets(4));
 
     await tester.tap(find.text('Inspect').at(0));
     await tester.pump();

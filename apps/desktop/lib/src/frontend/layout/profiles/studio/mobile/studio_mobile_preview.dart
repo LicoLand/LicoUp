@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'package:flutter_client/src/frontend/layout/layout_palette.dart';
 import 'package:flutter_client/src/frontend/layout/profiles/studio/mobile/studio_mobile_tokens.dart';
-import 'package:flutter_client/src/frontend/shared/ui/theme.dart';
 
 Widget buildStudioMobilePreview(BuildContext context) {
   return const StudioMobilePreview();
@@ -13,7 +13,7 @@ final class StudioMobilePreview extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = context.licoColors;
+    final colors = context.layoutPalette;
     return Semantics(
       key: const Key('studio-mobile-preview'),
       container: true,
@@ -64,7 +64,7 @@ final class _StudioPreviewRail extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = context.licoColors;
+    final colors = context.layoutPalette;
     return SizedBox(
       width: compact ? 27 : 34,
       child: DecoratedBox(
@@ -128,7 +128,7 @@ final class _StudioPreviewWorkspace extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = context.licoColors;
+    final colors = context.layoutPalette;
     return Column(
       children: [
         SizedBox(

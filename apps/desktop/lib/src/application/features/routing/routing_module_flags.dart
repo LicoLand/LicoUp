@@ -14,4 +14,4 @@ const List<String> routingModuleSettingsKeys = [
 ];
 
 /// State directory relative to the portable data root.
-const String routingModuleStateDirectory = 'future-client/routing';
+const String routingModuleStateDirectory = 'lico-client/routing';

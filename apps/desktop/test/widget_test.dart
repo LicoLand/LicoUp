@@ -2,20 +2,22 @@ import 'dart:ui';
 
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:flutter_client/src/l10n/lico_strings.dart';
-import 'package:flutter_client/src/models/future_client_models.dart';
+import 'package:flutter_client/src/contracts/locale_preferences.dart';
+import 'package:flutter_client/src/frontend/l10n/lico_strings.dart';
+import 'package:flutter_client/src/contracts/presentation/semantic_destination.dart';
 
 void main() {
-  test('app sections are the future client modules', () {
-    expect(FutureClientSection.values, [
-      FutureClientSection.agents,
-      FutureClientSection.mcpPlugins,
-      FutureClientSection.skillHub,
-      FutureClientSection.modelForwarding,
-      FutureClientSection.localRuntime,
-      FutureClientSection.mobileRelay,
-      FutureClientSection.activity,
-      FutureClientSection.settings,
+  test('app sections are the LicoArc client modules', () {
+    expect(ClientSection.values, [
+      ClientSection.controlPanel,
+      ClientSection.agents,
+      ClientSection.feed,
+      ClientSection.monitoring,
+      ClientSection.mcpPlugins,
+      ClientSection.skillHub,
+      ClientSection.localRuntime,
+      ClientSection.mobileRelay,
+      ClientSection.settings,
     ]);
   });
 
@@ -38,5 +40,15 @@ void main() {
       ]).languageCode,
       'en',
     );
+  });
+
+  test('locale preference maps to system or explicit app locale', () {
+    expect(LocalePreference.normalize(''), LocalePreference.system);
+    expect(LocalePreference.normalize('zh'), LocalePreference.chinese);
+    expect(LocalePreference.normalize('en'), LocalePreference.english);
+    expect(LocalePreference.normalize('fr'), LocalePreference.system);
+    expect(LicoStrings.localeForPreference('system'), isNull);
+    expect(LicoStrings.localeForPreference('zh')?.languageCode, 'zh');
+    expect(LicoStrings.localeForPreference('en')?.languageCode, 'en');
   });
 }

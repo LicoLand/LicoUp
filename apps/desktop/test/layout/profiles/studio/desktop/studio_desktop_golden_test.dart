@@ -6,6 +6,7 @@ import 'package:flutter_client/src/frontend/layout/profiles/studio/desktop/studi
 import 'package:flutter_client/src/frontend/shared/ui/theme.dart';
 
 import './studio_desktop_test_harness.dart';
+import 'studio_desktop_palette_fixture.dart';
 
 const String _goldenRoot = '../../../../goldens/layout/studio/desktop';
 
@@ -78,10 +79,15 @@ void main() {
           presetId: 'geek-light-blue',
           platformBrightness: Brightness.light,
         ),
-        home: Center(
-          child: SizedBox(
-            width: size.width,
-            child: Builder(builder: studioDesktopBundle.previewBuilder),
+        home: Builder(
+          builder: (context) => withStudioDesktopTestPalette(
+            context,
+            Center(
+              child: SizedBox(
+                width: size.width,
+                child: Builder(builder: studioDesktopBundle.previewBuilder),
+              ),
+            ),
           ),
         ),
       ),

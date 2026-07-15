@@ -9,7 +9,9 @@ import 'package:flutter_client/src/frontend/layout/layout_visual_tokens.dart';
 import 'package:flutter_client/src/frontend/layout/profiles/studio/mobile/studio_mobile_bundle.dart';
 import 'package:flutter_client/src/frontend/shared/ui/theme.dart';
 
+import '../../../fixtures/layout_chrome_fixture.dart';
 import '../../../fixtures/layout_scoped_state_fixture.dart';
+import 'studio_mobile_palette_fixture.dart';
 
 const studioMobileDestinations = <ClientSection>{
   ClientSection.agents,
@@ -174,6 +176,7 @@ final class StudioMobileHarness {
             components: studioMobileBundle.components,
             tokens: studioMobileBundle.tokens,
             initialFocusTarget: 'conversation-composer',
+            chrome: const FixtureLayoutChromePort(),
           ),
         );
       },
@@ -213,7 +216,12 @@ Future<void> pumpStudioMobileHarness(
           child: child!,
         );
       },
-      home: SizedBox.expand(child: harness.build(environment)),
+      home: Builder(
+        builder: (context) => withStudioMobileTestPalette(
+          context,
+          SizedBox.expand(child: harness.build(environment)),
+        ),
+      ),
     ),
   );
   await tester.pump();

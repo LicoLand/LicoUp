@@ -21,7 +21,7 @@ void main() {
     );
     portableData = PortableDataRoot(dataDirectoryOverride: temporaryRoot);
     fallback = PresentationPreferences(
-      layoutProfileId: LayoutProfileId.workbench,
+      layoutProfileId: LayoutProfileId.parse('workbench'),
       appearancePresetId: 'default-system',
       localePreference: 'system',
     );
@@ -40,18 +40,18 @@ void main() {
     );
 
     await Future.wait([
-      repository.setLayoutProfile(LayoutProfileId.studio),
+      repository.setLayoutProfile(LayoutProfileId.parse('studio')),
       repository.setAppearancePreset('dark'),
       repository.setLocalePreference('zh'),
     ]);
 
     final loaded = await repository.load();
-    expect(loaded.preferences.layoutProfileId, LayoutProfileId.studio);
+    expect(loaded.preferences.layoutProfileId, LayoutProfileId.parse('studio'));
     expect(loaded.preferences.appearancePresetId, 'dark');
     expect(loaded.preferences.localePreference, 'zh');
   });
 
-  test('canonical writes omit retired and runtime-only fields', () async {
+  test('canonical writes omit unknown runtime-only fields', () async {
     final file = await preferencesFile(portableData);
     await file.writeAsString(
       jsonEncode({
@@ -59,7 +59,7 @@ void main() {
         'layoutProfileId': 'workbench',
         'appearancePresetId': 'default-system',
         'localePreference': 'system',
-        'shellLayoutId': 'sidebar-rail',
+        'transientPanelId': 'runtime-only-value',
         'surface': 'desktop',
         'viewport': 'medium',
       }),
@@ -69,7 +69,7 @@ void main() {
       fallback: fallback,
     );
 
-    await repository.setLayoutProfile(LayoutProfileId.studio);
+    await repository.setLayoutProfile(LayoutProfileId.parse('studio'));
     final decoded = jsonDecode(await file.readAsString()) as Map;
 
     expect(decoded.keys.toSet(), {
@@ -141,29 +141,29 @@ void main() {
         portableData: portableData,
         fallback: fallback,
       );
-      await initial.setLayoutProfile(LayoutProfileId.workbench);
+      await initial.setLayoutProfile(LayoutProfileId.parse('workbench'));
       File? attemptedTemporary;
       final repository = FilePresentationPreferencesRepository(
         portableData: portableData,
         fallback: fallback,
         beforeReplace: (temporary, _) async {
           attemptedTemporary = temporary;
-          throw const FileSystemException('denied', '/private/value');
+          throw const FileSystemException('denied', 'sensitive-location');
         },
       );
 
       Object? failure;
       try {
-        await repository.setLayoutProfile(LayoutProfileId.studio);
+        await repository.setLayoutProfile(LayoutProfileId.parse('studio'));
       } catch (error) {
         failure = error;
       }
       expect(failure, isA<PresentationPreferencesRepositoryException>());
-      expect('$failure', isNot(contains('/private/value')));
+      expect('$failure', isNot(contains('sensitive-location')));
       expect(await attemptedTemporary!.exists(), isFalse);
       expect(
         (await initial.load()).preferences.layoutProfileId,
-        LayoutProfileId.workbench,
+        LayoutProfileId.parse('workbench'),
       );
     },
   );

@@ -31,11 +31,13 @@ void main() {
       ),
       DistillationConversationTurn(
         role: 'assistant',
-        text: 'Decision: use declarative policy files as the sole metadata authority.',
+        text:
+            'Decision: use declarative policy files as the sole metadata authority.',
       ),
       DistillationConversationTurn(
         role: 'user',
-        text: 'Constraint: must not store raw conversation text in audit records.',
+        text:
+            'Constraint: must not store raw conversation text in audit records.',
       ),
       DistillationConversationTurn(
         role: 'assistant',
@@ -44,9 +46,7 @@ void main() {
     ];
   });
 
-  DistillationRequest request({
-    bool Function(String agentId)? isReady,
-  }) {
+  DistillationRequest request({bool Function(String agentId)? isReady}) {
     return DistillationRequest(
       sourceSessionId: 'session-src-1',
       sourceAgentId: 'claude-code',
@@ -64,41 +64,42 @@ void main() {
       'decisions': [
         'Use declarative policy files as the sole metadata authority.',
       ],
-      'constraints': [
-        'Must not store raw conversation text in audit records.',
-      ],
+      'constraints': ['Must not store raw conversation text in audit records.'],
       'openItems': ['Remaining engine and mid-task switch nodes.'],
     });
   }
 
   group('V-003-A handoff package assembly', () {
-    test('broker produces a full package from a fixture conversation', () async {
-      final broker = DefaultDistillationBroker();
-      final result = await broker.distill(
-        request: request(),
-        policy: policy,
-        send: (laneRequest) async {
-          expect(laneRequest.agentId, 'fake-distiller');
-          expect(laneRequest.text, contains('Goal: ship the routing module'));
-          return DistillationLaneResponse(
-            ok: true,
-            text: goodPackageJson(),
-            promptTokens: 120,
-            completionTokens: 80,
-          );
-        },
-      );
+    test(
+      'broker produces a full package from a fixture conversation',
+      () async {
+        final broker = DefaultDistillationBroker();
+        final result = await broker.distill(
+          request: request(),
+          policy: policy,
+          send: (laneRequest) async {
+            expect(laneRequest.agentId, 'fake-distiller');
+            expect(laneRequest.text, contains('Goal: ship the routing module'));
+            return DistillationLaneResponse(
+              ok: true,
+              text: goodPackageJson(),
+              promptTokens: 120,
+              completionTokens: 80,
+            );
+          },
+        );
 
-      expect(result, isA<DistillationSuccess>());
-      final success = result as DistillationSuccess;
-      expect(success.package.hasObjective, isTrue);
-      expect(success.package.hasCurrentState, isTrue);
-      expect(success.package.hasDecisions, isTrue);
-      expect(success.package.hasConstraints, isTrue);
-      expect(success.package.hasOpenItems, isTrue);
-      expect(success.package.sourceSessionId, 'session-src-1');
-      expect(success.package.sourceAgentId, 'claude-code');
-    });
+        expect(result, isA<DistillationSuccess>());
+        final success = result as DistillationSuccess;
+        expect(success.package.hasObjective, isTrue);
+        expect(success.package.hasCurrentState, isTrue);
+        expect(success.package.hasDecisions, isTrue);
+        expect(success.package.hasConstraints, isTrue);
+        expect(success.package.hasOpenItems, isTrue);
+        expect(success.package.sourceSessionId, 'session-src-1');
+        expect(success.package.sourceAgentId, 'claude-code');
+      },
+    );
   });
 
   group('V-003-B / V-003-C fidelity validation', () {
@@ -149,49 +150,215 @@ void main() {
       expect(auditJson.contains('must not store raw'), isFalse);
       expect(auditJson.contains('Goal: ship the routing module'), isFalse);
     });
+
+    test('Chinese source anchors pass without English section labels', () {
+      const chineseTurns = [
+        DistillationConversationTurn(role: 'user', text: '我们需要完成路由交接'),
+        DistillationConversationTurn(role: 'assistant', text: '协调器正在测试中'),
+        DistillationConversationTurn(role: 'assistant', text: '我们决定采用有界窗口'),
+        DistillationConversationTurn(role: 'user', text: '原始对话不得写入审计'),
+        DistillationConversationTurn(role: 'assistant', text: '下一步补齐产品测试'),
+      ];
+      const package = DistillationPackage(
+        objective: '完成路由交接',
+        currentState: '协调器测试中',
+        decisions: ['采用有界窗口'],
+        constraints: ['不得写入原始对话'],
+        openItems: ['补齐产品测试'],
+        sourceSessionId: 'source',
+        sourceAgentId: 'agent',
+        createdAt: 'now',
+      );
+      final fidelity = checkDistillationFidelity(
+        package: package,
+        contract: policy.distillation.fidelityContract,
+        sourceClasses: DistillationSourceContentClasses.detect(chineseTurns),
+      );
+      expect(fidelity.passed, isTrue);
+      expect(
+        fidelity.groundedSections,
+        containsAll(<String>[
+          'objective',
+          'currentState',
+          'decisions',
+          'constraints',
+          'openItems',
+        ]),
+      );
+    });
+
+    test('non-empty but fabricated package fails semantic grounding', () {
+      final package = DistillationPackage.fromJson({
+        'objective': 'Publish an unrelated mobile feature.',
+        'currentState': 'Everything is complete.',
+        'decisions': ['Replace the policy system.'],
+        'constraints': ['No restrictions apply.'],
+        'openItems': ['Nothing remains.'],
+      });
+      final fidelity = checkDistillationFidelity(
+        package: package,
+        contract: policy.distillation.fidelityContract,
+        sourceClasses: DistillationSourceContentClasses.detect(fixtureTurns),
+      );
+      expect(fidelity.passed, isFalse);
+      expect(fidelity.uncoveredSections, isNotEmpty);
+      expect(fidelity.message, contains('source-grounded'));
+    });
+  });
+
+  group('bounded input window', () {
+    test(
+      'keeps semantic pins and fills from newest turns within all limits',
+      () {
+        final source = <DistillationConversationTurn>[
+          const DistillationConversationTurn(
+            role: 'user',
+            text: 'Objective: preserve the original routing objective marker.',
+          ),
+          const DistillationConversationTurn(
+            role: 'assistant',
+            text: 'Decision: preserve the declarative policy decision marker.',
+          ),
+          const DistillationConversationTurn(
+            role: 'user',
+            text: 'Constraint: preserve the privacy constraint marker.',
+          ),
+          for (var index = 0; index < 100; index++)
+            DistillationConversationTurn(
+              role: 'assistant',
+              text:
+                  'recent progress turn $index ${List.filled(1024, 'x').join()}',
+            ),
+        ];
+        final window = buildDistillationInputWindow(source);
+        final text = window.turns.map((turn) => turn.text).join('\n');
+        expect(
+          window.turns.length,
+          lessThanOrEqualTo(distillationInputMaxTurns),
+        );
+        expect(window.byteCount, lessThanOrEqualTo(distillationInputMaxBytes));
+        expect(
+          window.approxTokenCount,
+          lessThanOrEqualTo(distillationInputMaxApproxTokens),
+        );
+        expect(text, contains('routing objective marker'));
+        expect(text, contains('policy decision marker'));
+        expect(text, contains('privacy constraint marker'));
+        expect(text, contains('recent progress turn 99'));
+        expect(window.truncated, isTrue);
+      },
+    );
+  });
+
+  group('per-agent distillation directive', () {
+    RoutingPolicyDocument directivePolicy({int maxLength = 512}) {
+      return RoutingPolicyDocument(
+        schemaVersion: 2,
+        id: 'agent-directive',
+        agents: [
+          RoutingPolicyAgent(
+            id: 'claude-code',
+            distillation: RoutingAgentDistillation(
+              distiller: 'directive-distiller',
+              maxLength: maxLength,
+              preserveFields: const ['openItems'],
+            ),
+          ),
+        ],
+        distillation: const RoutingPolicyDistillation(
+          defaultDistiller: 'global-distiller',
+          alternateDistiller: 'alternate-distiller',
+          fidelityContract: RoutingFidelityContract(
+            requiredSections: ['objective'],
+            maxPackageLength: 8192,
+            retryOnFailure: false,
+          ),
+        ),
+      );
+    }
+
+    test(
+      'consumes distiller and preserveFields in prompt and fidelity',
+      () async {
+        DistillationLaneRequest? dispatched;
+        final result = await DefaultDistillationBroker().distill(
+          request: request(),
+          policy: directivePolicy(),
+          send: (laneRequest) async {
+            dispatched = laneRequest;
+            return DistillationLaneResponse(ok: true, text: goodPackageJson());
+          },
+        );
+        expect(result, isA<DistillationSuccess>());
+        expect(dispatched?.agentId, 'directive-distiller');
+        expect(dispatched?.text, contains('Policy-preserved fields:'));
+        expect(dispatched?.text, contains('openItems'));
+        expect(
+          (result as DistillationSuccess).fidelity.checkedSections,
+          contains('openItems'),
+        );
+      },
+    );
+
+    test('agent maxLength tightens the global output contract', () async {
+      final result = await DefaultDistillationBroker().distill(
+        request: request(),
+        policy: directivePolicy(maxLength: 32),
+        send: (_) async =>
+            DistillationLaneResponse(ok: true, text: goodPackageJson()),
+      );
+      expect(result, isA<DistillationFailure>());
+      expect(
+        (result as DistillationFailure).reason,
+        contains('maxPackageLength 32'),
+      );
+    });
   });
 
   group('V-003-D corrective retry', () {
-    test('first fidelity failure triggers exactly one corrective re-prompt', () async {
-      final broker = DefaultDistillationBroker();
-      final prompts = <DistillationLaneRequest>[];
-      var attempt = 0;
-      final result = await broker.distill(
-        request: request(),
-        policy: policy,
-        send: (laneRequest) async {
-          prompts.add(laneRequest);
-          attempt += 1;
-          if (attempt == 1) {
+    test(
+      'first fidelity failure triggers exactly one corrective re-prompt',
+      () async {
+        final broker = DefaultDistillationBroker();
+        final prompts = <DistillationLaneRequest>[];
+        var attempt = 0;
+        final result = await broker.distill(
+          request: request(),
+          policy: policy,
+          send: (laneRequest) async {
+            prompts.add(laneRequest);
+            attempt += 1;
+            if (attempt == 1) {
+              return DistillationLaneResponse(
+                ok: true,
+                text: jsonEncode({
+                  'objective': 'Ship routing.',
+                  'currentState': 'In progress.',
+                  'decisions': ['Use policy files.'],
+                  // missing constraints
+                  'openItems': ['Engine.'],
+                }),
+                promptTokens: 11,
+                completionTokens: 9,
+              );
+            }
             return DistillationLaneResponse(
               ok: true,
-              text: jsonEncode({
-                'objective': 'Ship routing.',
-                'currentState': 'In progress.',
-                'decisions': ['Use policy files.'],
-                // missing constraints
-                'openItems': ['Engine.'],
-              }),
-              promptTokens: 11,
-              completionTokens: 9,
+              text: goodPackageJson(),
+              promptTokens: 12,
+              completionTokens: 20,
             );
-          }
-          return DistillationLaneResponse(
-            ok: true,
-            text: goodPackageJson(),
-            promptTokens: 12,
-            completionTokens: 20,
-          );
-        },
-      );
+          },
+        );
 
-      expect(result, isA<DistillationSuccess>());
-      expect(prompts, hasLength(2));
-      expect(prompts.first.corrective, isFalse);
-      expect(prompts.last.corrective, isTrue);
-      expect(prompts.last.text, contains('CORRECTIVE'));
-      expect(prompts.last.text, contains('constraints'));
-    });
+        expect(result, isA<DistillationSuccess>());
+        expect(prompts, hasLength(2));
+        expect(prompts.first.corrective, isFalse);
+        expect(prompts.last.corrective, isTrue);
+        expect(prompts.last.text, contains('CORRECTIVE'));
+        expect(prompts.last.text, contains('constraints'));
+      },
+    );
 
     test('second failure surfaces error to caller', () async {
       final broker = DefaultDistillationBroker();
@@ -215,9 +382,7 @@ void main() {
       final broker = DefaultDistillationBroker();
       String? used;
       final result = await broker.distill(
-        request: request(
-          isReady: (id) => id != 'fake-distiller',
-        ),
+        request: request(isReady: (id) => id != 'fake-distiller'),
         policy: policy,
         send: (laneRequest) async {
           used = laneRequest.agentId;
@@ -251,35 +416,41 @@ void main() {
   });
 
   group('V-003-F audit storage with source references only', () {
-    test('audit contains package and fidelity but never raw source text', () async {
-      final sink = <DistillationAuditRecord>[];
-      final broker = DefaultDistillationBroker(auditSink: sink);
-      final result = await broker.distill(
-        request: request(),
-        policy: policy,
-        send: (_) async => DistillationLaneResponse(
-          ok: true,
-          text: goodPackageJson(),
-          promptTokens: 3,
-          completionTokens: 4,
-        ),
-      );
-      expect(result, isA<DistillationSuccess>());
-      expect(sink, hasLength(1));
-      final audit = sink.single;
-      expect(audit.sourceSessionId, 'session-src-1');
-      expect(audit.sourceAgentId, 'claude-code');
-      expect(audit.package, isNotNull);
-      expect(audit.fidelity?.passed, isTrue);
+    test(
+      'audit contains package and fidelity but never raw source text',
+      () async {
+        final sink = <DistillationAuditRecord>[];
+        final broker = DefaultDistillationBroker(auditSink: sink);
+        final result = await broker.distill(
+          request: request(),
+          policy: policy,
+          send: (_) async => DistillationLaneResponse(
+            ok: true,
+            text: goodPackageJson(),
+            promptTokens: 3,
+            completionTokens: 4,
+          ),
+        );
+        expect(result, isA<DistillationSuccess>());
+        expect(sink, hasLength(1));
+        final audit = sink.single;
+        expect(audit.sourceSessionId, 'session-src-1');
+        expect(audit.sourceAgentId, 'claude-code');
+        expect(audit.package, isNotNull);
+        expect(audit.fidelity?.passed, isTrue);
 
-      final encoded = jsonEncode(audit.toJson());
-      // Source refs present.
-      expect(encoded, contains('session-src-1'));
-      // Raw fixture phrases must not appear beyond distilled package fields.
-      expect(encoded.contains('Goal: ship the routing module with hot reload.'), isFalse);
-      expect(encoded.contains('role":"user"'), isFalse);
-      expect(encoded.contains('"turns"'), isFalse);
-    });
+        final encoded = jsonEncode(audit.toJson());
+        // Source refs present.
+        expect(encoded, contains('session-src-1'));
+        // Raw fixture phrases must not appear beyond distilled package fields.
+        expect(
+          encoded.contains('Goal: ship the routing module with hot reload.'),
+          isFalse,
+        );
+        expect(encoded.contains('role":"user"'), isFalse);
+        expect(encoded.contains('"turns"'), isFalse);
+      },
+    );
   });
 
   group('V-003-G distillation cost metering', () {
@@ -311,16 +482,18 @@ void main() {
       expect(failure.usage.totalTokens, 100);
 
       final successBroker = DefaultDistillationBroker();
-      final success = await successBroker.distill(
-        request: request(),
-        policy: policy,
-        send: (_) async => DistillationLaneResponse(
-          ok: true,
-          text: goodPackageJson(),
-          promptTokens: 100,
-          completionTokens: 50,
-        ),
-      ) as DistillationSuccess;
+      final success =
+          await successBroker.distill(
+                request: request(),
+                policy: policy,
+                send: (_) async => DistillationLaneResponse(
+                  ok: true,
+                  text: goodPackageJson(),
+                  promptTokens: 100,
+                  completionTokens: 50,
+                ),
+              )
+              as DistillationSuccess;
       expect(success.usage.dispatchCallCount, 1);
       expect(success.usage.totalTokens, 150);
       expect(success.audit.usage.totalTokens, 150);
@@ -339,7 +512,10 @@ void main() {
         ),
       );
       expect(result, isA<DistillationFailure>());
-      expect((result as DistillationFailure).reason, contains('lane not ready'));
+      expect(
+        (result as DistillationFailure).reason,
+        contains('lane not ready'),
+      );
     });
   });
 }

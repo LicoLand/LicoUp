@@ -10,7 +10,7 @@ class RouteEvaluator {
     required Iterable<TargetCandidate> targets,
     AgentUsageReport? usageReport,
     Map<String, List<AgentUsageAllowance>> allowanceOverrides = const {},
-    Set<String> circuitBrokenAgentIds = const {},
+    Map<String, RoutingCircuitBreakerState> circuitBreakerStates = const {},
     DateTime Function()? now,
     Duration usageMaxAge = const Duration(hours: 1),
   }) {
@@ -33,7 +33,8 @@ class RouteEvaluator {
         agentId: agentId,
         agentLabel: target.label.trim().isEmpty ? agentId : target.label,
         ready: target.canRelayRuntime,
-        circuitBroken: circuitBrokenAgentIds.contains(agentId),
+        circuitBreaker:
+            circuitBreakerStates[agentId] ?? const RoutingCircuitBreakerState(),
         allowances: List.unmodifiable(allowances),
         usageFresh: usageFresh,
         usageAvailable: usageAvailable,

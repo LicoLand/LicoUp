@@ -4,12 +4,15 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_client/src/contracts/presentation/layout_environment.dart';
 import 'package:flutter_client/src/contracts/presentation/semantic_destination.dart';
 import 'package:flutter_client/src/frontend/layout/layout_scope.dart';
+import 'package:flutter_client/src/frontend/layout/layout_chrome_port.dart';
 import 'package:flutter_client/src/frontend/layout/layout_surface_bundle.dart';
 import 'package:flutter_client/src/frontend/layout/layout_visual_tokens.dart';
 import 'package:flutter_client/src/frontend/layout/profiles/studio/desktop/studio_desktop.dart';
 import 'package:flutter_client/src/frontend/shared/ui/theme.dart';
 
+import '../../../fixtures/layout_chrome_fixture.dart';
 import '../../../fixtures/layout_scoped_state_fixture.dart';
+import 'studio_desktop_palette_fixture.dart';
 
 const Set<ClientSection> studioDesktopExpectedDestinations = <ClientSection>{
   ClientSection.controlPanel,
@@ -87,6 +90,7 @@ final class StudioDesktopTestHarness extends StatelessWidget {
     required this.content,
     required this.actions,
     this.brightness = Brightness.light,
+    this.chrome = const FixtureLayoutChromePort(),
   });
 
   final LayoutEnvironment environment;
@@ -94,6 +98,7 @@ final class StudioDesktopTestHarness extends StatelessWidget {
   final StudioRecordingContentPort content;
   final StudioActionRecorder actions;
   final Brightness brightness;
+  final LayoutChromePort chrome;
 
   @override
   Widget build(BuildContext context) {
@@ -119,7 +124,10 @@ final class StudioDesktopTestHarness extends StatelessWidget {
         if (extension is! LayoutVisualTokens) extension,
       bundle.tokens,
     ];
-    final theme = baseTheme.copyWith(extensions: extensions);
+    final theme = baseTheme.copyWith(
+      platform: TargetPlatform.macOS,
+      extensions: extensions,
+    );
     final scopedState = buildLayoutScopedStateFixture(
       profile: bundle.profile,
       surface: LayoutRuntimeSurface.desktop,
@@ -150,38 +158,44 @@ final class StudioDesktopTestHarness extends StatelessWidget {
                 textScaler: TextScaler.linear(environment.textScale),
                 disableAnimations: environment.reducedMotion,
               ),
-              child: LayoutScope(
-                profileId: bundle.profile.id,
-                environment: environment,
-                restorationNamespace: bundle.restorationNamespace,
-                tokens: bundle.tokens,
-                state: scopedState,
-                child: Builder(
-                  builder: (profileContext) {
-                    final destination = destinationBuilder(
-                      profileContext,
-                      LayoutDestinationBuildContext(
-                        environment: environment,
-                        destination: activeDestination,
-                        content: content,
-                        state: scopedState,
-                      ),
-                    );
-                    return variant.shellBuilder(
-                      profileContext,
-                      LayoutShellBuildContext(
-                        environment: environment,
-                        activeDestination: activeDestination,
-                        availableDestinations: destinations,
-                        destination: destination,
-                        onSelectDestination: actions.selectDestination,
-                        destinationLabel: studioDesktopDestinationLabel,
-                        components: bundle.components,
-                        tokens: bundle.tokens,
-                        initialFocusTarget: 'primary-content',
-                      ),
-                    );
-                  },
+              child: Builder(
+                builder: (paletteContext) => withStudioDesktopTestPalette(
+                  paletteContext,
+                  LayoutScope(
+                    profileId: bundle.profile.id,
+                    environment: environment,
+                    restorationNamespace: bundle.restorationNamespace,
+                    tokens: bundle.tokens,
+                    state: scopedState,
+                    child: Builder(
+                      builder: (profileContext) {
+                        final destination = destinationBuilder(
+                          profileContext,
+                          LayoutDestinationBuildContext(
+                            environment: environment,
+                            destination: activeDestination,
+                            content: content,
+                            state: scopedState,
+                          ),
+                        );
+                        return variant.shellBuilder(
+                          profileContext,
+                          LayoutShellBuildContext(
+                            environment: environment,
+                            activeDestination: activeDestination,
+                            availableDestinations: destinations,
+                            destination: destination,
+                            onSelectDestination: actions.selectDestination,
+                            destinationLabel: studioDesktopDestinationLabel,
+                            components: bundle.components,
+                            tokens: bundle.tokens,
+                            initialFocusTarget: 'primary-content',
+                            chrome: chrome,
+                          ),
+                        );
+                      },
+                    ),
+                  ),
                 ),
               ),
             ),

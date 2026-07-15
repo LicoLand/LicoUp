@@ -12,11 +12,15 @@ import 'package:flutter_client/src/frontend/layout/profiles/studio/desktop/token
 /// The sole public handoff from the Studio desktop renderer boundary.
 final LayoutSurfaceBundle studioDesktopBundle = LayoutSurfaceBundle(
   profile: LayoutProfileDescriptor(
-    id: LayoutProfileId.studio,
-    labelKey: 'layout.profile.studio.label',
-    descriptionKey: 'layout.profile.studio.description',
+    id: LayoutProfileId.parse('studio'),
+    label: LayoutProfileCopy(english: 'Native', chinese: 'Native'),
+    description: LayoutProfileCopy(
+      english:
+          'Native layout (default): Safari-style left navigation card framing traffic lights and page switching.',
+      chinese: 'Native 布局（默认）：Safari 式左侧导航卡片，框住红绿灯与页面切换。',
+    ),
     styleIdentity: 'dense-docked-studio',
-    isDefault: false,
+    isDefault: true,
     revision: 1,
   ),
   surface: LayoutRuntimeSurface.desktop,
@@ -39,46 +43,34 @@ final LayoutSurfaceBundle studioDesktopBundle = LayoutSurfaceBundle(
   restorationNamespace: 'studio.desktop',
   stateNamespaces: <LayoutStateNamespace>{
     LayoutStateNamespace(
-      profileId: LayoutProfileId.studio,
-      surface: LayoutRuntimeSurface.desktop,
-      destination: ClientSection.controlPanel,
-      surfaceId: 'overview-grid',
-    ),
-    LayoutStateNamespace(
-      profileId: LayoutProfileId.studio,
+      profileId: LayoutProfileId.parse('studio'),
       surface: LayoutRuntimeSurface.desktop,
       destination: ClientSection.agents,
-      surfaceId: 'conversation-dock',
+      channel: LayoutStateChannels.agentsHistory,
     ),
     LayoutStateNamespace(
-      profileId: LayoutProfileId.studio,
+      profileId: LayoutProfileId.parse('studio'),
       surface: LayoutRuntimeSurface.desktop,
-      destination: ClientSection.monitoring,
-      surfaceId: 'telemetry-range',
+      destination: ClientSection.agents,
+      channel: LayoutStateChannels.agentsSidebar,
     ),
     LayoutStateNamespace(
-      profileId: LayoutProfileId.studio,
+      profileId: LayoutProfileId.parse('studio'),
       surface: LayoutRuntimeSurface.desktop,
-      destination: ClientSection.mcpPlugins,
-      surfaceId: 'extension-inspector',
+      destination: ClientSection.agents,
+      channel: LayoutStateChannels.agentsDestination,
     ),
     LayoutStateNamespace(
-      profileId: LayoutProfileId.studio,
-      surface: LayoutRuntimeSurface.desktop,
-      destination: ClientSection.localRuntime,
-      surfaceId: 'runtime-console',
-    ),
-    LayoutStateNamespace(
-      profileId: LayoutProfileId.studio,
-      surface: LayoutRuntimeSurface.desktop,
-      destination: ClientSection.mobileRelay,
-      surfaceId: 'relay-session',
-    ),
-    LayoutStateNamespace(
-      profileId: LayoutProfileId.studio,
+      profileId: LayoutProfileId.parse('studio'),
       surface: LayoutRuntimeSurface.desktop,
       destination: ClientSection.settings,
-      surfaceId: 'settings-inspector',
+      channel: LayoutStateChannels.settingsScroll,
+    ),
+    LayoutStateNamespace(
+      profileId: LayoutProfileId.parse('studio'),
+      surface: LayoutRuntimeSurface.desktop,
+      destination: ClientSection.settings,
+      channel: LayoutStateChannels.settingsSection,
     ),
   },
 );

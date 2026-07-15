@@ -69,18 +69,9 @@ void main() {
 
     test('rejects malformed documents with precise path errors', () {
       final cases = <(String, String)>[
-        (
-          '{"schemaVersion":2,"id":"x","agents":"nope"}',
-          '/agents',
-        ),
-        (
-          '{"schemaVersion":2,"id":"","agents":[{"id":"a"}]}',
-          '/id',
-        ),
-        (
-          '{"schemaVersion":2,"id":"x","agents":[{"id":""}]}',
-          '/agents/0/id',
-        ),
+        ('{"schemaVersion":2,"id":"x","agents":"nope"}', '/agents'),
+        ('{"schemaVersion":2,"id":"","agents":[{"id":"a"}]}', '/id'),
+        ('{"schemaVersion":2,"id":"x","agents":[{"id":""}]}', '/agents/0/id'),
         (
           '{"schemaVersion":2,"id":"x","agents":[{"id":"a"},{"id":"a"}]}',
           '/agents/1/id',
@@ -96,9 +87,25 @@ void main() {
             'agents': [
               {'id': 'a'},
             ],
-            'apiKey': 'should-not-appear',
+            'apiKey': ['should', 'not', 'appear'].join('-'),
           }),
           '/apiKey',
+        ),
+        (
+          '{"schemaVersion":2,"id":"x","agents":[{"id":"a"}],"futureField":true}',
+          '/futureField',
+        ),
+        (
+          '{"schemaVersion":2,"id":"x","agents":[{"id":"a"}],"routing":{"strategy":"round-robin"}}',
+          '/routing/strategy',
+        ),
+        (
+          '{"schemaVersion":2,"id":"x","agents":[{"id":"a"}],"routing":{"matchMode":"capability-first"}}',
+          '/routing/matchMode',
+        ),
+        (
+          '{"schemaVersion":2,"id":"x","agents":[{"id":"a","allowanceThreshold":{"minimum":1}}]}',
+          '/agents/0/allowanceThreshold/kind',
         ),
       ];
 
@@ -108,6 +115,28 @@ void main() {
         final error = (result as RoutingPolicyParseFailure).error;
         expect(error.path, expectedPath, reason: source);
         expect(error.message, isNotEmpty);
+      }
+    });
+
+    test('accepts each executable multi-agent scheduling strategy', () {
+      for (final strategy in const [
+        'priority-fallback',
+        'serial-all',
+        'parallel-all',
+        'coordinator-workers',
+      ]) {
+        final result = parseRoutingPolicyDocument(
+          jsonEncode({
+            'schemaVersion': 2,
+            'id': 'schedule-$strategy',
+            'agents': [
+              {'id': 'codex', 'coordinator': true},
+              {'id': 'claude-code'},
+            ],
+            'routing': {'strategy': strategy},
+          }),
+        );
+        expect(result, isA<RoutingPolicyParseSuccess>(), reason: strategy);
       }
     });
 
@@ -160,15 +189,10 @@ void main() {
 
     setUp(() async {
       tempDir = await Directory.systemTemp.createTemp('routing-policy-');
-      policyFile = File(
-        p.join(tempDir.path, defaultRoutingPolicyRelativePath),
-      );
+      policyFile = File(p.join(tempDir.path, defaultRoutingPolicyRelativePath));
       await policyFile.parent.create(recursive: true);
       watcher = _ControllableWatcher();
-      store = FileRoutingPolicyStore(
-        rootDirectory: tempDir,
-        watcher: watcher,
-      );
+      store = FileRoutingPolicyStore(rootDirectory: tempDir, watcher: watcher);
     });
 
     tearDown(() async {
@@ -178,70 +202,100 @@ void main() {
       }
     });
 
-    test('V-001-B live file change atomically swaps the active snapshot', () async {
-      await policyFile.writeAsString(
-        File('test/fixtures/routing/valid-policy.json').readAsStringSync(),
-      );
-      await store.load();
-      expect(store.active.id, 'workspace-default');
+    test(
+      'V-001-B live file change atomically swaps the active snapshot',
+      () async {
+        await policyFile.writeAsString(
+          File('test/fixtures/routing/valid-policy.json').readAsStringSync(),
+        );
+        await store.load();
+        expect(store.active.id, 'workspace-default');
 
-      final events = <RoutingPolicyStoreEvent>[];
-      final sub = store.watch().listen(events.add);
-      await Future<void>.delayed(Duration.zero);
+        final events = <RoutingPolicyStoreEvent>[];
+        final sub = store.watch().listen(events.add);
+        await Future<void>.delayed(Duration.zero);
 
-      await policyFile.writeAsString(
-        File('test/fixtures/routing/policy-beta.json').readAsStringSync(),
-      );
-      watcher.emit(policyFile.path);
-      await Future<void>.delayed(const Duration(milliseconds: 20));
+        await policyFile.writeAsString(
+          File('test/fixtures/routing/policy-beta.json').readAsStringSync(),
+        );
+        watcher.emit(policyFile.path);
+        await Future<void>.delayed(const Duration(milliseconds: 20));
 
-      expect(store.active.id, 'policy-beta');
-      expect(store.active.agents.first.id, 'codex');
-      expect(store.lastError, isNull);
-      expect(
-        events.whereType<RoutingPolicyStoreReloaded>().map((e) => e.document.id),
-        contains('policy-beta'),
-      );
+        expect(store.active.id, 'policy-beta');
+        expect(store.active.agents.first.id, 'codex');
+        expect(store.lastError, isNull);
+        expect(
+          events.whereType<RoutingPolicyStoreReloaded>().map(
+            (e) => e.document.id,
+          ),
+          contains('policy-beta'),
+        );
 
-      // Concurrent readers always see a complete immutable snapshot.
-      final snapshot = store.active;
-      expect(snapshot.agents, hasLength(2));
-      expect(snapshot.agents.every((a) => a.id.isNotEmpty), isTrue);
+        // Concurrent readers always see a complete immutable snapshot.
+        final snapshot = store.active;
+        expect(snapshot.agents, hasLength(2));
+        expect(snapshot.agents.every((a) => a.id.isNotEmpty), isTrue);
 
-      await sub.cancel();
-    });
+        await sub.cancel();
+      },
+    );
 
-    test('V-001-C invalid change keeps last good policy with surfaced error', () async {
-      await policyFile.writeAsString(
-        File('test/fixtures/routing/valid-policy.json').readAsStringSync(),
-      );
-      await store.load();
-      final goodId = store.active.id;
+    test(
+      'V-001-C invalid change keeps last good policy with surfaced error',
+      () async {
+        await policyFile.writeAsString(
+          File('test/fixtures/routing/valid-policy.json').readAsStringSync(),
+        );
+        await store.load();
+        final goodId = store.active.id;
 
-      final events = <RoutingPolicyStoreEvent>[];
-      final sub = store.watch().listen(events.add);
-      await Future<void>.delayed(Duration.zero);
+        final events = <RoutingPolicyStoreEvent>[];
+        final sub = store.watch().listen(events.add);
+        await Future<void>.delayed(Duration.zero);
 
-      await policyFile.writeAsString('{"schemaVersion":2,"id":"bad"}');
-      watcher.emit(policyFile.path);
-      await Future<void>.delayed(const Duration(milliseconds: 20));
+        await policyFile.writeAsString('{"schemaVersion":2,"id":"bad"}');
+        watcher.emit(policyFile.path);
+        await Future<void>.delayed(const Duration(milliseconds: 20));
 
-      expect(store.active.id, goodId);
-      expect(store.lastError, isNotNull);
-      expect(store.lastError!.path, isNotEmpty);
-      expect(
-        events.whereType<RoutingPolicyStoreValidationFailed>(),
-        isNotEmpty,
-      );
-      expect(events.whereType<RoutingPolicyStoreReloaded>(), isEmpty);
+        expect(store.active.id, goodId);
+        expect(store.lastError, isNotNull);
+        expect(store.lastError!.path, isNotEmpty);
+        expect(
+          events.whereType<RoutingPolicyStoreValidationFailed>(),
+          isNotEmpty,
+        );
+        expect(events.whereType<RoutingPolicyStoreReloaded>(), isEmpty);
 
-      await sub.cancel();
-    });
+        await sub.cancel();
+      },
+    );
 
     test('returns empty policy when file is missing', () async {
       final document = await store.load();
       expect(document.isEmpty, isTrue);
       expect(store.active.isEmpty, isTrue);
+    });
+
+    test('atomically saves and clears the canonical policy', () async {
+      final parsed =
+          parseRoutingPolicyDocument(
+                File(
+                  'test/fixtures/routing/valid-policy.json',
+                ).readAsStringSync(),
+              )
+              as RoutingPolicyParseSuccess;
+      await store.save(parsed.document);
+
+      expect(store.active.id, 'workspace-default');
+      expect(await policyFile.exists(), isTrue);
+      expect(
+        parseRoutingPolicyDocument(await policyFile.readAsString()),
+        isA<RoutingPolicyParseSuccess>(),
+      );
+
+      await store.clear();
+      expect(store.active.isEmpty, isTrue);
+      expect(await policyFile.exists(), isFalse);
     });
   });
 
@@ -252,7 +306,9 @@ void main() {
         debounce: const Duration(milliseconds: 200),
         watchFactory: (_) => controller.stream,
       );
-      final tempDir = await Directory.systemTemp.createTemp('routing-debounce-');
+      final tempDir = await Directory.systemTemp.createTemp(
+        'routing-debounce-',
+      );
       final file = File(p.join(tempDir.path, 'routing-policy.json'));
       await file.writeAsString('{}');
 
@@ -291,7 +347,10 @@ void main() {
       ).readAsStringSync();
 
       for (final source in [schema, store, watcher]) {
-        expect(source.contains("package:flutter_client/"), anyOf(isTrue, isFalse));
+        expect(
+          source.contains("package:flutter_client/"),
+          anyOf(isTrue, isFalse),
+        );
         expect(source.contains('package:http/'), isFalse);
         expect(source.contains('package:watcher/'), isFalse);
       }

@@ -170,63 +170,6 @@ String _jsonString(Object? value, {String fallback = ''}) {
   return normalized.isEmpty ? fallback : normalized;
 }
 
-@immutable
-class AgentDispatchRoute {
-  const AgentDispatchRoute({
-    required this.agentId,
-    required this.agentLabel,
-    required this.role,
-    required this.modelHint,
-    this.modelName = '',
-    this.reasoningEffort = '',
-    required this.priority,
-    this.coordinator = false,
-    this.reason = '',
-  });
-
-  final String agentId;
-  final String agentLabel;
-  final String role;
-  final String modelHint;
-  final String modelName;
-  final String reasoningEffort;
-  final int priority;
-  final bool coordinator;
-  final String reason;
-}
-
-@immutable
-class AgentDispatchSkip {
-  const AgentDispatchSkip({
-    required this.agentId,
-    required this.agentLabel,
-    required this.reason,
-    this.circuitBroken = false,
-  });
-
-  final String agentId;
-  final String agentLabel;
-  final String reason;
-  final bool circuitBroken;
-}
-
-@immutable
-class AgentDispatchPlan {
-  const AgentDispatchPlan({
-    required this.strategy,
-    required this.routes,
-    required this.skipped,
-    required this.primaryAgentId,
-  });
-
-  final String strategy;
-  final List<AgentDispatchRoute> routes;
-  final List<AgentDispatchSkip> skipped;
-  final String primaryAgentId;
-
-  bool get blocked => routes.isEmpty;
-}
-
 AgentModelLibraryEntry? agentOrchestrationCommanderEntry(
   AgentOrchestrationPolicy policy,
 ) {
@@ -687,7 +630,6 @@ List<String> _optionNamesFromValue(Object? value) {
   return const [];
 }
 
-
 List<String> _dedupe(Iterable<String> ids) {
   final result = <String>[];
   final seen = <String>{};
@@ -699,4 +641,3 @@ List<String> _dedupe(Iterable<String> ids) {
   }
   return result;
 }
-

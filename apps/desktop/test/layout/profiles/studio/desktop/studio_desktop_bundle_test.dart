@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:flutter_client/src/contracts/presentation/layout_environment.dart';
 import 'package:flutter_client/src/contracts/presentation/layout_profile.dart';
+import 'package:flutter_client/src/contracts/presentation/layout_state_namespace.dart';
 import 'package:flutter_client/src/contracts/presentation/semantic_destination.dart';
 import 'package:flutter_client/src/frontend/layout/profiles/studio/desktop/preview/studio_desktop_preview.dart';
 import 'package:flutter_client/src/frontend/layout/profiles/studio/desktop/studio_desktop.dart';
@@ -13,11 +14,11 @@ void main() {
   test('bundle exposes the exact immutable Studio desktop contract', () {
     final bundle = studioDesktopBundle;
 
-    expect(bundle.profile.id, LayoutProfileId.studio);
-    expect(bundle.profile.labelKey, 'layout.profile.studio.label');
-    expect(bundle.profile.descriptionKey, 'layout.profile.studio.description');
+    expect(bundle.profile.id, LayoutProfileId.parse('studio'));
+    expect(bundle.profile.label.resolve('en'), 'Native');
+    expect(bundle.profile.description.resolve('zh'), contains('默认'));
     expect(bundle.profile.styleIdentity, 'dense-docked-studio');
-    expect(bundle.profile.isDefault, isFalse);
+    expect(bundle.profile.isDefault, isTrue);
     expect(bundle.profile.revision, 1);
     expect(bundle.surface, LayoutRuntimeSurface.desktop);
     expect(bundle.assetNamespace, 'layout-profiles/studio/desktop');
@@ -47,22 +48,39 @@ void main() {
     );
   });
 
-  test('state namespaces are profile-qualified and exact per destination', () {
+  test('state namespaces are profile-qualified and business-scoped', () {
     final namespaces = studioDesktopBundle.stateNamespaces;
 
-    expect(namespaces, hasLength(studioDesktopExpectedDestinations.length));
-    expect(
-      namespaces.map((namespace) => namespace.destination).toSet(),
-      studioDesktopExpectedDestinations,
-    );
-    for (final destination in studioDesktopExpectedDestinations) {
-      final namespace = namespaces.singleWhere(
-        (value) => value.destination == destination,
-      );
-      expect(namespace.profileId, LayoutProfileId.studio);
+    expect(namespaces, hasLength(5));
+    expect(namespaces.map((value) => value.destination).toSet(), {
+      ClientSection.agents,
+      ClientSection.settings,
+    });
+    for (final namespace in namespaces) {
+      expect(namespace.profileId, LayoutProfileId.parse('studio'));
       expect(namespace.surface, LayoutRuntimeSurface.desktop);
-      expect(namespace.surfaceId, isNotEmpty);
     }
+    expect(
+      namespaces
+          .where((value) => value.destination == ClientSection.agents)
+          .map((value) => value.surfaceId)
+          .toSet(),
+      {
+        LayoutStateChannels.agentsHistory.id,
+        LayoutStateChannels.agentsSidebar.id,
+        LayoutStateChannels.agentsDestination.id,
+      },
+    );
+    expect(
+      namespaces
+          .where((value) => value.destination == ClientSection.settings)
+          .map((value) => value.surfaceId)
+          .toSet(),
+      {
+        LayoutStateChannels.settingsScroll.id,
+        LayoutStateChannels.settingsSection.id,
+      },
+    );
     expect(() => namespaces.clear(), throwsUnsupportedError);
   });
 
@@ -71,7 +89,7 @@ void main() {
 
     expect(coverage, hasLength(2));
     for (final entry in coverage) {
-      expect(entry.key.profileId, LayoutProfileId.studio);
+      expect(entry.key.profileId, LayoutProfileId.parse('studio'));
       expect(entry.key.surface, LayoutRuntimeSurface.desktop);
       expect(entry.destinations, studioDesktopExpectedDestinations);
     }

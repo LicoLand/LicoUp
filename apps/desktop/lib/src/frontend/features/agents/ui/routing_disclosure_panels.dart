@@ -42,10 +42,7 @@ class RoutingPolicyStatusPanel extends StatelessWidget {
           Text(
             policy.label.trim().isEmpty ? policy.id : policy.label,
             key: const Key('routing-policy-name'),
-            style: TextStyle(
-              color: colors.text,
-              fontWeight: FontWeight.w600,
-            ),
+            style: TextStyle(color: colors.text, fontWeight: FontWeight.w600),
           ),
           const SizedBox(height: 4),
           Text(
@@ -95,10 +92,7 @@ class RoutingDecisionDisclosure extends StatelessWidget {
           Text(
             'Chosen: ${decision.chosenAgentLabel.isEmpty ? decision.chosenAgentId : decision.chosenAgentLabel}',
             key: const Key('routing-decision-chosen'),
-            style: TextStyle(
-              color: colors.text,
-              fontWeight: FontWeight.w600,
-            ),
+            style: TextStyle(color: colors.text, fontWeight: FontWeight.w600),
           ),
           const SizedBox(height: 8),
           Text(
@@ -168,10 +162,7 @@ class RoutingDistillationPreview extends StatelessWidget {
         children: [
           Text(
             'Handoff preview',
-            style: TextStyle(
-              color: colors.text,
-              fontWeight: FontWeight.w600,
-            ),
+            style: TextStyle(color: colors.text, fontWeight: FontWeight.w600),
           ),
           const SizedBox(height: 8),
           _section(colors, 'Objective', package.objective),
@@ -197,10 +188,7 @@ class RoutingDistillationPreview extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(label, style: TextStyle(color: colors.textMuted, fontSize: 11)),
-          Text(
-            value,
-            style: TextStyle(color: colors.text, fontSize: 12),
-          ),
+          Text(value, style: TextStyle(color: colors.text, fontSize: 12)),
         ],
       ),
     );
@@ -228,10 +216,7 @@ class RoutingRouteHistoryPanel extends StatelessWidget {
         children: [
           Text(
             'Route history',
-            style: TextStyle(
-              color: colors.text,
-              fontWeight: FontWeight.w600,
-            ),
+            style: TextStyle(color: colors.text, fontWeight: FontWeight.w600),
           ),
           if (entries.isEmpty)
             Padding(
