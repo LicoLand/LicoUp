@@ -1,0 +1,66 @@
+{
+  "schemaVersion": "licolite.secure-mesh.windows-implementation-config.v1",
+  "sourceChecks": [
+    {
+      "id": "windows-x64-builder-is-target-bound-and-arm64-fails-closed",
+      "file": "apps/desktop/scripts/package-client.mjs",
+      "tokens": [
+        "WINDOWS_X64_TARGET_ID",
+        "x86_64-pc-windows-msvc",
+        "windows_arm64_flutter_upstream_unavailable",
+        "inspectWindowsPeFile",
+        "sourceStateDigest"
+      ]
+    },
+    {
+      "id": "windows-pe-verifier-parses-machine-type",
+      "file": "tools/scripts/lib/windows-pe-facts.mjs",
+      "tokens": [
+        "0x8664",
+        "0xaa64",
+        "windows_pe_machine_unsupported",
+        "windows_pe_not_pe32_plus",
+        "windows_pe_file_changed_while_reading"
+      ]
+    },
+    {
+      "id": "windows-bundle-verifier-binds-source-digest-and-pe-facts",
+      "file": "apps/desktop/scripts/verify-windows-client-bundle.mjs",
+      "tokens": [
+        "windows-x64",
+        "inspectWindowsPeFile",
+        "sha256File",
+        "source digest is invalid"
+      ]
+    },
+    {
+      "id": "windows-native-secret-store-is-credential-manager-backed",
+      "file": "crates/lico-client-native/src/platform/secure_mesh_secret_store.rs",
+      "tokens": [
+        "windows-credential-manager",
+        "keyring::Entry::new",
+        "delete_credential",
+        "SecretStoreAuthorizationSession"
+      ]
+    },
+    {
+      "id": "windows-native-smoke-proves-secret-lifecycle-and-redaction",
+      "file": "tests/smoke/windows-native-smoke.mjs",
+      "tokens": [
+        "secret-store-self-test",
+        "sharedSecretClassRoundTripPassed",
+        "portableConfigPrivateMaterialRedacted",
+        "ordinaryFileSecretArtifactCount"
+      ]
+    },
+    {
+      "id": "windows-file-security-uses-owner-only-native-acl",
+      "file": "tests/verify-windows-file-security-boundary.mjs",
+      "tokens": [
+        "explicit-owner-only-native-dacl-helper",
+        "windowsAclStatus",
+        "icacls"
+      ]
+    }
+  ]
+}

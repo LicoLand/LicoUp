@@ -81,7 +81,7 @@ async function main() {
   const packagingManifest = path.join(
     bundleDir,
     "package-metadata",
-    "future-client",
+    "lico-client",
     "packaging-modules.json"
   );
   for (const file of [flutterBinary, cli]) {
@@ -101,9 +101,9 @@ async function main() {
       throw new Error(`Packaging manifest does not include required module: ${moduleId}`);
     }
   }
-  const macOSMailTool = path.join(bundleDir, "lico-macos-mail-tool");
-  if (existsSync(macOSMailTool)) {
-    throw new Error(`Linux bundle must not include macOS Mail sidecar: ${macOSMailTool}`);
+  const macOSMailHelper = path.join(bundleDir, "lico-mail-helper");
+  if (existsSync(macOSMailHelper)) {
+    throw new Error(`Linux bundle must not include macOS Mail sidecar: ${macOSMailHelper}`);
   }
 
   const dataDir = path.join(os.tmpdir(), `lico-ubuntu-smoke-${process.pid}-${Date.now()}`);

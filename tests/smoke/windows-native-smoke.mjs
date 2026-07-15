@@ -8,6 +8,7 @@ import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
+import { sanitizeError } from "../../../tools/scripts/lib/sanitize-error.mjs";
 
 const repoRoot = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const progressPath = path.join(repoRoot, "build", "test-reports", "windows-native-smoke-progress.jsonl");
@@ -247,7 +248,7 @@ async function main() {
   assert.equal(await fileExists(licoClientExe), true, `lico-client.exe missing: ${licoClientExe}`);
 
   const portableDir = await fs.mkdtemp(path.join(os.tmpdir(), "lico-windows-native-smoke-"));
-  await recordProgress("portable-dir", "created", { portableDir });
+  await recordProgress("portable-dir", "created");
   const env = { LICO_PORTABLE_DIR: portableDir };
   try {
     await recordProgress("targets-scan", "start");
@@ -285,7 +286,7 @@ async function main() {
     }
     assert.equal(start.status, "running");
     assert.match(start.serverUrl, new RegExp(`:${port}$`));
-    await recordProgress("local-runtime-start", "ok", { serverUrl: start.serverUrl });
+    await recordProgress("local-runtime-start", "ok");
 
     await recordProgress("local-runtime-status", "start");
     const status = await runJson(licoClientExe, ["local-runtime", "status"], { env, timeoutMs: 30000 });
@@ -301,6 +302,21 @@ async function main() {
     const stop = await runJson(licoClientExe, ["local-runtime", "stop"], { env, timeoutMs: 60000 });
     assert.equal(stop.status, "stopped");
     await recordProgress("local-runtime-stop", "ok");
+
+    await recordProgress("windows-secret-store", "start");
+    const secretStore = await runJson(licoClientExe, [
+      "mobile", "relay", "e2ee", "secret-store-self-test",
+    ], { env, timeoutMs: 120000 });
+    assert.equal(secretStore.ok, true);
+    assert.equal(secretStore.selfTestPassed, true);
+    assert.equal(secretStore.backend, "windows-credential-manager");
+    assert.equal(secretStore.sharedSecretClassRoundTripPassed, true);
+    assert.equal(secretStore.sharedSecretClassPersistenceReady, true);
+    assert.equal(secretStore.portableConfigPrivateMaterialRedacted, true);
+    assert.equal(secretStore.rawPrivateMaterialIncluded, false);
+    assert.equal(secretStore.rawPlaintextIncluded, false);
+    assert.equal(secretStore.ordinaryFileSecretArtifactCount, 0);
+    await recordProgress("windows-secret-store", "ok");
   } finally {
     await recordProgress("cleanup", "start");
     await run(licoClientExe, ["local-runtime", "stop"], { env, timeoutMs: 60000 }).catch(() => {});
@@ -315,6 +331,6 @@ async function main() {
 }
 
 main().catch((error) => {
-  console.error(error instanceof Error ? error.stack || error.message : error);
+  console.error(sanitizeError(error));
   process.exitCode = 1;
 });

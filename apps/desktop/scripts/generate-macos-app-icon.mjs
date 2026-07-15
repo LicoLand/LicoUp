@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, rmSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -8,17 +9,21 @@ const workspaceRoot = path.resolve(fileURLToPath(new URL("../../..", import.meta
 const defaultSourcePath = path.join(workspaceRoot, "apps", "desktop", "assets", "brand", "lico-app-icon.svg");
 const iconSetRoot = path.join(
   workspaceRoot,
-  "desktop-app",
+  "apps",
+  "desktop",
   "macos",
   "Runner",
   "Assets.xcassets",
   "AppIcon.appiconset"
 );
 const iconSizes = [16, 32, 64, 128, 256, 512, 1024];
+const manifestPath = path.join(iconSetRoot, "SourceManifest.json");
+const manifestSchemaVersion = "lico-macos-app-icon-source-v1";
 
 function parseArgs(argv) {
   const options = {
     sourcePath: defaultSourcePath,
+    verifyOnly: false,
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -32,10 +37,73 @@ function parseArgs(argv) {
       index += 1;
       continue;
     }
+    if (arg === "--verify") {
+      options.verifyOnly = true;
+      continue;
+    }
     throw new Error(`Unknown argument: ${arg}`);
   }
 
   return options;
+}
+
+function sha256(filePath) {
+  return `sha256:${createHash("sha256").update(readFileSync(filePath)).digest("hex")}`;
+}
+
+function iconPath(size) {
+  return path.join(iconSetRoot, `app_icon_${size}.png`);
+}
+
+function readPngSize(filePath) {
+  const bytes = readFileSync(filePath);
+  const pngSignature = "89504e470d0a1a0a";
+  if (bytes.length < 24 || bytes.subarray(0, 8).toString("hex") !== pngSignature) {
+    throw new Error(`Lico Arc app icon is not a valid PNG: ${path.basename(filePath)}`);
+  }
+  return {
+    width: bytes.readUInt32BE(16),
+    height: bytes.readUInt32BE(20),
+  };
+}
+
+function createManifest(sourcePath) {
+  return {
+    schemaVersion: manifestSchemaVersion,
+    source: {
+      path: path.relative(workspaceRoot, sourcePath).replaceAll(path.sep, "/"),
+      digest: sha256(sourcePath),
+    },
+    icons: iconSizes.map((size) => ({
+      size,
+      path: path.basename(iconPath(size)),
+      digest: sha256(iconPath(size)),
+    })),
+  };
+}
+
+function verifyCommittedIcons(sourcePath) {
+  if (!existsSync(manifestPath)) {
+    throw new Error("Committed Lico Arc app icon source manifest is missing");
+  }
+  const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+  const expected = createManifest(sourcePath);
+  if (manifest.schemaVersion !== expected.schemaVersion ||
+      manifest.source?.path !== expected.source.path ||
+      manifest.source?.digest !== expected.source.digest) {
+    throw new Error("Committed Lico Arc app icons do not match the canonical SVG source");
+  }
+  const entries = new Map((manifest.icons || []).map((entry) => [entry.size, entry]));
+  for (const expectedIcon of expected.icons) {
+    const entry = entries.get(expectedIcon.size);
+    if (!entry || entry.path !== expectedIcon.path || entry.digest !== expectedIcon.digest) {
+      throw new Error(`Committed Lico Arc app icon digest is stale: ${expectedIcon.path}`);
+    }
+    const dimensions = readPngSize(iconPath(expectedIcon.size));
+    if (dimensions.width !== expectedIcon.size || dimensions.height !== expectedIcon.size) {
+      throw new Error(`Committed Lico Arc app icon has invalid dimensions: ${expectedIcon.path}`);
+    }
+  }
 }
 
 function run(command, args) {
@@ -46,7 +114,7 @@ function renderSvgToPng(sourcePath, tempDir) {
   run("qlmanage", ["-t", "-s", "1024", "-o", tempDir, sourcePath]);
   const renderedPath = path.join(tempDir, `${path.basename(sourcePath)}.png`);
   if (!existsSync(renderedPath)) {
-    throw new Error(`Quick Look did not render the LicoLite app icon SVG: ${renderedPath}`);
+    throw new Error(`Quick Look did not render the Lico Arc app icon SVG: ${renderedPath}`);
   }
   return renderedPath;
 }
@@ -54,22 +122,28 @@ function renderSvgToPng(sourcePath, tempDir) {
 function main() {
   const options = parseArgs(process.argv.slice(2));
   if (!existsSync(options.sourcePath)) {
-    throw new Error(`LicoLite icon source SVG does not exist: ${options.sourcePath}`);
+    throw new Error(`Lico Arc icon source SVG does not exist: ${options.sourcePath}`);
   }
   if (path.extname(options.sourcePath).toLowerCase() !== ".svg") {
-    throw new Error(`LicoLite icon source must be an SVG file: ${options.sourcePath}`);
+    throw new Error(`Lico Arc icon source must be an SVG file: ${options.sourcePath}`);
   }
 
   mkdirSync(iconSetRoot, { recursive: true });
+  if (options.verifyOnly) {
+    verifyCommittedIcons(options.sourcePath);
+    console.log("Verified committed Lico Arc macOS app icons");
+    return;
+  }
   const tempDir = path.join(os.tmpdir(), "lico-client-app-icon");
   rmSync(tempDir, { recursive: true, force: true });
   mkdirSync(tempDir, { recursive: true });
   const renderedPath = renderSvgToPng(options.sourcePath, tempDir);
 
   for (const size of iconSizes) {
-    run("sips", ["-z", String(size), String(size), renderedPath, "--out", path.join(iconSetRoot, `app_icon_${size}.png`)]);
+    run("sips", ["-z", String(size), String(size), renderedPath, "--out", iconPath(size)]);
   }
-  console.log(`Generated LicoLite macOS app icons from ${options.sourcePath}`);
+  writeFileSync(manifestPath, `${JSON.stringify(createManifest(options.sourcePath), null, 2)}\n`);
+  console.log(`Generated Lico Arc macOS app icons from ${options.sourcePath}`);
 }
 
 main();

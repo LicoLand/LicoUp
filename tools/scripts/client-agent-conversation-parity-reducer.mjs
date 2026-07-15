@@ -2,7 +2,7 @@
 
 import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 export const CONTRACT_VERSION = "CL-06";
@@ -54,6 +54,10 @@ const CANONICAL_EVIDENCE_FILE = resolve(
   REPOSITORY_ROOT,
   "crates/lico-client-native/resources/agent-conversation-evidence.json",
 );
+const ADAPTER_MANIFEST_DIRECTORY = resolve(
+  REPOSITORY_ROOT,
+  "packages/contracts/client/fixtures/agent-conversation-adapter/manifests",
+);
 
 const SAFE_CODE = /^[a-z0-9][a-z0-9._:+-]{0,127}$/;
 const SHA256_DIGEST = /^sha256:[a-f0-9]{64}$/;
@@ -76,7 +80,7 @@ const EVIDENCE_BLOCKING_CODES = new Set([
 ]);
 const INVENTORY_BLOCKING_CODES = new Set([
   ...EVIDENCE_BLOCKING_CODES,
-  "antigravity_public_transport_unavailable",
+  "antigravity_cli_structured_transport_unavailable",
 ]);
 
 const SENSITIVE_KEY_FRAGMENTS = Object.freeze([
@@ -127,6 +131,10 @@ const ADAPTER_EVIDENCE_FIELDS = new Set([
   "runtimeVersionClass",
   "runtimeVersionDigest",
   "capabilitySnapshotDigest",
+  "adapterManifestDigest",
+  "releaseArtifactDigest",
+  "releaseSidecarDigest",
+  "productContinuityBindingDigest",
   "runtimeSourceClass",
   "registryDigest",
   "driverInventoryDigest",
@@ -173,17 +181,22 @@ const CAPABILITY_MATRIX_FIELDS = new Set([
   "exactResume",
   "streaming",
   "cancel",
+  "interruptSteer",
   "structuredEvents",
   "approvals",
   "multimodal",
   "usageStatus",
   "officialLane",
+  "processLocalContinuation",
 ]);
 
 const LANE_FAMILIES = new Set([
   "acp",
   "app-server",
   "stream-json",
+  "serve-http",
+  "cli",
+  "rpc",
   "unavailable",
 ]);
 
@@ -296,6 +309,24 @@ export function driverInventoryDigestFor(inventory) {
   return digest(inventoryDigestValue(inventory));
 }
 
+export function capabilityMatrixDigestFor(driver) {
+  return digest(driver?.capabilityMatrix ?? {});
+}
+
+export function adapterManifestDigestFor(agentId) {
+  if (typeof agentId !== "string" || !SAFE_CODE.test(agentId)) {
+    fail("adapter_manifest_agent_invalid");
+  }
+  const manifest = parseJson(
+    readFileSync(join(ADAPTER_MANIFEST_DIRECTORY, `${agentId}.json`), "utf8"),
+    "adapter_manifest_json_invalid",
+  );
+  if (manifest?.identity?.agentId !== agentId) {
+    fail("adapter_manifest_identity_mismatch");
+  }
+  return digest(manifest);
+}
+
 export function adapterEvidenceDigestFor(adapterEvidence) {
   if (!isPlainObject(adapterEvidence)) {
     fail("evidence_schema_invalid");
@@ -337,6 +368,10 @@ export function validateDriverInventory(inventory, agentIds) {
       canonicalJson([
         "runtimeVersionDigest",
         "capabilitySnapshotDigest",
+        "adapterManifestDigest",
+        "releaseArtifactDigest",
+        "releaseSidecarDigest",
+        "productContinuityBindingDigest",
         "registryDigest",
         "driverInventoryDigest",
         "evidenceDigest",
@@ -394,7 +429,9 @@ export function validateDriverInventory(inventory, agentIds) {
         typeof driver.capabilityMatrix.approvals !== "boolean" ||
         typeof driver.capabilityMatrix.multimodal !== "boolean" ||
         typeof driver.capabilityMatrix.usageStatus !== "boolean" ||
-        typeof driver.capabilityMatrix.officialLane !== "boolean"
+        typeof driver.capabilityMatrix.officialLane !== "boolean" ||
+        (driver.capabilityMatrix.processLocalContinuation !== undefined &&
+          typeof driver.capabilityMatrix.processLocalContinuation !== "boolean")
       ) {
         fail("driver_inventory_invalid");
       }
@@ -474,7 +511,11 @@ function evidenceBindingIsCurrent(evidence, driver, registryDigest, inventoryDig
     SAFE_CODE.test(evidence.harnessVersion ?? "") &&
     SAFE_CODE.test(evidence.runtimeVersionClass ?? "") &&
     SHA256_DIGEST.test(evidence.runtimeVersionDigest ?? "") &&
-    SHA256_DIGEST.test(evidence.capabilitySnapshotDigest ?? "") &&
+    evidence.capabilitySnapshotDigest === capabilityMatrixDigestFor(driver) &&
+    evidence.adapterManifestDigest === adapterManifestDigestFor(driver.agentId) &&
+    SHA256_DIGEST.test(evidence.releaseArtifactDigest ?? "") &&
+    SHA256_DIGEST.test(evidence.releaseSidecarDigest ?? "") &&
+    SHA256_DIGEST.test(evidence.productContinuityBindingDigest ?? "") &&
     SAFE_CODE.test(evidence.runtimeSourceClass ?? "") &&
     SHA256_DIGEST.test(evidence.registryDigest ?? "") &&
     evidence.registryDigest === registryDigest &&
@@ -483,6 +524,30 @@ function evidenceBindingIsCurrent(evidence, driver, registryDigest, inventoryDig
     SHA256_DIGEST.test(evidence.evidenceDigest ?? "") &&
     evidence.evidenceDigest === adapterEvidenceDigestFor(evidence)
   );
+}
+
+const CONDITIONAL_CAPABILITY_FIELDS = Object.freeze({
+  "C-01": "streaming",
+  "C-02": "structuredEvents",
+  "C-03": "approvals",
+  "C-04": "multimodal",
+  "C-05": "interruptSteer",
+  "C-06": "usageStatus",
+});
+
+function evidenceCapabilitiesMatchInventory(evidence, driver) {
+  const matrix = driver?.capabilityMatrix ?? {};
+  if (evidence?.officialNativeLane === true && matrix.officialLane !== true) {
+    return false;
+  }
+  const checks = evidence?.conditionalChecks;
+  if (!isPlainObject(checks)) return false;
+  return CONDITIONAL_CHECK_IDS.every((id) => {
+    const check = checks[id];
+    if (!isPlainObject(check)) return false;
+    const supported = matrix[CONDITIONAL_CAPABILITY_FIELDS[id]] === true;
+    return check.nativeSupport === (supported ? "supported" : "unsupported");
+  });
 }
 
 function coreCounts(evidence) {
@@ -574,13 +639,18 @@ function adapterResult({
         runtimeVersionClass: evidence.runtimeVersionClass,
         runtimeVersionDigest: evidence.runtimeVersionDigest,
         capabilitySnapshotDigest: evidence.capabilitySnapshotDigest,
+        adapterManifestDigest: evidence.adapterManifestDigest,
+        releaseArtifactDigest: evidence.releaseArtifactDigest,
+        releaseSidecarDigest: evidence.releaseSidecarDigest,
+        productContinuityBindingDigest: evidence.productContinuityBindingDigest,
         runtimeSourceClass: evidence.runtimeSourceClass,
         registryDigest: evidence.registryDigest,
         driverInventoryDigest: evidence.driverInventoryDigest,
         evidenceDigest: evidence.evidenceDigest,
       };
     }
-    if (!bindingCurrent) {
+    const capabilitiesCurrent = evidenceCapabilitiesMatchInventory(evidence, driver);
+    if (!bindingCurrent || !capabilitiesCurrent) {
       summaryCodes = ["evidence_stale_or_incomplete"];
     } else if (
       evidence.blockingCode !== undefined &&

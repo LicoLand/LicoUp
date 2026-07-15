@@ -1,0 +1,48 @@
+import { spawnSync } from "node:child_process";
+
+const DEFAULT_MAX_BUFFER = 64 * 1024 * 1024;
+
+export function cargoTestExecutionCount(output) {
+  let executed = 0;
+  const pattern = /test result: (?:ok|FAILED)\. (\d+) passed; (\d+) failed; \d+ ignored;/gu;
+  for (const match of String(output || "").matchAll(pattern)) {
+    executed += Number(match[1]) + Number(match[2]);
+  }
+  return executed;
+}
+
+export function runCargoTestFilter({
+  repoRoot,
+  manifestPath,
+  filter,
+  env = process.env,
+  sanitizeError = (value) => String(value || "")
+}) {
+  const started = Date.now();
+  const command = "cargo";
+  const commandArgs = ["test", "--manifest-path", manifestPath, filter];
+  const result = spawnSync(command, commandArgs, {
+    cwd: repoRoot,
+    env,
+    encoding: "utf8",
+    maxBuffer: DEFAULT_MAX_BUFFER
+  });
+  const output = `${result.stdout || ""}\n${result.stderr || ""}`;
+  const executedTestCount = cargoTestExecutionCount(output);
+  const matchedAtLeastOneTest = executedTestCount > 0;
+  const ok = result.status === 0 && matchedAtLeastOneTest;
+  return {
+    id: filter,
+    command: `${command} ${commandArgs.join(" ")}`,
+    ok,
+    exitCode: result.status ?? 1,
+    durationMs: Date.now() - started,
+    executedTestCount,
+    matchedAtLeastOneTest,
+    failureSummary: ok
+      ? ""
+      : result.status === 0
+        ? "cargo test filter matched zero executable tests"
+        : sanitizeError(result.stderr || result.stdout)
+  };
+}

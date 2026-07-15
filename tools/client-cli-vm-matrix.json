@@ -1,0 +1,57 @@
+{
+  "schemaVersion": "v0.0.1:client-cli:linux-arm64-vm-matrix-1",
+  "description": "Linux ARM64 VM matrix for validating the lico-client CLI outside Android, iOS, and Flutter desktop builds.",
+  "architecture": "aarch64",
+  "distros": [
+    {
+      "id": "ubuntu",
+      "label": "Ubuntu LTS ARM64",
+      "imageUrl": "https://cloud-images.ubuntu.com/noble/current/noble-server-cloudimg-arm64.img",
+      "imageFile": "ubuntu-noble-server-cloudimg-arm64.img",
+      "packageManager": "apt",
+      "sshPort": 23221
+    },
+    {
+      "id": "debian",
+      "label": "Debian ARM64",
+      "imageUrl": "https://cloud.debian.org/images/cloud/trixie/latest/debian-13-genericcloud-arm64.qcow2",
+      "imageFile": "debian-trixie-genericcloud-arm64.qcow2",
+      "packageManager": "apt",
+      "sshPort": 23222
+    },
+    {
+      "id": "opensuse",
+      "label": "openSUSE Leap ARM64",
+      "imageUrl": "https://download.opensuse.org/distribution/leap/15.6/appliances/openSUSE-Leap-15.6-Minimal-VM.aarch64-Cloud.qcow2",
+      "imageFile": "opensuse-leap-15.6-minimal-vm-aarch64-cloud.qcow2",
+      "packageManager": "zypper",
+      "sshPort": 23223
+    },
+    {
+      "id": "almalinux",
+      "label": "AlmaLinux ARM64",
+      "imageUrl": "https://repo.almalinux.org/almalinux/9/cloud/aarch64/images/AlmaLinux-9-GenericCloud-latest.aarch64.qcow2",
+      "imageFile": "almalinux-9-genericcloud-latest-aarch64.qcow2",
+      "packageManager": "dnf",
+      "sshPort": 23224
+    },
+    {
+      "id": "rocky",
+      "label": "Rocky Linux ARM64",
+      "imageUrl": "https://dl.rockylinux.org/pub/rocky/9/images/aarch64/Rocky-9-GenericCloud.latest.aarch64.qcow2",
+      "imageFile": "rocky-9-genericcloud-latest-aarch64.qcow2",
+      "packageManager": "dnf",
+      "sshPort": 23225
+    },
+    {
+      "id": "arch",
+      "label": "Arch Linux ARM64",
+      "imageUrlEnv": "LICO_CLIENT_CLI_VM_ARCH_IMAGE_URL",
+      "imageFile": "arch-linux-arm64-cloudimg.qcow2",
+      "packageManager": "pacman",
+      "manualImageRequired": true,
+      "sshPort": 23226,
+      "note": "Arch's official cloud image stream does not currently provide the same ARM64 qcow2 endpoint shape as the other matrix entries. Set LICO_CLIENT_CLI_VM_ARCH_IMAGE_URL to an approved ARM64 cloud image before running this row."
+    }
+  ]
+}

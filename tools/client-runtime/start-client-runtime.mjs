@@ -117,7 +117,7 @@ function healthPayload(config, startedAtUnix) {
     runtimeKind: "client-local",
     edition: "client-local",
     serverId: discovery.serverId || `lico-client-local-runtime-${config.port || 0}`,
-    serverLabel: discovery.serverLabel || "LicoLite Client Local Runtime",
+    serverLabel: discovery.serverLabel || "Lico Arc Local Runtime",
     configVersion: discovery.configVersion || "",
     bootstrapBaseUrl: discovery.bootstrapBaseUrl || "",
     activeServiceUrl: discovery.activeServiceUrl || "",

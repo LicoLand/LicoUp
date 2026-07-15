@@ -1,0 +1,16 @@
+{
+  "schemaVersion": "licolite.android-release-toolchain-allowlist.v1",
+  "platforms": {
+    "darwin-arm64": {
+      "buildToolsVersion": "37.0.0",
+      "digests": {
+        "adb": "sha256:9fdf861259dc807937b13afdd5f053c7fda9f3b7726933fe0e0f45130ecb8dc7",
+        "aapt2": "sha256:13a206c0b022ba3b92f21b6f142f3a4b2d0f3bb1ac0bddfa820ee2c6b00c4c99",
+        "apksigner": "sha256:b47549e373b895ce6ca620d0c7887e674d9615ffa837a86ac601dcfd04adb0f0",
+        "apksignerJar": "sha256:2defad215d7ff52968a409cde528cdaef7918b115e276b8e3378ca7a178e4180",
+        "zipalign": "sha256:6d99a9d16c7116850414910b04cffd5ba3aaff86db7a6346179d678abe6d25d1",
+        "java": "sha256:81a8c862587972b34fd7c84b179c457ee0e7335b7087238b5c0f49d43f840561"
+      }
+    }
+  }
+}

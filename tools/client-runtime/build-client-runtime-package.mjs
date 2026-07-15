@@ -25,24 +25,53 @@ function writeJson(file, value) {
   writeFileSync(file, `${JSON.stringify(value, null, 2)}\n`, "utf8");
 }
 
-function enabledFeatures(packaging) {
+function moduleFeatureEntry(id, moduleConfig) {
+  const enabled = moduleConfig.enabled !== false;
+  const status = String(
+    moduleConfig.status || (enabled ? "enabled" : "disabled")
+  ).trim();
+  const abnormalStatuses = [
+    "error",
+    "failed",
+    "invalid",
+    "missing",
+    "unavailable"
+  ];
+  const entry = {
+    id,
+    label: moduleConfig.label || id,
+    category: moduleConfig.category || "runtime",
+    packaging: moduleConfig.packaging || "runtime-capability",
+    required: moduleConfig.required === true,
+    enabled,
+    ok: enabled && !abnormalStatuses.includes(status.toLowerCase()),
+    status,
+    platforms: Array.isArray(moduleConfig.platforms)
+      ? moduleConfig.platforms
+      : [],
+    requires: Array.isArray(moduleConfig.requires)
+      ? moduleConfig.requires
+      : []
+  };
+  if (moduleConfig.error) {
+    entry.error = String(moduleConfig.error);
+    entry.ok = false;
+  }
+  return entry;
+}
+
+function moduleFeatures(packaging, enabled) {
   return Object.entries(packaging.modules || {})
-    .filter(([, moduleConfig]) => moduleConfig.enabled !== false)
-    .map(([id, moduleConfig]) => ({
-      id,
-      label: moduleConfig.label || id,
-      category: moduleConfig.category || "runtime",
-      packaging: moduleConfig.packaging || "runtime-capability",
-      required: moduleConfig.required === true,
-      platforms: Array.isArray(moduleConfig.platforms) ? moduleConfig.platforms : [],
-      requires: Array.isArray(moduleConfig.requires) ? moduleConfig.requires : []
-    }))
+    .filter(([, moduleConfig]) => (moduleConfig.enabled !== false) === enabled)
+    .map(([id, moduleConfig]) => moduleFeatureEntry(id, moduleConfig))
     .sort((left, right) => left.id.localeCompare(right.id));
 }
 
 const packaging = readJson(packagingPath);
-const activeFeatures = enabledFeatures(packaging);
+const activeFeatures = moduleFeatures(packaging, true);
+const disabledFeatures = moduleFeatures(packaging, false);
 const activeFeatureIds = activeFeatures.map((feature) => feature.id);
+const disabledFeatureIds = disabledFeatures.map((feature) => feature.id);
 const generatedAtUnix = Math.floor(Date.now() / 1000);
 
 rmSync(runtimeSourceRoot, { recursive: true, force: true });
@@ -73,8 +102,8 @@ writeJson(path.join(runtimeSourceRoot, "feature-profile", "disabled-features.jso
   runtimeKind: "client-local",
   edition: "client-local",
   generatedAtUnix,
-  disabledFeatureIds: [],
-  disabledFeatures: []
+  disabledFeatureIds,
+  disabledFeatures
 });
 
 writeJson(path.join(runtimeSourceRoot, "runtime-plan", "runtime-plan.json"), {
@@ -86,8 +115,8 @@ writeJson(path.join(runtimeSourceRoot, "runtime-plan", "runtime-plan.json"), {
     edition: "client-local",
     activeFeatureIds,
     activeFeatures,
-    disabledFeatureIds: [],
-    disabledFeatures: []
+    disabledFeatureIds,
+    disabledFeatures
   },
   packagePlan: {
     runtimeModules: activeFeatureIds,
