@@ -1,4 +1,0 @@
-interface:
-  display_name: "LicoLite Client Config Index"
-  short_description: "Help with LicoLite Client Config Index tasks"
-  default_prompt: "Use $lico-client-config-index to handle this LicoLite platform task."

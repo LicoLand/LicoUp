@@ -1,4 +1,4 @@
-# LicoArc Agent Instructions
+# Desktop Client Agent Entry
 
 <!-- lico-dev:shared-rules:start -->
 ## Shared rules
@@ -12,27 +12,39 @@
 - **retired-artifacts** — Removed code and documentation must not remain as permanent tests, fixtures, compatibility checks, or release gates.
 <!-- lico-dev:shared-rules:end -->
 
-<!-- lico-dev:repository-scope:start -->
-## Repository scope
+## Scope
 
-- Own desktop and mobile client behavior, client configuration, native bridges, client-facing UI, and the Lico Arc custom end-to-end encryption protocol (Secure Client Mesh).
-- Encrypted communication is a native Lico Arc capability and does not depend on a relay or gateway server implementation; keep server policy, authorization, gateway fabric, and non-encryption protocol authority in the core repository.
-- Keep development, ordinary client verification, packaging, and GitHub Release independent from platform-store identity, credentials, signing, notarization, listing, and channel access; expose only the canonical consumer-verification manifest.
-- Use `lico-dev workflow plan client` before selecting validation tasks.
-<!-- lico-dev:repository-scope:end -->
+- Owns the Flutter desktop client under `apps/desktop/`.
+- Keep GUI changes inside `apps/desktop/` unless the task explicitly changes the
+  Rust CLI, server API, packaging, or shared docs contract.
 
-## Client Delivery Rules
+## First Reads
 
-1. For all client development work, rebuild the client and open it after the
-   deployment or deliverable changes are complete. Report any build or launch
-   failure before handoff.
-2. After Android client code changes, start an independent verification
-   subagent to run the build flow and, when an authorized phone is connected,
-   push/install the freshly built client onto the device. Report build, device
-   discovery, authorization, install, or launch failures before handoff.
-3. When key or credential storage is involved, the client must request user permission and invoke platform-native biometrics (Face ID, Touch ID, Passkey) or secure key tools. Authentication should be unified in a single flow, authorizing all associated capabilities at once to minimize manual password entry prompts.
-This repository is the open-source official client product layer. Encrypted
-communication is a native Lico Arc capability and does not depend on a relay or
-gateway server implementation; the custom encryption protocol authority is in
-this repository. Gateway fabric and non-encryption protocol work belong in
-`LicoLite/LicoLite` unless the task explicitly changes the official client.
+- Start with root `AGENTS.md`, then this file.
+- Read `apps/desktop/README.md` for local setup and product boundary.
+- Inspect `apps/desktop/pubspec.yaml` before changing dependencies.
+- Use `apps/desktop/lib/main.dart` and `apps/desktop/lib/app.dart` to enter the app
+  tree, then open only the relevant feature files.
+
+## Directory Routing
+
+- `lib/`: Flutter application code.
+- `test/`: widget, service, state, and contract tests.
+- `scripts/`: packaging and client architecture verifiers.
+- Platform folders (`macos/`, `windows/`, `linux/`) are only for native shell,
+  packaging, or platform-specific behavior.
+
+## Verification
+
+- Use `npm run client:analyze` for Flutter static analysis.
+- Use `npm run client:test` for Flutter tests.
+- Use `npm run client:test:coverage` when LCOV output is needed; the report is
+  written to `build/coverage/apps/desktop/lcov.info`.
+- Use `npm run client:verify:architecture` when architecture rules or module
+  boundaries change.
+
+## Context Budget
+
+- Do not load `build/apps/desktop/`, `apps/desktop/build/`, `.dart_tool/`, coverage
+  output, or generated platform artifacts.
+- Avoid reading CLI code unless the GUI task depends on a native CLI contract.
