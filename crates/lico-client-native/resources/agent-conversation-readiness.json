@@ -3,12 +3,12 @@
   "contractVersion": "CL-06",
   "minimumConsecutivePasses": 3,
   "summary": {
-    "total": 10,
+    "total": 11,
     "ready": 0,
     "partial": 0,
     "failed": 0,
-    "blocked": 3,
-    "unverified": 7,
+    "blocked": 2,
+    "unverified": 9,
     "historyOnly": 0,
     "sendEnabled": 0
   },
@@ -41,7 +41,7 @@
     },
     {
       "agentId": "claude-code",
-      "status": "blocked",
+      "status": "unverified",
       "sendEnabled": false,
       "officialNativeLaneProven": false,
       "releaseUiPassed": false,
@@ -62,7 +62,7 @@
       },
       "evidenceBinding": null,
       "summaryCodes": [
-        "official_native_lane_missing"
+        "evidence_missing"
       ]
     },
     {
@@ -114,7 +114,7 @@
       },
       "evidenceBinding": null,
       "summaryCodes": [
-        "antigravity_public_transport_unavailable"
+        "antigravity_cli_structured_transport_unavailable"
       ]
     },
     {
@@ -218,7 +218,7 @@
       },
       "evidenceBinding": null,
       "summaryCodes": [
-        "exact_session_resume_unavailable"
+        "safe_cleanup_unavailable"
       ]
     },
     {
@@ -249,6 +249,32 @@
     },
     {
       "agentId": "kimi-code",
+      "status": "unverified",
+      "sendEnabled": false,
+      "officialNativeLaneProven": false,
+      "releaseUiPassed": false,
+      "cleanupPassed": false,
+      "privacyPassed": false,
+      "consecutivePasses": 0,
+      "coreChecks": {
+        "required": 10,
+        "passed": 0,
+        "failed": 0
+      },
+      "conditionalChecks": {
+        "total": 6,
+        "nativeSupported": 0,
+        "passed": 0,
+        "gaps": 0,
+        "failed": 0
+      },
+      "evidenceBinding": null,
+      "summaryCodes": [
+        "evidence_missing"
+      ]
+    },
+    {
+      "agentId": "pi",
       "status": "unverified",
       "sendEnabled": false,
       "officialNativeLaneProven": false,

@@ -8,13 +8,14 @@ the client shell and backend services / runtime components.
 
 | Schema | Description |
 |---|---|
-| `TargetAdapterConfig` | Configuration DTO for target-specific adapters (Antigravity, Claude Code, Codex, Cursor, GitHub Copilot, Hermes Agent, Kilo Code, OpenClaw, OpenCode). Defines per-target file paths, CLI invocation patterns, and native config read/write rules. |
+| `AgentConversationAdapter` | Executable contribution contract for an official local agent transport: identity, framing, configuration authority, operations, realtime events, routed distillation context, bounded lifecycle, privacy and exact-artifact acceptance. The starter template and the exact packaged-set canonical manifests live under `fixtures/agent-conversation-adapter/`. |
 | `McpPluginPlan` | MCP plugin registration plan: plugin ID, source URI, capability declarations, trust level, and lifecycle hooks. |
 | `SnapshotArchive` | Snapshot archive descriptor for config / state restore operations. Lists bundled files, metadata, timestamps, and restore order. |
 | `ThinForwardingRule` | Thin forwarding rule: model alias, upstream endpoint, auth token reference, request/response transformation hints. |
 | `MobileRelayConfig` | Mobile relay configuration: relay endpoint, keep-alive interval, supported device profiles, connection credentials. |
 | `LocalRuntimeStatus` | Local runtime status payload: process health, port binding, uptime, claim token validity, active features. |
 | `ProcessIdentityClaim` | Process identity claim token: public key fingerprint, capability set, expiry, signature. |
+| `SemanticConversation` | Read-only semantic conversation model for native agent history: thread, execution, artifacts, audit, and raw evidence layers with privacy defaults. |
 
 ## Usage
 
