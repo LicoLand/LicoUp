@@ -1,0 +1,191 @@
+{
+  "schemaVersion": "licolite.secure-mesh.physical-device-matrix-config.v2",
+  "sourceChecks": [
+    {
+      "id": "android-platform-crypto-acceptance-is-client-owned-and-redacted",
+      "file": "tools/scripts/client-android-native-tests.mjs",
+      "tokens": [
+        "secure-mesh-android-platform-crypto-acceptance.json",
+        "licolite.secure-mesh.android-platform-crypto-acceptance.v1",
+        "platformCryptoAcceptanceReady",
+        "platformCustodyContractReady",
+        "platformAuthorizationContractReady",
+        "rustFfiActionContractReady",
+        "mlsMemberRemoveReleaseActionReady",
+        "unknownReleaseActionsFailClosed",
+        "nativeTestClassCount"
+      ]
+    },
+    {
+      "id": "android-install-launch-validates-platform-custody",
+      "file": "tools/scripts/client-android-physical-install-launch.mjs",
+      "tokens": [
+        "androidPhysicalDeviceProof",
+        "androidAdbTransportAuthorized",
+        "androidPhysicalDeviceProofReady",
+        "ANDROID_AUTHENTICATED_PAIRWISE_RUNTIME_STATUS",
+        "runtimeStatusRedacted",
+        "rawPayloadExportSurfaceAbsent"
+      ]
+    },
+    {
+      "id": "ios-bridge-publishes-redacted-platform-crypto-status",
+      "file": "apps/desktop/ios/Runner/SecureMeshIosBridge.swift",
+      "tokens": [
+        "writeRuntimeStatus",
+        "ios-runtime-status.json",
+        "writeRuntimeStatusMethod",
+        "nativeJsonMethod"
+      ]
+    },
+    {
+      "id": "ios-client-tests-shared-rust-crypto-lifecycle",
+      "file": "apps/desktop/integration_test/mobile_relay_ios_e2e_test.dart",
+      "tokens": [
+        "secure_mesh.lifecycle.serviceAction",
+        "serviceActionPolicyReady",
+        "ack_purge",
+        "secure_mesh.deviceTrust.verifySas"
+      ]
+    },
+    {
+      "id": "client-relay-mock-exercises-pinned-opaque-protocol",
+      "file": "tools/scripts/client-secure-client-relay-mock-e2e.mjs",
+      "tokens": [
+        "secure-client-relay.client-acceptance-report.v1",
+        "exactFiveOperationsObserved",
+        "exactSixOuterFieldsObserved",
+        "replayRejected",
+        "staleLeaseRejected",
+        "ackIdempotencyVerified",
+        "plaintextAbsentFromServerVisibleWire",
+        "wireBytesMeasured"
+      ]
+    },
+    {
+      "id": "windows-local-implementation-is-redacted-and-host-gated",
+      "file": "tools/scripts/client-secure-mesh-windows-implementation.mjs",
+      "tokens": [
+        "redacted-windows-local-implementation-closure",
+        "implementation_ready_host_evidence_pending",
+        "windowsLocalBlockersCleared",
+        "nativeHostEvidencePending",
+        "dpapiOrWindowsHelloProofReady: false",
+        "productionReady",
+        "releaseReady"
+      ]
+    },
+    {
+      "id": "physical-evidence-config-links-current-client-reports",
+      "file": "tools/scripts/config/secure-mesh-physical-evidence.json",
+      "tokens": [
+        "licolite.secure-mesh.physical-evidence-config.v2",
+        "secure-client-relay-mock-e2e.json",
+        "secure-mesh-android-platform-crypto-acceptance.json",
+        "android-physical-install-launch.json",
+        "secure-mesh-platform-secret-store-matrix.json",
+        "secure-mesh-physical-device-matrix.json",
+        "secure-mesh-encrypted-file-handoff.json",
+        "secure-mesh-trust-ux.json",
+        "secure-mesh-windows-implementation.json"
+      ]
+    },
+    {
+      "id": "physical-evidence-manifest-consumes-relay-and-platform-crypto",
+      "file": "tools/scripts/client-secure-mesh-physical-evidence-manifest.mjs",
+      "tokens": [
+        "relayMockCoverage",
+        "androidPlatformCrypto",
+        "physicalEvidenceChainReady",
+        "platform secret-store proof classes",
+        "client-owned opaque relay Mock proof classes"
+      ]
+    },
+    {
+      "id": "physical-device-matrix-consumes-relay-and-platform-crypto",
+      "file": "tools/scripts/client-secure-mesh-physical-device-matrix.mjs",
+      "tokens": [
+        "relayProtocolMockReady",
+        "androidPlatformCrypto",
+        "androidPlatformSecretStoreReadyForSummary",
+        "iosPlatformSecretStoreReadyForSummary",
+        "physicalEvidenceChainReadyForSummary"
+      ]
+    }
+  ],
+  "physicalMatrix": [
+    {
+      "scenario": "pairing-and-trust",
+      "requiredPlatforms": [
+        "android",
+        "iphone",
+        "macos",
+        "windows",
+        "ubuntu-linux"
+      ],
+      "status": "missing",
+      "requiredAssertions": [
+        "QR, SAS, or fingerprint verification succeeds on physical devices.",
+        "Unverified peers fail closed for sensitive sends.",
+        "Key-change warning blocks sensitive operations.",
+        "Revoked endpoints cannot use command, result, file, prekey, or group payloads."
+      ]
+    },
+    {
+      "scenario": "command-result",
+      "requiredPlatforms": [
+        "android-to-desktop",
+        "desktop-to-android",
+        "iphone-to-desktop",
+        "desktop-to-iphone"
+      ],
+      "status": "missing",
+      "requiredAssertions": [
+        "Durable pairwise envelopes or MLS exporter keys are used.",
+        "Wrong recipient, replay, stale envelope, restart, and ACK purge cases pass.",
+        "Client-owned relay Mock observes only opaque wire envelopes and no client plaintext."
+      ]
+    },
+    {
+      "scenario": "file-handoff",
+      "requiredPlatforms": [
+        "android-to-desktop-to-iphone",
+        "iphone-to-desktop-to-android"
+      ],
+      "status": "missing",
+      "requiredAssertions": [
+        "Manifest and chunks remain encrypted.",
+        "Second phone receives endpoint-specific resealed ciphertext.",
+        "Approved receive root is required.",
+        "Client cryptography keeps file metadata and content out of the relay envelope surface."
+      ]
+    },
+    {
+      "scenario": "relay-protocol",
+      "requiredPlatforms": [
+        "client-owned-mock",
+        "android",
+        "iphone"
+      ],
+      "status": "missing",
+      "requiredAssertions": [
+        "Exactly five pinned relay operations and six opaque envelope fields are observed.",
+        "Replay and stale leases are rejected and ACK retries are idempotent.",
+        "Client plaintext is absent from measured relay Mock wire bytes."
+      ]
+    },
+    {
+      "scenario": "desktop-release-platforms",
+      "requiredPlatforms": [
+        "macos",
+        "windows",
+        "ubuntu-linux"
+      ],
+      "status": "missing",
+      "requiredAssertions": [
+        "Release-built clients pass trust, command/result, and file handoff checks.",
+        "Signed update, downgrade rejection, rollback, installer or package proof, and publication receipt are linked from the release proof bundle."
+      ]
+    }
+  ]
+}

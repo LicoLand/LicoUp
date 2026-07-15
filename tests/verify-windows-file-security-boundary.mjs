@@ -6,28 +6,28 @@ import { fileURLToPath } from "node:url";
 const repoRoot = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 
 const sensitiveRustFiles = [
-  "crates/lico-client-native/src/client_state.rs",
-  "crates/lico-client-native/src/conversation_snapshots.rs",
-  "crates/lico-client-native/src/file_security.rs",
-  "crates/lico-client-native/src/forwarding.rs",
-  "crates/lico-client-native/src/local_runtime.rs",
-  "crates/lico-client-native/src/process_identity.rs",
-  "crates/lico-client-native/src/secure_mesh_mls.rs",
-  "crates/lico-client-native/src/source_queue.rs",
-  "crates/lico-client-native/src/targets.rs"
+  "crates/lico-client-native/src/platform/client_state.rs",
+  "crates/lico-client-native/src/domain/conversation_snapshots.rs",
+  "crates/lico-client-native/src/platform/file_security.rs",
+  "crates/lico-client-native/src/domain/forwarding.rs",
+  "crates/lico-client-native/src/platform/local_runtime.rs",
+  "crates/lico-client-native/src/platform/process_identity.rs",
+  "crates/lico-client-native/src/core/secure_mesh_mls.rs",
+  "crates/lico-client-native/src/domain/source_queue.rs",
+  "crates/lico-client-native/src/domain/targets.rs"
 ];
 
 const failures = [];
 const helperExpectations = new Map([
-  ["crates/lico-client-native/src/client_state.rs", ["atomic_write_private_text", "append_private_line"]],
-  ["crates/lico-client-native/src/conversation_snapshots.rs", ["atomic_write_private_text", "harden_private_tree"]],
-  ["crates/lico-client-native/src/file_security.rs", ["icacls", "*S-1-3-4:(F)", "*S-1-3-4:(OI)(CI)(F)"]],
-  ["crates/lico-client-native/src/forwarding.rs", ["atomic_write_private_text"]],
-  ["crates/lico-client-native/src/local_runtime.rs", ["atomic_write_private_text"]],
-  ["crates/lico-client-native/src/process_identity.rs", ["atomic_write_private_text"]],
-  ["crates/lico-client-native/src/secure_mesh_mls.rs", ["harden_private_path"]],
-  ["crates/lico-client-native/src/source_queue.rs", ["harden_private_path"]],
-  ["crates/lico-client-native/src/targets.rs", ["atomic_write_private_text"]]
+  ["crates/lico-client-native/src/platform/client_state.rs", ["atomic_write_private_text", "append_private_line"]],
+  ["crates/lico-client-native/src/domain/conversation_snapshots.rs", ["atomic_write_private_text", "harden_private_tree"]],
+  ["crates/lico-client-native/src/platform/file_security.rs", ["icacls", "*S-1-3-4:(F)", "*S-1-3-4:(OI)(CI)(F)"]],
+  ["crates/lico-client-native/src/domain/forwarding.rs", ["atomic_write_private_text"]],
+  ["crates/lico-client-native/src/platform/local_runtime.rs", ["atomic_write_private_text"]],
+  ["crates/lico-client-native/src/platform/process_identity.rs", ["atomic_write_private_text"]],
+  ["crates/lico-client-native/src/core/secure_mesh_mls.rs", ["harden_private_path"]],
+  ["crates/lico-client-native/src/domain/source_queue.rs", ["harden_private_path"]],
+  ["crates/lico-client-native/src/domain/targets.rs", ["atomic_write_private_text"]]
 ]);
 const notes = [
   "Sensitive client writes now flow through a shared file_security helper.",
@@ -37,19 +37,23 @@ const notes = [
 for (const relativePath of sensitiveRustFiles) {
   const absolutePath = path.join(repoRoot, relativePath);
   const source = readFileSync(absolutePath, "utf8");
+  // Unit-test fixtures legitimately exercise chmod on Unix. Restrict this
+  // portability check to production code so a distant module-level cfg does
+  // not become either a false positive or an accidental blanket exemption.
+  const productionSource = source.split(/\n#\[cfg\((?:all\()?test\b/u, 1)[0];
 
-  if (source.includes("std::os::unix::fs::PermissionsExt") && !source.includes("#[cfg(unix)]")) {
+  if (productionSource.includes("std::os::unix::fs::PermissionsExt") && !productionSource.includes("#[cfg(unix)]")) {
     failures.push(`${relativePath} imports PermissionsExt without #[cfg(unix)]`);
   }
 
-  for (const match of source.matchAll(/fs::set_permissions|set_permissions\(/g)) {
-    const before = source.slice(Math.max(0, match.index - 140), match.index);
-    if (!before.includes("#[cfg(unix)]") && !before.includes("cfg!(unix)") && !before.includes("permissions.set_mode")) {
+  for (const match of productionSource.matchAll(/fs::set_permissions|set_permissions\(/g)) {
+    const before = productionSource.slice(Math.max(0, match.index - 320), match.index);
+    if (!/#\[cfg\(unix\)\][\s\S]*$/u.test(before) && !before.includes("cfg!(unix)") && !before.includes("permissions.set_mode")) {
       failures.push(`${relativePath} has an unconditional chmod-style permission write near offset ${match.index}`);
     }
   }
 
-  if (source.includes("from_mode(0o600)") && !source.includes("#[cfg(unix)]")) {
+  if (productionSource.includes("from_mode(0o600)") && !productionSource.includes("#[cfg(unix)]")) {
     failures.push(`${relativePath} references 0600 without an explicit Unix cfg marker`);
   }
 
@@ -83,9 +87,9 @@ if (failures.length > 0) {
   for (const failure of failures) {
     console.error(`  - ${failure}`);
   }
-  console.error(`[windows-file-security] report: ${reportPath}`);
+  console.error("[windows-file-security] report written");
   process.exit(1);
 }
 
 console.log("[windows-file-security] boundary verified");
-console.log(`[windows-file-security] report: ${reportPath}`);
+console.log("[windows-file-security] report written");

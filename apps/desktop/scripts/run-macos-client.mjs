@@ -1,50 +1,180 @@
-import { existsSync, readdirSync, rmSync } from "node:fs";
-import { spawnSync } from "node:child_process";
+import { existsSync, statSync } from "node:fs";
+import { execFileSync, spawnSync } from "node:child_process";
 import path from "node:path";
 import process from "node:process";
-import { fileURLToPath } from "node:url";
+import { packageClient } from "./package-client.mjs";
 
-const workspaceRoot = path.resolve(fileURLToPath(new URL("../../..", import.meta.url)));
-const flutterClientRoot = path.join(workspaceRoot, "apps", "desktop");
-const macosNativeAssetsDir = path.join(flutterClientRoot, "build", "native_assets", "macos");
-const flutterBuildCacheDir = path.join(flutterClientRoot, ".dart_tool", "flutter_build");
-const debugAppDir = path.join(
-  flutterClientRoot,
-  "build",
-  "macos",
-  "Build",
-  "Products",
-  "Debug",
-  "flutter_client.app"
-);
+const licoClientBundleId = "com.lico.client";
+const canonicalPackageArgs = ["--platform", "macos", "--mode", "release"];
 
-function hasStaleMacosNativeAssetLayout() {
-  if (!existsSync(macosNativeAssetsDir)) {
-    return false;
+function fail(message) {
+  throw new Error(`[client:run:macos] ${message}`);
+}
+
+function run(command, args, options = {}) {
+  const result = spawnSync(command, args, {
+    stdio: "inherit",
+    ...options
+  });
+  if (result.status !== 0) {
+    fail(`${command} ${args.join(" ")} failed`);
   }
-  return readdirSync(macosNativeAssetsDir, { withFileTypes: true }).some(
-    (entry) => entry.isFile() && (entry.name === "native_assets.json" || entry.name.endsWith(".dylib"))
+}
+
+function runCaptured(command, args, options = {}) {
+  return spawnSync(command, args, {
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+    ...options
+  });
+}
+
+function sleep(seconds) {
+  spawnSync("sleep", [String(seconds)], { stdio: "ignore" });
+}
+
+function runningClientPids() {
+  const result = runCaptured("ps", ["-axo", "pid=,command="]);
+  if (result.status !== 0) {
+    return [];
+  }
+  const currentPid = process.pid;
+  return result.stdout
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const match = /^(\d+)\s+(.+)$/.exec(line);
+      return match ? { pid: Number(match[1]), command: match[2] } : null;
+    })
+    .filter((entry) => {
+      if (!entry || entry.pid === currentPid) {
+        return false;
+      }
+      return (
+        entry.command.includes("/Contents/MacOS/flutter_client") &&
+        (entry.command.includes("/Arc.app/") ||
+          entry.command.includes("/flutter_client.app/"))
+      );
+    })
+    .map((entry) => entry.pid);
+}
+
+function waitForClientExit(timeoutMillis) {
+  const deadline = Date.now() + timeoutMillis;
+  while (Date.now() < deadline) {
+    if (runningClientPids().length === 0) {
+      return true;
+    }
+    sleep(0.2);
+  }
+  return runningClientPids().length === 0;
+}
+
+function quitRunningClient() {
+  try {
+    execFileSync(
+      "osascript",
+      [
+        "-e",
+        `if application id "${licoClientBundleId}" is running then tell application id "${licoClientBundleId}" to quit`
+      ],
+      { stdio: "ignore" }
+    );
+  } catch {
+    // Continue with process-level cleanup below.
+  }
+  if (waitForClientExit(5000)) {
+    return;
+  }
+  for (const pid of runningClientPids()) {
+    try {
+      process.kill(pid, "SIGTERM");
+    } catch {
+      // The process may have exited between listing and kill.
+    }
+  }
+  if (waitForClientExit(3000)) {
+    return;
+  }
+  for (const pid of runningClientPids()) {
+    try {
+      process.kill(pid, "SIGKILL");
+    } catch {
+      // Best effort; the open step below will still target the canonical app.
+    }
+  }
+  waitForClientExit(1000);
+}
+
+function assertExecutable(filePath, label) {
+  if (!existsSync(filePath) || !statSync(filePath).isFile()) {
+    fail(`${label} is missing: ${filePath}`);
+  }
+  try {
+    execFileSync("test", ["-x", filePath], { stdio: "ignore" });
+  } catch {
+    fail(`${label} is not executable: ${filePath}`);
+  }
+}
+
+function verifyRunnable(appPath) {
+  const executable = path.join(appPath, "Contents", "MacOS", "flutter_client");
+  const sidecar = path.join(appPath, "Contents", "MacOS", "lico-client");
+  assertExecutable(executable, "canonical Flutter executable");
+  assertExecutable(sidecar, "canonical lico-client sidecar");
+
+  const scan = runCaptured(sidecar, [
+    "targets",
+    "scan",
+    "--include-accessible-environments",
+    "true",
+    "--include-history-model-catalog",
+    "true"
+  ]);
+  if (scan.status !== 0) {
+    fail(`sidecar target scan failed: ${scan.stderr.trim() || scan.stdout.trim()}`);
+  }
+  let decoded;
+  try {
+    decoded = JSON.parse(scan.stdout);
+  } catch {
+    fail("sidecar target scan did not return JSON");
+  }
+  if (decoded?.ok !== true || !Array.isArray(decoded.candidates)) {
+    fail("sidecar target scan returned an invalid result");
+  }
+  const visibleTargets = decoded.candidates.filter(
+    (candidate) => candidate?.status !== "not-detected"
+  );
+  console.log(
+    `[client:run:macos] Sidecar scan OK: ${visibleTargets.length} visible target(s).`
   );
 }
 
-function cleanStaleMacosNativeAssets() {
-  if (!hasStaleMacosNativeAssetLayout()) {
-    return;
+function main(argv = process.argv.slice(2)) {
+  if (process.platform !== "darwin") {
+    fail("This entry is only for macOS.");
   }
-  console.log("[client:run:macos] Cleaning stale Flutter macOS native assets.");
-  rmSync(macosNativeAssetsDir, { recursive: true, force: true });
-  rmSync(flutterBuildCacheDir, { recursive: true, force: true });
-  rmSync(debugAppDir, { recursive: true, force: true });
+  if (argv.length > 0) {
+    fail("This entry is intentionally optionless; it always builds and opens the release runnable.");
+  }
+
+  quitRunningClient();
+  const result = packageClient(canonicalPackageArgs);
+  const appPath = result?.runnable?.appPath;
+  if (!appPath) {
+    fail("packaging did not produce a runnable macOS app");
+  }
+  verifyRunnable(appPath);
+  quitRunningClient();
+  run("open", [appPath]);
+  console.log(`[client:run:macos] Opened canonical client: ${appPath}`);
 }
 
-function runFlutterMacos(extraArgs) {
-  const result = spawnSync("flutter", ["run", "-d", "macos", ...extraArgs], {
-    cwd: flutterClientRoot,
-    stdio: "inherit",
-    env: process.env
-  });
-  process.exit(result.status ?? 1);
+try {
+  main();
+} catch (error) {
+  console.error(error instanceof Error ? error.message : error);
+  process.exitCode = 1;
 }
-
-cleanStaleMacosNativeAssets();
-runFlutterMacos(process.argv.slice(2));

@@ -13,10 +13,28 @@ import {
   writeFileSync
 } from "node:fs";
 import { execFileSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
+import {
+  clientPubCacheRoot,
+  withClientToolchainEnv
+} from "../../../tools/scripts/client-toolchain-env.mjs";
+import {
+  CANONICAL_CLIENT_SOURCE_ROOTS,
+  clientSourceStateDigest,
+  createClientSourceManifest,
+  readAndVerifyClientSourceManifest,
+} from "../../../tools/scripts/lib/client-source-state-digest.mjs";
+import {
+  resolveContainedExistingPath,
+  sha256Buffer,
+  sha256File,
+  stableReadFileSnapshot,
+} from "../../../tools/scripts/lib/client-release-artifact-digest.mjs";
+import { inspectWindowsPeFile } from "../../../tools/scripts/lib/windows-pe-facts.mjs";
 
 const workspaceRoot = path.resolve(fileURLToPath(new URL("../../..", import.meta.url)));
 const flutterClientRoot = path.join(workspaceRoot, "apps", "desktop");
@@ -24,10 +42,12 @@ const clientBuildRoot = path.join(workspaceRoot, "build", "apps", "desktop");
 const nativeTargetRoot = path.join(workspaceRoot, "build", "crates", "lico-client-native", "target");
 const defaultConfigPath = path.join(flutterClientRoot, "packaging.modules.json");
 const PACKAGING_MODULES_SCHEMA_VERSION = "v0.0.1:client-desktop:packaging-modules-1";
-const BUNDLE_MANIFEST_SCHEMA_VERSION = "v0.0.1:client-desktop:bundle-manifest-1";
+const BUNDLE_MANIFEST_SCHEMA_VERSION = "v0.0.1:client-desktop:bundle-manifest-2";
 const WINDOWS_PLATFORM_MANIFEST_SCHEMA_VERSION = "v0.0.1:client-desktop:windows-platform-manifest-1";
+const WINDOWS_X64_TARGET_ID = "windows-x64";
+const WINDOWS_X64_RUST_TARGET = "x86_64-pc-windows-msvc";
 const licoClientBundleId = "com.lico.client";
-const licoClientAppName = "LicoLite Client.app";
+const licoClientAppName = "Arc.app";
 const clientLocalRuntimePackageRoot = path.join(
   workspaceRoot,
   "build",
@@ -41,6 +61,34 @@ const clientLocalRuntimeBuildScript = path.join(
   "client-runtime",
   "build-client-runtime-package.mjs"
 );
+const clientSourceRoots = CANONICAL_CLIENT_SOURCE_ROOTS;
+const sourceDigestPattern = /^sha256:[a-f0-9]{64}$/u;
+const canonicalPackagingConfigRef = "apps/desktop/packaging.modules.json";
+const canonicalBundleManifestRef =
+  "package-metadata/lico-client/packaging-modules.json";
+const packagingModuleIdPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
+const packagingArtifactNamePattern = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u;
+const packagingPlatforms = Object.freeze(["macos", "linux", "windows"]);
+const packagingKinds = Object.freeze([
+  "flutter-app",
+  "module-resources",
+  "portable-data",
+  "runtime-capability",
+  "sidecar-binary",
+  "swift-sidecar",
+]);
+
+class PackageClientError extends Error {
+  constructor(code, details = null) {
+    super(code);
+    this.code = code;
+    this.details = details;
+  }
+}
+
+function packageFailure(code, details = null) {
+  throw new PackageClientError(code, details);
+}
 
 function parseArgs(argv = process.argv.slice(2)) {
   const options = {
@@ -55,7 +103,9 @@ function parseArgs(argv = process.argv.slice(2)) {
     keepFlutterBuildCache: process.env.LICO_KEEP_FLUTTER_BUILD_CACHE === "1",
     install: false,
     installDir: "",
-    dryRun: false
+    dryRun: false,
+    productionEntitlements: false,
+    targetId: ""
   };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
@@ -89,6 +139,16 @@ function parseArgs(argv = process.argv.slice(2)) {
     } else if (arg === "--install-dir" && next) {
       options.installDir = path.resolve(next);
       index += 1;
+    } else if (arg === "--production-entitlements") {
+      if (next && !next.startsWith("--")) {
+        options.productionEntitlements = normalizeBooleanOption(next, arg);
+        index += 1;
+      } else {
+        options.productionEntitlements = true;
+      }
+    } else if (arg === "--target" && next) {
+      options.targetId = String(next).trim();
+      index += 1;
     } else if (arg === "--dry-run") {
       options.dryRun = true;
       options.skipFlutterBuild = true;
@@ -97,7 +157,88 @@ function parseArgs(argv = process.argv.slice(2)) {
       throw new Error(`Unknown packaging option: ${arg}`);
     }
   }
+  validatePackagingOptions(options);
   return options;
+}
+
+function normalizeBooleanOption(value, optionName) {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (["1", "true", "yes", "on"].includes(normalized)) {
+    return true;
+  }
+  if (["0", "false", "no", "off"].includes(normalized)) {
+    return false;
+  }
+  throw new Error(`Unsupported boolean value for ${optionName}: ${value}`);
+}
+
+function validatePackagingOptions(options) {
+  if (options.platform === "windows") {
+    options.targetId ||= String(process.env.LICO_WINDOWS_TARGET || WINDOWS_X64_TARGET_ID).trim();
+    if (options.targetId === "windows-arm64") {
+      packageFailure("windows_arm64_flutter_upstream_unavailable");
+    }
+    if (options.targetId !== WINDOWS_X64_TARGET_ID) {
+      packageFailure("windows_target_unsupported");
+    }
+  } else if (options.targetId) {
+    packageFailure("packaging_target_not_supported_for_platform");
+  }
+  validateReleaseBuildPolicy(options);
+  if (!options.productionEntitlements) {
+    return;
+  }
+  if (options.platform !== "macos") {
+    throw new Error("--production-entitlements is supported only for macOS packaging.");
+  }
+  if (options.mode !== "release") {
+    throw new Error("--production-entitlements requires --mode release.");
+  }
+  if (!options.dryRun) {
+    macosAppIdentifierPrefix();
+  }
+}
+
+export function validateReleaseBuildPolicy(options) {
+  if (options.mode === "release" && options.dryRun !== true &&
+    (options.skipFlutterBuild === true || options.skipNativeBuild === true)) {
+    packageFailure("release_build_skip_not_permitted");
+  }
+  if (options.mode === "release" &&
+    path.resolve(options.configPath || defaultConfigPath) !== defaultConfigPath) {
+    packageFailure("release_packaging_config_not_canonical");
+  }
+  if (options.mode === "release" &&
+    ((options.enabledOverrides || []).length > 0 ||
+      (options.disabledOverrides || []).length > 0 || options.profile !== null)) {
+    packageFailure("release_packaging_override_not_permitted");
+  }
+  return true;
+}
+
+export function assertReleaseSourceDigestStable(before, after) {
+  if (!sourceDigestPattern.test(String(before || "")) || before !== after) {
+    packageFailure("release_source_changed_during_build");
+  }
+  return true;
+}
+
+export function diffReleaseSourceManifests(before, after, limit = 32) {
+  const beforeEntries = new Map((before?.entries || []).map((entry) => [entry.path, entry]));
+  const afterEntries = new Map((after?.entries || []).map((entry) => [entry.path, entry]));
+  const changed = [];
+  for (const sourceRef of [...new Set([...beforeEntries.keys(), ...afterEntries.keys()])].sort()) {
+    const left = beforeEntries.get(sourceRef);
+    const right = afterEntries.get(sourceRef);
+    if (!left || !right || left.digest !== right.digest || left.mode !== right.mode || left.size !== right.size) {
+      changed.push(sourceRef);
+    }
+  }
+  return Object.freeze({
+    changedSourceCount: changed.length,
+    changedSourceRefs: changed.slice(0, limit),
+    truncated: changed.length > limit,
+  });
 }
 
 function splitList(value) {
@@ -107,9 +248,20 @@ function splitList(value) {
     .filter(Boolean);
 }
 
+function publicWorkspacePath(filePath, fallback = "<external-config>") {
+  const relative = path.relative(workspaceRoot, path.resolve(filePath));
+  if (!relative || relative === ".") {
+    return ".";
+  }
+  if (relative.startsWith("..") || path.isAbsolute(relative)) {
+    return fallback;
+  }
+  return relative.split(path.sep).join("/");
+}
+
 function normalizeProfile(value) {
   const normalized = String(value || "").trim();
-  if (normalized === "future-client") {
+  if (normalized === "lico-client") {
     return normalized;
   }
   throw new Error(`Unsupported client package profile: ${value}`);
@@ -153,21 +305,37 @@ function quoteWindowsCommandArg(value) {
 }
 
 function run(command, args, options = {}) {
-  if (process.platform === "win32" && /\.(?:bat|cmd)$/i.test(command)) {
-    const commandLine = ["call", command, ...args].map(quoteWindowsCommandArg).join(" ");
-    execFileSync(process.env.ComSpec || "cmd.exe", ["/d", "/s", "/c", commandLine], {
+  const {
+    failureCode = "package_subprocess_failed",
+    ...executionOptions
+  } = options;
+  try {
+    if (process.platform === "win32" && /\.(?:bat|cmd)$/i.test(command)) {
+      const commandLine = ["call", command, ...args].map(quoteWindowsCommandArg).join(" ");
+      execFileSync(process.env.ComSpec || "cmd.exe", ["/d", "/s", "/c", commandLine], {
+        cwd: workspaceRoot,
+        stdio: "pipe",
+        windowsHide: true,
+        ...executionOptions
+      });
+      return;
+    }
+    execFileSync(command, args, {
       cwd: workspaceRoot,
-      stdio: "inherit",
-      windowsHide: true,
-      ...options
+      stdio: "pipe",
+      ...executionOptions
     });
-    return;
+  } catch (error) {
+    const detail = [
+      error?.stdout?.toString?.() || "",
+      error?.stderr?.toString?.() || "",
+      error?.message || "",
+    ].join("\n").trim();
+    if (detail) {
+      console.error(detail.slice(-4000));
+    }
+    packageFailure(failureCode);
   }
-  execFileSync(command, args, {
-    cwd: workspaceRoot,
-    stdio: "inherit",
-    ...options
-  });
 }
 
 function flutterCommand() {
@@ -225,7 +393,10 @@ function assertFlutterBuildPrereqs(options) {
     return;
   }
   try {
-    runFlutter(["--version"], { stdio: "ignore" });
+    runFlutter(["--version"], {
+      stdio: "ignore",
+      failureCode: "flutter_toolchain_unavailable",
+    });
   } catch {
     throw new Error(
       "Flutter executable was not found on PATH. Install Flutter desktop tooling or add Flutter's bin directory to PATH before packaging."
@@ -246,16 +417,22 @@ function assertFlutterBuildPrereqs(options) {
 
 function defaultCleanBuildRoot() {
   if (process.platform === "darwin") {
-    return "/private/tmp/lico-client-build";
+    return path.join(path.sep, "private", "tmp", "lico-client-build");
   }
   if (process.platform === "win32") {
     return path.join(os.tmpdir(), "lico-client-build");
   }
-  return "/tmp/lico-client-build";
+  return path.join(path.sep, "tmp", "lico-client-build");
 }
 
-function cleanBuildRoot() {
+function cleanBuildBaseRoot() {
   return path.resolve(process.env.LICO_CLIENT_CLEAN_BUILD_ROOT || defaultCleanBuildRoot());
+}
+
+const cleanBuildRunId = `run-${process.pid}-${Date.now()}-${randomUUID()}`;
+
+function cleanBuildRoot() {
+  return path.join(cleanBuildBaseRoot(), cleanBuildRunId);
 }
 
 function stagedFlutterClientRoot() {
@@ -263,13 +440,7 @@ function stagedFlutterClientRoot() {
 }
 
 function actualPubCacheRoot() {
-  if (process.env.PUB_CACHE) {
-    return path.resolve(process.env.PUB_CACHE);
-  }
-  if (process.platform === "win32") {
-    return path.resolve(process.env.LOCALAPPDATA || path.join(os.homedir(), "AppData", "Local"), "Pub", "Cache");
-  }
-  return path.resolve(path.join(os.homedir(), ".pub-cache"));
+  return clientPubCacheRoot();
 }
 
 function stagedPubCacheRoot() {
@@ -399,15 +570,158 @@ function copyLockedHostedPackage(sourcePubCache, stagedPubCache, packageRef) {
   }
 }
 
-function loadPackagingConfig(configPath) {
-  const config = readJson(configPath);
-  if (
-    config.schemaVersion !== PACKAGING_MODULES_SCHEMA_VERSION ||
-    !config.modules ||
-    typeof config.modules !== "object"
-  ) {
-    throw new Error(`Invalid client packaging module config: ${configPath}`);
+function requirePlainObject(value, code) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    packageFailure(code);
   }
+  return value;
+}
+
+function requireExactKeys(value, allowed, code) {
+  requirePlainObject(value, code);
+  if (Object.keys(value).some((key) => !allowed.has(key))) packageFailure(code);
+}
+
+function safeConfigRelativePath(value, code) {
+  const ref = String(value || "");
+  const components = ref.split("/");
+  if (!ref || ref !== ref.trim() || path.isAbsolute(ref) || ref.includes("\\") ||
+    ref.includes("\0") || path.posix.normalize(ref) !== ref ||
+    components.some((component) => !component || component === "." || component === "..")) {
+    packageFailure(code);
+  }
+  return ref;
+}
+
+function validateStringList(value, predicate, code) {
+  if (!Array.isArray(value) || new Set(value).size !== value.length ||
+    value.some((entry) => typeof entry !== "string" || !predicate(entry))) {
+    packageFailure(code);
+  }
+}
+
+export function validatePackagingConfig(config, {
+  sourceRoot = workspaceRoot,
+} = {}) {
+  requireExactKeys(config, new Set([
+    "schemaVersion", "description", "packageProfile", "bundle", "modules",
+    "deferredCapabilities",
+  ]), "packaging_config_schema_invalid");
+  if (config.schemaVersion !== PACKAGING_MODULES_SCHEMA_VERSION ||
+    config.packageProfile !== "lico-client" ||
+    typeof config.description !== "string" || !config.description.trim()) {
+    packageFailure("packaging_config_schema_invalid");
+  }
+  requireExactKeys(config.bundle, new Set([
+    "moduleResourceDirectory", "manifestPath",
+  ]), "packaging_bundle_schema_invalid");
+  if (config.bundle.moduleResourceDirectory !== "modules" ||
+    config.bundle.manifestPath !== canonicalBundleManifestRef) {
+    packageFailure("packaging_bundle_path_invalid");
+  }
+  const modules = requirePlainObject(config.modules, "packaging_modules_invalid");
+  const moduleIds = Object.keys(modules);
+  if (moduleIds.length === 0 || new Set(moduleIds).size !== moduleIds.length ||
+    moduleIds.some((id) => !packagingModuleIdPattern.test(id))) {
+    packageFailure("packaging_module_id_invalid");
+  }
+  const knownIds = new Set(moduleIds);
+  const moduleKeys = new Set([
+    "artifactName", "cargoBin", "category", "enabled", "includePaths", "label",
+    "packaging", "platforms", "portableDirectories", "profile", "required",
+    "requires", "runtimeToggle", "settingsKeys", "stateDirectories", "swiftSource",
+    "targetAdapters",
+  ]);
+  for (const [id, moduleConfig] of Object.entries(modules)) {
+    requireExactKeys(moduleConfig, moduleKeys, "packaging_module_schema_invalid");
+    if (typeof moduleConfig.label !== "string" || !moduleConfig.label.trim() ||
+      typeof moduleConfig.category !== "string" || !moduleConfig.category.trim() ||
+      !packagingKinds.includes(moduleConfig.packaging) ||
+      typeof moduleConfig.enabled !== "boolean" ||
+      typeof moduleConfig.required !== "boolean") {
+      packageFailure("packaging_module_schema_invalid");
+    }
+    validateStringList(moduleConfig.platforms, (entry) =>
+      packagingPlatforms.includes(entry), "packaging_module_platform_invalid");
+    validateStringList(moduleConfig.requires || [], (entry) =>
+      packagingModuleIdPattern.test(entry) && knownIds.has(entry),
+    "packaging_module_dependency_invalid");
+    for (const field of ["portableDirectories", "stateDirectories"]) {
+      validateStringList(moduleConfig[field] || [], (entry) => {
+        try {
+          safeConfigRelativePath(entry, "packaging_module_target_path_invalid");
+          return true;
+        } catch {
+          return false;
+        }
+      }, "packaging_module_target_path_invalid");
+    }
+    validateStringList(moduleConfig.targetAdapters || [], (entry) =>
+      packagingModuleIdPattern.test(entry), "packaging_target_adapter_id_invalid");
+    validateStringList(moduleConfig.settingsKeys || [], (entry) =>
+      /^[a-z][A-Za-z0-9-]*(?:\.[a-z][A-Za-z0-9-]*)+$/u.test(entry),
+    "packaging_settings_key_invalid");
+    if (moduleConfig.runtimeToggle !== undefined &&
+      typeof moduleConfig.runtimeToggle !== "boolean") {
+      packageFailure("packaging_runtime_toggle_invalid");
+    }
+    if (moduleConfig.cargoBin !== undefined &&
+      !packagingModuleIdPattern.test(moduleConfig.cargoBin)) {
+      packageFailure("packaging_cargo_bin_invalid");
+    }
+    if (moduleConfig.artifactName !== undefined &&
+      !packagingArtifactNamePattern.test(moduleConfig.artifactName)) {
+      packageFailure("packaging_artifact_name_invalid");
+    }
+    if (moduleConfig.swiftSource !== undefined) {
+      const sourceRef = safeConfigRelativePath(
+        moduleConfig.swiftSource,
+        "packaging_swift_source_invalid",
+      );
+      if (!sourceRef.startsWith("apps/desktop/macos/") ||
+        moduleConfig.packaging !== "swift-sidecar") {
+        packageFailure("packaging_swift_source_invalid");
+      }
+      resolveContainedExistingPath(sourceRoot, path.join(sourceRoot, sourceRef), {
+        expectedKind: "file",
+      });
+    } else if (moduleConfig.packaging === "swift-sidecar") {
+      packageFailure("packaging_swift_source_invalid");
+    }
+    for (const includePath of moduleConfig.includePaths || []) {
+      const includeRef = safeConfigRelativePath(
+        includePath,
+        "packaging_resource_source_invalid",
+      );
+      resolveContainedExistingPath(sourceRoot, path.join(sourceRoot, includeRef));
+    }
+    if (moduleConfig.profile !== undefined &&
+      (typeof moduleConfig.profile !== "string" || !moduleConfig.profile.trim())) {
+      packageFailure("packaging_module_profile_invalid");
+    }
+    if (id === "native-sidecar" && moduleConfig.cargoBin !== "lico-client") {
+      packageFailure("packaging_native_sidecar_authority_invalid");
+    }
+  }
+  requirePlainObject(config.deferredCapabilities, "packaging_deferred_schema_invalid");
+  for (const [id, capability] of Object.entries(config.deferredCapabilities)) {
+    if (!packagingModuleIdPattern.test(id)) {
+      packageFailure("packaging_deferred_id_invalid");
+    }
+    requireExactKeys(capability, new Set(["status", "reason"]),
+      "packaging_deferred_schema_invalid");
+    if (capability.status !== "todo" || typeof capability.reason !== "string" ||
+      !capability.reason.trim()) {
+      packageFailure("packaging_deferred_schema_invalid");
+    }
+  }
+  return config;
+}
+
+function loadPackagingConfig(configPath, options) {
+  const snapshot = stableReadFileSnapshot(configPath, { maxBytes: 2 * 1024 * 1024 });
+  const config = validatePackagingConfig(JSON.parse(snapshot.bytes.toString("utf8")));
+  options.packagingConfigDigest = sha256Buffer(snapshot.bytes);
   return config;
 }
 
@@ -417,8 +731,8 @@ function platformSupported(moduleConfig, platform) {
 }
 
 function selectModules(config, options) {
-  const activeProfile = options.profile || config.packageProfile || "future-client";
-  if (activeProfile !== "future-client") {
+  const activeProfile = options.profile || config.packageProfile || "lico-client";
+  if (activeProfile !== "lico-client") {
     throw new Error(`Unsupported client package profile: ${activeProfile}`);
   }
   const modules = Object.entries(config.modules).map(([id, moduleConfig]) => ({
@@ -478,8 +792,10 @@ function cargoProfile(mode) {
   return mode === "release" ? "release" : "debug";
 }
 
-function cargoTargetDir(mode) {
-  return path.join(nativeTargetRoot, cargoProfile(mode));
+function cargoTargetDir(mode, options = {}) {
+  return options.platform === "windows"
+    ? path.join(nativeTargetRoot, WINDOWS_X64_RUST_TARGET, cargoProfile(mode))
+    : path.join(nativeTargetRoot, cargoProfile(mode));
 }
 
 function cargoHome() {
@@ -511,12 +827,16 @@ function buildNativeSidecars(selected, options) {
   }
   const args = ["build", "--manifest-path", path.join("crates", "lico-client-native", "Cargo.toml")];
   if (options.mode === "release") {
-    args.push("--release");
+    args.push("--release", "--locked");
+  }
+  if (options.platform === "windows") {
+    args.push("--target", WINDOWS_X64_RUST_TARGET);
   }
   for (const bin of bins) {
     args.push("--bin", bin);
   }
   run("cargo", args, {
+    failureCode: "native_sidecar_build_failed",
     env: {
       ...process.env,
       CARGO_TARGET_DIR: nativeTargetRoot,
@@ -532,9 +852,11 @@ function buildSwiftSidecars(selected, options) {
   for (const moduleConfig of selected.filter((item) => item.packaging === "swift-sidecar")) {
     const source = path.join(workspaceRoot, moduleConfig.swiftSource || "");
     const artifactName = moduleConfig.artifactName || moduleConfig.id;
-    const target = path.join(cargoTargetDir(options.mode), artifactName);
+    const target = path.join(cargoTargetDir(options.mode, options), artifactName);
     mkdirSync(path.dirname(target), { recursive: true });
-    run("xcrun", ["swiftc", "-parse-as-library", "-O", "-o", target, source]);
+    run("xcrun", ["swiftc", "-parse-as-library", "-O", "-o", target, source], {
+      failureCode: "swift_sidecar_build_failed",
+    });
     chmodSync(target, 0o755);
   }
 }
@@ -668,20 +990,32 @@ function buildFlutterApp(options) {
   const pubCacheRoot = prepareStagedPubCache();
   options.flutterBuildProjectRoot = stagedRoot;
   cleanStaleFlutterBuildArtifacts(options);
-  const flutterEnv = {
-    ...process.env,
-    PUB_CACHE: pubCacheRoot
-  };
+  const flutterEnv = withClientToolchainEnv(process.env, { pubCache: pubCacheRoot });
   runFlutterPubGet(stagedRoot, flutterEnv, options);
   const args = ["build", options.platform, `--${options.mode}`, "--no-pub"];
+  // Bind the routing module compile-time flag from the canonical module catalog.
+  // In excluded builds this makes routing registration, UI, watchers, policy,
+  // and history code tree-shakable and unreachable at runtime.
+  const routingIncluded = options.routingModuleIncluded !== false;
+  args.push(`--dart-define=LICO_ROUTING_MODULE_INCLUDED=${routingIncluded}`);
+  if (process.env.LICO_AGENT_CONVERSATION_RELEASE_LIVE === "1") {
+    args.push("--dart-define=LICO_AGENT_CONVERSATION_RELEASE_LIVE=true");
+  }
   if (options.mode === "release") {
     const dartSymbolsDir = path.join(buildSymbolsRoot(options), "dart");
     mkdirSync(dartSymbolsDir, { recursive: true });
     args.push(`--split-debug-info=${dartSymbolsDir}`);
   }
+  const flutterBuildEnv = options.platform === "macos"
+    ? {
+        ...flutterEnv,
+        LICO_CLIENT_SKIP_XCODE_SIDECAR_BUNDLE: "1"
+      }
+    : flutterEnv;
   runFlutter(args, {
     cwd: stagedRoot,
-    env: flutterEnv
+    env: flutterBuildEnv,
+    failureCode: "flutter_app_build_failed",
   });
   return true;
 }
@@ -804,11 +1138,23 @@ function findInstalledLicoClientApp() {
       continue;
     }
     seen.add(normalized);
+    if (isMacosBuildArtifactCandidate(normalized)) {
+      continue;
+    }
     if (isInstalledLicoClientApp(normalized)) {
       return normalized;
     }
   }
   return "";
+}
+
+function isMacosBuildArtifactCandidate(candidate) {
+  return [workspaceRoot, cleanBuildBaseRoot()].some((root) => isInsideDirectory(root, candidate));
+}
+
+function isInsideDirectory(root, candidate) {
+  const relative = path.relative(path.resolve(root), path.resolve(candidate));
+  return Boolean(relative) && !relative.startsWith("..") && !path.isAbsolute(relative);
 }
 
 function macosInstallDir(options) {
@@ -861,7 +1207,7 @@ function findWindowsBundleSource(options) {
   const modeDir = modeDirectoryName(options.mode);
   const candidates = [
     path.join(rawFlutterBuildRootForOptions(options), "windows", "x64", "runner", modeDir),
-    path.join(rawFlutterBuildRootForOptions(options), "windows", "runner", modeDir)
+    path.join(rawFlutterBuildRootForOptions(options), "windows", "runner", modeDir),
   ];
   const bundleDir = candidates.find((item) => existsSync(path.join(item, "flutter_client.exe")));
   if (!bundleDir) {
@@ -889,7 +1235,7 @@ function flutterExecutableForRoot(root, platform) {
 
 function runnableExecutableForRoot(root, platform) {
   if (platform === "macos") {
-    return path.join(root, "LicoClient.app", "Contents", "MacOS", "flutter_client");
+    return path.join(root, licoClientAppName, "Contents", "MacOS", "flutter_client");
   }
   return flutterExecutableForRoot(root, platform);
 }
@@ -983,7 +1329,7 @@ function repairMacosFrameworkSymlinks(appDir) {
 
 function copySidecar(binaryName, bundle, options) {
   const suffix = binarySuffix(options.platform);
-  const source = path.join(cargoTargetDir(options.mode), `${binaryName}${suffix}`);
+  const source = path.join(cargoTargetDir(options.mode, options), `${binaryName}${suffix}`);
   if (!existsSync(source)) {
     throw new Error(`Sidecar binary is missing: ${source}`);
   }
@@ -997,7 +1343,7 @@ function copySidecar(binaryName, bundle, options) {
 
 function copySwiftSidecar(moduleConfig, bundle, options) {
   const artifactName = moduleConfig.artifactName || moduleConfig.id;
-  const source = path.join(cargoTargetDir(options.mode), artifactName);
+  const source = path.join(cargoTargetDir(options.mode, options), artifactName);
   if (!existsSync(source)) {
     throw new Error(`Swift sidecar is missing: ${source}`);
   }
@@ -1088,8 +1434,8 @@ function updateMacosAppMetadata(bundle, options) {
     throw new Error(`macOS Info.plist is missing: ${plistPath}`);
   }
   updateMacosPlistString(plistPath, "CFBundleIdentifier", licoClientBundleId);
-  updateMacosPlistString(plistPath, "CFBundleName", "LicoLite Client");
-  updateMacosPlistString(plistPath, "CFBundleDisplayName", "LicoLite Client");
+  updateMacosPlistString(plistPath, "CFBundleName", "Lico Arc");
+  updateMacosPlistString(plistPath, "CFBundleDisplayName", "Arc");
   updateMacosPlistString(
     plistPath,
     "NSHumanReadableCopyright",
@@ -1104,7 +1450,7 @@ function targetSkippedModules(skipped) {
 function manifestPathForRoot(config, root) {
   return path.join(
     root,
-    config.bundle?.manifestPath || "package-metadata/future-client/packaging-modules.json"
+    config.bundle?.manifestPath || "package-metadata/lico-client/packaging-modules.json"
   );
 }
 
@@ -1137,19 +1483,66 @@ function runtimeDataDescription(platform) {
   return "Runtime data: system Application Support portable-data directory";
 }
 
+export function packageSourceStateBinding(options, {
+  environment = process.env,
+  sourceDigest = () => clientSourceStateDigest(workspaceRoot, clientSourceRoots),
+  verifySourceManifest = (expectedDigest) => readAndVerifyClientSourceManifest(
+    workspaceRoot,
+    path.join(
+      workspaceRoot,
+      ".lico-source-attestation",
+      "client-source-manifest.json",
+    ),
+    expectedDigest,
+    { expectedSourceRoots: clientSourceRoots },
+  ),
+} = {}) {
+  const attested = String(environment.LICO_CLIENT_EXPECTED_SOURCE_STATE_DIGEST || "").trim();
+  if (!attested) {
+    return {
+      digest: options.releaseSourceStateDigest || sourceDigest(),
+      provenance: "git-worktree"
+    };
+  }
+  if (
+    options.platform !== "linux" ||
+    !/^sha256:[a-f0-9]{64}$/u.test(attested)
+  ) {
+    throw new Error("Client source-state attestation is invalid for this packaging target.");
+  }
+  const manifestBinding = verifySourceManifest(attested);
+  if (manifestBinding?.ok !== true ||
+    manifestBinding.sourceStateDigest !== attested ||
+    !/^sha256:[a-f0-9]{64}$/u.test(String(manifestBinding.manifestDigest || ""))) {
+    throw new Error("Client source manifest verification did not establish source authority.");
+  }
+  if (options.releaseSourceStateDigest && attested !== options.releaseSourceStateDigest) {
+    packageFailure("release_source_attestation_mismatch");
+  }
+  return {
+    digest: attested,
+    provenance: "vm-orchestrator-verified"
+  };
+}
+
 function preparePortableData(config, selected, skipped, bundle, options) {
   rmSync(bundle.portableDataDir, { recursive: true, force: true });
   const manifestPath = manifestPathForRoot(config, bundle.root);
   mkdirSync(path.dirname(manifestPath), { recursive: true });
+  const sourceBinding = packageSourceStateBinding(options);
   const manifest = {
     schemaVersion: BUNDLE_MANIFEST_SCHEMA_VERSION,
     generatedAt: new Date().toISOString(),
+    sourceStateDigest: sourceBinding.digest,
+    sourceStateDigestProvenance: sourceBinding.provenance,
     platform: options.platform,
     mode: options.mode,
-    configPath: path.relative(workspaceRoot, options.configPath),
+    configPath: publicWorkspacePath(options.configPath),
+    packagingConfigDigest: options.packagingConfigDigest,
     bundleRoot: ".",
     flutterExecutable: relativeBundlePath(bundle.root, bundle.flutterExecutable),
     runtimeData: runtimeDataPolicyRecord(options.platform),
+    signing: packageSigningPolicyRecord(options),
     featureProfile: config.featureProfile || null,
     modules: selected.map(publicModuleRecord),
     skippedModules: targetSkippedModules(skipped).map(publicModuleRecord)
@@ -1172,10 +1565,10 @@ function publicModuleRecord(moduleConfig) {
 
 function writeBundleNotes(config, selected, bundle, options) {
   const lines = [
-    `LicoLite ${options.platform} Client Bundle`,
+    `Lico Arc ${options.platform} Client Bundle`,
     "",
     "Run the Flutter desktop frontend from this bundle.",
-    "The frontend resolves lico-client as its future client sidecar.",
+    "The frontend resolves lico-client as its LicoArc client sidecar.",
     "Run lico-client for command-line operations against the same system data workspace.",
     "",
     "Enabled modules:",
@@ -1214,6 +1607,9 @@ function writeWindowsPlatformManifest(root, options, kind) {
     schemaVersion: WINDOWS_PLATFORM_MANIFEST_SCHEMA_VERSION,
     generatedAt: new Date().toISOString(),
     platform: "windows",
+    targetId: options.targetId,
+    architecture: "x64",
+    sourceStateDigest: options.releaseSourceStateDigest,
     mode: options.mode,
     kind,
     executables: {
@@ -1223,6 +1619,18 @@ function writeWindowsPlatformManifest(root, options, kind) {
     launch: {
       gui: relativeBundlePath(root, flutterExecutable),
       cli: relativeBundlePath(root, licoClientExecutable)
+    },
+    artifacts: {
+      flutterClient: {
+        ref: relativeBundlePath(root, flutterExecutable),
+        sha256: sha256File(flutterExecutable),
+        pe: inspectWindowsPeFile(flutterExecutable),
+      },
+      licoClient: {
+        ref: relativeBundlePath(root, licoClientExecutable),
+        sha256: sha256File(licoClientExecutable),
+        pe: inspectWindowsPeFile(licoClientExecutable),
+      },
     }
   };
   writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
@@ -1238,13 +1646,14 @@ function updateRunnableManifest(config, runnable, options) {
   manifest.bundleRoot = ".";
   manifest.flutterExecutable = relativeBundlePath(runnable.root, runnable.executable);
   manifest.runtimeData = runtimeDataPolicyRecord(options.platform);
+  manifest.signing = packageSigningPolicyRecord(options);
   writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
   return manifestPath;
 }
 
 function writeRunnableNotes(runnable, options) {
   const lines = [
-    `LicoLite ${options.platform} Runnable Client`,
+    `Lico Arc ${options.platform} Runnable Client`,
     "",
     `Runnable client: ${relativeBundlePath(runnable.root, runnable.appPath || runnable.executable)}`,
     `Executable: ${relativeBundlePath(runnable.root, runnable.executable)}`,
@@ -1266,7 +1675,7 @@ function createRunnableClient(config, result, options) {
   let appPath = "";
   if (options.platform === "macos") {
     const defaultAppPath = path.join(root, "flutter_client.app");
-    appPath = path.join(root, "LicoClient.app");
+    appPath = path.join(root, licoClientAppName);
     if (!existsSync(defaultAppPath)) {
       throw new Error(`Packaged macOS app is missing: ${defaultAppPath}`);
     }
@@ -1289,7 +1698,7 @@ function createRunnableClient(config, result, options) {
     for (const frameworkPath of repairMacosFrameworkSymlinks(appPath)) {
       signMacosArtifact(frameworkPath);
     }
-    signMacosArtifact(appPath, macosEntitlementsPath(options.mode));
+    signMacosArtifact(appPath, macosEntitlementsPathForSigning(options));
   }
   runnable.windowsManifestPath = writeWindowsPlatformManifest(root, options, "runnable");
   return runnable;
@@ -1334,9 +1743,81 @@ function installRunnableClient(runnable, options) {
   return installedAppPath;
 }
 
-function macosEntitlementsPath(mode) {
-  const fileName = mode === "release" ? "Release.entitlements" : "DebugProfile.entitlements";
+function macosEntitlementsProfile(options) {
+  if (options.mode === "release" && options.productionEntitlements) {
+    return "production-release";
+  }
+  return options.mode === "release" ? "release" : "debug-profile";
+}
+
+function macosEntitlementsFileName(options) {
+  if (macosEntitlementsProfile(options) === "production-release") {
+    return "ProductionRelease.entitlements";
+  }
+  return options.mode === "release" ? "Release.entitlements" : "DebugProfile.entitlements";
+}
+
+function macosEntitlementsPath(options) {
+  const fileName = macosEntitlementsFileName(options);
   return path.join(flutterClientRoot, "macos", "Runner", fileName);
+}
+
+function macosAppIdentifierPrefix() {
+  const configured = String(process.env.LICO_MACOS_APP_IDENTIFIER_PREFIX || "").trim();
+  if (!configured) {
+    throw new Error(
+      "--production-entitlements requires LICO_MACOS_APP_IDENTIFIER_PREFIX for non-dry-run signing."
+    );
+  }
+  const normalized = configured.endsWith(".") ? configured : `${configured}.`;
+  if (!/^[A-Z0-9]{10}\.$/u.test(normalized)) {
+    throw new Error("LICO_MACOS_APP_IDENTIFIER_PREFIX must be a 10-character Apple Team ID prefix.");
+  }
+  return normalized;
+}
+
+function macosEntitlementsPathForSigning(options) {
+  if (!options.productionEntitlements) {
+    return macosEntitlementsPath(options);
+  }
+  const templatePath = macosEntitlementsPath(options);
+  const template = readFileSync(templatePath, "utf8");
+  const resolved = template
+    .replaceAll("$(AppIdentifierPrefix)", macosAppIdentifierPrefix())
+    .replaceAll("$(PRODUCT_BUNDLE_IDENTIFIER)", licoClientBundleId);
+  if (resolved.includes("$(")) {
+    throw new Error("macOS production entitlements template contains unresolved build setting placeholders.");
+  }
+  const target = path.join(
+    clientBuildRoot,
+    "signing",
+    "macos",
+    options.mode,
+    "ProductionRelease.resolved.entitlements"
+  );
+  mkdirSync(path.dirname(target), { recursive: true });
+  writeFileSync(target, resolved, "utf8");
+  return target;
+}
+
+function packageSigningPolicyRecord(options) {
+  if (options.platform !== "macos") {
+    return {
+      platform: options.platform,
+      signingKind: "platform-default",
+      entitlementsFile: "",
+      entitlementProfile: "",
+      productionEntitlementsRequested: false
+    };
+  }
+  return {
+    platform: "macos",
+    signingKind: "local-ad-hoc-codesign",
+    entitlementsFile: path.relative(workspaceRoot, macosEntitlementsPath(options)),
+    entitlementProfile: macosEntitlementsProfile(options),
+    productionEntitlementsRequested: options.productionEntitlements === true,
+    nonDryRunRequiresAppIdentifierPrefix: options.productionEntitlements === true
+  };
 }
 
 function signMacosArtifact(artifactPath, entitlementsPath = "") {
@@ -1352,7 +1833,11 @@ function signMacosBundle(bundle, copiedArtifacts, options) {
   if (options.platform !== "macos") {
     return;
   }
-  const entitlementsPath = macosEntitlementsPath(options.mode);
+  const templatePath = macosEntitlementsPath(options);
+  if (!existsSync(templatePath)) {
+    throw new Error(`macOS entitlements file is missing: ${templatePath}`);
+  }
+  const entitlementsPath = macosEntitlementsPathForSigning(options);
   if (!existsSync(entitlementsPath)) {
     throw new Error(`macOS entitlements file is missing: ${entitlementsPath}`);
   }
@@ -1392,14 +1877,14 @@ function applyPackage(config, selected, skipped, options) {
   return { bundle, copiedArtifacts, manifestPath };
 }
 
-function cleanupFlutterBuildCache(options, flutterBuildRan) {
-  if (!flutterBuildRan) {
+function cleanupFlutterBuildCache(options, flutterBuildAttempted) {
+  if (!flutterBuildAttempted) {
     return;
   }
   if (options.keepFlutterBuildCache) {
     return;
   }
-  rmSync(stagedFlutterClientRoot(), { recursive: true, force: true });
+  rmSync(cleanBuildRoot(), { recursive: true, force: true });
 }
 
 function printPlan(selected, skipped, options, config) {
@@ -1409,8 +1894,10 @@ function printPlan(selected, skipped, options, config) {
         ok: true,
         platform: options.platform,
         mode: options.mode,
-        profile: options.profile || config.packageProfile || "future-client",
-        configPath: options.configPath,
+        profile: options.profile || config.packageProfile || "lico-client",
+        configPath: publicWorkspacePath(options.configPath),
+        packagingConfigDigest: options.packagingConfigDigest,
+        signing: packageSigningPolicyRecord(options),
         enabledModules: selected.map(publicModuleRecord),
         skippedModules: skipped.map(publicModuleRecord)
       },
@@ -1424,63 +1911,132 @@ function generateMacosAppIcons(options) {
   if (options.platform !== "macos" || options.skipFlutterBuild) {
     return;
   }
-  run(process.execPath, [path.join(flutterClientRoot, "scripts", "generate-macos-app-icon.mjs")]);
+  run(process.execPath, [
+    path.join(flutterClientRoot, "scripts", "generate-macos-app-icon.mjs"),
+    "--verify",
+  ], { failureCode: "macos_app_icon_verification_failed" });
+}
+
+function verifyConversationParityReadiness() {
+  run(process.execPath, [
+    path.join(workspaceRoot, "tools", "scripts", "client-agent-conversation-parity-reducer.mjs"),
+    "--check"
+  ], {
+    stdio: "ignore",
+    failureCode: "conversation_parity_readiness_failed",
+  });
 }
 
 export function packageClient(argv = process.argv.slice(2)) {
   const options = parseArgs(argv);
-  const config = loadPackagingConfig(options.configPath);
+  const config = loadPackagingConfig(options.configPath, options);
   const { selected, skipped } = selectModules(config, options);
+  // Bind the compile-time routing inclusion flag from the canonical module
+  // catalog so that excluded builds cannot activate routing at runtime.
+  const routingModuleSelected = selected.some((m) => m.id === "multi-agent-routing");
+  options.routingModuleIncluded = routingModuleSelected;
+  verifyConversationParityReadiness();
   if (options.dryRun) {
     printPlan(selected, skipped, options, config);
     return null;
   }
-  assertFlutterBuildPrereqs(options);
-  buildNativeSidecars(selected, options);
-  buildSwiftSidecars(selected, options);
+  // Refresh macOS app icons before capturing the release source digest so the
+  // generated assets are part of the immutable input set, not a mid-build
+  // mutation of apps/desktop sources.
   generateMacosAppIcons(options);
-  const flutterBuildRan = buildFlutterApp(options);
-  if (flutterBuildRan) {
-    rmSync(packagedBundleRoot(options), { recursive: true, force: true });
+  const releaseSourceBinding = options.mode === "release"
+    ? packageSourceStateBinding(options)
+    : null;
+  const releaseSourceStateDigest = releaseSourceBinding?.digest || "";
+  options.releaseSourceStateDigest = releaseSourceStateDigest;
+  const releaseSourceManifest = releaseSourceStateDigest &&
+      releaseSourceBinding.provenance === "git-worktree"
+    ? createClientSourceManifest(
+        workspaceRoot,
+        clientSourceRoots,
+        releaseSourceStateDigest,
+      )
+    : null;
+  const flutterBuildAttempted = !options.skipFlutterBuild;
+  try {
+    assertFlutterBuildPrereqs(options);
+    buildNativeSidecars(selected, options);
+    buildSwiftSidecars(selected, options);
+    const flutterBuildRan = buildFlutterApp(options);
+    if (flutterBuildRan) {
+      rmSync(packagedBundleRoot(options), { recursive: true, force: true });
+    }
+    const result = applyPackage(config, selected, skipped, options);
+    const runnable = createRunnableClient(config, result, options);
+    result.windowsManifestPath = writeWindowsPlatformManifest(result.bundle.root, options, "bundle");
+    const installedAppPath = installRunnableClient(runnable, options);
+    if (releaseSourceStateDigest) {
+      if (releaseSourceBinding.provenance === "git-worktree") {
+        const afterSourceDigest = clientSourceStateDigest(workspaceRoot, clientSourceRoots);
+        if (afterSourceDigest !== releaseSourceStateDigest) {
+          const afterSourceManifest = createClientSourceManifest(
+            workspaceRoot,
+            clientSourceRoots,
+            afterSourceDigest,
+          );
+          packageFailure(
+            "release_source_changed_during_build",
+            diffReleaseSourceManifests(releaseSourceManifest, afterSourceManifest),
+          );
+        }
+        assertReleaseSourceDigestStable(
+          releaseSourceStateDigest,
+          afterSourceDigest,
+        );
+      } else if (packageSourceStateBinding(options).digest !== releaseSourceStateDigest) {
+        packageFailure("release_source_attestation_changed_during_build");
+      }
+      if (sha256File(defaultConfigPath, { maxBytes: 2 * 1024 * 1024 }) !==
+        options.packagingConfigDigest) {
+        packageFailure("release_packaging_config_changed_during_build");
+      }
+    }
+    console.log(JSON.stringify({
+      ok: true,
+      platform: options.platform,
+      mode: options.mode,
+      runnableRef: publicWorkspacePath(runnable.appPath || runnable.executable),
+      bundleRef: publicWorkspacePath(result.bundle.root),
+      executableRef: publicWorkspacePath(runnable.executable),
+      manifestRef: publicWorkspacePath(result.manifestPath),
+      runnableManifestRef: runnable.manifestPath
+        ? publicWorkspacePath(runnable.manifestPath)
+        : "",
+      windowsManifestRef: result.windowsManifestPath
+        ? publicWorkspacePath(result.windowsManifestPath)
+        : "",
+      installed: Boolean(installedAppPath),
+      packagedArtifactRefs: result.copiedArtifacts.map((artifact) =>
+        publicWorkspacePath(artifact, "<packaged-artifact>")),
+      privatePathsIncluded: false,
+    }));
+    result.runnable = runnable;
+    result.installedAppPath = installedAppPath;
+    return result;
+  } finally {
+    cleanupFlutterBuildCache(options, flutterBuildAttempted);
   }
-  const result = applyPackage(config, selected, skipped, options);
-  const runnable = createRunnableClient(config, result, options);
-  result.windowsManifestPath = writeWindowsPlatformManifest(result.bundle.root, options, "bundle");
-  const installedAppPath = installRunnableClient(runnable, options);
-  cleanupFlutterBuildCache(options, flutterBuildRan);
-  console.log("");
-  console.log(`${options.platform} runnable client ready: ${runnable.appPath}`);
-  console.log(`Runnable root: ${runnable.root}`);
-  console.log(`Runnable executable: ${runnable.executable}`);
-  console.log(`${options.platform} client bundle ready: ${result.bundle.root}`);
-  console.log(`Flutter executable: ${result.bundle.flutterExecutable}`);
-  console.log(runtimeDataDescription(options.platform));
-  console.log(`Packaging manifest: ${result.manifestPath}`);
-  if (runnable.manifestPath) {
-    console.log(`Runnable manifest: ${runnable.manifestPath}`);
-  }
-  if (result.windowsManifestPath) {
-    console.log(`Windows bundle manifest: ${result.windowsManifestPath}`);
-  }
-  if (runnable.windowsManifestPath) {
-    console.log(`Windows runnable manifest: ${runnable.windowsManifestPath}`);
-  }
-  if (installedAppPath) {
-    console.log(`Installed app: ${installedAppPath}`);
-  }
-  for (const artifact of result.copiedArtifacts) {
-    console.log(`Packaged artifact: ${artifact}`);
-  }
-  result.runnable = runnable;
-  result.installedAppPath = installedAppPath;
-  return result;
 }
 
 if (fileURLToPath(import.meta.url) === path.resolve(process.argv[1] || "")) {
   try {
     packageClient();
   } catch (error) {
-    console.error(error instanceof Error ? error.message : error);
+    console.error(JSON.stringify({
+      ok: false,
+      error: error instanceof PackageClientError
+        ? error.code
+        : "package_client_failed",
+      ...(error instanceof PackageClientError && error.details
+        ? error.details
+        : {}),
+      privatePathsIncluded: false,
+    }));
     process.exitCode = 1;
   }
 }

@@ -1,0 +1,57 @@
+{
+  "schema": "licolite.client-support-matrix",
+  "services": [
+    { "id": "client-shell", "label": "Lico Arc client", "category": "core-client", "releaseBlocking": true },
+    { "id": "secure-mesh-pairwise", "label": "Secure Mesh client-to-client", "category": "core-client", "releaseBlocking": true },
+    { "id": "mobile-relay", "label": "Mobile Relay", "category": "client-capability", "releaseBlocking": false },
+    { "id": "chatgpt-local-oauth", "label": "ChatGPT local OAuth", "category": "external-service", "releaseBlocking": false },
+    { "id": "deepseek-local-api-key", "label": "DeepSeek local API key", "category": "external-service", "releaseBlocking": false },
+    { "id": "gemini-local-oauth", "label": "Gemini local OAuth", "category": "external-service", "releaseBlocking": false },
+    { "id": "kimi-local-oauth", "label": "Kimi local OAuth", "category": "external-service", "releaseBlocking": false },
+    { "id": "conversation-voice", "label": "Conversation voice input", "category": "optional-client-capability", "releaseBlocking": false }
+  ],
+  "defaults": {
+    "desktop": {
+      "client-shell": "unverified",
+      "secure-mesh-pairwise": "unverified",
+      "mobile-relay": "unverified",
+      "chatgpt-local-oauth": "unverified",
+      "deepseek-local-api-key": "unverified",
+      "gemini-local-oauth": "deferred",
+      "kimi-local-oauth": "deferred",
+      "conversation-voice": "deferred"
+    },
+    "mobile": {
+      "client-shell": "supported",
+      "secure-mesh-pairwise": "preview",
+      "mobile-relay": "preview",
+      "chatgpt-local-oauth": "preview",
+      "deepseek-local-api-key": "preview",
+      "gemini-local-oauth": "deferred",
+      "kimi-local-oauth": "deferred",
+      "conversation-voice": "deferred"
+    }
+  },
+  "targets": [
+    { "targetId": "windows-x64", "profile": "desktop" },
+    { "targetId": "windows-arm64", "profile": "desktop" },
+    { "targetId": "macos-x64", "profile": "desktop", "overrides": { "client-shell": "supported", "secure-mesh-pairwise": "preview", "mobile-relay": "preview" } },
+    { "targetId": "macos-arm64", "profile": "desktop", "overrides": { "client-shell": "supported", "secure-mesh-pairwise": "preview", "mobile-relay": "preview" } },
+    { "targetId": "linux-glibc-x64", "profile": "desktop", "overrides": { "client-shell": "preview", "secure-mesh-pairwise": "preview", "mobile-relay": "preview" } },
+    { "targetId": "linux-glibc-arm64", "profile": "desktop", "overrides": { "client-shell": "preview", "secure-mesh-pairwise": "preview", "mobile-relay": "preview" } },
+    { "targetId": "linux-musl-x64", "profile": "desktop", "overrides": { "client-shell": "preview", "secure-mesh-pairwise": "preview", "mobile-relay": "preview" } },
+    { "targetId": "linux-musl-arm64", "profile": "desktop", "overrides": { "client-shell": "preview", "secure-mesh-pairwise": "preview", "mobile-relay": "preview" } },
+    { "targetId": "android-arm64", "profile": "mobile" },
+    {
+      "targetId": "ios-arm64",
+      "profile": "mobile",
+      "overrides": {
+        "client-shell": "unsupported",
+        "secure-mesh-pairwise": "unverified",
+        "mobile-relay": "unverified",
+        "chatgpt-local-oauth": "unverified",
+        "deepseek-local-api-key": "unverified"
+      }
+    }
+  ]
+}

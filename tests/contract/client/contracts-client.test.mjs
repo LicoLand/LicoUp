@@ -2,7 +2,7 @@
 /**
  * contracts-client — Client Contract Schema Validation
  *
- * Validates that all 7 client contract JSON Schema files exist under
+ * Validates that all canonical client contract JSON Schema files exist under
  * packages/contracts/client/ and are structurally valid (have $id,
  * properties, required).
  *
@@ -17,7 +17,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const SCHEMA_DIR = resolve(__dirname, "../../../packages/contracts/client");
 
 const SCHEMAS = [
-  "target-adapter-capability.schema.json",
+  "agent-conversation-adapter.schema.json",
   "mcp-plugin-plan.schema.json",
   "snapshot-archive-result.schema.json",
   "thin-forwarding-result.schema.json",

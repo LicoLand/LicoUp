@@ -117,7 +117,7 @@ async function main() {
   const packagingManifest = path.join(
     bundleDir,
     "package-metadata",
-    "future-client",
+    "lico-client",
     "packaging-modules.json"
   );
   for (const file of [flutterBinary, cli]) {
@@ -135,9 +135,9 @@ async function main() {
       throw new Error(`Packaging manifest does not include required module: ${moduleId}`);
     }
   }
-  const macOSMailTool = path.join(bundleDir, "lico-macos-mail-tool");
-  if (existsSync(macOSMailTool)) {
-    throw new Error(`Linux GUI bundle must not include macOS Mail sidecar: ${macOSMailTool}`);
+  const macOSMailHelper = path.join(bundleDir, "lico-mail-helper");
+  if (existsSync(macOSMailHelper)) {
+    throw new Error(`Linux GUI bundle must not include macOS Mail sidecar: ${macOSMailHelper}`);
   }
 
   const artifactDir = path.resolve(
@@ -189,7 +189,7 @@ async function main() {
         );
       }
       for (const args of [
-        ["search", "--onlyvisible", "--name", "LicoLite|lico|flutter_client|Flutter"],
+        ["search", "--onlyvisible", "--name", "Lico Arc|Arc|lico|flutter_client|Flutter"],
         ["search", "--onlyvisible", "--name", ".*"],
       ]) {
         const result = spawnSync("xdotool", args, {

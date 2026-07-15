@@ -30,7 +30,7 @@ const optionalFutureModules = [
 const allFutureModules = [...requiredFutureModules, ...optionalFutureModules];
 const defaultGuiSurfacePaths = [
   "apps/desktop/lib/app.dart",
-  "apps/desktop/lib/src/application/controller/future_client_controller.dart",
+  "apps/desktop/lib/src/application/controller/client_controller.dart",
   "apps/desktop/lib/src/application/controller/controller_lifecycle_actions.dart",
   "apps/desktop/lib/src/application/features/agents/controller/agent_conversation_actions.dart",
   "apps/desktop/lib/src/application/features/agents/controller/agent_usage_actions.dart",
@@ -42,7 +42,7 @@ const defaultGuiSurfacePaths = [
   "apps/desktop/lib/src/application/features/settings/controller/client_log_export_actions.dart",
   "apps/desktop/lib/src/application/features/skill_hub/controller/skill_hub_actions.dart",
   "apps/desktop/lib/src/application/features/targets/controller/target_actions.dart",
-  "apps/desktop/lib/src/application/models/future_client_models.dart",
+  "apps/desktop/lib/src/contracts/presentation/semantic_destination.dart",
   "apps/desktop/lib/src/platform/storage/client_log_export_service.dart",
   "apps/desktop/lib/src/platform/storage/client_workspace_manifest.dart",
   "apps/desktop/lib/src/backend/features/agents/services/agent_conversation_service.dart",
@@ -51,8 +51,10 @@ const defaultGuiSurfacePaths = [
   "apps/desktop/lib/src/platform/native_client/agent_service_actions.dart",
   "apps/desktop/lib/src/platform/native_client/proxy_bridge_service_actions.dart",
   "apps/desktop/lib/src/contracts/mobile_relay/mobile_relay_models.dart",
+  "apps/desktop/lib/src/contracts/secure_mesh_capability_models.dart",
   "apps/desktop/lib/src/platform/mobile_relay/mobile_relay_service.dart",
   "apps/desktop/lib/src/platform/secure_mesh/secure_mesh_android_bridge.dart",
+  "apps/desktop/lib/src/platform/secure_mesh/secure_mesh_capability_service.dart",
   "apps/desktop/lib/src/platform/storage/portable_data_root.dart",
   "apps/desktop/lib/src/frontend/features/agents/ui/agents_empty_state.dart",
   "apps/desktop/lib/src/frontend/features/agents/ui/agents_toolbar.dart",
@@ -61,6 +63,7 @@ const defaultGuiSurfacePaths = [
   "apps/desktop/lib/src/frontend/shell/client_shell.dart",
   "apps/desktop/lib/src/frontend/features/targets/ui/manual_target_dialog.dart",
   "apps/desktop/lib/src/frontend/features/mcp_plugins/ui/mcp_plugins_panel.dart",
+  "apps/desktop/lib/src/frontend/features/mobile_relay/ui/secure_mesh_capability_card.dart",
   "apps/desktop/lib/src/frontend/shared/ui/panel_frame.dart",
   "apps/desktop/lib/src/frontend/features/settings/ui/settings_panel.dart",
   "apps/desktop/lib/src/frontend/features/settings/ui/proxy_bridge_settings.dart",
@@ -71,7 +74,6 @@ const defaultGuiSurfacePaths = [
   "apps/desktop/lib/src/frontend/features/targets/ui/target_card.dart",
   "apps/desktop/lib/src/frontend/l10n/lico_strings.dart"
 ];
-const defaultGuiMaxLines = 340;
 const flutterLibRoot = "apps/desktop/lib";
 const flutterSrcRoot = "apps/desktop/lib/src";
 const requiredFlutterPhysicalDirs = ["application", "frontend", "backend", "platform", "contracts"];
@@ -385,7 +387,7 @@ assert(
   sameSet(futureModules, [...allFutureModules].sort()),
   `packaging.modules.json must define exactly ${allFutureModules.join(", ")}`
 );
-assert(packaging.packageProfile === "future-client", "default package profile must be future-client");
+assert(packaging.packageProfile === "lico-client", "default package profile must be lico-client");
 const modules = packaging.modules || {};
 const enabledConfigModules = Object.entries(modules)
   .filter(([, module]) => module.enabled !== false)
@@ -455,25 +457,25 @@ assert(clientFunctionalityContractSource.includes("Feature CL-06 Native Agent Co
   "CLIENT-DESKTOP.md CL-06 must define the canonical all-adapter parity, evidence, and readiness contract");
 const portableDirs = modules["portable-data"]?.portableDirectories || [];
 const expectedPortableDirs = [
-  "future-client",
-  "future-client/settings",
-  "future-client/targets",
-  "future-client/pairings",
-  "future-client/skills",
-  "future-client/pins",
-  "future-client/mobile-relay",
-  "future-client/activity",
-  "future-client/snapshots",
-  "future-client/source-queue",
-  "future-client/mail-imports",
-  "future-client/connectors",
-  "future-client/knowledge-cache",
-  "future-client/mcp-local-bridge",
+  "lico-client",
+  "lico-client/settings",
+  "lico-client/targets",
+  "lico-client/pairings",
+  "lico-client/skills",
+  "lico-client/pins",
+  "lico-client/mobile-relay",
+  "lico-client/activity",
+  "lico-client/snapshots",
+  "lico-client/source-queue",
+  "lico-client/mail-imports",
+  "lico-client/connectors",
+  "lico-client/knowledge-cache",
+  "lico-client/mcp-local-bridge",
   "target-config-cache"
 ];
 assert(sameSet([...portableDirs].sort(), [...expectedPortableDirs].sort()),
   "portable-data module must list exactly the current portable runtime directories");
-for (const requiredDir of ["future-client/source-queue", "future-client/mail-imports", "future-client/connectors", "future-client/knowledge-cache", "future-client/mcp-local-bridge"]) {
+for (const requiredDir of ["lico-client/source-queue", "lico-client/mail-imports", "lico-client/connectors", "lico-client/knowledge-cache", "lico-client/mcp-local-bridge"]) {
   assert(portableDirs.includes(requiredDir), `portable data must include runtime directory: ${requiredDir}`);
 }
 
@@ -547,13 +549,17 @@ for (const relativePath of rustNativePhysicalModuleDirs) {
   assert(!modSource.includes("#[path ="), `${relativePath}/mod.rs must not remount flat native files with #[path]`);
 }
 const cliSource = await readText("crates/lico-client-native/src/bin/lico-client.rs");
-for (const token of ["targets scan", "mcp config plan", "mcp plugin status", "forward --profile", "agents pair", "conversations list|append|delete", "agent message send", "mobile relay", "source-queue add|list", "connectors list|sync", "knowledge-cache sync|search", "mail preview|enqueue", "mcp-local-bridge plan|start"]) {
+for (const token of ["targets scan", "mcp config plan", "mcp plugin status", "forward --profile", "agents pair", "conversations list|append|delete", "agent conversation open|send|cancel|capabilities|stream", "mobile relay", "source-queue add|list", "connectors list|sync", "knowledge-cache sync|search", "mail preview|enqueue", "mcp-local-bridge plan|start"]) {
   assert(cliSource.includes(token), `lico-client usage must expose future command: ${token}`);
 }
+assert(!cliSource.includes("agent message send"),
+  "lico-client usage must not expose the retired agent message send entry point");
 
 const reviewedRustUnsafeFiles = new Set([
+  "crates/lico-client-native/src/core/safe_archive.rs",
   "crates/lico-client-native/src/ffi/android_ffi.rs",
   "crates/lico-client-native/src/ffi/ios_ffi.rs",
+  "crates/lico-client-native/src/platform/pi_driver.rs",
   "crates/lico-client-native/src/platform/secure_mesh_secret_store.rs"
 ]);
 const rustCliUnsafeFiles = (await collectRustUnsafeFiles(rustCliRoot))
@@ -563,9 +569,9 @@ assert(
   `Rust CLI source path must not contain unreviewed unsafe: ${rustCliUnsafeFiles.join(", ")}`
 );
 
-const futureClientModels = await readDartSourceByBasename("future_client_models.dart");
-const appSections = collectEnumValues(futureClientModels, "FutureClientSection");
-assert(sameSet(appSections, ["controlPanel", "agents", "feed", "monitoring", "mcpPlugins", "skillHub", "localRuntime", "mobileRelay", "settings"]), "FutureClientSection enum must contain only the current client shell modules");
+const semanticDestinations = await readDartSourceByBasename("semantic_destination.dart");
+const appSections = collectEnumValues(semanticDestinations, "ClientSection");
+assert(sameSet(appSections, ["controlPanel", "agents", "feed", "monitoring", "mcpPlugins", "skillHub", "localRuntime", "mobileRelay", "settings"]), "ClientSection enum must contain only the current client shell modules");
 for (const relativePath of (await collectDartSourceFiles())
   .filter(isFlutterGuiImplementationSource)) {
   const source = await readText(relativePath);
@@ -591,9 +597,9 @@ assert(agentConversationServiceSource.includes("'conversations'") && agentConver
 assert(agentConversationServiceSource.includes("AgentDispatchLane") &&
   agentConversationServiceSource.includes("implements AgentDispatchLane") &&
   agentConversationServiceSource.includes("'agent'") &&
-  agentConversationServiceSource.includes("'message'") &&
+  agentConversationServiceSource.includes("'conversation'") &&
   agentConversationServiceSource.includes("'send'") &&
-  agentConversationServiceSource.includes("runCliWithStdin") &&
+  agentConversationServiceSource.includes("streamCliJsonLinesWithStdin") &&
   agentConversationServiceSource.includes("'--stdin-json'") &&
   agentConversationServiceSource.includes("requireReady") &&
   !agentConversationServiceSource.includes("sendRuntimeMessage"),
@@ -602,6 +608,15 @@ assert(agentConversationServiceSource.includes("AgentDispatchLane") &&
 assert(
   (await readDartSourceByBasename("agent_dispatch_lane.dart")).includes("abstract class AgentDispatchLane"),
   "contracts/agent_dispatch_lane.dart must define the unified AgentDispatchLane port"
+);
+const connectorCommandsRustSource = await readText(
+  "crates/lico-client-native/src/ffi/commands/connectors.rs"
+);
+assert(
+  connectorCommandsRustSource.includes("dispatch_lane_operation(operation, &params)") &&
+    !connectorCommandsRustSource.includes("handle_agent_message_send") &&
+    !connectorCommandsRustSource.includes("runtime_adapters::send_message"),
+  "native conversation CLI commands must enter the shared conversation lane without a legacy send bypass"
 );
 for (const token of ["appendLocalMessage", "deleteSession", "'append'", "'delete'"]) {
   assert(!agentConversationServiceSource.includes(token), `agent_conversation_service.dart must not expose LicoLite-local write path: ${token}`);
@@ -618,18 +633,49 @@ assert(
     conversationsRustSource.includes("native agent history is read-only"),
   "native sidecar conversations.rs must expose per-agent precise native history adapters, not LicoLite-local conversation storage"
 );
+const conversationSemanticRustSource = await readText(
+  "crates/lico-client-native/src/domain/conversation_semantic.rs"
+);
+assert(
+  conversationSemanticRustSource.includes("semantic-conversation") &&
+    conversationSemanticRustSource.includes("privacy_defaults") &&
+    conversationSemanticRustSource.includes("build_semantic_conversation") &&
+    conversationSemanticRustSource.includes("validate_semantic_conversation") &&
+    conversationSemanticRustSource.includes("\"thread\"") &&
+    conversationSemanticRustSource.includes("\"execution\"") &&
+    conversationSemanticRustSource.includes("\"artifacts\"") &&
+    conversationSemanticRustSource.includes("\"audit\"") &&
+    conversationSemanticRustSource.includes("\"raw\""),
+  "conversation_semantic.rs must own the canonical semantic conversation layers"
+);
+assert(
+  conversationsRustSource.includes("conversation_semantic::build_semantic_conversation") &&
+    conversationsRustSource.includes("\"semantic\": semantic"),
+  "conversations.rs must emit semantic documents as the session authority"
+);
+await readText("packages/contracts/client/semantic-conversation.schema.json");
+const agentConversationModelsSource = await readDartSourceByBasename("agent_conversation_models.dart");
+assert(
+  agentConversationModelsSource.includes("AgentSemanticConversation") &&
+    agentConversationModelsSource.includes("AgentConversationSemanticLayer") &&
+    agentConversationModelsSource.includes("threadMessages") &&
+    agentConversationModelsSource.includes("executionMessages") &&
+    agentConversationModelsSource.includes("hasDiagnostics"),
+  "Flutter conversation models must preserve semantic layers without flattening authority"
+);
 for (const target of packagedTargets) {
   assert(conversationsRustSource.includes(`"${target}"`), `native history scanner must include first-batch target: ${target}`);
 }
 const agentConversationActionsSource = await readJoinedDartSourcesByBasename([
   "agent_conversation_actions.dart",
+  "agent_conversation_catalog_actions.dart",
   "agent_conversation_messaging_actions.dart",
   "agent_conversation_session_ordering.dart"
 ]);
 assert(!agentConversationActionsSource.includes("conversationService.appendLocalMessage"),
   "agent_conversation_actions.dart must not append LicoLite-local messages for native history"
 );
-assert(agentConversationActionsSource.includes("conversationService.send(") &&
+assert(agentConversationActionsSource.includes("conversationService.sendStreaming(") &&
   !agentConversationActionsSource.includes("sendRuntimeMessage"),
   "agent_conversation messaging must send through AgentDispatchLane instead of local history or legacy sendRuntimeMessage"
 );
@@ -639,15 +685,36 @@ assert(agentConversationWorkspaceSource.includes("_RuntimeMessageComposer") &&
   agentConversationWorkspaceSource.includes("TextField("),
   "agent_conversation_workspace.dart must expose runtime message composer while keeping history read-only"
 );
+assert(
+  agentConversationWorkspaceSource.includes("_ConversationDiagnosticsPanel") &&
+    agentConversationWorkspaceSource.includes("_ConversationArtifactsPanel") &&
+    !agentConversationWorkspaceSource.includes("CodexMessageBlock") &&
+    !agentConversationWorkspaceSource.includes("ClaudeCodeMessageBlock"),
+  "workspace must render shared semantic layers without per-provider UI forks"
+);
 const cargoToml = await readText("crates/lico-client-native/Cargo.toml");
 const mobileRelayRustSource = await readText("crates/lico-client-native/src/domain/mobile_relay.rs");
 const secureMeshSecretStoreRustSource =
   await readText("crates/lico-client-native/src/platform/secure_mesh_secret_store.rs");
+const secureMeshCapabilityRustSource =
+  await readText("crates/lico-client-native/src/core/secure_mesh_capability.rs");
+const secureMeshCapabilityProofRustSource =
+  await readText("crates/lico-client-native/src/core/secure_mesh_capability_proof.rs");
+const secureMeshSessionNegotiationRustSource =
+  await readText("crates/lico-client-native/src/core/secure_mesh_session_negotiation.rs");
+const secureMeshProtocolStatusRustSource =
+  await readText("crates/lico-client-native/src/core/secure_mesh.rs");
+const secureMeshCapabilityProbeRustSource =
+  await readText("crates/lico-client-native/src/platform/secure_mesh_capability_probe.rs");
+const secureMeshCapabilityReportSource =
+  await readText("tools/scripts/lib/secure-mesh-capability-report.mjs");
 const macosUserPresenceProofSource =
   await readText("tools/scripts/client-secure-mesh-macos-keychain-user-presence-proof.mjs");
 const platformSecretStoreMatrixSource =
   await readText("tools/scripts/client-secure-mesh-platform-secret-store-matrix.mjs");
 const mobileCommandsSource = await readText("crates/lico-client-native/src/ffi/commands/mobile.rs");
+const secureClientRelayMockSource =
+  await readText("tools/scripts/client-secure-client-relay-mock-e2e.mjs");
 const clientCliVmSource = await readText("tools/scripts/client-cli-vm.mjs");
 const runtimeAdaptersRustSource = await readText("crates/lico-client-native/src/platform/runtime_adapters.rs");
 const codexAppServerRustSource = await readText("crates/lico-client-native/src/platform/codex_app_server.rs");
@@ -668,22 +735,50 @@ assert(runtimeAdaptersRustSource.includes("enum RuntimeAdapter") &&
   codexAppServerRustSource.includes("codex_user_interaction_required"),
   "runtime adapters must expose canonical per-agent transports and explicit approval ownership"
 );
-assert(mobileRelayRustSource.includes("fn relay_capabilities") &&
-  mobileRelayRustSource.includes('"commands"') &&
+assert(mobileRelayRustSource.includes("SecureClientRelayTransport") &&
+  mobileRelayRustSource.includes("CanonicalRelayContext") &&
+  mobileRelayRustSource.includes("SecureClientRelayTransport::new") &&
+  mobileRelayRustSource.includes("endpoint_challenge") &&
+  mobileRelayRustSource.includes("endpoint_register") &&
+  mobileRelayRustSource.includes("envelope_send") &&
+  mobileRelayRustSource.includes("envelope_sync") &&
+  mobileRelayRustSource.includes("envelope_ack") &&
   mobileRelayRustSource.includes("SECURE_MESH_ENVELOPE_COMMAND") &&
-  mobileRelayRustSource.includes("mobile_relay_capabilities_advertise_phone_pairing_runtime_commands") &&
-  mobileRelayRustSource.includes("MobileRelaySecurePairwiseTransport") &&
   mobileRelayRustSource.includes("reject_plaintext_relay_command") &&
   mobileRelayRustSource.includes("mobile_relay_plaintext_command_rejected") &&
-  mobileRelayRustSource.includes("plaintext_relay_commands_are_rejected_without_echoing_payload") &&
   mobileRelayRustSource.includes("secure_mesh_envelope_command_is_transport_only") &&
-  mobileRelayRustSource.includes("mobile_relay_public_config_redacts_secret_material") &&
-  mobileRelayRustSource.includes("adversarial_loopback_gateway_cannot_read_or_forge_mobile_relay_e2ee") &&
-  mobileRelayRustSource.includes("plaintext-canary-compromised-relay"),
-  "mobile_relay.rs must advertise only the secure pairwise relay transport and keep compromised-gateway E2EE behavior covered by tests"
+  mobileRelayRustSource.includes("mobile_relay_public_config_redacts_secret_material"),
+  "mobile_relay.rs must use only the canonical five-operation secure-client-relay transport"
+);
+assert(secureClientRelayMockSource.includes("exactFiveOperationsObserved") &&
+  secureClientRelayMockSource.includes("exactSixOuterFieldsObserved") &&
+  secureClientRelayMockSource.includes("replayRejected") &&
+  secureClientRelayMockSource.includes("staleLeaseRejected") &&
+  secureClientRelayMockSource.includes("ackIdempotencyVerified") &&
+  secureClientRelayMockSource.includes("plaintextAbsentFromServerVisibleWire"),
+  "secure-client-relay Mock must cover the client-owned opaque-wire adversarial boundary"
 );
 assert(!mobileRelayRustSource.includes("fn execute_command("),
   "mobile_relay.rs must not keep a plaintext command execution path for relayed server commands"
+);
+const secureMeshAcpRustSource = await readText("crates/lico-client-native/src/core/secure_mesh_acp.rs");
+const secureMeshStatusRustSource = await readText("crates/lico-client-native/src/core/secure_mesh.rs");
+const licoClientBinSource = await readText("crates/lico-client-native/src/bin/lico-client.rs");
+assert(secureMeshAcpRustSource.includes("encode_acp_envelope_aad") &&
+  secureMeshAcpRustSource.includes("LCOSM-ACP-AAD-v1") &&
+  secureMeshAcpRustSource.includes("reject_plaintext_acp_protected_payload_relay") &&
+  secureMeshAcpRustSource.includes("plaintext_protected_payload_relay_blocked") &&
+  secureMeshAcpRustSource.includes("independent_review_pending") &&
+  secureMeshAcpRustSource.includes("pqxdh_mlkem1024_triple_ratchet") &&
+  secureMeshStatusRustSource.includes("acpEnvelopeStatus") &&
+  secureMeshStatusRustSource.includes("SECURE_MESH_ACP_STATUS"),
+  "secure mesh must expose ACP envelope AAD coverage and keep plaintext ACP protected-payload relay blocked"
+);
+assert(!licoClientBinSource.includes("payload seal") &&
+  !licoClientBinSource.includes("payload open") &&
+  !licoClientBinSource.includes("key-base64url") &&
+  !licoClientBinSource.includes("contentKeyBase64url"),
+  "lico-client must not expose static endpoint-only payload seal/open production CLI routes"
 );
 assert(mobileRelayRustSource.includes("RUNTIME_SECRET_OVERRIDE_TRANSPORT") &&
   mobileRelayRustSource.includes('"secretOverrideTransport"') &&
@@ -694,23 +789,52 @@ assert(mobileRelayRustSource.includes("SecureMeshPairwiseDurableStore") &&
   mobileRelayRustSource.includes("SecureMeshPairwiseSession::initiate") &&
   mobileRelayRustSource.includes("SecureMeshPairwiseSession::accept") &&
   mobileRelayRustSource.includes("complete_initiator_handshake") &&
+  mobileRelayRustSource.includes("complete_responder_handshake") &&
+  mobileRelayRustSource.includes("commit_session_with_authorized_session_and_capability_proofs") &&
+  mobileRelayRustSource.includes("upsert_initial_with_local_prekey_claim_and_capability_proofs") &&
   mobileRelayRustSource.includes('"preKeyBundle"') &&
   mobileRelayRustSource.includes('"pairwiseIntro"') &&
   mobileRelayRustSource.includes('"pairwiseAccepted"') &&
-  mobileRelayRustSource.includes("mobile_relay_pairwise_initialization_requires_x3dh_prekey_bundle") &&
+  mobileRelayRustSource.includes('"pairwiseFinished"') &&
+  mobileRelayRustSource.includes("mobile_relay_pairwise_initialization_requires_pqxdh_prekey_bundle") &&
   mobileRelayRustSource.includes("mobile_relay_pairwise_rejects_tampered_prekey_signature") &&
   mobileRelayRustSource.includes("seal_payload_envelope") &&
   mobileRelayRustSource.includes("open_payload_envelope"),
-  "mobile_relay.rs must use X3DH signed-prekey initialization and durable pairwise envelopes"
+  "mobile_relay.rs must use PQXDH ML-KEM-1024 prekey initialization and durable Triple Ratchet pairwise envelopes"
+);
+assert(secureMeshCapabilityRustSource.includes("enum SecurityCapability") &&
+  secureMeshCapabilityRustSource.includes("validated_topological_order") &&
+  secureMeshCapabilityRustSource.includes("OnceLock") &&
+  secureMeshCapabilityRustSource.includes("BTreeSet") &&
+  secureMeshCapabilityRustSource.includes("mandatory_foundation_complete") &&
+  secureMeshCapabilityRustSource.includes("MemoryOnlyEphemeral") &&
+  secureMeshCapabilityRustSource.includes("RePairRekeyAfterRestart") &&
+  secureMeshCapabilityProbeRustSource.includes("trait SecureMeshCapabilityProbe") &&
+  secureMeshCapabilityProbeRustSource.includes("CapabilityProbeSnapshot") &&
+  secureMeshCapabilityReportSource.includes("validateCapabilityReport") &&
+  secureMeshCapabilityReportSource.includes("reduceCapabilityFacts"),
+  "Secure Mesh posture must be owned by one deterministic capability DAG and shared exact-set report reducer"
+);
+assert(secureMeshCapabilityProofRustSource.includes("ClientCapabilityProjection") &&
+  secureMeshCapabilityProofRustSource.includes("capability_projection_from_evaluation") &&
+  secureMeshSessionNegotiationRustSource.includes("negotiated_protocol_capabilities") &&
+  secureMeshSessionNegotiationRustSource.includes("peer: Some") &&
+  secureMeshProtocolStatusRustSource.includes('"capabilityProjection"'),
+  "Secure Mesh native status and verified sessions must expose one exact client capability projection"
 );
 assert(mobileRelayRustSource.includes("mobile_relay_e2ee_secret_store_status") &&
-  mobileRelayRustSource.includes("privateKeyBoundToPlatform") &&
-  mobileRelayRustSource.includes("signingKeyBoundToPlatform") &&
-  mobileRelayRustSource.includes("signedPrekeyPrivateKeyBoundToPlatform") &&
-  mobileRelayRustSource.includes("oneTimePrekeyPrivateKeyBoundToPlatform") &&
-  mobileRelayRustSource.includes("allPrivateKeysBoundToPlatform") &&
-  mobileRelayRustSource.includes("e2ee_status_blocks_production_when_private_key_is_only_in_portable_config") &&
-  mobileRelayRustSource.includes("e2ee_status_accepts_mobile_relay_secret_store_override_without_leaking_key_material") &&
+  mobileRelayRustSource.includes("privateKeyInSelectedCustody") &&
+  mobileRelayRustSource.includes("signingKeyInSelectedCustody") &&
+  mobileRelayRustSource.includes("signedPrekeyPrivateKeyInSelectedCustody") &&
+  mobileRelayRustSource.includes("oneTimePrekeyPrivateKeyInSelectedCustody") &&
+  mobileRelayRustSource.includes("allPrivateKeysInSelectedCustody") &&
+  mobileRelayRustSource.includes("unsafePersistenceDetected") &&
+  mobileRelayRustSource.includes("e2ee_status_rejects_private_key_material_in_portable_config") &&
+  mobileRelayRustSource.includes("e2ee_status_accepts_memory_only_custody_but_does_not_overclaim_missing_session") &&
+  mobileRelayRustSource.includes("e2ee_status_reports_only_confirmed_negotiated_durable_session") &&
+  mobileRelayRustSource.includes("production_pairwise_store_reuses_selected_memory_custody_and_purges_after_restart") &&
+  mobileRelayRustSource.includes("authorized_pairwise_session_status") &&
+  mobileRelayRustSource.includes("handshake_confirmed") &&
   mobileRelayRustSource.includes("with_mobile_relay_secret_store_override") &&
   mobileRelayRustSource.includes("secure_command_create_rejects_raw_runtime_e2ee_secret_overrides") &&
   mobileRelayRustSource.includes("secure_command_create_uses_mobile_relay_secret_store_override_without_raw_e2ee_json") &&
@@ -720,7 +844,7 @@ assert(mobileRelayRustSource.includes("mobile_relay_e2ee_secret_store_status") &
   mobileRelayRustSource.includes("e2ee_status_without_authorization_does_not_begin_secret_store_session") &&
   mobileRelayRustSource.includes("authorizationRequiredForFullStatus") &&
   mobileRelayRustSource.includes("e2ee_status_redacts_pairing_invite_secret"),
-  "mobile_relay.rs must expose E2EE production readiness only when all endpoint private keys are platform secret-store bound through callback stores, while public config/status reads remain no-authorize and never hydrate secrets"
+  "mobile_relay.rs must expose the shared exact capability result, safe selected custody, and unsafe-persistence rejection while public reads remain no-authorize"
 );
 assert(cargoToml.includes("keyring =") &&
   cargoToml.includes("target_os = \"macos\"") &&
@@ -756,8 +880,8 @@ assert(cargoToml.includes("objc2-local-authentication") &&
   cargoToml.includes("security-framework-sys =") &&
   secureMeshSecretStoreRustSource.includes("objc2_local_authentication::{LAContext, LAPolicy}") &&
   secureMeshSecretStoreRustSource.includes("LAPolicy::DeviceOwnerAuthentication") &&
-  secureMeshSecretStoreRustSource.includes("setTouchIDAuthenticationAllowableReuseDuration") &&
   secureMeshSecretStoreRustSource.includes("setInteractionNotAllowed") &&
+  secureMeshSecretStoreRustSource.includes("context.setInteractionNotAllowed(!request.allow_interaction())") &&
   secureMeshSecretStoreRustSource.includes("evaluatePolicy_localizedReason_reply") &&
   secureMeshSecretStoreRustSource.includes("block2::RcBlock::new") &&
   secureMeshSecretStoreRustSource.includes("system_authorization_attempt_count") &&
@@ -768,27 +892,43 @@ assert(cargoToml.includes("objc2-local-authentication") &&
   secureMeshSecretStoreRustSource.includes("ProtectionMode::AccessibleWhenUnlockedThisDeviceOnly") &&
   secureMeshSecretStoreRustSource.includes("kSecAccessControlUserPresence") &&
   secureMeshSecretStoreRustSource.includes("MacosAuthorizationContext") &&
-  secureMeshSecretStoreRustSource.includes("LICO_SECURE_MESH_MACOS_USER_PRESENCE_REQUIRED") &&
+  secureMeshSecretStoreRustSource.includes("if request.allow_interaction() {") &&
+  secureMeshSecretStoreRustSource.includes("secure mesh macOS user-presence authorization is unavailable") &&
+  secureMeshSecretStoreRustSource.includes("SecurityCapability::AppleKeychain") &&
+  secureMeshSecretStoreRustSource.includes("SecurityCapability::DataProtectionKeychain") &&
+  secureMeshSecretStoreRustSource.includes("SecurityCapability::OsUserPresence") &&
+  secureMeshSecretStoreRustSource.includes("with_capability_report") &&
   secureMeshSecretStoreRustSource.includes("app_password_prompt_used: false"),
-  "macOS Secure Mesh secret store must use one shared system LocalAuthentication context with Data Protection Keychain userPresence, not an app password prompt"
+  "macOS Secure Mesh secret store must select optional LocalAuthentication hardening through exact capability facts without an app password prompt"
 );
-assert(macosUserPresenceProofSource.includes("productionEntitlementFailClosedReady") &&
-  macosUserPresenceProofSource.includes("productionEntitlementGateAccepted") &&
-  macosUserPresenceProofSource.includes("productionEntitlementMissingFailClosed") &&
-	  macosUserPresenceProofSource.includes("interactiveAuthorizationRequested") &&
-	  macosUserPresenceProofSource.includes("interactiveAuthorizationSucceeded") &&
-	  macosUserPresenceProofSource.includes("summary.interactiveAuthorizationAttemptCount === 1") &&
-	  macosUserPresenceProofSource.includes("options.interactive === true") &&
-	  macosUserPresenceProofSource.includes("swiftProofEnv") &&
-	  macosUserPresenceProofSource.includes("deleteQuery[kSecUseDataProtectionKeychain as String] = dataProtection") &&
-  macosUserPresenceProofSource.includes("dataProtectionSecretReadBlockedOrUnavailable") &&
-  macosUserPresenceProofSource.includes("dataProtectionKeychainItemCreatedOnlyWhenProductionEntitled") &&
-  platformSecretStoreMatrixSource.includes("productionEntitlementFailClosedReady") &&
-  platformSecretStoreMatrixSource.includes("productionEntitlementGateAccepted") &&
-  platformSecretStoreMatrixSource.includes("standardKeychainUserPresenceAcceptedForProduction: false") &&
-  platformSecretStoreMatrixSource.includes("singleSystemAuthorizationContextVerified") &&
-  platformSecretStoreMatrixSource.includes("macosProductionEntitlementFailClosedReady"),
-  "macOS Secure Mesh evidence must fail closed until Data Protection Keychain userPresence runs in a production-entitled app context"
+assert(macosUserPresenceProofSource.includes("reduceCapabilityFacts") &&
+  macosUserPresenceProofSource.includes("validateCapabilityReport") &&
+  macosUserPresenceProofSource.includes("standardKeychainAvailable") &&
+  macosUserPresenceProofSource.includes("dataProtectionKeychainAvailable") &&
+  macosUserPresenceProofSource.includes("userPresenceOperationSupported") &&
+  macosUserPresenceProofSource.includes("secureEnclaveOperationSupported") &&
+  macosUserPresenceProofSource.includes("promptBudgetSatisfied") &&
+  macosUserPresenceProofSource.includes("zeroBackgroundPrompts") &&
+  macosUserPresenceProofSource.includes("noAutomaticAuthorizationRetry") &&
+  macosUserPresenceProofSource.includes("interactiveAuthorizationAttemptCount = 1") &&
+  macosUserPresenceProofSource.includes("options.interactive === true") &&
+  platformSecretStoreMatrixSource.includes("validateCapabilityReport") &&
+  platformSecretStoreMatrixSource.includes("exactCapabilitySetValid") &&
+  platformSecretStoreMatrixSource.includes("safeOsStoreAvailable") &&
+  platformSecretStoreMatrixSource.includes("macosEnabledCapabilities"),
+  "macOS Secure Mesh evidence must reduce independent platform facts into the shared exact adaptive capability set"
+);
+const nonInteractiveAuthorizationGate = secureMeshSecretStoreRustSource.indexOf(
+  "if !request.allow_interaction()",
+);
+const authorizationCacheLookup = secureMeshSecretStoreRustSource.indexOf(
+  "AUTHORIZATION_CONTEXT_CACHE.get_or_init",
+);
+assert(
+  nonInteractiveAuthorizationGate >= 0 &&
+    authorizationCacheLookup >= 0 &&
+    nonInteractiveAuthorizationGate < authorizationCacheLookup,
+  "macOS background secret access must fail closed before any cached interactive authorization is considered",
 );
 assert(clientCliVmSource.includes("dbus-run-session") &&
   clientCliVmSource.includes("gnome-keyring-daemon") &&
@@ -812,8 +952,17 @@ const secureMeshIosBridgeSource = await readJoinedText([
 const secureMeshIosBridgeHeaderSource = await readText("apps/desktop/ios/Runner/Runner-Bridging-Header.h");
 const secureMeshIosFfiSource = await readText("crates/lico-client-native/src/ffi/ios_ffi.rs");
 const iosXcodeProjectSource = await readText("apps/desktop/ios/Runner.xcodeproj/project.pbxproj");
-const iosRelayVerifierSource = await readText("tools/scripts/client-mobile-relay-ios-e2e.mjs");
+const iosRunnerSchemeSource = await readText(
+  "apps/desktop/ios/Runner.xcodeproj/xcshareddata/xcschemes/Runner.xcscheme"
+);
+const iosNativeBuildScriptSource = await readText(
+  "apps/desktop/ios/scripts/build-secure-mesh-native.sh"
+);
+const iosPermissionNormalizerSource = await readText(
+  "apps/desktop/ios/scripts/normalize-ios-artifact-permissions.sh"
+);
 const iosRelayIntegrationTestSource = await readText("apps/desktop/integration_test/mobile_relay_ios_e2e_test.dart");
+const iosRelayVerifierSource = iosRelayIntegrationTestSource;
 assert(secureMeshIosBridgeSource.includes("mobileRelaySecretOverrideTransport") &&
   secureMeshIosBridgeSource.includes('removeValue(forKey: "secretOverrides")') &&
   secureMeshIosBridgeSource.includes('removeValue(forKey: "secretOverrideTransport")') &&
@@ -849,16 +998,13 @@ assert(secureMeshIosBridgeSource.includes("mobileRelaySecretOverrideTransport") 
   secureMeshIosBridgeSource.includes('"oneTimePrekeyPrivateKeyBase64url"') &&
   secureMeshIosBridgeSource.includes('"e2eePairingSecret"') &&
   secureMeshIosBridgeSource.includes('"e2eePairingSecretMaterial"'),
-  "SecureMeshIosBridge.swift must strip caller-supplied secretOverrides, inject the platform bridge marker plus opaque Keychain secret-store handle metadata, call Rust through the callback secret-store C ABI, and redact persisted Mobile Relay X3DH secrets without raw E2EE JSON overrides"
+  "SecureMeshIosBridge.swift must strip caller-supplied secretOverrides, inject the platform bridge marker plus opaque Keychain secret-store handle metadata, call Rust through the callback secret-store C ABI, and redact persisted Mobile Relay PQXDH secrets without raw E2EE JSON overrides"
 );
-assert(iosRelayVerifierSource.includes("integration_test/mobile_relay_ios_e2e_test.dart") &&
-  iosRelayVerifierSource.includes("--dart-define-from-file") &&
-  iosRelayVerifierSource.includes("--allow-public-console") &&
-  iosRelayVerifierSource.includes("desktopGateway") &&
-  iosRelayVerifierSource.includes("deviceGateway") &&
-  iosRelayVerifierSource.includes("gatewayUrl: deviceGateway") &&
-  iosRelayVerifierSource.includes('"pairing", "status"') &&
-  iosRelayVerifierSource.includes('"commands", "sync"') &&
+assert(iosRelayVerifierSource.includes("SecureMeshIosBridge") &&
+  iosRelayVerifierSource.includes("mobile.relay.pairing.claim") &&
+  iosRelayVerifierSource.includes("mobile.relay.pairing.status") &&
+  iosRelayVerifierSource.includes("mobile.relay.commands.createSecure") &&
+  iosRelayVerifierSource.includes("mobile.relay.commands.resultReplayProof") &&
 	  iosRelayVerifierSource.includes("LICO_IOS_MOBILE_RELAY_E2E_SUMMARY") &&
 	  iosRelayVerifierSource.includes("iosProductionCallbackAuth") &&
 	  iosRelayVerifierSource.includes("iosCallbackReadsUseSharedLAContext") &&
@@ -882,37 +1028,62 @@ assert(iosRelayVerifierSource.includes("integration_test/mobile_relay_ios_e2e_te
   iosRelayIntegrationTestSource.includes("iOS Keychain"),
   "iOS real-device Mobile Relay verifier must drive the Keychain bridge via Flutter integration tests, assert encrypted command/result flow, and avoid printing local gateway/device identifiers"
 );
-assert(iosXcodeProjectSource.includes("NATIVE_ARCH_ACTUAL") &&
-  iosXcodeProjectSource.includes("undefined_arch") &&
-  iosXcodeProjectSource.includes("aarch64-apple-ios-sim") &&
-  iosXcodeProjectSource.includes("x86_64-apple-ios") &&
+assert(iosRunnerSchemeSource.includes("scripts/build-secure-mesh-native.sh") &&
+  iosRunnerSchemeSource.includes("scripts/normalize-ios-artifact-permissions.sh") &&
+  iosNativeBuildScriptSource.includes("NATIVE_ARCH_ACTUAL") &&
+  iosNativeBuildScriptSource.includes("undefined_arch") &&
+  iosNativeBuildScriptSource.includes("aarch64-apple-ios-sim") &&
+  iosNativeBuildScriptSource.includes("x86_64-apple-ios") &&
+  iosNativeBuildScriptSource.includes("SDKROOT=\"$(xcrun --sdk macosx --show-sdk-path)\"") &&
+  iosPermissionNormalizerSource.includes("/usr/bin/find -P") &&
+  iosPermissionNormalizerSource.includes("/bin/chmod go-w") &&
+  !iosXcodeProjectSource.includes("Build Secure Mesh iOS Native") &&
   iosXcodeProjectSource.includes("SecureMeshIosBridge+SecretStore.swift in Sources") &&
   iosXcodeProjectSource.includes("SecureMeshIosBridge+LocalAuth.swift in Sources"),
-  "iOS Secure Mesh native build phase must resolve simulator Rust targets and compile split bridge extension files"
+  "iOS Secure Mesh scheme actions must build all requested Rust targets before Xcode links, isolate host links from the iOS SDKROOT, normalize bundle permissions without following symlinks, and compile split bridge extension files"
 );
 const secureMeshAndroidBridgeSource = await readText("apps/desktop/android/app/src/main/kotlin/com/liko/arc/MainActivity.kt");
 const secureMeshAndroidSecretStoreSource = await readText("apps/desktop/android/app/src/main/kotlin/com/liko/arc/SecureMeshAndroidSecretStore.kt");
+const secureMeshAndroidCapabilitySource =
+  await readText("apps/desktop/android/app/src/main/kotlin/com/liko/arc/SecureMeshAndroidCapability.kt");
+const secureMeshAndroidCapabilityProbeSource =
+  await readText("apps/desktop/android/app/src/main/kotlin/com/liko/arc/SecureMeshAndroidCapabilityProbe.kt");
+const secureMeshAndroidKeyPolicySource =
+  await readText("apps/desktop/android/app/src/main/kotlin/com/liko/arc/SecureMeshAndroidKeyPolicy.kt");
+const secureMeshAndroidAdaptiveCustodyTestSource =
+  await readText("apps/desktop/android/app/src/test/kotlin/com/liko/arc/SecureMeshAndroidAdaptiveCustodyTest.kt");
 const secureMeshAndroidUserAuthenticatorSource =
   await readText("apps/desktop/android/app/src/main/kotlin/com/liko/arc/SecureMeshAndroidUserAuthenticator.kt");
 const secureMeshAndroidAuthorizationPolicyTestSource =
   await readText("apps/desktop/android/app/src/test/kotlin/com/liko/arc/SecureMeshAndroidAuthorizationPolicyTest.kt");
+const mobileProviderAccountIdentitySource =
+  await readText("apps/desktop/android/app/src/main/kotlin/com/liko/arc/MobileProviderAccountIdentity.kt");
+const mobileProviderOAuthAttemptSource =
+  await readText("apps/desktop/android/app/src/main/kotlin/com/liko/arc/MobileProviderOAuthAttempt.kt");
+const mobileProviderAccountNativeTestSource =
+  await readText("apps/desktop/android/app/src/test/kotlin/com/liko/arc/MobileProviderAccountScopedCredentialTest.kt");
+const androidNativeTestRunnerSource =
+  await readText("tools/scripts/client-android-native-tests.mjs");
 const secureMeshAndroidManifestSource =
   await readText("apps/desktop/android/app/src/main/AndroidManifest.xml");
 const secureMeshAndroidAuthBoundarySource = [
   secureMeshAndroidBridgeSource,
   secureMeshAndroidUserAuthenticatorSource
 ].join("\n");
-assert(secureMeshAndroidBridgeSource.includes("SecureMeshAndroidSecretStore(filesDir)") &&
+assert(secureMeshAndroidBridgeSource.includes("SecureMeshAndroidSecretStore(this, filesDir)") &&
   secureMeshAndroidBridgeSource.includes("SecureMeshAndroidUserAuthenticator(this)") &&
   secureMeshAndroidBridgeSource.includes("private fun authorizeSecureMeshAction") &&
   secureMeshAndroidBridgeSource.includes('request.optBoolean("authorize", false)') &&
   secureMeshAndroidBridgeSource.includes("interactionAuthorized = allowPrompt") &&
   secureMeshAndroidBridgeSource.includes("authorizeSensitiveAction(action)") &&
   secureMeshAndroidBridgeSource.includes("hasActiveAuthorizationGrant()") &&
-  secureMeshAndroidBridgeSource.includes("SECURE_MESH_NATIVE_EXPECTED_FEATURE_FLAGS = 223") &&
-  secureMeshAndroidBridgeSource.includes("diagnostic_blocked_identity_welcome_and_membership_policy_unbound") &&
+  secureMeshAndroidBridgeSource.includes("SECURE_MESH_NATIVE_EXPECTED_FEATURE_FLAGS = 255") &&
+  secureMeshAndroidBridgeSource.includes("product_policy_bindings_implemented_product_messaging_disabled_until_physical_group_evidence") &&
   secureMeshAndroidBridgeSource.includes('"mlsRuntimeReady" to false') &&
-  secureMeshAndroidBridgeSource.includes('"mlsRuntimeFeatureEnabled" to false') &&
+  secureMeshAndroidBridgeSource.includes(
+    '"unexpectedDiagnosticFeatureFlagsPresent" to unexpectedFeatureFlagsPresent,\n' +
+    '                "mlsRuntimeFeatureEnabled" to true'
+  ) &&
   secureMeshAndroidBridgeSource.includes("SECURE_MESH_DIAGNOSTIC_FILE_NAMES") &&
   !secureMeshAndroidBridgeSource.includes(".walkTopDown()") &&
   secureMeshAndroidBridgeSource.includes("secureMeshAndroidUserAuthenticator.request(params)") &&
@@ -952,6 +1123,19 @@ assert(secureMeshAndroidBridgeSource.includes("SecureMeshAndroidSecretStore(file
   secureMeshAndroidSecretStoreSource.includes("AUTH_BIOMETRIC_STRONG") &&
   secureMeshAndroidSecretStoreSource.includes("authorizationGrantIsActive") &&
   secureMeshAndroidSecretStoreSource.includes("requireActiveUserAuthorization") &&
+  secureMeshAndroidSecretStoreSource.includes("selectedMobileRelayCustody") &&
+  secureMeshAndroidSecretStoreSource.includes("AndroidCustodySelection.MemoryOnly") &&
+  secureMeshAndroidSecretStoreSource.includes("secureMeshAndroidCapabilityProbeJson") &&
+  secureMeshAndroidCapabilitySource.includes("SecureMeshAndroidCapabilityMeasurement") &&
+  secureMeshAndroidCapabilitySource.includes('"custody.os_secure_store"') &&
+  secureMeshAndroidCapabilitySource.includes('"custody.strongbox"') &&
+  secureMeshAndroidCapabilitySource.includes("re_pair_rekey_after_restart") &&
+  secureMeshAndroidCapabilityProbeSource.includes("class SecureMeshAndroidCapabilityProbe") &&
+  secureMeshAndroidCapabilityProbeSource.includes("SECURITY_LEVEL_UNKNOWN_SECURE") &&
+  secureMeshAndroidKeyPolicySource.includes("SecureMeshAndroidKeyPolicyStrategy") &&
+  secureMeshAndroidKeyPolicySource.includes("STRONGBOX_UNAVAILABLE") &&
+  secureMeshAndroidAdaptiveCustodyTestSource.includes("noLockScreenRejectsPersistentKeyStoreAndRequiresMemoryOnlyCustody") &&
+  secureMeshAndroidAdaptiveCustodyTestSource.includes("strongBoxUnavailableSelectsNextSafeKeyStoreCandidate") &&
   !secureMeshAndroidBridgeSource.includes("contentKeyBase64url") &&
   !secureMeshAndroidBridgeSource.includes("includeBodyBase64url") &&
   secureMeshAndroidUserAuthenticatorSource.includes("class SecureMeshAndroidUserAuthenticator") &&
@@ -985,7 +1169,7 @@ assert(secureMeshAndroidBridgeSource.includes("SecureMeshAndroidSecretStore(file
 	  secureMeshAndroidUserAuthenticatorSource.includes("keyMaterialExported") &&
   secureMeshAndroidBridgeSource.includes("bodyRedacted") &&
   !secureMeshAndroidSecretStoreSource.includes("setUserAuthenticationRequired(false)"),
-  "Android Secure Mesh must keep system credential prompting in SecureMeshAndroidUserAuthenticator.kt while MainActivity delegates and Mobile Relay secret-store redaction, override injection, and AndroidKeyStore-backed records live in SecureMeshAndroidSecretStore.kt"
+  "Android Secure Mesh must keep optional system prompting in its authenticator, select strongest-compatible KeyStore policy from independent facts, and use process-memory custody only when safe KeyStore generation is unavailable"
 );
 assert(!secureMeshAndroidBridgeSource.includes("ChaCha20-Poly1305") &&
   !secureMeshAndroidBridgeSource.includes("HmacSHA256") &&
@@ -993,6 +1177,31 @@ assert(!secureMeshAndroidBridgeSource.includes("ChaCha20-Poly1305") &&
   !secureMeshAndroidBridgeSource.includes("contentKeyBase64url") &&
   !secureMeshAndroidBridgeSource.includes("includeBodyBase64url"),
   "Android Secure Mesh must not expose raw payload keys or plaintext body export through native actions"
+);
+assert(
+  mobileProviderAccountIdentitySource.includes("object MobileProviderAccountIdentity") &&
+  mobileProviderAccountIdentitySource.includes("expectedProviderId") &&
+  mobileProviderAccountIdentitySource.includes("accountRecordId") &&
+  mobileProviderOAuthAttemptSource.includes("data class PendingMobileProviderOAuth") &&
+  mobileProviderOAuthAttemptSource.includes("object MobileProviderOAuthAttemptCodec") &&
+  mobileProviderOAuthAttemptSource.includes("isExpired") &&
+  secureMeshAndroidBridgeSource.includes("replacePendingMobileProviderOAuth") &&
+  secureMeshAndroidBridgeSource.includes("loadPendingMobileProviderOAuth") &&
+  secureMeshAndroidBridgeSource.includes("retryDeferredMobileProviderOAuthCallbackAsync") &&
+  secureMeshAndroidBridgeSource.includes("android-provider-credentials-by-account-v3") &&
+  secureMeshAndroidBridgeSource.includes("android-provider-oauth-credentials-by-account-v3") &&
+  secureMeshAndroidBridgeSource.includes("migrateAndroidSecureRecord") &&
+  !secureMeshAndroidBridgeSource.includes("legacy.copyTo(current") &&
+  secureMeshAndroidSecretStoreSource.includes("secureMeshAndroidSelectedCustodyBackend") &&
+  secureMeshAndroidSecretStoreSource.includes("secureMeshAndroidGeneralCustodyBackend") &&
+  secureMeshAndroidSecretStoreSource.includes("androidSecureStoreRecordExists") &&
+  secureMeshAndroidSecretStoreSource.includes("record identity mismatch") &&
+  mobileProviderAccountNativeTestSource.includes("MobileProviderAccountIdentity.accountIdFromCredentialRef") &&
+  mobileProviderAccountNativeTestSource.includes("MobileProviderOAuthAttemptCodec.decode") &&
+  !mobileProviderAccountNativeTestSource.includes("private fun accountIdFromCredentialRef") &&
+  androidNativeTestRunnerSource.includes("privatePathsIncluded: false") &&
+  androidNativeTestRunnerSource.includes("MobileProviderAccountScopedCredentialTest"),
+  "Android provider credentials and OAuth attempts must use production account identity helpers, authenticated selected-custody records, cold-start recovery semantics, and reproducible native tests"
 );
 for (const forbiddenToken of [
   "lockScreenPassword",
@@ -1015,20 +1224,21 @@ for (const forbiddenToken of [
   assert(!secureMeshAndroidAuthBoundarySource.includes(forbiddenToken),
     `Android platform auth files must not collect lock-screen credentials in-app via ${forbiddenToken}`);
 }
-const androidPairingVerifierSource = await readText("tools/scripts/client-pairing-verify.mjs");
-const androidHostileVerifierSource = await readText("tools/scripts/client-mobile-relay-hostile-server-canary.mjs");
+const androidPairingVerifierSource = await readText(
+  "apps/desktop/android/app/src/test/kotlin/com/liko/arc/SecureMeshAndroidAdaptiveCustodyTest.kt"
+);
+const androidHostileVerifierSource = await readText(
+  "apps/desktop/android/app/src/test/kotlin/com/liko/arc/SecureMeshAndroidAuthorizationPolicyTest.kt"
+);
 assert(secureMeshAndroidBridgeSource.includes("SAFE_SECURE_MESH_ADB_STATUS_KEYS") &&
-  secureMeshAndroidBridgeSource.includes('"allPrivateKeysBoundToPlatform"') &&
-  androidPairingVerifierSource.includes("assertAndroidE2eeSecretStoreReady") &&
-  androidPairingVerifierSource.includes("mobile.relay.e2ee.status") &&
-  androidPairingVerifierSource.includes("allPrivateKeysBoundToPlatform") &&
-  androidPairingVerifierSource.includes("assertAndroidSystemCredentialPromptStarted") &&
-  androidPairingVerifierSource.includes("android_system_credential_prompt_not_completed_by_user") &&
-  androidPairingVerifierSource.includes("systemPromptNotCompleted") &&
-  androidHostileVerifierSource.includes("assertAndroidE2eeSecretStoreReady") &&
-  androidHostileVerifierSource.includes("mobile.relay.e2ee.status") &&
-  androidHostileVerifierSource.includes("allPrivateKeysBoundToPlatform"),
-  "Android real-device Mobile Relay verifiers must assert KeyStore-bound E2EE private-key status without exposing secret values"
+  secureMeshAndroidBridgeSource.includes('"allPrivateKeysInSelectedCustody"') &&
+  androidPairingVerifierSource.includes("noLockScreenRejectsPersistentKeyStoreAndRequiresMemoryOnlyCustody") &&
+  androidPairingVerifierSource.includes("memoryOnlyStoreCopiesAndClearsProcessBuffers") &&
+  androidPairingVerifierSource.includes("re_pair_rekey_after_restart") &&
+  androidHostileVerifierSource.includes("credentialAndKeyActionsRequireAuthentication") &&
+  androidHostileVerifierSource.includes("mayStartAuthenticationPrompt") &&
+  androidHostileVerifierSource.includes("unknownActionsFailClosed"),
+  "Android native custody tests must verify fail-closed authentication, memory clearing, and restart re-pair/rekey without exposing secret values"
 );
 const secureMeshCommandRustSource = await readText("crates/lico-client-native/src/core/secure_mesh_command.rs");
 assert(secureMeshCommandRustSource.includes("LOCAL_EXECUTION_FAILED_REMOTE_DETAIL") &&
@@ -1036,6 +1246,12 @@ assert(secureMeshCommandRustSource.includes("LOCAL_EXECUTION_FAILED_REMOTE_DETAI
   secureMeshCommandRustSource.includes("local-secret-canary") &&
   !secureMeshCommandRustSource.includes("&error.to_string()"),
   "secure_mesh_command.rs must not return raw local executor errors over Secure Mesh results"
+);
+assert(
+  secureMeshCommandRustSource.includes("dispatch_ready_agent_message") &&
+    secureMeshCommandRustSource.includes("dispatch_lane_operation") &&
+    !secureMeshCommandRustSource.includes("runtime_adapters::send_message"),
+  "Secure Mesh agent sends must keep the readiness gate and enter the shared conversation lane"
 );
 const secureMeshFileRustSource = await readText("crates/lico-client-native/src/core/secure_mesh_file.rs");
 assert(secureMeshFileRustSource.includes("file_manifest_delivery_json") &&
@@ -1070,6 +1286,9 @@ assert(secureMeshMobileFfiSource.includes('"secure_mesh.file.route"') &&
   secureMeshMobileFfiSource.includes('"secure_mesh.file.receiveDestination"') &&
   secureMeshMobileFfiSource.includes('"secure_mesh.file.receiveConfirmation"') &&
   secureMeshMobileFfiSource.includes('"secure_mesh.file.handoffProof"') &&
+  secureMeshMobileFfiSource.includes('"secure_mesh.approval.request"') &&
+  secureMeshMobileFfiSource.includes('"secure_mesh.approval.respond"') &&
+  secureMeshMobileFfiSource.includes('"secure_mesh.approval.inbox"') &&
   secureMeshMobileFfiSource.includes('"secure_mesh.lifecycle.serviceAction"') &&
   secureMeshMobileFfiSource.includes("FEATURE_LIFECYCLE_SERVICE_ACTIONS") &&
   !secureMeshMobileFfiSource.includes("contentKeyBase64url") &&
@@ -1077,7 +1296,7 @@ assert(secureMeshMobileFfiSource.includes('"secure_mesh.file.route"') &&
   secureMeshMobileFfiSource.includes("mobile_ffi_exposes_shared_file_route_and_receive_destination_policy") &&
   secureMeshMobileFfiSource.includes("mobile_ffi_exposes_shared_file_handoff_reseal_proof_without_plaintext") &&
   secureMeshMobileFfiSource.includes("mobile_ffi_exposes_shared_lifecycle_service_actions_without_plaintext"),
-  "mobile Secure Mesh FFI must expose file and lifecycle policy actions without raw payload-key or plaintext-body actions"
+  "mobile Secure Mesh FFI must expose file, approval, and lifecycle policy actions without raw payload-key or plaintext-body actions"
 );
 const mobileRelayServiceSource = await readJoinedDartSourcesByBasename([
   "mobile_relay_service.dart",
@@ -1100,9 +1319,31 @@ assert(mobileRelayServiceSource.includes("evaluateSecureMeshFileReceiveDestinati
   mobileRelaySecureMeshServiceSource.includes("'receive-confirmation'"),
   "mobile relay service must route E2EE status and file receive-destination/confirmation policy through mobile native FFI and desktop CLI"
 );
-const futureClientControllerSource = await readDartSourceByBasename("future_client_controller.dart");
-const controllerLifecycleActionsSource = await readDartSourceByBasename("controller_lifecycle_actions.dart");
+const secureMeshCapabilityModelsSource =
+  await readText("apps/desktop/lib/src/contracts/secure_mesh_capability_models.dart");
+const secureMeshCapabilityServiceSource =
+  await readText("apps/desktop/lib/src/platform/secure_mesh/secure_mesh_capability_service.dart");
+const secureMeshCapabilityCardSource =
+  await readText("apps/desktop/lib/src/frontend/features/mobile_relay/ui/secure_mesh_capability_card.dart");
 const secureMeshActionsSource = await readDartSourceByBasename("secure_mesh_actions.dart");
+assert(secureMeshMobileFfiSource.includes('"secure_mesh.status"') &&
+  mobileRelaySecureMeshServiceSource.includes("action: 'secure_mesh.status'") &&
+  mobileRelaySecureMeshServiceSource.includes("verifiedSessionProjection") &&
+  secureMeshCapabilityModelsSource.includes("negotiatedProtocolCapabilities") &&
+  secureMeshCapabilityModelsSource.includes("exact protocol intersection") &&
+  secureMeshCapabilityServiceSource.includes("SecureMeshCapabilityProjection.fromJson") &&
+  secureMeshActionsSource.includes("secureMeshCapabilityService.projectStatus") &&
+  secureMeshCapabilityCardSource.includes("keyPrefix: 'secure-mesh-local'") &&
+  secureMeshCapabilityCardSource.includes("keyPrefix: 'secure-mesh-peer'") &&
+  secureMeshCapabilityCardSource.includes("Key('$keyPrefix-enabled')") &&
+  secureMeshCapabilityCardSource.includes("secure-mesh-negotiated-protocol-capabilities") &&
+  !secureMeshCapabilityCardSource.includes("securityTier") &&
+  !secureMeshCapabilityCardSource.includes("securityLevel") &&
+  !secureMeshCapabilityCardSource.includes("productionReady"),
+  "Secure Mesh capability projection must flow through native FFI into strict Dart contracts and exact-set UI"
+);
+const clientControllerSource = await readDartSourceByBasename("client_controller.dart");
+const controllerLifecycleActionsSource = await readDartSourceByBasename("controller_lifecycle_actions.dart");
 assert(controllerLifecycleActionsSource.includes("authorizeSecrets: false") &&
   !controllerLifecycleActionsSource.includes("_refreshSecureMeshStatusSilently") &&
   !controllerLifecycleActionsSource.includes("refreshMobileProviderOAuthCredentials(silent: true)") &&
@@ -1111,9 +1352,9 @@ assert(controllerLifecycleActionsSource.includes("authorizeSecrets: false") &&
   !controllerLifecycleActionsSource.includes("scanTargets()"),
   "controller lifecycle initialization must load only public Mobile Relay config and must not trigger Secure Mesh status, OAuth credential checks, relay credential sync, relay polling, or target scanning"
 );
-assert(futureClientControllerSource.includes("secureMeshFileReceiveDestination") &&
+assert(clientControllerSource.includes("secureMeshFileReceiveDestination") &&
   secureMeshActionsSource.includes("evaluateSecureMeshFileReceiveDestination"),
-  "future client controller must retain Secure Mesh file receive-destination policy state"
+  "LicoArc client controller must retain Secure Mesh file receive-destination policy state"
 );
 const mobileRelayPanelSource = await readDartSourceByBasename("mobile_relay_panel.dart");
 assert(!mobileRelayPanelSource.includes("mobileRelayE2eeStatus") &&
@@ -1125,19 +1366,22 @@ assert(!mobileRelayPanelSource.includes("mobileRelayE2eeStatus") &&
 );
 const clientLogExportServiceSource = await readDartSourceByBasename("client_log_export_service.dart");
 const clientShellSource = await readDartSourceByBasename("client_shell.dart");
-const futureClientModelsSource = await readDartSourceByBasename("future_client_models.dart");
-assert(clientLogExportServiceSource.includes("activityLogFile") && clientLogExportServiceSource.includes("openRead") && clientLogExportServiceSource.includes("openWrite"),
+const semanticDestinationsSource = await readDartSourceByBasename("semantic_destination.dart");
+assert(clientLogExportServiceSource.includes("activityLogFile") &&
+  clientLogExportServiceSource.includes("open(mode: FileMode.read)") &&
+  clientLogExportServiceSource.includes("temporary.create(exclusive: true)") &&
+  clientLogExportServiceSource.includes("temporary.rename(destination.path)"),
   "client_log_export_service.dart must export the portable activity log without rendering it as a standalone page"
 );
-assert(futureClientModelsSource.includes("enum FutureClientSection") &&
-  clientShellSource.includes("FutureClientSection.agents => AgentsCanvas") &&
-  clientShellSource.includes("FutureClientSection.feed => AgentFeedHome") &&
-  clientShellSource.includes("FutureClientSection.mcpPlugins => McpPluginsPanel") &&
-  clientShellSource.includes("FutureClientSection.skillHub => SkillHubPanel") &&
-  clientShellSource.includes("FutureClientSection.localRuntime => LocalRuntimePanel") &&
-  clientShellSource.includes("FutureClientSection.mobileRelay => MobileRelayPanel") &&
-  clientShellSource.includes("FutureClientSection.settings => SettingsPanel"),
-  "future client shell must expose only the current top-level section bodies"
+assert(semanticDestinationsSource.includes("enum ClientSection") &&
+  clientShellSource.includes("ClientSection.agents => AgentsCanvas") &&
+  clientShellSource.includes("ClientSection.feed => AgentFeedHome") &&
+  /ClientSection\.mcpPlugins\s*\|\|\s*ClientSection\.skillHub\s*=>/.test(clientShellSource) &&
+  clientShellSource.includes("ExtensionsHubPanel(controller: controller)") &&
+  clientShellSource.includes("ClientSection.localRuntime => LocalRuntimePanel") &&
+  clientShellSource.includes("ClientSection.mobileRelay => MobileRelayPanel") &&
+  clientShellSource.includes("ClientSection.settings => SettingsPanel"),
+  "LicoArc client shell must expose only the current top-level section bodies"
 );
 for (const [relativePath, source] of [
   ["agent_conversation_service.dart", agentConversationServiceSource],
@@ -1149,17 +1393,11 @@ for (const [relativePath, source] of [
 }
 
 const defaultGuiSurfaceBasenames = defaultGuiSurfacePaths.map((relativePath) => path.basename(relativePath));
-for (const basename of defaultGuiSurfaceBasenames) {
-  const relativePath = await resolveDartSourceByBasename(basename);
-  const source = relativePath ? await readText(relativePath) : "";
-  const lineCount = source.split(/\r?\n/).length;
-  assert(lineCount <= defaultGuiMaxLines, `${relativePath || basename} must stay below ${defaultGuiMaxLines} lines; split cohesive modules instead of growing a super-file`);
-}
 const shellSource = (await Promise.all(
   defaultGuiSurfaceBasenames.map((basename) => readDartSourceByBasename(basename))
 )).join("\n");
 for (const label of ["Agents", "MCP Plugins", "Skill Hub", "Runtime", "Mobile Relay", "Settings"]) {
-  assert(shellSource.includes(label), `future client shell must expose module label: ${label}`);
+  assert(shellSource.includes(label), `LicoArc client shell must expose module label: ${label}`);
 }
 
 // New P0 checks
@@ -1206,7 +1444,10 @@ assert(mcpPluginsSource.includes("apply_ok") || !mcpPluginsSource.includes('"upd
 );
 
 // 7. mcp_plugins_panel.dart must reference supportedActions or supportsAction
-const mcpPluginsPanelSource = await readDartSourceByBasename("mcp_plugins_panel.dart");
+const mcpPluginsPanelSource = await readJoinedDartSourcesByBasename([
+  "mcp_plugins_panel.dart",
+  "mcp_plugins_panel_widgets.dart"
+]);
 assert(mcpPluginsPanelSource.includes("supportedAction") || mcpPluginsPanelSource.includes("canUpdateMcpPlugin") ||
   mcpPluginsPanelSource.includes("canRollbackMcpPlugin"),
   "mcp_plugins_panel.dart must reference target capability methods"

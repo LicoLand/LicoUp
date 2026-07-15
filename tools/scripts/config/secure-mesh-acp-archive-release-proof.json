@@ -1,0 +1,82 @@
+{
+  "schemaVersion": "licolite.secure-mesh.acp-archive-release-proof-config.v1",
+  "reportOutput": "build/reports/secure-mesh-acp-archive-release-proof.json",
+  "sourceChecks": [
+    {
+      "id": "semantic-archive-privacy-defaults-hide-raw",
+      "file": "crates/lico-client-native/src/domain/conversation_semantic.rs",
+      "tokens": [
+        "privacy_defaults",
+        "\"defaultView\": \"thread\"",
+        "\"hideRawInDefaultView\": true",
+        "\"hideAuditInDefaultView\": true",
+        "\"redactPaths\": true",
+        "\"redactTokens\": true",
+        "\"redactFullCommandPayloads\": true",
+        "Default view: **thread**",
+        "## Raw evidence (diagnostics)"
+      ]
+    },
+    {
+      "id": "flutter-models-preserve-layer-separation",
+      "file": "apps/desktop/lib/src/contracts/agent_conversation_models.dart",
+      "tokens": [
+        "AgentSemanticConversation",
+        "threadMessages",
+        "executionMessages",
+        "hasDiagnostics",
+        "rawEvidence"
+      ]
+    },
+    {
+      "id": "workspace-hides-raw-behind-diagnostics",
+      "file": "apps/desktop/lib/src/frontend/features/agents/ui/agent_conversation_workspace.dart",
+      "tokens": [
+        "_ConversationDiagnosticsPanel",
+        "conversation-diagnostics",
+        "hasDiagnostics",
+        "rawEvidence"
+      ]
+    },
+    {
+      "id": "architecture-enforces-semantic-layers",
+      "file": "apps/desktop/scripts/verify-client-architecture.mjs",
+      "tokens": [
+        "conversation_semantic.rs must own the canonical semantic conversation layers",
+        "Flutter conversation models must preserve semantic layers without flattening authority",
+        "workspace must render shared semantic layers without per-provider UI forks",
+        "includes(\"\\\"thread\\\"\")",
+        "includes(\"\\\"execution\\\"\")",
+        "includes(\"\\\"artifacts\\\"\")",
+        "includes(\"\\\"audit\\\"\")",
+        "includes(\"\\\"raw\\\"\")"
+      ]
+    },
+    {
+      "id": "acp-archive-layer-is-protected-payload-class",
+      "file": "crates/lico-client-native/src/core/secure_mesh_acp.rs",
+      "tokens": [
+        "ArchiveLayer",
+        "archive_layer",
+        "is_protected",
+        "reject_plaintext_acp_protected_payload_relay"
+      ]
+    },
+    {
+      "id": "release-cli-proof-covers-file-receive-without-auto-open",
+      "file": "tools/scripts/client-secure-mesh-release-cli-proof.mjs",
+      "tokens": [
+        "fileReceiveConfirmationReady",
+        "autoPreviewEnabled",
+        "autoIngestionEnabled",
+        "fileRouteReady",
+        "fileReceiveDestinationReady"
+      ]
+    }
+  ],
+  "nativeTestFilters": [
+    "adapters_emit_semantic_layers_with_raw_evidence_refs",
+    "secure_mesh_acp_payload_classes_cover_protected_taxonomy",
+    "secure_mesh_acp_plaintext_protected_payload_relay_is_blocked"
+  ]
+}

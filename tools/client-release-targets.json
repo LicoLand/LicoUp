@@ -1,0 +1,130 @@
+{
+  "schemaVersion": "licolite.client-release-target-catalog.v2",
+  "targets": [
+    {
+      "id": "windows-x64",
+      "platform": "windows",
+      "osFamily": "windows",
+      "arch": "x64",
+      "supported": true,
+      "releaseSupported": false,
+      "releaseBlockers": [
+        "windows_native_host_receipt_pending",
+        "windows_github_release_consumer_verification_pending"
+      ],
+      "versions": ["10", "11"],
+      "installerStrategy": "msix-or-portable-replacement",
+      "builder": { "kind": "desktop-package-client", "platform": "windows" }
+    },
+    {
+      "id": "windows-arm64",
+      "platform": "windows",
+      "osFamily": "windows",
+      "arch": "arm64",
+      "supported": false,
+      "releaseSupported": false,
+      "blockers": ["flutter_windows_arm64_upstream_unavailable"],
+      "releaseBlockers": ["flutter_windows_arm64_upstream_unavailable"],
+      "versions": ["10", "11"],
+      "installerStrategy": "msix-or-portable-replacement",
+      "builder": { "kind": "unavailable", "platform": "windows" }
+    },
+    {
+      "id": "macos-x64",
+      "platform": "macos",
+      "osFamily": "macos",
+      "arch": "x64",
+      "supported": true,
+      "releaseSupported": false,
+      "releaseBlockers": ["client_release_closure_not_implemented"],
+      "versions": ["13", "14", "15"],
+      "installerStrategy": "app-bundle-replacement",
+      "builder": { "kind": "desktop-package-client", "platform": "macos" }
+    },
+    {
+      "id": "macos-arm64",
+      "platform": "macos",
+      "osFamily": "macos",
+      "arch": "arm64",
+      "supported": true,
+      "releaseSupported": true,
+      "releaseBlockers": [],
+      "versions": ["13", "14", "15"],
+      "installerStrategy": "app-bundle-replacement",
+      "builder": { "kind": "desktop-package-client", "platform": "macos" }
+    },
+    {
+      "id": "linux-glibc-x64",
+      "platform": "linux",
+      "osFamily": "linux-glibc",
+      "arch": "x64",
+      "supported": true,
+      "releaseSupported": false,
+      "releaseBlockers": ["client_release_closure_not_implemented"],
+      "distros": ["debian", "ubuntu", "arch", "manjaro", "rhel", "rocky", "alma", "centos-stream", "fedora", "opensuse"],
+      "installerStrategy": "appimage-deb-rpm-or-tar",
+      "builder": { "kind": "linux-bundle", "libc": "glibc" }
+    },
+    {
+      "id": "linux-glibc-arm64",
+      "platform": "linux",
+      "osFamily": "linux-glibc",
+      "arch": "arm64",
+      "supported": true,
+      "releaseSupported": true,
+      "releaseBlockers": [],
+      "distros": ["debian", "ubuntu", "arch", "manjaro", "rhel", "rocky", "alma", "centos-stream", "fedora", "opensuse"],
+      "installerStrategy": "appimage-deb-rpm-or-tar",
+      "builder": { "kind": "linux-bundle", "libc": "glibc" }
+    },
+    {
+      "id": "linux-musl-x64",
+      "platform": "linux",
+      "osFamily": "linux-musl",
+      "arch": "x64",
+      "supported": true,
+      "releaseSupported": false,
+      "releaseBlockers": ["client_release_closure_not_implemented"],
+      "distros": ["alpine"],
+      "installerStrategy": "appimage-or-tar",
+      "builder": { "kind": "linux-bundle", "libc": "musl" }
+    },
+    {
+      "id": "linux-musl-arm64",
+      "platform": "linux",
+      "osFamily": "linux-musl",
+      "arch": "arm64",
+      "supported": true,
+      "releaseSupported": false,
+      "releaseBlockers": ["client_release_closure_not_implemented"],
+      "distros": ["alpine"],
+      "installerStrategy": "appimage-or-tar",
+      "builder": { "kind": "linux-bundle", "libc": "musl" }
+    },
+    {
+      "id": "android-arm64",
+      "platform": "android",
+      "osFamily": "android",
+      "arch": "arm64",
+      "supported": true,
+      "releaseSupported": true,
+      "releaseBlockers": [],
+      "deviceClass": "physical-phone",
+      "installerStrategy": "apk-channel",
+      "builder": { "kind": "android-apk", "targetPlatform": "android-arm64" }
+    },
+    {
+      "id": "ios-arm64",
+      "platform": "ios",
+      "osFamily": "ios",
+      "arch": "arm64",
+      "supported": false,
+      "releaseSupported": false,
+      "releaseBlockers": ["client_release_builder_unavailable"],
+      "deviceClass": "physical-phone",
+      "installerStrategy": "ipa-channel",
+      "builder": { "kind": "unavailable" },
+      "blockers": ["client_release_builder_unavailable"]
+    }
+  ]
+}
