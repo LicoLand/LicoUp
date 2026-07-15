@@ -10,7 +10,4 @@ Widget buildStudioControlPanelDestination(
 ) => StudioDestinationFrame(
   data: data,
   expectedDestination: ClientSection.controlPanel,
-  icon: Icons.dashboard_customize_outlined,
-  dockPlacement: StudioDestinationDockPlacement.top,
-  accent: StudioDestinationAccent.primary,
 );

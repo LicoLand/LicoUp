@@ -5,8 +5,84 @@ import 'package:flutter/foundation.dart';
 /// Supported routing policy schema version.
 const int routingPolicySchemaVersion = 2;
 
+/// Policy values with executable semantics in the current routing engine.
+/// Accepting other values would silently misrepresent planner behavior.
+const Set<String> routingPolicySupportedStrategies = {
+  'priority-fallback',
+  'serial-all',
+  'parallel-all',
+  'coordinator-workers',
+};
+const Set<String> routingPolicySupportedMatchModes = {'role-first'};
+const Set<String> routingPolicySupportedStaleBehaviors = {'conservative-skip'};
+const Set<String> routingPolicySupportedSwitchTriggers = {
+  'policy-reload',
+  'allowance-exhausted',
+  'circuit-broken',
+  'readiness-lost',
+};
+
+/// Fail-closed disposition used by `priority-fallback` dispatch.
+///
+/// A retry on another agent is safe only when the adapter explicitly states
+/// both that the failure is transient and that the first request's outcome is
+/// known. Error-code spelling alone is never enough to authorize fallback.
+enum RoutingDispatchFailureDisposition {
+  none,
+  transientKnown,
+  terminal,
+  unknownOutcome,
+}
+
+@immutable
+class RoutingDispatchFailureFacts {
+  const RoutingDispatchFailureFacts({
+    required this.ok,
+    required this.errorCode,
+    required this.transient,
+    required this.outcomeKnown,
+  });
+
+  factory RoutingDispatchFailureFacts.fromEnvelope({
+    required bool ok,
+    required String errorCode,
+    required Map<String, dynamic> envelope,
+  }) {
+    final nested = envelope['error'];
+    final error = nested is Map
+        ? Map<String, dynamic>.from(nested)
+        : const <String, dynamic>{};
+    return RoutingDispatchFailureFacts(
+      ok: ok,
+      errorCode: errorCode.trim().toLowerCase(),
+      transient: envelope['transient'] == true || error['transient'] == true,
+      outcomeKnown:
+          envelope['outcomeKnown'] == true || error['outcomeKnown'] == true,
+    );
+  }
+
+  final bool ok;
+  final String errorCode;
+  final bool transient;
+  final bool outcomeKnown;
+
+  RoutingDispatchFailureDisposition get disposition {
+    if (ok) {
+      return RoutingDispatchFailureDisposition.none;
+    }
+    if (!outcomeKnown) {
+      return RoutingDispatchFailureDisposition.unknownOutcome;
+    }
+    if (transient) {
+      return RoutingDispatchFailureDisposition.transientKnown;
+    }
+    return RoutingDispatchFailureDisposition.terminal;
+  }
+}
+
 /// Default empty policy returned when no policy file exists yet.
-const RoutingPolicyDocument emptyRoutingPolicyDocument = RoutingPolicyDocument();
+const RoutingPolicyDocument emptyRoutingPolicyDocument =
+    RoutingPolicyDocument();
 
 /// Field names that must never appear in operator-owned policy documents.
 const Set<String> routingPolicyForbiddenCredentialKeys = {
@@ -75,6 +151,9 @@ class RoutingPolicyDocument {
 class RoutingPolicyAgent {
   const RoutingPolicyAgent({
     required this.id,
+    this.modelName = '',
+    this.reasoningEffort = '',
+    this.coordinator = false,
     this.roles = const [],
     this.capabilities = const [],
     this.priority = 0,
@@ -83,6 +162,9 @@ class RoutingPolicyAgent {
   });
 
   final String id;
+  final String modelName;
+  final String reasoningEffort;
+  final bool coordinator;
   final List<String> roles;
   final List<String> capabilities;
   final int priority;
@@ -92,6 +174,9 @@ class RoutingPolicyAgent {
   Map<String, dynamic> toJson() {
     return {
       'id': id,
+      'modelName': modelName,
+      'reasoningEffort': reasoningEffort,
+      'coordinator': coordinator,
       'roles': roles,
       'capabilities': capabilities,
       'priority': priority,
@@ -175,10 +260,7 @@ class RoutingCircuitBreakerConfig {
   final int cooldownSeconds;
 
   Map<String, dynamic> toJson() {
-    return {
-      'allowedFails': allowedFails,
-      'cooldownSeconds': cooldownSeconds,
-    };
+    return {'allowedFails': allowedFails, 'cooldownSeconds': cooldownSeconds};
   }
 }
 
@@ -325,6 +407,12 @@ abstract class RoutingPolicyStore {
   /// if no file exists yet.
   Future<RoutingPolicyDocument> load();
 
+  /// Atomically persist and activate a validated policy snapshot.
+  Future<void> save(RoutingPolicyDocument policy);
+
+  /// Remove the persisted policy and activate the empty snapshot.
+  Future<void> clear();
+
   /// Start watching the policy directory for changes. On valid change, swaps
   /// the active snapshot and notifies listeners. On invalid change, retains
   /// last good snapshot and reports the validation error.
@@ -402,7 +490,19 @@ RoutingPolicyDocument _parseDocument(
   Map<String, dynamic> json, {
   required String source,
 }) {
-  final schemaVersion = _requireInt(json, 'schemaVersion', path: '/schemaVersion');
+  _rejectUnknownKeys(json, const {
+    'schemaVersion',
+    'id',
+    'label',
+    'agents',
+    'routing',
+    'distillation',
+  }, path: '/');
+  final schemaVersion = _requireInt(
+    json,
+    'schemaVersion',
+    path: '/schemaVersion',
+  );
   if (schemaVersion != routingPolicySchemaVersion) {
     throw _PolicyValidationException(
       path: '/schemaVersion',
@@ -468,16 +568,43 @@ RoutingPolicyDocument _parseDocument(
   );
 }
 
-RoutingPolicyAgent _parseAgent(Map<String, dynamic> json, {required String path}) {
+RoutingPolicyAgent _parseAgent(
+  Map<String, dynamic> json, {
+  required String path,
+}) {
   _rejectCredentialFields(json, path: path);
+  _rejectUnknownKeys(json, const {
+    'id',
+    'modelName',
+    'reasoningEffort',
+    'coordinator',
+    'roles',
+    'capabilities',
+    'priority',
+    'allowanceThreshold',
+    'distillation',
+  }, path: path);
   final id = _requireNonEmptyString(json, 'id', path: '$path/id');
+  final modelName = _optionalString(json, 'modelName');
+  final reasoningEffort = _optionalString(json, 'reasoningEffort');
+  final coordinator = _optionalBool(
+    json,
+    'coordinator',
+    fallback: false,
+    path: '$path/coordinator',
+  );
   final roles = _stringList(json, 'roles', path: '$path/roles');
   final capabilities = _stringList(
     json,
     'capabilities',
     path: '$path/capabilities',
   );
-  final priority = _optionalInt(json, 'priority', fallback: 0, path: '$path/priority');
+  final priority = _optionalInt(
+    json,
+    'priority',
+    fallback: 0,
+    path: '$path/priority',
+  );
   if (priority < 0) {
     throw _PolicyValidationException(
       path: '$path/priority',
@@ -503,6 +630,9 @@ RoutingPolicyAgent _parseAgent(Map<String, dynamic> json, {required String path}
 
   return RoutingPolicyAgent(
     id: id,
+    modelName: modelName,
+    reasoningEffort: reasoningEffort,
+    coordinator: coordinator,
     roles: List.unmodifiable(roles),
     capabilities: List.unmodifiable(capabilities),
     priority: priority,
@@ -515,12 +645,24 @@ RoutingAllowanceThreshold _parseAllowanceThreshold(
   Map<String, dynamic> json, {
   required String path,
 }) {
+  _rejectUnknownKeys(json, const {'kind', 'minimum'}, path: path);
   final kind = _optionalString(json, 'kind');
-  final minimum = _optionalInt(json, 'minimum', fallback: 0, path: '$path/minimum');
+  final minimum = _optionalInt(
+    json,
+    'minimum',
+    fallback: 0,
+    path: '$path/minimum',
+  );
   if (minimum < 0) {
     throw _PolicyValidationException(
       path: '$path/minimum',
       message: 'minimum must be >= 0.',
+    );
+  }
+  if (minimum > 0 && kind.isEmpty) {
+    throw _PolicyValidationException(
+      path: '$path/kind',
+      message: 'kind is required when minimum is greater than zero.',
     );
   }
   return RoutingAllowanceThreshold(kind: kind, minimum: minimum);
@@ -530,6 +672,11 @@ RoutingAgentDistillation _parseAgentDistillation(
   Map<String, dynamic> json, {
   required String path,
 }) {
+  _rejectUnknownKeys(json, const {
+    'distiller',
+    'maxLength',
+    'preserveFields',
+  }, path: path);
   final distiller = _optionalString(json, 'distiller', fallback: 'self');
   final maxLength = _optionalInt(
     json,
@@ -560,6 +707,14 @@ RoutingPolicyRouting _parseRouting(
   required String path,
 }) {
   _rejectCredentialFields(json, path: path);
+  _rejectUnknownKeys(json, const {
+    'strategy',
+    'matchMode',
+    'staleBehavior',
+    'allowStaleUsage',
+    'circuitBreaker',
+    'switchPolicy',
+  }, path: path);
   final strategy = _optionalString(
     json,
     'strategy',
@@ -576,6 +731,21 @@ RoutingPolicyRouting _parseRouting(
     'allowStaleUsage',
     fallback: false,
     path: '$path/allowStaleUsage',
+  );
+  _requireSupportedValue(
+    strategy,
+    routingPolicySupportedStrategies,
+    path: '$path/strategy',
+  );
+  _requireSupportedValue(
+    matchMode,
+    routingPolicySupportedMatchModes,
+    path: '$path/matchMode',
+  );
+  _requireSupportedValue(
+    staleBehavior,
+    routingPolicySupportedStaleBehaviors,
+    path: '$path/staleBehavior',
   );
 
   final breakerRaw = json['circuitBreaker'];
@@ -608,6 +778,10 @@ RoutingCircuitBreakerConfig _parseCircuitBreaker(
   Map<String, dynamic> json, {
   required String path,
 }) {
+  _rejectUnknownKeys(json, const {
+    'allowedFails',
+    'cooldownSeconds',
+  }, path: path);
   final allowedFails = _optionalInt(
     json,
     'allowedFails',
@@ -642,6 +816,10 @@ RoutingSwitchPolicy _parseSwitchPolicy(
   Map<String, dynamic> json, {
   required String path,
 }) {
+  _rejectUnknownKeys(json, const {
+    'minimumIntervalSeconds',
+    'triggerOn',
+  }, path: path);
   final minimumIntervalSeconds = _optionalInt(
     json,
     'minimumIntervalSeconds',
@@ -662,6 +840,13 @@ RoutingSwitchPolicy _parseSwitchPolicy(
           'circuit-broken',
           'readiness-lost',
         ];
+  for (var i = 0; i < triggerOn.length; i += 1) {
+    _requireSupportedValue(
+      triggerOn[i],
+      routingPolicySupportedSwitchTriggers,
+      path: '$path/triggerOn/$i',
+    );
+  }
   return RoutingSwitchPolicy(
     minimumIntervalSeconds: minimumIntervalSeconds,
     triggerOn: List.unmodifiable(triggerOn),
@@ -673,6 +858,11 @@ RoutingPolicyDistillation _parseDistillation(
   required String path,
 }) {
   _rejectCredentialFields(json, path: path);
+  _rejectUnknownKeys(json, const {
+    'defaultDistiller',
+    'alternateDistiller',
+    'fidelityContract',
+  }, path: path);
   final defaultDistiller = _optionalString(json, 'defaultDistiller');
   final alternateDistiller = _optionalString(json, 'alternateDistiller');
   final fidelityRaw = json['fidelityContract'];
@@ -693,6 +883,12 @@ RoutingFidelityContract _parseFidelityContract(
   Map<String, dynamic> json, {
   required String path,
 }) {
+  _rejectUnknownKeys(json, const {
+    'requiredSections',
+    'maxPackageLength',
+    'retryOnFailure',
+    'maxRetries',
+  }, path: path);
   final requiredSections = json.containsKey('requiredSections')
       ? _stringList(json, 'requiredSections', path: '$path/requiredSections')
       : const [
@@ -740,7 +936,10 @@ RoutingFidelityContract _parseFidelityContract(
   );
 }
 
-void _rejectCredentialFields(Map<String, dynamic> json, {required String path}) {
+void _rejectCredentialFields(
+  Map<String, dynamic> json, {
+  required String path,
+}) {
   for (final entry in json.entries) {
     final key = entry.key;
     final normalized = key.toLowerCase().replaceAll(' ', '');
@@ -767,6 +966,34 @@ void _rejectCredentialFields(Map<String, dynamic> json, {required String path}) 
         }
       }
     }
+  }
+}
+
+void _rejectUnknownKeys(
+  Map<String, dynamic> json,
+  Set<String> allowed, {
+  required String path,
+}) {
+  for (final key in json.keys) {
+    if (!allowed.contains(key)) {
+      throw _PolicyValidationException(
+        path: path == '/' ? '/$key' : '$path/$key',
+        message: 'Unknown policy field "$key".',
+      );
+    }
+  }
+}
+
+void _requireSupportedValue(
+  String value,
+  Set<String> supported, {
+  required String path,
+}) {
+  if (!supported.contains(value)) {
+    throw _PolicyValidationException(
+      path: path,
+      message: 'Unsupported policy value "$value".',
+    );
   }
 }
 
@@ -947,10 +1174,7 @@ Map<String, dynamic> _requireMapAt(Object? value, {required String path}) {
 }
 
 class _PolicyValidationException implements Exception {
-  const _PolicyValidationException({
-    required this.path,
-    required this.message,
-  });
+  const _PolicyValidationException({required this.path, required this.message});
 
   final String path;
   final String message;

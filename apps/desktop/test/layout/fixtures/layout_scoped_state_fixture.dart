@@ -5,6 +5,7 @@ import 'package:flutter_client/src/contracts/presentation/layout_environment.dar
 import 'package:flutter_client/src/contracts/presentation/layout_profile.dart';
 import 'package:flutter_client/src/contracts/presentation/layout_state_namespace.dart';
 import 'package:flutter_client/src/contracts/presentation/layout_variant.dart';
+import 'package:flutter_client/src/contracts/presentation/semantic_destination.dart';
 import 'package:flutter_client/src/frontend/layout/layout_scope.dart';
 
 /// Builds bounded presentation state for an isolated renderer test without
@@ -13,12 +14,13 @@ LayoutScopedState buildLayoutScopedStateFixture({
   required LayoutProfileDescriptor profile,
   required LayoutRuntimeSurface surface,
   required Iterable<LayoutStateNamespace> stateNamespaces,
+  ClientSection destination = ClientSection.agents,
 }) {
   final destinationCatalog = SemanticDestinationCatalog.current();
   final fixtureProfile = LayoutProfileDescriptor(
     id: profile.id,
-    labelKey: profile.labelKey,
-    descriptionKey: profile.descriptionKey,
+    label: profile.label,
+    description: profile.description,
     styleIdentity: profile.styleIdentity,
     isDefault: true,
     revision: profile.revision,
@@ -46,6 +48,7 @@ LayoutScopedState buildLayoutScopedStateFixture({
   return LayoutScopedState(
     profileId: fixtureProfile.id,
     surface: surface,
+    destination: destination,
     store: LayoutStateStore(catalog),
   );
 }

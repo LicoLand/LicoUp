@@ -7,43 +7,55 @@ import 'package:flutter_client/src/contracts/presentation/layout_state_namespace
 import 'package:flutter_client/src/contracts/presentation/semantic_destination.dart';
 import 'package:flutter_client/src/frontend/layout/layout_visual_tokens.dart';
 
-/// Restricts profile state access to the active profile and runtime surface.
+/// Restricts state access to exactly one profile, surface, and destination.
 final class LayoutScopedState {
   const LayoutScopedState({
     required this.profileId,
     required this.surface,
+    required this.destination,
     required LayoutStateStore store,
   }) : _store = store;
 
   final LayoutProfileId profileId;
   final LayoutRuntimeSurface surface;
+  final ClientSection destination;
   final LayoutStateStore _store;
 
-  LayoutPresentationStateValue? read({
-    required ClientSection destination,
-    required String surfaceId,
-  }) => _store.read(_namespace(destination, surfaceId));
+  bool declares(LayoutStateChannel channel) =>
+      _store.declares(_namespace(channel));
 
-  void write({
-    required ClientSection destination,
-    required String surfaceId,
-    required LayoutPresentationStateValue value,
-  }) => _store.write(_namespace(destination, surfaceId), value);
+  LayoutPresentationStateValue? readIfDeclared(LayoutStateChannel channel) {
+    final namespace = _namespace(channel);
+    return _store.declares(namespace) ? _store.read(namespace) : null;
+  }
 
-  void remove({
-    required ClientSection destination,
-    required String surfaceId,
-  }) => _store.remove(_namespace(destination, surfaceId));
+  bool writeIfDeclared(
+    LayoutStateChannel channel,
+    LayoutPresentationStateValue value,
+  ) {
+    final namespace = _namespace(channel);
+    if (!_store.declares(namespace)) {
+      return false;
+    }
+    _store.write(namespace, value);
+    return true;
+  }
 
-  LayoutStateNamespace _namespace(
-    ClientSection destination,
-    String surfaceId,
-  ) => LayoutStateNamespace(
-    profileId: profileId,
-    surface: surface,
-    destination: destination,
-    surfaceId: surfaceId,
-  );
+  LayoutPresentationStateValue? read(LayoutStateChannel channel) =>
+      _store.read(_namespace(channel));
+
+  void write(LayoutStateChannel channel, LayoutPresentationStateValue value) =>
+      _store.write(_namespace(channel), value);
+
+  void remove(LayoutStateChannel channel) => _store.remove(_namespace(channel));
+
+  LayoutStateNamespace _namespace(LayoutStateChannel channel) =>
+      LayoutStateNamespace(
+        profileId: profileId,
+        surface: surface,
+        destination: destination,
+        channel: channel,
+      );
 }
 
 final class LayoutScope extends InheritedWidget {
@@ -64,12 +76,15 @@ final class LayoutScope extends InheritedWidget {
   final LayoutScopedState state;
 
   static LayoutScope of(BuildContext context) {
-    final scope = context.dependOnInheritedWidgetOfExactType<LayoutScope>();
+    final scope = maybeOf(context);
     if (scope == null) {
       throw StateError('layout_scope_missing');
     }
     return scope;
   }
+
+  static LayoutScope? maybeOf(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<LayoutScope>();
 
   @override
   bool updateShouldNotify(LayoutScope oldWidget) =>
@@ -78,5 +93,6 @@ final class LayoutScope extends InheritedWidget {
       oldWidget.restorationNamespace != restorationNamespace ||
       !identical(oldWidget.tokens, tokens) ||
       oldWidget.state.profileId != state.profileId ||
-      oldWidget.state.surface != state.surface;
+      oldWidget.state.surface != state.surface ||
+      oldWidget.state.destination != state.destination;
 }

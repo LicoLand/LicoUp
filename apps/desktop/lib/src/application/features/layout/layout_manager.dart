@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_client/src/application/features/layout/layout_catalog.dart';
 import 'package:flutter_client/src/contracts/presentation/layout_environment.dart';
 import 'package:flutter_client/src/contracts/presentation/layout_profile.dart';
@@ -13,22 +14,34 @@ final class LayoutManager {
   LayoutManager({
     required LayoutCatalog catalog,
     required PresentationPreferencesRepository preferencesRepository,
+    required PresentationPreferences canonicalFallback,
     required LayoutEnvironment initialEnvironment,
+    LayoutProfileId? preferredDefaultId,
     this.previewTimeout = const Duration(seconds: 12),
   }) : _catalog = catalog,
        _preferencesRepository = preferencesRepository,
+       _preferredDefaultId = preferredDefaultId ?? catalog.defaultProfile.id,
+       _canonicalFallback = canonicalFallback.copyWith(
+         layoutProfileId: preferredDefaultId ?? catalog.defaultProfile.id,
+       ),
        _environment = initialEnvironment,
        _state = LayoutSelectionState(
-         committedId: catalog.defaultProfile.id,
-         effectiveId: catalog.defaultProfile.id,
+         committedId: preferredDefaultId ?? catalog.defaultProfile.id,
+         effectiveId: preferredDefaultId ?? catalog.defaultProfile.id,
          status: LayoutSelectionStatus.loading,
          surface: initialEnvironment.surface,
          viewport: initialEnvironment.viewport,
          operationEpoch: 0,
-       );
+       ) {
+    if (!catalog.containsProfile(_preferredDefaultId)) {
+      throw const FormatException('layout_manager_preferred_default_missing');
+    }
+  }
 
   final LayoutCatalog _catalog;
   final PresentationPreferencesRepository _preferencesRepository;
+  final PresentationPreferences _canonicalFallback;
+  final LayoutProfileId _preferredDefaultId;
   final Duration previewTimeout;
   final Set<LayoutSelectionListener> _listeners = {};
 
@@ -37,7 +50,16 @@ final class LayoutManager {
   PresentationPreferences? _preferences;
   Timer? _previewTimer;
   int _epoch = 0;
+  bool _needsCanonicalPersistence = false;
   bool _disposed = false;
+  Future<void> _preferenceOperationTail = Future<void>.value();
+  Future<void>? _initialization;
+  bool _notifyingListeners = false;
+
+  LayoutCatalog get catalog => _catalog;
+
+  /// Platform-preferred default used for first run, recovery, and reset.
+  LayoutProfileId get preferredDefaultId => _preferredDefaultId;
 
   LayoutSelectionState get state => _state;
 
@@ -56,7 +78,13 @@ final class LayoutManager {
     _listeners.remove(listener);
   }
 
-  Future<void> initialize() async {
+  Future<void> initialize() =>
+      _initialization ??= _enqueuePreferenceOperation(_initialize);
+
+  Future<void> _initialize() async {
+    if (_preferences != null || _disposed) {
+      return;
+    }
     final epoch = _beginOperation();
     _emit(
       LayoutSelectionState(
@@ -76,12 +104,13 @@ final class LayoutManager {
       _preferences = loaded.preferences;
       final selected = loaded.preferences.layoutProfileId;
       final available = _catalog.containsProfile(selected);
-      final committed = available ? selected : _catalog.defaultProfile.id;
+      final committed = available ? selected : _preferredDefaultId;
       final error = loaded.recovered
           ? LayoutSelectionErrorCode.invalidStoredPreference
           : available
           ? null
           : LayoutSelectionErrorCode.unavailableProfile;
+      _needsCanonicalPersistence = error != null;
       if (committed != selected) {
         _preferences = loaded.preferences.copyWith(layoutProfileId: committed);
       }
@@ -100,7 +129,19 @@ final class LayoutManager {
       );
     } on PresentationPreferencesRepositoryException {
       if (_isCurrent(epoch)) {
-        _emitError(LayoutSelectionErrorCode.persistenceFailed, epoch: epoch);
+        _preferences = _canonicalFallback;
+        _needsCanonicalPersistence = true;
+        _emit(
+          LayoutSelectionState(
+            committedId: _preferredDefaultId,
+            effectiveId: _preferredDefaultId,
+            status: LayoutSelectionStatus.error,
+            surface: _environment.surface,
+            viewport: _environment.viewport,
+            operationEpoch: epoch,
+            errorCode: LayoutSelectionErrorCode.persistenceFailed,
+          ),
+        );
       }
     }
   }
@@ -136,7 +177,10 @@ final class LayoutManager {
       if (_isCurrent(epoch) &&
           _state.status == LayoutSelectionStatus.previewing) {
         final timeoutEpoch = _beginOperation();
-        _emitStable(epoch: timeoutEpoch);
+        _emitError(
+          LayoutSelectionErrorCode.previewExpired,
+          epoch: timeoutEpoch,
+        );
       }
     });
     return true;
@@ -178,8 +222,8 @@ final class LayoutManager {
     if (_state.status == LayoutSelectionStatus.committing) {
       return false;
     }
-    final candidate = _catalog.defaultProfile.id;
-    if (_state.committedId == candidate) {
+    final candidate = _preferredDefaultId;
+    if (_state.committedId == candidate && !_needsCanonicalPersistence) {
       final epoch = _beginOperation();
       _emitStable(epoch: epoch);
       return true;
@@ -187,21 +231,76 @@ final class LayoutManager {
     return _commit(candidate);
   }
 
-  void updateEnvironment(LayoutEnvironment environment) {
+  bool updateEnvironment(LayoutEnvironment environment, {bool notify = true}) {
     _requireActive();
+    if (_environment == environment) {
+      return false;
+    }
     _environment = environment;
-    _emit(
-      LayoutSelectionState(
-        committedId: _state.committedId,
-        effectiveId: _state.effectiveId,
-        previewId: _state.previewId,
-        status: _state.status,
-        surface: environment.surface,
-        viewport: environment.viewport,
-        operationEpoch: _state.operationEpoch,
-        errorCode: _state.errorCode,
-      ),
+    final next = LayoutSelectionState(
+      committedId: _state.committedId,
+      effectiveId: _state.effectiveId,
+      previewId: _state.previewId,
+      status: _state.status,
+      surface: environment.surface,
+      viewport: environment.viewport,
+      operationEpoch: _state.operationEpoch,
+      errorCode: _state.errorCode,
     );
+    if (notify) {
+      _emit(next);
+    } else {
+      _state = next;
+    }
+    return true;
+  }
+
+  /// Persists appearance through the same serialized repository as layout.
+  /// The layout state machine remains untouched unless this write also
+  /// canonicalizes a previously recovered preference document.
+  Future<bool> setAppearancePreset(String id) => _updatePresentationPreferences(
+    () => _preferencesRepository.setAppearancePreset(id),
+  );
+
+  /// Persists locale through the same serialized repository as layout.
+  Future<bool> setLocalePreference(String preference) =>
+      _updatePresentationPreferences(
+        () => _preferencesRepository.setLocalePreference(preference),
+      );
+
+  Future<bool> _updatePresentationPreferences(
+    Future<PresentationPreferences> Function() update,
+  ) {
+    _requireInitialized();
+    if (_state.status == LayoutSelectionStatus.committing) {
+      return Future<bool>.value(false);
+    }
+    final canonicalLayoutId = _state.committedId;
+    return _enqueuePreferenceOperation(() async {
+      try {
+        var saved = await update();
+        if (_disposed) {
+          return false;
+        }
+        if (saved.layoutProfileId != canonicalLayoutId) {
+          saved = await _preferencesRepository.setLayoutProfile(
+            canonicalLayoutId,
+          );
+          if (_disposed) {
+            return false;
+          }
+        }
+        _preferences = saved;
+        _needsCanonicalPersistence = false;
+        if (_state.status == LayoutSelectionStatus.error) {
+          final epoch = _beginOperation();
+          _emitStable(epoch: epoch);
+        }
+        return true;
+      } on PresentationPreferencesRepositoryException {
+        return false;
+      }
+    });
   }
 
   Future<bool> _commit(LayoutProfileId candidate) async {
@@ -219,11 +318,14 @@ final class LayoutManager {
       ),
     );
     try {
-      final saved = await _preferencesRepository.setLayoutProfile(candidate);
+      final saved = await _enqueuePreferenceOperation(
+        () => _preferencesRepository.setLayoutProfile(candidate),
+      );
       if (!_isCurrent(epoch)) {
         return false;
       }
       _preferences = saved;
+      _needsCanonicalPersistence = false;
       _emit(
         LayoutSelectionState(
           committedId: candidate,
@@ -245,6 +347,9 @@ final class LayoutManager {
 
   int _beginOperation() {
     _requireActive();
+    if (_notifyingListeners) {
+      throw StateError('layout_manager_listener_reentrancy');
+    }
     _previewTimer?.cancel();
     _previewTimer = null;
     return ++_epoch;
@@ -282,12 +387,42 @@ final class LayoutManager {
       return;
     }
     _state = next;
-    for (final listener in List<LayoutSelectionListener>.of(_listeners)) {
-      listener(next);
+    _notifyingListeners = true;
+    try {
+      for (final listener in List<LayoutSelectionListener>.of(_listeners)) {
+        try {
+          listener(next);
+        } catch (error, stackTrace) {
+          FlutterError.reportError(
+            FlutterErrorDetails(
+              exception: error,
+              stack: stackTrace,
+              library: 'Lico Arc layout manager',
+              context: ErrorDescription(
+                'while notifying a layout selection listener',
+              ),
+            ),
+          );
+        }
+      }
+    } finally {
+      _notifyingListeners = false;
     }
   }
 
   bool _isCurrent(int epoch) => !_disposed && epoch == _epoch;
+
+  Future<T> _enqueuePreferenceOperation<T>(Future<T> Function() operation) {
+    final completer = Completer<T>();
+    _preferenceOperationTail = _preferenceOperationTail.then((_) async {
+      try {
+        completer.complete(await operation());
+      } catch (error, stackTrace) {
+        completer.completeError(error, stackTrace);
+      }
+    });
+    return completer.future;
+  }
 
   void _requireInitialized() {
     _requireActive();

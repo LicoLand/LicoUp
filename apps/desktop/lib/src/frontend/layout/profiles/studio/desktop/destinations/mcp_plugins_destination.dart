@@ -10,7 +10,4 @@ Widget buildStudioMcpPluginsDestination(
 ) => StudioDestinationFrame(
   data: data,
   expectedDestination: ClientSection.mcpPlugins,
-  icon: Icons.extension_outlined,
-  dockPlacement: StudioDestinationDockPlacement.leading,
-  accent: StudioDestinationAccent.primary,
 );

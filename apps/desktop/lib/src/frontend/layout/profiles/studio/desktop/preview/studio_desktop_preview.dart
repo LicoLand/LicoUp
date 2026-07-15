@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'package:flutter_client/src/frontend/layout/layout_palette.dart';
 import 'package:flutter_client/src/frontend/layout/profiles/studio/desktop/tokens/studio_desktop_tokens.dart';
-import 'package:flutter_client/src/frontend/shared/ui/theme.dart';
 
 final class StudioDesktopPreviewMetadata {
   const StudioDesktopPreviewMetadata({
@@ -33,7 +33,7 @@ final class StudioDesktopPreview extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = context.licoColors;
+    final colors = context.layoutPalette;
     return Semantics(
       container: true,
       image: true,
@@ -75,7 +75,7 @@ final class StudioDesktopPreview extends StatelessWidget {
 final class _PreviewRail extends StatelessWidget {
   const _PreviewRail({required this.colors});
 
-  final LicoThemeColors colors;
+  final LayoutPalette colors;
 
   @override
   Widget build(BuildContext context) => ColoredBox(
@@ -129,7 +129,7 @@ final class _PreviewRailItem extends StatelessWidget {
     required this.selected,
   });
 
-  final LicoThemeColors colors;
+  final LayoutPalette colors;
   final double unit;
   final bool selected;
 
@@ -169,7 +169,7 @@ final class _PreviewRailItem extends StatelessWidget {
 final class _PreviewWorkspace extends StatelessWidget {
   const _PreviewWorkspace({required this.colors});
 
-  final LicoThemeColors colors;
+  final LayoutPalette colors;
 
   @override
   Widget build(BuildContext context) => Column(
@@ -226,7 +226,7 @@ final class _PreviewWorkspace extends StatelessWidget {
 final class _PreviewEditor extends StatelessWidget {
   const _PreviewEditor({required this.colors});
 
-  final LicoThemeColors colors;
+  final LayoutPalette colors;
 
   @override
   Widget build(BuildContext context) => ColoredBox(
@@ -271,7 +271,7 @@ final class _PreviewEditor extends StatelessWidget {
 final class _PreviewInspector extends StatelessWidget {
   const _PreviewInspector({required this.colors});
 
-  final LicoThemeColors colors;
+  final LayoutPalette colors;
 
   @override
   Widget build(BuildContext context) => ColoredBox(

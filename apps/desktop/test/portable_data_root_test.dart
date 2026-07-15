@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:flutter_client/src/services/portable_data_root.dart';
+import 'package:flutter_client/src/platform/storage/portable_data_root.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 
@@ -129,6 +129,28 @@ void main() {
     expect(await File('${first.path}/.lico-workspace.json').exists(), isTrue);
   });
 
+  test('first launch creates only the canonical client state root', () async {
+    final directory = await Directory.systemTemp.createTemp(
+      'lico-state-root-reset-',
+    );
+    addTearDown(() => directory.delete(recursive: true));
+
+    final portableData = PortableDataRoot(dataDirectoryOverride: directory);
+    final clientState = await portableData.clientDirectory();
+    final topLevelEntries = await directory
+        .list()
+        .map((entry) => p.basename(entry.path))
+        .toSet();
+
+    expect(clientState.path, p.join(directory.path, 'lico-client'));
+    expect(await clientState.list().isEmpty, isTrue);
+    expect(topLevelEntries, {
+      '.lico-workspace.json',
+      '.lico-workspace.json.lock',
+      'lico-client',
+    });
+  });
+
   test(
     'packaged macOS app uses application support instead of portable env',
     () async {
@@ -145,7 +167,7 @@ void main() {
         environmentOverride: {'LICO_PORTABLE_DIR': envDirectory.path},
         resolvedExecutableOverride: p.join(
           Directory.systemTemp.path,
-          'LicoClient.app',
+          'Arc.app',
           'Contents',
           'MacOS',
           'flutter_client',
@@ -163,4 +185,37 @@ void main() {
       );
     },
   );
+
+  test('mobile app uses application support instead of its bundle', () async {
+    final applicationSupport = await Directory.systemTemp.createTemp(
+      'lico-mobile-application-support-',
+    );
+    final executableDirectory = await Directory.systemTemp.createTemp(
+      'lico-mobile-bundle-',
+    );
+    final envDirectory = await Directory.systemTemp.createTemp(
+      'lico-mobile-env-portable-',
+    );
+    addTearDown(() => applicationSupport.delete(recursive: true));
+    addTearDown(() => executableDirectory.delete(recursive: true));
+    addTearDown(() => envDirectory.delete(recursive: true));
+
+    final portableData = PortableDataRoot(
+      environmentOverride: {'LICO_PORTABLE_DIR': envDirectory.path},
+      resolvedExecutableOverride: p.join(executableDirectory.path, 'Runner'),
+      mobileRuntimeOverride: true,
+      applicationSupportDirectoryResolver: () async => applicationSupport,
+    );
+
+    final resolved = await portableData.dataDirectory();
+
+    expect(resolved.path, p.join(applicationSupport.path, 'portable-data'));
+    expect(
+      await Directory(
+        p.join(executableDirectory.path, 'portable-data'),
+      ).exists(),
+      isFalse,
+    );
+    expect(await Directory(envDirectory.path).list().isEmpty, isTrue);
+  });
 }

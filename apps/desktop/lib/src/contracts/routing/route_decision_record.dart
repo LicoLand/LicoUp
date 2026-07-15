@@ -13,6 +13,9 @@ class RouteDecisionRecord {
     required this.excluded,
     required this.timestamp,
     this.staleUsageOverride = false,
+    this.requiredRoles = const [],
+    this.requiredCapabilities = const [],
+    this.requirementReasons = const [],
   });
 
   final String chosenAgentId;
@@ -23,6 +26,9 @@ class RouteDecisionRecord {
   final List<RouteExclusion> excluded;
   final String timestamp;
   final bool staleUsageOverride;
+  final List<String> requiredRoles;
+  final List<String> requiredCapabilities;
+  final List<String> requirementReasons;
 
   bool get blocked => chosenAgentId.trim().isEmpty;
 
@@ -101,7 +107,7 @@ class RoutingAgentSignal {
     required this.agentId,
     required this.agentLabel,
     required this.ready,
-    this.circuitBroken = false,
+    this.circuitBreaker = const RoutingCircuitBreakerState(),
     this.allowances = const [],
     this.usageFresh = true,
     this.usageAvailable = true,
@@ -110,7 +116,7 @@ class RoutingAgentSignal {
   final String agentId;
   final String agentLabel;
   final bool ready;
-  final bool circuitBroken;
+  final RoutingCircuitBreakerState circuitBreaker;
   final List<AgentUsageAllowance> allowances;
   final bool usageFresh;
   final bool usageAvailable;
@@ -134,14 +140,61 @@ class RoutingAgentSignal {
     }
     return 0;
   }
+
+  int allowanceHeadroomFor(String kind) {
+    final allowance = allowanceFor(kind);
+    if (allowance == null) {
+      return 0;
+    }
+    return num.tryParse(allowance.value.trim().replaceAll(',', ''))?.floor() ??
+        0;
+  }
+
+  AgentUsageAllowance? allowanceFor(String kind) {
+    final normalizedKind = kind.trim().toLowerCase();
+    for (final allowance in allowances) {
+      if (allowance.kind.trim().toLowerCase() == normalizedKind) {
+        return allowance;
+      }
+    }
+    return null;
+  }
+}
+
+/// Consecutive-failure state supplied to the pure planner.
+///
+/// The breaker opens only after more than [allowedFails] consecutive failures
+/// and automatically closes once the cooldown TTL has elapsed.
+@immutable
+class RoutingCircuitBreakerState {
+  const RoutingCircuitBreakerState({this.failureCount = 0, this.lastFailureAt});
+
+  final int failureCount;
+  final DateTime? lastFailureAt;
+
+  bool isOpen({
+    required int allowedFails,
+    required Duration cooldown,
+    required DateTime now,
+  }) {
+    final failedAt = lastFailureAt?.toUtc();
+    if (failureCount <= allowedFails || failedAt == null) {
+      return false;
+    }
+    return now.toUtc().isBefore(failedAt.add(cooldown));
+  }
+
+  RoutingCircuitBreakerState recordFailure(DateTime at) {
+    return RoutingCircuitBreakerState(
+      failureCount: failureCount + 1,
+      lastFailureAt: at.toUtc(),
+    );
+  }
 }
 
 @immutable
 class RoutingSignals {
-  const RoutingSignals({
-    this.byAgentId = const {},
-    this.now,
-  });
+  const RoutingSignals({this.byAgentId = const {}, this.now});
 
   final Map<String, RoutingAgentSignal> byAgentId;
   final DateTime Function()? now;

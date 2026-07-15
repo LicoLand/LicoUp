@@ -7,6 +7,7 @@ import 'package:flutter_client/src/contracts/presentation/layout_profile.dart';
 import 'package:flutter_client/src/contracts/presentation/layout_state_namespace.dart';
 import 'package:flutter_client/src/contracts/presentation/layout_variant.dart';
 import 'package:flutter_client/src/contracts/presentation/semantic_destination.dart';
+import 'package:flutter_client/src/frontend/layout/layout_chrome_port.dart';
 import 'package:flutter_client/src/frontend/layout/layout_component_kit.dart';
 import 'package:flutter_client/src/frontend/layout/layout_scope.dart';
 import 'package:flutter_client/src/frontend/layout/layout_visual_tokens.dart';
@@ -47,6 +48,7 @@ final class LayoutShellBuildContext {
     required this.components,
     required this.tokens,
     required this.initialFocusTarget,
+    required this.chrome,
   }) : availableDestinations = UnmodifiableListView(
          List<ClientSection>.of(availableDestinations),
        );
@@ -60,6 +62,7 @@ final class LayoutShellBuildContext {
   final LayoutComponentKit components;
   final LayoutVisualTokens tokens;
   final String initialFocusTarget;
+  final LayoutChromePort chrome;
 }
 
 final class LayoutSurfaceVariant {
@@ -116,13 +119,13 @@ final class LayoutSurfaceBundle {
     if (components.styleIdentity != profile.styleIdentity) {
       throw const FormatException('layout_surface_style_identity_mismatch');
     }
-    if (!_assetNamespace.hasMatch(assetNamespace) ||
-        assetNamespace !=
-            'layout-profiles/${profile.id.value}/${surface.name}') {
+    final expectedAssetNamespace =
+        'layout-profiles/${profile.id.value}/${surface.name}';
+    if (assetNamespace != expectedAssetNamespace) {
       throw const FormatException('layout_surface_asset_namespace_invalid');
     }
-    if (!_restorationNamespace.hasMatch(restorationNamespace) ||
-        restorationNamespace != '${profile.id.value}.${surface.name}') {
+    final expectedRestorationNamespace = '${profile.id.value}.${surface.name}';
+    if (restorationNamespace != expectedRestorationNamespace) {
       throw const FormatException(
         'layout_surface_restoration_namespace_invalid',
       );
@@ -161,13 +164,6 @@ final class LayoutSurfaceBundle {
     required this.restorationNamespace,
     required this.stateNamespaces,
   });
-
-  static final RegExp _assetNamespace = RegExp(
-    r'^layout-profiles/[a-z]+(?:-[a-z]+)*/(?:desktop|mobile)$',
-  );
-  static final RegExp _restorationNamespace = RegExp(
-    r'^[a-z]+(?:-[a-z]+)*\.(?:desktop|mobile)$',
-  );
 
   final LayoutProfileDescriptor profile;
   final LayoutRuntimeSurface surface;

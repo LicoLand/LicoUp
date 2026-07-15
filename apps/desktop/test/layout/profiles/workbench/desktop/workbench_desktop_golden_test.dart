@@ -81,11 +81,7 @@ Future<void> _expectShellGolden(
   await tester.pumpAndSettle();
 
   await expectLater(
-    find.byKey(
-      ValueKey<String>(
-        'workbench-desktop-${size.width < 1024 ? 'medium' : 'expanded'}-shell',
-      ),
-    ),
+    find.byKey(const ValueKey<String>('workbench-desktop-topbar-shell')),
     matchesGoldenFile('../../../../goldens/layout/workbench/desktop/$fileName'),
   );
 }

@@ -21,9 +21,6 @@ final class LayoutCatalog {
 
     final profileById = <LayoutProfileId, LayoutProfileDescriptor>{};
     for (final profile in profiles) {
-      if (profile.revision != revision) {
-        throw const FormatException('layout_catalog_revision_mismatch');
-      }
       if (profileById.containsKey(profile.id)) {
         throw const FormatException('layout_catalog_profile_duplicate');
       }
@@ -104,24 +101,22 @@ final class LayoutCatalog {
       }
     }
 
-    final orderedProfiles = profileById.values.toList()
-      ..sort((left, right) {
-        if (left.isDefault != right.isDefault) {
-          return left.isDefault ? -1 : 1;
-        }
-        return left.compareTo(right);
-      });
-    final orderedNamespaces = namespaceSet.toList()..sort();
+    final defaultProfile = defaults.single;
+    final orderedProfiles = <LayoutProfileDescriptor>[
+      defaultProfile,
+      for (final profile in profileById.values)
+        if (profile.id != defaultProfile.id) profile,
+    ];
 
     return LayoutCatalog._(
       revision: revision,
       destinationCatalog: destinationCatalog,
-      defaultProfile: defaults.single,
+      defaultProfile: defaultProfile,
       profiles: UnmodifiableListView(orderedProfiles),
       profileById: UnmodifiableMapView(profileById),
       variantByKey: UnmodifiableMapView(variantByKey),
       stateNamespaces: UnmodifiableSetView(
-        LinkedHashSet<LayoutStateNamespace>.of(orderedNamespaces),
+        LinkedHashSet<LayoutStateNamespace>.of(namespaceSet),
       ),
     );
   }

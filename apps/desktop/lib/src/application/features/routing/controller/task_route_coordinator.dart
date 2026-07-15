@@ -1,8 +1,10 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter_client/src/application/features/routing/broker/distillation_broker.dart';
 import 'package:flutter_client/src/application/features/routing/engine/route_planner.dart';
 import 'package:flutter_client/src/backend/features/routing/services/route_history_store.dart';
+import 'package:flutter_client/src/backend/features/routing/services/route_session_binding_store.dart';
 import 'package:flutter_client/src/contracts/routing/distillation_package.dart';
 import 'package:flutter_client/src/contracts/routing/route_decision_record.dart';
 import 'package:flutter_client/src/contracts/routing/route_history.dart';
@@ -16,15 +18,18 @@ import 'package:flutter_client/src/contracts/routing/routing_policy_schema.dart'
 class TaskRouteCoordinator {
   TaskRouteCoordinator({
     required RouteHistoryStore historyStore,
+    required ProtectedRouteSessionBindingStore sessionBindingStore,
     RoutePlanner planner = const DefaultRoutePlanner(),
     DistillationBroker? broker,
     DateTime Function()? now,
   }) : _history = historyStore,
+       _sessionBindings = sessionBindingStore,
        _planner = planner,
        _broker = broker ?? DefaultDistillationBroker(),
        _now = now ?? DateTime.now;
 
   final RouteHistoryStore _history;
+  final ProtectedRouteSessionBindingStore _sessionBindings;
   final RoutePlanner _planner;
   final DistillationBroker _broker;
   final DateTime Function() _now;
@@ -36,20 +41,88 @@ class TaskRouteCoordinator {
 
   RouteHistoryStore get history => _history;
 
-  TaskRouteSession? sessionFor(String taskId) => _sessions[taskId];
+  TaskRouteSession? sessionFor(String taskId) {
+    final current = _sessions[taskId];
+    if (current != null) {
+      return current;
+    }
+    final restored = _sessionBindings.currentForTask(taskId);
+    if (restored == null) {
+      return null;
+    }
+    final session = TaskRouteSession(
+      taskId: taskId,
+      currentAgentId: restored.agentId,
+      currentSessionId: restored.nativeSessionId,
+      currentSessionHandle: restored.logicalHandle,
+    );
+    _sessions[taskId] = session;
+    return session;
+  }
+
+  /// Exact native continuation for one task/agent branch, if previously bound.
+  String resumeSessionIdForAgent({
+    required String taskId,
+    required String agentId,
+  }) {
+    return _sessionBindings
+            .currentForTaskAgent(taskId: taskId, agentId: agentId)
+            ?.nativeSessionId ??
+        '';
+  }
 
   TaskRouteSession bindSession({
     required String taskId,
     required String agentId,
     required String sessionId,
   }) {
+    final normalizedSessionId = sessionId.trim();
+    final sessionHandle = _sessionBindings.bind(
+      taskId: taskId,
+      agentId: agentId,
+      nativeSessionId: normalizedSessionId,
+    );
     final session = TaskRouteSession(
       taskId: taskId,
       currentAgentId: agentId,
-      currentSessionId: sessionId,
+      currentSessionId: normalizedSessionId,
+      currentSessionHandle: sessionHandle,
     );
     _sessions[taskId] = session;
     return session;
+  }
+
+  /// Record the authoritative session returned by the unified dispatch lane.
+  /// Preserves switch timing and stream state for an already-bound task.
+  TaskRouteSession recordDispatchSession({
+    required String taskId,
+    required String agentId,
+    required String sessionId,
+  }) {
+    final normalizedSessionId = sessionId.trim();
+    if (normalizedSessionId.isEmpty) {
+      throw StateError('The dispatch lane returned an empty session id.');
+    }
+    final sessionHandle = _sessionBindings.bind(
+      taskId: taskId,
+      agentId: agentId,
+      nativeSessionId: normalizedSessionId,
+    );
+    final current = _sessions[taskId];
+    final updated = current == null
+        ? TaskRouteSession(
+            taskId: taskId,
+            currentAgentId: agentId,
+            currentSessionId: normalizedSessionId,
+            currentSessionHandle: sessionHandle,
+          )
+        : current.copyWith(
+            currentAgentId: agentId,
+            currentSessionId: normalizedSessionId,
+            currentSessionHandle: sessionHandle,
+          );
+    _sessions[taskId] = updated;
+    return updated;
   }
 
   /// Mark whether a task currently has an in-flight streamed message.
@@ -94,12 +167,13 @@ class TaskRouteCoordinator {
       required String agentId,
       required DistillationPackage package,
       required String sourceSessionId,
+      required String resumeSessionId,
     })
     openTargetSession,
     String switchReason = 'message-boundary',
     bool Function(String agentId)? isDistillerReady,
   }) async {
-    final session = _sessions[taskId];
+    final session = sessionFor(taskId);
     if (session == null) {
       throw StateError('Task $taskId is not bound.');
     }
@@ -145,12 +219,28 @@ class TaskRouteCoordinator {
     try {
       // If a policy arrived while waiting, callers may re-enter; we still
       // distill against the policy passed for this evaluation.
+      RoutingAgentDistillation? sourceDirective;
+      for (final agent in policy.agents) {
+        if (agent.id == session.currentAgentId) {
+          sourceDirective = agent.distillation;
+          break;
+        }
+      }
+      final boundedInput = buildDistillationInputWindow(
+        turns,
+        preserveFields: {
+          'objective',
+          'decisions',
+          'constraints',
+          ...?sourceDirective?.preserveFields,
+        },
+      );
       final distillResult = await _broker.distill(
         request: DistillationRequest(
           sourceSessionId: session.currentSessionId,
           sourceAgentId: session.currentAgentId,
           targetAgentId: decision.chosenAgentId,
-          turns: turns,
+          turns: boundedInput.turns,
           isDistillerReady: isDistillerReady,
           now: _now,
         ),
@@ -164,12 +254,12 @@ class TaskRouteCoordinator {
           timestamp: _now().toUtc().toIso8601String(),
           sourceAgentId: session.currentAgentId,
           targetAgentId: decision.chosenAgentId,
-          sourceSessionId: session.currentSessionId,
-          targetSessionId: '',
+          sourceSessionHandle: session.currentSessionHandle,
+          targetSessionHandle: '',
           decision: decision,
           switchReason: switchReason,
           failed: true,
-          failureReason: distillResult.reason,
+          failureDigest: digestRoutePrivateValue(distillResult.reason),
         );
         await _history.append(entry);
         // Stay on source agent.
@@ -190,13 +280,13 @@ class TaskRouteCoordinator {
           timestamp: _now().toUtc().toIso8601String(),
           sourceAgentId: session.currentAgentId,
           targetAgentId: decision.chosenAgentId,
-          sourceSessionId: session.currentSessionId,
-          targetSessionId: '',
+          sourceSessionHandle: session.currentSessionHandle,
+          targetSessionHandle: '',
           decision: decision,
           switchReason: switchReason,
-          distillationPackage: success.package,
+          distillationDigest: _distillationDigest(success.package),
           failed: true,
-          failureReason: 'target_not_ready',
+          failureDigest: digestRoutePrivateValue('target_not_ready'),
         );
         await _history.append(entry);
         return TaskRouteSwitchFailed(
@@ -206,15 +296,26 @@ class TaskRouteCoordinator {
         );
       }
 
+      final priorTargetBinding = _sessionBindings.currentForTaskAgent(
+        taskId: taskId,
+        agentId: decision.chosenAgentId,
+      );
       final targetSessionId = await openTargetSession(
         agentId: decision.chosenAgentId,
         package: success.package,
         sourceSessionId: session.currentSessionId,
+        resumeSessionId: priorTargetBinding?.nativeSessionId ?? '',
+      );
+      final targetSessionHandle = _sessionBindings.bind(
+        taskId: taskId,
+        agentId: decision.chosenAgentId,
+        nativeSessionId: targetSessionId,
       );
 
       final updated = session.copyWith(
         currentAgentId: decision.chosenAgentId,
         currentSessionId: targetSessionId,
+        currentSessionHandle: targetSessionHandle,
         lastSwitchAt: _now(),
       );
       _sessions[taskId] = updated;
@@ -224,11 +325,11 @@ class TaskRouteCoordinator {
         timestamp: _now().toUtc().toIso8601String(),
         sourceAgentId: session.currentAgentId,
         targetAgentId: decision.chosenAgentId,
-        sourceSessionId: session.currentSessionId,
-        targetSessionId: targetSessionId,
+        sourceSessionHandle: session.currentSessionHandle,
+        targetSessionHandle: targetSessionHandle,
         decision: decision,
         switchReason: switchReason,
-        distillationPackage: success.package,
+        distillationDigest: _distillationDigest(success.package),
       );
       await _history.append(entry);
 
@@ -249,16 +350,14 @@ class TaskRouteCoordinator {
   }
 
   /// Whether the source session remains addressable after a switch.
-  bool isSessionResumable({
-    required String taskId,
-    required String sessionId,
-  }) {
-    final history = _history.entriesFor(taskId);
-    if (history.any((e) => e.sourceSessionId == sessionId) ||
-        history.any((e) => e.targetSessionId == sessionId)) {
-      return true;
-    }
-    final current = _sessions[taskId];
-    return current?.currentSessionId == sessionId;
+  bool isSessionResumable({required String taskId, required String sessionId}) {
+    return _sessionBindings.containsNativeSession(
+      taskId: taskId,
+      nativeSessionId: sessionId,
+    );
+  }
+
+  String _distillationDigest(DistillationPackage package) {
+    return digestRoutePrivateValue(jsonEncode(package.toJson()));
   }
 }

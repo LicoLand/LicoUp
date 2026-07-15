@@ -10,7 +10,4 @@ Widget buildStudioMonitoringDestination(
 ) => StudioDestinationFrame(
   data: data,
   expectedDestination: ClientSection.monitoring,
-  icon: Icons.monitor_heart_outlined,
-  dockPlacement: StudioDestinationDockPlacement.top,
-  accent: StudioDestinationAccent.info,
 );

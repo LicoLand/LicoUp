@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:flutter_client/src/contracts/presentation/layout_environment.dart';
 import 'package:flutter_client/src/contracts/presentation/layout_profile.dart';
+import 'package:flutter_client/src/contracts/presentation/layout_state_namespace.dart';
 import 'package:flutter_client/src/contracts/presentation/semantic_destination.dart';
 import 'package:flutter_client/src/frontend/layout/profiles/studio/mobile/studio_mobile_bundle.dart';
 
@@ -12,11 +13,11 @@ void main() {
   test('exports the exact immutable Studio mobile bundle product', () {
     final bundle = studioMobileBundle;
 
-    expect(bundle.profile.id, LayoutProfileId.studio);
-    expect(bundle.profile.labelKey, 'layout.profile.studio.label');
-    expect(bundle.profile.descriptionKey, 'layout.profile.studio.description');
+    expect(bundle.profile.id, LayoutProfileId.parse('studio'));
+    expect(bundle.profile.label.resolve('en'), 'Native');
+    expect(bundle.profile.description.resolve('zh'), contains('默认'));
     expect(bundle.profile.styleIdentity, 'dense-docked-studio');
-    expect(bundle.profile.isDefault, isFalse);
+    expect(bundle.profile.isDefault, isTrue);
     expect(bundle.profile.revision, 1);
     expect(bundle.surface, LayoutRuntimeSurface.mobile);
     expect(bundle.assetNamespace, 'layout-profiles/studio/mobile');
@@ -41,22 +42,36 @@ void main() {
     expect(() => bundle.stateNamespaces.clear(), throwsUnsupportedError);
   });
 
-  test('declares one isolated state namespace for every destination', () {
-    final byDestination = {
-      for (final namespace in studioMobileBundle.stateNamespaces)
-        namespace.destination: namespace,
-    };
-
-    expect(byDestination.keys, studioMobileDestinations);
+  test('declares isolated business presentation-state channels', () {
+    final namespaces = studioMobileBundle.stateNamespaces;
+    expect(namespaces, hasLength(5));
+    expect(namespaces.map((value) => value.destination).toSet(), {
+      ClientSection.agents,
+      ClientSection.settings,
+    });
     expect(
-      byDestination[ClientSection.agents]!.surfaceId,
-      'conversation-scroll',
+      namespaces
+          .where((value) => value.destination == ClientSection.agents)
+          .map((value) => value.surfaceId)
+          .toSet(),
+      {
+        LayoutStateChannels.agentsHistory.id,
+        LayoutStateChannels.agentsSidebar.id,
+        LayoutStateChannels.agentsDestination.id,
+      },
     );
-    expect(byDestination[ClientSection.feed]!.surfaceId, 'feed-scroll');
-    expect(byDestination[ClientSection.mobileRelay]!.surfaceId, 'pairing-flow');
-    expect(byDestination[ClientSection.settings]!.surfaceId, 'settings-scroll');
-    for (final namespace in byDestination.values) {
-      expect(namespace.profileId, LayoutProfileId.studio);
+    expect(
+      namespaces
+          .where((value) => value.destination == ClientSection.settings)
+          .map((value) => value.surfaceId)
+          .toSet(),
+      {
+        LayoutStateChannels.settingsScroll.id,
+        LayoutStateChannels.settingsSection.id,
+      },
+    );
+    for (final namespace in namespaces) {
+      expect(namespace.profileId, LayoutProfileId.parse('studio'));
       expect(namespace.surface, LayoutRuntimeSurface.mobile);
     }
   });

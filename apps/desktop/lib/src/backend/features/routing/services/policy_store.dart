@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_client/src/backend/features/routing/services/policy_file_watcher.dart';
@@ -7,7 +8,7 @@ import 'package:path/path.dart' as p;
 
 /// Default relative path under the portable data root for the active policy.
 const String defaultRoutingPolicyRelativePath =
-    'future-client/routing/routing-policy.json';
+    'lico-client/routing/routing-policy.json';
 
 /// File-backed [RoutingPolicyStore] with atomic snapshot swap and hot reload.
 class FileRoutingPolicyStore implements RoutingPolicyStore {
@@ -34,6 +35,7 @@ class FileRoutingPolicyStore implements RoutingPolicyStore {
   RoutingPolicyDocument _active = emptyRoutingPolicyDocument;
   RoutingPolicyValidationError? _lastError;
   StreamSubscription<String>? _watchSubscription;
+  Future<void>? _watchStart;
   bool _loaded = false;
   bool _disposed = false;
   bool _watching = false;
@@ -44,8 +46,7 @@ class FileRoutingPolicyStore implements RoutingPolicyStore {
   @override
   RoutingPolicyValidationError? get lastError => _lastError;
 
-  File get policyFile =>
-      File(p.join(_rootDirectory.path, _relativePolicyPath));
+  File get policyFile => File(p.join(_rootDirectory.path, _relativePolicyPath));
 
   @override
   Future<RoutingPolicyDocument> load() async {
@@ -60,10 +61,7 @@ class FileRoutingPolicyStore implements RoutingPolicyStore {
     }
 
     final source = await file.readAsString();
-    final parsed = parseRoutingPolicyDocument(
-      source,
-      sourcePath: file.path,
-    );
+    final parsed = parseRoutingPolicyDocument(source, sourcePath: file.path);
     switch (parsed) {
       case RoutingPolicyParseSuccess(:final document):
         _active = document;
@@ -83,6 +81,44 @@ class FileRoutingPolicyStore implements RoutingPolicyStore {
   }
 
   @override
+  Future<void> save(RoutingPolicyDocument policy) async {
+    _ensureNotDisposed();
+    final parsed = parseRoutingPolicyMap(policy.toJson());
+    if (parsed case RoutingPolicyParseFailure(:final error)) {
+      throw ArgumentError.value(policy, 'policy', error.toString());
+    }
+    final validated = (parsed as RoutingPolicyParseSuccess).document;
+    final file = policyFile;
+    await file.parent.create(recursive: true);
+    final temporary = File('${file.path}.tmp');
+    try {
+      await temporary.writeAsString('${jsonEncode(validated.toJson())}\n');
+      await temporary.rename(file.path);
+    } finally {
+      if (await temporary.exists()) {
+        await temporary.delete();
+      }
+    }
+    _active = validated;
+    _lastError = null;
+    _loaded = true;
+    _emit(RoutingPolicyStoreReloaded(validated));
+  }
+
+  @override
+  Future<void> clear() async {
+    _ensureNotDisposed();
+    final file = policyFile;
+    if (await file.exists()) {
+      await file.delete();
+    }
+    _active = emptyRoutingPolicyDocument;
+    _lastError = null;
+    _loaded = true;
+    _emit(const RoutingPolicyStoreReloaded(emptyRoutingPolicyDocument));
+  }
+
+  @override
   Stream<RoutingPolicyStoreEvent> watch() {
     _ensureNotDisposed();
     if (!_loaded) {
@@ -94,9 +130,15 @@ class FileRoutingPolicyStore implements RoutingPolicyStore {
       _watchSubscription = _watcher.changes.listen((_) {
         unawaited(_reloadFromDisk());
       });
-      unawaited(_prepareAndStartWatcher());
+      _watchStart = _prepareAndStartWatcher();
     }
     return _events.stream;
+  }
+
+  Future<Stream<RoutingPolicyStoreEvent>> startWatching() async {
+    final events = watch();
+    await _watchStart;
+    return events;
   }
 
   Future<void> _prepareAndStartWatcher() async {
@@ -125,10 +167,7 @@ class FileRoutingPolicyStore implements RoutingPolicyStore {
     }
 
     final source = await file.readAsString();
-    final parsed = parseRoutingPolicyDocument(
-      source,
-      sourcePath: file.path,
-    );
+    final parsed = parseRoutingPolicyDocument(source, sourcePath: file.path);
     switch (parsed) {
       case RoutingPolicyParseSuccess(:final document):
         // Atomic snapshot swap: single reference assignment of an immutable
@@ -149,6 +188,8 @@ class FileRoutingPolicyStore implements RoutingPolicyStore {
       return;
     }
     _disposed = true;
+    await _watchStart;
+    _watchStart = null;
     await _watchSubscription?.cancel();
     _watchSubscription = null;
     await _watcher.dispose();

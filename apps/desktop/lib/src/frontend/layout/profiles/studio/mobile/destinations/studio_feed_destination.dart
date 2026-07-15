@@ -1,16 +1,16 @@
 import 'package:flutter/material.dart';
 
 import 'package:flutter_client/src/contracts/presentation/semantic_destination.dart';
+import 'package:flutter_client/src/frontend/layout/layout_palette.dart';
 import 'package:flutter_client/src/frontend/layout/layout_surface_bundle.dart';
 import 'package:flutter_client/src/frontend/layout/profiles/studio/mobile/studio_mobile_tokens.dart';
-import 'package:flutter_client/src/frontend/shared/ui/theme.dart';
 
 Widget buildStudioMobileFeedDestination(
   BuildContext context,
   LayoutDestinationBuildContext data,
 ) {
   _requireFeedDestination(data.destination);
-  final colors = context.licoColors;
+  final colors = context.layoutPalette;
   return RestorationScope(
     restorationId: '$studioMobileRestorationPrefix.feed',
     child: Semantics(

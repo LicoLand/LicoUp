@@ -15,17 +15,20 @@ List<LayoutProfileDescriptor> fixtureProfiles({
   int studioRevision = fixtureCatalogRevision,
 }) => [
   LayoutProfileDescriptor(
-    id: LayoutProfileId.workbench,
-    labelKey: 'layout.profile.workbench.label',
-    descriptionKey: 'layout.profile.workbench.description',
+    id: LayoutProfileId.parse('workbench'),
+    label: LayoutProfileCopy(english: 'Workbench', chinese: '工作台'),
+    description: LayoutProfileCopy(
+      english: 'Workbench fixture',
+      chinese: '工作台夹具',
+    ),
     styleIdentity: 'spacious-card-workbench',
     isDefault: workbenchDefault,
     revision: workbenchRevision,
   ),
   LayoutProfileDescriptor(
-    id: LayoutProfileId.studio,
-    labelKey: 'layout.profile.studio.label',
-    descriptionKey: 'layout.profile.studio.description',
+    id: LayoutProfileId.parse('studio'),
+    label: LayoutProfileCopy(english: 'Studio', chinese: '原生'),
+    description: LayoutProfileCopy(english: 'Studio fixture', chinese: '原生夹具'),
     styleIdentity: 'dense-docked-studio',
     isDefault: studioDefault,
     revision: studioRevision,
@@ -59,22 +62,31 @@ List<LayoutVariantCoverage> fixtureVariants({
 
 List<LayoutStateNamespace> fixtureStateNamespaces() => [
   LayoutStateNamespace(
-    profileId: LayoutProfileId.workbench,
+    profileId: LayoutProfileId.parse('workbench'),
     surface: LayoutRuntimeSurface.desktop,
     destination: ClientSection.agents,
-    surfaceId: 'conversation-scroll',
+    channel: const LayoutStateChannel(
+      'conversation-scroll',
+      LayoutStateValueKind.scroll,
+    ),
   ),
   LayoutStateNamespace(
-    profileId: LayoutProfileId.workbench,
+    profileId: LayoutProfileId.parse('workbench'),
     surface: LayoutRuntimeSurface.mobile,
     destination: ClientSection.agents,
-    surfaceId: 'composer-focus',
+    channel: const LayoutStateChannel(
+      'composer-focus',
+      LayoutStateValueKind.expansion,
+    ),
   ),
   LayoutStateNamespace(
-    profileId: LayoutProfileId.studio,
+    profileId: LayoutProfileId.parse('studio'),
     surface: LayoutRuntimeSurface.desktop,
     destination: ClientSection.agents,
-    surfaceId: 'conversation-scroll',
+    channel: const LayoutStateChannel(
+      'conversation-scroll',
+      LayoutStateValueKind.scroll,
+    ),
   ),
 ];
 

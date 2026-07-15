@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:flutter_client/src/controllers/future_client_controller.dart';
-import 'package:flutter_client/src/services/agent_service.dart';
+import 'package:flutter_client/src/application/controller/client_controller.dart';
+import 'package:flutter_client/src/platform/native_client/agent_service.dart';
 
 class MockAgentService extends AgentService {
   List<String> lastArgs = [];
@@ -60,13 +60,13 @@ TargetCandidate makeTarget({
 
 void main() {
   group('McpPluginActions Rollback Latest', () {
-    late FutureClientController controller;
+    late ClientController controller;
     late MockAgentService mockService;
     late TargetCandidate dummyTarget;
 
     setUp(() {
       mockService = MockAgentService();
-      controller = FutureClientController(agentService: mockService);
+      controller = ClientController(agentService: mockService);
 
       dummyTarget = TargetCandidate(
         target: 'opencode',
@@ -130,12 +130,12 @@ void main() {
   });
 
   group('McpPluginActions Capability Checks', () {
-    late FutureClientController controller;
+    late ClientController controller;
     late MockAgentService mockService;
 
     setUp(() {
       mockService = MockAgentService();
-      controller = FutureClientController(agentService: mockService);
+      controller = ClientController(agentService: mockService);
     });
 
     test('updateMcpPlugin sets error for unsupported target', () async {
@@ -175,7 +175,7 @@ void main() {
       final mockService2 = MockAgentServiceWithResponse(
         updateResponse: {'ok': false, 'status': 'verification_required'},
       );
-      final ctrl = FutureClientController(agentService: mockService2);
+      final ctrl = ClientController(agentService: mockService2);
 
       final supported = makeTarget();
       await ctrl.updateMcpPlugin(supported);
@@ -190,13 +190,41 @@ void main() {
       final mockService2 = MockAgentServiceWithResponse(
         updateResponse: {'ok': true, 'status': 'updated'},
       );
-      final ctrl = FutureClientController(agentService: mockService2);
+      final ctrl = ClientController(agentService: mockService2);
 
       final supported = makeTarget();
       await ctrl.updateMcpPlugin(supported);
 
       expect(ctrl.lastError, isEmpty);
     });
+
+    test(
+      'reinstallMcpPlugin reapplies partial target without update capability',
+      () async {
+        final mockService2 = MockAgentServiceWithResponse(
+          updateResponse: {'ok': true, 'status': 'updated'},
+        );
+        final ctrl = ClientController(agentService: mockService2);
+        addTearDown(ctrl.dispose);
+
+        final partial = makeTarget(
+          target: 'codex',
+          adapterStatus: 'partial',
+          supportedActions: ['mcp.plugin.status'],
+        );
+        await ctrl.reinstallMcpPlugin(partial);
+
+        expect(mockService2.lastArgs, [
+          'mcp',
+          'plugin',
+          'update',
+          '--target',
+          'codex',
+        ]);
+        expect(ctrl.lastError, isEmpty);
+        expect(ctrl.statusMessage, '已重新安装 codex MCP 插件。');
+      },
+    );
   });
 
   group('TargetCandidate Parsing', () {

@@ -10,7 +10,4 @@ Widget buildStudioMobileRelayDestination(
 ) => StudioDestinationFrame(
   data: data,
   expectedDestination: ClientSection.mobileRelay,
-  icon: Icons.phonelink_ring_outlined,
-  dockPlacement: StudioDestinationDockPlacement.trailing,
-  accent: StudioDestinationAccent.success,
 );

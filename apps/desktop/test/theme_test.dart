@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_client/src/ui/appearance_preset_config.dart';
-import 'package:flutter_client/src/ui/theme.dart';
+import 'package:flutter_client/src/frontend/shared/appearance/appearance_preset_config.dart';
+import 'package:flutter_client/src/frontend/shared/ui/theme.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -39,7 +39,10 @@ void main() {
 
       final inputTheme = theme.inputDecorationTheme;
       expect(inputTheme.filled, isTrue);
-      expect(inputTheme.fillColor, colors.surface);
+      expect(
+        inputTheme.fillColor,
+        Colors.white.withAlpha(colors.isDark ? 14 : 18),
+      );
     }
   });
 

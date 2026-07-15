@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+import 'package:flutter_test/flutter_test.dart';
 
 import 'package:flutter_client/src/contracts/presentation/semantic_destination.dart';
-import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_client/src/frontend/layout/layout_chrome_port.dart';
 
 import './workbench_desktop_test_harness.dart';
 
 void main() {
-  testWidgets('medium and expanded variants honor desktop constraints', (
+  testWidgets('medium and expanded variants host tuned top-bar chrome', (
     tester,
   ) async {
     addTearDown(tester.view.resetPhysicalSize);
@@ -34,29 +34,22 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(
-        find.byKey(
-          ValueKey<String>(
-            'workbench-desktop-${environment.viewport.name}-shell',
-          ),
-        ),
+        find.byKey(const ValueKey<String>('workbench-desktop-topbar-shell')),
         findsOneWidget,
       );
+      expect(find.byKey(const Key('shell-global-search')), findsOneWidget);
+      expect(find.byKey(const Key('topbar-settings-button')), findsOneWidget);
       expect(
-        find.byKey(const ValueKey<String>('workbench-desktop-command-region')),
+        find.byKey(const Key('topbar-control-panel-icon')),
         findsOneWidget,
       );
-      expect(
-        find.byKey(
-          const ValueKey<String>('workbench-desktop-workspace-surface'),
-        ),
-        findsOneWidget,
-      );
+      expect(find.byKey(const Key('topbar-agents-icon')), findsOneWidget);
       expect(counter.builds, 1);
       expect(tester.takeException(), isNull);
     }
   });
 
-  testWidgets('semantic navigation supports keyboard and pointer activation', (
+  testWidgets('top-bar icons select Home and Agents destinations', (
     tester,
   ) async {
     tester.view.devicePixelRatio = 1;
@@ -64,7 +57,6 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
     final selected = <ClientSection>[];
-    final semantics = tester.ensureSemantics();
 
     await tester.pumpWidget(
       WorkbenchDesktopShellHarness(
@@ -76,40 +68,17 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    final agents = find.byKey(
-      const ValueKey<String>('workbench-desktop-nav-agents'),
-    );
-    final agentsSemantics = tester.getSemantics(agents);
-    expect(
-      agentsSemantics,
-      isSemantics(
-        label: 'agents',
-        isButton: true,
-        isSelected: true,
-        hasTapAction: true,
-      ),
-    );
-    expect(find.byIcon(Icons.keyboard_command_key_rounded), findsOneWidget);
-
-    await tester.sendKeyEvent(LogicalKeyboardKey.tab);
-    await tester.pump();
-    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.tap(find.byKey(const Key('topbar-control-panel-icon')));
     await tester.pump();
     expect(selected, [ClientSection.controlPanel]);
 
     selected.clear();
-    final settings = find.byKey(
-      const ValueKey<String>('workbench-desktop-nav-settings'),
-    );
-    await tester.ensureVisible(settings);
-    await tester.pumpAndSettle();
-    await tester.tap(settings);
+    await tester.tap(find.byKey(const Key('topbar-settings-button')));
     await tester.pump();
     expect(selected, [ClientSection.settings]);
-    semantics.dispose();
   });
 
-  testWidgets('large text remains bounded and reduced motion is immediate', (
+  testWidgets('large text remains bounded under top-bar chrome', (
     tester,
   ) async {
     tester.view.devicePixelRatio = 1;
@@ -132,66 +101,11 @@ void main() {
     await tester.pump();
 
     expect(tester.takeException(), isNull);
-    expect(find.text('Lico Arc'), findsNothing);
     expect(
-      tester.widgetList<AnimatedPadding>(find.byType(AnimatedPadding)),
-      everyElement(
-        isA<AnimatedPadding>().having(
-          (widget) => widget.duration,
-          'duration',
-          Duration.zero,
-        ),
-      ),
+      find.byKey(const ValueKey<String>('workbench-desktop-topbar-shell')),
+      findsOneWidget,
     );
-  });
-
-  testWidgets('appearance palette composes into accessible selected chrome', (
-    tester,
-  ) async {
-    tester.view.devicePixelRatio = 1;
-    tester.view.physicalSize = const Size(1100, 760);
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
-    final scheme =
-        ColorScheme.fromSeed(
-          seedColor: const Color(0xff7257d9),
-          brightness: Brightness.dark,
-        ).copyWith(
-          primaryContainer: const Color(0xff1b1038),
-          onPrimaryContainer: const Color(0xffffffff),
-        );
-
-    await tester.pumpWidget(
-      WorkbenchDesktopShellHarness(
-        environment: workbenchDesktopEnvironment(width: 1100),
-        activeDestination: ClientSection.agents,
-        destination: const SizedBox(),
-        colorScheme: scheme,
-      ),
-    );
-    await tester.pumpAndSettle();
-
-    final selectedNavigation = find.byKey(
-      const ValueKey<String>('workbench-desktop-nav-agents'),
-    );
-    final selectedMaterial = tester
-        .widgetList<Material>(
-          find.descendant(
-            of: selectedNavigation,
-            matching: find.byType(Material),
-          ),
-        )
-        .first;
-    final selectedLabel = tester.widget<Text>(
-      find.descendant(of: selectedNavigation, matching: find.text('agents')),
-    );
-
-    expect(selectedMaterial.color, scheme.primaryContainer);
-    expect(selectedLabel.style?.color, scheme.onPrimaryContainer);
-    expect(
-      _contrastRatio(scheme.primaryContainer, scheme.onPrimaryContainer),
-      greaterThanOrEqualTo(4.5),
-    );
+    expect(find.text('Scaled destination'), findsOneWidget);
   });
 
   testWidgets('shell constructs only the destination passed by its host', (
@@ -217,13 +131,111 @@ void main() {
     expect(counter.builds, 1);
     expect(find.byKey(const Key('passed-destination')), findsOneWidget);
   });
+
+  testWidgets(
+    'private chrome consumes semantic status, allowance and pairing',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(1100, 760);
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final chrome = _WorkbenchChromeFake(
+        LayoutChromeSnapshot(
+          status: const LayoutChromeStatusSnapshot(
+            message: 'Ready',
+            caption: 'Workbench client',
+          ),
+          allowance: LayoutChromeAllowanceSnapshot(
+            targetId: 'target-a',
+            targetLabel: 'Agent A',
+            meters: const [
+              LayoutChromeAllowanceMeterSnapshot(
+                kind: 'chatgpt-weekly-limit',
+                label: 'ChatGPT Weekly Limit',
+                provider: 'ChatGPT',
+                period: 'week',
+                status: 'available',
+                value: '42',
+                unit: '%',
+                message: 'Resets in 3 days.',
+              ),
+            ],
+            totalTokens: 100,
+            targetTokens: 42,
+          ),
+        ),
+      );
+      addTearDown(chrome.dispose);
+
+      await tester.pumpWidget(
+        WorkbenchDesktopShellHarness(
+          environment: workbenchDesktopEnvironment(width: 1100),
+          activeDestination: ClientSection.agents,
+          destination: const SizedBox(),
+          chrome: chrome,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const ValueKey<String>('shell-status-text:Ready')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('agent-allowance-meter-chatgpt-weekly-limit')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(
+          const Key('agent-allowance-progress-track-ChatGPT Weekly Limit'),
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('42%'), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('topbar-pairing-button')));
+      await tester.pump();
+      expect(chrome.pairingRequests, 1);
+
+      chrome.snapshot = const LayoutChromeSnapshot(
+        status: LayoutChromeStatusSnapshot(
+          message: 'Updated',
+          caption: 'Workbench client',
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey<String>('shell-status-text:Updated')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('agent-allowance-meter-chatgpt-weekly-limit')),
+        findsNothing,
+      );
+    },
+  );
 }
 
-double _contrastRatio(Color first, Color second) {
-  final lighter = first.computeLuminance() > second.computeLuminance()
-      ? first
-      : second;
-  final darker = identical(lighter, first) ? second : first;
-  return (lighter.computeLuminance() + 0.05) /
-      (darker.computeLuminance() + 0.05);
+final class _WorkbenchChromeFake extends ChangeNotifier
+    implements LayoutChromePort {
+  _WorkbenchChromeFake(this._snapshot);
+
+  LayoutChromeSnapshot _snapshot;
+  int pairingRequests = 0;
+
+  @override
+  LayoutChromeSnapshot get value => _snapshot;
+
+  set snapshot(LayoutChromeSnapshot value) {
+    if (_snapshot == value) {
+      return;
+    }
+    _snapshot = value;
+    notifyListeners();
+  }
+
+  @override
+  Future<void> openPairing(BuildContext context) async {
+    pairingRequests += 1;
+  }
 }

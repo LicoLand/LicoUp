@@ -1,8 +1,11 @@
+import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter_client/src/application/features/routing/controller/task_route_coordinator.dart';
 import 'package:flutter_client/src/application/features/routing/routing_module_flags.dart';
 import 'package:flutter_client/src/backend/features/routing/services/policy_store.dart';
 import 'package:flutter_client/src/backend/features/routing/services/route_history_store.dart';
+import 'package:flutter_client/src/backend/features/routing/services/route_session_binding_store.dart';
 import 'package:flutter_client/src/contracts/routing/routing_module_registration.dart';
 import 'package:flutter_client/src/contracts/routing/routing_policy_schema.dart';
 import 'package:path/path.dart' as p;
@@ -12,35 +15,44 @@ class DefaultRoutingModuleRegistration implements RoutingModuleRegistration {
   DefaultRoutingModuleRegistration({
     required Directory rootDirectory,
     Map<String, String>? settings,
-    bool included = kRoutingModuleIncluded,
     bool initiallyEnabled = true,
   }) : _rootDirectory = rootDirectory,
        _settings = settings ?? <String, String>{},
-       _included = included,
        _runtimeEnabled = initiallyEnabled;
 
   final Directory _rootDirectory;
   final Map<String, String> _settings;
-  final bool _included;
-
   bool _runtimeEnabled;
   bool _active = false;
   FileRoutingPolicyStore? _policyStore;
   RouteHistoryStore? _historyStore;
+  ProtectedRouteSessionBindingStore? _sessionBindingStore;
+  TaskRouteCoordinator? _coordinator;
+  StreamSubscription<RoutingPolicyStoreEvent>? _policySubscription;
+  final StreamController<RoutingPolicyStoreEvent> _policyEvents =
+      StreamController<RoutingPolicyStoreEvent>.broadcast();
 
   FileRoutingPolicyStore? get policyStore => _policyStore;
   RouteHistoryStore? get historyStore => _historyStore;
+  @override
+  TaskRouteCoordinator? get coordinator => _coordinator;
   Map<String, String> get settingsView => Map.unmodifiable(_settings);
+  @override
+  Stream<RoutingPolicyStoreEvent> get policyEvents => _policyEvents.stream;
 
   @override
-  bool get isEnabled => _included && _runtimeEnabled;
+  bool get isIncluded => true;
 
   @override
-  bool get isReady => isEnabled && _active && _policyStore != null;
+  bool get isEnabled => _runtimeEnabled;
+
+  @override
+  bool get isReady =>
+      isEnabled && _active && _policyStore != null && _coordinator != null;
 
   @override
   Future<void> activate() async {
-    if (!_included || !_runtimeEnabled) {
+    if (!_runtimeEnabled) {
       return;
     }
     if (_active) {
@@ -53,7 +65,16 @@ class DefaultRoutingModuleRegistration implements RoutingModuleRegistration {
     );
     _policyStore = FileRoutingPolicyStore(rootDirectory: _rootDirectory);
     await _policyStore!.load();
+    final policyEvents = await _policyStore!.startWatching();
+    _policySubscription = policyEvents.listen(_policyEvents.add);
     _historyStore = RouteHistoryStore(rootDirectory: _rootDirectory);
+    _sessionBindingStore = ProtectedRouteSessionBindingStore(
+      rootDirectory: _rootDirectory,
+    );
+    _coordinator = TaskRouteCoordinator(
+      historyStore: _historyStore!,
+      sessionBindingStore: _sessionBindingStore!,
+    );
     _active = true;
   }
 
@@ -64,9 +85,13 @@ class DefaultRoutingModuleRegistration implements RoutingModuleRegistration {
       _settings['routing.enabled'] = 'false';
       return;
     }
+    await _policySubscription?.cancel();
+    _policySubscription = null;
     await _policyStore?.dispose();
     _policyStore = null;
     _historyStore = null;
+    _sessionBindingStore = null;
+    _coordinator = null;
     _active = false;
     _runtimeEnabled = false;
     _settings['routing.enabled'] = 'false';
@@ -87,14 +112,31 @@ class DefaultRoutingModuleRegistration implements RoutingModuleRegistration {
   }
 
   /// Re-enable after a prior deactivate/unload (clean start).
+  @override
   Future<void> enable() async {
-    if (!_included) {
-      return;
-    }
     _runtimeEnabled = true;
     await activate();
   }
 
+  @override
   RoutingPolicyDocument get activePolicy =>
       _policyStore?.active ?? emptyRoutingPolicyDocument;
+
+  @override
+  Future<void> savePolicy(RoutingPolicyDocument policy) async {
+    final store = _policyStore;
+    if (!isReady || store == null) {
+      throw StateError('Routing module is not ready.');
+    }
+    await store.save(policy);
+  }
+
+  @override
+  Future<void> clearPolicy() async {
+    final store = _policyStore;
+    if (!isReady || store == null) {
+      throw StateError('Routing module is not ready.');
+    }
+    await store.clear();
+  }
 }

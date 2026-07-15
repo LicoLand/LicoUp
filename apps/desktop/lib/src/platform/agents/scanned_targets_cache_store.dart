@@ -1,0 +1,68 @@
+import 'package:flutter_client/src/contracts/target_candidate.dart';
+import 'package:flutter_client/src/platform/mobile_relay/mobile_relay_json_store.dart';
+
+/// Persists the last successful local agent discovery snapshot so the Agents
+/// sidebar can paint immediately on the next launch without waiting for scan.
+abstract class ScannedTargetsCacheStore {
+  const ScannedTargetsCacheStore();
+
+  Future<List<TargetCandidate>> load(Object portableData);
+
+  Future<void> save(Object portableData, List<TargetCandidate> targets);
+}
+
+class PlatformScannedTargetsCacheStore implements ScannedTargetsCacheStore {
+  const PlatformScannedTargetsCacheStore({
+    MobileRelayJsonStore jsonStore = const MobileRelayJsonStore(),
+  }) : _jsonStore = jsonStore;
+
+  static const _fileName = 'scanned-targets-cache.json';
+
+  final MobileRelayJsonStore _jsonStore;
+
+  @override
+  Future<List<TargetCandidate>> load(Object portableData) async {
+    final decoded = await _jsonStore.read(portableData, _fileName);
+    if (decoded is! Map) {
+      return const [];
+    }
+    final raw = decoded['candidates'];
+    if (raw is! List) {
+      return const [];
+    }
+    final result = <TargetCandidate>[];
+    final seen = <String>{};
+    for (final item in raw) {
+      if (item is! Map) {
+        continue;
+      }
+      final candidate = TargetCandidate.fromJson(
+        Map<String, dynamic>.from(item),
+      );
+      final id = candidate.target.trim();
+      if (id.isEmpty || !candidate.visibleInClient || !seen.add(id)) {
+        continue;
+      }
+      result.add(candidate);
+    }
+    return List.unmodifiable(result);
+  }
+
+  @override
+  Future<void> save(Object portableData, List<TargetCandidate> targets) {
+    final candidates = <Map<String, dynamic>>[];
+    final seen = <String>{};
+    for (final target in targets) {
+      final id = target.target.trim();
+      if (id.isEmpty || !target.visibleInClient || !seen.add(id)) {
+        continue;
+      }
+      candidates.add(target.toJson());
+    }
+    return _jsonStore.write(portableData, _fileName, {
+      'schemaVersion': 1,
+      'savedAt': DateTime.now().toUtc().toIso8601String(),
+      'candidates': candidates,
+    }, lock: true);
+  }
+}

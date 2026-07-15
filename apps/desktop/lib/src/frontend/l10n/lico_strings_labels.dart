@@ -10,20 +10,40 @@ extension LicoStringsLabels on LicoStrings {
   String get network => isChinese ? '网络' : 'Network';
   String get storageAndData => isChinese ? '存储与数据' : 'Storage & Data';
   String get diagnostics => isChinese ? '诊断' : 'Diagnostics';
+  String get clientUpdate => isChinese ? '客户端更新' : 'Client Update';
+  String get clientUpdateHint => isChinese
+      ? '发现、下载并校验已签名的公开更新清单。不需要商店账号。'
+      : 'Discover, download, and verify signed public update manifests. No store account required.';
+  String get checkUpdate => isChinese ? '检查更新' : 'Check Update';
+  String get downloadUpdate => isChinese ? '下载更新' : 'Download Update';
+  String get verifyUpdate => isChinese ? '校验更新' : 'Verify Update';
+  String get planUpdateInstall => isChinese ? '生成安装计划' : 'Plan Install';
+  String get channel => isChinese ? '通道' : 'Channel';
+  String get availableVersion => isChinese ? '可用版本' : 'Available Version';
+  String get digest => isChinese ? '摘要' : 'Digest';
+  String get productionReady => isChinese ? '生产就绪' : 'Production Ready';
+  String get yes => isChinese ? '是' : 'Yes';
+  String get no => isChinese ? '否' : 'No';
+  String get clientUpdatePhaseIdle => isChinese ? '空闲' : 'Idle';
+  String get clientUpdatePhaseChecking => isChinese ? '检查中' : 'Checking';
+  String get clientUpdatePhaseUpToDate => isChinese ? '已是最新' : 'Up to date';
+  String get clientUpdatePhaseUpdateAvailable =>
+      isChinese ? '有可用更新' : 'Update available';
+  String get clientUpdatePhaseDownloading => isChinese ? '下载中' : 'Downloading';
+  String get clientUpdatePhaseDownloaded => isChinese ? '已下载' : 'Downloaded';
+  String get clientUpdatePhaseVerifying => isChinese ? '校验中' : 'Verifying';
+  String get clientUpdatePhaseVerified => isChinese ? '已校验' : 'Verified';
+  String get clientUpdatePhaseApplyPlanned =>
+      isChinese ? '已规划安装' : 'Install planned';
+  String get clientUpdatePhaseFailed => isChinese ? '失败' : 'Failed';
   String get done => isChinese ? '完成' : 'Done';
   String get customize => isChinese ? '自定义' : 'Customize';
 
   // Usage report chrome. Product and model names remain untranslated.
-  String get tokenShare => isChinese ? 'Token 占比' : 'Token Share';
   String get noAgentUsageInLatestReport =>
       isChinese ? '最新报表中没有智能体用量' : 'No agent usage in the latest report';
   String get noModelUsageInLatestReport =>
       isChinese ? '最新报表中没有模型用量' : 'No model usage in the latest report';
-  String get reportTotals => isChinese ? '报表汇总' : 'Report Totals';
-  String get noReportTotalsAvailable =>
-      isChinese ? '暂无报表汇总' : 'No report totals available';
-  String get meteredTraffic => isChinese ? '计量流量' : 'Metered Traffic';
-  String get estimatedHistory => isChinese ? '历史估算量' : 'Estimated History';
   String get dailyUsageBreakdownUnavailable =>
       isChinese ? '暂无每日用量明细' : 'Daily usage breakdown unavailable';
   String get noModelUsageInLatestDailyBreakdown => isChinese
@@ -34,12 +54,10 @@ extension LicoStringsLabels on LicoStrings {
       : 'No agent usage in the latest daily breakdown';
   String get usageOverTime => isChinese ? '用量趋势' : 'Usage Over Time';
   String lastDays(int days) => isChinese ? '最近 $days 天' : 'Last $days days';
-  String get byAgent => isChinese ? '按智能体' : 'By Agent';
-  String get byModel => isChinese ? '按模型' : 'By Model';
+  String get byAgent => isChinese ? '智能体' : 'By Agent';
+  String get byModel => isChinese ? '模型' : 'By Model';
   String dailyTokenUsage(String date) =>
       isChinese ? '$date 每日 Token 用量' : 'Daily Token Usage · $date';
-  String agentCount(int count) =>
-      isChinese ? '$count 个智能体' : '$count ${count == 1 ? 'agent' : 'agents'}';
   String get apiPriceEstimate => isChinese ? 'API 价格预估' : 'Estimated API Price';
   String get priceNotEstimable => isChinese ? '不可估算' : 'Unavailable';
   String get usageAndCostsApi =>
@@ -56,22 +74,31 @@ extension LicoStringsLabels on LicoStrings {
   String get openSkillHub => isChinese ? '打开技能中心' : 'Open Skill Hub';
   String get openRuntime => isChinese ? '打开运行时' : 'Open Runtime';
   String get reply => isChinese ? '回复' : 'Reply';
-  String get composePost => isChinese ? '发帖' : 'New post';
-  String get composePostHint => isChinese
-      ? '写点什么，或 @ 某个智能体去完成任务…'
-      : 'Write something, or @ an agent to take on a task…';
-  String get mentionAgents => isChinese ? '提及智能体' : 'Mention agents';
+  String get composeFloatingHint =>
+      isChinese ? '发一条动态…' : 'Broadcast a message…';
+  String get attachFiles => isChinese ? '添加附件' : 'Attach files';
   String get postUpdate => isChinese ? '发布' : 'Post';
 
-  // MCP plugin management.
+  // MCP / ACP plugin management.
   String get noScannedAgents => isChinese ? '没有已扫描的智能体' : 'No scanned agents';
   String scannedAgentCount(int count) =>
       isChinese ? '$count 个智能体' : '$count ${count == 1 ? 'agent' : 'agents'}';
   String get refreshTargets => isChinese ? '刷新目标' : 'Refresh targets';
   String get mcpConfig => isChinese ? 'MCP 配置' : 'MCP config';
+  String get mcpPluginColumn => isChinese ? 'MCP 插件' : 'MCP plugin';
+  String get acpPluginColumn => isChinese ? 'ACP 插件' : 'ACP plugin';
+  String get pluginUnsupported => isChinese ? '不支持' : 'Unsupported';
+  String get acpDeclared => isChinese ? '已声明' : 'Declared';
   String get scanTargetsBeforeManagingMcp => isChinese
-      ? '请先扫描目标，再管理 MCP 插件。'
-      : 'Run a target scan before managing MCP plugins.';
+      ? '请先扫描目标，再管理 MCP 与 ACP 插件。'
+      : 'Run a target scan before managing MCP and ACP plugins.';
+  String get pluginHubSubtitle => isChinese
+      ? '为每个智能体配置 MCP 与 ACP 插件。'
+      : 'Connect MCP and ACP plugins for each local agent.';
+  String get configurePlugins => isChinese ? '配置' : 'Configure';
+  String agentPluginCardDescription(String label) => isChinese
+      ? '为 $label 管理 MCP 与 ACP 插件，保持工具与对话通道可用。'
+      : 'Manage MCP and ACP plugins for $label so tools and conversation lanes stay ready.';
   String get reinstall => isChinese ? '重新安装' : 'Reinstall';
   String get update => isChinese ? '更新' : 'Update';
   String get unknown => isChinese ? '未知' : 'Unknown';
@@ -203,7 +230,7 @@ extension LicoStringsLabels on LicoStrings {
       'Client logs' => '客户端日志',
       'Conversation archive' => '对话归档',
       'Error' => '错误',
-      'Future client' => '客户端',
+      'LicoArc client' => '客户端',
       'MCP config plan' => 'MCP 配置计划',
       'MCP plugin' => 'MCP 插件',
       'Mobile agents' => '移动端智能体',
@@ -218,7 +245,6 @@ extension LicoStringsLabels on LicoStrings {
       'Snapshots' => '快照',
       'Target inspect' => '目标检查',
       'Targets' => '目标',
-      'Voice input' => '语音输入',
       _ => value,
     };
   }
@@ -238,13 +264,17 @@ extension LicoStringsLabels on LicoStrings {
   String get privateSkills => isChinese ? '私有技能' : 'Private Skills';
   String get publicLabel => isChinese ? '公共' : 'Public';
   String get privateLabel => isChinese ? '私有' : 'Private';
-  String get loadable => isChinese ? '可加载' : 'Loadable';
   String get noSkillsFound => isChinese ? '未发现技能' : 'No Skills Found';
   String get refreshSkillsHint => isChinese
       ? '刷新后会重新扫描本机技能目录。'
       : 'Refresh to scan local skill directories again.';
   String get noDescription => isChinese ? '暂无描述' : 'No description';
   String get skillId => isChinese ? '技能 ID' : 'Skill ID';
+  String get author => isChinese ? '作者' : 'Author';
+  String get customizeSkillIcon =>
+      isChinese ? '自定义技能图标' : 'Customize Skill Icon';
+  String get skillIconColor => isChinese ? '图标颜色' : 'Icon Color';
+  String get skillIconGlyph => isChinese ? '图标样式' : 'Icon Glyph';
   String get version => isChinese ? '版本' : 'Version';
   String get path => isChinese ? '路径' : 'Path';
   String get type => isChinese ? '类型' : 'Type';
@@ -271,7 +301,6 @@ extension LicoStringsLabels on LicoStrings {
   String get pinToTop => isChinese ? '置顶' : 'Pin To Top';
   String get unpinFromTop => isChinese ? '取消置顶' : 'Unpin From Top';
   String get pinned => isChinese ? '已置顶' : 'Pinned';
-  String get voiceInput => isChinese ? '语音输入' : 'Voice Input';
   String get pairingInviteToken => isChinese ? '邀请令牌' : 'Invite Token';
   String get pairingQrDetected =>
       isChinese ? '已识别二维码，正在配对...' : 'QR detected, pairing...';
@@ -291,6 +320,8 @@ extension LicoStringsLabels on LicoStrings {
       isChinese ? '正在扫描可用智能体...' : 'Scanning available agents...';
   String get noLocalAgentsFound =>
       isChinese ? '未发现可用智能体' : 'No available agents found';
+  String get agentTabNeedsApproval => isChinese ? '等待批准' : 'Needs approval';
+  String get agentTabWorkFinished => isChinese ? '工作已完成' : 'Work finished';
   String get selectAgentToView => isChinese
       ? '选择一个智能体查看历史并对话'
       : 'Select an agent to view histories and chat';
@@ -300,6 +331,7 @@ extension LicoStringsLabels on LicoStrings {
   String get binaryPath => isChinese ? '程序路径' : 'Binary path';
   String get historyRoot => isChinese ? '历史目录' : 'History root';
   String get cancel => isChinese ? '取消' : 'Cancel';
+  String get apply => isChinese ? '应用' : 'Apply';
   String get inspect => isChinese ? '查看' : 'Inspect';
   String get plan => isChinese ? '计划' : 'Plan';
 
@@ -311,6 +343,8 @@ extension LicoStringsLabels on LicoStrings {
 
   String get historyConversations =>
       isChinese ? '历史对话' : 'Conversation history';
+  String get agentsSidebarConversations => isChinese ? '对话' : 'CONVERSATIONS';
+  String get ungroupedConversationProject => isChinese ? '未关联项目' : 'No project';
   String get historyConversationSearchHint =>
       isChinese ? '搜索历史对话' : 'Search conversations';
   String get noMatchingNativeHistories =>
@@ -348,6 +382,8 @@ extension LicoStringsLabels on LicoStrings {
       isChinese ? '收起历史对话' : 'Collapse conversation history';
   String get expandHistoryConversations =>
       isChinese ? '展开历史对话' : 'Expand conversation history';
+  String get collapseAgentsSidebar => isChinese ? '收起侧边栏' : 'Collapse sidebar';
+  String get expandAgentsSidebar => isChinese ? '展开侧边栏' : 'Expand sidebar';
   String messagesCount(int count) =>
       isChinese ? '$count 条消息' : '$count messages';
   String get noMessagesInHistory => isChinese ? '还没有消息' : 'No messages yet';
@@ -476,48 +512,91 @@ extension LicoStringsLabels on LicoStrings {
 
   String conversationParityReason(String code) {
     return switch (code) {
-      'evidence_missing' => isChinese
-          ? '缺少当前版本的对等证据，发送保持关闭。'
-          : 'Current parity evidence is missing, so sending stays closed.',
-      'evidence_incomplete' => isChinese
-          ? '对等证据不完整，发送保持关闭。'
-          : 'Parity evidence is incomplete, so sending stays closed.',
-      'evidence_stale_or_incomplete' => isChinese
-          ? '对等证据已过期或不完整，请重新扫描后重试。'
-          : 'Parity evidence is stale or incomplete; rescan and retry.',
-      'runtime_evidence_binding_mismatch' => isChinese
-          ? '运行时证据绑定不匹配，请重新扫描智能体。'
-          : 'Runtime evidence binding mismatch; rescan agents.',
-      'official_native_lane_missing' => isChinese
-          ? '缺少可公开使用的官方会话通道。'
-          : 'No official public conversation lane is available.',
-      'exact_session_resume_unavailable' => isChinese
-          ? '无法在官方通道上精确恢复原生会话。'
-          : 'Exact native session resume is unavailable on the official lane.',
-      'antigravity_public_transport_unavailable' => isChinese
-          ? '该适配器没有可用的公开会话传输。'
-          : 'No public conversation transport is available for this adapter.',
+      'evidence_missing' =>
+        isChinese
+            ? '缺少当前版本的对等证据，发送保持关闭。'
+            : 'Current parity evidence is missing, so sending stays closed.',
+      'evidence_incomplete' =>
+        isChinese
+            ? '对等证据不完整，发送保持关闭。'
+            : 'Parity evidence is incomplete, so sending stays closed.',
+      'evidence_stale_or_incomplete' =>
+        isChinese
+            ? '对等证据已过期或不完整，请重新扫描后重试。'
+            : 'Parity evidence is stale or incomplete; rescan and retry.',
+      'runtime_evidence_binding_mismatch' =>
+        isChinese
+            ? '运行时证据绑定不匹配，请重新扫描智能体。'
+            : 'Runtime evidence binding mismatch; rescan agents.',
+      'official_native_lane_missing' =>
+        isChinese
+            ? '缺少可公开使用的官方会话通道。'
+            : 'No official public conversation lane is available.',
+      'exact_session_resume_unavailable' =>
+        isChinese
+            ? '无法在官方通道上精确恢复原生会话。'
+            : 'Exact native session resume is unavailable on the official lane.',
+      'antigravity_cli_structured_transport_unavailable' =>
+        isChinese
+            ? 'Antigravity CLI 没有保持消息与会话 ID 离开进程参数的结构化传输。'
+            : 'Antigravity CLI has no structured transport that keeps messages and conversation IDs out of process arguments.',
       'native_conversation_parity_unverified' ||
       'native_conversation_parity_blocked' ||
       'native_conversation_parity_failed' ||
       'native_conversation_parity_partial' ||
-      'native_conversation_parity_history-only' => isChinese
-          ? '原生会话对等尚未就绪，发送保持关闭。'
-          : 'Native conversation parity is not ready, so sending stays closed.',
+      'native_conversation_parity_history-only' =>
+        isChinese
+            ? '原生会话对等尚未就绪，发送保持关闭。'
+            : 'Native conversation parity is not ready, so sending stays closed.',
       'orchestration_policy_required' => configurePolicyBeforeSend,
-      'orchestration_targets_unavailable' => isChinese
-          ? '当前策略没有可用的发送目标。'
-          : 'The current policy has no available send targets.',
-      _ => isChinese
-          ? '发送因对等门禁关闭：$code'
-          : 'Sending closed by parity gate: $code',
+      'orchestration_targets_unavailable' =>
+        isChinese
+            ? '当前策略没有可用的发送目标。'
+            : 'The current policy has no available send targets.',
+      _ =>
+        isChinese ? '发送因对等门禁关闭：$code' : 'Sending closed by parity gate: $code',
     };
   }
+
   String messageTarget(String targetLabel) =>
       isChinese ? '发送给 $targetLabel' : 'Message $targetLabel';
   String get send => isChinese ? '发送' : 'Send';
 
   String get appearancePreset => isChinese ? '外观方案' : 'Appearance Preset';
+  String get layoutProfile => isChinese ? '界面布局' : 'Interface Layout';
+  String get layoutProfileDescription => isChinese
+      ? '预览并选择整套组件风格、页面排布与交互外观。'
+      : 'Preview and choose a complete component, arrangement, and interaction system.';
+  String get previewLayout => isChinese ? '预览布局' : 'Preview layout';
+  String get confirmLayout => isChinese ? '使用此布局' : 'Use this layout';
+  String get cancelLayoutPreview => isChinese ? '取消预览' : 'Cancel preview';
+  String get resetLayout =>
+      isChinese ? '恢复系统默认布局' : 'Restore system default layout';
+  String get layoutLoading => isChinese ? '正在加载布局…' : 'Loading layouts…';
+  String get layoutPreviewing => isChinese ? '正在预览布局' : 'Previewing layout';
+  String get layoutCommitting => isChinese ? '正在保存布局…' : 'Saving layout…';
+  String get currentLayout => isChinese ? '当前布局' : 'Current layout';
+  String layoutSelectionError(LayoutSelectionErrorCode code) => switch (code) {
+    LayoutSelectionErrorCode.invalidProfile =>
+      isChinese
+          ? '布局标识无效，已保留当前布局。'
+          : 'The layout identifier is invalid. The current layout was kept.',
+    LayoutSelectionErrorCode.unavailableProfile =>
+      isChinese
+          ? '此布局当前不可用，已保留当前布局。'
+          : 'That layout is unavailable. The current layout was kept.',
+    LayoutSelectionErrorCode.invalidStoredPreference =>
+      isChinese
+          ? '已忽略无效的布局偏好并恢复默认布局。'
+          : 'An invalid layout preference was ignored and the default was restored.',
+    LayoutSelectionErrorCode.persistenceFailed =>
+      isChinese ? '无法保存布局，请稍后重试。' : 'The layout could not be saved. Try again.',
+    LayoutSelectionErrorCode.previewExpired =>
+      isChinese
+          ? '布局预览已结束，已恢复原布局。'
+          : 'The layout preview ended and the previous layout was restored.',
+  };
+
   String get appearancePresetDirectory =>
       isChinese ? '外观方案目录' : 'Appearance Preset Directory';
   String get reloadPresets => isChinese ? '重新加载方案' : 'Reload Presets';
@@ -572,6 +651,64 @@ extension LicoStringsLabels on LicoStrings {
   String get pairwise => isChinese ? '点对点' : 'Pairwise';
   String get file => isChinese ? '文件' : 'File';
   String get fileRoute => isChinese ? '文件路由' : 'File Route';
+  String get fileSync => isChinese ? '文件同步' : 'File Sync';
+  String get fileSyncHint => isChinese
+      ? '选择文件与目标目录，评估路由后需本地确认才会写入。不会自动预览或入库。'
+      : 'Pick a file and destination, evaluate the route, then confirm locally before write. No auto-preview or ingestion.';
+  String get chooseFile => isChinese ? '选择文件' : 'Choose File';
+  String get chooseDestination => isChinese ? '选择目标目录' : 'Choose Destination';
+  String get prepareFileSync => isChinese ? '准备同步' : 'Prepare Sync';
+  String get fileSyncSize => isChinese ? '大小' : 'Size';
+  String get destination => isChinese ? '目标目录' : 'Destination';
+  String get notSelected => isChinese ? '未选择' : 'Not selected';
+  String get fileSyncConfirmationPrompt => isChinese
+      ? '确认将文件写入所选目标目录？写入前不会自动打开或解析内容。'
+      : 'Confirm writing this file into the selected destination? Content is not auto-opened or ingested before write.';
+  String get confirmWrite => isChinese ? '确认写入' : 'Confirm Write';
+  String get rejectWrite => isChinese ? '拒绝写入' : 'Reject Write';
+  String get fileSyncQueue => isChinese ? '传输队列' : 'Transfer Queue';
+  String get fileSyncStatusDrafting => isChinese ? '起草中' : 'Drafting';
+  String get fileSyncStatusEvaluating => isChinese ? '评估中' : 'Evaluating';
+  String get fileSyncStatusAwaitingConfirmation =>
+      isChinese ? '等待确认' : 'Awaiting confirmation';
+  String get fileSyncStatusConfirmed => isChinese ? '已确认' : 'Confirmed';
+  String get fileSyncStatusRejected => isChinese ? '已拒绝' : 'Rejected';
+  String get fileSyncStatusFailed => isChinese ? '失败' : 'Failed';
+  String get remoteApproval => isChinese ? '远程审批' : 'Remote Approval';
+  String get remoteApprovalHint => isChinese
+      ? '来自可信客户端的加密审批请求会出现在此收件箱。详情保持密文，仅显示摘要。'
+      : 'Encrypted approval requests from trusted clients appear here. Detail stays ciphertext; only the summary is shown.';
+  String get remoteApprovalEmpty =>
+      isChinese ? '当前没有待处理的审批。' : 'No pending approvals.';
+  String get remoteApprovalHistory => isChinese ? '审批历史' : 'Approval History';
+  String get remoteApprovalStatusPending => isChinese ? '待处理' : 'Pending';
+  String get remoteApprovalStatusAllowed => isChinese ? '已批准' : 'Allowed';
+  String get remoteApprovalStatusDenied => isChinese ? '已拒绝' : 'Denied';
+  String get remoteApprovalStatusExpired => isChinese ? '已过期' : 'Expired';
+  String get remoteApprovalStatusFailed => isChinese ? '失败' : 'Failed';
+  String get risk => isChinese ? '风险' : 'Risk';
+  String get summary => isChinese ? '摘要' : 'Summary';
+  String get tools => isChinese ? '工具' : 'Tools';
+  String get allow => isChinese ? '允许' : 'Allow';
+  String get deny => isChinese ? '拒绝' : 'Deny';
+  String get skillSync => isChinese ? '技能同步' : 'Skill Sync';
+  String get skillSyncHint => isChinese
+      ? '选择技能与目标智能体，确认后再安装。'
+      : 'Choose a skill and target agent, then confirm before install.';
+  String get skillSyncPrepare => isChinese ? '准备技能同步' : 'Prepare Skill Sync';
+  String get skillSyncConfirmInstall => isChinese ? '确认安装' : 'Confirm Install';
+  String get skillSyncRejectInstall => isChinese ? '拒绝安装' : 'Reject Install';
+  String get skillSyncQueue => isChinese ? '技能同步队列' : 'Skill Sync Queue';
+  String get skillSyncStatusDrafting => isChinese ? '起草中' : 'Drafting';
+  String get skillSyncStatusTransferring => isChinese ? '传输中' : 'Transferring';
+  String get skillSyncStatusAwaitingInstall =>
+      isChinese ? '等待安装' : 'Awaiting install';
+  String get skillSyncStatusInstalling => isChinese ? '安装中' : 'Installing';
+  String get skillSyncStatusInstalled => isChinese ? '已安装' : 'Installed';
+  String get skillSyncStatusFailed => isChinese ? '失败' : 'Failed';
+  String get sourceAgent => isChinese ? '源智能体' : 'Source Agent';
+  String get targetAgent => isChinese ? '目标智能体' : 'Target Agent';
+  String get packageDigest => isChinese ? '包摘要' : 'Package Digest';
   String get fileReceiveDestination =>
       isChinese ? '文件接收位置' : 'File Receive Destination';
   String get evaluatingFileReceiveDestination => isChinese
@@ -591,21 +728,70 @@ extension LicoStringsLabels on LicoStrings {
   String get e2eeReadiness => isChinese ? '端到端加密就绪' : 'E2EE Readiness';
   String get secretStore => isChinese ? '密钥存储' : 'Secret Store';
   String get gateway => isChinese ? '网关' : 'Gateway';
-  String get privateGateway => isChinese ? '私有网关' : 'Private';
+  String get licoArcGateway => isChinese ? 'Lico Arc 网关' : 'Lico Arc Gateway';
+  String get customGateway => isChinese ? '自定义网关' : 'Custom Gateway';
+  String get privateGateway => isChinese ? '自定义网关' : 'Custom Gateway';
   String get gatewayLocked =>
       isChinese ? '默认 Lico Arc 网关不可编辑' : 'Default Lico Arc gateway is locked';
   String get saveGateway => isChinese ? '保存网关' : 'Save Gateway';
   String get defaultLabel => isChinese ? '默认' : 'Default';
   String get active => isChinese ? '当前' : 'Active';
   String get pairing => isChinese ? '配对' : 'Pairing';
+  String get tapToGeneratePairingQr =>
+      isChinese ? '点击生成配对码' : 'Tap to generate pairing code';
+  String get pairingQrPlaceholder => isChinese ? '配对二维码' : 'Pairing QR code';
+  String get deviceTrustVerification =>
+      isChinese ? '设备信任验证' : 'Device Trust Verification';
+  String get trustVerified =>
+      isChinese ? '已验证，可发送加密内容' : 'Verified — protected send enabled';
+  String get trustUnverified =>
+      isChinese ? '尚未验证，已阻止发送' : 'Unverified — protected send blocked';
+  String get trustKeyChanged =>
+      isChinese ? '密钥已变化，必须重新验证' : 'Key changed — verification required';
+  String get trustRevoked =>
+      isChinese ? '信任已撤销，已阻止发送' : 'Trust revoked — protected send blocked';
+  String get safetyNumber => isChinese ? '60 位安全码' : '60-Digit Safety Number';
+  String get localFingerprint => isChinese ? '本机指纹' : 'Local Fingerprint';
+  String get peerFingerprint => isChinese ? '对端指纹' : 'Peer Fingerprint';
+  String get verificationMethod => isChinese ? '验证方式' : 'Verification Method';
+  String get securityCapabilities =>
+      isChinese ? '安全能力' : 'Security Capabilities';
+  String get expandSecurityCapabilities =>
+      isChinese ? '展开安全能力' : 'Expand security capabilities';
+  String get collapseSecurityCapabilities =>
+      isChinese ? '收起安全能力' : 'Collapse security capabilities';
+  String get localEndpointCapabilities =>
+      isChinese ? '本机能力集合' : 'Local Endpoint Capability Sets';
+  String get peerEndpointCapabilities =>
+      isChinese ? '对端能力集合' : 'Peer Endpoint Capability Sets';
+  String get negotiatedProtocolCapabilities =>
+      isChinese ? '已协商协议能力' : 'Negotiated Protocol Capabilities';
+  String get enabledCapabilities => isChinese ? '已启用' : 'Enabled';
+  String get availableCapabilities => isChinese ? '可用' : 'Available';
+  String get unavailableCapabilities => isChinese ? '不可用' : 'Unavailable';
+  String get unverifiedCapabilities => isChinese ? '未验证' : 'Unverified';
+  String get missingMandatoryCapabilities =>
+      isChinese ? '缺失的强制能力' : 'Missing Mandatory Capabilities';
+  String get capabilityReasons => isChinese ? '原因' : 'Reasons';
+  String get selectedCustody => isChinese ? '已选择的密钥托管' : 'Selected Custody';
+  String get custodyRestartSemantics =>
+      isChinese ? '重启后的安全语义' : 'Restart Security Semantics';
+  String get enabledCustodyHardening =>
+      isChinese ? '已启用的托管加固' : 'Enabled Custody Hardening';
+  String get capabilityDependencies =>
+      isChinese ? '能力依赖关系' : 'Capability Dependencies';
+  String get noCapabilities => isChinese ? '无' : 'None';
+  String get compareSafetyNumber => isChinese
+      ? '请在两台设备上逐组核对安全码或扫描验证二维码。任何一组不同都不要继续发送。'
+      : 'Compare every group on both devices or scan the verification QR code. Do not send if any group differs.';
   String get createCode => isChinese ? '创建配对码' : 'Create Code';
   String get copyPairingCode => isChinese ? '复制配对码' : 'Copy Pairing Code';
   String get pairingCodeCopied => isChinese ? '配对码已复制' : 'Pairing Code Copied';
   String get oneTimePairingCode =>
       isChinese ? '一次性配对码' : 'One-Time Pairing Code';
   String get oneTimePairingCodeNotice => isChinese
-      ? '此配对码只会展示一次，关闭后会立即从本机清除。重新创建会生成全新的配对码。'
-      : 'This pairing code is shown once and cleared locally when closed. Creating again generates a new code.';
+      ? '此配对码只会展示一次。重新生成会清除当前码并创建全新的配对码。'
+      : 'This pairing code is shown once. Regenerating clears it and creates a new code.';
   String get scanPairingPrompt => isChinese
       ? '点击右上角扫描按钮，扫描 Mac 上的 Lico Arc 配对二维码。'
       : 'Tap the scan button in the top-right corner to scan the Lico Arc pairing QR code on your Mac.';
@@ -632,6 +818,7 @@ extension LicoStringsLabels on LicoStrings {
   String get waiting => isChinese ? '等待中' : 'Waiting';
   String get pairingId => isChinese ? '配对 ID' : 'Pairing ID';
   String get expires => isChinese ? '过期时间' : 'Expires';
+  String get pairingCode => isChinese ? '配对码' : 'Pairing Code';
   String get relayStatus => isChinese ? '中转状态' : 'Relay Status';
   String get pairedComputer => isChinese ? '配对电脑' : 'Paired Computer';
   String get arcDesktop => isChinese ? 'Arc Desktop' : 'Arc Desktop';
@@ -825,6 +1012,10 @@ extension LicoStringsLabels on LicoStrings {
       'true' => isChinese ? '是' : 'Yes',
       'false' => isChinese ? '否' : 'No',
       'ok' || 'healthy' || 'ready' => isChinese ? '正常' : 'Ready',
+      'verified' => isChinese ? '已验证' : 'Verified',
+      'unverified' => unverifiedCapabilities,
+      'partial' => isChinese ? '部分就绪' : 'Partial',
+      'failed' || 'fail' => isChinese ? '失败' : 'Failed',
       'enabled' => isChinese ? '已启用' : 'Enabled',
       'disabled' => isChinese ? '已禁用' : 'Disabled',
       'available' => isChinese ? '可用' : 'Available',
@@ -837,7 +1028,8 @@ extension LicoStringsLabels on LicoStrings {
       'trusted' => isChinese ? '已信任' : 'Trusted',
       'untrusted' => isChinese ? '未信任' : 'Untrusted',
       'allowed' || 'allow' => isChinese ? '允许' : 'Allowed',
-      'denied' || 'deny' || 'blocked' => isChinese ? '拒绝' : 'Denied',
+      'denied' || 'deny' => isChinese ? '拒绝' : 'Denied',
+      'blocked' => isChinese ? '已阻止' : 'Blocked',
       'pending' || 'waiting' => waiting,
       'paired' => paired,
       'active' => active,
@@ -881,6 +1073,7 @@ extension LicoStringsLabels on LicoStrings {
   String get agentWorking => isChinese ? '工作中' : 'Working';
   String get agentDone => isChinese ? '已完成' : 'Done';
   String get agentError => isChinese ? '出错' : 'Error';
+  String get agentPartial => isChinese ? '部分完成' : 'Partial';
   String get noCommentsYet => isChinese ? '还没有评论' : 'No comments yet';
   String get repostedTo => isChinese ? '已转发给' : 'Forwarded to';
   String get selectAgentToForward =>

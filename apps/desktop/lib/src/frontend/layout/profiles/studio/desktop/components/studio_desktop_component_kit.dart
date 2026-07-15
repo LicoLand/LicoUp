@@ -3,9 +3,9 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import 'package:flutter_client/src/frontend/layout/layout_component_kit.dart';
+import 'package:flutter_client/src/frontend/layout/layout_palette.dart';
 import 'package:flutter_client/src/frontend/layout/layout_visual_tokens.dart';
 import 'package:flutter_client/src/frontend/layout/profiles/studio/desktop/tokens/studio_desktop_tokens.dart';
-import 'package:flutter_client/src/frontend/shared/ui/theme.dart';
 
 final LayoutComponentKit studioDesktopComponentKit =
     const StudioDesktopComponentKit();
@@ -27,7 +27,7 @@ final class StudioDesktopComponentKit implements LayoutComponentKit {
     required bool selected,
     required VoidCallback onPressed,
   }) {
-    final colors = context.licoColors;
+    final colors = context.layoutPalette;
     final tokens = context.layoutVisualTokens;
     final reducedMotion =
         MediaQuery.maybeOf(context)?.disableAnimations ?? false;
@@ -126,7 +126,7 @@ final class StudioDesktopComponentKit implements LayoutComponentKit {
     required Widget child,
     bool emphasized = false,
   }) {
-    final colors = context.licoColors;
+    final colors = context.layoutPalette;
     return DecoratedBox(
       key: key,
       decoration: BoxDecoration(
@@ -144,7 +144,7 @@ final class StudioDesktopComponentKit implements LayoutComponentKit {
     required Widget child,
     VoidCallback? onPressed,
   }) {
-    final colors = context.licoColors;
+    final colors = context.layoutPalette;
     final tokens = context.layoutVisualTokens;
     final body = Padding(
       padding: EdgeInsets.all(tokens.spacingUnit * 1.5),
@@ -176,7 +176,7 @@ final class StudioDesktopComponentKit implements LayoutComponentKit {
     required Widget child,
     String? semanticLabel,
   }) {
-    final colors = context.licoColors;
+    final colors = context.layoutPalette;
     final tokens = context.layoutVisualTokens;
     return Semantics(
       label: semanticLabel,
@@ -210,7 +210,7 @@ final class StudioDesktopComponentKit implements LayoutComponentKit {
     required Key key,
     required Widget child,
   }) {
-    final colors = context.licoColors;
+    final colors = context.layoutPalette;
     final tokens = context.layoutVisualTokens;
     return ConstrainedBox(
       key: key,
@@ -237,7 +237,7 @@ final class StudioDesktopComponentKit implements LayoutComponentKit {
     required Widget child,
     required bool attention,
   }) {
-    final colors = context.licoColors;
+    final colors = context.layoutPalette;
     final tokens = context.layoutVisualTokens;
     final accent = attention ? colors.warning : colors.info;
     return Container(

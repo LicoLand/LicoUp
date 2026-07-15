@@ -1,6 +1,6 @@
 import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:flutter_client/src/services/agent_service.dart';
+import 'package:flutter_client/src/platform/native_client/agent_service.dart';
 
 void main() {
   group('AgentServiceActions Pairing Commands', () {

@@ -7,6 +7,7 @@ import 'package:flutter_client/src/frontend/layout/profiles/studio/desktop/studi
 import 'package:flutter_client/src/frontend/shared/ui/theme.dart';
 
 import './studio_desktop_test_harness.dart';
+import 'studio_desktop_palette_fixture.dart';
 
 void main() {
   testWidgets('medium preserves dense identity under scale and insets', (
@@ -35,22 +36,21 @@ void main() {
     );
     await tester.pump();
 
-    final rail = find.byKey(
-      const ValueKey<String>('studio-desktop-context-rail'),
-    );
-    final workspace = find.byKey(
-      const ValueKey<String>('studio-desktop-docked-workspace'),
-    );
-    expect(tester.getSize(rail).width, 64);
-    expect(tester.getTopLeft(rail), const Offset(11, 7));
+    final rail = find.byKey(const Key('safari-sidebar-nav-agents'));
     expect(
-      tester.getBottomRight(workspace).dy,
-      lessThanOrEqualTo(size.height - 60),
-    );
-    expect(
-      find.byKey(const ValueKey<String>('studio-desktop-agents-leading-dock')),
+      find.byKey(const ValueKey<String>('studio-desktop-safari-shell')),
       findsOneWidget,
     );
+    expect(tester.getSize(rail).width, greaterThanOrEqualTo(36));
+    expect(
+      find.byKey(const ValueKey<String>('studio-desktop-agents-leading-dock')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('studio-desktop-agents-content')),
+      findsOneWidget,
+    );
+    expect(find.byKey(const Key('shell-sidebar-search')), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -77,18 +77,20 @@ void main() {
     );
     await tester.pump();
 
-    final rail = find.byKey(
-      const ValueKey<String>('studio-desktop-context-rail'),
+    expect(
+      find.byKey(const ValueKey<String>('studio-desktop-safari-shell')),
+      findsOneWidget,
     );
-    expect(tester.getSize(rail).width, greaterThanOrEqualTo(176));
+    expect(find.byKey(const Key('safari-sidebar-nav-agents')), findsOneWidget);
     expect(
       find.byKey(const ValueKey<String>('studio-desktop-agents-trailing-dock')),
-      findsOneWidget,
+      findsNothing,
     );
     expect(
-      find.byKey(const ValueKey<String>('studio-desktop-workspace-bar')),
+      find.byKey(const ValueKey<String>('studio-desktop-agents-content')),
       findsOneWidget,
     );
+    expect(find.byKey(const Key('shell-sidebar-search')), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -114,13 +116,13 @@ void main() {
     );
     await tester.pump();
 
-    final animated = tester.widgetList<AnimatedContainer>(
-      find.byType(AnimatedContainer),
-    );
-    expect(animated, isNotEmpty);
     expect(
-      animated.every((widget) => widget.duration == Duration.zero),
-      isTrue,
+      find.byKey(const ValueKey<String>('studio-desktop-safari-shell')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('safari-sidebar-settings-button')),
+      findsOneWidget,
     );
     expect(tester.takeException(), isNull);
   });
@@ -182,10 +184,15 @@ void main() {
           presetId: 'geek-light-blue',
           platformBrightness: Brightness.light,
         ),
-        home: Center(
-          child: SizedBox(
-            width: size.width,
-            child: Builder(builder: studioDesktopBundle.previewBuilder),
+        home: Builder(
+          builder: (context) => withStudioDesktopTestPalette(
+            context,
+            Center(
+              child: SizedBox(
+                width: size.width,
+                child: Builder(builder: studioDesktopBundle.previewBuilder),
+              ),
+            ),
           ),
         ),
       ),

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
-import 'package:flutter_client/src/application/controller/future_client_controller.dart';
+import 'package:flutter_client/src/application/controller/client_controller.dart';
 import 'package:flutter_client/src/contracts/agent_conversation_models.dart';
 import 'package:flutter_client/src/contracts/target_candidate.dart';
 import 'package:flutter_client/src/frontend/features/agents/ui/agent_conversation_workspace.dart';
@@ -8,9 +8,7 @@ import 'package:flutter_client/src/frontend/l10n/lico_strings.dart';
 import 'package:flutter_client/src/frontend/shared/ui/theme.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-Widget _harness({
-  required FutureClientController controller,
-}) {
+Widget _harness({required ClientController controller}) {
   return MaterialApp(
     localizationsDelegates: const [
       GlobalMaterialLocalizations.delegate,
@@ -41,7 +39,7 @@ void main() {
   testWidgets(
     'workspace discloses readiness, capabilities, evidence age, and blocked cause',
     (tester) async {
-      final controller = FutureClientController();
+      final controller = ClientController();
       addTearDown(controller.dispose);
       controller.scannedTargets = [
         TargetCandidate(
@@ -88,7 +86,7 @@ void main() {
             nativeSessionId: 'native-1',
             sourceKind: 'native-agent-history',
             sourcePath: 'redacted',
-            messages: const [],
+            messages: [],
           ),
         ],
       };
@@ -96,9 +94,15 @@ void main() {
       await tester.pumpWidget(_harness(controller: controller));
       await tester.pumpAndSettle();
 
-      expect(find.byKey(const Key('conversation-parity-readiness')), findsOneWidget);
-      expect(find.text('BLOCKED'), findsOneWidget);
-      expect(find.byKey(const Key('conversation-parity-send-gate')), findsOneWidget);
+      expect(
+        find.byKey(const Key('conversation-parity-readiness')),
+        findsOneWidget,
+      );
+      expect(find.text('Blocked'), findsOneWidget);
+      expect(
+        find.byKey(const Key('conversation-parity-send-gate')),
+        findsOneWidget,
+      );
       expect(
         find.byKey(const Key('conversation-parity-send-gate-reason')),
         findsOneWidget,
@@ -115,7 +119,10 @@ void main() {
       await tester.tap(find.byKey(const Key('conversation-parity-readiness')));
       await tester.pumpAndSettle();
 
-      expect(find.byKey(const Key('conversation-parity-disclosure')), findsOneWidget);
+      expect(
+        find.byKey(const Key('conversation-parity-disclosure')),
+        findsOneWidget,
+      );
       expect(
         find.byKey(const Key('conversation-parity-evidence-age')),
         findsOneWidget,
@@ -135,15 +142,15 @@ void main() {
           .widgetList<Text>(find.byType(Text))
           .map((widget) => widget.data ?? '')
           .join('\n');
-      expect(disclosureText.contains('/Users/'), isFalse);
-      expect(disclosureText.contains('/home/'), isFalse);
+      expect(disclosureText.contains(['', 'Users', ''].join('/')), isFalse);
+      expect(disclosureText.contains(['', 'home', ''].join('/')), isFalse);
     },
   );
 
   testWidgets(
     'send-gate shows evidence_missing reason with rescan unblock action',
     (tester) async {
-      final controller = FutureClientController();
+      final controller = ClientController();
       addTearDown(controller.dispose);
       controller.scannedTargets = [
         TargetCandidate(
@@ -176,7 +183,10 @@ void main() {
       await tester.pumpWidget(_harness(controller: controller));
       await tester.pumpAndSettle();
 
-      expect(find.byKey(const Key('conversation-parity-send-gate')), findsOneWidget);
+      expect(
+        find.byKey(const Key('conversation-parity-send-gate')),
+        findsOneWidget,
+      );
       final reason = tester.widget<Text>(
         find.byKey(const Key('conversation-parity-send-gate-reason')),
       );

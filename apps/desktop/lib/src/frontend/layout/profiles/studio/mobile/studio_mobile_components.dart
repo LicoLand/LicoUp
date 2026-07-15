@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 
 import 'package:flutter_client/src/contracts/presentation/semantic_destination.dart';
 import 'package:flutter_client/src/frontend/layout/layout_component_kit.dart';
+import 'package:flutter_client/src/frontend/layout/layout_palette.dart';
 import 'package:flutter_client/src/frontend/layout/profiles/studio/mobile/studio_mobile_tokens.dart';
-import 'package:flutter_client/src/frontend/shared/ui/theme.dart';
 
 const LayoutComponentKit studioMobileComponents = StudioMobileComponentKit();
 
@@ -22,7 +22,7 @@ final class StudioMobileComponentKit implements LayoutComponentKit {
     required bool selected,
     required VoidCallback onPressed,
   }) {
-    final colors = context.licoColors;
+    final colors = context.layoutPalette;
     final disableAnimations =
         MediaQuery.maybeOf(context)?.disableAnimations ?? false;
     return Semantics(
@@ -143,7 +143,7 @@ final class StudioMobileComponentKit implements LayoutComponentKit {
     required Widget child,
     bool emphasized = false,
   }) {
-    final colors = context.licoColors;
+    final colors = context.layoutPalette;
     return DecoratedBox(
       key: key,
       decoration: BoxDecoration(
@@ -169,7 +169,7 @@ final class StudioMobileComponentKit implements LayoutComponentKit {
     required Widget child,
     VoidCallback? onPressed,
   }) {
-    final colors = context.licoColors;
+    final colors = context.layoutPalette;
     final shape = RoundedRectangleBorder(
       borderRadius: BorderRadius.circular(StudioMobileMetrics.controlRadius),
       side: BorderSide(color: colors.line, width: 1),
@@ -200,7 +200,7 @@ final class StudioMobileComponentKit implements LayoutComponentKit {
     required Widget child,
     String? semanticLabel,
   }) {
-    final colors = context.licoColors;
+    final colors = context.layoutPalette;
     return Semantics(
       key: key,
       container: true,
@@ -227,7 +227,7 @@ final class StudioMobileComponentKit implements LayoutComponentKit {
     required Key key,
     required Widget child,
   }) {
-    final colors = context.licoColors;
+    final colors = context.layoutPalette;
     return Material(
       key: key,
       color: colors.surface,
@@ -249,7 +249,7 @@ final class StudioMobileComponentKit implements LayoutComponentKit {
     required Widget child,
     required bool attention,
   }) {
-    final colors = context.licoColors;
+    final colors = context.layoutPalette;
     return DecoratedBox(
       key: key,
       decoration: BoxDecoration(

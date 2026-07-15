@@ -10,9 +10,12 @@ import './fixtures/layout_scoped_state_fixture.dart';
 void main() {
   test('fixture admits only supplied presentation-state namespaces', () {
     final profile = LayoutProfileDescriptor(
-      id: LayoutProfileId.studio,
-      labelKey: 'layout.profile.studio.label',
-      descriptionKey: 'layout.profile.studio.description',
+      id: LayoutProfileId.parse('studio'),
+      label: LayoutProfileCopy(english: 'Studio', chinese: '原生'),
+      description: LayoutProfileCopy(
+        english: 'Studio fixture',
+        chinese: '原生夹具',
+      ),
       styleIdentity: 'dense-docked-studio',
       isDefault: false,
     );
@@ -24,31 +27,29 @@ void main() {
           profileId: profile.id,
           surface: LayoutRuntimeSurface.mobile,
           destination: ClientSection.agents,
-          surfaceId: 'conversation-scroll',
+          channel: const LayoutStateChannel(
+            'conversation-scroll',
+            LayoutStateValueKind.scroll,
+          ),
+        ),
+        LayoutStateNamespace(
+          profileId: profile.id,
+          surface: LayoutRuntimeSurface.mobile,
+          destination: ClientSection.settings,
+          channel: LayoutStateChannels.settingsScroll,
         ),
       },
     );
 
-    state.write(
-      destination: ClientSection.agents,
-      surfaceId: 'conversation-scroll',
-      value: LayoutScrollState(24),
+    const conversationScroll = LayoutStateChannel(
+      'conversation-scroll',
+      LayoutStateValueKind.scroll,
     );
+    state.write(conversationScroll, LayoutScrollState(24));
+    expect((state.read(conversationScroll) as LayoutScrollState).offset, 24);
     expect(
-      (state.read(
-                destination: ClientSection.agents,
-                surfaceId: 'conversation-scroll',
-              )
-              as LayoutScrollState)
-          .offset,
-      24,
-    );
-    expect(
-      () => state.write(
-        destination: ClientSection.settings,
-        surfaceId: 'undeclared',
-        value: const LayoutExpansionState(true),
-      ),
+      () =>
+          state.write(LayoutStateChannels.settingsScroll, LayoutScrollState(8)),
       throwsFormatException,
     );
   });

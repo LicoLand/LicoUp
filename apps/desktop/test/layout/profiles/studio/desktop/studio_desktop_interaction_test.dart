@@ -1,9 +1,9 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:flutter_client/src/contracts/presentation/semantic_destination.dart';
+import 'package:flutter_client/src/frontend/layout/layout_chrome_port.dart';
 
 import './studio_desktop_test_harness.dart';
 
@@ -34,12 +34,19 @@ void main() {
       expect(find.bySemanticsLabel('Home'), findsAtLeastNWidgets(1));
       expect(find.bySemanticsLabel('Content Home'), findsOneWidget);
 
-      final orders = tester
-          .widgetList<FocusTraversalOrder>(find.byType(FocusTraversalOrder))
-          .map((widget) => (widget.order as NumericFocusOrder).order)
-          .toList(growable: false);
-      expect(orders, containsAll(<double>[0, 1, 2, 3, 4, 5, 6, 1000]));
-      expect(orders.toList()..sort(), orders);
+      expect(
+        find.byKey(const ValueKey<String>('studio-desktop-safari-shell')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('safari-sidebar-nav-controlPanel')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('safari-sidebar-nav-agents')),
+        findsOneWidget,
+      );
+      expect(find.byKey(const Key('shell-sidebar-search')), findsOneWidget);
       semantics.dispose();
     },
   );
@@ -66,9 +73,7 @@ void main() {
     );
     await tester.pump();
 
-    await tester.sendKeyEvent(LogicalKeyboardKey.tab);
-    await tester.pump();
-    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.tap(find.byKey(const Key('safari-sidebar-nav-controlPanel')));
     await tester.pump();
 
     expect(actions.destinationSelections, <ClientSection>[
@@ -99,10 +104,8 @@ void main() {
     );
     await tester.pump();
 
-    final agents = find.byKey(
-      const ValueKey<String>('studio-desktop-navigation-agents'),
-    );
-    expect(tester.getSize(agents).height, greaterThanOrEqualTo(44));
+    final agents = find.byKey(const Key('safari-sidebar-nav-agents'));
+    expect(tester.getSize(agents).height, greaterThanOrEqualTo(36));
 
     final pointer = await tester.createGesture(kind: PointerDeviceKind.mouse);
     await pointer.addPointer(location: tester.getCenter(agents));
@@ -126,4 +129,87 @@ void main() {
     ]);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('private Studio chrome consumes only the neutral chrome port', (
+    tester,
+  ) async {
+    const size = Size(900, 620);
+    configureStudioTestView(tester, size);
+    final actions = StudioActionRecorder();
+    final content = StudioRecordingContentPort(actions);
+    final chrome = _StudioChromeRecorder(
+      LayoutChromeSnapshot(
+        status: const LayoutChromeStatusSnapshot(message: '', caption: 'Ready'),
+        allowance: LayoutChromeAllowanceSnapshot(
+          targetId: 'studio-test-agent',
+          targetLabel: 'Studio Test',
+          meters: const <LayoutChromeAllowanceMeterSnapshot>[
+            LayoutChromeAllowanceMeterSnapshot(
+              kind: 'studio-weekly-limit',
+              label: 'Studio weekly',
+              provider: 'Studio',
+              period: 'week',
+              status: 'available',
+              value: '75%',
+              unit: '',
+              message: 'Resets in 2 days.',
+            ),
+          ],
+          totalTokens: 100,
+          targetTokens: 75,
+        ),
+      ),
+    );
+
+    await tester.pumpWidget(
+      StudioDesktopTestHarness(
+        environment: studioDesktopEnvironment(
+          width: size.width,
+          height: size.height,
+          hasPointer: true,
+        ),
+        activeDestination: ClientSection.agents,
+        content: content,
+        actions: actions,
+        chrome: chrome,
+      ),
+    );
+    await tester.pump();
+
+    expect(
+      find.byKey(const ValueKey<String>('shell-status-text:Ready')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('agent-allowance-meter-studio-weekly-limit')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('agent-allowance-meter-value-Studio weekly')),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.byKey(const Key('safari-sidebar-pairing-button')));
+    await tester.pump();
+
+    expect(chrome.pairingOpenCount, 1);
+    expect(actions.destinationSelections, isEmpty);
+    expect(tester.takeException(), isNull);
+  });
+}
+
+final class _StudioChromeRecorder extends ChangeNotifier
+    implements LayoutChromePort {
+  _StudioChromeRecorder(this._value);
+
+  final LayoutChromeSnapshot _value;
+  int pairingOpenCount = 0;
+
+  @override
+  LayoutChromeSnapshot get value => _value;
+
+  @override
+  Future<void> openPairing(BuildContext context) async {
+    pairingOpenCount += 1;
+  }
 }

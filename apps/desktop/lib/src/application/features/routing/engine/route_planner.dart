@@ -1,3 +1,4 @@
+import 'package:flutter_client/src/contracts/agent_usage_models.dart';
 import 'package:flutter_client/src/contracts/routing/route_decision_record.dart';
 import 'package:flutter_client/src/contracts/routing/routing_policy_schema.dart';
 
@@ -21,18 +22,15 @@ class DefaultRoutePlanner implements RoutePlanner {
     required RoutingPolicyDocument policy,
     required RoutingSignals signals,
   }) {
-    final timestamp =
-        (signals.now ?? DateTime.now).call().toUtc().toIso8601String();
+    final now = (signals.now ?? DateTime.now).call().toUtc();
+    final timestamp = now.toIso8601String();
     final excluded = <RouteExclusion>[];
     final eligible = <_ScoredCandidate>[];
-    final requiredRoles = [
-      for (final role in task.requiredRoles)
-        if (role.trim().isNotEmpty) role.trim().toLowerCase(),
-    ];
-    final requiredCapabilities = [
-      for (final capability in task.requiredCapabilities)
-        if (capability.trim().isNotEmpty) capability.trim().toLowerCase(),
-    ];
+    final requirements = inferRoutingTaskRequirements(task);
+    final requiredRoles = requirements.roles;
+    final requiredCapabilities = requirements.capabilities;
+    final explicitRoles = _normalizedValues(task.requiredRoles);
+    final explicitCapabilities = _normalizedValues(task.requiredCapabilities);
     final allowStale = policy.routing.allowStaleUsage;
     var staleUsageOverride = false;
 
@@ -53,13 +51,21 @@ class DefaultRoutePlanner implements RoutePlanner {
         continue;
       }
 
-      if (signal.circuitBroken) {
+      if (signal.circuitBreaker.isOpen(
+        allowedFails: policy.routing.circuitBreaker.allowedFails,
+        cooldown: Duration(
+          seconds: policy.routing.circuitBreaker.cooldownSeconds,
+        ),
+        now: now,
+      )) {
         excluded.add(
           RouteExclusion(
             agentId: agent.id,
             agentLabel: label,
             reason: RouteReasonCode.circuitBroken,
             detail:
+                'failures=${signal.circuitBreaker.failureCount};'
+                'allowedFails=${policy.routing.circuitBreaker.allowedFails};'
                 'cooldownSeconds=${policy.routing.circuitBreaker.cooldownSeconds}',
           ),
         );
@@ -93,12 +99,52 @@ class DefaultRoutePlanner implements RoutePlanner {
             continue;
           }
         }
-        if (signal.allowanceExhausted) {
+        final thresholdAllowance = hasThreshold
+            ? signal.allowanceFor(agent.allowanceThreshold.kind)
+            : null;
+        if (hasThreshold && thresholdAllowance == null) {
+          excluded.add(
+            RouteExclusion(
+              agentId: agent.id,
+              agentLabel: label,
+              reason: RouteReasonCode.allowanceUnavailable,
+              detail: 'kind=${agent.allowanceThreshold.kind}',
+            ),
+          );
+          continue;
+        }
+        final remaining = thresholdAllowance == null
+            ? null
+            : _parseAllowanceValue(thresholdAllowance.value);
+        if (hasThreshold && remaining == null) {
+          excluded.add(
+            RouteExclusion(
+              agentId: agent.id,
+              agentLabel: label,
+              reason: RouteReasonCode.allowanceUnavailable,
+              detail: 'kind=${agent.allowanceThreshold.kind};numeric=false',
+            ),
+          );
+          continue;
+        }
+        final belowMinimum =
+            remaining != null && remaining < agent.allowanceThreshold.minimum;
+        final matchingAllowanceExhausted =
+            thresholdAllowance != null &&
+            _allowanceIsExhausted(thresholdAllowance);
+        if (belowMinimum ||
+            matchingAllowanceExhausted ||
+            (!hasThreshold && signal.allowanceExhausted)) {
           excluded.add(
             RouteExclusion(
               agentId: agent.id,
               agentLabel: label,
               reason: RouteReasonCode.allowanceExhausted,
+              detail: hasThreshold
+                  ? 'kind=${agent.allowanceThreshold.kind};'
+                        'remaining=$remaining;'
+                        'minimum=${agent.allowanceThreshold.minimum}'
+                  : '',
             ),
           );
           continue;
@@ -112,7 +158,8 @@ class DefaultRoutePlanner implements RoutePlanner {
         for (final role in requiredRoles)
           if (agentRoles.contains(role)) role,
       ];
-      if (requiredRoles.isNotEmpty && matchedRoles.isEmpty) {
+      final roleWildcard = agentRoles.isEmpty && explicitRoles.isEmpty;
+      if (requiredRoles.isNotEmpty && matchedRoles.isEmpty && !roleWildcard) {
         excluded.add(
           RouteExclusion(
             agentId: agent.id,
@@ -132,7 +179,9 @@ class DefaultRoutePlanner implements RoutePlanner {
         for (final capability in requiredCapabilities)
           if (!agentCapabilities.contains(capability)) capability,
       ];
-      if (missingCapabilities.isNotEmpty) {
+      final capabilityWildcard =
+          agentCapabilities.isEmpty && explicitCapabilities.isEmpty;
+      if (missingCapabilities.isNotEmpty && !capabilityWildcard) {
         excluded.add(
           RouteExclusion(
             agentId: agent.id,
@@ -153,11 +202,15 @@ class DefaultRoutePlanner implements RoutePlanner {
           agent: agent,
           label: label,
           policyOrder: index,
-          matchedRoles: matchedRoles.isEmpty ? agent.roles : matchedRoles,
+          matchedRoles: matchedRoles.isEmpty
+              ? (roleWildcard ? requiredRoles : agent.roles)
+              : matchedRoles,
           satisfiedCapabilities: satisfiedCapabilities.isEmpty
-              ? agent.capabilities
+              ? (capabilityWildcard ? requiredCapabilities : agent.capabilities)
               : satisfiedCapabilities,
-          allowanceHeadroom: signal.allowanceHeadroom,
+          allowanceHeadroom: hasThreshold
+              ? signal.allowanceHeadroomFor(agent.allowanceThreshold.kind)
+              : signal.allowanceHeadroom,
         ),
       );
     }
@@ -181,6 +234,9 @@ class DefaultRoutePlanner implements RoutePlanner {
         excluded: List.unmodifiable(excluded),
         timestamp: timestamp,
         staleUsageOverride: staleUsageOverride,
+        requiredRoles: requirements.roles,
+        requiredCapabilities: requirements.capabilities,
+        requirementReasons: requirements.reasons,
       );
     }
 
@@ -195,7 +251,9 @@ class DefaultRoutePlanner implements RoutePlanner {
             eligible[i].satisfiedCapabilities,
           ),
           allowanceHeadroom: eligible[i].allowanceHeadroom,
-          reason: i == 0 ? RouteReasonCode.selected : RouteReasonCode.alternative,
+          reason: i == 0
+              ? RouteReasonCode.selected
+              : RouteReasonCode.alternative,
           policyOrder: eligible[i].policyOrder,
         ),
     ];
@@ -210,8 +268,150 @@ class DefaultRoutePlanner implements RoutePlanner {
       excluded: List.unmodifiable(excluded),
       timestamp: timestamp,
       staleUsageOverride: staleUsageOverride,
+      requiredRoles: requirements.roles,
+      requiredCapabilities: requirements.capabilities,
+      requirementReasons: requirements.reasons,
     );
   }
+}
+
+class RoutingTaskRequirements {
+  const RoutingTaskRequirements({
+    required this.roles,
+    required this.capabilities,
+    required this.reasons,
+  });
+
+  final List<String> roles;
+  final List<String> capabilities;
+  final List<String> reasons;
+}
+
+/// Deterministically derives explainable requirements without a model call.
+RoutingTaskRequirements inferRoutingTaskRequirements(RoutingTaskMetadata task) {
+  final roles = <String>{};
+  final capabilities = <String>{};
+  final reasons = <String>[];
+
+  for (final role in task.requiredRoles) {
+    final normalized = role.trim().toLowerCase();
+    if (normalized.isNotEmpty) {
+      roles.add(normalized);
+    }
+  }
+  for (final capability in task.requiredCapabilities) {
+    final normalized = capability.trim().toLowerCase();
+    if (normalized.isNotEmpty) {
+      capabilities.add(normalized);
+    }
+  }
+  if (roles.isNotEmpty || capabilities.isNotEmpty) {
+    reasons.add('explicit_requirements');
+  }
+
+  final contentClass = task.contentClass.trim().toLowerCase();
+  final prompt = task.prompt.trim().toLowerCase();
+  for (final rule in _routingRequirementRules) {
+    final contentMatched = rule.contentClasses.contains(contentClass);
+    final promptMatched = rule.promptTerms.any(prompt.contains);
+    if (!contentMatched && !promptMatched) {
+      continue;
+    }
+    roles.add(rule.role);
+    capabilities.addAll(rule.capabilities);
+    reasons.add(
+      contentMatched
+          ? 'content_class:${rule.explanation}'
+          : 'prompt_keyword:${rule.explanation}',
+    );
+  }
+
+  return RoutingTaskRequirements(
+    roles: List.unmodifiable(roles),
+    capabilities: List.unmodifiable(capabilities),
+    reasons: List.unmodifiable(reasons),
+  );
+}
+
+const _routingRequirementRules = <_RoutingRequirementRule>[
+  _RoutingRequirementRule(
+    explanation: 'architecture',
+    role: 'architecture',
+    capabilities: ['reasoning-deep'],
+    contentClasses: {'architecture', 'system-design'},
+    promptTerms: {'architecture', 'system design', '架构', '系统设计'},
+  ),
+  _RoutingRequirementRule(
+    explanation: 'implementation',
+    role: 'implementation',
+    capabilities: ['tool-use'],
+    contentClasses: {'code', 'implementation'},
+    promptTerms: {
+      'implement',
+      'refactor',
+      'fix the',
+      'write code',
+      '实现',
+      '重构',
+      '修复',
+      '编码',
+    },
+  ),
+  _RoutingRequirementRule(
+    explanation: 'review',
+    role: 'review',
+    capabilities: ['reasoning-deep'],
+    contentClasses: {'review', 'code-review', 'security-review'},
+    promptTerms: {'review', 'audit', '代码审查', '评审', '审计'},
+  ),
+  _RoutingRequirementRule(
+    explanation: 'research',
+    role: 'research',
+    capabilities: [],
+    contentClasses: {'research', 'investigation'},
+    promptTerms: {'research', 'investigate', '调研', '研究'},
+  ),
+  _RoutingRequirementRule(
+    explanation: 'distillation',
+    role: 'distillation',
+    capabilities: [],
+    contentClasses: {'distillation', 'context-compression'},
+    promptTerms: {'distill context', 'compress context', '压缩上下文'},
+  ),
+];
+
+class _RoutingRequirementRule {
+  const _RoutingRequirementRule({
+    required this.explanation,
+    required this.role,
+    required this.capabilities,
+    required this.contentClasses,
+    required this.promptTerms,
+  });
+
+  final String explanation;
+  final String role;
+  final List<String> capabilities;
+  final Set<String> contentClasses;
+  final Set<String> promptTerms;
+}
+
+int? _parseAllowanceValue(String value) {
+  final normalized = value.trim().replaceAll(',', '');
+  final parsed = num.tryParse(normalized);
+  return parsed?.floor();
+}
+
+bool _allowanceIsExhausted(AgentUsageAllowance allowance) {
+  final status = allowance.status.trim().toLowerCase();
+  return status == 'blocked' || status == 'depleted' || status == 'exhausted';
+}
+
+Set<String> _normalizedValues(Iterable<String> values) {
+  return {
+    for (final value in values)
+      if (value.trim().isNotEmpty) value.trim().toLowerCase(),
+  };
 }
 
 class _ScoredCandidate {

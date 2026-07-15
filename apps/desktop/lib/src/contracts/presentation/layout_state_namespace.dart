@@ -2,22 +2,58 @@ import 'layout_environment.dart';
 import 'layout_profile.dart';
 import 'semantic_destination.dart';
 
+enum LayoutStateValueKind { scroll, paneExtent, expansion, tab }
+
+/// Typed semantic channel for presentation-only state.
+///
+/// Profiles declare channels; callers cannot invent an untyped string key.
+final class LayoutStateChannel {
+  const LayoutStateChannel(this.id, this.valueKind);
+
+  final String id;
+  final LayoutStateValueKind valueKind;
+}
+
+abstract final class LayoutStateChannels {
+  static const agentsHistory = LayoutStateChannel(
+    'agents-history',
+    LayoutStateValueKind.expansion,
+  );
+  static const agentsSidebar = LayoutStateChannel(
+    'agents-sidebar',
+    LayoutStateValueKind.paneExtent,
+  );
+  static const agentsDestination = LayoutStateChannel(
+    'agents-destination',
+    LayoutStateValueKind.tab,
+  );
+  static const settingsScroll = LayoutStateChannel(
+    'settings-scroll',
+    LayoutStateValueKind.scroll,
+  );
+  static const settingsSection = LayoutStateChannel(
+    'settings-section',
+    LayoutStateValueKind.tab,
+  );
+}
+
 /// A bounded presentation-state address declared by a profile manifest.
 final class LayoutStateNamespace implements Comparable<LayoutStateNamespace> {
   factory LayoutStateNamespace({
     required LayoutProfileId profileId,
     required LayoutRuntimeSurface surface,
     required ClientSection destination,
-    required String surfaceId,
+    required LayoutStateChannel channel,
   }) {
-    if (!_surfaceIdPattern.hasMatch(surfaceId)) {
+    if (!_surfaceIdPattern.hasMatch(channel.id)) {
       throw const FormatException('layout_state_surface_id_invalid');
     }
     return LayoutStateNamespace._(
       profileId: profileId,
       surface: surface,
       destination: destination,
-      surfaceId: surfaceId,
+      surfaceId: channel.id,
+      valueKind: channel.valueKind,
     );
   }
 
@@ -26,6 +62,7 @@ final class LayoutStateNamespace implements Comparable<LayoutStateNamespace> {
     required this.surface,
     required this.destination,
     required this.surfaceId,
+    required this.valueKind,
   });
 
   static final RegExp _surfaceIdPattern = RegExp(r'^[a-z]+(?:-[a-z]+)*$');
@@ -34,6 +71,7 @@ final class LayoutStateNamespace implements Comparable<LayoutStateNamespace> {
   final LayoutRuntimeSurface surface;
   final ClientSection destination;
   final String surfaceId;
+  final LayoutStateValueKind valueKind;
 
   @override
   int compareTo(LayoutStateNamespace other) {
@@ -48,9 +86,13 @@ final class LayoutStateNamespace implements Comparable<LayoutStateNamespace> {
     final destinationOrder = destination.index.compareTo(
       other.destination.index,
     );
-    return destinationOrder != 0
-        ? destinationOrder
-        : surfaceId.compareTo(other.surfaceId);
+    if (destinationOrder != 0) {
+      return destinationOrder;
+    }
+    final surfaceIdOrder = surfaceId.compareTo(other.surfaceId);
+    return surfaceIdOrder != 0
+        ? surfaceIdOrder
+        : valueKind.index.compareTo(other.valueKind.index);
   }
 
   @override
@@ -60,8 +102,10 @@ final class LayoutStateNamespace implements Comparable<LayoutStateNamespace> {
           other.profileId == profileId &&
           other.surface == surface &&
           other.destination == destination &&
-          other.surfaceId == surfaceId;
+          other.surfaceId == surfaceId &&
+          other.valueKind == valueKind;
 
   @override
-  int get hashCode => Object.hash(profileId, surface, destination, surfaceId);
+  int get hashCode =>
+      Object.hash(profileId, surface, destination, surfaceId, valueKind);
 }
