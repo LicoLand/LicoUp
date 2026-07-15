@@ -4,32 +4,34 @@
 
 This plan replaces every previous active plan in `docs/plan`. It is rebuilt from the current working tree, fresh command results, current product source, and primary protocol or platform references. Historical status, generated readiness reports, evidence receipts, and progress summaries are not proof.
 
-The plan emits two independent decisions:
+The plan emits three independent decisions:
 
-1. **Selected-target release readiness** — a requested subset may publish only when each selected target's exact artifact, support state, custody, install, launch, security, privacy, publication, and update receipts pass. An unselected or explicitly unsupported target does not block that train.
-2. **Product-line security claim readiness** — any Telegram Secret Chat-level wording additionally requires Android, iOS, macOS, Windows, and Linux protocol evidence, the shared Secure Mesh reducer, and an independent cryptographic audit after feature completeness.
+1. **GitHub Release readiness** — a requested subset may be attached to a GitHub Release when each selected target's exact artifact, support state, required build/runtime security, privacy, and minimum consumer-verification metadata pass. Production publisher identity, notarization, store submission, store download, and store update/rollback channels are not inputs to this decision.
+2. **Platform/store publication readiness** — each named store or platform channel has an independent status. Its production identity, signing, notarization, submission, download, update, and rollback evidence affects only that channel.
+3. **Product-line security claim readiness** — any Telegram Secret Chat-level wording additionally requires Android, iOS, macOS, Windows, and Linux protocol evidence, the shared Secure Mesh reducer, and an independent cryptographic audit after feature completeness.
 
-These decisions must never be collapsed into one boolean.
+These decisions must never be collapsed into one boolean or imported into one another.
 
 For the current mobile implementation closure, Android and iOS additionally expose a local
 simulator-build verdict. It proves the exact source can build, install and launch on the
 repository-selected Android Emulator and iOS Simulator and that native bridges plus simulated
 authorization paths execute. It never proves physical-device key custody, hardware-backed
-encryption, real biometrics, production signing or distribution; those inputs remain blocked
-until their real authorities run.
+encryption or real biometrics. Production signing or distribution is evaluated
+only by the corresponding platform/store decision and is not a simulator,
+development, or GitHub Release blocker.
 
 ## Users and workflows
 
 - A user installs LicoArc, discovers installed agents, opens or resumes an exact native conversation, sends and cancels work, reads a semantic archive, and sees truthful readiness or blocked reasons.
 - A user posts work to one or more agents through Feed and receives durable per-target success, partial-failure, retry, and attachment outcomes.
 - A user manages multiple provider accounts without exposing credentials, pairs devices, verifies peer identity, and sends protected command, result, file, group, and ACP payloads through an opaque relay.
-- A release operator selects one or more supported targets, builds from a clean source snapshot, signs and publishes the exact artifacts, downloads them through the public channel, installs and launches them, then verifies digest-bound receipts without disclosing machine or account data.
+- A release operator selects one or more supported targets, builds from a clean source snapshot, verifies exact artifacts, and attaches accepted artifacts plus minimum consumer-verification metadata to GitHub Releases without disclosing publisher, machine, or account data. A separate platform operator may complete the production signing and channel-specific steps required for a named store.
 
 ## Shared release requirements
 
 ### REQ-REL-001 — Reproducible source closure
 
-Every workflow, script, configuration, schema, asset, lockfile, generated contract, and source file required by a release must be tracked and present in a clean checkout. Toolchains and dependency resolution must be pinned by current source. The source digest, build invocation, target, module profile, artifact digest, receipt producer, and publication record form one immutable lineage.
+Every workflow, script, configuration, schema, asset, lockfile, generated contract, and source file required by a release must be tracked and present in a clean checkout. Toolchains and dependency resolution must be pinned by current source. The source digest, build invocation, target, module profile, artifact digest, receipt producer, and GitHub Release record form one immutable lineage. Any platform/store publication record binds the same artifact separately.
 
 ### REQ-REL-002 — One deterministic quality gate
 
@@ -43,9 +45,26 @@ Implementation, tests, verifiers, docs, registries, and workflows must converge 
 
 The target catalog, support matrix, build authority, release reducer, and UI must distinguish supported, preview, deferred, unsupported, and unverified capabilities. Release-blocking services must be `supported` on every selected target. Empty, duplicate, unknown, unsupported, wrong-host, wrong-architecture, or wrong-artifact target selections fail closed. Optional external services and deferred voice input do not become release blockers or supported claims.
 
-### REQ-REL-005 — Exact artifact and real publication
+### REQ-REL-005 — Exact artifact and independent distribution decisions
 
-`releaseReady` is true only for the exact artifact that passed build, architecture, signing, custody, installation, launch, runtime, publication, download, and receipt verification. Local ad-hoc or validation-signed artifacts may prove development closure but cannot imply production identity, notarization, store publication, update continuity, or rollback. Publication uses protected environments and verifiable provenance; transient CI artifact upload alone is not publication.
+`githubReleaseReady` is true only for an exact artifact that passed its selected
+build, architecture, required runtime/security, privacy, lineage, and
+consumer-integrity checks. It requires a digest-bound checksum manifest and,
+when artifact authentication is required, a signature or attestation with only
+the public verification material needed by consumers. It does not require a
+production publisher account, notarization, store submission, public store
+download, or store update/rollback channel.
+
+Each named platform/store channel emits a separate `platformPublicationReady`
+decision for that channel's production identity, signing, notarization,
+submission, download, update, and rollback evidence. A false or absent channel
+decision is guidance that the product is not ready for that channel; it cannot
+block source development, ordinary builds, client functionality, or an
+otherwise accepted GitHub Release. Public source and release records must not
+contain publisher account identifiers, team/store identifiers, stable
+certificate identities, credentials, private keys, custody details, or private
+channel infrastructure. Validation signatures may prove artifact integrity
+without implying a store identity.
 
 ### REQ-REL-006 — Privacy-safe runtime and evidence
 
@@ -86,7 +105,11 @@ supported subset is empty, the client disables all agent-send entry points and p
 agent-conversation support claim; that empty subset does not independently block unrelated client
 packaging or release capabilities.
 
-Exact-resume send is required for any adapter that claims conversation support: history may be readable while send stays disabled, but an adapter that cannot resume a selected native session on an official lane must not claim exact-resume capability. Structural blockers (for example Claude Code argv-bound resume, Antigravity missing public transport, or mid-run inject) are recorded as blocked plan leaves with actionable codes until an official unblock exists.
+Exact-resume send is required for any adapter that claims conversation support: history may be readable while send stays disabled, but an adapter that cannot resume a selected native session on an official lane must not claim exact-resume capability. Structural blockers (for example Antigravity missing a public structured transport, Cursor missing safe persistent-session cleanup, or a provider missing mid-run inject) are recorded as blocked plan leaves with actionable codes until an official unblock exists.
+
+### REQ-AGENT-003 — Adapter contribution standard
+
+Every new or changed conversation adapter must provide a manifest conforming to `agent-conversation-adapter.schema.json` and follow `Agent-Adapter-Standard.md`. The contribution records stable identity, official transport, prompt and continuity channels, runtime-owned configuration, every dispatch/history/cleanup operation, privacy invariants, blocker codes, and P-01…P-10/C-01…C-06 acceptance. Inventory, packaging and runtime adapter IDs form one exact set. An adapter cannot enter conversation mode without exact resume, cannot advertise cancel without a durable active-turn handle, and cannot become ready from fixture or release-sidecar-only evidence; a packaged Flutter product E2E and at least three consecutive passes are mandatory.
 
 ### REQ-ROUTE-001 — Explainable routing and handoff
 
@@ -140,13 +163,13 @@ The classical security claim is reduced by an independent protocol-proof state m
 
 ### REQ-REL-007 — Final aggregation
 
-Final validation consumes the same requirements defined here, every non-skipped implementation Node, all five child-plan final decisions, selected-target artifact receipts, the privacy scan, and the independent-audit status. It emits separate selected-target release and product-line claim results with explicit blocker codes. No skipped required check, stale report, missing child receipt, untracked dependency, projection, or prose-only evidence can become a pass.
+Final validation consumes the same requirements defined here, every non-skipped implementation Node, selected-target artifact receipts, the privacy scan, and the independent-audit status. It emits separate GitHub Release, per-channel platform/store publication, and product-line security-claim results with explicit blocker codes. Store-channel evidence is never a required input to the GitHub Release result. No skipped check required by the decision being evaluated, stale report, missing required child receipt, untracked dependency, projection, or prose-only evidence can become a pass.
 
 ## Scope and non-goals
 
-In scope: client-owned desktop and mobile behavior, native bridges, local custody, semantic conversations, agent dispatch, routing, accounts, Secure Mesh protocol integration, packaging, release workflows, selected-target publication, and the client contribution to the product-line security claim.
+In scope: client-owned desktop and mobile behavior, native bridges, local custody, semantic conversations, agent dispatch, routing, accounts, the Lico Arc custom Secure Mesh end-to-end encryption protocol and its verification (independent of any relay server implementation), packaging, GitHub Release workflows, separately reported platform/store publication guidance, and the client contribution to the product-line security claim.
 
-Out of scope: server policy or authorization authority, optional provider integrations that remain deferred, post-quantum claim wording, collecting app-specific passwords, preserving retired implementations, and treating local authentication, static inspection, mocks, or transient CI uploads as sufficient release proof.
+Out of scope: server policy, authorization, or gateway-fabric authority, optional provider integrations that remain deferred, post-quantum claim wording, collecting app-specific passwords, preserving retired implementations or migrating persistent state owned by a retired product name, publishing platform account identity or credentials, and treating local authentication, static inspection, mocks, or an unverified transient CI upload as sufficient artifact proof. Retired-name state is deliberately reset: only a fresh current-name workspace may be initialized.
 
 ## Platform split
 
@@ -165,8 +188,8 @@ The previous plan labels are not active authorities, but their product semantics
 | Former adaptive-hardening labels 001–015 | REQ-E2EE-004, REQ-E2EE-005, REQ-E2EE-007, REQ-E2EE-008, REQ-REL-004..007 and platform child finals |
 | Semantic archive plan | REQ-PROD-003, REQ-SEC-002 and REQ-E2EE-006 |
 | Mobile provider account plan | REQ-PROD-004, REQ-SEC-001 and REQ-REL-006 |
-| Agent conversation dispatch plan | REQ-AGENT-001, REQ-AGENT-002 and REQ-PROD-003 |
+| Agent conversation dispatch plan | REQ-AGENT-001..003 and REQ-PROD-003 |
 | Multi-agent routing and packaging plans | REQ-ROUTE-001, REQ-ROUTE-002 and REQ-REL-001..005 |
 | Fresh blocker and platform closure plans | REQ-REL-001..007, REQ-PROD-001..004, REQ-SEC-001..002 and child requirements |
 
-The formerly external shared requirement 006 for trusted-server and directory authority is now an explicit input of REQ-E2EE-002, REQ-E2EE-004, and REQ-E2EE-008. Client completion cannot manufacture that server-owned evidence; absence blocks the broad claim while leaving an otherwise valid narrower selected-target release independently decidable.
+The relay boundary input for REQ-E2EE-002, REQ-E2EE-004, and REQ-E2EE-008 is the digest-bound client protocol artifact plus the client-owned five-operation, six-field relay Mock. Client completion does not depend on backend runtime internals; missing client cryptographic, platform, or independent-audit evidence still blocks the broad claim while leaving an otherwise valid narrower GitHub Release independently decidable.

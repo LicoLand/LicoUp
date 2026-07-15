@@ -1,8 +1,13 @@
 # Linux Fresh Evidence
 
-- Acceptance consumes a direct distribution archive while receipt configuration consumes a VM archive. The producer and acceptance also disagree on the manifest filename, and identity configuration is coupled to a VM-specific key id.
-- The current release authority declares only a subset of Linux target tuples; other glibc/musl and architecture combinations have no complete builder/verifier/receipt path.
-- The selected Linux arm64 target remains blocked by preview Secure Mesh pairwise support.
-- Local release Cargo, native smoke and configured VM helpers provide useful bounded baselines, but no clean target publication, real publisher identity, user-channel download, update continuity or real Secret Service session was observed.
-- No current source-bound five-node topology receipt exists; historical validation-only signatures and VM runs are not accepted.
+## Closed local evidence
 
+- The canonical source manifest binds path, type, mode, size, and content and is independently recomputed before and after the VM build.
+- The selected Linux bundle and archive built successfully. VM install, GUI launch with bounded shutdown, privacy validation, and the release CLI passed against the current source-bound package.
+- The receipt and acceptance path consume the same canonical lineage and do not infer source state from an unverified environment value.
+
+## Remaining blocker
+
+- The three-node matrix could not start because an external image-build dependency remained unavailable after bounded retries. This is an external execution dependency, not permission to claim topology completion.
+- Real Secret Service custody remains a physical security-claim input. Publisher identity, protected registry publication, public registry download, update continuity, and rollback remain unavailable channel guidance only; they do not block development or GitHub Release.
+- Secure Mesh order isolation is locally closed by caller-owned replay guards and concurrent regression coverage. External KT/MLS authority remains outside Linux packaging closure, so no broad security verdict is promoted.

@@ -2,13 +2,14 @@
 
 ## Proof policy
 
-Validation runs from a clean temporary checkout or CI checkout at the exact source revision. It never executes `git clean`, resets the user's tree, reads an existing report as readiness input, or uses a real portable-data root. Every passing command evidence record is bound to the source revision and, when applicable, the exact artifact digest. Device, signing, publication, and audit stages remain pending until their real authority runs them.
+Validation runs from a clean temporary checkout or CI checkout at the exact source revision. It never executes `git clean`, resets the user's tree, reads an existing report as readiness input, or uses a real portable-data root. Every passing command evidence record is bound to the source revision and, when applicable, the exact artifact digest. Physical-device and audit stages remain pending until their real authority runs them. Production publisher identity, notarization, store submission, store download, and store update/rollback stages belong only to the named platform/store publication decision and are not pending inputs to development or GitHub Release readiness.
 
 Android and iOS local app-build closure uses fresh repository-selected simulator instances. The
 receipt binds source, toolchain, simulator runtime class, artifact digest, install and launch, FFI,
 and simulated authorization outcomes without recording simulator identifiers. Physical Keystore,
-Keychain/Secure Enclave, biometric, cross-device encryption, signing and store criteria stay
-blocked and are never inferred from that receipt.
+Keychain/Secure Enclave, biometric, and cross-device encryption criteria stay
+blocked and are never inferred from that receipt. Signing and store criteria
+stay unready only for their corresponding platform/store channel.
 
 All emitted evidence is structured, allowlisted, bounded, and privacy-scanned. Raw command output, payloads, credentials, ciphertext, backend data, device identifiers, and personal paths are not retained.
 
@@ -18,9 +19,9 @@ All emitted evidence is structured, allowlisted, bounded, and privacy-scanned. R
 | --- | --- | --- |
 | REQ-REL-001 | clean-checkout `npm ci`, canonical generated-contract checks, package dry run, path-scoped tracked-input assertion | remove one required tracked input and prove the gate fails before build |
 | REQ-REL-002 | `npm run client:verify`; Flutter analyze/tests; Dart and Rust format; native tests; Clippy warnings denied; dependency, privacy, boundary and architecture checks | run tests with a poisoned real-state sentinel and prove no read/write; inject one stale gate token and prove behavioral ownership check rejects it |
-| REQ-REL-003 | source search and compile prove one current shell, schema, bridge, registry and parser | retired names, DTO fields, paths, compatibility branches, fixtures and gate tokens have zero owning-source matches |
+| REQ-REL-003 | source search and compile prove one current shell, schema, bridge, registry and parser | retired names, DTO fields, paths, compatibility branches, fixtures and gate tokens have zero owning-source matches; no reader, importer, copier, rename step, translator, prompt, fixture, or gate preserves retired-name persistent state |
 | REQ-REL-004 | target catalog and support reducer accept exact known supported selections | empty, duplicate, unknown, preview, unsupported, wrong-host, wrong-architecture and wrong-artifact selections fail closed |
-| REQ-REL-005 | canonical acceptance binds source, build, profile, target, digest, signing, install, launch, publication, download, update and rollback | alter any digest, kind, identity, channel or target field and prove the receipt chain fails |
+| REQ-REL-005 | GitHub Release acceptance binds source, build, profile, target, artifact digest, checksum manifest and required public verification material; a separate per-channel receipt binds any requested store identity/signing/notarization/submission/update facts | alter any artifact or verification digest and prove GitHub Release acceptance fails; omit or corrupt store-only fields and prove only the corresponding channel status fails |
 | REQ-REL-006 | final `lico-dev privacy scan` immediately follows the last producer and precedes upload | seeded canaries in paths, args, payloads, logs and diagnostics are rejected in raw and encoded form |
 | REQ-REL-007 | final reducer reads every implementation Node and selected child receipt, then emits two named verdicts | missing child, stale evidence, untracked input, projection, skipped mandatory check or unavailable external audit is a blocker code |
 
@@ -84,13 +85,13 @@ Each platform child final validation must record:
 3. its exact target tuple, source revision, artifact digest and redacted native receipts;
 4. a passing child `check-labels` and Better Plan validation result.
 
-The parent final validation runs Better Plan validation for the entire workspace, verifies every selected target's child final Node is `completed`, and separately verifies all five child finals for the product-line claim. A child UUID named only in prose is insufficient: the reducer input schema stores plan id, terminal Node id, source revision, artifact digest, evidence digest, decision kind and blocker codes, and validates them against the current Manifest and Checkpoints files.
+The parent final validation runs Better Plan validation for the entire workspace, verifies every selected GitHub Release target's required child Node is `completed`, and separately verifies all five platform security/protocol finals for the product-line claim. Store publication Nodes are consumed only when that named channel decision is requested. A child UUID named only in prose is insufficient: the reducer input schema stores plan id, terminal Node id, source revision, artifact digest, evidence digest, decision kind and blocker codes, and validates them against the current Manifest and Checkpoints files.
 
 ## Final execution order
 
 1. Validate source closure and generate canonical catalogs from a clean checkout.
 2. Run the deterministic shared quality gate and focused hostile tests.
-3. Build each selected child artifact independently; run install, launch and native authorization evidence on its real target.
-4. Sign and publish that same digest through a protected environment, download it through the user channel, and repeat install/launch/update verification.
-5. Run the selected-target reducer and final privacy scan immediately before publication evidence upload.
-6. Only after all five platform terminals, external KT, trusted-server boundary and feature completeness exist, run the independent cryptographic audit and product-line proof machine.
+3. Build each selected GitHub Release artifact independently and generate its minimum digest-bound consumer-verification metadata.
+4. Run the GitHub Release reducer and final privacy scan immediately before artifact upload.
+5. When a named platform/store publication is requested, run its protected signing, notarization, submission, download, update and rollback validation independently; its result cannot change the GitHub Release result.
+6. Only after all five platform terminals, external KT, client relay Mock conformance, and feature completeness exist, run the independent cryptographic audit and product-line proof machine.

@@ -1,7 +1,34 @@
 [
   {
+    "id": "5f4a7f09-3a26-4d20-862f-15ff10c48f5e",
+    "status": "pending",
+    "title": "Local Agent Runtime and Orchestration",
+    "directory": "agent-runtime-orchestration",
+    "source_files": [
+      "docs/plan/client-release/Requirements.md",
+      "docs/plan/client-release/Evidence.md",
+      "docs/plan/client-release/Architecture.md",
+      "docs/plan/client-release/Validation.md",
+      "docs/plan/client-release/Agent-Adapter-Standard.md",
+      "packages/contracts/client/agent-conversation-adapter.schema.json",
+      "crates/lico-client-native/resources/agent-conversation-drivers.json",
+      "crates/lico-client-native/resources/agent-conversation-readiness.json",
+      "crates/lico-client-native/src/platform/conversation_lane.rs",
+      "crates/lico-client-native/src/platform/runtime_adapters.rs",
+      "apps/desktop/lib/src/contracts/agent_dispatch_lane.dart",
+      "apps/desktop/lib/src/application/features/agents/controller/agent_conversation_messaging_actions.dart",
+      "apps/desktop/lib/src/application/features/agents/controller/agent_orchestration_actions.dart",
+      "apps/desktop/lib/src/application/features/routing/engine/route_planner.dart",
+      "apps/desktop/lib/src/application/features/routing/broker/distillation_broker.dart",
+      "apps/desktop/lib/src/backend/features/routing/services/policy_store.dart"
+    ],
+    "goal": "Deliver real realtime exact-session forwarding for every canonical local agent plus deterministic multi-agent routing, protected path-based context transfer, framework compression, and dynamically reloadable adapter configuration.",
+    "description": "Platform-neutral client capability plan and single current authority for local-agent execution, adapter lifecycle, context preparation, orchestration scheduling, GUI/CLI integration, and capability evidence; release consumes its final receipt.",
+    "checkpoints": "agent-runtime-orchestration/Checkpoints.json"
+  },
+  {
     "id": "a1dd6f0e-b6b4-45b9-be36-b4e316cea3eb",
-    "status": "in_progress",
+    "status": "blocked",
     "title": "LicoArc End-to-End Release",
     "directory": "client-release",
     "source_files": [
@@ -14,13 +41,13 @@
       "apps/desktop/lib/app.dart",
       "crates/lico-client-native/src/lib.rs"
     ],
-    "goal": "Converge every current client plan and every freshly proven blocker into one source-controlled release contract with truthful selected-target releases and a separately gated product-line security claim.",
+    "goal": "Converge every current client plan and every freshly proven blocker into one source-controlled contract with truthful GitHub Releases, separately reported platform/store channels, and a separately gated product-line security claim.",
     "description": "Platform-neutral parent plan for product behavior, security, quality, evidence, and exact-artifact contracts consumed by the five platform release children.",
     "checkpoints": "client-release/Checkpoints.json"
   },
   {
     "id": "6c1b944a-f734-4962-b0f6-a873e874ede9",
-    "status": "pending",
+    "status": "blocked",
     "title": "macOS Release",
     "directory": "client-release/macos",
     "source_files": [
@@ -31,15 +58,15 @@
       "apps/desktop/scripts/build-macos-distribution.mjs",
       "apps/desktop/scripts/verify-macos-client-bundle.mjs",
       "tools/scripts/config/client-release-acceptance.json",
-      "tools/scripts/config/client-artifact-install-publication-receipts.json"
+      "tools/scripts/config/client-artifact-verification-receipts.json"
     ],
-    "goal": "Produce, authenticate, publish, download, install, launch, and verify each declared macOS artifact through one digest-bound distribution lineage.",
-    "description": "macOS child of the shared release contract; owns Keychain authorization, target-specific bundles, Developer ID signing, notarization, publication, and launch evidence.",
+    "goal": "Produce and consumer-verify each declared macOS GitHub Release artifact through one digest-bound lineage while reporting Developer ID or App Store readiness separately when requested.",
+    "description": "macOS child of the shared release contract; owns Keychain authorization, target-specific bundles, exact-artifact verification, and optional Developer ID/App Store channel evidence.",
     "checkpoints": "client-release/macos/Checkpoints.json"
   },
   {
     "id": "2f8d2360-7ff3-4c43-ab89-e28e499c216f",
-    "status": "in_progress",
+    "status": "blocked",
     "title": "Android Release",
     "directory": "client-release/android",
     "source_files": [
@@ -52,13 +79,13 @@
       "tools/android-release-toolchain.json",
       "tools/scripts/client-android-physical-install-launch.mjs"
     ],
-    "goal": "Produce a deterministic Android arm64 artifact with user-authorized native custody, privacy-safe runtime behavior, physical install and launch proof, and real channel continuity.",
-    "description": "Android child of the shared release contract; owns Keystore and BiometricPrompt policy, APK lineage, authorized-device evidence, publication, and update continuity.",
+    "goal": "Produce a deterministic, consumer-verifiable Android arm64 GitHub Release artifact; evaluate user-authorized native custody plus physical install and launch only in the separate product-line security verdict, and report store continuity separately when requested.",
+    "description": "Android child of the shared release contract; owns Keystore and BiometricPrompt policy, APK lineage, authorized-device evidence, exact-artifact verification, and optional store-channel status.",
     "checkpoints": "client-release/android/Checkpoints.json"
   },
   {
     "id": "110a4c2a-bf3c-4966-ad14-29826687f21f",
-    "status": "pending",
+    "status": "blocked",
     "title": "Linux Release",
     "directory": "client-release/linux",
     "source_files": [
@@ -71,13 +98,13 @@
       "tools/client-release-targets.json",
       "tools/scripts/client-cli-vm.mjs"
     ],
-    "goal": "Produce each declared Linux tuple through one artifact path with truthful custody, bounded smoke evidence, publisher identity, installation, launch, and update proof.",
-    "description": "Linux child of the shared release contract; owns glibc and musl target lineages, Secret Service or memory-only custody, VM evidence, signing, publication, and launch.",
+    "goal": "Produce each declared Linux tuple through one consumer-verifiable artifact path with truthful custody, bounded smoke, installation, and launch evidence; report publisher-channel status separately when requested.",
+    "description": "Linux child of the shared release contract; owns glibc and musl target lineages, Secret Service or memory-only custody, VM evidence, exact-artifact verification, and optional registry-channel status.",
     "checkpoints": "client-release/linux/Checkpoints.json"
   },
   {
     "id": "cdf00dad-c75a-46b3-b0af-2ee2981e818f",
-    "status": "in_progress",
+    "status": "blocked",
     "title": "iOS Release",
     "directory": "client-release/ios",
     "source_files": [
@@ -89,13 +116,13 @@
       "crates/lico-client-native/src/ffi/ios_ffi.rs",
       "tools/client-release-targets.json"
     ],
-    "goal": "Replace the declared iOS builder and evidence gaps with a real arm64 client, native custody and FFI proof, signed distribution, physical launch, and Secure Mesh acceptance.",
-    "description": "iOS child of the shared release contract; remains fail-closed until its builder, LocalAuthentication and Keychain bridge, TestFlight or store lineage, and physical evidence are complete.",
+    "goal": "Replace the declared iOS builder and evidence gaps with a consumer-verifiable arm64 client, native custody and FFI proof, physical launch, and Secure Mesh acceptance; report Apple channel status separately when requested.",
+    "description": "iOS child of the shared release contract; remains fail-closed for unsupported build and security claims until its builder, LocalAuthentication/Keychain bridge, and physical evidence are complete; TestFlight/App Store readiness is independent guidance.",
     "checkpoints": "client-release/ios/Checkpoints.json"
   },
   {
     "id": "34738430-a039-4605-9dff-b46ea22f51a2",
-    "status": "pending",
+    "status": "skipped",
     "title": "Windows Release",
     "directory": "client-release/windows",
     "source_files": [
@@ -108,8 +135,124 @@
       "tests/verify-windows-file-security-boundary.mjs",
       "tools/client-release-targets.json"
     ],
-    "goal": "Produce independently verified Windows x64 and arm64 clients with native authorization, atomic state, signed installers, launch proof, publication, update, and rollback continuity.",
+    "goal": "Produce independently consumer-verified Windows x64 and arm64 GitHub Release clients with native authorization, atomic state, and launch proof; report signed-installer/store continuity separately when requested.",
     "description": "Windows child of the shared release contract; remains fail-closed until architecture-specific artifacts, PE verification, secure storage, installer lineage, and runtime evidence are complete.",
     "checkpoints": "client-release/windows/Checkpoints.json"
+  },
+  {
+    "id": "ef44564e-f72f-467a-a255-2aaab8ccfcf4",
+    "status": "completed",
+    "title": "Layout Management Foundation",
+    "directory": "layout-management",
+    "source_files": [
+      "PRODUCT.md",
+      "docs/functionality/CLIENT-DESKTOP.md",
+      "apps/desktop/README.md",
+      "apps/desktop/Design.md",
+      "apps/desktop/lib/app.dart",
+      "apps/desktop/lib/src/contracts/presentation/layout_profile.dart",
+      "apps/desktop/lib/src/contracts/presentation/presentation_preferences.dart",
+      "apps/desktop/lib/src/application/features/layout/layout_manager.dart",
+      "apps/desktop/lib/src/application/controller/controller_lifecycle_actions.dart",
+      "apps/desktop/lib/src/platform/presentation/presentation_preferences_repository.dart",
+      "apps/desktop/lib/src/frontend/shell/client_shell.dart",
+      "apps/desktop/lib/src/frontend/layout/layout_host.dart",
+      "apps/desktop/lib/src/frontend/layout/built_in_layout_composition.dart",
+      "apps/desktop/lib/src/frontend/shared/ui/theme.dart",
+      "apps/desktop/scripts/verify-client-architecture.mjs"
+    ],
+    "goal": "Establish one typed, transactional, adaptive layout authority that lets complete presentation profiles switch without changing client semantics or losing user state.",
+    "description": "Platform-neutral parent for layout identity, catalog and resolution, preferences, preview/commit recovery, semantic destinations, state ownership, appearance composition, and desktop/mobile renderer contracts.",
+    "checkpoints": "layout-management/Checkpoints.json"
+  },
+  {
+    "id": "9fbe0d92-6c56-4abc-8f32-b5c67add4f70",
+    "status": "completed",
+    "title": "Desktop Layout Profiles",
+    "directory": "layout-management/desktop",
+    "source_files": [
+      "apps/desktop/Design.md",
+      "apps/desktop/lib/src/frontend/layout/built_in_layout_composition.dart",
+      "apps/desktop/lib/src/frontend/layout/profiles/workbench/desktop/workbench_desktop.dart",
+      "apps/desktop/lib/src/frontend/layout/profiles/workbench/desktop/shell/workbench_desktop_shell.dart",
+      "apps/desktop/lib/src/frontend/layout/profiles/studio/desktop/studio_desktop.dart",
+      "apps/desktop/lib/src/frontend/layout/profiles/studio/desktop/shell/studio_desktop_shell.dart",
+      "apps/desktop/lib/src/frontend/features/agents/ui/agent_conversation_workspace.dart",
+      "apps/desktop/lib/src/frontend/features/settings/ui/settings_panel.dart",
+      "apps/desktop/test/layout/built_in_layout_composition_test.dart",
+      "apps/desktop/test/layout/profiles/workbench/desktop/workbench_desktop_bundle_test.dart",
+      "apps/desktop/test/layout/profiles/studio/desktop/studio_desktop_bundle_test.dart"
+    ],
+    "goal": "Deliver complete workbench and studio desktop profiles with equivalent capabilities, distinct component systems, state-safe switching, and verified rebuild and launch.",
+    "description": "Desktop renderer child of Layout Management Foundation; owns expanded/medium composition, keyboard/pointer behavior, desktop previews and goldens, complete shell migration, build, and launch.",
+    "checkpoints": "layout-management/desktop/Checkpoints.json"
+  },
+  {
+    "id": "c724dd5e-238f-4b51-bb72-65d641cc7a8f",
+    "status": "completed",
+    "title": "Mobile Layout Profiles",
+    "directory": "layout-management/mobile",
+    "source_files": [
+      "PRODUCT.md",
+      "apps/desktop/lib/src/frontend/layout/built_in_layout_composition.dart",
+      "apps/desktop/lib/src/frontend/layout/profiles/workbench/mobile/workbench_mobile_bundle.dart",
+      "apps/desktop/lib/src/frontend/layout/profiles/workbench/mobile/workbench_mobile_shell.dart",
+      "apps/desktop/lib/src/frontend/layout/profiles/studio/mobile/studio_mobile_bundle.dart",
+      "apps/desktop/lib/src/frontend/layout/profiles/studio/mobile/studio_mobile_shell.dart",
+      "apps/desktop/lib/src/frontend/features/settings/ui/settings_panel.dart",
+      "apps/desktop/test/layout/profiles/workbench/mobile/workbench_mobile_bundle_test.dart",
+      "apps/desktop/test/layout/profiles/studio/mobile/studio_mobile_bundle_test.dart",
+      "apps/desktop/integration_test"
+    ],
+    "goal": "Deliver complete workbench and studio mobile profiles with conversation-first touch composition, lifecycle-safe switching, and independent Android/iOS verification.",
+    "description": "Mobile renderer child of Layout Management Foundation; owns compact/medium composition, touch/lifecycle behavior, mobile previews and goldens, fixed-shell removal, and Android/iOS verification.",
+    "checkpoints": "layout-management/mobile/Checkpoints.json"
+  },
+  {
+    "id": "f7fd31c7-38e7-4097-a4c0-e80e7d100d05",
+    "status": "completed",
+    "title": "Catalog-Driven Layout Isolation",
+    "directory": "layout-management/catalog-driven-isolation",
+    "source_files": [
+      "docs/plan/layout-management/Requirements.md",
+      "docs/plan/layout-management/Architecture.md",
+      "docs/plan/layout-management/Validation.md",
+      "apps/desktop/lib/src/contracts/presentation/layout_profile.dart",
+      "apps/desktop/lib/src/contracts/presentation/layout_environment.dart",
+      "apps/desktop/lib/src/application/features/layout/layout_catalog.dart",
+      "apps/desktop/lib/src/application/features/layout/layout_manager.dart",
+      "apps/desktop/lib/src/frontend/layout/built_in_layout_composition.dart",
+      "apps/desktop/lib/src/frontend/layout/layout_host.dart",
+      "apps/desktop/lib/src/frontend/layout/layout_surface_bundle.dart",
+      "apps/desktop/lib/src/frontend/layout/profiles",
+      "apps/desktop/lib/src/frontend/shell/client_shell.dart",
+      "apps/desktop/lib/src/frontend/features/settings/ui/layout_profile_selector.dart",
+      "apps/desktop/scripts/verify-layout-boundaries.mjs"
+    ],
+    "goal": "Implement a cardinality-independent layout product in which N registered profiles across M declared runtime surfaces produce and validate exactly N×M mutually isolated bundles without changing the current designs.",
+    "description": "Current delivery plan that supersedes fixed-count layout checkpoints. It owns catalog-derived composition, neutral runtime ports, profile-private renderers, transactional switching, dynamic verification, frozen-design evidence, desktop launch, and independent Android verification.",
+    "checkpoints": "layout-management/catalog-driven-isolation/Checkpoints.json"
+  },
+  {
+    "id": "fdd9bf3b-31e0-4862-b0bf-8aa1803234eb",
+    "status": "pending",
+    "title": "Isolated Renderer Completion",
+    "directory": "layout-management/isolated-renderer-completion",
+    "source_files": [
+      "docs/plan/layout-management/catalog-driven-isolation/Requirements.md",
+      "docs/plan/layout-management/catalog-driven-isolation/Evidence.md",
+      "docs/plan/layout-management/catalog-driven-isolation/Architecture.md",
+      "docs/plan/layout-management/catalog-driven-isolation/Validation.md",
+      "apps/desktop/lib/src/frontend/layout/layout_surface_bundle.dart",
+      "apps/desktop/lib/src/frontend/layout/layout_host.dart",
+      "apps/desktop/lib/src/frontend/layout/layout_destination_presentation.dart",
+      "apps/desktop/lib/src/frontend/features/agents/ui/agent_conversation_workspace.dart",
+      "apps/desktop/lib/src/frontend/features/settings/ui/settings_panel.dart",
+      "apps/desktop/lib/src/frontend/layout/profiles",
+      "apps/desktop/scripts/verify-layout-boundaries.mjs"
+    ],
+    "goal": "Finish complete profile-private layout rendering and hard transitive isolation while preserving every current layout design exactly.",
+    "description": "Child completion plan for neutral destination ports, disjoint profile renderer ownership, atomic shared-path removal, dynamic isolation gates, comparison-only visual restoration, per-Node commits, rebuild/open, and independent Android verification.",
+    "checkpoints": "layout-management/isolated-renderer-completion/Checkpoints.json"
   }
 ]

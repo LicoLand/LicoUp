@@ -7,7 +7,7 @@
     "platform": "any",
     "difficulty": "deep",
     "goal": "Lock the renderer-only mobile product contract and independent profile isolation boundary.",
-    "description": "Scope: docs/plan/layout-management/mobile/Requirements.md only; define users, workflows, REQ-001 through REQ-010, scope, non-goals, and final acceptance. Context: the prior child plan mixed profile rendering with parent-owned registration, Settings, cutover, migration, and native verification. Target: one delivery contract for two isolated mobile LayoutSurfaceBundle exports and a renderer receipt. Design Considerations: retain shared semantic identity and parent state authority while making isolation a first-class local requirement. Design Value: a narrow contract lets workbench and studio develop independently and prevents duplicated integration ownership. Constraints & Risks: do not weaken whole-product behavior; route central composition, fixed-shell deletion, app cutover, build, and launch to the parent integration join.",
+    "description": "Scope: docs/plan/layout-management/mobile/Requirements.md only; define users, workflows, REQ-001 through REQ-010, scope, non-goals, and final acceptance. Context: profile rendering is separate from parent-owned registration, Settings, current-only state enforcement, and native verification. Target: one delivery contract for two isolated mobile LayoutSurfaceBundle exports and a renderer receipt. Design Considerations: retain shared semantic identity and parent state authority while making isolation a first-class local requirement. Design Value: a narrow contract lets workbench and studio develop independently and prevents duplicated integration ownership. Constraints & Risks: do not weaken whole-product behavior; route central composition, retired-state absence, app integration, build, and launch to the parent integration join.",
     "requirements": [
       "REQ-001",
       "REQ-002",
@@ -78,7 +78,7 @@
     "platform": "any",
     "difficulty": "deep",
     "goal": "Ground the mobile bundle design and renderer-only boundary in parent contracts and current source evidence.",
-    "description": "Scope: docs/plan/layout-management/mobile/Evidence.md only; inspect the parent requirements, architecture, validation, fixed client shell/navigation, controller destination filtering, Settings, mobile tests, PRODUCT.md, and Flutter asset configuration. Context: current mobile presentation is one controller-coupled fixed shell and existing tests do not prove isolated profile bundles. Target: document the renderer gaps, inherited primary-framework decisions, ownership correction, and privacy constraints behind all local requirements. Design Considerations: distinguish current source facts from parent contract decisions and avoid treating an unregistered bundle as an integrated app. Design Value: evidence prevents profile Nodes from absorbing convenient but overlapping central work. Constraints & Risks: current working-tree changes are authoritative and unrelated changes must remain untouched; do not record runtime or private data.",
+    "description": "Scope: docs/plan/layout-management/mobile/Evidence.md only; inspect the current workbench/studio mobile bundles, LayoutHost integration, semantic destination filtering, Settings, mobile tests, PRODUCT.md, and Flutter asset configuration. Context: current mobile presentation uses two isolated profile-owned navigation and renderer systems behind the typed host. Target: document current renderer evidence, inherited primary-framework decisions, ownership boundaries, and privacy constraints behind all local requirements. Design Considerations: distinguish profile-only evidence from mounted integration evidence. Design Value: evidence prevents profile Nodes from absorbing convenient but overlapping central work. Constraints & Risks: current working-tree changes are authoritative and unrelated changes must remain untouched; do not record runtime or private data.",
     "requirements": [
       "REQ-001",
       "REQ-002",
@@ -99,22 +99,24 @@
           {
             "type": "file",
             "path": "docs/plan/layout-management/mobile/Evidence.md",
-            "sha256": "114f8b122e5df54abf82c57087123575379eaf849335b189c1d3e795370e3662",
-            "recorded_at": "2026-07-14T12:22:04Z"
+            "sha256": "f5a7250e1021922037bc37417f32159d84248cbfb328cd6faacedc082b4055ce",
+            "recorded_at": "2026-07-15T04:13:17Z"
           }
-        ]
+        ],
+        "evidence": "Mobile evidence traces composition-discovered roots, production fixtures, profile suites, isolation closure, and ownership decisions without duplicating a profile count."
       },
       {
         "checked": true,
-        "text": "Evidence distinguishes bundle completeness from central registration, live switching, migration, build, simulator, device, and launch proof.",
+        "text": "Evidence distinguishes bundle completeness from central registration, live switching, retired-state enforcement, build, simulator, device, and launch proof.",
         "evidence_refs": [
           {
             "type": "file",
             "path": "docs/plan/layout-management/mobile/Evidence.md",
-            "sha256": "114f8b122e5df54abf82c57087123575379eaf849335b189c1d3e795370e3662",
-            "recorded_at": "2026-07-14T12:22:04Z"
+            "sha256": "f5a7250e1021922037bc37417f32159d84248cbfb328cd6faacedc082b4055ce",
+            "recorded_at": "2026-07-15T04:13:18Z"
           }
-        ]
+        ],
+        "evidence": "The evidence distinguishes bundle completeness from central registration, switching, current-state enforcement, build, simulator/device, and launch proof."
       },
       {
         "checked": true,
@@ -123,10 +125,11 @@
           {
             "type": "file",
             "path": "docs/plan/layout-management/mobile/Evidence.md",
-            "sha256": "114f8b122e5df54abf82c57087123575379eaf849335b189c1d3e795370e3662",
-            "recorded_at": "2026-07-14T12:22:04Z"
+            "sha256": "f5a7250e1021922037bc37417f32159d84248cbfb328cd6faacedc082b4055ce",
+            "recorded_at": "2026-07-15T04:13:18Z"
           }
-        ]
+        ],
+        "evidence": "The migration rationale justifies disjoint shell/component, destination/bundle, preview, test, golden, and manifest ownership without inventing backend behavior."
       }
     ],
     "commit": {
@@ -149,7 +152,7 @@
     "platform": "any",
     "difficulty": "deep",
     "goal": "Define the complete mobile renderer evidence matrix before profile code begins.",
-    "description": "Scope: docs/plan/layout-management/mobile/Validation.md only; map every local requirement to bundle, widget, semantics, adaptive, restoration, golden, isolation, and static evidence. Context: the earlier matrix claimed Settings, cutover, migration, builds, simulators, and physical-device behavior that only the parent can prove. Target: establish profile-owned test paths, deterministic fixtures, renderer-only commands, parent handoff boundaries, and scoped Better Plan gates. Design Considerations: both profiles use the same narrow fake-port contract while retaining disjoint tests and outputs; command claims must remain planned until their owner creates them. Design Value: an upfront matrix makes final validation prove the original child requirements rather than an integrated-app target. Constraints & Risks: no aggregate app, native, simulator, device, packaging, or launch command belongs in this child receipt.",
+    "description": "Scope: docs/plan/layout-management/mobile/Validation.md only; map every local requirement to bundle, widget, semantics, adaptive, restoration, golden, isolation, and static evidence. Context: Settings, mounted switching, retired-state enforcement, builds, simulators, and physical-device behavior can be proved only by the parent. Target: establish profile-owned test paths, deterministic fixtures, renderer-only commands, parent handoff boundaries, and scoped Better Plan gates. Design Considerations: both profiles use the same narrow fake-port contract while retaining disjoint tests and outputs; command claims must remain planned until their owner creates them. Design Value: an upfront matrix makes final validation prove the original child requirements rather than an integrated-app target. Constraints & Risks: no aggregate app, native, simulator, device, packaging, or launch command belongs in this child receipt.",
     "requirements": [
       "REQ-001",
       "REQ-002",
@@ -220,7 +223,7 @@
     "platform": "any",
     "difficulty": "deep",
     "goal": "Lock the mobile profile module map, one-way dependencies, public bundle interfaces, and disjoint owned paths.",
-    "description": "Scope: docs/plan/layout-management/mobile/Architecture.md only; define both profile trees, test trees, bundle entry points, layer dependencies, adapter/state/environment contracts, patterns, complexity, isolation, and parent receipt. Context: profile implementation can proceed in parallel only after exact file and interface ownership is fixed. Target: each profile exposes one immutable mobile LayoutSurfaceBundle and keeps shell, components, tokens, preview, destinations, restoration, tests, and goldens private and independent. Design Considerations: local bundle factory plus destination adapters earn their complexity; plain immutable records/maps remain sufficient elsewhere; builder maps provide deterministic O(1) lookup. Design Value: explicit boundaries eliminate source overlap and make sibling change impact mechanically testable. Constraints & Risks: architecture consumes completed parent interfaces and may not scaffold or edit a central registry, app, shell, Settings, legacy migration, package integration test, or native project.",
+    "description": "Scope: docs/plan/layout-management/mobile/Architecture.md only; define both profile trees, test trees, bundle entry points, layer dependencies, adapter/state/environment contracts, patterns, complexity, isolation, and parent receipt. Context: profile implementation can proceed in parallel only after exact file and interface ownership is fixed. Target: each profile exposes one immutable mobile LayoutSurfaceBundle and keeps shell, components, tokens, preview, destinations, restoration, tests, and goldens private and independent. Design Considerations: local bundle factory plus destination adapters earn their complexity; plain immutable records/maps remain sufficient elsewhere; builder maps provide deterministic O(1) lookup. Design Value: explicit boundaries eliminate source overlap and make sibling change impact mechanically testable. Constraints & Risks: architecture consumes completed parent interfaces and may not scaffold or edit a central registry, app, shell, Settings, retired-state authority, package integration test, or native project.",
     "requirements": [
       "REQ-001",
       "REQ-002",
@@ -292,7 +295,7 @@
     "platform": "any",
     "difficulty": "deep",
     "goal": "Implement workbench mobile shell, component recipes, tokens, and preview within its exclusive source files.",
-    "description": "Scope: exclusively workbench_mobile_shell.dart, workbench_mobile_components.dart, workbench_mobile_tokens.dart, and workbench_mobile_preview.dart under apps/desktop/lib/src/frontend/layout/profiles/workbench/mobile; consume completed parent layout contracts and narrow ports. Context: workbench needs a complete spacious mobile presentation without sharing the fixed shell or studio styling. Target: compact/medium card-and-stack composition, contextual navigation, composer clearance, profile tokens, accessible component recipes, public-metadata preview, and a workbench-only restoration prefix. Design Considerations: render immutable supplied state; use constraints/insets/input facts locally; keep styled recipes private; build no registry or domain authority. Design Value: this coherent visual slice can be reviewed and changed without touching destination mapping or studio. Constraints & Risks: do not edit destinations, bundle entry, tests, goldens, assets outside an approved namespace, sibling profile, central integration, ClientController, shell, Settings, or platform code.",
+    "description": "Scope: exclusively workbench_mobile_shell.dart, workbench_mobile_components.dart, workbench_mobile_tokens.dart, and workbench_mobile_preview.dart under apps/desktop/lib/src/frontend/layout/profiles/workbench/mobile; consume completed parent layout contracts and narrow ports. Context: workbench owns a complete spacious mobile presentation independent of studio styling. Target: preserve compact/medium card-and-stack composition, contextual navigation, composer clearance, profile tokens, accessible component recipes, public-metadata preview, and a workbench-only restoration prefix. Design Considerations: render immutable supplied state; use constraints/insets/input facts locally; keep styled recipes private; build no registry or domain authority. Design Value: this coherent visual slice can be reviewed and changed without touching destination mapping or studio. Constraints & Risks: do not edit destinations, bundle entry, tests, goldens, assets outside an approved namespace, sibling profile, central integration, ClientController, shell, Settings, or platform code.",
     "requirements": [
       "REQ-001",
       "REQ-002",
@@ -894,8 +897,8 @@
       },
       {
         "checked": true,
-        "text": "Scoped validate --check-sources and check-labels pass for layout-management/mobile, and terminal evidence is ready for the parent integration join without any integration, migration, build, device, or launch claim.",
-        "evidence": "Renderer-only receipt; integration, migration, build, device, and launch remain unclaimed and parent-owned.",
+        "text": "Scoped validate --check-sources and check-labels pass for layout-management/mobile, and terminal evidence is ready for the parent integration join without any integration, retired-state, build, device, or launch claim.",
+        "evidence": "Renderer-only receipt; integration, retired-state enforcement, build, device, and launch remain unclaimed and parent-owned.",
         "evidence_refs": [
           {
             "type": "command",

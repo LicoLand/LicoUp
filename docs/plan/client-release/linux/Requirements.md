@@ -12,7 +12,6 @@ Secret Service capability is measured on the target session and used only throug
 
 Clean target images install and launch the exact archive with bounded, event-driven smoke tests. The initial Secure Mesh receipt uses three isolated Linux nodes with independent state roots and no shared secret volume, and teardown is deterministic.
 
-### REQ-LIN-004 — Publisher identity and update continuity
+### REQ-LIN-004 — Optional platform-channel status
 
-The exact supported Linux artifacts are signed or attested by the declared production publisher, published through the user channel, downloaded and verified for install, launch, update and rollback. Validation-only identities and transient VM archives cannot satisfy publication.
-
+When a package registry or other production Linux channel is requested, the exact artifact is signed or attested as required by that channel, published, downloaded, and verified for its install, launch, update, and rollback continuity. Missing publisher identity or channel evidence makes only that channel unready; it does not block development, ordinary builds, client functionality, or GitHub Release. GitHub Release exposes only the digest and minimum public verification material needed to authenticate the official artifact, not publisher-account or private-channel metadata.

@@ -6,7 +6,9 @@ The child consumes the parent target schema, capability graph, opaque-secret int
 explicit android-arm64 selection → pinned SDK/NDK/JDK/Flutter build
   → APK/store artifact + manifest → ABI/native-library/signature verification
   → fresh emulator install/launch + simulated auth/FFI receipt
-  → separately blocked physical custody → publication/download/update receipt
+  → digest + minimum public verification metadata → GitHub Release decision
+  ├→ separately blocked physical custody/security claim
+  └→ optional platform publication/download/update receipt → channel-only decision
 
 user action → BiometricPrompt/device credential → CryptoObject/session handle
             → Keystore operation → bounded close/expiry

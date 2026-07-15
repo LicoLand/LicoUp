@@ -1,35 +1,31 @@
 # Kimi Code exact-continue evidence
 
-Date class: 2026-07-13. Redacted receipts only.
+Date class: 2026-07-14. Redacted receipts only.
 
 ## Implementation
 
-- Driver prefers persistent `kimi server run` Wire attach for send/streaming.
-- ACP retained for capability probe, list/load semantics, and send fallback when server session/stream routes are incompatible or unavailable.
-- Arc never binds `58627` or `5494` (vendor server / legacy web). OpenCode serve reserved ports include both.
+- Driver uses official `kimi acp` as its only conversation transport; the retired server/Wire driver and fallback were removed.
+- New conversation uses `session/new`; exact continue uses `session/load` and fails closed rather than substituting a new session.
 - Exact resume contract: non-empty `sessionId` continues that id; selection never falls back to newest.
-- Streaming contract: Wire `ContentPart` text emits `agent.message.chunk` when the server stream is used.
+- Streaming contract: ACP agent-message chunks emit `agent.message.chunk` in arrival order.
+- Prompt and session identity are written only to stdin; the supervised process tree is reclaimed on every terminal path.
 
-## Live verify (redacted)
+## Release verification (redacted)
 
 | Check | Result | Code / note |
 | --- | --- | --- |
-| Unit tests (`kimi_code*`) | pass | 13 focused tests |
-| Vendor binary present | pass | local kimi-code CLI |
-| ACP `loadSession` | pass | advertised true |
-| Prefer-path server ensure | pass | listener owner class `kimi` on `58627`; Arc/`lico*` not owner |
-| Prefer-path session create | blocked → ACP fallback | `kimi_code_server_session_id_missing` then ACP |
-| ACP turn under quota | fail-closed | `kimi_code_acp_final_message_missing`; `nativeSessionId` length class 44 |
-| Streaming chunks | absent under quota | only `dispatch.turn.started` then `done` |
-| Exact continue canaries | blocked | provider usage limit |
-| Readiness `sendEnabled` | unchanged `false` | evidence_missing |
+| Local official ACP handshake | pass | protocol v1; load/resume/list and negotiated content capabilities observed, values only |
+| Focused driver tests | pass | new/load, exact-id preservation, stream projection, failure closure, protocol cancel, and process cleanup |
+| Consecutive release runs | unverified | no promoting release-UI receipt |
+| Core checks P-01–P-10 | unverified | complete live/release sequence not run |
+| Readiness `sendEnabled` | `false` | evidence reducer remains fail-closed |
 
 ## Blockers
 
-1. **Provider quota** — `-p` and ACP/Wire turns yield empty finals while the billing cycle is exhausted.
-2. **Server session create schema** — health attach works; create response id field for this CLI class still unresolved, so send falls back to ACP until OpenAPI-backed mapping lands.
-3. **Release-UI consecutive passes** — still required before readiness promotion.
+1. **Release UI authority** — future evidence must exercise the actual Flutter composer, controller and renderer, not only the packaged sidecar.
+2. **Consecutive evidence** — three complete reducer-bound runs must prove the declared core and conditional checks.
+3. **Public cancel handle** — ACP supports cancel, but the public lane must not claim it until a durable active-turn handle can reach the same transport.
 
 ## Readiness impact
 
-None. Kimi Code remains `unverified` / `sendEnabled: false`.
+Kimi Code is `unverified` / `sendEnabled: false` after the implementation blocker was removed. This disables only the Kimi send claim; it does not block unrelated packaging or GitHub Release.

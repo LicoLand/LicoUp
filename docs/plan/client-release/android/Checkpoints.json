@@ -7,7 +7,7 @@
     "platform": "any",
     "difficulty": "deep",
     "goal": "Ratify Android custody, artifact, privacy and publication requirements.",
-    "description": "Scope: Android Requirements.md and target/toolchain catalogs. Context: current workflow selects the wrong target, diagnostics leak metadata and Keystore policy allows unauthenticated persistence. Target: approve REQ-AND-001..004 plus a simulator-build verdict for the Android target. Design Considerations: emulator build/install/launch and simulated authorization are distinct from physical custody and production publication. Design Value: neither a host projection nor an emulator can become hardware-backed Android readiness. Constraints & Risks: Better Plan lacks an Android enum, so every Node explicitly targets Android despite platform any; physical Keystore and real-device encryption remain blocked.",
+    "description": "Scope: Android Requirements.md and target/toolchain catalogs. Context: current workflow selects the wrong target, diagnostics leak metadata and Keystore policy allows unauthenticated persistence. Target: approve REQ-AND-001..004 plus a simulator-build verdict for the Android target. Design Considerations: emulator build/install/launch and simulated authorization are distinct from physical custody, while store publication is a separate channel status. Design Value: neither a host projection nor an emulator can become hardware-backed Android readiness. Constraints & Risks: Better Plan lacks an Android enum, so every Node explicitly targets Android despite platform any; physical Keystore and real-device encryption remain blocked.",
     "requirements": [
       "REQ-AND-001",
       "REQ-AND-002",
@@ -22,7 +22,7 @@
           {
             "type": "file",
             "path": "docs/plan/client-release/android/Requirements.md",
-            "sha256": "1bb8d40b8208cf6a152d4ac1293332da6141e0d239c30aaaa6ec984ed6bed0b1",
+          "sha256": "b2bad09b8222ecfd2620e262ae1a5f2c9d9b5c292a27d7cd85b05a23df435bb0",
             "recorded_at": "2026-07-13T03:48:23Z"
           }
         ]
@@ -34,13 +34,13 @@
           {
             "type": "file",
             "path": "docs/plan/client-release/android/Requirements.md",
-            "sha256": "1bb8d40b8208cf6a152d4ac1293332da6141e0d239c30aaaa6ec984ed6bed0b1",
+          "sha256": "b2bad09b8222ecfd2620e262ae1a5f2c9d9b5c292a27d7cd85b05a23df435bb0",
             "recorded_at": "2026-07-13T03:48:24Z"
           },
           {
             "type": "file",
             "path": "docs/plan/client-release/android/Validation.md",
-            "sha256": "20f91438838f52ba844be053d4ae0b0eeef7fa9c4b96303b24a714517a07068f",
+          "sha256": "841ef151f1a67c7ebf4d24c32441bcfa671fccce9d7ea998e03e71b9b49cc43e",
             "recorded_at": "2026-07-13T03:48:24Z"
           }
         ]
@@ -58,7 +58,7 @@
   },
   {
     "id": "37c74b2e-98f5-46a6-80b9-540c69ba0604",
-    "status": "pending",
+    "status": "completed",
     "role": "evidence",
     "prerequisites": [
       "b23a6034-c7c0-4dbd-a751-a7b4dec1d7d5"
@@ -75,8 +75,16 @@
     ],
     "acceptance_criteria": [
       {
-        "checked": false,
-        "text": "Every Android blocker and unverified physical/publication boundary has current redacted evidence."
+        "checked": true,
+        "text": "Every Android blocker and unverified physical/publication boundary has current redacted evidence.",
+        "evidence_refs": [
+          {
+            "type": "file",
+            "path": "docs/plan/client-release/android/Evidence.md",
+          "sha256": "cbd0a0fe5d55268fc3fb6559c135c361032c1dd40378b00ba3762257235498e5",
+            "recorded_at": "2026-07-13T09:05:53Z"
+          }
+        ]
       }
     ],
     "commit": {
@@ -90,7 +98,7 @@
   },
   {
     "id": "37cfb650-d016-4af0-832c-8e1931e6d580",
-    "status": "pending",
+    "status": "completed",
     "role": "validation_matrix",
     "prerequisites": [
       "37c74b2e-98f5-46a6-80b9-540c69ba0604"
@@ -107,8 +115,16 @@
     ],
     "acceptance_criteria": [
       {
-        "checked": false,
-        "text": "Validation covers every Android requirement, negative case and parent/shared dependency id."
+        "checked": true,
+        "text": "Validation covers every Android requirement, negative case and parent/shared dependency id.",
+        "evidence_refs": [
+          {
+            "type": "file",
+            "path": "docs/plan/client-release/android/Validation.md",
+          "sha256": "841ef151f1a67c7ebf4d24c32441bcfa671fccce9d7ea998e03e71b9b49cc43e",
+            "recorded_at": "2026-07-13T09:05:53Z"
+          }
+        ]
       }
     ],
     "commit": {
@@ -122,7 +138,7 @@
   },
   {
     "id": "c4174f16-961b-4b7e-8cb7-f8c05c4af149",
-    "status": "pending",
+    "status": "completed",
     "role": "architecture_scaffold",
     "prerequisites": [
       "37cfb650-d016-4af0-832c-8e1931e6d580"
@@ -139,8 +155,16 @@
     ],
     "acceptance_criteria": [
       {
-        "checked": false,
-        "text": "Architecture names one owner and failure state for Android build, custody, diagnostics, physical and channel receipts."
+        "checked": true,
+        "text": "Architecture names one owner and failure state for Android build, custody, diagnostics, physical and channel receipts.",
+        "evidence_refs": [
+          {
+            "type": "file",
+            "path": "docs/plan/client-release/android/Architecture.md",
+            "sha256": "41df31b6c224b784ce92e4ebbb1d6969c9e13b4e3d406b3d52f25a3a2210398b",
+            "recorded_at": "2026-07-13T09:05:53Z"
+          }
+        ]
       }
     ],
     "commit": {
@@ -156,7 +180,7 @@
   },
   {
     "id": "134d179d-3c82-41b1-b8aa-b672c351c81b",
-    "status": "pending",
+    "status": "skipped",
     "role": "implementation",
     "prerequisites": [
       "c4174f16-961b-4b7e-8cb7-f8c05c4af149"
@@ -181,11 +205,12 @@
     },
     "next": [
       "3d0a251b-98d8-4df9-9eb3-f1bffdaeedce"
-    ]
+    ],
+    "status_reason": "Physical Android Keystore, device-credential or biometric presence, non-exportability, restart and deletion evidence requires an authorized phone; emulator policy evidence cannot promote it."
   },
   {
     "id": "6b71076f-0320-4b9d-9654-ef017f76c5b7",
-    "status": "pending",
+    "status": "completed",
     "role": "implementation",
     "prerequisites": [
       "c4174f16-961b-4b7e-8cb7-f8c05c4af149"
@@ -199,8 +224,16 @@
     ],
     "acceptance_criteria": [
       {
-        "checked": false,
-        "text": "Production startup creates no diagnostic by default; consented output is allowlisted, bounded, protected, deletable and privacy-scanned."
+        "checked": true,
+        "text": "Production startup creates no diagnostic by default; consented output is allowlisted, bounded, protected, deletable and privacy-scanned.",
+        "evidence_refs": [
+          {
+            "type": "file",
+            "path": "docs/plan/client-release/android/Evidence.md",
+          "sha256": "cbd0a0fe5d55268fc3fb6559c135c361032c1dd40378b00ba3762257235498e5",
+            "recorded_at": "2026-07-13T09:07:24Z"
+          }
+        ]
       }
     ],
     "commit": {
@@ -214,7 +247,7 @@
   },
   {
     "id": "23954324-3a97-4660-bf2f-18d7f238b218",
-    "status": "pending",
+    "status": "completed",
     "role": "implementation",
     "prerequisites": [
       "c4174f16-961b-4b7e-8cb7-f8c05c4af149"
@@ -228,8 +261,22 @@
     ],
     "acceptance_criteria": [
       {
-        "checked": false,
-        "text": "Two clean builds use the pinned toolchain and verify target, ABI, manifest, native libraries, profile, signature policy and source lineage."
+        "checked": true,
+        "text": "Two clean builds use the pinned toolchain and verify target, ABI, manifest, native libraries, profile, signature policy and source lineage.",
+        "evidence_refs": [
+          {
+            "type": "file",
+            "path": "apps/desktop/scripts/build-android-apk.mjs",
+            "sha256": "53030a86597b0b90d7c63c3c715ac62a6177696a0f9d274938d483b200be4ce1",
+            "recorded_at": "2026-07-14T10:07:25Z"
+          },
+          {
+            "type": "file",
+            "path": "docs/plan/client-release/android/Evidence.md",
+            "sha256": "cbd0a0fe5d55268fc3fb6559c135c361032c1dd40378b00ba3762257235498e5",
+            "recorded_at": "2026-07-14T10:07:25Z"
+          }
+        ]
       }
     ],
     "commit": {
@@ -243,7 +290,7 @@
   },
   {
     "id": "9c64645e-de4d-4663-8eac-151a9dc6cec1",
-    "status": "pending",
+    "status": "completed",
     "role": "implementation",
     "prerequisites": [
       "23954324-3a97-4660-bf2f-18d7f238b218"
@@ -257,8 +304,28 @@
     ],
     "acceptance_criteria": [
       {
-        "checked": false,
-        "text": "Android job selects android-arm64 explicitly and fails before evidence reduction for wrong target, missing dependency or digest mismatch."
+        "checked": true,
+        "text": "Android job selects android-arm64 explicitly and fails before evidence reduction for wrong target, missing dependency or digest mismatch.",
+        "evidence_refs": [
+          {
+            "type": "file",
+            "path": ".github/workflows/client-release.yml",
+            "sha256": "4a95e942952b0071f1325fe9931fa2fccbc5e9f0ea731b6fc342ffd40544a5e9",
+            "recorded_at": "2026-07-14T10:07:25Z"
+          },
+          {
+            "type": "file",
+            "path": "tools/scripts/client-consumer-verification-manifest.mjs",
+            "sha256": "75bdb41d8f12adb51df8d56c6d8698daae6d0dc30a06184c4e96813083060724",
+            "recorded_at": "2026-07-14T10:07:25Z"
+          },
+          {
+            "type": "file",
+            "path": "tools/scripts/client-github-release-acceptance.mjs",
+            "sha256": "27da0818b61c617f0fc5ec911ea311138f063203f963c87366ed53c681b1a2a2",
+            "recorded_at": "2026-07-14T10:07:25Z"
+          }
+        ]
       }
     ],
     "commit": {
@@ -272,7 +339,7 @@
   },
   {
     "id": "3d0a251b-98d8-4df9-9eb3-f1bffdaeedce",
-    "status": "pending",
+    "status": "blocked",
     "role": "implementation",
     "prerequisites": [
       "134d179d-3c82-41b1-b8aa-b672c351c81b",
@@ -300,27 +367,29 @@
       "target": "Android physical build, install, launch and protocol receipt"
     },
     "next": [
-      "673f4016-5817-4f3c-a44d-bd0ff7ad2d03"
-    ]
+      "673f4016-5817-4f3c-a44d-bd0ff7ad2d03",
+      "fe7b391b-6ec4-4582-bfde-56b95c0c050e"
+    ],
+    "status_reason": "The emulator build/install/launch/FFI receipt passed, but this Node requires authorized physical-device custody and cross-device pairwise evidence."
   },
   {
     "id": "673f4016-5817-4f3c-a44d-bd0ff7ad2d03",
-    "status": "pending",
+    "status": "skipped",
     "role": "implementation",
     "prerequisites": [
       "3d0a251b-98d8-4df9-9eb3-f1bffdaeedce"
     ],
     "platform": "any",
     "difficulty": "deep",
-    "goal": "Production-sign, publish, download and update the verified Android artifact.",
-    "description": "Scope: production signing authority, store/channel publication, downloaded artifact and update/rollback receipts. Context: physical local install is not channel publication. Target: the same digest or approved store lineage is signed, published, retrieved and reverified. Design Considerations: protected environment and immutable provenance. Design Value: closes real user distribution. Constraints & Risks: signing and store access require explicit external authorization; no debug substitute.",
+    "goal": "Report optional Android production signing, store publication and update-channel status.",
+    "description": "Scope: optional production signing authority, store/channel publication, downloaded artifact and update/rollback receipts. Context: no current store-channel closure exists. Target: when explicitly requested, the same digest or approved store lineage is signed, published, retrieved and reverified. Design Considerations: protected channel evidence is separate from GitHub Release consumer verification. Design Value: truthfully reports store readiness without blocking open-source distribution. Constraints & Risks: signing and store access require explicit external authorization and affect only this channel status.",
     "requirements": [
       "REQ-AND-004"
     ],
     "acceptance_criteria": [
       {
         "checked": false,
-        "text": "Production signature, channel publication, download, install, launch, update/rollback and final privacy scan bind the approved artifact lineage."
+        "text": "Optional production signature, store publication/download and update/rollback outcomes bind the approved artifact lineage and do not affect GitHub Release readiness."
       }
     ],
     "commit": {
@@ -328,21 +397,20 @@
       "message": "test(android): prove production channel continuity",
       "target": "Android signing, publication and downloaded-artifact receipts"
     },
-    "next": [
-      "fe7b391b-6ec4-4582-bfde-56b95c0c050e"
-    ]
+    "next": [],
+    "status_reason": "Optional Android store-channel guidance was not requested. Missing external identity or channel inputs does not create a development, build, client-functionality, or GitHub Release blocker."
   },
   {
     "id": "fe7b391b-6ec4-4582-bfde-56b95c0c050e",
-    "status": "pending",
+    "status": "blocked",
     "role": "final_validation",
     "prerequisites": [
-      "673f4016-5817-4f3c-a44d-bd0ff7ad2d03"
+      "3d0a251b-98d8-4df9-9eb3-f1bffdaeedce"
     ],
     "platform": "any",
     "difficulty": "deep",
     "goal": "Emit the final Android target receipt consumed by the parent reducers.",
-    "description": "Scope: Android child plan, parent architecture/shared Node status, exact artifact and physical/channel receipts. Context: platform `any` cannot be allowed to obscure Android ownership. Target: one terminal receipt explicitly names Android, parent/shared ids, source, artifact and evidence digests. Design Considerations: validate current Manifest/Checkpoints and physical authority. Design Value: creates a machine-verifiable cross-plan edge. Constraints & Risks: unavailable hardware or store authority leaves the Node pending.",
+    "description": "Scope: Android child plan, parent architecture/shared Node status, exact artifact and physical receipts. Context: platform `any` cannot be allowed to obscure Android ownership. Target: one terminal receipt explicitly names Android, parent/shared ids, source, artifact and evidence digests. Design Considerations: validate current Manifest/Checkpoints and physical authority; store status is reported separately. Design Value: creates a machine-verifiable cross-plan edge. Constraints & Risks: unavailable hardware leaves the security claim pending; store authority does not block GitHub Release.",
     "requirements": [
       "REQ-AND-001",
       "REQ-AND-002",
@@ -356,7 +424,7 @@
       },
       {
         "checked": false,
-        "text": "One Android lineage passes deterministic build, authorization, privacy, independent physical install/launch, production publication and update proof."
+        "text": "One Android lineage passes deterministic build, consumer verification, authorization, privacy and independent physical install/launch proof; optional store publication/update status is reported separately."
       }
     ],
     "commit": {
@@ -364,6 +432,7 @@
       "message": "test(android): record final target receipt",
       "target": "Android child final reducer and redacted receipt"
     },
-    "next": []
+    "next": [],
+    "status_reason": "Final Android security evidence requires deterministic double-build and physical custody proof. Production signing, store publication and update proof remain only an optional channel status and do not block GitHub Release."
   }
 ]

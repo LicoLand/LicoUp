@@ -2,74 +2,77 @@
 
 ## Validation principles
 
-- Validation follows requirement labels from `Requirements.md`.
-- Profile registration and persistence are proven with deterministic unit tests; layout difference and parity are proven by parameterized widget, semantics, golden, and integration tests.
-- The foundation plan proves shared contracts. Desktop and mobile children own platform renderer, build, launch, and device evidence.
-- Raw runtime data, local paths, user content, device identity, and secrets are excluded from evidence.
+- Validation follows REQ-001 through REQ-014 and derives expected cardinality from immutable composition: `N` profiles, `M` surfaces, `B = N × M` bundles.
+- The current worktree rendering, semantics, focus order, interaction behavior, and metrics are frozen before isolation work. Validation detects redesign; it does not authorize one.
+- Registration and persistence use deterministic unit tests. Independence uses isolated behavior, adaptive, semantic, golden, source-manifest, and pairwise change-impact tests generated from the registered product.
+- Historical partial-scope receipts are non-current until rerun against the current registered-product baseline.
+- Evidence excludes raw runtime data, local paths, user content, device identity, credentials, secrets, and ciphertext.
 
 ## Requirement matrix
 
 | Requirement | Foundation evidence | Renderer/integration evidence |
 | --- | --- | --- |
-| REQ-001 | Catalog rejects numbered/versioned/duplicate IDs and proves one semantic default. | Renderer bundles export only `workbench` / `studio`; integration Settings exposes those identities. |
-| REQ-002 | Bundle contract requires shell, destination builders, styled components, tokens, preview, and exact `desktop={medium,expanded}` / `mobile={compact,medium}` variants without importing implementations. | Desktop/mobile isolated bundle tests and goldens prove complete, materially different component trees. |
-| REQ-003 | Composition validator proves the exact `(profile, surface, viewport, destination)` product and rejects missing/extra builders. | Every reachable destination opens in every registered profile/surface/viewport matrix after integration. |
-| REQ-004 | Narrow presentation-port tests keep domain state and commands outside profile widgets. | Integration live-switch tests retain destination, session, draft, operations, and permission behavior. |
-| REQ-005 | Resolver tests distinguish `desktop/medium` from `mobile/medium`, clamp classification to the declared surface policy, use constraints/capabilities, and never persist a resize. | Desktop/mobile constraint matrices prove surface-correct variants and stable selected identity, including narrow desktop and large mobile bounds. |
-| REQ-006 | Theme composition contract proves appearance palette and layout tokens remain separate. | Per-profile tests and representative goldens cover every built-in appearance/profile pair, contrast, and text scaling. |
-| REQ-007 | Repository atomicity, serialization, corruption, and concurrent-update tests. | Integration cold-start tests prove first meaningful paint waits for typed preference hydration. |
-| REQ-008 | Manager state-machine tests prove preview, confirm, cancel, reset, timeout, unknown ID, unavailable profile, and save failure. | Integration Settings tests prove controls and localized safe error feedback on desktop and mobile. |
-| REQ-009 | State-store bounds and focus-coordinator contracts are fixture-tested. | Integration tests prove scroll, pane, expansion, focus, draft, and selected-conversation continuity. |
-| REQ-010 | Semantics and reduced-motion contracts are fixture-tested. | Desktop keyboard/pointer and mobile touch/text-scale matrices prove equivalent semantic actions. |
-| REQ-011 | Immutable-map complexity tests, one-entry resolution cache assertions, rapid-request coalescing, and rebuild instrumentation. | Integration frame/build-count smoke proves one active profile and no whole-app rebuild churn. |
-| REQ-012 | `client:verify:layouts` rejects cross-profile imports, complete-controller imports, legacy shell imports, backend/platform imports, shared styled components, mutable registry access, and owned-path overlap. | Each profile runs against the same fake ports in a profile-only test command; a change-impact fixture proves another profile's source manifest and golden digest remain unchanged. |
-| REQ-013 | Canonical preference rewrite and retired-symbol scan are specified before cutover. | Integration removes old shell widgets, IDs, preferences, tests, branches, and contradictory docs in one convergence. |
-| REQ-014 | Scoped Better Plan checks and requirement/file/command traceability prove foundation contracts. | Renderer child receipts plus the parent integration join's build, launch, independent Android verification, and scoped family checks prove the product. |
+| REQ-001 | Parameterized catalog tests accept arbitrary valid `N`, reject duplicate/invalid IDs, require one catalog default, and validate one injected preferred ID shared by first run/reset/load/manager/resolver. | Current-registration fixtures assert exact IDs/labels/default metadata and both current platform-preference outcomes. |
+| REQ-002 | Composition tests derive `B = N × M`, require one bundle per profile/surface pair under `frontend/layout/profiles/<profile>/<surface>/`, and reject missing, extra, duplicate, or scattered entries without hard-coded counts. | Every registered bundle passes behavior, adaptive, semantic, golden, and source-manifest tests from corresponding owned roots. |
+| REQ-003 | Product validation derives every `(profile, surface, viewport, destination)` key and rejects missing/extra builders. | Representative Home, Agents, and Settings content opens through every registered key without sibling fallback. |
+| REQ-004 | Narrow shell/destination-port tests expose semantic snapshots/callbacks only and reject controller/domain/platform/styled-widget values. | Production fixtures exercise navigation, search/status, pairing entry, capability state, Home, Agents, and Settings without `ClientController`. |
+| REQ-005 | Parameterized resolver tests use each registered surface policy, distinguish same-named viewports across surfaces, and never persist environment changes. | Current surface constraint matrices prove stable selected identity and no cross-surface chrome fallback. |
+| REQ-006 | Appearance/layout composition tests keep palette authority separate from bundle-private metrics and styled recipes. | Representative appearance and text-scale goldens pass for every registered bundle without a layout-by-theme matrix. |
+| REQ-007 | Repository tests cover atomic serialization, corruption, and concurrent layout/appearance/locale updates. | Cold-start integration waits for typed preference hydration before meaningful shell paint. |
+| REQ-008 | Manager tests cover preview, confirm, cancel, reset to injected preference, timeout, unknown/unavailable ID, and save failure. Mismatch fixtures reject competing fallback values across load/manager/resolver. | Settings fixtures exercise every registered selection and every supported current preferred-default outcome. |
+| REQ-009 | State-store bounds and focus-coordinator contracts are parameterized by registration. | Mounted switching across all registered profiles preserves semantic/domain state and mounts only one bundle. |
+| REQ-010 | Semantics, text-scale, surface-input, and reduced-motion contracts are generated per bundle. | Current keyboard/pointer/touch/focus matrices pass without changing frozen rendering or interactions. |
+| REQ-011 | Cardinality tests run the same catalog/registry/manager/resolver/host/Settings algorithms at multiple `N` and `M` values; lookup remains O(1) after construction. Static scans reject profile-ID branches outside composition data/tests. | Adding a fixture profile requires only independent fixture bundles and composition registration; no management algorithm or existing profile fixture changes. |
+| REQ-012 | The boundary verifier derives entries from composition; enforces canonical production/test/asset roots; allows only contracts/composition/host/neutral ports in shared layout infrastructure; and rejects concrete presentation in shared feature/shell paths, cross-bundle imports, full-controller access, shared styled chrome/metrics, mutable registration, and overlap. | For `B` bundles, each isolated change leaves `B − 1` others unchanged; all `B(B − 1)` directed source/golden assertions pass. |
+| REQ-013 | Current-schema recovery uses the injected platform preference; retired/shared-chrome/controller-bridge scans require superseded code, paths, tests, docs, aliases, and wrappers absent. | Integration proves one direct cutover, one preferred-default authority, and no compatibility/fallback path. |
+| REQ-014 | Scoped Better Plan checks and registration-derived requirement/file/command traceability cover the full product. | Fresh per-bundle receipts, Home/Agents/Settings fixtures, build/open, platform verification, and scoped family checks form final evidence. |
 
-## Plan-family traceability
+## No-redesign baseline gate
 
-| Foundation requirement | Owning downstream plan/local requirements | Final proof owner |
-| --- | --- | --- |
-| REQ-001, REQ-002, REQ-003, REQ-005, REQ-006, REQ-010, REQ-012 | `layout-management/desktop` REQ-001, REQ-002, REQ-003, REQ-006, REQ-007, REQ-009; `layout-management/mobile` REQ-001, REQ-002, REQ-003, REQ-004, REQ-006, REQ-007, REQ-010 | Renderer children prove isolated bundles; `layout-management/integration` proves the complete registry product. |
-| REQ-004, REQ-007, REQ-008, REQ-009, REQ-011, REQ-013 | `layout-management/desktop` REQ-004, REQ-005, REQ-008; `layout-management/mobile` REQ-005, REQ-008; integration transaction/migration requirements | Foundation proves pure state/repository contracts; integration proves mounted behavior and the only current path. |
-| REQ-014 | All non-skipped local requirements in foundation, desktop, and mobile | The foundation plan's final integration validation records the family receipt after both children finish. |
+Before privatization, capture deterministic source manifests plus representative pixel, semantics, focus, and interaction output for every currently registered bundle. The matrix includes every registered surface/viewport, representative appearance inputs, text scale, reduced motion, and Home/Agents/Settings content. Current profile-specific protected interactions are enumerated in `Evidence.md` and current exact tests.
 
-## Planned focused checks
+After privatization:
 
-- `test/layout/layout_profile_contract_test.dart` — semantic IDs, surface/viewport classification, immutable values, and safe errors.
-- `test/layout/layout_catalog_test.dart` — exact `(profile, surface, viewport, destination)` product, deterministic order, and O(1) lookup maps.
-- `test/layout/layout_manager_test.dart` — fake repository, controllable epochs, preview/commit/cancel/reset/recovery/coalescing.
-- `test/layout/presentation_preferences_repository_test.dart` — atomic canonical writes, corruption, and concurrent layout/appearance/locale updates.
-- `test/layout/layout_state_store_test.dart` and `layout_focus_coordinator_test.dart` — bounded namespaces and semantic restoration.
-- `test/layout/layout_host_contract_test.dart` — fixture bundles, one active tree, composed tokens, and scoped rebuilds without any built-in profile.
-- `test/layout/profiles/{workbench,studio}_{desktop,mobile}_test.dart` plus profile-owned golden directories — independent bundle behavior and visuals.
-- `test/layout/layout_integration_test.dart`, `layout_settings_test.dart`, and `layout_state_continuity_test.dart` — parent-owned central composition, selector transaction, cold start, and mounted switch behavior.
-- `apps/desktop/scripts/verify-layout-boundaries.mjs` — owned-path manifests, forbidden imports, single composition root, exact bundle exports, retired-symbol absence, and change-impact fixture.
+- constants and visual metrics copied from shared chrome are byte-equivalent;
+- golden output is pixel-equivalent under the existing deterministic comparison policy;
+- semantics, focus traversal, callbacks, and interaction traces are equivalent;
+- no implementation change is accepted merely to make a redesigned golden pass;
+- shared styled chrome, metrics, and controller bridges are deleted before the gate passes.
 
-## Current executable gates
+## Cardinality and extension tests
+
+- A generic fixture matrix exercises multiple `N` and `M` values, including adding one profile through independent bundle fixtures plus one composition registration.
+- Catalog, registry, manager, resolver, host, persistence, and Settings tests are unchanged when fixture cardinality changes.
+- Exact current-registration tests assert the inventory recorded in `Evidence.md`; they are release-baseline assertions, not architectural constants.
+- The verifier computes `B` and the `B(B − 1)` impact matrix from composition rather than maintaining an expected-name list in its algorithm.
+
+## Focused checks
+
+- Contract/catalog/manager/repository/state-store/host tests cover variable cardinality, one catalog default, one injected preferred authority, exact products, transitions, recovery, bounded namespaces, and one active tree.
+- Composition tests assert derived cardinality, exact bundle grouping, one metadata source, and no duplicate registry authority.
+- Every current bundle root has behavior, adaptive, semantic, golden, and source-manifest coverage.
+- Parent production fixtures mount representative Home, Agents, and Settings content through every current profile/surface.
+- The boundary verifier enforces canonical roots, keeps shared layout infrastructure neutral, rejects concrete presentation in shared feature/shell paths, allows only declared imports, rejects full controller/profile-ID branches, requires deleted shared chrome/metrics, derives exact entries, and computes the directed change-impact matrix.
+
+## Executable closure
 
 ```sh
 npm run client:format:check
 npm run client:analyze
-npm run client:test
+npm run client:test:layouts
+npm run client:verify:layouts
 npm run client:verify:architecture
 npm run client:verify:plan
 npm run client:contracts:test
 ```
 
-The architecture node shall add `npm run client:verify:layouts` for `verify-layout-boundaries.mjs`; renderer children shall add profile-only test selectors, and the parent integration join shall add `npm run client:test:layouts`. These commands are planned evidence until their owning nodes create and self-test them.
-
-`npm run client:verify` is the aggregate client closure and is marked by `lico-dev workflow plan client` as runtime-data side effect. It may run only with explicit side-effect authorization through the canonical workflow.
-
-The repository currently documents `npm run client:test:coverage` but does not define it. The validation-matrix Node must either establish that executable entry and its truthful threshold or update the contract before coverage can be cited. A missing command is not acceptance evidence.
+The integration join additionally runs the canonical approved client workflow, rebuilds and opens the client, and starts independent verification for affected platforms. Packaging and store publication remain separate claims.
 
 ## Better Plan gates
-
-During this plan:
 
 ```sh
 python3 "$HOME/.agents/skills/better-plan/scripts/manifest_tool.py" validate docs/plan --plan layout-management --check-sources
 python3 "$HOME/.agents/skills/better-plan/scripts/manifest_tool.py" check-labels docs/plan --plan layout-management
 ```
 
-At full plan-family close-out, all three layout plans must be terminal and the full workspace validator must pass. Seven pre-existing release-plan graph issues currently prevent that full-workspace claim; they remain independent sibling debt and cannot be hidden by a scoped result.
+Scoped success is reported separately from unrelated workspace-plan debt. Full-family close-out requires every registered-surface child and the foundation integration plan to be terminal.

@@ -1,100 +1,88 @@
 # Desktop Layout Profiles Architecture
 
-## Parent contract and child boundary
+## Parent contract and cardinality boundary
 
-The desktop child consumes the parent-owned immutable presentation contracts, semantic destination catalog, layout-neutral feature state/command ports, surface environment, visual-token/component-role interfaces, fixture host, and `LayoutSurfaceBundle` type. It does not redefine or mutate them.
+The desktop child consumes the parent immutable presentation contracts, semantic destination catalog, narrow state/command and shell ports, desktop environment policy, visual-token/component-role interfaces, fixture host, and `LayoutSurfaceBundle` type. It does not redefine or mutate them.
 
-The only production outputs are:
+For `N` registered profiles, the child produces exactly `N` artifacts:
 
 ```text
-workbench/desktop/workbench_desktop.dart -> one desktop LayoutSurfaceBundle
-studio/desktop/studio_desktop.dart       -> one desktop LayoutSurfaceBundle
+<profile-1>/desktop/<profile-1>_desktop.dart -> one immutable desktop bundle
+…
+<profile-N>/desktop/<profile-N>_desktop.dart -> one immutable desktop bundle
 ```
 
-Neither profile registers itself. Only the parent integration join imports these entry points and edits the built-in composition root, `app.dart`, controller/application wiring, `ClientShell`, Settings, preference transaction, migration, documentation, build, or launch flow.
+Bundles never register themselves. The parent composition imports their public entries once and derives catalog, registry, Settings metadata, and the expected test/manifest product. Adding a profile creates one new independent desktop root and one composition entry; it changes no existing profile or manager/resolver/host/Settings algorithm.
 
-## Module and ownership map
+## Module and ownership pattern
+
+The canonical production root is `frontend/layout/profiles/<profile>/desktop/`; tests and optional assets mirror that ownership under `test/layout/profiles/<profile>/desktop/` and `assets/layout-profiles/<profile>/desktop/`. Shared layout infrastructure is limited to contracts, composition/registry, host/scope/focus, and neutral ports. Concrete desktop shell/chrome, style, metrics, components, and destination presentation may not be placed in shared feature UI or `frontend/shell`.
 
 ```text
 apps/desktop/lib/src/frontend/layout/profiles/
-├── workbench/desktop/
-│   ├── workbench_desktop.dart                 # bundle assembly; only public entry
-│   ├── shell/                                 # command/search and responsive shell
-│   ├── components/                            # workbench-styled recipes
-│   ├── tokens/                                # non-color desktop tokens
-│   ├── preview/                               # deterministic preview factory
-│   └── destinations/                          # one adapter file per feature domain
-└── studio/desktop/
-    ├── studio_desktop.dart                    # bundle assembly; only public entry
-    ├── shell/                                 # contextual rail/dock shell
-    ├── components/                            # studio-styled recipes
-    ├── tokens/                                # non-color desktop tokens
-    ├── preview/                               # deterministic preview factory
-    └── destinations/                          # one adapter file per feature domain
+├── <profile-1>/desktop/
+│   ├── <profile-1>_desktop.dart        # only public bundle entry
+│   ├── shell/                          # profile-private shell and styled chrome
+│   ├── components/                     # profile-private styled recipes
+│   ├── tokens/                         # profile-private metrics/non-color tokens
+│   ├── preview/                        # deterministic preview
+│   └── destinations/                   # profile-owned adapters
+├── …
+└── <profile-N>/desktop/...
 
-apps/desktop/test/layout/profiles/
-├── workbench/desktop/                         # workbench-only fixtures and tests
-└── studio/desktop/                            # studio-only fixtures and tests
-
-apps/desktop/test/goldens/layout/
-├── workbench/desktop/
-└── studio/desktop/
-
-apps/desktop/assets/layout-profiles/
-├── workbench/desktop/                         # optional profile-owned assets
-└── studio/desktop/
+apps/desktop/test/layout/profiles/<profile>/desktop/
+├── behavior/interaction coverage
+├── adaptive coverage
+├── semantic/accessibility coverage
+├── golden coverage
+└── normalized source-manifest coverage
 ```
 
-Implementation ownership is intentionally disjoint:
-
-| Node responsibility | Exclusive owned paths |
-| --- | --- |
-| Workbench shell/components | `workbench/desktop/{shell,components,tokens,preview}/**` and `assets/layout-profiles/workbench/desktop/**` |
-| Workbench destination adapters | `workbench/desktop/destinations/**` |
-| Workbench bundle tests/goldens | `workbench/desktop/workbench_desktop.dart`, `test/layout/profiles/workbench/desktop/**`, `test/goldens/layout/workbench/desktop/**` |
-| Studio shell/components | `studio/desktop/{shell,components,tokens,preview}/**` and `assets/layout-profiles/studio/desktop/**` |
-| Studio destination adapters | `studio/desktop/destinations/**` |
-| Studio bundle tests/goldens | `studio/desktop/studio_desktop.dart`, `test/layout/profiles/studio/desktop/**`, `test/goldens/layout/studio/desktop/**` |
-
-No implementation Node owns `layout_registry.dart`, `built_in_layout_composition.dart`, `app.dart`, `frontend/shell/**`, Settings, `package.json`, or shared product documentation. If asset registration or command aggregation needs a central edit, the parent join owns it.
+Every profile root exclusively owns its shell, chrome, metrics, components, adapters, preview, assets, restoration IDs, tests, source manifest, and goldens. No implementation node owns the central registry, composition algorithm, application/controller wiring, host, Settings, package command aggregation, or shared product documentation.
 
 ## Dependency direction and interfaces
 
-Dependencies point inward from a profile entry to its private shell/components and destination adapters, then to parent layout interfaces and layout-neutral feature ports. Profile code never imports another profile, the complete controller, a service locator, legacy shell code, backend/platform implementations, or shared styled widgets.
+```text
+bundle entry
+├── destination adapters -> semantic destinations + narrow feature ports
+├── shell/preview         -> LayoutShellPort + private components + environment
+└── private components    -> private tokens/metrics + appearance colors
+                              -> presentation contracts/style-free primitives
+```
 
-Destination adapters are split by feature responsibility: Home/control, Agents/conversations, Feed, monitoring/usage, Extensions/skills, Runtime, Mobile Relay entry, and Settings content. Each adapter maps typed immutable view state and callbacks into profile-local components. It does not resolve destination identity, query services, persist selection, or enforce capability policy.
+Destination adapters map immutable semantic state and callbacks into profile-private widgets. They do not resolve identity, query services, persist selection, or enforce capability policy. Home/control, Agents/conversations, and Settings are mandatory production fixtures; other parent-declared desktop destinations participate in the same exact-set product.
 
-The entry file creates an immutable coverage manifest and bundle from already implemented private factories. It exports no shell class, component class, adapter, mutable registry handle, or profile state. Parent validation rejects missing/extra destination or viewport builders before integration.
+`LayoutShellPort` exposes semantic destination/search/status/capability facts and callbacks only. It has no `ClientController`, domain service, repository, platform object, styled widget, color, spacing, or profile-specific metric. The profile owns how those facts are placed and styled. No renderer or shared feature may branch on profile IDs; typed registry lookup selects the bundle.
 
-## Profile systems
+The public entry creates one immutable manifest and builder map. It exports no shell class, component, adapter, mutable registry handle, or profile state. Parent validation rejects missing/extra destinations and viewport builders before integration.
 
-### Workbench
+## Frozen presentation ownership
 
-Workbench uses a horizontal command/search region, generous spatial rhythm, floating task surfaces, and card-oriented components. Narrow constraints condense the command region while retaining the same identity. Its shell, tokens, preview, components, adapters, restoration IDs, assets, tests, and goldens remain inside the workbench namespaces.
+The currently registered desktop bundles retain the exact worktree appearance and behavior captured in `Evidence.md`. Shared styled chrome and metrics are not a legitimate reuse layer; they are migration input. Each profile receives a private copy of the constants, geometry, icons, focus behavior, semantics, animations, and callbacks it currently renders. Full-controller reads are replaced with semantically equivalent port values/actions.
 
-### Studio
-
-Studio uses contextual side navigation, docked/edge-to-edge work areas, denser typography and spacing, compact shapes, and integrated split surfaces. Narrow constraints collapse contextual navigation without adopting workbench chrome. Its corresponding artifacts remain inside studio namespaces.
+Privatization is accepted only after byte-equivalent constants/metrics and pixel-, semantics-, focus-, and interaction-equivalent outputs pass. The parent then deletes shared chrome, shared visual metrics, controller scope/bridge, duplicate shell authority, and superseded tests in the same cutover. No forwarding export, fallback, wrapper, or compatibility import survives.
 
 ## State, switching, and adaptation
 
-Profiles receive semantic destination, immutable display state, commands, environment facts, appearance palette, and profile-qualified presentation-state access from the parent interfaces. They do not own selected layout, persistence, preview transaction, domain state, permissions, or long-running operations.
+Bundles receive semantic destination, immutable display state, commands, environment facts, appearance palette, and bundle-qualified presentation-state access. They do not own selected layout, persistence, preview transaction, domain state, permissions, or operations.
 
-Pane width, local tabs, scroll, expansion, and focus use bounded `(profile, desktop, destination, surfaceId)` namespaces. A fixture host can replace one bundle with the other while retaining fake semantic state; it does not keep both trees mounted. Constraint and input changes select a bundle-local variant but never write preferences.
+Pane width, local tabs, scroll, expansion, and focus use bounded `(profile, desktop, destination, surfaceId)` namespaces. A fixture host replaces any active bundle with another while retaining fake semantic state; it never keeps all bundles mounted. Desktop constraints and input facts select a bundle-local registered viewport variant but never persist identity.
 
-## Deliberate patterns and data structures
+## Data structures and complexity
 
-- **Strategy** is limited to the two complete desktop presentation systems; it earns its cost because shell, components, and destination composition all vary together.
-- **Adapter** is used per feature destination to translate stable parent ports into profile-specific widgets without moving business logic into the renderer.
-- **Factory plus immutable bundle** provides one narrow handoff and exact builder manifests without registry mutation or ID conditionals.
-- Immutable maps keyed by parent `LayoutVariantKey` and semantic destination provide deterministic O(1) lookup after the parent performs one exact-set validation.
-- Plain widgets and value objects remain pattern-free when no boundary or variation exists. There is no plugin loader, widget DSL, service locator, compatibility wrapper, or shared styled component hierarchy.
+- **Strategy** is one complete desktop presentation bundle per registered profile.
+- **Adapter** maps parent feature ports into profile-specific destinations.
+- **Factory plus immutable bundle** provides one narrow public handoff without registry mutation or ID branches.
+- Immutable maps keyed by typed variant and destination provide O(1) runtime lookup after one finite exact-set validation.
+- The desktop child contains no profile-count branches. Adding profile `N + 1` increases only registration data and one independent bundle/test root.
+
+There is no plugin loader, widget DSL, service locator, compatibility wrapper, shared styled component hierarchy, or profile-specific manager.
 
 ## Isolation and verification invariants
 
-- Profile source, asset, restoration, fixture, test, and golden roots never overlap.
-- Only a profile's entry file exposes its immutable desktop bundle; internals remain private to that profile root.
-- Identical fake-port scenarios assert semantic parity, while distinct landmarks and golden digests assert structural difference.
-- The boundary verifier rejects cross-profile imports, forbidden dependencies, extra public exports, mutable registry access, owned-path overlap, and imports of bundle entries outside the parent composition root.
-- A deterministic fixture modifies one profile manifest and proves the sibling source manifest and golden digest do not change.
-- Renderer final validation produces a bundle receipt only. The parent join owns mounted application behavior, complete migration, build, and launch.
+- Profile source, asset, restoration, fixture, test, source-manifest, and golden roots never overlap.
+- Only each profile's public entry exposes its immutable desktop bundle; internals remain private.
+- Equivalent fake-port scenarios assert semantic parity; profile-owned landmarks and current-baseline goldens assert presentation fidelity.
+- The boundary verifier derives expected desktop entries from composition, enforces canonical production/test/asset roots, rejects concrete presentation in shared feature/shell paths, cross-profile imports, full-controller access, shared chrome/metrics, backend/platform imports, mutable registration, ownership overlap, and imports of entries outside composition.
+- For each of `N` desktop bundles, a deterministic fixture mutation leaves the other `N − 1` source manifests and golden digests unchanged: `N(N − 1)` directed assertions.
+- Renderer validation produces bundle receipts only. Parent integration owns mounted behavior, current-only state, deletion of superseded authorities, build, and launch.

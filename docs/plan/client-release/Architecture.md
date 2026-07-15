@@ -5,19 +5,19 @@
 ```text
 client-release/                         platform-neutral product and proof authority
 ├── Requirements.md                     one release and product contract
-├── Decisions.md                        owner decisions D1-D17
+├── Decisions.md                        owner decisions D1-D22
 ├── Evidence.md                         fresh, redacted blocker ledger
 ├── Validation.md                       executable proof matrix
 ├── Architecture.md                     ownership and dependency model
-├── Checkpoints.json                    shared implementation DAG and two reducers
-├── macos/                              Keychain, distribution ZIP, Developer ID
+├── Checkpoints.json                    shared implementation DAG and independent reducers
+├── macos/                              Keychain, distribution ZIP, optional Developer ID channel
 ├── android/                            Keystore, APK, authorized physical device
 ├── linux/                              glibc/musl, Secret Service, VM/node matrix
-├── ios/                                Keychain/LocalAuthentication, signed iOS build
-└── windows/                            DPAPI/Hello, PE targets, signed installers
+├── ios/                                Keychain/LocalAuthentication, optional Apple channel
+└── windows/                            DPAPI/Hello, PE targets, optional signed channels
 ```
 
-The parent owns product semantics, shared Rust and Dart behavior, evidence policy, target authority, and aggregation. Each child owns only its native custody, toolchain, exact artifact, installation, launch, channel, and update proof. Child final validation checks the completed parent architecture contract and the shared implementation Nodes it consumes. Parent final validation reads all child terminal receipts; this is the cross-plan dependency edge that Better Plan cannot encode as an in-file UUID prerequisite.
+The parent owns product semantics, shared Rust and Dart behavior, evidence policy, target authority, and aggregation. Each child owns only its native custody, toolchain, exact artifact, installation, launch, and optional channel/update proof. Child final validation checks the completed parent architecture contract and the shared implementation Nodes it consumes. Parent GitHub Release validation reads only the selected targets' required artifact/security receipts; optional channel receipts are read only by that named channel decision, while the broad security-claim reducer reads all required platform security/protocol terminals. This is the cross-plan dependency edge that Better Plan cannot encode as an in-file UUID prerequisite.
 
 Specified-conversation continue lives only in this parent tree: read-only `conversations list|stream`, exact-id `agent conversation send` behind the readiness reducer, and adapter Strategy drivers. Claude Code exact-resume, Antigravity public transport, and mid-run inject are blocked leaves in `Checkpoints.json` with recorded reasons; they must not gain parallel plan directories.
 
@@ -32,7 +32,8 @@ Shared Rust domain and protocol core
         ↓ narrow platform traits
 Platform custody, filesystem, process, network and release adapters
         ↓ allowlisted digest receipts only
-Evidence ledger → selected-target reducer → publication decision
+Evidence ledger → GitHub Release reducer → artifact publication decision
+                ├→ optional platform/store reducer → named channel status
                 └→ product-line proof machine → independent audit → claim decision
 ```
 
@@ -52,8 +53,8 @@ Dependencies point downward. Platform implementations cannot define product secu
 | Pairwise state | shared Rust Double Ratchet owner | monotonic counters, bounded skipped/replay ledgers, durable atomic state |
 | Group and directory trust | OpenMLS plus typed external KT authority | authenticated membership, fresh signed tree head, consistency and gossip |
 | Capability and custody | stable enum-indexed acyclic graph | measured facts → deterministic closure → exact claims |
-| Release artifact | target catalog plus immutable lineage receipt | source, invocation, profile, target, artifact, publication and update digests |
-| Readiness | separate selected-target and product-line reducers | explicit blocker codes; no shared catch-all `releaseReady` boolean |
+| Release artifact | target catalog plus immutable lineage receipt | source, invocation, profile, target, artifact digest and minimum consumer-verification metadata; channel digests remain separate |
+| Readiness | separate GitHub Release, per-channel platform/store, and product-line reducers | explicit blocker codes; no shared catch-all `releaseReady` boolean |
 
 ## Dependency graph
 
@@ -95,7 +96,7 @@ flowchart TD
   QUALITY --> FINAL["Five child receipts + two final verdicts"]
 ```
 
-The macOS, Android, and Linux child terminals are prerequisites of the initial five-node topology receipt. iOS and Windows may remain outside a selected release, but both are mandatory inputs to the product-line claim. The parent final Node must reject a selected target whose child final receipt is absent and must reject the product-line claim until all five child finals, external KT, trusted-server boundary, and independent audit pass.
+The macOS, Android, and Linux child terminals are prerequisites of the initial five-node topology receipt. iOS and Windows may remain outside a selected release, but both are mandatory inputs to the product-line claim. The parent final Node must reject a selected target whose child final receipt is absent and must reject the product-line claim until all five child finals, external KT, the client-owned relay protocol Mock, and independent audit pass.
 
 ## Algorithms and data structures
 
@@ -119,10 +120,11 @@ The implementation Nodes remove, in the same change that establishes their repla
 - the removed v1/ten-field envelope registry and every parser, fixture, gate, and document that recognizes it;
 - provider-keyed account records, secret-bearing bridge DTOs, CLI credential arguments, fake-success deletion, and silent ordinary-store fallbacks;
 - global Feed completion state, aggregate-only results, synchronous unbounded attachment embedding, and tests that prove only one target;
-- flattened or provider-specific conversation rendering and obsolete shell, tab-bar, usage, `Future client`, and text-token verifier contracts;
+- flattened or provider-specific conversation rendering and obsolete shell, tab-bar, usage, `LicoArc client`, and text-token verifier contracts;
 - parallel route resolvers, disabled-but-loaded optional routing resources, raw session/history persistence, and source-different package profiles;
 - unsafe archive, export, skill-install, journal, and rename fallbacks plus tests that fail before the vulnerable operation executes;
 - artifact aliases, split receipt kinds, validation-only identity promotion, transient-upload publication claims, and destructive validation commands.
 
 No compatibility layer remains after the new authority is accepted. External protocol version tolerance may exist only at an explicitly typed boundary with a documented expiry and cannot restore a retired internal model.
 
+Persistent state under a retired product name follows a direct-reset boundary: the current client never probes, imports, renames, copies, or translates a retired-name data root or preference namespace. Startup creates a fresh current-name workspace. Tests and gates prove absence of retired-name paths and compatibility readers; they do not preserve sample legacy state or exercise a migration.

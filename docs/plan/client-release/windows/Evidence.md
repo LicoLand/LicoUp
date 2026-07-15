@@ -1,8 +1,7 @@
 # Windows Fresh Evidence
 
-- Current target authority has no complete independent x64 and arm64 builder, verifier, receipt and publication closure.
-- Windows bundle verification and boundary tests provide a structural baseline, but no current Windows host build, PE inspection, signed installer, clean-machine launch, update continuity or physical/native authorization flow was run.
-- Shared file replacement can misclassify rename failures, move the destination first, and follow a concurrently created symlink in its copy fallback. Skill install/rollback and journal paths add containment and crash-recovery gaps that affect Windows state integrity too.
-- Secrets are no longer observed in adapter CLI arguments, but real DPAPI/Windows Hello authorization, deletion and hostile process/log scans remain unverified.
+- Windows x64 now has a target-owned packaging path, x64 Rust target binding, PE32+ machine parser, source-state and executable digest manifest, and a fail-closed bundle verifier. This local implementation closure is independent from both native Windows-host evidence and selection as a GitHub Release target. A current native-host artifact receipt is still required before Windows support can be promoted; publisher, store, signing, and channel identity remain channel-only guidance.
+- Windows arm64 is a distinct fail-closed catalog target. The pinned Flutter Windows toolchain does not expose a native arm64 build target, so no x64 artifact can be relabeled or projected as arm64.
+- Shared replacement, archive, export, rollback, and journal checks enforce bounded no-follow containment and atomic target-side replacement in local source verification. Native reparse-point, locked-file, interruption, and cross-volume receipts remain Windows-host evidence.
+- The native secret-store path selects Windows Credential Manager, exercises roundtrip, persistence, redaction, and real deletion in the Windows smoke lane, and forbids plaintext/file fallback. A successful native Windows-host receipt remains required; production signing and store continuity affect only a specifically requested channel.
 - Windows remains mandatory for the broad product-line security claim even when unselected for a narrower release.
-

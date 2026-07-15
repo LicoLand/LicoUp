@@ -1,11 +1,18 @@
-# macOS Fresh Evidence
+# macOS Release Evidence
 
-- Acceptance names a macOS distribution ZIP while receipt configuration still names an app bundle, and the dispatcher routes only the app-bundle kind correctly. The acceptance self-test fails before packaging.
-- The local-identity installer self-test's positive fixture omits newly required manifest fields and fails.
-- Production packaging and receipt semantics disagree on Developer ID, notarization, publication and update authority; transient CI artifact upload cannot close them.
-- The selected macOS target is blocked by preview Secure Mesh pairwise support.
-- The native secret store silently falls back to an ordinary keyring session when user-presence interaction is unavailable or disabled while reporting the store available. The advertised environment policy is not consumed by Rust.
-- A fresh canonical release build fails at Flutter kernel compilation because current production shell call sites omit the newly required controller argument. No fresh runnable is produced, so the required launch step cannot execute.
-- A release-target clean build, notarized public download, clean-machine launch, update continuity and real LocalAuthentication flow have not been observed in this audit.
+## Closed in current source
 
-Existing local build and release Cargo checks are useful baselines only. No historical receipt or old completed Node is accepted.
+- Acceptance, receipt, manifest, and distribution helpers bind the same macOS distribution archive and source state. Fresh focused suites pass: receipt 28, target 6, schema 18, acceptance 43, artifact I/O 31, dependency 2, package 17, and closure writer 14.
+- The local identity-install fixture consumes the canonical package manifest; development identity remains explicitly distinct from a production Developer ID claim.
+- Interactive native custody fails closed when LocalAuthentication is unavailable. Background access cannot inherit a cached interactive authorization context, and one authorized workflow shares one bounded system context without an app password fallback.
+- Current architecture, plan, client-boundary, Flutter analysis, Flutter tests, native lint, Secure Mesh, native library, CLI, and integration gates pass.
+
+## Closed local macOS receipt
+
+The release bundle was built from current source, the local bundle verifier passed, and the app launched successfully. This closes local build, bundle integrity, embedded-client, and launch evidence. Local launch evidence does not promote signing, notarization, publication, or real Keychain user-presence claims.
+
+## Remaining physical blocker and channel guidance
+
+- Real Keychain user-presence success, denial, cancellation, expiry, and recovery require an interactive authorized macOS session.
+- Clean-machine acceptance remains external execution evidence when that install claim is requested. Developer ID signing, notarization, stapling, protected publication, public store download, update continuity, and rollback are unavailable channel guidance only; they do not block development or GitHub Release.
+- External KT gossip/witness and an independent cryptographic audit remain required for any broad product-line security claim.

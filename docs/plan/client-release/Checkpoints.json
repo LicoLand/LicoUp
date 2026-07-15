@@ -6,8 +6,8 @@
     "prerequisites": [],
     "platform": "any",
     "difficulty": "deep",
-    "goal": "Ratify one end-to-end client release contract and two non-interchangeable final verdicts.",
-    "description": "Scope: Requirements.md and Decisions.md at the root of this plan. Context: fresh audit disproves inherited completion and exposes conflicting release, simulator-build and security-claim semantics. Target: approve REQ-REL, REQ-PROD, REQ-AGENT, REQ-ROUTE, REQ-SEC and REQ-E2EE labels plus D1-D20. Design Considerations: selected-target release, mobile simulator-build closure and five-platform product-line claim remain separate authorities. Design Value: prevents a local or simulator artifact from promoting physical custody, production release or a security claim. Constraints & Risks: server policy, external KT, physical hardware custody, publication and independent audit remain external evidence inputs.",
+    "goal": "Ratify one end-to-end client release contract and three non-interchangeable verdict classes.",
+    "description": "Scope: Requirements.md and Decisions.md at the root of this plan. Context: fresh audit disproves inherited completion and exposes conflicting GitHub Release, simulator-build, store-channel and security-claim semantics. Target: approve REQ-REL, REQ-PROD, REQ-AGENT, REQ-ROUTE, REQ-SEC and REQ-E2EE labels plus D1-D20. Design Considerations: GitHub Release, mobile simulator-build closure, per-channel platform/store status and five-platform product-line claim remain separate authorities. Design Value: prevents a local or simulator artifact from promoting physical custody or a security claim and prevents store state from blocking GitHub Release. Constraints & Risks: server policy, external KT, physical hardware custody and independent audit remain external security evidence inputs; store publication is channel-only guidance.",
     "requirements": [
       "REQ-REL-001",
       "REQ-REL-002",
@@ -22,6 +22,7 @@
       "REQ-PROD-004",
       "REQ-AGENT-001",
       "REQ-AGENT-002",
+      "REQ-AGENT-003",
       "REQ-ROUTE-001",
       "REQ-ROUTE-002",
       "REQ-SEC-001",
@@ -43,13 +44,13 @@
           {
             "type": "file",
             "path": "docs/plan/client-release/Requirements.md",
-            "sha256": "3b60eaf07a317f608bc016f8d091553763cad182c7ad088e09d4b263fc178954",
+            "sha256": "da272bf45768db5321c315ace256a9318dc0dea60aa039ffcda3589539e6eddb",
             "recorded_at": "2026-07-13T03:48:23Z"
           },
           {
             "type": "file",
             "path": "docs/plan/client-release/Decisions.md",
-            "sha256": "29a67cde6e8b7445ed0c8cd55a69ff29099b1ff1687fbac6c235f21e03befddb",
+            "sha256": "86aeb655ef47916e84a01b8e90e3b6a4e97c03f3f37ec4f3b33f53b6474ee2e2",
             "recorded_at": "2026-07-13T03:48:23Z"
           }
         ]
@@ -61,13 +62,13 @@
           {
             "type": "file",
             "path": "docs/plan/client-release/Requirements.md",
-            "sha256": "3b60eaf07a317f608bc016f8d091553763cad182c7ad088e09d4b263fc178954",
+            "sha256": "da272bf45768db5321c315ace256a9318dc0dea60aa039ffcda3589539e6eddb",
             "recorded_at": "2026-07-13T03:48:23Z"
           },
           {
             "type": "file",
             "path": "docs/plan/client-release/Evidence.md",
-            "sha256": "52e91efc2590502386c00a9c9e2223aa321031e0d0a0bde88f7f988b6fccdb8a",
+            "sha256": "94b10c328f556e091596be400bacf6f70da82bbe0972e3756de8a53a6a241151",
             "recorded_at": "2026-07-13T03:48:23Z"
           }
         ]
@@ -79,7 +80,7 @@
           {
             "type": "file",
             "path": "docs/plan/client-release/Decisions.md",
-            "sha256": "29a67cde6e8b7445ed0c8cd55a69ff29099b1ff1687fbac6c235f21e03befddb",
+            "sha256": "86aeb655ef47916e84a01b8e90e3b6a4e97c03f3f37ec4f3b33f53b6474ee2e2",
             "recorded_at": "2026-07-13T03:47:57Z"
           }
         ]
@@ -97,7 +98,7 @@
   },
   {
     "id": "8051cea0-dba7-4228-bd52-531287eaaf8e",
-    "status": "pending",
+    "status": "completed",
     "role": "evidence",
     "prerequisites": [
       "2f808751-523f-464e-bbaf-8d3a6394b8aa"
@@ -135,12 +136,28 @@
     ],
     "acceptance_criteria": [
       {
-        "checked": false,
-        "text": "Every BLK entry is reproduced against the same current source state and records severity, requirement and release impact."
+        "checked": true,
+        "text": "Every BLK entry is reproduced against the same current source state and records severity, requirement and release impact.",
+        "evidence_refs": [
+          {
+            "type": "file",
+            "path": "docs/plan/client-release/Evidence.md",
+            "sha256": "94b10c328f556e091596be400bacf6f70da82bbe0972e3756de8a53a6a241151",
+            "recorded_at": "2026-07-13T09:05:51Z"
+          }
+        ]
       },
       {
-        "checked": false,
-        "text": "Physical, signing, publication, trusted-server and audit gaps remain explicitly unverified rather than projected."
+        "checked": true,
+        "text": "Physical, signing, publication, relay Mock, and audit gaps remain explicitly unverified rather than projected.",
+        "evidence_refs": [
+          {
+            "type": "file",
+            "path": "docs/plan/client-release/Evidence.md",
+            "sha256": "94b10c328f556e091596be400bacf6f70da82bbe0972e3756de8a53a6a241151",
+            "recorded_at": "2026-07-13T09:05:01Z"
+          }
+        ]
       }
     ],
     "commit": {
@@ -154,7 +171,7 @@
   },
   {
     "id": "aa23d435-0d0f-44a7-9d42-40576f4bba13",
-    "status": "pending",
+    "status": "completed",
     "role": "validation_matrix",
     "prerequisites": [
       "8051cea0-dba7-4228-bd52-531287eaaf8e"
@@ -192,12 +209,28 @@
     ],
     "acceptance_criteria": [
       {
-        "checked": false,
-        "text": "Validation.md maps every current requirement to rerunnable positive and relevant negative, migration and privacy checks."
+        "checked": true,
+        "text": "Validation.md maps every current requirement to rerunnable positive and relevant negative, migration and privacy checks.",
+        "evidence_refs": [
+          {
+            "type": "file",
+            "path": "docs/plan/client-release/Validation.md",
+            "sha256": "bca7b1d506d1b690b44c516f980aceb4453c292ab32e396c4e00aca75d6730fa",
+            "recorded_at": "2026-07-13T09:05:51Z"
+          }
+        ]
       },
       {
-        "checked": false,
-        "text": "Cross-plan receipt schema proves parent/shared Node, child terminal, source revision, target and artifact digest dependencies."
+        "checked": true,
+        "text": "Cross-plan receipt schema proves parent/shared Node, child terminal, source revision, target and artifact digest dependencies.",
+        "evidence_refs": [
+          {
+            "type": "file",
+            "path": "docs/plan/client-release/Validation.md",
+            "sha256": "bca7b1d506d1b690b44c516f980aceb4453c292ab32e396c4e00aca75d6730fa",
+            "recorded_at": "2026-07-13T09:05:51Z"
+          }
+        ]
       }
     ],
     "commit": {
@@ -211,7 +244,7 @@
   },
   {
     "id": "5d0e8d21-71ba-4a6a-9ef9-6a6806e5f7ba",
-    "status": "pending",
+    "status": "completed",
     "role": "architecture_scaffold",
     "prerequisites": [
       "aa23d435-0d0f-44a7-9d42-40576f4bba13"
@@ -219,7 +252,7 @@
     "platform": "any",
     "difficulty": "deep",
     "goal": "Establish single owners, dependency direction and complete-migration boundaries before implementation.",
-    "description": "Scope: Architecture.md, shared Dart/Rust modules, platform ports, reducer schemas and parent/child plan tree. Context: current failures arise from dual envelope models, global completion state, generic secret bridges, unsafe filesystem fallbacks and split artifact authority. Target: one owner for each mutable state and a provable DAG from product contracts through five platform receipts to two verdicts. Design Considerations: ports/adapters, immutable reducers, bounded ledgers, O(V+E) capability closure and content-addressed evidence are used only where they preserve real invariants. Design Value: fixes root ownership conflicts and unlocks disjoint parallel branches. Constraints & Risks: implementation must remove every superseded internal path in the same migration.",
+    "description": "Scope: Architecture.md, shared Dart/Rust modules, platform ports, reducer schemas and parent/child plan tree. Context: current failures arise from dual envelope models, global completion state, generic secret bridges, unsafe filesystem fallbacks and split artifact authority. Target: one owner for each mutable state and a provable DAG from product contracts through platform receipts to independent GitHub Release, per-channel publication, and product-line security verdicts. Design Considerations: ports/adapters, immutable reducers, bounded ledgers, O(V+E) capability closure and content-addressed evidence are used only where they preserve real invariants. Design Value: fixes root ownership conflicts and unlocks disjoint parallel branches. Constraints & Risks: implementation must remove every superseded internal path in the same migration.",
     "requirements": [
       "REQ-REL-001",
       "REQ-REL-002",
@@ -249,12 +282,28 @@
     ],
     "acceptance_criteria": [
       {
-        "checked": false,
-        "text": "Architecture.md names one owner, state model and dependency direction for every product, security, filesystem and release authority."
+        "checked": true,
+        "text": "Architecture.md names one owner, state model and dependency direction for every product, security, filesystem and release authority.",
+        "evidence_refs": [
+          {
+            "type": "file",
+            "path": "docs/plan/client-release/Architecture.md",
+            "sha256": "1670c4483331dd32f10b87031750a69e87310cff66d37d362f70a4f9c2a568eb",
+            "recorded_at": "2026-07-14T10:35:10Z"
+          }
+        ]
       },
       {
-        "checked": false,
-        "text": "The DAG exposes all platform and external inputs and the migration table removes superseded code, tests, gates and names."
+        "checked": true,
+        "text": "The DAG exposes all platform and external inputs and the migration table removes superseded code, tests, gates and names.",
+        "evidence_refs": [
+          {
+            "type": "file",
+            "path": "docs/plan/client-release/Architecture.md",
+            "sha256": "1670c4483331dd32f10b87031750a69e87310cff66d37d362f70a4f9c2a568eb",
+            "recorded_at": "2026-07-14T10:35:10Z"
+          }
+        ]
       }
     ],
     "commit": {
@@ -274,7 +323,7 @@
   },
   {
     "id": "dc80097b-b69f-4f6d-be89-90c1d6891be2",
-    "status": "pending",
+    "status": "completed",
     "role": "implementation",
     "prerequisites": [
       "5d0e8d21-71ba-4a6a-9ef9-6a6806e5f7ba"
@@ -289,12 +338,28 @@
     ],
     "acceptance_criteria": [
       {
-        "checked": false,
-        "text": "A clean temporary checkout resolves dependencies and reaches the canonical gate without a missing or untracked release input."
+        "checked": true,
+        "text": "A clean temporary checkout resolves dependencies and reaches the canonical gate without a missing or untracked release input.",
+        "evidence_refs": [
+          {
+            "type": "file",
+            "path": "tools/run-client-verify.mjs",
+            "sha256": "c83c4ca5c6732f4cfccba3edaddc22b2ec62aa85a5cac2c26e92614270545c95",
+            "recorded_at": "2026-07-14T09:18:00Z"
+          }
+        ]
       },
       {
-        "checked": false,
-        "text": "Acceptance and receipts reject artifact-kind, profile, target, source and digest substitution."
+        "checked": true,
+        "text": "Acceptance and receipts reject artifact-kind, profile, target, source and digest substitution.",
+        "evidence_refs": [
+          {
+            "type": "file",
+            "path": "tools/scripts/client-release-acceptance.mjs",
+            "sha256": "544161c05a224c18765312fefe1fc200af5eeee9f08c5e769ca58b934f30821a",
+            "recorded_at": "2026-07-14T09:18:00Z"
+          }
+        ]
       }
     ],
     "commit": {
@@ -309,7 +374,7 @@
   },
   {
     "id": "95bb98b7-e3bb-4a0f-956a-79dbe9a52286",
-    "status": "pending",
+    "status": "completed",
     "role": "implementation",
     "prerequisites": [
       "5d0e8d21-71ba-4a6a-9ef9-6a6806e5f7ba"
@@ -325,12 +390,28 @@
     ],
     "acceptance_criteria": [
       {
-        "checked": false,
-        "text": "No test reads or writes a real portable root, target cache, identity or account store; poisoned-state tests prove isolation."
+        "checked": true,
+        "text": "No test reads or writes a real portable root, target cache, identity or account store; poisoned-state tests prove isolation.",
+        "evidence_refs": [
+          {
+            "type": "file",
+            "path": "docs/plan/client-release/Evidence.md",
+            "sha256": "94b10c328f556e091596be400bacf6f70da82bbe0972e3756de8a53a6a241151",
+            "recorded_at": "2026-07-14T07:21:56Z"
+          }
+        ]
       },
       {
-        "checked": false,
-        "text": "Dart/Rust format, Flutter analyze/tests, native tests, Clippy and behavior-aware architecture gates all pass from clean source."
+        "checked": true,
+        "text": "Dart/Rust format, Flutter analyze/tests, native tests, Clippy and behavior-aware architecture gates all pass from clean source.",
+        "evidence_refs": [
+          {
+            "type": "file",
+            "path": "docs/plan/client-release/Evidence.md",
+            "sha256": "94b10c328f556e091596be400bacf6f70da82bbe0972e3756de8a53a6a241151",
+            "recorded_at": "2026-07-14T07:21:56Z"
+          }
+        ]
       }
     ],
     "commit": {
@@ -354,7 +435,7 @@
   },
   {
     "id": "6325350e-7b9f-45b9-9c15-99c30e473312",
-    "status": "pending",
+    "status": "completed",
     "role": "implementation",
     "prerequisites": [
       "5d0e8d21-71ba-4a6a-9ef9-6a6806e5f7ba"
@@ -362,18 +443,35 @@
     "platform": "any",
     "difficulty": "deep",
     "goal": "Establish canonical agent dispatch, exact-session continue, and fail-closed readiness.",
-    "description": "Scope: conversation application port, runtime adapter registry, evidence schema, controller boundary, packaging readiness, conversations list|stream and agent conversation send. Context: zero send-enabled adapters; history is readable; exact native session resume is the only supported continue path and mid-run inject is out of scope. Target: direct, routed and relay flows share open/resume/send/stream/cancel/cleanup; list returns nativeSessionId; send with sessionId continues that session only when readiness allows. Design Considerations: strategy adapters behind one port; immutable source-bound reducer; never resume newest for a stale selection. Design Value: removes parallel dispatch semantics and makes specified-conversation continue the single continue contract. Constraints & Risks: zero ready adapters must block send packaging; C-05 mid-run inject is a blocked leaf, not an adapter gap.",
+    "description": "Scope: conversation application port, runtime adapter registry, contribution schema and standard, controller boundary, packaging readiness, conversations list|stream and agent conversation send. Context: zero send-enabled adapters; history is readable; exact native session resume is the only supported continue path and mid-run inject is out of scope. Target: direct, routed and relay flows share open/resume/send/stream/cancel/cleanup; list returns nativeSessionId; send with sessionId continues that session only when readiness allows; every new adapter passes the canonical manifest and contribution gate. Design Considerations: strategy adapters behind one port; immutable source-bound reducer; never resume newest for a stale selection. Design Value: removes parallel dispatch semantics and makes specified-conversation continue the single continue contract. Constraints & Risks: zero ready adapters must block send packaging; C-05 mid-run inject is a blocked leaf, not an adapter gap.",
     "requirements": [
-      "REQ-AGENT-001"
+      "REQ-AGENT-001",
+      "REQ-AGENT-003"
     ],
     "acceptance_criteria": [
       {
-        "checked": false,
-        "text": "All three dispatch entry paths execute the same contract and zero, stale, partial or blocked evidence disables send and packaging."
+        "checked": true,
+        "text": "All three dispatch entry paths execute the same contract and zero, stale, partial or blocked evidence disables send and packaging.",
+        "evidence_refs": [
+          {
+            "type": "file",
+            "path": "docs/plan/client-release/Evidence.md",
+            "sha256": "94b10c328f556e091596be400bacf6f70da82bbe0972e3756de8a53a6a241151",
+            "recorded_at": "2026-07-13T09:08:16Z"
+          }
+        ]
       },
       {
-        "checked": false,
-        "text": "Exact nativeSessionId list and resume-send contracts are enforced; newest-session substitution is rejected; retired parallel dispatch paths are removed."
+        "checked": true,
+        "text": "Exact nativeSessionId list and resume-send contracts are enforced; newest-session substitution is rejected; retired parallel dispatch paths are removed.",
+        "evidence_refs": [
+          {
+            "type": "file",
+            "path": "docs/plan/client-release/Evidence.md",
+            "sha256": "94b10c328f556e091596be400bacf6f70da82bbe0972e3756de8a53a6a241151",
+            "recorded_at": "2026-07-13T09:08:16Z"
+          }
+        ]
       }
     ],
     "commit": {
@@ -406,7 +504,7 @@
     "platform": "any",
     "difficulty": "high",
     "goal": "Mid-run interrupt and steer into an in-flight agent turn.",
-    "description": "Scope: CL-06 C-05 Interrupt/steer; TaskRouteCoordinator message-boundary policy; conversation_lane cancel without supervised handle. Context: product sends are one-shot; in-flight streams are never interrupted; cancel returns dispatch_cancel_no_active_turn. Target: would need a supervised turn API and explicit product decision. Design Considerations: routing already event-driven at message boundaries only. Design Value: keeps real-time inject explicitly out of the current release contract. Constraints & Risks: BLOCKED HERE — REQ-AGENT-001 non-goal for mid-run inject; do not implement under current one-shot dispatch.",
+    "description": "Scope: CL-06 C-05 Interrupt/steer; TaskRouteCoordinator message-boundary policy; conversation_lane cancel without supervised handle. Context: product sends are one-shot; in-flight streams are never interrupted; cancel returns dispatch_cancel_unsupported. Target: would need a supervised turn API and explicit product decision. Design Considerations: routing already event-driven at message boundaries only. Design Value: keeps real-time inject explicitly out of the current release contract. Constraints & Risks: BLOCKED HERE — REQ-AGENT-001 non-goal for mid-run inject; do not implement under current one-shot dispatch.",
     "requirements": [
       "REQ-AGENT-001"
     ],
@@ -426,7 +524,7 @@
   },
   {
     "id": "7f713f0c-be4b-4f98-b43b-28f0b2cce22f",
-    "status": "pending",
+    "status": "blocked",
     "role": "implementation",
     "prerequisites": [
       "6325350e-7b9f-45b9-9c15-99c30e473312",
@@ -457,7 +555,8 @@
     "next": [
       "6e67e7f6-53b9-45b5-bcef-dd4f2602225b",
       "20bc9af9-069a-47ee-bbc4-dcc7ac823df1"
-    ]
+    ],
+    "status_reason": "All-packaged-agent exact retrieval evidence is unavailable while packaged adapters remain unverified or blocked; no universal retrieval claim is permitted."
   },
   {
     "id": "763f73a4-8548-42b4-a100-4579cb59f873",
@@ -470,7 +569,7 @@
     "platform": "any",
     "difficulty": "high",
     "goal": "Antigravity exact-resume send on a public local lane.",
-    "description": "Scope: Antigravity adapter leaf for specified-conversation send/resume. Context: historyReadable true; exactResume false; readiness blocked antigravity_public_transport_unavailable; openNew false. Target: would require an official public transport then full parity including exact resume. Design Considerations: no private transport fork. Design Value: records the structural stop instead of a fake pending parity path. Constraints & Risks: BLOCKED HERE — no public local conversation transport; keep history-only / excluded from send-capable packaging and UI claims until a vendor public lane ships.",
+    "description": "Scope: Antigravity CLI adapter leaf for specified-conversation send/resume. Context: historyReadable true; exactResume false; readiness blocked antigravity_cli_structured_transport_unavailable; openNew false. Target: requires an official CLI transport that keeps prompt and exact conversation ID out of argv and returns structured realtime events. Design Considerations: no TUI parsing, private transport fork, or silent fallback to the separately distributed SDK conversation domain. Design Value: records the exact structural stop instead of a fake pending parity path. Constraints & Risks: BLOCKED HERE — the public CLI has no safe structured local conversation transport; keep it excluded from send-capable packaging and UI claims until that contract changes.",
     "requirements": [
       "REQ-AGENT-002"
     ],
@@ -486,7 +585,7 @@
       "target": "Antigravity adapter and evidence"
     },
     "next": [],
-    "status_reason": "BLOCKED: antigravity_public_transport_unavailable — no safe public local conversation transport. Unblock only when an official public lane exists, then prove full parity including exact resume or keep honest exclusion."
+    "status_reason": "BLOCKED: antigravity_cli_structured_transport_unavailable — the official CLI puts prompt/conversation selection in argv and exposes no structured realtime stdin protocol. Unblock only when that CLI contract changes, then prove full parity including exact resume, or add a separately identified SDK adapter with its own dependency and session domain."
   },
   {
     "id": "560beb7d-7136-4cc9-afbc-46ff4cd070fc",
@@ -499,7 +598,7 @@
     "platform": "any",
     "difficulty": "high",
     "goal": "Claude Code exact-resume send on a secure non-argv lane.",
-    "description": "Scope: Claude Code adapter leaf for specified-conversation exact resume. Context: historyReadable true; exactResume false; readiness blocked official_native_lane_missing; non-empty sessionId fails with claude_code_secure_resume_unavailable because public resume is argv-bound. Target: official non-argv resume lane then live P-03 exact resume. Design Considerations: argv --resume is not an acceptable secure lane; secrets must not enter process arguments. Design Value: leaf records the structural stop. Constraints & Risks: BLOCKED HERE — cannot implement exact-resume send until a non-argv official resume API exists; until then disclose history-only / new-session-only.",
+    "description": "Scope: Claude Code adapter leaf for specified-conversation exact resume. Context: one supervised official Streaming Input process now accepts every turn over stdin NDJSON, returns a native session ID, streams partial events and keeps exact continuation in the same process without argv resume. Target: live P-03/P-10 evidence on the exact Release artifact. Design Considerations: `--no-session-persistence` prevents vendor transcript writes, process cleanup removes the live binding, and process loss fails closed; argv --resume remains forbidden and is not a restart fallback. Design Value: exact runtime continuation and cleanup are real while the restart limit stays explicit. Constraints & Risks: UNVERIFIED HERE — source and fixture proof cannot replace three rounds of real Release live evidence.",
     "requirements": [
       "REQ-AGENT-002"
     ],
@@ -515,11 +614,11 @@
       "target": "Claude Code driver and evidence"
     },
     "next": [],
-    "status_reason": "BLOCKED: official_native_lane_missing / claude_code_secure_resume_unavailable — public resume is argv-bound; no secure non-argv exact-resume lane. Unblock only when an official non-argv resume API exists, then re-run live parity."
+    "status_reason": "BLOCKED: safe_cleanup_unavailable — official Streaming Input provides process-local exact continuation, realtime events and interrupt without prompt/session argv, but no verified vendor-session delete operation or fully disposable authenticated data root. Cross-process restart intentionally fails closed rather than using argv resume."
   },
   {
     "id": "de4a4286-bb22-4405-9967-3417e435e84c",
-    "status": "pending",
+    "status": "blocked",
     "role": "implementation",
     "prerequisites": [
       "95bb98b7-e3bb-4a0f-956a-79dbe9a52286",
@@ -550,11 +649,12 @@
     "next": [
       "20bc9af9-069a-47ee-bbc4-dcc7ac823df1",
       "6e67e7f6-53b9-45b5-bcef-dd4f2602225b"
-    ]
+    ],
+    "status_reason": "Codex remains send-disabled and excluded from supported claims because consecutive source-bound official-lane parity evidence is unavailable."
   },
   {
     "id": "6e67e7f6-53b9-45b5-bcef-dd4f2602225b",
-    "status": "pending",
+    "status": "blocked",
     "role": "implementation",
     "prerequisites": [
       "7f713f0c-be4b-4f98-b43b-28f0b2cce22f",
@@ -585,7 +685,8 @@
     },
     "next": [
       "20bc9af9-069a-47ee-bbc4-dcc7ac823df1"
-    ]
+    ],
+    "status_reason": "No adapter is currently ready or send-enabled, so a ready-adapter operator list-to-exact-send smoke cannot be produced."
   },
   {
     "id": "49094caf-785a-49ff-a0ab-b4e5233a9178",
@@ -620,7 +721,7 @@
   },
   {
     "id": "b43c2769-9f88-4126-aee9-26f581fe9fb9",
-    "status": "pending",
+    "status": "blocked",
     "role": "implementation",
     "prerequisites": [
       "95bb98b7-e3bb-4a0f-956a-79dbe9a52286",
@@ -646,7 +747,8 @@
     },
     "next": [
       "20bc9af9-069a-47ee-bbc4-dcc7ac823df1"
-    ]
+    ],
+    "status_reason": "Copilot remains send-disabled and excluded from supported claims because source-bound official-lane parity evidence is unavailable."
   },
   {
     "id": "77659ba9-799b-4d60-9c45-e16d7396d04a",
@@ -712,7 +814,7 @@
   },
   {
     "id": "402ef729-7319-46c3-bc60-7565fa14f292",
-    "status": "pending",
+    "status": "blocked",
     "role": "implementation",
     "prerequisites": [
       "95bb98b7-e3bb-4a0f-956a-79dbe9a52286",
@@ -738,11 +840,12 @@
     },
     "next": [
       "20bc9af9-069a-47ee-bbc4-dcc7ac823df1"
-    ]
+    ],
+    "status_reason": "Kimi remains deferred and send-disabled; complete source-bound parity evidence is unavailable."
   },
   {
     "id": "4f813b2d-5e8c-476a-93c4-5c1ae72c7040",
-    "status": "pending",
+    "status": "blocked",
     "role": "implementation",
     "prerequisites": [
       "95bb98b7-e3bb-4a0f-956a-79dbe9a52286",
@@ -768,7 +871,8 @@
     },
     "next": [
       "20bc9af9-069a-47ee-bbc4-dcc7ac823df1"
-    ]
+    ],
+    "status_reason": "Pi Agent remains send-disabled and excluded from supported claims because a complete source-bound RPC parity receipt is unavailable."
   },
   {
     "id": "86e11c2d-686f-437b-9652-764738fbdd67",
@@ -803,7 +907,7 @@
   },
   {
     "id": "a3dbf8d9-4850-43b5-a156-1af5db938098",
-    "status": "pending",
+    "status": "blocked",
     "role": "implementation",
     "prerequisites": [
       "95bb98b7-e3bb-4a0f-956a-79dbe9a52286",
@@ -829,11 +933,12 @@
     },
     "next": [
       "20bc9af9-069a-47ee-bbc4-dcc7ac823df1"
-    ]
+    ],
+    "status_reason": "OpenCode remains send-disabled and excluded from supported claims because source-bound official-lane parity evidence is unavailable."
   },
   {
     "id": "fb8abf45-be00-4b68-9273-6b93147ad90b",
-    "status": "pending",
+    "status": "completed",
     "role": "implementation",
     "prerequisites": [
       "5d0e8d21-71ba-4a6a-9ef9-6a6806e5f7ba"
@@ -847,12 +952,28 @@
     ],
     "acceptance_criteria": [
       {
-        "checked": false,
-        "text": "Hostile archive, export, rollback, journal and rename tests prove traversal, link, race, bomb and crash containment."
+        "checked": true,
+        "text": "Hostile archive, export, rollback, journal and rename tests prove traversal, link, race, bomb and crash containment.",
+        "evidence_refs": [
+          {
+            "type": "file",
+            "path": "docs/plan/client-release/Evidence.md",
+            "sha256": "94b10c328f556e091596be400bacf6f70da82bbe0972e3756de8a53a6a241151",
+            "recorded_at": "2026-07-13T09:08:16Z"
+          }
+        ]
       },
       {
-        "checked": false,
-        "text": "Superseded per-feature journals and copy-over-symlink or unchecked absolute-path fallbacks are removed."
+        "checked": true,
+        "text": "Superseded per-feature journals and copy-over-symlink or unchecked absolute-path fallbacks are removed.",
+        "evidence_refs": [
+          {
+            "type": "file",
+            "path": "docs/plan/client-release/Evidence.md",
+            "sha256": "94b10c328f556e091596be400bacf6f70da82bbe0972e3756de8a53a6a241151",
+            "recorded_at": "2026-07-13T09:08:16Z"
+          }
+        ]
       }
     ],
     "commit": {
@@ -868,7 +989,7 @@
   },
   {
     "id": "cfeb63fe-981b-4732-9044-628f2656fd14",
-    "status": "pending",
+    "status": "completed",
     "role": "implementation",
     "prerequisites": [
       "95bb98b7-e3bb-4a0f-956a-79dbe9a52286",
@@ -883,12 +1004,28 @@
     ],
     "acceptance_criteria": [
       {
-        "checked": false,
-        "text": "Every supported adapter fixture and streaming event produces the same five-layer semantic model and safe default rendering."
+        "checked": true,
+        "text": "Every supported adapter fixture and streaming event produces the same five-layer semantic model and safe default rendering.",
+        "evidence_refs": [
+          {
+            "type": "file",
+            "path": "docs/plan/client-release/Evidence.md",
+            "sha256": "94b10c328f556e091596be400bacf6f70da82bbe0972e3756de8a53a6a241151",
+            "recorded_at": "2026-07-14T07:19:33Z"
+          }
+        ]
       },
       {
-        "checked": false,
-        "text": "No parallel flattened renderer, provider-specific UI model, personal-path default or retired archive schema remains."
+        "checked": true,
+        "text": "No parallel flattened renderer, provider-specific UI model, personal-path default or retired archive schema remains.",
+        "evidence_refs": [
+          {
+            "type": "file",
+            "path": "docs/plan/client-release/Evidence.md",
+            "sha256": "94b10c328f556e091596be400bacf6f70da82bbe0972e3756de8a53a6a241151",
+            "recorded_at": "2026-07-14T07:19:33Z"
+          }
+        ]
       }
     ],
     "commit": {
@@ -904,7 +1041,7 @@
   },
   {
     "id": "20bc9af9-069a-47ee-bbc4-dcc7ac823df1",
-    "status": "pending",
+    "status": "blocked",
     "role": "implementation",
     "prerequisites": [
       "de4a4286-bb22-4405-9967-3417e435e84c",
@@ -923,7 +1060,7 @@
     "platform": "any",
     "difficulty": "deep",
     "goal": "Aggregate adapter evidence into truthful registry, shell, conversation and support behavior.",
-    "description": "Scope: adapter catalog, readiness reducer, New Conversation, current shell/search/usage/accessibility and support matrix rows; disclose blocked Claude Code / Antigravity / mid-run inject leaves. Context: package validation accepts zero ready adapters; specified-conversation continue requires truthful per-adapter list vs exact-send state. Target: each adapter exposes exact state and reason, core entry points consume the reducer, and current UI contracts are tested behaviorally. Design Considerations: derive UI from immutable authority rather than duplicate booleans; blocked leaves are not join prerequisites. Design Value: a zero-capability build cannot look usable or releasable. Constraints & Risks: deferred adapters remain visible only where honest disclosure adds value; remove all Future client and retired tab contracts.",
+    "description": "Scope: adapter catalog, readiness reducer, New Conversation, current shell/search/usage/accessibility and support matrix rows; disclose blocked Claude Code / Antigravity / mid-run inject leaves. Context: package validation accepts zero ready adapters; specified-conversation continue requires truthful per-adapter list vs exact-send state. Target: each adapter exposes exact state and reason, core entry points consume the reducer, and current UI contracts are tested behaviorally. Design Considerations: derive UI from immutable authority rather than duplicate booleans; blocked leaves are not join prerequisites. Design Value: a zero-capability build cannot look usable or releasable. Constraints & Risks: deferred adapters remain visible only where honest disclosure adds value; remove all LicoArc client and retired tab contracts.",
     "requirements": [
       "REQ-AGENT-001",
       "REQ-AGENT-002",
@@ -947,11 +1084,12 @@
     "next": [
       "a7fd4bb7-365c-431c-b4ca-9950a3540af2",
       "70b59023-da2a-4608-b9e6-5ec97aaa0228"
-    ]
+    ],
+    "status_reason": "The reducer truthfully reports zero send-enabled adapters, but all required adapter parity and exact-retrieval prerequisites are not completed."
   },
   {
     "id": "04bf513e-4ecf-4e29-9309-a50d61a30af8",
-    "status": "pending",
+    "status": "completed",
     "role": "implementation",
     "prerequisites": [
       "5d0e8d21-71ba-4a6a-9ef9-6a6806e5f7ba",
@@ -966,12 +1104,28 @@
     ],
     "acceptance_criteria": [
       {
-        "checked": false,
-        "text": "Fixture ground truth proves deterministic selection, rejection reasons, allowance boundaries, atomic reload and message-boundary switching."
+        "checked": true,
+        "text": "Fixture ground truth proves deterministic selection, rejection reasons, allowance boundaries, atomic reload and message-boundary switching.",
+        "evidence_refs": [
+          {
+            "type": "file",
+            "path": "docs/plan/client-release/Evidence.md",
+            "sha256": "94b10c328f556e091596be400bacf6f70da82bbe0972e3756de8a53a6a241151",
+            "recorded_at": "2026-07-13T09:08:17Z"
+          }
+        ]
       },
       {
-        "checked": false,
-        "text": "Handoff preserves goals, decisions and constraints while route history contains no private session id or raw conversation text."
+        "checked": true,
+        "text": "Handoff preserves goals, decisions and constraints while route history contains no private session id or raw conversation text.",
+        "evidence_refs": [
+          {
+            "type": "file",
+            "path": "docs/plan/client-release/Evidence.md",
+            "sha256": "94b10c328f556e091596be400bacf6f70da82bbe0972e3756de8a53a6a241151",
+            "recorded_at": "2026-07-13T09:08:17Z"
+          }
+        ]
       }
     ],
     "commit": {
@@ -985,7 +1139,7 @@
   },
   {
     "id": "ec602a16-6608-4b49-947a-3d6bc745badb",
-    "status": "pending",
+    "status": "blocked",
     "role": "implementation",
     "prerequisites": [
       "04bf513e-4ecf-4e29-9309-a50d61a30af8"
@@ -1014,11 +1168,12 @@
     },
     "next": [
       "70b59023-da2a-4608-b9e6-5ec97aaa0228"
-    ]
+    ],
+    "status_reason": "Routing is excluded from release claims; paired included/excluded artifact and repeated cold-start/RSS evidence has not been produced."
   },
   {
     "id": "8fd4c0d5-0ab3-4c90-a237-ababcda49e25",
-    "status": "pending",
+    "status": "completed",
     "role": "implementation",
     "prerequisites": [
       "5d0e8d21-71ba-4a6a-9ef9-6a6806e5f7ba"
@@ -1032,12 +1187,28 @@
     ],
     "acceptance_criteria": [
       {
-        "checked": false,
-        "text": "Credential export, read, write and delete require the correct local authority and hostile scans find no secret in args, bridges, logs, reports or errors."
+        "checked": true,
+        "text": "Credential export, read, write and delete require the correct local authority and hostile scans find no secret in args, bridges, logs, reports or errors.",
+        "evidence_refs": [
+          {
+            "type": "file",
+            "path": "docs/plan/client-release/Evidence.md",
+            "sha256": "94b10c328f556e091596be400bacf6f70da82bbe0972e3756de8a53a6a241151",
+            "recorded_at": "2026-07-13T09:08:17Z"
+          }
+        ]
       },
       {
-        "checked": false,
-        "text": "Denial, cancellation, unavailable presence, expiry and background requests fail closed or use explicit memory-only custody."
+        "checked": true,
+        "text": "Denial, cancellation, unavailable presence, expiry and background requests fail closed or use explicit memory-only custody.",
+        "evidence_refs": [
+          {
+            "type": "file",
+            "path": "docs/plan/client-release/Evidence.md",
+            "sha256": "94b10c328f556e091596be400bacf6f70da82bbe0972e3756de8a53a6a241151",
+            "recorded_at": "2026-07-13T09:08:17Z"
+          }
+        ]
       }
     ],
     "commit": {
@@ -1053,7 +1224,7 @@
   },
   {
     "id": "9d293a27-d060-4838-ae21-058c2e866e52",
-    "status": "pending",
+    "status": "completed",
     "role": "implementation",
     "prerequisites": [
       "95bb98b7-e3bb-4a0f-956a-79dbe9a52286",
@@ -1069,12 +1240,28 @@
     ],
     "acceptance_criteria": [
       {
-        "checked": false,
-        "text": "Two accounts for one provider remain independent through send, history, delete, callback, relay echo and grants, with native secret deletion observed."
+        "checked": true,
+        "text": "Two accounts for one provider remain independent through send, history, delete, callback, relay echo and grants, with native secret deletion observed.",
+        "evidence_refs": [
+          {
+            "type": "file",
+            "path": "docs/plan/client-release/Evidence.md",
+            "sha256": "94b10c328f556e091596be400bacf6f70da82bbe0972e3756de8a53a6a241151",
+            "recorded_at": "2026-07-14T07:19:33Z"
+          }
+        ]
       },
       {
-        "checked": false,
-        "text": "Malformed/deceptive gateways fail before persistence and production startup emits no sensitive diagnostic without bounded explicit consent."
+        "checked": true,
+        "text": "Malformed/deceptive gateways fail before persistence and production startup emits no sensitive diagnostic without bounded explicit consent.",
+        "evidence_refs": [
+          {
+            "type": "file",
+            "path": "docs/plan/client-release/Evidence.md",
+            "sha256": "94b10c328f556e091596be400bacf6f70da82bbe0972e3756de8a53a6a241151",
+            "recorded_at": "2026-07-14T07:19:33Z"
+          }
+        ]
       }
     ],
     "commit": {
@@ -1090,7 +1277,7 @@
   },
   {
     "id": "5b8f22d1-86cb-4f45-b64c-8829f7530426",
-    "status": "pending",
+    "status": "completed",
     "role": "implementation",
     "prerequisites": [
       "95bb98b7-e3bb-4a0f-956a-79dbe9a52286",
@@ -1105,12 +1292,28 @@
     ],
     "acceptance_criteria": [
       {
-        "checked": false,
-        "text": "Multi-target tests prove actual delivery, partial failure, retry, duplicate suppression, cancellation, empty selection and restart recovery per target."
+        "checked": true,
+        "text": "Multi-target tests prove actual delivery, partial failure, retry, duplicate suppression, cancellation, empty selection and restart recovery per target.",
+        "evidence_refs": [
+          {
+            "type": "file",
+            "path": "docs/plan/client-release/Evidence.md",
+            "sha256": "94b10c328f556e091596be400bacf6f70da82bbe0972e3756de8a53a6a241151",
+            "recorded_at": "2026-07-14T07:19:33Z"
+          }
+        ]
       },
       {
-        "checked": false,
-        "text": "Text, binary, missing and oversize attachments obey typed bounds and the UI derives aggregate state only from durable outcomes."
+        "checked": true,
+        "text": "Text, binary, missing and oversize attachments obey typed bounds and the UI derives aggregate state only from durable outcomes.",
+        "evidence_refs": [
+          {
+            "type": "file",
+            "path": "docs/plan/client-release/Evidence.md",
+            "sha256": "94b10c328f556e091596be400bacf6f70da82bbe0972e3756de8a53a6a241151",
+            "recorded_at": "2026-07-14T07:19:33Z"
+          }
+        ]
       }
     ],
     "commit": {
@@ -1124,7 +1327,7 @@
   },
   {
     "id": "d60242cd-c88a-44bb-a10b-29525021ad69",
-    "status": "pending",
+    "status": "completed",
     "role": "implementation",
     "prerequisites": [
       "5d0e8d21-71ba-4a6a-9ef9-6a6806e5f7ba"
@@ -1138,12 +1341,28 @@
     ],
     "acceptance_criteria": [
       {
-        "checked": false,
-        "text": "Every protected payload class round-trips through one canonical v2 wire format and malformed, tampered, stale, duplicate, expired or wrong-recipient input fails closed."
+        "checked": true,
+        "text": "Every protected payload class round-trips through one canonical v2 wire format and malformed, tampered, stale, duplicate, expired or wrong-recipient input fails closed.",
+        "evidence_refs": [
+          {
+            "type": "file",
+            "path": "docs/plan/client-release/Evidence.md",
+            "sha256": "94b10c328f556e091596be400bacf6f70da82bbe0972e3756de8a53a6a241151",
+            "recorded_at": "2026-07-13T09:08:18Z"
+          }
+        ]
       },
       {
-        "checked": false,
-        "text": "Source, tests, FFI, docs and gates contain no retired envelope fields or v1 internal registry."
+        "checked": true,
+        "text": "Source, tests, FFI, docs and gates contain no retired envelope fields or v1 internal registry.",
+        "evidence_refs": [
+          {
+            "type": "file",
+            "path": "docs/plan/client-release/Evidence.md",
+            "sha256": "94b10c328f556e091596be400bacf6f70da82bbe0972e3756de8a53a6a241151",
+            "recorded_at": "2026-07-13T09:08:18Z"
+          }
+        ]
       }
     ],
     "commit": {
@@ -1158,7 +1377,7 @@
   },
   {
     "id": "daa74d6b-6017-4117-8ada-16e04805f6d0",
-    "status": "pending",
+    "status": "completed",
     "role": "implementation",
     "prerequisites": [
       "d60242cd-c88a-44bb-a10b-29525021ad69"
@@ -1173,12 +1392,28 @@
     ],
     "acceptance_criteria": [
       {
-        "checked": false,
-        "text": "Identity, trust change, revoke, one-time prekey, restart, rollback, replay, skipped-key bounds and lifecycle vectors pass through the shared owner."
+        "checked": true,
+        "text": "Identity, trust change, revoke, one-time prekey, restart, rollback, replay, skipped-key bounds and lifecycle vectors pass through the shared owner.",
+        "evidence_refs": [
+          {
+            "type": "file",
+            "path": "docs/plan/client-release/Evidence.md",
+            "sha256": "94b10c328f556e091596be400bacf6f70da82bbe0972e3756de8a53a6a241151",
+            "recorded_at": "2026-07-14T07:19:33Z"
+          }
+        ]
       },
       {
-        "checked": false,
-        "text": "Unverified, changed or revoked peers cannot send or receive protected work through UI, native or relay entry paths."
+        "checked": true,
+        "text": "Unverified, changed or revoked peers cannot send or receive protected work through UI, native or relay entry paths.",
+        "evidence_refs": [
+          {
+            "type": "file",
+            "path": "docs/plan/client-release/Evidence.md",
+            "sha256": "94b10c328f556e091596be400bacf6f70da82bbe0972e3756de8a53a6a241151",
+            "recorded_at": "2026-07-14T07:19:33Z"
+          }
+        ]
       }
     ],
     "commit": {
@@ -1193,7 +1428,7 @@
   },
   {
     "id": "b4fe5861-3e10-4878-ac57-f14d704bf0d7",
-    "status": "pending",
+    "status": "blocked",
     "role": "implementation",
     "prerequisites": [
       "daa74d6b-6017-4117-8ada-16e04805f6d0"
@@ -1224,11 +1459,12 @@
     "next": [
       "8303cd1c-38b3-440c-803b-e39183ccbbe7",
       "a7fd4bb7-365c-431c-b4ca-9950a3540af2"
-    ]
+    ],
+    "status_reason": "External Key Transparency gossip/witness and MLS authority require external protocol participants and are explicitly outside the current client-local closure."
   },
   {
     "id": "560add12-b3e5-4913-b8a5-4d0872f7291a",
-    "status": "pending",
+    "status": "blocked",
     "role": "implementation",
     "prerequisites": [
       "d60242cd-c88a-44bb-a10b-29525021ad69",
@@ -1259,11 +1495,12 @@
     },
     "next": [
       "8303cd1c-38b3-440c-803b-e39183ccbbe7"
-    ]
+    ],
+    "status_reason": "Focused ACP protection exists, but this Node requires the semantic conversation prerequisite that cannot complete while full test isolation is blocked."
   },
   {
     "id": "8303cd1c-38b3-440c-803b-e39183ccbbe7",
-    "status": "pending",
+    "status": "blocked",
     "role": "implementation",
     "prerequisites": [
       "9d293a27-d060-4838-ae21-058c2e866e52",
@@ -1298,11 +1535,12 @@
     "next": [
       "c0627f06-eadb-4c9f-a9c5-d3b0cbe992b3",
       "d19ad309-7c33-484d-8a1e-ab268ba9a674"
-    ]
+    ],
+    "status_reason": "Adversarial product-line privacy proof depends on completed pairwise, external KT/MLS, ACP and mobile lifecycle authorities; those prerequisites remain blocked."
   },
   {
     "id": "c0627f06-eadb-4c9f-a9c5-d3b0cbe992b3",
-    "status": "pending",
+    "status": "blocked",
     "role": "implementation",
     "prerequisites": [
       "8303cd1c-38b3-440c-803b-e39183ccbbe7"
@@ -1310,7 +1548,7 @@
     "platform": "any",
     "difficulty": "deep",
     "goal": "Build a source-bound product-line protocol proof machine independent of release packaging.",
-    "description": "Scope: protocol-proof state machine, evidence ledger, blocker taxonomy, trusted-server and independent-audit inputs. Context: old final Nodes could complete without adaptive or platform terminals and mixed selected release with the broad claim. Target: a deterministic reducer binds all E2EE requirements, current source, five platform terminals, external KT, trusted-server authority and independent audit. Design Considerations: typed immutable receipt references and explicit missing/stale/projected blocker states. Design Value: no aggregate score or client artifact can self-certify the claim. Constraints & Risks: this Node implements the reducer, not external evidence; product-line verdict remains false until those authorities complete.",
+    "description": "Scope: protocol-proof state machine, evidence ledger, blocker taxonomy, client relay Mock, and independent-audit inputs. Context: old final Nodes could complete without adaptive or platform terminals and mixed selected release with the broad claim. Target: a deterministic reducer binds all E2EE requirements, current source, five platform terminals, external KT, digest-bound relay Mock conformance, and independent audit. Design Considerations: typed immutable receipt references and explicit missing/stale/projected blocker states. Design Value: no aggregate score or client artifact can self-certify the claim. Constraints & Risks: this Node implements the reducer, not external evidence; product-line verdict remains false until those inputs complete.",
     "requirements": [
       "REQ-E2EE-008",
       "REQ-REL-004"
@@ -1322,7 +1560,7 @@
       },
       {
         "checked": false,
-        "text": "Tests prove the selected-target release verdict cannot set or imply the product-line security claim."
+        "text": "Tests prove the GitHub Release verdict cannot set or imply the product-line security claim or any platform/store publication status."
       }
     ],
     "commit": {
@@ -1332,31 +1570,60 @@
     },
     "next": [
       "a7fd4bb7-365c-431c-b4ca-9950a3540af2"
-    ]
+    ],
+    "status_reason": "The proof reducer is fail-closed, but its required dependency-complete metadata-resistance evidence is unavailable."
   },
   {
     "id": "604f3e17-834a-4f07-bc18-b466ffef8a5e",
-    "status": "pending",
+    "status": "completed",
     "role": "implementation",
     "prerequisites": [
       "dc80097b-b69f-4f6d-be89-90c1d6891be2"
     ],
     "platform": "any",
     "difficulty": "deep",
-    "goal": "Implement the exact-artifact selected-target release reducer.",
-    "description": "Scope: target catalog, acceptance and publication receipt schemas, release workflow and reducer. Context: current releaseReady stops at local artifact closure, artifact kinds diverge and support preview is not closed. Target: one reducer requires supported release-blocking services and the same digest through build, architecture, signing, install, launch, publication, download, update, rollback and privacy. Design Considerations: content-addressed immutable receipts and protected-environment provenance. Design Value: publication truth cannot be inferred from transient CI upload or local identity. Constraints & Risks: unselected targets do not block this verdict; unknown or unsupported selections fail closed.",
+    "goal": "Implement the exact-artifact selected-target GitHub Release reducer.",
+    "description": "Scope: target catalog, consumer-verification manifest, GitHub Release workflow and artifact-only reducer. Context: artifact kinds diverge and support preview is not closed. Target: one reducer binds the same source/version and digest through build, architecture, canonical checksum and required public verification metadata. Design Considerations: content-addressed immutable receipts and public artifact provenance. Design Value: official artifact integrity is verifiable without importing physical-device, product-security, publisher identity or channel state. Constraints & Risks: unselected targets do not block this verdict; unknown or unsupported selections fail closed; product-line security and platform/store publication are evaluated separately.",
     "requirements": [
       "REQ-REL-004",
       "REQ-REL-005"
     ],
     "acceptance_criteria": [
       {
-        "checked": false,
-        "text": "Reducer rejects target, source, profile, artifact-kind, digest, identity, channel, support or continuity mismatch."
+        "checked": true,
+        "text": "GitHub Release reducer rejects target, source, version, artifact-kind, digest, build-contract, consumer-verification or support mismatch.",
+        "evidence_refs": [
+          {
+          "type": "file",
+          "path": "tools/scripts/client-github-release-acceptance.mjs",
+          "sha256": "27da0818b61c617f0fc5ec911ea311138f063203f963c87366ed53c681b1a2a2",
+          "recorded_at": "2026-07-14T10:08:13Z"
+        },
+        {
+          "type": "file",
+          "path": "tools/scripts/client-release-remote-asset-set.mjs",
+          "sha256": "80e71619cff98276bd6c84cbbedb95d613216adbb1654021f60cb120478fa7fb",
+          "recorded_at": "2026-07-14T10:08:13Z"
+          }
+        ]
       },
       {
-        "checked": false,
-        "text": "Transient upload, local identity and validation-only signature never produce publication-ready status."
+        "checked": true,
+        "text": "An artifact without exact digest-bound consumer-verification metadata never becomes GitHub Release-ready; store identity and channel fields do not participate.",
+        "evidence_refs": [
+          {
+          "type": "file",
+          "path": ".github/workflows/client-release.yml",
+          "sha256": "4a95e942952b0071f1325fe9931fa2fccbc5e9f0ea731b6fc342ffd40544a5e9",
+          "recorded_at": "2026-07-14T10:08:13Z"
+        },
+        {
+          "type": "file",
+          "path": "tools/scripts/client-consumer-verification-manifest.mjs",
+          "sha256": "75bdb41d8f12adb51df8d56c6d8698daae6d0dc30a06184c4e96813083060724",
+          "recorded_at": "2026-07-14T10:08:13Z"
+          }
+        ]
       }
     ],
     "commit": {
@@ -1371,7 +1638,7 @@
   },
   {
     "id": "a7fd4bb7-365c-431c-b4ca-9950a3540af2",
-    "status": "pending",
+    "status": "blocked",
     "role": "implementation",
     "prerequisites": [
       "20bc9af9-069a-47ee-bbc4-dcc7ac823df1",
@@ -1406,11 +1673,12 @@
     },
     "next": [
       "70b59023-da2a-4608-b9e6-5ec97aaa0228"
-    ]
+    ],
+    "status_reason": "Support and UI stay fail-closed, but dependency-complete adapter, external protocol, proof-machine and release-reducer authorities are unavailable."
   },
   {
     "id": "d19ad309-7c33-484d-8a1e-ab268ba9a674",
-    "status": "pending",
+    "status": "blocked",
     "role": "implementation",
     "prerequisites": [
       "dc80097b-b69f-4f6d-be89-90c1d6891be2",
@@ -1445,11 +1713,12 @@
     },
     "next": [
       "70b59023-da2a-4608-b9e6-5ec97aaa0228"
-    ]
+    ],
+    "status_reason": "Current privacy scans pass, but this Node requires dependency-complete protocol, mobile and release-reducer evidence before final-producer closure."
   },
   {
     "id": "70b59023-da2a-4608-b9e6-5ec97aaa0228",
-    "status": "pending",
+    "status": "blocked",
     "role": "implementation",
     "prerequisites": [
       "5b8f22d1-86cb-4f45-b64c-8829f7530426",
@@ -1489,19 +1758,20 @@
     },
     "next": [
       "65884d8f-0691-4264-aaa1-d8a02bcf7d5c"
-    ]
+    ],
+    "status_reason": "Platform-local gates are partly green, but the shared gate cannot close while adapter, routing-package, protocol, reducer and privacy prerequisites remain blocked."
   },
   {
     "id": "65884d8f-0691-4264-aaa1-d8a02bcf7d5c",
-    "status": "pending",
+    "status": "blocked",
     "role": "final_validation",
     "prerequisites": [
       "70b59023-da2a-4608-b9e6-5ec97aaa0228"
     ],
     "platform": "any",
     "difficulty": "deep",
-    "goal": "Emit final selected-target release and product-line security decisions from current dependency-complete evidence.",
-    "description": "Scope: entire Better Plan workspace, five child terminal receipts, exact-artifact reducer, product-line proof machine and final privacy scan. Context: old finals could complete without child or adaptive closure and collapsed distinct meanings. Target: selected targets publish only with their exact child receipts; the broader claim requires all five children, external KT, trusted-server authority and independent audit. Design Considerations: validate Manifest and Checkpoints ids/digests before reducing immutable blocker codes. Design Value: the final decision is explainable and cannot self-promote. Constraints & Risks: any unavailable external authority keeps only its dependent verdict false; no required criterion may be skipped.",
+    "goal": "Emit independent GitHub Release, per-channel platform/store, and product-line security decisions from current dependency-complete evidence.",
+    "description": "Scope: entire Better Plan workspace, five child terminal receipts, exact-artifact reducer, product-line proof machine and final privacy scan. Context: old finals could complete without child or adaptive closure and collapsed distinct meanings. Target: selected targets publish only with their exact child receipts; the broader claim requires all five children, external KT, client relay Mock conformance, and independent audit. Design Considerations: validate Manifest and Checkpoints ids/digests before reducing immutable blocker codes. Design Value: the final decision is explainable and cannot self-promote. Constraints & Risks: any unavailable external authority keeps only its dependent verdict false; no required criterion may be skipped.",
     "requirements": [
       "REQ-REL-001",
       "REQ-REL-002",
@@ -1536,11 +1806,11 @@
       },
       {
         "checked": false,
-        "text": "Selected-target reducer passes only fully published selected children; missing unselected targets do not alter that verdict."
+        "text": "GitHub Release reducer passes only consumer-verified selected children; missing unselected targets and unavailable store channels do not alter that verdict."
       },
       {
         "checked": false,
-        "text": "Product-line reducer passes only after macOS, Android, Linux, iOS and Windows terminals plus external KT, trusted-server and independent-audit evidence complete."
+        "text": "Product-line reducer passes only after macOS, Android, Linux, iOS and Windows terminals plus external KT, client relay Mock, and independent-audit evidence complete."
       },
       {
         "checked": false,
@@ -1552,6 +1822,7 @@
       "message": "test(release): record final client release decisions",
       "target": "canonical final reducers and redacted receipts"
     },
-    "next": []
+    "next": [],
+    "status_reason": "The GitHub artifact verdict requires only its selected source/version-bound artifacts and canonical public verification metadata. Physical security, external KT/MLS and independent audit remain blockers only for the separate product-line verdict; unavailable platform/store channels are separately reported guidance."
   }
 ]

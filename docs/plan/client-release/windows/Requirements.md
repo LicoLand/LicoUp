@@ -12,7 +12,6 @@ Credential and key operations use DPAPI, Windows Hello or the declared native se
 
 Install, update, rollback, export and skill operations enforce no-follow containment, owner checks, private journals and crash-consistent atomic replacement. A clean Windows target installs and launches without source-tree state and truthfully reports capability blockers.
 
-### REQ-WIN-004 — Production signature, publication and E2EE
+### REQ-WIN-004 — Secure Mesh acceptance and optional channel status
 
-Each exact architecture artifact is Authenticode-signed by the production authority, published and downloaded through the declared channel, then passes install, launch, update, rollback, privacy and Secure Mesh acceptance. Missing Windows evidence blocks the broad product-line claim.
-
+Each exact architecture artifact independently passes its required install, launch, privacy, and Secure Mesh acceptance. Missing Windows protocol/security evidence blocks the broad product-line claim. When a Microsoft Store or other Windows production channel is requested, Authenticode signing, publication, download, update, and rollback evidence determines only that channel's status; its absence does not block development, ordinary builds, client functionality, or GitHub Release. Public records retain only the artifact digest and minimum signature/attestation verification material, never publisher-account or stable certificate identity.

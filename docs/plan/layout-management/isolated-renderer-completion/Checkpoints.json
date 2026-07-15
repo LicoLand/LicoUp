@@ -1,0 +1,224 @@
+[
+  {
+    "id": "e04dd6de-703f-431f-9067-eeec17dffefc",
+    "status": "pending",
+    "role": "product_requirements",
+    "prerequisites": [],
+    "platform": "any",
+    "difficulty": "deep",
+    "goal": "Ratify the immutable-design and complete profile-isolation delivery contract.",
+    "description": "Scope: Requirements.md and the parent layout contracts. Context: directory concentration exists, but shared Widget presentation still couples layouts and current visual comparison fails. Target: define REQ-001 through REQ-014 as the single completion target for goals 4 through 6. Design Considerations: distinguish business-state sharing from presentation sharing and define frozen equality as a hard invariant. Design Value: prevents ownership refactoring from becoming a redesign or accepting only directory-level isolation. Constraints & Risks: no baseline refresh, compatibility mode, fixed inventory, or partial profile completion.",
+    "requirements": ["REQ-001", "REQ-002", "REQ-003", "REQ-004", "REQ-005", "REQ-006", "REQ-007", "REQ-008", "REQ-009", "REQ-010", "REQ-011", "REQ-012", "REQ-013", "REQ-014"],
+    "acceptance_criteria": [
+      {"checked": false, "text": "Requirements.md defines complete private renderer ownership, neutral ports, typed leases, frozen design equality, dynamic isolation, complete cutover, delivery checks, and per-Node commits."},
+      {"checked": false, "text": "The contract makes every current layout design immutable and rejects directory-only or shared-styled completion."}
+    ],
+    "commit": {"repository": ".git", "message": "docs(layout): ratify isolated renderer completion", "target": "isolated-renderer-completion requirements"},
+    "next": ["4666e407-a637-47d3-a6b5-89f4933b6b62"]
+  },
+  {
+    "id": "4666e407-a637-47d3-a6b5-89f4933b6b62",
+    "status": "pending",
+    "role": "evidence",
+    "prerequisites": ["e04dd6de-703f-431f-9067-eeec17dffefc"],
+    "platform": "any",
+    "difficulty": "deep",
+    "goal": "Refresh the source, boundary, visual, and state evidence that defines the remaining layout gap.",
+    "description": "Scope: Evidence.md, catalog/manager/host/contracts, shared Agents and Settings presentation, profile roots, boundary verifier, visual manifests, and comparison-only tests. Context: earlier closure receipts predate the correction and cannot prove hard independence. Target: cite each complete, partial, missing, and failing behavior and identify exact ownership surfaces for later Nodes. Design Considerations: distinguish verifier self-test success from product gate success and source ownership from transitive dependency ownership. Design Value: prevents redundant rewrites and baseline laundering. Constraints & Risks: report only minimum evidence and never copy runtime or machine data.",
+    "requirements": ["REQ-001", "REQ-002", "REQ-003", "REQ-004", "REQ-005", "REQ-006", "REQ-007", "REQ-008", "REQ-009", "REQ-010", "REQ-012", "REQ-013"],
+    "acceptance_criteria": [
+      {"checked": false, "text": "Evidence.md cites the exact shared Widget/content path, profile wrapper dependencies, current boundary failures, visual drift, and the already-correct catalog/manager/host behavior."},
+      {"checked": false, "text": "Every planned file owner and uncertainty is recorded without turning observed profile or surface identities into fixed architecture."}
+    ],
+    "commit": {"repository": ".git", "message": "docs(layout): bind isolated renderer evidence", "target": "isolated-renderer-completion evidence"},
+    "next": ["474470b9-0f6e-4fd0-bea1-08888ae969ca"]
+  },
+  {
+    "id": "474470b9-0f6e-4fd0-bea1-08888ae969ca",
+    "status": "pending",
+    "role": "validation_matrix",
+    "prerequisites": ["4666e407-a637-47d3-a6b5-89f4933b6b62"],
+    "platform": "any",
+    "difficulty": "deep",
+    "goal": "Lock comparison-only and dynamic isolation validation before changing renderer ownership.",
+    "description": "Scope: Validation.md, layout tests, boundary/manifest verifiers, mutation fixtures, pairwise impact, Better Plan, build, launch, and Android verification. Context: existing gates detect violations, but the prior final validation predates the current correction. Target: map every requirement to positive and negative checks, profile-local comparison, retired-path absence, and delivery evidence. Design Considerations: dynamic enumeration, transitive closures, synthetic mutations, and failure-first frozen comparisons. Design Value: implementation cannot weaken or refresh evidence after moving styled code. Constraints & Risks: observed counts remain evidence only and golden refresh cannot satisfy REQ-007.",
+    "requirements": ["REQ-001", "REQ-002", "REQ-003", "REQ-004", "REQ-005", "REQ-006", "REQ-007", "REQ-008", "REQ-009", "REQ-010", "REQ-011", "REQ-012", "REQ-013", "REQ-014"],
+    "acceptance_criteria": [
+      {"checked": false, "text": "Validation.md maps REQ-001 through REQ-014 to dynamic, transitive, pairwise, state/focus, comparison-only, retired-path, commit, build, and launch evidence."},
+      {"checked": false, "text": "Negative fixtures prove shared styled presentation, forbidden port types, identity branches, product gaps, and baseline refresh attempts fail."}
+    ],
+    "commit": {"repository": ".git", "message": "docs(layout): define isolation completion validation", "target": "isolated-renderer-completion validation matrix"},
+    "next": ["d470687c-1e0d-4162-bd65-fc72d4aa05ca"]
+  },
+  {
+    "id": "d470687c-1e0d-4162-bd65-fc72d4aa05ca",
+    "status": "pending",
+    "role": "architecture_scaffold",
+    "prerequisites": ["474470b9-0f6e-4fd0-bea1-08888ae969ca"],
+    "platform": "any",
+    "difficulty": "deep",
+    "goal": "Lock neutral destination ports, typed leases, private renderer owners, atomic cutover, and disjoint Node scopes.",
+    "description": "Scope: Architecture.md and contract/resolver scaffolds. Context: the previous correction Node combined architecture, implementation, and final proof. Target: define stable interfaces and exact file ownership so neutral infrastructure lands once and each profile Node touches only its own subtree. Design Considerations: Ports and Adapters, typed reference-counted leases, immutable maps, one active tree, and one final cutover. Design Value: enables independent parallel profile development without shared styled implementation. Constraints & Risks: no profile rendering or visual change is delivered by the scaffold; update downstream scopes first if evidence changes ownership.",
+    "requirements": ["REQ-001", "REQ-002", "REQ-003", "REQ-004", "REQ-005", "REQ-006", "REQ-008", "REQ-009", "REQ-010", "REQ-011", "REQ-012"],
+    "acceptance_criteria": [
+      {"checked": false, "text": "Architecture.md records module/file ownership, dependency direction, neutral interfaces, lease state machine, complexity, patterns, cutover, and renderer branch independence."},
+      {"checked": false, "text": "The scaffold compiles and contains no Widget-producing port, shared style policy, duplicate layout authority, compatibility path, or unfinished renderer claim."}
+    ],
+    "commit": {"repository": ".git", "message": "refactor(layout): scaffold isolated renderer ports", "target": "neutral layout contracts and executable renderer boundaries"},
+    "next": ["a891af14-c308-4756-b6f3-d1d3264d3263"]
+  },
+  {
+    "id": "a891af14-c308-4756-b6f3-d1d3264d3263",
+    "status": "pending",
+    "role": "implementation",
+    "prerequisites": ["d470687c-1e0d-4162-bd65-fc72d4aa05ca"],
+    "platform": "any",
+    "difficulty": "deep",
+    "goal": "Implement style-free destination snapshots, action ports, resolver leases, and controller projection adapters.",
+    "description": "Scope: layout surface contracts, new destination port/resolver modules, application projection adapters, lifecycle wiring, and focused fake-port tests. Context: LayoutHost currently receives shared Widget content and profiles can reach a shared styled presentation scope. Target: expose bounded immutable facts and narrow actions keyed only by surface/destination, with typed acquire/release and no profile identity. Design Considerations: O(1) immutable maps, reference-counted leases, typed snapshot validation, bounded notifications, and strict forbidden-type scans. Design Value: stabilizes a style-free boundary before private renderer branches proceed. Constraints & Risks: preserve behavior and do not move styled UI or cut over LayoutHost yet.",
+    "requirements": ["REQ-003", "REQ-004", "REQ-005", "REQ-012", "REQ-014"],
+    "acceptance_criteria": [
+      {"checked": false, "text": "Contracts and adapters cover every surface-declared destination and reject duplicate, foreign, repeated, mismatched, or leaked leases."},
+      {"checked": false, "text": "Transitive checks prove no Widget, BuildContext, controller, service, platform object, mutable collection, untyped map, style, or profile identity crosses the port."}
+    ],
+    "commit": {"repository": ".git", "message": "refactor(layout): add neutral destination ports", "target": "style-free destination contracts resolver and adapters"},
+    "next": ["cc182c28-6a61-414f-a3e4-ad4e4a26f5f0", "8eb46ffd-8f2e-4bfd-bacb-7b2825ea642b", "5a537d7c-803b-4f98-abf5-172557f6e1ff", "ea62c182-0c17-4f94-ae73-cae0c963e446"]
+  },
+  {
+    "id": "cc182c28-6a61-414f-a3e4-ad4e4a26f5f0",
+    "status": "pending",
+    "role": "implementation",
+    "prerequisites": ["a891af14-c308-4756-b6f3-d1d3264d3263"],
+    "platform": "any",
+    "difficulty": "deep",
+    "goal": "Privatize the complete Bubble renderer family without changing its design.",
+    "description": "Scope: profiles/bubble/** and mirrored Bubble tests/assets only. Context: Bubble wrappers still consume shared styled content. Target: own complete shells, destinations, components, tokens, previews, focus/restoration, and presentation for every declared surface through neutral ports. Design Considerations: copy current reachable styled behavior before shared deletion and reuse code only inside Bubble. Design Value: Bubble changes become profile-local. Constraints & Risks: comparison-only pixels, semantics, keys, focus, interactions, geometry, typography, color, and motion must remain identical; do not edit sibling profiles.",
+    "requirements": ["REQ-001", "REQ-002", "REQ-003", "REQ-007", "REQ-009", "REQ-011", "REQ-014"],
+    "acceptance_criteria": [
+      {"checked": false, "text": "Every Bubble destination renders only from Bubble-private code and neutral ports with no shared styled or sibling dependency."},
+      {"checked": false, "text": "Bubble comparison-only pixel, semantics, key, focus, and interaction checks match the frozen baseline without updating it."}
+    ],
+    "commit": {"repository": ".git", "message": "refactor(layout): privatize Bubble renderers", "target": "Bubble private renderer family"},
+    "next": ["41eaa2a8-8794-4f9c-9a88-c9d7dc48cec6"]
+  },
+  {
+    "id": "8eb46ffd-8f2e-4bfd-bacb-7b2825ea642b",
+    "status": "pending",
+    "role": "implementation",
+    "prerequisites": ["a891af14-c308-4756-b6f3-d1d3264d3263"],
+    "platform": "any",
+    "difficulty": "deep",
+    "goal": "Privatize the complete Classic renderer family without changing its design.",
+    "description": "Scope: profiles/classic/** and mirrored Classic tests/assets only. Context: Classic wrappers still consume shared styled content. Target: own complete shells, destinations, components, tokens, previews, focus/restoration, and presentation for every declared surface through neutral ports. Design Considerations: preserve current styled code inside the owner and map only semantic facts/actions. Design Value: Classic changes become profile-local. Constraints & Risks: comparison-only equality is mandatory and sibling profile files are out of scope.",
+    "requirements": ["REQ-001", "REQ-002", "REQ-003", "REQ-007", "REQ-009", "REQ-011", "REQ-014"],
+    "acceptance_criteria": [
+      {"checked": false, "text": "Every Classic destination renders only from Classic-private code and neutral ports with no shared styled or sibling dependency."},
+      {"checked": false, "text": "Classic comparison-only pixel, semantics, key, focus, and interaction checks match the frozen baseline without updating it."}
+    ],
+    "commit": {"repository": ".git", "message": "refactor(layout): privatize Classic renderers", "target": "Classic private renderer family"},
+    "next": ["41eaa2a8-8794-4f9c-9a88-c9d7dc48cec6"]
+  },
+  {
+    "id": "5a537d7c-803b-4f98-abf5-172557f6e1ff",
+    "status": "pending",
+    "role": "implementation",
+    "prerequisites": ["a891af14-c308-4756-b6f3-d1d3264d3263"],
+    "platform": "any",
+    "difficulty": "deep",
+    "goal": "Privatize the complete Studio renderer family without changing its design.",
+    "description": "Scope: profiles/studio/** and mirrored Studio tests/assets only. Context: Studio wrappers still consume shared styled content. Target: own complete shells, destinations, components, tokens, previews, focus/restoration, and presentation for every declared surface through neutral ports. Design Considerations: keep all visual decisions inside Studio and business state above it. Design Value: Studio changes become profile-local. Constraints & Risks: the hand-tuned design is immutable and sibling profile files are out of scope.",
+    "requirements": ["REQ-001", "REQ-002", "REQ-003", "REQ-007", "REQ-009", "REQ-011", "REQ-014"],
+    "acceptance_criteria": [
+      {"checked": false, "text": "Every Studio destination renders only from Studio-private code and neutral ports with no shared styled or sibling dependency."},
+      {"checked": false, "text": "Studio comparison-only pixel, semantics, key, focus, and interaction checks match the frozen baseline without updating it."}
+    ],
+    "commit": {"repository": ".git", "message": "refactor(layout): privatize Studio renderers", "target": "Studio private renderer family"},
+    "next": ["41eaa2a8-8794-4f9c-9a88-c9d7dc48cec6"]
+  },
+  {
+    "id": "ea62c182-0c17-4f94-ae73-cae0c963e446",
+    "status": "pending",
+    "role": "implementation",
+    "prerequisites": ["a891af14-c308-4756-b6f3-d1d3264d3263"],
+    "platform": "any",
+    "difficulty": "deep",
+    "goal": "Privatize the complete Workbench renderer family without changing its design.",
+    "description": "Scope: profiles/workbench/** and mirrored Workbench tests/assets only. Context: Workbench wrappers still consume shared styled content. Target: own complete shells, destinations, components, tokens, previews, focus/restoration, and presentation for every declared surface through neutral ports. Design Considerations: keep application state above the renderer and every visual choice inside Workbench. Design Value: Workbench changes become profile-local. Constraints & Risks: frozen comparison is mandatory and sibling profile files are out of scope.",
+    "requirements": ["REQ-001", "REQ-002", "REQ-003", "REQ-007", "REQ-009", "REQ-011", "REQ-014"],
+    "acceptance_criteria": [
+      {"checked": false, "text": "Every Workbench destination renders only from Workbench-private code and neutral ports with no shared styled or sibling dependency."},
+      {"checked": false, "text": "Workbench comparison-only pixel, semantics, key, focus, and interaction checks match the frozen baseline without updating it."}
+    ],
+    "commit": {"repository": ".git", "message": "refactor(layout): privatize Workbench renderers", "target": "Workbench private renderer family"},
+    "next": ["41eaa2a8-8794-4f9c-9a88-c9d7dc48cec6"]
+  },
+  {
+    "id": "41eaa2a8-8794-4f9c-9a88-c9d7dc48cec6",
+    "status": "pending",
+    "role": "implementation",
+    "prerequisites": ["cc182c28-6a61-414f-a3e4-ad4e4a26f5f0", "8eb46ffd-8f2e-4bfd-bacb-7b2825ea642b", "5a537d7c-803b-4f98-abf5-172557f6e1ff", "ea62c182-0c17-4f94-ae73-cae0c963e446"],
+    "platform": "any",
+    "difficulty": "deep",
+    "goal": "Atomically cut LayoutHost to typed leases and delete every superseded shared presentation path.",
+    "description": "Scope: LayoutHost/scope/surface bundle, shell/application adapters, shared Agents/Settings presentation, and retired fixtures. Context: all profile branches now own complete renderers. Target: acquire one active destination lease, mount one private bundle, preserve business state/focus and bounded profile state, then delete Widget content ports, shared presentation scope/recipes, profile-ID branches, duplicate shells, and compatibility paths. Design Considerations: transactional switch, semantic focus restore, one active tree, and complete removal. Design Value: closes the actual cross-layout impact boundary. Constraints & Risks: no partial fallback, shared styled wrapper, old fixture, or design change remains.",
+    "requirements": ["REQ-002", "REQ-003", "REQ-004", "REQ-005", "REQ-006", "REQ-010", "REQ-012", "REQ-014"],
+    "acceptance_criteria": [
+      {"checked": false, "text": "Host/manager integration proves one active private tree, correct lease lifecycle, state/focus continuity, transactional selection, persistence failure recovery, and appearance orthogonality."},
+      {"checked": false, "text": "Retired-path scans prove shared Widget content, styled presentation scope/recipes, profile-ID branches, duplicate shells, stale fixtures, and compatibility code are absent."}
+    ],
+    "commit": {"repository": ".git", "message": "refactor(layout): cut over private renderers", "target": "atomic host cutover and shared presentation removal"},
+    "next": ["55fd86d7-24d7-44f1-926f-c7b7f7e61370", "d21f3af7-3646-445f-913f-f65f06ecb863"]
+  },
+  {
+    "id": "55fd86d7-24d7-44f1-926f-c7b7f7e61370",
+    "status": "pending",
+    "role": "implementation",
+    "prerequisites": ["41eaa2a8-8794-4f9c-9a88-c9d7dc48cec6"],
+    "platform": "any",
+    "difficulty": "high",
+    "goal": "Generate cardinality-independent coverage, transitive isolation, and pairwise impact gates.",
+    "description": "Scope: layout boundary/visual manifest verifiers, self-tests, catalog mutation fixtures, import closure, pairwise impact, and dynamic test discovery. Context: current gates detect some violations but cannot rely on old fixed-inventory receipts. Target: derive definitions, surfaces, directories, variants, destinations, assets, tests, and ordered profile pairs and reject every missing/extra/shared member. Design Considerations: immutable sets/maps, synthetic profile/surface changes, O(N×M×V×D) product checks, and O(N²+E) pairwise/import checks. Design Value: future profiles remain independently addable without management-gate edits. Constraints & Risks: observed identities/counts are evidence only and allowlists stay style free.",
+    "requirements": ["REQ-001", "REQ-002", "REQ-003", "REQ-008", "REQ-009", "REQ-010", "REQ-012", "REQ-014"],
+    "acceptance_criteria": [
+      {"checked": false, "text": "Synthetic add/remove profile and surface mutations, directory/registration equality, exact Cartesian coverage, transitive isolation, and pairwise impact pass without fixed identities/counts."},
+      {"checked": false, "text": "Every discovered owner has matching sources, tests, assets, previews, namespaces, semantics, interactions, and visual evidence, while forbidden shared styled code fails."}
+    ],
+    "commit": {"repository": ".git", "message": "test(layout): generate dynamic isolation gates", "target": "cardinality-independent isolation verification"},
+    "next": ["93709496-bf86-4b5e-8e43-fc8500619cfb"]
+  },
+  {
+    "id": "d21f3af7-3646-445f-913f-f65f06ecb863",
+    "status": "pending",
+    "role": "implementation",
+    "prerequisites": ["41eaa2a8-8794-4f9c-9a88-c9d7dc48cec6"],
+    "platform": "any",
+    "difficulty": "deep",
+    "goal": "Restore every current renderer to its frozen comparison baseline without refreshing evidence.",
+    "description": "Scope: private profile implementations and only the comparison receipts needed to identify and repair current drift. Context: desktop Agents pixel comparison and a visual manifest currently fail. Target: correct the smallest owning implementation until pixels, semantics, keys, focus, interactions, and manifests match the pre-correction baseline. Design Considerations: profile-local source fixes and comparison-only evidence. Design Value: preserves the users hand-tuned design while architecture changes underneath it. Constraints & Risks: no baseline, golden, or manifest refresh may accept a difference; intentional redesign requires a separate user-authorized plan.",
+    "requirements": ["REQ-002", "REQ-007", "REQ-009", "REQ-011", "REQ-014"],
+    "acceptance_criteria": [
+      {"checked": false, "text": "Every discovered production bundle matches frozen pixels, semantics, keys, focus, and interactions in comparison-only mode."},
+      {"checked": false, "text": "Visual manifests pass because implementation equality was restored; profile-local change-impact proves no sibling digest changed."}
+    ],
+    "commit": {"repository": ".git", "message": "fix(layout): restore frozen layout designs", "target": "comparison-only visual and interaction parity"},
+    "next": ["93709496-bf86-4b5e-8e43-fc8500619cfb"]
+  },
+  {
+    "id": "93709496-bf86-4b5e-8e43-fc8500619cfb",
+    "status": "pending",
+    "role": "final_validation",
+    "prerequisites": ["55fd86d7-24d7-44f1-926f-c7b7f7e61370", "d21f3af7-3646-445f-913f-f65f06ecb863"],
+    "platform": "any",
+    "difficulty": "deep",
+    "goal": "Prove mutually isolated frozen layouts, rebuild and open the client, and independently verify Android delivery.",
+    "description": "Scope: all Validation.md checks, layout/client suites, dynamic gates, comparison-only evidence, architecture/contracts/privacy, Better Plan state/labels, rebuild/open, and independent Android verification. Context: earlier final receipts predate the hard-isolation correction. Target: prove REQ-001 through REQ-014 from current source and per-Node delivering commits. Design Considerations: rerun discovery and generated consistency after all implementation commits and retain minimum redacted evidence. Design Value: honestly closes goals 4 through 6. Constraints & Risks: any isolation, visual, build, launch, device, privacy, or commit-receipt failure keeps the Node incomplete.",
+    "requirements": ["REQ-001", "REQ-002", "REQ-003", "REQ-004", "REQ-005", "REQ-006", "REQ-007", "REQ-008", "REQ-009", "REQ-010", "REQ-011", "REQ-012", "REQ-013", "REQ-014"],
+    "acceptance_criteria": [
+      {"checked": false, "text": "All dynamic isolation, exact-product, port/lease, host/state/focus, retired-path, profile, comparison-only visual, architecture, privacy, manifest, Better Plan, and label checks pass."},
+      {"checked": false, "text": "The client is rebuilt and opened; an independent subagent builds Android and reports authorized-device discovery, install, and launch separately."},
+      {"checked": false, "text": "Every implementation Node records its own local delivering commit and final evidence contains no raw runtime, machine, account, device, path, or conversation data."}
+    ],
+    "commit": {"repository": ".git", "message": "test(layout): close isolated renderer delivery", "target": "final isolated frozen layout validation build and launch"},
+    "next": []
+  }
+]

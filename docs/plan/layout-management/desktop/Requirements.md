@@ -2,40 +2,43 @@
 
 ## Product problem
 
-The desktop client currently varies selected shell chrome while reusing a central destination body. The desktop renderer child must instead deliver two complete presentation systems that consume the same parent-owned semantics but can be developed, reviewed, and tested without editing or depending on the other profile's implementation.
+For the desktop runtime surface, every one of the `N` registered semantic profiles needs a complete presentation bundle that consumes the same parent-owned semantics while remaining independently developable, reviewable, and testable. The desktop renderer child must not encode a fixed profile count.
+
+The current desktop worktree rendering is the no-redesign baseline recorded in `Evidence.md`. Isolation may move implementation into the correct owner but shall not alter current appearance, arrangement, labels, focus, semantics, animation, or interactions.
 
 ## Users and workflows
 
-- Desktop users receive a spacious `workbench` or dense `studio` projection for the same destinations, actions, drafts, sessions, and running operations.
-- Keyboard and pointer users keep predictable navigation, focus, text scaling, contrast, and reduced-motion behavior at medium and expanded desktop sizes.
-- Profile maintainers can change one profile's shell, components, adapters, assets, tests, or goldens without changing the sibling profile or a central composition file.
-- The parent integration join consumes two verified desktop bundles and alone wires them into the registry, application shell, Settings transaction, migration, build, and launch flow.
+- Desktop users receive the selected profile's full desktop presentation for the same destinations, actions, drafts, sessions, and running operations.
+- Keyboard and pointer users retain predictable navigation, focus, text scaling, contrast, and reduced-motion behavior across the desktop surface's registered viewport policy.
+- A maintainer can change one desktop bundle's shell, components, adapters, assets, tests, or goldens without changing any other profile.
+- Adding a profile adds one independent desktop directory/bundle plus composition registration; it does not change existing profiles or layout-management algorithms.
 
 ## Requirements
 
-- **REQ-001 — Complete workbench desktop bundle.** `workbench` shall export one immutable desktop `LayoutSurfaceBundle` whose horizontal command/search shell, floating task surfaces, generous spacing, card-oriented components, tokens, preview, and medium/expanded variants form one coherent presentation system.
-- **REQ-002 — Complete studio desktop bundle.** `studio` shall export one immutable desktop `LayoutSurfaceBundle` whose contextual side navigation, docked or edge-to-edge work areas, dense hierarchy, distinct components, tokens, preview, and medium/expanded variants form one coherent presentation system.
-- **REQ-003 — Exact desktop capability parity.** Both bundles shall implement the exact parent-declared desktop semantic destination and action set, including Home/control, Agents and conversations, Feed, usage/monitoring, Extensions and skills, Runtime, Mobile Relay entry, and Settings content, without copying business logic or substituting a sibling renderer.
-- **REQ-004 — Switch-ready renderer contract.** Each bundle shall be side-effect-free, expose deterministic preview metadata and semantic focus/restoration landmarks, and render correctly when a parent-owned host replaces one bundle with the other. A renderer shall not read, write, confirm, cancel, or reset layout preferences.
-- **REQ-005 — Layout-neutral state consumption.** Bundles shall consume only immutable layout-neutral feature state and command ports. Destination, selected session, drafts, permissions, and active operations remain above renderer widgets; profile-local pane, scroll, expansion, tab, and focus state uses bounded, profile-qualified namespaces.
-- **REQ-006 — Constraint-driven desktop adaptation.** Both profiles shall provide the complete parent-declared desktop viewport set and preserve their own visual identity across supported narrow, medium, and expanded constraints. Resize or input-capability changes shall not mutate profile identity, persist preferences, or introduce overflow.
-- **REQ-007 — Desktop accessibility and visual proof.** Profile-owned tests and deterministic goldens shall prove keyboard, pointer, semantics, focus order, text scale, contrast, reduced motion, appearance-token composition, capability parity, and material structural difference.
-- **REQ-008 — Renderer-only integration handoff.** The desktop child shall deliver exactly the two verified desktop `LayoutSurfaceBundle` entry points and their profile-owned evidence. It shall not edit the central registry/composition root, `app.dart`, `ClientShell`, Settings, preference/manager wiring, retired-shell removal, product documentation, or build/launch flow; those converge atomically in the parent integration join.
-- **REQ-009 — Independent profile isolation.** Each profile shall exclusively own its desktop source, shell, destination adapters, styled components, tokens, preview, optional assets, restoration namespace, fixtures, tests, and goldens. Profiles shall not import each other, the complete controller, legacy shell code, backend/platform implementations, shared styled components, or sibling state/assets/tests. Static ownership/import checks, identical fake-port suites, and change-impact digest checks shall prove that a change to one profile cannot alter the other profile's source, output, golden baseline, or state.
+- **REQ-001 — Complete registration-derived desktop bundle set.** For every one of the `N` profiles in parent composition, the desktop child shall export exactly one immutable desktop `LayoutSurfaceBundle` below `frontend/layout/profiles/<profile>/desktop/`, with corresponding profile-owned test and asset roots. Each bundle carries the same semantic ID/label metadata, all desktop viewport variants, exact destinations, shell, styled chrome/metrics, components, tokens, preview, and restoration namespace. Missing, extra, duplicate, or scattered desktop bundles fail before integration.
+- **REQ-002 — Frozen whole-presentation fidelity.** Every bundle shall preserve its current complete desktop presentation, not merely a top bar or navigation rail. Privatization shall retain byte-equivalent constants/metrics and pixel-, semantics-, focus-, animation-, and interaction-equivalent output against the current baseline. Protected current profile-specific controls are enumerated in `Evidence.md` and exact-current tests.
+- **REQ-003 — Exact desktop capability parity.** Every desktop bundle shall implement the exact parent-declared desktop destination and action set, including representative Home/control, Agents/conversations, and Settings content, without copying business logic or substituting a sibling renderer.
+- **REQ-004 — Switch-ready narrow renderer contract.** Each bundle shall be side-effect-free, expose deterministic preview and semantic focus/restoration landmarks, and render correctly when the parent host replaces it with any other registered profile. Shell chrome shall consume only the narrow semantic `LayoutShellPort`; no bundle may import `ClientController`, controller scope, repositories, platform objects, or styled widget injection. A renderer shall not read, write, confirm, cancel, or reset layout preferences.
+- **REQ-005 — Layout-neutral state consumption.** Bundles shall consume only immutable layout-neutral feature state and command ports. Destination, selected session, drafts, permissions, capability decisions, and active operations remain above renderer widgets; bundle-local pane, scroll, expansion, tab, and focus state uses bounded, bundle-qualified namespaces.
+- **REQ-006 — Constraint-driven desktop adaptation.** Every bundle shall provide the complete parent-declared desktop viewport set and preserve its visual identity across supported constraints and input capabilities. Resize shall not mutate profile identity, persist preferences, borrow another surface's chrome, or introduce overflow.
+- **REQ-007 — Desktop accessibility and per-bundle proof.** Every registered desktop bundle shall have independent behavior, adaptive, semantic, golden, and source-manifest coverage. Tests shall prove keyboard, pointer, semantics, focus order, text scale, contrast, reduced motion, appearance composition, exact capability parity, and frozen visual/interaction fidelity with representative Home, Agents, and Settings fixtures.
+- **REQ-008 — Renderer-only integration handoff and extensibility.** The child shall deliver the `N` registration-derived desktop bundle entries and profile-owned evidence. It shall not edit central manager/resolver/host/Settings algorithms, preference wiring, or another profile. The parent join alone adds composition registrations and owns app cutover, complete-migration deletion, build, and launch. Adding profile `N + 1` follows the same path without changing this contract or existing bundle code.
+- **REQ-009 — Independent bundle isolation and complete migration.** Each profile exclusively owns its desktop source, shell, styled chrome/metrics, destination presentation, components, tokens, preview, assets, restoration namespace, fixtures, tests, source manifest, and goldens inside its canonical profile root. Concrete desktop style, components, metrics, chrome, and destination presentation shall not live in shared feature UI or shell paths. Bundles shall not import each other, the full controller, shared shell, backend/platform implementations, shared styled chrome/metrics, or sibling state/assets/tests. The shared chrome and controller bridge shall be deleted after equivalent privatization, with no compatibility wrapper. Static gates and a directed `N(N − 1)` desktop change-impact matrix shall prove that changing one bundle cannot alter any other bundle's source, output, golden baseline, or state.
 
 ## Scope
 
-- `workbench/desktop` and `studio/desktop` renderer implementations below their profile boundaries.
-- Profile-local shell/component systems, destination adapters, tokens, previews, optional assets, tests, fixtures, and goldens.
-- Renderer-only verification and a parent-consumable handoff receipt.
+- One independently owned desktop bundle for every profile at `frontend/layout/profiles/<profile>/desktop/`, with mirrored profile-owned test and asset roots.
+- Profile-private shell/chrome/components, destination adapters, tokens, previews, assets, restoration namespaces, tests, source manifests, and goldens.
+- Renderer verification and a parent-consumable handoff that remains unchanged as `N` grows.
 
 ## Non-goals
 
-- Editing the built-in registry or composition root, application/controller wiring, `ClientShell`, or Settings.
-- Implementing selection persistence, preview confirmation, migration, old-shell removal, client rebuild/open, packaging, release, or store delivery.
+- Fixing the number or names of supported profiles in renderer or management algorithms.
+- Editing the central registry/composition implementation, application/controller wiring, host, Settings, or preference authority.
+- Redesigning current desktop layouts or removing current interactions.
 - Forking domain controllers, backend services, authorization, capability policy, or native desktop implementations by profile.
-- Preserving old IDs, aliases, wrappers, shared visually opinionated widgets, or a fallback from one profile to the other.
+- Preserving old IDs, aliases, wrappers, shared visually opinionated widgets, or fallback from one profile to another.
 
 ## Acceptance target
 
-The child plan is accepted when two isolated desktop bundles render the exact same semantic capabilities through materially different component trees, pass their own deterministic behavior/accessibility/golden suites and hard-isolation gates, and can be imported by the parent integration join without any renderer-child edit to central application files. Wired switching, complete migration, rebuild, and launch are accepted only by the parent plan.
+The child is accepted when composition-derived cardinality yields exactly `N` independently owned desktop bundles; every bundle preserves its frozen presentation through narrow semantic ports; all per-bundle behavior/adaptive/semantic/golden/source-manifest suites and Home/Agents/Settings fixtures pass; shared styled chrome and controller access are gone; the `N(N − 1)` impact matrix proves pairwise independence; and adding a profile requires only its own desktop bundle/evidence plus parent composition registration.

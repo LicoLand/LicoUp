@@ -10,9 +10,9 @@ Swift and Rust share one typed capability and authorization contract. Keychain o
 
 Simulator validation proves FFI shape, lifecycle and simulated authorization outcomes only. Real Keychain/Secure Enclave custody and physical Face ID or Touch ID remain blocked inputs.
 
-### REQ-IOS-003 — Signed distribution and update continuity
+### REQ-IOS-003 — Optional platform-channel status
 
-The exact artifact is signed by the declared Apple distribution authority, published through the approved TestFlight or store channel, downloaded, installed, launched and verified for update and rollback continuity. Simulator and locally signed builds cannot satisfy publication.
+When TestFlight or App Store distribution is requested, the exact artifact is signed by that channel's Apple distribution authority, published, downloaded, installed, launched, and verified for its update and rollback continuity. Missing identity or channel evidence makes only that channel unready; it does not block development, ordinary builds, client functionality, or GitHub Release. Public records retain only the artifact digest and minimum signature/attestation verification material, never publisher-account, team, or stable certificate identity.
 
 ### REQ-IOS-004 — Physical Secure Mesh acceptance
 

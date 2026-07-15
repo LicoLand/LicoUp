@@ -22,7 +22,7 @@
           {
             "type": "file",
             "path": "docs/plan/client-release/ios/Requirements.md",
-            "sha256": "a4ac7203a6200e6fa59e3ca1414df98b32d31e52973d52f8b358104d4e9719d7",
+            "sha256": "e3fc2422357ce0b400a9f1776941ee7d0c70b811a04cd88960d6f10111758ed2",
             "recorded_at": "2026-07-13T03:48:24Z"
           }
         ]
@@ -34,13 +34,13 @@
           {
             "type": "file",
             "path": "docs/plan/client-release/ios/Requirements.md",
-            "sha256": "a4ac7203a6200e6fa59e3ca1414df98b32d31e52973d52f8b358104d4e9719d7",
+            "sha256": "e3fc2422357ce0b400a9f1776941ee7d0c70b811a04cd88960d6f10111758ed2",
             "recorded_at": "2026-07-13T03:48:24Z"
           },
           {
             "type": "file",
             "path": "docs/plan/client-release/ios/Validation.md",
-            "sha256": "45f764521fc5b6c2fb45acf7f075e83e35964d70eb19e78c91b0104175fa1b00",
+            "sha256": "f8afb3398e7a862eca628ec7c5c864d8ae66b264db7028bdda58acd20da41f30",
             "recorded_at": "2026-07-13T03:48:24Z"
           }
         ]
@@ -58,7 +58,7 @@
   },
   {
     "id": "0245950c-4565-484f-99c8-9b8da00ed84e",
-    "status": "pending",
+    "status": "completed",
     "role": "evidence",
     "prerequisites": [
       "c53b05e8-fb84-4dff-ac78-fbd3c1de01e9"
@@ -75,8 +75,16 @@
     ],
     "acceptance_criteria": [
       {
-        "checked": false,
-        "text": "Every iOS blocker and external boundary has current minimum evidence with no projected completion."
+        "checked": true,
+        "text": "Every iOS blocker and external boundary has current minimum evidence with no projected completion.",
+        "evidence_refs": [
+          {
+            "type": "file",
+            "path": "docs/plan/client-release/ios/Evidence.md",
+            "sha256": "ceb02b2e05219dd500fa7e65b22eab0c28bd87b2debc3281215dca65c8acb7f9",
+            "recorded_at": "2026-07-13T09:05:55Z"
+          }
+        ]
       }
     ],
     "commit": {
@@ -90,7 +98,7 @@
   },
   {
     "id": "4350bae0-85bd-4888-ac13-90d602d11f16",
-    "status": "pending",
+    "status": "completed",
     "role": "validation_matrix",
     "prerequisites": [
       "0245950c-4565-484f-99c8-9b8da00ed84e"
@@ -107,8 +115,16 @@
     ],
     "acceptance_criteria": [
       {
-        "checked": false,
-        "text": "Validation covers every iOS label, negative native case and parent/shared dependency id."
+        "checked": true,
+        "text": "Validation covers every iOS label, negative native case and parent/shared dependency id.",
+        "evidence_refs": [
+          {
+            "type": "file",
+            "path": "docs/plan/client-release/ios/Validation.md",
+            "sha256": "f8afb3398e7a862eca628ec7c5c864d8ae66b264db7028bdda58acd20da41f30",
+            "recorded_at": "2026-07-13T09:05:55Z"
+          }
+        ]
       }
     ],
     "commit": {
@@ -122,7 +138,7 @@
   },
   {
     "id": "bb5c6381-3820-4a0b-9354-34a1627364c2",
-    "status": "pending",
+    "status": "completed",
     "role": "architecture_scaffold",
     "prerequisites": [
       "4350bae0-85bd-4888-ac13-90d602d11f16"
@@ -139,8 +155,16 @@
     ],
     "acceptance_criteria": [
       {
-        "checked": false,
-        "text": "Architecture names one owner and failure state for iOS build, FFI custody, channel and physical receipts."
+        "checked": true,
+        "text": "Architecture names one owner and failure state for iOS build, FFI custody, channel and physical receipts.",
+        "evidence_refs": [
+          {
+            "type": "file",
+            "path": "docs/plan/client-release/ios/Architecture.md",
+            "sha256": "670c707bc525bd722e2de54b642c986f36643cccdc6cdb134989c7db8dc49a0e",
+            "recorded_at": "2026-07-13T09:05:55Z"
+          }
+        ]
       }
     ],
     "commit": {
@@ -155,7 +179,7 @@
   },
   {
     "id": "55a4fa54-62d0-4d4d-a91f-7e92178708d0",
-    "status": "pending",
+    "status": "completed",
     "role": "implementation",
     "prerequisites": [
       "bb5c6381-3820-4a0b-9354-34a1627364c2"
@@ -169,8 +193,16 @@
     ],
     "acceptance_criteria": [
       {
-        "checked": false,
-        "text": "Clean build verifies arm64, bundle id, entitlements, native libraries, profile, source and artifact digest, and rejects mismatch."
+        "checked": true,
+        "text": "Clean build verifies arm64, bundle id, entitlements, native libraries, profile, source and artifact digest, and rejects mismatch.",
+        "evidence_refs": [
+          {
+            "type": "file",
+            "path": "docs/plan/client-release/ios/Evidence.md",
+            "sha256": "ceb02b2e05219dd500fa7e65b22eab0c28bd87b2debc3281215dca65c8acb7f9",
+            "recorded_at": "2026-07-13T09:07:25Z"
+          }
+        ]
       }
     ],
     "commit": {
@@ -185,7 +217,7 @@
   },
   {
     "id": "3bd8d814-a2f0-4031-9208-ea1d008c7850",
-    "status": "pending",
+    "status": "skipped",
     "role": "implementation",
     "prerequisites": [
       "bb5c6381-3820-4a0b-9354-34a1627364c2"
@@ -210,26 +242,27 @@
     },
     "next": [
       "0864d622-df01-48fb-b463-d18f5f51964c"
-    ]
+    ],
+    "status_reason": "Simulator FFI and authorization outcomes passed, but the acceptance criterion also requires physical Keychain, Secure Enclave and real biometric behavior."
   },
   {
     "id": "5c851cff-7e14-4151-befa-6b2a945917b3",
-    "status": "pending",
+    "status": "skipped",
     "role": "implementation",
     "prerequisites": [
       "55a4fa54-62d0-4d4d-a91f-7e92178708d0"
     ],
     "platform": "any",
     "difficulty": "deep",
-    "goal": "Sign and publish the exact iOS artifact through the approved Apple channel.",
-    "description": "Scope: signing profile, protected workflow, TestFlight/store publication and update/rollback receipts. Context: no current production distribution path exists. Target: the exact build lineage is signed, published, downloaded and continuity-verified. Design Considerations: protected external authority and immutable provenance. Design Value: separates real distribution from simulator/local build. Constraints & Risks: Apple identities and approvals are external and cannot be mocked.",
+    "goal": "Report optional Apple signing, TestFlight/App Store publication and update-channel status.",
+    "description": "Scope: optional signing profile, protected workflow, TestFlight/App Store publication and update/rollback receipts. Context: no current Apple production channel exists. Target: when explicitly requested, the exact build lineage is signed, published, downloaded and continuity-verified. Design Considerations: protected channel authority is separate from GitHub Release consumer verification. Design Value: truthfully reports Apple channel readiness without blocking open-source distribution. Constraints & Risks: Apple identities and approvals affect only this channel status and are never disclosed.",
     "requirements": [
       "REQ-IOS-003"
     ],
     "acceptance_criteria": [
       {
         "checked": false,
-        "text": "Production signature, TestFlight/store publication, download and update/rollback records bind the exact source/artifact lineage."
+        "text": "Optional production signature, TestFlight/App Store publication/download and update/rollback outcomes bind the exact source/artifact lineage without affecting GitHub Release readiness."
       }
     ],
     "commit": {
@@ -237,18 +270,16 @@
       "message": "feat(ios): establish production distribution",
       "target": "iOS signing, publication and continuity receipts"
     },
-    "next": [
-      "0864d622-df01-48fb-b463-d18f5f51964c"
-    ]
+    "next": [],
+    "status_reason": "Optional Apple store-channel guidance was not requested. Missing external identity or channel inputs does not create a development, build, client-functionality, or GitHub Release blocker."
   },
   {
     "id": "0864d622-df01-48fb-b463-d18f5f51964c",
-    "status": "pending",
+    "status": "blocked",
     "role": "implementation",
     "prerequisites": [
       "55a4fa54-62d0-4d4d-a91f-7e92178708d0",
-      "3bd8d814-a2f0-4031-9208-ea1d008c7850",
-      "5c851cff-7e14-4151-befa-6b2a945917b3"
+      "3bd8d814-a2f0-4031-9208-ea1d008c7850"
     ],
     "platform": "any",
     "difficulty": "deep",
@@ -257,13 +288,12 @@
     "requirements": [
       "REQ-IOS-001",
       "REQ-IOS-002",
-      "REQ-IOS-003",
       "REQ-IOS-004"
     ],
     "acceptance_criteria": [
       {
         "checked": false,
-        "text": "Authorized physical acceptance proves install, launch, custody, pairwise, trust change, restart and privacy for the exact channel artifact."
+        "text": "Authorized physical acceptance proves install, launch, custody, pairwise, trust change, restart and privacy for the exact consumer-verified artifact."
       }
     ],
     "commit": {
@@ -273,11 +303,12 @@
     },
     "next": [
       "0a9a48be-a2a5-436a-90d2-a4bc7a7702b7"
-    ]
+    ],
+    "status_reason": "Authorized physical iOS custody, cross-device Secure Mesh, trust-change and restart evidence cannot be established in the simulator."
   },
   {
     "id": "0a9a48be-a2a5-436a-90d2-a4bc7a7702b7",
-    "status": "pending",
+    "status": "blocked",
     "role": "final_validation",
     "prerequisites": [
       "0864d622-df01-48fb-b463-d18f5f51964c"
@@ -285,7 +316,7 @@
     "platform": "any",
     "difficulty": "deep",
     "goal": "Emit the final iOS target receipt consumed by the parent product-line reducer.",
-    "description": "Scope: iOS child plan, parent architecture/shared status and exact artifact/device/channel receipts. Context: iOS is mandatory for the broad claim. Target: one terminal receipt explicitly names iOS, parent/shared ids, source, artifact and evidence digests. Design Considerations: validate current Manifest/Checkpoints. Design Value: creates a machine-verifiable cross-plan edge. Constraints & Risks: any absent external authority keeps the Node pending.",
+    "description": "Scope: iOS child plan, parent architecture/shared status and exact artifact/device receipts. Context: iOS security is mandatory for the broad claim. Target: one terminal receipt explicitly names iOS, parent/shared ids, source, artifact and evidence digests; optional Apple channel status remains separate. Design Considerations: validate current Manifest/Checkpoints. Design Value: creates a machine-verifiable cross-plan edge. Constraints & Risks: absent device or protocol authority keeps the security Node pending; Apple store authority does not block GitHub Release.",
     "requirements": [
       "REQ-IOS-001",
       "REQ-IOS-002",
@@ -299,7 +330,7 @@
       },
       {
         "checked": false,
-        "text": "One iOS digest passes clean build, native authorization, Apple publication, physical install/launch, Secure Mesh, update and privacy proof."
+        "text": "One iOS digest passes clean build, consumer verification, native authorization, physical install/launch, Secure Mesh and privacy proof; optional Apple publication/update status is reported separately."
       }
     ],
     "commit": {
@@ -307,6 +338,7 @@
       "message": "test(ios): record final target receipt",
       "target": "iOS child final reducer and redacted receipt"
     },
-    "next": []
+    "next": [],
+    "status_reason": "Final iOS security evidence requires physical install/custody and Secure Mesh proof. Apple production publication and update proof remain only an optional channel status and do not block GitHub Release."
   }
 ]

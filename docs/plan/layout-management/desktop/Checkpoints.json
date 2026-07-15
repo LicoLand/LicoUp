@@ -7,7 +7,7 @@
     "platform": "any",
     "difficulty": "deep",
     "goal": "Lock the renderer-only desktop contract for two complete and independently owned layout profiles.",
-    "description": "Scope: `docs/plan/layout-management/desktop/Requirements.md` and the desktop handoff clauses in the parent requirements. Context: the prior child contract mixed renderer work with central Settings, app cutover, migration, build, and launch responsibilities owned by the parent join. Target: define REQ-001 through REQ-009 for complete workbench/studio bundles, exact parity, switch-ready state boundaries, adaptive/accessibility proof, renderer-only handoff, and independent profile isolation. Design Considerations: requirements distinguish what an isolated bundle can prove from what needs a mounted production integration; each profile remains a complete presentation system rather than a shell skin. Design Value: a precise child boundary lets both profiles develop independently while preserving one central authority. Constraints & Risks: do not authorize edits to the registry, app, ClientShell, Settings, preferences, migration, build, or launch paths.",
+    "description": "Scope: `docs/plan/layout-management/desktop/Requirements.md` and the desktop handoff clauses in the parent requirements. Context: renderer work is separate from central Settings, mounted integration, retired-state enforcement, build, and launch responsibilities owned by the parent join. Target: define REQ-001 through REQ-009 for complete workbench/studio bundles, exact parity, switch-ready state boundaries, adaptive/accessibility proof, renderer-only handoff, and independent profile isolation. Design Considerations: requirements distinguish what an isolated bundle can prove from what needs a mounted production integration; each profile remains a complete presentation system rather than a shell skin. Design Value: a precise child boundary lets both profiles develop independently while preserving one central authority. Constraints & Risks: do not authorize edits to the registry, app, ClientShell, Settings, preferences, retired-state authority, build, or launch paths.",
     "requirements": [
       "REQ-001",
       "REQ-002",
@@ -46,7 +46,7 @@
       },
       {
         "checked": true,
-        "text": "REQ-008 assigns central composition, app/shell/Settings integration, migration, rebuild, and launch exclusively to the parent integration join.",
+        "text": "REQ-008 assigns central composition, app/shell/Settings integration, retired-state enforcement, rebuild, and launch exclusively to the parent integration join.",
         "evidence_refs": [
           {
             "type": "file",
@@ -77,7 +77,7 @@
     "platform": "any",
     "difficulty": "deep",
     "goal": "Revalidate desktop renderer gaps and the ownership boundary with the parent integration join.",
-    "description": "Scope: `docs/plan/layout-management/desktop/Evidence.md`, current shell/navigation, Agents workspace, Settings, existing layout tests, absent profile bundle roots, and parent layout artifacts. Context: existing shell IDs select shared central builders and tests prove only isolated landmarks, so they do not establish complete or independent profiles. Target: ground the renderer-only split, identify shared mutation hotspots, and show why disjoint bundle roots and profile-owned evidence are required for REQ-001 through REQ-009. Design Considerations: separate observed repository facts from planned parent contracts and distinguish renderer evidence from mounted integration evidence. Design Value: evidence prevents cosmetic wrappers and prevents the desktop child from taking ownership of central files. Constraints & Risks: preserve current semantics, avoid turning retired mistakes into permanent fixtures, and record no sensitive runtime or machine data.",
+    "description": "Scope: `docs/plan/layout-management/desktop/Evidence.md`, current workbench/studio bundles, LayoutHost integration, Settings, profile-owned tests, boundary verification, and parent layout artifacts. Context: both desktop profiles now expose complete independent bundles through the typed runtime. Target: ground the renderer-only split in current implementation evidence and retain disjoint bundle roots and profile-owned proof for REQ-001 through REQ-009. Design Considerations: distinguish renderer evidence from mounted integration evidence. Design Value: evidence prevents cosmetic convergence and keeps the desktop child from taking ownership of central files. Constraints & Risks: preserve current semantics, keep retired state absent, and record no sensitive runtime or machine data.",
     "requirements": [
       "REQ-001",
       "REQ-002",
@@ -97,10 +97,11 @@
           {
             "type": "file",
             "path": "docs/plan/layout-management/desktop/Evidence.md",
-            "sha256": "347ade6e733f50d8ad717a38a43ac7c342f87b4bde60d106e494072d83f55115",
-            "recorded_at": "2026-07-14T12:19:42Z"
+            "sha256": "14bb90f737bba3d6965f7479d5e1f7788d7aea7c660af171202332e7bdeafe81",
+            "recorded_at": "2026-07-15T04:13:17Z"
           }
-        ]
+        ],
+        "evidence": "Desktop evidence traces composition-discovered profile roots, representative destinations, profile suites, and parent boundaries without duplicating a profile count."
       },
       {
         "checked": true,
@@ -109,22 +110,24 @@
           {
             "type": "file",
             "path": "docs/plan/layout-management/desktop/Evidence.md",
-            "sha256": "347ade6e733f50d8ad717a38a43ac7c342f87b4bde60d106e494072d83f55115",
-            "recorded_at": "2026-07-14T12:19:42Z"
+            "sha256": "14bb90f737bba3d6965f7479d5e1f7788d7aea7c660af171202332e7bdeafe81",
+            "recorded_at": "2026-07-15T04:13:17Z"
           }
-        ]
+        ],
+        "evidence": "The evidence explains why profile-local source, tests, goldens, and one desktop bundle per registered profile enable independent development."
       },
       {
         "checked": true,
-        "text": "Evidence explicitly limits child claims to renderer bundles and assigns wired switching, migration, build, and launch to the parent.",
+        "text": "Evidence explicitly limits child claims to renderer bundles and assigns wired switching, retired-state enforcement, build, and launch to the parent.",
         "evidence_refs": [
           {
             "type": "file",
             "path": "docs/plan/layout-management/desktop/Evidence.md",
-            "sha256": "347ade6e733f50d8ad717a38a43ac7c342f87b4bde60d106e494072d83f55115",
-            "recorded_at": "2026-07-14T12:19:43Z"
+            "sha256": "14bb90f737bba3d6965f7479d5e1f7788d7aea7c660af171202332e7bdeafe81",
+            "recorded_at": "2026-07-15T04:13:17Z"
           }
-        ]
+        ],
+        "evidence": "Desktop evidence limits claims to renderer bundles and assigns registration, switching, current-state enforcement, build, and launch to the parent."
       }
     ],
     "commit": {
@@ -719,7 +722,7 @@
     "platform": "any",
     "difficulty": "deep",
     "goal": "Prove both isolated desktop renderer bundles and hand their receipts to the parent integration join.",
-    "description": "Scope: all renderer commands and requirement mappings in desktop Validation.md, both profile-only suites/golden roots, the parent layout-boundary verifier, scoped Better Plan checks, and privacy-minimal receipts. Context: both profiles now export independent bundles, but the desktop child cannot claim production wiring, migration, build, or launch. Target: prove REQ-001 through REQ-009 for exact parity, material difference, switch-ready fake-host behavior, adaptation, accessibility, owned-path isolation, and unchanged sibling digests, then provide two bundle receipts to the parent join. Design Considerations: run profile selectors separately, use deterministic inputs and hashes, and distinguish renderer success from app integration status. Design Value: a narrow final receipt lets the parent compose verified outputs without weakening profile independence or duplicating validation. Constraints & Risks: do not edit or test-drive central registry/app/ClientShell/Settings changes here; do not run or claim client rebuild/open, packaging, release, store, device, or backend behavior; redact sensitive evidence.",
+    "description": "Scope: all renderer commands and requirement mappings in desktop Validation.md, both profile-only suites/golden roots, the parent layout-boundary verifier, scoped Better Plan checks, and privacy-minimal receipts. Context: both profiles export independent bundles, but the desktop child cannot claim production wiring, retired-state enforcement, build, or launch. Target: prove REQ-001 through REQ-009 for exact parity, material difference, switch-ready fake-host behavior, adaptation, accessibility, owned-path isolation, and unchanged sibling digests, then provide two bundle receipts to the parent join. Design Considerations: run profile selectors separately, use deterministic inputs and hashes, and distinguish renderer success from app integration status. Design Value: a narrow final receipt lets the parent compose verified outputs without weakening profile independence or duplicating validation. Constraints & Risks: do not edit or test-drive central registry/app/ClientShell/Settings changes here; do not run or claim client rebuild/open, packaging, release, store, device, or backend behavior; redact sensitive evidence.",
     "requirements": [
       "REQ-001",
       "REQ-002",
@@ -800,8 +803,8 @@
       },
       {
         "checked": true,
-        "text": "The handoff records exactly two desktop LayoutSurfaceBundle entry points and explicitly leaves registry composition, app cutover, Settings, migration, rebuild, and launch to the parent integration join.",
-        "evidence": "Exactly two desktop bundle entry points are handed to the parent join; registry composition, app cutover, Settings, migration, rebuild, and launch remain parent-owned.",
+        "text": "The handoff records exactly two desktop LayoutSurfaceBundle entry points and explicitly leaves registry composition, app integration, Settings, retired-state enforcement, rebuild, and launch to the parent integration join.",
+        "evidence": "Exactly two desktop bundle entry points are handed to the parent join; registry composition, app integration, Settings, retired-state enforcement, rebuild, and launch remain parent-owned.",
         "evidence_refs": [
           {
             "type": "file",
