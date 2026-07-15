@@ -27,6 +27,7 @@ node_modules/
 target/
 .dart_tool/
 .gradle/
+.kotlin/
 .flutter-plugins
 .flutter-plugins-dependencies
 .pub-cache/
