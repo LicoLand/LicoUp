@@ -5,6 +5,10 @@ use std::{
     io::{self, BufRead, Write},
     panic::{self, AssertUnwindSafe, catch_unwind},
     path::PathBuf,
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, AtomicU64, Ordering},
+    },
 };
 
 const STDIO_RPC_PROTOCOL: &str = "lico-client.stdio.v1";
@@ -26,8 +30,7 @@ fn main() -> Result<()> {
             eprintln!("lico-client RPC command terminated unexpectedly");
         }));
         let stdin = io::stdin();
-        let stdout = io::stdout();
-        return serve_stdio_rpc(stdin.lock(), stdout.lock(), execute_rpc_cli);
+        return serve_stdio_rpc(stdin.lock(), io::stdout(), execute_rpc_cli).map(|_| ());
     }
     match lico_client_native::ffi::commands::execute_cli(args)? {
         lico_client_native::ffi::commands::CliExecution::Usage => print_usage(),
@@ -93,23 +96,24 @@ struct StdioRpcRequestError {
     code: &'static str,
 }
 
-fn serve_stdio_rpc<R, W, F>(mut reader: R, mut writer: W, mut execute: F) -> Result<()>
+fn serve_stdio_rpc<R, W, F>(mut reader: R, writer: W, mut execute: F) -> Result<W>
 where
     R: BufRead,
-    W: Write,
+    W: Write + Send + 'static,
     F: FnMut(
         Vec<String>,
         Option<PathBuf>,
     ) -> Result<lico_client_native::ffi::commands::CliExecution>,
 {
+    let writer = Arc::new(Mutex::new(writer));
     let mut bound_workflow_id: Option<String> = None;
     loop {
         let line = read_stdio_rpc_line(&mut reader, STDIO_RPC_MAX_REQUEST_BYTES)?;
         let bytes = match line {
-            StdioRpcLine::Eof => return Ok(()),
+            StdioRpcLine::Eof => return recover_stdio_rpc_writer(writer),
             StdioRpcLine::TooLarge => {
-                write_stdio_rpc_error(
-                    &mut writer,
+                write_stdio_rpc_error_shared(
+                    &writer,
                     None,
                     bound_workflow_id.as_deref(),
                     "request_too_large",
@@ -121,8 +125,8 @@ where
         let request = match parse_stdio_rpc_request(&bytes) {
             Ok(request) => request,
             Err(error) => {
-                write_stdio_rpc_error(
-                    &mut writer,
+                write_stdio_rpc_error_shared(
+                    &writer,
                     error.id.as_deref(),
                     error.workflow_id.as_deref(),
                     error.code,
@@ -134,8 +138,8 @@ where
             .as_deref()
             .is_some_and(|workflow_id| workflow_id != request.workflow_id.as_str())
         {
-            write_stdio_rpc_error(
-                &mut writer,
+            write_stdio_rpc_error_shared(
+                &writer,
                 Some(&request.id),
                 Some(&request.workflow_id),
                 "workflow_mismatch",
@@ -148,54 +152,96 @@ where
 
         match request.method {
             StdioRpcMethod::Shutdown => {
-                write_stdio_rpc_success(
-                    &mut writer,
+                write_stdio_rpc_success_shared(
+                    &writer,
                     &request.id,
                     &request.workflow_id,
                     json!({"status": "shutdown"}),
                 )?;
-                return Ok(());
+                return recover_stdio_rpc_writer(writer);
             }
             StdioRpcMethod::Conversation {
                 operation,
                 params,
                 portable_data_dir,
             } => {
+                let sequence = Arc::new(AtomicU64::new(0));
+                let event_write_failed = Arc::new(AtomicBool::new(false));
+                let stream_guard = (operation == "send").then(|| {
+                    let writer = Arc::clone(&writer);
+                    let request_id = request.id.clone();
+                    let workflow_id = request.workflow_id.clone();
+                    let sequence = Arc::clone(&sequence);
+                    let event_write_failed = Arc::clone(&event_write_failed);
+                    lico_client_native::platform::install_stream_sink(Box::new(move |event| {
+                        if event_write_failed.load(Ordering::Acquire) {
+                            return;
+                        }
+                        let next = sequence.load(Ordering::Acquire) + 1;
+                        if write_stdio_rpc_event(&writer, &request_id, &workflow_id, next, event)
+                            .is_err()
+                        {
+                            event_write_failed.store(true, Ordering::Release);
+                        } else {
+                            sequence.store(next, Ordering::Release);
+                        }
+                    }));
+                    lico_client_native::platform::StreamSinkGuard
+                });
                 let execution = catch_unwind(AssertUnwindSafe(|| {
                     let _guard = PortableDataDirOverrideGuard::set(portable_data_dir);
+                    if operation == "send" {
+                        lico_client_native::platform::enforce_send_readiness(&params)?;
+                    }
                     lico_client_native::platform::dispatch_lane_operation(&operation, &params)
                         .map(lico_client_native::ffi::commands::CliExecution::Json)
                 }));
+                drop(stream_guard);
+                let terminal_sequence = sequence.fetch_add(1, Ordering::AcqRel) + 1;
+                if event_write_failed.load(Ordering::Acquire) {
+                    write_stdio_rpc_terminal_error(
+                        &writer,
+                        &request.id,
+                        &request.workflow_id,
+                        terminal_sequence,
+                        "stream_protocol_failed",
+                    )?;
+                    continue;
+                }
                 match execution {
                     Ok(Ok(lico_client_native::ffi::commands::CliExecution::Json(value))) => {
-                        write_stdio_rpc_success(
-                            &mut writer,
+                        write_stdio_rpc_terminal_success(
+                            &writer,
                             &request.id,
                             &request.workflow_id,
+                            terminal_sequence,
                             value,
                         )?;
                     }
                     Ok(Err(error)) => {
-                        write_stdio_rpc_error(
-                            &mut writer,
-                            Some(&request.id),
-                            Some(&request.workflow_id),
+                        write_stdio_rpc_terminal_error(
+                            &writer,
+                            &request.id,
+                            &request.workflow_id,
+                            terminal_sequence,
                             stdio_rpc_command_error_code(&error),
                         )?;
                     }
                     Err(_) => {
-                        write_stdio_rpc_error(
-                            &mut writer,
-                            Some(&request.id),
-                            Some(&request.workflow_id),
+                        write_stdio_rpc_terminal_error(
+                            &writer,
+                            &request.id,
+                            &request.workflow_id,
+                            terminal_sequence,
                             "command_panicked",
                         )?;
                     }
                     Ok(Ok(_)) => {
-                        write_stdio_rpc_error(
-                            &mut writer,
-                            Some(&request.id),
-                            Some(&request.workflow_id),
+                        write_stdio_rpc_terminal_error(
+                            &writer,
+                            &request.id,
+                            &request.workflow_id,
+                            terminal_sequence,
                             "command_failed",
                         )?;
                     }
@@ -206,8 +252,8 @@ where
                 portable_data_dir,
             } => {
                 if rpc_command_writes_external_stdout(&args) {
-                    write_stdio_rpc_error(
-                        &mut writer,
+                    write_stdio_rpc_error_shared(
+                        &writer,
                         Some(&request.id),
                         Some(&request.workflow_id),
                         "streaming_command_unsupported",
@@ -217,40 +263,40 @@ where
                 let execution = catch_unwind(AssertUnwindSafe(|| execute(args, portable_data_dir)));
                 match execution {
                     Ok(Ok(lico_client_native::ffi::commands::CliExecution::Json(value))) => {
-                        write_stdio_rpc_success(
-                            &mut writer,
+                        write_stdio_rpc_success_shared(
+                            &writer,
                             &request.id,
                             &request.workflow_id,
                             value,
                         )?;
                     }
                     Ok(Ok(lico_client_native::ffi::commands::CliExecution::Usage)) => {
-                        write_stdio_rpc_error(
-                            &mut writer,
+                        write_stdio_rpc_error_shared(
+                            &writer,
                             Some(&request.id),
                             Some(&request.workflow_id),
                             "command_usage",
                         )?;
                     }
                     Ok(Ok(lico_client_native::ffi::commands::CliExecution::Streamed)) => {
-                        write_stdio_rpc_error(
-                            &mut writer,
+                        write_stdio_rpc_error_shared(
+                            &writer,
                             Some(&request.id),
                             Some(&request.workflow_id),
                             "streaming_command_unsupported",
                         )?;
                     }
                     Ok(Err(error)) => {
-                        write_stdio_rpc_error(
-                            &mut writer,
+                        write_stdio_rpc_error_shared(
+                            &writer,
                             Some(&request.id),
                             Some(&request.workflow_id),
                             stdio_rpc_command_error_code(&error),
                         )?;
                     }
                     Err(_) => {
-                        write_stdio_rpc_error(
-                            &mut writer,
+                        write_stdio_rpc_error_shared(
+                            &writer,
                             Some(&request.id),
                             Some(&request.workflow_id),
                             "command_panicked",
@@ -425,6 +471,150 @@ fn rpc_command_writes_external_stdout(args: &[String]) -> bool {
         && args.get(1).map(String::as_str) == Some("stream")
 }
 
+fn recover_stdio_rpc_writer<W>(writer: Arc<Mutex<W>>) -> Result<W> {
+    Arc::try_unwrap(writer)
+        .map_err(|_| anyhow::anyhow!("stdio RPC writer is still in use"))?
+        .into_inner()
+        .map_err(|_| anyhow::anyhow!("stdio RPC writer lock failed"))
+}
+
+fn with_stdio_rpc_writer<W, T>(
+    writer: &Arc<Mutex<W>>,
+    operation: impl FnOnce(&mut W) -> io::Result<T>,
+) -> io::Result<T>
+where
+    W: Write,
+{
+    let mut writer = writer
+        .lock()
+        .map_err(|_| io::Error::other("stdio RPC writer lock failed"))?;
+    operation(&mut writer)
+}
+
+fn write_stdio_rpc_success_shared<W: Write>(
+    writer: &Arc<Mutex<W>>,
+    id: &str,
+    workflow_id: &str,
+    result: Value,
+) -> io::Result<()> {
+    with_stdio_rpc_writer(writer, |writer| {
+        write_stdio_rpc_success(writer, id, workflow_id, result)
+    })
+}
+
+fn write_stdio_rpc_error_shared<W: Write>(
+    writer: &Arc<Mutex<W>>,
+    id: Option<&str>,
+    workflow_id: Option<&str>,
+    code: &'static str,
+) -> io::Result<()> {
+    with_stdio_rpc_writer(writer, |writer| {
+        write_stdio_rpc_error(writer, id, workflow_id, code)
+    })
+}
+
+fn write_stdio_rpc_event<W: Write>(
+    writer: &Arc<Mutex<W>>,
+    id: &str,
+    workflow_id: &str,
+    sequence: u64,
+    event: Value,
+) -> io::Result<()> {
+    let session_id = event.get("sessionId").and_then(Value::as_str);
+    let turn_id = event.get("turnId").and_then(Value::as_str);
+    let event_name = event.get("event").and_then(Value::as_str);
+    if session_id.is_none_or(str::is_empty)
+        || turn_id.is_none_or(str::is_empty)
+        || event_name.is_none_or(str::is_empty)
+    {
+        return Err(io::Error::other("invalid stdio RPC stream event"));
+    }
+    let frame = json!({
+        "protocol": STDIO_RPC_PROTOCOL,
+        "id": id,
+        "workflowId": workflow_id,
+        "kind": "event",
+        "sequence": sequence,
+        "event": event,
+    });
+    with_stdio_rpc_writer(writer, |writer| {
+        if try_write_stdio_rpc_response(writer, &frame, STDIO_RPC_MAX_RESPONSE_BYTES)? {
+            Ok(())
+        } else {
+            Err(io::Error::other("stdio RPC event exceeds limit"))
+        }
+    })
+}
+
+fn write_stdio_rpc_terminal_success<W: Write>(
+    writer: &Arc<Mutex<W>>,
+    id: &str,
+    workflow_id: &str,
+    sequence: u64,
+    result: Value,
+) -> io::Result<()> {
+    let frame = json!({
+        "protocol": STDIO_RPC_PROTOCOL,
+        "id": id,
+        "workflowId": workflow_id,
+        "kind": "terminal",
+        "sequence": sequence,
+        "ok": true,
+        "result": result,
+    });
+    with_stdio_rpc_writer(writer, |writer| {
+        if try_write_stdio_rpc_response(writer, &frame, STDIO_RPC_MAX_RESPONSE_BYTES)? {
+            Ok(())
+        } else {
+            let bounded_error = json!({
+                "protocol": STDIO_RPC_PROTOCOL,
+                "id": id,
+                "workflowId": workflow_id,
+                "kind": "terminal",
+                "sequence": sequence,
+                "ok": false,
+                "error": {
+                    "code": "response_too_large",
+                    "message": stdio_rpc_error_message("response_too_large"),
+                },
+            });
+            if try_write_stdio_rpc_response(writer, &bounded_error, STDIO_RPC_MAX_RESPONSE_BYTES)? {
+                Ok(())
+            } else {
+                Err(io::Error::other("stdio RPC terminal exceeds limit"))
+            }
+        }
+    })
+}
+
+fn write_stdio_rpc_terminal_error<W: Write>(
+    writer: &Arc<Mutex<W>>,
+    id: &str,
+    workflow_id: &str,
+    sequence: u64,
+    code: &'static str,
+) -> io::Result<()> {
+    let frame = json!({
+        "protocol": STDIO_RPC_PROTOCOL,
+        "id": id,
+        "workflowId": workflow_id,
+        "kind": "terminal",
+        "sequence": sequence,
+        "ok": false,
+        "error": {
+            "code": code,
+            "message": stdio_rpc_error_message(code),
+        },
+    });
+    with_stdio_rpc_writer(writer, |writer| {
+        if try_write_stdio_rpc_response(writer, &frame, STDIO_RPC_MAX_RESPONSE_BYTES)? {
+            Ok(())
+        } else {
+            Err(io::Error::other("stdio RPC terminal exceeds limit"))
+        }
+    })
+}
+
 fn write_stdio_rpc_success(
     writer: &mut impl Write,
     id: &str,
@@ -510,10 +700,12 @@ fn stdio_rpc_error_message(code: &str) -> &'static str {
         | "invalid_workflow_id"
         | "invalid_method"
         | "invalid_args"
-        | "invalid_portable_data_dir" | "invalid_params" => "request does not match the protocol",
+        | "invalid_portable_data_dir"
+        | "invalid_params" => "request does not match the protocol",
         "workflow_mismatch" => "request does not belong to this RPC workflow",
         "command_usage" => "command requires different arguments",
         "streaming_command_unsupported" => "command is not compatible with framed RPC output",
+        "stream_protocol_failed" => "conversation event stream failed validation",
         "authorization_required" => "user authorization is required",
         "authorization_failed" => "user authorization did not complete",
         "command_panicked" => "command terminated unexpectedly",
@@ -552,7 +744,9 @@ fn print_usage() {
   lico-client rpc stdio  # lico-client.stdio.v1 line-delimited JSON RPC
   lico-client model profiles list
   lico-client model profiles set <profile-id> [--command CMD|--url URL] [--args JSON] [--api-key KEY|--api-key-env ENV_NAME]
+  lico-client model profiles delete <profile-id> --provider PROVIDER_ID
   lico-client forward --profile <profile-id> --text <input>
+  lico-client provider-chat --provider <provider-id> --text <input> [--model MODEL] [--system TEXT] [--url URL] [--api-key KEY]
   lico-client state get|set <settings|targets|pairings|skills|pins|identities|snapshot-bridges|conversation-archive-profiles|agent-usage-reports> [json]
   lico-client process-identity bootstrap claim --server-url URL --claim-token TOKEN --default-identity-hash HASH [--client-id ID]
   lico-client process-identity request sign --request-url URL [--method POST] [--body-text JSON]
@@ -560,6 +754,7 @@ fn print_usage() {
   lico-client local-runtime ensure|build --source-root PATH --preset-config PATH [--port 17328] [--rebuild true]
   lico-client local-runtime start|restart [--port 17328]
   lico-client local-runtime stop|status|logs [--tail N]
+  lico-client opencode-serve ensure|start|restart|stop|status [--port 24173] [--executable PATH] [--attach-url URL]
   lico-client source-queue add|list|status|pause|resume|retry|cancel|drain [--path PATH|--text TEXT] [--server-url URL]
   lico-client connectors list|sync|status [--connector local-directory|icloud-local-projection|onedrive-local-projection] [--path PATH]
   lico-client connectors mirror inspect [--limit N]
@@ -588,8 +783,8 @@ fn print_usage() {
   lico-client conversations list|append|delete|stream --agent AGENT [--limit N] [--offset N] [--session-id ID] [--text TEXT]
   lico-client agent-usage scan [--agent AGENT] [--history-days DAYS] [--timezone-offset-minutes MINUTES] [--timezone-transitions-json JSON] [--force-refresh] [--allowances-only|--include-allowances] [--include-billing-history] [--include-target-status] [--state-root PATH]
   lico-client agent-usage report [--agent AGENT] [--limit N] [--state-root PATH]
-  lico-client agent message send --stdin-json true  # request JSON is read from stdin
-  lico-client agent conversation open|send|cancel|capabilities|stream [--stdin-json true]
+  lico-client update status|check|download|verify|apply [--channel stable] [--manifest-path PATH] [--public-keys-path PATH] [--source-path PATH]
+  lico-client agent conversation open|send|cancel|cleanup|capabilities|stream [--stdin-json true]
   lico-client agents pair request|approve|revoke|list --agent AGENT [--target TARGET]
   lico-client skill list --agent AGENT
   lico-client skill get <skill-id> --agent AGENT --json
@@ -609,6 +804,7 @@ fn print_usage() {
   lico-client secure-mesh device-trust evaluate --identity JSON [--previous-identity JSON] [--trust-state verified|cross_signed|unverified|key_changed|revoked]  # caller state is advisory and cannot authorize
   lico-client secure-mesh file route --manifest JSON
   lico-client secure-mesh file receive-destination --manifest JSON --approved-root PATH [--conflict-policy fail_if_exists|rename|overwrite_after_confirm]
+  lico-client secure-mesh approval request|fanout|respond|inbox|adapter-capability [--pending-operation-id ID] [--decision allow|deny]
   lico-client mcp plugin status|update|rollback --target <target> [--config-path PATH] [--discovery-file PATH] [--registry-file PATH] [--state-root PATH]
   lico-client mcp config plan --target <target> [--config-path PATH] [--base-url URL|--discovery-file PATH|--registry-file PATH] [--state-root PATH]
   lico-client mcp config apply --target <target> [--config-path PATH] [--base-url URL|--discovery-file PATH|--registry-file PATH] [--token TOKEN] [--state-root PATH]
@@ -712,10 +908,9 @@ mod tests {
             .to_string(),
         ]
         .join("\n");
-        let mut output = Vec::new();
-        serve_stdio_rpc(
+        let output = serve_stdio_rpc(
             Cursor::new(requests),
-            &mut output,
+            Vec::new(),
             |args, portable_data_dir| match args.first().map(String::as_str) {
                 Some("fail") => Err(anyhow::anyhow!("sensitive-rpc-detail-must-not-escape")),
                 Some("must-not-run") => panic!("request after shutdown executed"),
@@ -807,8 +1002,7 @@ mod tests {
         ]
         .join("\n");
         let mut call_count = 0usize;
-        let mut output = Vec::new();
-        serve_stdio_rpc(Cursor::new(requests), &mut output, |args, _| {
+        let output = serve_stdio_rpc(Cursor::new(requests), Vec::new(), |args, _| {
             call_count += 1;
             Ok(lico_client_native::ffi::commands::CliExecution::Json(
                 json!({"command": args.first()}),
@@ -829,6 +1023,46 @@ mod tests {
         );
         assert_eq!(responses[1]["error"]["code"], "workflow_mismatch");
         assert_eq!(responses[2]["result"]["command"], "memory-only");
+    }
+
+    #[test]
+    fn stdio_rpc_conversation_send_cannot_bypass_canonical_readiness() {
+        let requests = [
+            json!({
+                "protocol": STDIO_RPC_PROTOCOL,
+                "id": "blocked-send",
+                "workflowId": "workflow-conversation-readiness",
+                "method": "agent.conversation.send",
+                "params": {
+                    "agent": "antigravity",
+                    "text": "must not reach a driver"
+                },
+            })
+            .to_string(),
+            json!({
+                "protocol": STDIO_RPC_PROTOCOL,
+                "id": "shutdown",
+                "workflowId": "workflow-conversation-readiness",
+                "method": "shutdown",
+            })
+            .to_string(),
+        ]
+        .join("\n");
+        let output = serve_stdio_rpc(Cursor::new(requests), Vec::new(), |_, _| {
+            panic!("conversation RPC must not use the execute callback")
+        })
+        .unwrap();
+
+        let responses = String::from_utf8(output)
+            .unwrap()
+            .lines()
+            .map(|line| serde_json::from_str::<Value>(line).unwrap())
+            .collect::<Vec<_>>();
+        assert_eq!(responses.len(), 2);
+        assert_eq!(responses[0]["id"], "blocked-send");
+        assert_eq!(responses[0]["ok"], false);
+        assert_eq!(responses[0]["error"]["code"], "command_failed");
+        assert_eq!(responses[1]["result"]["status"], "shutdown");
     }
 
     #[test]
@@ -870,6 +1104,70 @@ mod tests {
                 .unwrap()
                 .contains(&"x".repeat(128))
         );
+    }
+
+    #[test]
+    fn stdio_rpc_progress_frames_are_bounded_and_request_attributed() {
+        let writer = Arc::new(Mutex::new(Vec::new()));
+        write_stdio_rpc_event(
+            &writer,
+            "conversation-1",
+            "workflow-stream",
+            1,
+            json!({
+                "event": "agent.message.chunk",
+                "sessionId": "native-session",
+                "turnId": "turn-1",
+                "payload": {"text": "partial"},
+            }),
+        )
+        .unwrap();
+        write_stdio_rpc_terminal_success(
+            &writer,
+            "conversation-1",
+            "workflow-stream",
+            2,
+            json!({
+                "ok": true,
+                "nativeSessionId": "native-session",
+                "turnId": "turn-1",
+            }),
+        )
+        .unwrap();
+
+        let bytes = writer.lock().unwrap().clone();
+        let frames = String::from_utf8(bytes)
+            .unwrap()
+            .lines()
+            .map(|line| serde_json::from_str::<Value>(line).unwrap())
+            .collect::<Vec<_>>();
+        assert_eq!(frames.len(), 2);
+        assert_eq!(frames[0]["id"], "conversation-1");
+        assert_eq!(frames[0]["workflowId"], "workflow-stream");
+        assert_eq!(frames[0]["kind"], "event");
+        assert_eq!(frames[0]["sequence"], 1);
+        assert_eq!(frames[0]["event"]["sessionId"], "native-session");
+        assert_eq!(frames[0]["event"]["turnId"], "turn-1");
+        assert_eq!(frames[1]["kind"], "terminal");
+        assert_eq!(frames[1]["sequence"], 2);
+
+        let before = writer.lock().unwrap().len();
+        assert!(
+            write_stdio_rpc_event(
+                &writer,
+                "conversation-1",
+                "workflow-stream",
+                3,
+                json!({
+                    "event": "agent.message.chunk",
+                    "sessionId": "native-session",
+                    "turnId": "",
+                    "payload": {"text": "invalid"},
+                }),
+            )
+            .is_err()
+        );
+        assert_eq!(writer.lock().unwrap().len(), before);
     }
 
     #[test]
@@ -945,7 +1243,7 @@ mod tests {
                 "targets".into(),
                 "scan".into(),
                 "--state-root".into(),
-                dir.join("future-client").display().to_string(),
+                dir.join("lico-client").display().to_string(),
             ])
             .unwrap();
             assert_eq!(json_payload(&list_targets)["ok"], true);
@@ -1003,7 +1301,7 @@ mod tests {
                 "--root".into(),
                 native_history_root.display().to_string(),
                 "--state-root".into(),
-                dir.join("future-client").display().to_string(),
+                dir.join("lico-client").display().to_string(),
             ])
             .unwrap();
             assert_eq!(json_payload(&usage)["mode"], "agent-usage-metering");
@@ -1015,7 +1313,7 @@ mod tests {
                 "--agent".into(),
                 "codex".into(),
                 "--state-root".into(),
-                dir.join("future-client").display().to_string(),
+                dir.join("lico-client").display().to_string(),
             ])
             .unwrap();
             assert_eq!(
@@ -1026,17 +1324,28 @@ mod tests {
                 1
             );
 
-            let relay_config = execute_cli(vec![
-                "mobile".into(),
-                "relay".into(),
-                "config".into(),
-                "set".into(),
-                "--use-custom-gateway".into(),
-                "true".into(),
-                "--custom-gateway-url".into(),
-                "https://relay.example.test/".into(),
-            ])
-            .unwrap();
+            let secret_store: std::sync::Arc<
+                dyn lico_client_native::platform::secure_mesh_secret_store::SecureMeshSecretStore,
+            > = std::sync::Arc::new(
+                lico_client_native::platform::secure_mesh_secret_store::EphemeralSecretStore::new(),
+            );
+            let relay_config =
+                lico_client_native::domain::mobile_relay::with_mobile_relay_secret_store_override(
+                    secret_store,
+                    || {
+                        execute_cli(vec![
+                            "mobile".into(),
+                            "relay".into(),
+                            "config".into(),
+                            "set".into(),
+                            "--use-custom-gateway".into(),
+                            "true".into(),
+                            "--custom-gateway-url".into(),
+                            "https://relay.example.test/".into(),
+                        ])
+                    },
+                )
+                .unwrap();
             assert_eq!(
                 json_payload(&relay_config)["config"]["useCustomGateway"],
                 true
@@ -1183,7 +1492,7 @@ mod tests {
                 "--config-path".into(),
                 config_path.display().to_string(),
                 "--state-root".into(),
-                dir.join("future-client").display().to_string(),
+                dir.join("lico-client").display().to_string(),
                 "--token".into(),
                 "plugin-token".into(),
                 "--discovery-file".into(),
@@ -1222,7 +1531,7 @@ mod tests {
         {
             let _guard = cli_env_lock().lock().unwrap();
             let _portable = set_portable_dir(&dir);
-            let state_root = dir.join("future-client");
+            let state_root = dir.join("lico-client");
 
             let discovery_file = dir.join("mcp-discovery.json");
             signed_receipt_discovery("http://127.0.0.1:7228", &discovery_file);
@@ -1313,7 +1622,7 @@ mod tests {
     #[test]
     fn cli_dispatches_native_conversation_snapshot_commands() {
         let dir = temp_cli_dir("dispatch-conversation-snapshots");
-        let state_root = dir.join("future-client");
+        let state_root = dir.join("lico-client");
         let snapshot_root = dir.join("conversation-snapshot-root");
         let archive_root = dir.join("conversation-archive-root");
         let home = dir.join("home");
@@ -1835,6 +2144,87 @@ mod tests {
     }
 
     #[test]
+    fn cli_provider_chat_dispatches_deepseek_via_model_forwarding() {
+        use std::io::{BufRead, BufReader, Read, Write};
+        use std::net::TcpListener;
+        use std::sync::mpsc::channel;
+        use std::thread;
+
+        let dir = temp_cli_dir("provider-chat");
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let server = listener.local_addr().unwrap();
+        let (sender, receiver) = channel::<Value>();
+        let server_thread = thread::spawn(move || {
+            let (stream, _) = listener.accept().unwrap();
+            let mut reader = BufReader::new(stream);
+            let mut request_line = String::new();
+            assert!(reader.read_line(&mut request_line).is_ok());
+            assert!(request_line.starts_with("POST"));
+
+            let mut content_length = 0usize;
+            loop {
+                let mut line = String::new();
+                let bytes = reader.read_line(&mut line).unwrap();
+                if bytes == 0 || line == "\r\n" {
+                    break;
+                }
+                if let Some((key, value)) = line.split_once(':') {
+                    if key.eq_ignore_ascii_case("content-length") {
+                        content_length = value.trim().parse::<usize>().unwrap_or(0);
+                    }
+                }
+            }
+            let mut body = vec![0u8; content_length];
+            reader.read_exact(&mut body).unwrap();
+            let request: Value = serde_json::from_slice(&body).unwrap();
+            sender.send(request).unwrap();
+            let body =
+                br#"{"choices":[{"message":{"role":"assistant","content":"CLI provider chat reply"}}]}"#;
+            let response = format!(
+                "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{}",
+                body.len(),
+                String::from_utf8_lossy(body)
+            );
+            let stream = reader.get_mut();
+            stream.write_all(response.as_bytes()).unwrap();
+            stream.flush().unwrap();
+        });
+
+        {
+            let _guard = cli_env_lock().lock().unwrap();
+            let _portable = set_portable_dir(&dir);
+            let result = execute_cli(vec![
+                "provider-chat".into(),
+                "--provider".into(),
+                "deepseek".into(),
+                "--model".into(),
+                "deepseek-v4-flash".into(),
+                "--url".into(),
+                format!("http://{}", server),
+                "--api-key".into(),
+                "cli-provider-chat-secret".into(),
+                "--system".into(),
+                "Be brief.".into(),
+                "--text".into(),
+                "hello-provider-chat".into(),
+            ])
+            .unwrap();
+            let payload = json_payload(&result);
+            assert_eq!(payload["ok"], true);
+            assert_eq!(payload["mode"], "provider-chat");
+            assert_eq!(payload["output"], "CLI provider chat reply");
+        }
+
+        server_thread.join().unwrap();
+        let request = receiver.recv().unwrap();
+        assert_eq!(request["model"], "deepseek-v4-flash");
+        assert_eq!(request["messages"][0]["role"], "system");
+        assert_eq!(request["messages"][0]["content"], "Be brief.");
+        assert_eq!(request["messages"][1]["role"], "user");
+        assert_eq!(request["messages"][1]["content"], "hello-provider-chat");
+    }
+
+    #[test]
     fn cli_parse_json_args_and_keys() {
         use lico_client_native::ffi::commands;
         assert_eq!(commands::parse_json_arg("{\"x\":1}")["x"], json!(1));
@@ -1890,6 +2280,8 @@ mod tests {
 
     struct PortableDirGuard {
         previous: Option<PathBuf>,
+        #[cfg(target_os = "macos")]
+        previous_macos_test_user_presence_disabled: bool,
     }
 
     impl PortableDirGuard {
@@ -1897,7 +2289,14 @@ mod tests {
             let previous = lico_client_native::platform::paths::set_portable_data_dir_override(
                 Some(path.to_path_buf()),
             );
-            Self { previous }
+            #[cfg(target_os = "macos")]
+            let previous_macos_test_user_presence_disabled =
+                lico_client_native::platform::secure_mesh_secret_store::set_macos_test_user_presence_disabled(true);
+            Self {
+                previous,
+                #[cfg(target_os = "macos")]
+                previous_macos_test_user_presence_disabled,
+            }
         }
     }
 
@@ -1905,6 +2304,10 @@ mod tests {
         fn drop(&mut self) {
             lico_client_native::platform::paths::set_portable_data_dir_override(
                 self.previous.take(),
+            );
+            #[cfg(target_os = "macos")]
+            lico_client_native::platform::secure_mesh_secret_store::set_macos_test_user_presence_disabled(
+                self.previous_macos_test_user_presence_disabled,
             );
         }
     }

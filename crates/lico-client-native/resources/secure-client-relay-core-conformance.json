@@ -1,0 +1,178 @@
+{
+  "canonicalDigest": "sha256:d942d81fc07023c9c83903efed9d82f2f5b21fad9ad17f31b90fd77896019764",
+  "canonicalSource": "packages/protocols/secure-client-relay-protocol.mjs",
+  "canonicalization": "json-recursive-lexicographic-keys.v1",
+  "conformance": {
+    "fixtureProjection": {
+      "containsOpaquePayloadBytes": false,
+      "containsPrivateMaterial": false,
+      "containsRequestBodies": false,
+      "negativeCases": [
+        {
+          "expected": {
+            "code": "secure_mesh_replay_rejected",
+            "status": 409
+          },
+          "id": "replay",
+          "operation": "envelopeSend"
+        },
+        {
+          "expected": {
+            "code": "secure_mesh_relay_request_schema_invalid",
+            "status": 400
+          },
+          "id": "unknownEnvelopeField",
+          "operation": "envelopeSend"
+        },
+        {
+          "expected": {
+            "code": "secure_mesh_relay_request_schema_invalid",
+            "status": 400
+          },
+          "id": "mailboxToken",
+          "operation": "envelopeSync"
+        },
+        {
+          "expected": {
+            "code": "secure_mesh_relay_request_schema_invalid",
+            "status": 400
+          },
+          "id": "missingLeaseFence",
+          "operation": "envelopeAck"
+        },
+        {
+          "expected": {
+            "code": "secure_mesh_stale_lease",
+            "status": 409
+          },
+          "id": "staleLease",
+          "operation": "envelopeAck"
+        },
+        {
+          "expected": {
+            "code": "secure_mesh_relay_request_schema_invalid",
+            "status": 400
+          },
+          "id": "pemSigningKey",
+          "operation": "endpointChallenge"
+        }
+      ],
+      "validOperationKeys": [
+        "endpointChallenge",
+        "endpointRegister",
+        "envelopeAck",
+        "envelopeSend",
+        "envelopeSync"
+      ]
+    },
+    "scenarios": [
+      {
+        "id": "authenticated-endpoint-registration",
+        "profile": "coreRelay",
+        "steps": [
+          {
+            "expected": {
+              "status": 200
+            },
+            "operation": "endpointChallenge"
+          },
+          {
+            "expected": {
+              "status": 200
+            },
+            "operation": "endpointRegister"
+          }
+        ]
+      },
+      {
+        "id": "opaque-envelope-lease-and-fenced-ack",
+        "profile": "coreRelay",
+        "steps": [
+          {
+            "expected": {
+              "status": 200
+            },
+            "operation": "envelopeSend"
+          },
+          {
+            "expected": {
+              "leaseGenerationMinimum": 1,
+              "status": 200
+            },
+            "operation": "envelopeSync"
+          },
+          {
+            "expected": {
+              "idempotent": false,
+              "status": 200
+            },
+            "operation": "envelopeAck"
+          },
+          {
+            "expected": {
+              "idempotent": true,
+              "status": 200
+            },
+            "operation": "envelopeAck"
+          }
+        ]
+      },
+      {
+        "id": "duplicate-delivery-rejected",
+        "profile": "coreRelay",
+        "steps": [
+          {
+            "expected": {
+              "status": 200
+            },
+            "operation": "envelopeSend"
+          },
+          {
+            "expected": {
+              "code": "secure_mesh_replay_rejected",
+              "status": 409
+            },
+            "operation": "envelopeSend"
+          }
+        ]
+      },
+      {
+        "id": "stale-lease-rejected",
+        "profile": "coreRelay",
+        "steps": [
+          {
+            "expected": {
+              "status": 200
+            },
+            "operation": "envelopeSync"
+          },
+          {
+            "expected": {
+              "code": "secure_mesh_stale_lease",
+              "status": 409
+            },
+            "mutation": "replace-lease-id",
+            "operation": "envelopeAck"
+          }
+        ]
+      },
+      {
+        "id": "backpressure-is-explicit",
+        "profile": "coreRelay",
+        "steps": [
+          {
+            "expected": {
+              "retryable": true,
+              "status": 429
+            },
+            "operation": "envelopeSend",
+            "saturation": "mailbox-or-total-queue"
+          }
+        ]
+      }
+    ]
+  },
+  "contractDigest": "sha256:133d084f0cfeb464a03f217ae2d24ff23758a7c10537027c80932bd930d2dab3",
+  "protocolVersion": "licolite.secure-mesh.v1",
+  "schemaVersion": "licolite.secure-client-relay.core-conformance-artifact.v1"
+}
