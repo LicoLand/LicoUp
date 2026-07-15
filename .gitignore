@@ -18,11 +18,15 @@ coverage/
 .cache/
 outputs/
 reports/
+tmp/
+.tmp/
+apps/desktop/test/layout/production_baseline/failures/
 
 # Node / Rust / Flutter
 node_modules/
 target/
 .dart_tool/
+.gradle/
 .flutter-plugins
 .flutter-plugins-dependencies
 .pub-cache/
