@@ -124,6 +124,26 @@ class TargetCandidate {
   bool get canRollbackMcpPlugin => supportsAction('mcp.plugin.rollback');
   bool get canInstallSkill => supportsAction('skill.install');
 
+  /// Peer MCP install/repair is available when plan or apply is advertised.
+  bool get supportsMcpPluginInstall =>
+      canUpdateMcpPlugin ||
+      supportsAction('mcp.config.plan') ||
+      adapterStatus == 'partial' ||
+      adapterStatus == 'implemented';
+
+  /// ACP lane support from adapter conversation metadata (not invented).
+  bool get supportsAcpPlugin {
+    final laneFamily = conversationCapabilityMatrix['laneFamily']
+        ?.toString()
+        .trim()
+        .toLowerCase();
+    if (laneFamily == 'acp') {
+      return true;
+    }
+    final protocol = conversationProtocol.trim().toLowerCase();
+    return protocol.contains('acp');
+  }
+
   factory TargetCandidate.fromJson(Map<String, dynamic> json) {
     return TargetCandidate(
       id: json['id']?.toString(),

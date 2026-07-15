@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_client/src/ui/manual_target_dialog.dart';
+import 'package:flutter_client/src/frontend/features/targets/ui/manual_target_dialog.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -50,7 +50,10 @@ void main() {
     await tester.tap(find.byType(TextField).at(0));
     await tester.enterText(find.byType(TextField).at(0), ' /tmp/config.json ');
     await tester.tap(find.byType(TextField).at(1));
-    await tester.enterText(find.byType(TextField).at(1), ' /usr/bin/code ');
+    await tester.enterText(
+      find.byType(TextField).at(1),
+      ' ${['', 'opt', 'tools', 'kimi'].join('/')} ',
+    );
     await tester.tap(find.byType(TextField).at(2));
     await tester.enterText(
       find.byType(TextField).at(2),
@@ -59,16 +62,17 @@ void main() {
 
     await tester.tap(find.byIcon(Icons.arrow_drop_down));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Claude Code').last);
+    expect(find.text('Kimi - Desktop'), findsOneWidget);
+    await tester.tap(find.text('Kimi Code - CLI').last);
     await tester.pumpAndSettle();
 
     await tester.tap(find.byKey(const Key('manual-target-submit')));
     await tester.pumpAndSettle();
 
     expect(draft, isNotNull);
-    expect(draft?.target, 'claude-code');
+    expect(draft?.target, 'kimi-code');
     expect(draft?.configPath, '/tmp/config.json');
-    expect(draft?.binaryPath, '/usr/bin/code');
+    expect(draft?.binaryPath, ['', 'opt', 'tools', 'kimi'].join('/'));
     expect(draft?.historyRoot, '/tmp/native-history');
 
     await tester.tap(find.text('OpenCancel'));

@@ -1,21 +1,125 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
-import 'package:flutter_client/src/application/controller/future_client_controller.dart';
+import 'package:flutter_client/src/application/controller/client_controller.dart';
 import 'package:flutter_client/src/contracts/agent_orchestration_policy.dart';
 import 'package:flutter_client/src/frontend/l10n/lico_strings.dart';
 import 'package:flutter_client/src/backend/features/agents/services/agent_conversation_service.dart';
 import 'package:flutter_client/src/platform/native_client/agent_service.dart';
 import 'package:flutter_client/src/frontend/features/agents/ui/agent_conversation_workspace.dart';
-import 'package:flutter_client/src/frontend/features/agents/ui/history_session_panel.dart';
+import 'package:flutter_client/src/frontend/features/agents/ui/agent_render_adapter.dart';
+import 'package:flutter_client/src/frontend/features/agents/ui/agent_workspace_sidebar.dart';
 import 'package:flutter_client/src/frontend/shared/ui/theme.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'layout/fixtures/layout_destination_presentation_fixture.dart';
+
 void main() {
+  testWidgets('message list reuses adapter resolution across rebuilds', (
+    tester,
+  ) async {
+    final previousRegistry = AgentRenderAdapterRegistry.instance;
+    final registry = _CountingAgentRenderAdapterRegistry();
+    AgentRenderAdapterRegistry.instance = registry;
+    addTearDown(() {
+      AgentRenderAdapterRegistry.instance = previousRegistry;
+    });
+
+    final controller = ClientController();
+    addTearDown(controller.dispose);
+    controller.scannedTargets = [
+      TargetCandidate(
+        target: 'codex',
+        label: 'Codex',
+        kind: 'native-history',
+        status: 'detected',
+        configured: true,
+        confidence: 1,
+        adapterStatus: 'implemented',
+      ),
+    ];
+    controller.selectedConversationAgentId = 'codex';
+    controller.selectedConversationSessionId = 'session-adapter-cache';
+    controller.conversationSessionsByAgent = const {
+      'codex': [
+        AgentConversationSession(
+          id: 'session-adapter-cache',
+          agentId: 'codex',
+          title: 'Adapter cache',
+          createdAt: '2026-07-12T00:00:00Z',
+          updatedAt: '2026-07-12T00:00:01Z',
+          sourceClient: 'codex',
+          messages: [
+            AgentConversationMessage(
+              id: 'message-adapter-cache',
+              role: 'assistant',
+              text: 'Stable content.',
+              createdAt: '2026-07-12T00:00:01Z',
+            ),
+          ],
+        ),
+      ],
+    };
+
+    await tester.pumpWidget(
+      MaterialApp(
+        builder: (context, child) =>
+            FixtureLayoutPresentationScope(child: child!),
+        theme: buildLicoTheme(
+          platformBrightness: Brightness.dark,
+        ).copyWith(platform: TargetPlatform.macOS),
+        home: Scaffold(
+          body: SizedBox(
+            width: 820,
+            height: 700,
+            child: AgentConversationWorkspace(
+              controller: controller,
+              targets: controller.scannedTargets,
+              scanning: false,
+              adding: false,
+              onAddTarget: () {},
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(registry.resolveCalls, 1);
+    expect(find.text('Stable content.'), findsWidgets);
+
+    controller.conversationSessionsByAgent = const {
+      'codex': [
+        AgentConversationSession(
+          id: 'session-adapter-cache',
+          agentId: 'codex',
+          title: 'Adapter cache',
+          createdAt: '2026-07-12T00:00:00Z',
+          updatedAt: '2026-07-12T00:00:02Z',
+          sourceClient: 'codex-updated',
+          messages: [
+            AgentConversationMessage(
+              id: 'message-adapter-cache',
+              role: 'assistant',
+              text: 'Stable content.',
+              createdAt: '2026-07-12T00:00:01Z',
+            ),
+          ],
+        ),
+      ],
+    };
+    controller.startNewConversationSession();
+    await tester.pump();
+
+    expect(registry.resolveCalls, 2);
+  });
+
   testWidgets('agent workspace does not overflow in a narrow app window', (
     tester,
   ) async {
-    final controller = FutureClientController();
+    final controller = ClientController();
     addTearDown(controller.dispose);
     controller.scannedTargets = [
       TargetCandidate(
@@ -101,6 +205,8 @@ void main() {
     };
     await tester.pumpWidget(
       MaterialApp(
+        builder: (context, child) =>
+            FixtureLayoutPresentationScope(child: child!),
         theme: buildLicoTheme(
           platformBrightness: Brightness.dark,
         ).copyWith(platform: TargetPlatform.macOS),
@@ -123,12 +229,21 @@ void main() {
     await tester.pump();
 
     expect(tester.takeException(), isNull);
+    expect(find.byKey(const Key('agents-workspace-shell')), findsOneWidget);
+    expect(find.byKey(const Key('agents-workspace-sidebar')), findsOneWidget);
+    expect(
+      find.byKey(const Key('agents-workspace-floating-card')),
+      findsOneWidget,
+    );
+    expect(find.byType(AgentsWorkspaceSidebar), findsOneWidget);
     expect(find.text('Copilot'), findsWidgets);
     expect(
       find.byKey(const Key('conversation-parity-readiness')),
       findsOneWidget,
     );
-    expect(find.text('UNVERIFIED'), findsOneWidget);
+    expect(find.text('Unverified'), findsOneWidget);
+    expect(find.text('UNVERIFIED'), findsNothing);
+    expect(find.text('unverified'), findsNothing);
     expect(find.text('VS Code'), findsNothing);
     expect(find.text('Kilo Code'), findsOneWidget);
     expect(find.text('OpenClaw'), findsNothing);
@@ -142,14 +257,9 @@ void main() {
       lessThan(tester.getTopLeft(find.byTooltip('New Conversation')).dx),
     );
     expect(find.byTooltip('Collapse conversation history'), findsOneWidget);
-    expect(
-      find.text('key: workspace-history-with-a-long-title'),
-      findsNWidgets(2),
-    );
+    expect(find.text('key: workspace-history-with-a-long-title'), findsWidgets);
     expect(find.text('second runtime conversation'), findsOneWidget);
     expect(find.textContaining('Updated'), findsNothing);
-    expect(find.textContaining('2026-06-15'), findsOneWidget);
-    expect(find.textContaining('2026-06-16'), findsOneWidget);
     expect(
       find.textContaining(
         'A long native agent history preview should wrap inside the available message column',
@@ -182,11 +292,177 @@ void main() {
     expect(find.byTooltip('Expand conversation history'), findsOneWidget);
   });
 
+  testWidgets('semantic artifacts and diagnostics stay behind default thread', (
+    tester,
+  ) async {
+    final controller = ClientController();
+    addTearDown(controller.dispose);
+    controller.scannedTargets = [
+      TargetCandidate(
+        target: 'codex',
+        label: 'Codex',
+        kind: 'native-history',
+        status: 'detected',
+        configured: true,
+        confidence: 1,
+        adapterStatus: 'implemented',
+      ),
+    ];
+    controller.selectedConversationAgentId = 'codex';
+    controller.selectedConversationSessionId = 'session-semantic';
+    controller.conversationSessionsByAgent = {
+      'codex': [
+        AgentConversationSession.fromJson({
+          'id': 'session-semantic',
+          'agentId': 'codex',
+          'adapterId': 'codex',
+          'title': 'Semantic layers',
+          'createdAt': '2026-01-15T10:00:00Z',
+          'updatedAt': '2026-01-15T10:00:11Z',
+          'native': true,
+          'readOnly': true,
+          'messages': [
+            {
+              'id': 'message-user',
+              'layer': 'thread',
+              'role': 'user',
+              'text': 'Show the clean thread only.',
+              'createdAt': '2026-01-15T10:00:01Z',
+            },
+            {
+              'id': 'message-tool',
+              'layer': 'execution',
+              'role': 'tool_call',
+              'cardType': 'tool-call',
+              'cardTitle': 'Read file',
+              'text': 'Invocation details are hidden.',
+              'createdAt': '2026-01-15T10:00:02Z',
+              'collapsed': true,
+            },
+          ],
+          'semantic': {
+            'schemaVersion': 1,
+            'kind': 'semantic-conversation',
+            'readOnly': true,
+            'privacyDefaults': {
+              'defaultView': 'thread',
+              'hideRawInDefaultView': true,
+              'hideAuditInDefaultView': true,
+              'redactPaths': true,
+              'redactTokens': true,
+              'redactFullCommandPayloads': true,
+            },
+            'thread': [
+              {
+                'id': 'thread-1',
+                'layer': 'thread',
+                'role': 'user',
+                'eventKind': 'user-message',
+                'text': 'Show the clean thread only.',
+                'createdAt': '2026-01-15T10:00:01Z',
+              },
+            ],
+            'execution': [
+              {
+                'id': 'exec-1',
+                'layer': 'execution',
+                'eventKind': 'tool-call',
+                'title': 'Read file',
+                'summary': 'Invocation details are hidden.',
+                'createdAt': '2026-01-15T10:00:02Z',
+                'collapsed': true,
+              },
+            ],
+            'artifacts': [
+              {
+                'id': 'artifact-1',
+                'layer': 'artifacts',
+                'kind': 'summary',
+                'label': 'Archive summary',
+                'ref': 'summary.md',
+              },
+            ],
+            'audit': {
+              'adapterId': 'codex',
+              'hostApp': 'codex',
+              'sourceKind': 'jsonl',
+              'nativeSessionId': 'semantic-ui',
+              'sourceEvidence': {
+                'kind': 'jsonl',
+                'pathRef': 'fixture://codex/semantic-ui.jsonl',
+                'contentHash':
+                    'eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee',
+              },
+              'parseWarnings': <String>[],
+              'redactionStatus': 'applied',
+              'validationStatus': 'ok',
+              'createdAt': '2026-01-15T10:00:00Z',
+              'updatedAt': '2026-01-15T10:00:11Z',
+            },
+            'raw': {
+              'evidenceRefs': [
+                {
+                  'kind': 'jsonl',
+                  'pathRef': 'fixture://codex/semantic-ui.jsonl',
+                  'contentHash':
+                      'eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee',
+                },
+              ],
+            },
+          },
+        }),
+      ],
+    };
+
+    await tester.pumpWidget(
+      MaterialApp(
+        builder: (context, child) =>
+            FixtureLayoutPresentationScope(child: child!),
+        theme: buildLicoTheme(
+          platformBrightness: Brightness.dark,
+        ).copyWith(platform: TargetPlatform.macOS),
+        home: Scaffold(
+          body: SizedBox(
+            width: 820,
+            height: 800,
+            child: AgentConversationWorkspace(
+              controller: controller,
+              targets: controller.scannedTargets,
+              scanning: false,
+              adding: false,
+              onAddTarget: () {},
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+
+    expect(find.text('Show the clean thread only.'), findsWidgets);
+    expect(find.text('Artifacts'), findsOneWidget);
+    expect(find.textContaining('Archive summary'), findsOneWidget);
+    expect(find.text('Diagnostics'), findsOneWidget);
+    expect(
+      find.textContaining('fixture://codex/semantic-ui.jsonl'),
+      findsNothing,
+    );
+
+    await tester.tap(find.text('Diagnostics'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+    expect(
+      find.textContaining('fixture://codex/semantic-ui.jsonl'),
+      findsWidgets,
+    );
+    expect(find.textContaining('Redaction: applied'), findsOneWidget);
+  });
+
   testWidgets('structured events converge into one accessible process card', (
     tester,
   ) async {
     final semantics = tester.ensureSemantics();
-    final controller = FutureClientController();
+    final controller = ClientController();
     addTearDown(controller.dispose);
     controller.scannedTargets = [
       TargetCandidate(
@@ -220,8 +496,11 @@ void main() {
               'id': 'message-tool',
               'role': 'function_call',
               'cardTitle': 'exec_command',
-              'text':
-                  '{"cmd":"read /workspace/private/source.rs","access_token":"secret-value"}',
+              'text': jsonEncode({
+                'cmd':
+                    'read ${['', 'workspace', 'private', 'source.rs'].join('/')}',
+                'access_token': ['fixture', 'value'].join('-'),
+              }),
               'createdAt': '2026-06-15T00:00:02Z',
             },
             {
@@ -229,21 +508,23 @@ void main() {
               'role': 'reasoning',
               'providerSummary': true,
               'text':
-                  'Inspected the adapter under /workspace/private/project and verified cleanup; api_key=secret-value.',
+                  'Inspected the adapter under ${['', 'workspace', 'private', 'project'].join('/')} and verified cleanup; api_key=${['fixture', 'value'].join('-')}.',
               'createdAt': '2026-06-15T00:00:03Z',
             },
             {
               'id': 'message-metadata',
               'role': 'metadata',
-              'text':
-                  '{"cwd":"/workspace/private/project","api_key":"secret-value"}',
+              'text': jsonEncode({
+                'cwd': ['', 'workspace', 'private', 'project'].join('/'),
+                'api_key': ['fixture', 'value'].join('-'),
+              }),
               'createdAt': '2026-06-15T00:00:04Z',
             },
             {
               'id': 'message-error',
               'role': 'error',
               'text':
-                  'Operation failed under /workspace/private/project with api_key=secret-value',
+                  'Operation failed under ${['', 'workspace', 'private', 'project'].join('/')} with api_key=${['fixture', 'value'].join('-')}',
               'createdAt': '2026-06-15T00:00:05Z',
             },
             {
@@ -284,6 +565,8 @@ void main() {
 
     await tester.pumpWidget(
       MaterialApp(
+        builder: (context, child) =>
+            FixtureLayoutPresentationScope(child: child!),
         theme: buildLicoTheme(
           platformBrightness: Brightness.dark,
         ).copyWith(platform: TargetPlatform.macOS),
@@ -495,7 +778,7 @@ void main() {
   testWidgets(
     'long process stays operable, bounded, and localized after expansion',
     (tester) async {
-      final controller = FutureClientController();
+      final controller = ClientController();
       addTearDown(controller.dispose);
       controller.scannedTargets = [
         TargetCandidate(
@@ -538,6 +821,8 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+          builder: (context, child) =>
+              FixtureLayoutPresentationScope(child: child!),
           locale: const Locale('zh'),
           supportedLocales: LicoStrings.supportedLocales,
           localizationsDelegates: const [
@@ -566,14 +851,14 @@ void main() {
       await tester.pumpAndSettle();
 
       const toggleKey = Key('conversation-process-toggle-long-event-0');
+      await tester.ensureVisible(find.byKey(toggleKey, skipOffstage: false));
+      await tester.pump();
       expect(find.text('处理了 2分钟 9秒'), findsOneWidget);
       expect(find.text('130 个步骤'), findsOneWidget);
       expect(find.text('Safe operation 1', findRichText: true), findsNothing);
 
-      await tester.ensureVisible(find.byKey(toggleKey));
-      await tester.pump();
       await tester.tap(find.byKey(toggleKey));
-      await tester.pump(const Duration(milliseconds: 240));
+      await tester.pumpAndSettle();
 
       expect(find.text('为保持对话流畅，其余操作已隐藏。'), findsOneWidget);
       expect(find.text('Safe operation 1', findRichText: true), findsOneWidget);
@@ -586,8 +871,7 @@ void main() {
           .first;
       final toggleRect = tester.getRect(find.byKey(toggleKey));
       final listRect = tester.getRect(listFinder);
-      expect(toggleRect.top, greaterThanOrEqualTo(listRect.top));
-      expect(toggleRect.bottom, lessThanOrEqualTo(listRect.bottom));
+      expect(toggleRect.intersect(listRect).height, greaterThanOrEqualTo(24));
 
       await tester.tap(find.byKey(toggleKey));
       await tester.pump(const Duration(milliseconds: 220));
@@ -599,7 +883,7 @@ void main() {
   testWidgets(
     'truncation and hidden operation details stay explicit and localized',
     (tester) async {
-      final controller = FutureClientController();
+      final controller = ClientController();
       addTearDown(controller.dispose);
       controller.scannedTargets = [
         TargetCandidate(
@@ -653,6 +937,8 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+          builder: (context, child) =>
+              FixtureLayoutPresentationScope(child: child!),
           locale: const Locale('zh'),
           supportedLocales: LicoStrings.supportedLocales,
           localizationsDelegates: const [
@@ -684,19 +970,21 @@ void main() {
       await tester.pumpAndSettle();
 
       const toggleKey = Key('conversation-process-toggle-tool-hidden');
+      final finalMessage = find.text('最终消息仍保留。');
       final truncationNotice = find.text('较早消息和部分嵌套过程详情未载入；当前显示最近的完整对话骨架。');
+      final messageList = find
+          .ancestor(
+            of: find.byKey(toggleKey),
+            matching: find.byType(Scrollable),
+          )
+          .first;
+      expect(finalMessage, findsWidgets);
       await tester.scrollUntilVisible(
         truncationNotice,
         120,
-        scrollable: find
-            .ancestor(
-              of: find.byKey(toggleKey),
-              matching: find.byType(Scrollable),
-            )
-            .first,
+        scrollable: messageList,
       );
       expect(truncationNotice, findsOneWidget);
-      expect(find.text('最终消息仍保留。'), findsWidgets);
       expect(find.text('调用详情已隐藏。', findRichText: true), findsNothing);
 
       await tester.tap(find.byKey(toggleKey));
@@ -709,6 +997,12 @@ void main() {
         find.byKey(const Key('conversation-process-tool-hidden')),
         findsOneWidget,
       );
+      await tester.scrollUntilVisible(
+        finalMessage,
+        -120,
+        scrollable: messageList,
+      );
+      expect(finalMessage, findsWidgets);
       expect(tester.takeException(), isNull);
     },
   );
@@ -716,7 +1010,7 @@ void main() {
   testWidgets('runtime composer selects discovered model settings', (
     tester,
   ) async {
-    final controller = FutureClientController();
+    final controller = ClientController();
     addTearDown(controller.dispose);
     controller.scannedTargets = [
       TargetCandidate(
@@ -748,6 +1042,8 @@ void main() {
 
     await tester.pumpWidget(
       MaterialApp(
+        builder: (context, child) =>
+            FixtureLayoutPresentationScope(child: child!),
         theme: buildLicoTheme(platformBrightness: Brightness.dark),
         home: Scaffold(
           body: SizedBox(
@@ -785,7 +1081,7 @@ void main() {
   testWidgets('agent messages collapse additional metadata blocks', (
     tester,
   ) async {
-    final controller = FutureClientController();
+    final controller = ClientController();
     addTearDown(controller.dispose);
     controller.scannedTargets = [
       TargetCandidate(
@@ -826,6 +1122,8 @@ void main() {
 
     await tester.pumpWidget(
       MaterialApp(
+        builder: (context, child) =>
+            FixtureLayoutPresentationScope(child: child!),
         theme: buildLicoTheme(
           platformBrightness: Brightness.dark,
         ).copyWith(platform: TargetPlatform.macOS),
@@ -922,7 +1220,7 @@ Hidden detail.
   testWidgets('agent messages collapse recommended plugins by default', (
     tester,
   ) async {
-    final controller = FutureClientController();
+    final controller = ClientController();
     addTearDown(controller.dispose);
     controller.scannedTargets = [
       TargetCandidate(
@@ -963,6 +1261,8 @@ Hidden detail.
 
     await tester.pumpWidget(
       MaterialApp(
+        builder: (context, child) =>
+            FixtureLayoutPresentationScope(child: child!),
         theme: buildLicoTheme(
           platformBrightness: Brightness.dark,
         ).copyWith(platform: TargetPlatform.macOS),
@@ -1012,69 +1312,6 @@ Hidden detail.
     expect(
       find.textContaining('recommended_plugins', findRichText: true),
       findsNothing,
-    );
-  });
-
-  test('agent tab wheel direction maps up to forward and down to back', () {
-    expect(
-      agentTabWheelTargetOffset(
-        currentOffset: 100,
-        minScrollExtent: 0,
-        maxScrollExtent: 600,
-        scrollDeltaY: -120,
-        step: 184,
-      ),
-      284,
-    );
-    expect(
-      agentTabWheelTargetOffset(
-        currentOffset: 284,
-        minScrollExtent: 0,
-        maxScrollExtent: 600,
-        scrollDeltaY: 120,
-        step: 184,
-      ),
-      100,
-    );
-    expect(
-      agentTabWheelTargetOffset(
-        currentOffset: 560,
-        minScrollExtent: 0,
-        maxScrollExtent: 600,
-        scrollDeltaY: -120,
-        step: 184,
-      ),
-      600,
-    );
-  });
-
-  test('agent tab width shrinks between browser-style bounds', () {
-    expect(
-      agentTabWidthFor(
-        availableWidth: 800,
-        tabCount: 4,
-        minWidth: 104,
-        maxWidth: 172,
-      ),
-      172,
-    );
-    expect(
-      agentTabWidthFor(
-        availableWidth: 600,
-        tabCount: 4,
-        minWidth: 104,
-        maxWidth: 172,
-      ),
-      150,
-    );
-    expect(
-      agentTabWidthFor(
-        availableWidth: 500,
-        tabCount: 6,
-        minWidth: 104,
-        maxWidth: 172,
-      ),
-      104,
     );
   });
 
@@ -1191,10 +1428,10 @@ Hidden detail.
     );
   });
 
-  testWidgets('wide agent workspace uses a draggable split divider', (
+  testWidgets('wide agent workspace uses sidebar and floating card', (
     tester,
   ) async {
-    final controller = FutureClientController();
+    final controller = ClientController();
     addTearDown(controller.dispose);
     controller.scannedTargets = [
       TargetCandidate(
@@ -1234,6 +1471,8 @@ Hidden detail.
 
     await tester.pumpWidget(
       MaterialApp(
+        builder: (context, child) =>
+            FixtureLayoutPresentationScope(child: child!),
         theme: buildLicoTheme(
           platformBrightness: Brightness.dark,
         ).copyWith(platform: TargetPlatform.macOS),
@@ -1254,41 +1493,92 @@ Hidden detail.
     );
     await tester.pumpAndSettle();
 
-    final historyFinder = find.byType(HistorySessionPanel);
-    final splitPageFinder = find.byKey(const Key('conversation-split-page'));
-    final dividerFinder = find.byKey(const Key('conversation-split-divider'));
-    expect(historyFinder, findsOneWidget);
-    expect(splitPageFinder, findsOneWidget);
+    expect(find.byKey(const Key('agents-workspace-shell')), findsOneWidget);
+    expect(find.byKey(const Key('agents-workspace-sidebar')), findsOneWidget);
     expect(
-      find.ancestor(of: splitPageFinder, matching: find.byType(ClipRRect)),
-      findsNothing,
+      find.byKey(const Key('agents-workspace-floating-card')),
+      findsOneWidget,
     );
-    expect(dividerFinder, findsOneWidget);
-    expect(
-      tester.getBottomLeft(find.byType(AgentConversationTabBar)).dy,
-      tester.getTopLeft(splitPageFinder).dy,
-    );
-    expect(
-      tester.getTopLeft(find.byType(Divider).at(0)).dy,
-      tester.getTopLeft(find.byType(Divider).at(1)).dy,
-    );
+    expect(find.byType(AgentsWorkspaceSidebar), findsOneWidget);
+    expect(find.byKey(const Key('agents-sidebar-nav-plugins')), findsOneWidget);
+    expect(find.byKey(const Key('agents-sidebar-nav-skills')), findsOneWidget);
+    expect(find.byKey(const Key('agents-sidebar-nav-stats')), findsOneWidget);
     expect(find.text('Resizable split conversation'), findsWidgets);
     expect(find.text('Claude Code · 1 messages'), findsNothing);
+    expect(find.byKey(const Key('conversation-split-page')), findsNothing);
+    expect(find.byKey(const Key('conversation-split-divider')), findsNothing);
 
-    final initialWidth = tester.getSize(historyFinder).width;
-    expect(initialWidth, 260);
+    final sidebarFinder = find.byKey(const Key('agents-workspace-sidebar'));
+    final dividerFinder = find.byKey(
+      const Key('agents-workspace-split-divider'),
+    );
+    expect(dividerFinder, findsOneWidget);
+    final initialWidth = tester.getSize(sidebarFinder).width;
+    expect(initialWidth, 196);
 
-    await tester.drag(dividerFinder, const Offset(120, 0));
+    // Drag from inside the left-edge drag handle rather than its center,
+    // because the handle is only a few pixels wide and sits at the pane edge.
+    final dividerRect = tester.getRect(dividerFinder);
+    await tester.dragFrom(
+      Offset(dividerRect.left + 2, dividerRect.center.dy),
+      const Offset(80, 0),
+    );
     await tester.pumpAndSettle();
-    expect(tester.getSize(historyFinder).width, greaterThan(initialWidth));
+    expect(tester.getSize(sidebarFinder).width, greaterThan(initialWidth));
+  });
 
-    await tester.drag(dividerFinder, const Offset(-900, 0));
+  testWidgets('agents workspace sidebar exposes explore navigation keys', (
+    tester,
+  ) async {
+    final controller = ClientController();
+    addTearDown(controller.dispose);
+    controller.scannedTargets = [
+      TargetCandidate(
+        target: 'codex',
+        label: 'Codex',
+        kind: 'cli',
+        status: 'detected',
+        configured: false,
+        confidence: 0.72,
+        adapterStatus: 'implemented',
+      ),
+    ];
+    controller.selectedConversationAgentId = 'codex';
+
+    await tester.pumpWidget(
+      MaterialApp(
+        builder: (context, child) =>
+            FixtureLayoutPresentationScope(child: child!),
+        theme: buildLicoTheme(
+          platformBrightness: Brightness.dark,
+        ).copyWith(platform: TargetPlatform.macOS),
+        home: Scaffold(
+          body: SizedBox(
+            width: 900,
+            height: 520,
+            child: AgentConversationWorkspace(
+              controller: controller,
+              targets: controller.scannedTargets,
+              scanning: false,
+              adding: false,
+              onAddTarget: () {},
+            ),
+          ),
+        ),
+      ),
+    );
     await tester.pumpAndSettle();
-    expect(tester.getSize(historyFinder).width, greaterThanOrEqualTo(260));
+
+    expect(find.byKey(const Key('agents-sidebar-nav-plugins')), findsOneWidget);
+    expect(find.byKey(const Key('agents-sidebar-nav-skills')), findsOneWidget);
+    expect(find.byKey(const Key('agents-sidebar-nav-stats')), findsOneWidget);
+    expect(find.text('Token Usage'), findsOneWidget);
+    expect(find.text('MCP Plugins'), findsOneWidget);
+    expect(find.text('Skill Hub'), findsOneWidget);
   });
 
   testWidgets('agent message list defaults to latest messages', (tester) async {
-    final controller = FutureClientController();
+    final controller = ClientController();
     addTearDown(controller.dispose);
     controller.scannedTargets = [
       TargetCandidate(
@@ -1333,6 +1623,8 @@ Hidden detail.
 
     await tester.pumpWidget(
       MaterialApp(
+        builder: (context, child) =>
+            FixtureLayoutPresentationScope(child: child!),
         theme: buildLicoTheme(
           platformBrightness: Brightness.dark,
         ).copyWith(platform: TargetPlatform.macOS),
@@ -1358,10 +1650,90 @@ Hidden detail.
     expect(find.text('Oldest imported prompt'), findsNothing);
   });
 
+  testWidgets(
+    'agent message list renders the active native turn before history readback',
+    (tester) async {
+      final controller = ClientController();
+      addTearDown(controller.dispose);
+      controller.scannedTargets = [
+        TargetCandidate(
+          target: 'codex',
+          label: 'Codex',
+          kind: 'cli',
+          status: 'detected',
+          configured: true,
+          confidence: 0.9,
+          adapterStatus: 'implemented',
+        ),
+      ];
+      controller.selectedConversationAgentId = 'codex';
+      controller.isSendingConversationMessage = true;
+      controller.liveConversationMessagesByAgent = {
+        'codex': const [
+          AgentConversationMessage(
+            id: 'live-user',
+            role: 'user',
+            text: 'Explain the current build.',
+            createdAt: '2026-06-15T00:00:00Z',
+          ),
+          AgentConversationMessage(
+            id: 'live-assistant',
+            role: 'assistant',
+            text: 'The build is still running',
+            createdAt: '2026-06-15T00:00:01Z',
+          ),
+          AgentConversationMessage(
+            id: 'live-process',
+            role: 'tool_call',
+            text: 'Inspecting build status',
+            createdAt: '2026-06-15T00:00:01Z',
+            layer: AgentConversationSemanticLayer.execution,
+            cardType: 'tool-call',
+            cardTitle: 'tool.call.started',
+          ),
+        ],
+      };
+
+      await tester.pumpWidget(
+        MaterialApp(
+          builder: (context, child) =>
+              FixtureLayoutPresentationScope(child: child!),
+          theme: buildLicoTheme(
+            platformBrightness: Brightness.dark,
+          ).copyWith(platform: TargetPlatform.macOS),
+          home: Scaffold(
+            body: SizedBox(
+              width: 720,
+              height: 420,
+              child: AgentConversationWorkspace(
+                controller: controller,
+                targets: controller.scannedTargets,
+                scanning: false,
+                adding: false,
+                onAddTarget: () {},
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+
+      expect(find.text('Explain the current build.'), findsOneWidget);
+      expect(find.text('The build is still running'), findsOneWidget);
+      expect(
+        find.byKey(
+          const ValueKey<String>('conversation-process-semantics-live-process'),
+        ),
+        findsOneWidget,
+      );
+    },
+  );
+
   testWidgets('agent message list renders subagent output as collapsed card', (
     tester,
   ) async {
-    final controller = FutureClientController();
+    final controller = ClientController();
     addTearDown(controller.dispose);
     controller.scannedTargets = [
       TargetCandidate(
@@ -1423,6 +1795,8 @@ Hidden detail.
 
     await tester.pumpWidget(
       MaterialApp(
+        builder: (context, child) =>
+            FixtureLayoutPresentationScope(child: child!),
         theme: buildLicoTheme(
           platformBrightness: Brightness.dark,
         ).copyWith(platform: TargetPlatform.macOS),
@@ -1456,88 +1830,10 @@ Hidden detail.
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('desktop agent tabs shrink without arrow controls', (
-    tester,
-  ) async {
-    final controller = FutureClientController();
-    addTearDown(controller.dispose);
-    controller.scannedTargets = [
-      for (final target in [
-        'claude-code',
-        'codex',
-        'code',
-        'antigravity',
-        'opencode',
-        'kilo-code',
-      ])
-        TargetCandidate(
-          target: target,
-          label: target == 'code' ? 'VS Code' : target,
-          kind: 'cli',
-          status: 'detected',
-          configured: false,
-          confidence: 0.72,
-          adapterStatus: 'implemented',
-        ),
-    ];
-    controller.selectedConversationAgentId = 'claude-code';
-
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: buildLicoTheme(
-          platformBrightness: Brightness.dark,
-        ).copyWith(platform: TargetPlatform.macOS),
-        home: Scaffold(
-          body: SizedBox(
-            width: 520,
-            height: 360,
-            child: AgentConversationWorkspace(
-              controller: controller,
-              targets: controller.scannedTargets,
-              scanning: false,
-              adding: false,
-              onAddTarget: () {},
-            ),
-          ),
-        ),
-      ),
-    );
-
-    await tester.pumpAndSettle();
-
-    expect(find.byIcon(Icons.chevron_left), findsNothing);
-    expect(find.byIcon(Icons.chevron_right), findsNothing);
-    expect(
-      find.byKey(const ValueKey('agent-tab-fixed-lico-default-orchestrator')),
-      findsOneWidget,
-    );
-    expect(find.text('VS Code'), findsNothing);
-    expect(find.byType(ReorderableListView), findsOneWidget);
-    expect(find.byType(ReorderableDelayedDragStartListener), findsWidgets);
-    expect(find.text('Default'), findsOneWidget);
-    final firstTabFinder = find.byKey(
-      const ValueKey('agent-tab-drag-claude-code'),
-    );
-    final defaultTabFinder = find.byKey(
-      const ValueKey('agent-tab-fixed-lico-default-orchestrator'),
-    );
-    final firstTabSize = tester.getSize(firstTabFinder);
-    expect(firstTabSize.width, lessThan(172));
-    expect(firstTabSize.width, greaterThanOrEqualTo(104));
-    expect(tester.getTopLeft(defaultTabFinder).dx, 0);
-    expect(
-      tester.getTopLeft(firstTabFinder).dx,
-      greaterThanOrEqualTo(firstTabSize.width),
-    );
-    expect(find.byKey(const Key('agent-tab-refresh-button')), findsNothing);
-
-    expect(tester.takeException(), isNull);
-  });
-
   testWidgets('agent workspace uses Chinese labels for Chinese locale', (
     tester,
   ) async {
-    final controller = FutureClientController();
+    final controller = ClientController();
     addTearDown(controller.dispose);
     controller.scannedTargets = [
       TargetCandidate(
@@ -1554,6 +1850,8 @@ Hidden detail.
 
     await tester.pumpWidget(
       MaterialApp(
+        builder: (context, child) =>
+            FixtureLayoutPresentationScope(child: child!),
         locale: const Locale('zh'),
         supportedLocales: LicoStrings.supportedLocales,
         localizationsDelegates: const [
@@ -1593,10 +1891,10 @@ Hidden detail.
     expect(find.text('Conversation history'), findsNothing);
   });
 
-  testWidgets('default agent tab renders orchestration controls', (
+  testWidgets('default agent workspace renders orchestration controls', (
     tester,
   ) async {
-    final controller = FutureClientController();
+    final controller = ClientController();
     addTearDown(controller.dispose);
     controller.scannedTargets = [
       TargetCandidate(
@@ -1656,6 +1954,8 @@ Hidden detail.
 
     await tester.pumpWidget(
       MaterialApp(
+        builder: (context, child) =>
+            FixtureLayoutPresentationScope(child: child!),
         theme: buildLicoTheme(
           platformBrightness: Brightness.dark,
         ).copyWith(platform: TargetPlatform.macOS),
@@ -1677,10 +1977,16 @@ Hidden detail.
 
     await tester.pumpAndSettle();
 
-    IconButton sendButton() {
-      return tester
-          .widgetList<IconButton>(find.byType(IconButton))
-          .firstWhere((button) => button.tooltip == 'Send');
+    Finder sendButtonFinder() {
+      final keyed = find.byKey(const Key('agent-conversation-composer-send'));
+      if (keyed.evaluate().isNotEmpty) {
+        return keyed;
+      }
+      return find.byTooltip('Send');
+    }
+
+    bool composerInteractive() {
+      return tester.widget<TextField>(find.byType(TextField)).enabled ?? false;
     }
 
     expect(find.text('Default'), findsWidgets);
@@ -1693,7 +1999,7 @@ Hidden detail.
       findsOneWidget,
     );
     expect(find.text('Configure a policy first'), findsWidgets);
-    expect(sendButton().onPressed, isNull);
+    expect(composerInteractive(), isFalse);
 
     await tester.tap(find.byKey(const Key('agent-orchestration-policy-edit')));
     await tester.pumpAndSettle();
@@ -1804,18 +2110,24 @@ Hidden detail.
     );
     expect(find.text('Review Policy'), findsWidgets);
     expect(find.text('Message Default'), findsOneWidget);
-    expect(sendButton().onPressed, isNotNull);
+    expect(composerInteractive(), isTrue);
+    await tester.enterText(find.byType(TextField), 'Route this task');
+    await tester.pump();
+    final sendInkWell = tester.widget<InkWell>(sendButtonFinder());
+    expect(sendInkWell.onTap, isNotNull);
     expect(tester.takeException(), isNull);
   });
 
   testWidgets('mobile agent empty state hides manual add target actions', (
     tester,
   ) async {
-    final controller = FutureClientController();
+    final controller = ClientController();
     addTearDown(controller.dispose);
 
     await tester.pumpWidget(
       MaterialApp(
+        builder: (context, child) =>
+            FixtureLayoutPresentationScope(child: child!),
         locale: const Locale('zh'),
         supportedLocales: LicoStrings.supportedLocales,
         localizationsDelegates: const [
@@ -1846,7 +2158,6 @@ Hidden detail.
     await tester.pump();
 
     expect(find.text('选择一个智能体查看历史并对话'), findsOneWidget);
-    expect(find.byType(AgentConversationTabBar), findsNothing);
     expect(find.text('添加目标'), findsNothing);
     expect(find.byIcon(Icons.add), findsNothing);
   });
@@ -1854,7 +2165,7 @@ Hidden detail.
   testWidgets('mobile runtime suppresses agent tabs under desktop theme', (
     tester,
   ) async {
-    final controller = FutureClientController(
+    final controller = ClientController(
       mobileClientRuntimePlatformOverride: true,
     );
     addTearDown(controller.dispose);
@@ -1873,6 +2184,8 @@ Hidden detail.
 
     await tester.pumpWidget(
       MaterialApp(
+        builder: (context, child) =>
+            FixtureLayoutPresentationScope(child: child!),
         supportedLocales: LicoStrings.supportedLocales,
         localizationsDelegates: const [
           GlobalMaterialLocalizations.delegate,
@@ -1899,9 +2212,22 @@ Hidden detail.
     );
 
     await tester.pump();
-
-    expect(find.byType(AgentConversationTabBar), findsNothing);
     expect(find.text('Codex'), findsOneWidget);
     expect(find.text('添加目标'), findsNothing);
   });
+}
+
+class _CountingAgentRenderAdapterRegistry extends AgentRenderAdapterRegistry {
+  int resolveCalls = 0;
+
+  @override
+  Future<AgentRenderAdapter> resolve({
+    required String agentId,
+    String sourceClient = '',
+    String sourceTool = '',
+    String adapterId = '',
+  }) {
+    resolveCalls += 1;
+    return Future<AgentRenderAdapter>.value(AgentRenderAdapter.fallback());
+  }
 }

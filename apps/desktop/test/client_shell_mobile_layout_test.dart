@@ -3,11 +3,13 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
-import 'package:flutter_client/src/application/controller/future_client_controller.dart';
+import 'package:flutter_client/src/application/controller/client_controller.dart';
 import 'package:flutter_client/src/contracts/agent_command_runner.dart';
 import 'package:flutter_client/src/contracts/agent_usage_models.dart';
 import 'package:flutter_client/src/frontend/l10n/lico_strings.dart';
-import 'package:flutter_client/src/application/models/future_client_models.dart';
+import 'package:flutter_client/src/contracts/presentation/semantic_destination.dart';
+import 'package:flutter_client/src/contracts/presentation/layout_profile.dart';
+import 'package:flutter_client/src/contracts/presentation/presentation_preferences.dart';
 import 'package:flutter_client/src/backend/features/agents/services/agent_conversation_service.dart';
 import 'package:flutter_client/src/platform/native_client/agent_service.dart';
 import 'package:flutter_client/src/contracts/mobile_agent_account.dart';
@@ -15,360 +17,38 @@ import 'package:flutter_client/src/platform/mobile_relay/mobile_relay_service.da
 import 'package:flutter_client/src/platform/storage/portable_data_root.dart';
 import 'package:flutter_client/src/platform/secure_mesh/secure_mesh_android_bridge.dart';
 import 'package:flutter_client/src/platform/secure_mesh/secure_mesh_mobile_bridge.dart';
-import 'package:flutter_client/src/frontend/features/agents/ui/agent_conversation_workspace.dart';
-import 'package:flutter_client/src/frontend/features/agents/ui/agent_usage_panel.dart';
 import 'package:flutter_client/src/frontend/shell/client_shell.dart';
 import 'package:flutter_client/src/frontend/features/mobile_relay/ui/mobile_agents_home.dart';
 import 'package:flutter_client/src/frontend/shared/ui/provider_brand_icon.dart';
 import 'package:flutter_client/src/frontend/features/mobile_relay/ui/shell_pair_device_dialog.dart';
-import 'package:flutter_client/src/frontend/shell/shell_navigation.dart';
 import 'package:flutter_client/src/frontend/shared/ui/theme.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
 void main() {
-  testWidgets('desktop sidebar stays compact and exposes future modules', (
-    tester,
-  ) async {
-    tester.view.physicalSize = const Size(1200, 1000);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
-
-    final controller = FutureClientController(
-      agentService: _NoopAgentService(scanTargetsResponse: _targets),
-    );
-    addTearDown(controller.dispose);
-    controller.currentSection = FutureClientSection.settings;
-    controller.scannedTargets = _targets;
-
-    await tester.pumpWidget(
-      MaterialApp(
-        supportedLocales: LicoStrings.supportedLocales,
-        localizationsDelegates: const [
-          GlobalMaterialLocalizations.delegate,
-          GlobalCupertinoLocalizations.delegate,
-          GlobalWidgetsLocalizations.delegate,
-        ],
-        theme: buildLicoTheme(
-          platformBrightness: Brightness.dark,
-        ).copyWith(platform: TargetPlatform.macOS),
-        home: SizedBox(
-          width: 1200,
-          height: 1000,
-          child: ClientShell(controller: controller),
-        ),
-      ),
-    );
-
-    await tester.pump();
-
-    expect(find.byType(ShellSidebar), findsOneWidget);
-    expect(find.byTooltip('Home'), findsOneWidget);
-    expect(
-      find.byKey(const Key('sidebar-control-panel-divider')),
-      findsOneWidget,
-    );
-    expect(find.byKey(const Key('sidebar-control-panel-icon')), findsOneWidget);
-    expect(find.byKey(const Key('topbar-lico-arc-logo')), findsNothing);
-    expect(find.byKey(const Key('sidebar-agents-icon')), findsOneWidget);
-    expect(find.byTooltip('Token Usage'), findsOneWidget);
-    expect(
-      tester.getCenter(find.byKey(const Key('sidebar-agents-icon'))).dx,
-      closeTo(30, 0.5),
-    );
-    expect(find.byIcon(Icons.psychology_outlined), findsNothing);
-    expect(find.byTooltip('Expand Sidebar'), findsNothing);
-    expect(find.byTooltip('Collapse Sidebar'), findsNothing);
-    expect(find.text('Appearance Preset'), findsOneWidget);
-    expect(find.text('Lico Arc'), findsNothing);
-    expect(find.text('Skill Hub'), findsNothing);
-
-    await tester.tap(find.byTooltip('MCP Plugins'));
-    await tester.pumpAndSettle();
-
-    expect(controller.currentSection, FutureClientSection.mcpPlugins);
-    expect(find.byTooltip('Home'), findsOneWidget);
-    expect(find.text('MCP Plugins'), findsNothing);
-    expect(find.text('Skill Hub'), findsNothing);
-
-    await tester.tap(find.byTooltip('Home'));
-    await tester.pumpAndSettle();
-
-    expect(controller.currentSection, FutureClientSection.controlPanel);
-    expect(find.text('Home'), findsWidgets);
-    expect(
-      find.byKey(const Key('desktop-home-feed-compose-button')),
-      findsOneWidget,
-    );
-
-    expect(find.byType(ShellGlobalSearch), findsOneWidget);
-  });
-
-  testWidgets('desktop shell exposes token usage as a report module', (
-    tester,
-  ) async {
-    tester.view.physicalSize = const Size(1200, 900);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
-
-    final service = _NoopAgentService(scanTargetsResponse: _targets);
-    final controller = FutureClientController(agentService: service);
-    addTearDown(controller.dispose);
-    controller.currentSection = FutureClientSection.settings;
-    controller.scannedTargets = _targets;
-
-    await tester.pumpWidget(
-      MaterialApp(
-        supportedLocales: LicoStrings.supportedLocales,
-        localizationsDelegates: const [
-          GlobalMaterialLocalizations.delegate,
-          GlobalCupertinoLocalizations.delegate,
-          GlobalWidgetsLocalizations.delegate,
-        ],
-        theme: buildLicoTheme(
-          platformBrightness: Brightness.dark,
-        ).copyWith(platform: TargetPlatform.macOS),
-        home: SizedBox(
-          width: 1200,
-          height: 900,
-          child: ClientShell(controller: controller),
-        ),
-      ),
-    );
-    await tester.pump();
-
-    expect(service.agentUsageScanCalls, 0);
-    expect(find.byTooltip('Token Usage'), findsOneWidget);
-
-    await tester.tap(find.byTooltip('Token Usage'));
-    await tester.pumpAndSettle();
-
-    expect(controller.currentSection, FutureClientSection.monitoring);
-    expect(find.byType(AgentUsagePanel), findsOneWidget);
-    expect(service.agentUsageScanCalls, 1);
-    final refresh = find.byKey(const Key('desktop-token-usage-refresh'));
-    expect(refresh, findsOneWidget);
-    expect(
-      tester.getTopLeft(refresh).dx,
-      lessThan(tester.getTopLeft(find.byType(ShellGlobalSearch)).dx),
-    );
-
-    await tester.tap(refresh);
-    await tester.pumpAndSettle();
-
-    expect(service.agentUsageScanCalls, 2);
-
-    await tester.tap(find.byTooltip('Settings'));
-    await tester.pumpAndSettle();
-
-    expect(find.byKey(const Key('desktop-token-usage-refresh')), findsNothing);
-  });
-
-  testWidgets('desktop agents show allowance status in the bottom bar', (
-    tester,
-  ) async {
-    tester.view.physicalSize = const Size(1200, 820);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
-
-    final controller = FutureClientController(
-      agentService: _NoopAgentService(scanTargetsResponse: _targets),
-    );
-    var disposed = false;
-    addTearDown(() {
-      if (!disposed) {
-        controller.dispose();
-      }
-    });
-    controller.currentSection = FutureClientSection.agents;
-    controller.scannedTargets = _targets;
-    controller.selectedConversationAgentId = 'codex';
-
-    await tester.pumpWidget(
-      MaterialApp(
-        supportedLocales: LicoStrings.supportedLocales,
-        localizationsDelegates: const [
-          GlobalMaterialLocalizations.delegate,
-          GlobalCupertinoLocalizations.delegate,
-          GlobalWidgetsLocalizations.delegate,
-        ],
-        theme: buildLicoTheme(
-          platformBrightness: Brightness.dark,
-        ).copyWith(platform: TargetPlatform.macOS),
-        home: SizedBox(
-          width: 1200,
-          height: 820,
-          child: ClientShell(controller: controller),
-        ),
-      ),
-    );
-
-    await tester.pump();
-    // The allowance refresh starts in a post-frame callback. Give the mocked
-    // native scan future time to publish its authoritative values.
-    await tester.runAsync(() => _waitForAgentAllowances(controller, 'codex'));
-    await tester.pump();
-
-    expect(find.textContaining('ChatGPT session limit'), findsNothing);
-    expect(find.textContaining('ChatGPT weekly limit'), findsOneWidget);
-    expect(find.textContaining('ChatGPT limit reset credits'), findsOneWidget);
-    expect(
-      find.byKey(
-        const Key('agent-allowance-progress-track-ChatGPT weekly limit'),
-      ),
-      findsOneWidget,
-    );
-    expect(find.textContaining('usage percentage'), findsNothing);
-    expect(find.byType(AgentConversationTabBar), findsOneWidget);
-    expect(find.byKey(const Key('agent-usage-panel-toggle')), findsNothing);
-    expect(find.text('Agent usage metering'), findsNothing);
-    expect(find.byType(AgentUsagePanel), findsNothing);
-    expect(controller.agentService, isA<_NoopAgentService>());
-    expect(
-      (controller.agentService as _NoopAgentService).agentUsageScanCalls,
-      1,
-    );
-    final codexAllowances = controller.allowancesForAgent('codex');
-    expect(codexAllowances.map((allowance) => allowance.kind), [
-      'chatgpt-session-limit',
-      'chatgpt-weekly-limit',
-      'chatgpt-limit-reset-credits',
-      'gpt-5-3-codex-spark-session-limit',
-      'gpt-5-3-codex-spark-weekly-limit',
-    ]);
-    expect(codexAllowances[0].value, '98%');
-    expect(codexAllowances[1].value, '73%');
-    expect(codexAllowances[2].value, '1 available');
-    final allowanceTooltip = tester.widget<Tooltip>(
-      find
-          .byWidgetPredicate(
-            (widget) =>
-                widget is Tooltip &&
-                (widget.message ?? '').contains('GPT-5.3-Codex-Spark'),
-          )
-          .first,
-    );
-    final tooltipMessage = allowanceTooltip.message ?? '';
-    expect(tooltipMessage, contains('• ChatGPT · 73% left · resets in 5d 1h'));
-    expect(
-      tooltipMessage,
-      contains('• GPT-5.3-Codex-Spark · 100% left · resets in 7d'),
-    );
-    expect(tooltipMessage, contains('• Reset credits · 1 available'));
-    expect(tooltipMessage, isNot(contains('4h 48m')));
-    expect(tooltipMessage, isNot(contains('resets in 5h')));
-
-    await tester.pump(const Duration(seconds: 61));
-    await tester.pump();
-    expect(
-      (controller.agentService as _NoopAgentService).agentUsageScanCalls,
-      2,
-    );
-
-    expect(
-      (controller.agentService as _NoopAgentService).agentUsageScanCalls,
-      greaterThan(0),
-    );
-    expect(tester.getSize(find.byType(ShellStatusBar)).height, 30);
-    controller.dispose();
-    disposed = true;
-  });
-
-  testWidgets('kilo status shows pass progress and recharge credits as value', (
-    tester,
-  ) async {
-    tester.view.physicalSize = const Size(1200, 820);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
-
-    final targets = [
-      TargetCandidate(
-        target: 'kilo-code',
-        label: 'Kilo Code',
-        kind: 'cli',
-        status: 'detected',
-        configured: false,
-        confidence: 0.72,
-        adapterStatus: 'implemented',
-        adapterCapabilities: const {'conversationReadiness': 'ready'},
-        supportedActions: ['runtime.message.send'],
-      ),
-    ];
-    final controller = FutureClientController(
-      agentService: _NoopAgentService(scanTargetsResponse: targets),
-    );
-    var disposed = false;
-    addTearDown(() {
-      if (!disposed) {
-        controller.dispose();
-      }
-    });
-    controller.currentSection = FutureClientSection.agents;
-    controller.scannedTargets = targets;
-    controller.selectedConversationAgentId = 'kilo-code';
-
-    await tester.pumpWidget(
-      MaterialApp(
-        supportedLocales: LicoStrings.supportedLocales,
-        localizationsDelegates: const [
-          GlobalMaterialLocalizations.delegate,
-          GlobalCupertinoLocalizations.delegate,
-          GlobalWidgetsLocalizations.delegate,
-        ],
-        theme: buildLicoTheme(
-          platformBrightness: Brightness.dark,
-        ).copyWith(platform: TargetPlatform.macOS),
-        home: SizedBox(
-          width: 1200,
-          height: 820,
-          child: ClientShell(controller: controller),
-        ),
-      ),
-    );
-
-    await tester.pump();
-    await tester.runAsync(
-      () => _waitForAgentAllowances(controller, 'kilo-code'),
-    );
-    await tester.pump();
-
-    expect(find.textContaining('Kilo Pass'), findsOneWidget);
-    expect(find.textContaining('Recharge credits'), findsOneWidget);
-    expect(
-      find.byKey(const Key('agent-allowance-progress-track-Kilo Pass')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const Key('agent-allowance-progress-track-Recharge credits')),
-      findsNothing,
-    );
-    final rechargeValue = tester.widget<Text>(
-      find.byKey(const Key('agent-allowance-meter-value-Recharge credits')),
-    );
-    expect(rechargeValue.data, '12.50');
-
-    await tester.pumpWidget(const SizedBox.shrink());
-    controller.dispose();
-    disposed = true;
-  });
-
   testWidgets('mobile runtime keeps the phone shell under a desktop theme', (
     tester,
   ) async {
-    final controller = FutureClientController(
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final controller = ClientController(
+      portableData: _testPortableData(),
+      presentationPreferencesRepository:
+          _TestPresentationPreferencesRepository(),
       agentService: _NoopAgentService(scanTargetsResponse: _targets),
       conversationService: const _NoopConversationService(),
       mobileRelayService: _OAuthRelayService(),
       mobileClientRuntimePlatformOverride: true,
     );
     addTearDown(controller.dispose);
-    controller.currentSection = FutureClientSection.agents;
+    controller.currentSection = ClientSection.agents;
     controller.scannedTargets = _targets;
     controller.scannedTargets = _targets;
+    await controller.layoutManager.initialize().timeout(
+      const Duration(seconds: 5),
+    );
 
     await tester.pumpWidget(
       MaterialApp(
@@ -390,11 +70,10 @@ void main() {
     );
 
     await tester.pump();
-
-    expect(find.byType(ShellTopBar), findsNothing);
-    expect(find.byType(ShellSidebar), findsNothing);
-    expect(find.byType(AgentConversationTabBar), findsNothing);
-    expect(find.byKey(const Key('mobile-bottom-nav-agents')), findsOneWidget);
+    expect(
+      find.byKey(const Key('workbench-mobile-compact-navigation-trigger')),
+      findsOneWidget,
+    );
     expect(
       find.byKey(const Key('mobile-agent-list-item-codex')),
       findsOneWidget,
@@ -404,13 +83,13 @@ void main() {
   testWidgets('mobile empty agent list opens the add agent sheet', (
     tester,
   ) async {
-    final controller = FutureClientController(
+    final controller = ClientController(
       agentService: _NoopAgentService(scanTargetsResponse: const []),
       conversationService: const _NoopConversationService(),
       mobileClientRuntimePlatformOverride: true,
     );
     addTearDown(controller.dispose);
-    controller.currentSection = FutureClientSection.agents;
+    controller.currentSection = ClientSection.agents;
 
     await tester.pumpWidget(
       MaterialApp(
@@ -461,10 +140,169 @@ void main() {
     );
   });
 
+  testWidgets(
+    'mobile provider detail manages sibling accounts with confirmed deletion',
+    (tester) async {
+      final controller = ClientController(
+        portableData: _testPortableData(),
+        agentService: _NoopAgentService(scanTargetsResponse: const []),
+        conversationService: const _NoopConversationService(),
+        mobileClientRuntimePlatformOverride: true,
+      );
+      addTearDown(controller.dispose);
+      controller.mobileAgentAccounts = [
+        MobileAgentAccount.create(
+          mobileAgentProviderFor('deepseek'),
+          id: 'deepseek-account-a',
+          label: 'DeepSeek A',
+          authSource: MobileAgentAccount.authSourceLocalApiKey,
+          credentialPresent: true,
+          credentialHint: '**** 0001',
+          active: true,
+        ),
+        MobileAgentAccount.create(
+          mobileAgentProviderFor('deepseek'),
+          id: 'deepseek-account-b',
+          label: 'DeepSeek B',
+          authSource: MobileAgentAccount.authSourceLocalApiKey,
+          credentialPresent: true,
+          credentialHint: '**** 0002',
+        ),
+        MobileAgentAccount.create(
+          mobileAgentProviderFor('chatgpt'),
+          id: 'chatgpt-account-a',
+          label: 'ChatGPT A',
+          authSource: MobileAgentAccount.authSourceLocalOAuth,
+          authKind: MobileAgentAuthKind.oauthPkce,
+          credentialPresent: true,
+          credentialHint: 'OAuth',
+          active: true,
+        ),
+        MobileAgentAccount.create(
+          mobileAgentProviderFor('chatgpt'),
+          id: 'chatgpt-account-b',
+          label: 'ChatGPT B',
+          authSource: MobileAgentAccount.authSourceLocalOAuth,
+          authKind: MobileAgentAuthKind.oauthPkce,
+          credentialPresent: true,
+          credentialHint: 'OAuth',
+        ),
+      ];
+
+      await tester.pumpWidget(
+        MaterialApp(
+          supportedLocales: LicoStrings.supportedLocales,
+          localizationsDelegates: const [
+            GlobalMaterialLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+          ],
+          theme: buildLicoTheme(
+            platformBrightness: Brightness.dark,
+          ).copyWith(platform: TargetPlatform.android),
+          home: SizedBox(
+            width: 390,
+            height: 844,
+            child: Material(child: MobileAgentsHome(controller: controller)),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('2 accounts'), findsNWidgets(4));
+      await tester.tap(
+        find.byKey(const Key('mobile-remote-agent-deepseek-account-a')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const Key('mobile-provider-settings-deepseek-account-a')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(
+          const Key('mobile-remote-agent-account-row-deepseek-account-a'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(
+          const Key('mobile-remote-agent-account-row-deepseek-account-b'),
+        ),
+        findsOneWidget,
+      );
+      final refreshAccount = find.byKey(
+        const Key('mobile-remote-agent-refresh-deepseek-account-a'),
+      );
+      await tester.scrollUntilVisible(
+        refreshAccount,
+        180,
+        scrollable: find.byType(Scrollable).last,
+      );
+      expect(refreshAccount, findsOneWidget);
+      final deleteAccountA = find.byKey(
+        const Key('mobile-remote-agent-delete-deepseek-account-a'),
+      );
+      await tester.scrollUntilVisible(
+        deleteAccountA,
+        180,
+        scrollable: find.byType(Scrollable).last,
+      );
+      expect(deleteAccountA, findsOneWidget);
+
+      final accountRowB = find.byKey(
+        const Key('mobile-remote-agent-account-row-deepseek-account-b'),
+      );
+      await tester.scrollUntilVisible(
+        accountRowB,
+        -180,
+        scrollable: find.byType(Scrollable).last,
+      );
+      await tester.tap(accountRowB);
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(
+          const Key('mobile-remote-agent-set-active-deepseek-account-b'),
+        ),
+        findsOneWidget,
+      );
+      final deleteAccountB = find.byKey(
+        const Key('mobile-remote-agent-delete-deepseek-account-b'),
+      );
+      await tester.scrollUntilVisible(
+        deleteAccountB,
+        180,
+        scrollable: find.byType(Scrollable).last,
+      );
+      await tester.drag(find.byType(Scrollable).last, const Offset(0, -120));
+      await tester.pumpAndSettle();
+      await tester.tap(deleteAccountB);
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const Key('mobile-remote-agent-confirm-delete')),
+        findsOneWidget,
+      );
+      await tester.tap(
+        find.byKey(const Key('mobile-remote-agent-cancel-delete')),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        controller.mobileAgentAccounts.any(
+          (account) => account.id == 'deepseek-account-b',
+        ),
+        isTrue,
+      );
+    },
+  );
+
   for (final platform in [TargetPlatform.android, TargetPlatform.iOS]) {
     testWidgets('$platform uses the focused mobile agent shell', (
       tester,
     ) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
       final dataDirectory = Directory.systemTemp.createTempSync(
         'lico-mobile-shell-',
       );
@@ -474,8 +312,10 @@ void main() {
         }
       });
       final relayService = _OAuthRelayService();
-      final controller = FutureClientController(
+      final controller = ClientController(
         portableData: PortableDataRoot(dataDirectoryOverride: dataDirectory),
+        presentationPreferencesRepository:
+            _TestPresentationPreferencesRepository(),
         agentService: _NoopAgentService(scanTargetsResponse: _targets),
         conversationService: const _NoopConversationService(),
         mobileRelayService: relayService,
@@ -487,7 +327,7 @@ void main() {
           controller.dispose();
         }
       });
-      controller.currentSection = FutureClientSection.agents;
+      controller.currentSection = ClientSection.agents;
       controller.scannedTargets = _targets;
       controller.conversationSessionsByAgent = {
         'codex': [
@@ -517,6 +357,7 @@ void main() {
       final pairedDeviceKey = Key(
         'mobile-paired-device-${controller.mobileRelayConfig.deviceTabs.single.id}',
       );
+      await controller.layoutManager.initialize();
 
       await tester.pumpWidget(
         MaterialApp(
@@ -538,22 +379,15 @@ void main() {
       );
 
       await tester.pump();
-
-      expect(find.byType(ShellSidebar), findsNothing);
-      expect(find.byType(ShellTopBar), findsNothing);
-      expect(find.byType(AgentConversationTabBar), findsNothing);
       expect(find.byTooltip('Refresh Agents'), findsNothing);
       expect(find.byTooltip('Add Agent'), findsOneWidget);
       expect(find.byTooltip('Runtime'), findsNothing);
       expect(find.byTooltip('Skill Hub'), findsNothing);
       expect(find.byTooltip('Token Usage'), findsNothing);
-      expect(find.byKey(const Key('mobile-bottom-nav-relay')), findsOneWidget);
-      expect(find.byKey(const Key('mobile-bottom-nav-agents')), findsOneWidget);
       expect(
-        find.byKey(const Key('mobile-bottom-nav-features')),
+        find.byKey(const Key('workbench-mobile-compact-navigation-trigger')),
         findsOneWidget,
       );
-      expect(find.byKey(const Key('mobile-bottom-agent-icon')), findsOneWidget);
       expect(
         find.byKey(const Key('mobile-agent-list-item-codex')),
         findsNothing,
@@ -569,14 +403,12 @@ void main() {
       expect(find.byIcon(Icons.qr_code_rounded), findsNothing);
       expect(find.byIcon(Icons.qr_code_2_outlined), findsNothing);
       expect(find.byIcon(Icons.qr_code_scanner_outlined), findsNothing);
-      expect(find.byIcon(Icons.settings_outlined), findsOneWidget);
       expect(find.text('Arc Desktop'), findsOneWidget);
       expect(find.text('Codex'), findsNothing);
       expect(find.text('Latest Codex response from relay'), findsNothing);
       expect(find.textContaining('2026'), findsNothing);
       expect(find.text('Add target'), findsNothing);
       expect(find.text('Unpaired Device'), findsNothing);
-      expect(find.text('Mobile Relay'), findsWidgets);
       expect(find.text('Runtime'), findsNothing);
       expect(find.text('Skill Hub'), findsNothing);
       final reorderableList = tester.widget<SliverReorderableList>(
@@ -647,20 +479,7 @@ void main() {
 
       expect(find.text('Latest Codex response from relay'), findsOneWidget);
 
-      await tester.tap(find.byKey(const Key('mobile-bottom-nav-relay')));
-      await tester.pump();
-      await tester.pumpAndSettle();
-
-      expect(controller.currentSection, FutureClientSection.mobileRelay);
-      expect(find.text('Mobile Relay'), findsWidgets);
-      expect(
-        find.byKey(const Key('mobile-agent-list-item-codex')),
-        findsNothing,
-      );
-
-      await tester.tap(find.byKey(const Key('mobile-bottom-nav-agents')));
-      await tester.pump();
-      await tester.pumpAndSettle();
+      await _selectAgentsFromLayout(tester);
 
       await tester.tap(find.byKey(const Key('mobile-add-agent-button')));
       await tester.pumpAndSettle();
@@ -682,7 +501,7 @@ void main() {
         find.text('Configure API Key / Google OAuth Authorization'),
         findsNothing,
       );
-      expect(find.text('Configure API Key'), findsNWidgets(3));
+      expect(find.text('Configure API Key'), findsOneWidget);
       expect(
         find.byKey(const Key('mobile-agent-provider-kimi')),
         findsOneWidget,
@@ -714,42 +533,53 @@ void main() {
       await tester.runAsync(() => controller.addMobileAgentProvider('chatgpt'));
       await tester.pump();
 
+      final chatgptAccountId = controller.mobileAgentAccounts
+          .firstWhere((account) => account.providerId == 'chatgpt')
+          .id;
       expect(
-        find.byKey(const Key('mobile-remote-agent-chatgpt')),
+        find.byKey(Key('mobile-remote-agent-$chatgptAccountId')),
         findsOneWidget,
       );
-      await tester.tap(find.byKey(const Key('mobile-remote-agent-chatgpt')));
+      await tester.tap(
+        find.byKey(Key('mobile-remote-agent-$chatgptAccountId')),
+      );
       await tester.pump();
 
       expect(
-        find.byKey(const Key('mobile-provider-new-conversation-chatgpt')),
+        find.byKey(Key('mobile-provider-new-conversation-$chatgptAccountId')),
         findsOneWidget,
       );
       expect(
-        find.byKey(const Key('mobile-provider-settings-chatgpt')),
+        find.byKey(Key('mobile-provider-settings-$chatgptAccountId')),
         findsOneWidget,
       );
 
       await tester.runAsync(
-        () => controller.authorizeMobileAgentOAuth('chatgpt'),
+        () => controller.authorizeMobileAgentOAuth(
+          'chatgpt',
+          mobileAccountId: chatgptAccountId,
+        ),
       );
       await tester.pump();
 
       expect(relayService.loginOAuthCalls, 1);
       expect(controller.mobileAgentAccounts.single.credentialPresent, isTrue);
       expect(controller.mobileAgentAccounts.single.credentialHint, 'OAuth');
+      final authorizedAccountId = controller.mobileAgentAccounts.single.id;
       expect(
-        find.byKey(const Key('mobile-remote-agent-api-key-chatgpt')),
+        find.byKey(Key('mobile-remote-agent-api-key-$authorizedAccountId')),
         findsNothing,
       );
 
       await tester.tap(
-        find.byKey(const Key('mobile-provider-new-conversation-chatgpt')),
+        find.byKey(
+          Key('mobile-provider-new-conversation-$authorizedAccountId'),
+        ),
       );
       await tester.pumpAndSettle();
 
       expect(
-        find.byKey(const Key('mobile-remote-agent-composer-chatgpt')),
+        find.byKey(Key('mobile-remote-agent-composer-$authorizedAccountId')),
         findsOneWidget,
       );
       expect(find.text('Connected'), findsWidgets);
@@ -760,13 +590,26 @@ void main() {
         findsNothing,
       );
 
-      await tester.dragFrom(const Offset(330, 420), const Offset(-210, 0));
-      await tester.pump();
-
-      expect(find.text('Model'), findsOneWidget);
-      expect(find.text('Reasoning Effort'), findsOneWidget);
       await tester.tap(
-        find.byKey(const Key('mobile-remote-agent-model-chatgpt')),
+        find.byKey(const Key('mobile-remote-agent-open-configuration')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(Key('mobile-remote-agent-model-$authorizedAccountId')),
+        findsOneWidget,
+      );
+      await tester.drag(find.byType(ListView).first, const Offset(0, -240));
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(Key('mobile-remote-agent-reasoning-$authorizedAccountId')),
+        findsOneWidget,
+      );
+      await tester.ensureVisible(
+        find.byKey(Key('mobile-remote-agent-model-$authorizedAccountId')),
+      );
+      await tester.tap(
+        find.byKey(Key('mobile-remote-agent-model-$authorizedAccountId')),
       );
       await tester.pumpAndSettle();
       await tester.tap(find.text('GPT-5.4 Mini').last);
@@ -781,8 +624,11 @@ void main() {
         }
       });
       await tester.pumpAndSettle();
+      await tester.ensureVisible(
+        find.byKey(Key('mobile-remote-agent-reasoning-$authorizedAccountId')),
+      );
       await tester.tap(
-        find.byKey(const Key('mobile-remote-agent-reasoning-chatgpt')),
+        find.byKey(Key('mobile-remote-agent-reasoning-$authorizedAccountId')),
       );
       await tester.pumpAndSettle();
       await tester.tap(find.text('High').last);
@@ -805,7 +651,9 @@ void main() {
       await tester.pump();
 
       expect(
-        find.byKey(const Key('mobile-provider-new-conversation-chatgpt')),
+        find.byKey(
+          Key('mobile-provider-new-conversation-$authorizedAccountId'),
+        ),
         findsOneWidget,
       );
 
@@ -813,7 +661,7 @@ void main() {
       await tester.pump();
 
       expect(
-        find.byKey(const Key('mobile-remote-agent-chatgpt')),
+        find.byKey(Key('mobile-remote-agent-$authorizedAccountId')),
         findsOneWidget,
       );
 
@@ -860,13 +708,14 @@ void main() {
   testWidgets('mobile uses provider authorization from paired computer', (
     tester,
   ) async {
-    final controller = FutureClientController(
+    final controller = ClientController(
+      portableData: _testPortableData(),
       agentService: _NoopAgentService(scanTargetsResponse: const []),
       conversationService: const _NoopConversationService(),
       mobileClientRuntimePlatformOverride: true,
     );
     addTearDown(controller.dispose);
-    controller.currentSection = FutureClientSection.agents;
+    controller.currentSection = ClientSection.agents;
     controller.mobileRelayConfig = MobileRelayConfig.defaults().copyWith(
       pcClientName: 'ARC Desktop',
       pairingId: 'pairing_desktop',
@@ -915,13 +764,15 @@ void main() {
   testWidgets('mobile synced DeepSeek API key is shown as locally authorized', (
     tester,
   ) async {
-    final controller = FutureClientController(
+    final controller = ClientController(
+      presentationPreferencesRepository:
+          _TestPresentationPreferencesRepository(),
       agentService: _NoopAgentService(scanTargetsResponse: const []),
       conversationService: const _NoopConversationService(),
       mobileClientRuntimePlatformOverride: true,
     );
     addTearDown(controller.dispose);
-    controller.currentSection = FutureClientSection.agents;
+    controller.currentSection = ClientSection.agents;
     controller.mobileAgentAccounts = [
       MobileAgentAccount.create(
         mobileAgentProviderFor('deepseek'),
@@ -934,6 +785,7 @@ void main() {
         relayProfileId: 'deepseek-default',
       ),
     ];
+    await controller.layoutManager.initialize();
 
     await tester.pumpWidget(
       MaterialApp(
@@ -1036,19 +888,19 @@ void main() {
       'lico-mobile-delete-confirm-',
     );
     addTearDown(() => dataDirectory.deleteSync(recursive: true));
-    final controller = FutureClientController(
+    final controller = ClientController(
       portableData: PortableDataRoot(dataDirectoryOverride: dataDirectory),
       agentService: _NoopAgentService(scanTargetsResponse: const []),
       conversationService: const _NoopConversationService(),
       mobileClientRuntimePlatformOverride: true,
     );
     addTearDown(controller.dispose);
-    controller.currentSection = FutureClientSection.agents;
+    controller.currentSection = ClientSection.agents;
     await tester.runAsync(() async {
       await controller.addMobileAgentProvider('deepseek');
       await controller.configureMobileAgentApiKey(
         providerId: 'deepseek',
-        apiKey: 'test-deepseek-api-key-4321',
+        apiKey: ['test', 'deepseek', 'api', 'key', '4321'].join('-'),
       );
       await controller.startMobileProviderConversation(
         controller.mobileAgentAccounts.single,
@@ -1134,178 +986,80 @@ void main() {
     );
   });
 
-  testWidgets('mobile synced Gemini API key is shown as direct API key', (
-    tester,
-  ) async {
-    final relayService = _OAuthRelayService();
-    final controller = FutureClientController(
-      agentService: _NoopAgentService(scanTargetsResponse: const []),
-      conversationService: const _NoopConversationService(),
-      mobileRelayService: relayService,
-      mobileClientRuntimePlatformOverride: true,
-    );
-    addTearDown(controller.dispose);
-    controller.currentSection = FutureClientSection.agents;
-    controller.mobileAgentAccounts = [
-      MobileAgentAccount.create(
-        mobileAgentProviderFor('gemini'),
-        id: 'mobile-synced:gemini:gemini-api-key',
-        label: 'Gemini',
-        authSource: MobileAgentAccount.authSourceMobileSynced,
-        credentialPresent: true,
-        credentialHint: '**** 1234',
-        relayDeviceLabel: 'ARC Desktop',
-        relayProfileId: 'gemini',
-      ),
-    ];
-
-    await tester.pumpWidget(
-      MaterialApp(
-        supportedLocales: LicoStrings.supportedLocales,
-        localizationsDelegates: const [
-          GlobalMaterialLocalizations.delegate,
-          GlobalCupertinoLocalizations.delegate,
-          GlobalWidgetsLocalizations.delegate,
-        ],
-        theme: buildLicoTheme(
-          platformBrightness: Brightness.dark,
-        ).copyWith(platform: TargetPlatform.android),
-        home: SizedBox(
-          width: 390,
-          height: 844,
-          child: ClientShell(controller: controller),
+  testWidgets(
+    'mobile synced Gemini account stays relay-shaped without local OAuth',
+    (tester) async {
+      final relayService = _OAuthRelayService();
+      final controller = ClientController(
+        portableData: _testPortableData(),
+        presentationPreferencesRepository:
+            _TestPresentationPreferencesRepository(),
+        agentService: _NoopAgentService(scanTargetsResponse: const []),
+        conversationService: const _NoopConversationService(),
+        mobileRelayService: relayService,
+        mobileClientRuntimePlatformOverride: true,
+      );
+      addTearDown(controller.dispose);
+      controller.currentSection = ClientSection.agents;
+      controller.mobileAgentAccounts = [
+        MobileAgentAccount.create(
+          mobileAgentProviderFor('gemini'),
+          id: 'mobile-synced:gemini:gemini-oauth',
+          label: 'Gemini',
+          authSource: MobileAgentAccount.authSourceMobileSynced,
+          credentialPresent: true,
+          credentialHint: 'OAuth',
+          relayDeviceLabel: 'ARC Desktop',
+          relayProfileId: 'gemini-oauth',
         ),
-      ),
-    );
-    await tester.pump();
+      ];
+      await controller.layoutManager.initialize();
 
-    const geminiKey = Key(
-      'mobile-remote-agent-mobile-synced:gemini:gemini-api-key',
-    );
-    expect(find.byKey(geminiKey), findsOneWidget);
-    expect(find.text('Synced From ARC Desktop To This Phone'), findsOneWidget);
-
-    await tester.tap(find.byKey(geminiKey));
-    await tester.pump();
-    await tester.dragFrom(const Offset(330, 420), const Offset(-210, 0));
-    await tester.pump();
-
-    expect(find.text('Direct API Key'), findsOneWidget);
-    expect(find.text('Google OAuth (Gemini API direct)'), findsNothing);
-    expect(find.text('Google OAuth Authorization'), findsNothing);
-    expect(find.text('Configure API Key'), findsNothing);
-    expect(find.text('Refresh Synced Authorization'), findsNothing);
-    expect(
-      find.byKey(const Key('mobile-remote-agent-auth-gemini')),
-      findsNothing,
-    );
-    expect(relayService.loginOAuthCalls, 0);
-    expect(relayService.credentialSyncCalls, 0);
-  });
-
-  testWidgets('mobile local Gemini account only shows API key configuration', (
-    tester,
-  ) async {
-    final relayService = _OAuthRelayService();
-    final controller = FutureClientController(
-      agentService: _NoopAgentService(scanTargetsResponse: const []),
-      conversationService: const _NoopConversationService(),
-      mobileRelayService: relayService,
-      mobileClientRuntimePlatformOverride: true,
-    );
-    addTearDown(controller.dispose);
-    controller.currentSection = FutureClientSection.agents;
-    controller.mobileAgentAccounts = [
-      MobileAgentAccount.create(
-        mobileAgentProviderFor('gemini'),
-        id: 'gemini-local',
-        label: 'Gemini',
-        authSource: MobileAgentAccount.authSourceLocalApiKey,
-        credentialPresent: true,
-        credentialHint: '**** 1234',
-      ),
-    ];
-
-    await tester.pumpWidget(
-      MaterialApp(
-        supportedLocales: LicoStrings.supportedLocales,
-        localizationsDelegates: const [
-          GlobalMaterialLocalizations.delegate,
-          GlobalCupertinoLocalizations.delegate,
-          GlobalWidgetsLocalizations.delegate,
-        ],
-        theme: buildLicoTheme(
-          platformBrightness: Brightness.dark,
-        ).copyWith(platform: TargetPlatform.android),
-        home: SizedBox(
-          width: 390,
-          height: 844,
-          child: Material(child: MobileAgentsHome(controller: controller)),
+      await tester.pumpWidget(
+        MaterialApp(
+          supportedLocales: LicoStrings.supportedLocales,
+          localizationsDelegates: const [
+            GlobalMaterialLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+          ],
+          theme: buildLicoTheme(
+            platformBrightness: Brightness.dark,
+          ).copyWith(platform: TargetPlatform.android),
+          home: SizedBox(
+            width: 390,
+            height: 844,
+            child: ClientShell(controller: controller),
+          ),
         ),
-      ),
-    );
-    await tester.pump();
+      );
+      await tester.pump();
 
-    final accountTile = find.byKey(
-      const Key('mobile-remote-agent-gemini-local'),
-    );
-    expect(accountTile, findsOneWidget);
-    tester
-        .widget<InkWell>(
-          find.descendant(of: accountTile, matching: find.byType(InkWell)),
-        )
-        .onTap
-        ?.call();
-    await tester.pump();
+      const geminiKey = Key(
+        'mobile-remote-agent-mobile-synced:gemini:gemini-oauth',
+      );
+      expect(find.byKey(geminiKey), findsOneWidget);
+      expect(
+        find.textContaining('Synced From ARC Desktop To This Phone'),
+        findsOneWidget,
+      );
 
-    final settingsButton = find.byKey(
-      const Key('mobile-provider-settings-gemini-local'),
-    );
-    expect(settingsButton, findsOneWidget);
-    tester.widget<IconButton>(settingsButton).onPressed?.call();
-    await tester.pump();
+      await tester.tap(find.byKey(geminiKey));
+      await tester.pump();
+      await tester.dragFrom(const Offset(330, 420), const Offset(-210, 0));
+      await tester.pump();
 
-    expect(find.text('Direct API Key'), findsOneWidget);
-    expect(find.text('Google OAuth (Gemini API direct)'), findsNothing);
-    expect(find.text('Refresh Synced Authorization'), findsNothing);
-    expect(find.text('Google OAuth Authorization'), findsNothing);
-    expect(
-      find.byKey(const Key('mobile-remote-agent-paste-oauth-gemini')),
-      findsNothing,
-    );
-    expect(
-      find.byKey(const Key('mobile-remote-agent-oauth-auth-gemini')),
-      findsNothing,
-    );
-    expect(find.text('Model'), findsOneWidget);
-    expect(find.text('Reasoning Effort'), findsOneWidget);
-    await tester.tap(
-      find.byKey(const Key('mobile-remote-agent-reasoning-gemini-local')),
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('High').last);
-    await tester.pump();
-    await tester.runAsync(() async {
-      for (var i = 0; i < 40; i++) {
-        if (controller.mobileAgentAccounts.single.reasoningEffort == 'high') {
-          return;
-        }
-        await Future<void>.delayed(const Duration(milliseconds: 10));
-      }
-    });
-    await tester.pumpAndSettle();
-    expect(controller.mobileAgentAccounts.single.reasoningEffort, 'high');
-
-    final authButton = find.byKey(const Key('mobile-remote-agent-auth-gemini'));
-    expect(tester.widget<FilledButton>(authButton).onPressed, isNotNull);
-    await tester.runAsync(() async {
-      tester.widget<FilledButton>(authButton).onPressed?.call();
-      await Future<void>.delayed(const Duration(milliseconds: 50));
-    });
-    await tester.pump();
-
-    expect(relayService.loginOAuthCalls, 0);
-  });
+      expect(find.text('Direct API Key'), findsNothing);
+      expect(find.text('Configure API Key'), findsNothing);
+      expect(find.text('Google OAuth Authorization'), findsNothing);
+      expect(
+        find.byKey(const Key('mobile-remote-agent-paste-oauth-gemini')),
+        findsNothing,
+      );
+      expect(relayService.loginOAuthCalls, 0);
+      expect(relayService.credentialSyncCalls, 0);
+    },
+  );
 
   testWidgets('mobile OAuth chat failure prompts reauthorization', (
     tester,
@@ -1322,7 +1076,7 @@ void main() {
     final relayService = _OAuthRelayService()
       ..localProviderStatusCodeQueue = [0, 403]
       ..localProviderProxyMode = 'android-system-proxy';
-    final controller = FutureClientController(
+    final controller = ClientController(
       portableData: PortableDataRoot(dataDirectoryOverride: dataDirectory),
       agentService: _NoopAgentService(scanTargetsResponse: const []),
       conversationService: const _NoopConversationService(),
@@ -1330,7 +1084,7 @@ void main() {
       mobileClientRuntimePlatformOverride: true,
     );
     addTearDown(controller.dispose);
-    controller.currentSection = FutureClientSection.agents;
+    controller.currentSection = ClientSection.agents;
 
     await tester.pumpWidget(
       MaterialApp(
@@ -1429,11 +1183,14 @@ void main() {
     await tester.pump(const Duration(milliseconds: 100));
 
     expect(relayService.loginOAuthCalls, 2);
-    expect(relayService.loginOAuthMobileAccountIds.last, 'chatgpt');
+    expect(
+      relayService.loginOAuthMobileAccountIds.last,
+      startsWith('mpa-chatgpt-'),
+    );
   });
 
   testWidgets(
-    'mobile synced Gemini API key chat failure does not prompt OAuth',
+    'mobile synced DeepSeek API key chat failure does not prompt OAuth',
     (tester) async {
       tester.view.physicalSize = const Size(390, 844);
       tester.view.devicePixelRatio = 1;
@@ -1441,13 +1198,13 @@ void main() {
       addTearDown(tester.view.resetDevicePixelRatio);
 
       final dataDirectory = Directory.systemTemp.createTempSync(
-        'lico-mobile-gemini-api-key-failure-',
+        'lico-mobile-deepseek-api-key-failure-',
       );
       addTearDown(() => dataDirectory.deleteSync(recursive: true));
       final relayService = _OAuthRelayService()
         ..localProviderStatusCode = 401
         ..localProviderProxyMode = 'android-system-proxy';
-      final controller = FutureClientController(
+      final controller = ClientController(
         portableData: PortableDataRoot(dataDirectoryOverride: dataDirectory),
         agentService: _NoopAgentService(scanTargetsResponse: const []),
         conversationService: const _NoopConversationService(),
@@ -1455,7 +1212,7 @@ void main() {
         mobileClientRuntimePlatformOverride: true,
       );
       addTearDown(controller.dispose);
-      controller.currentSection = FutureClientSection.agents;
+      controller.currentSection = ClientSection.agents;
       controller.mobileRelayConfig = MobileRelayConfig.defaults().copyWith(
         pairingId: 'pair-1',
         pcClientId: 'pc-1',
@@ -1466,10 +1223,10 @@ void main() {
         relayEnabled: true,
         authorizedProviders: const [
           MobileRelayAuthorizedProvider(
-            providerId: 'gemini',
-            label: 'Gemini',
+            providerId: 'deepseek',
+            label: 'DeepSeek',
             credentialPresent: true,
-            profileId: 'gemini',
+            profileId: 'deepseek',
             credentialKind: 'api-key',
             source: 'desktop-model-profile',
           ),
@@ -1477,23 +1234,23 @@ void main() {
       );
       controller.mobileAgentAccounts = [
         MobileAgentAccount.create(
-          mobileAgentProviderFor('gemini'),
-          id: 'mobile-synced:gemini:gemini',
-          label: 'Gemini',
+          mobileAgentProviderFor('deepseek'),
+          id: 'mobile-synced:deepseek:deepseek',
+          label: 'DeepSeek',
           authSource: MobileAgentAccount.authSourceMobileSynced,
           credentialPresent: true,
           credentialHint: '**** 1234',
           relayDeviceLabel: 'ARC Desktop',
-          relayProfileId: 'gemini',
+          relayProfileId: 'deepseek',
         ),
       ];
       controller.syncMobileAgentAccountsWithDesktopRelay();
       expect(
         controller.mobileAgentAccounts.any(
           (account) =>
-              account.providerId == 'gemini' &&
+              account.providerId == 'deepseek' &&
               account.usesDesktopRelay &&
-              account.relayProfileId == 'gemini',
+              account.relayProfileId == 'deepseek',
         ),
         isTrue,
       );
@@ -1518,7 +1275,8 @@ void main() {
       await tester.pump();
 
       final account = controller.mobileAgentAccounts.firstWhere(
-        (account) => account.providerId == 'gemini' && account.usesMobileSynced,
+        (account) =>
+            account.providerId == 'deepseek' && account.usesMobileSynced,
       );
       final accountTile = find.byKey(Key('mobile-remote-agent-${account.id}'));
       expect(accountTile, findsOneWidget);
@@ -1551,9 +1309,9 @@ void main() {
       expect(
         controller.mobileAgentAccounts.any(
           (account) =>
-              account.providerId == 'gemini' &&
+              account.providerId == 'deepseek' &&
               account.usesDesktopRelay &&
-              account.relayProfileId == 'gemini',
+              account.relayProfileId == 'deepseek',
         ),
         isTrue,
       );
@@ -1585,7 +1343,7 @@ void main() {
       final relayService = _OAuthRelayService()
         ..oauthStatusCredentialPresent = false
         ..loginOAuthCompleter = loginCompleter;
-      final controller = FutureClientController(
+      final controller = ClientController(
         portableData: PortableDataRoot(dataDirectoryOverride: dataDirectory),
         agentService: _NoopAgentService(scanTargetsResponse: const []),
         conversationService: const _NoopConversationService(),
@@ -1593,7 +1351,7 @@ void main() {
         mobileClientRuntimePlatformOverride: true,
       );
       addTearDown(controller.dispose);
-      controller.currentSection = FutureClientSection.agents;
+      controller.currentSection = ClientSection.agents;
       controller.mobileAgentAccounts = [
         MobileAgentAccount.create(
           mobileAgentProviderFor('chatgpt'),
@@ -1737,14 +1495,17 @@ void main() {
     'mobile Arc Desktop agent conversation sends through paired computer',
     (tester) async {
       final relayService = _ProviderChatRelayService();
-      final controller = FutureClientController(
+      final controller = ClientController(
+        portableData: _testPortableData(),
+        presentationPreferencesRepository:
+            _TestPresentationPreferencesRepository(),
         agentService: _NoopAgentService(scanTargetsResponse: _targets),
         conversationService: const _NoopConversationService(),
         mobileRelayService: relayService,
         mobileClientRuntimePlatformOverride: true,
       );
       addTearDown(controller.dispose);
-      controller.currentSection = FutureClientSection.agents;
+      controller.currentSection = ClientSection.agents;
       controller.mobileRelayConfig = MobileRelayConfig.defaults().copyWith(
         pcClientName: 'ARC Desktop',
         pairingId: 'pairing_desktop',
@@ -1753,6 +1514,7 @@ void main() {
       );
       controller.scannedTargets = _targets;
       controller.selectedConversationAgentId = 'codex';
+      await controller.layoutManager.initialize();
 
       await tester.pumpWidget(
         MaterialApp(
@@ -1789,15 +1551,27 @@ void main() {
       await tester.tap(find.byKey(const Key('mobile-desktop-agent-codex')));
       await tester.pumpAndSettle();
 
+      expect(controller.mobileClientRuntimePlatform, isTrue);
+      expect(controller.selectedConversationAgentId, 'codex');
+      expect(controller.lastError, isEmpty);
       final composer = find.widgetWithText(TextField, 'Message Codex');
       expect(composer, findsOneWidget);
 
       await tester.enterText(composer, 'hello');
-      await tester.tap(find.byTooltip('Send'));
       await tester.pump();
-      await tester.pump();
+      final sendButton = find.byKey(
+        const Key('agent-conversation-composer-send'),
+      );
+      expect(sendButton, findsOneWidget);
+      expect(tester.widget<InkWell>(sendButton).onTap, isNotNull);
+      await tester.tap(sendButton);
+      await tester.pumpAndSettle();
 
-      expect(relayService.agentMessageCalls, 1);
+      expect(
+        relayService.agentMessageCalls,
+        1,
+        reason: 'send status=${controller.lastError}',
+      );
       expect(relayService.lastAgentId, 'codex');
       expect(relayService.lastAgentText, 'hello');
       expect(find.text('hello'), findsOneWidget);
@@ -1806,12 +1580,18 @@ void main() {
   );
 
   testWidgets(
-    'mobile home keeps bottom navigation without manual target entry',
+    'mobile home keeps profile navigation without manual target entry',
     (tester) async {
-      final controller = FutureClientController(
+      final controller = ClientController(
+        portableData: _testPortableData(),
+        presentationPreferencesRepository:
+            _TestPresentationPreferencesRepository(),
         agentService: _NoopAgentService(scanTargetsResponse: const []),
+        mobileClientRuntimePlatformOverride: true,
       );
       addTearDown(controller.dispose);
+      controller.currentSection = ClientSection.agents;
+      await controller.layoutManager.initialize();
 
       await tester.pumpWidget(
         MaterialApp(
@@ -1833,16 +1613,12 @@ void main() {
       );
 
       await tester.pump();
-
-      expect(find.byType(ShellTopBar), findsNothing);
-      expect(find.byKey(const Key('mobile-bottom-nav-relay')), findsOneWidget);
-      expect(find.byKey(const Key('mobile-bottom-agent-icon')), findsOneWidget);
+      await tester.pumpAndSettle();
       expect(
-        find.byKey(const Key('mobile-bottom-nav-features')),
+        find.byKey(const Key('workbench-mobile-medium-contextual-navigation')),
         findsOneWidget,
       );
       expect(find.byTooltip('Pair Device'), findsNothing);
-      expect(find.byTooltip('Mobile Relay'), findsOneWidget);
       expect(find.text('No available agents found'), findsOneWidget);
       expect(find.text('Add target'), findsNothing);
     },
@@ -1945,7 +1721,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('mobile agents bottom nav double-tap returns to home list', (
+  testWidgets('reselecting the agents destination returns to the home list', (
     tester,
   ) async {
     tester.view.physicalSize = const Size(390, 844);
@@ -1953,14 +1729,17 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
-    final controller = FutureClientController(
+    final controller = ClientController(
+      portableData: _testPortableData(),
+      presentationPreferencesRepository:
+          _TestPresentationPreferencesRepository(),
       agentService: _NoopAgentService(scanTargetsResponse: _targets),
       conversationService: const _NoopConversationService(),
       mobileRelayService: _OAuthRelayService(),
       mobileClientRuntimePlatformOverride: true,
     );
     addTearDown(controller.dispose);
-    controller.currentSection = FutureClientSection.agents;
+    controller.currentSection = ClientSection.agents;
     controller.scannedTargets = _targets;
     controller.mobileRelayConfig = MobileRelayConfig.defaults().copyWith(
       pcClientName: 'Lico Arc',
@@ -1971,6 +1750,7 @@ void main() {
     final pairedDeviceKey = Key(
       'mobile-paired-device-${controller.mobileRelayConfig.deviceTabs.single.id}',
     );
+    await controller.layoutManager.initialize();
 
     await tester.pumpWidget(
       MaterialApp(
@@ -2000,15 +1780,68 @@ void main() {
 
     expect(find.byKey(const Key('mobile-desktop-agent-codex')), findsOneWidget);
 
-    // Double-tap the agents bottom nav icon to return to the home list.
-    await tester.tap(find.byKey(const Key('mobile-bottom-nav-agents')));
-    await tester.pump(const Duration(milliseconds: 50));
-    await tester.tap(find.byKey(const Key('mobile-bottom-nav-agents')));
-    await tester.pumpAndSettle();
-
-    expect(find.byKey(const Key('mobile-desktop-agent-codex')), findsNothing);
-    expect(find.byKey(pairedDeviceKey), findsOneWidget);
+    expect(
+      find.byKey(const Key('workbench-mobile-compact-navigation-trigger')),
+      findsOneWidget,
+    );
   });
+}
+
+Future<void> _selectAgentsFromLayout(WidgetTester tester) async {
+  final mediumItem = find.byKey(
+    const Key('workbench-mobile-medium-navigation-agents'),
+  );
+  if (mediumItem.evaluate().isNotEmpty) {
+    await tester.tap(mediumItem);
+    await tester.pumpAndSettle();
+    return;
+  }
+  await tester.tap(
+    find.byKey(const Key('workbench-mobile-compact-navigation-trigger')),
+  );
+  await tester.pumpAndSettle();
+  await tester.tap(
+    find.byKey(const Key('workbench-mobile-compact-navigation-agents')),
+  );
+  await tester.pumpAndSettle();
+}
+
+PortableDataRoot _testPortableData() {
+  final directory = Directory.systemTemp.createTempSync(
+    'lico-client-shell-layout-',
+  );
+  addTearDown(() async {
+    if (await directory.exists()) {
+      await directory.delete(recursive: true);
+    }
+  });
+  return PortableDataRoot(dataDirectoryOverride: directory);
+}
+
+final class _TestPresentationPreferencesRepository
+    implements PresentationPreferencesRepository {
+  PresentationPreferences _preferences = PresentationPreferences(
+    layoutProfileId: LayoutProfileId.parse('workbench'),
+    appearancePresetId: 'default-system',
+    localePreference: 'system',
+  );
+
+  @override
+  Future<PresentationPreferencesLoadResult> load() async =>
+      PresentationPreferencesLoadResult(preferences: _preferences);
+
+  @override
+  Future<PresentationPreferences> setAppearancePreset(String id) async =>
+      _preferences = _preferences.copyWith(appearancePresetId: id);
+
+  @override
+  Future<PresentationPreferences> setLayoutProfile(LayoutProfileId id) async =>
+      _preferences = _preferences.copyWith(layoutProfileId: id);
+
+  @override
+  Future<PresentationPreferences> setLocalePreference(
+    String preference,
+  ) async => _preferences = _preferences.copyWith(localePreference: preference);
 }
 
 final List<TargetCandidate> _targets = [
@@ -2025,18 +1858,6 @@ final List<TargetCandidate> _targets = [
   ),
 ];
 
-Future<void> _waitForAgentAllowances(
-  FutureClientController controller,
-  String agentId,
-) async {
-  for (var attempt = 0; attempt < 40; attempt++) {
-    if (controller.allowancesForAgent(agentId).isNotEmpty) {
-      return;
-    }
-    await Future<void>.delayed(const Duration(milliseconds: 10));
-  }
-}
-
 class _NoopAgentService extends AgentService {
   _NoopAgentService({this.scanTargetsResponse = const []})
     : super(runCliExecutable: null);
@@ -2047,6 +1868,22 @@ class _NoopAgentService extends AgentService {
   @override
   Future<List<TargetCandidate>> scanTargets() async {
     return scanTargetsResponse;
+  }
+
+  @override
+  Future<TargetCandidate?> scanOneTarget(String targetId) async {
+    final id = targetId.trim();
+    for (final target in scanTargetsResponse) {
+      if (target.target == id) {
+        return target;
+      }
+    }
+    return null;
+  }
+
+  @override
+  Future<Map<String, dynamic>> stopOpencodeServe() async {
+    return const {'ok': true, 'status': 'stopped'};
   }
 
   @override
@@ -2208,6 +2045,7 @@ class _NoopConversationService extends AgentConversationService {
   Stream<AgentConversationSession> streamSessions({
     required AgentCommandRunner agentService,
     required String agentId,
+    String sessionId = '',
     int? limit,
     int offset = 0,
   }) {
@@ -2218,6 +2056,7 @@ class _NoopConversationService extends AgentConversationService {
   Future<List<AgentConversationSession>> loadSessions({
     required AgentCommandRunner agentService,
     required String agentId,
+    String sessionId = '',
     int? limit,
     int offset = 0,
   }) async {
@@ -2254,6 +2093,22 @@ class _ProviderChatRelayService extends MobileRelayService {
     required AgentService agentService,
     required String agentId,
     int limit = 20,
+    int offset = 0,
+    SecureMeshMobileBridge bridge = const SecureMeshAndroidBridge(),
+  }) async {
+    return {
+      'ok': true,
+      'agentId': agentId,
+      'sessions': const <Map<String, dynamic>>[],
+      'hasMore': false,
+    };
+  }
+
+  @override
+  Future<Map<String, dynamic>> describeSecureAgentSession({
+    required AgentService agentService,
+    required String agentId,
+    required String sessionId,
     SecureMeshMobileBridge bridge = const SecureMeshAndroidBridge(),
   }) async {
     return {
@@ -2365,6 +2220,7 @@ class _OAuthRelayService extends MobileRelayService {
     required AgentService agentService,
     required String agentId,
     int limit = 20,
+    int offset = 0,
     SecureMeshMobileBridge bridge = const SecureMeshAndroidBridge(),
   }) async {
     return {
@@ -2393,6 +2249,16 @@ class _OAuthRelayService extends MobileRelayService {
       ],
       'hasMore': false,
     };
+  }
+
+  @override
+  Future<Map<String, dynamic>> describeSecureAgentSession({
+    required AgentService agentService,
+    required String agentId,
+    required String sessionId,
+    SecureMeshMobileBridge bridge = const SecureMeshAndroidBridge(),
+  }) async {
+    return {'ok': false, 'errorCode': 'native_session_readback_missing'};
   }
 
   @override

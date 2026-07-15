@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_client/src/contracts/presentation/layout_environment.dart';
 import 'package:flutter_client/src/contracts/presentation/layout_profile.dart';
 import 'package:flutter_client/src/contracts/presentation/layout_selection.dart';
@@ -7,15 +8,20 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   test('layout profile identities are semantic, ordered, and safe', () {
-    expect(LayoutProfileId.parse('workbench'), LayoutProfileId.workbench);
-    expect(LayoutProfileId.parse('studio'), LayoutProfileId.studio);
-    expect([LayoutProfileId.studio, LayoutProfileId.workbench]..sort(), [
-      LayoutProfileId.studio,
-      LayoutProfileId.workbench,
-    ]);
+    expect(
+      LayoutProfileId.parse('workbench'),
+      LayoutProfileId.parse('workbench'),
+    );
+    expect(LayoutProfileId.parse('studio'), LayoutProfileId.parse('studio'));
+    expect(LayoutProfileId.parse('classic'), LayoutProfileId.parse('classic'));
+    expect(
+      [LayoutProfileId.parse('studio'), LayoutProfileId.parse('workbench')]
+        ..sort(),
+      [LayoutProfileId.parse('studio'), LayoutProfileId.parse('workbench')],
+    );
 
     for (final invalid in [
-      'layout-1',
+      'numeric-2',
       'legacy',
       'workbench-v-two',
       'studio-compatibility',
@@ -32,25 +38,38 @@ void main() {
     }
   });
 
-  test('profile descriptor uses validated localization metadata keys', () {
+  test('platform preferred defaults map Native vs Lico Arc fallback', () {
+    expect(
+      LayoutProfileDefaults.preferredForPlatform(TargetPlatform.macOS),
+      LayoutProfileId.parse('studio'),
+    );
+    expect(
+      LayoutProfileDefaults.preferredForPlatform(TargetPlatform.windows),
+      LayoutProfileId.parse('studio'),
+    );
+    expect(
+      LayoutProfileDefaults.preferredForPlatform(TargetPlatform.linux),
+      LayoutProfileId.parse('workbench'),
+    );
+  });
+
+  test('profile descriptor owns validated localized copy', () {
     final descriptor = LayoutProfileDescriptor(
-      id: LayoutProfileId.workbench,
-      labelKey: 'layout.profile.workbench.label',
-      descriptionKey: 'layout.profile.workbench.description',
+      id: LayoutProfileId.parse('workbench'),
+      label: LayoutProfileCopy(english: 'Workbench', chinese: '工作台'),
+      description: LayoutProfileCopy(
+        english: 'Workbench layout',
+        chinese: '工作台布局',
+      ),
       styleIdentity: 'spacious-card-workbench',
       isDefault: true,
     );
 
-    expect(descriptor.labelKey, 'layout.profile.workbench.label');
+    expect(descriptor.label.resolve('en'), 'Workbench');
+    expect(descriptor.label.resolve('zh'), '工作台');
     expect(descriptor.revision, 1);
     expect(
-      () => LayoutProfileDescriptor(
-        id: LayoutProfileId.workbench,
-        labelKey: 'User visible label',
-        descriptionKey: 'layout.profile.workbench.description',
-        styleIdentity: 'spacious-card-workbench',
-        isDefault: true,
-      ),
+      () => LayoutProfileCopy(english: 'Valid', chinese: '\n'),
       throwsA(isA<FormatException>()),
     );
   });
@@ -132,13 +151,13 @@ void main() {
   });
 
   test('surface is part of deterministic variant identity and ordering', () {
-    const desktopMedium = LayoutVariantKey(
-      profileId: LayoutProfileId.workbench,
+    final desktopMedium = LayoutVariantKey(
+      profileId: LayoutProfileId.parse('workbench'),
       surface: LayoutRuntimeSurface.desktop,
       viewport: LayoutViewportClass.medium,
     );
-    const mobileMedium = LayoutVariantKey(
-      profileId: LayoutProfileId.workbench,
+    final mobileMedium = LayoutVariantKey(
+      profileId: LayoutProfileId.parse('workbench'),
       surface: LayoutRuntimeSurface.mobile,
       viewport: LayoutViewportClass.medium,
     );
@@ -152,19 +171,22 @@ void main() {
 
   test('selection state rejects impossible candidate and error states', () {
     final previewing = LayoutSelectionState(
-      committedId: LayoutProfileId.workbench,
-      effectiveId: LayoutProfileId.studio,
-      previewId: LayoutProfileId.studio,
+      committedId: LayoutProfileId.parse('workbench'),
+      effectiveId: LayoutProfileId.parse('studio'),
+      previewId: LayoutProfileId.parse('studio'),
       status: LayoutSelectionStatus.previewing,
       surface: LayoutRuntimeSurface.desktop,
       viewport: LayoutViewportClass.medium,
       operationEpoch: 1,
     );
-    expect(previewing.effectiveVariantKey.profileId, LayoutProfileId.studio);
+    expect(
+      previewing.effectiveVariantKey.profileId,
+      LayoutProfileId.parse('studio'),
+    );
     expect(
       () => LayoutSelectionState(
-        committedId: LayoutProfileId.workbench,
-        effectiveId: LayoutProfileId.studio,
+        committedId: LayoutProfileId.parse('workbench'),
+        effectiveId: LayoutProfileId.parse('studio'),
         status: LayoutSelectionStatus.stable,
         surface: LayoutRuntimeSurface.desktop,
         viewport: LayoutViewportClass.medium,
@@ -174,8 +196,8 @@ void main() {
     );
     expect(
       () => LayoutSelectionState(
-        committedId: LayoutProfileId.workbench,
-        effectiveId: LayoutProfileId.workbench,
+        committedId: LayoutProfileId.parse('workbench'),
+        effectiveId: LayoutProfileId.parse('workbench'),
         status: LayoutSelectionStatus.error,
         surface: LayoutRuntimeSurface.desktop,
         viewport: LayoutViewportClass.medium,
@@ -189,7 +211,7 @@ void main() {
     'presentation preferences persist only semantic presentation fields',
     () {
       final fallback = PresentationPreferences(
-        layoutProfileId: LayoutProfileId.workbench,
+        layoutProfileId: LayoutProfileId.parse('workbench'),
         appearancePresetId: 'default-system',
         localePreference: 'system',
       );
@@ -198,12 +220,12 @@ void main() {
         'layoutProfileId': 'studio',
         'appearancePresetId': 'dark',
         'localePreference': 'zh',
-        'shellLayoutId': 'retired-value',
+        'transientPanelId': 'runtime-only-value',
         'surface': 'mobile',
         'viewport': 'compact',
       }, fallback: fallback);
 
-      expect(decoded.layoutProfileId, LayoutProfileId.studio);
+      expect(decoded.layoutProfileId, LayoutProfileId.parse('studio'));
       expect(decoded.toJson(), {
         'schemaVersion': 1,
         'layoutProfileId': 'studio',
@@ -212,7 +234,7 @@ void main() {
       });
       expect(decoded.toJson(), isNot(contains('surface')));
       expect(decoded.toJson(), isNot(contains('viewport')));
-      expect(decoded.toJson(), isNot(contains('shellLayoutId')));
+      expect(decoded.toJson(), isNot(contains('transientPanelId')));
     },
   );
 }

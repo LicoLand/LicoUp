@@ -75,12 +75,16 @@ class FidelityCheckResult {
     required this.passed,
     required this.checkedSections,
     required this.missingSections,
+    this.groundedSections = const [],
+    this.uncoveredSections = const [],
     this.message = '',
   });
 
   final bool passed;
   final List<String> checkedSections;
   final List<String> missingSections;
+  final List<String> groundedSections;
+  final List<String> uncoveredSections;
   final String message;
 
   Map<String, dynamic> toJson() {
@@ -88,6 +92,8 @@ class FidelityCheckResult {
       'passed': passed,
       'checkedSections': checkedSections,
       'missingSections': missingSections,
+      'groundedSections': groundedSections,
+      'uncoveredSections': uncoveredSections,
       'message': message,
     };
   }
@@ -211,13 +217,133 @@ class DistillationAuditRecord {
 /// One message (or summary line) supplied as distillation input.
 @immutable
 class DistillationConversationTurn {
-  const DistillationConversationTurn({
-    required this.role,
-    required this.text,
-  });
+  const DistillationConversationTurn({required this.role, required this.text});
 
   final String role;
   final String text;
+}
+
+/// Hard input limits for one distillation dispatch. Token usage is a
+/// conservative local approximation: one non-ASCII rune or four ASCII bytes.
+const int distillationInputMaxTurns = 48;
+const int distillationInputMaxBytes = 64 * 1024;
+const int distillationInputMaxApproxTokens = 12 * 1024;
+const int distillationInputMaxTurnBytes = 8 * 1024;
+
+@immutable
+class DistillationInputWindow {
+  const DistillationInputWindow({
+    required this.turns,
+    required this.byteCount,
+    required this.approxTokenCount,
+    required this.sourceTurnCount,
+  });
+
+  final List<DistillationConversationTurn> turns;
+  final int byteCount;
+  final int approxTokenCount;
+  final int sourceTurnCount;
+
+  bool get truncated => turns.length < sourceTurnCount;
+}
+
+/// Selects a bounded, chronological window by pinning the newest source turn
+/// for every preservation class, then filling remaining capacity newest-first.
+/// This is O(n) in source turns and retains no unbounded intermediate text.
+DistillationInputWindow buildDistillationInputWindow(
+  List<DistillationConversationTurn> source, {
+  Set<String> preserveFields = const {'objective', 'decisions', 'constraints'},
+  int maxTurns = distillationInputMaxTurns,
+  int maxBytes = distillationInputMaxBytes,
+  int maxApproxTokens = distillationInputMaxApproxTokens,
+}) {
+  final turnLimit = maxTurns.clamp(1, distillationInputMaxTurns);
+  final byteLimit = maxBytes.clamp(1, distillationInputMaxBytes);
+  final tokenLimit = maxApproxTokens.clamp(1, distillationInputMaxApproxTokens);
+  final compact = <DistillationConversationTurn>[];
+  for (final turn in source) {
+    final text = _truncateUtf8(turn.text.trim(), distillationInputMaxTurnBytes);
+    if (text.isNotEmpty) {
+      compact.add(
+        DistillationConversationTurn(role: turn.role.trim(), text: text),
+      );
+    }
+  }
+
+  final pinnedByField = <String, int>{};
+  for (final field in preserveFields) {
+    for (var index = compact.length - 1; index >= 0; index--) {
+      if (_semanticSections(compact[index].text).contains(field)) {
+        pinnedByField[field] = index;
+        break;
+      }
+    }
+  }
+
+  final selected = <int>{};
+  var bytes = 0;
+  var tokens = 0;
+  bool addIndex(int index) {
+    if (selected.contains(index) || selected.length >= turnLimit) {
+      return false;
+    }
+    final turn = compact[index];
+    final turnBytes = utf8.encode('${turn.role}:${turn.text}\n').length;
+    final turnTokens = approximateDistillationTokens(turn.text);
+    if (bytes + turnBytes > byteLimit || tokens + turnTokens > tokenLimit) {
+      return false;
+    }
+    selected.add(index);
+    bytes += turnBytes;
+    tokens += turnTokens;
+    return true;
+  }
+
+  for (final field in const ['objective', 'decisions', 'constraints']) {
+    final index = pinnedByField[field];
+    if (index != null) {
+      addIndex(index);
+    }
+  }
+  final remainingPins =
+      pinnedByField.entries
+          .where(
+            (entry) =>
+                entry.key != 'objective' &&
+                entry.key != 'decisions' &&
+                entry.key != 'constraints',
+          )
+          .map((entry) => entry.value)
+          .toSet()
+          .toList()
+        ..sort((a, b) => b.compareTo(a));
+  for (final index in remainingPins) {
+    addIndex(index);
+  }
+  for (var index = compact.length - 1; index >= 0; index--) {
+    addIndex(index);
+  }
+
+  final ordered = selected.toList()..sort();
+  return DistillationInputWindow(
+    turns: List.unmodifiable([for (final index in ordered) compact[index]]),
+    byteCount: bytes,
+    approxTokenCount: tokens,
+    sourceTurnCount: source.length,
+  );
+}
+
+int approximateDistillationTokens(String text) {
+  var asciiBytes = 0;
+  var nonAsciiRunes = 0;
+  for (final rune in text.runes) {
+    if (rune <= 0x7f) {
+      asciiBytes += 1;
+    } else {
+      nonAsciiRunes += 1;
+    }
+  }
+  return ((asciiBytes + 3) ~/ 4) + nonAsciiRunes;
 }
 
 /// Content classes detected in the source conversation for fidelity gating.
@@ -229,6 +355,7 @@ class DistillationSourceContentClasses {
     this.hasDecisions = false,
     this.hasConstraints = false,
     this.hasOpenItems = false,
+    this.semanticAnchors = const {},
   });
 
   final bool hasObjective;
@@ -236,32 +363,46 @@ class DistillationSourceContentClasses {
   final bool hasDecisions;
   final bool hasConstraints;
   final bool hasOpenItems;
+  final Map<String, Set<String>> semanticAnchors;
 
   factory DistillationSourceContentClasses.detect(
     List<DistillationConversationTurn> turns,
   ) {
-    final joined = turns.map((t) => t.text).join('\n').toLowerCase();
+    final bySection = <String, Set<String>>{};
+    for (final turn in turns) {
+      for (final section in _semanticSections(turn.text)) {
+        bySection
+            .putIfAbsent(section, () => <String>{})
+            .addAll(_semanticAnchors(turn.text));
+      }
+    }
+    if (!(bySection['objective']?.isNotEmpty ?? false)) {
+      for (final turn in turns) {
+        if (turn.role.toLowerCase() == 'user' && turn.text.trim().isNotEmpty) {
+          bySection['objective'] = _semanticAnchors(turn.text);
+          break;
+        }
+      }
+    }
+    if (!(bySection['currentState']?.isNotEmpty ?? false)) {
+      for (final turn in turns.reversed) {
+        if (turn.role.toLowerCase() == 'assistant' &&
+            turn.text.trim().isNotEmpty) {
+          bySection['currentState'] = _semanticAnchors(turn.text);
+          break;
+        }
+      }
+    }
     return DistillationSourceContentClasses(
-      hasObjective:
-          joined.contains('goal:') ||
-          joined.contains('objective:') ||
-          joined.contains('goals:'),
-      hasCurrentState:
-          joined.contains('current state:') ||
-          joined.contains('status:') ||
-          joined.contains('progress:'),
-      hasDecisions:
-          joined.contains('decision:') ||
-          joined.contains('decided:') ||
-          joined.contains('we chose'),
-      hasConstraints:
-          joined.contains('constraint:') ||
-          joined.contains('must not') ||
-          joined.contains('must:'),
-      hasOpenItems:
-          joined.contains('open:') ||
-          joined.contains('todo:') ||
-          joined.contains('remaining:'),
+      hasObjective: bySection['objective']?.isNotEmpty ?? false,
+      hasCurrentState: bySection['currentState']?.isNotEmpty ?? false,
+      hasDecisions: bySection['decisions']?.isNotEmpty ?? false,
+      hasConstraints: bySection['constraints']?.isNotEmpty ?? false,
+      hasOpenItems: bySection['openItems']?.isNotEmpty ?? false,
+      semanticAnchors: Map.unmodifiable({
+        for (final entry in bySection.entries)
+          entry.key: Set.unmodifiable(entry.value),
+      }),
     );
   }
 }
@@ -292,6 +433,18 @@ class DistillationRequest {
 
   DistillationSourceContentClasses get contentClasses =>
       DistillationSourceContentClasses.detect(turns);
+
+  DistillationRequest withTurns(List<DistillationConversationTurn> value) {
+    return DistillationRequest(
+      sourceSessionId: sourceSessionId,
+      sourceAgentId: sourceAgentId,
+      turns: value,
+      targetAgentId: targetAgentId,
+      distillerSessionId: distillerSessionId,
+      isDistillerReady: isDistillerReady,
+      now: now,
+    );
+  }
 }
 
 /// Request issued through the injected dispatch-lane callback.
@@ -317,6 +470,7 @@ class DistillationLaneResponse {
     required this.ok,
     this.text = '',
     this.errorMessage = '',
+    this.sessionId = '',
     this.promptTokens = 0,
     this.completionTokens = 0,
   });
@@ -324,6 +478,7 @@ class DistillationLaneResponse {
   final bool ok;
   final String text;
   final String errorMessage;
+  final String sessionId;
   final int promptTokens;
   final int completionTokens;
 
@@ -358,6 +513,8 @@ FidelityCheckResult checkDistillationFidelity({
 }) {
   final checked = <String>[];
   final missing = <String>[];
+  final grounded = <String>[];
+  final uncovered = <String>[];
 
   for (final section in contract.requiredSections) {
     checked.add(section);
@@ -382,6 +539,16 @@ FidelityCheckResult checkDistillationFidelity({
     };
     if (!present) {
       missing.add(section);
+      continue;
+    }
+    final sourceAnchors = sourceClasses.semanticAnchors[section] ?? const {};
+    if (sourceAnchors.isNotEmpty) {
+      final packageAnchors = _semanticAnchors(_sectionText(package, section));
+      if (packageAnchors.intersection(sourceAnchors).isEmpty) {
+        uncovered.add(section);
+      } else {
+        grounded.add(section);
+      }
     }
   }
 
@@ -390,17 +557,26 @@ FidelityCheckResult checkDistillationFidelity({
       passed: false,
       checkedSections: List.unmodifiable(checked),
       missingSections: List.unmodifiable(missing),
+      groundedSections: List.unmodifiable(grounded),
+      uncoveredSections: List.unmodifiable(uncovered),
       message:
           'Package length ${package.estimatedLength} exceeds maxPackageLength ${contract.maxPackageLength}.',
     );
   }
 
-  if (missing.isNotEmpty) {
+  if (missing.isNotEmpty || uncovered.isNotEmpty) {
     return FidelityCheckResult(
       passed: false,
       checkedSections: List.unmodifiable(checked),
       missingSections: List.unmodifiable(missing),
-      message: 'Missing required sections: ${missing.join(', ')}.',
+      groundedSections: List.unmodifiable(grounded),
+      uncoveredSections: List.unmodifiable(uncovered),
+      message: [
+        if (missing.isNotEmpty)
+          'Missing required sections: ${missing.join(', ')}.',
+        if (uncovered.isNotEmpty)
+          'Sections lack source-grounded semantic anchors: ${uncovered.join(', ')}.',
+      ].join(' '),
     );
   }
 
@@ -408,8 +584,188 @@ FidelityCheckResult checkDistillationFidelity({
     passed: true,
     checkedSections: List.unmodifiable(checked),
     missingSections: const [],
+    groundedSections: List.unmodifiable(grounded),
+    uncoveredSections: const [],
     message: 'Fidelity check passed.',
   );
+}
+
+String _sectionText(DistillationPackage package, String section) {
+  final value = package.toJson()[section];
+  return value is List ? value.join('\n') : value?.toString() ?? '';
+}
+
+Set<String> _semanticSections(String source) {
+  final text = source.toLowerCase();
+  final result = <String>{};
+  bool hasAny(List<String> cues) => cues.any(text.contains);
+  if (hasAny(const [
+    'goal',
+    'objective',
+    'need to',
+    'aim to',
+    'deliver',
+    'ship',
+    '目标',
+    '目的',
+    '需要',
+    '要做',
+    '交付',
+    '实现',
+  ])) {
+    result.add('objective');
+  }
+  if (hasAny(const [
+    'current state',
+    'status',
+    'progress',
+    'in progress',
+    'landed',
+    'completed',
+    '当前',
+    '现状',
+    '状态',
+    '进度',
+    '已经',
+    '已完成',
+    '正在',
+  ])) {
+    result.add('currentState');
+  }
+  if (hasAny(const [
+    'decision',
+    'decided',
+    'we chose',
+    'we will use',
+    'adopt',
+    '决定',
+    '选择',
+    '采用',
+    '确定',
+    '选用',
+  ])) {
+    result.add('decisions');
+  }
+  if (hasAny(const [
+    'constraint',
+    'must not',
+    'must ',
+    'only ',
+    'cannot',
+    'never ',
+    'forbid',
+    '约束',
+    '必须',
+    '禁止',
+    '不得',
+    '不能',
+    '仅能',
+    '严禁',
+  ])) {
+    result.add('constraints');
+  }
+  if (hasAny(const [
+    'open item',
+    'open:',
+    'todo',
+    'remaining',
+    'next step',
+    'not yet',
+    '待办',
+    '剩余',
+    '下一步',
+    '未完成',
+    '尚未',
+    '仍需',
+  ])) {
+    result.add('openItems');
+  }
+  return result;
+}
+
+Set<String> _semanticAnchors(String source) {
+  final lower = source.toLowerCase();
+  final anchors = <String>{};
+  final ignored = <String>{
+    'goal',
+    'goals',
+    'objective',
+    'current',
+    'state',
+    'status',
+    'progress',
+    'decision',
+    'decided',
+    'constraint',
+    'open',
+    'item',
+    'items',
+    'todo',
+    'must',
+    'should',
+    'with',
+    'that',
+    'this',
+    'from',
+    'into',
+    'only',
+    '目标',
+    '目的',
+    '当前',
+    '状态',
+    '进度',
+    '决定',
+    '选择',
+    '约束',
+    '必须',
+    '禁止',
+    '不得',
+    '不能',
+    '待办',
+    '剩余',
+    '下一步',
+    '未完成',
+  };
+  for (final match in RegExp(
+    r'[a-z0-9][a-z0-9_-]{2,}',
+    unicode: true,
+  ).allMatches(lower)) {
+    final token = match.group(0)!;
+    if (!ignored.contains(token)) {
+      anchors.add(token);
+    }
+  }
+  for (final match in RegExp(
+    r'[\u3400-\u9fff]{2,}',
+    unicode: true,
+  ).allMatches(lower)) {
+    final runes = match.group(0)!.runes.toList();
+    for (var index = 0; index + 1 < runes.length; index++) {
+      final token = String.fromCharCodes(runes.sublist(index, index + 2));
+      if (!ignored.contains(token)) {
+        anchors.add(token);
+      }
+    }
+  }
+  return anchors;
+}
+
+String _truncateUtf8(String value, int maxBytes) {
+  if (utf8.encode(value).length <= maxBytes) {
+    return value;
+  }
+  final buffer = StringBuffer();
+  var used = 0;
+  for (final rune in value.runes) {
+    final fragment = String.fromCharCode(rune);
+    final size = utf8.encode(fragment).length;
+    if (used + size > maxBytes) {
+      break;
+    }
+    buffer.write(fragment);
+    used += size;
+  }
+  return buffer.toString();
 }
 
 /// Parse a distiller agent response into a [DistillationPackage].

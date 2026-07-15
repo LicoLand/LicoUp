@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 
-import 'package:flutter_client/src/application/controller/future_client_controller.dart';
+import 'package:flutter_client/src/application/controller/client_controller.dart';
 import 'package:flutter_client/src/contracts/agent_orchestration_policy.dart';
 import 'package:flutter_client/src/contracts/target_candidate.dart';
 import 'package:flutter_client/src/frontend/l10n/lico_strings.dart';
 import 'package:flutter_client/src/frontend/shared/ui/agent_brand_icon.dart';
+import 'package:flutter_client/src/frontend/shared/ui/apple_popup_select.dart';
 import 'package:flutter_client/src/frontend/shared/ui/theme.dart';
 
 class AgentOrchestrationPolicyHeaderControls extends StatelessWidget {
@@ -13,7 +14,7 @@ class AgentOrchestrationPolicyHeaderControls extends StatelessWidget {
     required this.controller,
   });
 
-  final FutureClientController controller;
+  final ClientController controller;
 
   @override
   Widget build(BuildContext context) {
@@ -26,50 +27,27 @@ class AgentOrchestrationPolicyHeaderControls extends StatelessWidget {
       children: [
         ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 240, minWidth: 176),
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: colors.surfaceLow,
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(
-                color: policy.configured ? colors.line : colors.warning,
-              ),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 10),
-              child: DropdownButtonHideUnderline(
-                child: DropdownButton<String>(
-                  key: const Key('agent-orchestration-policy-select'),
-                  value: policy.id,
-                  isExpanded: true,
-                  icon: const Icon(Icons.expand_more, size: 18),
-                  borderRadius: BorderRadius.circular(8),
-                  dropdownColor: colors.surfaceHigh,
-                  style: TextStyle(color: colors.text, fontSize: 13),
-                  items: [
-                    for (final item in policies)
-                      DropdownMenuItem(
-                        value: item.id,
-                        child: Text(
-                          controller.agentOrchestrationPolicyDisplayLabel(item),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                  ],
-                  onChanged: (value) {
-                    if (value != null) {
-                      controller.selectAgentOrchestrationPolicy(value);
-                    }
-                  },
+          child: ApplePopupSelect<String>(
+            key: const Key('agent-orchestration-policy-select'),
+            value: policy.id,
+            isExpanded: true,
+            warningBorder: !policy.configured,
+            options: [
+              for (final item in policies)
+                ApplePopupSelectOption(
+                  value: item.id,
+                  label: controller.agentOrchestrationPolicyDisplayLabel(item),
                 ),
-              ),
-            ),
+            ],
+            onChanged: controller.selectAgentOrchestrationPolicy,
           ),
         ),
         const SizedBox(width: 6),
         IconButton(
           key: const Key('agent-orchestration-policy-edit'),
           tooltip: strings.editPolicy,
-          onPressed: () => showAgentOrchestrationPolicyEditor(context, controller),
+          onPressed: () =>
+              showAgentOrchestrationPolicyEditor(context, controller),
           color: colors.primary,
           hoverColor: Color.lerp(colors.surface, colors.primary, 0.12),
           style: IconButton.styleFrom(
@@ -89,7 +67,7 @@ class AgentOrchestrationPolicyHeaderControls extends StatelessWidget {
 
 Future<void> showAgentOrchestrationPolicyEditor(
   BuildContext context,
-  FutureClientController controller,
+  ClientController controller,
 ) async {
   final policy = await showDialog<AgentOrchestrationPolicy>(
     context: context,
@@ -104,7 +82,7 @@ Future<void> showAgentOrchestrationPolicyEditor(
 class AgentOrchestrationPolicyDialog extends StatefulWidget {
   const AgentOrchestrationPolicyDialog({super.key, required this.controller});
 
-  final FutureClientController controller;
+  final ClientController controller;
 
   @override
   State<AgentOrchestrationPolicyDialog> createState() =>
@@ -292,11 +270,7 @@ class _AgentOrchestrationPolicyDialogState
       widget.controller.scannedTargets,
       _modelLibrary,
     );
-    Navigator.of(context).pop(
-      _policy.copyWith(
-        modelLibrary: modelLibrary,
-      ),
-    );
+    Navigator.of(context).pop(_policy.copyWith(modelLibrary: modelLibrary));
   }
 
   @override
@@ -378,7 +352,7 @@ class _AgentOrchestrationPolicyDialogState
                   const Spacer(),
                   if (widget
                       .controller
-                      .agentOrchestrationCircuitBrokenAgentIds
+                      .agentOrchestrationOpenCircuitAgentIds
                       .isNotEmpty) ...[
                     TextButton.icon(
                       key: const Key('agent-orchestration-reset-circuit'),
@@ -423,51 +397,24 @@ class _DialogPolicySelect extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = context.licoColors;
     final strings = LicoStrings.of(context);
     return ConstrainedBox(
       constraints: const BoxConstraints(maxWidth: 360),
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: colors.surfaceLow,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: colors.line),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          child: DropdownButtonHideUnderline(
-            child: DropdownButton<String>(
-              key: const Key('agent-orchestration-dialog-policy-select'),
-              value: value,
-              isExpanded: true,
-              icon: const Icon(Icons.expand_more, size: 18),
-              borderRadius: BorderRadius.circular(8),
-              dropdownColor: colors.surfaceHigh,
-              style: TextStyle(
-                color: colors.text,
-                fontWeight: FontWeight.w800,
-                fontSize: 16,
-              ),
-              items: [
-                for (final policy in policies)
-                  DropdownMenuItem(
-                    value: policy.id,
-                    child: Text(
-                      policy.label.trim().isEmpty
-                          ? strings.defaultPolicy
-                          : policy.label.trim(),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-              ],
-              onChanged: (value) {
-                if (value != null) {
-                  onChanged(value);
-                }
-              },
+      child: ApplePopupSelect<String>(
+        key: const Key('agent-orchestration-dialog-policy-select'),
+        value: value,
+        isExpanded: true,
+        emphasized: true,
+        options: [
+          for (final policy in policies)
+            ApplePopupSelectOption(
+              value: policy.id,
+              label: policy.label.trim().isEmpty
+                  ? strings.defaultPolicy
+                  : policy.label.trim(),
             ),
-          ),
-        ),
+        ],
+        onChanged: onChanged,
       ),
     );
   }
@@ -598,80 +545,55 @@ class _CommanderPolicyCard extends StatelessWidget {
             Row(
               children: [
                 Expanded(
-                  child: _CommanderDropdown<String>(
+                  child: ApplePopupSelectField<String>(
                     key: const Key('agent-orchestration-commander-agent'),
                     label: strings.agentClient,
                     value: selectedTarget?.target,
-                    items: [
+                    options: [
                       for (final target in targets)
-                        DropdownMenuItem(
+                        ApplePopupSelectOption(
                           value: target.target,
-                          child: Text(
-                            target.label,
-                            overflow: TextOverflow.ellipsis,
-                          ),
+                          label: target.label,
                         ),
                     ],
-                    onChanged: (value) {
-                      if (value != null) {
-                        onAgentChanged(value);
-                      }
-                    },
+                    onChanged: onAgentChanged,
                   ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
-                  child: _CommanderDropdown<String>(
+                  child: ApplePopupSelectField<String>(
                     key: const Key('agent-orchestration-commander-model'),
                     label: strings.model,
                     value: selectedModel,
                     hint: models.isEmpty ? strings.noModelsFound : null,
-                    items: [
+                    options: [
                       for (final model in models)
-                        DropdownMenuItem(
+                        ApplePopupSelectOption(
                           value: model,
-                          child: Text(
-                            selectedTarget == null
-                                ? model
-                                : agentOrchestrationModelDisplayName(
-                                    selectedTarget,
-                                    model,
-                                  ),
-                            overflow: TextOverflow.ellipsis,
-                          ),
+                          label: selectedTarget == null
+                              ? model
+                              : agentOrchestrationModelDisplayName(
+                                  selectedTarget,
+                                  model,
+                                ),
                         ),
                     ],
-                    onChanged: models.isEmpty
-                        ? null
-                        : (value) {
-                            if (value != null) {
-                              onModelChanged(value);
-                            }
-                          },
+                    onChanged: models.isEmpty ? null : onModelChanged,
+                    enabled: models.isNotEmpty,
                   ),
                 ),
                 if (reasoningEfforts.isNotEmpty) ...[
                   const SizedBox(width: 12),
                   Expanded(
-                    child: _CommanderDropdown<String>(
+                    child: ApplePopupSelectField<String>(
                       key: const Key('agent-orchestration-commander-reasoning'),
                       label: strings.reasoningEffort,
                       value: selectedReasoningEffort,
-                      items: [
+                      options: [
                         for (final effort in reasoningEfforts)
-                          DropdownMenuItem(
-                            value: effort,
-                            child: Text(
-                              effort,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
+                          ApplePopupSelectOption(value: effort, label: effort),
                       ],
-                      onChanged: (value) {
-                        if (value != null) {
-                          onReasoningEffortChanged(value);
-                        }
-                      },
+                      onChanged: onReasoningEffortChanged,
                     ),
                   ),
                 ],
@@ -802,62 +724,47 @@ class _ModelLibraryPolicyCardBodyState
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Expanded(
-                  child: _CommanderDropdown<String>(
+                  child: ApplePopupSelectField<String>(
                     key: const Key('agent-orchestration-model-library-agent'),
                     label: strings.agentClient,
                     value: selectedAgentId.isEmpty ? null : selectedAgentId,
-                    items: [
+                    options: [
                       for (final target in widget.targets)
-                        DropdownMenuItem(
+                        ApplePopupSelectOption(
                           value: target.target,
-                          child: Text(
-                            target.label,
-                            overflow: TextOverflow.ellipsis,
-                          ),
+                          label: target.label,
                         ),
                     ],
-                    onChanged: (value) {
-                      if (value != null) {
-                        _setAgent(value);
-                      }
-                    },
+                    onChanged: _setAgent,
                   ),
                 ),
                 const SizedBox(width: 10),
                 Expanded(
-                  child: _CommanderDropdown<String>(
+                  child: ApplePopupSelectField<String>(
                     key: const Key('agent-orchestration-model-library-model'),
                     label: strings.model,
                     value: selectedModel.isEmpty ? null : selectedModel,
                     hint: models.isEmpty ? strings.noModelsFound : null,
-                    items: [
+                    options: [
                       for (final model in models)
-                        DropdownMenuItem(
+                        ApplePopupSelectOption(
                           value: model,
-                          child: Text(
-                            selectedTarget == null
-                                ? model
-                                : agentOrchestrationModelDisplayName(
-                                    selectedTarget,
-                                    model,
-                                  ),
-                            overflow: TextOverflow.ellipsis,
-                          ),
+                          label: selectedTarget == null
+                              ? model
+                              : agentOrchestrationModelDisplayName(
+                                  selectedTarget,
+                                  model,
+                                ),
                         ),
                     ],
-                    onChanged: models.isEmpty
-                        ? null
-                        : (value) {
-                            if (value != null) {
-                              _setModel(value);
-                            }
-                          },
+                    onChanged: models.isEmpty ? null : _setModel,
+                    enabled: models.isNotEmpty,
                   ),
                 ),
                 if (reasoningEfforts.isNotEmpty) ...[
                   const SizedBox(width: 10),
                   Expanded(
-                    child: _CommanderDropdown<String>(
+                    child: ApplePopupSelectField<String>(
                       key: const Key(
                         'agent-orchestration-model-library-reasoning',
                       ),
@@ -865,27 +772,19 @@ class _ModelLibraryPolicyCardBodyState
                       value: selectedReasoningEffort.isEmpty
                           ? null
                           : selectedReasoningEffort,
-                      items: [
+                      options: [
                         for (final effort in reasoningEfforts)
-                          DropdownMenuItem(
-                            value: effort,
-                            child: Text(
-                              effort,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
+                          ApplePopupSelectOption(value: effort, label: effort),
                       ],
                       onChanged: (value) {
-                        if (value != null) {
-                          setState(() => _reasoningEffort = value);
-                        }
+                        setState(() => _reasoningEffort = value);
                       },
                     ),
                   ),
                 ],
                 const SizedBox(width: 10),
                 Padding(
-                  padding: const EdgeInsets.only(top: 2),
+                  padding: const EdgeInsets.only(top: 18),
                   child: FilledButton.icon(
                     key: const Key('agent-orchestration-model-library-add'),
                     onPressed: canAdd ? () => widget.onAdd(draft) : null,
@@ -1008,47 +907,4 @@ String _modelLibraryEntryDomKey(AgentModelLibraryEntry entry) {
   return raw
       .replaceAll(RegExp(r'[^a-z0-9]+'), '-')
       .replaceAll(RegExp(r'^-+|-+$'), '');
-}
-
-class _CommanderDropdown<T> extends StatelessWidget {
-  const _CommanderDropdown({
-    super.key,
-    required this.label,
-    required this.value,
-    required this.items,
-    required this.onChanged,
-    this.hint,
-  });
-
-  final String label;
-  final T? value;
-  final List<DropdownMenuItem<T>> items;
-  final ValueChanged<T?>? onChanged;
-  final String? hint;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.licoColors;
-    return DropdownButtonFormField<T>(
-      initialValue: value,
-      isExpanded: true,
-      decoration: InputDecoration(
-        labelText: label,
-        isDense: true,
-        filled: true,
-        fillColor: colors.surface,
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
-          borderSide: BorderSide(color: colors.line),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
-          borderSide: BorderSide(color: colors.line),
-        ),
-      ),
-      hint: hint == null ? null : Text(hint!),
-      items: items,
-      onChanged: onChanged,
-    );
-  }
 }

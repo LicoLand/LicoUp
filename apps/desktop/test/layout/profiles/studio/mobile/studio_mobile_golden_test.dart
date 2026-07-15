@@ -4,6 +4,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_client/src/frontend/layout/profiles/studio/mobile/studio_mobile_bundle.dart';
 import 'package:flutter_client/src/frontend/shared/ui/theme.dart';
 
+import 'studio_mobile_palette_fixture.dart';
+
 void main() {
   for (final brightness in Brightness.values) {
     testWidgets(
@@ -18,20 +20,27 @@ void main() {
         await tester.pumpWidget(
           MaterialApp(
             theme: theme,
-            home: ColoredBox(
-              color:
-                  ThemeData.estimateBrightnessForColor(
-                        theme.scaffoldBackgroundColor,
-                      ) ==
-                      Brightness.dark
-                  ? const Color(0xFF090B10)
-                  : const Color(0xFFF4F5F7),
-              child: Center(
-                child: RepaintBoundary(
-                  key: const Key('studio-mobile-preview-frame'),
-                  child: SizedBox(
-                    width: 336,
-                    child: Builder(builder: studioMobileBundle.previewBuilder),
+            home: Builder(
+              builder: (context) => withStudioMobileTestPalette(
+                context,
+                ColoredBox(
+                  color:
+                      ThemeData.estimateBrightnessForColor(
+                            theme.scaffoldBackgroundColor,
+                          ) ==
+                          Brightness.dark
+                      ? const Color(0xFF090B10)
+                      : const Color(0xFFF4F5F7),
+                  child: Center(
+                    child: RepaintBoundary(
+                      key: const Key('studio-mobile-preview-frame'),
+                      child: SizedBox(
+                        width: 336,
+                        child: Builder(
+                          builder: studioMobileBundle.previewBuilder,
+                        ),
+                      ),
+                    ),
                   ),
                 ),
               ),

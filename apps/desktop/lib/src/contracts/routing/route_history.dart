@@ -11,26 +11,26 @@ class RouteHistoryEntry {
     required this.timestamp,
     required this.sourceAgentId,
     required this.targetAgentId,
-    required this.sourceSessionId,
-    required this.targetSessionId,
+    required this.sourceSessionHandle,
+    required this.targetSessionHandle,
     required this.decision,
     this.switchReason = '',
-    this.distillationPackage,
+    this.distillationDigest = '',
     this.failed = false,
-    this.failureReason = '',
+    this.failureDigest = '',
   });
 
   final String taskId;
   final String timestamp;
   final String sourceAgentId;
   final String targetAgentId;
-  final String sourceSessionId;
-  final String targetSessionId;
+  final String sourceSessionHandle;
+  final String targetSessionHandle;
   final RouteDecisionRecord decision;
   final String switchReason;
-  final DistillationPackage? distillationPackage;
+  final String distillationDigest;
   final bool failed;
-  final String failureReason;
+  final String failureDigest;
 
   Map<String, dynamic> toJson() {
     return {
@@ -38,11 +38,12 @@ class RouteHistoryEntry {
       'timestamp': timestamp,
       'sourceAgentId': sourceAgentId,
       'targetAgentId': targetAgentId,
-      'sourceSessionId': sourceSessionId,
-      'targetSessionId': targetSessionId,
+      'sourceSessionHandle': sourceSessionHandle,
+      'targetSessionHandle': targetSessionHandle,
+      'distillationDigest': distillationDigest,
       'switchReason': switchReason,
       'failed': failed,
-      'failureReason': failureReason,
+      'failureDigest': failureDigest,
       'decision': {
         'chosenAgentId': decision.chosenAgentId,
         'chosenAgentLabel': decision.chosenAgentLabel,
@@ -51,22 +52,13 @@ class RouteHistoryEntry {
         'timestamp': decision.timestamp,
         'alternatives': [
           for (final c in decision.alternatives)
-            {
-              'agentId': c.agentId,
-              'priority': c.priority,
-              'reason': c.reason,
-            },
+            {'agentId': c.agentId, 'priority': c.priority, 'reason': c.reason},
         ],
         'excluded': [
           for (final e in decision.excluded)
-            {
-              'agentId': e.agentId,
-              'reason': e.reason,
-            },
+            {'agentId': e.agentId, 'reason': e.reason},
         ],
       },
-      if (distillationPackage != null)
-        'distillationPackage': distillationPackage!.toJson(),
     };
   }
 }
@@ -78,6 +70,7 @@ class TaskRouteSession {
     required this.taskId,
     required this.currentAgentId,
     required this.currentSessionId,
+    required this.currentSessionHandle,
     this.lastSwitchAt,
     this.streaming = false,
   });
@@ -85,12 +78,14 @@ class TaskRouteSession {
   final String taskId;
   final String currentAgentId;
   final String currentSessionId;
+  final String currentSessionHandle;
   final DateTime? lastSwitchAt;
   final bool streaming;
 
   TaskRouteSession copyWith({
     String? currentAgentId,
     String? currentSessionId,
+    String? currentSessionHandle,
     DateTime? lastSwitchAt,
     bool? streaming,
     bool clearLastSwitchAt = false,
@@ -99,6 +94,7 @@ class TaskRouteSession {
       taskId: taskId,
       currentAgentId: currentAgentId ?? this.currentAgentId,
       currentSessionId: currentSessionId ?? this.currentSessionId,
+      currentSessionHandle: currentSessionHandle ?? this.currentSessionHandle,
       lastSwitchAt: clearLastSwitchAt
           ? null
           : (lastSwitchAt ?? this.lastSwitchAt),

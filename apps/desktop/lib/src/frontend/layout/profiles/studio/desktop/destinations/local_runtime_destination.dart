@@ -10,7 +10,4 @@ Widget buildStudioLocalRuntimeDestination(
 ) => StudioDestinationFrame(
   data: data,
   expectedDestination: ClientSection.localRuntime,
-  icon: Icons.terminal_outlined,
-  dockPlacement: StudioDestinationDockPlacement.leading,
-  accent: StudioDestinationAccent.warning,
 );

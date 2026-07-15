@@ -5,29 +5,56 @@ import 'package:flutter_client/src/application/features/layout/layout_state_stor
 import 'package:flutter_client/src/application/features/navigation/semantic_destination_catalog.dart';
 import 'package:flutter_client/src/contracts/presentation/layout_environment.dart';
 import 'package:flutter_client/src/contracts/presentation/layout_profile.dart';
+import 'package:flutter_client/src/contracts/presentation/layout_state_namespace.dart';
 import 'package:flutter_client/src/contracts/presentation/presentation_preferences.dart';
 import 'package:flutter_client/src/contracts/presentation/semantic_destination.dart';
 import 'package:flutter_client/src/frontend/layout/layout_definition.dart';
 import 'package:flutter_client/src/frontend/layout/layout_focus_coordinator.dart';
 import 'package:flutter_client/src/frontend/layout/layout_host.dart';
+import 'package:flutter_client/src/frontend/layout/layout_palette.dart';
 import 'package:flutter_client/src/frontend/layout/layout_registry.dart';
 import 'package:flutter_client/src/frontend/layout/layout_scope.dart';
+import 'package:flutter_client/src/frontend/layout/layout_surface_bundle.dart';
 import 'package:flutter_client/src/frontend/layout/layout_visual_tokens.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'fixtures/layout_chrome_fixture.dart';
 import 'layout_host_test_fixtures.dart';
 
 void main() {
   test('fixture registry exactly matches catalog products and namespaces', () {
     final runtime = buildFixtureLayoutRuntime();
 
-    expect(runtime.registry.definitions, hasLength(2));
-    expect(runtime.registry.variants, hasLength(8));
-    expect(runtime.catalog.stateNamespaces, hasLength(4));
-    expect(runtime.registry.definition(LayoutProfileId.workbench).bundles, {
-      LayoutRuntimeSurface.desktop: isNotNull,
-      LayoutRuntimeSurface.mobile: isNotNull,
-    });
+    expect(runtime.registry.definitions, hasLength(runtime.definitions.length));
+    final expectedVariantCount = runtime.definitions.fold<int>(
+      0,
+      (total, definition) =>
+          total +
+          definition.bundles.values.fold<int>(
+            0,
+            (bundleTotal, bundle) => bundleTotal + bundle.variants.length,
+          ),
+    );
+    expect(runtime.registry.variants, hasLength(expectedVariantCount));
+    final expectedNamespaceCount = runtime.definitions.fold<int>(
+      0,
+      (total, definition) =>
+          total +
+          definition.bundles.values.fold<int>(
+            0,
+            (bundleTotal, bundle) =>
+                bundleTotal + bundle.stateNamespaces.length,
+          ),
+    );
+    expect(runtime.catalog.stateNamespaces, hasLength(expectedNamespaceCount));
+    expect(
+      runtime.registry
+          .definition(LayoutProfileId.parse('workbench'))
+          .bundles
+          .keys
+          .toSet(),
+      LayoutRuntimeSurface.values.toSet(),
+    );
   });
 
   test('definition and registry reject incomplete surface or destinations', () {
@@ -57,7 +84,7 @@ void main() {
         catalog: validRuntime.catalog,
         definitions: [
           badWorkbench,
-          validRuntime.registry.definition(LayoutProfileId.studio),
+          validRuntime.registry.definition(LayoutProfileId.parse('studio')),
         ],
       ),
       throwsFormatException,
@@ -67,11 +94,11 @@ void main() {
   test('tokens interpolate deterministically and validate bounds', () {
     final runtime = buildFixtureLayoutRuntime();
     final workbench = runtime.registry
-        .definition(LayoutProfileId.workbench)
+        .definition(LayoutProfileId.parse('workbench'))
         .bundles[LayoutRuntimeSurface.desktop]!
         .tokens;
     final studio = runtime.registry
-        .definition(LayoutProfileId.studio)
+        .definition(LayoutProfileId.parse('studio'))
         .bundles[LayoutRuntimeSurface.desktop]!
         .tokens;
     final midpoint = workbench.lerp(studio, 0.5);
@@ -94,23 +121,73 @@ void main() {
     );
   });
 
-  test('semantic focus restores equivalent target or primary landmark', () {
+  testWidgets('semantic focus restores a real node or primary landmark', (
+    tester,
+  ) async {
     final coordinator = LayoutFocusCoordinator();
-    coordinator.capture('composer-field');
-    expect(
-      coordinator.resolve(
-        availableTargets: {'primary-landmark', 'composer-field'},
-        primaryTarget: 'primary-landmark',
+    final originalComposer = FocusNode();
+    final replacementComposer = FocusNode();
+    final primary = FocusNode();
+    addTearDown(originalComposer.dispose);
+    addTearDown(replacementComposer.dispose);
+    addTearDown(primary.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: LayoutFocusScope(
+          coordinator: coordinator,
+          child: LayoutFocusNodeRegistration(
+            semanticTarget: LayoutFocusTargets.composerField,
+            focusNode: originalComposer,
+            child: Focus(focusNode: originalComposer, child: const SizedBox()),
+          ),
+        ),
       ),
-      'composer-field',
+    );
+    originalComposer.requestFocus();
+    await tester.pump();
+    expect(coordinator.captureActiveTarget(), LayoutFocusTargets.composerField);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: LayoutFocusScope(
+          coordinator: coordinator,
+          child: LayoutFocusNodeRegistration(
+            semanticTarget: LayoutFocusTargets.composerField,
+            focusNode: replacementComposer,
+            child: Focus(
+              focusNode: replacementComposer,
+              child: const SizedBox(),
+            ),
+          ),
+        ),
+      ),
     );
     expect(
-      coordinator.resolve(
-        availableTargets: {'primary-landmark', 'navigation-item'},
-        primaryTarget: 'primary-landmark',
-      ),
-      'primary-landmark',
+      coordinator.restore(primaryTarget: LayoutFocusTargets.primaryLandmark),
+      isTrue,
     );
+    await tester.pump();
+    expect(replacementComposer.hasPrimaryFocus, isTrue);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: LayoutFocusScope(
+          coordinator: coordinator,
+          child: LayoutFocusNodeRegistration(
+            semanticTarget: LayoutFocusTargets.primaryLandmark,
+            focusNode: primary,
+            child: Focus(focusNode: primary, child: const SizedBox()),
+          ),
+        ),
+      ),
+    );
+    expect(
+      coordinator.restore(primaryTarget: LayoutFocusTargets.primaryLandmark),
+      isTrue,
+    );
+    await tester.pump();
+    expect(primary.hasPrimaryFocus, isTrue);
   });
 
   testWidgets('host mounts only the effective profile with scoped rebuilds', (
@@ -122,6 +199,7 @@ void main() {
     final manager = LayoutManager(
       catalog: runtime.catalog,
       preferencesRepository: repository,
+      canonicalFallback: fixturePreferences(),
       initialEnvironment: desktopEnvironment(800),
     );
     await manager.initialize();
@@ -142,9 +220,10 @@ void main() {
             destinationLabel: (destination) => destination.name,
             content: const FixtureDestinationContent(),
             focusCoordinator: LayoutFocusCoordinator(),
-            availableFocusTargets: const {'primary-landmark', 'composer-field'},
             primaryFocusTarget: 'primary-landmark',
             loadingBuilder: (_) => const SizedBox(key: Key('loading')),
+            palette: fixtureLayoutPalette,
+            chrome: const FixtureLayoutChromePort(),
           ),
         ),
       ),
@@ -159,10 +238,10 @@ void main() {
       find.byKey(const Key('layout-host-studio/desktop/medium')),
       findsNothing,
     );
-    expect(tracker.shellBuilds[LayoutProfileId.workbench], 1);
-    expect(tracker.shellBuilds[LayoutProfileId.studio] ?? 0, 0);
+    expect(tracker.shellBuilds[LayoutProfileId.parse('workbench')], 1);
+    expect(tracker.shellBuilds[LayoutProfileId.parse('studio')] ?? 0, 0);
 
-    manager.beginPreview(LayoutProfileId.studio);
+    manager.beginPreview(LayoutProfileId.parse('studio'));
     await tester.pump();
     expect(parentBuilds.value, 1);
     expect(
@@ -173,7 +252,7 @@ void main() {
       find.byKey(const Key('layout-host-studio/desktop/medium')),
       findsOneWidget,
     );
-    expect(tracker.shellBuilds[LayoutProfileId.studio], 1);
+    expect(tracker.shellBuilds[LayoutProfileId.parse('studio')], 1);
     manager.dispose();
   });
 
@@ -184,6 +263,7 @@ void main() {
     final manager = LayoutManager(
       catalog: runtime.catalog,
       preferencesRepository: MemoryPreferencesRepository(),
+      canonicalFallback: fixturePreferences(),
       initialEnvironment: desktopEnvironment(800),
     );
     await manager.initialize();
@@ -201,9 +281,10 @@ void main() {
           destinationLabel: (destination) => destination.name,
           content: const FixtureDestinationContent(),
           focusCoordinator: LayoutFocusCoordinator(),
-          availableFocusTargets: const {'primary-landmark'},
           primaryFocusTarget: 'primary-landmark',
           loadingBuilder: (_) => const SizedBox(),
+          palette: fixtureLayoutPalette,
+          chrome: const FixtureLayoutChromePort(),
         ),
       ),
     );
@@ -212,28 +293,138 @@ void main() {
       find.byKey(const Key('fixture-content-agents')),
     );
     final scope = LayoutScope.of(context);
-    scope.state.write(
-      destination: ClientSection.agents,
-      surfaceId: 'fixture-scroll',
-      value: LayoutScrollState(42),
+    const fixtureScroll = LayoutStateChannel(
+      'fixture-scroll',
+      LayoutStateValueKind.scroll,
     );
-    expect(
-      (scope.state.read(
-                destination: ClientSection.agents,
-                surfaceId: 'fixture-scroll',
-              )
-              as LayoutScrollState)
-          .offset,
-      42,
-    );
+    scope.state.write(fixtureScroll, LayoutScrollState(42));
+    expect((scope.state.read(fixtureScroll) as LayoutScrollState).offset, 42);
     expect(
       () => scope.state.write(
-        destination: ClientSection.settings,
-        surfaceId: 'undeclared-value',
-        value: const LayoutExpansionState(true),
+        const LayoutStateChannel(
+          'undeclared-value',
+          LayoutStateValueKind.expansion,
+        ),
+        const LayoutExpansionState(true),
       ),
       throwsFormatException,
     );
+    manager.dispose();
+  });
+
+  testWidgets('host exposes the required neutral palette to active content', (
+    tester,
+  ) async {
+    final runtime = buildFixtureLayoutRuntime();
+    final manager = LayoutManager(
+      catalog: runtime.catalog,
+      preferencesRepository: MemoryPreferencesRepository(),
+      canonicalFallback: fixturePreferences(),
+      initialEnvironment: desktopEnvironment(800),
+    );
+    await manager.initialize();
+    LayoutPalette? observed;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: LayoutHost(
+          manager: manager,
+          registry: runtime.registry,
+          stateStore: LayoutStateStore(runtime.catalog),
+          environment: desktopEnvironment(800),
+          destination: ClientSection.agents,
+          onSelectDestination: (_) {},
+          destinationLabel: (destination) => destination.name,
+          content: _PaletteRecordingContent((value) => observed = value),
+          focusCoordinator: LayoutFocusCoordinator(),
+          primaryFocusTarget: 'primary-landmark',
+          loadingBuilder: (_) => const SizedBox(),
+          palette: fixtureLayoutPalette,
+          chrome: const FixtureLayoutChromePort(),
+        ),
+      ),
+    );
+
+    expect(observed, same(fixtureLayoutPalette));
+    manager.dispose();
+  });
+
+  testWidgets('host synchronizes first-frame environment before hydration', (
+    tester,
+  ) async {
+    final runtime = buildFixtureLayoutRuntime();
+    final manager = LayoutManager(
+      catalog: runtime.catalog,
+      preferencesRepository: MemoryPreferencesRepository(),
+      canonicalFallback: fixturePreferences(),
+      initialEnvironment: desktopEnvironment(800),
+    );
+    final expanded = desktopEnvironment(1400);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: LayoutHost(
+          manager: manager,
+          registry: runtime.registry,
+          stateStore: LayoutStateStore(runtime.catalog),
+          environment: expanded,
+          destination: ClientSection.agents,
+          onSelectDestination: (_) {},
+          destinationLabel: (destination) => destination.name,
+          content: const FixtureDestinationContent(),
+          focusCoordinator: LayoutFocusCoordinator(),
+          primaryFocusTarget: 'primary-landmark',
+          loadingBuilder: (_) => const SizedBox(key: Key('loading')),
+          palette: fixtureLayoutPalette,
+          chrome: const FixtureLayoutChromePort(),
+        ),
+      ),
+    );
+
+    expect(manager.state.viewport, LayoutViewportClass.expanded);
+    expect(find.byKey(const Key('loading')), findsOneWidget);
+    await manager.initialize();
+    await tester.pump();
+    expect(
+      find.byKey(const Key('layout-host-workbench/desktop/expanded')),
+      findsOneWidget,
+    );
+    manager.dispose();
+  });
+
+  testWidgets('host rejects a manager from a different catalog instance', (
+    tester,
+  ) async {
+    final hostRuntime = buildFixtureLayoutRuntime();
+    final managerRuntime = buildFixtureLayoutRuntime();
+    final manager = LayoutManager(
+      catalog: managerRuntime.catalog,
+      preferencesRepository: MemoryPreferencesRepository(),
+      canonicalFallback: fixturePreferences(),
+      initialEnvironment: desktopEnvironment(800),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: LayoutHost(
+          manager: manager,
+          registry: hostRuntime.registry,
+          stateStore: LayoutStateStore(hostRuntime.catalog),
+          environment: desktopEnvironment(800),
+          destination: ClientSection.agents,
+          onSelectDestination: (_) {},
+          destinationLabel: (destination) => destination.name,
+          content: const FixtureDestinationContent(),
+          focusCoordinator: LayoutFocusCoordinator(),
+          primaryFocusTarget: 'primary-landmark',
+          loadingBuilder: (_) => const SizedBox(),
+          palette: fixtureLayoutPalette,
+          chrome: const FixtureLayoutChromePort(),
+        ),
+      ),
+    );
+
+    expect(tester.takeException(), isA<FormatException>());
     manager.dispose();
   });
 }
@@ -248,6 +439,12 @@ LayoutEnvironment desktopEnvironment(double width) =>
       hasPointer: true,
     );
 
+PresentationPreferences fixturePreferences() => PresentationPreferences(
+  layoutProfileId: LayoutProfileId.parse('workbench'),
+  appearancePresetId: 'default-system',
+  localePreference: 'system',
+);
+
 final class FixtureParent extends StatelessWidget {
   const FixtureParent({super.key, required this.builds, required this.child});
 
@@ -261,13 +458,21 @@ final class FixtureParent extends StatelessWidget {
   }
 }
 
+final class _PaletteRecordingContent implements LayoutDestinationContentPort {
+  const _PaletteRecordingContent(this.onBuild);
+
+  final ValueChanged<LayoutPalette> onBuild;
+
+  @override
+  Widget buildDestination(BuildContext context, ClientSection destination) {
+    onBuild(context.layoutPalette);
+    return const SizedBox(key: Key('palette-recording-content'));
+  }
+}
+
 final class MemoryPreferencesRepository
     implements PresentationPreferencesRepository {
-  PresentationPreferences value = PresentationPreferences(
-    layoutProfileId: LayoutProfileId.workbench,
-    appearancePresetId: 'default-system',
-    localePreference: 'system',
-  );
+  PresentationPreferences value = fixturePreferences();
 
   @override
   Future<PresentationPreferencesLoadResult> load() async =>

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_client/src/contracts/target_candidate.dart';
 import 'package:flutter_client/src/frontend/l10n/lico_strings.dart';
+import 'package:flutter_client/src/frontend/shared/ui/apple_notifications.dart';
 import 'package:flutter_client/src/frontend/shared/ui/theme.dart';
 
 /// Sanitized parity disclosure copy for conversation send gates.
@@ -98,9 +99,7 @@ class ConversationParityDisclosurePanel extends StatelessWidget {
           ),
         ),
         padding: const WidgetStatePropertyAll(EdgeInsets.all(10)),
-        maximumSize: WidgetStatePropertyAll(
-          Size(compact ? 280 : 340, 360),
-        ),
+        maximumSize: WidgetStatePropertyAll(Size(compact ? 280 : 340, 360)),
       ),
       menuChildren: [
         SizedBox(
@@ -135,36 +134,38 @@ class ConversationParityDisclosurePanel extends StatelessWidget {
                 child: matrix.isEmpty
                     ? Text(
                         strings.conversationParityCapabilitiesUnavailable,
-                        style: TextStyle(
-                          color: colors.textMuted,
-                          fontSize: 11,
-                        ),
+                        style: TextStyle(color: colors.textMuted, fontSize: 11),
                       )
                     : Wrap(
                         spacing: 6,
                         runSpacing: 4,
-                        children: matrix.entries.map((entry) {
-                          final supported = entry.value == true;
-                          return Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 6,
-                              vertical: 2,
-                            ),
-                            decoration: BoxDecoration(
-                              color: (supported ? colors.success : colors.textMuted)
-                                  .withValues(alpha: 0.12),
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: Text(
-                              '${entry.key}:${supported ? 'yes' : 'no'}',
-                              style: TextStyle(
-                                color: colors.text,
-                                fontSize: 10,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          );
-                        }).toList(growable: false),
+                        children: matrix.entries
+                            .map((entry) {
+                              final supported = entry.value == true;
+                              return Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 6,
+                                  vertical: 2,
+                                ),
+                                decoration: BoxDecoration(
+                                  color:
+                                      (supported
+                                              ? colors.success
+                                              : colors.textMuted)
+                                          .withValues(alpha: 0.12),
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: Text(
+                                  '${entry.key}:${supported ? 'yes' : 'no'}',
+                                  style: TextStyle(
+                                    color: colors.text,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              );
+                            })
+                            .toList(growable: false),
                       ),
               ),
             ],
@@ -193,7 +194,7 @@ class ConversationParityDisclosurePanel extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  readiness.toUpperCase(),
+                  strings.displayStatusValue(readiness),
                   style: TextStyle(
                     color: color,
                     fontSize: 10,
@@ -230,44 +231,26 @@ class ConversationParitySendGateBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = context.licoColors;
     final strings = LicoStrings.of(context);
     return Container(
       key: const Key('conversation-parity-send-gate'),
       width: double.infinity,
       margin: const EdgeInsets.fromLTRB(12, 6, 12, 0),
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: colors.warning.withValues(alpha: 0.10),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: colors.warning.withValues(alpha: 0.35)),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              copy.reasonLabel,
-              key: const Key('conversation-parity-send-gate-reason'),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: colors.textMuted,
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-          if (copy.unblockAction != null && onUnblock != null)
-            TextButton(
-              key: const Key('conversation-parity-send-gate-unblock'),
-              onPressed: onUnblock,
-              style: TextButton.styleFrom(
-                visualDensity: VisualDensity.compact,
-                padding: const EdgeInsets.symmetric(horizontal: 8),
-              ),
-              child: Text(copy.unblockLabel ?? strings.scanAssistantAgents),
-            ),
-        ],
+      child: AppleGlassNoticeBanner(
+        tone: AppleGlassNoticeTone.warning,
+        message: copy.reasonLabel,
+        messageKey: const Key('conversation-parity-send-gate-reason'),
+        action: copy.unblockAction != null && onUnblock != null
+            ? TextButton(
+                key: const Key('conversation-parity-send-gate-unblock'),
+                onPressed: onUnblock,
+                style: TextButton.styleFrom(
+                  visualDensity: VisualDensity.compact,
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                ),
+                child: Text(copy.unblockLabel ?? strings.scanAssistantAgents),
+              )
+            : null,
       ),
     );
   }

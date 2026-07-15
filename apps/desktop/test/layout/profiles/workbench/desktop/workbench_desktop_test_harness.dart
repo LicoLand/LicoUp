@@ -2,8 +2,13 @@ import 'package:flutter/material.dart';
 
 import 'package:flutter_client/src/contracts/presentation/layout_environment.dart';
 import 'package:flutter_client/src/contracts/presentation/semantic_destination.dart';
+import 'package:flutter_client/src/frontend/layout/layout_chrome_port.dart';
+import 'package:flutter_client/src/frontend/layout/layout_palette.dart';
 import 'package:flutter_client/src/frontend/layout/layout_surface_bundle.dart';
 import 'package:flutter_client/src/frontend/layout/profiles/workbench/desktop/workbench_desktop.dart';
+import 'package:flutter_client/src/frontend/shared/ui/theme.dart';
+
+import '../../../fixtures/layout_chrome_fixture.dart';
 
 const Set<ClientSection> workbenchDesktopCanonicalDestinations = {
   ClientSection.controlPanel,
@@ -40,6 +45,7 @@ final class WorkbenchDesktopShellHarness extends StatelessWidget {
     this.activeDestination = ClientSection.agents,
     this.onSelectDestination,
     this.colorScheme,
+    this.chrome = const FixtureLayoutChromePort(),
   });
 
   final LayoutEnvironment environment;
@@ -47,19 +53,19 @@ final class WorkbenchDesktopShellHarness extends StatelessWidget {
   final ClientSection activeDestination;
   final ValueChanged<ClientSection>? onSelectDestination;
   final ColorScheme? colorScheme;
+  final LayoutChromePort chrome;
 
   @override
   Widget build(BuildContext context) {
-    final scheme =
-        colorScheme ??
-        ColorScheme.fromSeed(
-          seedColor: const Color(0xff6650a4),
-          brightness: Brightness.light,
-        );
-    final theme = ThemeData(
-      colorScheme: scheme,
-      useMaterial3: true,
-    ).copyWith(extensions: [workbenchDesktopBundle.tokens]);
+    final base = buildLicoTheme(
+      presetId: 'geek-light-blue',
+      platformBrightness: Brightness.light,
+    );
+    final theme = base.copyWith(
+      platform: TargetPlatform.macOS,
+      colorScheme: colorScheme ?? base.colorScheme,
+      extensions: [...base.extensions.values, workbenchDesktopBundle.tokens],
+    );
     final variant = workbenchDesktopBundle.variants[environment.viewport]!;
 
     return MaterialApp(
@@ -68,12 +74,34 @@ final class WorkbenchDesktopShellHarness extends StatelessWidget {
       theme: theme,
       builder: (context, child) {
         final media = MediaQuery.of(context);
-        return MediaQuery(
-          data: media.copyWith(
-            textScaler: TextScaler.linear(environment.textScale),
-            disableAnimations: environment.reducedMotion,
+        final colors = context.licoColors;
+        return LayoutPaletteScope(
+          palette: LayoutPalette(
+            background: colors.background,
+            surface: colors.surface,
+            surfaceLow: colors.surfaceLow,
+            surfaceHigh: colors.surfaceHigh,
+            surfaceHighest: colors.surfaceHighest,
+            line: colors.line,
+            text: colors.text,
+            textMuted: colors.textMuted,
+            primary: colors.primary,
+            primaryStrong: colors.primaryStrong,
+            primaryFixed: colors.primaryFixed,
+            textOnPrimary: colors.textOnPrimary,
+            info: colors.info,
+            infoMuted: colors.infoMuted,
+            success: colors.success,
+            warning: colors.warning,
+            error: colors.error,
           ),
-          child: child!,
+          child: MediaQuery(
+            data: media.copyWith(
+              textScaler: TextScaler.linear(environment.textScale),
+              disableAnimations: environment.reducedMotion,
+            ),
+            child: child!,
+          ),
         );
       },
       home: Builder(
@@ -90,6 +118,7 @@ final class WorkbenchDesktopShellHarness extends StatelessWidget {
               components: workbenchDesktopBundle.components,
               tokens: workbenchDesktopBundle.tokens,
               initialFocusTarget: 'primary-landmark',
+              chrome: chrome,
             ),
           ),
         ),

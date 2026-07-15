@@ -8,6 +8,7 @@ import 'package:flutter_client/src/contracts/presentation/semantic_destination.d
 import 'package:flutter_client/src/frontend/layout/layout_surface_bundle.dart';
 import 'package:flutter_client/src/frontend/layout/profiles/workbench/mobile/workbench_mobile_bundle.dart';
 
+import '../../../fixtures/layout_chrome_fixture.dart';
 import './workbench_mobile_test_fakes.dart';
 
 void main() {
@@ -323,6 +324,7 @@ Future<void> _pumpWorkbenchShell(
               components: workbenchMobileBundle.components,
               tokens: workbenchMobileBundle.tokens,
               initialFocusTarget: 'conversation-composer',
+              chrome: const FixtureLayoutChromePort(),
             ),
           );
         },

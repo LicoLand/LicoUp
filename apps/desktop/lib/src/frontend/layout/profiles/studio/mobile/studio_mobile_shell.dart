@@ -4,11 +4,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'package:flutter_client/src/contracts/presentation/semantic_destination.dart';
+import 'package:flutter_client/src/frontend/layout/layout_palette.dart';
 import 'package:flutter_client/src/frontend/layout/layout_surface_bundle.dart';
 import 'package:flutter_client/src/frontend/layout/profiles/studio/mobile/studio_mobile_components.dart';
 import 'package:flutter_client/src/frontend/layout/profiles/studio/mobile/studio_mobile_tokens.dart';
 import 'package:flutter_client/src/frontend/l10n/lico_strings.dart';
-import 'package:flutter_client/src/frontend/shared/ui/theme.dart';
 
 Widget buildStudioMobileCompactShell(
   BuildContext context,
@@ -70,7 +70,7 @@ final class _StudioCompactMobileShellState
     final data = widget.data;
     final environment = data.environment;
     final strings = LicoStrings.of(context);
-    final colors = context.licoColors;
+    final colors = context.layoutPalette;
     final contentInsets = StudioMobileMetrics.safeContentInsets(environment);
     final motion = StudioMobileMetrics.motion(environment);
     final headerExtent = StudioMobileMetrics.compactHeaderExtentFor(
@@ -198,7 +198,7 @@ final class _StudioCompactHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = context.licoColors;
+    final colors = context.layoutPalette;
     return SizedBox(
       key: const Key('studio-mobile-compact-header'),
       height: extent,
@@ -289,7 +289,7 @@ final class _StudioCompactNavigationOverlay extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = context.licoColors;
+    final colors = context.layoutPalette;
     return LayoutBuilder(
       builder: (context, constraints) {
         final width = math.min(
@@ -373,7 +373,7 @@ final class _StudioMediumMobileShell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final environment = data.environment;
-    final colors = context.licoColors;
+    final colors = context.layoutPalette;
     final contentInsets = StudioMobileMetrics.safeContentInsets(environment);
 
     final shell = Semantics(
@@ -440,7 +440,7 @@ final class _StudioMediumNavigationRail extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = context.licoColors;
+    final colors = context.layoutPalette;
     final strings = LicoStrings.of(context);
     return SizedBox(
       key: const Key('studio-mobile-medium-rail'),

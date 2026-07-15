@@ -29,9 +29,7 @@ void main() {
     schemaVersion: 2,
     id: 'policy-beta',
     label: 'Policy Beta',
-    agents: [
-      RoutingPolicyAgent(id: 'agent-b', priority: 1),
-    ],
+    agents: [RoutingPolicyAgent(id: 'agent-b', priority: 1)],
   );
 
   final decision = RouteDecisionRecord(
@@ -86,15 +84,18 @@ void main() {
       timestamp: '2026-07-11T06:00:00Z',
       sourceAgentId: 'agent-a',
       targetAgentId: 'agent-b',
-      sourceSessionId: 'session-a',
-      targetSessionId: 'session-b',
+      sourceSessionHandle: 'rh_aaaaaaaaaaaaaaaaaaaaaaaa',
+      targetSessionHandle: 'rh_bbbbbbbbbbbbbbbbbbbbbbbb',
       decision: decision,
       switchReason: 'policy-reload',
-      distillationPackage: package,
+      distillationDigest:
+          'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
     ),
   ];
 
-  testWidgets('V-007-A policy identity and reload state display', (tester) async {
+  testWidgets('V-007-A policy identity and reload state display', (
+    tester,
+  ) async {
     await tester.pumpWidget(
       _wrap(
         RoutingPolicyStatusPanel(
@@ -110,7 +111,10 @@ void main() {
     expect(find.text('Policy Beta'), findsOneWidget);
     expect(find.byKey(const Key('routing-policy-version')), findsOneWidget);
     expect(find.text('version 2'), findsOneWidget);
-    expect(find.byKey(const Key('routing-policy-validation-state')), findsOneWidget);
+    expect(
+      find.byKey(const Key('routing-policy-validation-state')),
+      findsOneWidget,
+    );
     expect(find.text('Error'), findsOneWidget);
     expect(
       find.byKey(const Key('routing-policy-validation-message')),
@@ -121,27 +125,42 @@ void main() {
   testWidgets('V-007-B decision record rendering with per-candidate reasons', (
     tester,
   ) async {
-    await tester.pumpWidget(_wrap(RoutingDecisionDisclosure(decision: decision)));
+    await tester.pumpWidget(
+      _wrap(RoutingDecisionDisclosure(decision: decision)),
+    );
     expect(find.byKey(const Key('routing-decision-chosen')), findsOneWidget);
     expect(find.textContaining('Agent B'), findsWidgets);
-    expect(find.byKey(const Key('routing-decision-candidate-agent-b')), findsOneWidget);
-    expect(find.byKey(const Key('routing-decision-candidate-agent-a')), findsOneWidget);
+    expect(
+      find.byKey(const Key('routing-decision-candidate-agent-b')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('routing-decision-candidate-agent-a')),
+      findsOneWidget,
+    );
     expect(find.textContaining('headroom 42'), findsOneWidget);
     expect(find.textContaining('not_ready'), findsOneWidget);
   });
 
-  testWidgets('V-007-C/F distillation preview honors redaction', (tester) async {
-    const raw = 'Goal: ship the routing module with hot reload. SECRET_RAW_LINE';
+  testWidgets('V-007-C/F distillation preview honors redaction', (
+    tester,
+  ) async {
+    const raw =
+        'Goal: ship the routing module with hot reload. SECRET_RAW_LINE';
     await tester.pumpWidget(
-      _wrap(
-        RoutingDistillationPreview(package: package, rawSourceText: raw),
-      ),
+      _wrap(RoutingDistillationPreview(package: package, rawSourceText: raw)),
     );
-    expect(find.byKey(const Key('routing-distillation-preview')), findsOneWidget);
+    expect(
+      find.byKey(const Key('routing-distillation-preview')),
+      findsOneWidget,
+    );
     expect(find.text('Ship routing disclosure.'), findsOneWidget);
     expect(find.textContaining('SECRET_RAW_LINE'), findsNothing);
     expect(find.textContaining(raw), findsNothing);
-    expect(find.byKey(const Key('routing-distillation-source-refs')), findsOneWidget);
+    expect(
+      find.byKey(const Key('routing-distillation-source-refs')),
+      findsOneWidget,
+    );
   });
 
   testWidgets('V-007-D per-task route history', (tester) async {

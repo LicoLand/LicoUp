@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_client/src/application/features/layout/layout_manager.dart';
 import 'package:flutter_client/src/contracts/presentation/layout_environment.dart';
 import 'package:flutter_client/src/contracts/presentation/layout_profile.dart';
@@ -12,7 +13,7 @@ import 'layout_catalog_test_fixtures.dart';
 void main() {
   test('initialize hydrates before reaching a stable selection', () async {
     final repository = FakePreferencesRepository(
-      preferences: preferences(layout: LayoutProfileId.studio),
+      preferences: preferences(layout: LayoutProfileId.parse('studio')),
     );
     final manager = createManager(repository);
 
@@ -22,7 +23,7 @@ void main() {
 
     expect(manager.initialized, isTrue);
     expect(manager.state.status, LayoutSelectionStatus.stable);
-    expect(manager.state.committedId, LayoutProfileId.studio);
+    expect(manager.state.committedId, LayoutProfileId.parse('studio'));
     manager.dispose();
   });
 
@@ -31,14 +32,14 @@ void main() {
     final manager = createManager(repository);
     await manager.initialize();
 
-    expect(manager.beginPreview(LayoutProfileId.studio), isTrue);
+    expect(manager.beginPreview(LayoutProfileId.parse('studio')), isTrue);
     expect(manager.state.status, LayoutSelectionStatus.previewing);
-    expect(manager.state.effectiveId, LayoutProfileId.studio);
+    expect(manager.state.effectiveId, LayoutProfileId.parse('studio'));
     expect(repository.layoutWriteCount, 0);
 
     manager.cancelPreview();
     expect(manager.state.status, LayoutSelectionStatus.stable);
-    expect(manager.state.effectiveId, LayoutProfileId.workbench);
+    expect(manager.state.effectiveId, LayoutProfileId.parse('workbench'));
     expect(repository.layoutWriteCount, 0);
     manager.dispose();
   });
@@ -47,20 +48,26 @@ void main() {
     final repository = FakePreferencesRepository(preferences: preferences());
     final manager = createManager(repository);
     await manager.initialize();
-    manager.beginPreview(LayoutProfileId.studio);
+    manager.beginPreview(LayoutProfileId.parse('studio'));
     repository.layoutWriteGate = Completer<void>();
 
     final confirmation = manager.confirmPreview();
     await repository.layoutWriteStarted.future;
     expect(manager.state.status, LayoutSelectionStatus.committing);
-    expect(manager.state.committedId, LayoutProfileId.workbench);
-    expect(repository.preferences.layoutProfileId, LayoutProfileId.workbench);
+    expect(manager.state.committedId, LayoutProfileId.parse('workbench'));
+    expect(
+      repository.preferences.layoutProfileId,
+      LayoutProfileId.parse('workbench'),
+    );
 
     repository.layoutWriteGate!.complete();
     expect(await confirmation, isTrue);
     expect(manager.state.status, LayoutSelectionStatus.stable);
-    expect(manager.state.committedId, LayoutProfileId.studio);
-    expect(repository.preferences.layoutProfileId, LayoutProfileId.studio);
+    expect(manager.state.committedId, LayoutProfileId.parse('studio'));
+    expect(
+      repository.preferences.layoutProfileId,
+      LayoutProfileId.parse('studio'),
+    );
     manager.dispose();
   });
 
@@ -68,13 +75,13 @@ void main() {
     final repository = FakePreferencesRepository(preferences: preferences());
     final manager = createManager(repository);
     await manager.initialize();
-    manager.beginPreview(LayoutProfileId.studio);
+    manager.beginPreview(LayoutProfileId.parse('studio'));
     repository.failNextLayoutWrite = true;
 
     expect(await manager.confirmPreview(), isFalse);
     expect(manager.state.status, LayoutSelectionStatus.error);
-    expect(manager.state.committedId, LayoutProfileId.workbench);
-    expect(manager.state.effectiveId, LayoutProfileId.workbench);
+    expect(manager.state.committedId, LayoutProfileId.parse('workbench'));
+    expect(manager.state.effectiveId, LayoutProfileId.parse('workbench'));
     expect(manager.state.errorCode, LayoutSelectionErrorCode.persistenceFailed);
     manager.dispose();
   });
@@ -82,7 +89,7 @@ void main() {
   test('reset uses the same commit path and preserves other fields', () async {
     final repository = FakePreferencesRepository(
       preferences: preferences(
-        layout: LayoutProfileId.studio,
+        layout: LayoutProfileId.parse('studio'),
         appearance: 'dark',
         locale: 'zh',
       ),
@@ -91,7 +98,7 @@ void main() {
     await manager.initialize();
 
     expect(await manager.resetLayout(), isTrue);
-    expect(manager.state.committedId, LayoutProfileId.workbench);
+    expect(manager.state.committedId, LayoutProfileId.parse('workbench'));
     expect(repository.preferences.appearancePresetId, 'dark');
     expect(repository.preferences.localePreference, 'zh');
     manager.dispose();
@@ -107,13 +114,14 @@ void main() {
       );
       await manager.initialize();
 
-      manager.beginPreview(LayoutProfileId.studio);
+      manager.beginPreview(LayoutProfileId.parse('studio'));
       await Future<void>.delayed(const Duration(milliseconds: 30));
-      expect(manager.state.status, LayoutSelectionStatus.stable);
-      expect(manager.state.effectiveId, LayoutProfileId.workbench);
+      expect(manager.state.status, LayoutSelectionStatus.error);
+      expect(manager.state.effectiveId, LayoutProfileId.parse('workbench'));
+      expect(manager.state.errorCode, LayoutSelectionErrorCode.previewExpired);
       expect(repository.layoutWriteCount, 0);
 
-      expect(manager.beginPreviewId('layout-2'), isFalse);
+      expect(manager.beginPreviewId('numeric-2'), isFalse);
       expect(manager.state.errorCode, LayoutSelectionErrorCode.invalidProfile);
       expect(manager.beginPreview(LayoutProfileId.parse('focus')), isFalse);
       expect(
@@ -146,46 +154,260 @@ void main() {
       );
       final failedManager = createManager(failedRepository);
       await failedManager.initialize();
+      expect(failedManager.initialized, isTrue);
+      expect(failedManager.preferences, preferences());
       expect(failedManager.state.status, LayoutSelectionStatus.error);
       expect(
         failedManager.state.errorCode,
         LayoutSelectionErrorCode.persistenceFailed,
       );
+      expect(await failedManager.resetLayout(), isTrue);
+      expect(failedRepository.layoutWriteCount, 1);
+      expect(failedManager.state.status, LayoutSelectionStatus.stable);
       failedManager.dispose();
     },
   );
 
-  test('newer initialization suppresses stale commit promotion', () async {
+  test('recovery reset persists a canonical default document', () async {
+    final invalidRepository = FakePreferencesRepository(
+      preferences: preferences(),
+      loadIssue: PresentationPreferencesLoadIssue.invalidDocument,
+    );
+    final invalidManager = createManager(invalidRepository);
+    await invalidManager.initialize();
+
+    expect(await invalidManager.resetLayout(), isTrue);
+    expect(invalidRepository.layoutWriteCount, 1);
+    expect(invalidManager.state.status, LayoutSelectionStatus.stable);
+    invalidManager.dispose();
+
+    final unavailableRepository = FakePreferencesRepository(
+      preferences: preferences(layout: LayoutProfileId.parse('focus')),
+    );
+    final unavailableManager = createManager(unavailableRepository);
+    await unavailableManager.initialize();
+
+    expect(
+      unavailableManager.state.errorCode,
+      LayoutSelectionErrorCode.unavailableProfile,
+    );
+    expect(await unavailableManager.resetLayout(), isTrue);
+    expect(unavailableRepository.layoutWriteCount, 1);
+    expect(
+      unavailableRepository.preferences.layoutProfileId,
+      LayoutProfileId.parse('workbench'),
+    );
+    unavailableManager.dispose();
+  });
+
+  test(
+    'all recovery and reset paths use the injected preferred default',
+    () async {
+      final repository = FakePreferencesRepository(
+        preferences: preferences(layout: LayoutProfileId.parse('unavailable')),
+      );
+      final manager = createManager(
+        repository,
+        preferredDefaultId: LayoutProfileId.parse('studio'),
+      );
+
+      await manager.initialize();
+      expect(manager.preferredDefaultId, LayoutProfileId.parse('studio'));
+      expect(manager.state.committedId, LayoutProfileId.parse('studio'));
+      expect(
+        manager.state.errorCode,
+        LayoutSelectionErrorCode.unavailableProfile,
+      );
+      expect(await manager.resetLayout(), isTrue);
+      expect(
+        repository.preferences.layoutProfileId,
+        LayoutProfileId.parse('studio'),
+      );
+      manager.dispose();
+    },
+  );
+
+  test('appearance and locale writes refresh the shared snapshot', () async {
     final repository = FakePreferencesRepository(preferences: preferences());
     final manager = createManager(repository);
     await manager.initialize();
-    manager.beginPreview(LayoutProfileId.studio);
-    repository.layoutWriteGate = Completer<void>();
 
-    final oldConfirmation = manager.confirmPreview();
-    await repository.layoutWriteStarted.future;
-    final newerInitialization = manager.initialize();
-    repository.layoutWriteGate!.complete();
-
-    expect(await oldConfirmation, isFalse);
-    await newerInitialization;
+    expect(await manager.setAppearancePreset('dark'), isTrue);
+    expect(await manager.setLocalePreference('zh'), isTrue);
+    expect(manager.preferences?.appearancePresetId, 'dark');
+    expect(manager.preferences?.localePreference, 'zh');
     expect(manager.state.status, LayoutSelectionStatus.stable);
-    expect(manager.state.committedId, LayoutProfileId.studio);
-    expect(manager.state.operationEpoch, greaterThan(1));
     manager.dispose();
   });
 
+  test(
+    'presentation writes serialize safely with a layout confirmation',
+    () async {
+      final repository = FakePreferencesRepository(preferences: preferences());
+      final manager = createManager(repository);
+      await manager.initialize();
+      manager.beginPreview(LayoutProfileId.parse('studio'));
+
+      final appearance = manager.setAppearancePreset('dark');
+      final confirmation = manager.confirmPreview();
+      expect(await appearance, isTrue);
+      expect(await confirmation, isTrue);
+      expect(
+        manager.preferences?.layoutProfileId,
+        LayoutProfileId.parse('studio'),
+      );
+      expect(manager.preferences?.appearancePresetId, 'dark');
+      expect(repository.preferences, manager.preferences);
+      manager.dispose();
+    },
+  );
+
+  test(
+    'unavailable recovery cannot overwrite a later layout confirmation',
+    () async {
+      final repository = FakePreferencesRepository(
+        preferences: preferences(layout: LayoutProfileId.parse('focus')),
+      );
+      final manager = createManager(repository);
+      await manager.initialize();
+      expect(manager.state.committedId, LayoutProfileId.parse('workbench'));
+
+      expect(manager.beginPreview(LayoutProfileId.parse('studio')), isTrue);
+      repository.layoutWriteGate = Completer<void>();
+      final appearance = manager.setAppearancePreset('dark');
+      final confirmation = manager.confirmPreview();
+
+      await repository.layoutWriteStarted.future;
+      repository.layoutWriteGate!.complete();
+      expect(await appearance, isTrue);
+      expect(await confirmation, isTrue);
+      expect(manager.state.committedId, LayoutProfileId.parse('studio'));
+      expect(
+        repository.preferences.layoutProfileId,
+        LayoutProfileId.parse('studio'),
+      );
+      expect(repository.preferences.appearancePresetId, 'dark');
+      expect(manager.preferences, repository.preferences);
+      manager.dispose();
+    },
+  );
+
+  test(
+    'initialization is memoized while the repository load is pending',
+    () async {
+      final repository = FakePreferencesRepository(preferences: preferences())
+        ..loadGate = Completer<void>();
+      final manager = createManager(repository);
+
+      final first = manager.initialize();
+      final second = manager.initialize();
+      expect(identical(first, second), isTrue);
+      await repository.loadStarted.future;
+      expect(repository.loadCount, 1);
+
+      repository.loadGate!.complete();
+      await Future.wait([first, second]);
+      await manager.initialize();
+      expect(repository.loadCount, 1);
+      expect(manager.state.status, LayoutSelectionStatus.stable);
+      manager.dispose();
+    },
+  );
+
+  test(
+    'repeated initialization does not invalidate an in-flight commit',
+    () async {
+      final repository = FakePreferencesRepository(preferences: preferences());
+      final manager = createManager(repository);
+      await manager.initialize();
+      manager.beginPreview(LayoutProfileId.parse('studio'));
+      repository.layoutWriteGate = Completer<void>();
+
+      final oldConfirmation = manager.confirmPreview();
+      await repository.layoutWriteStarted.future;
+      final newerInitialization = manager.initialize();
+      repository.layoutWriteGate!.complete();
+
+      expect(await oldConfirmation, isTrue);
+      await newerInitialization;
+      expect(manager.state.status, LayoutSelectionStatus.stable);
+      expect(manager.state.committedId, LayoutProfileId.parse('studio'));
+      manager.dispose();
+    },
+  );
+
+  test(
+    'listener failures and reentrancy cannot corrupt selection state',
+    () async {
+      final manager = createManager(
+        FakePreferencesRepository(preferences: preferences()),
+      );
+      await manager.initialize();
+      final reported = <FlutterErrorDetails>[];
+      final previousHandler = FlutterError.onError;
+      FlutterError.onError = reported.add;
+      addTearDown(() => FlutterError.onError = previousHandler);
+      var trailingNotifications = 0;
+
+      manager.addListener((_) => throw StateError('listener_failed'));
+      manager.addListener((state) {
+        if (state.status == LayoutSelectionStatus.previewing) {
+          manager.cancelPreview();
+        }
+      });
+      manager.addListener((_) => trailingNotifications += 1);
+
+      expect(manager.beginPreview(LayoutProfileId.parse('studio')), isTrue);
+      expect(manager.state.status, LayoutSelectionStatus.previewing);
+      expect(manager.state.effectiveId, LayoutProfileId.parse('studio'));
+      expect(trailingNotifications, 1);
+      expect(reported, hasLength(2));
+      expect(
+        reported.map((details) => details.exception.toString()),
+        contains(contains('layout_manager_listener_reentrancy')),
+      );
+
+      manager.cancelPreview();
+      expect(manager.state.status, LayoutSelectionStatus.stable);
+      expect(manager.state.effectiveId, LayoutProfileId.parse('workbench'));
+      expect(trailingNotifications, 2);
+      expect(reported, hasLength(3));
+      manager.dispose();
+    },
+  );
+
   test('resize updates only the surface-local variant state', () async {
     final repository = FakePreferencesRepository(
-      preferences: preferences(layout: LayoutProfileId.studio),
+      preferences: preferences(layout: LayoutProfileId.parse('studio')),
     );
     final manager = createManager(repository);
     await manager.initialize();
 
     manager.updateEnvironment(desktopEnvironment(width: 1400));
-    expect(manager.state.committedId, LayoutProfileId.studio);
+    expect(manager.state.committedId, LayoutProfileId.parse('studio'));
     expect(manager.state.viewport, LayoutViewportClass.expanded);
     expect(repository.layoutWriteCount, 0);
+    manager.dispose();
+  });
+
+  test('equivalent and silent environment updates do not notify', () async {
+    final manager = createManager(
+      FakePreferencesRepository(preferences: preferences()),
+    );
+    await manager.initialize();
+    var notifications = 0;
+    manager.addListener((_) => notifications += 1);
+
+    expect(manager.updateEnvironment(desktopEnvironment(width: 800)), isFalse);
+    expect(notifications, 0);
+    expect(
+      manager.updateEnvironment(desktopEnvironment(width: 1400), notify: false),
+      isTrue,
+    );
+    expect(manager.state.viewport, LayoutViewportClass.expanded);
+    expect(notifications, 0);
+    expect(manager.updateEnvironment(desktopEnvironment(width: 800)), isTrue);
+    expect(notifications, 1);
     manager.dispose();
   });
 }
@@ -193,19 +415,22 @@ void main() {
 LayoutManager createManager(
   PresentationPreferencesRepository repository, {
   Duration previewTimeout = const Duration(seconds: 12),
+  LayoutProfileId? preferredDefaultId,
 }) => LayoutManager(
   catalog: fixtureLayoutCatalog(),
   preferencesRepository: repository,
+  canonicalFallback: preferences(),
+  preferredDefaultId: preferredDefaultId,
   initialEnvironment: desktopEnvironment(width: 800),
   previewTimeout: previewTimeout,
 );
 
 PresentationPreferences preferences({
-  LayoutProfileId layout = LayoutProfileId.workbench,
+  LayoutProfileId? layout,
   String appearance = 'default-system',
   String locale = 'system',
 }) => PresentationPreferences(
-  layoutProfileId: layout,
+  layoutProfileId: layout ?? LayoutProfileId.parse('workbench'),
   appearancePresetId: appearance,
   localePreference: locale,
 );
@@ -232,13 +457,21 @@ final class FakePreferencesRepository
   final PresentationPreferencesLoadIssue? loadIssue;
   final bool failLoad;
   bool failNextLayoutWrite = false;
+  int loadCount = 0;
   int layoutWriteCount = 0;
+  Completer<void>? loadGate;
+  Completer<void> loadStarted = Completer<void>();
   Completer<void>? layoutWriteGate;
   Completer<void> layoutWriteStarted = Completer<void>();
   Future<void> _tail = Future<void>.value();
 
   @override
   Future<PresentationPreferencesLoadResult> load() => _enqueue(() async {
+    loadCount += 1;
+    if (!loadStarted.isCompleted) {
+      loadStarted.complete();
+    }
+    await loadGate?.future;
     if (failLoad) {
       throw const PresentationPreferencesRepositoryException(
         PresentationPreferencesRepositoryErrorCode.readFailed,

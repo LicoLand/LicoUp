@@ -8,6 +8,7 @@ import 'package:flutter_client/src/contracts/presentation/layout_state_namespace
 import 'package:flutter_client/src/contracts/presentation/semantic_destination.dart';
 import 'package:flutter_client/src/frontend/layout/layout_component_kit.dart';
 import 'package:flutter_client/src/frontend/layout/layout_definition.dart';
+import 'package:flutter_client/src/frontend/layout/layout_palette.dart';
 import 'package:flutter_client/src/frontend/layout/layout_registry.dart';
 import 'package:flutter_client/src/frontend/layout/layout_surface_bundle.dart';
 import 'package:flutter_client/src/frontend/layout/layout_visual_tokens.dart';
@@ -25,6 +26,26 @@ final class FixtureBuildTracker {
   }
 }
 
+const fixtureLayoutPalette = LayoutPalette(
+  background: Color(0xFFF8FAFC),
+  surface: Color(0xFFFFFFFF),
+  surfaceLow: Color(0xFFF1F5F9),
+  surfaceHigh: Color(0xFFDBEAFE),
+  surfaceHighest: Color(0xFFBFDBFE),
+  line: Color(0xFFCBD5E1),
+  text: Color(0xFF0F172A),
+  textMuted: Color(0xFF475569),
+  primary: Color(0xFF2563EB),
+  primaryStrong: Color(0xFF1D4ED8),
+  primaryFixed: Color(0xFFDBEAFE),
+  textOnPrimary: Color(0xFFFFFFFF),
+  info: Color(0xFF0E7490),
+  infoMuted: Color(0xFFCFFAFE),
+  success: Color(0xFF15803D),
+  warning: Color(0xFFB45309),
+  error: Color(0xFFB91C1C),
+);
+
 final class FixtureLayoutRuntime {
   const FixtureLayoutRuntime({
     required this.catalog,
@@ -37,9 +58,15 @@ final class FixtureLayoutRuntime {
   final List<LayoutDefinition> definitions;
 }
 
-FixtureLayoutRuntime buildFixtureLayoutRuntime({FixtureBuildTracker? tracker}) {
+FixtureLayoutRuntime buildFixtureLayoutRuntime({
+  FixtureBuildTracker? tracker,
+  ValueChanged<LayoutShellBuildContext>? onShellBuild,
+  Iterable<LayoutProfileDescriptor>? profiles,
+}) {
   final destinationCatalog = SemanticDestinationCatalog.current();
-  final descriptors = fixtureLayoutDescriptors();
+  final descriptors = (profiles ?? fixtureLayoutDescriptors()).toList(
+    growable: false,
+  );
   final bundles = [
     for (final descriptor in descriptors)
       for (final surface in LayoutRuntimeSurface.values)
@@ -48,6 +75,7 @@ FixtureLayoutRuntime buildFixtureLayoutRuntime({FixtureBuildTracker? tracker}) {
           surface: surface,
           destinationCatalog: destinationCatalog,
           tracker: tracker,
+          onShellBuild: onShellBuild,
         ),
   ];
   final definitions = [
@@ -72,16 +100,19 @@ FixtureLayoutRuntime buildFixtureLayoutRuntime({FixtureBuildTracker? tracker}) {
 
 List<LayoutProfileDescriptor> fixtureLayoutDescriptors() => [
   LayoutProfileDescriptor(
-    id: LayoutProfileId.workbench,
-    labelKey: 'layout.profile.workbench.label',
-    descriptionKey: 'layout.profile.workbench.description',
+    id: LayoutProfileId.parse('workbench'),
+    label: LayoutProfileCopy(english: 'Workbench', chinese: '工作台'),
+    description: LayoutProfileCopy(
+      english: 'Workbench fixture',
+      chinese: '工作台夹具',
+    ),
     styleIdentity: 'spacious-card-workbench',
     isDefault: true,
   ),
   LayoutProfileDescriptor(
-    id: LayoutProfileId.studio,
-    labelKey: 'layout.profile.studio.label',
-    descriptionKey: 'layout.profile.studio.description',
+    id: LayoutProfileId.parse('studio'),
+    label: LayoutProfileCopy(english: 'Studio', chinese: '原生'),
+    description: LayoutProfileCopy(english: 'Studio fixture', chinese: '原生夹具'),
     styleIdentity: 'dense-docked-studio',
     isDefault: false,
   ),
@@ -92,6 +123,7 @@ LayoutSurfaceBundle buildFixtureSurfaceBundle({
   required LayoutRuntimeSurface surface,
   required SemanticDestinationCatalog destinationCatalog,
   FixtureBuildTracker? tracker,
+  ValueChanged<LayoutShellBuildContext>? onShellBuild,
   Set<ClientSection>? destinationOverride,
 }) {
   final destinations =
@@ -100,9 +132,12 @@ LayoutSurfaceBundle buildFixtureSurfaceBundle({
     profileId: descriptor.id,
     surface: surface,
     destination: ClientSection.agents,
-    surfaceId: 'fixture-scroll',
+    channel: const LayoutStateChannel(
+      'fixture-scroll',
+      LayoutStateValueKind.scroll,
+    ),
   );
-  final tokens = descriptor.id == LayoutProfileId.workbench
+  final tokens = descriptor.id == LayoutProfileId.parse('workbench')
       ? LayoutVisualTokens(
           spacingUnit: 8,
           density: 1,
@@ -132,6 +167,7 @@ LayoutSurfaceBundle buildFixtureSurfaceBundle({
           viewport: viewport,
           shellBuilder: (context, data) {
             tracker?.recordShell(descriptor.id);
+            onShellBuild?.call(data);
             final installed = context.layoutVisualTokens;
             return Directionality(
               textDirection: TextDirection.ltr,

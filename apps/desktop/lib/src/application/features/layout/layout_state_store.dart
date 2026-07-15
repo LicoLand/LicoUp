@@ -4,6 +4,8 @@ import 'package:flutter_client/src/contracts/presentation/layout_state_namespace
 
 sealed class LayoutPresentationStateValue {
   const LayoutPresentationStateValue();
+
+  LayoutStateValueKind get kind;
 }
 
 final class LayoutScrollState extends LayoutPresentationStateValue {
@@ -17,6 +19,9 @@ final class LayoutScrollState extends LayoutPresentationStateValue {
   const LayoutScrollState._(this.offset);
 
   final double offset;
+
+  @override
+  LayoutStateValueKind get kind => LayoutStateValueKind.scroll;
 }
 
 final class LayoutPaneExtentState extends LayoutPresentationStateValue {
@@ -30,12 +35,18 @@ final class LayoutPaneExtentState extends LayoutPresentationStateValue {
   const LayoutPaneExtentState._(this.extent);
 
   final double extent;
+
+  @override
+  LayoutStateValueKind get kind => LayoutStateValueKind.paneExtent;
 }
 
 final class LayoutExpansionState extends LayoutPresentationStateValue {
   const LayoutExpansionState(this.expanded);
 
   final bool expanded;
+
+  @override
+  LayoutStateValueKind get kind => LayoutStateValueKind.expansion;
 }
 
 final class LayoutTabState extends LayoutPresentationStateValue {
@@ -49,21 +60,9 @@ final class LayoutTabState extends LayoutPresentationStateValue {
   const LayoutTabState._(this.index);
 
   final int index;
-}
 
-final class LayoutFocusState extends LayoutPresentationStateValue {
-  factory LayoutFocusState(String semanticTarget) {
-    if (!_semanticTargetPattern.hasMatch(semanticTarget)) {
-      throw const FormatException('layout_state_focus_target_invalid');
-    }
-    return LayoutFocusState._(semanticTarget);
-  }
-
-  const LayoutFocusState._(this.semanticTarget);
-
-  static final RegExp _semanticTargetPattern = RegExp(r'^[a-z]+(?:-[a-z]+)*$');
-
-  final String semanticTarget;
+  @override
+  LayoutStateValueKind get kind => LayoutStateValueKind.tab;
 }
 
 /// Bounded, presentation-only state keyed exclusively by catalog declarations.
@@ -75,6 +74,9 @@ final class LayoutStateStore {
 
   int get length => _values.length;
 
+  bool declares(LayoutStateNamespace namespace) =>
+      catalog.declaresStateNamespace(namespace);
+
   LayoutPresentationStateValue? read(LayoutStateNamespace namespace) {
     _requireDeclared(namespace);
     return _values[namespace];
@@ -85,6 +87,9 @@ final class LayoutStateStore {
     LayoutPresentationStateValue value,
   ) {
     _requireDeclared(namespace);
+    if (namespace.valueKind != value.kind) {
+      throw const FormatException('layout_state_value_kind_mismatch');
+    }
     _values[namespace] = value;
   }
 
@@ -100,7 +105,7 @@ final class LayoutStateStore {
   void resetAll() => _values.clear();
 
   void _requireDeclared(LayoutStateNamespace namespace) {
-    if (!catalog.declaresStateNamespace(namespace)) {
+    if (!declares(namespace)) {
       throw const FormatException('layout_state_namespace_unregistered');
     }
   }

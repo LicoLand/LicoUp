@@ -1,18 +1,28 @@
 import 'dart:async';
 
-import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
-import 'package:flutter_client/src/application/controller/future_client_controller.dart';
-import 'package:flutter_client/src/contracts/agent_orchestration_policy.dart';
+import 'package:flutter_client/src/application/controller/client_controller.dart';
+import 'package:flutter_client/src/application/features/layout/layout_state_store.dart';
 import 'package:flutter_client/src/frontend/l10n/lico_strings.dart';
 import 'package:flutter_client/src/contracts/agent_conversation_models.dart';
+import 'package:flutter_client/src/contracts/presentation/layout_state_namespace.dart';
 import 'package:flutter_client/src/contracts/target_candidate.dart';
-import 'package:flutter_client/src/frontend/shared/ui/agent_brand_icon.dart';
+import 'package:flutter_client/src/frontend/layout/layout_destination_presentation.dart';
+import 'package:flutter_client/src/frontend/layout/layout_focus_coordinator.dart';
+import 'package:flutter_client/src/frontend/layout/layout_palette.dart';
+import 'package:flutter_client/src/frontend/layout/layout_scope.dart';
+import 'package:flutter_client/src/frontend/shared/ui/apple_popup_select.dart';
+import 'package:flutter_client/src/frontend/shared/ui/lico_activity_animations.dart';
 import 'package:flutter_client/src/frontend/features/agents/ui/agent_render_adapter.dart';
 import 'package:flutter_client/src/frontend/features/agents/ui/agent_conversation_parity_disclosure.dart';
 import 'package:flutter_client/src/frontend/features/agents/ui/agent_orchestration_policy_controls.dart';
-import 'package:flutter_client/src/frontend/shell/client_platform.dart';
+import 'package:flutter_client/src/frontend/features/agents/ui/agent_usage_panel.dart';
+import 'package:flutter_client/src/frontend/features/agents/ui/agent_workspace_sidebar.dart';
+import 'package:flutter_client/src/frontend/features/mcp_plugins/ui/mcp_plugins_panel.dart';
+import 'package:flutter_client/src/frontend/features/skill_hub/ui/skill_hub_panel.dart';
+import 'package:flutter_client/src/frontend/shared/platform/client_platform.dart';
+import 'package:flutter_client/src/frontend/shared/ui/apple_glass.dart';
 import 'package:flutter_client/src/frontend/features/agents/ui/history_session_panel.dart';
 import 'package:flutter_client/src/frontend/shared/ui/message_markdown.dart';
 import 'package:flutter_client/src/frontend/shared/ui/panel_frame.dart';
@@ -23,6 +33,10 @@ part 'agent_conversation_runtime_settings.dart';
 
 const double _conversationHeaderHeight = 64;
 const double _conversationHistoryMinWidth = 260;
+const double _agentsSidebarMinWidth = 196;
+const double _agentsSidebarMaxWidth = 420;
+const double _agentsSidebarDividerWidth = 8;
+const double _agentsFloatingMinChatWidth = 360;
 
 class AgentConversationWorkspace extends StatefulWidget {
   const AgentConversationWorkspace({
@@ -33,16 +47,14 @@ class AgentConversationWorkspace extends StatefulWidget {
     required this.adding,
     required this.onAddTarget,
     this.allowManualTargetActions = true,
-    this.showTabs = true,
   });
 
-  final FutureClientController controller;
+  final ClientController controller;
   final List<TargetCandidate> targets;
   final bool scanning;
   final bool adding;
   final VoidCallback onAddTarget;
   final bool allowManualTargetActions;
-  final bool showTabs;
 
   @override
   State<AgentConversationWorkspace> createState() =>
@@ -55,6 +67,9 @@ class _AgentConversationWorkspaceState
   void initState() {
     super.initState();
     widget.controller.addListener(_handleControllerChanged);
+    widget.controller.conversationStructureListenable.addListener(
+      _handleControllerChanged,
+    );
   }
 
   @override
@@ -64,12 +79,21 @@ class _AgentConversationWorkspaceState
       return;
     }
     oldWidget.controller.removeListener(_handleControllerChanged);
+    oldWidget.controller.conversationStructureListenable.removeListener(
+      _handleControllerChanged,
+    );
     widget.controller.addListener(_handleControllerChanged);
+    widget.controller.conversationStructureListenable.addListener(
+      _handleControllerChanged,
+    );
   }
 
   @override
   void dispose() {
     widget.controller.removeListener(_handleControllerChanged);
+    widget.controller.conversationStructureListenable.removeListener(
+      _handleControllerChanged,
+    );
     super.dispose();
   }
 
@@ -84,445 +108,19 @@ class _AgentConversationWorkspaceState
     final mobileClient =
         widget.controller.mobileClientRuntimePlatform ||
         isMobileClientPlatform(context);
-    final showTabs = widget.showTabs && !mobileClient;
     final targets = widget.controller.orderedConversationTargets(
       widget.targets,
     );
-    final body = _ConversationWorkspaceBody(
+    // Desktop owns agent navigation in the sidebar tree; mobile owns it in the
+    // phone shell. The workspace itself stays independent of layout profiles.
+    return _ConversationWorkspaceBody(
       controller: widget.controller,
+      targets: targets,
+      scanning: widget.scanning,
+      adding: widget.adding,
       onAddTarget: widget.onAddTarget,
       allowManualTargetActions: widget.allowManualTargetActions,
-    );
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        if (showTabs) ...[
-          AgentConversationTabBar(
-            targets: targets,
-            selectedTargetId: widget.controller.selectedConversationAgentId,
-            scanning: widget.scanning,
-            adding: widget.adding,
-            onSelect: (targetId) =>
-                unawaited(widget.controller.selectConversationAgent(targetId)),
-            onReorder: (oldIndex, newIndex) => unawaited(
-              widget.controller.reorderConversationAgentTabs(
-                targets,
-                oldIndex,
-                newIndex,
-              ),
-            ),
-            onAddTarget: widget.onAddTarget,
-            allowManualTargetActions: widget.allowManualTargetActions,
-          ),
-        ],
-        Expanded(child: body),
-      ],
-    );
-  }
-}
-
-class AgentConversationTabBar extends StatefulWidget {
-  const AgentConversationTabBar({
-    super.key,
-    required this.targets,
-    required this.selectedTargetId,
-    required this.scanning,
-    required this.adding,
-    required this.onSelect,
-    required this.onReorder,
-    required this.onAddTarget,
-    required this.allowManualTargetActions,
-  });
-
-  final List<TargetCandidate> targets;
-  final String selectedTargetId;
-  final bool scanning;
-  final bool adding;
-  final ValueChanged<String> onSelect;
-  final void Function(int oldIndex, int newIndex) onReorder;
-  final VoidCallback onAddTarget;
-  final bool allowManualTargetActions;
-
-  @override
-  State<AgentConversationTabBar> createState() =>
-      _AgentConversationTabBarState();
-}
-
-class _AgentConversationTabBarState extends State<AgentConversationTabBar> {
-  static const double _wheelStep = 184;
-  static const double _desktopTabMaxWidth = 172;
-  static const double _desktopTabMinWidth = 104;
-  static const double _mobileTabMaxWidth = 156;
-  static const double _mobileTabMinWidth = 126;
-
-  final ScrollController _scrollController = ScrollController();
-
-  @override
-  void dispose() {
-    _scrollController.dispose();
-    super.dispose();
-  }
-
-  void _handlePointerSignal(PointerSignalEvent event) {
-    if (event is! PointerScrollEvent || !_scrollController.hasClients) {
-      return;
-    }
-    final deltaX = event.scrollDelta.dx;
-    final deltaY = event.scrollDelta.dy;
-    if (deltaX == 0 && deltaY == 0) {
-      return;
-    }
-    final effectiveDeltaY = deltaX.abs() > deltaY.abs() ? -deltaX : deltaY;
-    final position = _scrollController.position;
-    final targetOffset = agentTabWheelTargetOffset(
-      currentOffset: position.pixels,
-      minScrollExtent: position.minScrollExtent,
-      maxScrollExtent: position.maxScrollExtent,
-      scrollDeltaY: effectiveDeltaY,
-      step: _wheelStep,
-    );
-    if ((targetOffset - position.pixels).abs() < 0.5) {
-      return;
-    }
-    unawaited(
-      _scrollController.animateTo(
-        targetOffset,
-        duration: const Duration(milliseconds: 180),
-        curve: Curves.easeOutCubic,
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.licoColors;
-    final mobileClient = isMobileClientPlatform(context);
-    final content = SizedBox(
-      height: mobileClient ? 54 : 42,
-      child: Row(
-        children: [
-          Expanded(
-            child: widget.targets.isEmpty
-                ? _AgentTabsEmpty(
-                    adding: widget.adding,
-                    scanning: widget.scanning,
-                    onAddTarget: widget.onAddTarget,
-                    allowManualTargetActions: widget.allowManualTargetActions,
-                  )
-                : Listener(
-                    behavior: HitTestBehavior.opaque,
-                    onPointerSignal: _handlePointerSignal,
-                    child: LayoutBuilder(
-                      builder: (context, constraints) {
-                        const horizontalPadding = 0.0;
-                        final tabWidth = agentTabWidthFor(
-                          availableWidth:
-                              constraints.maxWidth - horizontalPadding * 2,
-                          tabCount: widget.targets.length,
-                          minWidth: mobileClient
-                              ? _mobileTabMinWidth
-                              : _desktopTabMinWidth,
-                          maxWidth: mobileClient
-                              ? _mobileTabMaxWidth
-                              : _desktopTabMaxWidth,
-                        );
-                        final tabList = ReorderableListView(
-                          scrollController: _scrollController,
-                          physics: mobileClient
-                              ? const BouncingScrollPhysics()
-                              : const ClampingScrollPhysics(),
-                          scrollDirection: Axis.horizontal,
-                          buildDefaultDragHandles: false,
-                          onReorderItem: widget.onReorder,
-                          padding: EdgeInsets.symmetric(
-                            horizontal: horizontalPadding,
-                            vertical: mobileClient ? 3 : 2,
-                          ),
-                          proxyDecorator: (child, index, animation) {
-                            return AnimatedBuilder(
-                              animation: animation,
-                              builder: (context, child) {
-                                final elevation = Tween<double>(
-                                  begin: 0,
-                                  end: 8,
-                                ).evaluate(animation);
-                                return Material(
-                                  color: Colors.transparent,
-                                  elevation: elevation,
-                                  child: child,
-                                );
-                              },
-                              child: child,
-                            );
-                          },
-                          children: [
-                            for (
-                              var index = 0;
-                              index < widget.targets.length;
-                              index++
-                            )
-                              if (isAgentOrchestrationTargetId(
-                                widget.targets[index].target,
-                              ))
-                                SizedBox(
-                                  key: ValueKey(
-                                    'agent-tab-fixed-${widget.targets[index].target}',
-                                  ),
-                                  width: tabWidth,
-                                  height: double.infinity,
-                                  child: _AgentTab(
-                                    key: ValueKey(
-                                      'agent-tab-${widget.targets[index].target}',
-                                    ),
-                                    target: widget.targets[index],
-                                    selected:
-                                        widget.targets[index].target ==
-                                        widget.selectedTargetId,
-                                    onSelect: widget.onSelect,
-                                  ),
-                                )
-                              else
-                                ReorderableDelayedDragStartListener(
-                                  key: ValueKey(
-                                    'agent-tab-drag-${widget.targets[index].target}',
-                                  ),
-                                  index: index,
-                                  child: SizedBox(
-                                    width: tabWidth,
-                                    height: double.infinity,
-                                    child: _AgentTab(
-                                      key: ValueKey(
-                                        'agent-tab-${widget.targets[index].target}',
-                                      ),
-                                      target: widget.targets[index],
-                                      selected:
-                                          widget.targets[index].target ==
-                                          widget.selectedTargetId,
-                                      onSelect: widget.onSelect,
-                                    ),
-                                  ),
-                                ),
-                          ],
-                        );
-                        final scrollableTabs = ScrollConfiguration(
-                          behavior: ScrollConfiguration.of(context).copyWith(
-                            dragDevices: {
-                              PointerDeviceKind.mouse,
-                              PointerDeviceKind.touch,
-                              PointerDeviceKind.trackpad,
-                              PointerDeviceKind.stylus,
-                            },
-                            scrollbars: false,
-                          ),
-                          child: tabList,
-                        );
-                        if (mobileClient) {
-                          return scrollableTabs;
-                        }
-                        return RawScrollbar(
-                          controller: _scrollController,
-                          thumbVisibility: true,
-                          trackVisibility: false,
-                          interactive: false,
-                          thickness: 2,
-                          radius: const Radius.circular(999),
-                          crossAxisMargin: 1,
-                          mainAxisMargin: 72,
-                          thumbColor: colors.textMuted.withAlpha(120),
-                          scrollbarOrientation: ScrollbarOrientation.bottom,
-                          child: scrollableTabs,
-                        );
-                      },
-                    ),
-                  ),
-          ),
-          if (widget.scanning)
-            SizedBox(
-              width: 42,
-              height: double.infinity,
-              child: Center(
-                child: SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: colors.primary,
-                  ),
-                ),
-              ),
-            ),
-        ],
-      ),
-    );
-    if (mobileClient) {
-      return content;
-    }
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: colors.surfaceLow,
-        border: Border(bottom: BorderSide(color: colors.line)),
-      ),
-      child: content,
-    );
-  }
-}
-
-@visibleForTesting
-double agentTabWheelTargetOffset({
-  required double currentOffset,
-  required double minScrollExtent,
-  required double maxScrollExtent,
-  required double scrollDeltaY,
-  double step = 184,
-}) {
-  if (scrollDeltaY == 0) {
-    return currentOffset.clamp(minScrollExtent, maxScrollExtent).toDouble();
-  }
-  final direction = scrollDeltaY < 0 ? 1 : -1;
-  return (currentOffset + direction * step)
-      .clamp(minScrollExtent, maxScrollExtent)
-      .toDouble();
-}
-
-@visibleForTesting
-double agentTabWidthFor({
-  required double availableWidth,
-  required int tabCount,
-  required double minWidth,
-  required double maxWidth,
-}) {
-  if (tabCount <= 0 || availableWidth <= 0) {
-    return maxWidth;
-  }
-  return (availableWidth / tabCount).clamp(minWidth, maxWidth).toDouble();
-}
-
-class _AgentTabsEmpty extends StatelessWidget {
-  const _AgentTabsEmpty({
-    required this.adding,
-    required this.scanning,
-    required this.onAddTarget,
-    required this.allowManualTargetActions,
-  });
-
-  final bool adding;
-  final bool scanning;
-  final VoidCallback onAddTarget;
-  final bool allowManualTargetActions;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.licoColors;
-    final strings = LicoStrings.of(context);
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              scanning
-                  ? strings.scanningLocalAgents
-                  : strings.noLocalAgentsFound,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: colors.textMuted,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ),
-          if (allowManualTargetActions)
-            OutlinedButton.icon(
-              onPressed: adding ? null : onAddTarget,
-              icon: adding
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.add, size: 18),
-              label: Text(strings.addTarget),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-class _AgentTab extends StatelessWidget {
-  const _AgentTab({
-    super.key,
-    required this.target,
-    required this.selected,
-    required this.onSelect,
-  });
-
-  final TargetCandidate target;
-  final bool selected;
-  final ValueChanged<String> onSelect;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.licoColors;
-    final detected = target.status != 'not-detected';
-    final mobileClient = isMobileClientPlatform(context);
-    return Material(
-      color: selected ? colors.background : Colors.transparent,
-      child: InkWell(
-        onTap: () => onSelect(target.target),
-        hoverColor: colors.surfaceHigh.withAlpha(92),
-        child: SizedBox.expand(
-          child: Container(
-            padding: EdgeInsets.symmetric(horizontal: mobileClient ? 10 : 14),
-            decoration: BoxDecoration(
-              color: selected ? colors.background : Colors.transparent,
-              border: Border(
-                top: BorderSide(
-                  color: selected ? colors.primary : Colors.transparent,
-                  width: selected ? 2 : 0,
-                ),
-                right: BorderSide(color: colors.line.withAlpha(150)),
-              ),
-            ),
-            child: Row(
-              children: [
-                AgentBrandIcon(
-                  target: target,
-                  selected: selected,
-                  detected: detected,
-                  size: mobileClient ? 28 : 26,
-                  iconSize: mobileClient ? 18 : 17,
-                ),
-                SizedBox(width: mobileClient ? 8 : 9),
-                Expanded(
-                  child: Text(
-                    target.label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontWeight: selected ? FontWeight.w800 : FontWeight.w700,
-                      color: selected ? colors.text : colors.textMuted,
-                      fontSize: mobileClient ? 14 : 13,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Tooltip(
-                  message: target.kind,
-                  child: Container(
-                    width: 7,
-                    height: 7,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: _statusColor(target, colors),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
+      useFloatingShell: !mobileClient,
     );
   }
 }
@@ -530,13 +128,21 @@ class _AgentTab extends StatelessWidget {
 class _ConversationWorkspaceBody extends StatefulWidget {
   const _ConversationWorkspaceBody({
     required this.controller,
+    required this.targets,
+    required this.scanning,
+    required this.adding,
     required this.onAddTarget,
     required this.allowManualTargetActions,
+    this.useFloatingShell = false,
   });
 
-  final FutureClientController controller;
+  final ClientController controller;
+  final List<TargetCandidate> targets;
+  final bool scanning;
+  final bool adding;
   final VoidCallback onAddTarget;
   final bool allowManualTargetActions;
+  final bool useFloatingShell;
 
   @override
   State<_ConversationWorkspaceBody> createState() =>
@@ -546,9 +152,223 @@ class _ConversationWorkspaceBody extends StatefulWidget {
 class _ConversationWorkspaceBodyState
     extends State<_ConversationWorkspaceBody> {
   bool _historyCollapsed = false;
+  // Default to the narrowest usable rail; users can drag wider.
+  double _sidebarWidth = _agentsSidebarMinWidth;
+  AgentsWorkspaceDestination _destination =
+      AgentsWorkspaceDestination.conversations;
+  LayoutScopedState? _layoutState;
+  String? _layoutStateIdentity;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final scope = LayoutScope.maybeOf(context);
+    if (scope == null) {
+      _layoutState = null;
+      _layoutStateIdentity = null;
+      return;
+    }
+    final identity =
+        '${scope.profileId.value}/${scope.environment.surface.name}';
+    if (_layoutStateIdentity == identity) {
+      return;
+    }
+    _layoutStateIdentity = identity;
+    _layoutState = scope.state;
+
+    final history = scope.state.readIfDeclared(
+      LayoutStateChannels.agentsHistory,
+    );
+    final sidebar = scope.state.readIfDeclared(
+      LayoutStateChannels.agentsSidebar,
+    );
+    final destination = scope.state.readIfDeclared(
+      LayoutStateChannels.agentsDestination,
+    );
+    _historyCollapsed = history is LayoutExpansionState
+        ? !history.expanded
+        : false;
+    _sidebarWidth = sidebar is LayoutPaneExtentState
+        ? sidebar.extent.clamp(_agentsSidebarMinWidth, _agentsSidebarMaxWidth)
+        : _agentsSidebarMinWidth;
+    _destination =
+        destination is LayoutTabState &&
+            destination.index < AgentsWorkspaceDestination.values.length
+        ? AgentsWorkspaceDestination.values[destination.index]
+        : AgentsWorkspaceDestination.conversations;
+  }
+
+  void _writeLayoutState(
+    LayoutStateChannel channel,
+    LayoutPresentationStateValue value,
+  ) {
+    _layoutState?.writeIfDeclared(channel, value);
+  }
 
   void _toggleHistoryCollapsed() {
     setState(() => _historyCollapsed = !_historyCollapsed);
+    _writeLayoutState(
+      LayoutStateChannels.agentsHistory,
+      LayoutExpansionState(!_historyCollapsed),
+    );
+  }
+
+  void _selectDestination(AgentsWorkspaceDestination destination) {
+    if (_destination == destination) {
+      return;
+    }
+    setState(() => _destination = destination);
+    _writeLayoutState(
+      LayoutStateChannels.agentsDestination,
+      LayoutTabState(destination.index),
+    );
+  }
+
+  Widget _detailForDestination({
+    required TargetCandidate? target,
+    required Widget conversationPane,
+  }) {
+    return switch (_destination) {
+      AgentsWorkspaceDestination.plugins => McpPluginsPanel(
+        controller: widget.controller,
+      ),
+      AgentsWorkspaceDestination.skills => SkillHubPanel(
+        controller: widget.controller,
+      ),
+      AgentsWorkspaceDestination.stats => AgentUsagePanel(
+        controller: widget.controller,
+      ),
+      AgentsWorkspaceDestination.conversations =>
+        target == null
+            ? _DesktopNoAgentSelected(
+                allowManualTargetActions: widget.allowManualTargetActions,
+                onAddTarget: widget.onAddTarget,
+              )
+            : conversationPane,
+    };
+  }
+
+  Widget _buildFloatingShell({
+    required ClientController controller,
+    required TargetCandidate? target,
+    required Widget conversationPane,
+    required VoidCallback onAddTarget,
+    required bool allowManualTargetActions,
+    required LicoStrings strings,
+    required LayoutAgentsPresentation presentation,
+  }) {
+    return ColoredBox(
+      key: const Key('agents-workspace-shell'),
+      color: presentation.canvasColor(context.layoutPalette),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final maxSidebarWidth =
+              (constraints.maxWidth -
+                      _agentsSidebarDividerWidth -
+                      _agentsFloatingMinChatWidth -
+                      presentation.sidebarOuterHorizontalExtent -
+                      presentation.detailOuterHorizontalExtent)
+                  .clamp(_agentsSidebarMinWidth, _agentsSidebarMaxWidth)
+                  .toDouble();
+          final sidebarWidth = _sidebarWidth
+              .clamp(_agentsSidebarMinWidth, maxSidebarWidth)
+              .toDouble();
+          final sidebar = AgentsWorkspaceSidebar(
+            destination: _destination,
+            onSelectDestination: _selectDestination,
+            targets: widget.targets,
+            sessionsByAgent: controller.conversationSessionsByAgent,
+            selectedAgentId: controller.selectedConversationAgentId,
+            selectedSessionId: controller.selectedConversationSession?.id ?? '',
+            activityFor: controller.conversationTabActivityFor,
+            onSelectAgent: (agentId) =>
+                unawaited(controller.selectConversationAgent(agentId)),
+            onSelectSession: (agentId, sessionId) async {
+              await controller.selectConversationAgent(agentId);
+              controller.selectConversationSession(sessionId);
+            },
+            onNewConversation: controller.startNewConversationSession,
+            onArchive: () =>
+                unawaited(controller.archiveSelectedConversationAgent()),
+            onAddTarget: onAddTarget,
+            allowManualTargetActions: allowManualTargetActions,
+            scanning: widget.scanning,
+            adding: widget.adding,
+          );
+          final detail = _detailForDestination(
+            target: target,
+            conversationPane: conversationPane,
+          );
+          final sidebarPane = Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (presentation.showExpandedSidebarControl)
+                Padding(
+                  padding: presentation.expandedSidebarControlPadding,
+                  child: Align(
+                    alignment: Alignment.centerRight,
+                    child: _AgentsSidebarCollapseControl(
+                      key: const Key('agents-workspace-sidebar-collapse'),
+                      expanded: true,
+                      tooltip: strings.collapseAgentsSidebar,
+                      onPressed: _toggleHistoryCollapsed,
+                    ),
+                  ),
+                ),
+              Expanded(child: sidebar),
+            ],
+          );
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (_historyCollapsed && presentation.showCollapsedSidebarControl)
+                Padding(
+                  padding: presentation.collapsedSidebarControlPadding,
+                  child: Align(
+                    alignment: Alignment.topLeft,
+                    child: _AgentsSidebarCollapseControl(
+                      key: const Key('agents-workspace-sidebar-expand'),
+                      expanded: false,
+                      tooltip: strings.expandAgentsSidebar,
+                      onPressed: _toggleHistoryCollapsed,
+                    ),
+                  ),
+                )
+              else if (!_historyCollapsed)
+                presentation.frameSidebar(
+                  context,
+                  key: const Key('agents-workspace-sidebar-card'),
+                  child: SizedBox(width: sidebarWidth, child: sidebarPane),
+                ),
+              Expanded(
+                child: _PaneEdgeDragHandle(
+                  dragHandleKey: const Key('agents-workspace-split-divider'),
+                  width: _agentsSidebarDividerWidth,
+                  enabled: !_historyCollapsed,
+                  onDragDelta: (delta) {
+                    setState(() {
+                      _sidebarWidth = (sidebarWidth + delta)
+                          .clamp(_agentsSidebarMinWidth, maxSidebarWidth)
+                          .toDouble();
+                    });
+                    _writeLayoutState(
+                      LayoutStateChannels.agentsSidebar,
+                      LayoutPaneExtentState(_sidebarWidth),
+                    );
+                  },
+                  child: presentation.frameDetail(
+                    context,
+                    key: const Key('agents-workspace-floating-card'),
+                    sidebarCollapsed: _historyCollapsed,
+                    child: detail,
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
   }
 
   @override
@@ -560,6 +380,32 @@ class _ConversationWorkspaceBodyState
     final strings = LicoStrings.of(context);
     final target = controller.selectedConversationAgent;
     final mobileClient = isMobileClientPlatform(context);
+
+    if (widget.useFloatingShell && !mobileClient) {
+      final presentation = LayoutDestinationPresentationScope.agentsOf(context);
+      final conversationPane = target == null
+          ? const SizedBox.shrink()
+          : _ActiveConversationPane(
+              controller: controller,
+              target: target,
+              historyCollapsed: _historyCollapsed,
+              onToggleHistory: _toggleHistoryCollapsed,
+              collapseHistoryTooltip: strings.collapseHistoryConversations,
+              expandHistoryTooltip: strings.expandHistoryConversations,
+              framed: false,
+              showSidebarToggle: presentation.showConversationSidebarControl,
+            );
+      return _buildFloatingShell(
+        controller: controller,
+        target: target,
+        conversationPane: conversationPane,
+        onAddTarget: onAddTarget,
+        allowManualTargetActions: allowManualTargetActions,
+        strings: strings,
+        presentation: presentation,
+      );
+    }
+
     if (target == null) {
       if (mobileClient) {
         return Column(
@@ -590,8 +436,6 @@ class _ConversationWorkspaceBodyState
             _MobileComposerSurface(
               child: _InactiveRuntimeMessageComposer(
                 targetLabel: strings.agent,
-                onVoiceHoldStart: controller.beginVoiceInputDraft,
-                onVoiceHoldEnd: controller.endVoiceInputDraft,
               ),
             ),
           ],
@@ -633,11 +477,7 @@ class _ConversationWorkspaceBodyState
             ),
             if (mobileClient) ...[
               const Divider(height: 1),
-              _InactiveRuntimeMessageComposer(
-                targetLabel: strings.agent,
-                onVoiceHoldStart: controller.beginVoiceInputDraft,
-                onVoiceHoldEnd: controller.endVoiceInputDraft,
-              ),
+              _InactiveRuntimeMessageComposer(targetLabel: strings.agent),
             ],
           ],
         ),
@@ -648,25 +488,40 @@ class _ConversationWorkspaceBodyState
     final selectedSession = controller.selectedConversationSession;
     final selectedSessionId = selectedSession?.id ?? '';
     final historyItems = sessions
-        .map(
-          (session) => HistorySessionPanelItem(
+        .map((session) {
+          final workingDirectory = session.workingDirectory.trim();
+          final nativeId = session.nativeSessionId.trim();
+          final running =
+              controller.isSendingConversationMessage &&
+              ((controller.sendingConversationSessionId.isNotEmpty &&
+                      session.id == controller.sendingConversationSessionId) ||
+                  (controller.sendingConversationNativeSessionId.isNotEmpty &&
+                      nativeId ==
+                          controller.sendingConversationNativeSessionId) ||
+                  (controller.sendingConversationSessionId.isEmpty &&
+                      controller.sendingConversationNativeSessionId.isEmpty &&
+                      session.id == selectedSessionId));
+          return HistorySessionPanelItem(
             id: session.id,
             title: session.title,
-            meta: _sessionUpdatedAtLabel(session),
+            meta: _sessionRelativeUpdatedAtLabel(session),
             preview: _messagePreviewText(session.preview),
+            groupKey: workingDirectory,
+            groupLabel: historySessionProjectLabel(
+              workingDirectory,
+              fallback: strings.ungroupedConversationProject,
+            ),
             active: session.id == selectedSessionId,
+            running: running,
             canDelete: false,
             deleteLabel: strings.deleteNativeHistory,
-          ),
-        )
+          );
+        })
         .toList(growable: false);
     if (mobileClient) {
-      return _ConversationPane(
+      return _ActiveConversationPane(
         controller: controller,
         target: target,
-        session: selectedSession,
-        onVoiceHoldStart: controller.beginVoiceInputDraft,
-        onVoiceHoldEnd: controller.endVoiceInputDraft,
         historyCollapsed: _historyCollapsed,
         onToggleHistory: _toggleHistoryCollapsed,
         collapseHistoryTooltip: strings.collapseHistoryConversations,
@@ -676,12 +531,9 @@ class _ConversationWorkspaceBodyState
     return LayoutBuilder(
       builder: (context, constraints) {
         final compact = constraints.maxWidth < 760;
-        final chatPane = _ConversationPane(
+        final chatPane = _ActiveConversationPane(
           controller: controller,
           target: target,
-          session: selectedSession,
-          onVoiceHoldStart: controller.beginVoiceInputDraft,
-          onVoiceHoldEnd: controller.endVoiceInputDraft,
           historyCollapsed: _historyCollapsed,
           onToggleHistory: _toggleHistoryCollapsed,
           collapseHistoryTooltip: strings.collapseHistoryConversations,
@@ -710,6 +562,7 @@ class _ConversationWorkspaceBodyState
             headerHeight: headerHeight,
             hasMore: controller.selectedConversationSessionsHasMore,
             loadingMore: controller.isLoadingMoreSelectedConversationSessions,
+            groupByProject: true,
             onLoadMore: () => unawaited(
               controller.loadMoreConversationSessions(
                 controller.selectedConversationAgentId,
@@ -745,22 +598,22 @@ class _ConversationWorkspaceBodyState
             historyMax,
           );
           final historyListHeight = (historyHeight - 58).clamp(72.0, 170.0);
-          const minScrollableChatHeight = 220.0;
+          // The header, parity gate, and composer consume roughly 180 px. Keep
+          // enough remaining height for the active timeline to render useful
+          // content instead of collapsing to its padding at short window
+          // heights. The existing outer scroll fallback preserves access to
+          // both history and composer when both panes cannot fit at once.
+          const minScrollableChatHeight = 300.0;
           final compactContentHeight =
               historyHeight + 8 + minScrollableChatHeight;
           if (constraints.maxHeight < compactContentHeight) {
-            final scrollHistoryHeight = historyMax;
-            final scrollHistoryListHeight = (scrollHistoryHeight - 58).clamp(
-              72.0,
-              240.0,
-            );
             return SingleChildScrollView(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   SizedBox(
-                    height: scrollHistoryHeight,
-                    child: historyPaneFor(scrollHistoryListHeight.toDouble()),
+                    height: historyHeight,
+                    child: historyPaneFor(historyListHeight.toDouble()),
                   ),
                   const SizedBox(height: 8),
                   SizedBox(height: minScrollableChatHeight, child: chatPane),
@@ -784,12 +637,9 @@ class _ConversationWorkspaceBodyState
           180.0,
           520.0,
         );
-        final embeddedChatPane = _ConversationPane(
+        final embeddedChatPane = _ActiveConversationPane(
           controller: controller,
           target: target,
-          session: selectedSession,
-          onVoiceHoldStart: controller.beginVoiceInputDraft,
-          onVoiceHoldEnd: controller.endVoiceInputDraft,
           historyCollapsed: _historyCollapsed,
           onToggleHistory: _toggleHistoryCollapsed,
           collapseHistoryTooltip: strings.collapseHistoryConversations,
@@ -807,6 +657,47 @@ class _ConversationWorkspaceBodyState
           historyCollapsed: _historyCollapsed,
         );
       },
+    );
+  }
+}
+
+class _DesktopNoAgentSelected extends StatelessWidget {
+  const _DesktopNoAgentSelected({
+    required this.allowManualTargetActions,
+    required this.onAddTarget,
+  });
+
+  final bool allowManualTargetActions;
+  final VoidCallback onAddTarget;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.licoColors;
+    final strings = LicoStrings.of(context);
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.psychology_outlined, color: colors.textMuted, size: 28),
+            const SizedBox(height: 10),
+            Text(
+              strings.selectAgentToView,
+              textAlign: TextAlign.center,
+              style: TextStyle(color: colors.textMuted),
+            ),
+            if (allowManualTargetActions) ...[
+              const SizedBox(height: 14),
+              OutlinedButton.icon(
+                onPressed: onAddTarget,
+                icon: const Icon(Icons.add, size: 18),
+                label: Text(strings.addTarget),
+              ),
+            ],
+          ],
+        ),
+      ),
     );
   }
 }
@@ -882,30 +773,68 @@ class _NewAgentConversationButton extends StatelessWidget {
   }
 }
 
-class _ConversationPane extends StatelessWidget {
-  const _ConversationPane({
+class _ActiveConversationPane extends StatelessWidget {
+  const _ActiveConversationPane({
     required this.controller,
     required this.target,
-    required this.session,
-    required this.onVoiceHoldStart,
-    required this.onVoiceHoldEnd,
     required this.historyCollapsed,
     required this.onToggleHistory,
     required this.collapseHistoryTooltip,
     required this.expandHistoryTooltip,
     this.framed = true,
+    this.showSidebarToggle = true,
   });
 
-  final FutureClientController controller;
+  final ClientController controller;
   final TargetCandidate target;
-  final AgentConversationSession? session;
-  final VoidCallback onVoiceHoldStart;
-  final VoidCallback onVoiceHoldEnd;
   final bool historyCollapsed;
   final VoidCallback onToggleHistory;
   final String collapseHistoryTooltip;
   final String expandHistoryTooltip;
   final bool framed;
+  final bool showSidebarToggle;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: controller.activeConversationListenable,
+      builder: (context, _) => _ConversationPane(
+        controller: controller,
+        target: target,
+        session: controller.selectedConversationSession,
+        historyCollapsed: historyCollapsed,
+        onToggleHistory: onToggleHistory,
+        collapseHistoryTooltip: collapseHistoryTooltip,
+        expandHistoryTooltip: expandHistoryTooltip,
+        framed: framed,
+        showSidebarToggle: showSidebarToggle,
+      ),
+    );
+  }
+}
+
+class _ConversationPane extends StatelessWidget {
+  const _ConversationPane({
+    required this.controller,
+    required this.target,
+    required this.session,
+    required this.historyCollapsed,
+    required this.onToggleHistory,
+    required this.collapseHistoryTooltip,
+    required this.expandHistoryTooltip,
+    this.framed = true,
+    this.showSidebarToggle = true,
+  });
+
+  final ClientController controller;
+  final TargetCandidate target;
+  final AgentConversationSession? session;
+  final bool historyCollapsed;
+  final VoidCallback onToggleHistory;
+  final String collapseHistoryTooltip;
+  final String expandHistoryTooltip;
+  final bool framed;
+  final bool showSidebarToggle;
 
   @override
   Widget build(BuildContext context) {
@@ -935,6 +864,7 @@ class _ConversationPane extends StatelessWidget {
     final disabledHint = composerEnabled ? '' : gateCopy.reasonLabel;
     final composer = _RuntimeMessageComposer(
       targetLabel: target.label,
+      initialDraft: controller.conversationComposerDraft,
       busy: controller.isSendingConversationMessage,
       enabled: composerEnabled,
       disabledHint: disabledHint,
@@ -952,21 +882,20 @@ class _ConversationPane extends StatelessWidget {
           : controller.selectedConversationReasoningEffort,
       onModelChanged: controller.selectConversationModel,
       onReasoningEffortChanged: controller.selectConversationReasoningEffort,
+      onDraftChanged: controller.updateConversationComposerDraft,
       onSend: (text) => unawaited(controller.sendConversationMessage(text)),
-      onVoiceHoldStart: onVoiceHoldStart,
-      onVoiceHoldEnd: onVoiceHoldEnd,
     );
     final sendGate = composerEnabled
         ? null
         : ConversationParitySendGateBanner(
             copy: gateCopy,
             onUnblock: switch (gateCopy.unblockAction) {
-              ConversationParityUnblockAction.rescanAgents =>
-                () => unawaited(controller.scanTargets()),
-              ConversationParityUnblockAction.editPolicy =>
-                () => unawaited(
-                  showAgentOrchestrationPolicyEditor(context, controller),
-                ),
+              ConversationParityUnblockAction.rescanAgents => () => unawaited(
+                controller.scanTargets(),
+              ),
+              ConversationParityUnblockAction.editPolicy => () => unawaited(
+                showAgentOrchestrationPolicyEditor(context, controller),
+              ),
               null => null,
             },
           );
@@ -989,6 +918,8 @@ class _ConversationPane extends StatelessWidget {
               loading: controller.isLoadingConversations,
               session: session,
               target: target,
+              turnActive: controller.isSendingConversationMessage,
+              liveMessages: controller.selectedLiveConversationMessages,
             ),
           ),
           ?sendGate,
@@ -1007,6 +938,7 @@ class _ConversationPane extends StatelessWidget {
             onToggleHistory: onToggleHistory,
             collapseHistoryTooltip: collapseHistoryTooltip,
             expandHistoryTooltip: expandHistoryTooltip,
+            showSidebarToggle: showSidebarToggle,
           ),
           const Divider(height: 1),
         ],
@@ -1015,6 +947,8 @@ class _ConversationPane extends StatelessWidget {
             loading: controller.isLoadingConversations,
             session: session,
             target: target,
+            turnActive: controller.isSendingConversationMessage,
+            liveMessages: controller.selectedLiveConversationMessages,
           ),
         ),
         ?sendGate,
@@ -1050,7 +984,7 @@ class _ResizableConversationSplit extends StatefulWidget {
 class _ResizableConversationSplitState
     extends State<_ResizableConversationSplit> {
   static const double _minChatWidth = 360;
-  static const double _dividerWidth = 12;
+  static const double _dragHandleWidth = 12;
 
   double? _historyWidth;
 
@@ -1060,7 +994,7 @@ class _ResizableConversationSplitState
     return LayoutBuilder(
       builder: (context, constraints) {
         final maxHistoryWidth =
-            (constraints.maxWidth - _dividerWidth - _minChatWidth)
+            (constraints.maxWidth - _dragHandleWidth - _minChatWidth)
                 .clamp(_conversationHistoryMinWidth, constraints.maxWidth)
                 .toDouble();
         final historyWidth = (_historyWidth ?? widget.initialHistoryWidth)
@@ -1074,9 +1008,10 @@ class _ResizableConversationSplitState
             children: [
               if (!widget.historyCollapsed)
                 SizedBox(width: historyWidth, child: widget.historyPane),
-              if (!widget.historyCollapsed)
-                _ConversationSplitDivider(
-                  width: _dividerWidth,
+              Expanded(
+                child: _PaneEdgeDragHandle(
+                  width: _dragHandleWidth,
+                  enabled: !widget.historyCollapsed,
                   onDragDelta: (delta) {
                     setState(() {
                       _historyWidth = (historyWidth + delta)
@@ -1084,8 +1019,9 @@ class _ResizableConversationSplitState
                           .toDouble();
                     });
                   },
+                  child: widget.chatPane,
                 ),
-              Expanded(child: widget.chatPane),
+              ),
             ],
           ),
         );
@@ -1094,35 +1030,44 @@ class _ResizableConversationSplitState
   }
 }
 
-class _ConversationSplitDivider extends StatelessWidget {
-  const _ConversationSplitDivider({
+class _PaneEdgeDragHandle extends StatelessWidget {
+  const _PaneEdgeDragHandle({
+    this.dragHandleKey,
     required this.width,
     required this.onDragDelta,
+    required this.child,
+    this.enabled = true,
   });
 
+  final Key? dragHandleKey;
   final double width;
   final ValueChanged<double> onDragDelta;
+  final Widget child;
+  final bool enabled;
 
   @override
   Widget build(BuildContext context) {
-    final colors = context.licoColors;
-    return MouseRegion(
-      cursor: SystemMouseCursors.resizeLeftRight,
-      child: GestureDetector(
-        key: const Key('conversation-split-divider'),
-        behavior: HitTestBehavior.opaque,
-        onHorizontalDragUpdate: (details) => onDragDelta(details.delta.dx),
-        child: SizedBox(
-          width: width,
-          child: Center(
-            child: Container(
-              width: 1,
-              height: double.infinity,
-              color: colors.line,
+    if (!enabled) {
+      return child;
+    }
+    return Stack(
+      children: [
+        child,
+        Positioned(
+          left: 0,
+          top: 0,
+          bottom: 0,
+          child: MouseRegion(
+            cursor: SystemMouseCursors.resizeLeftRight,
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onHorizontalDragUpdate: (details) =>
+                  onDragDelta(details.delta.dx),
+              child: SizedBox(key: dragHandleKey, width: width),
             ),
           ),
         ),
-      ),
+      ],
     );
   }
 }
@@ -1144,6 +1089,48 @@ class _MobileComposerSurface extends StatelessWidget {
   }
 }
 
+class _OpencodeServeStatusChip extends StatelessWidget {
+  const _OpencodeServeStatusChip({required this.state});
+
+  final Map<String, dynamic>? state;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.licoColors;
+    final status = (state?['status'] as String?)?.trim() ?? 'stopped';
+    final port = state?['port'];
+    final conflict = state?['portConflict'] == true;
+    final label = switch (status) {
+      'running' => port == null ? 'OpenCode serve' : 'OpenCode :$port',
+      'blocked' => conflict ? 'OpenCode port blocked' : 'OpenCode blocked',
+      'unavailable' => 'OpenCode unavailable',
+      _ => 'OpenCode stopped',
+    };
+    final color = switch (status) {
+      'running' => colors.success,
+      'blocked' || 'unavailable' => colors.error,
+      _ => colors.textMuted,
+    };
+    return Container(
+      key: const Key('opencode-serve-status'),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withValues(alpha: 0.35)),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: color,
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
+}
+
 class _ConversationHeader extends StatelessWidget {
   const _ConversationHeader({
     required this.controller,
@@ -1153,15 +1140,17 @@ class _ConversationHeader extends StatelessWidget {
     required this.onToggleHistory,
     required this.collapseHistoryTooltip,
     required this.expandHistoryTooltip,
+    this.showSidebarToggle = true,
   });
 
-  final FutureClientController controller;
+  final ClientController controller;
   final TargetCandidate target;
   final AgentConversationSession? session;
   final bool historyCollapsed;
   final VoidCallback onToggleHistory;
   final String collapseHistoryTooltip;
   final String expandHistoryTooltip;
+  final bool showSidebarToggle;
 
   @override
   Widget build(BuildContext context) {
@@ -1178,29 +1167,31 @@ class _ConversationHeader extends StatelessWidget {
           children: mobileClient
               ? const <Widget>[]
               : [
-                  IconButton(
-                    tooltip: historyCollapsed
-                        ? expandHistoryTooltip
-                        : collapseHistoryTooltip,
-                    onPressed: onToggleHistory,
-                    color: colors.textMuted,
-                    hoverColor: Color.lerp(
-                      colors.surface,
-                      colors.primary,
-                      0.12,
+                  if (showSidebarToggle) ...[
+                    IconButton(
+                      tooltip: historyCollapsed
+                          ? expandHistoryTooltip
+                          : collapseHistoryTooltip,
+                      onPressed: onToggleHistory,
+                      color: colors.primary,
+                      hoverColor: Color.lerp(
+                        colors.surface,
+                        colors.primary,
+                        0.12,
+                      ),
+                      style: IconButton.styleFrom(
+                        fixedSize: const Size(40, 40),
+                        minimumSize: const Size(40, 40),
+                        padding: EdgeInsets.zero,
+                        shape: const CircleBorder(),
+                      ),
+                      icon: _SidebarToggleGlyph(
+                        expanded: !historyCollapsed,
+                        color: colors.primary,
+                      ),
                     ),
-                    style: IconButton.styleFrom(
-                      fixedSize: const Size(40, 40),
-                      minimumSize: const Size(40, 40),
-                      padding: EdgeInsets.zero,
-                      shape: const CircleBorder(),
-                    ),
-                    icon: _SidebarToggleGlyph(
-                      expanded: !historyCollapsed,
-                      color: colors.textMuted,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
+                    const SizedBox(width: 12),
+                  ],
                   Expanded(
                     child: Align(
                       alignment: Alignment.centerLeft,
@@ -1220,6 +1211,12 @@ class _ConversationHeader extends StatelessWidget {
                     const SizedBox(width: 10),
                     ConversationParityDisclosurePanel(target: target),
                   ],
+                  if (target.target == 'opencode') ...[
+                    const SizedBox(width: 8),
+                    _OpencodeServeStatusChip(
+                      state: controller.opencodeServeState,
+                    ),
+                  ],
                   if (controller.selectedConversationIsOrchestration) ...[
                     const SizedBox(width: 12),
                     AgentOrchestrationPolicyHeaderControls(
@@ -1238,6 +1235,78 @@ class _ConversationHeader extends StatelessWidget {
         }
         return SizedBox(height: _conversationHeaderHeight, child: content);
       },
+    );
+  }
+}
+
+class _AgentsSidebarCollapseControl extends StatefulWidget {
+  const _AgentsSidebarCollapseControl({
+    super.key,
+    required this.expanded,
+    required this.tooltip,
+    required this.onPressed,
+  });
+
+  final bool expanded;
+  final String tooltip;
+  final VoidCallback onPressed;
+
+  @override
+  State<_AgentsSidebarCollapseControl> createState() =>
+      _AgentsSidebarCollapseControlState();
+}
+
+class _AgentsSidebarCollapseControlState
+    extends State<_AgentsSidebarCollapseControl> {
+  bool _hovered = false;
+  bool _pressed = false;
+
+  static const double _hitSize = 32;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.licoColors;
+    final iconColor = colors.text.withAlpha(220);
+    final showCircle = _hovered || _pressed;
+    return Tooltip(
+      message: widget.tooltip,
+      waitDuration: const Duration(milliseconds: 400),
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        onEnter: (_) => setState(() => _hovered = true),
+        onExit: (_) => setState(() {
+          _hovered = false;
+          _pressed = false;
+        }),
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTapDown: (_) => setState(() => _pressed = true),
+          onTapUp: (_) {
+            setState(() => _pressed = false);
+            widget.onPressed();
+          },
+          onTapCancel: () => setState(() => _pressed = false),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 140),
+            width: _hitSize,
+            height: _hitSize,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: showCircle
+                  ? colors.surface.withAlpha(colors.isDark ? 160 : 220)
+                  : Colors.transparent,
+              border: showCircle
+                  ? Border.all(color: colors.line.withAlpha(110))
+                  : null,
+            ),
+            child: _SidebarToggleGlyph(
+              expanded: widget.expanded,
+              color: iconColor,
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
@@ -1316,23 +1385,158 @@ class _SidebarToggleGlyphPainter extends CustomPainter {
   }
 }
 
-class _MessageList extends StatelessWidget {
+class _MessageList extends StatefulWidget {
   const _MessageList({
     required this.loading,
     required this.session,
     required this.target,
+    this.turnActive = false,
+    this.liveMessages = const [],
   });
 
   final bool loading;
   final AgentConversationSession? session;
   final TargetCandidate target;
+  final bool turnActive;
+  final List<AgentConversationMessage> liveMessages;
+
+  @override
+  State<_MessageList> createState() => _MessageListState();
+}
+
+class _MessageListState extends State<_MessageList> {
+  bool _showDiagnostics = false;
+  late Future<AgentRenderAdapter> _adapterFuture;
+  (AgentRenderAdapterRegistry, String, String, String, String)?
+  _adapterResolutionKey;
+  AgentConversationSession? _timelineSession;
+  List<AgentConversationMessage>? _timelineLiveMessages;
+  String _timelineSessionIdentity = '';
+  String _timelineSessionKey = '';
+  List<_ConversationTimelineItem> _timelineItems = const [];
+  Map<String, int> _timelineIndexByStorageKey = const {};
+  List<AgentSemanticArtifactRef> _artifacts = const [];
+  int _footerCount = 0;
+  String _activeProcessStorageKey = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _syncAdapterFuture();
+    _syncTimelineCache();
+    _syncActiveProcessStorageKey();
+  }
+
+  @override
+  void didUpdateWidget(covariant _MessageList oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _syncAdapterFuture();
+    final timelineChanged = _syncTimelineCache();
+    if (timelineChanged || oldWidget.turnActive != widget.turnActive) {
+      _syncActiveProcessStorageKey();
+    }
+  }
+
+  void _syncAdapterFuture() {
+    final registry = AgentRenderAdapterRegistry.instance;
+    final session = widget.session;
+    final nextKey = (
+      registry,
+      widget.target.target,
+      session?.sourceClient ?? '',
+      session?.sourceTool ?? '',
+      session?.adapterId ?? '',
+    );
+    if (_adapterResolutionKey == nextKey) {
+      return;
+    }
+    _adapterResolutionKey = nextKey;
+    _adapterFuture = registry.resolve(
+      agentId: nextKey.$2,
+      sourceClient: nextKey.$3,
+      sourceTool: nextKey.$4,
+      adapterId: nextKey.$5,
+    );
+  }
+
+  bool _syncTimelineCache() {
+    final session = widget.session;
+    final sessionIdentity = [
+      widget.target.target,
+      session?.id ?? '',
+      session?.nativeSessionId ?? '',
+    ].join('|');
+    if (identical(_timelineSession, session) &&
+        identical(_timelineLiveMessages, widget.liveMessages) &&
+        _timelineSessionIdentity == sessionIdentity) {
+      return false;
+    }
+
+    final messages = <AgentConversationMessage>[
+      ...?session?.messages,
+      ...widget.liveMessages,
+    ];
+    final timelineItems = _conversationTimelineItems(
+      messages,
+      sessionIdentity,
+      historyTruncated: session?.historyTruncated ?? false,
+      messageTreeTruncated: session?.messageTreeTruncated ?? false,
+    ).reversed.toList(growable: false);
+    final artifacts = session?.artifacts ?? const <AgentSemanticArtifactRef>[];
+    final hasDiagnostics = session?.hasDiagnostics ?? false;
+    final footerCount =
+        (artifacts.isNotEmpty ? 1 : 0) + (hasDiagnostics ? 1 : 0);
+    final indexByStorageKey = <String, int>{};
+    var footerIndex = 0;
+    if (hasDiagnostics) {
+      indexByStorageKey['conversation-diagnostics'] = footerIndex;
+      footerIndex += 1;
+    }
+    if (artifacts.isNotEmpty) {
+      indexByStorageKey['conversation-artifacts'] = footerIndex;
+    }
+    for (var index = 0; index < timelineItems.length; index += 1) {
+      indexByStorageKey[timelineItems[index].storageKey] = index + footerCount;
+    }
+
+    _timelineSession = session;
+    _timelineLiveMessages = widget.liveMessages;
+    _timelineSessionIdentity = sessionIdentity;
+    _timelineSessionKey = sessionIdentity.hashCode
+        .toUnsigned(32)
+        .toRadixString(16);
+    _timelineItems = timelineItems;
+    _timelineIndexByStorageKey = Map<String, int>.unmodifiable(
+      indexByStorageKey,
+    );
+    _artifacts = artifacts;
+    _footerCount = footerCount;
+    return true;
+  }
+
+  void _syncActiveProcessStorageKey() {
+    _activeProcessStorageKey = '';
+    if (!widget.turnActive) {
+      return;
+    }
+    for (final item in _timelineItems) {
+      if (item is _ConversationProcessTimelineItem) {
+        _activeProcessStorageKey = item.storageKey;
+        return;
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final colors = context.licoColors;
     final strings = LicoStrings.of(context);
-    final messages = session?.messages ?? const <AgentConversationMessage>[];
-    if (loading && messages.isEmpty) {
+    final session = widget.session;
+    final messages = <AgentConversationMessage>[
+      ...?session?.messages,
+      ...widget.liveMessages,
+    ];
+    if (widget.loading && messages.isEmpty) {
       return const Center(child: CircularProgressIndicator());
     }
     if (messages.isEmpty) {
@@ -1348,35 +1552,12 @@ class _MessageList extends StatelessWidget {
       );
     }
     return FutureBuilder<AgentRenderAdapter>(
-      future: AgentRenderAdapterRegistry.instance.resolve(
-        agentId: target.target,
-        sourceClient: session?.sourceClient ?? '',
-        sourceTool: session?.sourceTool ?? '',
-        adapterId: session?.adapterId ?? '',
-      ),
+      future: _adapterFuture,
       builder: (context, snapshot) {
         final adapter = snapshot.data ?? AgentRenderAdapter.fallback();
-        final sessionIdentity = [
-          target.target,
-          session?.id ?? '',
-          session?.nativeSessionId ?? '',
-        ].join('|');
-        final sessionKey = sessionIdentity.hashCode
-            .toUnsigned(32)
-            .toRadixString(16);
-        final timelineItems = _conversationTimelineItems(
-          messages,
-          sessionIdentity,
-          historyTruncated: session?.historyTruncated ?? false,
-          messageTreeTruncated: session?.messageTreeTruncated ?? false,
-        ).reversed.toList(growable: false);
-        final indexByStorageKey = <String, int>{
-          for (var index = 0; index < timelineItems.length; index++)
-            timelineItems[index].storageKey: index,
-        };
         return ListView.builder(
           key: PageStorageKey<String>(
-            'agent-conversation-message-list-$sessionKey',
+            'agent-conversation-message-list-$_timelineSessionKey',
           ),
           reverse: true,
           padding: EdgeInsets.fromLTRB(
@@ -1387,19 +1568,61 @@ class _MessageList extends StatelessWidget {
           ),
           findChildIndexCallback: (key) {
             if (key case ValueKey<String>(:final value)) {
-              return indexByStorageKey[value];
+              return _timelineIndexByStorageKey[value];
             }
             return null;
           },
           itemBuilder: (context, index) {
-            final item = timelineItems[index];
+            if (index < _footerCount) {
+              if (session?.hasDiagnostics ?? false) {
+                if (index == 0) {
+                  return Padding(
+                    key: const ValueKey<String>('conversation-diagnostics'),
+                    padding: EdgeInsets.only(
+                      bottom: adapter.assistantVerticalPadding,
+                    ),
+                    child: _ConversationDiagnosticsPanel(
+                      session: session!,
+                      expanded: _showDiagnostics,
+                      onToggle: () {
+                        setState(() {
+                          _showDiagnostics = !_showDiagnostics;
+                        });
+                      },
+                    ),
+                  );
+                }
+                if (_artifacts.isNotEmpty && index == 1) {
+                  return Padding(
+                    key: const ValueKey<String>('conversation-artifacts'),
+                    padding: EdgeInsets.only(
+                      bottom: adapter.assistantVerticalPadding,
+                    ),
+                    child: _ConversationArtifactsPanel(artifacts: _artifacts),
+                  );
+                }
+              } else if (_artifacts.isNotEmpty && index == 0) {
+                return Padding(
+                  key: const ValueKey<String>('conversation-artifacts'),
+                  padding: EdgeInsets.only(
+                    bottom: adapter.assistantVerticalPadding,
+                  ),
+                  child: _ConversationArtifactsPanel(artifacts: _artifacts),
+                );
+              }
+            }
+            final item = _timelineItems[index - _footerCount];
             final content = switch (item) {
               _ConversationMessageTimelineItem(:final message) => _MessageBlock(
                 message: message,
                 adapter: adapter,
               ),
               _ConversationProcessTimelineItem(:final events) =>
-                _ConversationProcessCard(events: events, adapter: adapter),
+                _ConversationProcessCard(
+                  events: events,
+                  adapter: adapter,
+                  active: item.storageKey == _activeProcessStorageKey,
+                ),
               _ConversationTruncationTimelineItem(
                 :final historyTruncated,
                 :final messageTreeTruncated,
@@ -1412,16 +1635,150 @@ class _MessageList extends StatelessWidget {
             return Padding(
               key: ValueKey<String>(item.storageKey),
               padding: EdgeInsets.only(
-                bottom: index + 1 < timelineItems.length
+                bottom: index + 1 < _timelineItems.length + _footerCount
                     ? adapter.assistantVerticalPadding
                     : 0,
               ),
               child: content,
             );
           },
-          itemCount: timelineItems.length,
+          itemCount: _timelineItems.length + _footerCount,
         );
       },
+    );
+  }
+}
+
+class _ConversationArtifactsPanel extends StatelessWidget {
+  const _ConversationArtifactsPanel({required this.artifacts});
+
+  final List<AgentSemanticArtifactRef> artifacts;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.licoColors;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        border: Border.all(color: colors.line.withAlpha(80)),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Artifacts', style: Theme.of(context).textTheme.titleSmall),
+            const SizedBox(height: 8),
+            for (final artifact in artifacts)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: Text(
+                  '${artifact.label} (${artifact.kind})'
+                  '${artifact.ref.isEmpty ? '' : ' → ${artifact.ref}'}',
+                  style: TextStyle(color: colors.textMuted, fontSize: 13),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ConversationDiagnosticsPanel extends StatelessWidget {
+  const _ConversationDiagnosticsPanel({
+    required this.session,
+    required this.expanded,
+    required this.onToggle,
+  });
+
+  final AgentConversationSession session;
+  final bool expanded;
+  final VoidCallback onToggle;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.licoColors;
+    final semantic = session.semantic;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        border: Border.all(color: colors.line.withAlpha(80)),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          InkWell(
+            onTap: onToggle,
+            borderRadius: BorderRadius.circular(12),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Diagnostics',
+                      style: Theme.of(context).textTheme.titleSmall,
+                    ),
+                  ),
+                  Icon(
+                    expanded ? Icons.expand_less : Icons.expand_more,
+                    color: colors.textMuted,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          if (expanded && semantic != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Audit',
+                    style: TextStyle(
+                      color: colors.textMuted,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Adapter: ${semantic.audit.adapterId}\n'
+                    'Host: ${semantic.audit.hostApp}\n'
+                    'Source: ${semantic.audit.sourceKind}\n'
+                    'Session: ${semantic.audit.nativeSessionId}\n'
+                    'Redaction: ${semantic.audit.redactionStatus}\n'
+                    'Validation: ${semantic.audit.validationStatus}\n'
+                    'Evidence: ${semantic.audit.sourceEvidence.pathRef}',
+                    style: TextStyle(color: colors.textMuted, fontSize: 12),
+                  ),
+                  if (semantic.audit.parseWarnings.isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      'Parse warnings: ${semantic.audit.parseWarnings.join('; ')}',
+                      style: TextStyle(color: colors.textMuted, fontSize: 12),
+                    ),
+                  ],
+                  const SizedBox(height: 12),
+                  Text(
+                    'Raw evidence',
+                    style: TextStyle(
+                      color: colors.textMuted,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  for (final evidence in semantic.rawEvidence)
+                    Text(
+                      '${evidence.kind}: ${evidence.pathRef} (${evidence.contentHash})',
+                      style: TextStyle(color: colors.textMuted, fontSize: 12),
+                    ),
+                ],
+              ),
+            ),
+        ],
+      ),
     );
   }
 }
@@ -1492,10 +1849,13 @@ class _SubagentCardBlockState extends State<_SubagentCardBlock> {
         constraints: BoxConstraints(maxWidth: widget.adapter.assistantMaxWidth),
         child: DecoratedBox(
           decoration: BoxDecoration(
-            color: Color.lerp(colors.surfaceLow, colors.primaryFixed, 0.18),
-            borderRadius: BorderRadius.circular(10),
+            color: Colors.white.withAlpha(colors.isDark ? 18 : 24),
+            borderRadius: BorderRadius.circular(
+              AppleControlMetrics.menuCornerRadius,
+            ),
             border: Border.all(
-              color: Color.lerp(colors.line, colors.primary, 0.36)!,
+              color: Colors.white.withAlpha(colors.isDark ? 48 : 70),
+              width: AppleControlMetrics.hairline,
             ),
           ),
           child: Column(
@@ -1503,19 +1863,21 @@ class _SubagentCardBlockState extends State<_SubagentCardBlock> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               InkWell(
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(
+                  AppleControlMetrics.menuCornerRadius,
+                ),
                 onTap: () => setState(() => _expanded = !_expanded),
                 child: Padding(
                   padding: const EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 12,
+                    horizontal: 12,
+                    vertical: 10,
                   ),
                   child: Row(
                     children: [
                       Icon(
                         Icons.account_tree_outlined,
-                        color: colors.primary,
-                        size: 20,
+                        color: colors.info.withAlpha(200),
+                        size: 18,
                       ),
                       const SizedBox(width: 10),
                       Expanded(
@@ -1528,19 +1890,20 @@ class _SubagentCardBlockState extends State<_SubagentCardBlock> {
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(
                                 color: colors.text,
-                                fontWeight: FontWeight.w800,
-                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                fontSize: 13,
+                                letterSpacing: -0.08,
                               ),
                             ),
-                            const SizedBox(height: 3),
+                            const SizedBox(height: 2),
                             Text(
                               subtitle,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(
                                 color: colors.textMuted,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w400,
                               ),
                             ),
                           ],
@@ -1549,9 +1912,10 @@ class _SubagentCardBlockState extends State<_SubagentCardBlock> {
                       const SizedBox(width: 8),
                       Icon(
                         _expanded
-                            ? Icons.keyboard_arrow_up
-                            : Icons.keyboard_arrow_down,
+                            ? Icons.keyboard_arrow_up_rounded
+                            : Icons.keyboard_arrow_down_rounded,
                         color: colors.textMuted,
+                        size: 18,
                       ),
                     ],
                   ),
@@ -1722,16 +2086,23 @@ class _MessageDetailsDisclosureState extends State<_MessageDetailsDisclosure> {
         : '';
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: widget.blockBackground,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: widget.borderColor),
+        color: Colors.white.withAlpha(colors.isDark ? 12 : 16),
+        borderRadius: BorderRadius.circular(
+          AppleControlMetrics.controlCornerRadius,
+        ),
+        border: Border.all(
+          color: Colors.white.withAlpha(colors.isDark ? 36 : 56),
+          width: AppleControlMetrics.hairline,
+        ),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           InkWell(
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: BorderRadius.circular(
+              AppleControlMetrics.controlCornerRadius,
+            ),
             onTap: () => setState(() => _expanded = !_expanded),
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
@@ -1740,9 +2111,9 @@ class _MessageDetailsDisclosureState extends State<_MessageDetailsDisclosure> {
                 children: [
                   Icon(
                     _expanded
-                        ? Icons.keyboard_arrow_down
-                        : Icons.keyboard_arrow_right,
-                    size: 16,
+                        ? Icons.keyboard_arrow_down_rounded
+                        : Icons.keyboard_arrow_right_rounded,
+                    size: 15,
                     color: colors.textMuted,
                   ),
                   const SizedBox(width: 6),
@@ -1751,7 +2122,8 @@ class _MessageDetailsDisclosureState extends State<_MessageDetailsDisclosure> {
                     style: TextStyle(
                       color: colors.textMuted,
                       fontSize: 12,
-                      fontWeight: FontWeight.w800,
+                      fontWeight: FontWeight.w500,
+                      letterSpacing: -0.04,
                     ),
                   ),
                 ],
@@ -1759,16 +2131,19 @@ class _MessageDetailsDisclosureState extends State<_MessageDetailsDisclosure> {
             ),
           ),
           if (_expanded) ...[
-            Divider(height: 1, color: widget.borderColor),
+            Divider(
+              height: 1,
+              color: Colors.white.withAlpha(colors.isDark ? 28 : 48),
+            ),
             Padding(
               padding: const EdgeInsets.all(10),
               child: MessageMarkdown(
                 data: widget.details,
                 foreground: colors.textMuted,
-                accent: widget.accent,
+                accent: colors.info,
                 codeBackground: widget.codeBackground,
                 blockBackground: widget.blockBackground,
-                borderColor: widget.borderColor,
+                borderColor: Colors.white.withAlpha(colors.isDark ? 36 : 56),
                 renderStyle: widget.renderStyle,
               ),
             ),
@@ -1815,16 +2190,23 @@ class _RecommendedPluginsDisclosureState
     final content = widget.blocks.join('\n\n');
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: widget.blockBackground,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: widget.borderColor),
+        color: Colors.white.withAlpha(colors.isDark ? 12 : 16),
+        borderRadius: BorderRadius.circular(
+          AppleControlMetrics.controlCornerRadius,
+        ),
+        border: Border.all(
+          color: Colors.white.withAlpha(colors.isDark ? 36 : 56),
+          width: AppleControlMetrics.hairline,
+        ),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           InkWell(
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: BorderRadius.circular(
+              AppleControlMetrics.controlCornerRadius,
+            ),
             onTap: () => setState(() => _expanded = !_expanded),
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
@@ -1833,15 +2215,15 @@ class _RecommendedPluginsDisclosureState
                 children: [
                   Icon(
                     _expanded
-                        ? Icons.keyboard_arrow_down
-                        : Icons.keyboard_arrow_right,
-                    size: 16,
+                        ? Icons.keyboard_arrow_down_rounded
+                        : Icons.keyboard_arrow_right_rounded,
+                    size: 15,
                     color: colors.textMuted,
                   ),
                   const SizedBox(width: 6),
                   Icon(
                     Icons.extension_outlined,
-                    size: 14,
+                    size: 13,
                     color: colors.textMuted,
                   ),
                   const SizedBox(width: 6),
@@ -1851,7 +2233,8 @@ class _RecommendedPluginsDisclosureState
                       style: TextStyle(
                         color: colors.textMuted,
                         fontSize: 12,
-                        fontWeight: FontWeight.w800,
+                        fontWeight: FontWeight.w500,
+                        letterSpacing: -0.04,
                       ),
                     ),
                   ),
@@ -1860,16 +2243,19 @@ class _RecommendedPluginsDisclosureState
             ),
           ),
           if (_expanded) ...[
-            Divider(height: 1, color: widget.borderColor),
+            Divider(
+              height: 1,
+              color: Colors.white.withAlpha(colors.isDark ? 28 : 48),
+            ),
             Padding(
               padding: const EdgeInsets.all(10),
               child: MessageMarkdown(
                 data: content,
                 foreground: colors.text,
-                accent: widget.accent,
+                accent: colors.info,
                 codeBackground: widget.codeBackground,
                 blockBackground: widget.blockBackground,
-                borderColor: widget.borderColor,
+                borderColor: Colors.white.withAlpha(colors.isDark ? 36 : 56),
                 renderStyle: widget.renderStyle,
               ),
             ),
@@ -2165,6 +2551,7 @@ Color _toneColor(LicoThemeColors colors, String tone) {
 class _RuntimeMessageComposer extends StatefulWidget {
   const _RuntimeMessageComposer({
     required this.targetLabel,
+    required this.initialDraft,
     required this.busy,
     required this.enabled,
     required this.disabledHint,
@@ -2174,12 +2561,12 @@ class _RuntimeMessageComposer extends StatefulWidget {
     required this.selectedReasoningEffort,
     required this.onModelChanged,
     required this.onReasoningEffortChanged,
+    required this.onDraftChanged,
     required this.onSend,
-    required this.onVoiceHoldStart,
-    required this.onVoiceHoldEnd,
   });
 
   final String targetLabel;
+  final String initialDraft;
   final bool busy;
   final bool enabled;
   final String disabledHint;
@@ -2189,9 +2576,8 @@ class _RuntimeMessageComposer extends StatefulWidget {
   final String selectedReasoningEffort;
   final ValueChanged<String> onModelChanged;
   final ValueChanged<String> onReasoningEffortChanged;
+  final ValueChanged<String> onDraftChanged;
   final ValueChanged<String> onSend;
-  final VoidCallback onVoiceHoldStart;
-  final VoidCallback onVoiceHoldEnd;
 
   @override
   State<_RuntimeMessageComposer> createState() =>
@@ -2199,12 +2585,69 @@ class _RuntimeMessageComposer extends StatefulWidget {
 }
 
 class _RuntimeMessageComposerState extends State<_RuntimeMessageComposer> {
-  final TextEditingController _controller = TextEditingController();
+  late final TextEditingController _controller;
+  final FocusNode _focusNode = FocusNode();
+  LayoutFocusCoordinator? _layoutFocusCoordinator;
+  bool _focused = false;
+  late bool _hasText;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.initialDraft);
+    _hasText = widget.initialDraft.trim().isNotEmpty;
+    _controller.addListener(_onTextChanged);
+    _focusNode.addListener(_onFocusChanged);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final next = LayoutFocusScope.maybeOf(context);
+    if (identical(next, _layoutFocusCoordinator)) {
+      return;
+    }
+    _layoutFocusCoordinator?.unregister(
+      LayoutFocusTargets.composerField,
+      _focusNode,
+    );
+    _layoutFocusCoordinator = next;
+    _layoutFocusCoordinator?.register(
+      LayoutFocusTargets.composerField,
+      _focusNode,
+    );
+  }
 
   @override
   void dispose() {
-    _controller.dispose();
+    _layoutFocusCoordinator?.unregister(
+      LayoutFocusTargets.composerField,
+      _focusNode,
+    );
+    _controller
+      ..removeListener(_onTextChanged)
+      ..dispose();
+    _focusNode
+      ..removeListener(_onFocusChanged)
+      ..dispose();
     super.dispose();
+  }
+
+  void _onTextChanged() {
+    widget.onDraftChanged(_controller.text);
+    final next = _controller.text.trim().isNotEmpty;
+    if (next == _hasText || !mounted) {
+      return;
+    }
+    setState(() => _hasText = next);
+  }
+
+  void _onFocusChanged() {
+    final next = _focusNode.hasFocus;
+    if (next == _focused || !mounted) {
+      return;
+    }
+    setState(() => _focused = next);
   }
 
   void _submit() {
@@ -2222,8 +2665,14 @@ class _RuntimeMessageComposerState extends State<_RuntimeMessageComposer> {
     final strings = LicoStrings.of(context);
     final mobileClient = isMobileClientPlatform(context);
     final interactive = widget.enabled && !widget.busy;
+    final canSend = interactive && _hasText;
+    final fieldRadius = BorderRadius.circular(
+      AppleControlMetrics.controlCornerRadius,
+    );
     return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+      padding: mobileClient
+          ? const EdgeInsets.fromLTRB(12, 10, 12, 12)
+          : const EdgeInsets.fromLTRB(12, 8, 12, 10),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -2245,79 +2694,92 @@ class _RuntimeMessageComposerState extends State<_RuntimeMessageComposer> {
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Expanded(
-                child: TextField(
-                  controller: _controller,
-                  minLines: 1,
-                  maxLines: 4,
-                  textInputAction: TextInputAction.send,
-                  onSubmitted: (_) => _submit(),
-                  enabled: interactive,
-                  decoration: InputDecoration(
-                    hintText: widget.enabled
-                        ? strings.messageTarget(widget.targetLabel)
-                        : widget.disabledHint,
-                    isDense: true,
-                    filled: true,
-                    fillColor: colors.surfaceLow,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                      borderSide: BorderSide(color: colors.line),
+                child: AppleGlassSurface(
+                  key: const Key('agent-conversation-composer-field'),
+                  borderRadius: fieldRadius,
+                  focused: _focused && interactive,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
                     ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                      borderSide: BorderSide(color: colors.line),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                      borderSide: BorderSide(color: colors.primary),
+                    child: TextField(
+                      controller: _controller,
+                      focusNode: _focusNode,
+                      minLines: 1,
+                      maxLines: 4,
+                      textInputAction: TextInputAction.send,
+                      onSubmitted: (_) => _submit(),
+                      enabled: interactive,
+                      cursorColor: colors.info,
+                      cursorWidth: 1.2,
+                      style: TextStyle(
+                        color: colors.text.withAlpha(235),
+                        fontSize: 14,
+                        fontWeight: FontWeight.w400,
+                        letterSpacing: -0.08,
+                        height: 1.35,
+                      ),
+                      decoration: InputDecoration(
+                        hintText: widget.enabled
+                            ? strings.messageTarget(widget.targetLabel)
+                            : widget.disabledHint,
+                        hintStyle: TextStyle(
+                          color: colors.textMuted.withAlpha(150),
+                          fontSize: 14,
+                          fontWeight: FontWeight.w400,
+                          letterSpacing: -0.08,
+                        ),
+                        isDense: true,
+                        filled: false,
+                        border: InputBorder.none,
+                        enabledBorder: InputBorder.none,
+                        focusedBorder: InputBorder.none,
+                        disabledBorder: InputBorder.none,
+                        contentPadding: EdgeInsets.zero,
+                      ),
                     ),
                   ),
                 ),
               ),
               const SizedBox(width: 8),
-              if (mobileClient) ...[
-                _VoiceHoldButton(
-                  enabled: interactive,
-                  onHoldStart: widget.onVoiceHoldStart,
-                  onHoldEnd: widget.onVoiceHoldEnd,
-                ),
-                const SizedBox(width: 8),
-              ],
-              SizedBox(
-                width: 40,
-                height: 40,
-                child: IconButton(
-                  tooltip: strings.send,
-                  onPressed: interactive ? _submit : null,
-                  style: IconButton.styleFrom(
-                    backgroundColor: interactive
-                        ? colors.surfaceLow
-                        : colors.surface,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                      side: BorderSide(
-                        color: interactive
-                            ? colors.primary.withAlpha(60)
-                            : colors.line.withAlpha(40),
+              Tooltip(
+                message: strings.send,
+                child: Material(
+                  color: Colors.transparent,
+                  shape: const CircleBorder(),
+                  child: InkWell(
+                    key: const Key('agent-conversation-composer-send'),
+                    customBorder: const CircleBorder(),
+                    onTap: canSend ? _submit : null,
+                    child: AppleGlassSurface(
+                      borderRadius: BorderRadius.circular(18),
+                      focused: canSend,
+                      fillAlpha: canSend ? 40 : 16,
+                      child: SizedBox(
+                        width: 36,
+                        height: 36,
+                        child: Center(
+                          child: widget.busy
+                              ? SizedBox(
+                                  width: 15,
+                                  height: 15,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 1.8,
+                                    color: colors.info,
+                                  ),
+                                )
+                              : Icon(
+                                  Icons.arrow_upward_rounded,
+                                  size: 17,
+                                  color: canSend
+                                      ? colors.text.withAlpha(245)
+                                      : colors.textMuted.withAlpha(100),
+                                ),
+                        ),
                       ),
                     ),
                   ),
-                  icon: widget.busy
-                      ? SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: colors.primary,
-                          ),
-                        )
-                      : Icon(
-                          Icons.arrow_upward_rounded,
-                          size: 18,
-                          color: interactive
-                              ? colors.primaryStrong
-                              : colors.textMuted.withAlpha(80),
-                        ),
                 ),
               ),
             ],
@@ -2329,15 +2791,9 @@ class _RuntimeMessageComposerState extends State<_RuntimeMessageComposer> {
 }
 
 class _InactiveRuntimeMessageComposer extends StatelessWidget {
-  const _InactiveRuntimeMessageComposer({
-    required this.targetLabel,
-    required this.onVoiceHoldStart,
-    required this.onVoiceHoldEnd,
-  });
+  const _InactiveRuntimeMessageComposer({required this.targetLabel});
 
   final String targetLabel;
-  final VoidCallback onVoiceHoldStart;
-  final VoidCallback onVoiceHoldEnd;
 
   @override
   Widget build(BuildContext context) {
@@ -2349,31 +2805,27 @@ class _InactiveRuntimeMessageComposer extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           Expanded(
-            child: TextField(
-              enabled: false,
-              minLines: 1,
-              maxLines: 1,
-              decoration: InputDecoration(
-                hintText: strings.messageTarget(targetLabel),
-                isDense: true,
-                filled: true,
-                fillColor: colors.surfaceLow,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: BorderSide(color: colors.line),
+            child: AppleGlassSurface(
+              borderRadius: BorderRadius.circular(
+                AppleControlMetrics.controlCornerRadius,
+              ),
+              fillAlpha: 14,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
                 ),
-                disabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: BorderSide(color: colors.line),
+                child: Text(
+                  strings.messageTarget(targetLabel),
+                  style: TextStyle(
+                    color: colors.textMuted.withAlpha(140),
+                    fontSize: 14,
+                    fontWeight: FontWeight.w400,
+                    letterSpacing: -0.08,
+                  ),
                 ),
               ),
             ),
-          ),
-          const SizedBox(width: 8),
-          _VoiceHoldButton(
-            enabled: true,
-            onHoldStart: onVoiceHoldStart,
-            onHoldEnd: onVoiceHoldEnd,
           ),
         ],
       ),
@@ -2381,61 +2833,26 @@ class _InactiveRuntimeMessageComposer extends StatelessWidget {
   }
 }
 
-class _VoiceHoldButton extends StatelessWidget {
-  const _VoiceHoldButton({
-    required this.enabled,
-    required this.onHoldStart,
-    required this.onHoldEnd,
-  });
-
-  final bool enabled;
-  final VoidCallback onHoldStart;
-  final VoidCallback onHoldEnd;
-
-  @override
-  Widget build(BuildContext context) {
-    final strings = LicoStrings.of(context);
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onLongPressStart: enabled ? (_) => onHoldStart() : null,
-      onLongPressEnd: enabled ? (_) => onHoldEnd() : null,
-      onLongPressCancel: enabled ? onHoldEnd : null,
-      child: SizedBox(
-        width: 44,
-        height: 44,
-        child: IconButton.filledTonal(
-          tooltip: strings.voiceInput,
-          onPressed: enabled ? onHoldStart : null,
-          icon: const Icon(Icons.mic_none_outlined, size: 18),
-        ),
-      ),
-    );
-  }
-}
-
-String _sessionUpdatedAtLabel(AgentConversationSession session) {
+String _sessionRelativeUpdatedAtLabel(AgentConversationSession session) {
   final rawUpdatedAt = session.updatedAt.trim().isEmpty
       ? session.createdAt.trim()
       : session.updatedAt.trim();
-  final updatedAt = DateTime.tryParse(rawUpdatedAt);
+  final updatedAt = DateTime.tryParse(rawUpdatedAt)?.toLocal();
   if (updatedAt == null) {
     return rawUpdatedAt;
   }
-  final local = updatedAt.toLocal();
-  final value =
-      '${local.year.toString().padLeft(4, '0')}-'
-      '${local.month.toString().padLeft(2, '0')}-'
-      '${local.day.toString().padLeft(2, '0')} '
-      '${local.hour.toString().padLeft(2, '0')}:'
-      '${local.minute.toString().padLeft(2, '0')}';
-  return value;
-}
-
-Color _statusColor(TargetCandidate target, LicoThemeColors colors) {
-  return switch (target.status) {
-    'configured' => colors.success,
-    'detected' => colors.primary,
-    'manual' => colors.warning,
-    _ => colors.textMuted,
-  };
+  final diff = DateTime.now().difference(updatedAt);
+  if (diff.inMinutes < 1) {
+    return 'now';
+  }
+  if (diff.inHours < 1) {
+    return '${diff.inMinutes}m';
+  }
+  if (diff.inDays < 1) {
+    return '${diff.inHours}h';
+  }
+  if (diff.inDays < 7) {
+    return '${diff.inDays}d';
+  }
+  return '${updatedAt.month}/${updatedAt.day}';
 }

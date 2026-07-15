@@ -7,7 +7,12 @@
       "id": "claude-code",
       "roles": ["architecture"],
       "capabilities": ["reasoning-deep"],
-      "priority": 1
+      "priority": 1,
+      "distillation": {
+        "distiller": "fake-distiller",
+        "maxLength": 4096,
+        "preserveFields": ["objective", "decisions", "constraints"]
+      }
     },
     {
       "id": "codex",
