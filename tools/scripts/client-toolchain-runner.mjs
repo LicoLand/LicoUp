@@ -19,13 +19,17 @@ import {
   unlinkSync,
   writeFileSync
 } from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
+import {
+  clientPubCacheRoot,
+  defaultSystemPubCacheRoot,
+  seedClientGradleHome,
+  withClientToolchainEnv
+} from "./client-toolchain-env.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-const DEFAULT_CLIENT_PUB_CACHE = path.join(ROOT, ".cache", "flutter", "pub-cache");
 const FLUTTER_GENERATED_PLUGIN_FILES = [
   "linux/flutter/generated_plugin_registrant.cc",
   "linux/flutter/generated_plugin_registrant.h",
@@ -154,17 +158,6 @@ function pubCacheHostForUrl(value) {
   } catch {
     return normalized || "pub.dev";
   }
-}
-
-function defaultSystemPubCacheRoot() {
-  if (process.platform === "win32") {
-    return path.resolve(process.env.LOCALAPPDATA || path.join(os.homedir(), "AppData", "Local"), "Pub", "Cache");
-  }
-  return path.resolve(os.homedir(), ".pub-cache");
-}
-
-function clientPubCacheRoot() {
-  return path.resolve(process.env.LICO_CLIENT_PUB_CACHE || DEFAULT_CLIENT_PUB_CACHE);
 }
 
 function lockFilePath(projectRoot) {
@@ -312,8 +305,8 @@ function seedStablePubCache(projectRoot, env) {
   const missing = new Set();
   for (const packageRef of packageRefs) {
     let status = "missing";
-    for (const cacheRoot of sourcePubCacheRoots(targetPubCache)) {
-      status = copyLockedPackageFromCache(cacheRoot, targetPubCache, packageRef);
+    for (const sourceRoot of sourcePubCacheRoots(targetPubCache)) {
+      status = copyLockedPackageFromCache(sourceRoot, targetPubCache, packageRef);
       if (status !== "missing") {
         break;
       }
@@ -339,11 +332,10 @@ function seedStablePubCache(projectRoot, env) {
 function flutterEnv(projectRoot) {
   const pubCache = clientPubCacheRoot();
   mkdirSync(pubCache, { recursive: true });
-  return {
-    ...process.env,
-    PUB_CACHE: pubCache,
-    PUB_HOSTED_URL: preferredPubHostedUrl(projectRoot)
-  };
+  return withClientToolchainEnv(process.env, {
+    pubCache,
+    pubHostedUrl: preferredPubHostedUrl(projectRoot)
+  });
 }
 
 function isFlutterCommand(command) {
@@ -356,12 +348,22 @@ function isFlutterPubGet(args) {
 }
 
 function shouldPrepareFlutterDependencies(args) {
-  return args[0] === "analyze" || args[0] === "test";
+  return args[0] === "analyze" || args[0] === "test" || args[0] === "run" || args[0] === "build";
+}
+
+function shouldPrepareGradleDependencies(args) {
+  if (args[0] === "run") {
+    return true;
+  }
+  return args[0] === "build" && ["apk", "appbundle", "aar"].includes(args[1]);
 }
 
 function withNoImplicitPub(args) {
   if (!shouldPrepareFlutterDependencies(args) || args.includes("--no-pub")) {
     return args;
+  }
+  if (args[0] === "build" && args.length > 1) {
+    return [args[0], args[1], "--no-pub", ...args.slice(2)];
   }
   return [args[0], "--no-pub", ...args.slice(1)];
 }
@@ -455,6 +457,9 @@ async function prepareFlutterCommand(command, args, cwd) {
   }
   const env = flutterEnv(cwd);
   seedStablePubCache(cwd, env);
+  if (shouldPrepareGradleDependencies(args)) {
+    seedClientGradleHome(env, { log: (message) => console.log(message) });
+  }
   if (shouldPrepareFlutterDependencies(args)) {
     const generatedPluginSnapshot = snapshotFlutterGeneratedPluginFiles(cwd);
     try {
@@ -465,6 +470,24 @@ async function prepareFlutterCommand(command, args, cwd) {
     return { command, args: withNoImplicitPub(args), env };
   }
   return { command, args: withEnforcedLockfile(args), env };
+}
+
+async function runPreparedCommand(prepared, cwd) {
+  try {
+    await run(prepared.command, prepared.args, { cwd, env: prepared.env });
+    return;
+  } catch (error) {
+    if (!isFlutterCommand(prepared.command) ||
+      !isFlutterPubGet(prepared.args) ||
+      prepared.args.includes("--offline")) {
+      throw error;
+    }
+    const offlineArgs = [...prepared.args, "--offline"];
+    const offlineEnv = { ...prepared.env };
+    delete offlineEnv.PUB_HOSTED_URL;
+    console.warn("[client-toolchain-runner] Online flutter pub get failed; retrying with the locked local cache.");
+    await run(prepared.command, offlineArgs, { cwd, env: offlineEnv });
+  }
 }
 
 function run(command, args, options = {}) {
@@ -543,7 +566,7 @@ try {
   await verifyToolchain(checks);
   const prepared = await prepareFlutterCommand(command, args, cwd);
   console.log(`[client-toolchain-runner] ${path.relative(ROOT, cwd) || "."}$ ${[prepared.command, ...prepared.args].join(" ")}`);
-  await run(prepared.command, prepared.args, { cwd, env: prepared.env });
+  await runPreparedCommand(prepared, cwd);
 } catch (error) {
   console.error(`[client-toolchain-runner] ${error.message}`);
   process.exit(1);

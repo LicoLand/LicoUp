@@ -8,10 +8,16 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
-const portableDir = await fs.mkdtemp(path.join(os.tmpdir(), "lico-native-client-smoke-"));
+let portableDir = "";
+const argumentsSet = new Set(process.argv.slice(2));
+const runtimeDataAuthorized = argumentsSet.has("--runtime-data");
+const maxOutputBytes = 4 * 1024 * 1024;
+
+const optionsValid = [...argumentsSet].every((argument) =>
+  argument === "--runtime-data");
 
 function runClient(args) {
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve) => {
     const child = spawn("cargo", [
       "run",
       "--quiet",
@@ -32,40 +38,84 @@ function runClient(args) {
     });
     const stdout = [];
     const stderr = [];
-    child.stdout.on("data", (chunk) => stdout.push(Buffer.from(chunk)));
-    child.stderr.on("data", (chunk) => stderr.push(Buffer.from(chunk)));
-    child.once("error", reject);
+    let stdoutBytes = 0;
+    let stderrBytes = 0;
+    let outputExceeded = false;
+    const collect = (target, kind) => (chunk) => {
+      const bytes = Buffer.from(chunk);
+      if (kind === "stdout") stdoutBytes += bytes.length;
+      else stderrBytes += bytes.length;
+      if (stdoutBytes + stderrBytes > maxOutputBytes) {
+        outputExceeded = true;
+        child.kill("SIGKILL");
+        return;
+      }
+      target.push(bytes);
+    };
+    child.stdout.on("data", collect(stdout, "stdout"));
+    child.stderr.on("data", collect(stderr, "stderr"));
+    let settled = false;
+    child.once("error", () => {
+      if (settled) return;
+      settled = true;
+      resolve({
+        code: -1,
+        stdout: "",
+        stderr: "",
+        stdoutBytes,
+        stderrBytes,
+        outputExceeded,
+      });
+    });
     child.once("close", (code) => {
+      if (settled) return;
+      settled = true;
       resolve({
         code,
         stdout: Buffer.concat(stdout).toString("utf8").trim(),
-        stderr: Buffer.concat(stderr).toString("utf8").trim()
+        stderr: Buffer.concat(stderr).toString("utf8").trim(),
+        stdoutBytes,
+        stderrBytes,
+        outputExceeded,
       });
     });
   });
 }
 
-async function runJson(args) {
+async function runJson(args, commandId) {
   const result = await runClient(args);
-  assert.equal(result.code, 0, `lico-client ${args.join(" ")} failed: ${result.stderr || result.stdout}`);
+  assert.equal(result.outputExceeded, false,
+    `native_smoke_output_limit:${commandId}:${result.stdoutBytes}:${result.stderrBytes}`);
+  assert.equal(result.code, 0,
+    `native_smoke_command_failed:${commandId}:${result.stdoutBytes}:${result.stderrBytes}`);
   try {
     return JSON.parse(result.stdout || "{}");
-  } catch (error) {
-    throw new Error(`lico-client ${args.join(" ")} did not print JSON: ${error.message}\n${result.stdout}`);
+  } catch {
+    throw new Error(`native_smoke_json_invalid:${commandId}:${result.stdoutBytes}`);
   }
 }
 
+let smokeFailed = false;
 try {
+  portableDir = await fs.mkdtemp(path.join(os.tmpdir(), "lico-native-client-smoke-"));
+  assert.equal(optionsValid, true, "native_smoke_option_invalid");
   const empty = await runClient([]);
   assert.equal(empty.code, 0);
-  assert.match(empty.stderr, /Usage:/);
+  assert.equal(empty.stderr.includes("Usage:"), true, "native_smoke_usage_missing");
 
-  const settings = await runJson(["state", "get", "settings"]);
+  const settings = await runJson(["state", "get", "settings"], "state-settings");
   assert.equal(settings.ok, true);
   assert.equal(settings.collection, "settings");
   assert.equal(settings.document?.schemaVersion, "v0.0.1:schema:definition-1");
 
-  const targets = await runJson(["targets", "scan"]);
+  const targets = await runJson([
+    "targets",
+    "scan",
+    "--include-accessible-environments",
+    String(runtimeDataAuthorized),
+    "--include-history-model-catalog",
+    String(runtimeDataAuthorized),
+  ], "targets-scan");
   assert.equal(targets.ok, true);
   assert.equal(Array.isArray(targets.candidates), true);
   assert.ok(targets.candidates.some((candidate) => candidate.target === "codex"));
@@ -79,15 +129,40 @@ try {
     }
   }
 
-  const profiles = await runJson(["model", "profiles", "list"]);
+  const profiles = await runJson(["model", "profiles", "list"], "model-profiles");
   assert.equal(profiles.ok, true);
   assert.equal(Array.isArray(profiles.profiles), true);
 
-  const activity = await runJson(["activity", "list"]);
+  const activity = await runJson(["activity", "list"], "activity-list");
   assert.equal(activity.ok, true);
   assert.equal(Array.isArray(activity.events), true);
 
-  console.log("native client smoke passed");
+  console.log(JSON.stringify({
+    ok: true,
+    runtimeDataAuthorized,
+    privateRuntimeOutputIncluded: false,
+  }));
+} catch {
+  smokeFailed = true;
+  console.error(JSON.stringify({
+    ok: false,
+    error: "native_smoke_failed",
+    rawRuntimeOutputIncluded: false,
+    privatePathsIncluded: false,
+  }));
 } finally {
-  await fs.rm(portableDir, { recursive: true, force: true });
+  if (portableDir) {
+    try {
+      await fs.rm(portableDir, { recursive: true, force: true });
+    } catch {
+      smokeFailed = true;
+      console.error(JSON.stringify({
+        ok: false,
+        error: "native_smoke_cleanup_failed",
+        rawRuntimeOutputIncluded: false,
+        privatePathsIncluded: false,
+      }));
+    }
+  }
 }
+if (smokeFailed) process.exitCode = 1;

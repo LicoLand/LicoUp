@@ -4,6 +4,7 @@ import { mkdirSync } from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
+import { sanitizeError } from "./lib/sanitize-error.mjs";
 
 const repoRoot = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const args = process.argv.slice(2);
@@ -30,7 +31,7 @@ const child = spawn("cargo", args, {
 });
 
 child.once("error", (error) => {
-  console.error(error instanceof Error ? error.message : error);
+  process.stderr.write(`${sanitizeError(error)}\n`);
   process.exitCode = 1;
 });
 

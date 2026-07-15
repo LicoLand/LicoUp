@@ -1,0 +1,78 @@
+{
+  "schemaVersion": "licolite.client-artifact-verification-receipts-config.v3",
+  "reportSchemaVersion": "licolite.client-artifact-verification-receipts.v3",
+  "reportRef": "build/reports/client-artifact-verification-receipts.json",
+  "producer": "tools/scripts/client-artifact-verification-receipts.mjs",
+  "producerPolicy": "same-closure-approved-producer-invocation",
+  "maxClockSkewMs": 5000,
+  "sourceRoots": [
+    "Cargo.toml",
+    "Cargo.lock",
+    "package.json",
+    "package-lock.json",
+    "crates/lico-client-native",
+    "apps/desktop",
+    "packages/protocols",
+    "tools"
+  ],
+  "targets": {
+    "macos-arm64": {
+      "platform": "macos",
+      "artifactKind": "macos-distribution-archive",
+      "artifactRef": "build/apps/desktop/distribution/macos/LicoArc-macos-arm64.zip",
+      "artifactDigestKind": "file",
+      "distributionManifestRef": "build/apps/desktop/distribution/macos/manifest.json",
+      "evidenceArtifactKind": "macos-app-bundle",
+      "evidenceArtifactRef": "build/apps/desktop/runnable/macos/release/Arc.app",
+      "evidenceArtifactDigestKind": "tree",
+      "evidenceRef": "build/reports/secure-mesh-macos-capabilities.json",
+      "evidenceSchemaVersion": "licolite.secure-mesh.macos-adaptive-capabilities-receipt.v3",
+      "evidenceProducer": "tools/scripts/client-secure-mesh-macos-capabilities.mjs",
+      "evidenceProducerField": "verifier",
+      "freshnessKind": "generated-at",
+      "consumerVerificationPolicy": "provenance-or-verifiable-signature",
+      "evidenceInvocation": {
+        "script": "tools/scripts/client-secure-mesh-macos-capabilities.mjs",
+        "args": [],
+        "timeoutMs": 180000
+      }
+    },
+    "android-arm64": {
+      "platform": "android",
+      "artifactKind": "android-apk",
+      "artifactRef": "build/apps/desktop/android/release/app-release.apk",
+      "artifactDigestKind": "file",
+      "evidenceRef": "build/reports/android-physical-install-launch.json",
+      "evidenceSchemaVersion": "licolite.secure-mesh.android-physical-install-launch-report.v3",
+      "evidenceProducer": "tools/scripts/client-android-physical-install-launch.mjs",
+      "evidenceProducerField": "verifier",
+      "freshnessKind": "generated-at",
+      "consumerVerificationPolicy": "provenance-or-verifiable-signature",
+      "evidenceInvocation": {
+        "script": "tools/scripts/client-android-physical-install-launch.mjs",
+        "args": ["--install", "--launch", "--apk", "build/apps/desktop/android/release/app-release.apk"],
+        "timeoutMs": 600000
+      }
+    },
+    "linux-glibc-arm64": {
+      "platform": "linux",
+      "artifactKind": "linux-tar-archive",
+      "artifactRef": "build/apps/desktop/distribution/linux-arm64/LicoArc-linux-arm64.tar.gz",
+      "artifactDigestKind": "file",
+      "distributionManifestRef": "build/apps/desktop/distribution/linux-arm64/manifest.json",
+      "evidenceRef": "build/reports/secure-mesh-linux-vm-package-receipt.json",
+      "evidenceSchema": "licolite.secure-mesh.linux-vm-package-receipt",
+      "evidenceSchemaVersion": 2,
+      "evidenceProducer": "tools/scripts/client-secure-mesh-linux-vm-package-receipt.mjs",
+      "evidenceProducerField": "producer",
+      "evidenceProducerValue": "linux-vm-package-receipt",
+      "freshnessKind": "generated-at",
+      "consumerVerificationPolicy": "provenance-or-verifiable-signature",
+      "evidenceInvocation": {
+        "script": "tools/scripts/client-secure-mesh-linux-vm-package-receipt.mjs",
+        "args": ["--archive", "{artifactRef}", "--distribution-manifest", "{distributionManifestRef}", "--expected-source-digest", "{sourceStateDigest}", "--report", "{evidenceRef}"],
+        "timeoutMs": 900000
+      }
+    }
+  }
+}
