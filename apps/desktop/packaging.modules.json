@@ -1,14 +1,14 @@
 {
   "schemaVersion": "v0.0.1:client-desktop:packaging-modules-1",
   "description": "Lico Arc desktop client packaging. Modules are organized by runtime function.",
-  "packageProfile": "future-client",
+  "packageProfile": "lico-client",
   "bundle": {
     "moduleResourceDirectory": "modules",
-    "manifestPath": "package-metadata/future-client/packaging-modules.json"
+    "manifestPath": "package-metadata/lico-client/packaging-modules.json"
   },
   "modules": {
     "portable-data": {
-      "label": "Future client local state, mobile relay, activity, snapshots, scoped mail imports, and target config cache",
+      "label": "LicoArc client local state, mobile relay, activity, snapshots, scoped mail imports, and target config cache",
       "category": "storage",
       "enabled": true,
       "required": true,
@@ -19,25 +19,25 @@
       ],
       "packaging": "portable-data",
       "portableDirectories": [
-        "future-client",
-        "future-client/settings",
-        "future-client/targets",
-        "future-client/pairings",
-        "future-client/skills",
-        "future-client/pins",
-        "future-client/mobile-relay",
-        "future-client/activity",
-        "future-client/snapshots",
-        "future-client/source-queue",
-        "future-client/mail-imports",
-        "future-client/connectors",
-        "future-client/knowledge-cache",
-        "future-client/mcp-local-bridge",
+        "lico-client",
+        "lico-client/settings",
+        "lico-client/targets",
+        "lico-client/pairings",
+        "lico-client/skills",
+        "lico-client/pins",
+        "lico-client/mobile-relay",
+        "lico-client/activity",
+        "lico-client/snapshots",
+        "lico-client/source-queue",
+        "lico-client/mail-imports",
+        "lico-client/connectors",
+        "lico-client/knowledge-cache",
+        "lico-client/mcp-local-bridge",
         "target-config-cache"
       ]
     },
     "target-adapters": {
-      "label": "Target adapters for Antigravity, Claude Code, Codex, Cursor, GitHub Copilot, Hermes Agent, Kilo Code, Kimi Code, OpenClaw, and OpenCode",
+      "label": "Target adapters for Antigravity, Claude Code, Codex, Cursor, GitHub Copilot, Hermes Agent, Kilo Code, Kimi Code, OpenClaw, OpenCode, and Pi Agent",
       "category": "agents",
       "enabled": true,
       "required": true,
@@ -61,7 +61,8 @@
         "kilo-code",
         "cursor",
         "hermes",
-        "kimi-code"
+        "kimi-code",
+        "pi"
       ]
     },
     "mcp-plugins": {
@@ -144,7 +145,7 @@
       ]
     },
     "settings": {
-      "label": "Future client settings store",
+      "label": "LicoArc client settings store",
       "category": "settings",
       "enabled": true,
       "required": true,
@@ -282,7 +283,7 @@
       ],
       "runtimeToggle": true,
       "stateDirectories": [
-        "future-client/routing"
+        "lico-client/routing"
       ],
       "settingsKeys": [
         "routing.enabled",
@@ -290,7 +291,7 @@
       ]
     },
     "native-sidecar": {
-      "label": "Rust future client CLI sidecar",
+      "label": "Rust LicoArc client CLI sidecar",
       "category": "core",
       "enabled": true,
       "required": true,

@@ -90,12 +90,12 @@ BEGIN
         BLOCK "040904e4"
         BEGIN
             VALUE "CompanyName", "LicoLite" "\0"
-            VALUE "FileDescription", "LicoLite Client" "\0"
+            VALUE "FileDescription", "Lico Arc" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
-            VALUE "InternalName", "LicoLite Client" "\0"
+            VALUE "InternalName", "Lico Arc" "\0"
             VALUE "LegalCopyright", "Copyright (C) 2026 LicoLite. All rights reserved." "\0"
             VALUE "OriginalFilename", "flutter_client.exe" "\0"
-            VALUE "ProductName", "LicoLite Client" "\0"
+            VALUE "ProductName", "Lico Arc" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END
