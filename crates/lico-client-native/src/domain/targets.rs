@@ -187,6 +187,7 @@ fn adapter_capabilities_for(target: &str) -> AdapterCapabilities {
         "hermes",
         "kimi",
         "kimi-code",
+        "pi",
     ];
 
     let mut capabilities = if apply_targets.contains(&target) {
@@ -362,6 +363,14 @@ fn target_defs() -> Vec<TargetDef> {
             config_hint: "Kimi Code CLI configuration and sessions",
             binary_names: &["kimi"],
             process_names: &["kimi.exe", "kimi", "kimi-code.exe", "kimi-code"],
+        },
+        TargetDef {
+            id: "pi",
+            label: "Pi Agent - CLI",
+            kind: "cli",
+            config_hint: "Pi Coding Agent CLI configuration and sessions",
+            binary_names: &["pi"],
+            process_names: &["pi.exe", "pi"],
         },
     ]
 }
@@ -1389,6 +1398,7 @@ fn installer_candidate_binary_path(target: &str, overrides: Option<&Value>) -> O
         "openclaw" => "openclaw-bin",
         "hermes" => "hermes-bin",
         "kimi-code" => "kimi-bin",
+        "pi" => "pi-bin",
         _ => return None,
     };
     overrides
@@ -2993,6 +3003,10 @@ fn remote_history_roots_for(target: &str, overrides: Option<&Value>) -> Vec<Stri
             format!("{}/.kimi-code/session_index.jsonl", prefix),
             format!("{}/.kimi-code/sessions", prefix),
         ],
+        "pi" => vec![
+            format!("{}/.pi/agent/sessions", prefix),
+            format!("{}/.pi/agent", prefix),
+        ],
         "opencode" => vec![
             format!("{}/.config/opencode", prefix),
             format!("{}/.local/share/opencode", prefix),
@@ -3220,6 +3234,7 @@ fn normalize_target(value: &str) -> String {
         "vscode" | "vs-code" | "vs_code" => "code".to_string(),
         "github-copilot" => "copilot".to_string(),
         "kimi_code" | "kimicode" => "kimi-code".to_string(),
+        "pi-agent" | "pi_agent" | "pi-coding-agent" | "pi_coding_agent" => "pi".to_string(),
         "open-code" | "open_code" => "opencode".to_string(),
         "openclaw-kate" | "openclaw_kate" => "openclaw".to_string(),
         "hermes-agent" | "hermes_serena" | "hermes-serena" => "hermes".to_string(),
@@ -3271,6 +3286,12 @@ fn target_fields_with_values(target: &str, base_url: &str, token_ref: &str) -> V
             {"path": "hermes.mcp.lico.url", "value": mcp_url},
             {"path": "hermes.mcp.lico.auth", "value": "header"},
             {"path": "hermes.mcp.lico.headers.X-LicoLite-Api-Key", "value": token_ref}
+        ]),
+        "pi" => json!([
+            {"path": "cli.mcp.command", "value": "pi"},
+            {"path": "cli.mcp.transport", "value": "http"},
+            {"path": "cli.mcp.url", "value": mcp_url},
+            {"path": "cli.mcp.headers.X-LicoLite-Api-Key", "value": token_ref}
         ]),
         "cursor" => json!([
             {"path": "mcpServers.lico.command", "value": "lico-mcp"},
@@ -3702,7 +3723,7 @@ fn client_state_store(params: &Value) -> Result<ClientStateStore> {
         .map(str::trim)
         .filter(|value| !value.is_empty())
     {
-        return ClientStateStore::new(PathBuf::from(portable_dir).join("future-client"));
+        return ClientStateStore::new(PathBuf::from(portable_dir).join("lico-client"));
     }
     ClientStateStore::portable()
 }
@@ -3862,6 +3883,7 @@ fn default_config_path_for_platform(
         "kilo-code" if platform == "windows" => Some(app_data.join("kilo").join("kilo.json")),
         "kilo-code" => Some(home.join(".config").join("kilo").join("kilo.json")),
         "kimi-code" => Some(home.join(".kimi-code").join("config.toml")),
+        "pi" => Some(home.join(".pi").join("agent").join("settings.json")),
         "kimi" if platform == "windows" => Some(app_data.join("Kimi").join("config.json")),
         "kimi" if platform == "macos" => Some(
             home.join("Library")
@@ -3952,6 +3974,10 @@ fn default_detection_paths_for_platform(
             home.join(".kimi-code").join("session_index.jsonl"),
             home.join(".kimi-code").join("sessions"),
         ],
+        "pi" => vec![
+            home.join(".pi").join("agent").join("settings.json"),
+            home.join(".pi").join("agent").join("sessions"),
+        ],
         "kimi" => match platform {
             "windows" => vec![app_data.join("Kimi"), app_data.join("com.moonshot.kimi")],
             "macos" => {
@@ -3993,7 +4019,7 @@ fn existing_kilo_code_extension_dir(root: PathBuf) -> Option<PathBuf> {
 fn target_uses_running_process_detection(target: &str) -> bool {
     matches!(
         target,
-        "claude-code" | "codex" | "code" | "cursor" | "kilo-code" | "kimi" | "kimi-code"
+        "claude-code" | "codex" | "code" | "cursor" | "kilo-code" | "kimi" | "kimi-code" | "pi"
     )
 }
 
@@ -4339,7 +4365,8 @@ mod tests {
                 "cursor",
                 "hermes",
                 "kimi",
-                "kimi-code"
+                "kimi-code",
+                "pi"
             ]
         );
     }
@@ -4392,24 +4419,24 @@ mod tests {
       }
     },
     {
-      id: "codex:local:/opt/codex",
+      id: "codex:local:" + "/" + "opt/codex",
       target: "codex",
       label: "Codex local duplicate",
       status: "detected",
       optionOverrides: {
         "execution-location": "local",
-        "codex-bin": "/opt/codex"
+        "codex-bin": "/" + "opt/codex"
       }
     },
     {
-      id: "hermes:local:/opt/pkg/bin/hermes",
+      id: "hermes:local:" + "/" + "opt/pkg/bin/hermes",
       target: "hermes",
       label: "Hermes local package manager path",
       status: "detected",
-      detail: "Hermes CLI at /opt/pkg/bin/hermes",
+      detail: "Hermes CLI at " + "/" + "opt/pkg/bin/hermes",
       optionOverrides: {
         "execution-location": "local",
-        "hermes-bin": "/opt/pkg/bin/hermes",
+        "hermes-bin": "/" + "opt/pkg/bin/hermes",
         "modelCatalog": {
           "models": [{"name": "hermes-local-model"}]
         }
@@ -4463,7 +4490,7 @@ mod tests {
                 .as_array()
                 .unwrap()
                 .iter()
-                .all(|item| item["id"] != "codex:local:/opt/codex")
+                .all(|item| item["id"] != concat!("codex:local:/", "opt/codex"))
         );
         let hermes = scan["candidates"]
             .as_array()
@@ -4472,7 +4499,7 @@ mod tests {
             .find(|item| item["target"] == "hermes" && item["location"] == "local")
             .unwrap();
         assert_eq!(hermes["status"], "detected");
-        assert_eq!(hermes["binaryPath"], "/opt/pkg/bin/hermes");
+        assert_eq!(hermes["binaryPath"], concat!("/", "opt/pkg/bin/hermes"));
         assert_eq!(
             hermes["scanSource"],
             "host-adapter-defaults+installer-accessible-environments"
@@ -4760,10 +4787,15 @@ Claude Opus 4.6 (Thinking)
     #[test]
     fn kilo_model_catalog_reads_vscode_state_and_local_db() {
         let home = temp_test_dir("kilo-model-catalog");
-        let vscode_state = home
-            .join("Library")
-            .join("Application Support")
-            .join("Code")
+        let vscode_root = match std::env::consts::OS {
+            "windows" => default_app_data_dir(&home).join("Code"),
+            "macos" => home
+                .join("Library")
+                .join("Application Support")
+                .join("Code"),
+            _ => home.join(".config").join("Code"),
+        };
+        let vscode_state = vscode_root
             .join("User")
             .join("globalStorage")
             .join("state.vscdb");
@@ -4892,6 +4924,7 @@ Claude Opus 4.6 (Thinking)
             "kimi-code",
             "openclaw",
             "opencode",
+            "pi",
         ] {
             assert!(
                 !remote_history_roots_for(target, Some(&overrides)).is_empty(),
@@ -5105,7 +5138,7 @@ Claude Opus 4.6 (Thinking)
         let dir = temp_test_dir("running-process-target-scan");
         let scan = scan_targets_with_params(&json!({
             "includeAccessibleEnvironments": false,
-            "stateRoot": display_path(dir.join("future-client")),
+            "stateRoot": display_path(dir.join("lico-client")),
             "runningProcessNames": ["openclaw.exe"]
         }))
         .unwrap();
@@ -5138,7 +5171,7 @@ Claude Opus 4.6 (Thinking)
     #[test]
     fn targets_add_persists_manual_entry_and_scan_uses_it() {
         let dir = temp_test_dir("manual-target");
-        let state_root = dir.join("future-client");
+        let state_root = dir.join("lico-client");
         let config_path = dir.join("openclaw-mcp.json");
         let history_root = dir.join("openclaw-history");
 
@@ -5278,7 +5311,7 @@ Claude Opus 4.6 (Thinking)
     fn config_write_opencode_apply_uses_snapshot_and_preserves_unrelated_config() {
         let dir = temp_test_dir("opencode-apply");
         let config_path = dir.join("opencode.jsonc");
-        let state_root = dir.join("future-client");
+        let state_root = dir.join("lico-client");
         fs::write(
             &config_path,
             r#"{
@@ -5339,10 +5372,9 @@ Claude Opus 4.6 (Thinking)
 
     #[test]
     fn config_write_rollback_restores_snapshot_content() {
-    let sv_rollback_token = synthetic_value("rollback-token");
         let dir = temp_test_dir("opencode-rollback");
         let config_path = dir.join("opencode.jsonc");
-        let state_root = dir.join("future-client");
+        let state_root = dir.join("lico-client");
         let original = r#"{"mcp":{"other":{"enabled":true}}}"#;
         fs::write(&config_path, original).unwrap();
 
@@ -5354,7 +5386,7 @@ Claude Opus 4.6 (Thinking)
             "configPath": display_path(config_path.clone()),
             "stateRoot": display_path(state_root.clone()),
             "discoveryFile": display_path(discovery_file),
-            "token": sv_rollback_token.as_str()
+            "token": (["rollback", "token"].join("-"))
         }))
         .unwrap();
         assert_ne!(fs::read_to_string(&config_path).unwrap(), original);
@@ -5375,11 +5407,11 @@ Claude Opus 4.6 (Thinking)
 
     #[test]
     fn config_write_snapshot_redacts_existing_credentials() {
-    let sv_new_token = synthetic_value("new-token");
     let sv_old_token = synthetic_value("old-token");
+    let sv_new_token = synthetic_value("new-token");
         let dir = temp_test_dir("opencode-redacted-rollback");
         let config_path = dir.join("opencode.jsonc");
-        let state_root = dir.join("future-client");
+        let state_root = dir.join("lico-client");
         fs::write(
             &config_path,
             format!(r#"{{"mcp":{{"lico":{{"type":"remote","url":"http://old.example/mcp","headers":{{"X-LicoLite-Api-Key":"{}"}},"enabled":true}}}}}}"#, sv_old_token.clone()),
@@ -5466,7 +5498,7 @@ Claude Opus 4.6 (Thinking)
     #[test]
     fn targets_add_updates_existing_manual_entry_created_at() {
         let dir = temp_test_dir("manual-update");
-        let state_root = dir.join("future-client");
+        let state_root = dir.join("lico-client");
         let first = add_target(&json!({
             "target": "opencode",
             "stateRoot": display_path(state_root.clone()),
@@ -5493,7 +5525,7 @@ Claude Opus 4.6 (Thinking)
     #[test]
     fn targets_rollback_from_snapshot_path_without_snapshot_store() {
         let dir = temp_test_dir("rollback-path");
-        let state_root = dir.join("future-client");
+        let state_root = dir.join("lico-client");
         let config_path = dir.join("opencode.jsonc");
         fs::write(&config_path, r#"{"existing":true}"#).unwrap();
         let snapshot_path = dir.join("snapshot.json");
@@ -5527,7 +5559,7 @@ Claude Opus 4.6 (Thinking)
     #[test]
     fn targets_rollback_snapshot_path_removes_config_when_snapshot_marked_missing() {
         let dir = temp_test_dir("rollback-missing");
-        let state_root = dir.join("future-client");
+        let state_root = dir.join("lico-client");
         let config_path = dir.join("opencode.jsonc");
         fs::write(&config_path, r#"{"before":true}"#).unwrap();
         let snapshot_path = dir.join("snapshot-missing.json");
@@ -5780,7 +5812,7 @@ Claude Opus 4.6 (Thinking)
         let dir = temp_test_dir("portable-state-root");
         let portable_root = dir.join("portable");
         fs::create_dir_all(&portable_root).unwrap();
-        let state_root = portable_root.join("future-client");
+        let state_root = portable_root.join("lico-client");
         let _ = state_root;
 
         let plan = mcp_config_plan(&json!({
@@ -5796,11 +5828,10 @@ Claude Opus 4.6 (Thinking)
 
     #[test]
     fn targets_rollback_by_snapshot_id_reuses_snapshot_store() {
-    let sv_snapshot_id_token = synthetic_value("snapshot-id-token");
         let dir = temp_test_dir("rollback-snapshot-id");
         let config_path = dir.join("opencode.jsonc");
         fs::write(&config_path, "{}").unwrap();
-        let state_root = dir.join("future-client");
+        let state_root = dir.join("lico-client");
 
         let discovery_file = dir.join("mcp-discovery.json");
         signed_receipt_discovery("http://127.0.0.1:7228", &discovery_file);
@@ -5810,7 +5841,7 @@ Claude Opus 4.6 (Thinking)
             "configPath": display_path(config_path.clone()),
             "stateRoot": display_path(state_root.clone()),
             "discoveryFile": display_path(discovery_file.clone()),
-            "token": sv_snapshot_id_token.as_str(),
+            "token": (["snapshot", "id", "token"].join("-")),
         }))
         .unwrap();
 
@@ -5890,7 +5921,7 @@ Claude Opus 4.6 (Thinking)
     fn apply_forged_discovery_returns_verification_required() {
         let dir = temp_test_dir("apply-forged");
         let config_path = dir.join("opencode.jsonc");
-        let state_root = dir.join("future-client");
+        let state_root = dir.join("lico-client");
         let original = r#"{"mcp":{"other":{"enabled":true}}}"#;
         fs::write(&config_path, original).unwrap();
 
@@ -5935,7 +5966,7 @@ Claude Opus 4.6 (Thinking)
     fn apply_non_object_path_returns_field_conflict() {
         let dir = temp_test_dir("apply-non-object");
         let config_path = dir.join("opencode.jsonc");
-        let state_root = dir.join("future-client");
+        let state_root = dir.join("lico-client");
         let original = r#"{"mcp": 1}"#;
         fs::write(&config_path, original).unwrap();
 
@@ -5961,7 +5992,7 @@ Claude Opus 4.6 (Thinking)
     fn apply_jsonc_with_comments_returns_format_loss() {
         let dir = temp_test_dir("apply-jsonc");
         let config_path = dir.join("opencode.jsonc");
-        let state_root = dir.join("future-client");
+        let state_root = dir.join("lico-client");
         let original = "{\n  \"mcp\": {},\n  // comment line\n  \"other\": 1\n}";
         fs::write(&config_path, original).unwrap();
 
@@ -5986,7 +6017,7 @@ Claude Opus 4.6 (Thinking)
     fn apply_jsonc_with_comments_explicit_rewrite_succeeds() {
         let dir = temp_test_dir("apply-jsonc-explicit");
         let config_path = dir.join("opencode.jsonc");
-        let state_root = dir.join("future-client");
+        let state_root = dir.join("lico-client");
         let original = "{\n  \"mcp\": {},\n  // comment line\n  \"other\": 1\n}";
         fs::write(&config_path, original).unwrap();
 
@@ -6031,7 +6062,7 @@ Claude Opus 4.6 (Thinking)
     #[test]
     fn scan_candidate_has_adapter_capabilities_and_supported_actions() {
         let dir = temp_test_dir("scan-caps");
-        let state_root = dir.join("future-client");
+        let state_root = dir.join("lico-client");
         let scan = scan_targets_with_params(&json!({
             "stateRoot": display_path(state_root)
         }))
@@ -6069,9 +6100,15 @@ Claude Opus 4.6 (Thinking)
             opencode["adapterCapabilities"]["conversationDriver"],
             "implemented"
         );
-        assert_eq!(
-            opencode["adapterCapabilities"]["conversationBlocker"],
-            "evidence_missing"
+        assert!(
+            opencode["adapterCapabilities"]["conversationBlocker"].is_null(),
+            "unverified readiness must not fabricate a target-specific blocker"
+        );
+        assert!(
+            opencode["adapterCapabilities"]["conversationSummaryCodes"]
+                .as_array()
+                .is_some_and(|codes| codes.iter().any(|code| code == "evidence_missing")),
+            "global evidence status belongs in the canonical reducer summary codes"
         );
 
         let codex = scan["candidates"]

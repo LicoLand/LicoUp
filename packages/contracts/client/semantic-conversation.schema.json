@@ -1,0 +1,280 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "packages/contracts/client/semantic-conversation.schema.json",
+  "title": "SemanticConversation",
+  "description": "Canonical read-only semantic conversation model for native agent history. Separates thread, execution, artifacts, audit, and raw evidence. Native source histories remain read-only; this document never authorizes a LicoLite-local conversation store.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "kind",
+    "readOnly",
+    "privacyDefaults",
+    "thread",
+    "execution",
+    "artifacts",
+    "audit",
+    "raw"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "type": "integer",
+      "const": 1,
+      "description": "Semantic conversation contract version."
+    },
+    "kind": {
+      "type": "string",
+      "const": "semantic-conversation"
+    },
+    "readOnly": {
+      "type": "boolean",
+      "const": true,
+      "description": "Native history import is always read-only."
+    },
+    "privacyDefaults": {
+      "$ref": "#/definitions/PrivacyDefaults"
+    },
+    "thread": {
+      "type": "array",
+      "description": "User-authored turns and assistant replies cleaned of injected environment context and storage metadata.",
+      "items": {
+        "$ref": "#/definitions/ThreadEvent"
+      }
+    },
+    "execution": {
+      "type": "array",
+      "description": "Tool calls, tool results, terminal activity, plans, progress, retries, errors, and background agent operations. Default UI collapses this layer.",
+      "items": {
+        "$ref": "#/definitions/ExecutionEvent"
+      }
+    },
+    "artifacts": {
+      "type": "array",
+      "description": "Structured references to produced files, diffs, documents, summaries, indexes, validation outputs, and archive paths.",
+      "items": {
+        "$ref": "#/definitions/ArtifactRef"
+      }
+    },
+    "audit": {
+      "$ref": "#/definitions/AuditBlock"
+    },
+    "raw": {
+      "$ref": "#/definitions/RawBlock"
+    }
+  },
+  "definitions": {
+    "PrivacyDefaults": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "defaultView",
+        "hideRawInDefaultView",
+        "hideAuditInDefaultView",
+        "redactPaths",
+        "redactTokens",
+        "redactFullCommandPayloads"
+      ],
+      "properties": {
+        "defaultView": {
+          "type": "string",
+          "const": "thread",
+          "description": "User-facing default is the clean thread."
+        },
+        "hideRawInDefaultView": {
+          "type": "boolean",
+          "const": true
+        },
+        "hideAuditInDefaultView": {
+          "type": "boolean",
+          "const": true
+        },
+        "redactPaths": {
+          "type": "boolean",
+          "const": true
+        },
+        "redactTokens": {
+          "type": "boolean",
+          "const": true
+        },
+        "redactFullCommandPayloads": {
+          "type": "boolean",
+          "const": true
+        }
+      }
+    },
+    "ThreadEvent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "layer", "role", "eventKind", "text", "createdAt"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "layer": { "type": "string", "const": "thread" },
+        "role": {
+          "type": "string",
+          "enum": ["user", "assistant"]
+        },
+        "eventKind": {
+          "type": "string",
+          "enum": ["user-message", "assistant-message"]
+        },
+        "text": {
+          "type": "string",
+          "description": "Privacy-cleaned dialogue text. Must not contain raw JSON dumps, tokens, or injected environment blocks."
+        },
+        "createdAt": { "type": "string" },
+        "sourceEventId": { "type": "string" }
+      }
+    },
+    "ExecutionEvent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "layer",
+        "eventKind",
+        "title",
+        "summary",
+        "createdAt",
+        "collapsed"
+      ],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "layer": { "type": "string", "const": "execution" },
+        "eventKind": {
+          "type": "string",
+          "enum": [
+            "tool-call",
+            "tool-result",
+            "terminal",
+            "plan",
+            "progress",
+            "retry",
+            "error",
+            "reasoning",
+            "event"
+          ]
+        },
+        "title": { "type": "string" },
+        "summary": {
+          "type": "string",
+          "description": "Short privacy-safe summary. Must not include full command payloads, raw tool JSON, or private paths."
+        },
+        "createdAt": { "type": "string" },
+        "collapsed": { "type": "boolean" },
+        "sourceItemType": { "type": "string" },
+        "providerSummary": { "type": "boolean" }
+      }
+    },
+    "ArtifactRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "layer", "kind", "label"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "layer": { "type": "string", "const": "artifacts" },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "file",
+            "diff",
+            "document",
+            "summary",
+            "index",
+            "validation",
+            "archive-path"
+          ]
+        },
+        "label": { "type": "string" },
+        "ref": {
+          "type": "string",
+          "description": "Relative archive path, content hash, or synthetic fixture ref. Default views must not expose absolute private workstation paths."
+        },
+        "contentHash": { "type": "string" }
+      }
+    },
+    "AuditBlock": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "adapterId",
+        "hostApp",
+        "sourceKind",
+        "nativeSessionId",
+        "sourceEvidence",
+        "parseWarnings",
+        "redactionStatus",
+        "validationStatus",
+        "createdAt",
+        "updatedAt"
+      ],
+      "properties": {
+        "adapterId": { "type": "string" },
+        "adapterLabel": { "type": "string" },
+        "hostApp": { "type": "string" },
+        "hostAppLabel": { "type": "string" },
+        "sourceClient": { "type": "string" },
+        "sourceKind": { "type": "string" },
+        "nativeSessionId": { "type": "string" },
+        "importMode": {
+          "type": "string",
+          "const": "precise-adapter"
+        },
+        "sourceEvidence": {
+          "$ref": "#/definitions/EvidenceRef"
+        },
+        "parseWarnings": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "redactionStatus": {
+          "type": "string",
+          "enum": ["applied", "partial", "none"]
+        },
+        "validationStatus": {
+          "type": "string",
+          "enum": ["unchecked", "ok", "failed"]
+        },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      }
+    },
+    "RawBlock": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["evidenceRefs"],
+      "properties": {
+        "evidenceRefs": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/definitions/EvidenceRef"
+          },
+          "description": "Raw source evidence is referenced by path/hash only and shown only through diagnostics."
+        }
+      }
+    },
+    "EvidenceRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "pathRef", "contentHash"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": ["jsonl", "json", "sqlite-row", "markdown", "text", "unknown"]
+        },
+        "pathRef": {
+          "type": "string",
+          "description": "Synthetic fixture URI, relative archive path, or redacted display path. Must not embed secrets."
+        },
+        "contentHash": {
+          "type": "string",
+          "description": "Hex SHA-256 of referenced content when available."
+        },
+        "byteLength": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    }
+  }
+}

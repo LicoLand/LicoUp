@@ -12,7 +12,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use super::{
     antigravity_driver, claude_code_driver, codex_app_server, copilot_driver, cursor_driver,
-    hermes_driver, kilo_code_driver, kimi_code_driver, openclaw_driver, opencode_driver,
+    hermes_driver, kilo_code_driver, kimi_code_driver, openclaw_driver, opencode_driver, pi_driver,
 };
 
 const RUNTIME_SCHEMA_VERSION: u32 = 3;
@@ -43,6 +43,10 @@ const REQUIRED_EVIDENCE_COUNTS: &[&str] = &["consecutivePasses"];
 const REQUIRED_EVIDENCE_DIGESTS: &[&str] = &[
     "runtimeVersionDigest",
     "capabilitySnapshotDigest",
+    "adapterManifestDigest",
+    "releaseArtifactDigest",
+    "releaseSidecarDigest",
+    "productContinuityBindingDigest",
     "registryDigest",
     "driverInventoryDigest",
     "evidenceDigest",
@@ -70,6 +74,7 @@ pub(crate) const PACKAGED_RUNTIME_ADAPTER_IDS: &[&str] = &[
     "cursor",
     "hermes",
     "kimi-code",
+    "pi",
 ];
 
 #[derive(Clone, Debug)]
@@ -170,6 +175,10 @@ struct ReadinessEvidenceBinding {
     runtime_version_class: String,
     runtime_version_digest: String,
     capability_snapshot_digest: String,
+    adapter_manifest_digest: String,
+    release_artifact_digest: String,
+    release_sidecar_digest: String,
+    product_continuity_binding_digest: String,
     runtime_source_class: String,
     registry_digest: String,
     driver_inventory_digest: String,
@@ -214,6 +223,7 @@ pub(crate) enum RuntimeAdapter {
     KimiCode,
     OpenClaw,
     OpenCode,
+    Pi,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -406,6 +416,16 @@ pub fn send_message(params: &Value) -> Result<Value> {
                 max_stderr,
             ),
         ),
+        RuntimeAdapter::Pi => normalize_pi(pi_driver::execute(
+            &executable,
+            params,
+            &text,
+            &session_id,
+            cwd.as_deref(),
+            timeout_ms,
+            max_stdout,
+            max_stderr,
+        )),
     };
 
     Ok(execution_response(adapter, execution))
@@ -709,6 +729,10 @@ fn validate_readiness_entry(entry: &ReadinessEntry) -> std::result::Result<(), &
             || !is_sanitized_code(&binding.runtime_source_class)
             || !is_sha256_digest(&binding.runtime_version_digest)
             || !is_sha256_digest(&binding.capability_snapshot_digest)
+            || !is_sha256_digest(&binding.adapter_manifest_digest)
+            || !is_sha256_digest(&binding.release_artifact_digest)
+            || !is_sha256_digest(&binding.release_sidecar_digest)
+            || !is_sha256_digest(&binding.product_continuity_binding_digest)
             || !is_sha256_digest(&binding.registry_digest)
             || !is_sha256_digest(&binding.driver_inventory_digest)
             || !is_sha256_digest(&binding.evidence_digest)
@@ -781,10 +805,10 @@ impl RuntimeDriverRegistry {
     fn profile(&self, agent_id: &str) -> Option<RuntimeDriverProfile> {
         let driver = self.drivers.get(agent_id)?;
         let readiness = self.readiness.get(agent_id)?;
-        let blocker = if readiness.status == "ready" {
-            None
+        let blocker = if driver.driver_mode == "blocked" {
+            driver.blocker_codes.first().cloned()
         } else {
-            readiness.summary_codes.first().cloned()
+            None
         };
         let evidence_age_class = if readiness.evidence_binding.is_some() {
             "current".to_string()
@@ -932,6 +956,19 @@ pub(crate) fn probe_runtime_driver(target: &str, executable: &Path, cwd: &Path) 
             64 * 1024,
             16 * 1024,
         )),
+        RuntimeAdapter::Pi => {
+            let probe = pi_driver::probe(&executable, 2_000, 64 * 1024);
+            json!({
+                "available": probe.available,
+                "supported": probe.supported,
+                "newSession": probe.supported,
+                "resumeSession": probe.supported,
+                "structuredStream": probe.supported,
+                "versionCommandOk": probe.version_command_ok,
+                "helpCommandOk": probe.help_command_ok,
+                "errorCode": probe.error_code
+            })
+        }
     }
 }
 
@@ -1006,7 +1043,7 @@ fn execution_response(adapter: RuntimeAdapter, execution: NormalizedExecution) -
         "runtimeProtocol": execution.runtime_protocol,
         "agentId": adapter.id(),
         "nativeSessionId": native_session_id,
-        "sessionId": execution.session_id,
+        "sessionId": native_session_id,
         "threadId": execution.thread_id,
         "turnId": execution.turn_id,
         "turnStatus": execution.turn_status,
@@ -1040,11 +1077,11 @@ fn normalize_codex(execution: codex_app_server::RunResult) -> NormalizedExecutio
     NormalizedExecution {
         ok: execution.ok,
         output: execution.output,
-        events: Vec::new(),
+        events: execution.events,
         capabilities: json!({
             "newSession": true,
             "resumeSession": true,
-            "structuredEvents": false,
+            "structuredEvents": true,
             "interactiveApprovalBridge": false
         }),
         error: execution.error.map(|failure| NormalizedFailure {
@@ -1090,7 +1127,7 @@ fn normalize_antigravity(execution: antigravity_driver::RunResult) -> Normalized
             "structuredEvents": false,
             "interactiveApprovalBridge": false,
             "messageSend": false,
-            "blocker": "antigravity_public_transport_unavailable"
+            "blocker": "antigravity_cli_structured_transport_unavailable"
         }),
         error: execution.error.map(|failure| NormalizedFailure {
             code: failure.code.to_string(),
@@ -1121,7 +1158,7 @@ fn normalize_antigravity(execution: antigravity_driver::RunResult) -> Normalized
         stderr_truncated: execution.stderr_truncated,
         started_at: execution.started_at,
         runtime_protocol: antigravity_driver::RUNTIME_PROTOCOL,
-        driver_id: "antigravity-public-transport",
+        driver_id: "antigravity-cli",
     }
 }
 
@@ -1129,12 +1166,13 @@ fn normalize_claude(execution: claude_code_driver::RunResult) -> NormalizedExecu
     NormalizedExecution {
         ok: execution.ok,
         output: execution.output,
-        events: Vec::new(),
+        events: execution.events,
         capabilities: json!({
             "newSession": true,
-            "resumeSession": false,
+            "resumeSession": true,
             "structuredEvents": true,
-            "interactiveApprovalBridge": false
+            "interactiveApprovalBridge": false,
+            "processLocalContinuation": true
         }),
         error: execution.error.map(|failure| NormalizedFailure {
             code: failure.code.to_string(),
@@ -1328,6 +1366,57 @@ fn normalize_hermes(execution: hermes_driver::RunResult) -> NormalizedExecution 
     }
 }
 
+fn normalize_pi(execution: pi_driver::RunResult) -> NormalizedExecution {
+    let error = execution.error.map(|failure| {
+        let thread_id = failure.session_id.clone();
+        NormalizedFailure {
+            code: failure.code.to_string(),
+            message: failure.message.to_string(),
+            stage: failure.stage.to_string(),
+            user_interaction_required: failure.user_interaction_required,
+            request_method: failure.request_method,
+            session_id: failure.session_id,
+            thread_id,
+            turn_id: failure.turn_id,
+            turn_status: failure.turn_status,
+        }
+    });
+    NormalizedExecution {
+        ok: execution.ok,
+        output: execution.output,
+        events: execution.events,
+        capabilities: json!({
+            "newSession": true,
+            "resumeSession": true,
+            "structuredEvents": true,
+            "tools": true,
+            "interactiveApprovalBridge": false,
+            "modelOverride": true,
+            "reasoningOverride": true
+        }),
+        error,
+        session_id: execution.session_id,
+        thread_id: execution.thread_id,
+        turn_id: execution.turn_id,
+        turn_status: execution.turn_status,
+        effective: NormalizedEffectiveSettings {
+            cwd: execution.effective.cwd,
+            model: execution.effective.model,
+            reasoning_effort: execution.effective.reasoning_effort,
+            permission_mode: execution.effective.permission_mode,
+            sandbox: execution.effective.sandbox,
+            approval_policy: execution.effective.approval_policy,
+            ..NormalizedEffectiveSettings::default()
+        },
+        status_code: execution.status_code,
+        stdout_truncated: execution.stdout_truncated,
+        stderr_truncated: execution.stderr_truncated,
+        started_at: execution.started_at,
+        runtime_protocol: pi_driver::RUNTIME_PROTOCOL,
+        driver_id: "pi-rpc",
+    }
+}
+
 pub(crate) fn inventory_capability_matrix(agent_id: &str) -> Option<Value> {
     let adapter = adapter_for_agent(agent_id)?;
     runtime_driver_registry()?
@@ -1356,6 +1445,7 @@ fn adapter_for_agent(agent_id: &str) -> Option<RuntimeAdapter> {
         "kimi-code" | "kimicode" => Some(RuntimeAdapter::KimiCode),
         "openclaw" => Some(RuntimeAdapter::OpenClaw),
         "opencode" => Some(RuntimeAdapter::OpenCode),
+        "pi" | "pi-agent" | "pi-coding-agent" => Some(RuntimeAdapter::Pi),
         _ => None,
     }
 }
@@ -1373,6 +1463,7 @@ impl RuntimeAdapter {
             Self::KimiCode => "kimi-code",
             Self::OpenClaw => "openclaw",
             Self::OpenCode => "opencode",
+            Self::Pi => "pi",
         }
     }
 
@@ -1388,21 +1479,23 @@ impl RuntimeAdapter {
             Self::KimiCode => "Kimi Code - CLI",
             Self::OpenClaw => "OpenClaw - CLI",
             Self::OpenCode => "OpenCode - CLI",
+            Self::Pi => "Pi Agent - CLI",
         }
     }
 
     pub(crate) fn driver_id(self) -> &'static str {
         match self {
-            Self::Antigravity => "antigravity-public-transport",
+            Self::Antigravity => "antigravity-cli",
             Self::ClaudeCode => "claude-code-stream-json",
             Self::Codex => "codex-app-server",
             Self::Copilot => "copilot-acp",
             Self::Cursor => "cursor-acp",
             Self::Hermes => "hermes-acp",
-            Self::KiloCode => "kilo-code-acp",
+            Self::KiloCode => "kilo-code-serve",
             Self::KimiCode => "kimi-code-acp",
             Self::OpenClaw => "openclaw-acp",
-            Self::OpenCode => "opencode-acp",
+            Self::OpenCode => "opencode-serve",
+            Self::Pi => "pi-rpc",
         }
     }
 
@@ -1418,6 +1511,7 @@ impl RuntimeAdapter {
             Self::KimiCode => kimi_code_driver::RUNTIME_PROTOCOL,
             Self::OpenClaw => openclaw_driver::RUNTIME_PROTOCOL,
             Self::OpenCode => opencode_driver::RUNTIME_PROTOCOL,
+            Self::Pi => pi_driver::RUNTIME_PROTOCOL,
         }
     }
 
@@ -1433,6 +1527,7 @@ impl RuntimeAdapter {
             Self::KimiCode => "kimi",
             Self::OpenClaw => "openclaw",
             Self::OpenCode => "opencode",
+            Self::Pi => "pi",
         }
     }
 }
@@ -1533,16 +1628,20 @@ mod tests {
         assert_eq!(opencode.driver_status, "implemented");
         assert_eq!(opencode.readiness, "unverified");
         assert_eq!(opencode.protocol, opencode_driver::RUNTIME_PROTOCOL);
-        assert_eq!(opencode.blocker.as_deref(), Some("evidence_missing"));
+        assert_eq!(opencode.blocker, None);
         assert_eq!(opencode.evidence_age_class, "missing");
-        assert!(opencode.summary_codes.contains(&"evidence_missing".to_string()));
+        assert!(
+            opencode
+                .summary_codes
+                .contains(&"evidence_missing".to_string())
+        );
         assert_eq!(
             opencode
                 .capability_matrix
                 .as_ref()
                 .and_then(|matrix| matrix.get("laneFamily"))
                 .and_then(Value::as_str),
-            Some("acp")
+            Some("serve-http")
         );
 
         let antigravity = registry.profile("antigravity").unwrap();
@@ -1550,7 +1649,7 @@ mod tests {
         assert_eq!(antigravity.readiness, "blocked");
         assert_eq!(
             antigravity.blocker.as_deref(),
-            Some("antigravity_public_transport_unavailable")
+            Some("antigravity_cli_structured_transport_unavailable")
         );
         assert_eq!(
             antigravity
@@ -1561,6 +1660,10 @@ mod tests {
             Some("unavailable")
         );
         assert!(registry.readiness.values().all(|entry| !entry.send_enabled));
+
+        let cursor = registry.profile("cursor").unwrap();
+        assert_eq!(cursor.driver_status, "blocked");
+        assert_eq!(cursor.blocker.as_deref(), Some("safe_cleanup_unavailable"));
     }
 
     #[test]
@@ -1673,6 +1776,7 @@ mod tests {
             normalize_codex(codex_app_server::RunResult {
                 ok: true,
                 output: "answer".to_string(),
+                events: Vec::new(),
                 error: None,
                 session_id: "session-1".to_string(),
                 thread_id: "thread-1".to_string(),
@@ -1700,7 +1804,7 @@ mod tests {
         );
         assert_eq!(response["threadId"], "thread-1");
         assert_eq!(response["nativeSessionId"], "thread-1");
-        assert_eq!(response["sessionId"], "session-1");
+        assert_eq!(response["sessionId"], "thread-1");
         assert_eq!(response["effective"]["model"], "model-1");
         assert_eq!(response["approvalOwner"], "user");
     }
@@ -1725,12 +1829,12 @@ mod tests {
                 stderr_truncated: false,
                 started_at: "1".to_string(),
                 runtime_protocol: opencode_driver::RUNTIME_PROTOCOL,
-                driver_id: "opencode-acp",
+                driver_id: "opencode-serve",
             },
         );
 
         assert_eq!(response["nativeSessionId"], "native-session-1");
-        assert_eq!(response["driverId"], "opencode-acp");
+        assert_eq!(response["driverId"], "opencode-serve");
         assert_eq!(response["sessionId"], "native-session-1");
         assert_eq!(response["threadId"], "diagnostic-thread-1");
     }

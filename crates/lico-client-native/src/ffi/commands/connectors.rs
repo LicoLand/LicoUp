@@ -1,5 +1,5 @@
 // connectors commands: connectors list|sync|status, connectors mirror inspect,
-// knowledge-cache, mail, source-queue, mcp-local-bridge, agent message send, agents pair
+// knowledge-cache, mail, source-queue, mcp-local-bridge, agent conversation, agents pair
 
 use super::{CliExecution, CommandTable, cli_params};
 use anyhow::{Result, anyhow};
@@ -33,11 +33,6 @@ pub fn register_commands(table: &mut CommandTable) {
         &["mcp-local-bridge"],
         handle_mcp_local_bridge,
         "MCP local bridge plan|start|stop|status|register",
-    );
-    table.register_rest(
-        &["agent", "message", "send"],
-        handle_agent_message_send,
-        "Send agent message",
     );
     table.register_rest(
         &["agent", "conversation"],
@@ -128,34 +123,19 @@ fn handle_mcp_local_bridge(args: &[String]) -> Result<CliExecution> {
     Ok(CliExecution::Json(result))
 }
 
-fn handle_agent_message_send(args: &[String]) -> Result<CliExecution> {
-    let control = cli_params(&args[3..]);
-    if !stdin_json_enabled(&control) {
-        return Err(anyhow!(
-            "agent message send requires a JSON request on stdin"
-        ));
-    }
-    let mut request_json = String::new();
-    std::io::stdin().read_to_string(&mut request_json)?;
-    let params = parse_agent_message_stdin_json(&request_json)?;
-    Ok(CliExecution::Json(
-        crate::platform::runtime_adapters::send_message(&params)?,
-    ))
-}
-
 fn handle_agent_conversation(args: &[String]) -> Result<CliExecution> {
     if args.len() < 3 {
         return Ok(CliExecution::Usage);
     }
     let operation = args[2].as_str();
     let control = cli_params(&args[3..]);
-    let params = if stdin_json_enabled(&control) {
+    let mut params = if stdin_json_enabled(&control) {
         let mut request_json = String::new();
         std::io::stdin().read_to_string(&mut request_json)?;
         parse_agent_message_stdin_json(&request_json)?
     } else {
         // Allow non-send ops with CLI flags only (agentId required).
-        let mut params = control;
+        let mut params = control.clone();
         if let Some(object) = params.as_object_mut() {
             if let Some(agent) = object.remove("agent") {
                 object.insert("agent".to_string(), agent);
@@ -163,9 +143,109 @@ fn handle_agent_conversation(args: &[String]) -> Result<CliExecution> {
         }
         params
     };
+    // CLI flag / control overlay for progressive NDJSON during send.
+    if stream_events_enabled(&control) || stream_events_enabled(&params) {
+        if let Some(object) = params.as_object_mut() {
+            object.insert("streamEvents".to_string(), serde_json::json!(true));
+        }
+    }
+
+    if operation == "send" && stream_events_enabled(&params) {
+        if let Err(error) = crate::platform::enforce_send_readiness(&params) {
+            let mut failure = agent_conversation_failure(&error);
+            failure["event"] = serde_json::json!("done");
+            write_stdout_json_line(&failure)?;
+            return Ok(CliExecution::Streamed);
+        }
+        let _guard = crate::platform::install_stdout_ndjson_sink();
+        crate::platform::emit_turn_event(
+            "dispatch.turn.started",
+            params
+                .get("sessionId")
+                .or_else(|| params.get("nativeSessionId"))
+                .and_then(|v| v.as_str())
+                .unwrap_or(""),
+            "",
+            serde_json::json!({
+                "agentId": params.get("agent").or_else(|| params.get("agentId")).cloned().unwrap_or(serde_json::json!("")),
+                "streamTransport": "stdio_ndjson_on_send"
+            }),
+        );
+        let result = match crate::platform::dispatch_lane_operation(operation, &params) {
+            Ok(result) => result,
+            Err(error) => agent_conversation_failure(&error),
+        };
+        let mut done = result;
+        if let Some(object) = done.as_object_mut() {
+            object.insert("event".to_string(), serde_json::json!("done"));
+        }
+        write_stdout_json_line(&done)?;
+        return Ok(CliExecution::Streamed);
+    }
+
+    if operation == "send" {
+        if let Err(error) = crate::platform::enforce_send_readiness(&params) {
+            return Ok(CliExecution::Json(agent_conversation_failure(&error)));
+        }
+    }
+
     Ok(CliExecution::Json(
-        crate::platform::dispatch_lane_operation(operation, &params)?,
+        match crate::platform::dispatch_lane_operation(operation, &params) {
+            Ok(result) => result,
+            Err(error) => agent_conversation_failure(&error),
+        },
     ))
+}
+
+fn agent_conversation_failure(error: &anyhow::Error) -> Value {
+    let message = error.to_string();
+    let code = if message.contains("send_not_ready") {
+        "agent_conversation_send_not_ready"
+    } else if message.contains("runtime profile is unavailable") {
+        "native_agent_runtime_profile_unavailable"
+    } else if message.contains("requires an agent identifier") {
+        "agent_identifier_missing"
+    } else if message.contains("requires message text") {
+        "agent_message_missing"
+    } else if message.contains("exceeds the input limit") {
+        "agent_message_input_limit"
+    } else if message.contains("unsupported runtime adapter") {
+        "agent_runtime_unsupported"
+    } else if message.contains("evidence binding is unavailable") {
+        "native_agent_runtime_evidence_unavailable"
+    } else {
+        "agent_conversation_dispatch_failed"
+    };
+    serde_json::json!({
+        "ok": false,
+        "error": {
+            "code": code,
+            "stage": "conversation/dispatch",
+            "message": "The native conversation request failed closed."
+        }
+    })
+}
+
+fn stream_events_enabled(params: &Value) -> bool {
+    params
+        .get("streamEvents")
+        .or_else(|| params.get("stream-events"))
+        .and_then(|value| {
+            value.as_bool().or_else(|| match value.as_str()?.trim() {
+                "true" | "1" | "yes" => Some(true),
+                _ => Some(false),
+            })
+        })
+        == Some(true)
+}
+
+fn write_stdout_json_line(value: &Value) -> Result<()> {
+    use std::io::Write;
+    let mut stdout = std::io::stdout().lock();
+    serde_json::to_writer(&mut stdout, value)?;
+    stdout.write_all(b"\n")?;
+    stdout.flush()?;
+    Ok(())
 }
 
 fn stdin_json_enabled(params: &Value) -> bool {
@@ -179,9 +259,9 @@ fn stdin_json_enabled(params: &Value) -> bool {
 
 fn parse_agent_message_stdin_json(input: &str) -> Result<Value> {
     let request: Value = serde_json::from_str(input)
-        .map_err(|_| anyhow!("agent message send stdin must be valid JSON"))?;
+        .map_err(|_| anyhow!("agent conversation stdin must be valid JSON"))?;
     if !request.is_object() {
-        return Err(anyhow!("agent message send stdin must be a JSON object"));
+        return Err(anyhow!("agent conversation stdin must be a JSON object"));
     }
     Ok(request)
 }
@@ -205,7 +285,7 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn agent_message_request_is_read_from_json_stdin_contract() {
+    fn agent_conversation_request_is_read_from_json_stdin_contract() {
         let control = cli_params(&["--stdin-json".into(), "true".into()]);
         assert!(stdin_json_enabled(&control));
 
@@ -219,7 +299,7 @@ mod tests {
     }
 
     #[test]
-    fn agent_message_request_rejects_non_object_stdin() {
+    fn agent_conversation_request_rejects_non_object_stdin() {
         assert!(parse_agent_message_stdin_json(r#"["prompt"]"#).is_err());
         assert!(parse_agent_message_stdin_json("not-json").is_err());
     }
