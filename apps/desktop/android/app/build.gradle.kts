@@ -8,10 +8,22 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+val releaseSigningValues = mapOf(
+    "storeFile" to System.getenv("LICO_ANDROID_KEYSTORE_PATH"),
+    "storePassword" to System.getenv("LICO_ANDROID_KEYSTORE_PASSWORD"),
+    "keyAlias" to System.getenv("LICO_ANDROID_KEY_ALIAS"),
+    "keyPassword" to System.getenv("LICO_ANDROID_KEY_PASSWORD")
+)
+val releaseSigningFieldsReady = releaseSigningValues.values.all { !it.isNullOrBlank() }
+val releaseStoreFile = releaseSigningValues["storeFile"]?.let(::File)
+val releaseSigningReady = releaseSigningFieldsReady && releaseStoreFile?.isAbsolute == true
+
 android {
-    namespace = "com.example.flutter_client"
+    namespace = "com.liko.arc"
     compileSdk = flutter.compileSdkVersion
-    ndkVersion = "30.0.14904198"
+    ndkVersion = System.getenv("LICO_ANDROID_NDK_VERSION")
+        ?.takeIf { it.isNotBlank() }
+        ?: "30.0.14904198"
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -22,21 +34,24 @@ android {
         jvmTarget = JavaVersion.VERSION_17.toString()
     }
 
-    packaging {
-        jniLibs {
-            keepDebugSymbols += listOf("**/*.so")
-        }
-    }
-
     sourceSets {
         getByName("main") {
             jniLibs.srcDir(layout.buildDirectory.dir("generated/secureMeshJniLibs"))
         }
     }
 
+    packaging {
+        jniLibs {
+            keepDebugSymbols.clear()
+            excludes += listOf(
+                "lib/armeabi-v7a/**",
+                "lib/x86_64/**"
+            )
+        }
+    }
+
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.example.flutter_client"
+        applicationId = "com.liko.arc"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
@@ -45,17 +60,54 @@ android {
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        if (releaseSigningReady) {
+            create("release") {
+                storeFile = releaseStoreFile!!.canonicalFile
+                storePassword = releaseSigningValues.getValue("storePassword")
+                keyAlias = releaseSigningValues.getValue("keyAlias")
+                keyPassword = releaseSigningValues.getValue("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = if (releaseSigningReady) {
+                signingConfigs.getByName("release")
+            } else {
+                null
+            }
+        }
+    }
+}
+
+tasks.configureEach {
+    val isReleasePackagingTask = name.matches(Regex("(?:assemble|bundle|package).*Release.*"))
+    if (isReleasePackagingTask) {
+        doFirst {
+            require(releaseSigningFieldsReady) {
+                "Android release signing is required. Provide LICO_ANDROID_KEYSTORE_PATH, " +
+                    "LICO_ANDROID_KEYSTORE_PASSWORD, LICO_ANDROID_KEY_ALIAS, and " +
+                    "LICO_ANDROID_KEY_PASSWORD through the protected CI release environment."
+            }
+            require(releaseStoreFile!!.isAbsolute) {
+                "Android release keystore path must be absolute."
+            }
+            require(releaseStoreFile.isFile) {
+                "Android release keystore file is missing."
+            }
         }
     }
 }
 
 flutter {
     source = "../.."
+}
+
+dependencies {
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    testImplementation("junit:junit:4.13.2")
 }
 
 val secureMeshAndroidTarget = "aarch64-linux-android"

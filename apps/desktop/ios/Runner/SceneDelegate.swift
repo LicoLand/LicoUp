@@ -13,10 +13,22 @@ class SceneDelegate: FlutterSceneDelegate {
 
     let flutterViewController = FlutterViewController(project: nil, nibName: nil, bundle: nil)
     GeneratedPluginRegistrant.register(with: flutterViewController)
+    SecureMeshIosBridge.register(with: flutterViewController.binaryMessenger)
+    SecureMeshIosBridge.setForegroundIdleTimerGuard(active: true)
 
     let window = UIWindow(windowScene: windowScene)
     window.rootViewController = flutterViewController
     self.window = window
     window.makeKeyAndVisible()
+  }
+
+  override func sceneDidBecomeActive(_ scene: UIScene) {
+    super.sceneDidBecomeActive(scene)
+    SecureMeshIosBridge.setForegroundIdleTimerGuard(active: true)
+  }
+
+  override func sceneWillResignActive(_ scene: UIScene) {
+    super.sceneWillResignActive(scene)
+    SecureMeshIosBridge.setForegroundIdleTimerGuard(active: false)
   }
 }
