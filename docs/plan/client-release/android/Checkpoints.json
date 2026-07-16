@@ -22,7 +22,7 @@
           {
             "type": "file",
             "path": "docs/plan/client-release/android/Requirements.md",
-          "sha256": "b2bad09b8222ecfd2620e262ae1a5f2c9d9b5c292a27d7cd85b05a23df435bb0",
+            "sha256": "b2bad09b8222ecfd2620e262ae1a5f2c9d9b5c292a27d7cd85b05a23df435bb0",
             "recorded_at": "2026-07-13T03:48:23Z"
           }
         ]
@@ -34,13 +34,13 @@
           {
             "type": "file",
             "path": "docs/plan/client-release/android/Requirements.md",
-          "sha256": "b2bad09b8222ecfd2620e262ae1a5f2c9d9b5c292a27d7cd85b05a23df435bb0",
+            "sha256": "b2bad09b8222ecfd2620e262ae1a5f2c9d9b5c292a27d7cd85b05a23df435bb0",
             "recorded_at": "2026-07-13T03:48:24Z"
           },
           {
             "type": "file",
             "path": "docs/plan/client-release/android/Validation.md",
-          "sha256": "841ef151f1a67c7ebf4d24c32441bcfa671fccce9d7ea998e03e71b9b49cc43e",
+            "sha256": "841ef151f1a67c7ebf4d24c32441bcfa671fccce9d7ea998e03e71b9b49cc43e",
             "recorded_at": "2026-07-13T03:48:24Z"
           }
         ]
@@ -81,7 +81,7 @@
           {
             "type": "file",
             "path": "docs/plan/client-release/android/Evidence.md",
-          "sha256": "cbd0a0fe5d55268fc3fb6559c135c361032c1dd40378b00ba3762257235498e5",
+            "sha256": "cbd0a0fe5d55268fc3fb6559c135c361032c1dd40378b00ba3762257235498e5",
             "recorded_at": "2026-07-13T09:05:53Z"
           }
         ]
@@ -121,7 +121,7 @@
           {
             "type": "file",
             "path": "docs/plan/client-release/android/Validation.md",
-          "sha256": "841ef151f1a67c7ebf4d24c32441bcfa671fccce9d7ea998e03e71b9b49cc43e",
+            "sha256": "841ef151f1a67c7ebf4d24c32441bcfa671fccce9d7ea998e03e71b9b49cc43e",
             "recorded_at": "2026-07-13T09:05:53Z"
           }
         ]
@@ -230,7 +230,7 @@
           {
             "type": "file",
             "path": "docs/plan/client-release/android/Evidence.md",
-          "sha256": "cbd0a0fe5d55268fc3fb6559c135c361032c1dd40378b00ba3762257235498e5",
+            "sha256": "cbd0a0fe5d55268fc3fb6559c135c361032c1dd40378b00ba3762257235498e5",
             "recorded_at": "2026-07-13T09:07:24Z"
           }
         ]
@@ -339,10 +339,9 @@
   },
   {
     "id": "3d0a251b-98d8-4df9-9eb3-f1bffdaeedce",
-    "status": "blocked",
+    "status": "skipped",
     "role": "implementation",
     "prerequisites": [
-      "134d179d-3c82-41b1-b8aa-b672c351c81b",
       "6b71076f-0320-4b9d-9654-ef017f76c5b7",
       "9c64645e-de4d-4663-8eac-151a9dc6cec1"
     ],
@@ -370,7 +369,7 @@
       "673f4016-5817-4f3c-a44d-bd0ff7ad2d03",
       "fe7b391b-6ec4-4582-bfde-56b95c0c050e"
     ],
-    "status_reason": "The emulator build/install/launch/FFI receipt passed, but this Node requires authorized physical-device custody and cross-device pairwise evidence."
+    "status_reason": "Authorized physical-device and store evidence are outside the current development closure; no Android release claim is made."
   },
   {
     "id": "673f4016-5817-4f3c-a44d-bd0ff7ad2d03",
@@ -402,10 +401,11 @@
   },
   {
     "id": "fe7b391b-6ec4-4582-bfde-56b95c0c050e",
-    "status": "blocked",
+    "status": "skipped",
     "role": "final_validation",
     "prerequisites": [
-      "3d0a251b-98d8-4df9-9eb3-f1bffdaeedce"
+      "6b71076f-0320-4b9d-9654-ef017f76c5b7",
+      "9c64645e-de4d-4663-8eac-151a9dc6cec1"
     ],
     "platform": "any",
     "difficulty": "deep",
@@ -433,6 +433,6 @@
       "target": "Android child final reducer and redacted receipt"
     },
     "next": [],
-    "status_reason": "Final Android security evidence requires deterministic double-build and physical custody proof. Production signing, store publication and update proof remain only an optional channel status and do not block GitHub Release."
+    "status_reason": "Authorized physical-device and store evidence are outside the current development closure; no Android release claim is made."
   }
 ]

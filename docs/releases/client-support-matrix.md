@@ -1,26 +1,32 @@
 # Lico Arc Client Support Matrix
 
+English · [简体中文](client-support-matrix.zh-CN.md) · [Home](../../README.md)
+
 Product version: `0.0.1-alpha`
 
-This report is generated from the release-target and capability catalogs. Optional external services never block a client release. `preview`, `deferred`, `unsupported`, and `unverified` are not support claims.
+This file is generated from the client catalogs. A build target is not a support claim.
 
-| Target | Build capability | Current release closure | Lico Arc client | Secure Mesh client-to-client | Mobile Relay | ChatGPT local OAuth | DeepSeek local API key | Gemini local OAuth | Kimi local OAuth | Conversation voice input |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| windows-x64 | available | not-in-current-closure | unverified | unverified | unverified | unverified | unverified | deferred | deferred | deferred |
-| windows-arm64 | unavailable | not-in-current-closure | unverified | unverified | unverified | unverified | unverified | deferred | deferred | deferred |
-| macos-x64 | available | not-in-current-closure | supported | preview | preview | unverified | unverified | deferred | deferred | deferred |
-| macos-arm64 | available | selected-capable | supported | preview | preview | unverified | unverified | deferred | deferred | deferred |
-| linux-glibc-x64 | available | not-in-current-closure | preview | preview | preview | unverified | unverified | deferred | deferred | deferred |
-| linux-glibc-arm64 | available | selected-capable | preview | preview | preview | unverified | unverified | deferred | deferred | deferred |
-| linux-musl-x64 | available | not-in-current-closure | preview | preview | preview | unverified | unverified | deferred | deferred | deferred |
-| linux-musl-arm64 | available | not-in-current-closure | preview | preview | preview | unverified | unverified | deferred | deferred | deferred |
-| android-arm64 | available | selected-capable | supported | preview | preview | preview | preview | deferred | deferred | deferred |
-| ios-arm64 | unavailable | not-in-current-closure | unsupported | unverified | unverified | unverified | unverified | deferred | deferred | deferred |
+| Target | Build | GitHub Release eligible | Physical/device evidence | Store publication | Client | Peer encryption | Mobile relay |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| windows-x64 | available | not eligible | not claimed | not claimed | preview | preview | preview |
+| windows-arm64 | unavailable | not eligible | not claimed | not claimed | unverified | unverified | unverified |
+| macos-x64 | available | not eligible | not claimed | not claimed | supported | preview | preview |
+| macos-arm64 | available | eligible | not claimed | not claimed | supported | preview | preview |
+| linux-glibc-x64 | available | not eligible | not claimed | not claimed | preview | preview | preview |
+| linux-glibc-arm64 | available | eligible | not claimed | not claimed | preview | preview | preview |
+| linux-musl-x64 | available | not eligible | not claimed | not claimed | preview | preview | preview |
+| linux-musl-arm64 | available | not eligible | not claimed | not claimed | preview | preview | preview |
+| android-arm64 | available | eligible | not claimed | not claimed | supported | preview | preview |
+| ios-simulator-arm64 | available | not eligible | simulator only | not claimed | supported | preview | preview |
+| ios-arm64 | unavailable | not eligible | not claimed | not claimed | unverified | unverified | unverified |
 
-## Release interpretation
+## Meaning
 
-- `Build capability` means a builder exists; it is not a release-readiness claim. Only targets marked `selected-capable` may enter the current local-install release closure.
-- The first release closure authority is macOS arm64, Android arm64, and Linux glibc arm64. Other build-capable targets remain outside this closure and fail closed if selected.
-- External-service rows disclose current integration support only. They are optional and never participate in client release readiness.
-- Gemini and Kimi local OAuth are deferred on Android. Their incomplete descriptors remain fail-closed and are outside the current Android release scope.
-- Conversation voice input is visible as deferred and is not a supported release capability.
+- `supported` means the current target-specific client checks accept the feature; it does not imply distribution readiness.
+- `preview` means the feature is still changing.
+- `unverified` means there is no current support claim.
+- `unsupported` means the feature must not be presented as available.
+- `eligible` means a release operator may explicitly select that target; it does not mean any current release includes it.
+- Feature status does not establish native-host, physical-device, biometric, hardware-custody, or cross-device evidence. Those claims remain `not claimed`; a simulator row proves only its simulator closure.
+- Store publication is not claimed by this matrix and requires a separate channel-specific result.
+- Peer content is encrypted by the sending client. Sensitive runtime data stays local.

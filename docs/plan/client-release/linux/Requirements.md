@@ -1,5 +1,7 @@
 # Linux Release Requirements
 
+Upper constraint: [`../../product-scope/Requirements.md`](../../product-scope/Requirements.md). This child owns Ubuntu/Linux adaptation and delivery only within the canonical product scope.
+
 ### REQ-LIN-001 — Exact Linux tuple lineage
 
 Every declared glibc or musl architecture has one explicit target tuple, builder, archive kind, manifest, native executable set and receipt chain. Direct and VM producers cannot name different archives or manifests for one target. Host, libc, architecture and digest mismatches fail closed.

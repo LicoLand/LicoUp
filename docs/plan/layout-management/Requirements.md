@@ -1,5 +1,7 @@
 # Layout Management Foundation Requirements
 
+Upper constraint: [`../product-scope/Requirements.md`](../product-scope/Requirements.md). Layout work may present only the canonical default scenarios and optional-plugin boundary; it cannot add product capabilities.
+
 ## Product problem
 
 Lico Arc needs a layout-management authority that scales with the registered product: `N` semantic profiles across `M` runtime surfaces produce `N × M` independently owned surface bundles. Layout selection remains a presentation concern. It cannot duplicate business state, alter client capabilities, hide reachable workflows, or let one bundle's implementation change another bundle's rendering.

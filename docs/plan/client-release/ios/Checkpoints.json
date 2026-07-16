@@ -275,11 +275,10 @@
   },
   {
     "id": "0864d622-df01-48fb-b463-d18f5f51964c",
-    "status": "blocked",
+    "status": "skipped",
     "role": "implementation",
     "prerequisites": [
-      "55a4fa54-62d0-4d4d-a91f-7e92178708d0",
-      "3bd8d814-a2f0-4031-9208-ea1d008c7850"
+      "55a4fa54-62d0-4d4d-a91f-7e92178708d0"
     ],
     "platform": "any",
     "difficulty": "deep",
@@ -304,14 +303,14 @@
     "next": [
       "0a9a48be-a2a5-436a-90d2-a4bc7a7702b7"
     ],
-    "status_reason": "Authorized physical iOS custody, cross-device Secure Mesh, trust-change and restart evidence cannot be established in the simulator."
+    "status_reason": "Authorized physical-device and App Store evidence are outside the current development closure; no iOS release claim is made."
   },
   {
     "id": "0a9a48be-a2a5-436a-90d2-a4bc7a7702b7",
-    "status": "blocked",
+    "status": "skipped",
     "role": "final_validation",
     "prerequisites": [
-      "0864d622-df01-48fb-b463-d18f5f51964c"
+      "55a4fa54-62d0-4d4d-a91f-7e92178708d0"
     ],
     "platform": "any",
     "difficulty": "deep",
@@ -339,6 +338,6 @@
       "target": "iOS child final reducer and redacted receipt"
     },
     "next": [],
-    "status_reason": "Final iOS security evidence requires physical install/custody and Secure Mesh proof. Apple production publication and update proof remain only an optional channel status and do not block GitHub Release."
+    "status_reason": "Authorized physical-device and App Store evidence are outside the current development closure; no iOS release claim is made."
   }
 ]

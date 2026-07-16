@@ -1,4 +1,4 @@
-# Local Agent Runtime and Orchestration Validation
+# Local Agent Execution and Orchestration Validation
 
 ## Requirement matrix
 
@@ -6,7 +6,7 @@
 | --- | --- |
 | REQ-001, REQ-006, REQ-007, REQ-015 | Canonical manifest schema, generated-projection consistency, exact-set mutation tests, synthetic adapter contribution, dynamic reload/rollback/drain tests, and retired-authority scans |
 | REQ-002, REQ-003, REQ-004, REQ-005 | Per-adapter official-lane contract tests, fake-child negative tests, live native↔Arc exact continuation, ordered pre-terminal streaming, timeout/cancel/cleanup, and bounded supervisor tests |
-| REQ-008, REQ-012 | Pure planner tests, deterministic tie-breaks, DAG topology, semaphore limits, cancellation, circuit/allowance/readiness changes, known/unknown failure disposition, and route explanation |
+| REQ-008, REQ-012 | Pure planner tests, deterministic tie-breaks, DAG topology, semaphore limits, cancellation, circuit/queue-capacity/readiness changes, known/unknown failure disposition, and route explanation |
 | REQ-009, REQ-010, REQ-011 | Private-file/no-follow tests, typed path/digest acknowledgement, target budget boundaries, unknown-limit behavior, framework compression, hierarchical overflow, fidelity failure, bounded cache, and cleanup |
 | REQ-013 | Secret-key rejection, argv/process inspection, path/native-ID redaction, approval deny-by-default, bounded evidence, and privacy scan |
 | REQ-014, REQ-016 | GUI/CLI/direct/routed same-lane tests, real reply persistence, next-turn context, Release-product UI live checks, aggregate client verification, rebuild, and launch |

@@ -1,5 +1,7 @@
 # Isolated Renderer Completion Requirements
 
+Upper constraint: [`../../product-scope/Requirements.md`](../../product-scope/Requirements.md). Renderer isolation cannot preserve or introduce a destination outside the canonical product scope.
+
 ## Contract
 
 This child Plan closes the remaining layout-management work discovered after the earlier catalog plan. The current visual designs are immutable inputs. Architecture work may move ownership and dependencies, but it may not change pixels, component styling, geometry, typography, color, motion, semantics, keys, focus behavior, or interactions.

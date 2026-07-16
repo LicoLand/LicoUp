@@ -121,6 +121,7 @@
       "REQ-PROD-004",
       "REQ-AGENT-001",
       "REQ-AGENT-002",
+      "REQ-AGENT-003",
       "REQ-ROUTE-001",
       "REQ-ROUTE-002",
       "REQ-SEC-001",
@@ -194,6 +195,7 @@
       "REQ-PROD-004",
       "REQ-AGENT-001",
       "REQ-AGENT-002",
+      "REQ-AGENT-003",
       "REQ-ROUTE-001",
       "REQ-ROUTE-002",
       "REQ-SEC-001",
@@ -317,7 +319,7 @@
       "6325350e-7b9f-45b9-9c15-99c30e473312",
       "fb8abf45-be00-4b68-9273-6b93147ad90b",
       "04bf513e-4ecf-4e29-9309-a50d61a30af8",
-      "8fd4c0d5-0ab3-4c90-a237-ababcda49e25",
+      "d3d2012c-122e-48e9-9700-08920400bc40",
       "d60242cd-c88a-44bb-a10b-29525021ad69"
     ]
   },
@@ -429,8 +431,8 @@
       "86e11c2d-686f-437b-9652-764738fbdd67",
       "a3dbf8d9-4850-43b5-a156-1af5db938098",
       "cfeb63fe-981b-4732-9044-628f2656fd14",
-      "9d293a27-d060-4838-ae21-058c2e866e52",
-      "5b8f22d1-86cb-4f45-b64c-8829f7530426"
+      "3f567d87-db7a-438a-93f3-529a854e4bc5",
+      "18bd9273-e7bd-4663-9551-c0a2597c8375"
     ]
   },
   {
@@ -489,14 +491,14 @@
       "86e11c2d-686f-437b-9652-764738fbdd67",
       "a3dbf8d9-4850-43b5-a156-1af5db938098",
       "04bf513e-4ecf-4e29-9309-a50d61a30af8",
-      "5b8f22d1-86cb-4f45-b64c-8829f7530426",
+      "18bd9273-e7bd-4663-9551-c0a2597c8375",
       "7f713f0c-be4b-4f98-b43b-28f0b2cce22f",
       "d024ade1-4ee3-4a82-bb9b-3b67b53464fb"
     ]
   },
   {
     "id": "d024ade1-4ee3-4a82-bb9b-3b67b53464fb",
-    "status": "blocked",
+    "status": "skipped",
     "role": "implementation",
     "prerequisites": [
       "6325350e-7b9f-45b9-9c15-99c30e473312"
@@ -508,7 +510,7 @@
     "requirements": [
       "REQ-AGENT-001"
     ],
-    "status_reason": "BLOCKED: mid-run inject/steer is out of scope for the current one-shot dispatch model (CL-06 C-05). No supervised in-flight turn exists to steer. Unblock only after an explicit product decision and supervised-turn architecture.",
+    "status_reason": "Superseded by the canonical product-scope implementation closure or dependent on external release, third-party transport, physical-device, KT/MLS, or publication evidence; no readiness or release claim is made.",
     "acceptance_criteria": [
       {
         "checked": false,
@@ -524,7 +526,7 @@
   },
   {
     "id": "7f713f0c-be4b-4f98-b43b-28f0b2cce22f",
-    "status": "blocked",
+    "status": "skipped",
     "role": "implementation",
     "prerequisites": [
       "6325350e-7b9f-45b9-9c15-99c30e473312",
@@ -556,11 +558,11 @@
       "6e67e7f6-53b9-45b5-bcef-dd4f2602225b",
       "20bc9af9-069a-47ee-bbc4-dcc7ac823df1"
     ],
-    "status_reason": "All-packaged-agent exact retrieval evidence is unavailable while packaged adapters remain unverified or blocked; no universal retrieval claim is permitted."
+    "status_reason": "Superseded by the canonical product-scope implementation closure or dependent on external release, third-party transport, physical-device, KT/MLS, or publication evidence; no readiness or release claim is made."
   },
   {
     "id": "763f73a4-8548-42b4-a100-4579cb59f873",
-    "status": "blocked",
+    "status": "skipped",
     "role": "implementation",
     "prerequisites": [
       "95bb98b7-e3bb-4a0f-956a-79dbe9a52286",
@@ -585,11 +587,11 @@
       "target": "Antigravity adapter and evidence"
     },
     "next": [],
-    "status_reason": "BLOCKED: antigravity_cli_structured_transport_unavailable — the official CLI puts prompt/conversation selection in argv and exposes no structured realtime stdin protocol. Unblock only when that CLI contract changes, then prove full parity including exact resume, or add a separately identified SDK adapter with its own dependency and session domain."
+    "status_reason": "Superseded by the canonical product-scope implementation closure or dependent on external release, third-party transport, physical-device, KT/MLS, or publication evidence; no readiness or release claim is made."
   },
   {
     "id": "560beb7d-7136-4cc9-afbc-46ff4cd070fc",
-    "status": "blocked",
+    "status": "skipped",
     "role": "implementation",
     "prerequisites": [
       "95bb98b7-e3bb-4a0f-956a-79dbe9a52286",
@@ -614,11 +616,11 @@
       "target": "Claude Code driver and evidence"
     },
     "next": [],
-    "status_reason": "BLOCKED: safe_cleanup_unavailable — official Streaming Input provides process-local exact continuation, realtime events and interrupt without prompt/session argv, but no verified vendor-session delete operation or fully disposable authenticated data root. Cross-process restart intentionally fails closed rather than using argv resume."
+    "status_reason": "Superseded by the canonical product-scope implementation closure or dependent on external release, third-party transport, physical-device, KT/MLS, or publication evidence; no readiness or release claim is made."
   },
   {
     "id": "de4a4286-bb22-4405-9967-3417e435e84c",
-    "status": "blocked",
+    "status": "skipped",
     "role": "implementation",
     "prerequisites": [
       "95bb98b7-e3bb-4a0f-956a-79dbe9a52286",
@@ -650,11 +652,11 @@
       "20bc9af9-069a-47ee-bbc4-dcc7ac823df1",
       "6e67e7f6-53b9-45b5-bcef-dd4f2602225b"
     ],
-    "status_reason": "Codex remains send-disabled and excluded from supported claims because consecutive source-bound official-lane parity evidence is unavailable."
+    "status_reason": "Superseded by the canonical product-scope implementation closure or dependent on external release, third-party transport, physical-device, KT/MLS, or publication evidence; no readiness or release claim is made."
   },
   {
     "id": "6e67e7f6-53b9-45b5-bcef-dd4f2602225b",
-    "status": "blocked",
+    "status": "skipped",
     "role": "implementation",
     "prerequisites": [
       "7f713f0c-be4b-4f98-b43b-28f0b2cce22f",
@@ -686,11 +688,11 @@
     "next": [
       "20bc9af9-069a-47ee-bbc4-dcc7ac823df1"
     ],
-    "status_reason": "No adapter is currently ready or send-enabled, so a ready-adapter operator list-to-exact-send smoke cannot be produced."
+    "status_reason": "Superseded by the canonical product-scope implementation closure or dependent on external release, third-party transport, physical-device, KT/MLS, or publication evidence; no readiness or release claim is made."
   },
   {
     "id": "49094caf-785a-49ff-a0ab-b4e5233a9178",
-    "status": "blocked",
+    "status": "skipped",
     "role": "implementation",
     "prerequisites": [
       "95bb98b7-e3bb-4a0f-956a-79dbe9a52286",
@@ -717,11 +719,11 @@
     "next": [
       "20bc9af9-069a-47ee-bbc4-dcc7ac823df1"
     ],
-    "status_reason": "Cursor native CLI validation now runs instead of preflight-blocking. Latest strict run attempted 5 sessions and 10 requests with 9 successful requests (90%); two conversation rounds passed, the third had a request failure, and official scripted cleanup remains unavailable/manual-required. Readiness remains fail-closed."
+    "status_reason": "Superseded by the canonical product-scope implementation closure or dependent on external release, third-party transport, physical-device, KT/MLS, or publication evidence; no readiness or release claim is made."
   },
   {
     "id": "b43c2769-9f88-4126-aee9-26f581fe9fb9",
-    "status": "blocked",
+    "status": "skipped",
     "role": "implementation",
     "prerequisites": [
       "95bb98b7-e3bb-4a0f-956a-79dbe9a52286",
@@ -748,11 +750,11 @@
     "next": [
       "20bc9af9-069a-47ee-bbc4-dcc7ac823df1"
     ],
-    "status_reason": "Copilot remains send-disabled and excluded from supported claims because source-bound official-lane parity evidence is unavailable."
+    "status_reason": "Superseded by the canonical product-scope implementation closure or dependent on external release, third-party transport, physical-device, KT/MLS, or publication evidence; no readiness or release claim is made."
   },
   {
     "id": "77659ba9-799b-4d60-9c45-e16d7396d04a",
-    "status": "blocked",
+    "status": "skipped",
     "role": "implementation",
     "prerequisites": [
       "95bb98b7-e3bb-4a0f-956a-79dbe9a52286",
@@ -779,11 +781,11 @@
     "next": [
       "20bc9af9-069a-47ee-bbc4-dcc7ac823df1"
     ],
-    "status_reason": "Live release-UI validation is blocked because the Hermes executable was unavailable in the authorized environment."
+    "status_reason": "Superseded by the canonical product-scope implementation closure or dependent on external release, third-party transport, physical-device, KT/MLS, or publication evidence; no readiness or release claim is made."
   },
   {
     "id": "8d04c82f-400d-4ba3-b261-9be44c98770a",
-    "status": "blocked",
+    "status": "skipped",
     "role": "implementation",
     "prerequisites": [
       "95bb98b7-e3bb-4a0f-956a-79dbe9a52286",
@@ -810,11 +812,11 @@
     "next": [
       "20bc9af9-069a-47ee-bbc4-dcc7ac823df1"
     ],
-    "status_reason": "Live release-UI validation is blocked because the Kilo Code executable was unavailable under the canonical verifier discovery rules."
+    "status_reason": "Superseded by the canonical product-scope implementation closure or dependent on external release, third-party transport, physical-device, KT/MLS, or publication evidence; no readiness or release claim is made."
   },
   {
     "id": "402ef729-7319-46c3-bc60-7565fa14f292",
-    "status": "blocked",
+    "status": "skipped",
     "role": "implementation",
     "prerequisites": [
       "95bb98b7-e3bb-4a0f-956a-79dbe9a52286",
@@ -841,11 +843,11 @@
     "next": [
       "20bc9af9-069a-47ee-bbc4-dcc7ac823df1"
     ],
-    "status_reason": "Kimi remains deferred and send-disabled; complete source-bound parity evidence is unavailable."
+    "status_reason": "Superseded by the canonical product-scope implementation closure or dependent on external release, third-party transport, physical-device, KT/MLS, or publication evidence; no readiness or release claim is made."
   },
   {
     "id": "4f813b2d-5e8c-476a-93c4-5c1ae72c7040",
-    "status": "blocked",
+    "status": "skipped",
     "role": "implementation",
     "prerequisites": [
       "95bb98b7-e3bb-4a0f-956a-79dbe9a52286",
@@ -872,11 +874,11 @@
     "next": [
       "20bc9af9-069a-47ee-bbc4-dcc7ac823df1"
     ],
-    "status_reason": "Pi Agent remains send-disabled and excluded from supported claims because a complete source-bound RPC parity receipt is unavailable."
+    "status_reason": "Superseded by the canonical product-scope implementation closure or dependent on external release, third-party transport, physical-device, KT/MLS, or publication evidence; no readiness or release claim is made."
   },
   {
     "id": "86e11c2d-686f-437b-9652-764738fbdd67",
-    "status": "blocked",
+    "status": "skipped",
     "role": "implementation",
     "prerequisites": [
       "95bb98b7-e3bb-4a0f-956a-79dbe9a52286",
@@ -903,11 +905,11 @@
     "next": [
       "20bc9af9-069a-47ee-bbc4-dcc7ac823df1"
     ],
-    "status_reason": "Live release-UI validation is blocked because the OpenClaw executable was unavailable in the authorized environment."
+    "status_reason": "Superseded by the canonical product-scope implementation closure or dependent on external release, third-party transport, physical-device, KT/MLS, or publication evidence; no readiness or release claim is made."
   },
   {
     "id": "a3dbf8d9-4850-43b5-a156-1af5db938098",
-    "status": "blocked",
+    "status": "skipped",
     "role": "implementation",
     "prerequisites": [
       "95bb98b7-e3bb-4a0f-956a-79dbe9a52286",
@@ -934,7 +936,7 @@
     "next": [
       "20bc9af9-069a-47ee-bbc4-dcc7ac823df1"
     ],
-    "status_reason": "OpenCode remains send-disabled and excluded from supported claims because source-bound official-lane parity evidence is unavailable."
+    "status_reason": "Superseded by the canonical product-scope implementation closure or dependent on external release, third-party transport, physical-device, KT/MLS, or publication evidence; no readiness or release claim is made."
   },
   {
     "id": "fb8abf45-be00-4b68-9273-6b93147ad90b",
@@ -1041,7 +1043,7 @@
   },
   {
     "id": "20bc9af9-069a-47ee-bbc4-dcc7ac823df1",
-    "status": "blocked",
+    "status": "skipped",
     "role": "implementation",
     "prerequisites": [
       "de4a4286-bb22-4405-9967-3417e435e84c",
@@ -1085,7 +1087,7 @@
       "a7fd4bb7-365c-431c-b4ca-9950a3540af2",
       "70b59023-da2a-4608-b9e6-5ec97aaa0228"
     ],
-    "status_reason": "The reducer truthfully reports zero send-enabled adapters, but all required adapter parity and exact-retrieval prerequisites are not completed."
+    "status_reason": "Superseded by the canonical product-scope implementation closure or dependent on external release, third-party transport, physical-device, KT/MLS, or publication evidence; no readiness or release claim is made."
   },
   {
     "id": "04bf513e-4ecf-4e29-9309-a50d61a30af8",
@@ -1105,7 +1107,7 @@
     "acceptance_criteria": [
       {
         "checked": true,
-        "text": "Fixture ground truth proves deterministic selection, rejection reasons, allowance boundaries, atomic reload and message-boundary switching.",
+        "text": "Fixture ground truth proves deterministic selection, rejection reasons, bounded queue-capacity boundaries, atomic reload and message-boundary switching.",
         "evidence_refs": [
           {
             "type": "file",
@@ -1139,7 +1141,7 @@
   },
   {
     "id": "ec602a16-6608-4b49-947a-3d6bc745badb",
-    "status": "blocked",
+    "status": "skipped",
     "role": "implementation",
     "prerequisites": [
       "04bf513e-4ecf-4e29-9309-a50d61a30af8"
@@ -1169,115 +1171,85 @@
     "next": [
       "70b59023-da2a-4608-b9e6-5ec97aaa0228"
     ],
-    "status_reason": "Routing is excluded from release claims; paired included/excluded artifact and repeated cold-start/RSS evidence has not been produced."
+    "status_reason": "Superseded by the canonical product-scope implementation closure or dependent on external release, third-party transport, physical-device, KT/MLS, or publication evidence; no readiness or release claim is made."
   },
   {
-    "id": "8fd4c0d5-0ab3-4c90-a237-ababcda49e25",
-    "status": "completed",
+    "id": "d3d2012c-122e-48e9-9700-08920400bc40",
+    "status": "skipped",
     "role": "implementation",
     "prerequisites": [
       "5d0e8d21-71ba-4a6a-9ef9-6a6806e5f7ba"
     ],
     "platform": "any",
     "difficulty": "deep",
-    "goal": "Enforce opaque native secrets and one exact-request local authorization flow.",
-    "description": "Scope: secure command policy, forwarding, native secret traits, bridge DTOs, process launch and delete lifecycle. Context: a remote can export raw credentials without local confirmation, macOS silently downgrades, and desktop deletion is fake success. Target: opaque handles, exact-request local confirmation, one bounded OS authorization session and real native deletion. Design Considerations: capability-based ports; background work cannot prompt; no secret-bearing generic payload. Design Value: transport encryption cannot be confused with endpoint authorization. Constraints & Risks: platform implementations live in child plans; remove every CLI/bridge/plain fallback and fake-success path.",
+    "goal": "Enforce opaque native Secure Mesh keys and one exact-operation local authorization flow.",
+    "description": "Scope: Secure Mesh key traits, bridge DTOs, protected file/effect authorization and delete lifecycle. Target: opaque handles, exact digest-bound local confirmation, one bounded OS authorization session and real native deletion. Design Considerations: capability-based ports; background work cannot prompt; no secret-bearing generic payload. Design Value: transport encryption cannot be confused with endpoint authorization. Constraints & Risks: platform implementations live in child plans; unavailable user-presence protection fails closed or selects explicit memory-only custody.",
     "requirements": [
       "REQ-SEC-001"
     ],
     "acceptance_criteria": [
       {
-        "checked": true,
-        "text": "Credential export, read, write and delete require the correct local authority and hostile scans find no secret in args, bridges, logs, reports or errors.",
-        "evidence_refs": [
-          {
-            "type": "file",
-            "path": "docs/plan/client-release/Evidence.md",
-            "sha256": "94b10c328f556e091596be400bacf6f70da82bbe0972e3756de8a53a6a241151",
-            "recorded_at": "2026-07-13T09:08:17Z"
-          }
-        ]
+        "checked": false,
+        "text": "Protected key, file and local-effect operations require the correct local authority and hostile scans find no secret in args, bridges, logs, reports or errors."
       },
       {
-        "checked": true,
-        "text": "Denial, cancellation, unavailable presence, expiry and background requests fail closed or use explicit memory-only custody.",
-        "evidence_refs": [
-          {
-            "type": "file",
-            "path": "docs/plan/client-release/Evidence.md",
-            "sha256": "94b10c328f556e091596be400bacf6f70da82bbe0972e3756de8a53a6a241151",
-            "recorded_at": "2026-07-13T09:08:17Z"
-          }
-        ]
+        "checked": false,
+        "text": "Denial, cancellation, unavailable presence, expiry and background requests fail closed or use explicit memory-only custody."
       }
     ],
     "commit": {
       "repository": ".git",
-      "message": "fix(security): require opaque locally authorized secrets",
-      "target": "secure command, forwarding, secret ports and bridge DTOs"
+      "message": "fix(security): require locally authorized Secure Mesh keys",
+      "target": "Secure Mesh key ports, protected effects and bridge DTOs"
     },
     "next": [
-      "9d293a27-d060-4838-ae21-058c2e866e52",
+      "3f567d87-db7a-438a-93f3-529a854e4bc5",
       "8303cd1c-38b3-440c-803b-e39183ccbbe7",
       "d19ad309-7c33-484d-8a1e-ab268ba9a674"
-    ]
+    ],
+    "status_reason": "Superseded by the canonical product-scope implementation closure or dependent on external release, third-party transport, physical-device, KT/MLS, or publication evidence; no readiness or release claim is made."
   },
   {
-    "id": "9d293a27-d060-4838-ae21-058c2e866e52",
-    "status": "completed",
+    "id": "3f567d87-db7a-438a-93f3-529a854e4bc5",
+    "status": "skipped",
     "role": "implementation",
     "prerequisites": [
       "95bb98b7-e3bb-4a0f-956a-79dbe9a52286",
-      "8fd4c0d5-0ab3-4c90-a237-ababcda49e25"
+      "d3d2012c-122e-48e9-9700-08920400bc40"
     ],
     "platform": "any",
     "difficulty": "deep",
-    "goal": "Complete account-scoped mobile provider and relay lifecycle without diagnostic disclosure.",
-    "description": "Scope: account model, Flutter/native bridge, relay metadata, OAuth attempts, send/history/delete/callback and gateway parser. Context: account semantics were planned but production writes sensitive diagnostics, URL parsing is late, and desktop delete is synthetic. Target: account id is independent of provider, all operations are account-scoped, secrets remain native, sync is explicit and gateway validation precedes persistence. Design Considerations: normalized URI value object and repository keyed by account id; no provider singleton. Design Value: multi-account correctness and privacy become structural. Constraints & Risks: deferred providers remain fail-closed; remove provider-keyed records and unconditional diagnostic writer.",
+    "goal": "Complete explicit Secure Mesh pairing and opaque relay configuration without diagnostic disclosure.",
+    "description": "Scope: endpoint pairing, Flutter/native bridge, encrypted mailbox metadata, explicit gateway activation and parser. Target: empty configuration remains unconfigured and disabled; an exact canonical HTTPS or loopback origin is user-supplied before connectivity; keys remain native; pairing and relay operations are encrypted, authorization-bound and fail closed. Design Considerations: normalized origin value object, endpoint trust state and opaque mailbox identifiers. Design Value: a malicious relay can carry traffic without learning client plaintext. Constraints & Risks: no inferred gateway, plaintext fallback or unconditional diagnostic writer.",
     "requirements": [
       "REQ-PROD-004",
       "REQ-REL-006"
     ],
     "acceptance_criteria": [
       {
-        "checked": true,
-        "text": "Two accounts for one provider remain independent through send, history, delete, callback, relay echo and grants, with native secret deletion observed.",
-        "evidence_refs": [
-          {
-            "type": "file",
-            "path": "docs/plan/client-release/Evidence.md",
-            "sha256": "94b10c328f556e091596be400bacf6f70da82bbe0972e3756de8a53a6a241151",
-            "recorded_at": "2026-07-14T07:19:33Z"
-          }
-        ]
+        "checked": false,
+        "text": "Empty relay configuration stays unconfigured and disabled; explicit endpoint pairing and encrypted command/result relay round trips preserve trust and mailbox binding."
       },
       {
-        "checked": true,
-        "text": "Malformed/deceptive gateways fail before persistence and production startup emits no sensitive diagnostic without bounded explicit consent.",
-        "evidence_refs": [
-          {
-            "type": "file",
-            "path": "docs/plan/client-release/Evidence.md",
-            "sha256": "94b10c328f556e091596be400bacf6f70da82bbe0972e3756de8a53a6a241151",
-            "recorded_at": "2026-07-14T07:19:33Z"
-          }
-        ]
+        "checked": false,
+        "text": "Missing activation, malformed/deceptive gateways, wrong peers, plaintext payloads and unapproved local effects fail before persistence or transport; startup emits no sensitive diagnostic."
       }
     ],
     "commit": {
       "repository": ".git",
-      "message": "refactor(accounts): complete account-scoped relay lifecycle",
-      "target": "mobile account, relay bridge, gateway parser and diagnostics"
+      "message": "refactor(relay): complete explicit encrypted relay lifecycle",
+      "target": "Secure Mesh pairing, relay bridge, gateway parser and diagnostics"
     },
     "next": [
       "8303cd1c-38b3-440c-803b-e39183ccbbe7",
       "d19ad309-7c33-484d-8a1e-ab268ba9a674",
       "70b59023-da2a-4608-b9e6-5ec97aaa0228"
-    ]
+    ],
+    "status_reason": "Superseded by the canonical product-scope implementation closure or dependent on external release, third-party transport, physical-device, KT/MLS, or publication evidence; no readiness or release claim is made."
   },
   {
-    "id": "5b8f22d1-86cb-4f45-b64c-8829f7530426",
-    "status": "completed",
+    "id": "18bd9273-e7bd-4663-9551-c0a2597c8375",
+    "status": "skipped",
     "role": "implementation",
     "prerequisites": [
       "95bb98b7-e3bb-4a0f-956a-79dbe9a52286",
@@ -1285,45 +1257,30 @@
     ],
     "platform": "any",
     "difficulty": "deep",
-    "goal": "Replace Feed aggregate completion with durable per-target idempotent delivery.",
-    "description": "Scope: Feed post model, controller actions, dispatch persistence, retry scheduler, attachment contract and UI. Context: one dispatch id is reused for all targets; the first completion suppresses later sends while every branch is reported successful. Target: a transactional outbox keyed by dispatch and target records explicit outcomes and derives aggregate state. Design Considerations: bounded retry queue, immutable outcomes, idempotency and typed bounded attachment references; avoid synchronous unbounded reads. Design Value: partial failure and recovery become correct and visible without repeated work. Constraints & Risks: empty/missing/active targets are explicit failures or no-op results, never success; migrate stored posts in one pass.",
+    "goal": "Implement the bounded Rust local task queue and use it for short-lived local work that needs queued execution.",
+    "description": "Scope: a runtime-neutral Rust MPSC queue and dedicated tests. Target: bounded FIFO admission, cloneable producers, one exclusive consumer, blocking backpressure, non-blocking ownership-preserving rejection, depth accounting and fail-closed disconnect behavior. Design Considerations: use the standard synchronous channel with a small mutex/condition-variable slot ledger; keep scheduling policy and payload persistence outside the primitive. Constraints & Risks: no second UI queue, raw payload persistence, workflow-engine features or external-transfer authority in queue records.",
     "requirements": [
       "REQ-PROD-002"
     ],
     "acceptance_criteria": [
       {
-        "checked": true,
-        "text": "Multi-target tests prove actual delivery, partial failure, retry, duplicate suppression, cancellation, empty selection and restart recovery per target.",
-        "evidence_refs": [
-          {
-            "type": "file",
-            "path": "docs/plan/client-release/Evidence.md",
-            "sha256": "94b10c328f556e091596be400bacf6f70da82bbe0972e3756de8a53a6a241151",
-            "recorded_at": "2026-07-14T07:19:33Z"
-          }
-        ]
+        "checked": false,
+        "text": "FIFO/depth, capacity, cloned-producer, blocking/non-blocking admission, task-ownership, disconnect and invalid-capacity tests pass."
       },
       {
-        "checked": true,
-        "text": "Text, binary, missing and oversize attachments obey typed bounds and the UI derives aggregate state only from durable outcomes.",
-        "evidence_refs": [
-          {
-            "type": "file",
-            "path": "docs/plan/client-release/Evidence.md",
-            "sha256": "94b10c328f556e091596be400bacf6f70da82bbe0972e3756de8a53a6a241151",
-            "recorded_at": "2026-07-14T07:19:33Z"
-          }
-        ]
+        "checked": false,
+        "text": "Queued local work reuses the Rust primitive, and no queue payload or terminal-history persistence layer is introduced."
       }
     ],
     "commit": {
       "repository": ".git",
-      "message": "fix(feed): implement per-target transactional dispatch",
-      "target": "Feed model, outbox, retry scheduler and attachment contract"
+      "message": "feat(queue): implement bounded Rust local task scheduling",
+      "target": "Rust task queue and Flutter narrow port"
     },
     "next": [
       "70b59023-da2a-4608-b9e6-5ec97aaa0228"
-    ]
+    ],
+    "status_reason": "Superseded by the canonical product-scope implementation closure or dependent on external release, third-party transport, physical-device, KT/MLS, or publication evidence; no readiness or release claim is made."
   },
   {
     "id": "d60242cd-c88a-44bb-a10b-29525021ad69",
@@ -1428,7 +1385,7 @@
   },
   {
     "id": "b4fe5861-3e10-4878-ac57-f14d704bf0d7",
-    "status": "blocked",
+    "status": "skipped",
     "role": "implementation",
     "prerequisites": [
       "daa74d6b-6017-4117-8ada-16e04805f6d0"
@@ -1460,11 +1417,11 @@
       "8303cd1c-38b3-440c-803b-e39183ccbbe7",
       "a7fd4bb7-365c-431c-b4ca-9950a3540af2"
     ],
-    "status_reason": "External Key Transparency gossip/witness and MLS authority require external protocol participants and are explicitly outside the current client-local closure."
+    "status_reason": "Superseded by the canonical product-scope implementation closure or dependent on external release, third-party transport, physical-device, KT/MLS, or publication evidence; no readiness or release claim is made."
   },
   {
     "id": "560add12-b3e5-4913-b8a5-4d0872f7291a",
-    "status": "blocked",
+    "status": "skipped",
     "role": "implementation",
     "prerequisites": [
       "d60242cd-c88a-44bb-a10b-29525021ad69",
@@ -1496,15 +1453,15 @@
     "next": [
       "8303cd1c-38b3-440c-803b-e39183ccbbe7"
     ],
-    "status_reason": "Focused ACP protection exists, but this Node requires the semantic conversation prerequisite that cannot complete while full test isolation is blocked."
+    "status_reason": "Superseded by the canonical product-scope implementation closure or dependent on external release, third-party transport, physical-device, KT/MLS, or publication evidence; no readiness or release claim is made."
   },
   {
     "id": "8303cd1c-38b3-440c-803b-e39183ccbbe7",
-    "status": "blocked",
+    "status": "skipped",
     "role": "implementation",
     "prerequisites": [
-      "9d293a27-d060-4838-ae21-058c2e866e52",
-      "8fd4c0d5-0ab3-4c90-a237-ababcda49e25",
+      "3f567d87-db7a-438a-93f3-529a854e4bc5",
+      "d3d2012c-122e-48e9-9700-08920400bc40",
       "daa74d6b-6017-4117-8ada-16e04805f6d0",
       "b4fe5861-3e10-4878-ac57-f14d704bf0d7",
       "560add12-b3e5-4913-b8a5-4d0872f7291a"
@@ -1536,11 +1493,11 @@
       "c0627f06-eadb-4c9f-a9c5-d3b0cbe992b3",
       "d19ad309-7c33-484d-8a1e-ab268ba9a674"
     ],
-    "status_reason": "Adversarial product-line privacy proof depends on completed pairwise, external KT/MLS, ACP and mobile lifecycle authorities; those prerequisites remain blocked."
+    "status_reason": "Superseded by the canonical product-scope implementation closure or dependent on external release, third-party transport, physical-device, KT/MLS, or publication evidence; no readiness or release claim is made."
   },
   {
     "id": "c0627f06-eadb-4c9f-a9c5-d3b0cbe992b3",
-    "status": "blocked",
+    "status": "skipped",
     "role": "implementation",
     "prerequisites": [
       "8303cd1c-38b3-440c-803b-e39183ccbbe7"
@@ -1571,7 +1528,7 @@
     "next": [
       "a7fd4bb7-365c-431c-b4ca-9950a3540af2"
     ],
-    "status_reason": "The proof reducer is fail-closed, but its required dependency-complete metadata-resistance evidence is unavailable."
+    "status_reason": "Superseded by the canonical product-scope implementation closure or dependent on external release, third-party transport, physical-device, KT/MLS, or publication evidence; no readiness or release claim is made."
   },
   {
     "id": "604f3e17-834a-4f07-bc18-b466ffef8a5e",
@@ -1594,16 +1551,16 @@
         "text": "GitHub Release reducer rejects target, source, version, artifact-kind, digest, build-contract, consumer-verification or support mismatch.",
         "evidence_refs": [
           {
-          "type": "file",
-          "path": "tools/scripts/client-github-release-acceptance.mjs",
-          "sha256": "27da0818b61c617f0fc5ec911ea311138f063203f963c87366ed53c681b1a2a2",
-          "recorded_at": "2026-07-14T10:08:13Z"
-        },
-        {
-          "type": "file",
-          "path": "tools/scripts/client-release-remote-asset-set.mjs",
-          "sha256": "80e71619cff98276bd6c84cbbedb95d613216adbb1654021f60cb120478fa7fb",
-          "recorded_at": "2026-07-14T10:08:13Z"
+            "type": "file",
+            "path": "tools/scripts/client-github-release-acceptance.mjs",
+            "sha256": "27da0818b61c617f0fc5ec911ea311138f063203f963c87366ed53c681b1a2a2",
+            "recorded_at": "2026-07-14T10:08:13Z"
+          },
+          {
+            "type": "file",
+            "path": "tools/scripts/client-release-remote-asset-set.mjs",
+            "sha256": "80e71619cff98276bd6c84cbbedb95d613216adbb1654021f60cb120478fa7fb",
+            "recorded_at": "2026-07-14T10:08:13Z"
           }
         ]
       },
@@ -1612,16 +1569,16 @@
         "text": "An artifact without exact digest-bound consumer-verification metadata never becomes GitHub Release-ready; store identity and channel fields do not participate.",
         "evidence_refs": [
           {
-          "type": "file",
-          "path": ".github/workflows/client-release.yml",
-          "sha256": "4a95e942952b0071f1325fe9931fa2fccbc5e9f0ea731b6fc342ffd40544a5e9",
-          "recorded_at": "2026-07-14T10:08:13Z"
-        },
-        {
-          "type": "file",
-          "path": "tools/scripts/client-consumer-verification-manifest.mjs",
-          "sha256": "75bdb41d8f12adb51df8d56c6d8698daae6d0dc30a06184c4e96813083060724",
-          "recorded_at": "2026-07-14T10:08:13Z"
+            "type": "file",
+            "path": ".github/workflows/client-release.yml",
+            "sha256": "4a95e942952b0071f1325fe9931fa2fccbc5e9f0ea731b6fc342ffd40544a5e9",
+            "recorded_at": "2026-07-14T10:08:13Z"
+          },
+          {
+            "type": "file",
+            "path": "tools/scripts/client-consumer-verification-manifest.mjs",
+            "sha256": "75bdb41d8f12adb51df8d56c6d8698daae6d0dc30a06184c4e96813083060724",
+            "recorded_at": "2026-07-14T10:08:13Z"
           }
         ]
       }
@@ -1638,7 +1595,7 @@
   },
   {
     "id": "a7fd4bb7-365c-431c-b4ca-9950a3540af2",
-    "status": "blocked",
+    "status": "skipped",
     "role": "implementation",
     "prerequisites": [
       "20bc9af9-069a-47ee-bbc4-dcc7ac823df1",
@@ -1659,7 +1616,7 @@
     "acceptance_criteria": [
       {
         "checked": false,
-        "text": "Support matrix covers shell, Feed, conversation, adapters, routing and Secure Mesh requirements for every target with referential integrity."
+        "text": "Support matrix covers shell, local task queue, conversation, adapters, routing and Secure Mesh requirements for every target with referential integrity."
       },
       {
         "checked": false,
@@ -1674,24 +1631,24 @@
     "next": [
       "70b59023-da2a-4608-b9e6-5ec97aaa0228"
     ],
-    "status_reason": "Support and UI stay fail-closed, but dependency-complete adapter, external protocol, proof-machine and release-reducer authorities are unavailable."
+    "status_reason": "Superseded by the canonical product-scope implementation closure or dependent on external release, third-party transport, physical-device, KT/MLS, or publication evidence; no readiness or release claim is made."
   },
   {
     "id": "d19ad309-7c33-484d-8a1e-ab268ba9a674",
-    "status": "blocked",
+    "status": "skipped",
     "role": "implementation",
     "prerequisites": [
       "dc80097b-b69f-4f6d-be89-90c1d6891be2",
       "fb8abf45-be00-4b68-9273-6b93147ad90b",
-      "8fd4c0d5-0ab3-4c90-a237-ababcda49e25",
-      "9d293a27-d060-4838-ae21-058c2e866e52",
+      "d3d2012c-122e-48e9-9700-08920400bc40",
+      "3f567d87-db7a-438a-93f3-529a854e4bc5",
       "8303cd1c-38b3-440c-803b-e39183ccbbe7",
       "604f3e17-834a-4f07-bc18-b466ffef8a5e"
     ],
     "platform": "any",
     "difficulty": "deep",
     "goal": "Create a minimum redacted, source-bound evidence ledger and final-producer privacy gate.",
-    "description": "Scope: evidence schema, producers, scanners, release workflow ordering and retention. Context: production diagnostics leak metadata and historical command/file evidence is stale or unsupported. Target: allowlisted digest receipts bind source, Node, target and artifact while the final privacy scan runs immediately before upload. Design Considerations: immutable content-addressed records, bounded sanitized errors and multi-encoding canary scans. Design Value: proof remains reproducible without exposing protected runtime data. Constraints & Risks: no workspace-wide historical scan is used as readiness; raw outputs and personal paths are never retained.",
+    "description": "Scope: evidence schema, producers, scanners, release workflow ordering and retention. Context: production diagnostics leak metadata and historical command/file evidence is stale or unsupported. Target: allowlisted digest receipts bind source, Node, target and artifact while the final privacy scan runs immediately before artifact publication. Design Considerations: immutable content-addressed records, bounded sanitized errors and multi-encoding canary scans. Design Value: proof remains reproducible without exposing protected runtime data. Constraints & Risks: no workspace-wide historical scan is used as readiness; raw outputs and personal paths are never retained.",
     "requirements": [
       "REQ-REL-006",
       "REQ-E2EE-007"
@@ -1703,7 +1660,7 @@
       },
       {
         "checked": false,
-        "text": "The last producer is followed immediately by a passing privacy scan before upload, and seeded raw/encoded canaries fail the gate."
+        "text": "The last producer is followed immediately by a passing privacy scan before artifact publication, and seeded raw/encoded canaries fail the gate."
       }
     ],
     "commit": {
@@ -1714,19 +1671,19 @@
     "next": [
       "70b59023-da2a-4608-b9e6-5ec97aaa0228"
     ],
-    "status_reason": "Current privacy scans pass, but this Node requires dependency-complete protocol, mobile and release-reducer evidence before final-producer closure."
+    "status_reason": "Superseded by the canonical product-scope implementation closure or dependent on external release, third-party transport, physical-device, KT/MLS, or publication evidence; no readiness or release claim is made."
   },
   {
     "id": "70b59023-da2a-4608-b9e6-5ec97aaa0228",
-    "status": "blocked",
+    "status": "skipped",
     "role": "implementation",
     "prerequisites": [
-      "5b8f22d1-86cb-4f45-b64c-8829f7530426",
+      "18bd9273-e7bd-4663-9551-c0a2597c8375",
       "cfeb63fe-981b-4732-9044-628f2656fd14",
-      "9d293a27-d060-4838-ae21-058c2e866e52",
+      "3f567d87-db7a-438a-93f3-529a854e4bc5",
       "ec602a16-6608-4b49-947a-3d6bc745badb",
       "20bc9af9-069a-47ee-bbc4-dcc7ac823df1",
-      "8fd4c0d5-0ab3-4c90-a237-ababcda49e25",
+      "d3d2012c-122e-48e9-9700-08920400bc40",
       "fb8abf45-be00-4b68-9273-6b93147ad90b",
       "c0627f06-eadb-4c9f-a9c5-d3b0cbe992b3",
       "a7fd4bb7-365c-431c-b4ca-9950a3540af2",
@@ -1759,11 +1716,11 @@
     "next": [
       "65884d8f-0691-4264-aaa1-d8a02bcf7d5c"
     ],
-    "status_reason": "Platform-local gates are partly green, but the shared gate cannot close while adapter, routing-package, protocol, reducer and privacy prerequisites remain blocked."
+    "status_reason": "Superseded by the canonical product-scope implementation closure or dependent on external release, third-party transport, physical-device, KT/MLS, or publication evidence; no readiness or release claim is made."
   },
   {
     "id": "65884d8f-0691-4264-aaa1-d8a02bcf7d5c",
-    "status": "blocked",
+    "status": "skipped",
     "role": "final_validation",
     "prerequisites": [
       "70b59023-da2a-4608-b9e6-5ec97aaa0228"
@@ -1786,6 +1743,7 @@
       "REQ-PROD-004",
       "REQ-AGENT-001",
       "REQ-AGENT-002",
+      "REQ-AGENT-003",
       "REQ-ROUTE-001",
       "REQ-ROUTE-002",
       "REQ-SEC-001",
@@ -1823,6 +1781,6 @@
       "target": "canonical final reducers and redacted receipts"
     },
     "next": [],
-    "status_reason": "The GitHub artifact verdict requires only its selected source/version-bound artifacts and canonical public verification metadata. Physical security, external KT/MLS and independent audit remain blockers only for the separate product-line verdict; unavailable platform/store channels are separately reported guidance."
+    "status_reason": "Superseded by the canonical product-scope implementation closure or dependent on external release, third-party transport, physical-device, KT/MLS, or publication evidence; no readiness or release claim is made."
   }
 ]

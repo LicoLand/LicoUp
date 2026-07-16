@@ -1,8 +1,10 @@
 # LicoArc End-to-End Release Requirements
 
+Upper constraint: [`../product-scope/Requirements.md`](../product-scope/Requirements.md). Release planning cannot add default capabilities, service dependencies, navigation, or external data flows beyond the canonical product scope.
+
 ## Delivery contract
 
-This plan replaces every previous active plan in `docs/plan`. It is rebuilt from the current working tree, fresh command results, current product source, and primary protocol or platform references. Historical status, generated readiness reports, evidence receipts, and progress summaries are not proof.
+This plan is the release refinement of the canonical product scope. It is built from the current working tree, fresh command results, current product source, and primary protocol or platform references. Historical status, generated readiness reports, evidence receipts, and progress summaries are not proof.
 
 The plan emits three independent decisions:
 
@@ -23,8 +25,8 @@ development, or GitHub Release blocker.
 ## Users and workflows
 
 - A user installs LicoArc, discovers installed agents, opens or resumes an exact native conversation, sends and cancels work, reads a semantic archive, and sees truthful readiness or blocked reasons.
-- A user posts work to one or more agents through Feed and receives durable per-target success, partial-failure, retry, and attachment outcomes.
-- A user manages multiple provider accounts without exposing credentials, pairs devices, verifies peer identity, and sends protected command, result, file, group, and ACP payloads through an opaque relay.
+- A user starts bounded local work through the Rust task queue; admission is explicit as accepted, full, or disconnected, while the owning feature reports its own task lifecycle without exposing payloads.
+- A user explicitly configures relay connectivity, pairs devices, verifies peer identity, and sends protected command, result, file, group, and ACP payloads through an opaque relay.
 - A release operator selects one or more supported targets, builds from a clean source snapshot, verifies exact artifacts, and attaches accepted artifacts plus minimum consumer-verification metadata to GitHub Releases without disclosing publisher, machine, or account data. A separate platform operator may complete the production signing and channel-specific steps required for a named store.
 
 ## Shared release requirements
@@ -39,7 +41,7 @@ Local verification, CI, and release jobs must call the same fail-closed gate. Da
 
 ### REQ-REL-003 — One current architecture and complete migration
 
-Implementation, tests, verifiers, docs, registries, and workflows must converge on the only current module and contract structure. Retired shell mappings, DTOs, envelope formats, provider-keyed records, route resolvers, artifact aliases, compatibility fallbacks, and text-match gates are removed after their replacement is established. A verifier must check behavior or the complete owning source unit, not demand obsolete tokens in one file.
+Implementation, tests, verifiers, docs, registries, and workflows must converge on the only current module and contract structure. Superseded shell mappings, DTOs, envelope formats, route resolvers, artifact aliases, compatibility fallbacks, and text-match gates are removed after their replacement is established. A verifier must check current behavior or the complete owning source unit, not demand removed tokens in one file.
 
 ### REQ-REL-004 — Truthful scope and target authority
 
@@ -68,7 +70,7 @@ without implying a store identity.
 
 ### REQ-REL-006 — Privacy-safe runtime and evidence
 
-Production defaults do not persist account, pairing, credential-presence, conversation, device, path, or runtime diagnostics without explicit user consent and a bounded retention policy. Tests and producers emit structured allowlisted fields, bounded sanitized errors, and digest references. The last producer is followed by a final privacy scan immediately before upload. Reports contain no raw payloads, keys, ciphertext, device identifiers, personal paths, process arguments, or backend runtime data.
+Production defaults do not persist account, pairing, credential-presence, conversation, device, path, or runtime diagnostics without explicit user consent and a bounded retention policy. Tests and producers emit structured allowlisted fields, bounded sanitized errors, and digest references. The last producer is followed by a final privacy scan immediately before artifact publication. Reports contain no raw payloads, keys, ciphertext, device identifiers, personal paths, process arguments, or backend runtime data.
 
 ## Product and agent requirements
 
@@ -76,17 +78,22 @@ Production defaults do not persist account, pairing, credential-presence, conver
 
 The current shell, navigation, search, usage panels, settings, accessibility semantics, localization, tests, and architecture checks agree on one product structure. Usage reduction consumes every supported summary source without inventing empty state. Target scanning is incremental, deterministic, cache-isolated in tests, and cannot promote stale observations. Golden updates require an intentional product-contract review.
 
-### REQ-PROD-002 — Atomic Feed dispatch
+### REQ-PROD-002 — Bounded Rust local task execution
 
-Feed fan-out uses a durable key per `(dispatch id, target id)`, not one completion bit for all targets. Each addressed target has an explicit pending, running, succeeded, failed, or retryable outcome; aggregate post state is derived from those outcomes. Retries are idempotent, selection and session state are not shared mutable routing authority, and partial failure remains visible. Attachments use a bounded typed content contract with explicit size, file-type, encoding, privacy, and per-target transfer behavior rather than unbounded synchronous file reads or filename-only substitution.
+Short-lived local client work uses one Rust-owned queue with bounded admission,
+FIFO ordering, cloneable producers, one exclusive consumer, blocking backpressure,
+and a non-blocking full-queue result that returns task ownership to its caller.
+The queue is in-memory and runtime-neutral; it does not persist payloads, own
+external-transfer authority, or grow into a workflow scheduler. Flutter never
+implements a second queue.
 
 ### REQ-PROD-003 — Semantic conversation and archive
 
 One read-only semantic model separates thread, execution, artifacts, audit, and raw layers across native adapters, streaming events, archive materialization, and Flutter rendering. Default views expose human dialogue and safe artifact references; execution is explicit and collapsible; audit and raw evidence require an explicit diagnostic action. No parallel flattened renderer or provider-specific UI model remains. Raw source identity is retained internally by relative reference and digest, never by a default personal path.
 
-### REQ-PROD-004 — Mobile provider accounts and relay configuration
+### REQ-PROD-004 — Secure Mesh pairing and explicit relay configuration
 
-Flutter, native bridges, relay metadata, and chat dispatch share an account model whose account id is independent of provider id. Portable metadata is secret-free; credentials and OAuth attempts use the selected native custody backend; message, history, deletion, callback, relay echo, and assistant grants are account-scoped. Credential sync is explicit. Deferred providers remain fail-closed. Custom gateway values are parsed before persistence, require a valid HTTPS authority or exact loopback HTTP, and reject userinfo, fragments, deceptive hosts, malformed ports, and incomplete URLs.
+Flutter, native bridges, and the shared Rust core expose one endpoint-pairing and opaque-relay model. Empty configuration stays empty: no gateway, account, provider, or remote target is inferred, and relay connectivity remains disabled until the user explicitly supplies a canonical HTTPS origin or exact loopback HTTP origin and enables it. Pairing binds endpoint possession, trust, current authorization, and encrypted mailbox state. Userinfo, fragments, paths, deceptive hosts, malformed ports, incomplete URLs, plaintext payloads, and unapproved local effects fail closed before persistence or transport.
 
 ### REQ-AGENT-001 — Canonical dispatch and readiness
 
@@ -113,17 +120,17 @@ Every new or changed conversation adapter must provide a manifest conforming to 
 
 ### REQ-ROUTE-001 — Explainable routing and handoff
 
-One validated declarative policy supplies operator intent, roles, priorities, allowance thresholds, and distillation directives; runtime capabilities remain a non-overridable execution constraint. Policy reload is atomic and applies only at message boundaries. One deterministic engine emits selected and rejected candidates with reasons. Cross-agent handoff preserves goals, decisions, and constraints and is validated against fixture ground truth, not merely non-empty fields. Route history stores logical handles or digests, not private native session ids or raw conversation text.
+One validated declarative policy supplies operator intent, roles, priorities, bounded queue-capacity thresholds, and distillation directives; runtime capabilities remain a non-overridable execution constraint. Policy reload is atomic and applies only at message boundaries. One deterministic engine emits selected and rejected candidates with reasons. Cross-agent handoff preserves goals, decisions, and constraints and is validated against fixture ground truth, not merely non-empty fields. Route history stores logical handles or digests, not private native session ids or raw conversation text.
 
 ### REQ-ROUTE-002 — Optional routing package
 
-The canonical module catalog defines validated included and excluded release profiles without changing source between builds. An excluded artifact starts and supports direct dispatch while routing code, registration, UI, settings, watchers, caches, and artifact entries are absent. Runtime disable stops owned resources and clears owned state without deleting user policy absent consent. Five bounded same-profile measurements must show median routing cold-start overhead at most 50 ms and median RSS delta at most 8 MiB.
+The canonical module catalog defines validated included and excluded release profiles without changing source between builds. An excluded artifact starts and supports direct dispatch while routing code, registration, UI, settings, watchers, caches, and artifact entries are absent. Disabling the optional routing package stops owned resources and clears owned state without deleting user policy absent consent. Five bounded same-profile measurements must show median routing cold-start overhead at most 50 ms and median RSS delta at most 8 MiB.
 
 ## Security requirements
 
 ### REQ-SEC-001 — Native secrets and one user authorization
 
-Secrets never enter process arguments, generic untrusted bridge payloads, logs, reports, or error text. Platform stores persist only opaque handles or platform-protected records. Every credential or key operation that requires authority uses one OS-owned Face ID, Touch ID, BiometricPrompt, passkey, device-credential, or secure-key context for the whole user-initiated workflow; background work never prompts. Unavailable user-presence protection fails closed or uses explicit memory-only custody, never a silent ordinary-store fallback. Remote credential export is a sensitive operation requiring local user confirmation bound to the exact request.
+Secrets never enter process arguments, generic untrusted bridge payloads, logs, reports, or error text. Platform stores persist only opaque handles or platform-protected records. Every key operation that requires authority uses one OS-owned Face ID, Touch ID, BiometricPrompt, passkey, device-credential, or secure-key context for the whole user-initiated workflow; background work never prompts. Unavailable user-presence protection fails closed or uses explicit memory-only custody, never a silent ordinary-store fallback. Any protected file or local effect is authorized by the user for one exact digest-bound operation.
 
 ### REQ-SEC-002 — Bounded filesystem and archive safety
 
@@ -167,9 +174,9 @@ Final validation consumes the same requirements defined here, every non-skipped 
 
 ## Scope and non-goals
 
-In scope: client-owned desktop and mobile behavior, native bridges, local custody, semantic conversations, agent dispatch, routing, accounts, the Lico Arc custom Secure Mesh end-to-end encryption protocol and its verification (independent of any relay server implementation), packaging, GitHub Release workflows, separately reported platform/store publication guidance, and the client contribution to the product-line security claim.
+In scope: client-owned desktop and mobile behavior, native bridges, local custody, semantic conversations, agent dispatch, routing, endpoint pairing, the Lico Arc custom Secure Mesh end-to-end encryption protocol and its verification (independent of any relay server implementation), packaging, GitHub Release workflows, separately reported platform/store publication guidance, and the client contribution to the product-line security claim.
 
-Out of scope: server policy, authorization, or gateway-fabric authority, optional provider integrations that remain deferred, post-quantum claim wording, collecting app-specific passwords, preserving retired implementations or migrating persistent state owned by a retired product name, publishing platform account identity or credentials, and treating local authentication, static inspection, mocks, or an unverified transient CI upload as sufficient artifact proof. Retired-name state is deliberately reset: only a fresh current-name workspace may be initialized.
+Out of scope: server policy, authorization, or gateway-fabric authority, post-quantum claim wording, preserving retired implementations or migrating persistent state owned by a retired product name, publishing platform or endpoint identity, and treating local authentication, static inspection, mocks, or an unverified transient CI artifact as sufficient proof. Retired-name state is deliberately reset: only a fresh current-name workspace may be initialized.
 
 ## Platform split
 
@@ -187,7 +194,7 @@ The previous plan labels are not active authorities, but their product semantics
 | Former Secure Mesh E2EE labels 015–017 and ACP/lifecycle classifications | REQ-E2EE-003 and REQ-E2EE-006 |
 | Former adaptive-hardening labels 001–015 | REQ-E2EE-004, REQ-E2EE-005, REQ-E2EE-007, REQ-E2EE-008, REQ-REL-004..007 and platform child finals |
 | Semantic archive plan | REQ-PROD-003, REQ-SEC-002 and REQ-E2EE-006 |
-| Mobile provider account plan | REQ-PROD-004, REQ-SEC-001 and REQ-REL-006 |
+| Secure Mesh pairing and relay configuration | REQ-PROD-004, REQ-SEC-001 and REQ-REL-006 |
 | Agent conversation dispatch plan | REQ-AGENT-001..003 and REQ-PROD-003 |
 | Multi-agent routing and packaging plans | REQ-ROUTE-001, REQ-ROUTE-002 and REQ-REL-001..005 |
 | Fresh blocker and platform closure plans | REQ-REL-001..007, REQ-PROD-001..004, REQ-SEC-001..002 and child requirements |

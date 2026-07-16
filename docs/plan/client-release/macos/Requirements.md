@@ -1,5 +1,7 @@
 # macOS Release Requirements
 
+Upper constraint: [`../../product-scope/Requirements.md`](../../product-scope/Requirements.md). This child owns macOS adaptation and delivery only within the canonical product scope.
+
 ### REQ-MAC-001 — Exact target and artifact lineage
 
 Every declared macOS architecture has one catalog entry and one distribution ZIP containing the expected app and native executable architectures. Build, verification, installation, launch, and consumer-verification metadata bind the same source revision, module profile and artifact digest. A separate named platform/store channel binds its own publication, download, and update receipts without becoming a GitHub Release prerequisite.

@@ -1,11 +1,11 @@
-# Local Agent Runtime and Orchestration Evidence
+# Local Agent Execution and Orchestration Evidence
 
 ## Current repository evidence
 
 - `AgentDispatchLane` already declares open/resume, streaming, cancel, cleanup, and capability operations. `AgentConversationService` uses stdin JSON and NDJSON, rejects exact-session mismatch, and projects progressive plus terminal events.
 - `sendConversationMessage` forwards the selected conversation's native session ID, appends progressive events, and commits the terminal reply to the selected thread. This is a useful control-plane base, not proof that product sending is currently available.
 - The native runtime dispatches the packaged adapter set and multiple drivers emit structured turn events. The current readiness snapshot nevertheless reports no ready or send-enabled adapter, so fixture and unit coverage cannot be promoted to a product claim.
-- The routing policy supports priority fallback, serial, parallel, and coordinator-worker strategies. The planner evaluates readiness, role, capability, priority, allowance, and circuit state; route-session binding preserves an adapter session per routed branch.
+- The routing policy supports priority fallback, serial, parallel, and coordinator-worker strategies. The planner evaluates readiness, role, capability, priority, bounded queue capacity, and circuit state; route-session binding preserves an adapter session per routed branch.
 - The current distillation broker bounds source turns and calls a configured distiller through the dispatch lane with fidelity checks. Its bounds are global estimates rather than the destination model's real budget, and the handoff remains inline JSON rather than a protected local context path.
 - Routing policy files already use atomic last-good reload and a debounced watcher. Adapter transport/readiness configuration remains spread across contract fixtures, native resources, renderer assets, and hard-coded runtime adapter identities, and most projections require a rebuild.
 - The adapter schema, template, canonical manifests, contributor standard, and parity checks already describe much of the required lifecycle. They need one current ownership location, runtime configuration semantics, dynamic refresh, and full-inventory acceptance.

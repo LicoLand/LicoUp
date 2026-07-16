@@ -22,19 +22,25 @@ All emitted evidence is structured, allowlisted, bounded, and privacy-scanned. R
 | REQ-REL-003 | source search and compile prove one current shell, schema, bridge, registry and parser | retired names, DTO fields, paths, compatibility branches, fixtures and gate tokens have zero owning-source matches; no reader, importer, copier, rename step, translator, prompt, fixture, or gate preserves retired-name persistent state |
 | REQ-REL-004 | target catalog and support reducer accept exact known supported selections | empty, duplicate, unknown, preview, unsupported, wrong-host, wrong-architecture and wrong-artifact selections fail closed |
 | REQ-REL-005 | GitHub Release acceptance binds source, build, profile, target, artifact digest, checksum manifest and required public verification material; a separate per-channel receipt binds any requested store identity/signing/notarization/submission/update facts | alter any artifact or verification digest and prove GitHub Release acceptance fails; omit or corrupt store-only fields and prove only the corresponding channel status fails |
-| REQ-REL-006 | final `lico-dev privacy scan` immediately follows the last producer and precedes upload | seeded canaries in paths, args, payloads, logs and diagnostics are rejected in raw and encoded form |
+| REQ-REL-006 | final `lico-dev privacy scan` immediately follows the last producer and precedes artifact publication | seeded canaries in paths, args, payloads, logs and diagnostics are rejected in raw and encoded form |
 | REQ-REL-007 | final reducer reads every implementation Node and selected child receipt, then emits two named verdicts | missing child, stale evidence, untracked input, projection, skipped mandatory check or unavailable external audit is a blocker code |
 
 The canonical client workflow is selected with `lico-dev workflow plan client`. Changed-file validation is selected only after implementation with `lico-dev workflow plan changed`; catalog tasks are run through `lico-dev regression run`, with side effects declared explicitly.
+
+### Client update fast closure
+
+Client update changes close through the smallest owning regression leaf first: signature roles, release selection, artifact binding, staging paths, revocation, workflow, or the macOS runner. The source-bundle contract and architecture verifier then prove the physical split, dependency direction, receipt binding and absence of private path fields. Flutter runs only the controller and service tests that prove receipt continuity and the absence of caller-controlled file name, size and digest flags. The release-channel verifier carries independent negative vectors for missing offline or online signatures, duplicate key ids, malformed SemVer, signed file-name/URL mismatch and a revocation list without the offline-root signature.
+
+The aggregate 19-case Rust filter is used once after the owning leaves pass. The release-channel packaging verifier and the repository-wide regression are deferred until all client-update and neighboring changes are confirmed effective; they must not be repeated during implementation or while parallel agents are sharing build resources.
 
 ## Product behavior
 
 | Requirement | Proof set |
 | --- | --- |
 | REQ-PROD-001 | current shell widget/integration tests, search width and accessibility tests, usage reducer cases with summary-only data, deterministic target scan/cache tests, reviewed goldens, architecture verifier over complete owning units |
-| REQ-PROD-002 | two-or-more-target Feed integration tests with partial failure, retry, duplicate request, cancellation, empty selection and missing target; durable restart recovery; bounded text/binary/oversize attachment cases; UI derived from per-target outcomes |
+| REQ-PROD-002 | Rust queue FIFO/depth, capacity, cloned producers, blocking and non-blocking admission, ownership-preserving full/disconnect results, worker disconnect, and invalid-capacity tests |
 | REQ-PROD-003 | native adapter fixtures and stream events reduce into the five layers; raw/audit are opt-in; archive paths are relative/digest-bound; migration search proves no parallel renderer remains |
-| REQ-PROD-004 | multiple accounts for one provider remain independent through send/history/delete/callback/relay echo; native secret deletion is observed; malformed gateway corpus is rejected before persistence; Android production diagnostics are absent by default |
+| REQ-PROD-004 | empty relay configuration stays unconfigured/disabled; explicit canonical gateway and pairing succeed; malformed gateway, missing activation, wrong peer, plaintext and unapproved-effect cases fail before persistence or transport; Android production diagnostics are absent by default |
 
 ## Agents and routing
 
@@ -53,18 +59,18 @@ source-bound release-UI passes plus cleanup and privacy evidence.
 
 The verifier also writes a Markdown table beside the JSON report. Its columns
 are agent, success or `Failed: <category>`, request pass rate, tested-session
-count, request count, and the bounded sanitized harness return. Runtime prompts,
+count, request count, and the bounded sanitized harness return. Process prompts,
 responses, session identifiers, credentials, personal paths, and raw logs are
 never included.
 
 - **REQ-AGENT-001:** contract tests run open/resume/send/stream/cancel/cleanup through direct, routed, and relay-backed calls. Static declaration, runtime capability, and evidence freshness are independently corrupted to prove the reducer fails closed. Zero ready adapters disable the New Conversation send entry and produce no agent-send claim without blocking unrelated package readiness. CLI/UI prove `conversations list|stream` returns exact `nativeSessionId` values; ready adapters prove `agent conversation send` with that id continues the same session and never resumes “newest.” Mid-run inject remains undocumented as a product capability and cancel without an active supervised turn stays fail-closed.
 - **REQ-AGENT-002:** each adapter declared supported runs its official local lane against a fresh native session, proves bidirectional content, exact resume, streaming order, cancellation, permission failure, cleanup, history and redaction, then records source-bound evidence. Unsupported adapters are absent from supported packaging and UI claims while remaining truthfully discoverable where useful. Claude Code and Antigravity remain disclosed blocked/excluded for exact-resume send until their official-lane blockers clear; ACP adapters with `exactResume: true` stay `sendEnabled: false` until live consecutive evidence lands.
-- **REQ-ROUTE-001:** deterministic fixture ground truth covers tie-breaking, rejection reasons, allowance boundaries, atomic policy reload, message-boundary switching, handoff preservation, stale capability probes and private-history exclusion.
+- **REQ-ROUTE-001:** deterministic fixture ground truth covers tie-breaking, rejection reasons, bounded queue-capacity boundaries, atomic policy reload, message-boundary switching, handoff preservation, stale capability probes and private-history exclusion.
 - **REQ-ROUTE-002:** included and excluded artifacts are built from the same source and catalog. Binary/resource inspection proves real absence; direct dispatch works without routing; disable/re-enable releases watchers and caches; five independent runs prove median cold-start ≤50 ms and RSS delta ≤8 MiB.
 
 ## Security, protocol and filesystem
 
-- **REQ-SEC-001:** hostile bridge/process-argument/log scans; exact-request local confirmation for credential export; one native authorization session across related operations; denial, cancellation, unavailable biometrics and background access fail closed; delete tests prove the native record is gone.
+- **REQ-SEC-001:** hostile bridge/process-argument/log scans; exact-operation local confirmation for protected file/effect actions; one native authorization session across related key operations; denial, cancellation, unavailable biometrics and background access fail closed; delete tests prove the native key record is gone.
 - **REQ-SEC-002:** hostile archive corpus exercises traversal, absolute paths, all link and special types, deep/wide/bomb inputs, pre-existing root and parent symlinks, concurrent destination replacement and deadline. Log export, skill install/rollback, journal recovery and cross-device rename tests use no-follow sentinels and prove containment plus crash consistency.
 - **REQ-E2EE-001:** canonical six-field v2 wire golden and round-trip across every payload class; removed field names fail source migration search; wrong recipient, tamper, malformed, stale, duplicate, expiry and replay fail closed.
 - **REQ-E2EE-002/003:** current identity, prekey, trust-record, key-change, revoke, restart, rollback, skipped-key bound, replay, resend, expiry and file-reseal vectors run in the shared Rust owner; verify-before-send is exercised through the UI/native boundary.
@@ -92,6 +98,6 @@ The parent final validation runs Better Plan validation for the entire workspace
 1. Validate source closure and generate canonical catalogs from a clean checkout.
 2. Run the deterministic shared quality gate and focused hostile tests.
 3. Build each selected GitHub Release artifact independently and generate its minimum digest-bound consumer-verification metadata.
-4. Run the GitHub Release reducer and final privacy scan immediately before artifact upload.
+4. Run the GitHub Release reducer and final privacy scan immediately before artifact publication.
 5. When a named platform/store publication is requested, run its protected signing, notarization, submission, download, update and rollback validation independently; its result cannot change the GitHub Release result.
 6. Only after all five platform terminals, external KT, client relay Mock conformance, and feature completeness exist, run the independent cryptographic audit and product-line proof machine.

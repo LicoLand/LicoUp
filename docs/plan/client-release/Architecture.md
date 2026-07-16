@@ -37,23 +37,24 @@ Evidence ledger → GitHub Release reducer → artifact publication decision
                 └→ product-line proof machine → independent audit → claim decision
 ```
 
-Dependencies point downward. Platform implementations cannot define product security policy. Release scripts observe canonical catalogs and reducers; they do not invent support states. Generated reports are outputs and never feed their own readiness decision.
+Dependencies point downward. Platform implementations cannot define product security policy. Release scripts observe canonical catalogs and reducers; they do not invent support states. Generated reports are outputs and never become inputs to their own readiness decision.
 
 ## Single authorities
 
 | Concern | Current authority after migration | Required state model |
 | --- | --- | --- |
 | Agent session dispatch | One application port with per-adapter backend strategies | immutable request plus explicit open/send/stream/cancel/cleanup outcome |
-| Feed fan-out | Transactional outbox keyed by `(dispatchId, targetId)` | per-target pending/running/succeeded/failed/retryable; aggregate derived only |
+| Local task execution | One bounded Rust MPSC queue | FIFO delivery, explicit depth/capacity, backpressure, and ownership-preserving rejection |
 | Conversation rendering | One five-layer semantic model | thread, execution, artifacts, audit, raw; raw opt-in only |
 | Routing | One validated policy snapshot and deterministic engine | accepted/rejected candidates with reason; message-boundary revision |
-| Accounts and secrets | account-scoped metadata plus opaque native handles | no credential in Dart or bridge payload; one authorized session per user action |
+| Endpoint keys and trust | Secure Mesh core plus platform custody handles | no private key in Dart or bridge payload; one authorized session per user action |
 | Filesystem mutation | bounded Rust operations and atomic no-follow adapters | containment, owner, journal, digest and crash state |
 | Relay envelope | one v2 serializer/deserializer and canonical registry | six-field outer envelope; encrypted typed inner context |
 | Pairwise state | shared Rust Double Ratchet owner | monotonic counters, bounded skipped/replay ledgers, durable atomic state |
 | Group and directory trust | OpenMLS plus typed external KT authority | authenticated membership, fresh signed tree head, consistency and gossip |
 | Capability and custody | stable enum-indexed acyclic graph | measured facts → deterministic closure → exact claims |
 | Release artifact | target catalog plus immutable lineage receipt | source, invocation, profile, target, artifact digest and minimum consumer-verification metadata; channel digests remain separate |
+| Client update | split Rust signed-selection domain plus a receipt-bound Dart workflow | formal `{keys:{...}}` document; distinct offline-root and online-channel signatures; strict channel/highest-SemVer selection; signed file name, size, digest, application name and bundle identity; redacted receipt-only phase handoff |
 | Readiness | separate GitHub Release, per-channel platform/store, and product-line reducers | explicit blocker codes; no shared catch-all `releaseReady` boolean |
 
 ## Dependency graph
@@ -65,20 +66,20 @@ flowchart TD
   F0 --> ISO["Isolated test harness"]
   F0 --> AG["Canonical agent dispatch"]
   AG --> AD["Ten adapter parity branches"]
-  ISO --> FEED["Per-target Feed outbox"]
+  ISO --> QUEUE["Bounded Rust local task queue"]
   ISO --> ARCHIVE["Semantic archive"]
   F0 --> FS["Bounded filesystem authority"]
   FS --> ARCHIVE
   F0 --> ROUTE["Routing engine"]
   ROUTE --> RPKG["Optional-package proof"]
   F0 --> SECRETS["Authorized opaque secrets"]
-  SECRETS --> ACCOUNTS["Account-scoped relay model"]
+  SECRETS --> PAIRING["Endpoint pairing + explicit relay config"]
   F0 --> ENV["Canonical relay v2"]
   ENV --> PAIR["Identity + pairwise ratchet"]
   PAIR --> MLS["KT + MLS"]
   ENV --> ACP["Protected payload taxonomy"]
   ARCHIVE --> ACP
-  ACCOUNTS --> HOSTILE["Hostile-relay + privacy proof"]
+  PAIRING --> HOSTILE["Hostile-relay + privacy proof"]
   MLS --> HOSTILE
   ACP --> HOSTILE
   HOSTILE --> CLAIM["Product-line proof machine"]
@@ -88,7 +89,7 @@ flowchart TD
   CLAIM --> SUPPORT
   REL --> SUPPORT
   SUPPORT --> QUALITY["Aggregate deterministic gate"]
-  FEED --> QUALITY
+  QUEUE --> QUALITY
   ARCHIVE --> QUALITY
   RPKG --> QUALITY
   SECRETS --> QUALITY
@@ -101,11 +102,16 @@ The macOS, Android, and Linux child terminals are prerequisites of the initial f
 ## Algorithms and data structures
 
 - Capability dependencies use stable enum indices, adjacency lists, Kahn cycle detection, and one cached topological order. Closure is one deterministic `O(V+E)` scan. `BTreeSet` or stable enum order keeps receipts reproducible; a general graph package or dense bitset adds no value at the current catalog size.
-- Feed uses a bounded transactional outbox map keyed by the composite delivery key and a queue ordered by next attempt. Idempotency eliminates duplicate work; per-target state removes the global mutable completion race.
+- Local task execution uses Rust's bounded synchronous MPSC channel: cloned
+  producers feed one exclusive FIFO consumer, a small mutex/condition-variable
+  slot ledger keeps admitted depth within capacity, blocking submission applies
+  backpressure, and non-blocking rejection returns the original task. Scheduling
+  policy remains outside this primitive.
 - Routing evaluates one immutable policy snapshot per message. Candidate normalization and stable tie-breaking avoid repeated provider probes and make explanations reproducible. Capability probes are cached only for their bounded revision/TTL.
 - Relay replay, skipped-key, capability-proof, ACP reference, archive-job, and retry ledgers are bounded, expiry-aware, and keyed by public digests. No unbounded plaintext collection is retained.
 - Safe archive extraction streams entries and accounts for count, depth, compressed bytes, expanded bytes, per-file bytes, and deadline. Every destination component is opened or inspected no-follow before commit.
 - Artifact and evidence lineage is content-addressed. Reducers consume typed immutable receipts rather than scanning prose or trusting timestamps.
+- Client update parsing validates every release before selection, rejects duplicate versions, targets and signing key ids, and chooses the highest eligible SemVer by precedence. Check, download, verify, apply and rollback re-verify the same manifest and signed revocation policy and exchange only a digest-bound public receipt. Caller-provided file names, sizes, digests, application paths and installer strategies are forbidden. Staging and archive extraction canonicalize containment, reject symlinks, parent/absolute components and special entries, and keep local paths out of results and test output.
 
 ## Protocol parameters and proof boundary
 
@@ -118,12 +124,14 @@ Pairwise protocol behavior follows the Signal Double Ratchet security model; gro
 The implementation Nodes remove, in the same change that establishes their replacements:
 
 - the removed v1/ten-field envelope registry and every parser, fixture, gate, and document that recognizes it;
-- provider-keyed account records, secret-bearing bridge DTOs, CLI credential arguments, fake-success deletion, and silent ordinary-store fallbacks;
-- global Feed completion state, aggregate-only results, synchronous unbounded attachment embedding, and tests that prove only one target;
+- secret-bearing bridge DTOs, CLI key arguments, fake-success deletion, and silent ordinary-store fallbacks;
+- duplicate UI-owned task queues and local work that bypasses the shared bounded
+  Rust queue where queued execution is required;
 - flattened or provider-specific conversation rendering and obsolete shell, tab-bar, usage, `LicoArc client`, and text-token verifier contracts;
 - parallel route resolvers, disabled-but-loaded optional routing resources, raw session/history persistence, and source-different package profiles;
 - unsafe archive, export, skill-install, journal, and rename fallbacks plus tests that fail before the vulnerable operation executes;
-- artifact aliases, split receipt kinds, validation-only identity promotion, transient-upload publication claims, and destructive validation commands.
+- artifact aliases, split receipt kinds, validation-only identity promotion,
+  transient artifact publication claims, and destructive validation commands.
 
 No compatibility layer remains after the new authority is accepted. External protocol version tolerance may exist only at an explicitly typed boundary with a documented expiry and cannot restore a retired internal model.
 

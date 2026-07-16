@@ -1,11 +1,11 @@
-# Local Agent Runtime and Orchestration Architecture
+# Local Agent Execution and Orchestration Architecture
 
 ## Ownership and dependency direction
 
 ```text
 canonical adapter manifests + runtime override schemas
         ↓ validate / compile immutable registry revision
-Agent Runtime Registry
+Agent Execution Registry
         ↓
 Session Supervisor → official transport drivers → native frameworks
         ↓ ordered events / exact native IDs
@@ -29,7 +29,7 @@ Contracts and domain logic do not import Flutter widgets, process APIs, filesyst
 - `packages/contracts/client/agent-conversation-adapter.schema.json` evolves into the adapter contribution and runtime capability contract.
 - Canonical manifests move out of a fixture-shaped directory into one production manifest root. Template and negative fixtures stay separate.
 - Generated projections replace handwritten packaged-ID lists in native runtime, packaging, render adapters, and readiness reducers.
-- Runtime non-secret configuration uses one private product root with `agents/registry.json`, `agents/adapters/<id>.json`, and `routing/policy.json`. These are logical product-relative paths; code resolves them through the current portable-data authority and never logs their absolute values.
+- Non-secret execution configuration uses one private product root with `agents/registry.json`, `agents/adapters/<id>.json`, and `routing/policy.json`. These are logical product-relative paths; code resolves them through the current portable-data authority and never logs their absolute values.
 
 ### Native runtime
 

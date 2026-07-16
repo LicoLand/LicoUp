@@ -1,8 +1,32 @@
 [
   {
+    "id": "f54b8a91-2ace-48a4-9b75-784741ec52e4",
+    "status": "in_progress",
+    "title": "Canonical Lico Arc Product Scope",
+    "directory": "product-scope",
+    "source_files": [
+      "README.md",
+      "README.zh-CN.md",
+      "docs/ARCHITECTURE.md",
+      "docs/ARCHITECTURE.zh-CN.md",
+      "docs/USER-GUIDE.md",
+      "docs/USER-GUIDE.zh-CN.md",
+      "docs/functionality/CLIENT-DESKTOP.md",
+      "docs/scenarios/personal-user/client-priority-scenarios.md",
+      "docs/RUNBOOK.md",
+      "apps/desktop/lib/app.dart",
+      "apps/desktop/packaging.modules.json",
+      "crates/lico-client-native/src/lib.rs",
+      "tools/regression/client-module-catalog.mjs"
+    ],
+    "goal": "Converge Lico Arc on the exact local-first foundations and scenarios, keep LicoLite collaboration optional and manually installed, and require direct per-operation approval for every external transfer of user or client information.",
+    "description": "Upper product constraint for every active plan: Rust local task queue, ACP, MCP, five platform adapters, local-agent discovery/conversation/skills/conversation-backup/usage, Secure Client Mesh mobile relay, optional user-installed LicoLite collaboration plugins, scoped regression, privacy, rebuild and launch.",
+    "checkpoints": "product-scope/Checkpoints.json"
+  },
+  {
     "id": "5f4a7f09-3a26-4d20-862f-15ff10c48f5e",
-    "status": "pending",
-    "title": "Local Agent Runtime and Orchestration",
+    "status": "skipped",
+    "title": "Local Agent Execution and Orchestration",
     "directory": "agent-runtime-orchestration",
     "source_files": [
       "docs/plan/client-release/Requirements.md",
@@ -16,8 +40,8 @@
       "crates/lico-client-native/src/platform/conversation_lane.rs",
       "crates/lico-client-native/src/platform/runtime_adapters.rs",
       "apps/desktop/lib/src/contracts/agent_dispatch_lane.dart",
-      "apps/desktop/lib/src/application/features/agents/controller/agent_conversation_messaging_actions.dart",
-      "apps/desktop/lib/src/application/features/agents/controller/agent_orchestration_actions.dart",
+      "apps/desktop/lib/src/application/features/agents/conversation/agent_conversation_controller.dart",
+      "apps/desktop/lib/src/application/features/agents/orchestration/agent_orchestration_controller.dart",
       "apps/desktop/lib/src/application/features/routing/engine/route_planner.dart",
       "apps/desktop/lib/src/application/features/routing/broker/distillation_broker.dart",
       "apps/desktop/lib/src/backend/features/routing/services/policy_store.dart"
@@ -28,11 +52,12 @@
   },
   {
     "id": "a1dd6f0e-b6b4-45b9-be36-b4e316cea3eb",
-    "status": "blocked",
+    "status": "completed",
     "title": "LicoArc End-to-End Release",
     "directory": "client-release",
     "source_files": [
-      "PRODUCT.md",
+      "README.md",
+      "docs/ARCHITECTURE.md",
       "package.json",
       "tools/run-client-verify.mjs",
       "tools/client-release-targets.json",
@@ -46,8 +71,39 @@
     "checkpoints": "client-release/Checkpoints.json"
   },
   {
+    "id": "e351c113-8760-4e62-970f-ff1da3bd4d08",
+    "status": "skipped",
+    "title": "Secure Mesh Local Security Provider Foundation",
+    "directory": "client-release/security-provider-foundation",
+    "source_files": [
+      "docs/plan/client-release/Requirements.md",
+      "docs/plan/client-release/Evidence.md",
+      "docs/plan/client-release/Architecture.md",
+      "docs/plan/client-release/Validation.md",
+      "docs/plan/client-release/android/Requirements.md",
+      "docs/plan/client-release/ios/Requirements.md",
+      "docs/plan/client-release/macos/Requirements.md",
+      "docs/plan/client-release/windows/Requirements.md",
+      "docs/plan/client-release/linux/Requirements.md",
+      "crates/lico-client-native/resources/secure-mesh-capability-catalog.json",
+      "crates/lico-client-native/src/core/secure_mesh_capability/taxonomy.rs",
+      "crates/lico-client-native/src/core/secure_mesh_capability_proof.rs",
+      "crates/lico-client-native/src/core/secure_mesh_secret_store/port.rs",
+      "crates/lico-client-native/src/platform/secure_mesh_secret_store/capability.rs",
+      "crates/lico-client-native/src/platform/secure_mesh_secret_store/selection.rs",
+      "crates/lico-client-native/src/core/secure_mesh_pairwise/session_negotiation/capability_binding.rs",
+      "crates/lico-client-native/src/core/secure_mesh_pairwise/session_negotiation/key_schedule.rs",
+      "crates/lico-client-native/src/core/secure_mesh_pairwise/key_ratchet.rs",
+      "apps/desktop/android/app/src/main/kotlin/com/liko/arc/SecureMeshAndroidCustodyManager.kt",
+      "apps/desktop/ios/Runner/SecureMeshIosBridge+SecretStore.swift"
+    ],
+    "goal": "Deliver one user-authorized, privacy-minimal, platform-neutral provider foundation that lets developers adapt trusted local key tools without remote executable code or silent wire-protocol changes.",
+    "description": "Platform-neutral child of client-release for provider ports, protocol-owned operation context, local measurement, authorization, developer extension packages, session pinning, and conformance tooling. Concrete providers become nested children when real; existing platform release siblings consume redacted receipts.",
+    "checkpoints": "client-release/security-provider-foundation/Checkpoints.json"
+  },
+  {
     "id": "6c1b944a-f734-4962-b0f6-a873e874ede9",
-    "status": "blocked",
+    "status": "completed",
     "title": "macOS Release",
     "directory": "client-release/macos",
     "source_files": [
@@ -66,7 +122,7 @@
   },
   {
     "id": "2f8d2360-7ff3-4c43-ab89-e28e499c216f",
-    "status": "blocked",
+    "status": "completed",
     "title": "Android Release",
     "directory": "client-release/android",
     "source_files": [
@@ -85,7 +141,7 @@
   },
   {
     "id": "110a4c2a-bf3c-4966-ad14-29826687f21f",
-    "status": "blocked",
+    "status": "completed",
     "title": "Linux Release",
     "directory": "client-release/linux",
     "source_files": [
@@ -104,7 +160,7 @@
   },
   {
     "id": "cdf00dad-c75a-46b3-b0af-2ee2981e818f",
-    "status": "blocked",
+    "status": "completed",
     "title": "iOS Release",
     "directory": "client-release/ios",
     "source_files": [
@@ -145,19 +201,17 @@
     "title": "Layout Management Foundation",
     "directory": "layout-management",
     "source_files": [
-      "PRODUCT.md",
+      "docs/ARCHITECTURE.md",
       "docs/functionality/CLIENT-DESKTOP.md",
-      "apps/desktop/README.md",
-      "apps/desktop/Design.md",
       "apps/desktop/lib/app.dart",
       "apps/desktop/lib/src/contracts/presentation/layout_profile.dart",
       "apps/desktop/lib/src/contracts/presentation/presentation_preferences.dart",
       "apps/desktop/lib/src/application/features/layout/layout_manager.dart",
-      "apps/desktop/lib/src/application/controller/controller_lifecycle_actions.dart",
+      "apps/desktop/lib/src/application/controller/client_lifecycle_coordinator.dart",
       "apps/desktop/lib/src/platform/presentation/presentation_preferences_repository.dart",
       "apps/desktop/lib/src/frontend/shell/client_shell.dart",
       "apps/desktop/lib/src/frontend/layout/layout_host.dart",
-      "apps/desktop/lib/src/frontend/layout/built_in_layout_composition.dart",
+      "apps/desktop/lib/src/application/composition/built_in_layout_composition.dart",
       "apps/desktop/lib/src/frontend/shared/ui/theme.dart",
       "apps/desktop/scripts/verify-client-architecture.mjs"
     ],
@@ -171,8 +225,8 @@
     "title": "Desktop Layout Profiles",
     "directory": "layout-management/desktop",
     "source_files": [
-      "apps/desktop/Design.md",
-      "apps/desktop/lib/src/frontend/layout/built_in_layout_composition.dart",
+      "docs/ARCHITECTURE.md",
+      "apps/desktop/lib/src/application/composition/built_in_layout_composition.dart",
       "apps/desktop/lib/src/frontend/layout/profiles/workbench/desktop/workbench_desktop.dart",
       "apps/desktop/lib/src/frontend/layout/profiles/workbench/desktop/shell/workbench_desktop_shell.dart",
       "apps/desktop/lib/src/frontend/layout/profiles/studio/desktop/studio_desktop.dart",
@@ -193,8 +247,8 @@
     "title": "Mobile Layout Profiles",
     "directory": "layout-management/mobile",
     "source_files": [
-      "PRODUCT.md",
-      "apps/desktop/lib/src/frontend/layout/built_in_layout_composition.dart",
+      "docs/ARCHITECTURE.md",
+      "apps/desktop/lib/src/application/composition/built_in_layout_composition.dart",
       "apps/desktop/lib/src/frontend/layout/profiles/workbench/mobile/workbench_mobile_bundle.dart",
       "apps/desktop/lib/src/frontend/layout/profiles/workbench/mobile/workbench_mobile_shell.dart",
       "apps/desktop/lib/src/frontend/layout/profiles/studio/mobile/studio_mobile_bundle.dart",
@@ -221,7 +275,7 @@
       "apps/desktop/lib/src/contracts/presentation/layout_environment.dart",
       "apps/desktop/lib/src/application/features/layout/layout_catalog.dart",
       "apps/desktop/lib/src/application/features/layout/layout_manager.dart",
-      "apps/desktop/lib/src/frontend/layout/built_in_layout_composition.dart",
+      "apps/desktop/lib/src/application/composition/built_in_layout_composition.dart",
       "apps/desktop/lib/src/frontend/layout/layout_host.dart",
       "apps/desktop/lib/src/frontend/layout/layout_surface_bundle.dart",
       "apps/desktop/lib/src/frontend/layout/profiles",
@@ -235,7 +289,7 @@
   },
   {
     "id": "fdd9bf3b-31e0-4862-b0bf-8aa1803234eb",
-    "status": "pending",
+    "status": "skipped",
     "title": "Isolated Renderer Completion",
     "directory": "layout-management/isolated-renderer-completion",
     "source_files": [

@@ -329,10 +329,10 @@
   },
   {
     "id": "9be8b758-e905-43bd-b17e-1d42f4086726",
-    "status": "blocked",
+    "status": "skipped",
     "role": "final_validation",
     "prerequisites": [
-      "04ed3e53-de23-4ddd-be09-efd95e91f134"
+      "7b575773-4de2-4690-92c7-16978ab8c6c9"
     ],
     "platform": "macos",
     "difficulty": "deep",
@@ -360,6 +360,6 @@
       "target": "macOS child final reducer and redacted receipt"
     },
     "next": [],
-    "status_reason": "Final macOS security evidence still requires real Keychain proof. Production signing, notarization, store publication/download and update evidence remain only an unready optional channel status and do not block GitHub Release."
+    "status_reason": "Physical custody, production signing, notarization, and store evidence are outside the current development closure; no macOS release claim is made."
   }
 ]

@@ -1,5 +1,7 @@
 # Desktop Layout Profiles Requirements
 
+Upper constraint: [`../../product-scope/Requirements.md`](../../product-scope/Requirements.md). Desktop profiles expose only the canonical desktop scenarios and optional-plugin boundary.
+
 ## Product problem
 
 For the desktop runtime surface, every one of the `N` registered semantic profiles needs a complete presentation bundle that consumes the same parent-owned semantics while remaining independently developable, reviewable, and testable. The desktop renderer child must not encode a fixed profile count.

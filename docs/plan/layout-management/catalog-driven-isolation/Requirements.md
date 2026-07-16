@@ -1,5 +1,7 @@
 # Catalog-Driven Layout Isolation Requirements
 
+Upper constraint: [`../../product-scope/Requirements.md`](../../product-scope/Requirements.md). Every registered renderer exposes only the canonical product destinations and consent boundaries.
+
 ## Product contract
 
 The client supports an open-ended set of complete presentation profiles. Let `N` be the number of immutable profile definitions registered at the production composition root and let `M` be the number of members in the typed runtime-surface declaration. The verifier independently discovers the canonical profile directories and requires their identity set to equal the registration set; directory discovery is an ownership check, not a second runtime identity authority. The valid renderer product contains exactly `N × M` `LayoutSurfaceBundle` instances. Neither cardinality is a management constant, acceptance limit, or hand-maintained inventory.

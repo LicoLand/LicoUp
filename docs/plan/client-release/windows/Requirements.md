@@ -1,5 +1,7 @@
 # Windows Release Requirements
 
+Upper constraint: [`../../product-scope/Requirements.md`](../../product-scope/Requirements.md). This child owns Windows adaptation and delivery only within the canonical product scope.
+
 ### REQ-WIN-001 — Independent x64 and arm64 artifacts
 
 Windows x64 and arm64 are separate catalog targets with target-owned builders. PE machine type, bundled DLLs, native CLI, module profile, source revision and artifact digest are verified for each. Host-built projections and one architecture relabeled as another fail closed.

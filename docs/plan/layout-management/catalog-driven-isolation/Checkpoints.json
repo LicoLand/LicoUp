@@ -420,7 +420,7 @@
     "platform": "any",
     "difficulty": "deep",
     "goal": "Implement neutral runtime ports and executable frozen baselines for every catalog-enumerated bundle.",
-    "description": "Scope: layout chrome/destination/palette contracts, ClientShell adapters, fixtures, catalog-driven visual dependency manifests, and pre-migration production fixtures. Context: profiles currently reach complete controller/business/platform code through shared styled chrome and shared features branch on identity; evidence is uneven. Target: expose immutable status/allowance/pairing/navigation snapshots and profile-owned Agents/Settings presentation recipes, then enumerate every bundle to freeze its current visual/semantic/interaction inputs. Design Considerations: bounded Listenable adapters own refresh/lifecycle; manifests traverse transitive visual inputs and avoid fixed N/M; deterministic fixtures contain no runtime data. Design Value: narrow ports make exact renderer privatization possible without copying business logic. Constraints & Risks: no design/pixel/interaction change, controller/backend/platform type in profile contracts, compatibility wrapper, stale manifest, or count-specific code.",
+    "description": "Scope: layout chrome/destination/palette contracts, ClientShell adapters, fixtures, catalog-driven visual dependency manifests, and pre-migration production fixtures. Context: profiles currently reach complete controller/business/platform code through shared styled chrome and shared features branch on identity; evidence is uneven. Target: expose immutable status/local-token-usage/pairing/navigation snapshots and profile-owned Agents/Settings presentation recipes, then enumerate every bundle to freeze its current visual/semantic/interaction inputs. Design Considerations: bounded Listenable adapters own refresh/lifecycle; manifests traverse transitive visual inputs and avoid fixed N/M; deterministic fixtures contain no runtime data. Design Value: narrow ports make exact renderer privatization possible without copying business logic. Constraints & Risks: no design/pixel/interaction change, controller/backend/platform type in profile contracts, compatibility wrapper, stale manifest, or count-specific code.",
     "requirements": [
       "REQ-002",
       "REQ-004",
@@ -439,7 +439,7 @@
         "evidence_refs": [
           {
             "type": "command",
-            "command": "cd apps/desktop && flutter test test/layout/layout_chrome_port_test.dart test/layout/layout_destination_presentation_test.dart test/layout/layout_palette_test.dart test/layout/layout_chrome_allowance_presentation_test.dart",
+            "command": "cd apps/desktop && flutter test test/layout/layout_chrome_port_test.dart test/layout/layout_destination_presentation_test.dart test/layout/layout_palette_test.dart",
             "exit_code": 0,
             "recorded_at": "2026-07-15T03:23:23Z"
           }
@@ -447,11 +447,11 @@
       },
       {
         "checked": true,
-        "text": "ClientShell adapters preserve status, allowance refresh, pairing, destination content, focus, and lifecycle behavior while fake-port tests cover updates and failures.",
+        "text": "ClientShell adapters preserve status, local token-usage refresh, pairing, destination content, focus, and lifecycle behavior while fake-port tests cover updates and failures.",
         "evidence_refs": [
           {
             "type": "command",
-            "command": "cd apps/desktop && flutter test test/layout/layout_chrome_port_test.dart test/agent_allowance_defaults_test.dart",
+            "command": "cd apps/desktop && flutter test test/layout/layout_chrome_port_test.dart test/agent_usage_panel_test.dart",
             "exit_code": 0,
             "recorded_at": "2026-07-15T03:23:42Z"
           }
@@ -541,7 +541,7 @@
           },
           {
             "type": "file",
-            "path": "lib/src/frontend/layout/built_in_layout_composition.dart",
+            "path": "lib/src/application/composition/built_in_layout_composition.dart",
             "sha256": "1f3cda33c08db5681fed8656ef805cedf2623f074b1d9eb3d314d3f682cf7501",
             "recorded_at": "2026-07-15T04:04:54Z"
           }
@@ -690,7 +690,7 @@
           },
           {
             "type": "file",
-            "path": "lib/src/frontend/layout/built_in_layout_composition.dart",
+            "path": "lib/src/application/composition/built_in_layout_composition.dart",
             "sha256": "1f3cda33c08db5681fed8656ef805cedf2623f074b1d9eb3d314d3f682cf7501",
             "recorded_at": "2026-07-15T04:09:13Z"
           }

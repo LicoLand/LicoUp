@@ -9,7 +9,7 @@ Canonical read-only model for native agent history in LicoArc.
 - Native assembler/validator: `crates/lico-client-native/src/domain/conversation_semantic.rs`
 - Desktop models: `apps/desktop/lib/src/contracts/agent_conversation_models.dart`
 
-Native source histories remain read-only. This contract does **not** introduce a LicoLite-local conversation store and must not write back into provider history databases.
+Native source histories remain read-only. This contract does **not** introduce a parallel client-owned conversation store and must not write back into provider history databases.
 
 ## Layers
 

@@ -1,5 +1,7 @@
 # Mobile Layout Renderer Requirements
 
+Upper constraint: [`../../product-scope/Requirements.md`](../../product-scope/Requirements.md). Mobile profiles expose Secure Client Mesh communication and settings only within the canonical product scope.
+
 ## Product problem
 
 For the mobile runtime surface, every one of the `N` registered semantic profiles needs a complete compact/medium presentation bundle that consumes the same parent semantics while remaining independently developable and testable. The mobile renderer child must not encode a fixed profile count.

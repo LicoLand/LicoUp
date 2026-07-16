@@ -1,8 +1,10 @@
 # Android Release Requirements
 
+Upper constraint: [`../../product-scope/Requirements.md`](../../product-scope/Requirements.md). This child owns Android adaptation and delivery only within the canonical product scope.
+
 ### REQ-AND-001 — Authorized opaque Keystore custody
 
-Provider credentials and Secure Mesh keys remain opaque to Dart and use Android Keystore with BiometricPrompt or device credential according to an explicit policy. When authentication is available, policy selection cannot silently fall back to an unauthenticated persistent key. When acceptable protected persistence is unavailable, custody is memory-only and restart requires reauthorization or rekey.
+Secure Mesh keys remain opaque to Dart and use Android Keystore with BiometricPrompt or device credential according to an explicit policy. When authentication is available, policy selection cannot silently fall back to an unauthenticated persistent key. When acceptable protected persistence is unavailable, custody is memory-only and restart requires reauthorization or rekey.
 
 ### REQ-AND-002 — Deterministic APK and simulator-build evidence
 

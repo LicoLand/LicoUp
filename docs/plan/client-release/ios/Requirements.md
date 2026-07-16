@@ -1,5 +1,7 @@
 # iOS Release Requirements
 
+Upper constraint: [`../../product-scope/Requirements.md`](../../product-scope/Requirements.md). This child owns iOS adaptation and delivery only within the canonical product scope.
+
 ### REQ-IOS-001 — Real iOS builder and simulator artifact
 
 A pinned Xcode/Flutter toolchain builds a declared Apple-silicon iOS Simulator artifact whose bundle id, entitlements, architectures, native libraries, module profile, source revision and digest are verified. The current local app-build verdict installs and launches this exact artifact on a fresh repository-selected iOS Simulator. A device catalog entry without a physical builder remains unsupported and fail-closed.

@@ -16,7 +16,7 @@ This simulator receipt proves build, install, launch, FFI shape, lifecycle, immu
 
 ## GitHub Release artifact boundary
 
-The GitHub Release path uses an ephemeral local-integrity key, not a store or publisher identity. The publisher re-extracts the signer certificate from the final downloaded APK Signing Block, matches it to the public verification certificate, validates the exact checksum and consumer manifest, and publishes only the accepted artifact plus minimum consumer-verification metadata. The temporary private key is destroyed and never uploaded.
+The GitHub Release path uses an ephemeral local-integrity key, not a store or publisher identity. The publisher re-extracts the signer certificate from the final downloaded APK Signing Block, matches it to the public verification certificate, validates the exact checksum and consumer manifest, and publishes only the accepted artifact plus minimum consumer-verification metadata. The temporary private key is destroyed and never published.
 
 No Android store channel is currently requested. Production signing, protected publication, store download, update continuity and rollback therefore remain non-blocking guidance rather than missing GitHub Release inputs.
 

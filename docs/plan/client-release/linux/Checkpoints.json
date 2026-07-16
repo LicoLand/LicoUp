@@ -227,11 +227,10 @@
   },
   {
     "id": "d0ecb8a1-5330-4a2c-8f3d-1d9bd1335147",
-    "status": "blocked",
+    "status": "skipped",
     "role": "implementation",
     "prerequisites": [
-      "391c658f-6c4d-45ad-a101-d0d89b7b2fd2",
-      "63e1f123-60d2-479e-a0e9-ab4e0077b92a"
+      "391c658f-6c4d-45ad-a101-d0d89b7b2fd2"
     ],
     "platform": "linux",
     "difficulty": "deep",
@@ -257,7 +256,7 @@
       "8508dbf7-0488-431d-9dd2-34bf25453c5c",
       "5c46ccd2-7113-471c-b755-d59e44048f61"
     ],
-    "status_reason": "Build, archive, VM install, GUI bounded shutdown, privacy and release CLI passed, but the three-node matrix could not start because the external image-build dependency remained unavailable after bounded retries."
+    "status_reason": "External clean-image topology and publication evidence are outside the current development closure; no Linux release claim is made."
   },
   {
     "id": "8508dbf7-0488-431d-9dd2-34bf25453c5c",
@@ -289,10 +288,10 @@
   },
   {
     "id": "5c46ccd2-7113-471c-b755-d59e44048f61",
-    "status": "blocked",
+    "status": "skipped",
     "role": "final_validation",
     "prerequisites": [
-      "d0ecb8a1-5330-4a2c-8f3d-1d9bd1335147"
+      "391c658f-6c4d-45ad-a101-d0d89b7b2fd2"
     ],
     "platform": "linux",
     "difficulty": "deep",
@@ -320,6 +319,6 @@
       "target": "Linux child final reducer and redacted receipts"
     },
     "next": [],
-    "status_reason": "Final Linux security evidence requires real custody and completed three-node topology. Publisher identity, registry publication and continuity remain only an optional channel status and do not block GitHub Release."
+    "status_reason": "External clean-image topology and publication evidence are outside the current development closure; no Linux release claim is made."
   }
 ]

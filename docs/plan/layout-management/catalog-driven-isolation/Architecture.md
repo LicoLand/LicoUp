@@ -46,7 +46,7 @@ LayoutHost → active LayoutDefinition → active LayoutSurfaceBundle
 profile-private shell / chrome / destination presentation / components
 ```
 
-Profiles cannot see a complete controller, widget-producing shared presentation surface, services, backend/platform implementations, other profiles, or shared styled UI. Semantic ports carry status, allowance, pairing, navigation, Agents, and Settings data/actions without supplying layout or chrome. Profile-private adapters decide composition and styling without identity checks in shared feature code. A layout-neutral palette snapshot separates appearance input from the global theme implementation.
+Profiles cannot see a complete controller, widget-producing shared presentation surface, services, backend/platform implementations, other profiles, or shared styled UI. Semantic ports carry status, local token usage, pairing, navigation, Agents, and Settings data/actions without supplying layout or chrome. Profile-private adapters decide composition and styling without identity checks in shared feature code. A layout-neutral palette snapshot separates appearance input from the global theme implementation.
 
 ### Destination-port lifecycle
 
