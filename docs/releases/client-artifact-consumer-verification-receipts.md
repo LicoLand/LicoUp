@@ -43,9 +43,9 @@ The accepted local-install boundary is:
 
 | Target | Required local evidence | Publication boundary |
 | --- | --- | --- |
-| `macos-arm64` | The uploaded distribution ZIP and manifest bind the source, version, build, and exact locally signed `.app` digest; built and installed app digests match; the ephemeral local integrity signature, Hardened Runtime, normalized outer Release entitlements, and empty entitlements on every recursively discovered nested code object match; a new exact process survives the stability window with the challenge; post-launch artifact checks and sidecar smoke pass | App Store, Developer ID distribution, and notarization are not required or claimed |
+| `macos-arm64` | The published distribution ZIP and manifest bind the source, version, build, and exact locally signed `.app` digest; built and installed app digests match; the ephemeral local integrity signature, Hardened Runtime, normalized outer Release entitlements, and empty entitlements on every recursively discovered nested code object match; a new exact process survives the stability window with the challenge; post-launch artifact checks and sidecar smoke pass | App Store, Developer ID distribution, and notarization are not required or claimed |
 | `android-arm64` | APK package/version/debuggable/ABI/single-signer/signature-scheme/alignment facts and the exact stored ARM64 native-library digest match the current build manifest; the checked-in tool digest allowlist and controlled macOS ARM64 release-runner class match; the relay CLI is rebuilt from the same checkout before acceptance; install returns explicit success; the installed `base.apk` matches; exact activity launch consumes the challenge and nonce | Play Store and production update identity are not required or claimed; redacted receipts expose only signer-match booleans, never a stable certificate fingerprint |
-| `linux-glibc-arm64` | The uploaded distribution TAR and manifest version/build/source/archive bindings match; the final reducer directly verifies Ed25519 over the archive SHA-256 digest using the embedded public verification key; compressed size, entry count, per-entry size, total expanded size, path type, listing time, and extraction time remain within fixed bounds; the same archive is installed on the native ARM64 release runner, starts in the supported bounded session, and passes CLI/GUI smoke | Registry or package-repository publication is not required or claimed |
+| `linux-glibc-arm64` | The published distribution TAR and manifest version/build/source/archive bindings match; the final reducer directly verifies Ed25519 over the archive SHA-256 digest using the embedded public verification key; compressed size, entry count, per-entry size, total expanded size, path type, listing time, and extraction time remain within fixed bounds; the same archive is installed on the native ARM64 release runner, starts in the supported bounded session, and passes CLI/GUI smoke | Registry or package-repository publication is not required or claimed |
 
 Android certificate material is process-local verification input, not release
 evidence. The APK build manifest, distribution manifest, and physical
@@ -71,7 +71,7 @@ or private-channel infrastructure.
 
 The manual GitHub workflow requires an explicit Release tag and at least one
 release-supported target. It creates or reuses a GitHub Release, runs the exact
-selected-target acceptance reducer, and uploads only the closed file allowlist
+selected-target acceptance reducer, and publishes only the closed file allowlist
 shown above. The Release remains a draft unless `publish_release` is selected;
 publication occurs only after every selected job succeeds. GitHub repository
 write authority is the only publication authority used by this path. Platform
@@ -98,7 +98,7 @@ leave an older green report in place.
 
 The macOS final local-install path is `npm run client:install:macos`. In GitHub
 Release automation, a short-lived local integrity identity is generated inside
-the isolated runner; it is not a publisher identity and is never uploaded.
+the isolated runner; it is not a publisher identity and is never published.
 The installer re-signs the app, verifies the local integrity signature,
 atomically installs the exact app, and emits a redacted preparation receipt.
 The subsequent macOS capability producer launches the installed app and issues
