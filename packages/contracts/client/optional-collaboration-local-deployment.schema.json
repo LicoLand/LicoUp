@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://licolite.dev/contracts/client/optional-collaboration-local-deployment.schema.json",
+  "title": "Lico Arc Optional Local Deployment Catalog",
+  "description": "Declarative, manual-only feature catalog for a user-controlled local LicoLite deployment.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "manualOnly", "features"],
+  "properties": {
+    "schemaVersion": {"const": "licoarc.collaboration.local-deployment.v1"},
+    "manualOnly": {"const": true},
+    "features": {
+      "type": "array",
+      "maxItems": 256,
+      "items": {"$ref": "#/$defs/choice"}
+    }
+  },
+  "$defs": {
+    "choice": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "label", "packagePath"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$", "maxLength": 128},
+        "label": {"type": "string", "minLength": 1, "maxLength": 255},
+        "description": {"type": "string", "maxLength": 2048},
+        "packagePath": {"type": "string", "pattern": "^[A-Za-z0-9_-][A-Za-z0-9._-]*(?:/[A-Za-z0-9_-][A-Za-z0-9._-]*)*$", "maxLength": 1024},
+        "defaultEnabled": {"const": false, "default": false}
+      }
+    }
+  }
+}

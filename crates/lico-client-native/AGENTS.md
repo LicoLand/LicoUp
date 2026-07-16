@@ -25,31 +25,37 @@
   targets.
 - Use `crates/lico-client-native/src/lib.rs` as the module map, then open only the relevant
   module.
-- Use `docs/functionality/CLIENT-DESKTOP.md` only when the CLI boundary with the desktop
-  client or runtime model is unclear.
+- Use `docs/ARCHITECTURE.md` only when the CLI boundary with the desktop client or
+  runtime model is unclear.
 
 ## Directory Routing
 
 - `src/bin/lico-client.rs`: public CLI entry and command dispatch.
-- `src/domain/targets.rs` and `src/domain/forwarding.rs`: target discovery, metadata,
-  and forwarding behavior.
-- `src/domain/mcp_plugins.rs` and `src/domain/mcp_trust.rs`: MCP plugin integration and
-  trust handling.
-- `src/domain/checkpoints.rs`, `src/domain/source_queue.rs`, and `src/domain/mail.rs`:
-  checkpoint, ingestion queue, and scoped mail workflows.
+- `src/domain/targets.rs` and `src/domain/targets/`: concurrent local-agent
+  discovery, metadata, executable binding, and cache projection.
+- `src/domain/conversations.rs`, `src/domain/conversation/`, and
+  `src/domain/conversation_archive_jobs.rs`: native history and local backup jobs.
+- `src/domain/skill_hub.rs` and `src/domain/agent_usage.rs`: local skill and usage
+  management.
 - `src/platform/client_state.rs` and `src/platform/paths.rs`: local state and path handling;
   keep operating-system and runtime integration in `src/platform/`.
-- `src/core/`: secure-mesh protocol and cryptographic behavior.
-- `src/ffi/`: Android, iOS, and desktop bridge commands; keep business rules in `src/domain/`
+- `src/core/task_queue.rs`: bounded lightweight Rust task queue.
+- `src/core/mcp.rs`: service-neutral MCP envelope and response-forward adapter.
+- `src/core/secure_mesh*`: Secure Client Mesh protocol and cryptographic behavior.
+- `src/ffi/`: Android, iOS, and desktop bridge commands; keep feature rules in `src/domain/`
   or `src/core/` rather than duplicating them here.
 
 ## Verification
 
-- Use `CARGO_TARGET_DIR=build/crates/lico-client-native/target cargo test --manifest-path crates/lico-client-native/Cargo.toml`
-  for broad CLI tests from the repository root.
-- Use `npm run client:verify:architecture` for native client architecture,
-  target adaptation, configuration writes, state, Skill Hub, MCP plugin, and
-  forwarding boundary verification.
+- Use `npm run client:native:test` for broad CLI tests from the repository
+  root. It owns the canonical Cargo target lease and marks compiler output
+  reclaimable when the test ends. Do not create per-agent Cargo target roots.
+- Use `npm run client:regression -- --module <module-id>` for the smallest
+  affected native slice, then `npm run client:verify:architecture` for changed
+  module or platform boundaries.
+- Use `npm run client:artifacts:status` to inspect lifecycle state and
+  `npm run client:artifacts:prune -- --dry-run` before an explicit reclaim.
+  These commands never manage dependency download caches.
 
 ## Context Budget
 

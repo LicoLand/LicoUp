@@ -46,7 +46,7 @@ pub const SECURE_MESH_PROTOCOL_VERSION: &str = "licolite.secure-mesh.v1";
 ///
 /// This changes only when protocol or security semantics become incompatible. Application
 /// versions and release-artifact identity are deliberately not part of session negotiation.
-pub const SECURE_MESH_PROTOCOL_BUILD_REVISION: u64 = 4;
+pub const SECURE_MESH_PROTOCOL_BUILD_REVISION: u64 = 5;
 pub const SECURE_MESH_COMMAND_PROTOCOL_VERSION: &str = "licolite.secure-mesh.command.v1";
 pub const SECURE_MESH_RESULT_PROTOCOL_VERSION: &str = "licolite.secure-mesh.result.v1";
 pub const SECURE_MESH_FILE_PROTOCOL_VERSION: &str = "licolite.secure-mesh.file.v1";
@@ -55,10 +55,6 @@ pub(crate) const ALLOWED_COMMANDS: &[&str] = &[
     "agent.sessions.list",
     "agent.sessions.describe",
     "agent.message.send",
-    "provider.chat.send",
-    "provider.credential.export",
-    "client.activity.sync",
-    "client.snapshot.request",
     "secure_mesh.device.verify",
     "secure_mesh.approval.request",
     "secure_mesh.approval.response",
@@ -140,7 +136,6 @@ fn protocol_status_with_capability_values(
             "desktop_sidecar",
             "mobile",
             "cli",
-            "client_local_runtime",
             "agent_host",
             "web_limited"
         ],
@@ -242,10 +237,6 @@ fn protocol_status_with_capability_values(
             Value::Bool(true),
         );
         object.insert(
-            "mlsLegacySessionMigration".to_string(),
-            Value::String("re_pair_or_rekey_required".to_string()),
-        );
-        object.insert(
             "mlsProductMessagingAvailable".to_string(),
             product_readiness["productMessagingAvailable"].clone(),
         );
@@ -287,19 +278,21 @@ pub fn command_policy(params: &Value) -> Value {
         .unwrap_or_default();
     let allowed = denied_prefix.is_empty() && ALLOWED_COMMANDS.contains(&command_kind);
     let minimum_risk_class = match command_kind {
-        "agent.sessions.list"
-        | "agent.sessions.describe"
-        | "client.activity.sync"
-        | "client.snapshot.request" => "read_only",
-        "agent.message.send" | "provider.chat.send" => "safe_write",
-        "provider.credential.export" => "high_risk",
+        "agent.sessions.list" | "agent.sessions.describe" => "read_only",
+        "agent.message.send" => "safe_write",
         "secure_mesh.device.verify"
         | "secure_mesh.approval.request"
         | "secure_mesh.approval.response" => "local_effect",
         _ => "",
     };
-    let requires_user_confirmation =
-        minimum_risk_class == "local_effect" || minimum_risk_class == "high_risk";
+    let requires_user_confirmation = matches!(
+        command_kind,
+        "agent.sessions.list"
+            | "agent.sessions.describe"
+            | "secure_mesh.device.verify"
+            | "secure_mesh.approval.request"
+            | "secure_mesh.approval.response"
+    );
     json!({
         "ok": true,
         "commandKind": command_kind,
@@ -355,10 +348,9 @@ mod tests {
             command_policy(&json!({"commandKind": "secure_mesh.device.verify"}))["requiresUserConfirmation"],
             true
         );
-        let credential_export =
-            command_policy(&json!({"commandKind": "provider.credential.export"}));
-        assert_eq!(credential_export["minimumRiskClass"], "high_risk");
-        assert_eq!(credential_export["requiresUserConfirmation"], true);
+        let session_list = command_policy(&json!({"commandKind": "agent.sessions.list"}));
+        assert_eq!(session_list["minimumRiskClass"], "read_only");
+        assert_eq!(session_list["requiresUserConfirmation"], true);
         assert_eq!(
             command_policy(&json!({"commandKind": "shell.exec"}))["allowed"],
             false

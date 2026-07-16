@@ -1,4 +1,4 @@
-// snapshots commands: snapshots list|restore|collect, snapshots root|curator|bridge|curation|profiles|archive|collections, conversations
+// snapshots commands: snapshots list|restore|collect, snapshots root|profiles|archive|collections, conversations
 
 use super::{CliExecution, CommandTable, cli_params};
 use anyhow::Result;
@@ -23,36 +23,6 @@ pub fn register_commands(table: &mut CommandTable) {
         &["snapshots", "root"],
         handle_snapshots_root,
         "Root snapshot get|set",
-    );
-    table.register_rest(
-        &["snapshots", "curator"],
-        handle_snapshots_curator,
-        "Curator get|set",
-    );
-    table.register_rest(
-        &["snapshots", "bridge", "ensure"],
-        handle_snapshots_bridge,
-        "Ensure bridge",
-    );
-    table.register_rest(
-        &["snapshots", "curation", "start"],
-        handle_snapshots_curation_start,
-        "Start curation",
-    );
-    table.register_rest(
-        &["snapshots", "curation", "submit-result"],
-        handle_snapshots_curation_submit,
-        "Submit curation result",
-    );
-    table.register_rest(
-        &["snapshots", "curation", "candidates", "list"],
-        handle_snapshots_curation_candidates,
-        "List curation candidates",
-    );
-    table.register_rest(
-        &["snapshots", "curation", "candidate", "expand"],
-        handle_snapshots_curation_candidate_expand,
-        "Expand curation candidate",
     );
     table.register_rest(
         &["snapshots", "profiles"],
@@ -108,52 +78,6 @@ fn handle_snapshots_root(args: &[String]) -> Result<CliExecution> {
     Ok(CliExecution::Json(result))
 }
 
-fn handle_snapshots_curator(args: &[String]) -> Result<CliExecution> {
-    let action = &args[2];
-    let params = cli_params(&args[3..]);
-    let result = match action.as_str() {
-        "get" => crate::domain::conversation_snapshots::curator_get(&params)?,
-        "set" => crate::domain::conversation_snapshots::curator_set(&params)?,
-        _ => return Ok(CliExecution::Usage),
-    };
-    Ok(CliExecution::Json(result))
-}
-
-fn handle_snapshots_bridge(args: &[String]) -> Result<CliExecution> {
-    let params = cli_params(&args[3..]);
-    Ok(CliExecution::Json(
-        crate::domain::conversation_snapshots::bridge_ensure(&params)?,
-    ))
-}
-
-fn handle_snapshots_curation_start(args: &[String]) -> Result<CliExecution> {
-    let params = cli_params(&args[3..]);
-    Ok(CliExecution::Json(
-        crate::domain::conversation_snapshots::curation_start(&params)?,
-    ))
-}
-
-fn handle_snapshots_curation_submit(args: &[String]) -> Result<CliExecution> {
-    let params = cli_params(&args[3..]);
-    Ok(CliExecution::Json(
-        crate::domain::conversation_snapshots::curation_submit_result(&params)?,
-    ))
-}
-
-fn handle_snapshots_curation_candidates(args: &[String]) -> Result<CliExecution> {
-    let params = cli_params(&args[4..]);
-    Ok(CliExecution::Json(
-        crate::domain::conversation_snapshots::curation_candidates_list(&params)?,
-    ))
-}
-
-fn handle_snapshots_curation_candidate_expand(args: &[String]) -> Result<CliExecution> {
-    let params = cli_params(&args[4..]);
-    Ok(CliExecution::Json(
-        crate::domain::conversation_snapshots::curation_candidate_expand(&params)?,
-    ))
-}
-
 fn handle_snapshots_profiles(args: &[String]) -> Result<CliExecution> {
     let action = &args[2];
     let params = cli_params(&args[3..]);
@@ -175,6 +99,7 @@ fn handle_snapshots_archive(args: &[String]) -> Result<CliExecution> {
         let job_action = &args[3];
         let params = cli_params(&args[4..]);
         let result = match job_action.as_str() {
+            "preview" => crate::domain::conversation_archive_jobs::preview(&params)?,
             "create" => crate::domain::conversation_archive_jobs::create(&params)?,
             "status" => crate::domain::conversation_archive_jobs::status(&params)?,
             "list" => crate::domain::conversation_archive_jobs::list(&params)?,

@@ -1,0 +1,21 @@
+use super::super::state_codec::{hex_encode_bytes, local_endpoint_state};
+use serde_json::json;
+
+#[test]
+fn state_codec_fails_closed_when_required_private_material_is_absent() {
+    let error = local_endpoint_state(&json!({
+        "mobileRelayE2ee": {
+            "endpointId": "endpoint",
+            "endpointKind": "desktop"
+        }
+    }))
+    .err()
+    .expect("missing private material must be rejected");
+
+    assert!(error.to_string().contains("privateKeyBase64url"));
+}
+
+#[test]
+fn hex_codec_is_stable_and_lowercase() {
+    assert_eq!(hex_encode_bytes(&[0, 1, 15, 16, 255]), "00010f10ff");
+}

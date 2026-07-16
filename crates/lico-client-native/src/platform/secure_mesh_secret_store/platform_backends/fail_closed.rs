@@ -1,0 +1,67 @@
+use anyhow::{Result, anyhow};
+
+use super::super::platform_store::PlatformSecretStore;
+use crate::core::secure_mesh_secret_store::{
+    SecretStoreAuthorizationRequest, SecretStoreAuthorizationSession, SecretStoreHandle,
+};
+
+fn unavailable() -> anyhow::Error {
+    anyhow!("secure mesh native secret store lacks measured platform user authorization")
+}
+
+pub(in crate::platform::secure_mesh_secret_store) fn begin_authorized_session(
+    _store: &PlatformSecretStore,
+    _request: &SecretStoreAuthorizationRequest,
+) -> Result<SecretStoreAuthorizationSession> {
+    Err(unavailable())
+}
+
+#[cfg(any(test, not(target_os = "macos")))]
+pub(in crate::platform::secure_mesh_secret_store) fn set_secret_with_session(
+    _store: &PlatformSecretStore,
+    _session: &SecretStoreAuthorizationSession,
+    _handle: &SecretStoreHandle,
+    _secret: &str,
+) -> Result<()> {
+    Err(unavailable())
+}
+
+#[cfg(any(test, not(target_os = "macos")))]
+pub(in crate::platform::secure_mesh_secret_store) fn get_secret_with_session(
+    _store: &PlatformSecretStore,
+    _session: &SecretStoreAuthorizationSession,
+    _handle: &SecretStoreHandle,
+) -> Result<Option<String>> {
+    Err(unavailable())
+}
+
+#[cfg(any(test, not(target_os = "macos")))]
+pub(in crate::platform::secure_mesh_secret_store) fn delete_secret_with_session(
+    _store: &PlatformSecretStore,
+    _session: &SecretStoreAuthorizationSession,
+    _handle: &SecretStoreHandle,
+) -> Result<()> {
+    Err(unavailable())
+}
+
+pub(in crate::platform::secure_mesh_secret_store) fn set_secret(
+    _store: &PlatformSecretStore,
+    _handle: &SecretStoreHandle,
+    _secret: &str,
+) -> Result<()> {
+    Err(unavailable())
+}
+
+pub(in crate::platform::secure_mesh_secret_store) fn get_secret(
+    _store: &PlatformSecretStore,
+    _handle: &SecretStoreHandle,
+) -> Result<Option<String>> {
+    Err(unavailable())
+}
+
+pub(in crate::platform::secure_mesh_secret_store) fn delete_secret(
+    _store: &PlatformSecretStore,
+    _handle: &SecretStoreHandle,
+) -> Result<()> {
+    Err(unavailable())
+}

@@ -1,0 +1,13 @@
+//! Stable composition root for bounded Cursor and OpenAgent SQLite history parsing.
+
+mod codec;
+mod composition;
+mod cursor;
+mod cursor_projection;
+mod fallback;
+mod openagent;
+
+pub(crate) use composition::parse_sqlite_sessions;
+
+#[cfg(test)]
+mod tests;

@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://licolite.dev/contracts/client/optional-collaboration-mcp-install.schema.json",
+  "title": "Lico Arc Optional MCP Installation Catalog",
+  "description": "Declarative, manual-only LicoLite MCP package catalog for LicoArc-owned exact-scope, one-shot outbound authorization.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "manualOnly", "requiresPerFileApproval", "outboundPolicy", "plugins"],
+  "properties": {
+    "schemaVersion": {"const": "licoarc.collaboration.mcp-install.v2"},
+    "manualOnly": {"const": true},
+    "requiresPerFileApproval": {"const": true},
+    "outboundPolicy": {"const": "direct-user-exact-scope-one-shot"},
+    "plugins": {
+      "type": "array",
+      "maxItems": 256,
+      "items": {"$ref": "#/$defs/choice"}
+    }
+  },
+  "$defs": {
+    "choice": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "label", "packagePath", "endpoint"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$", "maxLength": 128},
+        "label": {"type": "string", "minLength": 1, "maxLength": 255},
+        "description": {"type": "string", "maxLength": 2048},
+        "packagePath": {"type": "string", "pattern": "^[A-Za-z0-9_-][A-Za-z0-9._-]*(?:/[A-Za-z0-9_-][A-Za-z0-9._-]*)*$", "maxLength": 1024},
+        "endpoint": {"type": "string", "format": "uri", "pattern": "^https://|^http://(?:localhost|127\\.0\\.0\\.1|\\[::1\\])(?::|/|$)", "maxLength": 2048}
+      }
+    }
+  }
+}

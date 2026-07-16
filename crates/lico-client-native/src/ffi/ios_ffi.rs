@@ -7,6 +7,9 @@ use serde_json::json;
 use crate::platform::secure_mesh_secret_store::{SecretStoreHandle, SecureMeshSecretStore};
 
 const IOS_SECRET_STORE_BACKEND: &str = "ios-keychain";
+const IOS_SECRET_GET_ERROR: i32 = -1;
+const IOS_SECRET_GET_NOT_FOUND: i32 = 0;
+const IOS_SECRET_GET_FOUND: i32 = 1;
 
 #[repr(C)]
 pub struct LicoSecureMeshSecretStoreCallbacks {
@@ -25,7 +28,8 @@ pub struct LicoSecureMeshSecretStoreCallbacks {
             ctx: *mut c_void,
             namespace: *const c_char,
             key: *const c_char,
-        ) -> *mut c_char,
+            value_out: *mut *mut c_char,
+        ) -> i32,
     >,
     delete_secret: Option<
         unsafe extern "C" fn(
@@ -171,7 +175,8 @@ struct IosCallbackSecretStore {
         ctx: *mut c_void,
         namespace: *const c_char,
         key: *const c_char,
-    ) -> *mut c_char,
+        value_out: *mut *mut c_char,
+    ) -> i32,
     delete_secret: unsafe extern "C" fn(
         ctx: *mut c_void,
         namespace: *const c_char,
@@ -248,21 +253,63 @@ impl SecureMeshSecretStore for IosCallbackSecretStore {
 
     fn get_secret(&self, handle: &SecretStoreHandle) -> Result<Option<String>> {
         let (namespace, key) = Self::c_handle_args(handle)?;
-        let value = unsafe { (self.get_secret)(self.ctx, namespace.as_ptr(), key.as_ptr()) };
-        if value.is_null() {
-            return Ok(None);
-        }
-        let text = unsafe { CStr::from_ptr(value) }
-            .to_str()
-            .context("ios secret-store returned non-UTF8 data")?
-            .to_string();
-        unsafe {
-            (self.string_free)(self.ctx, value);
-        }
-        if text.trim().is_empty() {
-            Ok(None)
-        } else {
-            Ok(Some(text))
+        let mut value = std::ptr::null_mut();
+        let status =
+            unsafe { (self.get_secret)(self.ctx, namespace.as_ptr(), key.as_ptr(), &mut value) };
+        match status {
+            IOS_SECRET_GET_FOUND => {
+                ensure!(
+                    !value.is_null(),
+                    "ios secret-store reported found without a value for {}",
+                    handle.key()
+                );
+                let text_result = unsafe { CStr::from_ptr(value) }
+                    .to_str()
+                    .context("ios secret-store returned non-UTF8 data")
+                    .map(str::to_owned);
+                unsafe {
+                    (self.string_free)(self.ctx, value);
+                }
+                let text = text_result?;
+                ensure!(
+                    !text.trim().is_empty(),
+                    "ios secret-store returned an empty value for {}",
+                    handle.key()
+                );
+                Ok(Some(text))
+            }
+            IOS_SECRET_GET_NOT_FOUND => {
+                if value.is_null() {
+                    Ok(None)
+                } else {
+                    unsafe {
+                        (self.string_free)(self.ctx, value);
+                    }
+                    Err(anyhow!(
+                        "ios secret-store reported not-found with an unexpected value for {}",
+                        handle.key()
+                    ))
+                }
+            }
+            IOS_SECRET_GET_ERROR => {
+                if !value.is_null() {
+                    unsafe {
+                        (self.string_free)(self.ctx, value);
+                    }
+                }
+                Err(anyhow!("ios secret-store read failed for {}", handle.key()))
+            }
+            unexpected => {
+                if !value.is_null() {
+                    unsafe {
+                        (self.string_free)(self.ctx, value);
+                    }
+                }
+                Err(anyhow!(
+                    "ios secret-store returned unknown read status {unexpected} for {}",
+                    handle.key()
+                ))
+            }
         }
     }
 
@@ -309,7 +356,14 @@ mod tests {
         _ctx: *mut c_void,
         namespace: *const c_char,
         key: *const c_char,
-    ) -> *mut c_char {
+        value_out: *mut *mut c_char,
+    ) -> i32 {
+        if value_out.is_null() {
+            return IOS_SECRET_GET_ERROR;
+        }
+        unsafe {
+            *value_out = std::ptr::null_mut();
+        }
         let namespace = unsafe { CStr::from_ptr(namespace) }
             .to_string_lossy()
             .to_string();
@@ -319,9 +373,26 @@ mod tests {
             .ok()
             .and_then(|store| store.get(&format!("{namespace}:{key}")).cloned())
         else {
-            return std::ptr::null_mut();
+            return IOS_SECRET_GET_NOT_FOUND;
         };
-        CString::new(secret).unwrap().into_raw()
+        unsafe {
+            *value_out = CString::new(secret).unwrap().into_raw();
+        }
+        IOS_SECRET_GET_FOUND
+    }
+
+    unsafe extern "C" fn test_get_secret_error(
+        _ctx: *mut c_void,
+        _namespace: *const c_char,
+        _key: *const c_char,
+        value_out: *mut *mut c_char,
+    ) -> i32 {
+        if !value_out.is_null() {
+            unsafe {
+                *value_out = std::ptr::null_mut();
+            }
+        }
+        IOS_SECRET_GET_ERROR
     }
 
     unsafe extern "C" fn test_delete_secret(
@@ -360,6 +431,20 @@ mod tests {
         }
     }
 
+    fn callback_table_with_get(
+        backend: &CString,
+        get_secret: unsafe extern "C" fn(
+            *mut c_void,
+            *const c_char,
+            *const c_char,
+            *mut *mut c_char,
+        ) -> i32,
+    ) -> LicoSecureMeshSecretStoreCallbacks {
+        let mut callbacks = callback_table(backend);
+        callbacks.get_secret = Some(get_secret);
+        callbacks
+    }
+
     #[test]
     fn ios_callback_secret_store_round_trips_opaque_handles() {
         test_store().lock().unwrap().clear();
@@ -387,5 +472,18 @@ mod tests {
         );
         store.delete_secret(&handle).unwrap();
         assert!(store.get_secret(&handle).unwrap().is_none());
+    }
+
+    #[test]
+    fn ios_callback_secret_store_propagates_read_errors() {
+        let backend = CString::new(IOS_SECRET_STORE_BACKEND).unwrap();
+        let callbacks = callback_table_with_get(&backend, test_get_secret_error);
+        let store = IosCallbackSecretStore::new(&callbacks).unwrap();
+        let handle =
+            SecretStoreHandle::new("mobileRelayE2ee:mobileRelayRuntime", "privateKeyBase64url")
+                .unwrap();
+
+        let error = store.get_secret(&handle).unwrap_err();
+        assert!(error.to_string().contains("ios secret-store read failed"));
     }
 }

@@ -1,0 +1,541 @@
+use super::*;
+
+mod config_documents {
+    use super::*;
+
+    #[test]
+    fn model_catalog_reads_models_from_client_config() {
+        let dir = temp_test_dir("model-catalog-config");
+        let config_path = dir.join("config.toml");
+        fs::write(
+            &config_path,
+            r#"
+model = "gpt-5.5"
+model_reasoning_effort = "high"
+
+[profiles.review]
+model = "gpt-5.4-mini"
+"#,
+        )
+        .unwrap();
+
+        let catalog = model_catalog_for_target(
+            "codex",
+            Some(&config_path),
+            &json!({"includeHistoryModelCatalog": false}),
+        );
+        let models = catalog["models"].as_array().unwrap();
+        assert!(models.iter().any(|model| {
+            model["name"] == "gpt-5.5"
+                && model["displayName"] == "GPT-5.5"
+                && model["reasoningEfforts"]
+                    .as_array()
+                    .unwrap()
+                    .contains(&json!("high"))
+        }));
+        assert!(models.iter().any(|model| {
+            model["name"] == "gpt-5.4-mini" && model["displayName"] == "GPT-5.4-Mini"
+        }));
+        let rendered = serde_json::to_string(&catalog).unwrap();
+        assert!(!rendered.contains("api_key"));
+    }
+
+    #[test]
+    fn model_catalog_reads_codex_structured_model_catalog() {
+        let home = temp_test_dir("codex-model-catalog");
+        let catalog_path = home
+            .join(".codex")
+            .join("model-catalogs")
+            .join("available.json");
+        fs::create_dir_all(catalog_path.parent().unwrap()).unwrap();
+        fs::write(
+            &catalog_path,
+            json!({
+                "models": [
+                    {
+                        "slug": "gpt-5.4",
+                        "display_name": "gpt-5.4",
+                        "supported_reasoning_levels": [
+                            {"effort": "medium"}
+                        ]
+                    },
+                    {
+                        "slug": "gpt-5.4-mini",
+                        "display_name": "GPT-5.4-Mini",
+                        "supported_reasoning_levels": [
+                            {"effort": "low"},
+                            {"effort": "medium"},
+                            {"effort": "high"},
+                            {"effort": "xhigh"}
+                        ]
+                    },
+                    {
+                        "slug": "deepseek-v4-pro",
+                        "display_name": "DeepSeek V4 Pro",
+                        "supported_reasoning_levels": [
+                            {"effort": "high"}
+                        ]
+                    },
+                    {
+                        "slug": "codex-auto-review",
+                        "display_name": "Codex Auto Review",
+                        "visibility": "hide",
+                        "supported_reasoning_levels": [
+                            {"effort": "high"}
+                        ]
+                    }
+                ]
+            })
+            .to_string(),
+        )
+        .unwrap();
+
+        let catalog = model_catalog_for_target(
+            "codex",
+            None,
+            &json!({
+                "homeDir": display_path(home),
+                "includeHistoryModelCatalog": false,
+            }),
+        );
+        let models = catalog["models"].as_array().unwrap();
+        assert!(models.iter().any(|model| {
+            model["name"] == "gpt-5.4"
+                && model["displayName"] == "GPT-5.4"
+                && model["reasoningEfforts"]
+                    .as_array()
+                    .unwrap()
+                    .contains(&json!("medium"))
+        }));
+        assert!(models.iter().any(|model| {
+            model["name"] == "gpt-5.4-mini"
+                && model["displayName"] == "GPT-5.4-Mini"
+                && model["reasoningEfforts"]
+                    .as_array()
+                    .unwrap()
+                    .contains(&json!("xhigh"))
+        }));
+        assert!(models.iter().any(|model| {
+            model["name"] == "deepseek-v4-pro"
+                && model["displayName"] == "DeepSeek V4 Pro"
+                && model["reasoningEfforts"]
+                    .as_array()
+                    .unwrap()
+                    .contains(&json!("high"))
+        }));
+        assert!(
+            !models
+                .iter()
+                .any(|model| model["name"] == "codex-auto-review")
+        );
+    }
+
+    #[test]
+    fn model_catalog_reads_claude_code_settings_models() {
+        let home = temp_test_dir("claude-code-model-catalog");
+        let settings_path = home.join(".claude").join("settings.json");
+        fs::create_dir_all(settings_path.parent().unwrap()).unwrap();
+        fs::write(
+            &settings_path,
+            json!({
+                "env": {
+                    "ANTHROPIC_MODEL": "deepseek-v4-pro[1m]",
+                    "ANTHROPIC_DEFAULT_SONNET_MODEL": "deepseek-v4-flash",
+                    "CLAUDE_CODE_SUBAGENT_MODEL": "deepseek-v4-pro",
+                    "CLAUDE_CODE_EFFORT_LEVEL": "xhigh"
+                }
+            })
+            .to_string(),
+        )
+        .unwrap();
+
+        let catalog = model_catalog_for_target(
+            "claude-code",
+            None,
+            &json!({
+                "homeDir": display_path(home),
+                "includeHistoryModelCatalog": false,
+            }),
+        );
+        let models = catalog["models"].as_array().unwrap();
+        assert!(models.iter().any(|model| {
+            model["name"] == "deepseek-v4-pro[1m]"
+                && model["reasoningEfforts"]
+                    .as_array()
+                    .unwrap()
+                    .contains(&json!("xhigh"))
+        }));
+        assert!(
+            models
+                .iter()
+                .any(|model| model["name"] == "deepseek-v4-flash")
+        );
+        assert!(
+            models
+                .iter()
+                .any(|model| model["name"] == "deepseek-v4-pro")
+        );
+    }
+}
+
+mod antigravity {
+    use super::super::antigravity::collect_model_catalog_from_cli_lines;
+    use super::*;
+
+    #[test]
+    fn model_catalog_preserves_antigravity_available_model_names() {
+        let catalog = model_catalog_for_target(
+            "antigravity",
+            None,
+            &json!({
+                "includeHistoryModelCatalog": false,
+                "antigravityAvailableModelsJson": json!({
+                    "models": {
+                        "gemini-flash-medium": {
+                            "displayName": "Gemini 3.5 Flash (Medium)"
+                        },
+                        "claude-opus-thinking": {
+                            "displayName": "Claude Opus 4.6 (Thinking)"
+                        }
+                    }
+                }).to_string()
+            }),
+        );
+
+        let names = catalog["models"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|model| model["name"].as_str().unwrap())
+            .collect::<Vec<_>>();
+        assert!(names.contains(&"Gemini 3.5 Flash (Medium)"));
+        assert!(names.contains(&"Claude Opus 4.6 (Thinking)"));
+    }
+
+    #[test]
+    fn model_catalog_reads_antigravity_cli_model_lines() {
+        let mut entries = BTreeMap::<String, ModelCatalogEntry>::new();
+        let added = collect_model_catalog_from_cli_lines(
+            r#"
+Gemini 3.5 Flash (Medium)
+Gemini 3.5 Flash (High)
+Claude Opus 4.6 (Thinking)
+"#,
+            "antigravity-cli:models",
+            &mut entries,
+        );
+
+        assert_eq!(added, 3);
+        assert!(entries.values().any(|entry| {
+            entry.name == "Gemini 3.5 Flash (Medium)" && entry.provider.is_none()
+        }));
+        assert!(entries.values().all(|entry| !entry.provider_inferred));
+    }
+}
+
+mod config_collections {
+    use super::*;
+
+    #[test]
+    fn model_collection_cache_reads_root_model_array() {
+        let dir = temp_test_dir("model-catalog-cache");
+        let cache_path = dir.join("models.json");
+        fs::write(
+            &cache_path,
+            json!([
+                {
+                    "id": "gpt-5.5",
+                    "name": "GPT-5.5",
+                    "vendor": "OpenAI"
+                },
+                {
+                    "id": "claude-sonnet-4.6",
+                    "name": "Claude Sonnet 4.6",
+                    "vendor": "Anthropic"
+                }
+            ])
+            .to_string(),
+        )
+        .unwrap();
+
+        let mut entries = BTreeMap::<String, ModelCatalogEntry>::new();
+        let mut diagnostics = Vec::<Value>::new();
+        collect_model_catalog_from_model_collection_path(
+            &cache_path,
+            "model-cache",
+            &mut entries,
+            &mut diagnostics,
+        );
+
+        assert!(diagnostics.is_empty());
+        assert!(entries.values().any(|entry| {
+            entry.name == "GPT-5.5" && entry.provider.as_deref() == Some("OpenAI")
+        }));
+        assert!(entries.values().any(|entry| {
+            entry.name == "Claude Sonnet 4.6" && entry.provider.as_deref() == Some("Anthropic")
+        }));
+    }
+}
+
+mod kilo {
+    use super::*;
+
+    #[test]
+    fn kilo_model_catalog_reads_vscode_state_and_local_db() {
+        let home = temp_test_dir("kilo-model-catalog");
+        let vscode_root = match std::env::consts::OS {
+            "windows" => default_app_data_dir(&home).join("Code"),
+            "macos" => home
+                .join("Library")
+                .join("Application Support")
+                .join("Code"),
+            _ => home.join(".config").join("Code"),
+        };
+        let vscode_state = vscode_root
+            .join("User")
+            .join("globalStorage")
+            .join("state.vscdb");
+        fs::create_dir_all(vscode_state.parent().unwrap()).unwrap();
+        let connection = Connection::open(&vscode_state).unwrap();
+        connection
+            .execute(
+                "CREATE TABLE ItemTable (key TEXT PRIMARY KEY, value TEXT)",
+                [],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO ItemTable (key, value) VALUES (?1, ?2)",
+                (
+                    "kilocode.kilo-code",
+                    json!({
+                        "recentModels": [
+                            {
+                                "providerID": "kilo",
+                                "modelID": "anthropic/claude-opus-4.6",
+                                "variant": "max"
+                            }
+                        ],
+                        "favoriteModels": [
+                            {
+                                "providerID": "kilo",
+                                "modelID": "~anthropic/claude-opus-latest"
+                            }
+                        ],
+                        "variantSelections": {
+                            "agent/code/kilo/anthropic/claude-opus-4.6": "low"
+                        }
+                    })
+                    .to_string(),
+                ),
+            )
+            .unwrap();
+        drop(connection);
+
+        let kilo_db = home
+            .join(".local")
+            .join("share")
+            .join("kilo")
+            .join("kilo.db");
+        fs::create_dir_all(kilo_db.parent().unwrap()).unwrap();
+        let connection = Connection::open(&kilo_db).unwrap();
+        connection
+            .execute(
+                "CREATE TABLE session_message (type TEXT, time_created INTEGER, data TEXT)",
+                [],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO session_message (type, time_created, data) VALUES (?1, ?2, ?3)",
+                (
+                    "model-switched",
+                    1_i64,
+                    json!({
+                        "model": {
+                            "providerID": "kilo",
+                            "id": "deepseek/deepseek-v4",
+                            "variant": "default"
+                        }
+                    })
+                    .to_string(),
+                ),
+            )
+            .unwrap();
+        drop(connection);
+
+        let catalog = model_catalog_for_target(
+            "kilo-code",
+            None,
+            &json!({
+                "homeDir": display_path(home),
+                "includeHistoryModelCatalog": false,
+            }),
+        );
+        let models = catalog["models"].as_array().unwrap();
+        assert!(models.iter().any(|model| {
+            model["name"] == "anthropic/claude-opus-4.6"
+                && model["providerId"] == "kilo"
+                && model["reasoningEfforts"]
+                    .as_array()
+                    .unwrap()
+                    .contains(&json!("max"))
+                && model["reasoningEfforts"]
+                    .as_array()
+                    .unwrap()
+                    .contains(&json!("low"))
+        }));
+        assert!(
+            models
+                .iter()
+                .any(|model| model["name"] == "~anthropic/claude-opus-latest"
+                    && model["providerId"] == "kilo")
+        );
+        assert!(
+            models
+                .iter()
+                .any(|model| model["name"] == "deepseek/deepseek-v4"
+                    && model["providerId"] == "kilo")
+        );
+    }
+}
+
+mod history {
+    use super::super::history::history_model_catalog_params;
+    use super::*;
+
+    #[test]
+    fn history_projection_forwards_only_bounded_discovery_parameters() {
+        let ignored_secret = ["must", "not", "forward"].join("-");
+        let projected = history_model_catalog_params(
+            "codex",
+            &json!({
+                "homeDir": "/bounded-home",
+                "historyRoot": "/bounded-history",
+                "historyModelCatalogLimit": 12,
+                "historyModelCatalogFileLimit": 7,
+                "secret": ignored_secret
+            }),
+        );
+
+        assert_eq!(projected["agent"], "codex");
+        assert_eq!(projected["limit"], 12);
+        assert_eq!(projected["historyModelCatalogFileLimit"], 7);
+        assert_eq!(projected["historyRoot"], "/bounded-history");
+        assert!(projected.get("secret").is_none());
+    }
+}
+
+mod normalization {
+    use super::*;
+
+    #[test]
+    fn model_normalization_rejects_unsafe_names_and_canonicalizes_known_families() {
+        assert_eq!(canonical_model_display_name("gpt-5.5-mini"), "GPT-5.5-Mini");
+        assert_eq!(
+            canonical_model_display_name("deepseek-v4-pro"),
+            "DeepSeek V4 Pro"
+        );
+        assert!(sanitize_model_name("https://example.invalid/model").is_none());
+        assert!(sanitize_model_name("$MODEL_FROM_ENV").is_none());
+        assert!(sanitize_model_name("model-with-api_key").is_none());
+    }
+}
+
+mod provider {
+    use super::*;
+
+    #[test]
+    fn provider_projection_uses_canonical_labels_without_inventing_identity() {
+        assert_eq!(
+            provider_label_from_provider_id("openai").as_deref(),
+            Some("OpenAI")
+        );
+        assert_eq!(
+            provider_label_from_provider_id("custom-provider").as_deref(),
+            Some("Custom Provider")
+        );
+        assert!(provider_label_from_provider_id("  ").is_none());
+    }
+}
+
+mod reasoning {
+    use super::*;
+
+    #[test]
+    fn reasoning_projection_collects_nested_unique_bounded_options() {
+        let efforts = reasoning_efforts_from_value(&json!({
+            "reasoning": {
+                "supportedReasoningEfforts": ["low", "high", "high"]
+            },
+                "thinking": {"thinkingLevel": "medium"}
+        }));
+
+        assert_eq!(
+            efforts.into_iter().collect::<Vec<_>>(),
+            vec!["high", "low", "medium"]
+        );
+    }
+}
+
+mod merge {
+    use super::*;
+
+    #[test]
+    fn model_merge_deduplicates_sources_and_preserves_explicit_provider() {
+        let mut entries = BTreeMap::<String, ModelCatalogEntry>::new();
+        add_model_catalog_entry_with_provider(
+            &mut entries,
+            "gpt-5.5",
+            Some("GPT-5.5"),
+            Some("openai"),
+            Some("OpenAI"),
+            "config",
+            ["high".to_string()].into_iter().collect(),
+        );
+        add_model_catalog_entry_with_provider(
+            &mut entries,
+            "gpt-5.5",
+            None,
+            Some("openai"),
+            None,
+            "history",
+            ["low".to_string()].into_iter().collect(),
+        );
+
+        let catalog = build_model_catalog(
+            entries,
+            ["config".to_string(), "history".to_string()]
+                .into_iter()
+                .collect(),
+            Vec::new(),
+        );
+        assert_eq!(catalog["models"].as_array().unwrap().len(), 1);
+        assert_eq!(catalog["models"][0]["provider"], "OpenAI");
+        assert_eq!(
+            catalog["models"][0]["sources"],
+            json!(["config", "history"])
+        );
+        assert_eq!(
+            catalog["models"][0]["reasoningEfforts"],
+            json!(["high", "low"])
+        );
+    }
+}
+
+fn display_path(path: PathBuf) -> String {
+    path.to_string_lossy().to_string()
+}
+
+fn temp_test_dir(name: &str) -> PathBuf {
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default();
+    let dir = std::env::temp_dir().join(format!(
+        "lico-target-model-catalog-{name}-{}-{}",
+        now.as_secs(),
+        now.subsec_nanos(),
+    ));
+    fs::create_dir_all(&dir).unwrap();
+    dir
+}
