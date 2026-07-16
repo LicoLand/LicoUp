@@ -23,7 +23,7 @@ void main() {
             height: size.height,
             hasKeyboard: true,
           ),
-          activeDestination: ClientSection.controlPanel,
+          activeDestination: ClientSection.agents,
           content: content,
           actions: actions,
         ),
@@ -31,15 +31,11 @@ void main() {
       await tester.pump();
 
       final semantics = tester.ensureSemantics();
-      expect(find.bySemanticsLabel('Home'), findsAtLeastNWidgets(1));
-      expect(find.bySemanticsLabel('Content Home'), findsOneWidget);
+      expect(find.bySemanticsLabel('Agents'), findsAtLeastNWidgets(1));
+      expect(find.bySemanticsLabel('Content Agents'), findsOneWidget);
 
       expect(
         find.byKey(const ValueKey<String>('studio-desktop-safari-shell')),
-        findsOneWidget,
-      );
-      expect(
-        find.byKey(const Key('safari-sidebar-nav-controlPanel')),
         findsOneWidget,
       );
       expect(
@@ -66,18 +62,18 @@ void main() {
           height: size.height,
           hasKeyboard: true,
         ),
-        activeDestination: ClientSection.controlPanel,
+        activeDestination: ClientSection.agents,
         content: content,
         actions: actions,
       ),
     );
     await tester.pump();
 
-    await tester.tap(find.byKey(const Key('safari-sidebar-nav-controlPanel')));
+    await tester.tap(find.byKey(const Key('safari-sidebar-nav-agents')));
     await tester.pump();
 
     expect(actions.destinationSelections, <ClientSection>[
-      ClientSection.controlPanel,
+      ClientSection.agents,
     ]);
   });
 
@@ -97,7 +93,7 @@ void main() {
           hasPointer: true,
           hasTouch: true,
         ),
-        activeDestination: ClientSection.controlPanel,
+        activeDestination: ClientSection.agents,
         content: content,
         actions: actions,
       ),
@@ -121,11 +117,11 @@ void main() {
     ]);
 
     await tester.tap(
-      find.byKey(const ValueKey<String>('studio-content-action-controlPanel')),
+      find.byKey(const ValueKey<String>('studio-content-action-agents')),
     );
     await tester.pump();
     expect(actions.contentActions, <(ClientSection, String)>[
-      (ClientSection.controlPanel, 'primary'),
+      (ClientSection.agents, 'primary'),
     ]);
     expect(tester.takeException(), isNull);
   });
@@ -138,26 +134,8 @@ void main() {
     final actions = StudioActionRecorder();
     final content = StudioRecordingContentPort(actions);
     final chrome = _StudioChromeRecorder(
-      LayoutChromeSnapshot(
-        status: const LayoutChromeStatusSnapshot(message: '', caption: 'Ready'),
-        allowance: LayoutChromeAllowanceSnapshot(
-          targetId: 'studio-test-agent',
-          targetLabel: 'Studio Test',
-          meters: const <LayoutChromeAllowanceMeterSnapshot>[
-            LayoutChromeAllowanceMeterSnapshot(
-              kind: 'studio-weekly-limit',
-              label: 'Studio weekly',
-              provider: 'Studio',
-              period: 'week',
-              status: 'available',
-              value: '75%',
-              unit: '',
-              message: 'Resets in 2 days.',
-            ),
-          ],
-          totalTokens: 100,
-          targetTokens: 75,
-        ),
+      const LayoutChromeSnapshot(
+        status: LayoutChromeStatusSnapshot(message: '', caption: 'Ready'),
       ),
     );
 
@@ -180,15 +158,6 @@ void main() {
       find.byKey(const ValueKey<String>('shell-status-text:Ready')),
       findsOneWidget,
     );
-    expect(
-      find.byKey(const Key('agent-allowance-meter-studio-weekly-limit')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const Key('agent-allowance-meter-value-Studio weekly')),
-      findsOneWidget,
-    );
-
     await tester.tap(find.byKey(const Key('safari-sidebar-pairing-button')));
     await tester.pump();
 

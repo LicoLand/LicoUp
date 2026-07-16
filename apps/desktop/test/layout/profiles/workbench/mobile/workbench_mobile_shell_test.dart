@@ -64,14 +64,14 @@ void main() {
           ui.Tristate.isTrue,
         );
 
-        final feedItem = find.byKey(
-          const ValueKey('workbench-mobile-compact-navigation-feed'),
+        final relayItem = find.byKey(
+          const ValueKey('workbench-mobile-compact-navigation-mobileRelay'),
         );
-        expect(tester.getSize(feedItem).height, greaterThanOrEqualTo(56));
-        await tester.tap(feedItem);
+        expect(tester.getSize(relayItem).height, greaterThanOrEqualTo(56));
+        await tester.tap(relayItem);
         await tester.pumpAndSettle();
 
-        expect(selections, [ClientSection.feed]);
+        expect(selections, [ClientSection.mobileRelay]);
         expect(tester.takeException(), isNull);
       },
     );
@@ -128,10 +128,12 @@ void main() {
       expect(focusableInk.focusColor, isNotNull);
 
       await tester.tap(
-        find.byKey(const ValueKey('workbench-mobile-medium-navigation-feed')),
+        find.byKey(
+          const ValueKey('workbench-mobile-medium-navigation-mobileRelay'),
+        ),
       );
       await tester.pump();
-      expect(selections, [ClientSection.feed]);
+      expect(selections, [ClientSection.mobileRelay]);
       expect(
         find.byKey(const ValueKey('fake-workbench-mobile-content-settings')),
         findsOneWidget,

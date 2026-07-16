@@ -44,7 +44,6 @@ void main() {
         priority: 1,
         matchedRoles: ['implementation'],
         satisfiedCapabilities: ['tool-use'],
-        allowanceHeadroom: 42,
         reason: 'selected',
       ),
       RouteCandidate(
@@ -53,7 +52,6 @@ void main() {
         priority: 2,
         matchedRoles: ['implementation'],
         satisfiedCapabilities: ['tool-use'],
-        allowanceHeadroom: 10,
         reason: 'alternative',
       ),
     ],
@@ -138,7 +136,7 @@ void main() {
       find.byKey(const Key('routing-decision-candidate-agent-a')),
       findsOneWidget,
     );
-    expect(find.textContaining('headroom 42'), findsOneWidget);
+    expect(find.textContaining('priority 1'), findsOneWidget);
     expect(find.textContaining('not_ready'), findsOneWidget);
   });
 

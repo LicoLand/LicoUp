@@ -3,17 +3,7 @@ import 'dart:collection';
 import 'layout_environment.dart';
 
 /// Canonical semantic destination identity shared by every layout.
-enum ClientSection {
-  controlPanel,
-  agents,
-  feed,
-  monitoring,
-  mcpPlugins,
-  skillHub,
-  localRuntime,
-  mobileRelay,
-  settings,
-}
+enum ClientSection { agents, monitoring, skillHub, mobileRelay, settings }
 
 final class SemanticDestinationDescriptor {
   factory SemanticDestinationDescriptor({

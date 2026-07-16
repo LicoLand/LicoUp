@@ -12,25 +12,25 @@
   "authorityEntries": [
     {
       "path": "apps/desktop/test/layout/fixtures/production_client_shell_fixture.dart",
-      "digest": "sha256:e76b728d745e29aff3e5e8589feb1f13bf650d681e0669c232073938ba7f81c2"
+      "digest": "sha256:4a41f42bc0088950012721f938cff26a66c4eb8c6f1f58d44ef4e0e0009f5808"
     },
     {
       "path": "apps/desktop/test/layout/production_baseline/production_layout_baseline_test.dart",
-      "digest": "sha256:5216cedc4988929fd33827eddfcb23bcb0213559f6828f96810011ad404976e3"
+      "digest": "sha256:0dc45c06893f14edfb43061fa028f24c9d644ff2806cb4a05c680d93454befdf"
     },
     {
       "path": "apps/desktop/test/layout/production_baseline/production_layout_switch_continuity_test.dart",
-      "digest": "sha256:8aa757eecd26cf725e239f1867b958001205931245ab2e47b773c151f5bbcf9f"
+      "digest": "sha256:9ddaf28b52fc61ec1b32eafbb4328754a56881cccd9f82bdbc17d4b0394c3522"
     }
   ],
   "entries": [
     {
       "path": "apps/desktop/lib/src/frontend/layout/profiles/bubble/mobile/bubble_mobile_bundle.dart",
-      "digest": "sha256:7017d11c99e194037e0ce45572fc10c5065853dfa269a773bfeb0956b1b6179b"
+      "digest": "sha256:5b05bb988291a48e5358bfa5442080fbdbb6f736c4b969fafef913c18eb28731"
     },
     {
       "path": "apps/desktop/lib/src/frontend/layout/profiles/bubble/mobile/bubble_mobile_components.dart",
-      "digest": "sha256:acb763e5ef6c65fc7fe9a4ad8592568511c008493fe3c676d9e9b1c0d95ecb4b"
+      "digest": "sha256:d43ae2b04716f7c0a50615d40d263861f4940a9de8ea25238f53acb911b8bef8"
     },
     {
       "path": "apps/desktop/lib/src/frontend/layout/profiles/bubble/mobile/bubble_mobile_preview.dart",
@@ -49,10 +49,6 @@
       "digest": "sha256:e60afdc7be479deda0464ad8848a113fba4174d9bf5b2037eacf61a558b8d81b"
     },
     {
-      "path": "apps/desktop/lib/src/frontend/layout/profiles/bubble/mobile/destinations/bubble_feed_destination.dart",
-      "digest": "sha256:e9a1c83a39a9888c90bdc11aadc2e148e1f0bcee65cad5f514e105a1691fbfd8"
-    },
-    {
       "path": "apps/desktop/lib/src/frontend/layout/profiles/bubble/mobile/destinations/bubble_pairing_destination.dart",
       "digest": "sha256:f42da90df8f0dc4fd8ac26dcf5f7c9a2d5212833eb45a99cc07f6cbdaaefdefc"
     },
@@ -69,16 +65,12 @@
       "digest": "sha256:9d09b8343c175e0196422b6850b114f8f256249ed953e656732097083db0f63a"
     },
     {
-      "path": "apps/desktop/test/goldens/layout/production-baseline/bubble/mobile/feed.png",
-      "digest": "sha256:e4f0b2a46992dfe6645058836b385b3b7dcbbeb0facc815b0b1abd7468f0d26f"
-    },
-    {
       "path": "apps/desktop/test/goldens/layout/production-baseline/bubble/mobile/settings.png",
       "digest": "sha256:a98f102ab24769887c65bf15435f10ad5a0204cc165d3636ea53f491b4ea870a"
     },
     {
       "path": "apps/desktop/test/layout/profiles/bubble/mobile/bubble_mobile_bundle_test.dart",
-      "digest": "sha256:b15404cacd874d7f13f71888c511aa82b367b9da97812207298c3a088d0d91ef"
+      "digest": "sha256:af17901abda03cd66e7078769cdf28a61a26b49c962b2a1ad5fc4c65aa46a31e"
     },
     {
       "path": "apps/desktop/test/layout/profiles/bubble/mobile/bubble_mobile_golden_test.dart",
@@ -86,11 +78,11 @@
     },
     {
       "path": "apps/desktop/test/layout/profiles/bubble/mobile/bubble_mobile_shell_test.dart",
-      "digest": "sha256:81f39cafe142c48f6c742eed33667e728901a4580b60614c7d997fe6ed0428eb"
+      "digest": "sha256:433aa8765bc796d0f46fe7d48341c61de127b37af713fc0b815aa3fe625fde5a"
     },
     {
       "path": "apps/desktop/test/layout/profiles/bubble/mobile/bubble_mobile_test_harness.dart",
-      "digest": "sha256:a511b022f924a4b03c3071c2ede678b65eb95cc3beef25c7951760f0563f2f8b"
+      "digest": "sha256:4c5a52132214bd2cef1bae894fc3c4bc81e468659aa30fe2760e9831c968888a"
     },
     {
       "path": "apps/desktop/test/layout/profiles/bubble/mobile/goldens/bubble_mobile_preview_dark.png",
@@ -101,5 +93,5 @@
       "digest": "sha256:c1177b2a67155516ea0b1b2ab27cdac80e5e0ef81c5f82fd54dae7e959f2fab4"
     }
   ],
-  "manifestDigest": "sha256:c83bee1e054f2a6a809489965895293f6f437be1e40356d7b4f75d7fa387122b"
+  "manifestDigest": "sha256:4fa0f92f4967d6700693db1f044bac4ec5864d188b33c56ffb4c46d022de1910"
 }

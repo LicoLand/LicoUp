@@ -13,6 +13,7 @@
 		5A1C0D001122334455667789 /* SecureMeshIosBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A1C0D001122334455667790 /* SecureMeshIosBridge.swift */; };
 		5A1C0D001122334455667793 /* SecureMeshIosBridge+SecretStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A1C0D001122334455667792 /* SecureMeshIosBridge+SecretStore.swift */; };
 		5A1C0D001122334455667795 /* SecureMeshIosBridge+LocalAuth.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A1C0D001122334455667794 /* SecureMeshIosBridge+LocalAuth.swift */; };
+		5A1C0D001122334455667797 /* LocalOnlyDataProtection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A1C0D001122334455667796 /* LocalOnlyDataProtection.swift */; };
 		74858FAF1ED2DC5600515810 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74858FAE1ED2DC5600515810 /* AppDelegate.swift */; };
 		7884E8682EC3CC0700C636F2 /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7884E8672EC3CC0400C636F2 /* SceneDelegate.swift */; };
 		78A318202AECB46A00862997 /* FlutterGeneratedPluginSwiftPackage in Frameworks */ = {isa = PBXBuildFile; productRef = 78A3181F2AECB46A00862997 /* FlutterGeneratedPluginSwiftPackage */; };
@@ -50,6 +51,7 @@
 		5A1C0D001122334455667790 /* SecureMeshIosBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SecureMeshIosBridge.swift; sourceTree = "<group>"; };
 		5A1C0D001122334455667792 /* SecureMeshIosBridge+SecretStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SecureMeshIosBridge+SecretStore.swift"; sourceTree = "<group>"; };
 		5A1C0D001122334455667794 /* SecureMeshIosBridge+LocalAuth.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SecureMeshIosBridge+LocalAuth.swift"; sourceTree = "<group>"; };
+		5A1C0D001122334455667796 /* LocalOnlyDataProtection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalOnlyDataProtection.swift; sourceTree = "<group>"; };
 		74858FAD1ED2DC5600515810 /* Runner-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "Runner-Bridging-Header.h"; sourceTree = "<group>"; };
 		74858FAE1ED2DC5600515810 /* AppDelegate.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		7884E8672EC3CC0400C636F2 /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
@@ -129,6 +131,7 @@
 				5A1C0D001122334455667790 /* SecureMeshIosBridge.swift */,
 				5A1C0D001122334455667792 /* SecureMeshIosBridge+SecretStore.swift */,
 				5A1C0D001122334455667794 /* SecureMeshIosBridge+LocalAuth.swift */,
+				5A1C0D001122334455667796 /* LocalOnlyDataProtection.swift */,
 				74858FAD1ED2DC5600515810 /* Runner-Bridging-Header.h */,
 			);
 			path = Runner;
@@ -290,6 +293,7 @@
 				5A1C0D001122334455667789 /* SecureMeshIosBridge.swift in Sources */,
 				5A1C0D001122334455667793 /* SecureMeshIosBridge+SecretStore.swift in Sources */,
 				5A1C0D001122334455667795 /* SecureMeshIosBridge+LocalAuth.swift in Sources */,
+				5A1C0D001122334455667797 /* LocalOnlyDataProtection.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

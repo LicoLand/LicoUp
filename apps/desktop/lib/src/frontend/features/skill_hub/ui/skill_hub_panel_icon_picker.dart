@@ -1,4 +1,10 @@
-part of 'package:flutter_client/src/frontend/features/skill_hub/ui/skill_hub_panel.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
+
+import 'package:flutter_client/src/application/controller/client_controller.dart';
+import 'package:flutter_client/src/application/features/skill_hub/models/skill_category_catalog.dart';
+import 'package:flutter_client/src/frontend/l10n/lico_strings.dart';
+import 'package:flutter_client/src/frontend/shared/ui/theme.dart';
 
 const _skillIconColorTokens = <String>[
   'primary',

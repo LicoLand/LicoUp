@@ -1,7 +1,14 @@
-part of 'package:flutter_client/src/frontend/features/skill_hub/ui/skill_hub_panel.dart';
+import 'package:flutter/material.dart';
 
-class _SkillCategoryFilter extends StatelessWidget {
-  const _SkillCategoryFilter({
+import 'package:flutter_client/src/application/controller/client_controller.dart';
+import 'package:flutter_client/src/application/features/skill_hub/models/skill_agent_compatibility.dart';
+import 'package:flutter_client/src/frontend/features/skill_hub/ui/skill_hub_panel_card_support.dart';
+import 'package:flutter_client/src/frontend/l10n/lico_strings.dart';
+import 'package:flutter_client/src/frontend/shared/ui/theme.dart';
+
+class SkillCategoryFilter extends StatelessWidget {
+  const SkillCategoryFilter({
+    super.key,
     required this.selectedCategory,
     required this.onChanged,
   });
@@ -85,8 +92,9 @@ class _SkillCategoryChip extends StatelessWidget {
   }
 }
 
-class _SkillCollection extends StatelessWidget {
-  const _SkillCollection({
+class SkillCollection extends StatelessWidget {
+  const SkillCollection({
+    super.key,
     required this.controller,
     required this.selectedCategory,
   });
@@ -106,13 +114,13 @@ class _SkillCollection extends StatelessWidget {
     if (controller.isSkillHubBusy && skills.isEmpty) {
       return const SliverFillRemaining(
         hasScrollBody: false,
-        child: _SkillScanningPlaceholder(),
+        child: SkillScanningPlaceholder(),
       );
     }
     if (skills.isEmpty) {
       return const SliverFillRemaining(
         hasScrollBody: false,
-        child: _SkillEmptyPlaceholder(),
+        child: SkillEmptyPlaceholder(),
       );
     }
 
@@ -186,7 +194,7 @@ class _SkillCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _SkillCardHeader(
+                    SkillCardHeader(
                       controller: controller,
                       skillId: skillId,
                       title: title,
@@ -237,7 +245,7 @@ class _SkillCard extends StatelessWidget {
                 ),
               ),
             ),
-            _SkillCardFooter(
+            SkillCardFooter(
               controller: controller,
               loaderAgentIds: loaderAgentIds,
               version: version,

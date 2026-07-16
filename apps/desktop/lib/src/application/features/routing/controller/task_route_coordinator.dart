@@ -9,13 +9,14 @@ import 'package:flutter_client/src/contracts/routing/distillation_package.dart';
 import 'package:flutter_client/src/contracts/routing/route_decision_record.dart';
 import 'package:flutter_client/src/contracts/routing/route_history.dart';
 import 'package:flutter_client/src/contracts/routing/routing_policy_schema.dart';
+import 'package:flutter_client/src/contracts/routing/task_route_coordinator_port.dart';
 
 /// Coordinates mid-task re-routing with distilled handoffs (REQ-MAR-004).
 ///
 /// Owns no routing logic itself — sequences [RoutePlanner] and
 /// [DistillationBroker] through their interfaces. Switch evaluation is
 /// event-driven at message boundaries; in-flight streams are never interrupted.
-class TaskRouteCoordinator {
+class TaskRouteCoordinator implements TaskRouteCoordinatorPort {
   TaskRouteCoordinator({
     required RouteHistoryStore historyStore,
     required ProtectedRouteSessionBindingStore sessionBindingStore,
@@ -41,6 +42,7 @@ class TaskRouteCoordinator {
 
   RouteHistoryStore get history => _history;
 
+  @override
   TaskRouteSession? sessionFor(String taskId) {
     final current = _sessions[taskId];
     if (current != null) {
@@ -61,6 +63,7 @@ class TaskRouteCoordinator {
   }
 
   /// Exact native continuation for one task/agent branch, if previously bound.
+  @override
   String resumeSessionIdForAgent({
     required String taskId,
     required String agentId,
@@ -71,6 +74,7 @@ class TaskRouteCoordinator {
         '';
   }
 
+  @override
   TaskRouteSession bindSession({
     required String taskId,
     required String agentId,
@@ -94,6 +98,7 @@ class TaskRouteCoordinator {
 
   /// Record the authoritative session returned by the unified dispatch lane.
   /// Preserves switch timing and stream state for an already-bound task.
+  @override
   TaskRouteSession recordDispatchSession({
     required String taskId,
     required String agentId,
@@ -126,6 +131,7 @@ class TaskRouteCoordinator {
   }
 
   /// Mark whether a task currently has an in-flight streamed message.
+  @override
   void setStreaming(String taskId, bool streaming) {
     final current = _sessions[taskId];
     if (current == null) {
@@ -135,11 +141,13 @@ class TaskRouteCoordinator {
   }
 
   /// Queue a policy snapshot that arrived during distillation.
+  @override
   void queuePolicy(RoutingPolicyDocument policy) {
     _pendingPolicy = policy;
     _policyQueued = true;
   }
 
+  @override
   RoutingPolicyDocument? takeQueuedPolicy() {
     if (!_policyQueued) {
       return null;
@@ -150,12 +158,14 @@ class TaskRouteCoordinator {
     return policy;
   }
 
+  @override
   bool get hasQueuedPolicy => _policyQueued;
 
   /// Evaluate a switch at a message boundary.
   ///
   /// Returns [TaskRouteSwitchSkipped] when the route is unchanged, streaming
   /// is active, or the minimum switch interval has not elapsed.
+  @override
   Future<TaskRouteSwitchResult> evaluateAtMessageBoundary({
     required String taskId,
     required RoutingPolicyDocument policy,
@@ -163,13 +173,7 @@ class TaskRouteCoordinator {
     required RoutingTaskMetadata task,
     required List<DistillationConversationTurn> turns,
     required DispatchLaneSend send,
-    required Future<String> Function({
-      required String agentId,
-      required DistillationPackage package,
-      required String sourceSessionId,
-      required String resumeSessionId,
-    })
-    openTargetSession,
+    required OpenTargetRouteSession openTargetSession,
     String switchReason = 'message-boundary',
     bool Function(String agentId)? isDistillerReady,
   }) async {
@@ -350,6 +354,7 @@ class TaskRouteCoordinator {
   }
 
   /// Whether the source session remains addressable after a switch.
+  @override
   bool isSessionResumable({required String taskId, required String sessionId}) {
     return _sessionBindings.containsNativeSession(
       taskId: taskId,

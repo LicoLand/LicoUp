@@ -1,13 +1,16 @@
 import 'package:flutter_client/src/contracts/target_candidate.dart';
+import 'package:flutter_client/src/contracts/target_management.dart';
 import 'package:flutter_client/src/platform/mobile_relay/mobile_relay_json_store.dart';
 
 /// Persists the last successful local agent discovery snapshot so the Agents
 /// sidebar can paint immediately on the next launch without waiting for scan.
-abstract class ScannedTargetsCacheStore {
+abstract class ScannedTargetsCacheStore implements TargetSnapshotRepository {
   const ScannedTargetsCacheStore();
 
+  @override
   Future<List<TargetCandidate>> load(Object portableData);
 
+  @override
   Future<void> save(Object portableData, List<TargetCandidate> targets);
 }
 

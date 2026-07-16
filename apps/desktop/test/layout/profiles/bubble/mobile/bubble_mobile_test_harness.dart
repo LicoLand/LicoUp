@@ -15,7 +15,6 @@ import '../../../fixtures/layout_scoped_state_fixture.dart';
 
 const bubbleMobileDestinations = <ClientSection>{
   ClientSection.agents,
-  ClientSection.feed,
   ClientSection.mobileRelay,
   ClientSection.settings,
 };
@@ -48,7 +47,6 @@ LayoutEnvironment bubbleMobileEnvironment({
 String bubbleDestinationLabel(ClientSection destination) {
   return switch (destination) {
     ClientSection.agents => 'Agents',
-    ClientSection.feed => 'Feed',
     ClientSection.mobileRelay => 'Mobile Relay',
     ClientSection.settings => 'Settings',
     _ => throw const FormatException(

@@ -8,7 +8,6 @@ import 'package:flutter_client/src/frontend/l10n/lico_strings.dart';
 import 'package:flutter_client/src/frontend/layout/layout_chrome_port.dart';
 import 'package:flutter_client/src/frontend/layout/layout_palette.dart';
 import 'package:flutter_client/src/frontend/layout/profiles/bubble/desktop/chrome/bubble_desktop_glass.dart';
-import 'package:flutter_client/src/frontend/layout/profiles/bubble/desktop/presentation/bubble_chrome_allowance_presentation.dart';
 
 const double _railWidth = 64;
 const double _railIconSize = 20;
@@ -127,7 +126,7 @@ final class BubbleDesktopContentTopBar extends StatelessWidget {
   }
 }
 
-/// Bubble-owned status and allowance chrome driven by a semantic port.
+/// Bubble-owned status chrome driven by a semantic port.
 final class BubbleDesktopStatusBar extends StatelessWidget {
   const BubbleDesktopStatusBar({super.key, required this.chrome});
 
@@ -138,7 +137,7 @@ final class BubbleDesktopStatusBar extends StatelessWidget {
     return ValueListenableBuilder<LayoutChromeSnapshot>(
       valueListenable: chrome,
       builder: (context, snapshot, _) {
-        if (snapshot.status.displayText.isEmpty && snapshot.allowance == null) {
+        if (snapshot.status.displayText.isEmpty) {
           return const SizedBox.shrink();
         }
         return _BubbleStatusSnapshotBar(snapshot: snapshot);
@@ -291,14 +290,11 @@ final class _BubbleSidebarSearchState extends State<_BubbleSidebarSearch> {
   List<_SearchItem> _items(LicoStrings strings) {
     return [
       for (final section in ClientSection.values)
-        if (section != ClientSection.skillHub &&
-            section != ClientSection.localRuntime &&
-            section != ClientSection.mobileRelay)
-          _SearchItem(
-            section: section,
-            label: _sectionTitle(strings, section),
-            aliases: _sectionSearchAliases(section),
-          ),
+        _SearchItem(
+          section: section,
+          label: _sectionTitle(strings, section),
+          aliases: _sectionSearchAliases(section),
+        ),
     ];
   }
 
@@ -492,10 +488,6 @@ final class _BubbleStatusSnapshotBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = context.layoutPalette;
-    final allowance = presentLayoutChromeAllowance(
-      snapshot.allowance,
-      LicoStrings.of(context),
-    );
     final statusText = snapshot.status.displayText;
     return Container(
       height: 30,
@@ -551,182 +543,21 @@ final class _BubbleStatusSnapshotBar extends StatelessWidget {
               ),
             ),
           ),
-          if (allowance != null) ...[
-            const SizedBox(width: 12),
-            _AllowanceMeterGroup(presentation: allowance),
-          ],
         ],
       ),
     );
   }
 }
-
-final class _AllowanceMeterGroup extends StatelessWidget {
-  const _AllowanceMeterGroup({required this.presentation});
-
-  final LayoutChromeAllowancePresentation presentation;
-
-  @override
-  Widget build(BuildContext context) {
-    return Tooltip(
-      message: presentation.tooltip,
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          for (var index = 0; index < presentation.meters.length; index++) ...[
-            if (index > 0) const SizedBox(width: 10),
-            _AllowanceMeter(
-              key: Key(
-                'agent-allowance-meter-${presentation.meters[index].semanticId}',
-              ),
-              meter: presentation.meters[index],
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-final class _AllowanceMeter extends StatelessWidget {
-  const _AllowanceMeter({super.key, required this.meter});
-
-  final LayoutChromeAllowanceMeterPresentation meter;
-
-  @override
-  Widget build(BuildContext context) {
-    final palette = context.layoutPalette;
-    final progress = meter.progress?.clamp(0.0, 1.0);
-    return SizedBox(
-      height: 20,
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Text(
-            meter.label,
-            maxLines: 1,
-            style: TextStyle(
-              color: palette.textMuted,
-              fontWeight: FontWeight.w800,
-              fontSize: 10,
-            ),
-          ),
-          const SizedBox(width: 6),
-          if (meter.showProgress) ...[
-            SizedBox(
-              width: 54,
-              child: _AllowanceProgressTrack(
-                key: Key('agent-allowance-progress-track-${meter.label}'),
-                progress: progress,
-                fillColor: _toneColor(
-                  meter.progressTone,
-                  palette,
-                  mutedPrimary: true,
-                ),
-              ),
-            ),
-            const SizedBox(width: 6),
-          ],
-          Text(
-            meter.valueText,
-            key: Key('agent-allowance-meter-value-${meter.label}'),
-            maxLines: 1,
-            textAlign: TextAlign.right,
-            style: TextStyle(
-              color: _allowanceValueColor(meter, palette),
-              fontWeight: FontWeight.w700,
-              fontSize: 11,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-final class _AllowanceProgressTrack extends StatelessWidget {
-  const _AllowanceProgressTrack({
-    super.key,
-    required this.progress,
-    required this.fillColor,
-  });
-
-  final double? progress;
-  final Color fillColor;
-
-  @override
-  Widget build(BuildContext context) {
-    final palette = context.layoutPalette;
-    final normalizedProgress = progress?.clamp(0.0, 1.0) ?? 0;
-    return SizedBox(
-      height: 7,
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          DecoratedBox(
-            decoration: BoxDecoration(
-              color: palette.surfaceHigh,
-              borderRadius: BorderRadius.circular(999),
-            ),
-          ),
-          if (normalizedProgress > 0)
-            FractionallySizedBox(
-              widthFactor: normalizedProgress,
-              alignment: Alignment.centerLeft,
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  color: fillColor,
-                  borderRadius: BorderRadius.circular(999),
-                ),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-Color _allowanceValueColor(
-  LayoutChromeAllowanceMeterPresentation meter,
-  LayoutPalette palette,
-) {
-  if (meter.valueTone == LayoutChromeStatusTone.neutral) {
-    return meter.status.trim().toLowerCase() == 'unavailable'
-        ? palette.textMuted
-        : palette.text;
-  }
-  return _toneColor(meter.valueTone, palette);
-}
-
-Color _toneColor(
-  LayoutChromeStatusTone tone,
-  LayoutPalette palette, {
-  bool mutedPrimary = false,
-}) => switch (tone) {
-  LayoutChromeStatusTone.neutral => palette.textMuted,
-  LayoutChromeStatusTone.primaryMuted =>
-    mutedPrimary ? palette.primary.withAlpha(120) : palette.primary,
-  LayoutChromeStatusTone.info => palette.info,
-  LayoutChromeStatusTone.success => palette.success,
-  LayoutChromeStatusTone.warning => palette.warning,
-  LayoutChromeStatusTone.error => palette.error,
-};
 
 List<(ClientSection, String)> _desktopNavItems(LicoStrings strings) => [
-  (ClientSection.controlPanel, strings.controlPanel),
   (ClientSection.agents, strings.agents),
 ];
 
 String _sectionTitle(LicoStrings strings, ClientSection section) {
   return switch (section) {
-    ClientSection.controlPanel => strings.controlPanel,
     ClientSection.agents => strings.agents,
-    ClientSection.feed => strings.feed,
     ClientSection.monitoring => strings.tokenUsage,
-    ClientSection.mcpPlugins => strings.extensionsHub,
     ClientSection.skillHub => strings.skillHub,
-    ClientSection.localRuntime => strings.runtime,
     ClientSection.mobileRelay => strings.mobileRelay,
     ClientSection.settings => strings.settings,
   };
@@ -734,13 +565,9 @@ String _sectionTitle(LicoStrings strings, ClientSection section) {
 
 IconData _sectionIcon(ClientSection section) {
   return switch (section) {
-    ClientSection.controlPanel => Icons.dashboard_outlined,
     ClientSection.agents => Icons.psychology_outlined,
-    ClientSection.feed => Icons.dynamic_feed_outlined,
     ClientSection.monitoring => Icons.query_stats_outlined,
-    ClientSection.mcpPlugins => Icons.extension_outlined,
     ClientSection.skillHub => Icons.library_books_outlined,
-    ClientSection.localRuntime => Icons.dns_outlined,
     ClientSection.mobileRelay => Icons.phonelink_outlined,
     ClientSection.settings => Icons.settings_outlined,
   };
@@ -748,20 +575,7 @@ IconData _sectionIcon(ClientSection section) {
 
 List<String> _sectionSearchAliases(ClientSection section) {
   return switch (section) {
-    ClientSection.controlPanel => [
-      'control',
-      'panel',
-      'dashboard',
-      'home',
-      'feed',
-      'timeline',
-      '控制面板',
-      '动态',
-      '主页',
-      '广场',
-    ],
     ClientSection.agents => ['agent', 'chat', '智能体', '对话'],
-    ClientSection.feed => ['feed', 'timeline', '广场', '动态'],
     ClientSection.monitoring => [
       'token',
       'usage',
@@ -771,18 +585,7 @@ List<String> _sectionSearchAliases(ClientSection section) {
       '统计',
       '图表',
     ],
-    ClientSection.mcpPlugins => [
-      'mcp',
-      'plugin',
-      '插件',
-      'skill',
-      'hub',
-      '技能',
-      'extensions',
-      '扩展',
-    ],
     ClientSection.skillHub => ['skill', 'hub', '技能'],
-    ClientSection.localRuntime => ['runtime', 'server', '运行时'],
     ClientSection.mobileRelay => ['mobile', 'relay', 'pair', '配对'],
     ClientSection.settings => ['setting', 'preference', '设置'],
   };

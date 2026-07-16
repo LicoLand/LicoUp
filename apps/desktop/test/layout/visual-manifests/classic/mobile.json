@@ -13,21 +13,21 @@
   "authorityEntries": [
     {
       "path": "apps/desktop/test/layout/fixtures/production_client_shell_fixture.dart",
-      "digest": "sha256:e76b728d745e29aff3e5e8589feb1f13bf650d681e0669c232073938ba7f81c2"
+      "digest": "sha256:4a41f42bc0088950012721f938cff26a66c4eb8c6f1f58d44ef4e0e0009f5808"
     },
     {
       "path": "apps/desktop/test/layout/production_baseline/production_layout_baseline_test.dart",
-      "digest": "sha256:5216cedc4988929fd33827eddfcb23bcb0213559f6828f96810011ad404976e3"
+      "digest": "sha256:0dc45c06893f14edfb43061fa028f24c9d644ff2806cb4a05c680d93454befdf"
     },
     {
       "path": "apps/desktop/test/layout/production_baseline/production_layout_switch_continuity_test.dart",
-      "digest": "sha256:8aa757eecd26cf725e239f1867b958001205931245ab2e47b773c151f5bbcf9f"
+      "digest": "sha256:9ddaf28b52fc61ec1b32eafbb4328754a56881cccd9f82bdbc17d4b0394c3522"
     }
   ],
   "entries": [
     {
       "path": "apps/desktop/lib/src/frontend/layout/profiles/classic/mobile/classic_mobile_bundle.dart",
-      "digest": "sha256:e8d81727f4fecb6cf61cb13e6b1fa8f780aaeb92b24476f872727add73755c60"
+      "digest": "sha256:387d662bad489a54a55c9dad1910e81849fc431dada366c211804c144af28712"
     },
     {
       "path": "apps/desktop/lib/src/frontend/layout/profiles/classic/mobile/classic_mobile_components.dart",
@@ -39,7 +39,7 @@
     },
     {
       "path": "apps/desktop/lib/src/frontend/layout/profiles/classic/mobile/classic_mobile_shell.dart",
-      "digest": "sha256:13357f09e987b8bff377e45e15432cc6c8146c15ef21179f2a142e16492b77d3"
+      "digest": "sha256:bd457fbd2da7d2e4ba11cb93b2f90433504e6d9a56a5003729a92669f1289792"
     },
     {
       "path": "apps/desktop/lib/src/frontend/layout/profiles/classic/mobile/classic_mobile_tokens.dart",
@@ -47,11 +47,7 @@
     },
     {
       "path": "apps/desktop/lib/src/frontend/layout/profiles/classic/mobile/destinations/classic_agents_destination.dart",
-      "digest": "sha256:48dd619c8765c990f51767074c0ea967b194ce3752670ebeb513d8a5ac613567"
-    },
-    {
-      "path": "apps/desktop/lib/src/frontend/layout/profiles/classic/mobile/destinations/classic_feed_destination.dart",
-      "digest": "sha256:812d1af907dd420cebf3c11d765c1d26f727ba9712ea5edfbeeb95766f437fb2"
+      "digest": "sha256:3d7f695e5cbaca1f2eae2263103e1e0d3ba6e6a4984924ebe6c6e7a7443d85dd"
     },
     {
       "path": "apps/desktop/lib/src/frontend/layout/profiles/classic/mobile/destinations/classic_mobile_agents_presentation.dart",
@@ -67,7 +63,7 @@
     },
     {
       "path": "apps/desktop/lib/src/frontend/layout/profiles/classic/mobile/destinations/classic_settings_destination.dart",
-      "digest": "sha256:1c415d8abaad91cccb483a0b54b3a67b7d1768298dbde98a7f97d81fb423afaf"
+      "digest": "sha256:17040e97b56ed84147a4289622219fecf991587b37d40fc7adb595672724d9d0"
     },
     {
       "path": "apps/desktop/test/goldens/layout/classic/mobile/classic-compact-light.png",
@@ -90,16 +86,12 @@
       "digest": "sha256:e14fb02d3e5045906a852c41ac8cf2bb0641c181a3d597d8b5bcb26f23e07447"
     },
     {
-      "path": "apps/desktop/test/goldens/layout/production-baseline/classic/mobile/feed.png",
-      "digest": "sha256:5087cb8459cc6798e5fb80bc1ba29f591a7420ea48f9b0ad470dcbb487e8984e"
-    },
-    {
       "path": "apps/desktop/test/goldens/layout/production-baseline/classic/mobile/settings.png",
       "digest": "sha256:10b9c62b4a288e026fc671c7a1e1c055eec3229258983b91df5e187cfdd30478"
     },
     {
       "path": "apps/desktop/test/layout/profiles/classic/mobile/classic_mobile_bundle_test.dart",
-      "digest": "sha256:a80fcf560deb9d5b9d65b7b4f2f8f457e317aa6a1b238df07933d6f7db654cda"
+      "digest": "sha256:aa3d30ef0071d67a11162affcc92df47f8fc659699562b6776d97c297e2a7732"
     },
     {
       "path": "apps/desktop/test/layout/profiles/classic/mobile/classic_mobile_golden_test.dart",
@@ -107,12 +99,12 @@
     },
     {
       "path": "apps/desktop/test/layout/profiles/classic/mobile/classic_mobile_shell_test.dart",
-      "digest": "sha256:176c5cf8e314c23afb9bc44cf5e9127dad626728db7879efe1f5477e9335d3d4"
+      "digest": "sha256:80bb4a3c9bcd5c1718beb66ced11b60768a90f69a50a888fc0d373af24ade2c6"
     },
     {
       "path": "apps/desktop/test/layout/profiles/classic/mobile/classic_mobile_test_harness.dart",
-      "digest": "sha256:6f5cf153463d22825f23edf4ae0b00c7524efb42e0f9f0488faf8c5c7276d916"
+      "digest": "sha256:049cda261bd8f0c650e2232bd4c5bcf862c2983c91e7fea118c23e3c64673a5e"
     }
   ],
-  "manifestDigest": "sha256:3e296453adceb8a7f9d853aa9a7a2675c0196af186fbd849816516b13e75ea7e"
+  "manifestDigest": "sha256:0dcd068dc249af44457afe0ef19731af28651e8fd0cc73c8205848397ef5b7b5"
 }

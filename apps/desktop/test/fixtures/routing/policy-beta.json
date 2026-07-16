@@ -18,8 +18,7 @@
   ],
   "routing": {
     "strategy": "priority-fallback",
-    "matchMode": "role-first",
-    "allowStaleUsage": false
+    "matchMode": "role-first"
   },
   "distillation": {
     "defaultDistiller": "codex",

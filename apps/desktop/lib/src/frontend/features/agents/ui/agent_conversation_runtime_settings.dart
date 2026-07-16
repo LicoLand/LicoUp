@@ -1,7 +1,11 @@
-part of 'package:flutter_client/src/frontend/features/agents/ui/agent_conversation_workspace.dart';
+import 'package:flutter/material.dart';
 
-class _ConversationRuntimeSettingsBar extends StatelessWidget {
-  const _ConversationRuntimeSettingsBar({
+import 'package:flutter_client/src/frontend/l10n/lico_strings.dart';
+import 'package:flutter_client/src/frontend/shared/ui/apple_popup_select.dart';
+
+class ConversationRuntimeSettingsBar extends StatelessWidget {
+  const ConversationRuntimeSettingsBar({
+    super.key,
     required this.enabled,
     required this.modelOptions,
     required this.selectedModel,

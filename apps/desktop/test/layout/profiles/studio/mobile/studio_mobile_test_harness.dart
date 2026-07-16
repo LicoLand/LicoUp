@@ -15,7 +15,6 @@ import 'studio_mobile_palette_fixture.dart';
 
 const studioMobileDestinations = <ClientSection>{
   ClientSection.agents,
-  ClientSection.feed,
   ClientSection.mobileRelay,
   ClientSection.settings,
 };
@@ -48,7 +47,6 @@ LayoutEnvironment studioMobileEnvironment({
 String studioDestinationLabel(ClientSection destination) {
   return switch (destination) {
     ClientSection.agents => 'Agents',
-    ClientSection.feed => 'Feed',
     ClientSection.mobileRelay => 'Mobile Relay',
     ClientSection.settings => 'Settings',
     _ => throw const FormatException(

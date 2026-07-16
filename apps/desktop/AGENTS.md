@@ -21,7 +21,8 @@
 ## First Reads
 
 - Start with root `AGENTS.md`, then this file.
-- Read `apps/desktop/README.md` for local setup and product boundary.
+- Read `README.md` for local setup and `docs/ARCHITECTURE.md` for the product
+  boundary.
 - Inspect `apps/desktop/pubspec.yaml` before changing dependencies.
 - Use `apps/desktop/lib/main.dart` and `apps/desktop/lib/app.dart` to enter the app
   tree, then open only the relevant feature files.
@@ -31,13 +32,16 @@
 - `lib/`: Flutter application code.
 - `test/`: widget, service, state, and contract tests.
 - `scripts/`: packaging and client architecture verifiers.
-- Platform folders (`macos/`, `windows/`, `linux/`) are only for native shell,
-  packaging, or platform-specific behavior.
+- Platform folders (`macos/`, `windows/`, `linux/`, `android/`, `ios/`) are only
+  for native shell, packaging, or platform-specific behavior.
 
 ## Verification
 
 - Use `npm run client:analyze` for Flutter static analysis.
-- Use `npm run client:test` for Flutter tests.
+- Use `npm run client:regression -- --module <module-id>` for the smallest
+  affected Flutter slice.
+- Use `npm run client:test` once after targeted checks when a complete Flutter
+  regression is required.
 - Use `npm run client:test:coverage` when LCOV output is needed; the report is
   written to `build/coverage/apps/desktop/lcov.info`.
 - Use `npm run client:verify:architecture` when architecture rules or module

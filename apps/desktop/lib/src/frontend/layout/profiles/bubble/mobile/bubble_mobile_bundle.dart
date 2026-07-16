@@ -4,7 +4,6 @@ import 'package:flutter_client/src/contracts/presentation/layout_state_namespace
 import 'package:flutter_client/src/contracts/presentation/semantic_destination.dart';
 import 'package:flutter_client/src/frontend/layout/layout_surface_bundle.dart';
 import 'package:flutter_client/src/frontend/layout/profiles/bubble/mobile/destinations/bubble_agents_destination.dart';
-import 'package:flutter_client/src/frontend/layout/profiles/bubble/mobile/destinations/bubble_feed_destination.dart';
 import 'package:flutter_client/src/frontend/layout/profiles/bubble/mobile/destinations/bubble_pairing_destination.dart';
 import 'package:flutter_client/src/frontend/layout/profiles/bubble/mobile/destinations/bubble_settings_destination.dart';
 import 'package:flutter_client/src/frontend/layout/profiles/bubble/mobile/bubble_mobile_components.dart';
@@ -52,7 +51,6 @@ final LayoutProfileDescriptor _bubbleProfile = LayoutProfileDescriptor(
 final Map<ClientSection, LayoutDestinationBuilder>
 _bubbleMobileDestinationBuilders = {
   ClientSection.agents: buildBubbleMobileAgentsDestination,
-  ClientSection.feed: buildBubbleMobileFeedDestination,
   ClientSection.mobileRelay: buildBubbleMobilePairingDestination,
   ClientSection.settings: buildBubbleMobileSettingsDestination,
 };

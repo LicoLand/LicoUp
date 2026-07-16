@@ -5,7 +5,6 @@ import 'package:flutter_client/src/frontend/layout/layout_surface_bundle.dart';
 
 const List<ClientSection> workbenchMobileTestDestinations = [
   ClientSection.agents,
-  ClientSection.feed,
   ClientSection.mobileRelay,
   ClientSection.settings,
 ];
@@ -13,7 +12,6 @@ const List<ClientSection> workbenchMobileTestDestinations = [
 String workbenchMobileTestLabel(ClientSection destination) =>
     switch (destination) {
       ClientSection.agents => 'Agents',
-      ClientSection.feed => 'Feed',
       ClientSection.mobileRelay => 'Pairing',
       ClientSection.settings => 'Settings',
       _ => destination.name,

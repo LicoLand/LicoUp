@@ -1,6 +1,5 @@
 import 'package:flutter_client/src/application/features/routing/engine/route_evaluator.dart';
 import 'package:flutter_client/src/application/features/routing/engine/route_planner.dart';
-import 'package:flutter_client/src/contracts/agent_usage_models.dart';
 import 'package:flutter_client/src/contracts/routing/route_decision_record.dart';
 import 'package:flutter_client/src/contracts/routing/routing_dispatch_plan.dart';
 import 'package:flutter_client/src/contracts/routing/routing_policy_schema.dart';
@@ -10,8 +9,6 @@ RoutingDispatchPlan planRoutingDispatch({
   required Iterable<TargetCandidate> targets,
   required RoutingPolicyDocument policy,
   RoutingTaskMetadata task = const RoutingTaskMetadata(),
-  AgentUsageReport? usageReport,
-  Map<String, List<AgentUsageAllowance>> allowanceOverrides = const {},
   Map<String, RoutingCircuitBreakerState> circuitBreakerStates = const {},
   RoutePlanner planner = const DefaultRoutePlanner(),
   RouteEvaluator evaluator = const RouteEvaluator(),
@@ -19,8 +16,6 @@ RoutingDispatchPlan planRoutingDispatch({
 }) {
   final signals = evaluator.evaluate(
     targets: targets,
-    usageReport: usageReport,
-    allowanceOverrides: allowanceOverrides,
     circuitBreakerStates: circuitBreakerStates,
     now: now,
   );
@@ -56,9 +51,7 @@ RoutingDispatchPlan planRoutingDispatch({
         agentId: exclusion.agentId,
         agentLabel: exclusion.agentLabel,
         reason: exclusion.reason,
-        circuitBroken:
-            exclusion.reason == RouteReasonCode.circuitBroken ||
-            exclusion.reason == RouteReasonCode.allowanceExhausted,
+        circuitBroken: exclusion.reason == RouteReasonCode.circuitBroken,
       ),
   ];
   return RoutingDispatchPlan(

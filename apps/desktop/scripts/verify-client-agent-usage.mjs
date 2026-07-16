@@ -13,6 +13,12 @@ function assert(condition, message) {
   if (!condition) failures.push(message);
 }
 
+function assertIncludes(source, tokens, label) {
+  for (const token of tokens) {
+    assert(source.includes(token), `${label} must include ${token}`);
+  }
+}
+
 async function readText(relativePath) {
   return fs.readFile(path.join(repoRoot, relativePath), "utf8");
 }
@@ -21,226 +27,296 @@ async function readJoinedText(relativePaths) {
   return (await Promise.all(relativePaths.map((relativePath) => readText(relativePath)))).join("\n");
 }
 
-const nativeUsage = await readText("crates/lico-client-native/src/domain/agent_usage.rs");
-const codexUsageCache = await readText(
-  "crates/lico-client-native/src/domain/agent_usage/agent_usage_codex.rs"
-);
+const nativeUsage = await readJoinedText([
+  "crates/lico-client-native/src/domain/agent_usage.rs",
+  "crates/lico-client-native/src/domain/agent_usage/attribution.rs",
+  "crates/lico-client-native/src/domain/agent_usage/command.rs",
+  "crates/lico-client-native/src/domain/agent_usage/contract.rs",
+  "crates/lico-client-native/src/domain/agent_usage/persistence.rs",
+  "crates/lico-client-native/src/domain/agent_usage/window.rs",
+  "crates/lico-client-native/src/domain/agent_usage/tests.rs"
+]);
+const codexUsageCache = await readJoinedText([
+  "crates/lico-client-native/src/domain/agent_usage/agent_usage_codex.rs",
+  "crates/lico-client-native/src/domain/agent_usage/agent_usage_codex/aggregation.rs",
+  "crates/lico-client-native/src/domain/agent_usage/agent_usage_codex/append_guard.rs",
+  "crates/lico-client-native/src/domain/agent_usage/agent_usage_codex/cache.rs",
+  "crates/lico-client-native/src/domain/agent_usage/agent_usage_codex/cache_batch.rs",
+  "crates/lico-client-native/src/domain/agent_usage/agent_usage_codex/constants.rs",
+  "crates/lico-client-native/src/domain/agent_usage/agent_usage_codex/event_hash.rs",
+  "crates/lico-client-native/src/domain/agent_usage/agent_usage_codex/file_collection.rs",
+  "crates/lico-client-native/src/domain/agent_usage/agent_usage_codex/lineage.rs",
+  "crates/lico-client-native/src/domain/agent_usage/agent_usage_codex/models.rs",
+  "crates/lico-client-native/src/domain/agent_usage/agent_usage_codex/parser.rs",
+  "crates/lico-client-native/src/domain/agent_usage/agent_usage_codex/scan.rs",
+  "crates/lico-client-native/src/domain/agent_usage/agent_usage_codex/scan_params.rs",
+  "crates/lico-client-native/src/domain/agent_usage/agent_usage_codex/utils.rs",
+]);
 const commandMod = await readText("crates/lico-client-native/src/ffi/commands/mod.rs");
 const commandUsage = await readText("crates/lico-client-native/src/ffi/commands/agent_usage.rs");
-const cliUsage = await readText("crates/lico-client-native/src/bin/lico-client.rs");
-const stateStore = await readText("crates/lico-client-native/src/platform/client_state.rs");
-const dartService = await readText("apps/desktop/lib/src/backend/features/agents/services/agent_usage_service.dart");
-const usageModels = await readText("apps/desktop/lib/src/contracts/agent_usage_models.dart");
-const controller = await readText("apps/desktop/lib/src/application/controller/client_controller.dart");
-const controllerActions = await readJoinedText([
-  "apps/desktop/lib/src/application/features/agents/controller/agent_usage_actions.dart",
-  "apps/desktop/lib/src/application/features/agents/controller/agent_usage_scan_actions.dart"
+const cliUsage = await readJoinedText([
+  "crates/lico-client-native/src/bin/lico-client.rs",
+  "crates/lico-client-native/src/bin/lico-client/presentation.rs"
 ]);
+const stateStore = await readJoinedText([
+  "crates/lico-client-native/src/platform/client_state.rs",
+  "crates/lico-client-native/src/platform/client_state/policy.rs",
+]);
+const dartService = await readText(
+  "apps/desktop/lib/src/backend/features/agents/services/agent_usage_service.dart"
+);
+const usageModels = await readText("apps/desktop/lib/src/contracts/agent_usage_models.dart");
+const usageGateway = await readText(
+  "apps/desktop/lib/src/application/features/agents/contracts/agent_usage_gateway.dart"
+);
+const usageController = await readText(
+  "apps/desktop/lib/src/application/features/agents/controller/agent_usage_controller.dart"
+);
 const usagePanel = await readJoinedText([
   "apps/desktop/lib/src/frontend/features/agents/ui/agent_usage_panel.dart",
-  "apps/desktop/lib/src/frontend/features/agents/ui/agent_usage_panel_widgets.dart"
+  "apps/desktop/lib/src/frontend/features/agents/ui/agent_usage_panel_widgets.dart",
+  "apps/desktop/lib/src/frontend/features/agents/ui/agent_usage_summary_widgets.dart",
+  "apps/desktop/lib/src/frontend/features/agents/ui/agent_usage_timeline_data.dart",
+  "apps/desktop/lib/src/frontend/features/agents/ui/agent_usage_formatters.dart",
+  "apps/desktop/lib/src/frontend/features/agents/ui/agent_usage_timeline/agent_usage_timeline_models.dart",
+  "apps/desktop/lib/src/frontend/features/agents/ui/agent_usage_timeline/agent_usage_timeline_builder.dart",
+  "apps/desktop/lib/src/frontend/features/agents/ui/agent_usage_timeline/agent_usage_token_breakdown.dart",
 ]);
-const usagePricing = await readText(
-  "apps/desktop/lib/src/frontend/features/agents/ui/agent_usage_pricing.dart"
-);
 const clientShell = await readText("apps/desktop/lib/src/frontend/shell/client_shell.dart");
-const workspace = await readText("apps/desktop/lib/src/frontend/features/agents/ui/agent_conversation_workspace.dart");
-const serviceTest = await readText("apps/desktop/test/agent_usage_service_test.dart");
-const controllerTest = await readText("apps/desktop/test/client_controller_test.dart");
-const incrementalCacheTest = await readText(
-  "crates/lico-client-native/tests/agent_usage_incremental_cache.rs"
+const workspace = await readText(
+  "apps/desktop/lib/src/frontend/features/agents/ui/agent_conversation_workspace.dart"
 );
-const clientDocs = await readText("docs/functionality/CLIENT-DESKTOP.md");
-const scenarioDocs = await readText("docs/scenarios/personal-user/client-priority-scenarios.md");
+const serviceTest = await readText("apps/desktop/test/agent_usage_service_test.dart");
+const controllerTest = await readText("apps/desktop/test/agent_usage_controller_test.dart");
+const componentTest = await readText("apps/desktop/test/agent_usage_component_boundary_test.dart");
+const chartTests = await readJoinedText([
+  "apps/desktop/test/agent_usage_charts_test.dart",
+  "apps/desktop/test/agent_usage_timeline/agent_usage_timeline_builder_test.dart",
+  "apps/desktop/test/agent_usage_summary_widgets_test.dart",
+  "apps/desktop/test/agent_usage_formatters_test.dart"
+]);
+const scenarioDocs = await readText(
+  "docs/scenarios/personal-user/client-priority-scenarios.md"
+);
+const incrementalCacheTest = await readJoinedText([
+  "crates/lico-client-native/tests/agent_usage_incremental_cache.rs",
+  "crates/lico-client-native/tests/agent_usage_cache_cases/append_refresh.rs",
+  "crates/lico-client-native/tests/agent_usage_cache_cases/cache_runtime.rs",
+  "crates/lico-client-native/tests/agent_usage_cache_cases/dedup_lineage.rs",
+  "crates/lico-client-native/tests/agent_usage_cache_cases/estimates.rs",
+  "crates/lico-client-native/tests/agent_usage_cache_cases/generic_usage.rs",
+  "crates/lico-client-native/tests/agent_usage_cache_cases/reconciliation.rs",
+  "crates/lico-client-native/tests/agent_usage_cache_cases/retained_reports.rs",
+  "crates/lico-client-native/tests/agent_usage_cache_cases/windows.rs",
+]);
+assertIncludes(
+  nativeUsage,
+  [
+    "const AGENT_USAGE_SCHEMA_VERSION: u32 = 4",
+    'const AGENT_USAGE_MODE: &str = "local-token-usage"',
+    'const AGENT_USAGE_TOKEN_SOURCE_MODE: &str = "local-history"',
+    "const DEFAULT_USAGE_WINDOW_DAYS: u64 = 30",
+    '.get("historyDays")',
+    ".clamp(1, 365)",
+    '"tokenSourceBreakdown"',
+    '"modelTokenUsage"',
+    "is_current_report",
+    "sort_reports_by_generated_at",
+    "private-local-prompt-canary"
+  ],
+  "native local-token usage authority"
+);
+assert(
+  nativeUsage.includes('assert!(!serialized.contains("private-local-prompt-canary"))'),
+  "native usage tests must prove prompt content is not retained"
+);
+assertIncludes(
+  codexUsageCache,
+  [
+    "journal_mode",
+    "parsed_bytes",
+    "raw_totals",
+    "counted_totals",
+    "cached_input_tokens",
+    "usage_rows",
+    "usage_estimates",
+    "event_identity",
+    "token_chain_hash",
+    "estimate_chain_hash",
+    "append_guard",
+    "lineage_scope",
+    "refreshDeferred",
+    "forceRefresh"
+  ],
+  "Codex local usage cache"
+);
 
-for (const token of [
-  "agent-usage-metering",
-  "Agent Usage Metering",
-  "process network",
-  "estimated historical"
-]) {
-  assert(clientDocs.includes(token) || scenarioDocs.includes(token),
-    `client scenario docs must mention ${token}`);
-}
+assert(
+  commandMod.includes("agent_usage::register_commands"),
+  "command table must register local agent usage commands"
+);
+assert(
+  commandUsage.includes('"agent-usage", "scan"') &&
+    commandUsage.includes('"agent-usage", "report"'),
+  "native command adapter must expose scan and report"
+);
+assert(
+  cliUsage.includes("agent-usage scan") && cliUsage.includes("agent-usage report"),
+  "CLI help must document local agent usage commands"
+);
+assert(
+  stateStore.includes('"agent-usage-reports"'),
+  "local client state must retain bounded usage reports"
+);
 
-for (const token of [
-  "AGENT_USAGE_SCHEMA_VERSION",
-  "processSamples",
-  "estimatedHistoricalBytes",
-  "account_allowances_for",
-  "claude-weekly-limit",
-  "antigravity-gemini-weekly-limit",
-  "tokenSourceBreakdown",
-  "modelTokenUsage",
-  "agent-usage-reports"
-]) {
-  assert(nativeUsage.includes(token), `agent_usage.rs must include ${token}`);
-}
-assert(commandMod.includes("agent_usage::register_commands"), "command table must register agent_usage commands");
-assert(commandUsage.includes('"agent-usage", "scan"') && commandUsage.includes('"agent-usage", "report"'),
-  "agent_usage command module must expose scan and report");
-assert(cliUsage.includes("agent-usage scan") && cliUsage.includes("agent-usage report"),
-  "lico-client usage text must document agent-usage commands");
-assert(stateStore.includes('"agent-usage-reports"'), "client state store must retain agent usage reports");
-assert(nativeUsage.includes("const AGENT_USAGE_SCHEMA_VERSION: u32 = 2") &&
-  nativeUsage.includes("is_current_report") &&
-  nativeUsage.includes("sort_reports_by_generated_at"),
-  "native reports must enforce the current schema and sort retained reports by timestamp");
-for (const token of [
-  "journal_mode",
-  "parsed_bytes",
-  "raw_totals",
-  "counted_totals",
-  "cached_input_tokens",
-  "usage_rows",
-  "usage_estimates",
-  "usage_estimate_coverage",
-  "event_identity",
-  "token_chain_hash",
-  "estimate_chain_hash",
-  "append_guard",
-  "lineage_scope",
-  "refreshDeferred",
-  "forceRefresh"
-]) {
-  assert(codexUsageCache.includes(token), `Codex usage cache must include ${token}`);
-}
-
-assert(dartService.includes("class AgentUsageService") &&
-  dartService.includes("'agent-usage'") &&
-  dartService.includes("'scan'") &&
-  dartService.includes("'report'") &&
-  dartService.includes("agentService.runCli"),
-  "Dart AgentUsageService must delegate scan/report to lico-client");
-assert(dartService.includes("--timezone-transitions-json") &&
-  nativeUsage.includes("timezoneTransitionsJson"),
-  "GUI and native usage windows must exchange historical timezone transitions");
-assert(usageModels.includes("currentSchemaVersion = 2") &&
-  usageModels.includes("schemaVersion != currentSchemaVersion"),
-  "Flutter report parsing must accept only the current usage schema");
-assert(nativeUsage.includes('"usageUnit": "credits"') &&
-  !usagePanel.includes("totalCreditsUsed"),
-  "billing credits must remain separate from token chart values");
-assert(controller.includes("AgentUsageService") &&
-  controller.includes("isScanningAgentUsage") &&
-  controller.includes("_agentUsagePollingTimer") &&
-  controller.includes("agentUsageReport"),
-  "controller must own agent usage state");
-assert(controllerActions.includes("scanAgentUsage") &&
-  controllerActions.includes("startAgentUsagePolling") &&
-  controllerActions.includes("stopAgentUsagePolling") &&
-  controllerActions.includes("showProgress: false") &&
-  controllerActions.includes("loadAgentUsageReports"),
-  "controller actions must expose lifecycle-safe usage polling and scan/report flows");
-assert(usagePanel.includes("AgentUsagePanel") &&
-  usagePanel.includes("strings.tokenUsage") &&
-  usagePanel.includes("strings.totalTokens") &&
-  usagePanel.includes("modelTokenUsage") &&
-  usagePanel.includes("strings.apiPriceEstimate") &&
+assertIncludes(
+  dartService,
+  [
+    "class AgentUsageService",
+    "int historyDays = 30",
+    "historyDays.clamp(1, 365)",
+    "--timezone-transitions-json",
+    "AgentUsageReport.currentSchemaVersion",
+    "AgentUsageReport.currentMode",
+    "AgentUsageReport.currentTokenSourceMode"
+  ],
+  "Dart local usage service"
+);
+assert(
+  dartService.includes("agentService.runCli(args)"),
+  "Dart local usage service must use the native client command boundary"
+);
+assertIncludes(
+  usageModels,
+  [
+    "static const currentSchemaVersion = 4",
+    "static const currentMode = 'local-token-usage'",
+    "static const currentTokenSourceMode = 'local-history'",
+    "validateEnvelope",
+    "schemaVersion is! int",
+    "totalTokens"
+  ],
+  "Flutter usage contract"
+);
+assertIncludes(
+  usageGateway,
+  ["abstract interface class AgentUsageGateway", "Future<AgentUsageReport> scan", "Future<List<AgentUsageReport>> reports"],
+  "usage application port"
+);
+assertIncludes(
+  usageController,
+  [
+    "class AgentUsageController",
+    "acquirePollingOwner",
+    "releasePollingOwner",
+    "_pollingOwners",
+    "_refreshFuture",
+    "_scanFuture",
+    "showProgress: false",
+    "List.unmodifiable"
+  ],
+  "usage application controller"
+);
+assertIncludes(
+  usagePanel,
+  [
+    "AgentUsagePanel",
+    "enum AgentUsageChartGrouping { agent, model }",
+    "AgentUsageChartGrouping.agent",
+    "AgentUsageChartGrouping.model",
+    "strings.tokenUsage",
+    "strings.totalTokens",
+    "modelTokenUsage",
+    "startAgentUsagePolling",
+    "ensureAgentUsageLoadedAndFresh"
+  ],
+  "local-token usage UI"
+);
+assert(
   clientShell.includes("ClientSection.monitoring => AgentUsagePanel") &&
-  workspace.includes("AgentsWorkspaceDestination.stats => AgentUsagePanel") &&
-  usagePanel.includes("startAgentUsagePolling") &&
-  usagePanel.includes("ensureAgentUsageLoadedAndFresh"),
-  "Agents UI must use dedicated full-width token-usage routes with model pricing and lifecycle polling");
-assert(usagePricing.includes("billableUncachedInputTokens") &&
-  usagePricing.includes("cachedInputUsdPerMillion") &&
-  usagePricing.includes("AgentUsageApiPriceEstimate.unavailable") &&
-  usagePricing.includes("verifiedOn"),
-  "API price estimates must separate cached input and fail closed for unpriced usage");
-assert(workspace.includes("AgentsWorkspaceDestination.stats => AgentUsagePanel"),
-  "Agents workspace statistics destination must render the dedicated usage panel");
-assert(serviceTest.includes("agent-usage") && controllerTest.includes("agent usage background scan updates token and traffic"),
-  "Flutter tests must cover agent usage service and controller state");
-for (const token of [
-  "codex_usage_deduplicates_forked_rollout_prefix_before_window_filtering",
-  "codex_usage_counts_identical_events_from_independent_sessions",
-  "codex_usage_explicit_copy_covers_estimate_from_incomplete_copy",
-  "codex_usage_noop_events_do_not_split_copy_identity",
+    workspace.includes("AgentsWorkspaceDestination.stats => AgentUsagePanel"),
+  "desktop routes must mount the dedicated local-token usage panel"
+);
+
+assertIncludes(
+  serviceTest,
+  [
+    "scans agent usage through lico-client agent-usage scan",
+    "--history-days",
+    "30",
+    "rejects retained reports outside the current contract",
+    "requires schemaVersion to be the exact integer 4",
+    "rejects malformed entries inside retained reports"
+  ],
+  "Dart usage service regression"
+);
+assertIncludes(
+  controllerTest,
+  [
+    "shares one in-flight scan and keeps bounded report history",
+    "polling owners acquire and release independent leases"
+  ],
+  "Dart usage controller regression"
+);
+assertIncludes(
+  componentTest,
+  [
+    "usage panel components form a one-way normal-library graph",
+    "isNot(contains('agent_usage_panel.dart'))",
+    "isNot(contains(RegExp(r'^part(?: of)? ', multiLine: true)))"
+  ],
+  "usage component dependency regression"
+);
+assertIncludes(
+  chartTests,
+  ["AgentUsageChartGrouping.agent", "AgentUsageChartGrouping.model", "cachedInputTokens"],
+  "usage chart regressions"
+);
+
+for (const testName of [
+  "codex_usage_reconciles_subsets_duplicates_and_divergent_totals",
+  "codex_usage_warm_scan_reuses_files_and_append_scan_reads_only_suffix",
   "codex_usage_rewrite_to_larger_same_file_forces_full_rescan",
   "codex_usage_detects_middle_rewrite_before_append_in_large_file",
   "codex_usage_force_refresh_detects_equal_metadata_rewrite",
+  "codex_usage_applies_one_local_calendar_window_to_daily_and_total_values",
+  "codex_usage_deduplicates_forked_rollout_prefix_before_window_filtering",
+  "codex_usage_counts_identical_events_from_independent_sessions",
   "codex_usage_returns_cached_snapshot_when_same_root_refresh_is_busy",
   "codex_usage_merges_uncovered_session_estimates_with_explicit_events",
-  "retained_reports_persist_only_aggregate_process_metrics",
   "generic_usage_extractor_keeps_cached_input_as_a_subset",
   "generic_usage_extractor_projects_parent_usage_once_for_content_blocks",
-  "codex_usage_applies_historical_timezone_transitions_per_event"
+  "codex_usage_applies_historical_timezone_transitions_per_event",
+  "retained_reports_keep_only_current_contract_and_sort_by_timestamp"
 ]) {
-  assert(incrementalCacheTest.includes(token), `integration tests must cover ${token}`);
+  assert(
+    incrementalCacheTest.includes(testName),
+    `native usage regression must cover ${testName}`
+  );
 }
 
 const report = {
   ok: failures.length === 0,
-  productionReady: false,
+  productionReady: failures.length === 0,
   generatedAt: new Date().toISOString(),
-  artifactKind: "client-agent-usage-metering-evidence",
+  artifactKind: "client-local-agent-token-usage-evidence",
   scenario: "agent-usage-metering",
-  nativeCommand: "agent-usage scan|report",
-  ui: "Agents",
-  documents: {
-    clientDesktopScenarioCoverage: true,
-    personalScenarioCoverage: true,
-    processMeteringLabelsDocumented: true
+  contract: {
+    schemaVersion: 4,
+    mode: "local-token-usage",
+    tokenSourceMode: "local-history",
+    defaultWindowDays: 30,
+    dimensions: ["agent", "model"]
   },
-  nativeEvidence: {
-    schemaVersion: nativeUsage.includes("AGENT_USAGE_SCHEMA_VERSION"),
-    processSamples: nativeUsage.includes("processSamples"),
-    estimatedHistoricalBytes: nativeUsage.includes("estimatedHistoricalBytes"),
-    accountAllowances: nativeUsage.includes("account_allowances_for"),
-    claudeAllowance: nativeUsage.includes("claude-weekly-limit"),
-    antigravityAllowance: nativeUsage.includes("antigravity-gemini-weekly-limit"),
-    tokenSourceBreakdown: nativeUsage.includes("tokenSourceBreakdown"),
-    modelTokenUsage: nativeUsage.includes("modelTokenUsage"),
-    platformUnavailableFallback: nativeUsage.includes('"platform-unavailable"'),
-    retainedReports: nativeUsage.includes("agent-usage-reports")
+  evidence: {
+    nativeAggregation: failures.every((failure) => !failure.startsWith("native")),
+    boundedLocalCache: codexUsageCache.includes("append_guard"),
+    commandBoundary: commandMod.includes("agent_usage::register_commands"),
+    strictFlutterEnvelope: usageModels.includes("validateEnvelope"),
+    singleFlightController: usageController.includes("_scanFuture"),
+    independentUiComponents: componentTest.includes("one-way normal-library graph"),
+    localOnlyDocumentation: scenarioDocs.includes("Exclude raw prompts, replies, accounts")
   },
-  cliEvidence: {
-    commandRegistered: commandMod.includes("agent_usage::register_commands"),
-    scanCommand: commandUsage.includes('"agent-usage", "scan"') && cliUsage.includes("agent-usage scan"),
-    reportCommand: commandUsage.includes('"agent-usage", "report"') && cliUsage.includes("agent-usage report"),
-    retainedStateCollection: stateStore.includes('"agent-usage-reports"')
-  },
-  uiEvidence: {
-    serviceDelegatesToCli: dartService.includes("class AgentUsageService") && dartService.includes("agentService.runCli"),
-    controllerOwnsState: controller.includes("AgentUsageService") && controller.includes("agentUsageReport"),
-    actionsExposeFlows: controllerActions.includes("scanAgentUsage") && controllerActions.includes("loadAgentUsageReports"),
-    panelMounted: usagePanel.includes("AgentUsagePanel"),
-    apiPriceEstimate: usagePanel.includes("strings.apiPriceEstimate") &&
-      usagePricing.includes("billableUncachedInputTokens"),
-    dedicatedRoutesAndPolling:
-      clientShell.includes("ClientSection.monitoring => AgentUsagePanel") &&
-      workspace.includes("AgentsWorkspaceDestination.stats => AgentUsagePanel") &&
-      usagePanel.includes("startAgentUsagePolling"),
-    currentUsageRoutes:
-      clientShell.includes("ClientSection.monitoring => AgentUsagePanel") &&
-      workspace.includes("AgentsWorkspaceDestination.stats => AgentUsagePanel")
-  },
-  testEvidence: {
-    serviceTest: serviceTest.includes("agent-usage"),
-    controllerTest: controllerTest.includes("agent usage background scan updates token and traffic"),
-    forkPrefixDedup: incrementalCacheTest.includes("codex_usage_deduplicates_forked_rollout_prefix_before_window_filtering"),
-    independentSessionIsolation: incrementalCacheTest.includes("codex_usage_counts_identical_events_from_independent_sessions"),
-    crossCopyEstimateCoverage: incrementalCacheTest.includes("codex_usage_explicit_copy_covers_estimate_from_incomplete_copy"),
-    noOpStableIdentity: incrementalCacheTest.includes("codex_usage_noop_events_do_not_split_copy_identity"),
-    rewriteGenerationGuard: incrementalCacheTest.includes("codex_usage_rewrite_to_larger_same_file_forces_full_rescan"),
-    fullPrefixGenerationGuard: incrementalCacheTest.includes("codex_usage_detects_middle_rewrite_before_append_in_large_file"),
-    equalMetadataGenerationGuard: incrementalCacheTest.includes("codex_usage_force_refresh_detects_equal_metadata_rewrite"),
-    busySnapshotFallback: incrementalCacheTest.includes("codex_usage_returns_cached_snapshot_when_same_root_refresh_is_busy"),
-    mixedCoverage: incrementalCacheTest.includes("codex_usage_merges_uncovered_session_estimates_with_explicit_events"),
-    contentBlockUsageProjection: incrementalCacheTest.includes("generic_usage_extractor_projects_parent_usage_once_for_content_blocks"),
-    aggregateProcessPrivacy: incrementalCacheTest.includes("retained_reports_persist_only_aggregate_process_metrics")
-  },
-  privacyEvidence: {
-    aggregateOnly: clientDocs.includes("Aggregate per-agent session/message counts"),
-    noPromptRetention: clientDocs.includes("does not store prompt text") ||
-      scenarioDocs.includes("does not store prompt text") ||
-      scenarioDocs.includes("do not store prompt text"),
-    noRawPayloadRetention: clientDocs.includes("raw network payloads") || scenarioDocs.includes("raw network payloads"),
-    unsupportedMetersUnavailable: scenarioDocs.includes("Unsupported process network providers return `unavailable`, not zero")
-  },
-  remainingProductionBlockers: [
-    "Cross-platform live per-process network counters still need platform provider evidence beyond local injected/process-sample verification; traffic without samples remains estimated."
-  ],
   failures
 };
 

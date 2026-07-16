@@ -13,25 +13,25 @@
   "authorityEntries": [
     {
       "path": "apps/desktop/test/layout/fixtures/production_client_shell_fixture.dart",
-      "digest": "sha256:e76b728d745e29aff3e5e8589feb1f13bf650d681e0669c232073938ba7f81c2"
+      "digest": "sha256:4a41f42bc0088950012721f938cff26a66c4eb8c6f1f58d44ef4e0e0009f5808"
     },
     {
       "path": "apps/desktop/test/layout/production_baseline/production_layout_baseline_test.dart",
-      "digest": "sha256:5216cedc4988929fd33827eddfcb23bcb0213559f6828f96810011ad404976e3"
+      "digest": "sha256:0dc45c06893f14edfb43061fa028f24c9d644ff2806cb4a05c680d93454befdf"
     },
     {
       "path": "apps/desktop/test/layout/production_baseline/production_layout_switch_continuity_test.dart",
-      "digest": "sha256:8aa757eecd26cf725e239f1867b958001205931245ab2e47b773c151f5bbcf9f"
+      "digest": "sha256:9ddaf28b52fc61ec1b32eafbb4328754a56881cccd9f82bdbc17d4b0394c3522"
     }
   ],
   "entries": [
     {
       "path": "apps/desktop/lib/src/frontend/layout/profiles/bubble/desktop/bubble_desktop.dart",
-      "digest": "sha256:bee10bdbb0d8e6aa6d2d6889de8da0ac680371348ecf233c4d126e53945386cb"
+      "digest": "sha256:9d54dce3d1d325ec93d406ee57aa52ff06a9ff4432edbdc3bcbb040731d14a94"
     },
     {
       "path": "apps/desktop/lib/src/frontend/layout/profiles/bubble/desktop/chrome/bubble_desktop_chrome.dart",
-      "digest": "sha256:9fcfe3c7d29d3b3829c5a8d30394a14bb3e15d0833722a7d899dce5f32e32310"
+      "digest": "sha256:024edd22fca79905a0b938a5135860e8d206d9ac0928a1808fec4a5109ce8d89"
     },
     {
       "path": "apps/desktop/lib/src/frontend/layout/profiles/bubble/desktop/chrome/bubble_desktop_glass.dart",
@@ -47,23 +47,11 @@
     },
     {
       "path": "apps/desktop/lib/src/frontend/layout/profiles/bubble/desktop/destinations/bubble_desktop_destination_builders.dart",
-      "digest": "sha256:fed7a57a19b97c0a181a804b3ead8c08c051368bed56abc8c793a72334faf415"
+      "digest": "sha256:09ec031943f2e0a9a0314209c2c5e3d013ed399660b221939ece62b6d5ba60dd"
     },
     {
       "path": "apps/desktop/lib/src/frontend/layout/profiles/bubble/desktop/destinations/bubble_destination_frame.dart",
       "digest": "sha256:9e428e0e33567774d030c6ea64e93f01b77095213f24e884df36f789bf36cb6f"
-    },
-    {
-      "path": "apps/desktop/lib/src/frontend/layout/profiles/bubble/desktop/destinations/control_panel_destination.dart",
-      "digest": "sha256:854ea99250955e1a2560eaf76e7ffd0a89c8b72d4fdbe0cd79031006453c48b4"
-    },
-    {
-      "path": "apps/desktop/lib/src/frontend/layout/profiles/bubble/desktop/destinations/local_runtime_destination.dart",
-      "digest": "sha256:92055830c08fd907562e9fb4592749a8d8d84ff50efaad209e142337a322dedc"
-    },
-    {
-      "path": "apps/desktop/lib/src/frontend/layout/profiles/bubble/desktop/destinations/mcp_plugins_destination.dart",
-      "digest": "sha256:12a7146de14803f16cd4918678cfe1a306cc11e6a94822729b56052b0042dfad"
     },
     {
       "path": "apps/desktop/lib/src/frontend/layout/profiles/bubble/desktop/destinations/mobile_relay_destination.dart",
@@ -78,8 +66,8 @@
       "digest": "sha256:92a593c71c3e77828e6e3d93fba4ee889bfa8ecbf14f73885d8b9d05cb674a72"
     },
     {
-      "path": "apps/desktop/lib/src/frontend/layout/profiles/bubble/desktop/presentation/bubble_chrome_allowance_presentation.dart",
-      "digest": "sha256:f494f8beb4bc8a15bd9e4a90898331b47b6c3a55855fe8bd6f08c34ed3553a91"
+      "path": "apps/desktop/lib/src/frontend/layout/profiles/bubble/desktop/destinations/skill_hub_destination.dart",
+      "digest": "sha256:edc1bac47aa1b4097ce63e165c00a4f01229751487e3e036417d63cd8a0bc8f5"
     },
     {
       "path": "apps/desktop/lib/src/frontend/layout/profiles/bubble/desktop/presentation/bubble_desktop_destination_presentations.dart",
@@ -114,10 +102,6 @@
       "digest": "sha256:9856eeb69a5f91668e38fc02690b1bb731643b97d8acedb4208c5c12d8ae5d87"
     },
     {
-      "path": "apps/desktop/test/goldens/layout/production-baseline/bubble/desktop/controlPanel.png",
-      "digest": "sha256:5df46e2eb94412dbb68d95de2e9c3fcbe4c318554dd16ed24ba925d1dbb693b0"
-    },
-    {
       "path": "apps/desktop/test/goldens/layout/production-baseline/bubble/desktop/settings.png",
       "digest": "sha256:4fec5ef796123e6f0c2798d7334d24d71c0ee2bba352ac015166c4f764deab81"
     },
@@ -127,7 +111,7 @@
     },
     {
       "path": "apps/desktop/test/layout/profiles/bubble/desktop/bubble_desktop_bundle_test.dart",
-      "digest": "sha256:9e2e1397164d6a13547d0d2d20e9557d0e6f0bb4efd3fef242420d207ce6079e"
+      "digest": "sha256:52a4745825d866517eafbbbb22b8169aeae0ce2f677e509e251944cf91c8e3f4"
     },
     {
       "path": "apps/desktop/test/layout/profiles/bubble/desktop/bubble_desktop_golden_test.dart",
@@ -135,12 +119,12 @@
     },
     {
       "path": "apps/desktop/test/layout/profiles/bubble/desktop/bubble_desktop_interaction_test.dart",
-      "digest": "sha256:76cf669f7cb005251241381508876347b69286664936d0811761cf3551d0006b"
+      "digest": "sha256:246da89d787b182608525834279dceb57425eacafcace8bfa98176860446276e"
     },
     {
       "path": "apps/desktop/test/layout/profiles/bubble/desktop/bubble_desktop_test_harness.dart",
-      "digest": "sha256:f1072d0983a85f4bbecb8faf75d59cd66308656ac66a30e2287bb5eeddaf274f"
+      "digest": "sha256:3fc1b7bb2a77011637c0cb778a7faa39d85c2b8ff120b1a7fe9f3ae437fcb911"
     }
   ],
-  "manifestDigest": "sha256:ad4ca70a4873e78639f4b76598f6bc14b629d2f975fef1576f5c7672d359eb48"
+  "manifestDigest": "sha256:9b1fead1f78c0ea532a4467f173095ffe08c40ac46a26ce0309153077228e014"
 }

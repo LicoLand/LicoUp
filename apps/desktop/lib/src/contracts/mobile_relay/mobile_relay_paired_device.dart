@@ -1,4 +1,4 @@
-part of 'package:flutter_client/src/contracts/mobile_relay/mobile_relay_models.dart';
+import 'package:flutter_client/src/contracts/mobile_relay/mobile_relay_gateway.dart';
 
 class MobileRelayPairedDevice {
   const MobileRelayPairedDevice({
@@ -8,7 +8,6 @@ class MobileRelayPairedDevice {
     required this.mobileToken,
     required this.credentialPresent,
     required this.gatewayUrl,
-    this.authorizedProviders = const [],
   });
 
   final String id;
@@ -17,7 +16,6 @@ class MobileRelayPairedDevice {
   final String mobileToken;
   final bool credentialPresent;
   final String gatewayUrl;
-  final List<MobileRelayAuthorizedProvider> authorizedProviders;
 
   bool get isUsable =>
       pairingId.trim().isNotEmpty &&
@@ -37,8 +35,39 @@ class MobileRelayPairedDevice {
           json['credentialPresent'] == true ||
           json['mobileTokenPresent'] == true ||
           (json['mobileToken'] ?? '').toString().trim().isNotEmpty,
-      gatewayUrl: _normalizeGatewayUrl((json['gatewayUrl'] ?? '').toString()),
-      authorizedProviders: _authorizedProvidersFromJson(json),
+      gatewayUrl: normalizeMobileRelayGatewayUrl(
+        (json['gatewayUrl'] ?? '').toString(),
+      ),
     );
   }
+}
+
+List<MobileRelayPairedDevice> dedupeMobileRelayPairedDevices(
+  List<MobileRelayPairedDevice> devices,
+) {
+  final seen = <String>{};
+  final dedupedReversed = <MobileRelayPairedDevice>[];
+  for (final device in devices.reversed) {
+    final keys = _pairedDeviceDedupeKeys(device);
+    if (keys.any(seen.contains)) {
+      continue;
+    }
+    seen.addAll(keys);
+    dedupedReversed.add(device);
+  }
+  return dedupedReversed.reversed.toList(growable: false);
+}
+
+List<String> _pairedDeviceDedupeKeys(MobileRelayPairedDevice device) {
+  final id = device.id.trim();
+  final pairingId = device.pairingId.trim();
+  final label = device.label.trim().toLowerCase();
+  final gateway = normalizeMobileRelayGatewayUrl(
+    device.gatewayUrl,
+  ).toLowerCase();
+  return [
+    if (id.isNotEmpty) 'id:$id',
+    if (pairingId.isNotEmpty) 'pairing:$pairingId',
+    if (label.isNotEmpty && gateway.isNotEmpty) 'label:$label@$gateway',
+  ];
 }

@@ -28,8 +28,6 @@ void main() {
       expect(primary.roles, containsAll(['code-review', 'architecture']));
       expect(primary.capabilities, contains('reasoning-deep'));
       expect(primary.priority, 1);
-      expect(primary.allowanceThreshold.kind, 'token');
-      expect(primary.allowanceThreshold.minimum, 1000);
       expect(primary.distillation.distiller, 'self');
       expect(primary.distillation.maxLength, 4096);
       expect(
@@ -39,8 +37,6 @@ void main() {
 
       expect(document.routing.strategy, 'priority-fallback');
       expect(document.routing.matchMode, 'role-first');
-      expect(document.routing.staleBehavior, 'conservative-skip');
-      expect(document.routing.allowStaleUsage, isFalse);
       expect(document.routing.circuitBreaker.allowedFails, 3);
       expect(document.routing.circuitBreaker.cooldownSeconds, 60);
       expect(document.routing.switchPolicy.minimumIntervalSeconds, 30);
@@ -102,10 +98,6 @@ void main() {
         (
           '{"schemaVersion":2,"id":"x","agents":[{"id":"a"}],"routing":{"matchMode":"capability-first"}}',
           '/routing/matchMode',
-        ),
-        (
-          '{"schemaVersion":2,"id":"x","agents":[{"id":"a","allowanceThreshold":{"minimum":1}}]}',
-          '/agents/0/allowanceThreshold/kind',
         ),
       ];
 

@@ -9,26 +9,23 @@ void main() {
 
     expect(catalog.descriptors, hasLength(ClientSection.values.length));
     expect(catalog.destinationsFor(LayoutRuntimeSurface.desktop), {
-      ClientSection.controlPanel,
       ClientSection.agents,
       ClientSection.monitoring,
-      ClientSection.mcpPlugins,
-      ClientSection.localRuntime,
+      ClientSection.skillHub,
       ClientSection.mobileRelay,
       ClientSection.settings,
     });
     expect(catalog.destinationsFor(LayoutRuntimeSurface.mobile), {
       ClientSection.agents,
-      ClientSection.feed,
       ClientSection.mobileRelay,
       ClientSection.settings,
     });
   });
 
-  test('semantic aliases resolve before surface coverage checks', () {
+  test('canonical destinations expose immutable surface coverage', () {
     final catalog = SemanticDestinationCatalog.current();
 
-    expect(catalog.resolve(ClientSection.skillHub), ClientSection.mcpPlugins);
+    expect(catalog.resolve(ClientSection.skillHub), ClientSection.skillHub);
     expect(
       catalog.supports(ClientSection.skillHub, LayoutRuntimeSurface.desktop),
       isTrue,
@@ -40,7 +37,7 @@ void main() {
     expect(
       () => catalog
           .destinationsFor(LayoutRuntimeSurface.desktop)
-          .add(ClientSection.feed),
+          .add(ClientSection.agents),
       throwsUnsupportedError,
     );
   });
@@ -60,12 +57,20 @@ void main() {
     );
 
     final cyclic = current.descriptors.map((descriptor) {
-      if (descriptor.destination == ClientSection.mcpPlugins) {
+      if (descriptor.destination == ClientSection.agents) {
         return SemanticDestinationDescriptor(
           destination: descriptor.destination,
           labelKey: descriptor.labelKey,
           surfaces: descriptor.surfaces,
-          aliasOf: ClientSection.skillHub,
+          aliasOf: ClientSection.settings,
+        );
+      }
+      if (descriptor.destination == ClientSection.settings) {
+        return SemanticDestinationDescriptor(
+          destination: descriptor.destination,
+          labelKey: descriptor.labelKey,
+          surfaces: descriptor.surfaces,
+          aliasOf: ClientSection.agents,
         );
       }
       return descriptor;

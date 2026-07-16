@@ -128,14 +128,19 @@ void main() {
       throwsA(isA<FormatException>()),
     );
 
-    final first = variants.first;
+    final first = variants.firstWhere(
+      (variant) => variant.key.surface == LayoutRuntimeSurface.mobile,
+    );
     final wrongDestinations = LayoutVariantCoverage(
       key: first.key,
-      destinations: {...first.destinations, ClientSection.feed},
+      destinations: {...first.destinations, ClientSection.monitoring},
     );
     expect(
       () => fixtureLayoutCatalog(
-        variants: [wrongDestinations, ...variants.skip(1)],
+        variants: [
+          for (final variant in variants)
+            if (variant.key == first.key) wrongDestinations else variant,
+        ],
       ),
       throwsA(isA<FormatException>()),
     );
@@ -172,7 +177,7 @@ void main() {
           ...namespaces,
           LayoutStateNamespace(
             profileId: LayoutProfileId.parse('workbench'),
-            surface: LayoutRuntimeSurface.desktop,
+            surface: LayoutRuntimeSurface.mobile,
             destination: ClientSection.skillHub,
             channel: const LayoutStateChannel(
               'pane',

@@ -2,7 +2,6 @@ import 'dart:io';
 
 import 'package:flutter_client/src/application/features/routing/engine/route_evaluator.dart';
 import 'package:flutter_client/src/application/features/routing/engine/route_planner.dart';
-import 'package:flutter_client/src/contracts/agent_usage_models.dart';
 import 'package:flutter_client/src/contracts/routing/route_decision_record.dart';
 import 'package:flutter_client/src/contracts/routing/routing_policy_schema.dart';
 import 'package:flutter_client/src/contracts/target_candidate.dart';
@@ -22,20 +21,12 @@ void main() {
         roles: ['implementation'],
         capabilities: ['tool-use'],
         priority: 2,
-        allowanceThreshold: RoutingAllowanceThreshold(
-          kind: 'token',
-          minimum: 1,
-        ),
       ),
       RoutingPolicyAgent(
         id: 'agent-a',
         roles: ['architecture', 'implementation'],
         capabilities: ['reasoning-deep', 'tool-use'],
         priority: 1,
-        allowanceThreshold: RoutingAllowanceThreshold(
-          kind: 'token',
-          minimum: 1,
-        ),
       ),
       RoutingPolicyAgent(
         id: 'agent-c',
@@ -45,7 +36,6 @@ void main() {
       ),
     ],
     routing: const RoutingPolicyRouting(
-      allowStaleUsage: false,
       circuitBreaker: RoutingCircuitBreakerConfig(
         allowedFails: 3,
         cooldownSeconds: 90,
@@ -59,21 +49,6 @@ void main() {
     bool ready = true,
     int circuitFailureCount = 0,
     DateTime? circuitLastFailureAt,
-    bool usageFresh = true,
-    bool usageAvailable = true,
-    List<AgentUsageAllowance> allowances = const [
-      AgentUsageAllowance(
-        kind: 'token',
-        label: 'tokens',
-        provider: 'x',
-        period: 'week',
-        status: 'available',
-        value: '100',
-        unit: 'tokens',
-        source: 'test',
-        message: '',
-      ),
-    ],
   }) {
     return RoutingAgentSignal(
       agentId: id,
@@ -83,9 +58,6 @@ void main() {
         failureCount: circuitFailureCount,
         lastFailureAt: circuitLastFailureAt,
       ),
-      usageFresh: usageFresh,
-      usageAvailable: usageAvailable,
-      allowances: allowances,
     );
   }
 
@@ -155,42 +127,6 @@ void main() {
       );
     });
 
-    test('V-002-D allowance exhaustion exclusion', () {
-      final signals = RoutingSignals(
-        byAgentId: {
-          'agent-a': signal(
-            id: 'agent-a',
-            allowances: [
-              const AgentUsageAllowance(
-                kind: 'token',
-                label: 'tokens',
-                provider: 'x',
-                period: 'week',
-                status: 'exhausted',
-                value: '0',
-                unit: 'tokens',
-                source: 'test',
-                message: '',
-              ),
-            ],
-          ),
-          'agent-b': signal(id: 'agent-b'),
-          'agent-c': signal(id: 'agent-c'),
-        },
-        now: () => DateTime.utc(2026, 7, 11, 5),
-      );
-      final decision = planner.plan(
-        task: const RoutingTaskMetadata(requiredRoles: ['implementation']),
-        policy: policy,
-        signals: signals,
-      );
-      expect(decision.chosenAgentId, 'agent-b');
-      expect(
-        decision.excluded.singleWhere((e) => e.agentId == 'agent-a').reason,
-        RouteReasonCode.allowanceExhausted,
-      );
-    });
-
     test('V-002-E circuit-breaker uses failure count and cooldown TTL', () {
       final clock = DateTime.utc(2026, 7, 11, 5);
       final signals = RoutingSignals(
@@ -227,58 +163,6 @@ void main() {
         ),
       );
       expect(cooledDown.chosenAgentId, 'agent-a');
-    });
-
-    test('allowance threshold compares matching kind against minimum', () {
-      final signals = RoutingSignals(
-        byAgentId: {
-          'agent-a': signal(
-            id: 'agent-a',
-            allowances: const [
-              AgentUsageAllowance(
-                kind: 'token',
-                label: 'tokens',
-                provider: 'x',
-                period: 'week',
-                status: 'available',
-                value: '0',
-                unit: 'tokens',
-                source: 'test',
-                message: '',
-              ),
-            ],
-          ),
-          'agent-b': signal(
-            id: 'agent-b',
-            allowances: const [
-              AgentUsageAllowance(
-                kind: 'token',
-                label: 'tokens',
-                provider: 'x',
-                period: 'week',
-                status: 'available',
-                value: '1',
-                unit: 'tokens',
-                source: 'test',
-                message: '',
-              ),
-            ],
-          ),
-          'agent-c': signal(id: 'agent-c'),
-        },
-        now: () => DateTime.utc(2026, 7, 11, 5),
-      );
-      final decision = planner.plan(
-        task: const RoutingTaskMetadata(requiredRoles: ['implementation']),
-        policy: policy,
-        signals: signals,
-      );
-      expect(decision.chosenAgentId, 'agent-b');
-      final excluded = decision.excluded.singleWhere(
-        (entry) => entry.agentId == 'agent-a',
-      );
-      expect(excluded.reason, RouteReasonCode.allowanceExhausted);
-      expect(excluded.detail, contains('minimum=1'));
     });
 
     test('prompt and content class derive explainable requirements', () {
@@ -338,30 +222,6 @@ void main() {
       );
     });
 
-    test('V-002-H stale usage conservative skip', () {
-      final signals = RoutingSignals(
-        byAgentId: {
-          'agent-a': signal(id: 'agent-a', usageFresh: false),
-          'agent-b': signal(id: 'agent-b', usageFresh: false),
-          'agent-c': signal(id: 'agent-c', usageFresh: false),
-        },
-        now: () => DateTime.utc(2026, 7, 11, 5),
-      );
-      final decision = planner.plan(
-        task: const RoutingTaskMetadata(requiredRoles: ['implementation']),
-        policy: policy,
-        signals: signals,
-      );
-      // agent-a and agent-b have thresholds → stale skip; agent-c has no threshold.
-      expect(
-        decision.excluded
-            .where((e) => e.reason == RouteReasonCode.allowanceDataStale)
-            .map((e) => e.agentId),
-        containsAll(['agent-a', 'agent-b']),
-      );
-      expect(decision.blocked, isTrue);
-    });
-
     test('V-002-I decision record completeness', () {
       final decision = planner.plan(
         task: const RoutingTaskMetadata(
@@ -381,7 +241,6 @@ void main() {
         decision.alternatives.first.satisfiedCapabilities,
         contains('tool-use'),
       );
-      expect(decision.alternatives.first.allowanceHeadroom, isA<int>());
       expect(decision.timestamp, isNotEmpty);
     });
   });
@@ -430,19 +289,23 @@ void main() {
   });
 
   group('V-002-J production wiring', () {
-    test('controller lifecycle uses the canonical routing authority', () {
+    test('routing lifecycle controller owns canonical routing authority', () {
       final controller = File(
         'lib/src/application/controller/client_controller.dart',
       ).readAsStringSync();
       final lifecycle = File(
-        'lib/src/application/controller/controller_lifecycle_actions.dart',
+        'lib/src/application/features/routing/controller/routing_module_lifecycle_controller.dart',
       ).readAsStringSync();
       final orchestration = File(
-        'lib/src/application/features/agents/controller/agent_orchestration_actions.dart',
+        'lib/src/application/features/agents/orchestration/agent_orchestration_controller.dart',
       ).readAsStringSync();
-      expect(controller, contains('RoutingModuleRegistration'));
+      expect(controller, contains('RoutingModuleLifecycleController'));
       expect(lifecycle, contains('await registration.activate()'));
-      expect(orchestration, contains('_routingModule?.activePolicy'));
+      expect(lifecycle, contains('registration.policyEvents.listen'));
+      expect(
+        orchestration,
+        contains('agentWorkspaceRoutingModule?.activePolicy'),
+      );
       expect(orchestration, contains('planRoutingDispatch('));
     });
   });

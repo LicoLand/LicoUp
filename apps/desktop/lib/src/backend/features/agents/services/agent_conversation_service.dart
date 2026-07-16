@@ -1,19 +1,183 @@
 import 'dart:convert';
 
+import 'package:flutter_client/src/backend/features/agents/services/agent_conversation_archive_service.dart';
 import 'package:flutter_client/src/contracts/agent_command_runner.dart';
 import 'package:flutter_client/src/contracts/agent_conversation_models.dart';
 import 'package:flutter_client/src/contracts/agent_dispatch_lane.dart';
 
 export 'package:flutter_client/src/contracts/agent_conversation_models.dart';
 export 'package:flutter_client/src/contracts/agent_dispatch_lane.dart';
-
-part 'agent_conversation_archive_service.dart';
+export 'package:flutter_client/src/backend/features/agents/services/agent_conversation_archive_service.dart'
+    show AgentConversationArchiveService;
 
 /// Backend adapter that implements the unified [AgentDispatchLane] over the
 /// sidecar. Conversation callers consume this contract instead of owning
 /// native conversation command shapes.
 class AgentConversationService implements AgentDispatchLane {
-  const AgentConversationService();
+  const AgentConversationService({
+    AgentConversationArchiveService archiveService =
+        const AgentConversationArchiveService(),
+  }) : _archiveService = archiveService;
+
+  final AgentConversationArchiveService _archiveService;
+
+  Future<Map<String, dynamic>> previewArchiveJob({
+    required AgentCommandRunner agentService,
+    required String selectionMode,
+    required String path,
+    String query = '',
+    String sourceAgentId = '',
+  }) {
+    return _archiveService.previewArchiveJob(
+      agentService: agentService,
+      selectionMode: selectionMode,
+      path: path,
+      query: query,
+      sourceAgentId: sourceAgentId,
+    );
+  }
+
+  Future<Map<String, dynamic>> createArchiveJob({
+    required AgentCommandRunner agentService,
+    required String selectionMode,
+    required String path,
+    required String planBinding,
+    String query = '',
+    String sourceAgentId = '',
+    int? archiveParallelism,
+    int maxAttempts = 2,
+  }) {
+    return _archiveService.createArchiveJob(
+      agentService: agentService,
+      selectionMode: selectionMode,
+      path: path,
+      planBinding: planBinding,
+      query: query,
+      sourceAgentId: sourceAgentId,
+      archiveParallelism: archiveParallelism,
+      maxAttempts: maxAttempts,
+    );
+  }
+
+  Future<Map<String, dynamic>> archiveJobStatus({
+    required AgentCommandRunner agentService,
+    required String jobId,
+  }) {
+    return _archiveService.archiveJobStatus(
+      agentService: agentService,
+      jobId: jobId,
+    );
+  }
+
+  Future<Map<String, dynamic>> archiveJobEvents({
+    required AgentCommandRunner agentService,
+    required String jobId,
+  }) {
+    return _archiveService.archiveJobEvents(
+      agentService: agentService,
+      jobId: jobId,
+    );
+  }
+
+  Future<Map<String, dynamic>> listArchiveJobs({
+    required AgentCommandRunner agentService,
+  }) {
+    return _archiveService.listArchiveJobs(agentService: agentService);
+  }
+
+  Future<Map<String, dynamic>> cancelArchiveJob({
+    required AgentCommandRunner agentService,
+    required String jobId,
+  }) {
+    return _archiveService.cancelArchiveJob(
+      agentService: agentService,
+      jobId: jobId,
+    );
+  }
+
+  Future<Map<String, dynamic>> drainArchiveJobs({
+    required AgentCommandRunner agentService,
+    String jobId = '',
+    bool once = false,
+  }) {
+    return _archiveService.drainArchiveJobs(
+      agentService: agentService,
+      jobId: jobId,
+      once: once,
+    );
+  }
+
+  Future<Map<String, dynamic>> collectSnapshots({
+    required AgentCommandRunner agentService,
+    required String topic,
+    String agentId = '',
+  }) {
+    return _archiveService.collectSnapshots(
+      agentService: agentService,
+      topic: topic,
+      agentId: agentId,
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> listSnapshotCollections({
+    required AgentCommandRunner agentService,
+  }) {
+    return _archiveService.listSnapshotCollections(agentService: agentService);
+  }
+
+  Future<List<Map<String, dynamic>>> listArchiveProfiles({
+    required AgentCommandRunner agentService,
+  }) {
+    return _archiveService.listArchiveProfiles(agentService: agentService);
+  }
+
+  Future<Map<String, dynamic>> runArchiveProfile({
+    required AgentCommandRunner agentService,
+    required String profileId,
+    String trigger = 'manual',
+  }) {
+    return _archiveService.runArchiveProfile(
+      agentService: agentService,
+      profileId: profileId,
+      trigger: trigger,
+    );
+  }
+
+  Future<Map<String, dynamic>> verifyArchiveProfile({
+    required AgentCommandRunner agentService,
+    required String profileId,
+  }) {
+    return _archiveService.verifyArchiveProfile(
+      agentService: agentService,
+      profileId: profileId,
+    );
+  }
+
+  Future<Map<String, dynamic>> reportArchiveProfile({
+    required AgentCommandRunner agentService,
+    required String profileId,
+  }) {
+    return _archiveService.reportArchiveProfile(
+      agentService: agentService,
+      profileId: profileId,
+    );
+  }
+
+  Future<Map<String, dynamic>> getSnapshotRoot({
+    required AgentCommandRunner agentService,
+  }) {
+    return _archiveService.getSnapshotRoot(agentService: agentService);
+  }
+
+  Future<Map<String, dynamic>> setSnapshotRoot({
+    required AgentCommandRunner agentService,
+    required String path,
+  }) {
+    return _archiveService.setSnapshotRoot(
+      agentService: agentService,
+      path: path,
+    );
+  }
 
   Future<List<AgentConversationSession>> loadSessions({
     required AgentCommandRunner agentService,
@@ -262,6 +426,69 @@ class AgentConversationService implements AgentDispatchLane {
     }
   }
 
+  Future<AgentDispatchTurnResult> steer({
+    required AgentCommandRunner runner,
+    required String agentId,
+    required String text,
+    required String sessionId,
+    AgentDispatchBind bind = const AgentDispatchBind(),
+  }) async {
+    final normalizedAgent = agentId.trim();
+    final normalizedText = text.trim();
+    final normalizedSession = sessionId.trim();
+    if (normalizedAgent.isEmpty ||
+        normalizedText.isEmpty ||
+        normalizedSession.isEmpty) {
+      return AgentDispatchTurnResult(
+        ok: false,
+        sessionId: normalizedSession,
+        status: 'invalid',
+        errorCode: 'dispatch_steer_input_required',
+      );
+    }
+    try {
+      final result = await runner.runCliWithStdin(
+        const ['agent', 'conversation', 'steer', '--stdin-json', 'true'],
+        jsonEncode(<String, dynamic>{
+          'agent': normalizedAgent,
+          'text': normalizedText,
+          'sessionId': normalizedSession,
+          if (bind.sessionPath.trim().isNotEmpty)
+            'sessionPath': bind.sessionPath.trim(),
+          if (bind.workingDirectory.trim().isNotEmpty)
+            'workingDirectory': bind.workingDirectory.trim(),
+          if (bind.binaryPath.trim().isNotEmpty)
+            'binaryPath': bind.binaryPath.trim(),
+          if (bind.model.trim().isNotEmpty) 'model': bind.model.trim(),
+          if (bind.reasoningEffort.trim().isNotEmpty)
+            'reasoningEffort': bind.reasoningEffort.trim(),
+        }),
+      );
+      final ok = result['ok'] == true;
+      final nested = result['error'];
+      final code = nested is Map
+          ? (nested['code'] ?? '').toString()
+          : (result['code'] ?? '').toString();
+      return AgentDispatchTurnResult(
+        ok: ok,
+        sessionId: (result['nativeSessionId'] ?? normalizedSession)
+            .toString()
+            .trim(),
+        turnId: (result['turnId'] ?? '').toString().trim(),
+        status: (result['status'] ?? '').toString(),
+        errorCode: ok ? '' : (code.isEmpty ? 'dispatch_steer_failed' : code),
+        raw: Map<String, dynamic>.from(result),
+      );
+    } catch (_) {
+      return AgentDispatchTurnResult(
+        ok: false,
+        sessionId: normalizedSession,
+        status: 'outcome_unknown',
+        errorCode: 'dispatch_steer_outcome_unknown',
+      );
+    }
+  }
+
   @override
   Stream<AgentDispatchEvent> stream({
     required AgentCommandRunner runner,
@@ -406,7 +633,7 @@ class AgentConversationService implements AgentDispatchLane {
         streaming: matrix['streaming'] == true,
         approval: matrix['approvals'] == true,
         attachments: matrix['multimodal'] == true,
-        interruptSteer: matrix['cancel'] == true,
+        interruptSteer: matrix['interruptSteer'] == true,
         usageStatus: matrix['usageStatus'] == true,
         exactResume: matrix['exactResume'] == true,
       );

@@ -30,9 +30,6 @@ RoutingPolicyDocument routingPolicyFromEditor(
               existingById[entries[index].agentId.trim()]?.capabilities ??
               const [],
           priority: index + 1,
-          allowanceThreshold:
-              existingById[entries[index].agentId.trim()]?.allowanceThreshold ??
-              const RoutingAllowanceThreshold(),
           distillation:
               existingById[entries[index].agentId.trim()]?.distillation ??
               const RoutingAgentDistillation(),

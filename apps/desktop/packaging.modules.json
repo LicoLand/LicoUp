@@ -8,7 +8,7 @@
   },
   "modules": {
     "portable-data": {
-      "label": "LicoArc client local state, mobile relay, activity, snapshots, scoped mail imports, and target config cache",
+      "label": "LicoArc client local settings, agent discovery cache, encrypted pairing state, skills, usage, activity, and conversation snapshots",
       "category": "storage",
       "enabled": true,
       "required": true,
@@ -27,13 +27,7 @@
         "lico-client/pins",
         "lico-client/mobile-relay",
         "lico-client/activity",
-        "lico-client/snapshots",
-        "lico-client/source-queue",
-        "lico-client/mail-imports",
-        "lico-client/connectors",
-        "lico-client/knowledge-cache",
-        "lico-client/mcp-local-bridge",
-        "target-config-cache"
+        "lico-client/snapshots"
       ]
     },
     "target-adapters": {
@@ -65,9 +59,9 @@
         "pi"
       ]
     },
-    "mcp-plugins": {
-      "label": "Peer MCP plugin lifecycle",
-      "category": "mcp-plugins",
+    "local-task-queue": {
+      "label": "Bounded Rust FIFO queue for lightweight local client work",
+      "category": "runtime",
       "enabled": true,
       "required": true,
       "platforms": [
@@ -77,13 +71,12 @@
       ],
       "packaging": "runtime-capability",
       "requires": [
-        "target-adapters",
-        "portable-data"
+        "native-sidecar"
       ]
     },
-    "skill-hub": {
-      "label": "Passive Skill Hub boundary",
-      "category": "skill-hub",
+    "protocol-adapters": {
+      "label": "Service-neutral ACP conversation and MCP request/response adapters",
+      "category": "protocols",
       "enabled": true,
       "required": true,
       "platforms": [
@@ -94,12 +87,12 @@
       "packaging": "runtime-capability",
       "requires": [
         "native-sidecar",
-        "portable-data"
+        "target-adapters"
       ]
     },
-    "model-forwarding": {
-      "label": "Thin model forwarding profiles and command routing",
-      "category": "model-forwarding",
+    "skill-hub": {
+      "label": "Passive Skill Hub boundary",
+      "category": "skill-hub",
       "enabled": true,
       "required": true,
       "platforms": [
@@ -159,101 +152,6 @@
         "portable-data"
       ]
     },
-    "source-queue": {
-      "label": "Source Queue durable upload submission sidecar",
-      "category": "ingestion",
-      "enabled": true,
-      "required": true,
-      "platforms": [
-        "macos",
-        "linux",
-        "windows"
-      ],
-      "packaging": "runtime-capability",
-      "requires": [
-        "native-sidecar",
-        "portable-data"
-      ]
-    },
-    "client-connectors": {
-      "label": "Built-in local connector host",
-      "category": "connectors",
-      "enabled": true,
-      "required": true,
-      "platforms": [
-        "macos",
-        "linux",
-        "windows"
-      ],
-      "packaging": "runtime-capability",
-      "requires": [
-        "source-queue",
-        "portable-data"
-      ]
-    },
-    "knowledge-cache": {
-      "label": "Authorized KnowledgeCore mirror cache",
-      "category": "knowledge",
-      "enabled": true,
-      "required": true,
-      "platforms": [
-        "macos",
-        "linux",
-        "windows"
-      ],
-      "packaging": "runtime-capability",
-      "requires": [
-        "native-sidecar",
-        "portable-data"
-      ]
-    },
-    "mail-import-runtime": {
-      "label": "macOS Mail scoped preview and Source Queue handoff",
-      "category": "connectors",
-      "enabled": true,
-      "required": true,
-      "platforms": [
-        "macos"
-      ],
-      "packaging": "swift-sidecar",
-      "artifactName": "lico-mail-helper",
-      "swiftSource": "apps/desktop/macos/MailHelper/LicoMailHelper.swift",
-      "requires": [
-        "source-queue",
-        "native-sidecar"
-      ]
-    },
-    "openai-dashboard-runtime": {
-      "label": "OpenAI dashboard background usage probe",
-      "category": "usage",
-      "enabled": true,
-      "required": true,
-      "platforms": [
-        "macos"
-      ],
-      "packaging": "swift-sidecar",
-      "artifactName": "lico-openai-dashboard-helper",
-      "swiftSource": "apps/desktop/macos/OpenAIDashboardHelper/LicoOpenAIDashboardHelper.swift",
-      "requires": [
-        "native-sidecar"
-      ]
-    },
-    "mcp-local-bridge": {
-      "label": "Client-local-runtime MCP HTTP bridge registration",
-      "category": "mcp",
-      "enabled": true,
-      "required": true,
-      "platforms": [
-        "macos",
-        "linux",
-        "windows"
-      ],
-      "packaging": "runtime-capability",
-      "requires": [
-        "native-sidecar",
-        "portable-data"
-      ]
-    },
     "desktop-app": {
       "label": "Flutter future desktop frontend",
       "category": "core",
@@ -304,10 +202,5 @@
       "cargoBin": "lico-client"
     }
   },
-  "deferredCapabilities": {
-    "clientd": {
-      "status": "todo",
-      "reason": "The current client has no background daemon; GUI and lico-client use explicit local commands and portable state."
-    }
-  }
+  "deferredCapabilities": {}
 }

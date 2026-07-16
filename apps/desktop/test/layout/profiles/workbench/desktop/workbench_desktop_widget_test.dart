@@ -39,17 +39,13 @@ void main() {
       );
       expect(find.byKey(const Key('shell-global-search')), findsOneWidget);
       expect(find.byKey(const Key('topbar-settings-button')), findsOneWidget);
-      expect(
-        find.byKey(const Key('topbar-control-panel-icon')),
-        findsOneWidget,
-      );
       expect(find.byKey(const Key('topbar-agents-icon')), findsOneWidget);
       expect(counter.builds, 1);
       expect(tester.takeException(), isNull);
     }
   });
 
-  testWidgets('top-bar icons select Home and Agents destinations', (
+  testWidgets('top-bar actions select Agents and Settings destinations', (
     tester,
   ) async {
     tester.view.devicePixelRatio = 1;
@@ -68,9 +64,9 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(const Key('topbar-control-panel-icon')));
+    await tester.tap(find.byKey(const Key('topbar-agents-icon')));
     await tester.pump();
-    expect(selected, [ClientSection.controlPanel]);
+    expect(selected, [ClientSection.agents]);
 
     selected.clear();
     await tester.tap(find.byKey(const Key('topbar-settings-button')));
@@ -132,88 +128,53 @@ void main() {
     expect(find.byKey(const Key('passed-destination')), findsOneWidget);
   });
 
-  testWidgets(
-    'private chrome consumes semantic status, allowance and pairing',
-    (tester) async {
-      tester.view.devicePixelRatio = 1;
-      tester.view.physicalSize = const Size(1100, 760);
-      addTearDown(tester.view.resetPhysicalSize);
-      addTearDown(tester.view.resetDevicePixelRatio);
-      final chrome = _WorkbenchChromeFake(
-        LayoutChromeSnapshot(
-          status: const LayoutChromeStatusSnapshot(
-            message: 'Ready',
-            caption: 'Workbench client',
-          ),
-          allowance: LayoutChromeAllowanceSnapshot(
-            targetId: 'target-a',
-            targetLabel: 'Agent A',
-            meters: const [
-              LayoutChromeAllowanceMeterSnapshot(
-                kind: 'chatgpt-weekly-limit',
-                label: 'ChatGPT Weekly Limit',
-                provider: 'ChatGPT',
-                period: 'week',
-                status: 'available',
-                value: '42',
-                unit: '%',
-                message: 'Resets in 3 days.',
-              ),
-            ],
-            totalTokens: 100,
-            targetTokens: 42,
-          ),
-        ),
-      );
-      addTearDown(chrome.dispose);
-
-      await tester.pumpWidget(
-        WorkbenchDesktopShellHarness(
-          environment: workbenchDesktopEnvironment(width: 1100),
-          activeDestination: ClientSection.agents,
-          destination: const SizedBox(),
-          chrome: chrome,
-        ),
-      );
-      await tester.pumpAndSettle();
-
-      expect(
-        find.byKey(const ValueKey<String>('shell-status-text:Ready')),
-        findsOneWidget,
-      );
-      expect(
-        find.byKey(const Key('agent-allowance-meter-chatgpt-weekly-limit')),
-        findsOneWidget,
-      );
-      expect(
-        find.byKey(
-          const Key('agent-allowance-progress-track-ChatGPT Weekly Limit'),
-        ),
-        findsOneWidget,
-      );
-      expect(find.text('42%'), findsOneWidget);
-
-      await tester.tap(find.byKey(const Key('topbar-pairing-button')));
-      await tester.pump();
-      expect(chrome.pairingRequests, 1);
-
-      chrome.snapshot = const LayoutChromeSnapshot(
+  testWidgets('private chrome consumes semantic status and pairing', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(1100, 760);
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final chrome = _WorkbenchChromeFake(
+      const LayoutChromeSnapshot(
         status: LayoutChromeStatusSnapshot(
-          message: 'Updated',
+          message: 'Ready',
           caption: 'Workbench client',
         ),
-      );
-      await tester.pumpAndSettle();
-      expect(
-        find.byKey(const ValueKey<String>('shell-status-text:Updated')),
-        findsOneWidget,
-      );
-      expect(
-        find.byKey(const Key('agent-allowance-meter-chatgpt-weekly-limit')),
-        findsNothing,
-      );
-    },
-  );
+      ),
+    );
+    addTearDown(chrome.dispose);
+
+    await tester.pumpWidget(
+      WorkbenchDesktopShellHarness(
+        environment: workbenchDesktopEnvironment(width: 1100),
+        activeDestination: ClientSection.agents,
+        destination: const SizedBox(),
+        chrome: chrome,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey<String>('shell-status-text:Ready')),
+      findsOneWidget,
+    );
+    await tester.tap(find.byKey(const Key('topbar-pairing-button')));
+    await tester.pump();
+    expect(chrome.pairingRequests, 1);
+
+    chrome.snapshot = const LayoutChromeSnapshot(
+      status: LayoutChromeStatusSnapshot(
+        message: 'Updated',
+        caption: 'Workbench client',
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey<String>('shell-status-text:Updated')),
+      findsOneWidget,
+    );
+  });
 }
 
 final class _WorkbenchChromeFake extends ChangeNotifier

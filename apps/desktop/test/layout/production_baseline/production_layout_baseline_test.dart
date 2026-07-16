@@ -3,7 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:flutter_client/src/contracts/presentation/layout_environment.dart';
 import 'package:flutter_client/src/contracts/presentation/semantic_destination.dart';
-import 'package:flutter_client/src/frontend/layout/built_in_layout_composition.dart';
+import 'package:flutter_client/src/application/composition/built_in_layout_composition.dart';
 
 import '../fixtures/production_client_shell_fixture.dart';
 
@@ -73,11 +73,6 @@ List<_ProductionBaseline> _baselinesFor(LayoutRuntimeSurface surface) =>
     switch (surface) {
       LayoutRuntimeSurface.desktop => const [
         _ProductionBaseline(
-          destination: ClientSection.controlPanel,
-          size: Size(1180, 820),
-          brightness: Brightness.light,
-        ),
-        _ProductionBaseline(
           destination: ClientSection.agents,
           size: Size(1180, 820),
           brightness: Brightness.dark,
@@ -89,11 +84,6 @@ List<_ProductionBaseline> _baselinesFor(LayoutRuntimeSurface surface) =>
         ),
       ],
       LayoutRuntimeSurface.mobile => const [
-        _ProductionBaseline(
-          destination: ClientSection.feed,
-          size: Size(540, 960),
-          brightness: Brightness.light,
-        ),
         _ProductionBaseline(
           destination: ClientSection.agents,
           size: Size(540, 960),

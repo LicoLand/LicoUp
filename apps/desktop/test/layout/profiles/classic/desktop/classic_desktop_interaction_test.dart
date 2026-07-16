@@ -23,7 +23,7 @@ void main() {
           height: size.height,
           hasKeyboard: true,
         ),
-        activeDestination: ClientSection.controlPanel,
+        activeDestination: ClientSection.agents,
         content: content,
         actions: actions,
       ),
@@ -31,9 +31,8 @@ void main() {
     await tester.pump();
 
     final semantics = tester.ensureSemantics();
-    expect(find.bySemanticsLabel('Home'), findsAtLeastNWidgets(1));
-    expect(find.bySemanticsLabel('Content Home'), findsOneWidget);
-    expect(find.byKey(const Key('classic-nav-controlPanel')), findsOneWidget);
+    expect(find.bySemanticsLabel('Agents'), findsAtLeastNWidgets(1));
+    expect(find.bySemanticsLabel('Content Agents'), findsOneWidget);
     expect(find.byKey(const Key('classic-nav-agents')), findsOneWidget);
     semantics.dispose();
   });
@@ -54,7 +53,7 @@ void main() {
           hasPointer: true,
           hasTouch: true,
         ),
-        activeDestination: ClientSection.controlPanel,
+        activeDestination: ClientSection.agents,
         content: content,
         actions: actions,
       ),
@@ -72,11 +71,9 @@ void main() {
     await pointer.removePointer();
 
     expect(actions.destinationSelections, [ClientSection.agents]);
-    await tester.tap(
-      find.byKey(const Key('classic-content-action-controlPanel')),
-    );
+    await tester.tap(find.byKey(const Key('classic-content-action-agents')));
     await tester.pump();
-    expect(actions.contentActions, [(ClientSection.controlPanel, 'primary')]);
+    expect(actions.contentActions, [(ClientSection.agents, 'primary')]);
     expect(tester.takeException(), isNull);
   });
 
@@ -94,7 +91,7 @@ void main() {
           width: size.width,
           height: size.height,
         ),
-        activeDestination: ClientSection.controlPanel,
+        activeDestination: ClientSection.agents,
         content: content,
         actions: actions,
       ),
@@ -121,28 +118,10 @@ void main() {
     final actions = ClassicDesktopActionRecorder();
     final content = ClassicDesktopRecordingContentPort(actions);
     final chrome = _ClassicChromeFake(
-      LayoutChromeSnapshot(
-        status: const LayoutChromeStatusSnapshot(
+      const LayoutChromeSnapshot(
+        status: LayoutChromeStatusSnapshot(
           message: 'Ready',
           caption: 'Classic client',
-        ),
-        allowance: LayoutChromeAllowanceSnapshot(
-          targetId: 'target-a',
-          targetLabel: 'Agent A',
-          meters: const [
-            LayoutChromeAllowanceMeterSnapshot(
-              kind: 'chatgpt-weekly-limit',
-              label: 'ChatGPT Weekly Limit',
-              provider: 'ChatGPT',
-              period: 'week',
-              status: 'available',
-              value: '42',
-              unit: '%',
-              message: 'Resets in 3 days.',
-            ),
-          ],
-          totalTokens: 100,
-          targetTokens: 42,
         ),
       ),
     );
@@ -166,12 +145,6 @@ void main() {
       find.byKey(const ValueKey<String>('shell-status-text:Ready')),
       findsOneWidget,
     );
-    expect(
-      find.byKey(const Key('agent-allowance-meter-chatgpt-weekly-limit')),
-      findsOneWidget,
-    );
-    expect(find.text('42%'), findsOneWidget);
-
     chrome.snapshot = const LayoutChromeSnapshot(
       status: LayoutChromeStatusSnapshot(
         message: 'Updated',
@@ -183,10 +156,6 @@ void main() {
     expect(
       find.byKey(const ValueKey<String>('shell-status-text:Updated')),
       findsOneWidget,
-    );
-    expect(
-      find.byKey(const Key('agent-allowance-meter-chatgpt-weekly-limit')),
-      findsNothing,
     );
   });
 }

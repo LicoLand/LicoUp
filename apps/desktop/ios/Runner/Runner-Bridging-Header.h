@@ -7,11 +7,22 @@
 extern "C" {
 #endif
 
+enum {
+  LICO_SECURE_MESH_SECRET_GET_ERROR = -1,
+  LICO_SECURE_MESH_SECRET_GET_NOT_FOUND = 0,
+  LICO_SECURE_MESH_SECRET_GET_FOUND = 1,
+};
+
 typedef struct LicoSecureMeshSecretStoreCallbacks {
   void *ctx;
   const char *backend;
   bool (*set_secret)(void *ctx, const char *namespace_, const char *key, const char *secret);
-  char *(*get_secret)(void *ctx, const char *namespace_, const char *key);
+  int32_t (*get_secret)(
+    void *ctx,
+    const char *namespace_,
+    const char *key,
+    char **value_out
+  );
   bool (*delete_secret)(void *ctx, const char *namespace_, const char *key);
   void (*string_free)(void *ctx, char *value);
 } LicoSecureMeshSecretStoreCallbacks;

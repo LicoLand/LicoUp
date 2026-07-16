@@ -1,11 +1,36 @@
-part of 'package:flutter_client/src/backend/features/agents/services/agent_conversation_service.dart';
+import 'package:flutter_client/src/contracts/agent_command_runner.dart';
 
-extension AgentConversationArchiveService on AgentConversationService {
+class AgentConversationArchiveService {
+  const AgentConversationArchiveService();
+
+  Future<Map<String, dynamic>> previewArchiveJob({
+    required AgentCommandRunner agentService,
+    required String selectionMode,
+    required String path,
+    String query = '',
+    String sourceAgentId = '',
+  }) {
+    return agentService.runCli([
+      'snapshots',
+      'archive',
+      'jobs',
+      'preview',
+      '--selection-mode',
+      selectionMode.trim(),
+      if (query.trim().isNotEmpty) ...['--query', query.trim()],
+      if (sourceAgentId.trim().isNotEmpty) ...['--agent', sourceAgentId.trim()],
+      '--path',
+      path.trim(),
+    ]);
+  }
+
   Future<Map<String, dynamic>> createArchiveJob({
     required AgentCommandRunner agentService,
-    required String keywords,
+    required String selectionMode,
     required String path,
-    bool curation = true,
+    required String planBinding,
+    String query = '',
+    String sourceAgentId = '',
     int? archiveParallelism,
     int maxAttempts = 2,
   }) {
@@ -14,12 +39,14 @@ extension AgentConversationArchiveService on AgentConversationService {
       'archive',
       'jobs',
       'create',
-      '--keywords',
-      keywords.trim(),
+      '--selection-mode',
+      selectionMode.trim(),
+      if (query.trim().isNotEmpty) ...['--query', query.trim()],
+      if (sourceAgentId.trim().isNotEmpty) ...['--agent', sourceAgentId.trim()],
       '--path',
       path.trim(),
-      '--curation',
-      curation ? 'true' : 'false',
+      '--plan-binding',
+      planBinding.trim(),
       '--max-attempts',
       maxAttempts.toString(),
     ];
@@ -96,16 +123,8 @@ extension AgentConversationArchiveService on AgentConversationService {
     required AgentCommandRunner agentService,
     required String topic,
     String agentId = '',
-    bool curation = true,
   }) {
-    final args = [
-      'snapshots',
-      'collect',
-      '--topic',
-      topic.trim(),
-      '--curation',
-      curation ? 'true' : 'false',
-    ];
+    final args = ['snapshots', 'collect', '--topic', topic.trim()];
     if (agentId.trim().isNotEmpty) {
       args.addAll(['--agent', agentId.trim()]);
     }
@@ -144,7 +163,6 @@ extension AgentConversationArchiveService on AgentConversationService {
     required AgentCommandRunner agentService,
     required String profileId,
     String trigger = 'manual',
-    bool curation = true,
   }) {
     return agentService.runCli([
       'snapshots',
@@ -154,8 +172,6 @@ extension AgentConversationArchiveService on AgentConversationService {
       profileId.trim(),
       '--trigger',
       trigger.trim().isEmpty ? 'manual' : trigger.trim(),
-      '--curation',
-      curation ? 'true' : 'false',
     ]);
   }
 
@@ -202,46 +218,5 @@ extension AgentConversationArchiveService on AgentConversationService {
       '--path',
       path.trim(),
     ]);
-  }
-
-  Future<Map<String, dynamic>> getPreferredSnapshotCurator({
-    required AgentCommandRunner agentService,
-  }) {
-    return agentService.runCli(['snapshots', 'curator', 'get']);
-  }
-
-  Future<Map<String, dynamic>> setPreferredSnapshotCurator({
-    required AgentCommandRunner agentService,
-    required String target,
-  }) {
-    final trimmed = target.trim();
-    if (trimmed.isEmpty) {
-      return agentService.runCli([
-        'snapshots',
-        'curator',
-        'set',
-        '--clear',
-        'true',
-      ]);
-    }
-    return agentService.runCli([
-      'snapshots',
-      'curator',
-      'set',
-      '--target',
-      trimmed,
-    ]);
-  }
-
-  Future<Map<String, dynamic>> ensureSnapshotBridge({
-    required AgentCommandRunner agentService,
-    required String agentId,
-    String configPath = '',
-  }) {
-    final args = ['snapshots', 'bridge', 'ensure', '--target', agentId.trim()];
-    if (configPath.trim().isNotEmpty) {
-      args.addAll(['--config-path', configPath.trim()]);
-    }
-    return agentService.runCli(args);
   }
 }

@@ -1,11 +1,11 @@
-import 'package:flutter_client/src/application/features/routing/controller/task_route_coordinator.dart';
 import 'package:flutter_client/src/contracts/routing/routing_policy_schema.dart';
+import 'package:flutter_client/src/contracts/routing/task_route_coordinator_port.dart';
 
 abstract class RoutingModuleRegistration {
   bool get isIncluded;
   bool get isEnabled;
   bool get isReady;
-  TaskRouteCoordinator? get coordinator;
+  TaskRouteCoordinatorPort? get coordinator;
   RoutingPolicyDocument get activePolicy;
   Stream<RoutingPolicyStoreEvent> get policyEvents;
 

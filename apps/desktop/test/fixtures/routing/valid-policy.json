@@ -8,7 +8,6 @@
       "roles": ["code-review", "architecture", "implementation"],
       "capabilities": ["reasoning-deep", "tool-use", "long-context"],
       "priority": 1,
-      "allowanceThreshold": { "kind": "token", "minimum": 1000 },
       "distillation": {
         "distiller": "self",
         "maxLength": 4096,
@@ -19,15 +18,12 @@
       "id": "codex",
       "roles": ["implementation", "quick-edit"],
       "capabilities": ["tool-use"],
-      "priority": 2,
-      "allowanceThreshold": { "kind": "token", "minimum": 500 }
+      "priority": 2
     }
   ],
   "routing": {
     "strategy": "priority-fallback",
     "matchMode": "role-first",
-    "staleBehavior": "conservative-skip",
-    "allowStaleUsage": false,
     "circuitBreaker": {
       "allowedFails": 3,
       "cooldownSeconds": 60
@@ -36,7 +32,6 @@
       "minimumIntervalSeconds": 30,
       "triggerOn": [
         "policy-reload",
-        "allowance-exhausted",
         "circuit-broken",
         "readiness-lost"
       ]

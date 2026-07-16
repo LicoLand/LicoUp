@@ -7,6 +7,11 @@ import UIKit
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
+    do {
+      _ = try LocalOnlyDataProtection.prepareApplicationSupportRoots()
+    } catch {
+      return false
+    }
     SecureMeshIosBridge.setForegroundIdleTimerGuard(active: true)
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }

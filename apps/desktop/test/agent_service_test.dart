@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_client/src/platform/native_client/agent_service.dart';
+import 'package:flutter_client/src/platform/native_client/native_cli_ports.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -14,7 +15,7 @@ void main() {
       'status': 'detected',
       'configured': false,
       'confidence': 0.72,
-      'detail': 'OpenCode remote MCP configuration',
+      'detail': 'OpenCode local agent configuration',
       'configPath': '/tmp/opencode.jsonc',
       'binaryPath': '/usr/local/bin/opencode',
       'historyRoots': ['/tmp/opencode-history'],
@@ -115,6 +116,33 @@ fi
 
     expect(result, {'ok': true, 'sawStdin': true});
   });
+
+  test(
+    'catalog snapshots use structured RPC without catalog bytes in argv',
+    () async {
+      final transport = _RecordingStructuredTransport();
+      final agentService = AgentService(
+        stdioRpcTransport: transport,
+        persistentStdioRpcEnabled: true,
+      );
+      addTearDown(agentService.dispose);
+
+      final result = await agentService.runCatalogCommand(
+        'refresh',
+        params: const {
+          'partitionKey': 'opaque-a',
+          'tools': [
+            {'name': 'upstream.synthetic'},
+          ],
+        },
+      );
+
+      expect(result['outcome'], 'replaced');
+      expect(transport.method, 'catalog.refresh');
+      expect(transport.params['tools'], hasLength(1));
+      expect(transport.executeCalls, isEmpty);
+    },
+  );
 
   test('redacts process start details from private runtime errors', () async {
     final agentService = AgentService(
@@ -249,45 +277,6 @@ exec sleep 5
     ]);
   });
 
-  test('injects enabled proxy bridge environment into CLI runs', () async {
-    final tempDir = await Directory.systemTemp.createTemp('lico-proxy-env-');
-    addTearDown(() => tempDir.delete(recursive: true));
-    final clientDir = Directory('${tempDir.path}/lico-client');
-    await clientDir.create(recursive: true);
-    await File('${clientDir.path}/proxy-bridge.json').writeAsString(
-      jsonEncode({
-        'enabled': true,
-        'clientBridge': {
-          'enabled': true,
-          'environment': {
-            'HTTP_PROXY': 'http://127.0.0.1:7897',
-            'HTTPS_PROXY': 'http://127.0.0.1:7897',
-            'ALL_PROXY': 'http://127.0.0.1:7897',
-            'NO_PROXY': '127.0.0.1,localhost,::1,.local',
-          },
-        },
-      }),
-    );
-    Map<String, String>? capturedEnv;
-    final agentService = AgentService(
-      dataDirectory: () async => tempDir.path,
-      runCliExecutable: (executable, args, env) {
-        capturedEnv = env;
-        return Future.value(
-          ProcessResult(0, 0, jsonEncode({'ok': true, 'candidates': []}), ''),
-        );
-      },
-    );
-
-    await agentService.scanTargets();
-
-    expect(capturedEnv?['LICO_CLIENT_PORTABLE_DIR'], tempDir.path);
-    expect(capturedEnv?['LICO_PORTABLE_DIR'], tempDir.path);
-    expect(capturedEnv?['HTTP_PROXY'], 'http://127.0.0.1:7897');
-    expect(capturedEnv?['ALL_PROXY'], 'http://127.0.0.1:7897');
-    expect(capturedEnv?['NO_PROXY'], contains('localhost'));
-  });
-
   test('wraps lico-client execution failure as an exception', () async {
     final agentService = AgentService(
       runCliExecutable: (executable, args, env) {
@@ -296,7 +285,7 @@ exec sleep 5
     );
 
     await expectLater(
-      agentService.planTargetConfig('codex'),
+      agentService.inspectTarget('codex'),
       throwsA(
         isA<Exception>()
             .having(
@@ -313,143 +302,52 @@ exec sleep 5
     );
   });
 
-  test('builds action command arguments and trims optional parameters', () async {
-    final captured = <List<String>>[];
-    final agentService = AgentService(
-      runCliExecutable: (executable, args, env) {
-        captured.add(List<String>.from(args));
-        return Future.value(
-          ProcessResult(
-            0,
-            0,
-            jsonEncode({
-              'ok': true,
-              'snapshots': [],
-              'pairings': [],
-              'skills': [],
-              'profiles': [],
-            }),
-            '',
-          ),
-        );
-      },
-    );
+  test(
+    'builds action command arguments and trims optional parameters',
+    () async {
+      final captured = <List<String>>[];
+      final agentService = AgentService(
+        runCliExecutable: (executable, args, env) {
+          captured.add(List<String>.from(args));
+          return Future.value(
+            ProcessResult(
+              0,
+              0,
+              jsonEncode({
+                'ok': true,
+                'snapshots': [],
+                'pairings': [],
+                'skills': [],
+                'profiles': [],
+              }),
+              '',
+            ),
+          );
+        },
+      );
 
-    await agentService.mcpPluginStatus(
-      target: 'codex',
-      configPath: ' /tmp/code ',
-    );
-    await agentService.updateMcpPlugin(target: 'codex');
-    await agentService.rollbackMcpPlugin(
-      target: 'codex',
-      snapshotId: 'snapshot-1',
-      configPath: ' /tmp/code ',
-    );
-    await agentService.listSnapshots(target: 'codex');
-    await agentService.listPairings(agent: 'codex');
-    await agentService.requestPairing(agent: 'codex', target: 'manual');
-    await agentService.approvePairing(agent: 'codex');
-    await agentService.revokePairing(agent: 'codex');
-    await agentService.listSkills(agent: 'codex');
-    await agentService.localRuntimeStatus();
-    await agentService.ensureLocalRuntime(
-      sourceRoot: '/repo',
-      presetConfig:
-          '/repo/packages/foundation/config/composition-presets/client-local-runtime.preset.json',
-      port: 17328,
-      rebuild: true,
-    );
-    await agentService.startLocalRuntime(port: 17328);
-    await agentService.restartLocalRuntime(port: 17328);
-    await agentService.stopLocalRuntime();
-    await agentService.localRuntimeLogs(tail: 50);
-    await agentService.proxyBridgeDetect();
-    await agentService.proxyBridgeStatus();
-    await agentService.proxyBridgePlan(targets: 'codex,claude-code');
-    await agentService.proxyBridgeApply(targets: 'codex');
-    await agentService.proxyBridgeRollback(removeWrappers: false);
-
-    expect(captured[0], [
-      'mcp',
-      'plugin',
-      'status',
-      '--target',
-      'codex',
-      '--config-path',
-      '/tmp/code',
-    ]);
-    expect(captured[1], ['mcp', 'plugin', 'update', '--target', 'codex']);
-    expect(captured[2], [
-      'mcp',
-      'plugin',
-      'rollback',
-      '--target',
-      'codex',
-      '--snapshot-id',
-      'snapshot-1',
-      '--config-path',
-      '/tmp/code',
-    ]);
-    expect(captured[3], ['snapshots', 'list', '--target', 'codex']);
-    expect(captured[4], ['agents', 'pair', 'list', '--agent', 'codex']);
-    expect(captured[5], [
-      'agents',
-      'pair',
-      'request',
-      '--agent',
-      'codex',
-      '--target',
-      'manual',
-    ]);
-    expect(captured[6], ['agents', 'pair', 'approve', '--agent', 'codex']);
-    expect(captured[7], ['agents', 'pair', 'revoke', '--agent', 'codex']);
-    expect(captured[8], ['skill', 'list', '--agent', 'codex']);
-    expect(captured[9], ['local-runtime', 'status']);
-    expect(captured[10], [
-      'local-runtime',
-      'ensure',
-      '--source-root',
-      '/repo',
-      '--preset-config',
-      '/repo/packages/foundation/config/composition-presets/client-local-runtime.preset.json',
-      '--port',
-      '17328',
-      '--rebuild',
-      'true',
-    ]);
-    expect(captured[11], ['local-runtime', 'start', '--port', '17328']);
-    expect(captured[12], ['local-runtime', 'restart', '--port', '17328']);
-    expect(captured[13], ['local-runtime', 'stop']);
-    expect(captured[14], ['local-runtime', 'logs', '--tail', '50']);
-    expect(captured[15], ['proxy-bridge', 'detect']);
-    expect(captured[16], ['proxy-bridge', 'status']);
-    expect(captured[17], [
-      'proxy-bridge',
-      'plan',
-      '--client-enabled',
-      'true',
-      '--wrapper-enabled',
-      'true',
-      '--targets',
-      'codex,claude-code',
-    ]);
-    expect(captured[18], [
-      'proxy-bridge',
-      'apply',
-      '--client-enabled',
-      'true',
-      '--wrapper-enabled',
-      'true',
-      '--targets',
-      'codex',
-    ]);
-    expect(captured[19], [
-      'proxy-bridge',
-      'rollback',
-      '--remove-wrappers',
-      'false',
-    ]);
-  });
+      await agentService.listSnapshots(target: 'codex');
+      await agentService.listPairings(agent: 'codex');
+      await agentService.requestPairing(agent: 'codex', target: 'manual');
+      await agentService.approvePairing(agent: 'codex');
+      await agentService.revokePairing(agent: 'codex');
+      await agentService.listSkills(agent: 'codex');
+      expect(captured[0], ['snapshots', 'list', '--target', 'codex']);
+      expect(captured[1], ['agents', 'pair', 'list', '--agent', 'codex']);
+      expect(captured[2], [
+        'agents',
+        'pair',
+        'request',
+        '--agent',
+        'codex',
+        '--target',
+        'manual',
+      ]);
+      expect(captured[3], ['agents', 'pair', 'approve', '--agent', 'codex']);
+      expect(captured[4], ['agents', 'pair', 'revoke', '--agent', 'codex']);
+      expect(captured[5], ['skill', 'list', '--agent', 'codex']);
+    },
+  );
 
   test('returns empty list when list output is invalid', () async {
     final agentService = AgentService(
@@ -955,6 +853,36 @@ fi
       ),
     );
   });
+}
+
+final class _RecordingStructuredTransport implements NativeStdioRpcTransport {
+  String method = '';
+  Map<String, dynamic> params = const {};
+  final List<List<String>> executeCalls = [];
+
+  @override
+  Future<void> dispose() async {}
+
+  @override
+  Future<Map<String, dynamic>> execute(List<String> arguments) async {
+    executeCalls.add(List<String>.from(arguments));
+    return {'ok': true};
+  }
+
+  @override
+  Future<Map<String, dynamic>> executeStructured(
+    String method,
+    Map<String, dynamic> params,
+  ) async {
+    this.method = method;
+    this.params = Map<String, dynamic>.from(params);
+    return {'outcome': 'replaced'};
+  }
+
+  @override
+  Stream<Map<String, dynamic>> streamConversation(
+    Map<String, dynamic> request,
+  ) => const Stream.empty();
 }
 
 Future<void> _writeExecutable(File file, String source) async {

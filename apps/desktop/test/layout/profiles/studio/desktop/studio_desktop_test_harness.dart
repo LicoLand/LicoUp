@@ -15,22 +15,18 @@ import '../../../fixtures/layout_scoped_state_fixture.dart';
 import 'studio_desktop_palette_fixture.dart';
 
 const Set<ClientSection> studioDesktopExpectedDestinations = <ClientSection>{
-  ClientSection.controlPanel,
   ClientSection.agents,
   ClientSection.monitoring,
-  ClientSection.mcpPlugins,
-  ClientSection.localRuntime,
+  ClientSection.skillHub,
   ClientSection.mobileRelay,
   ClientSection.settings,
 };
 
 const Map<ClientSection, String> studioDesktopTestLabels =
     <ClientSection, String>{
-      ClientSection.controlPanel: 'Home',
       ClientSection.agents: 'Agents',
       ClientSection.monitoring: 'Monitoring',
-      ClientSection.mcpPlugins: 'Plugins & Skills',
-      ClientSection.localRuntime: 'Runtime',
+      ClientSection.skillHub: 'Skill Hub',
       ClientSection.mobileRelay: 'Mobile Relay',
       ClientSection.settings: 'Settings',
     };

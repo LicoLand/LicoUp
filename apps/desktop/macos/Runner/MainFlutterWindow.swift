@@ -56,6 +56,35 @@ class MainFlutterWindow: NSWindow {
 
     RegisterGeneratedPlugins(registry: flutterViewController)
 
+    // Window-chrome bridge for the Flutter shell's hidden-titlebar chrome:
+    // hand in-flight drags to AppKit and offer deliberate zoom, mirroring the
+    // native title-bar contract under the shell's control.
+    let windowChromeChannel = FlutterMethodChannel(
+      name: "lico.arc/window_chrome",
+      binaryMessenger: flutterViewController.engine.binaryMessenger
+    )
+    windowChromeChannel.setMethodCallHandler { [weak self] call, result in
+      guard let self = self else {
+        result(nil)
+        return
+      }
+      switch call.method {
+      case "dragWindow":
+        // performDrag runs a modal tracking loop that consumes the rest of
+        // this mouse stream; Flutter keeps no further drag events, which is
+        // the intended handoff.
+        if let event = NSApp.currentEvent {
+          self.performDrag(with: event)
+        }
+        result(nil)
+      case "toggleZoom":
+        self.zoom(nil)
+        result(nil)
+      default:
+        result(FlutterMethodNotImplemented)
+      }
+    }
+
     super.awakeFromNib()
   }
 

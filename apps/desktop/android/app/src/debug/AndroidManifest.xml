@@ -4,4 +4,14 @@
          to allow setting breakpoints, to provide hot reload, etc.
     -->
     <uses-permission android:name="android.permission.INTERNET"/>
+    <application>
+        <receiver
+            android:name=".ReleaseAcceptanceReceiver"
+            android:exported="true"
+            android:permission="android.permission.DUMP">
+            <intent-filter>
+                <action android:name="com.liko.arc.RELEASE_ACCEPTANCE" />
+            </intent-filter>
+        </receiver>
+    </application>
 </manifest>

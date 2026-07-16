@@ -1,4 +1,3 @@
-import 'package:flutter_client/src/contracts/agent_usage_models.dart';
 import 'package:flutter_client/src/contracts/routing/route_decision_record.dart';
 import 'package:flutter_client/src/contracts/routing/routing_policy_schema.dart';
 
@@ -31,8 +30,6 @@ class DefaultRoutePlanner implements RoutePlanner {
     final requiredCapabilities = requirements.capabilities;
     final explicitRoles = _normalizedValues(task.requiredRoles);
     final explicitCapabilities = _normalizedValues(task.requiredCapabilities);
-    final allowStale = policy.routing.allowStaleUsage;
-    var staleUsageOverride = false;
 
     for (var index = 0; index < policy.agents.length; index += 1) {
       final agent = policy.agents[index];
@@ -70,85 +67,6 @@ class DefaultRoutePlanner implements RoutePlanner {
           ),
         );
         continue;
-      }
-
-      final hasThreshold = agent.allowanceThreshold.kind.trim().isNotEmpty;
-      final hasAllowances = signal.allowances.isNotEmpty;
-      if (hasThreshold || hasAllowances) {
-        if (hasThreshold && !signal.usageAvailable) {
-          excluded.add(
-            RouteExclusion(
-              agentId: agent.id,
-              agentLabel: label,
-              reason: RouteReasonCode.allowanceUnavailable,
-            ),
-          );
-          continue;
-        }
-        if (hasThreshold && !signal.usageFresh) {
-          if (allowStale) {
-            staleUsageOverride = true;
-          } else {
-            excluded.add(
-              RouteExclusion(
-                agentId: agent.id,
-                agentLabel: label,
-                reason: RouteReasonCode.allowanceDataStale,
-              ),
-            );
-            continue;
-          }
-        }
-        final thresholdAllowance = hasThreshold
-            ? signal.allowanceFor(agent.allowanceThreshold.kind)
-            : null;
-        if (hasThreshold && thresholdAllowance == null) {
-          excluded.add(
-            RouteExclusion(
-              agentId: agent.id,
-              agentLabel: label,
-              reason: RouteReasonCode.allowanceUnavailable,
-              detail: 'kind=${agent.allowanceThreshold.kind}',
-            ),
-          );
-          continue;
-        }
-        final remaining = thresholdAllowance == null
-            ? null
-            : _parseAllowanceValue(thresholdAllowance.value);
-        if (hasThreshold && remaining == null) {
-          excluded.add(
-            RouteExclusion(
-              agentId: agent.id,
-              agentLabel: label,
-              reason: RouteReasonCode.allowanceUnavailable,
-              detail: 'kind=${agent.allowanceThreshold.kind};numeric=false',
-            ),
-          );
-          continue;
-        }
-        final belowMinimum =
-            remaining != null && remaining < agent.allowanceThreshold.minimum;
-        final matchingAllowanceExhausted =
-            thresholdAllowance != null &&
-            _allowanceIsExhausted(thresholdAllowance);
-        if (belowMinimum ||
-            matchingAllowanceExhausted ||
-            (!hasThreshold && signal.allowanceExhausted)) {
-          excluded.add(
-            RouteExclusion(
-              agentId: agent.id,
-              agentLabel: label,
-              reason: RouteReasonCode.allowanceExhausted,
-              detail: hasThreshold
-                  ? 'kind=${agent.allowanceThreshold.kind};'
-                        'remaining=$remaining;'
-                        'minimum=${agent.allowanceThreshold.minimum}'
-                  : '',
-            ),
-          );
-          continue;
-        }
       }
 
       final agentRoles = [
@@ -208,9 +126,6 @@ class DefaultRoutePlanner implements RoutePlanner {
           satisfiedCapabilities: satisfiedCapabilities.isEmpty
               ? (capabilityWildcard ? requiredCapabilities : agent.capabilities)
               : satisfiedCapabilities,
-          allowanceHeadroom: hasThreshold
-              ? signal.allowanceHeadroomFor(agent.allowanceThreshold.kind)
-              : signal.allowanceHeadroom,
         ),
       );
     }
@@ -233,7 +148,6 @@ class DefaultRoutePlanner implements RoutePlanner {
         alternatives: const [],
         excluded: List.unmodifiable(excluded),
         timestamp: timestamp,
-        staleUsageOverride: staleUsageOverride,
         requiredRoles: requirements.roles,
         requiredCapabilities: requirements.capabilities,
         requirementReasons: requirements.reasons,
@@ -250,7 +164,6 @@ class DefaultRoutePlanner implements RoutePlanner {
           satisfiedCapabilities: List.unmodifiable(
             eligible[i].satisfiedCapabilities,
           ),
-          allowanceHeadroom: eligible[i].allowanceHeadroom,
           reason: i == 0
               ? RouteReasonCode.selected
               : RouteReasonCode.alternative,
@@ -267,7 +180,6 @@ class DefaultRoutePlanner implements RoutePlanner {
       alternatives: List.unmodifiable(alternatives),
       excluded: List.unmodifiable(excluded),
       timestamp: timestamp,
-      staleUsageOverride: staleUsageOverride,
       requiredRoles: requirements.roles,
       requiredCapabilities: requirements.capabilities,
       requirementReasons: requirements.reasons,
@@ -396,17 +308,6 @@ class _RoutingRequirementRule {
   final Set<String> promptTerms;
 }
 
-int? _parseAllowanceValue(String value) {
-  final normalized = value.trim().replaceAll(',', '');
-  final parsed = num.tryParse(normalized);
-  return parsed?.floor();
-}
-
-bool _allowanceIsExhausted(AgentUsageAllowance allowance) {
-  final status = allowance.status.trim().toLowerCase();
-  return status == 'blocked' || status == 'depleted' || status == 'exhausted';
-}
-
 Set<String> _normalizedValues(Iterable<String> values) {
   return {
     for (final value in values)
@@ -421,7 +322,6 @@ class _ScoredCandidate {
     required this.policyOrder,
     required this.matchedRoles,
     required this.satisfiedCapabilities,
-    required this.allowanceHeadroom,
   });
 
   final RoutingPolicyAgent agent;
@@ -429,5 +329,4 @@ class _ScoredCandidate {
   final int policyOrder;
   final List<String> matchedRoles;
   final List<String> satisfiedCapabilities;
-  final int allowanceHeadroom;
 }

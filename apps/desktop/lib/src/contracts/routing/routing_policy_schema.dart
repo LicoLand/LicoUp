@@ -1,432 +1,11 @@
 import 'dart:convert';
 
-import 'package:flutter/foundation.dart';
+import 'package:flutter_client/src/contracts/routing/routing_policy_models.dart';
+import 'package:flutter_client/src/contracts/routing/routing_policy_results.dart';
 
-/// Supported routing policy schema version.
-const int routingPolicySchemaVersion = 2;
-
-/// Policy values with executable semantics in the current routing engine.
-/// Accepting other values would silently misrepresent planner behavior.
-const Set<String> routingPolicySupportedStrategies = {
-  'priority-fallback',
-  'serial-all',
-  'parallel-all',
-  'coordinator-workers',
-};
-const Set<String> routingPolicySupportedMatchModes = {'role-first'};
-const Set<String> routingPolicySupportedStaleBehaviors = {'conservative-skip'};
-const Set<String> routingPolicySupportedSwitchTriggers = {
-  'policy-reload',
-  'allowance-exhausted',
-  'circuit-broken',
-  'readiness-lost',
-};
-
-/// Fail-closed disposition used by `priority-fallback` dispatch.
-///
-/// A retry on another agent is safe only when the adapter explicitly states
-/// both that the failure is transient and that the first request's outcome is
-/// known. Error-code spelling alone is never enough to authorize fallback.
-enum RoutingDispatchFailureDisposition {
-  none,
-  transientKnown,
-  terminal,
-  unknownOutcome,
-}
-
-@immutable
-class RoutingDispatchFailureFacts {
-  const RoutingDispatchFailureFacts({
-    required this.ok,
-    required this.errorCode,
-    required this.transient,
-    required this.outcomeKnown,
-  });
-
-  factory RoutingDispatchFailureFacts.fromEnvelope({
-    required bool ok,
-    required String errorCode,
-    required Map<String, dynamic> envelope,
-  }) {
-    final nested = envelope['error'];
-    final error = nested is Map
-        ? Map<String, dynamic>.from(nested)
-        : const <String, dynamic>{};
-    return RoutingDispatchFailureFacts(
-      ok: ok,
-      errorCode: errorCode.trim().toLowerCase(),
-      transient: envelope['transient'] == true || error['transient'] == true,
-      outcomeKnown:
-          envelope['outcomeKnown'] == true || error['outcomeKnown'] == true,
-    );
-  }
-
-  final bool ok;
-  final String errorCode;
-  final bool transient;
-  final bool outcomeKnown;
-
-  RoutingDispatchFailureDisposition get disposition {
-    if (ok) {
-      return RoutingDispatchFailureDisposition.none;
-    }
-    if (!outcomeKnown) {
-      return RoutingDispatchFailureDisposition.unknownOutcome;
-    }
-    if (transient) {
-      return RoutingDispatchFailureDisposition.transientKnown;
-    }
-    return RoutingDispatchFailureDisposition.terminal;
-  }
-}
-
-/// Default empty policy returned when no policy file exists yet.
-const RoutingPolicyDocument emptyRoutingPolicyDocument =
-    RoutingPolicyDocument();
-
-/// Field names that must never appear in operator-owned policy documents.
-const Set<String> routingPolicyForbiddenCredentialKeys = {
-  'apikey',
-  'api_key',
-  'api-key',
-  'password',
-  'secret',
-  'secretkey',
-  'secret_key',
-  'secret-key',
-  'accesstoken',
-  'access_token',
-  'access-token',
-  'refreshtoken',
-  'refresh_token',
-  'refresh-token',
-  'privatekey',
-  'private_key',
-  'private-key',
-  'credentials',
-  'authtoken',
-  'auth_token',
-  'auth-token',
-  'bearer',
-  'bearertoken',
-  'token',
-};
-
-@immutable
-class RoutingPolicyDocument {
-  const RoutingPolicyDocument({
-    this.schemaVersion = routingPolicySchemaVersion,
-    this.id = '',
-    this.label = '',
-    this.agents = const [],
-    this.routing = const RoutingPolicyRouting(),
-    this.distillation = const RoutingPolicyDistillation(),
-  });
-
-  final int schemaVersion;
-  final String id;
-  final String label;
-  final List<RoutingPolicyAgent> agents;
-  final RoutingPolicyRouting routing;
-  final RoutingPolicyDistillation distillation;
-
-  bool get isEmpty => id.isEmpty && agents.isEmpty;
-
-  /// Policy identity used in route decision audit records.
-  String get identity => id.isEmpty ? '(empty)' : '$id@$schemaVersion';
-
-  Map<String, dynamic> toJson() {
-    return {
-      'schemaVersion': schemaVersion,
-      'id': id,
-      'label': label,
-      'agents': [for (final agent in agents) agent.toJson()],
-      'routing': routing.toJson(),
-      'distillation': distillation.toJson(),
-    };
-  }
-}
-
-@immutable
-class RoutingPolicyAgent {
-  const RoutingPolicyAgent({
-    required this.id,
-    this.modelName = '',
-    this.reasoningEffort = '',
-    this.coordinator = false,
-    this.roles = const [],
-    this.capabilities = const [],
-    this.priority = 0,
-    this.allowanceThreshold = const RoutingAllowanceThreshold(),
-    this.distillation = const RoutingAgentDistillation(),
-  });
-
-  final String id;
-  final String modelName;
-  final String reasoningEffort;
-  final bool coordinator;
-  final List<String> roles;
-  final List<String> capabilities;
-  final int priority;
-  final RoutingAllowanceThreshold allowanceThreshold;
-  final RoutingAgentDistillation distillation;
-
-  Map<String, dynamic> toJson() {
-    return {
-      'id': id,
-      'modelName': modelName,
-      'reasoningEffort': reasoningEffort,
-      'coordinator': coordinator,
-      'roles': roles,
-      'capabilities': capabilities,
-      'priority': priority,
-      'allowanceThreshold': allowanceThreshold.toJson(),
-      'distillation': distillation.toJson(),
-    };
-  }
-}
-
-@immutable
-class RoutingAllowanceThreshold {
-  const RoutingAllowanceThreshold({this.kind = '', this.minimum = 0});
-
-  final String kind;
-  final int minimum;
-
-  Map<String, dynamic> toJson() {
-    return {'kind': kind, 'minimum': minimum};
-  }
-}
-
-@immutable
-class RoutingAgentDistillation {
-  const RoutingAgentDistillation({
-    this.distiller = 'self',
-    this.maxLength = 4096,
-    this.preserveFields = const [],
-  });
-
-  final String distiller;
-  final int maxLength;
-  final List<String> preserveFields;
-
-  Map<String, dynamic> toJson() {
-    return {
-      'distiller': distiller,
-      'maxLength': maxLength,
-      'preserveFields': preserveFields,
-    };
-  }
-}
-
-@immutable
-class RoutingPolicyRouting {
-  const RoutingPolicyRouting({
-    this.strategy = 'priority-fallback',
-    this.matchMode = 'role-first',
-    this.staleBehavior = 'conservative-skip',
-    this.allowStaleUsage = false,
-    this.circuitBreaker = const RoutingCircuitBreakerConfig(),
-    this.switchPolicy = const RoutingSwitchPolicy(),
-  });
-
-  final String strategy;
-  final String matchMode;
-  final String staleBehavior;
-  final bool allowStaleUsage;
-  final RoutingCircuitBreakerConfig circuitBreaker;
-  final RoutingSwitchPolicy switchPolicy;
-
-  Map<String, dynamic> toJson() {
-    return {
-      'strategy': strategy,
-      'matchMode': matchMode,
-      'staleBehavior': staleBehavior,
-      'allowStaleUsage': allowStaleUsage,
-      'circuitBreaker': circuitBreaker.toJson(),
-      'switchPolicy': switchPolicy.toJson(),
-    };
-  }
-}
-
-@immutable
-class RoutingCircuitBreakerConfig {
-  const RoutingCircuitBreakerConfig({
-    this.allowedFails = 3,
-    this.cooldownSeconds = 60,
-  });
-
-  final int allowedFails;
-  final int cooldownSeconds;
-
-  Map<String, dynamic> toJson() {
-    return {'allowedFails': allowedFails, 'cooldownSeconds': cooldownSeconds};
-  }
-}
-
-@immutable
-class RoutingSwitchPolicy {
-  const RoutingSwitchPolicy({
-    this.minimumIntervalSeconds = 30,
-    this.triggerOn = const [
-      'policy-reload',
-      'allowance-exhausted',
-      'circuit-broken',
-      'readiness-lost',
-    ],
-  });
-
-  final int minimumIntervalSeconds;
-  final List<String> triggerOn;
-
-  Map<String, dynamic> toJson() {
-    return {
-      'minimumIntervalSeconds': minimumIntervalSeconds,
-      'triggerOn': triggerOn,
-    };
-  }
-}
-
-@immutable
-class RoutingPolicyDistillation {
-  const RoutingPolicyDistillation({
-    this.defaultDistiller = '',
-    this.alternateDistiller = '',
-    this.fidelityContract = const RoutingFidelityContract(),
-  });
-
-  final String defaultDistiller;
-  final String alternateDistiller;
-  final RoutingFidelityContract fidelityContract;
-
-  Map<String, dynamic> toJson() {
-    return {
-      'defaultDistiller': defaultDistiller,
-      'alternateDistiller': alternateDistiller,
-      'fidelityContract': fidelityContract.toJson(),
-    };
-  }
-}
-
-@immutable
-class RoutingFidelityContract {
-  const RoutingFidelityContract({
-    this.requiredSections = const [
-      'objective',
-      'currentState',
-      'decisions',
-      'constraints',
-      'openItems',
-    ],
-    this.maxPackageLength = 8192,
-    this.retryOnFailure = true,
-    this.maxRetries = 1,
-  });
-
-  final List<String> requiredSections;
-  final int maxPackageLength;
-  final bool retryOnFailure;
-  final int maxRetries;
-
-  Map<String, dynamic> toJson() {
-    return {
-      'requiredSections': requiredSections,
-      'maxPackageLength': maxPackageLength,
-      'retryOnFailure': retryOnFailure,
-      'maxRetries': maxRetries,
-    };
-  }
-}
-
-@immutable
-class RoutingPolicyValidationError {
-  const RoutingPolicyValidationError({
-    required this.path,
-    required this.message,
-    this.line = 0,
-    this.column = 0,
-  });
-
-  final String path;
-  final String message;
-  final int line;
-  final int column;
-
-  @override
-  String toString() {
-    if (line > 0) {
-      return '$path: $message (line $line, col $column)';
-    }
-    return '$path: $message';
-  }
-}
-
-/// Result of parsing a routing policy document.
-sealed class RoutingPolicyParseResult {
-  const RoutingPolicyParseResult();
-}
-
-class RoutingPolicyParseSuccess extends RoutingPolicyParseResult {
-  const RoutingPolicyParseSuccess(this.document);
-
-  final RoutingPolicyDocument document;
-}
-
-class RoutingPolicyParseFailure extends RoutingPolicyParseResult {
-  const RoutingPolicyParseFailure(this.error);
-
-  final RoutingPolicyValidationError error;
-}
-
-/// Events emitted by [RoutingPolicyStore.watch].
-sealed class RoutingPolicyStoreEvent {
-  const RoutingPolicyStoreEvent();
-}
-
-class RoutingPolicyStoreLoaded extends RoutingPolicyStoreEvent {
-  const RoutingPolicyStoreLoaded(this.document);
-
-  final RoutingPolicyDocument document;
-}
-
-class RoutingPolicyStoreReloaded extends RoutingPolicyStoreEvent {
-  const RoutingPolicyStoreReloaded(this.document);
-
-  final RoutingPolicyDocument document;
-}
-
-class RoutingPolicyStoreValidationFailed extends RoutingPolicyStoreEvent {
-  const RoutingPolicyStoreValidationFailed(this.error);
-
-  final RoutingPolicyValidationError error;
-}
-
-/// Active policy snapshot manager. Implementations live in backend services.
-abstract class RoutingPolicyStore {
-  /// Load the policy from persistent storage. Returns the default empty policy
-  /// if no file exists yet.
-  Future<RoutingPolicyDocument> load();
-
-  /// Atomically persist and activate a validated policy snapshot.
-  Future<void> save(RoutingPolicyDocument policy);
-
-  /// Remove the persisted policy and activate the empty snapshot.
-  Future<void> clear();
-
-  /// Start watching the policy directory for changes. On valid change, swaps
-  /// the active snapshot and notifies listeners. On invalid change, retains
-  /// last good snapshot and reports the validation error.
-  Stream<RoutingPolicyStoreEvent> watch();
-
-  /// The current active policy snapshot. Never null after [load] completes.
-  RoutingPolicyDocument get active;
-
-  /// The most recent validation error, or null if the active snapshot is valid.
-  RoutingPolicyValidationError? get lastError;
-
-  /// Stop watching and release resources.
-  Future<void> dispose();
-}
+export 'package:flutter_client/src/contracts/routing/routing_dispatch_failure.dart';
+export 'package:flutter_client/src/contracts/routing/routing_policy_models.dart';
+export 'package:flutter_client/src/contracts/routing/routing_policy_results.dart';
 
 /// Parse and validate a routing policy JSON string.
 RoutingPolicyParseResult parseRoutingPolicyDocument(
@@ -581,7 +160,6 @@ RoutingPolicyAgent _parseAgent(
     'roles',
     'capabilities',
     'priority',
-    'allowanceThreshold',
     'distillation',
   }, path: path);
   final id = _requireNonEmptyString(json, 'id', path: '$path/id');
@@ -612,14 +190,6 @@ RoutingPolicyAgent _parseAgent(
     );
   }
 
-  final thresholdRaw = json['allowanceThreshold'];
-  final threshold = thresholdRaw == null
-      ? const RoutingAllowanceThreshold()
-      : _parseAllowanceThreshold(
-          _requireMapAt(thresholdRaw, path: '$path/allowanceThreshold'),
-          path: '$path/allowanceThreshold',
-        );
-
   final distillationRaw = json['distillation'];
   final distillation = distillationRaw == null
       ? const RoutingAgentDistillation()
@@ -636,36 +206,8 @@ RoutingPolicyAgent _parseAgent(
     roles: List.unmodifiable(roles),
     capabilities: List.unmodifiable(capabilities),
     priority: priority,
-    allowanceThreshold: threshold,
     distillation: distillation,
   );
-}
-
-RoutingAllowanceThreshold _parseAllowanceThreshold(
-  Map<String, dynamic> json, {
-  required String path,
-}) {
-  _rejectUnknownKeys(json, const {'kind', 'minimum'}, path: path);
-  final kind = _optionalString(json, 'kind');
-  final minimum = _optionalInt(
-    json,
-    'minimum',
-    fallback: 0,
-    path: '$path/minimum',
-  );
-  if (minimum < 0) {
-    throw _PolicyValidationException(
-      path: '$path/minimum',
-      message: 'minimum must be >= 0.',
-    );
-  }
-  if (minimum > 0 && kind.isEmpty) {
-    throw _PolicyValidationException(
-      path: '$path/kind',
-      message: 'kind is required when minimum is greater than zero.',
-    );
-  }
-  return RoutingAllowanceThreshold(kind: kind, minimum: minimum);
 }
 
 RoutingAgentDistillation _parseAgentDistillation(
@@ -710,8 +252,6 @@ RoutingPolicyRouting _parseRouting(
   _rejectUnknownKeys(json, const {
     'strategy',
     'matchMode',
-    'staleBehavior',
-    'allowStaleUsage',
     'circuitBreaker',
     'switchPolicy',
   }, path: path);
@@ -721,17 +261,6 @@ RoutingPolicyRouting _parseRouting(
     fallback: 'priority-fallback',
   );
   final matchMode = _optionalString(json, 'matchMode', fallback: 'role-first');
-  final staleBehavior = _optionalString(
-    json,
-    'staleBehavior',
-    fallback: 'conservative-skip',
-  );
-  final allowStaleUsage = _optionalBool(
-    json,
-    'allowStaleUsage',
-    fallback: false,
-    path: '$path/allowStaleUsage',
-  );
   _requireSupportedValue(
     strategy,
     routingPolicySupportedStrategies,
@@ -742,12 +271,6 @@ RoutingPolicyRouting _parseRouting(
     routingPolicySupportedMatchModes,
     path: '$path/matchMode',
   );
-  _requireSupportedValue(
-    staleBehavior,
-    routingPolicySupportedStaleBehaviors,
-    path: '$path/staleBehavior',
-  );
-
   final breakerRaw = json['circuitBreaker'];
   final circuitBreaker = breakerRaw == null
       ? const RoutingCircuitBreakerConfig()
@@ -767,8 +290,6 @@ RoutingPolicyRouting _parseRouting(
   return RoutingPolicyRouting(
     strategy: strategy,
     matchMode: matchMode,
-    staleBehavior: staleBehavior,
-    allowStaleUsage: allowStaleUsage,
     circuitBreaker: circuitBreaker,
     switchPolicy: switchPolicy,
   );
@@ -834,12 +355,7 @@ RoutingSwitchPolicy _parseSwitchPolicy(
   }
   final triggerOn = json.containsKey('triggerOn')
       ? _stringList(json, 'triggerOn', path: '$path/triggerOn')
-      : const [
-          'policy-reload',
-          'allowance-exhausted',
-          'circuit-broken',
-          'readiness-lost',
-        ];
+      : const ['policy-reload', 'circuit-broken', 'readiness-lost'];
   for (var i = 0; i < triggerOn.length; i += 1) {
     _requireSupportedValue(
       triggerOn[i],

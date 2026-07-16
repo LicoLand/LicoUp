@@ -6,7 +6,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_client/src/application/controller/client_controller.dart';
 import 'package:flutter_client/src/frontend/l10n/lico_strings.dart';
 import 'package:flutter_client/src/contracts/agent_usage_models.dart';
-import 'package:flutter_client/src/frontend/shared/ui/provider_brand_icon.dart';
 import 'package:flutter_client/src/frontend/shared/ui/theme.dart';
 
 class MobileWidgetsPage extends StatefulWidget {
@@ -94,8 +93,6 @@ class _MobileWidgetsPageState extends State<MobileWidgetsPage> {
                     _TokenUsageOverviewCard(report: report, busy: busy),
                     const SizedBox(height: 10),
                     _TokenUsageAgentCard(report: report),
-                    const SizedBox(height: 10),
-                    const _OfficialUsageApiCard(),
                   ],
                 ),
               ),
@@ -329,127 +326,6 @@ class _AgentUsageRow extends StatelessWidget {
           ),
         ),
       ],
-    );
-  }
-}
-
-class _OfficialUsageApiCard extends StatelessWidget {
-  const _OfficialUsageApiCard();
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.licoColors;
-    final strings = LicoStrings.of(context);
-    return _WidgetCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            strings.officialApiStatus,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              color: colors.text,
-              fontSize: 15,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-          const SizedBox(height: 12),
-          _OfficialApiRow(
-            providerId: 'chatgpt',
-            label: 'OpenAI',
-            status: _OfficialApiStatus.available,
-            detail: strings.usageAndCostsApi,
-          ),
-          _OfficialApiRow(
-            providerId: 'kimi',
-            label: 'Kimi',
-            status: _OfficialApiStatus.available,
-            detail: strings.balanceApi,
-          ),
-          _OfficialApiRow(
-            providerId: 'deepseek',
-            label: 'DeepSeek',
-            status: _OfficialApiStatus.available,
-            detail: strings.balanceApi,
-          ),
-          _OfficialApiRow(
-            providerId: 'gemini',
-            label: 'Gemini',
-            status: _OfficialApiStatus.console,
-            detail: strings.billingCloudConsole,
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-enum _OfficialApiStatus { available, console }
-
-class _OfficialApiRow extends StatelessWidget {
-  const _OfficialApiRow({
-    required this.providerId,
-    required this.label,
-    required this.status,
-    required this.detail,
-  });
-
-  final String providerId;
-  final String label;
-  final _OfficialApiStatus status;
-  final String detail;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.licoColors;
-    final strings = LicoStrings.of(context);
-    final active = status == _OfficialApiStatus.available;
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: Row(
-        children: [
-          ProviderBrandIcon(
-            providerId: providerId,
-            size: 24,
-            color: active ? colors.primary : colors.textMuted,
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: colors.text,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  detail,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(color: colors.textMuted, fontSize: 11),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 8),
-          Text(
-            active ? strings.directApi : strings.consoleApi,
-            style: TextStyle(
-              color: active ? colors.primary : colors.textMuted,
-              fontSize: 11,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-        ],
-      ),
     );
   }
 }

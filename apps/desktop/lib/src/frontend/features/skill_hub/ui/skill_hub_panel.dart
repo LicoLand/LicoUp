@@ -1,18 +1,13 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 
 import 'package:flutter_client/src/application/controller/client_controller.dart';
-import 'package:flutter_client/src/application/features/skill_hub/models/skill_agent_compatibility.dart';
-import 'package:flutter_client/src/application/features/skill_hub/models/skill_category_catalog.dart';
+import 'package:flutter_client/src/frontend/features/skill_hub/ui/skill_management_section.dart';
+import 'package:flutter_client/src/frontend/features/skill_hub/ui/skill_hub_panel_catalog.dart';
+import 'package:flutter_client/src/frontend/features/skill_hub/ui/skill_hub_panel_widgets.dart';
 import 'package:flutter_client/src/frontend/l10n/lico_strings.dart';
-import 'package:flutter_client/src/frontend/shared/ui/agent_brand_icon.dart';
-import 'package:flutter_client/src/frontend/shared/ui/theme.dart';
-import 'package:flutter_client/src/contracts/target_candidate.dart';
 
-part 'skill_hub_panel_widgets.dart';
-part 'skill_hub_panel_catalog.dart';
-part 'skill_hub_panel_card_support.dart';
-part 'skill_hub_panel_icon_picker.dart';
+export 'package:flutter_client/src/frontend/features/skill_hub/ui/skill_hub_panel_icon_picker.dart'
+    show SkillCategoryIconBadge, resolveSkillIconColor, showSkillIconPicker;
 
 class SkillHubPanel extends StatefulWidget {
   const SkillHubPanel({super.key, required this.controller});
@@ -102,7 +97,7 @@ class _SkillHubPanelState extends State<SkillHubPanel> {
                 crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
                   agentOptions.length > 1
-                      ? _AgentDropdown(
+                      ? SkillAgentDropdown(
                           value: _agentController.text.trim(),
                           options: agentOptions,
                           onChanged: (value) {
@@ -110,12 +105,12 @@ class _SkillHubPanelState extends State<SkillHubPanel> {
                             setState(() => _agentController.text = value);
                           },
                         )
-                      : _PanelTextField(
+                      : SkillPanelTextField(
                           controller: _agentController,
                           label: strings.agent,
                           width: 180,
                         ),
-                  _PanelTextField(
+                  SkillPanelTextField(
                     controller: _targetController,
                     label: strings.target,
                     width: 180,
@@ -141,7 +136,7 @@ class _SkillHubPanelState extends State<SkillHubPanel> {
           ),
           const SliverToBoxAdapter(child: Divider(height: 1)),
           SliverToBoxAdapter(
-            child: _SkillInstallerSection(
+            child: SkillInstallerSection(
               controller: controller,
               urlController: _urlController,
               skillNameController: _skillNameController,
@@ -162,7 +157,18 @@ class _SkillHubPanelState extends State<SkillHubPanel> {
           ),
           const SliverToBoxAdapter(child: Divider(height: 1)),
           SliverToBoxAdapter(
-            child: _SectionHeader(
+            child: SkillManagementSection(
+              updateController: controller,
+              deleteController: controller,
+              usageController: controller,
+              agentController: _agentController,
+              installRootController: _installRootController,
+              agentOptions: agentOptions,
+            ),
+          ),
+          const SliverToBoxAdapter(child: Divider(height: 1)),
+          SliverToBoxAdapter(
+            child: SkillSectionHeader(
               title: strings.isChinese ? '配对记录' : 'Pairings',
               count: controller.skillHubPairings.length,
             ),
@@ -174,13 +180,13 @@ class _SkillHubPanelState extends State<SkillHubPanel> {
                 dense: true,
                 title: Text((pairing['agentId'] ?? '').toString()),
                 subtitle: Text(
-                  _skillPairingTargetLabel(
+                  skillPairingTargetLabel(
                     strings,
                     (pairing['target'] ?? '').toString(),
                   ),
                 ),
                 trailing: Text(
-                  _skillPairingStatusLabel(
+                  skillPairingStatusLabel(
                     strings,
                     (pairing['status'] ?? '').toString(),
                   ),
@@ -191,14 +197,14 @@ class _SkillHubPanelState extends State<SkillHubPanel> {
           const SliverToBoxAdapter(child: Divider(height: 1)),
         ],
         SliverToBoxAdapter(
-          child: _SkillCategoryFilter(
+          child: SkillCategoryFilter(
             selectedCategory: _categoryFilter,
             onChanged: (category) {
               setState(() => _categoryFilter = category);
             },
           ),
         ),
-        _SkillCollection(
+        SkillCollection(
           controller: controller,
           selectedCategory: _categoryFilter,
         ),
