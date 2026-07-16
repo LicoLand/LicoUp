@@ -307,11 +307,25 @@
   "sourceChecks": [
     {
       "id": "dart-secure-mesh-service-delegates-to-cli-and-platform-bridge",
-      "file": "apps/desktop/lib/src/platform/mobile_relay/mobile_relay_secure_mesh_service.dart",
+      "file": "apps/desktop/lib/src/platform/mobile_relay/mobile_relay_native_dispatch.dart",
       "tokens": [
-        "SecureMeshMobileBridge",
-        "bridge.nativeJson",
-        "agentService.runCli"
+        "abstract interface class MobileRelayNativeDispatch",
+        "final class DefaultMobileRelayNativeDispatch",
+        "SecureMeshMobileBridge bridgeForCurrentPlatform",
+        "runner.runCli(List<String>.unmodifiable(arguments))",
+        "on LicoClientRpcException",
+        "bridge.nativeJson({",
+        "Map<String, dynamic>.unmodifiable(params)",
+        "MobileRelayDispatchException('native_command_failed')",
+        "MobileRelayDispatchException('native_bridge_failed')"
+      ],
+      "forbiddenTokens": [
+        "result.stdout",
+        "result.stderr",
+        "error.toString()",
+        "exception.toString()",
+        "print(",
+        "debugPrint("
       ]
     },
     {
@@ -343,7 +357,11 @@
     },
     {
       "id": "rust-core-owns-secure-mesh-payload-crypto",
-      "file": "crates/lico-client-native/src/core/secure_mesh_crypto.rs",
+      "files": [
+        "crates/lico-client-native/src/core/secure_mesh_crypto/model.rs",
+        "crates/lico-client-native/src/core/secure_mesh_crypto/public_payload.rs",
+        "crates/lico-client-native/src/core/secure_mesh_crypto/key_derivation.rs"
+      ],
       "tokens": [
         "SecureMeshContentContext",
         "ChaCha20Poly1305",
@@ -355,6 +373,21 @@
     {
       "id": "rust-mobile-ffi-forbids-raw-payload-crypto-actions",
       "file": "crates/lico-client-native/src/ffi/secure_mesh_mobile_ffi.rs",
+      "files": [
+        "crates/lico-client-native/src/ffi/secure_mesh_mobile_ffi.rs",
+        "crates/lico-client-native/src/ffi/secure_mesh_mobile_ffi/action_catalog.rs",
+        "crates/lico-client-native/src/ffi/secure_mesh_mobile_ffi/dispatch_context.rs",
+        "crates/lico-client-native/src/ffi/secure_mesh_mobile_ffi/dispatch_router.rs",
+        "crates/lico-client-native/src/ffi/secure_mesh_mobile_ffi/feature_status.rs",
+        "crates/lico-client-native/src/ffi/secure_mesh_mobile_ffi/fixture_envelope.rs",
+        "crates/lico-client-native/src/ffi/secure_mesh_mobile_ffi/fixture_file.rs",
+        "crates/lico-client-native/src/ffi/secure_mesh_mobile_ffi/fixture_lifecycle.rs",
+        "crates/lico-client-native/src/ffi/secure_mesh_mobile_ffi/fixture_payload.rs",
+        "crates/lico-client-native/src/ffi/secure_mesh_mobile_ffi/fixture_trust.rs",
+        "crates/lico-client-native/src/ffi/secure_mesh_mobile_ffi/protected_operation.rs",
+        "crates/lico-client-native/src/ffi/secure_mesh_mobile_ffi/redacted_error.rs",
+        "crates/lico-client-native/src/ffi/secure_mesh_mobile_ffi/request_validation.rs"
+      ],
       "forbiddenTokens": [
         "contentKeyBase64url",
         "includeBodyBase64url"
@@ -363,6 +396,14 @@
     {
       "id": "rust-core-owns-secure-mesh-pairwise-state",
       "file": "crates/lico-client-native/src/core/secure_mesh_pairwise.rs",
+      "files": [
+        "crates/lico-client-native/src/core/secure_mesh_pairwise.rs",
+        "crates/lico-client-native/src/core/secure_mesh_pairwise/key_ratchet.rs",
+        "crates/lico-client-native/src/core/secure_mesh_pairwise/key_ratchet/relay_codec.rs",
+        "crates/lico-client-native/src/core/secure_mesh_pairwise/persistence/store_model.rs",
+        "crates/lico-client-native/src/core/secure_mesh_pairwise/session_negotiation/transcript_codec.rs",
+        "crates/lico-client-native/src/core/secure_mesh_pairwise/tests/persistence_recovery.rs"
+      ],
       "tokens": [
         "SecureMeshPairwiseSession",
         "SecureMeshPairwiseDurableStore",
@@ -378,46 +419,48 @@
     },
     {
       "id": "rust-core-owns-platform-secret-store-contract",
-      "file": "crates/lico-client-native/src/platform/secure_mesh_secret_store.rs",
+      "file": "crates/lico-client-native/src/core/secure_mesh_secret_store.rs",
+      "files": [
+        "crates/lico-client-native/src/core/secure_mesh_secret_store.rs",
+        "crates/lico-client-native/src/platform/secure_mesh_secret_store.rs"
+      ],
       "tokens": [
-        "pub trait SecureMeshSecretStore",
-        "SecretStoreHandle",
-        "SecretStoreAuthorizationRequest",
-        "SecretStoreAuthorizationSession",
-        "begin_authorized_session",
-        "set_secret_with_session",
-        "get_secret_with_session",
-        "delete_secret_with_session",
-        "record_secret_store_operation",
-        "consumed_operation_count",
-        "authorization_batch_within_budget",
-        "PlatformSecretStore",
-        "MacosAuthorizationContext"
+        "pub use authorization",
+        "pub use capability",
+        "pub use platform_store",
+        "pub use port::SecureMeshSecretStore"
       ]
     },
     {
-      "id": "process-identity-uses-shared-platform-secret-store",
-      "file": "crates/lico-client-native/src/platform/process_identity.rs",
+      "id": "rust-platform-secret-store-trait-is-session-aware",
+      "file": "crates/lico-client-native/src/core/secure_mesh_secret_store/port.rs",
+      "tokens": [
+        "pub trait SecureMeshSecretStore",
+        "begin_authorized_session",
+        "set_secret_with_session",
+        "get_secret_with_session",
+        "delete_secret_with_session"
+      ]
+    },
+    {
+      "id": "rust-platform-secret-store-authorization-is-budgeted",
+      "file": "crates/lico-client-native/src/core/secure_mesh_secret_store/authorization.rs",
+      "tokens": [
+        "SecretStoreAuthorizationRequest",
+        "SecretStoreAuthorizationSession",
+        "record_secret_store_operation",
+        "consumed_operation_count",
+        "authorization_batch_within_budget",
+        "single_system_authorization_context_verified"
+      ]
+    },
+    {
+      "id": "rust-platform-secret-store-platform-proof-is-redacted",
+      "file": "crates/lico-client-native/src/platform/secure_mesh_secret_store/platform_store.rs",
       "tokens": [
         "PlatformSecretStore",
-        "SecretStoreAuthorizationRequest",
-        "SecureMeshSecretStore",
-        "PROCESS_IDENTITY_SECRET_SERVICE",
-        "store_identity_secret_with_store",
-        "identity_secret_from_storage_ref",
-        "process_identity_secret_store_round_trip_uses_platform_handle_without_public_secret_material",
-        "refusing portable private-key fallback"
-      ],
-      "forbiddenTokens": [
-        "/usr/bin/security",
-        "add-generic-password",
-        "find-generic-password",
-        "delete-generic-password",
-        "Command::new(\"/usr/bin/security\")",
-        "Command::new(\"security\")",
-        "MACOS_KEYCHAIN_SERVICE",
-        "write_macos_keychain_secret",
-        "read_macos_keychain_secret"
+        "SecretClassPersistenceProof",
+        "raw_secret_material_included: false"
       ]
     },
     {
@@ -461,7 +504,7 @@
         "appLockScreenCredentialCollection",
         "appCredentialPromptUsed",
         "appPasswordPromptUsed",
-        "keyMaterialExported",
+        "keyMaterialHandledByAuthenticationFlow",
         "bodyRedacted"
       ],
       "forbiddenTokens": [
@@ -504,26 +547,34 @@
     {
       "id": "android-bridge-uses-opaque-mobile-relay-secret-store-handle",
       "file": "apps/desktop/android/app/src/main/kotlin/com/liko/arc/SecureMeshAndroidSecretStore.kt",
+      "files": [
+        "apps/desktop/android/app/src/main/kotlin/com/liko/arc/SecureMeshAndroidSecretStore.kt",
+        "apps/desktop/android/app/src/main/kotlin/com/liko/arc/SecureMeshAndroidSecretContract.kt",
+        "apps/desktop/android/app/src/main/kotlin/com/liko/arc/SecureMeshAndroidCustodyManager.kt",
+        "apps/desktop/android/app/src/main/kotlin/com/liko/arc/SecureMeshAndroidCapability.kt",
+        "apps/desktop/android/app/src/main/kotlin/com/liko/arc/SecureMeshAndroidCapabilityProbe.kt",
+        "apps/desktop/android/app/src/main/kotlin/com/liko/arc/SecureMeshAndroidKeyPolicy.kt",
+        "apps/desktop/android/app/src/main/kotlin/com/liko/arc/SecureMeshAndroidMobileRelaySecretBridge.kt",
+        "apps/desktop/android/app/src/main/kotlin/com/liko/arc/SecureMeshAndroidEncryptedRecordStore.kt"
+      ],
       "tokens": [
         "class SecureMeshAndroidSecretStore",
-        "mobileRelayE2eeSecretStore",
-        "ANDROID_MOBILE_RELAY_SECRET_STORE_CONTRACT",
-        "MOBILE_RELAY_SECRET_STORE_NAMESPACE",
-        "MOBILE_RELAY_SECRET_STORE_ACCOUNT_PREFIX",
-        "rawJsonSecretOverridesUsed",
-        ".put(\"rawJsonSecretOverridesUsed\", false)",
-        "rawJsonSecretOverridesProvenAbsent",
+        "MOBILE_RELAY_STORE_CONTRACT",
+        "MOBILE_RELAY_NAMESPACE",
+        "MOBILE_RELAY_ACCOUNT_PREFIX",
+        "\"rawJsonSecretOverridesUsed\" to false",
         "SecureMeshAndroidKeyPolicyStrategy.candidates",
         "SecureMeshAndroidKeyAttemptFailure.STRONGBOX_UNAVAILABLE",
-        "AndroidCustodySelection.MemoryOnly",
+        "SecureMeshAndroidCustodySelection.MemoryOnly",
         "secureMeshAndroidCapabilityProbeJson",
         "capabilityProbe",
         "restartSemantics",
-        "ANDROID_KEYSTORE_USER_AUTH_VALIDITY_SECONDS",
+        "USER_AUTH_VALIDITY_SECONDS",
         "secureMeshAndroidSecretStoreSet",
         "secureMeshAndroidSecretStoreGet",
         "secureMeshAndroidSecretStoreDelete",
-        "pruneMobileRelayPortableConfigAfterSecretStoreReset"
+        "jniCallbacksCarryDecryptedSecretBytesInProcess",
+        "statusProbeSideEffectFree"
       ],
       "forbiddenTokens": [
         "overrides.put(\"pcToken\"",
@@ -534,16 +585,17 @@
     {
       "id": "android-activity-delegates-mobile-relay-secret-store",
       "file": "apps/desktop/android/app/src/main/kotlin/com/liko/arc/MainActivity.kt",
+      "files": [
+        "apps/desktop/android/app/src/main/kotlin/com/liko/arc/MainActivity.kt",
+        "apps/desktop/android/app/src/main/kotlin/com/liko/arc/SecureMeshAndroidCommandRouter.kt",
+        "apps/desktop/android/app/src/main/kotlin/com/liko/arc/SecureMeshAndroidNativeRuntime.kt"
+      ],
       "tokens": [
         "SecureMeshAndroidSecretStore(this, filesDir)",
-        "secureMeshAndroidSecretStore.requestTextWithMobileRelaySecretOverrides",
-        "secureMeshAndroidSecretStore.captureMobileRelaySecretsFromNativeResponse",
-        "secureMeshAndroidSecretStore.redactPersistedMobileRelaySecrets",
-        "secureMeshAndroidSecretStore.mobileRelaySecretStoreStatus",
-        "private fun runNativeSecureMeshJsonObject",
-        "val effectiveRequestJson =",
-        "requestTextWithMobileRelaySecretOverrides",
-        "secureMeshAndroidSecretStore.captureMobileRelaySecretsFromNativeResponse(responseJson)"
+        "secretStoreBridge: SecureMeshAndroidSecretStore",
+        "secretStore.invokeWithAuthorizedCustody",
+        "nativeRuntime.invoke(",
+        "secretStore.mobileRelaySecretStoreStatus()"
       ],
       "forbiddenTokens": [
         "fun secureMeshAndroidSecretStoreSet",
@@ -584,7 +636,7 @@
     },
     {
       "id": "macos-rust-secret-store-uses-single-system-auth-context",
-      "file": "crates/lico-client-native/src/platform/secure_mesh_secret_store.rs",
+      "file": "crates/lico-client-native/src/platform/secure_mesh_secret_store/macos_user_presence.rs",
       "tokens": [
         "objc2_local_authentication::{LAContext, LAPolicy}",
         "MacosAuthorizationContext",
@@ -592,29 +644,46 @@
         "context.setInteractionNotAllowed(!request.allow_interaction())",
         "evaluatePolicy_localizedReason_reply",
         "block2::RcBlock::new",
-        "system_authorization_attempt_count",
-        "system_authorization_completed",
-        "single_system_authorization_context_verified",
-        "record_secret_store_operation",
-        "authorization_batch_within_budget",
         "canEvaluatePolicy_error(LAPolicy::DeviceOwnerAuthentication)",
         "secure_mesh_authorization_required",
-        "if request.allow_interaction() {",
-        "secure mesh macOS user-presence authorization is unavailable",
-        "with_capability_report",
-        "SecurityCapability::AppleKeychain",
         "SecurityCapability::DataProtectionKeychain",
         "SecurityCapability::OsUserPresence",
         "SecurityCapability::DeviceCredential",
         "kSecUseDataProtectionKeychain",
         "kSecUseAuthenticationContext",
-        "kSecAccessControlUserPresence",
+        "kSecAccessControlUserPresence"
+      ]
+    },
+    {
+      "id": "macos-rust-secret-store-authorization-session-is-single-context",
+      "file": "crates/lico-client-native/src/core/secure_mesh_secret_store/authorization.rs",
+      "tokens": [
+        "system_authorization_attempt_count",
+        "system_authorization_completed",
+        "single_system_authorization_context_verified",
+        "record_secret_store_operation",
+        "authorization_batch_within_budget",
         "app_password_prompt_used: false"
       ]
     },
     {
+      "id": "macos-rust-secret-store-interactive-selection-fails-closed",
+      "file": "crates/lico-client-native/src/platform/secure_mesh_secret_store/platform_backends/macos.rs",
+      "tokens": [
+        "if request.allow_interaction() {",
+        "secure mesh macOS user-presence authorization is unavailable",
+        "with_capability_report"
+      ]
+    },
+    {
+      "id": "macos-rust-secret-store-projects-apple-keychain-capability",
+      "file": "crates/lico-client-native/src/platform/secure_mesh_secret_store/capability.rs",
+      "tokens": [
+        "SecurityCapability::AppleKeychain"
+      ]
+    },
+    {
       "id": "macos-user-presence-proof-uses-single-system-auth-context",
-      "file": "tools/scripts/client-secure-mesh-macos-keychain-user-presence-proof.mjs",
       "tokens": [
         "let context = LAContext()",
         "context.evaluatePolicy(.deviceOwnerAuthentication",
@@ -638,30 +707,58 @@
         "dataProtectionKeychainAvailable",
         "userPresenceOperationSupported",
         "secureEnclaveOperationSupported"
+      ],
+      "files": [
+        "tools/scripts/client-secure-mesh-macos-keychain-user-presence-proof.mjs",
+        "tools/scripts/client-secure-mesh-macos-keychain-user-presence-proof/capability/facts.mjs",
+        "tools/scripts/client-secure-mesh-macos-keychain-user-presence-proof/capability/summarize.mjs",
+        "tools/scripts/client-secure-mesh-macos-keychain-user-presence-proof/cli.mjs",
+        "tools/scripts/client-secure-mesh-macos-keychain-user-presence-proof/constants.mjs",
+        "tools/scripts/client-secure-mesh-macos-keychain-user-presence-proof/helper/codesign.mjs",
+        "tools/scripts/client-secure-mesh-macos-keychain-user-presence-proof/helper/process.mjs",
+        "tools/scripts/client-secure-mesh-macos-keychain-user-presence-proof/helper/run-swift.mjs",
+        "tools/scripts/client-secure-mesh-macos-keychain-user-presence-proof/helper/swift-source.mjs",
+        "tools/scripts/client-secure-mesh-macos-keychain-user-presence-proof/parse.mjs",
+        "tools/scripts/client-secure-mesh-macos-keychain-user-presence-proof/privacy.mjs",
+        "tools/scripts/client-secure-mesh-macos-keychain-user-presence-proof/proof.mjs",
+        "tools/scripts/client-secure-mesh-macos-keychain-user-presence-proof/report.mjs",
+        "tools/scripts/client-secure-mesh-macos-keychain-user-presence-proof/run.mjs",
+        "tools/scripts/client-secure-mesh-macos-keychain-user-presence-proof/self-test.mjs"
       ]
     },
     {
       "id": "macos-mobile-relay-composite-operations-use-operation-auth-batch",
-      "file": "crates/lico-client-native/src/domain/mobile_relay.rs",
+      "file": "crates/lico-client-native/src/domain/mobile_relay/secret_custody.rs",
+      "files": [
+        "crates/lico-client-native/src/domain/mobile_relay/secret_custody.rs",
+        "crates/lico-client-native/src/domain/mobile_relay/secret_custody/config_store.rs",
+        "crates/lico-client-native/src/domain/mobile_relay/secret_custody/presentation.rs",
+        "crates/lico-client-native/src/domain/mobile_relay/secret_custody/runtime.rs"
+      ],
       "tokens": [
-        "struct MobileRelayPairwiseOperation",
-        "fn mobile_relay_pairwise_operation",
-        "Mobile Relay secure command operation authorization batch",
-        "Mobile Relay secure result operation authorization batch",
-        "Mobile Relay secure result replay proof authorization batch",
-        "Mobile Relay commands sync operation authorization batch",
-        "authorization_batch_consumed_operation_count",
-        "authorization_batch_remaining_operation_count",
-        "\"consumedOperationCount\"",
-        "\"remainingOperationCount\"",
-        "authorizationBatchWithinBudget",
-        "singleSystemAuthorizationContextVerified",
-        "open_mobile_relay_payload_with_pairwise_operation",
-        "seal_mobile_relay_payload_with_pairwise_operation",
-        "command_result_secure_reuses_single_operation_auth_batch_for_fetch_and_result_open",
-        "command_result_replay_proof_reuses_single_operation_auth_batch_for_fetch_and_replay_check",
-        "mobile_relay_commands_sync_reuses_single_operation_auth_batch_for_secure_commands",
-        "mobile_relay_secure_command_execute_reuses_single_operation_auth_batch_for_open_and_result_seal"
+        "pub(in crate::domain::mobile_relay) struct RuntimeSecretContext",
+        "pub(in crate::domain::mobile_relay) secret_store_batch: MobileRelaySecretStoreAuthBatch",
+        "pub(in crate::domain::mobile_relay) fn shared_authorization_session",
+        "pub(in crate::domain::mobile_relay) struct MobileRelaySecretStoreAuthBatch",
+        "if self.session.is_none()",
+        "SecretStoreAuthorizationRequest::noninteractive(&self.reason, self.operation_count)",
+        "self.session = Some(store.begin_authorized_session(&request)?)",
+        "pub(in crate::domain::mobile_relay) fn load_config_with_runtime_secret_context_for_operation",
+        "MobileRelaySecretStoreAuthBatch::with_interaction(",
+        "consumed_operation_count: session.consumed_operation_count()",
+        "remaining_operation_count: session.remaining_operation_count()",
+        "authorization_batch_within_budget: session.authorization_batch_within_budget()",
+        "\"consumedOperationCount\": session.consumed_operation_count()",
+        "\"remainingOperationCount\": session.remaining_operation_count()",
+        "\"authorizationBatchWithinBudget\": session.authorization_batch_within_budget()",
+        "\"singleSystemAuthorizationContextVerified\": session.single_system_authorization_context_verified()",
+        "authorization_claim_consistent",
+        "\"appCredentialPromptUsed\": false",
+        "\"keyMaterial\": \"redacted\""
+      ],
+      "forbiddenTokens": [
+        "\"appCredentialPromptUsed\": true",
+        "\"keyMaterialExported\": true"
       ]
     },
     {
@@ -683,31 +780,52 @@
       ]
     },
     {
-      "id": "native-stdio-rpc-preserves-one-redacted-workflow",
+      "id": "native-stdio-rpc-entry-is-bounded-and-panic-redacted",
       "file": "crates/lico-client-native/src/bin/lico-client.rs",
       "tokens": [
         "lico-client.stdio.v1",
+        "RPC command terminated unexpectedly"
+      ]
+    },
+    {
+      "id": "native-stdio-rpc-preserves-one-redacted-workflow",
+      "file": "crates/lico-client-native/src/bin/lico-client/stdio_rpc.rs",
+      "files": [
+        "crates/lico-client-native/src/bin/lico-client/stdio_rpc.rs",
+        "crates/lico-client-native/src/bin/lico-client/stdio_rpc/context.rs",
+        "crates/lico-client-native/src/bin/lico-client/stdio_rpc/error.rs",
+        "crates/lico-client-native/src/bin/lico-client/stdio_rpc/response.rs",
+        "crates/lico-client-native/src/bin/lico-client/stdio_rpc/server.rs"
+      ],
+      "tokens": [
         "PortableDataDirOverrideGuard",
         "workflow_mismatch",
         "authorization_required",
         "authorization_failed",
         "request_too_large",
         "response_too_large",
-        "streaming_command_unsupported",
-        "RPC command terminated unexpectedly"
+        "streaming_command_unsupported"
       ]
     },
     {
       "id": "macos-agent-service-reuses-one-native-stdio-workflow",
       "file": "apps/desktop/lib/src/platform/native_client/agent_service_stdio_rpc.dart",
+      "files": [
+        "apps/desktop/lib/src/platform/native_client/agent_service_stdio_rpc.dart",
+        "apps/desktop/lib/src/platform/native_client/agent_service_stdio_rpc/client.dart",
+        "apps/desktop/lib/src/platform/native_client/agent_service_stdio_rpc/command_round_trip.dart",
+        "apps/desktop/lib/src/platform/native_client/agent_service_stdio_rpc/protocol.dart",
+        "apps/desktop/lib/src/platform/native_client/agent_service_stdio_rpc/session.dart",
+        "apps/desktop/lib/src/platform/native_client/agent_service_stdio_rpc/session_manager.dart"
+      ],
       "tokens": [
         "lico-client.stdio.v1",
-        "_stdioRpcWorkflowId",
-        "_serializeStdioRpc",
-        "_ensureStdioRpcSession",
-        "A write may have reached native code",
-        "_stdioRpcMaxFrameBytes",
-        "_stdioRpcMaxStderrBytes",
+        "_workflowId = newStdioRpcWorkflowId()",
+        "_operations.serialize",
+        "ensureSession()",
+        "A write may reach native code",
+        "stdioRpcMaxFrameBytes",
+        "stdioRpcMaxStderrBytes",
         "Future<void> dispose()"
       ],
       "forbiddenTokens": [
@@ -717,23 +835,41 @@
     },
     {
       "id": "macos-agent-service-preserves-stable-authorization-required",
-      "file": "apps/desktop/lib/src/platform/native_client/agent_service.dart",
+      "file": "apps/desktop/lib/src/platform/native_client/native_cli_ports.dart",
       "tokens": [
-        "class LicoClientRpcException",
-        "authorization_required",
-        "authorizationRequired",
-        "_persistentStdioRpcEnabled",
-        "Platform.isMacOS"
+        "class LicoClientRpcException implements Exception",
+        "const LicoClientRpcException(this.code)",
+        "final String code",
+        "bool get authorizationRequired => code == 'authorization_required'",
+        "return 'lico-client authorization is required.'",
+        "return 'lico-client RPC request failed (code: $code).'"
+      ],
+      "forbiddenTokens": [
+        "final String message",
+        "this.message",
+        "error.toString()",
+        "stderr",
+        "stdout"
       ]
     },
     {
       "id": "mobile-relay-background-auth-pauses-until-user-gesture",
-      "file": "apps/desktop/lib/src/application/features/mobile_relay/controller/mobile_relay_polling_actions.dart",
+      "file": "apps/desktop/lib/src/application/features/mobile_relay/controller/mobile_relay_controller.dart",
       "tokens": [
+        "bool get authorizationRequired => _authorizationRequired",
+        "_timer = Timer.periodic(interval, (_) => unawaited(pollOnce()))",
+        "Future<void> pollOnce({bool showProgress = false})",
+        "else if (_authorizationRequired)",
+        "final rawResult = await _gateway.syncCommands(",
         "allowInteraction: showProgress",
-        "_mobileRelayAuthorizationRequired",
-        "error.authorizationRequired",
-        "sync manually"
+        "on MobileRelayAuthorizationRequired",
+        "_authorizationRequired = true",
+        "Mobile relay is waiting for local authorization; sync manually.",
+        "errorCode: 'mobile_relay_authorization_required'"
+      ],
+      "forbiddenTokens": [
+        "allowInteraction: true",
+        "Timer.periodic(interval, (_) => unawaited(pollOnce(showProgress: true)))"
       ]
     },
     {
@@ -756,7 +892,8 @@
         "mobileRelayE2eeSecretStore",
         "rawJsonSecretOverridesUsed",
         "appPasswordPromptUsed",
-        "keyMaterialExported",
+        "nativeFfiCarriesInProcessSecretMaterial",
+        "secretMaterialCrossesFlutterMethodChannel",
         "mobileRelaySecretStoreBackend",
         "mobileRelaySecretStoreCallbackAccount",
         "pairwiseSessionSnapshot"
@@ -785,7 +922,8 @@
         "ios_system_local_auth_prompt",
         "systemCredentialPromptResult",
         "appCredentialPromptUsed",
-        "keyMaterialExported"
+        "protectedKeychainValueReturnedToAppMemory",
+        "rawSecretMaterialIncluded"
       ],
       "forbiddenTokens": [
         "\"appPasswordPromptUsed\": true",
@@ -816,7 +954,8 @@
         "authorizationBatchPromptBudgetReady",
         "authorizationBatchWithinBudget",
         "appPasswordPromptUsed",
-        "keyMaterialExported"
+        "nativeFfiCarriesInProcessSecretMaterial",
+        "secretMaterialCrossesFlutterMethodChannel"
       ]
     },
     {

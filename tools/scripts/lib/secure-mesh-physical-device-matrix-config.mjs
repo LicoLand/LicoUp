@@ -73,9 +73,18 @@ function normalizeSourceChecks(value) {
   }
   const normalized = checks.map((item, index) => {
     const check = asRecord(item);
+    const refs = Array.isArray(check.files) ? check.files : [check.file];
+    if (refs.length === 0) {
+      throw new Error(`Secure Mesh physical-device matrix config must define source check ${index + 1} files`);
+    }
+    const files = refs.map((ref, fileIndex) => normalizeSafeSourceRef(
+      ref,
+      `source check ${index + 1} file ${fileIndex + 1}`
+    ));
     return {
       id: normalizeCheckId(check.id, `source check ${index + 1} id`),
-      file: normalizeSafeSourceRef(check.file, `source check ${index + 1} file`),
+      file: files[0],
+      files,
       tokens: normalizeTokenList(check.tokens, `source check ${index + 1} tokens`)
     };
   });

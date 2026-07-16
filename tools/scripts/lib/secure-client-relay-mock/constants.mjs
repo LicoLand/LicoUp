@@ -1,0 +1,10 @@
+export const STORE_SCHEMA_VERSION = "licolite.secure-mesh.store-schema.v2";
+export const DEVICE_TRUST_PROTOCOL_VERSION = "licolite.secure-mesh.device-trust.v2";
+export const DELIVERY_PROTOCOL_VERSION = "licolite.secure-mesh.delivery.v1";
+export const RELAY_ENVELOPE_SCHEMA = "licolite.secure-mesh.relay-envelope.v2";
+export const MAX_REQUEST_BYTES = 24 * 1024 * 1024;
+export const ENCRYPTED_HEADER_BYTES = 4096;
+export const MAX_CIPHERTEXT_BUCKET_BYTES = 16 * 1024 * 1024;
+export const LARGE_BUCKET_STEP_BYTES = 64 * 1024;
+export const JSON_SAFE_INTEGER_MAX = Number.MAX_SAFE_INTEGER;
+export const SESSION_COOKIE_NAME = "lico_console_session";

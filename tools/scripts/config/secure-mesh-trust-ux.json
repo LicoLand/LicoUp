@@ -7,7 +7,16 @@
   "sourceChecks": [
     {
       "id": "trust-helper-provides-cross-signing-sas-qr-and-key-change-policy",
-      "file": "crates/lico-client-native/src/core/secure_mesh_trust.rs",
+      "files": [
+        "crates/lico-client-native/src/core/secure_mesh_trust.rs",
+        "crates/lico-client-native/src/core/secure_mesh_trust/authorization.rs",
+        "crates/lico-client-native/src/core/secure_mesh_trust/identity.rs",
+        "crates/lico-client-native/src/core/secure_mesh_trust/model.rs",
+        "crates/lico-client-native/src/core/secure_mesh_trust/policy.rs",
+        "crates/lico-client-native/src/core/secure_mesh_trust/record.rs",
+        "crates/lico-client-native/src/core/secure_mesh_trust/signature.rs",
+        "crates/lico-client-native/src/core/secure_mesh_trust/verification.rs"
+      ],
       "tokens": [
         "pub fn sign_device_cross_signature",
         "pub fn verify_device_cross_signature",
@@ -24,7 +33,13 @@
     },
     {
       "id": "trust-helper-tests-redacted-fingerprints-and-fail-closed-states",
-      "file": "crates/lico-client-native/src/core/secure_mesh_trust.rs",
+      "files": [
+        "crates/lico-client-native/src/core/secure_mesh_trust.rs",
+        "crates/lico-client-native/src/core/secure_mesh_trust/tests/authorization.rs",
+        "crates/lico-client-native/src/core/secure_mesh_trust/tests/policy.rs",
+        "crates/lico-client-native/src/core/secure_mesh_trust/tests/signature.rs",
+        "crates/lico-client-native/src/core/secure_mesh_trust/tests/verification.rs"
+      ],
       "tokens": [
         "secure_mesh_device_cross_signature_verifies_and_rejects_tamper",
         "secure_mesh_device_qr_payload_uses_fingerprints_not_raw_keys",
@@ -38,7 +53,15 @@
     },
     {
       "id": "verify-before-send-single-policy-gates-product-seal-path",
-      "file": "crates/lico-client-native/src/domain/mobile_relay.rs",
+      "files": [
+        "crates/lico-client-native/src/core/secure_mesh_trust.rs",
+        "crates/lico-client-native/src/core/secure_mesh_trust/authorization.rs",
+        "crates/lico-client-native/src/core/secure_mesh_trust/signature.rs",
+        "crates/lico-client-native/src/domain/mobile_relay/endpoint_trust/peer_trust.rs",
+        "crates/lico-client-native/src/domain/mobile_relay/pairwise_session.rs",
+        "crates/lico-client-native/src/domain/mobile_relay/tests/endpoint_trust.rs",
+        "crates/lico-client-native/src/domain/mobile_relay/tests/pairing.rs"
+      ],
       "tokens": [
         "ensure_peer_authorized_for_protected_send",
         "authorize_protected_send_from_trust_record",
@@ -50,10 +73,13 @@
     },
     {
       "id": "product-controllers-do-not-call-seal-paths-directly",
-      "file": "apps/desktop/lib/src/application/features/mobile_relay/controller/secure_mesh_actions.dart",
+      "files": [
+        "apps/desktop/lib/src/application/features/mobile_relay/controller/secure_mesh_controller.dart",
+        "apps/desktop/lib/src/application/features/mobile_relay/controller/secure_mesh_status_controller.dart"
+      ],
       "tokens": [
-        "evaluateSecureMeshDeviceTrustPolicy",
-        "secureMeshDeviceTrustPolicy",
+        "evaluateDeviceTrust",
+        "_gateway.evaluateDeviceTrust",
         "requireVerifiedDevice",
         "allowUnverifiedReadOnly"
       ]
@@ -79,7 +105,7 @@
     },
     {
       "id": "cli-usage-documents-device-trust-evaluate",
-      "file": "crates/lico-client-native/src/bin/lico-client.rs",
+      "file": "crates/lico-client-native/src/bin/lico-client/presentation.rs",
       "tokens": [
         "secure-mesh device-trust evaluate --identity JSON",
         "caller state is advisory and cannot authorize"
@@ -87,7 +113,7 @@
     },
     {
       "id": "desktop-service-calls-shared-cli-policy-evaluator",
-      "file": "apps/desktop/lib/src/platform/mobile_relay/mobile_relay_secure_mesh_service.dart",
+      "file": "apps/desktop/lib/src/platform/mobile_relay/secure_mesh_substrate_operations.dart",
       "tokens": [
         "_evaluateSecureMeshDeviceTrust",
         "'secure-mesh'",
@@ -98,10 +124,10 @@
     },
     {
       "id": "desktop-controller-exposes-trust-policy-for-relay-panel",
-      "file": "apps/desktop/lib/src/application/features/mobile_relay/controller/secure_mesh_actions.dart",
+      "file": "apps/desktop/lib/src/application/features/mobile_relay/controller/secure_mesh_controller.dart",
       "tokens": [
-        "evaluateSecureMeshDeviceTrustPolicy",
-        "secureMeshDeviceTrustPolicy",
+        "Future<void> evaluateDeviceTrust",
+        "get deviceTrustPolicy",
         "requireVerifiedDevice",
         "allowUnverifiedReadOnly"
       ]
@@ -118,7 +144,12 @@
     },
     {
       "id": "rust-public-config-exposes-redacted-exact-trust-presentation",
-      "file": "crates/lico-client-native/src/domain/mobile_relay.rs",
+      "files": [
+        "crates/lico-client-native/src/core/secure_mesh_trust.rs",
+        "crates/lico-client-native/src/core/secure_mesh_trust/verification.rs",
+        "crates/lico-client-native/src/domain/mobile_relay/endpoint_trust/pairing_presentation.rs",
+        "crates/lico-client-native/src/domain/mobile_relay/tests/endpoint_trust.rs"
+      ],
       "tokens": [
         "public_device_trust_presentation",
         "safetyNumberGroups",
@@ -128,7 +159,7 @@
     },
     {
       "id": "product-ui-renders-verified-and-blocked-trust-states",
-      "file": "apps/desktop/lib/src/frontend/features/mobile_relay/ui/mobile_relay_panel.dart",
+      "file": "apps/desktop/lib/src/frontend/features/mobile_relay/ui/mobile_relay_panel/trust.dart",
       "tokens": [
         "secure-mesh-trust-verification-card",
         "secure-mesh-60-digit-safety-number",
@@ -148,7 +179,7 @@
     },
     {
       "id": "android-release-channel-allows-shared-rust-trust-actions",
-      "file": "apps/desktop/android/app/src/main/kotlin/com/liko/arc/ReleaseAcceptanceChannel.kt",
+      "file": "apps/desktop/android/app/src/debug/kotlin/com/liko/arc/ReleaseAcceptanceChannel.kt",
       "tokens": [
         "secure_mesh.deviceTrust.evaluate",
         "secure_mesh.deviceTrust.verifyQr",
@@ -183,18 +214,6 @@
         "unknownAuthorityFieldsAbsent",
         "unsupported_not_claimed",
         "runSecureMeshTrustUxReducerSelfTest"
-      ]
-    },
-    {
-      "id": "client-release-plan-keeps-trust-and-client-crypto-gates-open",
-      "file": "docs/plan/client-release/Validation.md",
-      "tokens": [
-        "REQ-E2EE-002/003",
-        "trust-record",
-        "key-change",
-        "revoke",
-        "shared Rust owner",
-        "client relay Mock conformance"
       ]
     }
   ],

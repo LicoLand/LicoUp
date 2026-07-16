@@ -71,6 +71,8 @@ function assertWindowsImplementationInvariant(report) {
     ["report.productionReady", report?.productionReady],
     ["report.releaseReady", report?.releaseReady],
     ["platform.productionSupportClaimed", platform.productionSupportClaimed],
+    ["platform.localImplementationReady", platform.localImplementationReady],
+    ["platform.dpapiOrWindowsHelloImplementationReady", platform.dpapiOrWindowsHelloImplementationReady],
     ["platform.dpapiOrWindowsHelloProofReady", platform.dpapiOrWindowsHelloProofReady],
     ["platform.signedInstallerExecutionProofReady", platform.signedInstallerExecutionProofReady],
     ["platform.trustCommandFileMatrixReady", platform.trustCommandFileMatrixReady],
@@ -78,6 +80,7 @@ function assertWindowsImplementationInvariant(report) {
     ["summary.dpapiOrWindowsHelloProofReady", summary.dpapiOrWindowsHelloProofReady],
     ["summary.windowsSignedInstallerProofReady", summary.windowsSignedInstallerProofReady],
     ["summary.windowsTrustCommandFileMatrixReady", summary.windowsTrustCommandFileMatrixReady],
+    ["summary.windowsLocalBlockersCleared", summary.windowsLocalBlockersCleared],
     ["summary.productionReady", summary.productionReady],
     ["summary.releaseReady", summary.releaseReady]
   ];
@@ -86,35 +89,37 @@ function assertWindowsImplementationInvariant(report) {
       throw new Error(`Windows implementation cannot set ${field}=true`);
     }
   }
-  if (report?.diagnosticStatus !== "implementation_ready_host_evidence_pending" ||
-    platform.localImplementationReady !== true ||
+  if (report?.diagnosticStatus !== "persistent_custody_unverified" ||
+    platform.localImplementationReady !== false ||
     platform.x64BuilderVerifierReady !== true ||
-    platform.dpapiOrWindowsHelloImplementationReady !== true ||
+    platform.dpapiOrWindowsHelloImplementationReady !== false ||
     platform.arm64UpstreamUnavailable !== true ||
-    summary.windowsLocalBlockersCleared !== true ||
+    platform.localSecretStore !== "memory-only-ephemeral" ||
+    summary.windowsLocalBlockersCleared !== false ||
     summary.nativeHostEvidencePending !== true) {
-    throw new Error("Windows implementation report must separate local closure from host evidence");
+    throw new Error("Windows implementation report must keep unverified persistent custody disabled");
   }
 }
 
 function runSelfTest() {
   const base = {
-    diagnosticStatus: "implementation_ready_host_evidence_pending",
+    diagnosticStatus: "persistent_custody_unverified",
     productionReady: false,
     releaseReady: false,
     platform: {
-      localImplementationReady: true,
+      localImplementationReady: false,
       x64BuilderVerifierReady: true,
-      dpapiOrWindowsHelloImplementationReady: true,
+      dpapiOrWindowsHelloImplementationReady: false,
       arm64UpstreamUnavailable: true,
       productionSupportClaimed: false,
+      localSecretStore: "memory-only-ephemeral",
       dpapiOrWindowsHelloProofReady: false,
       signedInstallerExecutionProofReady: false,
       trustCommandFileMatrixReady: false,
       releaseChannelPublicationReady: false
     },
     summary: {
-      windowsLocalBlockersCleared: true,
+      windowsLocalBlockersCleared: false,
       nativeHostEvidencePending: true,
       dpapiOrWindowsHelloProofReady: false,
       windowsSignedInstallerProofReady: false,
@@ -128,12 +133,15 @@ function runSelfTest() {
     ["report", "productionReady"],
     ["report", "releaseReady"],
     ["platform", "productionSupportClaimed"],
+    ["platform", "localImplementationReady"],
+    ["platform", "dpapiOrWindowsHelloImplementationReady"],
     ["platform", "dpapiOrWindowsHelloProofReady"],
     ["platform", "signedInstallerExecutionProofReady"],
     ["platform", "trustCommandFileMatrixReady"],
     ["summary", "dpapiOrWindowsHelloProofReady"],
     ["summary", "windowsSignedInstallerProofReady"],
-    ["summary", "windowsTrustCommandFileMatrixReady"]
+    ["summary", "windowsTrustCommandFileMatrixReady"],
+    ["summary", "windowsLocalBlockersCleared"]
   ]) {
     const mutated = JSON.parse(JSON.stringify(base));
     if (section === "report") {
@@ -190,10 +198,10 @@ const report = {
   sourceOfTruth: SECURE_CLIENT_MESH_PRODUCTION_SOURCE_OF_TRUTH,
   report: reportPath,
   blocker,
-  diagnosticStatus: "implementation_ready_host_evidence_pending",
+  diagnosticStatus: "persistent_custody_unverified",
   productionReady,
   releaseReady,
-  evidenceKind: "redacted-windows-local-implementation-closure",
+  evidenceKind: "redacted-windows-conservative-custody-boundary",
   redacted: true,
   reportLeakScan: true,
   rawPrivateMaterialIncluded: false,
@@ -217,13 +225,13 @@ const report = {
   sourceResults,
   platform: {
     platform: "windows",
-    status: "implementation-ready-host-evidence-pending",
-    localImplementationReady: ok,
+    status: "persistent-custody-unverified",
+    localImplementationReady: false,
     x64BuilderVerifierReady: ok,
-    dpapiOrWindowsHelloImplementationReady: ok,
+    dpapiOrWindowsHelloImplementationReady: false,
     arm64UpstreamUnavailable: true,
     productionSupportClaimed: false,
-    localSecretStore: "windows-credential-manager-current-user-custody",
+    localSecretStore: "memory-only-ephemeral",
     dpapiOrWindowsHelloProofReady: false,
     ownerOnlyAclBoundaryReady: true,
     signedInstallerExecutionProofReady: false,
@@ -231,7 +239,7 @@ const report = {
     releaseChannelPublicationReady: false
   },
   failClosedAssurances: [
-    "Windows x64 implementation is complete but production readiness remains false until native-host custody and artifact receipts are accepted.",
+    "Windows persistent custody remains disabled until measured platform-native user authorization and create-read-delete evidence exist.",
     "Windows arm64 stays unsupported until the pinned Flutter toolchain provides an official arm64 desktop target.",
     "Owner-only ACL evidence is tracked separately and does not substitute for platform-bound E2EE secret storage.",
     "Signed installer or portable replacement execution proof remains required before Windows can be declared supported.",
@@ -240,7 +248,7 @@ const report = {
   summary: {
     verificationPassed: ok,
     sourceCheckCount: sourceResults.length,
-    windowsLocalBlockersCleared: ok,
+    windowsLocalBlockersCleared: false,
     nativeHostEvidencePending: true,
     dpapiOrWindowsHelloProofReady: false,
     windowsSignedInstallerProofReady: false,
@@ -248,7 +256,7 @@ const report = {
     productionReady,
     releaseReady,
     remainingGates: [
-      "Windows-native Credential Manager lifecycle receipt",
+      "Windows-native user-presence authorization and Credential Manager create-read-delete proof",
       "Windows signed installer or portable replacement execution proof",
       "Windows trust, command/result, file handoff, restart, replay, and no-plaintext matrix",
       "Official Flutter Windows arm64 target support"
@@ -266,7 +274,7 @@ console.log(JSON.stringify({
   sourceOfTruth: report.sourceOfTruth,
   blocker: report.blocker,
   diagnosticStatus: report.diagnosticStatus,
-  windowsLocalBlockersCleared: ok,
+  windowsLocalBlockersCleared: false,
   productionReady,
   releaseReady,
   remainingGateCount: report.summary.remainingGates.length

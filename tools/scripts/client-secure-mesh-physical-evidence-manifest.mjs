@@ -9,6 +9,11 @@ import { loadSecureClientContract } from "./lib/secure-client-contract.mjs";
 import { createSecureClientMeshE2eeRefReportScope } from "./lib/secure-client-mesh-e2ee-ref-report.mjs";
 import { atomicWriteReportJson } from "./lib/safe-report-io.mjs";
 import { loadSecureMeshPhysicalEvidenceConfig } from "./lib/secure-mesh-physical-evidence-config.mjs";
+import {
+  androidPlatformCryptoCoverage as sharedAndroidPlatformCryptoCoverage,
+  platformSecretStoreCustodyCoverage,
+  relayMockCoverage as sharedRelayMockCoverage
+} from "./lib/secure-mesh-physical-report-coverage.mjs";
 
 const repoRoot = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const physicalEvidenceConfig = await loadSecureMeshPhysicalEvidenceConfig();
@@ -63,15 +68,6 @@ function dedupe(values) {
     .filter(Boolean))];
 }
 
-function redactedReportReady(report) {
-  return report?.ok === true &&
-    report?.redacted === true &&
-    report?.rawPrivateMaterialIncluded !== true &&
-    report?.rawPlaintextIncluded !== true &&
-    report?.rawPublicWireBytesIncluded !== true &&
-    report?.reportLeakScan === true;
-}
-
 function reportSummary(id, ref, report) {
   return {
     id,
@@ -104,87 +100,25 @@ function evaluateFreshness(report, checkedAt, maxAgeSeconds) {
 }
 
 function relayMockCoverage(report) {
-  const summary = report?.summary || {};
-  const ready = redactedReportReady(report) &&
-    report?.schemaVersion === "licolite.secure-client-relay.client-acceptance-report.v1" &&
-    summary.exactFiveOperationsObserved === true &&
-    summary.exactSixOuterFieldsObserved === true &&
-    summary.replayRejected === true &&
-    summary.staleLeaseRejected === true &&
-    summary.ackIdempotencyVerified === true &&
-    summary.plaintextAbsentFromServerVisibleWire === true &&
-    summary.wireBytesMeasured === true;
-  return {
-    report: reportRefs.relayMock,
-    ready,
-    exactFiveOperationsObserved: summary.exactFiveOperationsObserved === true,
-    exactSixOuterFieldsObserved: summary.exactSixOuterFieldsObserved === true,
-    replayRejected: summary.replayRejected === true,
-    staleLeaseRejected: summary.staleLeaseRejected === true,
-    ackIdempotencyVerified: summary.ackIdempotencyVerified === true,
-    plaintextAbsentFromServerVisibleWire:
-      summary.plaintextAbsentFromServerVisibleWire === true,
-    wireBytesMeasured: summary.wireBytesMeasured === true
-  };
+  return sharedRelayMockCoverage(report, {
+    reportRef: reportRefs.relayMock
+  });
 }
 
 function androidPlatformCryptoCoverage(report, freshness) {
-  const summary = report?.summary || {};
-  const contractReady = redactedReportReady(report) &&
-    report?.schemaVersion === "licolite.secure-mesh.android-platform-crypto-acceptance.v1" &&
-    report?.platform === "android" &&
-    summary.platformCryptoAcceptanceReady === true &&
-    summary.platformCustodyContractReady === true &&
-    summary.platformAuthorizationContractReady === true &&
-    summary.rustFfiActionContractReady === true &&
-    summary.mlsMemberRemoveReleaseActionReady === true &&
-    summary.unknownReleaseActionsFailClosed === true &&
-    Number(summary.nativeTestClassCount || 0) === 6;
-  return {
-    report: reportRefs.androidPlatformCrypto,
-    ready: contractReady && freshness.ready,
-    contractReady,
-    freshness,
-    platformCryptoAcceptanceReady:
-      summary.platformCryptoAcceptanceReady === true,
-    platformCustodyContractReady:
-      summary.platformCustodyContractReady === true,
-    platformAuthorizationContractReady:
-      summary.platformAuthorizationContractReady === true,
-    rustFfiActionContractReady: summary.rustFfiActionContractReady === true,
-    mlsMemberRemoveReleaseActionReady:
-      summary.mlsMemberRemoveReleaseActionReady === true,
-    unknownReleaseActionsFailClosed:
-      summary.unknownReleaseActionsFailClosed === true,
-    nativeTestClassCount: Number(summary.nativeTestClassCount || 0)
-  };
+  return sharedAndroidPlatformCryptoCoverage(report, {
+    reportRef: reportRefs.androidPlatformCrypto,
+    freshness
+  });
 }
 
 function platformCoverage(platformReport, androidCrypto, installLaunch, physicalMatrix) {
-  const summary = platformReport?.summary || {};
+  const custody = platformSecretStoreCustodyCoverage(platformReport);
   const matrixSummary = physicalMatrix?.summary || {};
-  const androidCustodyReady = platformReport?.ok === true &&
-    summary.androidPhysicalSecretStoreBindingReady === true &&
-    summary.androidPhysicalSystemCredentialAuthReady === true &&
-    summary.androidPhysicalKeyStoreHardwareAuthReady === true &&
-    summary.androidPhysicalCallbackContractReady === true;
-  const iosCustodyReady = platformReport?.ok === true &&
-    summary.iosPhysicalSecretStoreBindingReady === true &&
-    summary.iosUserPresencePolicyReady === true &&
-    summary.iosProductionCallbackAuthReady === true &&
-    summary.iosSystemLocalAuthPromptReady === true &&
-    summary.iosKeychainAccessControlNotDowngraded === true &&
-    summary.iosNonInteractiveFailClosedReady === true &&
-    summary.iosCancelLockFailClosedReady === true &&
-    summary.iosPhysicalCallbackContractReady === true;
-  const macosCustodyReady = platformReport?.ok === true &&
-    summary.macosSafeOsStoreAvailable === true &&
-    summary.macosExactCapabilitySetValid === true &&
-    summary.macosSingleSystemAuthorizationContextVerified === true &&
-    summary.macosPromptBudgetSatisfied === true &&
-    summary.macosAppCredentialPromptUsed !== true;
-  const ubuntuCustodyReady = summary.ubuntuVmSecretStoreReady === true &&
-    summary.ubuntuVmSecretStoreBackend === "linux-secret-service-keyring";
+  const androidCustodyReady = custody.androidBindingReady;
+  const iosCustodyReady = custody.iosBindingReady;
+  const macosCustodyReady = custody.macosReady;
+  const ubuntuCustodyReady = custody.ubuntuReady;
   const androidPhysicalDeviceProofReady =
     installLaunch?.summary?.androidPhysicalDeviceProofReady === true ||
     installLaunch?.androidPhysicalDeviceProofReady === true ||
@@ -216,23 +150,25 @@ function platformCoverage(platformReport, androidCrypto, installLaunch, physical
       platform: "macos",
       status: macosCustodyReady ? "partial" : "missing",
       platformCustodyReady: macosCustodyReady,
-      releaseCliProofReady: summary.macosReleaseCliProofReady === true,
+      releaseCliProofReady: custody.macosReleaseCliProofReady,
       remainingGates: ["signed local install, launch, update, and publication receipts"]
     },
     {
       platform: "ubuntu-linux",
       status: ubuntuCustodyReady ? "partial" : "missing",
       platformCustodyReady: ubuntuCustodyReady,
-      releaseCliProofReady: summary.ubuntuReleaseCliProofReady === true,
-      adaptiveCustodyReady: summary.ubuntuLinuxAdaptiveCustodyReady === true,
-      packageUpdateReady: summary.ubuntuLinuxPackageUpdateReady === true,
+      releaseCliProofReady: custody.ubuntuReleaseCliProofReady,
+      adaptiveCustodyReady: custody.ubuntuLinuxAdaptiveCustodyReady,
+      packageUpdateReady: custody.ubuntuLinuxPackageUpdateReady,
       remainingGates: ["release package and publication receipts"]
     },
     {
       platform: "windows",
       status: matrixSummary.windowsLocalImplementationReady === true
-        ? "implementation-ready-host-evidence-pending"
-        : "missing",
+        ? "persistent-custody-verified"
+        : (matrixSummary.windowsConservativeCustodyBoundaryValid === true
+          ? "persistent-custody-unverified"
+          : "missing"),
       platformCustodyReady: false,
       localImplementationReady:
         matrixSummary.windowsLocalImplementationReady === true,
@@ -424,6 +360,8 @@ const summary = {
     platformSummary.ubuntuLinuxPackageUpdateReady === true,
   windowsLocalImplementationReady:
     physicalMatrixSummary.windowsLocalImplementationReady === true,
+  windowsConservativeCustodyBoundaryValid:
+    physicalMatrixSummary.windowsConservativeCustodyBoundaryValid === true,
   windowsNativeHostEvidenceReady: false,
   partialPlatformCount: platforms.filter((entry) => entry.status === "partial").length,
   blockedPlatformCount: platforms.filter((entry) => entry.status.startsWith("blocked")).length,

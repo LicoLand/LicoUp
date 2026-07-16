@@ -178,7 +178,10 @@ function selfTest() {
   const runnerSource = readFileSync(fileURLToPath(import.meta.url), "utf8");
   const liveSource = readFileSync(resolve(desktopRoot, liveSourceRef), "utf8");
   const mainSource = readFileSync(resolve(desktopRoot, "lib/main.dart"), "utf8");
-  const packageSource = readFileSync(resolve(desktopRoot, "scripts/package-client.mjs"), "utf8");
+  const packageSource = [
+    "scripts/package-client.mjs",
+    "scripts/package-client/build/flutter.mjs",
+  ].map((ref) => readFileSync(resolve(desktopRoot, ref), "utf8")).join("\n");
   const widgetSource = readFileSync(resolve(desktopRoot, widgetTestRef), "utf8");
   const fixtureSource = readFileSync(resolve(desktopRoot, fixtureRef), "utf8");
   const parsed = decodeLiveReceipt(

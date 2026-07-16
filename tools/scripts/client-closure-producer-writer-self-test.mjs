@@ -19,34 +19,60 @@ function source(ref) {
 const acceptanceConfig = JSON.parse(source(
   "tools/scripts/config/client-release-acceptance.json",
 ));
-const userPresence = source(
-  "tools/scripts/client-secure-mesh-macos-keychain-user-presence-proof.mjs",
-);
+const userPresence = [
+  source("tools/scripts/client-secure-mesh-macos-keychain-user-presence-proof.mjs"),
+  source("tools/scripts/client-secure-mesh-macos-keychain-user-presence-proof/report.mjs"),
+  source("tools/scripts/client-secure-mesh-macos-keychain-user-presence-proof/run.mjs"),
+].join("\n");
 const writer = source("tools/scripts/lib/safe-report-io.mjs");
 const writerTest = source("tools/scripts/client-release-artifact-io-self-test.mjs");
 const additionalFirstPartyReportProducers = [
-  "tools/scripts/client-secure-mesh-release-proof-bundle.mjs",
-  "tools/scripts/client-secure-mesh-e2ee-evidence-bundle.mjs",
-  "tools/scripts/client-secure-mesh-linux-package-update-proof.mjs",
-  "tools/scripts/client-secure-mesh-linux-adaptive-custody-proof.mjs",
+  {
+    facade: "tools/scripts/client-secure-mesh-macos-keychain-user-presence-proof.mjs",
+    authority: "tools/scripts/client-secure-mesh-macos-keychain-user-presence-proof/report.mjs",
+  },
+  {
+    facade: "tools/scripts/client-secure-mesh-release-proof-bundle.mjs",
+    authority: "tools/scripts/client-secure-mesh-release-proof-bundle/run.mjs",
+  },
+  {
+    facade: "tools/scripts/client-secure-mesh-e2ee-evidence-bundle.mjs",
+    authority: "tools/scripts/client-secure-mesh-e2ee-evidence-bundle/run.mjs",
+  },
+  {
+    facade: "tools/scripts/client-secure-mesh-linux-package-update-proof.mjs",
+    authority: "tools/scripts/client-secure-mesh-linux-package-update-proof.mjs",
+  },
+  {
+    facade: "tools/scripts/client-secure-mesh-linux-adaptive-custody-proof.mjs",
+    authority: "tools/scripts/client-secure-mesh-linux-adaptive-custody-proof.mjs",
+  },
 ];
+
+const producerAuthorityByFacade = Object.freeze({
+  "tools/scripts/client-secure-mesh-pairwise-content-audit.mjs":
+    "tools/scripts/client-secure-mesh-pairwise-content-audit/run.mjs",
+  "tools/scripts/client-artifact-verification-receipts.mjs":
+    "tools/scripts/client-artifact-verification-receipts/run.mjs",
+});
 
 for (const id of acceptanceConfig.reportOrder) {
   const producerRef = acceptanceConfig.reports[id].producer;
-  const producer = source(producerRef);
+  const authorityRef = producerAuthorityByFacade[producerRef] || producerRef;
+  const producer = source(authorityRef);
   requireValue(producer.includes("atomicWriteReportJson") &&
     !producer.includes("fs.writeFile(path.join(repoRoot, reportPath)") &&
     !producer.includes("fs.writeFileSync(absolutePath"),
-  `closure_producer_does_not_use_safe_atomic_writer:${id}`);
+    `closure_producer_does_not_use_safe_atomic_writer:${id}`);
 }
-for (const producerRef of additionalFirstPartyReportProducers) {
-  const producer = source(producerRef);
+for (const producer of additionalFirstPartyReportProducers) {
+  const authority = source(producer.authority);
   requireValue(
-    producer.includes("atomicWriteReportJson") &&
-      producer.includes("assertNoLeak") &&
-      !producer.includes("fs.writeFile(path.join(repoRoot, reportPath)") &&
-      !producer.includes("writeFileSync(target, `${JSON.stringify(report"),
-    `first_party_report_producer_is_not_bounded_atomic_and_no_plaintext:${producerRef}`,
+    authority.includes("atomicWriteReportJson") &&
+      authority.includes("assertNoLeak") &&
+      !authority.includes("fs.writeFile(path.join(repoRoot, reportPath)") &&
+      !authority.includes("writeFileSync(target, `${JSON.stringify(report"),
+    `first_party_report_producer_is_not_bounded_atomic_and_no_plaintext:${producer.facade}`,
   );
 }
 requireValue(userPresence.includes(

@@ -3,7 +3,6 @@ import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
 import { appendFileSync, readFileSync } from "node:fs";
 import fs from "node:fs/promises";
-import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import process from "node:process";
@@ -96,83 +95,6 @@ async function runJson(command, args, options = {}) {
   }
 }
 
-function sanitizeDiagnosticText(value) {
-  return String(value || "")
-    .replace(/\b[A-Za-z]:[\\/][^\r\n"'`]*/g, "<path>")
-    .replace(/(^|[\s"'=:(])\/(?:Users|home|root|private|var|tmp|opt|usr|Volumes)\/[^\s"',)\]}]*/g, "$1<path>")
-    .replace(/\bworkspace_[A-Za-z0-9_]+\b/g, "<workspace-id>");
-}
-
-async function localRuntimeFailureDiagnostics(licoClientExe, env) {
-  const logs = await run(licoClientExe, ["local-runtime", "logs", "--tail", "30"], { env, timeoutMs: 30000 }).catch((error) => ({
-    code: 1,
-    stdout: "",
-    stderr: error instanceof Error ? error.message : String(error)
-  }));
-  const output = sanitizeDiagnosticText([logs.stderr, logs.stdout].filter(Boolean).join("\n")).trim();
-  if (!output) {
-    return "local-runtime diagnostics were empty";
-  }
-  return output.split(/\r?\n/).slice(-30).join("\n");
-}
-
-function windowsExcludedTcpPortRanges() {
-  if (process.platform !== "win32") {
-    return [];
-  }
-  const result = spawnSync("netsh.exe", ["interface", "ipv4", "show", "excludedportrange", "protocol=tcp"], {
-    encoding: "utf8",
-    windowsHide: true
-  });
-  if (result.status !== 0) {
-    return [];
-  }
-  return String(result.stdout || "")
-    .split(/\r?\n/)
-    .map((line) => line.match(/^\s*(\d+)\s+(\d+)/))
-    .filter(Boolean)
-    .map((match) => [Number(match[1]), Number(match[2])])
-    .filter(([start, end]) => Number.isInteger(start) && Number.isInteger(end));
-}
-
-function portWindowExcluded(port, ranges, width = 10) {
-  const end = port + width;
-  return ranges.some(([rangeStart, rangeEnd]) => port <= rangeEnd && end >= rangeStart);
-}
-
-function probePort(port) {
-  return new Promise((resolve) => {
-    const server = net.createServer();
-    server.once("error", () => resolve(false));
-    server.listen(port, "127.0.0.1", () => {
-      server.close(() => resolve(true));
-    });
-  });
-}
-
-async function freePort() {
-  if (process.platform === "win32") {
-    const excludedRanges = windowsExcludedTcpPortRanges();
-    for (let attempt = 0; attempt < 240; attempt += 1) {
-      const port = 42000 + ((attempt * 113) % 6000);
-      if (portWindowExcluded(port, excludedRanges)) {
-        continue;
-      }
-      if (await probePort(port)) {
-        return port;
-      }
-    }
-  }
-  return new Promise((resolve, reject) => {
-    const server = net.createServer();
-    server.once("error", reject);
-    server.listen(0, "127.0.0.1", () => {
-      const port = server.address().port;
-      server.close(() => resolve(port));
-    });
-  });
-}
-
 async function fileExists(filePath) {
   try {
     const stat = await fs.stat(filePath);
@@ -232,9 +154,6 @@ async function main() {
   await recordProgress("windows-file-security", "start");
   await runChecked(process.execPath, ["tests/verify-windows-file-security-boundary.mjs"], { timeoutMs: 30000 });
   await recordProgress("windows-file-security", "ok");
-  await recordProgress("windows-runtime-setup", "start");
-  await runChecked(process.execPath, ["tests/verify-windows-local-runtime-setup.mjs"], { timeoutMs: 30000 });
-  await recordProgress("windows-runtime-setup", "ok");
   if (process.platform !== "win32") {
     console.log("windows native smoke static checks passed; full Windows smoke skipped on non-Windows");
     return;
@@ -249,7 +168,7 @@ async function main() {
 
   const portableDir = await fs.mkdtemp(path.join(os.tmpdir(), "lico-windows-native-smoke-"));
   await recordProgress("portable-dir", "created");
-  const env = { LICO_PORTABLE_DIR: portableDir };
+  const env = { LICOARC_PORTABLE_DIR: portableDir };
   try {
     await recordProgress("targets-scan", "start");
     const targets = await runJson(licoClientExe, ["targets", "scan"], { env, timeoutMs: 30000 });
@@ -263,55 +182,16 @@ async function main() {
     }
     await recordProgress("targets-scan", "ok", { candidates: (targets.candidates || []).length });
 
-    await recordProgress("local-runtime-build", "start");
-    await runChecked(licoClientExe, [
-      "local-runtime",
-      "build"
-    ], { env, timeoutMs: 240000 });
-    await recordProgress("local-runtime-build", "ok");
-
-    const port = await freePort();
-    await recordProgress("local-runtime-start", "start", { port });
-    let start;
-    try {
-      start = await runJson(licoClientExe, [
-        "local-runtime",
-        "start",
-        "--port", String(port),
-        "--health-timeout-ms", "180000"
-      ], { env, timeoutMs: 240000, resolveOnExit: true });
-    } catch (error) {
-      const diagnostics = await localRuntimeFailureDiagnostics(licoClientExe, env);
-      throw new Error(`${error instanceof Error ? error.message : String(error)}\n${diagnostics}`);
-    }
-    assert.equal(start.status, "running");
-    assert.match(start.serverUrl, new RegExp(`:${port}$`));
-    await recordProgress("local-runtime-start", "ok");
-
-    await recordProgress("local-runtime-status", "start");
-    const status = await runJson(licoClientExe, ["local-runtime", "status"], { env, timeoutMs: 30000 });
-    assert.equal(status.status, "running");
-    await recordProgress("local-runtime-status", "ok");
-
-    await recordProgress("local-runtime-logs", "start");
-    const logs = await runJson(licoClientExe, ["local-runtime", "logs", "--tail", "20"], { env, timeoutMs: 30000 });
-    assert.equal(Array.isArray(logs.lines), true);
-    await recordProgress("local-runtime-logs", "ok", { lines: logs.lines.length });
-
-    await recordProgress("local-runtime-stop", "start");
-    const stop = await runJson(licoClientExe, ["local-runtime", "stop"], { env, timeoutMs: 60000 });
-    assert.equal(stop.status, "stopped");
-    await recordProgress("local-runtime-stop", "ok");
-
     await recordProgress("windows-secret-store", "start");
     const secretStore = await runJson(licoClientExe, [
       "mobile", "relay", "e2ee", "secret-store-self-test",
     ], { env, timeoutMs: 120000 });
     assert.equal(secretStore.ok, true);
     assert.equal(secretStore.selfTestPassed, true);
-    assert.equal(secretStore.backend, "windows-credential-manager");
+    assert.equal(secretStore.backend, "memory-only-ephemeral");
     assert.equal(secretStore.sharedSecretClassRoundTripPassed, true);
-    assert.equal(secretStore.sharedSecretClassPersistenceReady, true);
+    assert.equal(secretStore.sharedSecretClassPersistenceReady, false);
+    assert.equal(secretStore.restartProof?.rePairRekeyRequired, true);
     assert.equal(secretStore.portableConfigPrivateMaterialRedacted, true);
     assert.equal(secretStore.rawPrivateMaterialIncluded, false);
     assert.equal(secretStore.rawPlaintextIncluded, false);
@@ -319,7 +199,6 @@ async function main() {
     await recordProgress("windows-secret-store", "ok");
   } finally {
     await recordProgress("cleanup", "start");
-    await run(licoClientExe, ["local-runtime", "stop"], { env, timeoutMs: 60000 }).catch(() => {});
     await fs.rm(portableDir, { recursive: true, force: true });
     await recordProgress("cleanup", "ok");
   }

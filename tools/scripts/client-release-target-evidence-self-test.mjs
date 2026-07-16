@@ -3,6 +3,9 @@ import {
   androidPlatformCryptoEvidenceReady,
   releaseCliTargetEvidenceReady,
 } from "./lib/client-release-target-evidence.mjs";
+import {
+  ANDROID_PLATFORM_CRYPTO_NATIVE_TEST_CLASS_COUNT,
+} from "./lib/secure-mesh-physical-report-coverage.mjs";
 
 function requireValue(condition, code) {
   if (!condition) throw new Error(code);
@@ -55,7 +58,8 @@ const androidSummary = Object.fromEntries([
   "mlsMemberRemoveReleaseActionReady",
   "unknownReleaseActionsFailClosed",
 ].map((key) => [key, true]));
-androidSummary.nativeTestClassCount = 6;
+androidSummary.nativeTestClassCount =
+  ANDROID_PLATFORM_CRYPTO_NATIVE_TEST_CLASS_COUNT;
 androidSummary.privatePathsIncluded = false;
 const android = {
   schemaVersion: "licolite.secure-mesh.android-platform-crypto-acceptance.v1",
@@ -72,7 +76,11 @@ requireValue(androidPlatformCryptoEvidenceReady(android),
   "valid_android_rejected");
 requireValue(!androidPlatformCryptoEvidenceReady({
   ...android,
-  summary: { ...androidSummary, nativeTestClassCount: 5 },
+  summary: {
+    ...androidSummary,
+    nativeTestClassCount:
+      ANDROID_PLATFORM_CRYPTO_NATIVE_TEST_CLASS_COUNT - 1,
+  },
 }), "wrong_android_test_matrix_accepted");
 requireValue(!androidPlatformCryptoEvidenceReady({
   ...android,

@@ -7,6 +7,7 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { optionalReleaseInvocationBinding } from "./lib/release-closure-challenge.mjs";
 import { runCargoTestFilter } from "./lib/cargo-test-filter-runner.mjs";
+import { acquireTestArtifactLease } from "./lib/test-artifact-lifecycle.mjs";
 import {
   atomicWriteReportJson,
   removeContainedReportIfExists
@@ -17,7 +18,6 @@ const androidRoot = path.join(workspaceRoot, "apps", "desktop", "android");
 const reportRef = "build/reports/secure-mesh-android-platform-crypto-acceptance.json";
 const verifier = "tools/scripts/client-android-native-tests.mjs";
 const testClasses = [
-  "com.liko.arc.MobileProviderAccountScopedCredentialTest",
   "com.liko.arc.ReleaseAcceptanceChannelTest",
   "com.liko.arc.ReleaseAcceptanceIngressTest",
   "com.liko.arc.ReleaseClosureBindingTest",
@@ -27,6 +27,10 @@ const testClasses = [
 const rustFfiTestFilters = Object.freeze([
   "mobile_ffi_native_action_contract_is_shared_by_platform_bridges",
   "mobile_ffi_unsupported_action_uses_calling_platform_error_code"
+]);
+const artifactTargets = Object.freeze([
+  "apps/desktop/build",
+  "build/crates/lico-client-native/android-target"
 ]);
 
 function javaExecutable(javaHome) {
@@ -101,7 +105,15 @@ function redactOutput(value) {
   ).slice(-12000);
 }
 
+const artifactLeases = [];
 try {
+  for (const targetPath of artifactTargets) {
+    artifactLeases.push(acquireTestArtifactLease({
+      repoRoot: workspaceRoot,
+      scope: "android-native-tests",
+      targetPath
+    }));
+  }
   removeContainedReportIfExists(
     path.join(workspaceRoot, "build"),
     reportRef.replace(/^build\//u, "")
@@ -112,6 +124,8 @@ try {
   };
   const args = [
     "-q",
+    "--offline",
+    "--no-daemon",
     "--warning-mode",
     "none",
     "app:testDebugUnitTest",
@@ -193,4 +207,6 @@ try {
 } catch (error) {
   process.stderr.write(`${redactOutput(error?.message || error)}\n`);
   process.exitCode = 1;
+} finally {
+  for (const lease of artifactLeases.reverse()) lease.release();
 }

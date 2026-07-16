@@ -1,5 +1,9 @@
 const SHA256 = /^sha256:[a-f0-9]{64}$/u;
 
+import {
+  ANDROID_PLATFORM_CRYPTO_NATIVE_TEST_CLASS_COUNT,
+} from "./secure-mesh-physical-report-coverage.mjs";
+
 function text(value) {
   return String(value || "").trim();
 }
@@ -41,7 +45,8 @@ export function androidPlatformCryptoEvidenceReady(report) {
     summary.rustFfiActionContractReady === true &&
     summary.mlsMemberRemoveReleaseActionReady === true &&
     summary.unknownReleaseActionsFailClosed === true &&
-    summary.nativeTestClassCount === 6 &&
+    summary.nativeTestClassCount ===
+      ANDROID_PLATFORM_CRYPTO_NATIVE_TEST_CLASS_COUNT &&
     summary.privatePathsIncluded === false &&
     report?.redacted === true && report?.rawPrivateMaterialIncluded === false &&
     report?.rawPlaintextIncluded === false &&

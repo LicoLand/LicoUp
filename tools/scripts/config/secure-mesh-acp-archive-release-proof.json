@@ -4,7 +4,7 @@
   "sourceChecks": [
     {
       "id": "semantic-archive-privacy-defaults-hide-raw",
-      "file": "crates/lico-client-native/src/domain/conversation_semantic.rs",
+      "file": "crates/lico-client-native/src/domain/conversation/event_semantics.rs",
       "tokens": [
         "privacy_defaults",
         "\"defaultView\": \"thread\"",
@@ -12,14 +12,24 @@
         "\"hideAuditInDefaultView\": true",
         "\"redactPaths\": true",
         "\"redactTokens\": true",
-        "\"redactFullCommandPayloads\": true",
+        "\"redactFullCommandPayloads\": true"
+      ]
+    },
+    {
+      "id": "semantic-archive-markdown-keeps-diagnostics-explicit",
+      "file": "crates/lico-client-native/src/domain/conversation_semantic/markdown.rs",
+      "tokens": [
         "Default view: **thread**",
         "## Raw evidence (diagnostics)"
       ]
     },
     {
       "id": "flutter-models-preserve-layer-separation",
-      "file": "apps/desktop/lib/src/contracts/agent_conversation_models.dart",
+      "files": [
+        "apps/desktop/lib/src/contracts/agent_conversation_models.dart",
+        "apps/desktop/lib/src/contracts/agent_conversation_semantic.dart",
+        "apps/desktop/lib/src/contracts/agent_conversation_session.dart"
+      ],
       "tokens": [
         "AgentSemanticConversation",
         "threadMessages",
@@ -30,7 +40,10 @@
     },
     {
       "id": "workspace-hides-raw-behind-diagnostics",
-      "file": "apps/desktop/lib/src/frontend/features/agents/ui/agent_conversation_workspace.dart",
+      "files": [
+        "apps/desktop/lib/src/frontend/features/agents/ui/agent_conversation_workspace.dart",
+        "apps/desktop/lib/src/frontend/features/agents/ui/agent_conversation_message_view.dart"
+      ],
       "tokens": [
         "_ConversationDiagnosticsPanel",
         "conversation-diagnostics",
@@ -40,16 +53,18 @@
     },
     {
       "id": "architecture-enforces-semantic-layers",
-      "file": "apps/desktop/scripts/verify-client-architecture.mjs",
+      "files": [
+        "apps/desktop/scripts/verify-client-architecture.mjs",
+        "apps/desktop/scripts/client-architecture/checks/native/conversation-domain.mjs",
+        "apps/desktop/scripts/client-architecture/checks/composition.mjs"
+      ],
       "tokens": [
-        "conversation_semantic.rs must own the canonical semantic conversation layers",
+        "native semantic conversation must use one thin root and nine explicitly dependent leaves",
+        "semantic conversation leaves must retain separate model, assembly, projection, privacy, validation, rendering, and IO authorities",
         "Flutter conversation models must preserve semantic layers without flattening authority",
         "workspace must render shared semantic layers without per-provider UI forks",
-        "includes(\"\\\"thread\\\"\")",
-        "includes(\"\\\"execution\\\"\")",
-        "includes(\"\\\"artifacts\\\"\")",
-        "includes(\"\\\"audit\\\"\")",
-        "includes(\"\\\"raw\\\"\")"
+        "conversationSemanticLeaves",
+        "conversationSemanticSources"
       ]
     },
     {

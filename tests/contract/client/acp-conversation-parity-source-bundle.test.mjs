@@ -1,0 +1,240 @@
+import assert from "node:assert/strict";
+import fs from "node:fs/promises";
+import path from "node:path";
+import test from "node:test";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { spawnSync } from "node:child_process";
+
+const repoRoot = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "../../..",
+);
+const facadeRef = "tools/scripts/client-acp-conversation-parity.mjs";
+const moduleRoot = "tools/scripts/client-acp-conversation-parity";
+const leaves = Object.freeze([
+  "agent-ids.mjs",
+  "cli.mjs",
+  "clients/acp-client.mjs",
+  "clients/app-server-client.mjs",
+  "clients/copilot-sdk-client.mjs",
+  "clients/pi-rpc-client.mjs",
+  "constants.mjs",
+  "errors.mjs",
+  "evidence.mjs",
+  "live-gate.mjs",
+  "live.mjs",
+  "native/acp-turn.mjs",
+  "native/app-server.mjs",
+  "native/pi.mjs",
+  "packaging.mjs",
+  "process.mjs",
+  "results.mjs",
+  "round-facts.mjs",
+  "run-round.mjs",
+  "run.mjs",
+  "self-test/fake-runtime.mjs",
+  "self-test/runner.mjs",
+  "session-cleanup.mjs",
+  "session-query.mjs",
+  "sidecar.mjs",
+]);
+
+async function read(relativePath) {
+  return fs.readFile(path.join(repoRoot, relativePath), "utf8");
+}
+
+async function sources() {
+  return Object.fromEntries(
+    await Promise.all(
+      leaves.map(async (leaf) => [leaf, await read(`${moduleRoot}/${leaf}`)]),
+    ),
+  );
+}
+
+async function collectModules(relativeRoot) {
+  const found = [];
+  async function visit(relativeDirectory, prefix = "") {
+    const entries = await fs.readdir(path.join(repoRoot, relativeDirectory), {
+      withFileTypes: true,
+    });
+    for (const entry of entries) {
+      const childPrefix = prefix ? `${prefix}/${entry.name}` : entry.name;
+      const childDirectory = `${relativeDirectory}/${entry.name}`;
+      if (entry.isDirectory()) await visit(childDirectory, childPrefix);
+      else if (entry.isFile() && entry.name.endsWith(".mjs")) {
+        found.push(childPrefix);
+      }
+    }
+  }
+  await visit(relativeRoot);
+  return found.sort();
+}
+
+function declarationOwners(source, name) {
+  const patterns = [
+    new RegExp(`(?:export\\s+)?(?:async\\s+)?function\\s+${name}\\s*\\(`, "u"),
+    new RegExp(`(?:export\\s+)?class\\s+${name}\\b`, "u"),
+    new RegExp(`(?:export\\s+)?const\\s+${name}\\s*=`, "u"),
+  ];
+  return Object.entries(source)
+    .filter(([, value]) => patterns.some((pattern) => pattern.test(value)))
+    .map(([leaf]) => leaf)
+    .sort();
+}
+
+function findImportCycle(source) {
+  const graph = new Map();
+  for (const [leaf, value] of Object.entries(source)) {
+    const dependencies = [];
+    for (const match of value.matchAll(/from\s+"(\.{1,2}\/[^"\n]+)"/gu)) {
+      const resolved = path.posix.normalize(
+        path.posix.join(path.posix.dirname(leaf), match[1]),
+      );
+      if (source[resolved]) dependencies.push(resolved);
+    }
+    graph.set(leaf, dependencies);
+  }
+  const visiting = new Set();
+  const visited = new Set();
+  let cycle = null;
+  function dfs(node, stack) {
+    if (visiting.has(node)) {
+      cycle = [...stack, node];
+      return true;
+    }
+    if (visited.has(node)) return false;
+    visiting.add(node);
+    stack.push(node);
+    for (const next of graph.get(node) || []) {
+      if (dfs(next, stack)) return true;
+    }
+    stack.pop();
+    visiting.delete(node);
+    visited.add(node);
+    return false;
+  }
+  for (const node of graph.keys()) {
+    if (dfs(node, [])) return cycle;
+  }
+  return null;
+}
+
+test("acp conversation parity facade is a thin serial CLI entry", async () => {
+  const facade = await read(facadeRef);
+  assert.ok(facade.trimEnd().split(/\r?\n/u).length <= 12);
+  assert.match(facade, /runAcpConversationParityCli/u);
+  assert.equal(facade.includes("function "), false);
+  assert.equal(facade.includes("class "), false);
+  assert.equal(facade.includes("spawn"), false);
+  assert.equal(facade.includes("readFileSync"), false);
+  const module = await import(
+    `${pathToFileURL(path.join(repoRoot, moduleRoot, "run.mjs")).href}?source-bundle`
+  );
+  assert.equal(typeof module.runAcpConversationParityCli, "function");
+});
+
+test("acp conversation parity owns exactly twenty-five bounded ordinary modules", async () => {
+  assert.deepEqual(await collectModules(moduleRoot), [...leaves]);
+  const source = await sources();
+  const limits = new Map([
+    ["agent-ids.mjs", 40],
+    ["cli.mjs", 80],
+    ["clients/acp-client.mjs", 180],
+    ["clients/app-server-client.mjs", 190],
+    ["clients/copilot-sdk-client.mjs", 170],
+    ["clients/pi-rpc-client.mjs", 170],
+    ["constants.mjs", 220],
+    ["errors.mjs", 50],
+    ["evidence.mjs", 240],
+    ["live-gate.mjs", 100],
+    ["live.mjs", 140],
+    ["native/acp-turn.mjs", 220],
+    ["native/app-server.mjs", 190],
+    ["native/pi.mjs", 220],
+    ["packaging.mjs", 160],
+    ["process.mjs", 170],
+    ["results.mjs", 130],
+    ["round-facts.mjs", 130],
+    ["run-round.mjs", 280],
+    ["run.mjs", 70],
+    ["self-test/fake-runtime.mjs", 460],
+    ["self-test/runner.mjs", 440],
+    ["session-cleanup.mjs", 290],
+    ["session-query.mjs", 250],
+    ["sidecar.mjs", 190],
+  ]);
+  for (const [leaf, maxLines] of limits) {
+    assert.ok(
+      source[leaf].trimEnd().split(/\r?\n/u).length <= maxLines,
+      `${leaf} is oversized`,
+    );
+    assert.equal(source[leaf].includes("../client-acp-conversation-parity.mjs"), false);
+  }
+  assert.equal(findImportCycle(source), null);
+});
+
+test("cli, live-gate, rounds, sessions, and clients each have one authority", async () => {
+  const source = await sources();
+  assert.deepEqual(declarationOwners(source, "parseArguments"), ["cli.mjs"]);
+  assert.deepEqual(declarationOwners(source, "printLiveGateChecklist"), [
+    "live-gate.mjs",
+  ]);
+  assert.deepEqual(declarationOwners(source, "parityModelForAgent"), [
+    "agent-ids.mjs",
+  ]);
+  assert.deepEqual(declarationOwners(source, "runRound"), ["run-round.mjs"]);
+  assert.deepEqual(declarationOwners(source, "runLive"), ["live.mjs"]);
+  assert.deepEqual(declarationOwners(source, "runSelfTest"), [
+    "self-test/runner.mjs",
+  ]);
+  assert.deepEqual(declarationOwners(source, "cleanupSession"), [
+    "session-cleanup.mjs",
+  ]);
+  assert.deepEqual(declarationOwners(source, "listSessions"), [
+    "session-query.mjs",
+  ]);
+  assert.deepEqual(declarationOwners(source, "AcpClient"), [
+    "clients/acp-client.mjs",
+  ]);
+  assert.deepEqual(declarationOwners(source, "runAcpConversationParityCli"), [
+    "run.mjs",
+  ]);
+});
+
+test("self-test dry-run preserves passed status without live agent binaries", () => {
+  const result = spawnSync(
+    process.execPath,
+    [path.join(repoRoot, facadeRef), "--self-test"],
+    {
+      cwd: repoRoot,
+      encoding: "utf8",
+      maxBuffer: 4 * 1024 * 1024,
+      timeout: 120_000,
+    },
+  );
+  assert.equal(result.status, 0, result.stderr || result.stdout.slice(0, 400));
+  const payload = JSON.parse(result.stdout);
+  assert.equal(payload.status, "passed");
+  assert.equal(payload.cleanupVerified, true);
+  assert.equal(payload.strictRounds, 3);
+  assert.equal(typeof payload.evidenceDigest, "string");
+  assert.equal(payload.evidenceDigest.length, 64);
+});
+
+test("print-live-gate remains a non-mutating checklist", () => {
+  const result = spawnSync(
+    process.execPath,
+    [path.join(repoRoot, facadeRef), "--print-live-gate"],
+    {
+      cwd: repoRoot,
+      encoding: "utf8",
+      maxBuffer: 4 * 1024 * 1024,
+      timeout: 30_000,
+    },
+  );
+  assert.equal(result.status, 0, result.stderr || result.stdout.slice(0, 400));
+  const payload = JSON.parse(result.stdout);
+  assert.equal(payload.status, "live-gate-checklist");
+  assert.equal(Array.isArray(payload.adapters), true);
+  assert.ok(payload.adapters.length >= 1);
+});
