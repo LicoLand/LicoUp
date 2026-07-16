@@ -2,12 +2,12 @@
 
 ## Metadata / 元数据
 
-- Last updated: 2026-07-10
+- Last updated: 2026-07-15
 - Status: Current maintained runbook
 - Scope: Development standards, audit rules, feature-item design standards, plan governance, document maintenance governance, skill local-info hygiene, commit-ready workflow, testing, validation, release gates, and documentation governance.
-- Staleness check: Checked against package scripts, verification scripts, document governance verifier, documentation governance verifier, plan governance verifier, commit-ready gate, current docs layout, release/version scripts, branch-flow verifier, GitHub workflow branches, protected branch rules, refactored module boundaries, and the feature migration gate on 2026-06-29.
+- Staleness check: Reconciled with `PRODUCT.md`, the canonical product-scope plan, package scripts, module regression, client architecture, privacy gates, and platform delivery rules on 2026-07-15.
 
-## LicoLite Audit Rules / 审计规则
+## Lico Arc Development Rules
 
 1. **Architecture — Module Independence / 模块独立性**: Modules must be split independently and completely:
     * Module functionality must be relatively independent: a module aggregates a set of similar functional items.
@@ -17,17 +17,24 @@
 3. **Operations — Developer Workflow Management / 开发工作流管理**: Development, testing, release, and operations tools must be effective and aligned with current code and documentation:
     * Tools must be centrally managed in the `tools/` directory; scattering is forbidden.
     * Tool reference configurations must use dynamic scanning (see `tools/config-scanner.mjs`); hardcoding is forbidden.
-    * Tool last-updated dates must not be later than the latest LicoLite version release date.
-4. **Architecture Governance — Current Implementations Only / 仅允许当前实现**: LicoLite forbids prohibited roots, non-current behavior switches, and fallback implementations in production code. All updates must use canonical functional roots and current contracts. Version strings may be recorded only as state facts for releases, protocols, dependencies, artifacts, contracts, or audit records; they must not define implementation, feature, module, document, ADR, or plan boundaries.
+    * Tool last-updated dates must not be later than the latest Lico Arc version release date.
+4. **Architecture Governance — Current Implementations Only / 仅允许当前实现**: Lico Arc forbids prohibited roots, non-current behavior switches, and fallback implementations in production code. All updates must use canonical functional roots and current contracts. Version strings may be recorded only as state facts for releases, protocols, dependencies, artifacts, contracts, or audit records; they must not define implementation, feature, module, document, ADR, or plan boundaries.
 5. **Architecture Governance — No Residual Gates / 禁止残留门禁**: One-time cleanup scripts must not leave residual gates or archived implementation paths. Temporary update scripts are deleted after execution; durable evidence belongs in registries, generated reports, tests, or verifier output under canonical roots.
 6. **Feature Migration — Complete New Path / 功能完整迁移**: Feature work must finish as a complete migration before verification is considered final: optimize the feature, move ordinary callers and data paths to the new behavior, remove retired compatibility/fallback/shim paths, and update docs, registries, fixtures, and tests that still point at the old behavior.
 7. **Commit-Ready Feature Unit / 可提交功能单元**: A feature is not commit-ready until the implementation, upstream/downstream adaptation, minimal verification, and objective blocker documentation are complete. If any required check cannot run in the current environment, record the reason, required platform/credential/collaborator, and follow-up verification command before treating the work as ready.
-8. **Plan Governance — Preconditions and Acceptance / 计划前置与验收**: Current plan documents live in `docs/plan/`, each plan must contain `## 前置条件 / Prerequisites` and `## 验收条件 / Acceptance Criteria`, and prerequisite sections must state base dependencies, parallelization boundaries, and subagent boundaries. Common foundation bases are registered in `docs/plan/base-plan-registry.json`; each base has exactly one owning plan and must be resolved before dependent application-layer work is parallelized.
-9. **Testing — 95% Coverage / 95% 测试覆盖率**: LicoLite code branches must achieve at least 95% test coverage (enforced by `tests/verify-unit-coverage-threshold.mjs`). Submissions, pushes, and releases that fall below this threshold are rejected.
-10. **Documentation — RUNBOOK.md as Sole Dev Doc / 唯一开发准则**: [RUNBOOK.md](RUNBOOK.md) is the sole development guideline document for the LicoLite project. All development guidelines scattered in other documents or code must be consolidated into [RUNBOOK.md](RUNBOOK.md). Other documents may reference RUNBOOK.md but must not duplicate its content.
+8. **Plan Governance — Product Scope, Preconditions, and Acceptance**: Current plan documents live in `docs/plan/`; every plan entry point is constrained by `docs/plan/product-scope/Requirements.md`, places `## Prerequisites` before `## Acceptance Criteria`, and states dependencies, parallelization boundaries, subagent boundaries, verifier commands, and concrete pass conditions.
+9. **Testing — 95% Coverage / 95% 测试覆盖率**: Lico Arc code branches must achieve at least 95% test coverage where the scoped coverage gate applies. Submissions, pushes, and releases that fall below the declared threshold are rejected.
+10. **Documentation — RUNBOOK.md as Sole Dev Doc / 唯一开发准则**: [RUNBOOK.md](RUNBOOK.md) is the sole development guideline document for the Lico Arc project. Other documents may define product or feature contracts but must not create conflicting development rules.
 11. **Documentation — Rules Completeness / 准则完整**: The above audit rules must be recorded clearly and accurately in [RUNBOOK.md](RUNBOOK.md). Any missing guidelines must be supplemented promptly. RUNBOOK.md is the authoritative source; discrepancies between RUNBOOK.md and other documents are resolved in favor of RUNBOOK.md.
 12. **Documentation - English Engineering Docs**: Repository-maintained engineering documentation is written in English. Chinese prose is allowed only in explicit translation/localization or user-facing product-promotion artifacts, such as localized README or product pages. ADRs, plans, runbooks, functionality docs, verifier guidance, scenario docs, implementation decision rollups, generated engineering docs, and repository skills must not use implicit mixed-language prose.
 13. **User Experience — Simplified Credential Verification / 简化凭据验证**: When key or credential storage is involved, the client must request user permission and invoke platform-native biometrics (Face ID, Touch ID, Passkey) or secure key tools. Authentication must be unified in one OS-owned flow for the associated workflow. Biometrics are preferred; when they are unavailable, not enrolled, or locked, the same OS flow may fall back to the system credential. The app must never collect the password itself. Background work, unit tests, CI, and non-interactive acceptance steps must never open an authorization sheet.
+14. **Product Scope — Explicit Allowlist**: Default product work is limited to the Rust local task queue, ACP, MCP, five declared platform adapters, local-agent discovery/conversation/skill/conversation-backup/usage scenarios, and Secure Client Mesh mobile relay. A new default navigation item or background service requires an explicit product-scope decision first.
+15. **Optional LicoLite Collaboration**: LicoLite collaboration is disabled by default and installed only after a user explicitly enables it and selects a GitHub plugin source. Local LicoLite deployment and LicoLite MCP installation remain plugin-owned manual workflows and must not enter the built-in startup or navigation path.
+    The host accepts only bounded non-executable declarative packages, binds apply and uninstall to the reviewed SHA-256 digest, and reads the workflow catalog only through an explicit user command.
+16. **External Data — Per-Operation Direct Approval**: Local files, conversations, configuration, diagnostics, paths, device facts, history, and usage remain local by default. Every external transfer binds a direct single-operation approval to destination, purpose, exact scope, and content digest; it remains cancellable until commit and fails closed when missing, cancelled, expired, changed, or unverifiable. Startup, schedules, prior approvals, plugin enablement, and agent requests do not imply consent.
+17. **Local Scheduling — Rust Ownership**: The lightweight local task queue is implemented in Rust with fixed-capacity FIFO admission, one exclusive consumer, cloneable producers, blocking backpressure, ownership-preserving rejection, bounded depth accounting, and fail-closed disconnect. Scheduling policy, retries, cancellation, terminal history, and payload persistence remain feature-owned and must not be smuggled into the primitive. UI code does not implement a second queue.
+18. **Testing — Fast Regression Closure / 快速回归闭环**: Regression work must choose the fastest module-scoped loop that proves the changed behavior and minimize the selected scope. Run the complete regression only after every implementation, migration, document, and targeted check is confirmed effective. Repeated complete-regression runs during development are forbidden because they consume shared resources and disrupt parallel agents.
+
 ## Development Specifications
 
 ### Code Facts First
@@ -104,9 +111,18 @@ GitHub rulesets are the remote enforcement layer for protected branches. The rep
 
 ### Product-Line Delivery Gate
 
-Product-line delivery follows the scenario groups in `docs/scenarios/scenario-catalog.json`: `private-deployment`, `personal-user`, and `mcp-services`. A product line can be delivered independently only when every scenario in that group is `verified` with empty blockers in `docs/scenarios/scenario-implementation-status.json`.
+The authoritative product scope is `PRODUCT.md` plus
+`docs/plan/product-scope/Requirements.md`. Default delivery is accepted per
+independent foundation or scenario only when its dedicated regression and every
+declared integration edge pass. A product-line claim requires all four foundation
+capabilities, all six default scenarios, and the selected platform set to be
+verified. Partial implementation remains visible as progress and is not a complete
+product-line claim.
 
-Intermediate states such as `specified`, `contract`, and `partial` are implementation progress. They are not acceptable outcomes for the corresponding complete product-line claim. That claim remains stricter and requires every catalog scenario across all product lines to be `verified`; it is distinct from GitHub Release and per-channel store readiness.
+Optional LicoLite collaboration is reported separately. Its absence, disablement,
+or uninstalled state cannot block the default product. It can be accepted only
+after disabled-by-default, manual GitHub installation, composition selection,
+manual MCP installation, and per-file approval negative tests pass.
 
 ### Artifact Verification and Platform Publication
 
@@ -137,19 +153,24 @@ npm run client:verify:artifact-verification-receipts:self-test
 npm run client:verify:client-release-acceptance:self-test
 ```
 
-Every client version must also publish the generated platform-by-service report at `docs/releases/client-support-matrix.md`. Run `npm run client:support-matrix:sync` after changing the product version, release targets, or capability catalog, then run `npm run client:support-matrix:check`. The version verification command includes this freshness check. Optional external services are disclosure rows only and never block a selected client platform release; unsupported, deferred, and unverified rows must remain explicit and must not be described as supported.
+Every client version must also publish the generated platform-by-capability report at `docs/releases/client-support-matrix.md`. Run `npm run client:support-matrix:sync` after changing the product version, release targets, or capability catalog, then run `npm run client:support-matrix:check`. The version verification command includes this freshness check. Manual integrations are absent by default and never block a selected client platform release; unsupported, deferred, and unverified rows must remain explicit and must not be described as supported. Capability status never grants external-transfer authority: each transfer still requires direct, exact-operation user approval.
 
 ### Plan Governance Gate
 
-Before adding or changing a plan document, read `docs/plan/README.md` and `docs/plan/base-plan-registry.json`.
+Before adding or changing a plan document, read
+`docs/plan/product-scope/Requirements.md` and `docs/plan/Manifest.json`.
 
 Minimum plan requirements:
 
 - Current plan documents live under `docs/plan/`.
-- Each plan includes `## 前置条件 / Prerequisites` before `## 验收条件 / Acceptance Criteria`.
-- Prerequisites name base-plan dependencies, serial/parallel boundaries, and subagent launch boundaries.
+- Every plan entry point names the canonical product-scope plan as its upper
+  constraint.
+- Each plan includes `## Prerequisites` before `## Acceptance Criteria`.
+- Prerequisites name product-scope dependencies, serial/parallel boundaries, and
+  subagent boundaries.
 - Acceptance criteria name verifier commands, evidence, or concrete pass conditions.
-- A common base has one owning plan in `base-plan-registry.json`; feature plans that touch the base reference that owning plan before declaring upper-layer parallel work.
+- A child plan cannot add a default scenario, background service, external data
+  transfer, or LicoLite dependency that the product-scope plan does not authorize.
 
 Run:
 
@@ -159,8 +180,8 @@ npm run client:verify:plan
 
 ### Document Maintenance Gate
 
-Before creating or changing documentation, run `lico-dev context .`, follow the
-repository `AGENTS.md`, and read `docs/adr/README.md` for ADR work.
+Before creating or changing documentation, run `lico-dev context <changed-path>`
+and follow the repository `AGENTS.md`.
 
 Minimum document requirements:
 
@@ -170,7 +191,8 @@ Minimum document requirements:
 - ADRs follow Current Decision Only: state the current accepted decision directly and rely on git history for replaced wording.
 - Use No Version-Named Boundaries: name features, modules, ADRs, plans, and refactor documents by functional boundary or change summary, not by `v2`, `version-3`, or release numbers.
 - Keep each document single-purpose; one feature should not create several parallel docs.
-- If a new canonical document is justified, update `docs/README.md` and `docs/Manifest.md` in the same change.
+- If a new canonical plan is justified, update `docs/plan/Manifest.json` in the
+  same change.
 
 Run:
 
@@ -233,6 +255,8 @@ Minimum pre-test self-check:
 
 ### Client-side
 
+开发期先用 `npm run client:regression:list` 查看模块，并通过 `npm run client:regression -- --module <module-id>` 或 `npm run client:regression -- --changed-from <ref>` 做最小回归；在执行前可追加 `--dry-run` 预览选择结果。只有所有改动确认有效后才执行一次全量 `npm run client:verify`，严禁在开发过程中反复运行全量回归并占用并行开发资源。
+
 | Scope of Change | Minimum Verification |
 | --- | --- |
 | Client Version Governance | `npm run client:version:check`, `npm run client:version:sync` |
@@ -241,7 +265,9 @@ Minimum pre-test self-check:
 | Rust sidecar | `npm run client:native:test` |
 | Native Smoke | `npm run client:native:smoke` |
 | Client Contracts | `npm run client:contracts:test` |
-| Client Architecture (state, targets, config writes, MCP plugins, Skill Hub, installer, forwarding) | `npm run client:verify:architecture` |
+| Module-scoped Client Regression | `npm run client:regression:list`, `npm run client:regression -- --module <module-id>`, `npm run client:regression -- --changed-from <ref> --dry-run` |
+| Client Architecture (local state, target adapters, Rust task queue, ACP/MCP adapters, Skill Hub) | `npm run client:verify:architecture` |
+| Local Data Egress Boundary (reviewed network-capable source allowlist and GET-only GitHub package fetchers) | `npm run client:verify:local-data-egress-boundary` |
 | Native Agent Conversation Parity (inventory, evidence reduction, exact-session/history contract, ACP protocol self-test) | `npm run client:verify:agent-conversation-parity` |
 | Client Plan Gates | `npm run client:verify:plan` |
 | Agent Usage Metering | `npm run client:verify:agent-usage` |
@@ -317,7 +343,7 @@ explicit diagnostic invocation requests otherwise.
 | Compatibility Targets | `docs/COMPATIBILITY.md` |
 | Agent Guidelines | `AGENTS.md` |
 | Development Rules/Testing/Release Gates | `docs/RUNBOOK.md` |
-| Plan Governance and Base Plans | `docs/plan/README.md`, `docs/plan/base-plan-registry.json`, `docs/plan/*.md` |
+| Plan Governance and Product Scope | `docs/plan/product-scope/`, `docs/plan/Manifest.json`, `docs/plan/**/*.md` |
 | Versioning | `docs/VERSION.md` |
 | State Machines | `docs/state-machine/STATE-MACHINES.md` |
 | Protocols | `docs/protocols/PROTOCOLS.md` |
@@ -361,7 +387,7 @@ npm run client:verify:plan
 - Do not commit secrets, tokens, cookies, OAuth codes, grant tokens, claim tokens, or private keys.
 - Examples use environment variables, stdin, `secretRef`, or placeholders.
 - Calls to external services record anonymized receipts without retaining original headers, query params, body, stack traces, or stream chunks.
-- Local stdio is not a public LicoLite framework surface; stdio operations must use controlled gateways/adapters or explicit development modes.
+- Local stdio is not a public Lico Arc protocol surface; stdio operations must use controlled ACP/MCP adapters or explicit development modes.
 ## Agent conversation verification
 
 Use the canonical wrapper instead of running adapter checks by hand:

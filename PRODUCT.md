@@ -1,59 +1,91 @@
 # Product
 
-## Register
+## Product Boundary
 
-product
+Lico Arc is a local-first, open-source desktop and mobile client for discovering,
+operating, and securely reaching a user's own agents. The client does not depend
+on a LicoLite installation for its default product experience.
 
-## Users
+The built-in foundation is limited to:
 
-Lico Arc is for personal mobile users who want to control the agents running on their own computers from an Android or iOS phone. They are usually holding the phone as an operation surface while the computer stays online elsewhere.
+- a lightweight Rust task queue for bounded local work;
+- an ACP adapter for local agent execution and encrypted remote relay;
+- an MCP adapter for client-originated requests and response forwarding;
+- platform adapters for macOS, Windows, Ubuntu, Android, and iOS.
 
-## Product Purpose
+## Product Scenarios
 
-The product pairs a phone with a trusted desktop client through the relay backend, then presents the desktop's available agents as direct conversation targets. Success means a user can pair once, see the paired computer, choose an agent, and talk to it without managing relay internals, JSON payloads, runtimes, snapshots, or manual target creation.
+The default product exposes only these scenarios:
 
-## Brand Personality
+1. Concurrent desktop discovery of local agents from application registries,
+   package managers, executable search locations, and other platform-owned
+   locations, followed by a local cache registration.
+2. Desktop conversations with local agents, including new conversations and
+   exact continuation through an official native interface where available.
+   When mid-turn injection is unavailable, the client may stream the active turn
+   and start the next turn only after the native reply completes.
+3. Desktop skill management across one or more agents: list, install, update from
+   an explicitly configured mirror or GitHub repository, delete, and aggregate
+   usage counts by time window.
+4. Desktop conversation management: browse native conversations and back up all
+   or keyword-selected conversations to a user-selected local directory.
+5. Desktop token-usage reporting by agent or model, defaulting to the latest
+   thirty days with a selectable time window.
+6. Desktop-and-mobile end-to-end encrypted communication and mobile relay. Relay
+   infrastructure can route only opaque envelopes and cannot decrypt payloads.
 
-Quiet, capable, direct. The interface should feel like a dependable mobile control app: familiar, compact, and focused on the conversation.
+## Optional LicoLite Collaboration
 
-## Anti-references
+LicoLite collaboration is not bundled into the default navigation or startup
+path. It becomes available only after the user explicitly enables the capability
+and installs its plugin from a user-selected GitHub source.
 
-Avoid technical control panels, repeated add buttons, exposed protocol details, JSON pairing, pull-and-start relay controls, mobile runtime management, activity snapshot dashboards, decorative robot icons, and bottom navigation that competes with the chat composer.
+The optional plugin may provide two workflows:
 
-## Design Principles
+- download LicoLite for a user-controlled local deployment and let the user
+  select the server feature/plugin set before installation;
+- manually install selected LicoLite MCP plugins into one or more selected local
+  agents.
 
-- Conversation first: the main screen is for choosing an agent and talking to it.
-- Progressive process disclosure: consecutive native-agent activity appears as one quiet, collapsed process item; activating it expands flat, safe operation summaries in place instead of creating a stack of technical cards or hiding the item. A second activation collapses the same item.
-- Pairing is an entry action, not a permanent destination.
-- Keep infrastructure invisible unless the user needs to fix something.
-- Use standard mobile affordances for scan, paste token, refresh, send, and settings. Voice input is deferred and not part of the current product contract.
-- Show device and agent state with small, readable status cues rather than persistent technical logs.
-- Native-agent fidelity: every agent exposed as a conversation target must preserve the native agent's thread identity, effective settings, observable effects, errors, and rendered conversation. Detection or history import alone is not conversation support, and an adapter without release A/B evidence must not be presented as a best-effort chat target.
-- Privacy-preserving detail: only provider-designated reasoning summaries and sanitized operation results may be disclosed. Raw chain-of-thought, tool arguments, metadata, credentials, session ids, and local paths remain hidden even when a process item is expanded.
+Neither workflow runs automatically. An MCP plugin operation involving a local
+file requires a separate user approval for that exact file transfer.
 
-## Service Readiness
+## External Data Approval Contract
 
-Encrypted communication is a native Lico Arc capability. The authority for the Lico Arc custom end-to-end encryption protocol (Secure Client Mesh) is in this repository and does not depend on a relay or gateway server implementation; relays only carry opaque envelopes. Client release readiness is reduced only from client-owned protocol, cryptographic, platform, and exact-artifact evidence. Public gateway availability, server capacity, and server policy are accepted by the server release workflow and are not imported into this repository or used as client release gates. Client verification may use a protocol-conformant opaque relay peer without depending on the server implementation.
+Local files, conversation content, configuration, diagnostics, paths, device
+facts, agent history, and usage records stay local by default. Every operation
+that transfers user or client information outside the current device must:
 
-Source development and GitHub Release readiness are independent from platform
-publisher identity and store-channel readiness. Production credentials,
-notarization, store submission, store download, and store update or rollback
-continuity affect only the named platform/store distribution claim. Their
-absence is disclosed as `not ready for that platform/store`; it does not block
-development, ordinary builds, client functionality, or an otherwise accepted
-GitHub Release. Public artifacts carry only minimum consumer-verification
-metadata: artifact identity, target/version, digest, signature or attestation,
-and the public verification material required to validate it. No publisher
-account, team/store identifier, stable certificate identity, credential,
-private-key, custody, or private-channel metadata is part of the open-source
-contract.
+1. be initiated or directly approved by the user for that single operation;
+2. show the destination, purpose, exact data or file scope, and affected agents;
+3. remain cancellable until the external transfer is committed;
+4. invalidate approval when the destination, scope, digest, or operation changes;
+5. fail closed when approval is absent, expired, cancelled, or unverifiable.
 
-Native-agent conversation readiness is evaluated independently for every packaged target adapter. Only adapters that pass the canonical native-conversation parity contract may enable the normal message composer in a release build. Partial, blocked, failed, history-only, and unverified adapters remain explicitly labeled and do not count as supported. A client release may support any verified subset; full-inventory parity is a separate adapter-completeness goal, not a packaging prerequisite.
+Approval is never inferred from startup, a prior operation, a plugin being
+enabled, an agent request, or a background schedule. A user pressing Send for an
+explicitly addressed encrypted message authorizes only that message and target.
 
-The canonical packaged set is Antigravity, Claude Code, Codex, Cursor, Copilot, Hermes, Kilo Code, Kimi Code, OpenClaw, OpenCode, and Pi. Conversation parity means that both directions—native creates then Arc resumes, and Arc creates then native resumes—preserve the real native session id, cwd and effective settings, ordered results and effects, safe event/tool/reasoning projection, errors, privacy boundaries, and cleanup. An adapter must pass three consecutive paired runs through the current release UI path, with every run covering both directions, before it can become `ready`.
+## Experience Principles
 
-The canonical driver inventory is projected from the desktop packaging registry. Sanitized live evidence is stored separately and reduced into the checked-in readiness resource; driver existence, capability probing, a local core-text run, and deterministic fake-child E2E are prerequisites only. They never establish live native parity by themselves. The current reducer-owned state is `0 ready / 0 failed / 2 blocked / 9 unverified`, so the release composer and `runtime.message.send` capability remain fail closed for all eleven packaged adapters while unrelated client packaging remains independently decidable. Only reducer-owned evidence may change this state.
+- Conversation first; infrastructure stays out of the primary navigation.
+- Discovery is concurrent, bounded, cache-backed, and locally observable.
+- Native-agent fidelity is required for every enabled conversation adapter.
+- Provider process events are rendered as safe summaries; raw reasoning, tool
+  arguments, credentials, native identifiers, and local paths stay hidden.
+- Platform-owned biometrics and secure stores protect credentials and key
+  material; the app never collects the system password itself.
+- Accessibility targets WCAG AA contrast, clear focus, reduced-motion-safe
+  transitions, and 44 px minimum touch targets.
 
-## Accessibility & Inclusion
+## Readiness
 
-Target WCAG AA contrast, clear focus states, 44 px minimum touch targets, reduced-motion-safe transitions, and color-independent state labels for online, offline, pairing, ready, blocked, unverified, and error states.
+Every agent adapter is accepted independently. A detected or history-readable
+agent is not automatically a conversation-capable agent. Only adapters that pass
+the canonical native-conversation parity contract may enable the normal composer.
+The current reducer summary is `0 ready / 0 failed / 2 blocked / 9 unverified`.
+
+Development, ordinary verification, packaging, GitHub Release publication, and
+platform-store publication are separate claims. Public artifacts disclose only
+minimum consumer-verification metadata and never include user or client runtime
+information.

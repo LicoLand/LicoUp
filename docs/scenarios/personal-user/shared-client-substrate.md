@@ -1,21 +1,41 @@
 # Shared Client Substrate
 
-Status: active personal-user usage-scenario substrate
+## Metadata / 元数据
 
-Personal user scenarios share one client and sidecar substrate across desktop and mobile clients. Message, file, direct skill installation, skill sync, approval, update, and usage-metering flows reuse these primitives instead of creating one-off transports.
+- Last updated: 2026-07-15
+- Status: Current shared scenario contract
+- Scope: Rust queue, ACP/MCP adaptation, platform ports, local state, direct approval, and Secure Client Mesh.
+- Staleness check: Reconciled with `PRODUCT.md` and the canonical product-scope plan on 2026-07-15.
 
-| Area | Required contract |
+## Substrate
+
+| Boundary | Shared contract |
 | --- | --- |
-| Addressing | Stable `accountId`, `deviceId`, `endpointId`, target client kind, target agent id, and optional conversation id. Selectors show readable labels while storing opaque ids. |
-| Trust | Device roster, endpoint trust state, fingerprint/QR/SAS helpers, key-change handling, and revoked endpoint fail-closed behavior are shared with Secure Client Mesh. Retained local evidence for the current trust/pairing surface is available at `build/reports/secure-mesh/device-verification-recovery/latest.json`. |
-| Payload security | User message text, command body, approval detail, file name, MIME, relative path, destination directory, result body, and error detail stay inside encrypted payloads. |
-| Delivery | Recognized transport labels are `cloud_relay`, `mobile_relay_pairwise`, `lan_direct`, `webrtc_data_channel`, and `loopback_local`; unknown labels fail closed. Production-advertised remote transports are limited to `cloud_relay` and `mobile_relay_pairwise` until LAN and WebRTC have verifier-backed production evidence. |
-| Conversation targeting | Each packaged adapter may expose a read-only conversation index independently, but it may advertise `runtime.message.send` or enable a composer only after the CL-06 native-conversation parity reducer marks it `ready`. `partial`, `failed`, `blocked`, `unverified`, and `history-only` remain non-sendable. |
-| Conversation drivers | The desktop packaging registry is the only permanent target authority and projects one canonical driver per packaged adapter. Current protocol families are Codex app-server; ACP for OpenCode, GitHub Copilot, Kilo Code, OpenClaw, and Hermes Agent; official stream-JSON for Claude Code and Cursor; and a fail-closed Antigravity driver until a public transport can keep prompt/session data out of argv. OpenClaw binds its native Gateway conversation through ACP `sessionKey` metadata. This protocol-family snapshot must not become a hand-maintained target registry. |
-| Conversation readiness | Driver availability, version/capability probes, unit tests, and fake-child/synthetic E2E are prerequisite layers only. The canonical reducer requires CL-06 P-01..P-10 plus every applicable C-01..C-06 from real native-vs-Arc and release-UI evidence. No adapter is currently full `ready`, so the release substrate exposes no send-capable composer. |
-| Local execution | The local or receiving client owns local effects: forwarding a message, writing a file, installing a skill, resolving approval, or applying an update. |
-| Activity | Clients record plan, send, receive, open/decrypt, local effect, result, failure, retry, and cancellation without secret material or plaintext payload leakage. |
-| Usage metering | Token and traffic reports store aggregate metrics only. Process-metered bytes are labeled separately from historical estimates; unsupported platform meters return unavailable instead of zero. |
-| Verification | Scenario verifiers include no-plaintext, no-prompt-retention, wrong-recipient, revoked-endpoint, replay, destination-boundary, adapter-capability, process-meter availability, and traffic-confidence checks where applicable. The Secure Mesh trust helper report is local evidence only and does not replace scenario E2E verification. |
+| Local task queue | Rust-owned fixed-capacity FIFO admission, cloneable producers, one exclusive consumer, blocking backpressure, non-blocking ownership-preserving rejection, bounded depth accounting, and fail-closed disconnect. Scheduling policy and task history stay outside the primitive. |
+| ACP | Bounded framing, capability mapping, request/session correlation, ordered events, cancellation, and encrypted relay payload integration. |
+| MCP | Bounded JSON-RPC/MCP validation, strict request-ID preservation, sanitized errors, and short-lived one-shot direction/destination/purpose/digest approval for every outbound request or forwarded response. |
+| Platform | macOS, Windows, Ubuntu, Android, and iOS implement discovery, paths, process launch, authorization, secure storage, and packaging behind neutral ports. |
+| Local state | Atomic current-product state stores only the minimum required cache, configuration, aggregate statistics, and redacted receipts. |
+| Trust and encryption | Secure Client Mesh owns authenticated endpoints, pairwise/group keys, replay protection, revocation, opaque envelopes, and ACK lifecycle. |
+| Conversation targeting | A detected adapter may expose a read-only index, but it may enable sending only after the native-conversation parity reducer marks it `ready`. |
+| External effects | Every external transfer of local data is directly approved once for an exact destination, purpose, scope, and digest and remains cancellable until commit. |
 
-Acceptance-host availability is tracked separately from adapter readiness. OpenCode and GitHub Copilot currently have the prerequisites needed to schedule live A/B but remain `unverified`; the other pending live lanes lack the required CLI and/or authorized account, while documented protocol blockers continue to fail closed. These host conditions must never be promoted into the packaging registry or treated as parity evidence.
+## Lifecycle Rules
+
+- Startup work is local, bounded, cancellable, and cannot open an authorization
+  prompt or imply consent to an external effect.
+- Shared controllers expose typed state; they do not own feature data or duplicate
+  feature lifecycle state.
+- A target/config revision is pinned for one operation. Revision drift cancels or
+  fails the operation rather than changing behavior mid-flight.
+- Queue records, logs, diagnostics, and evidence exclude raw content, credentials,
+  local paths, native identifiers, device facts, and ciphertext.
+- A changed destination, scope, content digest, trust state, or target revision
+  invalidates approval and fails closed.
+
+## Acceptance
+
+Each scenario runs its feature module regression plus only the shared modules it
+actually touches. Queue, ACP, MCP, platform, approval, and encryption negative
+tests must be independently selectable. The complete client regression runs once
+after all targeted closures pass.
