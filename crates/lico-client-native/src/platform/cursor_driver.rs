@@ -11,10 +11,10 @@
 //! There is deliberately no CLI fallback.  Falling back would silently change
 //! both the privacy and exact-continuation guarantees of this driver.
 
-use super::hermes_driver;
-use super::opencode_driver::{
+use super::acp_driver_runtime::{
     AcpDriverSpec, CapabilityProbe, EffectiveSettings, ProtocolFailure, RunResult, probe_acp,
 };
+use super::acp_session_transport::{self, AcpSessionDriverSpec, ControlDisposition};
 use serde_json::Value;
 use std::path::Path;
 
@@ -22,6 +22,7 @@ pub(super) const RUNTIME_PROTOCOL: &str = "cursor-acp-v1-stdio-jsonrpc";
 const DRIVER_ID: &str = "cursor-acp";
 const ACP_DRIVER: AcpDriverSpec =
     AcpDriverSpec::new(RUNTIME_PROTOCOL, &["acp"]).with_identity(DRIVER_ID, "cursor_acp");
+const SESSION_DRIVER: AcpSessionDriverSpec = AcpSessionDriverSpec::new(DRIVER_ID, &["acp"]);
 
 pub(super) fn capability_probe(
     executable: &str,
@@ -45,12 +46,16 @@ pub(super) fn execute(
     max_stdout: usize,
     max_stderr: usize,
 ) -> RunResult {
-    // Cursor and Hermes implement the same ACP lifecycle.  The shared
-    // persistent supervisor is intentionally reused here so both adapters get
-    // identical bounded-process, realtime-event, exact-resume and cancellation
-    // behavior.  Driver identity and failures are translated at this boundary.
-    let result = hermes_driver::execute(
-        executable, params, prompt, session_id, cwd, timeout_ms, max_stdout, max_stderr,
+    let result = acp_session_transport::execute(
+        SESSION_DRIVER,
+        executable,
+        params,
+        prompt,
+        session_id,
+        cwd,
+        timeout_ms,
+        max_stdout,
+        max_stderr,
     );
 
     let capabilities = CapabilityProbe {
@@ -99,15 +104,15 @@ pub(super) fn execute(
     }
 }
 
-pub(super) fn cancel(session_id: &str) -> hermes_driver::ControlDisposition {
-    hermes_driver::cancel(session_id)
+pub(super) fn cancel(session_id: &str) -> ControlDisposition {
+    acp_session_transport::cancel(SESSION_DRIVER, session_id)
 }
 
-pub(super) fn cleanup_session(session_id: &str) -> hermes_driver::ControlDisposition {
-    hermes_driver::cleanup_session(session_id)
+pub(super) fn cleanup_session(session_id: &str) -> ControlDisposition {
+    acp_session_transport::cleanup_session(SESSION_DRIVER, session_id)
 }
 
-fn translate_failure(failure: hermes_driver::ProtocolFailure) -> ProtocolFailure {
+fn translate_failure(failure: acp_session_transport::ProtocolFailure) -> ProtocolFailure {
     let suffix = failure.code.strip_prefix("hermes_").unwrap_or(failure.code);
     ProtocolFailure {
         code: format!("cursor_{suffix}"),
@@ -189,8 +194,8 @@ mod tests {
         assert_eq!(
             // This reclaims only the fixture transport. Cursor exposes no
             // supported persistent-session cleanup operation.
-            hermes_driver::cleanup_session(&second.session_id),
-            hermes_driver::ControlDisposition::Accepted
+            cleanup_session(&second.session_id),
+            ControlDisposition::Accepted
         );
         let _ = fs::remove_dir_all(dir);
     }
@@ -214,7 +219,7 @@ fn main() {
             println!("{{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{{\"sessionId\":\"cursor-native-session\"}}}}");
         } else if line.contains("\"method\":\"session/load\"") {
             assert!(line.contains("cursor-native-session"));
-            println!("{{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{{\"sessionId\":\"cursor-native-session\"}}}}");
+            println!("{{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":null}}");
         } else if line.contains("\"method\":\"session/prompt\"") {
             turn += 1;
             let (chunk, response) = if turn == 1 {

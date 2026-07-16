@@ -7,7 +7,7 @@ pub fn register_commands(table: &mut CommandTable) {
     table.register_rest(
         &["agent-usage", "scan"],
         handle_agent_usage_scan,
-        "Scan local agent token usage and process traffic attribution",
+        "Scan local agent token usage from local history",
     );
     table.register_rest(
         &["agent-usage", "report"],

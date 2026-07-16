@@ -1,8 +1,8 @@
 use serde_json::Value;
 use std::path::Path;
 
-use super::opencode_driver::{AcpDriverSpec, execute_acp, probe_acp};
-pub(super) use super::opencode_driver::{CapabilityProbe, ProtocolFailure, RunResult};
+use super::acp_driver_runtime::{AcpDriverSpec, execute_acp, probe_acp};
+pub(super) use super::acp_driver_runtime::{CapabilityProbe, ProtocolFailure, RunResult};
 
 pub(super) const RUNTIME_PROTOCOL: &str = "copilot-acp-v1-stdio-ndjson";
 const COPILOT_DRIVER: AcpDriverSpec =

@@ -1,0 +1,105 @@
+use super::super::process_supervisor::SupervisedChild;
+use super::model::EffectiveSettings;
+use super::params::DriverConfig;
+use serde_json::Value;
+use std::io;
+use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
+
+pub(super) const FIXED_STREAM_ARGS: &[&str] = &[
+    "--print",
+    "--input-format",
+    "stream-json",
+    "--output-format",
+    "stream-json",
+    "--verbose",
+    "--include-partial-messages",
+    "--no-session-persistence",
+];
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(super) struct LaunchIdentity {
+    pub(super) executable: String,
+    pub(super) cwd: Option<PathBuf>,
+    pub(super) model: Option<String>,
+    pub(super) reasoning_effort: Option<String>,
+    pub(super) permission_mode: Option<String>,
+}
+
+impl LaunchIdentity {
+    pub(super) fn new(executable: &str, config: &DriverConfig, cwd: Option<&Path>) -> Self {
+        Self {
+            executable: executable.to_string(),
+            cwd: cwd.map(Path::to_path_buf),
+            model: config.model.clone(),
+            reasoning_effort: config.reasoning_effort.clone(),
+            permission_mode: config.permission_mode.clone(),
+        }
+    }
+
+    pub(super) fn compatible_with(
+        &self,
+        executable: &str,
+        config: &DriverConfig,
+        cwd: Option<&Path>,
+    ) -> bool {
+        self.executable == executable
+            && self.cwd.as_deref() == cwd
+            && config
+                .model
+                .as_ref()
+                .is_none_or(|value| self.model.as_ref() == Some(value))
+            && config
+                .reasoning_effort
+                .as_ref()
+                .is_none_or(|value| self.reasoning_effort.as_ref() == Some(value))
+            && config
+                .permission_mode
+                .as_ref()
+                .is_none_or(|value| self.permission_mode.as_ref() == Some(value))
+    }
+
+    pub(super) fn args(&self) -> Vec<String> {
+        let mut args = FIXED_STREAM_ARGS
+            .iter()
+            .map(|value| (*value).to_string())
+            .collect::<Vec<_>>();
+        if let Some(model) = self.model.as_ref() {
+            args.extend(["--model".to_string(), model.clone()]);
+        }
+        if let Some(effort) = self.reasoning_effort.as_ref() {
+            args.extend(["--effort".to_string(), effort.clone()]);
+        }
+        if let Some(permission_mode) = self.permission_mode.as_ref() {
+            args.extend(["--permission-mode".to_string(), permission_mode.clone()]);
+        }
+        args
+    }
+
+    pub(super) fn spawn(&self) -> io::Result<SupervisedChild> {
+        let mut command = Command::new(&self.executable);
+        command
+            .args(self.args())
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        if let Some(cwd) = self.cwd.as_ref() {
+            command.current_dir(cwd);
+        }
+        SupervisedChild::spawn(&mut command)
+    }
+
+    pub(super) fn effective(&self) -> EffectiveSettings {
+        EffectiveSettings {
+            cwd: self
+                .cwd
+                .as_ref()
+                .map(|path| path.to_string_lossy().to_string()),
+            model: self.model.clone(),
+            reasoning_effort: self.reasoning_effort.clone(),
+            permission_mode: self.permission_mode.clone(),
+            sandbox: None,
+            approval_policy: self.permission_mode.clone().map(Value::String),
+        }
+    }
+}
