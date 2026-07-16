@@ -109,13 +109,14 @@ fn handle_secure_mesh(args: &[String]) -> Result<CliExecution> {
                 .map(std::path::PathBuf::from)
                 .map(Ok)
                 .unwrap_or_else(
-                    crate::core::secure_mesh_command::default_secure_command_ledger_path,
+                    crate::domain::secure_mesh_command_runtime::default_secure_command_ledger_path,
                 )?;
             let mut ledger =
                 crate::core::secure_mesh_command::SecureCommandSqliteReplayLedger::open(
                     ledger_path,
                 )?;
-            let mut executor = crate::core::secure_mesh_command::SecureCommandRuntimeExecutor;
+            let mut executor =
+                crate::domain::secure_mesh_command_runtime::SecureCommandRuntimeExecutor;
             crate::core::secure_mesh_command::execute_secure_command_json(
                 &parsed_payload,
                 &parsed_context,
@@ -307,14 +308,17 @@ mod tests {
     }
 
     #[test]
-    fn secure_mesh_command_execute_cli_runs_local_activity_after_gate() {
-        let env = SecureMeshCommandCliTestEnv::new("execute-activity");
+    fn secure_mesh_command_execute_cli_requires_confirmation_before_session_disclosure() {
+        let env = SecureMeshCommandCliTestEnv::new("session-disclosure-confirmation");
         let result = execute_fixture(&env, command_fixture("cmd-a", "idem-a"), context_fixture());
         assert_eq!(result["evaluation"]["accepted"], true);
-        assert_eq!(result["evaluation"]["shouldExecute"], true);
-        assert_eq!(result["execution"]["outcome"], "result");
-        assert_eq!(result["execution"]["output"]["output"]["ok"], true);
-        assert!(result["execution"]["output"]["output"]["events"].is_array());
+        assert_eq!(result["evaluation"]["shouldExecute"], false);
+        assert_eq!(result["evaluation"]["code"], "user_confirmation_required");
+        assert_eq!(result["execution"]["outcome"], "error");
+        assert_eq!(
+            result["execution"]["errorCode"],
+            "user_confirmation_required"
+        );
         assert_eq!(result["bodyRedacted"], true);
         assert!(result.get("body").is_none());
     }
@@ -322,10 +326,23 @@ mod tests {
     #[test]
     fn secure_mesh_command_execute_cli_uses_durable_replay_ledger() {
         let env = SecureMeshCommandCliTestEnv::new("execute-replay");
-        let first = execute_fixture(&env, command_fixture("cmd-a", "idem-a"), context_fixture());
-        assert_eq!(first["execution"]["outcome"], "result");
+        let first = execute_fixture(
+            &env,
+            message_command_fixture("cmd-a", "idem-a"),
+            message_context_fixture(),
+        );
+        assert_eq!(first["evaluation"]["shouldExecute"], true);
+        assert_eq!(first["execution"]["outcome"], "error");
+        assert_eq!(
+            first["execution"]["errorCode"],
+            "native_agent_parity_not_ready"
+        );
 
-        let replay = execute_fixture(&env, command_fixture("cmd-a", "idem-b"), context_fixture());
+        let replay = execute_fixture(
+            &env,
+            message_command_fixture("cmd-a", "idem-b"),
+            message_context_fixture(),
+        );
         assert_eq!(replay["evaluation"]["shouldExecute"], false);
         assert_eq!(replay["evaluation"]["replayed"], true);
         assert_eq!(replay["execution"]["outcome"], "error");
@@ -553,7 +570,7 @@ mod tests {
         json!({
             "schema": crate::core::secure_mesh::SECURE_MESH_COMMAND_PROTOCOL_VERSION,
             "commandId": command_id,
-            "commandKind": "client.activity.sync",
+            "commandKind": "agent.sessions.list",
             "senderIdentity": {
                 "endpointId": "pc-a",
                 "identityFingerprint": "fingerprint-a",
@@ -562,7 +579,7 @@ mod tests {
             },
             "targetBinding": {
                 "targetEndpointId": "pc-b",
-                "targetAgentId": "agent-a",
+                "targetAgentId": "codex",
                 "workspaceId": "workspace-a"
             },
             "riskClass": "read_only",
@@ -570,8 +587,20 @@ mod tests {
             "idempotencyKey": idempotency_key,
             "createdAt": "2026-01-01T00:00:00Z",
             "expiresAt": "2026-01-01T00:10:00Z",
-            "body": {"limit": 5}
+            "body": {"agent": "codex", "limit": 5}
         })
+    }
+
+    fn message_command_fixture(command_id: &str, idempotency_key: &str) -> Value {
+        let mut payload = command_fixture(command_id, idempotency_key);
+        payload["commandKind"] = json!("agent.message.send");
+        payload["riskClass"] = json!("safe_write");
+        payload["targetBinding"]["targetAgentId"] = json!("unsupported-fixture-agent");
+        payload["body"] = json!({
+            "agentId": "unsupported-fixture-agent",
+            "text": "fixture message"
+        });
+        payload
     }
 
     fn context_fixture() -> Value {
@@ -586,9 +615,15 @@ mod tests {
             "sessionOrEpochValid": true,
             "userConfirmed": false,
             "allowedWorkspaceIds": ["workspace-a"],
-            "allowedAgentIds": ["agent-a"],
+            "allowedAgentIds": ["codex"],
             "now": "2026-01-01T00:01:00Z"
         })
+    }
+
+    fn message_context_fixture() -> Value {
+        let mut context = context_fixture();
+        context["allowedAgentIds"] = json!(["unsupported-fixture-agent"]);
+        context
     }
 
     fn identity_fixture_json(endpoint_id: &str, identity_byte: u8, signing_byte: u8) -> Value {

@@ -1,4 +1,4 @@
-// mobile commands: mobile relay config|pairing|pc|commands, process-identity
+// mobile commands: mobile relay config|pairing|pc|commands
 
 use super::{CliExecution, CommandTable, cli_params, parse_json_arg};
 use anyhow::Result;
@@ -8,21 +8,6 @@ pub fn register_commands(table: &mut CommandTable) {
         &["mobile", "relay"],
         handle_mobile_relay,
         "Mobile relay config|pairing|pc|commands|kt",
-    );
-    table.register_rest(
-        &["process-identity", "bootstrap", "claim"],
-        handle_process_identity_claim,
-        "Bootstrap process identity claim",
-    );
-    table.register_rest(
-        &["process-identity", "request", "sign"],
-        handle_process_identity_sign,
-        "Sign process identity request",
-    );
-    table.register_rest(
-        &["process-identity", "status"],
-        handle_process_identity_status,
-        "Process identity status",
     );
 }
 
@@ -120,27 +105,6 @@ fn normalize_kt_cli_json_fields(params: &mut serde_json::Value) {
             object.insert(key.to_string(), parse_json_arg(text));
         }
     }
-}
-
-fn handle_process_identity_claim(args: &[String]) -> Result<CliExecution> {
-    let params = cli_params(&args[3..]);
-    Ok(CliExecution::Json(
-        crate::platform::process_identity::bootstrap_claim(&params)?,
-    ))
-}
-
-fn handle_process_identity_sign(args: &[String]) -> Result<CliExecution> {
-    let params = cli_params(&args[3..]);
-    Ok(CliExecution::Json(
-        crate::platform::process_identity::sign_request(&params)?,
-    ))
-}
-
-fn handle_process_identity_status(args: &[String]) -> Result<CliExecution> {
-    let params = cli_params(&args[2..]);
-    Ok(CliExecution::Json(
-        crate::platform::process_identity::status(&params)?,
-    ))
 }
 
 #[cfg(test)]

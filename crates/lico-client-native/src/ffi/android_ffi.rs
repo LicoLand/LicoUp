@@ -12,6 +12,7 @@ use serde_json::json;
 use crate::core::secure_mesh_capability::{
     CapabilityFact, CapabilityFactState, CapabilityScope, SecurityCapability, capability_catalog,
 };
+use crate::core::secure_mesh_secret_store::is_persistable_secret;
 use crate::platform::secure_mesh_capability_probe::{
     CAPABILITY_PROBE_SCHEMA_VERSION, CapabilityProbeSnapshot,
 };
@@ -201,17 +202,13 @@ impl AndroidJniSecretStore {
             .l()
             .context("android secret store get return failed")?;
         if value.is_null() {
-            return Ok(None);
+            return normalize_android_secret_store_get(None);
         }
         let text: String = env
             .get_string(&JString::from(value))
             .context("android secret store get string failed")?
             .into();
-        if text.trim().is_empty() {
-            Ok(None)
-        } else {
-            Ok(Some(text))
-        }
+        normalize_android_secret_store_get(Some(text))
     }
 
     fn call_delete(&self, handle: &SecretStoreHandle) -> Result<bool> {
@@ -262,6 +259,19 @@ impl AndroidJniSecretStore {
             .context("android capability probe string failed")?
             .into();
         parse_android_capability_facts(&source)
+    }
+}
+
+fn normalize_android_secret_store_get(value: Option<String>) -> Result<Option<String>> {
+    match value {
+        None => Ok(None),
+        Some(value) => {
+            ensure!(
+                is_persistable_secret(&value),
+                "android secret store returned an invalid existing record"
+            );
+            Ok(Some(value))
+        }
     }
 }
 
@@ -492,6 +502,20 @@ mod tests {
         .unwrap();
         assert!(
             parse_android_capability_facts(&serde_json::to_string(&incomplete).unwrap()).is_err()
+        );
+    }
+
+    #[test]
+    fn android_secret_store_get_reserves_none_for_verified_missing_records() {
+        assert_eq!(normalize_android_secret_store_get(None).unwrap(), None);
+        assert!(normalize_android_secret_store_get(Some(String::new())).is_err());
+        assert!(normalize_android_secret_store_get(Some("   ".to_string())).is_err());
+        assert!(normalize_android_secret_store_get(Some("redacted".to_string())).is_err());
+        assert_eq!(
+            normalize_android_secret_store_get(Some("  opaque-secret  ".to_string()))
+                .unwrap()
+                .as_deref(),
+            Some("  opaque-secret  ")
         );
     }
 }

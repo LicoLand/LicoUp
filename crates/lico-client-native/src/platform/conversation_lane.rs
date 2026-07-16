@@ -97,6 +97,7 @@ pub fn static_capability_matrix(adapter: RuntimeAdapter) -> Value {
                 "exactResume": false,
                 "streaming": false,
                 "cancel": false,
+                "interruptSteer": false,
                 "structuredEvents": false,
                 "approvals": false,
                 "multimodal": false,
@@ -286,16 +287,16 @@ pub fn cancel_turn(params: &Value) -> Result<Value> {
                 super::claude_code_driver::ControlDisposition::TransportUnavailable => 3,
             },
             RuntimeAdapter::Cursor => match super::cursor_driver::cancel(&session_id) {
-                super::hermes_driver::ControlDisposition::Accepted => 0,
-                super::hermes_driver::ControlDisposition::NoActiveTurn => 1,
-                super::hermes_driver::ControlDisposition::SessionUnavailable => 2,
-                super::hermes_driver::ControlDisposition::TransportUnavailable => 3,
+                super::acp_session_transport::ControlDisposition::Accepted => 0,
+                super::acp_session_transport::ControlDisposition::NoActiveTurn => 1,
+                super::acp_session_transport::ControlDisposition::SessionUnavailable => 2,
+                super::acp_session_transport::ControlDisposition::TransportUnavailable => 3,
             },
             _ => match super::hermes_driver::cancel(&session_id) {
-                super::hermes_driver::ControlDisposition::Accepted => 0,
-                super::hermes_driver::ControlDisposition::NoActiveTurn => 1,
-                super::hermes_driver::ControlDisposition::SessionUnavailable => 2,
-                super::hermes_driver::ControlDisposition::TransportUnavailable => 3,
+                super::acp_session_transport::ControlDisposition::Accepted => 0,
+                super::acp_session_transport::ControlDisposition::NoActiveTurn => 1,
+                super::acp_session_transport::ControlDisposition::SessionUnavailable => 2,
+                super::acp_session_transport::ControlDisposition::TransportUnavailable => 3,
             },
         };
         let prefix = match adapter {
@@ -398,13 +399,13 @@ pub fn cleanup_conversation(params: &Value) -> Result<Value> {
             _ => 2,
         },
         RuntimeAdapter::Cursor => match super::cursor_driver::cleanup_session(&session_id) {
-            super::hermes_driver::ControlDisposition::Accepted => 0,
-            super::hermes_driver::ControlDisposition::SessionUnavailable => 1,
+            super::acp_session_transport::ControlDisposition::Accepted => 0,
+            super::acp_session_transport::ControlDisposition::SessionUnavailable => 1,
             _ => 2,
         },
         _ => match super::hermes_driver::cleanup_session(&session_id) {
-            super::hermes_driver::ControlDisposition::Accepted => 0,
-            super::hermes_driver::ControlDisposition::SessionUnavailable => 1,
+            super::acp_session_transport::ControlDisposition::Accepted => 0,
+            super::acp_session_transport::ControlDisposition::SessionUnavailable => 1,
             _ => 2,
         },
     };
@@ -440,6 +441,46 @@ pub fn cleanup_conversation(params: &Value) -> Result<Value> {
     }))
 }
 
+/// Steer is intentionally a distinct lane operation. No packaged driver may
+/// alias cancel or a second send into steer; adapters must expose a native,
+/// exactly-once in-flight control channel before their inventory capability is
+/// promoted.
+pub fn steer_turn(params: &Value) -> Result<Value> {
+    let agent_id = agent_id_param(params)?;
+    let adapter = adapter_or_err(&agent_id)?;
+    let matrix = static_capability_matrix(adapter);
+    let supported = matrix
+        .get("interruptSteer")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    if !supported {
+        return Ok(json!({
+            "ok": false,
+            "agentId": adapter.id(),
+            "laneFamily": lane_family(adapter),
+            "status": "unsupported",
+            "error": {
+                "code": "dispatch_steer_unsupported",
+                "stage": "turn/steer",
+                "message": "This official lane does not expose a native in-flight steer channel."
+            },
+            "capabilities": matrix
+        }));
+    }
+    Ok(json!({
+        "ok": false,
+        "agentId": adapter.id(),
+        "laneFamily": lane_family(adapter),
+        "status": "unavailable",
+        "error": {
+            "code": "dispatch_steer_transport_unavailable",
+            "stage": "turn/steer",
+            "message": "The declared native steer channel is not available."
+        },
+        "capabilities": matrix
+    }))
+}
+
 /// Emit the per-agent capability matrix (inventory + static family matrix).
 pub fn lane_capabilities(params: &Value) -> Result<Value> {
     let agent_id = agent_id_param(params)?;
@@ -471,6 +512,7 @@ pub fn dispatch_lane_operation(operation: &str, params: &Value) -> Result<Value>
     match operation {
         "open" | "openOrResume" | "resume" => open_or_resume(params),
         "send" => runtime_adapters::send_message(params),
+        "steer" => steer_turn(params),
         "cancel" => cancel_turn(params),
         "cleanup" => cleanup_conversation(params),
         "capabilities" | "caps" => lane_capabilities(params),
@@ -570,6 +612,21 @@ mod tests {
 
         let claude = cancel_turn(&json!({"agent": "claude-code", "sessionId": "missing"})).unwrap();
         assert_eq!(claude["error"]["code"], "claude_code_session_unavailable");
+    }
+
+    #[test]
+    fn steer_is_a_distinct_fail_closed_operation_until_a_native_channel_exists() {
+        for agent in ["codex", "claude-code", "opencode", "hermes", "cursor"] {
+            let result = steer_turn(&json!({
+                "agent": agent,
+                "sessionId": "native-session",
+                "text": "follow-up"
+            }))
+            .unwrap();
+            assert_eq!(result["ok"], false);
+            assert_eq!(result["status"], "unsupported");
+            assert_eq!(result["error"]["code"], "dispatch_steer_unsupported");
+        }
     }
 
     #[test]

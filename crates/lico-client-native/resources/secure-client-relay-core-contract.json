@@ -1,5 +1,5 @@
 {
-  "canonicalDigest": "sha256:133d084f0cfeb464a03f217ae2d24ff23758a7c10537027c80932bd930d2dab3",
+  "canonicalDigest": "sha256:62c27e8af0348bf13909ddd9d05f07a39b153bc6d011df5ed7249499cf19dd01",
   "canonicalSource": "packages/protocols/secure-client-relay-protocol.mjs",
   "canonicalization": "json-recursive-lexicographic-keys.v1",
   "contract": {
@@ -1216,7 +1216,6 @@
                 "desktop_sidecar",
                 "mobile",
                 "cli",
-                "client_local_runtime",
                 "agent_host",
                 "web_limited"
               ],
@@ -1360,7 +1359,6 @@
                       "desktop_sidecar",
                       "mobile",
                       "cli",
-                      "client_local_runtime",
                       "agent_host",
                       "web_limited"
                     ],
@@ -4127,7 +4125,6 @@
       "desktop_sidecar",
       "mobile",
       "cli",
-      "client_local_runtime",
       "agent_host",
       "web_limited"
     ],

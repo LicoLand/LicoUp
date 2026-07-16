@@ -1,12 +1,12 @@
 use anyhow::{Result, anyhow};
 use std::{
     cell::RefCell,
-    env, fs,
+    env,
     path::{Path, PathBuf},
 };
 
 thread_local! {
-    static PORTABLE_DATA_DIR_OVERRIDE: RefCell<Option<PathBuf>> = RefCell::new(None);
+    static PORTABLE_DATA_DIR_OVERRIDE: RefCell<Option<PathBuf>> = const { RefCell::new(None) };
 }
 
 #[doc(hidden)]
@@ -14,16 +14,20 @@ pub fn set_portable_data_dir_override(path: Option<PathBuf>) -> Option<PathBuf> 
     PORTABLE_DATA_DIR_OVERRIDE.with(|value| value.replace(path))
 }
 
+/// Resolve only the current LicoArc state root.
+///
+/// Retired environment variables, executable-adjacent roots, and old product
+/// namespaces are deliberately never inspected or migrated.
 pub fn portable_data_dir() -> Result<PathBuf> {
     if let Some(path) = portable_data_dir_override() {
-        fs::create_dir_all(&path)?;
-        return Ok(path);
+        return prepare_current_root(path);
     }
 
-    portable_data_dir_from_envs(
-        env::var("LICO_CLIENT_PORTABLE_DIR").ok(),
-        env::var("LICO_PORTABLE_DIR").ok(),
-    )
+    if let Some(path) = portable_data_dir_from_value(env::var("LICOARC_PORTABLE_DIR").ok())? {
+        return prepare_current_root(path);
+    }
+
+    application_support_portable_data_dir()
 }
 
 fn portable_data_dir_override() -> Option<PathBuf> {
@@ -35,78 +39,30 @@ pub fn portable_data_dir_override_path() -> Option<PathBuf> {
     portable_data_dir_override()
 }
 
-fn portable_data_dir_from_envs(
-    client_portable_dir: Option<String>,
-    portable_dir: Option<String>,
-) -> Result<PathBuf> {
-    portable_data_dir_with_executable(client_portable_dir, portable_dir, env::current_exe().ok())
-}
-
-fn portable_data_dir_with_executable(
-    client_portable_dir: Option<String>,
-    portable_dir: Option<String>,
-    executable: Option<PathBuf>,
-) -> Result<PathBuf> {
-    if let Some(path) = portable_data_dir_from_value(client_portable_dir)? {
-        return Ok(path);
-    }
-
-    if executable
-        .as_deref()
-        .is_some_and(is_bundled_macos_app_executable)
-    {
-        return application_support_portable_data_dir();
-    }
-
-    if let Some(path) = portable_data_dir_from_value(portable_dir)? {
-        return Ok(path);
-    }
-
-    if let Some(executable) = executable {
-        if let Some(parent) = executable.parent() {
-            let candidate = parent.join("portable-data");
-            if fs::create_dir_all(&candidate).is_ok() {
-                return Ok(candidate);
-            }
-        }
-    }
-
-    application_support_portable_data_dir()
-}
-
 fn portable_data_dir_from_value(value: Option<String>) -> Result<Option<PathBuf>> {
-    if let Some(value) = value {
-        let trimmed = value.trim();
-        if !trimmed.is_empty() {
-            let path = PathBuf::from(trimmed);
-            fs::create_dir_all(&path)?;
-            return Ok(Some(path));
-        }
+    let Some(value) = value else {
+        return Ok(None);
+    };
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return Ok(None);
     }
-    Ok(None)
+    Ok(Some(PathBuf::from(trimmed)))
 }
 
 fn application_support_portable_data_dir() -> Result<PathBuf> {
-    let project_dirs = directories::ProjectDirs::from("com", "lico", "client")
-        .ok_or_else(|| anyhow!("cannot resolve application support directory"))?;
-    let fallback = project_dirs.config_dir().join("portable-data");
-    fs::create_dir_all(&fallback)?;
-    Ok(fallback)
+    let base_dirs = directories::BaseDirs::new()
+        .ok_or_else(|| anyhow!("cannot resolve LicoArc application data directory"))?;
+    application_support_portable_data_dir_from_base(base_dirs.data_dir())
 }
 
-fn is_bundled_macos_app_executable(executable: &Path) -> bool {
-    let Some(executable_dir) = executable.parent() else {
-        return false;
-    };
-    let Some(contents_dir) = executable_dir.parent() else {
-        return false;
-    };
-    let Some(app_dir) = contents_dir.parent() else {
-        return false;
-    };
-    executable_dir.file_name().and_then(|value| value.to_str()) == Some("MacOS")
-        && contents_dir.file_name().and_then(|value| value.to_str()) == Some("Contents")
-        && app_dir.extension().and_then(|value| value.to_str()) == Some("app")
+fn application_support_portable_data_dir_from_base(base: &Path) -> Result<PathBuf> {
+    prepare_current_root(base.join("LicoArc").join("portable-data"))
+}
+
+fn prepare_current_root(path: PathBuf) -> Result<PathBuf> {
+    crate::platform::file_security::ensure_private_dir(&path)?;
+    Ok(path)
 }
 
 #[cfg(test)]
@@ -114,72 +70,46 @@ mod tests {
     use super::*;
 
     #[test]
-    fn portable_data_uses_portable_dir_env_when_set() {
-        let dir = std::env::temp_dir().join("lico-portable-env-override");
-        let resolved =
-            portable_data_dir_from_envs(None, Some(dir.to_string_lossy().into_owned())).unwrap();
-        assert_eq!(resolved, dir);
-        assert!(resolved.exists());
-    }
+    fn current_override_is_private_and_uses_only_requested_root() {
+        let parent = std::env::temp_dir().join(format!("licoarc-paths-{}", uuid::Uuid::new_v4()));
+        let current = parent.join("current");
+        let retired = parent.join("retired");
+        std::fs::create_dir_all(&retired).unwrap();
+        let sentinel = retired.join("must-not-be-read-or-modified");
+        std::fs::write(&sentinel, b"retired").unwrap();
+        let _guard = PortableDataDirOverrideGuard::set(current.clone());
 
-    #[test]
-    fn portable_data_falls_back_when_portable_dir_is_empty() {
-        let resolved = portable_data_dir_from_envs(None, Some("   ".to_string())).unwrap();
-        assert_eq!(
-            resolved.file_name().and_then(|value| value.to_str()),
-            Some("portable-data")
-        );
-        assert!(resolved.exists());
-    }
-
-    #[test]
-    fn portable_data_uses_application_support_for_packaged_macos_sidecar() {
-        let env_dir = std::env::temp_dir().join("lico-portable-env-ignored-for-app");
-        let executable = std::env::temp_dir()
-            .join("Arc.app")
-            .join("Contents")
-            .join("MacOS")
-            .join("lico-client");
-        let resolved = portable_data_dir_with_executable(
-            None,
-            Some(env_dir.to_string_lossy().into_owned()),
-            Some(executable),
-        )
-        .unwrap();
-        assert_ne!(resolved, env_dir);
-        assert_eq!(
-            resolved.file_name().and_then(|value| value.to_str()),
-            Some("portable-data")
-        );
-        assert!(resolved.exists());
-    }
-
-    #[test]
-    fn portable_data_uses_client_portable_dir_for_packaged_macos_sidecar() {
-        let client_dir = std::env::temp_dir().join("lico-client-portable-env-for-app");
-        let fallback_env_dir = std::env::temp_dir().join("lico-portable-env-ignored-for-app");
-        let executable = std::env::temp_dir()
-            .join("Arc.app")
-            .join("Contents")
-            .join("MacOS")
-            .join("lico-client");
-        let resolved = portable_data_dir_with_executable(
-            Some(client_dir.to_string_lossy().into_owned()),
-            Some(fallback_env_dir.to_string_lossy().into_owned()),
-            Some(executable),
-        )
-        .unwrap();
-        assert_eq!(resolved, client_dir);
-        assert!(resolved.exists());
-    }
-
-    #[test]
-    fn portable_data_uses_override_when_set() {
-        let dir = std::env::temp_dir().join("lico-portable-dir-override");
-        let _guard = PortableDataDirOverrideGuard::set(dir.clone());
         let resolved = portable_data_dir().unwrap();
-        assert_eq!(resolved, dir);
-        assert!(resolved.exists());
+
+        assert_eq!(resolved, current);
+        assert_eq!(std::fs::read(&sentinel).unwrap(), b"retired");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(
+                resolved.metadata().unwrap().permissions().mode() & 0o777,
+                0o700
+            );
+        }
+        let _ = std::fs::remove_dir_all(parent);
+    }
+
+    #[test]
+    fn current_namespace_is_licoarc_portable_data() {
+        let parent = std::env::temp_dir().join(format!("licoarc-base-{}", uuid::Uuid::new_v4()));
+
+        let resolved = application_support_portable_data_dir_from_base(&parent).unwrap();
+
+        assert_eq!(resolved, parent.join("LicoArc").join("portable-data"));
+        let _ = std::fs::remove_dir_all(parent);
+    }
+
+    #[test]
+    fn blank_current_override_does_not_select_a_path() {
+        assert_eq!(
+            portable_data_dir_from_value(Some("   ".to_string())).unwrap(),
+            None
+        );
     }
 
     struct PortableDataDirOverrideGuard {

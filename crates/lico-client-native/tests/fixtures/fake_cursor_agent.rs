@@ -57,11 +57,17 @@ fn main() {
     } else {
         std::process::exit(7);
     };
-    let _ = method;
-    println!(
-        "{{\"jsonrpc\":\"2.0\",\"id\":{},\"result\":{{\"sessionId\":\"{session_id}\",\"configOptions\":[]}}}}",
-        id(&second)
-    );
+    if method == "session/load" {
+        println!(
+            "{{\"jsonrpc\":\"2.0\",\"id\":{},\"result\":null}}",
+            id(&second)
+        );
+    } else {
+        println!(
+            "{{\"jsonrpc\":\"2.0\",\"id\":{},\"result\":{{\"sessionId\":\"{session_id}\",\"configOptions\":[]}}}}",
+            id(&second)
+        );
+    }
     io::stdout().flush().unwrap();
 
     let third = match lines.next() {
