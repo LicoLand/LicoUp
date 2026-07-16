@@ -58,10 +58,12 @@ void main() {
     expect(semantics.flagsCollection.isSelected.toBoolOrNull(), isTrue);
 
     await tester.tap(
-      find.byKey(const ValueKey('studio-mobile-compact-navigation-feed')),
+      find.byKey(
+        const ValueKey('studio-mobile-compact-navigation-mobileRelay'),
+      ),
     );
     await tester.pumpAndSettle();
-    expect(harness.selectedDestination, ClientSection.feed);
+    expect(harness.selectedDestination, ClientSection.mobileRelay);
     expect(
       find.byKey(const Key('studio-mobile-navigation-overlay')),
       findsNothing,

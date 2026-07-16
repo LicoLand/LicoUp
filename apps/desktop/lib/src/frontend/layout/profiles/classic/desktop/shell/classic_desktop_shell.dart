@@ -85,12 +85,10 @@ final class _ClassicSidebar extends StatelessWidget {
     final colors = context.layoutPalette;
     final stringsLabel = data.destinationLabel;
     final preferred = <ClientSection>[
-      ClientSection.controlPanel,
       ClientSection.agents,
-      ClientSection.mcpPlugins,
+      ClientSection.skillHub,
       ClientSection.monitoring,
       ClientSection.mobileRelay,
-      ClientSection.localRuntime,
       ClientSection.settings,
     ];
     final items = <ClientSection>[
@@ -234,13 +232,9 @@ final class _ClassicNavButton extends StatelessWidget {
 }
 
 IconData _classicSectionIcon(ClientSection section) => switch (section) {
-  ClientSection.controlPanel => Icons.dashboard_outlined,
   ClientSection.agents => Icons.psychology_outlined,
-  ClientSection.feed => Icons.dynamic_feed_outlined,
   ClientSection.monitoring => Icons.query_stats_outlined,
-  ClientSection.mcpPlugins => Icons.extension_outlined,
   ClientSection.skillHub => Icons.library_books_outlined,
-  ClientSection.localRuntime => Icons.dns_outlined,
   ClientSection.mobileRelay => Icons.phonelink_outlined,
   ClientSection.settings => Icons.settings_outlined,
 };

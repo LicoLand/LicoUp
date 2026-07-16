@@ -167,10 +167,7 @@ final class _LayoutProfileSelectorState extends State<LayoutProfileSelector> {
                             gap: gap,
                             itemBuilder: optionAt,
                           );
-                    return Padding(
-                      padding: gridPadding,
-                      child: options,
-                    );
+                    return Padding(padding: gridPadding, child: options);
                   },
                 ),
               ),

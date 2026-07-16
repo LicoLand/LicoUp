@@ -9,10 +9,15 @@ REPO_ROOT="$(cd "$PROJECT_DIR/../../.." && pwd)"
 MANIFEST="$REPO_ROOT/crates/lico-client-native/Cargo.toml"
 OUT_ROOT="$PROJECT_DIR/Flutter/ephemeral/secure_mesh_ios"
 LINK_DIR="$OUT_ROOT/link/${PLATFORM_NAME:-unknown}"
+MANAGED_CARGO_TARGET="$REPO_ROOT/build/crates/lico-client-native/target"
 mkdir -p "$LINK_DIR"
 
 if ! command -v cargo >/dev/null 2>&1; then
   echo "cargo is required to build Secure Mesh iOS native runtime." >&2
+  exit 1
+fi
+if ! command -v node >/dev/null 2>&1; then
+  echo "node is required to acquire the managed Cargo artifact lease." >&2
   exit 1
 fi
 
@@ -23,14 +28,14 @@ build_rust_target() {
     exit 1
   fi
   SDKROOT="$(xcrun --sdk macosx --show-sdk-path)" \
-    CARGO_TARGET_DIR="$OUT_ROOT" \
-    cargo build --manifest-path "$MANIFEST" --target "$RUST_TARGET" --release --lib
+    node "$REPO_ROOT/tools/scripts/cargo-client.mjs" \
+      build --manifest-path "$MANIFEST" --target "$RUST_TARGET" --release --lib
 }
 
 case "${PLATFORM_NAME:-}" in
   iphoneos)
     build_rust_target "aarch64-apple-ios"
-    cp "$OUT_ROOT/aarch64-apple-ios/release/liblico_client_native.a" \
+    cp "$MANAGED_CARGO_TARGET/aarch64-apple-ios/release/liblico_client_native.a" \
       "$LINK_DIR/liblico_client_native.a"
     ;;
   iphonesimulator)
@@ -67,8 +72,8 @@ case "${PLATFORM_NAME:-}" in
       esac
     fi
 
-    ARM64_LIB="$OUT_ROOT/aarch64-apple-ios-sim/release/liblico_client_native.a"
-    X86_64_LIB="$OUT_ROOT/x86_64-apple-ios/release/liblico_client_native.a"
+    ARM64_LIB="$MANAGED_CARGO_TARGET/aarch64-apple-ios-sim/release/liblico_client_native.a"
+    X86_64_LIB="$MANAGED_CARGO_TARGET/x86_64-apple-ios/release/liblico_client_native.a"
     if [ "$NEED_ARM64" -eq 1 ]; then
       build_rust_target "aarch64-apple-ios-sim"
     fi

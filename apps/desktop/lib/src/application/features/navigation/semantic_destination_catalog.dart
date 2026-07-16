@@ -109,11 +109,6 @@ final class SemanticDestinationCatalog {
 
   static final List<SemanticDestinationDescriptor> _currentDescriptors = [
     SemanticDestinationDescriptor(
-      destination: ClientSection.controlPanel,
-      labelKey: 'destination.home',
-      surfaces: const {LayoutRuntimeSurface.desktop},
-    ),
-    SemanticDestinationDescriptor(
       destination: ClientSection.agents,
       labelKey: 'destination.agents',
       surfaces: const {
@@ -122,29 +117,13 @@ final class SemanticDestinationCatalog {
       },
     ),
     SemanticDestinationDescriptor(
-      destination: ClientSection.feed,
-      labelKey: 'destination.feed',
-      surfaces: const {LayoutRuntimeSurface.mobile},
-    ),
-    SemanticDestinationDescriptor(
       destination: ClientSection.monitoring,
       labelKey: 'destination.monitoring',
       surfaces: const {LayoutRuntimeSurface.desktop},
     ),
     SemanticDestinationDescriptor(
-      destination: ClientSection.mcpPlugins,
-      labelKey: 'destination.extensions',
-      surfaces: const {LayoutRuntimeSurface.desktop},
-    ),
-    SemanticDestinationDescriptor(
       destination: ClientSection.skillHub,
       labelKey: 'destination.skills',
-      surfaces: const {LayoutRuntimeSurface.desktop},
-      aliasOf: ClientSection.mcpPlugins,
-    ),
-    SemanticDestinationDescriptor(
-      destination: ClientSection.localRuntime,
-      labelKey: 'destination.runtime',
       surfaces: const {LayoutRuntimeSurface.desktop},
     ),
     SemanticDestinationDescriptor(

@@ -8,8 +8,11 @@ import 'package:flutter_client/src/frontend/l10n/lico_strings.dart';
 import 'package:flutter_client/src/frontend/shared/ui/theme.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'layout/fixtures/layout_destination_presentation_fixture.dart';
+
 Widget _harness({required ClientController controller}) {
   return MaterialApp(
+    builder: (context, child) => FixtureLayoutPresentationScope(child: child!),
     localizationsDelegates: const [
       GlobalMaterialLocalizations.delegate,
       GlobalWidgetsLocalizations.delegate,
@@ -195,7 +198,7 @@ void main() {
         find.byKey(const Key('conversation-parity-send-gate-unblock')),
         findsOneWidget,
       );
-      expect(find.text('Scan agents'), findsOneWidget);
+      expect(find.text('Refresh Agents'), findsOneWidget);
     },
   );
 }

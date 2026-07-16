@@ -1,4 +1,6 @@
-part of 'package:flutter_client/src/contracts/mobile_relay/mobile_relay_models.dart';
+import 'package:flutter_client/src/contracts/mobile_relay/mobile_relay_gateway.dart';
+import 'package:flutter_client/src/contracts/mobile_relay/mobile_relay_paired_device.dart';
+import 'package:flutter_client/src/contracts/mobile_relay/mobile_relay_trust_presentation.dart';
 
 class MobileRelayConfig {
   const MobileRelayConfig({
@@ -19,7 +21,6 @@ class MobileRelayConfig {
     required this.pcTokenPresent,
     required this.mobileTokenPresent,
     this.pairedDevices = const [],
-    this.authorizedProviders = const [],
     this.trustPresentation,
   });
 
@@ -42,20 +43,16 @@ class MobileRelayConfig {
   final bool pcTokenPresent;
   final bool mobileTokenPresent;
   final List<MobileRelayPairedDevice> pairedDevices;
-  final List<MobileRelayAuthorizedProvider> authorizedProviders;
   final MobileRelayTrustPresentation? trustPresentation;
 
   String get effectiveGatewayUrl {
-    final custom = _normalizeGatewayUrl(customGatewayUrl);
-    final fallback = _nonEmptyGatewayUrl(
-      defaultGatewayUrl,
-      licoDefaultMobileRelayGatewayUrl,
-    );
+    final custom = normalizeMobileRelayGatewayUrl(customGatewayUrl);
+    final configured = normalizeMobileRelayGatewayUrl(defaultGatewayUrl);
     return useCustomGateway &&
             custom.isNotEmpty &&
             !mobileRelayGatewayIsEphemeralCustom(custom)
         ? custom
-        : fallback;
+        : configured;
   }
 
   bool get hasPairing =>
@@ -84,18 +81,12 @@ class MobileRelayConfig {
           pcClientName.trim().isNotEmpty ||
           hasPairing);
 
-  factory MobileRelayConfig.defaults({
-    String? defaultGatewayUrl,
-    String? pcClientName,
-  }) {
+  factory MobileRelayConfig.defaults({String? pcClientName}) {
     final now = DateTime.now().toUtc().microsecondsSinceEpoch;
     final normalizedPcClientName = (pcClientName ?? '').trim();
     return MobileRelayConfig(
       schemaVersion: currentSchemaVersion,
-      defaultGatewayUrl: _nonEmptyGatewayUrl(
-        defaultGatewayUrl,
-        licoDefaultMobileRelayGatewayUrl,
-      ),
+      defaultGatewayUrl: '',
       useCustomGateway: false,
       customGatewayUrl: '',
       pcClientId: 'pc_$now',
@@ -113,21 +104,15 @@ class MobileRelayConfig {
       pcTokenPresent: false,
       mobileTokenPresent: false,
       pairedDevices: const [],
-      authorizedProviders: const [],
     );
   }
 
   factory MobileRelayConfig.fromJson(
     Map<String, dynamic> json, {
-    String? defaultGatewayUrl,
     String? pcClientName,
   }) {
-    final defaults = MobileRelayConfig.defaults(
-      defaultGatewayUrl: defaultGatewayUrl,
-      pcClientName: pcClientName,
-    );
-    final authorizedProviders = _authorizedProvidersFromJson(json);
-    final customGatewayUrl = _normalizeGatewayUrl(
+    final defaults = MobileRelayConfig.defaults(pcClientName: pcClientName);
+    final customGatewayUrl = normalizeMobileRelayGatewayUrl(
       (json['customGatewayUrl'] ?? '').toString(),
     );
     final customGatewayIsEphemeral = mobileRelayGatewayIsEphemeralCustom(
@@ -136,9 +121,8 @@ class MobileRelayConfig {
     return MobileRelayConfig(
       schemaVersion:
           (json['schemaVersion'] as num?)?.toInt() ?? currentSchemaVersion,
-      defaultGatewayUrl: _defaultGatewayUrl(
-        json['defaultGatewayUrl']?.toString(),
-        defaults.defaultGatewayUrl,
+      defaultGatewayUrl: normalizeMobileRelayGatewayUrl(
+        (json['defaultGatewayUrl'] ?? '').toString(),
       ),
       useCustomGateway:
           json['useCustomGateway'] == true &&
@@ -172,7 +156,6 @@ class MobileRelayConfig {
                 )
                 .toList(growable: false)
           : const [],
-      authorizedProviders: authorizedProviders,
       trustPresentation: json['deviceTrustPresentation'] is Map
           ? MobileRelayTrustPresentation.fromJson(
               Map<String, dynamic>.from(json['deviceTrustPresentation'] as Map),
@@ -198,10 +181,9 @@ class MobileRelayConfig {
     bool? pcTokenPresent,
     bool? mobileTokenPresent,
     List<MobileRelayPairedDevice>? pairedDevices,
-    List<MobileRelayAuthorizedProvider>? authorizedProviders,
     MobileRelayTrustPresentation? trustPresentation,
   }) {
-    final nextCustomGatewayUrl = _normalizeGatewayUrl(
+    final nextCustomGatewayUrl = normalizeMobileRelayGatewayUrl(
       customGatewayUrl ?? this.customGatewayUrl,
     );
     final nextCustomGatewayIsEphemeral = mobileRelayGatewayIsEphemeralCustom(
@@ -209,9 +191,8 @@ class MobileRelayConfig {
     );
     return MobileRelayConfig(
       schemaVersion: schemaVersion,
-      defaultGatewayUrl: _defaultGatewayUrl(
+      defaultGatewayUrl: normalizeMobileRelayGatewayUrl(
         defaultGatewayUrl ?? this.defaultGatewayUrl,
-        licoDefaultMobileRelayGatewayUrl,
       ),
       useCustomGateway:
           (useCustomGateway ?? this.useCustomGateway) &&
@@ -239,14 +220,13 @@ class MobileRelayConfig {
           (this.mobileTokenPresent ||
               (mobileToken ?? this.mobileToken).trim().isNotEmpty),
       pairedDevices: pairedDevices ?? this.pairedDevices,
-      authorizedProviders: authorizedProviders ?? this.authorizedProviders,
       trustPresentation: trustPresentation ?? this.trustPresentation,
     );
   }
 
   List<MobileRelayPairedDevice> get deviceTabs {
     if (pairedDevices.isNotEmpty) {
-      return _dedupePairedDevices(pairedDevices);
+      return dedupeMobileRelayPairedDevices(pairedDevices);
     }
     if (!hasPairedDeviceEcho) {
       return const [];
@@ -259,7 +239,6 @@ class MobileRelayConfig {
         mobileToken: mobileToken,
         credentialPresent: mobileTokenPresent || mobileToken.trim().isNotEmpty,
         gatewayUrl: effectiveGatewayUrl,
-        authorizedProviders: authorizedProviders,
       ),
     ];
   }

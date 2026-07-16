@@ -407,13 +407,9 @@ final class _DestinationFocusAnchor extends StatelessWidget {
 }
 
 IconData _destinationIcon(ClientSection destination) => switch (destination) {
-  ClientSection.controlPanel => Icons.space_dashboard_outlined,
   ClientSection.agents => Icons.hub_outlined,
-  ClientSection.feed => Icons.dynamic_feed_outlined,
   ClientSection.monitoring => Icons.monitor_heart_outlined,
-  ClientSection.mcpPlugins => Icons.extension_outlined,
   ClientSection.skillHub => Icons.auto_awesome_mosaic_outlined,
-  ClientSection.localRuntime => Icons.memory_outlined,
   ClientSection.mobileRelay => Icons.phonelink_ring_outlined,
   ClientSection.settings => Icons.tune_rounded,
 };

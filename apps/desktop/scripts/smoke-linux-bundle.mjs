@@ -54,11 +54,8 @@ function assertTargetScan(scan) {
     if (typeof candidate.status !== "string" || candidate.status.length === 0) {
       throw new Error(`Target scan candidate is missing status: ${JSON.stringify(candidate)}`);
     }
-    if (
-      !Array.isArray(candidate.supportedActions) ||
-      !candidate.supportedActions.includes("mcp.plugin.status")
-    ) {
-      throw new Error(`Target scan candidate is missing status support: ${JSON.stringify(candidate)}`);
+    if (!candidate.adapterCapabilities || typeof candidate.adapterCapabilities !== "object") {
+      throw new Error(`Target scan candidate is missing adapter capabilities: ${JSON.stringify(candidate)}`);
     }
     targets.add(candidate.target);
   }
@@ -96,19 +93,21 @@ async function main() {
   const enabledModuleIds = new Set(
     manifest.modules?.map((item) => item.id) || []
   );
-  for (const moduleId of ["desktop-app", "native-sidecar", "portable-data", "target-adapters"]) {
+  for (const moduleId of [
+    "desktop-app",
+    "native-sidecar",
+    "portable-data",
+    "target-adapters",
+    "local-task-queue",
+    "protocol-adapters",
+  ]) {
     if (!enabledModuleIds.has(moduleId)) {
       throw new Error(`Packaging manifest does not include required module: ${moduleId}`);
     }
   }
-  const macOSMailHelper = path.join(bundleDir, "lico-mail-helper");
-  if (existsSync(macOSMailHelper)) {
-    throw new Error(`Linux bundle must not include macOS Mail sidecar: ${macOSMailHelper}`);
-  }
-
   const dataDir = path.join(os.tmpdir(), `lico-ubuntu-smoke-${process.pid}-${Date.now()}`);
   mkdirSync(dataDir, { recursive: true });
-  const env = { ...process.env, LICO_PORTABLE_DIR: dataDir };
+  const env = { ...process.env, LICOARC_PORTABLE_DIR: dataDir };
   try {
     const scan = runJson(cli, ["targets", "scan"], env);
     assertTargetScan(scan);
@@ -119,7 +118,6 @@ async function main() {
       checks: [
         "bundle binaries exist",
         "packaging manifest includes required modules",
-        "bundle excludes macOS Mail sidecar",
         "CLI target scan works with shared portable workspace",
       ],
     }, null, 2));

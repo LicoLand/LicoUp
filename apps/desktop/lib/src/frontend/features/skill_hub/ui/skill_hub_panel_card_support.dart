@@ -1,7 +1,17 @@
-part of 'package:flutter_client/src/frontend/features/skill_hub/ui/skill_hub_panel.dart';
+import 'package:flutter/material.dart';
 
-class _SkillCardHeader extends StatelessWidget {
-  const _SkillCardHeader({
+import 'package:flutter_client/src/application/controller/client_controller.dart';
+import 'package:flutter_client/src/application/features/skill_hub/models/skill_agent_compatibility.dart';
+import 'package:flutter_client/src/application/features/skill_hub/models/skill_category_catalog.dart';
+import 'package:flutter_client/src/contracts/target_candidate.dart';
+import 'package:flutter_client/src/frontend/features/skill_hub/ui/skill_hub_panel_icon_picker.dart';
+import 'package:flutter_client/src/frontend/l10n/lico_strings.dart';
+import 'package:flutter_client/src/frontend/shared/ui/agent_brand_icon.dart';
+import 'package:flutter_client/src/frontend/shared/ui/theme.dart';
+
+class SkillCardHeader extends StatelessWidget {
+  const SkillCardHeader({
+    super.key,
     required this.controller,
     required this.skillId,
     required this.title,
@@ -72,8 +82,9 @@ class _SkillCardHeader extends StatelessWidget {
   }
 }
 
-class _SkillCardFooter extends StatelessWidget {
-  const _SkillCardFooter({
+class SkillCardFooter extends StatelessWidget {
+  const SkillCardFooter({
+    super.key,
     required this.controller,
     required this.loaderAgentIds,
     required this.version,
@@ -144,8 +155,8 @@ class _SkillCardFooter extends StatelessWidget {
   }
 }
 
-class _SkillEmptyPlaceholder extends StatelessWidget {
-  const _SkillEmptyPlaceholder();
+class SkillEmptyPlaceholder extends StatelessWidget {
+  const SkillEmptyPlaceholder({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -180,8 +191,8 @@ class _SkillEmptyPlaceholder extends StatelessWidget {
   }
 }
 
-class _SkillScanningPlaceholder extends StatelessWidget {
-  const _SkillScanningPlaceholder();
+class SkillScanningPlaceholder extends StatelessWidget {
+  const SkillScanningPlaceholder({super.key});
 
   @override
   Widget build(BuildContext context) {

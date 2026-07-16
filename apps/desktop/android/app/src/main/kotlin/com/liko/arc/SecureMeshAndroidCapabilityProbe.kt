@@ -140,13 +140,22 @@ internal class SecureMeshAndroidCapabilityProbe(private val context: Context) {
         )
     }
 
-    fun keyIsSafeForPersistentCustody(
+    fun keyMeetsCurrentPersistentCustodyPolicy(
         key: Key,
-        measurement: SecureMeshAndroidCapabilityMeasurement
+        measurement: SecureMeshAndroidCapabilityMeasurement,
+        requiredAuthenticationValiditySeconds: Int,
     ): Boolean {
         return key.encoded == null &&
             measurement.keyPresent &&
-            measurement.custodyStrategy == SecureMeshAndroidCustodyStrategy.ANDROID_KEYSTORE
+            measurement.custodyStrategy == SecureMeshAndroidCustodyStrategy.ANDROID_KEYSTORE &&
+            measurement.userAuthenticationRequired == true &&
+            measurement.userAuthenticationValiditySeconds ==
+                requiredAuthenticationValiditySeconds &&
+            (!measurement.userAuthenticationTypeMeasured ||
+                measurement.deviceCredentialAllowed ||
+                measurement.strongBiometricAllowed) &&
+            (Build.VERSION.SDK_INT < Build.VERSION_CODES.P ||
+                measurement.unlockedDeviceRequired == true)
     }
 
     private fun androidKeyStoreAvailable(): Boolean {

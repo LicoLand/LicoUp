@@ -1,4 +1,5 @@
-part of 'package:flutter_client/src/frontend/l10n/lico_strings.dart';
+import 'package:flutter_client/src/contracts/presentation/layout_selection.dart';
+import 'package:flutter_client/src/frontend/l10n/lico_strings_base.dart';
 
 extension LicoStringsLabels on LicoStrings {
   // Shared interface actions and labels.
@@ -53,54 +54,13 @@ extension LicoStringsLabels on LicoStrings {
       ? '最新每日明细中没有智能体用量'
       : 'No agent usage in the latest daily breakdown';
   String get usageOverTime => isChinese ? '用量趋势' : 'Usage Over Time';
+  String get tokenUsageWindow =>
+      isChinese ? 'Token 用量时间窗口' : 'Token usage window';
   String lastDays(int days) => isChinese ? '最近 $days 天' : 'Last $days days';
   String get byAgent => isChinese ? '智能体' : 'By Agent';
   String get byModel => isChinese ? '模型' : 'By Model';
   String dailyTokenUsage(String date) =>
       isChinese ? '$date 每日 Token 用量' : 'Daily Token Usage · $date';
-  String get apiPriceEstimate => isChinese ? 'API 价格预估' : 'Estimated API Price';
-  String get priceNotEstimable => isChinese ? '不可估算' : 'Unavailable';
-  String get usageAndCostsApi =>
-      isChinese ? '用量 / 费用 API' : 'Usage / Costs API';
-  String get balanceApi => isChinese ? '余额 API' : 'Balance API';
-  String get billingCloudConsole =>
-      isChinese ? '账单 / 云控制台' : 'Billing / Cloud console';
-
-  // Home feed / former control panel labels still used elsewhere.
-  String get usageReport => isChinese ? '用量报表' : 'Usage report';
-  String availableAgentCount(int count) => isChinese
-      ? '$count 个可用智能体'
-      : '$count available ${count == 1 ? 'agent' : 'agents'}';
-  String get openSkillHub => isChinese ? '打开技能中心' : 'Open Skill Hub';
-  String get openRuntime => isChinese ? '打开运行时' : 'Open Runtime';
-  String get reply => isChinese ? '回复' : 'Reply';
-  String get composeFloatingHint =>
-      isChinese ? '发一条动态…' : 'Broadcast a message…';
-  String get attachFiles => isChinese ? '添加附件' : 'Attach files';
-  String get postUpdate => isChinese ? '发布' : 'Post';
-
-  // MCP / ACP plugin management.
-  String get noScannedAgents => isChinese ? '没有已扫描的智能体' : 'No scanned agents';
-  String scannedAgentCount(int count) =>
-      isChinese ? '$count 个智能体' : '$count ${count == 1 ? 'agent' : 'agents'}';
-  String get refreshTargets => isChinese ? '刷新目标' : 'Refresh targets';
-  String get mcpConfig => isChinese ? 'MCP 配置' : 'MCP config';
-  String get mcpPluginColumn => isChinese ? 'MCP 插件' : 'MCP plugin';
-  String get acpPluginColumn => isChinese ? 'ACP 插件' : 'ACP plugin';
-  String get pluginUnsupported => isChinese ? '不支持' : 'Unsupported';
-  String get acpDeclared => isChinese ? '已声明' : 'Declared';
-  String get scanTargetsBeforeManagingMcp => isChinese
-      ? '请先扫描目标，再管理 MCP 与 ACP 插件。'
-      : 'Run a target scan before managing MCP and ACP plugins.';
-  String get pluginHubSubtitle => isChinese
-      ? '为每个智能体配置 MCP 与 ACP 插件。'
-      : 'Connect MCP and ACP plugins for each local agent.';
-  String get configurePlugins => isChinese ? '配置' : 'Configure';
-  String agentPluginCardDescription(String label) => isChinese
-      ? '为 $label 管理 MCP 与 ACP 插件，保持工具与对话通道可用。'
-      : 'Manage MCP and ACP plugins for $label so tools and conversation lanes stay ready.';
-  String get reinstall => isChinese ? '重新安装' : 'Reinstall';
-  String get update => isChinese ? '更新' : 'Update';
   String get unknown => isChinese ? '未知' : 'Unknown';
   String targetKindLabel(String value) {
     final normalized = value.trim().toLowerCase();
@@ -116,80 +76,6 @@ extension LicoStringsLabels on LicoStrings {
     };
   }
 
-  // Local runtime.
-  String get enable => isChinese ? '启用' : 'Enable';
-  String get running => isChinese ? '运行中' : 'Running';
-  String get stopped => isChinese ? '已停止' : 'Stopped';
-  String get configuration => isChinese ? '配置' : 'Configuration';
-  String get sourceRepository => isChinese ? '源代码仓库' : 'Source Repository';
-  String get presetConfig => isChinese ? '预设配置' : 'Preset Config';
-  String get port => isChinese ? '端口' : 'Port';
-  String get rebuild => isChinese ? '重新构建' : 'Rebuild';
-  String get restart => isChinese ? '重新启动' : 'Restart';
-  String get stop => isChinese ? '停止' : 'Stop';
-  String get logs => isChinese ? '日志' : 'Logs';
-  String get serverInfo => isChinese ? '服务端信息' : 'Server Information';
-  String get serverUrl => isChinese ? '服务端 URL' : 'Server URL';
-  String get health => isChinese ? '健康状态' : 'Health';
-  String get serverId => isChinese ? '服务端 ID' : 'Server ID';
-  String get paths => isChinese ? '路径' : 'Paths';
-  String get dataRoot => isChinese ? '数据根目录' : 'Data Root';
-  String get runtimeConfig => isChinese ? '运行时配置' : 'Runtime Config';
-  String get logFile => isChinese ? '日志文件' : 'Log File';
-  String get state => isChinese ? '状态' : 'State';
-  String get secrets => isChinese ? '密钥' : 'Secrets';
-  String get runtimeModules => isChinese ? '运行时模块' : 'Runtime Modules';
-  String get modules => isChinese ? '模块' : 'Modules';
-  String get noRuntimeFeatureModules => isChinese
-      ? '运行时未报告任何功能模块。'
-      : 'No feature modules were reported by the runtime.';
-  String get runtimeModulesAvailableAfterStartup => isChinese
-      ? '运行时可用后会在这里显示模块。'
-      : 'Runtime modules will appear after the runtime is available.';
-  String get selectRuntimeModule =>
-      isChinese ? '选择一个模块以查看其功能。' : 'Select a module to inspect its functions.';
-  String get warning => isChinese ? '警告' : 'Warning';
-  String get moduleId => isChinese ? '模块 ID' : 'Module ID';
-  String get category => isChinese ? '类别' : 'Category';
-  String get packaging => isChinese ? '打包方式' : 'Packaging';
-  String get availability => isChinese ? '可用性' : 'Availability';
-  String get requiredLabel => isChinese ? '必需' : 'Required';
-  String get optionalLabel => isChinese ? '可选' : 'Optional';
-  String get platforms => isChinese ? '平台' : 'Platforms';
-  String get dependencies => isChinese ? '依赖项' : 'Dependencies';
-  String get noDependencies => isChinese ? '无依赖项' : 'No dependencies';
-  String runtimeGroupLabel(String value) {
-    final normalized = value.trim().toLowerCase();
-    return switch (normalized) {
-      'core' => isChinese ? '核心' : 'Core',
-      'security' => isChinese ? '安全' : 'Security',
-      'module-management' => isChinese ? '模块管理' : 'Module Management',
-      'data-structure' => isChinese ? '数据结构' : 'Data Structure',
-      'storage' => isChinese ? '存储' : 'Storage',
-      'devops' => 'DevOps',
-      'capabilities' => isChinese ? '能力' : 'Capabilities',
-      'activity' => isChinese ? '活动' : 'Activity',
-      'agent' => isChinese ? '智能体' : 'Agent',
-      'agent-ingress' => isChinese ? '智能体入口' : 'Agent Ingress',
-      'agents' => isChinese ? '智能体' : 'Agents',
-      'client' => isChinese ? '客户端' : 'Client',
-      'modules' => isChinese ? '处理模块' : 'Processing Modules',
-      'knowledge' => isChinese ? '知识' : 'Knowledge',
-      'connectors' => isChinese ? '连接器' : 'Connectors',
-      'ingestion' => isChinese ? '摄取' : 'Ingestion',
-      'industry' => isChinese ? '行业' : 'Industry',
-      'embedded-server' => isChinese ? '嵌入式服务端' : 'Embedded Server',
-      'mcp' => 'MCP',
-      'mcp-plugins' => isChinese ? 'MCP 插件' : 'MCP Plugins',
-      'mobile-relay' => isChinese ? '移动中转' : 'Mobile Relay',
-      'model-forwarding' => isChinese ? '模型转发' : 'Model Forwarding',
-      'settings' => isChinese ? '设置' : 'Settings',
-      'skill-hub' => isChinese ? '技能中心' : 'Skill Hub',
-      'runtime' => isChinese ? '运行时' : 'Runtime',
-      _ => value,
-    };
-  }
-
   // Agent conversation support chrome.
   String get noSupportedTargetsDetected =>
       isChinese ? '未检测到支持的目标。' : 'No supported targets detected.';
@@ -200,18 +86,6 @@ extension LicoStringsLabels on LicoStrings {
   String get searchHistories => isChinese ? '搜索历史' : 'Search histories';
   String get collapseHistory => isChinese ? '收起历史' : 'Collapse history';
   String get expandHistory => isChinese ? '展开历史' : 'Expand history';
-  String usagePercentage(String productName) =>
-      isChinese ? '$productName 用量占比' : '$productName usage percentage';
-  String get resetCredits => isChinese ? '重置次数' : 'Reset credits';
-  String quotaRemaining(String model, String remaining, String reset) {
-    if (isChinese) {
-      final suffix = reset.isEmpty ? '' : ' · $reset 后重置';
-      return '• $model · 剩余 $remaining$suffix';
-    }
-    final suffix = reset.isEmpty ? '' : ' · resets in $reset';
-    return '• $model · $remaining left$suffix';
-  }
-
   // File chooser labels. File formats are intentionally not translated.
   String get plainTextFile => isChinese ? '文本' : 'Text';
   String get directory => isChinese ? '目录' : 'Directory';
@@ -231,14 +105,10 @@ extension LicoStringsLabels on LicoStrings {
       'Conversation archive' => '对话归档',
       'Error' => '错误',
       'LicoArc client' => '客户端',
-      'MCP config plan' => 'MCP 配置计划',
-      'MCP plugin' => 'MCP 插件',
       'Mobile agents' => '移动端智能体',
       'Mobile relay' => '移动中转',
       'Project archive' => '项目归档',
-      'Proxy Bridge' => '代理桥接',
       'Ready' => '就绪',
-      'Runtime' => '运行时',
       'Secure Mesh' => '安全网格',
       'Settings' => '设置',
       'Skill Hub' => '技能中心',
@@ -391,6 +261,16 @@ extension LicoStringsLabels on LicoStrings {
   String get keywords => isChinese ? '关键词' : 'Keywords';
   String get archiveDirectory => isChinese ? '归档目录' : 'Archive directory';
   String get archive => isChinese ? '归档' : 'Archive';
+  String get backupConversations =>
+      isChinese ? '备份对话' : 'Back up conversations';
+  String get allConversations => isChinese ? '全部对话' : 'All conversations';
+  String get exactKeyword => isChinese ? '精确关键词' : 'Exact keyword';
+  String get archiveDestinationRequired => isChinese
+      ? '请先在设置中选择本机归档目录。'
+      : 'Choose a local archive directory in Settings first.';
+  String archiveDestination(String path) =>
+      isChinese ? '本机归档目录：$path' : 'Local archive directory: $path';
+  String get previewAndBackup => isChinese ? '预览并备份' : 'Preview & Back Up';
   String get openDirectory => isChinese ? '跳转' : 'Open';
   String recordsCount(String count) =>
       isChinese ? '$count 条记录' : '$count records';
@@ -613,37 +493,7 @@ extension LicoStringsLabels on LicoStrings {
       isChinese ? '刷新归档目录' : 'Refresh Archive Directory';
   String get snapshotRootPath => isChinese ? '快照根路径' : 'Snapshot Root Path';
   String get save => isChinese ? '保存' : 'Save';
-  String get assistantAgent => isChinese ? '辅助智能体' : 'Assistant Agent';
-  String get assistantAgentDescription => isChinese
-      ? '客户端可调用的智能体，用于执行需要智能体能力的辅助操作。'
-      : 'Agent the client can call for assistant-only operations.';
-  String get assistantAgentPendingSelection =>
-      isChinese ? '请选择一个扫描到的智能体' : 'Choose a scanned agent';
-  String get chooseAssistantAgent =>
-      isChinese ? '选择辅助智能体' : 'Choose assistant agent';
-  String get scanAssistantAgents => isChinese ? '扫描智能体' : 'Scan agents';
-  String get noAssistantAgentsAvailable =>
-      isChinese ? '扫描后会显示可用智能体' : 'Scanned agents will appear here';
   String get recommendedPlugins => isChinese ? '推荐插件' : 'Recommended Plugins';
-
-  String get proxyBridge => isChinese ? 'Clash 代理桥接' : 'Clash Proxy Bridge';
-  String get proxyBridgeDescription => isChinese
-      ? '检测 Clash Verge mixed-port，让客户端流量和所选智能体 wrapper 直接走 Clash。'
-      : 'Detect Clash Verge mixed-port and route client calls plus selected agent wrappers directly through Clash.';
-  String get proxyBridgeDetect => isChinese ? '检测' : 'Detect';
-  String get proxyBridgePlan => isChinese ? '生成计划' : 'Plan';
-  String get proxyBridgeEnable => isChinese ? '启用桥接' : 'Enable Bridge';
-  String get proxyBridgeDisable => isChinese ? '关闭桥接' : 'Disable Bridge';
-  String get proxyBridgeEnabled => isChinese ? '已启用' : 'Enabled';
-  String get proxyBridgeDisabled => isChinese ? '未启用' : 'Disabled';
-  String get proxyBridgeReachable => isChinese ? '端口可达' : 'Port reachable';
-  String get proxyBridgeUnreachable =>
-      isChinese ? '端口未连通' : 'Port not reachable';
-  String get proxyBridgeAgents => isChinese ? '桥接智能体' : 'Bridged agents';
-  String get proxyBridgeTunAssist => isChinese ? 'TUN 辅助配置' : 'TUN Assist';
-  String get proxyBridgeNoClashMutation => isChinese
-      ? '不会静默修改 Clash 配置；TUN 片段仅用于人工审查。'
-      : 'Clash config is never changed silently; the TUN snippet is advisory.';
 
   String get secureMesh => isChinese ? '安全网格' : 'Secure Mesh';
   String get refresh => isChinese ? '刷新' : 'Refresh';
@@ -828,183 +678,6 @@ extension LicoStringsLabels on LicoStrings {
       isChinese ? '通过电脑安全中转' : 'Secure Relay Through Computer';
   String get noDesktopAgents =>
       isChinese ? '这台电脑暂未回显可用智能体。' : 'No desktop agents are available yet.';
-  String get handoffToDesktopAgent =>
-      isChinese ? '转交给电脑智能体' : 'Hand Off To Desktop Agent';
-  String get openChatGptWebConversation =>
-      isChinese ? '打开 ChatGPT 网页端' : 'Open ChatGPT Web';
-  String get additionalPrompt => isChinese ? '新增提示词' : 'Additional Prompt';
-  String get handoff => isChinese ? '转交' : 'Hand Off';
-  String get recentCommands => isChinese ? '最近命令' : 'Recent Commands';
-  String get executionRecords => isChinese ? '执行记录' : 'Execution Records';
-  String get authorizationRequired =>
-      isChinese ? '等待授权' : 'Authorization Required';
-  String get connected => isChinese ? '已连接' : 'Connected';
-  String get authorized => isChinese ? '已授权' : 'Authorized';
-  String get chatValidationFailed =>
-      isChinese ? '对话验证失败' : 'Chat Validation Failed';
-  String get added => isChinese ? '已添加' : 'Added';
-  String get authorizationMethod => isChinese ? '授权方式' : 'Authorization Method';
-  String get oauthPkceAuthorization => isChinese
-      ? 'OAuth 2.0 / PKCE 网页授权'
-      : 'OAuth 2.0 / PKCE Web Authorization';
-  String oauthAuthorizationMethodForProvider(String providerId, String label) {
-    final normalized = providerId.trim().toLowerCase();
-    if (normalized == 'chatgpt') {
-      return isChinese
-          ? 'ChatGPT OAuth（网页端对话）'
-          : 'ChatGPT OAuth (web conversation)';
-    }
-    return oauthPkceAuthorization;
-  }
-
-  String get apiKeyAuthorization => isChinese ? 'API Key 直连' : 'Direct API Key';
-  String get pairedComputerAuthorization =>
-      isChinese ? '配对电脑授权' : 'Paired Computer Authorization';
-  String get apiKeyReady => isChinese ? 'API Key 已配置' : 'API Key Configured';
-  String apiKeySyncedReady(String label) => isChinese
-      ? '已授权，API Key 已从 $label 同步到手机。'
-      : 'Authorized. The API key has been synced from $label to this phone.';
-  String get oauthClientRequired => isChinese
-      ? '需要先完成网页登录授权。'
-      : 'Web sign-in authorization is required first.';
-  String oauthReadyForProvider(String label) => isChinese
-      ? 'OAuth 已授权，手机端可直连 $label。'
-      : 'OAuth authorized. This phone can connect to $label directly.';
-  String oauthReadyForProviderSurface(String providerId, String label) {
-    final normalized = providerId.trim().toLowerCase();
-    if (normalized == 'chatgpt') {
-      return isChinese
-          ? 'ChatGPT OAuth 已授权，手机端可通过 ChatGPT 网页端对话。'
-          : 'ChatGPT OAuth authorized. This phone can use ChatGPT web conversation directly.';
-    }
-    return oauthReadyForProvider(label);
-  }
-
-  String oauthChatValidationFailedForProvider(String providerId, String label) {
-    final normalized = providerId.trim().toLowerCase();
-    if (normalized == 'chatgpt') {
-      return isChinese
-          ? 'ChatGPT OAuth 已保存，但真实对话验证失败。请重新网页授权或稍后重试。'
-          : 'ChatGPT OAuth is saved, but real chat validation failed. Reauthorize or retry later.';
-    }
-    return isChinese
-        ? '$label OAuth 已保存，但真实对话验证失败。请重新授权或稍后重试。'
-        : '$label OAuth is saved, but real chat validation failed. Reauthorize or retry later.';
-  }
-
-  String get oauthReady => oauthReadyForProvider('ChatGPT');
-  String get apiKeyStoredLocally => isChinese
-      ? '手机端已记录授权状态；明文密钥不会写入便携配置文件。'
-      : 'The phone records authorization state; the plaintext key is not written to portable config.';
-  String get webAuthorization => isChinese ? '网页授权' : 'Web Authorization';
-  String webAuthorizationForProvider(String providerId, String label) {
-    final normalized = providerId.trim().toLowerCase();
-    if (normalized == 'chatgpt') {
-      return isChinese ? 'ChatGPT 网页授权' : 'ChatGPT Web Authorization';
-    }
-    return webAuthorization;
-  }
-
-  String get pasteOAuthCallbackUrl =>
-      isChinese ? '粘贴回调链接' : 'Paste Callback URL';
-  String get oauthRecoveryTitle =>
-      isChinese ? 'OAuth 授权需要刷新' : 'OAuth Authorization Needs Refresh';
-  String oauthRecoveryBody(String label) => isChinese
-      ? '$label 拒绝了当前 OAuth 凭据。请重新完成网页授权后再继续直连对话。'
-      : '$label rejected the current OAuth credential. Reauthorize in the browser before continuing direct chat.';
-  String get oauthAuthorizationWaitingTitle =>
-      isChinese ? '等待网页授权' : 'Waiting For Web Authorization';
-  String oauthAuthorizationWaitingBody(String label) => isChinese
-      ? '请在浏览器完成 $label OAuth 授权；返回 Arc 后会自动检测授权状态。'
-      : 'Complete $label OAuth authorization in the browser. Arc will detect it when you return.';
-  String oauthAuthorizationWaitingBodyForProvider(
-    String providerId,
-    String label,
-  ) {
-    final normalized = providerId.trim().toLowerCase();
-    if (normalized == 'chatgpt') {
-      return isChinese
-          ? '请在浏览器完成 ChatGPT OAuth 授权；返回 Arc 后会自动检测授权状态。'
-          : 'Complete ChatGPT OAuth authorization in the browser. Arc will detect it when you return.';
-    }
-    return oauthAuthorizationWaitingBody(label);
-  }
-
-  String get oauthAuthorizationWaitingAction => isChinese ? '等待授权中' : 'Waiting';
-  String get oauthAuthorizationFailedTitle =>
-      isChinese ? '授权验证失败' : 'Authorization Verification Failed';
-  String oauthAuthorizationFailedBodyForProvider(
-    String providerId,
-    String label,
-    String detail,
-  ) {
-    final trimmed = detail.trim();
-    final suffix = trimmed.isEmpty
-        ? ''
-        : isChinese
-        ? '：$trimmed'
-        : ': $trimmed';
-    final normalized = providerId.trim().toLowerCase();
-    if (normalized == 'chatgpt') {
-      return isChinese
-          ? 'ChatGPT OAuth 已返回，但手机端真实对话验证没有通过$suffix。请重新网页授权或确认该账号有 ChatGPT 对话权限。'
-          : 'ChatGPT OAuth returned, but the phone could not verify a real chat$suffix. Reauthorize or confirm this account can use ChatGPT conversations.';
-    }
-    return isChinese
-        ? '$label OAuth 已返回，但真实对话验证没有通过$suffix。请重新授权后再继续。'
-        : '$label OAuth returned, but real chat verification failed$suffix. Reauthorize before continuing.';
-  }
-
-  String get oauthAuthorizationSuccessTitle =>
-      isChinese ? '授权成功' : 'Authorization Successful';
-  String oauthAuthorizationSuccessBody(String label) => isChinese
-      ? '$label OAuth 已授权，手机端可以直接对话。'
-      : '$label OAuth is authorized. This phone can chat directly.';
-  String oauthAuthorizationSuccessBodyForProvider(
-    String providerId,
-    String label,
-  ) {
-    final normalized = providerId.trim().toLowerCase();
-    if (normalized == 'chatgpt') {
-      return isChinese
-          ? 'ChatGPT OAuth 已授权，手机端可通过 ChatGPT 网页端直连对话。'
-          : 'ChatGPT OAuth is authorized. This phone can chat through ChatGPT web conversation directly.';
-    }
-    return oauthAuthorizationSuccessBody(label);
-  }
-
-  String get refreshSyncedOAuthAuthorization =>
-      isChinese ? '重新同步授权' : 'Refresh Synced Authorization';
-  String get reauthorizeOAuth => isChinese ? '重新网页授权' : 'Reauthorize';
-  String get configureApiKey => isChinese ? '配置 API Key' : 'Configure API Key';
-  String get apiKeyInputLabel => 'API Key';
-  String get apiKeyInputHint =>
-      isChinese ? '粘贴供应商 API Key' : 'Paste provider API key';
-  String get saveApiKey => isChinese ? '保存 API Key' : 'Save API Key';
-  String get openApiKeyPage =>
-      isChinese ? '打开官方 API Key 页面' : 'Open Official API Key Page';
-  String get openProviderPage => isChinese ? '打开官方页面' : 'Open Official Page';
-  String get chatGptOAuthNotApiKeyNotice => isChinese
-      ? 'ChatGPT / Codex 的 OAuth 登录不会生成 OpenAI Platform API Key；手机本机直连官网 API 仍需要 API Key。'
-      : 'ChatGPT / Codex OAuth sign-in does not create an OpenAI Platform API key; direct on-phone OpenAI API access still requires an API key.';
-  String availableThroughPairedComputer(String label) =>
-      isChinese ? '通过 $label 可用' : 'Available Through $label';
-  String syncedFromPairedComputer(String label) =>
-      isChinese ? '已从 $label 同步到手机' : 'Synced From $label To This Phone';
-  String openingProviderCredentialPage(String label) =>
-      isChinese ? '正在打开 $label 官方授权页面。' : 'Opening $label authorization page.';
-  String openedProviderCredentialPage(String label) =>
-      isChinese ? '已打开 $label 官方授权页面。' : 'Opened $label authorization page.';
-  String providerCredentialPageOpenFailed(String label) => isChinese
-      ? '$label 官方授权页面打开失败。'
-      : 'Failed to open $label authorization page.';
-  String oauthSetupNotice(String docsUrl) => isChinese
-      ? '此服务支持 OAuth，但需要先为 Lico Arc 注册 OAuth Client ID、回调 scheme 和 PKCE 流程。官方文档：$docsUrl'
-      : 'This service supports OAuth, but Lico Arc still needs a registered OAuth client ID, redirect scheme, and PKCE flow. Official docs: $docsUrl';
-  String apiKeySetupNotice(String docsUrl) => isChinese
-      ? '此供应商支持 API Key 直连。官方文档：$docsUrl'
-      : 'This provider supports direct API-key access. Official docs: $docsUrl';
-
   String displayStatusValue(String value) {
     final normalized = value.trim().toLowerCase().replaceAll('-', '_');
     return switch (normalized) {
@@ -1039,50 +712,4 @@ extension LicoStringsLabels on LicoStrings {
       _ => value,
     };
   }
-
-  // Feed / 广场
-  String get feedEmptyTitle =>
-      isChinese ? '广场还没有更新' : 'No updates in the feed yet';
-  String get feedEmptySubtitle => isChinese
-      ? '智能体完成工作后会自动在这里发布更新。'
-      : 'Agents will publish updates here when they finish work.';
-  String get feedRefresh => isChinese ? '刷新广场' : 'Refresh feed';
-  String get comments => isChinese ? '评论' : 'Comments';
-  String get comment => isChinese ? '评论' : 'Comment';
-  String get addComment => isChinese ? '添加评论' : 'Add comment';
-  String get addCommentHint =>
-      isChinese ? '写下反馈，让智能体继续工作…' : 'Write feedback for the agent…';
-  String get postComment => isChinese ? '发送' : 'Post';
-  String get repost => isChinese ? '转发' : 'Repost';
-  String get forwardTo => isChinese ? '转发给' : 'Forward to';
-  String get forward => isChinese ? '转发' : 'Forward';
-  String get forwardNoteHint =>
-      isChinese ? '补充说明（可选）' : 'Add a note (optional)';
-  String get following => isChinese ? '关注' : 'Following';
-  String get follow => isChinese ? '关注' : 'Follow';
-  String get unfollow => isChinese ? '取消关注' : 'Unfollow';
-  String get myAgents => isChinese ? '我的智能体' : 'My Agents';
-  String get otherUsers => isChinese ? '其他用户' : 'Other Users';
-  String get addToFollowing => isChinese ? '添加到关注' : 'Add to following';
-  String get followingEmpty =>
-      isChinese ? '还没有关注任何人' : 'Not following anyone yet';
-  String get deletePost => isChinese ? '删除这条更新' : 'Delete this update';
-  String get deletePostConfirm => isChinese
-      ? '确定要删除这条更新吗？相关的评论和转发也会被移除。'
-      : 'Delete this update? Related comments and reposts will also be removed.';
-  String get agentWorking => isChinese ? '工作中' : 'Working';
-  String get agentDone => isChinese ? '已完成' : 'Done';
-  String get agentError => isChinese ? '出错' : 'Error';
-  String get agentPartial => isChinese ? '部分完成' : 'Partial';
-  String get noCommentsYet => isChinese ? '还没有评论' : 'No comments yet';
-  String get repostedTo => isChinese ? '已转发给' : 'Forwarded to';
-  String get selectAgentToForward =>
-      isChinese ? '选择要接手的智能体' : 'Select an agent to hand off to';
-  String feedDurationSeconds(int seconds) =>
-      isChinese ? '$seconds 秒' : '$seconds s';
-  String feedDurationMinutes(int minutes, int seconds) => isChinese
-      ? '$minutes 分 ${seconds > 0 ? '$seconds 秒' : ''}'
-      : '$minutes m ${seconds > 0 ? '$seconds s' : ''}';
-  String feedMetrics(int steps, int tokens) =>
-      isChinese ? '$steps 步 · $tokens tokens' : '$steps steps · $tokens tokens';
 }

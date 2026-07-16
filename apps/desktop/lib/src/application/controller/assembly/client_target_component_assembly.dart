@@ -1,0 +1,53 @@
+import 'package:flutter/foundation.dart' show ChangeNotifier, VoidCallback;
+
+import 'package:flutter_client/src/application/controller/assembly/client_component_assembly_contracts.dart';
+import 'package:flutter_client/src/application/features/targets/controller/target_controller.dart';
+import 'package:flutter_client/src/platform/agents/agent_tab_order_store.dart';
+import 'package:flutter_client/src/platform/agents/scanned_targets_cache_store.dart';
+import 'package:flutter_client/src/platform/native_client/agent_service.dart';
+import 'package:flutter_client/src/platform/storage/portable_data_root.dart';
+
+final class ClientTargetComponentAssembly {
+  ClientTargetComponentAssembly({
+    required PortableDataRoot portableData,
+    required AgentService agentService,
+    required AgentTabOrderStore agentTabOrderStore,
+    required ScannedTargetsCacheStore scannedTargetsCacheStore,
+    required bool Function() isMobileRuntime,
+    required Future<List<TargetCandidate>> Function({
+      Map<String, dynamic>? pairingStatus,
+    })
+    discoverMobileTargets,
+    required VoidCallback onTargetsSettled,
+    required Future<void> Function(String) loadSelectedConversation,
+    required String Function() selectedAgentId,
+    required bool Function() shouldLoadSelectedConversation,
+    required bool Function(String) isOrchestrationTarget,
+    required ClientComponentStatusSink reportStatus,
+  }) : controller = TargetController(
+         gateway: agentService,
+         snapshotRepository: scannedTargetsCacheStore,
+         tabOrderRepository: agentTabOrderStore,
+         portableData: portableData,
+         packagedTargetIds: AgentService.packagedScanTargetIds,
+         isMobileRuntime: isMobileRuntime,
+         scanMobileTargets: discoverMobileTargets,
+         onTargetsSettled: onTargetsSettled,
+         loadSelectedConversation: () =>
+             loadSelectedConversation(selectedAgentId()),
+         shouldLoadSelectedConversation: shouldLoadSelectedConversation,
+         isOrchestrationTarget: isOrchestrationTarget,
+         onStatus: (update) => reportStatus(
+           chinese: update.chinese,
+           english: update.english,
+           caption: update.caption,
+           errorCode: update.errorCode,
+         ),
+       );
+
+  final TargetController controller;
+
+  Iterable<ChangeNotifier> get listenables => [controller];
+
+  void dispose() => controller.dispose();
+}

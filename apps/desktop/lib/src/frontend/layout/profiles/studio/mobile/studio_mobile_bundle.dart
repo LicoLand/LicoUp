@@ -4,7 +4,6 @@ import 'package:flutter_client/src/contracts/presentation/layout_state_namespace
 import 'package:flutter_client/src/contracts/presentation/semantic_destination.dart';
 import 'package:flutter_client/src/frontend/layout/layout_surface_bundle.dart';
 import 'package:flutter_client/src/frontend/layout/profiles/studio/mobile/destinations/studio_agents_destination.dart';
-import 'package:flutter_client/src/frontend/layout/profiles/studio/mobile/destinations/studio_feed_destination.dart';
 import 'package:flutter_client/src/frontend/layout/profiles/studio/mobile/destinations/studio_pairing_destination.dart';
 import 'package:flutter_client/src/frontend/layout/profiles/studio/mobile/destinations/studio_settings_destination.dart';
 import 'package:flutter_client/src/frontend/layout/profiles/studio/mobile/studio_mobile_components.dart';
@@ -52,7 +51,6 @@ final LayoutProfileDescriptor _studioProfile = LayoutProfileDescriptor(
 final Map<ClientSection, LayoutDestinationBuilder>
 _studioMobileDestinationBuilders = {
   ClientSection.agents: buildStudioMobileAgentsDestination,
-  ClientSection.feed: buildStudioMobileFeedDestination,
   ClientSection.mobileRelay: buildStudioMobilePairingDestination,
   ClientSection.settings: buildStudioMobileSettingsDestination,
 };

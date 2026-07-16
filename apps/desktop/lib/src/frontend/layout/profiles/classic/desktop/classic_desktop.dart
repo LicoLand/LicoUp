@@ -5,9 +5,7 @@ import 'package:flutter_client/src/contracts/presentation/semantic_destination.d
 import 'package:flutter_client/src/frontend/layout/layout_surface_bundle.dart';
 import 'package:flutter_client/src/frontend/layout/profiles/classic/desktop/components/classic_desktop_component_kit.dart';
 import 'package:flutter_client/src/frontend/layout/profiles/classic/desktop/destinations/agents_destination.dart';
-import 'package:flutter_client/src/frontend/layout/profiles/classic/desktop/destinations/control_panel_destination.dart';
-import 'package:flutter_client/src/frontend/layout/profiles/classic/desktop/destinations/local_runtime_destination.dart';
-import 'package:flutter_client/src/frontend/layout/profiles/classic/desktop/destinations/mcp_plugins_destination.dart';
+import 'package:flutter_client/src/frontend/layout/profiles/classic/desktop/destinations/skill_hub_destination.dart';
 import 'package:flutter_client/src/frontend/layout/profiles/classic/desktop/destinations/mobile_relay_destination.dart';
 import 'package:flutter_client/src/frontend/layout/profiles/classic/desktop/destinations/monitoring_destination.dart';
 import 'package:flutter_client/src/frontend/layout/profiles/classic/desktop/destinations/settings_destination.dart';
@@ -82,11 +80,9 @@ final LayoutSurfaceBundle classicDesktopBundle = LayoutSurfaceBundle(
 
 Map<ClientSection, LayoutDestinationBuilder>
 _classicDesktopDestinationBuilders() => {
-  ClientSection.controlPanel: classicDesktopControlPanelDestinationBuilder,
   ClientSection.agents: classicDesktopAgentsDestinationBuilder,
   ClientSection.monitoring: classicDesktopMonitoringDestinationBuilder,
-  ClientSection.mcpPlugins: classicDesktopMcpPluginsDestinationBuilder,
-  ClientSection.localRuntime: classicDesktopLocalRuntimeDestinationBuilder,
+  ClientSection.skillHub: classicDesktopSkillHubDestinationBuilder,
   ClientSection.mobileRelay: classicDesktopMobileRelayDestinationBuilder,
   ClientSection.settings: classicDesktopSettingsDestinationBuilder,
 };

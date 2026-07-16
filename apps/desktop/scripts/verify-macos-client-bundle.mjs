@@ -76,7 +76,7 @@ async function main() {
         missing.push(`${appPath} CFBundleDisplayName must be Arc`);
       }
     }
-    for (const executableName of ["lico-client", "lico-mail-helper"]) {
+    for (const executableName of ["lico-client"]) {
       const size = await fileSize(appExecutablePath(root, appName, executableName));
       if (size <= 0) {
         missing.push(`${appPath} missing non-empty ${executableName}`);

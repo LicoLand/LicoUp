@@ -4,7 +4,6 @@ import 'package:flutter_client/src/contracts/presentation/layout_state_namespace
 import 'package:flutter_client/src/contracts/presentation/semantic_destination.dart';
 import 'package:flutter_client/src/frontend/layout/layout_surface_bundle.dart';
 import 'package:flutter_client/src/frontend/layout/profiles/workbench/mobile/destinations/workbench_agents_destination.dart';
-import 'package:flutter_client/src/frontend/layout/profiles/workbench/mobile/destinations/workbench_feed_destination.dart';
 import 'package:flutter_client/src/frontend/layout/profiles/workbench/mobile/destinations/workbench_pairing_destination.dart';
 import 'package:flutter_client/src/frontend/layout/profiles/workbench/mobile/destinations/workbench_settings_destination.dart';
 import 'package:flutter_client/src/frontend/layout/profiles/workbench/mobile/workbench_mobile_components.dart';
@@ -79,7 +78,6 @@ final LayoutSurfaceBundle workbenchMobileBundle = LayoutSurfaceBundle(
 Map<ClientSection, LayoutDestinationBuilder>
 _workbenchMobileDestinationBuilders() => {
   ClientSection.agents: buildWorkbenchAgentsDestination,
-  ClientSection.feed: buildWorkbenchFeedDestination,
   ClientSection.mobileRelay: buildWorkbenchPairingDestination,
   ClientSection.settings: buildWorkbenchSettingsDestination,
 };

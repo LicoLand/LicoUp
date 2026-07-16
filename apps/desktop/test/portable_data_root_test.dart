@@ -17,13 +17,13 @@ void main() {
       final portableData = PortableDataRoot(dataDirectoryOverride: directory);
       final manifest = await portableData.loadWorkspaceManifest();
 
-      final manifestFile = File('${directory.path}/.lico-workspace.json');
+      final manifestFile = File('${directory.path}/.licoarc-workspace.json');
       expect(manifestFile.exists(), completion(isTrue));
       expect(
         manifest.schemaVersion,
         ClientWorkspaceManifest.currentSchemaVersion,
       );
-      expect(manifest.appId, ClientWorkspaceManifest.licoClientAppId);
+      expect(manifest.appId, ClientWorkspaceManifest.licoArcAppId);
       expect(manifest.workspaceId, isNotEmpty);
 
       final refreshed = await portableData.loadWorkspaceManifest();
@@ -39,7 +39,7 @@ void main() {
       'lico-workspace-corrupt-',
     );
     addTearDown(() => directory.delete(recursive: true));
-    final manifestFile = File('${directory.path}/.lico-workspace.json');
+    final manifestFile = File('${directory.path}/.licoarc-workspace.json');
     await manifestFile.writeAsString('{not-json', flush: true);
 
     final portableData = PortableDataRoot(dataDirectoryOverride: directory);
@@ -56,7 +56,7 @@ void main() {
       'lico-workspace-bad-app-id-',
     );
     addTearDown(() => directory.delete(recursive: true));
-    final manifestFile = File('${directory.path}/.lico-workspace.json');
+    final manifestFile = File('${directory.path}/.licoarc-workspace.json');
     await manifestFile.writeAsString(
       jsonEncode({
         'schemaVersion': 1,
@@ -79,11 +79,11 @@ void main() {
       'lico-workspace-bad-schema-',
     );
     addTearDown(() => directory.delete(recursive: true));
-    final manifestFile = File('${directory.path}/.lico-workspace.json');
+    final manifestFile = File('${directory.path}/.licoarc-workspace.json');
     await manifestFile.writeAsString(
       jsonEncode({
         'schemaVersion': 999,
-        'appId': ClientWorkspaceManifest.licoClientAppId,
+        'appId': ClientWorkspaceManifest.licoArcAppId,
         'workspaceId': 'workspace-id',
         'createdAt': DateTime(2020).toUtc().toIso8601String(),
         'updatedAt': DateTime(2020).toUtc().toIso8601String(),
@@ -102,11 +102,11 @@ void main() {
       'lico-workspace-empty-id-',
     );
     addTearDown(() => directory.delete(recursive: true));
-    final manifestFile = File('${directory.path}/.lico-workspace.json');
+    final manifestFile = File('${directory.path}/.licoarc-workspace.json');
     await manifestFile.writeAsString(
       jsonEncode({
         'schemaVersion': 1,
-        'appId': ClientWorkspaceManifest.licoClientAppId,
+        'appId': ClientWorkspaceManifest.licoArcAppId,
         'workspaceId': '',
         'createdAt': DateTime(2020).toUtc().toIso8601String(),
         'updatedAt': DateTime(2020).toUtc().toIso8601String(),
@@ -120,13 +120,26 @@ void main() {
     );
   });
 
-  test('resolves default directory with cache and fallback flow', () async {
-    final portableData = PortableDataRoot();
+  test('resolves the current application-support namespace once', () async {
+    final applicationSupport = await Directory.systemTemp.createTemp(
+      'licoarc-default-application-support-',
+    );
+    addTearDown(() => applicationSupport.delete(recursive: true));
+    final portableData = PortableDataRoot(
+      applicationSupportDirectoryResolver: () async => applicationSupport,
+    );
     final first = await portableData.dataDirectory();
     final second = await portableData.dataDirectory();
 
     expect(first.path, second.path);
-    expect(await File('${first.path}/.lico-workspace.json').exists(), isTrue);
+    expect(
+      first.path,
+      p.join(applicationSupport.path, 'LicoArc', 'portable-data'),
+    );
+    expect(
+      await File('${first.path}/.licoarc-workspace.json').exists(),
+      isTrue,
+    );
   });
 
   test('first launch creates only the canonical client state root', () async {
@@ -142,12 +155,12 @@ void main() {
         .map((entry) => p.basename(entry.path))
         .toSet();
 
-    expect(clientState.path, p.join(directory.path, 'lico-client'));
+    expect(clientState.path, p.join(directory.path, 'client-state'));
     expect(await clientState.list().isEmpty, isTrue);
     expect(topLevelEntries, {
-      '.lico-workspace.json',
-      '.lico-workspace.json.lock',
-      'lico-client',
+      '.licoarc-workspace.json',
+      '.licoarc-workspace.json.lock',
+      'client-state',
     });
   });
 
@@ -164,7 +177,7 @@ void main() {
       addTearDown(() => envDirectory.delete(recursive: true));
 
       final portableData = PortableDataRoot(
-        environmentOverride: {'LICO_PORTABLE_DIR': envDirectory.path},
+        environmentOverride: {'LICOARC_PORTABLE_DIR': envDirectory.path},
         resolvedExecutableOverride: p.join(
           Directory.systemTemp.path,
           'Arc.app',
@@ -177,10 +190,13 @@ void main() {
 
       final resolved = await portableData.dataDirectory();
 
-      expect(resolved.path, p.join(applicationSupport.path, 'portable-data'));
+      expect(
+        resolved.path,
+        p.join(applicationSupport.path, 'LicoArc', 'portable-data'),
+      );
       expect(resolved.path, isNot(envDirectory.path));
       expect(
-        await File('${resolved.path}/.lico-workspace.json').exists(),
+        await File('${resolved.path}/.licoarc-workspace.json').exists(),
         isTrue,
       );
     },
@@ -201,7 +217,7 @@ void main() {
     addTearDown(() => envDirectory.delete(recursive: true));
 
     final portableData = PortableDataRoot(
-      environmentOverride: {'LICO_PORTABLE_DIR': envDirectory.path},
+      environmentOverride: {'LICOARC_PORTABLE_DIR': envDirectory.path},
       resolvedExecutableOverride: p.join(executableDirectory.path, 'Runner'),
       mobileRuntimeOverride: true,
       applicationSupportDirectoryResolver: () async => applicationSupport,
@@ -209,7 +225,10 @@ void main() {
 
     final resolved = await portableData.dataDirectory();
 
-    expect(resolved.path, p.join(applicationSupport.path, 'portable-data'));
+    expect(
+      resolved.path,
+      p.join(applicationSupport.path, 'LicoArc', 'portable-data'),
+    );
     expect(
       await Directory(
         p.join(executableDirectory.path, 'portable-data'),

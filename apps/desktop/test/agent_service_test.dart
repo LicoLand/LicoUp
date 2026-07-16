@@ -3,7 +3,16 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_client/src/platform/native_client/agent_service.dart';
+import 'package:flutter_client/src/platform/native_client/native_cli_ports.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+var _synthSeq = 0;
+String _synth(String label) => '$label-${_synthSeq++}';
+
+final sv_private_path_canary = _synth('private-path-canary');
+final sv_private_request_canary = _synth('private-request-canary');
+final sv_private_setup_canary = _synth('private-setup-canary');
+final sv_private_process_detail_c = _synth('private-process-detail-canary');
 
 void main() {
   test('target candidate parses target adapter scan shape', () {
@@ -14,7 +23,7 @@ void main() {
       'status': 'detected',
       'configured': false,
       'confidence': 0.72,
-      'detail': 'OpenCode remote MCP configuration',
+      'detail': 'OpenCode local agent configuration',
       'configPath': '/tmp/opencode.jsonc',
       'binaryPath': '/usr/local/bin/opencode',
       'historyRoots': ['/tmp/opencode-history'],
@@ -87,6 +96,7 @@ void main() {
   });
 
   test('sends private runtime request over stdin instead of argv', () async {
+  final sv_stdin_canary = _synth('stdin-canary');
     if (Platform.isWindows) {
       return;
     }
@@ -95,7 +105,7 @@ void main() {
     final cliPath = File('${tempDir.path}/lico-client');
     await cliPath.writeAsString('''#!/bin/sh
 body=\$(cat)
-if [ "\$body" = '{"text":"stdin-canary"}' ]; then
+if [ "\$body" = '{"text":"${sv_stdin_canary}"}' ]; then
   printf '{"ok":true,"sawStdin":true}'
 else
   printf '{"ok":false,"sawStdin":false}'
@@ -111,19 +121,46 @@ fi
       'send',
       '--stdin-json',
       'true',
-    ], '{"text":"stdin-canary"}');
+    ], '{"text":"${sv_stdin_canary}"}');
 
     expect(result, {'ok': true, 'sawStdin': true});
   });
 
+  test(
+    'catalog snapshots use structured RPC without catalog bytes in argv',
+    () async {
+      final transport = _RecordingStructuredTransport();
+      final agentService = AgentService(
+        stdioRpcTransport: transport,
+        persistentStdioRpcEnabled: true,
+      );
+      addTearDown(agentService.dispose);
+
+      final result = await agentService.runCatalogCommand(
+        'refresh',
+        params: const {
+          'partitionKey': 'opaque-a',
+          'tools': [
+            {'name': 'upstream.synthetic'},
+          ],
+        },
+      );
+
+      expect(result['outcome'], 'replaced');
+      expect(transport.method, 'catalog.refresh');
+      expect(transport.params['tools'], hasLength(1));
+      expect(transport.executeCalls, isEmpty);
+    },
+  );
+
   test('redacts process start details from private runtime errors', () async {
     final agentService = AgentService(
-      resolveCliBinary: () async => File('/private-path-canary/lico-client'),
+      resolveCliBinary: () async => File('/${sv_private_path_canary}/lico-client'),
       startCliExecutable: (executable, args, env) async {
         throw ProcessException(
           executable,
           args,
-          'private-process-detail-canary',
+          sv_private_process_detail_c,
         );
       },
     );
@@ -135,14 +172,14 @@ fi
         'send',
         '--stdin-json',
         'true',
-      ], '{"text":"private-request-canary"}');
+      ], '{"text":"${sv_private_request_canary}"}');
       fail('expected the private runtime request to fail');
     } catch (error) {
       final message = error.toString();
       expect(message, contains('lico-client executable could not be started'));
-      expect(message, isNot(contains('private-path-canary')));
-      expect(message, isNot(contains('private-process-detail-canary')));
-      expect(message, isNot(contains('private-request-canary')));
+      expect(message, isNot(contains(sv_private_path_canary)));
+      expect(message, isNot(contains(sv_private_process_detail_c)));
+      expect(message, isNot(contains(sv_private_request_canary)));
     }
   });
 
@@ -249,45 +286,6 @@ exec sleep 5
     ]);
   });
 
-  test('injects enabled proxy bridge environment into CLI runs', () async {
-    final tempDir = await Directory.systemTemp.createTemp('lico-proxy-env-');
-    addTearDown(() => tempDir.delete(recursive: true));
-    final clientDir = Directory('${tempDir.path}/lico-client');
-    await clientDir.create(recursive: true);
-    await File('${clientDir.path}/proxy-bridge.json').writeAsString(
-      jsonEncode({
-        'enabled': true,
-        'clientBridge': {
-          'enabled': true,
-          'environment': {
-            'HTTP_PROXY': 'http://127.0.0.1:7897',
-            'HTTPS_PROXY': 'http://127.0.0.1:7897',
-            'ALL_PROXY': 'http://127.0.0.1:7897',
-            'NO_PROXY': '127.0.0.1,localhost,::1,.local',
-          },
-        },
-      }),
-    );
-    Map<String, String>? capturedEnv;
-    final agentService = AgentService(
-      dataDirectory: () async => tempDir.path,
-      runCliExecutable: (executable, args, env) {
-        capturedEnv = env;
-        return Future.value(
-          ProcessResult(0, 0, jsonEncode({'ok': true, 'candidates': []}), ''),
-        );
-      },
-    );
-
-    await agentService.scanTargets();
-
-    expect(capturedEnv?['LICO_CLIENT_PORTABLE_DIR'], tempDir.path);
-    expect(capturedEnv?['LICO_PORTABLE_DIR'], tempDir.path);
-    expect(capturedEnv?['HTTP_PROXY'], 'http://127.0.0.1:7897');
-    expect(capturedEnv?['ALL_PROXY'], 'http://127.0.0.1:7897');
-    expect(capturedEnv?['NO_PROXY'], contains('localhost'));
-  });
-
   test('wraps lico-client execution failure as an exception', () async {
     final agentService = AgentService(
       runCliExecutable: (executable, args, env) {
@@ -296,7 +294,7 @@ exec sleep 5
     );
 
     await expectLater(
-      agentService.planTargetConfig('codex'),
+      agentService.inspectTarget('codex'),
       throwsA(
         isA<Exception>()
             .having(
@@ -313,143 +311,52 @@ exec sleep 5
     );
   });
 
-  test('builds action command arguments and trims optional parameters', () async {
-    final captured = <List<String>>[];
-    final agentService = AgentService(
-      runCliExecutable: (executable, args, env) {
-        captured.add(List<String>.from(args));
-        return Future.value(
-          ProcessResult(
-            0,
-            0,
-            jsonEncode({
-              'ok': true,
-              'snapshots': [],
-              'pairings': [],
-              'skills': [],
-              'profiles': [],
-            }),
-            '',
-          ),
-        );
-      },
-    );
+  test(
+    'builds action command arguments and trims optional parameters',
+    () async {
+      final captured = <List<String>>[];
+      final agentService = AgentService(
+        runCliExecutable: (executable, args, env) {
+          captured.add(List<String>.from(args));
+          return Future.value(
+            ProcessResult(
+              0,
+              0,
+              jsonEncode({
+                'ok': true,
+                'snapshots': [],
+                'pairings': [],
+                'skills': [],
+                'profiles': [],
+              }),
+              '',
+            ),
+          );
+        },
+      );
 
-    await agentService.mcpPluginStatus(
-      target: 'codex',
-      configPath: ' /tmp/code ',
-    );
-    await agentService.updateMcpPlugin(target: 'codex');
-    await agentService.rollbackMcpPlugin(
-      target: 'codex',
-      snapshotId: 'snapshot-1',
-      configPath: ' /tmp/code ',
-    );
-    await agentService.listSnapshots(target: 'codex');
-    await agentService.listPairings(agent: 'codex');
-    await agentService.requestPairing(agent: 'codex', target: 'manual');
-    await agentService.approvePairing(agent: 'codex');
-    await agentService.revokePairing(agent: 'codex');
-    await agentService.listSkills(agent: 'codex');
-    await agentService.localRuntimeStatus();
-    await agentService.ensureLocalRuntime(
-      sourceRoot: '/repo',
-      presetConfig:
-          '/repo/packages/foundation/config/composition-presets/client-local-runtime.preset.json',
-      port: 17328,
-      rebuild: true,
-    );
-    await agentService.startLocalRuntime(port: 17328);
-    await agentService.restartLocalRuntime(port: 17328);
-    await agentService.stopLocalRuntime();
-    await agentService.localRuntimeLogs(tail: 50);
-    await agentService.proxyBridgeDetect();
-    await agentService.proxyBridgeStatus();
-    await agentService.proxyBridgePlan(targets: 'codex,claude-code');
-    await agentService.proxyBridgeApply(targets: 'codex');
-    await agentService.proxyBridgeRollback(removeWrappers: false);
-
-    expect(captured[0], [
-      'mcp',
-      'plugin',
-      'status',
-      '--target',
-      'codex',
-      '--config-path',
-      '/tmp/code',
-    ]);
-    expect(captured[1], ['mcp', 'plugin', 'update', '--target', 'codex']);
-    expect(captured[2], [
-      'mcp',
-      'plugin',
-      'rollback',
-      '--target',
-      'codex',
-      '--snapshot-id',
-      'snapshot-1',
-      '--config-path',
-      '/tmp/code',
-    ]);
-    expect(captured[3], ['snapshots', 'list', '--target', 'codex']);
-    expect(captured[4], ['agents', 'pair', 'list', '--agent', 'codex']);
-    expect(captured[5], [
-      'agents',
-      'pair',
-      'request',
-      '--agent',
-      'codex',
-      '--target',
-      'manual',
-    ]);
-    expect(captured[6], ['agents', 'pair', 'approve', '--agent', 'codex']);
-    expect(captured[7], ['agents', 'pair', 'revoke', '--agent', 'codex']);
-    expect(captured[8], ['skill', 'list', '--agent', 'codex']);
-    expect(captured[9], ['local-runtime', 'status']);
-    expect(captured[10], [
-      'local-runtime',
-      'ensure',
-      '--source-root',
-      '/repo',
-      '--preset-config',
-      '/repo/packages/foundation/config/composition-presets/client-local-runtime.preset.json',
-      '--port',
-      '17328',
-      '--rebuild',
-      'true',
-    ]);
-    expect(captured[11], ['local-runtime', 'start', '--port', '17328']);
-    expect(captured[12], ['local-runtime', 'restart', '--port', '17328']);
-    expect(captured[13], ['local-runtime', 'stop']);
-    expect(captured[14], ['local-runtime', 'logs', '--tail', '50']);
-    expect(captured[15], ['proxy-bridge', 'detect']);
-    expect(captured[16], ['proxy-bridge', 'status']);
-    expect(captured[17], [
-      'proxy-bridge',
-      'plan',
-      '--client-enabled',
-      'true',
-      '--wrapper-enabled',
-      'true',
-      '--targets',
-      'codex,claude-code',
-    ]);
-    expect(captured[18], [
-      'proxy-bridge',
-      'apply',
-      '--client-enabled',
-      'true',
-      '--wrapper-enabled',
-      'true',
-      '--targets',
-      'codex',
-    ]);
-    expect(captured[19], [
-      'proxy-bridge',
-      'rollback',
-      '--remove-wrappers',
-      'false',
-    ]);
-  });
+      await agentService.listSnapshots(target: 'codex');
+      await agentService.listPairings(agent: 'codex');
+      await agentService.requestPairing(agent: 'codex', target: 'manual');
+      await agentService.approvePairing(agent: 'codex');
+      await agentService.revokePairing(agent: 'codex');
+      await agentService.listSkills(agent: 'codex');
+      expect(captured[0], ['snapshots', 'list', '--target', 'codex']);
+      expect(captured[1], ['agents', 'pair', 'list', '--agent', 'codex']);
+      expect(captured[2], [
+        'agents',
+        'pair',
+        'request',
+        '--agent',
+        'codex',
+        '--target',
+        'manual',
+      ]);
+      expect(captured[3], ['agents', 'pair', 'approve', '--agent', 'codex']);
+      expect(captured[4], ['agents', 'pair', 'revoke', '--agent', 'codex']);
+      expect(captured[5], ['skill', 'list', '--agent', 'codex']);
+    },
+  );
 
   test('returns empty list when list output is invalid', () async {
     final agentService = AgentService(
@@ -605,6 +512,7 @@ done
   test(
     'macOS stdio RPC preserves authorization_required classification',
     () async {
+  final sv_private_error_canary = _synth('private-error-canary');
       if (!Platform.isMacOS) {
         return;
       }
@@ -621,7 +529,7 @@ while IFS= read -r line; do
       exit 0
       ;;
   esac
-  printf '{"protocol":"lico-client.stdio.v1","id":"%s","workflowId":"%s","ok":false,"error":{"code":"authorization_required","message":"private-error-canary"}}\n' "$id" "$workflow"
+  printf '{"protocol":"lico-client.stdio.v1","id":"%s","workflowId":"%s","ok":false,"error":{"code":"authorization_required","message":"${sv_private_error_canary}"}}\n' "$id" "$workflow"
 done
 ''');
       final service = AgentService(resolveCliBinary: () async => cli);
@@ -638,7 +546,7 @@ done
       final rpcError = caught! as LicoClientRpcException;
       expect(rpcError.code, 'authorization_required');
       expect(rpcError.authorizationRequired, isTrue);
-      expect(rpcError.toString(), isNot(contains('private-error-canary')));
+      expect(rpcError.toString(), isNot(contains(sv_private_error_canary)));
     },
   );
 
@@ -832,14 +740,15 @@ fi
   );
 
   test('macOS stdio RPC redacts setup failures', () async {
+  final sv_private_binary_canary = _synth('private-binary-canary');
     if (!Platform.isMacOS) {
       return;
     }
     final service = AgentService(
       dataDirectory: () async {
-        throw StateError('private-setup-canary');
+        throw StateError(sv_private_setup_canary);
       },
-      resolveCliBinary: () async => File('/private-binary-canary/lico-client'),
+      resolveCliBinary: () async => File('/${sv_private_binary_canary}/lico-client'),
     );
     addTearDown(service.dispose);
 
@@ -853,8 +762,8 @@ fi
     expect(caught, isA<LicoClientRpcException>());
     final rpcError = caught! as LicoClientRpcException;
     expect(rpcError.code, 'setup_failed');
-    expect(rpcError.toString(), isNot(contains('private-setup-canary')));
-    expect(rpcError.toString(), isNot(contains('private-binary-canary')));
+    expect(rpcError.toString(), isNot(contains(sv_private_setup_canary)));
+    expect(rpcError.toString(), isNot(contains(sv_private_binary_canary)));
   });
 
   test('macOS stdio RPC never retries a request after writing it', () async {
@@ -955,6 +864,36 @@ fi
       ),
     );
   });
+}
+
+final class _RecordingStructuredTransport implements NativeStdioRpcTransport {
+  String method = '';
+  Map<String, dynamic> params = const {};
+  final List<List<String>> executeCalls = [];
+
+  @override
+  Future<void> dispose() async {}
+
+  @override
+  Future<Map<String, dynamic>> execute(List<String> arguments) async {
+    executeCalls.add(List<String>.from(arguments));
+    return {'ok': true};
+  }
+
+  @override
+  Future<Map<String, dynamic>> executeStructured(
+    String method,
+    Map<String, dynamic> params,
+  ) async {
+    this.method = method;
+    this.params = Map<String, dynamic>.from(params);
+    return {'outcome': 'replaced'};
+  }
+
+  @override
+  Stream<Map<String, dynamic>> streamConversation(
+    Map<String, dynamic> request,
+  ) => const Stream.empty();
 }
 
 Future<void> _writeExecutable(File file, String source) async {

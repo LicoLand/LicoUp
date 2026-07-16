@@ -1,7 +1,11 @@
-part of 'package:flutter_client/src/frontend/features/skill_hub/ui/skill_hub_panel.dart';
+import 'package:flutter/material.dart';
 
-class _SkillInstallerSection extends StatelessWidget {
-  const _SkillInstallerSection({
+import 'package:flutter_client/src/application/controller/client_controller.dart';
+import 'package:flutter_client/src/frontend/l10n/lico_strings.dart';
+
+class SkillInstallerSection extends StatelessWidget {
+  const SkillInstallerSection({
+    super.key,
     required this.controller,
     required this.urlController,
     required this.skillNameController,
@@ -35,7 +39,7 @@ class _SkillInstallerSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _SectionHeader(title: strings.installFromGitHub),
+        SkillSectionHeader(title: strings.installFromGitHub),
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
           child: Wrap(
@@ -43,17 +47,17 @@ class _SkillInstallerSection extends StatelessWidget {
             runSpacing: 12,
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
-              _PanelTextField(
+              SkillPanelTextField(
                 controller: urlController,
                 label: 'GitHub URL',
                 width: 420,
               ),
-              _PanelTextField(
+              SkillPanelTextField(
                 controller: skillNameController,
                 label: strings.skillId,
                 width: 180,
               ),
-              _PanelTextField(
+              SkillPanelTextField(
                 controller: installRootController,
                 label: strings.installRoot,
                 width: 300,
@@ -122,7 +126,7 @@ class _SkillInstallerSection extends StatelessWidget {
             runSpacing: 12,
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
-              _PanelTextField(
+              SkillPanelTextField(
                 controller: rollbackSnapshotController,
                 label: strings.rollbackSnapshot,
                 width: 300,
@@ -144,8 +148,9 @@ class _SkillInstallerSection extends StatelessWidget {
   }
 }
 
-class _AgentDropdown extends StatelessWidget {
-  const _AgentDropdown({
+class SkillAgentDropdown extends StatelessWidget {
+  const SkillAgentDropdown({
+    super.key,
     required this.value,
     required this.options,
     required this.onChanged,
@@ -179,8 +184,9 @@ class _AgentDropdown extends StatelessWidget {
   }
 }
 
-class _PanelTextField extends StatelessWidget {
-  const _PanelTextField({
+class SkillPanelTextField extends StatelessWidget {
+  const SkillPanelTextField({
+    super.key,
     required this.controller,
     required this.label,
     required this.width,
@@ -303,14 +309,14 @@ String _skillResultValueLabel(LicoStrings strings, String key, String value) {
   };
 }
 
-String _skillPairingTargetLabel(LicoStrings strings, String value) {
+String skillPairingTargetLabel(LicoStrings strings, String value) {
   return switch (value.trim().toLowerCase()) {
     'manual' => strings.manual,
     _ => value,
   };
 }
 
-String _skillPairingStatusLabel(LicoStrings strings, String value) {
+String skillPairingStatusLabel(LicoStrings strings, String value) {
   return switch (value.trim().toLowerCase()) {
     'pending' || 'requested' => strings.isChinese ? '待批准' : 'Pending',
     'approved' || 'paired' => strings.isChinese ? '已批准' : 'Approved',
@@ -320,8 +326,8 @@ String _skillPairingStatusLabel(LicoStrings strings, String value) {
   };
 }
 
-class _SectionHeader extends StatelessWidget {
-  const _SectionHeader({required this.title, this.count});
+class SkillSectionHeader extends StatelessWidget {
+  const SkillSectionHeader({super.key, required this.title, this.count});
 
   final String title;
   final int? count;

@@ -130,16 +130,18 @@ async function main() {
   }
   const manifest = JSON.parse(readFileSync(packagingManifest, "utf8"));
   const enabledModuleIds = new Set(manifest.modules?.map((item) => item.id) || []);
-  for (const moduleId of ["desktop-app", "native-sidecar", "portable-data", "target-adapters"]) {
+  for (const moduleId of [
+    "desktop-app",
+    "native-sidecar",
+    "portable-data",
+    "target-adapters",
+    "local-task-queue",
+    "protocol-adapters",
+  ]) {
     if (!enabledModuleIds.has(moduleId)) {
       throw new Error(`Packaging manifest does not include required module: ${moduleId}`);
     }
   }
-  const macOSMailHelper = path.join(bundleDir, "lico-mail-helper");
-  if (existsSync(macOSMailHelper)) {
-    throw new Error(`Linux GUI bundle must not include macOS Mail sidecar: ${macOSMailHelper}`);
-  }
-
   const artifactDir = path.resolve(
     process.env.LICO_GUI_ARTIFACT_DIR ||
       path.join(workspaceRoot, "build", "artifacts", "desktop-app", "linux-gui-smoke"),
@@ -157,7 +159,7 @@ async function main() {
     GDK_GL: "software",
     LIBGL_ALWAYS_SOFTWARE: "1",
     NO_AT_BRIDGE: "1",
-    LICO_PORTABLE_DIR: dataDir,
+    LICOARC_PORTABLE_DIR: dataDir,
   };
   const xvfb = spawn(
     "Xvfb",

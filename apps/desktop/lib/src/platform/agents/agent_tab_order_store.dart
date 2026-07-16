@@ -1,10 +1,13 @@
 import 'package:flutter_client/src/platform/mobile_relay/mobile_relay_json_store.dart';
+import 'package:flutter_client/src/contracts/target_management.dart';
 
-abstract class AgentTabOrderStore {
+abstract class AgentTabOrderStore implements TargetTabOrderRepository {
   const AgentTabOrderStore();
 
+  @override
   Future<List<String>> load(Object portableData);
 
+  @override
   Future<void> save(Object portableData, List<String> order);
 }
 

@@ -3,7 +3,6 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_client/src/contracts/locale_preferences.dart';
 import 'package:flutter_client/src/application/controller/client_controller.dart';
 import 'package:flutter_client/src/frontend/l10n/lico_strings.dart';
-import 'package:flutter_client/src/platform/native_client/agent_service.dart';
 import 'package:flutter_client/src/frontend/shared/ui/panel_frame.dart';
 import 'package:flutter_client/src/frontend/features/settings/ui/settings_panel.dart';
 import 'package:flutter_client/src/frontend/shared/ui/theme.dart';
@@ -54,15 +53,6 @@ void main() {
       expect(find.text('语言'), findsOneWidget);
       expect(find.byIcon(Icons.language_outlined), findsWidgets);
       expect(find.text('跟随系统'), findsWidgets);
-      final cards = find.byType(Card);
-      await tester.scrollUntilVisible(
-        find.descendant(of: cards, matching: find.text('Clash 代理桥接')),
-        360,
-        scrollable: find.byType(Scrollable).first,
-      );
-      await tester.pump();
-      expect(find.text('Clash 代理桥接'), findsOneWidget);
-      expect(find.text('TUN 辅助配置'), findsOneWidget);
     },
   );
 
@@ -136,72 +126,4 @@ void main() {
       findsNothing,
     );
   });
-
-  testWidgets(
-    'assistant agent setting has no default and uses scanned agents',
-    (tester) async {
-      final controller = ClientController();
-      addTearDown(controller.dispose);
-      controller.scannedTargets = [
-        TargetCandidate(
-          target: 'codex',
-          label: 'Codex',
-          kind: 'cli',
-          status: 'detected',
-          configured: true,
-          confidence: 0.9,
-          adapterStatus: 'supported',
-        ),
-        TargetCandidate(
-          target: 'claude-code',
-          label: 'Claude Code',
-          kind: 'cli',
-          status: 'detected',
-          configured: true,
-          confidence: 0.9,
-          adapterStatus: 'supported',
-        ),
-      ];
-
-      await tester.pumpWidget(
-        MaterialApp(
-          builder: (context, child) =>
-              FixtureLayoutPresentationScope(child: child!),
-          theme: buildLicoTheme(
-            platformBrightness: Brightness.dark,
-          ).copyWith(platform: TargetPlatform.macOS),
-          home: Scaffold(
-            body: SizedBox(
-              width: 980,
-              height: 1400,
-              child: SettingsPanel(controller: controller),
-            ),
-          ),
-        ),
-      );
-      await tester.pump();
-
-      final cards = find.byType(Card);
-      await tester.scrollUntilVisible(
-        find.descendant(of: cards, matching: find.text('Assistant Agent')),
-        360,
-        scrollable: find.byType(Scrollable).first,
-      );
-      await tester.pump();
-
-      expect(find.byType(PanelFrame), findsNothing);
-      expect(find.text('Preferred Snapshot Curator'), findsNothing);
-      expect(find.text('Deterministic Local Selection'), findsNothing);
-      expect(find.text('Off'), findsNothing);
-      expect(find.text('Choose assistant agent'), findsOneWidget);
-
-      await tester.tap(find.byType(Switch).first);
-      await tester.pump();
-      await tester.tap(find.byType(DropdownButtonFormField<String>).last);
-      await tester.pump(const Duration(milliseconds: 500));
-
-      expect(find.text('Codex · CLI'), findsWidgets);
-      expect(find.text('Claude Code · CLI'), findsWidgets);
-    },
-  );
 }

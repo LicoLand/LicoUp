@@ -14,7 +14,6 @@ import '../../../fixtures/layout_scoped_state_fixture.dart';
 
 const Set<ClientSection> classicMobileDestinations = {
   ClientSection.agents,
-  ClientSection.feed,
   ClientSection.mobileRelay,
   ClientSection.settings,
 };
@@ -45,7 +44,6 @@ LayoutEnvironment classicMobileEnvironment({
 String classicMobileDestinationLabel(ClientSection destination) =>
     switch (destination) {
       ClientSection.agents => 'Agents',
-      ClientSection.feed => 'Feed',
       ClientSection.mobileRelay => 'Mobile Relay',
       ClientSection.settings => 'Settings',
       _ => throw const FormatException(

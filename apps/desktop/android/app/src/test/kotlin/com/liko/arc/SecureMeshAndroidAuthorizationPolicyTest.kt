@@ -26,12 +26,8 @@ class SecureMeshAndroidAuthorizationPolicyTest {
     }
 
     @Test
-    fun credentialAndKeyActionsRequireAuthentication() {
+    fun relayAndKeyActionsRequireAuthentication() {
         listOf(
-            "mobile.provider.credential.set",
-            "mobile.provider.credential.delete",
-            "mobile.provider.credential.status",
-            "mobile.provider.chat.send",
             "mobile.relay.pairing.claim",
             "mobile.relay.commands.createSecure",
             "secure_mesh.deviceTrust.rotate",
@@ -61,7 +57,6 @@ class SecureMeshAndroidAuthorizationPolicyTest {
     @Test
     fun sensitiveActionsUseNoPromptWhenUserAuthenticationCapabilityIsNotSelected() {
         listOf(
-            "mobile.provider.credential.set",
             "mobile.relay.pairing.claim",
             "secure_mesh.deviceTrust.rotate"
         ).forEach { action ->
@@ -105,18 +100,6 @@ class SecureMeshAndroidAuthorizationPolicyTest {
                     )
                 )
             }
-    }
-
-    @Test
-    fun passiveOAuthCallbackCannotStartOrExtendAuthentication() {
-        val action = "mobile.provider.oauth.completeCallback"
-        assertTrue(SecureMeshAndroidAuthorizationPolicy.requiresUserAuthentication(action))
-        assertFalse(
-            SecureMeshAndroidAuthorizationPolicy.mayStartAuthenticationPrompt(
-                action,
-                interactionAuthorized = true
-            )
-        )
     }
 
     @Test

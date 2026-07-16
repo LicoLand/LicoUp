@@ -58,6 +58,8 @@ void main() {
       addTearDown(controller.dispose);
 
       controller.mobileRelayConfig = controller.mobileRelayConfig.copyWith(
+        useCustomGateway: true,
+        customGatewayUrl: 'https://relay.example.test',
         pairingId: 'pair-1',
         pcToken: _synth('pc-synthetic'),
         lastPairingCode: _synthPairingCode(),
@@ -103,7 +105,7 @@ void main() {
         'config': {
           'mobileRelayPairingInvite': {
             'protocolVersion': 'licolite.mobile-relay.e2ee.v2',
-            'gatewayUrl': 'https://api.licolite.app',
+            'gatewayUrl': 'https://relay.example.test',
             'pairingId': 'pair-1',
             'pairingCode': _synthPairingCode(),
             'pcSecureMesh': {'endpointId': 'pc'},
@@ -138,19 +140,19 @@ void main() {
 
       expect(find.byType(PanelFrame), findsNothing);
       expect(find.text('Gateway'), findsOneWidget);
-      expect(find.text('Lico Arc Gateway'), findsOneWidget);
-      expect(find.text('Custom Gateway'), findsOneWidget);
+      expect(find.text('Lico Arc Gateway'), findsNothing);
+      expect(find.text('Custom Gateway'), findsNothing);
       expect(find.text('Address'), findsNothing);
       expect(find.text('licolite.app'), findsNothing);
-      expect(find.text('https://app.licoarc.com'), findsOneWidget);
-      expect(find.byIcon(Icons.lock_outline), findsOneWidget);
+      expect(find.text('https://relay.example.test'), findsOneWidget);
+      expect(find.byIcon(Icons.lock_outline), findsNothing);
       final gatewayEditable = find.byWidgetPredicate(
         (widget) =>
             widget is EditableText &&
-            widget.controller.text == 'https://app.licoarc.com',
+            widget.controller.text == 'https://relay.example.test',
       );
       expect(gatewayEditable, findsOneWidget);
-      expect(tester.widget<EditableText>(gatewayEditable).readOnly, isTrue);
+      expect(tester.widget<EditableText>(gatewayEditable).readOnly, isFalse);
       expect(find.text('Default'), findsNothing);
       expect(find.text('Active'), findsNothing);
       expect(find.text('Private Cloud Gateway URL'), findsNothing);
@@ -245,8 +247,8 @@ void main() {
     await tester.pump();
 
     expect(find.byType(PanelFrame), findsNothing);
-    expect(find.text('Lico Arc Gateway'), findsOneWidget);
-    expect(find.text('Custom Gateway'), findsOneWidget);
+    expect(find.text('Lico Arc Gateway'), findsNothing);
+    expect(find.text('Custom Gateway'), findsNothing);
     expect(find.text('Private Cloud Gateway URL'), findsNothing);
     expect(find.text('https://private.example'), findsOneWidget);
     expect(find.byIcon(Icons.save_outlined), findsOneWidget);
@@ -578,6 +580,8 @@ class _PanelMobileRelayService extends MobileRelayService {
   int createPairingCalls = 0;
   int refreshPairingStatusCalls = 0;
   MobileRelayConfig config = MobileRelayConfig.defaults().copyWith(
+    useCustomGateway: true,
+    customGatewayUrl: 'https://relay.example.test',
     pairingId: 'pair-old',
     pcToken: _synth('pc-synthetic-old'),
     lastPairingCode: '',
@@ -627,7 +631,7 @@ class _PanelMobileRelayService extends MobileRelayService {
       'mobileRelayPairingInvite': {
         'protocolVersion': 'licolite.mobile-relay.e2ee.v2',
         'oneTime': true,
-        'gatewayUrl': licoDefaultMobileRelayGatewayUrl,
+        'gatewayUrl': 'https://relay.example.test',
         'pairingId': config.pairingId,
         'pairingCode': pairingCode,
         'pcSecureMesh': {'endpointId': 'pc'},

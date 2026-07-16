@@ -6,14 +6,13 @@ import 'package:flutter_client/src/application/controller/client_controller.dart
 import 'package:flutter_client/src/application/features/layout/layout_state_store.dart';
 import 'package:flutter_client/src/contracts/locale_preferences.dart';
 import 'package:flutter_client/src/contracts/presentation/layout_environment.dart';
-import 'package:flutter_client/src/contracts/target_candidate.dart';
-import 'package:flutter_client/src/contracts/presentation/semantic_destination.dart';
 import 'package:flutter_client/src/contracts/presentation/layout_state_namespace.dart';
 import 'package:flutter_client/src/frontend/features/settings/ui/layout_profile_selector.dart';
-import 'package:flutter_client/src/frontend/features/settings/ui/local_runtime_settings_card.dart';
 import 'package:flutter_client/src/frontend/features/settings/ui/client_update_settings_card.dart';
-import 'package:flutter_client/src/frontend/features/settings/ui/proxy_bridge_settings.dart';
+import 'package:flutter_client/src/frontend/features/settings/ui/catalog_convergence_status_card.dart';
+import 'package:flutter_client/src/frontend/features/settings/ui/optional_collaboration_settings.dart';
 import 'package:flutter_client/src/frontend/features/settings/ui/settings_log_export_tile.dart';
+import 'package:flutter_client/src/frontend/features/settings/ui/settings_panel_widgets.dart';
 import 'package:flutter_client/src/frontend/l10n/lico_strings.dart';
 import 'package:flutter_client/src/frontend/layout/layout_destination_presentation.dart';
 import 'package:flutter_client/src/frontend/layout/layout_scope.dart';
@@ -21,14 +20,11 @@ import 'package:flutter_client/src/frontend/shared/platform/client_platform.dart
 import 'package:flutter_client/src/frontend/shared/ui/directory_path_field.dart';
 import 'package:flutter_client/src/frontend/shared/ui/theme.dart';
 
-part 'settings_panel_widgets.dart';
-
 const _settingsSectionIds = <String>[
   'appearance',
-  'agent',
-  'network',
-  'runtime',
   'updates',
+  'optional-collaboration',
+  'catalog-convergence',
   'storage',
   'diagnostics',
 ];
@@ -213,32 +209,26 @@ class _SettingsPanelState extends State<SettingsPanel> {
         ),
       ),
       _SettingsSection(
-        id: 'agent',
-        icon: Icons.support_agent_outlined,
-        label: strings.agentConfiguration,
-        child: _AssistantAgentSettings(controller: widget.controller),
-      ),
-      _SettingsSection(
-        id: 'network',
-        icon: Icons.hub_outlined,
-        label: strings.network,
-        child: ProxyBridgeSettings(controller: widget.controller),
-      ),
-      _SettingsSection(
-        id: 'runtime',
-        icon: Icons.dns_outlined,
-        label: strings.runtime,
-        child: LocalRuntimeSettingsCard(
-          controller: widget.controller,
-          onOpenDetails: () =>
-              widget.controller.selectSection(ClientSection.localRuntime),
-        ),
-      ),
-      _SettingsSection(
         id: 'updates',
         icon: Icons.system_update_alt,
         label: strings.clientUpdate,
         child: ClientUpdateSettingsCard(controller: widget.controller),
+      ),
+      _SettingsSection(
+        id: 'optional-collaboration',
+        icon: Icons.hub_outlined,
+        label: strings.isChinese ? '可选协作' : 'Optional Collaboration',
+        child: OptionalCollaborationSettings(
+          controller: widget.controller.optionalCollaborationController,
+        ),
+      ),
+      _SettingsSection(
+        id: 'catalog-convergence',
+        icon: Icons.sync_alt_outlined,
+        label: strings.isChinese ? '工具目录同步' : 'Tool Catalog Sync',
+        child: CatalogConvergenceStatusCard(
+          controller: widget.controller.catalogConvergenceController,
+        ),
       ),
       _SettingsSection(
         id: 'storage',
@@ -413,7 +403,7 @@ class _AppearanceSettings extends StatelessWidget {
           icon: Icons.palette_outlined,
           colors: colors,
         ),
-        _SettingsDropdownRow<String>(
+        SettingsDropdownRow<String>(
           icon: Icons.palette_outlined,
           title: strings.appearancePreset,
           value: selectedPresetId,
@@ -438,7 +428,7 @@ class _AppearanceSettings extends StatelessWidget {
           registry: controller.layoutComposition.registry,
           surface: surface,
         ),
-        _SettingsDropdownRow<String>(
+        SettingsDropdownRow<String>(
           icon: Icons.language_outlined,
           title: strings.language,
           value: LocalePreference.normalize(controller.localePreference),
@@ -593,7 +583,7 @@ class _MobileSettingsBody extends StatelessWidget {
           icon: Icons.palette_outlined,
           colors: colors,
         ),
-        _SettingsDropdownRow<String>(
+        SettingsDropdownRow<String>(
           icon: Icons.palette_outlined,
           title: strings.appearancePreset,
           value: selectedPresetId,
@@ -618,7 +608,7 @@ class _MobileSettingsBody extends StatelessWidget {
           registry: controller.layoutComposition.registry,
           surface: LayoutRuntimeSurface.mobile,
         ),
-        _SettingsDropdownRow<String>(
+        SettingsDropdownRow<String>(
           icon: Icons.language_outlined,
           title: strings.language,
           value: LocalePreference.normalize(controller.localePreference),
@@ -674,10 +664,4 @@ class _SettingsSectionHeader extends StatelessWidget {
       ),
     );
   }
-}
-
-InputDecoration _dropdownDecorationWithoutLabel() {
-  return const InputDecoration(
-    floatingLabelBehavior: FloatingLabelBehavior.never,
-  );
 }

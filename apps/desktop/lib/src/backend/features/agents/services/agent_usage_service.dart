@@ -11,7 +11,6 @@ class AgentUsageService {
   Future<AgentUsageReport> scan({
     required AgentCommandRunner agentService,
     String agentId = '',
-    bool allowancesOnly = false,
     bool forceRefresh = false,
     int historyDays = 30,
   }) async {
@@ -19,24 +18,19 @@ class AgentUsageService {
     if (agentId.trim().isNotEmpty) {
       args.addAll(['--agent', agentId.trim()]);
     }
-    if (allowancesOnly) {
-      args.add('--allowances-only');
-    }
     if (forceRefresh) {
       args.add('--force-refresh');
     }
-    if (!allowancesOnly) {
-      final normalizedHistoryDays = historyDays.clamp(1, 365);
-      args.addAll(['--history-days', normalizedHistoryDays.toString()]);
-      args.addAll([
-        '--timezone-offset-minutes',
-        DateTime.now().timeZoneOffset.inMinutes.toString(),
-      ]);
-      args.addAll([
-        '--timezone-transitions-json',
-        jsonEncode(_localTimezoneTransitions(normalizedHistoryDays)),
-      ]);
-    }
+    final normalizedHistoryDays = historyDays.clamp(1, 365).toInt();
+    args.addAll(['--history-days', normalizedHistoryDays.toString()]);
+    args.addAll([
+      '--timezone-offset-minutes',
+      DateTime.now().timeZoneOffset.inMinutes.toString(),
+    ]);
+    args.addAll([
+      '--timezone-transitions-json',
+      jsonEncode(_localTimezoneTransitions(normalizedHistoryDays)),
+    ]);
     final output = await agentService.runCli(args);
     return AgentUsageReport.fromJson(output);
   }
@@ -51,7 +45,11 @@ class AgentUsageService {
       args.addAll(['--agent', agentId.trim()]);
     }
     final output = await agentService.runCli(args);
-    AgentUsageReport.validateEnvelope(output);
+    if (output['schemaVersion'] != AgentUsageReport.currentSchemaVersion ||
+        output['mode'] != AgentUsageReport.currentMode ||
+        output['tokenSourceMode'] != AgentUsageReport.currentTokenSourceMode) {
+      throw const FormatException('Unsupported agent usage reports envelope.');
+    }
     final reports = output['reports'];
     if (reports is! List) {
       throw const FormatException('Invalid agent usage reports payload.');

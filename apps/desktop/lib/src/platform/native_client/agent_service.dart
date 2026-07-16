@@ -1,344 +1,413 @@
-import 'dart:async';
-import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
-import 'package:path/path.dart' as p;
 
 import 'package:flutter_client/src/contracts/agent_command_runner.dart';
+import 'package:flutter_client/src/contracts/mcp_adapter.dart';
+import 'package:flutter_client/src/contracts/skill_delete.dart';
+import 'package:flutter_client/src/contracts/skill_hub.dart';
+import 'package:flutter_client/src/contracts/skill_update.dart';
+import 'package:flutter_client/src/contracts/skill_usage.dart';
 import 'package:flutter_client/src/contracts/target_candidate.dart';
+import 'package:flutter_client/src/contracts/target_management.dart';
+import 'package:flutter_client/src/platform/native_client/agent_service_actions.dart';
+import 'package:flutter_client/src/platform/native_client/agent_service_process_io.dart';
+import 'package:flutter_client/src/platform/native_client/agent_service_stdio_rpc.dart';
+import 'package:flutter_client/src/platform/native_client/native_cli_ports.dart';
+import 'package:flutter_client/src/platform/native_client/native_catalog_actions.dart';
+import 'package:flutter_client/src/platform/native_client/native_cli_runtime_context.dart';
+import 'package:flutter_client/src/platform/native_client/native_command_router.dart';
+import 'package:flutter_client/src/platform/native_client/native_mcp_actions.dart';
+import 'package:flutter_client/src/platform/native_client/native_one_shot_command_executor.dart';
 
 export 'package:flutter_client/src/contracts/target_candidate.dart';
+export 'package:flutter_client/src/platform/native_client/native_cli_ports.dart'
+    show LicoClientRpcException;
 
-part 'agent_service_actions.dart';
-part 'agent_service_process_io.dart';
-part 'agent_service_stdio_rpc.dart';
-part 'proxy_bridge_service_actions.dart';
-
-typedef _RunCliExecutable =
-    Future<ProcessResult> Function(
-      String executable,
-      List<String> args,
-      Map<String, String>? environment,
-    );
-typedef _StartCliExecutable =
-    Future<Process> Function(
-      String executable,
-      List<String> args,
-      Map<String, String>? environment,
-    );
-typedef _ResolveCliBinary = Future<File?> Function();
-
-class LicoClientRpcException implements Exception {
-  const LicoClientRpcException(this.code);
-
-  final String code;
-
-  bool get authorizationRequired => code == 'authorization_required';
-
-  @override
-  String toString() {
-    if (authorizationRequired) {
-      return 'lico-client authorization is required.';
-    }
-    return 'lico-client RPC request failed (code: $code).';
-  }
-}
-
+/// Public native-client facade.
+///
+/// Process lifecycle, stdio framing, and command construction are owned by
+/// injected components. This class only preserves the
+/// stable client-facing contract and coordinates component disposal.
 class AgentService
-    with AgentServiceStdioRpc, AgentServiceActions, AgentServiceProcessIo
-    implements AgentCommandRunner {
+    implements
+        AgentCommandRunner,
+        McpAdapterGateway,
+        SkillDeleteGateway,
+        SkillHubGateway,
+        SkillUpdateGateway,
+        SkillUsageGateway,
+        TargetManagementGateway {
   AgentService({
     Future<String> Function()? dataDirectory,
-    Future<File?> Function()? resolveCliBinary,
-    Future<ProcessResult> Function(
-      String executable,
-      List<String> args,
-      Map<String, String>? environment,
-    )?
-    runCliExecutable,
-    Future<Process> Function(
-      String executable,
-      List<String> args,
-      Map<String, String>? environment,
-    )?
-    startCliExecutable,
+    NativeResolveCliBinary? resolveCliBinary,
+    NativeRunCliExecutable? runCliExecutable,
+    NativeStartCliExecutable? startCliExecutable,
     Duration privateRuntimeTimeout = const Duration(seconds: 150),
-  }) : _dataDirectory = dataDirectory,
-       _resolveCliBinaryOverride = resolveCliBinary,
-       _runCliExecutable = runCliExecutable ?? _defaultRunCliExecutable,
-       _startCliExecutable = startCliExecutable ?? _defaultStartCliExecutable,
-       _persistentStdioRpcEnabled =
-           (Platform.isMacOS || Platform.isLinux || Platform.isWindows) &&
-           runCliExecutable == null &&
-           startCliExecutable == null,
-       _privateRuntimeTimeout = privateRuntimeTimeout;
+    NativeCliProcessContext? processContext,
+    NativeCommandExecutor? oneShotCommandExecutor,
+    NativeStdioRpcTransport? stdioRpcTransport,
+    AgentCommandRunner? processIo,
+    NativeCommandActions? commandActions,
+    bool? persistentStdioRpcEnabled,
+  }) {
+    final runtimeContext =
+        processContext ??
+        NativeCliRuntimeContext(
+          dataDirectory: dataDirectory,
+          resolveCliBinary: resolveCliBinary,
+          startCliExecutable: startCliExecutable,
+          requestTimeout: privateRuntimeTimeout,
+        );
+    final oneShotExecutor =
+        oneShotCommandExecutor ??
+        NativeOneShotCommandExecutor(
+          processContext: runtimeContext,
+          runCliExecutable: runCliExecutable,
+        );
+    final rpcTransport =
+        stdioRpcTransport ??
+        NativeStdioRpcClient(processContext: runtimeContext);
+    final persistentEnabled =
+        persistentStdioRpcEnabled ??
+        ((Platform.isMacOS || Platform.isLinux || Platform.isWindows) &&
+            runCliExecutable == null &&
+            startCliExecutable == null &&
+            oneShotCommandExecutor == null &&
+            stdioRpcTransport == null &&
+            processIo == null);
+    final commandExecutor = NativeCommandRouter(
+      oneShotExecutor: oneShotExecutor,
+      stdioRpcTransport: rpcTransport,
+      persistentStdioRpcEnabled: persistentEnabled,
+    );
 
-  final Future<String> Function()? _dataDirectory;
-  final _ResolveCliBinary? _resolveCliBinaryOverride;
-  final _RunCliExecutable _runCliExecutable;
-  final _StartCliExecutable _startCliExecutable;
-  final bool _persistentStdioRpcEnabled;
-  final Duration _privateRuntimeTimeout;
-
-  static Future<ProcessResult> _defaultRunCliExecutable(
-    String executable,
-    List<String> args,
-    Map<String, String>? environment,
-  ) {
-    return Process.run(executable, args, environment: environment);
+    _commandExecutor = commandExecutor;
+    _stdioRpcTransport = rpcTransport;
+    _processIo =
+        processIo ??
+        BoundedNativeProcessIo(
+          processContext: runtimeContext,
+          commandExecutor: commandExecutor,
+          stdioRpcTransport: rpcTransport,
+          persistentStdioRpcEnabled: persistentEnabled,
+        );
+    _commandActions =
+        commandActions ??
+        NativeCommandActions(
+          commandExecutor: commandExecutor,
+          concurrentCommandExecutor: oneShotExecutor,
+        );
+    _mcpActions = NativeMcpActions(privateRunner: _processIo);
+    _catalogActions = NativeCatalogActions(
+      privateRunner: _processIo,
+      stdioRpcTransport: rpcTransport,
+      persistentStdioRpcEnabled: persistentEnabled,
+    );
   }
 
-  static Future<Process> _defaultStartCliExecutable(
-    String executable,
-    List<String> args,
-    Map<String, String>? environment,
-  ) {
-    return Process.start(executable, args, environment: environment);
-  }
+  late final NativeCommandExecutor _commandExecutor;
+  late final NativeStdioRpcTransport _stdioRpcTransport;
+  late final AgentCommandRunner _processIo;
+  late final NativeCommandActions _commandActions;
+  late final NativeMcpActions _mcpActions;
+  late final NativeCatalogActions _catalogActions;
 
-  Future<File?> _resolveCliBinary() async {
-    final resolveCliBinaryOverride = _resolveCliBinaryOverride;
-    if (resolveCliBinaryOverride != null) {
-      return resolveCliBinaryOverride();
-    }
-
-    final suffix = Platform.isWindows ? '.exe' : '';
-    final override = Platform.environment['LICO_CLIENT_PATH'];
-    final cargoTargetDir = Platform.environment['CARGO_TARGET_DIR'];
-    final candidates = <String>[
-      if (override != null && override.trim().isNotEmpty) override.trim(),
-      if (cargoTargetDir != null && cargoTargetDir.trim().isNotEmpty)
-        p.join(cargoTargetDir.trim(), 'debug', 'lico-client$suffix'),
-      p.join(
-        File(Platform.resolvedExecutable).parent.path,
-        'lico-client$suffix',
-      ),
-      p.join(
-        Directory.current.path,
-        'build',
-        'crates',
-        'lico-client-native',
-        'target',
-        'debug',
-        'lico-client$suffix',
-      ),
-      p.join(Directory.current.path, 'target', 'debug', 'lico-client$suffix'),
-    ];
-    for (final candidate in candidates) {
-      final file = File(p.normalize(candidate));
-      if (await file.exists()) {
-        return file;
-      }
-    }
-    return null;
-  }
-
-  Future<Map<String, dynamic>> _runCli(List<String> args) async {
-    if (_persistentStdioRpcEnabled) {
-      return _runCliOverStdioRpc(args);
-    }
-    return _runCliOneShot(args);
-  }
-
-  /// Short-lived process per call — safe to fan out concurrently.
-  Future<Map<String, dynamic>> _runCliOneShot(List<String> args) async {
-    final cli = await _resolveCliBinary();
-    final env = await _cliEnvironment();
-
-    if (cli == null) {
-      try {
-        final result = await _runCliExecutable('lico-client', args, env);
-        if (result.exitCode != 0) {
-          throw Exception(
-            'lico-client command failed '
-            '(exit code ${result.exitCode}, stderr bytes ${utf8.encode(result.stderr.toString()).length}).',
-          );
-        }
-        return _decodeCliResponse(result.stdout);
-      } catch (_) {
-        throw Exception('lico-client command could not be completed.');
-      }
-    }
-
-    final result = await _runCliExecutable(cli.path, args, env);
-    if (result.exitCode != 0) {
-      throw Exception(
-        'lico-client command failed '
-        '(exit code ${result.exitCode}, stderr bytes ${utf8.encode(result.stderr.toString()).length}).',
-      );
-    }
-    return _decodeCliResponse(result.stdout);
-  }
-
-  Map<String, dynamic> _decodeCliResponse(Object? stdout) {
-    try {
-      final decoded = jsonDecode(stdout?.toString() ?? '');
-      if (decoded is Map<String, dynamic>) {
-        return decoded;
-      }
-    } on Object {
-      // The caller receives a fixed error without command output.
-    }
-    throw Exception('lico-client returned an invalid JSON response.');
-  }
+  static const List<String> packagedScanTargetIds =
+      NativeCommandActions.packagedScanTargetIds;
 
   @override
   Future<Map<String, dynamic>> runCli(List<String> args) {
-    return _runCli(args);
+    return _commandExecutor.execute(args);
   }
 
-  Future<Map<String, String>?> _cliEnvironment() async {
-    final environment = <String, String>{
-      ..._macOSLocalAuthenticationEnvironment(),
-    };
-    if (_dataDirectory != null) {
-      final dir = await _dataDirectory();
-      environment['LICO_CLIENT_PORTABLE_DIR'] = dir;
-      environment['LICO_PORTABLE_DIR'] = dir;
-      environment.addAll(await _proxyBridgeEnvironment(dir));
-    }
-    return environment.isEmpty ? null : environment;
+  @override
+  Future<Map<String, dynamic>> runCliWithStdin(
+    List<String> args,
+    String stdinText,
+  ) {
+    return _processIo.runCliWithStdin(args, stdinText);
   }
 
-  Map<String, String> _macOSLocalAuthenticationEnvironment() {
-    if (!Platform.isMacOS) {
-      return const {};
-    }
-    return const {
-      'LICO_SECURE_MESH_MACOS_USER_PRESENCE_REQUIRED': 'production',
-    };
+  @override
+  Stream<Map<String, dynamic>> streamCliJsonLines(List<String> args) {
+    return _processIo.streamCliJsonLines(args);
   }
 
-  Future<Map<String, String>> _proxyBridgeEnvironment(String dataDir) async {
-    final file = File(p.join(dataDir, 'lico-client', 'proxy-bridge.json'));
-    if (!await file.exists()) {
-      return const {};
-    }
-    try {
-      final decoded = jsonDecode(await file.readAsString());
-      if (decoded is! Map<String, dynamic>) {
-        return const {};
-      }
-      if (decoded['enabled'] != true) {
-        return const {};
-      }
-      final clientBridge = decoded['clientBridge'];
-      if (clientBridge is! Map || clientBridge['enabled'] != true) {
-        return const {};
-      }
-      final environment = clientBridge['environment'];
-      if (environment is! Map) {
-        return const {};
-      }
-      final result = <String, String>{};
-      for (final entry in environment.entries) {
-        final key = entry.key.toString();
-        final value = entry.value?.toString() ?? '';
-        if (key.trim().isNotEmpty && value.trim().isNotEmpty) {
-          result[key] = value;
-        }
-      }
-      return result;
-    } catch (_) {
-      return const {};
-    }
+  @override
+  Stream<Map<String, dynamic>> streamCliJsonLinesWithStdin(
+    List<String> args,
+    String stdinText,
+  ) {
+    return _processIo.streamCliJsonLinesWithStdin(args, stdinText);
   }
 
-  Future<List<TargetCandidate>> scanTargets() async {
-    final output = await _runCli([
-      'targets',
-      'scan',
-      '--include-accessible-environments',
-      'true',
-      '--include-history-model-catalog',
-      'true',
-    ]);
-    if (output['ok'] == true && output['candidates'] is List) {
-      final list = output['candidates'] as List;
-      return list
-          .whereType<Map>()
-          .map(
-            (json) => TargetCandidate.fromJson(Map<String, dynamic>.from(json)),
-          )
-          .where((target) => target.visibleInClient)
-          .toList();
-    }
-    return [];
+  Future<List<Map<String, dynamic>>> listSnapshots({String target = ''}) {
+    return _commandActions.listSnapshots(target: target);
   }
 
-  /// Canonical host-adapter IDs scanned one-at-a-time for incremental discovery.
-  static const List<String> packagedScanTargetIds = [
-    'openclaw',
-    'claude-code',
-    'codex',
-    'code',
-    'antigravity',
-    'opencode',
-    'copilot',
-    'kilo-code',
-    'cursor',
-    'hermes',
-    'kimi',
-    'kimi-code',
-    'pi',
-  ];
-
-  /// One isolated `targets inspect` process for [targetId].
-  ///
-  /// Uses a short-lived CLI process (not the serialized stdio RPC queue) so
-  /// many agents can be searched concurrently. Returns null when the adapter
-  /// is not visible in the client (`not-detected`).
-  Future<TargetCandidate?> scanOneTarget(String targetId) async {
-    final id = targetId.trim();
-    if (id.isEmpty) {
-      return null;
-    }
-    final output = await _runCliOneShot([
-      'targets',
-      'inspect',
-      id,
-      '--include-accessible-environments',
-      'true',
-    ]);
-    if (output['ok'] != true) {
-      return null;
-    }
-    final raw = output['target'];
-    if (raw is! Map) {
-      return null;
-    }
-    final candidate = TargetCandidate.fromJson(Map<String, dynamic>.from(raw));
-    return candidate.visibleInClient ? candidate : null;
+  @override
+  Future<List<Map<String, dynamic>>> listPairings({String agent = ''}) {
+    return _commandActions.listPairings(agent: agent);
   }
 
+  @override
+  Future<Map<String, dynamic>> requestPairing({
+    required String agent,
+    String target = '',
+  }) {
+    return _commandActions.requestPairing(agent: agent, target: target);
+  }
+
+  @override
+  Future<Map<String, dynamic>> approvePairing({required String agent}) {
+    return _commandActions.approvePairing(agent: agent);
+  }
+
+  @override
+  Future<Map<String, dynamic>> revokePairing({required String agent}) {
+    return _commandActions.revokePairing(agent: agent);
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> listSkills({required String agent}) {
+    return _commandActions.listSkills(agent: agent);
+  }
+
+  @override
+  Future<Map<String, dynamic>> planSkillInstall({
+    required String agent,
+    String url = '',
+    String sourcePath = '',
+    String installRoot = '',
+    String name = '',
+    bool overwrite = false,
+  }) {
+    return _commandActions.planSkillInstall(
+      agent: agent,
+      url: url,
+      sourcePath: sourcePath,
+      installRoot: installRoot,
+      name: name,
+      overwrite: overwrite,
+    );
+  }
+
+  @override
+  Future<Map<String, dynamic>> applySkillInstall({
+    required String agent,
+    String url = '',
+    String sourcePath = '',
+    String installRoot = '',
+    String name = '',
+    bool overwrite = false,
+    bool pin = false,
+  }) {
+    return _commandActions.applySkillInstall(
+      agent: agent,
+      url: url,
+      sourcePath: sourcePath,
+      installRoot: installRoot,
+      name: name,
+      overwrite: overwrite,
+      pin: pin,
+    );
+  }
+
+  @override
+  Future<Map<String, dynamic>> rollbackSkillInstall({
+    required String agent,
+    required String snapshotId,
+  }) {
+    return _commandActions.rollbackSkillInstall(
+      agent: agent,
+      snapshotId: snapshotId,
+    );
+  }
+
+  @override
+  Future<Map<String, dynamic>> planSkillUpdate({
+    required String agent,
+    required String skillId,
+    String url = '',
+    String sourcePath = '',
+    String installRoot = '',
+  }) {
+    return _commandActions.planSkillUpdate(
+      agent: agent,
+      skillId: skillId,
+      url: url,
+      sourcePath: sourcePath,
+      installRoot: installRoot,
+    );
+  }
+
+  @override
+  Future<Map<String, dynamic>> applySkillUpdate({
+    required String agent,
+    required String skillId,
+    required String confirmation,
+    String url = '',
+    String sourcePath = '',
+    String installRoot = '',
+  }) {
+    return _commandActions.applySkillUpdate(
+      agent: agent,
+      skillId: skillId,
+      confirmation: confirmation,
+      url: url,
+      sourcePath: sourcePath,
+      installRoot: installRoot,
+    );
+  }
+
+  @override
+  Future<Map<String, dynamic>> configureSkillAutoUpdate({
+    required String agent,
+    required String skillId,
+    required bool enabled,
+    String url = '',
+    String sourcePath = '',
+  }) {
+    return _commandActions.configureSkillAutoUpdate(
+      agent: agent,
+      skillId: skillId,
+      enabled: enabled,
+      url: url,
+      sourcePath: sourcePath,
+    );
+  }
+
+  @override
+  Future<Map<String, dynamic>> runConfiguredSkillUpdates({
+    required String agent,
+    String skillId = '',
+  }) {
+    return _commandActions.runConfiguredSkillUpdates(
+      agent: agent,
+      skillId: skillId,
+    );
+  }
+
+  @override
+  Future<Map<String, dynamic>> runDueSkillUpdates() {
+    return _commandActions.runDueSkillUpdates();
+  }
+
+  @override
+  Future<Map<String, dynamic>> planSkillDelete({
+    required List<String> agents,
+    required String skillId,
+    String installRoot = '',
+  }) {
+    return _commandActions.planSkillDelete(
+      agents: agents,
+      skillId: skillId,
+      installRoot: installRoot,
+    );
+  }
+
+  @override
+  Future<Map<String, dynamic>> applySkillDelete({
+    required List<String> agents,
+    required String skillId,
+    required String confirmation,
+    String installRoot = '',
+  }) {
+    return _commandActions.applySkillDelete(
+      agents: agents,
+      skillId: skillId,
+      confirmation: confirmation,
+      installRoot: installRoot,
+    );
+  }
+
+  @override
+  Future<Map<String, dynamic>> reportSkillUsage({
+    int days = 30,
+    String agent = '',
+    String skillId = '',
+  }) {
+    return _commandActions.reportSkillUsage(
+      days: days,
+      agent: agent,
+      skillId: skillId,
+    );
+  }
+
+  Future<Map<String, dynamic>> opencodeServeStatus() {
+    return _commandActions.opencodeServeStatus();
+  }
+
+  Future<Map<String, dynamic>> runCatalogCommand(
+    String operation, {
+    Map<String, dynamic> params = const {},
+  }) => _catalogActions.execute(operation, params: params);
+
+  Future<Map<String, dynamic>> ensureOpencodeServe({
+    int port = 24173,
+    String? executable,
+    String? attachUrl,
+  }) {
+    return _commandActions.ensureOpencodeServe(
+      port: port,
+      executable: executable,
+      attachUrl: attachUrl,
+    );
+  }
+
+  Future<Map<String, dynamic>> stopOpencodeServe() {
+    return _commandActions.stopOpencodeServe();
+  }
+
+  Future<List<TargetCandidate>> scanTargets() {
+    return _commandActions.scanTargets();
+  }
+
+  @override
+  Future<TargetCandidate?> scanOneTarget(String targetId) {
+    return _commandActions.scanOneTarget(targetId);
+  }
+
+  @override
   Future<Map<String, dynamic>> addTarget({
     required String target,
     String configPath = '',
     String binaryPath = '',
     String historyRoot = '',
-  }) async {
-    final args = ['targets', 'add', '--target', target];
-    if (configPath.trim().isNotEmpty) {
-      args.addAll(['--config-path', configPath.trim()]);
-    }
-    if (binaryPath.trim().isNotEmpty) {
-      args.addAll(['--binary-path', binaryPath.trim()]);
-    }
-    if (historyRoot.trim().isNotEmpty) {
-      args.addAll(['--history-root', historyRoot.trim()]);
-    }
-    return _runCli(args);
+  }) {
+    return _commandActions.addTarget(
+      target: target,
+      configPath: configPath,
+      binaryPath: binaryPath,
+      historyRoot: historyRoot,
+    );
   }
 
-  Future<Map<String, dynamic>> inspectTarget(String target) async {
-    return _runCli(['targets', 'inspect', target]);
+  @override
+  Future<Map<String, dynamic>> inspectTarget(String target) {
+    return _commandActions.inspectTarget(target);
   }
 
-  Future<Map<String, dynamic>> planTargetConfig(String target) async {
-    return _runCli(['mcp', 'config', 'plan', '--target', target]);
+  @override
+  Future<Map<String, dynamic>> restoreSnapshot(String snapshotId) {
+    return _commandActions.restoreSnapshot(snapshotId);
   }
 
-  Future<Map<String, dynamic>> restoreSnapshot(String snapshotId) async {
-    return _runCli(['snapshots', 'restore', snapshotId]);
+  @override
+  Future<McpHttpTransferPreview> previewHttpTransfer(
+    McpHttpTransferRequest request,
+  ) {
+    return _mcpActions.previewHttpTransfer(request);
+  }
+
+  @override
+  Future<McpHttpTransferResult> executeHttpTransfer(
+    McpHttpTransferPreview preview, {
+    required bool confirmed,
+  }) {
+    return _mcpActions.executeHttpTransfer(preview, confirmed: confirmed);
+  }
+
+  Future<void> dispose() {
+    return _stdioRpcTransport.dispose();
   }
 }

@@ -10,6 +10,8 @@ import 'package:flutter_client/src/frontend/features/agents/ui/agent_conversatio
 import 'package:flutter_client/src/frontend/l10n/lico_strings.dart';
 import 'package:flutter_client/src/frontend/shared/ui/theme.dart';
 
+import 'layout/fixtures/layout_destination_presentation_fixture.dart';
+
 void main() {
   TargetCandidate targetFixture(String id, {String status = 'detected'}) {
     return TargetCandidate(
@@ -34,6 +36,8 @@ void main() {
 
     await tester.pumpWidget(
       MaterialApp(
+        builder: (context, child) =>
+            FixtureLayoutPresentationScope(child: child!),
         supportedLocales: LicoStrings.supportedLocales,
         localizationsDelegates: const [
           GlobalMaterialLocalizations.delegate,

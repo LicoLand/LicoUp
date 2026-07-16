@@ -40,8 +40,8 @@ void main() {
         find.byKey(const ValueKey<String>('layout-profile-selector')),
         findsOneWidget,
       );
-      expect(find.text('Lico Arc'), findsOneWidget);
-      expect(find.text('Native'), findsOneWidget);
+      expect(find.text('工作台'), findsOneWidget);
+      expect(find.text('原生'), findsOneWidget);
       expect(
         find.byKey(const Key('fixture-preview-workbench-desktop')),
         findsOneWidget,

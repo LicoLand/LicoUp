@@ -105,35 +105,12 @@ void main() {
     ]);
   });
 
-  testWidgets('actions and content port reject destinations outside contract', (
-    tester,
-  ) async {
+  test('actions reject unknown action identities', () {
     final actions = StudioActionRecorder();
-    final content = StudioRecordingContentPort(actions);
-
     expect(
-      () => actions.selectDestination(ClientSection.feed),
+      () => actions.invokeContentAction(ClientSection.skillHub, 'unknown'),
       throwsFormatException,
     );
-    expect(
-      () => actions.invokeContentAction(ClientSection.skillHub, 'primary'),
-      throwsFormatException,
-    );
-
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Builder(
-          builder: (context) {
-            expect(
-              () => content.buildDestination(context, ClientSection.feed),
-              throwsFormatException,
-            );
-            return const SizedBox.shrink();
-          },
-        ),
-      ),
-    );
-    expect(content.buildCalls, isEmpty);
   });
 
   for (final destination in studioDesktopExpectedDestinations) {

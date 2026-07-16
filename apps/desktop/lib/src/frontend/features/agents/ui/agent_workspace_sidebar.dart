@@ -9,7 +9,7 @@ import 'package:flutter_client/src/frontend/shared/ui/agent_brand_icon.dart';
 import 'package:flutter_client/src/frontend/shared/ui/theme.dart';
 
 /// Right-pane destination driven by the agents workspace sidebar.
-enum AgentsWorkspaceDestination { conversations, plugins, skills, stats }
+enum AgentsWorkspaceDestination { conversations, skills, stats }
 
 /// Background-style left rail: upper Explore-like nav + lower agent/project tree.
 class AgentsWorkspaceSidebar extends StatefulWidget {
@@ -116,16 +116,6 @@ class _AgentsWorkspaceSidebarState extends State<AgentsWorkspaceSidebar> {
             padding: const EdgeInsets.fromLTRB(10, 0, 10, 8),
             child: Column(
               children: [
-                _SidebarNavItem(
-                  key: const Key('agents-sidebar-nav-plugins'),
-                  icon: Icons.extension_outlined,
-                  label: strings.mcpPlugins,
-                  selected:
-                      widget.destination == AgentsWorkspaceDestination.plugins,
-                  onTap: () => widget.onSelectDestination(
-                    AgentsWorkspaceDestination.plugins,
-                  ),
-                ),
                 _SidebarNavItem(
                   key: const Key('agents-sidebar-nav-skills'),
                   icon: Icons.auto_awesome_outlined,
