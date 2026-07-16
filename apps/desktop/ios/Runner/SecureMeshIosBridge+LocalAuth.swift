@@ -37,8 +37,6 @@ extension SecureMeshIosBridge {
       kSecAttrService as String: mobileRelaySecretService,
       kSecAttrAccount as String: account
     ]
-    SecItemDelete(baseQuery as CFDictionary)
-
     var accessError: Unmanaged<CFError>?
     let access = SecAccessControlCreateWithFlags(
       nil,
@@ -116,7 +114,7 @@ extension SecureMeshIosBridge {
       "appPasswordPromptUsed": false,
       "appCredentialPromptUsed": false,
       "biometricDataHandledByApp": false,
-      "keyMaterialExported": false,
+      "protectedKeychainValueReturnedToAppMemory": authenticated,
       "rawSecretMaterialIncluded": false,
       "localizedErrorsIncluded": false,
       "addStatus": securityStatusText(addStatus),

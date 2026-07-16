@@ -1,0 +1,38 @@
+import 'package:flutter_client/src/platform/native_client/agent_service_stdio_rpc/protocol.dart';
+import 'package:flutter_client/src/platform/native_client/agent_service_stdio_rpc/request_writer.dart';
+import 'package:flutter_client/src/platform/native_client/agent_service_stdio_rpc/response_codec.dart';
+import 'package:flutter_client/src/platform/native_client/agent_service_stdio_rpc/session.dart';
+
+Future<void> shutdownStdioRpcSession({
+  required StdioRpcSession session,
+  required String requestId,
+  required String workflowId,
+}) async {
+  final frame = encodeStdioRpcFrame({
+    'protocol': stdioRpcProtocol,
+    'id': requestId,
+    'workflowId': workflowId,
+    'method': 'shutdown',
+  });
+  var acknowledged = false;
+  Future<StdioRpcFrame>? responseFuture;
+  try {
+    responseFuture = session.expectFrame();
+    await writeStdioRpcFrame(session, frame);
+    final responseFrame = await responseFuture.timeout(stdioRpcShutdownTimeout);
+    final response = responseFrame.bytes;
+    acknowledged =
+        response != null &&
+        isStdioRpcShutdownAcknowledged(
+          response,
+          requestId: requestId,
+          workflowId: workflowId,
+        );
+  } on Object {
+    if (responseFuture != null) {
+      session.abandonExpectedFrame();
+    }
+    acknowledged = false;
+  }
+  await session.close(kill: !acknowledged);
+}

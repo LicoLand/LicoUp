@@ -1,8 +1,8 @@
 import 'dart:async';
 
-import 'package:flutter_client/src/application/features/routing/controller/task_route_coordinator.dart';
 import 'package:flutter_client/src/contracts/routing/routing_module_registration.dart';
 import 'package:flutter_client/src/contracts/routing/routing_policy_schema.dart';
+import 'package:flutter_client/src/contracts/routing/task_route_coordinator_port.dart';
 
 /// Compile-time-excluded routing boundary.
 ///
@@ -23,7 +23,7 @@ final class ExcludedRoutingModuleRegistration
   bool get isReady => false;
 
   @override
-  TaskRouteCoordinator? get coordinator => null;
+  TaskRouteCoordinatorPort? get coordinator => null;
 
   @override
   RoutingPolicyDocument get activePolicy => emptyRoutingPolicyDocument;

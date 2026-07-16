@@ -56,10 +56,10 @@ void main() {
     );
 
     await tester.tap(
-      find.byKey(const Key('classic-mobile-compact-navigation-feed')),
+      find.byKey(const Key('classic-mobile-compact-navigation-mobileRelay')),
     );
     await tester.pumpAndSettle();
-    expect(harness.selectedDestination, ClientSection.feed);
+    expect(harness.selectedDestination, ClientSection.mobileRelay);
   });
 
   testWidgets('medium uses persistent navigation with equivalent targets', (

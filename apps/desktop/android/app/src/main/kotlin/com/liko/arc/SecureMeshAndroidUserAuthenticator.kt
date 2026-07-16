@@ -17,14 +17,14 @@ internal object SecureMeshAndroidAuthorizationPolicy {
     // Keep this allowlist intentionally small: new and unknown actions fail closed.
     private val authenticationExemptActions = setOf(
         "external.url.open",
-        "mobile.provider.web.open",
         "secure_mesh.android.status",
         "secure_mesh.android.userAuthentication.request",
-        "secure_mesh.android.userAuthentication.status"
-    )
-    // Network/browser callbacks may consume an existing grant but never start or extend one.
-    private val passiveResponseActions = setOf(
-        "mobile.provider.oauth.completeCallback"
+        "secure_mesh.android.userAuthentication.status",
+        "secure_mesh.status",
+        "secure_mesh.kt.status",
+        "secure_mesh.mls.status",
+        "mobile.relay.pairing.status",
+        "mobile.relay.e2ee.status"
     )
 
     fun requiresUserAuthentication(action: String): Boolean {
@@ -44,8 +44,7 @@ internal object SecureMeshAndroidAuthorizationPolicy {
     ): Boolean {
         val normalized = action.trim()
         return interactionAuthorized &&
-            requiresUserAuthentication(normalized) &&
-            normalized !in passiveResponseActions
+            requiresUserAuthentication(normalized)
     }
 
     fun selectPromptStrategy(
@@ -495,7 +494,7 @@ class SecureMeshAndroidUserAuthenticator(private val activity: Activity) {
             .put("authorizationGrantRemainingSeconds", snapshot.grantRemainingSeconds)
             .put("authorizationGrantPersisted", false)
             .put("authorizationGrantExtendedByDispatch", false)
-            .put("keyMaterialExported", false)
+            .put("keyMaterialHandledByAuthenticationFlow", false)
             .put("bodyRedacted", true)
             .put("errorClass", snapshot.errorClass)
     }
@@ -555,6 +554,10 @@ class SecureMeshAndroidUserAuthenticator(private val activity: Activity) {
         return ((authorizationGrantExpiresAtElapsedRealtime - now) + 999L) / 1000L
     }
 
+    fun consumeAuthorizationGrant() {
+        clearAuthorizationGrant()
+    }
+
     private fun clearAuthorizationGrant() {
         synchronized(lock) {
             authorizationGrantExpiresAtElapsedRealtime = 0L
@@ -592,7 +595,7 @@ class SecureMeshAndroidUserAuthenticator(private val activity: Activity) {
             .put("authorizationGrantRemainingSeconds", 0)
             .put("authorizationGrantPersisted", false)
             .put("authorizationGrantExtendedByDispatch", false)
-            .put("keyMaterialExported", false)
+            .put("keyMaterialHandledByAuthenticationFlow", false)
             .put("bodyRedacted", true)
         if (includePromptStatus) {
             value
@@ -607,13 +610,13 @@ class SecureMeshAndroidUserAuthenticator(private val activity: Activity) {
     private fun writeStatusFile(value: JSONObject) {
         try {
             val output = File(
-                activity.getExternalFilesDir(null),
-                "secure-mesh/adb-user-auth-status.json"
+                activity.filesDir,
+                "secure-mesh/user-auth-status.json"
             )
             output.parentFile?.mkdirs()
             output.writeText(value.toString(2), Charsets.UTF_8)
         } catch (_: Exception) {
-            Log.w(TAG, "failed to write adb user authentication status file")
+            Log.w(TAG, "failed to write private user authentication status file")
         }
     }
 

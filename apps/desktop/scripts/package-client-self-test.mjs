@@ -183,8 +183,6 @@ validatePackagingConfig(canonicalConfig);
 for (const mutate of [
   (value) => { value.unknown = true; },
   (value) => { value.modules["../escape"] = value.modules["native-sidecar"]; },
-  (value) => { value.modules["mail-import-runtime"].swiftSource = "../outside.swift"; },
-  (value) => { value.modules["mail-import-runtime"].artifactName = "../outside"; },
   (value) => { value.modules["native-sidecar"].includePaths = ["../outside"]; },
 ]) {
   const fixture = structuredClone(canonicalConfig);

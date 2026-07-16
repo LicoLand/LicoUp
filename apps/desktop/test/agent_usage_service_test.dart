@@ -16,14 +16,14 @@ void main() {
           0,
           jsonEncode({
             'ok': true,
-            'schemaVersion': 2,
+            'schemaVersion': AgentUsageReport.currentSchemaVersion,
+            'mode': AgentUsageReport.currentMode,
+            'tokenSourceMode': AgentUsageReport.currentTokenSourceMode,
             'generatedAt': '2026-06-28T00:00:00Z',
             'summary': {
               'agentCount': 1,
               'totalTokens': 18,
-              'meteredTotalBytes': 750,
-              'estimatedHistoricalBytes': 1200,
-              'attribution': 'mixed',
+              'confidence': 'high',
             },
             'agents': [
               {
@@ -37,22 +37,6 @@ void main() {
                   'completionTokens': 6,
                   'totalTokens': 18,
                 },
-                'traffic': {
-                  'meteredTotalBytes': 750,
-                  'estimatedHistoricalBytes': 1200,
-                  'attribution': 'mixed',
-                },
-                'allowances': [
-                  {
-                    'kind': 'chatgpt-weekly-limit',
-                    'label': 'ChatGPT weekly limit',
-                    'provider': 'ChatGPT',
-                    'period': 'week',
-                    'status': 'unavailable',
-                    'source': 'provider-api-unconfigured',
-                    'message': 'System Codex auth quota lookup is unavailable.',
-                  },
-                ],
                 'confidence': 'high',
               },
             ],
@@ -70,11 +54,8 @@ void main() {
 
     expect(report.totalTokens, 18);
     expect(report.agent('codex')?.cachedInputTokens, 5);
-    expect(report.agent('codex')?.meteredTotalBytes, 750);
-    expect(
-      report.agent('codex')?.allowances.single.kind,
-      'chatgpt-weekly-limit',
-    );
+    expect(report.mode, AgentUsageReport.currentMode);
+    expect(report.tokenSourceMode, AgentUsageReport.currentTokenSourceMode);
     expect(captured.single.take(4), [
       'agent-usage',
       'scan',
@@ -96,7 +77,9 @@ void main() {
           0,
           jsonEncode({
             'ok': true,
-            'schemaVersion': 2,
+            'schemaVersion': AgentUsageReport.currentSchemaVersion,
+            'mode': AgentUsageReport.currentMode,
+            'tokenSourceMode': AgentUsageReport.currentTokenSourceMode,
             'generatedAt': '2026-07-02T00:00:00Z',
             'summary': {'agentCount': 1, 'totalTokens': 5},
             'agents': [
@@ -104,7 +87,7 @@ void main() {
                 'agentId': 'codex',
                 'label': 'Codex',
                 'history': {'totalTokens': 5},
-                'traffic': const {},
+                'confidence': 'high',
               },
             ],
           }),
@@ -126,6 +109,38 @@ void main() {
     expect(captured.single, isNot(contains('--transient')));
   });
 
+  test('forwards a manually selected 1-365 day history window', () async {
+    final captured = <List<String>>[];
+    final agentService = AgentService(
+      runCliExecutable: (executable, args, env) async {
+        captured.add(List<String>.from(args));
+        return ProcessResult(
+          0,
+          0,
+          jsonEncode({
+            'ok': true,
+            'schemaVersion': AgentUsageReport.currentSchemaVersion,
+            'mode': AgentUsageReport.currentMode,
+            'tokenSourceMode': AgentUsageReport.currentTokenSourceMode,
+            'generatedAt': '2026-07-02T00:00:00Z',
+            'window': {'days': 365},
+            'summary': {'agentCount': 0, 'totalTokens': 0},
+            'agents': const [],
+          }),
+          '',
+        );
+      },
+    );
+
+    final report = await const AgentUsageService().scan(
+      agentService: agentService,
+      historyDays: 365,
+    );
+
+    expect(report.windowDays, 365);
+    expect(captured.single, containsAll(['--history-days', '365']));
+  });
+
   test('loads retained agent usage reports through lico-client', () async {
     final captured = <List<String>>[];
     final agentService = AgentService(
@@ -136,10 +151,14 @@ void main() {
           0,
           jsonEncode({
             'ok': true,
-            'schemaVersion': 2,
+            'schemaVersion': AgentUsageReport.currentSchemaVersion,
+            'mode': AgentUsageReport.currentMode,
+            'tokenSourceMode': AgentUsageReport.currentTokenSourceMode,
             'reports': [
               {
-                'schemaVersion': 2,
+                'schemaVersion': AgentUsageReport.currentSchemaVersion,
+                'mode': AgentUsageReport.currentMode,
+                'tokenSourceMode': AgentUsageReport.currentTokenSourceMode,
                 'generatedAt': '2026-06-28T00:00:00Z',
                 'summary': {'agentCount': 1, 'totalTokens': 5},
                 'agents': const [],
@@ -170,17 +189,21 @@ void main() {
     ]);
   });
 
-  test('rejects legacy retained report schemas', () async {
+  test('rejects retained reports outside the current contract', () async {
     final agentService = AgentService(
       runCliExecutable: (executable, args, env) async => ProcessResult(
         0,
         0,
         jsonEncode({
           'ok': true,
-          'schemaVersion': 2,
+          'schemaVersion': AgentUsageReport.currentSchemaVersion,
+          'mode': AgentUsageReport.currentMode,
+          'tokenSourceMode': AgentUsageReport.currentTokenSourceMode,
           'reports': [
             {
-              'schemaVersion': 1,
+              'schemaVersion': 3,
+              'mode': AgentUsageReport.currentMode,
+              'tokenSourceMode': AgentUsageReport.currentTokenSourceMode,
               'generatedAt': '2026-06-28T00:00:00Z',
               'summary': {'totalTokens': 999},
               'agents': const [],
@@ -197,11 +220,13 @@ void main() {
     );
   });
 
-  test('requires schemaVersion to be the exact integer 2', () {
-    for (final schemaVersion in <Object>[2.0, 2.9, '2']) {
+  test('requires schemaVersion to be the exact integer 4', () {
+    for (final schemaVersion in <Object>[4.0, 4.9, '4']) {
       expect(
         () => AgentUsageReport.fromJson({
           'schemaVersion': schemaVersion,
+          'mode': AgentUsageReport.currentMode,
+          'tokenSourceMode': AgentUsageReport.currentTokenSourceMode,
           'generatedAt': '2026-06-28T00:00:00Z',
           'summary': const <String, dynamic>{},
           'agents': const <Map<String, dynamic>>[],
@@ -218,8 +243,10 @@ void main() {
         0,
         jsonEncode({
           'ok': true,
-          'schemaVersion': 2,
-          'reports': {'schemaVersion': 2},
+          'schemaVersion': AgentUsageReport.currentSchemaVersion,
+          'mode': AgentUsageReport.currentMode,
+          'tokenSourceMode': AgentUsageReport.currentTokenSourceMode,
+          'reports': {'schemaVersion': AgentUsageReport.currentSchemaVersion},
         }),
         '',
       ),
@@ -238,7 +265,9 @@ void main() {
         0,
         jsonEncode({
           'ok': true,
-          'schemaVersion': 2,
+          'schemaVersion': AgentUsageReport.currentSchemaVersion,
+          'mode': AgentUsageReport.currentMode,
+          'tokenSourceMode': AgentUsageReport.currentTokenSourceMode,
           'reports': ['not-a-report'],
         }),
         '',

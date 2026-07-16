@@ -22,8 +22,6 @@ Map<String, dynamic> _summaryFromAgents(List<AgentUsageAgentSummary> agents) {
   var cachedInputTokens = 0;
   var completionTokens = 0;
   var totalTokens = 0;
-  var meteredTotalBytes = 0;
-  var estimatedHistoricalBytes = 0;
   for (final agent in agents) {
     if (agent.status != 'pending') {
       agentCount += 1;
@@ -34,8 +32,6 @@ Map<String, dynamic> _summaryFromAgents(List<AgentUsageAgentSummary> agents) {
     cachedInputTokens += agent.cachedInputTokens;
     completionTokens += agent.completionTokens;
     totalTokens += agent.totalTokens;
-    meteredTotalBytes += agent.meteredTotalBytes;
-    estimatedHistoricalBytes += agent.estimatedHistoricalBytes;
   }
   return {
     'agentCount': agentCount,
@@ -45,18 +41,14 @@ Map<String, dynamic> _summaryFromAgents(List<AgentUsageAgentSummary> agents) {
     'cachedInputTokens': cachedInputTokens,
     'completionTokens': completionTokens,
     'totalTokens': totalTokens,
-    'meteredTotalBytes': meteredTotalBytes,
-    'estimatedHistoricalBytes': estimatedHistoricalBytes,
-    'attribution': _trafficAttribution(
-      meteredTotalBytes,
-      estimatedHistoricalBytes,
-    ),
-    'confidence': _trafficConfidence(agents),
+    'confidence': _tokenConfidence(agents),
   };
 }
 
 class AgentUsageReport {
-  static const currentSchemaVersion = 2;
+  static const currentSchemaVersion = 4;
+  static const currentMode = 'local-token-usage';
+  static const currentTokenSourceMode = 'local-history';
 
   const AgentUsageReport({
     required this.schemaVersion,
@@ -64,6 +56,9 @@ class AgentUsageReport {
     required this.summary,
     required this.agents,
     required this.warnings,
+    this.mode = currentMode,
+    this.tokenSourceMode = currentTokenSourceMode,
+    this.window = const {},
   });
 
   final int schemaVersion;
@@ -71,19 +66,28 @@ class AgentUsageReport {
   final Map<String, dynamic> summary;
   final List<AgentUsageAgentSummary> agents;
   final List<String> warnings;
+  final String mode;
+  final String tokenSourceMode;
+  final Map<String, dynamic> window;
 
   static void validateEnvelope(Map<String, dynamic> json) {
     final schemaVersion = json['schemaVersion'];
     if (schemaVersion is! int || schemaVersion != currentSchemaVersion) {
       throw const FormatException('Unsupported agent usage report schema.');
     }
+    if (json['mode'] != currentMode ||
+        json['tokenSourceMode'] != currentTokenSourceMode) {
+      throw const FormatException('Unsupported agent usage report mode.');
+    }
   }
 
   int get agentCount => _int(summary['agentCount']);
   int get totalTokens => _int(summary['totalTokens']);
-  int get meteredTotalBytes => _int(summary['meteredTotalBytes']);
-  int get estimatedHistoricalBytes => _int(summary['estimatedHistoricalBytes']);
-  String get attribution => (summary['attribution'] ?? '').toString();
+  int get windowDays {
+    final value = _int(window['days'] ?? summary['windowDays']);
+    return value == 0 ? 30 : value.clamp(1, 365).toInt();
+  }
+
   String get confidence => (summary['confidence'] ?? '').toString();
 
   bool isFresh({DateTime? now, Duration maxAge = const Duration(hours: 1)}) {
@@ -100,6 +104,7 @@ class AgentUsageReport {
     Map<String, dynamic>? summary,
     List<AgentUsageAgentSummary>? agents,
     List<String>? warnings,
+    Map<String, dynamic>? window,
   }) {
     return AgentUsageReport(
       schemaVersion: schemaVersion,
@@ -107,6 +112,9 @@ class AgentUsageReport {
       summary: summary ?? this.summary,
       agents: agents ?? this.agents,
       warnings: warnings ?? this.warnings,
+      mode: mode,
+      tokenSourceMode: tokenSourceMode,
+      window: window ?? this.window,
     );
   }
 
@@ -139,6 +147,9 @@ class AgentUsageReport {
                 .where((value) => value.isNotEmpty)
                 .toList()
           : const [],
+      mode: (json['mode'] ?? '').toString(),
+      tokenSourceMode: (json['tokenSourceMode'] ?? '').toString(),
+      window: _map(json['window']),
     );
   }
 
@@ -153,6 +164,8 @@ class AgentUsageReport {
       summary: _summaryFromAgents(agents),
       agents: List.unmodifiable(agents),
       warnings: List.unmodifiable(warnings),
+      mode: currentMode,
+      tokenSourceMode: currentTokenSourceMode,
     );
   }
 }
@@ -163,8 +176,6 @@ class AgentUsageAgentSummary {
     required this.label,
     required this.status,
     required this.history,
-    required this.traffic,
-    required this.allowances,
     required this.confidence,
   });
 
@@ -172,8 +183,6 @@ class AgentUsageAgentSummary {
   final String label;
   final String status;
   final Map<String, dynamic> history;
-  final Map<String, dynamic> traffic;
-  final List<AgentUsageAllowance> allowances;
   final String confidence;
 
   int get sessionCount => _int(history['sessionCount']);
@@ -182,9 +191,6 @@ class AgentUsageAgentSummary {
   int get promptTokens => _int(history['promptTokens']);
   int get cachedInputTokens => _int(history['cachedInputTokens']);
   int get completionTokens => _int(history['completionTokens']);
-  int get meteredTotalBytes => _int(traffic['meteredTotalBytes']);
-  int get estimatedHistoricalBytes => _int(traffic['estimatedHistoricalBytes']);
-  String get attribution => (traffic['attribution'] ?? '').toString();
 
   factory AgentUsageAgentSummary.placeholder({
     required String agentId,
@@ -195,8 +201,6 @@ class AgentUsageAgentSummary {
       label: label,
       status: 'pending',
       history: const {},
-      traffic: const {},
-      allowances: const [],
       confidence: '',
     );
   }
@@ -207,70 +211,12 @@ class AgentUsageAgentSummary {
       label: (json['label'] ?? '').toString(),
       status: (json['status'] ?? '').toString(),
       history: _map(json['history']),
-      traffic: _map(json['traffic']),
-      allowances: json['allowances'] is List
-          ? (json['allowances'] as List)
-                .whereType<Map<String, dynamic>>()
-                .map(AgentUsageAllowance.fromJson)
-                .toList()
-          : const [],
       confidence: (json['confidence'] ?? '').toString(),
     );
   }
 }
 
-class AgentUsageAllowance {
-  const AgentUsageAllowance({
-    required this.kind,
-    required this.label,
-    required this.provider,
-    required this.period,
-    required this.status,
-    required this.value,
-    required this.unit,
-    required this.source,
-    required this.message,
-  });
-
-  final String kind;
-  final String label;
-  final String provider;
-  final String period;
-  final String status;
-  final String value;
-  final String unit;
-  final String source;
-  final String message;
-
-  factory AgentUsageAllowance.fromJson(Map<String, dynamic> json) {
-    return AgentUsageAllowance(
-      kind: (json['kind'] ?? '').toString(),
-      label: (json['label'] ?? '').toString(),
-      provider: (json['provider'] ?? '').toString(),
-      period: (json['period'] ?? '').toString(),
-      status: (json['status'] ?? '').toString(),
-      value: (json['value'] ?? '').toString(),
-      unit: (json['unit'] ?? '').toString(),
-      source: (json['source'] ?? '').toString(),
-      message: (json['message'] ?? '').toString(),
-    );
-  }
-}
-
-String _trafficAttribution(int meteredBytes, int estimatedBytes) {
-  if (meteredBytes > 0 && estimatedBytes > 0) {
-    return 'mixed';
-  }
-  if (meteredBytes > 0) {
-    return 'process-metered';
-  }
-  if (estimatedBytes > 0) {
-    return 'history-estimated';
-  }
-  return '';
-}
-
-String _trafficConfidence(List<AgentUsageAgentSummary> agents) {
+String _tokenConfidence(List<AgentUsageAgentSummary> agents) {
   if (agents.any((agent) => agent.confidence == 'high')) {
     return 'high';
   }

@@ -105,7 +105,6 @@ class RoutingDecisionDisclosure extends StatelessWidget {
               child: Text(
                 '${candidate.agentLabel.isEmpty ? candidate.agentId : candidate.agentLabel}'
                 ' · priority ${candidate.priority}'
-                ' · headroom ${candidate.allowanceHeadroom}'
                 ' · ${candidate.reason}',
                 key: Key('routing-decision-candidate-${candidate.agentId}'),
                 style: TextStyle(color: colors.text, fontSize: 12),

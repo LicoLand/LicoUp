@@ -1,19 +1,8 @@
-import 'dart:convert';
-import 'dart:io' show Directory, File, FileMode, Platform, Process;
+import 'dart:io' show Platform, Process;
 
-class RuntimeProcessResult {
-  const RuntimeProcessResult({
-    required this.exitCode,
-    required this.stdout,
-    required this.stderr,
-  });
+import 'package:flutter_client/src/contracts/directory_opener.dart';
 
-  final int exitCode;
-  final String stdout;
-  final String stderr;
-}
-
-class RuntimePlatformBridge {
+class RuntimePlatformBridge implements DirectoryOpener {
   const RuntimePlatformBridge();
 
   bool get isAndroid => Platform.isAndroid;
@@ -29,37 +18,14 @@ class RuntimePlatformBridge {
     return value.isEmpty ? 'Lico Arc' : value;
   }
 
-  Future<RuntimeProcessResult> openDirectory(String directoryPath) async {
+  @override
+  Future<DirectoryOpenResult> openDirectory(String directoryPath) async {
     final command = isMacos
         ? 'open'
         : isWindows
         ? 'explorer'
         : 'xdg-open';
     final result = await Process.run(command, [directoryPath]);
-    return RuntimeProcessResult(
-      exitCode: result.exitCode,
-      stdout: result.stdout.toString(),
-      stderr: result.stderr.toString(),
-    );
-  }
-
-  Future<void> writeAndroidMobileProviderSyncDiagnostic(
-    Map<String, Object?> payload,
-  ) async {
-    if (!isAndroid) {
-      return;
-    }
-    final directory = Directory(
-      '/sdcard/Android/data/com.liko.arc/files/secure-mesh',
-    );
-    await directory.create(recursive: true);
-    final file = File(
-      '${directory.path}/mobile-provider-sync-diagnostic.jsonl',
-    );
-    await file.writeAsString(
-      '${jsonEncode(payload)}\n',
-      mode: FileMode.append,
-      flush: true,
-    );
+    return DirectoryOpenResult(exitCode: result.exitCode);
   }
 }

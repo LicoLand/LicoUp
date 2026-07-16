@@ -10,6 +10,9 @@ class SceneDelegate: FlutterSceneDelegate {
     guard let windowScene = scene as? UIWindowScene else {
       return
     }
+    guard (try? LocalOnlyDataProtection.prepareApplicationSupportRoots()) != nil else {
+      return
+    }
 
     let flutterViewController = FlutterViewController(project: nil, nibName: nil, bundle: nil)
     GeneratedPluginRegistrant.register(with: flutterViewController)

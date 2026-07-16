@@ -12,25 +12,21 @@
   "authorityEntries": [
     {
       "path": "apps/desktop/test/layout/fixtures/production_client_shell_fixture.dart",
-      "digest": "sha256:e76b728d745e29aff3e5e8589feb1f13bf650d681e0669c232073938ba7f81c2"
+      "digest": "sha256:4a41f42bc0088950012721f938cff26a66c4eb8c6f1f58d44ef4e0e0009f5808"
     },
     {
       "path": "apps/desktop/test/layout/production_baseline/production_layout_baseline_test.dart",
-      "digest": "sha256:5216cedc4988929fd33827eddfcb23bcb0213559f6828f96810011ad404976e3"
+      "digest": "sha256:0dc45c06893f14edfb43061fa028f24c9d644ff2806cb4a05c680d93454befdf"
     },
     {
       "path": "apps/desktop/test/layout/production_baseline/production_layout_switch_continuity_test.dart",
-      "digest": "sha256:8aa757eecd26cf725e239f1867b958001205931245ab2e47b773c151f5bbcf9f"
+      "digest": "sha256:9ddaf28b52fc61ec1b32eafbb4328754a56881cccd9f82bdbc17d4b0394c3522"
     }
   ],
   "entries": [
     {
       "path": "apps/desktop/lib/src/frontend/layout/profiles/workbench/mobile/destinations/workbench_agents_destination.dart",
-      "digest": "sha256:cab85921d990a1f901301af584d94ebfa46333675f26d9b1315cb77ecf2bc1ce"
-    },
-    {
-      "path": "apps/desktop/lib/src/frontend/layout/profiles/workbench/mobile/destinations/workbench_feed_destination.dart",
-      "digest": "sha256:f1290d9384d6e6d51d3f1285a5d7d5d584c7306a79ac4e77bd8dfa27228016d8"
+      "digest": "sha256:ed46c4aafd0fdd8a31ee4d32acb4ea394193adae4db81c1c3d217caf0370efc0"
     },
     {
       "path": "apps/desktop/lib/src/frontend/layout/profiles/workbench/mobile/destinations/workbench_mobile_agents_presentation.dart",
@@ -46,11 +42,11 @@
     },
     {
       "path": "apps/desktop/lib/src/frontend/layout/profiles/workbench/mobile/destinations/workbench_settings_destination.dart",
-      "digest": "sha256:faa065b6a6c6336e5a78fed4444d7b778dede48bc64904bf02162646d29c47f1"
+      "digest": "sha256:b4ccc28bca75662d87c274c17180c35277a2ce6cf42ff323a759040c21584a91"
     },
     {
       "path": "apps/desktop/lib/src/frontend/layout/profiles/workbench/mobile/workbench_mobile_bundle.dart",
-      "digest": "sha256:554839c6d707ed69135a83f6a6d95a8a4a492cf7258f7e3ff9efa2d96491c669"
+      "digest": "sha256:8b8b5ffee30d126f38b521323b03a4bfc8bf939aa5d0beced8a9e8ea5ced0e6b"
     },
     {
       "path": "apps/desktop/lib/src/frontend/layout/profiles/workbench/mobile/workbench_mobile_components.dart",
@@ -62,7 +58,7 @@
     },
     {
       "path": "apps/desktop/lib/src/frontend/layout/profiles/workbench/mobile/workbench_mobile_shell.dart",
-      "digest": "sha256:41e3c1248c63ed6e7453a6b08659238a4cea89ea164aa51be98280883d16a5a4"
+      "digest": "sha256:4c48969d18ae7b428db7d6ec288f67f080814c9cda0ff407d404b9d49dfefb2a"
     },
     {
       "path": "apps/desktop/lib/src/frontend/layout/profiles/workbench/mobile/workbench_mobile_tokens.dart",
@@ -71,10 +67,6 @@
     {
       "path": "apps/desktop/test/goldens/layout/production-baseline/workbench/mobile/agents.png",
       "digest": "sha256:e14fb02d3e5045906a852c41ac8cf2bb0641c181a3d597d8b5bcb26f23e07447"
-    },
-    {
-      "path": "apps/desktop/test/goldens/layout/production-baseline/workbench/mobile/feed.png",
-      "digest": "sha256:5087cb8459cc6798e5fb80bc1ba29f591a7420ea48f9b0ad470dcbb487e8984e"
     },
     {
       "path": "apps/desktop/test/goldens/layout/production-baseline/workbench/mobile/settings.png",
@@ -90,7 +82,7 @@
     },
     {
       "path": "apps/desktop/test/layout/profiles/workbench/mobile/workbench_mobile_bundle_test.dart",
-      "digest": "sha256:5126c01f7d0ff4fd70b18d17f8087f31cc8e52ae2a9c986d5311ed80740d33d2"
+      "digest": "sha256:509d4ace85967d3dbc4aefb3e23b9f31a46dc64a73781ecc14ac43057d3c6f01"
     },
     {
       "path": "apps/desktop/test/layout/profiles/workbench/mobile/workbench_mobile_golden_test.dart",
@@ -98,12 +90,12 @@
     },
     {
       "path": "apps/desktop/test/layout/profiles/workbench/mobile/workbench_mobile_shell_test.dart",
-      "digest": "sha256:40642e719505ef61d16745e5b6d9281bcf09a3172c8433ac87298b761894033c"
+      "digest": "sha256:826ab147f8309cd74484d79f3c855f661593c811bd634f49fae65d9d453adf35"
     },
     {
       "path": "apps/desktop/test/layout/profiles/workbench/mobile/workbench_mobile_test_fakes.dart",
-      "digest": "sha256:1197911ca31e3cfe7b5815a7f6088aa1df1c67ce58053d78f2b6a135d666b988"
+      "digest": "sha256:5dd78e3b076b31e2ce98fd58aaf860972423e82f23cd00d07f04bac71c9a45ea"
     }
   ],
-  "manifestDigest": "sha256:bb8fd9ef59a43a72cb12916f6d0e540e0ec7069fe4dabe1d7a9819dda1ab12e8"
+  "manifestDigest": "sha256:0d6f7231d5d103bbc97dbce235f923abe41571c1dd2ded8606b4106efd867e4b"
 }

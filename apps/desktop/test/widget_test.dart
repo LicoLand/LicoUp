@@ -9,13 +9,9 @@ import 'package:flutter_client/src/contracts/presentation/semantic_destination.d
 void main() {
   test('app sections are the LicoArc client modules', () {
     expect(ClientSection.values, [
-      ClientSection.controlPanel,
       ClientSection.agents,
-      ClientSection.feed,
       ClientSection.monitoring,
-      ClientSection.mcpPlugins,
       ClientSection.skillHub,
-      ClientSection.localRuntime,
       ClientSection.mobileRelay,
       ClientSection.settings,
     ]);

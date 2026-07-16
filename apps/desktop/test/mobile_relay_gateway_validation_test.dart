@@ -50,7 +50,7 @@ void main() {
 
   test('client config fails closed on an invalid native gateway echo', () {
     final config = MobileRelayConfig.fromJson(const {
-      'defaultGatewayUrl': licoDefaultMobileRelayGatewayUrl,
+      'defaultGatewayUrl': '',
       'useCustomGateway': true,
       'customGatewayUrl': 'https://trusted.example@evil.test#fragment',
       'pairedDevices': [
@@ -65,7 +65,7 @@ void main() {
 
     expect(config.useCustomGateway, isFalse);
     expect(config.customGatewayUrl, isEmpty);
-    expect(config.effectiveGatewayUrl, licoDefaultMobileRelayGatewayUrl);
+    expect(config.effectiveGatewayUrl, isEmpty);
     expect(config.pairedDevices.single.gatewayUrl, isEmpty);
   });
 }

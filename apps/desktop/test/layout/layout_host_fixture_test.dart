@@ -72,11 +72,7 @@ void main() {
       descriptor: descriptor,
       surface: LayoutRuntimeSurface.mobile,
       destinationCatalog: semantic,
-      destinationOverride: {
-        ClientSection.agents,
-        ClientSection.mobileRelay,
-        ClientSection.settings,
-      },
+      destinationOverride: {ClientSection.agents, ClientSection.settings},
     );
     final badWorkbench = LayoutDefinition([desktop, badMobile]);
     expect(

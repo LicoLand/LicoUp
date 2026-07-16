@@ -15,21 +15,17 @@ import '../../../fixtures/layout_chrome_fixture.dart';
 import '../../../fixtures/layout_scoped_state_fixture.dart';
 
 const Set<ClientSection> classicDesktopExpectedDestinations = {
-  ClientSection.controlPanel,
   ClientSection.agents,
   ClientSection.monitoring,
-  ClientSection.mcpPlugins,
-  ClientSection.localRuntime,
+  ClientSection.skillHub,
   ClientSection.mobileRelay,
   ClientSection.settings,
 };
 
 const Map<ClientSection, String> classicDesktopTestLabels = {
-  ClientSection.controlPanel: 'Home',
   ClientSection.agents: 'Agents',
   ClientSection.monitoring: 'Token Usage',
-  ClientSection.mcpPlugins: 'Plugins & Skills',
-  ClientSection.localRuntime: 'Runtime',
+  ClientSection.skillHub: 'Skill Hub',
   ClientSection.mobileRelay: 'Mobile Relay',
   ClientSection.settings: 'Settings',
 };

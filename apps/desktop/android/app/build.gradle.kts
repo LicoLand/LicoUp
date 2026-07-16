@@ -1,5 +1,6 @@
 import java.util.Locale
 import java.util.Properties
+import java.nio.charset.StandardCharsets
 
 plugins {
     id("com.android.application")
@@ -52,6 +53,7 @@ android {
 
     defaultConfig {
         applicationId = "com.liko.arc"
+        manifestPlaceholders["mainActivityClass"] = "com.liko.arc.MainActivity"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
@@ -72,6 +74,9 @@ android {
     }
 
     buildTypes {
+        getByName("debug") {
+            manifestPlaceholders["mainActivityClass"] = "com.liko.arc.DebugMainActivity"
+        }
         release {
             signingConfig = if (releaseSigningReady) {
                 signingConfigs.getByName("release")
@@ -83,7 +88,7 @@ android {
 }
 
 tasks.configureEach {
-    val isReleasePackagingTask = name.matches(Regex("(?:assemble|bundle|package).*Release.*"))
+    val isReleasePackagingTask = name.matches(Regex("(?:assemble|bundle|package).*Release$"))
     if (isReleasePackagingTask) {
         doFirst {
             require(releaseSigningFieldsReady) {
@@ -98,6 +103,67 @@ tasks.configureEach {
                 "Android release keystore file is missing."
             }
         }
+    }
+}
+
+val verifyReleaseAcceptanceIsolation by tasks.registering {
+    group = "verification"
+    description =
+        "Proves the release manifest and Kotlin classes exclude the debug acceptance ingress."
+    dependsOn("processReleaseMainManifest", "compileReleaseKotlin")
+
+    doLast {
+        val forbidden = listOf(
+            "ReleaseAcceptanceReceiver",
+            "ReleaseAcceptanceChannel",
+            "SecureMeshAndroidReleaseAcceptanceCoordinator",
+            "ReleaseAcceptanceDebugContract",
+            "com.liko.arc.RELEASE_ACCEPTANCE",
+            "secure_mesh.android.releaseAcceptance.authorize",
+        )
+        val intermediates = layout.buildDirectory.dir("intermediates").get().asFile
+        val releaseManifests = intermediates.walkTopDown()
+            .filter { file ->
+                file.isFile &&
+                    file.name == "AndroidManifest.xml" &&
+                    file.invariantSeparatorsPath.contains("/release/")
+            }
+            .toList()
+        require(releaseManifests.isNotEmpty()) {
+            "Merged release manifest was not produced."
+        }
+        releaseManifests.forEach { manifest ->
+            val text = manifest.readText(Charsets.UTF_8)
+            require(text.contains("android:allowBackup=\"false\"")) {
+                "Merged release manifest must disable Android Auto Backup."
+            }
+            require(text.contains("android:dataExtractionRules=\"@xml/backup_rules\"")) {
+                "Merged release manifest must bind fail-closed data extraction rules."
+            }
+            require(text.contains("android:fullBackupContent=\"@xml/backup_rules_legacy\"")) {
+                "Merged release manifest must bind legacy full-backup exclusions."
+            }
+            forbidden.forEach { token ->
+                require(!text.contains(token)) {
+                    "Merged release manifest contains debug-only acceptance token: $token"
+                }
+            }
+        }
+
+        val releaseClasses = layout.buildDirectory.dir("tmp/kotlin-classes/release").get().asFile
+        require(releaseClasses.isDirectory) {
+            "Compiled release Kotlin classes were not produced."
+        }
+        releaseClasses.walkTopDown()
+            .filter { it.isFile && it.extension == "class" }
+            .forEach { classFile ->
+                val text = String(classFile.readBytes(), StandardCharsets.ISO_8859_1)
+                forbidden.forEach { token ->
+                    require(!text.contains(token)) {
+                        "Compiled release classes contain debug-only acceptance token: $token"
+                    }
+                }
+            }
     }
 }
 

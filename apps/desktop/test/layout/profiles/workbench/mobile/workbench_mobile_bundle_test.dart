@@ -23,7 +23,6 @@ void main() {
       };
       const expectedDestinations = {
         ClientSection.agents,
-        ClientSection.feed,
         ClientSection.mobileRelay,
         ClientSection.settings,
       };
@@ -45,7 +44,7 @@ void main() {
           entry.value.destinationBuilders.keys.toSet(),
           expectedDestinations,
         );
-        expect(entry.value.destinationBuilders.length, 4);
+        expect(entry.value.destinationBuilders.length, 3);
         expect(
           entry.value.destinationBuilders.containsKey(ClientSection.skillHub),
           isFalse,
@@ -137,11 +136,6 @@ void main() {
         textScale: 1,
         hasTouch: true,
       );
-      final state = buildLayoutScopedStateFixture(
-        profile: workbenchMobileBundle.profile,
-        surface: LayoutRuntimeSurface.mobile,
-        stateNamespaces: workbenchMobileBundle.stateNamespaces,
-      );
       final content = _WorkbenchMobilePresentationContent();
       final variant = workbenchMobileBundle.variants[environment.viewport]!;
 
@@ -150,6 +144,12 @@ void main() {
         ClientSection.settings,
       ]) {
         final builder = variant.destinationBuilders[destination]!;
+        final state = buildLayoutScopedStateFixture(
+          profile: workbenchMobileBundle.profile,
+          surface: LayoutRuntimeSurface.mobile,
+          stateNamespaces: workbenchMobileBundle.stateNamespaces,
+          destination: destination,
+        );
         await tester.pumpWidget(
           MaterialApp(
             restorationScopeId: 'workbench-mobile-presentation-test',

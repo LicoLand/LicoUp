@@ -11,11 +11,9 @@ import 'package:flutter_client/src/frontend/shared/ui/theme.dart';
 import '../../../fixtures/layout_chrome_fixture.dart';
 
 const Set<ClientSection> workbenchDesktopCanonicalDestinations = {
-  ClientSection.controlPanel,
   ClientSection.agents,
   ClientSection.monitoring,
-  ClientSection.mcpPlugins,
-  ClientSection.localRuntime,
+  ClientSection.skillHub,
   ClientSection.mobileRelay,
   ClientSection.settings,
 };

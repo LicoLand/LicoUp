@@ -4,7 +4,7 @@ class MobileHomeLayout {
     this.pinnedEntryIds = const {},
   });
 
-  static const currentSchemaVersion = 1;
+  static const currentSchemaVersion = 2;
 
   final List<String> order;
   final Set<String> pinnedEntryIds;
@@ -24,17 +24,22 @@ class MobileHomeLayout {
   }
 
   factory MobileHomeLayout.fromJson(Map<String, dynamic> json) {
+    if ((json['schemaVersion'] as num?)?.toInt() != currentSchemaVersion) {
+      return defaults();
+    }
     final rawOrder = json['order'];
     final rawPinned = json['pinnedEntryIds'];
     return MobileHomeLayout(
       order: rawOrder is List
           ? List.unmodifiable(
-              rawOrder.map((item) => item.toString()).where(_validEntryId),
+              rawOrder.map((item) => item.toString()).where(isSupportedEntryId),
             )
           : const [],
       pinnedEntryIds: rawPinned is List
           ? Set.unmodifiable(
-              rawPinned.map((item) => item.toString()).where(_validEntryId),
+              rawPinned
+                  .map((item) => item.toString())
+                  .where(isSupportedEntryId),
             )
           : const {},
     );
@@ -48,8 +53,10 @@ class MobileHomeLayout {
     };
   }
 
-  static bool _validEntryId(String value) {
-    return value.trim().isNotEmpty && value.contains(':');
+  static bool isSupportedEntryId(String value) {
+    final normalized = value.trim();
+    return (normalized.startsWith('target:') && normalized.length > 7) ||
+        (normalized.startsWith('device:') && normalized.length > 7);
   }
 }
 

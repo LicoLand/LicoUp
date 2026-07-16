@@ -1,4 +1,10 @@
-part of 'package:flutter_client/src/platform/native_client/agent_service.dart';
+import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+import 'dart:typed_data';
+
+import 'package:flutter_client/src/contracts/agent_command_runner.dart';
+import 'package:flutter_client/src/platform/native_client/native_cli_ports.dart';
 
 const int _privateRuntimeMaxInputBytes = 1024 * 1024;
 const int _privateRuntimeMaxStdoutBytes = 20 * 1024 * 1024;
@@ -11,8 +17,26 @@ class _BoundedProcessOutput {
   final bool truncated;
 }
 
-mixin AgentServiceProcessIo implements AgentCommandRunner {
-  AgentService get _agentService => this as AgentService;
+class BoundedNativeProcessIo implements AgentCommandRunner {
+  BoundedNativeProcessIo({
+    required NativeCliProcessContext processContext,
+    required NativeCommandExecutor commandExecutor,
+    required NativeStdioRpcTransport stdioRpcTransport,
+    required bool persistentStdioRpcEnabled,
+  }) : _processContext = processContext,
+       _commandExecutor = commandExecutor,
+       _stdioRpcTransport = stdioRpcTransport,
+       _persistentStdioRpcEnabled = persistentStdioRpcEnabled;
+
+  final NativeCliProcessContext _processContext;
+  final NativeCommandExecutor _commandExecutor;
+  final NativeStdioRpcTransport _stdioRpcTransport;
+  final bool _persistentStdioRpcEnabled;
+
+  @override
+  Future<Map<String, dynamic>> runCli(List<String> args) {
+    return _commandExecutor.execute(args);
+  }
 
   @override
   Future<Map<String, dynamic>> runCliWithStdin(
@@ -23,16 +47,19 @@ mixin AgentServiceProcessIo implements AgentCommandRunner {
     if (stdinBytes.length > _privateRuntimeMaxInputBytes) {
       throw Exception('lico-client private runtime request is too large.');
     }
-    if (_agentService._privateRuntimeTimeout <= Duration.zero) {
+    if (_processContext.requestTimeout <= Duration.zero) {
       throw Exception('lico-client private runtime timeout is invalid.');
     }
-    final cli = await _agentService._resolveCliBinary();
-    final env = await _agentService._cliEnvironment();
-    final executable = cli?.path ?? 'lico-client';
     late Process process;
     try {
-      process = await _agentService._startCliExecutable(executable, args, env);
-    } catch (_) {
+      final cli = await _processContext.resolveCliBinary();
+      final environment = await _processContext.buildEnvironment();
+      process = await _processContext.startProcess(
+        cli?.path ?? 'lico-client',
+        args,
+        environment,
+      );
+    } on Object {
       throw Exception('lico-client executable could not be started.');
     }
 
@@ -54,7 +81,7 @@ mixin AgentServiceProcessIo implements AgentCommandRunner {
         process.exitCode,
         stdoutFuture,
         stderrFuture,
-      ]).timeout(_agentService._privateRuntimeTimeout);
+      ]).timeout(_processContext.requestTimeout);
       exitCode = await process.exitCode;
       stdoutOutput = await stdoutFuture;
       stderrOutput = await stderrFuture;
@@ -101,7 +128,7 @@ mixin AgentServiceProcessIo implements AgentCommandRunner {
     List<String> args,
     String stdinText,
   ) async* {
-    if (_agentService._persistentStdioRpcEnabled &&
+    if (_persistentStdioRpcEnabled &&
         args.length >= 3 &&
         args[0] == 'agent' &&
         args[1] == 'conversation' &&
@@ -115,23 +142,26 @@ mixin AgentServiceProcessIo implements AgentCommandRunner {
       if (request is! Map<String, dynamic>) {
         throw const LicoClientRpcException('invalid_request');
       }
-      yield* _agentService._streamConversationOverStdioRpc(request);
+      yield* _stdioRpcTransport.streamConversation(request);
       return;
     }
     final stdinBytes = utf8.encode(stdinText);
     if (stdinBytes.length > _privateRuntimeMaxInputBytes) {
       throw Exception('lico-client private runtime request is too large.');
     }
-    if (_agentService._privateRuntimeTimeout <= Duration.zero) {
+    if (_processContext.requestTimeout <= Duration.zero) {
       throw Exception('lico-client private runtime timeout is invalid.');
     }
-    final cli = await _agentService._resolveCliBinary();
-    final env = await _agentService._cliEnvironment();
-    final executable = cli?.path ?? 'lico-client';
     late Process process;
     try {
-      process = await _agentService._startCliExecutable(executable, args, env);
-    } catch (_) {
+      final cli = await _processContext.resolveCliBinary();
+      final environment = await _processContext.buildEnvironment();
+      process = await _processContext.startProcess(
+        cli?.path ?? 'lico-client',
+        args,
+        environment,
+      );
+    } on Object {
       throw Exception('lico-client executable could not be started.');
     }
 
@@ -139,6 +169,7 @@ mixin AgentServiceProcessIo implements AgentCommandRunner {
       process.stderr,
       _privateRuntimeMaxStderrBytes,
     );
+    var stdoutBytes = 0;
     try {
       if (stdinBytes.isNotEmpty) {
         process.stdin.add(stdinBytes);
@@ -148,10 +179,16 @@ mixin AgentServiceProcessIo implements AgentCommandRunner {
           in process.stdout
               .transform(utf8.decoder)
               .transform(const LineSplitter())
-              .timeout(_agentService._privateRuntimeTimeout)) {
+              .timeout(_processContext.requestTimeout)) {
         final trimmed = line.trim();
         if (trimmed.isEmpty) {
           continue;
+        }
+        stdoutBytes += utf8.encode(line).length + 1;
+        if (stdoutBytes > _privateRuntimeMaxStdoutBytes) {
+          throw Exception(
+            'lico-client private runtime output exceeded its limit.',
+          );
         }
         final decoded = jsonDecode(trimmed);
         if (decoded is Map<String, dynamic>) {
@@ -163,7 +200,7 @@ mixin AgentServiceProcessIo implements AgentCommandRunner {
       throw Exception('lico-client private runtime request timed out.');
     } on Object {
       process.kill();
-      rethrow;
+      throw Exception('lico-client private runtime stream failed.');
     }
 
     final exitCode = await process.exitCode;

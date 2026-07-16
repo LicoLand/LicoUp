@@ -8,6 +8,7 @@ import 'package:flutter_client/src/backend/features/routing/services/route_histo
 import 'package:flutter_client/src/backend/features/routing/services/route_session_binding_store.dart';
 import 'package:flutter_client/src/contracts/routing/routing_module_registration.dart';
 import 'package:flutter_client/src/contracts/routing/routing_policy_schema.dart';
+import 'package:flutter_client/src/contracts/routing/task_route_coordinator_port.dart';
 import 'package:path/path.dart' as p;
 
 /// Default registration for the optional multi-agent routing module.
@@ -27,7 +28,7 @@ class DefaultRoutingModuleRegistration implements RoutingModuleRegistration {
   FileRoutingPolicyStore? _policyStore;
   RouteHistoryStore? _historyStore;
   ProtectedRouteSessionBindingStore? _sessionBindingStore;
-  TaskRouteCoordinator? _coordinator;
+  TaskRouteCoordinatorPort? _coordinator;
   StreamSubscription<RoutingPolicyStoreEvent>? _policySubscription;
   final StreamController<RoutingPolicyStoreEvent> _policyEvents =
       StreamController<RoutingPolicyStoreEvent>.broadcast();
@@ -35,7 +36,7 @@ class DefaultRoutingModuleRegistration implements RoutingModuleRegistration {
   FileRoutingPolicyStore? get policyStore => _policyStore;
   RouteHistoryStore? get historyStore => _historyStore;
   @override
-  TaskRouteCoordinator? get coordinator => _coordinator;
+  TaskRouteCoordinatorPort? get coordinator => _coordinator;
   Map<String, String> get settingsView => Map.unmodifiable(_settings);
   @override
   Stream<RoutingPolicyStoreEvent> get policyEvents => _policyEvents.stream;

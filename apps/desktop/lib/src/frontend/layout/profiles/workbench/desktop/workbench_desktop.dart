@@ -5,9 +5,7 @@ import 'package:flutter_client/src/contracts/presentation/semantic_destination.d
 import 'package:flutter_client/src/frontend/layout/layout_surface_bundle.dart';
 import 'package:flutter_client/src/frontend/layout/profiles/workbench/desktop/components/workbench_desktop_component_kit.dart';
 import 'package:flutter_client/src/frontend/layout/profiles/workbench/desktop/destinations/agents_destination.dart';
-import 'package:flutter_client/src/frontend/layout/profiles/workbench/desktop/destinations/control_panel_destination.dart';
-import 'package:flutter_client/src/frontend/layout/profiles/workbench/desktop/destinations/local_runtime_destination.dart';
-import 'package:flutter_client/src/frontend/layout/profiles/workbench/desktop/destinations/mcp_plugins_destination.dart';
+import 'package:flutter_client/src/frontend/layout/profiles/workbench/desktop/destinations/skill_hub_destination.dart';
 import 'package:flutter_client/src/frontend/layout/profiles/workbench/desktop/destinations/mobile_relay_destination.dart';
 import 'package:flutter_client/src/frontend/layout/profiles/workbench/desktop/destinations/monitoring_destination.dart';
 import 'package:flutter_client/src/frontend/layout/profiles/workbench/desktop/destinations/settings_destination.dart';
@@ -82,11 +80,9 @@ final LayoutSurfaceBundle workbenchDesktopBundle = LayoutSurfaceBundle(
 
 Map<ClientSection, LayoutDestinationBuilder>
 _workbenchDesktopDestinationBuilders() => {
-  ClientSection.controlPanel: workbenchDesktopControlPanelDestinationBuilder,
   ClientSection.agents: workbenchDesktopAgentsDestinationBuilder,
   ClientSection.monitoring: workbenchDesktopMonitoringDestinationBuilder,
-  ClientSection.mcpPlugins: workbenchDesktopMcpPluginsDestinationBuilder,
-  ClientSection.localRuntime: workbenchDesktopLocalRuntimeDestinationBuilder,
+  ClientSection.skillHub: workbenchDesktopSkillHubDestinationBuilder,
   ClientSection.mobileRelay: workbenchDesktopMobileRelayDestinationBuilder,
   ClientSection.settings: workbenchDesktopSettingsDestinationBuilder,
 };

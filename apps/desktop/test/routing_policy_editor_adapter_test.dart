@@ -16,10 +16,6 @@ void main() {
           roles: ['implementation'],
           capabilities: ['tool-use'],
           priority: 5,
-          allowanceThreshold: RoutingAllowanceThreshold(
-            kind: 'token',
-            minimum: 200,
-          ),
           distillation: RoutingAgentDistillation(
             distiller: 'self',
             maxLength: 2048,
@@ -28,7 +24,6 @@ void main() {
         ),
       ],
       routing: RoutingPolicyRouting(
-        allowStaleUsage: true,
         circuitBreaker: RoutingCircuitBreakerConfig(
           allowedFails: 2,
           cooldownSeconds: 120,
@@ -60,9 +55,7 @@ void main() {
     expect(saved.agents.single.reasoningEffort, 'high');
     expect(saved.agents.single.roles, ['implementation']);
     expect(saved.agents.single.capabilities, ['tool-use']);
-    expect(saved.agents.single.allowanceThreshold.minimum, 200);
     expect(saved.agents.single.distillation.maxLength, 2048);
-    expect(saved.routing.allowStaleUsage, isTrue);
     expect(saved.routing.circuitBreaker.allowedFails, 2);
     expect(saved.routing.switchPolicy.minimumIntervalSeconds, 45);
     expect(saved.distillation.defaultDistiller, 'codex');

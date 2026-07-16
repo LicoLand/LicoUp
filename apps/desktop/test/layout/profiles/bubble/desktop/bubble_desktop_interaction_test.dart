@@ -23,7 +23,7 @@ void main() {
             height: size.height,
             hasKeyboard: true,
           ),
-          activeDestination: ClientSection.controlPanel,
+          activeDestination: ClientSection.agents,
           content: content,
           actions: actions,
         ),
@@ -31,15 +31,11 @@ void main() {
       await tester.pump();
 
       final semantics = tester.ensureSemantics();
-      expect(find.bySemanticsLabel('Home'), findsAtLeastNWidgets(1));
-      expect(find.bySemanticsLabel('Content Home'), findsOneWidget);
+      expect(find.bySemanticsLabel('Agents'), findsAtLeastNWidgets(1));
+      expect(find.bySemanticsLabel('Content Agents'), findsOneWidget);
 
       expect(
         find.byKey(const ValueKey<String>('bubble-desktop-sidebar-rail-shell')),
-        findsOneWidget,
-      );
-      expect(
-        find.byKey(const Key('sidebar-rail-nav-controlPanel')),
         findsOneWidget,
       );
       expect(find.byKey(const Key('sidebar-rail-nav-agents')), findsOneWidget);
@@ -63,18 +59,18 @@ void main() {
           height: size.height,
           hasKeyboard: true,
         ),
-        activeDestination: ClientSection.controlPanel,
+        activeDestination: ClientSection.agents,
         content: content,
         actions: actions,
       ),
     );
     await tester.pump();
 
-    await tester.tap(find.byKey(const Key('sidebar-rail-nav-controlPanel')));
+    await tester.tap(find.byKey(const Key('sidebar-rail-nav-agents')));
     await tester.pump();
 
     expect(actions.destinationSelections, <ClientSection>[
-      ClientSection.controlPanel,
+      ClientSection.agents,
     ]);
   });
 
@@ -94,7 +90,7 @@ void main() {
           hasPointer: true,
           hasTouch: true,
         ),
-        activeDestination: ClientSection.controlPanel,
+        activeDestination: ClientSection.agents,
         content: content,
         actions: actions,
       ),
@@ -118,11 +114,11 @@ void main() {
     ]);
 
     await tester.tap(
-      find.byKey(const ValueKey<String>('bubble-content-action-controlPanel')),
+      find.byKey(const ValueKey<String>('bubble-content-action-agents')),
     );
     await tester.pump();
     expect(actions.contentActions, <(ClientSection, String)>[
-      (ClientSection.controlPanel, 'primary'),
+      (ClientSection.agents, 'primary'),
     ]);
     expect(tester.takeException(), isNull);
   });
@@ -135,28 +131,10 @@ void main() {
     final actions = BubbleActionRecorder();
     final content = BubbleRecordingContentPort(actions);
     final chrome = BubbleRecordingChromePort(
-      LayoutChromeSnapshot(
-        status: const LayoutChromeStatusSnapshot(
+      const LayoutChromeSnapshot(
+        status: LayoutChromeStatusSnapshot(
           message: 'Ready',
           caption: 'Connected',
-        ),
-        allowance: LayoutChromeAllowanceSnapshot(
-          targetId: 'fixture-agent',
-          targetLabel: 'Fixture Agent',
-          meters: const [
-            LayoutChromeAllowanceMeterSnapshot(
-              kind: 'fixture-weekly-limit',
-              label: 'Weekly',
-              provider: 'Fixture',
-              period: 'week',
-              status: 'available',
-              value: '75',
-              unit: '%',
-              message: '',
-            ),
-          ],
-          totalTokens: 100,
-          targetTokens: 25,
         ),
       ),
     );
@@ -177,10 +155,6 @@ void main() {
 
     expect(
       find.byKey(const ValueKey<String>('shell-status-text:Ready')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const Key('agent-allowance-meter-fixture-weekly-limit')),
       findsOneWidget,
     );
     await tester.tap(find.byKey(const Key('sidebar-rail-pairing-button')));

@@ -1,17 +1,10 @@
 import 'dart:async';
-import 'dart:convert';
-import 'dart:math' as math;
 
-import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
 import 'package:flutter_client/src/application/controller/client_controller.dart';
-import 'package:flutter_client/src/contracts/agent_usage_models.dart';
-import 'package:flutter_client/src/frontend/features/agents/ui/agent_usage_pricing.dart';
-import 'package:flutter_client/src/frontend/l10n/lico_strings.dart';
-import 'package:flutter_client/src/frontend/shared/ui/theme.dart';
-
-part 'agent_usage_panel_widgets.dart';
+import 'package:flutter_client/src/frontend/features/agents/ui/agent_usage_panel_widgets.dart';
+import 'package:flutter_client/src/frontend/features/agents/ui/agent_usage_window_control.dart';
 
 class AgentUsagePanel extends StatefulWidget {
   const AgentUsagePanel({
@@ -96,7 +89,9 @@ class _AgentUsagePanelState extends State<AgentUsagePanel>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted ||
           !_appIsActive ||
-          controller.agentUsageReport?.isFresh() == true) {
+          (controller.agentUsageReport?.isFresh() == true &&
+              controller.agentUsageReport?.windowDays ==
+                  controller.agentUsageHistoryDays)) {
         return;
       }
       unawaited(controller.ensureAgentUsageLoadedAndFresh(limit: 20));
@@ -109,14 +104,26 @@ class _AgentUsagePanelState extends State<AgentUsagePanel>
     return SingleChildScrollView(
       primary: false,
       padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
-      child: _UsageCharts(
-        report: report,
-        detectedAgentIds: {
-          for (final target in controller.orderedConversationTargets(
-            controller.scannedTargets,
-          ))
-            if (target.status != 'not-detected') target.target,
-        },
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          AgentUsageWindowControl(
+            days: controller.agentUsageHistoryDays,
+            busy: controller.isScanningAgentUsage,
+            onChanged: (days) =>
+                unawaited(controller.setAgentUsageHistoryDays(days)),
+          ),
+          const SizedBox(height: 8),
+          AgentUsageCharts(
+            report: report,
+            detectedAgentIds: {
+              for (final target in controller.orderedConversationTargets(
+                controller.scannedTargets,
+              ))
+                if (target.status != 'not-detected') target.target,
+            },
+          ),
+        ],
       ),
     );
   }

@@ -4,7 +4,6 @@ import 'package:flutter_client/src/contracts/presentation/layout_state_namespace
 import 'package:flutter_client/src/contracts/presentation/semantic_destination.dart';
 import 'package:flutter_client/src/frontend/layout/layout_surface_bundle.dart';
 import 'package:flutter_client/src/frontend/layout/profiles/classic/mobile/destinations/classic_agents_destination.dart';
-import 'package:flutter_client/src/frontend/layout/profiles/classic/mobile/destinations/classic_feed_destination.dart';
 import 'package:flutter_client/src/frontend/layout/profiles/classic/mobile/destinations/classic_pairing_destination.dart';
 import 'package:flutter_client/src/frontend/layout/profiles/classic/mobile/destinations/classic_settings_destination.dart';
 import 'package:flutter_client/src/frontend/layout/profiles/classic/mobile/classic_mobile_components.dart';
@@ -79,7 +78,6 @@ final LayoutSurfaceBundle classicMobileBundle = LayoutSurfaceBundle(
 Map<ClientSection, LayoutDestinationBuilder>
 _classicMobileDestinationBuilders() => {
   ClientSection.agents: buildClassicAgentsDestination,
-  ClientSection.feed: buildClassicFeedDestination,
   ClientSection.mobileRelay: buildClassicPairingDestination,
   ClientSection.settings: buildClassicSettingsDestination,
 };

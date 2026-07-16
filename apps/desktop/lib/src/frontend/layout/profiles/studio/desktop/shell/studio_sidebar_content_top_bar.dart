@@ -93,14 +93,11 @@ final class _StudioSidebarSearchState extends State<StudioSidebarSearch> {
 
   List<_StudioSearchItem> _items(LicoStrings strings) => [
     for (final section in ClientSection.values)
-      if (section != ClientSection.skillHub &&
-          section != ClientSection.localRuntime &&
-          section != ClientSection.mobileRelay)
-        _StudioSearchItem(
-          section: section,
-          label: studioDesktopSectionTitle(strings, section),
-          aliases: studioDesktopSectionSearchAliases(section),
-        ),
+      _StudioSearchItem(
+        section: section,
+        label: studioDesktopSectionTitle(strings, section),
+        aliases: studioDesktopSectionSearchAliases(section),
+      ),
   ];
 
   @override

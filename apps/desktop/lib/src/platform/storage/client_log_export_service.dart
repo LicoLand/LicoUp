@@ -1,30 +1,23 @@
 import 'dart:io';
 import 'dart:math';
 
+import 'package:flutter_client/src/contracts/client_log_export.dart';
 import 'package:flutter_client/src/platform/storage/portable_data_root.dart';
 import 'package:path/path.dart' as p;
 
-class ClientLogExportResult {
-  const ClientLogExportResult({
-    required this.path,
-    required this.bytes,
-    required this.sourceExists,
-  });
-
-  final String path;
-  final int bytes;
-  final bool sourceExists;
-}
-
-class ClientLogExportService {
+class ClientLogExportService implements ClientLogExporter {
   const ClientLogExportService({this.maxExportBytes = 64 * 1024 * 1024});
 
   final int maxExportBytes;
 
+  @override
   Future<ClientLogExportResult> exportLogs({
-    required PortableDataRoot portableData,
+    required Object portableData,
     required String destinationPath,
   }) async {
+    if (portableData is! PortableDataRoot) {
+      throw ArgumentError.value(portableData, 'portableData');
+    }
     final trimmed = destinationPath.trim();
     if (trimmed.isEmpty) {
       throw ArgumentError.value(destinationPath, 'destinationPath');

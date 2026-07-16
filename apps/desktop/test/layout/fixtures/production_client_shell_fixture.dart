@@ -6,9 +6,6 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'package:flutter_client/src/application/controller/client_controller.dart';
 import 'package:flutter_client/src/backend/features/agents/services/agent_conversation_service.dart';
-import 'package:flutter_client/src/backend/features/feed/services/agent_feed_service.dart';
-import 'package:flutter_client/src/contracts/agent_feed_models.dart';
-import 'package:flutter_client/src/contracts/agent_feed_timeline.dart';
 import 'package:flutter_client/src/contracts/agent_usage_models.dart';
 import 'package:flutter_client/src/contracts/locale_preferences.dart';
 import 'package:flutter_client/src/contracts/mobile_relay/mobile_relay_models.dart';
@@ -17,7 +14,7 @@ import 'package:flutter_client/src/contracts/presentation/layout_profile.dart';
 import 'package:flutter_client/src/contracts/presentation/presentation_preferences.dart';
 import 'package:flutter_client/src/contracts/presentation/semantic_destination.dart';
 import 'package:flutter_client/src/frontend/l10n/lico_strings.dart';
-import 'package:flutter_client/src/frontend/layout/built_in_layout_composition.dart';
+import 'package:flutter_client/src/application/composition/built_in_layout_composition.dart';
 import 'package:flutter_client/src/frontend/shell/client_shell.dart';
 import 'package:flutter_client/src/frontend/shared/ui/theme.dart';
 import 'package:flutter_client/src/platform/native_client/agent_service.dart';
@@ -68,7 +65,6 @@ final class ProductionClientShellFixture {
     final controller = ClientController(
       agentService: agentService,
       conversationService: const _FixtureConversationService(),
-      agentFeedService: AgentFeedService(store: _InMemoryAgentFeedStore()),
       layoutComposition: composition,
       presentationPreferencesRepository: preferences,
       mobileClientRuntimePlatformOverride:
@@ -84,8 +80,7 @@ final class ProductionClientShellFixture {
       ..portableDataPath = ''
       ..scannedTargets = targets
       ..agentTabOrder = [primaryTarget.target]
-      ..mobileRelayConfig = _fixtureMobileRelayConfig()
-      ..feedTimeline = _fixtureFeedTimeline(primaryTarget);
+      ..mobileRelayConfig = _fixtureMobileRelayConfig();
 
     if (destination == ClientSection.agents) {
       final session = _fixtureConversation(primaryTarget);
@@ -95,7 +90,6 @@ final class ProductionClientShellFixture {
           primaryTarget.target: [session],
         }
         ..selectedConversationSessionId = session.id
-        ..agentAllowanceOverrides = {primaryTarget.target: _fixtureAllowances}
         ..agentUsageReport = AgentUsageReport.fromAgents(
           generatedAt: _fixtureTimestamp,
           agents: [
@@ -108,12 +102,6 @@ final class ProductionClientShellFixture {
                 'messageCount': 2,
                 'totalTokens': 1200,
               },
-              traffic: const {
-                'meteredTotalBytes': 2048,
-                'estimatedHistoricalBytes': 0,
-                'attribution': 'process-metered',
-              },
-              allowances: _fixtureAllowances,
               confidence: 'high',
             ),
           ],
@@ -234,15 +222,10 @@ final class _FixtureAgentService extends AgentService {
     if (args.length >= 2 && args.first == 'agent-usage' && args[1] == 'scan') {
       return {
         'schemaVersion': AgentUsageReport.currentSchemaVersion,
+        'mode': AgentUsageReport.currentMode,
+        'tokenSourceMode': AgentUsageReport.currentTokenSourceMode,
         'generatedAt': _fixtureTimestamp,
-        'summary': {
-          'agentCount': 1,
-          'totalTokens': 1200,
-          'meteredTotalBytes': 2048,
-          'estimatedHistoricalBytes': 0,
-          'attribution': 'process-metered',
-          'confidence': 'high',
-        },
+        'summary': {'agentCount': 1, 'totalTokens': 1200, 'confidence': 'high'},
         'agents': [
           {
             'agentId': primaryTargetId,
@@ -253,25 +236,6 @@ final class _FixtureAgentService extends AgentService {
               'messageCount': 2,
               'totalTokens': 1200,
             },
-            'traffic': {
-              'meteredTotalBytes': 2048,
-              'estimatedHistoricalBytes': 0,
-              'attribution': 'process-metered',
-            },
-            'allowances': [
-              for (final allowance in _fixtureAllowances)
-                {
-                  'kind': allowance.kind,
-                  'label': allowance.label,
-                  'provider': allowance.provider,
-                  'period': allowance.period,
-                  'status': allowance.status,
-                  'value': allowance.value,
-                  'unit': allowance.unit,
-                  'source': allowance.source,
-                  'message': allowance.message,
-                },
-            ],
             'confidence': 'high',
           },
         ],
@@ -304,33 +268,7 @@ final class _FixtureConversationService extends AgentConversationService {
   }) => const Stream.empty();
 }
 
-final class _InMemoryAgentFeedStore extends AgentFeedStore {
-  Object? _payload;
-
-  @override
-  Future<Object?> read(Object portableData) async => _payload;
-
-  @override
-  Future<void> write(Object portableData, Object? payload) async {
-    _payload = payload;
-  }
-}
-
 const String _fixtureTimestamp = '2020-01-02T03:04:00Z';
-
-const List<AgentUsageAllowance> _fixtureAllowances = [
-  AgentUsageAllowance(
-    kind: 'fixture-session-limit',
-    label: 'Session capacity',
-    provider: 'Fixture Provider',
-    period: 'session',
-    status: 'available',
-    value: '73%',
-    unit: '',
-    source: 'deterministic-fixture',
-    message: 'Synthetic capacity window.',
-  ),
-];
 
 List<TargetCandidate> _fixtureTargets() {
   final ids = AgentService.packagedScanTargetIds;
@@ -384,38 +322,9 @@ AgentConversationSession _fixtureConversation(TargetCandidate target) =>
       ],
     );
 
-AgentFeedTimeline _fixtureFeedTimeline(TargetCandidate target) =>
-    AgentFeedTimeline(
-      posts: [
-        AgentFeedPost(
-          id: 'fixture-feed-post',
-          author: AgentFeedAuthor(
-            id: 'fixture-agent-author',
-            displayName: 'Fixture Agent',
-            isAgent: true,
-            targetId: target.target,
-          ),
-          createdAt: _fixtureTimestamp,
-          updatedAt: _fixtureTimestamp,
-          title: 'Frozen layout baseline',
-          body:
-              'Synthetic content records the current client presentation '
-              'without runtime, user, device, or credential data.',
-          sourceAgentId: target.target,
-          sourceSessionId: 'fixture-feed-session',
-          status: AgentFeedPostStatus.done,
-          metrics: const AgentFeedMetrics(
-            durationMillis: 42000,
-            stepCount: 3,
-            tokenCount: 1200,
-          ),
-        ),
-      ],
-    );
-
 MobileRelayConfig _fixtureMobileRelayConfig() => const MobileRelayConfig(
   schemaVersion: MobileRelayConfig.currentSchemaVersion,
-  defaultGatewayUrl: 'https://relay.invalid',
+  defaultGatewayUrl: '',
   useCustomGateway: false,
   customGatewayUrl: '',
   pcClientId: '',

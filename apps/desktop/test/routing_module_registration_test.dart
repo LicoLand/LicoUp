@@ -4,6 +4,7 @@ import 'package:flutter_client/src/application/features/routing/routing_module_r
 import 'package:flutter_client/src/application/features/routing/routing_module_flags.dart';
 import 'package:flutter_client/src/backend/features/routing/services/policy_store.dart';
 import 'package:flutter_client/src/contracts/routing/routing_policy_schema.dart';
+import 'package:flutter_client/src/contracts/routing/task_route_coordinator_port.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 
@@ -34,6 +35,7 @@ void main() {
       );
       await registration.activate();
       addTearDown(registration.deactivate);
+      expect(registration.coordinator, isA<TaskRouteCoordinatorPort>());
       expect(registration.activePolicy.id, 'workspace-default');
 
       final reloaded = registration.policyEvents

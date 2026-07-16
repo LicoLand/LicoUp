@@ -1,67 +1,58 @@
-part of 'package:flutter_client/src/platform/native_client/agent_service.dart';
+import 'package:flutter_client/src/contracts/target_candidate.dart';
+import 'package:flutter_client/src/platform/native_client/native_cli_ports.dart';
 
-mixin AgentServiceActions {
-  Future<Map<String, dynamic>> mcpPluginStatus({
-    required String target,
-    String configPath = '',
-  }) async {
-    final args = ['mcp', 'plugin', 'status', '--target', target];
-    _appendOptionalArg(args, '--config-path', configPath);
-    return (this as AgentService)._runCli(args);
-  }
+/// Stateless native command builder. It has no process or service lifecycle.
+class NativeCommandActions {
+  const NativeCommandActions({
+    required NativeCommandExecutor commandExecutor,
+    required NativeCommandExecutor concurrentCommandExecutor,
+  }) : _commandExecutor = commandExecutor,
+       _concurrentCommandExecutor = concurrentCommandExecutor;
 
-  Future<Map<String, dynamic>> updateMcpPlugin({
-    required String target,
-    String configPath = '',
-  }) async {
-    final args = ['mcp', 'plugin', 'update', '--target', target];
-    _appendOptionalArg(args, '--config-path', configPath);
-    return (this as AgentService)._runCli(args);
-  }
+  final NativeCommandExecutor _commandExecutor;
+  final NativeCommandExecutor _concurrentCommandExecutor;
 
-  Future<Map<String, dynamic>> rollbackMcpPlugin({
-    required String target,
-    required String snapshotId,
-    String configPath = '',
-  }) async {
-    final args = [
-      'mcp',
-      'plugin',
-      'rollback',
-      '--target',
-      target,
-      '--snapshot-id',
-      snapshotId,
-    ];
-    _appendOptionalArg(args, '--config-path', configPath);
-    return (this as AgentService)._runCli(args);
-  }
+  static const List<String> packagedScanTargetIds = [
+    'openclaw',
+    'claude-code',
+    'codex',
+    'code',
+    'antigravity',
+    'opencode',
+    'copilot',
+    'kilo-code',
+    'cursor',
+    'hermes',
+    'kimi',
+    'kimi-code',
+    'pi',
+  ];
 
   Future<List<Map<String, dynamic>>> listSnapshots({String target = ''}) async {
-    final args = ['snapshots', 'list'];
-    _appendOptionalArg(args, '--target', target);
-    final output = await (this as AgentService)._runCli(args);
+    final arguments = ['snapshots', 'list'];
+    _appendOptionalArgument(arguments, '--target', target);
+    final output = await _commandExecutor.execute(arguments);
     return _listFromOutput(output, 'snapshots');
   }
 
   Future<List<Map<String, dynamic>>> listPairings({String agent = ''}) async {
-    final args = ['agents', 'pair', 'list'];
-    if (agent.isNotEmpty) args.addAll(['--agent', agent]);
-    final output = await (this as AgentService)._runCli(args);
+    final arguments = ['agents', 'pair', 'list'];
+    _appendOptionalArgument(arguments, '--agent', agent);
+    final output = await _commandExecutor.execute(arguments);
     return _listFromOutput(output, 'pairings');
   }
 
   Future<Map<String, dynamic>> requestPairing({
     required String agent,
     String target = '',
-  }) async {
-    final args = ['agents', 'pair', 'request', '--agent', agent];
-    if (target.isNotEmpty) args.addAll(['--target', target]);
-    return (this as AgentService)._runCli(args);
+  }) {
+    final arguments = ['agents', 'pair', 'request', '--agent', agent];
+    _appendOptionalArgument(arguments, '--target', target);
+    return _commandExecutor.execute(arguments);
   }
 
-  Future<Map<String, dynamic>> approvePairing({required String agent}) async {
-    return (this as AgentService)._runCli([
+  Future<Map<String, dynamic>> approvePairing({required String agent}) {
+    return _commandExecutor.execute([
       'agents',
       'pair',
       'approve',
@@ -70,8 +61,8 @@ mixin AgentServiceActions {
     ]);
   }
 
-  Future<Map<String, dynamic>> revokePairing({required String agent}) async {
-    return (this as AgentService)._runCli([
+  Future<Map<String, dynamic>> revokePairing({required String agent}) {
+    return _commandExecutor.execute([
       'agents',
       'pair',
       'revoke',
@@ -81,7 +72,7 @@ mixin AgentServiceActions {
   }
 
   Future<List<Map<String, dynamic>>> listSkills({required String agent}) async {
-    final output = await (this as AgentService)._runCli([
+    final output = await _commandExecutor.execute([
       'skill',
       'list',
       '--agent',
@@ -97,14 +88,16 @@ mixin AgentServiceActions {
     String installRoot = '',
     String name = '',
     bool overwrite = false,
-  }) async {
-    final args = ['skill', 'install', 'plan', '--agent', agent];
-    _appendOptionalArg(args, '--url', url);
-    _appendOptionalArg(args, '--source-path', sourcePath);
-    _appendOptionalArg(args, '--install-root', installRoot);
-    _appendOptionalArg(args, '--name', name);
-    if (overwrite) args.addAll(['--overwrite', 'true']);
-    return (this as AgentService)._runCli(args);
+  }) {
+    final arguments = ['skill', 'install', 'plan', '--agent', agent];
+    _appendOptionalArgument(arguments, '--url', url);
+    _appendOptionalArgument(arguments, '--source-path', sourcePath);
+    _appendOptionalArgument(arguments, '--install-root', installRoot);
+    _appendOptionalArgument(arguments, '--name', name);
+    if (overwrite) {
+      arguments.addAll(['--overwrite', 'true']);
+    }
+    return _commandExecutor.execute(arguments);
   }
 
   Future<Map<String, dynamic>> applySkillInstall({
@@ -115,22 +108,26 @@ mixin AgentServiceActions {
     String name = '',
     bool overwrite = false,
     bool pin = false,
-  }) async {
-    final args = ['skill', 'install', 'apply', '--agent', agent];
-    _appendOptionalArg(args, '--url', url);
-    _appendOptionalArg(args, '--source-path', sourcePath);
-    _appendOptionalArg(args, '--install-root', installRoot);
-    _appendOptionalArg(args, '--name', name);
-    if (overwrite) args.addAll(['--overwrite', 'true']);
-    if (pin) args.addAll(['--pin', 'true']);
-    return (this as AgentService)._runCli(args);
+  }) {
+    final arguments = ['skill', 'install', 'apply', '--agent', agent];
+    _appendOptionalArgument(arguments, '--url', url);
+    _appendOptionalArgument(arguments, '--source-path', sourcePath);
+    _appendOptionalArgument(arguments, '--install-root', installRoot);
+    _appendOptionalArgument(arguments, '--name', name);
+    if (overwrite) {
+      arguments.addAll(['--overwrite', 'true']);
+    }
+    if (pin) {
+      arguments.addAll(['--pin', 'true']);
+    }
+    return _commandExecutor.execute(arguments);
   }
 
   Future<Map<String, dynamic>> rollbackSkillInstall({
     required String agent,
     required String snapshotId,
-  }) async {
-    return (this as AgentService)._runCli([
+  }) {
+    return _commandExecutor.execute([
       'skill',
       'install',
       'rollback',
@@ -141,91 +138,240 @@ mixin AgentServiceActions {
     ]);
   }
 
-  Future<Map<String, dynamic>> localRuntimeStatus() async {
-    return (this as AgentService)._runCli(['local-runtime', 'status']);
-  }
-
-  Future<Map<String, dynamic>> ensureLocalRuntime({
-    required String sourceRoot,
-    required String presetConfig,
-    int port = 17328,
-    bool rebuild = false,
-  }) async {
-    final args = [
-      'local-runtime',
-      'ensure',
-      '--source-root',
-      sourceRoot,
-      '--preset-config',
-      presetConfig,
-      '--port',
-      port.toString(),
+  Future<Map<String, dynamic>> planSkillUpdate({
+    required String agent,
+    required String skillId,
+    String url = '',
+    String sourcePath = '',
+    String installRoot = '',
+  }) {
+    final arguments = [
+      'skill',
+      'update',
+      'plan',
+      '--agent',
+      agent,
+      '--skill',
+      skillId,
     ];
-    if (rebuild) {
-      args.addAll(['--rebuild', 'true']);
-    }
-    return (this as AgentService)._runCli(args);
+    _appendOptionalArgument(arguments, '--url', url);
+    _appendOptionalArgument(arguments, '--source-path', sourcePath);
+    _appendOptionalArgument(arguments, '--install-root', installRoot);
+    return _commandExecutor.execute(arguments);
   }
 
-  Future<Map<String, dynamic>> startLocalRuntime({int port = 17328}) async {
-    return (this as AgentService)._runCli([
-      'local-runtime',
-      'start',
-      '--port',
-      port.toString(),
-    ]);
+  Future<Map<String, dynamic>> applySkillUpdate({
+    required String agent,
+    required String skillId,
+    required String confirmation,
+    String url = '',
+    String sourcePath = '',
+    String installRoot = '',
+  }) {
+    final arguments = [
+      'skill',
+      'update',
+      'apply',
+      '--agent',
+      agent,
+      '--skill',
+      skillId,
+      '--confirmation',
+      confirmation,
+    ];
+    _appendOptionalArgument(arguments, '--url', url);
+    _appendOptionalArgument(arguments, '--source-path', sourcePath);
+    _appendOptionalArgument(arguments, '--install-root', installRoot);
+    return _commandExecutor.execute(arguments);
   }
 
-  Future<Map<String, dynamic>> restartLocalRuntime({int port = 17328}) async {
-    return (this as AgentService)._runCli([
-      'local-runtime',
-      'restart',
-      '--port',
-      port.toString(),
-    ]);
+  Future<Map<String, dynamic>> configureSkillAutoUpdate({
+    required String agent,
+    required String skillId,
+    required bool enabled,
+    String url = '',
+    String sourcePath = '',
+  }) {
+    final arguments = [
+      'skill',
+      'auto-update',
+      'set',
+      '--agent',
+      agent,
+      '--skill',
+      skillId,
+      '--enabled',
+      enabled.toString(),
+      '--direct-user-action',
+      'true',
+    ];
+    _appendOptionalArgument(arguments, '--url', url);
+    _appendOptionalArgument(arguments, '--source-path', sourcePath);
+    return _commandExecutor.execute(arguments);
   }
 
-  Future<Map<String, dynamic>> stopLocalRuntime() async {
-    return (this as AgentService)._runCli(['local-runtime', 'stop']);
+  Future<Map<String, dynamic>> runConfiguredSkillUpdates({
+    required String agent,
+    String skillId = '',
+  }) {
+    final arguments = [
+      'skill',
+      'auto-update',
+      'run',
+      '--agent',
+      agent,
+      '--direct-user-action',
+      'true',
+    ];
+    _appendOptionalArgument(arguments, '--skill', skillId);
+    return _commandExecutor.execute(arguments);
   }
 
-  Future<Map<String, dynamic>> localRuntimeLogs({int tail = 200}) async {
-    return (this as AgentService)._runCli([
-      'local-runtime',
-      'logs',
-      '--tail',
-      tail.toString(),
-    ]);
+  Future<Map<String, dynamic>> runDueSkillUpdates() {
+    return _concurrentCommandExecutor.execute(['skill', 'auto-update', 'tick']);
   }
 
-  Future<Map<String, dynamic>> opencodeServeStatus() async {
-    return (this as AgentService)._runCli(['opencode-serve', 'status']);
+  Future<Map<String, dynamic>> planSkillDelete({
+    required List<String> agents,
+    required String skillId,
+    String installRoot = '',
+  }) {
+    final arguments = [
+      'skill',
+      'delete',
+      'plan',
+      '--agents',
+      agents.join(','),
+      '--skill',
+      skillId,
+    ];
+    _appendOptionalArgument(arguments, '--install-root', installRoot);
+    return _commandExecutor.execute(arguments);
+  }
+
+  Future<Map<String, dynamic>> applySkillDelete({
+    required List<String> agents,
+    required String skillId,
+    required String confirmation,
+    String installRoot = '',
+  }) {
+    final arguments = [
+      'skill',
+      'delete',
+      'apply',
+      '--agents',
+      agents.join(','),
+      '--skill',
+      skillId,
+      '--confirmation',
+      confirmation,
+    ];
+    _appendOptionalArgument(arguments, '--install-root', installRoot);
+    return _commandExecutor.execute(arguments);
+  }
+
+  Future<Map<String, dynamic>> reportSkillUsage({
+    int days = 30,
+    String agent = '',
+    String skillId = '',
+  }) {
+    final arguments = ['skill', 'usage', 'report', '--days', days.toString()];
+    _appendOptionalArgument(arguments, '--agent', agent);
+    _appendOptionalArgument(arguments, '--skill', skillId);
+    return _commandExecutor.execute(arguments);
+  }
+
+  Future<Map<String, dynamic>> opencodeServeStatus() {
+    return _commandExecutor.execute(['opencode-serve', 'status']);
   }
 
   Future<Map<String, dynamic>> ensureOpencodeServe({
     int port = 24173,
     String? executable,
     String? attachUrl,
-  }) async {
-    final args = <String>[
-      'opencode-serve',
-      'ensure',
-      '--port',
-      port.toString(),
-    ];
-    _appendOptionalArg(args, '--executable', executable ?? '');
-    _appendOptionalArg(args, '--attach-url', attachUrl ?? '');
-    return (this as AgentService)._runCli(args);
+  }) {
+    final arguments = ['opencode-serve', 'ensure', '--port', port.toString()];
+    _appendOptionalArgument(arguments, '--executable', executable ?? '');
+    _appendOptionalArgument(arguments, '--attach-url', attachUrl ?? '');
+    return _commandExecutor.execute(arguments);
   }
 
-  Future<Map<String, dynamic>> stopOpencodeServe() async {
-    return (this as AgentService)._runCli(['opencode-serve', 'stop']);
+  Future<Map<String, dynamic>> stopOpencodeServe() {
+    return _commandExecutor.execute(['opencode-serve', 'stop']);
   }
 
-  void _appendOptionalArg(List<String> args, String flag, String value) {
+  Future<List<TargetCandidate>> scanTargets() async {
+    final output = await _commandExecutor.execute([
+      'targets',
+      'scan',
+      '--include-accessible-environments',
+      'true',
+      '--include-history-model-catalog',
+      'true',
+    ]);
+    if (output['ok'] != true || output['candidates'] is! List) {
+      return const [];
+    }
+    return (output['candidates'] as List)
+        .whereType<Map>()
+        .map(
+          (candidate) =>
+              TargetCandidate.fromJson(Map<String, dynamic>.from(candidate)),
+        )
+        .where((candidate) => candidate.visibleInClient)
+        .toList();
+  }
+
+  Future<TargetCandidate?> scanOneTarget(String targetId) async {
+    final normalizedTargetId = targetId.trim();
+    if (normalizedTargetId.isEmpty) {
+      return null;
+    }
+    final output = await _concurrentCommandExecutor.execute([
+      'targets',
+      'inspect',
+      normalizedTargetId,
+      '--include-accessible-environments',
+      'true',
+    ]);
+    if (output['ok'] != true || output['target'] is! Map) {
+      return null;
+    }
+    final candidate = TargetCandidate.fromJson(
+      Map<String, dynamic>.from(output['target'] as Map),
+    );
+    return candidate.visibleInClient ? candidate : null;
+  }
+
+  Future<Map<String, dynamic>> addTarget({
+    required String target,
+    String configPath = '',
+    String binaryPath = '',
+    String historyRoot = '',
+  }) {
+    final arguments = ['targets', 'add', '--target', target];
+    _appendOptionalArgument(arguments, '--config-path', configPath);
+    _appendOptionalArgument(arguments, '--binary-path', binaryPath);
+    _appendOptionalArgument(arguments, '--history-root', historyRoot);
+    return _commandExecutor.execute(arguments);
+  }
+
+  Future<Map<String, dynamic>> inspectTarget(String target) {
+    return _commandExecutor.execute(['targets', 'inspect', target]);
+  }
+
+  Future<Map<String, dynamic>> restoreSnapshot(String snapshotId) {
+    return _commandExecutor.execute(['snapshots', 'restore', snapshotId]);
+  }
+
+  void _appendOptionalArgument(
+    List<String> arguments,
+    String flag,
+    String value,
+  ) {
     final trimmed = value.trim();
     if (trimmed.isNotEmpty) {
-      args.addAll([flag, trimmed]);
+      arguments.addAll([flag, trimmed]);
     }
   }
 
@@ -236,6 +382,6 @@ mixin AgentServiceActions {
     if (output['ok'] == true && output[key] is List) {
       return (output[key] as List).whereType<Map<String, dynamic>>().toList();
     }
-    return [];
+    return const [];
   }
 }

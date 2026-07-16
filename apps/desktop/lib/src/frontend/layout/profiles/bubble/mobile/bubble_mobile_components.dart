@@ -272,13 +272,9 @@ final class BubbleMobileComponentKit implements LayoutComponentKit {
 IconData bubbleMobileDestinationIcon(ClientSection destination) {
   return switch (destination) {
     ClientSection.agents => Icons.hub_outlined,
-    ClientSection.feed => Icons.dynamic_feed_outlined,
     ClientSection.mobileRelay => Icons.link_outlined,
     ClientSection.settings => Icons.tune_outlined,
-    ClientSection.controlPanel => Icons.space_dashboard_outlined,
     ClientSection.monitoring => Icons.monitor_heart_outlined,
-    ClientSection.mcpPlugins ||
     ClientSection.skillHub => Icons.extension_outlined,
-    ClientSection.localRuntime => Icons.memory_outlined,
   };
 }

@@ -1,11 +1,13 @@
 import 'package:flutter_client/src/contracts/agent_command_runner.dart';
 import 'package:flutter_client/src/contracts/client_update_models.dart';
+import 'package:flutter_client/src/contracts/client_update_gateway.dart';
 
 export 'package:flutter_client/src/contracts/client_update_models.dart';
 
-class ClientUpdateService {
+class ClientUpdateService implements ClientUpdateGateway {
   const ClientUpdateService();
 
+  @override
   Future<ClientUpdateStatus> status({
     required AgentCommandRunner agentService,
     String channel = 'stable',
@@ -19,6 +21,7 @@ class ClientUpdateService {
     return ClientUpdateStatus.fromJson(output);
   }
 
+  @override
   Future<ClientUpdateStatus> check({
     required AgentCommandRunner agentService,
     required String manifestPath,
@@ -43,43 +46,59 @@ class ClientUpdateService {
     return ClientUpdateStatus.fromJson(output);
   }
 
+  @override
   Future<ClientUpdateStatus> download({
     required AgentCommandRunner agentService,
+    required String manifestPath,
+    required String publicKeysPath,
     required String sourcePath,
+    String channel = 'stable',
+    String revocationPath = '',
     String stagingRoot = '',
-    int size = 0,
   }) async {
-    final args = ['update', 'download', '--source-path', sourcePath.trim()];
+    final args = [
+      'update',
+      'download',
+      '--channel',
+      channel.trim().isEmpty ? 'stable' : channel.trim(),
+      '--manifest-path',
+      manifestPath.trim(),
+      '--public-keys-path',
+      publicKeysPath.trim(),
+      '--source-path',
+      sourcePath.trim(),
+    ];
+    if (revocationPath.trim().isNotEmpty) {
+      args.addAll(['--revocation-path', revocationPath.trim()]);
+    }
     if (stagingRoot.trim().isNotEmpty) {
       args.addAll(['--staging-root', stagingRoot.trim()]);
-    }
-    if (size > 0) {
-      args.addAll(['--size', size.toString()]);
     }
     final output = await agentService.runCli(args);
     return ClientUpdateStatus.fromJson(output);
   }
 
+  @override
   Future<ClientUpdateStatus> verify({
     required AgentCommandRunner agentService,
     required String manifestPath,
     required String publicKeysPath,
-    required String stagedFileName,
-    String sha256 = '',
+    String channel = 'stable',
+    String revocationPath = '',
     String stagingRoot = '',
   }) async {
     final args = [
       'update',
       'verify',
+      '--channel',
+      channel.trim().isEmpty ? 'stable' : channel.trim(),
       '--manifest-path',
       manifestPath.trim(),
       '--public-keys-path',
       publicKeysPath.trim(),
-      '--staged-file-name',
-      stagedFileName.trim(),
     ];
-    if (sha256.trim().isNotEmpty) {
-      args.addAll(['--sha256', sha256.trim()]);
+    if (revocationPath.trim().isNotEmpty) {
+      args.addAll(['--revocation-path', revocationPath.trim()]);
     }
     if (stagingRoot.trim().isNotEmpty) {
       args.addAll(['--staging-root', stagingRoot.trim()]);
@@ -88,28 +107,29 @@ class ClientUpdateService {
     return ClientUpdateStatus.fromJson(output);
   }
 
+  @override
   Future<ClientUpdateStatus> applyDryRun({
     required AgentCommandRunner agentService,
     required String manifestPath,
     required String publicKeysPath,
-    required String stagedFileName,
-    String sha256 = '',
+    String channel = 'stable',
+    String revocationPath = '',
     String stagingRoot = '',
   }) async {
     final args = [
       'update',
       'apply',
+      '--channel',
+      channel.trim().isEmpty ? 'stable' : channel.trim(),
       '--manifest-path',
       manifestPath.trim(),
       '--public-keys-path',
       publicKeysPath.trim(),
-      '--staged-file-name',
-      stagedFileName.trim(),
       '--execute',
       'false',
     ];
-    if (sha256.trim().isNotEmpty) {
-      args.addAll(['--sha256', sha256.trim()]);
+    if (revocationPath.trim().isNotEmpty) {
+      args.addAll(['--revocation-path', revocationPath.trim()]);
     }
     if (stagingRoot.trim().isNotEmpty) {
       args.addAll(['--staging-root', stagingRoot.trim()]);

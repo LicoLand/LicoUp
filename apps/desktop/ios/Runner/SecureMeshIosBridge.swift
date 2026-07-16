@@ -7,7 +7,7 @@ import UIKit
 
 final class SecureMeshIosBridge {
   static let channelName = "licolite.secure_mesh.ios"
-  static let mobileRelaySecretOverrideTransport = "platform_keyring_to_rust_ffi_memory_override"
+  static let mobileRelaySecretTransport = "native_c_abi_in_process_secret_callback"
   static let mobileRelaySecretStoreContract = "rust_secure_mesh_secret_store_handle_v1"
   static let mobileRelaySecretStoreBackend = "ios-keychain"
   static let mobileRelaySecretStoreAccountPrefix = "mobileRelayE2ee"
@@ -17,7 +17,9 @@ final class SecureMeshIosBridge {
   static var channel: FlutterMethodChannel?
 
   let fileManager: FileManager
-  let mobileRelaySecretService = "app.licoarc.mobile-relay.secret-store.v1"
+  // Start a fresh custody namespace. Items created under the retired policy
+  // are intentionally neither discovered nor migrated.
+  let mobileRelaySecretService = "app.licoarc.mobile-relay.secret-store.v2"
 
   init(fileManager: FileManager = .default) {
     self.fileManager = fileManager
@@ -25,6 +27,11 @@ final class SecureMeshIosBridge {
 
   static func register(with messenger: FlutterBinaryMessenger) {
     let bridge = SecureMeshIosBridge()
+    guard (try? LocalOnlyDataProtection.prepareApplicationSupportRoots(
+      fileManager: bridge.fileManager
+    )) != nil else {
+      return
+    }
     let channel = FlutterMethodChannel(name: channelName, binaryMessenger: messenger)
     channel.setMethodCallHandler { call, result in
       bridge.handle(call: call, result: result)
@@ -86,11 +93,12 @@ final class SecureMeshIosBridge {
         "protocolHash": Int(lico_secure_mesh_runtime_protocol_hash()),
         "usesSharedRustCore": true,
         "secretsPassedThroughFlutterMethodChannel": false,
-        "secretTransport": Self.mobileRelaySecretOverrideTransport,
-        "secretsPersistedForHydration": false
+        "secretTransport": Self.mobileRelaySecretTransport,
+        "nativeFfiCarriesInProcessSecretMaterial": true,
+        "ffiSecretValueRepresentation": "utf8_c_string_in_process"
       ],
       "pairwiseCryptoStatus": nativeReady
-        ? "shared_rust_core_available_ios_keychain_memory_override"
+        ? "shared_rust_core_loaded_ios_keychain_callback_fail_closed"
         : "ios_secure_mesh_native_self_test_failed",
       "mlsCryptoStatus": "product_policy_bindings_implemented_product_messaging_disabled_until_physical_group_evidence",
       "mlsProductMessagingAvailable": false,
@@ -101,10 +109,10 @@ final class SecureMeshIosBridge {
         ? "command_gate_shared_rust_core_available"
         : "command_gate_shared_rust_core_unavailable",
       "deviceTrustStatus": keychainReady
-        ? "ios_keychain_available_memory_override_binding"
+        ? "ios_keychain_available_callback_not_selected_without_authenticated_capability_facts"
         : "ios_keychain_device_binding_unavailable",
       "cryptoCoreStatus": nativeReady
-        ? "shared_rust_core_ready_ios_keychain_memory_override"
+        ? "shared_rust_core_loaded_ios_keychain_callback_fail_closed"
         : "shared_rust_core_blocked",
       "secretUnlockPolicy": [
         "requiredForPrivateKeyUse": true,
@@ -112,12 +120,19 @@ final class SecureMeshIosBridge {
         "biometricDataHandledByApp": false,
         "appPasswordPromptUsed": false,
         "localizedErrorsIncluded": false,
-        "implementationStatus": "ios_keychain_shared_rust_secret_store_handle_contract"
+        "implementationStatus":
+          "ios_keychain_callback_fail_closed_pending_authenticated_capability_facts"
       ],
       "mobileRelaySecretStore": mobileRelaySecretStoreStatus(),
       "idleTimerGuard": [
         "available": true,
         "activeWhenForeground": UIApplication.shared.isIdleTimerDisabled
+      ],
+      "localOnlyStorage": [
+        "canonicalRoot": "Application Support/LicoArc",
+        "portableDataRelativePath": "LicoArc/portable-data",
+        "excludedFromSystemBackup": localOnlyRootsAreProtected(),
+        "dataProtection": "completeUntilFirstUserAuthentication"
       ],
       "productionReady": false
     ]
@@ -126,14 +141,14 @@ final class SecureMeshIosBridge {
   func writeRuntimeStatus() -> [String: Any] {
     var payload = status()
     payload["runtimeStatusFile"] = [
-      "relativePath": "Application Support/secure-mesh/ios-runtime-status.json",
+      "relativePath": "Application Support/LicoArc/secure-mesh/ios-runtime-status.json",
       "writtenByAppProcess": true,
       "writtenAtEpochMillis": Int64(Date().timeIntervalSince1970 * 1000)
     ]
     return writeJsonReport(
       payload,
       filename: "ios-runtime-status.json",
-      okRelativePath: "Application Support/secure-mesh/ios-runtime-status.json"
+      okRelativePath: "Application Support/LicoArc/secure-mesh/ios-runtime-status.json"
     )
   }
 
@@ -168,14 +183,14 @@ final class SecureMeshIosBridge {
       "productionReady": false
     ]
     payload["runtimeStatusFile"] = [
-      "relativePath": "Application Support/secure-mesh/ios-runtime-status.json",
+      "relativePath": "Application Support/LicoArc/secure-mesh/ios-runtime-status.json",
       "writtenByAppProcess": true,
       "writtenAtEpochMillis": Int64(Date().timeIntervalSince1970 * 1000)
     ]
     return writeJsonReport(
       payload,
       filename: "ios-runtime-status.json",
-      okRelativePath: "Application Support/secure-mesh/ios-runtime-status.json"
+      okRelativePath: "Application Support/LicoArc/secure-mesh/ios-runtime-status.json"
     )
   }
 
@@ -194,12 +209,12 @@ final class SecureMeshIosBridge {
         }
         let data = try JSONSerialization.data(withJSONObject: value, options: [])
         requestText = String(data: data, encoding: .utf8) ?? "{}"
-    } catch {
-      return errorResponse(
-        code: "ios_secure_mesh_native_json_encode_failed",
-        error: sanitizedBridgeError(error)
-      )
-    }
+      } catch {
+        return errorResponse(
+          code: "ios_secure_mesh_native_json_encode_failed",
+          error: sanitizedBridgeError(error)
+        )
+      }
     }
 
     do {
@@ -208,14 +223,8 @@ final class SecureMeshIosBridge {
         return mobileRelayUserPresenceProof()
       }
       let callbackContext = SecureMeshIosSecretStoreCallbackContext(bridge: self)
-      try redactPersistedMobileRelaySecrets(callbackContext: callbackContext)
-      let effectiveRequestText = try requestTextWithMobileRelaySecretOverrides(
-        requestText,
-        action: action,
-        callbackContext: callbackContext
-      )
       let root = try appSupportRoot()
-      let responsePointer = effectiveRequestText.withCString { requestCString in
+      let responsePointer = requestText.withCString { requestCString in
         root.path.withCString { filesCString in
           Self.mobileRelaySecretStoreBackend.withCString { backendCString in
             var callbacks = LicoSecureMeshSecretStoreCallbacks()
@@ -244,8 +253,6 @@ final class SecureMeshIosBridge {
       }
       let responseText = String(cString: responsePointer)
       var response = parseJsonMap(responseText)
-      try captureMobileRelaySecretsFromNativeResponse(&response, callbackContext: callbackContext)
-      try redactPersistedMobileRelaySecrets(callbackContext: callbackContext)
       let callbackAuthReport = callbackContext.redactedReport()
       response["iosProductionCallbackAuth"] = callbackAuthReport
       response["secretStoreAuthorization"] = callbackContext.secretStoreAuthorizationReport()
@@ -272,7 +279,10 @@ final class SecureMeshIosBridge {
         callbackContext.authorizationBatchWithinBudget
       response["appPasswordPromptUsed"] = false
       response["appCredentialPromptUsed"] = false
-      response["keyMaterialExported"] = false
+      response["nativeFfiCarriesInProcessSecretMaterial"] = true
+      response["secretMaterialCrossesFlutterMethodChannel"] = false
+      response["rustPortableConfigAuthority"] = true
+      response["swiftPortableConfigReadWrite"] = false
       return response
     } catch {
       return errorResponse(
@@ -296,6 +306,12 @@ final class SecureMeshIosBridge {
         options: [.prettyPrinted, .sortedKeys]
       )
       try data.write(to: file, options: .atomic)
+      let productRoot = try appSupportRoot()
+      try LocalOnlyDataProtection.protectLocalItem(
+        file,
+        under: productRoot,
+        fileManager: fileManager
+      )
       return [
         "ok": true,
         "relativePath": okRelativePath,
@@ -352,50 +368,24 @@ final class SecureMeshIosBridge {
   }
 
   func appSupportRoot() throws -> URL {
-    let base = try fileManager.url(
-      for: .applicationSupportDirectory,
-      in: .userDomainMask,
-      appropriateFor: nil,
-      create: true
-    )
-    let directory = base.appendingPathComponent("LicoArc", isDirectory: true)
-    try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
-    return directory
+    try LocalOnlyDataProtection.prepareApplicationSupportRoots(fileManager: fileManager)
   }
 
   func secureMeshDirectory() throws -> URL {
-    let directory = try appSupportRoot().appendingPathComponent("secure-mesh", isDirectory: true)
-    try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
-    return directory
+    try LocalOnlyDataProtection.secureMeshRoot(fileManager: fileManager)
   }
 
-  func mobileRelayConfigFile() throws -> URL {
-    try appSupportRoot()
-      .appendingPathComponent("portable-data", isDirectory: true)
-      .appendingPathComponent("lico-client", isDirectory: true)
-      .appendingPathComponent("mobile-relay", isDirectory: true)
-      .appendingPathComponent("config.json", isDirectory: false)
-  }
-
-  func readMobileRelayConfig() throws -> [String: Any]? {
-    let file = try mobileRelayConfigFile()
-    guard fileManager.fileExists(atPath: file.path) else {
-      return nil
+  func localOnlyRootsAreProtected() -> Bool {
+    do {
+      let productRoot = try appSupportRoot()
+      let portableRoot = try LocalOnlyDataProtection.portableDataRoot(fileManager: fileManager)
+      let secureRoot = try secureMeshDirectory()
+      return try [productRoot, portableRoot, secureRoot].allSatisfy {
+        try LocalOnlyDataProtection.isExcludedFromBackup($0)
+      }
+    } catch {
+      return false
     }
-    let data = try Data(contentsOf: file)
-    let value = try JSONSerialization.jsonObject(with: data, options: [])
-    return value as? [String: Any]
-  }
-
-  func writeMobileRelayConfig(_ config: [String: Any]) throws {
-    let file = try mobileRelayConfigFile()
-    let directory = file.deletingLastPathComponent()
-    try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
-    let data = try JSONSerialization.data(
-      withJSONObject: config,
-      options: [.prettyPrinted, .sortedKeys]
-    )
-    try data.write(to: file, options: .atomic)
   }
 
   func nativeJsonAction(_ requestText: String) -> String {
@@ -406,15 +396,6 @@ final class SecureMeshIosBridge {
       return ""
     }
     return (object["action"] as? String) ?? ""
-  }
-
-  func mobileRelayActionUsesSecretOverrides(_ action: String) -> Bool {
-    switch action {
-    case "mobile.relay.config.get":
-      return false
-    default:
-      return action.hasPrefix("mobile.relay.")
-    }
   }
 
   func featureFlags(_ mask: Int32) -> [String: Bool] {
@@ -505,6 +486,9 @@ final class SecureMeshIosSecretStoreCallbackContext {
   private(set) var preDispatchSecretDeleteWithAuthenticationContextCount = 0
   private(set) var callbackSecretReadCount = 0
   private(set) var callbackSecretReadWithAuthenticationContextCount = 0
+  private(set) var callbackSecretReadFoundCount = 0
+  private(set) var callbackSecretReadNotFoundCount = 0
+  private(set) var callbackSecretReadErrorCount = 0
   private(set) var callbackSecretWriteCount = 0
   private(set) var callbackSecretWriteWithAuthenticationContextCount = 0
   private(set) var callbackSecretDeleteCount = 0
@@ -533,23 +517,28 @@ final class SecureMeshIosSecretStoreCallbackContext {
   }
 
   var callbackWritesUseAuthenticationContext: Bool {
-    callbackSecretWriteWithAuthenticationContextCount == callbackSecretWriteCount
+    callbackSecretWriteCount > 0 &&
+      callbackSecretWriteWithAuthenticationContextCount == callbackSecretWriteCount
   }
 
   var callbackDeletesUseAuthenticationContext: Bool {
-    callbackSecretDeleteWithAuthenticationContextCount == callbackSecretDeleteCount
+    callbackSecretDeleteCount > 0 &&
+      callbackSecretDeleteWithAuthenticationContextCount == callbackSecretDeleteCount
   }
 
   var preDispatchSecretReadsUseAuthenticationContext: Bool {
-    preDispatchSecretReadWithAuthenticationContextCount == preDispatchSecretReadCount
+    preDispatchSecretReadCount > 0 &&
+      preDispatchSecretReadWithAuthenticationContextCount == preDispatchSecretReadCount
   }
 
   var preDispatchSecretWritesUseAuthenticationContext: Bool {
-    preDispatchSecretWriteWithAuthenticationContextCount == preDispatchSecretWriteCount
+    preDispatchSecretWriteCount > 0 &&
+      preDispatchSecretWriteWithAuthenticationContextCount == preDispatchSecretWriteCount
   }
 
   var preDispatchSecretDeletesUseAuthenticationContext: Bool {
-    preDispatchSecretDeleteWithAuthenticationContextCount == preDispatchSecretDeleteCount
+    preDispatchSecretDeleteCount > 0 &&
+      preDispatchSecretDeleteWithAuthenticationContextCount == preDispatchSecretDeleteCount
   }
 
   var authContextAttachedToAllReads: Bool {
@@ -594,36 +583,27 @@ final class SecureMeshIosSecretStoreCallbackContext {
       authorizationBatchConsumedOperationCount <= authorizationBatchOperationCount
   }
 
+  // Attaching an LAContext to a Keychain query does not expose a trustworthy
+  // policy-evaluation completion result. Keep authorization claims false until
+  // an explicit, measured authorization callback is part of the Rust ABI.
   var systemAuthorizationAttemptCount: Int {
-    authorizationBatchConsumedOperationCount > 0 ? 1 : 0
+    0
   }
 
   var systemAuthorizationCompleted: Bool {
-    callbackSecretReadCount > 0 &&
-      authContextAttachedToAllOperations &&
-      authorizationBatchWithinBudget
+    false
   }
 
   var authorizationBatchPromptBudgetReady: Bool {
-    systemAuthorizationAttemptCount == 1 &&
-      systemAuthorizationCompleted &&
-      authorizationBatchWithinBudget
+    false
   }
 
   var singleSystemAuthorizationContextVerified: Bool {
-    authContextCreated &&
-      authContextAttachedToAllOperations &&
-      callbackReadsUseSharedLAContext &&
-      callbackWritesUseAuthenticationContext &&
-      callbackDeletesUseAuthenticationContext &&
-      preDispatchSecretReadsUseAuthenticationContext &&
-      preDispatchSecretWritesUseAuthenticationContext &&
-      preDispatchSecretDeletesUseAuthenticationContext
+    false
   }
 
   var productionCallbackAuthReady: Bool {
-    singleSystemAuthorizationContextVerified &&
-      authorizationBatchPromptBudgetReady
+    false
   }
 
   func recordPreDispatchSecretRead(authenticationContextAttached: Bool) {
@@ -654,6 +634,18 @@ final class SecureMeshIosSecretStoreCallbackContext {
     }
   }
 
+  func recordCallbackSecretReadFound() {
+    callbackSecretReadFoundCount += 1
+  }
+
+  func recordCallbackSecretReadNotFound() {
+    callbackSecretReadNotFoundCount += 1
+  }
+
+  func recordCallbackSecretReadError() {
+    callbackSecretReadErrorCount += 1
+  }
+
   func recordCallbackSecretWrite(authenticationContextAttached: Bool) {
     callbackSecretWriteCount += 1
     if authenticationContextAttached {
@@ -671,7 +663,8 @@ final class SecureMeshIosSecretStoreCallbackContext {
   func secretStoreAuthorizationReport() -> [String: Any] {
     return [
       "backend": SecureMeshIosBridge.mobileRelaySecretStoreBackend,
-      "operationCount": authorizationBatchOperationCount,
+      "operationCount": authorizationBatchConsumedOperationCount,
+      "operationBudget": authorizationBatchOperationCount,
       "allowInteraction": true,
       "sharedSystemAuthorizationContextRequired": true,
       "sharedSystemAuthorizationContextAvailable": authContextCreated,
@@ -682,9 +675,11 @@ final class SecureMeshIosSecretStoreCallbackContext {
       "consumedOperationCount": authorizationBatchConsumedOperationCount,
       "remainingOperationCount": authorizationBatchRemainingOperationCount,
       "authorizationBatchWithinBudget": authorizationBatchWithinBudget,
+      "explicitPolicyEvaluationPerformed": false,
+      "nativeFfiCarriesInProcessSecretMaterial": true,
+      "rawSecretMaterialIncludedInReport": false,
       "appCredentialPromptUsed": false,
-      "appPasswordPromptUsed": false,
-      "keyMaterialExported": false
+      "appPasswordPromptUsed": false
     ]
   }
 
@@ -722,6 +717,9 @@ final class SecureMeshIosSecretStoreCallbackContext {
       "callbackSecretReadCount": callbackSecretReadCount,
       "callbackSecretReadWithAuthenticationContextCount":
         callbackSecretReadWithAuthenticationContextCount,
+      "callbackSecretReadFoundCount": callbackSecretReadFoundCount,
+      "callbackSecretReadNotFoundCount": callbackSecretReadNotFoundCount,
+      "callbackSecretReadErrorCount": callbackSecretReadErrorCount,
       "callbackSecretWriteCount": callbackSecretWriteCount,
       "callbackSecretWriteWithAuthenticationContextCount":
         callbackSecretWriteWithAuthenticationContextCount,
@@ -735,8 +733,8 @@ final class SecureMeshIosSecretStoreCallbackContext {
       "appCredentialPromptUsedPresent": true,
       "appCredentialPromptUsed": false,
       "biometricDataHandledByApp": false,
-      "keyMaterialExportedPresent": true,
-      "keyMaterialExported": false,
+      "explicitPolicyEvaluationPerformed": false,
+      "nativeFfiCarriesInProcessSecretMaterial": true,
       "rawSecretMaterialIncludedPresent": true,
       "rawSecretMaterialIncluded": false,
       "localizedErrorsIncludedPresent": true,

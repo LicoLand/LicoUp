@@ -1,7 +1,5 @@
 import 'package:flutter/foundation.dart';
 
-import 'package:flutter_client/src/contracts/agent_usage_models.dart';
-
 @immutable
 class RouteDecisionRecord {
   const RouteDecisionRecord({
@@ -12,7 +10,6 @@ class RouteDecisionRecord {
     required this.alternatives,
     required this.excluded,
     required this.timestamp,
-    this.staleUsageOverride = false,
     this.requiredRoles = const [],
     this.requiredCapabilities = const [],
     this.requirementReasons = const [],
@@ -25,7 +22,6 @@ class RouteDecisionRecord {
   final List<RouteCandidate> alternatives;
   final List<RouteExclusion> excluded;
   final String timestamp;
-  final bool staleUsageOverride;
   final List<String> requiredRoles;
   final List<String> requiredCapabilities;
   final List<String> requirementReasons;
@@ -54,7 +50,6 @@ class RouteCandidate {
     required this.priority,
     required this.matchedRoles,
     required this.satisfiedCapabilities,
-    required this.allowanceHeadroom,
     required this.reason,
     this.policyOrder = 0,
   });
@@ -64,7 +59,6 @@ class RouteCandidate {
   final int priority;
   final List<String> matchedRoles;
   final List<String> satisfiedCapabilities;
-  final int allowanceHeadroom;
   final String reason;
   final int policyOrder;
 }
@@ -108,57 +102,12 @@ class RoutingAgentSignal {
     required this.agentLabel,
     required this.ready,
     this.circuitBreaker = const RoutingCircuitBreakerState(),
-    this.allowances = const [],
-    this.usageFresh = true,
-    this.usageAvailable = true,
   });
 
   final String agentId;
   final String agentLabel;
   final bool ready;
   final RoutingCircuitBreakerState circuitBreaker;
-  final List<AgentUsageAllowance> allowances;
-  final bool usageFresh;
-  final bool usageAvailable;
-
-  bool get allowanceExhausted {
-    return allowances.any((allowance) {
-      final status = allowance.status.trim().toLowerCase();
-      return status == 'blocked' ||
-          status == 'depleted' ||
-          status == 'exhausted';
-    });
-  }
-
-  /// Remaining headroom heuristic from the first numeric allowance value.
-  int get allowanceHeadroom {
-    for (final allowance in allowances) {
-      final parsed = int.tryParse(allowance.value.trim());
-      if (parsed != null) {
-        return parsed;
-      }
-    }
-    return 0;
-  }
-
-  int allowanceHeadroomFor(String kind) {
-    final allowance = allowanceFor(kind);
-    if (allowance == null) {
-      return 0;
-    }
-    return num.tryParse(allowance.value.trim().replaceAll(',', ''))?.floor() ??
-        0;
-  }
-
-  AgentUsageAllowance? allowanceFor(String kind) {
-    final normalizedKind = kind.trim().toLowerCase();
-    for (final allowance in allowances) {
-      if (allowance.kind.trim().toLowerCase() == normalizedKind) {
-        return allowance;
-      }
-    }
-    return null;
-  }
 }
 
 /// Consecutive-failure state supplied to the pure planner.
@@ -206,9 +155,6 @@ class RoutingSignals {
 abstract final class RouteReasonCode {
   static const notReady = 'not_ready';
   static const circuitBroken = 'circuit_broken';
-  static const allowanceExhausted = 'allowance_exhausted';
-  static const allowanceDataStale = 'allowance_data_stale';
-  static const allowanceUnavailable = 'allowance_unavailable';
   static const roleMismatch = 'role_mismatch';
   static const capabilityUnsatisfied = 'capability_unsatisfied';
   static const selected = 'selected';

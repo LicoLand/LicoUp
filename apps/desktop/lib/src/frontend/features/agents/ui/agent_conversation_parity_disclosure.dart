@@ -51,7 +51,7 @@ ConversationParityDisclosureCopy conversationParityDisclosureCopy({
   return ConversationParityDisclosureCopy(
     reasonCode: normalized,
     reasonLabel: label,
-    unblockLabel: action == null ? null : strings.scanAssistantAgents,
+    unblockLabel: action == null ? null : strings.refreshAgents,
     unblockAction: action,
   );
 }
@@ -248,7 +248,7 @@ class ConversationParitySendGateBanner extends StatelessWidget {
                   visualDensity: VisualDensity.compact,
                   padding: const EdgeInsets.symmetric(horizontal: 8),
                 ),
-                child: Text(copy.unblockLabel ?? strings.scanAssistantAgents),
+                child: Text(copy.unblockLabel ?? strings.refreshAgents),
               )
             : null,
       ),

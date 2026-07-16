@@ -1,5 +1,3 @@
-part of 'package:flutter_client/src/contracts/mobile_relay/mobile_relay_models.dart';
-
 class MobileRelayTrustPresentation {
   const MobileRelayTrustPresentation({
     required this.schemaVersion,

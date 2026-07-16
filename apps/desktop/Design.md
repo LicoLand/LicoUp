@@ -7,8 +7,8 @@ Flutter desktop client. Product scope is controlled by
 ## Product Identity
 
 Lico Arc is a lightweight local environment manager for a developer's
-machine. It makes target-native conversations and history, readiness state,
-MCP configuration, local Skill Hub state, and configuration recovery
+machine. It makes local-agent discovery, target-native conversations, local
+conversation backup, skill state, Token usage, and encrypted mobile relay
 understandable without becoming a new agent framework.
 
 The UI must feel:
@@ -17,11 +17,7 @@ The UI must feel:
    snapshots, and CLI-backed operations.
 2. **Precise**: every write path should show what target, path, field, token
    reference, or snapshot is affected.
-3. **Quiet**: the app is an operational tool, not a marketing surface or a
-   server console clone.
-
-The client must not present removed Console, Mail, DataConnector, upload queue,
-Knowledge Graph, or server API panels as first-class product surfaces.
+3. **Quiet**: the app is an operational tool, not a marketing surface.
 
 ## Visual Language — Black Crystal / Golden / Ice Blue
 
@@ -90,22 +86,23 @@ Desktop first-level destinations live in the **top bar** as flat icon buttons
 
 Default desktop destinations:
 
-- Home (control panel)
 - Agents
+- Token Usage
+- Skill Hub
+- Mobile Relay
+- Settings
 
-Plugins, Skill Hub, and Token Usage are reached from the Agents left sidebar
-(Explore-style upper nav). Global search can still jump to those sections.
-
-Trailing tools (right): **Pairing** · **More** (Settings / Runtime) · `|` ·
-**Avatar**. Settings and Runtime are reached from the more menu; pairing opens
-Mobile Relay.
+Agent conversations and local conversation backup remain inside Agents. Protocol
+adapters are implementation foundations rather than standalone destinations.
+Global search may jump to any current destination.
 
 A VS Code–style **centered** search field spans the visual center of the full
 top bar (including traffic-light width in the centering calculation). Its
 corner radius matches `windowCornerRadius` so the field curvature stays
 consistent with the window chrome.
 
-Mobile keeps its separate bottom navigation.
+Mobile keeps a compact Agents/Settings shell; pairing and encrypted relay flows
+open contextually from the agent experience.
 
 ## Typography
 
@@ -151,11 +148,11 @@ Desktop Agents uses a **sidebar-as-background + floating conversation card**
 layout (top system bar unchanged):
 
 1. **Left rail** sits on the window background (no solid panel chrome). Upper
-   Explore-style nav hosts Plugins, Skill Hub, and Token Usage; the lower tree
+   Explore-style nav hosts Skill Management and Token Usage; the lower tree
    groups conversations by agent, then by project (working directory).
 2. **Right card** is an elevated surface (≈16px radius, soft shadow, inset from
    the shell edges). Selecting a sidebar destination shows conversation detail,
-   MCP plugins, skills, or usage stats in that card.
+   skills or usage stats in that card.
 3. **Agent discovery** is incremental: last-scan results are cached and painted
    immediately; each packaged adapter is probed by its own concurrent
    `targets inspect` process, and each hit is upserted into the sidebar as soon
@@ -224,27 +221,17 @@ semantically. Notifications are scoped to the state slice that changed so that
 unrelated modules, inactive conversations, and stable portions of the active
 conversation are not rebuilt.
 
-### MCP Plugins
-
-Treat LicoLite MCP as a peer plugin. Show target-native MCP fields, version/status
-when available, update/repair triggers, and rollback actions backed by local
-snapshots.
-
 ### Skill Hub
 
-Present the Hub as passive local storage. Pairing, visibility, pinning, and
-integrity state are product concepts; executing Skills, installing dependencies,
-or copying Skills into workspaces are outside the client boundary.
+Present local skills by agent with source, installed version, integrity state,
+and time-window usage count. Updates require an explicit mirror or GitHub
+source and a direct user action. Deletion always names the selected agent or
+agents and presents the exact scope before confirmation.
 
 ### Mobile Relay
 
 Mobile Relay focuses on pairing and gateway choice. Diagnostic protocol state
 stays hidden unless it is needed to unblock pairing.
-
-### Runtime
-
-Runtime shows packaged client-local modules in a left/right module inspector.
-It should not become a raw dump of service internals.
 
 ### Settings
 

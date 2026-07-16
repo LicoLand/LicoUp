@@ -1,7 +1,7 @@
 import 'package:flutter_client/src/application/features/navigation/semantic_destination_catalog.dart';
 import 'package:flutter_client/src/contracts/presentation/layout_environment.dart';
 import 'package:flutter_client/src/contracts/presentation/layout_profile.dart';
-import 'package:flutter_client/src/frontend/layout/built_in_layout_composition.dart';
+import 'package:flutter_client/src/application/composition/built_in_layout_composition.dart';
 import 'package:flutter_client/src/frontend/layout/layout_definition.dart';
 import 'package:flutter_test/flutter_test.dart';
 

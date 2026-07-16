@@ -364,7 +364,7 @@ void main() {
             items: const [
               HistorySessionPanelItem(
                 id: 'session-1',
-                title: 'weekly limit 和 codex spark 的 weekly limit 是分开计费吗',
+                title: 'codex spark 和标准模型的使用场景有什么区别',
                 meta:
                     'codex · codex-prompt-history · 019d952a-5e16-78e0-a627-b887',
                 preview: '这里是一段很长的历史预览，应当在行内截断而不是撑出底部 overflow。',
@@ -381,7 +381,7 @@ void main() {
     await tester.pump();
 
     expect(tester.takeException(), isNull);
-    expect(find.textContaining('weekly limit'), findsOneWidget);
+    expect(find.textContaining('codex spark'), findsOneWidget);
   });
 
   testWidgets('history session panel can disable native history delete', (
