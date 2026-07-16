@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import { normalizeSourceCheckFiles } from "./source-check-bundle.mjs";
 
 const configUrl = new URL("../config/secure-mesh-release-proof.json", import.meta.url);
 const configRef = "tools/scripts/config/secure-mesh-release-proof.json";
@@ -209,17 +210,27 @@ function normalizeSourceChecks(value) {
   }
   const normalized = checks.map((item, index) => {
     const check = asRecord(item);
+    const files = normalizeSourceCheckFiles(
+      check,
+      normalizeSafeSourceRef,
+      `Secure Mesh release proof source check ${index + 1}`,
+    );
     return {
       id: normalizeCheckId(check.id, `source check ${index + 1} id`),
-      file: normalizeSafeSourceRef(check.file, `source check ${index + 1} file`),
-      tokens: normalizeTokenList(check.tokens, `source check ${index + 1} tokens`)
+      file: files[0],
+      files,
+      tokens: normalizeTokenList(check.tokens, `source check ${index + 1} tokens`),
     };
   });
   const ids = normalized.map((check) => check.id);
   if (new Set(ids).size !== ids.length) {
     throw new Error("Secure Mesh release proof config source checks must have unique ids");
   }
-  return normalized;
+  return normalized.map((check) => Object.freeze({
+    ...check,
+    files: Object.freeze(check.files),
+    tokens: Object.freeze(check.tokens),
+  }));
 }
 
 function normalizeFreshnessWindowSeconds(value, label) {

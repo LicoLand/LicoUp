@@ -10,9 +10,9 @@ export const SECURE_CLIENT_RELAY_CORE_CONTRACT_PATH =
 export const SECURE_CLIENT_RELAY_CORE_CONFORMANCE_PATH =
   "crates/lico-client-native/resources/secure-client-relay-core-conformance.json";
 export const SECURE_CLIENT_RELAY_CORE_CONTRACT_DIGEST =
-  "sha256:133d084f0cfeb464a03f217ae2d24ff23758a7c10537027c80932bd930d2dab3";
+  "sha256:62c27e8af0348bf13909ddd9d05f07a39b153bc6d011df5ed7249499cf19dd01";
 export const SECURE_CLIENT_RELAY_CORE_CONFORMANCE_DIGEST =
-  "sha256:d942d81fc07023c9c83903efed9d82f2f5b21fad9ad17f31b90fd77896019764";
+  "sha256:0f33bd3d5ca8ddf63e293f1d620eaf8f583b7c8998967573f726575a000bae2d";
 
 const CORE_CONTRACT_SCHEMA_VERSION =
   "licolite.secure-client-relay.core-contract-artifact.v1";

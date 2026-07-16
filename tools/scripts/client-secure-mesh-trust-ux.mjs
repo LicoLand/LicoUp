@@ -5,12 +5,14 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { runCargoTestFilter } from "./lib/cargo-test-filter-runner.mjs";
+import { acquireTestArtifactLease } from "./lib/test-artifact-lifecycle.mjs";
 import { loadSecureClientContract } from "./lib/secure-client-contract.mjs";
 import { createSecureClientMeshE2eeRefReportScope } from "./lib/secure-client-mesh-e2ee-ref-report.mjs";
 import { loadSecureMeshPhysicalEvidenceConfig } from "./lib/secure-mesh-physical-evidence-config.mjs";
 import { loadSecureMeshTrustUxConfig } from "./lib/secure-mesh-trust-ux-config.mjs";
 import { optionalReleaseInvocationBinding } from "./lib/release-closure-challenge.mjs";
 import { atomicWriteReportJson } from "./lib/safe-report-io.mjs";
+import { readSourceCheckBundle } from "./lib/source-check-bundle.mjs";
 import {
   SECURE_MESH_TRUST_UX_IOS_SUPPORT_STATUS,
   SECURE_MESH_TRUST_UX_PRODUCT_TEST_ID,
@@ -61,11 +63,12 @@ async function readJsonIfPresent(relativePath) {
 }
 
 async function evaluateSourceCheck(check) {
-  const source = await readText(check.file);
+  const { files, source } = await readSourceCheckBundle(check, readText);
   const missingTokens = check.tokens.filter((token) => !source.includes(token));
   return {
     id: check.id,
     file: check.file,
+    files,
     ok: missingTokens.length === 0,
     missingTokens
   };
@@ -119,14 +122,24 @@ function runProductTests(targets) {
   const appRoot = path.join(repoRoot, "apps", "desktop");
   const appPrefix = "apps/desktop/";
   const testTargets = targets.map((target) => target.slice(appPrefix.length));
-  const command = spawnSync("flutter", ["test", ...testTargets], {
-    cwd: appRoot,
-    env: process.env,
-    encoding: "utf8",
-    stdio: "pipe",
-    maxBuffer: 8 * 1024 * 1024,
-    timeout: 300_000
+  const lease = acquireTestArtifactLease({
+    repoRoot,
+    scope: "secure-mesh-trust-ux",
+    targetPath: "apps/desktop/build"
   });
+  let command;
+  try {
+    command = spawnSync("flutter", ["test", ...testTargets], {
+      cwd: appRoot,
+      env: process.env,
+      encoding: "utf8",
+      stdio: "pipe",
+      maxBuffer: 8 * 1024 * 1024,
+      timeout: 300_000
+    });
+  } finally {
+    lease.release();
+  }
   const exitCode = Number.isInteger(command.status) ? command.status : -1;
   return {
     id: SECURE_MESH_TRUST_UX_PRODUCT_TEST_ID,
@@ -144,7 +157,9 @@ function runProductTests(targets) {
 }
 
 async function mobileNativeTrustActionGap() {
-  const source = await readText("crates/lico-client-native/src/ffi/secure_mesh_mobile_ffi.rs");
+  const source = await readText(
+    "crates/lico-client-native/src/ffi/secure_mesh_mobile_ffi/action_catalog.rs"
+  );
   const presentActions = expectedMobileNativeTrustActions.filter((action) => source.includes(action));
   return {
     expectedActions: expectedMobileNativeTrustActions,

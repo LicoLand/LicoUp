@@ -8,6 +8,7 @@ import { loadDigestBoundJsonInput } from "./lib/secure-client-contract.mjs";
 import { loadSecureMeshAcpRelayGovernedBaselineConfig } from "./lib/secure-mesh-acp-relay-governed-baseline-config.mjs";
 import { optionalReleaseInvocationBinding } from "./lib/release-closure-challenge.mjs";
 import { atomicWriteReportJson } from "./lib/safe-report-io.mjs";
+import { readSourceCheckBundle } from "./lib/source-check-bundle.mjs";
 
 const repoRoot = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const config = await loadSecureMeshAcpRelayGovernedBaselineConfig();
@@ -48,11 +49,12 @@ async function readText(relativePath) {
 }
 
 async function evaluateSourceCheck(check) {
-  const source = await readText(check.file);
+  const { files, source } = await readSourceCheckBundle(check, readText);
   const missingTokens = check.tokens.filter((token) => !source.includes(token));
   return {
     id: check.id,
     file: check.file,
+    files,
     ok: missingTokens.length === 0,
     missingTokens
   };

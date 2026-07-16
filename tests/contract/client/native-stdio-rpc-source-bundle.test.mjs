@@ -1,0 +1,162 @@
+import assert from "node:assert/strict";
+import fs from "node:fs/promises";
+import path from "node:path";
+import test from "node:test";
+import { fileURLToPath } from "node:url";
+
+const repoRoot = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "../../..",
+);
+const facadePath =
+  "apps/desktop/lib/src/platform/native_client/agent_service_stdio_rpc.dart";
+const sourceRoot =
+  "apps/desktop/lib/src/platform/native_client/agent_service_stdio_rpc";
+
+const leafLimits = Object.freeze({
+  "client.dart": 160,
+  "command_exchange.dart": 80,
+  "conversation_exchange.dart": 75,
+  "line_framer.dart": 75,
+  "protocol.dart": 75,
+  "request_writer.dart": 20,
+  "response_codec.dart": 155,
+  "session.dart": 235,
+  "session_manager.dart": 110,
+  "shutdown.dart": 50,
+});
+
+const allowedDependencies = Object.freeze({
+  "client.dart": [
+    "command_exchange.dart",
+    "conversation_exchange.dart",
+    "protocol.dart",
+    "session_manager.dart",
+    "shutdown.dart",
+  ],
+  "command_exchange.dart": [
+    "protocol.dart",
+    "request_writer.dart",
+    "response_codec.dart",
+    "session.dart",
+    "session_manager.dart",
+  ],
+  "conversation_exchange.dart": [
+    "protocol.dart",
+    "request_writer.dart",
+    "response_codec.dart",
+    "session_manager.dart",
+  ],
+  "line_framer.dart": [],
+  "protocol.dart": [],
+  "request_writer.dart": ["session.dart"],
+  "response_codec.dart": ["protocol.dart"],
+  "session.dart": ["line_framer.dart", "protocol.dart", "response_codec.dart"],
+  "session_manager.dart": ["protocol.dart", "session.dart"],
+  "shutdown.dart": [
+    "protocol.dart",
+    "request_writer.dart",
+    "response_codec.dart",
+    "session.dart",
+  ],
+});
+
+async function read(relativePath) {
+  return fs.readFile(path.join(repoRoot, relativePath), "utf8");
+}
+
+async function sources() {
+  return Object.fromEntries(await Promise.all(Object.keys(leafLimits).map(async (leaf) => [
+    leaf,
+    await read(`${sourceRoot}/${leaf}`),
+  ])));
+}
+
+function localDependencies(source) {
+  return [...source.matchAll(
+    /agent_service_stdio_rpc\/([a-z_]+\.dart)'/gu,
+  )].map((match) => match[1]).sort();
+}
+
+test("stdio RPC facade exports one stable client from ordinary libraries", async () => {
+  const facade = await read(facadePath);
+  assert.ok(facade.trimEnd().split(/\r?\n/u).length <= 3);
+  assert.ok(facade.includes("show NativeStdioRpcClient"));
+  for (const forbidden of ["part ", "part of", "class NativeStdioRpcClient", "#[path"])
+    assert.equal(facade.includes(forbidden), false);
+});
+
+test("stdio RPC leaves remain bounded and acyclic", async () => {
+  const source = await sources();
+  for (const [leaf, body] of Object.entries(source)) {
+    assert.ok(
+      body.trimEnd().split(/\r?\n/u).length <= leafLimits[leaf],
+      `${leaf} exceeds its responsibility limit`,
+    );
+    assert.equal(body.includes("part "), false);
+    assert.equal(body.includes("part of"), false);
+    assert.equal(body.includes("/agent_service_stdio_rpc.dart"), false);
+    assert.deepEqual(localDependencies(body), allowedDependencies[leaf]);
+  }
+});
+
+test("stdio RPC protocol and response codecs bind bounded identities", async () => {
+  const source = await sources();
+  const protocol = source["protocol.dart"];
+  const response = source["response_codec.dart"];
+  for (const token of [
+    "stdioRpcMaxFrameBytes",
+    "stdioRpcMaxErrorCodeBytes",
+    "stdioRpcMaxArgs",
+    "stdioRpcMaxArgumentCodeUnits",
+    "validStdioRpcErrorCode",
+    "validStdioRpcArgs",
+    "request_too_large",
+  ]) {
+    assert.ok(protocol.includes(token), `missing protocol bound: ${token}`);
+  }
+  for (const token of [
+    "decoded['protocol'] != stdioRpcProtocol",
+    "decoded['id'] != requestId",
+    "decoded['workflowId'] != workflowId",
+    "decoded['sequence'] != _expectedSequence",
+    "StdioRpcProtocolViolation",
+  ]) {
+    assert.ok(response.includes(token), `missing response binding: ${token}`);
+  }
+});
+
+test("stdio RPC transport is serialized, no-replay, and non-projecting", async () => {
+  const source = await sources();
+  const joined = Object.values(source).join("\n");
+  assert.ok(source["client.dart"].includes("Future<void> _queue"));
+  assert.ok(source["client.dart"].includes("_serialize"));
+  assert.ok(source["command_exchange.dart"].includes("must never be replayed"));
+  assert.ok(source["session.dart"].includes("StdioRpcLineFramer"));
+  assert.ok(source["session.dart"].includes(
+    "_expectedFrame == null && _expectedFrames == null",
+  ));
+  assert.ok(source["session.dart"].includes("stderrBytes"));
+  assert.ok(source["session.dart"].includes("stderrTruncated"));
+  for (const projection of [
+    "stderrText",
+    "StringBuffer stderr",
+    "utf8.decode(process.stderr",
+    "error.toString()",
+    "StackTrace.current",
+  ]) {
+    assert.equal(joined.includes(projection), false);
+  }
+});
+
+test("stdio RPC owns fast protocol, framer, and public-client regressions", async () => {
+  for (const testPath of [
+    "apps/desktop/test/native_stdio_rpc_client_test.dart",
+    "apps/desktop/test/native_stdio_rpc_line_framer_test.dart",
+    "apps/desktop/test/native_stdio_rpc_protocol_test.dart",
+  ]) {
+    const source = await read(testPath);
+    assert.ok(source.includes("void main()"));
+    assert.equal(source.includes("part "), false);
+  }
+});

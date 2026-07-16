@@ -6,8 +6,17 @@ import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
+import {
+  acquireTestArtifactLease,
+  NATIVE_CARGO_TEST_TARGET,
+} from "../../tools/scripts/lib/test-artifact-lifecycle.mjs";
 
 const repoRoot = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
+const cargoArtifactLease = acquireTestArtifactLease({
+  repoRoot,
+  scope: "native-client-smoke",
+  targetPath: NATIVE_CARGO_TEST_TARGET,
+});
 let portableDir = "";
 const argumentsSet = new Set(process.argv.slice(2));
 const runtimeDataAuthorized = argumentsSet.has("--runtime-data");
@@ -31,8 +40,8 @@ function runClient(args) {
       cwd: repoRoot,
       env: {
         ...process.env,
-        CARGO_TARGET_DIR: path.join(repoRoot, "build", "crates", "lico-client-native", "target"),
-        LICO_PORTABLE_DIR: portableDir
+        CARGO_TARGET_DIR: cargoArtifactLease.targetPath,
+        LICOARC_PORTABLE_DIR: portableDir
       },
       stdio: ["ignore", "pipe", "pipe"]
     });
@@ -96,18 +105,22 @@ async function runJson(args, commandId) {
 }
 
 let smokeFailed = false;
+let smokeStage = "setup";
 try {
   portableDir = await fs.mkdtemp(path.join(os.tmpdir(), "lico-native-client-smoke-"));
   assert.equal(optionsValid, true, "native_smoke_option_invalid");
+  smokeStage = "usage";
   const empty = await runClient([]);
   assert.equal(empty.code, 0);
   assert.equal(empty.stderr.includes("Usage:"), true, "native_smoke_usage_missing");
 
+  smokeStage = "state-settings";
   const settings = await runJson(["state", "get", "settings"], "state-settings");
   assert.equal(settings.ok, true);
   assert.equal(settings.collection, "settings");
   assert.equal(settings.document?.schemaVersion, "v0.0.1:schema:definition-1");
 
+  smokeStage = "targets-scan";
   const targets = await runJson([
     "targets",
     "scan",
@@ -129,10 +142,15 @@ try {
     }
   }
 
-  const profiles = await runJson(["model", "profiles", "list"], "model-profiles");
+  smokeStage = "snapshot-profiles";
+  const profiles = await runJson(
+    ["snapshots", "profiles", "list"],
+    "snapshot-profiles",
+  );
   assert.equal(profiles.ok, true);
   assert.equal(Array.isArray(profiles.profiles), true);
 
+  smokeStage = "activity-list";
   const activity = await runJson(["activity", "list"], "activity-list");
   assert.equal(activity.ok, true);
   assert.equal(Array.isArray(activity.events), true);
@@ -147,6 +165,7 @@ try {
   console.error(JSON.stringify({
     ok: false,
     error: "native_smoke_failed",
+    stage: smokeStage,
     rawRuntimeOutputIncluded: false,
     privatePathsIncluded: false,
   }));
@@ -164,5 +183,6 @@ try {
       }));
     }
   }
+  cargoArtifactLease.release();
 }
 if (smokeFailed) process.exitCode = 1;

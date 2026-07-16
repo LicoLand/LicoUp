@@ -18,7 +18,12 @@
     },
     {
       "id": "android-install-launch-validates-platform-custody",
-      "file": "tools/scripts/client-android-physical-install-launch.mjs",
+      "files": [
+        "tools/scripts/client-android-physical-install-launch.mjs",
+        "tools/scripts/client-android-physical-install-launch/device/classify.mjs",
+        "tools/scripts/client-android-physical-install-launch/runtime/status.mjs",
+        "tools/scripts/client-android-physical-install-launch/report/build.mjs"
+      ],
       "tokens": [
         "androidPhysicalDeviceProof",
         "androidAdbTransportAuthorized",
@@ -66,8 +71,9 @@
       "id": "windows-local-implementation-is-redacted-and-host-gated",
       "file": "tools/scripts/client-secure-mesh-windows-implementation.mjs",
       "tokens": [
-        "redacted-windows-local-implementation-closure",
-        "implementation_ready_host_evidence_pending",
+        "redacted-windows-conservative-custody-boundary",
+        "persistent_custody_unverified",
+        "memory-only-ephemeral",
         "windowsLocalBlockersCleared",
         "nativeHostEvidencePending",
         "dpapiOrWindowsHelloProofReady: false",
@@ -91,6 +97,17 @@
       ]
     },
     {
+      "id": "shared-physical-report-coverage-owns-ready-gates",
+      "file": "tools/scripts/lib/secure-mesh-physical-report-coverage.mjs",
+      "tokens": [
+        "androidPlatformCryptoCoverage",
+        "relayMockCoverage",
+        "platformSecretStoreCustodyCoverage",
+        "windowsImplementationReady",
+        "ANDROID_PLATFORM_CRYPTO_NATIVE_TEST_CLASS_COUNT"
+      ]
+    },
+    {
       "id": "physical-evidence-manifest-consumes-relay-and-platform-crypto",
       "file": "tools/scripts/client-secure-mesh-physical-evidence-manifest.mjs",
       "tokens": [
@@ -98,7 +115,8 @@
         "androidPlatformCrypto",
         "physicalEvidenceChainReady",
         "platform secret-store proof classes",
-        "client-owned opaque relay Mock proof classes"
+        "client-owned opaque relay Mock proof classes",
+        "secure-mesh-physical-report-coverage.mjs"
       ]
     },
     {
@@ -109,7 +127,8 @@
         "androidPlatformCrypto",
         "androidPlatformSecretStoreReadyForSummary",
         "iosPlatformSecretStoreReadyForSummary",
-        "physicalEvidenceChainReadyForSummary"
+        "physicalEvidenceChainReadyForSummary",
+        "secure-mesh-physical-report-coverage.mjs"
       ]
     }
   ],

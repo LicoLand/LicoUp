@@ -72,26 +72,6 @@
       ]
     },
     {
-      "id": "runbook-defines-redacted-release-proof-bundle",
-      "file": "docs/RUNBOOK.md",
-      "tokens": [
-        "GitHub Release artifacts publish only minimum consumer-verification metadata",
-        "cryptographic digest",
-        "private-key",
-        "update/rollback receipts"
-      ]
-    },
-    {
-      "id": "desktop-doc-keeps-release-proof-redacted",
-      "file": "docs/functionality/CLIENT-DESKTOP.md",
-      "tokens": [
-        "redacted release proof bundle",
-        "physical-device proof classes",
-        "signing/deployment proof classes",
-        "Security review approval evidence and cryptographic release signing are distinct artifacts."
-      ]
-    },
-    {
       "id": "update-release-verifier-covers-signed-manifest-and-negative-controls",
       "file": "tests/verify-client-update-release-channel.mjs",
       "tokens": [
@@ -144,7 +124,11 @@
     },
     {
       "id": "android-physical-install-launch-verifier-writes-redacted-report",
-      "file": "tools/scripts/client-android-physical-install-launch.mjs",
+      "files": [
+        "tools/scripts/client-android-physical-install-launch/report/build.mjs",
+        "tools/scripts/client-android-physical-install-launch/device/classify.mjs",
+        "tools/scripts/client-android-physical-install-launch/apk/inspect.mjs"
+      ],
       "tokens": [
         "licolite.secure-mesh.android-physical-install-launch-report.v3",
         "reportLeakScan",
@@ -156,23 +140,12 @@
       ]
     },
     {
-      "id": "validation-requires-release-proof-bundle",
-      "file": "docs/plan/client-release/Validation.md",
-      "tokens": [
-        "exact artifact digest",
-        "REQ-E2EE-002/003",
-        "shared Rust owner",
-        "selected-target reducer",
-        "final privacy scan",
-        "client relay Mock conformance"
-      ]
-    },
-    {
-      "id": "windows-local-implementation-is-closed-with-host-evidence-pending",
+      "id": "windows-persistent-custody-remains-unverified-with-host-evidence-pending",
       "file": "tools/scripts/client-secure-mesh-windows-implementation.mjs",
       "tokens": [
-        "redacted-windows-local-implementation-closure",
-        "implementation_ready_host_evidence_pending",
+        "redacted-windows-conservative-custody-boundary",
+        "persistent_custody_unverified",
+        "memory-only-ephemeral",
         "windowsLocalBlockersCleared",
         "nativeHostEvidencePending",
         "productionReady",
@@ -376,6 +349,36 @@
         "androidPhysicalInstallLaunchLocalReadyDiagnosticOnly",
         "--release-proof-contract-readiness-self-test",
         "--client-relay-crypto-readiness-self-test"
+      ],
+      "files": [
+        "tools/scripts/client-secure-mesh-release-proof-bundle.mjs",
+        "tools/scripts/client-secure-mesh-release-proof-bundle/cli.mjs",
+        "tools/scripts/client-secure-mesh-release-proof-bundle/config.mjs",
+        "tools/scripts/client-secure-mesh-release-proof-bundle/constants.mjs",
+        "tools/scripts/client-secure-mesh-release-proof-bundle/contract-readiness.mjs",
+        "tools/scripts/client-secure-mesh-release-proof-bundle/freshness.mjs",
+        "tools/scripts/client-secure-mesh-release-proof-bundle/integrity.mjs",
+        "tools/scripts/client-secure-mesh-release-proof-bundle/io.mjs",
+        "tools/scripts/client-secure-mesh-release-proof-bundle/lists.mjs",
+        "tools/scripts/client-secure-mesh-release-proof-bundle/privacy.mjs",
+        "tools/scripts/client-secure-mesh-release-proof-bundle/report-summary-core.mjs",
+        "tools/scripts/client-secure-mesh-release-proof-bundle/report-summary-physical.mjs",
+        "tools/scripts/client-secure-mesh-release-proof-bundle/report-summary.mjs",
+        "tools/scripts/client-secure-mesh-release-proof-bundle/report.mjs",
+        "tools/scripts/client-secure-mesh-release-proof-bundle/run.mjs",
+        "tools/scripts/client-secure-mesh-release-proof-bundle/self-test/client-relay-crypto.mjs",
+        "tools/scripts/client-secure-mesh-release-proof-bundle/self-test/contract.mjs",
+        "tools/scripts/client-secure-mesh-release-proof-bundle/self-test/freshness.mjs",
+        "tools/scripts/client-secure-mesh-release-proof-bundle/self-test/physical-evidence.mjs",
+        "tools/scripts/client-secure-mesh-release-proof-bundle/self-test/redaction.mjs",
+        "tools/scripts/client-secure-mesh-release-proof-bundle/summarize/android-install.mjs",
+        "tools/scripts/client-secure-mesh-release-proof-bundle/summarize/client-relay-crypto.mjs",
+        "tools/scripts/client-secure-mesh-release-proof-bundle/summarize/physical-evidence.mjs",
+        "tools/scripts/client-secure-mesh-release-proof-bundle/summarize/physical-matrix.mjs",
+        "tools/scripts/client-secure-mesh-release-proof-bundle/summarize/redaction.mjs",
+        "tools/scripts/client-secure-mesh-release-proof-bundle/summarize/update.mjs",
+        "tools/scripts/client-secure-mesh-release-proof-bundle/summarize/windows.mjs",
+        "tools/scripts/client-secure-mesh-release-proof-bundle/verifiers.mjs"
       ]
     }
   ]

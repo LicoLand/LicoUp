@@ -57,17 +57,17 @@ function measurements(overrides = {}) {
     securityLevelMeasured: true,
     securityLevel: "software",
     insideSecureHardware: false,
-    userAuthenticationRequested: false,
-    userAuthenticationRequired: false,
+    userAuthenticationRequested: true,
+    userAuthenticationRequired: true,
     userAuthenticationTypeMeasured: true,
-    userAuthenticationType: "none",
-    deviceCredentialAvailable: false,
-    deviceCredentialAllowed: false,
+    userAuthenticationType: "device_credential",
+    deviceCredentialAvailable: true,
+    deviceCredentialAllowed: true,
     strongBiometricAvailable: false,
     strongBiometricAvailabilityMeasured: true,
     strongBiometricAllowed: false,
-    userAuthenticationValiditySeconds: null,
-    userAuthenticationHardwareEnforced: null,
+    userAuthenticationValiditySeconds: 300,
+    userAuthenticationHardwareEnforced: false,
     invalidatedByBiometricEnrollment: null,
     biometricEnrollmentInvalidationNotApplicableBecauseDeviceCredentialAllowed: false,
     unlockedDeviceRequiredRequested: true,
@@ -98,7 +98,7 @@ function store(capabilityProbe, capabilityMeasurements) {
       ? "AndroidKeyStore"
       : "process-memory",
     ffiBoundary: "jni",
-    secretTransport: "platform_keyring_to_rust_ffi_memory_override",
+    secretTransport: "jni_callback_in_process_secret_bytes",
     secretStoreBackend: capabilityMeasurements.custodyStrategy === "os_secure_store"
       ? "android-keystore"
       : "memory-only-ephemeral",
@@ -108,10 +108,13 @@ function store(capabilityProbe, capabilityMeasurements) {
     sharedRustSecretStoreHandleContract: true,
     rawJsonSecretOverridesUsed: false,
     rawJsonSecretOverridesProvenAbsent: true,
-    portableConfigRedacted: true,
-    keyMaterialExported: false,
-    applicationAuthorizationGrantRequired:
-      capabilityMeasurements.userAuthenticationRequired === true,
+    portableConfigAuthority: "rust_generation_cas",
+    kotlinConfigReadWrite: false,
+    statusProbeSideEffectFree: true,
+    androidKeyMaterialExported: false,
+    decryptedSecretCrossesJniInProcess: true,
+    getNotFoundSeparatedFromFailure: true,
+    applicationAuthorizationGrantRequired: true,
     capabilityProbe,
     measurements: capabilityMeasurements
   };
@@ -126,8 +129,8 @@ requireValue(!softwareReport.enabled.includes("custody.hardware_backed"),
 const softwareSummary = summarizeAndroidCapabilityStore(
   store(softwareProbe, measurements())
 );
-requireValue(softwareSummary.userAuthenticationSelected === false,
-  "no-lock-screen software scenario unexpectedly selected authentication");
+requireValue(softwareSummary.userAuthenticationSelected === true,
+  "Android persistent custody omitted mandatory user authentication");
 
 const strongBoxOverrides = supportedBaseFacts({
   "custody.software_backed": fact(
@@ -155,7 +158,14 @@ const memoryMeasurements = measurements({
   insideSecureHardware: null,
   unlockedDeviceRequiredRequested: false,
   unlockedDeviceRequired: null,
-  keyGenerationAttemptCount: 0
+  keyGenerationAttemptCount: 0,
+  userAuthenticationRequested: false,
+  userAuthenticationRequired: false,
+  userAuthenticationType: "none",
+  deviceCredentialAvailable: false,
+  deviceCredentialAllowed: false,
+  userAuthenticationValiditySeconds: null,
+  userAuthenticationHardwareEnforced: null
 });
 const memorySummary = summarizeAndroidCapabilityStore(
   store(memoryProbe, memoryMeasurements)
@@ -180,20 +190,35 @@ const sourceFiles = [
   "apps/desktop/android/app/src/main/kotlin/com/liko/arc/SecureMeshAndroidSecretStore.kt",
   "apps/desktop/android/app/src/main/kotlin/com/liko/arc/SecureMeshAndroidCapability.kt",
   "apps/desktop/android/app/src/main/kotlin/com/liko/arc/SecureMeshAndroidCapabilityProbe.kt",
+  "apps/desktop/android/app/src/main/kotlin/com/liko/arc/SecureMeshAndroidCustodyManager.kt",
+  "apps/desktop/android/app/src/main/kotlin/com/liko/arc/SecureMeshAndroidEncryptedRecordStore.kt",
   "apps/desktop/android/app/src/main/kotlin/com/liko/arc/SecureMeshAndroidKeyPolicy.kt",
   "crates/lico-client-native/src/ffi/android_ffi.rs",
   "tools/scripts/client-android-native-tests.mjs",
   "tools/scripts/client-android-physical-install-launch.mjs"
 ];
-const source = sourceFiles
-  .map((relativePath) => readFileSync(path.join(repoRoot, relativePath), "utf8"))
-  .join("\n");
+const sources = new Map(sourceFiles.map((relativePath) => [
+  relativePath,
+  readFileSync(path.join(repoRoot, relativePath), "utf8")
+]));
+const source = [...sources.values()].join("\n");
+requireValue(
+  sources.get("apps/desktop/android/app/src/main/kotlin/com/liko/arc/SecureMeshAndroidKeyPolicy.kt")
+    .includes("internal object SecureMeshAndroidKeyPolicyStrategy"),
+  "Android adaptive custody policy strategy declaration is missing"
+);
+requireValue(
+  sources.get("apps/desktop/android/app/src/main/kotlin/com/liko/arc/SecureMeshAndroidCustodyManager.kt")
+    .includes("SecureMeshAndroidKeyPolicyStrategy.select("),
+  "Android custody manager does not invoke the adaptive key policy strategy"
+);
 for (const requiredImplementation of [
-  "SecureMeshAndroidKeyPolicyStrategy.select",
   "SecureMeshAndroidKeyAttemptFailure.STRONGBOX_UNAVAILABLE",
-  "AndroidCustodySelection.MemoryOnly",
-  "deleteRecordFile(recordFile)",
-  "ephemeralSecretStore.put",
+  "SecureMeshAndroidCustodySelection.MemoryOnly",
+  "statusProbeSideEffectFree",
+  "requires user-approved re-pair",
+  "SecureMeshAndroidAtomicRecordWriter",
+  "ephemeralStore.put",
   "secureMeshAndroidCapabilityProbeJson",
   "parse_android_capability_facts",
   "SecureMeshAndroidAdaptiveCustodyTest"

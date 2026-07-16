@@ -17,7 +17,10 @@
   "sourceChecks": [
     {
       "id": "client-acp-envelope-aad-and-taxonomy",
-      "file": "crates/lico-client-native/src/core/secure_mesh_acp.rs",
+      "files": [
+        "crates/lico-client-native/src/core/secure_mesh_acp.rs",
+        "crates/lico-client-native/src/core/secure_mesh_acp/tests/mod.rs"
+      ],
       "tokens": [
         "encode_acp_envelope_aad",
         "seal_acp_protected_payload",
@@ -29,17 +32,6 @@
         "policy_revision",
         "secure_mesh_acp_payload_classes_cover_protected_taxonomy",
         "secure_mesh_acp_envelope_aad_field_mutation_fails_open"
-      ]
-    },
-    {
-      "id": "client-release-validation-keeps-acp-payload-policy-gates",
-      "file": "docs/plan/client-release/Validation.md",
-      "tokens": [
-        "REQ-E2EE-006",
-        "ACP payload family",
-        "encrypted payload digest",
-        "cancel/deny/close/expiry",
-        "reasoning is absent"
       ]
     }
   ],

@@ -251,8 +251,14 @@ export function summarizeAndroidCapabilityStore(store = {}) {
     rawJsonSecretOverridesProvenAbsent:
       store.rawJsonSecretOverridesUsed === false &&
       store.rawJsonSecretOverridesProvenAbsent === true,
-    portableConfigRedacted: store.portableConfigRedacted === true,
-    keyMaterialExported: store.keyMaterialExported === true,
+    portableConfigAuthority: String(store.portableConfigAuthority || ""),
+    kotlinConfigReadWrite: store.kotlinConfigReadWrite === true,
+    statusProbeSideEffectFree: store.statusProbeSideEffectFree === true,
+    androidKeyMaterialExported: store.androidKeyMaterialExported === true,
+    decryptedSecretCrossesJniInProcess:
+      store.decryptedSecretCrossesJniInProcess === true,
+    getNotFoundSeparatedFromFailure:
+      store.getNotFoundSeparatedFromFailure === true,
     applicationAuthorizationGrantRequired:
       store.applicationAuthorizationGrantRequired === true,
     custodyStrategy: report.custody.strategy,
@@ -281,10 +287,19 @@ export function assertAndroidCapabilityStoreValid(store = {}, phase = "") {
     `Android shared secret-store handle is missing ${phase}`);
   requireValue(summary.rawJsonSecretOverridesProvenAbsent === true,
     `Android raw secret overrides are not proven absent ${phase}`);
-  requireValue(summary.portableConfigRedacted === true,
-    `Android portable config contains secret material ${phase}`);
-  requireValue(summary.keyMaterialExported === false,
-    `Android custody exported key material ${phase}`);
+  requireValue(summary.secretTransport === "jni_callback_in_process_secret_bytes",
+    `Android JNI secret transport is not described exactly ${phase}`);
+  requireValue(summary.portableConfigAuthority === "rust_generation_cas" &&
+    summary.kotlinConfigReadWrite === false,
+  `Android portable config has more than one writer ${phase}`);
+  requireValue(summary.statusProbeSideEffectFree === true,
+    `Android status probe may mutate custody ${phase}`);
+  requireValue(summary.androidKeyMaterialExported === false,
+    `Android KeyStore key material was exported ${phase}`);
+  requireValue(summary.decryptedSecretCrossesJniInProcess === true,
+    `Android JNI secret-byte boundary was hidden ${phase}`);
+  requireValue(summary.getNotFoundSeparatedFromFailure === true,
+    `Android secret read conflates missing data with failure ${phase}`);
   requireValue(summary.mandatoryFoundationComplete === true,
     `Android mandatory Secure Mesh foundation is incomplete ${phase}`);
   return summary;

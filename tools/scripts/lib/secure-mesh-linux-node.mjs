@@ -185,7 +185,7 @@ class ContainerCliRpc {
       "-i",
       this.containerId,
       "env",
-      `LICO_PORTABLE_DIR=${this.stateRoot}`,
+      `LICOARC_PORTABLE_DIR=${this.stateRoot}`,
       this.cli,
       "rpc",
       "stdio"

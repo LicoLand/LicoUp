@@ -63,3 +63,34 @@ apps/desktop/windows/flutter/ephemeral/
 # Local browser/test artifacts
 .playwright-cli/
 test-results/
+
+# Local planning, agent, and one-off work
+/docs/plan/
+/.local/
+/.agents/
+/.claude/
+/.codex/
+/skills/
+/scripts/local/
+/tools/local/
+
+# Superseded local documentation kept outside the public document set
+/PRODUCT.md
+/apps/desktop/Design.md
+/apps/desktop/README.md
+/apps/desktop/ios/Runner/Assets.xcassets/LaunchImage.imageset/README.md
+/apps/desktop/lib/src/contracts/generated/README.md
+/crates/lico-client-native/src/contracts/README.md
+/docs/RUNBOOK.md
+/docs/USAGES.md
+/docs/contracts/
+/docs/functionality/
+/docs/releases/client-artifact-consumer-verification-receipts.md
+/docs/scenarios/
+/packages/contracts/client/README.md
+/packages/protocols/native-client/README.md
+
+# Local plan tooling retained only for private development notes
+/tools/scripts/client-better-plan-evidence-ledger.mjs
+/tools/scripts/lib/better-plan-evidence-ledger.mjs
+/tools/scripts/lib/better-plan-evidence-ledger/

@@ -8,6 +8,8 @@ import { loadSecureMeshAcpArchiveReleaseProofConfig } from "./lib/secure-mesh-ac
 import { loadSecureMeshPhysicalEvidenceConfig } from "./lib/secure-mesh-physical-evidence-config.mjs";
 import { optionalReleaseInvocationBinding } from "./lib/release-closure-challenge.mjs";
 import { atomicWriteReportJson } from "./lib/safe-report-io.mjs";
+import { readSourceCheckBundle } from "./lib/source-check-bundle.mjs";
+import { windowsImplementationReady } from "./lib/secure-mesh-physical-report-coverage.mjs";
 
 const repoRoot = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const config = await loadSecureMeshAcpArchiveReleaseProofConfig();
@@ -60,11 +62,12 @@ async function readJsonIfPresent(relativePath) {
 }
 
 async function evaluateSourceCheck(check) {
-  const source = await readText(check.file);
+  const { files, source } = await readSourceCheckBundle(check, readText);
   const missingTokens = check.tokens.filter((token) => !source.includes(token));
   return {
     id: check.id,
     file: check.file,
+    files,
     ok: missingTokens.length === 0,
     missingTokens
   };
@@ -119,11 +122,8 @@ async function loadReleaseBuiltDesktopEvidence() {
     });
   }
   const windowsPayload = await readJsonIfPresent(physicalReportRefs.windowsImplementation);
-  const windowsLocalImplementationReady = Boolean(windowsPayload) &&
-    windowsPayload?.ok === true &&
-    windowsPayload?.diagnosticStatus === "implementation_ready_host_evidence_pending" &&
-    windowsPayload?.productionReady !== true &&
-    windowsPayload?.summary?.windowsLocalBlockersCleared === true;
+  const windowsLocalImplementationReady =
+    windowsImplementationReady(windowsPayload);
   return {
     entries,
     readyPlatforms: entries.filter((entry) => entry.ready).map((entry) => entry.platform),

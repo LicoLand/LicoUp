@@ -83,15 +83,44 @@ function keyFingerprint(keyObject) {
   return sha256Buffer(keyObject.export({ type: "spki", format: "der" }));
 }
 
+function parseSemanticVersion(value, label = "version") {
+  const match = String(value || "").match(
+    /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*))?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/u
+  );
+  ensure(match, `${label} is not valid semantic versioning`);
+  return {
+    core: match.slice(1, 4).map((part) => Number.parseInt(part, 10)),
+    prerelease: match[4] ? match[4].split(".") : []
+  };
+}
+
 function compareVersions(left, right) {
-  const leftParts = String(left || "").split(".").map((part) => Number.parseInt(part, 10) || 0);
-  const rightParts = String(right || "").split(".").map((part) => Number.parseInt(part, 10) || 0);
-  const length = Math.max(leftParts.length, rightParts.length);
-  for (let index = 0; index < length; index += 1) {
-    const delta = (leftParts[index] || 0) - (rightParts[index] || 0);
+  const leftVersion = parseSemanticVersion(left, "left version");
+  const rightVersion = parseSemanticVersion(right, "right version");
+  for (let index = 0; index < 3; index += 1) {
+    const delta = leftVersion.core[index] - rightVersion.core[index];
     if (delta !== 0) {
       return delta > 0 ? 1 : -1;
     }
+  }
+  if (leftVersion.prerelease.length === 0 || rightVersion.prerelease.length === 0) {
+    return leftVersion.prerelease.length === rightVersion.prerelease.length
+      ? 0
+      : leftVersion.prerelease.length === 0 ? 1 : -1;
+  }
+  const length = Math.max(leftVersion.prerelease.length, rightVersion.prerelease.length);
+  for (let index = 0; index < length; index += 1) {
+    const leftPart = leftVersion.prerelease[index];
+    const rightPart = rightVersion.prerelease[index];
+    if (leftPart === undefined || rightPart === undefined) return leftPart === undefined ? -1 : 1;
+    if (leftPart === rightPart) continue;
+    const leftNumeric = /^\d+$/u.test(leftPart);
+    const rightNumeric = /^\d+$/u.test(rightPart);
+    if (leftNumeric && rightNumeric) {
+      return Number.parseInt(leftPart, 10) > Number.parseInt(rightPart, 10) ? 1 : -1;
+    }
+    if (leftNumeric !== rightNumeric) return leftNumeric ? -1 : 1;
+    return leftPart > rightPart ? 1 : -1;
   }
   return 0;
 }
@@ -102,17 +131,15 @@ function unsignedPayload(manifest) {
   return clone;
 }
 
-function signManifest(manifest, signingKey, keyId) {
+function signManifest(manifest, signers) {
   const payload = Buffer.from(stableStringify(unsignedPayload(manifest)), "utf8");
   return {
     ...manifest,
-    signatures: [
-      {
-        keyId,
-        algorithm: "Ed25519",
-        signature: signPayload(null, payload, signingKey).toString("base64")
-      }
-    ]
+    signatures: signers.map(({ keyId, signingKey }) => ({
+      keyId,
+      algorithm: "Ed25519",
+      signature: signPayload(null, payload, signingKey).toString("base64")
+    }))
   };
 }
 
@@ -138,6 +165,7 @@ function ensure(condition, message) {
 
 function artifactMatchesTarget(artifact, target) {
   return (
+    artifact.targetId === target.id &&
     artifact.platform === target.platform &&
     artifact.osFamily === target.osFamily &&
     artifact.arch === target.arch
@@ -145,17 +173,38 @@ function artifactMatchesTarget(artifact, target) {
 }
 
 function selectRelease(manifest, target) {
-  for (const release of manifest.releases || []) {
+  ensure(Array.isArray(manifest.releases) && manifest.releases.length > 0, "manifest has no releases");
+  const seenVersions = new Set();
+  const candidates = [];
+  for (const release of manifest.releases) {
+    parseSemanticVersion(release.version, "release version");
+    parseSemanticVersion(release.minimumSupportedVersion, "minimum supported version");
+    ensure(!seenVersions.has(release.version), "manifest contains a duplicate release version");
+    seenVersions.add(release.version);
+    ensure(Array.isArray(release.artifacts) && release.artifacts.length > 0, "release has no artifacts");
+    const seenTargets = new Set();
+    for (const artifact of release.artifacts) {
+      ensure(artifact.targetId && !seenTargets.has(artifact.targetId), "release contains a duplicate artifact target");
+      seenTargets.add(artifact.targetId);
+      ensure(typeof artifact.fileName === "string" && /^[^/\\]+$/u.test(artifact.fileName), "artifact fileName is invalid");
+      const artifactUrl = new URL(artifact.url);
+      ensure(
+        decodeURIComponent(path.basename(artifactUrl.pathname)) === artifact.fileName,
+        "artifact fileName does not match its signed url"
+      );
+    }
     const artifact = (release.artifacts || []).find((candidate) => artifactMatchesTarget(candidate, target));
     if (artifact) {
-      return { release, artifact };
+      candidates.push({ release, artifact });
     }
   }
-  return null;
+  candidates.sort((left, right) => compareVersions(left.release.version, right.release.version));
+  return candidates.at(-1) || null;
 }
 
-function verifyManifest(manifest, publicKeysById, { currentVersion, target, revocationList } = {}) {
+function verifyManifest(manifest, publicKeysById, { currentVersion, target, revocationList, channel = "stable" } = {}) {
   ensure(manifest.schemaVersion === "v0.0.1:client-update:manifest-1", "unexpected manifest schema");
+  ensure(manifest.channel === channel, "manifest channel does not match the selected channel");
   ensure(manifest.channelPolicy?.offlineRootKeyId, "missing offline root key id");
   ensure(manifest.channelPolicy?.onlineChannelKeyId, "missing online channel key id");
   ensure(
@@ -164,22 +213,37 @@ function verifyManifest(manifest, publicKeysById, { currentVersion, target, revo
   );
   ensure(Array.isArray(manifest.signatures) && manifest.signatures.length > 0, "manifest has no signatures");
   const payload = Buffer.from(stableStringify(unsignedPayload(manifest)), "utf8");
-  const signatureOk = manifest.signatures.some((signature) => {
+  const verifiedKeyIds = new Set();
+  for (const signature of manifest.signatures) {
+    ensure(!verifiedKeyIds.has(signature.keyId), "manifest contains a duplicate signing key id");
     const key = publicKeysById.get(signature.keyId);
-    return Boolean(
+    const valid = Boolean(
       key &&
         signature.algorithm === "Ed25519" &&
         verifyPayload(null, payload, key, Buffer.from(signature.signature, "base64"))
     );
-  });
-  ensure(signatureOk, "manifest signature verification failed");
+    ensure(valid, "manifest signature verification failed");
+    verifiedKeyIds.add(signature.keyId);
+  }
+  ensure(
+    verifiedKeyIds.has(manifest.channelPolicy.offlineRootKeyId),
+    "manifest is missing the offline root signature"
+  );
+  ensure(
+    verifiedKeyIds.has(manifest.channelPolicy.onlineChannelKeyId),
+    "manifest is missing the online channel signature"
+  );
+  const signatureOk = true;
   if (!target) {
     return { signatureOk };
   }
   const selected = selectRelease(manifest, target);
   ensure(selected, `unsupported update target: ${target.id}`);
   if (revocationList) {
-    verifyRevocationList(revocationList, publicKeysById);
+    verifyRevocationList(revocationList, publicKeysById, {
+      channel,
+      offlineRootKeyId: manifest.channelPolicy.offlineRootKeyId
+    });
     const revokedKeyIds = new Set(revocationList.revokedKeyIds || []);
     const revokedArtifactDigests = new Set(revocationList.revokedArtifactDigests || []);
     const signingKeyIds = manifest.signatures.map((signature) => signature.keyId);
@@ -188,6 +252,9 @@ function verifyManifest(manifest, publicKeysById, { currentVersion, target, revo
     }
     if (revokedArtifactDigests.has(selected.artifact.sha256)) {
       throw new Error("selected release artifact digest is revoked by the signed revocation list");
+    }
+    if (new Set(revocationList.revokedVersions || []).has(selected.release.version)) {
+      throw new Error("selected release version is revoked by the signed revocation list");
     }
   }
   if (currentVersion && compareVersions(selected.release.version, currentVersion) < 0) {
@@ -200,8 +267,14 @@ function verifyManifest(manifest, publicKeysById, { currentVersion, target, revo
 }
 
 function verifyArtifact(artifact) {
+  ensure(typeof artifact.fileName === "string" && /^[^/\\]+$/u.test(artifact.fileName), "artifact fileName is invalid");
+  const artifactUrl = new URL(artifact.url);
+  ensure(
+    decodeURIComponent(path.basename(artifactUrl.pathname)) === artifact.fileName,
+    "artifact fileName does not match its signed url"
+  );
   const artifactPath = fileURLToPath(artifact.url);
-  ensure(existsSync(artifactPath), `artifact does not exist: ${artifactPath}`);
+  ensure(existsSync(artifactPath), `artifact does not exist for ${artifact.targetId}`);
   const stats = statSync(artifactPath);
   ensure(stats.size === artifact.size, `artifact size mismatch for ${artifact.targetId}`);
   ensure(sha256File(artifactPath) === artifact.sha256, `artifact checksum mismatch for ${artifact.targetId}`);
@@ -212,36 +285,52 @@ function verifySignedEnvelope(envelope, publicKeysById, expectedSchemaVersion, l
   ensure(envelope.schemaVersion === expectedSchemaVersion, `unexpected ${label} schema`);
   ensure(Array.isArray(envelope.signatures) && envelope.signatures.length > 0, `${label} has no signatures`);
   const payload = Buffer.from(stableStringify(unsignedPayload(envelope)), "utf8");
-  const signatureOk = envelope.signatures.some((signature) => {
+  const verifiedKeyIds = new Set();
+  for (const signature of envelope.signatures) {
+    ensure(!verifiedKeyIds.has(signature.keyId), `${label} contains a duplicate signing key id`);
     const key = publicKeysById.get(signature.keyId);
-    return Boolean(
+    const valid = Boolean(
       key &&
         signature.algorithm === "Ed25519" &&
         verifyPayload(null, payload, key, Buffer.from(signature.signature, "base64"))
     );
-  });
-  ensure(signatureOk, `${label} signature verification failed`);
-  return signatureOk;
+    ensure(valid, `${label} signature verification failed`);
+    verifiedKeyIds.add(signature.keyId);
+  }
+  return verifiedKeyIds;
 }
 
-function verifyRevocationList(revocationList, publicKeysById) {
-  const signatureOk = verifySignedEnvelope(
+function verifyRevocationList(
+  revocationList,
+  publicKeysById,
+  { channel = "stable", offlineRootKeyId = revocationList.offlineRootKeyId } = {}
+) {
+  ensure(revocationList.channel === channel, "revocation list channel does not match the selected channel");
+  ensure(
+    revocationList.offlineRootKeyId === offlineRootKeyId,
+    "revocation list offline root key does not match channel policy"
+  );
+  const verifiedKeyIds = verifySignedEnvelope(
     revocationList,
     publicKeysById,
     "v0.0.1:client-update:revocation-list-1",
     "revocation list"
   );
-  return { signatureOk };
+  ensure(
+    verifiedKeyIds.has(offlineRootKeyId),
+    "revocation list is missing the offline root signature"
+  );
+  return { signatureOk: true };
 }
 
 function verifyPublicationReceipt(receipt, publicKeysById) {
-  const signatureOk = verifySignedEnvelope(
+  verifySignedEnvelope(
     receipt,
     publicKeysById,
     "v0.0.1:client-update:publication-receipt-1",
     "publication receipt"
   );
-  return { signatureOk };
+  return { signatureOk: true };
 }
 
 function expectFailure(name, fn) {
@@ -362,7 +451,6 @@ function summarizeMacosBundleRoot(kind, root, appName) {
     flutterExecutable: String(manifest.flutterExecutable || ""),
     flutterExecutableBytes: fileSizeOrZero(appExecutablePath(root, appName)),
     licoClientBytes: fileSizeOrZero(appExecutablePath(root, appName, "lico-client")),
-    mailHelperBytes: fileSizeOrZero(appExecutablePath(root, appName, "lico-mail-helper")),
     manifestPresent: Object.keys(manifest).length > 0,
     readmePresent: existsSync(path.join(root, "README-macos.txt")),
     runnableMarkerPresent: kind === "runnable" ? existsSync(path.join(root, "RUNNABLE_CLIENT.txt")) : null
@@ -478,7 +566,8 @@ function runMacosReleaseBundleEvidence(hostPlatform) {
 }
 
 function createArtifact(target) {
-  const filePath = path.join(artifactRoot, `${target.id}.bin`);
+  const fileName = `${target.id}${target.installerStrategy === "app-bundle-replacement" ? ".tar.gz" : ".bin"}`;
+  const filePath = path.join(artifactRoot, fileName);
   const payload = Buffer.from(`LicoLite update artifact ${target.id} ${randomUUID()}\n`, "utf8");
   writeFileSync(filePath, payload);
   return {
@@ -488,8 +577,12 @@ function createArtifact(target) {
     arch: target.arch,
     installerStrategy: target.installerStrategy,
     url: pathToFileURL(filePath).href,
+    fileName,
     size: payload.length,
-    sha256: sha256Buffer(payload)
+    sha256: sha256Buffer(payload),
+    ...(target.installerStrategy === "app-bundle-replacement"
+      ? { applicationName: "Lico Arc.app", bundleId: "com.liko.arc" }
+      : {})
   };
 }
 
@@ -781,8 +874,10 @@ function main() {
       ],
       dryRunInstallerPlans
     },
-    onlineChannel.privateKey,
-    onlineChannelKeyId
+    [
+      { signingKey: offlineRoot.privateKey, keyId: offlineRootKeyId },
+      { signingKey: onlineChannel.privateKey, keyId: onlineChannelKeyId }
+    ]
   );
 
   const publicationReceipt = signEnvelope(
@@ -807,6 +902,7 @@ function main() {
       channel: "stable",
       issuedAt: "2026-06-28T00:00:00.000Z",
       revokedKeyIds: [onlineChannelKeyId],
+      revokedVersions: [],
       revokedArtifactDigests: [artifacts[0].sha256],
       reason: "local test-vector revocation for release channel validation",
       offlineRootKeyId
@@ -908,11 +1004,47 @@ function main() {
         }
       ]
     },
-    onlineChannel.privateKey,
-    onlineChannelKeyId
+    [
+      { signingKey: offlineRoot.privateKey, keyId: offlineRootKeyId },
+      { signingKey: onlineChannel.privateKey, keyId: onlineChannelKeyId }
+    ]
   );
   const tamperedPublicationReceipt = structuredClone(publicationReceipt);
   tamperedPublicationReceipt.manifestSha256 = "sha256:ffffffff";
+  const missingOfflineManifest = structuredClone(manifest);
+  missingOfflineManifest.signatures = missingOfflineManifest.signatures.filter(
+    (signature) => signature.keyId !== offlineRootKeyId
+  );
+  const missingOnlineManifest = structuredClone(manifest);
+  missingOnlineManifest.signatures = missingOnlineManifest.signatures.filter(
+    (signature) => signature.keyId !== onlineChannelKeyId
+  );
+  const duplicateSignatureManifest = structuredClone(manifest);
+  duplicateSignatureManifest.signatures.push(structuredClone(manifest.signatures[0]));
+  const malformedReleaseManifest = signManifest(
+    {
+      ...unsignedPayload(manifest),
+      releases: [{ ...unsignedPayload(manifest).releases[0], version: "0.0" }]
+    },
+    [
+      { signingKey: offlineRoot.privateKey, keyId: offlineRootKeyId },
+      { signingKey: onlineChannel.privateKey, keyId: onlineChannelKeyId }
+    ]
+  );
+  const mismatchedArtifactNameDocument = unsignedPayload(manifest);
+  mismatchedArtifactNameDocument.releases[0].artifacts[0].fileName = "caller-selected.bin";
+  const mismatchedArtifactNameManifest = signManifest(
+    mismatchedArtifactNameDocument,
+    [
+      { signingKey: offlineRoot.privateKey, keyId: offlineRootKeyId },
+      { signingKey: onlineChannel.privateKey, keyId: onlineChannelKeyId }
+    ]
+  );
+  const onlineOnlyRevocationList = signEnvelope(
+    unsignedPayload(revocationList),
+    onlineChannel.privateKey,
+    onlineChannelKeyId
+  );
   const unsupportedTarget = {
     id: "freebsd-x64",
     platform: "freebsd",
@@ -937,6 +1069,9 @@ function main() {
     expectFailure("unsupported iOS release target is explicit and rejected", () =>
       reduceClientGitHubReleaseClosure({ catalog: releaseTargetCatalog, selectedTargetIds: ["ios-arm64"], artifacts: [] })
     ),
+    expectFailure("iOS simulator adaptation cannot be selected as a distribution artifact", () =>
+      reduceClientGitHubReleaseClosure({ catalog: releaseTargetCatalog, selectedTargetIds: ["ios-simulator-arm64"], artifacts: [] })
+    ),
     expectFailure("artifact outside selected GitHub Release targets is rejected", () =>
       reduceClientGitHubReleaseClosure({
         catalog: releaseTargetCatalog,
@@ -953,6 +1088,42 @@ function main() {
 
   const negativeChecks = [
     ...releaseTrainNegativeChecks,
+    expectFailure("manifest missing offline root signature is rejected", () =>
+      verifyManifest(missingOfflineManifest, publicKeysById, {
+        currentVersion: currentClientVersion,
+        target: productionTargets[0]
+      })
+    ),
+    expectFailure("manifest missing online channel signature is rejected", () =>
+      verifyManifest(missingOnlineManifest, publicKeysById, {
+        currentVersion: currentClientVersion,
+        target: productionTargets[0]
+      })
+    ),
+    expectFailure("duplicate manifest signature key id is rejected", () =>
+      verifyManifest(duplicateSignatureManifest, publicKeysById, {
+        currentVersion: currentClientVersion,
+        target: productionTargets[0]
+      })
+    ),
+    expectFailure("malformed release semantic version is rejected", () =>
+      verifyManifest(malformedReleaseManifest, publicKeysById, {
+        currentVersion: currentClientVersion,
+        target: productionTargets[0]
+      })
+    ),
+    expectFailure("signed artifact file name and url mismatch is rejected", () =>
+      verifyManifest(mismatchedArtifactNameManifest, publicKeysById, {
+        currentVersion: currentClientVersion,
+        target: productionTargets[0]
+      })
+    ),
+    expectFailure("revocation list without offline root signature is rejected", () =>
+      verifyRevocationList(onlineOnlyRevocationList, publicKeysById, {
+        channel: manifest.channel,
+        offlineRootKeyId
+      })
+    ),
     expectFailure("tampered manifest signature is rejected", () =>
       verifyManifest(tamperedManifest, publicKeysById, { currentVersion: currentClientVersion, target: productionTargets[0] })
     ),

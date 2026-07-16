@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import { normalizeSourceCheckFiles } from "./source-check-bundle.mjs";
 
 const configUrl = new URL("../config/secure-mesh-trust-ux.json", import.meta.url);
 const configRef = "tools/scripts/config/secure-mesh-trust-ux.json";
@@ -82,9 +83,15 @@ function normalizeSourceChecks(value) {
   }
   const normalized = checks.map((item, index) => {
     const check = asRecord(item);
+    const files = normalizeSourceCheckFiles(
+      check,
+      normalizeSafeSourceRef,
+      `Secure Mesh trust UX source check ${index + 1}`
+    );
     return {
       id: normalizeCheckId(check.id, `source check ${index + 1} id`),
-      file: normalizeSafeSourceRef(check.file, `source check ${index + 1} file`),
+      file: files[0],
+      files,
       tokens: normalizeTokenList(check.tokens, `source check ${index + 1} tokens`)
     };
   });

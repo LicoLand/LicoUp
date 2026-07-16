@@ -10,7 +10,13 @@ import { loadSecureMeshEncryptedFileHandoffConfig } from "./lib/secure-mesh-encr
 import { loadSecureMeshPhysicalEvidenceConfig } from "./lib/secure-mesh-physical-evidence-config.mjs";
 import { optionalReleaseInvocationBinding } from "./lib/release-closure-challenge.mjs";
 import { atomicWriteReportJson } from "./lib/safe-report-io.mjs";
+import { readSourceCheckBundle } from "./lib/source-check-bundle.mjs";
 import { secureClientRelayMockE2eReady } from "./lib/secure-client-relay-mock-e2e-report.mjs";
+import {
+  ANDROID_PLATFORM_CRYPTO_NATIVE_TEST_CLASS_COUNT,
+  windowsImplementationReady,
+  windowsPersistentCustodyBoundaryValid,
+} from "./lib/secure-mesh-physical-report-coverage.mjs";
 
 const repoRoot = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const encryptedFileHandoffConfig = await loadSecureMeshEncryptedFileHandoffConfig();
@@ -44,13 +50,14 @@ async function readJsonIfPresent(relativePath) {
 }
 
 async function evaluateSourceCheck(check) {
-  const source = await readText(check.file);
+  const { files, source } = await readSourceCheckBundle(check, readText);
   const missingTokens = check.tokens.filter((token) => !source.includes(token));
   const forbiddenTokensPresent = (check.forbiddenTokens || [])
     .filter((token) => source.includes(token));
   return {
     id: check.id,
     file: check.file,
+    files,
     ok: missingTokens.length === 0 && forbiddenTokensPresent.length === 0,
     missingTokens,
     forbiddenTokensPresent
@@ -82,7 +89,7 @@ async function loadAndroidPlatformCryptoEvidence() {
     summary.rustFfiActionContractReady === true &&
     summary.mlsMemberRemoveReleaseActionReady === true &&
     summary.unknownReleaseActionsFailClosed === true &&
-    summary.nativeTestClassCount === 6 &&
+    summary.nativeTestClassCount === ANDROID_PLATFORM_CRYPTO_NATIVE_TEST_CLASS_COUNT &&
     payload?.redacted === true &&
     payload?.rawPrivateMaterialIncluded === false &&
     payload?.rawPlaintextIncluded === false &&
@@ -214,29 +221,13 @@ async function loadWindowsFileImplementationEvidence() {
   const summary = payload?.summary || {};
   const platform = payload?.platform || {};
   const present = Boolean(payload && Object.keys(payload).length > 0);
-  const localReady = present &&
-    payload?.ok === true &&
-    payload?.schemaVersion === "licolite.secure-mesh.windows-implementation-report.v2" &&
-    payload?.redacted === true &&
-    payload?.blocker === "physical device matrix" &&
-    payload?.diagnosticStatus === "implementation_ready_host_evidence_pending" &&
-    payload?.productionReady !== true &&
-    payload?.releaseReady !== true &&
-    summary.windowsLocalBlockersCleared === true &&
-    summary.nativeHostEvidencePending === true &&
-    summary.dpapiOrWindowsHelloProofReady !== true &&
-    summary.windowsSignedInstallerProofReady !== true &&
-    summary.windowsTrustCommandFileMatrixReady !== true &&
-    platform.platform === "windows" &&
-    platform.status === "implementation-ready-host-evidence-pending" &&
-    platform.localImplementationReady === true &&
-    platform.x64BuilderVerifierReady === true &&
-    platform.dpapiOrWindowsHelloImplementationReady === true &&
-    platform.productionSupportClaimed !== true &&
-    platform.trustCommandFileMatrixReady !== true;
+  const conservativeBoundaryValid =
+    windowsPersistentCustodyBoundaryValid(payload);
+  const localReady = windowsImplementationReady(payload);
   return {
     report,
     present,
+    conservativeBoundaryValid,
     localReady,
     windowsLocalBlockersCleared: summary.windowsLocalBlockersCleared === true,
     nativeHostEvidencePending: summary.nativeHostEvidencePending === true,
@@ -246,8 +237,10 @@ async function loadWindowsFileImplementationEvidence() {
     localImplementationReady: platform.localImplementationReady === true,
     productionSupportClaimed: platform.productionSupportClaimed === true,
     status: localReady
-      ? "implementation-ready-host-evidence-pending"
-      : (present ? "incomplete" : "missing")
+      ? "persistent-custody-verified"
+      : (conservativeBoundaryValid
+        ? "persistent-custody-unverified"
+        : (present ? "invalid" : "missing"))
   };
 }
 

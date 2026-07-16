@@ -18,12 +18,12 @@ const SCHEMA_DIR = resolve(__dirname, "../../../packages/contracts/client");
 
 const SCHEMAS = [
   "agent-conversation-adapter.schema.json",
-  "mcp-plugin-plan.schema.json",
   "snapshot-archive-result.schema.json",
-  "thin-forwarding-result.schema.json",
   "mobile-relay-command.schema.json",
-  "local-runtime-status.schema.json",
-  "process-identity-claim.schema.json",
+  "optional-collaboration-local-deployment.schema.json",
+  "optional-collaboration-mcp-install.schema.json",
+  "optional-collaboration-plugin.schema.json",
+  "semantic-conversation.schema.json",
 ];
 
 // ── Helpers ────────────────────────────────────────────────────────────────

@@ -114,6 +114,22 @@
       "builder": { "kind": "android-apk", "targetPlatform": "android-arm64" }
     },
     {
+      "id": "ios-simulator-arm64",
+      "platform": "ios",
+      "osFamily": "ios-simulator",
+      "arch": "arm64",
+      "supported": true,
+      "releaseSupported": false,
+      "releaseBlockers": ["simulator_artifact_is_not_a_distribution_artifact"],
+      "deviceClass": "simulator",
+      "installerStrategy": "core-simulator-app",
+      "builder": {
+        "kind": "mobile-simulator-closure",
+        "platform": "ios",
+        "verificationCommand": "npm run client:verify:mobile-simulator-closure:ios"
+      }
+    },
+    {
       "id": "ios-arm64",
       "platform": "ios",
       "osFamily": "ios",
