@@ -7,8 +7,17 @@ import { fileURLToPath } from "node:url";
 import { loadSecureClientContract } from "./lib/secure-client-contract.mjs";
 import { createSecureClientMeshE2eeRefReportScope } from "./lib/secure-client-mesh-e2ee-ref-report.mjs";
 import { atomicWriteReportJson } from "./lib/safe-report-io.mjs";
+import { readSourceCheckBundle } from "./lib/source-check-bundle.mjs";
 import { loadSecureMeshPhysicalEvidenceConfig } from "./lib/secure-mesh-physical-evidence-config.mjs";
 import { loadSecureMeshPhysicalDeviceMatrixConfig } from "./lib/secure-mesh-physical-device-matrix-config.mjs";
+import {
+  androidPlatformCryptoCoverage as sharedAndroidPlatformCryptoCoverage,
+  platformSecretStoreCustodyCoverage,
+  redactedReportReady,
+  relayMockCoverage as sharedRelayMockCoverage,
+  windowsImplementationReady,
+  windowsPersistentCustodyBoundaryValid,
+} from "./lib/secure-mesh-physical-report-coverage.mjs";
 import { validateSecureMeshTrustUxV2Report } from "./lib/secure-mesh-trust-ux-reducer.mjs";
 
 const repoRoot = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
@@ -56,78 +65,27 @@ function dedupe(values) {
 }
 
 async function evaluateSourceCheck(check) {
-  const source = await readText(check.file);
+  const { files, source } = await readSourceCheckBundle(check, readText);
   const missingTokens = check.tokens.filter((token) => !source.includes(token));
   return {
     id: check.id,
     file: check.file,
+    files,
     ok: missingTokens.length === 0,
     missingTokens
   };
 }
 
-function redactedReportReady(report) {
-  return report?.ok === true &&
-    report?.redacted === true &&
-    report?.rawPrivateMaterialIncluded !== true &&
-    report?.rawPlaintextIncluded !== true &&
-    report?.rawPublicWireBytesIncluded !== true &&
-    report?.reportLeakScan === true;
-}
-
 function relayMockCoverage(report) {
-  const summary = report?.summary || {};
-  const ready = redactedReportReady(report) &&
-    report?.schemaVersion === "licolite.secure-client-relay.client-acceptance-report.v1" &&
-    summary.exactFiveOperationsObserved === true &&
-    summary.exactSixOuterFieldsObserved === true &&
-    summary.replayRejected === true &&
-    summary.staleLeaseRejected === true &&
-    summary.ackIdempotencyVerified === true &&
-    summary.plaintextAbsentFromServerVisibleWire === true &&
-    summary.wireBytesMeasured === true;
-  return {
-    report: physicalReportRefs.relayMock,
-    ready,
-    exactFiveOperationsObserved: summary.exactFiveOperationsObserved === true,
-    exactSixOuterFieldsObserved: summary.exactSixOuterFieldsObserved === true,
-    replayRejected: summary.replayRejected === true,
-    staleLeaseRejected: summary.staleLeaseRejected === true,
-    ackIdempotencyVerified: summary.ackIdempotencyVerified === true,
-    plaintextAbsentFromServerVisibleWire:
-      summary.plaintextAbsentFromServerVisibleWire === true,
-    wireBytesMeasured: summary.wireBytesMeasured === true
-  };
+  return sharedRelayMockCoverage(report, {
+    reportRef: physicalReportRefs.relayMock
+  });
 }
 
 function androidPlatformCryptoCoverage(report) {
-  const summary = report?.summary || {};
-  const ready = redactedReportReady(report) &&
-    report?.schemaVersion === "licolite.secure-mesh.android-platform-crypto-acceptance.v1" &&
-    report?.platform === "android" &&
-    summary.platformCryptoAcceptanceReady === true &&
-    summary.platformCustodyContractReady === true &&
-    summary.platformAuthorizationContractReady === true &&
-    summary.rustFfiActionContractReady === true &&
-    summary.mlsMemberRemoveReleaseActionReady === true &&
-    summary.unknownReleaseActionsFailClosed === true &&
-    Number(summary.nativeTestClassCount || 0) === 6;
-  return {
-    report: physicalReportRefs.androidPlatformCrypto,
-    ready,
-    platformCryptoAcceptanceReady:
-      summary.platformCryptoAcceptanceReady === true,
-    platformCustodyContractReady:
-      summary.platformCustodyContractReady === true,
-    platformAuthorizationContractReady:
-      summary.platformAuthorizationContractReady === true,
-    rustFfiActionContractReady: summary.rustFfiActionContractReady === true,
-    mlsMemberRemoveReleaseActionReady:
-      summary.mlsMemberRemoveReleaseActionReady === true,
-    unknownReleaseActionsFailClosed:
-      summary.unknownReleaseActionsFailClosed === true,
-    nativeTestClassCount: Number(summary.nativeTestClassCount || 0)
-  };
+  return sharedAndroidPlatformCryptoCoverage(report, {
+    reportRef: physicalReportRefs.androidPlatformCrypto
+  });
 }
 
 function installLaunchCoverage(report) {
@@ -150,84 +108,40 @@ function installLaunchCoverage(report) {
 }
 
 function platformCryptoCoverage(report) {
-  const summary = report?.summary || {};
-  const androidReady = report?.ok === true &&
-    summary.androidPhysicalSecretStoreBindingReady === true &&
-    summary.androidPhysicalSystemCredentialAuthReady === true &&
-    summary.androidPhysicalKeyStoreHardwareAuthReady === true &&
-    summary.androidPhysicalCallbackContractReady === true &&
-    summary.androidPhysicalRawJsonSecretOverridesProvenAbsent === true;
-  const iosReady = report?.ok === true &&
-    summary.iosPhysicalSecretStoreBindingReady === true &&
-    summary.iosUserPresencePolicyReady === true &&
-    summary.iosProductionCallbackAuthReady === true &&
-    summary.iosSystemLocalAuthPromptReady === true &&
-    summary.iosKeychainAccessControlNotDowngraded === true &&
-    summary.iosNonInteractiveFailClosedReady === true &&
-    summary.iosCancelLockFailClosedReady === true &&
-    summary.iosPhysicalCallbackContractReady === true &&
-    summary.iosPhysicalRawJsonSecretOverridesProvenAbsent === true;
-  const macosReady = report?.ok === true &&
-    summary.macosSafeOsStoreAvailable === true &&
-    summary.macosExactCapabilitySetValid === true &&
-    summary.macosSingleSystemAuthorizationContextVerified === true &&
-    summary.macosPromptBudgetSatisfied === true &&
-    summary.macosAppCredentialPromptUsed !== true;
+  const custody = platformSecretStoreCustodyCoverage(report);
   return {
     report: physicalReportRefs.platformSecretStore,
-    ok: report?.ok === true,
-    androidReady,
-    iosReady,
-    macosReady,
-    ubuntuReady: summary.ubuntuVmSecretStoreReady === true &&
-      summary.ubuntuVmSecretStoreBackend === "linux-secret-service-keyring",
+    ok: custody.ok,
+    androidReady: custody.androidReady,
+    iosReady: custody.iosReady,
+    macosReady: custody.macosReady,
+    ubuntuReady: custody.ubuntuReady,
     androidPhysicalSecretStoreBindingReady:
-      summary.androidPhysicalSecretStoreBindingReady === true,
+      custody.androidPhysicalSecretStoreBindingReady,
     androidPhysicalSystemCredentialAuthReady:
-      summary.androidPhysicalSystemCredentialAuthReady === true,
+      custody.androidPhysicalSystemCredentialAuthReady,
     androidPhysicalKeyStoreHardwareAuthReady:
-      summary.androidPhysicalKeyStoreHardwareAuthReady === true,
+      custody.androidPhysicalKeyStoreHardwareAuthReady,
     androidPhysicalCallbackContractReady:
-      summary.androidPhysicalCallbackContractReady === true,
+      custody.androidPhysicalCallbackContractReady,
     iosPhysicalSecretStoreBindingReady:
-      summary.iosPhysicalSecretStoreBindingReady === true,
-    iosUserPresencePolicyReady: summary.iosUserPresencePolicyReady === true,
-    iosProductionCallbackAuthReady:
-      summary.iosProductionCallbackAuthReady === true,
-    iosPhysicalCallbackContractReady:
-      summary.iosPhysicalCallbackContractReady === true,
-    macosKeychainReady: summary.macosSafeOsStoreAvailable === true,
-    macosReleaseCliProofReady: summary.macosReleaseCliProofReady === true,
-    macosUserPresencePolicyReady:
-      summary.macosUserPresencePolicyReady === true ||
-      summary.macosSafeOsStoreAvailable === true,
+      custody.iosPhysicalSecretStoreBindingReady,
+    iosUserPresencePolicyReady: custody.iosUserPresencePolicyReady,
+    iosProductionCallbackAuthReady: custody.iosProductionCallbackAuthReady,
+    iosPhysicalCallbackContractReady: custody.iosPhysicalCallbackContractReady,
+    macosKeychainReady: custody.macosKeychainReady,
+    macosReleaseCliProofReady: custody.macosReleaseCliProofReady,
+    macosUserPresencePolicyReady: custody.macosUserPresencePolicyReady,
     macosSingleSystemAuthorizationContextVerified:
-      summary.macosSingleSystemAuthorizationContextVerified === true,
+      custody.macosSingleSystemAuthorizationContextVerified,
     macosInteractiveAuthorizationPromptBudgetReady:
-      summary.macosPromptBudgetSatisfied === true,
-    ubuntuSecretServiceReady:
-      summary.ubuntuVmSecretStoreReady === true &&
-      summary.ubuntuVmSecretStoreBackend === "linux-secret-service-keyring",
-    ubuntuReleaseCliProofReady: summary.ubuntuReleaseCliProofReady === true,
-    ubuntuLinuxAdaptiveCustodyReady:
-      summary.ubuntuLinuxAdaptiveCustodyReady === true,
-    ubuntuLinuxPackageUpdateReady:
-      summary.ubuntuLinuxPackageUpdateReady === true,
-    remainingGates: Array.isArray(summary.remainingGates)
-      ? summary.remainingGates.map((gate) => String(gate || "")).filter(Boolean)
-      : []
+      custody.macosInteractiveAuthorizationPromptBudgetReady,
+    ubuntuSecretServiceReady: custody.ubuntuSecretServiceReady,
+    ubuntuReleaseCliProofReady: custody.ubuntuReleaseCliProofReady,
+    ubuntuLinuxAdaptiveCustodyReady: custody.ubuntuLinuxAdaptiveCustodyReady,
+    ubuntuLinuxPackageUpdateReady: custody.ubuntuLinuxPackageUpdateReady,
+    remainingGates: custody.remainingGates
   };
-}
-
-function windowsImplementationReady(report) {
-  return report?.ok === true &&
-    report?.redacted === true &&
-    report?.diagnosticStatus === "implementation_ready_host_evidence_pending" &&
-    report?.summary?.windowsLocalBlockersCleared === true &&
-    report?.summary?.nativeHostEvidencePending === true &&
-    report?.summary?.dpapiOrWindowsHelloProofReady !== true &&
-    report?.productionReady !== true &&
-    report?.releaseReady !== true;
 }
 
 function deriveMatrix({ relayMock, androidPlatformCrypto, androidInstallLaunch, platformCrypto, trustReady, fileReady, windowsReady }) {
@@ -332,6 +246,8 @@ const trustContract = validateSecureMeshTrustUxV2Report(trustUxReport);
 const trustReady = trustUxReport?.ok === true && trustContract.contractReady === true;
 const fileReady = redactedReportReady(encryptedFileHandoffReport);
 const windowsReady = windowsImplementationReady(windowsImplementationReport);
+const windowsConservativeBoundaryValid =
+  windowsPersistentCustodyBoundaryValid(windowsImplementationReport);
 const physicalMatrix = deriveMatrix({
   relayMock,
   androidPlatformCrypto,
@@ -493,6 +409,8 @@ const report = {
       platformCrypto.ubuntuLinuxAdaptiveCustodyReady &&
       platformCrypto.ubuntuLinuxPackageUpdateReady,
     windowsLocalImplementationReady: windowsReady,
+    windowsConservativeCustodyBoundaryValid:
+      windowsConservativeBoundaryValid,
     windowsNativeHostEvidenceReady: false,
     allPhysicalScenariosReady,
     physicalEvidenceChainReady: physicalEvidenceChainReadyForSummary,

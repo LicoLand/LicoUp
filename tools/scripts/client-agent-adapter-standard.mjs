@@ -15,7 +15,6 @@ const manifestDirectory = resolve(
   root,
   "packages/contracts/client/fixtures/agent-conversation-adapter/manifests",
 );
-const standard = readFileSync(resolve(root, "docs/plan/client-release/Agent-Adapter-Standard.md"), "utf8");
 const safeId = /^[a-z0-9][a-z0-9._:+-]{0,127}$/u;
 const laneFamilies = new Set(["acp", "app-server", "cli", "rpc", "serve-http", "stream-json", "unavailable"]);
 const requiredCapabilities = [
@@ -258,22 +257,9 @@ function operationStatusIsBlocked(operation) {
   return operation?.status === "blocked";
 }
 
-function validateStandardDocument() {
-  for (const token of [
-    "openOrResume", "sendStreaming", "nativeSessionId", "exact_session_resume_unavailable",
-    "safe_cleanup_unavailable", "P-01…P-10", "C-01…C-06", "Release sidecar",
-    "timeline 内可见", "CLI、GUI、路由", "officialCapabilityAssessment",
-    "真实本机转发", "同一 native session", "三次连续 Release UI",
-    "agent-conversation-adapter.schema.json",
-  ]) {
-    requireFact(standard.includes(token), "adapter_standard_document_incomplete");
-  }
-}
-
 try {
   const validateManifest = validateSchemaAuthority();
   const manifestCount = validateInventory(validateManifest);
-  validateStandardDocument();
   process.stdout.write(`${JSON.stringify({
     schemaVersion: "lico.agent-adapter-standard.receipt.v1",
     ok: true,

@@ -77,8 +77,18 @@ export function validateClientReleaseTargetCatalog(rawCatalog = {}) {
   requireValue(Array.isArray(rawCatalog.targets) && rawCatalog.targets.length > 0, "client release target catalog is empty");
   const seenIds = new Set();
   const targets = rawCatalog.targets.map((target) => validateTarget(target, seenIds));
-  const iosTarget = targets.find((target) => target.id === "ios-arm64");
-  requireValue(iosTarget, "client release target catalog must explicitly declare ios-arm64");
+  const iosDeviceTarget = targets.find((target) => target.id === "ios-arm64");
+  requireValue(iosDeviceTarget?.deviceClass === "physical-phone",
+    "client release target catalog must explicitly declare physical ios-arm64");
+  const iosSimulatorTarget = targets.find((target) => target.id === "ios-simulator-arm64");
+  requireValue(
+    iosSimulatorTarget?.supported === true &&
+      iosSimulatorTarget.releaseSupported === false &&
+      iosSimulatorTarget.osFamily === "ios-simulator" &&
+      iosSimulatorTarget.deviceClass === "simulator" &&
+      iosSimulatorTarget.builder.kind === "mobile-simulator-closure",
+    "iOS simulator adaptation must use its verified non-distribution builder",
+  );
   return Object.freeze({
     schemaVersion: CLIENT_RELEASE_TARGET_CATALOG_SCHEMA_VERSION,
     targets: Object.freeze(targets)

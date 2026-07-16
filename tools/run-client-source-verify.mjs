@@ -11,6 +11,7 @@ const steps = [
   "client:version:check",
   "client:verify:plan",
   "client:verify:architecture",
+  "client:verify:local-data-egress-boundary",
   "client:verify:release-artifact-io:self-test",
   "client:verify:source-state-digest:self-test",
   "client:verify:android-apk-zip-facts:self-test",

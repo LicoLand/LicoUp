@@ -1,12 +1,13 @@
 #!/usr/bin/env node
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
-import { readdir, readFile, stat, writeFile, mkdir } from "node:fs/promises";
+import { lstat, readdir, readFile, stat, writeFile, mkdir } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import { loadSecureMeshClientBoundaryConfig } from "./scripts/lib/secure-mesh-client-boundary-config.mjs";
+import { readSourceCheckBundle } from "./scripts/lib/source-check-bundle.mjs";
 
 const repoRoot = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 const execFileAsync = promisify(execFile);
@@ -53,6 +54,10 @@ const retiredClientNamePattern = new RegExp(
   "gi",
 );
 const forbiddenPathParts = [
+  ".agents",
+  ".claude",
+  ".codex",
+  ".local",
   "build",
   "apps/build",
   "apps/desktop/.dart_tool",
@@ -65,6 +70,10 @@ const forbiddenPathParts = [
   "apps/desktop/macos/Pods",
   "apps/desktop/windows/flutter/ephemeral",
   "crates/lico-client-native/target",
+  "docs/plan",
+  "scripts/local",
+  "skills",
+  "tools/local",
   serverScriptsPath
 ];
 const forbiddenContent = [
@@ -77,32 +86,27 @@ const forbiddenContent = [
     pattern: new RegExp(serverScriptsPath.replace("/", "\\/"), "g"),
     reasonCode: "FORBIDDEN_SERVER_SCRIPT_PATH"
   },
-  { pattern: /\bserver:[A-Za-z0-9:_-]+/g, reasonCode: "FORBIDDEN_SERVER_NPM_SCRIPT" },
+  { pattern: /\bserver:[A-Za-z0-9_-][A-Za-z0-9:_-]*/g, reasonCode: "FORBIDDEN_SERVER_NPM_SCRIPT" },
   {
     pattern: /\b(?:TOKEN|SECRET|PASSWORD|PRIVATE_KEY)\s*=\s*['"]?[A-Za-z0-9_./+=:-]{12,}/g,
     reasonCode: "FORBIDDEN_SECRET_ASSIGNMENT"
   }
 ];
-const allowedContentPaths = new Set([
-  "apps/desktop/README.md",
-  "docs/USAGES.md"
-]);
+const forbiddenPublicDocumentContent = [
+  {
+    pattern: /\b(?:commercial(?:ization)?|monetization|pricing|revenue|profit)\b/giu,
+    reasonCode: "PUBLIC_DOCUMENT_PRODUCT_LANGUAGE_FORBIDDEN"
+  },
+  {
+    pattern: /(?:商业化?|盈利|营收)/gu,
+    reasonCode: "PUBLIC_DOCUMENT_PRODUCT_LANGUAGE_FORBIDDEN"
+  }
+];
+const allowedContentPaths = new Set();
 const retiredStatePolicyChecks = [
   {
     path: "AGENTS.md",
     token: "Persistent user state owned by a retired product name is reset, not migrated."
-  },
-  {
-    path: "docs/plan/client-release/Decisions.md",
-    token: "D22 — Retired-name state reset."
-  },
-  {
-    path: "docs/plan/client-release/Architecture.md",
-    token: "Startup creates a fresh current-name workspace."
-  },
-  {
-    path: "docs/plan/client-release/Validation.md",
-    token: "no reader, importer, copier, rename step, translator, prompt, fixture, or gate preserves retired-name persistent state"
   }
 ];
 const flutterSrcRoot = "apps/desktop/lib/src";
@@ -113,9 +117,7 @@ const allowedFlutterTopLevelDirs = new Set([
 const requiredFrontendFeatureDirs = [
   "agents",
   "mobile_relay",
-  "mcp_plugins",
   "skill_hub",
-  "local_runtime",
   "settings",
   "targets"
 ];
@@ -201,36 +203,65 @@ function addFailure(reasonCode, relativePath, privateDetail = "") {
   });
 }
 
-async function walk(directory) {
-  const entries = await readdir(directory, { withFileTypes: true });
-  for (const entry of entries) {
-    if (ignoredDirs.has(entry.name)) {
+async function scanPublicFiles() {
+  let output;
+  try {
+    ({ stdout: output } = await execFileAsync(
+      "git",
+      ["ls-files", "--cached", "--others", "--exclude-standard", "-z"],
+      { cwd: repoRoot, encoding: "utf8", maxBuffer: 16 * 1024 * 1024 },
+    ));
+  } catch (error) {
+    addFailure("PUBLIC_FILE_LIST_FAILED", ".", error?.message);
+    return;
+  }
+
+  const candidates = [...new Set(output.split("\0").filter(Boolean))].sort();
+  const candidateSet = new Set(candidates);
+  for (const relativePath of candidates) {
+    if (!relativePath.endsWith(".md") || path.basename(relativePath) === "AGENTS.md") {
       continue;
     }
-    const absolutePath = path.join(directory, entry.name);
-    const relativePath = toRelative(absolutePath);
+    const translationPath = relativePath.endsWith(".zh-CN.md")
+      ? relativePath.replace(/\.zh-CN\.md$/u, ".md")
+      : relativePath.replace(/\.md$/u, ".zh-CN.md");
+    if (!candidateSet.has(translationPath)) {
+      addFailure("PUBLIC_DOCUMENT_TRANSLATION_MISSING", relativePath, translationPath);
+    }
+  }
+  for (const relativePath of candidates) {
+    const normalized = relativePath.split(path.sep).join("/");
+    if (normalized !== relativePath || path.posix.normalize(normalized) !== normalized) {
+      addFailure("PUBLIC_PATH_INVALID", relativePath, relativePath);
+      continue;
+    }
+    const entryName = path.basename(relativePath);
     retiredClientNamePattern.lastIndex = 0;
-    if (retiredClientNamePattern.test(entry.name)) {
-      addFailure("RETIRED_CLIENT_PATH", relativePath, entry.name);
+    if (retiredClientNamePattern.test(entryName)) {
+      addFailure("RETIRED_CLIENT_PATH", relativePath, entryName);
       continue;
     }
     if (forbiddenPathParts.some((part) => relativePath === part || relativePath.startsWith(`${part}/`))) {
       addFailure("GENERATED_PATH_PRESENT", relativePath, relativePath);
       continue;
     }
-    if (entry.isDirectory()) {
-      await walk(absolutePath);
+    const absolutePath = path.join(repoRoot, relativePath);
+    let info;
+    try {
+      info = await lstat(absolutePath);
+    } catch (error) {
+      addFailure("PUBLIC_FILE_UNREADABLE", relativePath, error?.message);
       continue;
     }
-    if (!entry.isFile()) {
+    if (info.isSymbolicLink()) {
+      addFailure("PUBLIC_SYMLINK_FORBIDDEN", relativePath, relativePath);
       continue;
     }
-    const extension = path.extname(entry.name);
-    if (!textExtensions.has(extension) && entry.name !== "LICENSE" && entry.name !== ".gitignore") {
+    if (!info.isFile() || info.size > 1024 * 1024) {
       continue;
     }
-    const info = await stat(absolutePath);
-    if (info.size > 1024 * 1024) {
+    const extension = path.extname(entryName);
+    if (!textExtensions.has(extension) && entryName !== "LICENSE" && entryName !== ".gitignore") {
       continue;
     }
     checkedFiles.push(relativePath);
@@ -243,6 +274,15 @@ async function walk(directory) {
       const match = pattern.exec(source);
       if (match) {
         addFailure(reasonCode, relativePath, match[0]);
+      }
+    }
+    if (extension === ".md" && entryName !== "AGENTS.md") {
+      for (const { pattern, reasonCode } of forbiddenPublicDocumentContent) {
+        pattern.lastIndex = 0;
+        const match = pattern.exec(source);
+        if (match) {
+          addFailure(reasonCode, relativePath, match[0]);
+        }
       }
     }
   }
@@ -452,13 +492,17 @@ async function enforceConfiguredClientBoundary(config) {
   for (const check of config.sourceChecks) {
     let missingTokens = [];
     let forbiddenTokensPresent = [];
+    let resolvedFiles = [await resolveFlutterSourcePath(check.file)];
     try {
-      const sourcePath = await resolveFlutterSourcePath(check.file);
-      const source = await readFile(path.join(repoRoot, sourcePath), "utf8");
+      const { files, source } = await readSourceCheckBundle(check, async (sourceRef) => {
+        const sourcePath = await resolveFlutterSourcePath(sourceRef);
+        return readFile(path.join(repoRoot, sourcePath), "utf8");
+      });
       missingTokens = check.tokens.filter((token) => !source.includes(token));
       forbiddenTokensPresent = (check.forbiddenTokens || []).filter((token) =>
         source.includes(token)
       );
+      resolvedFiles = await Promise.all(files.map(resolveFlutterSourcePath));
     } catch (error) {
       missingTokens = ["<read-failed>"];
       addFailure("CLIENT_BOUNDARY_SOURCE_READ_FAILED", check.file, `${check.id}\0${error?.message}`);
@@ -480,6 +524,7 @@ async function enforceConfiguredClientBoundary(config) {
     sourceChecks.push({
       id: check.id,
       file: await resolveFlutterSourcePath(check.file),
+      files: resolvedFiles,
       tokenCount: check.tokens.length,
       forbiddenTokenCount: (check.forbiddenTokens || []).length,
       ok: missingTokens.length === 0 && forbiddenTokensPresent.length === 0
@@ -496,7 +541,7 @@ async function enforceConfiguredClientBoundary(config) {
   };
 }
 
-await walk(repoRoot);
+await scanPublicFiles();
 await enforceFlutterFeatureFirstLayout();
 clientBoundarySummary = await enforceConfiguredClientBoundary(await loadSecureMeshClientBoundaryConfig());
 

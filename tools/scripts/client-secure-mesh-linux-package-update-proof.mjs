@@ -128,7 +128,7 @@ function runProof() {
     cwd: repoRoot,
     env: {
       ...process.env,
-      LICO_PORTABLE_DIR: path.join(tempDir, "smoke-portable"),
+      LICOARC_PORTABLE_DIR: path.join(tempDir, "smoke-portable"),
     },
     encoding: "utf8",
     maxBuffer: 16 * 1024 * 1024,

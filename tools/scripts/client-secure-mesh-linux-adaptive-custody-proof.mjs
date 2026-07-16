@@ -227,7 +227,7 @@ function validateInputPayload(payload, expectedStrategy) {
 function unavailableSecretServiceEnv(tempDir) {
   return {
     ...process.env,
-    LICO_PORTABLE_DIR: path.join(tempDir, "portable"),
+    LICOARC_PORTABLE_DIR: path.join(tempDir, "portable"),
     LICO_MOBILE_RELAY_NATIVE_SECRET_STORE: "auto",
     LICO_SECURE_MESH_SECRET_STORE_INTERACTION: "noninteractive",
     DBUS_SESSION_BUS_ADDRESS: `unix:path=${path.join(tempDir, "unavailable-session-bus")}`,

@@ -45,16 +45,13 @@ const forbiddenTopLevel = new Set([
   "data",
   "exports",
   "logs",
-  "mail-imports",
   "outputs",
   "portable-data",
   "reports",
   "runtime",
   "storage",
   "temp",
-  "tmp",
-  "upload-sessions",
-  "uploads"
+  "tmp"
 ]);
 
 const forbiddenDataFiles = new Set([

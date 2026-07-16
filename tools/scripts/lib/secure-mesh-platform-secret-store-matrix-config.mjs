@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import { normalizeSourceCheckFiles } from "./source-check-bundle.mjs";
 
 const configUrl = new URL("../config/secure-mesh-platform-secret-store-matrix.json", import.meta.url);
 const configRef = "tools/scripts/config/secure-mesh-platform-secret-store-matrix.json";
@@ -68,9 +69,15 @@ function normalizeSourceChecks(value) {
   }
   const normalized = checks.map((item, index) => {
     const check = asRecord(item);
+    const files = normalizeSourceCheckFiles(
+      check,
+      normalizeSafeSourceRef,
+      `Secure Mesh platform secret-store source check ${index + 1}`,
+    );
     return {
       id: normalizeCheckId(check.id, `source check ${index + 1} id`),
-      file: normalizeSafeSourceRef(check.file, `source check ${index + 1} file`),
+      file: files[0],
+      files,
       tokens: normalizeTokenList(check.tokens, `source check ${index + 1} tokens`, {
         required: !Array.isArray(check.forbiddenTokens) || check.forbiddenTokens.length === 0
       }),
@@ -85,7 +92,12 @@ function normalizeSourceChecks(value) {
   if (new Set(ids).size !== ids.length) {
     throw new Error("Secure Mesh platform secret-store config source checks must have unique ids");
   }
-  return normalized;
+  return normalized.map((check) => ({
+    ...check,
+    files: Object.freeze(check.files),
+    tokens: Object.freeze(check.tokens),
+    forbiddenTokens: Object.freeze(check.forbiddenTokens),
+  }));
 }
 
 function normalizeNativeTestFilters(value) {

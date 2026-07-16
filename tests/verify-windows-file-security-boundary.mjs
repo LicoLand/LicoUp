@@ -1,33 +1,73 @@
 import { mkdir, writeFile } from "node:fs/promises";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 
-const sensitiveRustFiles = [
-  "crates/lico-client-native/src/platform/client_state.rs",
+function rustSourceBundle(relativeRoot) {
+  const found = [];
+  function walk(relativeDirectory) {
+    for (const entry of readdirSync(path.join(repoRoot, relativeDirectory), {
+      withFileTypes: true,
+    })) {
+      const relativePath = path.posix.join(relativeDirectory, entry.name);
+      if (entry.isDirectory()) {
+        walk(relativePath);
+      } else if (entry.isFile() && entry.name.endsWith(".rs")) {
+        found.push(relativePath);
+      }
+    }
+  }
+  walk(relativeRoot);
+  return found.sort();
+}
+
+const conversationSnapshotSourceFiles = [
   "crates/lico-client-native/src/domain/conversation_snapshots.rs",
+  ...rustSourceBundle("crates/lico-client-native/src/domain/conversation/snapshots"),
+];
+const targetSourceFiles = [
+  "crates/lico-client-native/src/domain/targets.rs",
+  ...rustSourceBundle("crates/lico-client-native/src/domain/targets"),
+];
+const clientStateSourceFiles = [
+  "crates/lico-client-native/src/platform/client_state.rs",
+  ...rustSourceBundle("crates/lico-client-native/src/platform/client_state")
+    .filter((ref) => !ref.includes("/tests/")),
+];
+const fileSecuritySourceFiles = [
   "crates/lico-client-native/src/platform/file_security.rs",
-  "crates/lico-client-native/src/domain/forwarding.rs",
-  "crates/lico-client-native/src/platform/local_runtime.rs",
-  "crates/lico-client-native/src/platform/process_identity.rs",
+  ...rustSourceBundle("crates/lico-client-native/src/platform/file_security")
+    .filter((ref) => !ref.includes("/tests/")),
+];
+const fileSecurityFacadeSource = readFileSync(
+  path.join(repoRoot, "crates/lico-client-native/src/platform/file_security.rs"),
+  "utf8",
+);
+const unixHardeningModuleGuarded =
+  /#\[cfg\(unix\)\]\s*mod unix_hardening;/u.test(fileSecurityFacadeSource);
+const secureMeshMlsSourceFiles = [
   "crates/lico-client-native/src/core/secure_mesh_mls.rs",
-  "crates/lico-client-native/src/domain/source_queue.rs",
-  "crates/lico-client-native/src/domain/targets.rs"
+  ...rustSourceBundle("crates/lico-client-native/src/core/secure_mesh_mls"),
+];
+
+const sensitiveRustFiles = [
+  ...clientStateSourceFiles,
+  ...conversationSnapshotSourceFiles,
+  ...fileSecuritySourceFiles,
+  ...secureMeshMlsSourceFiles,
+  "crates/lico-client-native/src/platform/secure_mesh_mls_store.rs",
+  ...targetSourceFiles,
 ];
 
 const failures = [];
 const helperExpectations = new Map([
-  ["crates/lico-client-native/src/platform/client_state.rs", ["atomic_write_private_text", "append_private_line"]],
-  ["crates/lico-client-native/src/domain/conversation_snapshots.rs", ["atomic_write_private_text", "harden_private_tree"]],
-  ["crates/lico-client-native/src/platform/file_security.rs", ["icacls", "*S-1-3-4:(F)", "*S-1-3-4:(OI)(CI)(F)"]],
-  ["crates/lico-client-native/src/domain/forwarding.rs", ["atomic_write_private_text"]],
-  ["crates/lico-client-native/src/platform/local_runtime.rs", ["atomic_write_private_text"]],
-  ["crates/lico-client-native/src/platform/process_identity.rs", ["atomic_write_private_text"]],
-  ["crates/lico-client-native/src/core/secure_mesh_mls.rs", ["harden_private_path"]],
-  ["crates/lico-client-native/src/domain/source_queue.rs", ["harden_private_path"]],
-  ["crates/lico-client-native/src/domain/targets.rs", ["atomic_write_private_text"]]
+  ["crates/lico-client-native/src/platform/client_state/serialization.rs", ["atomic_write_private_text"]],
+  ["crates/lico-client-native/src/platform/client_state/activity.rs", ["append_private_line"]],
+  ["crates/lico-client-native/src/domain/conversation/snapshots/mod.rs", ["atomic_write_private_text"]],
+  ["crates/lico-client-native/src/platform/file_security/windows_acl.rs", ["icacls", "*S-1-3-4:(F)", "*S-1-3-4:(OI)(CI)(F)"]],
+  ["crates/lico-client-native/src/platform/secure_mesh_mls_store.rs", ["harden_private_path"]],
 ]);
 const notes = [
   "Sensitive client writes now flow through a shared file_security helper.",
@@ -41,19 +81,29 @@ for (const relativePath of sensitiveRustFiles) {
   // portability check to production code so a distant module-level cfg does
   // not become either a false positive or an accidental blanket exemption.
   const productionSource = source.split(/\n#\[cfg\((?:all\()?test\b/u, 1)[0];
+  const unixModule = productionSource.trimStart().startsWith("#![cfg(unix)]") ||
+    (relativePath.endsWith("/file_security/unix_hardening.rs") &&
+      unixHardeningModuleGuarded);
 
-  if (productionSource.includes("std::os::unix::fs::PermissionsExt") && !productionSource.includes("#[cfg(unix)]")) {
+  if (productionSource.includes("std::os::unix::fs::PermissionsExt") &&
+      !unixModule &&
+      !productionSource.includes("#[cfg(unix)]")) {
     failures.push(`${relativePath} imports PermissionsExt without #[cfg(unix)]`);
   }
 
   for (const match of productionSource.matchAll(/fs::set_permissions|set_permissions\(/g)) {
     const before = productionSource.slice(Math.max(0, match.index - 320), match.index);
-    if (!/#\[cfg\(unix\)\][\s\S]*$/u.test(before) && !before.includes("cfg!(unix)") && !before.includes("permissions.set_mode")) {
+    if (!unixModule &&
+        !/#\[cfg\(unix\)\][\s\S]*$/u.test(before) &&
+        !before.includes("cfg!(unix)") &&
+        !before.includes("permissions.set_mode")) {
       failures.push(`${relativePath} has an unconditional chmod-style permission write near offset ${match.index}`);
     }
   }
 
-  if (productionSource.includes("from_mode(0o600)") && !productionSource.includes("#[cfg(unix)]")) {
+  if (productionSource.includes("from_mode(0o600)") &&
+      !unixModule &&
+      !productionSource.includes("#[cfg(unix)]")) {
     failures.push(`${relativePath} references 0600 without an explicit Unix cfg marker`);
   }
 

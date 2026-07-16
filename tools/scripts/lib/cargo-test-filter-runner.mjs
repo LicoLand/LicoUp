@@ -1,4 +1,8 @@
 import { spawnSync } from "node:child_process";
+import {
+  acquireTestArtifactLease,
+  NATIVE_CARGO_TEST_TARGET,
+} from "./test-artifact-lifecycle.mjs";
 
 const DEFAULT_MAX_BUFFER = 64 * 1024 * 1024;
 
@@ -21,12 +25,22 @@ export function runCargoTestFilter({
   const started = Date.now();
   const command = "cargo";
   const commandArgs = ["test", "--manifest-path", manifestPath, filter];
-  const result = spawnSync(command, commandArgs, {
-    cwd: repoRoot,
-    env,
-    encoding: "utf8",
-    maxBuffer: DEFAULT_MAX_BUFFER
+  const lease = acquireTestArtifactLease({
+    repoRoot,
+    scope: "cargo-test-filter",
+    targetPath: NATIVE_CARGO_TEST_TARGET,
   });
+  let result;
+  try {
+    result = spawnSync(command, commandArgs, {
+      cwd: repoRoot,
+      env: { ...env, CARGO_TARGET_DIR: lease.targetPath },
+      encoding: "utf8",
+      maxBuffer: DEFAULT_MAX_BUFFER
+    });
+  } finally {
+    lease.release();
+  }
   const output = `${result.stdout || ""}\n${result.stderr || ""}`;
   const executedTestCount = cargoTestExecutionCount(output);
   const matchedAtLeastOneTest = executedTestCount > 0;

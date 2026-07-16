@@ -40,15 +40,27 @@ const androidManifest = stableReadFile(
   path.join(repoRoot, "apps/desktop/android/app/src/main/AndroidManifest.xml"),
   { maxBytes: 1024 * 1024 },
 ).toString("utf8");
+const androidDebugManifest = stableReadFile(
+  path.join(repoRoot, "apps/desktop/android/app/src/debug/AndroidManifest.xml"),
+  { maxBytes: 1024 * 1024 },
+).toString("utf8");
 const acceptanceIngress = stableReadFile(
   path.join(repoRoot,
-    "apps/desktop/android/app/src/main/kotlin/com/liko/arc/ReleaseAcceptanceIngress.kt"),
+    "apps/desktop/android/app/src/debug/kotlin/com/liko/arc/ReleaseAcceptanceIngress.kt"),
   { maxBytes: 2 * 1024 * 1024 },
 ).toString("utf8");
 const mainActivity = stableReadFile(
   path.join(repoRoot,
     "apps/desktop/android/app/src/main/kotlin/com/liko/arc/MainActivity.kt"),
   { maxBytes: 8 * 1024 * 1024 },
+).toString("utf8");
+const backupRules = stableReadFile(
+  path.join(repoRoot, "apps/desktop/android/app/src/main/res/xml/backup_rules.xml"),
+  { maxBytes: 1024 * 1024 },
+).toString("utf8");
+const legacyBackupRules = stableReadFile(
+  path.join(repoRoot, "apps/desktop/android/app/src/main/res/xml/backup_rules_legacy.xml"),
+  { maxBytes: 1024 * 1024 },
 ).toString("utf8");
 const acceptanceBinding = stableReadFile(
   path.join(repoRoot, "tools/scripts/lib/android-release-acceptance-binding.mjs"),
@@ -208,16 +220,26 @@ if ((androidBuilder.match(/runFlutterBuild\(options, env\);/gu) || []).length !=
   !androidBuilder.includes("buildCount: 2")) {
   throw new Error("Android release builder does not prove two clean same-source payload builds");
 }
-if (!androidManifest.includes('android:name=".ReleaseAcceptanceReceiver"') ||
-  !androidManifest.includes('android:permission="android.permission.DUMP"') ||
+if (androidManifest.includes("ReleaseAcceptanceReceiver") ||
+  androidManifest.includes("com.liko.arc.RELEASE_ACCEPTANCE") ||
+  !androidManifest.includes('android:allowBackup="false"') ||
+  !androidManifest.includes('android:dataExtractionRules="@xml/backup_rules"') ||
+  !androidManifest.includes('android:fullBackupContent="@xml/backup_rules_legacy"') ||
+  !backupRules.includes("<cloud-backup>") ||
+  !backupRules.includes("<device-transfer>") ||
+  !backupRules.includes('<exclude domain="device_root" path="." />') ||
+  !legacyBackupRules.includes('<exclude domain="root" path="." />') ||
+  !androidDebugManifest.includes('android:name=".ReleaseAcceptanceReceiver"') ||
+  !androidDebugManifest.includes('android:permission="android.permission.DUMP"') ||
   !acceptanceIngress.includes("class ReleaseAcceptanceReceiver : BroadcastReceiver()") ||
   !acceptanceIngress.includes('const val ACTION = "com.liko.arc.RELEASE_ACCEPTANCE"') ||
-  !mainActivity.includes("?: consumeReleaseAcceptanceIngress()") ||
-  !mainActivity.includes("pendingReleaseAcceptanceIntent = consumeReleaseAcceptanceIngress()") ||
-  mainActivity.includes("handleSecureMeshAdbIntent(intent)") ||
-  mainActivity.includes("consumeReleaseClosureChallenge(intent)") ||
+  mainActivity.includes("ReleaseAcceptance") ||
+  !mainActivity.includes("onLocalVerificationCreate()") ||
+  !androidGradle.includes("verifyReleaseAcceptanceIsolation") ||
+  !androidGradle.includes('dependsOn("processReleaseMainManifest", "compileReleaseKotlin")') ||
+  !androidGradle.includes('it.extension == "class"') ||
   !acceptanceBinding.includes('"shell",\n    "am",\n    "broadcast"')) {
-  throw new Error("Android release acceptance ingress is not shell-permission isolated");
+  throw new Error("Android debug acceptance ingress is not isolated from release artifacts");
 }
 const hostId = `${process.platform}-${process.arch}`;
 if (manifest.platforms[hostId]) {
@@ -253,7 +275,7 @@ console.log(JSON.stringify({
   environmentInjectionRejected: true,
   absoluteSigningPathRequired: true,
   signingPreflightBeforeOutputMutation: true,
-  shellPermissionAcceptanceIngressRequired: true,
+  debugAcceptanceIngressReleaseIsolationReady: true,
   unknownReleaseArgumentsRejected: true,
   externalEntrypointRejected: true,
   canonicalBuildParametersManifestBound: true,

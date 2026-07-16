@@ -68,15 +68,23 @@ function normalizeExternalGatewayEvidence(value) {
 
 function normalizeSourceChecks(value) {
   const checks = Array.isArray(value) ? value : [];
-  return Object.freeze(checks.map((check, index) => Object.freeze({
-    id: normalizeId(check.id, `source check ${index + 1} id`),
-    file: normalizeSafeRef(
-      check.file,
-      `source check ${index + 1} file`,
+  return Object.freeze(checks.map((check, index) => {
+    const refs = Array.isArray(check.files) ? check.files : [check.file];
+    if (refs.length === 0) {
+      throw new Error(`Secure Mesh ACP governed baseline config must define source check ${index + 1} files`);
+    }
+    const files = Object.freeze(refs.map((ref, fileIndex) => normalizeSafeRef(
+      ref,
+      `source check ${index + 1} file ${fileIndex + 1}`,
       /^(?:apps|crates|docs|tools)\/.+\.(?:rs|mjs|dart|json|md)$/u
-    ),
-    tokens: normalizeTokens(check.tokens, `source check ${index + 1} tokens`)
-  })));
+    )));
+    return Object.freeze({
+      id: normalizeId(check.id, `source check ${index + 1} id`),
+      file: files[0],
+      files,
+      tokens: normalizeTokens(check.tokens, `source check ${index + 1} tokens`)
+    });
+  }));
 }
 
 function normalizeNativeTestFilters(value) {
