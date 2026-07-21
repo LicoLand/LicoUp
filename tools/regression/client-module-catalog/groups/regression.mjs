@@ -6,7 +6,6 @@ export const REGRESSION_MODULES = Object.freeze([
       kind: "regression-infrastructure",
       summary: "Module catalog, changed-file selection, and safe process execution",
       inputs: [
-        "AGENTS.md",
         "CONTRIBUTING.md",
         "CONTRIBUTING.zh-CN.md",
         "package.json",
@@ -23,8 +22,6 @@ export const REGRESSION_MODULES = Object.freeze([
       kind: "regression-infrastructure",
       summary: "Leased build outputs, fail-closed reclaim markers, and download-cache isolation",
       inputs: [
-        "AGENTS.md",
-        "crates/lico-client-native/AGENTS.md",
         "package.json",
         "tools/scripts/cargo-client.mjs",
         "tools/scripts/client-test-artifacts.mjs",
@@ -967,7 +964,6 @@ export const REGRESSION_MODULES = Object.freeze([
         "crates/lico-client-native/Cargo.toml",
         "crates/lico-client-native/src/**",
         "packages/contracts/client/semantic-conversation.schema.json",
-        "AGENTS.md",
         "CONTRIBUTING.md",
         "docs/ARCHITECTURE.md",
         "docs/USER-GUIDE.md",

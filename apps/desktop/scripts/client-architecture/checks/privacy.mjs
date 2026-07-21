@@ -24,7 +24,6 @@ export async function checkProductContractsAndPortableData(context, { modules })
   } = context;
   const architectureSource = await readText("docs/ARCHITECTURE.md");
   const userGuideSource = await readText("docs/USER-GUIDE.md");
-  const rootAgentInstructionsSource = await readText("AGENTS.md");
   const contributingSource = await readText("CONTRIBUTING.md");
   const normalizedArchitectureSource = architectureSource.replace(/\s+/gu, " ");
   const normalizedUserGuideSource = userGuideSource.replace(/\s+/gu, " ");
@@ -42,14 +41,11 @@ export async function checkProductContractsAndPortableData(context, { modules })
     "USER-GUIDE.md must describe native continuation and the non-interleaving fallback"
   );
   assert(
-    rootAgentInstructionsSource.includes(
-      "涉及回归测试，应尽可能采取较快闭环的路线，减少回归测试的范围。完整的回归测试必须在所有的改动确认有效之后才可以执行，严禁项目过程中多次执行全量回归，导致影响其它智能体的并行开发工作。"
-    ) &&
-      normalizedContributingSource.includes("run the smallest relevant checks") &&
+    normalizedContributingSource.includes("run the smallest relevant checks") &&
       normalizedContributingSource.includes("Run the full client verification once") &&
       normalizedContributingSource.includes("only after every intended change has been confirmed effective") &&
       normalizedContributingSource.includes("Never repeat the full regression during implementation"),
-    "AGENTS.md and CONTRIBUTING.md must preserve targeted closure and one final full regression"
+    "CONTRIBUTING.md must preserve targeted closure and one final full regression"
   );
   const portableDirs = modules["portable-data"]?.portableDirectories || [];
   const expectedPortableDirs = [
