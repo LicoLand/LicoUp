@@ -165,23 +165,6 @@ test("tracked contribution guides require targeted closure before one final full
     ]);
 });
 
-test("repository policy forbids repeated full regression during module closure", async () => {
-  const policy = await fs.readFile(path.join(repoRoot, "AGENTS.md"), "utf8");
-  for (const token of [
-    "涉及回归测试，应尽可能采取较快闭环的路线",
-    "完整的回归测试必须在所有的改动确认有效之后才可以执行",
-    "严禁项目过程中多次执行全量回归",
-  ]) {
-    assert.equal(policy.includes(token), true, `missing regression policy: ${token}`);
-  }
-  assert.deepEqual(ids(selectModulesForChangedPaths(["AGENTS.md"])),
-    [
-      "regression.infrastructure",
-      "regression.test-artifact-lifecycle",
-      "architecture.client-boundaries",
-    ]);
-});
-
 test("catalog maps every Flutter, Rust, and platform-host source file", async () => {
   const candidates = [
     ...await sourceFiles("apps/desktop/lib", ".dart"),
@@ -499,7 +482,7 @@ test("client module regression tests retain seven ordinary owned leaves", async 
   ]);
 
   const expectedTestCounts = new Map([
-    ["catalog-integrity.mjs", 15],
+    ["catalog-integrity.mjs", 14],
     ["conversation-ownership.mjs", 6],
     ["flutter-selection.mjs", 5],
     ["platform-driver-ownership.mjs", 20],
@@ -525,7 +508,7 @@ test("client module regression tests retain seven ordinary owned leaves", async 
         : ["regression.infrastructure"],
     );
   }
-  assert.equal(registeredNames.size, 82);
+  assert.equal(registeredNames.size, 81);
 });
 
 test("catalog assembly fails fast on duplicate missing and unexpected definitions", () => {

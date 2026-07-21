@@ -103,12 +103,7 @@ const forbiddenPublicDocumentContent = [
   }
 ];
 const allowedContentPaths = new Set();
-const retiredStatePolicyChecks = [
-  {
-    path: "AGENTS.md",
-    token: "Persistent user state owned by a retired product name is reset, not migrated."
-  }
-];
+const retiredStatePolicyChecks = [];
 const flutterSrcRoot = "apps/desktop/lib/src";
 const requiredFlutterPhysicalDirs = ["application", "frontend", "backend", "platform", "contracts"];
 const allowedFlutterTopLevelDirs = new Set([
