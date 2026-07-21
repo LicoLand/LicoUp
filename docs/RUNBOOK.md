@@ -180,8 +180,8 @@ npm run client:verify:plan
 
 ### Document Maintenance Gate
 
-Before creating or changing documentation, run `lico-dev context <changed-path>`
-and follow the repository `AGENTS.md`.
+Before creating or changing documentation, run `lico-dev context <changed-path>`.
+Repository agent guidance lives in the lico-dev skill `lico-arc-repository`.
 
 Minimum document requirements:
 
@@ -341,7 +341,7 @@ explicit diagnostic invocation requests otherwise.
 | Script/CLI Usages | `docs/USAGES.md` |
 | Frontend Design and Colors | `docs/DESIGN.md` |
 | Compatibility Targets | `docs/COMPATIBILITY.md` |
-| Agent Guidelines | `AGENTS.md` |
+| Agent Guidelines | lico-dev skill `lico-arc-repository` |
 | Development Rules/Testing/Release Gates | `docs/RUNBOOK.md` |
 | Plan Governance and Product Scope | `docs/plan/product-scope/`, `docs/plan/Manifest.json`, `docs/plan/**/*.md` |
 | Versioning | `docs/VERSION.md` |
