@@ -95,6 +95,10 @@ test-results/
 /tools/scripts/lib/better-plan-evidence-ledger.mjs
 /tools/scripts/lib/better-plan-evidence-ledger/
 
+# Agent entrypoints are retired; agent guidance lives in lico-dev skills.
+AGENTS.md
+AGENT.md
+
 # Client state written by migration tools or local runs must stay out of the
 # repository tree; real data roots live outside the checkout.
 client-state/
