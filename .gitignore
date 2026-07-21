@@ -94,3 +94,7 @@ test-results/
 /tools/scripts/client-better-plan-evidence-ledger.mjs
 /tools/scripts/lib/better-plan-evidence-ledger.mjs
 /tools/scripts/lib/better-plan-evidence-ledger/
+
+# Agent entrypoints are retired; agent guidance lives in lico-dev skills.
+AGENTS.md
+AGENT.md
