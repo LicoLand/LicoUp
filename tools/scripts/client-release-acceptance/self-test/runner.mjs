@@ -68,7 +68,7 @@ export function runSelfTest({ schemaFixture = false } = {}) {
     reports: [{
       id: "linuxCli",
       ok: true,
-      schemaVersion: "licolite.secure-mesh.release-cli-proof-report.v1",
+      schemaVersion: "licomesh.secure-mesh.release-cli-proof-report.v1",
       producer: "tools/scripts/client-secure-mesh-release-cli-proof.mjs",
       producerExitCode: 0,
       sourceDigest: `sha256:${"1".repeat(64)}`,
@@ -130,7 +130,7 @@ export function runSelfTest({ schemaFixture = false } = {}) {
   requireValue(!productTrustMissing.githubReleaseReady && productTrustMissing.blockers.includes("client_product_trust_ux_not_ready"), "missing product trust UX must fail closed");
   const unsupportedSchema = reduceClientReleaseAcceptance({
     ...base,
-    reports: selfTestReports({ trustSchemaVersion: "licolite.secure-mesh.trust-ux-report.unsupported" })
+    reports: selfTestReports({ trustSchemaVersion: "licomesh.secure-mesh.trust-ux-report.unsupported" })
   });
   requireValue(!unsupportedSchema.githubReleaseReady && unsupportedSchema.blockers.includes("client_trust_v2_contract_not_ready"), "unsupported Trust UX schema must fail closed");
   const unknownAuthority = reduceClientReleaseAcceptance({

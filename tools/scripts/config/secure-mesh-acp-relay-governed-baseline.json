@@ -1,5 +1,5 @@
 {
-  "schemaVersion": "licolite.secure-mesh.acp-relay-governed-baseline-config.v2",
+  "schemaVersion": "licomesh.secure-mesh.acp-relay-governed-baseline-config.v2",
   "reportOutput": "build/reports/secure-mesh-acp-relay-governed-baseline.json",
   "ownership": {
     "acpRelayGovernance": "core",

@@ -121,6 +121,25 @@ fn execute_via_serve(
     let message_body = build_serve_message_body(config);
 
     let turn_id = Uuid::new_v4().to_string();
+    let _active_turn = super::super::local_service::turn_control::register(
+        OPENCODE_DRIVER.agent_id,
+        &endpoint.attach_url,
+        &session_id,
+    )
+    .map_err(|_| {
+        ProtocolFailure::new(
+            "acp_control_capacity",
+            "The OpenCode active-turn control registry is at capacity.",
+            "turn/control",
+        )
+        .with_session(Some(&session_id))
+    })?;
+    super::super::turn_event_emit::emit_turn_event(
+        "dispatch.turn.bound",
+        &session_id,
+        &turn_id,
+        json!({}),
+    );
     let watch_stop = Arc::new(AtomicBool::new(false));
     let watch_flag = Arc::clone(&watch_stop);
     let watch_url = endpoint.attach_url.clone();

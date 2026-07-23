@@ -35,7 +35,7 @@ pub(super) fn key_transparency_self_monitor(params: &Value) -> Result<Value> {
         .ok_or_else(|| anyhow!("secure mesh KT self-monitor response is required"))?;
     let response: UntrustedDirectoryResponse = serde_json::from_value(response_value.clone())
         .map_err(|_| anyhow!("secure mesh KT self-monitor response is invalid"))?;
-    let local = local_endpoint_state(&config)?;
+    let local = local_endpoint_state(&config, &secret_context.material)?;
     let identity = local.device_identity()?;
     let bundle = local.pairwise_prekey_bundle()?;
     let scope = configured_directory_scope_commitment(&config)?;

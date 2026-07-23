@@ -65,12 +65,12 @@ function runProof() {
 
   const packageRoot = path.join(tempDir, "package-root");
   const packageBin = path.join(packageRoot, "bin");
-  const packageMeta = path.join(packageRoot, "share", "licolite");
+  const packageMeta = path.join(packageRoot, "share", "licomesh");
   mkdirSync(packageBin, { recursive: true });
   mkdirSync(packageMeta, { recursive: true });
   copyFileSync(cli, path.join(packageBin, "lico-client"));
   const manifest = {
-    schemaVersion: "licolite.secure-mesh.linux-package-manifest.v1",
+    schemaVersion: "licomesh.secure-mesh.linux-package-manifest.v1",
     product: "lico-arc",
     platform,
     version,
@@ -102,7 +102,7 @@ function runProof() {
   });
   assert(extract.status === 0, `package archive extraction failed: ${sanitizeError(extract.stderr || extract.stdout)}`);
 
-  const extractedManifest = JSON.parse(readFileSync(path.join(extractRoot, "share", "licolite", "package-manifest.json"), "utf8"));
+  const extractedManifest = JSON.parse(readFileSync(path.join(extractRoot, "share", "licomesh", "package-manifest.json"), "utf8"));
   const extractedBinary = path.join(extractRoot, "bin", "lico-client");
   const packageReady = extractedManifest?.binary?.sha256 === sha256File(extractedBinary) &&
     extractedManifest?.binary?.bytes === statSync(extractedBinary).size &&
@@ -117,7 +117,7 @@ function runProof() {
   mkdirSync(currentRoot, { recursive: true });
   copyTree(extractRoot, currentRoot);
   writeFileSync(path.join(installRoot, "current-release.json"), `${JSON.stringify({
-    schemaVersion: "licolite.secure-mesh.linux-update-state.v1",
+    schemaVersion: "licomesh.secure-mesh.linux-update-state.v1",
     active: version,
     previous: "previous",
     rollbackAvailable: true,
@@ -134,7 +134,7 @@ function runProof() {
     maxBuffer: 16 * 1024 * 1024,
   });
   const installSmokeReady = smoke.status === 0 &&
-    String(smoke.stdout || smoke.stderr || "").includes("LicoLite CLI");
+    String(smoke.stdout || smoke.stderr || "").includes("LicoMesh CLI");
 
   const activeState = JSON.parse(readFileSync(path.join(installRoot, "current-release.json"), "utf8"));
   const updateReady = activeState.active === version &&
@@ -143,7 +143,7 @@ function runProof() {
     sha256File(installedCli) === binaryDigest;
 
   writeFileSync(path.join(installRoot, "current-release.json"), `${JSON.stringify({
-    schemaVersion: "licolite.secure-mesh.linux-update-state.v1",
+    schemaVersion: "licomesh.secure-mesh.linux-update-state.v1",
     active: "previous",
     rolledBackFrom: version,
     rollbackAvailable: false,
@@ -171,7 +171,7 @@ function runProof() {
     summary.localPathsRedacted;
 
   return {
-    schemaVersion: "licolite.secure-mesh.linux-package-update-proof-report.v1",
+    schemaVersion: "licomesh.secure-mesh.linux-package-update-proof-report.v1",
     verifier: "tools/scripts/client-secure-mesh-linux-package-update-proof.mjs",
     generatedAt: new Date().toISOString(),
     report: reportReference(),
@@ -204,7 +204,7 @@ function runProof() {
 
 function failureReport(error) {
   return {
-    schemaVersion: "licolite.secure-mesh.linux-package-update-proof-report.v1",
+    schemaVersion: "licomesh.secure-mesh.linux-package-update-proof-report.v1",
     verifier: "tools/scripts/client-secure-mesh-linux-package-update-proof.mjs",
     generatedAt: new Date().toISOString(),
     report: reportReference(),

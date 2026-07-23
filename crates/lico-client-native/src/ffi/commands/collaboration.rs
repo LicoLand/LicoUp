@@ -1,279 +1,293 @@
-use super::{CliExecution, CommandTable, cli_params};
+use super::{AdmittedCommand, CliExecution, admitted_params};
 use anyhow::Result;
 
-pub fn register_commands(table: &mut CommandTable) {
-    table.register_rest(
-        &["collaboration", "status"],
-        handle_status,
-        "Show the disabled-by-default optional collaboration state",
-    );
-    table.register_rest(
-        &["collaboration", "enable"],
-        handle_enable,
-        "Manually enable optional collaboration before plugin installation",
-    );
-    table.register_rest(
-        &["collaboration", "runner-trust", "import"],
-        handle_runner_trust_import,
-        "Import one directly approved exact runner trust binding",
-    );
-    table.register_rest(
-        &["collaboration", "runner-trust", "remove"],
-        handle_runner_trust_remove,
-        "Remove one directly approved exact runner trust binding",
-    );
-    table.register_rest(
-        &["collaboration", "install", "plan"],
-        handle_install_plan,
-        "Fetch and inspect a declarative collaboration plugin from GitHub",
-    );
-    table.register_rest(
-        &["collaboration", "install", "apply"],
-        handle_install_apply,
-        "Install an exact digest-bound collaboration plugin plan",
-    );
-    table.register_rest(
-        &["collaboration", "install", "cancel"],
-        handle_install_cancel,
-        "Cancel an exact digest-bound staged collaboration plugin plan",
-    );
-    table.register_rest(
-        &["collaboration", "workflow", "catalog"],
-        handle_workflow_catalog,
-        "Explicitly load the installed declarative workflow catalog",
-    );
-    table.register_rest(
-        &["collaboration", "workflow", "local-deployment", "plan"],
-        handle_local_deployment_plan,
-        "Preview one digest-bound repository-owned local assembly",
-    );
-    table.register_rest(
-        &["collaboration", "workflow", "local-deployment", "apply"],
-        handle_local_deployment_apply,
-        "Assemble one exact confirmed plan with the repository-owned adapter without running plugin code",
-    );
-    table.register_rest(
-        &["collaboration", "workflow", "mcp-install", "plan"],
-        handle_mcp_install_plan,
-        "Preview exact per-agent MCP payload and review-artifact files",
-    );
-    table.register_rest(
-        &["collaboration", "workflow", "mcp-install", "apply"],
-        handle_mcp_install_apply,
-        "Apply one exact confirmed MCP payload plan without modifying vendor configuration",
-    );
-    table.register_rest(
-        &["collaboration", "workflow", "cancel"],
-        handle_workflow_cancel,
-        "Cancel and consume an exact workflow plan",
-    );
-    table.register_rest(
-        &["collaboration", "local-server", "status"],
-        handle_local_server_status,
-        "Show local assembly and controlled inspection-runtime state",
-    );
-    table.register_rest(
-        &["collaboration", "local-server", "start"],
-        handle_local_server_start,
-        "Start one directly approved loopback assembly-inspection runtime",
-    );
-    table.register_rest(
-        &["collaboration", "local-server", "stop"],
-        handle_local_server_stop,
-        "Stop one directly approved assembly-inspection runtime",
-    );
-    table.register_rest(
-        &["collaboration", "local-server", "uninstall"],
-        handle_local_server_uninstall,
-        "Uninstall one stopped digest-bound local assembly",
-    );
-    table.register_rest(
-        &["collaboration", "mcp-bridge"],
-        handle_mcp_bridge,
-        "Reject bridge activation until the authenticated LicoArc approval broker is available",
-    );
-    table.register_rest(
-        &["collaboration", "disable"],
-        handle_disable,
-        "Disable optional collaboration without loading the plugin",
-    );
-    table.register_rest(
-        &["collaboration", "uninstall"],
-        handle_uninstall,
-        "Uninstall an exact digest-bound collaboration plugin",
-    );
-    table.register_rest(
-        &["collaboration", "cleanup"],
-        handle_cleanup,
-        "Explicitly retry bounded post-commit collaboration cleanup",
-    );
+fn empty_params() -> serde_json::Value {
+    admitted_params(&[], &[], &[])
 }
 
-fn handle_status(args: &[String]) -> Result<CliExecution> {
-    let params = cli_params(&args[2..]);
+fn install_params(
+    github_url: Option<&str>,
+    plan_id: Option<&str>,
+    expected_digest: Option<&str>,
+    confirmed: Option<&str>,
+) -> serde_json::Value {
+    admitted_params(
+        &[
+            ("githubUrl", github_url),
+            ("planId", plan_id),
+            ("expectedDigestSha256", expected_digest),
+            ("confirmed", confirmed),
+        ],
+        &[],
+        &[],
+    )
+}
+
+fn local_deployment_params(
+    request_origin: Option<&str>,
+    selected_feature_ids: Option<&str>,
+    destination: Option<&str>,
+    destination_confirmed: Option<&str>,
+    port: Option<&str>,
+    plan_id: Option<&str>,
+    expected_plan: Option<&str>,
+    expected_package: Option<&str>,
+    confirmed: Option<&str>,
+) -> serde_json::Value {
+    admitted_params(
+        &[
+            ("requestOrigin", request_origin),
+            ("selectedFeatureIds", selected_feature_ids),
+            ("destination", destination),
+            ("destinationConfirmed", destination_confirmed),
+            ("port", port),
+            ("planId", plan_id),
+            ("expectedPlanDigestSha256", expected_plan),
+            ("expectedPackageDigestSha256", expected_package),
+            ("confirmed", confirmed),
+        ],
+        &[],
+        &[],
+    )
+}
+
+fn mcp_install_params(
+    request_origin: Option<&str>,
+    selected_plugin_ids: Option<&str>,
+    plan_id: Option<&str>,
+    expected_plan: Option<&str>,
+    expected_package: Option<&str>,
+    confirmed: Option<&str>,
+    agent_destinations: Option<&serde_json::Value>,
+) -> serde_json::Value {
+    admitted_params(
+        &[
+            ("requestOrigin", request_origin),
+            ("selectedPluginIds", selected_plugin_ids),
+            ("planId", plan_id),
+            ("expectedPlanDigestSha256", expected_plan),
+            ("expectedPackageDigestSha256", expected_package),
+            ("confirmed", confirmed),
+        ],
+        &[("agentDestinations", agent_destinations)],
+        &[],
+    )
+}
+
+pub(super) fn handle_status(_command: AdmittedCommand) -> Result<CliExecution> {
     Ok(CliExecution::Json(
-        crate::domain::collaboration_plugin::status(&params)?,
+        crate::domain::collaboration_plugin::status(&empty_params())?,
     ))
 }
 
-fn handle_enable(args: &[String]) -> Result<CliExecution> {
-    let params = cli_params(&args[2..]);
+pub(super) fn handle_enable(_command: AdmittedCommand) -> Result<CliExecution> {
     Ok(CliExecution::Json(
-        crate::domain::collaboration_plugin::enable(&params)?,
+        crate::domain::collaboration_plugin::enable(&empty_params())?,
     ))
 }
 
-fn handle_runner_trust_import(args: &[String]) -> Result<CliExecution> {
-    let params = cli_params(&args[3..]);
-    Ok(CliExecution::Json(
-        crate::domain::collaboration_plugin::runner_trust_import(&params)?,
-    ))
-}
-
-fn handle_runner_trust_remove(args: &[String]) -> Result<CliExecution> {
-    let params = cli_params(&args[3..]);
-    Ok(CliExecution::Json(
-        crate::domain::collaboration_plugin::runner_trust_remove(&params)?,
-    ))
-}
-
-fn handle_install_plan(args: &[String]) -> Result<CliExecution> {
-    let params = cli_params(&args[3..]);
+pub(super) fn handle_install_plan(command: AdmittedCommand) -> Result<CliExecution> {
+    let params = install_params(
+        command.option_text("github-url"),
+        command.option_text("plan-id"),
+        command.option_text("expected-digest-sha256"),
+        command.option_text("confirmed"),
+    );
     Ok(CliExecution::Json(
         crate::domain::collaboration_plugin::install_plan(&params)?,
     ))
 }
 
-fn handle_install_apply(args: &[String]) -> Result<CliExecution> {
-    let params = cli_params(&args[3..]);
+pub(super) fn handle_install_apply(command: AdmittedCommand) -> Result<CliExecution> {
+    let params = install_params(
+        command.option_text("github-url"),
+        command.option_text("plan-id"),
+        command.option_text("expected-digest-sha256"),
+        command.option_text("confirmed"),
+    );
     Ok(CliExecution::Json(
         crate::domain::collaboration_plugin::install_apply(&params)?,
     ))
 }
 
-fn handle_install_cancel(args: &[String]) -> Result<CliExecution> {
-    let params = cli_params(&args[3..]);
+pub(super) fn handle_install_cancel(command: AdmittedCommand) -> Result<CliExecution> {
+    let params = install_params(
+        command.option_text("github-url"),
+        command.option_text("plan-id"),
+        command.option_text("expected-digest-sha256"),
+        command.option_text("confirmed"),
+    );
     Ok(CliExecution::Json(
         crate::domain::collaboration_plugin::install_cancel(&params)?,
     ))
 }
 
-fn handle_workflow_catalog(args: &[String]) -> Result<CliExecution> {
-    let params = cli_params(&args[3..]);
+pub(super) fn handle_workflow_catalog(_command: AdmittedCommand) -> Result<CliExecution> {
     Ok(CliExecution::Json(
-        crate::domain::collaboration_plugin::workflow_catalog(&params)?,
+        crate::domain::collaboration_plugin::workflow_catalog(&empty_params())?,
     ))
 }
 
-fn handle_local_deployment_plan(args: &[String]) -> Result<CliExecution> {
-    let params = cli_params(&args[4..]);
+pub(super) fn handle_local_deployment_plan(command: AdmittedCommand) -> Result<CliExecution> {
+    let params = local_deployment_params(
+        command.option_text("request-origin"),
+        command.option_text("selected-feature-ids"),
+        command.option_text("destination"),
+        command.option_text("destination-confirmed"),
+        command.option_text("port"),
+        command.option_text("plan-id"),
+        command.option_text("expected-plan-digest-sha256"),
+        command.option_text("expected-package-digest-sha256"),
+        command.option_text("confirmed"),
+    );
     Ok(CliExecution::Json(
         crate::domain::collaboration_plugin::local_deployment_plan(&params)?,
     ))
 }
 
-fn handle_local_deployment_apply(args: &[String]) -> Result<CliExecution> {
-    let params = cli_params(&args[4..]);
+pub(super) fn handle_local_deployment_apply(command: AdmittedCommand) -> Result<CliExecution> {
+    let params = local_deployment_params(
+        command.option_text("request-origin"),
+        command.option_text("selected-feature-ids"),
+        command.option_text("destination"),
+        command.option_text("destination-confirmed"),
+        command.option_text("port"),
+        command.option_text("plan-id"),
+        command.option_text("expected-plan-digest-sha256"),
+        command.option_text("expected-package-digest-sha256"),
+        command.option_text("confirmed"),
+    );
     Ok(CliExecution::Json(
         crate::domain::collaboration_plugin::local_deployment_apply(&params)?,
     ))
 }
 
-fn handle_mcp_install_plan(args: &[String]) -> Result<CliExecution> {
-    let params = cli_params(&args[4..]);
+pub(super) fn handle_mcp_install_plan(command: AdmittedCommand) -> Result<CliExecution> {
+    let params = mcp_install_params(
+        command.option_text("request-origin"),
+        command.option_text("selected-plugin-ids"),
+        command.option_text("plan-id"),
+        command.option_text("expected-plan-digest-sha256"),
+        command.option_text("expected-package-digest-sha256"),
+        command.option_text("confirmed"),
+        command.option_json("agent-destinations"),
+    );
     Ok(CliExecution::Json(
         crate::domain::collaboration_plugin::mcp_install_plan(&params)?,
     ))
 }
 
-fn handle_mcp_install_apply(args: &[String]) -> Result<CliExecution> {
-    let params = cli_params(&args[4..]);
+pub(super) fn handle_mcp_install_apply(command: AdmittedCommand) -> Result<CliExecution> {
+    let params = mcp_install_params(
+        command.option_text("request-origin"),
+        command.option_text("selected-plugin-ids"),
+        command.option_text("plan-id"),
+        command.option_text("expected-plan-digest-sha256"),
+        command.option_text("expected-package-digest-sha256"),
+        command.option_text("confirmed"),
+        command.option_json("agent-destinations"),
+    );
     Ok(CliExecution::Json(
         crate::domain::collaboration_plugin::mcp_install_apply(&params)?,
     ))
 }
 
-fn handle_workflow_cancel(args: &[String]) -> Result<CliExecution> {
-    let params = cli_params(&args[3..]);
+pub(super) fn handle_workflow_cancel(command: AdmittedCommand) -> Result<CliExecution> {
+    let params = admitted_params(
+        &[
+            ("requestOrigin", command.option_text("request-origin")),
+            ("planId", command.option_text("plan-id")),
+            (
+                "expectedPlanDigestSha256",
+                command.option_text("expected-plan-digest-sha256"),
+            ),
+            (
+                "expectedPackageDigestSha256",
+                command.option_text("expected-package-digest-sha256"),
+            ),
+            ("confirmed", command.option_text("confirmed")),
+        ],
+        &[],
+        &[],
+    );
     Ok(CliExecution::Json(
         crate::domain::collaboration_plugin::workflow_cancel(&params)?,
     ))
 }
 
-fn handle_local_server_status(args: &[String]) -> Result<CliExecution> {
-    let params = cli_params(&args[3..]);
+pub(super) fn handle_local_server_status(_command: AdmittedCommand) -> Result<CliExecution> {
     Ok(CliExecution::Json(
-        crate::domain::collaboration_plugin::local_server_status(&params)?,
+        crate::domain::collaboration_plugin::local_server_status(&empty_params())?,
     ))
 }
 
-fn handle_local_server_start(args: &[String]) -> Result<CliExecution> {
-    let params = cli_params(&args[3..]);
+pub(super) fn handle_local_server_start(command: AdmittedCommand) -> Result<CliExecution> {
+    let params = admitted_params(
+        &[
+            ("requestOrigin", command.option_text("request-origin")),
+            ("deploymentId", command.option_text("deployment-id")),
+            ("confirmed", command.option_text("confirmed")),
+        ],
+        &[],
+        &[],
+    );
     Ok(CliExecution::Json(
         crate::domain::collaboration_plugin::local_server_start(&params)?,
     ))
 }
 
-fn handle_local_server_stop(args: &[String]) -> Result<CliExecution> {
-    let params = cli_params(&args[3..]);
+pub(super) fn handle_local_server_stop(command: AdmittedCommand) -> Result<CliExecution> {
+    let params = admitted_params(
+        &[
+            ("requestOrigin", command.option_text("request-origin")),
+            ("deploymentId", command.option_text("deployment-id")),
+            ("confirmed", command.option_text("confirmed")),
+        ],
+        &[],
+        &[],
+    );
     Ok(CliExecution::Json(
         crate::domain::collaboration_plugin::local_server_stop(&params)?,
     ))
 }
 
-fn handle_local_server_uninstall(args: &[String]) -> Result<CliExecution> {
-    let params = cli_params(&args[3..]);
+pub(super) fn handle_local_server_uninstall(command: AdmittedCommand) -> Result<CliExecution> {
+    let params = admitted_params(
+        &[
+            ("requestOrigin", command.option_text("request-origin")),
+            ("deploymentId", command.option_text("deployment-id")),
+            (
+                "expectedAssemblyManifestDigestSha256",
+                command.option_text("expected-assembly-manifest-digest-sha256"),
+            ),
+            ("confirmed", command.option_text("confirmed")),
+        ],
+        &[],
+        &[],
+    );
     Ok(CliExecution::Json(
         crate::domain::collaboration_plugin::local_server_uninstall(&params)?,
     ))
 }
 
-fn handle_mcp_bridge(args: &[String]) -> Result<CliExecution> {
-    let params = cli_params(&args[2..]);
-    let agent_id = params
-        .get("agentId")
-        .and_then(serde_json::Value::as_str)
-        .ok_or_else(|| anyhow::anyhow!("collaboration_mcp_bridge_agent_required"))?;
-    let registration_id = params
-        .get("registrationId")
-        .and_then(serde_json::Value::as_str)
-        .ok_or_else(|| anyhow::anyhow!("collaboration_mcp_bridge_registration_required"))?;
-    let store = crate::platform::client_state::ClientStateStore::portable()?;
-    crate::domain::collaboration_plugin::serve_mcp_bridge(&store, agent_id, registration_id)?;
-    Ok(CliExecution::Streamed)
-}
-
-fn handle_disable(args: &[String]) -> Result<CliExecution> {
-    let params = cli_params(&args[2..]);
+pub(super) fn handle_disable(_command: AdmittedCommand) -> Result<CliExecution> {
     Ok(CliExecution::Json(
-        crate::domain::collaboration_plugin::disable(&params)?,
+        crate::domain::collaboration_plugin::disable(&empty_params())?,
     ))
 }
 
-fn handle_uninstall(args: &[String]) -> Result<CliExecution> {
-    let params = cli_params(&args[2..]);
+pub(super) fn handle_cleanup(_command: AdmittedCommand) -> Result<CliExecution> {
     Ok(CliExecution::Json(
-        crate::domain::collaboration_plugin::uninstall(&params)?,
-    ))
-}
-
-fn handle_cleanup(args: &[String]) -> Result<CliExecution> {
-    let params = cli_params(&args[2..]);
-    Ok(CliExecution::Json(
-        crate::domain::collaboration_plugin::cleanup(&params)?,
+        crate::domain::collaboration_plugin::cleanup(&empty_params())?,
     ))
 }
 
 #[cfg(test)]
 mod tests {
-    use super::super::CommandTable;
-
     #[test]
-    fn collaboration_help_exposes_plan_apply_and_cancel_without_automatic_routes() {
-        let help = CommandTable::new().help_text().join("\n");
+    fn collaboration_help_exposes_governed_routes() {
+        let help = super::super::build_command_table().help_text().join("\n");
         for path in [
-            "collaboration runner-trust import",
-            "collaboration runner-trust remove",
             "collaboration install cancel",
             "collaboration workflow local-deployment plan",
             "collaboration workflow local-deployment apply",
@@ -284,12 +298,9 @@ mod tests {
             "collaboration local-server start",
             "collaboration local-server stop",
             "collaboration local-server uninstall",
-            "collaboration mcp-bridge",
             "collaboration cleanup",
         ] {
             assert!(help.contains(path));
         }
-        assert!(!help.contains("collaboration workflow startup"));
-        assert!(!help.contains("collaboration workflow schedule"));
     }
 }

@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_client/src/application/controller/client_controller.dart';
 import 'package:flutter_client/src/frontend/l10n/lico_strings.dart';
 import 'package:flutter_client/src/frontend/features/agents/ui/agent_conversation_workspace.dart';
+import 'package:flutter_client/src/frontend/layout/layout_destination_presentation.dart';
+import 'package:flutter_client/src/frontend/layout/layout_palette.dart';
 import 'package:flutter_client/src/frontend/shared/platform/client_platform.dart';
 import 'package:flutter_client/src/frontend/features/targets/ui/manual_target_dialog.dart';
 import 'package:flutter_client/src/frontend/features/mobile_relay/ui/mobile_agents_home.dart';
@@ -64,8 +66,13 @@ class _AgentsCanvasState extends State<AgentsCanvas> {
           );
         }
 
+        final agentsPresentation = LayoutDestinationPresentationScope.maybeOf(
+          context,
+        )?.agents;
         return Scaffold(
-          backgroundColor: colors.background,
+          backgroundColor:
+              agentsPresentation?.canvasColor(context.layoutPalette) ??
+              colors.background,
           body: AgentConversationWorkspace(
             controller: widget.controller,
             targets: targets,

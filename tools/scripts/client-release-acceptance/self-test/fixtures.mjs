@@ -107,7 +107,7 @@ export function selfTestReports({
         releaseOwnerSignatureVerified: reviewSignoffReady,
       },
       metadataResistanceEvidence: {
-        schemaVersion: "licolite.secure-mesh.metadata-resistance-evidence.v1",
+        schemaVersion: "licomesh.secure-mesh.metadata-resistance-evidence.v1",
         sourceStateDigest: `sha256:${"a".repeat(64)}`,
         canonicalWireReportDigest: `sha256:${"d".repeat(64)}`,
         residualMetadataReportDigest: `sha256:${"e".repeat(64)}`,
@@ -156,7 +156,7 @@ export function selfTestReports({
     },
     acpArchive: { summary: { archiveLayerReady: true, releaseFilePolicyReady: true, releaseBuiltDesktopReadyPlatforms: ["macos"] }, sourceResults: passed, nativeResults: passed },
     androidPlatformCrypto: {
-      schemaVersion: "licolite.secure-mesh.android-platform-crypto-acceptance.v1",
+      schemaVersion: "licomesh.secure-mesh.android-platform-crypto-acceptance.v1",
       verifier: "tools/scripts/client-android-native-tests.mjs",
       ok: true,
       platform: "android",
@@ -185,7 +185,7 @@ export function selfTestReports({
 
 export function selfTestReleaseCliReport(platform, digestDigit) {
   return {
-    schemaVersion: "licolite.secure-mesh.release-cli-proof-report.v1",
+    schemaVersion: "licomesh.secure-mesh.release-cli-proof-report.v1",
     verifier: "tools/scripts/client-secure-mesh-release-cli-proof.mjs",
     ok: true,
     platform,

@@ -23,7 +23,7 @@ mixin ClientTargetFacade on AgentWorkspaceCoordinator {
   Map<String, dynamic>? get snapshotRestoreResult =>
       targetController.snapshotRestoreResult;
   @override
-  bool initialized = false;
+  bool get initialized => lifecycleProjection.initialized;
 
   bool get isScanningTargets => targetController.isScanning;
   bool get isAddingTarget => targetController.isAdding;

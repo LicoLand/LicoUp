@@ -1,16 +1,13 @@
-import 'dart:io';
-
 import 'package:flutter/foundation.dart' show ChangeNotifier, VoidCallback;
 
 import 'package:flutter_client/src/application/composition/built_in_layout_composition.dart';
-import 'package:flutter_client/src/application/controller/assembly/client_component_assembly_contracts.dart';
 import 'package:flutter_client/src/application/controller/assembly/client_catalog_convergence_component_assembly.dart';
 import 'package:flutter_client/src/application/controller/assembly/client_conversation_component_assembly.dart';
 import 'package:flutter_client/src/application/controller/assembly/client_lifecycle_component_assembly.dart';
 import 'package:flutter_client/src/application/controller/assembly/client_mobile_component_assembly.dart';
 import 'package:flutter_client/src/application/controller/assembly/client_navigation_component_assembly.dart';
 import 'package:flutter_client/src/application/controller/assembly/client_presentation_component_assembly.dart';
-import 'package:flutter_client/src/application/controller/assembly/client_routing_component_assembly.dart';
+import 'package:flutter_client/src/application/controller/assembly/client_plugin_management_component_assembly.dart';
 import 'package:flutter_client/src/application/controller/assembly/client_settings_component_assembly.dart';
 import 'package:flutter_client/src/application/controller/assembly/client_skill_component_assembly.dart';
 import 'package:flutter_client/src/application/controller/assembly/client_target_component_assembly.dart';
@@ -26,7 +23,7 @@ import 'package:flutter_client/src/application/features/mobile_relay/controller/
 import 'package:flutter_client/src/application/features/mobile_relay/controller/mobile_relay_controller.dart';
 import 'package:flutter_client/src/application/features/mobile_relay/controller/secure_mesh_controller.dart';
 import 'package:flutter_client/src/application/features/navigation/controller/client_navigation_controller.dart';
-import 'package:flutter_client/src/application/features/routing/controller/routing_module_lifecycle_controller.dart';
+import 'package:flutter_client/src/application/features/plugin_management/controller/adapter_plugin_controller.dart';
 import 'package:flutter_client/src/application/features/settings/controller/client_log_export_controller.dart';
 import 'package:flutter_client/src/application/features/settings/controller/client_update_controller.dart';
 import 'package:flutter_client/src/application/features/settings/controller/directory_path_controller.dart';
@@ -93,13 +90,12 @@ final class ClientComponentAssembly {
     discoverMobileTargets,
     required VoidCallback onTargetsSettled,
     required VoidCallback selectDefaultConversationAgent,
-    required ClientRoutingPolicySink onRoutingPolicy,
-    required void Function(bool initialized) onInitializedChanged,
     required VoidCallback onEnterAgents,
     required VoidCallback onEnterMonitoring,
     required VoidCallback onExitMonitoring,
     required VoidCallback onEnterMobileRelay,
     required VoidCallback notifyStateChanged,
+    required ClientSectionPreloadTaskMap sectionPreloadTasks,
     MobileHomeLayoutRepository? mobileHomeLayoutRepository,
     SkillHubGateway? skillHubGateway,
     SkillUpdateGateway? skillUpdateGateway,
@@ -118,18 +114,10 @@ final class ClientComponentAssembly {
       layoutManager: layoutManager,
       presentationPreferencesRepository: presentationPreferencesRepository,
     );
-    lifecycle = ClientLifecycleComponentAssembly(
-      onInitializedChanged: onInitializedChanged,
-      reportStatus: _reportStatus,
-    );
+    lifecycle = ClientLifecycleComponentAssembly(reportStatus: _reportStatus);
     catalogConvergence = ClientCatalogConvergenceComponentAssembly(
       agentService: agentService,
       gateway: catalogConvergenceGateway,
-    );
-    routing = ClientRoutingComponentAssembly(
-      rootDirectory: () => routingRootDirectory,
-      onRoutingPolicy: onRoutingPolicy,
-      reportStatus: _reportStatus,
     );
     conversation = ClientConversationComponentAssembly(
       conversationService: conversationService,
@@ -175,6 +163,10 @@ final class ClientComponentAssembly {
       optionalCollaborationGateway: optionalCollaborationGateway,
       onCatalogPurge: catalogConvergenceController.disable,
     );
+    pluginManagement = ClientPluginManagementComponentAssembly(
+      runner: agentService,
+      reportStatus: _reportStatus,
+    );
     mobile = ClientMobileComponentAssembly(
       portableData: portableData,
       agentService: agentService,
@@ -206,6 +198,9 @@ final class ClientComponentAssembly {
       onEnterMonitoring: onEnterMonitoring,
       onExitMonitoring: onExitMonitoring,
       onEnterMobileRelay: onEnterMobileRelay,
+      sectionPreloadTasks: sectionPreloadTasks,
+      onPreloadReport: (report) =>
+          shellController.replaceLastError(report.code),
     );
     for (final component in _listenedComponents) {
       component.addListener(_notifyStateChanged);
@@ -217,14 +212,13 @@ final class ClientComponentAssembly {
   late final ClientLifecycleComponentAssembly lifecycle;
   late final ClientCatalogConvergenceComponentAssembly catalogConvergence;
   late final ClientConversationComponentAssembly conversation;
-  late final ClientRoutingComponentAssembly routing;
   late final ClientTargetComponentAssembly target;
   late final ClientSkillComponentAssembly skill;
   late final ClientSettingsComponentAssembly settings;
+  late final ClientPluginManagementComponentAssembly pluginManagement;
   late final ClientMobileComponentAssembly mobile;
   late final ClientUsageComponentAssembly usage;
   late final ClientNavigationComponentAssembly navigation;
-  Directory? routingRootDirectory;
 
   ClientShellController get shellController => presentation.shellController;
   ClientLifecycleCoordinator get lifecycleController => lifecycle.controller;
@@ -232,8 +226,6 @@ final class ClientComponentAssembly {
       catalogConvergence.controller;
   ConversationPresentationSignals get conversationPresentationSignals =>
       conversation.presentationSignals;
-  RoutingModuleLifecycleController get routingLifecycleController =>
-      routing.controller;
   AgentConversationGateway get conversationGateway =>
       conversation.conversationGateway;
   MobileAgentConversationGateway get mobileConversationGateway =>
@@ -251,6 +243,8 @@ final class ClientComponentAssembly {
       settings.updateController;
   OptionalCollaborationController get optionalCollaborationController =>
       settings.optionalCollaborationController;
+  AdapterPluginController get adapterPluginController =>
+      pluginManagement.adapterPluginController;
   DirectoryPathController get directoryPathController =>
       settings.directoryPathController;
   MobileHomeLayoutController get mobileHomeLayoutController =>
@@ -262,15 +256,17 @@ final class ClientComponentAssembly {
   LayoutManager get layoutManager => presentation.layoutManager;
   AgentUsageController get agentUsageController => usage.controller;
   ClientNavigationController get navigationController => navigation.controller;
+  ClientSectionPreloadController get sectionPreloadController =>
+      navigation.preloadController;
 
   List<ChangeNotifier> get _listenedComponents => [
     ...presentation.listenables,
     ...lifecycle.listenables,
     ...catalogConvergence.listenables,
-    ...routing.listenables,
     ...target.listenables,
     ...skill.listenables,
     ...settings.listenables,
+    ...pluginManagement.listenables,
     ...mobile.listenables,
     ...usage.listenables,
     ...navigation.listenables,
@@ -300,11 +296,11 @@ final class ClientComponentAssembly {
     navigation.dispose();
     usage.dispose();
     mobile.dispose();
+    pluginManagement.dispose();
     settings.dispose();
     skill.dispose();
     target.dispose();
     conversation.dispose();
-    routing.dispose();
     catalogConvergence.dispose();
     lifecycle.dispose();
     presentation.dispose();

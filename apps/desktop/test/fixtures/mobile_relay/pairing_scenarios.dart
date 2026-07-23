@@ -69,8 +69,8 @@ void registerMobileRelayPairingScenarios() {
       'paired': true,
       'pcTokenPresent': true,
       'deviceTrustPresentation': {
-        'schemaVersion': 'licolite.secure-mesh.device-trust-presentation.v1',
-        'protocolVersion': 'licolite.secure-mesh.device-trust.v2',
+        'schemaVersion': 'licomesh.secure-mesh.device-trust-presentation.v1',
+        'protocolVersion': 'licomesh.secure-mesh.device-trust.v2',
         'localFingerprint': 'local-fingerprint',
         'peerFingerprint': 'peer-fingerprint',
         'safetyNumberGroups': [
@@ -88,7 +88,7 @@ void registerMobileRelayPairingScenarios() {
           '00012',
           'invalid',
         ],
-        'qrPayload': 'licolite-trust-qr',
+        'qrPayload': 'licomesh-trust-qr',
         'trustState': 'verified',
         'verificationMethod': 'pairing_claim_proof',
         'verified': true,
@@ -281,12 +281,12 @@ void registerMobileRelayPairingScenarios() {
                     'type': 'secure_mesh.envelope',
                     'payload': {},
                     'secureEnvelope': {
-                      'protocolVersion': 'licolite.secure-mesh.v1',
+                      'protocolVersion': 'licomesh.secure-mesh.v1',
                       'envelopeId': 'env-1',
                       'opaqueMailboxId': 'mailbox-1',
                       'messageId': 'msg-1',
                       'cipherSuite':
-                          'licolite.pqxdh-triple-ratchet.v1.x25519-ed25519-mlkem1024-hkdfsha256-chacha20poly1305',
+                          'licomesh.pqxdh-triple-ratchet.v1.x25519-ed25519-mlkem1024-hkdfsha256-chacha20poly1305',
                       'createdAt': '2026-06-12T00:00:00Z',
                       'expiresAt': '2026-06-12T01:00:00Z',
                       'ciphertextSize': 32,
@@ -309,7 +309,7 @@ void registerMobileRelayPairingScenarios() {
               0,
               jsonEncode({
                 'ok': true,
-                'protocolVersion': 'licolite.secure-mesh.v1',
+                'protocolVersion': 'licomesh.secure-mesh.v1',
                 'pairwiseCryptoStatus': 'pairwise-runtime-available',
                 'cryptoCoreStatus': 'blocked_for_production',
               }),
@@ -430,12 +430,12 @@ void registerMobileRelayPairingScenarios() {
       final execution = await service.executeSecureMeshCommand(
         agentService: agentService,
         payload: const {
-          'schema': 'licolite.secure-mesh.command.v1',
+          'schema': 'licomesh.secure-mesh.command.v1',
           'commandId': 'cmd-secure-1',
           'commandKind': 'client.activity.sync',
         },
         context: const {'localEndpointId': 'pc-b'},
-        ledgerPath: '/tmp/secure-command-ledger.sqlite',
+        ledgerPath: 'test-data/secure-command-ledger.sqlite',
         completedAt: '2026-06-12T00:01:00Z',
       );
       final trustPolicy = await service.evaluateSecureMeshDeviceTrust(
@@ -472,7 +472,7 @@ void registerMobileRelayPairingScenarios() {
               'chunkSize': 8,
               'chunkCount': 2,
             },
-            approvedRoot: '/tmp/approved-root',
+            approvedRoot: 'test-data/approved-root',
           );
       final receiveConfirmation = await service
           .evaluateSecureMeshFileReceiveConfirmation(
@@ -486,13 +486,13 @@ void registerMobileRelayPairingScenarios() {
               'chunkSize': 8,
               'chunkCount': 2,
             },
-            approvedRoot: '/tmp/approved-root',
+            approvedRoot: 'test-data/approved-root',
           );
 
       expect(config.effectiveGatewayUrl, 'https://relay.example.test');
       expect(response['pairingId'], 'pair-1');
       expect((sync['commands'] as List).single['commandId'], 'cmd-1');
-      expect(status['protocolVersion'], 'licolite.secure-mesh.v1');
+      expect(status['protocolVersion'], 'licomesh.secure-mesh.v1');
       expect(execution['ok'], isTrue);
       expect(trustPolicy['decision']['code'], 'trusted');
       expect(
@@ -537,14 +537,14 @@ void registerMobileRelayPairingScenarios() {
         'execute',
         '--payload',
         jsonEncode({
-          'schema': 'licolite.secure-mesh.command.v1',
+          'schema': 'licomesh.secure-mesh.command.v1',
           'commandId': 'cmd-secure-1',
           'commandKind': 'client.activity.sync',
         }),
         '--context',
         jsonEncode({'localEndpointId': 'pc-b'}),
         '--ledger-path',
-        '/tmp/secure-command-ledger.sqlite',
+        'test-data/secure-command-ledger.sqlite',
         '--completed-at',
         '2026-06-12T00:01:00Z',
       ]);
@@ -596,7 +596,7 @@ void registerMobileRelayPairingScenarios() {
           'chunkCount': 2,
         }),
         '--approved-root',
-        '/tmp/approved-root',
+        'test-data/approved-root',
         '--conflict-policy',
         'fail_if_exists',
       ]);
@@ -615,7 +615,7 @@ void registerMobileRelayPairingScenarios() {
           'chunkCount': 2,
         }),
         '--approved-root',
-        '/tmp/approved-root',
+        'test-data/approved-root',
         '--user-confirmed',
         'false',
         '--conflict-policy',

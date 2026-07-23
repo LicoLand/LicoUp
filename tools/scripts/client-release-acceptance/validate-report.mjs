@@ -3,7 +3,7 @@ import { sanitizeArtifactBinding } from "./sanitize-binding.mjs";
 import { requireValue, text } from "./util.mjs";
 
 export function validateAcceptanceReport(report) {
-  requireValue(report?.schemaVersion === "licolite.client-release-acceptance-report.v3", "client release report schema version mismatch");
+  requireValue(report?.schemaVersion === "licomesh.client-release-acceptance-report.v3", "client release report schema version mismatch");
   requireValue(Number.isFinite(Date.parse(String(report.generatedAt || ""))), "client release report generatedAt is invalid");
   requireValue(text(report.productVersion), "client release report productVersion is required");
   requireValue(Array.isArray(report.inputIntegrity?.reports) && report.inputIntegrity.reports.length > 0, "client release input receipts are required");

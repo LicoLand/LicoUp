@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "licolite.client-artifact-verification-receipts.v3",
+  "$id": "licomesh.client-artifact-verification-receipts.v3",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -20,7 +20,7 @@
     "privacy"
   ],
   "properties": {
-    "schemaVersion": { "const": "licolite.client-artifact-verification-receipts.v3" },
+    "schemaVersion": { "const": "licomesh.client-artifact-verification-receipts.v3" },
     "generatedAt": { "type": "string", "format": "date-time" },
     "generatedBy": { "const": "tools/scripts/client-artifact-verification-receipts.mjs" },
     "selectedTargetIds": {
@@ -101,7 +101,7 @@
       "required": ["id", "ref", "digest"],
       "properties": {
         "id": { "type": "string", "minLength": 1 },
-        "ref": { "type": "string", "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))[^\\u0000\\\\]+$" },
+        "ref": { "type": "string", "pattern": "^(?!/)(?!.*(?:^|/)[.][.](?:/|$))(?!.*\\x00)(?!.*\\x5c).+$" },
         "digest": { "$ref": "#/$defs/digest" }
       }
     },
@@ -254,7 +254,7 @@
       "required": ["id", "ref", "digest"],
       "properties": {
         "id": { "type": "string", "minLength": 1 },
-        "ref": { "type": "string", "pattern": "^build/(?!.*(?:^|/)\\.\\.(?:/|$))[^\\u0000\\\\]+$" },
+        "ref": { "type": "string", "pattern": "^build/(?!.*(?:^|/)[.][.](?:/|$))(?!.*\\x00)(?!.*\\x5c).+$" },
         "digest": { "$ref": "#/$defs/digest" }
       }
     },

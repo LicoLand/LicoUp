@@ -356,6 +356,12 @@ export async function checkSecureMeshAuthorityAndCustody(context) {
     "crates/lico-client-native/src/core/secure_mesh_secret_store/handle.rs",
     "crates/lico-client-native/src/core/secure_mesh_secret_store/port.rs"
   ]);
+  const secureMeshSecretStoreAuthorizationRustSource = await readText(
+    "crates/lico-client-native/src/core/secure_mesh_secret_store/authorization.rs"
+  );
+  const macosUserPresenceRustSource = await readText(
+    "crates/lico-client-native/src/platform/secure_mesh_secret_store/macos_user_presence.rs"
+  );
   const secureMeshCapabilityFacadeRustSource =
     await readText("crates/lico-client-native/src/core/secure_mesh_capability.rs");
   const secureMeshCapabilityProductionPaths = [
@@ -444,7 +450,6 @@ export async function checkSecureMeshAuthorityAndCustody(context) {
       ".mjs"
     ),
   ]);
-  const mobileCommandsSource = await readText("crates/lico-client-native/src/ffi/commands/mobile.rs");
   const secureClientRelayMockSource =
     await readText("tools/scripts/client-secure-client-relay-mock-e2e.mjs");
   const clientCliVmSource = await readText("tools/scripts/client-cli-vm/verify/command.mjs");
@@ -691,11 +696,27 @@ export async function checkSecureMeshAuthorityAndCustody(context) {
     mobileRelayRustSource.includes("e2ee_status_redacts_pairing_invite_secret"),
     "mobile_relay.rs must expose the shared exact capability result, safe selected custody, and unsafe-persistence rejection while public reads remain no-authorize"
   );
-  assert(cargoToml.includes("keyring =") &&
-    cargoToml.includes("[target.'cfg(target_os = \"macos\")'.dependencies]") &&
-    cargoToml.includes('features = ["apple-native"]') &&
-    !cargoToml.includes("windows-native") &&
-    !cargoToml.includes("linux-native-sync-persistent") &&
+  const macosCargoDependencyStart = cargoToml.indexOf(
+    "[target.'cfg(target_os = \"macos\")'.dependencies]"
+  );
+  const macosCargoDependencyEnd = cargoToml.indexOf(
+    "[target.'cfg(target_os = \"linux\")'.dependencies]"
+  );
+  const macosCargoDependencies = cargoToml.slice(
+    macosCargoDependencyStart,
+    macosCargoDependencyEnd
+  );
+  assert(!cargoToml.includes("keyring =") &&
+    macosCargoDependencyStart >= 0 &&
+    macosCargoDependencyEnd > macosCargoDependencyStart &&
+    macosCargoDependencies.includes("objc2 =") &&
+    macosCargoDependencies.includes("objc2-local-authentication =") &&
+    macosCargoDependencies.includes("security-framework =") &&
+    macosCargoDependencies.includes("security-framework-sys =") &&
+    !secureMeshSecretStoreRustSource.includes("keyring::") &&
+    !await exists(
+      "crates/lico-client-native/src/platform/secure_mesh_secret_store/platform_backends/keyring.rs"
+    ) &&
     mobileRelayRustSource.includes("NATIVE_SECRET_STORE_SERVICE") &&
     mobileRelayRustSource.includes("persist_config_secret_material_to_native_store") &&
     mobileRelayRustSource.includes("hydrate_config_secret_material_from_native_store") &&
@@ -719,35 +740,56 @@ export async function checkSecureMeshAuthorityAndCustody(context) {
     secureMeshSecretStoreRustSource.includes("CapabilityEvidenceKind::NotMeasured") &&
     secureMeshSecretStoreRustSource.includes("linux_secret_service_io_round_trip_unverified") &&
     secureMeshSecretStoreRustSource.includes("fail_closed::begin_authorized_session") &&
-    secureMeshSecretStoreRustSource.includes("platform_secret_store_runtime_operation_unverified") &&
-    mobileCommandsSource.includes('"secret-store-self-test"'),
-    "desktop custody must keep keyring access macOS-only and conservatively reject unmeasured Linux or Windows persistent storage"
+    secureMeshSecretStoreRustSource.includes("platform_secret_store_runtime_operation_unverified"),
+    "desktop custody must use direct macOS Security.framework access while unmeasured Linux or Windows storage stays fail-closed"
   );
-  assert(cargoToml.includes("objc2-local-authentication") &&
-    cargoToml.includes("security-framework =") &&
-    cargoToml.includes("security-framework-sys =") &&
-    secureMeshSecretStoreRustSource.includes("objc2_local_authentication::{LAContext, LAPolicy}") &&
-    secureMeshSecretStoreRustSource.includes("LAPolicy::DeviceOwnerAuthentication") &&
-    secureMeshSecretStoreRustSource.includes("setInteractionNotAllowed") &&
-    secureMeshSecretStoreRustSource.includes("context.setInteractionNotAllowed(!request.allow_interaction())") &&
-    secureMeshSecretStoreRustSource.includes("evaluatePolicy_localizedReason_reply") &&
-    secureMeshSecretStoreRustSource.includes("block2::RcBlock::new") &&
-    secureMeshSecretStoreRustSource.includes("system_authorization_attempt_count") &&
-    secureMeshSecretStoreRustSource.includes("system_authorization_completed") &&
-    secureMeshSecretStoreRustSource.includes("kSecUseDataProtectionKeychain") &&
-    secureMeshSecretStoreRustSource.includes("kSecUseAuthenticationContext") &&
-    secureMeshSecretStoreRustSource.includes("SecAccessControl::create_with_protection") &&
-    secureMeshSecretStoreRustSource.includes("ProtectionMode::AccessibleWhenUnlockedThisDeviceOnly") &&
-    secureMeshSecretStoreRustSource.includes("kSecAccessControlUserPresence") &&
-    secureMeshSecretStoreRustSource.includes("MacosAuthorizationContext") &&
-    secureMeshSecretStoreRustSource.includes("if request.allow_interaction() {") &&
-    secureMeshSecretStoreRustSource.includes("secure mesh macOS user-presence authorization is unavailable") &&
-    secureMeshSecretStoreRustSource.includes("SecurityCapability::AppleKeychain") &&
-    secureMeshSecretStoreRustSource.includes("SecurityCapability::DataProtectionKeychain") &&
-    secureMeshSecretStoreRustSource.includes("SecurityCapability::OsUserPresence") &&
-    secureMeshSecretStoreRustSource.includes("with_capability_report") &&
-    secureMeshSecretStoreContractRustSource.includes("app_password_prompt_used: false"),
-    "macOS Secure Mesh secret store must select optional LocalAuthentication hardening through exact capability facts without an app password prompt"
+  const localAuthenticationEvaluation =
+    macosUserPresenceRustSource.indexOf("evaluatePolicy_localizedReason_reply");
+  const localAuthenticationInvocation =
+    macosUserPresenceRustSource.indexOf("let decision = evaluate_system_authorization_once");
+  const interactiveContextStart =
+    macosUserPresenceRustSource.indexOf("context.setInteractionNotAllowed(false)");
+  const approvedPresenceDecision =
+    macosUserPresenceRustSource.indexOf("if decision == PresenceDecision::Approved");
+  const approvedContextSeal =
+    macosUserPresenceRustSource.indexOf("context.setInteractionNotAllowed(true)");
+  assert(
+    secureMeshSecretStoreAuthorizationRustSource.includes(
+      "pub struct SecretStorePresenceBatchRequest"
+    ) &&
+    secureMeshSecretStoreAuthorizationRustSource.includes(
+      "pub struct SecretStoreApprovedPresenceBatch"
+    ) &&
+    secureMeshSecretStoreAuthorizationRustSource.includes(
+      "pub struct SecretStorePresenceGrant"
+    ) &&
+    secureMeshSecretStoreAuthorizationRustSource.includes(
+      "pub struct SecretStoreConsumedPresence"
+    ) &&
+    secureMeshSecretStoreAuthorizationRustSource.includes(
+      "MAX_SECRET_STORE_PRESENCE_GRANT_TTL: Duration = Duration::from_secs(30)"
+    ) &&
+    macosUserPresenceRustSource.includes("pub struct MacosPresenceBatchCoordinator") &&
+    macosUserPresenceRustSource.includes("pub struct MacosAuthorizedPresence") &&
+    macosUserPresenceRustSource.includes("pub struct SecurityFrameworkKeychain") &&
+    macosUserPresenceRustSource.includes("pub trait MacosSecItemPort") &&
+    macosUserPresenceRustSource.includes("kSecUseAuthenticationContext") &&
+    macosUserPresenceRustSource.includes("LAPolicy::DeviceOwnerAuthentication") &&
+    macosUserPresenceRustSource.includes("block2::RcBlock::new") &&
+    localAuthenticationEvaluation >= 0 &&
+    localAuthenticationEvaluation ===
+      macosUserPresenceRustSource.lastIndexOf("evaluatePolicy_localizedReason_reply") &&
+    interactiveContextStart >= 0 &&
+    interactiveContextStart < localAuthenticationInvocation &&
+    approvedPresenceDecision > localAuthenticationInvocation &&
+    approvedContextSeal > approvedPresenceDecision &&
+    secureMeshSecretStoreAuthorizationRustSource.includes("app_password_prompt_used: false") &&
+    !macosUserPresenceRustSource.includes("AUTHORIZATION_CONTEXT_CACHE") &&
+    !macosUserPresenceRustSource.includes("keyring::") &&
+    !await exists(
+      "crates/lico-client-native/src/platform/secure_mesh_secret_store/platform_backends/keyring.rs"
+    ),
+    "macOS Secure Mesh custody must bind exact 30-second single-use grants to one LocalAuthentication context and direct Security.framework effects without app passwords or legacy caches"
   );
   assert(macosUserPresenceProofSource.includes("reduceCapabilityFacts") &&
     macosUserPresenceProofSource.includes("validateCapabilityReport") &&
@@ -766,17 +808,37 @@ export async function checkSecureMeshAuthorityAndCustody(context) {
     platformSecretStoreMatrixSource.includes("macosEnabledCapabilities"),
     "macOS Secure Mesh evidence must reduce independent platform facts into the shared exact adaptive capability set"
   );
-  const nonInteractiveAuthorizationGate = secureMeshSecretStoreRustSource.indexOf(
+  const nonInteractiveAuthorizationGate = macosUserPresenceRustSource.indexOf(
     "if !request.allow_interaction()",
   );
-  const authorizationCacheLookup = secureMeshSecretStoreRustSource.indexOf(
-    "AUTHORIZATION_CONTEXT_CACHE.get_or_init",
+  const presenceRequestDigest = macosUserPresenceRustSource.indexOf(
+    "let request_digest = request.canonical_digest()",
+  );
+  const batchCacheLock = macosUserPresenceRustSource.indexOf(
+    "let mut batches = self",
+  );
+  const releasedBatchCacheScope = macosUserPresenceRustSource.indexOf(
+    "if !prompt_owner",
+  );
+  const systemPresencePrompt = macosUserPresenceRustSource.indexOf(
+    ".prompt(request)",
   );
   assert(
     nonInteractiveAuthorizationGate >= 0 &&
-      authorizationCacheLookup >= 0 &&
-      nonInteractiveAuthorizationGate < authorizationCacheLookup,
-    "macOS background secret access must fail closed before any cached interactive authorization is considered",
+      presenceRequestDigest > nonInteractiveAuthorizationGate &&
+      batchCacheLock > presenceRequestDigest &&
+      releasedBatchCacheScope > batchCacheLock &&
+      systemPresencePrompt > releasedBatchCacheScope &&
+      macosUserPresenceRustSource.includes(
+        "MACOS_AUTHORIZATION_CACHE_MAX_BATCHES: usize = 16"
+      ) &&
+      macosUserPresenceRustSource.includes(
+        "batches.len() >= MACOS_AUTHORIZATION_CACHE_MAX_BATCHES"
+      ) &&
+      secureMeshSecretStoreAuthorizationRustSource.includes(
+        "MAX_SECRET_STORE_PRESENCE_GRANT_TTL: Duration = Duration::from_secs(30)"
+      ),
+    "macOS background secret access must reject non-interactive requests before cache lookup and must never hold the bounded presence cache lock while system UI is active",
   );
   assert(clientCliVmSource.includes("dbus-run-session") &&
     clientCliVmSource.includes("gnome-keyring-daemon") &&

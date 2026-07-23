@@ -111,13 +111,13 @@ fn mobile_relay_e2ee_round_trips_command_and_result_without_plaintext() {
         "commandId": "cmd_mobile_test",
         "commandKind": "agent.message.send",
         "senderIdentity": {
-            "endpointId": local_endpoint_state(&mobile_config).unwrap().endpoint_id,
-            "identityFingerprint": local_endpoint_state(&mobile_config).unwrap().fingerprint,
+            "endpointId": local_endpoint_state(&mobile_config, test_runtime_secret_material(stringify!(&mobile_config))).unwrap().endpoint_id,
+            "identityFingerprint": local_endpoint_state(&mobile_config, test_runtime_secret_material(stringify!(&mobile_config))).unwrap().fingerprint,
             "trustState": "verified",
             "endpointKind": "mobile"
         },
         "targetBinding": {
-            "targetEndpointId": local_endpoint_state(&pc_config).unwrap().endpoint_id,
+            "targetEndpointId": local_endpoint_state(&pc_config, test_runtime_secret_material(stringify!(&pc_config))).unwrap().endpoint_id,
             "targetAgentId": "codex",
             "workspaceId": "default"
         },
@@ -133,6 +133,7 @@ fn mobile_relay_e2ee_round_trips_command_and_result_without_plaintext() {
     });
     let command_envelope = seal_mobile_relay_payload(
         &mobile_config,
+        test_runtime_secret_material(stringify!(&mobile_config)),
         crate::core::secure_mesh_crypto::SecureMeshPayloadKind::Command,
         &command_body,
     )
@@ -147,6 +148,7 @@ fn mobile_relay_e2ee_round_trips_command_and_result_without_plaintext() {
 
     let opened_command = open_mobile_relay_payload(
         &pc_config,
+        test_runtime_secret_material(stringify!(&pc_config)),
         &command_envelope,
         crate::core::secure_mesh_crypto::SecureMeshPayloadKind::Command,
     )
@@ -163,6 +165,7 @@ fn mobile_relay_e2ee_round_trips_command_and_result_without_plaintext() {
     });
     let result_envelope = seal_mobile_relay_payload(
         &pc_config,
+        test_runtime_secret_material(stringify!(&pc_config)),
         crate::core::secure_mesh_crypto::SecureMeshPayloadKind::ResultPayload,
         &result_body,
     )
@@ -176,6 +179,7 @@ fn mobile_relay_e2ee_round_trips_command_and_result_without_plaintext() {
 
     let opened_result = open_mobile_relay_payload(
         &mobile_config,
+        test_runtime_secret_material(stringify!(&mobile_config)),
         &result_envelope,
         crate::core::secure_mesh_crypto::SecureMeshPayloadKind::ResultPayload,
     )
@@ -211,8 +215,16 @@ fn mobile_relay_file_key_envelope_hides_attachment_key_and_opens_file_after_decr
         chunk_size: 33,
         chunk_count: 1,
     };
-    let source_endpoint = local_endpoint_state(&mobile_config).unwrap();
-    let target_endpoint = local_endpoint_state(&pc_config).unwrap();
+    let source_endpoint = local_endpoint_state(
+        &mobile_config,
+        test_runtime_secret_material(stringify!(&mobile_config)),
+    )
+    .unwrap();
+    let target_endpoint = local_endpoint_state(
+        &pc_config,
+        test_runtime_secret_material(stringify!(&pc_config)),
+    )
+    .unwrap();
     let file_hash = format!(
         "sha256:{}",
         general_purpose::URL_SAFE_NO_PAD
@@ -275,6 +287,7 @@ fn mobile_relay_file_key_envelope_hides_attachment_key_and_opens_file_after_decr
     });
     let file_key_envelope = seal_mobile_relay_payload(
         &mobile_config,
+        test_runtime_secret_material(stringify!(&mobile_config)),
         crate::core::secure_mesh_crypto::SecureMeshPayloadKind::Command,
         &file_key_payload,
     )
@@ -296,6 +309,7 @@ fn mobile_relay_file_key_envelope_hides_attachment_key_and_opens_file_after_decr
 
     let wrong_kind_error = open_mobile_relay_payload(
         &pc_config,
+        test_runtime_secret_material(stringify!(&pc_config)),
         &file_key_envelope,
         crate::core::secure_mesh_crypto::SecureMeshPayloadKind::ResultPayload,
     )
@@ -305,6 +319,7 @@ fn mobile_relay_file_key_envelope_hides_attachment_key_and_opens_file_after_decr
 
     let opened = open_mobile_relay_payload(
         &pc_config,
+        test_runtime_secret_material(stringify!(&pc_config)),
         &file_key_envelope,
         crate::core::secure_mesh_crypto::SecureMeshPayloadKind::Command,
     )
@@ -335,6 +350,7 @@ fn mobile_relay_file_key_envelope_hides_attachment_key_and_opens_file_after_decr
 
     let replay_error = open_mobile_relay_payload(
         &pc_config,
+        test_runtime_secret_material(stringify!(&pc_config)),
         &file_key_envelope,
         crate::core::secure_mesh_crypto::SecureMeshPayloadKind::Command,
     )
@@ -357,6 +373,7 @@ fn mobile_relay_file_key_envelope_metadata_boundary_is_exhaustive() {
     let file_key_base64url = general_purpose::URL_SAFE_NO_PAD.encode({ let mut file_key = [0u8; 32]; OsRng.fill_bytes(&mut file_key); file_key });
     let envelope = seal_mobile_relay_payload(
         &mobile_config,
+        test_runtime_secret_material(stringify!(&mobile_config)),
         crate::core::secure_mesh_crypto::SecureMeshPayloadKind::Command,
         &json!({
             "kind": "secure_mesh.file_key",

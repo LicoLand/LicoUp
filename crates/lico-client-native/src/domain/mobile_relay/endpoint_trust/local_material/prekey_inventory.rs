@@ -1,35 +1,42 @@
 use super::identity_generation::{derive_identity_public, signing_material};
 use super::prekey_generation::{curve_prekey_material, mlkem_prekey_material};
 use crate::core::secure_mesh_prekey::SecureMeshPreKeyKind;
+use crate::core::secure_mesh_secret_store::SecretBytes;
 use crate::core::secure_mesh_trust::DeviceTrustPublicIdentity;
+use crate::domain::mobile_relay::secret_custody::{
+    MobileRelayE2eeSecretField, RuntimeSecretMaterial,
+};
 use crate::domain::mobile_relay::support::MOBILE_RELAY_E2EE_PROTOCOL_VERSION;
 use anyhow::{Result, anyhow};
 use serde_json::{Map, Value, json};
 
 pub(in crate::domain::mobile_relay) fn ensure_mobile_relay_pqxdh_material(
     config: &mut Value,
+    secret_material: &mut RuntimeSecretMaterial,
 ) -> Result<()> {
     let object = config
         .get_mut("mobileRelayE2ee")
         .and_then(Value::as_object_mut)
         .ok_or_else(|| anyhow!("mobile relay E2EE endpoint state is missing"))?;
     let endpoint_id = required_text(object, "endpointId", "mobile relay endpoint id is missing")?;
-    let private_key = required_text(
-        object,
-        "privateKeyBase64url",
-        "mobile relay local private key is missing",
-    )?;
-    let (identity_public, public_key, fingerprint) = derive_identity_public(&private_key)?;
+    let private_key = secret_material
+        .e2ee_secret(MobileRelayE2eeSecretField::PrivateKey)
+        .ok_or_else(|| anyhow!("mobile relay local private key is missing"))?
+        .expose_utf8()?;
+    let (identity_public, public_key, fingerprint) = derive_identity_public(private_key)?;
     object.insert("publicKeyBase64url".to_string(), json!(public_key));
     object.insert("fingerprint".to_string(), json!(fingerprint));
 
-    let existing_signing_key = optional_text(object, "signingKeyBase64url");
-    let signing = signing_material(existing_signing_key.as_deref())?;
+    let existing_signing_key = secret_material
+        .e2ee_secret(MobileRelayE2eeSecretField::SigningKey)
+        .map(SecretBytes::expose_utf8)
+        .transpose()?;
+    let signing = signing_material(existing_signing_key)?;
     if existing_signing_key.is_none() {
-        object.insert(
-            "signingKeyBase64url".to_string(),
-            json!(signing.private_key),
-        );
+        secret_material.insert_e2ee_secret(
+            MobileRelayE2eeSecretField::SigningKey,
+            SecretBytes::try_from_string(signing.private_key)?,
+        )?;
     }
     object.insert(
         "signingPublicKeyBase64url".to_string(),
@@ -60,12 +67,12 @@ pub(in crate::domain::mobile_relay) fn ensure_mobile_relay_pqxdh_material(
     )?;
     ensure_curve_prekey(
         object,
+        secret_material,
         &signing.key,
         &identity,
         SecureMeshPreKeyKind::SignedPreKey,
         CurveFields {
             id: "signedPrekeyId",
-            private_key: "signedPrekeyPrivateKeyBase64url",
             public_key: "signedPrekeyPublicKeyBase64url",
             signature: "signedPrekeySignatureBase64url",
             created_at: "signedPrekeyCreatedAt",
@@ -75,12 +82,12 @@ pub(in crate::domain::mobile_relay) fn ensure_mobile_relay_pqxdh_material(
     )?;
     ensure_curve_prekey(
         object,
+        secret_material,
         &signing.key,
         &identity,
         SecureMeshPreKeyKind::OneTimePreKey,
         CurveFields {
             id: "oneTimePrekeyId",
-            private_key: "oneTimePrekeyPrivateKeyBase64url",
             public_key: "oneTimePrekeyPublicKeyBase64url",
             signature: "oneTimePrekeySignatureBase64url",
             created_at: "oneTimePrekeyCreatedAt",
@@ -88,12 +95,11 @@ pub(in crate::domain::mobile_relay) fn ensure_mobile_relay_pqxdh_material(
         },
         "otpk",
     )?;
-    ensure_mlkem_prekey(object, &signing.key, &identity)
+    ensure_mlkem_prekey(object, secret_material, &signing.key, &identity)
 }
 
 struct CurveFields {
     id: &'static str,
-    private_key: &'static str,
     public_key: &'static str,
     signature: &'static str,
     created_at: &'static str,
@@ -102,14 +108,24 @@ struct CurveFields {
 
 fn ensure_curve_prekey(
     object: &mut Map<String, Value>,
+    secret_material: &mut RuntimeSecretMaterial,
     signing_key: &ed25519_dalek::SigningKey,
     identity: &DeviceTrustPublicIdentity,
     kind: SecureMeshPreKeyKind,
     fields: CurveFields,
     id_prefix: &str,
 ) -> Result<()> {
+    let secret_field = match kind {
+        SecureMeshPreKeyKind::SignedPreKey => MobileRelayE2eeSecretField::SignedPrekeyPrivateKey,
+        SecureMeshPreKeyKind::OneTimePreKey => MobileRelayE2eeSecretField::OneTimePrekeyPrivateKey,
+        _ => return Err(anyhow!("mobile relay curve prekey kind is unsupported")),
+    };
+    let existing_private = secret_material
+        .e2ee_secret(secret_field)
+        .map(SecretBytes::expose_utf8)
+        .transpose()?;
     let material = curve_prekey_material(
-        optional_text(object, fields.private_key).as_deref(),
+        existing_private,
         optional_text(object, fields.id).as_deref(),
         optional_text(object, fields.created_at).as_deref(),
         optional_text(object, fields.expires_at).as_deref(),
@@ -119,7 +135,12 @@ fn ensure_curve_prekey(
         id_prefix,
     )?;
     object.insert(fields.id.to_string(), json!(material.id));
-    object.insert(fields.private_key.to_string(), json!(material.private_key));
+    if existing_private.is_none() {
+        secret_material.insert_e2ee_secret(
+            secret_field,
+            SecretBytes::try_from_string(material.private_key)?,
+        )?;
+    }
     object.insert(fields.public_key.to_string(), json!(material.public_key));
     object.insert(fields.signature.to_string(), json!(material.signature));
     object.insert(fields.created_at.to_string(), json!(material.created_at));
@@ -129,11 +150,16 @@ fn ensure_curve_prekey(
 
 fn ensure_mlkem_prekey(
     object: &mut Map<String, Value>,
+    secret_material: &mut RuntimeSecretMaterial,
     signing_key: &ed25519_dalek::SigningKey,
     identity: &DeviceTrustPublicIdentity,
 ) -> Result<()> {
+    let existing_seed = secret_material
+        .e2ee_secret(MobileRelayE2eeSecretField::OneTimeMlKem1024PrekeySeed)
+        .map(SecretBytes::expose_utf8)
+        .transpose()?;
     let material = mlkem_prekey_material(
-        optional_text(object, "oneTimeMlKem1024PrekeySeedBase64url").as_deref(),
+        existing_seed,
         optional_text(object, "oneTimeMlKem1024PrekeyId").as_deref(),
         optional_text(object, "oneTimeMlKem1024PrekeyCreatedAt").as_deref(),
         optional_text(object, "oneTimeMlKem1024PrekeyExpiresAt").as_deref(),
@@ -141,10 +167,12 @@ fn ensure_mlkem_prekey(
         identity,
     )?;
     object.insert("oneTimeMlKem1024PrekeyId".to_string(), json!(material.id));
-    object.insert(
-        "oneTimeMlKem1024PrekeySeedBase64url".to_string(),
-        json!(material.seed),
-    );
+    if existing_seed.is_none() {
+        secret_material.insert_e2ee_secret(
+            MobileRelayE2eeSecretField::OneTimeMlKem1024PrekeySeed,
+            SecretBytes::try_from_string(material.seed)?,
+        )?;
+    }
     object.insert(
         "oneTimeMlKem1024PrekeyPublicKeyBase64url".to_string(),
         json!(material.public_key),

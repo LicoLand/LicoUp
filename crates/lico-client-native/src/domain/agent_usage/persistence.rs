@@ -178,7 +178,7 @@ mod tests {
             .unwrap();
         let reports = read_retained_reports(&params, None, 10).unwrap();
         assert_eq!(reports.len(), 1);
-        assert_eq!(reports[0]["schemaVersion"], 4);
+        assert_eq!(reports[0]["schemaVersion"], AGENT_USAGE_SCHEMA_VERSION);
         fs::remove_dir_all(root).unwrap();
     }
 }

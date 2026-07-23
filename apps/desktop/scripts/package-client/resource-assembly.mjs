@@ -36,6 +36,12 @@ export function assemblePackageResources(selected, skipped, options) {
   mkdirSync(bundle.executableDir, { recursive: true });
   mkdirSync(bundle.moduleResourceDir, { recursive: true });
   removeSkippedArtifacts(skipped, bundle);
+  const copiedArtifacts = stageSelectedModuleArtifacts(selected, bundle, options);
+  return { bundle, copiedArtifacts };
+}
+
+// Canonical artifact staging seam shared by normal packaging and focused bundle verification.
+export function stageSelectedModuleArtifacts(selected, bundle, options) {
   const copiedArtifacts = [];
   for (const moduleConfig of selected) {
     if (moduleConfig.cargoBin) {
@@ -46,7 +52,7 @@ export function assemblePackageResources(selected, skipped, options) {
       copiedArtifacts.push(...copyModuleResources(moduleConfig, bundle));
     }
   }
-  return { bundle, copiedArtifacts };
+  return copiedArtifacts;
 }
 
 export function stageRunnableClient(result, options) {

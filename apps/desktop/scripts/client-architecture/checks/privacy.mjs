@@ -22,8 +22,8 @@ export async function checkProductContractsAndPortableData(context, { modules })
     sameSet,
     sourceLineCount,
   } = context;
-  const architectureSource = await readText("docs/ARCHITECTURE.md");
-  const userGuideSource = await readText("docs/USER-GUIDE.md");
+  const architectureSource = await readText("docs/architecture/README.md");
+  const userGuideSource = await readText("docs/functionality/USER-GUIDE.md");
   const contributingSource = await readText("CONTRIBUTING.md");
   const normalizedArchitectureSource = architectureSource.replace(/\s+/gu, " ");
   const normalizedUserGuideSource = userGuideSource.replace(/\s+/gu, " ");
@@ -31,8 +31,12 @@ export async function checkProductContractsAndPortableData(context, { modules })
   assert(
     normalizedArchitectureSource.includes("Agent conversations") &&
       normalizedArchitectureSource.includes("New and native continued sessions") &&
-      normalizedArchitectureSource.includes("turn-by-turn fallback"),
-    "ARCHITECTURE.md must keep native continuation and bounded fallback as the conversation boundary"
+      normalizedArchitectureSource.includes("process-local") &&
+      normalizedArchitectureSource.includes("Local Bridge") &&
+      normalizedArchitectureSource.includes("wakeable progress") &&
+      normalizedArchitectureSource.includes("native steer") &&
+      normalizedArchitectureSource.includes("exact-session safe-boundary follow-up"),
+    "ARCHITECTURE.md must keep native continuation and the Local Bridge Level 2 boundary"
   );
   assert(
     normalizedUserGuideSource.includes("prefers the agent's native attach or resume operation") &&

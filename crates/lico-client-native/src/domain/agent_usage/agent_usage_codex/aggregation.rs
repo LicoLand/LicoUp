@@ -1,30 +1,64 @@
-use super::super::contract::{HistoryUsageSummary, UNATTRIBUTED_MODEL};
+use super::super::contract::HistoryUsageSummary;
 use super::super::window::UsageWindow;
 use super::models::ScanStats;
+use super::rollup::{DailyRollup, collect_detail_rollups, normalized_model};
 use super::utils::from_i64;
 use anyhow::{Context, Result};
 use rusqlite::{Connection, TransactionBehavior, params};
 use std::collections::BTreeSet;
 
-#[derive(Debug)]
-struct UsageRow {
-    source_key: String,
-    session_id: Option<String>,
+fn apply_rollup(
+    summary: &mut HistoryUsageSummary,
+    sessions: &mut BTreeSet<String>,
     day: String,
-    model: Option<String>,
-    input: u64,
-    cached: u64,
-    output: u64,
-}
+    rollup: DailyRollup,
+) {
+    summary.explicit_prompt_tokens = summary
+        .explicit_prompt_tokens
+        .saturating_add(rollup.explicit_prompt);
+    summary.explicit_cached_input_tokens = summary
+        .explicit_cached_input_tokens
+        .saturating_add(rollup.explicit_cached.min(rollup.explicit_prompt));
+    summary.explicit_completion_tokens = summary
+        .explicit_completion_tokens
+        .saturating_add(rollup.explicit_completion);
+    summary.explicit_total_tokens = summary.explicit_total_tokens.saturating_add(
+        rollup
+            .explicit_prompt
+            .saturating_add(rollup.explicit_completion),
+    );
+    summary.explicit_records = summary
+        .explicit_records
+        .saturating_add(rollup.explicit_records);
+    summary.message_count = summary.message_count.saturating_add(rollup.message_count);
+    sessions.extend(rollup.sessions);
 
-#[derive(Debug)]
-struct UsageEstimateRow {
-    source_key: String,
-    session_id: Option<String>,
-    day: String,
-    model: Option<String>,
-    role: String,
-    tokens: u64,
+    let daily = summary.daily_usage.entry(day).or_default();
+    daily.prompt_tokens = daily.prompt_tokens.saturating_add(rollup.explicit_prompt);
+    daily.cached_input_tokens = daily
+        .cached_input_tokens
+        .saturating_add(rollup.explicit_cached.min(rollup.explicit_prompt));
+    daily.completion_tokens = daily
+        .completion_tokens
+        .saturating_add(rollup.explicit_completion);
+    daily.total_tokens = daily.total_tokens.saturating_add(
+        rollup
+            .explicit_prompt
+            .saturating_add(rollup.explicit_completion),
+    );
+    daily.message_count = daily.message_count.saturating_add(rollup.message_count);
+    daily.explicit_records = daily
+        .explicit_records
+        .saturating_add(rollup.explicit_records);
+    for (model, usage) in rollup.models {
+        daily.add_model_usage(
+            normalized_model(&model),
+            usage.prompt,
+            usage.cached,
+            usage.completion,
+            usage.total,
+        );
+    }
 }
 
 pub(super) fn aggregate_cached_usage(
@@ -42,188 +76,89 @@ pub(super) fn aggregate_cached_usage(
         ..HistoryUsageSummary::default()
     };
     let mut sessions = BTreeSet::<String>::new();
+    let mut historical = std::collections::BTreeMap::<String, DailyRollup>::new();
     {
         let mut statement = snapshot.prepare(
-            "SELECT r.source_key, r.session_id, r.day, r.model,
-                    r.input_tokens, r.cached_input_tokens, r.output_tokens
-             FROM usage_rows r
-             INNER JOIN usage_files f
-               ON f.root_key=r.root_key AND f.source_key=r.source_key
-             WHERE r.root_key=?1 AND r.day>=?2 AND r.day<=?3
-               AND NOT EXISTS (
-                 SELECT 1
-                 FROM usage_rows prior
-                 INNER JOIN usage_files prior_file
-                   ON prior_file.root_key=prior.root_key
-                  AND prior_file.source_key=prior.source_key
-                 WHERE prior.root_key=r.root_key
-                   AND prior.event_identity=r.event_identity
-                   AND prior_file.lineage_scope=f.lineage_scope
-                   AND (
-                     CASE WHEN prior_file.forked_from_id IS NULL THEN 0 ELSE 1 END,
-                     prior.day,
-                     prior.source_key,
-                     prior.event_index
-                   ) < (
-                     CASE WHEN f.forked_from_id IS NULL THEN 0 ELSE 1 END,
-                     r.day,
-                     r.source_key,
-                     r.event_index
-                   )
-               )
-             ORDER BY r.day, r.source_key, r.event_index",
+            "SELECT day, explicit_prompt, explicit_cached, explicit_completion,
+                    explicit_records, message_count
+             FROM usage_daily_totals
+             WHERE root_key=?1 AND day>=?2 AND day<=?3
+             ORDER BY day",
         )?;
         let rows = statement.query_map(params![root_key, &window.start, &window.end], |row| {
-            Ok(UsageRow {
-                source_key: row.get(0)?,
-                session_id: row.get(1)?,
-                day: row.get(2)?,
-                model: row.get(3)?,
-                input: from_i64(row.get(4)?),
-                cached: from_i64(row.get(5)?),
-                output: from_i64(row.get(6)?),
-            })
+            Ok((
+                row.get::<_, String>(0)?,
+                DailyRollup {
+                    explicit_prompt: from_i64(row.get(1)?),
+                    explicit_cached: from_i64(row.get(2)?),
+                    explicit_completion: from_i64(row.get(3)?),
+                    explicit_records: from_i64(row.get(4)?),
+                    message_count: from_i64(row.get(5)?),
+                    ..DailyRollup::default()
+                },
+            ))
         })?;
         for row in rows {
-            let row = row?;
-            sessions.insert(
-                row.session_id
-                    .clone()
-                    .unwrap_or_else(|| row.source_key.clone()),
-            );
-            let total = row.input.saturating_add(row.output);
-            summary.explicit_prompt_tokens =
-                summary.explicit_prompt_tokens.saturating_add(row.input);
-            summary.explicit_cached_input_tokens = summary
-                .explicit_cached_input_tokens
-                .saturating_add(row.cached.min(row.input));
-            summary.explicit_completion_tokens = summary
-                .explicit_completion_tokens
-                .saturating_add(row.output);
-            summary.explicit_total_tokens = summary.explicit_total_tokens.saturating_add(total);
-            summary.explicit_records = summary.explicit_records.saturating_add(1);
-            summary.message_count = summary.message_count.saturating_add(1);
-            let daily = summary.daily_usage.entry(row.day).or_default();
-            daily.prompt_tokens = daily.prompt_tokens.saturating_add(row.input);
-            daily.cached_input_tokens = daily
-                .cached_input_tokens
-                .saturating_add(row.cached.min(row.input));
-            daily.completion_tokens = daily.completion_tokens.saturating_add(row.output);
-            daily.total_tokens = daily.total_tokens.saturating_add(total);
-            daily.message_count = daily.message_count.saturating_add(1);
-            daily.explicit_records = daily.explicit_records.saturating_add(1);
-            let model = row
-                .model
-                .filter(|value| !value.trim().is_empty())
-                .unwrap_or_else(|| UNATTRIBUTED_MODEL.to_string());
-            daily.add_model_usage(model, row.input, row.cached, row.output, total);
+            let (day, rollup) = row?;
+            historical.insert(day, rollup);
         }
     }
-
     {
         let mut statement = snapshot.prepare(
-            "SELECT e.source_key, e.session_id, e.day, e.model, e.role,
-                    e.estimated_tokens
-             FROM usage_estimates e
-             INNER JOIN usage_files f
-               ON f.root_key=e.root_key AND f.source_key=e.source_key
-             WHERE e.root_key=?1 AND e.day>=?2 AND e.day<=?3
-               AND NOT EXISTS (
-                 SELECT 1
-                 FROM usage_estimates prior
-                 INNER JOIN usage_files prior_file
-                   ON prior_file.root_key=prior.root_key
-                  AND prior_file.source_key=prior.source_key
-                 WHERE prior.root_key=e.root_key
-                   AND prior.event_identity=e.event_identity
-                   AND prior_file.lineage_scope=f.lineage_scope
-                   AND (
-                     CASE WHEN prior_file.forked_from_id IS NULL THEN 0 ELSE 1 END,
-                     prior.day,
-                     prior.source_key,
-                     prior.estimate_index
-                   ) < (
-                     CASE WHEN f.forked_from_id IS NULL THEN 0 ELSE 1 END,
-                     e.day,
-                     e.source_key,
-                     e.estimate_index
-                   )
-               )
-               AND NOT EXISTS (
-                 SELECT 1
-                 FROM usage_estimate_coverage coverage
-                 INNER JOIN usage_files coverage_file
-                   ON coverage_file.root_key=coverage.root_key
-                  AND coverage_file.source_key=coverage.source_key
-                 WHERE coverage.root_key=e.root_key
-                   AND coverage.event_identity=e.event_identity
-                   AND coverage_file.lineage_scope=f.lineage_scope
-               )
-             ORDER BY e.day, e.source_key, e.estimate_index",
+            "SELECT day, model, prompt_tokens, cached_input_tokens,
+                    completion_tokens, total_tokens
+             FROM usage_daily_models
+             WHERE root_key=?1 AND day>=?2 AND day<=?3
+             ORDER BY day, model",
         )?;
         let rows = statement.query_map(params![root_key, &window.start, &window.end], |row| {
-            Ok(UsageEstimateRow {
-                source_key: row.get(0)?,
-                session_id: row.get(1)?,
-                day: row.get(2)?,
-                model: row.get(3)?,
-                role: row.get(4)?,
-                tokens: from_i64(row.get(5)?),
-            })
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                super::rollup::ModelRollup {
+                    prompt: from_i64(row.get(2)?),
+                    cached: from_i64(row.get(3)?),
+                    completion: from_i64(row.get(4)?),
+                    total: from_i64(row.get(5)?),
+                },
+            ))
         })?;
         for row in rows {
-            let row = row?;
-            sessions.insert(
-                row.session_id
-                    .clone()
-                    .unwrap_or_else(|| row.source_key.clone()),
-            );
-            let completion = matches!(row.role.as_str(), "agent" | "assistant");
-            if completion {
-                summary.estimated_completion_tokens = summary
-                    .estimated_completion_tokens
-                    .saturating_add(row.tokens);
-            } else {
-                summary.estimated_prompt_tokens =
-                    summary.estimated_prompt_tokens.saturating_add(row.tokens);
-            }
-            summary.estimated_total_tokens =
-                summary.estimated_total_tokens.saturating_add(row.tokens);
-            summary.estimated_records = summary.estimated_records.saturating_add(1);
-            summary.message_count = summary.message_count.saturating_add(1);
-            let daily = summary.daily_usage.entry(row.day).or_default();
-            if completion {
-                daily.completion_tokens = daily.completion_tokens.saturating_add(row.tokens);
-            } else {
-                daily.prompt_tokens = daily.prompt_tokens.saturating_add(row.tokens);
-            }
-            daily.total_tokens = daily.total_tokens.saturating_add(row.tokens);
-            daily.message_count = daily.message_count.saturating_add(1);
-            daily.estimated_records = daily.estimated_records.saturating_add(1);
-            let model = row
-                .model
-                .filter(|value| !value.trim().is_empty())
-                .unwrap_or_else(|| UNATTRIBUTED_MODEL.to_string());
-            daily.add_model_usage(
-                model,
-                if completion { 0 } else { row.tokens },
-                0,
-                if completion { row.tokens } else { 0 },
-                row.tokens,
-            );
+            let (day, model, usage) = row?;
+            historical
+                .entry(day)
+                .or_default()
+                .models
+                .insert(model, usage);
         }
+    }
+    {
+        let mut statement = snapshot.prepare(
+            "SELECT day, session_key
+             FROM usage_daily_sessions
+             WHERE root_key=?1 AND day>=?2 AND day<=?3",
+        )?;
+        let rows = statement.query_map(params![root_key, &window.start, &window.end], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })?;
+        for row in rows {
+            let (day, session) = row?;
+            historical.entry(day).or_default().sessions.insert(session);
+        }
+    }
+    for (day, rollup) in historical {
+        apply_rollup(&mut summary, &mut sessions, day, rollup);
+    }
+    let details = collect_detail_rollups(&snapshot, root_key, window, &window.end, true)?;
+    for (day, rollup) in details {
+        apply_rollup(&mut summary, &mut sessions, day, rollup);
     }
     snapshot
         .commit()
         .context("agent usage cache snapshot commit failed")?;
     summary.session_count = sessions.len() as u64;
-    summary.source = match (summary.explicit_records > 0, summary.estimated_records > 0) {
-        (true, true) => Some("codex-local-token-events+history-estimate"),
-        (true, false) => Some("codex-local-token-events"),
-        (false, true) => Some("codex-local-history-estimate"),
-        (false, false) => None,
-    };
-    if summary.explicit_records > 0 || summary.estimated_records > 0 {
+    summary.source = (summary.explicit_records > 0).then_some("codex-local-token-events");
+    if summary.explicit_records > 0 {
         summary
             .source_paths
             .insert("codex-local-usage-store".to_string());

@@ -110,10 +110,10 @@ List<LayoutProfileDescriptor> fixtureLayoutDescriptors() => [
     isDefault: true,
   ),
   LayoutProfileDescriptor(
-    id: LayoutProfileId.parse('studio'),
-    label: LayoutProfileCopy(english: 'Studio', chinese: '原生'),
-    description: LayoutProfileCopy(english: 'Studio fixture', chinese: '原生夹具'),
-    styleIdentity: 'dense-docked-studio',
+    id: LayoutProfileId.parse('native'),
+    label: LayoutProfileCopy(english: 'Native', chinese: '原生'),
+    description: LayoutProfileCopy(english: 'Native fixture', chinese: '原生夹具'),
+    styleIdentity: 'glassy-rail-native',
     isDefault: false,
   ),
 ];

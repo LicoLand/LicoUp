@@ -10,9 +10,9 @@ const pairs = Object.freeze([
   ["README.md", "README.zh-CN.md"],
   ["CONTRIBUTING.md", "CONTRIBUTING.zh-CN.md"],
   ["SECURITY.md", "SECURITY.zh-CN.md"],
-  ["docs/USER-GUIDE.md", "docs/USER-GUIDE.zh-CN.md"],
-  ["docs/ARCHITECTURE.md", "docs/ARCHITECTURE.zh-CN.md"],
-  ["docs/releases/client-support-matrix.md", "docs/releases/client-support-matrix.zh-CN.md"],
+  ["docs/functionality/USER-GUIDE.md", "docs/functionality/USER-GUIDE.zh-CN.md"],
+  ["docs/architecture/README.md", "docs/architecture/README.zh-CN.md"],
+  ["docs/COMPATIBILITY.md", "docs/COMPATIBILITY.zh-CN.md"],
 ]);
 
 async function read(relativePath) {
@@ -46,11 +46,11 @@ test("public client document links resolve inside the repository", async () => {
 test("public product language keeps the local-first and approved encrypted-peer boundary", async () => {
   const [readme, guide, architecture, security, chineseReadme, chineseGuide] = await Promise.all([
     read("README.md"),
-    read("docs/USER-GUIDE.md"),
-    read("docs/ARCHITECTURE.md"),
+    read("docs/functionality/USER-GUIDE.md"),
+    read("docs/architecture/README.md"),
     read("SECURITY.md"),
     read("README.zh-CN.md"),
-    read("docs/USER-GUIDE.zh-CN.md"),
+    read("docs/functionality/USER-GUIDE.zh-CN.md"),
   ]);
 
   assert.match(compact(readme), /Sensitive runtime data stays on the device/u);
@@ -78,12 +78,12 @@ test("optional collaboration has an independent trust root and manual signed run
     chineseSecurity,
   ] = await Promise.all([
     read("README.md"),
-    read("docs/USER-GUIDE.md"),
-    read("docs/ARCHITECTURE.md"),
+    read("docs/functionality/USER-GUIDE.md"),
+    read("docs/architecture/README.md"),
     read("SECURITY.md"),
     read("README.zh-CN.md"),
-    read("docs/USER-GUIDE.zh-CN.md"),
-    read("docs/ARCHITECTURE.zh-CN.md"),
+    read("docs/functionality/USER-GUIDE.zh-CN.md"),
+    read("docs/architecture/README.zh-CN.md"),
     read("SECURITY.zh-CN.md"),
   ]);
 
@@ -97,7 +97,7 @@ test("optional collaboration has an independent trust root and manual signed run
   assert.match(compact(architecture), /fixed signed external runner on loopback/u);
   assert.match(compact(security), /Plugin installation, enablement, startup, schedules, and agent requests never/u);
   assert.match(compact(security), /signing key is imported independently of the package download/u);
-  assert.match(compact(chineseReadme), /默认客户端不会加载可选的 LicoLite 协作能力/u);
+  assert.match(compact(chineseReadme), /默认客户端不会加载可选的 LicoMesh 协作能力/u);
   assert.match(compact(chineseReadme), /本仓库不捆绑该服务端运行器/u);
   assert.match(compact(chineseGuide), /组装不会自动启动服务端/u);
   assert.match(compact(chineseArchitecture), /默认启动和\s*导航不会加载/u);
@@ -108,11 +108,11 @@ test("optional collaboration has an independent trust root and manual signed run
 test("MCP external effects require fresh user presence and a one-shot preview claim", async () => {
   const [guide, architecture, security, chineseGuide, chineseArchitecture, chineseSecurity] =
     await Promise.all([
-      read("docs/USER-GUIDE.md"),
-      read("docs/ARCHITECTURE.md"),
+      read("docs/functionality/USER-GUIDE.md"),
+      read("docs/architecture/README.md"),
       read("SECURITY.md"),
-      read("docs/USER-GUIDE.zh-CN.md"),
-      read("docs/ARCHITECTURE.zh-CN.md"),
+      read("docs/functionality/USER-GUIDE.zh-CN.md"),
+      read("docs/architecture/README.zh-CN.md"),
       read("SECURITY.zh-CN.md"),
     ]);
 

@@ -67,8 +67,8 @@
       "method": "ACP session update notifications"
     },
     "cancel": {
-      "status": "unsupported",
-      "method": "official lane does not expose a durable active-turn cancel handle"
+      "status": "supported",
+      "method": "ACP session/cancel on the bounded active stdio transport"
     },
     "interruptSteer": {
       "status": "unsupported",
@@ -112,7 +112,7 @@
   "lifecycle": {
     "supervision": "process-tree",
     "cleanupScope": "disposable-root",
-    "cancelHandleScope": "unavailable",
+    "cancelHandleScope": "active-turn",
     "maxConcurrentTransports": 8,
     "maxTrackedSessions": 1024
   },

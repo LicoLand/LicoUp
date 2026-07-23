@@ -211,13 +211,7 @@ pub(crate) fn parse_kimi_code_wire_session(
                     _ => {}
                 }
             }
-            Some("usage.record") => {
-                if !saw_user {
-                    messages.append(&mut fallback_user_messages);
-                }
-                if !saw_agent {
-                    messages.append(&mut fallback_agent_messages);
-                }
+            Some("usage.record" | "StatusUpdate" | "status.update" | "status_update") => {
                 if !saw_user {
                     messages.append(&mut fallback_user_messages);
                 }
@@ -272,14 +266,13 @@ pub(crate) fn parse_kimi_code_wire_session(
     if messages.is_empty() {
         return Vec::new();
     }
-    let explicit_title = path
-        .ancestors()
-        .nth(3)
-        .map(|session_root| session_root.join("state.json"))
+    let session_root = path.ancestors().nth(3);
+    let state = session_root
+        .map(|root| root.join("state.json"))
         .and_then(|state_path| fs::read_to_string(state_path).ok())
-        .and_then(|raw| serde_json::from_str::<Value>(&raw).ok())
-        .and_then(|state| extract_conversation_title(&state));
-    vec![session_from_messages_with_title(
+        .and_then(|raw| serde_json::from_str::<Value>(&raw).ok());
+    let explicit_title = state.as_ref().and_then(extract_conversation_title);
+    let mut session = session_from_messages_with_title(
         HistoryAdapter::KimiCode,
         path,
         metadata,
@@ -287,7 +280,70 @@ pub(crate) fn parse_kimi_code_wire_session(
         kimi_code_native_session_id(path),
         messages,
         explicit_title,
-    )]
+    );
+    mark_kimi_code_delegated_subagent(path, session_root, state.as_ref(), &mut session);
+    vec![session]
+}
+
+/// Kimi Code keeps every agent of one conversation under
+/// `<session>/agents/<id>/wire.jsonl`; non-`main` agents are delegated
+/// subagents of the same thread, so mark them for the shared merge that
+/// collapses them into the main session as subagent cards.
+fn mark_kimi_code_delegated_subagent(
+    path: &Path,
+    session_root: Option<&Path>,
+    state: Option<&Value>,
+    session: &mut Value,
+) {
+    let agent_id = path
+        .parent()
+        .and_then(Path::file_name)
+        .and_then(|value| value.to_str())
+        .unwrap_or("main");
+    if agent_id == "main" {
+        return;
+    }
+    let agent_state = state
+        .and_then(|state| state.get("agents"))
+        .and_then(|agents| agents.get(agent_id));
+    let parent_agent = agent_state
+        .and_then(|agent| agent.get("parentAgentId"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty() && *value != "None")
+        .unwrap_or("main");
+    let (Some(session_root), Some(object)) = (session_root, session.as_object_mut()) else {
+        return;
+    };
+    // A missing parent wire means the delegated merge would drop this
+    // session entirely; keep it standalone instead.
+    if !session_root
+        .join("agents")
+        .join(parent_agent)
+        .join("wire.jsonl")
+        .is_file()
+    {
+        return;
+    }
+    let session_id = session_root
+        .file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or("session");
+    let parent_session_id = if parent_agent == "main" {
+        session_id.to_string()
+    } else {
+        format!("{session_id}:{parent_agent}")
+    };
+    object.insert("parentSessionId".to_string(), json!(parent_session_id));
+    object.insert("delegatedSubagent".to_string(), json!(true));
+    if let Some(title) = agent_state
+        .and_then(|agent| agent.get("swarmItem"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        object.insert("subagentTitle".to_string(), json!(title));
+    }
 }
 
 pub(super) fn flush_kimi_code_assistant(
@@ -350,54 +406,42 @@ pub(super) fn kimi_code_content_group(value: &Value, event: &Value) -> String {
 }
 
 pub(super) fn kimi_code_usage_message(path: &Path, index: usize, value: &Value) -> Option<Value> {
-    if value.get("usageScope").and_then(Value::as_str) != Some("turn") {
+    let usage_scope = find_string(value, &["usageScope", "usage_scope"]);
+    if usage_scope
+        .as_deref()
+        .is_some_and(|scope| !scope.eq_ignore_ascii_case("turn"))
+    {
         return None;
     }
-    let usage = value.get("usage")?.as_object()?;
-    let input_other = usage
-        .get("inputOther")
+    let usage = extract_token_usage(value)?;
+    let total_tokens = usage
+        .get("totalTokens")
         .and_then(token_count_value)
         .unwrap_or(0);
-    let input_cache_read = usage
-        .get("inputCacheRead")
-        .and_then(token_count_value)
-        .unwrap_or(0);
-    let input_cache_creation = usage
-        .get("inputCacheCreation")
-        .and_then(token_count_value)
-        .unwrap_or(0);
-    let output = usage.get("output").and_then(token_count_value).unwrap_or(0);
-    let prompt_tokens = input_other
-        .saturating_add(input_cache_read)
-        .saturating_add(input_cache_creation);
-    let total_tokens = prompt_tokens.saturating_add(output);
     if total_tokens == 0 {
         return None;
     }
-    let model = value
-        .get("model")
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|value| !value.is_empty())?;
+    let model = find_string(value, &["model", "modelId", "model_id"]);
     let created_at = find_string(value, &["time", "timestamp", "createdAt"])
         .unwrap_or_else(native_message_timestamp);
-    Some(json!({
+    let source_event_type = value
+        .get("type")
+        .and_then(Value::as_str)
+        .unwrap_or("usage.record");
+    let mut message = json!({
         "id": native_history_message_id(HistoryAdapter::KimiCode, path, index, 0),
         "role": "metadata",
         "text": "Kimi Code token usage",
         "createdAt": created_at,
         "sourcePath": display_path(path),
-        "sourceEventType": "usage.record",
-        "model": model,
-        "usageScope": "turn",
-        "usage": {
-            "promptTokens": prompt_tokens,
-            "cachedInputTokens": input_cache_read,
-            "completionTokens": output,
-            "totalTokens": total_tokens,
-            "source": "explicit"
-        }
-    }))
+        "sourceEventType": source_event_type,
+        "usageScope": usage_scope.unwrap_or_else(|| "turn".to_owned()),
+        "usage": usage
+    });
+    if let Some(model) = model {
+        message["model"] = json!(model);
+    }
+    Some(message)
 }
 
 pub(super) fn kimi_code_native_session_id(path: &Path) -> String {

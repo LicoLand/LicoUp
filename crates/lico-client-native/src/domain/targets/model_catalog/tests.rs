@@ -41,6 +41,67 @@ model = "gpt-5.4-mini"
     }
 
     #[test]
+    fn model_catalog_reads_default_model_from_top_level_config() {
+        let dir = temp_test_dir("model-catalog-default-model");
+        let config_path = dir.join("config.toml");
+        fs::write(
+            &config_path,
+            r#"
+model = "gpt-5.5"
+
+[profiles.review]
+model = "gpt-5.4-mini"
+"#,
+        )
+        .unwrap();
+
+        let catalog = model_catalog_for_target(
+            "codex",
+            Some(&config_path),
+            &json!({"includeHistoryModelCatalog": false}),
+        );
+        // The top-level `model` key is the configured default; nested profile
+        // models stay picker entries and never become the default.
+        assert_eq!(catalog["defaultModel"], json!("gpt-5.5"));
+    }
+
+    #[test]
+    fn model_catalog_default_model_prefers_fixture_over_config() {
+        let dir = temp_test_dir("model-catalog-default-fixture");
+        let config_path = dir.join("config.toml");
+        fs::write(&config_path, "model = \"gpt-5.5\"\n").unwrap();
+
+        let catalog = model_catalog_for_target(
+            "codex",
+            Some(&config_path),
+            &json!({
+                "includeHistoryModelCatalog": false,
+                "modelCatalogFixture": {
+                    "codex": {
+                        "defaultModel": "fixture-model",
+                        "models": ["fixture-model"],
+                    },
+                },
+            }),
+        );
+        assert_eq!(catalog["defaultModel"], json!("fixture-model"));
+    }
+
+    #[test]
+    fn model_catalog_without_default_model_emits_empty_string() {
+        let dir = temp_test_dir("model-catalog-no-default-model");
+        let config_path = dir.join("config.toml");
+        fs::write(&config_path, "model_reasoning_effort = \"high\"\n").unwrap();
+
+        let catalog = model_catalog_for_target(
+            "codex",
+            Some(&config_path),
+            &json!({"includeHistoryModelCatalog": false}),
+        );
+        assert_eq!(catalog["defaultModel"], json!(""));
+    }
+
+    #[test]
     fn model_catalog_reads_codex_structured_model_catalog() {
         let home = temp_test_dir("codex-model-catalog");
         let catalog_path = home
@@ -509,6 +570,7 @@ mod merge {
                 .into_iter()
                 .collect(),
             Vec::new(),
+            None,
         );
         assert_eq!(catalog["models"].as_array().unwrap().len(), 1);
         assert_eq!(catalog["models"][0]["provider"], "OpenAI");
@@ -519,6 +581,165 @@ mod merge {
         assert_eq!(
             catalog["models"][0]["reasoningEfforts"],
             json!(["high", "low"])
+        );
+    }
+}
+
+mod builtin {
+    use super::*;
+
+    fn catalog_with_fixture(target: &str, fixture: Value) -> Value {
+        let home = temp_test_dir("builtin-overlay-home");
+        model_catalog_for_target(
+            target,
+            None,
+            &json!({
+                "homeDir": display_path(home),
+                "includeHistoryModelCatalog": false,
+                "modelCatalogFixture": { target: fixture }
+            }),
+        )
+    }
+
+    fn model<'a>(catalog: &'a Value, name: &str) -> Option<&'a Value> {
+        catalog["models"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|model| model["name"] == name)
+    }
+
+    #[test]
+    fn builtin_catalog_json_is_well_formed() {
+        let parsed: Value = serde_json::from_str(include_str!("builtin_catalog.json")).unwrap();
+        let agents = parsed["agents"].as_object().unwrap();
+        assert!(agents.contains_key("codex"));
+        for (agent, rows) in agents {
+            let mut names = BTreeSet::new();
+            for row in rows["models"].as_array().unwrap() {
+                let name = row["name"].as_str().unwrap();
+                assert!(!name.trim().is_empty(), "empty model name in {agent}");
+                assert!(
+                    names.insert(name.to_ascii_lowercase()),
+                    "duplicate {name} in {agent}"
+                );
+                assert!(
+                    row["reasoningEfforts"]
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .all(|effort| effort
+                            .as_str()
+                            .is_some_and(|value| !value.trim().is_empty())),
+                    "blank effort in {agent}/{name}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn builtin_overlay_replaces_efforts_in_table_order_and_marks_sources() {
+        let catalog = catalog_with_fixture(
+            "codex",
+            json!({
+                "models": [
+                    { "name": "gpt-5.6-sol", "reasoningEfforts": ["max"] },
+                    { "name": "deepseek-v4-pro", "reasoningEfforts": ["high"] }
+                ]
+            }),
+        );
+
+        assert_eq!(
+            model(&catalog, "gpt-5.6-sol").unwrap()["reasoningEfforts"],
+            json!(["low", "medium", "high", "xhigh", "max", "ultra"])
+        );
+        assert!(
+            model(&catalog, "gpt-5.6-sol").unwrap()["sources"]
+                .as_array()
+                .unwrap()
+                .contains(&json!("builtin"))
+        );
+        assert_eq!(
+            model(&catalog, "deepseek-v4-pro").unwrap()["reasoningEfforts"],
+            json!(["high"])
+        );
+        assert!(
+            catalog["sources"]
+                .as_array()
+                .unwrap()
+                .contains(&json!("builtin"))
+        );
+    }
+
+    #[test]
+    fn builtin_overlay_never_injects_unscanned_models() {
+        let catalog = catalog_with_fixture(
+            "codex",
+            json!({ "models": [{ "name": "gpt-5.2", "reasoningEfforts": ["high"] }] }),
+        );
+
+        assert!(model(&catalog, "gpt-5.6-terra").is_none());
+        assert!(model(&catalog, "gpt-5.6-luna").is_none());
+    }
+
+    #[test]
+    fn builtin_overlay_matches_aliases_and_clears_unsupported_efforts() {
+        let catalog = catalog_with_fixture(
+            "claude-code",
+            json!({
+                "models": [
+                    { "name": "claude-haiku-4-5-20251001", "reasoningEfforts": ["high"] }
+                ]
+            }),
+        );
+
+        assert_eq!(
+            model(&catalog, "claude-haiku-4-5-20251001").unwrap()["reasoningEfforts"],
+            json!([])
+        );
+        assert!(
+            catalog["sources"]
+                .as_array()
+                .unwrap()
+                .contains(&json!("builtin"))
+        );
+    }
+
+    #[test]
+    fn builtin_overlay_matches_provider_prefixed_names() {
+        let catalog = catalog_with_fixture(
+            "openclaw",
+            json!({
+                "models": [
+                    { "name": "moonshot/kimi-k3", "reasoningEfforts": ["low", "high"] }
+                ]
+            }),
+        );
+
+        assert_eq!(
+            model(&catalog, "moonshot/kimi-k3").unwrap()["reasoningEfforts"],
+            json!(["max"])
+        );
+    }
+
+    #[test]
+    fn builtin_overlay_leaves_unlisted_agents_untouched() {
+        let catalog = catalog_with_fixture(
+            "hermes",
+            json!({
+                "models": [{ "name": "z-ai/glm-5.2", "reasoningEfforts": ["medium"] }]
+            }),
+        );
+
+        assert_eq!(
+            model(&catalog, "z-ai/glm-5.2").unwrap()["reasoningEfforts"],
+            json!(["medium"])
+        );
+        assert!(
+            !catalog["sources"]
+                .as_array()
+                .unwrap()
+                .contains(&json!("builtin"))
         );
     }
 }

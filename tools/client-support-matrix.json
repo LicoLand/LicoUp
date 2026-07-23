@@ -12,7 +12,7 @@
     { "id": "token-usage", "label": "Local token usage", "category": "desktop-client-capability", "releaseBlocking": false },
     { "id": "secure-mesh-pairwise", "label": "Secure Mesh client-to-client", "category": "core-client", "releaseBlocking": true },
     { "id": "mobile-relay", "label": "Mobile Relay", "category": "client-capability", "releaseBlocking": false },
-    { "id": "optional-licolite-plugin", "label": "Optional LicoLite plugin", "category": "manual-integration", "releaseBlocking": false }
+    { "id": "optional-licomesh-plugin", "label": "Optional LicoMesh plugin", "category": "manual-integration", "releaseBlocking": false }
   ],
   "defaults": {
     "desktop": {
@@ -27,7 +27,7 @@
       "token-usage": "preview",
       "secure-mesh-pairwise": "unverified",
       "mobile-relay": "unverified",
-      "optional-licolite-plugin": "deferred"
+      "optional-licomesh-plugin": "deferred"
     },
     "mobile": {
       "client-shell": "supported",
@@ -41,7 +41,7 @@
       "token-usage": "unsupported",
       "secure-mesh-pairwise": "preview",
       "mobile-relay": "preview",
-      "optional-licolite-plugin": "deferred"
+      "optional-licomesh-plugin": "deferred"
     }
   },
   "targets": [

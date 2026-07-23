@@ -15,7 +15,7 @@ void main() {
     expect(catalog.defaultProfile.id, LayoutProfileId.parse('workbench'));
     expect(catalog.profiles.map((profile) => profile.id), [
       LayoutProfileId.parse('workbench'),
-      LayoutProfileId.parse('studio'),
+      LayoutProfileId.parse('native'),
     ]);
     final expectedVariantsPerProfile = LayoutRuntimeSurface.values.fold<int>(
       0,
@@ -72,14 +72,14 @@ void main() {
       () => fixtureLayoutCatalog(
         profiles: fixtureProfiles(
           workbenchDefault: false,
-          studioDefault: false,
+          nativeDefault: false,
         ),
       ),
       throwsA(isA<FormatException>()),
     );
     expect(
       () => fixtureLayoutCatalog(
-        profiles: fixtureProfiles(workbenchDefault: true, studioDefault: true),
+        profiles: fixtureProfiles(workbenchDefault: true, nativeDefault: true),
       ),
       throwsA(isA<FormatException>()),
     );
@@ -93,10 +93,10 @@ void main() {
     'catalog permits profile-local revisions and rejects incomplete variants',
     () {
       final mixedRevision = fixtureLayoutCatalog(
-        profiles: fixtureProfiles(studioRevision: 2),
+        profiles: fixtureProfiles(nativeRevision: 2),
       );
       expect(
-        mixedRevision.profile(LayoutProfileId.parse('studio'))?.revision,
+        mixedRevision.profile(LayoutProfileId.parse('native'))?.revision,
         2,
       );
       final variants = fixtureVariants();

@@ -4,7 +4,7 @@ use base64::{Engine as _, engine::general_purpose};
 use serde_json::Value;
 
 use super::super::contract::{
-    LEASE_MS_MAX, LEASE_MS_MIN, SECURE_CLIENT_RELAY_CORE_CONFORMANCE,
+    ENDPOINT_KINDS, LEASE_MS_MAX, LEASE_MS_MIN, SECURE_CLIENT_RELAY_CORE_CONFORMANCE,
     SECURE_CLIENT_RELAY_CORE_CONFORMANCE_DIGEST, SECURE_CLIENT_RELAY_CORE_CONTRACT,
     SECURE_CLIENT_RELAY_CORE_CONTRACT_DIGEST, SECURE_CLIENT_RELAY_PROTOCOL_VERSION, SYNC_LIMIT_MAX,
     SYNC_LIMIT_MIN, SecureClientRelayAuth, SecureClientRelayEndpointRegistration,
@@ -42,6 +42,10 @@ fn operation_registry_is_exact_and_has_no_arbitrary_path_surface() {
     assert_eq!(contract["limits"]["syncPage"]["maximum"], SYNC_LIMIT_MAX);
     assert_eq!(contract["limits"]["leaseMs"]["minimum"], LEASE_MS_MIN);
     assert_eq!(contract["limits"]["leaseMs"]["maximum"], LEASE_MS_MAX);
+    assert_eq!(
+        contract["endpointKinds"],
+        serde_json::to_value(ENDPOINT_KINDS).unwrap()
+    );
     assert_eq!(
         contract["envelope"]["fields"],
         serde_json::to_value(SECURE_MESH_RELAY_OUTER_FIELDS).unwrap()
@@ -95,9 +99,9 @@ fn base_url_requires_tls_except_for_strict_loopback_origins() {
 #[test]
 fn request_validation_rejects_unknown_kinds_and_unbounded_labels() {
     let scope = SecureClientRelayScope::new("tenant", "account", None).unwrap();
-    let registration = SecureClientRelayEndpointRegistration {
+    let mut registration = SecureClientRelayEndpointRegistration {
         endpoint_id: "endpoint".to_string(),
-        endpoint_kind: "client_local_runtime".to_string(),
+        endpoint_kind: "agent_host".to_string(),
         identity_public_key: SecureClientRelayPublicJwk::x25519(canonical_bytes(1, 32)).unwrap(),
         signing_public_key: SecureClientRelayPublicJwk::ed25519(canonical_bytes(2, 32)).unwrap(),
         mailbox_token: canonical_bytes(3, 32),
@@ -105,6 +109,8 @@ fn request_validation_rejects_unknown_kinds_and_unbounded_labels() {
         challenge_id: "challenge".to_string(),
         challenge_signature: canonical_bytes(4, 64),
     };
+    assert!(request::endpoint_register(&scope, &registration).is_ok());
+    registration.endpoint_kind = "unknown".to_string();
     assert!(request::endpoint_register(&scope, &registration).is_err());
 }
 

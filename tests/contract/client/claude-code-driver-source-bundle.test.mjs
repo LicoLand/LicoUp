@@ -47,15 +47,7 @@ test("Claude Code driver facade is thin and owns every production leaf", async (
       .sort(),
     [...productionLeaves].sort(),
   );
-  for (const implementationToken of [
-    "struct TurnState",
-    "struct PersistentTransport",
-    "struct DriverConfig",
-    "Command::new",
-    "fn run_turn_loop",
-    "include!(",
-    "#[path",
-  ]) {
+  for (const implementationToken of ["include!(", "#[path"]) {
     assert.equal(facade.includes(implementationToken), false);
   }
 });
@@ -72,7 +64,6 @@ test("Claude Code keeps the fixed streaming-input lane without argv resume or sh
     '"--output-format"',
     '"--include-partial-messages"',
     '"--no-session-persistence"',
-    "Command::new(&self.executable)",
   ]) {
     assert.ok(source["command.rs"].includes(token), `missing fixed command token: ${token}`);
   }
@@ -89,29 +80,24 @@ test("Claude Code keeps the fixed streaming-input lane without argv resume or sh
   }
 });
 
-test("Claude Code exact continuation remains bound to one bounded live transport", async () => {
-  const source = await sources();
-  for (const token of [
-    "MAX_POOLED_TRANSPORTS",
-    "MAX_TRACKED_SESSIONS",
-    "lookup_session_transport",
-    "bind_session",
-    "has_live_session",
-    "cleanup_session",
-    "Arc::downgrade",
-  ]) {
-    assert.ok(source["supervision.rs"].includes(token), `missing supervisor token: ${token}`);
-  }
-  for (const token of [
-    "expected_session_id",
-    "observed_session_id",
-    "claude_code_session_mismatch",
-    "claude_code_session_id_missing",
-  ]) {
-    assert.ok(source["protocol.rs"].includes(token), `missing session token: ${token}`);
-  }
-  assert.ok(source["transport.rs"].includes("impl Drop for PersistentTransport"));
-  assert.ok(source["transport.rs"].includes("finish_protocol_transport"));
+test("Claude Code public lifecycle contract is bounded and exact-session scoped", async () => {
+  const manifest = JSON.parse(await read(
+    "packages/contracts/client/fixtures/agent-conversation-adapter/manifests/claude-code.json",
+  ));
+  assert.equal(manifest.transport.sessionScope, "process");
+  assert.equal(manifest.transport.continuityChannel, "protected-mapping");
+  assert.ok(Number.isSafeInteger(manifest.lifecycle.maxConcurrentTransports));
+  assert.ok(manifest.lifecycle.maxConcurrentTransports > 0);
+  assert.ok(manifest.lifecycle.maxConcurrentTransports <= 64);
+  assert.ok(Number.isSafeInteger(manifest.lifecycle.maxTrackedSessions));
+  assert.ok(manifest.lifecycle.maxTrackedSessions >= manifest.lifecycle.maxConcurrentTransports);
+  assert.ok(manifest.lifecycle.maxTrackedSessions <= 4096);
+  assert.equal(manifest.lifecycle.cleanupScope, "process-session");
+  assert.equal(manifest.operations.exactResume.status, "supported");
+  assert.equal(manifest.operations.cleanup.status, "supported");
+  assert.equal(manifest.operations.history.status, "supported");
+  assert.equal(manifest.privacy.safeCleanup, true);
+  assert.equal(manifest.privacy.continuityIdInArguments, false);
 });
 
 test("Claude Code IO, events, controls, probe, and failures stay bounded and redacted", async () => {
@@ -150,4 +136,102 @@ test("Claude Code split contains no production unsafe or hidden compatibility in
   assert.equal(joined.includes("unsafe {"), false);
   assert.equal(joined.includes("include!("), false);
   assert.equal(joined.includes("#[path"), false);
+});
+
+test("Claude Code process-local lifecycle and transcript have one bounded supervisor authority", async () => {
+  const source = await sources();
+  for (const token of [
+    "TransportLifecycle",
+    "Live",
+    "Closing",
+    "Closed",
+    "BoundedTranscript",
+    "VecDeque",
+  ]) {
+    assert.ok(
+      source["model.rs"].includes(token),
+      `missing process-local model token: ${token}`,
+    );
+  }
+  for (const symbol of ["cleanup_session", "shutdown_all"]) {
+    assert.ok(
+      source["supervision.rs"].includes(symbol),
+      `missing frozen lifecycle symbol: ${symbol}`,
+    );
+  }
+  assert.ok(source["protocol.rs"].includes("claude_code_authentication_required"));
+});
+
+test("Claude Code product controls and parity use one persistent stdio RPC owner", async () => {
+  const [
+    request,
+    server,
+    processIo,
+    rpcClient,
+    processLocalRound,
+    results,
+    evidence,
+  ] = await Promise.all([
+    read("crates/lico-client-native/src/bin/lico-client/stdio_rpc/request.rs"),
+    read("crates/lico-client-native/src/bin/lico-client/stdio_rpc/server.rs"),
+    read("apps/desktop/lib/src/platform/native_client/agent_service_process_io.dart"),
+    read("tools/scripts/client-acp-conversation-parity/clients/stdio-rpc-client.mjs"),
+    read("tools/scripts/client-acp-conversation-parity/process-local-round.mjs"),
+    read("tools/scripts/client-acp-conversation-parity/results.mjs"),
+    read("tools/scripts/client-acp-conversation-parity/evidence.mjs"),
+  ]);
+  for (const operation of ["open", "send", "history", "cleanup", "capabilities", "cancel"]) {
+    assert.ok(request.includes(`agent.conversation.${operation}`));
+  }
+  assert.ok(server.includes("shutdown_all"));
+  assert.ok(processIo.includes("executeStructured"));
+  assert.ok(rpcClient.includes('["rpc", "stdio"]'));
+  assert.ok(processLocalRound.includes('continuityScope: "process-local"'));
+  assert.equal(processLocalRound.includes("nativeTurn("), false);
+  assert.equal(processLocalRound.includes("AcpClient"), false);
+  assert.equal(processLocalRound.includes("runSidecar("), false);
+  assert.equal(processLocalRound.includes("runBoundedProcess("), false);
+  assert.equal(processLocalRound.includes(["cleanup", "DurationMs"].join("")), false);
+  assert.ok(processLocalRound.includes("strictHistoryProjection"));
+  assert.ok(processLocalRound.includes("eventTranscriptMatches"));
+  assert.ok(rpcClient.includes("stdio_rpc_frame_after_terminal"));
+  assert.ok(rpcClient.includes("stdio_rpc_turn_id_reused"));
+  assert.ok(rpcClient.includes("stdio_rpc_chunk_output_mismatch"));
+  assert.ok(results.includes("processLocalFactsEvidenceComplete"));
+  assert.ok(results.includes("processLocalFactsPassed"));
+  assert.ok(evidence.includes("process_local_facts_unproven"));
+});
+
+test("Claude Code capabilities do not advertise queue-blocked concurrent cancel", async () => {
+  const [manifestText, inventoryText] = await Promise.all([
+    read("packages/contracts/client/fixtures/agent-conversation-adapter/manifests/claude-code.json"),
+    read("crates/lico-client-native/resources/agent-conversation-drivers.json"),
+  ]);
+  const manifest = JSON.parse(manifestText);
+  const inventory = JSON.parse(inventoryText);
+  const driver = inventory.drivers.find((row) => row.agentId === "claude-code");
+  assert.equal(manifest.transport.sessionScope, "process");
+  assert.equal(manifest.operations.history.status, "supported");
+  assert.equal(manifest.operations.cancel.status, "unsupported");
+  assert.equal(manifest.acceptance.continuityScope, "process-local");
+  assert.equal(manifest.acceptance.nativeToArcRequired, false);
+  assert.equal(manifest.acceptance.arcToNativeRequired, false);
+  assert.equal(driver.capabilityMatrix.processLocalContinuation, true);
+  assert.equal(driver.capabilityMatrix.cancel, false);
+});
+
+test("Claude Code routing remains model-data driven and process argv stays ephemeral", async () => {
+  const source = await sources();
+  const joined = Object.values(source).join("\n").toLowerCase();
+  for (const forbidden of [
+    "deepseek",
+    "kimi k3",
+    "gpt-5.6",
+    '"--resume"',
+    '"--continue"',
+  ]) {
+    assert.equal(joined.includes(forbidden), false);
+  }
+  assert.ok(source["command.rs"].includes('"--model"'));
+  assert.ok(source["command.rs"].includes('"--no-session-persistence"'));
 });

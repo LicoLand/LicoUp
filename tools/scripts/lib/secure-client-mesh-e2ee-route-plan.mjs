@@ -93,7 +93,7 @@ async function loadRawRouteConfig() {
     return cachedRouteConfig;
   }
   const payload = JSON.parse(await fs.readFile(routeConfigUrl, "utf8"));
-  if (payload?.schemaVersion !== "licolite.secure-mesh.e2ee-evidence-routes.v2") {
+  if (payload?.schemaVersion !== "licomesh.secure-mesh.e2ee-evidence-routes.v2") {
     throw new Error("Secure Client Mesh evidence route config schema version mismatch");
   }
   assertNoLeak(payload, "secure mesh evidence route config");

@@ -1,3 +1,4 @@
+use super::cache_cleanup::remove_obsolete_cache_databases;
 use super::constants::{CACHE_REFRESH_INTERVAL, CACHE_SCHEMA_VERSION};
 use anyhow::{Context, Result};
 use rusqlite::{Connection, ErrorCode, OptionalExtension, Transaction, TransactionBehavior};
@@ -26,6 +27,9 @@ pub(super) fn open_cache_database(path: &Path) -> Result<Connection> {
                 "DROP TABLE IF EXISTS usage_rows;
                  DROP TABLE IF EXISTS usage_estimates;
                  DROP TABLE IF EXISTS usage_estimate_coverage;
+                 DROP TABLE IF EXISTS usage_daily_totals;
+                 DROP TABLE IF EXISTS usage_daily_models;
+                 DROP TABLE IF EXISTS usage_daily_sessions;
                  DROP TABLE IF EXISTS usage_files;
                  DROP TABLE IF EXISTS usage_scans;
                  CREATE TABLE usage_files (
@@ -49,9 +53,7 @@ pub(super) fn open_cache_database(path: &Path) -> Result<Connection> {
                    counted_output INTEGER,
                    divergent INTEGER NOT NULL DEFAULT 0,
                    next_event_index INTEGER NOT NULL DEFAULT 0,
-                   next_estimate_index INTEGER NOT NULL DEFAULT 0,
                    token_chain_hash TEXT NOT NULL DEFAULT '',
-                   estimate_chain_hash TEXT NOT NULL DEFAULT '',
                    PRIMARY KEY(root_key, source_key)
                  );
                  CREATE TABLE usage_rows (
@@ -68,34 +70,35 @@ pub(super) fn open_cache_database(path: &Path) -> Result<Connection> {
                    event_identity TEXT NOT NULL,
                    PRIMARY KEY(root_key, source_key, event_index)
                  );
-                 CREATE INDEX usage_rows_window
-                   ON usage_rows(root_key, day, source_key, event_index);
+                 CREATE INDEX usage_rows_window ON usage_rows(root_key, day);
                  CREATE INDEX usage_rows_identity
-                   ON usage_rows(root_key, event_identity, source_key, day, event_index);
-                 CREATE TABLE usage_estimates (
+                   ON usage_rows(root_key, event_identity);
+                 CREATE TABLE usage_daily_totals (
                    root_key TEXT NOT NULL,
-                   source_key TEXT NOT NULL,
-                   estimate_index INTEGER NOT NULL,
-                   session_id TEXT,
                    day TEXT NOT NULL,
-                   model TEXT,
-                   role TEXT NOT NULL,
-                   estimated_tokens INTEGER NOT NULL,
-                   event_identity TEXT NOT NULL,
-                   PRIMARY KEY(root_key, source_key, estimate_index)
+                   explicit_prompt INTEGER NOT NULL,
+                   explicit_cached INTEGER NOT NULL,
+                   explicit_completion INTEGER NOT NULL,
+                   explicit_records INTEGER NOT NULL,
+                   message_count INTEGER NOT NULL,
+                   PRIMARY KEY(root_key, day)
                  );
-                 CREATE INDEX usage_estimates_window
-                   ON usage_estimates(root_key, day, source_key, estimate_index);
-                 CREATE INDEX usage_estimates_identity
-                   ON usage_estimates(root_key, event_identity, source_key, day, estimate_index);
-                 CREATE TABLE usage_estimate_coverage (
+                 CREATE TABLE usage_daily_models (
                    root_key TEXT NOT NULL,
-                   source_key TEXT NOT NULL,
-                   event_identity TEXT NOT NULL,
-                   PRIMARY KEY(root_key, source_key, event_identity)
+                   day TEXT NOT NULL,
+                   model TEXT NOT NULL,
+                   prompt_tokens INTEGER NOT NULL,
+                   cached_input_tokens INTEGER NOT NULL,
+                   completion_tokens INTEGER NOT NULL,
+                   total_tokens INTEGER NOT NULL,
+                   PRIMARY KEY(root_key, day, model)
                  );
-                 CREATE INDEX usage_estimate_coverage_identity
-                   ON usage_estimate_coverage(root_key, event_identity, source_key);
+                 CREATE TABLE usage_daily_sessions (
+                   root_key TEXT NOT NULL,
+                   day TEXT NOT NULL,
+                   session_key TEXT NOT NULL,
+                   PRIMARY KEY(root_key, day, session_key)
+                 );
                  CREATE TABLE usage_scans (
                    root_key TEXT PRIMARY KEY,
                    last_scan_ms INTEGER NOT NULL
@@ -106,11 +109,16 @@ pub(super) fn open_cache_database(path: &Path) -> Result<Connection> {
         reset
             .commit()
             .context("agent usage cache schema commit failed")?;
+        connection.pragma_update(None, "auto_vacuum", "INCREMENTAL")?;
+        connection
+            .execute_batch("VACUUM;")
+            .context("agent usage cache schema compaction failed")?;
     }
     #[cfg(unix)]
     if path.exists() {
         fs::set_permissions(path, fs::Permissions::from_mode(0o600))?;
     }
+    remove_obsolete_cache_databases(path)?;
     Ok(connection)
 }
 
@@ -122,12 +130,13 @@ pub(super) fn sqlite_is_busy(error: &rusqlite::Error) -> bool {
     )
 }
 
-pub(super) fn cache_snapshot_exists(connection: &Connection, root_key: &str) -> Result<bool> {
+pub(super) fn cache_state(connection: &Connection, root_key: &str) -> Result<(bool, bool)> {
     connection
         .query_row(
-            "SELECT EXISTS(SELECT 1 FROM usage_files WHERE root_key=?1 LIMIT 1)",
+            "SELECT EXISTS(SELECT 1 FROM usage_files WHERE root_key=?1 LIMIT 1),
+                    EXISTS(SELECT 1 FROM usage_scans WHERE root_key=?1)",
             [root_key],
-            |row| row.get::<_, bool>(0),
+            |row| Ok((row.get::<_, bool>(0)?, row.get::<_, bool>(1)?)),
         )
         .map_err(Into::into)
 }

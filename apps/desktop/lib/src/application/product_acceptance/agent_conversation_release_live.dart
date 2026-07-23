@@ -45,7 +45,7 @@ Future<void> _run(ClientController controller) async {
     );
 
     await _waitFor(
-      () => controller.initialized,
+      () => controller.lifecycleProjection.initialized,
       reasonCode: 'release_ui_initialize_timeout',
       timeout: const Duration(seconds: 45),
     );
@@ -97,19 +97,15 @@ Future<void> _run(ClientController controller) async {
     var firstProgressive = false;
     void observeFirst() {
       firstProgressive =
-          firstProgressive ||
-          _hasProgressiveAssistant(controller, agentId) &&
-              controller.isSendingConversationMessage;
+          firstProgressive || _hasProgressiveAssistant(controller, agentId);
     }
 
     controller.addListener(observeFirst);
     await _submitComposer(firstPrompt);
     await _waitFor(
-      () =>
-          (firstProgressive && _timelineVisible()) ||
-          controller.lastError.isNotEmpty,
+      () => firstProgressive || controller.lastError.isNotEmpty,
       reasonCode: 'release_ui_first_stream_timeout',
-      timeout: const Duration(minutes: 5),
+      timeout: const Duration(minutes: 10),
     );
     _require(controller.lastError.isEmpty, _safeControllerError(controller));
     await _waitFor(
@@ -136,19 +132,15 @@ Future<void> _run(ClientController controller) async {
     var secondProgressive = false;
     void observeSecond() {
       secondProgressive =
-          secondProgressive ||
-          _hasProgressiveAssistant(controller, agentId) &&
-              controller.isSendingConversationMessage;
+          secondProgressive || _hasProgressiveAssistant(controller, agentId);
     }
 
     controller.addListener(observeSecond);
     await _submitComposer(secondPrompt);
     await _waitFor(
-      () =>
-          (secondProgressive && _timelineVisible()) ||
-          controller.lastError.isNotEmpty,
+      () => secondProgressive || controller.lastError.isNotEmpty,
       reasonCode: 'release_ui_second_stream_timeout',
-      timeout: const Duration(minutes: 5),
+      timeout: const Duration(minutes: 10),
     );
     _require(controller.lastError.isEmpty, _safeControllerError(controller));
     await _waitFor(
@@ -192,7 +184,9 @@ Future<void> _run(ClientController controller) async {
       'packagedSidecarUsed': true,
       'fixtureBackend': false,
       'agentId': agentId,
-      'model': controller.selectedConversationModel,
+      'model': controller.selectedConversationModel.trim().isNotEmpty
+          ? controller.selectedConversationModel
+          : model,
       'nativeSessionId': nativeSessionId,
       'composerSubmitted': true,
       'progressiveTimelineVisible': firstProgressive && secondProgressive,

@@ -8,7 +8,7 @@ fn native_history_merges_delegated_subagent_prompt_sessions() {
         [
             r#"{"timestamp":"2026-06-01T00:00:00Z","sessionId":"real-session","type":"user","message":{"role":"user","content":"Why are history titles unreadable?"}}"#,
             r#"{"timestamp":"2026-06-01T00:00:01Z","sessionId":"subagent-session","type":"user","message":{"role":"user","content":"You are A1: Old-path Migration Batch. Inspect the repository and report."}}"#,
-            r#"{"timestamp":"2026-06-01T00:00:02Z","sessionId":"subagent-session","type":"assistant","message":{"role":"assistant","content":"I need to find old-path files in the LicoLite repo."}}"#,
+            r#"{"timestamp":"2026-06-01T00:00:02Z","sessionId":"subagent-session","type":"assistant","message":{"role":"assistant","content":"I need to find old-path files in the LicoMesh repo."}}"#,
             r#"{"timestamp":"2026-06-01T00:00:03Z","sessionId":"real-session","type":"assistant","message":{"role":"assistant","content":"I will fix the title extraction."}}"#,
         ]
         .join("\n"),
@@ -32,7 +32,7 @@ fn native_history_merges_delegated_subagent_prompt_sessions() {
     assert_eq!(messages[1]["cardTitle"], "A1: Old-path Migration Batch");
     assert_eq!(
         messages[1]["messages"][0]["text"],
-        "I need to find old-path files in the LicoLite repo."
+        "I need to find old-path files in the LicoMesh repo."
     );
     assert!(!messages.iter().any(|message| {
         message["text"]

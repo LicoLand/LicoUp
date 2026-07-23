@@ -85,15 +85,15 @@ internal class SecureMeshAndroidMobileRelaySecretBridge(
     fun keyStoreStatus(deviceSecure: Boolean): Map<String, Any?> =
         custodyManager.status(custodyManager.mobileRelayStatusMeasurement(), deviceSecure)
 
-    fun set(namespace: String, key: String, secret: String): Boolean {
-        if (!SecureMeshAndroidSecretContract.secretTextPresent(secret)) return false
+    fun set(namespace: String, key: String, secret: ByteArray): Boolean {
+        if (secret.isEmpty()) return false
         val account = secretStoreAccount(namespace, key)
         writeStoredAccountSecret(secret, account)
         return true
     }
 
     /** Null means only a verified missing record; every other failure crosses JNI as an error. */
-    fun get(namespace: String, key: String): String? =
+    fun get(namespace: String, key: String): ByteArray? =
         readStoredAccountSecret(secretStoreAccount(namespace, key))
 
     fun delete(namespace: String, key: String): Boolean {
@@ -111,24 +111,19 @@ internal class SecureMeshAndroidMobileRelaySecretBridge(
     private fun selection(): SecureMeshAndroidCustodySelection =
         custodyManager.requireMobileRelaySelection()
 
-    private fun writeStoredAccountSecret(secret: String, storedAccount: String) {
+    private fun writeStoredAccountSecret(secret: ByteArray, storedAccount: String) {
         val identity = recordIdentity(storedAccount)
-        val bytes = secret.toByteArray(Charsets.UTF_8)
-        try {
-            recordStore.write(
-                selection(),
-                SecureMeshAndroidSecretContract.MOBILE_RELAY_SECRET_KIND,
-                identity.label,
-                identity.challenge,
-                bytes,
-                identity.file,
-            )
-        } finally {
-            bytes.fill(0)
-        }
+        recordStore.write(
+            selection(),
+            SecureMeshAndroidSecretContract.MOBILE_RELAY_SECRET_KIND,
+            identity.label,
+            identity.challenge,
+            secret,
+            identity.file,
+        )
     }
 
-    private fun readStoredAccountSecret(storedAccount: String): String? {
+    private fun readStoredAccountSecret(storedAccount: String): ByteArray? {
         val identity = recordIdentity(storedAccount)
         val selected = selection()
         if (
@@ -147,11 +142,7 @@ internal class SecureMeshAndroidMobileRelaySecretBridge(
             identity.challenge,
             identity.file,
         )
-        return try {
-            SecureMeshAndroidSecretContract.decodeStoredSecret(bytes)
-        } finally {
-            bytes.fill(0)
-        }
+        return bytes
     }
 
     private fun recordIdentity(account: String): RecordIdentity {
@@ -159,7 +150,7 @@ internal class SecureMeshAndroidMobileRelaySecretBridge(
         return RecordIdentity(
             file = File(filesDir, "secure-mesh/android-mobile-relay-secrets/$safe.json"),
             label = "mobile-relay:$safe",
-            challenge = "licolite.mobile-relay.secret-store.v1:$account",
+            challenge = "licomesh.mobile-relay.secret-store.v1:$account",
         )
     }
 

@@ -3,7 +3,7 @@ import { normalizeSourceCheckFiles } from "./source-check-bundle.mjs";
 
 const configUrl = new URL("../config/secure-mesh-encrypted-file-handoff.json", import.meta.url);
 const configRef = "tools/scripts/config/secure-mesh-encrypted-file-handoff.json";
-const schemaVersion = "licolite.secure-mesh.encrypted-file-handoff-config.v1";
+const schemaVersion = "licomesh.secure-mesh.encrypted-file-handoff-config.v1";
 const leakPatterns = Object.freeze([
   ["local_path", /\/Users\/|\/private\/|\/var\/folders\/|[A-Za-z]:\\/u],
   ["bearer", /Bearer\s+(?!\[redacted\])\S+/u],

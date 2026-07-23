@@ -1,11 +1,16 @@
 #[cfg(test)]
 use super::identity_generation::generate_identity_material;
 use super::prekey_inventory::ensure_mobile_relay_pqxdh_material;
+use crate::core::secure_mesh_secret_store::SecretBytes;
+use crate::domain::mobile_relay::secret_custody::{
+    MobileRelayE2eeSecretField, RuntimeSecretMaterial,
+};
 use anyhow::{Result, anyhow};
 use serde_json::{Value, json};
 
 pub(in crate::domain::mobile_relay) fn rotate_mobile_relay_one_time_prekeys(
     config: &mut Value,
+    secret_material: &mut RuntimeSecretMaterial,
 ) -> Result<()> {
     let object = config
         .get_mut("mobileRelayE2ee")
@@ -39,12 +44,15 @@ pub(in crate::domain::mobile_relay) fn rotate_mobile_relay_one_time_prekeys(
         json!(next_publication_version),
     );
     object.remove("keyTransparencyResponse");
-    ensure_mobile_relay_pqxdh_material(config)
+    secret_material.remove_e2ee_secret(MobileRelayE2eeSecretField::OneTimePrekeyPrivateKey);
+    secret_material.remove_e2ee_secret(MobileRelayE2eeSecretField::OneTimeMlKem1024PrekeySeed);
+    ensure_mobile_relay_pqxdh_material(config, secret_material)
 }
 
 #[cfg(test)]
 pub(in crate::domain::mobile_relay) fn rotate_mobile_relay_local_identity_for_repair(
     config: &mut Value,
+    secret_material: &mut RuntimeSecretMaterial,
 ) -> Result<()> {
     let object = config
         .get_mut("mobileRelayE2ee")
@@ -96,14 +104,22 @@ pub(in crate::domain::mobile_relay) fn rotate_mobile_relay_local_identity_for_re
         object.remove(key);
     }
     let generated = generate_identity_material();
-    object.insert(
-        "privateKeyBase64url".to_string(),
-        json!(generated.private_key),
-    );
+    secret_material.replace_e2ee_secret(
+        MobileRelayE2eeSecretField::PrivateKey,
+        SecretBytes::try_from_string(generated.private_key)?,
+    )?;
+    for field in [
+        MobileRelayE2eeSecretField::SigningKey,
+        MobileRelayE2eeSecretField::SignedPrekeyPrivateKey,
+        MobileRelayE2eeSecretField::OneTimePrekeyPrivateKey,
+        MobileRelayE2eeSecretField::OneTimeMlKem1024PrekeySeed,
+    ] {
+        secret_material.remove_e2ee_secret(field);
+    }
     object.insert("rotationEpoch".to_string(), json!(next_rotation_epoch));
     object.insert(
         "prekeyPublicationVersion".to_string(),
         json!(next_publication_version),
     );
-    ensure_mobile_relay_pqxdh_material(config)
+    ensure_mobile_relay_pqxdh_material(config, secret_material)
 }

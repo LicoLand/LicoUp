@@ -456,7 +456,6 @@ pub(super) fn source_client_for_session(
     if evidence.contains("kilo-code")
         || evidence.contains("kilocode")
         || evidence.contains("/kilo/")
-        || evidence.contains("\\kilo\\")
     {
         return "kilo-code".to_string();
     }

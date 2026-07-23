@@ -46,10 +46,10 @@ void main() {
   });
 
   test(
-    'scanTargets hydrates cache then probes only unknown agents quietly',
+    'scanned targets cache restores metadata without touching binary authority',
     () async {
       final directory = await Directory.systemTemp.createTemp(
-        'lico-incremental-scan-',
+        'lico-stale-scanned-target-',
       );
       addTearDown(() async {
         if (await directory.exists()) {
@@ -57,48 +57,74 @@ void main() {
         }
       });
       final portable = PortableDataRoot(dataDirectoryOverride: directory);
-      const cache = PlatformScannedTargetsCacheStore();
-      await cache.save(portable, [
+      const store = PlatformScannedTargetsCacheStore();
+      await store.save(portable, [
         TargetCandidate(
-          target: 'codex',
-          label: 'Codex',
+          target: 'claude-code',
+          label: 'Claude Code',
           kind: 'cli',
           status: 'detected',
           configured: true,
           confidence: 1,
+          binaryPath: '${directory.path}/disappeared-claude',
           adapterStatus: 'implemented',
         ),
       ]);
 
-      final service = _SlowPerAgentService();
-      final controller = ClientController(
-        portableData: portable,
-        agentService: service,
-        scannedTargetsCacheStore: cache,
-      );
-      addTearDown(controller.dispose);
-
-      controller.scannedTargets = await cache.load(portable);
-      expect(
-        controller.scannedTargets.any((target) => target.target == 'codex'),
-        isTrue,
-      );
-
-      await controller.scanTargets(
-        showProgress: false,
-        forceRescanKnown: false,
-      );
-
-      // Cached agent is not re-probed on quiet scan; only unknowns are.
-      expect(service.scannedIds.contains('codex'), isFalse);
-      expect(service.scannedIds, isNotEmpty);
-      expect(
-        service.maxInFlight,
-        greaterThan(1),
-        reason: 'unknown agents should be probed concurrently',
-      );
+      final restored = await store.load(portable);
+      expect(restored, hasLength(1));
+      expect(restored.single.binaryPath, isNull);
+      expect(restored.single.canRelayRuntime, isFalse);
     },
   );
+
+  test('quiet scan revalidates agents restored from cache', () async {
+    final directory = await Directory.systemTemp.createTemp(
+      'lico-incremental-scan-',
+    );
+    addTearDown(() async {
+      if (await directory.exists()) {
+        await directory.delete(recursive: true);
+      }
+    });
+    final portable = PortableDataRoot(dataDirectoryOverride: directory);
+    const cache = PlatformScannedTargetsCacheStore();
+    await cache.save(portable, [
+      TargetCandidate(
+        target: 'codex',
+        label: 'Codex',
+        kind: 'cli',
+        status: 'detected',
+        configured: true,
+        confidence: 1,
+        adapterStatus: 'implemented',
+      ),
+    ]);
+
+    final service = _SlowPerAgentService();
+    final controller = ClientController(
+      portableData: portable,
+      agentService: service,
+      scannedTargetsCacheStore: cache,
+    );
+    addTearDown(controller.dispose);
+
+    await controller.targetController.hydrateCache();
+    expect(
+      controller.scannedTargets.any((target) => target.target == 'codex'),
+      isTrue,
+    );
+
+    await controller.scanTargets(showProgress: false, forceRescanKnown: false);
+
+    expect(service.scannedIds.contains('codex'), isTrue);
+    expect(service.scannedIds, isNotEmpty);
+    expect(
+      service.maxInFlight,
+      greaterThan(1),
+      reason: 'cached and unknown agents should be probed concurrently',
+    );
+  });
 
   test(
     'force rescan upserts agents as each concurrent probe returns',

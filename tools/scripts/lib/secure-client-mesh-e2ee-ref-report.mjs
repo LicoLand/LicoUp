@@ -15,7 +15,7 @@ async function loadScopeConfig() {
 }
 
 function normalizeScopeConfig(payload = {}) {
-  if (payload?.schemaVersion !== "licolite.secure-mesh.e2ee-report-scope-config.v2") {
+  if (payload?.schemaVersion !== "licomesh.secure-mesh.e2ee-report-scope-config.v2") {
     throw new Error("Secure Client Mesh scope config schema version mismatch");
   }
   if (!payload.reports || typeof payload.reports !== "object" || Array.isArray(payload.reports)) {
@@ -269,7 +269,7 @@ export async function verifySecureClientMeshE2eeRefReportScopeSelfTest({ contrac
   const reportRef = "build/reports/secure-mesh-pairwise-content-crypto-audit.json";
   const blocker = "pairwise/content crypto audit";
   const baseConfig = {
-    schemaVersion: "licolite.secure-mesh.e2ee-report-scope-config.v2",
+    schemaVersion: "licomesh.secure-mesh.e2ee-report-scope-config.v2",
     authority: "external-client",
     scopeEvidenceFreshnessSeconds: 86400,
     reports: {

@@ -16,7 +16,7 @@ const _commit = '0123456789abcdef0123456789abcdef01234567';
 final _runnerPublicKey = _synth('AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA');
 const _runnerFingerprint =
     '66687aadf862bd776c8fc18b8e9f8e20089714856ee233b3902a591d0d5f2925';
-const _runnerRepository = 'https://github.com/example/licolite-runner.git';
+const _runnerRepository = 'https://github.com/example/licomesh-runner.git';
 const _runnerTrust = OptionalCollaborationRunnerTrust(
   keyId: 'official-runner-key',
   fingerprintSha256: _runnerFingerprint,
@@ -377,8 +377,8 @@ final class _FakeGateway implements OptionalCollaborationGateway {
 }
 
 const _plugin = OptionalCollaborationPlugin(
-  id: 'licolite-collaboration',
-  displayName: 'LicoLite Collaboration',
+  id: 'licomesh-collaboration',
+  displayName: 'LicoMesh Collaboration',
   version: '1.0.0',
   packageDigestSha256: _digest,
   capabilities: ['local-deployment', 'mcp-install'],
@@ -390,8 +390,8 @@ const _plugin = OptionalCollaborationPlugin(
 );
 
 const _driftPlugin = OptionalCollaborationPlugin(
-  id: 'licolite-collaboration',
-  displayName: 'LicoLite Collaboration',
+  id: 'licomesh-collaboration',
+  displayName: 'LicoMesh Collaboration',
   version: '1.0.0',
   packageDigestSha256: _otherDigest,
   capabilities: ['local-deployment', 'mcp-install'],
@@ -425,8 +425,8 @@ const _plan = OptionalCollaborationInstallPlan(
   sourceRef: _commit,
   pluginPath: '',
   plugin: OptionalCollaborationPluginSummary(
-    id: 'licolite-collaboration',
-    displayName: 'LicoLite Collaboration',
+    id: 'licomesh-collaboration',
+    displayName: 'LicoMesh Collaboration',
     version: '1.0.0',
     capabilities: ['local-deployment', 'mcp-install'],
   ),

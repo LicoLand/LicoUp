@@ -414,10 +414,10 @@ void main() {
 
   test('historySessionProjectLabel uses the last path segment', () {
     expect(
-      historySessionProjectLabel('/workspace/DevSpace/LicoLite'),
-      'LicoLite',
+      historySessionProjectLabel('workspace/DevSpace/LicoMesh'),
+      'LicoMesh',
     );
-    expect(historySessionProjectLabel(r'C:\work\pactium\'), 'pactium');
+    expect(historySessionProjectLabel(r'work\pactium\'), 'pactium');
     expect(historySessionProjectLabel('', fallback: '未关联项目'), '未关联项目');
   });
 
@@ -426,8 +426,8 @@ void main() {
       HistorySessionPanelItem(
         id: 'a1',
         title: 'CI release',
-        groupKey: '/repo/licolite',
-        groupLabel: 'licolite',
+        groupKey: '/repo/licomesh',
+        groupLabel: 'licomesh',
       ),
       HistorySessionPanelItem(
         id: 'b1',
@@ -438,8 +438,8 @@ void main() {
       HistorySessionPanelItem(
         id: 'a2',
         title: 'validation',
-        groupKey: '/repo/licolite',
-        groupLabel: 'licolite',
+        groupKey: '/repo/licomesh',
+        groupLabel: 'licomesh',
       ),
     ]);
 
@@ -447,7 +447,7 @@ void main() {
       entries
           .map((entry) => entry.isHeader ? entry.groupLabel : entry.item!.id)
           .toList(),
-      ['licolite', 'a1', 'a2', 'lico-arc', 'b1'],
+      ['licomesh', 'a1', 'a2', 'lico-arc', 'b1'],
     );
   });
 
@@ -465,8 +465,8 @@ void main() {
               id: 'session-1',
               title: 'CI release workflow',
               meta: '7m',
-              groupKey: '/repo/licolite',
-              groupLabel: 'licolite',
+              groupKey: '/repo/licomesh',
+              groupLabel: 'licomesh',
               active: true,
             ),
             HistorySessionPanelItem(
@@ -482,7 +482,7 @@ void main() {
       ),
     );
 
-    expect(find.text('licolite'), findsOneWidget);
+    expect(find.text('licomesh'), findsOneWidget);
     expect(find.text('lico-arc'), findsOneWidget);
     expect(find.byIcon(Icons.folder_outlined), findsNWidgets(2));
     expect(find.text('CI release workflow'), findsOneWidget);

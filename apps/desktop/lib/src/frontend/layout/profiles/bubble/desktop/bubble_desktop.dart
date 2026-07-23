@@ -57,12 +57,6 @@ final LayoutSurfaceBundle bubbleDesktopBundle = LayoutSurfaceBundle(
     LayoutStateNamespace(
       profileId: LayoutProfileId.parse('bubble'),
       surface: LayoutRuntimeSurface.desktop,
-      destination: ClientSection.agents,
-      channel: LayoutStateChannels.agentsDestination,
-    ),
-    LayoutStateNamespace(
-      profileId: LayoutProfileId.parse('bubble'),
-      surface: LayoutRuntimeSurface.desktop,
       destination: ClientSection.settings,
       channel: LayoutStateChannels.settingsScroll,
     ),

@@ -98,10 +98,10 @@ class AgentConversationMessageListState
       return false;
     }
 
-    final messages = <AgentConversationMessage>[
-      ...?session?.messages,
-      ...widget.liveMessages,
-    ];
+    final messages = mergeConversationReadbackAndLiveMessages(
+      session?.messages ?? const [],
+      widget.liveMessages,
+    );
     final timelineItems = buildConversationTimelineItems(
       messages,
       sessionIdentity,
@@ -158,10 +158,10 @@ class AgentConversationMessageListState
     final colors = context.licoColors;
     final strings = LicoStrings.of(context);
     final session = widget.session;
-    final messages = <AgentConversationMessage>[
-      ...?session?.messages,
-      ...widget.liveMessages,
-    ];
+    final messages = mergeConversationReadbackAndLiveMessages(
+      session?.messages ?? const [],
+      widget.liveMessages,
+    );
     if (widget.loading && messages.isEmpty) {
       return const Center(child: CircularProgressIndicator());
     }
@@ -276,6 +276,58 @@ class AgentConversationMessageListState
     );
   }
 }
+
+/// Keeps a completed live turn visible until readback arrives without briefly
+/// rendering the same user/assistant pair twice during convergence.
+List<AgentConversationMessage> mergeConversationReadbackAndLiveMessages(
+  List<AgentConversationMessage> readBack,
+  List<AgentConversationMessage> live,
+) {
+  if (readBack.isEmpty || live.isEmpty) {
+    return List<AgentConversationMessage>.unmodifiable([...readBack, ...live]);
+  }
+  final liveConversation = live
+      .where(_isConversationParticipantMessage)
+      .toList(growable: false);
+  if (liveConversation.length < 2 ||
+      !liveConversation.any(
+        (message) => message.role.trim().toLowerCase() == 'assistant',
+      )) {
+    return List<AgentConversationMessage>.unmodifiable([...readBack, ...live]);
+  }
+  final persistedConversation = readBack
+      .where(_isConversationParticipantMessage)
+      .toList(growable: false);
+  if (persistedConversation.length < liveConversation.length) {
+    return List<AgentConversationMessage>.unmodifiable([...readBack, ...live]);
+  }
+  final suffixStart = persistedConversation.length - liveConversation.length;
+  for (var index = 0; index < liveConversation.length; index += 1) {
+    if (!_sameConversationMessage(
+      persistedConversation[suffixStart + index],
+      liveConversation[index],
+    )) {
+      return List<AgentConversationMessage>.unmodifiable([
+        ...readBack,
+        ...live,
+      ]);
+    }
+  }
+  return List<AgentConversationMessage>.unmodifiable(readBack);
+}
+
+bool _isConversationParticipantMessage(AgentConversationMessage message) {
+  final role = message.role.trim().toLowerCase();
+  return message.text.trim().isNotEmpty &&
+      (role == 'user' || role == 'assistant');
+}
+
+bool _sameConversationMessage(
+  AgentConversationMessage first,
+  AgentConversationMessage second,
+) =>
+    first.role.trim().toLowerCase() == second.role.trim().toLowerCase() &&
+    first.text.trim() == second.text.trim();
 
 class _ConversationArtifactsPanel extends StatelessWidget {
   const _ConversationArtifactsPanel({required this.artifacts});

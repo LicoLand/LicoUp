@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://licolite.dev/contracts/client/optional-collaboration-plugin.schema.json",
+  "$id": "https://licomesh.dev/contracts/client/optional-collaboration-plugin.schema.json",
   "title": "Lico Arc Optional Collaboration Plugin",
   "description": "Disabled-by-default manifest for declarative collaboration payloads and digest-bound platform runner contracts.",
   "type": "object",
@@ -8,7 +8,7 @@
   "required": ["schemaVersion", "kind", "pluginId", "displayName", "version", "capabilities", "workflows", "serverRunners"],
   "properties": {
     "schemaVersion": {"const": "licoarc.optional-collaboration-plugin.v2"},
-    "kind": {"const": "licolite-collaboration"},
+    "kind": {"const": "licomesh-collaboration"},
     "pluginId": {
       "type": "string",
       "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
@@ -22,11 +22,11 @@
       "maxItems": 2,
       "uniqueItems": true,
       "items": {
-        "enum": ["licolite.local-deployment.compose", "licolite.mcp.install"]
+        "enum": ["licomesh.local-deployment.compose", "licomesh.mcp.install"]
       },
       "allOf": [
-        {"contains": {"const": "licolite.local-deployment.compose"}},
-        {"contains": {"const": "licolite.mcp.install"}}
+        {"contains": {"const": "licomesh.local-deployment.compose"}},
+        {"contains": {"const": "licomesh.mcp.install"}}
       ]
     },
     "workflows": {
@@ -58,7 +58,7 @@
       "properties": {
         "platform": {"enum": ["macos", "windows", "ubuntu"]},
         "architecture": {"enum": ["x86_64", "aarch64"]},
-        "relativePath": {"type": "string", "pattern": "^runners\/(macos|windows|ubuntu)\/(x86_64|aarch64)\/licolite-server-runner(?:\\.exe)?$", "maxLength": 1024},
+        "relativePath": {"type": "string", "pattern": "^runners\/(macos|windows|ubuntu)\/(x86_64|aarch64)\/licomesh-server-runner(?:\\.exe)?$", "maxLength": 1024},
         "digestSha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
         "runnerContractVersion": {"const": "licoarc.local-server-runner.v1"},
         "healthContractVersion": {"const": "licoarc.local-server-health.v1"},

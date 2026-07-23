@@ -1,9 +1,10 @@
 use super::super::test_support::*;
+use crate::core::secure_mesh_secret_store::{SecretBytes, SecretZeroizeProbe};
 fn synthetic_value(label: &str) -> String { format!("{label}-{}", uuid::Uuid::new_v4()) }
 
 #[test]
 fn mobile_relay_disposable_secret_cleanup_is_complete_noninteractive_and_exactly_budgeted() {
-    let sv_disposable_cleanup_secre = synthetic_value("disposable-cleanup-secret-canary");
+    let sv_synthetic_disposable_cle = synthetic_value("synthetic-disposable-cleanup-canary");
     let dir = temp_dir("mobile-relay-disposable-secret-cleanup");
     let previous = set_portable_data_dir_override(Some(dir));
     let secret_store = Arc::new(EphemeralSecretStore::new());
@@ -54,8 +55,17 @@ fn mobile_relay_disposable_secret_cleanup_is_complete_noninteractive_and_exactly
                     + MOBILE_RELAY_E2EE_NATIVE_SECRET_FIELDS.len()
                     + 2
             );
+            let mut cleanup_probes = Vec::new();
             for handle in &root_handles {
-                secret_store.set_secret(handle, sv_disposable_cleanup_secre.as_str())?;
+                let probe = SecretZeroizeProbe::new();
+                secret_store.set_secret(
+                    handle,
+                    SecretBytes::try_from_bytes_with_test_zeroize_probe(
+                        sv_synthetic_disposable_cle.as_bytes().to_vec(),
+                        probe.clone(),
+                    )?,
+                )?;
+                cleanup_probes.push(probe);
             }
 
             let mut all_handles = root_handles.clone();
@@ -99,6 +109,13 @@ fn mobile_relay_disposable_secret_cleanup_is_complete_noninteractive_and_exactly
             );
             for handle in &all_handles {
                 assert!(secret_store.get_secret(handle)?.is_none());
+            }
+            for probe in cleanup_probes {
+                assert_eq!(
+                    probe.observations(),
+                    vec![vec![0; sv_synthetic_disposable_cle.as_bytes().len()]],
+                    "cleanup must wipe each removed owned secret before releasing its backing"
+                );
             }
 
             let second_baseline = secret_store.authorization_session_count();
@@ -179,7 +196,7 @@ fn mobile_relay_disposable_secret_cleanup_requires_exact_confirmation_and_accept
 
 #[test]
 fn mobile_relay_disposable_secret_cleanup_propagates_delete_failures() {
-    let sv_delete_failure_secret_ca = synthetic_value("delete-failure-secret-canary");
+    let sv_synthetic_delete_failure = synthetic_value("synthetic-delete-failure-canary");
     struct DeleteFailingSecretStore {
         inner: EphemeralSecretStore,
         rejected_key: &'static str,
@@ -201,11 +218,11 @@ fn mobile_relay_disposable_secret_cleanup_propagates_delete_failures() {
             self.inner.begin_authorized_session(request)
         }
 
-        fn set_secret(&self, handle: &SecretStoreHandle, secret: &str) -> Result<()> {
+        fn set_secret(&self, handle: &SecretStoreHandle, secret: SecretBytes) -> Result<()> {
             self.inner.set_secret(handle, secret)
         }
 
-        fn get_secret(&self, handle: &SecretStoreHandle) -> Result<Option<String>> {
+        fn get_secret(&self, handle: &SecretStoreHandle) -> Result<Option<SecretBytes>> {
             self.inner.get_secret(handle)
         }
 
@@ -229,7 +246,10 @@ fn mobile_relay_disposable_secret_cleanup_propagates_delete_failures() {
     )
     .unwrap();
     store
-        .set_secret(&rejected_handle, sv_delete_failure_secret_ca.as_str())
+        .set_secret(
+            &rejected_handle,
+            SecretBytes::try_from_bytes(sv_synthetic_delete_failure.as_bytes().to_vec()).unwrap(),
+        )
         .unwrap();
     let store_override: Arc<dyn SecureMeshSecretStore> = store.clone();
 

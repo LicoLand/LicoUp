@@ -1,5 +1,5 @@
 {
-  "schema": "licolite.layout-visual-manifest",
+  "schema": "licomesh.layout-visual-manifest",
   "schemaVersion": 2,
   "profile": "bubble",
   "surface": "mobile",
@@ -12,7 +12,7 @@
   "authorityEntries": [
     {
       "path": "apps/desktop/test/layout/fixtures/production_client_shell_fixture.dart",
-      "digest": "sha256:4a41f42bc0088950012721f938cff26a66c4eb8c6f1f58d44ef4e0e0009f5808"
+      "digest": "sha256:f4d3d3d371cb2e2a4a91f26c86679551f7db0fe87c73855ebb04eb6911bbd182"
     },
     {
       "path": "apps/desktop/test/layout/production_baseline/production_layout_baseline_test.dart",
@@ -20,13 +20,13 @@
     },
     {
       "path": "apps/desktop/test/layout/production_baseline/production_layout_switch_continuity_test.dart",
-      "digest": "sha256:9ddaf28b52fc61ec1b32eafbb4328754a56881cccd9f82bdbc17d4b0394c3522"
+      "digest": "sha256:329c3546171c9232c36b88bd650f44b0f75df0669bd6c011909ea5258fa4186c"
     }
   ],
   "entries": [
     {
       "path": "apps/desktop/lib/src/frontend/layout/profiles/bubble/mobile/bubble_mobile_bundle.dart",
-      "digest": "sha256:5b05bb988291a48e5358bfa5442080fbdbb6f736c4b969fafef913c18eb28731"
+      "digest": "sha256:6dc4b6e270c825cd62a1aeb29a0a6e829faa8f79a1f89a5f0acf4e1f570d4053"
     },
     {
       "path": "apps/desktop/lib/src/frontend/layout/profiles/bubble/mobile/bubble_mobile_components.dart",
@@ -62,7 +62,7 @@
     },
     {
       "path": "apps/desktop/test/goldens/layout/production-baseline/bubble/mobile/agents.png",
-      "digest": "sha256:9d09b8343c175e0196422b6850b114f8f256249ed953e656732097083db0f63a"
+      "digest": "sha256:42370baaba735f9842bb2f6361802a90803c51462dd14f9c8e95f8e5290efdc2"
     },
     {
       "path": "apps/desktop/test/goldens/layout/production-baseline/bubble/mobile/settings.png",
@@ -70,7 +70,7 @@
     },
     {
       "path": "apps/desktop/test/layout/profiles/bubble/mobile/bubble_mobile_bundle_test.dart",
-      "digest": "sha256:af17901abda03cd66e7078769cdf28a61a26b49c962b2a1ad5fc4c65aa46a31e"
+      "digest": "sha256:43de05c8afa8dc191674b9a0587ed64cb63e0c7cdd0edcc6de66a51822fa5254"
     },
     {
       "path": "apps/desktop/test/layout/profiles/bubble/mobile/bubble_mobile_golden_test.dart",
@@ -86,12 +86,12 @@
     },
     {
       "path": "apps/desktop/test/layout/profiles/bubble/mobile/goldens/bubble_mobile_preview_dark.png",
-      "digest": "sha256:c1177b2a67155516ea0b1b2ab27cdac80e5e0ef81c5f82fd54dae7e959f2fab4"
+      "digest": "sha256:3c998dfc272abd8b5798bfe8219fc115180a6f33f8329c9546772e9a5c51c187"
     },
     {
       "path": "apps/desktop/test/layout/profiles/bubble/mobile/goldens/bubble_mobile_preview_light.png",
-      "digest": "sha256:c1177b2a67155516ea0b1b2ab27cdac80e5e0ef81c5f82fd54dae7e959f2fab4"
+      "digest": "sha256:3c998dfc272abd8b5798bfe8219fc115180a6f33f8329c9546772e9a5c51c187"
     }
   ],
-  "manifestDigest": "sha256:4fa0f92f4967d6700693db1f044bac4ec5864d188b33c56ffb4c46d022de1910"
+  "manifestDigest": "sha256:134117386489ea860dfad579347cdf59cc1b59a8f596bd1d218dabdc11abc247"
 }

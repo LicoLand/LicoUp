@@ -19,6 +19,10 @@ void main() {
     expect(controller.resolve(ClientSection.monitoring), ClientSection.agents);
     expect(controller.resolve(ClientSection.skillHub), ClientSection.agents);
     expect(
+      controller.resolve(ClientSection.pluginManagement),
+      ClientSection.agents,
+    );
+    expect(
       controller.resolve(ClientSection.mobileRelay),
       ClientSection.mobileRelay,
     );

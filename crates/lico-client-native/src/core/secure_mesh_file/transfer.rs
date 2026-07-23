@@ -205,7 +205,7 @@ pub(super) fn file_transfer_queue_id(
 ) -> String {
     hash_bytes(
         format!(
-            "licolite.secure-mesh.file-transfer-queue.v1\0{}\0{}",
+            "licomesh.secure-mesh.file-transfer-queue.v1\0{}\0{}",
             hash_bytes(manifest.file_id.as_bytes()),
             hash_bytes(recipient_endpoint_id.as_bytes())
         )

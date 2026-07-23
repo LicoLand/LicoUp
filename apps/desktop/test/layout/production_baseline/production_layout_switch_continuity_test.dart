@@ -14,7 +14,7 @@ void main() {
     'production shell preserves business draft and isolates profile state',
     (tester) async {
       final workbench = LayoutProfileId.parse('workbench');
-      final studio = LayoutProfileId.parse('studio');
+      final native = LayoutProfileId.parse('native');
       const surface = LayoutRuntimeSurface.desktop;
       const size = Size(1180, 820);
       final fixture = await ProductionClientShellFixture.create(
@@ -63,7 +63,7 @@ void main() {
       await tester.pump();
       expect(tester.widget<TextField>(composer()).focusNode?.hasFocus, isTrue);
 
-      expect(fixture.controller.layoutManager.beginPreview(studio), isTrue);
+      expect(fixture.controller.layoutManager.beginPreview(native), isTrue);
       await tester.pump();
       await tester.pump();
 
@@ -76,7 +76,7 @@ void main() {
       expect(tester.widget<TextField>(composer()).focusNode?.hasFocus, isTrue);
       expect(
         fixture.controller.layoutComposition.stateStore.read(
-          _agentsHistoryNamespace(studio, surface),
+          _agentsHistoryNamespace(native, surface),
         ),
         isNull,
       );

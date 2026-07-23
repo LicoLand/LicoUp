@@ -33,6 +33,78 @@ export function roundFactsReady(facts) {
     && facts.cleanupVerified;
 }
 
+export const processLocalBooleanFactKeys = Object.freeze([
+  "persistentHost",
+  "openNew",
+  "exactSessionId",
+  "processLocalContinuation",
+  "orderedStreaming",
+  "historyReadback",
+  "boundedHistory",
+  "cleanupVerified",
+  "cleanupSynchronized",
+  "registryAbsent",
+  "historyCleared",
+  "hostLiveAfterCleanup",
+  "argvCanariesAbsent",
+  "noResumeArgument",
+  "noPersistenceArgument",
+  "genericModelForwarded",
+  "noPromptHistory",
+  "noPersistedTranscript",
+  "boundedOutput",
+  "cancelNotAdvertised",
+  "structuredSeen",
+  "permissionFailClosed",
+  "errorFailClosed",
+]);
+
+export function processLocalRoundFactsReady(facts) {
+  return facts?.continuityScope === "process-local"
+    && processLocalBooleanFactKeys.every((key) => facts[key] === true);
+}
+
+export function processLocalHostShutdownEvidence(options) {
+  const complete = options !== null
+    && typeof options === "object"
+    && Object.hasOwn(options, "hostShutdownPassed")
+    && typeof options.hostShutdownPassed === "boolean";
+  return {
+    complete,
+    passed: complete && options.hostShutdownPassed === true,
+  };
+}
+
+export function failedProcessLocalFactCode(facts) {
+  const orderedFacts = [
+    ["persistentHost", "persistent_host"],
+    ["openNew", "open_new"],
+    ["exactSessionId", "exact_session"],
+    ["processLocalContinuation", "continuation"],
+    ["orderedStreaming", "streaming"],
+    ["historyReadback", "history"],
+    ["boundedHistory", "history_bound"],
+    ["cleanupVerified", "cleanup"],
+    ["cleanupSynchronized", "cleanup_sync"],
+    ["registryAbsent", "registry"],
+    ["historyCleared", "history_clear"],
+    ["hostLiveAfterCleanup", "host_liveness"],
+    ["argvCanariesAbsent", "argv_privacy"],
+    ["noResumeArgument", "argv_resume"],
+    ["noPersistenceArgument", "no_persistence"],
+    ["genericModelForwarded", "model_forwarding"],
+    ["noPromptHistory", "prompt_history"],
+    ["noPersistedTranscript", "disk_persistence"],
+    ["boundedOutput", "bounded_output"],
+    ["cancelNotAdvertised", "cancel_capability"],
+    ["structuredSeen", "structured_event"],
+    ["permissionFailClosed", "permission"],
+    ["errorFailClosed", "error"],
+  ];
+  const failed = orderedFacts.find(([key]) => facts?.[key] !== true);
+  return failed ? `process_local_${failed[1]}_failed` : "process_local_fact_failed";
+}
+
 export function roundConversationFactsReady(facts) {
   return facts.nativeToArc
     && facts.arcToNative
@@ -44,7 +116,8 @@ export function roundConversationFactsReady(facts) {
     && facts.historyReadback
     && facts.noPermissionRequests
     && facts.noUnsupportedRequests
-    && facts.boundedOutput;
+    && facts.boundedOutput
+    && facts.streamingSeen;
 }
 
 export function failedParityFactCode(facts) {
@@ -103,6 +176,7 @@ export function failedParityFactCode(facts) {
     ["noPermissionRequests", "permission_request"],
     ["noUnsupportedRequests", "unsupported_request"],
     ["boundedOutput", "bounded_output"],
+    ["streamingSeen", "streaming"],
     ["cleanupVerified", "cleanup"],
   ];
   const failed = orderedFacts.find(([key]) => facts[key] !== true);

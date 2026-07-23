@@ -5,7 +5,7 @@ use sha2::{Digest, Sha256};
 use zeroize::Zeroizing;
 
 pub const SECURE_MESH_PAIRWISE_CIPHER_SUITE: &str =
-    "licolite.pqxdh-triple-ratchet.v1.x25519-ed25519-mlkem1024-hkdfsha256-chacha20poly1305";
+    "licomesh.pqxdh-triple-ratchet.v1.x25519-ed25519-mlkem1024-hkdfsha256-chacha20poly1305";
 pub const SECURE_MESH_PAIRWISE_STATUS: &str = "authenticated_transcript_pqxdh_mlkem1024_triple_ratchet_encrypted_headers_bounded_skipped_header_keys_capability_bound_explicit_finished_bilateral_key_confirmation_unique_bound_snapshots_sesame_session_manager_multi_device_fanout_payload_codec_cross_endpoint_command_result_relay_available_independent_review_pending";
 
 pub(super) const ROOT_KEY_LEN: usize = 32;
@@ -26,11 +26,11 @@ pub(super) const MAX_MESSAGE_ID_LEN: usize = 255;
 pub(super) const MAX_PERSISTED_CAPABILITY_PROOF_USES: usize = 4096;
 
 pub(super) const PQXDH_CLASSICAL_SALT_DOMAIN: &[u8] =
-    b"licolite.secure-mesh.pqxdh-classical.salt.v1";
+    b"licomesh.secure-mesh.pqxdh-classical.salt.v1";
 pub(super) const PQXDH_CLASSICAL_INFO_DOMAIN: &[u8] =
-    b"licolite.secure-mesh.pqxdh-classical.info.v1";
-pub(super) const CHAIN_INFO_DOMAIN: &[u8] = b"licolite.secure-mesh.double-ratchet.chain.v1";
-pub(super) const ROOT_INFO_DOMAIN: &[u8] = b"licolite.secure-mesh.double-ratchet.root.v1";
+    b"licomesh.secure-mesh.pqxdh-classical.info.v1";
+pub(super) const CHAIN_INFO_DOMAIN: &[u8] = b"licomesh.secure-mesh.double-ratchet.chain.v1";
+pub(super) const ROOT_INFO_DOMAIN: &[u8] = b"licomesh.secure-mesh.double-ratchet.root.v1";
 pub(super) const MESSAGE_AAD_MAGIC: &[u8] = b"LCOSM-PAIRWISE-AAD-v1";
 pub(super) const PAYLOAD_AAD_BINDING_MAGIC: &[u8] = b"LCOSM-PAIRWISE-PAYLOAD-AAD-v1";
 pub(super) const SECRET_DOMAIN: &[u8] = b"LCOSM-PAIRWISE-SECRET-v1";

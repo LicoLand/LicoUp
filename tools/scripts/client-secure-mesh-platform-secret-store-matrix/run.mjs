@@ -235,7 +235,7 @@ const remainingGates = dedupeRemainingGates([
 ]);
 
 const report = {
-  schemaVersion: "licolite.secure-mesh.platform-secret-store-matrix-report.v2",
+  schemaVersion: "licomesh.secure-mesh.platform-secret-store-matrix-report.v2",
   evidenceRefSchemaVersion: SECURE_CLIENT_MESH_E2EE_EVIDENCE_REF_REPORT_SCHEMA_VERSION,
   verifier: "tools/scripts/client-secure-mesh-platform-secret-store-matrix.mjs",
   generatedBy: "tools/scripts/client-secure-mesh-platform-secret-store-matrix.mjs",

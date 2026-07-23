@@ -1,7 +1,7 @@
 package com.liko.arc
 
 internal object ReleaseAcceptanceDebugContract {
-    const val CHANNEL_VERSION = "licolite.android.release-acceptance.v1"
+    const val CHANNEL_VERSION = "licomesh.android.release-acceptance.v1"
     const val AUTHORIZATION_ACTION = "secure_mesh.android.releaseAcceptance.authorize"
     const val APPROVAL_RELATIVE_PATH = "secure-mesh/release-acceptance-approval.json"
     const val MAX_APPROVAL_BYTES = 4096L

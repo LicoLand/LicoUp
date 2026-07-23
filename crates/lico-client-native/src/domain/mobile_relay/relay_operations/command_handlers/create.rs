@@ -7,13 +7,25 @@ use crate::domain::mobile_relay::pairwise_session::{
     seal_mobile_relay_payload_with_pairwise_operation, secure_command_payload,
 };
 use crate::domain::mobile_relay::secret_custody::{
+    MobileRelayE2eeSecretField, RuntimeSecretMaterial,
     ensure_secure_mesh_protected_operation_allowed, load_config,
     load_config_with_runtime_secret_context_for_operation,
     mobile_relay_e2ee_secret_store_authorization_batch_operation_count,
 };
 use crate::domain::mobile_relay::support::{json_param, text_param};
-use anyhow::{Result, anyhow};
+use anyhow::{Result, anyhow, ensure};
 use serde_json::{Value, json};
+
+fn require_relay_private_key(material: &RuntimeSecretMaterial) -> Result<()> {
+    let private_key = material
+        .e2ee_secret(MobileRelayE2eeSecretField::PrivateKey)
+        .ok_or_else(|| anyhow!("mobile relay private key material is missing"))?;
+    ensure!(
+        !private_key.expose_bytes().is_empty(),
+        "mobile relay private key material is empty"
+    );
+    Ok(())
+}
 
 pub fn command_create(params: &Value) -> Result<Value> {
     ensure_secure_mesh_protected_operation_allowed()?;
@@ -33,6 +45,7 @@ pub fn command_create_secure(params: &Value) -> Result<Value> {
         "Mobile Relay secure command create authorization batch",
         mobile_relay_e2ee_secret_store_authorization_batch_operation_count().saturating_add(3),
     )?;
+    require_relay_private_key(&secret_context.material)?;
     ensure_peer_verified(&config)?;
     let body = json_param(params, "body")
         .or_else(|| json_param(params, "payload"))
@@ -46,6 +59,7 @@ pub fn command_create_secure(params: &Value) -> Result<Value> {
         .unwrap_or_else(|| "default".to_string());
     let payload = secure_command_payload(
         &config,
+        &secret_context.material,
         &command_kind,
         target_agent_id.as_deref(),
         &workspace_id,
@@ -69,6 +83,7 @@ pub fn command_create_secure(params: &Value) -> Result<Value> {
     )?;
     let envelope = seal_mobile_relay_payload_with_pairwise_operation(
         &config,
+        &secret_context.material,
         SecureMeshPayloadKind::Command,
         &payload,
         &mut pairwise_operation,

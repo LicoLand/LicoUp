@@ -42,10 +42,11 @@ fn mobile_relay_native_secret_store_boundary_invariant_persists_and_hydrates_red
         .get_secret(&bundle_handle)
         .unwrap()
         .expect("native E2EE secret bundle should be persisted");
-    let bundle = parse_native_e2ee_secret_bundle(&bundle_raw).unwrap();
-    for ((field, material_field), secret) in MOBILE_RELAY_E2EE_NATIVE_SECRET_FIELDS
+    let bundle = decode_mobile_relay_e2ee_secret_bundle(bundle_raw).unwrap();
+    for (((field, material_field), secret_field), secret) in MOBILE_RELAY_E2EE_NATIVE_SECRET_FIELDS
         .iter()
         .copied()
+        .zip(MobileRelayE2eeSecretField::ALL)
         .zip(secret_values.iter().copied())
     {
         assert!(config["mobileRelayE2ee"].get(field).is_none());
@@ -54,9 +55,8 @@ fn mobile_relay_native_secret_store_boundary_invariant_persists_and_hydrates_red
         assert!(!serialized.contains(secret));
         assert_eq!(
             bundle
-                .iter()
-                .find(|(bundle_field, _)| *bundle_field == field)
-                .map(|(_, bundle_secret)| bundle_secret.as_str()),
+                .secret(secret_field)
+                .and_then(|value| value.expose_utf8().ok()),
             Some(secret)
         );
         let handle = native_secret_store_handle_for_namespace(namespace, field).unwrap();
@@ -72,8 +72,10 @@ fn mobile_relay_native_secret_store_boundary_invariant_persists_and_hydrates_red
     );
 
     let mut overrides = RuntimeSecretOverrides::default();
-    hydrate_config_secret_material_from_secret_store(
-        &mut config,
+    let mut material = RuntimeSecretMaterial::new();
+    hydrate_runtime_secret_material_from_secret_store(
+        &config,
+        &mut material,
         &mut overrides,
         &store,
         namespace,
@@ -89,12 +91,14 @@ fn mobile_relay_native_secret_store_boundary_invariant_persists_and_hydrates_red
         mobile_relay_e2ee_secret_store_authorization_batch_operation_count()
     );
 
-    for ((field, _), secret) in MOBILE_RELAY_E2EE_NATIVE_SECRET_FIELDS
-        .iter()
-        .copied()
-        .zip(secret_values.iter().copied())
+    for (field, secret) in MobileRelayE2eeSecretField::ALL
+        .into_iter()
+        .zip(secret_values)
     {
-        assert_eq!(config["mobileRelayE2ee"][field], secret);
+        assert_eq!(
+            material.e2ee_secret(field).unwrap().expose_utf8().unwrap(),
+            secret,
+        );
     }
     assert!(has_runtime_secret_overrides(&overrides));
     assert_eq!(

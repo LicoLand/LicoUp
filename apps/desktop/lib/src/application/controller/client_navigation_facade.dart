@@ -6,13 +6,16 @@ import 'package:flutter_client/src/application/controller/client_agent_usage_fac
 import 'package:flutter_client/src/application/controller/client_conversation_facade.dart';
 import 'package:flutter_client/src/application/controller/client_mobile_relay_facade.dart';
 import 'package:flutter_client/src/application/controller/client_presentation_facade.dart';
+import 'package:flutter_client/src/application/controller/client_skill_hub_facade.dart';
 import 'package:flutter_client/src/application/controller/client_target_facade.dart';
 import 'package:flutter_client/src/application/features/agents/workspace/agent_workspace_coordinator.dart';
+import 'package:flutter_client/src/application/features/agents/orchestration/agent_orchestration_policy_controller.dart';
 import 'package:flutter_client/src/application/features/agents/conversation/conversation_refresh_controller.dart';
 import 'package:flutter_client/src/application/features/agents/policy/conversation_refresh_policy.dart';
 import 'package:flutter_client/src/application/features/navigation/controller/client_navigation_controller.dart';
+import 'package:flutter_client/src/application/features/navigation/controller/client_section_preload_controller.dart';
 import 'package:flutter_client/src/application/features/targets/policy/target_policy.dart';
-import 'package:flutter_client/src/contracts/agent_orchestration_policy.dart';
+import 'package:flutter_client/src/contracts/agent_orchestration_target.dart';
 import 'package:flutter_client/src/contracts/presentation/semantic_destination.dart';
 import 'package:flutter_client/src/contracts/target_candidate.dart';
 
@@ -24,10 +27,13 @@ mixin ClientNavigationFacade
         ClientPresentationFacade,
         ClientAgentUsageFacade,
         ClientMobileRelayFacade,
-        ClientTargetFacade {
+        ClientSkillHubFacade,
+        ClientTargetFacade,
+        AgentOrchestrationPolicyController {
   final Object _navigationUsagePollingOwner = Object();
 
   ClientNavigationController get navigationController;
+  ClientSectionPreloadController get sectionPreloadController;
   bool get mobileClientRuntimePlatform;
 
   ClientSection get currentSection => navigationController.currentSection;
@@ -37,25 +43,34 @@ mixin ClientNavigationFacade
 
   void selectSection(ClientSection section) {
     navigationController.select(section);
+    sectionPreloadController.prioritizeSection(section);
     conversationAttentionContextChanged();
     notifyClientStateChanged();
   }
 
+  /// Default per-section background preload work, resolved at bootstrap.
+  /// Quiet variants keep background loading off the visible status line.
+  Map<ClientSection, Future<void> Function()> resolveSectionPreloadTasks() => {
+    ClientSection.agents: () =>
+        scanTargets(showProgress: false, surfaceErrors: true),
+    ClientSection.monitoring: () => ensureAgentUsageLoadedAndFresh(limit: 20),
+    ClientSection.skillHub: () =>
+        refreshSkillHub(selectedConversationAgentId, showProgress: false),
+    ClientSection.mobileRelay: () =>
+        refreshSecureMeshStatus(authorize: false, showProgress: false),
+  };
+
   void clientEnterAgentsSection() {
     var selectionChanged = false;
     if (!mobileClientRuntimePlatform && selectedConversationAgentId.isEmpty) {
-      if (routingModuleAvailable) {
+      if (orchestrationAvailable) {
         selectedConversationAgentId = agentOrchestrationTargetId;
       } else {
         selectDefaultConversationAgent(preferDirectAgent: true);
       }
-      preparingNewConversation = false;
       selectionChanged = selectedConversationAgentId.isNotEmpty;
     }
-    if (!mobileClientRuntimePlatform && selectedConversationIsOrchestration) {
-      syncAgentOrchestrationPolicy();
-      ensureOrchestrationConversationSession();
-    }
+    if (!mobileClientRuntimePlatform && selectedConversationIsOrchestration) {}
     if (selectionChanged) notifyConversationStructureChanged();
     if (scannedTargets.isEmpty) unawaited(scanTargets());
   }
@@ -107,13 +122,13 @@ mixin ClientNavigationFacade
         .where((target) => !isAgentOrchestrationTargetId(target.target))
         .toList(growable: false);
     if (visibleTargets.isEmpty) {
+      abandonNewConversationDraft(selectedConversationAgentId);
       selectedConversationAgentId = '';
-      preparingNewConversation = false;
       stopConversationRefreshScheduling();
       return;
     }
     if (!mobileClientRuntimePlatform &&
-        routingModuleAvailable &&
+        orchestrationAvailable &&
         !preferDirectAgent) {
       if (selectedConversationAgentId.isEmpty ||
           isAgentOrchestrationTargetId(selectedConversationAgentId) ||
@@ -121,8 +136,6 @@ mixin ClientNavigationFacade
             (target) => target.target == selectedConversationAgentId,
           )) {
         selectedConversationAgentId = agentOrchestrationTargetId;
-        preparingNewConversation = false;
-        ensureOrchestrationConversationSession();
         return;
       }
     }
@@ -132,7 +145,7 @@ mixin ClientNavigationFacade
           (target) => target.target == selectedConversationAgentId,
         )) {
       selectedConversationAgentId = visibleTargets.first.target;
-      preparingNewConversation = false;
+      beginNewConversationDraft(selectedConversationAgentId);
     }
   }
 
@@ -142,7 +155,7 @@ mixin ClientNavigationFacade
     return targetController.orderedConversationTargets(
       targets,
       orchestrationTarget:
-          mobileClientRuntimePlatform || !routingModuleAvailable
+          mobileClientRuntimePlatform || !orchestrationAvailable
           ? null
           : agentOrchestrationTargetCandidate(
               label: clientStrings.defaultLabel,

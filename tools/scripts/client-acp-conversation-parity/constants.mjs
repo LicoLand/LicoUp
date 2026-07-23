@@ -109,14 +109,26 @@ export const agentConfigs = Object.freeze({
   }),
   cursor: Object.freeze({
     id: "cursor",
-    driverId: "cursor-acp",
+    driverId: "cursor-cli",
     executable: "cursor-agent",
     binaryEnvironment: ["CURSOR_AGENT_PATH", "CURSOR_PATH", "CURSOR_BIN"],
-    acpArgs: ["acp"],
-    runtimeProtocol: "cursor-acp-v1-stdio-jsonrpc",
-    laneFamily: "acp",
-    cleanupKind: "unavailable",
-    cleanupBlocker: "safe_cleanup_unavailable",
+    acpArgs: [
+      "--print",
+      "--output-format",
+      "stream-json",
+      "--trust",
+      "--force",
+    ],
+    runtimeProtocol: "cursor-agent-cli-v1",
+    laneFamily: "cli",
+    cleanupKind: "cursor-cli-chat-leaf",
+    promptInArguments: true,
+    continuityInArguments: true,
+    // Native argv CLI turn (create-chat / --resume); not sidecar.
+    cliTurnKind: "native-cli",
+    cliReadbackKind: "native-cli",
+    sameSessionGate: true,
+    parityModel: "Auto",
   }),
   openclaw: Object.freeze({
     id: "openclaw",
@@ -150,6 +162,7 @@ export const agentConfigs = Object.freeze({
     laneFamily: "acp",
     cleanupKind: "disposable-data-root",
     disposableEnvironmentKey: "KIMI_CODE_HOME",
+    sameSessionGate: true,
   }),
   pi: Object.freeze({
     id: "pi",
@@ -183,18 +196,45 @@ export const agentConfigs = Object.freeze({
     ],
     runtimeProtocol: "claude-code-cli-stream-json",
     laneFamily: "stream-json",
-    cleanupKind: "unavailable",
-    cleanupBlocker: "safe_cleanup_unavailable",
+    cleanupKind: "process-local-rpc",
+    continuityScope: "process-local",
+    isolatedConfigEnvironmentKey: "CLAUDE_CONFIG_DIR",
+    noHistoryEnvironmentKey: "CLAUDE_CODE_SKIP_PROMPT_HISTORY",
   }),
   antigravity: Object.freeze({
     id: "antigravity",
     driverId: "antigravity-cli",
     executable: "agy",
     binaryEnvironment: ["ANTIGRAVITY_PATH", "AGY_PATH"],
-    acpArgs: [],
-    runtimeProtocol: "antigravity-cli-structured-transport-unavailable",
-    laneFamily: "unavailable",
-    cleanupKind: "unavailable",
-    cleanupBlocker: "antigravity_cli_structured_transport_unavailable",
+    acpArgs: ["--print", "--dangerously-skip-permissions"],
+    runtimeProtocol: "antigravity-cli-argv-hook-v1",
+    laneFamily: "cli",
+    cleanupKind: "antigravity-cli-brain-leaf",
+    promptInArguments: true,
+    continuityInArguments: true,
+    // Hook-bridge session receipt lives inside the native driver; harness
+    // exercises the adapter through the sidecar send path only.
+    cliTurnKind: "sidecar",
+    cliReadbackKind: "none",
+    sameSessionGate: true,
+    turnViaSidecar: true,
+    parityModel: "gemini-3.6-flash-low",
   }),
 });
+
+/** Agents whose acceptance path is the same-session sequential gate. */
+export const sameSessionGateAgentIds = Object.freeze(
+  Object.values(agentConfigs)
+    .filter((config) => config.sameSessionGate === true)
+    .map((config) => config.id),
+);
+
+/** Agents whose privacy contract allows prompt/continuity id in argv. */
+export const argvPrivacyLaneAgentIds = Object.freeze(
+  Object.values(agentConfigs)
+    .filter(
+      (config) =>
+        config.promptInArguments === true && config.continuityInArguments === true,
+    )
+    .map((config) => config.id),
+);

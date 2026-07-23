@@ -18,14 +18,14 @@ void main() {
 
     expect(plan.kind, OptionalCollaborationWorkflowKind.localDeployment);
     expect(plan.selectedIds, ['server-core']);
-    expect(plan.destination, '/tmp/licolite-local');
-    expect(plan.fileChanges.single.destination, '/tmp/licolite-local/server');
+    expect(plan.destination, 'test-data/licomesh-local');
+    expect(plan.fileChanges.single.destination, 'test-data/licomesh-local/server');
     expect(
-      plan.matchesLocalRequest(['server-core'], '/tmp/licolite-local'),
+      plan.matchesLocalRequest(['server-core'], 'test-data/licomesh-local'),
       isTrue,
     );
     expect(
-      plan.matchesLocalRequest(['server-extra'], '/tmp/licolite-local'),
+      plan.matchesLocalRequest(['server-extra'], 'test-data/licomesh-local'),
       isFalse,
     );
   });
@@ -40,7 +40,7 @@ void main() {
     ]);
     expect(
       plan.agentRegistrations.single.registration.payloadRoots.single.path,
-      '/tmp/licoarc-mcp/selected-mcp',
+      'test-data/licoarc-mcp/selected-mcp',
     );
   });
 
@@ -54,7 +54,7 @@ void main() {
 
     final plan = OptionalCollaborationWorkflowPlan.fromJson(_localPlanJson());
     final apply = _localApplyJson();
-    apply['destination'] = '/tmp/different';
+    apply['destination'] = 'test-data/different';
     expect(
       () => OptionalCollaborationWorkflowApplyResult.fromJson(
         apply,
@@ -99,23 +99,23 @@ Map<String, dynamic> _localPlanJson() => {
   'planId': '00000000-0000-4000-8000-000000000001',
   'planDigestSha256': _planDigest,
   'packageDigestSha256': _packageDigest,
-  'pluginId': 'licolite-collaboration',
+  'pluginId': 'licomesh-collaboration',
   'selectedFeatureIds': ['server-core'],
   'selectedPluginIds': null,
-  'destination': '/tmp/licolite-local',
+  'destination': 'test-data/licomesh-local',
   'agents': <dynamic>[],
   'fileChanges': [
     {
       'selectionId': 'server-core',
       'sourceRelativePath': 'payload/server-core/server',
-      'destination': '/tmp/licolite-local/server',
+      'destination': 'test-data/licomesh-local/server',
       'destinationRelativePath': 'server',
       'digestSha256': _fileDigest,
       'bytes': 128,
     },
   ],
   'agentRegistrations': <dynamic>[],
-  'assemblyPlan': _assemblyPlan('/tmp/licolite-local', ['server-core']),
+  'assemblyPlan': _assemblyPlan('test-data/licomesh-local', ['server-core']),
   'expiresAtEpochSeconds': 2000000000,
   'oneTime': true,
   'cancellable': true,
@@ -137,19 +137,19 @@ Map<String, dynamic> _mcpPlanJson() => {
   'planId': '00000000-0000-4000-8000-000000000002',
   'planDigestSha256': _planDigest,
   'packageDigestSha256': _packageDigest,
-  'pluginId': 'licolite-collaboration',
+  'pluginId': 'licomesh-collaboration',
   'selectedFeatureIds': null,
   'selectedPluginIds': ['selected-mcp'],
   'destination': null,
   'agents': [
-    {'agentId': 'cursor', 'installDestination': '/tmp/licoarc-mcp'},
+    {'agentId': 'cursor', 'installDestination': 'test-data/licoarc-mcp'},
   ],
   'fileChanges': [
     {
       'agentId': 'cursor',
       'selectionId': 'selected-mcp',
       'sourceRelativePath': 'payload/mcp-selected/server',
-      'destination': '/tmp/licoarc-mcp/selected-mcp/server',
+      'destination': 'test-data/licoarc-mcp/selected-mcp/server',
       'destinationRelativePath': 'selected-mcp/server',
       'digestSha256': _fileDigest,
       'bytes': 128,
@@ -159,18 +159,18 @@ Map<String, dynamic> _mcpPlanJson() => {
     {
       'agentId': 'cursor',
       'registrationId': '00000000-0000-4000-8000-000000000010',
-      'destination': '/tmp/licoarc-private-registration.json',
+      'destination': 'test-data/licoarc-private-registration.json',
       'digestSha256': _registrationDigest,
       'registration': {
         'schemaVersion': 'licoarc.mcp-agent-registration.v2',
         'registrationId': '00000000-0000-4000-8000-000000000010',
         'registrationDigestSha256': _registrationDigest,
         'agentId': 'cursor',
-        'collaborationPluginId': 'licolite-collaboration',
+        'collaborationPluginId': 'licomesh-collaboration',
         'packageDigestSha256': _packageDigest,
         'selectedPluginIds': ['selected-mcp'],
         'payloadRoots': [
-          {'pluginId': 'selected-mcp', 'path': '/tmp/licoarc-mcp/selected-mcp'},
+          {'pluginId': 'selected-mcp', 'path': 'test-data/licoarc-mcp/selected-mcp'},
         ],
         'payloadFiles': <dynamic>[],
         'servers': <dynamic>[],
@@ -206,14 +206,14 @@ Map<String, dynamic> _localApplyJson() => {
   'planId': '00000000-0000-4000-8000-000000000001',
   'planConsumed': true,
   'packageDigestSha256': _packageDigest,
-  'pluginId': 'licolite-collaboration',
+  'pluginId': 'licomesh-collaboration',
   'selectedFeatureIds': ['server-core'],
   'selectedPluginIds': null,
-  'destination': '/tmp/licolite-local',
+  'destination': 'test-data/licomesh-local',
   'agents': <dynamic>[],
   'fileChanges': _localPlanJson()['fileChanges'],
   'agentRegistrations': <dynamic>[],
-  'localServer': _localServer('/tmp/licolite-local', ['server-core']),
+  'localServer': _localServer('test-data/licomesh-local', ['server-core']),
   'pluginExecuted': false,
   'pluginCodeExecuted': false,
   'assemblyAdapterExecuted': true,
@@ -230,8 +230,8 @@ Map<String, dynamic> _assemblyPlan(
   List<String> selectedIds,
 ) => {
   'deploymentId': '00000000-0000-4000-8000-000000000020',
-  'pluginId': 'licolite-collaboration',
-  'sourceUrl': 'https://github.com/example/licolite-bundle.git',
+  'pluginId': 'licomesh-collaboration',
+  'sourceUrl': 'https://github.com/example/licomesh-bundle.git',
   'serverVersion': '1.0.0',
   'packageDigestSha256': _packageDigest,
   'selectedComponentIds': selectedIds,
@@ -257,7 +257,7 @@ Map<String, dynamic> _localServer(
 ) => {
   'deploymentId': '00000000-0000-4000-8000-000000000020',
   'status': 'assembled-awaiting-deployment',
-  'sourceUrl': 'https://github.com/example/licolite-bundle.git',
+  'sourceUrl': 'https://github.com/example/licomesh-bundle.git',
   'serverVersion': '1.0.0',
   'packageDigestSha256': _packageDigest,
   'selectedComponentIds': selectedIds,
@@ -282,6 +282,6 @@ Map<String, dynamic> _cancelJson() => {
   'planId': '00000000-0000-4000-8000-000000000001',
   'planDigestSha256': _planDigest,
   'packageDigestSha256': _packageDigest,
-  'pluginId': 'licolite-collaboration',
+  'pluginId': 'licomesh-collaboration',
   'planConsumed': true,
 };

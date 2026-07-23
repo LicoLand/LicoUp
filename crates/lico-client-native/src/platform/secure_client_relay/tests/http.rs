@@ -27,8 +27,8 @@ fn application_error_preserves_core_retry_policy_without_server_detail() {
             "429 Too Many Requests",
             &json!({
                 "ok": false,
-                "schemaVersion": "licolite.secure-mesh.store-schema.v2",
-                "protocolVersion": "licolite.secure-mesh.v1",
+                "schemaVersion": "licomesh.secure-mesh.store-schema.v2",
+                "protocolVersion": "licomesh.secure-mesh.v1",
                 "code": "secure_mesh_mailbox_backpressure",
                 "error": "server detail must not cross the adapter"
             }),

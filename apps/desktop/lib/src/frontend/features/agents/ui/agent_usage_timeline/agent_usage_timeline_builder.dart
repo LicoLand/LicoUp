@@ -13,8 +13,13 @@ AgentUsageTimelineData buildAgentUsageTimelineData(
   AgentUsageChartGrouping grouping,
   Set<String> detectedAgentIds, {
   DateTime? anchor,
+  int? displayDayCount,
 }) {
-  final bucketDates = _recentDayBuckets(anchor: anchor);
+  final dayCount = displayDayCount ?? report.windowDays;
+  final bucketDates = _recentDayBuckets(
+    anchor: anchor,
+    dayCount: dayCount,
+  );
   final bucketKeys = bucketDates.map(agentUsageDateKey).toSet();
   final valuesByDay = {for (final key in bucketKeys) key: <String, double>{}};
   final modelShareTotals = <String, double>{};
@@ -30,9 +35,8 @@ AgentUsageTimelineData buildAgentUsageTimelineData(
       continue;
     }
     final dailyUsage = agent.history['dailyUsage'];
-    hasDailyBreakdown =
-        hasDailyBreakdown || dailyUsage is List || dailyUsage is Map;
     final dailyEntries = _dailyUsageEntries(dailyUsage);
+    hasDailyBreakdown = hasDailyBreakdown || dailyEntries.isNotEmpty;
     if (dailyEntries.isEmpty) {
       if (grouping == AgentUsageChartGrouping.model) {
         for (final model in agentUsageModelUsageMap(agent.history).entries) {
@@ -91,7 +95,10 @@ AgentUsageTimelineData buildAgentUsageTimelineData(
       final byTokens = b.value.compareTo(a.value);
       return byTokens != 0 ? byTokens : a.key.compareTo(b.key);
     });
-  final visibleLabels = [for (final entry in seriesLabels.take(10)) entry.key];
+  final visibleLabels = [
+    for (final entry in seriesLabels.take(agentUsageWaveSeriesLimit)) entry.key,
+  ];
+  final shareLabels = agentUsageRankedShareLabels(shareTotals);
   final visibleLabelSet = visibleLabels.toSet();
   final snapshots = [
     for (final snapshot in rawSnapshots)
@@ -107,6 +114,7 @@ AgentUsageTimelineData buildAgentUsageTimelineData(
     snapshots: snapshots,
     series: [for (final label in visibleLabels) AgentUsageSeries(label: label)],
     seriesTotals: Map.unmodifiable(shareTotals),
+    shareSeriesLabels: List.unmodifiable(shareLabels),
     groupTotal: shareTotals.values.fold<double>(0, (sum, value) => sum + value),
     hasDailyBreakdown: hasDailyBreakdown,
   );
@@ -118,21 +126,22 @@ class _DailyUsageEntry {
     required this.totalTokens,
     required this.modelUsage,
     required this.breakdown,
-    required this.hasEstimatedRecords,
   });
 
   final String date;
   final double totalTokens;
   final Map<String, AgentUsageModelTokens> modelUsage;
   final AgentUsageTokenBreakdown breakdown;
-  final bool hasEstimatedRecords;
 }
 
-List<DateTime> _recentDayBuckets({DateTime? anchor}) {
+List<DateTime> _recentDayBuckets({
+  DateTime? anchor,
+  int dayCount = agentUsageTimelineDayCount,
+}) {
   final value = (anchor ?? DateTime.now()).toLocal();
   final today = DateTime(value.year, value.month, value.day);
   return [
-    for (var offset = agentUsageTimelineDayCount - 1; offset >= 0; offset -= 1)
+    for (var offset = dayCount - 1; offset >= 0; offset -= 1)
       DateTime(today.year, today.month, today.day - offset),
   ];
 }
@@ -178,11 +187,5 @@ _DailyUsageEntry? _dailyUsageEntryFromValue(String date, Object? value) {
     totalTokens: totalTokens,
     modelUsage: Map.unmodifiable(modelUsage),
     breakdown: breakdown,
-    hasEstimatedRecords:
-        value is Map &&
-        agentUsageTokensFromSource(
-              value['estimatedRecords'] ?? value['estimated_records'],
-            ) >
-            0,
   );
 }

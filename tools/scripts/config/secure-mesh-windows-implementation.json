@@ -1,5 +1,5 @@
 {
-  "schemaVersion": "licolite.secure-mesh.windows-implementation-config.v1",
+  "schemaVersion": "licomesh.secure-mesh.windows-implementation-config.v1",
   "sourceChecks": [
     {
       "id": "windows-x64-builder-is-target-bound-and-arm64-fails-closed",

@@ -1,3 +1,4 @@
+pub mod agent_orchestration;
 pub mod agent_usage;
 pub mod catalog_convergence;
 pub mod client_update;

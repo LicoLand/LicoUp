@@ -140,7 +140,7 @@ function runProof(tempDir) {
   summary.adaptiveFallbackReady = Object.values(summary).every((value) => value === true);
 
   return {
-    schemaVersion: "licolite.secure-mesh.linux-adaptive-custody-proof-report.v1",
+    schemaVersion: "licomesh.secure-mesh.linux-adaptive-custody-proof-report.v1",
     verifier: "tools/scripts/client-secure-mesh-linux-adaptive-custody-proof.mjs",
     generatedAt: new Date().toISOString(),
     report: reportReference(),
@@ -213,7 +213,7 @@ function validateInputPayload(payload, expectedStrategy) {
   }
   return {
     ok: true,
-    schemaVersion: "licolite.secure-mesh.linux-adaptive-custody-input-validation.v1",
+    schemaVersion: "licomesh.secure-mesh.linux-adaptive-custody-input-validation.v1",
     custodyStrategy: projection.custodyStrategy,
     restartSemantics: projection.restartSemantics,
     exactCapabilityProjection: true,
@@ -316,7 +316,7 @@ function runSelfTest() {
 
   return {
     ok: true,
-    schemaVersion: "licolite.secure-mesh.linux-adaptive-custody-self-test.v1",
+    schemaVersion: "licomesh.secure-mesh.linux-adaptive-custody-self-test.v1",
     scenarioCount: fallbackScenarios.length + 1,
     independentFactModelReady: true,
     exactSharedReducerProjectionReady: true,
@@ -350,7 +350,7 @@ function countOrdinaryFileSecretArtifacts(root) {
 
 function failureReport(error) {
   return {
-    schemaVersion: "licolite.secure-mesh.linux-adaptive-custody-proof-report.v1",
+    schemaVersion: "licomesh.secure-mesh.linux-adaptive-custody-proof-report.v1",
     verifier: "tools/scripts/client-secure-mesh-linux-adaptive-custody-proof.mjs",
     generatedAt: new Date().toISOString(),
     report: reportReference(),

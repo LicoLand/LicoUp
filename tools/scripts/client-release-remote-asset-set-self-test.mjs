@@ -19,7 +19,7 @@ try {
   const checksumBytes = Buffer.from(`${artifactSha256}  ${artifactName}\n`, "utf8");
   const name = "LicoArc-consumer-verification.json";
   const bytes = Buffer.from(`${JSON.stringify({
-    schemaVersion: "licolite.consumer-verification-manifest.v1",
+    schemaVersion: "licomesh.consumer-verification-manifest.v1",
     artifactName: "LicoArc",
     releaseTag: "v0.0.1-test",
     artifacts: [{

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:flutter_client/src/frontend/features/agents/ui/agent_conversation_pane_controls.dart';
 import 'package:flutter_client/src/frontend/l10n/lico_strings.dart';
 import 'package:flutter_client/src/frontend/shared/ui/theme.dart';
 
@@ -59,29 +60,13 @@ class ArchiveAgentConversationsButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = context.licoColors;
-    return IconButton(
+    return ConversationIconButton(
+      key: key,
       tooltip: tooltip,
       onPressed: busy ? null : onPressed,
-      color: colors.primary,
-      disabledColor: colors.textMuted,
-      hoverColor: Color.lerp(colors.surface, colors.primary, 0.12),
-      style: IconButton.styleFrom(
-        fixedSize: const Size(32, 32),
-        minimumSize: const Size(32, 32),
-        padding: EdgeInsets.zero,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-      ),
-      icon: busy
-          ? SizedBox(
-              width: 16,
-              height: 16,
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                color: colors.textMuted,
-              ),
-            )
-          : const Icon(Icons.archive_outlined, size: 18),
+      busy: busy,
+      icon: Icons.archive_outlined,
+      color: context.licoColors.textMuted,
     );
   }
 }
@@ -100,37 +85,12 @@ class NewAgentConversationButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = context.licoColors;
-    return IconButton(
+    return ConversationIconButton(
+      key: key,
       tooltip: tooltip,
       onPressed: enabled ? onPressed : null,
-      color: colors.primary,
-      disabledColor: colors.textMuted,
-      hoverColor: Color.lerp(colors.surface, colors.primary, 0.12),
-      style: IconButton.styleFrom(
-        fixedSize: const Size(32, 32),
-        minimumSize: const Size(32, 32),
-        padding: EdgeInsets.zero,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-      ),
-      icon: const Icon(Icons.add_comment_outlined, size: 18),
-    );
-  }
-}
-
-class MobileComposerSurface extends StatelessWidget {
-  const MobileComposerSurface({super.key, required this.child});
-
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.licoColors;
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        border: Border(top: BorderSide(color: colors.line)),
-      ),
-      child: child,
+      icon: Icons.add_comment_outlined,
+      color: context.licoColors.primary,
     );
   }
 }

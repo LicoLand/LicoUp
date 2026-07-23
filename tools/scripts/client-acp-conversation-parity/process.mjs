@@ -10,6 +10,7 @@ export function createPrivateWrapper(directory, realBinary) {
   writeFileSync(wrapperPath, [
     "#!/bin/sh",
     "{",
+    "  printf '%s%s\\n' '__NO_HISTORY__=' \"${CLAUDE_CODE_SKIP_PROMPT_HISTORY-}\"",
     "  printf '%s\\n' '__INVOCATION__'",
     "  for argument in \"$@\"; do printf '%s\\n' \"$argument\"; done",
     "} >> \"$LICO_ACP_ARGV_CAPTURE\"",
@@ -88,6 +89,38 @@ export function seedDisposableProfile(context) {
     );
   }
   return state.files > 0;
+}
+
+export function scanBoundedNoFollow(root, needles, limits = {}) {
+  const maxDepth = limits.maxDepth || 8;
+  const maxFiles = limits.maxFiles || 256;
+  const maxBytes = limits.maxBytes || 4 * 1024 * 1024;
+  const normalizedNeedles = needles
+    .map((value) => String(value || ""))
+    .filter((value) => value.length > 0);
+  const result = { complete: true, found: false, files: 0, bytes: 0 };
+  if (!root || !existsSync(root)) return result;
+  const visit = (path, depth) => {
+    requireFact(depth <= maxDepth, "persistence_scan_limit");
+    const metadata = lstatSync(path);
+    requireFact(!metadata.isSymbolicLink(), "persistence_scan_symlink");
+    if (metadata.isDirectory()) {
+      for (const name of readdirSync(path)) visit(join(path, name), depth + 1);
+      return;
+    }
+    requireFact(metadata.isFile(), "persistence_scan_unsupported");
+    requireFact(
+      result.files < maxFiles && result.bytes + metadata.size <= maxBytes,
+      "persistence_scan_limit",
+    );
+    const contents = readFileSync(path);
+    result.files += 1;
+    result.bytes += contents.length;
+    const text = contents.toString("utf8");
+    if (normalizedNeedles.some((needle) => text.includes(needle))) result.found = true;
+  };
+  visit(root, 0);
+  return result;
 }
 
 export function runBoundedProcess(executable, args, options = {}) {

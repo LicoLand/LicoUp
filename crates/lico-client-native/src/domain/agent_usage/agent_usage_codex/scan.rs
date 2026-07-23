@@ -7,14 +7,16 @@ use super::append_guard::{
     extend_content_guard,
 };
 use super::cache::{
-    cache_is_fresh, cache_snapshot_exists, cached_source_keys, open_cache_database, sqlite_is_busy,
+    cache_is_fresh, cache_state, cached_source_keys, open_cache_database, sqlite_is_busy,
 };
 use super::cache_batch::CacheBatch;
+use super::cache_cleanup::reclaim_cache_space;
 use super::constants::CACHE_DATABASE_PREFIX;
 use super::file_collection::{collect_usage_files, file_metadata};
 use super::lineage::reconcile_lineage_scopes;
 use super::models::{ParserState, ScanStats};
 use super::parser::ParserBatch;
+use super::rollup::compact_historical_details;
 use super::scan_params::{bool_param, roots_fingerprint, source_key, usage_roots};
 use super::utils::{to_i64, unix_millis};
 use anyhow::{Context, Result};
@@ -29,9 +31,7 @@ pub(super) fn summarize(
     warnings: &mut Vec<Value>,
 ) -> Option<HistoryUsageSummary> {
     match summarize_inner(scan_params, window) {
-        Ok(summary) if summary.explicit_records > 0 || summary.estimated_records > 0 => {
-            Some(summary)
-        }
+        Ok(summary) if summary.explicit_records > 0 => Some(summary),
         Ok(_) => None,
         Err(_) => {
             warnings.push(json!({
@@ -56,7 +56,6 @@ fn summarize_inner(scan_params: &Value, window: &UsageWindow) -> Result<HistoryU
     let mut connection = open_cache_database(&database_path)?;
     let force_refresh = bool_param(scan_params, "forceRefresh").unwrap_or(false);
     let now_ms = unix_millis();
-
     if !force_refresh && cache_is_fresh(&connection, &root_key, now_ms)? {
         let stats = ScanStats {
             cache_fresh: true,
@@ -70,7 +69,13 @@ fn summarize_inner(scan_params: &Value, window: &UsageWindow) -> Result<HistoryU
         discovered_files: files.len() as u64,
         ..ScanStats::default()
     };
-    let has_cached_snapshot = cache_snapshot_exists(&connection, &root_key)?;
+    let (has_cached_snapshot, has_baseline) = cache_state(&connection, &root_key)?;
+    let rollup_window = window.all_history();
+    let parse_window = if has_baseline {
+        window.today_only()
+    } else {
+        window.all_history()
+    };
     connection.busy_timeout(if has_cached_snapshot {
         Duration::from_millis(500)
     } else {
@@ -87,6 +92,8 @@ fn summarize_inner(scan_params: &Value, window: &UsageWindow) -> Result<HistoryU
         return aggregate_cached_usage(&mut connection, &root_key, window, stats);
     }
     let transaction = transaction_result.context("agent usage cache transaction failed")?;
+    // Finalize previous local days before a rewrite can replace today's rows.
+    let mut deleted_rows = compact_historical_details(&transaction, &root_key, &rollup_window)?;
     let cached_keys = cached_source_keys(&transaction, &root_key)?;
     let mut seen_source_keys = BTreeSet::<String>::new();
     {
@@ -136,7 +143,7 @@ fn summarize_inner(scan_params: &Value, window: &UsageWindow) -> Result<HistoryU
                 &source_key,
                 &path,
                 start_offset,
-                window,
+                &parse_window,
                 &mut state,
             )?;
             stats.parsed_bytes = stats
@@ -163,12 +170,20 @@ fn summarize_inner(scan_params: &Value, window: &UsageWindow) -> Result<HistoryU
         }
     }
     reconcile_lineage_scopes(&transaction, &root_key)?;
+    deleted_rows = deleted_rows.saturating_add(compact_historical_details(
+        &transaction,
+        &root_key,
+        &rollup_window,
+    )?);
     transaction.execute(
         "INSERT INTO usage_scans(root_key, last_scan_ms) VALUES(?1, ?2)
          ON CONFLICT(root_key) DO UPDATE SET last_scan_ms=excluded.last_scan_ms",
         params![root_key, to_i64(now_ms)],
     )?;
     transaction.commit()?;
+    if deleted_rows > 0 {
+        reclaim_cache_space(&connection)?;
+    }
 
     aggregate_cached_usage(&mut connection, &root_key, window, stats)
 }

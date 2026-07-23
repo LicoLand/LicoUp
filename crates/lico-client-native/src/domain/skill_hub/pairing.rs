@@ -1,6 +1,6 @@
 use super::{
-    STATUS_APPROVED, STATUS_REQUESTED, STATUS_REVOKED, agent_id, append_activity,
-    collection_items_mut, target_id, timestamp, uuid_v4,
+    STATUS_APPROVED, STATUS_REVOKED, agent_id, append_activity, collection_items_mut, target_id,
+    timestamp, uuid_v4,
 };
 use crate::platform::client_state::ClientStateStore;
 use anyhow::Result;
@@ -32,6 +32,10 @@ pub(super) fn request(store: &ClientStateStore, params: &Value) -> Result<Value>
         .and_then(Value::as_str)
         .unwrap_or("deny-by-default");
 
+    // Local skill management is itself the user's explicit action, so a
+    // pairing request is approved immediately; the record remains only as an
+    // audit trail of which agents the user chose to manage.
+    let now = timestamp();
     let mut document = store.read_collection("pairings")?;
     let items = collection_items_mut(&mut document)?;
     items.retain(|item| item.get("agentId").and_then(Value::as_str) != Some(&agent_id));
@@ -44,8 +48,9 @@ pub(super) fn request(store: &ClientStateStore, params: &Value) -> Result<Value>
         "configPath": config_path,
         "binaryPath": binary_path,
         "localIdentity": local_identity,
-        "status": STATUS_REQUESTED,
-        "requestedAt": timestamp(),
+        "status": STATUS_APPROVED,
+        "requestedAt": now,
+        "approvedAt": now,
         "defaultVisibilityPolicy": visibility_policy,
         "scopes": [],
     });
@@ -56,9 +61,14 @@ pub(super) fn request(store: &ClientStateStore, params: &Value) -> Result<Value>
         "pairing.requested",
         json!({"target": target, "agentId": agent_id, "pairingId": pairing_id}),
     )?;
+    append_activity(
+        store,
+        "pairing.approved",
+        json!({"target": target, "agentId": agent_id, "pairingId": pairing_id}),
+    )?;
     Ok(json!({
         "ok": true,
-        "status": STATUS_REQUESTED,
+        "status": STATUS_APPROVED,
         "pairing": record
     }))
 }

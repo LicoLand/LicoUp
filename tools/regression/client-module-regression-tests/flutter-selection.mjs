@@ -100,8 +100,11 @@ test("changed Flutter feature paths select only their bounded feature module", (
     "flutter.feature.optional-collaboration.mcp-install",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "apps/desktop/lib/src/application/features/routing/engine/route_evaluator.dart",
-  ])), ["architecture.client-boundaries", "flutter.feature.routing"]);
+    "apps/desktop/lib/src/platform/native_client/orchestrator_ipc/client.dart",
+  ])), [
+    "architecture.client-boundaries",
+    "flutter.feature.orchestrator-projection",
+  ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
     "apps/desktop/lib/src/frontend/features/agents/ui/history_session_search.dart",
   ])), [
@@ -178,31 +181,7 @@ test("changed Flutter feature paths select only their bounded feature module", (
   ]);
 });
 
-test("distillation facade, contract leaves, and broker select bounded regressions", () => {
-  assert.deepEqual(ids(selectModulesForChangedPaths([
-    "apps/desktop/lib/src/contracts/routing/distillation_package.dart",
-  ])), [
-    "architecture.client-boundaries",
-    "flutter.feature.routing.distillation.facade",
-  ]);
-  assert.deepEqual(ids(selectModulesForChangedPaths([
-    "apps/desktop/lib/src/contracts/routing/distillation/distillation_input_window.dart",
-  ])), [
-    "architecture.client-boundaries",
-    "flutter.feature.routing.distillation.input-window",
-  ]);
-  assert.deepEqual(ids(selectModulesForChangedPaths([
-    "apps/desktop/lib/src/application/features/routing/broker/distillation_broker.dart",
-  ])), [
-    "architecture.client-boundaries",
-    "flutter.feature.routing.distillation.broker",
-  ]);
-  assert.deepEqual(ids(selectModulesForChangedPaths([
-    "apps/desktop/test/distillation/distillation_response_parser_test.dart",
-  ])), ["flutter.feature.routing.distillation.response-parser"]);
-});
-
-test("Flutter controller assembly and orchestration policy leaves select precise closures", () => {
+test("Flutter controller assembly and native orchestrator projection select precise closures", () => {
   assert.deepEqual(ids(selectModulesForChangedPaths([
     "apps/desktop/lib/src/application/controller/client_controller.dart",
   ])), [
@@ -216,14 +195,14 @@ test("Flutter controller assembly and orchestration policy leaves select precise
     "flutter.controller.assembly.mobile",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "apps/desktop/lib/src/contracts/agent_orchestration_policy_codec.dart",
+    "apps/desktop/lib/src/application/features/agents/orchestration/agent_orchestration_dispatch_controller.dart",
   ])), [
     "architecture.client-boundaries",
-    "flutter.contract.orchestration-policy.codec",
+    "flutter.feature.orchestrator-projection",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "apps/desktop/test/agent_orchestration_policy_validation_test.dart",
-  ])), ["flutter.contract.orchestration-policy.validation"]);
+    "apps/desktop/test/agent_orchestration/orchestrator_projection_test.dart",
+  ])), ["flutter.feature.orchestrator-projection"]);
 
   const facade = CLIENT_MODULE_CATALOG.find(
     (module) => module.id === "flutter.controller.facade",
@@ -232,14 +211,30 @@ test("Flutter controller assembly and orchestration policy leaves select precise
     facade.command.args.includes("test/client_controller_runtime_facades_test.dart"),
     true,
   );
-  const policyCodec = CLIENT_MODULE_CATALOG.find(
-    (module) => module.id === "flutter.contract.orchestration-policy.codec",
+  const orchestratorProjection = CLIENT_MODULE_CATALOG.find(
+    (module) => module.id === "flutter.feature.orchestrator-projection",
   );
-  assert.equal(policyCodec.command.args.length < 16, true);
+  assert.equal(orchestratorProjection.command.args.length < 16, true);
   assert.equal(
-    policyCodec.command.args.includes("test/agent_orchestration_policy_codec_test.dart"),
+    orchestratorProjection.command.args.includes(
+      "test/agent_orchestration/orchestrator_projection_test.dart",
+    ),
     true,
   );
+});
+
+test("native orchestrator projection owns one bounded desktop acceptance target", () => {
+  const projection = CLIENT_MODULE_CATALOG.find(
+    (module) => module.id === "flutter.feature.orchestrator-projection",
+  );
+  assert.deepEqual(projection.inputs, [
+    "apps/desktop/lib/src/application/features/agents/orchestration/**",
+    "apps/desktop/lib/src/platform/native_client/orchestrator_ipc/**",
+    "apps/desktop/test/agent_orchestration/orchestrator_projection_test.dart",
+  ]);
+  assert.deepEqual(projection.command.args.slice(-1), [
+    "test/agent_orchestration/orchestrator_projection_test.dart",
+  ]);
 });
 
 test("Workbench desktop chrome leaves retain exact widget tests and bounded catalog ownership", () => {

@@ -13,9 +13,19 @@ use serde_json::json;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+fn windows_test_path(drive: &str, parts: &[&str]) -> PathBuf {
+    let separator = char::from(92).to_string();
+    PathBuf::from(
+        std::iter::once(drive)
+            .chain(parts.iter().copied())
+            .collect::<Vec<_>>()
+            .join(&separator),
+    )
+}
+
 #[test]
 fn windows_default_config_paths_use_appdata_not_macos_application_support() {
-    let home = PathBuf::from(r"C:\Profile\lico");
+    let home = windows_test_path("C:", &["Profile", "lico"]);
     let app_data = home.join("AppData").join("Roaming");
     let code = default_config_path_for_platform("code", "windows", &home, &app_data).unwrap();
     let cursor = default_config_path_for_platform("cursor", "windows", &home, &app_data).unwrap();
@@ -61,7 +71,7 @@ fn kimi_default_paths_use_expected_platform_locations() {
             .any(|path| path.ends_with("com.moonshot.kimi"))
     );
 
-    let home = PathBuf::from(r"X:\Profile\example");
+    let home = windows_test_path("X:", &["Profile", "example"]);
     let app_data = home.join("AppData").join("Roaming");
     let config = default_config_path_for_platform("kimi", "windows", &home, &app_data).unwrap();
     assert!(config.ends_with(Path::new("Kimi").join("config.json")));

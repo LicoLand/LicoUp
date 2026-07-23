@@ -38,7 +38,7 @@ export function verifyAndroidArtifact(target, spec, clientVersion, receiptContex
     JSON.stringify(facts.abis) === JSON.stringify([spec.requiredArchitecture]) &&
     facts.signerCount === 1 && facts.zipAligned === true &&
     facts.signatureSchemes.some((scheme) => ["v2", "v3", "v4"].includes(scheme)) &&
-    manifest.schemaVersion === "licolite.client-android.apk-build-manifest.v3" &&
+    manifest.schemaVersion === "licomesh.client-android.apk-build-manifest.v3" &&
     manifest.targetId === target.id && manifest.mode === "release" &&
     androidReleaseBuildParametersReady(manifest.buildParameters) &&
     manifest.sourceStateDigest === receiptContext.payload?.sourceStateDigest &&

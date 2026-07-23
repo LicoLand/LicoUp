@@ -21,7 +21,7 @@ void registerMobileRelayAndroidBridgeScenarios() {
       expect(call.method, 'status');
       return {
         'ok': true,
-        'protocolVersion': 'licolite.secure-mesh.v1',
+        'protocolVersion': 'licomesh.secure-mesh.v1',
         'endpointKind': 'mobile',
         'platform': 'android',
         'bridge': {
@@ -48,7 +48,7 @@ void registerMobileRelayAndroidBridgeScenarios() {
     );
 
     expect(status['ok'], isTrue);
-    expect(status['protocolVersion'], 'licolite.secure-mesh.v1');
+    expect(status['protocolVersion'], 'licomesh.secure-mesh.v1');
     expect(status['bridge']['methodChannel'], secureMeshAndroidChannelName);
     expect(status['secureStore']['provider'], 'AndroidKeyStore');
     expect(

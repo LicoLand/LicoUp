@@ -41,6 +41,21 @@ fn registration_response_rejects_noncanonical_key_and_scope_substitution() {
 }
 
 #[test]
+fn registration_response_rejects_noncanonical_receipt() {
+    let mut response = registration_response();
+    response["registrationReceipt"]["receiptRef"] = json!("A".repeat(64));
+    assert!(
+        validate_success_response(SecureClientRelayOperation::EndpointRegister, &response).is_err()
+    );
+
+    let mut response = registration_response();
+    response["registrationReceipt"]["sequence"] = json!(0);
+    assert!(
+        validate_success_response(SecureClientRelayOperation::EndpointRegister, &response).is_err()
+    );
+}
+
+#[test]
 fn challenge_subject_is_bound_to_operation_scope_and_endpoint() {
     let response = json!({
         "ok": true,
@@ -200,6 +215,10 @@ fn registration_response() -> Value {
             "createdAt": "2026-01-01T00:00:00Z",
             "updatedAt": "2026-01-01T00:00:00Z",
             "revokedAt": ""
+        },
+        "registrationReceipt": {
+            "receiptRef": "b".repeat(64),
+            "sequence": 1
         }
     })
 }

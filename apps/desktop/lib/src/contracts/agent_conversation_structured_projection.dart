@@ -19,42 +19,15 @@ String visibleStructuredConversationText(
   String text, {
   bool providerSummary = false,
 }) {
-  if (kind == AgentConversationMessageKind.reasoning && !providerSummary) {
-    return '';
-  }
-  if (kind == AgentConversationMessageKind.metadata) {
-    return '';
-  }
-  if (kind == AgentConversationMessageKind.toolCall) {
-    return '';
-  }
+  // The conversation surface is local-only: tool invocations, results,
+  // reasoning traces, and metadata are shown verbatim instead of being
+  // blanked or redacted. The character bound only keeps long timelines
+  // responsive; it never alters the payload itself.
   final trimmed = text.trim();
-  if (trimmed.isEmpty ||
-      _looksLikeRawStructuredPayload(trimmed) ||
-      (kind == AgentConversationMessageKind.reasoning &&
-          _looksLikeRawReasoningTrace(trimmed))) {
+  if (trimmed.isEmpty) {
     return '';
   }
-  final redacted = _redactStructuredConversationText(
-    trimmed,
-  ).replaceAll(RegExp(r'\n{3,}'), '\n\n').trim();
-  if (redacted.isEmpty || !_structuredProjectionIsSafe(redacted)) {
-    return '';
-  }
-  return _truncateStructuredConversationText(redacted);
-}
-
-bool _looksLikeRawReasoningTrace(String text) {
-  final normalized = text.trim().toLowerCase();
-  return normalized.contains('<think>') ||
-      normalized.contains('</think>') ||
-      normalized.contains('chain of thought') ||
-      normalized.contains('chain-of-thought') ||
-      normalized.startsWith('analysis:') ||
-      normalized.startsWith('scratchpad:') ||
-      RegExp(
-        r'(^|\n)(?:thought|internal reasoning|step-by-step reasoning)\s*\d*\s*:',
-      ).hasMatch(normalized);
+  return _truncateStructuredConversationText(trimmed);
 }
 
 bool _looksLikeRawStructuredPayload(String text) {
@@ -305,8 +278,6 @@ String defaultConversationCardTitle(AgentConversationMessageKind kind) {
 
 String defaultConversationCardSubtitle(AgentConversationMessageKind kind) {
   return switch (kind) {
-    AgentConversationMessageKind.reasoning ||
-    AgentConversationMessageKind.metadata => 'Sensitive details hidden',
     AgentConversationMessageKind.toolCall => 'Native agent activity',
     AgentConversationMessageKind.toolResult => 'Native agent result',
     AgentConversationMessageKind.error => 'Native agent error',

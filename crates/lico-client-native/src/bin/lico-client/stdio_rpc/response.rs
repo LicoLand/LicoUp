@@ -1,5 +1,8 @@
 use super::*;
+use lico_client_native::ffi::generated::client_error::ClientError;
 
+// RPC frames preserve ClientError.code, stage, component, retryable, recovery,
+// and presentationArgs by serializing the generated value directly.
 pub(crate) fn recover_stdio_rpc_writer<W>(writer: Arc<Mutex<W>>) -> Result<W> {
     Arc::try_unwrap(writer)
         .map_err(|_| anyhow::anyhow!("stdio RPC writer is still in use"))?
@@ -37,8 +40,20 @@ pub(crate) fn write_stdio_rpc_error_shared<W: Write>(
     workflow_id: Option<&str>,
     code: &'static str,
 ) -> io::Result<()> {
+    let error = stdio_rpc_client_error(code);
     with_stdio_rpc_writer(writer, |writer| {
-        write_stdio_rpc_error(writer, id, workflow_id, code)
+        write_stdio_rpc_error(writer, id, workflow_id, &error)
+    })
+}
+
+pub(crate) fn write_stdio_rpc_client_error_shared<W: Write>(
+    writer: &Arc<Mutex<W>>,
+    id: Option<&str>,
+    workflow_id: Option<&str>,
+    error: &ClientError,
+) -> io::Result<()> {
+    with_stdio_rpc_writer(writer, |writer| {
+        write_stdio_rpc_error(writer, id, workflow_id, error)
     })
 }
 
@@ -95,6 +110,7 @@ pub(crate) fn write_stdio_rpc_terminal_success<W: Write>(
         if try_write_stdio_rpc_response(writer, &frame, STDIO_RPC_MAX_RESPONSE_BYTES)? {
             Ok(())
         } else {
+            let error = stdio_rpc_client_error("response_too_large");
             let bounded_error = json!({
                 "protocol": STDIO_RPC_PROTOCOL,
                 "id": id,
@@ -102,10 +118,7 @@ pub(crate) fn write_stdio_rpc_terminal_success<W: Write>(
                 "kind": "terminal",
                 "sequence": sequence,
                 "ok": false,
-                "error": {
-                    "code": "response_too_large",
-                    "message": stdio_rpc_error_message("response_too_large"),
-                },
+                "error": error,
             });
             if try_write_stdio_rpc_response(writer, &bounded_error, STDIO_RPC_MAX_RESPONSE_BYTES)? {
                 Ok(())
@@ -121,7 +134,7 @@ pub(crate) fn write_stdio_rpc_terminal_error<W: Write>(
     id: &str,
     workflow_id: &str,
     sequence: u64,
-    code: &'static str,
+    error: &ClientError,
 ) -> io::Result<()> {
     let frame = json!({
         "protocol": STDIO_RPC_PROTOCOL,
@@ -130,10 +143,7 @@ pub(crate) fn write_stdio_rpc_terminal_error<W: Write>(
         "kind": "terminal",
         "sequence": sequence,
         "ok": false,
-        "error": {
-            "code": code,
-            "message": stdio_rpc_error_message(code),
-        },
+        "error": error,
     });
     with_stdio_rpc_writer(writer, |writer| {
         if try_write_stdio_rpc_response(writer, &frame, STDIO_RPC_MAX_RESPONSE_BYTES)? {
@@ -176,24 +186,22 @@ pub(crate) fn write_stdio_rpc_success_with_limit(
     if try_write_stdio_rpc_response(writer, &response, max_response_bytes)? {
         return Ok(());
     }
-    write_stdio_rpc_error(writer, Some(id), Some(workflow_id), "response_too_large")
+    let error = stdio_rpc_client_error("response_too_large");
+    write_stdio_rpc_error(writer, Some(id), Some(workflow_id), &error)
 }
 
 pub(crate) fn write_stdio_rpc_error(
     writer: &mut impl Write,
     id: Option<&str>,
     workflow_id: Option<&str>,
-    code: &'static str,
+    error: &ClientError,
 ) -> io::Result<()> {
     let response = json!({
         "protocol": STDIO_RPC_PROTOCOL,
         "id": id,
         "workflowId": workflow_id,
         "ok": false,
-        "error": {
-            "code": code,
-            "message": stdio_rpc_error_message(code),
-        },
+        "error": error,
     });
     if try_write_stdio_rpc_response(writer, &response, STDIO_RPC_MAX_RESPONSE_BYTES)? {
         Ok(())

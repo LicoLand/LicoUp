@@ -12,7 +12,7 @@ class AgentUsageService {
     required AgentCommandRunner agentService,
     String agentId = '',
     bool forceRefresh = false,
-    int historyDays = 30,
+    int historyDays = 90,
   }) async {
     final args = ['agent-usage', 'scan'];
     if (agentId.trim().isNotEmpty) {
@@ -21,7 +21,7 @@ class AgentUsageService {
     if (forceRefresh) {
       args.add('--force-refresh');
     }
-    final normalizedHistoryDays = historyDays.clamp(1, 365).toInt();
+    final normalizedHistoryDays = historyDays.clamp(1, 90).toInt();
     args.addAll(['--history-days', normalizedHistoryDays.toString()]);
     args.addAll([
       '--timezone-offset-minutes',

@@ -164,7 +164,7 @@ void registerClientHistoryRefreshScenarios() {
   );
 
   test(
-    'streamed catalog is published once after the loading transition',
+    'streamed catalog publishes cumulative 3 10 20 milestones before completion',
     () async {
       final service = FakeAgentService()
         ..conversationSessions['codex'] = List.generate(
@@ -184,14 +184,17 @@ void registerClientHistoryRefreshScenarios() {
       addTearDown(controller.dispose);
       controller.selectedConversationAgentId = 'codex';
       var structureNotifications = 0;
-      controller.conversationStructureListenable.addListener(
-        () => structureNotifications += 1,
-      );
+      final publishedLengths = <int>[];
+      controller.conversationStructureListenable.addListener(() {
+        structureNotifications += 1;
+        publishedLengths.add(controller.selectedConversationSessions.length);
+      });
 
       await controller.loadConversationSessions('codex');
 
       expect(controller.selectedConversationSessions, hasLength(50));
-      expect(structureNotifications, 2);
+      expect(publishedLengths, [0, 3, 10, 20, 50]);
+      expect(structureNotifications, 5);
     },
   );
 
@@ -313,7 +316,9 @@ void registerClientHistoryRefreshScenarios() {
         ),
       );
       addTearDown(controller.dispose);
-      controller.initialized = true;
+      await controller.lifecycleController.initialize(
+        sequentialSteps: const [],
+      );
       controller.currentSection = ClientSection.agents;
       controller.selectedConversationAgentId = 'codex';
       await controller.loadConversationSessions('codex');
@@ -410,14 +415,14 @@ void registerClientHistoryRefreshScenarios() {
       await controller.selectConversationAgent('opencode');
 
       expect(controller.selectedConversationAgentId, 'opencode');
-      expect(controller.selectedConversationSession?.id, 'opencode-session');
+      expect(controller.selectedConversationSession, isNull);
       expect(controller.isLoadingConversations, isFalse);
 
       codexGate.complete();
       await codexLoad;
 
       expect(controller.selectedConversationAgentId, 'opencode');
-      expect(controller.selectedConversationSession?.id, 'opencode-session');
+      expect(controller.selectedConversationSession, isNull);
       expect(controller.conversationSessionsByAgent['codex'], hasLength(1));
     },
   );

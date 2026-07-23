@@ -68,7 +68,7 @@ fn response_envelope_rejects_wrong_jsonrpc_id_and_mixed_outcomes() {
 }
 
 #[test]
-fn session_response_requires_new_id_and_preserves_load_identity() {
+fn session_response_requires_a_valid_new_session_id() {
     let created = validate_session_response(
         &json!({
             "jsonrpc": "2.0", "id": 2,
@@ -80,20 +80,258 @@ fn session_response_requires_new_id_and_preserves_load_identity() {
     .unwrap();
     assert_eq!(created.session_id.as_deref(), Some("session-1"));
 
-    let loaded = validate_session_response(
+    let missing = validate_session_response(
+        &json!({"jsonrpc": "2.0", "id": 2, "result": {}}),
+        2,
+        AcpSessionMethod::New,
+    );
+    assert_eq!(missing.unwrap_err(), AcpError::SessionResponseInvalid);
+
+    let wrong_type = validate_session_response(
+        &json!({"jsonrpc": "2.0", "id": 2, "result": {"sessionId": 7}}),
+        2,
+        AcpSessionMethod::New,
+    );
+    assert_eq!(wrong_type.unwrap_err(), AcpError::SessionResponseInvalid);
+
+    let invalid = validate_session_response(
+        &json!({"jsonrpc": "2.0", "id": 2, "result": {"sessionId": ""}}),
+        2,
+        AcpSessionMethod::New,
+    );
+    assert_eq!(invalid.unwrap_err(), AcpError::SessionIdInvalid);
+}
+
+#[test]
+fn load_response_accepts_legacy_null() {
+    let legacy = validate_session_response(
         &json!({"jsonrpc": "2.0", "id": 2, "result": null}),
         2,
         AcpSessionMethod::Load("session-1"),
     )
     .unwrap();
-    assert!(loaded.session_id.is_none());
+    assert!(legacy.session_id.is_none());
+    assert!(legacy.modes.is_none());
+    assert!(legacy.config_options.is_empty());
+}
 
-    let object_load = validate_session_response(
-        &json!({"jsonrpc": "2.0", "id": 2, "result": {"sessionId": "other"}}),
+#[test]
+fn load_response_accepts_idless_optional_state_object() {
+    let restored = validate_session_response(
+        &json!({
+            "jsonrpc": "2.0",
+            "id": 2,
+            "result": {
+                "configOptions": [{
+                    "id": "pace",
+                    "name": "Pace",
+                    "type": "select",
+                    "currentValue": "steady",
+                    "options": [{"value": "steady", "name": "Steady"}]
+                }]
+            }
+        }),
         2,
         AcpSessionMethod::Load("session-1"),
+    )
+    .unwrap();
+    assert!(restored.session_id.is_none());
+    assert!(restored.modes.is_none());
+    assert_eq!(restored.config_options.len(), 1);
+    assert_eq!(restored.config_options[0]["id"], "pace");
+}
+
+#[test]
+fn load_response_accepts_matching_id_optional_state_object() {
+    let modes = json!({
+        "currentModeId": "review",
+        "availableModes": [{
+            "id": "review",
+            "name": "Review",
+            "description": "Review the synthetic fixture",
+            "futureModeField": {"preserved": true}
+        }],
+        "futureModesField": true
+    });
+    let config_options = json!([
+        {
+            "id": "pace",
+            "name": "Pace",
+            "description": "Synthetic select option",
+            "type": "select",
+            "currentValue": "steady",
+            "options": [{
+                "value": "steady",
+                "name": "Steady",
+                "futureValueField": true
+            }],
+            "futureConfigField": {"preserved": true}
+        },
+        {
+            "id": "guarded",
+            "name": "Guarded",
+            "type": "boolean",
+            "currentValue": true,
+            "futureConfigField": true
+        },
+        {
+            "id": "profile",
+            "name": "Profile",
+            "type": "select",
+            "currentValue": "safe",
+            "options": [{
+                "group": "recommended",
+                "name": "Recommended",
+                "options": [{"value": "safe", "name": "Safe"}],
+                "futureGroupField": true
+            }]
+        }
+    ]);
+    let restored = validate_session_response(
+        &json!({
+            "jsonrpc": "2.0",
+            "id": 2,
+            "result": {
+                "sessionId": "session-1",
+                "modes": modes.clone(),
+                "configOptions": config_options.clone(),
+                "futureResultField": true
+            }
+        }),
+        2,
+        AcpSessionMethod::Load("session-1"),
+    )
+    .unwrap();
+    assert_eq!(restored.session_id.as_deref(), Some("session-1"));
+    assert_eq!(restored.modes, Some(modes));
+    assert_eq!(
+        restored.config_options,
+        config_options.as_array().unwrap().clone()
     );
-    assert_eq!(object_load.unwrap_err(), AcpError::SessionResponseInvalid);
+}
+
+#[test]
+fn load_response_rejects_malformed_optional_state_fields() {
+    let malformed_results = [
+        json!({"sessionId": 7}),
+        json!({"modes": []}),
+        json!({"configOptions": {}}),
+    ];
+
+    for result in malformed_results {
+        let response = validate_session_response(
+            &json!({"jsonrpc": "2.0", "id": 2, "result": result}),
+            2,
+            AcpSessionMethod::Load("session-1"),
+        );
+        assert_eq!(response.unwrap_err(), AcpError::SessionResponseInvalid);
+    }
+}
+
+#[test]
+fn load_response_rejects_malformed_nested_mode_state() {
+    let malformed_modes = [
+        json!({"availableModes": []}),
+        json!({"currentModeId": 7, "availableModes": []}),
+        json!({"currentModeId": "", "availableModes": []}),
+        json!({"currentModeId": " review ", "availableModes": []}),
+        json!({"currentModeId": "x".repeat(1025), "availableModes": []}),
+        json!({"currentModeId": "review"}),
+        json!({"currentModeId": "review", "availableModes": {}}),
+        json!({"currentModeId": "review", "availableModes": [{}]}),
+        json!({"currentModeId": "review", "availableModes": [{"id": "review"}]}),
+        json!({
+            "currentModeId": "review",
+            "availableModes": [{"id": 7, "name": "Review"}]
+        }),
+        json!({
+            "currentModeId": "review",
+            "availableModes": [{"id": "review", "name": []}]
+        }),
+        json!({
+            "currentModeId": "review",
+            "availableModes": [{"id": " review ", "name": "Review"}]
+        }),
+    ];
+
+    for modes in malformed_modes {
+        let response = validate_session_response(
+            &json!({"jsonrpc": "2.0", "id": 2, "result": {"modes": modes}}),
+            2,
+            AcpSessionMethod::Load("session-1"),
+        );
+        assert_eq!(response.unwrap_err(), AcpError::SessionResponseInvalid);
+    }
+}
+
+#[test]
+fn load_response_rejects_malformed_nested_config_options() {
+    let malformed_options = [
+        json!([{}]),
+        json!([{"id": "pace", "name": "Pace"}]),
+        json!([{"id": "pace", "name": "Pace", "type": 7, "currentValue": true}]),
+        json!([{"id": 7, "name": "Pace", "type": "boolean", "currentValue": true}]),
+        json!([{"id": "x".repeat(1025), "name": "Pace", "type": "boolean", "currentValue": true}]),
+        json!([{"id": "pace", "name": [], "type": "boolean", "currentValue": true}]),
+        json!([{"id": " pace ", "name": "Pace", "type": "boolean", "currentValue": true}]),
+        json!([{"id": "pace", "name": "Pace", "type": "future", "currentValue": true}]),
+        json!([{"id": "pace", "name": "Pace", "type": "boolean"}]),
+        json!([{"id": "pace", "name": "Pace", "type": "boolean", "currentValue": "true"}]),
+        json!([{"id": "pace", "name": "Pace", "type": "select", "options": []}]),
+        json!([{
+            "id": "pace", "name": "Pace", "type": "select",
+            "currentValue": " steady ", "options": []
+        }]),
+        json!([{
+            "id": "pace", "name": "Pace", "type": "select",
+            "currentValue": "steady", "options": {}
+        }]),
+        json!([{
+            "id": "pace", "name": "Pace", "type": "select",
+            "currentValue": "steady", "options": [{}]
+        }]),
+        json!([{
+            "id": "pace", "name": "Pace", "type": "select",
+            "currentValue": "steady", "options": [{"value": "steady"}]
+        }]),
+        json!([{
+            "id": "pace", "name": "Pace", "type": "select",
+            "currentValue": "steady", "options": [{"name": "Steady"}]
+        }]),
+        json!([{
+            "id": "pace", "name": "Pace", "type": "select",
+            "currentValue": "steady", "options": [{"value": 7, "name": "Steady"}]
+        }]),
+        json!([{
+            "id": "pace", "name": "Pace", "type": "select",
+            "currentValue": "steady", "options": [{"value": " steady ", "name": "Steady"}]
+        }]),
+        json!([{
+            "id": "pace", "name": "Pace", "type": "select",
+            "currentValue": "steady", "options": [{
+                "group": "normal", "name": "Normal", "options": [{}]
+            }]
+        }]),
+        json!([{
+            "id": "pace", "name": "Pace", "type": "select",
+            "currentValue": "steady", "options": [{
+                "group": 7, "name": "Normal", "options": []
+            }]
+        }]),
+    ];
+
+    for config_options in malformed_options {
+        let response = validate_session_response(
+            &json!({
+                "jsonrpc": "2.0",
+                "id": 2,
+                "result": {"configOptions": config_options}
+            }),
+            2,
+            AcpSessionMethod::Load("session-1"),
+        );
+        assert_eq!(response.unwrap_err(), AcpError::SessionResponseInvalid);
+    }
 }
 
 #[test]
@@ -168,4 +406,323 @@ fn session_update_validates_notification_shape_and_session_association() {
         validate_session_update(&request_shaped, Some("session-1")).unwrap_err(),
         AcpError::NotificationEnvelopeInvalid
     );
+}
+
+fn session_update_notification(update: serde_json::Value) -> serde_json::Value {
+    json!({
+        "jsonrpc": "2.0",
+        "method": "session/update",
+        "params": {
+            "sessionId": "session-1",
+            "update": update
+        }
+    })
+}
+
+fn message_chunk_notification(kind: &str, content: serde_json::Value) -> serde_json::Value {
+    session_update_notification(json!({
+        "sessionUpdate": kind,
+        "content": content,
+        "futureUpdateField": {"preserved": true}
+    }))
+}
+
+#[test]
+fn message_chunk_content_accepts_supported_acp_blocks_and_extension_fields() {
+    let supported_blocks = [
+        json!({"type": "text", "text": "hello", "futureContentField": true}),
+        json!({
+            "type": "image",
+            "data": "aW1hZ2U=",
+            "mimeType": "image/png",
+            "futureContentField": true
+        }),
+        json!({
+            "type": "audio",
+            "data": "YXVkaW8=",
+            "mimeType": "audio/wav",
+            "futureContentField": true
+        }),
+        json!({
+            "type": "resource_link",
+            "uri": "file:///fixture.txt",
+            "name": "fixture.txt",
+            "futureContentField": true
+        }),
+        json!({
+            "type": "resource",
+            "resource": {
+                "uri": "file:///fixture.txt",
+                "text": "fixture",
+                "futureResourceField": true
+            },
+            "futureContentField": true
+        }),
+        json!({
+            "type": "resource",
+            "resource": {
+                "uri": "file:///fixture.bin",
+                "blob": "Zml4dHVyZQ==",
+                "futureResourceField": true
+            },
+            "futureContentField": true
+        }),
+    ];
+
+    for kind in [
+        "user_message_chunk",
+        "agent_message_chunk",
+        "agent_thought_chunk",
+    ] {
+        for content in &supported_blocks {
+            let message = message_chunk_notification(kind, content.clone());
+            let update = validate_session_update(&message, Some("session-1")).unwrap();
+            assert_eq!(update.payload()["content"], *content);
+        }
+    }
+}
+
+#[test]
+fn message_chunk_content_rejects_missing_unknown_and_malformed_required_fields() {
+    const MALFORMED_CONTENT_CANARY: &str = "MALFORMED-CONTENT-CANARY";
+    let malformed_blocks = [
+        json!({}),
+        json!({"text": MALFORMED_CONTENT_CANARY}),
+        json!({"type": "future_content", "text": MALFORMED_CONTENT_CANARY}),
+        json!({"type": "text"}),
+        json!({"type": "text", "text": {"canary": MALFORMED_CONTENT_CANARY}}),
+        json!({"type": "image", "data": "aW1hZ2U="}),
+        json!({"type": "image", "data": 7, "mimeType": "image/png"}),
+        json!({"type": "image", "data": "aW1hZ2U=", "mimeType": 7}),
+        json!({"type": "audio", "mimeType": "audio/wav"}),
+        json!({"type": "audio", "data": 7, "mimeType": "audio/wav"}),
+        json!({"type": "resource_link", "uri": "file:///fixture.txt"}),
+        json!({"type": "resource_link", "uri": 7, "name": "fixture.txt"}),
+        json!({"type": "resource", "resource": {}}),
+        json!({"type": "resource", "resource": {"uri": 7, "text": "fixture"}}),
+        json!({"type": "resource", "resource": {"uri": "file:///fixture", "text": 7}}),
+    ];
+
+    for content in malformed_blocks {
+        let message = message_chunk_notification("agent_message_chunk", content);
+        assert_eq!(
+            validate_session_update(&message, Some("session-1")).unwrap_err(),
+            AcpError::SessionUpdateInvalid
+        );
+    }
+
+    let oversized = message_chunk_notification(
+        "agent_message_chunk",
+        json!({"type": "text", "text": "x".repeat(DEFAULT_MAX_MESSAGE_BYTES)}),
+    );
+    assert_eq!(
+        validate_session_update(&oversized, Some("session-1")).unwrap_err(),
+        AcpError::MessageTooLarge
+    );
+}
+
+#[test]
+fn structured_session_updates_accept_complete_acp_objects_and_extensions() {
+    let valid_updates = [
+        (
+            AcpSessionUpdateKind::ToolCall,
+            json!({
+                "sessionUpdate": "tool_call",
+                "toolCallId": "tool-1",
+                "title": "Inspect fixture",
+                "kind": "read",
+                "status": "in_progress",
+                "content": [{
+                    "type": "content",
+                    "content": {"type": "text", "text": "synthetic output"},
+                    "futureContentField": true
+                }, {
+                    "type": "terminal",
+                    "terminalId": "terminal-1",
+                    "futureTerminalField": true
+                }, {
+                    "type": "diff",
+                    "path": "/fixture/project/lib.rs",
+                    "oldText": "before",
+                    "newText": "after",
+                    "futureDiffField": true
+                }],
+                "locations": [{"path": "/fixture/project/lib.rs", "line": 7}],
+                "futureToolField": {"preserved": true}
+            }),
+        ),
+        (
+            AcpSessionUpdateKind::ToolCallUpdate,
+            json!({
+                "sessionUpdate": "tool_call_update",
+                "toolCallId": "tool-1",
+                "title": "Inspect fixture complete",
+                "status": "completed",
+                "content": [{
+                    "type": "content",
+                    "content": {"type": "text", "text": "complete"}
+                }],
+                "futureToolUpdateField": true
+            }),
+        ),
+        (
+            AcpSessionUpdateKind::Plan,
+            json!({
+                "sessionUpdate": "plan",
+                "entries": [{
+                    "content": "Validate the fixture",
+                    "priority": "high",
+                    "status": "in_progress",
+                    "futurePlanEntryField": true
+                }],
+                "futurePlanField": true
+            }),
+        ),
+        (
+            AcpSessionUpdateKind::AvailableCommandsUpdate,
+            json!({
+                "sessionUpdate": "available_commands_update",
+                "availableCommands": [{
+                    "name": "review",
+                    "description": "Review a synthetic fixture",
+                    "input": {"hint": "fixture path", "futureInputField": true},
+                    "futureCommandField": true
+                }],
+                "futureCommandsField": true
+            }),
+        ),
+        (
+            AcpSessionUpdateKind::CurrentModeUpdate,
+            json!({
+                "sessionUpdate": "current_mode_update",
+                "currentModeId": "review",
+                "futureModeField": true
+            }),
+        ),
+        (
+            AcpSessionUpdateKind::ConfigOptionUpdate,
+            json!({
+                "sessionUpdate": "config_option_update",
+                "configOptions": [{
+                    "id": "guarded",
+                    "name": "Guarded",
+                    "type": "boolean",
+                    "currentValue": true,
+                    "futureConfigField": true
+                }],
+                "futureConfigUpdateField": true
+            }),
+        ),
+        (
+            AcpSessionUpdateKind::SessionInfoUpdate,
+            json!({
+                "sessionUpdate": "session_info_update",
+                "title": "Synthetic session",
+                "updatedAt": "2026-01-01T00:00:00Z",
+                "futureSessionInfoField": true
+            }),
+        ),
+        (
+            AcpSessionUpdateKind::UsageUpdate,
+            json!({
+                "sessionUpdate": "usage_update",
+                "used": 4,
+                "size": 128,
+                "cost": {"amount": 0.25, "currency": "USD", "futureCostField": true},
+                "futureUsageField": true
+            }),
+        ),
+    ];
+
+    for (kind, payload) in valid_updates {
+        let message = session_update_notification(payload.clone());
+        let update = validate_session_update(&message, Some("session-1")).unwrap();
+        assert_eq!(update.kind, kind);
+        assert_eq!(update.payload(), &payload);
+    }
+}
+
+#[test]
+fn structured_session_updates_reject_missing_or_malformed_required_fields() {
+    let malformed_updates = [
+        json!({"sessionUpdate": "tool_call", "title": "Inspect fixture"}),
+        json!({"sessionUpdate": "tool_call", "toolCallId": 7, "title": "Inspect fixture"}),
+        json!({"sessionUpdate": "tool_call", "toolCallId": "tool-1"}),
+        json!({"sessionUpdate": "tool_call", "toolCallId": "tool-1", "title": []}),
+        json!({
+            "sessionUpdate": "tool_call", "toolCallId": "tool-1", "title": "Inspect",
+            "content": [{"type": "content"}]
+        }),
+        json!({
+            "sessionUpdate": "tool_call", "toolCallId": "tool-1", "title": "Inspect",
+            "content": [{"type": "terminal"}]
+        }),
+        json!({
+            "sessionUpdate": "tool_call", "toolCallId": "tool-1", "title": "Inspect",
+            "content": [{"type": "diff", "path": "/fixture/project/lib.rs"}]
+        }),
+        json!({
+            "sessionUpdate": "tool_call", "toolCallId": "tool-1", "title": "Inspect",
+            "locations": [{"path": 7}]
+        }),
+        json!({"sessionUpdate": "tool_call_update"}),
+        json!({"sessionUpdate": "tool_call_update", "toolCallId": {}}),
+        json!({"sessionUpdate": "tool_call_update", "toolCallId": " tool-1 "}),
+        json!({"sessionUpdate": "tool_call_update", "toolCallId": "tool-1", "status": 7}),
+        json!({"sessionUpdate": "plan"}),
+        json!({"sessionUpdate": "plan", "entries": {}}),
+        json!({"sessionUpdate": "plan", "entries": [{}]}),
+        json!({
+            "sessionUpdate": "plan",
+            "entries": [{"content": "Validate", "priority": "urgent", "status": "pending"}]
+        }),
+        json!({
+            "sessionUpdate": "plan",
+            "entries": [{"content": "Validate", "priority": "high", "status": "running"}]
+        }),
+        json!({"sessionUpdate": "available_commands_update"}),
+        json!({"sessionUpdate": "available_commands_update", "availableCommands": {}}),
+        json!({"sessionUpdate": "available_commands_update", "availableCommands": [{}]}),
+        json!({
+            "sessionUpdate": "available_commands_update",
+            "availableCommands": [{"name": "review"}]
+        }),
+        json!({
+            "sessionUpdate": "available_commands_update",
+            "availableCommands": [{"name": 7, "description": "Review"}]
+        }),
+        json!({
+            "sessionUpdate": "available_commands_update",
+            "availableCommands": [{"name": "review", "description": "Review", "input": {}}]
+        }),
+        json!({"sessionUpdate": "current_mode_update"}),
+        json!({"sessionUpdate": "current_mode_update", "currentModeId": 7}),
+        json!({"sessionUpdate": "current_mode_update", "currentModeId": " review "}),
+        json!({"sessionUpdate": "config_option_update"}),
+        json!({"sessionUpdate": "config_option_update", "configOptions": {}}),
+        json!({"sessionUpdate": "config_option_update", "configOptions": [{}]}),
+        json!({"sessionUpdate": "session_info_update", "title": 7}),
+        json!({"sessionUpdate": "session_info_update", "updatedAt": []}),
+        json!({"sessionUpdate": "session_info_update", "_meta": []}),
+        json!({"sessionUpdate": "usage_update", "size": 128}),
+        json!({"sessionUpdate": "usage_update", "used": 4}),
+        json!({"sessionUpdate": "usage_update", "used": -1, "size": 128}),
+        json!({"sessionUpdate": "usage_update", "used": 4, "size": 1.5}),
+        json!({
+            "sessionUpdate": "usage_update", "used": 4, "size": 128,
+            "cost": {"amount": "0.25", "currency": "USD"}
+        }),
+        json!({
+            "sessionUpdate": "usage_update", "used": 4, "size": 128,
+            "cost": {"amount": 0.25}
+        }),
+    ];
+
+    for payload in malformed_updates {
+        let message = session_update_notification(payload);
+        assert_eq!(
+            validate_session_update(&message, Some("session-1")).unwrap_err(),
+            AcpError::SessionUpdateInvalid
+        );
+    }
 }

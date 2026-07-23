@@ -2,9 +2,9 @@
 
 pub const SECURE_MESH_TRANSPARENCY_STATUS: &str =
     "verification_only_pinned_log_rfc9162_sparse_directory_sqlite_cas_gossip_fail_closed";
-pub const SECURE_MESH_KT_PROTOCOL_VERSION: &str = "licolite.secure-mesh.kt.v2";
+pub const SECURE_MESH_KT_PROTOCOL_VERSION: &str = "licomesh.secure-mesh.kt.v2";
 pub const SECURE_MESH_KT_GOSSIP_CONTENT_TYPE: &str =
-    "application/vnd.licolite.secure-mesh.kt-sth-gossip+json";
+    "application/vnd.licomesh.secure-mesh.kt-sth-gossip+json";
 pub const KT_PROTOCOL_MAX_STH_AGE_SECONDS: u64 = 24 * 60 * 60;
 pub const KT_PROTOCOL_MAX_FUTURE_SKEW_SECONDS: u64 = 5 * 60;
 pub const KT_PROTOCOL_MAX_GOSSIP_AGE_SECONDS: u64 = 15 * 60;

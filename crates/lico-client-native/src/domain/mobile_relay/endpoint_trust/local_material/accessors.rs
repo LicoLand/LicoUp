@@ -10,7 +10,7 @@ use crate::domain::mobile_relay::endpoint_trust::{decode_fixed_base64url, decode
 use anyhow::{Result, anyhow, ensure};
 use ed25519_dalek::SigningKey;
 
-impl LocalEndpointState {
+impl LocalEndpointState<'_> {
     pub(in crate::domain::mobile_relay) fn device_identity(
         &self,
     ) -> Result<DeviceTrustPublicIdentity> {

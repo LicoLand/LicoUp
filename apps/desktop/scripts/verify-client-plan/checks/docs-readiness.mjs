@@ -4,11 +4,11 @@ export async function checkDocsReadiness({ assert, files }) {
     ["README.md", "README.zh-CN.md"],
     ["CONTRIBUTING.md", "CONTRIBUTING.zh-CN.md"],
     ["SECURITY.md", "SECURITY.zh-CN.md"],
-    ["docs/USER-GUIDE.md", "docs/USER-GUIDE.zh-CN.md"],
-    ["docs/ARCHITECTURE.md", "docs/ARCHITECTURE.zh-CN.md"],
+    ["docs/functionality/USER-GUIDE.md", "docs/functionality/USER-GUIDE.zh-CN.md"],
+    ["docs/architecture/README.md", "docs/architecture/README.zh-CN.md"],
     [
-      "docs/releases/client-support-matrix.md",
-      "docs/releases/client-support-matrix.zh-CN.md",
+      "docs/COMPATIBILITY.md",
+      "docs/COMPATIBILITY.zh-CN.md",
     ],
   ];
   const documents = new Map();
@@ -56,8 +56,8 @@ export async function checkDocsReadiness({ assert, files }) {
     assert(chineseReadme.includes(token), `README.zh-CN.md must keep public client token ${token}`);
   }
 
-  const architecture = normalized("docs/ARCHITECTURE.md");
-  const chineseArchitecture = normalized("docs/ARCHITECTURE.zh-CN.md");
+  const architecture = normalized("docs/architecture/README.md");
+  const chineseArchitecture = normalized("docs/architecture/README.zh-CN.md");
   for (const token of [
     "Untrusted relay",
     "Ciphertext + minimum routing data",
@@ -134,13 +134,22 @@ export async function checkDocsReadiness({ assert, files }) {
 
   const contributing = documents.get("CONTRIBUTING.md");
   const chineseContributing = documents.get("CONTRIBUTING.zh-CN.md");
-  for (const token of ["synthetic, redacted test data", "docs/plan/", ".local/", "local skills"]) {
+  for (const token of [
+    "synthetic, redacted test data",
+    "docs/plans/",
+    "docs/reports/",
+    "local skills",
+  ]) {
     assert(contributing.includes(token), `CONTRIBUTING.md must keep repository rule ${token}`);
   }
-  for (const token of ["合成数据", "docs/plan/", ".local/", "本地技能"]) {
+  for (const token of ["合成数据", "docs/plans/", "docs/reports/", "本地技能"]) {
     assert(chineseContributing.includes(token), `CONTRIBUTING.zh-CN.md must keep repository rule ${token}`);
   }
 
+  const gitignore = await readText(".gitignore");
+  for (const localPath of ["/docs/plans/", "/docs/reports/"]) {
+    assert(gitignore.split(/\r?\n/u).includes(localPath), `.gitignore must keep ${localPath} local`);
+  }
   const packaging = await readJson("apps/desktop/packaging.modules.json");
   const driverInventory = await readJson(
     "crates/lico-client-native/resources/agent-conversation-drivers.json",

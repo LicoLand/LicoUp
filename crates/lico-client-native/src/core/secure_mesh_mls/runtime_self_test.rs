@@ -32,8 +32,8 @@ pub fn runtime_crypto_self_test() -> bool {
                 &bob,
                 &welcome.welcome_message,
             )?;
-            let aad = b"licolite-mls-runtime-self-test-aad";
-            let plaintext = b"licolite-mls-runtime-self-test-body";
+            let aad = b"licomesh-mls-runtime-self-test-aad";
+            let plaintext = b"licomesh-mls-runtime-self-test-body";
             let sealed = alice_group.seal_application_message(&alice, aad, plaintext)?;
             ensure!(
                 !sealed

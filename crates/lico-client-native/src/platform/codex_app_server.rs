@@ -1,3 +1,4 @@
+pub(in crate::platform) mod active_control;
 mod config;
 mod contract;
 mod error;

@@ -12,6 +12,8 @@ const image = process.env.LICO_FLUTTER_TEST_IMAGE || "lico-arc-flutter-test:3.44
 const pubCacheVolume = process.env.LICO_FLUTTER_TEST_PUB_CACHE ||
   "lico-arc-flutter-3-44-2-pub";
 const testArgs = process.argv.slice(2);
+const containerWorkspace = path.posix.join(path.posix.sep, "workspace");
+const containerPubCache = path.posix.join(path.posix.sep, "root", ".pub-cache");
 
 function redact(value, stagingRoot = "") {
   return [
@@ -59,11 +61,11 @@ try {
     "--platform",
     "linux/amd64",
     "-v",
-    `${stagingRoot}:/workspace`,
+    `${stagingRoot}:${containerWorkspace}`,
     "-v",
-    `${pubCacheVolume}:/root/.pub-cache`,
+    `${pubCacheVolume}:${containerPubCache}`,
     "-w",
-    "/workspace",
+    containerWorkspace,
     image
   ];
   const dependencies = runDocker(

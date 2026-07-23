@@ -15,10 +15,16 @@ class AgentUsageCharts extends StatefulWidget {
     super.key,
     required this.report,
     required this.detectedAgentIds,
+    required this.windowDays,
+    required this.windowBusy,
+    required this.onWindowChanged,
   });
 
   final AgentUsageReport? report;
   final Set<String> detectedAgentIds;
+  final int windowDays;
+  final bool windowBusy;
+  final ValueChanged<int> onWindowChanged;
 
   @override
   State<AgentUsageCharts> createState() => _AgentUsageChartsState();
@@ -41,10 +47,12 @@ final class _AgentUsageChartsState extends State<AgentUsageCharts> {
       0,
       (total, agent) => total + agent.totalTokens,
     );
+    final sourceTotals = _aggregateSourceTotals(agents);
     final timeline = buildAgentUsageTimelineData(
       report,
       _grouping,
       widget.detectedAgentIds,
+      displayDayCount: widget.windowDays,
     );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -55,12 +63,15 @@ final class _AgentUsageChartsState extends State<AgentUsageCharts> {
           onGroupingChanged: (grouping) {
             setState(() => _grouping = grouping);
           },
+          windowDays: widget.windowDays,
+          windowBusy: widget.windowBusy,
+          onWindowChanged: widget.onWindowChanged,
         ),
         const SizedBox(height: 16),
         Builder(
           builder: (context) => _buildShareSection(
             context,
-            agents: agents,
+            sourceTotals: sourceTotals,
             totalTokens: totalTokens,
             timeline: timeline,
           ),
@@ -83,7 +94,7 @@ final class _AgentUsageChartsState extends State<AgentUsageCharts> {
 
   Widget _buildShareSection(
     BuildContext context, {
-    required List<AgentUsageAgentSummary> agents,
+    required List<_UsageSourceTotal> sourceTotals,
     required int totalTokens,
     required AgentUsageTimelineData timeline,
   }) {
@@ -95,16 +106,17 @@ final class _AgentUsageChartsState extends State<AgentUsageCharts> {
     };
     final detailRows = switch (_grouping) {
       AgentUsageChartGrouping.agent => [
-        for (final agent in agents.take(8))
+        for (final source in sourceTotals)
           AgentUsageBarData(
-            label: agentUsageAgentDisplayName(agent),
-            value: formatAgentUsageNumber(agent.totalTokens),
-            trailing: formatAgentUsagePercent(agent.totalTokens, totalTokens),
-            fraction: agentUsageShareFraction(agent.totalTokens, totalTokens),
-            accent: agentUsageSeriesColor(
-              colors,
-              agentUsageAgentDisplayName(agent),
-            ),
+            label: source.label,
+            value: source.hasUsage
+                ? formatAgentUsageNumber(source.totalTokens)
+                : strings.unavailable,
+            trailing: source.hasUsage
+                ? formatAgentUsagePercent(source.totalTokens, totalTokens)
+                : '—',
+            fraction: agentUsageShareFraction(source.totalTokens, totalTokens),
+            accent: agentUsageSeriesColor(colors, source.label),
           ),
       ],
       AgentUsageChartGrouping.model => [
@@ -129,7 +141,7 @@ final class _AgentUsageChartsState extends State<AgentUsageCharts> {
       title: strings.tokenUsage,
       valueHeader: strings.tokenConsumption,
       rows: [
-        if (detailRows.isNotEmpty)
+        if (detailRows.isNotEmpty && sectionTotal > 0)
           AgentUsageBarData(
             label: strings.totalTokens,
             value: formatAgentUsageNumber(sectionTotal),
@@ -144,5 +156,37 @@ final class _AgentUsageChartsState extends State<AgentUsageCharts> {
         AgentUsageChartGrouping.model => strings.noModelUsageInLatestReport,
       },
     );
+  }
+}
+
+List<_UsageSourceTotal> _aggregateSourceTotals(
+  List<AgentUsageAgentSummary> agents,
+) {
+  final totals = <String, _UsageSourceTotal>{};
+  for (final agent in agents) {
+    final source = agentUsageAgentDisplayName(agent);
+    totals
+        .putIfAbsent(source, () => _UsageSourceTotal(label: source))
+        .add(agent);
+  }
+  return totals.values.toList()..sort((a, b) {
+    final byTokens = b.totalTokens.compareTo(a.totalTokens);
+    if (byTokens != 0) return byTokens;
+    final byAvailability = b.hasUsage ? 1 : 0;
+    final availability = byAvailability.compareTo(a.hasUsage ? 1 : 0);
+    return availability != 0 ? availability : a.label.compareTo(b.label);
+  });
+}
+
+final class _UsageSourceTotal {
+  _UsageSourceTotal({required this.label});
+
+  final String label;
+  int totalTokens = 0;
+  bool hasUsage = false;
+
+  void add(AgentUsageAgentSummary agent) {
+    totalTokens += agent.totalTokens;
+    hasUsage = hasUsage || agent.totalTokens > 0 || agent.confidence == 'high';
   }
 }

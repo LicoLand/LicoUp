@@ -46,6 +46,9 @@ export async function checkConversationBridges(context, { packagedTargets, conve
   const agentConversationGatewayAdapterSource = await readDartSourceByBasename(
     "agent_conversation_gateway_adapter.dart"
   );
+  const nativeOrchestratorClientSource = await readText(
+    "apps/desktop/lib/src/platform/native_client/orchestrator_ipc/client.dart"
+  );
   assert(
     agentConversationGatewaySource.includes("abstract interface class AgentConversationGateway") &&
       agentConversationGatewaySource.includes("Stream<AgentDispatchEvent> sendStreaming") &&
@@ -54,10 +57,24 @@ export async function checkConversationBridges(context, { packagedTargets, conve
       agentConversationControllerSource.includes("conversationGateway.streamSessions(") &&
       agentConversationControllerSource.includes("conversationGateway.loadSessions(") &&
       agentConversationControllerSource.includes("conversationGateway.sendStreaming(") &&
-      agentOrchestrationControllerSource.includes("conversationGateway.sendStreaming(") &&
       agentConversationGatewayAdapterSource.includes("implements AgentConversationGateway") &&
       agentConversationGatewayAdapterSource.includes("service.sendStreaming("),
-    "agent conversation application state must depend on the gateway port and enter the unified dispatch lane through its composition adapter"
+    "direct agent conversation state must depend on the gateway port through its composition adapter"
+  );
+  assert(
+    agentOrchestrationControllerSource.includes("orchestratorClient.submit(") &&
+      agentOrchestrationControllerSource.includes("orchestratorClient.subscribe(") &&
+      agentOrchestrationControllerSource.includes("orchestratorClient.cancel(") &&
+      agentOrchestrationControllerSource.includes("orchestratorClient.approve(") &&
+      !agentOrchestrationControllerSource.includes("conversationGateway.sendStreaming(") &&
+      nativeOrchestratorClientSource.includes("final class NativeOrchestratorClient") &&
+      nativeOrchestratorClientSource.includes("executeStructured('orchestrator.request'") &&
+      nativeOrchestratorClientSource.includes("'clientKind': clientKind") &&
+      nativeOrchestratorClientSource.includes("clientKind: 'desktop'") &&
+      !nativeOrchestratorClientSource.includes("dart:io") &&
+      !nativeOrchestratorClientSource.includes("Process.start") &&
+      !nativeOrchestratorClientSource.includes("streamCliJsonLinesWithStdin"),
+    "orchestration controllers must be thin projections over the native owner-private orchestrator IPC boundary"
   );
   for (const [relativePath, source] of [
     ["agent_conversation_gateway.dart", agentConversationGatewaySource],
@@ -65,10 +82,14 @@ export async function checkConversationBridges(context, { packagedTargets, conve
     ["agent_conversation_controller.dart", agentConversationControllerSource],
     ["agent_orchestration_controller.dart", agentOrchestrationControllerSource]
   ]) {
+    const sourceWithoutOrchestratorProjection = source.replaceAll(
+      "package:flutter_client/src/platform/native_client/orchestrator_ipc/client.dart",
+      ""
+    );
     assert(
       !source.includes("package:flutter_client/src/backend/") &&
-        !source.includes("package:flutter_client/src/platform/"),
-      `${relativePath} must depend on application ports and contracts, not backend or platform implementations`
+        !sourceWithoutOrchestratorProjection.includes("package:flutter_client/src/platform/"),
+      `${relativePath} must not depend on backend implementations or unrelated platform services`
     );
   }
   assert(
@@ -171,33 +192,6 @@ export async function checkClientRootAndShell(context, {
   const clientControllerFacadeSource = await readText(
     "apps/desktop/lib/src/application/controller/client_controller.dart"
   );
-  const orchestrationPolicyEntrySource = await readText(
-    "apps/desktop/lib/src/contracts/agent_orchestration_policy.dart"
-  );
-  const orchestrationPolicyLeafSources = await Promise.all([
-    "agent_orchestration_policy_models.dart",
-    "agent_orchestration_policy_codec.dart",
-    "agent_orchestration_policy_catalog.dart",
-    "agent_orchestration_policy_validation.dart",
-    "agent_orchestration_policy_merge.dart",
-    "agent_orchestration_target.dart",
-  ].map((name) => readText(`apps/desktop/lib/src/contracts/${name}`)));
-  assert(
-    orchestrationPolicyEntrySource
-      .split("\n")
-      .filter((line) => line.trim().length > 0)
-      .every((line) => line.startsWith("export ")) &&
-      orchestrationPolicyLeafSources[0].includes("final class AgentOrchestrationPolicy") &&
-      orchestrationPolicyLeafSources[1].includes("final class AgentOrchestrationPolicyCodec") &&
-      orchestrationPolicyLeafSources[2].includes("agentOrchestrationModelLibraryCandidates") &&
-      orchestrationPolicyLeafSources[3].includes("normalizeAgentOrchestrationPolicy") &&
-      orchestrationPolicyLeafSources[4].includes("agentOrchestrationDispatchModelLibrary") &&
-      orchestrationPolicyLeafSources[5].includes("agentOrchestrationTargetCandidate") &&
-      orchestrationPolicyLeafSources.every((source) =>
-        !source.includes("package:flutter_client/src/frontend/")
-      ),
-    "agent orchestration policy models, codec, catalog, validation, merge, and target must remain independent contract leaves"
-  );
   const clientComponentAssemblySource = await readText(
     "apps/desktop/lib/src/application/controller/client_component_assembly.dart"
   );
@@ -205,7 +199,6 @@ export async function checkClientRootAndShell(context, {
     "client_presentation_component_assembly.dart",
     "client_lifecycle_component_assembly.dart",
     "client_conversation_component_assembly.dart",
-    "client_routing_component_assembly.dart",
     "client_target_component_assembly.dart",
     "client_skill_component_assembly.dart",
     "client_settings_component_assembly.dart",
@@ -242,8 +235,8 @@ export async function checkClientRootAndShell(context, {
   const clientNavigationControllerSource = await readDartSourceByBasename(
     "client_navigation_controller.dart"
   );
-  const routingLifecycleControllerSource = await readDartSourceByBasename(
-    "routing_module_lifecycle_controller.dart"
+  const clientRoutingFacadeSource = await readText(
+    "apps/desktop/lib/src/application/controller/client_routing_facade.dart"
   );
   const conversationPresentationSignalsSource = await readDartSourceByBasename(
     "conversation_presentation_signals.dart"
@@ -256,20 +249,19 @@ export async function checkClientRootAndShell(context, {
       clientShellControllerSource.includes("ValueNotifier<int> _presentationRevision") &&
       clientNavigationControllerSource.includes("final class ClientNavigationController") &&
       clientNavigationControllerSource.includes("final Map<ClientSection, ClientSectionHooks> _hooks") &&
-      routingLifecycleControllerSource.includes("Future<RoutingModuleRegistration>? _activationFuture") &&
-      routingLifecycleControllerSource.includes("StreamSubscription<RoutingPolicyStoreEvent>? _subscription") &&
       conversationPresentationSignalsSource.includes("ValueNotifier<int> _structureRevision") &&
       conversationPresentationSignalsSource.includes("ValueNotifier<int> _activeRevision"),
-    "root presentation, lifecycle, navigation, routing, and conversation signals must have independent state owners"
+    "root presentation, lifecycle, navigation, and conversation signals must have independent state owners"
   );
   assert(
     clientControllerSource.includes("shellController = ClientShellController()") &&
       clientControllerSource.includes("controller = ClientLifecycleCoordinator(") &&
       clientControllerSource.includes("controller = ClientNavigationController(") &&
-      clientControllerSource.includes("controller = RoutingModuleLifecycleController(") &&
       clientControllerSource.includes("Future<void> initialize() => lifecycleController.initialize(") &&
       clientControllerSource.includes("navigationController.select(section)") &&
-      clientControllerSource.includes("shellController.presentationListenable"),
+      clientControllerSource.includes("shellController.presentationListenable") &&
+      clientRoutingFacadeSource.includes("NativeOrchestratorClient get orchestratorClient") &&
+      clientRoutingFacadeSource.includes("agentService.orchestratorClient"),
     "ClientController must remain a composition facade that delegates root state to focused controllers"
   );
   assert(
@@ -293,7 +285,6 @@ export async function checkClientRootAndShell(context, {
     ["client_lifecycle_coordinator.dart", clientLifecycleControllerSource],
     ["client_shell_controller.dart", clientShellControllerSource],
     ["client_navigation_controller.dart", clientNavigationControllerSource],
-    ["routing_module_lifecycle_controller.dart", routingLifecycleControllerSource],
     ["conversation_presentation_signals.dart", conversationPresentationSignalsSource]
   ]) {
     assert(
@@ -345,6 +336,7 @@ export async function checkClientRootAndShell(context, {
     clientShellSource.includes("ClientSection.agents => AgentsCanvas") &&
     clientShellSource.includes("ClientSection.monitoring => AgentUsagePanel") &&
     clientShellSource.includes("ClientSection.skillHub => SkillHubPanel") &&
+    clientShellSource.includes("ClientSection.pluginManagement => AdapterPluginPanel") &&
     clientShellSource.includes("ClientSection.mobileRelay => MobileRelayPanel") &&
     clientShellSource.includes("ClientSection.settings => SettingsPanel"),
     "LicoArc client shell must expose only the current top-level section bodies"

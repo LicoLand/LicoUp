@@ -16,8 +16,11 @@ const sourceRoot =
 const leafLimits = Object.freeze({
   "client.dart": 160,
   "command_exchange.dart": 80,
+  "command_round_trip.dart": 85,
   "conversation_exchange.dart": 75,
   "line_framer.dart": 75,
+  "operation_pending_queue.dart": 40,
+  "operation_queue.dart": 90,
   "protocol.dart": 75,
   "request_writer.dart": 20,
   "response_codec.dart": 155,
@@ -30,12 +33,17 @@ const allowedDependencies = Object.freeze({
   "client.dart": [
     "command_exchange.dart",
     "conversation_exchange.dart",
+    "operation_queue.dart",
     "protocol.dart",
     "session_manager.dart",
     "shutdown.dart",
   ],
   "command_exchange.dart": [
+    "command_round_trip.dart",
     "protocol.dart",
+    "session_manager.dart",
+  ],
+  "command_round_trip.dart": [
     "request_writer.dart",
     "response_codec.dart",
     "session.dart",
@@ -48,6 +56,8 @@ const allowedDependencies = Object.freeze({
     "session_manager.dart",
   ],
   "line_framer.dart": [],
+  "operation_pending_queue.dart": [],
+  "operation_queue.dart": ["operation_pending_queue.dart"],
   "protocol.dart": [],
   "request_writer.dart": ["session.dart"],
   "response_codec.dart": ["protocol.dart"],
@@ -129,9 +139,10 @@ test("stdio RPC protocol and response codecs bind bounded identities", async () 
 test("stdio RPC transport is serialized, no-replay, and non-projecting", async () => {
   const source = await sources();
   const joined = Object.values(source).join("\n");
-  assert.ok(source["client.dart"].includes("Future<void> _queue"));
-  assert.ok(source["client.dart"].includes("_serialize"));
-  assert.ok(source["command_exchange.dart"].includes("must never be replayed"));
+  assert.ok(source["client.dart"].includes("StdioRpcOperationQueue _operations"));
+  assert.ok(source["client.dart"].includes("_operations.serialize"));
+  assert.ok(source["operation_queue.dart"].includes("class StdioRpcOperationQueue"));
+  assert.ok(source["command_round_trip.dart"].includes("replayed"));
   assert.ok(source["session.dart"].includes("StdioRpcLineFramer"));
   assert.ok(source["session.dart"].includes(
     "_expectedFrame == null && _expectedFrames == null",

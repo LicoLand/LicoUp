@@ -26,8 +26,8 @@ fn aggregation_attributes_missing_models_without_losing_tokens_or_paths() {
 
     let result = agent_usage::scan(&scan_params(&history_root, &state_root)).unwrap();
     let history = &result["agents"][0]["history"];
-    assert_eq!(history["totalTokens"], 11);
-    assert_eq!(history["dailyUsage"][0]["modelUsage"]["Others"], 11);
+    assert_eq!(history["totalTokens"], 10);
+    assert_eq!(history["dailyUsage"][0]["modelUsage"]["Others"], 10);
     assert_eq!(history["scanCache"]["schemaVersion"], CACHE_SCHEMA_VERSION);
     assert_eq!(history["scanCache"]["parserRevision"], PARSER_REVISION);
     let serialized = result.to_string();

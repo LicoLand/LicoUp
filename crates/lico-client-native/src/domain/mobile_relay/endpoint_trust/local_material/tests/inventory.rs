@@ -1,11 +1,17 @@
 use super::super::material_mutation::ensure_mobile_relay_endpoint_material;
+use crate::domain::mobile_relay::test_runtime_secret_material;
 use serde_json::json;
 
 #[test]
 fn endpoint_material_builds_complete_pqxdh_inventory() {
     let mut config = json!({});
 
-    ensure_mobile_relay_endpoint_material(&mut config, "desktop").unwrap();
+    ensure_mobile_relay_endpoint_material(
+        &mut config,
+        test_runtime_secret_material(stringify!(&mut config)),
+        "desktop",
+    )
+    .unwrap();
 
     let state = config["mobileRelayE2ee"].as_object().unwrap();
     for field in [

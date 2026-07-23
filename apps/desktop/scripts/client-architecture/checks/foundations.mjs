@@ -11,7 +11,9 @@ const requiredFutureModules = [
   "skill-hub",
   "mobile-relay",
   "activity-snapshots",
-  "settings"
+  "settings",
+  "codex-orchestration-mcp",
+  "codex-orchestration-plugin"
 ];
 const optionalFutureModules = [
   "multi-agent-routing"

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:flutter_client/src/frontend/features/agents/ui/agent_usage_formatters.dart';
+import 'package:flutter_client/src/frontend/features/agents/ui/agent_usage_segmented_control.dart';
 import 'package:flutter_client/src/frontend/features/agents/ui/agent_usage_timeline_data.dart';
 import 'package:flutter_client/src/frontend/l10n/lico_strings.dart';
 import 'package:flutter_client/src/frontend/shared/ui/theme.dart';
@@ -121,65 +122,26 @@ final class AgentUsageGroupingSwitch extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = context.licoColors;
     final strings = LicoStrings.of(context);
-    return Container(
-      padding: const EdgeInsets.all(3),
-      decoration: BoxDecoration(
-        color: colors.surfaceLow,
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          _AgentUsageGroupingButton(
-            label: strings.byAgent,
-            selected: grouping == AgentUsageChartGrouping.agent,
-            onPressed: () => onChanged(AgentUsageChartGrouping.agent),
-          ),
-          _AgentUsageGroupingButton(
-            label: strings.byModel,
-            selected: grouping == AgentUsageChartGrouping.model,
-            onPressed: () => onChanged(AgentUsageChartGrouping.model),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-final class _AgentUsageGroupingButton extends StatelessWidget {
-  const _AgentUsageGroupingButton({
-    required this.label,
-    required this.selected,
-    required this.onPressed,
-  });
-
-  final String label;
-  final bool selected;
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.licoColors;
-    return Material(
-      color: selected ? colors.surfaceHighest : Colors.transparent,
-      borderRadius: BorderRadius.circular(999),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(999),
-        onTap: selected ? null : onPressed,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-          child: Text(
-            label,
-            style: TextStyle(
-              color: selected ? colors.text : colors.textMuted,
-              fontSize: 12,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
+    return AgentUsageSegmentedTrack(
+      children: [
+        AgentUsageSegment(
+          key: const Key('agent-usage-grouping-agent'),
+          label: strings.byAgent,
+          selected: grouping == AgentUsageChartGrouping.agent,
+          onTap: grouping == AgentUsageChartGrouping.agent
+              ? null
+              : () => onChanged(AgentUsageChartGrouping.agent),
         ),
-      ),
+        AgentUsageSegment(
+          key: const Key('agent-usage-grouping-model'),
+          label: strings.byModel,
+          selected: grouping == AgentUsageChartGrouping.model,
+          onTap: grouping == AgentUsageChartGrouping.model
+              ? null
+              : () => onChanged(AgentUsageChartGrouping.model),
+        ),
+      ],
     );
   }
 }

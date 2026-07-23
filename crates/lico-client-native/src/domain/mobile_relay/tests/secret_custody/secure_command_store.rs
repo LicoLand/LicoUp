@@ -5,12 +5,27 @@ fn secure_command_create_rejects_raw_runtime_e2ee_secret_overrides() {
     let previous = set_portable_data_dir_override(Some(dir));
 
     let mut pc_config = default_config();
-    let pc_descriptor =
-        ensure_mobile_relay_endpoint_descriptor(&mut pc_config, "desktop_sidecar").unwrap();
+    let pc_descriptor = ensure_mobile_relay_endpoint_descriptor(
+        &mut pc_config,
+        test_runtime_secret_material(stringify!(&mut pc_config)),
+        "desktop_sidecar",
+    )
+    .unwrap();
 
     let mut mobile_config = default_config();
-    ensure_mobile_relay_endpoint_descriptor(&mut mobile_config, "mobile").unwrap();
-    apply_peer_secure_mesh_descriptor(&mut mobile_config, &pc_descriptor, true).unwrap();
+    ensure_mobile_relay_endpoint_descriptor(
+        &mut mobile_config,
+        test_runtime_secret_material(stringify!(&mut mobile_config)),
+        "mobile",
+    )
+    .unwrap();
+    apply_peer_secure_mesh_descriptor(
+        &mut mobile_config,
+        test_runtime_secret_material(stringify!(&mut mobile_config)),
+        &pc_descriptor,
+        true,
+    )
+    .unwrap();
     let private_key = mobile_config["mobileRelayE2ee"]["privateKeyBase64url"]
         .as_str()
         .unwrap()

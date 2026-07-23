@@ -13,7 +13,7 @@ import 'layout_catalog_test_fixtures.dart';
 void main() {
   test('initialize hydrates before reaching a stable selection', () async {
     final repository = FakePreferencesRepository(
-      preferences: preferences(layout: LayoutProfileId.parse('studio')),
+      preferences: preferences(layout: LayoutProfileId.parse('native')),
     );
     final manager = createManager(repository);
 
@@ -23,7 +23,7 @@ void main() {
 
     expect(manager.initialized, isTrue);
     expect(manager.state.status, LayoutSelectionStatus.stable);
-    expect(manager.state.committedId, LayoutProfileId.parse('studio'));
+    expect(manager.state.committedId, LayoutProfileId.parse('native'));
     manager.dispose();
   });
 
@@ -32,9 +32,9 @@ void main() {
     final manager = createManager(repository);
     await manager.initialize();
 
-    expect(manager.beginPreview(LayoutProfileId.parse('studio')), isTrue);
+    expect(manager.beginPreview(LayoutProfileId.parse('native')), isTrue);
     expect(manager.state.status, LayoutSelectionStatus.previewing);
-    expect(manager.state.effectiveId, LayoutProfileId.parse('studio'));
+    expect(manager.state.effectiveId, LayoutProfileId.parse('native'));
     expect(repository.layoutWriteCount, 0);
 
     manager.cancelPreview();
@@ -48,7 +48,7 @@ void main() {
     final repository = FakePreferencesRepository(preferences: preferences());
     final manager = createManager(repository);
     await manager.initialize();
-    manager.beginPreview(LayoutProfileId.parse('studio'));
+    manager.beginPreview(LayoutProfileId.parse('native'));
     repository.layoutWriteGate = Completer<void>();
 
     final confirmation = manager.confirmPreview();
@@ -63,10 +63,10 @@ void main() {
     repository.layoutWriteGate!.complete();
     expect(await confirmation, isTrue);
     expect(manager.state.status, LayoutSelectionStatus.stable);
-    expect(manager.state.committedId, LayoutProfileId.parse('studio'));
+    expect(manager.state.committedId, LayoutProfileId.parse('native'));
     expect(
       repository.preferences.layoutProfileId,
-      LayoutProfileId.parse('studio'),
+      LayoutProfileId.parse('native'),
     );
     manager.dispose();
   });
@@ -75,7 +75,7 @@ void main() {
     final repository = FakePreferencesRepository(preferences: preferences());
     final manager = createManager(repository);
     await manager.initialize();
-    manager.beginPreview(LayoutProfileId.parse('studio'));
+    manager.beginPreview(LayoutProfileId.parse('native'));
     repository.failNextLayoutWrite = true;
 
     expect(await manager.confirmPreview(), isFalse);
@@ -89,7 +89,7 @@ void main() {
   test('reset uses the same commit path and preserves other fields', () async {
     final repository = FakePreferencesRepository(
       preferences: preferences(
-        layout: LayoutProfileId.parse('studio'),
+        layout: LayoutProfileId.parse('native'),
         appearance: 'dark',
         locale: 'zh',
       ),
@@ -114,7 +114,7 @@ void main() {
       );
       await manager.initialize();
 
-      manager.beginPreview(LayoutProfileId.parse('studio'));
+      manager.beginPreview(LayoutProfileId.parse('native'));
       await Future<void>.delayed(const Duration(milliseconds: 30));
       expect(manager.state.status, LayoutSelectionStatus.error);
       expect(manager.state.effectiveId, LayoutProfileId.parse('workbench'));
@@ -208,12 +208,12 @@ void main() {
       );
       final manager = createManager(
         repository,
-        preferredDefaultId: LayoutProfileId.parse('studio'),
+        preferredDefaultId: LayoutProfileId.parse('native'),
       );
 
       await manager.initialize();
-      expect(manager.preferredDefaultId, LayoutProfileId.parse('studio'));
-      expect(manager.state.committedId, LayoutProfileId.parse('studio'));
+      expect(manager.preferredDefaultId, LayoutProfileId.parse('native'));
+      expect(manager.state.committedId, LayoutProfileId.parse('native'));
       expect(
         manager.state.errorCode,
         LayoutSelectionErrorCode.unavailableProfile,
@@ -221,7 +221,7 @@ void main() {
       expect(await manager.resetLayout(), isTrue);
       expect(
         repository.preferences.layoutProfileId,
-        LayoutProfileId.parse('studio'),
+        LayoutProfileId.parse('native'),
       );
       manager.dispose();
     },
@@ -246,7 +246,7 @@ void main() {
       final repository = FakePreferencesRepository(preferences: preferences());
       final manager = createManager(repository);
       await manager.initialize();
-      manager.beginPreview(LayoutProfileId.parse('studio'));
+      manager.beginPreview(LayoutProfileId.parse('native'));
 
       final appearance = manager.setAppearancePreset('dark');
       final confirmation = manager.confirmPreview();
@@ -254,7 +254,7 @@ void main() {
       expect(await confirmation, isTrue);
       expect(
         manager.preferences?.layoutProfileId,
-        LayoutProfileId.parse('studio'),
+        LayoutProfileId.parse('native'),
       );
       expect(manager.preferences?.appearancePresetId, 'dark');
       expect(repository.preferences, manager.preferences);
@@ -272,7 +272,7 @@ void main() {
       await manager.initialize();
       expect(manager.state.committedId, LayoutProfileId.parse('workbench'));
 
-      expect(manager.beginPreview(LayoutProfileId.parse('studio')), isTrue);
+      expect(manager.beginPreview(LayoutProfileId.parse('native')), isTrue);
       repository.layoutWriteGate = Completer<void>();
       final appearance = manager.setAppearancePreset('dark');
       final confirmation = manager.confirmPreview();
@@ -281,10 +281,10 @@ void main() {
       repository.layoutWriteGate!.complete();
       expect(await appearance, isTrue);
       expect(await confirmation, isTrue);
-      expect(manager.state.committedId, LayoutProfileId.parse('studio'));
+      expect(manager.state.committedId, LayoutProfileId.parse('native'));
       expect(
         repository.preferences.layoutProfileId,
-        LayoutProfileId.parse('studio'),
+        LayoutProfileId.parse('native'),
       );
       expect(repository.preferences.appearancePresetId, 'dark');
       expect(manager.preferences, repository.preferences);
@@ -320,7 +320,7 @@ void main() {
       final repository = FakePreferencesRepository(preferences: preferences());
       final manager = createManager(repository);
       await manager.initialize();
-      manager.beginPreview(LayoutProfileId.parse('studio'));
+      manager.beginPreview(LayoutProfileId.parse('native'));
       repository.layoutWriteGate = Completer<void>();
 
       final oldConfirmation = manager.confirmPreview();
@@ -331,7 +331,7 @@ void main() {
       expect(await oldConfirmation, isTrue);
       await newerInitialization;
       expect(manager.state.status, LayoutSelectionStatus.stable);
-      expect(manager.state.committedId, LayoutProfileId.parse('studio'));
+      expect(manager.state.committedId, LayoutProfileId.parse('native'));
       manager.dispose();
     },
   );
@@ -357,9 +357,9 @@ void main() {
       });
       manager.addListener((_) => trailingNotifications += 1);
 
-      expect(manager.beginPreview(LayoutProfileId.parse('studio')), isTrue);
+      expect(manager.beginPreview(LayoutProfileId.parse('native')), isTrue);
       expect(manager.state.status, LayoutSelectionStatus.previewing);
-      expect(manager.state.effectiveId, LayoutProfileId.parse('studio'));
+      expect(manager.state.effectiveId, LayoutProfileId.parse('native'));
       expect(trailingNotifications, 1);
       expect(reported, hasLength(2));
       expect(
@@ -378,13 +378,13 @@ void main() {
 
   test('resize updates only the surface-local variant state', () async {
     final repository = FakePreferencesRepository(
-      preferences: preferences(layout: LayoutProfileId.parse('studio')),
+      preferences: preferences(layout: LayoutProfileId.parse('native')),
     );
     final manager = createManager(repository);
     await manager.initialize();
 
     manager.updateEnvironment(desktopEnvironment(width: 1400));
-    expect(manager.state.committedId, LayoutProfileId.parse('studio'));
+    expect(manager.state.committedId, LayoutProfileId.parse('native'));
     expect(manager.state.viewport, LayoutViewportClass.expanded);
     expect(repository.layoutWriteCount, 0);
     manager.dispose();

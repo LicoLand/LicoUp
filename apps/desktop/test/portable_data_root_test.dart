@@ -120,22 +120,17 @@ void main() {
     );
   });
 
-  test('resolves the current application-support namespace once', () async {
-    final applicationSupport = await Directory.systemTemp.createTemp(
-      'licoarc-default-application-support-',
-    );
-    addTearDown(() => applicationSupport.delete(recursive: true));
+  test('resolves the home dot-directory namespace once', () async {
+    final home = await Directory.systemTemp.createTemp('licoarc-home-');
+    addTearDown(() => home.delete(recursive: true));
     final portableData = PortableDataRoot(
-      applicationSupportDirectoryResolver: () async => applicationSupport,
+      environmentOverride: {'HOME': home.path},
     );
     final first = await portableData.dataDirectory();
     final second = await portableData.dataDirectory();
 
     expect(first.path, second.path);
-    expect(
-      first.path,
-      p.join(applicationSupport.path, 'LicoArc', 'portable-data'),
-    );
+    expect(first.path, p.join(home.path, '.lico-arc'));
     expect(
       await File('${first.path}/.licoarc-workspace.json').exists(),
       isTrue,
@@ -165,19 +160,20 @@ void main() {
   });
 
   test(
-    'packaged macOS app uses application support instead of portable env',
+    'packaged macOS app uses the home dot directory instead of portable env',
     () async {
-      final applicationSupport = await Directory.systemTemp.createTemp(
-        'lico-application-support-',
-      );
+      final home = await Directory.systemTemp.createTemp('licoarc-mac-home-');
       final envDirectory = await Directory.systemTemp.createTemp(
         'lico-env-portable-',
       );
-      addTearDown(() => applicationSupport.delete(recursive: true));
+      addTearDown(() => home.delete(recursive: true));
       addTearDown(() => envDirectory.delete(recursive: true));
 
       final portableData = PortableDataRoot(
-        environmentOverride: {'LICOARC_PORTABLE_DIR': envDirectory.path},
+        environmentOverride: {
+          'LICOARC_PORTABLE_DIR': envDirectory.path,
+          'HOME': home.path,
+        },
         resolvedExecutableOverride: p.join(
           Directory.systemTemp.path,
           'Arc.app',
@@ -185,15 +181,11 @@ void main() {
           'MacOS',
           'flutter_client',
         ),
-        applicationSupportDirectoryResolver: () async => applicationSupport,
       );
 
       final resolved = await portableData.dataDirectory();
 
-      expect(
-        resolved.path,
-        p.join(applicationSupport.path, 'LicoArc', 'portable-data'),
-      );
+      expect(resolved.path, p.join(home.path, '.lico-arc'));
       expect(resolved.path, isNot(envDirectory.path));
       expect(
         await File('${resolved.path}/.licoarc-workspace.json').exists(),

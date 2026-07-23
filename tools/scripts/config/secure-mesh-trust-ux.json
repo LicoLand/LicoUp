@@ -1,5 +1,5 @@
 {
-  "schemaVersion": "licolite.secure-mesh.trust-ux-config.v2",
+  "schemaVersion": "licomesh.secure-mesh.trust-ux-config.v2",
   "productTestTargets": [
     "apps/desktop/test/mobile_relay_service_test.dart",
     "apps/desktop/test/secure_mesh_panel_test.dart"
@@ -137,7 +137,7 @@
       "file": "apps/desktop/test/secure_mesh_panel_test.dart",
       "tokens": [
         "'deviceTrustStatus': 'device-trust-ready'",
-        "'protocolVersion': 'licolite.secure-mesh.device-trust.v2'",
+        "'protocolVersion': 'licomesh.secure-mesh.device-trust.v2'",
         "find.text('device-trust-ready'), findsNothing",
         "find.text('blocked_for_production'), findsNothing"
       ]
@@ -206,7 +206,7 @@
       "id": "selected-target-trust-reducer-is-v2-and-fail-closed",
       "file": "tools/scripts/lib/secure-mesh-trust-ux-reducer.mjs",
       "tokens": [
-        "licolite.secure-mesh.trust-ux-report.v2",
+        "licomesh.secure-mesh.trust-ux-report.v2",
         "reduceSecureMeshTrustUxReadiness",
         "validateSecureMeshTrustUxV2Report",
         "embeddedAndroidPhysicalTrustReady",

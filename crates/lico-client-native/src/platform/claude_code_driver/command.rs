@@ -2,6 +2,7 @@ use super::super::process_supervisor::SupervisedChild;
 use super::model::EffectiveSettings;
 use super::params::DriverConfig;
 use serde_json::Value;
+use std::ffi::{OsStr, OsString};
 use std::io;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -14,7 +15,6 @@ pub(super) const FIXED_STREAM_ARGS: &[&str] = &[
     "stream-json",
     "--verbose",
     "--include-partial-messages",
-    "--no-session-persistence",
 ];
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -80,9 +80,15 @@ impl LaunchIdentity {
         let mut command = Command::new(&self.executable);
         command
             .args(self.args())
+            .env("CLAUDE_CODE_SKIP_PROMPT_HISTORY", "1")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
+        if let Some(path) =
+            executable_augmented_path(&self.executable, std::env::var_os("PATH").as_deref())
+        {
+            command.env("PATH", path);
+        }
         if let Some(cwd) = self.cwd.as_ref() {
             command.current_dir(cwd);
         }
@@ -102,4 +108,19 @@ impl LaunchIdentity {
             approval_policy: self.permission_mode.clone().map(Value::String),
         }
     }
+}
+
+pub(super) fn executable_augmented_path(
+    executable: &str,
+    inherited: Option<&OsStr>,
+) -> Option<OsString> {
+    let parent = Path::new(executable).parent()?.as_os_str();
+    if parent.is_empty() {
+        return None;
+    }
+    let mut paths = vec![PathBuf::from(parent)];
+    if let Some(inherited) = inherited {
+        paths.extend(std::env::split_paths(inherited));
+    }
+    std::env::join_paths(paths).ok()
 }

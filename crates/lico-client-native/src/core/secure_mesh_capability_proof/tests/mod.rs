@@ -14,7 +14,7 @@ use crate::core::secure_mesh_trust::DeviceTrustPublicIdentity;
 use base64::{Engine as _, engine::general_purpose};
 use ed25519_dalek::{Signature, Signer, SigningKey, Verifier};
 use serde_json::json;
-use rand::rngs::OsRng;
+use rand_core::OsRng;
 use sha2::{Digest, Sha256};
 
 const FIXED_NOW: i64 = 1_900_000_000;
@@ -100,11 +100,11 @@ fn stable_capability_proof_vector_uses_existing_endpoint_identity_signature() {
     let verified = verify_capability_proof(&identity, &proof, &context()).unwrap();
     assert_eq!(
         proof.signature,
-        "yhVBRjlJEfqTnLiTYyC1byglmCGbR10RpOfekUpfaSWutFOFcyTsV-kmiuJ2LJKT2Vpvhb3ZXb4ht3XBJSyrDQ"
+        "1UZOP7gXoDjrHzIBkFBaT4SVlRYBZ4ovw9G0naGFSSGCH1ev3mLRUC6-i0yMg0Hid0TAzFfaSUxyVJOK3r1bBg"
     );
     assert_eq!(
         verified.proof_digest(),
-        "sha256:vkUB4qVsTZsSTRH9_VOCxhNUBsbsYrN6LyzqQFfrT3M"
+        "sha256:_GTxCW4cyLrWuGTLMAIXLD9bNWWdUJD_KR2Z80waScQ"
     );
 
     let signature = Signature::from_bytes(

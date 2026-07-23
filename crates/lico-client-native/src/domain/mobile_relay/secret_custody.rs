@@ -17,7 +17,7 @@ use crate::platform::secure_mesh_secret_store::{
 };
 use anyhow::{Context, Result, anyhow, ensure};
 use ed25519_dalek::SigningKey;
-use serde_json::{Value, json};
+use serde_json::{Map, Value, json};
 use std::cell::RefCell;
 use std::env;
 use std::fs;
@@ -39,6 +39,7 @@ mod persistence;
 mod presentation;
 mod reset_guard;
 mod runtime;
+mod runtime_secret_material;
 mod secret_material;
 mod self_test;
 
@@ -51,6 +52,9 @@ pub(in crate::domain::mobile_relay) use persistence::*;
 pub(in crate::domain::mobile_relay) use presentation::*;
 pub(in crate::domain::mobile_relay) use reset_guard::*;
 pub(in crate::domain::mobile_relay) use runtime::*;
+#[cfg(test)]
+pub(crate) use runtime_secret_material::test_runtime_secret_material;
+pub(in crate::domain::mobile_relay) use runtime_secret_material::*;
 pub(in crate::domain::mobile_relay) use secret_material::*;
 
 pub fn with_pairwise_secret_store_override<T>(

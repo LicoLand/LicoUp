@@ -182,7 +182,7 @@ fn secure_mesh_acp_envelope_aad_has_stable_digest_vector() {
     assert_eq!(digest.len(), 64);
     assert_eq!(
         digest,
-        "9b480021174177f0d48517e3a5f4ea9ba207153d3d6a0f8dc6cd6aca9ec8e993"
+        "c5dcd95e8ae40644ea4cad031eca4351ac7e095bd10e5e9a219b3c60c1445534"
     );
 }
 

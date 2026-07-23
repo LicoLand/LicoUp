@@ -1,6 +1,6 @@
 use super::binaries::{cursor_binary_supports_acp, find_target_binary_with_source};
 use super::catalog::{
-    TargetCandidate, TargetDef, adapter_capabilities_for, candidate_runtime_is_ready,
+    TargetCandidate, TargetDef, adapter_capabilities_for, candidate_runtime_is_available,
     target_supports_skill_install,
 };
 use super::manual::ManualTarget;
@@ -127,8 +127,8 @@ pub(super) fn scan_target_with_manual(
         });
     }
 
-    let runtime_send_ready =
-        candidate_runtime_is_ready(&mut capabilities, def.id, binary_path.as_deref());
+    let runtime_available =
+        candidate_runtime_is_available(&mut capabilities, def.id, binary_path.as_deref());
     let adapter_status = "implemented";
     let model_catalog = if detected || manual_entry {
         model_catalog_for_target(def.id, config_path.as_deref(), params)
@@ -140,7 +140,7 @@ pub(super) fn scan_target_with_manual(
     if target_supports_skill_install(def.id) {
         supported_actions.push("skill.install".to_string());
     }
-    if runtime_send_ready {
+    if runtime_available {
         supported_actions.push("runtime.message.send".to_string());
     }
 

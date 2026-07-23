@@ -4,7 +4,7 @@ const secureMeshReportRedaction = await readText("tools/scripts/client-secure-me
 const secureMeshReportRedactionConfig = await readText("tools/scripts/config/secure-mesh-report-redaction.json");
 const secureMeshReportRedactionConfigJson = await readJson("tools/scripts/config/secure-mesh-report-redaction.json");
 for (const token of [
-  "licolite.secure-mesh.report-redaction-config.v1",
+  "licomesh.secure-mesh.report-redaction-config.v1",
   "secure-mesh-report-redaction.json",
   "secure-mesh-release-input-report-redaction.json",
   "requiredRefs",
@@ -112,7 +112,7 @@ const pairwiseContentAuditConfig =
 const pairwiseContentAuditConfigJson =
   await readJson("tools/scripts/config/secure-mesh-pairwise-content-audit.json");
 for (const token of [
-  "licolite.secure-mesh.pairwise-content-audit-config.v2",
+  "licomesh.secure-mesh.pairwise-content-audit-config.v2",
   "build/reports/secure-mesh-pairwise-content-crypto-audit.json",
   "build/reports/secure-mesh-pairwise-content-vector-corpus.json",
   "build/reports/secure-mesh-pairwise-content-review-signoff.json",
@@ -195,7 +195,7 @@ for (const token of [
   "loadVectorCorpusSnapshot",
   "vectorCorpusSnapshotReport",
   "reviewSignoffTemplateForCorpus",
-  "licolite.secure-mesh.pairwise-content-review-signoff-template.v2",
+  "licomesh.secure-mesh.pairwise-content-review-signoff-template.v2",
   "reviewSignoffTemplatePresent",
   "reviewSignoffTemplateDigestMatched",
   "reviewSignoffTemplateSnapshotPresent",
@@ -219,7 +219,7 @@ for (const token of [
   "replayed_mobile_relay_command_envelope_does_not_execute_twice",
   "rfc9162_inclusion_and_consistency_paths_are_logarithmic_and_exact",
   "secure_mesh_mls_product_forged_sender_and_typed_kt_member_add",
-  "licolite.secure-mesh.pairwise-content-review-signoff.v2",
+  "licomesh.secure-mesh.pairwise-content-review-signoff.v2",
   "nativeTestFiltersDigest",
   "sourceCheckIdsDigest",
   "independentCryptographicReviewComplete: null",
@@ -257,8 +257,8 @@ const secureClientRelayMock = await readSourceBundle(
 const secureClientRelayMockReport =
   await readText("tools/scripts/lib/secure-client-relay-mock-e2e-report.mjs");
 for (const token of [
-  "licolite.secure-client-relay.client-acceptance-report.v1",
-  "licolite.secure-client-relay.mock-e2e-report.v1",
+  "licomesh.secure-client-relay.client-acceptance-report.v1",
+  "licomesh.secure-client-relay.mock-e2e-report.v1",
   "opaque relay protocol mock",
   "evidenceRefSchemaVersion",
   "productionReady: mock.ok === true",
@@ -344,7 +344,7 @@ assert(!encryptedFileHandoff.includes("const sourceChecks = Object.freeze([") &&
   !encryptedFileHandoff.includes("const nativeTestFilters = Object.freeze(["),
   "encrypted file handoff must load source checks and native filters from config instead of hardcoding inline arrays");
 for (const token of [
-  "licolite.secure-mesh.encrypted-file-handoff-config.v1",
+  "licomesh.secure-mesh.encrypted-file-handoff-config.v1",
   "sourceChecks",
   "nativeTestFilters",
   "file-transfer-state-tracks-resume-ack-and-purge",

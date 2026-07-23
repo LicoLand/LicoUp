@@ -73,9 +73,9 @@ pub(super) use crate::platform::secure_mesh_secret_store::{
 
 pub(super) type MobileRelayClaimMac = Hmac<Sha256>;
 
-pub(super) const SECURE_MESH_PROTOCOL_VERSION: &str = "licolite.secure-mesh.v1";
+pub(super) const SECURE_MESH_PROTOCOL_VERSION: &str = "licomesh.secure-mesh.v1";
 pub(super) const MOBILE_RELAY_E2EE_PROTOCOL_VERSION: &str =
-    "licolite.mobile-relay.e2ee.pqxdh-mlkem1024.v1";
+    "licomesh.mobile-relay.e2ee.pqxdh-mlkem1024.v1";
 pub(super) const SECURE_MESH_ENVELOPE_COMMAND: &str = "secure_mesh.envelope";
 pub(super) const MOBILE_RELAY_COMMAND_TTL_SECONDS: i64 = 10 * 60;
 pub(super) const MOBILE_RELAY_RESULT_TTL_SECONDS: i64 = 10 * 60;
@@ -93,7 +93,7 @@ pub(super) const SECURE_MESH_ENDPOINT_CRYPTO_RUNTIME_FAILED_CODE: &str =
 pub(super) const SECURE_MESH_ENDPOINT_CRYPTO_RUNTIME_FAILED_DETAIL: &str =
     "secure mesh endpoint could not open or execute command; details are local-only";
 pub(super) const SECURE_MESH_PEER_TRUST_AUTHORITY_SCHEMA: &str =
-    "licolite.secure-mesh.peer-trust-authority.v1";
+    "licomesh.secure-mesh.peer-trust-authority.v1";
 pub(super) const MAX_SECURE_MESH_PEER_TRUST_ENTRIES: usize = 256;
 
 thread_local! {

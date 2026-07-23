@@ -12,7 +12,7 @@ fn cli_dispatches_native_conversation_snapshot_commands() {
     fs::create_dir_all(&codex_history).unwrap();
     fs::write(
             codex_history.join("history.jsonl"),
-            r#"{"sessionId":"dispatch-archive","role":"user","content":"Dispatch LicoLite conversation archive"}"#,
+            r#"{"sessionId":"dispatch-archive","role":"user","content":"Dispatch LicoMesh conversation archive"}"#,
         )
         .unwrap();
     {
@@ -48,7 +48,7 @@ fn cli_dispatches_native_conversation_snapshot_commands() {
             "snapshots".into(),
             "collect".into(),
             "--topic".into(),
-            "LicoLite".into(),
+            "LicoMesh".into(),
             "--agent".into(),
             "codex".into(),
             "--home-dir".into(),
@@ -80,13 +80,13 @@ fn cli_dispatches_native_conversation_snapshot_commands() {
             "profiles".into(),
             "import".into(),
             "--profile-id".into(),
-            "licolite".into(),
+            "licomesh".into(),
             "--display-name".into(),
-            "LicoLite".into(),
+            "LicoMesh".into(),
             "--archive-root".into(),
             archive_root.display().to_string(),
             "--canonical-names".into(),
-            "LicoLite".into(),
+            "LicoMesh".into(),
             "--expected-agents".into(),
             "codex".into(),
             "--state-root".into(),
@@ -116,14 +116,14 @@ fn cli_dispatches_native_conversation_snapshot_commands() {
             "profiles".into(),
             "get".into(),
             "--profile".into(),
-            "licolite".into(),
+            "licomesh".into(),
             "--state-root".into(),
             state_root.display().to_string(),
         ])
         .unwrap();
         assert_eq!(
             json_payload(&profile_get)["profile"]["profileId"],
-            "licolite"
+            "licomesh"
         );
 
         let archive_run = execute_cli(vec![
@@ -131,7 +131,7 @@ fn cli_dispatches_native_conversation_snapshot_commands() {
             "archive".into(),
             "run".into(),
             "--profile".into(),
-            "licolite".into(),
+            "licomesh".into(),
             "--home-dir".into(),
             home.display().to_string(),
             "--state-root".into(),
@@ -146,7 +146,7 @@ fn cli_dispatches_native_conversation_snapshot_commands() {
             "archive".into(),
             "verify".into(),
             "--profile".into(),
-            "licolite".into(),
+            "licomesh".into(),
             "--state-root".into(),
             state_root.display().to_string(),
         ])
@@ -161,7 +161,7 @@ fn cli_dispatches_native_conversation_snapshot_commands() {
             "archive".into(),
             "report".into(),
             "--profile".into(),
-            "licolite".into(),
+            "licomesh".into(),
             "--state-root".into(),
             state_root.display().to_string(),
         ])
@@ -173,7 +173,7 @@ fn cli_dispatches_native_conversation_snapshot_commands() {
             "archive".into(),
             "collect".into(),
             "--keywords".into(),
-            "LicoLite".into(),
+            "LicoMesh".into(),
             "--path".into(),
             archive_root.display().to_string(),
             "--agent".into(),
@@ -194,7 +194,7 @@ fn cli_dispatches_native_conversation_snapshot_commands() {
             "--selection-mode".into(),
             "exact-keyword".into(),
             "--query".into(),
-            "LicoLite".into(),
+            "LicoMesh".into(),
             "--path".into(),
             archive_root.display().to_string(),
             "--agent".into(),
@@ -218,7 +218,7 @@ fn cli_dispatches_native_conversation_snapshot_commands() {
             "--selection-mode".into(),
             "exact-keyword".into(),
             "--query".into(),
-            "LicoLite".into(),
+            "LicoMesh".into(),
             "--path".into(),
             archive_root.display().to_string(),
             "--agent".into(),

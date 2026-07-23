@@ -1,6 +1,6 @@
 mod acp_driver_runtime;
 mod acp_session_transport;
-mod antigravity_driver;
+pub(crate) mod antigravity_driver;
 pub mod authorized_secure_record;
 mod claude_code_driver;
 mod codex_app_server;
@@ -16,6 +16,9 @@ pub(crate) mod mcp_approval_plan_store;
 pub(crate) mod mcp_streamable_http;
 mod openclaw_driver;
 mod opencode_driver;
+pub mod orchestrator_control_plane;
+pub mod orchestrator_ipc;
+pub mod orchestrator_service;
 mod pi_driver;
 mod process_supervisor;
 pub(crate) mod secure_mesh_mls_store;
@@ -36,8 +39,8 @@ pub mod secure_mesh_secret_store;
 pub mod url_security;
 
 pub use conversation_lane::{
-    cancel_turn, cleanup_conversation, dispatch_lane_operation, enforce_send_readiness,
-    lane_capabilities, open_or_resume,
+    cancel_turn, cleanup_conversation, dispatch_lane_operation, lane_capabilities, open_or_resume,
+    shutdown_all_conversations,
 };
 pub use hermes_driver::resolve_parked_permission as hermes_resolve_parked_permission;
 pub use turn_event_emit::{

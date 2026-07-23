@@ -1,18 +1,21 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:flutter_client/src/contracts/generated/client_error.g.dart';
 import 'package:flutter_client/src/platform/native_client/agent_service_stdio_rpc/protocol.dart';
 
+// ClientError decoding preserves code, stage, component, retryable, recovery,
+// and presentationArgs as one generated value.
 class StdioRpcProtocolViolation implements Exception {
   const StdioRpcProtocolViolation();
 }
 
 class StdioRpcCommandReply {
-  const StdioRpcCommandReply.success(this.result) : errorCode = null;
-  const StdioRpcCommandReply.failure(this.errorCode) : result = null;
+  const StdioRpcCommandReply.success(this.result) : error = null;
+  const StdioRpcCommandReply.failure(this.error) : result = null;
 
   final Map<String, dynamic>? result;
-  final String? errorCode;
+  final ClientError? error;
 }
 
 StdioRpcCommandReply decodeStdioRpcCommandReply(
@@ -34,7 +37,7 @@ StdioRpcCommandReply decodeStdioRpcCommandReply(
     }
     return StdioRpcCommandReply.success(result);
   }
-  return StdioRpcCommandReply.failure(_errorCode(decoded['error']));
+  return StdioRpcCommandReply.failure(_clientError(decoded['error']));
 }
 
 bool isStdioRpcShutdownAcknowledged(
@@ -64,11 +67,11 @@ final class StdioRpcConversationEvent extends StdioRpcConversationFrame {
 }
 
 final class StdioRpcConversationTerminal extends StdioRpcConversationFrame {
-  const StdioRpcConversationTerminal.success(this.result) : errorCode = null;
-  const StdioRpcConversationTerminal.failure(this.errorCode) : result = null;
+  const StdioRpcConversationTerminal.success(this.result) : error = null;
+  const StdioRpcConversationTerminal.failure(this.error) : result = null;
 
   final Map<String, dynamic>? result;
-  final String? errorCode;
+  final ClientError? error;
 }
 
 class StdioRpcConversationDecoder {
@@ -114,7 +117,7 @@ class StdioRpcConversationDecoder {
       }
       return StdioRpcConversationTerminal.success(result);
     }
-    return StdioRpcConversationTerminal.failure(_errorCode(decoded['error']));
+    return StdioRpcConversationTerminal.failure(_clientError(decoded['error']));
   }
 }
 
@@ -130,9 +133,9 @@ Map<String, dynamic> _decodeEnvelope(Uint8List bytes) {
   throw const StdioRpcProtocolViolation();
 }
 
-String _errorCode(Object? error) {
-  final rawCode = error is Map<String, dynamic> ? error['code'] : null;
-  return rawCode is String && validStdioRpcErrorCode(rawCode)
-      ? rawCode
-      : 'command_failed';
+ClientError _clientError(Object? value) {
+  if (value is! Map) {
+    throw const StdioRpcProtocolViolation();
+  }
+  return ClientError.fromJson(Map<String, Object?>.from(value));
 }

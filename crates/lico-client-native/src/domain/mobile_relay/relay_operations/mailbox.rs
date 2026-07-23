@@ -3,6 +3,9 @@ use crate::core::secure_mesh_relay_envelope::{
     SecureMeshMailboxDirection, SecureMeshMailboxSchedule, SecureMeshRelayChannelBinding,
 };
 use crate::domain::mobile_relay::endpoint_trust::{decode_key_32, local_endpoint_state};
+use crate::domain::mobile_relay::secret_custody::{
+    MobileRelayE2eeSecretField, RuntimeSecretMaterial,
+};
 use anyhow::{Result, anyhow};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -15,16 +18,16 @@ pub(in crate::domain::mobile_relay) fn current_mailbox_rotation_epoch() -> Resul
 }
 
 pub(in crate::domain::mobile_relay) fn canonical_mailbox_token(
-    config: &Value,
+    secret_material: &RuntimeSecretMaterial,
     endpoint_id: &str,
     endpoint_kind: &str,
     rotation_epoch: u64,
 ) -> Result<String> {
-    let pairing_secret = config
-        .get("mobileRelayE2ee")
-        .and_then(|state| state.get("pairingSecretBase64url"))
-        .and_then(Value::as_str)
-        .ok_or_else(|| anyhow!("secure client relay mailbox delivery secret is missing"))?;
+    let pairing_secret = secret_material
+        .e2ee_secret(MobileRelayE2eeSecretField::PairingSecret)
+        .ok_or_else(|| anyhow!("secure client relay mailbox delivery secret is missing"))?
+        .expose_utf8()
+        .map_err(|_| anyhow!("secure client relay mailbox delivery secret is invalid"))?;
     let delivery_secret = SecureMeshDeliverySecret::from_bytes(decode_key_32(
         pairing_secret,
         "secure client relay mailbox delivery secret",
@@ -54,12 +57,24 @@ pub(in crate::domain::mobile_relay) fn canonical_mailbox_token(
 
 pub(in crate::domain::mobile_relay) fn local_canonical_mailbox_token(
     config: &Value,
+    secret_material: &RuntimeSecretMaterial,
 ) -> Result<String> {
-    let endpoint = local_endpoint_state(config)?;
+    let state = config
+        .get("mobileRelayE2ee")
+        .ok_or_else(|| anyhow!("mobile relay E2EE endpoint state is missing"))?;
     canonical_mailbox_token(
-        config,
-        &endpoint.endpoint_id,
-        &endpoint.endpoint_kind,
-        endpoint.mailbox_rotation_epoch,
+        secret_material,
+        state
+            .get("endpointId")
+            .and_then(Value::as_str)
+            .ok_or_else(|| anyhow!("mobile relay endpoint id is missing"))?,
+        state
+            .get("endpointKind")
+            .and_then(Value::as_str)
+            .ok_or_else(|| anyhow!("mobile relay endpoint kind is missing"))?,
+        state
+            .get("mailboxRotationEpoch")
+            .and_then(Value::as_u64)
+            .ok_or_else(|| anyhow!("mobile relay mailbox rotation epoch is missing"))?,
     )
 }

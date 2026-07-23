@@ -171,6 +171,13 @@ impl PiProtocol {
             .with_turn(&self.config.turn_id)
     }
 
+    pub(super) fn active_turn_binding(&self) -> Option<(&str, &str)> {
+        if self.phase != ProtocolPhase::AwaitSettled {
+            return None;
+        }
+        Some((self.session_id.as_deref()?, &self.config.turn_id))
+    }
+
     pub(super) fn handle_message(&mut self, message: Value) -> Vec<ProtocolEffect> {
         let message_type = message.get("type").and_then(Value::as_str).unwrap_or("");
         if message_type == "extension_ui_request" {

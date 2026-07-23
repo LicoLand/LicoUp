@@ -3,7 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_client/src/application/features/mobile_relay/controller/secure_mesh_controller_support.dart';
 import 'package:flutter_client/src/application/features/mobile_relay/policy/secure_mesh_policy.dart';
 import 'package:flutter_client/src/contracts/mobile_relay_control.dart';
-import 'package:flutter_client/src/contracts/secure_mesh_capability_models.dart';
+import 'package:flutter_client/src/contracts/generated/secure_mesh.g.dart';
 
 /// Owns Secure Mesh runtime status, capability projection, and device trust.
 final class SecureMeshStatusController extends ChangeNotifier {
@@ -45,26 +45,35 @@ final class SecureMeshStatusController extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> refreshStatus({bool authorize = true}) async {
+  Future<void> refreshStatus({
+    bool authorize = true,
+    bool showProgress = true,
+  }) async {
     if (!_operationGate.tryAcquire()) return;
-    _report('正在刷新 Secure Mesh 状态。', 'Refreshing Secure Mesh status.');
+    if (showProgress) {
+      _report('正在刷新 Secure Mesh 状态。', 'Refreshing Secure Mesh status.');
+    }
     notifyListeners();
     try {
       final raw = await _gateway.status(authorize: authorize);
       _capabilityProjection = _gateway.projectStatus(raw);
       _status = SecureMeshPolicy.statusProjection(raw);
-      _report('Secure Mesh 状态已刷新。', 'Secure Mesh status refreshed.');
+      if (showProgress) {
+        _report('Secure Mesh 状态已刷新。', 'Secure Mesh status refreshed.');
+      }
     } catch (_) {
       _status = const {
         'ok': false,
         'errorCode': 'secure_mesh_status_refresh_failed',
       };
       _capabilityProjection = null;
-      _report(
-        'Secure Mesh 状态刷新失败。',
-        'Failed to refresh Secure Mesh status.',
-        errorCode: 'secure_mesh_status_refresh_failed',
-      );
+      if (showProgress) {
+        _report(
+          'Secure Mesh 状态刷新失败。',
+          'Failed to refresh Secure Mesh status.',
+          errorCode: 'secure_mesh_status_refresh_failed',
+        );
+      }
     } finally {
       _operationGate.release();
       notifyListeners();

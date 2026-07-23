@@ -162,4 +162,7 @@ final class _RecordingChromePort extends ValueNotifier<LayoutChromeSnapshot>
 
   @override
   Future<void> openPairing(BuildContext context) async {}
+
+  @override
+  Future<void> openGlobalSearch(BuildContext context) async {}
 }

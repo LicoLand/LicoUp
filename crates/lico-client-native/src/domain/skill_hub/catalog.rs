@@ -1,15 +1,21 @@
 use super::{
     agent_id, append_activity, bool_param, collection_items_mut, find_skill, get_approved_pairing,
-    is_agent_approved, is_explicitly_revealed, is_hidden, local_skill_discovery_requested,
-    pairing_required, skill_id, timestamp, upsert_policy_item, visible_skills,
+    is_explicitly_revealed, is_hidden, local_skill_discovery_requested, pairing_required, skill_id,
+    timestamp, upsert_policy_item, visible_skills,
 };
 use crate::platform::client_state::ClientStateStore;
 use anyhow::{Result, anyhow};
 use serde_json::{Value, json};
 
+/// Read-only catalog queries stay strict: they never create pairing state as
+/// a side effect, unlike the mutating management operations.
+fn has_approved_pairing(store: &ClientStateStore, agent_id: &str) -> Result<bool> {
+    Ok(get_approved_pairing(store, agent_id)?.is_some())
+}
+
 pub(super) fn list(store: &ClientStateStore, params: &Value) -> Result<Value> {
     let agent_id = agent_id(params)?;
-    if !is_agent_approved(store, &agent_id)? {
+    if !has_approved_pairing(store, &agent_id)? {
         return Ok(pairing_required(&agent_id));
     }
     let mut skills = visible_skills(store, &agent_id)?;
@@ -54,7 +60,7 @@ pub(super) fn list(store: &ClientStateStore, params: &Value) -> Result<Value> {
 
 pub(super) fn get(store: &ClientStateStore, params: &Value) -> Result<Value> {
     let agent_id = agent_id(params)?;
-    if !is_agent_approved(store, &agent_id)? {
+    if !has_approved_pairing(store, &agent_id)? {
         return Ok(pairing_required(&agent_id));
     }
     let skill_id = skill_id(params)?;

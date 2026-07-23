@@ -246,7 +246,7 @@ async function run() {
 
     return {
       ok: true,
-      schemaVersion: "licolite.secure-client-relay.mock-e2e-report.v1",
+      schemaVersion: "licomesh.secure-client-relay.mock-e2e-report.v1",
       protocolVersion: mock.artifacts.protocolVersion,
       coreContractDigest: mock.artifacts.coreContractDigest,
       coreConformanceDigest: mock.artifacts.coreConformanceDigest,
@@ -292,7 +292,7 @@ try {
     checkedAt
   });
   const report = {
-    schemaVersion: "licolite.secure-client-relay.client-acceptance-report.v1",
+    schemaVersion: "licomesh.secure-client-relay.client-acceptance-report.v1",
     evidenceRefSchemaVersion: SECURE_CLIENT_MESH_E2EE_EVIDENCE_REF_REPORT_SCHEMA_VERSION,
     verifier,
     generatedBy: verifier,

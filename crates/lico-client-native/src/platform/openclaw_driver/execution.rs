@@ -1,3 +1,4 @@
+use super::super::acp_driver_runtime::ActiveAcpControl;
 use super::super::process_supervisor::{
     BoundedStdinWriter, SupervisedChild, TransportFinishFailure, finish_protocol_transport,
 };
@@ -146,8 +147,14 @@ pub(in crate::platform) fn execute(
     }
 
     let deadline = Instant::now() + Duration::from_millis(timeout_ms);
-    let (outcome, failure, status_code, stdout_was_truncated) =
-        run_protocol_loop(&mut stdin, &receiver, &mut protocol, deadline);
+    let mut active_control = ActiveAcpControl::new("openclaw-acp");
+    let (outcome, failure, status_code, stdout_was_truncated) = run_protocol_loop(
+        &mut stdin,
+        &receiver,
+        &mut protocol,
+        &mut active_control,
+        deadline,
+    );
 
     let cleanup = finish_protocol_transport(&mut child, &mut stdin, stdout_handle, stderr_handle);
     let stderr_was_truncated = stderr_truncated.load(Ordering::Relaxed);
@@ -215,6 +222,7 @@ pub(super) fn run_protocol_loop(
     stdin: &mut BoundedStdinWriter,
     receiver: &Receiver<TransportEvent>,
     protocol: &mut OpenClawProtocol,
+    active_control: &mut ActiveAcpControl,
     deadline: Instant,
 ) -> (
     Option<ProtocolOutcome>,
@@ -223,6 +231,22 @@ pub(super) fn run_protocol_loop(
     bool,
 ) {
     loop {
+        if active_control
+            .sync_binding(protocol.binding.native_id(), protocol.binding.protocol_id())
+            .is_err()
+            || active_control.poll(stdin).is_err()
+        {
+            return (
+                None,
+                Some(protocol.failure_with_ids(
+                    "openclaw_acp_control_unavailable",
+                    "OpenClaw ACP active-turn control is unavailable.",
+                    "turn/control",
+                )),
+                None,
+                false,
+            );
+        }
         if stdin.check_health().is_err() {
             return (
                 None,
@@ -247,6 +271,7 @@ pub(super) fn run_protocol_loop(
         }
         match receiver.recv_timeout((deadline - now).min(PROCESS_POLL_INTERVAL)) {
             Ok(TransportEvent::Message(message)) => {
+                let phase_before = protocol.phase;
                 for effect in protocol.handle_message(message) {
                     match effect {
                         ProtocolEffect::Send(message) => {
@@ -270,6 +295,34 @@ pub(super) fn run_protocol_loop(
                             return (None, Some(failure), None, false);
                         }
                     }
+                }
+                if phase_before != super::protocol::ProtocolPhase::AwaitPrompt
+                    && protocol.phase == super::protocol::ProtocolPhase::AwaitPrompt
+                    && let (Some(external_session_id), Some(protocol_session_id)) =
+                        (protocol.binding.native_id(), protocol.binding.protocol_id())
+                {
+                    if active_control
+                        .sync_binding(Some(external_session_id), Some(protocol_session_id))
+                        .is_err()
+                        || active_control.poll(stdin).is_err()
+                    {
+                        return (
+                            None,
+                            Some(protocol.failure_with_ids(
+                                "openclaw_acp_control_unavailable",
+                                "OpenClaw ACP active-turn control is unavailable.",
+                                "turn/control",
+                            )),
+                            None,
+                            false,
+                        );
+                    }
+                    super::super::turn_event_emit::emit_turn_event(
+                        "dispatch.turn.bound",
+                        external_session_id,
+                        &protocol.config.turn_id,
+                        json!({}),
+                    );
                 }
             }
             Ok(TransportEvent::InvalidJson) => {

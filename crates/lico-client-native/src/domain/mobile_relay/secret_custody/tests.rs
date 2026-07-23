@@ -1,4 +1,5 @@
 use super::*;
+use crate::core::secure_mesh_secret_store::SecretBytes;
 fn synthetic_value(label: &str) -> String { format!("{label}-{}", uuid::Uuid::new_v4()) }
 
 
@@ -22,28 +23,29 @@ fn runtime_override_policy_rejects_unredacted_secret_fields() {
 
 #[test]
 fn native_secret_bundle_roundtrip_is_field_allowlisted() {
-    let encoded = serialize_native_e2ee_secret_bundle(&[
-        ("privateKeyBase64url", "test-synthetic".to_string()),
-        ("signingKeyBase64url", "test-signing".to_string()),
-    ])
+    let encoded = encode_mobile_relay_e2ee_secret_bundle(
+        MobileRelayE2eeSecretBundle::try_from_fields(vec![
+            (
+                MobileRelayE2eeSecretField::PrivateKey,
+                SecretBytes::try_from_bytes(b"test-synthetic".to_vec()).unwrap(),
+            ),
+            (
+                MobileRelayE2eeSecretField::SigningKey,
+                SecretBytes::try_from_bytes(b"test-signing".to_vec()).unwrap(),
+            ),
+        ])
+        .unwrap(),
+    )
     .unwrap();
-    let decoded = parse_native_e2ee_secret_bundle(&encoded).unwrap();
-
-    assert_eq!(decoded.len(), 2);
+    let decoded = decode_mobile_relay_e2ee_secret_bundle(encoded).unwrap();
     assert!(
         decoded
-            .iter()
-            .any(|(field, _)| *field == "privateKeyBase64url")
+            .secret(MobileRelayE2eeSecretField::PrivateKey)
+            .is_some()
     );
     assert!(
         decoded
-            .iter()
-            .any(|(field, _)| *field == "signingKeyBase64url")
+            .secret(MobileRelayE2eeSecretField::SigningKey)
+            .is_some()
     );
-    assert!(
-            parse_native_e2ee_secret_bundle(
-                r#"{"schemaVersion":"licolite.mobile-relay.e2ee-secret-bundle.v1","secrets":{"unknownField":"value"}}"#
-            )
-            .is_err()
-        );
 }

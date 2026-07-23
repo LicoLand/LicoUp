@@ -6,33 +6,6 @@ const Map<String, dynamic> parityReadyAdapterCapabilities = {
   'conversationReadiness': 'ready',
 };
 
-List<TargetCandidate> routingStrategyTargets() {
-  return [
-    for (final (id, label) in const [
-      ('codex', 'Codex'),
-      ('claude-code', 'Claude Code'),
-      ('opencode', 'OpenCode'),
-    ])
-      TargetCandidate(
-        target: id,
-        label: label,
-        kind: 'cli',
-        status: 'detected',
-        configured: true,
-        confidence: 1,
-        adapterStatus: 'implemented',
-        modelCatalog: {
-          'status': 'available',
-          'models': [
-            {'name': '$id-model'},
-          ],
-        },
-        adapterCapabilities: parityReadyAdapterCapabilities,
-        supportedActions: const ['runtime.message.send'],
-      ),
-  ];
-}
-
 Map<String, dynamic> conversationSessionJson({
   required String id,
   required String agentId,
@@ -50,7 +23,7 @@ Map<String, dynamic> conversationSessionJson({
     'sourceKind': '$agentId-native-history',
     'importMode': 'precise-adapter',
     'sourceTool': agentId,
-    'sourcePath': '/tmp/$agentId/history.jsonl',
+    'sourcePath': 'test-data/$agentId/history.jsonl',
     'workingDirectory': workingDirectory.isEmpty
         ? '/workspace/$agentId'
         : workingDirectory,

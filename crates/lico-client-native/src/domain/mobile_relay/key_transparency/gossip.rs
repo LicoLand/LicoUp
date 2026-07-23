@@ -73,6 +73,7 @@ pub(super) fn key_transparency_gossip(params: &Value) -> Result<Value> {
             };
             let envelope = seal_mobile_relay_payload_with_pairwise_operation_and_gate(
                 &config,
+                &secret_context.material,
                 crate::core::secure_mesh_crypto::SecureMeshPayloadKind::ServiceAction,
                 &serde_json::to_value(control)?,
                 &mut pairwise_operation,
@@ -92,6 +93,7 @@ pub(super) fn key_transparency_gossip(params: &Value) -> Result<Value> {
                 .ok_or_else(|| anyhow!("secure mesh KT gossip encrypted envelope is required"))?;
             let opened = open_mobile_relay_payload_with_pairwise_operation_and_gate(
                 &config,
+                &secret_context.material,
                 &envelope,
                 crate::core::secure_mesh_crypto::SecureMeshPayloadKind::ServiceAction,
                 &mut pairwise_operation,

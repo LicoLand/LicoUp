@@ -1,15 +1,68 @@
 import 'package:flutter/material.dart';
 
+import 'package:flutter_client/src/contracts/agent_conversation_models.dart';
 import 'package:flutter_client/src/contracts/target_candidate.dart';
+import 'package:flutter_client/src/frontend/features/agents/ui/agent_conversation_pane.dart';
 import 'package:flutter_client/src/frontend/shared/ui/theme.dart';
 
 export 'package:flutter/material.dart';
-export 'package:flutter_client/src/application/controller/client_controller.dart';
 export 'package:flutter_client/src/contracts/agent_conversation_models.dart';
 export 'package:flutter_client/src/contracts/target_candidate.dart';
 export 'package:flutter_client/src/frontend/features/agents/ui/agent_conversation_composer.dart';
 export 'package:flutter_client/src/frontend/features/agents/ui/agent_conversation_pane.dart';
 export 'package:flutter_test/flutter_test.dart';
+
+AgentConversationPaneState paneTestState({
+  AgentConversationSession? session,
+  List<AgentConversationMessage> liveMessages = const [],
+  List<AgentConversationSession> recentSessions = const [],
+  bool preparingNewConversation = false,
+  bool? turnActive,
+  String sendGateReasonCode = '',
+}) => AgentConversationPaneState(
+  target: paneTestTarget(),
+  session: session,
+  liveMessages: liveMessages,
+  recentSessions: recentSessions,
+  loading: false,
+  turnActive: turnActive ?? liveMessages.isNotEmpty,
+  preparingNewConversation: preparingNewConversation,
+  orchestrationSelected: false,
+  composerEnabled: true,
+  sendGateReasonCode: sendGateReasonCode,
+  composerDraft: '',
+  modelOptions: const [],
+  selectedModel: '',
+  defaultModel: '',
+  reasoningEffortOptions: const [],
+  selectedReasoningEffort: '',
+);
+
+AgentConversationPaneActions paneTestActions() => AgentConversationPaneActions(
+  onModelChanged: (_) {},
+  onReasoningEffortChanged: (_) {},
+  onDraftChanged: (_) {},
+  onSend: (_) async => true,
+  onSelectSession: (_) {},
+);
+
+ConversationPaneHeader paneTestHeader({
+  AgentConversationSession? session,
+  VoidCallback? onToggleHistory,
+}) => ConversationPaneHeader(
+  state: AgentConversationHeaderState(
+    target: paneTestTarget(),
+    session: session,
+    historyCollapsed: false,
+    collapseHistoryTooltip: 'Collapse history',
+    expandHistoryTooltip: 'Expand history',
+    orchestrationSelected: false,
+    opencodeServeState: null,
+  ),
+  actions: AgentConversationHeaderActions(
+    onToggleHistory: onToggleHistory ?? () {},
+  ),
+);
 
 TargetCandidate paneTestTarget({
   String target = 'codex',

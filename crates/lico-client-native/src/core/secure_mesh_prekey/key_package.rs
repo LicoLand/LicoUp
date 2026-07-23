@@ -11,9 +11,9 @@ use super::validation::{
 };
 
 pub const SECURE_MESH_KEYPACKAGE_PROTOCOL_VERSION: &str =
-    "licolite.secure-mesh.group-mls.mlkem1024-epoch-payload-hybrid.v1";
+    "licomesh.secure-mesh.group-mls.mlkem1024-epoch-payload-hybrid.v1";
 pub const SECURE_MESH_KEYPACKAGE_WIRE_CIPHER_SUITE: &str =
-    "licolite.mls-rfc9420.v1.aes128gcmsha256ed25519x25519";
+    "licomesh.mls-rfc9420.v1.aes128gcmsha256ed25519x25519";
 
 const KEYPACKAGE_MAGIC: &[u8] = b"LCOSM-KEYPACKAGE-v1";
 const MAX_KEYPACKAGE_ID_LEN: usize = 128;

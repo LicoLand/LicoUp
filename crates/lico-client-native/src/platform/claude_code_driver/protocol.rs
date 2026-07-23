@@ -21,6 +21,7 @@ pub(super) struct TurnState<'a> {
     pub(super) events: Vec<Value>,
     pub(super) interaction_failure: bool,
     pub(super) effective: EffectiveSettings,
+    started_emitted: bool,
 }
 
 impl<'a> TurnState<'a> {
@@ -36,6 +37,7 @@ impl<'a> TurnState<'a> {
             events: Vec::new(),
             interaction_failure: false,
             effective: identity.effective(),
+            started_emitted: false,
         }
     }
 
@@ -103,6 +105,13 @@ impl<'a> TurnState<'a> {
     }
 
     pub(super) fn record_session(&mut self, value: &str) -> Result<(), ProtocolFailure> {
+        if value.len() > 512 || value.chars().any(char::is_control) {
+            return Err(self.failure(
+                "claude_code_session_id_invalid",
+                "Claude Code returned an invalid native conversation identifier.",
+                "session/open",
+            ));
+        }
         if self
             .expected_session_id
             .as_deref()
@@ -119,6 +128,15 @@ impl<'a> TurnState<'a> {
             ));
         }
         self.observed_session_id = Some(value.to_string());
+        if !self.started_emitted {
+            super::super::turn_event_emit::emit_turn_event(
+                "dispatch.turn.started",
+                value,
+                &self.config.turn_id,
+                serde_json::json!({"transport": "claude-code-cli-stream-json"}),
+            );
+            self.started_emitted = true;
+        }
         Ok(())
     }
 
@@ -164,6 +182,15 @@ impl<'a> TurnState<'a> {
             .and_then(Value::as_bool)
             .unwrap_or(subtype != "success");
         if is_error || subtype != "success" {
+            if matches!(subtype, "authentication_required" | "authentication_failed") {
+                return Err(self
+                    .failure(
+                        "claude_code_authentication_required",
+                        "Claude Code authentication is required before this turn can continue.",
+                        "authentication/runtime",
+                    )
+                    .with_session(Some(&session_id)));
+            }
             let mut failure = self.failure(
                 "claude_code_turn_failed",
                 "Claude Code reported that the requested turn failed.",
@@ -187,6 +214,12 @@ impl<'a> TurnState<'a> {
             &session_id,
             &self.config.turn_id,
             output,
+        );
+        super::super::turn_event_emit::emit_turn_event(
+            "dispatch.turn.completed",
+            &session_id,
+            &self.config.turn_id,
+            serde_json::json!({"output": output}),
         );
         Ok(TurnOutcome {
             output: output.to_string(),

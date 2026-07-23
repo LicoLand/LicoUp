@@ -2,20 +2,17 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import 'package:flutter_client/src/application/controller/client_lifecycle_coordinator.dart';
 import 'package:flutter_client/src/application/features/agents/contracts/agent_conversation_gateway.dart';
 import 'package:flutter_client/src/application/features/agents/conversation/conversation_turn_queue.dart';
 import 'package:flutter_client/src/application/features/agents/policy/conversation_refresh_policy.dart';
 import 'package:flutter_client/src/application/localization/client_application_strings.dart';
 import 'package:flutter_client/src/contracts/agent_conversation_models.dart';
 import 'package:flutter_client/src/contracts/agent_conversation_tab_activity.dart';
-import 'package:flutter_client/src/contracts/agent_orchestration_policy.dart';
-import 'package:flutter_client/src/contracts/routing/route_decision_record.dart';
-import 'package:flutter_client/src/contracts/routing/route_history.dart';
-import 'package:flutter_client/src/contracts/routing/routing_policy_schema.dart';
-import 'package:flutter_client/src/contracts/routing/routing_module_registration.dart';
-import 'package:flutter_client/src/contracts/secure_mesh_approval_models.dart';
+import 'package:flutter_client/src/contracts/generated/secure_mesh.g.dart';
 import 'package:flutter_client/src/contracts/target_candidate.dart';
 import 'package:flutter_client/src/contracts/presentation/semantic_destination.dart';
+import 'package:flutter_client/src/platform/native_client/orchestrator_ipc/client.dart';
 
 /// Shared feature state plus narrow composition callbacks. Concrete feature
 /// controllers never import the root [ClientController].
@@ -24,6 +21,7 @@ abstract class AgentWorkspaceCoordinator extends ChangeNotifier {
   MobileAgentConversationGateway get mobileConversationGateway;
   List<TargetCandidate> get scannedTargets;
   set scannedTargets(List<TargetCandidate> value);
+  ClientLifecycleProjection get lifecycleProjection;
   bool get initialized;
   String get lastError;
   set lastError(String value);
@@ -35,13 +33,7 @@ abstract class AgentWorkspaceCoordinator extends ChangeNotifier {
   bool get agentWorkspaceMobileRuntime;
   ClientSection get agentWorkspaceCurrentSection;
   ClientApplicationStrings get agentWorkspaceStrings;
-  RoutingModuleRegistration? get agentWorkspaceRoutingModule;
-  set agentWorkspaceRoutingModule(RoutingModuleRegistration? value);
-  Future<RoutingModuleRegistration> agentWorkspaceEnsureRoutingModuleReady();
-  Future<void> agentWorkspaceBindRoutingModulePolicyEvents(
-    RoutingModuleRegistration registration,
-  );
-  Future<void> agentWorkspaceUnbindRoutingModulePolicyEvents();
+  NativeOrchestratorClient get orchestratorClient;
   void agentWorkspaceSelectDefaultConversationAgent({
     bool preferDirectAgent = false,
   });
@@ -68,30 +60,21 @@ abstract class AgentWorkspaceCoordinator extends ChangeNotifier {
   String get selectedConversationModel;
   String get selectedConversationReasoningEffort;
   bool get selectedConversationIsOrchestration;
-  bool get routingModuleAvailable;
-  String get effectiveAgentOrchestrationPrimaryAgentId;
-  String get activeOrchestrationTaskId;
   Future<void> sendOrchestratedConversationMessage(String text);
-  void syncAgentOrchestrationPolicy();
-  void ensureOrchestrationConversationSession();
-  Future<TaskRouteSwitchResult?> evaluateOrchestrationRoutingBoundary({
-    required String taskId,
-    required String trigger,
-    RoutingPolicyDocument? policySnapshot,
-  });
   void recordConversationTabSendOutcome({
     required String agentId,
     required bool ok,
     Map<String, dynamic> result,
-    String errorCode,
+    String failureCode,
   });
+  String conversationSendErrorFor(String agentId);
   void setConversationTabActivity(
     String agentId,
     AgentConversationTabActivity activity,
   );
   AgentConversationTabActivity conversationTabActivityFor(String agentId);
   void acknowledgeConversationTabWorkFinished(String agentId);
-  String runtimeAdapterErrorCode(Map<String, dynamic> result);
+  String runtimeAdapterFailureCode(Map<String, dynamic> result);
   Future<void> refreshConversationCatalogInternal(
     String agentId, {
     required bool foreground,
@@ -105,9 +88,10 @@ abstract class AgentWorkspaceCoordinator extends ChangeNotifier {
   void conversationAttentionContextChanged({bool immediateActive = true});
   void stopConversationRefreshScheduling();
 
-  bool agentWorkspaceDisposed = false;
+  bool get agentWorkspaceDisposed => lifecycleProjection.disposed;
   bool conversationMobileLoading = false;
-  final Set<String> _preparingNewConversationTargets = <String>{};
+  Map<String, String> _newConversationDraftTokensByAgent = const {};
+  int _newConversationDraftSequence = 0;
   Map<String, String> newConversationWorkingDirectories = const {};
   Timer? conversationActiveRefreshTimer;
   Timer? conversationBackgroundRefreshTimer;
@@ -143,12 +127,11 @@ abstract class AgentWorkspaceCoordinator extends ChangeNotifier {
       const {};
   Map<String, AgentConversationTabActivity> conversationTabActivityByAgent =
       const {};
+  Map<String, String> conversationSendErrorsByAgent = const {};
 
-  AgentOrchestrationPolicy agentOrchestrationPolicy =
-      const AgentOrchestrationPolicy();
-  Future<void> orchestrationRoutingBoundaryTail = Future<void>.value();
-  Map<String, RoutingCircuitBreakerState> agentOrchestrationCircuitStates =
-      const {};
+  Map<String, Object?> orchestrationPolicyDraft = const {};
+  String activeOrchestrationPolicyRevision = '';
+  OrchestratorWorkflowProjection? currentOrchestrationProjection;
 
   Map<String, dynamic>? conversationArchiveResult;
   Map<String, dynamic>? conversationArchivePlan;
@@ -169,13 +152,44 @@ abstract class AgentWorkspaceCoordinator extends ChangeNotifier {
   set archiveDestinationDraft(String value);
 
   bool get preparingNewConversation =>
-      _preparingNewConversationTargets.contains(selectedConversationAgentId);
-  set preparingNewConversation(bool value) {
-    final agentId = selectedConversationAgentId;
-    if (agentId.isEmpty) return;
-    value
-        ? _preparingNewConversationTargets.add(agentId)
-        : _preparingNewConversationTargets.remove(agentId);
+      selectedNewConversationDraftToken.isNotEmpty;
+
+  String get selectedNewConversationDraftToken =>
+      newConversationDraftTokenFor(selectedConversationAgentId);
+
+  String newConversationDraftTokenFor(String agentId) =>
+      (_newConversationDraftTokensByAgent[agentId.trim()] ?? '').trim();
+
+  String beginNewConversationDraft(String agentId) {
+    final normalized = agentId.trim();
+    if (normalized.isEmpty) return '';
+    final token = 'draft-${++_newConversationDraftSequence}';
+    _newConversationDraftTokensByAgent = {
+      ..._newConversationDraftTokensByAgent,
+      normalized: token,
+    };
+    return token;
+  }
+
+  bool finishNewConversationDraft(String agentId, String token) {
+    final normalized = agentId.trim();
+    final expected = token.trim();
+    if (normalized.isEmpty ||
+        expected.isEmpty ||
+        newConversationDraftTokenFor(normalized) != expected) {
+      return false;
+    }
+    abandonNewConversationDraft(normalized);
+    return true;
+  }
+
+  void abandonNewConversationDraft(String agentId) {
+    final normalized = agentId.trim();
+    if (!_newConversationDraftTokensByAgent.containsKey(normalized)) return;
+    _newConversationDraftTokensByAgent = {
+      for (final entry in _newConversationDraftTokensByAgent.entries)
+        if (entry.key != normalized) entry.key: entry.value,
+    };
   }
 
   String get selectedConversationSessionId =>
@@ -201,7 +215,6 @@ abstract class AgentWorkspaceCoordinator extends ChangeNotifier {
   }
 
   void disposeAgentWorkspace() {
-    agentWorkspaceDisposed = true;
     conversationTurnCancellationRequested = true;
     conversationTurnQueue.clear();
     conversationTurnDrainScheduled = false;

@@ -7,6 +7,7 @@ import 'package:flutter_client/src/frontend/features/agents/ui/agent_usage_chart
 import 'package:flutter_client/src/frontend/features/agents/ui/agent_usage_chart_geometry.dart';
 import 'package:flutter_client/src/frontend/features/agents/ui/agent_usage_timeline_data.dart';
 import 'package:flutter_client/src/frontend/features/agents/ui/agent_usage_wave_chart_painter.dart';
+import 'package:flutter_client/src/frontend/features/agents/ui/agent_usage_window_control.dart';
 import 'package:flutter_client/src/frontend/l10n/lico_strings.dart';
 import 'package:flutter_client/src/frontend/shared/ui/theme.dart';
 
@@ -16,11 +17,17 @@ final class AgentUsageWaveOverview extends StatefulWidget {
     required this.grouping,
     required this.timeline,
     required this.onGroupingChanged,
+    required this.windowDays,
+    required this.windowBusy,
+    required this.onWindowChanged,
   });
 
   final AgentUsageChartGrouping grouping;
   final AgentUsageTimelineData timeline;
   final ValueChanged<AgentUsageChartGrouping> onGroupingChanged;
+  final int windowDays;
+  final bool windowBusy;
+  final ValueChanged<int> onWindowChanged;
 
   @override
   State<AgentUsageWaveOverview> createState() => _AgentUsageWaveOverviewState();
@@ -138,37 +145,26 @@ final class _AgentUsageWaveOverviewState extends State<AgentUsageWaveOverview> {
         Row(
           children: [
             Expanded(
-              child: Row(
-                children: [
-                  Flexible(
-                    child: Text(
-                      strings.usageOverTime,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: colors.text,
-                        fontWeight: FontWeight.w800,
-                        fontSize: 13,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    strings.lastDays(agentUsageTimelineDayCount),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: colors.textMuted,
-                      fontWeight: FontWeight.w700,
-                      fontSize: 11,
-                    ),
-                  ),
-                ],
+              child: Text(
+                strings.usageOverTime,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: colors.text,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 13,
+                ),
               ),
             ),
             AgentUsageGroupingSwitch(
               grouping: widget.grouping,
               onChanged: widget.onGroupingChanged,
+            ),
+            const SizedBox(width: 8),
+            AgentUsageWindowControl(
+              days: widget.windowDays,
+              busy: widget.windowBusy,
+              onChanged: widget.onWindowChanged,
             ),
           ],
         ),

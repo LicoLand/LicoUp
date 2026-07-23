@@ -8,13 +8,14 @@ import 'package:flutter_client/src/frontend/features/settings/ui/settings_panel.
 import 'package:flutter_client/src/frontend/shared/ui/theme.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'fixtures/client_controller/support/fake_agent_service.dart';
 import 'layout/fixtures/layout_destination_presentation_fixture.dart';
 
 void main() {
   testWidgets(
     'settings selects appearance and language without duplicate labels',
     (tester) async {
-      final controller = ClientController();
+      final controller = ClientController(agentService: FakeAgentService());
       addTearDown(controller.dispose);
       controller.localePreference = LocalePreference.system;
 
@@ -59,13 +60,13 @@ void main() {
   testWidgets('archive settings show paths with inline open icons', (
     tester,
   ) async {
-    final controller = ClientController();
+    final controller = ClientController(agentService: FakeAgentService());
     addTearDown(controller.dispose);
     controller.snapshotRootController.text =
-        '/tmp/lico-arc/native-conversation-snapshots';
+        'test-data/lico-arc/native-conversation-snapshots';
     controller.conversationArchiveResult = {
       'documentCount': 729,
-      'archiveRoot': '/tmp/lico-arc/native-conversation-snapshots',
+      'archiveRoot': 'test-data/lico-arc/native-conversation-snapshots',
     };
 
     await tester.pumpWidget(
@@ -111,7 +112,7 @@ void main() {
     expect(find.text('Conversation Archive Directory'), findsOneWidget);
     expect(find.text('default'), findsNothing);
     expect(
-      find.text('/tmp/lico-arc/native-conversation-snapshots'),
+      find.text('test-data/lico-arc/native-conversation-snapshots'),
       findsWidgets,
     );
     expect(find.text('Open'), findsNothing);

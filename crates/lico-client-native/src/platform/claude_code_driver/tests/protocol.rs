@@ -40,6 +40,12 @@ fn turn_state_binds_exact_session_and_finishes_from_terminal_result() {
         .unwrap();
     assert_eq!(outcome.output, "final answer");
     assert_eq!(outcome.session_id, "native-session");
+    assert_eq!(outcome.turn_id, config.turn_id);
+    assert_eq!(outcome.events.len(), 3);
+    assert_eq!(
+        outcome.events[1].pointer("/event/delta/text"),
+        Some(&json!("chunk"))
+    );
     assert_eq!(outcome.effective.model.as_deref(), Some("effective-model"));
 }
 

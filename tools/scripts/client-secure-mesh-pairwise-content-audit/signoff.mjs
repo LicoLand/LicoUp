@@ -35,7 +35,7 @@ export function signoffBindingForCorpus(corpus, {
 }) {
   const entryIds = corpus.entries.map((entry) => String(entry.id || ""));
   return {
-    schemaVersion: "licolite.secure-mesh.pairwise-content-review-signoff-binding.v2",
+    schemaVersion: "licomesh.secure-mesh.pairwise-content-review-signoff-binding.v2",
     corpusSchemaVersion: corpus.schemaVersion,
     corpusDigest: corpus.corpusDigest,
     corpusEntryCount: corpus.entries.length,
@@ -78,8 +78,8 @@ export function reviewSignoffTemplateForCorpus(
 ) {
   const binding = corpus.signoffBinding;
   return {
-    schemaVersion: "licolite.secure-mesh.pairwise-content-review-signoff.v2",
-    templateSchemaVersion: "licolite.secure-mesh.pairwise-content-review-signoff-template.v2",
+    schemaVersion: "licomesh.secure-mesh.pairwise-content-review-signoff.v2",
+    templateSchemaVersion: "licomesh.secure-mesh.pairwise-content-review-signoff-template.v2",
     sourceOfTruth,
     generatedBy: VERIFIER_REF,
     generatedAt: checkedAt,

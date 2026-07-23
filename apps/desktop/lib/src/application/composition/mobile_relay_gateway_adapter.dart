@@ -1,8 +1,6 @@
 import 'package:flutter_client/src/contracts/mobile_relay/mobile_relay_models.dart';
 import 'package:flutter_client/src/contracts/mobile_relay_control.dart';
-import 'package:flutter_client/src/contracts/secure_mesh_capability_models.dart';
-import 'package:flutter_client/src/contracts/secure_mesh_kt_models.dart';
-import 'package:flutter_client/src/contracts/secure_mesh_mls_models.dart';
+import 'package:flutter_client/src/contracts/generated/secure_mesh.g.dart';
 import 'package:flutter_client/src/contracts/skill_hub.dart';
 import 'package:flutter_client/src/platform/mobile_relay/mobile_relay_service.dart'
     as platform;

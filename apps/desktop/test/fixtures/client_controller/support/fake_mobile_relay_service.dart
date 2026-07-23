@@ -142,7 +142,7 @@ class FakeMobileRelayService extends MobileRelayService {
       'pairingCode': pairingCode,
       'expiresAt': '2026-06-12T12:00:00.000Z',
       'mobileRelayPairingInvite': {
-        'protocolVersion': 'licolite.mobile-relay.e2ee.v2',
+        'protocolVersion': 'licomesh.mobile-relay.e2ee.v2',
         'oneTime': true,
         'gatewayUrl': 'https://relay.example.test',
         'pairingId': 'pair-1',
@@ -238,7 +238,7 @@ class FakeMobileRelayService extends MobileRelayService {
     secureMeshStatusAuthorizeFlags.add(authorize);
     return {
       'ok': true,
-      'protocolVersion': 'licolite.secure-mesh.v1',
+      'protocolVersion': 'licomesh.secure-mesh.v1',
       'pairwiseCryptoStatus': 'pairwise-runtime-available',
       'mlsCryptoStatus': 'openmls-provider-reload-available',
       'fileCryptoStatus': 'file-aead-available',

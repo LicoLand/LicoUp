@@ -3,12 +3,13 @@
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
 
-pub(super) const AGENT_USAGE_SCHEMA_VERSION: u32 = 4;
+pub(super) const AGENT_USAGE_SCHEMA_VERSION: u32 = 6;
 pub(super) const AGENT_USAGE_MODE: &str = "local-token-usage";
-pub(super) const AGENT_USAGE_TOKEN_SOURCE_MODE: &str = "local-history";
+pub(super) const AGENT_USAGE_TOKEN_SOURCE_MODE: &str = "native-metadata-first-incremental";
 pub(super) const REPORT_COLLECTION: &str = "agent-usage-reports";
 pub(super) const MAX_REPORTS: usize = 20;
 pub(super) const DEFAULT_USAGE_WINDOW_DAYS: u64 = 30;
+pub(super) const MAX_USAGE_WINDOW_DAYS: u64 = 90;
 pub(super) const UNATTRIBUTED_MODEL: &str = "Others";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -20,51 +21,51 @@ pub(super) struct AgentDef {
 pub(super) const SUPPORTED_AGENTS: &[AgentDef] = &[
     AgentDef {
         id: "antigravity",
-        label: "Antigravity - IDE",
+        label: "Antigravity",
     },
     AgentDef {
         id: "claude-code",
-        label: "Claude Code - CLI",
+        label: "Claude Code",
     },
     AgentDef {
         id: "codex",
-        label: "ChatGPT - Desktop",
+        label: "Codex",
     },
     AgentDef {
         id: "copilot",
-        label: "GitHub Copilot - Plugin",
+        label: "GitHub Copilot",
     },
     AgentDef {
         id: "cursor",
-        label: "Cursor - IDE",
+        label: "Cursor",
     },
     AgentDef {
         id: "hermes",
-        label: "Hermes Agent - CLI",
+        label: "Hermes Agent",
     },
     AgentDef {
         id: "kilo-code",
-        label: "Kilo Code - CLI",
+        label: "Kilo Code",
     },
     AgentDef {
         id: "openclaw",
-        label: "OpenClaw - CLI",
+        label: "OpenClaw",
     },
     AgentDef {
         id: "opencode",
-        label: "OpenCode - CLI",
+        label: "OpenCode",
     },
     AgentDef {
         id: "kimi",
-        label: "Kimi - Desktop",
+        label: "Kimi",
     },
     AgentDef {
         id: "kimi-code",
-        label: "Kimi Code - CLI",
+        label: "Kimi Code",
     },
     AgentDef {
         id: "pi",
-        label: "Pi Agent - CLI",
+        label: "Pi Agent",
     },
 ];
 
@@ -149,31 +150,34 @@ impl HistoryUsageSummary {
         if usage.total_tokens == 0 {
             return;
         }
-        if usage.explicit {
-            self.explicit_prompt_tokens = self
-                .explicit_prompt_tokens
-                .saturating_add(usage.prompt_tokens);
-            self.explicit_cached_input_tokens = self
-                .explicit_cached_input_tokens
-                .saturating_add(usage.cached_input_tokens.min(usage.prompt_tokens));
-            self.explicit_completion_tokens = self
-                .explicit_completion_tokens
-                .saturating_add(usage.completion_tokens);
-            self.explicit_total_tokens = self
-                .explicit_total_tokens
-                .saturating_add(usage.total_tokens);
-            self.explicit_records = self.explicit_records.saturating_add(1);
-        } else {
-            self.estimated_prompt_tokens = self
-                .estimated_prompt_tokens
-                .saturating_add(usage.prompt_tokens);
-            self.estimated_completion_tokens = self
-                .estimated_completion_tokens
-                .saturating_add(usage.completion_tokens);
-            self.estimated_total_tokens = self
-                .estimated_total_tokens
-                .saturating_add(usage.total_tokens);
-            self.estimated_records = self.estimated_records.saturating_add(1);
+        match usage.accuracy {
+            UsageAccuracy::Exact => {
+                self.explicit_prompt_tokens = self
+                    .explicit_prompt_tokens
+                    .saturating_add(usage.prompt_tokens);
+                self.explicit_cached_input_tokens = self
+                    .explicit_cached_input_tokens
+                    .saturating_add(usage.cached_input_tokens.min(usage.prompt_tokens));
+                self.explicit_completion_tokens = self
+                    .explicit_completion_tokens
+                    .saturating_add(usage.completion_tokens);
+                self.explicit_total_tokens = self
+                    .explicit_total_tokens
+                    .saturating_add(usage.total_tokens);
+                self.explicit_records = self.explicit_records.saturating_add(1);
+            }
+            UsageAccuracy::Estimated => {
+                self.estimated_prompt_tokens = self
+                    .estimated_prompt_tokens
+                    .saturating_add(usage.prompt_tokens);
+                self.estimated_completion_tokens = self
+                    .estimated_completion_tokens
+                    .saturating_add(usage.completion_tokens);
+                self.estimated_total_tokens = self
+                    .estimated_total_tokens
+                    .saturating_add(usage.total_tokens);
+                self.estimated_records = self.estimated_records.saturating_add(1);
+            }
         }
         if let Some(date_key) = date_key.filter(|value| !value.trim().is_empty()) {
             self.daily_usage.entry(date_key).or_default().add(usage);
@@ -230,8 +234,8 @@ impl HistoryUsageSummary {
                     "messageCount": usage.message_count,
                     "modelUsage": usage.model_usage_totals_json(),
                     "modelTokenUsage": usage.model_token_usage_json(),
-                    "estimatedRecords": usage.estimated_records,
-                    "explicitRecords": usage.explicit_records
+                    "explicitRecords": usage.explicit_records,
+                    "estimatedRecords": usage.estimated_records
                 })
             })
             .collect()
@@ -245,7 +249,14 @@ pub(super) struct MessageUsage {
     pub(super) completion_tokens: u64,
     pub(super) total_tokens: u64,
     pub(super) model: Option<String>,
-    pub(super) explicit: bool,
+    pub(super) accuracy: UsageAccuracy,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub(super) enum UsageAccuracy {
+    #[default]
+    Exact,
+    Estimated,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -257,6 +268,8 @@ pub(super) struct DailyUsageSummary {
     pub(super) message_count: u64,
     pub(super) explicit_records: u64,
     pub(super) estimated_records: u64,
+    pub(super) estimated_prompt_tokens: u64,
+    pub(super) estimated_completion_tokens: u64,
     pub(super) model_usage: BTreeMap<String, ModelTokenUsageSummary>,
 }
 
@@ -271,10 +284,19 @@ impl DailyUsageSummary {
             .saturating_add(usage.completion_tokens);
         self.total_tokens = self.total_tokens.saturating_add(usage.total_tokens);
         self.message_count = self.message_count.saturating_add(1);
-        if usage.explicit {
-            self.explicit_records = self.explicit_records.saturating_add(1);
-        } else {
-            self.estimated_records = self.estimated_records.saturating_add(1);
+        match usage.accuracy {
+            UsageAccuracy::Exact => {
+                self.explicit_records = self.explicit_records.saturating_add(1);
+            }
+            UsageAccuracy::Estimated => {
+                self.estimated_records = self.estimated_records.saturating_add(1);
+                self.estimated_prompt_tokens = self
+                    .estimated_prompt_tokens
+                    .saturating_add(usage.prompt_tokens);
+                self.estimated_completion_tokens = self
+                    .estimated_completion_tokens
+                    .saturating_add(usage.completion_tokens);
+            }
         }
         let model = usage
             .model
@@ -285,6 +307,7 @@ impl DailyUsageSummary {
             usage.cached_input_tokens,
             usage.completion_tokens,
             usage.total_tokens,
+            usage.accuracy,
         );
     }
 
@@ -301,7 +324,34 @@ impl DailyUsageSummary {
             cached_input_tokens,
             completion_tokens,
             total_tokens,
+            UsageAccuracy::Exact,
         );
+    }
+
+    pub(super) fn add_model_usage_with_estimates(
+        &mut self,
+        model: String,
+        prompt_tokens: u64,
+        cached_input_tokens: u64,
+        completion_tokens: u64,
+        total_tokens: u64,
+        estimated_prompt_tokens: u64,
+        estimated_completion_tokens: u64,
+    ) {
+        let usage = self.model_usage.entry(model).or_default();
+        usage.add(
+            prompt_tokens,
+            cached_input_tokens,
+            completion_tokens,
+            total_tokens,
+            UsageAccuracy::Exact,
+        );
+        usage.estimated_prompt_tokens = usage
+            .estimated_prompt_tokens
+            .saturating_add(estimated_prompt_tokens.min(prompt_tokens));
+        usage.estimated_completion_tokens = usage
+            .estimated_completion_tokens
+            .saturating_add(estimated_completion_tokens.min(completion_tokens));
     }
 
     fn merge(&mut self, other: &Self) {
@@ -318,6 +368,12 @@ impl DailyUsageSummary {
         self.estimated_records = self
             .estimated_records
             .saturating_add(other.estimated_records);
+        self.estimated_prompt_tokens = self
+            .estimated_prompt_tokens
+            .saturating_add(other.estimated_prompt_tokens);
+        self.estimated_completion_tokens = self
+            .estimated_completion_tokens
+            .saturating_add(other.estimated_completion_tokens);
         for (model, usage) in &other.model_usage {
             self.model_usage
                 .entry(model.clone())
@@ -343,10 +399,12 @@ impl DailyUsageSummary {
 
 #[derive(Clone, Copy, Debug, Default)]
 pub(super) struct ModelTokenUsageSummary {
-    prompt_tokens: u64,
-    cached_input_tokens: u64,
-    completion_tokens: u64,
-    total_tokens: u64,
+    pub(super) prompt_tokens: u64,
+    pub(super) cached_input_tokens: u64,
+    pub(super) completion_tokens: u64,
+    pub(super) total_tokens: u64,
+    pub(super) estimated_prompt_tokens: u64,
+    pub(super) estimated_completion_tokens: u64,
 }
 
 impl ModelTokenUsageSummary {
@@ -356,6 +414,7 @@ impl ModelTokenUsageSummary {
         cached_input_tokens: u64,
         completion_tokens: u64,
         total_tokens: u64,
+        accuracy: UsageAccuracy,
     ) {
         self.prompt_tokens = self.prompt_tokens.saturating_add(prompt_tokens);
         self.cached_input_tokens = self
@@ -363,6 +422,13 @@ impl ModelTokenUsageSummary {
             .saturating_add(cached_input_tokens.min(prompt_tokens));
         self.completion_tokens = self.completion_tokens.saturating_add(completion_tokens);
         self.total_tokens = self.total_tokens.saturating_add(total_tokens);
+        if accuracy == UsageAccuracy::Estimated {
+            self.estimated_prompt_tokens =
+                self.estimated_prompt_tokens.saturating_add(prompt_tokens);
+            self.estimated_completion_tokens = self
+                .estimated_completion_tokens
+                .saturating_add(completion_tokens);
+        }
     }
 
     fn merge(&mut self, other: Self) {
@@ -371,7 +437,14 @@ impl ModelTokenUsageSummary {
             other.cached_input_tokens,
             other.completion_tokens,
             other.total_tokens,
+            UsageAccuracy::Exact,
         );
+        self.estimated_prompt_tokens = self
+            .estimated_prompt_tokens
+            .saturating_add(other.estimated_prompt_tokens);
+        self.estimated_completion_tokens = self
+            .estimated_completion_tokens
+            .saturating_add(other.estimated_completion_tokens);
     }
 
     fn to_json(self) -> Value {
@@ -428,6 +501,18 @@ mod tests {
     use super::*;
 
     #[test]
+    fn supported_usage_sources_use_product_identity() {
+        let labels = SUPPORTED_AGENTS
+            .iter()
+            .map(|agent| (agent.id, agent.label))
+            .collect::<BTreeMap<_, _>>();
+
+        assert_eq!(labels.get("codex"), Some(&"Codex"));
+        assert_eq!(labels.get("kimi-code"), Some(&"Kimi Code"));
+        assert_eq!(labels.get("kimi"), Some(&"Kimi"));
+    }
+
+    #[test]
     fn aggregation_preserves_agent_and_model_dimensions() {
         let mut first = HistoryUsageSummary::default();
         first.add(
@@ -436,7 +521,6 @@ mod tests {
                 cached_input_tokens: 3,
                 total_tokens: 8,
                 model: Some("model-a".to_owned()),
-                explicit: true,
                 ..MessageUsage::default()
             },
             Some("2026-07-01".to_owned()),
@@ -447,7 +531,7 @@ mod tests {
                 completion_tokens: 5,
                 total_tokens: 5,
                 model: Some("model-b".to_owned()),
-                explicit: false,
+                accuracy: UsageAccuracy::Estimated,
                 ..MessageUsage::default()
             },
             Some("2026-07-01".to_owned()),
@@ -459,13 +543,17 @@ mod tests {
         assert_eq!(contract["dailyUsage"][0]["modelUsage"]["model-a"], 8);
         assert_eq!(contract["dailyUsage"][0]["modelUsage"]["model-b"], 5);
         assert_eq!(contract["confidence"], "medium");
+        assert_eq!(contract["tokenSourceBreakdown"]["estimatedRecords"], 1);
     }
 
     #[test]
-    fn contract_identity_is_schema_four_local_history() {
-        assert_eq!(AGENT_USAGE_SCHEMA_VERSION, 4);
+    fn contract_identity_is_schema_six_metadata_first_incremental() {
+        assert_eq!(AGENT_USAGE_SCHEMA_VERSION, 6);
         assert_eq!(AGENT_USAGE_MODE, "local-token-usage");
-        assert_eq!(AGENT_USAGE_TOKEN_SOURCE_MODE, "local-history");
+        assert_eq!(
+            AGENT_USAGE_TOKEN_SOURCE_MODE,
+            "native-metadata-first-incremental"
+        );
         assert_eq!(DEFAULT_USAGE_WINDOW_DAYS, 30);
     }
 }

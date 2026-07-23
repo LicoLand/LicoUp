@@ -3,7 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 export const CLIENT_RELEASE_TARGET_CATALOG_SCHEMA_VERSION =
-  "licolite.client-release-target-catalog.v2";
+  "licomesh.client-release-target-catalog.v2";
 
 const repoRoot = path.resolve(fileURLToPath(new URL("../../..", import.meta.url)));
 export const CLIENT_RELEASE_TARGET_CATALOG_PATH = "tools/client-release-targets.json";

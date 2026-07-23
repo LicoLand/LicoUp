@@ -1,5 +1,5 @@
 {
-  "schemaVersion": "licolite.secure-mesh.e2ee-report-scope-config.v2",
+  "schemaVersion": "licomesh.secure-mesh.e2ee-report-scope-config.v2",
   "authority": "external-client",
   "scopeEvidenceFreshnessSeconds": 604800,
   "claimAuthorities": {

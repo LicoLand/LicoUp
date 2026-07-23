@@ -10,7 +10,7 @@ import { summarizePhysicalMatrixReport } from "../summarize/physical-matrix.mjs"
 
 export function runReleaseProofContractReadinessSelfTest() {
   const forgedPhysicalMatrix = {
-    schemaVersion: "licolite.secure-mesh.physical-device-matrix-report.v2",
+    schemaVersion: "licomesh.secure-mesh.physical-device-matrix-report.v2",
     evidenceRefSchemaVersion: SECURE_CLIENT_MESH_E2EE_EVIDENCE_REF_REPORT_SCHEMA_VERSION,
     sourceOfTruth: SECURE_CLIENT_MESH_PRODUCTION_SOURCE_OF_TRUTH,
     verifier: "tools/scripts/client-secure-mesh-physical-device-matrix.mjs",
@@ -34,7 +34,7 @@ export function runReleaseProofContractReadinessSelfTest() {
     }
   };
   const forgedPhysicalEvidenceManifest = {
-    schemaVersion: "licolite.secure-mesh.physical-evidence-manifest-report.v2",
+    schemaVersion: "licomesh.secure-mesh.physical-evidence-manifest-report.v2",
     evidenceRefSchemaVersion: SECURE_CLIENT_MESH_E2EE_EVIDENCE_REF_REPORT_SCHEMA_VERSION,
     sourceOfTruth: SECURE_CLIENT_MESH_PRODUCTION_SOURCE_OF_TRUTH,
     verifier: "tools/scripts/client-secure-mesh-physical-evidence-manifest.mjs",
@@ -71,14 +71,14 @@ export function runReleaseProofContractReadinessSelfTest() {
     );
   const legacyPhysicalMatrix = summarizePhysicalMatrixReport({
     ...forgedPhysicalMatrix,
-    schemaVersion: "licolite.secure-mesh.physical-device-matrix-report.v1"
+    schemaVersion: "licomesh.secure-mesh.physical-device-matrix-report.v1"
   });
   const legacyPhysicalEvidenceManifest = summarizePhysicalEvidenceManifest({
     ...forgedPhysicalEvidenceManifest,
-    schemaVersion: "licolite.secure-mesh.physical-evidence-manifest-report.v1"
+    schemaVersion: "licomesh.secure-mesh.physical-evidence-manifest-report.v1"
   });
   const androidPhysicalInstallLaunchFixture = {
-    schemaVersion: "licolite.secure-mesh.android-physical-install-launch-report.v3",
+    schemaVersion: "licomesh.secure-mesh.android-physical-install-launch-report.v3",
     ok: true,
     physicalDevice: true,
     summary: {

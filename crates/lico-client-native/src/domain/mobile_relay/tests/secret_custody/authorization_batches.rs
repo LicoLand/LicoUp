@@ -1,4 +1,5 @@
 use super::super::test_support::*;
+use crate::core::secure_mesh_secret_store::SecretBytes;
 fn synthetic_value(label: &str) -> String { format!("{label}-{}", uuid::Uuid::new_v4()) }
 
 #[test]
@@ -7,7 +8,12 @@ fn mobile_relay_user_level_config_mutation_reuses_single_secret_store_authorizat
     let previous = set_portable_data_dir_override(Some(dir));
     let store = Arc::new(EphemeralSecretStore::new());
     let mut config = default_config();
-    ensure_mobile_relay_endpoint_descriptor(&mut config, "mobile").unwrap();
+    ensure_mobile_relay_endpoint_descriptor(
+        &mut config,
+        test_runtime_secret_material(stringify!(&mut config)),
+        "mobile",
+    )
+    .unwrap();
     persist_config_secret_material_to_secret_store(
         &mut config,
         store.as_ref(),
@@ -91,7 +97,10 @@ fn mobile_relay_native_secret_store_cleanup_uses_single_authorization_batch() {
     for handle in &handles {
         if store.get_secret(handle).unwrap().is_none() {
             store
-                .set_secret(handle, sv_cleanup_batch_seed_canar.as_str())
+                .set_secret(
+                    handle,
+                    SecretBytes::try_from_bytes(sv_cleanup_batch_seed_canar.as_bytes().to_vec()).unwrap(),
+                )
                 .unwrap();
         }
         assert!(store.get_secret(handle).unwrap().is_some());

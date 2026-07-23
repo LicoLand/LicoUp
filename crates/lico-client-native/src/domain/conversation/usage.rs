@@ -68,12 +68,18 @@ pub(crate) fn collect_token_usage(value: &Value, depth: usize, usage: &mut Usage
         "usage",
         "tokenUsage",
         "token_usage",
+        "usageMetadata",
+        "usage_metadata",
         "tokenCount",
         "token_count",
         "responseUsage",
         "response_usage",
+        "gen_ai.usage",
         "tokens",
         "message",
+        "data",
+        "payload",
+        "status",
     ] {
         let Some(child) = object.get(key) else {
             continue;
@@ -86,8 +92,32 @@ pub(crate) fn collect_token_usage(value: &Value, depth: usize, usage: &mut Usage
         }
     }
     let normalized_input_output = object.contains_key("input") && object.contains_key("output");
-    usage.normalized_additive_semantics |=
-        normalized_input_output && object.get("cache").and_then(Value::as_object).is_some();
+    let kimi_additive_semantics = object.contains_key("inputOther")
+        || object.contains_key("input_other")
+        || object.contains_key("inputCacheRead")
+        || object.contains_key("input_cache_read")
+        || object.contains_key("inputCacheCreation")
+        || object.contains_key("input_cache_creation");
+    let flat_additive_cache = [
+        "cacheReadInputTokens",
+        "cache_read_input_tokens",
+        "cacheReadTokens",
+        "cache_read_tokens",
+        "cacheRead",
+        "cache_read",
+        "cacheCreationInputTokens",
+        "cache_creation_input_tokens",
+        "cacheWriteTokens",
+        "cache_write_tokens",
+        "cacheWrite",
+        "cache_write",
+    ]
+    .iter()
+    .any(|key| object.contains_key(*key));
+    usage.normalized_additive_semantics |= (normalized_input_output
+        && object.get("cache").and_then(Value::as_object).is_some())
+        || kimi_additive_semantics
+        || flat_additive_cache;
     let base_prompt = token_count_field(
         object,
         &[
@@ -95,15 +125,42 @@ pub(crate) fn collect_token_usage(value: &Value, depth: usize, usage: &mut Usage
             "prompt_tokens",
             "inputTokens",
             "input_tokens",
+            "totalInputTokens",
+            "total_input_tokens",
+            "promptTokenCount",
+            "prompt_token_count",
+            "inputOther",
+            "input_other",
             "input",
         ],
         usage,
     );
-    let cached_subset =
-        token_count_field(object, &["cachedInputTokens", "cached_input_tokens"], usage);
+    let cached_subset = token_count_field(
+        object,
+        &[
+            "cachedInputTokens",
+            "cached_input_tokens",
+            "inputCachedTokens",
+            "input_cached_tokens",
+            "totalCachedTokens",
+            "total_cached_tokens",
+            "cachedContentTokenCount",
+            "cached_content_token_count",
+        ],
+        usage,
+    );
     let cache_read = token_count_field(
         object,
-        &["cacheReadInputTokens", "cache_read_input_tokens"],
+        &[
+            "cacheReadInputTokens",
+            "cache_read_input_tokens",
+            "cacheReadTokens",
+            "cache_read_tokens",
+            "cacheRead",
+            "cache_read",
+            "inputCacheRead",
+            "input_cache_read",
+        ],
         usage,
     );
     let cache_write = token_count_field(
@@ -113,6 +170,14 @@ pub(crate) fn collect_token_usage(value: &Value, depth: usize, usage: &mut Usage
             "cache_creation_input_tokens",
             "cacheWriteInputTokens",
             "cache_write_input_tokens",
+            "cacheWriteTokens",
+            "cache_write_tokens",
+            "cacheWrite",
+            "cache_write",
+            "inputCacheWriteTokens",
+            "input_cache_write_tokens",
+            "inputCacheCreation",
+            "input_cache_creation",
         ],
         usage,
     );
@@ -152,13 +217,40 @@ pub(crate) fn collect_token_usage(value: &Value, depth: usize, usage: &mut Usage
             "output_tokens",
             "responseTokens",
             "response_tokens",
+            "totalOutputTokens",
+            "total_output_tokens",
+            "candidatesTokenCount",
+            "candidates_token_count",
             "output",
         ],
         usage,
     ));
+    usage.completion_tokens = usage.completion_tokens.saturating_add(token_count_field(
+        object,
+        &[
+            "reasoningTokens",
+            "reasoning_tokens",
+            "thoughtsTokenCount",
+            "thoughts_token_count",
+            "totalThoughtTokens",
+            "total_thought_tokens",
+        ],
+        usage,
+    ));
+    usage.completion_tokens = usage.completion_tokens.saturating_add(token_count_field(
+        object,
+        &["totalToolUseTokens", "total_tool_use_tokens"],
+        usage,
+    ));
     usage.total_tokens = usage.total_tokens.saturating_add(token_count_field(
         object,
-        &["totalTokens", "total_tokens", "total"],
+        &[
+            "totalTokens",
+            "total_tokens",
+            "totalTokenCount",
+            "total_token_count",
+            "total",
+        ],
         usage,
     ));
 }
@@ -215,5 +307,58 @@ mod tests {
         assert_eq!(usage["promptTokens"], 3);
         assert_eq!(usage["completionTokens"], 7);
         assert_eq!(usage["totalTokens"], 10);
+    }
+
+    #[test]
+    fn gemini_usage_metadata_is_read_without_tokenizing_content() {
+        let usage = extract_token_usage(&json!({
+            "usageMetadata": {
+                "promptTokenCount": 100,
+                "cachedContentTokenCount": 40,
+                "candidatesTokenCount": 12,
+                "thoughtsTokenCount": 3,
+                "totalTokenCount": 115
+            }
+        }))
+        .unwrap();
+        assert_eq!(usage["promptTokens"], 100);
+        assert_eq!(usage["cachedInputTokens"], 40);
+        assert_eq!(usage["completionTokens"], 15);
+        assert_eq!(usage["totalTokens"], 115);
+    }
+
+    #[test]
+    fn kimi_status_usage_keeps_additive_cache_categories() {
+        let usage = extract_token_usage(&json!({
+            "token_usage": {
+                "input_other": 80,
+                "input_cache_read": 20,
+                "input_cache_creation": 5,
+                "output": 15
+            }
+        }))
+        .unwrap();
+        assert_eq!(usage["promptTokens"], 105);
+        assert_eq!(usage["cachedInputTokens"], 20);
+        assert_eq!(usage["completionTokens"], 15);
+        assert_eq!(usage["totalTokens"], 120);
+    }
+
+    #[test]
+    fn openclaw_response_usage_reads_explicit_cache_counters() {
+        let usage = extract_token_usage(&json!({
+            "responseUsage": {
+                "inputTokens": 80,
+                "outputTokens": 15,
+                "cacheRead": 20,
+                "cacheWrite": 5,
+                "totalTokens": 95
+            }
+        }))
+        .unwrap();
+        assert_eq!(usage["promptTokens"], 105);
+        assert_eq!(usage["cachedInputTokens"], 20);
+        assert_eq!(usage["completionTokens"], 15);
+        assert_eq!(usage["totalTokens"], 120);
     }
 }

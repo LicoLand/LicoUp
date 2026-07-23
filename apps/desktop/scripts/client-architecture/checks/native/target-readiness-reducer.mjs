@@ -20,7 +20,7 @@ export async function checkTargetReadinessReducer(context) {
     sameSet,
     sourceLineCount,
   } = context;
-  // Target catalog and merge policy must share one readiness reducer.
+  // Target catalog and merge policy must share one runtime-availability reducer.
   const targetSourceFiles = [
     "crates/lico-client-native/src/domain/targets.rs",
     ...await collectSourceFiles("crates/lico-client-native/src/domain/targets", ".rs")
@@ -40,30 +40,31 @@ export async function checkTargetReadinessReducer(context) {
     targetCatalogSource.includes("fn adapter_capabilities_for"),
     "target catalog must own the unified adapter capability policy"
   );
-  assert(targetCatalogSource.includes("fn candidate_runtime_is_ready") &&
+  assert(targetCatalogSource.includes("fn candidate_runtime_is_available") &&
     targetCatalogSource.includes("runtime_driver_profile") &&
-    targetCatalogSource.includes('profile.readiness != "ready"') &&
-    targetCatalogSource.includes("runtime_evidence_matches") &&
-    targetCatalogSource.includes('conversation_readiness = "ready"') &&
-    targetCatalogSource.includes('conversation_readiness = "unverified"') &&
-    targetScanMergeSource.includes("candidate_runtime_is_ready(") &&
+    !targetCatalogSource.includes('profile.readiness ==') &&
+    !targetCatalogSource.includes('profile.readiness !=') &&
+    targetScanMergeSource.includes("candidate_runtime_is_available(") &&
     targetScanMergeSource.includes('push("runtime.message.send".to_string())'),
-    "target discovery and candidate merging must advertise runtime.message.send only through the shared readiness evidence gate"
+    "target discovery must advertise runtime.message.send whenever a driver profile and executable are available; parity evidence must stay informational"
   );
   const targetRuntimeBindingSource = await readText(
     "crates/lico-client-native/src/domain/targets/runtime_binding.rs"
   );
-  assert(targetsSource.includes("ready_runtime_executable") &&
+  assert(targetsSource.includes("available_runtime_executable") &&
     targetRuntimeBindingSource.includes("runtime_driver_profile") &&
-    targetRuntimeBindingSource.includes('Some("runtime.message.send")') &&
+    !targetRuntimeBindingSource.includes('profile.readiness') &&
+    !targetRuntimeBindingSource.includes('runtime.message.send') &&
     targetRuntimeBindingSource.includes("fs::canonicalize") &&
-    targetRuntimeBindingSource.includes("runtime_evidence_matches"),
-    "runtime.message.send must require canonical readiness and an exact local executable binding"
+    !targetRuntimeBindingSource.includes("runtime_evidence_matches"),
+    "runtime.message.send must keep an exact single local executable binding without letting projected actions or parity evidence veto execution"
   );
   const targetCandidateSource = await readText("apps/desktop/lib/src/contracts/target_candidate.dart");
-  assert(targetCandidateSource.includes("conversationReadiness == 'ready'") &&
-    targetCandidateSource.includes("supportsAction('runtime.message.send')"),
-    "desktop runtime sending must require both reducer-owned ready and the advertised action"
+  assert(targetCandidateSource.includes("visibleInClient &&") &&
+    targetCandidateSource.includes("conversationDriverStatus != 'unsupported'") &&
+    !targetCandidateSource.includes("supportsAction('runtime.message.send')") &&
+    !targetCandidateSource.includes("conversationReadiness == 'ready'"),
+    "desktop runtime sending must use deterministic local binding facts; projected actions and parity evidence stay informational"
   );
 
 }

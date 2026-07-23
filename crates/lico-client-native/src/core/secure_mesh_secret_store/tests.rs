@@ -1,6 +1,8 @@
 use super::*;
 use anyhow::Result;
 
+mod secret_material;
+
 struct FixtureStore;
 
 impl SecureMeshSecretStore for FixtureStore {
@@ -12,11 +14,11 @@ impl SecureMeshSecretStore for FixtureStore {
         true
     }
 
-    fn set_secret(&self, _handle: &SecretStoreHandle, _secret: &str) -> Result<()> {
+    fn set_secret(&self, _handle: &SecretStoreHandle, _secret: SecretBytes) -> Result<()> {
         Ok(())
     }
 
-    fn get_secret(&self, _handle: &SecretStoreHandle) -> Result<Option<String>> {
+    fn get_secret(&self, _handle: &SecretStoreHandle) -> Result<Option<SecretBytes>> {
         Ok(None)
     }
 
@@ -31,7 +33,11 @@ fn authorization_session_enforces_exact_operation_budget() {
     let session = FixtureStore.begin_authorized_session(&request).unwrap();
     let handle = SecretStoreHandle::new("scope", "key").unwrap();
     FixtureStore
-        .set_secret_with_session(&session, &handle, "secret")
+        .set_secret_with_session(
+            &session,
+            &handle,
+            SecretBytes::try_from_bytes(b"synthetic-secret".to_vec()).unwrap(),
+        )
         .unwrap();
     FixtureStore
         .get_secret_with_session(&session, &handle)

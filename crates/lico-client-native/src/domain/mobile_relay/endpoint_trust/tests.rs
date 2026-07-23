@@ -4,7 +4,11 @@ use super::*;
 #[cfg(test)]
 pub(crate) fn initialize_secure_mesh_mls_test_endpoint(endpoint_kind: &str) -> Result<()> {
     let mut config = default_config();
-    ensure_mobile_relay_endpoint_descriptor(&mut config, endpoint_kind)?;
+    ensure_mobile_relay_endpoint_descriptor(
+        &mut config,
+        test_runtime_secret_material(stringify!(&mut config)),
+        endpoint_kind,
+    )?;
     save_config(&mut config)
 }
 
@@ -17,7 +21,8 @@ pub(crate) fn initialize_secure_mesh_mls_test_peer(
         "Secure Mesh MLS test peer authority",
         mobile_relay_e2ee_secret_store_authorization_batch_operation_count(),
     )?;
-    let local_endpoint = local_endpoint_state(&config)?;
+    let local_endpoint =
+        local_endpoint_state(&config, test_runtime_secret_material(stringify!(&config)))?;
     let local_identity = local_endpoint.device_identity()?;
     let issued_at = mobile_relay_trust_record_now_epoch()?;
     let trust_record = sign_device_trust_record(

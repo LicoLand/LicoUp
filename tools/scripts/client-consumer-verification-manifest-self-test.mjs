@@ -27,7 +27,7 @@ try {
   ], { cwd: repoRoot, encoding: "utf8" });
   if (valid.status !== 0) throw new Error("valid consumer manifest fixture was rejected");
   const manifest = JSON.parse(readFileSync(output, "utf8"));
-  if (manifest.schemaVersion !== "licolite.consumer-verification-manifest.v1" ||
+  if (manifest.schemaVersion !== "licomesh.consumer-verification-manifest.v1" ||
     manifest.artifacts?.length !== 1 || manifest.artifacts[0]?.sha256 !== digest ||
     manifest.artifacts[0]?.name !== artifact ||
     Object.keys(manifest).some((key) => /publisher|account|team|tenant|device/iu.test(key))) {

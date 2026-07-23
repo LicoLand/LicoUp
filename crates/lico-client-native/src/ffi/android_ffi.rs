@@ -5,14 +5,14 @@ use std::sync::Arc;
 use anyhow::{Context, Result, anyhow, ensure};
 use jni::JNIEnv;
 use jni::JavaVM;
-use jni::objects::{GlobalRef, JObject, JString, JValue};
+use jni::objects::{GlobalRef, JByteArray, JObject, JString, JValue};
 use jni::sys::jstring;
 use serde_json::json;
 
 use crate::core::secure_mesh_capability::{
     CapabilityFact, CapabilityFactState, CapabilityScope, SecurityCapability, capability_catalog,
 };
-use crate::core::secure_mesh_secret_store::is_persistable_secret;
+use crate::core::secure_mesh_secret_store::{MAX_SECRET_BYTES, SecretBytes};
 use crate::platform::secure_mesh_capability_probe::{
     CAPABILITY_PROBE_SCHEMA_VERSION, CapabilityProbeSnapshot,
 };
@@ -146,7 +146,7 @@ impl AndroidJniSecretStore {
         })
     }
 
-    fn call_set(&self, handle: &SecretStoreHandle, secret: &str) -> Result<bool> {
+    fn call_set(&self, handle: &SecretStoreHandle, secret: SecretBytes) -> Result<bool> {
         let mut env = self
             .java_vm
             .attach_current_thread()
@@ -159,26 +159,26 @@ impl AndroidJniSecretStore {
             env.new_string(handle.key())
                 .context("android secret store key bridge failed")?,
         );
-        let secret = JObject::from(
-            env.new_string(secret)
-                .context("android secret store secret bridge failed")?,
-        );
-        env.call_method(
-            self.secret_store.as_obj(),
-            "secureMeshAndroidSecretStoreSet",
-            "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Z",
-            &[
-                JValue::Object(&namespace),
-                JValue::Object(&key),
-                JValue::Object(&secret),
-            ],
-        )
-        .context("android secret store set call failed")?
-        .z()
-        .context("android secret store set return failed")
+        let secret_len = i32::try_from(secret.expose_bytes().len())
+            .context("android secret store payload is too large")?;
+        let secret_array = env
+            .new_byte_array(secret_len)
+            .context("android secret store byte-array allocation failed")?;
+        // SAFETY: JNI jbyte is the signed representation of one byte and the
+        // slice retains the same allocation and length.
+        let signed_secret = unsafe {
+            std::slice::from_raw_parts(
+                secret.expose_bytes().as_ptr().cast::<i8>(),
+                secret.expose_bytes().len(),
+            )
+        };
+        env.set_byte_array_region(&secret_array, 0, signed_secret)
+            .context("android secret store byte-array copy failed")?;
+        let mut guarded = AndroidSecretByteArrayGuard::new(&mut env, secret_array);
+        guarded.call_set(self.secret_store.as_obj(), &namespace, &key)
     }
 
-    fn call_get(&self, handle: &SecretStoreHandle) -> Result<Option<String>> {
+    fn call_get(&self, handle: &SecretStoreHandle) -> Result<Option<SecretBytes>> {
         let mut env = self
             .java_vm
             .attach_current_thread()
@@ -195,7 +195,7 @@ impl AndroidJniSecretStore {
             .call_method(
                 self.secret_store.as_obj(),
                 "secureMeshAndroidSecretStoreGet",
-                "(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;",
+                "(Ljava/lang/String;Ljava/lang/String;)[B",
                 &[JValue::Object(&namespace), JValue::Object(&key)],
             )
             .context("android secret store get call failed")?
@@ -204,11 +204,16 @@ impl AndroidJniSecretStore {
         if value.is_null() {
             return normalize_android_secret_store_get(None);
         }
-        let text: String = env
-            .get_string(&JString::from(value))
-            .context("android secret store get string failed")?
-            .into();
-        normalize_android_secret_store_get(Some(text))
+        let value = JByteArray::from(value);
+        let length = usize::try_from(env.get_array_length(&value)?)
+            .context("android secret store returned an invalid byte-array length")?;
+        ensure!(
+            length <= MAX_SECRET_BYTES,
+            "android secret store returned an oversized existing record"
+        );
+        let guarded = AndroidSecretByteArrayGuard::new(&mut env, value);
+        let bytes = guarded.convert_byte_array()?;
+        normalize_android_secret_store_get(Some(bytes))
     }
 
     fn call_delete(&self, handle: &SecretStoreHandle) -> Result<bool> {
@@ -262,16 +267,60 @@ impl AndroidJniSecretStore {
     }
 }
 
-fn normalize_android_secret_store_get(value: Option<String>) -> Result<Option<String>> {
+struct AndroidSecretByteArrayGuard<'local, 'env> {
+    env: &'env mut JNIEnv<'local>,
+    value: JByteArray<'local>,
+}
+
+impl<'local, 'env> AndroidSecretByteArrayGuard<'local, 'env> {
+    fn new(env: &'env mut JNIEnv<'local>, value: JByteArray<'local>) -> Self {
+        Self { env, value }
+    }
+
+    fn call_set(
+        &mut self,
+        bridge: &JObject<'local>,
+        namespace: &JObject<'local>,
+        key: &JObject<'local>,
+    ) -> Result<bool> {
+        self.env
+            .call_method(
+                bridge,
+                "secureMeshAndroidSecretStoreSet",
+                "(Ljava/lang/String;Ljava/lang/String;[B)Z",
+                &[
+                    JValue::Object(namespace),
+                    JValue::Object(key),
+                    JValue::Object(self.value.as_ref()),
+                ],
+            )
+            .context("android secret store set call failed")?
+            .z()
+            .context("android secret store set return failed")
+    }
+
+    fn convert_byte_array(&self) -> Result<Vec<u8>> {
+        self.env
+            .convert_byte_array(&self.value)
+            .context("android secret store byte-array conversion failed")
+    }
+}
+
+impl Drop for AndroidSecretByteArrayGuard<'_, '_> {
+    fn drop(&mut self) {
+        if let Ok(length) = self.env.get_array_length(&self.value) {
+            let zeros = vec![0_i8; usize::try_from(length).unwrap_or_default()];
+            let _ = self.env.set_byte_array_region(&self.value, 0, &zeros);
+        }
+    }
+}
+
+fn normalize_android_secret_store_get(value: Option<Vec<u8>>) -> Result<Option<SecretBytes>> {
     match value {
         None => Ok(None),
-        Some(value) => {
-            ensure!(
-                is_persistable_secret(&value),
-                "android secret store returned an invalid existing record"
-            );
-            Ok(Some(value))
-        }
+        Some(value) => SecretBytes::try_from_bytes(value)
+            .map(Some)
+            .map_err(|_| anyhow!("android secret store returned an invalid existing record")),
     }
 }
 
@@ -317,7 +366,7 @@ impl SecureMeshSecretStore for AndroidJniSecretStore {
         Ok(facts)
     }
 
-    fn set_secret(&self, handle: &SecretStoreHandle, secret: &str) -> Result<()> {
+    fn set_secret(&self, handle: &SecretStoreHandle, secret: SecretBytes) -> Result<()> {
         ensure!(
             self.call_set(handle, secret)?,
             "android secret store write failed for {}",
@@ -326,7 +375,7 @@ impl SecureMeshSecretStore for AndroidJniSecretStore {
         Ok(())
     }
 
-    fn get_secret(&self, handle: &SecretStoreHandle) -> Result<Option<String>> {
+    fn get_secret(&self, handle: &SecretStoreHandle) -> Result<Option<SecretBytes>> {
         self.call_get(handle)
             .map_err(|_error| anyhow!("android secret store read failed"))
     }
@@ -507,15 +556,14 @@ mod tests {
 
     #[test]
     fn android_secret_store_get_reserves_none_for_verified_missing_records() {
-        assert_eq!(normalize_android_secret_store_get(None).unwrap(), None);
-        assert!(normalize_android_secret_store_get(Some(String::new())).is_err());
-        assert!(normalize_android_secret_store_get(Some("   ".to_string())).is_err());
-        assert!(normalize_android_secret_store_get(Some("redacted".to_string())).is_err());
+        assert!(normalize_android_secret_store_get(None).unwrap().is_none());
+        assert!(normalize_android_secret_store_get(Some(Vec::new())).is_err());
         assert_eq!(
-            normalize_android_secret_store_get(Some("  opaque-secret  ".to_string()))
+            normalize_android_secret_store_get(Some(b"  opaque-secret  ".to_vec()))
                 .unwrap()
-                .as_deref(),
-            Some("  opaque-secret  ")
+                .as_ref()
+                .map(SecretBytes::expose_bytes),
+            Some(b"  opaque-secret  ".as_slice())
         );
     }
 }

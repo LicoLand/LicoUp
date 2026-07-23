@@ -13,6 +13,8 @@ use std::{
     },
 };
 
+#[path = "lico-client/orchestrator.rs"]
+mod orchestrator;
 #[path = "lico-client/presentation.rs"]
 mod presentation;
 #[path = "lico-client/stdio_rpc.rs"]
@@ -25,13 +27,16 @@ const STDIO_RPC_PROTOCOL: &str = "lico-client.stdio.v1";
 const STDIO_RPC_MAX_REQUEST_BYTES: usize = 16 * 1024 * 1024;
 const STDIO_RPC_MAX_RESPONSE_BYTES: usize = 16 * 1024 * 1024;
 const STDIO_RPC_MAX_ID_BYTES: usize = 128;
-const STDIO_RPC_MAX_ARGS: usize = 256;
+const STDIO_RPC_MAX_ARGS: usize = 4_097;
 
 fn main() -> Result<()> {
     env_logger::Builder::from_default_env()
         .target(env_logger::Target::Stderr)
         .init();
     let args = env::args().skip(1).collect::<Vec<_>>();
+    if orchestrator::is_orchestrator_command(&args) {
+        std::process::exit(orchestrator::execute(&args)?);
+    }
     if args.as_slice() == ["rpc", "stdio"] {
         // The RPC wire response is already fail-closed and redacted. Keep the
         // process panic hook equally bounded so a panic payload cannot leak a

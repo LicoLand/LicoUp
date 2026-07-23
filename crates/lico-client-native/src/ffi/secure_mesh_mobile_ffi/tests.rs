@@ -1,4 +1,5 @@
 mod action;
+mod contract;
 mod fixture_mls;
 mod fixture_policy;
 mod fixture_runtime;

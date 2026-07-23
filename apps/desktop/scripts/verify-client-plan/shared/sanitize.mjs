@@ -1,10 +1,21 @@
 const MAX_DIAGNOSTIC_LENGTH = 1000;
+const WINDOWS_SEPARATOR_PATTERN = String.raw`\\`;
 
 export function sanitizePlanDiagnostic(value) {
   const text = value instanceof Error ? value.message : String(value || "");
   return text
     .replace(/-----BEGIN(?: [A-Z0-9]+)? PRIVATE KEY-----[\s\S]*?-----END(?: [A-Z0-9]+)? PRIVATE KEY-----/giu, "[redacted-private-key]")
-    .replace(/\b[A-Za-z]:\\Users\\[^\s"',}<>\])]+/giu, "<local-path>")
+    .replace(
+      new RegExp(
+        String.raw`[A-Za-z]:` +
+          WINDOWS_SEPARATOR_PATTERN +
+          String.raw`(?:Users|Documents and Settings)` +
+          WINDOWS_SEPARATOR_PATTERN +
+          String.raw`[^\s"',}<>\])]+`,
+        "giu",
+      ),
+      "<local-path>",
+    )
     .replace(/\\\\[^\s"',}<>\])]+/giu, "<local-path>")
     .replace(/\/(?:Users|home)\/[^\s"',}<>\])]+/gu, "<local-path>")
     .replace(/\/root(?:\/[^\s"',}<>\])]+)?/gu, "<local-path>")

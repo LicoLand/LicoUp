@@ -75,6 +75,88 @@ void main() {
     },
   );
 
+  test(
+    'persistent conversation controls share the same structured RPC transport',
+    () async {
+      final transport = _FakeStdioTransport();
+      final context = _FakeProcessContext();
+      final processIo = BoundedNativeProcessIo(
+        processContext: context,
+        commandExecutor: _StaticExecutor(const {}),
+        stdioRpcTransport: transport,
+        persistentStdioRpcEnabled: true,
+      );
+
+      for (final operation in const [
+        'open',
+        'history',
+        'cleanup',
+        'capabilities',
+        'cancel',
+      ]) {
+        final result = await processIo.runCliWithStdin([
+          'agent',
+          'conversation',
+          operation,
+          '--stdin-json',
+          'true',
+        ], '{"agent":"claude-code","sessionId":"opaque-session"}');
+        expect(result, {'ok': true, 'operation': operation});
+      }
+
+      expect(context.startCount, 0);
+      expect(transport.structuredCalls.map((call) => call.method), [
+        for (final operation in const [
+          'open',
+          'history',
+          'cleanup',
+          'capabilities',
+          'cancel',
+        ])
+          'agent.conversation.$operation',
+      ]);
+      for (final call in transport.structuredCalls) {
+        expect(call.params, {
+          'agent': 'claude-code',
+          'sessionId': 'opaque-session',
+        });
+      }
+    },
+  );
+
+  test(
+    'persistent conversation controls reject malformed private JSON',
+    () async {
+      final transport = _FakeStdioTransport();
+      final context = _FakeProcessContext();
+      final processIo = BoundedNativeProcessIo(
+        processContext: context,
+        commandExecutor: _StaticExecutor(const {}),
+        stdioRpcTransport: transport,
+        persistentStdioRpcEnabled: true,
+      );
+
+      await expectLater(
+        processIo.runCliWithStdin(const [
+          'agent',
+          'conversation',
+          'cleanup',
+          '--stdin-json',
+          'true',
+        ], '{invalid'),
+        throwsA(
+          isA<LicoClientRpcException>().having(
+            (error) => error.code,
+            'code',
+            'invalid_request',
+          ),
+        ),
+      );
+      expect(context.startCount, 0);
+      expect(transport.structuredCalls, isEmpty);
+    },
+  );
+
   test('process I/O drains stderr with a fixed upper bound', () async {
     if (Platform.isWindows) {
       return;
@@ -145,6 +227,8 @@ class _FakeProcessContext implements NativeCliProcessContext {
 
 class _FakeStdioTransport implements NativeStdioRpcTransport {
   Map<String, dynamic>? conversationRequest;
+  final List<({String method, Map<String, dynamic> params})> structuredCalls =
+      [];
 
   @override
   Future<void> dispose() async {}
@@ -158,7 +242,11 @@ class _FakeStdioTransport implements NativeStdioRpcTransport {
   Future<Map<String, dynamic>> executeStructured(
     String method,
     Map<String, dynamic> params,
-  ) async => <String, dynamic>{'ok': true};
+  ) async {
+    final copied = Map<String, dynamic>.from(params);
+    structuredCalls.add((method: method, params: copied));
+    return <String, dynamic>{'ok': true, 'operation': method.split('.').last};
+  }
 
   @override
   Stream<Map<String, dynamic>> streamConversation(

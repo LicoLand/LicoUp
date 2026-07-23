@@ -21,7 +21,7 @@ export function runClientRelayCryptoInputsReadinessSelfTest() {
   const digest = `sha256:${"a".repeat(64)}`;
   const relayMockPayload = {
     ok: true,
-    schemaVersion: "licolite.secure-client-relay.mock-e2e-report.v1",
+    schemaVersion: "licomesh.secure-client-relay.mock-e2e-report.v1",
     protocolVersion: "secure-client-relay-test",
     coreContractDigest: digest,
     coreConformanceDigest: digest,
@@ -208,7 +208,7 @@ export function runClientRelayCryptoInputsReadinessSelfTest() {
     rustCrypto,
     platformCrypto: {
       ...platformCrypto,
-      schemaVersion: "licolite.secure-mesh.platform-secret-store-matrix-report.v1"
+      schemaVersion: "licomesh.secure-mesh.platform-secret-store-matrix-report.v1"
     },
     androidPlatformCrypto,
     reportRedactionProof

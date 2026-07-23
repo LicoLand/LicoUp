@@ -3,7 +3,7 @@ use serde_json::Value;
 
 pub const SECURE_MESH_LIFECYCLE_STATUS: &str = "ttl_delete_screenshot_resend_ack_purge_typing_read_receipt_service_actions_redacted_policy_available_pairwise_mls_envelope_required";
 pub const SECURE_MESH_LIFECYCLE_CONTENT_TYPE: &str =
-    "application/vnd.licolite.secure-mesh.lifecycle-service-action+json";
+    "application/vnd.licomesh.secure-mesh.lifecycle-service-action+json";
 
 pub(super) const MAX_TTL_SECONDS: u64 = 31 * 24 * 60 * 60;
 pub(super) const MAX_MISSING_MESSAGE_IDS: usize = 64;

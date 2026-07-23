@@ -1,5 +1,5 @@
 const optionalLocalServerRuntimeCapability =
-    'digest-bound-licolite-server-runner-v1';
+    'digest-bound-licomesh-server-runner-v1';
 
 void optionalLocalRequirePolicy(
   Map<String, dynamic> json, {

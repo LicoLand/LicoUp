@@ -9,7 +9,7 @@ mod record;
 mod signature;
 mod verification;
 
-pub const SECURE_MESH_DEVICE_TRUST_PROTOCOL_VERSION: &str = "licolite.secure-mesh.device-trust.v2";
+pub const SECURE_MESH_DEVICE_TRUST_PROTOCOL_VERSION: &str = "licomesh.secure-mesh.device-trust.v2";
 pub const SECURE_MESH_DEVICE_TRUST_STATUS: &str = "fingerprint_60_digit_safety_number_qr_policy_cli_gui_available_cross_signing_diagnostic_only_requires_durable_epoch_and_revocation_validation";
 
 const DEVICE_IDENTITY_MAGIC: &[u8] = b"LCOSM-DID-v1";

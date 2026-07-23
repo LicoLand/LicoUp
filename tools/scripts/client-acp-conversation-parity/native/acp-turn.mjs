@@ -1,11 +1,51 @@
 import { randomUUID } from "node:crypto";
+import { performance } from "node:perf_hooks";
 import { parityModelForAgent } from "../agent-ids.mjs";
 import { AcpClient } from "../clients/acp-client.mjs";
 import { acceptanceMode, sidecarArgs } from "../constants.mjs";
 import { AcceptanceError, requireFact, safeErrorCode } from "../errors.mjs";
 import { nativeAppServerReadback, nativeAppServerTurn } from "./app-server.mjs";
+import { nativeCursorCliReadback, nativeCursorCliTurn } from "./cursor-cli.mjs";
 import { nativePiReadback, nativePiTurn, notificationTexts, sessionSettings } from "./pi.mjs";
 import { runBoundedProcess } from "../process.mjs";
+
+function validPublicStreamIdentifier(value) {
+  return typeof value === "string"
+    && value.length > 0
+    && value === value.trim();
+}
+
+async function nativeSidecarCliTurn(context, requestedSessionId, prompt) {
+  const request = {
+    agent: context.config.id,
+    text: prompt,
+    workingDirectory: context.cwd,
+    binaryPath: context.binary,
+    timeoutMs: context.timeoutMs,
+    maxStdoutBytes: context.maxOutputBytes,
+    maxStderrBytes: context.maxOutputBytes,
+    streamEvents: true,
+  };
+  if (requestedSessionId) request.sessionId = requestedSessionId;
+  const forcedModel = parityModelForAgent(context.config.id);
+  if (forcedModel) request.model = forcedModel;
+  const sidecar = await runSidecar(context, request);
+  const sessionId = sidecar.result?.sessionId || sidecar.result?.nativeSessionId || "";
+  const output = String(sidecar.result?.output || "").trim();
+  requireFact(sessionId.length > 0, "native_session_id_missing");
+  requireFact(output.length > 0, "native_final_message_missing");
+  context.observedSessions?.add(sessionId);
+  return {
+    sessionId,
+    output,
+    historyNotifications: [],
+    settings: { cwd: context.cwd, model: forcedModel || null },
+    protocolVersion: 1,
+    permissionRequests: 0,
+    unsupportedRequests: 0,
+    boundedOutput: sidecar.boundedOutput === true,
+  };
+}
 
 export async function nativeTurn(context, requestedSessionId, prompt) {
   if (context.config.laneFamily === "app-server") {
@@ -13,6 +53,12 @@ export async function nativeTurn(context, requestedSessionId, prompt) {
   }
   if (context.config.laneFamily === "rpc") {
     return nativePiTurn(context, requestedSessionId, prompt);
+  }
+  if (context.config.laneFamily === "cli") {
+    if (context.config.cliTurnKind === "sidecar") {
+      return nativeSidecarCliTurn(context, requestedSessionId, prompt);
+    }
+    return nativeCursorCliTurn(context, requestedSessionId, prompt);
   }
   const client = new AcpClient(
     context.wrapper.wrapperPath,
@@ -43,13 +89,19 @@ export async function nativeTurn(context, requestedSessionId, prompt) {
     }
     const historyNotifications = client.notifications.slice(historyStart);
     const promptStart = client.notifications.length;
+    const promptHardDeadline = performance.now() + context.timeoutMs;
+    client.beginPromptNotificationValidation(promptStart, sessionId);
     const promptResult = await client.request("session/prompt", {
       sessionId,
       messageId: randomUUID(),
       prompt: [{ type: "text", text: prompt }],
     });
     requireFact(promptResult?.stopReason === "end_turn", "native_turn_not_completed");
-    const turnNotifications = client.notifications.slice(promptStart);
+    const turnNotifications = await client.waitForPromptNotificationQuiescence(
+      promptStart,
+      sessionId,
+      promptHardDeadline,
+    );
     const final = notificationTexts(turnNotifications, sessionId);
     requireFact(!final.sessionMismatch, "native_event_session_mismatch");
     requireFact(final.text.length > 0, "native_final_message_missing");
@@ -75,6 +127,16 @@ export async function nativeReadback(context, sessionId) {
   }
   if (context.config.laneFamily === "rpc") {
     return nativePiReadback(context, sessionId);
+  }
+  if (context.config.laneFamily === "cli") {
+    if (context.config.cliReadbackKind === "none") {
+      return {
+        text: "",
+        settings: { cwd: context.cwd, model: parityModelForAgent(context.config.id) || null },
+        boundedOutput: true,
+      };
+    }
+    return nativeCursorCliReadback(context, sessionId);
   }
   const client = new AcpClient(
     context.wrapper.wrapperPath,
@@ -106,6 +168,7 @@ export async function nativeReadback(context, sessionId) {
 
 export function parseSidecarStreamStdout(stdout) {
   const events = [];
+  const streamRecords = [];
   let result = null;
   for (const line of String(stdout || "").split(/\r?\n/u)) {
     const trimmed = line.trim();
@@ -120,6 +183,7 @@ export function parseSidecarStreamStdout(stdout) {
     if (eventKind && eventKind !== "done") {
       events.push(eventKind);
     }
+    streamRecords.push(parsed);
     if (parsed?.event === "done" || Object.hasOwn(parsed || {}, "ok")) {
       result = parsed;
     }
@@ -127,7 +191,27 @@ export function parseSidecarStreamStdout(stdout) {
   if (!result) {
     throw new AcceptanceError("sidecar_invalid_json");
   }
-  const streamingSeen = events.includes("agent.message.chunk");
+  const finalSessionId = [result?.nativeSessionId, result?.sessionId, result?.threadId]
+    .find(validPublicStreamIdentifier) || "";
+  let validStreamingChunks = 0;
+  for (const record of streamRecords) {
+    if (record?.event !== "agent.message.chunk") continue;
+    const validPayload = record.payload !== null
+      && typeof record.payload === "object"
+      && !Array.isArray(record.payload);
+    if (!validPublicStreamIdentifier(record.sessionId)
+      || !validPublicStreamIdentifier(record.turnId)
+      || !validPayload
+      || typeof record.payload.text !== "string"
+      || record.payload.text.length === 0) {
+      throw new AcceptanceError("sidecar_stream_chunk_invalid");
+    }
+    if (!validPublicStreamIdentifier(finalSessionId) || record.sessionId !== finalSessionId) {
+      throw new AcceptanceError("sidecar_stream_session_mismatch");
+    }
+    validStreamingChunks += 1;
+  }
+  const streamingSeen = validStreamingChunks > 0;
   const structuredSeen = events.includes("agent.message.completed")
     && (events.includes("dispatch.turn.started") || events.includes("agent.message.chunk"));
   return { result, events, streamingSeen, structuredSeen };
@@ -161,7 +245,8 @@ export async function runSidecar(context, request) {
     } else {
       result = JSON.parse(run.stdout);
     }
-  } catch {
+  } catch (error) {
+    if (error instanceof AcceptanceError) throw error;
     throw new AcceptanceError(
       run.statusCode === 0 ? "sidecar_invalid_json" : "sidecar_process_failed",
     );

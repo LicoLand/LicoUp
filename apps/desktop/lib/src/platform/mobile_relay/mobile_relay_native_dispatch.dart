@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter_client/src/contracts/agent_command_runner.dart';
+import 'package:flutter_client/src/contracts/generated/secure_mesh.g.dart';
 import 'package:flutter_client/src/platform/native_client/native_cli_ports.dart';
 import 'package:flutter_client/src/platform/secure_mesh/secure_mesh_ios_bridge.dart';
 import 'package:flutter_client/src/platform/secure_mesh/secure_mesh_mobile_bridge.dart';
@@ -70,6 +71,16 @@ final class DefaultMobileRelayNativeDispatch
     bool authorize = false,
   }) async {
     try {
+      if (action.startsWith('secure_mesh.')) {
+        final result = await bridge.execute(
+          SecureMeshRequest(
+            action: SecureMeshAction.fromWire(action),
+            params: Map<String, Object?>.from(params),
+            authorize: authorize,
+          ),
+        );
+        return Map<String, dynamic>.from(result.value);
+      }
       return await bridge.nativeJson({
         'action': action,
         'params': Map<String, dynamic>.unmodifiable(params),

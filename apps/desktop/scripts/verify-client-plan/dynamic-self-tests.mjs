@@ -113,7 +113,7 @@ assert(authorityProofSelfTestReport.ok === true &&
   authorityProofSelfTestReport.privateKeyTrustRootRejected === true &&
   authorityProofSelfTestReport.inTreeTrustRootRejected === true,
   "secure mesh authority-proof self-test must accept valid signatures and reject tampered reports, private-key trust roots, and in-tree trust roots");
-const authorityProofTemplateRef = "build/tmp/secure-mesh-authority-proof-template-plan-self-test.json";
+const authorityProofTemplateRef = "build/local/secure-mesh-authority-proof-template-plan-self-test.json";
 const authorityProofTemplate = spawnSync(process.execPath, [
   "tools/scripts/client-secure-mesh-e2ee-evidence-bundle.mjs",
   "--generate-authority-proof-template",
@@ -138,7 +138,7 @@ assert(authorityProofTemplateReport.ok === true &&
   authorityProofTemplateReport.authorityProofTemplateWritten === true &&
   authorityProofTemplateReport.report === authorityProofTemplateRef &&
   authorityProofTemplateReport.productionReadyClaimed === false &&
-  authorityProofTemplatePayload.schemaVersion === "licolite.secure-mesh.e2ee-authority-proof-template.v1" &&
+  authorityProofTemplatePayload.schemaVersion === "licomesh.secure-mesh.e2ee-authority-proof-template.v1" &&
   authorityProofTemplatePayload.redacted === true &&
   authorityProofTemplatePayload.productionReadyClaimed === false &&
   authorityProofTemplatePayload.rawPrivateMaterialIncluded === false &&

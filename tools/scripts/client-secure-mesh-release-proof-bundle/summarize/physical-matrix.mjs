@@ -4,7 +4,7 @@ import { dedupeRemainingGates, reportRecord, stableStringList } from "../lists.m
 export function summarizePhysicalMatrixReport(report = {}) {
   report = reportRecord(report);
   const inputIntegrity = releaseInputIntegrity(report, {
-    schemaVersion: "licolite.secure-mesh.physical-device-matrix-report.v2",
+    schemaVersion: "licomesh.secure-mesh.physical-device-matrix-report.v2",
     verifier: "tools/scripts/client-secure-mesh-physical-device-matrix.mjs"
   });
   const summary = inputIntegrity.ok ? (report.summary || {}) : {};

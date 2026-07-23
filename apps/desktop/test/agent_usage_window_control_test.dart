@@ -6,35 +6,57 @@ import 'package:flutter_client/src/frontend/features/agents/ui/agent_usage_windo
 import 'package:flutter_client/src/frontend/l10n/lico_strings.dart';
 
 void main() {
-  testWidgets('usage window exposes every day from 1 through 365', (
-    tester,
-  ) async {
+  testWidgets('usage window presets apply in one tap', (tester) async {
     final selected = <int>[];
     await tester.pumpWidget(
-      MaterialApp(
-        supportedLocales: LicoStrings.supportedLocales,
-        localizationsDelegates: const [
-          GlobalMaterialLocalizations.delegate,
-          GlobalCupertinoLocalizations.delegate,
-          GlobalWidgetsLocalizations.delegate,
-        ],
-        home: Scaffold(
-          body: AgentUsageWindowControl(
-            days: 30,
-            busy: false,
-            onChanged: selected.add,
-          ),
+      _WindowTestApp(
+        child: AgentUsageWindowControl(
+          days: 30,
+          busy: false,
+          onChanged: selected.add,
         ),
       ),
     );
 
-    final slider = tester.widget<Slider>(
-      find.byKey(const Key('agent-usage-history-days')),
-    );
-    expect(slider.min, 1);
-    expect(slider.max, 365);
-    expect(slider.divisions, 364);
-    slider.onChangeEnd!(365);
-    expect(selected, [365]);
+    await tester.tap(find.byKey(const Key('agent-usage-window-chip-90')));
+    await tester.pump();
+    expect(selected, [90]);
+    expect(find.byKey(const Key('agent-usage-window-chip-7')), findsOneWidget);
   });
+
+  testWidgets('usage window stays inert while busy', (tester) async {
+    final selected = <int>[];
+    await tester.pumpWidget(
+      _WindowTestApp(
+        child: AgentUsageWindowControl(
+          days: 30,
+          busy: true,
+          onChanged: selected.add,
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const Key('agent-usage-window-chip-7')));
+    await tester.pump();
+    expect(selected, isEmpty);
+  });
+}
+
+class _WindowTestApp extends StatelessWidget {
+  const _WindowTestApp({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      supportedLocales: LicoStrings.supportedLocales,
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+      ],
+      home: Scaffold(body: Center(child: child)),
+    );
+  }
 }

@@ -21,7 +21,7 @@ export const METADATA_PAYLOAD_CLASSES = Object.freeze([
 export function metadataResistanceEvidenceReady(report, sourceStateDigest) {
   const evidence = report?.metadataResistanceEvidence || {};
   return evidence.schemaVersion ===
-      "licolite.secure-mesh.metadata-resistance-evidence.v1" &&
+      "licomesh.secure-mesh.metadata-resistance-evidence.v1" &&
     evidence.sourceStateDigest === sourceStateDigest &&
     SHA256.test(text(evidence.canonicalWireReportDigest)) &&
     SHA256.test(text(evidence.residualMetadataReportDigest)) &&

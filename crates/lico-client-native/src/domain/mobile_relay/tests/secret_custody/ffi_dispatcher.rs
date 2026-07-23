@@ -7,11 +7,26 @@ fn mobile_ffi_dispatcher_callback_store_keeps_public_reads_no_auth_until_authori
     let store = Arc::new(EphemeralSecretStore::new());
 
     let mut pc_config = default_config();
-    let pc_descriptor =
-        ensure_mobile_relay_endpoint_descriptor(&mut pc_config, "desktop_sidecar").unwrap();
+    let pc_descriptor = ensure_mobile_relay_endpoint_descriptor(
+        &mut pc_config,
+        test_runtime_secret_material(stringify!(&mut pc_config)),
+        "desktop_sidecar",
+    )
+    .unwrap();
     let mut mobile_config = default_config();
-    ensure_mobile_relay_endpoint_descriptor(&mut mobile_config, "mobile").unwrap();
-    apply_peer_secure_mesh_descriptor(&mut mobile_config, &pc_descriptor, true).unwrap();
+    ensure_mobile_relay_endpoint_descriptor(
+        &mut mobile_config,
+        test_runtime_secret_material(stringify!(&mut mobile_config)),
+        "mobile",
+    )
+    .unwrap();
+    apply_peer_secure_mesh_descriptor(
+        &mut mobile_config,
+        test_runtime_secret_material(stringify!(&mut mobile_config)),
+        &pc_descriptor,
+        true,
+    )
+    .unwrap();
     let secret_values: Vec<String> = MOBILE_RELAY_E2EE_NATIVE_SECRET_FIELDS
         .iter()
         .map(|(field, _)| {

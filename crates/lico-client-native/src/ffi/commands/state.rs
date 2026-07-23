@@ -1,43 +1,43 @@
-// state commands: state get|set <collection>, activity list
-
-use super::{CliExecution, CommandTable, cli_params, parse_json_arg};
+use super::{AdmittedCommand, CliExecution, admitted_params};
+use crate::ffi::generated::client_state::{
+    ClientStateCollection, ClientStateDocument, ClientStateGetRequest, ClientStateSetRequest,
+};
 use anyhow::Result;
 
-pub fn register_commands(table: &mut CommandTable) {
-    table.register_rest(
-        &["state", "get"],
-        handle_state_get,
-        "Get state by collection",
-    );
-    table.register_rest(
-        &["state", "set"],
-        handle_state_set,
-        "Set state collection payload",
-    );
-    table.register_rest(
-        &["activity", "list"],
-        handle_activity_list,
-        "List recent activity",
-    );
+// Public CLI adapter: user-facing state commands immediately construct the
+// generated DTOs and do not define a second state contract.
+pub(super) fn handle_state_get(command: AdmittedCommand) -> Result<CliExecution> {
+    let collection = serde_json::from_value::<ClientStateCollection>(serde_json::json!(
+        command.required_text("collection")
+    ))?;
+    let result = crate::platform::client_state::state_get(ClientStateGetRequest { collection })?;
+    Ok(CliExecution::Json(serde_json::to_value(result)?))
 }
 
-fn handle_state_get(args: &[String]) -> Result<CliExecution> {
-    let collection = &args[2];
-    Ok(CliExecution::Json(
-        crate::platform::client_state::state_get(collection)?,
-    ))
+pub(super) fn handle_state_set(command: AdmittedCommand) -> Result<CliExecution> {
+    let collection = serde_json::from_value::<ClientStateCollection>(serde_json::json!(
+        command.required_text("collection")
+    ))?;
+    let document =
+        ClientStateDocument::for_collection(collection, command.required_json("payload").clone())
+            .map_err(anyhow::Error::msg)?;
+    let result = crate::platform::client_state::state_set(ClientStateSetRequest {
+        collection,
+        document,
+    })?;
+    Ok(CliExecution::Json(serde_json::to_value(result)?))
 }
 
-fn handle_state_set(args: &[String]) -> Result<CliExecution> {
-    let collection = &args[2];
-    let payload = &args[3];
-    Ok(CliExecution::Json(
-        crate::platform::client_state::state_set(collection, parse_json_arg(payload))?,
-    ))
-}
-
-fn handle_activity_list(args: &[String]) -> Result<CliExecution> {
-    let params = cli_params(&args[2..]);
+pub(super) fn handle_activity_list(command: AdmittedCommand) -> Result<CliExecution> {
+    let params = admitted_params(
+        &[
+            ("type", command.option_text("type")),
+            ("target", command.option_text("target")),
+            ("limit", command.option_text("limit")),
+        ],
+        &[],
+        &[],
+    );
     Ok(CliExecution::Json(
         crate::platform::client_state::activity_list(&params)?,
     ))

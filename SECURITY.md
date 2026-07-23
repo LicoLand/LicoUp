@@ -46,7 +46,7 @@ platform state. Every start verifies the immutable source commit, full signed
 inventory, fixed runner, assembled payload, and process identity. Ordinary
 client state is only a projection and cannot establish trust.
 
-Read the [architecture guide](docs/ARCHITECTURE.md) for the full data boundary.
+Read the [architecture guide](docs/architecture/README.md) for the full data boundary.
 
 ## Relay threat model
 

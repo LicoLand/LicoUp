@@ -80,7 +80,7 @@ async function loadAndroidPlatformCryptoEvidence() {
   const summary = payload?.summary || {};
   const ready = present &&
     payload?.ok === true &&
-    payload?.schemaVersion === "licolite.secure-mesh.android-platform-crypto-acceptance.v1" &&
+    payload?.schemaVersion === "licomesh.secure-mesh.android-platform-crypto-acceptance.v1" &&
     payload?.verifier === "tools/scripts/client-android-native-tests.mjs" &&
     payload?.platform === "android" &&
     summary.platformCryptoAcceptanceReady === true &&
@@ -118,7 +118,7 @@ async function loadRelayMockEvidence() {
   const payload = await readJsonIfPresent(report);
   const present = Boolean(payload && Object.keys(payload).length > 0);
   const ready = present &&
-    payload?.schemaVersion === "licolite.secure-client-relay.client-acceptance-report.v1" &&
+    payload?.schemaVersion === "licomesh.secure-client-relay.client-acceptance-report.v1" &&
     payload?.ok === true &&
     secureClientRelayMockE2eReady(payload.mock) &&
     payload?.summary?.exactFiveOperationsObserved === true &&
@@ -396,7 +396,7 @@ const boundedTransferQueueReady =
   nativeResults.some((item) => item.id === "secure_mesh_file_transfer_queue_rejects_ciphertext_byte_overflow_without_mutation" && item.ok);
 const report = {
   ok,
-  schemaVersion: "licolite.secure-mesh.encrypted-file-handoff-report.v1",
+  schemaVersion: "licomesh.secure-mesh.encrypted-file-handoff-report.v1",
   evidenceRefSchemaVersion: SECURE_CLIENT_MESH_E2EE_EVIDENCE_REF_REPORT_SCHEMA_VERSION,
   verifier: "tools/scripts/client-secure-mesh-encrypted-file-handoff.mjs",
   generatedBy: "tools/scripts/client-secure-mesh-encrypted-file-handoff.mjs",

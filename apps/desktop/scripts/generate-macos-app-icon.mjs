@@ -6,7 +6,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const workspaceRoot = path.resolve(fileURLToPath(new URL("../../..", import.meta.url)));
-const defaultSourcePath = path.join(workspaceRoot, "apps", "desktop", "assets", "brand", "lico-app-icon.svg");
+const defaultSourcePath = path.join(workspaceRoot, "apps", "desktop", "assets", "brand", "lico-app-icon.png");
 const iconSetRoot = path.join(
   workspaceRoot,
   "apps",
@@ -31,7 +31,7 @@ function parseArgs(argv) {
     if (arg === "--source") {
       const value = argv[index + 1];
       if (!value) {
-        throw new Error("--source requires an SVG path");
+        throw new Error("--source requires an image path");
       }
       options.sourcePath = path.isAbsolute(value) ? value : path.resolve(process.cwd(), value);
       index += 1;
@@ -119,13 +119,23 @@ function renderSvgToPng(sourcePath, tempDir) {
   return renderedPath;
 }
 
+function prepareBaseImage(sourcePath, tempDir) {
+  const ext = path.extname(sourcePath).toLowerCase();
+  if (ext === ".svg") {
+    return renderSvgToPng(sourcePath, tempDir);
+  }
+  // Raster sources (PNG/JPG) are resized directly by sips.
+  return sourcePath;
+}
+
 function main() {
   const options = parseArgs(process.argv.slice(2));
   if (!existsSync(options.sourcePath)) {
-    throw new Error(`Lico Arc icon source SVG does not exist: ${options.sourcePath}`);
+    throw new Error(`Lico Arc icon source does not exist: ${options.sourcePath}`);
   }
-  if (path.extname(options.sourcePath).toLowerCase() !== ".svg") {
-    throw new Error(`Lico Arc icon source must be an SVG file: ${options.sourcePath}`);
+  const supportedExtensions = new Set([".svg", ".png", ".jpg", ".jpeg"]);
+  if (!supportedExtensions.has(path.extname(options.sourcePath).toLowerCase())) {
+    throw new Error(`Lico Arc icon source must be an SVG or raster image (PNG/JPG): ${options.sourcePath}`);
   }
 
   mkdirSync(iconSetRoot, { recursive: true });
@@ -137,7 +147,7 @@ function main() {
   const tempDir = path.join(os.tmpdir(), "lico-client-app-icon");
   rmSync(tempDir, { recursive: true, force: true });
   mkdirSync(tempDir, { recursive: true });
-  const renderedPath = renderSvgToPng(options.sourcePath, tempDir);
+  const renderedPath = prepareBaseImage(options.sourcePath, tempDir);
 
   for (const size of iconSizes) {
     run("sips", ["-z", String(size), String(size), renderedPath, "--out", iconPath(size)]);

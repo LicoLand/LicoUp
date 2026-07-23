@@ -8,8 +8,8 @@ fn codex_usage_warm_scan_reuses_files_and_append_scan_reads_only_suffix() {
     fs::write(
         &rollout,
         [
-            r#"{"timestamp":"2026-07-08T10:00:00Z","type":"session_meta","payload":{"id":"session-cache"}}"#.to_string(),
-            token_event("2026-07-08T10:00:01Z", (6, 2, 4), (6, 2, 4)),
+            r#"{"timestamp":"2026-07-10T10:00:00Z","type":"session_meta","payload":{"id":"session-cache"}}"#.to_string(),
+            token_event("2026-07-10T10:00:01Z", (6, 2, 4), (6, 2, 4)),
         ]
         .join("\n")
             + "\n",
@@ -31,7 +31,7 @@ fn codex_usage_warm_scan_reuses_files_and_append_scan_reads_only_suffix() {
     writeln!(
         file,
         "{}",
-        token_event("2026-07-08T10:00:02Z", (8, 2, 5), (2, 0, 1))
+        token_event("2026-07-10T10:00:02Z", (8, 2, 5), (2, 0, 1))
     )
     .unwrap();
 
@@ -44,7 +44,7 @@ fn codex_usage_warm_scan_reuses_files_and_append_scan_reads_only_suffix() {
 }
 
 #[test]
-fn codex_usage_rewrite_to_larger_same_file_forces_full_rescan() {
+fn codex_usage_keeps_finalized_day_immutable_after_source_rewrite() {
     let history_root = temp_dir("codex-usage-rewrite-history");
     let state_root = temp_dir("codex-usage-rewrite-state");
     let rollout = history_root.join("rollout.jsonl");
@@ -76,7 +76,7 @@ fn codex_usage_rewrite_to_larger_same_file_forces_full_rescan() {
 
     let rewritten = agent_usage::scan(&params).unwrap();
     let history = &rewritten["agents"][0]["history"];
-    assert_eq!(history["totalTokens"], 20);
+    assert_eq!(history["totalTokens"], 10);
     assert_eq!(history["scanCache"]["appendedFiles"], 0);
     assert_eq!(history["scanCache"]["rescannedFiles"], 1);
 }
@@ -86,9 +86,9 @@ fn codex_usage_detects_middle_rewrite_before_append_in_large_file() {
     let history_root = temp_dir("codex-usage-large-middle-rewrite-history");
     let state_root = temp_dir("codex-usage-large-middle-rewrite-state");
     let rollout = history_root.join("rollout.jsonl");
-    let metadata = r#"{"timestamp":"2026-07-08T10:00:00Z","type":"session_meta","payload":{"id":"large-rewrite-session"}}"#;
+    let metadata = r#"{"timestamp":"2026-07-10T10:00:00Z","type":"session_meta","payload":{"id":"large-rewrite-session"}}"#;
     let padding = json!({
-        "timestamp": "2026-07-08T10:00:00Z",
+        "timestamp": "2026-07-10T10:00:00Z",
         "type": "turn_context",
         "payload": {
             "model": "gpt-test-codex",
@@ -99,7 +99,7 @@ fn codex_usage_detects_middle_rewrite_before_append_in_large_file() {
     let original = [
         metadata.to_string(),
         padding.clone(),
-        token_event("2026-07-08T10:00:01Z", (10, 4, 2), (10, 4, 2)),
+        token_event("2026-07-10T10:00:01Z", (10, 4, 2), (10, 4, 2)),
         padding.clone(),
     ]
     .join("\n");
@@ -113,9 +113,9 @@ fn codex_usage_detects_middle_rewrite_before_append_in_large_file() {
     let rewritten = [
         metadata.to_string(),
         padding.clone(),
-        token_event("2026-07-08T10:00:01Z", (20, 4, 2), (20, 4, 2)),
+        token_event("2026-07-10T10:00:01Z", (20, 4, 2), (20, 4, 2)),
         padding,
-        r#"{"timestamp":"2026-07-08T10:00:02Z","type":"turn_context","payload":{"model":"gpt-test-codex"}}"#.to_string(),
+        r#"{"timestamp":"2026-07-10T10:00:02Z","type":"turn_context","payload":{"model":"gpt-test-codex"}}"#.to_string(),
     ]
     .join("\n");
     fs::write(&rollout, rewritten).unwrap();
@@ -132,10 +132,10 @@ fn codex_usage_force_refresh_detects_equal_metadata_rewrite() {
     let history_root = temp_dir("codex-usage-equal-metadata-rewrite-history");
     let state_root = temp_dir("codex-usage-equal-metadata-rewrite-state");
     let rollout = history_root.join("rollout.jsonl");
-    let metadata = r#"{"timestamp":"2026-07-08T10:00:00Z","type":"session_meta","payload":{"id":"equal-metadata-session"}}"#;
+    let metadata = r#"{"timestamp":"2026-07-10T10:00:00Z","type":"session_meta","payload":{"id":"equal-metadata-session"}}"#;
     let original = [
         metadata.to_string(),
-        token_event("2026-07-08T10:00:01Z", (10, 4, 2), (10, 4, 2)),
+        token_event("2026-07-10T10:00:01Z", (10, 4, 2), (10, 4, 2)),
     ]
     .join("\n");
     fs::write(&rollout, &original).unwrap();
@@ -149,7 +149,7 @@ fn codex_usage_force_refresh_detects_equal_metadata_rewrite() {
 
     let replacement = [
         metadata.to_string(),
-        token_event("2026-07-08T10:00:01Z", (20, 4, 2), (20, 4, 2)),
+        token_event("2026-07-10T10:00:01Z", (20, 4, 2), (20, 4, 2)),
     ]
     .join("\n");
     assert_eq!(replacement.len(), original.len());

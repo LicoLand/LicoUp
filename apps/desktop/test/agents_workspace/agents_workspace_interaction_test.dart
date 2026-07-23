@@ -304,7 +304,7 @@ void registerAgentsWorkspaceInteractionScenarios() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('agents workspace sidebar exposes explore navigation keys', (
+  testWidgets('agents workspace sidebar exposes conversation actions', (
     tester,
   ) async {
     final controller = ClientController();
@@ -346,10 +346,15 @@ void registerAgentsWorkspaceInteractionScenarios() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.byKey(const Key('agents-sidebar-nav-skills')), findsOneWidget);
-    expect(find.byKey(const Key('agents-sidebar-nav-stats')), findsOneWidget);
-    expect(find.text('Token Usage'), findsOneWidget);
-    expect(find.text('Skill Hub'), findsOneWidget);
+    expect(find.text('CONVERSATIONS'), findsOneWidget);
+    expect(
+      find.byKey(const Key('agents-sidebar-new-conversation')),
+      findsOneWidget,
+    );
+    expect(find.byKey(const Key('agents-sidebar-archive')), findsOneWidget);
+    expect(find.byKey(const Key('agents-sidebar-add-target')), findsOneWidget);
+    expect(find.byKey(const Key('agents-sidebar-nav-skills')), findsNothing);
+    expect(find.byKey(const Key('agents-sidebar-nav-stats')), findsNothing);
   });
 }
 

@@ -3,6 +3,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
+import { CLIENT_MODULE_CATALOG } from "../../../tools/regression/client-module-catalog.mjs";
 
 const repoRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -11,18 +12,26 @@ const repoRoot = path.resolve(
 const sourceRoot =
   "crates/lico-client-native/src/domain/agent_usage/agent_usage_codex";
 const integrationRoot = "crates/lico-client-native/tests/agent_usage_cache_cases";
+const integrationFacade =
+  "crates/lico-client-native/tests/agent_usage_incremental_cache.rs";
+const architectureRegistry =
+  "apps/desktop/scripts/client-architecture/checks/native/domain-and-crypto-boundaries.mjs";
+const compositionModuleId = "rust.domain.agent-usage-cache";
 
 const productionLeaves = Object.freeze([
   "aggregation.rs",
   "append_guard.rs",
   "cache.rs",
   "cache_batch.rs",
+  "cache_cleanup.rs",
   "constants.rs",
   "event_hash.rs",
   "file_collection.rs",
   "lineage.rs",
+  "model_backfill.rs",
   "models.rs",
   "parser.rs",
+  "rollup.rs",
   "scan.rs",
   "scan_params.rs",
   "utils.rs",
@@ -33,31 +42,150 @@ const lineLimits = Object.freeze({
   "append_guard.rs": 80,
   "cache.rs": 190,
   "cache_batch.rs": 220,
+  "cache_cleanup.rs": 90,
   "constants.rs": 15,
   "event_hash.rs": 100,
   "file_collection.rs": 90,
   "lineage.rs": 100,
+  "model_backfill.rs": 110,
   "models.rs": 150,
   "parser.rs": 300,
-  "scan.rs": 190,
+  "rollup.rs": 230,
+  "scan.rs": 200,
   "scan_params.rs": 100,
   "utils.rs": 70,
 });
 
 const integrationLeaves = Object.freeze({
+  "adapter_coverage.rs": 135,
   "append_refresh.rs": 190,
   "cache_runtime.rs": 130,
+  "cumulative_resume.rs": 220,
   "dedup_lineage.rs": 170,
-  "estimates.rs": 75,
+  "fallback_coverage.rs": 180,
   "generic_usage.rs": 145,
+  "native_rollup.rs": 150,
   "reconciliation.rs": 40,
   "retained_reports.rs": 80,
   "support.rs": 115,
   "windows.rs": 80,
 });
 
+const preciseScenarioModules = Object.freeze({
+  "adapter_coverage.rs": "rust.domain.agent-usage-cache.adapter-coverage",
+  "append_refresh.rs": "rust.domain.agent-usage-cache.append-refresh",
+  "cache_runtime.rs": "rust.domain.agent-usage-cache.runtime",
+  "cumulative_resume.rs": "rust.domain.agent-usage-cache.cumulative-resume",
+  "dedup_lineage.rs": "rust.domain.agent-usage-cache.dedup-lineage",
+  "fallback_coverage.rs": "rust.domain.agent-usage-cache.fallback-coverage",
+  "generic_usage.rs": "rust.domain.agent-usage-cache.generic-usage",
+  "native_rollup.rs": "rust.domain.agent-usage-cache.native-rollup",
+  "reconciliation.rs": "rust.domain.agent-usage-cache.reconciliation",
+  "retained_reports.rs": "rust.domain.agent-usage-cache.retained-reports",
+  "windows.rs": "rust.domain.agent-usage-cache.windows",
+});
+
 async function read(relativePath) {
   return fs.readFile(path.join(repoRoot, relativePath), "utf8");
+}
+
+async function discoverIntegrationLeaves() {
+  const rustLeaves = [];
+  async function visit(relativeDirectory) {
+    const entries = await fs.readdir(
+      path.join(repoRoot, integrationRoot, relativeDirectory),
+      { withFileTypes: true },
+    );
+    for (const entry of entries) {
+      const relativePath = path.posix.join(relativeDirectory, entry.name);
+      if (entry.isDirectory()) {
+        await visit(relativePath);
+        continue;
+      }
+      assert.equal(
+        entry.isFile(),
+        true,
+        `${relativePath} must be an ordinary Codex usage integration entry`,
+      );
+      if (!entry.name.endsWith(".rs") || relativePath === "mod.rs") continue;
+      rustLeaves.push(relativePath);
+    }
+  }
+  await visit("");
+  return rustLeaves.sort();
+}
+
+function declaredIntegrationLeaves(composition) {
+  return [...composition.matchAll(/^mod ([a-z_]+);$/gmu)].map(
+    (match) => `${match[1]}.rs`,
+  );
+}
+
+function assertIntegrationTestCommand(module, expectedFilter) {
+  assert.equal(module.command.program, "cargo");
+  assert.equal(module.command.args[0], "test");
+  const testFlagIndexes = module.command.args
+    .map((argument, index) => argument === "--test" ? index : -1)
+    .filter((index) => index !== -1);
+  assert.equal(testFlagIndexes.length, 1);
+  assert.equal(
+    module.command.args[testFlagIndexes[0] + 1],
+    "agent_usage_incremental_cache",
+  );
+  assert.equal(module.command.args.at(-1), expectedFilter);
+}
+
+function architectureIntegrationLeaves(source) {
+  const registryMarker =
+    "const agentUsageCacheScenarioLimits = new Map([";
+  const registryStart = source.indexOf(registryMarker);
+  assert.notEqual(registryStart, -1, "missing Codex usage architecture registry");
+  const entriesStart = registryStart + registryMarker.length;
+  const registryEnd = source.indexOf("]);", entriesStart);
+  assert.notEqual(registryEnd, -1, "unterminated Codex usage architecture registry");
+  const nextDeclaration = source.indexOf(
+    "const agentUsageCacheIntegrationFacade",
+    registryEnd + 3,
+  );
+  assert.notEqual(
+    nextDeclaration,
+    -1,
+    "missing declaration after Codex usage architecture registry",
+  );
+  assert.match(
+    source.slice(registryEnd + 3, nextDeclaration),
+    /^\s*$/u,
+    "Codex usage architecture registry must end after its static Map",
+  );
+
+  const entriesSource = source.slice(entriesStart, registryEnd);
+  const entryPattern =
+    /\[`\$\{agentUsageCacheIntegrationRoot\}\/([a-z_]+\.rs)`,\s*([1-9]\d*)\]/yu;
+  const leaves = [];
+  let cursor = 0;
+  while (cursor < entriesSource.length) {
+    const whitespace = /^\s*/u.exec(entriesSource.slice(cursor));
+    cursor += whitespace[0].length;
+    if (cursor === entriesSource.length) break;
+    entryPattern.lastIndex = cursor;
+    const entry = entryPattern.exec(entriesSource);
+    assert.ok(
+      entry,
+      `non-static Codex usage architecture registry entry at offset ${cursor}`,
+    );
+    leaves.push(entry[1]);
+    cursor = entryPattern.lastIndex;
+    const trailingWhitespace = /^\s*/u.exec(entriesSource.slice(cursor));
+    cursor += trailingWhitespace[0].length;
+    if (cursor === entriesSource.length) break;
+    assert.equal(
+      entriesSource[cursor],
+      ",",
+      `missing Codex usage architecture registry delimiter at offset ${cursor}`,
+    );
+    cursor += 1;
+  }
+  return leaves;
 }
 
 async function sources() {
@@ -129,8 +257,6 @@ test("Codex usage cache keeps incremental guards, prepared batches, and indexed 
     "TransactionBehavior::Immediate",
     "CREATE INDEX usage_rows_window",
     "CREATE INDEX usage_rows_identity",
-    "CREATE INDEX usage_estimates_window",
-    "CREATE INDEX usage_estimates_identity",
     "struct CacheBatch",
     "struct ParserBatch",
     "Statement<'connection>",
@@ -163,26 +289,20 @@ test("Codex usage canonical identity and lineage remain deterministic", async ()
   assert.ok(source["event_hash.rs"].includes("keys.sort()"));
   assert.ok(source["lineage.rs"].includes("HashMap<String, String>"));
   assert.ok(source["lineage.rs"].includes("BTreeSet::<String>::new()"));
-  assert.ok(source["aggregation.rs"].includes("event_identity=r.event_identity"));
-  assert.ok(source["aggregation.rs"].includes("prior_file.lineage_scope=f.lineage_scope"));
+  assert.ok(source["rollup.rs"].includes("prior.event_identity=r.event_identity"));
+  assert.ok(source["rollup.rs"].includes("prior_file.lineage_scope=f.lineage_scope"));
 });
 
-test("Codex usage integration target is a thin composition of precise scenario leaves", async () => {
-  const crateRoot = await read(
-    "crates/lico-client-native/tests/agent_usage_incremental_cache.rs",
-  );
+test("Codex usage integration composition matches every ordinary leaf on disk exactly once", async () => {
+  const crateRoot = await read(integrationFacade);
   const composition = await read(`${integrationRoot}/mod.rs`);
+  const discoveredLeaves = await discoverIntegrationLeaves();
+  const declaredLeaves = declaredIntegrationLeaves(composition);
+  const expectedLeaves = Object.keys(integrationLeaves).sort();
   assert.equal(crateRoot.trim(), "mod agent_usage_cache_cases;");
-  assert.deepEqual(
-    [...composition.matchAll(/^mod ([a-z_]+);$/gmu)]
-      .map((match) => `${match[1]}.rs`)
-      .filter((leaf) => leaf !== "support.rs")
-      .sort(),
-    Object.keys(integrationLeaves)
-      .filter((leaf) => leaf !== "support.rs")
-      .sort(),
-  );
-  assert.ok(composition.includes("mod support;"));
+  assert.deepEqual(discoveredLeaves, expectedLeaves);
+  assert.equal(declaredLeaves.length, new Set(declaredLeaves).size);
+  assert.deepEqual([...declaredLeaves].sort(), discoveredLeaves);
   for (const [leaf, maxLines] of Object.entries(integrationLeaves)) {
     const body = await read(`${integrationRoot}/${leaf}`);
     assert.ok(
@@ -192,4 +312,72 @@ test("Codex usage integration target is a thin composition of precise scenario l
     assert.equal(body.includes("include!("), false);
     assert.equal(body.includes("#[path"), false);
   }
+});
+
+test("Codex usage architecture registry owns the complete integration leaf set exactly once", async () => {
+  const registeredLeaves = architectureIntegrationLeaves(
+    await read(architectureRegistry),
+  );
+  assert.equal(registeredLeaves.length, new Set(registeredLeaves).size);
+  assert.deepEqual(
+    [...registeredLeaves].sort(),
+    Object.keys(integrationLeaves).sort(),
+  );
+});
+
+test("Codex usage regression catalog gives every scenario one precise owner and support one composition owner", () => {
+  const expectedScenarioLeaves = Object.keys(preciseScenarioModules).sort();
+  assert.equal(expectedScenarioLeaves.length, 11);
+  assert.deepEqual(
+    Object.keys(integrationLeaves)
+      .filter((leaf) => leaf !== "support.rs")
+      .sort(),
+    expectedScenarioLeaves,
+  );
+
+  const moduleById = new Map(CLIENT_MODULE_CATALOG.map((module) => [
+    module.id,
+    module,
+  ]));
+  assert.equal(moduleById.size, CLIENT_MODULE_CATALOG.length);
+  const scenarioPaths = new Set(Object.keys(preciseScenarioModules).map(
+    (leaf) => `${integrationRoot}/${leaf}`,
+  ));
+  const scenarioInputOwners = new Map();
+  const supportPath = `${integrationRoot}/support.rs`;
+  const supportInputOwners = [];
+  for (const module of CLIENT_MODULE_CATALOG) {
+    for (const input of module.inputs) {
+      if (scenarioPaths.has(input)) {
+        const owners = scenarioInputOwners.get(input) ?? [];
+        owners.push(module.id);
+        scenarioInputOwners.set(input, owners);
+      }
+      if (input === supportPath) supportInputOwners.push(module.id);
+    }
+  }
+
+  for (const [leaf, moduleId] of Object.entries(preciseScenarioModules)) {
+    const module = moduleById.get(moduleId);
+    const scenarioPath = `${integrationRoot}/${leaf}`;
+    assert.ok(module, `missing precise regression module for ${leaf}`);
+    assert.equal(module.inputs.includes(scenarioPath), true);
+    assertIntegrationTestCommand(
+      module,
+      `agent_usage_cache_cases::${leaf.slice(0, -3)}::`,
+    );
+    assert.deepEqual(scenarioInputOwners.get(scenarioPath), [moduleId]);
+  }
+  assert.deepEqual(
+    [...scenarioInputOwners.keys()].sort(),
+    [...scenarioPaths].sort(),
+  );
+
+  const compositionModule = moduleById.get(compositionModuleId);
+  assert.ok(compositionModule, "missing Codex usage composition/support module");
+  assert.ok(compositionModule.inputs.includes(integrationFacade));
+  assert.ok(compositionModule.inputs.includes(`${integrationRoot}/mod.rs`));
+  assert.ok(compositionModule.inputs.includes(supportPath));
+  assert.deepEqual(supportInputOwners, [compositionModuleId]);
+  assertIntegrationTestCommand(compositionModule, "agent_usage_cache_cases::");
 });

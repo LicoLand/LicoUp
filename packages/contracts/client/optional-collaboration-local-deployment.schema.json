@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://licolite.dev/contracts/client/optional-collaboration-local-deployment.schema.json",
+  "$id": "https://licomesh.dev/contracts/client/optional-collaboration-local-deployment.schema.json",
   "title": "Lico Arc Optional Local Deployment Catalog",
-  "description": "Declarative, manual-only feature catalog for a user-controlled local LicoLite deployment.",
+  "description": "Declarative, manual-only feature catalog for a user-controlled local LicoMesh deployment.",
   "type": "object",
   "additionalProperties": false,
   "required": ["schemaVersion", "manualOnly", "features"],

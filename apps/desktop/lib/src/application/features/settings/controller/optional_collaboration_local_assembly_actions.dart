@@ -104,8 +104,8 @@ final class OptionalCollaborationLocalAssemblyActions {
       context.replaceLocalServer(server);
       context.localDeploymentPlan = null;
       context.reportAction(
-        'LicoLite 组件已完成本机组装，当前等待单独部署确认；受签名 runner 尚未执行。',
-        'The LicoLite components are assembled and awaiting separate deployment approval; the signed runner has not executed.',
+        'LicoMesh 组件已完成本机组装，当前等待单独部署确认；受签名 runner 尚未执行。',
+        'The LicoMesh components are assembled and awaiting separate deployment approval; the signed runner has not executed.',
       );
       return true;
     } catch (_) {

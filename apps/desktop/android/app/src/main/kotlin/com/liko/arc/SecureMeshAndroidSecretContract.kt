@@ -13,7 +13,7 @@ internal data class SecureMeshAndroidE2eeSecretField(
 )
 
 internal object SecureMeshAndroidSecretContract {
-    const val PROTOCOL_VERSION = "licolite.secure-mesh.v1"
+    const val PROTOCOL_VERSION = "licomesh.secure-mesh.v1"
     const val MOBILE_RELAY_KEY_ALIAS =
         "licoarc_secure_mesh_android_mobile_relay_secret_store_v2"
     const val CIPHER = "AES/GCM/NoPadding"

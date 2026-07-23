@@ -11,7 +11,7 @@ fn pi_session_jsonl_history_preserves_native_session_and_roles() {
             r#"{"type":"session","version":3,"id":"pi-native-session","timestamp":"2026-01-01T00:00:00.000Z","cwd":"/workspace/project"}"#,
             r#"{"type":"session_info","id":"n1","parentId":null,"timestamp":"2026-01-01T00:00:01.000Z","name":"Pi fixture"}"#,
             r#"{"type":"message","id":"m1","parentId":null,"timestamp":"2026-01-01T00:00:02.000Z","message":{"role":"user","content":"List the fixtures"}}"#,
-            r#"{"type":"message","id":"m2","parentId":"m1","timestamp":"2026-01-01T00:00:03.000Z","message":{"role":"assistant","content":[{"type":"text","text":"Found one fixture"}],"stopReason":"stop"}}"#,
+            r#"{"type":"message","id":"m2","parentId":"m1","timestamp":"2026-01-01T00:00:03.000Z","message":{"role":"assistant","model":"pi-test-model","content":[{"type":"text","text":"Found one fixture"}],"usage":{"input":10,"output":5},"stopReason":"stop"}}"#,
         ]
         .join("\n"),
     )
@@ -39,6 +39,22 @@ fn pi_session_jsonl_history_preserves_native_session_and_roles() {
             message["role"] == "agent" && message["text"] == "Found one fixture"
         })
     );
+    let agent = messages
+        .iter()
+        .find(|message| message["role"] == "agent")
+        .unwrap();
+    assert_eq!(agent["model"], "pi-test-model");
+    assert_eq!(agent["usage"]["totalTokens"], 15);
+
+    let usage = crate::domain::agent_usage::scan(&json!({
+        "agent": "pi",
+        "root": display_path(&root),
+        "stateRoot": display_path(&temp_dir("pi-exact-usage-state")),
+        "now": "2026-01-01T12:00:00Z",
+        "forceRefresh": true
+    }))
+    .unwrap();
+    assert_eq!(usage["agents"][0]["history"]["totalTokens"], 15);
 }
 
 #[test]
@@ -53,7 +69,7 @@ fn copilot_adapter_imports_transcript_events() {
             r#"{"type":"user.message","data":{"messageId":"u1","content":"Ask Copilot to inspect routing"},"timestamp":"2026-06-12T00:00:01Z"}"#,
             r#"{"type":"assistant.message","data":{"messageId":"a0","content":""},"timestamp":"2026-06-12T00:00:02Z"}"#,
             r#"{"type":"tool.execution_start","data":{"toolName":"readFile"},"timestamp":"2026-06-12T00:00:03Z"}"#,
-            r#"{"type":"assistant.message","data":{"messageId":"a1","content":"Copilot answer"},"timestamp":"2026-06-12T00:00:04Z"}"#,
+            r#"{"type":"assistant.message","data":{"messageId":"a1","content":"Copilot answer","model":"copilot-test-model","usage":{"input_tokens":20,"output_tokens":6}},"timestamp":"2026-06-12T00:00:04Z"}"#,
         ]
         .join("\n"),
     )
@@ -77,6 +93,8 @@ fn copilot_adapter_imports_transcript_events() {
     assert_eq!(messages[1]["cardType"], "tool-call");
     assert_eq!(messages[1]["cardTitle"], "readFile");
     assert_eq!(messages[2]["role"], "agent");
+    assert_eq!(messages[2]["model"], "copilot-test-model");
+    assert_eq!(messages[2]["usage"]["totalTokens"], 26);
 }
 
 #[test]
@@ -96,7 +114,7 @@ fn copilot_adapter_imports_item_table_chat_sessions() {
                 "INSERT INTO ItemTable (key, value) VALUES (?1, ?2)",
                 [
                     "github.copilot-chat.chatSessions",
-                    r#"{"chatSessions":[{"id":"copilot-chat-1","messages":[{"role":"user","content":"Ask Copilot about LicoLite"},{"role":"assistant","content":"Copilot answer"}]}]}"#,
+                    r#"{"chatSessions":[{"id":"copilot-chat-1","messages":[{"role":"user","content":"Ask Copilot about LicoMesh"},{"role":"assistant","content":"Copilot answer"}]}]}"#,
                 ],
             )
             .unwrap();
@@ -113,6 +131,6 @@ fn copilot_adapter_imports_item_table_chat_sessions() {
     assert_eq!(sessions[0]["adapterId"], "copilot");
     assert_eq!(
         sessions[0]["messages"][0]["text"],
-        "Ask Copilot about LicoLite"
+        "Ask Copilot about LicoMesh"
     );
 }

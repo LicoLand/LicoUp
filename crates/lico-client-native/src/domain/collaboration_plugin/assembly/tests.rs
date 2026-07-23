@@ -232,7 +232,7 @@ pub(super) fn synthetic_record(
     let record = LocalAssemblyRecord {
         schema_version: super::ASSEMBLY_STATE_SCHEMA.to_owned(),
         deployment_id: Uuid::new_v4().to_string(),
-        plugin_id: "licolite-collaboration".to_owned(),
+        plugin_id: "licomesh-collaboration".to_owned(),
         source_url: "https://github.com/example/collaboration-plugin.git".to_owned(),
         server_version: "1.0.0".to_owned(),
         package_digest_sha256: "a".repeat(64),

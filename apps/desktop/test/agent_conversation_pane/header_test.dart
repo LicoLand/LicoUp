@@ -4,8 +4,6 @@ void main() {
   testWidgets('header owns session identity and sidebar toggle interaction', (
     tester,
   ) async {
-    final controller = ClientController();
-    addTearDown(controller.dispose);
     var toggleCount = 0;
     const session = AgentConversationSession(
       id: 'session-1',
@@ -17,14 +15,9 @@ void main() {
     );
     await tester.pumpWidget(
       paneTestApp(
-        ConversationPaneHeader(
-          controller: controller,
-          target: paneTestTarget(),
+        paneTestHeader(
           session: session,
-          historyCollapsed: false,
           onToggleHistory: () => toggleCount += 1,
-          collapseHistoryTooltip: 'Collapse history',
-          expandHistoryTooltip: 'Expand history',
         ),
       ),
     );

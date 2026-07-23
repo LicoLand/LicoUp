@@ -15,7 +15,7 @@ mod response;
 pub const SECURE_MESH_APPROVAL_REQUEST_PROTOCOL: &str = "secure_mesh.approval_request.v1";
 pub const SECURE_MESH_APPROVAL_RESPONSE_PROTOCOL: &str = "secure_mesh.approval_response.v1";
 pub const SECURE_MESH_APPROVAL_CONTENT_TYPE: &str =
-    "application/licolite.secure-mesh.approval.v1+json";
+    "application/licomesh.secure-mesh.approval.v1+json";
 pub const SECURE_MESH_APPROVAL_STATUS: &str =
     "approval_request_response_cas_fanout_available_plaintext_relay_blocked";
 

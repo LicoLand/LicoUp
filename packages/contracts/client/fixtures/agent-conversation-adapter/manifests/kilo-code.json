@@ -67,8 +67,8 @@
       "method": "session-scoped SSE event stream"
     },
     "cancel": {
-      "status": "unsupported",
-      "method": "official lane does not expose a durable active-turn cancel handle"
+      "status": "supported",
+      "method": "POST /session/:id/abort on the supervised loopback service"
     },
     "interruptSteer": {
       "status": "unsupported",
@@ -112,7 +112,7 @@
   "lifecycle": {
     "supervision": "attached-service",
     "cleanupScope": "official-session",
-    "cancelHandleScope": "unavailable",
+    "cancelHandleScope": "active-turn",
     "maxConcurrentTransports": 8,
     "maxTrackedSessions": 1024
   },

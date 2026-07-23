@@ -9,6 +9,7 @@ import 'package:flutter_client/src/frontend/layout/profiles/classic/desktop/dest
 import 'package:flutter_client/src/frontend/layout/profiles/classic/desktop/destinations/mobile_relay_destination.dart';
 import 'package:flutter_client/src/frontend/layout/profiles/classic/desktop/destinations/monitoring_destination.dart';
 import 'package:flutter_client/src/frontend/layout/profiles/classic/desktop/destinations/settings_destination.dart';
+import 'package:flutter_client/src/frontend/layout/profiles/classic/desktop/destinations/plugin_management_destination.dart';
 import 'package:flutter_client/src/frontend/layout/profiles/classic/desktop/preview/classic_desktop_preview.dart';
 import 'package:flutter_client/src/frontend/layout/profiles/classic/desktop/shell/classic_desktop_shell.dart';
 import 'package:flutter_client/src/frontend/layout/profiles/classic/desktop/tokens/classic_desktop_tokens.dart';
@@ -60,12 +61,6 @@ final LayoutSurfaceBundle classicDesktopBundle = LayoutSurfaceBundle(
     LayoutStateNamespace(
       profileId: LayoutProfileId.parse('classic'),
       surface: LayoutRuntimeSurface.desktop,
-      destination: ClientSection.agents,
-      channel: LayoutStateChannels.agentsDestination,
-    ),
-    LayoutStateNamespace(
-      profileId: LayoutProfileId.parse('classic'),
-      surface: LayoutRuntimeSurface.desktop,
       destination: ClientSection.settings,
       channel: LayoutStateChannels.settingsScroll,
     ),
@@ -83,6 +78,8 @@ _classicDesktopDestinationBuilders() => {
   ClientSection.agents: classicDesktopAgentsDestinationBuilder,
   ClientSection.monitoring: classicDesktopMonitoringDestinationBuilder,
   ClientSection.skillHub: classicDesktopSkillHubDestinationBuilder,
+  ClientSection.pluginManagement:
+      classicDesktopPluginManagementDestinationBuilder,
   ClientSection.mobileRelay: classicDesktopMobileRelayDestinationBuilder,
   ClientSection.settings: classicDesktopSettingsDestinationBuilder,
 };

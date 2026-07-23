@@ -1,38 +1,58 @@
-// targets commands: targets scan|add|inspect
-
-use super::{CliExecution, CommandTable, cli_params};
+use super::{AdmittedCommand, CliExecution, admitted_params};
 use anyhow::Result;
-use serde_json::json;
+use serde_json::Value;
 
-pub fn register_commands(table: &mut CommandTable) {
-    table.register_rest(&["targets", "scan"], handle_targets_scan, "Scan targets");
-    table.register_rest(&["targets", "add"], handle_targets_add, "Add a target");
-    table.register_rest(
-        &["targets", "inspect"],
-        handle_targets_inspect,
-        "Inspect a target",
+pub(super) fn handle_targets_scan(command: AdmittedCommand) -> Result<CliExecution> {
+    let params = admitted_params(
+        &[
+            ("stateRoot", command.option_text("state-root")),
+            (
+                "includeAccessibleEnvironments",
+                command.option_text("include-accessible-environments"),
+            ),
+            (
+                "includeHistoryModelCatalog",
+                command.option_text("include-history-model-catalog"),
+            ),
+            (
+                "installerScanCommand",
+                command.option_text("installer-scan-command"),
+            ),
+        ],
+        &[],
+        &[],
     );
-}
-
-fn handle_targets_scan(args: &[String]) -> Result<CliExecution> {
-    let params = cli_params(&args[2..]);
     Ok(CliExecution::Json(
         crate::domain::targets::scan_targets_with_params(&params)?,
     ))
 }
 
-fn handle_targets_add(args: &[String]) -> Result<CliExecution> {
-    let params = cli_params(&args[2..]);
+pub(super) fn handle_targets_add(command: AdmittedCommand) -> Result<CliExecution> {
+    let params = admitted_params(
+        &[
+            ("target", command.option_text("target")),
+            ("configPath", command.option_text("config-path")),
+            ("binaryPath", command.option_text("binary-path")),
+            ("historyRoot", command.option_text("history-root")),
+            ("stateRoot", command.option_text("state-root")),
+        ],
+        &[],
+        &[],
+    );
     Ok(CliExecution::Json(crate::domain::targets::add_target(
         &params,
     )?))
 }
 
-fn handle_targets_inspect(args: &[String]) -> Result<CliExecution> {
-    let target = &args[2];
-    let mut params = cli_params(&args[3..]);
+pub(super) fn handle_targets_inspect(command: AdmittedCommand) -> Result<CliExecution> {
+    let target = command.required_text("target");
+    let mut params = admitted_params(
+        &[("stateRoot", command.option_text("state-root"))],
+        &[],
+        &[],
+    );
     if let Some(object) = params.as_object_mut() {
-        object.insert("target".to_string(), json!(target));
+        object.insert("target".to_string(), Value::String(target.to_string()));
     }
     Ok(CliExecution::Json(
         crate::domain::targets::inspect_target_with_params(&params)?,

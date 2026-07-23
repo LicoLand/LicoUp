@@ -3,7 +3,7 @@ import 'package:flutter_client/src/contracts/optional_collaboration_models.dart'
 const optionalCollaborationTestCommit =
     '0123456789abcdef0123456789abcdef01234567';
 const optionalCollaborationTestRunnerRepository =
-    'https://github.com/example/licolite-runner.git';
+    'https://github.com/example/licomesh-runner.git';
 const optionalCollaborationTestRunnerPublicKey =
     'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
 const optionalCollaborationTestRunnerFingerprint =
@@ -39,11 +39,11 @@ Map<String, dynamic> optionalCollaborationTestRunnerBindings({
   String status = 'assembled-awaiting-deployment',
   String? signedInventoryDigest,
 }) => {
-  'runtimeCapability': 'digest-bound-licolite-server-runner-v1',
+  'runtimeCapability': 'digest-bound-licomesh-server-runner-v1',
   'runnerPlatform': 'macos',
   'runnerArchitecture': 'aarch64',
-  'runnerSourceRelativePath': 'runners/macos/aarch64/licolite-server-runner',
-  'runnerDestinationRelativePath': 'runtime/licolite-server-runner',
+  'runnerSourceRelativePath': 'runners/macos/aarch64/licomesh-server-runner',
+  'runnerDestinationRelativePath': 'runtime/licomesh-server-runner',
   'runnerDigestSha256': digest,
   'runnerContractVersion': 'licoarc.local-server-runner.v1',
   'healthContractVersion': 'licoarc.local-server-health.v1',

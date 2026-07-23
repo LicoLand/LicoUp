@@ -166,8 +166,8 @@ Map<String, dynamic> _runtimeState({
 };
 
 Map<String, dynamic> _plugin() => {
-  'pluginId': 'licolite-collaboration',
-  'displayName': 'LicoLite Collaboration',
+  'pluginId': 'licomesh-collaboration',
+  'displayName': 'LicoMesh Collaboration',
   'version': '1.0.0',
   'packageDigestSha256': _digest,
   'capabilities': ['local-deployment', 'mcp-install'],
@@ -190,8 +190,8 @@ Map<String, dynamic> _installPlan() => {
     'pluginPath': '',
   },
   'plugin': {
-    'pluginId': 'licolite-collaboration',
-    'displayName': 'LicoLite Collaboration',
+    'pluginId': 'licomesh-collaboration',
+    'displayName': 'LicoMesh Collaboration',
     'version': '1.0.0',
     'capabilities': ['local-deployment', 'mcp-install'],
   },

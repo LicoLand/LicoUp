@@ -27,8 +27,6 @@ abstract interface class AgentConversationGateway {
     required String text,
     required String sessionId,
     AgentDispatchBind bind = const AgentDispatchBind(),
-    String conversationReadiness = 'unverified',
-    bool requireReady = true,
   });
 
   Stream<AgentDispatchEvent> sendStreaming({
@@ -36,8 +34,6 @@ abstract interface class AgentConversationGateway {
     required String text,
     required String sessionId,
     AgentDispatchBind bind = const AgentDispatchBind(),
-    String conversationReadiness = 'unverified',
-    bool requireReady = true,
   });
 
   Future<AgentDispatchTurnResult> steer({

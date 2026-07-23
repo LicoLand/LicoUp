@@ -29,6 +29,7 @@ fn execute_request(id: &str, workflow_id: &str, args: &[&str]) -> Value {
 
 #[test]
 fn stdio_rpc_frames_results_errors_and_shutdown() {
+    let _serial = claude_process_local_test_lock::lock_claude_process_local_tests();
     let input = rpc_input(&[
         execute_request("request-1", "workflow-1", &["ok"]),
         execute_request("request-2", "workflow-1", &["fail"]),
@@ -57,6 +58,7 @@ fn stdio_rpc_frames_results_errors_and_shutdown() {
 
 #[test]
 fn stdio_rpc_rejects_cross_workflow_requests_and_continues() {
+    let _serial = claude_process_local_test_lock::lock_claude_process_local_tests();
     let input = rpc_input(&[
         execute_request("request-1", "workflow-1", &["ok"]),
         execute_request("request-2", "workflow-2", &["ok"]),
@@ -83,6 +85,7 @@ fn stdio_rpc_rejects_cross_workflow_requests_and_continues() {
 
 #[test]
 fn stdio_rpc_rejects_streaming_execute_without_invoking_the_command() {
+    let _serial = claude_process_local_test_lock::lock_claude_process_local_tests();
     let input = rpc_input(&[execute_request(
         "request-1",
         "workflow-1",
@@ -100,6 +103,7 @@ fn stdio_rpc_rejects_streaming_execute_without_invoking_the_command() {
 
 #[test]
 fn stdio_rpc_conversation_send_checks_readiness_before_dispatch() {
+    let _serial = claude_process_local_test_lock::lock_claude_process_local_tests();
     let input = rpc_input(&[json!({
         "protocol": STDIO_RPC_PROTOCOL,
         "id": "request-1",

@@ -1,10 +1,8 @@
-use super::super::attribution::estimate_tokens;
 use super::super::contract::text_field;
 use super::super::window::UsageWindow;
 use super::event_hash::advance_event_chain;
 use super::models::{ParserState, TokenTotals};
 use super::utils::{to_i64, turn_id};
-use crate::domain::conversations;
 use anyhow::{Context, Result};
 use rusqlite::{Statement, Transaction, params};
 use serde_json::Value;
@@ -13,35 +11,17 @@ use std::io::{BufRead, BufReader, Seek, SeekFrom};
 use std::path::Path;
 
 pub(super) struct ParserBatch<'connection> {
-    insert_coverage: Statement<'connection>,
-    delete_estimates: Statement<'connection>,
     insert_usage: Statement<'connection>,
-    insert_estimate: Statement<'connection>,
 }
 
 impl<'connection> ParserBatch<'connection> {
     pub(super) fn new(transaction: &'connection Transaction<'_>) -> Result<Self> {
         Ok(Self {
-            insert_coverage: transaction.prepare(
-                "INSERT OR IGNORE INTO usage_estimate_coverage(
-                   root_key, source_key, event_identity
-                 ) SELECT root_key, source_key, event_identity
-                   FROM usage_estimates
-                   WHERE root_key=?1 AND source_key=?2",
-            )?,
-            delete_estimates: transaction
-                .prepare("DELETE FROM usage_estimates WHERE root_key=?1 AND source_key=?2")?,
             insert_usage: transaction.prepare(
                 "INSERT OR REPLACE INTO usage_rows(
                    root_key, source_key, event_index, session_id, turn_id, day, model,
                    input_tokens, cached_input_tokens, output_tokens, event_identity
                  ) VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
-            )?,
-            insert_estimate: transaction.prepare(
-                "INSERT OR REPLACE INTO usage_estimates(
-                   root_key, source_key, estimate_index, session_id, day, model, role,
-                   estimated_tokens, event_identity
-                 ) VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
             )?,
         })
     }
@@ -116,7 +96,6 @@ impl<'connection> ParserBatch<'connection> {
             }
             return Ok(());
         }
-        self.record_usage_estimate(root_key, source_key, &value, window, state)?;
         match event_type {
             "turn_context" => {
                 if let Some(model) = text_field(
@@ -168,17 +147,21 @@ impl<'connection> ParserBatch<'connection> {
         let counted_baseline = state.counted_totals.unwrap_or_default();
         let delta = match (last, total) {
             (Some(last), Some(total)) => {
-                let total_delta = total.saturating_delta(raw_baseline.unwrap_or_default());
-                if raw_baseline == Some(total) {
+                if raw_baseline.is_none() && state.forked_from_id.is_some() && total == last {
                     TokenTotals::default()
-                } else if raw_baseline.is_some()
-                    && !state.has_divergent_totals
-                    && total.at_least(raw_baseline.unwrap_or_default())
-                    && total_delta.at_most(last)
-                {
-                    total_delta
                 } else {
-                    last
+                    let total_delta = total.saturating_delta(raw_baseline.unwrap_or_default());
+                    if raw_baseline == Some(total) {
+                        TokenTotals::default()
+                    } else if raw_baseline.is_some()
+                        && !state.has_divergent_totals
+                        && total.at_least(raw_baseline.unwrap_or_default())
+                        && total_delta.at_most(last)
+                    {
+                        total_delta
+                    } else {
+                        last
+                    }
                 }
             }
             (Some(last), None) => last,
@@ -200,12 +183,6 @@ impl<'connection> ParserBatch<'connection> {
         }
         state.counted_totals = Some(counted_baseline.add(delta));
         state.has_divergent_totals = state.raw_totals != state.counted_totals;
-        if !delta.is_zero() || (raw_baseline.is_none() && total.is_some()) {
-            self.insert_coverage
-                .execute(params![root_key, source_key])?;
-            self.delete_estimates
-                .execute(params![root_key, source_key])?;
-        }
         if delta.is_zero() {
             return Ok(());
         }
@@ -216,6 +193,9 @@ impl<'connection> ParserBatch<'connection> {
             b"codex-token-chain-v1\0",
             &value,
         );
+        if !window.contains(&day) {
+            return Ok(());
+        }
         let session_id = state.session_id.clone();
         let turn_id = turn_id(payload).or_else(|| state.current_turn_id.clone());
         self.insert_usage.execute(params![
@@ -229,47 +209,6 @@ impl<'connection> ParserBatch<'connection> {
             to_i64(delta.input),
             to_i64(delta.cached.min(delta.input)),
             to_i64(delta.output),
-            event_identity,
-        ])?;
-        Ok(())
-    }
-
-    fn record_usage_estimate(
-        &mut self,
-        root_key: &str,
-        source_key: &str,
-        value: &Value,
-        window: &UsageWindow,
-        state: &mut ParserState,
-    ) -> Result<()> {
-        let Some((role, text)) = conversations::codex_usage_estimate_message(value) else {
-            return Ok(());
-        };
-        let Some(day) = text_field(value, &["timestamp", "createdAt", "created_at"])
-            .and_then(|value| window.date_key(&value))
-        else {
-            return Ok(());
-        };
-        let tokens = estimate_tokens(&text);
-        if tokens == 0 {
-            return Ok(());
-        }
-        let estimate_index = state.next_estimate_index;
-        state.next_estimate_index = state.next_estimate_index.saturating_add(1);
-        let event_identity = advance_event_chain(
-            &mut state.estimate_chain_hash,
-            b"codex-estimate-chain-v1\0",
-            value,
-        );
-        self.insert_estimate.execute(params![
-            root_key,
-            source_key,
-            to_i64(estimate_index),
-            state.session_id,
-            day,
-            state.current_model,
-            role,
-            to_i64(tokens),
             event_identity,
         ])?;
         Ok(())

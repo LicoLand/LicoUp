@@ -1,0 +1,31 @@
+{
+  "title": "ClientState",
+  "version": 1,
+  "maxDocumentBytes": 16777216,
+  "collections": [
+    "settings",
+    "targets",
+    "target-discovery-cache",
+    "pairings",
+    "skills",
+    "pins",
+    "identities",
+    "conversation-archive-profiles",
+    "agent-usage-reports",
+    "skill-usage",
+    "collaboration-plugins",
+    "local-server-assemblies",
+    "local-server-assembly-cleanup",
+    "local-server-assembly-transaction",
+    "mcp-install-transactions"
+  ],
+  "operations": [
+    "get",
+    "set"
+  ],
+  "failureCodes": [
+    "invalid_collection",
+    "invalid_document",
+    "state_operation_failed"
+  ]
+}

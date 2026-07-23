@@ -1,7 +1,7 @@
-export const STORE_SCHEMA_VERSION = "licolite.secure-mesh.store-schema.v2";
-export const DEVICE_TRUST_PROTOCOL_VERSION = "licolite.secure-mesh.device-trust.v2";
-export const DELIVERY_PROTOCOL_VERSION = "licolite.secure-mesh.delivery.v1";
-export const RELAY_ENVELOPE_SCHEMA = "licolite.secure-mesh.relay-envelope.v2";
+export const STORE_SCHEMA_VERSION = "licomesh.secure-mesh.store-schema.v2";
+export const DEVICE_TRUST_PROTOCOL_VERSION = "licomesh.secure-mesh.device-trust.v2";
+export const DELIVERY_PROTOCOL_VERSION = "licomesh.secure-mesh.delivery.v1";
+export const RELAY_ENVELOPE_SCHEMA = "licomesh.secure-mesh.relay-envelope.v2";
 export const MAX_REQUEST_BYTES = 24 * 1024 * 1024;
 export const ENCRYPTED_HEADER_BYTES = 4096;
 export const MAX_CIPHERTEXT_BUCKET_BYTES = 16 * 1024 * 1024;

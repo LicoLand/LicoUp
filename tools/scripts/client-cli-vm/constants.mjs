@@ -28,7 +28,7 @@ export const linuxSourceManifestRemoteRef =
 export const firmwareCandidates = [
   process.env.LICO_CLIENT_CLI_VM_EFI,
   ["", "opt", "homebrew", "share", "qemu", "edk2-aarch64-code.fd"].join("/"),
-  "/usr/local/share/qemu/edk2-aarch64-code.fd",
-  "/usr/share/qemu-efi-aarch64/QEMU_EFI.fd",
-  "/usr/share/AAVMF/AAVMF_CODE.fd",
+  ["", "usr", "local", "share", "qemu", "edk2-aarch64-code.fd"].join("/"),
+  ["", "usr", "share", "qemu-efi-aarch64", "QEMU_EFI.fd"].join("/"),
+  ["", "usr", "share", "AAVMF", "AAVMF_CODE.fd"].join("/"),
 ].filter(Boolean);

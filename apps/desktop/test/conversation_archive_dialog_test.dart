@@ -17,7 +17,7 @@ void main() {
     addTearDown(controller.dispose);
     controller.scannedTargets = service.scanTargetsResult;
     controller.selectedConversationAgentId = 'codex';
-    controller.archiveDestinationDraft = '/tmp/local-archive';
+    controller.archiveDestinationDraft = 'test-data/local-archive';
 
     await tester.pumpWidget(
       MaterialApp(
@@ -82,7 +82,7 @@ void main() {
     addTearDown(controller.dispose);
     controller.scannedTargets = service.scanTargetsResult;
     controller.selectedConversationAgentId = 'codex';
-    controller.archiveDestinationDraft = '/tmp/all-local-conversations';
+    controller.archiveDestinationDraft = 'test-data/all-local-conversations';
 
     await tester.pumpWidget(
       MaterialApp(
@@ -119,6 +119,6 @@ void main() {
     expect(service.archiveSelectionMode, 'all');
     expect(service.archiveQuery, isEmpty);
     expect(service.archiveSourceAgentId, isEmpty);
-    expect(service.archiveDestinationPath, '/tmp/all-local-conversations');
+    expect(service.archiveDestinationPath, 'test-data/all-local-conversations');
   });
 }

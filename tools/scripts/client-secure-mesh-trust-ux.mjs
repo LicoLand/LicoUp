@@ -190,7 +190,7 @@ function androidPlatformTrustEvidence(report, reportRef) {
   const summary = report?.summary || {};
   const present = Boolean(report && Object.keys(report).length > 0);
   const platformContractReady = report?.ok === true &&
-    report?.schemaVersion === "licolite.secure-mesh.android-platform-crypto-acceptance.v1" &&
+    report?.schemaVersion === "licomesh.secure-mesh.android-platform-crypto-acceptance.v1" &&
     report?.platform === "android" &&
     report?.redacted === true &&
     report?.reportLeakScan === true &&

@@ -1,137 +1,156 @@
-// snapshots commands: snapshots list|restore|collect, snapshots root|profiles|archive|collections, conversations
-
-use super::{CliExecution, CommandTable, cli_params};
+use super::{AdmittedCommand, CliExecution, admitted_params};
 use anyhow::Result;
 
-pub fn register_commands(table: &mut CommandTable) {
-    table.register_rest(
-        &["snapshots", "list"],
-        handle_snapshots_list,
-        "List snapshots",
-    );
-    table.register_rest(
-        &["snapshots", "restore"],
-        handle_snapshots_restore,
-        "Restore snapshot by ID",
-    );
-    table.register_rest(
-        &["snapshots", "collect"],
-        handle_snapshots_collect,
-        "Collect snapshots",
-    );
-    table.register_rest(
-        &["snapshots", "root"],
-        handle_snapshots_root,
-        "Root snapshot get|set",
-    );
-    table.register_rest(
-        &["snapshots", "profiles"],
-        handle_snapshots_profiles,
-        "Profile list|get|import",
-    );
-    table.register_rest(
-        &["snapshots", "archive"],
-        handle_snapshots_archive,
-        "Archive jobs|collect|run|verify|report",
-    );
-    table.register_rest(
-        &["snapshots", "collections", "list"],
-        handle_snapshots_collections,
-        "List collections",
-    );
-    table.register_rest(
-        &["conversations"],
-        handle_conversations,
-        "Conversation list|stream|append|delete",
-    );
-}
-
-fn handle_snapshots_list(args: &[String]) -> Result<CliExecution> {
-    let params = cli_params(&args[2..]);
+pub(super) fn handle_snapshots_list(command: AdmittedCommand) -> Result<CliExecution> {
+    let params = admitted_params(&[("target", command.option_text("target"))], &[], &[]);
     Ok(CliExecution::Json(
         crate::platform::client_state::snapshots_list(&params)?,
     ))
 }
 
-fn handle_snapshots_restore(args: &[String]) -> Result<CliExecution> {
-    let snapshot_id = &args[2];
+pub(super) fn handle_snapshots_restore(command: AdmittedCommand) -> Result<CliExecution> {
+    let snapshot_id = command.required_text("snapshot-id");
     Ok(CliExecution::Json(
         crate::platform::client_state::snapshots_restore(snapshot_id)?,
     ))
 }
 
-fn handle_snapshots_collect(args: &[String]) -> Result<CliExecution> {
-    let params = cli_params(&args[2..]);
+pub(super) fn handle_snapshots_collect(command: AdmittedCommand) -> Result<CliExecution> {
+    let params = admitted_params(
+        &[
+            ("topic", command.option_text("topic")),
+            ("agent", command.option_text("agent")),
+        ],
+        &[],
+        &[],
+    );
     Ok(CliExecution::Json(
         crate::domain::conversation_snapshots::collect(&params)?,
     ))
 }
 
-fn handle_snapshots_root(args: &[String]) -> Result<CliExecution> {
-    let action = &args[2];
-    let params = cli_params(&args[3..]);
-    let result = match action.as_str() {
+pub(super) fn handle_snapshots_root(command: AdmittedCommand) -> Result<CliExecution> {
+    let action = match command.path() {
+        ["snapshots", "root", action] => *action,
+        _ => unreachable!("admission only registers concrete snapshot root routes"),
+    };
+    let params = admitted_params(&[("path", command.option_text("path"))], &[], &[]);
+    let result = match action {
         "get" => crate::domain::conversation_snapshots::root_get(&params)?,
         "set" => crate::domain::conversation_snapshots::root_set(&params)?,
-        _ => return Ok(CliExecution::Usage),
+        _ => unreachable!("admission only registers supported snapshot root actions"),
     };
     Ok(CliExecution::Json(result))
 }
 
-fn handle_snapshots_profiles(args: &[String]) -> Result<CliExecution> {
-    let action = &args[2];
-    let params = cli_params(&args[3..]);
-    let result = match action.as_str() {
+pub(super) fn handle_snapshots_profiles(command: AdmittedCommand) -> Result<CliExecution> {
+    let action = match command.path() {
+        ["snapshots", "profiles", action] => *action,
+        _ => unreachable!("admission only registers concrete snapshot profile routes"),
+    };
+    let params = admitted_params(
+        &[
+            ("profile", command.option_text("profile")),
+            ("profileFile", command.option_text("profile-file")),
+        ],
+        &[("profileJson", command.option_json("profile-json"))],
+        &[],
+    );
+    let result = match action {
         "list" => crate::domain::conversation_snapshots::profiles_list(&params)?,
         "get" => crate::domain::conversation_snapshots::profile_get(&params)?,
         "import" => crate::domain::conversation_snapshots::profile_import(&params)?,
-        _ => return Ok(CliExecution::Usage),
+        _ => unreachable!("admission only registers supported snapshot profile actions"),
     };
     Ok(CliExecution::Json(result))
 }
 
-fn handle_snapshots_archive(args: &[String]) -> Result<CliExecution> {
-    let action = &args[2];
-    if action == "jobs" {
-        if args.len() < 4 {
-            return Ok(CliExecution::Usage);
+pub(super) fn handle_snapshots_archive(command: AdmittedCommand) -> Result<CliExecution> {
+    let route = command.path();
+    let params = admitted_params(
+        &[
+            ("selectionMode", command.option_text("selection-mode")),
+            ("query", command.option_text("query")),
+            ("path", command.option_text("path")),
+            ("agent", command.option_text("agent")),
+            ("planBinding", command.option_text("plan-binding")),
+            ("jobId", command.option_text("job-id")),
+            ("once", command.option_text("once")),
+            ("keywords", command.option_text("keywords")),
+            ("trigger", command.option_text("trigger")),
+            ("profile", command.option_text("profile")),
+            ("collectionPath", command.option_text("collection-path")),
+        ],
+        &[],
+        &[],
+    );
+    let result = match route {
+        ["snapshots", "archive", "collect"] => {
+            crate::domain::conversation_snapshots::archive_collect(&params)?
         }
-        let job_action = &args[3];
-        let params = cli_params(&args[4..]);
-        let result = match job_action.as_str() {
-            "preview" => crate::domain::conversation_archive_jobs::preview(&params)?,
-            "create" => crate::domain::conversation_archive_jobs::create(&params)?,
-            "status" => crate::domain::conversation_archive_jobs::status(&params)?,
-            "list" => crate::domain::conversation_archive_jobs::list(&params)?,
-            "events" => crate::domain::conversation_archive_jobs::events(&params)?,
-            "cancel" => crate::domain::conversation_archive_jobs::cancel(&params)?,
-            "drain" => crate::domain::conversation_archive_jobs::drain(&params)?,
-            _ => return Ok(CliExecution::Usage),
-        };
-        return Ok(CliExecution::Json(result));
-    }
-    let params = cli_params(&args[3..]);
-    let result = match action.as_str() {
-        "collect" => crate::domain::conversation_snapshots::archive_collect(&params)?,
-        "run" => crate::domain::conversation_snapshots::archive_run(&params)?,
-        "verify" => crate::domain::conversation_snapshots::archive_verify(&params)?,
-        "report" => crate::domain::conversation_snapshots::archive_report(&params)?,
-        _ => return Ok(CliExecution::Usage),
+        ["snapshots", "archive", "run"] => {
+            crate::domain::conversation_snapshots::archive_run(&params)?
+        }
+        ["snapshots", "archive", "verify"] => {
+            crate::domain::conversation_snapshots::archive_verify(&params)?
+        }
+        ["snapshots", "archive", "report"] => {
+            crate::domain::conversation_snapshots::archive_report(&params)?
+        }
+        ["snapshots", "archive", "jobs", "preview"] => {
+            crate::domain::conversation_archive_jobs::preview(&params)?
+        }
+        ["snapshots", "archive", "jobs", "create"] => {
+            crate::domain::conversation_archive_jobs::create(&params)?
+        }
+        ["snapshots", "archive", "jobs", "status"] => {
+            crate::domain::conversation_archive_jobs::status(&params)?
+        }
+        ["snapshots", "archive", "jobs", "list"] => {
+            crate::domain::conversation_archive_jobs::list(&params)?
+        }
+        ["snapshots", "archive", "jobs", "events"] => {
+            crate::domain::conversation_archive_jobs::events(&params)?
+        }
+        ["snapshots", "archive", "jobs", "cancel"] => {
+            crate::domain::conversation_archive_jobs::cancel(&params)?
+        }
+        ["snapshots", "archive", "jobs", "drain"] => {
+            crate::domain::conversation_archive_jobs::drain(&params)?
+        }
+        _ => unreachable!("admission only registers supported snapshot archive actions"),
     };
     Ok(CliExecution::Json(result))
 }
 
-fn handle_snapshots_collections(args: &[String]) -> Result<CliExecution> {
-    let params = cli_params(&args[3..]);
+pub(super) fn handle_snapshots_collections(command: AdmittedCommand) -> Result<CliExecution> {
+    let params = admitted_params(
+        &[("snapshotRoot", command.option_text("snapshot-root"))],
+        &[],
+        &[],
+    );
     Ok(CliExecution::Json(
         crate::domain::conversation_snapshots::collections_list(&params)?,
     ))
 }
 
-fn handle_conversations(args: &[String]) -> Result<CliExecution> {
-    let action = &args[1];
-    let params = cli_params(&args[2..]);
-    let result = match action.as_str() {
+pub(super) fn handle_conversations(command: AdmittedCommand) -> Result<CliExecution> {
+    let action = match command.path() {
+        ["conversations", action] => *action,
+        _ => unreachable!("admission only registers concrete conversation routes"),
+    };
+    let params = admitted_params(
+        &[
+            ("agent", command.option_text("agent")),
+            ("limit", command.option_text("limit")),
+            ("offset", command.option_text("offset")),
+            ("sessionId", command.option_text("session-id")),
+            ("text", command.option_text("text")),
+        ],
+        &[],
+        &[],
+    );
+    let result = match action {
         "list" => crate::domain::conversations::conversation_list(&params)?,
         "stream" => {
             crate::domain::conversations::conversation_stream(&params)?;
@@ -139,7 +158,7 @@ fn handle_conversations(args: &[String]) -> Result<CliExecution> {
         }
         "append" => crate::domain::conversations::conversation_append(&params)?,
         "delete" => crate::domain::conversations::conversation_delete(&params)?,
-        _ => return Ok(CliExecution::Usage),
+        _ => unreachable!("admission only registers supported conversation actions"),
     };
     Ok(CliExecution::Json(result))
 }

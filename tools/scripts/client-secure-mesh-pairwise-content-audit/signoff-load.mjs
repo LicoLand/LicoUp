@@ -27,7 +27,7 @@ async function loadVectorCorpusSnapshot(relativePath) {
       entries: Array.isArray(payload.entries) ? payload.entries : [],
       reviewGate: payload.reviewGate || {}
     });
-    const ok = payload.schemaVersion === "licolite.secure-mesh.pairwise-content-vector-corpus.v1" &&
+    const ok = payload.schemaVersion === "licomesh.secure-mesh.pairwise-content-vector-corpus.v1" &&
       payload.redacted === true &&
       payload.rawPrivateMaterialIncluded === false &&
       payload.rawPlaintextIncluded === false &&
@@ -67,7 +67,7 @@ async function loadReviewSignoffArtifact(relativePath, corpus) {
       vectorCorpusSnapshot.ok === true &&
       payload?.corpusDigest === vectorCorpusSnapshot.corpusDigest;
     const templatePresent =
-      payload?.templateSchemaVersion === "licolite.secure-mesh.pairwise-content-review-signoff-template.v2";
+      payload?.templateSchemaVersion === "licomesh.secure-mesh.pairwise-content-review-signoff-template.v2";
     const templateCompleted =
       payload?.independentCryptographicReviewComplete === true ||
       payload?.releaseOwnerSignoffComplete === true ||
@@ -104,7 +104,7 @@ async function loadReviewSignoffArtifact(relativePath, corpus) {
     }
     const missingOrMismatchedFields = [];
     const expected = {
-      schemaVersion: "licolite.secure-mesh.pairwise-content-review-signoff.v2",
+      schemaVersion: "licomesh.secure-mesh.pairwise-content-review-signoff.v2",
       sourceOfTruth: sourceOfTruth,
       redacted: true,
       rawPrivateMaterialIncluded: false,

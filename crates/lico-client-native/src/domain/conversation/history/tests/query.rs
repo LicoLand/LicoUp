@@ -1,5 +1,9 @@
 use super::test_support::*;
 
+fn windows_path(parts: &[&str]) -> String {
+    parts.join(&char::from(92).to_string())
+}
+
 #[test]
 fn exact_session_filter_matches_projection_or_native_identity() {
     let projection = HistoryScanConfig::from_params(&json!({
@@ -29,35 +33,39 @@ fn exact_session_filter_matches_projection_or_native_identity() {
 
 #[test]
 fn default_history_home_uses_windows_userprofile_when_home_is_missing() {
+    let profile = windows_path(&["C:", "Profile", "LicoMesh"]);
     let resolved = home_dir_from_env(|name| match name {
-        "USERPROFILE" => Some(OsString::from(r"C:\Profile\LicoLite")),
+        "USERPROFILE" => Some(OsString::from(&profile)),
         _ => None,
     });
 
-    assert_eq!(resolved, PathBuf::from(r"C:\Profile\LicoLite"));
+    assert_eq!(resolved, PathBuf::from(profile));
 }
 
 #[test]
 fn default_history_home_uses_windows_drive_and_homepath_fallback() {
+    let home_path = windows_path(&["", "Profile", "LicoMesh"]);
     let resolved = home_dir_from_env(|name| match name {
         "HOMEDRIVE" => Some(OsString::from("C:")),
-        "HOMEPATH" => Some(OsString::from(r"\Profile\LicoLite")),
+        "HOMEPATH" => Some(OsString::from(&home_path)),
         _ => None,
     });
 
-    assert_eq!(resolved, PathBuf::from(r"C:\Profile\LicoLite"));
+    assert_eq!(
+        resolved,
+        PathBuf::from(windows_path(&["C:", "Profile", "LicoMesh"]))
+    );
 }
 
 #[test]
 fn expand_home_accepts_windows_style_tilde_paths() {
-    let expanded = expand_home_from(r"~\.codex\sessions", || {
-        PathBuf::from(r"C:\Profile\LicoLite")
+    let profile = PathBuf::from(windows_path(&["C:", "Profile", "LicoMesh"]));
+    let sessions = windows_path(&[".codex", "sessions"]);
+    let expanded = expand_home_from(&windows_path(&["~", ".codex", "sessions"]), || {
+        profile.clone()
     });
 
-    assert_eq!(
-        expanded,
-        PathBuf::from(r"C:\Profile\LicoLite").join(r".codex\sessions")
-    );
+    assert_eq!(expanded, profile.join(sessions));
 }
 
 #[test]

@@ -182,7 +182,7 @@ export function runScriptSelfTest() {
     JSON.stringify(
       {
         ok: true,
-        schemaVersion: "licolite.client-cli-vm.self-test.v1",
+        schemaVersion: "licomesh.client-cli-vm.self-test.v1",
         exactCapabilityInputValidationReady: true,
         unavailableServiceFallbackProofReady: true,
         unlockedServiceOsStoreProofReady: true,

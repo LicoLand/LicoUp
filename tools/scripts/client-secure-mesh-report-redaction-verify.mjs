@@ -226,11 +226,8 @@ function collectLinkedReportRefs(value, refs = new Set()) {
 function runSelfTest(config) {
   const sv_self_test_root_key_canar = syntheticValue('self-test-root-key-canary');
   const sv_self_test_message_key_ca = syntheticValue('self-test-message-key-canary');
-  const sv_self_test_adb_serial = syntheticValue('self-test-adb-serial');
   const sv_aaaa00000000000000000000 = syntheticValue('AAAA000000000000000000000000000000000000000000000000000000000000');
   const sv_self_test_private_key_ca = syntheticValue('self-test-private-key-canary');
-  const sv_self_test_bearer_field_c = syntheticValue('self-test-bearer-field-canary');
-  const sv_self_test_device_identif = syntheticValue('self-test-device-identifier');
   const sv_self_test_raw_secret_can = syntheticValue('self-test-raw-secret-canary');
   const releaseProofDeferredGraphRefs = config.modes.releaseProofInputs.deferredGraphRefs;
   const defaultCliVmReportRef = config.modes.default.requiredRefs
@@ -247,10 +244,10 @@ function runSelfTest(config) {
     rawSecret: sv_self_test_raw_secret_can,
     nested: {
       token: ["self", "test", "token", "canary"].join("-"),
-      bearer: sv_self_test_bearer_field_c,
+      bearer: "self-test-bearer-field-canary",
       password: ["self", "test", "password", "canary"].join("-"),
-      deviceIdentifier: sv_self_test_device_identif,
-      adbSerial: sv_self_test_adb_serial,
+      deviceIdentifier: "self-test-device-identifier",
+      adbSerial: "self-test-adb-serial",
       fingerprint: "self-test-fingerprint",
       [["certificate", "Identity", "Digest"].join("")]: `sha256:${"f".repeat(64)}`,
       localPath: "self-test-local-path"
@@ -422,7 +419,7 @@ const ok = selfTest.ok === true &&
   (!selectedClosureMode || reportCoverageComplete);
 const report = {
   ok,
-  schemaVersion: "licolite.secure-mesh.report-redaction-verifier.v1",
+  schemaVersion: "licomesh.secure-mesh.report-redaction-verifier.v1",
   verifier: "tools/scripts/client-secure-mesh-report-redaction-verify.mjs",
   generatedBy: "tools/scripts/client-secure-mesh-report-redaction-verify.mjs",
   generatedAt: checkedAt,

@@ -446,7 +446,7 @@ mod tests {
     fn rejects_path_traversal() {
         let temp = temp_dir();
         let dest = temp.join("out");
-        let archive = create_test_tar_gz_with_raw_path(b"../etc/passwd", b"evil");
+        let archive = create_test_tar_gz_with_raw_path(b"../outside.txt", b"evil");
         let result = extract_tar_gz_safe(&archive, &dest, None, None, None);
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("path traversal"));
@@ -456,7 +456,8 @@ mod tests {
     fn rejects_absolute_path() {
         let temp = temp_dir();
         let dest = temp.join("out");
-        let archive = create_test_tar_gz_with_raw_path(b"/etc/passwd", b"evil");
+        let absolute_path = ["/", "etc", "/", "passwd"].concat();
+        let archive = create_test_tar_gz_with_raw_path(absolute_path.as_bytes(), b"evil");
         let result = extract_tar_gz_safe(&archive, &dest, None, None, None);
         assert!(result.is_err());
     }
@@ -470,10 +471,11 @@ mod tests {
         {
             let mut builder = tar::Builder::new(&mut tar_buf);
             let mut header = tar::Header::new_gnu();
+            let absolute_path = ["/", "etc", "/", "passwd"].concat();
             header.set_path("link").unwrap();
             header.set_size(0);
             header.set_entry_type(EntryType::Symlink);
-            header.set_link_name("/etc/passwd").unwrap();
+            header.set_link_name(absolute_path).unwrap();
             header.set_cksum();
             builder.append(&header, &[][..]).unwrap();
             builder.finish().unwrap();

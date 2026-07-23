@@ -1,4 +1,7 @@
 use super::*;
+use lico_client_native::ffi::generated::client_state::{
+    ClientStateCollection, ClientStateFailure, ClientStateFailureCode,
+};
 
 pub(crate) fn parse_stdio_rpc_request(
     bytes: &[u8],
@@ -48,7 +51,7 @@ pub(crate) fn parse_stdio_rpc_request(
             let args = object
                 .get("args")
                 .and_then(Value::as_array)
-                .filter(|args| !args.is_empty() && args.len() <= STDIO_RPC_MAX_ARGS)
+                .filter(|args| args.len() <= STDIO_RPC_MAX_ARGS)
                 .ok_or_else(|| invalid("invalid_args"))?
                 .iter()
                 .map(|value| value.as_str().map(str::to_string))
@@ -77,9 +80,41 @@ pub(crate) fn parse_stdio_rpc_request(
                 portable_data_dir,
             }
         }
+        "state.get" => {
+            let params = object.get("params").cloned().unwrap_or_else(|| json!({}));
+            let failure = ClientStateFailure::new(ClientStateFailureCode::InvalidCollection);
+            let request =
+                serde_json::from_value(params).map_err(|_| invalid(failure.code.as_str()))?;
+            let portable_data_dir = parse_portable_data_dir(object, &invalid)?;
+            StdioRpcMethod::StateGet {
+                request,
+                portable_data_dir,
+            }
+        }
+        "state.set" => {
+            let params = object.get("params").cloned().unwrap_or_else(|| json!({}));
+            let collection_failure =
+                ClientStateFailure::new(ClientStateFailureCode::InvalidCollection);
+            params
+                .get("collection")
+                .cloned()
+                .and_then(|value| serde_json::from_value::<ClientStateCollection>(value).ok())
+                .ok_or_else(|| invalid(collection_failure.code.as_str()))?;
+            let document_failure = ClientStateFailure::new(ClientStateFailureCode::InvalidDocument);
+            let request = serde_json::from_value(params)
+                .map_err(|_| invalid(document_failure.code.as_str()))?;
+            let portable_data_dir = parse_portable_data_dir(object, &invalid)?;
+            StdioRpcMethod::StateSet {
+                request,
+                portable_data_dir,
+            }
+        }
         "agent.conversation.open"
         | "agent.conversation.send"
         | "agent.conversation.cancel"
+        | "agent.conversation.history"
+        | "agent.conversation.cleanup"
+        | "agent.conversation.steer"
         | "agent.conversation.capabilities"
         | "agent.conversation.stream" => {
             let operation = method
@@ -96,6 +131,13 @@ pub(crate) fn parse_stdio_rpc_request(
                 params,
                 portable_data_dir,
             }
+        }
+        "orchestrator.request" => {
+            let params = object.get("params").cloned().unwrap_or_else(|| json!({}));
+            if !params.is_object() {
+                return Err(invalid("invalid_params"));
+            }
+            StdioRpcMethod::Orchestrator { params }
         }
         "shutdown" => StdioRpcMethod::Shutdown,
         _ => return Err(invalid("invalid_method")),

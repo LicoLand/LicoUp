@@ -91,9 +91,10 @@ pub(super) struct CursorComposerMeta {
 }
 
 pub(super) fn cursor_composer_rows(connection: &Connection) -> Vec<CursorComposerMeta> {
-    let Ok(mut statement) =
-        connection.prepare("SELECT key, value FROM cursorDiskKV WHERE key LIKE 'composerData:%'")
-    else {
+    let Ok(mut statement) = connection.prepare(
+        "SELECT key, value FROM cursorDiskKV
+         WHERE key >= 'composerData:' AND key < 'composerData;'",
+    ) else {
         return Vec::new();
     };
     let Ok(rows) = statement.query_map([], |row| {
@@ -172,16 +173,18 @@ pub(super) fn cursor_bubble_ids_for_composer(
     connection: &Connection,
     composer_id: &str,
 ) -> Vec<String> {
-    let pattern = format!("bubbleId:{}:%", composer_id);
-    let Ok(mut statement) = connection.prepare("SELECT key FROM cursorDiskKV WHERE key LIKE ?1")
-    else {
-        return Vec::new();
-    };
-    let Ok(rows) = statement.query_map([pattern], |row| Ok(sqlite_value_text(row.get_ref(0)?)))
-    else {
-        return Vec::new();
-    };
     let prefix = format!("bubbleId:{}:", composer_id);
+    let upper = format!("bubbleId:{};", composer_id);
+    let Ok(mut statement) =
+        connection.prepare("SELECT key FROM cursorDiskKV WHERE key >= ?1 AND key < ?2")
+    else {
+        return Vec::new();
+    };
+    let Ok(rows) = statement.query_map([&prefix, &upper], |row| {
+        Ok(sqlite_value_text(row.get_ref(0)?))
+    }) else {
+        return Vec::new();
+    };
     rows.flatten()
         .flatten()
         .filter_map(|key| {

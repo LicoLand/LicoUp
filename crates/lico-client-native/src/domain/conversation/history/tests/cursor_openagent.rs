@@ -275,6 +275,7 @@ fn cursor_adapter_reads_disk_kv_composer_bubbles_with_model() {
         "agent": "cursor",
         "root": dir.to_string_lossy(),
         "historyDays": 3650,
+        "now": "2026-03-18T12:00:00Z",
         "forceRefresh": true,
         "stateRoot": temp_dir("cursor-usage-state").to_string_lossy()
     }))
@@ -383,6 +384,7 @@ fn cursor_adapter_prefers_selected_models_over_composer_label() {
         "agent": "cursor",
         "root": dir.to_string_lossy(),
         "historyDays": 3650,
+        "now": "2026-03-18T12:00:00Z",
         "forceRefresh": true,
         "stateRoot": temp_dir("cursor-selected-usage-state").to_string_lossy()
     }))
@@ -403,6 +405,167 @@ fn cursor_adapter_prefers_selected_models_over_composer_label() {
         !model_usage.contains_key("cursor-auto"),
         "bubble modelInfo default must fall back to selected model: {model_usage:?}"
     );
+}
+
+#[test]
+fn cursor_usage_scan_ignores_composer_context_occupancy() {
+    let dir = temp_dir("cursor-composer-usage");
+    let database = dir.join("state.vscdb");
+    let composer_id = "dddddddd-dddd-dddd-dddd-dddddddddddd";
+    let user_bubble = "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee";
+    let agent_bubble = "ffffffff-ffff-ffff-ffff-ffffffffffff";
+    {
+        let connection = Connection::open(&database).unwrap();
+        connection
+            .execute(
+                "CREATE TABLE cursorDiskKV (key TEXT NOT NULL, value BLOB NOT NULL)",
+                [],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO cursorDiskKV (key, value) VALUES (?1, ?2)",
+                rusqlite::params![
+                    format!("composerData:{composer_id}"),
+                    serde_json::to_vec(&json!({
+                        "composerId": composer_id,
+                        "name": "Composer context meter session",
+                        "createdAt": 1_773_798_000_000i64,
+                        "lastUpdatedAt": 1_773_798_100_000i64,
+                        "modelConfig": {
+                            "modelName": "default",
+                            "selectedModels": [{"modelId": "claude-fable-5"}]
+                        },
+                        "promptTokenBreakdown": {
+                            "totalUsedTokens": 4200,
+                            "maxTokens": 256000
+                        },
+                        "fullConversationHeadersOnly": [
+                            {"bubbleId": user_bubble, "type": 1},
+                            {"bubbleId": agent_bubble, "type": 2}
+                        ]
+                    }))
+                    .unwrap()
+                ],
+            )
+            .unwrap();
+        for (bubble_id, bubble_type, text) in [
+            (user_bubble, 1, "Long prompt that would be badly estimated."),
+            (agent_bubble, 2, "Short reply."),
+        ] {
+            connection
+                .execute(
+                    "INSERT INTO cursorDiskKV (key, value) VALUES (?1, ?2)",
+                    rusqlite::params![
+                        format!("bubbleId:{composer_id}:{bubble_id}"),
+                        serde_json::to_vec(&json!({
+                            "bubbleId": bubble_id,
+                            "type": bubble_type,
+                            "createdAt": 1_773_798_050_000i64,
+                            "text": text,
+                            "tokenCount": {"inputTokens": 0, "outputTokens": 0}
+                        }))
+                        .unwrap()
+                    ],
+                )
+                .unwrap();
+        }
+    }
+
+    let usage = crate::domain::agent_usage::scan(&json!({
+        "agent": "cursor",
+        "root": dir.to_string_lossy(),
+        "historyDays": 3650,
+        "forceRefresh": true,
+        "stateRoot": temp_dir("cursor-composer-usage-state").to_string_lossy()
+    }))
+    .unwrap();
+    let history = &usage["agents"][0]["history"];
+    assert_eq!(history["totalTokens"], 0);
+    assert_eq!(history["confidence"], "unavailable");
+    assert_eq!(history["dailyUsage"], json!([]));
+}
+
+#[test]
+fn cursor_usage_scan_does_not_treat_product_context_meter_as_usage() {
+    let dir = temp_dir("cursor-composer-product-usage");
+    let database = dir.join("state.vscdb");
+    let composer_id = "99999999-9999-9999-9999-999999999999";
+    let user_bubble = "88888888-8888-8888-8888-888888888888";
+    let agent_bubble = "77777777-7777-7777-7777-777777777777";
+    {
+        let connection = Connection::open(&database).unwrap();
+        connection
+            .execute(
+                "CREATE TABLE cursorDiskKV (key TEXT NOT NULL, value BLOB NOT NULL)",
+                [],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO cursorDiskKV (key, value) VALUES (?1, ?2)",
+                rusqlite::params![
+                    format!("composerData:{composer_id}"),
+                    serde_json::to_vec(&json!({
+                        "composerId": composer_id,
+                        "name": "Composer product context meter",
+                        "createdAt": 1_773_798_000_000i64,
+                        "lastUpdatedAt": 1_773_798_100_000i64,
+                        "modelConfig": {
+                            "modelName": "composer-2.5-fast",
+                            "selectedModels": [{"modelId": "grok-4.5"}]
+                        },
+                        "promptTokenBreakdown": {
+                            "totalUsedTokens": 6840995,
+                            "maxTokens": 256000
+                        },
+                        "fullConversationHeadersOnly": [
+                            {"bubbleId": user_bubble, "type": 1},
+                            {"bubbleId": agent_bubble, "type": 2}
+                        ]
+                    }))
+                    .unwrap()
+                ],
+            )
+            .unwrap();
+        for (bubble_id, bubble_type, text) in [
+            (user_bubble, 1, "Composer session prompt."),
+            (
+                agent_bubble,
+                2,
+                "Routed through grok but metered as Composer.",
+            ),
+        ] {
+            connection
+                .execute(
+                    "INSERT INTO cursorDiskKV (key, value) VALUES (?1, ?2)",
+                    rusqlite::params![
+                        format!("bubbleId:{composer_id}:{bubble_id}"),
+                        serde_json::to_vec(&json!({
+                            "bubbleId": bubble_id,
+                            "type": bubble_type,
+                            "createdAt": 1_773_798_050_000i64,
+                            "text": text,
+                            "tokenCount": {"inputTokens": 0, "outputTokens": 0},
+                            "modelInfo": {"modelName": "default"}
+                        }))
+                        .unwrap()
+                    ],
+                )
+                .unwrap();
+        }
+    }
+
+    let usage = crate::domain::agent_usage::scan(&json!({
+        "agent": "cursor",
+        "root": dir.to_string_lossy(),
+        "historyDays": 3650,
+        "forceRefresh": true,
+        "stateRoot": temp_dir("cursor-composer-product-usage-state").to_string_lossy()
+    }))
+    .unwrap();
+    assert_eq!(usage["agents"][0]["history"]["totalTokens"], 0);
+    assert_eq!(usage["agents"][0]["history"]["dailyUsage"], json!([]));
 }
 
 #[test]

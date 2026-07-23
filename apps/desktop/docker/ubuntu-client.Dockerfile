@@ -22,7 +22,7 @@ ENV INSTALL_ROOT="/${INSTALL_ROOT_NAME}" \
     BUILD_TEMP_ROOT="/${TEMP_ROOT_NAME}" \
     PATH="/${INSTALL_ROOT_NAME}/flutter/bin:/${INSTALL_ROOT_NAME}/node/bin:/${ADMIN_HOME_NAME}/.cargo/bin:${PATH}" \
     FLUTTER_SUPPRESS_ANALYTICS=true \
-    PUB_CACHE=/root/.pub-cache
+    PUB_CACHE="/${ADMIN_HOME_NAME}/.pub-cache"
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \

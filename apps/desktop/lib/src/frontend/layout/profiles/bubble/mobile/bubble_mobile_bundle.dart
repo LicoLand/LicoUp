@@ -71,12 +71,6 @@ final Set<LayoutStateNamespace> _bubbleMobileStateNamespaces = {
   LayoutStateNamespace(
     profileId: LayoutProfileId.parse('bubble'),
     surface: LayoutRuntimeSurface.mobile,
-    destination: ClientSection.agents,
-    channel: LayoutStateChannels.agentsDestination,
-  ),
-  LayoutStateNamespace(
-    profileId: LayoutProfileId.parse('bubble'),
-    surface: LayoutRuntimeSurface.mobile,
     destination: ClientSection.settings,
     channel: LayoutStateChannels.settingsScroll,
   ),

@@ -83,7 +83,7 @@ export function adapterResult({
     } else if (
       core.failed > 0 ||
       conditional.failed > 0 ||
-      evidence.releaseUiPassed === false ||
+      evidence.conversationGatePassed === false ||
       evidence.cleanupPassed === false ||
       evidence.privacyPassed === false
     ) {
@@ -91,13 +91,13 @@ export function adapterResult({
       summaryCodes = [];
       if (core.failed > 0) summaryCodes.push("core_check_failed");
       if (conditional.failed > 0) summaryCodes.push("conditional_check_failed");
-      if (evidence.releaseUiPassed === false) summaryCodes.push("release_ui_failed");
+      if (evidence.conversationGatePassed === false) summaryCodes.push("conversation_gate_failed");
       if (evidence.cleanupPassed === false) summaryCodes.push("cleanup_failed");
       if (evidence.privacyPassed === false) summaryCodes.push("privacy_failed");
     } else {
       const requiredEvidenceComplete =
         evidence.officialNativeLane === true &&
-        typeof evidence.releaseUiPassed === "boolean" &&
+        typeof evidence.conversationGatePassed === "boolean" &&
         typeof evidence.cleanupPassed === "boolean" &&
         typeof evidence.privacyPassed === "boolean" &&
         Number.isInteger(evidence.consecutivePasses) &&
@@ -113,7 +113,7 @@ export function adapterResult({
         summaryCodes = ["native_capability_gap"];
       } else if (
         conditional.nativeSupported === conditional.passed &&
-        evidence.releaseUiPassed === true &&
+        evidence.conversationGatePassed === true &&
         evidence.cleanupPassed === true &&
         evidence.privacyPassed === true
       ) {
@@ -128,7 +128,7 @@ export function adapterResult({
     status,
     sendEnabled: status === "ready",
     officialNativeLaneProven: evidence?.officialNativeLane === true,
-    releaseUiPassed: evidence?.releaseUiPassed === true,
+    conversationGatePassed: evidence?.conversationGatePassed === true,
     cleanupPassed: evidence?.cleanupPassed === true,
     privacyPassed: evidence?.privacyPassed === true,
     consecutivePasses,

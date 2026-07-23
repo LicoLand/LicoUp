@@ -504,34 +504,6 @@ pub(super) fn codex_response_item_message(
     Some(message)
 }
 
-pub(crate) fn codex_usage_estimate_message(value: &Value) -> Option<(String, String)> {
-    if value.get("type").and_then(Value::as_str) != Some("response_item") {
-        return None;
-    }
-    let payload = value.get("payload")?;
-    let item_type = payload
-        .get("type")
-        .and_then(Value::as_str)
-        .unwrap_or_default();
-    if matches!(
-        item_type,
-        "function_call" | "function_call_output" | "reasoning"
-    ) {
-        return None;
-    }
-    let text = payload
-        .get("content")
-        .or_else(|| payload.get("text"))
-        .or_else(|| payload.get("summary"))
-        .and_then(extract_text)?;
-    let role = extract_role(payload);
-    let text = clean_native_message_text(HistoryAdapter::Codex, &role, &text)?;
-    if metadata_like_text(&text) {
-        return None;
-    }
-    Some((role, text))
-}
-
 pub(super) fn rollout_session_id_from_filename(path: &Path) -> Option<String> {
     let stem = path.file_stem()?.to_str()?;
     let parts = stem.split('-').collect::<Vec<_>>();

@@ -1,4 +1,201 @@
+import 'dart:ui' show PathMetric;
+
 import 'package:flutter/material.dart';
+
+/// A bounded activity indicator that runs around an existing rounded surface.
+///
+/// The child keeps ownership of its fill and idle border. This widget paints
+/// only transient execution feedback and becomes a static accent outline when
+/// reduced motion is enabled.
+class LicoPerimeterPulse extends StatefulWidget {
+  const LicoPerimeterPulse({
+    super.key,
+    required this.enabled,
+    required this.borderRadius,
+    required this.color,
+    required this.child,
+    this.strokeWidth = 1.6,
+    this.duration = const Duration(milliseconds: 1350),
+  });
+
+  final bool enabled;
+  final BorderRadius borderRadius;
+  final Color color;
+  final Widget child;
+  final double strokeWidth;
+  final Duration duration;
+
+  @override
+  State<LicoPerimeterPulse> createState() => _LicoPerimeterPulseState();
+}
+
+class _LicoPerimeterPulseState extends State<LicoPerimeterPulse>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(vsync: this, duration: widget.duration);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _syncAnimation();
+  }
+
+  @override
+  void didUpdateWidget(covariant LicoPerimeterPulse oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.duration != widget.duration) {
+      _controller.duration = widget.duration;
+    }
+    if (oldWidget.enabled != widget.enabled ||
+        oldWidget.duration != widget.duration) {
+      _syncAnimation();
+    }
+  }
+
+  void _syncAnimation() {
+    final reduceMotion = MediaQuery.disableAnimationsOf(context);
+    if (!widget.enabled || reduceMotion) {
+      _controller
+        ..stop()
+        ..value = 0;
+      return;
+    }
+    if (!_controller.isAnimating) {
+      _controller.repeat();
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!widget.enabled) return widget.child;
+    final reduceMotion = MediaQuery.disableAnimationsOf(context);
+    return Stack(
+      children: [
+        widget.child,
+        Positioned.fill(
+          child: IgnorePointer(
+            child: CustomPaint(
+              key: const Key('lico-perimeter-pulse-paint'),
+              painter: _LicoPerimeterPulsePainter(
+                progress: _controller,
+                borderRadius: widget.borderRadius,
+                color: widget.color,
+                strokeWidth: widget.strokeWidth,
+                reduceMotion: reduceMotion,
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _LicoPerimeterPulsePainter extends CustomPainter {
+  _LicoPerimeterPulsePainter({
+    required this.progress,
+    required this.borderRadius,
+    required this.color,
+    required this.strokeWidth,
+    required this.reduceMotion,
+  }) : super(repaint: reduceMotion ? null : progress);
+
+  final Animation<double> progress;
+  final BorderRadius borderRadius;
+  final Color color;
+  final double strokeWidth;
+  final bool reduceMotion;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (size.isEmpty) return;
+    final inset = strokeWidth / 2;
+    final rect = Offset.zero & size;
+    final path = Path()..addRRect(borderRadius.toRRect(rect.deflate(inset)));
+    if (reduceMotion) {
+      canvas.drawPath(
+        path,
+        Paint()
+          ..color = color.withValues(alpha: 0.72)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = strokeWidth,
+      );
+      return;
+    }
+
+    canvas.drawPath(
+      path,
+      Paint()
+        ..color = color.withValues(alpha: 0.16)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = strokeWidth,
+    );
+    final metric = path.computeMetrics().firstOrNull;
+    if (metric == null || metric.length <= 0) return;
+    final head = progress.value * metric.length;
+    final segmentLength = metric.length * 0.24;
+    const trailSections = 5;
+    final sectionLength = segmentLength / trailSections;
+    for (var index = 0; index < trailSections; index += 1) {
+      final end = head - (sectionLength * index);
+      final start = end - sectionLength;
+      final alpha = 0.30 + ((trailSections - index) * 0.12);
+      _drawWrappedSegment(
+        canvas,
+        metric,
+        start,
+        end,
+        Paint()
+          ..color = color.withValues(alpha: alpha.clamp(0, 0.9))
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = strokeWidth
+          ..strokeCap = StrokeCap.round,
+      );
+    }
+  }
+
+  void _drawWrappedSegment(
+    Canvas canvas,
+    PathMetric metric,
+    double start,
+    double end,
+    Paint paint,
+  ) {
+    final length = metric.length;
+    var normalizedStart = start % length;
+    var normalizedEnd = end % length;
+    if (normalizedStart < 0) normalizedStart += length;
+    if (normalizedEnd < 0) normalizedEnd += length;
+    if (normalizedStart <= normalizedEnd) {
+      canvas.drawPath(
+        metric.extractPath(normalizedStart, normalizedEnd),
+        paint,
+      );
+      return;
+    }
+    canvas.drawPath(metric.extractPath(normalizedStart, length), paint);
+    canvas.drawPath(metric.extractPath(0, normalizedEnd), paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant _LicoPerimeterPulsePainter oldDelegate) {
+    return oldDelegate.borderRadius != borderRadius ||
+        oldDelegate.color != color ||
+        oldDelegate.strokeWidth != strokeWidth ||
+        oldDelegate.reduceMotion != reduceMotion;
+  }
+}
 
 /// Continuous refresh-style spinner for in-flight agent conversations.
 class LicoSpinningRefreshIcon extends StatefulWidget {

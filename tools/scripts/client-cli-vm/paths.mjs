@@ -8,18 +8,18 @@ export function cacheRoot() {
     return path.resolve(process.env.LICO_CLIENT_CLI_VM_ROOT);
   }
   if (process.platform === "darwin") {
-    return path.join(os.homedir(), "Library", "Caches", "LicoLite", "client-cli-vms");
+    return path.join(os.homedir(), "Library", "Caches", "LicoMesh", "client-cli-vms");
   }
   if (process.platform === "win32") {
     return path.join(
       process.env.LOCALAPPDATA || path.join(os.homedir(), "AppData", "Local"),
-      "LicoLite",
+      "LicoMesh",
       "ClientCliVms",
     );
   }
   return path.join(
     process.env.XDG_CACHE_HOME || path.join(os.homedir(), ".cache"),
-    "licolite",
+    "licomesh",
     "client-cli-vms",
   );
 }

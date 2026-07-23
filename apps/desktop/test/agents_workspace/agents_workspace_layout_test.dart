@@ -6,6 +6,10 @@ void registerAgentsWorkspaceLayoutScenarios() {
   ) async {
     final controller = ClientController();
     addTearDown(controller.dispose);
+    final sessionUpdatedAt = DateTime.now()
+        .subtract(const Duration(days: 1))
+        .toUtc()
+        .toIso8601String();
     controller.scannedTargets = [
       TargetCandidate(
         target: 'copilot',
@@ -47,13 +51,13 @@ void registerAgentsWorkspaceLayoutScenarios() {
     controller.selectedConversationAgentId = 'copilot';
     controller.selectedConversationSessionId = 'session-1';
     controller.conversationSessionsByAgent = {
-      'copilot': const [
+      'copilot': [
         AgentConversationSession(
           id: 'session-1',
           agentId: 'copilot',
           title: 'key: workspace-history-with-a-long-title',
-          createdAt: '2026-06-15T00:00:00Z',
-          updatedAt: '2026-06-15T00:00:00Z',
+          createdAt: sessionUpdatedAt,
+          updatedAt: sessionUpdatedAt,
           adapterId: 'copilot-native-import',
           nativeSessionId: 'native-session-with-long-identifier',
           sourceKind: 'native-agent-history',
@@ -72,8 +76,8 @@ void registerAgentsWorkspaceLayoutScenarios() {
           id: 'session-2',
           agentId: 'copilot',
           title: 'second runtime conversation',
-          createdAt: '2026-06-16T00:00:00Z',
-          updatedAt: '2026-06-16T00:00:00Z',
+          createdAt: sessionUpdatedAt,
+          updatedAt: sessionUpdatedAt,
           adapterId: 'copilot-native-import',
           nativeSessionId: 'native-session-2',
           sourceKind: 'native-agent-history',
@@ -121,7 +125,7 @@ void registerAgentsWorkspaceLayoutScenarios() {
       findsOneWidget,
     );
     expect(find.byType(AgentsWorkspaceSidebar), findsOneWidget);
-    expect(find.text('Copilot'), findsWidgets);
+    expect(find.text('GitHub Copilot'), findsWidgets);
     expect(
       find.byKey(const Key('conversation-parity-readiness')),
       findsOneWidget,
@@ -249,8 +253,9 @@ void registerAgentsWorkspaceLayoutScenarios() {
       findsOneWidget,
     );
     expect(find.byType(AgentsWorkspaceSidebar), findsOneWidget);
-    expect(find.byKey(const Key('agents-sidebar-nav-skills')), findsOneWidget);
-    expect(find.byKey(const Key('agents-sidebar-nav-stats')), findsOneWidget);
+    expect(find.text('CONVERSATIONS'), findsOneWidget);
+    expect(find.byKey(const Key('agents-sidebar-nav-skills')), findsNothing);
+    expect(find.byKey(const Key('agents-sidebar-nav-stats')), findsNothing);
     expect(find.text('Resizable split conversation'), findsWidgets);
     expect(find.text('Claude Code · 1 messages'), findsNothing);
     expect(find.byKey(const Key('conversation-split-page')), findsNothing);

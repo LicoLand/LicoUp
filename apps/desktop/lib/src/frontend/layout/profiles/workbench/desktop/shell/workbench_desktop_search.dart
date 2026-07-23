@@ -259,6 +259,7 @@ String _sectionTitle(LicoStrings strings, ClientSection section) =>
       ClientSection.agents => strings.agents,
       ClientSection.monitoring => strings.tokenUsage,
       ClientSection.skillHub => strings.skillHub,
+      ClientSection.pluginManagement => strings.pluginManagement,
       ClientSection.mobileRelay => strings.mobileRelay,
       ClientSection.settings => strings.settings,
     };
@@ -267,6 +268,7 @@ IconData _sectionIcon(ClientSection section) => switch (section) {
   ClientSection.agents => Icons.psychology_outlined,
   ClientSection.monitoring => Icons.query_stats_outlined,
   ClientSection.skillHub => Icons.library_books_outlined,
+  ClientSection.pluginManagement => Icons.extension_outlined,
   ClientSection.mobileRelay => Icons.phonelink_outlined,
   ClientSection.settings => Icons.settings_outlined,
 };
@@ -283,6 +285,7 @@ List<String> _sectionSearchAliases(ClientSection section) => switch (section) {
     '图表',
   ],
   ClientSection.skillHub => ['skill', 'hub', '技能'],
+  ClientSection.pluginManagement => ['plugin', 'adapter', '插件', '适配器'],
   ClientSection.mobileRelay => ['mobile', 'relay', 'pair', '配对'],
   ClientSection.settings => ['setting', 'preference', '设置'],
 };

@@ -3,22 +3,28 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('optional collaboration remains settings-only navigation', () {
+  test('optional collaboration is owned only by plugin management', () {
     final root = Directory('lib/src/frontend');
     final imports = <String>[];
     for (final entity in root.listSync(recursive: true)) {
       if (entity is! File || !entity.path.endsWith('.dart')) continue;
       final source = entity.readAsStringSync();
       if (source.contains(
-        'features/settings/ui/optional_collaboration_settings.dart',
+        'features/plugin_management/ui/optional_collaboration_settings.dart',
       )) {
         imports.add(entity.path);
       }
     }
 
     expect(imports, [
-      'lib/src/frontend/features/settings/ui/settings_panel.dart',
+      'lib/src/frontend/features/plugin_management/ui/adapter_plugin_panel.dart',
     ]);
+
+    final settings = _read(
+      'lib/src/frontend/features/settings/ui/settings_panel.dart',
+    );
+    expect(settings, isNot(contains('OptionalCollaborationSettings')));
+    expect(settings, isNot(contains('AntigravityAdapter')));
 
     final navigation = File(
       'lib/src/application/features/navigation/controller/client_navigation_controller.dart',
@@ -26,9 +32,9 @@ void main() {
     expect(navigation, isNot(contains('optionalCollaboration')));
   });
 
-  test('settings facade only composes independently testable sections', () {
+  test('collaboration plugin facade composes testable sections', () {
     final surface = _read(
-      'lib/src/frontend/features/settings/ui/optional_collaboration_settings.dart',
+      'lib/src/frontend/features/plugin_management/ui/optional_collaboration_settings.dart',
     );
     for (final section in const [
       'OptionalCollaborationSettingsHeader',
@@ -117,7 +123,7 @@ void main() {
   });
 
   test('UI leaves cannot execute commands or own wire DTO parsing', () {
-    final root = Directory('lib/src/frontend/features/settings/ui');
+    final root = Directory('lib/src/frontend/features/plugin_management/ui');
     final optionalFiles = root.listSync().whereType<File>().where(
       (file) =>
           file.path.endsWith('.dart') &&

@@ -55,13 +55,13 @@ class SecureMeshAndroidSecretStore(
     fun secureMeshAndroidSecretStoreSet(
         namespace: String,
         key: String,
-        secret: String,
+        secret: ByteArray,
     ): Boolean {
         requireActiveNativeOperation()
         return mobileRelaySecrets.set(namespace, key, secret)
     }
 
-    fun secureMeshAndroidSecretStoreGet(namespace: String, key: String): String? {
+    fun secureMeshAndroidSecretStoreGet(namespace: String, key: String): ByteArray? {
         requireActiveNativeOperation()
         return mobileRelaySecrets.get(namespace, key)
     }

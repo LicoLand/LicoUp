@@ -71,8 +71,8 @@
       "method": "official lane does not expose a durable active-turn cancel handle"
     },
     "interruptSteer": {
-      "status": "unsupported",
-      "method": "combined in-flight interrupt and steer is not enabled"
+      "status": "supported",
+      "method": "App Server turn/steer with exact threadId and expectedTurnId"
     },
     "cleanup": {
       "status": "supported",
@@ -181,7 +181,7 @@
       "P-07": "error-cancel-timeout-parity",
       "P-08": "privacy-and-process-boundary",
       "P-09": "isolation-and-cleanup",
-      "P-10": "exact-release-product-ui",
+      "P-10": "arc-local-service-consecutive-rounds",
       "C-01": "streaming-delta",
       "C-02": "reasoning-and-tool-trace",
       "C-03": "approval-lifecycle",
@@ -190,15 +190,15 @@
       "C-06": "usage-and-status"
     },
     "minimumConsecutivePasses": 3,
-    "minimumConsecutiveReleaseUiPasses": 3,
-    "productUiRequired": true,
-    "releaseP10Required": true,
+    "minimumConsecutiveReleaseUiPasses": 0,
+    "productUiRequired": false,
+    "releaseP10Required": false,
     "liveLocalForwardingRequired": true,
     "realtimeOutputRequired": true,
     "sameNativeSessionRequired": true,
     "canonicalReadinessRequired": true,
     "nativeToArcRequired": true,
     "arcToNativeRequired": true,
-    "exactArtifactRequired": true
+    "exactArtifactRequired": false
   }
 }

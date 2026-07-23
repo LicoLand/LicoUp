@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 
 const configUrl = new URL("../config/secure-mesh-report-redaction.json", import.meta.url);
 const configRef = "tools/scripts/config/secure-mesh-report-redaction.json";
-const schemaVersion = "licolite.secure-mesh.report-redaction-config.v1";
+const schemaVersion = "licomesh.secure-mesh.report-redaction-config.v1";
 const leakPatterns = Object.freeze([
   ["local_path", /\/Users\/|\/private\/|\/var\/folders\/|[A-Za-z]:\\/u],
   ["bearer", /Bearer\s+(?!\[redacted\])\S+/u],

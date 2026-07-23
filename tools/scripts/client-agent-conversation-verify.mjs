@@ -133,11 +133,11 @@ export function classifyAdapter(
       row?.agentId === driver.agentId
         && row?.productLivePassed === true
         && row?.cleanupPassed === true)
-    && liveResult?.rawResult?.releaseUiPassed === true
+    && liveResult?.rawResult?.conversationGatePassed === true
     && liveResult?.rawResult?.productReceiptJoined === true;
   const staticReason = readiness?.summaryCodes?.[0]
     || driver.blockerCodes?.[0]
-    || "native_conversation_parity_unverified";
+    || "acceptance_evidence_unavailable";
   const resultLabel = liveRequested
     ? liveStatus === "passed" || conversationPassed ? "成功" : `Failed: ${liveReason}`
     : readinessReady ? "成功" : `Not ready: ${staticReason}`;
@@ -190,7 +190,7 @@ function selfTest() {
     { agentId: "ready", driverId: "ready-driver", driverMode: "conversation", historyReadable: true,
       blockerCodes: [], capabilityMatrix: { officialLane: true, laneFamily: "rpc" } },
     { status: "ready", sendEnabled: true, consecutivePasses: 3, summaryCodes: [] },
-    { status: "passed", reasonCode: null, rawResult: { releaseUiPassed: true, productReceiptJoined: true } },
+    { status: "passed", reasonCode: null, rawResult: { conversationGatePassed: true, productReceiptJoined: true } },
     true,
     true,
     { status: "passed", testedAgents: [{ agentId: "ready", productLivePassed: true, cleanupPassed: true }] },
@@ -272,7 +272,7 @@ async function main() {
           reasonCode,
           rawResult: {
             status: "failed",
-            releaseUiPassed: false,
+            conversationGatePassed: false,
             errorCode: reasonCode,
           },
         };

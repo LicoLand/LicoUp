@@ -21,7 +21,7 @@ fn secure_mesh_pairwise_relay_header_public_boundary_is_explicit_and_payload_fre
             "targetAgentId": "agent-relay-header-shielded-canary",
             "token": (["relay", "header", "shielded", "synthetic", "canary"].join("-")),
             "fileName": "relay-header-shielded-file-canary.txt",
-            "path": "/tmp/relay-header-shielded-path-canary",
+            "path": "test-data/relay-header-shielded-path-canary",
             "body": {"message": "relay-header-shielded-payload-canary"}
         }))
         .unwrap(),

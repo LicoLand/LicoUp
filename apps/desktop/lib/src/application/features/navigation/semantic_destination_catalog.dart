@@ -127,6 +127,11 @@ final class SemanticDestinationCatalog {
       surfaces: const {LayoutRuntimeSurface.desktop},
     ),
     SemanticDestinationDescriptor(
+      destination: ClientSection.pluginManagement,
+      labelKey: 'destination.plugin-management',
+      surfaces: const {LayoutRuntimeSurface.desktop},
+    ),
+    SemanticDestinationDescriptor(
       destination: ClientSection.mobileRelay,
       labelKey: 'destination.mobile-relay',
       surfaces: const {

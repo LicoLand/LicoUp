@@ -24,8 +24,8 @@ function keyRecord(authority, keyId, publicKey) {
 const reviewerKeys = generateKeyPairSync("ed25519");
 const ownerKeys = generateKeyPairSync("ed25519");
 const binding = {
-  schemaVersion: "licolite.secure-mesh.pairwise-content-review-signoff-binding.v2",
-  corpusSchemaVersion: "licolite.secure-mesh.pairwise-content-vector-corpus.v1",
+  schemaVersion: "licomesh.secure-mesh.pairwise-content-review-signoff-binding.v2",
+  corpusSchemaVersion: "licomesh.secure-mesh.pairwise-content-vector-corpus.v1",
   corpusDigest: `sha256:${"1".repeat(64)}`,
   corpusEntryCount: 3,
   corpusEntryIdsDigest: `sha256:${"2".repeat(64)}`,
@@ -37,7 +37,7 @@ const binding = {
   producerSourceDigest: `sha256:${"6".repeat(64)}`,
 };
 const signoff = {
-  schemaVersion: "licolite.secure-mesh.pairwise-content-review-signoff.v2",
+  schemaVersion: "licomesh.secure-mesh.pairwise-content-review-signoff.v2",
   sourceOfTruth: "self-test-authority",
   independentCryptographicReviewComplete: true,
   releaseOwnerSignoffComplete: true,

@@ -1,6 +1,5 @@
 import 'package:flutter_client/src/contracts/mobile_relay/mobile_relay_models.dart';
-import 'package:flutter_client/src/contracts/secure_mesh_kt_models.dart';
-import 'package:flutter_client/src/contracts/secure_mesh_mls_models.dart';
+import 'package:flutter_client/src/contracts/generated/secure_mesh.g.dart';
 import 'package:flutter_client/src/platform/mobile_relay/mobile_relay_secure_mesh_service.dart';
 import 'package:flutter_client/src/platform/mobile_relay/mobile_relay_service_ops.dart';
 import 'package:flutter_client/src/platform/native_client/agent_service.dart';
@@ -8,8 +7,7 @@ import 'package:flutter_client/src/platform/secure_mesh/secure_mesh_android_brid
 import 'package:flutter_client/src/platform/secure_mesh/secure_mesh_mobile_bridge.dart';
 
 export 'package:flutter_client/src/contracts/mobile_relay/mobile_relay_models.dart';
-export 'package:flutter_client/src/contracts/secure_mesh_kt_models.dart';
-export 'package:flutter_client/src/contracts/secure_mesh_mls_models.dart';
+export 'package:flutter_client/src/contracts/generated/secure_mesh.g.dart';
 export 'package:flutter_client/src/platform/mobile_relay/mobile_relay_secure_mesh_service.dart'
     show resolveSecureAgentSessionListResult, resolveSecureRelayPollResult;
 

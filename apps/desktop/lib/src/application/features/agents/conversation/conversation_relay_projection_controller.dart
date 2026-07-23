@@ -1,3 +1,4 @@
+import 'package:flutter_client/src/application/features/agents/agent_product_names.dart';
 import 'package:flutter_client/src/application/features/agents/policy/conversation_session_index.dart';
 import 'package:flutter_client/src/application/features/agents/workspace/agent_workspace_coordinator.dart';
 import 'package:flutter_client/src/contracts/agent_conversation_models.dart';
@@ -50,7 +51,7 @@ mixin AgentConversationRelayProjectionController on AgentWorkspaceCoordinator {
       agentId: agent.target,
       title: existing?.title.trim().isNotEmpty == true
           ? existing!.title
-          : agent.label,
+          : agentProductLabel(agent.label),
       createdAt: existing?.createdAt ?? updatedAt,
       updatedAt: updatedAt,
       adapterId: 'mobile-relay-native-projection',

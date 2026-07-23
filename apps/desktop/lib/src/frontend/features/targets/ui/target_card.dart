@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:flutter_client/src/frontend/l10n/lico_strings.dart';
 import 'package:flutter_client/src/contracts/target_candidate.dart';
+import 'package:flutter_client/src/frontend/features/agents/ui/agent_conversation_display_names.dart';
 import 'package:flutter_client/src/frontend/shared/ui/agent_brand_icon.dart';
 import 'package:flutter_client/src/frontend/shared/ui/theme.dart';
 
@@ -105,7 +106,7 @@ class _TargetTitle extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          target.label,
+          agentConversationTargetDisplayName(target),
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),

@@ -12,10 +12,20 @@ fn legitimate_peer_identity_rotation_is_terminal_until_explicit_repair() {
             let mut pc_config = default_config();
             let mut mobile_config = default_config();
             pair_mobile_relay_configs(&mut pc_config, &mut mobile_config);
-            let prior_identity = local_endpoint_state(&pc_config)?.device_identity()?;
-            rotate_mobile_relay_local_identity_for_repair(&mut pc_config)?;
-            let rotated_descriptor =
-                ensure_mobile_relay_endpoint_descriptor(&mut pc_config, "desktop_sidecar")?;
+            let prior_identity = local_endpoint_state(
+                &pc_config,
+                test_runtime_secret_material(stringify!(&pc_config)),
+            )?
+            .device_identity()?;
+            rotate_mobile_relay_local_identity_for_repair(
+                &mut pc_config,
+                test_runtime_secret_material(stringify!(&mut pc_config)),
+            )?;
+            let rotated_descriptor = ensure_mobile_relay_endpoint_descriptor(
+                &mut pc_config,
+                test_runtime_secret_material(stringify!(&mut pc_config)),
+                "desktop_sidecar",
+            )?;
             let rotated_identity =
                 pairwise_prekey_bundle_from_descriptor(&rotated_descriptor)?.endpoint_identity;
             assert_eq!(rotated_identity.endpoint_id, prior_identity.endpoint_id);
@@ -25,10 +35,14 @@ fn legitimate_peer_identity_rotation_is_terminal_until_explicit_repair() {
                 prior_identity.identity_public_key
             );
 
-            let error =
-                apply_peer_secure_mesh_descriptor(&mut mobile_config, &rotated_descriptor, true)
-                    .unwrap_err()
-                    .to_string();
+            let error = apply_peer_secure_mesh_descriptor(
+                &mut mobile_config,
+                test_runtime_secret_material(stringify!(&mut mobile_config)),
+                &rotated_descriptor,
+                true,
+            )
+            .unwrap_err()
+            .to_string();
             assert!(error.contains("terminal (key_changed)"));
             assert_eq!(mobile_config["mobileRelayE2ee"]["peerVerified"], false);
             assert!(
@@ -58,20 +72,38 @@ fn out_of_band_mobile_response_cannot_replace_pinned_pc_identity() {
     let dir = temp_dir("out-of-band-mobile-response-pinned-pc");
     let previous = set_portable_data_dir_override(Some(dir));
     let mut pinned_pc_config = default_config();
-    let pinned_pc_descriptor =
-        ensure_mobile_relay_endpoint_descriptor(&mut pinned_pc_config, "desktop_sidecar").unwrap();
+    let pinned_pc_descriptor = ensure_mobile_relay_endpoint_descriptor(
+        &mut pinned_pc_config,
+        test_runtime_secret_material(stringify!(&mut pinned_pc_config)),
+        "desktop_sidecar",
+    )
+    .unwrap();
     let mut mobile_config = default_config();
     mobile_config["pairingId"] = json!("pair_pinned_pc");
-    ensure_mobile_relay_endpoint_descriptor(&mut mobile_config, "mobile").unwrap();
-    apply_peer_secure_mesh_descriptor(&mut mobile_config, &pinned_pc_descriptor, true).unwrap();
+    ensure_mobile_relay_endpoint_descriptor(
+        &mut mobile_config,
+        test_runtime_secret_material(stringify!(&mut mobile_config)),
+        "mobile",
+    )
+    .unwrap();
+    apply_peer_secure_mesh_descriptor(
+        &mut mobile_config,
+        test_runtime_secret_material(stringify!(&mut mobile_config)),
+        &pinned_pc_descriptor,
+        true,
+    )
+    .unwrap();
     let pinned_descriptor = peer_secure_mesh_descriptor(&mobile_config).unwrap();
     let pinned_fingerprint = mobile_config["mobileRelayE2ee"]["peerDeviceTrustFingerprint"].clone();
     let pinned_trust_record = mobile_config["mobileRelayE2ee"]["peerTrustRecord"].clone();
 
     let mut attacker_pc_config = default_config();
-    let attacker_pc_descriptor =
-        ensure_mobile_relay_endpoint_descriptor(&mut attacker_pc_config, "desktop_sidecar")
-            .unwrap();
+    let attacker_pc_descriptor = ensure_mobile_relay_endpoint_descriptor(
+        &mut attacker_pc_config,
+        test_runtime_secret_material(stringify!(&mut attacker_pc_config)),
+        "desktop_sidecar",
+    )
+    .unwrap();
     assert_ne!(pinned_pc_descriptor, attacker_pc_descriptor);
     let error = apply_out_of_band_pairing_response(
         &mut mobile_config,
@@ -176,6 +208,7 @@ fn mobile_relay_command_error_result_redacts_internal_detail() {
     });
     let envelope = seal_mobile_relay_payload(
         &mobile_config,
+        test_runtime_secret_material(stringify!(&mobile_config)),
         crate::core::secure_mesh_crypto::SecureMeshPayloadKind::Command,
         &invalid_command_payload,
     )
@@ -262,8 +295,13 @@ fn mobile_relay_result_replay_proof_rejects_second_open_without_plaintext() {
             "purged": true
         }
     }));
-    let proof =
-        result_envelope_replay_proof(&mobile_config, &result_envelope, response_summary).unwrap();
+    let proof = result_envelope_replay_proof(
+        &mobile_config,
+        test_runtime_secret_material(stringify!(&mobile_config)),
+        &result_envelope,
+        response_summary,
+    )
+    .unwrap();
     assert_eq!(proof["ok"], true);
     assert_eq!(proof["firstOpenOk"], true);
     assert_eq!(proof["firstOpenBodyRedacted"], true);

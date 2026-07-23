@@ -81,7 +81,8 @@ pub(super) fn validate_success_response(
     match operation {
         SecureClientRelayOperation::EndpointChallenge => validate_challenge_success(object),
         SecureClientRelayOperation::EndpointRegister => {
-            validate_core_endpoint(field(object, "endpoint")?)
+            validate_core_endpoint(field(object, "endpoint")?)?;
+            validate_registration_receipt(field(object, "registrationReceipt")?)
         }
         SecureClientRelayOperation::EnvelopeSend => validate_send_success(object),
         SecureClientRelayOperation::EnvelopeSync => validate_sync_success(object),
@@ -275,6 +276,24 @@ fn validate_core_endpoint(value: &Value) -> Result<()> {
     timestamp_value(field(endpoint, "createdAt")?, "endpoint created at")?;
     timestamp_value(field(endpoint, "updatedAt")?, "endpoint updated at")?;
     any_string(field(endpoint, "revokedAt")?, "endpoint revoked at")?;
+    Ok(())
+}
+
+fn validate_registration_receipt(value: &Value) -> Result<()> {
+    let receipt = exact_object(
+        value,
+        "endpoint registration receipt",
+        &["receiptRef", "sequence"],
+    )?;
+    sha256_hex(
+        field(receipt, "receiptRef")?,
+        "endpoint registration receipt reference",
+    )?;
+    unsigned(
+        field(receipt, "sequence")?,
+        "endpoint registration receipt sequence",
+        1,
+    )?;
     Ok(())
 }
 

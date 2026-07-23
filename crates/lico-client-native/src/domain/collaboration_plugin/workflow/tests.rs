@@ -40,8 +40,8 @@ impl Fixture {
         let manifest = json!({
             "schemaVersion": MANIFEST_SCHEMA,
             "kind": PLUGIN_KIND,
-            "pluginId": "licolite-collaboration",
-            "displayName": "LicoLite Collaboration",
+            "pluginId": "licomesh-collaboration",
+            "displayName": "LicoMesh Collaboration",
             "version": "1.0.0",
             "capabilities": [LOCAL_DEPLOYMENT_CAPABILITY, MCP_INSTALL_CAPABILITY],
             "workflows": {

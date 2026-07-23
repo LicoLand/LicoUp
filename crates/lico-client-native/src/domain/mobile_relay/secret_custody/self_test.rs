@@ -78,11 +78,12 @@ pub(in crate::domain::mobile_relay) fn e2ee_secret_store_self_test_in(
 
 fn e2ee_secret_store_self_test_in_current_portable_dir() -> Result<Value> {
     let mut config = default_config();
+    let mut material = RuntimeSecretMaterial::new();
     let mut secret_store_batch = MobileRelaySecretStoreAuthBatch::new(
         "Mobile Relay E2EE secret store self-test authorization batch",
         mobile_relay_secret_store_self_test_authorization_batch_operation_count(),
     );
-    ensure_mobile_relay_endpoint_descriptor(&mut config, "desktop_sidecar")?;
+    ensure_mobile_relay_endpoint_descriptor(&mut config, &mut material, "desktop_sidecar")?;
     persist_config_secret_material_to_native_store_with_batch(
         &mut config,
         &mut secret_store_batch,
@@ -102,12 +103,13 @@ fn e2ee_secret_store_self_test_in_current_portable_dir() -> Result<Value> {
         .collect();
     let mut loaded = normalize_config(config.clone());
     let mut overrides = RuntimeSecretOverrides::default();
-    hydrate_config_secret_material_from_native_store_with_batch(
-        &mut loaded,
+    hydrate_runtime_secret_material_from_native_store_with_batch(
+        &loaded,
+        &mut material,
         &mut overrides,
         &mut secret_store_batch,
     )?;
-    let local_rehydrated = local_endpoint_state(&loaded).is_ok();
+    let local_rehydrated = local_endpoint_state(&loaded, &material).is_ok();
     let secret_store = mobile_relay_e2ee_secret_store_status(&loaded, &overrides);
     let (store, authorization_session, namespace) =
         secret_store_batch.authorization()?.ok_or_else(|| {

@@ -34,6 +34,7 @@ List<TargetCandidate> testTargets(List<String> agentIds) {
 AgentUsageReport snapshotOnlyReport({
   required String generatedAt,
   required int totalTokens,
+  int windowDays = 90,
 }) {
   return AgentUsageReport(
     schemaVersion: AgentUsageReport.currentSchemaVersion,
@@ -58,6 +59,7 @@ AgentUsageReport snapshotOnlyReport({
       ),
     ],
     warnings: const [],
+    window: {'days': windowDays},
   );
 }
 

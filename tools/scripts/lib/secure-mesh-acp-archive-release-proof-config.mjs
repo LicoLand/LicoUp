@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 
 const configUrl = new URL("../config/secure-mesh-acp-archive-release-proof.json", import.meta.url);
 const configRef = "tools/scripts/config/secure-mesh-acp-archive-release-proof.json";
-const schemaVersion = "licolite.secure-mesh.acp-archive-release-proof-config.v1";
+const schemaVersion = "licomesh.secure-mesh.acp-archive-release-proof-config.v1";
 const leakPatterns = Object.freeze([
   ["local_path", /\/Users\/|\/private\/|\/var\/folders\/|[A-Za-z]:\\/u],
   ["bearer", /Bearer\s+(?!\[redacted\])\S+/u],

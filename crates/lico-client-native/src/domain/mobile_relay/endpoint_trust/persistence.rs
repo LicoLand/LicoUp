@@ -7,7 +7,7 @@ pub(crate) fn persisted_mobile_relay_peer_trust_state(
 ) -> Result<DeviceTrustState> {
     ensure_secure_mesh_protected_operation_allowed()?;
     ensure!(
-        local_endpoint_state(config)?.device_identity()? == *local_identity,
+        local_public_device_identity(config)? == *local_identity,
         "secure mesh MLS persisted local trust identity differs"
     );
     let scope = configured_directory_scope_commitment(config)?;
