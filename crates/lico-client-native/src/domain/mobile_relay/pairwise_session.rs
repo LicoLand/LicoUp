@@ -6,6 +6,9 @@ mod status_projection;
 mod store;
 mod transaction;
 
+#[cfg(test)]
+pub(in crate::domain::mobile_relay) use super::secret_custody::test_runtime_secret_material;
+
 pub(super) use crypto_operation::{
     PairwiseDirectoryGate, open_mobile_relay_payload_with_pairwise_operation,
     open_mobile_relay_payload_with_pairwise_operation_and_gate,

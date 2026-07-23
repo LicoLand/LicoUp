@@ -82,6 +82,7 @@ pub(in crate::platform) fn execute(
     let stderr_handle = thread::spawn(move || drain_stderr(stderr, max_stderr, &stderr_flag));
 
     let mut protocol = CodexProtocol::new(config);
+    let (control_sender, control_receiver) = mpsc::sync_channel(16);
     if write_message(&mut stdin, &protocol.initial_request()).is_err() {
         let cleanup =
             finish_protocol_transport(&mut child, &mut stdin, stdout_handle, stderr_handle);
@@ -112,8 +113,14 @@ pub(in crate::platform) fn execute(
     }
 
     let deadline = Instant::now() + Duration::from_millis(timeout_ms);
-    let (outcome, failure, status_code, stdout_was_truncated) =
-        run_protocol_loop(&mut stdin, &receiver, &mut protocol, deadline);
+    let (outcome, failure, status_code, stdout_was_truncated) = run_protocol_loop(
+        &mut stdin,
+        &receiver,
+        &control_sender,
+        &control_receiver,
+        &mut protocol,
+        deadline,
+    );
 
     let cleanup = finish_protocol_transport(&mut child, &mut stdin, stdout_handle, stderr_handle);
     let stderr_was_truncated = stderr_truncated.load(Ordering::Relaxed);

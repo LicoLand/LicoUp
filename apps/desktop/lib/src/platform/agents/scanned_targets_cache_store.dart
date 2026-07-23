@@ -29,6 +29,11 @@ class PlatformScannedTargetsCacheStore implements ScannedTargetsCacheStore {
     if (decoded is! Map) {
       return const [];
     }
+    // v2: runtime.message.send no longer requires parity evidence, so cached
+    // capability snapshots from older semantics must be refreshed once.
+    if (decoded['schemaVersion'] != 2) {
+      return const [];
+    }
     final raw = decoded['candidates'];
     if (raw is! List) {
       return const [];
@@ -39,9 +44,19 @@ class PlatformScannedTargetsCacheStore implements ScannedTargetsCacheStore {
       if (item is! Map) {
         continue;
       }
-      final candidate = TargetCandidate.fromJson(
-        Map<String, dynamic>.from(item),
-      );
+      final candidateJson = Map<String, dynamic>.from(item);
+      // A cache is paint-fast metadata, not executable authority. Do not stat
+      // cached paths here: they may point at macOS-protected user folders or
+      // network volumes and trigger privacy prompts during app startup. The
+      // mandatory background rescan restores a current executable binding.
+      candidateJson.remove('binaryPath');
+      if (candidateJson['supportedActions'] is List) {
+        candidateJson['supportedActions'] =
+            (candidateJson['supportedActions'] as List)
+                .where((action) => action != 'runtime.message.send')
+                .toList(growable: false);
+      }
+      final candidate = TargetCandidate.fromJson(candidateJson);
       final id = candidate.target.trim();
       if (id.isEmpty || !candidate.visibleInClient || !seen.add(id)) {
         continue;
@@ -63,7 +78,7 @@ class PlatformScannedTargetsCacheStore implements ScannedTargetsCacheStore {
       candidates.add(target.toJson());
     }
     return _jsonStore.write(portableData, _fileName, {
-      'schemaVersion': 1,
+      'schemaVersion': 2,
       'savedAt': DateTime.now().toUtc().toIso8601String(),
       'candidates': candidates,
     }, lock: true);

@@ -10,25 +10,25 @@ fn retained_reports_keep_only_current_contract_and_sort_by_timestamp() {
             json!({
                 "items": [
                     {
-                        "schemaVersion": 4,
+                        "schemaVersion": 6,
                         "mode": "local-token-usage",
-                        "tokenSourceMode": "local-history",
+                        "tokenSourceMode": "native-metadata-first-incremental",
                         "generatedAt": "2026-07-10T12:00:00Z",
                         "summary": {"totalTokens": 12},
                         "agents": []
                     },
                     {
-                        "schemaVersion": 4,
+                        "schemaVersion": 6,
                         "mode": "invalid-mode",
-                        "tokenSourceMode": "local-history",
+                        "tokenSourceMode": "native-metadata-first-incremental",
                         "generatedAt": "2026-07-11T12:00:00Z",
                         "summary": {"totalTokens": 999},
                         "agents": []
                     },
                     {
-                        "schemaVersion": 4,
+                        "schemaVersion": 6,
                         "mode": "local-token-usage",
-                        "tokenSourceMode": "local-history",
+                        "tokenSourceMode": "native-metadata-first-incremental",
                         "generatedAt": "2026-07-09T12:00:00Z",
                         "summary": {"totalTokens": 9},
                         "agents": []
@@ -51,12 +51,12 @@ fn retained_reports_keep_only_current_contract_and_sort_by_timestamp() {
     let retained = store.read_collection("agent-usage-reports").unwrap();
     let items = retained["items"].as_array().unwrap();
     assert_eq!(items.len(), 2);
-    assert!(items.iter().all(|item| item["schemaVersion"] == 4));
+    assert!(items.iter().all(|item| item["schemaVersion"] == 6));
     assert!(items.iter().all(|item| item["mode"] == "local-token-usage"));
     assert!(
         items
             .iter()
-            .all(|item| item["tokenSourceMode"] == "local-history")
+            .all(|item| { item["tokenSourceMode"] == "native-metadata-first-incremental" })
     );
     assert_eq!(items[0]["summary"]["totalTokens"], 9);
     assert_eq!(items[1]["summary"]["totalTokens"], 12);

@@ -107,13 +107,7 @@ test("catalog commands reference existing dedicated scripts and test targets", a
   }
 });
 
-test("catalog inputs contain no retired files or directories", async () => {
-  const retiredInputs = new Set([
-    "PRODUCT.md",
-    "docs/RUNBOOK.md",
-    "docs/USAGES.md",
-    "docs/functionality/CLIENT-DESKTOP.md",
-  ]);
+test("catalog inputs exist and exclude local-only document roots", async () => {
   const checked = new Set();
   for (const module of CLIENT_MODULE_CATALOG) {
     for (const input of module.inputs) {
@@ -121,9 +115,12 @@ test("catalog inputs contain no retired files or directories", async () => {
       if (checked.has(relativePath)) continue;
       checked.add(relativePath);
       assert.equal(
-        retiredInputs.has(relativePath) || relativePath.startsWith("docs/plan/"),
+        relativePath.startsWith("docs/plans/") ||
+          relativePath.startsWith("docs/reports/") ||
+          relativePath.startsWith("cache/") ||
+          relativePath.startsWith("build/"),
         false,
-        `catalog input is retired or local-only: ${relativePath}`,
+        `catalog input is local-only: ${relativePath}`,
       );
       await fs.access(path.join(repoRoot, relativePath));
     }

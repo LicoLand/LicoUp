@@ -260,6 +260,7 @@ pub(super) fn messages_from_json(
 ) -> Vec<Value> {
     let role = extract_role(value);
     let created_at = extract_timestamp(value);
+    let model = extract_native_model(value);
     if let Some(blocks) = direct_native_content_blocks(value) {
         let mut messages = blocks
             .iter()
@@ -277,11 +278,14 @@ pub(super) fn messages_from_json(
             })
             .collect::<Vec<_>>();
         if !messages.is_empty() {
-            if let Some(usage) = extract_token_usage(value) {
-                let target_index = messages.len() - 1;
-                if let Some(object) = messages[target_index].as_object_mut() {
+            let target_index = messages.len() - 1;
+            if let Some(object) = messages[target_index].as_object_mut() {
+                if let Some(usage) = extract_token_usage(value) {
                     object.insert("usage".to_string(), usage);
                     object.insert("usageScope".to_string(), json!("request-response"));
+                }
+                if let Some(model) = model {
+                    object.insert("model".to_string(), json!(model));
                 }
             }
             return messages;
@@ -306,11 +310,14 @@ pub(super) fn messages_from_json(
     else {
         return Vec::new();
     };
-    if let Some(usage) = extract_token_usage(value)
-        && let Some(object) = message.as_object_mut()
-    {
-        object.insert("usage".to_string(), usage);
-        object.insert("usageScope".to_string(), json!("request-response"));
+    if let Some(object) = message.as_object_mut() {
+        if let Some(usage) = extract_token_usage(value) {
+            object.insert("usage".to_string(), usage);
+            object.insert("usageScope".to_string(), json!("request-response"));
+        }
+        if let Some(model) = model {
+            object.insert("model".to_string(), json!(model));
+        }
     }
     vec![message]
 }

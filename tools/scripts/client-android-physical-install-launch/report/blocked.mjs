@@ -77,7 +77,7 @@ export function writeBlockedReportIfPossible(error) {
     const rawJsonSecretOverridesStaticSourceProof =
       androidRawJsonSecretOverridesSourceProof(repoRoot);
     const report = {
-      schemaVersion: "licolite.secure-mesh.android-physical-install-launch-report.v3",
+      schemaVersion: "licomesh.secure-mesh.android-physical-install-launch-report.v3",
       verifier: VERIFIER_PATH,
       generatedAt: new Date().toISOString(),
       report: reportPath,

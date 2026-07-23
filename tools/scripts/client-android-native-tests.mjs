@@ -159,7 +159,7 @@ try {
   const checkedAt = new Date().toISOString();
   const report = {
     ok: true,
-    schemaVersion: "licolite.secure-mesh.android-platform-crypto-acceptance.v1",
+    schemaVersion: "licomesh.secure-mesh.android-platform-crypto-acceptance.v1",
     verifier,
     generatedBy: verifier,
     generatedAt: checkedAt,

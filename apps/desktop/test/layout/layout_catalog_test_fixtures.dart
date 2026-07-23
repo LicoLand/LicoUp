@@ -10,9 +10,9 @@ const fixtureCatalogRevision = 1;
 
 List<LayoutProfileDescriptor> fixtureProfiles({
   bool workbenchDefault = true,
-  bool studioDefault = false,
+  bool nativeDefault = false,
   int workbenchRevision = fixtureCatalogRevision,
-  int studioRevision = fixtureCatalogRevision,
+  int nativeRevision = fixtureCatalogRevision,
 }) => [
   LayoutProfileDescriptor(
     id: LayoutProfileId.parse('workbench'),
@@ -26,12 +26,12 @@ List<LayoutProfileDescriptor> fixtureProfiles({
     revision: workbenchRevision,
   ),
   LayoutProfileDescriptor(
-    id: LayoutProfileId.parse('studio'),
-    label: LayoutProfileCopy(english: 'Studio', chinese: '原生'),
-    description: LayoutProfileCopy(english: 'Studio fixture', chinese: '原生夹具'),
-    styleIdentity: 'dense-docked-studio',
-    isDefault: studioDefault,
-    revision: studioRevision,
+    id: LayoutProfileId.parse('native'),
+    label: LayoutProfileCopy(english: 'Native', chinese: '原生'),
+    description: LayoutProfileCopy(english: 'Native fixture', chinese: '原生夹具'),
+    styleIdentity: 'glassy-rail-native',
+    isDefault: nativeDefault,
+    revision: nativeRevision,
   ),
 ];
 
@@ -80,7 +80,7 @@ List<LayoutStateNamespace> fixtureStateNamespaces() => [
     ),
   ),
   LayoutStateNamespace(
-    profileId: LayoutProfileId.parse('studio'),
+    profileId: LayoutProfileId.parse('native'),
     surface: LayoutRuntimeSurface.desktop,
     destination: ClientSection.agents,
     channel: const LayoutStateChannel(

@@ -192,7 +192,7 @@ ThemeData buildLicoTheme({
       }),
       trackColor: WidgetStateProperty.resolveWith((states) {
         if (states.contains(WidgetState.selected)) {
-          return colors.info.withAlpha(90);
+          return colors.primary.withAlpha(140);
         }
         return colors.surfaceLow;
       }),

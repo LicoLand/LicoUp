@@ -2,12 +2,18 @@ use super::super::{
     material_mutation::ensure_mobile_relay_endpoint_material,
     rotation::rotate_mobile_relay_one_time_prekeys,
 };
+use crate::domain::mobile_relay::test_runtime_secret_material;
 use serde_json::json;
 
 #[test]
 fn one_time_rotation_replaces_ephemeral_inventory_once() {
     let mut config = json!({});
-    ensure_mobile_relay_endpoint_material(&mut config, "desktop").unwrap();
+    ensure_mobile_relay_endpoint_material(
+        &mut config,
+        test_runtime_secret_material(stringify!(&mut config)),
+        "desktop",
+    )
+    .unwrap();
     let previous_curve_id = config["mobileRelayE2ee"]["oneTimePrekeyId"]
         .as_str()
         .unwrap()
@@ -18,7 +24,11 @@ fn one_time_rotation_replaces_ephemeral_inventory_once() {
         .to_string();
     config["mobileRelayE2ee"]["keyTransparencyResponse"] = json!({"stale": true});
 
-    rotate_mobile_relay_one_time_prekeys(&mut config).unwrap();
+    rotate_mobile_relay_one_time_prekeys(
+        &mut config,
+        test_runtime_secret_material(stringify!(&mut config)),
+    )
+    .unwrap();
 
     let state = &config["mobileRelayE2ee"];
     assert_eq!(state["prekeyPublicationVersion"], 2);

@@ -1,30 +1,38 @@
-// agent-usage commands: agent-usage scan|report
-
-use super::{CliExecution, CommandTable, cli_params};
+use super::{AdmittedCommand, CliExecution, admitted_params};
 use anyhow::Result;
 
-pub fn register_commands(table: &mut CommandTable) {
-    table.register_rest(
-        &["agent-usage", "scan"],
-        handle_agent_usage_scan,
-        "Scan local agent token usage from local history",
+pub(super) fn handle_agent_usage_scan(command: AdmittedCommand) -> Result<CliExecution> {
+    let params = admitted_params(
+        &[
+            ("agent", command.option_text("agent")),
+            ("historyDays", command.option_text("history-days")),
+            (
+                "timezoneOffsetMinutes",
+                command.option_text("timezone-offset-minutes"),
+            ),
+            ("stateRoot", command.option_text("state-root")),
+        ],
+        &[(
+            "timezoneTransitionsJson",
+            command.option_json("timezone-transitions-json"),
+        )],
+        &[("forceRefresh", command.option_flag("force-refresh"))],
     );
-    table.register_rest(
-        &["agent-usage", "report"],
-        handle_agent_usage_report,
-        "List retained agent usage reports",
-    );
-}
-
-fn handle_agent_usage_scan(args: &[String]) -> Result<CliExecution> {
-    let params = cli_params(&args[2..]);
     Ok(CliExecution::Json(crate::domain::agent_usage::scan(
         &params,
     )?))
 }
 
-fn handle_agent_usage_report(args: &[String]) -> Result<CliExecution> {
-    let params = cli_params(&args[2..]);
+pub(super) fn handle_agent_usage_report(command: AdmittedCommand) -> Result<CliExecution> {
+    let params = admitted_params(
+        &[
+            ("agent", command.option_text("agent")),
+            ("limit", command.option_text("limit")),
+            ("stateRoot", command.option_text("state-root")),
+        ],
+        &[],
+        &[],
+    );
     Ok(CliExecution::Json(crate::domain::agent_usage::report(
         &params,
     )?))

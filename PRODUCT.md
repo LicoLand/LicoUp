@@ -4,7 +4,7 @@
 
 Lico Arc is a local-first, open-source desktop and mobile client for discovering,
 operating, and securely reaching a user's own agents. The client does not depend
-on a LicoLite installation for its default product experience.
+on a LicoMesh installation for its default product experience.
 
 The built-in foundation is limited to:
 
@@ -34,17 +34,17 @@ The default product exposes only these scenarios:
 6. Desktop-and-mobile end-to-end encrypted communication and mobile relay. Relay
    infrastructure can route only opaque envelopes and cannot decrypt payloads.
 
-## Optional LicoLite Collaboration
+## Optional LicoMesh Collaboration
 
-LicoLite collaboration is not bundled into the default navigation or startup
+LicoMesh collaboration is not bundled into the default navigation or startup
 path. It becomes available only after the user explicitly enables the capability
 and installs its plugin from a user-selected GitHub source.
 
 The optional plugin may provide two workflows:
 
-- download LicoLite for a user-controlled local deployment and let the user
+- download LicoMesh for a user-controlled local deployment and let the user
   select the server feature/plugin set before installation;
-- manually install selected LicoLite MCP plugins into one or more selected local
+- manually install selected LicoMesh MCP plugins into one or more selected local
   agents.
 
 Neither workflow runs automatically. An MCP plugin operation involving a local
@@ -82,8 +82,9 @@ explicitly addressed encrypted message authorizes only that message and target.
 
 Every agent adapter is accepted independently. A detected or history-readable
 agent is not automatically a conversation-capable agent. Only adapters that pass
-the canonical native-conversation parity contract may enable the normal composer.
-The current reducer summary is `0 ready / 0 failed / 2 blocked / 9 unverified`.
+the canonical native-conversation parity contract may enable the normal
+composer. Current platform and adapter projections are generated in
+[`docs/COMPATIBILITY.md`](docs/COMPATIBILITY.md) from the owning catalogs.
 
 Development, ordinary verification, packaging, GitHub Release publication, and
 platform-store publication are separate claims. Public artifacts disclose only

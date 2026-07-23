@@ -56,4 +56,7 @@ final class _StatusChromeFake extends ChangeNotifier
 
   @override
   Future<void> openPairing(BuildContext context) async {}
+
+  @override
+  Future<void> openGlobalSearch(BuildContext context) async {}
 }

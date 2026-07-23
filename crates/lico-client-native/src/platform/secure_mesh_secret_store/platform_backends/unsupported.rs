@@ -4,8 +4,8 @@ use super::super::platform_store::PlatformSecretStore;
 use super::{NATIVE_SECRET_STORE_BACKEND_UNSUPPORTED, fail_closed};
 use crate::core::secure_mesh_capability::CapabilityFact;
 use crate::core::secure_mesh_secret_store::{
-    SecretStoreAuthorizationRequest, SecretStoreAuthorizationSession, SecretStoreHandle,
-    SecureMeshSecretStore,
+    SecretBytes, SecretStoreAuthorizationRequest, SecretStoreAuthorizationSession,
+    SecretStoreHandle,
 };
 
 pub(super) const BACKEND: &str = NATIVE_SECRET_STORE_BACKEND_UNSUPPORTED;
@@ -29,7 +29,7 @@ pub(super) fn set_secret_with_session(
     store: &PlatformSecretStore,
     session: &SecretStoreAuthorizationSession,
     handle: &SecretStoreHandle,
-    secret: &str,
+    secret: SecretBytes,
 ) -> Result<()> {
     fail_closed::set_secret_with_session(store, session, handle, secret)
 }
@@ -38,7 +38,7 @@ pub(super) fn get_secret_with_session(
     store: &PlatformSecretStore,
     session: &SecretStoreAuthorizationSession,
     handle: &SecretStoreHandle,
-) -> Result<Option<String>> {
+) -> Result<Option<SecretBytes>> {
     fail_closed::get_secret_with_session(store, session, handle)
 }
 
@@ -53,7 +53,7 @@ pub(super) fn delete_secret_with_session(
 pub(super) fn set_secret(
     store: &PlatformSecretStore,
     handle: &SecretStoreHandle,
-    secret: &str,
+    secret: SecretBytes,
 ) -> Result<()> {
     fail_closed::set_secret(store, handle, secret)
 }
@@ -61,7 +61,7 @@ pub(super) fn set_secret(
 pub(super) fn get_secret(
     store: &PlatformSecretStore,
     handle: &SecretStoreHandle,
-) -> Result<Option<String>> {
+) -> Result<Option<SecretBytes>> {
     fail_closed::get_secret(store, handle)
 }
 

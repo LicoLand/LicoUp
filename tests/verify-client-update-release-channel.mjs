@@ -568,7 +568,7 @@ function runMacosReleaseBundleEvidence(hostPlatform) {
 function createArtifact(target) {
   const fileName = `${target.id}${target.installerStrategy === "app-bundle-replacement" ? ".tar.gz" : ".bin"}`;
   const filePath = path.join(artifactRoot, fileName);
-  const payload = Buffer.from(`LicoLite update artifact ${target.id} ${randomUUID()}\n`, "utf8");
+  const payload = Buffer.from(`LicoMesh update artifact ${target.id} ${randomUUID()}\n`, "utf8");
   writeFileSync(filePath, payload);
   return {
     targetId: target.id,

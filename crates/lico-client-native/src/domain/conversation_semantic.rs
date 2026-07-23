@@ -1,7 +1,7 @@
 //! Canonical semantic conversation model for native agent history.
 //!
 //! Authority: `packages/contracts/client/semantic-conversation.schema.json`
-//! Overview: `docs/ARCHITECTURE.md`
+//! Overview: `docs/architecture/README.md`
 
 mod artifact_projection;
 mod builder;

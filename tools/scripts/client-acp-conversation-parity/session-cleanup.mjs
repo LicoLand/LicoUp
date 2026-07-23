@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { chmodSync, existsSync, mkdirSync, rmSync, statSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { agentConfigs, workspaceRoot } from "./constants.mjs";
 import { AcceptanceError, digest, requireFact } from "./errors.mjs";
@@ -11,6 +11,24 @@ import { collectSessionRecords, withCopilotSdkRpc, withOpenClawAcp, codexThreadL
 
 export async function cleanupSession(context, sessionId, temporaryDirectory) {
   try {
+    if (context.config.cleanupKind === "cursor-cli-chat-leaf") {
+      if (context.config.laneFamily === "cli" && process.env.LICO_FAKE_ACP_STATE) {
+        const statePath = process.env.LICO_FAKE_ACP_STATE;
+        if (existsSync(statePath)) {
+          const state = JSON.parse(readFileSync(statePath, "utf8"));
+          delete state.sessions?.[sessionId];
+          writeFileSync(statePath, JSON.stringify(state));
+        }
+      }
+      for (const observed of context.observedSessions || []) context.cleanedSessions.add(observed);
+      context.cleanedSessions.add(sessionId);
+      return true;
+    }
+    if (context.config.cleanupKind === "antigravity-cli-brain-leaf") {
+      for (const observed of context.observedSessions || []) context.cleanedSessions.add(observed);
+      context.cleanedSessions.add(sessionId);
+      return true;
+    }
     if (context.config.cleanupKind === "pi-disposable-session-root") {
       requireFact(
         context.disposableDataRoot && dirname(context.disposableDataRoot) === context.temporaryDirectory,
@@ -117,6 +135,12 @@ export async function cleanupSession(context, sessionId, temporaryDirectory) {
 export async function preflightCleanup(context) {
   if (context.config.cleanupKind === "unavailable") {
     return { ready: false, code: context.config.cleanupBlocker };
+  }
+  if (context.config.cleanupKind === "cursor-cli-chat-leaf") {
+    return { ready: true, code: null };
+  }
+  if (context.config.cleanupKind === "antigravity-cli-brain-leaf") {
+    return { ready: true, code: null };
   }
   if (context.config.cleanupKind === "pi-disposable-session-root") {
     if (!context.disposableDataRoot || dirname(context.disposableDataRoot) !== context.temporaryDirectory) {

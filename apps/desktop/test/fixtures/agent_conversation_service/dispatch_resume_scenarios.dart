@@ -24,7 +24,6 @@ void registerAgentConversationDispatchScenarios() {
           reasoningEffort: 'xhigh',
           acceptanceMode: 'dispatch-lane-unified-1',
         ),
-        conversationReadiness: 'ready',
       );
 
       expect(turn.ok, isTrue);
@@ -49,26 +48,38 @@ void registerAgentConversationDispatchScenarios() {
         'model': 'gpt-5.5',
         'reasoningEffort': 'xhigh',
         'acceptanceMode': 'dispatch-lane-unified-1',
+        'timeoutMs': 600000,
       });
     },
   );
 
-  test('dispatch lane rejects send when readiness is not ready', () async {
-    final agentService = _StdinAgentService();
-    const service = AgentConversationService();
+  test(
+    'dispatch lane reaches the backend and preserves its exact failure',
+    () async {
+      final agentService = _StreamResultAgentService({
+        'event': 'done',
+        'ok': false,
+        'error': {
+          'code': 'native_agent_authentication_required',
+          'stage': 'process/authentication',
+        },
+        'turnStatus': 'failed',
+      });
+      const service = AgentConversationService();
 
-    final turn = await service.send(
-      runner: agentService,
-      agentId: 'codex',
-      text: 'blocked',
-      sessionId: '',
-      conversationReadiness: 'unverified',
-    );
+      final turn = await service.send(
+        runner: agentService,
+        agentId: 'claude-code',
+        text: 'attempt execution',
+        sessionId: '',
+      );
 
-    expect(turn.ok, isFalse);
-    expect(turn.errorCode, 'native_conversation_parity_unverified');
-    expect(agentService.capturedArgs, isEmpty);
-  });
+      expect(turn.ok, isFalse);
+      expect(turn.errorCode, 'native_agent_authentication_required');
+      expect(turn.raw['error']['stage'], 'process/authentication');
+      expect(agentService.capturedArgs, hasLength(1));
+    },
+  );
 
   test(
     'dispatch lane covers openOrResume stream cancel and capabilities',
@@ -160,7 +171,6 @@ void registerAgentConversationDispatchScenarios() {
       final caps = await service.capabilities(
         runner: agentService,
         agentId: 'codex',
-        conversationReadiness: 'ready',
       );
       expect(caps.agentId, 'codex');
       expect(caps.exactResume, isTrue);
@@ -314,4 +324,20 @@ class _OpenResultAgentService extends AgentService {
     List<String> args,
     String stdinText,
   ) async => result;
+}
+
+class _StreamResultAgentService extends AgentService {
+  _StreamResultAgentService(this.result);
+
+  final Map<String, dynamic> result;
+  final List<List<String>> capturedArgs = [];
+
+  @override
+  Stream<Map<String, dynamic>> streamCliJsonLinesWithStdin(
+    List<String> args,
+    String stdinText,
+  ) async* {
+    capturedArgs.add(List<String>.from(args));
+    yield result;
+  }
 }

@@ -10,10 +10,24 @@ export 'package:flutter_client/src/contracts/agent_dispatch_lane.dart';
 export 'package:flutter_client/src/backend/features/agents/services/agent_conversation_archive_service.dart'
     show AgentConversationArchiveService;
 
-/// Backend adapter that implements the unified [AgentDispatchLane] over the
+/// Matches CL-06 live parity default when `LICO_ACP_PARITY_TIMEOUT_MS` is unset.
+const _acceptanceDispatchTimeoutMs = 600000;
+
+Map<String, dynamic> _acceptanceDispatchFields(AgentDispatchBind bind) {
+  final acceptanceMode = bind.acceptanceMode.trim();
+  if (acceptanceMode.isEmpty) {
+    return const {};
+  }
+  return {
+    'acceptanceMode': acceptanceMode,
+    'timeoutMs': _acceptanceDispatchTimeoutMs,
+  };
+}
+
+/// Backend adapter that implements the unified [AgentConversationLane] over the
 /// sidecar. Conversation callers consume this contract instead of owning
 /// native conversation command shapes.
-class AgentConversationService implements AgentDispatchLane {
+class AgentConversationService implements AgentConversationLane {
   const AgentConversationService({
     AgentConversationArchiveService archiveService =
         const AgentConversationArchiveService(),
@@ -213,7 +227,8 @@ class AgentConversationService implements AgentDispatchLane {
       ..._paginationArgs(limit: limit, offset: offset),
     ])) {
       final eventName = (event['event'] ?? '').toString();
-      if (eventName == 'session' && event['session'] is Map<String, dynamic>) {
+      if ((eventName == 'session' || eventName == 'session-preview') &&
+          event['session'] is Map<String, dynamic>) {
         final session = AgentConversationSession.fromJson(
           event['session'] as Map<String, dynamic>,
         );
@@ -290,8 +305,6 @@ class AgentConversationService implements AgentDispatchLane {
     required String text,
     required String sessionId,
     AgentDispatchBind bind = const AgentDispatchBind(),
-    String conversationReadiness = 'unverified',
-    bool requireReady = true,
   }) async {
     AgentDispatchTurnResult? result;
     await for (final event in sendStreaming(
@@ -300,8 +313,6 @@ class AgentConversationService implements AgentDispatchLane {
       text: text,
       sessionId: sessionId,
       bind: bind,
-      conversationReadiness: conversationReadiness,
-      requireReady: requireReady,
     )) {
       if (event.kind == 'dispatch.turn.completed' ||
           event.kind == 'dispatch.turn.failed') {
@@ -316,7 +327,7 @@ class AgentConversationService implements AgentDispatchLane {
           sessionId: event.sessionId,
           turnId: event.turnId,
           status: (raw['turnStatus'] ?? raw['status'] ?? '').toString(),
-          errorCode: ok ? '' : rawCode.toString(),
+          failureCode: ok ? '' : rawCode.toString(),
           errorMessage: ok
               ? ''
               : (nested is Map ? (nested['message'] ?? '') : '').toString(),
@@ -328,7 +339,7 @@ class AgentConversationService implements AgentDispatchLane {
         AgentDispatchTurnResult(
           ok: false,
           sessionId: sessionId.trim(),
-          errorCode: 'dispatch_stream_incomplete',
+          failureCode: 'dispatch_stream_incomplete',
           errorMessage: 'Send stream ended without a terminal turn event.',
           raw: const <String, dynamic>{
             'ok': false,
@@ -346,27 +357,7 @@ class AgentConversationService implements AgentDispatchLane {
     required String text,
     required String sessionId,
     AgentDispatchBind bind = const AgentDispatchBind(),
-    String conversationReadiness = 'unverified',
-    bool requireReady = true,
   }) async* {
-    final readiness = conversationReadiness.trim().isEmpty
-        ? 'unverified'
-        : conversationReadiness.trim();
-    if (requireReady && readiness != 'ready') {
-      final code = 'native_conversation_parity_$readiness';
-      yield AgentDispatchEvent(
-        kind: 'dispatch.turn.failed',
-        sessionId: sessionId.trim(),
-        payload: <String, dynamic>{
-          'ok': false,
-          'code': code,
-          'error': <String, dynamic>{'code': code},
-          'turnStatus': 'blocked',
-        },
-      );
-      return;
-    }
-
     final request = <String, dynamic>{
       'agent': agentId,
       'text': text,
@@ -381,8 +372,7 @@ class AgentConversationService implements AgentDispatchLane {
       if (bind.model.trim().isNotEmpty) 'model': bind.model.trim(),
       if (bind.reasoningEffort.trim().isNotEmpty)
         'reasoningEffort': bind.reasoningEffort.trim(),
-      if (bind.acceptanceMode.trim().isNotEmpty)
-        'acceptanceMode': bind.acceptanceMode.trim(),
+      ..._acceptanceDispatchFields(bind),
     };
 
     await for (final line in runner.streamCliJsonLinesWithStdin([
@@ -443,7 +433,7 @@ class AgentConversationService implements AgentDispatchLane {
         ok: false,
         sessionId: normalizedSession,
         status: 'invalid',
-        errorCode: 'dispatch_steer_input_required',
+        failureCode: 'dispatch_steer_input_required',
       );
     }
     try {
@@ -476,7 +466,7 @@ class AgentConversationService implements AgentDispatchLane {
             .trim(),
         turnId: (result['turnId'] ?? '').toString().trim(),
         status: (result['status'] ?? '').toString(),
-        errorCode: ok ? '' : (code.isEmpty ? 'dispatch_steer_failed' : code),
+        failureCode: ok ? '' : (code.isEmpty ? 'dispatch_steer_failed' : code),
         raw: Map<String, dynamic>.from(result),
       );
     } catch (_) {
@@ -484,7 +474,7 @@ class AgentConversationService implements AgentDispatchLane {
         ok: false,
         sessionId: normalizedSession,
         status: 'outcome_unknown',
-        errorCode: 'dispatch_steer_outcome_unknown',
+        failureCode: 'dispatch_steer_outcome_unknown',
       );
     }
   }
@@ -523,7 +513,7 @@ class AgentConversationService implements AgentDispatchLane {
       return const AgentDispatchCancelResult(
         ok: false,
         status: 'unavailable',
-        errorCode: 'dispatch_cancel_session_missing',
+        failureCode: 'dispatch_cancel_session_missing',
       );
     }
     try {
@@ -543,13 +533,13 @@ class AgentConversationService implements AgentDispatchLane {
       return AgentDispatchCancelResult(
         ok: ok,
         status: (result['status'] ?? '').toString(),
-        errorCode: ok ? '' : (code.isEmpty ? 'dispatch_cancel_failed' : code),
+        failureCode: ok ? '' : (code.isEmpty ? 'dispatch_cancel_failed' : code),
       );
     } catch (_) {
       return const AgentDispatchCancelResult(
         ok: false,
         status: 'unavailable',
-        errorCode: 'dispatch_cancel_failed',
+        failureCode: 'dispatch_cancel_failed',
       );
     }
   }
@@ -566,7 +556,7 @@ class AgentConversationService implements AgentDispatchLane {
       return const AgentDispatchCleanupResult(
         ok: false,
         status: 'unavailable',
-        errorCode: 'dispatch_cleanup_session_missing',
+        failureCode: 'dispatch_cleanup_session_missing',
       );
     }
     try {
@@ -582,13 +572,15 @@ class AgentConversationService implements AgentDispatchLane {
       return AgentDispatchCleanupResult(
         ok: ok,
         status: (result['status'] ?? '').toString(),
-        errorCode: ok ? '' : (code.isEmpty ? 'dispatch_cleanup_failed' : code),
+        failureCode: ok
+            ? ''
+            : (code.isEmpty ? 'dispatch_cleanup_failed' : code),
       );
     } catch (_) {
       return const AgentDispatchCleanupResult(
         ok: false,
         status: 'unavailable',
-        errorCode: 'dispatch_cleanup_failed',
+        failureCode: 'dispatch_cleanup_failed',
       );
     }
   }
@@ -598,12 +590,8 @@ class AgentConversationService implements AgentDispatchLane {
     required AgentCommandRunner runner,
     required String agentId,
     AgentDispatchBind bind = const AgentDispatchBind(),
-    String conversationReadiness = 'unverified',
   }) async {
     final normalizedAgent = agentId.trim();
-    final readiness = conversationReadiness.trim().isEmpty
-        ? 'unverified'
-        : conversationReadiness.trim();
     try {
       final result = await runner.runCliWithStdin(const [
         'agent',
@@ -622,9 +610,6 @@ class AgentConversationService implements AgentDispatchLane {
               .where((code) => code.isNotEmpty)
               .toList(growable: true) ??
           <String>[];
-      if (readiness != 'ready') {
-        nativeBlockers.add('native_conversation_parity_$readiness');
-      }
       return AgentDispatchCapabilities(
         agentId: (result['agentId'] ?? normalizedAgent).toString(),
         laneKind: (result['laneFamily'] ?? 'unavailable').toString(),

@@ -55,7 +55,7 @@ export async function checkShellIsolationAndNativeStdio(context) {
   } = context;
   const semanticDestinations = await readDartSourceByBasename("semantic_destination.dart");
   const appSections = collectEnumValues(semanticDestinations, "ClientSection");
-  assert(sameSet(appSections, ["agents", "monitoring", "skillHub", "mobileRelay", "settings"]), "ClientSection enum must contain only the current client shell modules");
+  assert(sameSet(appSections, ["agents", "monitoring", "skillHub", "pluginManagement", "mobileRelay", "settings"]), "ClientSection enum must contain only the current client shell modules");
   for (const relativePath of (await collectDartSourceFiles())
     .filter(isFlutterGuiImplementationSource)) {
     const source = await readText(relativePath);
@@ -81,7 +81,9 @@ export async function checkShellIsolationAndNativeStdio(context) {
     [`${nativeStdioRpcRoot}/command_round_trip.dart`, 85],
     [`${nativeStdioRpcRoot}/conversation_exchange.dart`, 75],
     [`${nativeStdioRpcRoot}/line_framer.dart`, 75],
+    [`${nativeStdioRpcRoot}/operation_pending_queue.dart`, 40],
     [`${nativeStdioRpcRoot}/operation_queue.dart`, 90],
+    [`${nativeStdioRpcRoot}/orchestrator_lane_pool.dart`, 140],
     [`${nativeStdioRpcRoot}/protocol.dart`, 75],
     [`${nativeStdioRpcRoot}/request_writer.dart`, 20],
     [`${nativeStdioRpcRoot}/response_codec.dart`, 155],
@@ -182,20 +184,34 @@ export async function checkShellIsolationAndNativeStdio(context) {
   assert(agentConversationServiceSource.includes("'conversations'") && agentConversationServiceSource.includes("agentService.runCli"),
     "agent_conversation_service.dart must delegate conversation IO to lico-client CLI"
   );
-  assert(agentConversationServiceSource.includes("AgentDispatchLane") &&
-    agentConversationServiceSource.includes("implements AgentDispatchLane") &&
-    agentConversationServiceSource.includes("'agent'") &&
-    agentConversationServiceSource.includes("'conversation'") &&
-    agentConversationServiceSource.includes("'send'") &&
-    agentConversationServiceSource.includes("streamCliJsonLinesWithStdin") &&
-    agentConversationServiceSource.includes("'--stdin-json'") &&
-    agentConversationServiceSource.includes("requireReady") &&
-    !agentConversationServiceSource.includes("sendRuntimeMessage"),
-    "agent_conversation_service.dart must implement AgentDispatchLane and send private runtime requests through the stdin JSON contract"
+  const nativeOrchestratorClientSource = await readText(
+    "apps/desktop/lib/src/platform/native_client/orchestrator_ipc/client.dart"
+  );
+  const agentServiceSource = await readText(
+    "apps/desktop/lib/src/platform/native_client/agent_service.dart"
   );
   assert(
-    (await readDartSourceByBasename("agent_dispatch_lane.dart")).includes("abstract class AgentDispatchLane"),
-    "contracts/agent_dispatch_lane.dart must define the unified AgentDispatchLane port"
+    nativeOrchestratorClientSource.includes("final class NativeOrchestratorClient") &&
+      nativeOrchestratorClientSource.includes("executeStructured('orchestrator.request'") &&
+      nativeOrchestratorClientSource.includes("'workflow.submit'") &&
+      nativeOrchestratorClientSource.includes("'workflow.status'") &&
+      nativeOrchestratorClientSource.includes("'workflow.cancel'") &&
+      nativeOrchestratorClientSource.includes("'workflow.approve'") &&
+      nativeOrchestratorClientSource.includes("'workflow.events'") &&
+      nativeOrchestratorClientSource.includes("_maximumProjectionLimit = 256") &&
+      nativeOrchestratorClientSource.includes("_privacyMinimalReceipt") &&
+      nativeOrchestratorClientSource.includes("_privacyMinimalEvent") &&
+      !nativeOrchestratorClientSource.includes("streamCliJsonLinesWithStdin") &&
+      !nativeOrchestratorClientSource.includes("Process.") &&
+      agentServiceSource.includes("late final NativeOrchestratorClient orchestratorClient") &&
+      agentServiceSource.includes("NativeOrchestratorClient(transport: _stdioRpcTransport)"),
+    "desktop orchestration must be a bounded privacy-minimal projection over the native orchestrator request boundary"
+  );
+  assert(
+    !agentConversationServiceSource.includes("NativeOrchestratorClient") &&
+      !agentConversationServiceSource.includes("workflow.submit") &&
+      !agentConversationServiceSource.includes("workflow.events"),
+    "direct conversation IO must not own orchestration workflow authority"
   );
   return { agentConversationServiceSource };
 }

@@ -30,7 +30,7 @@ export async function checkConversationDomain(context, { agentConversationServic
     "native conversation CLI commands must enter the shared conversation lane without a legacy send bypass"
   );
   for (const token of ["appendLocalMessage", "deleteSession", "'append'", "'delete'"]) {
-    assert(!agentConversationServiceSource.includes(token), `agent_conversation_service.dart must not expose LicoLite-local write path: ${token}`);
+    assert(!agentConversationServiceSource.includes(token), `agent_conversation_service.dart must not expose LicoMesh-local write path: ${token}`);
   }
   const conversationsRustSource = await readJoinedText([
     "crates/lico-client-native/src/domain/conversations.rs",

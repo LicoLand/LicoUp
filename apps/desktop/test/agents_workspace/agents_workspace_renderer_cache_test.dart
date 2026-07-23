@@ -94,7 +94,7 @@ void registerAgentsWorkspaceRendererCacheScenarios() {
         ),
       ],
     };
-    controller.startNewConversationSession();
+    controller.selectConversationSession('session-adapter-cache');
     await tester.pump();
 
     expect(registry.resolveCalls, 2);

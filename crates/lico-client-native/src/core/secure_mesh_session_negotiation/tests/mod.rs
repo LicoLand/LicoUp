@@ -159,11 +159,11 @@ fn stable_pairwise_and_mls_transcript_vectors_are_deterministic() {
     let mls = create_mls_capability_binding(&first, &second, &digest(0xd4)).unwrap();
     assert_eq!(
         pairwise.transcript_digest,
-        "sha256:x_r6OprmUD7VewM6pNtNmemCEUgnjnp3x7HU2WDFWO4"
+        "sha256:QdEF_MBAQpxTB1cuyu6jX80moqptttmXvsb2byh9fGg"
     );
     assert_eq!(
         mls.transcript_digest,
-        "sha256:R9XO1KScTpcJYcYa78b9On2m9nv2AAx7p6QlydNy_oQ"
+        "sha256:dQTsUOMYHVpn33HVrIvCigfzIFu-2vvQEazzzLY2U-Y"
     );
 }
 

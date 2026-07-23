@@ -9,16 +9,16 @@ fn archive_run_materializes_profile_index_summary_and_report() {
     fs::create_dir_all(&codex).unwrap();
     fs::write(
         codex.join("history.jsonl"),
-        r#"{"sessionId":"licolite-1","role":"user","content":"Work on LicoLite at /repo/licolite"}"#,
+        r#"{"sessionId":"licomesh-1","role":"user","content":"Work on LicoMesh at /repo/licomesh"}"#,
     )
     .unwrap();
     profile_import(&json!({
         "stateRoot": display_path(&state),
-        "profileId": "licolite",
-        "displayName": "LicoLite",
+        "profileId": "licomesh",
+        "displayName": "LicoMesh",
         "archiveRoot": display_path(&archive_root),
-        "canonicalNames": "LicoLite",
-        "projectPaths": "/repo/licolite",
+        "canonicalNames": "LicoMesh",
+        "projectPaths": "/repo/licomesh",
         "expectedAgents": "codex"
     }))
     .unwrap();
@@ -26,7 +26,7 @@ fn archive_run_materializes_profile_index_summary_and_report() {
     let result = archive_run(&json!({
         "stateRoot": display_path(&state),
         "homeDir": display_path(&home),
-        "profile": "licolite",
+        "profile": "licomesh",
         "trigger": "agent"
     }))
     .unwrap();
@@ -40,7 +40,7 @@ fn archive_run_materializes_profile_index_summary_and_report() {
     assert_eq!(collection["kind"], "native-conversation-archive");
     let index_path = archive_root
         .join("collections")
-        .join("licolite")
+        .join("licomesh")
         .join(CONVERSATION_INDEX_JSONL);
     let index = read_index_records(&index_path).unwrap();
     assert_eq!(index.len(), 1);
@@ -75,12 +75,12 @@ fn archive_run_materializes_profile_index_summary_and_report() {
     }
     assert!(
         archive_root
-            .join("collections/licolite/summary.md")
+            .join("collections/licomesh/summary.md")
             .exists()
     );
     let index_markdown_path = archive_root
         .join("collections")
-        .join("licolite")
+        .join("licomesh")
         .join(CONVERSATION_INDEX_MD);
     assert!(index_markdown_path.exists());
     assert!(
@@ -90,23 +90,23 @@ fn archive_run_materializes_profile_index_summary_and_report() {
     );
     assert!(
         archive_root
-            .join("collections/licolite/sources.json")
+            .join("collections/licomesh/sources.json")
             .exists()
     );
     assert!(
         archive_root
-            .join("collections/licolite/matches.jsonl")
+            .join("collections/licomesh/matches.jsonl")
             .exists()
     );
     assert!(
         archive_root
-            .join("collections/licolite/validation.json")
+            .join("collections/licomesh/validation.json")
             .exists()
     );
 
     let report = archive_report(&json!({
         "stateRoot": display_path(&state),
-        "profile": "licolite"
+        "profile": "licomesh"
     }))
     .unwrap();
     assert_eq!(report["indexCount"], 1);

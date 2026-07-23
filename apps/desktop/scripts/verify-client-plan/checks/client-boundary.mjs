@@ -18,7 +18,7 @@ for (const token of [
 assert(clientBoundaryVerifier.includes("await enforceConfiguredClientBoundary(await loadSecureMeshClientBoundaryConfig())"),
   "client boundary verifier must load and enforce the client boundary config");
 for (const token of [
-  "licolite.secure-mesh.client-boundary-config.v1",
+  "licomesh.secure-mesh.client-boundary-config.v1",
   "flutter-gui-no-secure-mesh-backend-implementation",
   "dart-services-are-bridges-not-protocol-implementations",
   "dart-method-channel-confined-to-platform-bridge",

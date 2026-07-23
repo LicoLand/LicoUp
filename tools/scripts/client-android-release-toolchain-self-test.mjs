@@ -74,7 +74,7 @@ const requiredDigests = [
   "zipalign",
   "java",
 ];
-if (manifest.schemaVersion !== "licolite.android-release-toolchain-allowlist.v1" ||
+if (manifest.schemaVersion !== "licomesh.android-release-toolchain-allowlist.v1" ||
   !manifest.platforms?.["darwin-arm64"] ||
   !requiredDigests.every((name) =>
     /^sha256:[a-f0-9]{64}$/u.test(

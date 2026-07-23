@@ -76,6 +76,31 @@ pub(super) fn normalize_model_catalog_key(key: &str) -> String {
         .collect()
 }
 
+/// Extracts the configured default model from a parsed agent config document.
+/// Only top-level scalar keys that mean "the model in use" count, in priority
+/// order; collection keys and nested profiles never become the default.
+pub(super) fn default_model_name_from_config_document(document: &Value) -> Option<String> {
+    let object = document.as_object()?;
+    for wanted in [
+        "model",
+        "defaultmodel",
+        "currentmodel",
+        "selectedmodel",
+        "activemodel",
+    ] {
+        for (key, child) in object {
+            if normalize_model_catalog_key(key) != wanted {
+                continue;
+            }
+            let name = model_name_from_value(child);
+            if !name.trim().is_empty() {
+                return Some(name);
+            }
+        }
+    }
+    None
+}
+
 pub(super) fn is_model_scalar_key(key: &str) -> bool {
     matches!(
         key,

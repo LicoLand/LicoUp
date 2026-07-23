@@ -1,4 +1,4 @@
-import 'package:flutter_client/src/contracts/secure_mesh_capability_models.dart';
+import 'package:flutter_client/src/contracts/generated/secure_mesh.g.dart';
 
 class SecureMeshCapabilityService {
   const SecureMeshCapabilityService();

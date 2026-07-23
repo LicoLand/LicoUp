@@ -58,7 +58,7 @@ void main() {
         relayEnabled: true,
       );
       controller.secureMeshStatus = {
-        'protocolVersion': 'licolite.secure-mesh.v1',
+        'protocolVersion': 'licomesh.secure-mesh.v1',
         'pairwiseCryptoStatus': 'pairwise-runtime-available',
         'mlsCryptoStatus': 'mls-runtime-available',
         'fileCryptoStatus': 'file-runtime-available',
@@ -82,7 +82,7 @@ void main() {
       };
       controller.secureMeshDeviceTrustPolicy = {
         'ok': true,
-        'protocolVersion': 'licolite.secure-mesh.device-trust.v2',
+        'protocolVersion': 'licomesh.secure-mesh.device-trust.v2',
         'trustState': 'verified',
         'decision': {
           'code': 'trusted',
@@ -94,7 +94,7 @@ void main() {
       controller.mobileRelayActionResult = {
         'config': {
           'mobileRelayPairingInvite': {
-            'protocolVersion': 'licolite.mobile-relay.e2ee.v2',
+            'protocolVersion': 'licomesh.mobile-relay.e2ee.v2',
             'gatewayUrl': 'https://relay.example.test',
             'pairingId': 'pair-1',
             'pairingCode': '1234-5678',
@@ -133,7 +133,7 @@ void main() {
       expect(find.text('Lico Arc Gateway'), findsNothing);
       expect(find.text('Custom Gateway'), findsNothing);
       expect(find.text('Address'), findsNothing);
-      expect(find.text('licolite.app'), findsNothing);
+      expect(find.text('licomesh.app'), findsNothing);
       expect(find.text('https://relay.example.test'), findsOneWidget);
       expect(find.byIcon(Icons.lock_outline), findsNothing);
       final gatewayEditable = find.byWidgetPredicate(
@@ -160,7 +160,7 @@ void main() {
       expect(find.text('File Route'), findsNothing);
       expect(find.text('File Receive Destination'), findsNothing);
       expect(find.text('MobileRelayCompatibilityTransport'), findsNothing);
-      expect(find.text('licolite.secure-mesh.v1'), findsNothing);
+      expect(find.text('licomesh.secure-mesh.v1'), findsNothing);
       expect(find.text('pairwise-runtime-available'), findsNothing);
       expect(find.text('mls-runtime-available'), findsNothing);
       expect(find.text('file-runtime-available'), findsNothing);
@@ -390,8 +390,8 @@ void main() {
         pcTokenPresent: true,
         paired: true,
         trustPresentation: const MobileRelayTrustPresentation(
-          schemaVersion: 'licolite.secure-mesh.device-trust-presentation.v1',
-          protocolVersion: 'licolite.secure-mesh.device-trust.v2',
+          schemaVersion: 'licomesh.secure-mesh.device-trust-presentation.v1',
+          protocolVersion: 'licomesh.secure-mesh.device-trust.v2',
           localFingerprint: 'local-fingerprint',
           peerFingerprint: 'peer-fingerprint',
           safetyNumberGroups: [
@@ -408,7 +408,7 @@ void main() {
             '00011',
             '00012',
           ],
-          qrPayload: 'licolite-trust-qr',
+          qrPayload: 'licomesh-trust-qr',
           trustState: 'verified',
           verificationMethod: 'pairing_claim_proof',
           verified: true,
@@ -619,7 +619,7 @@ class _PanelMobileRelayService extends MobileRelayService {
       'pairingCode': pairingCode,
       'expiresAt': expiresAt,
       'mobileRelayPairingInvite': {
-        'protocolVersion': 'licolite.mobile-relay.e2ee.v2',
+        'protocolVersion': 'licomesh.mobile-relay.e2ee.v2',
         'oneTime': true,
         'gatewayUrl': 'https://relay.example.test',
         'pairingId': config.pairingId,

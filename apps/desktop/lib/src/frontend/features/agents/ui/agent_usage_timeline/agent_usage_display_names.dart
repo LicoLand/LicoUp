@@ -1,31 +1,21 @@
+import 'package:flutter_client/src/application/features/agents/agent_product_names.dart';
 import 'package:flutter_client/src/contracts/agent_usage_models.dart';
 
 import 'agent_usage_source_parser.dart';
 
 String agentUsageAgentDisplayName(AgentUsageAgentSummary agent) {
-  final agentId = agent.agentId.trim().toLowerCase();
-  final known = switch (agentId) {
-    'antigravity' => 'Antigravity - IDE',
-    'claude' || 'claude-code' => 'Claude Code - CLI',
-    'codex' => 'ChatGPT - Desktop',
-    'copilot' || 'github-copilot' => 'GitHub Copilot - Plugin',
-    'cursor' => 'Cursor - IDE',
-    'hermes' || 'hermes-agent' => 'Hermes Agent - CLI',
-    'kilo' || 'kilo-code' => 'Kilo Code - CLI',
-    'kimi' => 'Kimi - Desktop',
-    'kimi-code' => 'Kimi Code - CLI',
-    'openclaw' => 'OpenClaw - CLI',
-    'opencode' => 'OpenCode - CLI',
-    'pi' || 'pi-agent' || 'pi-coding-agent' => 'Pi Agent - CLI',
-    _ => null,
-  };
+  final known = agentProductDisplayName(agent.agentId);
   if (known != null) {
     return known;
   }
   final fallback = agent.label.trim().isEmpty
       ? agent.agentId.trim()
       : agent.label.trim();
-  return agentUsageTitleCase(fallback.replaceAll(RegExp(r'[-_]+'), ' '));
+  final productLabel = fallback.replaceFirst(
+    RegExp(r'\s*-\s*(?:desktop|cli|ide|plugin)\s*$', caseSensitive: false),
+    '',
+  );
+  return agentUsageTitleCase(productLabel.replaceAll(RegExp(r'[-_]+'), ' '));
 }
 
 String agentUsageModelName(Map<dynamic, dynamic> source) {
@@ -103,7 +93,8 @@ String agentUsageModelDisplayName(String value) {
   final lower = plain.toLowerCase();
   final knownName = switch (lower) {
     'cursor-auto' || 'default' => 'Cursor Auto',
-    'composer-2.5-fast' || 'composer-2-5-fast' => 'Composer 2.5 Fast',
+    'composer-2.5-fast' || 'composer-2-5-fast' || 'composer-2.5' || 'composer-2-5' =>
+      'Composer 2.5',
     'others' => 'Others',
     _ => null,
   };
@@ -115,7 +106,16 @@ String agentUsageModelDisplayName(String value) {
       .replaceAll(RegExp(r'\s+'), ' ')
       .trim()
       .split(' ');
-  return words.map(_agentUsageModelWord).join(' ');
+  var text = words.map(_agentUsageModelWord).join(' ');
+  // Version fragments arrive as separate words (claude-opus-4-6), so rejoin
+  // adjacent numeric groups into dotted versions (Claude Opus 4.6).
+  while (RegExp(r'\d \d').hasMatch(text)) {
+    text = text.replaceAllMapped(
+      RegExp(r'(\d) (\d)'),
+      (match) => '${match[1]}.${match[2]}',
+    );
+  }
+  return text;
 }
 
 String _agentUsageModelWord(String word) {

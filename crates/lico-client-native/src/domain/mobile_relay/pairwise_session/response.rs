@@ -5,6 +5,7 @@ use super::transaction::mobile_relay_pairwise_operation;
 use crate::core::secure_mesh_crypto::SecureMeshPayloadKind;
 use crate::domain::mobile_relay::endpoint_trust::ensure_peer_verified;
 use crate::domain::mobile_relay::relay_operations::validate_secure_envelope;
+use crate::domain::mobile_relay::secret_custody::RuntimeSecretMaterial;
 use crate::domain::mobile_relay::support::CONFIG_SCHEMA_VERSION;
 use anyhow::{Result, anyhow};
 use serde_json::{Value, json};
@@ -35,17 +36,20 @@ pub(in crate::domain::mobile_relay) fn secure_result_response_summary(response: 
 #[cfg(test)]
 pub(in crate::domain::mobile_relay) fn result_envelope_replay_proof(
     config: &Value,
+    secret_material: &RuntimeSecretMaterial,
     envelope: &Value,
     response_summary: Value,
 ) -> Result<Value> {
     ensure_peer_verified(config)?;
     let mut pairwise_operation = mobile_relay_pairwise_operation(
         config,
+        secret_material,
         "Mobile Relay secure result replay proof authorization batch",
         5,
     )?;
     result_envelope_replay_proof_with_pairwise_operation(
         config,
+        secret_material,
         envelope,
         response_summary,
         &mut pairwise_operation,
@@ -54,6 +58,7 @@ pub(in crate::domain::mobile_relay) fn result_envelope_replay_proof(
 
 pub(in crate::domain::mobile_relay) fn result_envelope_replay_proof_with_pairwise_operation(
     config: &Value,
+    secret_material: &RuntimeSecretMaterial,
     envelope: &Value,
     response_summary: Value,
     pairwise_operation: &mut MobileRelayPairwiseOperation,
@@ -62,6 +67,7 @@ pub(in crate::domain::mobile_relay) fn result_envelope_replay_proof_with_pairwis
     validate_secure_envelope(envelope)?;
     let opened = open_mobile_relay_payload_with_pairwise_operation(
         config,
+        secret_material,
         envelope,
         SecureMeshPayloadKind::ResultPayload,
         pairwise_operation,
@@ -84,6 +90,7 @@ pub(in crate::domain::mobile_relay) fn result_envelope_replay_proof_with_pairwis
         .unwrap_or_default();
     let replay_rejected = match open_mobile_relay_payload_with_pairwise_operation(
         config,
+        secret_material,
         envelope,
         SecureMeshPayloadKind::ResultPayload,
         pairwise_operation,

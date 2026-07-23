@@ -9,6 +9,7 @@ import 'package:flutter/widgets.dart';
 abstract interface class LayoutChromePort
     implements ValueListenable<LayoutChromeSnapshot> {
   Future<void> openPairing(BuildContext context);
+  Future<void> openGlobalSearch(BuildContext context);
 }
 
 @immutable

@@ -18,7 +18,7 @@ fn sample_record(workflow_kind: WorkflowKind) -> WorkflowPlanRecord {
         plan_id: uuid::Uuid::nil().to_string(),
         plan_digest_sha256: "b".repeat(64),
         workflow_kind,
-        plugin_id: "licolite-collaboration".to_owned(),
+        plugin_id: "licomesh-collaboration".to_owned(),
         package_digest_sha256: "a".repeat(64),
         selected_ids: vec!["server-core".to_owned()],
         local_destination: None,

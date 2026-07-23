@@ -9,12 +9,9 @@ void main() {
     final first = agentUsageSeriesColor(colors, 'unlisted-model-v7');
     final second = agentUsageSeriesColor(colors, 'unlisted-model-v7');
 
+    expect(agentUsageSeriesColor(colors, 'Codex'), const Color(0xFF38BDF8));
     expect(
-      agentUsageSeriesColor(colors, 'ChatGPT - Desktop'),
-      const Color(0xFF38BDF8),
-    );
-    expect(
-      agentUsageSeriesColor(colors, 'Claude Code - CLI'),
+      agentUsageSeriesColor(colors, 'Claude Code'),
       const Color(0xFFF59E0B),
     );
     expect(first, second);

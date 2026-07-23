@@ -8,7 +8,7 @@ use crate::domain::mobile_relay::support::MOBILE_RELAY_E2EE_PROTOCOL_VERSION;
 use anyhow::{Result, anyhow};
 use serde_json::{Value, json};
 
-impl LocalEndpointState {
+impl LocalEndpointState<'_> {
     pub(in crate::domain::mobile_relay) fn public_descriptor(&self) -> Result<Value> {
         let identity = self.device_identity()?;
         Ok(json!({

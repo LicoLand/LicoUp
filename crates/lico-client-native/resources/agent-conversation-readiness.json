@@ -7,8 +7,8 @@
     "ready": 0,
     "partial": 0,
     "failed": 0,
-    "blocked": 2,
-    "unverified": 9,
+    "blocked": 0,
+    "unverified": 11,
     "historyOnly": 0,
     "sendEnabled": 0
   },
@@ -18,7 +18,7 @@
       "status": "unverified",
       "sendEnabled": false,
       "officialNativeLaneProven": false,
-      "releaseUiPassed": false,
+      "conversationGatePassed": false,
       "cleanupPassed": false,
       "privacyPassed": false,
       "consecutivePasses": 0,
@@ -44,7 +44,7 @@
       "status": "unverified",
       "sendEnabled": false,
       "officialNativeLaneProven": false,
-      "releaseUiPassed": false,
+      "conversationGatePassed": false,
       "cleanupPassed": false,
       "privacyPassed": false,
       "consecutivePasses": 0,
@@ -69,78 +69,78 @@
       "agentId": "codex",
       "status": "unverified",
       "sendEnabled": false,
-      "officialNativeLaneProven": false,
-      "releaseUiPassed": false,
-      "cleanupPassed": false,
-      "privacyPassed": false,
-      "consecutivePasses": 0,
+      "officialNativeLaneProven": true,
+      "conversationGatePassed": true,
+      "cleanupPassed": true,
+      "privacyPassed": true,
+      "consecutivePasses": 3,
       "coreChecks": {
         "required": 10,
-        "passed": 0,
+        "passed": 10,
         "failed": 0
       },
       "conditionalChecks": {
         "total": 6,
-        "nativeSupported": 0,
-        "passed": 0,
+        "nativeSupported": 2,
+        "passed": 2,
         "gaps": 0,
         "failed": 0
       },
       "evidenceBinding": null,
       "summaryCodes": [
-        "evidence_missing"
+        "evidence_stale_or_incomplete"
       ]
     },
     {
       "agentId": "antigravity",
-      "status": "blocked",
+      "status": "unverified",
       "sendEnabled": false,
-      "officialNativeLaneProven": false,
-      "releaseUiPassed": false,
-      "cleanupPassed": false,
-      "privacyPassed": false,
-      "consecutivePasses": 0,
+      "officialNativeLaneProven": true,
+      "conversationGatePassed": true,
+      "cleanupPassed": true,
+      "privacyPassed": true,
+      "consecutivePasses": 3,
       "coreChecks": {
         "required": 10,
-        "passed": 0,
+        "passed": 10,
         "failed": 0
       },
       "conditionalChecks": {
         "total": 6,
-        "nativeSupported": 0,
-        "passed": 0,
+        "nativeSupported": 2,
+        "passed": 2,
         "gaps": 0,
         "failed": 0
       },
       "evidenceBinding": null,
       "summaryCodes": [
-        "antigravity_cli_structured_transport_unavailable"
+        "evidence_stale_or_incomplete"
       ]
     },
     {
       "agentId": "opencode",
       "status": "unverified",
       "sendEnabled": false,
-      "officialNativeLaneProven": false,
-      "releaseUiPassed": false,
-      "cleanupPassed": false,
-      "privacyPassed": false,
-      "consecutivePasses": 0,
+      "officialNativeLaneProven": true,
+      "conversationGatePassed": true,
+      "cleanupPassed": true,
+      "privacyPassed": true,
+      "consecutivePasses": 3,
       "coreChecks": {
         "required": 10,
-        "passed": 0,
+        "passed": 10,
         "failed": 0
       },
       "conditionalChecks": {
         "total": 6,
-        "nativeSupported": 0,
-        "passed": 0,
+        "nativeSupported": 2,
+        "passed": 2,
         "gaps": 0,
         "failed": 0
       },
       "evidenceBinding": null,
       "summaryCodes": [
-        "evidence_missing"
+        "evidence_stale_or_incomplete"
       ]
     },
     {
@@ -148,7 +148,7 @@
       "status": "unverified",
       "sendEnabled": false,
       "officialNativeLaneProven": false,
-      "releaseUiPassed": false,
+      "conversationGatePassed": false,
       "cleanupPassed": false,
       "privacyPassed": false,
       "consecutivePasses": 0,
@@ -174,7 +174,7 @@
       "status": "unverified",
       "sendEnabled": false,
       "officialNativeLaneProven": false,
-      "releaseUiPassed": false,
+      "conversationGatePassed": false,
       "cleanupPassed": false,
       "privacyPassed": false,
       "consecutivePasses": 0,
@@ -197,28 +197,28 @@
     },
     {
       "agentId": "cursor",
-      "status": "blocked",
+      "status": "unverified",
       "sendEnabled": false,
-      "officialNativeLaneProven": false,
-      "releaseUiPassed": false,
-      "cleanupPassed": false,
-      "privacyPassed": false,
-      "consecutivePasses": 0,
+      "officialNativeLaneProven": true,
+      "conversationGatePassed": true,
+      "cleanupPassed": true,
+      "privacyPassed": true,
+      "consecutivePasses": 3,
       "coreChecks": {
         "required": 10,
-        "passed": 0,
+        "passed": 10,
         "failed": 0
       },
       "conditionalChecks": {
         "total": 6,
-        "nativeSupported": 0,
-        "passed": 0,
+        "nativeSupported": 2,
+        "passed": 2,
         "gaps": 0,
         "failed": 0
       },
       "evidenceBinding": null,
       "summaryCodes": [
-        "safe_cleanup_unavailable"
+        "evidence_stale_or_incomplete"
       ]
     },
     {
@@ -226,7 +226,7 @@
       "status": "unverified",
       "sendEnabled": false,
       "officialNativeLaneProven": false,
-      "releaseUiPassed": false,
+      "conversationGatePassed": false,
       "cleanupPassed": false,
       "privacyPassed": false,
       "consecutivePasses": 0,
@@ -251,26 +251,26 @@
       "agentId": "kimi-code",
       "status": "unverified",
       "sendEnabled": false,
-      "officialNativeLaneProven": false,
-      "releaseUiPassed": false,
-      "cleanupPassed": false,
-      "privacyPassed": false,
-      "consecutivePasses": 0,
+      "officialNativeLaneProven": true,
+      "conversationGatePassed": true,
+      "cleanupPassed": true,
+      "privacyPassed": true,
+      "consecutivePasses": 3,
       "coreChecks": {
         "required": 10,
-        "passed": 0,
+        "passed": 10,
         "failed": 0
       },
       "conditionalChecks": {
         "total": 6,
-        "nativeSupported": 0,
-        "passed": 0,
+        "nativeSupported": 2,
+        "passed": 2,
         "gaps": 0,
         "failed": 0
       },
       "evidenceBinding": null,
       "summaryCodes": [
-        "evidence_missing"
+        "evidence_stale_or_incomplete"
       ]
     },
     {
@@ -278,7 +278,7 @@
       "status": "unverified",
       "sendEnabled": false,
       "officialNativeLaneProven": false,
-      "releaseUiPassed": false,
+      "conversationGatePassed": false,
       "cleanupPassed": false,
       "privacyPassed": false,
       "consecutivePasses": 0,

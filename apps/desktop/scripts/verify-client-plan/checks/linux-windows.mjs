@@ -237,7 +237,7 @@ for (const token of [
 assert(!windowsImplementation.includes("const sourceChecks = Object.freeze(["),
   "Windows implementation must load source checks from config instead of hardcoding inline arrays");
 for (const token of [
-  "licolite.secure-mesh.windows-implementation-config.v1",
+  "licomesh.secure-mesh.windows-implementation-config.v1",
   "sourceChecks",
   "windows-x64-builder-is-target-bound-and-arm64-fails-closed",
   "windows-pe-verifier-parses-machine-type",

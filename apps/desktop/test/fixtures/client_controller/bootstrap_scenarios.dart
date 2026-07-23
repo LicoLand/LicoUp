@@ -225,7 +225,10 @@ void registerClientBootstrapScenarios() {
 
       expect(service.agentUsageScanCalls, 1);
       expect(controller.agentUsageReport?.totalTokens, 42);
-      expect(controller.agentUsageReport?.tokenSourceMode, 'local-history');
+      expect(
+        controller.agentUsageReport?.tokenSourceMode,
+        'native-metadata-first-incremental',
+      );
       expect(controller.statusMessage, 'steady status');
       expect(controller.lastError, 'previous error');
       expect(controller.isScanningAgentUsage, isFalse);
@@ -286,20 +289,24 @@ void registerClientBootstrapScenarios() {
     expect(service.agentUsageScanCalls, 1);
   });
 
-  test('empty retained usage result clears the active report', () async {
-    final service = FakeAgentService();
-    final controller = ClientController(agentService: service);
-    addTearDown(controller.dispose);
+  test(
+    'empty retained usage result clears the active report',
+    () async {
+      final service = FakeAgentService();
+      final controller = ClientController(agentService: service);
+      addTearDown(controller.dispose);
 
-    await controller.scanAgentUsage();
-    expect(controller.agentUsageReport, isNotNull);
+      await controller.scanAgentUsage();
+      expect(controller.agentUsageReport, isNotNull);
 
-    service.agentUsageReportsResult = const [];
-    await controller.loadAgentUsageReports();
+      service.agentUsageReportsResult = const [];
+      await controller.loadAgentUsageReports();
 
-    expect(controller.agentUsageReports, isEmpty);
-    expect(controller.agentUsageReport, isNull);
-  });
+      expect(controller.agentUsageReports, isEmpty);
+      expect(controller.agentUsageReport, isNotNull);
+      expect(controller.agentUsageReport?.totalTokens, 42);
+    },
+  );
 
   test(
     'malformed retained reports preserve state with a bounded error',

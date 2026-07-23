@@ -33,6 +33,7 @@ mixin ClientLifecycleFacade
         ClientTargetFacade,
         ClientNavigationFacade {
   ClientLifecycleCoordinator get lifecycleController;
+  @override
   AgentService get agentService;
   @override
   TargetController get targetController;
@@ -62,15 +63,6 @@ mixin ClientLifecycleFacade
               id: 'opencode_serve',
               action: _ensureOpencodeServeSilently,
             ),
-            ClientBootstrapStep(
-              id: 'target_scan',
-              action: () =>
-                  scanTargets(showProgress: false, surfaceErrors: true),
-            ),
-            ClientBootstrapStep(
-              id: 'agent_usage',
-              action: () => ensureAgentUsageLoadedAndFresh(limit: 20),
-            ),
           ],
     finalStep: ClientBootstrapStep(
       id: 'client_finalize',
@@ -80,7 +72,6 @@ mixin ClientLifecycleFacade
 
   Future<void> _initializeClientCore() async {
     final dataDir = await portableData.dataDirectory();
-    clientRoutingRootDirectory = dataDir;
     portableDataPath = dataDir.path;
     final catalog = await appearancePresetCatalogService.loadCatalog(
       portableData,
@@ -104,14 +95,32 @@ mixin ClientLifecycleFacade
     );
     await targetController.loadTabOrder();
     await targetController.hydrateCache();
-    await ensureRoutingModuleReady(rootDirectory: dataDir);
     await mobileRelayController.loadConfig(authorizeSecrets: false);
     await mobileHomeLayoutController.load();
     await skillHubController.loadPreferences();
     await catalogConvergenceController.bootstrap();
 
-    if (clientControllerDisposed) return;
-    initialized = true;
+    if (lifecycleProjection.disposed) return;
+    if (!mobileClientRuntimePlatform) {
+      sectionPreloadController.start();
+    }
+  }
+
+  Future<void> _finalizeClientInitialization() async {
+    if (lifecycleProjection.disposed) return;
+    if (!mobileClientRuntimePlatform) {
+      // The landing section keeps the historical readiness contract: its data
+      // is warm before initialization settles. Remaining sections keep
+      // preloading in the background.
+      await sectionPreloadController.awaitSection(currentSection);
+      if (lifecycleProjection.disposed) return;
+      startAgentUsagePolling();
+      skillAutoUpdateScheduler.start();
+      final agentId = selectedConversationAgentId.trim();
+      if (agentId.isNotEmpty && !selectedConversationIsOrchestration) {
+        unawaited(loadConversationSessions(agentId));
+      }
+    }
     lastError = '';
     setLocalizedStatusMessage(
       appearancePresetLoadErrors.isEmpty
@@ -127,20 +136,6 @@ mixin ClientLifecycleFacade
     statusCaption = 'Ready';
     notifyAppPresentationChanged();
     notifyClientStateChanged();
-  }
-
-  Future<void> _finalizeClientInitialization() async {
-    if (clientControllerDisposed ||
-        !initialized ||
-        mobileClientRuntimePlatform) {
-      return;
-    }
-    startAgentUsagePolling();
-    skillAutoUpdateScheduler.start();
-    final agentId = selectedConversationAgentId.trim();
-    if (agentId.isNotEmpty && !selectedConversationIsOrchestration) {
-      unawaited(loadConversationSessions(agentId));
-    }
   }
 
   Future<void> _ensureOpencodeServeSilently() async {

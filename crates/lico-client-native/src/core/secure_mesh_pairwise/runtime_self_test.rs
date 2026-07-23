@@ -146,8 +146,8 @@ pub fn runtime_crypto_self_test() -> bool {
                 "pairwise runtime Triple Ratchet key mismatch"
             );
             let nonce = [0x5au8; NONCE_LEN];
-            let aad = b"licolite-pairwise-runtime-self-test-aad";
-            let plaintext = b"licolite-pairwise-runtime-self-test-body";
+            let aad = b"licomesh-pairwise-runtime-self-test-aad";
+            let plaintext = b"licomesh-pairwise-runtime-self-test-body";
             let cipher = ChaCha20Poly1305::new(Key::from_slice(initiator_message_key.as_ref()));
             let ciphertext = cipher
                 .encrypt(

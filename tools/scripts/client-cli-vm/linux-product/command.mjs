@@ -40,8 +40,8 @@ export function linuxProductCommand(distro, expectedSourceDigest, releaseBinding
     "set -euo pipefail",
     '. "$HOME/.cargo/env"',
     'export PATH="$HOME/.local/node/bin:$HOME/.local/flutter/bin:$HOME/.cargo/bin:$PATH"',
-    'export PUB_CACHE="$HOME/.cache/licolite/pub-cache"',
-    'export CARGO_TARGET_DIR="$HOME/.cache/licolite/cargo-target"',
+    'export PUB_CACHE="$HOME/.cache/licomesh/pub-cache"',
+    'export CARGO_TARGET_DIR="$HOME/.cache/licomesh/cargo-target"',
     "export CARGO_BUILD_JOBS=1",
     "export CMAKE_BUILD_PARALLEL_LEVEL=1",
     "export LICO_CLIENT_EXPECTED_SOURCE_STATE_DIGEST=" +
@@ -52,7 +52,7 @@ export function linuxProductCommand(distro, expectedSourceDigest, releaseBinding
       quoteShellArg(releaseBinding.startedAt),
     "export LICO_CLIENT_RELEASE_INVOCATION_NONCE=" +
       quoteShellArg(releaseBinding.invocationNonce),
-    'export LICO_VM_PRODUCT_ROOT="$HOME/.cache/licolite/linux-product"',
+    'export LICO_VM_PRODUCT_ROOT="$HOME/.cache/licomesh/linux-product"',
     'export LICO_LINUX_VM_REPORT_ROOT="$HOME/lico-product-artifacts"',
     'export LICO_LINUX_RELEASE_SIGNING_KEY_PATH="$LICO_VM_PRODUCT_ROOT/validation-key.pem"',
     "export LICO_LINUX_RELEASE_SIGNING_KEY_ID=linux-vm-acceptance",

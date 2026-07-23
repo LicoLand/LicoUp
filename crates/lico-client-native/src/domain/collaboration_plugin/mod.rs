@@ -1,4 +1,4 @@
-//! Disabled-by-default host contract for an optional, declarative LicoLite
+//! Disabled-by-default host contract for an optional, declarative LicoMesh
 //! collaboration plugin.
 //!
 //! The host installs only bounded, non-executable package data from a directly

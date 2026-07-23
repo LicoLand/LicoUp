@@ -2,7 +2,8 @@ use anyhow::{Result, anyhow};
 
 use super::super::platform_store::PlatformSecretStore;
 use crate::core::secure_mesh_secret_store::{
-    SecretStoreAuthorizationRequest, SecretStoreAuthorizationSession, SecretStoreHandle,
+    SecretBytes, SecretStoreAuthorizationRequest, SecretStoreAuthorizationSession,
+    SecretStoreHandle,
 };
 
 fn unavailable() -> anyhow::Error {
@@ -21,7 +22,7 @@ pub(in crate::platform::secure_mesh_secret_store) fn set_secret_with_session(
     _store: &PlatformSecretStore,
     _session: &SecretStoreAuthorizationSession,
     _handle: &SecretStoreHandle,
-    _secret: &str,
+    _secret: SecretBytes,
 ) -> Result<()> {
     Err(unavailable())
 }
@@ -31,7 +32,7 @@ pub(in crate::platform::secure_mesh_secret_store) fn get_secret_with_session(
     _store: &PlatformSecretStore,
     _session: &SecretStoreAuthorizationSession,
     _handle: &SecretStoreHandle,
-) -> Result<Option<String>> {
+) -> Result<Option<SecretBytes>> {
     Err(unavailable())
 }
 
@@ -47,7 +48,7 @@ pub(in crate::platform::secure_mesh_secret_store) fn delete_secret_with_session(
 pub(in crate::platform::secure_mesh_secret_store) fn set_secret(
     _store: &PlatformSecretStore,
     _handle: &SecretStoreHandle,
-    _secret: &str,
+    _secret: SecretBytes,
 ) -> Result<()> {
     Err(unavailable())
 }
@@ -55,7 +56,7 @@ pub(in crate::platform::secure_mesh_secret_store) fn set_secret(
 pub(in crate::platform::secure_mesh_secret_store) fn get_secret(
     _store: &PlatformSecretStore,
     _handle: &SecretStoreHandle,
-) -> Result<Option<String>> {
+) -> Result<Option<SecretBytes>> {
     Err(unavailable())
 }
 

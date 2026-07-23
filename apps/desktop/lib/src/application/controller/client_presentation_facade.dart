@@ -63,7 +63,9 @@ mixin ClientPresentationFacade
   ClientApplicationStrings get clientStrings => shellController.strings;
 
   void notifyAppPresentationChanged() {
-    if (!clientControllerDisposed) shellController.notifyPresentationChanged();
+    if (!lifecycleProjection.disposed) {
+      shellController.notifyPresentationChanged();
+    }
   }
 
   void setLocalizedStatusMessage(

@@ -9,6 +9,7 @@ use crate::core::acp::{self, AcpClientCapabilities, AcpImplementation, AcpSessio
 use serde_json::{Value, json};
 use std::collections::VecDeque;
 use std::path::Path;
+use uuid::Uuid;
 
 pub(super) const INITIALIZE_REQUEST_ID: i64 = 1;
 pub(super) const SESSION_REQUEST_ID: i64 = 2;
@@ -40,6 +41,7 @@ pub(super) enum ProtocolPhase {
     AwaitSession,
     AwaitConfig,
     AwaitPrompt,
+    AwaitPromptDrain,
     Finished,
 }
 
@@ -57,6 +59,8 @@ pub(super) struct AcpProtocol {
     pub(super) output: String,
     pub(super) events: Vec<Value>,
     pub(super) interaction_failure: Option<ProtocolFailure>,
+    pub(super) terminal_stop_reason: Option<acp::AcpStopReason>,
+    pub(super) turn_id: String,
 }
 
 impl AcpProtocol {
@@ -74,6 +78,8 @@ impl AcpProtocol {
             output: String::new(),
             events: Vec::new(),
             interaction_failure: None,
+            terminal_stop_reason: None,
+            turn_id: Uuid::new_v4().to_string(),
         }
     }
 
@@ -335,7 +341,10 @@ impl AcpProtocol {
         {
             modes["currentModeId"] = json!(mode);
         }
-        if self.phase != ProtocolPhase::AwaitPrompt {
+        if !matches!(
+            self.phase,
+            ProtocolPhase::AwaitPrompt | ProtocolPhase::AwaitPromptDrain
+        ) {
             return Vec::new();
         }
         let text = update.agent_message_text().map(str::to_owned);
@@ -350,7 +359,7 @@ impl AcpProtocol {
             self.output.push_str(&text);
             super::super::turn_event_emit::emit_agent_message_chunk(
                 self.session_id.as_deref().unwrap_or_default(),
-                "",
+                &self.turn_id,
                 &text,
             );
         }
@@ -448,10 +457,38 @@ impl AcpProtocol {
                 )];
             }
         };
-        let stop_reason = response.stop_reason.as_str().to_owned();
+        if response.stop_reason == acp::AcpStopReason::Cancelled
+            && let Some(mut failure) = self.interaction_failure.take()
+        {
+            self.phase = ProtocolPhase::Finished;
+            failure.turn_status = Some(response.stop_reason.as_str().to_owned());
+            failure.turn_id = Some(self.turn_id.clone());
+            return vec![ProtocolEffect::Fail(failure)];
+        }
+        self.terminal_stop_reason = Some(response.stop_reason);
+        self.phase = ProtocolPhase::AwaitPromptDrain;
+        Vec::new()
+    }
+
+    pub(super) fn finish_prompt_drain(&mut self) -> Vec<ProtocolEffect> {
+        if self.phase != ProtocolPhase::AwaitPromptDrain {
+            return Vec::new();
+        }
         self.phase = ProtocolPhase::Finished;
+        let Some(stop_reason) = self.terminal_stop_reason.take() else {
+            return vec![ProtocolEffect::Fail(
+                ProtocolFailure::new(
+                    "acp_prompt_response_invalid",
+                    "The ACP agent returned an invalid prompt response.",
+                    acp::SESSION_PROMPT_METHOD,
+                )
+                .with_session(self.session_id.as_deref()),
+            )];
+        };
+        let stop_reason = stop_reason.as_str().to_owned();
         if let Some(mut failure) = self.interaction_failure.take() {
             failure.turn_status = Some(stop_reason);
+            failure.turn_id = Some(self.turn_id.clone());
             return vec![ProtocolEffect::Fail(failure)];
         }
         if stop_reason != "end_turn" {
@@ -462,6 +499,7 @@ impl AcpProtocol {
             )
             .with_session(self.session_id.as_deref());
             failure.turn_status = Some(stop_reason);
+            failure.turn_id = Some(self.turn_id.clone());
             return vec![ProtocolEffect::Fail(failure)];
         }
         if self.output.is_empty() {
@@ -472,6 +510,7 @@ impl AcpProtocol {
             )
             .with_session(self.session_id.as_deref());
             failure.turn_status = Some(stop_reason);
+            failure.turn_id = Some(self.turn_id.clone());
             return vec![ProtocolEffect::Fail(failure)];
         }
         vec![ProtocolEffect::Complete(ProtocolOutcome {
@@ -479,7 +518,7 @@ impl AcpProtocol {
             events: std::mem::take(&mut self.events),
             session_id: self.session_id.clone().unwrap_or_default(),
             thread_id: self.session_id.clone().unwrap_or_default(),
-            turn_id: String::new(),
+            turn_id: self.turn_id.clone(),
             turn_status: stop_reason,
             effective: effective_settings(&self.config, &self.config_options, self.modes.as_ref()),
             capabilities: self.capabilities.clone(),

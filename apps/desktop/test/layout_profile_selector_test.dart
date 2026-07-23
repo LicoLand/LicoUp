@@ -47,7 +47,7 @@ void main() {
         findsOneWidget,
       );
       expect(
-        find.byKey(const Key('fixture-preview-studio-desktop')),
+        find.byKey(const Key('fixture-preview-native-desktop')),
         findsOneWidget,
       );
 
@@ -64,7 +64,7 @@ void main() {
         findsOneWidget,
       );
       expect(
-        find.byKey(const Key('fixture-preview-studio-mobile')),
+        find.byKey(const Key('fixture-preview-native-mobile')),
         findsOneWidget,
       );
       expect(
@@ -119,10 +119,10 @@ void main() {
     await manager.initialize();
     await _pumpSelector(tester, manager: manager, runtime: runtime);
 
-    await tester.tap(find.byKey(const Key('layout-profile-option-studio')));
+    await tester.tap(find.byKey(const Key('layout-profile-option-native')));
     await tester.pump();
     expect(manager.state.status, LayoutSelectionStatus.previewing);
-    expect(manager.state.effectiveId, LayoutProfileId.parse('studio'));
+    expect(manager.state.effectiveId, LayoutProfileId.parse('native'));
     expect(find.text('Previewing layout'), findsOneWidget);
 
     await tester.tap(find.byKey(const Key('layout-selector-cancel')));
@@ -131,14 +131,14 @@ void main() {
     expect(manager.state.effectiveId, LayoutProfileId.parse('workbench'));
     expect(repository.layoutWriteCount, 0);
 
-    await tester.tap(find.byKey(const Key('layout-profile-option-studio')));
+    await tester.tap(find.byKey(const Key('layout-profile-option-native')));
     await tester.pump();
     await tester.tap(find.byKey(const Key('layout-selector-confirm')));
     await tester.pumpAndSettle();
-    expect(manager.state.committedId, LayoutProfileId.parse('studio'));
+    expect(manager.state.committedId, LayoutProfileId.parse('native'));
     expect(
       repository.preferences.layoutProfileId,
-      LayoutProfileId.parse('studio'),
+      LayoutProfileId.parse('native'),
     );
 
     await tester.tap(find.byKey(const Key('layout-selector-reset')));
@@ -168,7 +168,7 @@ void main() {
     repository.layoutWriteGate = Completer<void>();
     repository.failNextLayoutWrite = true;
     await tester.pump();
-    await tester.tap(find.byKey(const Key('layout-profile-option-studio')));
+    await tester.tap(find.byKey(const Key('layout-profile-option-native')));
     await tester.pump();
     await tester.tap(find.byKey(const Key('layout-selector-confirm')));
     await repository.layoutWriteStarted.future;
@@ -215,7 +215,7 @@ void main() {
     expect(options.every((option) => option.duration == Duration.zero), isTrue);
     expect(
       tester
-          .getSize(find.byKey(const Key('layout-profile-option-studio')))
+          .getSize(find.byKey(const Key('layout-profile-option-native')))
           .height,
       greaterThanOrEqualTo(48),
     );
@@ -228,7 +228,7 @@ void main() {
     await tester.pump();
 
     expect(manager.state.status, LayoutSelectionStatus.previewing);
-    expect(manager.state.effectiveId, LayoutProfileId.parse('studio'));
+    expect(manager.state.effectiveId, LayoutProfileId.parse('native'));
     manager.dispose();
   });
 
@@ -244,14 +244,14 @@ void main() {
     await manager.initialize();
     await _pumpSelector(tester, manager: manager, runtime: runtime);
 
-    await tester.tap(find.byKey(const Key('layout-profile-option-studio')));
+    await tester.tap(find.byKey(const Key('layout-profile-option-native')));
     await tester.pump();
     expect(manager.state.status, LayoutSelectionStatus.previewing);
 
     await tester.pumpWidget(const SizedBox.shrink());
 
     expect(manager.state.status, LayoutSelectionStatus.previewing);
-    expect(manager.state.effectiveId, LayoutProfileId.parse('studio'));
+    expect(manager.state.effectiveId, LayoutProfileId.parse('native'));
     manager.dispose();
   });
 }

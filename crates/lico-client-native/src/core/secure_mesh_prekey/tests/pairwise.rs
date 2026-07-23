@@ -229,10 +229,10 @@ fn pairwise_signature_payload_and_signature_match_the_stable_vector() {
         prekey_signature_payload(&identity, SecureMeshPreKeyKind::SignedPreKey, &record).unwrap();
     assert_eq!(
         hex_sha256(&payload),
-        "4e445166177f231103e3d9654b98aa00a6933174266340d7019259d4530bf0c5"
+        "ba74fb2e1dc52166cad3b43010b84ef762ba3f4ae2684430b3fc10698da4f021"
     );
     assert_eq!(
         record.signature,
-        "sqswwxRRuG0UBGoqC7I4p4cePmhfOKNQ5avReTuJf6Yb7oSbFhWtxVC5QpruoqPH4-A3Hj0iZlYlh5dDot8TBQ"
+        "g5TtKPbnPBDHGJGVTzN2LxUIKA0nX7NTL1fvtBeOnk5OKGzbJBuyA1gTOvbJS1HOqvq4Dsohd40aOH1HZMUWAA"
     );
 }

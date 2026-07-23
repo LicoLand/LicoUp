@@ -1,5 +1,5 @@
 {
-  "schemaVersion": "licolite.secure-mesh.e2ee-evidence-routes.v2",
+  "schemaVersion": "licomesh.secure-mesh.e2ee-evidence-routes.v2",
   "authorityProofTemplate": {
     "envKeys": [
       "LICO_SECURE_CLIENT_MESH_E2EE_AUTHORITY_PROOF_TEMPLATE"

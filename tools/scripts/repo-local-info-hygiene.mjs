@@ -20,7 +20,7 @@ const execFileAsync = promisify(execFile);
 const repoRoot = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const reportRef = "build/reports/repo-local-info-hygiene.json";
 const reportPath = path.join(repoRoot, reportRef);
-const schemaVersion = "licolite.repo-local-info-hygiene.v1";
+const schemaVersion = "licomesh.repo-local-info-hygiene.v1";
 const evidenceDirectoryNames = new Set(["evidence", "reports", "receipts"]);
 const inspectedEvidenceExtensions = new Set([".json", ".jsonl", ".log", ".md", ".txt", ".yaml", ".yml"]);
 const identityFieldName = /^(?:adbSerial|deviceId|deviceIdentifier|deviceName|ecid|hostName|hostname|machineId|runtimeId|runtimeIdentifier|serial|serialNumber|udid)$/iu;
@@ -76,7 +76,7 @@ function canonicalFailureReason(rule) {
     .toUpperCase()
     .replace(/[^A-Z0-9]+/gu, "_")
     .replace(/^_+|_+$/gu, "");
-  return suffix ? `LICO_DEV_${suffix}` : "LICO_DEV_FINDING";
+  return suffix ? `LICOMESH_DEV_${suffix}` : "LICOMESH_DEV_FINDING";
 }
 
 function validateCanonicalFinding(finding) {
@@ -110,7 +110,7 @@ function parseCanonicalResult(stdout, exitCode, scanRoot) {
     return {
       ok: false,
       scannedFiles: 0,
-      failures: [redactedFailure("LICO_DEV_PROTOCOL_ERROR", ".", `${exitCode}\0${sha256(stdout)}`)]
+      failures: [redactedFailure("LICOMESH_DEV_PROTOCOL_ERROR", ".", `${exitCode}\0${sha256(stdout)}`)]
     };
   }
   const validShape =
@@ -128,7 +128,7 @@ function parseCanonicalResult(stdout, exitCode, scanRoot) {
     return {
       ok: false,
       scannedFiles: 0,
-      failures: [redactedFailure("LICO_DEV_PROTOCOL_ERROR", ".", `${exitCode}\0${sha256(stdout)}`)]
+      failures: [redactedFailure("LICOMESH_DEV_PROTOCOL_ERROR", ".", `${exitCode}\0${sha256(stdout)}`)]
     };
   }
   const failures = [];
@@ -138,13 +138,13 @@ function parseCanonicalResult(stdout, exitCode, scanRoot) {
       return {
         ok: false,
         scannedFiles: result.scannedFiles,
-        failures: [redactedFailure("LICO_DEV_UNSAFE_OUTPUT", ".", sha256(stdout))]
+        failures: [redactedFailure("LICOMESH_DEV_UNSAFE_OUTPUT", ".", sha256(stdout))]
       };
     }
     failures.push(validated);
   }
   if (!result.ok && failures.length === 0) {
-    failures.push(redactedFailure("LICO_DEV_SCAN_FAILED", ".", result.error || sha256(stdout)));
+    failures.push(redactedFailure("LICOMESH_DEV_SCAN_FAILED", ".", result.error || sha256(stdout)));
   }
   return {
     ok: result.ok && failures.length === 0,
@@ -194,7 +194,7 @@ async function runCanonicalScan(scanRoot, command = "lico-dev") {
       return {
         ok: false,
         scannedFiles: 0,
-        failures: [redactedFailure("LICO_DEV_UNAVAILABLE", ".", command)]
+        failures: [redactedFailure("LICOMESH_DEV_UNAVAILABLE", ".", command)]
       };
     }
     stdout = typeof error?.stdout === "string" ? error.stdout : "";
@@ -327,6 +327,24 @@ function requireSelfTest(condition, reasonCode) {
 async function runSelfTest() {
   const temporary = await mkdtemp(path.join(tmpdir(), "lico-arc-hygiene-"));
   try {
+    const placeholderDirectory = path.join(temporary, "placeholder-candidate");
+    await mkdir(placeholderDirectory, { recursive: true });
+    const angleAccount = ["<", "user", ">"].join("");
+    const shellAccount = ["$", "{", "USER", "}"].join("");
+    const windowsAccount = ["%", "USERNAME", "%"].join("");
+    await writeFile(
+      path.join(placeholderDirectory, "portable-paths.txt"),
+      [
+        `/${["Users", angleAccount, "workspace"].join("/")}`,
+        `/${["home", shellAccount, "workspace"].join("/")}`,
+        ["C:", "Users", windowsAccount, "workspace"].join("\\"),
+        ""
+      ].join("\n"),
+      "utf8"
+    );
+    const placeholderScan = await runCanonicalScan(placeholderDirectory);
+    requireSelfTest(placeholderScan.ok === true, "SELF_TEST_ACCOUNT_PLACEHOLDER_REJECTED");
+
     const fixtureDirectory = path.join(temporary, "build", "reports");
     await mkdir(fixtureDirectory, { recursive: true });
     const homePath = path.join(homedir(), ...["lico", "self", "test"].join("-").split("-"));
@@ -352,9 +370,9 @@ async function runSelfTest() {
     const report = buildReport(canonical, local);
     const reasonCodes = new Set(report.failures.map((failure) => failure.reasonCode));
     requireSelfTest(report.ok === false, "SELF_TEST_DID_NOT_REJECT_FIXTURE");
-    requireSelfTest(reasonCodes.has("LICO_DEV_MACHINE_PATH"), "SELF_TEST_HOME_PATH_NOT_REJECTED");
+    requireSelfTest(reasonCodes.has("LICOMESH_DEV_MACHINE_PATH"), "SELF_TEST_HOME_PATH_NOT_REJECTED");
     requireSelfTest(
-      reasonCodes.has("LICO_DEV_INLINE_SECRET") || reasonCodes.has("LICO_DEV_CREDENTIAL_TOKEN"),
+      reasonCodes.has("LICOMESH_DEV_INLINE_SECRET") || reasonCodes.has("LICOMESH_DEV_CREDENTIAL_TOKEN"),
       "SELF_TEST_SECRET_NOT_REJECTED"
     );
     requireSelfTest(reasonCodes.has("LOCAL_IDENTITY_FIELD"), "SELF_TEST_IDENTITY_NOT_REJECTED");
@@ -377,7 +395,7 @@ async function runSelfTest() {
     requireSelfTest(
       unavailable.ok === false &&
       unavailable.failures.length === 1 &&
-      unavailable.failures[0].reasonCode === "LICO_DEV_UNAVAILABLE",
+      unavailable.failures[0].reasonCode === "LICOMESH_DEV_UNAVAILABLE",
       "SELF_TEST_MISSING_TOOL_NOT_FAIL_CLOSED"
     );
 
@@ -385,6 +403,7 @@ async function runSelfTest() {
       schemaVersion,
       ok: true,
       checks: {
+        canonicalScannerAllowedAccountPlaceholders: true,
         canonicalScannerRejectedHomeAndCredential: true,
         localScannerRejectedDeviceAndRuntimeIdentity: true,
         reportDidNotRediscloseMatches: true,

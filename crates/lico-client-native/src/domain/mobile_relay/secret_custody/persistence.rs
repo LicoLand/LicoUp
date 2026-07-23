@@ -22,6 +22,10 @@ pub(in crate::domain::mobile_relay) fn save_config_with_runtime_secret_context(
         &mut persistable,
         &mut context.secret_store_batch,
     )?;
+    persist_runtime_secret_material_to_native_store_with_batch(
+        &mut context.material,
+        &mut context.secret_store_batch,
+    )?;
     strip_runtime_secret_overrides(&mut persistable, &context.overrides);
     save_config_raw(&mut persistable)?;
     copy_committed_security_generations(config, &persistable)
@@ -35,6 +39,10 @@ pub(in crate::domain::mobile_relay) fn save_config_with_runtime_secret_context_f
     let mut persistable = config.clone();
     persist_config_secret_material_to_native_store_with_batch(
         &mut persistable,
+        &mut context.secret_store_batch,
+    )?;
+    persist_runtime_secret_material_to_native_store_with_batch(
+        &mut context.material,
         &mut context.secret_store_batch,
     )?;
     strip_runtime_secret_overrides(&mut persistable, &context.overrides);
@@ -106,10 +114,8 @@ fn strip_runtime_secret_overrides(config: &mut Value, overrides: &RuntimeSecretO
             || overrides.e2ee_one_time_mlkem1024_prekey_seed
             || overrides.e2ee_pairing_secret
         {
-            e2ee.insert(
-                "secretStorageStatus".to_string(),
-                json!(secret_storage_backend_for_overrides(overrides)),
-            );
+            let backend = secret_storage_backend_for_overrides(overrides);
+            e2ee.insert("secretStorageStatus".to_string(), json!(backend));
         }
     }
     if let Some(devices) = config

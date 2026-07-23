@@ -10,7 +10,7 @@ pub(in crate::domain::mobile_relay) const RUNTIME_SECRET_OVERRIDE_TRANSPORT: &st
 pub(in crate::domain::mobile_relay) const NATIVE_SECRET_STORE_MODE_ENV: &str =
     "LICO_MOBILE_RELAY_NATIVE_SECRET_STORE";
 pub(in crate::domain::mobile_relay) const NATIVE_SECRET_STORE_SERVICE: &str =
-    "app.licolite.licoarc.mobile-relay.pqxdh-mlkem1024.v1";
+    "app.licomesh.licoarc.mobile-relay.pqxdh-mlkem1024.v1";
 pub(in crate::domain::mobile_relay) const NATIVE_SECRET_STORE_ACCOUNT_PREFIX: &str =
     "mobileRelayE2ee";
 pub(in crate::domain::mobile_relay) const MOBILE_RELAY_PLATFORM_SECRET_STORE_NAMESPACE: &str =
@@ -131,6 +131,7 @@ impl RuntimeSecretOverrides {
 }
 
 pub(in crate::domain::mobile_relay) struct RuntimeSecretContext {
+    pub(in crate::domain::mobile_relay) material: RuntimeSecretMaterial,
     pub(in crate::domain::mobile_relay) overrides: RuntimeSecretOverrides,
     pub(in crate::domain::mobile_relay) secret_store_batch: MobileRelaySecretStoreAuthBatch,
 }
@@ -138,6 +139,7 @@ pub(in crate::domain::mobile_relay) struct RuntimeSecretContext {
 impl Default for RuntimeSecretContext {
     fn default() -> Self {
         Self {
+            material: RuntimeSecretMaterial::new(),
             overrides: RuntimeSecretOverrides::default(),
             secret_store_batch: MobileRelaySecretStoreAuthBatch::default(),
         }
@@ -353,12 +355,16 @@ pub(in crate::domain::mobile_relay) fn with_secure_mesh_mls_participant_in<T>(
         "Secure Mesh MLS selected-custody authorization batch",
         operation_count,
     )?;
-    if local_endpoint_state(&config).is_err() {
+    if local_endpoint_state(&config, &secret_context.material).is_err() {
         let endpoint_kind =
             text_param(params, &["endpointKind"]).unwrap_or_else(|| "desktop_sidecar".to_string());
-        ensure_mobile_relay_endpoint_material(&mut config, &endpoint_kind)?;
+        ensure_mobile_relay_endpoint_material(
+            &mut config,
+            &mut secret_context.material,
+            &endpoint_kind,
+        )?;
     }
-    let endpoint = local_endpoint_state(&config)?;
+    let endpoint = local_endpoint_state(&config, &secret_context.material)?;
     let identity = endpoint.device_identity()?;
     let signing_key = endpoint.signing_key()?;
     let (secret_store, authorization, namespace) = secret_context

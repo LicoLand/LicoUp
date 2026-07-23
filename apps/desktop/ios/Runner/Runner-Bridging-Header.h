@@ -16,15 +16,22 @@ enum {
 typedef struct LicoSecureMeshSecretStoreCallbacks {
   void *ctx;
   const char *backend;
-  bool (*set_secret)(void *ctx, const char *namespace_, const char *key, const char *secret);
+  bool (*set_secret)(
+    void *ctx,
+    const char *namespace_,
+    const char *key,
+    const uint8_t *secret,
+    size_t secret_len
+  );
   int32_t (*get_secret)(
     void *ctx,
     const char *namespace_,
     const char *key,
-    char **value_out
+    uint8_t **value_out,
+    size_t *value_len_out
   );
   bool (*delete_secret)(void *ctx, const char *namespace_, const char *key);
-  void (*string_free)(void *ctx, char *value);
+  void (*bytes_zeroize_and_free)(void *ctx, uint8_t *value, size_t value_len);
 } LicoSecureMeshSecretStoreCallbacks;
 
 int32_t lico_secure_mesh_runtime_self_test(void);

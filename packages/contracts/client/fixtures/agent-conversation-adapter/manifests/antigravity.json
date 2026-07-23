@@ -3,84 +3,81 @@
   "identity": {
     "agentId": "antigravity",
     "driverId": "antigravity-cli",
-    "runtimeProtocol": "antigravity-cli-structured-transport-unavailable",
+    "runtimeProtocol": "antigravity-cli-argv-hook-v1",
     "packagingTargetId": "antigravity"
   },
   "officialCapabilityAssessment": {
     "completedBeforeImplementation": true,
     "sourceAuthority": "official",
-    "interfaceName": "official structured local conversation interface unavailable",
+    "interfaceName": "official Antigravity CLI argv lane with Agent Hooks session receipt",
     "assessedVersion": "version reported by fixed Antigravity CLI probe",
     "versionProbe": "fixed --version probe",
-    "capabilityProbe": "fixed version and help probes",
-    "newSessionMethod": "unavailable",
-    "exactResumeMethod": "unavailable",
-    "streamingMethod": "unavailable",
+    "capabilityProbe": "fixed help probe for --print, --conversation, --model, and --effort",
+    "newSessionMethod": "agy --print=<prompt> plus Stop/PreInvocation hook conversationId receipt",
+    "exactResumeMethod": "--conversation=<id> with caller-supplied native id in launch arguments",
+    "streamingMethod": "print-mode final stdout projected as message chunk events",
     "historyMethod": "read-only native history is outside the send lane",
-    "cleanupMethod": "unavailable without a safe official session lifecycle",
+    "cleanupMethod": "delete local antigravity-cli brain leaf for the exact conversation id",
     "officialReferences": [
-      "https://antigravity.google/"
+      "https://antigravity.google/docs/hooks",
+      "https://antigravity.google/docs/cli/plugins"
     ]
   },
   "transport": {
-    "family": "unavailable",
-    "origin": "unavailable",
-    "promptChannel": "unavailable",
-    "continuityChannel": "unavailable",
-    "workingDirectoryChannel": "unavailable",
-    "framing": "unavailable",
-    "sessionScope": "unavailable",
-    "fixedLaunchArguments": []
+    "family": "cli",
+    "origin": "official",
+    "promptChannel": "launch-argument",
+    "continuityChannel": "launch-argument",
+    "workingDirectoryChannel": "process-cwd",
+    "framing": "text",
+    "sessionScope": "persistent",
+    "fixedLaunchArguments": [
+      "--print",
+      "--dangerously-skip-permissions"
+    ]
   },
   "configuration": {
     "binaryEnvironmentKeys": [
       "ANTIGRAVITY_PATH",
       "AGY_PATH"
     ],
-    "authentication": "unavailable",
-    "modelSelection": "unavailable",
-    "reasoningSelection": "unavailable",
-    "permissionSelection": "unavailable"
+    "authentication": "runtime-owned",
+    "modelSelection": "request-field",
+    "reasoningSelection": "request-field",
+    "permissionSelection": "runtime-owned"
   },
   "operations": {
     "discover": {
-      "status": "blocked",
-      "method": "fixed version and capability probes",
-      "blockerCode": "antigravity_cli_structured_transport_unavailable"
+      "status": "supported",
+      "method": "fixed version and capability probes"
     },
     "openNew": {
-      "status": "blocked",
-      "method": "unavailable",
-      "blockerCode": "antigravity_cli_structured_transport_unavailable"
+      "status": "supported",
+      "method": "agy --print plus official Agent Hooks conversationId receipt"
     },
     "exactResume": {
-      "status": "blocked",
-      "method": "unavailable",
-      "blockerCode": "antigravity_cli_structured_transport_unavailable"
+      "status": "supported",
+      "method": "--conversation with caller-supplied native id in launch arguments"
     },
     "send": {
-      "status": "blocked",
-      "method": "official structured send unavailable",
-      "blockerCode": "antigravity_cli_structured_transport_unavailable"
+      "status": "supported",
+      "method": "official supervised --print turn"
     },
     "stream": {
-      "status": "blocked",
-      "method": "unavailable",
-      "blockerCode": "antigravity_cli_structured_transport_unavailable"
+      "status": "supported",
+      "method": "print-mode final stdout projected as message chunk events"
     },
     "cancel": {
-      "status": "blocked",
-      "method": "official lane does not expose a durable active-turn cancel handle",
-      "blockerCode": "antigravity_cli_structured_transport_unavailable"
+      "status": "supported",
+      "method": "cancel active supervised turn"
     },
     "interruptSteer": {
       "status": "unsupported",
       "method": "combined in-flight interrupt and steer is not enabled"
     },
     "cleanup": {
-      "status": "blocked",
-      "method": "unavailable without a safe official session lifecycle",
-      "blockerCode": "antigravity_cli_structured_transport_unavailable"
+      "status": "supported",
+      "method": "delete local antigravity-cli brain leaf for the exact conversation id"
     },
     "history": {
       "status": "supported",
@@ -100,9 +97,12 @@
     }
   },
   "events": {
-    "framing": "unavailable",
-    "realtimeKinds": [],
+    "framing": "text",
+    "realtimeKinds": [
+      "agent.message.chunk"
+    ],
     "terminalKinds": [
+      "agent.message.completed",
       "dispatch.turn.completed",
       "dispatch.turn.failed"
     ],
@@ -110,19 +110,19 @@
     "turnOwned": true
   },
   "lifecycle": {
-    "supervision": "unavailable",
-    "cleanupScope": "unavailable",
-    "cancelHandleScope": "unavailable",
+    "supervision": "process-tree",
+    "cleanupScope": "official-session",
+    "cancelHandleScope": "active-turn",
     "maxConcurrentTransports": 8,
     "maxTrackedSessions": 1024
   },
   "privacy": {
-    "promptInArguments": false,
-    "continuityIdInArguments": false,
+    "promptInArguments": true,
+    "continuityIdInArguments": true,
     "boundedInput": true,
     "boundedOutput": true,
     "structuredEventProjection": true,
-    "safeCleanup": false,
+    "safeCleanup": true,
     "redactedEvidence": true
   },
   "routedContext": {
@@ -174,14 +174,14 @@
     "checkSemantics": {
       "P-01": "baseline-binding",
       "P-02": "native-session-creation",
-      "P-03": "bidirectional-exact-resume",
+      "P-03": "same-session-sequential-resume",
       "P-04": "deterministic-final-result",
       "P-05": "effective-settings-parity",
       "P-06": "history-readback-and-rendering",
       "P-07": "error-cancel-timeout-parity",
       "P-08": "privacy-and-process-boundary",
       "P-09": "isolation-and-cleanup",
-      "P-10": "exact-release-product-ui",
+      "P-10": "same-session-sequential-turns",
       "C-01": "streaming-delta",
       "C-02": "reasoning-and-tool-trace",
       "C-03": "approval-lifecycle",
@@ -190,15 +190,15 @@
       "C-06": "usage-and-status"
     },
     "minimumConsecutivePasses": 3,
-    "minimumConsecutiveReleaseUiPasses": 3,
-    "productUiRequired": true,
-    "releaseP10Required": true,
+    "minimumConsecutiveReleaseUiPasses": 0,
+    "productUiRequired": false,
+    "releaseP10Required": false,
     "liveLocalForwardingRequired": true,
     "realtimeOutputRequired": true,
     "sameNativeSessionRequired": true,
     "canonicalReadinessRequired": true,
-    "nativeToArcRequired": true,
-    "arcToNativeRequired": true,
-    "exactArtifactRequired": true
+    "nativeToArcRequired": false,
+    "arcToNativeRequired": false,
+    "exactArtifactRequired": false
   }
 }

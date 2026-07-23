@@ -1,205 +1,215 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 
-import 'package:flutter_client/src/application/controller/client_controller.dart';
-import 'package:flutter_client/src/contracts/agent_conversation_models.dart';
-import 'package:flutter_client/src/contracts/target_candidate.dart';
 import 'package:flutter_client/src/frontend/features/agents/ui/agent_conversation_composer.dart';
+import 'package:flutter_client/src/frontend/features/agents/ui/agent_conversation_display_names.dart';
 import 'package:flutter_client/src/frontend/features/agents/ui/agent_conversation_message_view.dart';
-import 'package:flutter_client/src/frontend/features/agents/ui/agent_conversation_pane/actions.dart';
-import 'package:flutter_client/src/frontend/features/agents/ui/agent_conversation_pane/header.dart';
+import 'package:flutter_client/src/frontend/features/agents/ui/agent_conversation_pane_controls.dart';
+import 'package:flutter_client/src/frontend/features/agents/ui/agent_conversation_pane_presentation.dart';
 import 'package:flutter_client/src/frontend/features/agents/ui/agent_conversation_parity_disclosure.dart';
-import 'package:flutter_client/src/frontend/features/agents/ui/agent_orchestration_policy_controls.dart';
+import 'package:flutter_client/src/frontend/features/agents/ui/agent_conversation_recent_sessions.dart';
 import 'package:flutter_client/src/frontend/l10n/lico_strings.dart';
 import 'package:flutter_client/src/frontend/shared/platform/client_platform.dart';
 import 'package:flutter_client/src/frontend/shared/ui/panel_frame.dart';
+import 'package:flutter_client/src/frontend/shared/ui/theme.dart';
 
+/// Composes an already projected conversation view. Controller listening and
+/// domain-to-presentation adaptation belong exclusively to the workspace.
 class AgentConversationActivePane extends StatelessWidget {
   const AgentConversationActivePane({
     super.key,
-    required this.controller,
-    required this.target,
-    required this.historyCollapsed,
-    required this.onToggleHistory,
-    required this.collapseHistoryTooltip,
-    required this.expandHistoryTooltip,
+    required this.state,
+    required this.actions,
+    required this.header,
     this.framed = true,
-    this.showSidebarToggle = true,
   });
 
-  final ClientController controller;
-  final TargetCandidate target;
-  final bool historyCollapsed;
-  final VoidCallback onToggleHistory;
-  final String collapseHistoryTooltip;
-  final String expandHistoryTooltip;
+  final AgentConversationPaneState state;
+  final AgentConversationPaneActions actions;
+  final Widget header;
   final bool framed;
-  final bool showSidebarToggle;
-
-  @override
-  Widget build(BuildContext context) {
-    return ListenableBuilder(
-      listenable: controller.activeConversationListenable,
-      builder: (context, _) => _ConversationPane(
-        controller: controller,
-        target: target,
-        session: controller.selectedConversationSession,
-        historyCollapsed: historyCollapsed,
-        onToggleHistory: onToggleHistory,
-        collapseHistoryTooltip: collapseHistoryTooltip,
-        expandHistoryTooltip: expandHistoryTooltip,
-        framed: framed,
-        showSidebarToggle: showSidebarToggle,
-      ),
-    );
-  }
-}
-
-class _ConversationPane extends StatelessWidget {
-  const _ConversationPane({
-    required this.controller,
-    required this.target,
-    required this.session,
-    required this.historyCollapsed,
-    required this.onToggleHistory,
-    required this.collapseHistoryTooltip,
-    required this.expandHistoryTooltip,
-    this.framed = true,
-    this.showSidebarToggle = true,
-  });
-
-  final ClientController controller;
-  final TargetCandidate target;
-  final AgentConversationSession? session;
-  final bool historyCollapsed;
-  final VoidCallback onToggleHistory;
-  final String collapseHistoryTooltip;
-  final String expandHistoryTooltip;
-  final bool framed;
-  final bool showSidebarToggle;
 
   @override
   Widget build(BuildContext context) {
     final mobileClient = isMobileClientPlatform(context);
     final strings = LicoStrings.of(context);
-    final orchestrationSelected =
-        controller.selectedConversationIsOrchestration;
-    final composerEnabled = orchestrationSelected
-        ? controller.agentOrchestrationPolicyConfigured &&
-              controller.orchestrationAvailableTargets.isNotEmpty
-        : target.canRelayRuntime;
-    final gateReasonCode = orchestrationSelected
-        ? (!controller.agentOrchestrationPolicyConfigured
-              ? 'orchestration_policy_required'
-              : 'orchestration_targets_unavailable')
-        : (controller.lastError.trim().isNotEmpty
-              ? controller.lastError.trim()
-              : target.conversationSendGateReason);
-    final gateCopy = conversationParityDisclosureCopy(
+    final unavailableCopy = conversationSendAvailabilityCopy(
       strings: strings,
-      reasonCode: gateReasonCode,
+      reasonCode: state.sendGateReasonCode,
       orchestration:
-          orchestrationSelected &&
-          !composerEnabled &&
-          !controller.agentOrchestrationPolicyConfigured,
+          state.orchestrationSelected &&
+          !state.composerEnabled &&
+          state.sendGateReasonCode == 'orchestration_policy_required',
     );
-    final disabledHint = composerEnabled ? '' : gateCopy.reasonLabel;
     final composer = RuntimeMessageComposer(
-      targetLabel: target.label,
-      initialDraft: controller.conversationComposerDraft,
-      busy: controller.isSendingConversationMessage,
-      enabled: composerEnabled,
-      disabledHint: disabledHint,
-      modelOptions: orchestrationSelected
-          ? const []
-          : controller.selectedConversationModelOptions,
-      selectedModel: orchestrationSelected
-          ? ''
-          : controller.selectedConversationModel,
-      reasoningEffortOptions: orchestrationSelected
-          ? const []
-          : controller.selectedConversationReasoningEffortOptions,
-      selectedReasoningEffort: orchestrationSelected
-          ? ''
-          : controller.selectedConversationReasoningEffort,
-      onModelChanged: controller.selectConversationModel,
-      onReasoningEffortChanged: controller.selectConversationReasoningEffort,
-      onDraftChanged: controller.updateConversationComposerDraft,
-      onSend: (text) => unawaited(controller.sendConversationMessage(text)),
+      targetLabel: agentConversationTargetDisplayName(state.target),
+      initialDraft: state.composerDraft,
+      busy: state.turnActive,
+      enabled: state.composerEnabled,
+      modelOptions: state.modelOptions,
+      selectedModel: state.selectedModel,
+      reasoningEffortOptions: state.reasoningEffortOptions,
+      selectedReasoningEffort: state.selectedReasoningEffort,
+      onModelChanged: actions.onModelChanged,
+      onReasoningEffortChanged: actions.onReasoningEffortChanged,
+      onDraftChanged: actions.onDraftChanged,
+      onSend: actions.onSend,
+      defaultModel: state.defaultModel,
     );
-    final sendGate = composerEnabled
+    final sendUnavailable = state.composerEnabled
         ? null
-        : ConversationParitySendGateBanner(
-            copy: gateCopy,
-            onUnblock: switch (gateCopy.unblockAction) {
-              ConversationParityUnblockAction.rescanAgents => () => unawaited(
-                controller.scanTargets(),
-              ),
-              ConversationParityUnblockAction.editPolicy => () => unawaited(
-                showAgentOrchestrationPolicyEditor(context, controller),
-              ),
-              null => null,
-            },
+        : _ConversationSendUnavailableRow(
+            copy: unavailableCopy,
+            onUnblock: unavailableCopy.unblockAction == null
+                ? null
+                : actions.onUnblockSend,
+          );
+    final sendFailure =
+        state.composerEnabled &&
+            !state.turnActive &&
+            state.sendGateReasonCode.trim().isNotEmpty
+        ? _ConversationSendFailureRow(
+            message: strings.conversationSendFailed(
+              unavailableCopy.reasonLabel,
+            ),
+          )
+        : null;
+    final messages =
+        state.session == null &&
+            state.preparingNewConversation &&
+            state.liveMessages.isEmpty
+        ? AgentConversationRecentSessions(
+            sessions: state.recentSessions,
+            loading: state.loading,
+            onSelectSession: actions.onSelectSession,
+          )
+        : AgentConversationMessageList(
+            loading: state.loading,
+            session: state.session,
+            target: state.target,
+            turnActive: state.turnActive,
+            liveMessages: state.liveMessages,
           );
     if (mobileClient) {
       return Column(
         children: [
-          if (!orchestrationSelected)
+          if (!state.orchestrationSelected)
             Padding(
               padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
               child: Align(
                 alignment: Alignment.centerLeft,
                 child: ConversationParityDisclosurePanel(
-                  target: target,
+                  target: state.target,
                   compact: true,
                 ),
               ),
             ),
-          Expanded(
-            child: AgentConversationMessageList(
-              loading: controller.isLoadingConversations,
-              session: session,
-              target: target,
-              turnActive: controller.isSendingConversationMessage,
-              liveMessages: controller.selectedLiveConversationMessages,
-            ),
-          ),
-          ?sendGate,
+          Expanded(child: messages),
+          ?sendUnavailable,
+          ?sendFailure,
           MobileComposerSurface(child: composer),
         ],
       );
     }
     final content = Column(
       children: [
-        ConversationPaneHeader(
-          controller: controller,
-          target: target,
-          session: session,
-          historyCollapsed: historyCollapsed,
-          onToggleHistory: onToggleHistory,
-          collapseHistoryTooltip: collapseHistoryTooltip,
-          expandHistoryTooltip: expandHistoryTooltip,
-          showSidebarToggle: showSidebarToggle,
-        ),
+        header,
         const Divider(height: 1),
-        Expanded(
-          child: AgentConversationMessageList(
-            loading: controller.isLoadingConversations,
-            session: session,
-            target: target,
-            turnActive: controller.isSendingConversationMessage,
-            liveMessages: controller.selectedLiveConversationMessages,
-          ),
-        ),
-        ?sendGate,
+        Expanded(child: messages),
+        ?sendUnavailable,
+        ?sendFailure,
         const Divider(height: 1),
         composer,
       ],
     );
-    if (!framed) {
-      return content;
-    }
-    return PanelFrame(child: content);
+    return framed ? PanelFrame(child: content) : content;
+  }
+}
+
+class _ConversationSendFailureRow extends StatelessWidget {
+  const _ConversationSendFailureRow({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.licoColors;
+    return Padding(
+      key: const Key('conversation-send-failed'),
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Icon(Icons.error_outline_rounded, size: 14, color: colors.error),
+          const SizedBox(width: 7),
+          Expanded(
+            child: Text(
+              message,
+              key: const Key('conversation-send-failed-reason'),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: colors.error,
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+                height: 1.25,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ConversationSendUnavailableRow extends StatelessWidget {
+  const _ConversationSendUnavailableRow({required this.copy, this.onUnblock});
+
+  final ConversationSendAvailabilityCopy copy;
+  final VoidCallback? onUnblock;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.licoColors;
+    final strings = LicoStrings.of(context);
+    return Padding(
+      key: const Key('conversation-send-unavailable'),
+      padding: const EdgeInsets.fromLTRB(16, 8, 12, 0),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Icon(Icons.warning_amber_rounded, size: 14, color: colors.warning),
+          const SizedBox(width: 7),
+          Expanded(
+            child: Text(
+              copy.reasonLabel,
+              key: const Key('conversation-send-unavailable-reason'),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: colors.textMuted,
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+                height: 1.25,
+              ),
+            ),
+          ),
+          if (copy.unblockAction != null && onUnblock != null)
+            TextButton(
+              key: const Key('conversation-send-unavailable-action'),
+              onPressed: onUnblock,
+              style: TextButton.styleFrom(
+                foregroundColor: colors.primary,
+                visualDensity: VisualDensity.compact,
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                textStyle: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              child: Text(copy.unblockLabel ?? strings.refreshAgents),
+            ),
+        ],
+      ),
+    );
   }
 }

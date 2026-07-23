@@ -59,10 +59,14 @@ pub(super) fn temporary_directory(prefix: &str) -> PathBuf {
 }
 
 pub(super) fn compile_fake_openclaw(prefix: &str) -> (PathBuf, PathBuf) {
+    compile_fake_openclaw_source(prefix, FAKE_OPENCLAW_SOURCE)
+}
+
+pub(super) fn compile_fake_openclaw_source(prefix: &str, source_text: &str) -> (PathBuf, PathBuf) {
     let directory = temporary_directory(prefix);
     let source = directory.join("fake_openclaw.rs");
     let executable = directory.join(format!("fake-openclaw{}", std::env::consts::EXE_SUFFIX));
-    fs::write(&source, FAKE_OPENCLAW_SOURCE).unwrap();
+    fs::write(&source, source_text).unwrap();
     let status = Command::new("rustc")
         .args(["--edition", "2021"])
         .arg(&source)

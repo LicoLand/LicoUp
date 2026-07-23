@@ -17,7 +17,7 @@ use super::secure_mesh_file::{
 
 pub const SECURE_MESH_SKILL_SYNC_PROTOCOL: &str = "secure_mesh.skill_sync.v1";
 pub const SECURE_MESH_SKILL_SYNC_CONTENT_TYPE: &str =
-    "application/licolite.secure-mesh.skill-sync.v1+json";
+    "application/licomesh.secure-mesh.skill-sync.v1+json";
 
 const MAX_PACKAGE_BYTES: usize = 8 * 1024 * 1024;
 const DEFAULT_CHUNK_SIZE: u32 = 64 * 1024;

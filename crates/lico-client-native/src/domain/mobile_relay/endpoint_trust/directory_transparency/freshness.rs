@@ -5,7 +5,7 @@ use crate::core::secure_mesh_transparency::{
     SecureMeshKtAuthorizationReceipt, stable_directory_label,
 };
 use crate::domain::mobile_relay::endpoint_trust::{
-    local_endpoint_state, peer_device_identity_from_state,
+    local_public_device_identity, peer_device_identity_from_state,
 };
 use anyhow::{Result, anyhow, ensure};
 use serde_json::Value;
@@ -20,7 +20,7 @@ pub(in crate::domain::mobile_relay) fn require_current_pairwise_directory_author
     config: &Value,
     now_epoch_seconds: u64,
 ) -> Result<PairwiseDirectoryFreshness> {
-    let local = local_endpoint_state(config)?;
+    let local = local_public_device_identity(config)?;
     let peer = peer_device_identity_from_state(
         config
             .get("mobileRelayE2ee")

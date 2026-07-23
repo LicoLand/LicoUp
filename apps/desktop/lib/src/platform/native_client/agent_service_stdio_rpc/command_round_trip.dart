@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import 'package:flutter_client/src/contracts/generated/client_error.g.dart';
 import 'package:flutter_client/src/platform/native_client/agent_service_stdio_rpc/request_writer.dart';
 import 'package:flutter_client/src/platform/native_client/agent_service_stdio_rpc/response_codec.dart';
 import 'package:flutter_client/src/platform/native_client/agent_service_stdio_rpc/session.dart';
@@ -62,5 +63,14 @@ Future<Map<String, dynamic>> exchangeStdioRpcCommandFrame({
   }
   final result = reply.result;
   if (result != null) return result;
-  throw LicoClientRpcException(reply.errorCode ?? 'command_failed');
+  final ClientError error =
+      reply.error ??
+      ClientError.fromJson(const <String, Object?>{
+        'code': 'command_failed',
+        'stage': 'stdio_rpc/response',
+        'component': 'native_cli',
+        'retryable': false,
+        'recovery': 'retry_or_review_request',
+      });
+  throw LicoClientRpcException.fromClientError(error);
 }

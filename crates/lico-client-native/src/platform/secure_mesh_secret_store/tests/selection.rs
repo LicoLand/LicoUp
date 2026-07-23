@@ -11,7 +11,9 @@ use super::super::capability::linux_secret_service_capability_facts_from_snapsho
 use super::super::ephemeral::EphemeralSecretStore;
 use super::super::selection::SecureMeshSecretStoreSelection;
 use super::support::unlocked_linux_probe_fixture;
-use crate::core::secure_mesh_secret_store::{SecretStoreHandle, SecureMeshSecretStore};
+use crate::core::secure_mesh_secret_store::{
+    SecretBytes, SecretStoreHandle, SecureMeshSecretStore,
+};
 
 #[test]
 fn selector_accepts_safe_software_os_storage_without_hardware_claims() {
@@ -39,11 +41,11 @@ fn selector_accepts_safe_software_os_storage_without_hardware_claims() {
             ])
         }
 
-        fn set_secret(&self, handle: &SecretStoreHandle, secret: &str) -> Result<()> {
+        fn set_secret(&self, handle: &SecretStoreHandle, secret: SecretBytes) -> Result<()> {
             self.0.set_secret(handle, secret)
         }
 
-        fn get_secret(&self, handle: &SecretStoreHandle) -> Result<Option<String>> {
+        fn get_secret(&self, handle: &SecretStoreHandle) -> Result<Option<SecretBytes>> {
             self.0.get_secret(handle)
         }
 
@@ -95,11 +97,11 @@ fn selector_rejects_declaration_only_os_store_support() {
             )])
         }
 
-        fn set_secret(&self, handle: &SecretStoreHandle, secret: &str) -> Result<()> {
+        fn set_secret(&self, handle: &SecretStoreHandle, secret: SecretBytes) -> Result<()> {
             self.0.set_secret(handle, secret)
         }
 
-        fn get_secret(&self, handle: &SecretStoreHandle) -> Result<Option<String>> {
+        fn get_secret(&self, handle: &SecretStoreHandle) -> Result<Option<SecretBytes>> {
             self.0.get_secret(handle)
         }
 
@@ -137,11 +139,11 @@ fn selector_falls_back_only_to_memory_and_defines_no_unsafe_strategy() {
             false
         }
 
-        fn set_secret(&self, _handle: &SecretStoreHandle, _secret: &str) -> Result<()> {
+        fn set_secret(&self, _handle: &SecretStoreHandle, _secret: SecretBytes) -> Result<()> {
             unreachable!()
         }
 
-        fn get_secret(&self, _handle: &SecretStoreHandle) -> Result<Option<String>> {
+        fn get_secret(&self, _handle: &SecretStoreHandle) -> Result<Option<SecretBytes>> {
             unreachable!()
         }
 
@@ -190,11 +192,11 @@ fn locked_or_unavailable_os_store_facts_select_memory_without_losing_reasons() {
             linux_secret_service_capability_facts_from_snapshot(&snapshot)
         }
 
-        fn set_secret(&self, _handle: &SecretStoreHandle, _secret: &str) -> Result<()> {
+        fn set_secret(&self, _handle: &SecretStoreHandle, _secret: SecretBytes) -> Result<()> {
             unreachable!()
         }
 
-        fn get_secret(&self, _handle: &SecretStoreHandle) -> Result<Option<String>> {
+        fn get_secret(&self, _handle: &SecretStoreHandle) -> Result<Option<SecretBytes>> {
             unreachable!()
         }
 

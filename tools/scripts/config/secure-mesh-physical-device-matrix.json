@@ -1,12 +1,12 @@
 {
-  "schemaVersion": "licolite.secure-mesh.physical-device-matrix-config.v2",
+  "schemaVersion": "licomesh.secure-mesh.physical-device-matrix-config.v2",
   "sourceChecks": [
     {
       "id": "android-platform-crypto-acceptance-is-client-owned-and-redacted",
       "file": "tools/scripts/client-android-native-tests.mjs",
       "tokens": [
         "secure-mesh-android-platform-crypto-acceptance.json",
-        "licolite.secure-mesh.android-platform-crypto-acceptance.v1",
+        "licomesh.secure-mesh.android-platform-crypto-acceptance.v1",
         "platformCryptoAcceptanceReady",
         "platformCustodyContractReady",
         "platformAuthorizationContractReady",
@@ -85,7 +85,7 @@
       "id": "physical-evidence-config-links-current-client-reports",
       "file": "tools/scripts/config/secure-mesh-physical-evidence.json",
       "tokens": [
-        "licolite.secure-mesh.physical-evidence-config.v2",
+        "licomesh.secure-mesh.physical-evidence-config.v2",
         "secure-client-relay-mock-e2e.json",
         "secure-mesh-android-platform-crypto-acceptance.json",
         "android-physical-install-launch.json",

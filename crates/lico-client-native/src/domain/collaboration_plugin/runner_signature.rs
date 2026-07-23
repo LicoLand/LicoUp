@@ -5,7 +5,7 @@ use sha2::{Digest, Sha256};
 
 use super::manifest::{ValidatedManifest, ValidatedServerRunner};
 
-pub(super) const OFFICIAL_SERVER_RUNNER_IDENTITY: &str = "licolite.official-local-server-runner.v1";
+pub(super) const OFFICIAL_SERVER_RUNNER_IDENTITY: &str = "licomesh.official-local-server-runner.v1";
 
 pub(super) fn parse_public_key(value: &str) -> Result<VerifyingKey> {
     let bytes = URL_SAFE_NO_PAD

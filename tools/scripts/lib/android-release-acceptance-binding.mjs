@@ -11,7 +11,7 @@ import {
 } from "./release-closure-challenge.mjs";
 
 export const ANDROID_RELEASE_ACCEPTANCE_CHANNEL =
-  "licolite.android.release-acceptance.v1";
+  "licomesh.android.release-acceptance.v1";
 export const ANDROID_RELEASE_ACCEPTANCE_ACTION =
   "com.liko.arc.RELEASE_ACCEPTANCE";
 export const ANDROID_RELEASE_ACCEPTANCE_RECEIVER =

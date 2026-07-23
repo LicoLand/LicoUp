@@ -102,23 +102,14 @@ fn scan_candidate_has_adapter_capabilities_and_supported_actions() {
     );
     assert_eq!(
         opencode["adapterCapabilities"]["conversationReadiness"],
-        "unverified"
+        runtime_adapters::runtime_driver_profile("opencode")
+            .unwrap()
+            .readiness
     );
     assert_eq!(
         opencode["adapterCapabilities"]["conversationDriver"],
         "implemented"
     );
-    assert!(
-        opencode["adapterCapabilities"]["conversationBlocker"].is_null(),
-        "unverified readiness must not fabricate a target-specific blocker"
-    );
-    assert!(
-        opencode["adapterCapabilities"]["conversationSummaryCodes"]
-            .as_array()
-            .is_some_and(|codes| codes.iter().any(|code| code == "evidence_missing")),
-        "global evidence status belongs in the canonical reducer summary codes"
-    );
-
     let codex = scan["candidates"]
         .as_array()
         .unwrap()
@@ -134,16 +125,20 @@ fn scan_candidate_has_adapter_capabilities_and_supported_actions() {
             .iter()
             .any(|a| a == "skill.install")
     );
+    // Parity evidence stays informational; a detected binary unlocks relay.
     assert_eq!(
         codex["adapterCapabilities"]["conversationReadiness"],
-        "unverified"
+        runtime_adapters::runtime_driver_profile("codex")
+            .unwrap()
+            .readiness
     );
-    assert!(
-        !codex["supportedActions"]
+    assert_eq!(
+        codex["supportedActions"]
             .as_array()
             .unwrap()
             .iter()
-            .any(|a| a == "runtime.message.send")
+            .any(|a| a == "runtime.message.send"),
+        codex["binaryPath"].as_str().is_some()
     );
 
     let copilot = scan["candidates"]
@@ -154,14 +149,17 @@ fn scan_candidate_has_adapter_capabilities_and_supported_actions() {
         .unwrap();
     assert_eq!(
         copilot["adapterCapabilities"]["conversationReadiness"],
-        "unverified"
+        runtime_adapters::runtime_driver_profile("copilot")
+            .unwrap()
+            .readiness
     );
-    assert!(
-        !copilot["supportedActions"]
+    assert_eq!(
+        copilot["supportedActions"]
             .as_array()
             .unwrap()
             .iter()
-            .any(|a| a == "runtime.message.send")
+            .any(|a| a == "runtime.message.send"),
+        copilot["binaryPath"].as_str().is_some()
     );
 
     let cursor = scan["candidates"]
@@ -170,11 +168,12 @@ fn scan_candidate_has_adapter_capabilities_and_supported_actions() {
         .iter()
         .find(|item| item["target"] == "cursor")
         .unwrap();
-    assert!(
-        !cursor["supportedActions"]
+    assert_eq!(
+        cursor["supportedActions"]
             .as_array()
             .unwrap()
             .iter()
-            .any(|a| a == "runtime.message.send")
+            .any(|a| a == "runtime.message.send"),
+        cursor["binaryPath"].as_str().is_some()
     );
 }

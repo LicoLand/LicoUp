@@ -20,10 +20,18 @@ import {
 } from "./support.mjs";
 
 test("selection normalizes separators, deduplicates paths, and never falls back", () => {
-  assert.equal(normalizeRepoPath(".\\apps\\desktop\\windows\\runner\\main.cpp"),
+  const windowsRunnerPath = [
+    ".",
+    "apps",
+    "desktop",
+    "windows",
+    "runner",
+    "main.cpp",
+  ].join(String.fromCharCode(92));
+  assert.equal(normalizeRepoPath(windowsRunnerPath),
     "apps/desktop/windows/runner/main.cpp");
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    ".\\apps\\desktop\\windows\\runner\\main.cpp",
+    windowsRunnerPath,
     "apps/desktop/windows/runner/main.cpp",
   ])), ["bridge.windows"]);
   assert.deepEqual(ids(selectModulesForChangedPaths(["README.md"])), [

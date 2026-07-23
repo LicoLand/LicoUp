@@ -2,6 +2,7 @@ use crate::domain::mobile_relay::endpoint_trust::{
     local_endpoint_state, now_iso, peer_endpoint_state, timestamp_after_seconds,
 };
 use crate::domain::mobile_relay::relay_operations::allowed_agent_ids;
+use crate::domain::mobile_relay::secret_custody::RuntimeSecretMaterial;
 use crate::domain::mobile_relay::support::{MOBILE_RELAY_COMMAND_TTL_SECONDS, json_param};
 use anyhow::Result;
 use serde_json::{Value, json};
@@ -9,12 +10,13 @@ use uuid::Uuid;
 
 pub(in crate::domain::mobile_relay) fn secure_command_payload(
     config: &Value,
+    secret_material: &RuntimeSecretMaterial,
     command_kind: &str,
     target_agent_id: Option<&str>,
     workspace_id: &str,
     body: Value,
 ) -> Result<Value> {
-    let endpoint = local_endpoint_state(config)?;
+    let endpoint = local_endpoint_state(config, secret_material)?;
     let peer = peer_endpoint_state(config)?;
     let created_at = now_iso();
     let expires_at = timestamp_after_seconds(MOBILE_RELAY_COMMAND_TTL_SECONDS)?;
@@ -51,10 +53,11 @@ pub(in crate::domain::mobile_relay) fn secure_command_payload(
 
 pub(in crate::domain::mobile_relay) fn secure_command_context(
     config: &Value,
+    secret_material: &RuntimeSecretMaterial,
     params: &Value,
     payload: &Value,
 ) -> Result<Value> {
-    let endpoint = local_endpoint_state(config)?;
+    let endpoint = local_endpoint_state(config, secret_material)?;
     let peer = peer_endpoint_state(config)?;
     let has_agent_binding = payload
         .get("targetBinding")

@@ -1,6 +1,5 @@
-use super::RuntimeAdapter;
 use super::registry::runtime_driver_profile;
-use anyhow::{Result, anyhow};
+use super::{RuntimeAdapter, RuntimeAdapterError};
 use sha2::{Digest, Sha256};
 use std::fs::{self, File, Metadata};
 use std::io::Read;
@@ -38,47 +37,26 @@ pub(crate) fn runtime_artifact_digest(executable: &Path) -> Option<String> {
     Some(format!("sha256:{:x}", hasher.finalize()))
 }
 
-pub(crate) fn runtime_evidence_matches(target: &str, executable: &Path) -> bool {
-    let Some(expected) = runtime_driver_profile(target)
-        .filter(|profile| profile.readiness == "ready")
-        .and_then(|profile| profile.runtime_version_digest)
-    else {
-        return false;
-    };
-    runtime_artifact_digest(executable).is_some_and(|actual| actual == expected)
-}
-
-pub(super) fn verified_runtime_executable(
+pub(super) fn runtime_executable(
     adapter: RuntimeAdapter,
     requested: &str,
-) -> Result<String> {
-    let Some(profile) = runtime_driver_profile(adapter.id()) else {
-        return Err(anyhow!("native agent runtime profile is unavailable"));
-    };
-    // Unverified drivers remain callable only by the explicit local acceptance
-    // harness. Product surfaces fail closed before reaching this function. Once
-    // an adapter is promoted, every launch must use the exact evidence-bound
-    // artifact; PATH lookup and relative paths are no longer accepted.
-    if profile.readiness != "ready" {
-        return Ok(requested.to_string());
+) -> Result<String, RuntimeAdapterError> {
+    if runtime_driver_profile(adapter.id()).is_none() {
+        return Err(RuntimeAdapterError::RuntimeProfileUnavailable);
     }
     let requested_path = Path::new(requested);
     if !requested_path.is_absolute() {
-        return Err(anyhow!(
-            "native agent runtime evidence binding is unavailable"
-        ));
+        return Ok(requested.to_string());
     }
-    let canonical = fs::canonicalize(requested_path)
-        .map_err(|_| anyhow!("native agent runtime evidence binding is unavailable"))?;
-    if !runtime_evidence_matches(adapter.id(), &canonical) {
-        return Err(anyhow!(
-            "native agent runtime evidence binding is unavailable"
-        ));
+    let canonical =
+        fs::canonicalize(requested_path).map_err(|_| RuntimeAdapterError::ExecutableUnavailable)?;
+    if !canonical.is_file() {
+        return Err(RuntimeAdapterError::ExecutableUnavailable);
     }
     canonical
         .to_str()
         .map(str::to_string)
-        .ok_or_else(|| anyhow!("native agent runtime evidence binding is unavailable"))
+        .ok_or(RuntimeAdapterError::ExecutableUnavailable)
 }
 
 #[cfg(unix)]

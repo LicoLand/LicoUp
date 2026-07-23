@@ -10,15 +10,15 @@ import {
 export * from "./secure-client-mesh-evidence-contract.mjs";
 
 export const SECURE_CLIENT_MESH_E2EE_EVIDENCE_BUNDLE_SCHEMA_VERSION =
-  "licolite.secure-client-mesh.e2ee-evidence-bundle.v1";
+  "licomesh.secure-client-mesh.e2ee-evidence-bundle.v1";
 export const SECURE_CLIENT_MESH_E2EE_EVIDENCE_BUNDLE_PATH =
   "build/reports/secure-client-mesh-e2ee-evidence-bundle.json";
 export const SECURE_CLIENT_MESH_E2EE_EVIDENCE_READY_FIELD = "productionReleaseReady";
 export const SECURE_CLIENT_MESH_E2EE_EVIDENCE_BLOCKER_STATES_FIELD = "productionBlockerStates";
 export const SECURE_CLIENT_GITHUB_RELEASE_READINESS_SCHEMA_VERSION =
-  "licolite.secure-client.github-release-readiness.v1";
+  "licomesh.secure-client.github-release-readiness.v1";
 export const SECURE_CLIENT_GITHUB_RELEASE_CLOSURE_SCHEMA_VERSION =
-  "licolite.secure-client.github-release-closure.v1";
+  "licomesh.secure-client.github-release-closure.v1";
 export const SECURE_CLIENT_GITHUB_RELEASE_CLOSURE_REDUCER =
   "tools/scripts/lib/secure-client-mesh-release-contract.mjs#createSecureClientGitHubReleaseClosure";
 export const SECURE_CLIENT_MESH_PRODUCTION_READINESS_REDUCER =

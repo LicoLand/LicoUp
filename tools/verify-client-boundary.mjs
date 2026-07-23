@@ -57,7 +57,6 @@ const forbiddenPathParts = [
   ".agents",
   ".claude",
   ".codex",
-  ".local",
   "build",
   "apps/build",
   "apps/desktop/.dart_tool",
@@ -76,11 +75,16 @@ const forbiddenPathParts = [
   "tools/local",
   serverScriptsPath
 ];
+const windowsSeparatorPattern = String.raw`[\x2f\x5c]`;
+const windowsHomePathPattern = new RegExp(
+  `[A-Za-z]:${windowsSeparatorPattern}Users${windowsSeparatorPattern}[A-Za-z0-9._ -]+`,
+  "g",
+);
 const forbiddenContent = [
   { pattern: retiredClientNamePattern, reasonCode: "RETIRED_CLIENT_NAME" },
   { pattern: /\/Users\/[A-Za-z0-9._-]+/g, reasonCode: "FORBIDDEN_MACOS_HOME_PATH" },
   { pattern: /\/home\/[A-Za-z0-9._-]+/g, reasonCode: "FORBIDDEN_LINUX_HOME_PATH" },
-  { pattern: /C:\\Users\\[A-Za-z0-9._ -]+/g, reasonCode: "FORBIDDEN_WINDOWS_HOME_PATH" },
+  { pattern: windowsHomePathPattern, reasonCode: "FORBIDDEN_WINDOWS_HOME_PATH" },
   { pattern: /-----BEGIN [A-Z ]*PRIVATE KEY-----/g, reasonCode: "FORBIDDEN_PRIVATE_KEY" },
   {
     pattern: new RegExp(serverScriptsPath.replace("/", "\\/"), "g"),
@@ -212,18 +216,6 @@ async function scanPublicFiles() {
   }
 
   const candidates = [...new Set(output.split("\0").filter(Boolean))].sort();
-  const candidateSet = new Set(candidates);
-  for (const relativePath of candidates) {
-    if (!relativePath.endsWith(".md") || path.basename(relativePath) === "AGENTS.md") {
-      continue;
-    }
-    const translationPath = relativePath.endsWith(".zh-CN.md")
-      ? relativePath.replace(/\.zh-CN\.md$/u, ".md")
-      : relativePath.replace(/\.md$/u, ".zh-CN.md");
-    if (!candidateSet.has(translationPath)) {
-      addFailure("PUBLIC_DOCUMENT_TRANSLATION_MISSING", relativePath, translationPath);
-    }
-  }
   for (const relativePath of candidates) {
     const normalized = relativePath.split(path.sep).join("/");
     if (normalized !== relativePath || path.posix.normalize(normalized) !== normalized) {

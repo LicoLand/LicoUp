@@ -7,6 +7,7 @@ import 'package:flutter_client/src/frontend/layout/profiles/native/desktop/desti
 import 'package:flutter_client/src/frontend/layout/profiles/native/desktop/destinations/mobile_relay_destination.dart';
 import 'package:flutter_client/src/frontend/layout/profiles/native/desktop/destinations/monitoring_destination.dart';
 import 'package:flutter_client/src/frontend/layout/profiles/native/desktop/destinations/settings_destination.dart';
+import 'package:flutter_client/src/frontend/layout/profiles/native/desktop/destinations/plugin_management_destination.dart';
 
 final Map<ClientSection, LayoutDestinationBuilder>
 nativeDesktopDestinationBuilders =
@@ -14,6 +15,7 @@ nativeDesktopDestinationBuilders =
       ClientSection.agents: buildNativeAgentsDestination,
       ClientSection.monitoring: buildNativeMonitoringDestination,
       ClientSection.skillHub: buildNativeSkillHubDestination,
+      ClientSection.pluginManagement: buildNativePluginManagementDestination,
       ClientSection.mobileRelay: buildNativeMobileRelayDestination,
       ClientSection.settings: buildNativeSettingsDestination,
     });

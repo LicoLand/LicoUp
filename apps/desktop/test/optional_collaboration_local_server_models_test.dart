@@ -20,10 +20,10 @@ void main() {
       expect(plan.sourceCommitOid, optionalCollaborationTestCommit);
       expect(
         plan.matchesWorkflow(
-          expectedPluginId: 'licolite-collaboration',
+          expectedPluginId: 'licomesh-collaboration',
           expectedPackageDigestSha256: _digest,
           expectedComponentIds: const ['server-core'],
-          expectedDestination: '/tmp/licolite-local',
+          expectedDestination: 'test-data/licomesh-local',
         ),
         isTrue,
       );
@@ -80,12 +80,12 @@ void main() {
 
 Map<String, dynamic> _planJson() => {
   'deploymentId': '00000000-0000-4000-8000-000000000020',
-  'pluginId': 'licolite-collaboration',
-  'sourceUrl': 'https://github.com/example/licolite-bundle.git',
+  'pluginId': 'licomesh-collaboration',
+  'sourceUrl': 'https://github.com/example/licomesh-bundle.git',
   'serverVersion': '1.0.0',
   'packageDigestSha256': _digest,
   'selectedComponentIds': ['server-core'],
-  'destination': '/tmp/licolite-local',
+  'destination': 'test-data/licomesh-local',
   'assemblyAdapterId': 'licoarc-builtin-local-http-v1',
   'assemblyManifestDigestSha256': _manifestDigest,
   'assemblyManifestBytes': 512,
@@ -103,11 +103,11 @@ Map<String, dynamic> _serverJson({
 }) => {
   'deploymentId': '00000000-0000-4000-8000-000000000020',
   'status': status,
-  'sourceUrl': 'https://github.com/example/licolite-bundle.git',
+  'sourceUrl': 'https://github.com/example/licomesh-bundle.git',
   'serverVersion': '1.0.0',
   'packageDigestSha256': _digest,
   'selectedComponentIds': ['server-core'],
-  'destination': '/tmp/licolite-local',
+  'destination': 'test-data/licomesh-local',
   'assemblyAdapterId': 'licoarc-builtin-local-http-v1',
   'assemblyManifestDigestSha256': _manifestDigest,
   'bindHost': '127.0.0.1',

@@ -18,6 +18,7 @@ const Set<ClientSection> classicDesktopExpectedDestinations = {
   ClientSection.agents,
   ClientSection.monitoring,
   ClientSection.skillHub,
+  ClientSection.pluginManagement,
   ClientSection.mobileRelay,
   ClientSection.settings,
 };
@@ -26,6 +27,7 @@ const Map<ClientSection, String> classicDesktopTestLabels = {
   ClientSection.agents: 'Agents',
   ClientSection.monitoring: 'Token Usage',
   ClientSection.skillHub: 'Skill Hub',
+  ClientSection.pluginManagement: 'Plugin Management',
   ClientSection.mobileRelay: 'Mobile Relay',
   ClientSection.settings: 'Settings',
 };

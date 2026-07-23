@@ -53,15 +53,15 @@ final class OptionalCollaborationServerRuntimeActions {
       }
       context.replaceLocalServer(started);
       context.reportAction(
-        '受签名的固定 LicoLite runner 已部署并启动；健康与能力契约均已验证。',
-        'The signed fixed LicoLite runner is deployed and running; health and capability contracts are verified.',
+        '受签名的固定 LicoMesh runner 已部署并启动；健康与能力契约均已验证。',
+        'The signed fixed LicoMesh runner is deployed and running; health and capability contracts are verified.',
       );
       return true;
     } catch (_) {
       context.failAction(
         'optional_collaboration_local_server_start_failed',
-        '受签名 LicoLite runner 部署启动失败。',
-        'Failed to deploy and start the signed LicoLite runner.',
+        '受签名 LicoMesh runner 部署启动失败。',
+        'Failed to deploy and start the signed LicoMesh runner.',
       );
       return false;
     } finally {
@@ -94,15 +94,15 @@ final class OptionalCollaborationServerRuntimeActions {
       }
       context.replaceLocalServer(stopped);
       context.reportAction(
-        '本机 LicoLite 部署已停止，组装产物保留为待部署状态。',
-        'The local LicoLite deployment stopped; assembled output remains awaiting deployment.',
+        '本机 LicoMesh 部署已停止，组装产物保留为待部署状态。',
+        'The local LicoMesh deployment stopped; assembled output remains awaiting deployment.',
       );
       return true;
     } catch (_) {
       context.failAction(
         'optional_collaboration_local_server_stop_failed',
-        '本机 LicoLite 部署停止失败。',
-        'Failed to stop the local LicoLite deployment.',
+        '本机 LicoMesh 部署停止失败。',
+        'Failed to stop the local LicoMesh deployment.',
       );
       return false;
     } finally {

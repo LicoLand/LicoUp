@@ -1,5 +1,5 @@
 export const SECURE_MESH_TRUST_UX_REPORT_SCHEMA_VERSION =
-  "licolite.secure-mesh.trust-ux-report.v2";
+  "licomesh.secure-mesh.trust-ux-report.v2";
 
 export const SECURE_MESH_TRUST_UX_SELECTED_TARGETS = Object.freeze([
   "macos",
@@ -420,7 +420,7 @@ export function runSecureMeshTrustUxReducerSelfTest() {
   requireValue(
     !validateSecureMeshTrustUxV2Report({
       ...readyReport,
-      schemaVersion: "licolite.secure-mesh.trust-ux-report.unsupported"
+      schemaVersion: "licomesh.secure-mesh.trust-ux-report.unsupported"
     }).contractReady,
     "unsupported Trust UX report schema must fail closed"
   );

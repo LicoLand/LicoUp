@@ -6,7 +6,7 @@ import Security
 import UIKit
 
 final class SecureMeshIosBridge {
-  static let channelName = "licolite.secure_mesh.ios"
+  static let channelName = "licomesh.secure_mesh.ios"
   static let mobileRelaySecretTransport = "native_c_abi_in_process_secret_callback"
   static let mobileRelaySecretStoreContract = "rust_secure_mesh_secret_store_handle_v1"
   static let mobileRelaySecretStoreBackend = "ios-keychain"
@@ -72,7 +72,7 @@ final class SecureMeshIosBridge {
     let nativeReady = selfTestPassed && keychainReady
     return [
       "ok": nativeReady,
-      "protocolVersion": "licolite.secure-mesh.v1",
+      "protocolVersion": "licomesh.secure-mesh.v1",
       "endpointKind": "mobile",
       "platform": "ios",
       "bridge": [
@@ -158,7 +158,7 @@ final class SecureMeshIosBridge {
     var payload: [String: Any] = [
       "ok": selfTestPassed,
       "statusKind": "launch-runtime",
-      "protocolVersion": "licolite.secure-mesh.v1",
+      "protocolVersion": "licomesh.secure-mesh.v1",
       "endpointKind": "mobile",
       "platform": "ios",
       "bridge": [
@@ -233,7 +233,7 @@ final class SecureMeshIosBridge {
             callbacks.set_secret = Self.iosSecretStoreSetCallback
             callbacks.get_secret = Self.iosSecretStoreGetCallback
             callbacks.delete_secret = Self.iosSecretStoreDeleteCallback
-            callbacks.string_free = Self.iosSecretStoreStringFreeCallback
+            callbacks.bytes_zeroize_and_free = Self.iosSecretStoreBytesZeroizeAndFreeCallback
             return lico_secure_mesh_json_with_secret_store(
               requestCString,
               filesCString,
@@ -412,7 +412,7 @@ final class SecureMeshIosBridge {
   func errorResponse(code: String, error _: String) -> [String: Any] {
     return [
       "ok": false,
-      "protocolVersion": "licolite.secure-mesh.v1",
+      "protocolVersion": "licomesh.secure-mesh.v1",
       "endpointKind": "mobile",
       "platform": "ios",
       "code": code,

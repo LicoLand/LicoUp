@@ -1,5 +1,5 @@
 {
-  "schemaVersion": "licolite.secure-mesh.release-proof-config.v1",
+  "schemaVersion": "licomesh.secure-mesh.release-proof-config.v1",
   "reportOutput": "build/reports/secure-mesh-release-proof-bundle.json",
   "inputReports": {
     "updateRelease": "build/reports/client-update-release-channel.json",
@@ -47,7 +47,7 @@
       "id": "release-proof-config-covers-bundle-inputs",
       "file": "tools/scripts/config/secure-mesh-release-proof.json",
       "tokens": [
-        "licolite.secure-mesh.release-proof-config.v1",
+        "licomesh.secure-mesh.release-proof-config.v1",
         "secure-mesh-release-proof-bundle.json",
         "client-update-release-channel.json",
         "secure-mesh-physical-device-matrix.json",
@@ -130,7 +130,7 @@
         "tools/scripts/client-android-physical-install-launch/apk/inspect.mjs"
       ],
       "tokens": [
-        "licolite.secure-mesh.android-physical-install-launch-report.v3",
+        "licomesh.secure-mesh.android-physical-install-launch-report.v3",
         "reportLeakScan",
         "liblico_client_native.so",
         "rawPrivateMaterialIncluded: false",
@@ -156,7 +156,7 @@
       "id": "physical-evidence-config-covers-retained-release-reports",
       "file": "tools/scripts/config/secure-mesh-physical-evidence.json",
       "tokens": [
-        "licolite.secure-mesh.physical-evidence-config.v2",
+        "licomesh.secure-mesh.physical-evidence-config.v2",
         "secure-mesh-physical-evidence-manifest.json",
         "android-physical-install-launch.json",
         "secure-mesh-platform-secret-store-matrix.json",
@@ -194,7 +194,7 @@
       "id": "report-redaction-config-covers-release-evidence-inputs",
       "file": "tools/scripts/config/secure-mesh-report-redaction.json",
       "tokens": [
-        "licolite.secure-mesh.report-redaction-config.v1",
+        "licomesh.secure-mesh.report-redaction-config.v1",
         "secure-mesh-report-redaction.json",
         "secure-mesh-release-input-report-redaction.json",
         "secure-client-relay-mock-e2e.json",
@@ -258,7 +258,7 @@
         "physicalMatrixMacosAppCredentialPromptUsed",
         "physicalMatrixMacosSystemCredentialEntrySurface",
         "physicalMatrixContractReadiness.ready === true",
-        "licolite.secure-mesh.physical-device-matrix-report.v2",
+        "licomesh.secure-mesh.physical-device-matrix-report.v2",
         "physicalMatrixContractReadinessReady",
         "physicalMatrixContractReadinessRemainingGateCount",
         "physicalMatrixReportRaw",
@@ -290,7 +290,7 @@
         "physicalEvidenceManifestIntegrityReady",
         "physicalEvidenceManifestChainReady",
         "physicalEvidenceManifestContractReadiness.ready === true",
-        "licolite.secure-mesh.physical-evidence-manifest-report.v2",
+        "licomesh.secure-mesh.physical-evidence-manifest-report.v2",
         "physicalEvidenceManifestContractReadinessReady",
         "physicalEvidenceManifestContractReadinessRemainingGateCount",
         "physicalEvidenceManifestReportRaw",
@@ -327,7 +327,7 @@
         "relayMockWireBytesSemanticsReady",
         "rustCryptoReportReady",
         "rustCryptoReviewReady",
-        "licolite.secure-mesh.platform-secret-store-matrix-report.v2",
+        "licomesh.secure-mesh.platform-secret-store-matrix-report.v2",
         "platformCryptoReportReady",
         "androidPlatformCryptoReportReady",
         "clientRelayCryptoInputs.remainingGates",

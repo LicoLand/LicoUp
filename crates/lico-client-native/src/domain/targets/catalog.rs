@@ -75,25 +75,22 @@ pub(super) fn target_supports_skill_install(target: &str) -> bool {
     matches!(target, "codex" | "claude-code")
 }
 
-pub(super) fn candidate_runtime_is_ready(
+pub(super) fn candidate_runtime_is_available(
     capabilities: &mut AdapterCapabilities,
     target: &str,
     executable: Option<&Path>,
 ) -> bool {
-    let Some(profile) = runtime_adapters::runtime_driver_profile(target) else {
-        return false;
-    };
-    if profile.readiness != "ready" {
+    if runtime_adapters::runtime_driver_profile(target).is_none() {
         return false;
     }
-    if executable.is_some_and(|path| runtime_adapters::runtime_evidence_matches(target, path)) {
-        capabilities.conversation_readiness = "ready".to_string();
+    // Local agents are client-accessible by default: conversation-parity
+    // evidence stays informational (unverified/ready) and never gates local
+    // runtime use. A detected runtime binary is enough to relay messages.
+    let available = executable.is_some();
+    if available {
         capabilities.conversation_blocker = None;
-        return true;
     }
-    capabilities.conversation_readiness = "unverified".to_string();
-    capabilities.conversation_blocker = Some("runtime_evidence_binding_mismatch".to_string());
-    false
+    available
 }
 
 pub(super) fn adapter_capabilities_for(target: &str) -> AdapterCapabilities {

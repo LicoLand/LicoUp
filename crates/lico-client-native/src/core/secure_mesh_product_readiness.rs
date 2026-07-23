@@ -6,7 +6,7 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
 pub const SECURE_MESH_PRODUCT_READINESS_SCHEMA: &str =
-    "licolite.secure-mesh.mls-product-readiness.v1";
+    "licomesh.secure-mesh.mls-product-readiness.v1";
 
 const PRODUCT_MESSAGING_GATES: &[SecureMeshProductEvidenceGate] = &[
     SecureMeshProductEvidenceGate::CryptographicRuntime,

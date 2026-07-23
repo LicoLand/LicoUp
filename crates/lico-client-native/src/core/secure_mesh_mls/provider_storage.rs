@@ -10,8 +10,8 @@ use crate::core::secure_mesh_pqxdh::{
     ML_KEM_1024_KEY_GENERATION_SEED_BYTES, SecureMeshMlKem1024PreKeySeed,
 };
 use crate::core::secure_mesh_secret_store::{
-    SecretStoreAuthorizationRequest, SecretStoreAuthorizationSession, SecretStoreHandle,
-    SecureMeshSecretStore,
+    SecretBytes, SecretStoreAuthorizationRequest, SecretStoreAuthorizationSession,
+    SecretStoreHandle, SecureMeshSecretStore,
 };
 
 use super::constants::{
@@ -40,8 +40,9 @@ impl SecureMeshOpenMlsProvider {
             .get_secret_with_session(session, handle)
             .context("secure mesh MLS provider secret-store read failed")?
             .ok_or_else(|| anyhow!("secure mesh MLS provider secret-store entry is missing"))?;
-        let persisted: PersistedMlsProviderSecrets = serde_json::from_str(&persisted_json)
-            .context("secure mesh MLS provider secret-store payload deserialization failed")?;
+        let persisted: PersistedMlsProviderSecrets =
+            serde_json::from_slice(persisted_json.expose_bytes())
+                .context("secure mesh MLS provider secret-store payload deserialization failed")?;
         ensure!(
             persisted.schema_version == MLS_PROVIDER_SECRET_SCHEMA_VERSION,
             "secure mesh MLS provider secret-store schema is unsupported"
@@ -115,7 +116,11 @@ impl SecureMeshOpenMlsProvider {
         let persisted_json = serde_json::to_string(&persisted)
             .context("secure mesh MLS provider secret-store payload serialization failed")?;
         secret_store
-            .set_secret_with_session(session, handle, &persisted_json)
+            .set_secret_with_session(
+                session,
+                handle,
+                SecretBytes::try_from_string(persisted_json)?,
+            )
             .context("secure mesh MLS provider secret-store write failed")?;
         Ok(())
     }

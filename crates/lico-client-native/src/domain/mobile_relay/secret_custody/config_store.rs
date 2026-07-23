@@ -78,7 +78,8 @@ pub(in crate::domain::mobile_relay) fn load_config_with_runtime_secret_overrides
     ensure_secure_mesh_protected_operation_allowed()?;
     let mut config = load_config()?;
     let mut overrides = RuntimeSecretOverrides::default();
-    hydrate_config_secret_material_from_native_store(&mut config, &mut overrides)?;
+    let mut material = RuntimeSecretMaterial::new();
+    hydrate_runtime_secret_material_from_native_store(&config, &mut material, &mut overrides)?;
     overrides.merge(apply_runtime_secret_overrides(&mut config, params)?);
     apply_selected_paired_device_credentials(&mut config);
     Ok((config, overrides))
@@ -95,7 +96,8 @@ pub(in crate::domain::mobile_relay) fn load_config_for_read(
     };
     let mut overrides = RuntimeSecretOverrides::default();
     if authorize_secret_read {
-        hydrate_config_secret_material_from_native_store(&mut config, &mut overrides)?;
+        let mut material = RuntimeSecretMaterial::new();
+        hydrate_runtime_secret_material_from_native_store(&config, &mut material, &mut overrides)?;
     }
     overrides.merge(apply_runtime_secret_overrides(&mut config, params)?);
     if authorize_secret_read {
@@ -147,6 +149,7 @@ fn load_config_with_runtime_secret_context_unchecked(
     let allow_interaction =
         bool_param(params, &["allowInteraction", "allow-interaction"]).unwrap_or(true);
     let mut context = RuntimeSecretContext {
+        material: RuntimeSecretMaterial::new(),
         overrides: RuntimeSecretOverrides::default(),
         secret_store_batch: MobileRelaySecretStoreAuthBatch::with_interaction(
             reason,
@@ -154,8 +157,9 @@ fn load_config_with_runtime_secret_context_unchecked(
             allow_interaction,
         ),
     };
-    hydrate_config_secret_material_from_native_store_with_batch(
-        &mut config,
+    hydrate_runtime_secret_material_from_native_store_with_batch(
+        &config,
+        &mut context.material,
         &mut context.overrides,
         &mut context.secret_store_batch,
     )?;

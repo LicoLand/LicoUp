@@ -93,7 +93,12 @@ try {
     { name: nativePath, content: "native" },
   ]);
   expectRejected(root, "backslash", [
-    { name: "lib\\arm64-v8a\\liblico_client_native.so", content: "bad" },
+    {
+      name: ["lib", "arm64-v8a", "liblico_client_native.so"].join(
+        String.fromCharCode(92),
+      ),
+      content: "bad",
+    },
     { name: nativePath, content: "native" },
   ]);
   expectRejected(root, "symlink", [{

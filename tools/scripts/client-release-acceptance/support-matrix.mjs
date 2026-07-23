@@ -16,8 +16,8 @@ import { requireValue, text } from "./util.mjs";
 
 export function runSupportMatrixCheck(selectedTargetIds) {
   const matrixPath = resolveContainedExistingPath(
-    path.join(repoRoot, "docs/releases"),
-    path.join(repoRoot, "docs/releases/client-support-matrix.md"),
+    path.join(repoRoot, "docs"),
+    path.join(repoRoot, "docs/COMPATIBILITY.md"),
     { expectedKind: "file" },
   );
   const catalogPath = resolveContainedExistingPath(

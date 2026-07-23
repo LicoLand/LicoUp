@@ -8,6 +8,7 @@ import 'package:flutter_client/src/application/features/agents/conversation/conv
 import 'package:flutter_client/src/application/features/agents/conversation/conversation_turn_queue.dart';
 import 'package:flutter_client/src/application/features/agents/policy/conversation_session_index.dart';
 import 'package:flutter_client/src/application/features/agents/workspace/agent_workspace_coordinator.dart';
+import 'package:flutter_client/src/application/localization/client_application_strings.dart';
 import 'package:flutter_client/src/contracts/agent_conversation_models.dart';
 import 'package:flutter_client/src/contracts/agent_conversation_tab_activity.dart';
 import 'package:flutter_client/src/contracts/agent_dispatch_lane.dart';
@@ -25,24 +26,21 @@ mixin AgentConversationMessageController
         AgentConversationSessionController,
         AgentConversationLiveProjectionController,
         AgentConversationRelayProjectionController {
-  Future<void> sendConversationMessage(String text) async {
+  Future<bool> sendConversationMessage(String text) async {
     final agent = selectedConversationAgent;
     final messageText = text.trim();
     if (agent == null || messageText.isEmpty || agentWorkspaceDisposed) {
-      return;
+      return false;
     }
     if (!selectedConversationIsOrchestration && !agent.canRelayRuntime) {
-      final blocker = agent.conversationBlocker.trim();
-      lastError = blocker.isEmpty
-          ? 'native_conversation_parity_${agent.conversationReadiness}'
-          : blocker;
+      lastError = agent.conversationSendGateReason;
       agentWorkspaceSetLocalizedStatusMessage(
-        '${agent.label} 尚未通过原生对话一致性验收，发送已禁用。',
-        '${agent.label} has not passed native conversation parity checks. Sending is disabled.',
+        '${agent.label} could not start sending.',
+        '${agent.label} could not start sending (discovery/binding: $lastError).',
       );
       statusCaption = 'Agent chat';
       agentWorkspaceNotifyStateChanged();
-      return;
+      return false;
     }
     if (selectedConversationIsOrchestration) {
       final turn = _captureConversationTurn(
@@ -52,7 +50,7 @@ mixin AgentConversationMessageController
       );
       if (isSendingConversationMessage) {
         _enqueueConversationTurn(turn);
-        return;
+        return true;
       }
       lastError = '';
       await sendOrchestratedConversationMessage(messageText);
@@ -61,30 +59,31 @@ mixin AgentConversationMessageController
       } else {
         conversationTurnQueue.clear();
       }
-      return;
+      return lastError.isEmpty;
     }
     final selectedSession = selectedConversationSession;
     if (selectedSession == null &&
+        selectedNewConversationDraftToken.isEmpty &&
         selectedConversationSessionId.trim().isNotEmpty) {
       lastError = 'native_session_unresolved';
       agentWorkspaceSetLocalizedStatusMessage(
-        '${agent.label} 原生会话尚未解析，发送已禁用。',
+        'The native ${agent.label} session has not been resolved. Sending is disabled.',
         'The native ${agent.label} session has not been resolved. Sending is disabled.',
       );
       statusCaption = 'Agent chat';
       agentWorkspaceNotifyStateChanged();
-      return;
+      return false;
     }
     if (selectedSession != null &&
         selectedSession.nativeSessionId.trim().isEmpty) {
       lastError = 'native_session_id_missing';
       agentWorkspaceSetLocalizedStatusMessage(
-        '${agent.label} 历史记录缺少原生会话标识，发送已禁用。',
+        'The ${agent.label} history is missing its native session ID. Sending is disabled.',
         'The ${agent.label} history is missing its native session ID. Sending is disabled.',
       );
       statusCaption = 'Agent chat';
       agentWorkspaceNotifyStateChanged();
-      return;
+      return false;
     }
     final turn = _captureConversationTurn(
       agent: agent,
@@ -93,9 +92,10 @@ mixin AgentConversationMessageController
     );
     if (isSendingConversationMessage) {
       await _steerOrEnqueueConversationTurn(turn);
-      return;
+      return ConversationRuntimeResultPolicy.submissionConsumed(lastError);
     }
     await _sendConversationTurn(turn);
+    return lastError.isEmpty;
   }
 
   ConversationQueuedTurn _captureConversationTurn({
@@ -104,12 +104,20 @@ mixin AgentConversationMessageController
     AgentConversationSession? session,
     bool orchestration = false,
   }) {
+    final newConversationDraftToken = newConversationDraftTokenFor(
+      agent.target,
+    );
+    final startsNewConversation = newConversationDraftToken.isNotEmpty;
     final activeNativeSession = sendingConversationAgentId == agent.target
         ? sendingConversationNativeSessionId.trim()
         : '';
-    final selectedNativeSession = session?.nativeSessionId.trim() ?? '';
+    final selectedNativeSession = startsNewConversation
+        ? ''
+        : session?.nativeSessionId.trim() ?? '';
     final nativeSessionId = selectedNativeSession.isNotEmpty
         ? selectedNativeSession
+        : startsNewConversation
+        ? ''
         : activeNativeSession;
     final workingDirectory = session?.workingDirectory.trim().isNotEmpty == true
         ? session!.workingDirectory.trim()
@@ -124,6 +132,7 @@ mixin AgentConversationMessageController
       model: selectedConversationModel,
       reasoningEffort: selectedConversationReasoningEffort,
       throughMobileRelay: agentWorkspaceMobileRuntime,
+      newConversationDraftToken: newConversationDraftToken,
       orchestration: orchestration,
       awaitActiveSession:
           isSendingConversationMessage &&
@@ -161,22 +170,22 @@ mixin AgentConversationMessageController
     if (agentWorkspaceDisposed) return;
     if (result.ok) {
       agentWorkspaceSetLocalizedStatusMessage(
-        '已通过 ${turn.agent.label} 原生通道接入当前回复。',
+        'Steered the active ${turn.agent.label} reply through its native channel.',
         'Steered the active ${turn.agent.label} reply through its native channel.',
       );
       statusCaption = 'Agent chat';
       agentWorkspaceNotifyStateChanged();
       return;
     }
-    if (_steerFailureAllowsQueueFallback(result.errorCode)) {
+    if (_steerFailureAllowsQueueFallback(result.failureCode)) {
       _enqueueConversationTurn(turn);
       return;
     }
-    lastError = result.errorCode.isEmpty
+    lastError = result.failureCode.isEmpty
         ? 'dispatch_steer_outcome_unknown'
-        : result.errorCode;
+        : result.failureCode;
     agentWorkspaceSetLocalizedStatusMessage(
-      '原生接入结果不确定，未自动重发以避免重复消息。',
+      'The native steer outcome is unknown. The message was not resent to avoid duplication.',
       'The native steer outcome is unknown. The message was not resent to avoid duplication.',
     );
     statusCaption = 'Agent chat';
@@ -198,21 +207,21 @@ mixin AgentConversationMessageController
       case ConversationTurnEnqueueResult.accepted:
         lastError = '';
         agentWorkspaceSetLocalizedStatusMessage(
-          '消息已加入待发送队列（${conversationTurnQueue.length}/$maxPendingConversationTurns）。',
+          'Message queued (${conversationTurnQueue.length}/$maxPendingConversationTurns).',
           'Message queued (${conversationTurnQueue.length}/$maxPendingConversationTurns).',
         );
         break;
       case ConversationTurnEnqueueResult.full:
         lastError = 'conversation_turn_queue_full';
         agentWorkspaceSetLocalizedStatusMessage(
-          '待发送队列已满，请等待当前回复完成。',
+          'The pending message queue is full. Wait for the active reply to finish.',
           'The pending message queue is full. Wait for the active reply to finish.',
         );
         break;
       case ConversationTurnEnqueueResult.duplicate:
         lastError = 'conversation_turn_duplicate_ignored';
         agentWorkspaceSetLocalizedStatusMessage(
-          '重复的待发送消息已忽略。',
+          'The duplicate pending message was ignored.',
           'The duplicate pending message was ignored.',
         );
         break;
@@ -235,9 +244,9 @@ mixin AgentConversationMessageController
     );
     if (agentWorkspaceDisposed) return;
     if (!result.ok) {
-      lastError = result.errorCode.isEmpty
+      lastError = result.failureCode.isEmpty
           ? 'dispatch_cancel_failed'
-          : result.errorCode;
+          : result.failureCode;
     }
     agentWorkspaceNotifyStateChanged();
   }
@@ -262,7 +271,7 @@ mixin AgentConversationMessageController
     lastError = '';
     setConversationTabActivity(agent.target, AgentConversationTabActivity.none);
     agentWorkspaceSetLocalizedStatusMessage(
-      '正在通过 ${agent.label} 运行时适配器发送消息。',
+      'Sending the message through the ${agent.label} runtime adapter.',
       'Sending the message through the ${agent.label} runtime adapter.',
     );
     statusCaption = 'Agent chat';
@@ -297,7 +306,6 @@ mixin AgentConversationMessageController
             reasoningEffort: queuedTurn.reasoningEffort,
             acceptanceMode: _releaseConversationAcceptanceMode,
           ),
-          conversationReadiness: agent.conversationReadiness,
         )) {
           if (agentWorkspaceDisposed) return;
           if (event.kind == 'agent.message.chunk' ||
@@ -316,7 +324,7 @@ mixin AgentConversationMessageController
                 text: streamedText,
               );
               agentWorkspaceSetLocalizedStatusMessage(
-                '正在接收 ${agent.label} 回复…',
+                'Receiving the ${agent.label} reply…',
                 'Receiving the ${agent.label} reply…',
               );
               statusCaption = streamedText.length > 80
@@ -342,7 +350,7 @@ mixin AgentConversationMessageController
               sessionId: event.sessionId,
               turnId: event.turnId,
               status: (raw['turnStatus'] ?? raw['status'] ?? '').toString(),
-              errorCode: ok ? '' : rawCode.toString(),
+              failureCode: ok ? '' : rawCode.toString(),
               errorMessage: ok
                   ? ''
                   : (nested is Map ? (nested['message'] ?? '') : '').toString(),
@@ -361,7 +369,7 @@ mixin AgentConversationMessageController
                     AgentDispatchTurnResult(
                       ok: false,
                       sessionId: sessionId,
-                      errorCode: 'dispatch_stream_incomplete',
+                      failureCode: 'dispatch_stream_incomplete',
                       raw: const <String, dynamic>{
                         'ok': false,
                         'code': 'dispatch_stream_incomplete',
@@ -387,30 +395,23 @@ mixin AgentConversationMessageController
       }
       if (result['ok'] == true) {
         if (returnedSessionId.isEmpty) {
-          preparingNewConversation = false;
           if (sessionId.isNotEmpty) {
             conversationMarkNativeSessionPending(agent.target, sessionId);
-          } else {
-            setSelectedConversationSessionId(
-              agent.target,
-              conversationSessionLoadFailedSelectionId,
-            );
           }
           lastError = 'native_session_id_missing_from_result';
           recordConversationTabSendOutcome(
             agentId: agent.target,
             ok: false,
-            errorCode: lastError,
+            failureCode: lastError,
           );
           agentWorkspaceSetLocalizedStatusMessage(
-            '${agent.label} 未返回原生会话标识，结果已拒绝。',
+            '${agent.label} did not return a native session ID. The result was rejected.',
             '${agent.label} did not return a native session ID. The result was rejected.',
           );
           statusCaption = 'Agent chat';
           return;
         }
         if (sessionId.isNotEmpty && returnedSessionId != sessionId) {
-          preparingNewConversation = false;
           setSelectedConversationSessionId(
             agent.target,
             conversationSessionLoadFailedSelectionId,
@@ -419,10 +420,10 @@ mixin AgentConversationMessageController
           recordConversationTabSendOutcome(
             agentId: agent.target,
             ok: false,
-            errorCode: lastError,
+            failureCode: lastError,
           );
           agentWorkspaceSetLocalizedStatusMessage(
-            '${agent.label} 返回了不同的原生会话，结果已拒绝。',
+            '${agent.label} returned a different native session. The result was rejected.',
             '${agent.label} returned a different native session. The result was rejected.',
           );
           statusCaption = 'Agent chat';
@@ -434,16 +435,15 @@ mixin AgentConversationMessageController
           requestedModel: queuedTurn.model,
           requestedReasoningEffort: queuedTurn.reasoningEffort,
         )) {
-          preparingNewConversation = false;
           conversationMarkNativeSessionPending(agent.target, returnedSessionId);
           lastError = 'native_effective_settings_mismatch';
           recordConversationTabSendOutcome(
             agentId: agent.target,
             ok: false,
-            errorCode: lastError,
+            failureCode: lastError,
           );
           agentWorkspaceSetLocalizedStatusMessage(
-            '${agent.label} 未确认请求的原生模型设置，结果已拒绝。',
+            '${agent.label} did not confirm the requested native model settings. The result was rejected.',
             '${agent.label} did not confirm the requested native model settings. The result was rejected.',
           );
           statusCaption = 'Agent chat';
@@ -451,32 +451,26 @@ mixin AgentConversationMessageController
         }
       }
       if (result['ok'] != true) {
-        lastError = runtimeAdapterErrorCode(result);
+        final clientError = ConversationRuntimeResultPolicy.clientError(result);
+        lastError = clientError.code.wireName;
         recordConversationTabSendOutcome(
           agentId: agent.target,
           ok: false,
           result: result,
-          errorCode: lastError,
+          failureCode: lastError,
         );
-        if (ConversationRuntimeResultPolicy.outcomeMayBeUnknown(lastError)) {
-          preparingNewConversation = false;
+        if (ConversationRuntimeResultPolicy.outcomeMayBeUnknown(clientError)) {
           if (sessionId.isNotEmpty) {
             conversationMarkNativeSessionPending(agent.target, sessionId);
-          } else {
-            setSelectedConversationSessionId(
-              agent.target,
-              conversationSessionLoadFailedSelectionId,
-            );
           }
         }
-        agentWorkspaceSetLocalizedStatusMessage(
-          '${agent.label} 运行时适配器返回失败。',
-          'The ${agent.label} runtime adapter returned a failure.',
-        );
+        final localized = ClientApplicationStrings.forPreference(
+          'system',
+        ).conversationClientError(clientError);
+        agentWorkspaceSetLocalizedStatusMessage(localized, localized);
         statusCaption = 'Agent chat';
         return;
       }
-      preparingNewConversation = false;
       if (sendThroughMobileRelay) {
         final receivedAt = DateTime.now().toUtc().toIso8601String();
         appendRelayConversationMessages(
@@ -490,50 +484,67 @@ mixin AgentConversationMessageController
       recordConversationTabSendOutcome(agentId: agent.target, ok: true);
       agentWorkspaceSetLocalizedStatusMessage(
         sendThroughMobileRelay
-            ? '已通过移动中转端到端加密发送 ${agent.label} 命令。'
-            : '已通过 ${agent.label} 运行时适配器发送消息。',
+            ? 'Sent the ${agent.label} command through the E2EE mobile relay.'
+            : 'Sent the message through the ${agent.label} runtime adapter.',
         sendThroughMobileRelay
             ? 'Sent the ${agent.label} command through the E2EE mobile relay.'
             : 'Sent the message through the ${agent.label} runtime adapter.',
       );
 
-      var readbackCompleted = true;
       if (!sendThroughMobileRelay) {
-        try {
-          await reloadSelectedConversationSessionsAfterSend(
+        // The streamed turn is authoritative for immediate interaction. Keep
+        // it selected and usable, then reconcile provider history in the
+        // background once the runtime has finished persisting its transcript.
+        conversationCommitTurnBoundNativeReadback(
+          agentId: agent.target,
+          nativeSessionId: returnedSessionId,
+          messages: liveConversationMessagesByAgent[agent.target] ?? const [],
+          mergeWithSelectedSession: sessionId.isNotEmpty,
+        );
+        finishNewConversationDraft(
+          agent.target,
+          queuedTurn.newConversationDraftToken,
+        );
+        unawaited(
+          reloadSelectedConversationSessionsAfterSend(
             agent.target,
             preferredNativeSessionId: returnedSessionId,
-          );
-          readbackCompleted = conversationPendingNativeSessionId(
-            agent.target,
-          ).isEmpty;
-          conversationClearLiveProjection(agent.target);
-        } catch (_) {
-          readbackCompleted = false;
-          lastError = 'native_session_readback_failed';
-          agentWorkspaceSetLocalizedStatusMessage(
-            '消息已发送，但原生会话回读尚未完成；发送保持禁用。',
-            'The message was sent, but native session readback is not complete. Sending remains disabled.',
-          );
-        }
+          ),
+        );
         newConversationWorkingDirectories = {
           ...newConversationWorkingDirectories,
         }..remove(agent.target);
       } else {
+        finishNewConversationDraft(
+          agent.target,
+          queuedTurn.newConversationDraftToken,
+        );
         conversationClearLiveProjection(agent.target);
       }
       statusCaption = 'Agent chat';
-      completedSuccessfully = sendThroughMobileRelay || readbackCompleted;
+      completedSuccessfully = true;
+    } on AgentDispatchStreamException catch (error) {
+      lastError = 'native_agent_${error.failureCode}';
+      recordConversationTabSendOutcome(
+        agentId: agent.target,
+        ok: false,
+        failureCode: lastError,
+      );
+      agentWorkspaceSetLocalizedStatusMessage(
+        'The send did not complete. Your input was preserved.',
+        'The send did not complete. Your input was preserved.',
+      );
+      statusCaption = 'Agent chat';
     } catch (_) {
       lastError = 'native_agent_transport_failed';
       recordConversationTabSendOutcome(
         agentId: agent.target,
         ok: false,
-        errorCode: lastError,
+        failureCode: lastError,
       );
       agentWorkspaceSetLocalizedStatusMessage(
-        '${agent.label} 运行时适配器发送失败。',
-        'The ${agent.label} runtime adapter failed to send the message.',
+        'The send did not complete. Your input was preserved.',
+        'The send did not complete. Your input was preserved.',
       );
       statusCaption = 'Agent chat';
     } finally {
@@ -572,7 +583,7 @@ mixin AgentConversationMessageController
         conversationTurnQueue.clear();
         lastError = 'queued_conversation_session_unresolved';
         agentWorkspaceSetLocalizedStatusMessage(
-          '待发送消息无法绑定已完成的原生会话，队列已停止。',
+          'A queued message could not bind to the completed native session. The queue was stopped.',
           'A queued message could not bind to the completed native session. The queue was stopped.',
         );
         statusCaption = 'Agent chat';
@@ -594,7 +605,7 @@ mixin AgentConversationMessageController
   }
 
   @override
-  String runtimeAdapterErrorCode(Map<String, dynamic> result) {
-    return ConversationRuntimeResultPolicy.errorCode(result);
+  String runtimeAdapterFailureCode(Map<String, dynamic> result) {
+    return ConversationRuntimeResultPolicy.clientError(result).code.wireName;
   }
 }

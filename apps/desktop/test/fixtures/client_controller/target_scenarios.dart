@@ -180,7 +180,7 @@ void registerClientTargetScenarios() {
           confidence: 0.82,
           detail: 'cli',
           manual: false,
-          configPath: '/tmp/codex.toml',
+          configPath: 'test-data/codex.toml',
           adapterStatus: 'implemented',
           adapterCapabilities: parityReadyAdapterCapabilities,
           supportedActions: ['runtime.message.send'],
@@ -208,6 +208,7 @@ void registerClientTargetScenarios() {
     );
 
     await controller.selectConversationAgent('codex');
+    controller.selectConversationSession('native-codex-1');
 
     expect(controller.selectedConversationAgentId, 'codex');
     expect(controller.selectedConversationSessions, hasLength(1));

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "licolite.client-release-acceptance-report.v3",
+  "$id": "licomesh.client-release-acceptance-report.v3",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -18,7 +18,7 @@
     "scope"
   ],
   "properties": {
-    "schemaVersion": { "const": "licolite.client-release-acceptance-report.v3" },
+    "schemaVersion": { "const": "licomesh.client-release-acceptance-report.v3" },
     "generatedAt": { "type": "string", "format": "date-time" },
     "productVersion": { "type": "string", "minLength": 1 },
     "inputIntegrity": { "$ref": "#/$defs/inputIntegrity" },
@@ -128,7 +128,7 @@
       "required": ["id", "ref", "digest"],
       "properties": {
         "id": { "type": "string", "minLength": 1 },
-        "ref": { "type": "string", "pattern": "^build/(?!.*(?:^|/)\\.\\.(?:/|$))[^\\u0000\\\\]+$" },
+        "ref": { "type": "string", "pattern": "^build/(?!.*(?:^|/)[.][.](?:/|$))(?!.*\\x00)(?!.*\\x5c).+$" },
         "digest": { "$ref": "#/$defs/digest" }
       }
     },
@@ -138,7 +138,7 @@
       "required": ["id", "ref", "digest"],
       "properties": {
         "id": { "type": "string", "minLength": 1 },
-        "ref": { "type": "string", "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))[^\\u0000\\\\]+$" },
+        "ref": { "type": "string", "pattern": "^(?!/)(?!.*(?:^|/)[.][.](?:/|$))(?!.*\\x00)(?!.*\\x5c).+$" },
         "digest": { "$ref": "#/$defs/digest" }
       }
     },

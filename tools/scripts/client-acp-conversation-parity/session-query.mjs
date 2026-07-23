@@ -104,6 +104,13 @@ export function codexThreadListItems(result) {
 }
 
 export async function listSessions(context) {
+  if (context.config.cleanupKind === "cursor-cli-chat-leaf") {
+    const records = new Map();
+    for (const sessionId of context.observedSessions || []) {
+      if (!context.cleanedSessions?.has(sessionId)) records.set(sessionId, "cursor-cli-session");
+    }
+    return records;
+  }
   if (context.config.cleanupKind === "pi-disposable-session-root") {
     const records = new Map();
     for (const path of piSessionFiles(context.disposableDataRoot)) {

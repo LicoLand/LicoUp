@@ -88,9 +88,9 @@ fn codex_rollout_raw_export_filters_by_payload_session_id() {
     fs::write(
         &path,
         [
-            r#"{"timestamp":"2026-06-03T10:00:00Z","type":"session_meta","payload":{"id":"session-one","cwd":"/tmp/one"}}"#,
+            r#"{"timestamp":"2026-06-03T10:00:00Z","type":"session_meta","payload":{"id":"session-one","cwd":"test-data/one"}}"#,
             r#"{"timestamp":"2026-06-03T10:00:01Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"first session text"}]}}"#,
-            r#"{"timestamp":"2026-06-03T10:00:02Z","sessionId":"session-two","type":"session_meta","payload":{"id":"session-two","cwd":"/tmp/two"}}"#,
+            r#"{"timestamp":"2026-06-03T10:00:02Z","sessionId":"session-two","type":"session_meta","payload":{"id":"session-two","cwd":"test-data/two"}}"#,
             r#"{"timestamp":"2026-06-03T10:00:03Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"second session text"}]}}"#,
         ]
         .join("\n"),
@@ -115,12 +115,12 @@ fn preserved_index_records_skip_excluded_dependency_sources() {
     let previous = vec![
         json!({
             "archive_key": "dependency",
-            "source_path": "/tmp/project/node_modules/pkg/README.md",
+            "source_path": "test-data/project/node_modules/pkg/README.md",
             "archive_status": "unchanged"
         }),
         json!({
             "archive_key": "history",
-            "source_path": "/tmp/history/session.jsonl",
+            "source_path": "test-data/history/session.jsonl",
             "archive_status": "unchanged"
         }),
     ];
@@ -143,7 +143,7 @@ fn prune_removes_excluded_unindexed_snapshot_directories() {
         &conversation_dir.join(SNAPSHOT_JSON),
         &json!({
             "snapshotId": "excluded",
-            "sourcePath": "/tmp/project/node_modules/pkg/README.md"
+            "sourcePath": "test-data/project/node_modules/pkg/README.md"
         }),
     )
     .unwrap();
@@ -239,7 +239,7 @@ fn archive_mode_streams_jsonl_that_browse_mode_skips_as_large() {
     fs::write(
         codex.join("history.jsonl"),
         format!(
-            "{{\"sessionId\":\"large-1\",\"role\":\"user\",\"content\":\"LicoLite {}\"}}\n",
+            "{{\"sessionId\":\"large-1\",\"role\":\"user\",\"content\":\"LicoMesh {}\"}}\n",
             large_text
         ),
     )
@@ -254,17 +254,17 @@ fn archive_mode_streams_jsonl_that_browse_mode_skips_as_large() {
 
     profile_import(&json!({
         "stateRoot": display_path(&state),
-        "profileId": "licolite-large",
-        "displayName": "LicoLite Large",
+        "profileId": "licomesh-large",
+        "displayName": "LicoMesh Large",
         "archiveRoot": display_path(&archive_root),
-        "canonicalNames": "LicoLite",
+        "canonicalNames": "LicoMesh",
         "expectedAgents": "codex"
     }))
     .unwrap();
     let archived = archive_run(&json!({
         "stateRoot": display_path(&state),
         "homeDir": display_path(&home),
-        "profile": "licolite-large"
+        "profile": "licomesh-large"
     }))
     .unwrap();
     assert_eq!(archived["selectedCount"], 1);

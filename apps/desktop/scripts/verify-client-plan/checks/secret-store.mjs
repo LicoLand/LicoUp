@@ -60,7 +60,7 @@ assert(platformSecretStoreMatrix.includes("platformSecretStoreMatrixConfig.sourc
   !platformSecretStoreMatrix.includes("const nativeTestFilters = Object.freeze(["),
   "platform secret-store matrix must load source checks and native filters from config instead of hardcoding inline arrays");
 for (const token of [
-  "licolite.secure-mesh.platform-secret-store-matrix-config.v2",
+  "licomesh.secure-mesh.platform-secret-store-matrix-config.v2",
   "sourceChecks",
   "nativeTestFilters",
   "android-platform-crypto-report-is-current",

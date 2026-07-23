@@ -176,10 +176,10 @@ export function validateRuntimeStatus(
     nativeRuntime.secretsPassedThroughFlutterMethodChannel === false;
   const checks = {
     statusOk: status.ok === true,
-    protocolVersion: status.protocolVersion === "licolite.secure-mesh.v1",
+    protocolVersion: status.protocolVersion === "licomesh.secure-mesh.v1",
     endpointKind: status.endpointKind === "mobile",
     platform: status.platform === "android",
-    bridgeChannel: bridge.methodChannel === "licolite.secure_mesh.android",
+    bridgeChannel: bridge.methodChannel === "licomesh.secure_mesh.android",
     bridgeMethods: bridge.statusMethod === true &&
       bridge.writeRuntimeStatusMethod === true &&
       bridge.nativeJsonMethod === true &&

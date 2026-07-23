@@ -17,7 +17,7 @@ void registerMobileRelayIosBridgeScenarios() {
       expect(call.method, 'status');
       return {
         'ok': true,
-        'protocolVersion': 'licolite.secure-mesh.v1',
+        'protocolVersion': 'licomesh.secure-mesh.v1',
         'endpointKind': 'mobile',
         'platform': 'ios',
         'bridge': {

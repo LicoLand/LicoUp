@@ -223,8 +223,68 @@ pub(super) fn is_hidden(store: &ClientStateStore, agent_id: &str, skill_id: &str
         .unwrap_or(false))
 }
 
+/// Local skill management is itself the user's explicit action, so a missing
+/// pairing is created already approved and kept only as an audit record. A
+/// legacy requested record is approved in place; an explicit revocation is
+/// still honored.
 pub(super) fn is_agent_approved(store: &ClientStateStore, agent_id: &str) -> Result<bool> {
-    Ok(get_approved_pairing(store, agent_id)?.is_some())
+    let mut document = store.read_collection("pairings")?;
+    let existing_index = document
+        .get("items")
+        .and_then(Value::as_array)
+        .and_then(|items| {
+            items
+                .iter()
+                .position(|item| item.get("agentId").and_then(Value::as_str) == Some(agent_id))
+        });
+    if let Some(index) = existing_index {
+        let status = document["items"][index]
+            .get("status")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string();
+        match status.as_str() {
+            STATUS_REVOKED => return Ok(false),
+            STATUS_APPROVED => return Ok(true),
+            _ => {
+                document["items"][index]["status"] = json!(STATUS_APPROVED);
+                document["items"][index]["approvedAt"] = json!(timestamp());
+                store.write_collection("pairings", document)?;
+                return Ok(true);
+            }
+        }
+    }
+    let now = timestamp();
+    let pairing_id = format!("pair-{}", uuid_v4());
+    let record = json!({
+        "pairingId": pairing_id,
+        "agentId": agent_id,
+        "target": agent_id,
+        "targetKind": "unknown",
+        "label": agent_id,
+        "configPath": "",
+        "binaryPath": "",
+        "localIdentity": format!("local-{}", uuid_v4()),
+        "status": STATUS_APPROVED,
+        "requestedAt": now,
+        "approvedAt": now,
+        "defaultVisibilityPolicy": "allow-all",
+        "scopes": [],
+    });
+    let items = collection_items_mut(&mut document)?;
+    items.push(record);
+    store.write_collection("pairings", document)?;
+    append_activity(
+        store,
+        "pairing.approved",
+        json!({
+            "target": agent_id,
+            "agentId": agent_id,
+            "pairingId": pairing_id,
+            "origin": "auto"
+        }),
+    )?;
+    Ok(true)
 }
 
 pub(super) fn upsert_policy_item(

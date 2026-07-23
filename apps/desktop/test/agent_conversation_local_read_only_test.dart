@@ -7,7 +7,7 @@ void main() {
     expect(nativeConversationReadOnlyMessageZh, contains('本机只读'));
     expect(nativeConversationReadOnlyMessageZh, contains('不会修改或删除源智能体会话'));
     expect(nativeConversationReadOnlyMessageEn, contains('on this device'));
-    expect(nativeConversationReadOnlyMessageZh, isNot(contains('LicoLite')));
-    expect(nativeConversationReadOnlyMessageEn, isNot(contains('LicoLite')));
+    expect(nativeConversationReadOnlyMessageZh, isNot(contains('LicoMesh')));
+    expect(nativeConversationReadOnlyMessageEn, isNot(contains('LicoMesh')));
   });
 }

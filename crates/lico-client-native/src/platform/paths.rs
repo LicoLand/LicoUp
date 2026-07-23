@@ -16,7 +16,9 @@ pub fn set_portable_data_dir_override(path: Option<PathBuf>) -> Option<PathBuf> 
 
 /// Resolve only the current LicoArc state root.
 ///
-/// Retired environment variables, executable-adjacent roots, and old product
+/// The default root is the `.lico-arc` directory in the user's home, next to
+/// other agent state namespaces like `.claude` and `.codex`. Retired
+/// environment variables, executable-adjacent roots, and old product
 /// namespaces are deliberately never inspected or migrated.
 pub fn portable_data_dir() -> Result<PathBuf> {
     if let Some(path) = portable_data_dir_override() {
@@ -27,7 +29,7 @@ pub fn portable_data_dir() -> Result<PathBuf> {
         return prepare_current_root(path);
     }
 
-    application_support_portable_data_dir()
+    home_portable_data_dir()
 }
 
 fn portable_data_dir_override() -> Option<PathBuf> {
@@ -50,14 +52,14 @@ fn portable_data_dir_from_value(value: Option<String>) -> Result<Option<PathBuf>
     Ok(Some(PathBuf::from(trimmed)))
 }
 
-fn application_support_portable_data_dir() -> Result<PathBuf> {
-    let base_dirs = directories::BaseDirs::new()
-        .ok_or_else(|| anyhow!("cannot resolve LicoArc application data directory"))?;
-    application_support_portable_data_dir_from_base(base_dirs.data_dir())
+fn home_portable_data_dir() -> Result<PathBuf> {
+    let user_dirs = directories::UserDirs::new()
+        .ok_or_else(|| anyhow!("cannot resolve the LicoArc home directory"))?;
+    home_portable_data_dir_from_home(user_dirs.home_dir())
 }
 
-fn application_support_portable_data_dir_from_base(base: &Path) -> Result<PathBuf> {
-    prepare_current_root(base.join("LicoArc").join("portable-data"))
+fn home_portable_data_dir_from_home(home: &Path) -> Result<PathBuf> {
+    prepare_current_root(home.join(".lico-arc"))
 }
 
 fn prepare_current_root(path: PathBuf) -> Result<PathBuf> {
@@ -95,12 +97,12 @@ mod tests {
     }
 
     #[test]
-    fn current_namespace_is_licoarc_portable_data() {
+    fn current_namespace_is_home_dot_lico_arc() {
         let parent = std::env::temp_dir().join(format!("licoarc-base-{}", uuid::Uuid::new_v4()));
 
-        let resolved = application_support_portable_data_dir_from_base(&parent).unwrap();
+        let resolved = home_portable_data_dir_from_home(&parent).unwrap();
 
-        assert_eq!(resolved, parent.join("LicoArc").join("portable-data"));
+        assert_eq!(resolved, parent.join(".lico-arc"));
         let _ = std::fs::remove_dir_all(parent);
     }
 

@@ -1,12 +1,12 @@
 {
-  "name": "@licolite/lico-arc",
+  "name": "@licomesh/lico-arc",
   "version": "0.0.1-alpha",
-  "description": "Lico-Arc is the open-source official LicoLite client repository.",
+  "description": "Lico-Arc is the open-source official LicoMesh client repository.",
   "private": false,
   "license": "GPL-3.0-or-later",
   "repository": {
     "type": "git",
-    "url": "https://github.com/LicoLite/Lico-Arc.git"
+    "url": "https://github.com/LicoLand/LicoArc.git"
   },
   "packageManager": "npm@11.13.0",
   "type": "module",
@@ -19,6 +19,9 @@
   },
   "scripts": {
     "repo:client-boundary": "node tools/verify-client-boundary.mjs",
+    "client:contracts:generate": "node tools/scripts/generate-client-bridge-contracts.mjs",
+    "client:contracts:check": "node tools/scripts/generate-client-bridge-contracts.mjs --check",
+    "repo:docs": "node tools/verify-documentation.mjs",
     "repo:local-info-hygiene": "node tools/scripts/repo-local-info-hygiene.mjs",
     "repo:local-info-hygiene:self-test": "node tools/scripts/repo-local-info-hygiene.mjs --self-test",
     "repo:workspace-cache-boundary": "node tools/scripts/workspace-cache-boundary.mjs",
@@ -53,11 +56,17 @@
     "client:verify:layout-boundaries:self-test": "node apps/desktop/scripts/verify-layout-boundaries.mjs --self-test",
     "client:verify:layout-visual-manifests": "node apps/desktop/scripts/verify-layout-visual-manifests.mjs --check",
     "client:verify:layout-visual-manifests:self-test": "node apps/desktop/scripts/verify-layout-visual-manifests-self-test.mjs",
+    "client:verify:acp-reference-agent:self-test": "node tools/acp-reference-agent/verify.mjs",
     "client:verify:agent-conversation-parity": "node tests/contract/client/agent-conversation-parity-reducer.test.mjs && node tools/scripts/client-agent-conversation-parity-reducer.mjs --check && node tools/scripts/client-acp-conversation-parity.mjs --self-test",
     "client:verify:agent-adapter-standard": "node tools/scripts/client-agent-adapter-standard.mjs",
     "client:verify:agent-conversations": "node tools/scripts/client-agent-conversation-verify.mjs",
     "client:verify:agent-conversations:live": "node tools/scripts/client-agent-conversation-verify.mjs --live",
     "client:verify:agent-conversations:release-ui": "node tools/scripts/client-agent-conversation-verify.mjs --release-ui",
+    "client:verify:cursor-conversation-gate": "node tools/scripts/client-cursor-conversation-gate.mjs",
+    "client:verify:codex-conversation-gate": "node tools/scripts/cargo-client.mjs build --manifest-path crates/lico-client-native/Cargo.toml --bin lico-client && node tools/scripts/client-arc-local-service-conversation-gate.mjs --agent codex",
+    "client:verify:opencode-conversation-gate": "node tools/scripts/cargo-client.mjs build --manifest-path crates/lico-client-native/Cargo.toml --bin lico-client && node tools/scripts/client-arc-local-service-conversation-gate.mjs --agent opencode",
+    "client:verify:kimi-code-conversation-gate": "node tools/scripts/cargo-client.mjs build --manifest-path crates/lico-client-native/Cargo.toml --bin lico-client && node tools/scripts/client-same-session-conversation-gate.mjs --agent kimi-code",
+    "client:verify:antigravity-conversation-gate": "node tools/scripts/cargo-client.mjs build --manifest-path crates/lico-client-native/Cargo.toml --bin lico-client && node tools/scripts/client-antigravity-conversation-gate.mjs",
     "client:verify:agent-conversations:product-e2e": "node tools/scripts/client-agent-conversation-product-e2e.mjs",
     "client:verify:agent-conversations:product-e2e:self-test": "node tools/scripts/client-agent-conversation-product-e2e.mjs --self-test",
     "client:verify:agent-conversations:self-test": "node tools/scripts/client-agent-conversation-verify.mjs --self-test",

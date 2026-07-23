@@ -2,7 +2,7 @@ import 'package:flutter_client/src/application/features/agents/workspace/agent_w
 import 'package:flutter_client/src/contracts/agent_conversation_models.dart';
 import 'package:flutter_client/src/contracts/agent_conversation_tab_activity.dart';
 import 'package:flutter_client/src/contracts/agent_dispatch_lane.dart';
-import 'package:flutter_client/src/contracts/secure_mesh_approval_models.dart';
+import 'package:flutter_client/src/contracts/generated/secure_mesh.g.dart';
 
 /// Ephemeral message/process projection for an in-flight native turn.
 mixin AgentConversationLiveProjectionController on AgentWorkspaceCoordinator {

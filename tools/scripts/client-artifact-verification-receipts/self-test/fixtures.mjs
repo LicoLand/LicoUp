@@ -11,7 +11,7 @@ export function fixtureMacos({
   invocationNonceDigest,
 }) {
   return {
-    schemaVersion: "licolite.secure-mesh.macos-adaptive-capabilities-receipt.v3",
+    schemaVersion: "licomesh.secure-mesh.macos-adaptive-capabilities-receipt.v3",
     verifier: "tools/scripts/client-secure-mesh-macos-capabilities.mjs",
     generatedAt,
     closureChallengeDigest,
@@ -66,7 +66,7 @@ export function fixtureAndroid({
   invocationNonceDigest,
 }) {
   return {
-    schemaVersion: "licolite.secure-mesh.android-physical-install-launch-report.v3",
+    schemaVersion: "licomesh.secure-mesh.android-physical-install-launch-report.v3",
     verifier: "tools/scripts/client-android-physical-install-launch.mjs",
     generatedAt,
     closureChallengeDigest,
@@ -153,7 +153,7 @@ export function fixtureLinux({
   invocationNonceDigest,
 }) {
   return {
-    schema: "licolite.secure-mesh.linux-vm-package-receipt",
+    schema: "licomesh.secure-mesh.linux-vm-package-receipt",
     schemaVersion: 2,
     producer: "linux-vm-package-receipt",
     generatedAt,

@@ -18,6 +18,7 @@ const Set<ClientSection> bubbleDesktopExpectedDestinations = <ClientSection>{
   ClientSection.agents,
   ClientSection.monitoring,
   ClientSection.skillHub,
+  ClientSection.pluginManagement,
   ClientSection.mobileRelay,
   ClientSection.settings,
 };
@@ -27,6 +28,7 @@ const Map<ClientSection, String> bubbleDesktopTestLabels =
       ClientSection.agents: 'Agents',
       ClientSection.monitoring: 'Monitoring',
       ClientSection.skillHub: 'Skill Hub',
+      ClientSection.pluginManagement: 'Plugin Management',
       ClientSection.mobileRelay: 'Mobile Relay',
       ClientSection.settings: 'Settings',
     };
@@ -237,6 +239,9 @@ final class BubbleRecordingChromePort
   Future<void> openPairing(BuildContext context) async {
     pairingInvocations += 1;
   }
+
+  @override
+  Future<void> openGlobalSearch(BuildContext context) async {}
 }
 
 String bubbleDesktopDestinationLabel(ClientSection destination) {

@@ -1,5 +1,7 @@
 import 'dart:io';
 
+import 'package:flutter_client/src/contracts/generated/client_error.g.dart';
+
 typedef NativeRunCliExecutable =
     Future<ProcessResult> Function(
       String executable,
@@ -51,9 +53,13 @@ abstract interface class NativeStdioRpcTransport {
 }
 
 class LicoClientRpcException implements Exception {
-  const LicoClientRpcException(this.code);
+  const LicoClientRpcException(this.code) : clientError = null;
+  LicoClientRpcException.fromClientError(ClientError error)
+    : clientError = error,
+      code = error.code.wireName;
 
   final String code;
+  final ClientError? clientError;
 
   bool get authorizationRequired => code == 'authorization_required';
 

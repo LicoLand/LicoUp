@@ -4,6 +4,15 @@ import 'package:flutter/foundation.dart';
 
 enum ClientLifecyclePhase { idle, initializing, ready, failed, disposed }
 
+final class ClientLifecycleProjection {
+  const ClientLifecycleProjection._(this.phase);
+
+  final ClientLifecyclePhase phase;
+
+  bool get initialized => phase == ClientLifecyclePhase.ready;
+  bool get disposed => phase == ClientLifecyclePhase.disposed;
+}
+
 final class ClientBootstrapStep {
   const ClientBootstrapStep({required this.id, required this.action});
 
@@ -26,15 +35,17 @@ final class ClientLifecycleCoordinator extends ChangeNotifier {
   ClientLifecycleCoordinator({required ClientLifecycleReportSink onReport})
     : _onReport = onReport;
 
-  static final RegExp _stableId = RegExp(r'^[a-z][a-z0-9._-]*$');
+  static final RegExp _stableId = RegExp(r'^[a-z][a-z0-9._-]{0,63}$');
 
   final ClientLifecycleReportSink _onReport;
   ClientLifecyclePhase _phase = ClientLifecyclePhase.idle;
+  ClientLifecycleProjection _projection = const ClientLifecycleProjection._(
+    ClientLifecyclePhase.idle,
+  );
   Future<void>? _initializeFuture;
   int _generation = 0;
 
-  ClientLifecyclePhase get phase => _phase;
-  bool get initialized => _phase == ClientLifecyclePhase.ready;
+  ClientLifecycleProjection get projection => _projection;
 
   Future<void> initialize({
     required List<ClientBootstrapStep> sequentialSteps,
@@ -42,7 +53,15 @@ final class ClientLifecycleCoordinator extends ChangeNotifier {
     bool runBackgroundSteps = true,
     ClientBootstrapStep? finalStep,
   }) {
-    if (_phase == ClientLifecyclePhase.disposed) return Future<void>.value();
+    if (_phase == ClientLifecyclePhase.disposed) {
+      _report(
+        const ClientLifecycleReport(
+          code: 'client_lifecycle_disposed',
+          stepId: 'initialize',
+        ),
+      );
+      return Future<void>.value();
+    }
     final active = _initializeFuture;
     if (active != null) return active;
     if (_phase == ClientLifecyclePhase.ready) return Future<void>.value();
@@ -71,8 +90,9 @@ final class ClientLifecycleCoordinator extends ChangeNotifier {
     required bool runBackgroundSteps,
     required ClientBootstrapStep? finalStep,
   }) async {
-    _phase = ClientLifecyclePhase.initializing;
-    notifyListeners();
+    if (!_transition(ClientLifecyclePhase.initializing, stepId: 'initialize')) {
+      return;
+    }
     try {
       for (final step in sequentialSteps) {
         await step.action();
@@ -89,18 +109,16 @@ final class ClientLifecycleCoordinator extends ChangeNotifier {
         await finalStep.action();
         if (!_isCurrent(generation)) return;
       }
-      _phase = ClientLifecyclePhase.ready;
-      notifyListeners();
+      _transition(ClientLifecyclePhase.ready, stepId: 'initialize_complete');
     } catch (_) {
       if (!_isCurrent(generation)) return;
-      _phase = ClientLifecyclePhase.failed;
-      _onReport(
+      _transition(ClientLifecyclePhase.failed, stepId: 'initialize_failed');
+      _report(
         const ClientLifecycleReport(
           code: 'client_initialize_failed',
           stepId: 'sequential_bootstrap',
         ),
       );
-      notifyListeners();
     }
   }
 
@@ -112,7 +130,7 @@ final class ClientLifecycleCoordinator extends ChangeNotifier {
       await step.action();
     } catch (_) {
       if (!_isCurrent(generation)) return;
-      _onReport(
+      _report(
         ClientLifecycleReport(
           code: 'client_background_step_failed',
           stepId: _safeStepId(step.id),
@@ -123,6 +141,66 @@ final class ClientLifecycleCoordinator extends ChangeNotifier {
 
   bool _isCurrent(int generation) =>
       _phase != ClientLifecyclePhase.disposed && generation == _generation;
+
+  bool _transition(ClientLifecyclePhase next, {required String stepId}) {
+    if (!_legalTransitions[_phase]!.contains(next)) {
+      _report(
+        ClientLifecycleReport(
+          code: 'client_lifecycle_transition_invalid',
+          stepId: _safeStepId(stepId),
+        ),
+      );
+      return false;
+    }
+    _phase = next;
+    _projection = ClientLifecycleProjection._(next);
+    notifyListeners();
+    return true;
+  }
+
+  void _report(ClientLifecycleReport report) {
+    _onReport(report);
+  }
+
+  static const Map<ClientLifecyclePhase, Set<ClientLifecyclePhase>>
+  _legalTransitions = {
+    ClientLifecyclePhase.idle: {
+      ClientLifecyclePhase.initializing,
+      ClientLifecyclePhase.disposed,
+    },
+    ClientLifecyclePhase.initializing: {
+      ClientLifecyclePhase.ready,
+      ClientLifecyclePhase.failed,
+      ClientLifecyclePhase.disposed,
+    },
+    ClientLifecyclePhase.ready: {ClientLifecyclePhase.disposed},
+    ClientLifecyclePhase.failed: {
+      ClientLifecyclePhase.initializing,
+      ClientLifecyclePhase.disposed,
+    },
+    ClientLifecyclePhase.disposed: {},
+  };
+
+  @visibleForTesting
+  ClientLifecycleReport transitionForTesting(
+    ClientLifecyclePhase next, {
+    required String stepId,
+  }) {
+    final safeStepId = _safeStepId(stepId);
+    if (_legalTransitions[_phase]!.contains(next)) {
+      _transition(next, stepId: safeStepId);
+      return ClientLifecycleReport(
+        code: 'client_lifecycle_transition_applied',
+        stepId: safeStepId,
+      );
+    }
+    final rejection = ClientLifecycleReport(
+      code: 'client_lifecycle_transition_invalid',
+      stepId: safeStepId,
+    );
+    _report(rejection);
+    return rejection;
+  }
 
   static String _safeStepId(String value) {
     final normalized = value.trim().toLowerCase();
@@ -135,7 +213,7 @@ final class ClientLifecycleCoordinator extends ChangeNotifier {
   void dispose() {
     if (_phase == ClientLifecyclePhase.disposed) return;
     _generation += 1;
-    _phase = ClientLifecyclePhase.disposed;
+    _transition(ClientLifecyclePhase.disposed, stepId: 'dispose');
     super.dispose();
   }
 }

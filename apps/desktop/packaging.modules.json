@@ -200,6 +200,38 @@
       ],
       "packaging": "sidecar-binary",
       "cargoBin": "lico-client"
+    },
+    "codex-orchestration-mcp": {
+      "label": "Lico Arc local Codex MCP control plane",
+      "category": "agents",
+      "enabled": true,
+      "required": true,
+      "platforms": [
+        "macos",
+        "linux"
+      ],
+      "packaging": "sidecar-binary",
+      "cargoBin": "lico-codex-mcp",
+      "requires": [
+        "native-sidecar"
+      ]
+    },
+    "codex-orchestration-plugin": {
+      "label": "Lico Arc Codex plugin bundle",
+      "category": "agents",
+      "enabled": true,
+      "required": true,
+      "platforms": [
+        "macos",
+        "linux"
+      ],
+      "packaging": "module-resources",
+      "includePaths": [
+        "plugins/lico-arc-codex"
+      ],
+      "requires": [
+        "codex-orchestration-mcp"
+      ]
     }
   },
   "deferredCapabilities": {}

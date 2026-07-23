@@ -27,27 +27,27 @@ fn archive_profile_import_list_and_get_round_trip() {
     let imported = profile_import(&json!({
         "stateRoot": display_path(&state),
         "profileJson": serde_json::to_string(&json!({
-            "profileId": "licolite",
-            "displayName": "LicoLite",
+            "profileId": "licomesh",
+            "displayName": "LicoMesh",
             "archiveRoot": display_path(&archive_root),
-            "canonicalNames": ["LicoLite"],
-            "aliasNames": ["LicoLite-Archive-Alias"],
-            "projectPaths": ["/repo/licolite"],
+            "canonicalNames": ["LicoMesh"],
+            "aliasNames": ["LicoMesh-Archive-Alias"],
+            "projectPaths": ["/repo/licomesh"],
             "expectedAgents": ["codex"],
             "expectedSources": ["codex"]
         })).unwrap()
     }))
     .unwrap();
     assert_eq!(imported["status"], "imported");
-    assert_eq!(imported["profile"]["profileId"], "licolite");
+    assert_eq!(imported["profile"]["profileId"], "licomesh");
 
     let list = profiles_list(&json!({"stateRoot": display_path(&state)})).unwrap();
     assert_eq!(list["profiles"].as_array().unwrap().len(), 1);
     let get = profile_get(&json!({
         "stateRoot": display_path(&state),
-        "profile": "licolite"
+        "profile": "licomesh"
     }))
     .unwrap();
-    assert_eq!(get["profile"]["displayName"], "LicoLite");
+    assert_eq!(get["profile"]["displayName"], "LicoMesh");
     assert_eq!(get["profile"]["expectedAgents"][0], "codex");
 }

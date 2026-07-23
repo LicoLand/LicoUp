@@ -31,7 +31,7 @@ void main() {
       expect(
         await controller.planLocalDeployment(
           selectedFeatureIds: ['unknown'],
-          destination: '/tmp/licolite-local',
+          destination: 'test-data/licomesh-local',
         ),
         isFalse,
       );
@@ -40,7 +40,7 @@ void main() {
       expect(
         await controller.planLocalDeployment(
           selectedFeatureIds: ['server-core'],
-          destination: '/tmp/licolite-local',
+          destination: 'test-data/licomesh-local',
         ),
         isTrue,
       );
@@ -53,7 +53,7 @@ void main() {
       expect(controller.localDeploymentPlan, isNull);
       expect(
         controller.lastApplyResult?.plan.destination,
-        '/tmp/licolite-local',
+        'test-data/licomesh-local',
       );
     },
   );
@@ -69,7 +69,7 @@ void main() {
       controller.replaceCatalog(_catalog);
       await controller.planLocalDeployment(
         selectedFeatureIds: const ['server-core'],
-        destination: '/tmp/licolite-local',
+        destination: 'test-data/licomesh-local',
       );
       await controller.applyLocalDeployment(confirmed: true);
       expect(controller.localServers.single.isStopped, isTrue);
@@ -119,11 +119,11 @@ void main() {
           agentDestinations: const [
             OptionalCollaborationAgentDestination(
               agentId: 'cursor',
-              installDestination: '/tmp/cursor-mcp',
+              installDestination: 'test-data/cursor-mcp',
             ),
             OptionalCollaborationAgentDestination(
               agentId: 'hermes',
-              installDestination: '/tmp/hermes-mcp',
+              installDestination: 'test-data/hermes-mcp',
             ),
           ],
         ),
@@ -168,11 +168,11 @@ void main() {
         agentDestinations: const [
           OptionalCollaborationAgentDestination(
             agentId: 'cursor',
-            installDestination: '/tmp/cursor',
+            installDestination: 'test-data/cursor',
           ),
           OptionalCollaborationAgentDestination(
             agentId: 'hermes',
-            installDestination: '/tmp/cursor/hermes',
+            installDestination: 'test-data/cursor/hermes',
           ),
         ],
       ),
@@ -416,7 +416,7 @@ Map<String, dynamic> _planEnvelope(String kind) => {
   'workflowKind': kind,
   'planDigestSha256': _planDigest,
   'packageDigestSha256': _packageDigest,
-  'pluginId': 'licolite-collaboration',
+  'pluginId': 'licomesh-collaboration',
   'expiresAtEpochSeconds': 2000000000,
   'oneTime': true,
   'cancellable': true,
@@ -503,8 +503,8 @@ Map<String, dynamic> _assemblyPlan(
   List<String> selectedIds,
 ) => {
   'deploymentId': _deploymentId,
-  'pluginId': 'licolite-collaboration',
-  'sourceUrl': 'https://github.com/example/licolite-bundle.git',
+  'pluginId': 'licomesh-collaboration',
+  'sourceUrl': 'https://github.com/example/licomesh-bundle.git',
   'serverVersion': '1.0.0',
   'packageDigestSha256': _packageDigest,
   'selectedComponentIds': selectedIds,
@@ -532,7 +532,7 @@ Map<String, dynamic> _localServerJson(
 }) => {
   'deploymentId': _deploymentId,
   'status': status,
-  'sourceUrl': 'https://github.com/example/licolite-bundle.git',
+  'sourceUrl': 'https://github.com/example/licomesh-bundle.git',
   'serverVersion': '1.0.0',
   'packageDigestSha256': _packageDigest,
   'selectedComponentIds': selectedIds,
@@ -555,7 +555,7 @@ Map<String, dynamic> _localServerJson(
 OptionalLocalServerState _localServerState({
   String status = 'assembled-awaiting-deployment',
 }) => OptionalLocalServerState.fromJson(
-  _localServerJson('/tmp/licolite-local', const [
+  _localServerJson('test-data/licomesh-local', const [
     'server-core',
   ], status: status),
 );
@@ -568,7 +568,7 @@ Map<String, dynamic> _registrationPlan(
   final registrationId =
       '00000000-0000-4000-8000-${(index + 10).toString().padLeft(12, '0')}';
   final registrationDestination =
-      '/tmp/licoarc-private/${destination.agentId}/$registrationId.json';
+      'test-data/licoarc-private/${destination.agentId}/$registrationId.json';
   return {
     'agentId': destination.agentId,
     'registrationId': registrationId,
@@ -579,7 +579,7 @@ Map<String, dynamic> _registrationPlan(
       'registrationId': registrationId,
       'registrationDigestSha256': _registrationDigest,
       'agentId': destination.agentId,
-      'collaborationPluginId': 'licolite-collaboration',
+      'collaborationPluginId': 'licomesh-collaboration',
       'packageDigestSha256': _packageDigest,
       'selectedPluginIds': selectedIds,
       'payloadRoots': [
@@ -603,8 +603,8 @@ Map<String, dynamic> _registrationPlan(
 }
 
 const _plugin = OptionalCollaborationPlugin(
-  id: 'licolite-collaboration',
-  displayName: 'LicoLite Collaboration',
+  id: 'licomesh-collaboration',
+  displayName: 'LicoMesh Collaboration',
   version: '1.0.0',
   packageDigestSha256: _packageDigest,
   capabilities: ['local-deployment', 'mcp-install'],

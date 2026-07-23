@@ -4,7 +4,7 @@ use crate::core::secure_mesh_pairwise::{
 };
 use crate::domain::mobile_relay::endpoint_trust::{local_endpoint_state, now_iso, session_id};
 use crate::domain::mobile_relay::secret_custody::{
-    RuntimeSecretContext, ensure_secure_mesh_protected_operation_allowed,
+    RuntimeSecretContext, RuntimeSecretMaterial, ensure_secure_mesh_protected_operation_allowed,
 };
 use crate::platform::secure_mesh_secret_store::{
     SecretStoreAuthorizationRequest, SecretStoreAuthorizationSession,
@@ -34,10 +34,17 @@ impl MobileRelayPairwiseOperation {
 #[cfg(test)]
 pub(in crate::domain::mobile_relay) fn mobile_relay_pairwise_operation(
     config: &Value,
+    secret_material: &RuntimeSecretMaterial,
     reason: &'static str,
     operation_count: usize,
 ) -> Result<MobileRelayPairwiseOperation> {
-    mobile_relay_pairwise_operation_with_authorized_session(config, reason, operation_count, None)
+    mobile_relay_pairwise_operation_with_authorized_session(
+        config,
+        secret_material,
+        reason,
+        operation_count,
+        None,
+    )
 }
 
 pub(in crate::domain::mobile_relay) fn mobile_relay_pairwise_operation_with_runtime_secret_context(
@@ -49,6 +56,7 @@ pub(in crate::domain::mobile_relay) fn mobile_relay_pairwise_operation_with_runt
     let shared_session = secret_context.shared_authorization_session()?;
     mobile_relay_pairwise_operation_with_authorized_session(
         config,
+        &secret_context.material,
         reason,
         operation_count,
         shared_session.as_ref(),
@@ -57,13 +65,14 @@ pub(in crate::domain::mobile_relay) fn mobile_relay_pairwise_operation_with_runt
 
 pub(in crate::domain::mobile_relay) fn mobile_relay_pairwise_operation_with_authorized_session(
     config: &Value,
+    secret_material: &RuntimeSecretMaterial,
     reason: &'static str,
     operation_count: usize,
     authorized_session: Option<&SecretStoreAuthorizationSession>,
 ) -> Result<MobileRelayPairwiseOperation> {
     ensure_secure_mesh_protected_operation_allowed()?;
     let store = mobile_relay_pairwise_store()?;
-    let endpoint = local_endpoint_state(config)?;
+    let endpoint = local_endpoint_state(config, secret_material)?;
     let session_id = session_id(config)?;
     if let Some(record) = store.read_record(&session_id, &endpoint.endpoint_id)? {
         let secret_store_session = authorized_session

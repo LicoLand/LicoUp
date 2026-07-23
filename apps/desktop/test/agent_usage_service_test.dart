@@ -62,7 +62,7 @@ void main() {
       '--agent',
       'codex',
     ]);
-    expect(captured.single, containsAll(['--history-days', '30']));
+    expect(captured.single, containsAll(['--history-days', '90']));
     expect(captured.single, contains('--timezone-offset-minutes'));
     expect(captured.single, contains('--timezone-transitions-json'));
   });
@@ -109,7 +109,7 @@ void main() {
     expect(captured.single, isNot(contains('--transient')));
   });
 
-  test('forwards a manually selected 1-365 day history window', () async {
+  test('bounds a manually selected history window to 90 days', () async {
     final captured = <List<String>>[];
     final agentService = AgentService(
       runCliExecutable: (executable, args, env) async {
@@ -123,7 +123,7 @@ void main() {
             'mode': AgentUsageReport.currentMode,
             'tokenSourceMode': AgentUsageReport.currentTokenSourceMode,
             'generatedAt': '2026-07-02T00:00:00Z',
-            'window': {'days': 365},
+            'window': {'days': 90},
             'summary': {'agentCount': 0, 'totalTokens': 0},
             'agents': const [],
           }),
@@ -137,8 +137,8 @@ void main() {
       historyDays: 365,
     );
 
-    expect(report.windowDays, 365);
-    expect(captured.single, containsAll(['--history-days', '365']));
+    expect(report.windowDays, 90);
+    expect(captured.single, containsAll(['--history-days', '90']));
   });
 
   test('loads retained agent usage reports through lico-client', () async {
@@ -220,8 +220,8 @@ void main() {
     );
   });
 
-  test('requires schemaVersion to be the exact integer 4', () {
-    for (final schemaVersion in <Object>[4.0, 4.9, '4']) {
+  test('requires schemaVersion to be the exact integer 6', () {
+    for (final schemaVersion in <Object>[6.0, 6.9, '6']) {
       expect(
         () => AgentUsageReport.fromJson({
           'schemaVersion': schemaVersion,

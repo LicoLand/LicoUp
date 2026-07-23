@@ -49,7 +49,6 @@ void _verifyAgentsContract(LayoutDestinationBuildContext data) {
   for (final channel in const {
     LayoutStateChannels.agentsHistory,
     LayoutStateChannels.agentsSidebar,
-    LayoutStateChannels.agentsDestination,
   }) {
     data.state.read(channel);
   }

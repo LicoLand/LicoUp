@@ -52,7 +52,7 @@ export function inspectApk(configuredApk, workRoot) {
     ? "local-debug"
     : "local-install-keystore";
   if (
-    manifest.schemaVersion !== "licolite.client-android.apk-build-manifest.v3" ||
+    manifest.schemaVersion !== "licomesh.client-android.apk-build-manifest.v3" ||
     manifest.mode !== expectedMode ||
     manifest.targetId !== "android-arm64" ||
     (expectedMode === "release" &&

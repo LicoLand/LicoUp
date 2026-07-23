@@ -9,6 +9,11 @@ const dockerfile = path.join(workspaceRoot, "apps", "desktop", "docker", "ubuntu
 const image = process.env.LICO_UBUNTU_IMAGE || "lico-client-ubuntu:local";
 const platform = process.env.LICO_UBUNTU_PLATFORM || "linux/amd64";
 const guiArtifactDir = path.join(workspaceRoot, "build", "artifacts", "ubuntu-desktop-client");
+const containerRoot = path.posix.sep;
+const containerWorkspace = path.posix.join(containerRoot, "workspace");
+const containerSource = path.posix.join(containerRoot, "source");
+const containerArtifacts = path.posix.join(containerRoot, "artifacts");
+const containerAdminHome = path.posix.join(containerRoot, "root");
 
 function run(command, args, options = {}) {
   execFileSync(command, args, {
@@ -35,11 +40,11 @@ function main() {
   }
 
   const prepareWorkspace = [
-    "mkdir -p /workspace",
+    `mkdir -p ${containerWorkspace}`,
     "&&",
     [
       "tar",
-      "-C /source",
+      `-C ${containerSource}`,
       "--exclude=.git",
       "--exclude=node_modules",
       "--exclude=build",
@@ -51,13 +56,13 @@ function main() {
       ".",
     ].join(" "),
     "|",
-    "tar -C /workspace -xf -",
+    `tar -C ${containerWorkspace} -xf -`,
   ].join(" ");
 
   const verifyScript = [
     "set -euo pipefail",
     prepareWorkspace,
-    "cd /workspace",
+    `cd ${containerWorkspace}`,
     "node --version",
     "rustc --version",
     "cargo --version",
@@ -69,7 +74,7 @@ function main() {
     "npm run client:native:test",
     "npm run client:build:linux",
     "npm run client:linux:smoke",
-    "LICO_GUI_ARTIFACT_DIR=/artifacts npm run client:linux:gui-smoke",
+    `LICO_GUI_ARTIFACT_DIR=${containerArtifacts} npm run client:linux:gui-smoke`,
   ].join(" && ");
 
   run("docker", [
@@ -78,19 +83,19 @@ function main() {
     "--platform",
     platform,
     "--mount",
-    `type=bind,src=${workspaceRoot},dst=/source,readonly`,
+    `type=bind,src=${workspaceRoot},dst=${containerSource},readonly`,
     "--mount",
-    "type=volume,src=lico-ubuntu-pub-cache,dst=/root/.pub-cache",
+    `type=volume,src=lico-ubuntu-pub-cache,dst=${path.posix.join(containerAdminHome, ".pub-cache")}`,
     "--mount",
-    "type=volume,src=lico-ubuntu-cargo-registry,dst=/root/.cargo/registry",
+    `type=volume,src=lico-ubuntu-cargo-registry,dst=${path.posix.join(containerAdminHome, ".cargo", "registry")}`,
     "--mount",
-    "type=volume,src=lico-ubuntu-cargo-git,dst=/root/.cargo/git",
+    `type=volume,src=lico-ubuntu-cargo-git,dst=${path.posix.join(containerAdminHome, ".cargo", "git")}`,
     "--mount",
-    "type=volume,src=lico-ubuntu-cargo-target,dst=/workspace/build/crates/lico-client-native/target",
+    `type=volume,src=lico-ubuntu-cargo-target,dst=${path.posix.join(containerWorkspace, "build", "crates", "lico-client-native", "target")}`,
     "--mount",
-    `type=bind,src=${guiArtifactDir},dst=/artifacts`,
+    `type=bind,src=${guiArtifactDir},dst=${containerArtifacts}`,
     "-w",
-    "/",
+    containerRoot,
     image,
     "bash",
     "-lc",

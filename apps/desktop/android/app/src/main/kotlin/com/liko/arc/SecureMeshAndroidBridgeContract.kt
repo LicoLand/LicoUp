@@ -1,10 +1,10 @@
 package com.liko.arc
 
 internal object SecureMeshAndroidBridgeContract {
-    const val METHOD_CHANNEL = "licolite.secure_mesh.android"
+    const val METHOD_CHANNEL = "licomesh.secure_mesh.android"
     const val NATIVE_LIBRARY = "liblico_client_native.so"
     const val NATIVE_EXPECTED_FEATURE_FLAGS = 255
-    const val PROTOCOL_VERSION = "licolite.secure-mesh.v1"
+    const val PROTOCOL_VERSION = "licomesh.secure-mesh.v1"
     const val LOG_TAG = "LicoSecureMesh"
     const val RUNTIME_STATUS_RELATIVE_PATH =
         "files/secure-mesh/android-runtime-status.json"

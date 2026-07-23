@@ -10,10 +10,7 @@ fn cli_dispatches_help_and_error_paths() {
         let _portable = set_portable_dir(&dir);
 
         let empty = execute_cli(vec![]);
-        assert!(matches!(
-            empty.unwrap(),
-            lico_client_native::ffi::commands::CliExecution::Usage
-        ));
+        assert!(empty.is_err());
 
         let help = execute_cli(vec!["help".into()]);
         assert!(matches!(
@@ -28,10 +25,7 @@ fn cli_dispatches_help_and_error_paths() {
         ));
 
         let unknown = execute_cli(vec!["unknown".into()]);
-        assert!(matches!(
-            unknown.unwrap(),
-            lico_client_native::ffi::commands::CliExecution::Usage
-        ));
+        assert!(unknown.is_err());
 
         let bad_state = execute_cli(vec!["state".into(), "get".into(), "does-not-exist".into()]);
         assert!(bad_state.is_err());
@@ -41,8 +35,11 @@ fn cli_dispatches_help_and_error_paths() {
 #[test]
 fn cli_parse_json_args_and_keys() {
     use lico_client_native::ffi::commands;
-    assert_eq!(commands::parse_json_arg("{\"x\":1}")["x"], json!(1));
-    assert_eq!(commands::parse_json_arg("bad json"), json!({}));
+    assert_eq!(
+        commands::parse_json_arg("{\"x\":1}").unwrap()["x"],
+        json!(1)
+    );
+    assert!(commands::parse_json_arg("bad json").is_err());
     let params = commands::cli_params(&[
         "--target".into(),
         "opencode".into(),

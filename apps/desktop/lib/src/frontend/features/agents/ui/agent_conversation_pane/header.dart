@@ -1,42 +1,31 @@
 import 'package:flutter/material.dart';
 
-import 'package:flutter_client/src/application/controller/client_controller.dart';
-import 'package:flutter_client/src/contracts/agent_conversation_models.dart';
-import 'package:flutter_client/src/contracts/target_candidate.dart';
+import 'package:flutter_client/src/frontend/features/agents/ui/agent_conversation_display_names.dart';
 import 'package:flutter_client/src/frontend/features/agents/ui/agent_conversation_layout_metrics.dart';
+import 'package:flutter_client/src/frontend/features/agents/ui/agent_conversation_pane_controls.dart';
+import 'package:flutter_client/src/frontend/features/agents/ui/agent_conversation_pane_presentation.dart';
 import 'package:flutter_client/src/frontend/features/agents/ui/agent_conversation_parity_disclosure.dart';
-import 'package:flutter_client/src/frontend/features/agents/ui/agent_orchestration_policy_controls.dart';
 import 'package:flutter_client/src/frontend/shared/platform/client_platform.dart';
 import 'package:flutter_client/src/frontend/shared/ui/theme.dart';
 
 class ConversationPaneHeader extends StatelessWidget {
   const ConversationPaneHeader({
     super.key,
-    required this.controller,
-    required this.target,
-    required this.session,
-    required this.historyCollapsed,
-    required this.onToggleHistory,
-    required this.collapseHistoryTooltip,
-    required this.expandHistoryTooltip,
-    this.showSidebarToggle = true,
+    required this.state,
+    required this.actions,
+    this.orchestrationControls,
   });
 
-  final ClientController controller;
-  final TargetCandidate target;
-  final AgentConversationSession? session;
-  final bool historyCollapsed;
-  final VoidCallback onToggleHistory;
-  final String collapseHistoryTooltip;
-  final String expandHistoryTooltip;
-  final bool showSidebarToggle;
+  final AgentConversationHeaderState state;
+  final AgentConversationHeaderActions actions;
+  final Widget? orchestrationControls;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.licoColors;
-    final sessionTitle = session?.title.trim();
+    final sessionTitle = state.session?.title.trim();
     final headerTitle = sessionTitle == null || sessionTitle.isEmpty
-        ? target.label
+        ? agentConversationTargetDisplayName(state.target)
         : sessionTitle;
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -46,30 +35,19 @@ class ConversationPaneHeader extends StatelessWidget {
           children: mobileClient
               ? const <Widget>[]
               : [
-                  if (showSidebarToggle) ...[
-                    IconButton(
-                      tooltip: historyCollapsed
-                          ? expandHistoryTooltip
-                          : collapseHistoryTooltip,
-                      onPressed: onToggleHistory,
-                      color: colors.primary,
-                      hoverColor: Color.lerp(
-                        colors.surface,
-                        colors.primary,
-                        0.12,
-                      ),
-                      style: IconButton.styleFrom(
-                        fixedSize: const Size(40, 40),
-                        minimumSize: const Size(40, 40),
-                        padding: EdgeInsets.zero,
-                        shape: const CircleBorder(),
-                      ),
-                      icon: _SidebarToggleGlyph(
-                        expanded: !historyCollapsed,
-                        color: colors.primary,
+                  if (state.showSidebarToggle) ...[
+                    ConversationIconButton(
+                      key: const Key('conversation-history-toggle'),
+                      tooltip: state.historyCollapsed
+                          ? state.expandHistoryTooltip
+                          : state.collapseHistoryTooltip,
+                      onPressed: actions.onToggleHistory,
+                      child: _SidebarToggleGlyph(
+                        expanded: !state.historyCollapsed,
+                        color: colors.textMuted.withAlpha(230),
                       ),
                     ),
-                    const SizedBox(width: 12),
+                    const SizedBox(width: 10),
                   ],
                   Expanded(
                     child: Align(
@@ -86,21 +64,18 @@ class ConversationPaneHeader extends StatelessWidget {
                       ),
                     ),
                   ),
-                  if (!controller.selectedConversationIsOrchestration) ...[
+                  if (!state.orchestrationSelected) ...[
                     const SizedBox(width: 10),
-                    ConversationParityDisclosurePanel(target: target),
+                    ConversationParityDisclosurePanel(target: state.target),
                   ],
-                  if (target.target == 'opencode') ...[
+                  if (state.target.target == 'opencode') ...[
                     const SizedBox(width: 8),
-                    _OpencodeServeStatusChip(
-                      state: controller.opencodeServeState,
-                    ),
+                    _OpencodeServeStatusChip(state: state.opencodeServeState),
                   ],
-                  if (controller.selectedConversationIsOrchestration) ...[
+                  if (state.orchestrationSelected &&
+                      orchestrationControls != null) ...[
                     const SizedBox(width: 12),
-                    AgentOrchestrationPolicyHeaderControls(
-                      controller: controller,
-                    ),
+                    orchestrationControls!,
                   ],
                 ],
         );
@@ -121,23 +96,27 @@ class ConversationPaneHeader extends StatelessWidget {
 class _OpencodeServeStatusChip extends StatelessWidget {
   const _OpencodeServeStatusChip({required this.state});
 
-  final Map<String, dynamic>? state;
+  final AgentConversationServeState? state;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.licoColors;
-    final status = (state?['status'] as String?)?.trim() ?? 'stopped';
-    final port = state?['port'];
-    final conflict = state?['portConflict'] == true;
+    final status = state?.status ?? AgentConversationServeStatus.stopped;
+    final port = state?.port;
     final label = switch (status) {
-      'running' => port == null ? 'OpenCode serve' : 'OpenCode :$port',
-      'blocked' => conflict ? 'OpenCode port blocked' : 'OpenCode blocked',
-      'unavailable' => 'OpenCode unavailable',
+      AgentConversationServeStatus.running =>
+        port == null ? 'OpenCode serve' : 'OpenCode :$port',
+      AgentConversationServeStatus.blocked =>
+        state?.portConflict == true
+            ? 'OpenCode port blocked'
+            : 'OpenCode blocked',
+      AgentConversationServeStatus.unavailable => 'OpenCode unavailable',
       _ => 'OpenCode stopped',
     };
     final color = switch (status) {
-      'running' => colors.success,
-      'blocked' || 'unavailable' => colors.error,
+      AgentConversationServeStatus.running => colors.success,
+      AgentConversationServeStatus.blocked ||
+      AgentConversationServeStatus.unavailable => colors.error,
       _ => colors.textMuted,
     };
     return Container(

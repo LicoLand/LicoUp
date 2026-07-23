@@ -57,12 +57,6 @@ final LayoutSurfaceBundle classicMobileBundle = LayoutSurfaceBundle(
     LayoutStateNamespace(
       profileId: LayoutProfileId.parse('classic'),
       surface: LayoutRuntimeSurface.mobile,
-      destination: ClientSection.agents,
-      channel: LayoutStateChannels.agentsDestination,
-    ),
-    LayoutStateNamespace(
-      profileId: LayoutProfileId.parse('classic'),
-      surface: LayoutRuntimeSurface.mobile,
       destination: ClientSection.settings,
       channel: LayoutStateChannels.settingsScroll,
     ),

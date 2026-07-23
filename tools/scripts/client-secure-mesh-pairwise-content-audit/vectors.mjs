@@ -35,7 +35,7 @@ export function extractContentStableVector(source) {
     ok,
     sourceFile: "crates/lico-client-native/src/core/secure_mesh_crypto.rs",
     sourceTest: "secure_mesh_content_crypto_has_stable_vectors_for_all_payload_kinds",
-    cipherSuite: "licolite.secure-payload.v1.chacha20poly1305-hkdfsha256",
+    cipherSuite: "licomesh.secure-payload.v1.chacha20poly1305-hkdfsha256",
     payloadKinds: requiredLabels,
     vectorCount: vectors.length,
     deterministic: true,
@@ -101,7 +101,7 @@ export function extractPairwiseStableVector(pqxdhSource, braidSource, pairwiseSo
     braidVectors.every((vector) => vector.expectedValueSha256.startsWith("sha256:")) &&
     JSON.stringify(parameterSizes) === JSON.stringify(expectedParameterSizes) &&
     cipherSuite ===
-      "licolite.pqxdh-triple-ratchet.v1.x25519-ed25519-mlkem1024-hkdfsha256-chacha20poly1305" &&
+      "licomesh.pqxdh-triple-ratchet.v1.x25519-ed25519-mlkem1024-hkdfsha256-chacha20poly1305" &&
     tripleRatchetIntegrationCovered;
   return {
     id: "pairwise-pqxdh-mlkem1024-triple-ratchet-stable-vectors",

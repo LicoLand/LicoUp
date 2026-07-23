@@ -54,7 +54,6 @@ use state::*;
 use transaction::{SkillInstallJournal, skill_install_journal_path, write_skill_install_journal};
 use transaction::{install_skill_dir, recover_skill_install_journal};
 
-const STATUS_REQUESTED: &str = "requested";
 const STATUS_APPROVED: &str = "approved";
 const STATUS_REVOKED: &str = "revoked";
 const SKILL_INSTALLER_PROTOCOL: &str = "github-skill-installer";

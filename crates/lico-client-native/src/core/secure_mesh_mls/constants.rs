@@ -1,13 +1,13 @@
 pub const SECURE_MESH_MLS_CIPHER_SUITE: &str =
     "MLS_128_DHKEMX25519_CHACHA20POLY1305_SHA256_Ed25519+ML_KEM_1024_EPOCH_PAYLOAD_HYBRID";
 pub const SECURE_MESH_GROUP_MLS_PROTOCOL_VERSION: &str =
-    "licolite.secure-mesh.group-mls.mlkem1024-epoch-payload-hybrid.v1";
+    "licomesh.secure-mesh.group-mls.mlkem1024-epoch-payload-hybrid.v1";
 pub const SECURE_MESH_MLS_STATUS: &str = "openmls_classical_control_plane_mlkem1024_epoch_hybrid_payload_selected_custody_durable_group_state_identity_bound_capability_negotiated";
 
-pub(super) const MLS_PAYLOAD_EXPORT_LABEL: &str = "licolite.secure-mesh.mls.payload-content-key.v2";
+pub(super) const MLS_PAYLOAD_EXPORT_LABEL: &str = "licomesh.secure-mesh.mls.payload-content-key.v2";
 pub(super) const MLS_PAYLOAD_EXPORT_CONTEXT_MAGIC: &[u8] = b"LCOSM-MLS-PAYLOAD-EXPORT-v2";
 pub(crate) const SECURE_MESH_MLS_APPLICATION_PUBLIC_AAD: &[u8] =
-    b"licolite.secure-mesh.mls.application.public-domain-profile.v2";
+    b"licomesh.secure-mesh.mls.application.public-domain-profile.v2";
 pub(super) const MLS_PRIVATE_CONTEXT_PAYLOAD_MAGIC: &[u8] = b"LCOSM-MLS-PRIVATE-CONTEXT-PAYLOAD-v2";
 pub(super) const MLS_PAYLOAD_CONTENT_KEY_LEN: usize = 32;
 pub(super) const MLS_PROVIDER_SECRET_SCHEMA_VERSION: u32 = 2;

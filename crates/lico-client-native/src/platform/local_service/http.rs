@@ -108,6 +108,10 @@ pub(in crate::platform) fn validate_headers(response: &ureq::Response) -> Result
 
 fn agent(timeout: Duration) -> ureq::Agent {
     ureq::AgentBuilder::new()
+        // Native serve adapters are local control planes. Never inherit a
+        // process proxy here: loopback abort/prompt traffic must stay local,
+        // deterministic, and independent from proxy environment state.
+        .try_proxy_from_env(false)
         .timeout_connect(timeout.min(Duration::from_secs(2)))
         .timeout_read(timeout)
         .timeout_write(timeout)

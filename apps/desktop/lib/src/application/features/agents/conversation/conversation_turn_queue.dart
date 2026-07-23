@@ -19,6 +19,7 @@ final class ConversationQueuedTurn {
     required this.model,
     required this.reasoningEffort,
     required this.throughMobileRelay,
+    this.newConversationDraftToken = '',
     this.orchestration = false,
     this.awaitActiveSession = false,
   });
@@ -32,6 +33,7 @@ final class ConversationQueuedTurn {
   final String model;
   final String reasoningEffort;
   final bool throughMobileRelay;
+  final String newConversationDraftToken;
   final bool orchestration;
   final bool awaitActiveSession;
 
@@ -48,6 +50,7 @@ final class ConversationQueuedTurn {
       model: model,
       reasoningEffort: reasoningEffort,
       throughMobileRelay: throughMobileRelay,
+      newConversationDraftToken: newConversationDraftToken,
       orchestration: orchestration,
     );
   }

@@ -19,8 +19,8 @@ fn write_fixture(root: &Path) {
     let manifest = json!({
         "schemaVersion": super::super::manifest::MANIFEST_SCHEMA,
         "kind": super::super::manifest::PLUGIN_KIND,
-        "pluginId": "licolite-collaboration",
-        "displayName": "LicoLite Collaboration",
+        "pluginId": "licomesh-collaboration",
+        "displayName": "LicoMesh Collaboration",
         "version": "1.0.0",
         "capabilities": [
             super::super::manifest::LOCAL_DEPLOYMENT_CAPABILITY,

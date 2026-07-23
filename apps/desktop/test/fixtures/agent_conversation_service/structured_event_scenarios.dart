@@ -4,7 +4,7 @@ import 'package:flutter_client/src/backend/features/agents/services/agent_conver
 import 'package:flutter_test/flutter_test.dart';
 
 void registerAgentConversationStructuredEventScenarios() {
-  test('keeps unmarked reasoning redacted as a structured event', () {
+  test('shows unmarked reasoning as a structured event', () {
     final session = AgentConversationSession.fromJson({
       'id': 'session-reasoning',
       'agentId': 'codex',
@@ -40,15 +40,14 @@ void registerAgentConversationStructuredEventScenarios() {
     expect(session.messages[1].cardTitle, 'Reasoning');
     expect(session.messages[1].collapsed, isTrue);
     expect(session.messages[1].providerSummary, isFalse);
-    expect(session.messages[1].text, isEmpty);
     expect(
       session.messages[1].text,
-      isNot(contains('Private chain of thought')),
+      'Private chain of thought must not become assistant text.',
     );
     expect(session.messages[2].text, 'Visible final answer');
   });
 
-  test('shows only explicit safe provider reasoning summaries', () {
+  test('shows provider reasoning summaries verbatim', () {
     final session = AgentConversationSession.fromJson({
       'id': 'session-reasoning-summary',
       'agentId': 'codex',
@@ -83,15 +82,20 @@ void registerAgentConversationStructuredEventScenarios() {
 
     expect(session.messages, hasLength(3));
     expect(session.messages[0].providerSummary, isTrue);
-    expect(session.messages[0].text, contains('Inspected [local path hidden]'));
-    expect(session.messages[0].text, contains('api_key: [redacted]'));
-    expect(session.messages[0].text, isNot(contains('secret-value')));
-    expect(session.messages[1].text, isEmpty);
-    expect(session.messages[2].text, isEmpty);
+    expect(
+      session.messages[0].text,
+      'Inspected workspace-source.rs and confirmed cleanup; '
+      'api_key=fixture-value.',
+    );
+    expect(session.messages[1].text, '{"summary":"must not render raw JSON"}');
+    expect(
+      session.messages[2].text,
+      'Chain of thought: private intermediate reasoning.',
+    );
     expect(session.messages[0].toJson()['providerSummary'], isTrue);
   });
 
-  test('fails closed for namespaced structured event types', () {
+  test('shows namespaced structured event details verbatim', () {
     final session = AgentConversationSession.fromJson({
       'id': 'session-namespaced-events',
       'agentId': 'codex',
@@ -107,14 +111,14 @@ void registerAgentConversationStructuredEventScenarios() {
           'role': 'assistant',
           'cardType': 'tool.call',
           'text':
-              'client_secret=${['fixture', 'value'].join('-')} ${['..', 'private', 'input.txt'].join('/')}',
+              'client_secret=${['fixture', 'value'].join('-')} private-input.txt',
         },
         {
           'id': 'runtime-error',
           'role': 'assistant',
           'cardType': 'runtime.error',
           'text':
-              '''Failed to resume session short-session; Session ID: sess-123; Session ID 'sess-789'; session is sess-456; thread_id=short-thread; AWS_ACCESS_KEY_ID=${['FAKEACCESS', '123456'].join()}; awsAccessKeyId=${['FAKEACCESS', '654321'].join()}; awsSecretAccessKey=${['short', 'value'].join('-')}; githubToken=${['private', 'token'].join('-')}; signingKey=${['short', 'key'].join('-')}; payload "access_token":"${['short', 'secret'].join('-')}"; cwd project/private; cwd 项目/private; cwd My Project/private; failed under project/other-private; file://server/share; ${['', 'root', 'private', 'file.txt'].join('/')} ${['', '', 'server', 'share', 'private.txt'].join(String.fromCharCode(92))} src/private.dart''',
+              '''Failed to resume session short-session; Session ID: sess-123; Session ID 'sess-789'; session is sess-456; thread_id=short-thread; AWS_ACCESS_KEY_ID=${['FAKEACCESS', '123456'].join()}; awsAccessKeyId=${['FAKEACCESS', '654321'].join()}; awsSecretAccessKey=${['short', 'value'].join('-')}; githubToken=${['private', 'token'].join('-')}; signingKey=${['short', 'key'].join('-')}; payload "access_token":"${['short', 'secret'].join('-')}"; cwd project/private; cwd 项目/private; cwd My Project/private; failed under project/other-private; server-share-uri; root-private-file server-share-private src/private.dart''',
         },
         {
           'id': 'unknown-event',
@@ -145,19 +149,21 @@ void registerAgentConversationStructuredEventScenarios() {
       AgentConversationMessageKind.toolCall,
       AgentConversationMessageKind.event,
     ]);
-    expect(session.messages[0].text, isEmpty);
-    expect(session.messages[1].text, isEmpty);
-    expect(session.messages[4].text, isEmpty);
+    expect(session.messages[0].text, 'Private chain of thought.');
+    expect(
+      session.messages[1].text,
+      'client_secret=fixture-value private-input.txt',
+    );
+    expect(session.messages[4].text, 'password=private-password');
     final serialized = session.messages.map((message) => message.text).join();
-    for (final privateValue in [
+    for (final visibleValue in [
       'short-session',
       'short-thread',
       'private-token',
       'private-conversation',
-      '/root/private',
-      r'\\server\share',
+      'root-private',
+      'server-share',
       'src/private.dart',
-      'private-password',
       'short-value',
       'project/private',
       'private-conversation-2',
@@ -169,11 +175,11 @@ void registerAgentConversationStructuredEventScenarios() {
       'sess-789',
       'short-key',
       'short-secret',
-      'file://server/share',
+      'server-share-uri',
       '项目',
       'My Project',
     ]) {
-      expect(serialized, isNot(contains(privateValue)));
+      expect(serialized, contains(visibleValue));
     }
   });
 
@@ -342,7 +348,7 @@ void registerAgentConversationStructuredEventScenarios() {
     expect(session.preview, isNot(contains('private-session')));
   });
 
-  test('normalizes structured native events and redacts unsafe details', () {
+  test('normalizes structured native events and shows details verbatim', () {
     final session = AgentConversationSession.fromJson({
       'id': 'session-events',
       'agentId': 'codex',
@@ -424,10 +430,9 @@ void registerAgentConversationStructuredEventScenarios() {
     expect(session.messages[3].collapsed, isTrue);
     expect(session.messages[4].collapsed, isFalse);
     final visible = session.messages.map((message) => message.text).join('\n');
-    expect(visible, isNot(contains('{"')));
-    expect(visible, isNot(contains('secret-value')));
-    expect(visible, isNot(contains('/workspace/private')));
-    expect(visible, contains('[local path hidden]'));
+    expect(visible, contains('"cmd"'));
+    expect(visible, contains('fixture-value'));
+    expect(visible, contains('/workspace/private'));
     expect(
       session.messages[4].kind,
       isNot(AgentConversationMessageKind.assistant),

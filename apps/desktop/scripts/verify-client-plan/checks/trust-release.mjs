@@ -39,7 +39,7 @@ assert(trustUx.includes("sourceChecks,") &&
   !trustUx.includes("const expectedMobileNativeTrustActions = Object.freeze(["),
   "trust UX must load source checks, native filters, and mobile trust actions from config instead of hardcoding inline arrays");
 for (const token of [
-  "licolite.secure-mesh.trust-ux-config.v2",
+  "licomesh.secure-mesh.trust-ux-config.v2",
   "sourceChecks",
   "nativeTestFilters",
   "productTestTargets",
@@ -81,7 +81,7 @@ for (const token of [
     `trust UX config helper must keep safety token ${token}`);
 }
 for (const token of [
-  "licolite.secure-mesh.trust-ux-report.v2",
+  "licomesh.secure-mesh.trust-ux-report.v2",
   "SECURE_MESH_TRUST_UX_SELECTED_TARGETS",
   "SECURE_MESH_TRUST_UX_IOS_SUPPORT_STATUS",
   "SECURE_MESH_TRUST_UX_PRODUCT_TEST_ID",
@@ -107,7 +107,7 @@ assert(clientReleaseAcceptance.includes("validateSecureMeshTrustUxV2Report") &&
   clientReleaseAcceptance.includes("includeUnknownAuthorityField"),
   "client release acceptance must consume Trust UX v2 and keep unsupported iOS outside the physical trust gate");
 assert(clientReleaseAcceptanceConfig.reports?.trust?.schemaVersion ===
-    "licolite.secure-mesh.trust-ux-report.v2" &&
+    "licomesh.secure-mesh.trust-ux-report.v2" &&
   clientReleaseAcceptanceConfig.reports?.trust?.producer ===
     "tools/scripts/client-secure-mesh-trust-ux.mjs",
   "client release acceptance config must bind the canonical Trust UX v2 producer");
@@ -121,7 +121,7 @@ const releaseProofBundle = await files.readSourceBundle(
 const releaseProofConfig = await readText("tools/scripts/config/secure-mesh-release-proof.json");
 const releaseProofConfigJson = await readJson("tools/scripts/config/secure-mesh-release-proof.json");
 for (const token of [
-  "licolite.secure-mesh.release-proof-config.v1",
+  "licomesh.secure-mesh.release-proof-config.v1",
   "build/reports/secure-mesh-release-proof-bundle.json",
   "build/reports/client-update-release-channel.json",
   "build/reports/secure-mesh-physical-device-matrix.json",

@@ -18,6 +18,146 @@ fn resume_uses_load_when_advertised_and_keeps_native_id() {
 }
 
 #[test]
+fn restored_session_idless_optional_state_continues_on_the_requested_native_id() {
+    let mut protocol = new_protocol(json!({}), "next", "existing-native");
+    let effects = protocol.handle_message(initialize_response(true, true));
+    let ProtocolEffect::Send(load) = &effects[0] else {
+        panic!("expected load request")
+    };
+    assert_eq!(load["method"], "session/load");
+    assert_eq!(load["params"]["sessionId"], "existing-native");
+
+    let effects = protocol.handle_message(json!({
+        "jsonrpc": "2.0",
+        "id": SESSION_REQUEST_ID,
+        "result": {
+            "configOptions": [{
+                "id": "pace",
+                "name": "Pace",
+                "type": "select",
+                "currentValue": "steady",
+                "options": [{"value": "steady", "name": "Steady"}]
+            }]
+        }
+    }));
+    let ProtocolEffect::Send(prompt) = &effects[0] else {
+        panic!("expected prompt on the requested restored session")
+    };
+    assert_eq!(prompt["method"], "session/prompt");
+    assert_eq!(prompt["params"]["sessionId"], "existing-native");
+    assert_eq!(protocol.session_id.as_deref(), Some("existing-native"));
+    assert_eq!(protocol.config_options.len(), 1);
+    assert_eq!(protocol.config_options[0]["id"], "pace");
+
+    let effects = protocol.handle_message(json!({
+        "jsonrpc": "2.0",
+        "id": PROMPT_REQUEST_ID,
+        "result": {"stopReason": "end_turn"}
+    }));
+    assert!(effects.is_empty());
+    assert_eq!(protocol.phase, ProtocolPhase::AwaitPromptDrain);
+    assert!(
+        protocol
+            .handle_message(json!({
+                "jsonrpc": "2.0",
+                "method": "session/update",
+                "params": {
+                    "sessionId": "existing-native",
+                    "update": {
+                        "sessionUpdate": "agent_message_chunk",
+                        "content": {"type": "text", "text": "continued-idless"}
+                    }
+                }
+            }))
+            .is_empty()
+    );
+
+    let effects = protocol.finish_prompt_drain();
+    let ProtocolEffect::Complete(outcome) = &effects[0] else {
+        panic!("expected ID-less restored-session completion")
+    };
+    assert_eq!(outcome.session_id, "existing-native");
+    assert_eq!(outcome.thread_id, "existing-native");
+    assert_eq!(outcome.output, "continued-idless");
+    assert_eq!(protocol.phase, ProtocolPhase::Finished);
+}
+
+#[test]
+fn restored_session_matching_id_object_preserves_state_and_completes_exactly() {
+    let mut protocol = new_protocol(json!({}), "next", "existing-native");
+    let effects = protocol.handle_message(initialize_response(true, true));
+    let ProtocolEffect::Send(load) = &effects[0] else {
+        panic!("expected load request")
+    };
+    assert_eq!(load["method"], "session/load");
+    assert_eq!(load["params"]["sessionId"], "existing-native");
+
+    let effects = protocol.handle_message(json!({
+        "jsonrpc": "2.0",
+        "id": SESSION_REQUEST_ID,
+        "result": {
+            "sessionId": "existing-native",
+            "modes": {
+                "currentModeId": "review",
+                "availableModes": [{"id": "review", "name": "Review"}]
+            },
+            "configOptions": [{
+                "id": "pace",
+                "name": "Pace",
+                "type": "select",
+                "currentValue": "steady",
+                "options": [{"value": "steady", "name": "Steady"}]
+            }]
+        }
+    }));
+    let ProtocolEffect::Send(prompt) = &effects[0] else {
+        panic!("expected prompt on the restored session")
+    };
+    assert_eq!(prompt["method"], "session/prompt");
+    assert_eq!(prompt["params"]["sessionId"], "existing-native");
+    assert_eq!(protocol.session_id.as_deref(), Some("existing-native"));
+    assert_eq!(
+        protocol.modes,
+        Some(json!({
+            "currentModeId": "review",
+            "availableModes": [{"id": "review", "name": "Review"}]
+        }))
+    );
+    assert_eq!(protocol.config_options.len(), 1);
+    assert_eq!(protocol.config_options[0]["id"], "pace");
+
+    let effects = protocol.handle_message(json!({
+        "jsonrpc": "2.0",
+        "id": PROMPT_REQUEST_ID,
+        "result": {"stopReason": "end_turn"}
+    }));
+    assert!(effects.is_empty());
+    assert_eq!(protocol.phase, ProtocolPhase::AwaitPromptDrain);
+
+    let effects = protocol.handle_message(json!({
+        "jsonrpc": "2.0",
+        "method": "session/update",
+        "params": {
+            "sessionId": "existing-native",
+            "update": {
+                "sessionUpdate": "agent_message_chunk",
+                "content": {"type": "text", "text": "continued"}
+            }
+        }
+    }));
+    assert!(effects.is_empty());
+
+    let effects = protocol.finish_prompt_drain();
+    let ProtocolEffect::Complete(outcome) = &effects[0] else {
+        panic!("expected restored-session completion")
+    };
+    assert_eq!(outcome.session_id, "existing-native");
+    assert_eq!(outcome.thread_id, "existing-native");
+    assert_eq!(outcome.output, "continued");
+    assert_eq!(protocol.phase, ProtocolPhase::Finished);
+}
+
+#[test]
 fn resume_fails_closed_when_agent_does_not_advertise_it() {
     let mut protocol = new_protocol(json!({}), "next", "existing-native");
     let effects = protocol.handle_message(initialize_response(false, false));
@@ -64,4 +204,27 @@ fn returned_resume_id_must_match_the_requested_native_session() {
     .unwrap_err();
     assert_eq!(failure.code, "acp_session_id_mismatch");
     assert_eq!(failure.session_id.as_deref(), Some("expected-native"));
+}
+
+#[test]
+fn mismatched_load_response_id_fails_without_starting_a_new_session() {
+    let mut protocol = new_protocol(json!({}), "next", "expected-native");
+    let effects = protocol.handle_message(initialize_response(true, true));
+    let ProtocolEffect::Send(load) = &effects[0] else {
+        panic!("expected load request")
+    };
+    assert_eq!(load["method"], "session/load");
+
+    let effects = protocol.handle_message(json!({
+        "jsonrpc": "2.0", "id": SESSION_REQUEST_ID,
+        "result": {"sessionId": "different-native"}
+    }));
+
+    assert_eq!(effects.len(), 1);
+    let ProtocolEffect::Fail(failure) = &effects[0] else {
+        panic!("expected identity mismatch failure")
+    };
+    assert_eq!(failure.code, "acp_session_id_mismatch");
+    assert_eq!(failure.session_id.as_deref(), Some("expected-native"));
+    assert_eq!(protocol.phase, ProtocolPhase::Finished);
 }

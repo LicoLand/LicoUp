@@ -276,5 +276,6 @@ IconData nativeMobileDestinationIcon(ClientSection destination) {
     ClientSection.settings => Icons.tune_outlined,
     ClientSection.monitoring => Icons.monitor_heart_outlined,
     ClientSection.skillHub => Icons.extension_outlined,
+    ClientSection.pluginManagement => Icons.extension_outlined,
   };
 }

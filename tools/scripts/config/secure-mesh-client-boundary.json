@@ -1,5 +1,5 @@
 {
-  "schemaVersion": "licolite.secure-mesh.client-boundary-config.v1",
+  "schemaVersion": "licomesh.secure-mesh.client-boundary-config.v1",
   "rules": [
     {
       "id": "flutter-gui-no-secure-mesh-backend-implementation",
@@ -67,19 +67,12 @@
           ],
           "reason": "Mobile Relay service operations route to the Android platform bridge adapter without implementing Secure Mesh crypto or secret-store internals."
         },
-        {
-          "file": "apps/desktop/lib/src/contracts/secure_mesh_kt_models.dart",
-          "tokens": [
-            "privateKeyMaterial"
-          ],
-          "reason": "Typed KT response parsing is a negative leak-rejection parser that rejects non-redacted private key material; it does not implement or consume key material."
-        },
-        {
-          "file": "apps/desktop/lib/src/contracts/secure_mesh_mls_models.dart",
-          "tokens": [
-            "privateKeyMaterial"
-          ],
-          "reason": "Typed MLS response parsing is a negative leak-rejection parser that rejects non-redacted private key material; it does not implement or consume key material."
+      {
+        "file": "apps/desktop/lib/src/contracts/generated/secure_mesh.g.dart",
+        "tokens": [
+          "privateKeyMaterial"
+        ],
+        "reason": "Generated KT and MLS response parsing contains only negative leak-rejection guards; it rejects non-redacted private key material and never consumes it."
         }
       ]
     },
@@ -142,19 +135,12 @@
           ],
           "reason": "Portable workspace manifest hashing is a non-secret identifier digest, not Secure Mesh protocol crypto."
         },
-        {
-          "file": "apps/desktop/lib/src/contracts/secure_mesh_kt_models.dart",
-          "tokens": [
-            "privateKeyMaterial"
-          ],
-          "reason": "Typed KT response parsing is a negative leak-rejection parser that rejects non-redacted private key material; it does not implement or consume key material."
-        },
-        {
-          "file": "apps/desktop/lib/src/contracts/secure_mesh_mls_models.dart",
-          "tokens": [
-            "privateKeyMaterial"
-          ],
-          "reason": "Typed MLS response parsing is a negative leak-rejection parser that rejects non-redacted private key material; it does not implement or consume key material."
+      {
+        "file": "apps/desktop/lib/src/contracts/generated/secure_mesh.g.dart",
+        "tokens": [
+          "privateKeyMaterial"
+        ],
+        "reason": "Generated KT and MLS response parsing contains only negative leak-rejection guards; it rejects non-redacted private key material and never consumes it."
         }
       ]
     },
@@ -638,10 +624,11 @@
       "id": "macos-rust-secret-store-uses-single-system-auth-context",
       "file": "crates/lico-client-native/src/platform/secure_mesh_secret_store/macos_user_presence.rs",
       "tokens": [
-        "objc2_local_authentication::{LAContext, LAPolicy}",
+        "objc2_local_authentication::{LAContext, LAError, LAPolicy}",
         "MacosAuthorizationContext",
         "setInteractionNotAllowed",
-        "context.setInteractionNotAllowed(!request.allow_interaction())",
+        "context.setInteractionNotAllowed(false)",
+        "context.setInteractionNotAllowed(true)",
         "evaluatePolicy_localizedReason_reply",
         "block2::RcBlock::new",
         "canEvaluatePolicy_error(LAPolicy::DeviceOwnerAuthentication)",

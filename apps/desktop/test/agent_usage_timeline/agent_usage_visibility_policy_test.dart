@@ -42,4 +42,24 @@ void main() {
       expect(shouldShowAgentUsage(retired, const {'codex'}), isFalse);
     },
   );
+
+  test('detected aliases retain unavailable usage rows', () {
+    const copilot = AgentUsageAgentSummary(
+      agentId: 'copilot',
+      label: 'GitHub Copilot',
+      status: 'unknown',
+      history: {},
+      confidence: 'unavailable',
+    );
+    const unknown = AgentUsageAgentSummary(
+      agentId: 'openclaw',
+      label: 'OpenClaw',
+      status: 'unknown',
+      history: {},
+      confidence: 'unavailable',
+    );
+
+    expect(shouldShowAgentUsage(copilot, const {'github-copilot'}), isTrue);
+    expect(shouldShowAgentUsage(unknown, const {}), isFalse);
+  });
 }

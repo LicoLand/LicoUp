@@ -1,6 +1,4 @@
-import 'package:flutter_client/src/contracts/secure_mesh_approval_models.dart';
-import 'package:flutter_client/src/contracts/secure_mesh_file_sync_models.dart';
-import 'package:flutter_client/src/contracts/secure_mesh_skill_sync_models.dart';
+import 'package:flutter_client/src/contracts/generated/secure_mesh.g.dart';
 
 abstract final class SecureMeshPolicy {
   static const int maximumFileTransfers = 12;

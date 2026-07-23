@@ -50,7 +50,7 @@ void registerClientSkillManagementScenarios() {
     await controller.previewSkillInstall(
       agent: 'codex',
       url: 'https://github.com/example/skills/tree/main/review-helper',
-      installRoot: '/tmp/codex-skills',
+      installRoot: 'test-data/codex-skills',
       name: 'review-helper',
       overwrite: true,
     );
@@ -58,7 +58,7 @@ void registerClientSkillManagementScenarios() {
     expect(service.planSkillInstallCalls, 1);
     expect(service.installedSkillAgent, 'codex');
     expect(service.installedSkillUrl, contains('github.com/example/skills'));
-    expect(service.installedSkillRoot, '/tmp/codex-skills');
+    expect(service.installedSkillRoot, 'test-data/codex-skills');
     expect(service.installedSkillName, 'review-helper');
     expect(service.installedSkillOverwrite, isTrue);
     expect(controller.skillInstallPlan?['status'], 'planned');
@@ -66,7 +66,7 @@ void registerClientSkillManagementScenarios() {
     await controller.installSkillFromGitHub(
       agent: 'codex',
       url: 'https://github.com/example/skills/tree/main/review-helper',
-      installRoot: '/tmp/codex-skills',
+      installRoot: 'test-data/codex-skills',
       name: 'review-helper',
       overwrite: true,
       pin: true,

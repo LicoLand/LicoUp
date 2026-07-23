@@ -5,10 +5,7 @@ import 'package:flutter_client/src/application/features/mobile_relay/controller/
 import 'package:flutter_client/src/contracts/mobile_home_layout.dart';
 import 'package:flutter_client/src/contracts/mobile_pairing_presentation.dart';
 import 'package:flutter_client/src/contracts/mobile_relay/mobile_relay_models.dart';
-import 'package:flutter_client/src/contracts/secure_mesh_approval_models.dart';
-import 'package:flutter_client/src/contracts/secure_mesh_capability_models.dart';
-import 'package:flutter_client/src/contracts/secure_mesh_file_sync_models.dart';
-import 'package:flutter_client/src/contracts/secure_mesh_skill_sync_models.dart';
+import 'package:flutter_client/src/contracts/generated/secure_mesh.g.dart';
 
 mixin ClientMobileRelayFacade on AgentWorkspaceCoordinator {
   MobileHomeLayoutController get mobileHomeLayoutController;
@@ -167,8 +164,13 @@ mixin ClientMobileRelayFacade on AgentWorkspaceCoordinator {
   Future<void> pollMobileRelayOnce({bool showProgress = false}) =>
       mobileRelayController.pollOnce(showProgress: showProgress);
 
-  Future<void> refreshSecureMeshStatus({bool authorize = true}) =>
-      secureMeshController.refreshStatus(authorize: authorize);
+  Future<void> refreshSecureMeshStatus({
+    bool authorize = true,
+    bool showProgress = true,
+  }) => secureMeshController.refreshStatus(
+    authorize: authorize,
+    showProgress: showProgress,
+  );
 
   Future<void> evaluateSecureMeshDeviceTrustPolicy({
     required Map<String, dynamic> identity,

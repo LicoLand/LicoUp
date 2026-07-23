@@ -50,6 +50,22 @@ class BoundedNativeProcessIo implements AgentCommandRunner {
     if (_processContext.requestTimeout <= Duration.zero) {
       throw Exception('lico-client private runtime timeout is invalid.');
     }
+    final conversationOperation = _conversationControlOperation(args);
+    if (_persistentStdioRpcEnabled && conversationOperation != null) {
+      late dynamic request;
+      try {
+        request = jsonDecode(stdinText);
+      } on Object {
+        throw const LicoClientRpcException('invalid_request');
+      }
+      if (request is! Map<String, dynamic>) {
+        throw const LicoClientRpcException('invalid_request');
+      }
+      return _stdioRpcTransport.executeStructured(
+        'agent.conversation.$conversationOperation',
+        request,
+      );
+    }
     late Process process;
     try {
       final cli = await _processContext.resolveCliBinary();
@@ -215,6 +231,21 @@ class BoundedNativeProcessIo implements AgentCommandRunner {
       );
     }
   }
+}
+
+String? _conversationControlOperation(List<String> args) {
+  if (args.length < 3 || args[0] != 'agent' || args[1] != 'conversation') {
+    return null;
+  }
+  const controls = <String>{
+    'open',
+    'history',
+    'cleanup',
+    'capabilities',
+    'cancel',
+    'steer',
+  };
+  return controls.contains(args[2]) ? args[2] : null;
 }
 
 Future<_BoundedProcessOutput> _collectBoundedProcessOutput(

@@ -67,14 +67,20 @@ fn main() {
         let _ = stderr.write_all(&vec![b'x'; 128 * 1024]);
     });
 
+    let native_steer = std::env::current_exe()
+        .map(|path| path.to_string_lossy().contains("native-steer"))
+        .unwrap_or(false);
+    let session_id = if native_steer { "pi-native-steer-1" } else { "pi-native-1" };
     let mut state_requests = 0usize;
     let mut stream = false;
+    let mut awaiting_steer = false;
+    let mut guided = false;
     for line in io::stdin().lock().lines() {
         let line = line.unwrap();
         let id = request_id(&line);
         if line.contains("\"type\":\"get_state\"") {
             state_requests += 1;
-            println!("{{\"id\":\"{}\",\"type\":\"response\",\"command\":\"get_state\",\"success\":true,\"data\":{{\"sessionId\":\"pi-native-1\"}}}}", id);
+            println!("{{\"id\":\"{}\",\"type\":\"response\",\"command\":\"get_state\",\"success\":true,\"data\":{{\"sessionId\":\"{}\"}}}}", id, session_id);
             io::stdout().flush().unwrap();
             if state_requests > 1 {
                 std::thread::sleep(std::time::Duration::from_secs(5));
@@ -86,6 +92,11 @@ fn main() {
             }
             stream = line.contains("\"message\":\"stream\"");
             println!("{{\"id\":\"{}\",\"type\":\"response\",\"command\":\"prompt\",\"success\":true}}", id);
+            if line.contains("steer-case") {
+                awaiting_steer = true;
+                io::stdout().flush().unwrap();
+                continue;
+            }
             if stream {
                 println!("{{\"type\":\"message_update\",\"assistantMessageEvent\":{{\"type\":\"text_delta\",\"delta\":\"one\"}}}}");
                 println!("{{\"type\":\"message_update\",\"assistantMessageEvent\":{{\"type\":\"text_delta\",\"delta\":\"-two\"}}}}");
@@ -94,8 +105,18 @@ fn main() {
             }
             println!("{{\"type\":\"agent_settled\"}}");
             io::stdout().flush().unwrap();
+        } else if line.contains("\"type\":\"steer\"") {
+            if !awaiting_steer || !line.contains("pi-native-steer-guidance") {
+                std::process::exit(4);
+            }
+            guided = true;
+            awaiting_steer = false;
+            println!("{{\"id\":\"{}\",\"type\":\"response\",\"command\":\"steer\",\"success\":true}}", id);
+            println!("{{\"type\":\"message_update\",\"assistantMessageEvent\":{{\"type\":\"text_delta\",\"delta\":\"pi-guided\"}}}}");
+            println!("{{\"type\":\"agent_settled\"}}");
+            io::stdout().flush().unwrap();
         } else if line.contains("\"type\":\"get_last_assistant_text\"") {
-            let text = if stream { "one-two" } else { "pi-ok" };
+            let text = if guided { "pi-guided" } else if stream { "one-two" } else { "pi-ok" };
             println!("{{\"id\":\"{}\",\"type\":\"response\",\"command\":\"get_last_assistant_text\",\"success\":true,\"data\":{{\"text\":\"{}\"}}}}", id, text);
             io::stdout().flush().unwrap();
         }

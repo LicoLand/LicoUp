@@ -2,12 +2,16 @@ use anyhow::Result;
 use serde_json::Value;
 use std::path::PathBuf;
 
+use crate::ffi::generated::client_state::{
+    ClientStateGetRequest, ClientStateGetResult, ClientStateSetRequest, ClientStateSetResult,
+};
+
 #[test]
 fn facade_exposes_only_stable_state_owners_and_operations() {
     let _: fn(PathBuf) -> Result<super::super::ClientStateStore> =
         super::super::ClientStateStore::new;
-    let _: fn(&str) -> Result<Value> = super::super::state_get;
-    let _: fn(&str, Value) -> Result<Value> = super::super::state_set;
+    let _: fn(ClientStateGetRequest) -> Result<ClientStateGetResult> = super::super::state_get;
+    let _: fn(ClientStateSetRequest) -> Result<ClientStateSetResult> = super::super::state_set;
     let _: fn(&Value) -> Result<Value> = super::super::activity_list;
     let _: fn(&Value) -> Result<Value> = super::super::snapshots_list;
     let _: fn(&str) -> Result<Value> = super::super::snapshots_restore;

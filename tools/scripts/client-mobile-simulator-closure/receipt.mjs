@@ -12,7 +12,7 @@ export function buildReceipt({
   functionalHarnessExactArtifact = platform !== "ios",
 }) {
   const report = {
-    schemaVersion: "licolite.client-mobile-simulator-closure.v2",
+    schemaVersion: "licomesh.client-mobile-simulator-closure.v2",
     generatedAt: new Date().toISOString(),
     generatedBy: "tools/scripts/client-mobile-simulator-closure.mjs",
     platform,
@@ -86,7 +86,7 @@ export function buildReceipt({
 
 export function validateReceipt(report) {
   requireValue(report?.ok === true && report.localSimulatorClosureReady === true &&
-    report.schemaVersion === "licolite.client-mobile-simulator-closure.v2" &&
+    report.schemaVersion === "licomesh.client-mobile-simulator-closure.v2" &&
     report.productionReleaseReady === false && report.simulator?.classVerified === true &&
     report.releaseReducerEligible === false &&
     report.simulator?.identifierIncluded === false &&

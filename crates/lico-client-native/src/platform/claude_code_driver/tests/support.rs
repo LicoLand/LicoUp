@@ -38,3 +38,36 @@ pub(super) fn compile_fake_claude(prefix: &str) -> (PathBuf, PathBuf) {
     assert!(status.success());
     (directory, executable)
 }
+
+pub(super) fn process_local_test_guard()
+-> super::claude_process_local_test_lock::ClaudeProcessLocalTestGuard {
+    super::claude_process_local_test_lock::lock_claude_process_local_tests()
+}
+
+#[cfg(unix)]
+pub(super) fn wait_for_descendant_pid(directory: &Path) -> u32 {
+    let path = directory.join("fake-claude-descendant.pid");
+    let deadline = Instant::now() + Duration::from_secs(2);
+    loop {
+        if let Ok(value) = fs::read_to_string(&path)
+            && let Ok(pid) = value.trim().parse::<u32>()
+        {
+            return pid;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "descendant pid was not published"
+        );
+        thread::sleep(Duration::from_millis(10));
+    }
+}
+
+#[cfg(unix)]
+pub(super) fn process_exists(pid: u32) -> bool {
+    Command::new("kill")
+        .args(["-0", &pid.to_string()])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .is_ok_and(|status| status.success())
+}

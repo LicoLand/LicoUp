@@ -70,7 +70,7 @@ export function buildReleaseProofReport({
 
   return {
     ok,
-    schemaVersion: "licolite.secure-mesh.release-proof-bundle-report.v1",
+    schemaVersion: "licomesh.secure-mesh.release-proof-bundle-report.v1",
     evidenceRefSchemaVersion: SECURE_CLIENT_MESH_E2EE_EVIDENCE_REF_REPORT_SCHEMA_VERSION,
     verifier: VERIFIER_REF,
     generatedBy: VERIFIER_REF,

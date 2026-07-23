@@ -85,7 +85,7 @@ function readJson(filePath, maxBytes) {
 function validateManifest(root, localByName) {
   const manifest = readJson(localFile(root, MANIFEST_NAME), MAX_MANIFEST_BYTES);
   if (!exactKeys(manifest, ["schemaVersion", "artifactName", "releaseTag", "artifacts"]) ||
-    manifest.schemaVersion !== "licolite.consumer-verification-manifest.v1" ||
+    manifest.schemaVersion !== "licomesh.consumer-verification-manifest.v1" ||
     manifest.artifactName !== "LicoArc" ||
     !/^[A-Za-z0-9][A-Za-z0-9._+-]{0,126}$/u.test(manifest.releaseTag || "") ||
     !Array.isArray(manifest.artifacts) || manifest.artifacts.length < 1 ||

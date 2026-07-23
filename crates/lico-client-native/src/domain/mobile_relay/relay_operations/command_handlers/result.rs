@@ -11,8 +11,8 @@ use crate::domain::mobile_relay::pairwise_session::{
     result_envelope_replay_proof_with_pairwise_operation, secure_result_response_summary,
 };
 use crate::domain::mobile_relay::secret_custody::{
+    RuntimeSecretMaterial, load_config_with_runtime_secret_context,
     load_config_with_runtime_secret_context_for_operation,
-    load_config_with_runtime_secret_overrides,
     mobile_relay_e2ee_secret_store_authorization_batch_operation_count,
 };
 use crate::domain::mobile_relay::support::{CONFIG_SCHEMA_VERSION, text_param};
@@ -20,15 +20,16 @@ use anyhow::{Result, anyhow};
 use serde_json::{Value, json};
 
 pub fn command_result(params: &Value) -> Result<Value> {
-    let (config, _) = load_config_with_runtime_secret_overrides(params)?;
-    command_result_with_config(params, &config)
+    let (config, secret_context) = load_config_with_runtime_secret_context(params)?;
+    command_result_with_config(params, &config, &secret_context.material)
 }
 
 pub(in crate::domain::mobile_relay) fn command_result_with_config(
     params: &Value,
     config: &Value,
+    secret_material: &RuntimeSecretMaterial,
 ) -> Result<Value> {
-    let synced = commands_poll_with_config(params, config)?;
+    let synced = commands_poll_with_config(params, config, secret_material)?;
     let deliveries = synced
         .get("envelopes")
         .and_then(Value::as_array)
@@ -63,7 +64,7 @@ pub fn command_result_secure(params: &Value) -> Result<Value> {
         mobile_relay_e2ee_secret_store_authorization_batch_operation_count().saturating_add(3),
     )?;
     refresh_pairwise_acceptance_if_pending(params, &mut config, &mut secret_context)?;
-    let response = command_result_with_config(params, &config)?;
+    let response = command_result_with_config(params, &config, &secret_context.material)?;
     let Some(envelope) = response
         .get("command")
         .and_then(|command| command.get("resultEnvelope"))
@@ -82,6 +83,7 @@ pub fn command_result_secure(params: &Value) -> Result<Value> {
     )?;
     let opened = open_mobile_relay_payload_with_pairwise_operation(
         &config,
+        &secret_context.material,
         envelope,
         SecureMeshPayloadKind::ResultPayload,
         &mut pairwise_operation,
@@ -106,7 +108,7 @@ pub fn command_result_secure(params: &Value) -> Result<Value> {
     let relay = canonical_relay_context(params, &config)?;
     let ack = relay.transport.envelope_ack(
         &relay.scope,
-        &local_canonical_mailbox_token(&config)?,
+        &local_canonical_mailbox_token(&config, &secret_context.material)?,
         delivery_id,
         lease_id,
         lease_generation,
@@ -129,7 +131,7 @@ pub fn command_result_replay_proof(params: &Value) -> Result<Value> {
         mobile_relay_e2ee_secret_store_authorization_batch_operation_count().saturating_add(5),
     )?;
     refresh_pairwise_acceptance_if_pending(params, &mut config, &mut secret_context)?;
-    let response = command_result_with_config(params, &config)?;
+    let response = command_result_with_config(params, &config, &secret_context.material)?;
     let Some(envelope) = response
         .get("command")
         .and_then(|command| command.get("resultEnvelope"))
@@ -147,6 +149,7 @@ pub fn command_result_replay_proof(params: &Value) -> Result<Value> {
     )?;
     result_envelope_replay_proof_with_pairwise_operation(
         &config,
+        &secret_context.material,
         envelope,
         secure_result_response_summary(&response),
         &mut pairwise_operation,

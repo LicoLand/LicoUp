@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 
 const configUrl = new URL("../config/secure-mesh-physical-evidence.json", import.meta.url);
 const configRef = "tools/scripts/config/secure-mesh-physical-evidence.json";
-const schemaVersion = "licolite.secure-mesh.physical-evidence-config.v2";
+const schemaVersion = "licomesh.secure-mesh.physical-evidence-config.v2";
 const requiredLinkedReportKeys = Object.freeze([
   "androidPlatformCrypto",
   "androidInstallLaunch",

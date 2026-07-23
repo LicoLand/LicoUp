@@ -1,5 +1,5 @@
 {
-  "schema": "licolite.layout-visual-manifest",
+  "schema": "licomesh.layout-visual-manifest",
   "schemaVersion": 2,
   "profile": "workbench",
   "surface": "desktop",
@@ -13,7 +13,7 @@
   "authorityEntries": [
     {
       "path": "apps/desktop/test/layout/fixtures/production_client_shell_fixture.dart",
-      "digest": "sha256:4a41f42bc0088950012721f938cff26a66c4eb8c6f1f58d44ef4e0e0009f5808"
+      "digest": "sha256:f4d3d3d371cb2e2a4a91f26c86679551f7db0fe87c73855ebb04eb6911bbd182"
     },
     {
       "path": "apps/desktop/test/layout/production_baseline/production_layout_baseline_test.dart",
@@ -21,7 +21,7 @@
     },
     {
       "path": "apps/desktop/test/layout/production_baseline/production_layout_switch_continuity_test.dart",
-      "digest": "sha256:9ddaf28b52fc61ec1b32eafbb4328754a56881cccd9f82bdbc17d4b0394c3522"
+      "digest": "sha256:329c3546171c9232c36b88bd650f44b0f75df0669bd6c011909ea5258fa4186c"
     }
   ],
   "entries": [
@@ -95,23 +95,23 @@
     },
     {
       "path": "apps/desktop/lib/src/frontend/layout/profiles/workbench/desktop/workbench_desktop.dart",
-      "digest": "sha256:a57d96a5afdd1842ed5264960ff1c67fab3906036cfb6efe44bc38ea666071bd"
+      "digest": "sha256:1aadc83503f24c806c5ca7043db96163316fa58160a142598d7b36d91299bd4a"
     },
     {
       "path": "apps/desktop/test/goldens/layout/production-baseline/workbench/desktop/agents.png",
-      "digest": "sha256:6d289116975fd628f5b21df23393891f0b3997ebe7d9f80b6f1a223dd5b60898"
+      "digest": "sha256:7b209559251e032c81b048aab5293458eabbb4d4e4d13e32d06ed6a5e220b3b5"
     },
     {
       "path": "apps/desktop/test/goldens/layout/production-baseline/workbench/desktop/settings.png",
-      "digest": "sha256:39d0ab2faaf8d26b2ab223c2bc5f6506791ef51c4c4f4afeb31a80c028ad3ca9"
+      "digest": "sha256:52589024d2b1078e6237ff58eae3617744139daf8d764704197f3b5c6a492930"
     },
     {
       "path": "apps/desktop/test/goldens/layout/workbench/desktop/expanded-shell.png",
-      "digest": "sha256:4e44bcee66e6ebffd1ca2d9b1c752b7c610e47eda4dca4f66173e92b80f4340f"
+      "digest": "sha256:16cdb51ab9a8e3c445c2dc6bd1df2e7826d4f71c2e4ee3cb19ff824048c682ba"
     },
     {
       "path": "apps/desktop/test/goldens/layout/workbench/desktop/medium-shell.png",
-      "digest": "sha256:50c325ee141a7f253d92ee7541ffa544ab9250eb92716faaf3c95851f3c17d87"
+      "digest": "sha256:eded41fed28f6fb382d9bde4c2b22539422abf249b130b25144e7f17c9f8e696"
     },
     {
       "path": "apps/desktop/test/goldens/layout/workbench/desktop/preview.png",
@@ -119,7 +119,7 @@
     },
     {
       "path": "apps/desktop/test/layout/profiles/workbench/desktop/workbench_desktop_bundle_test.dart",
-      "digest": "sha256:2be9dcf28400b8c877c9216ab9190c7bdddf721f56263a1c3b481aa156a76897"
+      "digest": "sha256:b82199cd7644be1b7541e051605bdd690571f694ade801bb97921c10d03af651"
     },
     {
       "path": "apps/desktop/test/layout/profiles/workbench/desktop/workbench_desktop_golden_test.dart",
@@ -131,7 +131,7 @@
     },
     {
       "path": "apps/desktop/test/layout/profiles/workbench/desktop/workbench_desktop_search_test.dart",
-      "digest": "sha256:60a4213a800ea9c936bd1d2060497fad0674935d9ce5a82db980371f68c11631"
+      "digest": "sha256:ac9d4d0cdd8e5273c98fc172e80fad7e547b6d27ef0d0ab649b3dec9c5cdcae8"
     },
     {
       "path": "apps/desktop/test/layout/profiles/workbench/desktop/workbench_desktop_status_test.dart",
@@ -147,8 +147,8 @@
     },
     {
       "path": "apps/desktop/test/layout/profiles/workbench/desktop/workbench_desktop_widget_test.dart",
-      "digest": "sha256:4da3eb608ed645a031bc58572284b02ab312090c0dd11157b7560570f3cc9b8f"
+      "digest": "sha256:4ff38dd863d47b99435315f6636b6cca2f6d28b0ad85f1145cb9e40415ed9e72"
     }
   ],
-  "manifestDigest": "sha256:10cfce54781e51ce3680010927f8536f06830a5bb05dee671c10c928e8d08563"
+  "manifestDigest": "sha256:c4dc8a4be756a1959128efc9179c1186d212b98740f74247909ee43d592d8631"
 }

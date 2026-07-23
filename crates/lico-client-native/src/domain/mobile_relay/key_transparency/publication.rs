@@ -37,7 +37,11 @@ pub(super) fn key_transparency_publication_request(params: &Value) -> Result<Val
         .unwrap_or_else(|| "desktop_sidecar".to_string());
     let scope = configured_directory_scope_commitment(&config)?.to_string();
     let _ = configured_kt_pin(&config)?;
-    ensure_mobile_relay_endpoint_material(&mut config, &endpoint_kind)?;
+    ensure_mobile_relay_endpoint_material(
+        &mut config,
+        &mut secret_context.material,
+        &endpoint_kind,
+    )?;
     let state = config
         .get("mobileRelayE2ee")
         .ok_or_else(|| anyhow!("mobile relay E2EE endpoint state is missing"))?;

@@ -11,7 +11,10 @@ fn production_pairwise_store_reuses_selected_memory_custody_and_purges_after_res
             let mut pc_config = default_config();
             let mut mobile_config = default_config();
             pair_mobile_relay_configs(&mut pc_config, &mut mobile_config);
-            let endpoint = local_endpoint_state(&mobile_config)?;
+            let endpoint = local_endpoint_state(
+                &mobile_config,
+                test_runtime_secret_material(stringify!(&mobile_config)),
+            )?;
             let pairwise_store = mobile_relay_pairwise_store()?;
             assert_eq!(pairwise_store.secret_store_backend(), first_store.backend());
             let handles = pairwise_store.referenced_secret_snapshot_handles()?;
@@ -50,18 +53,32 @@ fn mobile_relay_pairwise_initialization_requires_pqxdh_prekey_bundle() {
     let dir = temp_dir("mobile-relay-pqxdh-prekey-required");
     let previous = set_portable_data_dir_override(Some(dir));
     let mut pc_config = default_config();
-    let mut pc_descriptor =
-        ensure_mobile_relay_endpoint_descriptor(&mut pc_config, "desktop_sidecar").unwrap();
+    let mut pc_descriptor = ensure_mobile_relay_endpoint_descriptor(
+        &mut pc_config,
+        test_runtime_secret_material(stringify!(&mut pc_config)),
+        "desktop_sidecar",
+    )
+    .unwrap();
     pc_descriptor
         .as_object_mut()
         .unwrap()
         .remove("preKeyBundle");
 
     let mut mobile_config = default_config();
-    ensure_mobile_relay_endpoint_descriptor(&mut mobile_config, "mobile").unwrap();
-    let error = apply_peer_secure_mesh_descriptor(&mut mobile_config, &pc_descriptor, true)
-        .unwrap_err()
-        .to_string();
+    ensure_mobile_relay_endpoint_descriptor(
+        &mut mobile_config,
+        test_runtime_secret_material(stringify!(&mut mobile_config)),
+        "mobile",
+    )
+    .unwrap();
+    let error = apply_peer_secure_mesh_descriptor(
+        &mut mobile_config,
+        test_runtime_secret_material(stringify!(&mut mobile_config)),
+        &pc_descriptor,
+        true,
+    )
+    .unwrap_err()
+    .to_string();
     assert!(error.contains("missing preKeyBundle"));
     assert!(peer_secure_mesh_descriptor(&mobile_config).is_none());
 
@@ -73,8 +90,12 @@ fn mobile_relay_pqxdh_descriptor_publishes_signed_mlkem_prekey_without_seed() {
     let dir = temp_dir("mobile-relay-pqxdh-mlkem-prekey-material");
     let previous = set_portable_data_dir_override(Some(dir));
     let mut config = default_config();
-    let descriptor =
-        ensure_mobile_relay_endpoint_descriptor(&mut config, "desktop_sidecar").unwrap();
+    let descriptor = ensure_mobile_relay_endpoint_descriptor(
+        &mut config,
+        test_runtime_secret_material(stringify!(&mut config)),
+        "desktop_sidecar",
+    )
+    .unwrap();
     let state = &config["mobileRelayE2ee"];
     let seed = descriptor_text(state, "oneTimeMlKem1024PrekeySeedBase64url").unwrap();
     let seed_bytes = decode_fixed_base64url::<ML_KEM_1024_KEY_GENERATION_SEED_BYTES>(
@@ -111,8 +132,12 @@ fn mobile_relay_pqxdh_descriptor_rejects_missing_mlkem_prekey_and_unsupported_pr
     let dir = temp_dir("mobile-relay-pqxdh-strict-descriptor");
     let previous = set_portable_data_dir_override(Some(dir));
     let mut config = default_config();
-    let descriptor =
-        ensure_mobile_relay_endpoint_descriptor(&mut config, "desktop_sidecar").unwrap();
+    let descriptor = ensure_mobile_relay_endpoint_descriptor(
+        &mut config,
+        test_runtime_secret_material(stringify!(&mut config)),
+        "desktop_sidecar",
+    )
+    .unwrap();
 
     let mut missing_mlkem = descriptor.clone();
     missing_mlkem["preKeyBundle"]
@@ -139,14 +164,24 @@ fn mobile_relay_rekeys_and_requires_repair_for_incompatible_local_protocol() {
     let dir = temp_dir("mobile-relay-pqxdh-incompatible-local-protocol");
     let previous = set_portable_data_dir_override(Some(dir));
     let mut config = default_config();
-    ensure_mobile_relay_endpoint_descriptor(&mut config, "desktop_sidecar").unwrap();
+    ensure_mobile_relay_endpoint_descriptor(
+        &mut config,
+        test_runtime_secret_material(stringify!(&mut config)),
+        "desktop_sidecar",
+    )
+    .unwrap();
     let prior_identity = descriptor_text(&config["mobileRelayE2ee"], "publicKeyBase64url").unwrap();
     config["mobileRelayE2ee"]["protocolVersion"] = json!("unsupported.secure-mesh.protocol");
     config["paired"] = json!(true);
     config["relayEnabled"] = json!(true);
     config["pcToken"] = json!("local-token-canary");
 
-    ensure_mobile_relay_endpoint_descriptor(&mut config, "desktop_sidecar").unwrap();
+    ensure_mobile_relay_endpoint_descriptor(
+        &mut config,
+        test_runtime_secret_material(stringify!(&mut config)),
+        "desktop_sidecar",
+    )
+    .unwrap();
 
     assert_ne!(
         descriptor_text(&config["mobileRelayE2ee"], "publicKeyBase64url").unwrap(),
@@ -168,7 +203,12 @@ fn mobile_relay_rotates_curve_and_mlkem_one_time_prekeys_together() {
     let dir = temp_dir("mobile-relay-pqxdh-prekey-rotation");
     let previous = set_portable_data_dir_override(Some(dir));
     let mut config = default_config();
-    ensure_mobile_relay_endpoint_descriptor(&mut config, "desktop_sidecar").unwrap();
+    ensure_mobile_relay_endpoint_descriptor(
+        &mut config,
+        test_runtime_secret_material(stringify!(&mut config)),
+        "desktop_sidecar",
+    )
+    .unwrap();
     let before_version = config["mobileRelayE2ee"]["prekeyPublicationVersion"]
         .as_u64()
         .unwrap();
@@ -181,7 +221,11 @@ fn mobile_relay_rotates_curve_and_mlkem_one_time_prekeys_together() {
     )
     .unwrap();
 
-    rotate_mobile_relay_one_time_prekeys(&mut config).unwrap();
+    rotate_mobile_relay_one_time_prekeys(
+        &mut config,
+        test_runtime_secret_material(stringify!(&mut config)),
+    )
+    .unwrap();
 
     assert_eq!(
         config["mobileRelayE2ee"]["prekeyPublicationVersion"],
@@ -217,12 +261,32 @@ fn mobile_relay_pqxdh_intro_requires_mlkem_prekey_id_and_ciphertext() {
     let dir = temp_dir("mobile-relay-pqxdh-strict-intro");
     let previous = set_portable_data_dir_override(Some(dir));
     let mut pc_config = default_config();
-    let pc_descriptor =
-        ensure_mobile_relay_endpoint_descriptor(&mut pc_config, "desktop_sidecar").unwrap();
+    let pc_descriptor = ensure_mobile_relay_endpoint_descriptor(
+        &mut pc_config,
+        test_runtime_secret_material(stringify!(&mut pc_config)),
+        "desktop_sidecar",
+    )
+    .unwrap();
     let mut mobile_config = default_config();
-    ensure_mobile_relay_endpoint_descriptor(&mut mobile_config, "mobile").unwrap();
-    apply_peer_secure_mesh_descriptor(&mut mobile_config, &pc_descriptor, true).unwrap();
-    let descriptor = ensure_mobile_relay_endpoint_descriptor(&mut mobile_config, "mobile").unwrap();
+    ensure_mobile_relay_endpoint_descriptor(
+        &mut mobile_config,
+        test_runtime_secret_material(stringify!(&mut mobile_config)),
+        "mobile",
+    )
+    .unwrap();
+    apply_peer_secure_mesh_descriptor(
+        &mut mobile_config,
+        test_runtime_secret_material(stringify!(&mut mobile_config)),
+        &pc_descriptor,
+        true,
+    )
+    .unwrap();
+    let descriptor = ensure_mobile_relay_endpoint_descriptor(
+        &mut mobile_config,
+        test_runtime_secret_material(stringify!(&mut mobile_config)),
+        "mobile",
+    )
+    .unwrap();
 
     for field in [
         "responderOneTimeMlKem1024PrekeyId",
@@ -247,18 +311,42 @@ fn mobile_relay_pairwise_rejects_intro_signed_prekey_mismatch() {
     let dir = temp_dir("mobile-relay-pqxdh-intro-signed-prekey-mismatch");
     let previous = set_portable_data_dir_override(Some(dir));
     let mut pc_config = default_config();
-    let pc_descriptor =
-        ensure_mobile_relay_endpoint_descriptor(&mut pc_config, "desktop_sidecar").unwrap();
+    let pc_descriptor = ensure_mobile_relay_endpoint_descriptor(
+        &mut pc_config,
+        test_runtime_secret_material(stringify!(&mut pc_config)),
+        "desktop_sidecar",
+    )
+    .unwrap();
     let mut mobile_config = default_config();
-    ensure_mobile_relay_endpoint_descriptor(&mut mobile_config, "mobile").unwrap();
-    apply_peer_secure_mesh_descriptor(&mut mobile_config, &pc_descriptor, true).unwrap();
-    let mut mobile_descriptor =
-        ensure_mobile_relay_endpoint_descriptor(&mut mobile_config, "mobile").unwrap();
+    ensure_mobile_relay_endpoint_descriptor(
+        &mut mobile_config,
+        test_runtime_secret_material(stringify!(&mut mobile_config)),
+        "mobile",
+    )
+    .unwrap();
+    apply_peer_secure_mesh_descriptor(
+        &mut mobile_config,
+        test_runtime_secret_material(stringify!(&mut mobile_config)),
+        &pc_descriptor,
+        true,
+    )
+    .unwrap();
+    let mut mobile_descriptor = ensure_mobile_relay_endpoint_descriptor(
+        &mut mobile_config,
+        test_runtime_secret_material(stringify!(&mut mobile_config)),
+        "mobile",
+    )
+    .unwrap();
     mobile_descriptor["pairwiseIntro"]["responderSignedPrekeyId"] = json!("spk-attacker");
 
-    let error = apply_peer_secure_mesh_descriptor(&mut pc_config, &mobile_descriptor, true)
-        .unwrap_err()
-        .to_string();
+    let error = apply_peer_secure_mesh_descriptor(
+        &mut pc_config,
+        test_runtime_secret_material(stringify!(&mut pc_config)),
+        &mobile_descriptor,
+        true,
+    )
+    .unwrap_err()
+    .to_string();
     assert!(error.contains("signed prekey id"));
     assert!(
         pc_config["mobileRelayE2ee"]
@@ -274,19 +362,43 @@ fn mobile_relay_pairwise_rejects_intro_initiator_identity_mismatch() {
     let dir = temp_dir("mobile-relay-pqxdh-intro-initiator-identity-mismatch");
     let previous = set_portable_data_dir_override(Some(dir));
     let mut pc_config = default_config();
-    let pc_descriptor =
-        ensure_mobile_relay_endpoint_descriptor(&mut pc_config, "desktop_sidecar").unwrap();
+    let pc_descriptor = ensure_mobile_relay_endpoint_descriptor(
+        &mut pc_config,
+        test_runtime_secret_material(stringify!(&mut pc_config)),
+        "desktop_sidecar",
+    )
+    .unwrap();
     let mut mobile_config = default_config();
-    ensure_mobile_relay_endpoint_descriptor(&mut mobile_config, "mobile").unwrap();
-    apply_peer_secure_mesh_descriptor(&mut mobile_config, &pc_descriptor, true).unwrap();
-    let mut mobile_descriptor =
-        ensure_mobile_relay_endpoint_descriptor(&mut mobile_config, "mobile").unwrap();
+    ensure_mobile_relay_endpoint_descriptor(
+        &mut mobile_config,
+        test_runtime_secret_material(stringify!(&mut mobile_config)),
+        "mobile",
+    )
+    .unwrap();
+    apply_peer_secure_mesh_descriptor(
+        &mut mobile_config,
+        test_runtime_secret_material(stringify!(&mut mobile_config)),
+        &pc_descriptor,
+        true,
+    )
+    .unwrap();
+    let mut mobile_descriptor = ensure_mobile_relay_endpoint_descriptor(
+        &mut mobile_config,
+        test_runtime_secret_material(stringify!(&mut mobile_config)),
+        "mobile",
+    )
+    .unwrap();
     mobile_descriptor["pairwiseIntro"]["initiatorIdentityPublicKeyBase64url"] =
         json!(random_base64url(32));
 
-    let error = apply_peer_secure_mesh_descriptor(&mut pc_config, &mobile_descriptor, true)
-        .unwrap_err()
-        .to_string();
+    let error = apply_peer_secure_mesh_descriptor(
+        &mut pc_config,
+        test_runtime_secret_material(stringify!(&mut pc_config)),
+        &mobile_descriptor,
+        true,
+    )
+    .unwrap_err()
+    .to_string();
     assert!(error.contains("initiator identity"));
     assert!(
         pc_config["mobileRelayE2ee"]
@@ -302,21 +414,45 @@ fn mobile_relay_pairwise_rejects_intro_missing_one_time_prekey() {
     let dir = temp_dir("mobile-relay-pqxdh-intro-missing-curve-otpk");
     let previous = set_portable_data_dir_override(Some(dir));
     let mut pc_config = default_config();
-    let pc_descriptor =
-        ensure_mobile_relay_endpoint_descriptor(&mut pc_config, "desktop_sidecar").unwrap();
+    let pc_descriptor = ensure_mobile_relay_endpoint_descriptor(
+        &mut pc_config,
+        test_runtime_secret_material(stringify!(&mut pc_config)),
+        "desktop_sidecar",
+    )
+    .unwrap();
     let mut mobile_config = default_config();
-    ensure_mobile_relay_endpoint_descriptor(&mut mobile_config, "mobile").unwrap();
-    apply_peer_secure_mesh_descriptor(&mut mobile_config, &pc_descriptor, true).unwrap();
-    let mut mobile_descriptor =
-        ensure_mobile_relay_endpoint_descriptor(&mut mobile_config, "mobile").unwrap();
+    ensure_mobile_relay_endpoint_descriptor(
+        &mut mobile_config,
+        test_runtime_secret_material(stringify!(&mut mobile_config)),
+        "mobile",
+    )
+    .unwrap();
+    apply_peer_secure_mesh_descriptor(
+        &mut mobile_config,
+        test_runtime_secret_material(stringify!(&mut mobile_config)),
+        &pc_descriptor,
+        true,
+    )
+    .unwrap();
+    let mut mobile_descriptor = ensure_mobile_relay_endpoint_descriptor(
+        &mut mobile_config,
+        test_runtime_secret_material(stringify!(&mut mobile_config)),
+        "mobile",
+    )
+    .unwrap();
     mobile_descriptor["pairwiseIntro"]
         .as_object_mut()
         .unwrap()
         .remove("responderOneTimePrekeyId");
 
-    let error = apply_peer_secure_mesh_descriptor(&mut pc_config, &mobile_descriptor, true)
-        .unwrap_err()
-        .to_string();
+    let error = apply_peer_secure_mesh_descriptor(
+        &mut pc_config,
+        test_runtime_secret_material(stringify!(&mut pc_config)),
+        &mobile_descriptor,
+        true,
+    )
+    .unwrap_err()
+    .to_string();
     assert!(error.contains("pairwise intro shape is invalid"));
     assert!(
         pc_config["mobileRelayE2ee"]
@@ -332,11 +468,26 @@ fn mobile_relay_pairwise_rejects_reused_remote_one_time_prekey() {
     let dir = temp_dir("mobile-relay-pqxdh-reused-remote-otpk");
     let previous = set_portable_data_dir_override(Some(dir));
     let mut pc_config = default_config();
-    let pc_descriptor =
-        ensure_mobile_relay_endpoint_descriptor(&mut pc_config, "desktop_sidecar").unwrap();
+    let pc_descriptor = ensure_mobile_relay_endpoint_descriptor(
+        &mut pc_config,
+        test_runtime_secret_material(stringify!(&mut pc_config)),
+        "desktop_sidecar",
+    )
+    .unwrap();
     let mut mobile_config = default_config();
-    ensure_mobile_relay_endpoint_descriptor(&mut mobile_config, "mobile").unwrap();
-    apply_peer_secure_mesh_descriptor(&mut mobile_config, &pc_descriptor, true).unwrap();
+    ensure_mobile_relay_endpoint_descriptor(
+        &mut mobile_config,
+        test_runtime_secret_material(stringify!(&mut mobile_config)),
+        "mobile",
+    )
+    .unwrap();
+    apply_peer_secure_mesh_descriptor(
+        &mut mobile_config,
+        test_runtime_secret_material(stringify!(&mut mobile_config)),
+        &pc_descriptor,
+        true,
+    )
+    .unwrap();
 
     mobile_config["mobileRelayE2ee"]["sessionId"] =
         json!(format!("mrelay_session_{}", Uuid::new_v4()));
@@ -348,9 +499,14 @@ fn mobile_relay_pairwise_rejects_reused_remote_one_time_prekey() {
         e2ee.remove("pairwiseAccepted");
     }
 
-    let error = apply_peer_secure_mesh_descriptor(&mut mobile_config, &pc_descriptor, true)
-        .unwrap_err()
-        .to_string();
+    let error = apply_peer_secure_mesh_descriptor(
+        &mut mobile_config,
+        test_runtime_secret_material(stringify!(&mut mobile_config)),
+        &pc_descriptor,
+        true,
+    )
+    .unwrap_err()
+    .to_string();
     assert!(error.contains("remote one-time prekey was already used"));
 
     set_portable_data_dir_override(previous);
@@ -361,15 +517,36 @@ fn mobile_relay_pairwise_does_not_reinitialize_from_peer_descriptor_session_id()
     let dir = temp_dir("mobile-relay-pqxdh-stale-peer-session-id");
     let previous = set_portable_data_dir_override(Some(dir));
     let mut pc_config = default_config();
-    let mut pc_descriptor =
-        ensure_mobile_relay_endpoint_descriptor(&mut pc_config, "desktop_sidecar").unwrap();
+    let mut pc_descriptor = ensure_mobile_relay_endpoint_descriptor(
+        &mut pc_config,
+        test_runtime_secret_material(stringify!(&mut pc_config)),
+        "desktop_sidecar",
+    )
+    .unwrap();
     let mut mobile_config = default_config();
-    ensure_mobile_relay_endpoint_descriptor(&mut mobile_config, "mobile").unwrap();
-    apply_peer_secure_mesh_descriptor(&mut mobile_config, &pc_descriptor, true).unwrap();
+    ensure_mobile_relay_endpoint_descriptor(
+        &mut mobile_config,
+        test_runtime_secret_material(stringify!(&mut mobile_config)),
+        "mobile",
+    )
+    .unwrap();
+    apply_peer_secure_mesh_descriptor(
+        &mut mobile_config,
+        test_runtime_secret_material(stringify!(&mut mobile_config)),
+        &pc_descriptor,
+        true,
+    )
+    .unwrap();
     let first_session_id = session_id(&mobile_config).unwrap();
     pc_descriptor["sessionId"] = json!("mrelay_session_stale_server_descriptor");
 
-    apply_peer_secure_mesh_descriptor(&mut mobile_config, &pc_descriptor, true).unwrap();
+    apply_peer_secure_mesh_descriptor(
+        &mut mobile_config,
+        test_runtime_secret_material(stringify!(&mut mobile_config)),
+        &pc_descriptor,
+        true,
+    )
+    .unwrap();
 
     assert_eq!(session_id(&mobile_config).unwrap(), first_session_id);
     assert!(mobile_config["mobileRelayE2ee"]["pendingPairwiseIntro"].is_object());
@@ -390,6 +567,7 @@ fn mobile_relay_pairwise_store_missing_requires_repair() {
     fs::remove_file(&store_path).unwrap();
     let error = seal_mobile_relay_payload(
         &mobile_config,
+        test_runtime_secret_material(stringify!(&mobile_config)),
         crate::core::secure_mesh_crypto::SecureMeshPayloadKind::Command,
         &json!({"body": "must-not-bootstrap"}),
     )
@@ -415,6 +593,7 @@ fn pairwise_product_blocks_withheld_peer_map_proof_and_expired_receipt_after_res
             pair_mobile_relay_configs(&mut pc_config, &mut mobile_config);
             let pending_for_mobile = seal_mobile_relay_payload(
                 &pc_config,
+                test_runtime_secret_material(stringify!(&pc_config)),
                 crate::core::secure_mesh_crypto::SecureMeshPayloadKind::ServiceAction,
                 &json!({"action": "pre-withholding-envelope"}),
             )?;
@@ -469,6 +648,7 @@ fn pairwise_product_blocks_withheld_peer_map_proof_and_expired_receipt_after_res
 
             let withheld_seal = seal_mobile_relay_payload(
                 &mobile_config,
+                test_runtime_secret_material(stringify!(&mobile_config)),
                 crate::core::secure_mesh_crypto::SecureMeshPayloadKind::ServiceAction,
                 &json!({"action": "must-refresh-peer-map"}),
             )
@@ -477,6 +657,7 @@ fn pairwise_product_blocks_withheld_peer_map_proof_and_expired_receipt_after_res
             assert!(withheld_seal.contains("current accepted checkpoint"));
             let withheld_open = open_mobile_relay_payload(
                 &mobile_config,
+                test_runtime_secret_material(stringify!(&mobile_config)),
                 &pending_for_mobile,
                 crate::core::secure_mesh_crypto::SecureMeshPayloadKind::ServiceAction,
             )
@@ -484,14 +665,23 @@ fn pairwise_product_blocks_withheld_peer_map_proof_and_expired_receipt_after_res
             .to_string();
             assert!(withheld_open.contains("current accepted checkpoint"));
 
-            let pc_descriptor =
-                ensure_mobile_relay_endpoint_descriptor(&mut pc_config, "desktop_sidecar")?;
-            apply_peer_secure_mesh_descriptor(&mut mobile_config, &pc_descriptor, true)?;
+            let pc_descriptor = ensure_mobile_relay_endpoint_descriptor(
+                &mut pc_config,
+                test_runtime_secret_material(stringify!(&mut pc_config)),
+                "desktop_sidecar",
+            )?;
+            apply_peer_secure_mesh_descriptor(
+                &mut mobile_config,
+                test_runtime_secret_material(stringify!(&mut mobile_config)),
+                &pc_descriptor,
+                true,
+            )?;
             ensure_mobile_relay_key_transparency(&mut mobile_config)?;
             let refreshed = require_current_pairwise_directory_authority(&mobile_config, now)?;
             assert!(refreshed.tree_size > previous_tree_size);
             let opened = open_mobile_relay_payload(
                 &mobile_config,
+                test_runtime_secret_material(stringify!(&mobile_config)),
                 &pending_for_mobile,
                 crate::core::secure_mesh_crypto::SecureMeshPayloadKind::ServiceAction,
             )?;
@@ -511,6 +701,7 @@ fn pairwise_product_blocks_withheld_peer_map_proof_and_expired_receipt_after_res
             let (restarted_config, _) = load_config_with_runtime_secret_overrides(&json!({}))?;
             let expired = seal_mobile_relay_payload(
                 &restarted_config,
+                test_runtime_secret_material(stringify!(&restarted_config)),
                 crate::core::secure_mesh_crypto::SecureMeshPayloadKind::ServiceAction,
                 &json!({"action": "must-refresh-after-expiry"}),
             )
@@ -556,6 +747,7 @@ fn mobile_relay_pairwise_payload_roundtrip_reuses_single_authorization_batch_per
 
         let envelope = seal_mobile_relay_payload(
             &mobile_config,
+            test_runtime_secret_material(stringify!(&mobile_config)),
             crate::core::secure_mesh_crypto::SecureMeshPayloadKind::Command,
             &payload,
         )?;
@@ -575,6 +767,7 @@ fn mobile_relay_pairwise_payload_roundtrip_reuses_single_authorization_batch_per
 
         let opened = open_mobile_relay_payload(
             &pc_config,
+            test_runtime_secret_material(stringify!(&pc_config)),
             &envelope,
             crate::core::secure_mesh_crypto::SecureMeshPayloadKind::Command,
         )?;

@@ -577,8 +577,6 @@ class _NoopConversationService extends AgentConversationService {
     required String text,
     required String sessionId,
     AgentDispatchBind bind = const AgentDispatchBind(),
-    String conversationReadiness = 'unverified',
-    bool requireReady = true,
   }) async {
     return const AgentDispatchTurnResult(
       ok: true,

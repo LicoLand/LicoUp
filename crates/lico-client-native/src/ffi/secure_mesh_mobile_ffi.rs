@@ -15,7 +15,7 @@ pub use action_catalog::MOBILE_RELAY_NATIVE_ACTIONS;
 pub use dispatch_context::{
     dispatch_json_with_files_dir, dispatch_json_with_files_dir_and_pairwise_secret_store,
 };
-pub use dispatch_router::dispatch_json;
+pub use dispatch_router::{dispatch_json, dispatch_request};
 pub use feature_status::{
     EXPECTED_FEATURES, FEATURE_COMMAND_POLICY, FEATURE_CONTENT_CRYPTO, FEATURE_DEVICE_TRUST,
     FEATURE_ENVELOPE_VALIDATION, FEATURE_LIFECYCLE_SERVICE_ACTIONS, FEATURE_MLS_RUNTIME,

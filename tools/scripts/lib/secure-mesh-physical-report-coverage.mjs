@@ -6,9 +6,9 @@
  */
 
 export const ANDROID_PLATFORM_CRYPTO_ACCEPTANCE_SCHEMA =
-  "licolite.secure-mesh.android-platform-crypto-acceptance.v1";
+  "licomesh.secure-mesh.android-platform-crypto-acceptance.v1";
 export const RELAY_MOCK_ACCEPTANCE_SCHEMA =
-  "licolite.secure-client-relay.client-acceptance-report.v1";
+  "licomesh.secure-client-relay.client-acceptance-report.v1";
 export const ANDROID_PLATFORM_CRYPTO_NATIVE_TEST_CLASS_COUNT = 5;
 export const UBUNTU_SECRET_SERVICE_BACKEND = "linux-secret-service-keyring";
 
@@ -90,7 +90,7 @@ export function windowsPersistentCustodyBoundaryValid(report) {
   const platform = report?.platform || {};
   return redactedReportReady(report) &&
     report?.schemaVersion ===
-      "licolite.secure-mesh.windows-implementation-report.v2" &&
+      "licomesh.secure-mesh.windows-implementation-report.v2" &&
     report?.diagnosticStatus === "persistent_custody_unverified" &&
     report?.evidenceKind === "redacted-windows-conservative-custody-boundary" &&
     report?.productionReady !== true &&
@@ -305,7 +305,7 @@ export function runPhysicalReportCoverageSelfTest() {
   );
 
   const windows = redactedFixture({
-    schemaVersion: "licolite.secure-mesh.windows-implementation-report.v2",
+    schemaVersion: "licomesh.secure-mesh.windows-implementation-report.v2",
     diagnosticStatus: "persistent_custody_unverified",
     evidenceKind: "redacted-windows-conservative-custody-boundary",
     productionReady: false,

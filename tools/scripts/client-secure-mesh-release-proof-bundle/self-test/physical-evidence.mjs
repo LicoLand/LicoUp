@@ -6,7 +6,7 @@ import { summarizePhysicalEvidenceManifest } from "../summarize/physical-evidenc
 
 export function runPhysicalEvidenceManifestReadinessSelfTest() {
   const baseReport = {
-    schemaVersion: "licolite.secure-mesh.physical-evidence-manifest-report.v2",
+    schemaVersion: "licomesh.secure-mesh.physical-evidence-manifest-report.v2",
     evidenceRefSchemaVersion: SECURE_CLIENT_MESH_E2EE_EVIDENCE_REF_REPORT_SCHEMA_VERSION,
     sourceOfTruth: SECURE_CLIENT_MESH_PRODUCTION_SOURCE_OF_TRUTH,
     verifier: "tools/scripts/client-secure-mesh-physical-evidence-manifest.mjs",
@@ -266,7 +266,7 @@ export function runPhysicalEvidenceManifestReadinessSelfTest() {
   });
   const legacySchema = summarizePhysicalEvidenceManifest({
     ...baseReport,
-    schemaVersion: "licolite.secure-mesh.physical-evidence-manifest-report.v1"
+    schemaVersion: "licomesh.secure-mesh.physical-evidence-manifest-report.v1"
   });
   const ok = diagnosticOnly.inputIntegrityReady === true &&
     diagnosticOnly.diagnosticIntegrityReady === true &&

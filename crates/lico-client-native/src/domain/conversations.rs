@@ -22,7 +22,3 @@ pub fn conversation_append(params: &Value) -> Result<Value> {
 pub fn conversation_delete(params: &Value) -> Result<Value> {
     super::conversation::history::conversation_delete(params)
 }
-
-pub(crate) fn codex_usage_estimate_message(value: &Value) -> Option<(String, String)> {
-    super::conversation::history::codex_usage_estimate_message(value)
-}

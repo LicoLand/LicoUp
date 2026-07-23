@@ -25,6 +25,7 @@ use super::sessions::{
     resolve_session_path_in_roots, session_header_matches, session_roots_from_sources,
 };
 use super::supervision::{LAUNCH_ARGS, LaunchSpec};
+use super::{ControlDisposition, steer};
 use serde_json::{Value, json};
 use std::fs;
 use std::path::{Path, PathBuf};

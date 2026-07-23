@@ -1,5 +1,5 @@
 {
-  "schemaVersion": "licolite.secure-mesh.encrypted-file-handoff-config.v1",
+  "schemaVersion": "licomesh.secure-mesh.encrypted-file-handoff-config.v1",
   "sourceChecks": [
     {
       "id": "file-manifest-and-chunk-codec-redacts-delivery-json",
@@ -181,7 +181,7 @@
       "id": "android-platform-crypto-acceptance-covers-custody-authorization-and-ffi",
       "file": "tools/scripts/client-android-native-tests.mjs",
       "tokens": [
-        "licolite.secure-mesh.android-platform-crypto-acceptance.v1",
+        "licomesh.secure-mesh.android-platform-crypto-acceptance.v1",
         "platformCryptoAcceptanceReady",
         "platformCustodyContractReady",
         "platformAuthorizationContractReady",

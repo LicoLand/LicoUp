@@ -217,6 +217,6 @@ test("self-test dry-run preserves fail-closed contracts", () => {
   assert.equal(result.status, 0, result.stderr || result.stdout.slice(0, 400));
   const payload = JSON.parse(result.stdout);
   assert.equal(payload.ok, true);
-  assert.equal(payload.schemaVersion, "licolite.client-cli-vm.self-test.v1");
+  assert.equal(payload.schemaVersion, "licomesh.client-cli-vm.self-test.v1");
   assert.equal(payload.runtimeDataIncluded, false);
 });

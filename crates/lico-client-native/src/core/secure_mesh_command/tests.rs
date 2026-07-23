@@ -361,8 +361,8 @@ fn secure_mesh_command_denies_unscoped_execution_fields_before_dispatch() {
             "agentId": "agent-a",
             "text": "hello",
             "command": "open",
-            "args": ["/tmp/not-allowed"],
-            "cwd": "/tmp/not-allowed",
+            "args": ["test-data/not-allowed"],
+            "cwd": "test-data/not-allowed",
             "env": {"LOCAL_SECRET_CANARY": "must-not-leak"},
             "shell": true
         }),
@@ -386,7 +386,7 @@ fn secure_mesh_command_denies_unscoped_execution_fields_before_dispatch() {
     assert_eq!(error.error_code, "local_execution_failed");
     assert_eq!(error.error_detail, LOCAL_EXECUTION_FAILED_REMOTE_DETAIL);
     let serialized = format!("{error:?}");
-    assert!(!serialized.contains("/tmp/not-allowed"));
+    assert!(!serialized.contains("test-data/not-allowed"));
     assert!(!serialized.contains("LOCAL_SECRET_CANARY"));
 }
 

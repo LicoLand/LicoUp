@@ -179,4 +179,7 @@ final class _ClassicChromeFake extends ChangeNotifier
 
   @override
   Future<void> openPairing(BuildContext context) async {}
+
+  @override
+  Future<void> openGlobalSearch(BuildContext context) async {}
 }

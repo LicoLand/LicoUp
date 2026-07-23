@@ -31,6 +31,8 @@ pub(crate) use endpoint_trust::{
     persisted_mobile_relay_peer_trust_state, secure_mesh_kt_authority_path,
     secure_mesh_mls_public_directory_context, secure_mesh_mls_state_dir,
 };
+#[cfg(test)]
+pub(crate) use secret_custody::test_runtime_secret_material;
 pub(crate) use secret_custody::{
     ensure_secure_mesh_protected_operation_allowed, with_secure_mesh_mls_participant,
 };

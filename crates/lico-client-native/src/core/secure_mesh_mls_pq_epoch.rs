@@ -24,8 +24,8 @@ const WRAP_NONCE_BYTES: usize = 12;
 const WRAP_TAG_BYTES: usize = 16;
 const MEMBER_ID_DOMAIN: &[u8] = b"LICO-SM-MLS-MLKEM1024-MEMBER-ID-v1";
 const WRAP_AAD_DOMAIN: &[u8] = b"LICO-SM-MLS-MLKEM1024-EPOCH-WRAP-v1";
-const WRAP_KDF_INFO: &[u8] = b"licolite.secure-mesh.mls.mlkem1024-epoch-wrap.v1";
-const PAYLOAD_KDF_INFO: &[u8] = b"licolite.secure-mesh.mls.mlkem1024-payload-key.v1";
+const WRAP_KDF_INFO: &[u8] = b"licomesh.secure-mesh.mls.mlkem1024-epoch-wrap.v1";
+const PAYLOAD_KDF_INFO: &[u8] = b"licomesh.secure-mesh.mls.mlkem1024-payload-key.v1";
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]

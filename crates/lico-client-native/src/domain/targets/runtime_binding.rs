@@ -6,20 +6,16 @@ use std::collections::BTreeSet;
 use std::fs;
 use std::path::PathBuf;
 
-/// Resolve the single local executable that is both advertised by target
-/// discovery and bound to the canonical native-conversation readiness evidence.
-/// Callers must still
-/// revalidate immediately before launch; this prevents a remote command from
+/// Resolve the single local executable advertised by target discovery for a
+/// runtime that has a conversation driver. Local agents are client-accessible
+/// by default, so parity evidence no longer gates the binding; callers still
+/// revalidate immediately before launch, which prevents a remote command from
 /// choosing a PATH entry or supplying a local execution path.
-pub(super) fn ready_runtime_executable(target: &str) -> Option<PathBuf> {
-    if !runtime_adapters::runtime_driver_profile(target)
-        .is_some_and(|profile| profile.readiness == "ready")
-    {
+pub(super) fn available_runtime_executable(target: &str) -> Option<PathBuf> {
+    if runtime_adapters::runtime_driver_profile(target).is_none() {
         return None;
     }
-    if let Some(executable) = cached_runtime_executable(target)
-        && runtime_adapters::runtime_evidence_matches(target, &executable)
-    {
+    if let Some(executable) = cached_runtime_executable(target) {
         return Some(executable);
     }
     let scan = scan_targets_with_params(&json!({})).ok()?;
@@ -28,14 +24,6 @@ pub(super) fn ready_runtime_executable(target: &str) -> Option<PathBuf> {
     for candidate in candidates {
         if candidate.get("target").and_then(Value::as_str) != Some(target)
             || candidate.get("status").and_then(Value::as_str) == Some("not-detected")
-            || !candidate
-                .get("supportedActions")
-                .and_then(Value::as_array)
-                .is_some_and(|actions| {
-                    actions
-                        .iter()
-                        .any(|action| action.as_str() == Some("runtime.message.send"))
-                })
         {
             continue;
         }
@@ -59,6 +47,5 @@ pub(super) fn ready_runtime_executable(target: &str) -> Option<PathBuf> {
     if matched.len() != 1 {
         return None;
     }
-    let executable = matched.into_iter().next()?;
-    runtime_adapters::runtime_evidence_matches(target, &executable).then_some(executable)
+    matched.into_iter().next()
 }

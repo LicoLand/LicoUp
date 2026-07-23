@@ -270,13 +270,13 @@ _eventPresentation(
     ),
     AgentConversationMessageKind.reasoning => (
       title: strings.reasoning,
-      subtitle: strings.sensitiveDetailsHidden,
+      subtitle: '',
       icon: Icons.psychology_alt_outlined,
       accent: colors.textMuted,
     ),
     AgentConversationMessageKind.metadata => (
       title: strings.metadata,
-      subtitle: strings.sensitiveDetailsHidden,
+      subtitle: '',
       icon: Icons.info_outline_rounded,
       accent: colors.textMuted,
     ),

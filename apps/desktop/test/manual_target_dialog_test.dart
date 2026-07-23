@@ -48,7 +48,7 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.tap(find.byType(TextField).at(0));
-    await tester.enterText(find.byType(TextField).at(0), ' /tmp/config.json ');
+    await tester.enterText(find.byType(TextField).at(0), ' test-data/config.json ');
     await tester.tap(find.byType(TextField).at(1));
     await tester.enterText(
       find.byType(TextField).at(1),
@@ -57,13 +57,13 @@ void main() {
     await tester.tap(find.byType(TextField).at(2));
     await tester.enterText(
       find.byType(TextField).at(2),
-      ' /tmp/native-history ',
+      ' test-data/native-history ',
     );
 
     await tester.tap(find.byIcon(Icons.arrow_drop_down));
     await tester.pumpAndSettle();
-    expect(find.text('Kimi - Desktop'), findsOneWidget);
-    await tester.tap(find.text('Kimi Code - CLI').last);
+    expect(find.text('Kimi'), findsOneWidget);
+    await tester.tap(find.text('Kimi Code').last);
     await tester.pumpAndSettle();
 
     await tester.tap(find.byKey(const Key('manual-target-submit')));
@@ -71,9 +71,9 @@ void main() {
 
     expect(draft, isNotNull);
     expect(draft?.target, 'kimi-code');
-    expect(draft?.configPath, '/tmp/config.json');
+    expect(draft?.configPath, 'test-data/config.json');
     expect(draft?.binaryPath, ['', 'opt', 'tools', 'kimi'].join('/'));
-    expect(draft?.historyRoot, '/tmp/native-history');
+    expect(draft?.historyRoot, 'test-data/native-history');
 
     await tester.tap(find.text('OpenCancel'));
     await tester.pumpAndSettle();

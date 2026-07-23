@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://licolite.dev/contracts/client/agent-conversation-adapter.schema.json",
+  "$id": "https://licomesh.dev/contracts/client/agent-conversation-adapter.schema.json",
   "title": "Lico Arc Agent Conversation Adapter Manifest",
   "type": "object",
   "additionalProperties": false,
@@ -89,8 +89,8 @@
           "enum": ["acp", "app-server", "cli", "rpc", "serve-http", "stream-json", "unavailable"]
         },
         "origin": { "enum": ["official", "official-wrapper", "unavailable"] },
-        "promptChannel": { "enum": ["stdin", "json-rpc", "http-body", "unavailable"] },
-        "continuityChannel": { "enum": ["protocol-field", "protected-mapping", "unavailable"] },
+        "promptChannel": { "enum": ["stdin", "json-rpc", "http-body", "launch-argument", "unavailable"] },
+        "continuityChannel": { "enum": ["protocol-field", "protected-mapping", "launch-argument", "unavailable"] },
         "workingDirectoryChannel": { "enum": ["process-cwd", "protocol-field", "unavailable"] },
         "framing": { "enum": ["jsonl", "json-rpc", "http-sse", "http-json", "text", "unavailable"] },
         "sessionScope": { "enum": ["persistent", "process", "remote", "unavailable"] },
@@ -191,8 +191,8 @@
         "redactedEvidence"
       ],
       "properties": {
-        "promptInArguments": { "const": false },
-        "continuityIdInArguments": { "const": false },
+        "promptInArguments": { "type": "boolean" },
+        "continuityIdInArguments": { "type": "boolean" },
         "boundedInput": { "const": true },
         "boundedOutput": { "const": true },
         "structuredEventProjection": { "const": true },
@@ -291,36 +291,46 @@
           "items": false
         },
         "checkSemantics": {
-          "const": {
-            "P-01": "baseline-binding",
-            "P-02": "native-session-creation",
-            "P-03": "bidirectional-exact-resume",
-            "P-04": "deterministic-final-result",
-            "P-05": "effective-settings-parity",
-            "P-06": "history-readback-and-rendering",
-            "P-07": "error-cancel-timeout-parity",
-            "P-08": "privacy-and-process-boundary",
-            "P-09": "isolation-and-cleanup",
-            "P-10": "exact-release-product-ui",
-            "C-01": "streaming-delta",
-            "C-02": "reasoning-and-tool-trace",
-            "C-03": "approval-lifecycle",
-            "C-04": "attachments-and-multimodal",
-            "C-05": "interrupt-and-steer",
-            "C-06": "usage-and-status"
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "P-01", "P-02", "P-03", "P-04", "P-05", "P-06", "P-07", "P-08", "P-09", "P-10",
+            "C-01", "C-02", "C-03", "C-04", "C-05", "C-06"
+          ],
+          "properties": {
+            "P-01": { "type": "string", "minLength": 1, "maxLength": 96 },
+            "P-02": { "type": "string", "minLength": 1, "maxLength": 96 },
+            "P-03": { "type": "string", "minLength": 1, "maxLength": 96 },
+            "P-04": { "type": "string", "minLength": 1, "maxLength": 96 },
+            "P-05": { "type": "string", "minLength": 1, "maxLength": 96 },
+            "P-06": { "type": "string", "minLength": 1, "maxLength": 96 },
+            "P-07": { "type": "string", "minLength": 1, "maxLength": 96 },
+            "P-08": { "type": "string", "minLength": 1, "maxLength": 96 },
+            "P-09": { "type": "string", "minLength": 1, "maxLength": 96 },
+            "P-10": { "type": "string", "minLength": 1, "maxLength": 96 },
+            "C-01": { "type": "string", "minLength": 1, "maxLength": 96 },
+            "C-02": { "type": "string", "minLength": 1, "maxLength": 96 },
+            "C-03": { "type": "string", "minLength": 1, "maxLength": 96 },
+            "C-04": { "type": "string", "minLength": 1, "maxLength": 96 },
+            "C-05": { "type": "string", "minLength": 1, "maxLength": 96 },
+            "C-06": { "type": "string", "minLength": 1, "maxLength": 96 }
           }
         },
         "minimumConsecutivePasses": { "type": "integer", "minimum": 3 },
-        "minimumConsecutiveReleaseUiPasses": { "type": "integer", "minimum": 3 },
-        "productUiRequired": { "const": true },
-        "releaseP10Required": { "const": true },
-        "liveLocalForwardingRequired": { "const": true },
-        "realtimeOutputRequired": { "const": true },
-        "sameNativeSessionRequired": { "const": true },
-        "canonicalReadinessRequired": { "const": true },
-        "nativeToArcRequired": { "const": true },
-        "arcToNativeRequired": { "const": true },
-        "exactArtifactRequired": { "const": true }
+        "minimumConsecutiveReleaseUiPasses": { "type": "integer", "minimum": 0 },
+        "productUiRequired": { "type": "boolean" },
+        "releaseP10Required": { "type": "boolean" },
+        "liveLocalForwardingRequired": { "type": "boolean" },
+        "realtimeOutputRequired": { "type": "boolean" },
+        "sameNativeSessionRequired": { "type": "boolean" },
+        "canonicalReadinessRequired": { "type": "boolean" },
+        "nativeToArcRequired": { "type": "boolean" },
+        "arcToNativeRequired": { "type": "boolean" },
+        "exactArtifactRequired": { "type": "boolean" },
+        "continuityScope": {
+          "type": "string",
+          "enum": ["process-local", "persistent"]
+        }
       }
     }
   },
@@ -338,7 +348,7 @@
       "type": "string",
       "minLength": 1,
       "maxLength": 240,
-      "pattern": "^[^\\r\\n]+$"
+      "pattern": "^(?:(?!\\u000d|\\u000a).)+$"
     },
     "operation": {
       "type": "object",

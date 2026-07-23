@@ -1,6 +1,6 @@
 {
-  "canonicalDigest": "sha256:0f33bd3d5ca8ddf63e293f1d620eaf8f583b7c8998967573f726575a000bae2d",
-  "canonicalSource": "packages/protocols/secure-client-relay-protocol.mjs",
+  "canonicalDigest": "sha256:ffc60b2ebc9dc123bfabb5e8627613a2f5b8b7b3792fd68a0dd2ca0ffae96224",
+  "canonicalSource": "plugins/client-link/src/submodules/secure-client-relay/protocol/secure-client-relay-protocol.mjs",
   "canonicalization": "json-recursive-lexicographic-keys.v1",
   "conformance": {
     "fixtureProjection": {
@@ -169,10 +169,87 @@
             "saturation": "mailbox-or-total-queue"
           }
         ]
+      },
+      {
+        "id": "ack-loss-redelivery",
+        "profile": "coreRelay",
+        "steps": [
+          {
+            "expected": {
+              "status": 200
+            },
+            "operation": "envelopeSend"
+          },
+          {
+            "expected": {
+              "leaseGenerationMinimum": 1,
+              "status": 200
+            },
+            "operation": "envelopeSync"
+          },
+          {
+            "expected": {
+              "leaseGenerationMinimum": 2,
+              "status": 200
+            },
+            "mutation": "advance-past-lease-without-ack",
+            "operation": "envelopeSync"
+          }
+        ]
+      },
+      {
+        "id": "slow-consumer-backpressure",
+        "profile": "coreRelay",
+        "steps": [
+          {
+            "expected": {
+              "retryable": true,
+              "status": 429
+            },
+            "mutation": "retain-leased-envelope",
+            "operation": "envelopeSend",
+            "saturation": "mailbox"
+          }
+        ]
+      },
+      {
+        "id": "quota-saturation-is-explicit",
+        "profile": "coreRelay",
+        "steps": [
+          {
+            "expected": {
+              "retryable": true,
+              "status": 429
+            },
+            "operation": "envelopeSend",
+            "saturation": "total-queue"
+          }
+        ]
+      },
+      {
+        "id": "clock-skew-cannot-bypass-lease-fence",
+        "profile": "coreRelay",
+        "steps": [
+          {
+            "expected": {
+              "leaseGenerationMinimum": 1,
+              "status": 200
+            },
+            "operation": "envelopeSync"
+          },
+          {
+            "expected": {
+              "code": "secure_mesh_stale_lease",
+              "status": 409
+            },
+            "mutation": "advance-clock-and-use-expired-lease",
+            "operation": "envelopeAck"
+          }
+        ]
       }
     ]
   },
-  "contractDigest": "sha256:62c27e8af0348bf13909ddd9d05f07a39b153bc6d011df5ed7249499cf19dd01",
-  "protocolVersion": "licolite.secure-mesh.v1",
-  "schemaVersion": "licolite.secure-client-relay.core-conformance-artifact.v1"
+  "contractDigest": "sha256:0c2cdc66b4c135043b53c0c5b53533238568978a948ae98be1b45eb7a28b724b",
+  "protocolVersion": "licomesh.secure-mesh.v1",
+  "schemaVersion": "licomesh.secure-client-relay.core-conformance-artifact.v1"
 }

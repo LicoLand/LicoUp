@@ -27,15 +27,15 @@ mixin FakeAgentArchiveSupport on AgentService, FakeAgentStateSupport {
   String collectedSnapshotAgent = '';
 
   String archiveCollectionPath = '';
-  String snapshotRootPath = '/tmp/lico-native-conversation-snapshots';
+  String snapshotRootPath = 'test-data/lico-native-conversation-snapshots';
   String archiveProfileId = '';
 
   List<Map<String, dynamic>> snapshotCollections = const [];
   List<Map<String, dynamic>> archiveProfiles = const [
     {
-      'profileId': 'licolite',
-      'displayName': 'LicoLite',
-      'archiveRoot': '/tmp/licolite-archive',
+      'profileId': 'licomesh',
+      'displayName': 'LicoMesh',
+      'archiveRoot': 'test-data/licomesh-archive',
     },
   ];
 

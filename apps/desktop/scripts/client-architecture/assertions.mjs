@@ -24,7 +24,7 @@ export function moduleSupportsPlatform(moduleConfig, platform) {
 }
 
 export function collectEnumValues(source, enumName) {
-  const match = source.match(new RegExp(`enum\\s+${enumName}\\s*\\{([\\s\\S]*?)\\}`));
+  const match = source.match(new RegExp(`enum\\s+${enumName}\\s*\\{(.*?)\\}`, "s"));
   if (!match) {
     return [];
   }

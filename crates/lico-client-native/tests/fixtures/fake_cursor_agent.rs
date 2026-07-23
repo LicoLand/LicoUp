@@ -1,88 +1,81 @@
-use std::io::{self, BufRead, Write};
+use std::env;
+use std::io::{self, Write};
 
-/// Deterministic ACP v1 fake for Cursor's public `agent acp` / `cursor-agent acp`
-/// entrypoint. Launch args stay fixed; session identity and prompts travel only
-/// on the stdio JSON-RPC channel.
-fn id(line: &str) -> i64 {
-    let marker = "\"id\":";
-    let start = line.find(marker).expect("jsonrpc id") + marker.len();
-    line[start..]
-        .chars()
-        .take_while(|c| c.is_ascii_digit())
-        .collect::<String>()
-        .parse()
-        .expect("numeric id")
+fn emit(value: &str) {
+    println!("{value}");
+    io::stdout().flush().unwrap();
+}
+
+fn help_text() {
+    println!("Cursor Agent CLI");
+    println!("  create-chat");
+    println!("  --print");
+    println!("  --resume");
+    println!("  --output-format stream-json");
+    println!("  --trust");
+    println!("  --force");
+    println!("  --workspace");
+}
+
+fn create_session_id(counter: u64) -> String {
+    format!("fake-cursor-session-{counter:012x}")
+}
+
+fn turn_output(prompt: &str) -> (&'static str, &'static str) {
+    if prompt.contains("private first prompt") {
+        ("first response", "first response")
+    } else if prompt.contains("private follow-up prompt") {
+        ("second response", "second response")
+    } else if prompt.contains("41") {
+        ("41", "41")
+    } else if prompt.contains("43") {
+        ("43", "43")
+    } else {
+        ("fake Cursor final answer", "fake Cursor final answer")
+    }
+}
+
+fn run_turn(args: &[String]) {
+    let resume_index = args.iter().position(|arg| arg == "--resume").expect("--resume");
+    let session_id = args
+        .get(resume_index + 1)
+        .filter(|value| !value.is_empty())
+        .expect("session id");
+    let prompt = args.last().expect("prompt");
+    let (chunk, response) = turn_output(prompt);
+    emit(&format!(
+        r#"{{"type":"assistant","session_id":"{session_id}","message":{{"content":[{{"type":"text","text":"{chunk}"}}]}}}}"#
+    ));
+    emit(&format!(
+        r#"{{"type":"result","subtype":"success","is_error":false,"session_id":"{session_id}","result":"{response}"}}"#
+    ));
 }
 
 fn main() {
-    let args = std::env::args().skip(1).collect::<Vec<_>>();
+    let args: Vec<String> = env::args().skip(1).collect();
     if args == ["--version"] {
         println!("fake-cursor-agent 1.0.0");
         return;
     }
     if args == ["--help"] {
-        println!("fake Cursor Agent ACP help");
+        help_text();
         return;
     }
-    if args != ["acp"] {
+    if args == ["create-chat"] {
+        let session_id = create_session_id(1);
+        println!("{session_id}");
+        return;
+    }
+    if args.first().map(String::as_str) == Some("acp") {
+        eprintln!("ACP entrypoint is not supported");
         std::process::exit(2);
     }
-
-    let stdin = io::stdin();
-    let mut lines = stdin.lock().lines();
-    let first = match lines.next() {
-        Some(Ok(line)) => line,
-        _ => std::process::exit(3),
-    };
-    if !first.contains("\"method\":\"initialize\"") {
-        std::process::exit(4);
+    if args.iter().any(|arg| arg == "--print")
+        && args.iter().any(|arg| arg == "--resume")
+        && args.iter().any(|arg| arg == "stream-json")
+    {
+        run_turn(&args);
+        return;
     }
-    println!(
-        "{{\"jsonrpc\":\"2.0\",\"id\":{},\"result\":{{\"protocolVersion\":1,\"agentCapabilities\":{{\"loadSession\":true}}}}}}",
-        id(&first)
-    );
-    io::stdout().flush().unwrap();
-
-    let second = match lines.next() {
-        Some(Ok(line)) => line,
-        _ => std::process::exit(5),
-    };
-    let (method, session_id) = if second.contains("\"method\":\"session/new\"") {
-        ("session/new", "fake-cursor-session")
-    } else if second.contains("\"method\":\"session/load\"") {
-        if !second.contains("fake-cursor-session") && !second.contains("existing-cursor-native") {
-            std::process::exit(6);
-        }
-        ("session/load", "fake-cursor-session")
-    } else {
-        std::process::exit(7);
-    };
-    if method == "session/load" {
-        println!(
-            "{{\"jsonrpc\":\"2.0\",\"id\":{},\"result\":null}}",
-            id(&second)
-        );
-    } else {
-        println!(
-            "{{\"jsonrpc\":\"2.0\",\"id\":{},\"result\":{{\"sessionId\":\"{session_id}\",\"configOptions\":[]}}}}",
-            id(&second)
-        );
-    }
-    io::stdout().flush().unwrap();
-
-    let third = match lines.next() {
-        Some(Ok(line)) => line,
-        _ => std::process::exit(8),
-    };
-    if !third.contains("\"method\":\"session/prompt\"") {
-        std::process::exit(9);
-    }
-    println!(
-        "{{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{{\"sessionId\":\"{session_id}\",\"update\":{{\"sessionUpdate\":\"agent_message_chunk\",\"content\":{{\"type\":\"text\",\"text\":\"fake Cursor final answer\"}}}}}}}}"
-    );
-    println!(
-        "{{\"jsonrpc\":\"2.0\",\"id\":{},\"result\":{{\"stopReason\":\"end_turn\"}}}}",
-        id(&third)
-    );
-    io::stdout().flush().unwrap();
+    std::process::exit(2);
 }

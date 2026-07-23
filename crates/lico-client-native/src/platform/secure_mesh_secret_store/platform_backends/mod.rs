@@ -1,6 +1,4 @@
 pub(super) mod fail_closed;
-#[cfg(target_os = "macos")]
-mod keyring;
 #[cfg(target_os = "linux")]
 mod linux;
 #[cfg(target_os = "macos")]
@@ -15,8 +13,8 @@ use anyhow::Result;
 use super::platform_store::PlatformSecretStore;
 use crate::core::secure_mesh_capability::CapabilityFact;
 use crate::core::secure_mesh_secret_store::{
-    SecretStoreAuthorizationRequest, SecretStoreAuthorizationSession, SecretStoreHandle,
-    SecureMeshSecretStore,
+    SecretBytes, SecretStoreAuthorizationRequest, SecretStoreAuthorizationSession,
+    SecretStoreHandle, SecureMeshSecretStore,
 };
 
 #[cfg(target_os = "linux")]
@@ -59,7 +57,7 @@ impl SecureMeshSecretStore for PlatformSecretStore {
         &self,
         session: &SecretStoreAuthorizationSession,
         handle: &SecretStoreHandle,
-        secret: &str,
+        secret: SecretBytes,
     ) -> Result<()> {
         selected::set_secret_with_session(self, session, handle, secret)
     }
@@ -68,7 +66,7 @@ impl SecureMeshSecretStore for PlatformSecretStore {
         &self,
         session: &SecretStoreAuthorizationSession,
         handle: &SecretStoreHandle,
-    ) -> Result<Option<String>> {
+    ) -> Result<Option<SecretBytes>> {
         selected::get_secret_with_session(self, session, handle)
     }
 
@@ -80,11 +78,11 @@ impl SecureMeshSecretStore for PlatformSecretStore {
         selected::delete_secret_with_session(self, session, handle)
     }
 
-    fn set_secret(&self, handle: &SecretStoreHandle, secret: &str) -> Result<()> {
+    fn set_secret(&self, handle: &SecretStoreHandle, secret: SecretBytes) -> Result<()> {
         selected::set_secret(self, handle, secret)
     }
 
-    fn get_secret(&self, handle: &SecretStoreHandle) -> Result<Option<String>> {
+    fn get_secret(&self, handle: &SecretStoreHandle) -> Result<Option<SecretBytes>> {
         selected::get_secret(self, handle)
     }
 

@@ -9,6 +9,10 @@ import { cleanupSession } from "./session-cleanup.mjs";
 import { listSessions, officialHistory } from "./session-query.mjs";
 import { canaryPrompt, failedParityFactCode, makeCanary, normalizedMarker, outputCategoryCode, roundConversationFactsReady, roundFactsReady } from "./round-facts.mjs";
 
+function sidecarBinaryPath(context) {
+  return context.config.promptInArguments ? context.binary : context.wrapper.wrapperPath;
+}
+
 export async function runRound(context, roundIndex, selfTestEvidence) {
   const canaries = [makeCanary(), makeCanary(), makeCanary(), makeCanary()];
   const expectedReplies = [11, 13, 17, 19].map((value) => String(roundIndex * 1000 + value));
@@ -44,7 +48,7 @@ export async function runRound(context, roundIndex, selfTestEvidence) {
       text: canaryPrompt(canaries[1], expectedReplies[1]),
       sessionId: nativeFirst.sessionId,
       workingDirectory: context.cwd,
-      binaryPath: context.wrapper.wrapperPath,
+      binaryPath: sidecarBinaryPath(context),
       timeoutMs: context.timeoutMs,
       maxStdoutBytes: context.maxOutputBytes,
       maxStderrBytes: context.maxOutputBytes,
@@ -61,7 +65,7 @@ export async function runRound(context, roundIndex, selfTestEvidence) {
       agent: context.config.id,
       text: canaryPrompt(canaries[2], expectedReplies[2]),
       workingDirectory: context.cwd,
-      binaryPath: context.wrapper.wrapperPath,
+      binaryPath: sidecarBinaryPath(context),
       timeoutMs: context.timeoutMs,
       maxStdoutBytes: context.maxOutputBytes,
       maxStderrBytes: context.maxOutputBytes,
@@ -87,9 +91,12 @@ export async function runRound(context, roundIndex, selfTestEvidence) {
     const capture = existsSync(context.wrapper.capturePath)
       ? readFileSync(context.wrapper.capturePath, "utf8")
       : "";
-    const argvCanariesAbsent = canaries.every((canary) => !capture.includes(canary))
-      && canaries.every((canary) => !context.config.acpArgs.some((argument) => argument.includes(canary)))
-      && canaries.every((canary) => !sidecarArgs.some((argument) => argument.includes(canary)));
+    const argvCanariesAbsent = context.config.promptInArguments
+      ? canaries.every((canary) => !sidecarArgs.some((argument) => argument.includes(canary)))
+        && canaries.every((canary) => !context.config.acpArgs.some((argument) => argument.includes(canary)))
+      : canaries.every((canary) => !capture.includes(canary))
+        && canaries.every((canary) => !context.config.acpArgs.some((argument) => argument.includes(canary)))
+        && canaries.every((canary) => !sidecarArgs.some((argument) => argument.includes(canary)));
     const firstHistory = `${readFirst.text}\n${officialFirst}`;
     const secondHistory = `${readSecond.text}\n${officialSecond}`;
     const arcResumeSettings = arcSettings(arcResume.result);
@@ -132,6 +139,8 @@ export async function runRound(context, roundIndex, selfTestEvidence) {
     const arcResumeOutputCategory = outputCategoryCode(arcResumeOutput);
     const arcFirstOutputCategory = outputCategoryCode(arcFirstOutput);
     const nativeResumeOutputCategory = outputCategoryCode(nativeResume.output);
+    const publicStreamingSeen = [arcResume, arcFirst]
+      .every((turn) => turn.streamingSeen === true);
     facts = {
       nativeToArc: arcResume.result.sessionId === nativeFirst.sessionId
         && arcResume.result.threadId === nativeFirst.sessionId,
@@ -169,8 +178,13 @@ export async function runRound(context, roundIndex, selfTestEvidence) {
       settingsParity,
       settingsParityMask,
       argvCanariesAbsent,
-      historyReadback: expectedReplies.slice(0, 2).every((reply) => firstHistory.includes(reply))
-        && expectedReplies.slice(2).every((reply) => secondHistory.includes(reply)),
+      historyReadback: context.config.cleanupKind === "cursor-cli-chat-leaf"
+        ? expectedReplies.slice(0, 2).every((reply) =>
+          `${nativeFirst.output}\n${arcResume.result.output}`.includes(reply))
+          && expectedReplies.slice(2).every((reply) =>
+            `${arcFirst.result.output}\n${nativeResume.output}`.includes(reply))
+        : expectedReplies.slice(0, 2).every((reply) => firstHistory.includes(reply))
+          && expectedReplies.slice(2).every((reply) => secondHistory.includes(reply)),
       noPermissionRequests: nativeFirst.permissionRequests === 0
         && nativeResume.permissionRequests === 0,
       noUnsupportedRequests: nativeFirst.unsupportedRequests === 0
@@ -181,7 +195,7 @@ export async function runRound(context, roundIndex, selfTestEvidence) {
         && readSecond.boundedOutput
         && arcResume.boundedOutput
         && arcFirst.boundedOutput,
-      streamingSeen: arcResume.streamingSeen === true && arcFirst.streamingSeen === true,
+      streamingSeen: publicStreamingSeen,
       structuredSeen: arcResume.structuredSeen === true && arcFirst.structuredSeen === true,
       cleanupVerified: false,
       permissionFailClosed: selfTestEvidence.permissionFailClosed,

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
 
+import 'package:flutter_client/src/application/features/agents/agent_product_names.dart';
 import 'package:flutter_client/src/frontend/l10n/lico_strings.dart';
 import 'package:flutter_client/src/frontend/shared/ui/directory_path_field.dart';
 
@@ -31,23 +32,23 @@ class ManualTargetDialog extends StatefulWidget {
 
 class _ManualTargetDialogState extends State<ManualTargetDialog> {
   static const _targets = [
-    ('antigravity', 'Antigravity - CLI'),
-    ('claude-code', 'Claude Code - CLI'),
-    ('codex', 'ChatGPT Codex - CLI'),
-    ('cursor', 'Cursor - IDE'),
-    ('copilot', 'GitHub Copilot - CLI'),
-    ('hermes', 'Hermes Agent - CLI'),
-    ('kilo-code', 'Kilo Code - CLI'),
-    ('kimi', 'Kimi - Desktop'),
-    ('kimi-code', 'Kimi Code - CLI'),
-    ('openclaw', 'OpenClaw - CLI'),
-    ('opencode', 'OpenCode - CLI'),
+    'antigravity',
+    'claude-code',
+    'codex',
+    'cursor',
+    'copilot',
+    'hermes',
+    'kilo-code',
+    'kimi',
+    'kimi-code',
+    'openclaw',
+    'opencode',
   ];
 
   final _configPathController = TextEditingController();
   final _binaryPathController = TextEditingController();
   final _historyRootController = TextEditingController();
-  String _target = _targets.first.$1;
+  String _target = _targets.first;
 
   @override
   void dispose() {
@@ -73,7 +74,10 @@ class _ManualTargetDialogState extends State<ManualTargetDialog> {
               decoration: InputDecoration(labelText: strings.target),
               items: [
                 for (final target in _targets)
-                  DropdownMenuItem(value: target.$1, child: Text(target.$2)),
+                  DropdownMenuItem(
+                    value: target,
+                    child: Text(agentProductLabel(target)),
+                  ),
               ],
               onChanged: (value) {
                 if (value == null) {

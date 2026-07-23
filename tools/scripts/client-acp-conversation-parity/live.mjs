@@ -9,8 +9,21 @@ import { readPackagedAgents, validateProductReceipt } from "./packaging.mjs";
 import { createPrivateWrapper } from "./process.mjs";
 import { preflightCleanup } from "./session-cleanup.mjs";
 import { resolveExecutable, resolveSidecar } from "./sidecar.mjs";
-import { aggregateResult, blockedResult } from "./results.mjs";
+import {
+  aggregateProcessLocalResult,
+  aggregateResult,
+  blockedResult,
+} from "./results.mjs";
 import { runRound } from "./run-round.mjs";
+import { StdioRpcClient } from "./clients/stdio-rpc-client.mjs";
+import { runProcessLocalRound } from "./process-local-round.mjs";
+
+const processLocalExternalBlockers = new Set([
+  "authorization_required",
+  "claude_code_authentication_required",
+  "provider_unavailable",
+  "claude_code_provider_unavailable",
+]);
 
 export async function runLive(options, selfTestEvidence) {
   const config = agentConfigs[options.agent];
@@ -55,12 +68,22 @@ export async function runLive(options, selfTestEvidence) {
     const disposableDataRoot = ["disposable-data-root", "pi-disposable-session-root"].includes(config.cleanupKind)
       ? join(temporaryDirectory, "isolated-agent-data")
       : "";
+    const claudeConfigRoot = config.continuityScope === "process-local"
+      ? join(temporaryDirectory, "isolated-claude-config")
+      : "";
+    if (claudeConfigRoot) mkdirSync(claudeConfigRoot, { recursive: true, mode: 0o700 });
     const disposableSeedSource = config.cleanupKind === "disposable-data-root"
       ? (process.env[config.disposableEnvironmentKey] || join(homedir(), ".kimi-code"))
       : "";
     const environment = disposableDataRoot
       ? { ...process.env, [config.disposableEnvironmentKey]: disposableDataRoot }
-      : process.env;
+      : claudeConfigRoot
+        ? {
+          ...process.env,
+          [config.isolatedConfigEnvironmentKey]: claudeConfigRoot,
+          [config.noHistoryEnvironmentKey]: "1",
+        }
+        : process.env;
     wrapper.environment = {
       ...wrapper.environment,
       ...environment,
@@ -72,16 +95,91 @@ export async function runLive(options, selfTestEvidence) {
       sidecar,
       wrapper,
       cwd: isolatedWorkingDirectory,
-      environment,
+      environment: config.continuityScope === "process-local"
+        ? wrapper.environment
+        : environment,
       temporaryDirectory,
       disposableDataRoot,
       disposableSeedSource,
       disposableProfileSeeded: false,
       cleanedSessions: new Set(),
+      claudeConfigRoot,
+      acceptanceMode,
       timeoutMs: options.timeoutMs,
       maxOutputBytes: options.maxOutputBytes,
       copilotSdkLaunchArgs: null,
     };
+    if (config.continuityScope === "process-local") {
+      const client = new StdioRpcClient(sidecar, context);
+      const rounds = [];
+      let hostShutdownPassed = false;
+      try {
+        await client.connect();
+        const expectedRounds = options.strict ? strictRoundCount : 1;
+        for (let index = 0; index < expectedRounds; index += 1) {
+          const round = await runProcessLocalRound(
+            context,
+            index + 1,
+            client,
+            selfTestEvidence,
+          );
+          rounds.push(round);
+          if (!round.ready) break;
+        }
+        const shutdown = await client.shutdown();
+        hostShutdownPassed = shutdown.acknowledged === true
+          && shutdown.exited === true
+          && shutdown.statusCode === 0;
+      } catch {
+        hostShutdownPassed = false;
+        await client.abort();
+      }
+      let aggregate = aggregateProcessLocalResult(
+        config.id,
+        options.strict,
+        true,
+        rounds,
+        selfTestEvidence,
+        { releaseUi: false, hostShutdownPassed },
+      );
+      const externalBlocker = rounds.find((round) =>
+        processLocalExternalBlockers.has(round.errorCode))?.errorCode;
+      if (externalBlocker) {
+        const blocked = {
+          ...blockedResult(
+            config.id,
+            options.strict,
+            true,
+            externalBlocker,
+            selfTestEvidence,
+          ),
+          continuityScope: "process-local",
+          processLocalOracleEvidenceComplete:
+            typeof selfTestEvidence?.processLocalOraclePassed === "boolean",
+          processLocalOraclePassed: selfTestEvidence?.processLocalOraclePassed === true,
+          hostShutdownEvidenceComplete: true,
+          hostShutdownPassed,
+        };
+        blocked.evidenceDigest = digest({ ...blocked, evidenceDigest: undefined });
+        return { ...blocked, evidenceWrite: null };
+      }
+      if (options.releaseUi === true && aggregate.status === "core-passed") {
+        aggregate = {
+          ...aggregate,
+          status: "release-ui-passed",
+          conversationGatePassed: true,
+          consecutivePasses: strictRoundCount,
+          productReceiptJoined: true,
+          productArtifactDigest: productReceipt.artifactDigest,
+          productContinuityBindingDigest: productReceipt.continuityBindingDigest,
+        };
+        aggregate.evidenceDigest = digest({ ...aggregate, evidenceDigest: undefined });
+      }
+      const evidenceWrite = options.releaseUi === true
+        ? writeReleaseUiAdapterEvidence(aggregate, context)
+        : null;
+      return { ...aggregate, evidenceWrite };
+    }
     const cleanup = await preflightCleanup(context);
     if (!cleanup.ready) {
       return blockedResult(config.id, options.strict, true, cleanup.code, selfTestEvidence);
@@ -100,7 +198,7 @@ export async function runLive(options, selfTestEvidence) {
       aggregate = {
         ...aggregate,
         status: "release-ui-passed",
-        releaseUiPassed: true,
+        conversationGatePassed: true,
         consecutivePasses: strictRoundCount,
         productReceiptJoined: true,
         productArtifactDigest: productReceipt.artifactDigest,

@@ -13,11 +13,9 @@ use super::relay_operations::{
     command_complete_with_config, commands_poll_with_config, local_command_from_relay_delivery,
     pc_check_in_with_context, validate_secure_envelope,
 };
-#[cfg(test)]
-use super::secret_custody::load_config_with_runtime_secret_overrides;
 use super::secret_custody::{
-    CONFIG_SCHEMA_VERSION, RUNTIME_SECRET_OVERRIDE_TRANSPORT,
-    load_config_with_runtime_secret_context_for_operation,
+    CONFIG_SCHEMA_VERSION, RUNTIME_SECRET_OVERRIDE_TRANSPORT, RuntimeSecretMaterial,
+    load_config_with_runtime_secret_context, load_config_with_runtime_secret_context_for_operation,
     mobile_relay_e2ee_secret_store_authorization_batch_operation_count,
 };
 use super::support::{
@@ -36,7 +34,7 @@ pub fn commands_sync(params: &Value) -> Result<Value> {
             .saturating_add(4),
     )?;
     let check_in = pc_check_in_with_context(params, &mut config, &mut secret_context)?;
-    let polled = commands_poll_with_config(params, &config)?;
+    let polled = commands_poll_with_config(params, &config, &secret_context.material)?;
     let deliveries = polled
         .get("envelopes")
         .and_then(Value::as_array)
@@ -102,7 +100,11 @@ pub fn commands_sync(params: &Value) -> Result<Value> {
                 .as_mut()
                 .ok_or_else(|| anyhow!("mobile relay commands sync authorization batch missing"))?;
             match execute_secure_envelope_command_with_pairwise_operation(
-                command, params, &config, operation,
+                command,
+                params,
+                &config,
+                &secret_context.material,
+                operation,
             ) {
                 Ok(result_envelope) => {
                     let mut completion_params = json!({
@@ -114,7 +116,11 @@ pub fn commands_sync(params: &Value) -> Result<Value> {
                     });
                     attach_runtime_secret_overrides_param(&mut completion_params, params);
                     attach_canonical_relay_params(&mut completion_params, params);
-                    let completion = command_complete_with_config(&completion_params, &config)?;
+                    let completion = command_complete_with_config(
+                        &completion_params,
+                        &config,
+                        &secret_context.material,
+                    )?;
                     completed.push(json!({
                         "command": redacted_command,
                         "ok": true,
@@ -228,10 +234,11 @@ fn attach_canonical_relay_params(target: &mut Value, source: &Value) {
 
 #[cfg(test)]
 pub(super) fn execute_secure_envelope_command(command: &Value, params: &Value) -> Result<Value> {
-    let (config, _) = load_config_with_runtime_secret_overrides(params)?;
+    let (config, mut secret_context) = load_config_with_runtime_secret_context(params)?;
     ensure_peer_verified(&config)?;
     let mut pairwise_operation = mobile_relay_pairwise_operation(
         &config,
+        &secret_context.material,
         "Mobile Relay secure command operation authorization batch",
         5,
     )?;
@@ -239,6 +246,7 @@ pub(super) fn execute_secure_envelope_command(command: &Value, params: &Value) -
         command,
         params,
         &config,
+        &secret_context.material,
         &mut pairwise_operation,
     )
 }
@@ -247,6 +255,7 @@ fn execute_secure_envelope_command_with_pairwise_operation(
     command: &Value,
     params: &Value,
     config: &Value,
+    secret_material: &RuntimeSecretMaterial,
     pairwise_operation: &mut MobileRelayPairwiseOperation,
 ) -> Result<Value> {
     ensure_peer_verified(config)?;
@@ -257,13 +266,14 @@ fn execute_secure_envelope_command_with_pairwise_operation(
     validate_secure_envelope(&envelope)?;
     let opened = open_mobile_relay_payload_with_pairwise_operation(
         config,
+        secret_material,
         &envelope,
         crate::core::secure_mesh_crypto::SecureMeshPayloadKind::Command,
         pairwise_operation,
     )?;
     let payload: Value = serde_json::from_slice(&opened)
         .map_err(|error| anyhow!("secure mesh command payload is not JSON: {}", error))?;
-    let context = secure_command_context(config, params, &payload)?;
+    let context = secure_command_context(config, secret_material, params, &payload)?;
     let ledger_path =
         crate::domain::secure_mesh_command_runtime::default_secure_command_ledger_path()?;
     let mut ledger =
@@ -288,6 +298,7 @@ fn execute_secure_envelope_command_with_pairwise_operation(
     });
     seal_mobile_relay_payload_with_pairwise_operation(
         config,
+        secret_material,
         crate::core::secure_mesh_crypto::SecureMeshPayloadKind::ResultPayload,
         &execution,
         pairwise_operation,

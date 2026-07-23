@@ -1,9 +1,9 @@
 {
-  "schemaVersion": "licolite.client-release-acceptance-config.v3",
-  "reportSchemaVersion": "licolite.client-release-acceptance-report.v3",
+  "schemaVersion": "licomesh.client-release-acceptance-config.v3",
+  "reportSchemaVersion": "licomesh.client-release-acceptance-report.v3",
   "producerPolicy": "same-process-required",
   "releaseTargetAuthority": {
-    "schemaVersion": "licolite.client-release-target-authority.v1",
+    "schemaVersion": "licomesh.client-release-target-authority.v1",
     "selectedTargetIds": [
       "macos-arm64",
       "android-arm64",
@@ -35,34 +35,34 @@
   ],
   "artifactReceipt": {
     "ref": "build/reports/client-artifact-verification-receipts.json",
-    "schemaVersion": "licolite.client-artifact-verification-receipts.v3",
+    "schemaVersion": "licomesh.client-artifact-verification-receipts.v3",
     "producer": "tools/scripts/client-artifact-verification-receipts.mjs"
   },
   "reports": {
     "pairwise": {
       "ref": "build/reports/secure-mesh-pairwise-content-crypto-audit.json",
-      "schemaVersion": "licolite.secure-mesh.pairwise-content-audit-report.v1",
+      "schemaVersion": "licomesh.secure-mesh.pairwise-content-audit-report.v1",
       "producer": "tools/scripts/client-secure-mesh-pairwise-content-audit.mjs",
       "redactionRefs": [
         "build/reports/secure-mesh-pairwise-content-vector-corpus.json",
         "build/reports/secure-mesh-pairwise-content-review-signoff.json"
       ]
     },
-    "relayMock": { "ref": "build/reports/secure-client-relay-mock-e2e.json", "schemaVersion": "licolite.secure-client-relay.client-acceptance-report.v1", "producer": "tools/scripts/client-secure-client-relay-mock-e2e.mjs" },
-    "file": { "ref": "build/reports/secure-mesh-encrypted-file-handoff.json", "schemaVersion": "licolite.secure-mesh.encrypted-file-handoff-report.v1", "producer": "tools/scripts/client-secure-mesh-encrypted-file-handoff.mjs" },
-    "trust": { "ref": "build/reports/secure-mesh-trust-ux.json", "schemaVersion": "licolite.secure-mesh.trust-ux-report.v2", "producer": "tools/scripts/client-secure-mesh-trust-ux.mjs" },
-    "acp": { "ref": "build/reports/secure-mesh-acp-relay-governed-baseline.json", "schemaVersion": "licolite.secure-mesh.acp-relay-governed-baseline-report.v1", "producer": "tools/scripts/client-secure-mesh-acp-relay-governed-baseline.mjs" },
-    "acpArchive": { "ref": "build/reports/secure-mesh-acp-archive-release-proof.json", "schemaVersion": "licolite.secure-mesh.acp-archive-release-proof-report.v1", "producer": "tools/scripts/client-secure-mesh-acp-archive-release-proof.mjs" },
+    "relayMock": { "ref": "build/reports/secure-client-relay-mock-e2e.json", "schemaVersion": "licomesh.secure-client-relay.client-acceptance-report.v1", "producer": "tools/scripts/client-secure-client-relay-mock-e2e.mjs" },
+    "file": { "ref": "build/reports/secure-mesh-encrypted-file-handoff.json", "schemaVersion": "licomesh.secure-mesh.encrypted-file-handoff-report.v1", "producer": "tools/scripts/client-secure-mesh-encrypted-file-handoff.mjs" },
+    "trust": { "ref": "build/reports/secure-mesh-trust-ux.json", "schemaVersion": "licomesh.secure-mesh.trust-ux-report.v2", "producer": "tools/scripts/client-secure-mesh-trust-ux.mjs" },
+    "acp": { "ref": "build/reports/secure-mesh-acp-relay-governed-baseline.json", "schemaVersion": "licomesh.secure-mesh.acp-relay-governed-baseline-report.v1", "producer": "tools/scripts/client-secure-mesh-acp-relay-governed-baseline.mjs" },
+    "acpArchive": { "ref": "build/reports/secure-mesh-acp-archive-release-proof.json", "schemaVersion": "licomesh.secure-mesh.acp-archive-release-proof-report.v1", "producer": "tools/scripts/client-secure-mesh-acp-archive-release-proof.mjs" },
     "androidPlatformCrypto": {
       "ref": "build/reports/secure-mesh-android-platform-crypto-acceptance.json",
-      "schemaVersion": "licolite.secure-mesh.android-platform-crypto-acceptance.v1",
+      "schemaVersion": "licomesh.secure-mesh.android-platform-crypto-acceptance.v1",
       "producer": "tools/scripts/client-android-native-tests.mjs",
       "targetIds": ["android-arm64"],
       "timeoutMs": 600000
     },
     "macosCli": {
       "ref": "build/reports/secure-mesh-release-cli-proof-macos.json",
-      "schemaVersion": "licolite.secure-mesh.release-cli-proof-report.v1",
+      "schemaVersion": "licomesh.secure-mesh.release-cli-proof-report.v1",
       "producer": "tools/scripts/client-secure-mesh-release-cli-proof.mjs",
       "targetIds": ["macos-arm64"],
       "args": ["--cli", "/Applications/Arc.app/Contents/MacOS/lico-client", "--platform", "macos", "--report", "build/reports/secure-mesh-release-cli-proof-macos.json"],
@@ -70,13 +70,13 @@
     },
     "linuxCli": {
       "ref": "build/reports/secure-mesh-release-cli-proof-linux.json",
-      "schemaVersion": "licolite.secure-mesh.release-cli-proof-report.v1",
+      "schemaVersion": "licomesh.secure-mesh.release-cli-proof-report.v1",
       "producer": "tools/scripts/client-secure-mesh-release-cli-proof.mjs",
       "targetIds": ["linux-glibc-arm64"],
       "args": ["--cli", "build/apps/desktop/bundles/linux/release/bundle/lico-client", "--platform", "ubuntu-linux-arm64", "--report", "build/reports/secure-mesh-release-cli-proof-linux.json"],
       "timeoutMs": 180000
     },
-    "redaction": { "ref": "build/reports/secure-mesh-report-redaction.json", "schemaVersion": "licolite.secure-mesh.report-redaction-verifier.v1", "producer": "tools/scripts/client-secure-mesh-report-redaction-verify.mjs" }
+    "redaction": { "ref": "build/reports/secure-mesh-report-redaction.json", "schemaVersion": "licomesh.secure-mesh.report-redaction-verifier.v1", "producer": "tools/scripts/client-secure-mesh-report-redaction-verify.mjs" }
   },
   "artifacts": {
     "macos-arm64": {

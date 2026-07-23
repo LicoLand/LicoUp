@@ -384,7 +384,11 @@ void registerAgentsWorkspaceRendererProcessCardScenarios() {
     expect(find.text('Native event'), findsOneWidget);
     expect(
       find.text('Invocation details are hidden.', findRichText: true),
-      findsOneWidget,
+      findsNothing,
+    );
+    expect(
+      find.textContaining('read workspace-source.rs', findRichText: true),
+      findsWidgets,
     );
     expect(
       find.textContaining('Inspected the adapter under', findRichText: true),
@@ -395,9 +399,15 @@ void registerAgentsWorkspaceRendererProcessCardScenarios() {
       findsOneWidget,
     );
     expect(find.textContaining('secret-value'), findsNothing);
-    expect(find.textContaining('/workspace/private'), findsNothing);
-    expect(find.textContaining('private-thread'), findsNothing);
-    expect(find.textContaining('{"'), findsNothing);
+    expect(
+      find.textContaining('/workspace/private', findRichText: true),
+      findsWidgets,
+    );
+    expect(
+      find.textContaining('private-thread', findRichText: true),
+      findsWidgets,
+    );
+    expect(find.textContaining('{"', findRichText: true), findsWidgets);
     expect(
       tester.getSemantics(find.byKey(processSemanticsKey)),
       isSemantics(hasExpandedState: true, isExpanded: true, hasTapAction: true),

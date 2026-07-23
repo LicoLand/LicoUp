@@ -1,5 +1,5 @@
 {
-  "schemaVersion": "licolite.secure-mesh.pairwise-content-audit-config.v2",
+  "schemaVersion": "licomesh.secure-mesh.pairwise-content-audit-config.v2",
   "reportOutput": "build/reports/secure-mesh-pairwise-content-crypto-audit.json",
   "vectorCorpusOutput": "build/reports/secure-mesh-pairwise-content-vector-corpus.json",
   "reviewSignoff": {
@@ -91,7 +91,7 @@
       "id": "pqxdh-mlkem1024-schedule-has-known-answer-vectors",
       "file": "crates/lico-client-native/src/core/secure_mesh_pqxdh.rs",
       "tokens": [
-        "licolite.pqxdh-triple-ratchet.v1.x25519-ed25519-mlkem1024-hkdfsha256",
+        "licomesh.pqxdh-triple-ratchet.v1.x25519-ed25519-mlkem1024-hkdfsha256",
         "ML_KEM_1024_PUBLIC_KEY_BYTES: usize = 1_568",
         "ML_KEM_1024_PRIVATE_KEY_BYTES: usize = 3_168",
         "ML_KEM_1024_CIPHERTEXT_BYTES: usize = 1_568",
@@ -133,7 +133,7 @@
         "crates/lico-client-native/src/core/secure_mesh_pairwise/tests/key_ratchet.rs"
       ],
       "tokens": [
-        "licolite.pqxdh-triple-ratchet.v1.x25519-ed25519-mlkem1024-hkdfsha256-chacha20poly1305",
+        "licomesh.pqxdh-triple-ratchet.v1.x25519-ed25519-mlkem1024-hkdfsha256-chacha20poly1305",
         "derive_pqxdh_classical_initiator_secret",
         "derive_pqxdh_classical_responder_secret",
         "derive_triple_ratchet_initial_secrets",
@@ -463,7 +463,7 @@
     {
       "id": "pairwise-content-review-signoff-is-digest-bound",
       "tokens": [
-        "licolite.secure-mesh.pairwise-content-review-signoff.v2",
+        "licomesh.secure-mesh.pairwise-content-review-signoff.v2",
         "reviewerSignatureVerified",
         "releaseOwnerSignatureVerified",
         "nativeTestFiltersDigest",

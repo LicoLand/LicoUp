@@ -14,7 +14,8 @@ use crate::domain::mobile_relay::endpoint_trust::{
     validate_pairwise_intro_targets_local_prekeys,
 };
 use crate::domain::mobile_relay::secret_custody::{
-    ensure_secure_mesh_protected_operation_allowed, selected_mobile_relay_capability_evaluation,
+    RuntimeSecretMaterial, ensure_secure_mesh_protected_operation_allowed,
+    selected_mobile_relay_capability_evaluation,
 };
 use crate::platform::secure_mesh_secret_store::SecretStoreAuthorizationRequest;
 use anyhow::{Result, anyhow, ensure};
@@ -23,12 +24,13 @@ use time::OffsetDateTime;
 
 pub(in crate::domain::mobile_relay) fn initialize_mobile_relay_pairwise_session(
     config: &mut Value,
+    secret_material: &mut RuntimeSecretMaterial,
     peer_descriptor: &Value,
     peer_identity: &DeviceTrustPublicIdentity,
 ) -> Result<()> {
     ensure_secure_mesh_protected_operation_allowed()?;
     let mut store = mobile_relay_pairwise_store()?;
-    let endpoint = local_endpoint_state(config)?;
+    let endpoint = local_endpoint_state(config, secret_material)?;
     let peer = peer_endpoint_state(config)?;
     let session_id = session_id(config)?;
     let capability_evaluation = selected_mobile_relay_capability_evaluation()?;
@@ -177,7 +179,7 @@ pub(in crate::domain::mobile_relay) fn initialize_mobile_relay_pairwise_session(
                 now.unix_timestamp(),
                 now_iso(),
             )?;
-            rotate_mobile_relay_one_time_prekeys(config)?;
+            rotate_mobile_relay_one_time_prekeys(config, secret_material)?;
             return Ok(());
         }
     }

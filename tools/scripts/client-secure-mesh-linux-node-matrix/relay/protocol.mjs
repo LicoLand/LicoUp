@@ -3,8 +3,8 @@ import { assert } from "../assert.mjs";
 export function relayResult(payload) {
   return {
     ok: true,
-    schemaVersion: "licolite.mobile-relay.response-schema.v1",
-    protocolVersion: "licolite.mobile-relay.v1",
+    schemaVersion: "licomesh.mobile-relay.response-schema.v1",
+    protocolVersion: "licomesh.mobile-relay.v1",
     ...payload
   };
 }

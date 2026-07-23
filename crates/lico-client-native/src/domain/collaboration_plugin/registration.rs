@@ -493,7 +493,7 @@ pub(in crate::domain::collaboration_plugin) fn canonical_agent_id(
 ) -> Option<String> {
     let canonical = match runtime_id {
         "copilot" | "copilot-acp" => "copilot",
-        "cursor" | "cursor-acp" => "cursor",
+        "cursor" | "cursor-acp" | "cursor-cli" => "cursor",
         "hermes" | "hermes-acp" => "hermes",
         "kimi-code" | "kimi-code-acp" => "kimi-code",
         "openclaw" | "openclaw-acp" => "openclaw",

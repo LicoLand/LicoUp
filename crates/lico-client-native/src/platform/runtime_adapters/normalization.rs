@@ -132,14 +132,14 @@ pub(super) fn normalize_antigravity(
     NormalizedExecution {
         ok: execution.ok,
         output: execution.output,
-        events: Vec::new(),
+        events: execution.events,
         capabilities: json!({
-            "newSession": false,
-            "resumeSession": false,
-            "structuredEvents": false,
+            "newSession": true,
+            "resumeSession": true,
+            "structuredEvents": true,
             "interactiveApprovalBridge": false,
-            "messageSend": false,
-            "blocker": "antigravity_cli_structured_transport_unavailable"
+            "promptInArguments": true,
+            "continuityIdInArguments": true
         }),
         error: execution.error.map(|failure| NormalizedFailure {
             code: failure.code.to_string(),
@@ -170,7 +170,7 @@ pub(super) fn normalize_antigravity(
         stderr_truncated: execution.stderr_truncated,
         started_at: execution.started_at,
         runtime_protocol: antigravity_driver::RUNTIME_PROTOCOL,
-        driver_id: "antigravity-cli",
+        driver_id: antigravity_driver::DRIVER_ID,
     }
 }
 
@@ -216,6 +216,54 @@ pub(super) fn normalize_claude(execution: claude_code_driver::RunResult) -> Norm
         started_at: execution.started_at,
         runtime_protocol: claude_code_driver::RUNTIME_PROTOCOL,
         driver_id: "claude-code-stream-json",
+    }
+}
+
+pub(super) fn normalize_cursor(
+    execution: crate::platform::cursor_driver::RunResult,
+) -> NormalizedExecution {
+    NormalizedExecution {
+        ok: execution.ok,
+        output: execution.output,
+        events: execution.events,
+        capabilities: json!({
+            "newSession": true,
+            "resumeSession": true,
+            "structuredEvents": true,
+            "interactiveApprovalBridge": false,
+            "promptInArguments": true,
+            "continuityIdInArguments": true
+        }),
+        error: execution.error.map(|failure| NormalizedFailure {
+            code: failure.code.to_string(),
+            message: failure.message.to_string(),
+            stage: failure.stage.to_string(),
+            user_interaction_required: failure.user_interaction_required,
+            request_method: failure.request_method,
+            session_id: failure.session_id,
+            thread_id: failure.thread_id,
+            turn_id: failure.turn_id,
+            turn_status: failure.turn_status,
+        }),
+        session_id: execution.session_id,
+        thread_id: execution.thread_id,
+        turn_id: execution.turn_id,
+        turn_status: execution.turn_status,
+        effective: NormalizedEffectiveSettings {
+            cwd: execution.effective.cwd,
+            model: execution.effective.model,
+            reasoning_effort: execution.effective.reasoning_effort,
+            permission_mode: execution.effective.permission_mode,
+            sandbox: execution.effective.sandbox,
+            approval_policy: execution.effective.approval_policy,
+            ..NormalizedEffectiveSettings::default()
+        },
+        status_code: execution.status_code,
+        stdout_truncated: execution.stdout_truncated,
+        stderr_truncated: execution.stderr_truncated,
+        started_at: execution.started_at,
+        runtime_protocol: crate::platform::cursor_driver::RUNTIME_PROTOCOL,
+        driver_id: crate::platform::cursor_driver::DRIVER_ID,
     }
 }
 

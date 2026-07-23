@@ -2,8 +2,12 @@ use crate::core::secure_mesh_capability::{CustodyRestartSemantics, SecretCustody
 
 use super::super::ephemeral::EphemeralSecretStore;
 use crate::core::secure_mesh_secret_store::{
-    SecretStoreAuthorizationRequest, SecretStoreHandle, SecureMeshSecretStore,
+    SecretBytes, SecretStoreAuthorizationRequest, SecretStoreHandle, SecureMeshSecretStore,
 };
+
+fn secret(value: &str) -> SecretBytes {
+    SecretBytes::try_from_string(value.to_owned()).unwrap()
+}
 
 #[test]
 fn ephemeral_strategy_zeroizing_store_has_explicit_restart_repair_semantics() {
@@ -12,14 +16,15 @@ fn ephemeral_strategy_zeroizing_store_has_explicit_restart_repair_semantics() {
     let request = SecretStoreAuthorizationRequest::noninteractive("ephemeral operation", 3);
     let session = store.begin_authorized_session(&request).unwrap();
     store
-        .set_secret_with_session(&session, &handle, "secret-value")
+        .set_secret_with_session(&session, &handle, secret("secret-value"))
         .unwrap();
     assert_eq!(
         store
             .get_secret_with_session(&session, &handle)
             .unwrap()
-            .as_deref(),
-        Some("secret-value")
+            .as_ref()
+            .map(SecretBytes::expose_bytes),
+        Some(b"secret-value".as_slice())
     );
     store.delete_secret_with_session(&session, &handle).unwrap();
     assert_eq!(session.remaining_operation_count(), 0);

@@ -6,6 +6,7 @@ use super::control::ControlRequest;
 use super::errors::{ProtocolFailure, pipe_failure};
 use super::io::{TransportEvent, drain_stderr, read_protocol_messages};
 use std::io::BufReader;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use std::sync::mpsc::{self, Receiver};
@@ -21,6 +22,7 @@ pub(super) struct PersistentTransport {
     stderr_handle: Option<thread::JoinHandle<()>>,
     pub(super) stderr_truncated: Arc<AtomicBool>,
     closed: bool,
+    join_probe_path: Option<PathBuf>,
 }
 
 impl PersistentTransport {
@@ -57,6 +59,9 @@ impl PersistentTransport {
             stderr_handle: Some(stderr_handle),
             stderr_truncated,
             closed: false,
+            join_probe_path: std::env::var_os("LICO_TEST_CLAUDE_TRANSPORT_JOIN_PROBE_ROOT")
+                .and_then(|_| identity.cwd.as_ref())
+                .map(|cwd| cwd.join("fake-claude-transport-workers.joined")),
         })
     }
 
@@ -64,7 +69,6 @@ impl PersistentTransport {
         if self.closed {
             return Ok(());
         }
-        self.closed = true;
         let stdout = self
             .stdout_handle
             .take()
@@ -73,7 +77,12 @@ impl PersistentTransport {
             .stderr_handle
             .take()
             .ok_or(TransportFinishFailure::Lifecycle)?;
-        finish_protocol_transport(&mut self.child, &mut self.stdin, stdout, stderr)
+        finish_protocol_transport(&mut self.child, &mut self.stdin, stdout, stderr)?;
+        self.closed = true;
+        if let Some(path) = self.join_probe_path.as_ref() {
+            std::fs::write(path, b"joined").map_err(|_| TransportFinishFailure::Lifecycle)?;
+        }
+        Ok(())
     }
 }
 

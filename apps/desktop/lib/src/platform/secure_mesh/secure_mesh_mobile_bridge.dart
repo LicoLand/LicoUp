@@ -1,4 +1,5 @@
 import 'package:flutter/services.dart';
+import 'package:flutter_client/src/contracts/generated/secure_mesh.g.dart';
 
 class SecureMeshMobileBridge {
   const SecureMeshMobileBridge({
@@ -15,6 +16,28 @@ class SecureMeshMobileBridge {
   final String _platform;
   final String _unavailableCode;
   final String _unavailableMessage;
+
+  Future<SecureMeshResult> execute(SecureMeshRequest request) async {
+    try {
+      final response = await _channel.invokeMethod<Object?>(
+        'nativeJson',
+        request.toJson(),
+      );
+      return SecureMeshResult.fromJson(
+        Map<String, Object?>.from(_normalizeMap(response)),
+      );
+    } on SecureMeshFailure {
+      rethrow;
+    } on MissingPluginException {
+      throw const SecureMeshFailure(
+        code: SecureMeshFailureCode.nativeOperationFailed,
+      );
+    } on PlatformException {
+      throw const SecureMeshFailure(
+        code: SecureMeshFailureCode.nativeOperationFailed,
+      );
+    }
+  }
 
   Future<Map<String, dynamic>> status() async {
     try {
@@ -51,7 +74,7 @@ class SecureMeshMobileBridge {
   Map<String, dynamic> _unavailable(MissingPluginException error) {
     return {
       'ok': false,
-      'protocolVersion': 'licolite.secure-mesh.v1',
+      'protocolVersion': 'licomesh.secure-mesh.v1',
       'endpointKind': 'mobile',
       'platform': _platform,
       'code': _unavailableCode,

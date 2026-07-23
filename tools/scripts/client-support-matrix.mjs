@@ -7,9 +7,23 @@ import { loadClientReleaseTargetCatalog } from "./lib/client-release-targets.mjs
 
 const repoRoot = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const catalogPath = path.join(repoRoot, "tools", "client-support-matrix.json");
+const driverInventoryPath = path.join(
+  repoRoot,
+  "crates",
+  "lico-client-native",
+  "resources",
+  "agent-conversation-drivers.json",
+);
+const driverReadinessPath = path.join(
+  repoRoot,
+  "crates",
+  "lico-client-native",
+  "resources",
+  "agent-conversation-readiness.json",
+);
 const reportPaths = Object.freeze({
-  en: path.join(repoRoot, "docs", "releases", "client-support-matrix.md"),
-  zhCN: path.join(repoRoot, "docs", "releases", "client-support-matrix.zh-CN.md")
+  en: path.join(repoRoot, "docs", "COMPATIBILITY.md"),
+  zhCN: path.join(repoRoot, "docs", "COMPATIBILITY.zh-CN.md")
 });
 const allowedStatuses = new Set(["supported", "preview", "deferred", "unsupported", "unverified"]);
 
@@ -80,16 +94,77 @@ function selectedStatus(row, serviceId) {
   return row.statuses[serviceId];
 }
 
-function renderEnglishReport(validated, productVersion) {
+function validateDriverProjection(raw) {
+  requireValue(
+    raw?.schemaVersion === "v0.0.1:client-agent-conversation-drivers-1",
+    "unexpected client driver inventory schema",
+  );
+  requireValue(Array.isArray(raw.drivers) && raw.drivers.length > 0,
+    "client driver inventory is empty");
+  const ids = new Set();
+  for (const driver of raw.drivers) {
+    requireValue(typeof driver?.agentId === "string" && driver.agentId.length > 0,
+      "client driver agentId is required");
+    requireValue(!ids.has(driver.agentId), `duplicate client driver: ${driver.agentId}`);
+    ids.add(driver.agentId);
+    requireValue(typeof driver.runtimeProtocol === "string" && driver.runtimeProtocol.length > 0,
+      `client driver ${driver.agentId} runtimeProtocol is required`);
+    requireValue(typeof driver.capabilityMatrix?.laneFamily === "string",
+      `client driver ${driver.agentId} laneFamily is required`);
+  }
+  return raw.drivers;
+}
+
+function validateDriverReadiness(raw, drivers) {
+  requireValue(
+    raw?.schemaVersion === "v0.0.1:client-agent-conversation-readiness-1",
+    "unexpected client driver readiness schema",
+  );
+  requireValue(Array.isArray(raw.adapters), "client driver readiness adapters are required");
+  const statuses = new Map();
+  for (const adapter of raw.adapters) {
+    requireValue(
+      typeof adapter?.agentId === "string" &&
+        typeof adapter?.status === "string" &&
+        typeof adapter?.sendEnabled === "boolean",
+      "client driver readiness fields are required",
+    );
+    requireValue(!statuses.has(adapter.agentId),
+      `duplicate client driver readiness: ${adapter.agentId}`);
+    statuses.set(adapter.agentId, adapter);
+  }
+  requireValue(
+    JSON.stringify([...statuses.keys()].sort()) ===
+      JSON.stringify(drivers.map((driver) => driver.agentId).sort()),
+    "client driver inventory and readiness ids differ",
+  );
+  return statuses;
+}
+
+function yesNo(value) {
+  return value === true ? "yes" : "no";
+}
+
+function chineseYesNo(value) {
+  return value === true ? "是" : "否";
+}
+
+function renderEnglishReport(validated, productVersion, drivers, readiness) {
   const targetById = new Map(validated.releaseCatalog.targets.map((target) => [target.id, target]));
   const lines = [
-    "# Lico Arc Client Support Matrix",
+    "# Lico Arc Compatibility",
     "",
-    "English · [简体中文](client-support-matrix.zh-CN.md) · [Home](../../README.md)",
+    "English (normative) · [简体中文](COMPATIBILITY.zh-CN.md) · [Documentation](README.md) · [Project](../README.md)",
     "",
     `Product version: \`${productVersion}\``,
     "",
-    "This file is generated from the client catalogs. A build target is not a support claim.",
+    "Generated sources: `tools/client-support-matrix.json`, `tools/client-release-targets.json`, `tools/client-version.json`, `crates/lico-client-native/resources/agent-conversation-drivers.json`, and `crates/lico-client-native/resources/agent-conversation-readiness.json`.",
+    "",
+    "Update with `npm run client:support-matrix:sync`; verify with `npm run client:support-matrix:check`. Do not edit this projection by hand.",
+    "",
+    "## Platform targets",
+    "",
+    "A build target is not a support claim.",
     "",
     "| Target | Build | GitHub Release eligible | Physical/device evidence | Store publication | Client | Peer encryption | Mobile relay |",
     "| --- | --- | --- | --- | --- | --- | --- | --- |"
@@ -113,21 +188,40 @@ function renderEnglishReport(validated, productVersion) {
     "- Feature status does not establish native-host, physical-device, biometric, hardware-custody, or cross-device evidence. Those claims remain `not claimed`; a simulator row proves only its simulator closure.",
     "- Store publication is not claimed by this matrix and requires a separate channel-specific result.",
     "- Peer content is encrypted by the sending client. Sensitive runtime data stays local.",
+    "",
+    "## Agent adapter targets",
+    "",
+    "This table projects the native driver inventory. Runtime protocol and capability fields remain owned by that inventory.",
+    "",
+    "| Agent ID | Driver mode | Readiness | Send enabled | Runtime protocol | Lane family | Exact resume | Streaming | Native interrupt/steer |",
+    "| --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+  );
+  for (const driver of drivers) {
+    const adapterReadiness = readiness.get(driver.agentId);
+    lines.push(`| ${driver.agentId} | ${driver.driverMode} | ${adapterReadiness.status} | ${yesNo(adapterReadiness.sendEnabled)} | ${driver.runtimeProtocol} | ${driver.capabilityMatrix.laneFamily} | ${yesNo(driver.capabilityMatrix.exactResume)} | ${yesNo(driver.capabilityMatrix.streaming)} | ${yesNo(driver.capabilityMatrix.interruptSteer)} |`);
+  }
+  lines.push(
     ""
   );
   return lines.join("\n");
 }
 
-function renderChineseReport(validated, productVersion) {
+function renderChineseReport(validated, productVersion, drivers, readiness) {
   const targetById = new Map(validated.releaseCatalog.targets.map((target) => [target.id, target]));
   const lines = [
-    "# Lico Arc 客户端支持状态",
+    "# Lico Arc 兼容性",
     "",
-    "[English](client-support-matrix.md) · 简体中文 · [首页](../../README.zh-CN.md)",
+    "[English（规范版本）](COMPATIBILITY.md) · 简体中文（本地化） · [文档索引](README.md) · [项目首页](../README.zh-CN.md)",
     "",
     `产品版本：\`${productVersion}\``,
     "",
-    "本文件根据客户端目录自动生成。可以构建，不代表已经支持。",
+    "生成来源：`tools/client-support-matrix.json`、`tools/client-release-targets.json`、`tools/client-version.json`、`crates/lico-client-native/resources/agent-conversation-drivers.json` 和 `crates/lico-client-native/resources/agent-conversation-readiness.json`。",
+    "",
+    "使用 `npm run client:support-matrix:sync` 更新，使用 `npm run client:support-matrix:check` 验证。请勿手工维护本投影。",
+    "",
+    "## 平台目标",
+    "",
+    "可以构建，不代表已经支持。",
     "",
     "| 目标 | 构建 | 可选入 GitHub Release | 真机/设备证据 | 商店发布 | 客户端 | 对端加密 | 移动中转 |",
     "| --- | --- | --- | --- | --- | --- | --- | --- |"
@@ -151,6 +245,19 @@ function renderChineseReport(validated, productVersion) {
     "- 功能状态不能证明原生宿主、真机、生物识别、硬件密钥保管或跨设备证据；这些结论保持“未声明”，模拟器行只证明模拟器闭环。",
     "- 本矩阵不声明商店发布；商店发布必须有独立的渠道结论。",
     "- 对端内容由发送客户端加密，敏感运行时数据留在本机。",
+    "",
+    "## 智能体适配目标",
+    "",
+    "本表投影原生驱动清单。运行协议和能力字段仍由该清单负责。",
+    "",
+    "| 智能体 ID | 驱动模式 | 就绪状态 | 可发送 | 运行协议 | 通道族 | 准确继续 | 流式事件 | 原生中断/steer |",
+    "| --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+  );
+  for (const driver of drivers) {
+    const adapterReadiness = readiness.get(driver.agentId);
+    lines.push(`| ${driver.agentId} | ${driver.driverMode} | ${adapterReadiness.status} | ${chineseYesNo(adapterReadiness.sendEnabled)} | ${driver.runtimeProtocol} | ${driver.capabilityMatrix.laneFamily} | ${chineseYesNo(driver.capabilityMatrix.exactResume)} | ${chineseYesNo(driver.capabilityMatrix.streaming)} | ${chineseYesNo(driver.capabilityMatrix.interruptSteer)} |`);
+  }
+  lines.push(
     ""
   );
   return lines.join("\n");
@@ -160,9 +267,11 @@ if (fileURLToPath(import.meta.url) === path.resolve(process.argv[1] || "")) {
   const action = process.argv[2] || "check";
   const productVersion = readJson(path.join(repoRoot, "tools", "client-version.json")).productVersion;
   const validated = validateClientSupportMatrix(readJson(catalogPath));
+  const drivers = validateDriverProjection(readJson(driverInventoryPath));
+  const readiness = validateDriverReadiness(readJson(driverReadinessPath), drivers);
   const reports = Object.freeze({
-    en: renderEnglishReport(validated, productVersion),
-    zhCN: renderChineseReport(validated, productVersion)
+    en: renderEnglishReport(validated, productVersion, drivers, readiness),
+    zhCN: renderChineseReport(validated, productVersion, drivers, readiness)
   });
   if (action === "sync") {
     for (const [locale, reportPath] of Object.entries(reportPaths)) {
@@ -177,5 +286,11 @@ if (fileURLToPath(import.meta.url) === path.resolve(process.argv[1] || "")) {
   } else {
     throw new Error(`unknown client support matrix action: ${action}`);
   }
-  console.log(JSON.stringify({ ok: true, productVersion, targetCount: validated.rows.length, serviceCount: validated.services.length }));
+  console.log(JSON.stringify({
+    ok: true,
+    productVersion,
+    targetCount: validated.rows.length,
+    serviceCount: validated.services.length,
+    agentAdapterCount: drivers.length,
+  }));
 }

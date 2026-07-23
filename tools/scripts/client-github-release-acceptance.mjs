@@ -193,7 +193,7 @@ function main() {
   const targets = selected.map((id) => validateTarget(id, clientVersion, sourceStateDigest));
   const blockers = targets.flatMap((target) => target.blockers.map((item) => `${target.targetId}:${item}`));
   const report = {
-    schemaVersion: "licolite.client-github-release-acceptance.v1",
+    schemaVersion: "licomesh.client-github-release-acceptance.v1",
     generatedAt: new Date().toISOString(),
     productVersion: clientVersion.productVersion,
     sourceStateDigest,

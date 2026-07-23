@@ -1,80 +1,55 @@
-import 'dart:async';
-
-import 'package:flutter_client/src/application/features/agents/policy/routing_circuit_breaker_registry.dart';
 import 'package:flutter_client/src/application/features/agents/workspace/agent_workspace_coordinator.dart';
-import 'package:flutter_client/src/application/features/routing/controller/routing_policy_editor_adapter.dart';
-import 'package:flutter_client/src/application/features/routing/engine/routing_dispatch_engine.dart';
-import 'package:flutter_client/src/application/features/routing/routing_module_flags.dart';
-import 'package:flutter_client/src/contracts/agent_orchestration_policy.dart';
-import 'package:flutter_client/src/contracts/routing/routing_dispatch_plan.dart';
-import 'package:flutter_client/src/contracts/routing/route_decision_record.dart';
-import 'package:flutter_client/src/contracts/routing/routing_policy_schema.dart';
+import 'package:flutter_client/src/contracts/agent_orchestration_target.dart';
 import 'package:flutter_client/src/contracts/target_candidate.dart';
+import 'package:flutter_client/src/application/features/agents/orchestration/orchestration_policy_editor_models.dart';
+import 'package:flutter_client/src/platform/native_client/orchestrator_ipc/client.dart';
 
-/// Policy editing, optional-module lifecycle, and circuit-breaker state.
+/// Thin editor-to-backend boundary. Policy validation, storage, compilation,
+/// activation, and revision ownership all remain in the native orchestrator.
 mixin AgentOrchestrationPolicyController on AgentWorkspaceCoordinator {
-  bool get routingModuleIncluded => kRoutingModuleIncluded;
-
-  @override
-  bool get routingModuleAvailable =>
-      kRoutingModuleIncluded &&
-      (agentWorkspaceRoutingModule?.isEnabled ?? true);
+  bool get orchestrationAvailable => !agentWorkspaceMobileRuntime;
 
   @override
   bool get selectedConversationIsOrchestration =>
-      routingModuleAvailable &&
+      orchestrationAvailable &&
       isAgentOrchestrationTargetId(selectedConversationAgentId);
 
-  Set<String> get agentOrchestrationOpenCircuitAgentIds {
-    final breaker =
-        (agentWorkspaceRoutingModule?.activePolicy ??
-                emptyRoutingPolicyDocument)
-            .routing
-            .circuitBreaker;
-    final now = DateTime.now().toUtc();
-    return RoutingCircuitBreakerRegistry.openAgentIds(
-      agentOrchestrationCircuitStates,
-      allowedFails: breaker.allowedFails,
-      cooldown: Duration(seconds: breaker.cooldownSeconds),
-      now: now,
-    );
-  }
-
   List<TargetCandidate> get orchestrationAvailableTargets {
-    if (!routingModuleAvailable) return const [];
+    if (!orchestrationAvailable) return const [];
     return scannedTargets
         .where((target) => target.isConversationAgent && target.canRelayRuntime)
         .toList(growable: false);
   }
 
   List<AgentOrchestrationPolicy> get agentOrchestrationPolicies {
-    if (!routingModuleAvailable) return const [];
+    if (!orchestrationAvailable) return const [];
     return [effectiveAgentOrchestrationPolicy];
   }
 
   AgentOrchestrationPolicy get effectiveAgentOrchestrationPolicy {
-    return normalizeAgentOrchestrationPolicy(
+    if (orchestrationPolicyDraft.isNotEmpty) {
+      return sanitizeOrchestrationPolicyEditorDraft(
+        scannedTargets,
+        AgentOrchestrationPolicy.fromBackendPolicy(orchestrationPolicyDraft),
+      );
+    }
+    return sanitizeOrchestrationPolicyEditorDraft(
       scannedTargets,
-      agentOrchestrationPolicy,
+      const AgentOrchestrationPolicy(),
     );
   }
 
   bool get agentOrchestrationPolicyConfigured =>
+      orchestrationPolicyConfigured &&
       effectiveAgentOrchestrationPolicy.configured;
 
-  List<String> get effectiveAgentOrchestrationSelectedAgentIds {
-    return agentOrchestrationDispatchModelLibrary(
-      effectiveAgentOrchestrationPolicy,
-    ).map((entry) => entry.agentId).toSet().toList(growable: false);
-  }
+  bool get orchestrationPolicyConfigured =>
+      activeOrchestrationPolicyRevision.isNotEmpty;
 
-  @override
-  String get effectiveAgentOrchestrationPrimaryAgentId {
-    final entries = agentOrchestrationDispatchModelLibrary(
-      effectiveAgentOrchestrationPolicy,
-    );
-    return entries.isEmpty ? '' : entries.first.agentId;
-  }
+  Map<String, Object?> get effectiveOrchestrationPolicy =>
+      orchestrationPolicyDraft;
+
+  Set<String> get agentOrchestrationOpenCircuitAgentIds => const {};
 
   String agentOrchestrationPolicyDisplayLabel(AgentOrchestrationPolicy policy) {
     final base = policy.label.trim().isEmpty
@@ -86,7 +61,7 @@ mixin AgentOrchestrationPolicyController on AgentWorkspaceCoordinator {
   }
 
   void selectAgentOrchestrationPolicy(String policyId) {
-    if (policyId.trim() == agentOrchestrationPolicy.id) return;
+    if (policyId.trim() == effectiveAgentOrchestrationPolicy.id) return;
     agentWorkspaceSetLocalizedStatusMessage(
       '当前仅内置默认策略。',
       'Only the default policy is currently available.',
@@ -95,209 +70,77 @@ mixin AgentOrchestrationPolicyController on AgentWorkspaceCoordinator {
     agentWorkspaceNotifyStateChanged();
   }
 
+  void selectOrchestrationPolicy(String policyRevision) {
+    if (policyRevision.trim() != activeOrchestrationPolicyRevision) {
+      throw const OrchestratorClientException(
+        code: 'policy_revision_unavailable',
+      );
+    }
+  }
+
   Future<void> saveAgentOrchestrationPolicy(
     AgentOrchestrationPolicy policy,
   ) async {
-    if (!routingModuleAvailable) {
-      throw StateError('routing_module_excluded');
+    if (!orchestrationAvailable) {
+      throw const OrchestratorClientException(code: 'service_unavailable');
     }
-    agentOrchestrationPolicy = normalizeAgentOrchestrationPolicy(
-      scannedTargets,
-      policy.copyWith(
-        id: policy.id.trim().isEmpty
-            ? defaultAgentOrchestrationPolicyId
-            : policy.id.trim(),
-        label: policy.label.trim().isEmpty
-            ? agentWorkspaceStrings.defaultPolicy
-            : policy.label.trim(),
-      ),
-    );
-    final selected = {
-      for (final entry in agentOrchestrationDispatchModelLibrary(
-        agentOrchestrationPolicy,
-      ))
-        entry.agentId,
-    };
-    agentOrchestrationCircuitStates =
-        RoutingCircuitBreakerRegistry.retainAgents(
-          agentOrchestrationCircuitStates,
-          selected,
-        );
-    agentWorkspaceSetLocalizedStatusMessage(
-      '正在保存默认编排策略。',
-      'Saving the default orchestration policy.',
-    );
-    statusCaption = 'Agent orchestration';
-    ensureOrchestrationConversationSession();
-    agentWorkspaceNotifyStateChanged();
+    final draft = sanitizeOrchestrationPolicyEditorDraft(scannedTargets, policy);
     try {
-      final editedPolicy = agentOrchestrationPolicy;
-      final routingModule = await agentWorkspaceEnsureRoutingModuleReady();
-      agentOrchestrationPolicy = editedPolicy;
-      if (editedPolicy.configured) {
-        await routingModule.savePolicy(
-          routingPolicyFromEditor(
-            editedPolicy,
-            basePolicy: routingModule.activePolicy,
-          ),
+      if (!draft.configured ||
+          orchestrationEditorOrderedEntries(draft).isEmpty) {
+        orchestrationPolicyDraft = const {};
+        activeOrchestrationPolicyRevision = '';
+        agentWorkspaceSetLocalizedStatusMessage(
+          '默认编排策略已清空。',
+          'Default orchestration policy cleared.',
         );
-      } else {
-        await routingModule.clearPolicy();
+        statusCaption = 'Agent orchestration';
+        agentWorkspaceNotifyStateChanged();
+        return;
       }
-      await Future<void>.delayed(Duration.zero);
-      final taskId = activeOrchestrationTaskId;
-      final coordinator = routingModule.coordinator;
-      if (taskId.isNotEmpty && coordinator?.sessionFor(taskId) != null) {
-        coordinator!.queuePolicy(routingModule.activePolicy);
-      }
-      agentOrchestrationPolicy = editedPolicy;
+      await saveOrchestrationPolicy(draft.toBackendPolicy());
       agentWorkspaceSetLocalizedStatusMessage(
-        agentOrchestrationPolicy.configured ? '默认编排策略已保存。' : '默认编排策略已清空。',
-        agentOrchestrationPolicy.configured
-            ? 'Default orchestration policy saved.'
-            : 'Default orchestration policy cleared.',
+        '默认编排策略已保存。',
+        'Default orchestration policy saved.',
       );
       statusCaption = 'Agent orchestration';
-    } catch (_) {
-      lastError = 'agent_orchestration_policy_save_failed';
+    } on OrchestratorClientException catch (error) {
+      lastError = error.code;
       agentWorkspaceSetLocalizedStatusMessage(
         '默认编排策略保存失败。',
         'Failed to save the default orchestration policy.',
       );
       statusCaption = 'Agent orchestration';
-    } finally {
       agentWorkspaceNotifyStateChanged();
+      rethrow;
     }
+  }
+
+  Future<OrchestratorPolicyProjection> saveOrchestrationPolicy(
+    Map<String, Object?> policy,
+  ) async {
+    final next = Map<String, Object?>.unmodifiable(policy);
+    final policyId = (next['id'] ?? '').toString().trim();
+    if (policyId.isEmpty) {
+      throw const OrchestratorClientException(code: 'policy_schema_invalid');
+    }
+    final NativeOrchestratorClient client = orchestratorClient;
+    final registered = await client.registerPolicy(
+      policy: next,
+      idempotencyKey: 'policy-register-$policyId',
+    );
+    final activated = await client.activatePolicy(
+      policyRevision: registered.policyRevision,
+      idempotencyKey: 'policy-activate-${registered.policyRevision}',
+    );
+    orchestrationPolicyDraft = next;
+    activeOrchestrationPolicyRevision = activated.policyRevision;
+    agentWorkspaceNotifyStateChanged();
+    return activated;
   }
 
   void resetAgentOrchestrationCircuitBreakers() {
-    if (!routingModuleAvailable || agentOrchestrationCircuitStates.isEmpty) {
-      return;
-    }
-    agentOrchestrationCircuitStates = const {};
-    agentWorkspaceSetLocalizedStatusMessage(
-      '已重置默认编排链路熔断状态。',
-      'Reset the default orchestration circuit breakers.',
-    );
-    statusCaption = 'Agent orchestration';
-    agentWorkspaceNotifyStateChanged();
-  }
-
-  bool recordOrchestrationRouteFailure(String agentId) {
-    final normalized = agentId.trim();
-    if (normalized.isEmpty) return false;
-    final breaker =
-        (agentWorkspaceRoutingModule?.activePolicy ??
-                emptyRoutingPolicyDocument)
-            .routing
-            .circuitBreaker;
-    final update = RoutingCircuitBreakerRegistry.recordFailure(
-      agentOrchestrationCircuitStates,
-      normalized,
-      allowedFails: breaker.allowedFails,
-      cooldown: Duration(seconds: breaker.cooldownSeconds),
-      now: DateTime.now().toUtc(),
-    );
-    agentOrchestrationCircuitStates = update.states;
-    return update.isOpen;
-  }
-
-  void recordOrchestrationRouteSuccess(String agentId) {
-    agentOrchestrationCircuitStates =
-        RoutingCircuitBreakerRegistry.recordSuccess(
-          agentOrchestrationCircuitStates,
-          agentId.trim(),
-        );
-  }
-
-  RoutingDispatchPlan previewRoutingDispatchPlan(
-    String prompt, {
-    RoutingPolicyDocument? policySnapshot,
-  }) {
-    return planRoutingDispatch(
-      targets: scannedTargets,
-      policy:
-          policySnapshot ??
-          agentWorkspaceRoutingModule?.activePolicy ??
-          emptyRoutingPolicyDocument,
-      task: RoutingTaskMetadata(prompt: prompt),
-      circuitBreakerStates: agentOrchestrationCircuitStates,
-    );
-  }
-
-  Future<void> setRoutingModuleEnabled(bool enabled) async {
-    if (!kRoutingModuleIncluded) return;
-    if (enabled) {
-      final registration =
-          agentWorkspaceRoutingModule ??
-          await agentWorkspaceEnsureRoutingModuleReady();
-      await registration.enable();
-      agentWorkspaceRoutingModule = registration;
-      await agentWorkspaceBindRoutingModulePolicyEvents(registration);
-      agentOrchestrationPolicy = orchestrationEditorFromRoutingPolicy(
-        registration.activePolicy,
-      );
-      agentWorkspaceNotifyStateChanged();
-      return;
-    }
-    final wasOrchestration = isAgentOrchestrationTargetId(
-      selectedConversationAgentId,
-    );
-    await agentWorkspaceUnbindRoutingModulePolicyEvents();
-    await agentWorkspaceRoutingModule?.deactivate();
-    agentOrchestrationPolicy = const AgentOrchestrationPolicy();
-    agentOrchestrationCircuitStates = const {};
-    if (wasOrchestration) {
-      agentWorkspaceSelectDefaultConversationAgent(preferDirectAgent: true);
-    }
-    agentWorkspaceNotifyConversationStructureChanged();
-    agentWorkspaceNotifyStateChanged();
-  }
-
-  Future<void> unloadRoutingModule() async {
-    if (!kRoutingModuleIncluded) return;
-    final wasOrchestration = isAgentOrchestrationTargetId(
-      selectedConversationAgentId,
-    );
-    await agentWorkspaceUnbindRoutingModulePolicyEvents();
-    await agentWorkspaceRoutingModule?.unload();
-    agentOrchestrationPolicy = const AgentOrchestrationPolicy();
-    agentOrchestrationCircuitStates = const {};
-    conversationSessionsByAgent = Map.unmodifiable({
-      for (final entry in conversationSessionsByAgent.entries)
-        if (!isAgentOrchestrationTargetId(entry.key)) entry.key: entry.value,
-    });
-    if (wasOrchestration) {
-      agentWorkspaceSelectDefaultConversationAgent(preferDirectAgent: true);
-    }
-    agentWorkspaceNotifyConversationStructureChanged();
-    agentWorkspaceNotifyStateChanged();
-  }
-
-  @override
-  void syncAgentOrchestrationPolicy() {
-    if (!routingModuleAvailable) {
-      agentOrchestrationPolicy = const AgentOrchestrationPolicy();
-      agentOrchestrationCircuitStates = const {};
-      return;
-    }
-    final activeRoutingPolicy = agentWorkspaceRoutingModule?.activePolicy;
-    agentOrchestrationPolicy = normalizeAgentOrchestrationPolicy(
-      scannedTargets,
-      activeRoutingPolicy == null
-          ? agentOrchestrationPolicy
-          : orchestrationEditorFromRoutingPolicy(activeRoutingPolicy),
-    );
-    final selected = {
-      for (final entry in agentOrchestrationDispatchModelLibrary(
-        agentOrchestrationPolicy,
-      ))
-        entry.agentId,
-    };
-    agentOrchestrationCircuitStates =
-        RoutingCircuitBreakerRegistry.retainAgents(
-          agentOrchestrationCircuitStates,
-          selected,
-        );
+    // Circuit breakers are owned by the native orchestrator; the GUI no longer
+    // keeps a local breaker registry.
   }
 }

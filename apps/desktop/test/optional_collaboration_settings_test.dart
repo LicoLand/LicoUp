@@ -5,7 +5,7 @@ import 'package:flutter_client/src/contracts/optional_collaboration_gateway.dart
 import 'package:flutter_client/src/contracts/optional_collaboration_models.dart';
 import 'package:flutter_client/src/contracts/optional_collaboration_local_server_models.dart';
 import 'package:flutter_client/src/contracts/optional_collaboration_workflow_models.dart';
-import 'package:flutter_client/src/frontend/features/settings/ui/optional_collaboration_settings.dart';
+import 'package:flutter_client/src/frontend/features/plugin_management/ui/optional_collaboration_settings.dart';
 import 'package:flutter_client/src/frontend/l10n/lico_strings.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -69,7 +69,7 @@ void main() {
         find.byKey(const Key('collaboration-mcp-install-workflow-section')),
         findsOneWidget,
       );
-      expect(find.text('Local LicoLite assembly'), findsOneWidget);
+      expect(find.text('Local LicoMesh assembly'), findsOneWidget);
       expect(find.textContaining('result awaits deployment'), findsOneWidget);
       expect(find.text('Server Core'), findsOneWidget);
       expect(find.text('Selected MCP'), findsOneWidget);
@@ -242,7 +242,7 @@ void main() {
     await tester.tap(choice);
     await tester.enterText(
       find.byKey(const Key('collaboration-local-destination')),
-      '/tmp/licolite-local',
+      'test-data/licomesh-local',
     );
     final planButton = find.byKey(const Key('collaboration-local-plan'));
     await tester.ensureVisible(planButton);
@@ -256,7 +256,7 @@ void main() {
     );
     expect(find.text(_workflowPlanDigest), findsOneWidget);
     expect(find.text(_digest), findsWidgets);
-    expect(find.textContaining('/tmp/licolite-local/server'), findsOneWidget);
+    expect(find.textContaining('test-data/licomesh-local/server'), findsOneWidget);
     final apply = find.byKey(const Key('collaboration-local-apply'));
     final cancel = find.byKey(const Key('collaboration-local-cancel'));
     expect(tester.widget<FilledButton>(apply).onPressed, isNull);
@@ -292,7 +292,7 @@ void main() {
       );
       await tester.enterText(
         find.byKey(const Key('collaboration-local-destination')),
-        '/tmp/licolite-local',
+        'test-data/licomesh-local',
       );
       final planButton = find.byKey(const Key('collaboration-local-plan'));
       await tester.ensureVisible(planButton);
@@ -315,7 +315,7 @@ void main() {
       );
       expect(find.text('assembled-awaiting-deployment'), findsOneWidget);
       expect(
-        find.text('digest-bound-licolite-server-runner-v1'),
+        find.text('digest-bound-licomesh-server-runner-v1'),
         findsOneWidget,
       );
       final start = find.byKey(
@@ -389,7 +389,7 @@ void main() {
       );
       await tester.enterText(
         find.byKey(const Key('collaboration-mcp-install-destination-0')),
-        '/tmp/licoarc-mcp',
+        'test-data/licoarc-mcp',
       );
       final planButton = find.byKey(const Key('collaboration-mcp-plan'));
       await tester.ensureVisible(planButton);
@@ -402,7 +402,7 @@ void main() {
         findsOneWidget,
       );
       expect(
-        find.textContaining('/tmp/licoarc-mcp/selected-mcp'),
+        find.textContaining('test-data/licoarc-mcp/selected-mcp'),
         findsOneWidget,
       );
       expect(find.textContaining('uploaded file'), findsNothing);
@@ -660,7 +660,7 @@ final class _WidgetGateway implements OptionalCollaborationGateway {
   }) async {
     calls.add('server-start');
     localServer = OptionalLocalServerState.fromJson(
-      _localServer('/tmp/licolite-local', const [
+      _localServer('test-data/licomesh-local', const [
         'server-core',
       ], status: 'running'),
     );
@@ -674,7 +674,7 @@ final class _WidgetGateway implements OptionalCollaborationGateway {
   }) async {
     calls.add('server-stop');
     localServer = OptionalLocalServerState.fromJson(
-      _localServer('/tmp/licolite-local', const ['server-core']),
+      _localServer('test-data/licomesh-local', const ['server-core']),
     );
     return localServer!;
   }
@@ -791,7 +791,7 @@ Map<String, dynamic> _workflowPlanEnvelope(String kind) => {
   'workflowKind': kind,
   'planDigestSha256': _workflowPlanDigest,
   'packageDigestSha256': _digest,
-  'pluginId': 'licolite-collaboration',
+  'pluginId': 'licomesh-collaboration',
   'expiresAtEpochSeconds': 2000000000,
   'oneTime': true,
   'cancellable': true,
@@ -880,8 +880,8 @@ Map<String, dynamic> _assemblyPlan(
   List<String> selectedIds,
 ) => {
   'deploymentId': _deploymentId,
-  'pluginId': 'licolite-collaboration',
-  'sourceUrl': 'https://github.com/example/licolite-bundle.git',
+  'pluginId': 'licomesh-collaboration',
+  'sourceUrl': 'https://github.com/example/licomesh-bundle.git',
   'serverVersion': '1.0.0',
   'packageDigestSha256': _digest,
   'selectedComponentIds': selectedIds,
@@ -909,7 +909,7 @@ Map<String, dynamic> _localServer(
 }) => {
   'deploymentId': _deploymentId,
   'status': status,
-  'sourceUrl': 'https://github.com/example/licolite-bundle.git',
+  'sourceUrl': 'https://github.com/example/licomesh-bundle.git',
   'serverVersion': '1.0.0',
   'packageDigestSha256': _digest,
   'selectedComponentIds': selectedIds,
@@ -940,14 +940,14 @@ Map<String, dynamic> _workflowRegistrationPlan(
     'agentId': destination.agentId,
     'registrationId': registrationId,
     'destination':
-        '/tmp/licoarc-private/${destination.agentId}/$registrationId.json',
+        'test-data/licoarc-private/${destination.agentId}/$registrationId.json',
     'digestSha256': _workflowRegistrationDigest,
     'registration': {
       'schemaVersion': 'licoarc.mcp-agent-registration.v2',
       'registrationId': registrationId,
       'registrationDigestSha256': _workflowRegistrationDigest,
       'agentId': destination.agentId,
-      'collaborationPluginId': 'licolite-collaboration',
+      'collaborationPluginId': 'licomesh-collaboration',
       'packageDigestSha256': _digest,
       'selectedPluginIds': selectedIds,
       'payloadRoots': [
@@ -971,8 +971,8 @@ Map<String, dynamic> _workflowRegistrationPlan(
 }
 
 const _plugin = OptionalCollaborationPlugin(
-  id: 'licolite-collaboration',
-  displayName: 'LicoLite Collaboration',
+  id: 'licomesh-collaboration',
+  displayName: 'LicoMesh Collaboration',
   version: '1.0.0',
   packageDigestSha256: _digest,
   capabilities: ['local-deployment', 'mcp-install'],
@@ -1013,8 +1013,8 @@ const _plan = OptionalCollaborationInstallPlan(
   sourceRef: optionalCollaborationTestCommit,
   pluginPath: '',
   plugin: OptionalCollaborationPluginSummary(
-    id: 'licolite-collaboration',
-    displayName: 'LicoLite Collaboration',
+    id: 'licomesh-collaboration',
+    displayName: 'LicoMesh Collaboration',
     version: '1.0.0',
     capabilities: ['local-deployment', 'mcp-install'],
   ),

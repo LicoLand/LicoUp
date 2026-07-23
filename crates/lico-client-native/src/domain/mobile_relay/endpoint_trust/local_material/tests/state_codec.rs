@@ -1,14 +1,19 @@
 use super::super::state_codec::{hex_encode_bytes, local_endpoint_state};
+use crate::domain::mobile_relay::secret_custody::RuntimeSecretMaterial;
 use serde_json::json;
 
 #[test]
 fn state_codec_fails_closed_when_required_private_material_is_absent() {
-    let error = local_endpoint_state(&json!({
-        "mobileRelayE2ee": {
-            "endpointId": "endpoint",
-            "endpointKind": "desktop"
-        }
-    }))
+    let material = RuntimeSecretMaterial::new();
+    let error = local_endpoint_state(
+        &json!({
+            "mobileRelayE2ee": {
+                "endpointId": "endpoint",
+                "endpointKind": "desktop"
+            }
+        }),
+        &material,
+    )
     .err()
     .expect("missing private material must be rejected");
 

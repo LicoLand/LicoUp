@@ -12,8 +12,8 @@ import 'package:flutter_client/src/frontend/layout/profiles/bubble/desktop/bubbl
 import 'package:flutter_client/src/frontend/layout/profiles/bubble/mobile/bubble_mobile_bundle.dart';
 import 'package:flutter_client/src/frontend/layout/profiles/classic/desktop/classic_desktop.dart';
 import 'package:flutter_client/src/frontend/layout/profiles/classic/mobile/classic_mobile_bundle.dart';
-import 'package:flutter_client/src/frontend/layout/profiles/studio/desktop/studio_desktop.dart';
-import 'package:flutter_client/src/frontend/layout/profiles/studio/mobile/studio_mobile_bundle.dart';
+import 'package:flutter_client/src/frontend/layout/profiles/native/desktop/native_desktop.dart';
+import 'package:flutter_client/src/frontend/layout/profiles/native/mobile/native_mobile_bundle.dart';
 import 'package:flutter_client/src/frontend/layout/profiles/workbench/desktop/workbench_desktop.dart';
 import 'package:flutter_client/src/frontend/layout/profiles/workbench/mobile/workbench_mobile_bundle.dart';
 
@@ -27,7 +27,7 @@ final class BuiltInLayoutComposition {
 
   factory BuiltInLayoutComposition() =>
       BuiltInLayoutComposition.fromDefinitions(<LayoutDefinition>[
-        LayoutDefinition([studioDesktopBundle, studioMobileBundle]),
+        LayoutDefinition([nativeDesktopBundle, nativeMobileBundle]),
         LayoutDefinition([bubbleDesktopBundle, bubbleMobileBundle]),
         LayoutDefinition([classicDesktopBundle, classicMobileBundle]),
         LayoutDefinition([workbenchDesktopBundle, workbenchMobileBundle]),

@@ -18,6 +18,7 @@ const Set<ClientSection> nativeDesktopExpectedDestinations = <ClientSection>{
   ClientSection.agents,
   ClientSection.monitoring,
   ClientSection.skillHub,
+  ClientSection.pluginManagement,
   ClientSection.mobileRelay,
   ClientSection.settings,
 };
@@ -27,6 +28,7 @@ const Map<ClientSection, String> nativeDesktopTestLabels =
       ClientSection.agents: 'Agents',
       ClientSection.monitoring: 'Monitoring',
       ClientSection.skillHub: 'Skill Hub',
+      ClientSection.pluginManagement: 'Plugin Management',
       ClientSection.mobileRelay: 'Mobile Relay',
       ClientSection.settings: 'Settings',
     };

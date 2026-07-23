@@ -13,7 +13,7 @@ const _: [(); ML_KEM_BRAID_EK_BYTES] = [(); incremental::pk2_len()];
 const _: [(); ML_KEM_BRAID_CT1_BYTES] = [(); Ciphertext1::len()];
 const _: [(); ML_KEM_BRAID_CT2_BYTES] = [(); Ciphertext2::len()];
 
-pub(super) const PROTOCOL_INFO: &[u8] = b"LicoLite_MLKEM1024_HMAC-SHA256";
+pub(super) const PROTOCOL_INFO: &[u8] = b"LicoMesh_MLKEM1024_HMAC-SHA256";
 pub(super) const AUTH_UPDATE_LABEL: &[u8] = b":Authenticator Update";
 pub(super) const OUTPUT_KEY_LABEL: &[u8] = b":SCKA Key";
 pub(super) const HEADER_MAC_LABEL: &[u8] = b":ekheader";

@@ -31,7 +31,7 @@ import 'package:flutter_client/src/application/features/mobile_relay/controller/
 import 'package:flutter_client/src/application/features/mobile_relay/controller/mobile_relay_controller.dart';
 import 'package:flutter_client/src/application/features/mobile_relay/controller/secure_mesh_controller.dart';
 import 'package:flutter_client/src/application/features/navigation/controller/client_navigation_controller.dart';
-import 'package:flutter_client/src/application/features/routing/controller/routing_module_lifecycle_controller.dart';
+import 'package:flutter_client/src/application/features/plugin_management/controller/adapter_plugin_controller.dart';
 import 'package:flutter_client/src/application/features/settings/controller/client_log_export_controller.dart';
 import 'package:flutter_client/src/application/features/settings/controller/client_update_controller.dart';
 import 'package:flutter_client/src/application/features/settings/controller/directory_path_controller.dart';
@@ -49,7 +49,7 @@ import 'package:flutter_client/src/backend/features/settings/services/client_upd
 import 'package:flutter_client/src/backend/features/skill_hub/services/skill_hub_preferences_service.dart';
 import 'package:flutter_client/src/contracts/mobile_home_layout_repository.dart';
 import 'package:flutter_client/src/contracts/catalog_convergence/catalog_convergence_gateway.dart';
-import 'package:flutter_client/src/contracts/agent_orchestration_policy.dart';
+import 'package:flutter_client/src/contracts/agent_orchestration_target.dart';
 import 'package:flutter_client/src/contracts/optional_collaboration_gateway.dart';
 import 'package:flutter_client/src/contracts/presentation/presentation_preferences.dart';
 import 'package:flutter_client/src/contracts/skill_delete.dart';
@@ -190,18 +190,14 @@ class ClientController extends AgentOrchestrationController
           !mobileClientRuntimePlatform,
       isOrchestrationTarget: isAgentOrchestrationTargetId,
       discoverMobileTargets: discoverMobileRelayTargets,
-      onTargetsSettled: () {
-        syncAgentOrchestrationPolicy();
-        selectDefaultConversationAgent();
-      },
+      onTargetsSettled: selectDefaultConversationAgent,
       selectDefaultConversationAgent: selectDefaultConversationAgent,
-      onRoutingPolicy: clientApplyRoutingPolicy,
-      onInitializedChanged: (value) => initialized = value,
       onEnterAgents: clientEnterAgentsSection,
       onEnterMonitoring: clientEnterMonitoringSection,
       onExitMonitoring: clientExitMonitoringSection,
       onEnterMobileRelay: clientEnterMobileRelaySection,
       notifyStateChanged: notifyClientStateChanged,
+      sectionPreloadTasks: resolveSectionPreloadTasks(),
       mobileHomeLayoutRepository: mobileHomeLayoutRepository,
       skillHubGateway: skillHubGateway,
       skillUpdateGateway: skillUpdateGateway,
@@ -242,7 +238,6 @@ class ClientController extends AgentOrchestrationController
   final bool? _mobileClientRuntimePlatformOverride;
   final bool _ownsAgentService;
   late final ClientComponentAssembly _components;
-  bool _disposed = false;
 
   final TextEditingController bootstrapController = TextEditingController();
   @override
@@ -253,7 +248,6 @@ class ClientController extends AgentOrchestrationController
   final TextEditingController archiveDestinationController =
       TextEditingController();
 
-  @override
   ClientComponentAssembly get componentAssembly => _components;
   @override
   AgentConversationGateway get conversationGateway =>
@@ -291,6 +285,8 @@ class ClientController extends AgentOrchestrationController
       _components.clientUpdateController;
   OptionalCollaborationController get optionalCollaborationController =>
       _components.optionalCollaborationController;
+  AdapterPluginController get adapterPluginController =>
+      _components.adapterPluginController;
   @override
   DirectoryPathController get directoryPathController =>
       _components.directoryPathController;
@@ -307,23 +303,23 @@ class ClientController extends AgentOrchestrationController
   ClientLifecycleCoordinator get lifecycleController =>
       _components.lifecycleController;
   @override
+  ClientLifecycleProjection get lifecycleProjection =>
+      lifecycleController.projection;
+  @override
   CatalogConvergenceController get catalogConvergenceController =>
       _components.catalogConvergenceController;
   @override
   ClientShellController get shellController => _components.shellController;
   @override
-  RoutingModuleLifecycleController get routingLifecycleController =>
-      _components.routingLifecycleController;
-  @override
   ClientNavigationController get navigationController =>
       _components.navigationController;
+  @override
+  get sectionPreloadController => _components.sectionPreloadController;
   BuiltInLayoutComposition get layoutComposition =>
       _components.layoutComposition;
   @override
   LayoutManager get layoutManager => _components.layoutManager;
 
-  @override
-  bool get clientControllerDisposed => _disposed;
   @override
   bool get mobileClientRuntimePlatform =>
       _mobileClientRuntimePlatformOverride ??
@@ -337,8 +333,8 @@ class ClientController extends AgentOrchestrationController
 
   @override
   void dispose() {
-    if (_disposed) return;
-    _disposed = true;
+    if (lifecycleProjection.disposed) return;
+    lifecycleController.dispose();
     disposeAgentWorkspace();
     if (!mobileClientRuntimePlatform) {
       unawaited(stopClientRuntimeServices());

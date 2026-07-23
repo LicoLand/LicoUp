@@ -11,7 +11,11 @@ export 'agent_usage_timeline/agent_usage_timeline_models.dart'
         AgentUsageChartGrouping,
         AgentUsageSeries,
         AgentUsageSnapshot,
-        AgentUsageTimelineData;
+        AgentUsageTimelineData,
+        agentUsageOverflowSeriesLabel,
+        agentUsageRankedShareLabels,
+        agentUsageShareSeriesLimit,
+        agentUsageWaveSeriesLimit;
 export 'agent_usage_timeline/agent_usage_token_breakdown.dart'
     show AgentUsageTokenBreakdown;
 export 'agent_usage_timeline/agent_usage_visibility_policy.dart'

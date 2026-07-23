@@ -1,4 +1,8 @@
 use super::*;
+use crate::core::secure_mesh_secret_store::SecretBytes;
+use crate::domain::mobile_relay::secret_custody::{
+    MobileRelayE2eeSecretField, RuntimeSecretMaterial,
+};
 
 #[cfg(test)]
 pub(in crate::domain::mobile_relay) fn apply_out_of_band_pairing_response(
@@ -11,7 +15,7 @@ pub(in crate::domain::mobile_relay) fn apply_out_of_band_pairing_response(
 pub(in crate::domain::mobile_relay) fn apply_out_of_band_pairing_response_with_context(
     config: &mut Value,
     response: &Value,
-    secret_context: Option<&mut RuntimeSecretContext>,
+    mut secret_context: Option<&mut RuntimeSecretContext>,
 ) -> Result<()> {
     let object = response
         .as_object()
@@ -40,10 +44,14 @@ pub(in crate::domain::mobile_relay) fn apply_out_of_band_pairing_response_with_c
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .ok_or_else(|| anyhow!("mobile relay out-of-band claim proof is missing"))?;
-    let pc_secure_mesh = local_endpoint_state(config)?.public_descriptor()?;
+    let context = secret_context
+        .as_deref_mut()
+        .ok_or_else(|| anyhow!("mobile relay runtime secret context is required"))?;
+    let pc_secure_mesh = local_endpoint_state(config, &context.material)?.public_descriptor()?;
     ensure!(
         mobile_relay_claim_proof_matches(
             config,
+            &context.material,
             pairing_id,
             mobile_secure_mesh,
             &pc_secure_mesh,
@@ -55,7 +63,7 @@ pub(in crate::domain::mobile_relay) fn apply_out_of_band_pairing_response_with_c
         config,
         mobile_secure_mesh,
         true,
-        secret_context,
+        Some(context),
     )?;
     config["paired"] = json!(true);
     Ok(())
@@ -187,7 +195,7 @@ pub(in crate::domain::mobile_relay) fn public_device_trust_presentation(
         .and_then(Value::as_str)
         .unwrap_or("unverified");
     Ok(json!({
-        "schemaVersion": "licolite.secure-mesh.device-trust-presentation.v1",
+        "schemaVersion": "licomesh.secure-mesh.device-trust-presentation.v1",
         "protocolVersion": crate::core::secure_mesh_trust::SECURE_MESH_DEVICE_TRUST_PROTOCOL_VERSION,
         "localFingerprint": local_identity.fingerprint()?,
         "peerFingerprint": peer_identity.fingerprint()?,
@@ -292,6 +300,7 @@ pub(in crate::domain::mobile_relay) fn stable_json_sha256(value: &Value) -> Stri
 
 pub(in crate::domain::mobile_relay) fn one_time_pairing_invite(
     config: &Value,
+    secret_material: &RuntimeSecretMaterial,
     response: &Value,
 ) -> Option<Value> {
     let Some(pairing_id) = response.get("pairingId").and_then(Value::as_str) else {
@@ -300,14 +309,13 @@ pub(in crate::domain::mobile_relay) fn one_time_pairing_invite(
     let Some(pairing_code) = response.get("pairingCode").and_then(Value::as_str) else {
         return None;
     };
-    let Some(secret) = config
-        .get("mobileRelayE2ee")
-        .and_then(|state| state.get("pairingSecretBase64url"))
-        .and_then(Value::as_str)
+    let Some(secret) = secret_material
+        .e2ee_secret(MobileRelayE2eeSecretField::PairingSecret)
+        .and_then(|secret| secret.expose_utf8().ok())
     else {
         return None;
     };
-    local_endpoint_state(config).ok().and_then(|endpoint| {
+    local_endpoint_state(config, secret_material).ok().and_then(|endpoint| {
         let gateway_url = effective_gateway_url(config).ok()?;
         let pc_secure_mesh = endpoint.public_descriptor().ok()?;
         Some(json!({
@@ -331,7 +339,8 @@ pub(in crate::domain::mobile_relay) fn apply_pairing_invite_params(
     config: &mut Value,
     params: &Value,
 ) -> Result<()> {
-    apply_pairing_invite_params_with_context(config, params, None)
+    let mut context = RuntimeSecretContext::default();
+    apply_pairing_invite_params_with_context(config, params, Some(&mut context))
 }
 
 #[allow(dead_code)]
@@ -376,17 +385,7 @@ pub(in crate::domain::mobile_relay) fn apply_pairing_invite_params_with_context(
             "mobile relay pairing invite must be one-time"
         );
         if pairing_invite_requires_state_reset(config, &invite) {
-            let runtime_pairing_secret = config
-                .get("mobileRelayE2ee")
-                .and_then(|state| state.get("pairingSecretBase64url"))
-                .and_then(Value::as_str)
-                .map(str::trim)
-                .filter(|value| is_unredacted_secret(value))
-                .map(str::to_string);
             clear_mobile_relay_pairing_state(config)?;
-            if let Some(secret) = runtime_pairing_secret {
-                config["mobileRelayE2ee"]["pairingSecretBase64url"] = json!(secret);
-            }
         }
         if let Some(pairing_id) = invite.get("pairingId").and_then(Value::as_str) {
             config["pairingId"] = json!(pairing_id);
@@ -406,11 +405,20 @@ pub(in crate::domain::mobile_relay) fn apply_pairing_invite_params_with_context(
             config["pcClientName"] = json!(pc_client_name);
         }
         if let Some(secret) = invite.get("e2eePairingSecret").and_then(Value::as_str) {
-            ensure_mobile_relay_endpoint_descriptor(config, "mobile")?;
-            config["mobileRelayE2ee"]["pairingSecretBase64url"] = json!(secret.trim());
+            let context = secret_context
+                .as_deref_mut()
+                .ok_or_else(|| anyhow!("mobile relay runtime secret context is required"))?;
+            context.material.replace_e2ee_secret(
+                MobileRelayE2eeSecretField::PairingSecret,
+                SecretBytes::try_from_bytes(secret.trim().as_bytes().to_vec())?,
+            )?;
+            ensure_mobile_relay_endpoint_descriptor(config, &mut context.material, "mobile")?;
         }
         if let Some(pc_secure_mesh) = invite.get("pcSecureMesh") {
-            ensure_mobile_relay_endpoint_descriptor(config, "mobile")?;
+            let context = secret_context
+                .as_deref_mut()
+                .ok_or_else(|| anyhow!("mobile relay runtime secret context is required"))?;
+            ensure_mobile_relay_endpoint_descriptor(config, &mut context.material, "mobile")?;
             apply_peer_secure_mesh_descriptor_with_context(
                 config,
                 pc_secure_mesh,
@@ -420,11 +428,20 @@ pub(in crate::domain::mobile_relay) fn apply_pairing_invite_params_with_context(
         }
     }
     if let Some(secret) = text_param(params, &["e2eePairingSecret", "pairingSecret"]) {
-        ensure_mobile_relay_endpoint_descriptor(config, "mobile")?;
-        config["mobileRelayE2ee"]["pairingSecretBase64url"] = json!(secret);
+        let context = secret_context
+            .as_deref_mut()
+            .ok_or_else(|| anyhow!("mobile relay runtime secret context is required"))?;
+        context.material.replace_e2ee_secret(
+            MobileRelayE2eeSecretField::PairingSecret,
+            SecretBytes::try_from_string(secret)?,
+        )?;
+        ensure_mobile_relay_endpoint_descriptor(config, &mut context.material, "mobile")?;
     }
     if let Some(pc_secure_mesh) = json_param(params, "pcSecureMesh") {
-        ensure_mobile_relay_endpoint_descriptor(config, "mobile")?;
+        let context = secret_context
+            .as_deref_mut()
+            .ok_or_else(|| anyhow!("mobile relay runtime secret context is required"))?;
+        ensure_mobile_relay_endpoint_descriptor(config, &mut context.material, "mobile")?;
         apply_peer_secure_mesh_descriptor_with_context(
             config,
             &pc_secure_mesh,
@@ -441,7 +458,10 @@ pub(in crate::domain::mobile_relay) fn apply_pairing_invite_params_with_context(
             "pcSecureMeshJsonPath",
         ],
     )? {
-        ensure_mobile_relay_endpoint_descriptor(config, "mobile")?;
+        let context = secret_context
+            .as_deref_mut()
+            .ok_or_else(|| anyhow!("mobile relay runtime secret context is required"))?;
+        ensure_mobile_relay_endpoint_descriptor(config, &mut context.material, "mobile")?;
         apply_peer_secure_mesh_descriptor_with_context(
             config,
             &pc_secure_mesh,

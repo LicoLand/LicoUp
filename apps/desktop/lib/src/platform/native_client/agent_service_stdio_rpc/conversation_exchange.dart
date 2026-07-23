@@ -1,3 +1,4 @@
+import 'package:flutter_client/src/contracts/generated/client_error.g.dart';
 import 'package:flutter_client/src/platform/native_client/agent_service_stdio_rpc/protocol.dart';
 import 'package:flutter_client/src/platform/native_client/agent_service_stdio_rpc/request_writer.dart';
 import 'package:flutter_client/src/platform/native_client/agent_service_stdio_rpc/response_codec.dart';
@@ -48,7 +49,21 @@ Stream<Map<String, dynamic>> executeStdioRpcConversation({
         yield <String, dynamic>{...result, 'event': 'done'};
         return;
       }
-      throw LicoClientRpcException(frame.errorCode ?? 'command_failed');
+      final ClientError error =
+          frame.error ??
+          ClientError.fromJson(const <String, Object?>{
+            'code': 'terminal_result_invalid',
+            'stage': 'conversation/terminal_result',
+            'component': 'conversation_runtime',
+            'retryable': false,
+            'recovery': 'review_terminal_result',
+          });
+      yield <String, dynamic>{
+        'ok': false,
+        'error': error.toJson(),
+        'event': 'done',
+      };
+      return;
     }
     if (!terminalSeen) {
       throw const LicoClientRpcException('transport_failed');

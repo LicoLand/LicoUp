@@ -6,11 +6,23 @@
 mod authorization;
 mod handle;
 mod port;
+mod secret_bytes;
 
-pub use authorization::{SecretStoreAuthorizationRequest, SecretStoreAuthorizationSession};
+pub use authorization::{
+    MAX_SECRET_STORE_PRESENCE_GRANT_TTL, PresenceDecision, SecretStoreApprovedPresenceBatch,
+    SecretStoreAuthorizationRequest, SecretStoreAuthorizationSession, SecretStoreCallerChannel,
+    SecretStoreConsumedPresence, SecretStoreKeyClass, SecretStoreOperation,
+    SecretStorePresenceBatchRequest, SecretStorePresenceError, SecretStorePresenceGrant,
+    SecretStorePresenceNonce, SecretStorePresenceProvider, SecretStorePresencePurpose,
+    SecretStorePresenceScope,
+};
 pub use handle::SecretStoreHandle;
 pub use port::SecureMeshSecretStore;
+#[cfg(test)]
+pub use secret_bytes::SecretZeroizeProbe;
+pub use secret_bytes::{MAX_SECRET_BYTES, SecretBytes, SecretBytesError};
 
+pub(crate) use authorization::{derive_presence_binding_digest, digest_matches};
 pub(crate) use handle::is_persistable_secret;
 
 #[cfg(test)]

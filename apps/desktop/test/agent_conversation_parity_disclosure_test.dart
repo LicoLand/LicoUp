@@ -53,7 +53,8 @@ void main() {
           configured: true,
           confidence: 0.9,
           adapterStatus: 'implemented',
-          supportedActions: const ['runtime.message.send'],
+          // Blocked drivers never advertise the relay action.
+          supportedActions: const [],
           adapterCapabilities: {
             'conversationDriver': 'implemented',
             'conversationProtocol': 'copilot-acp-v1-stdio-ndjson',
@@ -103,20 +104,20 @@ void main() {
       );
       expect(find.text('Blocked'), findsOneWidget);
       expect(
-        find.byKey(const Key('conversation-parity-send-gate')),
+        find.byKey(const Key('conversation-send-unavailable')),
         findsOneWidget,
       );
       expect(
-        find.byKey(const Key('conversation-parity-send-gate-reason')),
+        find.byKey(const Key('conversation-send-unavailable-reason')),
         findsOneWidget,
       );
       expect(
-        find.textContaining('Exact native session resume is unavailable'),
-        findsWidgets,
+        find.textContaining('local CLI executable was not detected'),
+        findsOneWidget,
       );
       expect(
-        find.byKey(const Key('conversation-parity-send-gate-unblock')),
-        findsNothing,
+        find.byKey(const Key('conversation-send-unavailable-action')),
+        findsOneWidget,
       );
 
       await tester.tap(find.byKey(const Key('conversation-parity-readiness')));
@@ -150,55 +151,57 @@ void main() {
     },
   );
 
-  testWidgets(
-    'send-gate shows evidence_missing reason with rescan unblock action',
-    (tester) async {
-      final controller = ClientController();
-      addTearDown(controller.dispose);
-      controller.scannedTargets = [
-        TargetCandidate(
-          target: 'opencode',
-          label: 'OpenCode',
-          kind: 'cli',
-          status: 'detected',
-          configured: true,
-          confidence: 0.9,
-          adapterStatus: 'implemented',
-          supportedActions: const ['runtime.message.send'],
-          adapterCapabilities: {
-            'conversationReadiness': 'unverified',
-            'conversationBlocker': 'evidence_missing',
-            'conversationSummaryCodes': const ['evidence_missing'],
-            'conversationEvidenceAge': 'missing',
-            'conversationCapabilityMatrix': {
-              'laneFamily': 'acp',
-              'openNew': true,
-              'exactResume': true,
-              'streaming': true,
-              'cancel': true,
-              'officialLane': true,
-            },
+  testWidgets('unverified local agent with a relay action is not send-gated', (
+    tester,
+  ) async {
+    final controller = ClientController();
+    addTearDown(controller.dispose);
+    controller.scannedTargets = [
+      TargetCandidate(
+        target: 'opencode',
+        label: 'OpenCode',
+        kind: 'cli',
+        status: 'detected',
+        configured: true,
+        confidence: 0.9,
+        binaryPath: 'test-binary-opencode',
+        adapterStatus: 'implemented',
+        // Local agents are client-accessible by default: parity evidence
+        // stays informational and never gates local runtime use.
+        supportedActions: const ['runtime.message.send'],
+        adapterCapabilities: {
+          'conversationDriver': 'implemented',
+          'conversationReadiness': 'unverified',
+          'conversationBlocker': 'evidence_missing',
+          'conversationSummaryCodes': const ['evidence_missing'],
+          'conversationEvidenceAge': 'missing',
+          'conversationCapabilityMatrix': {
+            'laneFamily': 'acp',
+            'openNew': true,
+            'exactResume': true,
+            'streaming': true,
+            'cancel': true,
+            'officialLane': true,
           },
-        ),
-      ];
-      controller.selectedConversationAgentId = 'opencode';
+        },
+      ),
+    ];
+    controller.selectedConversationAgentId = 'opencode';
 
-      await tester.pumpWidget(_harness(controller: controller));
-      await tester.pumpAndSettle();
+    await tester.pumpWidget(_harness(controller: controller));
+    await tester.pumpAndSettle();
 
-      expect(
-        find.byKey(const Key('conversation-parity-send-gate')),
-        findsOneWidget,
-      );
-      final reason = tester.widget<Text>(
-        find.byKey(const Key('conversation-parity-send-gate-reason')),
-      );
-      expect(reason.data, contains('Current parity evidence is missing'));
-      expect(
-        find.byKey(const Key('conversation-parity-send-gate-unblock')),
-        findsOneWidget,
-      );
-      expect(find.text('Refresh Agents'), findsOneWidget);
-    },
-  );
+    expect(
+      find.byKey(const Key('conversation-send-unavailable')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const Key('conversation-send-unavailable-reason')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const Key('conversation-send-unavailable-action')),
+      findsNothing,
+    );
+  });
 }

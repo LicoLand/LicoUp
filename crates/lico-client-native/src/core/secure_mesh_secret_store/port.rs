@@ -5,7 +5,10 @@ use crate::core::secure_mesh_capability::{
     mandatory_protocol_facts,
 };
 
-use super::{SecretStoreAuthorizationRequest, SecretStoreAuthorizationSession, SecretStoreHandle};
+use super::{
+    SecretBytes, SecretStoreAuthorizationRequest, SecretStoreAuthorizationSession,
+    SecretStoreHandle,
+};
 
 pub trait SecureMeshSecretStore: Send + Sync {
     fn backend(&self) -> &'static str;
@@ -31,13 +34,13 @@ pub trait SecureMeshSecretStore: Send + Sync {
         )
     }
 
-    fn set_secret(&self, handle: &SecretStoreHandle, secret: &str) -> Result<()>;
+    fn set_secret(&self, handle: &SecretStoreHandle, secret: SecretBytes) -> Result<()>;
 
     fn set_secret_with_session(
         &self,
         session: &SecretStoreAuthorizationSession,
         handle: &SecretStoreHandle,
-        secret: &str,
+        secret: SecretBytes,
     ) -> Result<()> {
         if session.shared_system_context_required() {
             return Err(anyhow!(
@@ -50,13 +53,13 @@ pub trait SecureMeshSecretStore: Send + Sync {
         self.set_secret(handle, secret)
     }
 
-    fn get_secret(&self, handle: &SecretStoreHandle) -> Result<Option<String>>;
+    fn get_secret(&self, handle: &SecretStoreHandle) -> Result<Option<SecretBytes>>;
 
     fn get_secret_with_session(
         &self,
         session: &SecretStoreAuthorizationSession,
         handle: &SecretStoreHandle,
-    ) -> Result<Option<String>> {
+    ) -> Result<Option<SecretBytes>> {
         if session.shared_system_context_required() {
             return Err(anyhow!(
                 "secure mesh secret store backend {} must implement session-aware reads for {}",

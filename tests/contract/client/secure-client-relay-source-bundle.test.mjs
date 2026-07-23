@@ -72,7 +72,7 @@ test("contract is the only relay type, limit, operation, and error authority", a
   ]) {
     assert.ok(contract.includes(token), `missing contract authority: ${token}`);
   }
-  assert.equal(contract.includes("client_local_runtime"), false);
+  assert.ok(contract.includes('"client_local_runtime"'));
   const nonContract = productionLeaves
     .filter((leaf) => leaf !== "contract.rs")
     .map((leaf) => source[leaf])
@@ -114,8 +114,7 @@ test("network capability is isolated, TLS-gated, bounded, and detail-redacted", 
   assert.deepEqual(ureqOwners, ["http_io.rs"]);
   const http = source["http_io.rs"];
   for (const token of [
-    'parsed.scheme() == "https"',
-    'parsed.scheme() == "http" && is_loopback',
+    "is_https_or_loopback_http_url(&base_url)",
     "Duration::from_secs(HTTP_TIMEOUT_SECONDS)",
     'set("x-lico-safety-confirm", "true")',
     "MAX_RETRY_AFTER_SECONDS",

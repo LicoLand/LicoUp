@@ -23,9 +23,10 @@ void main() {
     host.agentUsageReport = report;
     host.agentUsageReports = [report];
 
-    expect(host.agentUsageReport, same(report));
+    expect(host.agentUsageReport?.totalTokens, report.totalTokens);
+    expect(host.agentUsageReport?.agent('local-agent')?.totalTokens, 42);
     expect(host.agentUsageReports, [report]);
-    expect(host.selectedAgentUsage, same(usage));
+    expect(host.selectedAgentUsage?.totalTokens, 42);
     expect(host.isScanningAgentUsage, isFalse);
   });
 }
@@ -59,7 +60,7 @@ final class _NoopUsageGateway implements AgentUsageGateway {
   Future<AgentUsageReport> scan({
     String agentId = '',
     bool forceRefresh = false,
-    int historyDays = 30,
+    int historyDays = 90,
   }) async => AgentUsageReport.fromAgents(
     generatedAt: '2026-07-15T00:00:00Z',
     agents: const [],

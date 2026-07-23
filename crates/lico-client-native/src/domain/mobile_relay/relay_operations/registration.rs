@@ -3,6 +3,7 @@ use super::mailbox::canonical_mailbox_token;
 use crate::domain::mobile_relay::endpoint_trust::{
     ensure_mobile_relay_endpoint_descriptor, local_endpoint_state,
 };
+use crate::domain::mobile_relay::secret_custody::RuntimeSecretMaterial;
 use crate::platform::secure_client_relay::{
     SECURE_CLIENT_RELAY_CORE_CONTRACT_DIGEST, SecureClientRelayEndpointRegistration,
     SecureClientRelayPublicJwk,
@@ -15,10 +16,12 @@ use serde_json::{Value, json};
 pub(in crate::domain::mobile_relay) fn register_local_relay_endpoint(
     params: &Value,
     config: &mut Value,
+    secret_material: &mut RuntimeSecretMaterial,
     endpoint_kind: &str,
 ) -> Result<(Value, Value)> {
-    let descriptor = ensure_mobile_relay_endpoint_descriptor(config, endpoint_kind)?;
-    let endpoint = local_endpoint_state(config)?;
+    let descriptor =
+        ensure_mobile_relay_endpoint_descriptor(config, secret_material, endpoint_kind)?;
+    let endpoint = local_endpoint_state(config, secret_material)?;
     let relay = canonical_relay_context(params, config)?;
     let signing_public_key =
         SecureClientRelayPublicJwk::ed25519(endpoint.signing_public_key.clone())?;
@@ -44,7 +47,7 @@ pub(in crate::domain::mobile_relay) fn register_local_relay_endpoint(
         .ok_or_else(|| anyhow!("secure client relay challenge is missing"))?;
     let signature = endpoint.signing_key()?.sign(challenge_text.as_bytes());
     let mailbox_token = canonical_mailbox_token(
-        config,
+        secret_material,
         &endpoint.endpoint_id,
         &endpoint.endpoint_kind,
         endpoint.mailbox_rotation_epoch,

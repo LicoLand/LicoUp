@@ -57,16 +57,12 @@ final class AgentConversationGatewayAdapter
     required String text,
     required String sessionId,
     AgentDispatchBind bind = const AgentDispatchBind(),
-    String conversationReadiness = 'unverified',
-    bool requireReady = true,
   }) => service.send(
     runner: runner,
     agentId: agentId,
     text: text,
     sessionId: sessionId,
     bind: bind,
-    conversationReadiness: conversationReadiness,
-    requireReady: requireReady,
   );
   @override
   Stream<AgentDispatchEvent> sendStreaming({
@@ -74,17 +70,22 @@ final class AgentConversationGatewayAdapter
     required String text,
     required String sessionId,
     AgentDispatchBind bind = const AgentDispatchBind(),
-    String conversationReadiness = 'unverified',
-    bool requireReady = true,
-  }) => service.sendStreaming(
-    runner: runner,
-    agentId: agentId,
-    text: text,
-    sessionId: sessionId,
-    bind: bind,
-    conversationReadiness: conversationReadiness,
-    requireReady: requireReady,
-  );
+  }) async* {
+    try {
+      await for (final event in service.sendStreaming(
+        runner: runner,
+        agentId: agentId,
+        text: text,
+        sessionId: sessionId,
+        bind: bind,
+      )) {
+        yield event;
+      }
+    } on LicoClientRpcException catch (error) {
+      throw AgentDispatchStreamException(error.code);
+    }
+  }
+
   @override
   Future<AgentDispatchTurnResult> steer({
     required String agentId,

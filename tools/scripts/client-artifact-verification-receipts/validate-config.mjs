@@ -7,11 +7,11 @@ import { requireValue, text } from "./util.mjs";
 
 export function validateConfig(config) {
   requireValue(
-    config?.schemaVersion === "licolite.client-artifact-verification-receipts-config.v3",
+    config?.schemaVersion === "licomesh.client-artifact-verification-receipts-config.v3",
     "receipt_config_schema_mismatch",
   );
   requireValue(
-    config?.reportSchemaVersion === "licolite.client-artifact-verification-receipts.v3",
+    config?.reportSchemaVersion === "licomesh.client-artifact-verification-receipts.v3",
     "receipt_report_schema_mismatch",
   );
   requireValue(config?.producer === producer, "receipt_config_producer_mismatch");

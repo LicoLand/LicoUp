@@ -1,23 +1,25 @@
 // update commands: update status|check|download|verify|apply|rollback
 
-use super::{CliExecution, CommandTable, cli_params};
+use super::{AdmittedCommand, CliExecution, admitted_params};
 use anyhow::Result;
 
-pub fn register_commands(table: &mut CommandTable) {
-    table.register_rest(
-        &["update"],
-        handle_update,
-        "Client update status|check|download|verify|apply|rollback (signed channel, public metadata only; productionReady stays false)",
-    );
-}
-
-fn handle_update(args: &[String]) -> Result<CliExecution> {
-    let params = if args.len() > 2 {
-        cli_params(&args[2..])
-    } else {
-        cli_params(&[])
+pub(super) fn handle_update(command: AdmittedCommand) -> Result<CliExecution> {
+    let action = match command.path() {
+        ["update", action] => *action,
+        _ => unreachable!("admission only registers concrete update routes"),
     };
+    let params = admitted_params(
+        &[
+            ("channel", command.option_text("channel")),
+            ("manifestPath", command.option_text("manifest-path")),
+            ("publicKeysPath", command.option_text("public-keys-path")),
+            ("sourcePath", command.option_text("source-path")),
+        ],
+        &[],
+        &[],
+    );
+    let route = ["update".to_string(), action.to_string()];
     Ok(CliExecution::Json(crate::domain::client_update::dispatch(
-        args, &params,
+        &route, &params,
     )?))
 }

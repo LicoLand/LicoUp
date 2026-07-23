@@ -32,23 +32,18 @@ impl SecureCommandLocalExecutor for SecureCommandRuntimeExecutor {
                 let mut params = agent_message_send_params(payload)?;
                 let agent = text_from_any(&params, &["agent", "agentId", "target"])
                     .ok_or_else(|| anyhow!("agent message target is unavailable"))?;
-                if !crate::platform::runtime_adapters::runtime_driver_profile(&agent)
-                    .is_some_and(|profile| profile.readiness == "ready")
-                {
-                    return Err(anyhow::Error::new(SecureAgentDispatchFailure::new(
-                        "native_agent_parity_not_ready",
-                        false,
-                    )));
-                }
                 let executable =
-                    super::targets::ready_runtime_executable(&agent).ok_or_else(|| {
+                    super::targets::available_runtime_executable(&agent).ok_or_else(|| {
                         anyhow::Error::new(SecureAgentDispatchFailure::new(
                             "native_agent_runtime_binding_unavailable",
                             false,
                         ))
                     })?;
                 params["binaryPath"] = json!(executable.to_string_lossy());
-                dispatch_ready_agent_message(&params, crate::platform::dispatch_lane_operation)
+                dispatch_ready_agent_message(&params, |operation, params| {
+                    crate::platform::dispatch_lane_operation(operation, params)
+                        .map_err(anyhow::Error::new)
+                })
             }
             "secure_mesh.device.verify" => Err(anyhow!(
                 "secure mesh command runtime binding requires an interactive endpoint UI for {}",
@@ -87,7 +82,7 @@ mod tests {
     use crate::core::secure_mesh::SECURE_MESH_COMMAND_PROTOCOL_VERSION;
 
     #[test]
-    fn runtime_adapter_rejects_agent_without_ready_parity() {
+    fn runtime_adapter_reports_missing_executable_binding() {
         let payload = SecureCommandPayload::from_value(&json!({
             "schema": SECURE_MESH_COMMAND_PROTOCOL_VERSION,
             "commandId": "cmd-unready-agent",
@@ -117,6 +112,9 @@ mod tests {
         let error = SecureCommandRuntimeExecutor
             .execute_secure_command(&payload)
             .unwrap_err();
-        assert_eq!(error.to_string(), "native_agent_parity_not_ready");
+        assert_eq!(
+            error.to_string(),
+            "native_agent_runtime_binding_unavailable"
+        );
     }
 }

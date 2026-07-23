@@ -12,20 +12,20 @@ void main() {
       LayoutProfileId.parse('workbench'),
       LayoutProfileId.parse('workbench'),
     );
-    expect(LayoutProfileId.parse('studio'), LayoutProfileId.parse('studio'));
+    expect(LayoutProfileId.parse('native'), LayoutProfileId.parse('native'));
     expect(LayoutProfileId.parse('classic'), LayoutProfileId.parse('classic'));
     expect(
-      [LayoutProfileId.parse('studio'), LayoutProfileId.parse('workbench')]
+      [LayoutProfileId.parse('native'), LayoutProfileId.parse('workbench')]
         ..sort(),
-      [LayoutProfileId.parse('studio'), LayoutProfileId.parse('workbench')],
+      [LayoutProfileId.parse('native'), LayoutProfileId.parse('workbench')],
     );
 
     for (final invalid in [
       'numeric-2',
       'legacy',
       'workbench-v-two',
-      'studio-compatibility',
-      'Studio',
+      'native-compatibility',
+      'Native',
     ]) {
       Object? failure;
       try {
@@ -41,11 +41,11 @@ void main() {
   test('platform preferred defaults map Native vs Lico Arc fallback', () {
     expect(
       LayoutProfileDefaults.preferredForPlatform(TargetPlatform.macOS),
-      LayoutProfileId.parse('studio'),
+      LayoutProfileId.parse('native'),
     );
     expect(
       LayoutProfileDefaults.preferredForPlatform(TargetPlatform.windows),
-      LayoutProfileId.parse('studio'),
+      LayoutProfileId.parse('native'),
     );
     expect(
       LayoutProfileDefaults.preferredForPlatform(TargetPlatform.linux),
@@ -172,8 +172,8 @@ void main() {
   test('selection state rejects impossible candidate and error states', () {
     final previewing = LayoutSelectionState(
       committedId: LayoutProfileId.parse('workbench'),
-      effectiveId: LayoutProfileId.parse('studio'),
-      previewId: LayoutProfileId.parse('studio'),
+      effectiveId: LayoutProfileId.parse('native'),
+      previewId: LayoutProfileId.parse('native'),
       status: LayoutSelectionStatus.previewing,
       surface: LayoutRuntimeSurface.desktop,
       viewport: LayoutViewportClass.medium,
@@ -181,12 +181,12 @@ void main() {
     );
     expect(
       previewing.effectiveVariantKey.profileId,
-      LayoutProfileId.parse('studio'),
+      LayoutProfileId.parse('native'),
     );
     expect(
       () => LayoutSelectionState(
         committedId: LayoutProfileId.parse('workbench'),
-        effectiveId: LayoutProfileId.parse('studio'),
+        effectiveId: LayoutProfileId.parse('native'),
         status: LayoutSelectionStatus.stable,
         surface: LayoutRuntimeSurface.desktop,
         viewport: LayoutViewportClass.medium,
@@ -217,7 +217,7 @@ void main() {
       );
       final decoded = PresentationPreferences.fromJson({
         'schemaVersion': 1,
-        'layoutProfileId': 'studio',
+        'layoutProfileId': 'native',
         'appearancePresetId': 'dark',
         'localePreference': 'zh',
         'transientPanelId': 'runtime-only-value',
@@ -225,10 +225,10 @@ void main() {
         'viewport': 'compact',
       }, fallback: fallback);
 
-      expect(decoded.layoutProfileId, LayoutProfileId.parse('studio'));
+      expect(decoded.layoutProfileId, LayoutProfileId.parse('native'));
       expect(decoded.toJson(), {
         'schemaVersion': 1,
-        'layoutProfileId': 'studio',
+        'layoutProfileId': 'native',
         'appearancePresetId': 'dark',
         'localePreference': 'zh',
       });

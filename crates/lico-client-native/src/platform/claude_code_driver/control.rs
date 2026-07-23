@@ -7,6 +7,11 @@ pub(super) enum ControlRequest {
         session_id: String,
         acknowledged: SyncSender<bool>,
     },
+    Steer {
+        session_id: String,
+        text: String,
+        acknowledged: SyncSender<bool>,
+    },
     Cleanup {
         acknowledged: SyncSender<bool>,
     },
@@ -25,6 +30,18 @@ pub(super) fn interrupt_request() -> Value {
         "type": "control_request",
         "request_id": uuid::Uuid::new_v4().to_string(),
         "request": {"subtype": "interrupt"}
+    })
+}
+
+pub(super) fn steer_message(text: &str) -> Option<Value> {
+    (!text.trim().is_empty()).then(|| {
+        json!({
+            "type": "user",
+            "message": {
+                "role": "user",
+                "content": [{"type": "text", "text": text}]
+            }
+        })
     })
 }
 

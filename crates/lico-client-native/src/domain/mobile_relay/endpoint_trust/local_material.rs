@@ -10,6 +10,9 @@ mod rotation;
 mod state;
 mod state_codec;
 
+#[cfg(test)]
+pub(super) use super::test_runtime_secret_material;
+
 pub(in crate::domain::mobile_relay) use composition::ensure_mobile_relay_endpoint_descriptor;
 pub(in crate::domain::mobile_relay) use descriptor::local_endpoint_public_descriptor;
 pub(in crate::domain::mobile_relay) use material_mutation::ensure_mobile_relay_endpoint_material;
@@ -18,7 +21,9 @@ pub(in crate::domain::mobile_relay) use protocol_reset::reset_incompatible_local
 pub(in crate::domain::mobile_relay) use rotation::rotate_mobile_relay_local_identity_for_repair;
 pub(in crate::domain::mobile_relay) use rotation::rotate_mobile_relay_one_time_prekeys;
 pub(in crate::domain::mobile_relay) use state::LocalEndpointState;
-pub(in crate::domain::mobile_relay) use state_codec::{hex_encode_bytes, local_endpoint_state};
+pub(in crate::domain::mobile_relay) use state_codec::{
+    hex_encode_bytes, local_endpoint_state, local_public_device_identity,
+};
 
 #[cfg(test)]
 mod tests;

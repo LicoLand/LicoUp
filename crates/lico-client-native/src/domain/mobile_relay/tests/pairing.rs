@@ -104,7 +104,12 @@ fn config_reset_pairing_clears_local_pairing_without_resetting_identity_or_gatew
     config["lastPairingExpiresAt"] = json!("2099-01-01T00:00:00Z");
     config["paired"] = json!(true);
     config["relayEnabled"] = json!(true);
-    ensure_mobile_relay_endpoint_descriptor(&mut config, "desktop_sidecar").unwrap();
+    ensure_mobile_relay_endpoint_descriptor(
+        &mut config,
+        test_runtime_secret_material(stringify!(&mut config)),
+        "desktop_sidecar",
+    )
+    .unwrap();
     let endpoint_id = config["mobileRelayE2ee"]["endpointId"]
         .as_str()
         .unwrap()
@@ -168,7 +173,12 @@ fn e2ee_status_redacts_pairing_invite_secret() {
     let dir = temp_dir("mobile-relay-e2ee-status-redacts-pairing-invite");
     let previous = set_portable_data_dir_override(Some(dir));
     let mut config = default_config();
-    let endpoint = ensure_mobile_relay_endpoint_descriptor(&mut config, "desktop_sidecar").unwrap();
+    let endpoint = ensure_mobile_relay_endpoint_descriptor(
+        &mut config,
+        test_runtime_secret_material(stringify!(&mut config)),
+        "desktop_sidecar",
+    )
+    .unwrap();
     config["mobileRelayPairingInvite"] = json!({
         "protocolVersion": MOBILE_RELAY_E2EE_PROTOCOL_VERSION,
         "oneTime": true,
@@ -202,7 +212,12 @@ fn config_load_clears_persisted_pairing_invite_and_code() {
     let dir = temp_dir("mobile-relay-clears-persisted-invite");
     let previous = set_portable_data_dir_override(Some(dir));
     let mut config = default_config();
-    ensure_mobile_relay_endpoint_descriptor(&mut config, "desktop_sidecar").unwrap();
+    ensure_mobile_relay_endpoint_descriptor(
+        &mut config,
+        test_runtime_secret_material(stringify!(&mut config)),
+        "desktop_sidecar",
+    )
+    .unwrap();
     config["lastPairingCode"] = json!("ABCDE-FGHIJ-KLMNO-PQRST");
     config["lastPairingExpiresAt"] = json!("2099-01-01T00:00:00Z");
     config["mobileRelayPairingInvite"] = json!({
@@ -364,8 +379,12 @@ fn pairing_claim_sends_one_time_context_and_clears_code() {
     let previous = set_portable_data_dir_override(Some(dir));
 
     let mut pc_config = default_config();
-    let pc_descriptor =
-        ensure_mobile_relay_endpoint_descriptor(&mut pc_config, "desktop_sidecar").unwrap();
+    let pc_descriptor = ensure_mobile_relay_endpoint_descriptor(
+        &mut pc_config,
+        test_runtime_secret_material(stringify!(&mut pc_config)),
+        "desktop_sidecar",
+    )
+    .unwrap();
     let pairing_secret = random_base64url(MOBILE_RELAY_KEY_BYTES);
 
     config_set(&json!({
@@ -432,8 +451,12 @@ fn pairing_claim_invite_e2ee_secret_completes_mobile_endpoint_descriptor() {
     let previous = set_portable_data_dir_override(Some(dir));
 
     let mut pc_config = default_config();
-    let pc_descriptor =
-        ensure_mobile_relay_endpoint_descriptor(&mut pc_config, "desktop_sidecar").unwrap();
+    let pc_descriptor = ensure_mobile_relay_endpoint_descriptor(
+        &mut pc_config,
+        test_runtime_secret_material(stringify!(&mut pc_config)),
+        "desktop_sidecar",
+    )
+    .unwrap();
     let pairing_secret = random_base64url(MOBILE_RELAY_KEY_BYTES);
 
     config_set(&json!({
@@ -534,8 +557,12 @@ fn new_pairing_invite_resets_stale_mobile_pairwise_state() {
             .is_none()
     );
 
-    let pc_descriptor =
-        ensure_mobile_relay_endpoint_descriptor(&mut pc_config, "desktop_sidecar").unwrap();
+    let pc_descriptor = ensure_mobile_relay_endpoint_descriptor(
+        &mut pc_config,
+        test_runtime_secret_material(stringify!(&mut pc_config)),
+        "desktop_sidecar",
+    )
+    .unwrap();
     let pairing_secret = random_base64url(MOBILE_RELAY_KEY_BYTES);
     let invite_params = json!({
         "invite": {
@@ -574,11 +601,16 @@ fn new_pairing_invite_resets_stale_mobile_pairwise_state() {
 
     pc_config["pairingId"] = json!("pair-new");
     pc_config["mobileRelayE2ee"]["pairingSecretBase64url"] = json!(pairing_secret);
-    let mobile_descriptor =
-        ensure_mobile_relay_endpoint_descriptor(&mut mobile_config, "mobile").unwrap();
+    let mobile_descriptor = ensure_mobile_relay_endpoint_descriptor(
+        &mut mobile_config,
+        test_runtime_secret_material(stringify!(&mut mobile_config)),
+        "mobile",
+    )
+    .unwrap();
     assert!(mobile_descriptor["pairwiseIntro"].is_object());
     let proof = mobile_relay_claim_proof_for_pair(
         &pc_config,
+        test_runtime_secret_material(stringify!(&pc_config)),
         "pair-new",
         &mobile_descriptor,
         &pc_descriptor,
@@ -619,8 +651,12 @@ fn new_pairing_invite_resets_blank_pairing_id_with_stale_peer_state() {
             .starts_with("pc_")
     );
 
-    let pc_descriptor =
-        ensure_mobile_relay_endpoint_descriptor(&mut pc_config, "desktop_sidecar").unwrap();
+    let pc_descriptor = ensure_mobile_relay_endpoint_descriptor(
+        &mut pc_config,
+        test_runtime_secret_material(stringify!(&mut pc_config)),
+        "desktop_sidecar",
+    )
+    .unwrap();
     let pairing_secret = random_base64url(MOBILE_RELAY_KEY_BYTES);
     let invite_params = json!({
         "invite": {
@@ -663,8 +699,12 @@ fn pairing_claim_ignores_ephemeral_invite_gateway() {
     let previous = set_portable_data_dir_override(Some(dir));
 
     let mut pc_config = default_config();
-    let pc_descriptor =
-        ensure_mobile_relay_endpoint_descriptor(&mut pc_config, "desktop_sidecar").unwrap();
+    let pc_descriptor = ensure_mobile_relay_endpoint_descriptor(
+        &mut pc_config,
+        test_runtime_secret_material(stringify!(&mut pc_config)),
+        "desktop_sidecar",
+    )
+    .unwrap();
     let pairing_secret = random_base64url(MOBILE_RELAY_KEY_BYTES);
 
     config_set(&json!({
@@ -724,19 +764,39 @@ fn out_of_band_pairing_response_rejects_tampered_intro_with_replayed_claim_proof
     let pairing_secret = random_base64url(MOBILE_RELAY_KEY_BYTES);
     let mut pc_config = default_config();
     pc_config["pairingId"] = json!(pairing_id);
-    let pc_descriptor =
-        ensure_mobile_relay_endpoint_descriptor(&mut pc_config, "desktop_sidecar").unwrap();
+    let pc_descriptor = ensure_mobile_relay_endpoint_descriptor(
+        &mut pc_config,
+        test_runtime_secret_material(stringify!(&mut pc_config)),
+        "desktop_sidecar",
+    )
+    .unwrap();
     pc_config["mobileRelayE2ee"]["pairingSecretBase64url"] = json!(pairing_secret.clone());
 
     let mut mobile_config = default_config();
     mobile_config["pairingId"] = json!(pairing_id);
-    ensure_mobile_relay_endpoint_descriptor(&mut mobile_config, "mobile").unwrap();
+    ensure_mobile_relay_endpoint_descriptor(
+        &mut mobile_config,
+        test_runtime_secret_material(stringify!(&mut mobile_config)),
+        "mobile",
+    )
+    .unwrap();
     mobile_config["mobileRelayE2ee"]["pairingSecretBase64url"] = json!(pairing_secret);
-    apply_peer_secure_mesh_descriptor(&mut mobile_config, &pc_descriptor, true).unwrap();
-    let mobile_descriptor =
-        ensure_mobile_relay_endpoint_descriptor(&mut mobile_config, "mobile").unwrap();
+    apply_peer_secure_mesh_descriptor(
+        &mut mobile_config,
+        test_runtime_secret_material(stringify!(&mut mobile_config)),
+        &pc_descriptor,
+        true,
+    )
+    .unwrap();
+    let mobile_descriptor = ensure_mobile_relay_endpoint_descriptor(
+        &mut mobile_config,
+        test_runtime_secret_material(stringify!(&mut mobile_config)),
+        "mobile",
+    )
+    .unwrap();
     let proof = mobile_relay_claim_proof_for_pair(
         &pc_config,
+        test_runtime_secret_material(stringify!(&pc_config)),
         pairing_id,
         &mobile_descriptor,
         &pc_descriptor,
@@ -790,15 +850,26 @@ fn out_of_band_pairing_response_persists_revoked_peer_block_and_propagates_termi
                 config["mobileRelayE2ee"]["pairingSecretBase64url"] = json!(pairing_secret.clone());
             }
             pair_mobile_relay_configs(&mut pc_config, &mut mobile_config);
-            let local_endpoint_id = local_endpoint_state(&pc_config)?.endpoint_id;
+            let local_endpoint_id = local_endpoint_state(
+                &pc_config,
+                test_runtime_secret_material(stringify!(&pc_config)),
+            )?
+            .endpoint_id;
             let old_session_id = session_id(&pc_config)?;
-            let mut revoked_mobile =
-                ensure_mobile_relay_endpoint_descriptor(&mut mobile_config, "mobile")?;
+            let mut revoked_mobile = ensure_mobile_relay_endpoint_descriptor(
+                &mut mobile_config,
+                test_runtime_secret_material(stringify!(&mut mobile_config)),
+                "mobile",
+            )?;
             append_test_directory_state(&mut revoked_mobile, "revoked")?;
-            let pc_descriptor =
-                ensure_mobile_relay_endpoint_descriptor(&mut pc_config, "desktop_sidecar")?;
+            let pc_descriptor = ensure_mobile_relay_endpoint_descriptor(
+                &mut pc_config,
+                test_runtime_secret_material(stringify!(&mut pc_config)),
+                "desktop_sidecar",
+            )?;
             let proof = mobile_relay_claim_proof_for_pair(
                 &pc_config,
+                test_runtime_secret_material(stringify!(&pc_config)),
                 pairing_id,
                 &revoked_mobile,
                 &pc_descriptor,
@@ -852,14 +923,22 @@ fn out_of_band_pairing_response_rejects_substituted_peer_without_claim_proof() {
     let dir = temp_dir("out-of-band-pairing-rejects-peer-substitution");
     let previous = set_portable_data_dir_override(Some(dir));
     let mut pc_config = default_config();
-    let pc_descriptor =
-        ensure_mobile_relay_endpoint_descriptor(&mut pc_config, "desktop_sidecar").unwrap();
+    let pc_descriptor = ensure_mobile_relay_endpoint_descriptor(
+        &mut pc_config,
+        test_runtime_secret_material(stringify!(&mut pc_config)),
+        "desktop_sidecar",
+    )
+    .unwrap();
     let pairing_id = "pair_peer_substitution";
     pc_config["pairingId"] = json!(pairing_id);
 
     let mut attacker_config = default_config();
-    let attacker_descriptor =
-        ensure_mobile_relay_endpoint_descriptor(&mut attacker_config, "mobile").unwrap();
+    let attacker_descriptor = ensure_mobile_relay_endpoint_descriptor(
+        &mut attacker_config,
+        test_runtime_secret_material(stringify!(&mut attacker_config)),
+        "mobile",
+    )
+    .unwrap();
     let error = apply_out_of_band_pairing_response(
         &mut pc_config,
         &json!({
@@ -877,12 +956,28 @@ fn out_of_band_pairing_response_rejects_substituted_peer_without_claim_proof() {
     );
 
     let mut mobile_config = default_config();
-    ensure_mobile_relay_endpoint_descriptor(&mut mobile_config, "mobile").unwrap();
-    apply_peer_secure_mesh_descriptor(&mut mobile_config, &pc_descriptor, true).unwrap();
-    let mobile_descriptor =
-        ensure_mobile_relay_endpoint_descriptor(&mut mobile_config, "mobile").unwrap();
+    ensure_mobile_relay_endpoint_descriptor(
+        &mut mobile_config,
+        test_runtime_secret_material(stringify!(&mut mobile_config)),
+        "mobile",
+    )
+    .unwrap();
+    apply_peer_secure_mesh_descriptor(
+        &mut mobile_config,
+        test_runtime_secret_material(stringify!(&mut mobile_config)),
+        &pc_descriptor,
+        true,
+    )
+    .unwrap();
+    let mobile_descriptor = ensure_mobile_relay_endpoint_descriptor(
+        &mut mobile_config,
+        test_runtime_secret_material(stringify!(&mut mobile_config)),
+        "mobile",
+    )
+    .unwrap();
     let proof = mobile_relay_claim_proof_for_pair(
         &pc_config,
+        test_runtime_secret_material(stringify!(&pc_config)),
         pairing_id,
         &mobile_descriptor,
         &pc_descriptor,

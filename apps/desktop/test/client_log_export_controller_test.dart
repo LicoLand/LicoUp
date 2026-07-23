@@ -15,15 +15,15 @@ void main() {
     );
     addTearDown(controller.dispose);
 
-    final first = controller.export(' /tmp/export.log ');
-    final duplicate = controller.export('/tmp/duplicate.log');
+    final first = controller.export(' test-data/export.log ');
+    final duplicate = controller.export('test-data/duplicate.log');
 
     expect(controller.busy, isTrue);
     expect(exporter.calls, 1);
     await duplicate;
     exporter.complete(
       const ClientLogExportResult(
-        path: '/tmp/export.log',
+        path: 'test-data/export.log',
         bytes: 4,
         sourceExists: true,
       ),
@@ -31,7 +31,7 @@ void main() {
     await first;
 
     expect(controller.busy, isFalse);
-    expect(controller.exportedPath, '/tmp/export.log');
+    expect(controller.exportedPath, 'test-data/export.log');
     expect(statuses.last.english, 'Client logs exported.');
   });
 
@@ -44,7 +44,7 @@ void main() {
     );
     addTearDown(controller.dispose);
 
-    await controller.export('/tmp/export.log');
+    await controller.export('test-data/export.log');
 
     expect(controller.busy, isFalse);
     expect(controller.exportedPath, isEmpty);

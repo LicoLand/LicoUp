@@ -82,6 +82,7 @@ void registerClientConversationDispatchScenarios() {
 
       await controller.scanTargets();
       await controller.selectConversationAgent('codex');
+      controller.selectConversationSession('native-session-1');
       final first = controller.sendConversationMessage('First turn');
       for (
         var attempt = 0;
@@ -125,6 +126,7 @@ void registerClientConversationDispatchScenarios() {
 
       await controller.scanTargets();
       await controller.selectConversationAgent('codex');
+      controller.selectConversationSession('native-session-1');
       final first = controller.sendConversationMessage('First turn');
       for (
         var attempt = 0;
@@ -167,6 +169,7 @@ void registerClientConversationDispatchScenarios() {
 
     await controller.scanTargets();
     await controller.selectConversationAgent('codex');
+    controller.selectConversationSession('native-session-1');
     final first = controller.sendConversationMessage('First turn');
     for (
       var attempt = 0;
@@ -255,6 +258,7 @@ void registerClientConversationDispatchScenarios() {
 
     await controller.scanTargets();
     await controller.selectConversationAgent('codex');
+    controller.selectConversationSession('native-session-1');
     final first = controller.sendConversationMessage('First turn');
     for (
       var attempt = 0;
@@ -334,6 +338,7 @@ void registerClientConversationDispatchScenarios() {
 
       await controller.scanTargets();
       await controller.selectConversationAgent('codex');
+      controller.selectConversationSession('codex-native-thread');
       await controller.sendConversationMessage('Continue the native thread');
 
       expect(service.runtimeMessageCalls, 1);
@@ -349,38 +354,42 @@ void registerClientConversationDispatchScenarios() {
     },
   );
 
-  test('sendConversationMessage fails closed until parity is ready', () async {
-    final service = FakeAgentService()
-      ..scanTargetsResult = [
-        TargetCandidate(
-          target: 'opencode',
-          label: 'OpenCode',
-          kind: 'cli',
-          status: 'detected',
-          configured: true,
-          confidence: 0.9,
-          adapterStatus: 'implemented',
-          adapterCapabilities: const {
-            'conversationDriver': 'implemented',
-            'conversationProtocol': 'opencode-serve-http-v1',
-            'conversationReadiness': 'unverified',
-            'conversationBlocker': 'live_release_parity_evidence_missing',
-          },
-          // A stale or malformed action projection must not bypass readiness.
-          supportedActions: const ['runtime.message.send'],
-        ),
-      ];
-    final controller = ClientController(agentService: service);
-    addTearDown(controller.dispose);
+  test(
+    'sendConversationMessage executes despite unverified parity evidence',
+    () async {
+      final service = FakeAgentService()
+        ..scanTargetsResult = [
+          TargetCandidate(
+            target: 'opencode',
+            label: 'OpenCode',
+            kind: 'cli',
+            status: 'detected',
+            configured: true,
+            confidence: 0.9,
+            binaryPath: 'test-binary-opencode',
+            adapterStatus: 'implemented',
+            adapterCapabilities: const {
+              'conversationDriver': 'implemented',
+              'conversationProtocol': 'opencode-serve-http-v1',
+              'conversationReadiness': 'unverified',
+              'conversationBlocker': 'live_release_parity_evidence_missing',
+            },
+            supportedActions: const ['runtime.message.send'],
+          ),
+        ];
+      final controller = ClientController(agentService: service);
+      addTearDown(controller.dispose);
 
-    await controller.scanTargets();
-    await controller.selectConversationAgent('opencode');
-    await controller.sendConversationMessage('must not be sent');
+      await controller.scanTargets();
+      await controller.selectConversationAgent('opencode');
+      await controller.sendConversationMessage(
+        'execute and report real failures',
+      );
 
-    expect(service.runtimeMessageCalls, 0);
-    expect(controller.lastError, 'live_release_parity_evidence_missing');
-    expect(controller.statusMessage, contains('发送已禁用'));
-  });
+      expect(service.runtimeMessageCalls, 1);
+      expect(controller.lastError, isEmpty);
+    },
+  );
 
   test(
     'conversation composer forwards selected native model settings',
@@ -471,7 +480,7 @@ void registerClientConversationDispatchScenarios() {
 
       await controller.scanTargets();
       await controller.selectConversationAgent('codex');
-      controller.selectedConversationSessionId = 'stale-deleted-session';
+      controller.selectConversationSession('stale-deleted-session');
 
       await controller.sendConversationMessage(
         'must not resume another thread',
@@ -505,8 +514,11 @@ void registerClientConversationDispatchScenarios() {
 
       expect(service.runtimeMessageCalls, 1);
       expect(controller.selectedConversationSessionId, isNotEmpty);
-      expect(controller.selectedConversationSession, isNull);
-      expect(controller.lastError, 'native_session_readback_missing');
+      expect(
+        controller.selectedConversationSession?.nativeSessionId,
+        'returned-session-not-yet-indexed',
+      );
+      expect(controller.lastError, isEmpty);
       expect(
         service.cliCalls.any(
           (args) =>
@@ -518,10 +530,10 @@ void registerClientConversationDispatchScenarios() {
         isTrue,
       );
 
-      await controller.sendConversationMessage('must not create a duplicate');
+      await controller.sendConversationMessage('continue the exact session');
 
-      expect(service.runtimeMessageCalls, 1);
-      expect(controller.lastError, 'native_session_unresolved');
+      expect(service.runtimeMessageCalls, 2);
+      expect(controller.lastError, isEmpty);
 
       service.conversationSessions['codex'] = [
         conversationSessionJson(

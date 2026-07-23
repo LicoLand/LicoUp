@@ -50,13 +50,25 @@ final class AgentDispatchOpenException implements Exception {
   String toString() => 'AgentDispatchOpenException($code)';
 }
 
+/// Redacted transport failure raised by a concrete dispatch implementation.
+/// The application layer keeps the stable code visible without depending on
+/// the native RPC implementation type.
+final class AgentDispatchStreamException implements Exception {
+  const AgentDispatchStreamException(this.failureCode);
+
+  final String failureCode;
+
+  @override
+  String toString() => 'AgentDispatchStreamException';
+}
+
 final class AgentDispatchTurnResult {
   const AgentDispatchTurnResult({
     required this.ok,
     this.sessionId = '',
     this.turnId = '',
     this.status = '',
-    this.errorCode = '',
+    this.failureCode = '',
     this.errorMessage = '',
     this.raw = const <String, dynamic>{},
   });
@@ -65,7 +77,7 @@ final class AgentDispatchTurnResult {
   final String sessionId;
   final String turnId;
   final String status;
-  final String errorCode;
+  final String failureCode;
   final String errorMessage;
 
   /// Sidecar payload for callers that still inspect effective settings.
@@ -76,24 +88,24 @@ final class AgentDispatchCancelResult {
   const AgentDispatchCancelResult({
     required this.ok,
     this.status = '',
-    this.errorCode = '',
+    this.failureCode = '',
   });
 
   final bool ok;
   final String status;
-  final String errorCode;
+  final String failureCode;
 }
 
 final class AgentDispatchCleanupResult {
   const AgentDispatchCleanupResult({
     required this.ok,
     this.status = '',
-    this.errorCode = '',
+    this.failureCode = '',
   });
 
   final bool ok;
   final String status;
-  final String errorCode;
+  final String failureCode;
 }
 
 /// Per-agent lane capability matrix (CL-06 C-01..C-06 plus lane metadata).
@@ -141,7 +153,7 @@ final class AgentDispatchEvent {
 }
 
 /// Single dispatch lane for all conversation send paths.
-abstract class AgentDispatchLane {
+abstract class AgentConversationLane {
   Future<AgentDispatchSession> openOrResume({
     required AgentCommandRunner runner,
     required String agentId,
@@ -155,8 +167,6 @@ abstract class AgentDispatchLane {
     required String text,
     required String sessionId,
     AgentDispatchBind bind = const AgentDispatchBind(),
-    String conversationReadiness = 'unverified',
-    bool requireReady = true,
   });
 
   Stream<AgentDispatchEvent> sendStreaming({
@@ -165,8 +175,6 @@ abstract class AgentDispatchLane {
     required String text,
     required String sessionId,
     AgentDispatchBind bind = const AgentDispatchBind(),
-    String conversationReadiness = 'unverified',
-    bool requireReady = true,
   });
 
   Stream<AgentDispatchEvent> stream({
@@ -193,6 +201,5 @@ abstract class AgentDispatchLane {
     required AgentCommandRunner runner,
     required String agentId,
     AgentDispatchBind bind = const AgentDispatchBind(),
-    String conversationReadiness = 'unverified',
   });
 }

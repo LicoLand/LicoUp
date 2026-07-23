@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "packages/contracts/client/semantic-conversation.schema.json",
   "title": "SemanticConversation",
-  "description": "Canonical read-only semantic conversation model for native agent history. Separates thread, execution, artifacts, audit, and raw evidence. Native source histories remain read-only; this document never authorizes a LicoLite-local conversation store.",
+  "description": "Canonical read-only semantic conversation model for native agent history. Separates thread, execution, artifacts, audit, and raw evidence. Native source histories remain read-only; this document never authorizes a LicoMesh-local conversation store.",
   "type": "object",
   "additionalProperties": false,
   "required": [

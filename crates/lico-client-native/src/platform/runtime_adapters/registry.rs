@@ -4,7 +4,7 @@ use super::model::{
     DriverInventoryDocument, DriverInventoryEntry, ReadinessDocument, ReadinessEntry,
     ReadinessSummary, RuntimeDriverProfile, RuntimeDriverRegistry,
 };
-use serde_json::Value;
+use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::OnceLock;
 
@@ -22,7 +22,7 @@ const CORE_CHECK_IDS: &[&str] = &[
 const CONDITIONAL_CHECK_IDS: &[&str] = &["C-01", "C-02", "C-03", "C-04", "C-05", "C-06"];
 const REQUIRED_EVIDENCE_BOOLEANS: &[&str] = &[
     "officialNativeLane",
-    "releaseUiPassed",
+    "conversationGatePassed",
     "cleanupPassed",
     "privacyPassed",
 ];
@@ -234,7 +234,7 @@ fn validate_readiness_entry(entry: &ReadinessEntry) -> std::result::Result<(), &
     }
     if entry.status == "ready"
         && (!entry.official_native_lane_proven
-            || !entry.release_ui_passed
+            || !entry.conversation_gate_passed
             || !entry.cleanup_passed
             || !entry.privacy_passed
             || entry.consecutive_passes < MINIMUM_CONSECUTIVE_PASSES
@@ -379,4 +379,78 @@ pub(crate) fn inventory_capability_matrix(agent_id: &str) -> Option<Value> {
         .drivers
         .get(adapter.id())
         .and_then(|entry| entry.capability_matrix.clone())
+}
+
+/// Build the bounded, client-facing adapter management catalog from the same
+/// packaged registry used for runtime dispatch. Installation lifecycle is
+/// exposed only for Lico Arc-owned bridges; official native lanes and bundled
+/// ACP clients never pretend to require installation into a vendor product.
+pub(crate) fn adapter_management_catalog(antigravity_bridge_installed: bool) -> Value {
+    let Some(registry) = runtime_driver_registry() else {
+        return json!({
+            "ok": false,
+            "schemaVersion": "lico.adapter-plugin-catalog.v1",
+            "adapters": [],
+            "error": {"code": "adapter_plugin_catalog_unavailable"},
+        });
+    };
+
+    let adapters = PACKAGED_RUNTIME_ADAPTER_IDS
+        .iter()
+        .filter_map(|agent_id| {
+            let adapter = adapter_for_agent(agent_id)?;
+            let driver = registry.drivers.get(*agent_id)?;
+            let readiness = registry.readiness.get(*agent_id)?;
+            let lane_family = driver
+                .capability_matrix
+                .as_ref()
+                .and_then(|matrix| matrix.get("laneFamily"))
+                .and_then(Value::as_str)
+                .unwrap_or("unavailable");
+            let managed_bridge = *agent_id == "antigravity";
+            let management_kind = if managed_bridge {
+                "managed-bridge"
+            } else if lane_family == "acp" {
+                "bundled-acp"
+            } else {
+                "native"
+            };
+            let installation_state = if managed_bridge {
+                if antigravity_bridge_installed {
+                    "installed"
+                } else {
+                    "not-installed"
+                }
+            } else {
+                "not-required"
+            };
+            let lifecycle_actions = if managed_bridge {
+                if antigravity_bridge_installed {
+                    vec!["uninstall"]
+                } else {
+                    vec!["install"]
+                }
+            } else {
+                Vec::new()
+            };
+            Some(json!({
+                "agentId": adapter.id(),
+                "label": adapter.label(),
+                "driverId": driver.driver_id,
+                "runtimeProtocol": driver.runtime_protocol,
+                "laneFamily": lane_family,
+                "managementKind": management_kind,
+                "installationState": installation_state,
+                "readiness": readiness.status,
+                "lifecycleActions": lifecycle_actions,
+                "nativePreferred": true,
+            }))
+        })
+        .collect::<Vec<_>>();
+
+    json!({
+        "ok": adapters.len() == PACKAGED_RUNTIME_ADAPTER_IDS.len(),
+        "schemaVersion": "lico.adapter-plugin-catalog.v1",
+        "adapters": adapters,
+    })
 }

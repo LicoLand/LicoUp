@@ -82,6 +82,149 @@ fn kimi_code_wire_usage_records_preserve_model_and_exact_token_fields() {
 }
 
 #[test]
+fn kimi_code_status_update_preserves_native_token_usage() {
+    let root = temp_dir("kimi-code-status-usage");
+    let wire = root.join("wd_project/session-status/agents/main/wire.jsonl");
+    fs::create_dir_all(wire.parent().unwrap()).unwrap();
+    fs::write(
+        &wire,
+        [
+            r#"{"type":"context.append_message","time":"2026-07-10T09:59:59Z","message":{"role":"user","content":"Check exact status usage"}}"#,
+            r#"{"type":"StatusUpdate","time":"2026-07-10T10:00:00Z","model":"kimi-status-model","token_usage":{"input_other":80,"input_cache_read":20,"input_cache_creation":5,"output":15}}"#,
+        ]
+        .join("\n"),
+    )
+    .unwrap();
+
+    let listed = conversation_list(&json!({
+        "agent": "kimi-code",
+        "root": display_path(&root),
+    }))
+    .unwrap();
+    let message = listed["sessions"][0]["messages"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|message| message["sourceEventType"] == "StatusUpdate")
+        .unwrap();
+    assert_eq!(message["sourceEventType"], "StatusUpdate");
+    assert_eq!(message["model"], "kimi-status-model");
+    assert_eq!(message["usage"]["promptTokens"], 105);
+    assert_eq!(message["usage"]["cachedInputTokens"], 20);
+    assert_eq!(message["usage"]["completionTokens"], 15);
+    assert_eq!(message["usage"]["totalTokens"], 120);
+}
+
+#[test]
+fn kimi_code_subagent_wires_collapse_into_main_session_cards() {
+    let root = temp_dir("kimi-code-subagent-merge");
+    let session_root = root.join("wd_project/session-9");
+    fs::create_dir_all(session_root.join("agents/main")).unwrap();
+    fs::create_dir_all(session_root.join("agents/agent-0")).unwrap();
+    fs::create_dir_all(session_root.join("agents/agent-1")).unwrap();
+    fs::write(
+        session_root.join("state.json"),
+        json!({
+            "title": "Synthetic parent session",
+            "agents": {
+                "main": {"type": "main"},
+                "agent-0": {"type": "sub", "parentAgentId": "main", "swarmItem": "Survey the first synthetic subtask"},
+                "agent-1": {"type": "sub", "parentAgentId": "main"}
+            }
+        })
+        .to_string(),
+    )
+    .unwrap();
+    fs::write(
+        session_root.join("agents/main/wire.jsonl"),
+        [
+            r#"{"type":"turn.prompt","turnId":"turn-1","time":"2026-07-10T00:00:00Z","input":"Parent synthetic prompt"}"#,
+            r#"{"type":"context.append_loop_event","turnId":"turn-1","time":"2026-07-10T00:00:03Z","event":{"type":"content.part","step":1,"part":{"type":"text","text":"Parent answer"}}}"#,
+        ]
+        .join("\n"),
+    )
+    .unwrap();
+    for (agent, reply) in [
+        ("agent-0", "First subtask done"),
+        ("agent-1", "Second subtask done"),
+    ] {
+        fs::write(
+            session_root.join(format!("agents/{agent}/wire.jsonl")),
+            [
+                r#"{"type":"turn.prompt","turnId":"turn-1","time":"2026-07-10T00:00:01Z","input":"Subtask synthetic prompt"}"#,
+                &format!(
+                    r#"{{"type":"context.append_loop_event","turnId":"turn-1","time":"2026-07-10T00:00:02Z","event":{{"type":"content.part","step":1,"part":{{"type":"text","text":"{reply}"}}}}}}"#
+                ),
+            ]
+            .join("\n"),
+        )
+        .unwrap();
+    }
+
+    let listed = conversation_list(&json!({
+        "agent": "kimi-code",
+        "root": display_path(&root),
+    }))
+    .unwrap();
+    let sessions = listed["sessions"].as_array().unwrap();
+    assert_eq!(sessions.len(), 1);
+    assert_eq!(sessions[0]["nativeSessionId"], "session-9");
+    assert!(sessions[0].get("delegatedSubagent").is_none());
+    let cards = sessions[0]["messages"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|message| message["role"] == "subagent")
+        .collect::<Vec<_>>();
+    assert_eq!(cards.len(), 2);
+    let titles = cards
+        .iter()
+        .map(|card| card["cardTitle"].as_str().unwrap_or_default())
+        .collect::<BTreeSet<_>>();
+    assert_eq!(
+        titles,
+        BTreeSet::from(["Subagent task", "Survey the first synthetic subtask"])
+    );
+    let titled = cards
+        .iter()
+        .find(|card| card["cardTitle"] == "Survey the first synthetic subtask")
+        .unwrap();
+    assert!(
+        titled["messages"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|message| message["role"] == "agent" && message["text"] == "First subtask done")
+    );
+}
+
+#[test]
+fn kimi_code_subagent_wire_stays_standalone_when_parent_wire_missing() {
+    let root = temp_dir("kimi-code-subagent-orphan");
+    let session_root = root.join("wd_project/session-orphan");
+    fs::create_dir_all(session_root.join("agents/agent-0")).unwrap();
+    fs::write(
+        session_root.join("agents/agent-0/wire.jsonl"),
+        [
+            r#"{"type":"turn.prompt","turnId":"turn-1","time":"2026-07-10T00:00:01Z","input":"Orphan synthetic prompt"}"#,
+            r#"{"type":"context.append_loop_event","turnId":"turn-1","time":"2026-07-10T00:00:02Z","event":{"type":"content.part","step":1,"part":{"type":"text","text":"Orphan reply"}}}"#,
+        ]
+        .join("\n"),
+    )
+    .unwrap();
+
+    let listed = conversation_list(&json!({
+        "agent": "kimi-code",
+        "root": display_path(&root),
+    }))
+    .unwrap();
+    let sessions = listed["sessions"].as_array().unwrap();
+    assert_eq!(sessions.len(), 1);
+    assert_eq!(sessions[0]["nativeSessionId"], "session-orphan:agent-0");
+    assert!(sessions[0].get("delegatedSubagent").is_none());
+}
+
+#[test]
 fn kimi_code_wire_readback_preserves_session_and_structured_order() {
     let root = temp_dir("kimi-code-structured-wire");
     let session_root = root.join("work-key/native-session-42");

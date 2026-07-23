@@ -6,11 +6,14 @@ extension LicoStringsLabels on LicoStrings {
   String get clearSearch => isChinese ? '清除搜索' : 'Clear search';
   String get details => isChinese ? '详情' : 'Details';
   String get nativeDefault => isChinese ? '原生默认值' : 'Native default';
+  String defaultValueDisplay(String value) =>
+      isChinese ? '$value（默认）' : '$value (default)';
   String get reasoningSetting => isChinese ? '思考' : 'Reasoning';
   String get appearance => isChinese ? '外观' : 'Appearance';
   String get network => isChinese ? '网络' : 'Network';
   String get storageAndData => isChinese ? '存储与数据' : 'Storage & Data';
   String get diagnostics => isChinese ? '诊断' : 'Diagnostics';
+  String get systemConfiguration => isChinese ? '系统配置' : 'System';
   String get clientUpdate => isChinese ? '客户端更新' : 'Client Update';
   String get clientUpdateHint => isChinese
       ? '发现、下载并校验已签名的公开更新清单。不需要商店账号。'
@@ -57,6 +60,8 @@ extension LicoStringsLabels on LicoStrings {
   String get tokenUsageWindow =>
       isChinese ? 'Token 用量时间窗口' : 'Token usage window';
   String lastDays(int days) => isChinese ? '最近 $days 天' : 'Last $days days';
+  String daysShort(int days) => isChinese ? '$days 天' : '${days}d';
+  String get customDaysHint => isChinese ? '自定义天数' : 'Custom days';
   String get byAgent => isChinese ? '智能体' : 'By Agent';
   String get byModel => isChinese ? '模型' : 'By Model';
   String dailyTokenUsage(String date) =>
@@ -84,6 +89,13 @@ extension LicoStringsLabels on LicoStrings {
   String get loadingMoreHistories =>
       isChinese ? '正在加载更多历史...' : 'Loading more histories...';
   String get searchHistories => isChinese ? '搜索历史' : 'Search histories';
+  String get searchConversations => isChinese ? '搜索对话' : 'Search conversations';
+  String get searchConversationsHint => isChinese
+      ? '搜索功能和所有对话的标题、内容'
+      : 'Search features, conversation titles, and content';
+  String get searchFeaturesGroup => isChinese ? '功能' : 'Features';
+  String get noConversationSearchResults =>
+      isChinese ? '没有匹配的对话' : 'No matching conversations';
   String get collapseHistory => isChinese ? '收起历史' : 'Collapse history';
   String get expandHistory => isChinese ? '展开历史' : 'Expand history';
   // File chooser labels. File formats are intentionally not translated.
@@ -224,8 +236,8 @@ extension LicoStringsLabels on LicoStrings {
   String get conversations => isChinese ? '对话' : 'Conversations';
   String get newConversation => isChinese ? '新对话' : 'New Conversation';
   String get recycleBin => isChinese ? '回收站' : 'Recycle Bin';
-  String get archivedConversations =>
-      isChinese ? '已存档对话' : 'Archived Conversations';
+  String get archivedConversations => isChinese ? '已归档' : 'Archived';
+  String get recentConversations => isChinese ? '最近对话' : 'Recent conversations';
   String get noConversationsYet => isChinese ? '还没有对话' : 'No conversations yet';
   String get noTrashedConversations =>
       isChinese ? '回收站为空' : 'Recycle bin is empty';
@@ -379,8 +391,8 @@ extension LicoStringsLabels on LicoStrings {
       isChinese ? '暂无能力矩阵' : 'Capability matrix unavailable';
   String get conversationParityEvidenceAge =>
       isChinese ? '证据状态' : 'Evidence age';
-  String get conversationParityBlockedCause =>
-      isChinese ? '阻断原因' : 'Blocked cause';
+  String get conversationParityEvidenceNote =>
+      isChinese ? '验收记录' : 'Acceptance note';
   String conversationParityEvidenceAgeValue(String ageClass) {
     return switch (ageClass) {
       'current' => isChinese ? '当前' : 'Current',
@@ -394,16 +406,16 @@ extension LicoStringsLabels on LicoStrings {
     return switch (code) {
       'evidence_missing' =>
         isChinese
-            ? '缺少当前版本的对等证据，发送保持关闭。'
-            : 'Current parity evidence is missing, so sending stays closed.',
+            ? '当前版本尚未生成对等验收证据。'
+            : 'Parity evidence has not been generated for this version.',
       'evidence_incomplete' =>
         isChinese
-            ? '对等证据不完整，发送保持关闭。'
-            : 'Parity evidence is incomplete, so sending stays closed.',
+            ? '当前版本的对等验收证据不完整。'
+            : 'Parity evidence is incomplete for this version.',
       'evidence_stale_or_incomplete' =>
         isChinese
-            ? '对等证据已过期或不完整，请重新扫描后重试。'
-            : 'Parity evidence is stale or incomplete; rescan and retry.',
+            ? '对等验收证据已过期或不完整。'
+            : 'Parity evidence is stale or incomplete.',
       'runtime_evidence_binding_mismatch' =>
         isChinese
             ? '运行时证据绑定不匹配，请重新扫描智能体。'
@@ -420,27 +432,32 @@ extension LicoStringsLabels on LicoStrings {
         isChinese
             ? 'Antigravity CLI 没有保持消息与会话 ID 离开进程参数的结构化传输。'
             : 'Antigravity CLI has no structured transport that keeps messages and conversation IDs out of process arguments.',
-      'native_conversation_parity_unverified' ||
-      'native_conversation_parity_blocked' ||
-      'native_conversation_parity_failed' ||
-      'native_conversation_parity_partial' ||
-      'native_conversation_parity_history-only' =>
+      'native_agent_executable_not_detected' =>
         isChinese
-            ? '原生会话对等尚未就绪，发送保持关闭。'
-            : 'Native conversation parity is not ready, so sending stays closed.',
+            ? '未检测到对应的本地 CLI 可执行程序。'
+            : 'The local CLI executable was not detected.',
+      'native_agent_runtime_profile_unavailable' =>
+        isChinese
+            ? '没有找到对应的本地会话驱动。'
+            : 'No local conversation driver is available for this agent.',
+      'runtime_message_send_unavailable' =>
+        isChinese
+            ? '当前扫描结果没有可执行的消息发送路径。'
+            : 'The current scan has no executable message-send path.',
       'orchestration_policy_required' => configurePolicyBeforeSend,
       'orchestration_targets_unavailable' =>
         isChinese
             ? '当前策略没有可用的发送目标。'
             : 'The current policy has no available send targets.',
-      _ =>
-        isChinese ? '发送因对等门禁关闭：$code' : 'Sending closed by parity gate: $code',
+      _ => isChinese ? '操作不可用：$code' : 'Operation unavailable: $code',
     };
   }
 
   String messageTarget(String targetLabel) =>
       isChinese ? '发送给 $targetLabel' : 'Message $targetLabel';
   String get send => isChinese ? '发送' : 'Send';
+  String conversationSendFailed(String reason) =>
+      isChinese ? '发送失败：$reason' : 'Send failed: $reason';
 
   String get appearancePreset => isChinese ? '外观方案' : 'Appearance Preset';
   String get layoutProfile => isChinese ? '界面布局' : 'Interface Layout';

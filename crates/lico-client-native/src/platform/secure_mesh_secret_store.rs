@@ -9,8 +9,8 @@ mod platform_store;
 mod selection;
 
 pub use crate::core::secure_mesh_secret_store::{
-    SecretStoreAuthorizationRequest, SecretStoreAuthorizationSession, SecretStoreHandle,
-    SecureMeshSecretStore,
+    SecretBytes, SecretStoreAuthorizationRequest, SecretStoreAuthorizationSession,
+    SecretStoreHandle, SecureMeshSecretStore,
 };
 pub use capability::{
     LinuxSecretServiceProbeSnapshot, PlatformSecretStoreRuntimeState,
@@ -18,6 +18,8 @@ pub use capability::{
     platform_native_secret_store_runtime_state, platform_native_secret_store_supported,
 };
 pub use ephemeral::EphemeralSecretStore;
+#[cfg(target_os = "macos")]
+pub use macos_user_presence::MacosAuthorizedPresence;
 pub use platform_backends::NATIVE_SECRET_STORE_BACKEND_UNSUPPORTED;
 pub use platform_store::{PlatformSecretStore, SecretClassPersistenceProof};
 pub use selection::SecureMeshSecretStoreSelection;

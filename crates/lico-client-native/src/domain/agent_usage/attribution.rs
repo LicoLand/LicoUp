@@ -1,103 +1,72 @@
-//! Native-history message token extraction and model attribution.
+//! Metadata-first native-history token extraction and model attribution.
 
-use super::contract::{AgentDef, HistoryUsageSummary, MessageUsage, number_field, text_field};
+use super::contract::{HistoryUsageSummary, MessageUsage, UsageAccuracy, number_field, text_field};
 use super::window::UsageWindow;
-use crate::domain::conversations;
-use serde_json::{Value, json};
+use serde_json::Value;
+use std::collections::BTreeMap;
 
-pub(super) fn summarize_native_history(
-    def: &AgentDef,
-    params: &Value,
-    window: &UsageWindow,
-    warnings: &mut Vec<Value>,
+/// Prefers provider/runtime counters and estimates only message segments that
+/// are not covered by native usage metadata. The caller persists the result at
+/// day grain, so unchanged history is never tokenized again.
+pub(super) fn summarize_sessions(
+    sessions: &[Value],
+    calendar: &UsageWindow,
 ) -> HistoryUsageSummary {
-    let mut conversation_params = params.clone();
-    if let Some(object) = conversation_params.as_object_mut() {
-        object.insert("agent".to_owned(), json!(def.id));
-    }
-    let listed = match conversations::conversation_list(&conversation_params) {
-        Ok(value) => value,
-        Err(_) => {
-            warnings.push(json!({
-                "code": "native_history_scan_failed",
-                "agentId": def.id
-            }));
-            return HistoryUsageSummary::default();
-        }
-    };
     let mut summary = HistoryUsageSummary::default();
-    if let Some(sessions) = listed.get("sessions").and_then(Value::as_array) {
-        for session in sessions {
-            if session
-                .get("sourcePath")
-                .and_then(Value::as_str)
-                .is_some_and(|path| !path.trim().is_empty())
-            {
-                summary
-                    .source_paths
-                    .insert("native-history-store".to_owned());
-            }
-            let messages = session
-                .get("messages")
-                .and_then(Value::as_array)
-                .cloned()
-                .unwrap_or_default();
-            let session_model = session_model_label(session);
-            let session_date = session_date_key(session, window);
-            let before = summary.total_tokens();
-            if session.get("usage").is_some() {
-                if add_message_usage(
-                    session,
-                    &mut summary,
-                    session_date,
-                    session_model.clone(),
-                    window,
-                ) {
-                    summary.message_count = summary.message_count.saturating_add(1);
-                }
-            } else {
-                let mut pending_segment = Vec::<(MessageUsage, String)>::new();
-                for message in messages {
+    for session in sessions {
+        if session
+            .get("sourcePath")
+            .and_then(Value::as_str)
+            .is_some_and(|path| !path.trim().is_empty())
+        {
+            summary
+                .source_paths
+                .insert("native-history-store".to_owned());
+        }
+        let messages = session
+            .get("messages")
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default();
+        let session_model =
+            session_model_label(session).or_else(|| session_dominant_model(&messages));
+        let session_date = session_date_key(session, calendar);
+        let before = summary.total_tokens();
+        if session.get("usage").is_some() {
+            let added = add_explicit_usage(
+                session,
+                &mut summary,
+                session_date,
+                session_model.clone(),
+                calendar,
+            ) as u64;
+            summary.message_count = summary.message_count.saturating_add(added);
+        } else {
+            let mut pending_estimates = Vec::<(MessageUsage, String)>::new();
+            let added = messages
+                .iter()
+                .map(|message| {
                     let date_key =
-                        message_date_key(&message, window).or_else(|| session_date.clone());
-                    let added_messages = collect_message_usage_tree(
-                        &message,
+                        message_date_key(message, calendar).or_else(|| session_date.clone());
+                    collect_message_usage_tree(
+                        message,
                         &mut summary,
-                        &mut pending_segment,
+                        &mut pending_estimates,
                         date_key,
                         session_model.clone(),
-                        window,
-                    );
-                    summary.message_count = summary.message_count.saturating_add(added_messages);
-                }
-                summary.message_count =
-                    summary
-                        .message_count
-                        .saturating_add(flush_pending_message_usage(
-                            &mut pending_segment,
-                            &mut summary,
-                        ));
-            }
-            if summary.total_tokens() > before {
-                summary.session_count = summary.session_count.saturating_add(1);
-            }
-        }
-    }
-    if let Some(skipped) = listed
-        .get("sources")
-        .and_then(|sources| sources.get("skipped"))
-        .and_then(Value::as_array)
-    {
-        summary.skipped = skipped
-            .iter()
-            .map(|item| {
-                json!({
-                    "code": text_field(item, &["code", "reason"])
-                        .unwrap_or_else(|| "history_source_skipped".to_owned()),
-                    "agentId": def.id
+                        calendar,
+                    )
                 })
-            })
-            .collect();
+                .sum::<u64>()
+                .saturating_add(flush_pending_estimates(
+                    &mut pending_estimates,
+                    &mut summary,
+                ));
+            summary.message_count = summary.message_count.saturating_add(added);
+        }
+        if summary.total_tokens() > before {
+            summary.session_count = summary.session_count.saturating_add(1);
+        }
     }
     summary
 }
@@ -134,14 +103,14 @@ fn session_date_key(session: &Value, window: &UsageWindow) -> Option<String> {
     .and_then(|value| window.date_key(&value))
 }
 
-fn add_message_usage(
+fn add_explicit_usage(
     message: &Value,
     summary: &mut HistoryUsageSummary,
     date_key: Option<String>,
     default_model: Option<String>,
-    window: &UsageWindow,
+    calendar: &UsageWindow,
 ) -> bool {
-    let Some(date_key) = date_key.filter(|value| window.contains(value)) else {
+    let Some(date_key) = date_key.filter(|value| calendar.contains(value)) else {
         return false;
     };
     let before = summary.total_tokens();
@@ -152,182 +121,208 @@ fn add_message_usage(
     summary.total_tokens() > before
 }
 
-fn message_usage(message: &Value, default_model: Option<String>) -> Option<MessageUsage> {
-    if let Some(usage) = message.get("usage") {
-        let mut prompt_tokens =
-            number_field(usage, &["promptTokens", "prompt_tokens"]).unwrap_or(0);
-        let mut completion_tokens =
-            number_field(usage, &["completionTokens", "completion_tokens"]).unwrap_or(0);
-        let field_total = prompt_tokens.saturating_add(completion_tokens);
-        let total_tokens = number_field(usage, &["totalTokens", "total_tokens"])
-            .filter(|value| *value > 0)
-            .unwrap_or(field_total);
-        if field_total != total_tokens {
-            if field_total > total_tokens {
-                completion_tokens = completion_tokens.min(total_tokens);
-                prompt_tokens = total_tokens.saturating_sub(completion_tokens);
-            } else if prompt_tokens > 0 {
-                prompt_tokens = prompt_tokens.min(total_tokens);
-                completion_tokens = total_tokens.saturating_sub(prompt_tokens);
-            } else {
-                completion_tokens = completion_tokens.min(total_tokens);
-                prompt_tokens = total_tokens.saturating_sub(completion_tokens);
-            }
+pub(super) fn message_usage(
+    message: &Value,
+    default_model: Option<String>,
+) -> Option<MessageUsage> {
+    let usage = message.get("usage")?;
+    let mut prompt_tokens = number_field(usage, &["promptTokens", "prompt_tokens"]).unwrap_or(0);
+    let mut completion_tokens =
+        number_field(usage, &["completionTokens", "completion_tokens"]).unwrap_or(0);
+    let field_total = prompt_tokens.saturating_add(completion_tokens);
+    let total_tokens = number_field(usage, &["totalTokens", "total_tokens"])
+        .filter(|value| *value > 0)
+        .unwrap_or(field_total);
+    if field_total != total_tokens {
+        if field_total > total_tokens {
+            completion_tokens = completion_tokens.min(total_tokens);
+            prompt_tokens = total_tokens.saturating_sub(completion_tokens);
+        } else if prompt_tokens > 0 {
+            prompt_tokens = prompt_tokens.min(total_tokens);
+            completion_tokens = total_tokens.saturating_sub(prompt_tokens);
+        } else {
+            completion_tokens = completion_tokens.min(total_tokens);
+            prompt_tokens = total_tokens.saturating_sub(completion_tokens);
         }
-        if total_tokens == 0 {
-            return None;
-        }
-        return Some(MessageUsage {
-            prompt_tokens,
-            cached_input_tokens: number_field(
-                usage,
-                &[
-                    "cachedInputTokens",
-                    "cached_input_tokens",
-                    "cacheReadInputTokens",
-                    "cache_read_input_tokens",
-                ],
-            )
-            .unwrap_or(0)
-            .min(prompt_tokens),
-            completion_tokens,
-            total_tokens,
-            model: message_model_label(message).or(default_model),
-            explicit: true,
-        });
     }
-    let role = message
-        .get("role")
-        .and_then(Value::as_str)
-        .unwrap_or_default();
-    if role == "metadata" {
+    if total_tokens == 0 {
         return None;
     }
-    let text = message
-        .get("text")
-        .and_then(Value::as_str)
-        .unwrap_or_default();
-    let tokens = estimate_tokens(text);
-    if tokens == 0 {
-        return None;
-    }
-    Some(if role == "agent" {
-        MessageUsage {
-            completion_tokens: tokens,
-            total_tokens: tokens,
-            model: message_model_label(message).or(default_model),
-            explicit: false,
-            ..MessageUsage::default()
-        }
-    } else {
-        MessageUsage {
-            prompt_tokens: tokens,
-            total_tokens: tokens,
-            model: message_model_label(message).or(default_model),
-            explicit: false,
-            ..MessageUsage::default()
-        }
+    let model = text_field(
+        usage,
+        &[
+            "model",
+            "modelId",
+            "model_id",
+            "modelName",
+            "model_name",
+            "modelLabel",
+            "model_label",
+        ],
+    )
+    .or_else(|| message_model_label(message))
+    .or(default_model);
+    Some(MessageUsage {
+        prompt_tokens,
+        cached_input_tokens: number_field(
+            usage,
+            &[
+                "cachedInputTokens",
+                "cached_input_tokens",
+                "cacheReadInputTokens",
+                "cache_read_input_tokens",
+            ],
+        )
+        .unwrap_or(0)
+        .min(prompt_tokens),
+        completion_tokens,
+        total_tokens,
+        model,
+        accuracy: UsageAccuracy::Exact,
     })
 }
 
 fn collect_message_usage_tree(
     message: &Value,
     summary: &mut HistoryUsageSummary,
-    pending_segment: &mut Vec<(MessageUsage, String)>,
+    pending_estimates: &mut Vec<(MessageUsage, String)>,
     fallback_date: Option<String>,
     default_model: Option<String>,
-    window: &UsageWindow,
+    calendar: &UsageWindow,
 ) -> u64 {
-    if let Some(children) = message.get("messages").and_then(Value::as_array)
-        && !children.is_empty()
-    {
-        let mut added = children
-            .iter()
-            .map(|child| {
-                let date_key = message_date_key(child, window).or_else(|| fallback_date.clone());
-                collect_message_usage_tree(
-                    child,
-                    summary,
-                    pending_segment,
-                    date_key,
-                    default_model.clone(),
-                    window,
-                )
-            })
-            .sum();
-        if message.get("usage").is_some() {
-            added += collect_message_usage(
-                message,
-                summary,
-                pending_segment,
-                fallback_date,
-                default_model,
-                window,
-                true,
-            );
-        }
-        return added;
-    }
-    collect_message_usage(
-        message,
-        summary,
-        pending_segment,
-        fallback_date,
-        default_model,
-        window,
-        false,
-    )
-}
-
-fn collect_message_usage(
-    message: &Value,
-    summary: &mut HistoryUsageSummary,
-    pending_segment: &mut Vec<(MessageUsage, String)>,
-    date_key: Option<String>,
-    default_model: Option<String>,
-    window: &UsageWindow,
-    parent_scope: bool,
-) -> u64 {
-    let Some(usage) = message_usage(message, default_model) else {
-        return 0;
-    };
-    if usage.explicit {
-        let usage_scope = message
-            .get("usageScope")
-            .and_then(Value::as_str)
-            .unwrap_or_default();
-        let covers_pending_segment = parent_scope
+    if message.get("usage").is_some() {
+        let scope = text_field(message, &["usageScope", "usage_scope"])
+            .unwrap_or_default()
+            .to_ascii_lowercase();
+        let covers_pending = message
+            .get("messages")
+            .and_then(Value::as_array)
+            .is_some_and(|children| !children.is_empty())
             || matches!(
-                usage_scope,
+                scope.as_str(),
                 "request-response" | "pending-segment" | "turn" | "session"
             );
-        let mut added = if covers_pending_segment {
-            pending_segment.clear();
+        let mut added = if covers_pending {
+            pending_estimates.clear();
             0
         } else {
-            flush_pending_message_usage(pending_segment, summary)
+            flush_pending_estimates(pending_estimates, summary)
         };
-        if let Some(date_key) = date_key.filter(|value| window.contains(value)) {
-            summary.add(usage, Some(date_key));
+        if add_explicit_usage(message, summary, fallback_date, default_model, calendar) {
             added = added.saturating_add(1);
         }
         return added;
     }
-    if let Some(date_key) = date_key.filter(|value| window.contains(value)) {
-        pending_segment.push((usage, date_key));
+    if let Some(children) = message.get("messages").and_then(Value::as_array)
+        && !children.is_empty()
+    {
+        return children
+            .iter()
+            .map(|child| {
+                let date_key = message_date_key(child, calendar).or_else(|| fallback_date.clone());
+                collect_message_usage_tree(
+                    child,
+                    summary,
+                    pending_estimates,
+                    date_key,
+                    default_model.clone(),
+                    calendar,
+                )
+            })
+            .sum();
     }
+    let Some(date_key) = fallback_date.filter(|value| calendar.contains(value)) else {
+        return 0;
+    };
+    let Some(usage) = estimated_message_usage(message, default_model) else {
+        return 0;
+    };
+    pending_estimates.push((usage, date_key));
     0
 }
 
-fn flush_pending_message_usage(
-    pending_segment: &mut Vec<(MessageUsage, String)>,
+fn flush_pending_estimates(
+    pending_estimates: &mut Vec<(MessageUsage, String)>,
     summary: &mut HistoryUsageSummary,
 ) -> u64 {
-    let added = pending_segment.len() as u64;
-    for (usage, date_key) in pending_segment.drain(..) {
-        summary.add(usage, Some(date_key));
+    let added = pending_estimates.len() as u64;
+    for (usage, day) in pending_estimates.drain(..) {
+        summary.add(usage, Some(day));
     }
     added
+}
+
+pub(super) fn estimated_message_usage(
+    message: &Value,
+    default_model: Option<String>,
+) -> Option<MessageUsage> {
+    let role = text_field(message, &["role", "author"])
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    if role == "metadata" {
+        return None;
+    }
+    let text = text_field(message, &["text", "content", "message"])?;
+    let tokens = estimate_tokens(&text);
+    if tokens == 0 {
+        return None;
+    }
+    let completion = matches!(role.as_str(), "agent" | "assistant" | "model" | "reasoning");
+    Some(MessageUsage {
+        prompt_tokens: if completion { 0 } else { tokens },
+        completion_tokens: if completion { tokens } else { 0 },
+        total_tokens: tokens,
+        model: message_model_label(message).or(default_model),
+        accuracy: UsageAccuracy::Estimated,
+        ..MessageUsage::default()
+    })
+}
+
+/// Stable, allocation-free fallback used only when native counters are absent.
+/// CJK code points are weighted at 0.9 token and other non-space code points at
+/// 0.25 token, matching the previous report behavior without floating point.
+pub(super) fn estimate_tokens(text: &str) -> u64 {
+    let mut weighted_twentieths = 0_u64;
+    for character in text.chars().filter(|character| !character.is_whitespace()) {
+        weighted_twentieths =
+            weighted_twentieths.saturating_add(if is_cjk(character) { 18 } else { 5 });
+    }
+    weighted_twentieths.saturating_add(19) / 20
+}
+
+fn is_cjk(character: char) -> bool {
+    matches!(
+        character as u32,
+        0x4E00..=0x9FFF | 0x3400..=0x4DBF | 0x3040..=0x30FF | 0xAC00..=0xD7AF
+    )
+}
+
+/// When individual messages lack a model label, attribute their usage to the
+/// session's dominant labeled model instead of the unattributed bucket; a
+/// session that never names a model still falls back to "Others".
+fn session_dominant_model(messages: &[Value]) -> Option<String> {
+    fn visit(message: &Value, counts: &mut BTreeMap<String, u64>) {
+        if let Some(model) = message_model_label(message) {
+            *counts.entry(model).or_default() += 1;
+        }
+        if let Some(children) = message.get("messages").and_then(Value::as_array) {
+            for child in children {
+                visit(child, counts);
+            }
+        }
+    }
+    let mut counts = BTreeMap::<String, u64>::new();
+    for message in messages {
+        visit(message, &mut counts);
+    }
+    counts
+        .into_iter()
+        .max_by(|(left_model, left_count), (right_model, right_count)| {
+            left_count
+                .cmp(right_count)
+                .then(right_model.cmp(left_model))
+        })
+        .map(|(model, _)| model)
 }
 
 fn session_model_label(session: &Value) -> Option<String> {
@@ -399,26 +394,6 @@ fn normalize_model_label(value: String) -> String {
     }
 }
 
-pub(super) fn estimate_tokens(text: &str) -> u64 {
-    let mut cjk = 0usize;
-    let mut other = 0usize;
-    for ch in text.chars().filter(|ch| !ch.is_whitespace()) {
-        if is_cjk(ch) {
-            cjk += 1;
-        } else {
-            other += 1;
-        }
-    }
-    ((cjk as f64 * 0.9) + (other as f64 / 4.0)).ceil() as u64
-}
-
-fn is_cjk(ch: char) -> bool {
-    matches!(
-        ch as u32,
-        0x4E00..=0x9FFF | 0x3400..=0x4DBF | 0x3040..=0x30FF | 0xAC00..=0xD7AF
-    )
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -426,6 +401,24 @@ mod tests {
 
     fn window() -> UsageWindow {
         UsageWindow::from_params(&json!({"now": "2026-07-15T12:00:00Z"}))
+    }
+
+    #[test]
+    fn explicit_usage_prefers_usage_model_over_session_label() {
+        let usage = message_usage(
+            &json!({
+                "model": "grok-4.5",
+                "usage": {
+                    "promptTokens": 4200,
+                    "totalTokens": 4200,
+                    "model": "composer-2.5-fast",
+                    "source": "cursor-request-usage"
+                }
+            }),
+            Some("grok-4.5".to_owned()),
+        )
+        .unwrap();
+        assert_eq!(usage.model.as_deref(), Some("composer-2.5-fast"));
     }
 
     #[test]
@@ -449,16 +442,15 @@ mod tests {
         assert_eq!(usage.completion_tokens, 20);
         assert_eq!(usage.total_tokens, 110);
         assert_eq!(usage.model.as_deref(), Some("cursor-auto"));
-        assert!(usage.explicit);
     }
 
     #[test]
-    fn parent_usage_replaces_estimates_for_covered_content() {
+    fn parent_usage_covers_nested_content_exactly_once() {
         let message = json!({
             "createdAt": "2026-07-10T10:00:00Z",
             "messages": [
-                {"role": "user", "text": "estimated prompt"},
-                {"role": "agent", "text": "estimated response"}
+                {"role": "user", "text": "plain prompt"},
+                {"role": "agent", "text": "plain response"}
             ],
             "usage": {
                 "prompt_tokens": 8,
@@ -467,67 +459,33 @@ mod tests {
             }
         });
         let mut summary = HistoryUsageSummary::default();
-        let mut pending = Vec::new();
         let added = collect_message_usage_tree(
             &message,
             &mut summary,
-            &mut pending,
+            &mut Vec::new(),
             Some("2026-07-10".to_owned()),
             Some("model-a".to_owned()),
             &window(),
         );
         assert_eq!(added, 1);
-        assert!(pending.is_empty());
         assert_eq!(summary.total_tokens(), 13);
         assert_eq!(summary.explicit_records, 1);
-        assert_eq!(summary.estimated_records, 0);
     }
 
     #[test]
-    fn uncovered_tail_remains_estimated_after_explicit_turn_usage() {
-        let window = window();
-        let mut summary = HistoryUsageSummary::default();
-        let mut pending = Vec::new();
-        let date = Some("2026-07-10".to_owned());
-        collect_message_usage(
-            &json!({"role": "user", "text": "question"}),
-            &mut summary,
-            &mut pending,
-            date.clone(),
-            Some("model-a".to_owned()),
-            &window,
-            false,
-        );
-        collect_message_usage(
-            &json!({
-                "role": "agent",
-                "usageScope": "request-response",
-                "usage": {
-                    "prompt_tokens": 8,
-                    "completion_tokens": 5,
-                    "total_tokens": 13
-                }
-            }),
-            &mut summary,
-            &mut pending,
-            date.clone(),
-            Some("model-a".to_owned()),
-            &window,
-            false,
-        );
-        collect_message_usage(
-            &json!({"role": "user", "text": "abcd"}),
-            &mut summary,
-            &mut pending,
-            date,
-            Some("model-a".to_owned()),
-            &window,
-            false,
-        );
-        flush_pending_message_usage(&mut pending, &mut summary);
-        assert_eq!(summary.total_tokens(), 14);
-        assert_eq!(summary.explicit_records, 1);
-        assert_eq!(summary.estimated_records, 1);
+    fn text_without_explicit_usage_is_estimated_once() {
+        let sessions = [json!({
+            "createdAt": "2026-07-10T10:00:00Z",
+            "messages": [
+                {"role": "user", "text": "not a token counter"},
+                {"role": "agent", "text": "also not a token counter"}
+            ]
+        })];
+        let summary = summarize_sessions(&sessions, &window());
+        assert!(summary.total_tokens() > 0);
+        assert_eq!(summary.explicit_records, 0);
+        assert_eq!(summary.estimated_records, 2);
+        assert_eq!(summary.confidence(), "low");
     }
 
     #[test]
@@ -535,5 +493,29 @@ mod tests {
         assert_eq!(estimate_tokens(""), 0);
         assert_eq!(estimate_tokens("abcd"), 1);
         assert_eq!(estimate_tokens("中文"), 2);
+    }
+
+    #[test]
+    fn session_dominant_model_prefers_most_frequent_label() {
+        let messages = vec![
+            json!({"role": "user", "text": "hello"}),
+            json!({"role": "agent", "text": "a", "model": "claude-opus-4-6"}),
+            json!({
+                "role": "agent",
+                "text": "b",
+                "messages": [
+                    {"role": "agent", "text": "c", "model": "claude-opus-4-6"}
+                ]
+            }),
+            json!({"role": "agent", "text": "d", "model": "gpt-5.5"}),
+        ];
+        assert_eq!(
+            session_dominant_model(&messages).as_deref(),
+            Some("claude-opus-4-6")
+        );
+        assert_eq!(
+            session_dominant_model(&[json!({"role": "user", "text": "x"})]),
+            None
+        );
     }
 }

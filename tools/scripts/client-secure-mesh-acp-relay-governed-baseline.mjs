@@ -147,7 +147,7 @@ const checkedAt = new Date().toISOString();
 
 const report = {
   ok,
-  schemaVersion: "licolite.secure-mesh.acp-relay-governed-baseline-report.v1",
+  schemaVersion: "licomesh.secure-mesh.acp-relay-governed-baseline-report.v1",
   verifier: "tools/scripts/client-secure-mesh-acp-relay-governed-baseline.mjs",
   generatedBy: "tools/scripts/client-secure-mesh-acp-relay-governed-baseline.mjs",
   generatedAt: checkedAt,

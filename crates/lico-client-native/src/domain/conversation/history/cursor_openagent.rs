@@ -3,6 +3,7 @@
 mod codec;
 mod composition;
 mod cursor;
+mod cursor_cli;
 mod cursor_projection;
 mod fallback;
 mod openagent;

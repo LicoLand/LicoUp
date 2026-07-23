@@ -13,7 +13,9 @@ use crate::domain::mobile_relay::endpoint_trust::{
 use crate::domain::mobile_relay::relay_operations::{
     canonical_mailbox_token, validate_secure_envelope,
 };
-use crate::domain::mobile_relay::secret_custody::ensure_secure_mesh_protected_operation_allowed;
+use crate::domain::mobile_relay::secret_custody::{
+    RuntimeSecretMaterial, ensure_secure_mesh_protected_operation_allowed,
+};
 use crate::domain::mobile_relay::support::{
     MOBILE_RELAY_COMMAND_TTL_SECONDS, MOBILE_RELAY_RESULT_TTL_SECONDS,
 };
@@ -26,16 +28,19 @@ use uuid::Uuid;
 #[cfg(test)]
 pub(in crate::domain::mobile_relay) fn seal_mobile_relay_payload(
     config: &Value,
+    secret_material: &RuntimeSecretMaterial,
     kind: SecureMeshPayloadKind,
     payload: &Value,
 ) -> Result<Value> {
     let mut pairwise_operation = mobile_relay_pairwise_operation(
         config,
+        secret_material,
         "Mobile Relay pairwise payload authorization batch",
         3,
     )?;
     seal_mobile_relay_payload_with_pairwise_operation(
         config,
+        secret_material,
         kind,
         payload,
         &mut pairwise_operation,
@@ -44,12 +49,14 @@ pub(in crate::domain::mobile_relay) fn seal_mobile_relay_payload(
 
 pub(in crate::domain::mobile_relay) fn seal_mobile_relay_payload_with_pairwise_operation(
     config: &Value,
+    secret_material: &RuntimeSecretMaterial,
     kind: SecureMeshPayloadKind,
     payload: &Value,
     pairwise_operation: &mut MobileRelayPairwiseOperation,
 ) -> Result<Value> {
     seal_mobile_relay_payload_with_pairwise_operation_and_gate(
         config,
+        secret_material,
         kind,
         payload,
         pairwise_operation,
@@ -59,6 +66,7 @@ pub(in crate::domain::mobile_relay) fn seal_mobile_relay_payload_with_pairwise_o
 
 pub(in crate::domain::mobile_relay) fn seal_mobile_relay_payload_with_pairwise_operation_and_gate(
     config: &Value,
+    secret_material: &RuntimeSecretMaterial,
     kind: SecureMeshPayloadKind,
     payload: &Value,
     pairwise_operation: &mut MobileRelayPairwiseOperation,
@@ -74,7 +82,7 @@ pub(in crate::domain::mobile_relay) fn seal_mobile_relay_payload_with_pairwise_o
             ensure_peer_trust_authorized_for_protected_send(config, payload_kind)?
         }
     };
-    let endpoint = local_endpoint_state(config)?;
+    let endpoint = local_endpoint_state(config, secret_material)?;
     let peer = peer_endpoint_state(config)?;
     let created_at = now_iso();
     let expires_at = timestamp_after_seconds(match kind {
@@ -88,7 +96,7 @@ pub(in crate::domain::mobile_relay) fn seal_mobile_relay_payload_with_pairwise_o
     let envelope_id = general_purpose::URL_SAFE_NO_PAD.encode(delivery_id_bytes);
     let message_id = format!("msg_{}", Uuid::new_v4());
     let opaque_mailbox_id = canonical_mailbox_token(
-        config,
+        secret_material,
         &peer.endpoint_id,
         &peer.endpoint_kind,
         peer.mailbox_rotation_epoch,
@@ -116,16 +124,19 @@ pub(in crate::domain::mobile_relay) fn seal_mobile_relay_payload_with_pairwise_o
 #[cfg(test)]
 pub(in crate::domain::mobile_relay) fn open_mobile_relay_payload(
     config: &Value,
+    secret_material: &RuntimeSecretMaterial,
     envelope: &Value,
     kind: SecureMeshPayloadKind,
 ) -> Result<Vec<u8>> {
     let mut pairwise_operation = mobile_relay_pairwise_operation(
         config,
+        secret_material,
         "Mobile Relay pairwise payload authorization batch",
         3,
     )?;
     open_mobile_relay_payload_with_pairwise_operation(
         config,
+        secret_material,
         envelope,
         kind,
         &mut pairwise_operation,
@@ -134,12 +145,14 @@ pub(in crate::domain::mobile_relay) fn open_mobile_relay_payload(
 
 pub(in crate::domain::mobile_relay) fn open_mobile_relay_payload_with_pairwise_operation(
     config: &Value,
+    secret_material: &RuntimeSecretMaterial,
     envelope: &Value,
     kind: SecureMeshPayloadKind,
     pairwise_operation: &mut MobileRelayPairwiseOperation,
 ) -> Result<Vec<u8>> {
     open_mobile_relay_payload_with_pairwise_operation_and_gate(
         config,
+        secret_material,
         envelope,
         kind,
         pairwise_operation,
@@ -149,6 +162,7 @@ pub(in crate::domain::mobile_relay) fn open_mobile_relay_payload_with_pairwise_o
 
 pub(in crate::domain::mobile_relay) fn open_mobile_relay_payload_with_pairwise_operation_and_gate(
     config: &Value,
+    _secret_material: &RuntimeSecretMaterial,
     envelope: &Value,
     kind: SecureMeshPayloadKind,
     pairwise_operation: &mut MobileRelayPairwiseOperation,

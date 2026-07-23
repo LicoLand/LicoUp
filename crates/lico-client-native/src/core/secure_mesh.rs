@@ -41,15 +41,15 @@ use crate::core::secure_mesh_trust::{
     SECURE_MESH_DEVICE_TRUST_PROTOCOL_VERSION, SECURE_MESH_DEVICE_TRUST_STATUS,
 };
 
-pub const SECURE_MESH_PROTOCOL_VERSION: &str = "licolite.secure-mesh.v1";
+pub const SECURE_MESH_PROTOCOL_VERSION: &str = "licomesh.secure-mesh.v1";
 /// Stable wire/security compatibility profile revision.
 ///
 /// This changes only when protocol or security semantics become incompatible. Application
 /// versions and release-artifact identity are deliberately not part of session negotiation.
 pub const SECURE_MESH_PROTOCOL_BUILD_REVISION: u64 = 5;
-pub const SECURE_MESH_COMMAND_PROTOCOL_VERSION: &str = "licolite.secure-mesh.command.v1";
-pub const SECURE_MESH_RESULT_PROTOCOL_VERSION: &str = "licolite.secure-mesh.result.v1";
-pub const SECURE_MESH_FILE_PROTOCOL_VERSION: &str = "licolite.secure-mesh.file.v1";
+pub const SECURE_MESH_COMMAND_PROTOCOL_VERSION: &str = "licomesh.secure-mesh.command.v1";
+pub const SECURE_MESH_RESULT_PROTOCOL_VERSION: &str = "licomesh.secure-mesh.result.v1";
+pub const SECURE_MESH_FILE_PROTOCOL_VERSION: &str = "licomesh.secure-mesh.file.v1";
 
 pub(crate) const ALLOWED_COMMANDS: &[&str] = &[
     "agent.sessions.list",

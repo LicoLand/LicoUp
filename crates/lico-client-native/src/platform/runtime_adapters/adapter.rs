@@ -62,7 +62,7 @@ impl RuntimeAdapter {
         }
     }
 
-    pub(super) fn label(self) -> &'static str {
+    pub(crate) fn label(self) -> &'static str {
         match self {
             Self::Antigravity => "Antigravity - CLI",
             Self::ClaudeCode => "Claude Code - CLI",
@@ -84,7 +84,7 @@ impl RuntimeAdapter {
             Self::ClaudeCode => "claude-code-stream-json",
             Self::Codex => "codex-app-server",
             Self::Copilot => "copilot-acp",
-            Self::Cursor => "cursor-acp",
+            Self::Cursor => "cursor-cli",
             Self::Hermes => "hermes-acp",
             Self::KiloCode => "kilo-code-serve",
             Self::KimiCode => "kimi-code-acp",

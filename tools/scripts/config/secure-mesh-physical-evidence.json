@@ -1,5 +1,5 @@
 {
-  "schemaVersion": "licolite.secure-mesh.physical-evidence-config.v2",
+  "schemaVersion": "licomesh.secure-mesh.physical-evidence-config.v2",
   "reportOutput": "build/reports/secure-mesh-physical-evidence-manifest.json",
   "linkedReports": {
     "androidPlatformCrypto": "build/reports/secure-mesh-android-platform-crypto-acceptance.json",

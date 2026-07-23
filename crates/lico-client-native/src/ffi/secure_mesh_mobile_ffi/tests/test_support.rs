@@ -8,7 +8,8 @@ pub(super) use super::super::{
     fixture_trust::{hex_bytes, native_device_identity_fixture},
     protected_operation::secure_mesh_action_requires_protected_operation_gate,
     request_validation::{
-        MAX_FFI_JSON_DEPTH, MAX_FFI_OBJECT_FIELDS, MAX_FFI_REQUEST_BYTES, MAX_FFI_STRING_BYTES,
+        MAX_FFI_JSON_DEPTH, MAX_FFI_JSON_NODES, MAX_FFI_OBJECT_FIELDS, MAX_FFI_REQUEST_BYTES,
+        MAX_FFI_STRING_BYTES,
     },
 };
 pub(super) use crate::core::secure_mesh_directory::{
@@ -18,7 +19,7 @@ pub(super) use crate::core::secure_mesh_transparency::{
     SecureMeshKtLog, directory_scope_commitment,
 };
 pub(super) use crate::platform::secure_mesh_secret_store::{
-    EphemeralSecretStore, SecureMeshSecretStore,
+    EphemeralSecretStore, SecretBytes, SecureMeshSecretStore,
 };
 pub(super) use base64::{Engine as _, engine::general_purpose};
 pub(super) use ed25519_dalek::SigningKey;
@@ -66,7 +67,7 @@ impl SecureMeshSecretStore for CapabilityOnlySecretStore {
     fn set_secret(
         &self,
         _handle: &crate::platform::secure_mesh_secret_store::SecretStoreHandle,
-        _secret: &str,
+        _secret: SecretBytes,
     ) -> anyhow::Result<()> {
         panic!("status capability projection must not write secrets")
     }
@@ -74,7 +75,7 @@ impl SecureMeshSecretStore for CapabilityOnlySecretStore {
     fn get_secret(
         &self,
         _handle: &crate::platform::secure_mesh_secret_store::SecretStoreHandle,
-    ) -> anyhow::Result<Option<String>> {
+    ) -> anyhow::Result<Option<SecretBytes>> {
         panic!("status capability projection must not read secrets")
     }
 

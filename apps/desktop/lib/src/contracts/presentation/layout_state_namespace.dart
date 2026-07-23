@@ -23,10 +23,6 @@ abstract final class LayoutStateChannels {
     'agents-sidebar',
     LayoutStateValueKind.paneExtent,
   );
-  static const agentsDestination = LayoutStateChannel(
-    'agents-destination',
-    LayoutStateValueKind.tab,
-  );
   static const settingsScroll = LayoutStateChannel(
     'settings-scroll',
     LayoutStateValueKind.scroll,

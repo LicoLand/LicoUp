@@ -61,13 +61,15 @@ without network access using `LICO_CLIENT_VERIFY_OFFLINE=1 npm run client:verify
 ## Documentation rules
 
 - Use short sentences and common words.
-- Keep an English file and a matching Simplified Chinese file. English is the
-  default entry.
+- Keep English as the normative public entry and link each maintained
+  Simplified Chinese localization back to it. Shared product facts in the two
+  root READMEs change together.
 - Use a small Mermaid diagram when a data flow is hard to explain in text.
 - Keep product text focused on diversity, connection, openness, integration,
   and user control.
 - Treat `README.md` as the public product page. Check every claim.
-- Keep plans under `docs/plan/` and one-off work under `.local/`. Both paths are
+- Keep structured plans under `docs/plans/`. Keep audit reports, temporary
+  proposals, and other one-off documents under `docs/reports/`. Both paths are
   local only.
 - Do not add local skills or temporary scripts to the repository.
 

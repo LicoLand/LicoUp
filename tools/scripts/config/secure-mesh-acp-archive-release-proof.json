@@ -1,5 +1,5 @@
 {
-  "schemaVersion": "licolite.secure-mesh.acp-archive-release-proof-config.v1",
+  "schemaVersion": "licomesh.secure-mesh.acp-archive-release-proof-config.v1",
   "reportOutput": "build/reports/secure-mesh-acp-archive-release-proof.json",
   "sourceChecks": [
     {

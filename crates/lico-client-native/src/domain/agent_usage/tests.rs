@@ -57,9 +57,12 @@ fn command_scan_keeps_schema_modes_dimensions_and_privacy_boundary() {
     }))
     .unwrap();
 
-    assert_eq!(result["schemaVersion"], 4);
+    assert_eq!(result["schemaVersion"], 6);
     assert_eq!(result["mode"], "local-token-usage");
-    assert_eq!(result["tokenSourceMode"], "local-history");
+    assert_eq!(
+        result["tokenSourceMode"],
+        "native-metadata-first-incremental"
+    );
     assert_eq!(result["window"]["days"], 30);
     assert_eq!(result["agents"][0]["agentId"], "opencode");
     assert_eq!(result["agents"][0]["history"]["totalTokens"], 18);
@@ -100,9 +103,12 @@ fn command_custom_window_and_retained_report_close_independently() {
         "limit": 1
     }))
     .unwrap();
-    assert_eq!(listed["schemaVersion"], 4);
+    assert_eq!(listed["schemaVersion"], 6);
     assert_eq!(listed["mode"], "local-token-usage");
-    assert_eq!(listed["tokenSourceMode"], "local-history");
+    assert_eq!(
+        listed["tokenSourceMode"],
+        "native-metadata-first-incremental"
+    );
     let reports = listed["reports"].as_array().map(Vec::len).unwrap_or(0);
     assert_eq!(reports, 1);
 

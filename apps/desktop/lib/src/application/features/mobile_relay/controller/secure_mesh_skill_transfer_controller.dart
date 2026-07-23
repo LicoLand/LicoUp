@@ -5,8 +5,7 @@ import 'package:flutter_client/src/application/features/mobile_relay/controller/
 import 'package:flutter_client/src/application/features/mobile_relay/controller/secure_mesh_file_transfer_controller.dart';
 import 'package:flutter_client/src/application/features/mobile_relay/policy/secure_mesh_policy.dart';
 import 'package:flutter_client/src/contracts/mobile_relay_control.dart';
-import 'package:flutter_client/src/contracts/secure_mesh_file_sync_models.dart';
-import 'package:flutter_client/src/contracts/secure_mesh_skill_sync_models.dart';
+import 'package:flutter_client/src/contracts/generated/secure_mesh.g.dart';
 
 /// Owns skill package transfer and the explicit Skill Hub install handoff.
 final class SecureMeshSkillTransferController extends ChangeNotifier {

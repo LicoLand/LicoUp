@@ -63,7 +63,7 @@ fn archive_target_scan_accepts_desktop_preflight_json() {
             "target": "codex",
             "label": "Codex",
             "status": "detected",
-            "historyRoots": ["/tmp/codex-history"]
+            "historyRoots": ["test-data/codex-history"]
         }]
     });
 

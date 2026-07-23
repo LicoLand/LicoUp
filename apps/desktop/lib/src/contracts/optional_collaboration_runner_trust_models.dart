@@ -1,7 +1,7 @@
 import 'package:flutter_client/src/contracts/optional_collaboration_model_parsing.dart';
 
 const optionalCollaborationOfficialRunnerIdentity =
-    'licolite.official-local-server-runner.v1';
+    'licomesh.official-local-server-runner.v1';
 
 final class OptionalCollaborationRunnerTrust {
   const OptionalCollaborationRunnerTrust({

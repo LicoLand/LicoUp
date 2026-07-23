@@ -12,7 +12,7 @@ final class AgentUsageGatewayAdapter implements AgentUsageGateway {
   Future<AgentUsageReport> scan({
     String agentId = '',
     bool forceRefresh = false,
-    int historyDays = 30,
+    int historyDays = 90,
   }) => service.scan(
     agentService: runner,
     agentId: agentId,

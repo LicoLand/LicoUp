@@ -68,14 +68,14 @@ void registerAgentConversationArchiveScenarios() {
         selectionMode: 'exact-keyword',
         query: ' Pactium ',
         sourceAgentId: 'codex',
-        path: ' /tmp/pactium ',
+        path: ' test-data/pactium ',
       );
       final created = await service.createArchiveJob(
         agentService: agentService,
         selectionMode: 'exact-keyword',
         query: ' Pactium ',
         sourceAgentId: 'codex',
-        path: ' /tmp/pactium ',
+        path: ' test-data/pactium ',
         planBinding: 'sha256:fixture-plan',
       );
       await service.archiveJobStatus(
@@ -105,7 +105,7 @@ void registerAgentConversationArchiveScenarios() {
         '--agent',
         'codex',
         '--path',
-        '/tmp/pactium',
+        'test-data/pactium',
       ]);
       expect(captured[1], [
         'snapshots',
@@ -119,7 +119,7 @@ void registerAgentConversationArchiveScenarios() {
         '--agent',
         'codex',
         '--path',
-        '/tmp/pactium',
+        'test-data/pactium',
         '--plan-binding',
         'sha256:fixture-plan',
         '--max-attempts',
@@ -177,7 +177,7 @@ void registerAgentConversationArchiveScenarios() {
             jsonEncode({
               'ok': true,
               'profiles': [
-                {'profileId': 'licolite'},
+                {'profileId': 'licomesh'},
               ],
             }),
             '',
@@ -186,7 +186,7 @@ void registerAgentConversationArchiveScenarios() {
         return ProcessResult(
           0,
           0,
-          jsonEncode({'ok': true, 'snapshotRoot': '/tmp/archive'}),
+          jsonEncode({'ok': true, 'snapshotRoot': 'test-data/archive'}),
           '',
         );
       },
@@ -196,7 +196,7 @@ void registerAgentConversationArchiveScenarios() {
     await service.getSnapshotRoot(agentService: agentService);
     await service.setSnapshotRoot(
       agentService: agentService,
-      path: '/tmp/archive',
+      path: 'test-data/archive',
     );
     final collections = await service.listSnapshotCollections(
       agentService: agentService,
@@ -206,22 +206,22 @@ void registerAgentConversationArchiveScenarios() {
     );
     await service.runArchiveProfile(
       agentService: agentService,
-      profileId: 'licolite',
+      profileId: 'licomesh',
       trigger: 'agent',
     );
     await service.verifyArchiveProfile(
       agentService: agentService,
-      profileId: 'licolite',
+      profileId: 'licomesh',
     );
     await service.reportArchiveProfile(
       agentService: agentService,
-      profileId: 'licolite',
+      profileId: 'licomesh',
     );
 
     expect(collections.single['topicKey'], 'codex-spark');
-    expect(profiles.single['profileId'], 'licolite');
+    expect(profiles.single['profileId'], 'licomesh');
     expect(captured[0], ['snapshots', 'root', 'get']);
-    expect(captured[1], ['snapshots', 'root', 'set', '--path', '/tmp/archive']);
+    expect(captured[1], ['snapshots', 'root', 'set', '--path', 'test-data/archive']);
     expect(captured[2], ['snapshots', 'collections', 'list']);
     expect(captured[3], ['snapshots', 'profiles', 'list']);
     expect(captured[4], [
@@ -229,7 +229,7 @@ void registerAgentConversationArchiveScenarios() {
       'archive',
       'run',
       '--profile',
-      'licolite',
+      'licomesh',
       '--trigger',
       'agent',
     ]);
@@ -238,14 +238,14 @@ void registerAgentConversationArchiveScenarios() {
       'archive',
       'verify',
       '--profile',
-      'licolite',
+      'licomesh',
     ]);
     expect(captured[6], [
       'snapshots',
       'archive',
       'report',
       '--profile',
-      'licolite',
+      'licomesh',
     ]);
   });
 }

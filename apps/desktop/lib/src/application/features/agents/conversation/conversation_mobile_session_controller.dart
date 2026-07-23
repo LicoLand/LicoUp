@@ -2,7 +2,7 @@ import 'package:flutter_client/src/application/features/agents/conversation/conv
 import 'package:flutter_client/src/application/features/agents/policy/conversation_session_index.dart';
 import 'package:flutter_client/src/application/features/agents/workspace/agent_workspace_coordinator.dart';
 import 'package:flutter_client/src/contracts/agent_conversation_models.dart';
-import 'package:flutter_client/src/contracts/agent_orchestration_policy.dart';
+import 'package:flutter_client/src/contracts/agent_orchestration_target.dart';
 
 String mobileConversationSessionErrorCode(Map<String, dynamic> result) {
   final candidate = (result['errorCode'] ?? result['code'] ?? '')
@@ -43,7 +43,7 @@ mixin AgentConversationMobileSessionController
       normalizedAgent: false,
     };
     setSelectedConversationSessionId(normalizedAgent, '');
-    preparingNewConversation = false;
+    abandonNewConversationDraft(normalizedAgent);
     agentWorkspaceSetLocalizedStatusMessage(
       '正在通过 Secure Mesh 读取 $normalizedAgent 原生历史。',
       'Reading native $normalizedAgent history through Secure Mesh.',
@@ -322,7 +322,7 @@ mixin AgentConversationMobileSessionController
           ? mobileConversationSessionLoadFailedSelectionId
           : blockedSelectionId,
     );
-    preparingNewConversation = false;
+    abandonNewConversationDraft(agentId);
     lastError = errorCode;
     agentWorkspaceSetLocalizedStatusMessage(
       '$agentId 原生历史读取失败，未选择其他会话。',

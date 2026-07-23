@@ -5,6 +5,7 @@ import 'package:path/path.dart' as p;
 
 import 'package:flutter_client/src/application/controller/client_controller.dart';
 import 'package:flutter_client/src/contracts/target_candidate.dart';
+import 'package:flutter_client/src/frontend/features/agents/ui/agent_conversation_display_names.dart';
 import 'package:flutter_client/src/frontend/features/agents/ui/agent_conversation_workspace.dart';
 import 'package:flutter_client/src/frontend/l10n/lico_strings.dart';
 import 'package:flutter_client/src/frontend/shared/ui/agent_brand_icon.dart';
@@ -33,7 +34,7 @@ class MobileAgentConversation extends StatelessWidget {
       children: [
         _MobileAgentHeader(
           target: target,
-          title: target.label,
+          title: agentConversationTargetDisplayName(target),
           leadingTooltip: MaterialLocalizations.of(context).backButtonTooltip,
           leadingIcon: Icons.chevron_left_rounded,
           onLeading: onBack,
@@ -92,7 +93,7 @@ class MobileAgentConfiguration extends StatelessWidget {
               MobileConfigRow(
                 icon: Icons.smart_toy_outlined,
                 label: strings.agent,
-                value: target.label,
+                value: agentConversationTargetDisplayName(target),
               ),
               MobileConfigRow(
                 icon: target.configured

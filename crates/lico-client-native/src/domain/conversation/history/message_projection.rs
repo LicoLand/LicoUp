@@ -15,7 +15,8 @@ pub(in crate::domain::conversation::history) use generated_context::{
     background_context_prompt_text, generated_control_text, strip_generated_context_blocks,
 };
 pub(in crate::domain::conversation::history) use json_extract::{
-    extract_native_session_id, extract_role, extract_text, extract_timestamp, find_string,
+    extract_native_model, extract_native_session_id, extract_role, extract_text, extract_timestamp,
+    find_string,
 };
 pub(in crate::domain::conversation::history) use projection::{
     clean_native_message_text, delegated_subagent_prompt_message, native_history_message_id,

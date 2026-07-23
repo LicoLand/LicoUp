@@ -116,7 +116,7 @@ pub(super) fn add_model_catalog_entry_with_provider(
         name: entry_name,
         display_name: display_name.clone(),
         sources: BTreeSet::new(),
-        reasoning_efforts: BTreeSet::new(),
+        reasoning_efforts: Vec::new(),
     });
     if prefer_model_display_name(&entry.name, &entry.display_name, &display_name) {
         entry.display_name = display_name;
@@ -134,13 +134,14 @@ pub(super) fn add_model_catalog_entry_with_provider(
         entry.provider_inferred = false;
     }
     entry.sources.insert(source.to_string());
-    entry.reasoning_efforts.extend(reasoning_efforts);
+    entry.extend_reasoning_efforts(reasoning_efforts);
 }
 
 pub(super) fn build_model_catalog(
     entries: BTreeMap<String, ModelCatalogEntry>,
     sources: BTreeSet<String>,
     diagnostics: Vec<Value>,
+    default_model: Option<String>,
 ) -> Value {
     let models = entries
         .into_values()
@@ -153,10 +154,14 @@ pub(super) fn build_model_catalog(
     } else {
         "empty"
     };
+    let default_model = default_model
+        .map(|name| name.trim().to_string())
+        .filter(|name| !name.is_empty());
     json!({
         "schemaVersion": 1,
         "status": status,
         "sources": sources.into_iter().collect::<Vec<_>>(),
+        "defaultModel": default_model.unwrap_or_default(),
         "models": models,
         "diagnostics": diagnostics,
     })

@@ -1,35 +1,585 @@
-use std::any::Any;
 use std::fmt;
 use std::sync::{
     Arc,
-    atomic::{AtomicUsize, Ordering},
+    atomic::{AtomicU8, AtomicUsize, Ordering},
 };
+use std::time::{Duration, Instant};
 
 use anyhow::{Result, anyhow};
+use sha2::{Digest, Sha256};
+use subtle::ConstantTimeEq;
 use uuid::Uuid;
 
 use crate::core::secure_mesh_capability::CapabilityEvaluationReport;
+
+pub const MAX_SECRET_STORE_PRESENCE_GRANT_TTL: Duration = Duration::from_secs(30);
+
+const MAX_REASON_BYTES: usize = 512;
+const MAX_NONCE_BYTES: usize = 256;
+const MAX_SCOPE_COMPONENT_BYTES: usize = 512;
+const MAX_BATCH_OPERATION_COUNT: usize = 4_096;
+
+const GRANT_AVAILABLE: u8 = 0;
+const GRANT_CONSUMED: u8 = 1;
+const GRANT_EXPIRED: u8 = 2;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SecretStorePresenceProvider {
+    MacosKeychain,
+    LinuxSecretService,
+    WindowsCredentialManager,
+}
+
+impl SecretStorePresenceProvider {
+    fn tag(self) -> &'static [u8] {
+        match self {
+            Self::MacosKeychain => b"macos-keychain",
+            Self::LinuxSecretService => b"linux-secret-service",
+            Self::WindowsCredentialManager => b"windows-credential-manager",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SecretStoreKeyClass {
+    DeviceIdentity,
+    PairwiseSession,
+    GroupEpoch,
+}
+
+impl SecretStoreKeyClass {
+    fn tag(self) -> &'static [u8] {
+        match self {
+            Self::DeviceIdentity => b"device-identity",
+            Self::PairwiseSession => b"pairwise-session",
+            Self::GroupEpoch => b"group-epoch",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SecretStoreCallerChannel {
+    DesktopGui,
+    Mobile,
+    NativeCli,
+}
+
+impl SecretStoreCallerChannel {
+    fn tag(self) -> &'static [u8] {
+        match self {
+            Self::DesktopGui => b"desktop-gui",
+            Self::Mobile => b"mobile",
+            Self::NativeCli => b"native-cli",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SecretStoreOperation {
+    Read,
+    Write,
+    Delete,
+}
+
+impl SecretStoreOperation {
+    fn tag(self) -> &'static [u8] {
+        match self {
+            Self::Read => b"read",
+            Self::Write => b"write",
+            Self::Delete => b"delete",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum PresenceDecision {
+    Approved,
+    Cancelled,
+    TimedOut,
+}
+
+#[derive(Clone, Eq, PartialEq)]
+pub struct SecretStorePresenceNonce(String);
+
+impl SecretStorePresenceNonce {
+    pub(crate) fn new(value: impl Into<String>) -> Result<Self> {
+        let value = value.into();
+        validate_context_value(&value, MAX_NONCE_BYTES)?;
+        Ok(Self(value))
+    }
+
+    fn as_bytes(&self) -> &[u8] {
+        self.0.as_bytes()
+    }
+}
+
+impl fmt::Debug for SecretStorePresenceNonce {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("SecretStorePresenceNonce(REDACTED)")
+    }
+}
+
+#[derive(Clone, Eq, PartialEq)]
+pub struct SecretStorePresencePurpose(String);
+
+impl SecretStorePresencePurpose {
+    pub(crate) fn new(value: impl Into<String>) -> Result<Self> {
+        let value = value.into();
+        validate_context_value(&value, MAX_SCOPE_COMPONENT_BYTES)?;
+        Ok(Self(value))
+    }
+
+    fn as_bytes(&self) -> &[u8] {
+        self.0.as_bytes()
+    }
+}
+
+impl fmt::Debug for SecretStorePresencePurpose {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("SecretStorePresencePurpose(REDACTED)")
+    }
+}
+
+#[derive(Clone)]
+pub struct SecretStorePresenceBatchRequest {
+    provider: SecretStorePresenceProvider,
+    key_class: SecretStoreKeyClass,
+    operation_count: usize,
+    reason: String,
+    nonce: SecretStorePresenceNonce,
+    caller_channel: SecretStoreCallerChannel,
+    allow_interaction: bool,
+    canonical_digest: [u8; 32],
+}
+
+impl SecretStorePresenceBatchRequest {
+    pub(crate) fn new(
+        provider: SecretStorePresenceProvider,
+        key_class: SecretStoreKeyClass,
+        operation_count: usize,
+        reason: impl Into<String>,
+        nonce: SecretStorePresenceNonce,
+        caller_channel: SecretStoreCallerChannel,
+        allow_interaction: bool,
+    ) -> Result<Self> {
+        let reason = reason.into();
+        validate_context_value(&reason, MAX_REASON_BYTES)?;
+        if operation_count == 0 || operation_count > MAX_BATCH_OPERATION_COUNT {
+            return Err(
+                SecretStorePresenceError::new("secure_mesh_presence_batch_count_invalid").into(),
+            );
+        }
+
+        let canonical_digest = digest_fields(
+            b"licoarc:secret-store-presence-batch:v1",
+            [
+                provider.tag(),
+                key_class.tag(),
+                &u64::try_from(operation_count)
+                    .map_err(|_| {
+                        SecretStorePresenceError::new("secure_mesh_presence_batch_count_invalid")
+                    })?
+                    .to_be_bytes(),
+                reason.as_bytes(),
+                nonce.as_bytes(),
+                caller_channel.tag(),
+                &[u8::from(allow_interaction)],
+            ],
+        );
+        Ok(Self {
+            provider,
+            key_class,
+            operation_count,
+            reason,
+            nonce,
+            caller_channel,
+            allow_interaction,
+            canonical_digest,
+        })
+    }
+
+    pub(crate) fn canonical_digest(&self) -> [u8; 32] {
+        self.canonical_digest
+    }
+
+    pub(crate) fn provider(&self) -> SecretStorePresenceProvider {
+        self.provider
+    }
+
+    pub(crate) fn key_class(&self) -> SecretStoreKeyClass {
+        self.key_class
+    }
+
+    pub(crate) fn operation_count(&self) -> usize {
+        self.operation_count
+    }
+
+    pub(crate) fn reason(&self) -> &str {
+        &self.reason
+    }
+
+    pub(crate) fn caller_channel(&self) -> SecretStoreCallerChannel {
+        self.caller_channel
+    }
+
+    pub(crate) fn allow_interaction(&self) -> bool {
+        self.allow_interaction
+    }
+}
+
+impl fmt::Debug for SecretStorePresenceBatchRequest {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("SecretStorePresenceBatchRequest(REDACTED)")
+    }
+}
+
+#[derive(Clone)]
+pub struct SecretStorePresenceScope {
+    operation: SecretStoreOperation,
+    namespace: String,
+    key: String,
+    purpose: SecretStorePresencePurpose,
+    canonical_digest: [u8; 32],
+}
+
+impl SecretStorePresenceScope {
+    pub(crate) fn new(
+        operation: SecretStoreOperation,
+        namespace: impl Into<String>,
+        key: impl Into<String>,
+        purpose: SecretStorePresencePurpose,
+    ) -> Result<Self> {
+        let namespace = namespace.into();
+        let key = key.into();
+        validate_context_value(&namespace, MAX_SCOPE_COMPONENT_BYTES)?;
+        validate_context_value(&key, MAX_SCOPE_COMPONENT_BYTES)?;
+        let canonical_digest = digest_fields(
+            b"licoarc:secret-store-presence-scope:v1",
+            [
+                operation.tag(),
+                namespace.as_bytes(),
+                key.as_bytes(),
+                purpose.as_bytes(),
+            ],
+        );
+        Ok(Self {
+            operation,
+            namespace,
+            key,
+            purpose,
+            canonical_digest,
+        })
+    }
+
+    pub(crate) fn canonical_digest(&self) -> [u8; 32] {
+        self.canonical_digest
+    }
+}
+
+impl fmt::Debug for SecretStorePresenceScope {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("SecretStorePresenceScope(REDACTED)")
+    }
+}
+
+pub struct SecretStoreApprovedPresenceBatch {
+    request_digest: [u8; 32],
+    binding_digest: [u8; 32],
+    expires_at: Instant,
+    operation_count: usize,
+    issued_count: AtomicUsize,
+}
+
+impl SecretStoreApprovedPresenceBatch {
+    pub(crate) fn approve(
+        request: &SecretStorePresenceBatchRequest,
+        approved_at: Instant,
+        ttl: Duration,
+        decision: PresenceDecision,
+    ) -> std::result::Result<Self, SecretStorePresenceError> {
+        if !request.allow_interaction {
+            return Err(SecretStorePresenceError::new(
+                "secure_mesh_presence_interaction_required",
+            ));
+        }
+        match decision {
+            PresenceDecision::Approved => {}
+            PresenceDecision::Cancelled => {
+                return Err(SecretStorePresenceError::new(
+                    "secure_mesh_presence_cancelled",
+                ));
+            }
+            PresenceDecision::TimedOut => {
+                return Err(SecretStorePresenceError::new(
+                    "secure_mesh_presence_timed_out",
+                ));
+            }
+        }
+        if ttl.is_zero() || ttl > MAX_SECRET_STORE_PRESENCE_GRANT_TTL {
+            return Err(SecretStorePresenceError::new(
+                "secure_mesh_presence_ttl_invalid",
+            ));
+        }
+        let expires_at = approved_at
+            .checked_add(ttl)
+            .ok_or_else(|| SecretStorePresenceError::new("secure_mesh_presence_ttl_invalid"))?;
+        let approval_nonce = Uuid::new_v4();
+        let binding_digest = digest_fields(
+            b"licoarc:secret-store-approved-presence-batch:v1",
+            [
+                request.canonical_digest.as_slice(),
+                approval_nonce.as_bytes(),
+            ],
+        );
+        Ok(Self {
+            request_digest: request.canonical_digest,
+            binding_digest,
+            expires_at,
+            operation_count: request.operation_count,
+            issued_count: AtomicUsize::new(0),
+        })
+    }
+
+    pub(crate) fn issue_grant(
+        &self,
+        scope: SecretStorePresenceScope,
+    ) -> std::result::Result<SecretStorePresenceGrant, SecretStorePresenceError> {
+        let mut issued = self.issued_count.load(Ordering::Acquire);
+        loop {
+            if issued >= self.operation_count {
+                return Err(SecretStorePresenceError::new(
+                    "secure_mesh_presence_batch_count_exceeded",
+                ));
+            }
+            match self.issued_count.compare_exchange_weak(
+                issued,
+                issued + 1,
+                Ordering::AcqRel,
+                Ordering::Acquire,
+            ) {
+                Ok(_) => break,
+                Err(observed) => issued = observed,
+            }
+        }
+        Ok(SecretStorePresenceGrant(PresenceGrantInner {
+            batch_binding_digest: self.binding_digest,
+            scope_digest: scope.canonical_digest,
+            operation: scope.operation,
+            namespace: scope.namespace,
+            key: scope.key,
+            expires_at: self.expires_at,
+            state: AtomicU8::new(GRANT_AVAILABLE),
+        }))
+    }
+
+    pub(crate) fn request_digest(&self) -> [u8; 32] {
+        self.request_digest
+    }
+
+    pub(crate) fn binding_digest(&self) -> [u8; 32] {
+        self.binding_digest
+    }
+
+    pub(crate) fn expires_at(&self) -> Instant {
+        self.expires_at
+    }
+}
+
+impl fmt::Debug for SecretStoreApprovedPresenceBatch {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("SecretStoreApprovedPresenceBatch(REDACTED)")
+    }
+}
+
+struct PresenceGrantInner {
+    batch_binding_digest: [u8; 32],
+    scope_digest: [u8; 32],
+    operation: SecretStoreOperation,
+    namespace: String,
+    key: String,
+    expires_at: Instant,
+    state: AtomicU8,
+}
+
+pub struct SecretStorePresenceGrant(PresenceGrantInner);
+
+impl SecretStorePresenceGrant {
+    pub(crate) fn consume(
+        &self,
+        batch: &SecretStoreApprovedPresenceBatch,
+        expected_scope: &SecretStorePresenceScope,
+        now: Instant,
+    ) -> std::result::Result<SecretStoreConsumedPresence, SecretStorePresenceError> {
+        if !digest_matches(&self.0.batch_binding_digest, &batch.binding_digest) {
+            return Err(SecretStorePresenceError::new(
+                "secure_mesh_presence_batch_mismatch",
+            ));
+        }
+        if !digest_matches(&self.0.scope_digest, &expected_scope.canonical_digest) {
+            return Err(SecretStorePresenceError::new(
+                "secure_mesh_presence_scope_mismatch",
+            ));
+        }
+
+        loop {
+            match self.0.state.load(Ordering::Acquire) {
+                GRANT_CONSUMED => {
+                    return Err(SecretStorePresenceError::new(
+                        "secure_mesh_presence_replayed",
+                    ));
+                }
+                GRANT_EXPIRED => {
+                    return Err(SecretStorePresenceError::new(
+                        "secure_mesh_presence_expired",
+                    ));
+                }
+                GRANT_AVAILABLE if now >= self.0.expires_at => {
+                    if self
+                        .0
+                        .state
+                        .compare_exchange(
+                            GRANT_AVAILABLE,
+                            GRANT_EXPIRED,
+                            Ordering::AcqRel,
+                            Ordering::Acquire,
+                        )
+                        .is_ok()
+                    {
+                        return Err(SecretStorePresenceError::new(
+                            "secure_mesh_presence_expired",
+                        ));
+                    }
+                }
+                GRANT_AVAILABLE => {
+                    if self
+                        .0
+                        .state
+                        .compare_exchange(
+                            GRANT_AVAILABLE,
+                            GRANT_CONSUMED,
+                            Ordering::AcqRel,
+                            Ordering::Acquire,
+                        )
+                        .is_ok()
+                    {
+                        return Ok(SecretStoreConsumedPresence(ConsumedPresenceInner {
+                            batch_binding_digest: self.0.batch_binding_digest,
+                            scope_digest: self.0.scope_digest,
+                            operation: self.0.operation,
+                            namespace: self.0.namespace.clone(),
+                            key: self.0.key.clone(),
+                            expires_at: self.0.expires_at,
+                        }));
+                    }
+                }
+                _ => unreachable!("presence grant state is closed over known values"),
+            }
+        }
+    }
+}
+
+impl fmt::Debug for SecretStorePresenceGrant {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("SecretStorePresenceGrant(REDACTED)")
+    }
+}
+
+struct ConsumedPresenceInner {
+    batch_binding_digest: [u8; 32],
+    scope_digest: [u8; 32],
+    operation: SecretStoreOperation,
+    namespace: String,
+    key: String,
+    expires_at: Instant,
+}
+
+pub struct SecretStoreConsumedPresence(ConsumedPresenceInner);
+
+impl SecretStoreConsumedPresence {
+    pub(crate) fn batch_binding_digest(&self) -> [u8; 32] {
+        self.0.batch_binding_digest
+    }
+
+    pub(crate) fn scope_digest(&self) -> [u8; 32] {
+        self.0.scope_digest
+    }
+
+    pub(crate) fn expires_at(&self) -> Instant {
+        self.0.expires_at
+    }
+
+    pub(crate) fn into_effect_target(self) -> (SecretStoreOperation, String, String) {
+        (self.0.operation, self.0.namespace, self.0.key)
+    }
+}
+
+impl fmt::Debug for SecretStoreConsumedPresence {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("SecretStoreConsumedPresence(REDACTED)")
+    }
+}
+
+#[derive(Clone, Copy, Eq, PartialEq)]
+pub struct SecretStorePresenceError {
+    code: &'static str,
+}
+
+impl SecretStorePresenceError {
+    fn new(code: &'static str) -> Self {
+        Self { code }
+    }
+
+    pub fn code(&self) -> &'static str {
+        self.code
+    }
+}
+
+impl fmt::Display for SecretStorePresenceError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.code)
+    }
+}
+
+impl fmt::Debug for SecretStorePresenceError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.code)
+    }
+}
+
+impl std::error::Error for SecretStorePresenceError {}
 
 pub struct SecretStoreAuthorizationRequest {
     reason: String,
     operation_count: usize,
     allow_interaction: bool,
+    canonical_digest: [u8; 32],
 }
 
 impl SecretStoreAuthorizationRequest {
     pub fn new(reason: impl Into<String>, operation_count: usize) -> Self {
-        Self {
-            reason: reason.into(),
-            operation_count,
-            allow_interaction: true,
-        }
+        Self::build(reason.into(), operation_count, true)
     }
 
     pub fn noninteractive(reason: impl Into<String>, operation_count: usize) -> Self {
+        Self::build(reason.into(), operation_count, false)
+    }
+
+    fn build(reason: String, operation_count: usize, allow_interaction: bool) -> Self {
+        let canonical_digest = digest_fields(
+            b"licoarc:secret-store-authorization-request:v1",
+            [
+                reason.as_bytes(),
+                &u64::try_from(operation_count)
+                    .unwrap_or(u64::MAX)
+                    .to_be_bytes(),
+                &[u8::from(allow_interaction)],
+            ],
+        );
         Self {
-            reason: reason.into(),
+            reason,
             operation_count,
-            allow_interaction: false,
+            allow_interaction,
+            canonical_digest,
         }
     }
 
@@ -44,6 +594,10 @@ impl SecretStoreAuthorizationRequest {
     pub fn allow_interaction(&self) -> bool {
         self.allow_interaction
     }
+
+    pub(crate) fn canonical_digest(&self) -> [u8; 32] {
+        self.canonical_digest
+    }
 }
 
 #[derive(Clone)]
@@ -53,6 +607,7 @@ pub struct SecretStoreAuthorizationSession {
     reason: String,
     operation_count: usize,
     allow_interaction: bool,
+    request_digest: [u8; 32],
     shared_system_context_required: bool,
     shared_system_context_available: bool,
     system_authorization_attempt_count: usize,
@@ -60,7 +615,7 @@ pub struct SecretStoreAuthorizationSession {
     app_password_prompt_used: bool,
     consumed_operation_count: Arc<AtomicUsize>,
     capability_report: Option<CapabilityEvaluationReport>,
-    platform_context: Option<Arc<dyn Any + Send + Sync>>,
+    presence_binding_digest: Option<[u8; 32]>,
 }
 
 impl SecretStoreAuthorizationSession {
@@ -76,6 +631,7 @@ impl SecretStoreAuthorizationSession {
             reason: request.reason().to_string(),
             operation_count: request.operation_count(),
             allow_interaction: request.allow_interaction(),
+            request_digest: request.canonical_digest(),
             shared_system_context_required,
             shared_system_context_available,
             system_authorization_attempt_count: 0,
@@ -83,31 +639,29 @@ impl SecretStoreAuthorizationSession {
             app_password_prompt_used: false,
             consumed_operation_count: Arc::new(AtomicUsize::new(0)),
             capability_report: None,
-            platform_context: None,
+            presence_binding_digest: None,
         }
     }
 
-    pub(crate) fn with_platform_context<T>(
+    pub(crate) fn with_presence_binding(
         mut self,
-        context: T,
+        binding_digest: [u8; 32],
         system_authorization_attempt_count: usize,
         system_authorization_completed: bool,
-    ) -> Self
-    where
-        T: Any + Send + Sync,
-    {
+    ) -> Self {
         self.shared_system_context_available = true;
         self.system_authorization_attempt_count = system_authorization_attempt_count;
         self.system_authorization_completed = system_authorization_completed;
-        self.platform_context = Some(Arc::new(context));
+        self.presence_binding_digest = Some(binding_digest);
         self
     }
 
-    pub(crate) fn platform_context<T>(&self) -> Option<&T>
-    where
-        T: Any + Send + Sync,
-    {
-        self.platform_context.as_deref()?.downcast_ref::<T>()
+    pub(crate) fn presence_binding_digest(&self) -> Option<[u8; 32]> {
+        self.presence_binding_digest
+    }
+
+    pub(crate) fn request_digest(&self) -> [u8; 32] {
+        self.request_digest
     }
 
     #[cfg(test)]
@@ -180,13 +734,12 @@ impl SecretStoreAuthorizationSession {
         self.consumed_operation_count() <= self.operation_count
     }
 
-    pub fn record_secret_store_operation(&self, operation: &str) -> Result<()> {
+    pub fn record_secret_store_operation(&self, _operation: &str) -> Result<()> {
         let mut current = self.consumed_operation_count.load(Ordering::SeqCst);
         loop {
             if current >= self.operation_count {
                 return Err(anyhow!(
-                    "secure mesh secret store authorization batch exceeded operation budget for {}",
-                    operation
+                    "secure_mesh_secret_store_operation_budget_exceeded"
                 ));
             }
             match self.consumed_operation_count.compare_exchange(
@@ -235,8 +788,8 @@ impl fmt::Debug for SecretStoreAuthorizationSession {
             )
             .field("consumed_operation_count", &self.consumed_operation_count())
             .field(
-                "platform_context",
-                &self.platform_context.as_ref().map(|_| "redacted"),
+                "presence_binding",
+                &self.presence_binding_digest.map(|_| "redacted"),
             )
             .finish()
     }
@@ -249,6 +802,7 @@ impl PartialEq for SecretStoreAuthorizationSession {
             && self.reason == other.reason
             && self.operation_count == other.operation_count
             && self.allow_interaction == other.allow_interaction
+            && self.request_digest == other.request_digest
             && self.shared_system_context_required == other.shared_system_context_required
             && self.shared_system_context_available == other.shared_system_context_available
             && self.system_authorization_attempt_count == other.system_authorization_attempt_count
@@ -256,7 +810,44 @@ impl PartialEq for SecretStoreAuthorizationSession {
             && self.app_password_prompt_used == other.app_password_prompt_used
             && self.consumed_operation_count() == other.consumed_operation_count()
             && self.capability_report == other.capability_report
+            && self.presence_binding_digest == other.presence_binding_digest
     }
 }
 
 impl Eq for SecretStoreAuthorizationSession {}
+
+fn validate_context_value(value: &str, max_bytes: usize) -> Result<()> {
+    if value.trim().is_empty() || value.len() > max_bytes || value.contains('\0') {
+        return Err(SecretStorePresenceError::new("secure_mesh_presence_context_invalid").into());
+    }
+    Ok(())
+}
+
+fn digest_fields<'a>(domain: &[u8], fields: impl IntoIterator<Item = &'a [u8]>) -> [u8; 32] {
+    let mut hasher = Sha256::new();
+    update_length_prefixed(&mut hasher, domain);
+    for field in fields {
+        update_length_prefixed(&mut hasher, field);
+    }
+    hasher.finalize().into()
+}
+
+fn update_length_prefixed(hasher: &mut Sha256, value: &[u8]) {
+    hasher.update(u64::try_from(value.len()).unwrap_or(u64::MAX).to_be_bytes());
+    hasher.update(value);
+}
+
+pub(crate) fn digest_matches(left: &[u8; 32], right: &[u8; 32]) -> bool {
+    bool::from(left.ct_eq(right))
+}
+
+pub(crate) fn derive_presence_binding_digest(
+    domain: &[u8],
+    fields: impl IntoIterator<Item = impl AsRef<[u8]>>,
+) -> [u8; 32] {
+    let owned = fields
+        .into_iter()
+        .map(|field| field.as_ref().to_vec())
+        .collect::<Vec<_>>();
+    digest_fields(domain, owned.iter().map(Vec::as_slice))
+}

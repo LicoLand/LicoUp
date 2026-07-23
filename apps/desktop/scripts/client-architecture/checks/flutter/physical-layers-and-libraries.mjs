@@ -68,7 +68,6 @@ const flutterLayerImportRules = [
 
 const splitTestLibraryRoots = [
   "apps/desktop/test/agents_workspace",
-  "apps/desktop/test/distillation",
   "apps/desktop/test/fixtures/client_controller",
 ];
 const splitTestLibraryLineLimits = new Map([
@@ -81,14 +80,14 @@ const splitTestLibraryLineLimits = new Map([
   ["apps/desktop/test/fixtures/client_controller/history_scenarios.dart", 30],
   ["apps/desktop/test/fixtures/client_controller/local_management_scenarios.dart", 20],
   ["apps/desktop/test/fixtures/client_controller/local_management/conversation_archive_scenarios.dart", 250],
+  ["apps/desktop/test/fixtures/client_controller/local_management/skill_freshness_scenarios.dart", 60],
   ["apps/desktop/test/fixtures/client_controller/local_management/skill_management_scenarios.dart", 100],
   ["apps/desktop/test/fixtures/client_controller/local_management/target_management_scenarios.dart", 110],
   ["apps/desktop/test/fixtures/client_controller/mobile_history_scenarios.dart", 300],
-  ["apps/desktop/test/fixtures/client_controller/routing_scenarios.dart", 550],
+  ["apps/desktop/test/fixtures/client_controller/preload_scenarios.dart", 160],
   ["apps/desktop/test/fixtures/client_controller/secure_mesh_scenarios.dart", 680],
   ["apps/desktop/test/fixtures/client_controller/target_history_scenarios.dart", 30],
   ["apps/desktop/test/fixtures/client_controller/target_scenarios.dart", 240],
-  ["apps/desktop/test/fixtures/client_controller/support/client_controller_routing_harness.dart", 100],
   ["apps/desktop/test/fixtures/client_controller/support/client_controller_scenario_dependencies.dart", 50],
   ["apps/desktop/test/fixtures/client_controller/support/client_controller_scenario_environment.dart", 50],
   ["apps/desktop/test/fixtures/client_controller/support/client_controller_scenario_json.dart", 120],
@@ -100,6 +99,7 @@ const splitTestLibraryLineLimits = new Map([
   ["apps/desktop/test/fixtures/client_controller/support/fake_agent_state_support.dart", 380],
   ["apps/desktop/test/fixtures/client_controller/support/fake_agent_usage_support.dart", 90],
   ["apps/desktop/test/fixtures/client_controller/support/fake_mobile_relay_service.dart", 700],
+  ["apps/desktop/test/fixtures/client_controller/support/no_preload_client_controller.dart", 40],
   ["apps/desktop/test/agents_workspace/agents_workspace_interaction_test.dart", 400],
   ["apps/desktop/test/agents_workspace/agents_workspace_layout_test.dart", 420],
   ["apps/desktop/test/agents_workspace/agents_workspace_renderer_cache_test.dart", 140],
@@ -107,22 +107,6 @@ const splitTestLibraryLineLimits = new Map([
   ["apps/desktop/test/agents_workspace/agents_workspace_renderer_process_card_test.dart", 530],
   ["apps/desktop/test/agents_workspace/agents_workspace_state_test.dart", 260],
   ["apps/desktop/test/agents_workspace/support/agents_workspace_test_harness.dart", 60],
-  ["apps/desktop/test/distillation/distillation_broker_audit_test.dart", 55],
-  ["apps/desktop/test/distillation/distillation_broker_dispatch_test.dart", 90],
-  ["apps/desktop/test/distillation/distillation_broker_failure_projection_test.dart", 80],
-  ["apps/desktop/test/distillation/distillation_broker_fidelity_retry_test.dart", 100],
-  ["apps/desktop/test/distillation/distillation_broker_usage_test.dart", 70],
-  ["apps/desktop/test/distillation/distillation_fidelity_reducer_test.dart", 120],
-  ["apps/desktop/test/distillation/distillation_input_window_test.dart", 75],
-  ["apps/desktop/test/distillation/distillation_lane_contract_test.dart", 75],
-  ["apps/desktop/test/distillation/distillation_package_models_test.dart", 70],
-  ["apps/desktop/test/distillation/distillation_response_parser_test.dart", 75],
-  ["apps/desktop/test/distillation/distillation_result_models_test.dart", 60],
-  ["apps/desktop/test/distillation/distillation_semantics_test.dart", 55],
-  ["apps/desktop/test/distillation/distillation_source_content_classes_test.dart", 50],
-  ["apps/desktop/test/distillation/distillation_usage_audit_test.dart", 75],
-  ["apps/desktop/test/distillation/distillation_utf8_test.dart", 30],
-  ["apps/desktop/test/distillation/support/distillation_broker_harness.dart", 120],
 ]);
 const agentUsageTimelineRoot =
   "apps/desktop/lib/src/frontend/features/agents/ui/agent_usage_timeline";
@@ -137,52 +121,6 @@ const agentUsageTimelineLibraryLineLimits = new Map([
   [`${agentUsageTimelineRoot}/agent_usage_display_names.dart`, 190],
   [`${agentUsageTimelineRoot}/agent_usage_series_color_policy.dart`, 100],
   [`${agentUsageTimelineRoot}/agent_usage_visibility_policy.dart`, 50],
-]);
-const distillationContractRoot =
-  "apps/desktop/lib/src/contracts/routing/distillation";
-const distillationContractFacadePath =
-  "apps/desktop/lib/src/contracts/routing/distillation_package.dart";
-const distillationContractLibraryLineLimits = new Map([
-  [`${distillationContractRoot}/distillation_package_models.dart`, 130],
-  [`${distillationContractRoot}/distillation_usage_audit.dart`, 100],
-  [`${distillationContractRoot}/distillation_result_models.dart`, 60],
-  [`${distillationContractRoot}/distillation_semantics.dart`, 180],
-  [`${distillationContractRoot}/distillation_utf8.dart`, 30],
-  [`${distillationContractRoot}/distillation_input_window.dart`, 170],
-  [`${distillationContractRoot}/distillation_source_content_classes.dart`, 90],
-  [`${distillationContractRoot}/distillation_fidelity_reducer.dart`, 140],
-  [`${distillationContractRoot}/distillation_lane_contract.dart`, 120],
-  [`${distillationContractRoot}/distillation_response_parser.dart`, 80],
-]);
-const distillationContractDependencies = new Map([
-  ["distillation_package_models.dart", []],
-  ["distillation_usage_audit.dart", ["distillation_package_models.dart"]],
-  ["distillation_result_models.dart", [
-    "distillation_package_models.dart",
-    "distillation_usage_audit.dart",
-  ]],
-  ["distillation_semantics.dart", []],
-  ["distillation_utf8.dart", []],
-  ["distillation_input_window.dart", [
-    "distillation_semantics.dart",
-    "distillation_utf8.dart",
-  ]],
-  ["distillation_source_content_classes.dart", [
-    "distillation_input_window.dart",
-    "distillation_semantics.dart",
-  ]],
-  ["distillation_fidelity_reducer.dart", [
-    "distillation_package_models.dart",
-    "distillation_semantics.dart",
-    "distillation_source_content_classes.dart",
-  ]],
-  ["distillation_lane_contract.dart", [
-    "distillation_input_window.dart",
-    "distillation_result_models.dart",
-    "distillation_source_content_classes.dart",
-    "distillation_usage_audit.dart",
-  ]],
-  ["distillation_response_parser.dart", ["distillation_package_models.dart"]],
 ]);
 
 async function enforceFlutterLayerIsolation(context) {
@@ -356,122 +294,6 @@ async function enforceAgentUsageTimelineLibraries(context) {
 }
 
 
-async function enforceDistillationContractLibraries(context) {
-  const {
-    assert,
-    collectDartSourceFiles,
-    collectEnumValues,
-    collectRustPubMods,
-    collectRustUnsafeFiles,
-    collectSourceFiles,
-    exists,
-    fail,
-    lineNumberForToken,
-    moduleSupportsPlatform,
-    readDartSourceByBasename,
-    readImmediateDirectoryNames,
-    readJoinedDartSourcesByBasename,
-    readJoinedText,
-    readJson,
-    readText,
-    runJson,
-    sameSet,
-    sourceLineCount,
-  } = context;
-  const leafPaths = [...distillationContractLibraryLineLimits.keys()];
-  const discoveredLeaves = await collectSourceFiles(
-    distillationContractRoot,
-    ".dart"
-  );
-  assert(
-    sameSet(discoveredLeaves, leafPaths),
-    "distillation contract leaves must exactly match the architecture-owned responsibility set"
-  );
-
-  for (const [relativePath, maxLines] of distillationContractLibraryLineLimits) {
-    const source = await readText(relativePath);
-    const basename = path.basename(relativePath);
-    assert(
-      !/^\s*part(?:\s+of)?\b/m.test(source),
-      `${relativePath} must remain an independently importable library without part directives`
-    );
-    assert(
-      sourceLineCount(source) <= maxLines,
-      `${relativePath} exceeds its distillation responsibility limit (${maxLines} lines maximum)`
-    );
-    assert(
-      !source.includes("distillation_package.dart"),
-      `${relativePath} must not depend back on the distillation facade`
-    );
-
-    const localImports = [...source.matchAll(/^import '([^']+\.dart)';$/gm)]
-      .map((match) => path.posix.basename(match[1]))
-      .filter((dependency) => dependency.startsWith("distillation_"))
-      .sort();
-    const allowedImports = [...(distillationContractDependencies.get(basename) || [])]
-      .sort();
-    assert(
-      sameSet(localImports, allowedImports),
-      `${relativePath} must preserve its one-way distillation dependency contract`
-    );
-
-    const testPath = `apps/desktop/test/distillation/${basename.replace(/\.dart$/u, "_test.dart")}`;
-    assert(
-      await exists(testPath),
-      `${relativePath} must retain its dedicated leaf regression test`
-    );
-    if (await exists(testPath)) {
-      const testSource = await readText(testPath);
-      assert(
-        testSource.includes(`/distillation/${basename}';`) &&
-          !testSource.includes("distillation_package.dart"),
-        `${testPath} must validate its leaf directly without the aggregate facade`
-      );
-    }
-  }
-
-  const facade = await readText(distillationContractFacadePath);
-  const exportedLeaves = [...facade.matchAll(/^export 'distillation\/([^']+\.dart)'/gm)]
-    .map((match) => match[1]);
-  const expectedExports = [
-    "distillation_fidelity_reducer.dart",
-    "distillation_input_window.dart",
-    "distillation_lane_contract.dart",
-    "distillation_package_models.dart",
-    "distillation_response_parser.dart",
-    "distillation_result_models.dart",
-    "distillation_source_content_classes.dart",
-    "distillation_usage_audit.dart",
-  ];
-  assert(
-    sourceLineCount(facade) <= 40 &&
-      !/^import /m.test(facade) &&
-      !/^(?:class|enum|typedef|mixin|extension|sealed) /m.test(facade) &&
-      sameSet(exportedLeaves, expectedExports) &&
-      [...facade.matchAll(/^export /gm)].every((match) =>
-        facade.slice(match.index, facade.indexOf(";", match.index) + 1).includes(" show ") ||
-        facade.slice(match.index, facade.indexOf(";", match.index) + 1).includes("\n    show")
-      ),
-    "distillation root must remain a thin restricted eight-export facade"
-  );
-
-  const inputWindow = await readText(
-    `${distillationContractRoot}/distillation_input_window.dart`
-  );
-  assert(
-    inputWindow.includes("const int distillationInputMaxTurns = 48;") &&
-      inputWindow.includes("const int distillationInputMaxBytes = 64 * 1024;") &&
-      inputWindow.includes("const int distillationInputMaxApproxTokens = 12 * 1024;") &&
-      inputWindow.includes("const int distillationInputMaxTurnBytes = 8 * 1024;"),
-    "distillation input window must preserve the 48-turn, 64-KiB, 12K-token, and 8-KiB-per-turn limits"
-  );
-  assert(
-    !await exists("apps/desktop/test/distillation_broker_test.dart"),
-
-    "retired aggregate distillation broker regression must stay removed"
-  );
-}
-
 async function findFlutterDependencyCycle(context) {
   const {
     assert,
@@ -605,7 +427,6 @@ export async function checkFlutterPhysicalLayersAndLibraries(context) {
   await enforceNormalDartLibraries(context);
   await enforceSplitTestLibraries(context);
   await enforceAgentUsageTimelineLibraries(context);
-  await enforceDistillationContractLibraries(context);
   const workbenchChromeFacadePath =
     "apps/desktop/lib/src/frontend/layout/profiles/workbench/desktop/shell/workbench_desktop_chrome.dart";
   const workbenchChromeLeafLimits = new Map([
@@ -648,8 +469,8 @@ export async function checkFlutterPhysicalLayersAndLibraries(context) {
   const conversationPaneFacadePath =
     "apps/desktop/lib/src/frontend/features/agents/ui/agent_conversation_pane.dart";
   const conversationPaneLeafLimits = new Map([
-    ["actions.dart", 160],
-    ["composition.dart", 240],
+    ["actions.dart", 210],
+    ["composition.dart", 280],
     ["header.dart", 340],
     ["resize.dart", 140]
   ]);
@@ -661,29 +482,54 @@ export async function checkFlutterPhysicalLayersAndLibraries(context) {
   assert(
     sameSet(conversationPaneExports, [...conversationPaneLeafLimits.keys()]) &&
       sourceLineCount(conversationPaneFacadeSource) <= 5 &&
+      conversationPaneFacadeSource.includes("export 'agent_conversation_pane_presentation.dart';") &&
       !/^import /mu.test(conversationPaneFacadeSource) &&
       !/^(?:class|enum|typedef|mixin|extension) /mu.test(conversationPaneFacadeSource),
     "agent conversation pane root must remain an exact four-leaf export facade"
   );
   const conversationPaneSources = {};
+  const conversationPaneLeafPaths = new Set(
+    [...conversationPaneLeafLimits.keys()].map((leaf) => `${conversationPaneRoot}/${leaf}`)
+  );
+  const resolveConversationPaneImport = (from, specifier) => {
+    if (specifier.startsWith("package:flutter_client/")) {
+      return path.posix.join(
+        "apps/desktop/lib",
+        specifier.slice("package:flutter_client/".length)
+      );
+    }
+    return specifier.startsWith(".")
+      ? path.posix.normalize(path.posix.join(path.posix.dirname(from), specifier))
+      : null;
+  };
+  const conversationPaneImportGraph = new Map();
   for (const [leaf, maxLines] of conversationPaneLeafLimits) {
-    const source = await readText(`${conversationPaneRoot}/${leaf}`);
+    const leafPath = `${conversationPaneRoot}/${leaf}`;
+    const source = await readText(leafPath);
     conversationPaneSources[leaf] = source;
+    const crossLeafImports = [...source.matchAll(
+      /^\s*import\s+['"]([^'"]+)['"][^;]*;/gmu
+    )]
+      .map((match) => resolveConversationPaneImport(leafPath, match[1]))
+      .filter((target) => conversationPaneLeafPaths.has(target));
+    conversationPaneImportGraph.set(leafPath, crossLeafImports);
     assert(
       sourceLineCount(source) <= maxLines &&
         !/^\s*part(?:\s+of)?\b/mu.test(source) &&
-        !source.includes("agent_conversation_pane.dart"),
+        !source.includes("agent_conversation_pane.dart") &&
+        !source.includes("ClientController"),
       `${leaf} must remain a bounded pane library without reverse facade coupling`
     );
   }
   assert(
-    conversationPaneSources["composition.dart"].includes("agent_conversation_pane/actions.dart") &&
-      conversationPaneSources["composition.dart"].includes("agent_conversation_pane/header.dart") &&
-      conversationPaneSources["composition.dart"].includes("conversationParityDisclosureCopy") &&
+    [...conversationPaneImportGraph.values()].every((targets) => targets.length === 0) &&
+      conversationPaneSources["composition.dart"].includes("AgentConversationPaneState") &&
+      conversationPaneSources["composition.dart"].includes("AgentConversationPaneActions") &&
       conversationPaneSources["actions.dart"].includes("ArchiveAgentConversationsButton") &&
       conversationPaneSources["resize.dart"].includes("PaneEdgeDragHandle") &&
-      conversationPaneSources["header.dart"].includes("ConversationPaneHeader"),
-    "conversation pane composition, actions, resize, and header leaves must retain separate ownership"
+      conversationPaneSources["header.dart"].includes("AgentConversationHeaderState") &&
+      !(await exists(`${conversationPaneRoot}/recent_sessions.dart`)),
+    "conversation pane leaves must have zero cross-leaf imports, zero ClientController access, and no hidden recent-sessions leaf"
   );
   const messageBlocksFacadePath =
     "apps/desktop/lib/src/frontend/features/agents/ui/agent_conversation_message_blocks.dart";

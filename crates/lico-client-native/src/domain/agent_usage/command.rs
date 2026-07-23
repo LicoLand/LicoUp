@@ -1,7 +1,7 @@
 //! Public scan/report command orchestration.
 
 use super::agent_usage_codex;
-use super::attribution::summarize_native_history;
+use super::agent_usage_native;
 use super::contract::{
     AGENT_USAGE_MODE, AGENT_USAGE_SCHEMA_VERSION, AGENT_USAGE_TOKEN_SOURCE_MODE,
     HistoryUsageSummary, MAX_REPORTS, REPORT_COLLECTION, SUPPORTED_AGENTS, normalize_agent_id,
@@ -116,12 +116,10 @@ fn summarize_agent_history(
     window: &UsageWindow,
     warnings: &mut Vec<Value>,
 ) -> HistoryUsageSummary {
-    if def.id == "codex"
-        && let Some(summary) = agent_usage_codex::summarize(params, window, warnings)
-    {
-        return summary;
+    if def.id == "codex" {
+        return agent_usage_codex::summarize(params, window, warnings).unwrap_or_default();
     }
-    summarize_native_history(def, params, window, warnings)
+    agent_usage_native::summarize(def, params, window, warnings).unwrap_or_default()
 }
 
 fn target_status_map(params: &Value, warnings: &mut Vec<Value>) -> BTreeMap<String, String> {
