@@ -21,6 +21,7 @@ mixin FakeAgentConversationSupport on AgentService, FakeAgentStateSupport {
   List<Map<String, dynamic>> runtimeMessageResultQueue = const [];
   List<List<Map<String, dynamic>>> runtimeMessageStreamEventQueue = const [];
   bool recordRuntimeMessageInHistory = true;
+  String runtimeMessageRpcErrorCode = '';
   Completer<void>? runtimeMessageGate;
   bool runtimeSteerThrows = false;
   Map<String, dynamic> runtimeSteerResult = const {
@@ -59,6 +60,9 @@ mixin FakeAgentConversationSupport on AgentService, FakeAgentStateSupport {
     List<String> args,
     String stdinText,
   ) async* {
+    if (runtimeMessageRpcErrorCode.isNotEmpty) {
+      throw LicoClientRpcException(runtimeMessageRpcErrorCode);
+    }
     final result = await runCliWithStdin(args, stdinText);
     final streamEvents = runtimeMessageStreamEventQueue.isEmpty
         ? const <Map<String, dynamic>>[]

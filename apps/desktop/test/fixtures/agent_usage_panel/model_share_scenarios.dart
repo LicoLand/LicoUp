@@ -88,18 +88,15 @@ void registerAgentUsageModelShareScenarios() {
       const tokenShareKey = ValueKey('agent-usage-token-share');
       final tokenShare = find.byKey(tokenShareKey);
       expect(
-        find.descendant(
-          of: tokenShare,
-          matching: find.text('ChatGPT - Desktop'),
-        ),
+        find.descendant(of: tokenShare, matching: find.text('Codex')),
         findsOneWidget,
       );
       expect(
-        find.descendant(of: tokenShare, matching: find.text('Cursor - IDE')),
+        find.descendant(of: tokenShare, matching: find.text('Cursor')),
         findsOneWidget,
       );
       expect(
-        find.descendant(of: tokenShare, matching: find.text('Kimi Code - CLI')),
+        find.descendant(of: tokenShare, matching: find.text('Kimi Code')),
         findsOneWidget,
       );
       expect(find.text('VS Code'), findsNothing);
@@ -152,14 +149,8 @@ void registerAgentUsageModelShareScenarios() {
       await tester.pumpAndSettle();
 
       expect(progressFillFactor(tester, 'Total'), closeTo(1.0, 0.01));
-      expect(
-        progressFillFactor(tester, 'ChatGPT - Desktop'),
-        closeTo(0.55, 0.01),
-      );
-      expect(
-        progressFillFactor(tester, 'Claude Code - CLI'),
-        closeTo(0.45, 0.01),
-      );
+      expect(progressFillFactor(tester, 'Codex'), closeTo(0.55, 0.01));
+      expect(progressFillFactor(tester, 'Claude Code'), closeTo(0.45, 0.01));
       expect(find.text('55%'), findsOneWidget);
       expect(find.text('45%'), findsOneWidget);
 

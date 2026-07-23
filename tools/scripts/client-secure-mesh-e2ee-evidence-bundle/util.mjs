@@ -234,7 +234,7 @@ export async function authorityProofTemplateForRoutes({ routeConfig, routePlan, 
     }
   }
   const template = {
-    schemaVersion: "licolite.secure-mesh.e2ee-authority-proof-template.v1",
+    schemaVersion: "licomesh.secure-mesh.e2ee-authority-proof-template.v1",
     sourceOfTruth: contract.SECURE_CLIENT_MESH_PRODUCTION_SOURCE_OF_TRUTH,
     generatedBy: "tools/scripts/client-secure-mesh-e2ee-evidence-bundle.mjs#generate-authority-proof-template",
     generatedAt: checkedAt,

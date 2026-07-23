@@ -19,10 +19,10 @@ use anyhow::Result;
 use serde_json::{Value, json};
 
 pub fn e2ee_status(params: &Value) -> Result<Value> {
-    let secret_read_authorized = should_authorize_secret_read(params);
+    let read_authorized = should_authorize_secret_read(params);
     let mut authorized_context = None;
     let mut unauthorized_overrides = RuntimeSecretOverrides::default();
-    let config = if secret_read_authorized {
+    let config = if read_authorized {
         let (config, context) = load_config_with_runtime_secret_context_for_operation(
             params,
             "Mobile Relay E2EE status authorization batch",
@@ -35,11 +35,17 @@ pub fn e2ee_status(params: &Value) -> Result<Value> {
         unauthorized_overrides = overrides;
         config
     };
-    let local = if secret_read_authorized {
-        local_endpoint_state(&config)
-            .ok()
-            .map(|endpoint| endpoint.public_descriptor())
-            .transpose()?
+    let local = if read_authorized {
+        local_endpoint_state(
+            &config,
+            &authorized_context
+                .as_ref()
+                .expect("authorized context exists")
+                .material,
+        )
+        .ok()
+        .map(|endpoint| endpoint.public_descriptor())
+        .transpose()?
     } else {
         local_endpoint_public_descriptor(&config).ok()
     };
@@ -67,13 +73,10 @@ pub fn e2ee_status(params: &Value) -> Result<Value> {
         .unwrap_or(&unauthorized_overrides);
     let mut secret_store = mobile_relay_e2ee_secret_store_status(&config, secret_overrides);
     if let Some(object) = secret_store.as_object_mut() {
-        object.insert(
-            "fullStatusAuthorized".to_string(),
-            json!(secret_read_authorized),
-        );
+        object.insert("fullStatusAuthorized".to_string(), json!(read_authorized));
         object.insert(
             "authorizationRequiredForFullStatus".to_string(),
-            json!(!secret_read_authorized),
+            json!(!read_authorized),
         );
     }
     let mandatory_foundation_complete = secret_store
@@ -133,8 +136,8 @@ pub fn e2ee_status(params: &Value) -> Result<Value> {
         "peerVerifiedFlag": peer_verified_flag,
         "peerTrustRecordVerified": peer_trust_record_verified,
         "secretStore": secret_store,
-        "fullStatusAuthorized": secret_read_authorized,
-        "authorizationRequiredForFullStatus": !secret_read_authorized,
+        "fullStatusAuthorized": read_authorized,
+        "authorizationRequiredForFullStatus": !read_authorized,
         "mandatoryFoundationComplete": mandatory_foundation_complete,
         "secureSessionEstablished": secure_session_established,
         "keyTransparencyFresh": pairwise_directory_fresh,

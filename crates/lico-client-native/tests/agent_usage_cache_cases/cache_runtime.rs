@@ -8,9 +8,9 @@ fn codex_usage_does_not_advance_cache_past_an_incomplete_jsonl_line() {
     fs::write(
         &rollout,
         concat!(
-            r#"{"timestamp":"2026-07-08T10:00:00Z","type":"session_meta","payload":{"id":"session-partial"}}"#,
+            r#"{"timestamp":"2026-07-10T10:00:00Z","type":"session_meta","payload":{"id":"session-partial"}}"#,
             "\n",
-            r#"{"timestamp":"2026-07-08T10:00:01Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":6,"cached_input_tokens":2,"output_tokens":4},"last_token_usage":{"input_tokens":6"#
+            r#"{"timestamp":"2026-07-10T10:00:01Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":6,"cached_input_tokens":2,"output_tokens":4},"last_token_usage":{"input_tokens":6"#
         ),
     )
     .unwrap();

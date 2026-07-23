@@ -14,6 +14,7 @@ const Set<ClientSection> workbenchDesktopCanonicalDestinations = {
   ClientSection.agents,
   ClientSection.monitoring,
   ClientSection.skillHub,
+  ClientSection.pluginManagement,
   ClientSection.mobileRelay,
   ClientSection.settings,
 };

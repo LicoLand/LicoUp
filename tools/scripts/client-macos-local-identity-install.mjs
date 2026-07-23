@@ -29,7 +29,7 @@ import {
 
 const repoRoot = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const producer = "tools/scripts/client-macos-local-identity-install.mjs";
-const schemaVersion = "licolite.client-macos-local-identity-install.v1";
+const schemaVersion = "licomesh.client-macos-local-identity-install.v1";
 const builtApp = path.join(repoRoot, "build/apps/desktop/runnable/macos/release/Arc.app");
 const installedApp = "/Applications/Arc.app";
 const packageManifestPath = path.join(

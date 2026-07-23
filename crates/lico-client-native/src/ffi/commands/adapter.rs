@@ -1,0 +1,123 @@
+//! Adapter bridge lifecycle commands.
+//!
+//! The catalog is projected from the canonical packaged runtime registry.
+//! Keep agent-specific transport and filesystem details inside each adapter.
+
+use super::{AdmittedCommand, CliExecution};
+use anyhow::Result;
+
+pub(super) fn handle_catalog(_command: AdmittedCommand) -> Result<CliExecution> {
+    let bridge = crate::platform::antigravity_driver::hook_bridge_status();
+    let installed = bridge
+        .get("installed")
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(false);
+    Ok(CliExecution::Json(
+        crate::platform::runtime_adapters::adapter_management_catalog(installed),
+    ))
+}
+
+pub(super) fn handle_antigravity_status(_command: AdmittedCommand) -> Result<CliExecution> {
+    Ok(CliExecution::Json(
+        crate::platform::antigravity_driver::hook_bridge_status(),
+    ))
+}
+
+pub(super) fn handle_antigravity_install(_command: AdmittedCommand) -> Result<CliExecution> {
+    Ok(CliExecution::Json(adapter_lifecycle_result(
+        "antigravity",
+        "install",
+        crate::platform::antigravity_driver::install_hook_bridge(),
+    )))
+}
+
+pub(super) fn handle_antigravity_uninstall(_command: AdmittedCommand) -> Result<CliExecution> {
+    Ok(CliExecution::Json(adapter_lifecycle_result(
+        "antigravity",
+        "uninstall",
+        crate::platform::antigravity_driver::uninstall_hook_bridge_report(),
+    )))
+}
+
+fn adapter_lifecycle_result(
+    adapter_id: &str,
+    action: &str,
+    result: std::result::Result<serde_json::Value, &'static str>,
+) -> serde_json::Value {
+    match result {
+        Ok(value) => value,
+        Err(_) => serde_json::json!({
+            "ok": false,
+            "adapterId": adapter_id,
+            "error": {
+                "code": match action {
+                    "install" => "adapter_plugin_install_failed",
+                    "uninstall" => "adapter_plugin_uninstall_failed",
+                    _ => "adapter_plugin_action_failed",
+                },
+                "stage": "adapter/lifecycle",
+                "component": "managed-bridge",
+                "retryable": true,
+                "recovery": "retry_or_review_local_adapter_state",
+            },
+        }),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn catalog_projects_every_packaged_adapter_without_fake_install_actions() {
+        let CliExecution::Json(catalog) =
+            crate::ffi::commands::execute_cli(vec!["adapter".into(), "catalog".into()]).unwrap()
+        else {
+            panic!("adapter catalog must be JSON");
+        };
+        assert_eq!(catalog["ok"], true);
+        assert_eq!(catalog["schemaVersion"], "lico.adapter-plugin-catalog.v1");
+        let adapters = catalog["adapters"].as_array().unwrap();
+        assert_eq!(
+            adapters.len(),
+            crate::platform::runtime_adapters::PACKAGED_RUNTIME_ADAPTER_IDS.len()
+        );
+        for adapter in adapters {
+            let managed = adapter["managementKind"] == "managed-bridge";
+            assert_eq!(
+                adapter["lifecycleActions"]
+                    .as_array()
+                    .is_some_and(|actions| !actions.is_empty()),
+                managed
+            );
+            if !managed {
+                assert_eq!(adapter["installationState"], "not-required");
+            }
+        }
+    }
+
+    #[test]
+    fn managed_bridge_failures_are_typed_and_do_not_expose_platform_details() {
+        for (action, code) in [
+            ("install", "adapter_plugin_install_failed"),
+            ("uninstall", "adapter_plugin_uninstall_failed"),
+        ] {
+            let result = adapter_lifecycle_result(
+                "antigravity",
+                action,
+                Err("private_platform_failure_detail"),
+            );
+            assert_eq!(result["ok"], false);
+            assert_eq!(result["adapterId"], "antigravity");
+            assert_eq!(result["error"]["code"], code);
+            assert_eq!(result["error"]["stage"], "adapter/lifecycle");
+            assert_eq!(result["error"]["component"], "managed-bridge");
+            assert_eq!(result["error"]["retryable"], true);
+            assert!(
+                !result
+                    .to_string()
+                    .contains("private_platform_failure_detail")
+            );
+        }
+    }
+}

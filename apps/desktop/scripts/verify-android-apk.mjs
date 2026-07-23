@@ -40,7 +40,7 @@ function main() {
     path.join(workspaceRoot, "tools/client-version.json"),
   ).toString("utf8"));
   requireValue(
-    buildManifest?.schemaVersion === "licolite.client-android.apk-build-manifest.v3" &&
+    buildManifest?.schemaVersion === "licomesh.client-android.apk-build-manifest.v3" &&
       buildManifest.mode === "release" &&
       buildManifest.targetId === "android-arm64" &&
       androidReleaseBuildParametersReady(buildManifest.buildParameters) &&
@@ -84,7 +84,7 @@ function main() {
     "Android APK facts do not match the build manifest",
   );
   const report = {
-    schemaVersion: "licolite.client-android.distribution-manifest.v3",
+    schemaVersion: "licomesh.client-android.distribution-manifest.v3",
     generatedAt: new Date().toISOString(),
     targetId: "android-arm64",
     platform: "android",

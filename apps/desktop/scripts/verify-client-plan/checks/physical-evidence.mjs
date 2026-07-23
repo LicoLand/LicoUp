@@ -36,7 +36,7 @@ assert(physicalDeviceMatrix.includes("validateSecureMeshTrustUxV2Report") &&
   physicalDeviceMatrix.includes("trustContract.contractReady"),
   "physical device matrix must consume the Trust UX v2 contract fail-closed");
 for (const token of [
-  "licolite.secure-mesh.physical-device-matrix-config.v2",
+  "licomesh.secure-mesh.physical-device-matrix-config.v2",
   "sourceChecks",
   "physicalMatrix",
   "pairing-and-trust",
@@ -85,7 +85,7 @@ const physicalEvidenceManifest = await readText("tools/scripts/client-secure-mes
 const physicalEvidenceConfig = await readText("tools/scripts/config/secure-mesh-physical-evidence.json");
 const physicalEvidenceConfigJson = await readJson("tools/scripts/config/secure-mesh-physical-evidence.json");
 for (const token of [
-  "licolite.secure-mesh.physical-evidence-config.v2",
+  "licomesh.secure-mesh.physical-evidence-config.v2",
   "build/reports/secure-mesh-physical-evidence-manifest.json",
   "build/reports/secure-mesh-android-platform-crypto-acceptance.json",
   "build/reports/secure-client-relay-mock-e2e.json",

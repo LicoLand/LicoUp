@@ -80,7 +80,7 @@ void main() {
         catalog: validRuntime.catalog,
         definitions: [
           badWorkbench,
-          validRuntime.registry.definition(LayoutProfileId.parse('studio')),
+          validRuntime.registry.definition(LayoutProfileId.parse('native')),
         ],
       ),
       throwsFormatException,
@@ -93,11 +93,11 @@ void main() {
         .definition(LayoutProfileId.parse('workbench'))
         .bundles[LayoutRuntimeSurface.desktop]!
         .tokens;
-    final studio = runtime.registry
-        .definition(LayoutProfileId.parse('studio'))
+    final native = runtime.registry
+        .definition(LayoutProfileId.parse('native'))
         .bundles[LayoutRuntimeSurface.desktop]!
         .tokens;
-    final midpoint = workbench.lerp(studio, 0.5);
+    final midpoint = workbench.lerp(native, 0.5);
 
     expect(midpoint.spacingUnit, 6);
     expect(midpoint.cardRadius, 11);
@@ -231,13 +231,13 @@ void main() {
       findsOneWidget,
     );
     expect(
-      find.byKey(const Key('layout-host-studio/desktop/medium')),
+      find.byKey(const Key('layout-host-native/desktop/medium')),
       findsNothing,
     );
     expect(tracker.shellBuilds[LayoutProfileId.parse('workbench')], 1);
-    expect(tracker.shellBuilds[LayoutProfileId.parse('studio')] ?? 0, 0);
+    expect(tracker.shellBuilds[LayoutProfileId.parse('native')] ?? 0, 0);
 
-    manager.beginPreview(LayoutProfileId.parse('studio'));
+    manager.beginPreview(LayoutProfileId.parse('native'));
     await tester.pump();
     expect(parentBuilds.value, 1);
     expect(
@@ -245,10 +245,10 @@ void main() {
       findsNothing,
     );
     expect(
-      find.byKey(const Key('layout-host-studio/desktop/medium')),
+      find.byKey(const Key('layout-host-native/desktop/medium')),
       findsOneWidget,
     );
-    expect(tracker.shellBuilds[LayoutProfileId.parse('studio')], 1);
+    expect(tracker.shellBuilds[LayoutProfileId.parse('native')], 1);
     manager.dispose();
   });
 

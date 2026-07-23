@@ -87,6 +87,7 @@ final class _ClassicSidebar extends StatelessWidget {
     final preferred = <ClientSection>[
       ClientSection.agents,
       ClientSection.skillHub,
+      ClientSection.pluginManagement,
       ClientSection.monitoring,
       ClientSection.mobileRelay,
       ClientSection.settings,
@@ -235,6 +236,7 @@ IconData _classicSectionIcon(ClientSection section) => switch (section) {
   ClientSection.agents => Icons.psychology_outlined,
   ClientSection.monitoring => Icons.query_stats_outlined,
   ClientSection.skillHub => Icons.library_books_outlined,
+  ClientSection.pluginManagement => Icons.extension_outlined,
   ClientSection.mobileRelay => Icons.phonelink_outlined,
   ClientSection.settings => Icons.settings_outlined,
 };

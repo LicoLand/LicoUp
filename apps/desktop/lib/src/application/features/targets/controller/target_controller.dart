@@ -69,6 +69,7 @@ class TargetController extends ChangeNotifier {
   bool isAdding = false;
   bool _disposed = false;
   bool _refreshing = false;
+  bool _cachedTargetsNeedRefresh = false;
   int _scanGeneration = 0;
   String _lastErrorCode = '';
 
@@ -106,6 +107,7 @@ class TargetController extends ChangeNotifier {
     final cached = await _loadCachedTargets();
     if (cached.isEmpty) return;
     _targets = List.unmodifiable(cached);
+    _cachedTargetsNeedRefresh = true;
     _onTargetsSettled();
     notifyListeners();
   }
@@ -146,6 +148,7 @@ class TargetController extends ChangeNotifier {
         if (!_isCurrentScan(generation)) return;
         if (cached.isNotEmpty) {
           _targets = List.unmodifiable(cached);
+          _cachedTargetsNeedRefresh = true;
           _onTargetsSettled();
           notifyListeners();
         }
@@ -153,7 +156,11 @@ class TargetController extends ChangeNotifier {
       final ids = TargetPolicy.incrementalScanIds(
         packagedIds: _packagedTargetIds,
         currentTargets: _targets,
-        rescanKnown: forceRescanKnown || showProgress,
+        // Cached discovery is only a paint-fast snapshot. Runtime binaries can
+        // move between launches, so the first quiet scan must revalidate known
+        // targets instead of treating stale executable bindings as current.
+        rescanKnown:
+            forceRescanKnown || showProgress || _cachedTargetsNeedRefresh,
       );
       if (ids.isEmpty) {
         if (showProgress) _emitScanComplete();
@@ -174,6 +181,9 @@ class TargetController extends ChangeNotifier {
       _onTargetsSettled();
       await _persistCache();
       if (!_isCurrentScan(generation)) return;
+      if (failures == 0) {
+        _cachedTargetsNeedRefresh = false;
+      }
       if (failures == ids.length && _targets.isEmpty) {
         if (reportErrors) {
           _lastErrorCode = 'target_scan_failed';

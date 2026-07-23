@@ -17,5 +17,11 @@ pub(super) use execution::execute;
 pub(super) use model::{CapabilityProbe, EffectiveSettings, RUNTIME_PROTOCOL, RunResult};
 pub(super) use probe::probe;
 
+pub(in crate::platform) fn cancel(
+    session_id: &str,
+) -> super::acp_driver_runtime::ControlDisposition {
+    super::acp_driver_runtime::cancel_active_turn("openclaw-acp", session_id)
+}
+
 #[cfg(test)]
 mod tests;

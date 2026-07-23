@@ -6,7 +6,7 @@ import 'package:flutter_client/src/application/features/agents/conversation/agen
         conversationSessionReadbackPendingSelectionId;
 import 'package:flutter_client/src/application/features/agents/policy/conversation_refresh_policy.dart';
 import 'package:flutter_client/src/application/features/agents/workspace/agent_workspace_coordinator.dart';
-import 'package:flutter_client/src/contracts/agent_orchestration_policy.dart';
+import 'package:flutter_client/src/contracts/agent_orchestration_target.dart';
 import 'package:flutter_client/src/contracts/presentation/semantic_destination.dart';
 
 mixin ConversationRefreshController on AgentWorkspaceCoordinator {
@@ -67,8 +67,8 @@ mixin ConversationRefreshController on AgentWorkspaceCoordinator {
 
     final agentId = selectedConversationAgentId.trim();
     final priority = conversationRefreshPriority;
-    if (agentWorkspaceDisposed ||
-        !initialized ||
+    if (lifecycleProjection.disposed ||
+        !lifecycleProjection.initialized ||
         agentId.isEmpty ||
         isAgentOrchestrationTargetId(agentId) ||
         priority == ConversationRefreshPriority.suspended) {
@@ -144,8 +144,8 @@ mixin ConversationRefreshController on AgentWorkspaceCoordinator {
   }
 
   bool _conversationRefreshTargetIsCurrent(String agentId) {
-    return !agentWorkspaceDisposed &&
-        initialized &&
+    return !lifecycleProjection.disposed &&
+        lifecycleProjection.initialized &&
         selectedConversationAgentId == agentId &&
         !isAgentOrchestrationTargetId(agentId) &&
         conversationRefreshPriority != ConversationRefreshPriority.suspended;

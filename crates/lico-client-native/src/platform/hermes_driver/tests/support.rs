@@ -7,13 +7,10 @@ use std::os::unix::fs::PermissionsExt;
 
 pub(super) fn absolute_test_cwd() -> PathBuf {
     #[cfg(target_os = "windows")]
-    {
-        PathBuf::from(r"C:\workspace\project")
-    }
+    let root = PathBuf::from(format!("C:{}", std::path::MAIN_SEPARATOR));
     #[cfg(not(target_os = "windows"))]
-    {
-        PathBuf::from("/workspace/project")
-    }
+    let root = PathBuf::from(std::path::MAIN_SEPARATOR.to_string());
+    root.join("workspace").join("project")
 }
 
 pub(super) fn config(params: Value, prompt: &str, session_id: &str) -> ProtocolConfig {

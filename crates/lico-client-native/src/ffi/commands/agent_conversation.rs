@@ -1,47 +1,23 @@
-use super::{CliExecution, CommandTable, cli_params};
-use anyhow::{Result, anyhow};
+use super::{AdmittedCommand, CliExecution, admitted_params};
+use crate::ffi::generated::client_error::ClientError;
+use crate::platform::runtime_adapters::RuntimeAdapterError;
+use anyhow::Result;
 use serde_json::Value;
-use std::io::Read;
 
-pub fn register_commands(table: &mut CommandTable) {
-    table.register_rest(
-        &["agent", "conversation"],
-        handle_agent_conversation,
-        "Agent conversation open|send|steer|cancel|capabilities|stream",
-    );
-    table.register_rest(
-        &["agents", "pair"],
-        handle_agents_pair,
-        "Agent pair request|approve|revoke|list",
-    );
-}
-
-fn handle_agent_conversation(args: &[String]) -> Result<CliExecution> {
-    if args.len() < 3 {
-        return Ok(CliExecution::Usage);
-    }
-    let operation = args[2].as_str();
-    let control = cli_params(&args[3..]);
-    let mut params = if stdin_json_enabled(&control) {
-        let mut request_json = String::new();
-        std::io::stdin().read_to_string(&mut request_json)?;
-        parse_agent_message_stdin_json(&request_json)?
-    } else {
-        control.clone()
+// The FFI envelope serializes the complete ClientError: code, stage, component,
+// retryable, recovery, and presentationArgs are never reclassified here.
+pub(super) fn handle_agent_conversation(command: AdmittedCommand) -> Result<CliExecution> {
+    let operation = match command.path() {
+        ["agent", "conversation", operation] => *operation,
+        _ => unreachable!("admission only registers concrete conversation routes"),
     };
-    if stream_events_enabled(&control) || stream_events_enabled(&params) {
-        if let Some(object) = params.as_object_mut() {
-            object.insert("streamEvents".to_string(), serde_json::json!(true));
-        }
-    }
+    let admitted_json = command.option_json("stdin-json");
+    let params = match admitted_json {
+        Some(value) => value.clone(),
+        None => serde_json::json!({}),
+    };
 
     if operation == "send" && stream_events_enabled(&params) {
-        if let Err(error) = crate::platform::enforce_send_readiness(&params) {
-            let mut failure = agent_conversation_failure(&error);
-            failure["event"] = serde_json::json!("done");
-            write_stdout_json_line(&failure)?;
-            return Ok(CliExecution::Streamed);
-        }
         let _guard = crate::platform::install_stdout_ndjson_sink();
         crate::platform::emit_turn_event(
             "dispatch.turn.started",
@@ -69,12 +45,6 @@ fn handle_agent_conversation(args: &[String]) -> Result<CliExecution> {
         return Ok(CliExecution::Streamed);
     }
 
-    if operation == "send" {
-        if let Err(error) = crate::platform::enforce_send_readiness(&params) {
-            return Ok(CliExecution::Json(agent_conversation_failure(&error)));
-        }
-    }
-
     let result = match crate::platform::dispatch_lane_operation(operation, &params) {
         Ok(result) => result,
         Err(error) => agent_conversation_failure(&error),
@@ -100,32 +70,11 @@ fn observe_skill_invocations(params: &Value, result: &Value) {
     let _ = crate::domain::skill_hub::observe_agent_skill_invocations(agent_id, result);
 }
 
-fn agent_conversation_failure(error: &anyhow::Error) -> Value {
-    let message = error.to_string();
-    let code = if message.contains("send_not_ready") {
-        "agent_conversation_send_not_ready"
-    } else if message.contains("runtime profile is unavailable") {
-        "native_agent_runtime_profile_unavailable"
-    } else if message.contains("requires an agent identifier") {
-        "agent_identifier_missing"
-    } else if message.contains("requires message text") {
-        "agent_message_missing"
-    } else if message.contains("exceeds the input limit") {
-        "agent_message_input_limit"
-    } else if message.contains("unsupported runtime adapter") {
-        "agent_runtime_unsupported"
-    } else if message.contains("evidence binding is unavailable") {
-        "native_agent_runtime_evidence_unavailable"
-    } else {
-        "agent_conversation_dispatch_failed"
-    };
+fn agent_conversation_failure(error: &RuntimeAdapterError) -> Value {
+    let client_error: ClientError = error.client_error();
     serde_json::json!({
         "ok": false,
-        "error": {
-            "code": code,
-            "stage": "conversation/dispatch",
-            "message": "The native conversation request failed closed."
-        }
+        "error": client_error
     })
 }
 
@@ -151,33 +100,25 @@ fn write_stdout_json_line(value: &Value) -> Result<()> {
     Ok(())
 }
 
-fn stdin_json_enabled(params: &Value) -> bool {
-    params.get("stdinJson").and_then(|value| {
-        value.as_bool().or_else(|| match value.as_str()?.trim() {
-            "true" | "1" | "yes" => Some(true),
-            _ => Some(false),
-        })
-    }) == Some(true)
-}
-
-fn parse_agent_message_stdin_json(input: &str) -> Result<Value> {
-    let request: Value = serde_json::from_str(input)
-        .map_err(|_| anyhow!("agent conversation stdin must be valid JSON"))?;
-    if !request.is_object() {
-        return Err(anyhow!("agent conversation stdin must be a JSON object"));
-    }
-    Ok(request)
-}
-
-fn handle_agents_pair(args: &[String]) -> Result<CliExecution> {
-    let action = &args[2];
-    let params = cli_params(&args[3..]);
-    let result = match action.as_str() {
+pub(super) fn handle_agents_pair(command: AdmittedCommand) -> Result<CliExecution> {
+    let action = match command.path() {
+        ["agents", "pair", action] => *action,
+        _ => unreachable!("admission only registers concrete pairing routes"),
+    };
+    let params = admitted_params(
+        &[
+            ("agent", command.option_text("agent")),
+            ("target", command.option_text("target")),
+        ],
+        &[],
+        &[],
+    );
+    let result = match action {
         "request" => crate::domain::skill_hub::pair_request(&params)?,
         "approve" => crate::domain::skill_hub::pair_approve(&params)?,
         "revoke" => crate::domain::skill_hub::pair_revoke(&params)?,
         "list" => crate::domain::skill_hub::pair_list(&params)?,
-        _ => return Ok(CliExecution::Usage),
+        _ => unreachable!("admission only registers supported pairing actions"),
     };
     Ok(CliExecution::Json(result))
 }
@@ -191,23 +132,17 @@ mod tests {
     use uuid::Uuid;
 
     #[test]
-    fn agent_conversation_request_is_read_from_json_stdin_contract() {
-        let control = cli_params(&["--stdin-json".into(), "true".into()]);
-        assert!(stdin_json_enabled(&control));
+    fn conversation_failures_report_the_exact_failed_stage() {
+        let launch = agent_conversation_failure(&RuntimeAdapterError::ExecutableUnavailable);
+        assert_eq!(
+            launch["error"]["code"],
+            "native_agent_executable_unavailable"
+        );
+        assert_eq!(launch["error"]["stage"], "process/launch");
 
-        let parsed = parse_agent_message_stdin_json(
-            r#"{"agent":"codex","text":"private prompt","sessionId":"thread-1"}"#,
-        )
-        .unwrap();
-        assert_eq!(parsed["agent"], json!("codex"));
-        assert_eq!(parsed["text"], json!("private prompt"));
-        assert_eq!(parsed["sessionId"], json!("thread-1"));
-    }
-
-    #[test]
-    fn agent_conversation_request_rejects_non_object_stdin() {
-        assert!(parse_agent_message_stdin_json(r#"["prompt"]"#).is_err());
-        assert!(parse_agent_message_stdin_json("not-json").is_err());
+        let request = agent_conversation_failure(&RuntimeAdapterError::MessageMissing);
+        assert_eq!(request["error"]["code"], "agent_message_missing");
+        assert_eq!(request["error"]["stage"], "request/validation");
     }
 
     #[test]

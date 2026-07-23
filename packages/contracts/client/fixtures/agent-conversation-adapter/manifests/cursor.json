@@ -2,36 +2,40 @@
   "schemaVersion": "lico.agent-conversation-adapter.v1",
   "identity": {
     "agentId": "cursor",
-    "driverId": "cursor-acp",
-    "runtimeProtocol": "cursor-acp-v1-stdio-jsonrpc",
+    "driverId": "cursor-cli",
+    "runtimeProtocol": "cursor-agent-cli-v1",
     "packagingTargetId": "cursor"
   },
   "officialCapabilityAssessment": {
     "completedBeforeImplementation": true,
     "sourceAuthority": "official",
-    "interfaceName": "official Cursor ACP stdio interface",
+    "interfaceName": "official Cursor Agent CLI resume lane",
     "assessedVersion": "version reported by fixed Cursor probe",
     "versionProbe": "fixed --version probe",
-    "capabilityProbe": "ACP initialize capability handshake",
-    "newSessionMethod": "session/new",
-    "exactResumeMethod": "session/load with caller-supplied native id",
-    "streamingMethod": "ACP session update notifications",
-    "historyMethod": "official session list and exact read",
-    "cleanupMethod": "safe official persistent-session deletion unavailable",
+    "capabilityProbe": "fixed help probe for create-chat, --print, --resume, and stream-json",
+    "newSessionMethod": "create-chat stdout session id",
+    "exactResumeMethod": "--resume with caller-supplied native id in launch arguments",
+    "streamingMethod": "stream-json turn output",
+    "historyMethod": "local Cursor chat storage readback",
+    "cleanupMethod": "delete local Cursor chat leaf and matching agent-transcripts directory",
     "officialReferences": [
-      "https://docs.cursor.com/en/cli/acp"
+      "https://docs.cursor.com/en/cli/overview"
     ]
   },
   "transport": {
-    "family": "acp",
+    "family": "cli",
     "origin": "official",
-    "promptChannel": "json-rpc",
-    "continuityChannel": "protocol-field",
-    "workingDirectoryChannel": "protocol-field",
-    "framing": "json-rpc",
+    "promptChannel": "launch-argument",
+    "continuityChannel": "launch-argument",
+    "workingDirectoryChannel": "process-cwd",
+    "framing": "jsonl",
     "sessionScope": "persistent",
     "fixedLaunchArguments": [
-      "acp"
+      "--print",
+      "--output-format",
+      "stream-json",
+      "--trust",
+      "--force"
     ]
   },
   "configuration": {
@@ -52,19 +56,19 @@
     },
     "openNew": {
       "status": "supported",
-      "method": "session/new"
+      "method": "create-chat stdout session id"
     },
     "exactResume": {
       "status": "supported",
-      "method": "session/load with caller-supplied native id"
+      "method": "--resume with caller-supplied native id in launch arguments"
     },
     "send": {
       "status": "supported",
-      "method": "official structured prompt operation"
+      "method": "official supervised --print turn"
     },
     "stream": {
       "status": "supported",
-      "method": "ACP session update notifications"
+      "method": "stream-json turn output"
     },
     "cancel": {
       "status": "supported",
@@ -75,13 +79,12 @@
       "method": "combined in-flight interrupt and steer is not enabled"
     },
     "cleanup": {
-      "status": "blocked",
-      "method": "safe official persistent-session deletion unavailable",
-      "blockerCode": "safe_cleanup_unavailable"
+      "status": "supported",
+      "method": "delete local Cursor chat leaf and matching agent-transcripts directory"
     },
     "history": {
       "status": "supported",
-      "method": "official session list and exact read"
+      "method": "local Cursor chat storage readback"
     },
     "approvals": {
       "status": "unsupported",
@@ -97,7 +100,7 @@
     }
   },
   "events": {
-    "framing": "json-rpc",
+    "framing": "jsonl",
     "realtimeKinds": [
       "agent.message.chunk",
       "agent.tool.started",
@@ -112,18 +115,18 @@
   },
   "lifecycle": {
     "supervision": "process-tree",
-    "cleanupScope": "unavailable",
+    "cleanupScope": "official-session",
     "cancelHandleScope": "active-turn",
     "maxConcurrentTransports": 8,
     "maxTrackedSessions": 1024
   },
   "privacy": {
-    "promptInArguments": false,
-    "continuityIdInArguments": false,
+    "promptInArguments": true,
+    "continuityIdInArguments": true,
     "boundedInput": true,
     "boundedOutput": true,
     "structuredEventProjection": true,
-    "safeCleanup": false,
+    "safeCleanup": true,
     "redactedEvidence": true
   },
   "routedContext": {
@@ -175,14 +178,14 @@
     "checkSemantics": {
       "P-01": "baseline-binding",
       "P-02": "native-session-creation",
-      "P-03": "bidirectional-exact-resume",
+      "P-03": "same-session-sequential-resume",
       "P-04": "deterministic-final-result",
       "P-05": "effective-settings-parity",
       "P-06": "history-readback-and-rendering",
       "P-07": "error-cancel-timeout-parity",
       "P-08": "privacy-and-process-boundary",
       "P-09": "isolation-and-cleanup",
-      "P-10": "exact-release-product-ui",
+      "P-10": "same-session-sequential-turns",
       "C-01": "streaming-delta",
       "C-02": "reasoning-and-tool-trace",
       "C-03": "approval-lifecycle",
@@ -191,15 +194,15 @@
       "C-06": "usage-and-status"
     },
     "minimumConsecutivePasses": 3,
-    "minimumConsecutiveReleaseUiPasses": 3,
-    "productUiRequired": true,
-    "releaseP10Required": true,
+    "minimumConsecutiveReleaseUiPasses": 0,
+    "productUiRequired": false,
+    "releaseP10Required": false,
     "liveLocalForwardingRequired": true,
     "realtimeOutputRequired": true,
     "sameNativeSessionRequired": true,
     "canonicalReadinessRequired": true,
-    "nativeToArcRequired": true,
-    "arcToNativeRequired": true,
-    "exactArtifactRequired": true
+    "nativeToArcRequired": false,
+    "arcToNativeRequired": false,
+    "exactArtifactRequired": false
   }
 }

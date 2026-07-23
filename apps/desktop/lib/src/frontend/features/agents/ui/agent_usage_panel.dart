@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 
 import 'package:flutter_client/src/application/controller/client_controller.dart';
 import 'package:flutter_client/src/frontend/features/agents/ui/agent_usage_panel_widgets.dart';
-import 'package:flutter_client/src/frontend/features/agents/ui/agent_usage_window_control.dart';
 
 class AgentUsagePanel extends StatefulWidget {
   const AgentUsagePanel({
@@ -87,11 +86,7 @@ class _AgentUsagePanelState extends State<AgentUsagePanel>
 
   void _requestUsageScan() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted ||
-          !_appIsActive ||
-          (controller.agentUsageReport?.isFresh() == true &&
-              controller.agentUsageReport?.windowDays ==
-                  controller.agentUsageHistoryDays)) {
+      if (!mounted || !_appIsActive || controller.agentUsageReport != null) {
         return;
       }
       unawaited(controller.ensureAgentUsageLoadedAndFresh(limit: 20));
@@ -104,26 +99,18 @@ class _AgentUsagePanelState extends State<AgentUsagePanel>
     return SingleChildScrollView(
       primary: false,
       padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          AgentUsageWindowControl(
-            days: controller.agentUsageHistoryDays,
-            busy: controller.isScanningAgentUsage,
-            onChanged: (days) =>
-                unawaited(controller.setAgentUsageHistoryDays(days)),
-          ),
-          const SizedBox(height: 8),
-          AgentUsageCharts(
-            report: report,
-            detectedAgentIds: {
-              for (final target in controller.orderedConversationTargets(
-                controller.scannedTargets,
-              ))
-                if (target.status != 'not-detected') target.target,
-            },
-          ),
-        ],
+      child: AgentUsageCharts(
+        report: report,
+        detectedAgentIds: {
+          for (final target in controller.orderedConversationTargets(
+            controller.scannedTargets,
+          ))
+            if (target.status != 'not-detected') target.target,
+        },
+        windowDays: controller.agentUsageHistoryDays,
+        windowBusy: controller.isScanningAgentUsage,
+        onWindowChanged: (days) =>
+            unawaited(controller.setAgentUsageHistoryDays(days)),
       ),
     );
   }

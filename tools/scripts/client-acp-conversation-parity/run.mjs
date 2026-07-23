@@ -23,12 +23,22 @@ export async function runAcpConversationParityCli(argv = process.argv.slice(2)) 
           permissionFailClosed: selfTest.permissionFailClosed,
           errorFailClosed: selfTest.errorFailClosed,
           boundedOutputFailClosed: selfTest.boundedOutputFailClosed,
+          quiescenceOraclePassed: selfTest.quiescenceOraclePassed,
+          publicStreamChunkOraclePassed: selfTest.publicStreamChunkOraclePassed,
+          processLocalOraclePassed: selfTest.processLocalOraclePassed,
+          processLocalCleanupSynchronized: selfTest.processLocalCleanupSynchronized,
+          processLocalHostShutdownPassed: selfTest.processLocalHostShutdownPassed,
         });
       } else {
         output = await runLive(options, {
           permissionFailClosed: selfTest.permissionFailClosed,
           errorFailClosed: selfTest.errorFailClosed,
           boundedOutputFailClosed: selfTest.boundedOutputFailClosed,
+          quiescenceOraclePassed: selfTest.quiescenceOraclePassed,
+          publicStreamChunkOraclePassed: selfTest.publicStreamChunkOraclePassed,
+          processLocalOraclePassed: selfTest.processLocalOraclePassed,
+          processLocalCleanupSynchronized: selfTest.processLocalCleanupSynchronized,
+          processLocalHostShutdownPassed: selfTest.processLocalHostShutdownPassed,
         });
       }
     }

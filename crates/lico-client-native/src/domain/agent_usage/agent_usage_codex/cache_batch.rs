@@ -8,8 +8,6 @@ pub(super) struct CacheBatch<'connection> {
     load_file: Statement<'connection>,
     save_file: Statement<'connection>,
     delete_rows: Statement<'connection>,
-    delete_estimates: Statement<'connection>,
-    delete_coverage: Statement<'connection>,
     delete_file: Statement<'connection>,
 }
 
@@ -20,7 +18,7 @@ impl<'connection> CacheBatch<'connection> {
                 "SELECT modified_ns, size, file_id, parsed_bytes, append_guard, session_id,
                         forked_from_id, last_model, current_turn_id, raw_input, raw_cached,
                         raw_output, counted_input, counted_cached, counted_output, divergent,
-                        next_event_index, next_estimate_index, token_chain_hash, estimate_chain_hash
+                        next_event_index, token_chain_hash
                  FROM usage_files WHERE root_key=?1 AND source_key=?2",
             )?,
             save_file: transaction.prepare(
@@ -28,11 +26,10 @@ impl<'connection> CacheBatch<'connection> {
                    root_key, source_key, modified_ns, size, file_id, parsed_bytes, append_guard,
                    session_id, forked_from_id, lineage_scope, last_model, current_turn_id,
                    raw_input, raw_cached, raw_output, counted_input, counted_cached,
-                   counted_output, divergent, next_event_index, next_estimate_index,
-                   token_chain_hash, estimate_chain_hash
+                   counted_output, divergent, next_event_index, token_chain_hash
                  ) VALUES(
                    ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15,
-                   ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23
+                   ?16, ?17, ?18, ?19, ?20, ?21
                  ) ON CONFLICT(root_key, source_key) DO UPDATE SET
                    modified_ns=excluded.modified_ns,
                    size=excluded.size,
@@ -52,17 +49,10 @@ impl<'connection> CacheBatch<'connection> {
                    counted_output=excluded.counted_output,
                    divergent=excluded.divergent,
                    next_event_index=excluded.next_event_index,
-                   next_estimate_index=excluded.next_estimate_index,
-                   token_chain_hash=excluded.token_chain_hash,
-                   estimate_chain_hash=excluded.estimate_chain_hash",
+                   token_chain_hash=excluded.token_chain_hash",
             )?,
             delete_rows: transaction
                 .prepare("DELETE FROM usage_rows WHERE root_key=?1 AND source_key=?2")?,
-            delete_estimates: transaction
-                .prepare("DELETE FROM usage_estimates WHERE root_key=?1 AND source_key=?2")?,
-            delete_coverage: transaction.prepare(
-                "DELETE FROM usage_estimate_coverage WHERE root_key=?1 AND source_key=?2",
-            )?,
             delete_file: transaction
                 .prepare("DELETE FROM usage_files WHERE root_key=?1 AND source_key=?2")?,
         })
@@ -96,9 +86,7 @@ impl<'connection> CacheBatch<'connection> {
                         counted_totals: totals_from_columns(counted_values),
                         has_divergent_totals: row.get::<_, i64>(15)? != 0,
                         next_event_index: from_i64(row.get(16)?),
-                        next_estimate_index: from_i64(row.get(17)?),
-                        token_chain_hash: row.get(18)?,
-                        estimate_chain_hash: row.get(19)?,
+                        token_chain_hash: row.get(17)?,
                     },
                 })
             })
@@ -144,19 +132,13 @@ impl<'connection> CacheBatch<'connection> {
             counted_output,
             i64::from(state.has_divergent_totals),
             to_i64(state.next_event_index),
-            to_i64(state.next_estimate_index),
             state.token_chain_hash,
-            state.estimate_chain_hash,
         ])?;
         Ok(())
     }
 
     pub(super) fn reset_parsed_source(&mut self, root_key: &str, source_key: &str) -> Result<()> {
         self.delete_rows.execute(params![root_key, source_key])?;
-        self.delete_estimates
-            .execute(params![root_key, source_key])?;
-        self.delete_coverage
-            .execute(params![root_key, source_key])?;
         Ok(())
     }
 

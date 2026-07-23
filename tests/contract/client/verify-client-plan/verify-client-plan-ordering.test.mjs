@@ -48,5 +48,5 @@ test("dynamic authority work is isolated behind selectable ids", async () => {
   assert.ok(dynamic.includes('selected.has("contract-binding")'));
   assert.ok(dynamic.includes('selected.has("scope-authority")'));
   assert.ok(dynamic.includes('selected.has("authority-proof")'));
-  assert.ok(dynamic.includes("build/tmp/secure-mesh-authority-proof-template-plan-self-test.json"));
+  assert.ok(dynamic.includes("build/local/secure-mesh-authority-proof-template-plan-self-test.json"));
 });

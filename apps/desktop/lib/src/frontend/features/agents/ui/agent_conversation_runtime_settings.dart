@@ -13,6 +13,7 @@ class ConversationRuntimeSettingsBar extends StatelessWidget {
     required this.selectedReasoningEffort,
     required this.onModelChanged,
     required this.onReasoningEffortChanged,
+    this.defaultModel = '',
   });
 
   final bool enabled;
@@ -22,6 +23,7 @@ class ConversationRuntimeSettingsBar extends StatelessWidget {
   final String selectedReasoningEffort;
   final ValueChanged<String> onModelChanged;
   final ValueChanged<String> onReasoningEffortChanged;
+  final String defaultModel;
 
   @override
   Widget build(BuildContext context) {
@@ -41,6 +43,9 @@ class ConversationRuntimeSettingsBar extends StatelessWidget {
             value: model,
             options: modelOptions,
             enabled: enabled,
+            defaultLabel: defaultModel.isEmpty
+                ? strings.nativeDefault
+                : strings.defaultValueDisplay(defaultModel),
             onChanged: onModelChanged,
           ),
         if (reasoningEffortOptions.isNotEmpty)
@@ -50,6 +55,7 @@ class ConversationRuntimeSettingsBar extends StatelessWidget {
             value: reasoning,
             options: reasoningEffortOptions,
             enabled: enabled,
+            defaultLabel: strings.nativeDefault,
             onChanged: onReasoningEffortChanged,
           ),
       ],
@@ -64,6 +70,7 @@ class _RuntimeSettingSelect extends StatelessWidget {
     required this.value,
     required this.options,
     required this.enabled,
+    required this.defaultLabel,
     required this.onChanged,
   });
 
@@ -71,11 +78,11 @@ class _RuntimeSettingSelect extends StatelessWidget {
   final String value;
   final List<String> options;
   final bool enabled;
+  final String defaultLabel;
   final ValueChanged<String> onChanged;
 
   @override
   Widget build(BuildContext context) {
-    final strings = LicoStrings.of(context);
     return ConstrainedBox(
       constraints: const BoxConstraints(minWidth: 150, maxWidth: 240),
       child: ApplePopupSelect<String>(
@@ -86,7 +93,7 @@ class _RuntimeSettingSelect extends StatelessWidget {
         options: [
           ApplePopupSelectOption(
             value: '',
-            label: '$label · ${strings.nativeDefault}',
+            label: '$label · $defaultLabel',
           ),
           for (final option in options)
             ApplePopupSelectOption(value: option, label: '$label · $option'),

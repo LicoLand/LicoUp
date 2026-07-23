@@ -103,11 +103,30 @@ export function conditionalChecksFromMatrix(matrix, probes = {}) {
 
 export function coreChecksFromAggregate(aggregate) {
   const passOrFail = (ready) => (ready ? "pass" : "fail");
+  const processLocal = aggregate.continuityScope === "process-local";
   return {
     "P-01": passOrFail(aggregate.officialNativeLane === true),
     "P-02": passOrFail(aggregate.realSessionIds === true),
-    "P-03": passOrFail(aggregate.nativeToArc === true && aggregate.arcToNative === true),
-    "P-04": passOrFail(aggregate.finalCanaries === true),
+    "P-03": passOrFail(processLocal
+      ? aggregate.processLocalFactsEvidenceComplete === true
+        && aggregate.processLocalFactsPassed === true
+        && aggregate.processLocalContinuation === true
+        && aggregate.hostShutdownEvidenceComplete === true
+        && aggregate.hostShutdownPassed === true
+      : aggregate.nativeToArc === true && aggregate.arcToNative === true),
+    "P-04": passOrFail(
+      aggregate.finalCanaries === true
+        && (processLocal
+          ? aggregate.processLocalFactsEvidenceComplete === true
+            && aggregate.processLocalFactsPassed === true
+            && aggregate.processLocalOraclePassed === true
+            && aggregate.hostShutdownEvidenceComplete === true
+            && aggregate.hostShutdownPassed === true
+          : aggregate.quiescenceOraclePassed === true
+            && aggregate.publicStreamChunkOraclePassed === true)
+        && aggregate.streamingEvidenceComplete === true
+        && aggregate.streamingProven === true,
+    ),
     "P-05": passOrFail(aggregate.settingsParity === true && aggregate.cwdParity === true),
     "P-06": passOrFail(aggregate.historyReadback === true),
     "P-07": passOrFail(
@@ -115,14 +134,45 @@ export function coreChecksFromAggregate(aggregate) {
     ),
     "P-08": passOrFail(aggregate.privacyPassed === true),
     "P-09": passOrFail(aggregate.cleanupPassed === true),
-    "P-10": passOrFail(aggregate.releaseUiPassed === true),
+    "P-10": passOrFail(aggregate.conversationGatePassed === true),
   };
 }
 
 export function writeReleaseUiAdapterEvidence(aggregate, context) {
   // Core-only CLI receipts (exactContinue/streamingSeen) never write here.
   // Only a full release-UI paired aggregate may upsert an adapter evidence row.
-  if (aggregate?.status !== "release-ui-passed" || aggregate?.releaseUiPassed !== true) {
+  // Live agents may emit any valid chunk count in either protocol-valid order.
+  // The deterministic fixture oracle, not a live ordering coincidence, proves
+  // that the harness drains response-first notifications before publication.
+  const processLocal = aggregate?.continuityScope === "process-local";
+  if (processLocal && aggregate?.processLocalOracleEvidenceComplete !== true) {
+    return { written: false, reason: "process_local_oracle_unproven" };
+  }
+  if (processLocal && aggregate?.processLocalOraclePassed !== true) {
+    return { written: false, reason: "process_local_oracle_unproven" };
+  }
+  if (processLocal && (aggregate?.processLocalFactsEvidenceComplete !== true
+    || aggregate?.processLocalFactsPassed !== true)) {
+    return { written: false, reason: "process_local_facts_unproven" };
+  }
+  if (processLocal && (aggregate?.hostShutdownEvidenceComplete !== true
+    || aggregate?.hostShutdownPassed !== true)) {
+    return { written: false, reason: "process_local_host_shutdown_unproven" };
+  }
+  if (!processLocal && aggregate?.quiescenceOraclePassed !== true) {
+    return { written: false, reason: "quiescence_oracle_unproven" };
+  }
+  if (!processLocal && aggregate?.publicStreamChunkOracleEvidenceComplete !== true) {
+    return { written: false, reason: "stream_chunk_oracle_unproven" };
+  }
+  if (!processLocal && aggregate?.publicStreamChunkOraclePassed !== true) {
+    return { written: false, reason: "stream_chunk_oracle_unproven" };
+  }
+  if (aggregate?.streamingEvidenceComplete !== true
+    || aggregate?.streamingProven !== true) {
+    return { written: false, reason: "streaming_unproven" };
+  }
+  if (aggregate?.status !== "release-ui-passed" || aggregate?.conversationGatePassed !== true) {
     return { written: false, reason: "release_ui_not_passed" };
   }
   if (aggregate.consecutivePasses < strictRoundCount) {
@@ -167,7 +217,7 @@ export function writeReleaseUiAdapterEvidence(aggregate, context) {
     evidenceDigest: "",
     officialNativeLane: aggregate.officialNativeLane === true,
     consecutivePasses: aggregate.consecutivePasses,
-    releaseUiPassed: true,
+    conversationGatePassed: true,
     cleanupPassed: aggregate.cleanupPassed === true,
     privacyPassed: aggregate.privacyPassed === true,
     coreChecks: coreChecksFromAggregate(aggregate),
@@ -184,9 +234,10 @@ export function writeReleaseUiAdapterEvidence(aggregate, context) {
     "evidence_conditional_checks_incomplete",
   );
 
+  const targetEvidenceManifestPath = context.evidenceManifestPath || evidenceManifestPath;
   let evidence;
   try {
-    evidence = JSON.parse(readFileSync(evidenceManifestPath, "utf8"));
+    evidence = JSON.parse(readFileSync(targetEvidenceManifestPath, "utf8"));
   } catch {
     evidence = {
       schemaVersion: EVIDENCE_SCHEMA_VERSION,
@@ -208,9 +259,9 @@ export function writeReleaseUiAdapterEvidence(aggregate, context) {
     adapter,
   ].sort((left, right) => String(left.agentId).localeCompare(String(right.agentId)));
   assertEvidenceHygiene(evidence);
-  const temporaryEvidencePath = `${evidenceManifestPath}.tmp-${process.pid}-${randomUUID()}`;
+  const temporaryEvidencePath = `${targetEvidenceManifestPath}.tmp-${process.pid}-${randomUUID()}`;
   writeFileSync(temporaryEvidencePath, `${JSON.stringify(evidence, null, 2)}\n`, { mode: 0o600 });
-  renameSync(temporaryEvidencePath, evidenceManifestPath);
+  renameSync(temporaryEvidencePath, targetEvidenceManifestPath);
   return {
     written: true,
     agentId: aggregate.agent,

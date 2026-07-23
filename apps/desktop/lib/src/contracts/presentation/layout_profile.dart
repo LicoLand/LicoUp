@@ -54,7 +54,7 @@ abstract final class LayoutProfileDefaults {
       TargetPlatform.macOS ||
       TargetPlatform.windows ||
       TargetPlatform.iOS ||
-      TargetPlatform.android => LayoutProfileId.parse('studio'),
+      TargetPlatform.android => LayoutProfileId.parse('native'),
       _ => LayoutProfileId.parse('workbench'),
     };
   }

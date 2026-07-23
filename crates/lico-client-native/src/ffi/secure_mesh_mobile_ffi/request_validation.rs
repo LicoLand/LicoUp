@@ -1,12 +1,17 @@
 use anyhow::{Result, anyhow, ensure};
 use serde_json::Value;
 
-pub(super) const MAX_FFI_REQUEST_BYTES: usize = 4 * 1024 * 1024;
-pub(super) const MAX_FFI_JSON_DEPTH: usize = 64;
-pub(super) const MAX_FFI_JSON_NODES: usize = 65_536;
-pub(super) const MAX_FFI_OBJECT_FIELDS: usize = 1_024;
-pub(super) const MAX_FFI_ARRAY_ITEMS: usize = 4_096;
-pub(super) const MAX_FFI_STRING_BYTES: usize = 2 * 1024 * 1024;
+use crate::ffi::generated::secure_mesh::{
+    SECURE_MESH_MAX_COLLECTION_ENTRIES, SECURE_MESH_MAX_DEPTH, SECURE_MESH_MAX_NODES,
+    SECURE_MESH_MAX_REQUEST_BYTES, SECURE_MESH_MAX_STRING_BYTES,
+};
+
+pub(super) const MAX_FFI_REQUEST_BYTES: usize = SECURE_MESH_MAX_REQUEST_BYTES;
+pub(super) const MAX_FFI_JSON_DEPTH: usize = SECURE_MESH_MAX_DEPTH;
+pub(super) const MAX_FFI_JSON_NODES: usize = SECURE_MESH_MAX_NODES;
+pub(super) const MAX_FFI_OBJECT_FIELDS: usize = SECURE_MESH_MAX_COLLECTION_ENTRIES;
+pub(super) const MAX_FFI_ARRAY_ITEMS: usize = SECURE_MESH_MAX_COLLECTION_ENTRIES;
+pub(super) const MAX_FFI_STRING_BYTES: usize = SECURE_MESH_MAX_STRING_BYTES;
 
 pub(super) fn validate_ffi_request_bytes(request_json: &str) -> Result<()> {
     ensure!(

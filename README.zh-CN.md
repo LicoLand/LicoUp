@@ -1,9 +1,10 @@
 # Lico Arc
 
-[English](README.md) · 简体中文
+[English（规范版本）](README.md) · 简体中文（本地化）
 
 Lico Arc 是一个开源客户端。它把本机智能体和设备放进一个清晰的工作空间，
-支持不同工具和工作方式，同时让用户始终掌握控制权。
+支持不同工具和工作方式，同时让用户始终掌握控制权。产品定义以
+[`PRODUCT.md`](PRODUCT.md) 为准。
 
 ## 设计理念
 
@@ -19,14 +20,14 @@ Lico Arc 是一个开源客户端。它把本机智能体和设备放进一个�
 - 管理本地技能、对话备份和用量视图。
 - 通过 Secure Client Mesh 连接对端客户端。
 - 面向 macOS、Windows、Linux、Android 和 iOS。使用平台或功能前，请先查看
-  [支持状态](docs/releases/client-support-matrix.zh-CN.md)。
+  [兼容性状态](docs/COMPATIBILITY.zh-CN.md)。
 
 Lico Arc 仍处于早期 Alpha 阶段。可以构建或处于预览状态，不代表已经完整支持。
 
-默认客户端不会加载可选的 LicoLite 协作能力。用户必须主动选择 GitHub 的不可变提交，
+默认客户端不会加载可选的 LicoMesh 协作能力。用户必须主动选择 GitHub 的不可变提交，
 通过独立渠道导入其可信签名公钥，再手动安装并启用插件。本地部署还需要一次独立的手动
 操作，并且只能启动固定、已签名的外部运行器。本仓库不捆绑该服务端运行器，因此只构建
-Lico Arc 不能证明已经部署 LicoLite。安装、启用和启动都不等于授权对外传输数据；每个
+Lico Arc 不能证明已经部署 LicoMesh。安装、启用和启动都不等于授权对外传输数据；每个
 将要离开设备的准确请求或本地文件都必须取得一次新的、受保护的用户确认。
 
 ## 隐私设计
@@ -63,15 +64,18 @@ npm run client:analyze
 npm run client:test
 ```
 
-常见操作请阅读[用户指南](docs/USER-GUIDE.zh-CN.md)，组件和数据边界请阅读
-[架构说明](docs/ARCHITECTURE.zh-CN.md)。
+常见操作请阅读[用户指南](docs/functionality/USER-GUIDE.zh-CN.md)，组件和数据边界请
+阅读[架构说明](docs/architecture/README.zh-CN.md)。
 
 ## 文档
 
-- [User guide](docs/USER-GUIDE.md) · [用户指南](docs/USER-GUIDE.zh-CN.md)
-- [Architecture](docs/ARCHITECTURE.md) · [架构](docs/ARCHITECTURE.zh-CN.md)
-- [Support](docs/releases/client-support-matrix.md) ·
-  [支持状态](docs/releases/client-support-matrix.zh-CN.md)
+- [正式文档索引](docs/README.md)
+- [User guide](docs/functionality/USER-GUIDE.md) ·
+  [用户指南](docs/functionality/USER-GUIDE.zh-CN.md)
+- [Architecture](docs/architecture/README.md) ·
+  [架构](docs/architecture/README.zh-CN.md)
+- [Compatibility](docs/COMPATIBILITY.md) ·
+  [兼容性](docs/COMPATIBILITY.zh-CN.md)
 - [Security](SECURITY.md) · [安全](SECURITY.zh-CN.md)
 - [Contributing](CONTRIBUTING.md) · [参与贡献](CONTRIBUTING.zh-CN.md)
 

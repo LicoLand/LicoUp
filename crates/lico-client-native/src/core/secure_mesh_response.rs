@@ -8,8 +8,8 @@ use crate::core::secure_mesh_crypto::{
     SecureMeshPlaintext, open_payload, seal_payload,
 };
 
-pub const SECURE_MESH_RESULT_CONTENT_TYPE: &str = "application/licolite.secure-mesh.result.v1";
-pub const SECURE_MESH_ERROR_CONTENT_TYPE: &str = "application/licolite.secure-mesh.error.v1";
+pub const SECURE_MESH_RESULT_CONTENT_TYPE: &str = "application/licomesh.secure-mesh.result.v1";
+pub const SECURE_MESH_ERROR_CONTENT_TYPE: &str = "application/licomesh.secure-mesh.error.v1";
 pub const SECURE_MESH_RESPONSE_CRYPTO_STATUS: &str = "typed_result_error_aead_available_command_runtime_binding_available_command_gui_binding_available";
 
 const RESULT_MAGIC: &[u8] = b"LCOSM-RES-v1";
@@ -426,11 +426,11 @@ mod tests {
     fn secure_mesh_response_protocol_constant_is_bound() {
         assert_eq!(
             crate::core::secure_mesh::SECURE_MESH_PROTOCOL_VERSION,
-            "licolite.secure-mesh.v1"
+            "licomesh.secure-mesh.v1"
         );
         assert_eq!(
             SECURE_MESH_RESULT_PROTOCOL_VERSION,
-            "licolite.secure-mesh.result.v1"
+            "licomesh.secure-mesh.result.v1"
         );
     }
 }

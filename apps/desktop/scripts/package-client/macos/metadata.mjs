@@ -28,7 +28,7 @@ export function updateMacosAppMetadata(bundle, options) {
     ["CFBundleDisplayName", "Arc"],
     [
       "NSHumanReadableCopyright",
-      "Copyright (c) 2026 LicoLite. All rights reserved.",
+      "Copyright (c) 2026 LicoMesh. All rights reserved.",
     ],
   ]) {
     runPackageProcess(

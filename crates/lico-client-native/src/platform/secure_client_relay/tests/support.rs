@@ -72,11 +72,11 @@ pub(super) fn success_fixture(request: &CapturedRequest) -> Value {
     match request.path.as_str() {
         "/api/secure-mesh/v1/endpoints/challenge" => json!({
             "ok": true,
-            "schemaVersion": "licolite.secure-mesh.store-schema.v2",
-            "protocolVersion": "licolite.secure-mesh.device-trust.v2",
+            "schemaVersion": "licomesh.secure-mesh.store-schema.v2",
+            "protocolVersion": "licomesh.secure-mesh.device-trust.v2",
             "challengeId": "challenge",
             "challenge": format!(
-                "licolite.secure-mesh.v1:challenge:{}:{}:{}:2026-01-01T00:00:00Z",
+                "licomesh.secure-mesh.v1:challenge:{}:{}:{}:2026-01-01T00:00:00Z",
                 request.body["tenantId"].as_str().unwrap(),
                 request.body["accountId"].as_str().unwrap(),
                 request.body["endpointId"].as_str().unwrap(),
@@ -87,8 +87,8 @@ pub(super) fn success_fixture(request: &CapturedRequest) -> Value {
         }),
         "/api/secure-mesh/v1/endpoints/register" => json!({
             "ok": true,
-            "schemaVersion": "licolite.secure-mesh.store-schema.v2",
-            "protocolVersion": "licolite.secure-mesh.device-trust.v2",
+            "schemaVersion": "licomesh.secure-mesh.store-schema.v2",
+            "protocolVersion": "licomesh.secure-mesh.device-trust.v2",
             "endpoint": {
                 "tenantId": request.body["tenantId"],
                 "accountId": request.body["accountId"],
@@ -103,12 +103,16 @@ pub(super) fn success_fixture(request: &CapturedRequest) -> Value {
                 "createdAt": "2026-01-01T00:00:00Z",
                 "updatedAt": "2026-01-01T00:00:00Z",
                 "revokedAt": ""
+            },
+            "registrationReceipt": {
+                "receiptRef": "b".repeat(64),
+                "sequence": 1
             }
         }),
         "/api/secure-mesh/v1/envelopes/send" => json!({
             "ok": true,
-            "schemaVersion": "licolite.secure-mesh.store-schema.v2",
-            "protocolVersion": "licolite.secure-mesh.delivery.v1",
+            "schemaVersion": "licomesh.secure-mesh.store-schema.v2",
+            "protocolVersion": "licomesh.secure-mesh.delivery.v1",
             "queued": {
                 "deliverySequence": 1,
                 "queuedAt": "2026-01-01T00:00:00Z",
@@ -132,8 +136,8 @@ pub(super) fn success_fixture(request: &CapturedRequest) -> Value {
         }),
         "/api/secure-mesh/v1/envelopes/sync" => json!({
             "ok": true,
-            "schemaVersion": "licolite.secure-mesh.store-schema.v2",
-            "protocolVersion": "licolite.secure-mesh.delivery.v1",
+            "schemaVersion": "licomesh.secure-mesh.store-schema.v2",
+            "protocolVersion": "licomesh.secure-mesh.delivery.v1",
             "queueMode": "offline_queue",
             "mailbox": mailbox_fixture(
                 &request.body,
@@ -150,8 +154,8 @@ pub(super) fn success_fixture(request: &CapturedRequest) -> Value {
         }),
         "/api/secure-mesh/v1/envelopes/ack" => json!({
             "ok": true,
-            "schemaVersion": "licolite.secure-mesh.store-schema.v2",
-            "protocolVersion": "licolite.secure-mesh.delivery.v1",
+            "schemaVersion": "licomesh.secure-mesh.store-schema.v2",
+            "protocolVersion": "licomesh.secure-mesh.delivery.v1",
             "ack": {
                 "deliveryId": request.body["deliveryId"],
                 "idempotent": false,

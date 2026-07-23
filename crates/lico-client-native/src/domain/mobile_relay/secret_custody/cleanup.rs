@@ -1,4 +1,5 @@
 use super::*;
+use crate::core::secure_mesh_secret_store::SecretBytes;
 
 pub(in crate::domain::mobile_relay) fn e2ee_secret_store_cleanup_in(
     params: &Value,
@@ -212,9 +213,16 @@ pub(in crate::domain::mobile_relay) fn verify_secret_class_round_trip_with_sessi
     for secret_class in secret_classes {
         let handle = SecretStoreHandle::new(&namespace, *secret_class)?;
         let proof_secret = format!("secure-mesh-secret-class-proof:{}", Uuid::new_v4());
-        store.set_secret_with_session(session, &handle, &proof_secret)?;
-        if store.get_secret_with_session(session, &handle)?.as_deref()
-            == Some(proof_secret.as_str())
+        store.set_secret_with_session(
+            session,
+            &handle,
+            SecretBytes::try_from_string(proof_secret.clone())?,
+        )?;
+        if store
+            .get_secret_with_session(session, &handle)?
+            .as_ref()
+            .map(SecretBytes::expose_bytes)
+            == Some(proof_secret.as_bytes())
         {
             stored_class_count = stored_class_count.saturating_add(1);
         }

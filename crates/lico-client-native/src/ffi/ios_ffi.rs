@@ -4,6 +4,7 @@ use std::sync::Arc;
 use anyhow::{Context, Result, anyhow, ensure};
 use serde_json::json;
 
+use crate::core::secure_mesh_secret_store::{MAX_SECRET_BYTES, SecretBytes};
 use crate::platform::secure_mesh_secret_store::{SecretStoreHandle, SecureMeshSecretStore};
 
 const IOS_SECRET_STORE_BACKEND: &str = "ios-keychain";
@@ -20,7 +21,8 @@ pub struct LicoSecureMeshSecretStoreCallbacks {
             ctx: *mut c_void,
             namespace: *const c_char,
             key: *const c_char,
-            secret: *const c_char,
+            secret: *const u8,
+            secret_len: usize,
         ) -> bool,
     >,
     get_secret: Option<
@@ -28,7 +30,8 @@ pub struct LicoSecureMeshSecretStoreCallbacks {
             ctx: *mut c_void,
             namespace: *const c_char,
             key: *const c_char,
-            value_out: *mut *mut c_char,
+            value_out: *mut *mut u8,
+            value_len_out: *mut usize,
         ) -> i32,
     >,
     delete_secret: Option<
@@ -38,7 +41,8 @@ pub struct LicoSecureMeshSecretStoreCallbacks {
             key: *const c_char,
         ) -> bool,
     >,
-    string_free: Option<unsafe extern "C" fn(ctx: *mut c_void, value: *mut c_char)>,
+    bytes_zeroize_and_free:
+        Option<unsafe extern "C" fn(ctx: *mut c_void, value: *mut u8, value_len: usize)>,
 }
 
 #[unsafe(no_mangle)]
@@ -169,20 +173,23 @@ struct IosCallbackSecretStore {
         ctx: *mut c_void,
         namespace: *const c_char,
         key: *const c_char,
-        secret: *const c_char,
+        secret: *const u8,
+        secret_len: usize,
     ) -> bool,
     get_secret: unsafe extern "C" fn(
         ctx: *mut c_void,
         namespace: *const c_char,
         key: *const c_char,
-        value_out: *mut *mut c_char,
+        value_out: *mut *mut u8,
+        value_len_out: *mut usize,
     ) -> i32,
     delete_secret: unsafe extern "C" fn(
         ctx: *mut c_void,
         namespace: *const c_char,
         key: *const c_char,
     ) -> bool,
-    string_free: unsafe extern "C" fn(ctx: *mut c_void, value: *mut c_char),
+    bytes_zeroize_and_free:
+        unsafe extern "C" fn(ctx: *mut c_void, value: *mut u8, value_len: usize),
 }
 
 // The callback table is used synchronously during a single nativeJson call. The
@@ -214,9 +221,9 @@ impl IosCallbackSecretStore {
             delete_secret: callbacks
                 .delete_secret
                 .ok_or_else(|| anyhow!("ios secret-store delete callback is missing"))?,
-            string_free: callbacks
-                .string_free
-                .ok_or_else(|| anyhow!("ios secret-store string_free callback is missing"))?,
+            bytes_zeroize_and_free: callbacks
+                .bytes_zeroize_and_free
+                .ok_or_else(|| anyhow!("ios secret-store bytes cleanup callback is missing"))?,
         })
     }
 
@@ -241,21 +248,34 @@ impl SecureMeshSecretStore for IosCallbackSecretStore {
         false
     }
 
-    fn set_secret(&self, handle: &SecretStoreHandle, secret: &str) -> Result<()> {
+    fn set_secret(&self, handle: &SecretStoreHandle, secret: SecretBytes) -> Result<()> {
         let (namespace, key) = Self::c_handle_args(handle)?;
-        let secret = CString::new(secret).context("ios secret-store secret is invalid")?;
         let ok = unsafe {
-            (self.set_secret)(self.ctx, namespace.as_ptr(), key.as_ptr(), secret.as_ptr())
+            (self.set_secret)(
+                self.ctx,
+                namespace.as_ptr(),
+                key.as_ptr(),
+                secret.expose_bytes().as_ptr(),
+                secret.expose_bytes().len(),
+            )
         };
         ensure!(ok, "ios secret-store write failed for {}", handle.key());
         Ok(())
     }
 
-    fn get_secret(&self, handle: &SecretStoreHandle) -> Result<Option<String>> {
+    fn get_secret(&self, handle: &SecretStoreHandle) -> Result<Option<SecretBytes>> {
         let (namespace, key) = Self::c_handle_args(handle)?;
         let mut value = std::ptr::null_mut();
-        let status =
-            unsafe { (self.get_secret)(self.ctx, namespace.as_ptr(), key.as_ptr(), &mut value) };
+        let mut value_len = 0_usize;
+        let status = unsafe {
+            (self.get_secret)(
+                self.ctx,
+                namespace.as_ptr(),
+                key.as_ptr(),
+                &mut value,
+                &mut value_len,
+            )
+        };
         match status {
             IOS_SECRET_GET_FOUND => {
                 ensure!(
@@ -263,27 +283,26 @@ impl SecureMeshSecretStore for IosCallbackSecretStore {
                     "ios secret-store reported found without a value for {}",
                     handle.key()
                 );
-                let text_result = unsafe { CStr::from_ptr(value) }
-                    .to_str()
-                    .context("ios secret-store returned non-UTF8 data")
-                    .map(str::to_owned);
-                unsafe {
-                    (self.string_free)(self.ctx, value);
-                }
-                let text = text_result?;
                 ensure!(
-                    !text.trim().is_empty(),
-                    "ios secret-store returned an empty value for {}",
-                    handle.key()
+                    value_len > 0 && value_len <= MAX_SECRET_BYTES,
+                    "ios secret-store returned an invalid value length"
                 );
-                Ok(Some(text))
+                // SAFETY: the callback reports a live allocation of value_len
+                // bytes and retains ownership until the cleanup callback.
+                let bytes = unsafe { std::slice::from_raw_parts(value, value_len) }.to_vec();
+                unsafe {
+                    (self.bytes_zeroize_and_free)(self.ctx, value, value_len);
+                }
+                SecretBytes::try_from_bytes(bytes)
+                    .map(Some)
+                    .map_err(|_| anyhow!("ios secret-store returned invalid secret bytes"))
             }
             IOS_SECRET_GET_NOT_FOUND => {
-                if value.is_null() {
+                if value.is_null() && value_len == 0 {
                     Ok(None)
                 } else {
                     unsafe {
-                        (self.string_free)(self.ctx, value);
+                        (self.bytes_zeroize_and_free)(self.ctx, value, value_len);
                     }
                     Err(anyhow!(
                         "ios secret-store reported not-found with an unexpected value for {}",
@@ -294,7 +313,7 @@ impl SecureMeshSecretStore for IosCallbackSecretStore {
             IOS_SECRET_GET_ERROR => {
                 if !value.is_null() {
                     unsafe {
-                        (self.string_free)(self.ctx, value);
+                        (self.bytes_zeroize_and_free)(self.ctx, value, value_len);
                     }
                 }
                 Err(anyhow!("ios secret-store read failed for {}", handle.key()))
@@ -302,7 +321,7 @@ impl SecureMeshSecretStore for IosCallbackSecretStore {
             unexpected => {
                 if !value.is_null() {
                     unsafe {
-                        (self.string_free)(self.ctx, value);
+                        (self.bytes_zeroize_and_free)(self.ctx, value, value_len);
                     }
                 }
                 Err(anyhow!(
@@ -327,9 +346,9 @@ mod tests {
     use std::collections::HashMap;
     use std::sync::{Mutex, OnceLock};
 
-    static IOS_TEST_SECRETS: OnceLock<Mutex<HashMap<String, String>>> = OnceLock::new();
+    static IOS_TEST_SECRETS: OnceLock<Mutex<HashMap<String, Vec<u8>>>> = OnceLock::new();
 
-    fn test_store() -> &'static Mutex<HashMap<String, String>> {
+    fn test_store() -> &'static Mutex<HashMap<String, Vec<u8>>> {
         IOS_TEST_SECRETS.get_or_init(|| Mutex::new(HashMap::new()))
     }
 
@@ -337,15 +356,14 @@ mod tests {
         _ctx: *mut c_void,
         namespace: *const c_char,
         key: *const c_char,
-        secret: *const c_char,
+        secret: *const u8,
+        secret_len: usize,
     ) -> bool {
         let namespace = unsafe { CStr::from_ptr(namespace) }
             .to_string_lossy()
             .to_string();
         let key = unsafe { CStr::from_ptr(key) }.to_string_lossy().to_string();
-        let secret = unsafe { CStr::from_ptr(secret) }
-            .to_string_lossy()
-            .to_string();
+        let secret = unsafe { std::slice::from_raw_parts(secret, secret_len) }.to_vec();
         test_store()
             .lock()
             .map(|mut store| store.insert(format!("{namespace}:{key}"), secret))
@@ -356,13 +374,15 @@ mod tests {
         _ctx: *mut c_void,
         namespace: *const c_char,
         key: *const c_char,
-        value_out: *mut *mut c_char,
+        value_out: *mut *mut u8,
+        value_len_out: *mut usize,
     ) -> i32 {
-        if value_out.is_null() {
+        if value_out.is_null() || value_len_out.is_null() {
             return IOS_SECRET_GET_ERROR;
         }
         unsafe {
             *value_out = std::ptr::null_mut();
+            *value_len_out = 0;
         }
         let namespace = unsafe { CStr::from_ptr(namespace) }
             .to_string_lossy()
@@ -375,9 +395,12 @@ mod tests {
         else {
             return IOS_SECRET_GET_NOT_FOUND;
         };
+        let mut secret = secret.into_boxed_slice();
         unsafe {
-            *value_out = CString::new(secret).unwrap().into_raw();
+            *value_len_out = secret.len();
+            *value_out = secret.as_mut_ptr();
         }
+        std::mem::forget(secret);
         IOS_SECRET_GET_FOUND
     }
 
@@ -385,11 +408,17 @@ mod tests {
         _ctx: *mut c_void,
         _namespace: *const c_char,
         _key: *const c_char,
-        value_out: *mut *mut c_char,
+        value_out: *mut *mut u8,
+        value_len_out: *mut usize,
     ) -> i32 {
         if !value_out.is_null() {
             unsafe {
                 *value_out = std::ptr::null_mut();
+            }
+        }
+        if !value_len_out.is_null() {
+            unsafe {
+                *value_len_out = 0;
             }
         }
         IOS_SECRET_GET_ERROR
@@ -412,10 +441,15 @@ mod tests {
             .is_ok()
     }
 
-    unsafe extern "C" fn test_string_free(_ctx: *mut c_void, value: *mut c_char) {
+    unsafe extern "C" fn test_bytes_zeroize_and_free(
+        _ctx: *mut c_void,
+        value: *mut u8,
+        value_len: usize,
+    ) {
         if !value.is_null() {
             unsafe {
-                drop(CString::from_raw(value));
+                let mut value = Box::from_raw(std::ptr::slice_from_raw_parts_mut(value, value_len));
+                value.fill(0);
             }
         }
     }
@@ -427,7 +461,7 @@ mod tests {
             set_secret: Some(test_set_secret),
             get_secret: Some(test_get_secret),
             delete_secret: Some(test_delete_secret),
-            string_free: Some(test_string_free),
+            bytes_zeroize_and_free: Some(test_bytes_zeroize_and_free),
         }
     }
 
@@ -437,7 +471,8 @@ mod tests {
             *mut c_void,
             *const c_char,
             *const c_char,
-            *mut *mut c_char,
+            *mut *mut u8,
+            *mut usize,
         ) -> i32,
     ) -> LicoSecureMeshSecretStoreCallbacks {
         let mut callbacks = callback_table(backend);
@@ -458,11 +493,18 @@ mod tests {
                 .unwrap();
 
         store
-            .set_secret(&handle, "ios-callback-secret-store-canary")
+            .set_secret(
+                &handle,
+                SecretBytes::try_from_bytes(b"ios-callback-secret-store-canary".to_vec()).unwrap(),
+            )
             .unwrap();
         assert_eq!(
-            store.get_secret(&handle).unwrap().as_deref(),
-            Some("ios-callback-secret-store-canary")
+            store
+                .get_secret(&handle)
+                .unwrap()
+                .as_ref()
+                .map(SecretBytes::expose_bytes),
+            Some(b"ios-callback-secret-store-canary".as_slice())
         );
         assert!(
             test_store()

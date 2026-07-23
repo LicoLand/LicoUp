@@ -33,7 +33,7 @@ pub use model::{
 };
 use proof::*;
 
-pub const SECURE_MESH_DIRECTORY_CLAIM_VERSION: &str = "licolite.secure-mesh.directory-claim.v1";
+pub const SECURE_MESH_DIRECTORY_CLAIM_VERSION: &str = "licomesh.secure-mesh.directory-claim.v1";
 pub const SECURE_MESH_DIRECTORY_AUTHORITY_STATUS: &str =
     "typed_identity_pairwise_prekeys_mls_keypackage_pinned_kt_latest_map_authority";
 

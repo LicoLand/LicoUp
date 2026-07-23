@@ -4,7 +4,7 @@ import { CANONICAL_CLIENT_SOURCE_ROOTS } from "../lib/client-source-state-digest
 
 export const repoRoot = path.resolve(fileURLToPath(new URL("../../..", import.meta.url)));
 export const verifier = "tools/scripts/client-secure-mesh-macos-capabilities.mjs";
-export const schemaVersion = "licolite.secure-mesh.macos-adaptive-capabilities-receipt.v3";
+export const schemaVersion = "licomesh.secure-mesh.macos-adaptive-capabilities-receipt.v3";
 export const reportRef = "build/reports/secure-mesh-macos-capabilities.json";
 export const builtAppRef = "build/apps/desktop/runnable/macos/release/Arc.app";
 export const builtApp = path.join(repoRoot, builtAppRef);

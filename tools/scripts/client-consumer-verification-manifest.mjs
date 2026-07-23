@@ -169,7 +169,7 @@ const artifacts = selectedIds.sort().map((id) => {
 });
 
 const manifest = {
-  schemaVersion: "licolite.consumer-verification-manifest.v1",
+  schemaVersion: "licomesh.consumer-verification-manifest.v1",
   artifactName: "LicoArc",
   releaseTag: args.tag,
   artifacts,

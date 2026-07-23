@@ -9,37 +9,37 @@ fn archive_validation_detects_semantic_missing_stale_duplicate_and_metadata_only
     fs::create_dir_all(&codex).unwrap();
     fs::write(
         codex.join("history.jsonl"),
-        r#"{"sessionId":"semantic-validation-1","role":"user","content":"LicoLite semantic validation"}"#,
+        r#"{"sessionId":"semantic-validation-1","role":"user","content":"LicoMesh semantic validation"}"#,
     )
     .unwrap();
     profile_import(&json!({
         "stateRoot": display_path(&state),
-        "profileId": "licolite-semantic-validation",
-        "displayName": "LicoLite Semantic Validation",
+        "profileId": "licomesh-semantic-validation",
+        "displayName": "LicoMesh Semantic Validation",
         "archiveRoot": display_path(&archive_root),
-        "canonicalNames": "LicoLite",
+        "canonicalNames": "LicoMesh",
         "expectedAgents": "codex"
     }))
     .unwrap();
     archive_run(&json!({
         "stateRoot": display_path(&state),
         "homeDir": display_path(&home),
-        "profile": "licolite-semantic-validation"
+        "profile": "licomesh-semantic-validation"
     }))
     .unwrap();
 
     let collection_dir = archive_root
         .join("collections")
-        .join("licolite-semantic-validation");
+        .join("licomesh-semantic-validation");
     let index_path = collection_dir.join(CONVERSATION_INDEX_JSONL);
     let mut records = read_index_records(&index_path).unwrap();
     assert_eq!(records.len(), 1);
     let original = records[0].clone();
     let profile = parse_archive_profile(&json!({
-        "profileId": "licolite-semantic-validation",
-        "displayName": "LicoLite Semantic Validation",
+        "profileId": "licomesh-semantic-validation",
+        "displayName": "LicoMesh Semantic Validation",
         "archiveRoot": display_path(&archive_root),
-        "canonicalNames": "LicoLite",
+        "canonicalNames": "LicoMesh",
         "expectedAgents": "codex"
     }))
     .unwrap();
@@ -133,15 +133,15 @@ fn archive_run_marks_incremental_statuses_and_verify_missing_files() {
     let history = codex.join("history.jsonl");
     fs::write(
         &history,
-        r#"{"sessionId":"inc-1","role":"user","content":"LicoLite first"}"#,
+        r#"{"sessionId":"inc-1","role":"user","content":"LicoMesh first"}"#,
     )
     .unwrap();
     profile_import(&json!({
         "stateRoot": display_path(&state),
-        "profileId": "licolite-inc",
-        "displayName": "LicoLite Incremental",
+        "profileId": "licomesh-inc",
+        "displayName": "LicoMesh Incremental",
         "archiveRoot": display_path(&archive_root),
-        "canonicalNames": "LicoLite",
+        "canonicalNames": "LicoMesh",
         "expectedAgents": "codex"
     }))
     .unwrap();
@@ -149,31 +149,31 @@ fn archive_run_marks_incremental_statuses_and_verify_missing_files() {
     archive_run(&json!({
         "stateRoot": display_path(&state),
         "homeDir": display_path(&home),
-        "profile": "licolite-inc"
+        "profile": "licomesh-inc"
     }))
     .unwrap();
     archive_run(&json!({
         "stateRoot": display_path(&state),
         "homeDir": display_path(&home),
-        "profile": "licolite-inc"
+        "profile": "licomesh-inc"
     }))
     .unwrap();
     let index_path = archive_root
         .join("collections")
-        .join("licolite-inc")
+        .join("licomesh-inc")
         .join(CONVERSATION_INDEX_JSONL);
     let index = read_index_records(&index_path).unwrap();
     assert_eq!(index[0]["archive_status"], "unchanged");
 
     fs::write(
         &history,
-        r#"{"sessionId":"inc-1","role":"user","content":"LicoLite changed"}"#,
+        r#"{"sessionId":"inc-1","role":"user","content":"LicoMesh changed"}"#,
     )
     .unwrap();
     archive_run(&json!({
         "stateRoot": display_path(&state),
         "homeDir": display_path(&home),
-        "profile": "licolite-inc"
+        "profile": "licomesh-inc"
     }))
     .unwrap();
     let index = read_index_records(&index_path).unwrap();
@@ -182,7 +182,7 @@ fn archive_run_marks_incremental_statuses_and_verify_missing_files() {
     fs::remove_file(raw_path).unwrap();
     let verify = archive_verify(&json!({
         "stateRoot": display_path(&state),
-        "profile": "licolite-inc"
+        "profile": "licomesh-inc"
     }))
     .unwrap();
     assert_eq!(verify["validation"]["healthStatus"], "failed");
@@ -198,15 +198,15 @@ fn archive_verify_recomputes_raw_content_fingerprint() {
     fs::create_dir_all(&codex).unwrap();
     fs::write(
         codex.join("history.jsonl"),
-        r#"{"sessionId":"fingerprint-1","role":"user","content":"LicoLite fingerprint"}"#,
+        r#"{"sessionId":"fingerprint-1","role":"user","content":"LicoMesh fingerprint"}"#,
     )
     .unwrap();
     profile_import(&json!({
         "stateRoot": display_path(&state),
-        "profileId": "licolite-fingerprint",
-        "displayName": "LicoLite Fingerprint",
+        "profileId": "licomesh-fingerprint",
+        "displayName": "LicoMesh Fingerprint",
         "archiveRoot": display_path(&archive_root),
-        "canonicalNames": "LicoLite",
+        "canonicalNames": "LicoMesh",
         "expectedAgents": "codex"
     }))
     .unwrap();
@@ -214,12 +214,12 @@ fn archive_verify_recomputes_raw_content_fingerprint() {
     archive_run(&json!({
         "stateRoot": display_path(&state),
         "homeDir": display_path(&home),
-        "profile": "licolite-fingerprint"
+        "profile": "licomesh-fingerprint"
     }))
     .unwrap();
     let index_path = archive_root
         .join("collections")
-        .join("licolite-fingerprint")
+        .join("licomesh-fingerprint")
         .join(CONVERSATION_INDEX_JSONL);
     let index = read_index_records(&index_path).unwrap();
     let raw_path = PathBuf::from(index[0]["raw_content_path"].as_str().unwrap());
@@ -227,7 +227,7 @@ fn archive_verify_recomputes_raw_content_fingerprint() {
 
     let verify = archive_verify(&json!({
         "stateRoot": display_path(&state),
-        "profile": "licolite-fingerprint"
+        "profile": "licomesh-fingerprint"
     }))
     .unwrap();
     assert_eq!(verify["validation"]["healthStatus"], "failed");
@@ -249,7 +249,7 @@ fn archive_verify_collection_path_recomputes_hashes_for_keyword_archives() {
     fs::create_dir_all(&codex).unwrap();
     fs::write(
         codex.join("history.jsonl"),
-        r#"{"sessionId":"keyword-verify-1","role":"user","content":"LicoLite keyword verify"}"#,
+        r#"{"sessionId":"keyword-verify-1","role":"user","content":"LicoMesh keyword verify"}"#,
     )
     .unwrap();
 
@@ -257,7 +257,7 @@ fn archive_verify_collection_path_recomputes_hashes_for_keyword_archives() {
         "stateRoot": display_path(&state),
         "homeDir": display_path(&home),
         "agent": "codex",
-        "keywords": "LicoLite",
+        "keywords": "LicoMesh",
         "path": display_path(&destination)
     }))
     .unwrap();
@@ -304,15 +304,15 @@ fn archive_validation_reports_baseline_coverage() {
     fs::create_dir_all(&codex).unwrap();
     fs::write(
         codex.join("history.jsonl"),
-        r#"{"sessionId":"baseline-1","role":"user","content":"LicoLite baseline"}"#,
+        r#"{"sessionId":"baseline-1","role":"user","content":"LicoMesh baseline"}"#,
     )
     .unwrap();
     profile_import(&json!({
         "stateRoot": display_path(&state),
-        "profileId": "licolite-baseline",
-        "displayName": "LicoLite Baseline",
+        "profileId": "licomesh-baseline",
+        "displayName": "LicoMesh Baseline",
         "archiveRoot": display_path(&archive_root),
-        "canonicalNames": "LicoLite",
+        "canonicalNames": "LicoMesh",
         "expectedAgents": "codex",
         "baselineIndexPath": display_path(&baseline)
     }))
@@ -321,7 +321,7 @@ fn archive_validation_reports_baseline_coverage() {
     let result = archive_run(&json!({
         "stateRoot": display_path(&state),
         "homeDir": display_path(&home),
-        "profile": "licolite-baseline"
+        "profile": "licomesh-baseline"
     }))
     .unwrap();
 

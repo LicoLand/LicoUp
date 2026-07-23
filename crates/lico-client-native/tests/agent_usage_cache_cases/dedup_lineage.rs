@@ -21,7 +21,7 @@ fn codex_usage_unions_active_and_archived_copies_by_event_identity() {
 }
 
 #[test]
-fn codex_usage_explicit_copy_covers_estimate_from_incomplete_copy() {
+fn codex_usage_ignores_text_only_incomplete_copy() {
     let history_root = temp_dir("codex-usage-cross-copy-coverage-history");
     let state_root = temp_dir("codex-usage-cross-copy-coverage-state");
     let metadata = r#"{"timestamp":"2026-07-08T10:00:00Z","type":"session_meta","payload":{"id":"cross-copy-session"}}"#;
@@ -46,7 +46,6 @@ fn codex_usage_explicit_copy_covers_estimate_from_incomplete_copy() {
     let history = &report["agents"][0]["history"];
     assert_eq!(history["totalTokens"], 10);
     assert_eq!(history["tokenSourceBreakdown"]["explicitRecords"], 1);
-    assert_eq!(history["tokenSourceBreakdown"]["estimatedRecords"], 0);
 }
 
 #[test]

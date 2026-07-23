@@ -15,6 +15,8 @@ use std::collections::BTreeSet;
 use std::fs;
 use std::io::Write;
 
+const CODEX_PROGRESSIVE_MILESTONES: [usize; 3] = [3, 10, 20];
+
 pub(crate) fn conversation_stream(params: &Value) -> Result<()> {
     let stdout = std::io::stdout();
     let mut writer = stdout.lock();
@@ -149,32 +151,13 @@ fn stream_codex_finalized<W: Write>(
     let directory_entries_seen = discovery.directory_entries_seen;
     let candidate_files = discovery.candidates.len();
     let mut skipped_count = discovery.skipped.len();
-    let mut sessions = Vec::<Value>::new();
-    for candidate in discovery.candidates {
-        let metadata = match fs::metadata(&candidate.path) {
-            Ok(metadata) => metadata,
-            Err(_) => {
-                skipped_count = skipped_count.saturating_add(1);
-                continue;
-            }
-        };
-        sessions.extend(parse_history_file(
-            adapter,
-            &candidate.path,
-            &candidate.source_kind,
-            &metadata,
-            scan_config.clone(),
-        ));
-    }
-    if !scan_config.has_single_session_filter() {
-        apply_codex_session_index_titles(params, &mut sessions);
-    }
-    let mut sessions = dedupe_history_sessions(finalize_history_sessions(sessions, scan_config));
-    sort_sessions_by_updated_at(&mut sessions);
-    let total_sessions = sessions.len();
-    let has_more = scan_config.page.has_more(total_sessions);
-    let page = paged_history_sessions(sessions, &scan_config.page);
-    let returned_sessions = page.len();
+    let mut candidates = discovery.candidates;
+    candidates.sort_by(|left, right| {
+        right
+            .modified_at
+            .cmp(&left.modified_at)
+            .then_with(|| left.path.cmp(&right.path))
+    });
 
     write_json_line(
         writer,
@@ -201,17 +184,59 @@ fn stream_codex_finalized<W: Write>(
             }
         }),
     )?;
-    for session in page {
-        write_json_line(
-            writer,
-            &json!({
-                "event": "session",
-                "ok": true,
-                "agentId": agent_id,
-                "session": session
-            }),
-        )?;
+
+    let progressive_enabled = !scan_config.has_single_session_filter()
+        && scan_config.page.offset == 0
+        && !scan_config.archive_mode;
+    let progressive_limit = scan_config.page.limit.unwrap_or(usize::MAX);
+    let mut next_milestone = 0usize;
+    let mut progressive_emitted = 0usize;
+    let mut raw_sessions = Vec::<Value>::new();
+    for candidate in candidates {
+        let metadata = match fs::metadata(&candidate.path) {
+            Ok(metadata) => metadata,
+            Err(_) => {
+                skipped_count = skipped_count.saturating_add(1);
+                continue;
+            }
+        };
+        raw_sessions.extend(parse_history_file(
+            adapter,
+            &candidate.path,
+            &candidate.source_kind,
+            &metadata,
+            scan_config.clone(),
+        ));
+        while progressive_enabled && next_milestone < CODEX_PROGRESSIVE_MILESTONES.len() {
+            let milestone = CODEX_PROGRESSIVE_MILESTONES[next_milestone];
+            if milestone > progressive_limit {
+                next_milestone = CODEX_PROGRESSIVE_MILESTONES.len();
+                break;
+            }
+            let snapshot = finalized_codex_sessions(params, &raw_sessions, scan_config);
+            if snapshot.len() < milestone {
+                break;
+            }
+            write_session_events(
+                writer,
+                agent_id,
+                snapshot
+                    .into_iter()
+                    .skip(progressive_emitted)
+                    .take(milestone.saturating_sub(progressive_emitted)),
+                "session-preview",
+                Some(milestone),
+            )?;
+            progressive_emitted = milestone;
+            next_milestone += 1;
+        }
     }
+    let sessions = finalized_codex_sessions(params, &raw_sessions, scan_config);
+    let total_sessions = sessions.len();
+    let has_more = scan_config.page.has_more(total_sessions);
+    let page = paged_history_sessions(sessions, &scan_config.page);
+    let returned_sessions = page.len();
+    write_session_events(writer, agent_id, page, "session", None)?;
     write_done(
         writer,
         agent_id,
@@ -220,6 +245,46 @@ fn stream_codex_finalized<W: Write>(
         total_sessions,
         has_more,
     )
+}
+
+fn finalized_codex_sessions(
+    params: &Value,
+    raw_sessions: &[Value],
+    scan_config: &HistoryScanConfig,
+) -> Vec<Value> {
+    let mut sessions = raw_sessions.to_vec();
+    if !scan_config.has_single_session_filter() {
+        apply_codex_session_index_titles(params, &mut sessions);
+    }
+    let mut sessions = dedupe_history_sessions(finalize_history_sessions(sessions, scan_config));
+    sort_sessions_by_updated_at(&mut sessions);
+    sessions
+}
+
+fn write_session_events<W, I>(
+    writer: &mut W,
+    agent_id: &str,
+    sessions: I,
+    event: &str,
+    milestone: Option<usize>,
+) -> Result<()>
+where
+    W: Write,
+    I: IntoIterator<Item = Value>,
+{
+    for session in sessions {
+        write_json_line(
+            writer,
+            &json!({
+                "event": event,
+                "ok": true,
+                "agentId": agent_id,
+                "session": session,
+                "milestone": milestone
+            }),
+        )?;
+    }
+    Ok(())
 }
 
 fn write_done<W: Write>(
@@ -299,6 +364,79 @@ mod tests {
         assert_eq!(frames[2]["event"], "done");
         assert_eq!(frames[2]["page"]["returned"], 1);
         assert_eq!(frames[2]["page"]["hasMore"], true);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn codex_stream_emits_three_ten_twenty_previews_before_final_catalog() {
+        let root = temp_root();
+        fs::create_dir_all(&root).unwrap();
+        for index in 0..20 {
+            let session_id = format!("progressive-session-{index:02}");
+            let body = [
+                json!({
+                    "timestamp": format!("2026-07-20T00:00:{index:02}.000Z"),
+                    "type": "session_meta",
+                    "payload": {"id": session_id, "cwd": "/synthetic/workspace"}
+                }),
+                json!({
+                    "timestamp": format!("2026-07-20T00:01:{index:02}.000Z"),
+                    "type": "response_item",
+                    "payload": {
+                        "type": "message",
+                        "role": "user",
+                        "content": [{"type": "input_text", "text": format!("Prompt {index}")}]
+                    }
+                }),
+            ]
+            .into_iter()
+            .map(|line| line.to_string())
+            .collect::<Vec<_>>()
+            .join("\n");
+            fs::write(root.join(format!("rollout-{index:02}.jsonl")), body).unwrap();
+        }
+
+        let mut output = Vec::<u8>::new();
+        stream_to_writer(
+            &json!({
+                "agent": "codex",
+                "root": root.to_string_lossy(),
+                "limit": 21
+            }),
+            &mut output,
+        )
+        .unwrap();
+        let frames = String::from_utf8(output)
+            .unwrap()
+            .lines()
+            .map(|line| serde_json::from_str::<Value>(line).unwrap())
+            .collect::<Vec<_>>();
+        let previews = frames
+            .iter()
+            .filter(|frame| frame["event"] == "session-preview")
+            .collect::<Vec<_>>();
+        let sessions = frames
+            .iter()
+            .filter(|frame| frame["event"] == "session")
+            .collect::<Vec<_>>();
+
+        assert_eq!(previews.len(), 20);
+        assert_eq!(previews[2]["milestone"], 3);
+        assert_eq!(previews[9]["milestone"], 10);
+        assert_eq!(previews[19]["milestone"], 20);
+        assert_eq!(sessions.len(), 20);
+        assert_eq!(frames.first().unwrap()["event"], "start");
+        assert_eq!(frames.last().unwrap()["event"], "done");
+        assert!(
+            frames
+                .iter()
+                .position(|frame| frame["event"] == "session-preview")
+                .unwrap()
+                < frames
+                    .iter()
+                    .position(|frame| frame["event"] == "session")
+                    .unwrap()
+        );
         fs::remove_dir_all(root).unwrap();
     }
 }

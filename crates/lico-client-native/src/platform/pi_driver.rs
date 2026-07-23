@@ -1,3 +1,4 @@
+mod active_control;
 mod errors;
 mod events;
 mod execution;
@@ -9,6 +10,7 @@ mod protocol;
 mod sessions;
 mod supervision;
 
+pub(super) use active_control::{ControlDisposition, steer};
 #[allow(unused_imports)]
 pub(super) use errors::ProtocolFailure;
 pub(super) use execution::execute;

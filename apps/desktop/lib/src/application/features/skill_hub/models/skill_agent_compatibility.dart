@@ -1,3 +1,5 @@
+import 'package:flutter_client/src/application/features/agents/agent_product_names.dart';
+
 const skillCapableAgentIds = <String>{
   'antigravity',
   'claude-code',
@@ -52,18 +54,8 @@ String canonicalSkillAgentId(String value) {
 }
 
 String skillLoaderAgentLabel(String agentId) {
-  return switch (canonicalSkillAgentId(agentId)) {
-    'antigravity' => 'Antigravity - IDE',
-    'claude-code' => 'Claude Code - CLI',
-    'codex' => 'ChatGPT - Desktop',
-    'copilot' => 'GitHub Copilot - Plugin',
-    'cursor' => 'Cursor - IDE',
-    'kilo-code' => 'Kilo Code - CLI',
-    'kimi-code' => 'Kimi Code - CLI',
-    'openclaw' => 'OpenClaw - CLI',
-    'opencode' => 'OpenCode - CLI',
-    final value => value,
-  };
+  final canonical = canonicalSkillAgentId(agentId);
+  return agentProductDisplayName(canonical) ?? canonical;
 }
 
 List<String> skillLoaderAgentIdsForPath({

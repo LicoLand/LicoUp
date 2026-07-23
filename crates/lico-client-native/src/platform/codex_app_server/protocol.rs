@@ -87,4 +87,9 @@ impl CodexProtocol {
         }
         failure
     }
+
+    pub(super) fn active_turn_binding(&self) -> Option<(&str, &str)> {
+        (self.phase == ProtocolPhase::AwaitTurnCompleted)
+            .then_some((self.thread_id.as_deref()?, self.turn_id.as_deref()?))
+    }
 }

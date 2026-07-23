@@ -11,13 +11,13 @@ import { repoRoot, SHA256 } from "./constants.mjs";
 import { requireValue, text } from "./util.mjs";
 
 export function validateConfig(config) {
-  requireValue(config?.schemaVersion === "licolite.client-release-acceptance-config.v3", "client release acceptance config schema mismatch");
-  requireValue(config?.reportSchemaVersion === "licolite.client-release-acceptance-report.v3", "client release acceptance report schema mismatch");
+  requireValue(config?.schemaVersion === "licomesh.client-release-acceptance-config.v3", "client release acceptance config schema mismatch");
+  requireValue(config?.reportSchemaVersion === "licomesh.client-release-acceptance-report.v3", "client release acceptance report schema mismatch");
   requireValue(config?.producerPolicy === "same-process-required", "client release acceptance must run approved producers in the same process closure");
   const authorityIds = config?.releaseTargetAuthority?.selectedTargetIds;
   requireValue(
     config?.releaseTargetAuthority?.schemaVersion ===
-      "licolite.client-release-target-authority.v1" &&
+      "licomesh.client-release-target-authority.v1" &&
       JSON.stringify(authorityIds) === JSON.stringify([
         "macos-arm64",
         "android-arm64",
@@ -28,7 +28,7 @@ export function validateConfig(config) {
   requireValue(
     text(config.artifactReceipt?.ref) &&
       text(config.artifactReceipt?.schemaVersion) ===
-        "licolite.client-artifact-verification-receipts.v3" &&
+        "licomesh.client-artifact-verification-receipts.v3" &&
       text(config.artifactReceipt?.producer) ===
         "tools/scripts/client-artifact-verification-receipts.mjs",
     "client release acceptance artifact receipt authority is incomplete"

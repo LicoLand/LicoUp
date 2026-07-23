@@ -1,5 +1,5 @@
-export const linuxVmPackageReceiptSchema = "licolite.secure-mesh.linux-vm-package-receipt";
-export const linuxNodeMatrixSchema = "licolite.secure-mesh.linux-node-matrix";
+export const linuxVmPackageReceiptSchema = "licomesh.secure-mesh.linux-vm-package-receipt";
+export const linuxNodeMatrixSchema = "licomesh.secure-mesh.linux-node-matrix";
 export const linuxVmPackageReceiptSchemaVersion = 2;
 export const linuxEvidenceSchemaVersion = 1;
 

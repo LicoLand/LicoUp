@@ -14,6 +14,6 @@ fn private_file_limits_are_explicit_and_independent() {
     );
     assert_eq!(
         super::super::policy::PRIVATE_LOCK_MARKER,
-        b"licolite-private-lock-v1"
+        b"licomesh-private-lock-v1"
     );
 }

@@ -145,7 +145,7 @@ export function reduceClientReleaseAcceptance({
   });
   const blockers = [...new Set([...gates, ...targetResults].flatMap((item) => item.blockers))].sort();
   return {
-    schemaVersion: "licolite.client-release-acceptance-report.v3",
+    schemaVersion: "licomesh.client-release-acceptance-report.v3",
     ok: blockers.length === 0,
     githubReleaseReady: blockers.length === 0,
     nonBlockingDistributionGuidance: {

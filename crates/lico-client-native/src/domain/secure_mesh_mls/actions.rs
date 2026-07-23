@@ -39,7 +39,7 @@ pub fn runtime_binding_wired() -> bool {
     crate::core::secure_mesh_mls::SECURE_MESH_MLS_STATUS.contains("mlkem1024_epoch_hybrid_payload")
         && crate::core::secure_mesh_mls::runtime_crypto_self_test()
         && SECURE_MESH_MLS_PRODUCT_POLICY_STATUS.contains("cryptographic_native_path_wired")
-        && SECURE_MESH_GROUP_MLS_PROTOCOL_VERSION.starts_with("licolite.secure-mesh.group-mls.")
+        && SECURE_MESH_GROUP_MLS_PROTOCOL_VERSION.starts_with("licomesh.secure-mesh.group-mls.")
         && SECURE_MESH_MLS_CIPHER_SUITE.starts_with("MLS_")
         && SECURE_MESH_MLS_NATIVE_ACTIONS.len() >= 10
 }

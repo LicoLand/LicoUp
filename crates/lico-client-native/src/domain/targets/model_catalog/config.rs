@@ -126,7 +126,7 @@ pub(super) fn collect_model_catalog_from_config_path(
     entries: &mut BTreeMap<String, ModelCatalogEntry>,
     global_efforts: &mut BTreeSet<String>,
     diagnostics: &mut Vec<Value>,
-) {
+) -> Option<String> {
     let raw = match fs::read_to_string(path) {
         Ok(raw) => raw,
         Err(_) => {
@@ -134,7 +134,7 @@ pub(super) fn collect_model_catalog_from_config_path(
                 "source": source,
                 "status": "not-readable",
             }));
-            return;
+            return None;
         }
     };
     let parsed = parse_model_config_document(path, &raw);
@@ -143,9 +143,11 @@ pub(super) fn collect_model_catalog_from_config_path(
             "source": source,
             "status": "not-parseable",
         }));
-        return;
+        return None;
     };
+    let default_model = default_model_name_from_config_document(&value);
     collect_model_catalog_from_value(&value, source, entries, global_efforts);
+    default_model
 }
 
 pub(super) fn collect_model_catalog_from_model_collection_path(

@@ -25,7 +25,7 @@
     ],
     "requiredBooleans": [
       "officialNativeLane",
-      "releaseUiPassed",
+      "conversationGatePassed",
       "cleanupPassed",
       "privacyPassed"
     ],
@@ -66,7 +66,7 @@
         "openNew": true,
         "exactResume": true,
         "streaming": true,
-        "cancel": false,
+        "cancel": true,
         "structuredEvents": true,
         "approvals": false,
         "multimodal": false,
@@ -95,7 +95,7 @@
         "usageStatus": false,
         "officialLane": true,
         "processLocalContinuation": true,
-        "interruptSteer": false
+        "interruptSteer": true
       }
     },
     {
@@ -117,30 +117,28 @@
         "multimodal": false,
         "usageStatus": false,
         "officialLane": true,
-        "interruptSteer": false
+        "interruptSteer": true
       }
     },
     {
       "agentId": "antigravity",
       "driverId": "antigravity-cli",
-      "runtimeProtocol": "antigravity-cli-structured-transport-unavailable",
-      "officialNativeLaneKind": "unavailable",
+      "runtimeProtocol": "antigravity-cli-argv-hook-v1",
+      "officialNativeLaneKind": "public-local-protocol",
       "historyReadable": true,
-      "driverMode": "blocked",
-      "blockerCodes": [
-        "antigravity_cli_structured_transport_unavailable"
-      ],
+      "driverMode": "conversation",
+      "blockerCodes": [],
       "capabilityMatrix": {
-        "laneFamily": "unavailable",
-        "openNew": false,
-        "exactResume": false,
-        "streaming": false,
-        "cancel": false,
-        "structuredEvents": false,
+        "laneFamily": "cli",
+        "openNew": true,
+        "exactResume": true,
+        "streaming": true,
+        "cancel": true,
+        "structuredEvents": true,
         "approvals": false,
         "multimodal": false,
         "usageStatus": false,
-        "officialLane": false,
+        "officialLane": true,
         "interruptSteer": false
       }
     },
@@ -157,7 +155,7 @@
         "openNew": true,
         "exactResume": true,
         "streaming": true,
-        "cancel": false,
+        "cancel": true,
         "structuredEvents": true,
         "approvals": false,
         "multimodal": false,
@@ -179,7 +177,7 @@
         "openNew": true,
         "exactResume": true,
         "streaming": true,
-        "cancel": false,
+        "cancel": true,
         "structuredEvents": true,
         "approvals": false,
         "multimodal": false,
@@ -201,7 +199,7 @@
         "openNew": true,
         "exactResume": true,
         "streaming": true,
-        "cancel": false,
+        "cancel": true,
         "structuredEvents": true,
         "approvals": false,
         "multimodal": false,
@@ -212,16 +210,14 @@
     },
     {
       "agentId": "cursor",
-      "driverId": "cursor-acp",
-      "runtimeProtocol": "cursor-acp-v1-stdio-jsonrpc",
-      "officialNativeLaneKind": "public-local-protocol",
+      "driverId": "cursor-cli",
+      "runtimeProtocol": "cursor-agent-cli-v1",
+      "officialNativeLaneKind": "public-cli-resume",
       "historyReadable": true,
-      "driverMode": "blocked",
-      "blockerCodes": [
-        "safe_cleanup_unavailable"
-      ],
+      "driverMode": "conversation",
+      "blockerCodes": [],
       "capabilityMatrix": {
-        "laneFamily": "acp",
+        "laneFamily": "cli",
         "openNew": true,
         "exactResume": true,
         "streaming": true,
@@ -269,7 +265,7 @@
         "openNew": true,
         "exactResume": true,
         "streaming": true,
-        "cancel": false,
+        "cancel": true,
         "structuredEvents": true,
         "approvals": false,
         "multimodal": false,
@@ -297,7 +293,7 @@
         "multimodal": false,
         "usageStatus": false,
         "officialLane": true,
-        "interruptSteer": false
+        "interruptSteer": true
       }
     }
   ]

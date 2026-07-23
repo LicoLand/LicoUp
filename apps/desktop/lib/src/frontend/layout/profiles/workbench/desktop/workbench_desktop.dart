@@ -9,6 +9,7 @@ import 'package:flutter_client/src/frontend/layout/profiles/workbench/desktop/de
 import 'package:flutter_client/src/frontend/layout/profiles/workbench/desktop/destinations/mobile_relay_destination.dart';
 import 'package:flutter_client/src/frontend/layout/profiles/workbench/desktop/destinations/monitoring_destination.dart';
 import 'package:flutter_client/src/frontend/layout/profiles/workbench/desktop/destinations/settings_destination.dart';
+import 'package:flutter_client/src/frontend/layout/profiles/workbench/desktop/destinations/plugin_management_destination.dart';
 import 'package:flutter_client/src/frontend/layout/profiles/workbench/desktop/preview/workbench_desktop_preview.dart';
 import 'package:flutter_client/src/frontend/layout/profiles/workbench/desktop/shell/workbench_desktop_shell.dart';
 import 'package:flutter_client/src/frontend/layout/profiles/workbench/desktop/tokens/workbench_desktop_tokens.dart';
@@ -60,12 +61,6 @@ final LayoutSurfaceBundle workbenchDesktopBundle = LayoutSurfaceBundle(
     LayoutStateNamespace(
       profileId: LayoutProfileId.parse('workbench'),
       surface: LayoutRuntimeSurface.desktop,
-      destination: ClientSection.agents,
-      channel: LayoutStateChannels.agentsDestination,
-    ),
-    LayoutStateNamespace(
-      profileId: LayoutProfileId.parse('workbench'),
-      surface: LayoutRuntimeSurface.desktop,
       destination: ClientSection.settings,
       channel: LayoutStateChannels.settingsScroll,
     ),
@@ -83,6 +78,8 @@ _workbenchDesktopDestinationBuilders() => {
   ClientSection.agents: workbenchDesktopAgentsDestinationBuilder,
   ClientSection.monitoring: workbenchDesktopMonitoringDestinationBuilder,
   ClientSection.skillHub: workbenchDesktopSkillHubDestinationBuilder,
+  ClientSection.pluginManagement:
+      workbenchDesktopPluginManagementDestinationBuilder,
   ClientSection.mobileRelay: workbenchDesktopMobileRelayDestinationBuilder,
   ClientSection.settings: workbenchDesktopSettingsDestinationBuilder,
 };

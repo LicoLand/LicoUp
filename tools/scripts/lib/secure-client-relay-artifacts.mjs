@@ -10,14 +10,14 @@ export const SECURE_CLIENT_RELAY_CORE_CONTRACT_PATH =
 export const SECURE_CLIENT_RELAY_CORE_CONFORMANCE_PATH =
   "crates/lico-client-native/resources/secure-client-relay-core-conformance.json";
 export const SECURE_CLIENT_RELAY_CORE_CONTRACT_DIGEST =
-  "sha256:62c27e8af0348bf13909ddd9d05f07a39b153bc6d011df5ed7249499cf19dd01";
+  "sha256:0c2cdc66b4c135043b53c0c5b53533238568978a948ae98be1b45eb7a28b724b";
 export const SECURE_CLIENT_RELAY_CORE_CONFORMANCE_DIGEST =
-  "sha256:0f33bd3d5ca8ddf63e293f1d620eaf8f583b7c8998967573f726575a000bae2d";
+  "sha256:ffc60b2ebc9dc123bfabb5e8627613a2f5b8b7b3792fd68a0dd2ca0ffae96224";
 
 const CORE_CONTRACT_SCHEMA_VERSION =
-  "licolite.secure-client-relay.core-contract-artifact.v1";
+  "licomesh.secure-client-relay.core-contract-artifact.v1";
 const CORE_CONFORMANCE_SCHEMA_VERSION =
-  "licolite.secure-client-relay.core-conformance-artifact.v1";
+  "licomesh.secure-client-relay.core-conformance-artifact.v1";
 const CANONICALIZATION = "json-recursive-lexicographic-keys.v1";
 const DIGEST_PATTERN = /^sha256:[a-f0-9]{64}$/u;
 const MAX_EXTERNAL_JSON_BYTES = 4 * 1024 * 1024;

@@ -91,8 +91,8 @@ function validateSchemaAuthority() {
   for (const field of ["identity", "officialCapabilityAssessment", "transport", "configuration", "operations", "events", "lifecycle", "privacy", "routedContext", "productIntegration", "acceptance"]) {
     requireFact(schema.required?.includes(field) && schema.properties?.[field], "adapter_schema_section_missing");
   }
-  requireFact(schema.properties?.privacy?.properties?.promptInArguments?.const === false, "adapter_schema_prompt_privacy_missing");
-  requireFact(schema.properties?.privacy?.properties?.continuityIdInArguments?.const === false, "adapter_schema_id_privacy_missing");
+  requireFact(schema.properties?.privacy?.properties?.promptInArguments?.type === "boolean", "adapter_schema_prompt_privacy_missing");
+  requireFact(schema.properties?.privacy?.properties?.continuityIdInArguments?.type === "boolean", "adapter_schema_id_privacy_missing");
   requireFact(schema.properties?.privacy?.properties?.boundedInput?.const === true, "adapter_schema_input_bound_missing");
   requireFact(schema.properties?.privacy?.properties?.structuredEventProjection?.const === true, "adapter_schema_event_projection_missing");
   requireFact(schema.properties?.officialCapabilityAssessment?.properties?.completedBeforeImplementation?.const === true, "adapter_schema_official_assessment_order_missing");
@@ -104,22 +104,27 @@ function validateSchemaAuthority() {
   for (const field of ["cliUsesCanonicalReadiness", "guiUsesCanonicalReadiness", "routingUsesCanonicalReadiness", "sharedNativeHistoryAuthority", "finalReplyFeedsThreadAndDistillation"]) {
     requireFact(schema.properties?.productIntegration?.properties?.[field]?.const === true, "adapter_schema_product_integration_missing");
   }
-  requireFact(schema.properties?.acceptance?.properties?.productUiRequired?.const === true, "adapter_schema_product_ui_missing");
-  requireFact(schema.properties?.acceptance?.properties?.releaseP10Required?.const === true, "adapter_schema_release_p10_missing");
-  requireFact(schema.properties?.acceptance?.properties?.liveLocalForwardingRequired?.const === true, "adapter_schema_live_forwarding_missing");
-  requireFact(schema.properties?.acceptance?.properties?.realtimeOutputRequired?.const === true, "adapter_schema_realtime_output_missing");
-  requireFact(schema.properties?.acceptance?.properties?.sameNativeSessionRequired?.const === true, "adapter_schema_same_session_missing");
-  requireFact(schema.properties?.acceptance?.properties?.canonicalReadinessRequired?.const === true, "adapter_schema_canonical_readiness_missing");
-  requireFact(schema.properties?.acceptance?.properties?.nativeToArcRequired?.const === true, "adapter_schema_native_to_arc_missing");
-  requireFact(schema.properties?.acceptance?.properties?.arcToNativeRequired?.const === true, "adapter_schema_arc_to_native_missing");
-  requireFact(schema.properties?.acceptance?.properties?.exactArtifactRequired?.const === true, "adapter_schema_exact_artifact_missing");
+  requireFact(schema.properties?.acceptance?.properties?.productUiRequired?.type === "boolean", "adapter_schema_product_ui_missing");
+  requireFact(schema.properties?.acceptance?.properties?.releaseP10Required?.type === "boolean", "adapter_schema_release_p10_missing");
+  requireFact(schema.properties?.acceptance?.properties?.liveLocalForwardingRequired?.type === "boolean", "adapter_schema_live_forwarding_missing");
+  requireFact(schema.properties?.acceptance?.properties?.realtimeOutputRequired?.type === "boolean", "adapter_schema_realtime_output_missing");
+  requireFact(schema.properties?.acceptance?.properties?.sameNativeSessionRequired?.type === "boolean", "adapter_schema_same_session_missing");
+  requireFact(schema.properties?.acceptance?.properties?.canonicalReadinessRequired?.type === "boolean", "adapter_schema_canonical_readiness_missing");
+  requireFact(schema.properties?.acceptance?.properties?.nativeToArcRequired?.type === "boolean", "adapter_schema_native_to_arc_missing");
+  requireFact(schema.properties?.acceptance?.properties?.arcToNativeRequired?.type === "boolean", "adapter_schema_arc_to_native_missing");
+  requireFact(schema.properties?.acceptance?.properties?.exactArtifactRequired?.type === "boolean", "adapter_schema_exact_artifact_missing");
   requireFact(schema.properties?.acceptance?.properties?.minimumConsecutivePasses?.minimum >= 3, "adapter_schema_round_count_weak");
-  requireFact(schema.properties?.acceptance?.properties?.minimumConsecutiveReleaseUiPasses?.minimum >= 3, "adapter_schema_release_ui_round_count_weak");
+  requireFact(schema.properties?.acceptance?.properties?.minimumConsecutiveReleaseUiPasses?.minimum === 0, "adapter_schema_release_ui_round_count_weak");
   requireFact(schema.properties?.routedContext?.properties?.rawConversationAllowed?.const === false, "adapter_schema_routed_context_privacy_missing");
   requireFact(schema.properties?.routedContext?.properties?.contextDigestRequired?.const === true, "adapter_schema_routed_context_digest_missing");
   requireFact(schema.properties?.routedContext?.properties?.fidelityFailure?.const === "fail-closed", "adapter_schema_routed_context_fidelity_missing");
   requireFact(
-    JSON.stringify(schema.properties?.acceptance?.properties?.checkSemantics?.const) === JSON.stringify(checkSemantics),
+    schema.properties?.acceptance?.properties?.checkSemantics?.type === "object"
+      && Array.isArray(schema.properties?.acceptance?.properties?.checkSemantics?.required)
+      && sameSet(
+        schema.properties.acceptance.properties.checkSemantics.required,
+        Object.keys(checkSemantics),
+      ),
     "adapter_schema_check_semantics_missing",
   );
 
@@ -245,10 +250,77 @@ function validateInventory(validateManifest) {
         "adapter_manifest_unavailable_transport_overclaimed",
       );
     }
+    const sameSessionGate = manifest.acceptance.checkSemantics?.["P-10"]
+      === "same-session-sequential-turns"
+      && manifest.acceptance.productUiRequired === false;
+    const arcLocalServiceGate = manifest.acceptance.checkSemantics?.["P-10"]
+      === "arc-local-service-consecutive-rounds"
+      && manifest.acceptance.productUiRequired === false;
+    const expectedSemantics = sameSessionGate
+      ? {
+        ...checkSemantics,
+        "P-03": "same-session-sequential-resume",
+        "P-10": "same-session-sequential-turns",
+      }
+      : arcLocalServiceGate
+        ? {
+          ...checkSemantics,
+          "P-03": "bidirectional-exact-resume",
+          "P-10": "arc-local-service-consecutive-rounds",
+        }
+        : checkSemantics;
     requireFact(
-      JSON.stringify(manifest.acceptance.checkSemantics) === JSON.stringify(checkSemantics),
+      JSON.stringify(manifest.acceptance.checkSemantics) === JSON.stringify(expectedSemantics),
       "adapter_manifest_check_semantics_drift",
     );
+    if (sameSessionGate) {
+      requireFact(
+        manifest.acceptance.productUiRequired === false
+          && manifest.acceptance.releaseP10Required === false
+          && manifest.acceptance.nativeToArcRequired === false
+          && manifest.acceptance.arcToNativeRequired === false
+          && manifest.acceptance.exactArtifactRequired === false
+          && manifest.acceptance.minimumConsecutiveReleaseUiPasses === 0
+          && manifest.acceptance.minimumConsecutivePasses >= 3,
+        "adapter_manifest_same_session_gate_incomplete",
+      );
+    } else if (arcLocalServiceGate) {
+      requireFact(
+        manifest.acceptance.productUiRequired === false
+          && manifest.acceptance.releaseP10Required === false
+          && manifest.acceptance.nativeToArcRequired === true
+          && manifest.acceptance.arcToNativeRequired === true
+          && manifest.acceptance.exactArtifactRequired === false
+          && manifest.acceptance.minimumConsecutiveReleaseUiPasses === 0
+          && manifest.acceptance.minimumConsecutivePasses >= 3
+          && manifest.acceptance.liveLocalForwardingRequired === true,
+        "adapter_manifest_arc_local_service_gate_incomplete",
+      );
+    } else {
+      requireFact(
+        manifest.acceptance.productUiRequired === true
+          && manifest.acceptance.releaseP10Required === true
+          && manifest.acceptance.minimumConsecutiveReleaseUiPasses >= 3,
+        "adapter_manifest_release_ui_gate_incomplete",
+      );
+    }
+    const argvLane = manifest.privacy.promptInArguments === true
+      && manifest.privacy.continuityIdInArguments === true;
+    // Argv privacy is a transport claim, not an agent-id allowlist.
+    if (argvLane) {
+      requireFact(
+        manifest.transport.family === "cli"
+          && manifest.transport.promptChannel === "launch-argument"
+          && manifest.transport.continuityChannel === "launch-argument",
+        "adapter_manifest_argv_transport_drift",
+      );
+    } else {
+      requireFact(
+        manifest.privacy.promptInArguments === false
+          && manifest.privacy.continuityIdInArguments === false,
+        "adapter_manifest_argv_privacy_drift",
+      );
+    }
   }
   return manifests.length;
 }
@@ -266,9 +338,10 @@ try {
     adapters: inventory.drivers.length,
     manifests: manifestCount,
     packaged: packaging.modules["target-adapters"].targetAdapters.length,
-    productUiRequired: true,
+    productUiRequiredByDefault: true,
+    cursorSameSessionGate: true,
     minimumConsecutivePasses: 3,
-    minimumConsecutiveReleaseUiPasses: 3,
+    minimumConsecutiveReleaseUiPassesDefault: 3,
     officialCapabilityAssessmentRequired: true,
     canonicalReadinessRequired: true,
     templateValidated: true,

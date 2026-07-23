@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
-import 'package:flutter_client/src/contracts/agent_orchestration_policy.dart';
+import 'package:flutter_client/src/application/features/agents/agent_product_names.dart';
+import 'package:flutter_client/src/contracts/agent_orchestration_target.dart';
 import 'package:flutter_client/src/contracts/target_candidate.dart';
 import 'package:flutter_client/src/frontend/shared/ui/theme.dart';
 
@@ -98,7 +99,8 @@ class AgentBrandIcon extends StatelessWidget {
                         BlendMode.srcIn,
                       )
                     : null,
-                semanticsLabel: target.label,
+                semanticsLabel:
+                    agentProductDisplayName(target.target) ?? target.label,
               )
             : Image.asset(
                 asset,

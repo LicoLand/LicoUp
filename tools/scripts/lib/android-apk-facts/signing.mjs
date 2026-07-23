@@ -82,7 +82,7 @@ export function androidApkReproduciblePayloadFacts(apkPath) {
     const fileSize = Number(before.size);
     const layout = apkSigningBlockLayout(descriptor, fileSize);
     const hash = createHash("sha256");
-    hash.update("licolite.android.apk-reproducible-payload.v1\0", "utf8");
+    hash.update("licomesh.android.apk-reproducible-payload.v1\0", "utf8");
     hash.update(`${layout.blockStart}\0${fileSize - layout.centralOffset}\0`, "utf8");
     updateHashRange(descriptor, hash, 0, layout.blockStart);
     updateHashRange(descriptor, hash, layout.centralOffset, fileSize);

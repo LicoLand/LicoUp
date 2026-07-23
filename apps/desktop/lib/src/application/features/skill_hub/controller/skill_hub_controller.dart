@@ -15,13 +15,20 @@ class SkillHubController extends ChangeNotifier {
     required List<TargetCandidate> Function() targets,
     required Future<void> Function() ensureTargets,
     required SkillHubStatusSink onStatus,
+    DateTime Function()? now,
   }) : _gateway = gateway,
        _preferencesRepository = preferencesRepository,
        _localCatalogSource = localCatalogSource,
        _portableData = portableData,
        _targets = targets,
        _ensureTargets = ensureTargets,
-       _onStatus = onStatus;
+       _onStatus = onStatus,
+       _now = now ?? DateTime.now;
+
+  /// How long a successful [refresh] result is reused before the next
+  /// non-forced refresh scans again. Lets background-preloaded data serve
+  /// panel entries instantly.
+  static const Duration refreshFreshnessWindow = Duration(minutes: 5);
 
   final SkillHubGateway _gateway;
   final SkillHubPreferencesRepository _preferencesRepository;
@@ -30,6 +37,9 @@ class SkillHubController extends ChangeNotifier {
   final List<TargetCandidate> Function() _targets;
   final Future<void> Function() _ensureTargets;
   final SkillHubStatusSink _onStatus;
+  final DateTime Function() _now;
+
+  DateTime? _lastRefreshedAt;
 
   List<Map<String, dynamic>> pairings = const [];
   List<Map<String, dynamic>> skills = const [];
@@ -80,10 +90,16 @@ class SkillHubController extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> refresh(String selectedAgent) async {
+  Future<void> refresh(
+    String selectedAgent, {
+    bool forceRefresh = false,
+    bool showProgress = true,
+  }) async {
+    if (!forceRefresh && _hasFreshCatalog) return;
     await _run(
       busyChinese: '正在扫描所有智能体的技能。',
       busyEnglish: 'Scanning skills loadable by local agents.',
+      showProgress: showProgress,
       action: () async {
         var candidates = _targets();
         if (candidates.isEmpty) {
@@ -139,16 +155,24 @@ class SkillHubController extends ChangeNotifier {
           'pairings': pairings.length,
           'skills': skills.length,
         };
-        _onStatus(
-          SkillHubStatusUpdate(
-            chinese: '已扫描本机所有智能体的技能（共 ${skills.length} 个技能）。',
-            english:
-                'Scanned ${skills.length} skills loadable by local agents.',
-          ),
-        );
+        if (showProgress) {
+          _onStatus(
+            SkillHubStatusUpdate(
+              chinese: '已扫描本机所有智能体的技能（共 ${skills.length} 个技能）。',
+              english:
+                  'Scanned ${skills.length} skills loadable by local agents.',
+            ),
+          );
+        }
+        _lastRefreshedAt = _now();
       },
     );
   }
+
+  bool get _hasFreshCatalog =>
+      skills.isNotEmpty &&
+      _lastRefreshedAt != null &&
+      _now().difference(_lastRefreshedAt!) < refreshFreshnessWindow;
 
   Future<({List<Map<String, dynamic>> values, bool selectedFailed})>
   _listPairingsIsolated(String agentId, String selectedAgent) async {
@@ -364,23 +388,30 @@ class SkillHubController extends ChangeNotifier {
     required String busyChinese,
     required String busyEnglish,
     required Future<void> Function() action,
+    bool showProgress = true,
   }) async {
     if (busy) return;
     busy = true;
     lastErrorCode = '';
-    _onStatus(SkillHubStatusUpdate(chinese: busyChinese, english: busyEnglish));
+    if (showProgress) {
+      _onStatus(
+        SkillHubStatusUpdate(chinese: busyChinese, english: busyEnglish),
+      );
+    }
     notifyListeners();
     try {
       await action();
     } catch (_) {
       lastErrorCode = 'skill_hub_operation_failed';
-      _onStatus(
-        const SkillHubStatusUpdate(
-          chinese: '技能中心操作失败。',
-          english: 'The Skill Hub operation failed.',
-          errorCode: 'skill_hub_operation_failed',
-        ),
-      );
+      if (showProgress) {
+        _onStatus(
+          const SkillHubStatusUpdate(
+            chinese: '技能中心操作失败。',
+            english: 'The Skill Hub operation failed.',
+            errorCode: 'skill_hub_operation_failed',
+          ),
+        );
+      }
     } finally {
       busy = false;
       notifyListeners();

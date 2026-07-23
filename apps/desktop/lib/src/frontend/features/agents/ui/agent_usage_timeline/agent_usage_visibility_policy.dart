@@ -12,8 +12,25 @@ bool shouldShowAgentUsage(
       agent.status == 'not-detected') {
     return false;
   }
-  if (detectedAgentIds.isEmpty) {
-    return agent.totalTokens > 0 || agent.status != 'pending';
+  final detected = detectedAgentIds
+      .map(_normalizeAgentId)
+      .where((id) => id.isNotEmpty)
+      .toSet();
+  if (detected.isEmpty) {
+    return agent.totalTokens > 0 ||
+        const {'detected', 'configured', 'manual'}.contains(agent.status);
   }
-  return detectedAgentIds.contains(agent.agentId) || agent.totalTokens > 0;
+  return detected.contains(agentId) || agent.totalTokens > 0;
+}
+
+String _normalizeAgentId(String value) {
+  return switch (value.trim().toLowerCase()) {
+    'claude' => 'claude-code',
+    'github-copilot' => 'copilot',
+    'vscode' || 'vs-code' => 'code',
+    'kilo' => 'kilo-code',
+    'hermes-agent' => 'hermes',
+    'pi-agent' || 'pi-coding-agent' => 'pi',
+    final value => value,
+  };
 }

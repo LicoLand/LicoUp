@@ -88,9 +88,7 @@ pub(super) struct ParserState {
     pub(super) counted_totals: Option<TokenTotals>,
     pub(super) has_divergent_totals: bool,
     pub(super) next_event_index: u64,
-    pub(super) next_estimate_index: u64,
     pub(super) token_chain_hash: String,
-    pub(super) estimate_chain_hash: String,
 }
 
 #[derive(Clone, Debug)]

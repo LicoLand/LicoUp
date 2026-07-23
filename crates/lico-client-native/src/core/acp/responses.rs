@@ -1,7 +1,7 @@
-use super::types::{validate_implementation_value, validate_session_update_text};
+use super::types::validate_implementation_value;
 use super::validation::{
-    ensure_message_limit, normalized_text, optional_object, validate_optional_meta,
-    validated_session_id,
+    MAX_SESSION_ID_BYTES, ensure_message_limit, normalized_text, optional_object,
+    validate_optional_meta, validated_session_id,
 };
 use super::{
     AcpAgentCapabilities, AcpError, AcpInitializeResponse, AcpPromptResponse, AcpRequestId,
@@ -88,16 +88,21 @@ pub fn validate_session_response(
     method: AcpSessionMethod<'_>,
 ) -> Result<AcpSessionResponse, AcpError> {
     let result = validated_result(message, expected_id.into())?;
-    if let AcpSessionMethod::Load(requested) = method {
-        validated_session_id(requested)?;
-        if !result.is_null() {
-            return Err(AcpError::SessionResponseInvalid);
+    match method {
+        AcpSessionMethod::Load(requested) => {
+            validated_session_id(requested)?;
+            if result.is_null() {
+                return Ok(AcpSessionResponse {
+                    session_id: None,
+                    modes: None,
+                    config_options: Vec::new(),
+                });
+            }
         }
-        return Ok(AcpSessionResponse {
-            session_id: None,
-            modes: None,
-            config_options: Vec::new(),
-        });
+        AcpSessionMethod::Resume(requested) => {
+            validated_session_id(requested)?;
+        }
+        AcpSessionMethod::New => {}
     }
     let result = result.as_object().ok_or(AcpError::SessionResponseInvalid)?;
     let session_id = result
@@ -110,24 +115,23 @@ pub fn validate_session_response(
                 .map(str::to_owned)
         })
         .transpose()?;
-    match method {
-        AcpSessionMethod::New if session_id.is_none() => {
-            return Err(AcpError::SessionResponseInvalid);
-        }
-        AcpSessionMethod::Resume(requested) => {
-            validated_session_id(requested)?;
-        }
-        AcpSessionMethod::Load(_) => unreachable!("load responses return before object parsing"),
-        AcpSessionMethod::New => {}
+    if matches!(method, AcpSessionMethod::New) && session_id.is_none() {
+        return Err(AcpError::SessionResponseInvalid);
     }
     let modes = match result.get("modes") {
         None | Some(Value::Null) => None,
-        Some(value @ Value::Object(_)) => Some(value.clone()),
+        Some(value @ Value::Object(_)) => {
+            validate_session_modes(value)?;
+            Some(value.clone())
+        }
         Some(_) => return Err(AcpError::SessionResponseInvalid),
     };
     let config_options = match result.get("configOptions") {
         None | Some(Value::Null) => Vec::new(),
-        Some(Value::Array(options)) => options.clone(),
+        Some(Value::Array(options)) => {
+            validate_config_options(options, AcpError::SessionResponseInvalid)?;
+            options.clone()
+        }
         Some(_) => return Err(AcpError::SessionResponseInvalid),
     };
     Ok(AcpSessionResponse {
@@ -216,33 +220,33 @@ pub fn validate_session_update(
         Some("usage_update") => AcpSessionUpdateKind::UsageUpdate,
         _ => return Err(AcpError::SessionUpdateInvalid),
     };
+    validate_optional_meta(update.get("_meta"), AcpError::SessionUpdateInvalid)?;
     match kind {
         AcpSessionUpdateKind::UserMessageChunk
         | AcpSessionUpdateKind::AgentMessageChunk
-        | AcpSessionUpdateKind::AgentThoughtChunk
-            if !matches!(update.get("content"), Some(Value::Object(_))) =>
-        {
-            return Err(AcpError::SessionUpdateInvalid);
+        | AcpSessionUpdateKind::AgentThoughtChunk => validate_content_block(
+            update
+                .get("content")
+                .ok_or(AcpError::SessionUpdateInvalid)?,
+        )?,
+        AcpSessionUpdateKind::ToolCall => validate_tool_call(update, true)?,
+        AcpSessionUpdateKind::ToolCallUpdate => validate_tool_call(update, false)?,
+        AcpSessionUpdateKind::Plan => validate_plan_update(update)?,
+        AcpSessionUpdateKind::AvailableCommandsUpdate => {
+            validate_available_commands_update(update)?
         }
         AcpSessionUpdateKind::CurrentModeUpdate => {
-            let mode = update
-                .get("currentModeId")
-                .and_then(Value::as_str)
+            validate_required_text(update, "currentModeId", AcpError::SessionUpdateInvalid)?;
+        }
+        AcpSessionUpdateKind::ConfigOptionUpdate => {
+            let options = update
+                .get("configOptions")
+                .and_then(Value::as_array)
                 .ok_or(AcpError::SessionUpdateInvalid)?;
-            validate_session_update_text(mode)?;
+            validate_config_options(options, AcpError::SessionUpdateInvalid)?;
         }
-        AcpSessionUpdateKind::ConfigOptionUpdate
-            if !matches!(update.get("configOptions"), Some(Value::Array(_))) =>
-        {
-            return Err(AcpError::SessionUpdateInvalid);
-        }
-        AcpSessionUpdateKind::UsageUpdate
-            if update.get("used").and_then(Value::as_u64).is_none()
-                || update.get("size").and_then(Value::as_u64).is_none() =>
-        {
-            return Err(AcpError::SessionUpdateInvalid);
-        }
-        _ => {}
+        AcpSessionUpdateKind::SessionInfoUpdate => validate_session_info_update(update)?,
+        AcpSessionUpdateKind::UsageUpdate => validate_usage_update(update)?,
     }
     Ok(AcpSessionUpdate {
         session_id: session_id.to_owned(),
@@ -330,5 +334,329 @@ fn capability_marker(object: &Map<String, Value>, key: &str) -> Result<bool, Acp
         None | Some(Value::Null) => Ok(false),
         Some(Value::Object(_)) => Ok(true),
         Some(_) => Err(AcpError::CapabilityInvalid),
+    }
+}
+
+fn validate_session_modes(value: &Value) -> Result<(), AcpError> {
+    let modes = value.as_object().ok_or(AcpError::SessionResponseInvalid)?;
+    validate_required_text(modes, "currentModeId", AcpError::SessionResponseInvalid)?;
+    validate_optional_meta(modes.get("_meta"), AcpError::SessionResponseInvalid)?;
+    let available_modes = modes
+        .get("availableModes")
+        .and_then(Value::as_array)
+        .ok_or(AcpError::SessionResponseInvalid)?;
+    for mode in available_modes {
+        let mode = mode.as_object().ok_or(AcpError::SessionResponseInvalid)?;
+        validate_required_text(mode, "id", AcpError::SessionResponseInvalid)?;
+        validate_required_text(mode, "name", AcpError::SessionResponseInvalid)?;
+        validate_optional_text(mode, "description", AcpError::SessionResponseInvalid)?;
+        validate_optional_meta(mode.get("_meta"), AcpError::SessionResponseInvalid)?;
+    }
+    Ok(())
+}
+
+fn validate_config_options(options: &[Value], error: AcpError) -> Result<(), AcpError> {
+    for option in options {
+        validate_config_option(option, error.clone())?;
+    }
+    Ok(())
+}
+
+fn validate_config_option(option: &Value, error: AcpError) -> Result<(), AcpError> {
+    let option = option.as_object().ok_or_else(|| error.clone())?;
+    validate_required_text(option, "id", error.clone())?;
+    validate_required_text(option, "name", error.clone())?;
+    validate_optional_text(option, "description", error.clone())?;
+    validate_optional_text(option, "category", error.clone())?;
+    validate_optional_meta(option.get("_meta"), error.clone())?;
+    match option.get("type").and_then(Value::as_str) {
+        Some("boolean") if matches!(option.get("currentValue"), Some(Value::Bool(_))) => Ok(()),
+        Some("select") => {
+            validate_required_text(option, "currentValue", error.clone())?;
+            let values = option
+                .get("options")
+                .and_then(Value::as_array)
+                .ok_or_else(|| error.clone())?;
+            let grouped = values.iter().any(|value| {
+                value
+                    .as_object()
+                    .is_some_and(|value| value.contains_key("group"))
+            });
+            for value in values {
+                if grouped {
+                    validate_config_select_group(value, error.clone())?;
+                } else {
+                    validate_config_select_value(value, error.clone())?;
+                }
+            }
+            Ok(())
+        }
+        _ => Err(error),
+    }
+}
+
+fn validate_config_select_value(value: &Value, error: AcpError) -> Result<(), AcpError> {
+    let value = value.as_object().ok_or_else(|| error.clone())?;
+    validate_required_text(value, "value", error.clone())?;
+    validate_required_text(value, "name", error.clone())?;
+    validate_optional_text(value, "description", error.clone())?;
+    validate_optional_meta(value.get("_meta"), error)
+}
+
+fn validate_config_select_group(value: &Value, error: AcpError) -> Result<(), AcpError> {
+    let value = value.as_object().ok_or_else(|| error.clone())?;
+    validate_required_text(value, "group", error.clone())?;
+    validate_required_text(value, "name", error.clone())?;
+    validate_optional_meta(value.get("_meta"), error.clone())?;
+    let options = value
+        .get("options")
+        .and_then(Value::as_array)
+        .ok_or_else(|| error.clone())?;
+    for option in options {
+        validate_config_select_value(option, error.clone())?;
+    }
+    Ok(())
+}
+
+fn validate_content_block(content: &Value) -> Result<(), AcpError> {
+    let content = content.as_object().ok_or(AcpError::SessionUpdateInvalid)?;
+    validate_optional_meta(content.get("_meta"), AcpError::SessionUpdateInvalid)?;
+    match content.get("type").and_then(Value::as_str) {
+        Some("text") if content.get("text").is_some_and(Value::is_string) => Ok(()),
+        Some("image") | Some("audio")
+            if content.get("data").is_some_and(Value::is_string)
+                && content.get("mimeType").is_some_and(Value::is_string) =>
+        {
+            Ok(())
+        }
+        Some("resource_link")
+            if content.get("uri").is_some_and(Value::is_string)
+                && content.get("name").is_some_and(Value::is_string) =>
+        {
+            Ok(())
+        }
+        Some("resource") => {
+            let resource = content
+                .get("resource")
+                .and_then(Value::as_object)
+                .ok_or(AcpError::SessionUpdateInvalid)?;
+            validate_optional_meta(resource.get("_meta"), AcpError::SessionUpdateInvalid)?;
+            if !resource.get("uri").is_some_and(Value::is_string)
+                || !(resource.get("text").is_some_and(Value::is_string)
+                    || resource.get("blob").is_some_and(Value::is_string))
+            {
+                return Err(AcpError::SessionUpdateInvalid);
+            }
+            Ok(())
+        }
+        _ => Err(AcpError::SessionUpdateInvalid),
+    }
+}
+
+fn validate_tool_call(update: &Map<String, Value>, title_required: bool) -> Result<(), AcpError> {
+    validate_required_text(update, "toolCallId", AcpError::SessionUpdateInvalid)?;
+    if title_required {
+        validate_required_text(update, "title", AcpError::SessionUpdateInvalid)?;
+    } else {
+        validate_optional_text(update, "title", AcpError::SessionUpdateInvalid)?;
+    }
+    validate_optional_enum(
+        update,
+        "kind",
+        &[
+            "read",
+            "edit",
+            "delete",
+            "move",
+            "search",
+            "execute",
+            "think",
+            "fetch",
+            "switch_mode",
+            "other",
+        ],
+    )?;
+    validate_optional_enum(
+        update,
+        "status",
+        &["pending", "in_progress", "completed", "failed"],
+    )?;
+    if let Some(content) = update.get("content") {
+        let content = content.as_array().ok_or(AcpError::SessionUpdateInvalid)?;
+        for item in content {
+            validate_tool_call_content(item)?;
+        }
+    }
+    if let Some(locations) = update.get("locations") {
+        let locations = locations.as_array().ok_or(AcpError::SessionUpdateInvalid)?;
+        for location in locations {
+            validate_tool_call_location(location)?;
+        }
+    }
+    Ok(())
+}
+
+fn validate_tool_call_content(value: &Value) -> Result<(), AcpError> {
+    let value = value.as_object().ok_or(AcpError::SessionUpdateInvalid)?;
+    validate_optional_meta(value.get("_meta"), AcpError::SessionUpdateInvalid)?;
+    match value.get("type").and_then(Value::as_str) {
+        Some("content") => {
+            validate_content_block(value.get("content").ok_or(AcpError::SessionUpdateInvalid)?)
+        }
+        Some("terminal") => {
+            validate_required_text(value, "terminalId", AcpError::SessionUpdateInvalid)
+        }
+        Some("diff") => {
+            validate_required_text(value, "path", AcpError::SessionUpdateInvalid)?;
+            if !value.get("newText").is_some_and(Value::is_string) {
+                return Err(AcpError::SessionUpdateInvalid);
+            }
+            match value.get("oldText") {
+                None | Some(Value::Null) | Some(Value::String(_)) => Ok(()),
+                Some(_) => Err(AcpError::SessionUpdateInvalid),
+            }
+        }
+        _ => Err(AcpError::SessionUpdateInvalid),
+    }
+}
+
+fn validate_tool_call_location(value: &Value) -> Result<(), AcpError> {
+    let value = value.as_object().ok_or(AcpError::SessionUpdateInvalid)?;
+    validate_required_text(value, "path", AcpError::SessionUpdateInvalid)?;
+    validate_optional_meta(value.get("_meta"), AcpError::SessionUpdateInvalid)?;
+    match value.get("line") {
+        None | Some(Value::Null) => Ok(()),
+        Some(line)
+            if line
+                .as_u64()
+                .is_some_and(|line| u32::try_from(line).is_ok()) =>
+        {
+            Ok(())
+        }
+        Some(_) => Err(AcpError::SessionUpdateInvalid),
+    }
+}
+
+fn validate_plan_update(update: &Map<String, Value>) -> Result<(), AcpError> {
+    let entries = update
+        .get("entries")
+        .and_then(Value::as_array)
+        .ok_or(AcpError::SessionUpdateInvalid)?;
+    for entry in entries {
+        let entry = entry.as_object().ok_or(AcpError::SessionUpdateInvalid)?;
+        validate_required_text(entry, "content", AcpError::SessionUpdateInvalid)?;
+        validate_required_enum(
+            entry,
+            "priority",
+            &["high", "medium", "low"],
+            AcpError::SessionUpdateInvalid,
+        )?;
+        validate_required_enum(
+            entry,
+            "status",
+            &["pending", "in_progress", "completed"],
+            AcpError::SessionUpdateInvalid,
+        )?;
+        validate_optional_meta(entry.get("_meta"), AcpError::SessionUpdateInvalid)?;
+    }
+    Ok(())
+}
+
+fn validate_available_commands_update(update: &Map<String, Value>) -> Result<(), AcpError> {
+    let commands = update
+        .get("availableCommands")
+        .and_then(Value::as_array)
+        .ok_or(AcpError::SessionUpdateInvalid)?;
+    for command in commands {
+        let command = command.as_object().ok_or(AcpError::SessionUpdateInvalid)?;
+        validate_required_text(command, "name", AcpError::SessionUpdateInvalid)?;
+        validate_required_text(command, "description", AcpError::SessionUpdateInvalid)?;
+        validate_optional_meta(command.get("_meta"), AcpError::SessionUpdateInvalid)?;
+        if let Some(input) = command.get("input")
+            && !input.is_null()
+        {
+            let input = input.as_object().ok_or(AcpError::SessionUpdateInvalid)?;
+            validate_required_text(input, "hint", AcpError::SessionUpdateInvalid)?;
+            validate_optional_meta(input.get("_meta"), AcpError::SessionUpdateInvalid)?;
+        }
+    }
+    Ok(())
+}
+
+fn validate_session_info_update(update: &Map<String, Value>) -> Result<(), AcpError> {
+    validate_optional_text(update, "title", AcpError::SessionUpdateInvalid)?;
+    validate_optional_text(update, "updatedAt", AcpError::SessionUpdateInvalid)
+}
+
+fn validate_usage_update(update: &Map<String, Value>) -> Result<(), AcpError> {
+    if update.get("used").and_then(Value::as_u64).is_none()
+        || update.get("size").and_then(Value::as_u64).is_none()
+    {
+        return Err(AcpError::SessionUpdateInvalid);
+    }
+    if let Some(cost) = update.get("cost")
+        && !cost.is_null()
+    {
+        let cost = cost.as_object().ok_or(AcpError::SessionUpdateInvalid)?;
+        cost.get("amount")
+            .and_then(Value::as_f64)
+            .filter(|amount| amount.is_finite() && *amount >= 0.0)
+            .ok_or(AcpError::SessionUpdateInvalid)?;
+        validate_required_text(cost, "currency", AcpError::SessionUpdateInvalid)?;
+        validate_optional_meta(cost.get("_meta"), AcpError::SessionUpdateInvalid)?;
+    }
+    Ok(())
+}
+
+fn validate_required_text(
+    object: &Map<String, Value>,
+    key: &str,
+    error: AcpError,
+) -> Result<(), AcpError> {
+    let value = object
+        .get(key)
+        .and_then(Value::as_str)
+        .ok_or_else(|| error.clone())?;
+    normalized_text(value, MAX_SESSION_ID_BYTES, error)
+}
+
+fn validate_optional_text(
+    object: &Map<String, Value>,
+    key: &str,
+    error: AcpError,
+) -> Result<(), AcpError> {
+    match object.get(key) {
+        None | Some(Value::Null) => Ok(()),
+        Some(Value::String(value)) => normalized_text(value, MAX_SESSION_ID_BYTES, error),
+        Some(_) => Err(error),
+    }
+}
+
+fn validate_required_enum(
+    object: &Map<String, Value>,
+    key: &str,
+    allowed: &[&str],
+    error: AcpError,
+) -> Result<(), AcpError> {
+    let value = object
+        .get(key)
+        .and_then(Value::as_str)
+        .ok_or_else(|| error.clone())?;
+    if allowed.contains(&value) {
+        Ok(())
+    } else {
+        Err(error)
+    }
+}
+
+fn validate_optional_enum(
+    object: &Map<String, Value>,
+    key: &str,
+    allowed: &[&str],
+) -> Result<(), AcpError> {
+    match object.get(key) {
+        None | Some(Value::Null) => Ok(()),
+        Some(Value::String(value)) if allowed.contains(&value.as_str()) => Ok(()),
+        Some(_) => Err(AcpError::SessionUpdateInvalid),
     }
 }

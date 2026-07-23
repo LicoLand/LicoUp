@@ -222,14 +222,14 @@ mod tests {
     #[test]
     fn github_source_accepts_only_a_repository_origin_and_bounded_ref() {
         let source = GitHubSource::from_params(&json!({
-            "githubUrl": "https://github.com/LicoLite/collaboration-plugin",
+            "githubUrl": "https://github.com/LicoLand/collaboration-plugin",
             "ref": "0123456789abcdef0123456789abcdef01234567",
-            "pluginPath": "plugins/licolite"
+            "pluginPath": "plugins/licomesh"
         }))
         .unwrap();
         assert_eq!(
             source.normalized_url,
-            "https://github.com/LicoLite/collaboration-plugin.git"
+            "https://github.com/LicoLand/collaboration-plugin.git"
         );
         assert_eq!(
             source.ref_name.as_deref(),
@@ -242,12 +242,12 @@ mod tests {
 
     #[test]
     fn github_source_rejects_credentials_queries_and_tree_urls() {
-        let credential_url = ["https://", "token", "@", "github.com/LicoLite/plugin"].concat();
+        let credential_url = ["https://", "token", "@", "github.com/LicoLand/plugin"].concat();
         for url in [
             credential_url.as_str(),
-            "https://github.com/LicoLite/plugin?token=value",
-            "https://github.com/LicoLite/plugin/tree/main",
-            "http://github.com/LicoLite/plugin",
+            "https://github.com/LicoLand/plugin?token=value",
+            "https://github.com/LicoLand/plugin/tree/main",
+            "http://github.com/LicoLand/plugin",
         ] {
             assert!(GitHubSource::from_params(&json!({"githubUrl": url})).is_err());
         }
@@ -258,7 +258,7 @@ mod tests {
         for git_ref in ["main", "release/v1", "HEAD", "v1.0.0"] {
             assert!(
                 GitHubSource::from_params(&json!({
-                    "githubUrl": "https://github.com/LicoLite/plugin",
+                    "githubUrl": "https://github.com/LicoLand/plugin",
                     "ref": git_ref
                 }))
                 .is_err()

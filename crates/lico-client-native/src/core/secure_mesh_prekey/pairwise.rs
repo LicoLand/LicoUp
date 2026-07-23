@@ -15,7 +15,7 @@ use super::validation::{
 };
 
 pub const SECURE_MESH_PREKEY_PROTOCOL_VERSION: &str =
-    "licolite.secure-mesh.pairwise-pqxdh-mlkem1024.v1";
+    "licomesh.secure-mesh.pairwise-pqxdh-mlkem1024.v1";
 
 const PREKEY_MAGIC: &[u8] = b"LCOSM-PREKEY-PQXDH-MLKEM1024-v1";
 const MAX_PREKEY_ID_LEN: usize = 128;

@@ -3,7 +3,7 @@ import { normalizeSourceCheckFiles } from "./source-check-bundle.mjs";
 
 const configUrl = new URL("../config/secure-mesh-release-proof.json", import.meta.url);
 const configRef = "tools/scripts/config/secure-mesh-release-proof.json";
-const schemaVersion = "licolite.secure-mesh.release-proof-config.v1";
+const schemaVersion = "licomesh.secure-mesh.release-proof-config.v1";
 const requiredInputReportKeys = Object.freeze([
   "updateRelease",
   "physicalMatrix",

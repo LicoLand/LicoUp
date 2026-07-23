@@ -7,7 +7,7 @@ fn profile_matching_ignores_metadata_identity_terms() {
     }))
     .unwrap();
     let profile =
-        derived_archive_profile(&keywords, Path::new("/tmp/archive"), &["codex".into()]).unwrap();
+        derived_archive_profile(&keywords, Path::new("test-data/archive"), &["codex".into()]).unwrap();
     let candidate = json!({
         "title": "Unrelated Pact work",
         "nativeSessionId": "pact-session",

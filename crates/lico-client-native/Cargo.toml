@@ -45,6 +45,7 @@ rusqlite = { version = "0.32", features = ["bundled"] }
 log = "0.4"
 env_logger = "0.11"
 time = { version = "0.3", features = ["formatting", "parsing"] }
+tokio = { version = "1.48", features = ["rt-multi-thread", "sync", "time"] }
 ureq = { version = "2.10", features = ["json"] }
 url = "2.5"
 uuid = { version = "1.11", features = ["v4", "serde"] }
@@ -61,7 +62,6 @@ flate2 = "1.0"
 block2 = "0.6.2"
 core-foundation = "0.10.1"
 core-foundation-sys = "0.8.7"
-keyring = { version = "3.6.3", default-features = false, features = ["apple-native"] }
 objc2 = "0.6.4"
 objc2-foundation = { version = "0.3.2", features = ["NSString"] }
 objc2-local-authentication = "0.3.2"
@@ -78,11 +78,18 @@ windows-sys = { version = "0.61", features = [
 ] }
 
 [target.'cfg(unix)'.dependencies]
-nix = { version = "0.27", default-features = false, features = ["fs", "user", "signal"] }
+nix = { version = "0.27", default-features = false, features = ["fs", "user", "signal", "socket"] }
+
+[dev-dependencies]
+trybuild = { path = "../trybuild" }
 
 [[bin]]
 name = "lico-client"
 path = "src/bin/lico-client.rs"
+
+[[bin]]
+name = "lico-codex-mcp"
+path = "src/bin/lico-codex-mcp.rs"
 
 [[bin]]
 name = "lico-secure-mesh-kt-mock"

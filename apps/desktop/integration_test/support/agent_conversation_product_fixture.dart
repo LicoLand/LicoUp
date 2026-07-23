@@ -147,8 +147,6 @@ class AcceptanceConversationService extends AgentConversationService {
     required String text,
     required String sessionId,
     AgentDispatchBind bind = const AgentDispatchBind(),
-    String conversationReadiness = 'unverified',
-    bool requireReady = true,
   }) {
     if (agentId != acceptanceAgentId) {
       throw StateError('acceptance_agent_mismatch');

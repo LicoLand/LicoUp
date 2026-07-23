@@ -215,6 +215,36 @@ pub(in crate::domain::conversation::history) fn extract_timestamp(value: &Value)
     )
 }
 
+/// Model identifiers ride next to the message payload in native history
+/// events (for example Claude Code JSONL keeps them at `message.model`), so
+/// look at the event itself, its message payload, and explicit model-info
+/// objects without descending into arbitrary nesting.
+pub(in crate::domain::conversation::history) fn extract_native_model(
+    value: &Value,
+) -> Option<String> {
+    const MODEL_KEYS: [&str; 7] = [
+        "model",
+        "modelName",
+        "modelId",
+        "model_name",
+        "model_id",
+        "modelLabel",
+        "model_label",
+    ];
+    fn direct(value: &Value) -> Option<String> {
+        let object = value.as_object()?;
+        MODEL_KEYS
+            .iter()
+            .find_map(|key| object.get(*key).and_then(Value::as_str))
+            .map(str::trim)
+            .filter(|text| !text.is_empty())
+            .map(str::to_string)
+    }
+    direct(value)
+        .or_else(|| value.get("message").and_then(direct))
+        .or_else(|| value.get("modelInfo").and_then(direct))
+}
+
 pub(in crate::domain::conversation::history) fn find_string(
     value: &Value,
     keys: &[&str],

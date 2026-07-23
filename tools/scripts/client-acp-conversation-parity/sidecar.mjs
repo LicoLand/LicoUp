@@ -147,7 +147,14 @@ export function probeDispatchLaneFamilies(sidecar) {
       },
     });
   }
-  const requiredFamilies = ["acp", "app-server", "stream-json", "unavailable"];
+  const requiredFamilies = [
+    "acp",
+    "app-server",
+    "cli",
+    "rpc",
+    "serve-http",
+    "stream-json",
+  ];
   const covered = requiredFamilies.every((family) => families.has(family));
   const allPassed = covered && results.every(
     (row) =>

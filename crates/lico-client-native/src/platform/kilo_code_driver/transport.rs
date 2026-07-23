@@ -21,6 +21,20 @@ pub(super) fn execute_via_serve(
     let session_id = open_session(endpoint, config, deadline)?;
     let message_body = build_message_body(config);
     let turn_id = Uuid::new_v4().to_string();
+    let _active_turn = super::super::local_service::turn_control::register(
+        super::KILO_CODE_DRIVER.agent_id,
+        &endpoint.attach_url,
+        &session_id,
+    )
+    .map_err(|_| {
+        ProtocolFailure::new(
+            "acp_control_capacity",
+            "The Kilo active-turn control registry is at capacity.",
+            "turn/control",
+        )
+        .with_session(Some(&session_id))
+    })?;
+    turn_event_emit::emit_turn_event("dispatch.turn.bound", &session_id, &turn_id, json!({}));
     let watch_stop = Arc::new(AtomicBool::new(false));
     let watch_flag = Arc::clone(&watch_stop);
     let watch_url = endpoint.attach_url.clone();

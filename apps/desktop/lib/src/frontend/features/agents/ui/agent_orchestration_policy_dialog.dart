@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 
 import 'package:flutter_client/src/application/controller/client_controller.dart';
-import 'package:flutter_client/src/contracts/agent_orchestration_policy.dart';
+import 'package:flutter_client/src/application/features/agents/orchestration/orchestration_policy_editor_models.dart';
+import 'package:flutter_client/src/application/features/agents/orchestration/orchestration_target_catalog.dart';
 import 'package:flutter_client/src/frontend/features/agents/ui/agent_orchestration_commander_policy_card.dart';
 import 'package:flutter_client/src/frontend/features/agents/ui/agent_orchestration_model_library_policy_card.dart';
 import 'package:flutter_client/src/frontend/features/agents/ui/agent_orchestration_rename_policy_dialog.dart';
@@ -270,20 +271,6 @@ final class _AgentOrchestrationPolicyDialogState
               child: Row(
                 children: [
                   const Spacer(),
-                  if (widget
-                      .controller
-                      .agentOrchestrationOpenCircuitAgentIds
-                      .isNotEmpty) ...[
-                    TextButton.icon(
-                      key: const Key('agent-orchestration-reset-circuit'),
-                      onPressed: widget
-                          .controller
-                          .resetAgentOrchestrationCircuitBreakers,
-                      icon: const Icon(Icons.restart_alt_outlined, size: 18),
-                      label: Text(strings.resetCircuitBreaker),
-                    ),
-                    const SizedBox(width: 8),
-                  ],
                   TextButton(
                     onPressed: () => Navigator.of(context).pop(),
                     child: Text(strings.cancel),

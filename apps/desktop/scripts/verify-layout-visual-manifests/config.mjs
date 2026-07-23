@@ -8,7 +8,7 @@ export const scriptRepositoryRoot = path.resolve(
   "../../../..",
 );
 
-export const manifestSchema = "licolite.layout-visual-manifest";
+export const manifestSchema = "licomesh.layout-visual-manifest";
 export const manifestSchemaVersion = 2;
 export const digestPattern = /^sha256:[a-f0-9]{64}$/u;
 export const generatedDiagnosticDirectories = new Set(["failures"]);

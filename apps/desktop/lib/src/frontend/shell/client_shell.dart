@@ -15,6 +15,7 @@ import 'package:flutter_client/src/frontend/features/skill_hub/ui/skill_hub_pane
 import 'package:flutter_client/src/frontend/features/mobile_relay/ui/mobile_agents_home.dart';
 import 'package:flutter_client/src/frontend/features/mobile_relay/ui/mobile_relay_panel.dart';
 import 'package:flutter_client/src/frontend/features/settings/ui/settings_panel.dart';
+import 'package:flutter_client/src/frontend/features/plugin_management/ui/adapter_plugin_panel.dart';
 import 'package:flutter_client/src/frontend/shell/client_layout_chrome_adapter.dart';
 import 'package:flutter_client/src/frontend/shared/ui/theme.dart';
 
@@ -134,6 +135,9 @@ class _ClientShellState extends State<ClientShell>
       ),
       ClientSection.monitoring => AgentUsagePanel(controller: controller),
       ClientSection.skillHub => SkillHubPanel(controller: controller),
+      ClientSection.pluginManagement => AdapterPluginPanel(
+        controller: controller,
+      ),
       ClientSection.mobileRelay => MobileRelayPanel(controller: controller),
       ClientSection.settings => SettingsPanel(controller: controller),
     };
@@ -168,6 +172,7 @@ class _ClientShellState extends State<ClientShell>
         ClientSection.agents => strings.agents,
         ClientSection.monitoring => strings.tokenUsage,
         ClientSection.skillHub => strings.skillHub,
+        ClientSection.pluginManagement => strings.pluginManagement,
         ClientSection.mobileRelay => strings.mobileRelay,
         ClientSection.settings => strings.settings,
       };

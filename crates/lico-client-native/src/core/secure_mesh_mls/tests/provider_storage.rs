@@ -69,6 +69,7 @@ fn secure_mesh_openmls_secret_store_handle_reload_recovers_group_state() {
         .get_secret(&secret_store_handle)
         .unwrap()
         .unwrap();
+    let persisted_secret = persisted_secret.expose_utf8().unwrap();
     assert!(persisted_secret.contains(MLS_EPOCH_SECRET_STORE_CLASS));
     assert!(!persisted_secret.contains("secret-store-reloaded-open"));
     drop(bob_group);

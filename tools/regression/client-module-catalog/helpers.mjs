@@ -53,9 +53,6 @@ export const FAKE_AGENT_SERVICE_INPUTS = Object.freeze([
   "apps/desktop/test/fixtures/client_controller/support/fake_agent_usage_support.dart",
 ]);
 
-const DISTILLATION_CONTRACT_ROOT =
-  "apps/desktop/lib/src/contracts/routing/distillation";
-
 export function command(program, args, timeoutMs) {
   return Object.freeze({
     program,
@@ -211,20 +208,6 @@ export function secureMeshModule({
       ...resources,
     ],
     command: rustLayer(`core::${source}::tests`),
-  });
-}
-
-export function distillationContractModule({ id, summary, source, test }) {
-  const testPath = `test/distillation/${test}`;
-  return defineModule({
-    id: `flutter.feature.routing.distillation.${id}`,
-    kind: "flutter-feature",
-    summary,
-    inputs: [
-      `${DISTILLATION_CONTRACT_ROOT}/${source}`,
-      `apps/desktop/${testPath}`,
-    ],
-    command: flutterTests([testPath]),
   });
 }
 

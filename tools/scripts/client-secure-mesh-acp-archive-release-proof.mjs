@@ -154,7 +154,7 @@ const checkedAt = new Date().toISOString();
 
 const report = {
   ok,
-  schemaVersion: "licolite.secure-mesh.acp-archive-release-proof-report.v1",
+  schemaVersion: "licomesh.secure-mesh.acp-archive-release-proof-report.v1",
   verifier: "tools/scripts/client-secure-mesh-acp-archive-release-proof.mjs",
   generatedBy: "tools/scripts/client-secure-mesh-acp-archive-release-proof.mjs",
   generatedAt: checkedAt,

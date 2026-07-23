@@ -269,7 +269,7 @@ function stageApks(options, sourceStateDigest, reproducibility = null) {
 
   const manifestRef = `${options.mode}/build-manifest.json`;
   const manifest = {
-      schemaVersion: "licolite.client-android.apk-build-manifest.v3",
+      schemaVersion: "licomesh.client-android.apk-build-manifest.v3",
       generatedAt: new Date().toISOString(),
       mode: options.mode,
       targetId: "android-arm64",

@@ -1,6 +1,7 @@
 use super::super::process_supervisor::{
     BoundedStdinWriter, SupervisedChild, TransportFinishFailure, finish_protocol_transport,
 };
+use super::active_control::{ActiveTurnGuard, SteerRequest, bind};
 use super::errors::ProtocolFailure;
 use super::io::{TransportEvent, drain_stderr, read_protocol_messages, write_message};
 use super::model::{PROCESS_POLL_INTERVAL, RunResult};
@@ -8,11 +9,12 @@ use super::params::ProtocolConfig;
 use super::protocol::{PiProtocol, ProtocolEffect, ProtocolOutcome};
 use super::supervision::LaunchSpec;
 use serde_json::Value;
+use std::collections::HashMap;
 use std::io::{self, BufReader};
 use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::{self, Receiver, RecvTimeoutError};
+use std::sync::mpsc::{self, Receiver, RecvTimeoutError, SyncSender, TryRecvError};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -70,6 +72,7 @@ pub(in crate::platform) fn execute(
     let stderr_handle = thread::spawn(move || drain_stderr(stderr, max_stderr, &stderr_flag));
 
     let mut protocol = PiProtocol::new(config);
+    let (control_sender, control_receiver) = mpsc::sync_channel(16);
     let initial = protocol.initial_request();
     if write_message(&mut stdin, &initial).is_err() {
         let cleanup =
@@ -101,8 +104,14 @@ pub(in crate::platform) fn execute(
     }
 
     let deadline = Instant::now() + Duration::from_millis(timeout_ms);
-    let (outcome, failure, status_code, stdout_was_truncated) =
-        run_protocol_loop(&mut stdin, &receiver, &mut protocol, deadline);
+    let (outcome, failure, status_code, stdout_was_truncated) = run_protocol_loop(
+        &mut stdin,
+        &receiver,
+        &control_sender,
+        &control_receiver,
+        &mut protocol,
+        deadline,
+    );
 
     let cleanup = finish_protocol_transport(&mut child, &mut stdin, stdout_handle, stderr_handle);
     let stderr_was_truncated = stderr_truncated.load(Ordering::Relaxed);
@@ -169,6 +178,8 @@ pub(in crate::platform) fn execute(
 pub(super) fn run_protocol_loop(
     stdin: &mut BoundedStdinWriter,
     receiver: &Receiver<TransportEvent>,
+    control_sender: &SyncSender<SteerRequest>,
+    control_receiver: &Receiver<SteerRequest>,
     protocol: &mut PiProtocol,
     deadline: Instant,
 ) -> (
@@ -177,7 +188,45 @@ pub(super) fn run_protocol_loop(
     Option<i32>,
     bool,
 ) {
+    let mut active_guard: Option<ActiveTurnGuard> = None;
+    let mut pending_steers = HashMap::<String, SyncSender<bool>>::new();
     loop {
+        if let Some((session_id, turn_id)) = protocol.active_turn_binding() {
+            if active_guard.is_none() {
+                active_guard = bind(session_id, turn_id, control_sender.clone());
+                if active_guard.is_some() {
+                    super::super::turn_event_emit::emit_turn_event(
+                        "dispatch.turn.bound",
+                        session_id,
+                        turn_id,
+                        serde_json::json!({"nativeSteer": true}),
+                    );
+                }
+            }
+            loop {
+                match control_receiver.try_recv() {
+                    Ok(request) => {
+                        let (request_id, message, acknowledged) = request.into_protocol();
+                        if write_message(stdin, &message).is_err() {
+                            let _ = acknowledged.send(false);
+                            return (
+                                None,
+                                Some(protocol.failure_with_ids(
+                                    "pi_rpc_write_failed",
+                                    "Pi RPC stopped accepting turn guidance.",
+                                    "turn/steer",
+                                )),
+                                None,
+                                false,
+                            );
+                        }
+                        pending_steers.insert(request_id, acknowledged);
+                    }
+                    Err(TryRecvError::Empty) => break,
+                    Err(TryRecvError::Disconnected) => break,
+                }
+            }
+        }
         if stdin.check_health().is_err() {
             return (
                 None,
@@ -205,6 +254,9 @@ pub(super) fn run_protocol_loop(
         }
         match receiver.recv_timeout((deadline - now).min(PROCESS_POLL_INTERVAL)) {
             Ok(TransportEvent::Message(message)) => {
+                if acknowledge_steer_response(&message, &mut pending_steers) {
+                    continue;
+                }
                 for effect in protocol.handle_message(message) {
                     match effect {
                         ProtocolEffect::Send(payload) => {
@@ -293,6 +345,22 @@ pub(super) fn run_protocol_loop(
             }
         }
     }
+}
+
+fn acknowledge_steer_response(
+    message: &Value,
+    pending_steers: &mut HashMap<String, SyncSender<bool>>,
+) -> bool {
+    let Some(request_id) = message.get("id").and_then(Value::as_str) else {
+        return false;
+    };
+    let Some(acknowledged) = pending_steers.remove(request_id) else {
+        return false;
+    };
+    let accepted = message.get("type").and_then(Value::as_str) == Some("response")
+        && message.get("success").and_then(Value::as_bool) == Some(true);
+    let _ = acknowledged.send(accepted);
+    true
 }
 
 pub(super) fn pipe_failure(

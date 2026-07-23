@@ -8,15 +8,15 @@ fn authenticator_known_answer() {
     let auth = RatchetedAuthenticator::initialize(1, &TEST_SECRET).unwrap();
     assert_eq!(
         hex(auth.root_key.as_slice()),
-        "aec27dcc35663c5a72873280df06f0195496867754eb460b76b5a7c1b85b3955"
+        "330afd0d383ea018119058e666e7837cea1ba96ecd7b665db08568d84bdd3608"
     );
     assert_eq!(
         hex(auth.mac_key.as_slice()),
-        "b2d0246c8831cc34828fa15e0907e564c6781fc2718f649ea684cf013487a2a5"
+        "ccea858fa08c977ac9fcd792d1daa1fa3bb53c3c72ec9aec6678fca15057bd46"
     );
     let header = (0u8..64).collect::<Vec<_>>();
     assert_eq!(
         hex(&auth.mac_header(1, &header).unwrap()),
-        "bb34450be173a859b7e0ac08124b60fb091d5f59ffd666fde8f8be1a4b1fb92c"
+        "1b3bd938058873c066f3483672150a5413aa1ed48abbdb65ad02e77d7201046c"
     );
 }

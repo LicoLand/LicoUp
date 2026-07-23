@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 
 const configUrl = new URL("../config/secure-mesh-windows-implementation.json", import.meta.url);
 const configRef = "tools/scripts/config/secure-mesh-windows-implementation.json";
-const schemaVersion = "licolite.secure-mesh.windows-implementation-config.v1";
+const schemaVersion = "licomesh.secure-mesh.windows-implementation-config.v1";
 const leakPatterns = Object.freeze([
   ["local_path", /\/Users\/|\/private\/|\/var\/folders\/|[A-Za-z]:\\/u],
   ["bearer", /Bearer\s+(?!\[redacted\])\S+/u],

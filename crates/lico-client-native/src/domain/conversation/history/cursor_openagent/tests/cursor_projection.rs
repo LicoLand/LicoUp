@@ -45,3 +45,19 @@ fn cursor_role_and_usage_projection_fail_closed_for_unknown_or_empty_values() {
     );
     assert!(cursor_bubble_usage(&json!({"tokenCount": {"inputTokens": 0}}), "model").is_none());
 }
+
+#[test]
+fn cursor_composer_context_occupancy_is_not_token_consumption() {
+    let config = json!({
+        "modelConfig": {
+            "modelName": "composer-2.5-fast",
+            "selectedModels": [{"modelId": "grok-4.5"}]
+        },
+        "promptTokenBreakdown": {
+            "totalUsedTokens": 158628,
+            "maxTokens": 300000
+        },
+        "contextTokensUsed": 158628
+    });
+    assert!(crate::domain::conversation::usage::extract_token_usage(&config).is_none());
+}

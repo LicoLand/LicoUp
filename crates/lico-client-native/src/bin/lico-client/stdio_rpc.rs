@@ -14,6 +14,8 @@ mod error;
 mod line;
 #[path = "stdio_rpc/model.rs"]
 mod model;
+#[path = "stdio_rpc/orchestrator.rs"]
+mod orchestrator;
 #[path = "stdio_rpc/request.rs"]
 mod request;
 #[path = "stdio_rpc/response.rs"]

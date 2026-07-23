@@ -5,9 +5,9 @@ use std::path::{Component, Path, PathBuf};
 
 pub(super) const MANIFEST_FILE: &str = "licoarc-collaboration-plugin.json";
 pub(super) const MANIFEST_SCHEMA: &str = "licoarc.optional-collaboration-plugin.v2";
-pub(super) const PLUGIN_KIND: &str = "licolite-collaboration";
-pub(super) const LOCAL_DEPLOYMENT_CAPABILITY: &str = "licolite.local-deployment.compose";
-pub(super) const MCP_INSTALL_CAPABILITY: &str = "licolite.mcp.install";
+pub(super) const PLUGIN_KIND: &str = "licomesh-collaboration";
+pub(super) const LOCAL_DEPLOYMENT_CAPABILITY: &str = "licomesh.local-deployment.compose";
+pub(super) const MCP_INSTALL_CAPABILITY: &str = "licomesh.mcp.install";
 pub(super) const SERVER_RUNNER_CONTRACT: &str = "licoarc.local-server-runner.v2";
 pub(super) const SERVER_HEALTH_CONTRACT: &str = "licoarc.local-server-health.v1";
 pub(super) const SERVER_CAPABILITIES_CONTRACT: &str = "licoarc.local-server-capabilities.v1";
@@ -208,9 +208,9 @@ pub(super) fn current_server_runner_target() -> Result<(&'static str, &'static s
 
 pub(super) fn expected_server_runner_path(platform: &str, architecture: &str) -> PathBuf {
     let executable = if platform == "windows" {
-        "licolite-server-runner.exe"
+        "licomesh-server-runner.exe"
     } else {
-        "licolite-server-runner"
+        "licomesh-server-runner"
     };
     PathBuf::from("runners")
         .join(platform)
@@ -352,8 +352,8 @@ mod tests {
         serde_json::to_vec(&json!({
             "schemaVersion": MANIFEST_SCHEMA,
             "kind": PLUGIN_KIND,
-            "pluginId": "licolite-collaboration",
-            "displayName": "LicoLite Collaboration",
+            "pluginId": "licomesh-collaboration",
+            "displayName": "LicoMesh Collaboration",
             "version": "1.0.0",
             "capabilities": [LOCAL_DEPLOYMENT_CAPABILITY, MCP_INSTALL_CAPABILITY],
             "workflows": {
@@ -380,7 +380,7 @@ mod tests {
     #[test]
     fn declarative_manifest_accepts_only_the_two_collaboration_capabilities() {
         let manifest = parse_manifest(&valid_manifest()).unwrap();
-        assert_eq!(manifest.plugin_id, "licolite-collaboration");
+        assert_eq!(manifest.plugin_id, "licomesh-collaboration");
         assert_eq!(manifest.capabilities.len(), 2);
     }
 

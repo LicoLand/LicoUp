@@ -5,7 +5,8 @@ use super::support::*;
 fn pairing_skill_cli_pair_request_approve_revoke_list() {
     let store = test_store("pairing-lifecycle");
     let requested = pair_request_in(&store, &json!({"agent": "codex", "target": "codex"})).unwrap();
-    assert_eq!(requested["status"], STATUS_REQUESTED);
+    assert_eq!(requested["status"], STATUS_APPROVED);
+    assert!(is_agent_approved(&store, "codex").unwrap());
 
     let approved = pair_approve_in(&store, &json!({"agent": "codex"})).unwrap();
     assert_eq!(approved["status"], STATUS_APPROVED);
@@ -88,7 +89,7 @@ fn pairing_skill_hub_public_wrappers_work_with_temp_portable_state() {
     let _guard = PortableDataDirOverrideGuard::set(dir);
 
     let requested = pair_request(&json!({"agent": "codex", "target": "codex"})).unwrap();
-    assert_eq!(requested["status"], STATUS_REQUESTED);
+    assert_eq!(requested["status"], STATUS_APPROVED);
 
     let approved = pair_approve(&json!({"agent": "codex"})).unwrap();
     assert_eq!(approved["status"], STATUS_APPROVED);
@@ -277,6 +278,46 @@ fn allow_all_pairing_returns_unhidden_skills() {
 
     let visible = skill_list_in(&store, &json!({"agent": "codex"})).unwrap();
     assert_eq!(visible["skills"].as_array().unwrap().len(), 2);
+}
+
+#[test]
+fn missing_pairing_is_auto_approved_on_management() {
+    let store = test_store("auto-approve");
+    assert!(is_agent_approved(&store, "codex").unwrap());
+
+    let listed = pair_list_in(&store, &json!({"agent": "codex"})).unwrap();
+    assert_eq!(listed["pairings"].as_array().unwrap().len(), 1);
+    assert_eq!(listed["pairings"][0]["status"], "approved");
+}
+
+#[test]
+fn legacy_requested_pairing_is_approved_in_place_on_management() {
+    let store = test_store("legacy-requested");
+    let mut document = store.read_collection("pairings").unwrap();
+    document["items"] = json!([{
+        "pairingId": "pair-legacy",
+        "agentId": "codex",
+        "target": "manual",
+        "status": "requested",
+        "requestedAt": "0-0",
+        "defaultVisibilityPolicy": "deny-by-default",
+        "scopes": [],
+    }]);
+    store.write_collection("pairings", document).unwrap();
+
+    assert!(is_agent_approved(&store, "codex").unwrap());
+
+    let listed = pair_list_in(&store, &json!({"agent": "codex"})).unwrap();
+    assert_eq!(listed["pairings"][0]["status"], "approved");
+}
+
+#[test]
+fn revoked_pairing_is_not_auto_resurrected() {
+    let store = test_store("revoked-stays");
+    pair_request_in(&store, &json!({"agent": "codex", "target": "codex"})).unwrap();
+    pair_revoke_in(&store, &json!({"agent": "codex"})).unwrap();
+
+    assert!(!is_agent_approved(&store, "codex").unwrap());
 }
 
 #[test]

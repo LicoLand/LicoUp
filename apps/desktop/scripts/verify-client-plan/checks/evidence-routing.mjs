@@ -10,7 +10,7 @@ const secureMeshEvidenceRouteConfig = await readText("tools/scripts/config/secur
 const secureMeshEvidenceRouteConfigJson = await readJson("tools/scripts/config/secure-mesh-e2ee-evidence-routes.json");
 
 for (const token of [
-  "licolite.secure-mesh.e2ee-evidence-routes.v2",
+  "licomesh.secure-mesh.e2ee-evidence-routes.v2",
   "build/reports/secure-client-relay-mock-e2e.json",
   "build/reports/secure-mesh-physical-evidence-manifest.json",
   "pairwise/content crypto audit",
@@ -142,7 +142,7 @@ assert(!secureMeshEvidenceBundle.includes("[\"private_material\", /-----BEGIN|pr
   "secure mesh evidence bundle leak scanner must not flag safe privateKey* field names as raw key material");
 const secureMeshEvidenceScopeConfig = await readText("tools/scripts/config/secure-mesh-e2ee-report-scope.json");
 for (const token of [
-  "licolite.secure-mesh.e2ee-report-scope-config.v2",
+  "licomesh.secure-mesh.e2ee-report-scope-config.v2",
   "build/reports/secure-mesh-pairwise-content-crypto-audit.json",
   "build/reports/secure-mesh-platform-secret-store-matrix.json",
   "build/reports/secure-mesh-physical-device-matrix.json",

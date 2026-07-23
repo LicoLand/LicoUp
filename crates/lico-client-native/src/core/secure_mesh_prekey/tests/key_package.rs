@@ -25,7 +25,7 @@ fn key_package_verifies_signature_and_rejects_cipher_suite_downgrade() {
     verify_key_package_record(&identity, DeviceTrustState::Verified, &record, true, now()).unwrap();
 
     let mut downgraded = record;
-    downgraded.cipher_suite = "licolite.mls-legacy.v0".to_string();
+    downgraded.cipher_suite = "licomesh.mls-legacy.v0".to_string();
     let error = verify_key_package_record(
         &identity,
         DeviceTrustState::Verified,
@@ -83,10 +83,10 @@ fn key_package_signature_payload_and_signature_match_the_stable_vector() {
     let payload = key_package_signature_payload(&identity, &record).unwrap();
     assert_eq!(
         hex_sha256(&payload),
-        "5a709eef5b9a7cc3bf5d43e5b1a8bec9afd85476800f231d6e130e8abef6e6c5"
+        "8b4f63cb8c740677136f73e55a20c5efad984d9b7066824ab60e193384bb916d"
     );
     assert_eq!(
         record.signature,
-        "q-XcFKDzzUdRTzDs1yg90oRRlBMwPdxTu1atIZs2Pu4MqrKhywjtu0b0lYawv6iUGZ_QO0NdpH6QsGWzIz_yCA"
+        "zOAYScZ18yINuD2sQDTHlujzwDA7eoDlp7h6KUgaqO1FnaNxdXN2UHbcK8htwXpss8fhOBvVdBZUWTxbWyN5Cw"
     );
 }

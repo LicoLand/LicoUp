@@ -107,7 +107,7 @@ export function approvedAndroidToolchain(repoRoot, toolchain) {
   }).toString("utf8"));
   const hostId = `${process.platform}-${process.arch}`;
   const approval = manifest?.schemaVersion ===
-      "licolite.android-release-toolchain-allowlist.v1"
+      "licomesh.android-release-toolchain-allowlist.v1"
     ? manifest.platforms?.[hostId]
     : null;
   requireValue(approval &&

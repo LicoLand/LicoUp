@@ -120,17 +120,17 @@ Hidden Antigravity runtime context.
     expect(session.messages[0].text, '请找到本项目的开发规则文档入口');
     expect(session.messages[1].kind, AgentConversationMessageKind.toolCall);
     expect(session.messages[1].cardTitle, 'Tool call');
+    expect(session.messages[1].text, contains('coverageContribution'));
+    expect(session.messages[1].text, contains('2255'));
     expect(session.messages[2].kind, AgentConversationMessageKind.toolCall);
+    expect(session.messages[2].text, 'npm run verify\nPASS 133 tests');
     expect(session.messages[3].text, '开发规则入口在仓库根目录的 AGENTS.md。');
     expect(
       session.messages.any(
         (message) =>
             message.text.contains('<USER_REQUEST>') ||
             message.text.contains('<SYSTEM_MESSAGE>') ||
-            message.text.contains('not actually sent by the user') ||
-            message.text.contains('coverageContribution') ||
-            message.text.contains('npm run verify') ||
-            message.text.contains('2255'),
+            message.text.contains('not actually sent by the user'),
       ),
       isFalse,
     );

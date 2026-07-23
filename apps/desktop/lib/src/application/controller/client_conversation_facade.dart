@@ -5,7 +5,6 @@ import 'package:flutter_client/src/application/features/agents/workspace/agent_w
 
 mixin ClientConversationFacade on AgentWorkspaceCoordinator {
   ConversationPresentationSignals get conversationPresentationSignals;
-  bool get clientControllerDisposed;
 
   ValueListenable<int> get conversationStructureListenable =>
       conversationPresentationSignals.structureListenable;
@@ -19,7 +18,7 @@ mixin ClientConversationFacade on AgentWorkspaceCoordinator {
   }
 
   void notifyClientStateChanged() {
-    if (!clientControllerDisposed) notifyListeners();
+    if (!lifecycleProjection.disposed) notifyListeners();
   }
 
   void notifyConversationStructureChanged({bool activeChanged = true}) {

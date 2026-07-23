@@ -18,7 +18,7 @@ export function validateReleaseSelectionPreflight({
     "release-supported catalog targets do not match selected target authority");
   requireValue(
     receiptConfig?.schemaVersion ===
-      "licolite.client-artifact-verification-receipts-config.v3" &&
+      "licomesh.client-artifact-verification-receipts-config.v3" &&
       JSON.stringify(Object.keys(receiptConfig.targets || {})) ===
         JSON.stringify(authorityIds),
     "artifact receipt target authority is incomplete",

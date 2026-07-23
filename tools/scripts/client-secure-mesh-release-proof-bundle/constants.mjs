@@ -14,10 +14,10 @@ export const leakPatterns = Object.freeze([
 ]);
 
 export const relayMockAcceptanceSchemaVersion =
-  "licolite.secure-client-relay.client-acceptance-report.v1";
+  "licomesh.secure-client-relay.client-acceptance-report.v1";
 export const rustCryptoSchemaVersion =
-  "licolite.secure-mesh.pairwise-content-audit-report.v1";
+  "licomesh.secure-mesh.pairwise-content-audit-report.v1";
 export const platformCryptoSchemaVersion =
-  "licolite.secure-mesh.platform-secret-store-matrix-report.v2";
+  "licomesh.secure-mesh.platform-secret-store-matrix-report.v2";
 export const androidPlatformCryptoSchemaVersion =
-  "licolite.secure-mesh.android-platform-crypto-acceptance.v1";
+  "licomesh.secure-mesh.android-platform-crypto-acceptance.v1";

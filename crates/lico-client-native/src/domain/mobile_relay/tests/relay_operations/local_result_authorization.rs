@@ -6,8 +6,16 @@ fn mobile_relay_encrypted_local_effect_command_requires_local_confirmation() {
     let mut pc_config = default_config();
     let mut mobile_config = default_config();
     pair_mobile_relay_configs(&mut pc_config, &mut mobile_config);
-    let mobile_endpoint = local_endpoint_state(&mobile_config).unwrap();
-    let pc_endpoint = local_endpoint_state(&pc_config).unwrap();
+    let mobile_endpoint = local_endpoint_state(
+        &mobile_config,
+        test_runtime_secret_material(stringify!(&mobile_config)),
+    )
+    .unwrap();
+    let pc_endpoint = local_endpoint_state(
+        &pc_config,
+        test_runtime_secret_material(stringify!(&pc_config)),
+    )
+    .unwrap();
     save_config(&mut pc_config).unwrap();
 
     let command_payload = json!({
@@ -36,6 +44,7 @@ fn mobile_relay_encrypted_local_effect_command_requires_local_confirmation() {
     });
     let envelope = seal_mobile_relay_payload(
         &mobile_config,
+        test_runtime_secret_material(stringify!(&mobile_config)),
         crate::core::secure_mesh_crypto::SecureMeshPayloadKind::Command,
         &command_payload,
     )
@@ -68,6 +77,7 @@ fn command_result_secure_consumes_canonical_sync_and_acks_after_open() {
     let (pc_config, mut mobile_config, _envelope) = paired_command_envelope_fixture();
     let result_envelope = seal_mobile_relay_payload(
         &pc_config,
+        test_runtime_secret_material(stringify!(&pc_config)),
         crate::core::secure_mesh_crypto::SecureMeshPayloadKind::ResultPayload,
         &json!({
             "ok": true,
@@ -125,6 +135,7 @@ fn command_result_secure_reuses_single_operation_auth_batch_for_fetch_and_result
             let (pc_config, mut mobile_config, _envelope) = paired_command_envelope_fixture();
             let result_envelope = seal_mobile_relay_payload(
                 &pc_config,
+                test_runtime_secret_material(stringify!(&pc_config)),
                 crate::core::secure_mesh_crypto::SecureMeshPayloadKind::ResultPayload,
                 &json!({
                     "ok": true,
@@ -277,6 +288,7 @@ fn command_result_replay_proof_reuses_single_operation_auth_batch_for_fetch_and_
             let (pc_config, mut mobile_config, _envelope) = paired_command_envelope_fixture();
             let result_envelope = seal_mobile_relay_payload(
                 &pc_config,
+                test_runtime_secret_material(stringify!(&pc_config)),
                 crate::core::secure_mesh_crypto::SecureMeshPayloadKind::ResultPayload,
                 &json!({
                     "ok": true,
@@ -342,6 +354,7 @@ fn mobile_relay_commands_sync_reuses_single_operation_auth_batch_for_secure_comm
             for index in 0..2 {
                 let payload = secure_command_payload(
                     &mobile_config,
+                    test_runtime_secret_material(stringify!(&mobile_config)),
                     "agent.sessions.list",
                     None,
                     "default",
@@ -352,6 +365,7 @@ fn mobile_relay_commands_sync_reuses_single_operation_auth_batch_for_secure_comm
                 )?;
                 envelopes.push(seal_mobile_relay_payload(
                     &mobile_config,
+                    test_runtime_secret_material(stringify!(&mobile_config)),
                     crate::core::secure_mesh_crypto::SecureMeshPayloadKind::Command,
                     &payload,
                 )?);

@@ -58,6 +58,49 @@ fn fake_child_emits_incremental_text_with_bound_session_identity() {
 }
 
 #[test]
+fn fake_child_acknowledges_native_guidance_during_the_active_turn() {
+    let (directory, executable) = compile_fake_pi("lico-pi-rpc-native-steer");
+    let (binding_sender, binding_receiver) = std::sync::mpsc::sync_channel(1);
+    let working_directory = directory.clone();
+    let executable = executable.to_string_lossy().to_string();
+    let run = std::thread::spawn(move || {
+        super::super::super::turn_event_emit::install_stream_sink(Box::new(move |event| {
+            if event["event"] == "dispatch.turn.bound" {
+                let _ = binding_sender.try_send((
+                    event["sessionId"].as_str().unwrap_or_default().to_string(),
+                    event["turnId"].as_str().unwrap_or_default().to_string(),
+                ));
+            }
+        }));
+        let _guard = super::super::super::turn_event_emit::StreamSinkGuard;
+        execute(
+            &executable,
+            &json!({}),
+            "steer-case",
+            "",
+            Some(working_directory.as_path()),
+            10_000,
+            1024 * 1024,
+            1024,
+        )
+    });
+    let (session_id, turn_id) = binding_receiver
+        .recv_timeout(std::time::Duration::from_secs(5))
+        .expect("Pi should publish its exact active turn binding");
+    assert_eq!(session_id, "pi-native-steer-1");
+    assert_eq!(
+        steer(&session_id, &turn_id, "pi-native-steer-guidance"),
+        ControlDisposition::Accepted
+    );
+    let result = run.join().unwrap();
+    assert!(result.ok, "Pi RPC failure: {:?}", result.error);
+    assert_eq!(result.output, "pi-guided");
+    assert_eq!(result.session_id, session_id);
+    assert_eq!(result.turn_id, turn_id);
+    let _ = fs::remove_dir_all(directory);
+}
+
+#[test]
 fn stalled_rpc_turn_times_out_and_cleans_up_the_child_tree() {
     let (directory, executable) = compile_fake_pi("lico-pi-rpc-timeout");
     let result = execute(

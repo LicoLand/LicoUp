@@ -1,5 +1,4 @@
 use anyhow::{Context, Result, anyhow, ensure};
-use zeroize::Zeroizing;
 
 use super::super::{
     key_ratchet::SecureMeshPairwiseSession,
@@ -12,7 +11,8 @@ use super::{
     store_model::SecureMeshPairwiseDurableStore,
 };
 use crate::core::secure_mesh_secret_store::{
-    SecretStoreAuthorizationRequest, SecretStoreAuthorizationSession, SecretStoreHandle,
+    SecretBytes, SecretStoreAuthorizationRequest, SecretStoreAuthorizationSession,
+    SecretStoreHandle,
 };
 
 impl SecureMeshPairwiseDurableStore {
@@ -45,10 +45,8 @@ impl SecureMeshPairwiseDurableStore {
             .context("secure mesh pairwise public snapshot serialization failed")?;
         let secrets =
             session.to_secret_snapshot(state_version, sha256_hex(public_json.as_bytes()))?;
-        let secret_json = Zeroizing::new(
-            serde_json::to_string(&secrets)
-                .context("secure mesh pairwise secret snapshot serialization failed")?,
-        );
+        let secret_json = serde_json::to_string(&secrets)
+            .context("secure mesh pairwise secret snapshot serialization failed")?;
         ensure!(
             secret_json.len() <= MAX_PERSISTED_SECRET_SNAPSHOT_BYTES,
             "secure mesh pairwise secret snapshot exceeds the resource limit"
@@ -65,7 +63,11 @@ impl SecureMeshPairwiseDurableStore {
             )?,
         };
         self.secret_store
-            .set_secret_with_session(&secret_store_session, &secret_handle, secret_json.as_str())
+            .set_secret_with_session(
+                &secret_store_session,
+                &secret_handle,
+                SecretBytes::try_from_string(secret_json)?,
+            )
             .context("secure mesh pairwise secret snapshot write failed")?;
         Ok(PendingPairwiseSnapshot {
             public_json,
@@ -90,18 +92,17 @@ impl SecureMeshPairwiseDurableStore {
                 ),
             )?,
         };
-        let secret_json = Zeroizing::new(
-            self.secret_store
-                .get_secret_with_session(&secret_store_session, &secret_handle)
-                .context("secure mesh pairwise secret snapshot read failed")?
-                .ok_or_else(|| anyhow!("secure mesh pairwise secret snapshot is unavailable"))?,
-        );
+        let secret_json = self
+            .secret_store
+            .get_secret_with_session(&secret_store_session, &secret_handle)
+            .context("secure mesh pairwise secret snapshot read failed")?
+            .ok_or_else(|| anyhow!("secure mesh pairwise secret snapshot is unavailable"))?;
         ensure!(
-            secret_json.len() <= MAX_PERSISTED_SECRET_SNAPSHOT_BYTES,
+            secret_json.expose_bytes().len() <= MAX_PERSISTED_SECRET_SNAPSHOT_BYTES,
             "secure mesh pairwise secret snapshot exceeds the resource limit"
         );
         let secrets: PersistedPairwiseSessionSecrets =
-            serde_json::from_str(secret_json.as_str())
+            serde_json::from_slice(secret_json.expose_bytes())
                 .context("secure mesh pairwise secret snapshot deserialization failed")?;
         let public_json = serde_json::to_string(public)
             .context("secure mesh pairwise public snapshot binding serialization failed")?;

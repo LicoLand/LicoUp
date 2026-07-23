@@ -5,11 +5,26 @@ fn e2ee_status_accepts_memory_only_custody_but_does_not_overclaim_missing_sessio
     let previous = set_portable_data_dir_override(Some(dir));
     let store = Arc::new(EphemeralSecretStore::new());
     let mut pc_config = default_config();
-    let pc_descriptor =
-        ensure_mobile_relay_endpoint_descriptor(&mut pc_config, "desktop_sidecar").unwrap();
+    let pc_descriptor = ensure_mobile_relay_endpoint_descriptor(
+        &mut pc_config,
+        test_runtime_secret_material(stringify!(&mut pc_config)),
+        "desktop_sidecar",
+    )
+    .unwrap();
     let mut mobile_config = default_config();
-    ensure_mobile_relay_endpoint_descriptor(&mut mobile_config, "mobile").unwrap();
-    apply_peer_secure_mesh_descriptor(&mut mobile_config, &pc_descriptor, true).unwrap();
+    ensure_mobile_relay_endpoint_descriptor(
+        &mut mobile_config,
+        test_runtime_secret_material(stringify!(&mut mobile_config)),
+        "mobile",
+    )
+    .unwrap();
+    apply_peer_secure_mesh_descriptor(
+        &mut mobile_config,
+        test_runtime_secret_material(stringify!(&mut mobile_config)),
+        &pc_descriptor,
+        true,
+    )
+    .unwrap();
     let private_key = mobile_config["mobileRelayE2ee"]["privateKeyBase64url"]
         .as_str()
         .unwrap()
@@ -174,7 +189,12 @@ fn public_config_get_does_not_begin_secret_store_authorization_session() {
     config["pairingId"] = json!("pair-public-no-auth");
     config["pcToken"] = json!("pc-token-public-no-auth-canary");
     config["mobileToken"] = json!("mobile-token-public-no-auth-canary");
-    ensure_mobile_relay_endpoint_descriptor(&mut config, "mobile").unwrap();
+    ensure_mobile_relay_endpoint_descriptor(
+        &mut config,
+        test_runtime_secret_material(stringify!(&mut config)),
+        "mobile",
+    )
+    .unwrap();
     persist_config_secret_material_to_secret_store(
         &mut config,
         store.as_ref(),
@@ -214,11 +234,26 @@ fn e2ee_status_without_authorization_does_not_begin_secret_store_session() {
     let previous = set_portable_data_dir_override(Some(dir));
     let store = Arc::new(EphemeralSecretStore::new());
     let mut pc_config = default_config();
-    let pc_descriptor =
-        ensure_mobile_relay_endpoint_descriptor(&mut pc_config, "desktop_sidecar").unwrap();
+    let pc_descriptor = ensure_mobile_relay_endpoint_descriptor(
+        &mut pc_config,
+        test_runtime_secret_material(stringify!(&mut pc_config)),
+        "desktop_sidecar",
+    )
+    .unwrap();
     let mut mobile_config = default_config();
-    ensure_mobile_relay_endpoint_descriptor(&mut mobile_config, "mobile").unwrap();
-    apply_peer_secure_mesh_descriptor(&mut mobile_config, &pc_descriptor, true).unwrap();
+    ensure_mobile_relay_endpoint_descriptor(
+        &mut mobile_config,
+        test_runtime_secret_material(stringify!(&mut mobile_config)),
+        "mobile",
+    )
+    .unwrap();
+    apply_peer_secure_mesh_descriptor(
+        &mut mobile_config,
+        test_runtime_secret_material(stringify!(&mut mobile_config)),
+        &pc_descriptor,
+        true,
+    )
+    .unwrap();
     let private_key = mobile_config["mobileRelayE2ee"]["privateKeyBase64url"]
         .as_str()
         .unwrap()

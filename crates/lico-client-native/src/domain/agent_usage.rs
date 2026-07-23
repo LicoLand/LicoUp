@@ -1,6 +1,7 @@
 //! Local-only agent token usage facade.
 
 mod agent_usage_codex;
+mod agent_usage_native;
 mod attribution;
 mod command;
 mod contract;

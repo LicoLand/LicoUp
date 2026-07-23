@@ -1,6 +1,6 @@
 use crate::core::secure_mesh_transparency::reset_kt_persistent_authority_state;
 use crate::domain::mobile_relay::endpoint_trust::{
-    clear_mobile_relay_pairing_state, local_endpoint_state, secure_mesh_kt_authority_path,
+    clear_mobile_relay_pairing_state, local_public_device_identity, secure_mesh_kt_authority_path,
 };
 use crate::domain::mobile_relay::key_transparency::config::{
     RuntimeSecretContext, begin_kt_authority_reset, kt_authority_reset_failpoint,
@@ -28,8 +28,7 @@ pub(super) fn reset_authority_state_if_required(
         begin_kt_authority_reset()?;
     }
     kt_authority_reset_failpoint("after_guard_persisted")?;
-    if let Ok(endpoint) = local_endpoint_state(config) {
-        let identity = endpoint.device_identity()?;
+    if let Ok(identity) = local_public_device_identity(config) {
         let (secret_store, authorization, namespace) = secret_context
             .secret_store_batch
             .authorization()?

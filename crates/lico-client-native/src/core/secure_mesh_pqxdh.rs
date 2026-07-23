@@ -15,7 +15,7 @@ use subtle::ConstantTimeEq;
 use zeroize::{Zeroize, Zeroizing};
 
 pub const SECURE_MESH_PQXDH_CIPHER_SUITE: &str =
-    "licolite.pqxdh-triple-ratchet.v1.x25519-ed25519-mlkem1024-hkdfsha256";
+    "licomesh.pqxdh-triple-ratchet.v1.x25519-ed25519-mlkem1024-hkdfsha256";
 pub const ML_KEM_1024_KEY_GENERATION_SEED_BYTES: usize = 64;
 pub const ML_KEM_1024_PUBLIC_KEY_BYTES: usize = 1_568;
 pub const ML_KEM_1024_PRIVATE_KEY_BYTES: usize = 3_168;
@@ -25,9 +25,9 @@ pub const ML_KEM_1024_SHARED_SECRET_BYTES: usize = 32;
 const PQXDH_CURVE25519_ENCODING_TAG: u8 = 0x05;
 const PQXDH_ML_KEM_1024_ENCODING_TAG: u8 = 0x22;
 const PQXDH_F_PREFIX_BYTES: usize = 32;
-const PQXDH_INFO: &[u8] = b"LicoLiteSecureMesh_CURVE25519_SHA-256_ML-KEM-1024";
+const PQXDH_INFO: &[u8] = b"LicoMeshSecureMesh_CURVE25519_SHA-256_ML-KEM-1024";
 const TRIPLE_RATCHET_INFO: &[u8] =
-    b"licolite.secure-mesh.triple-ratchet.initial-secrets.pqxdh-mlkem1024.v1";
+    b"licomesh.secure-mesh.triple-ratchet.initial-secrets.pqxdh-mlkem1024.v1";
 type MlKem1024Algorithm = MlKem1024;
 
 fn generate_ml_kem_1024_key_pair(
@@ -335,11 +335,11 @@ mod tests {
         .unwrap();
         assert_eq!(
             hex(first.ec_secret()),
-            "4a1fd73bd173e4e66864c402e20f46a946c92cf6a0c418b527124a54fafc6536"
+            "0f98b1fe4d8782861382ad612b118a1e98dde620e3ad9886f6885aeffba8d7a3"
         );
         assert_eq!(
             hex(first.scka_secret()),
-            "2658cddf60c762624297cc364f89d41111c4af24446c172ee3843097a33c3b59"
+            "0e894284562bb8f8c3ffd786baf5cccdc9df8877969f668092ff1bbd151a55fe"
         );
         assert_eq!(
             hex(&libcrux_sha3::sha256(first.associated_data())),

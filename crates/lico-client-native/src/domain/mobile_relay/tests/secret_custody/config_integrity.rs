@@ -116,7 +116,12 @@ fn mobile_relay_public_config_redacts_secret_material() {
     config["pairingId"] = json!("pair-redacted");
     config["pcToken"] = json!("pc-token-redaction-canary");
     config["mobileToken"] = json!("mobile-token-redaction-canary");
-    ensure_mobile_relay_endpoint_descriptor(&mut config, "mobile").unwrap();
+    ensure_mobile_relay_endpoint_descriptor(
+        &mut config,
+        test_runtime_secret_material(stringify!(&mut config)),
+        "mobile",
+    )
+    .unwrap();
     config["pairedDevices"] = json!([
         {
             "id": "pc-redacted",

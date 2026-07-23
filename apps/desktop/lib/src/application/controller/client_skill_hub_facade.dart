@@ -81,8 +81,15 @@ mixin ClientSkillHubFacade
     skillHubController.replaceBusy(value);
   }
 
-  Future<void> refreshSkillHub(String agent) =>
-      skillHubController.refresh(agent);
+  Future<void> refreshSkillHub(
+    String agent, {
+    bool forceRefresh = false,
+    bool showProgress = true,
+  }) => skillHubController.refresh(
+    agent,
+    forceRefresh: forceRefresh,
+    showProgress: showProgress,
+  );
 
   Future<void> requestSkillHubPairing(String agent, {String target = ''}) =>
       skillHubController.requestPairing(agent, target: target);

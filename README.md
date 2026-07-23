@@ -1,10 +1,11 @@
 # Lico Arc
 
-English · [简体中文](README.zh-CN.md)
+English (normative) · [简体中文（本地化）](README.zh-CN.md)
 
 Lico Arc is an open-source client that brings local agents and devices into one
 clear workspace. It supports different tools and ways of working, while keeping
-the user in control.
+the user in control. [`PRODUCT.md`](PRODUCT.md) is the product-definition
+authority.
 
 ## Design ideas
 
@@ -21,18 +22,18 @@ the user in control.
 - Manages local skills, conversation backups, and usage views.
 - Connects peer clients through Secure Client Mesh.
 - Targets macOS, Windows, Linux, Android, and iOS. Read the
-  [support matrix](docs/releases/client-support-matrix.md) before relying on a
+  [compatibility matrix](docs/COMPATIBILITY.md) before relying on a
   platform or feature.
 
 Lico Arc is still in an early alpha stage. A build target or preview feature is
 not the same as a fully supported release.
 
-Optional LicoLite collaboration is not loaded by the default client. It is
+Optional LicoMesh collaboration is not loaded by the default client. It is
 available only after the user chooses an immutable GitHub commit, separately
 imports its trusted signing key, and installs and enables the plugin manually.
 A local deployment starts only through a fixed, signed external runner after a
 separate manual action. This repository does not bundle that server runner, so
-building Lico Arc alone is not proof that LicoLite was deployed. Installation,
+building Lico Arc alone is not proof that LicoMesh was deployed. Installation,
 enablement, and startup never authorize an external data transfer. Each exact
 request or selected local file that would leave the device requires a fresh,
 protected one-shot user approval.
@@ -77,15 +78,19 @@ npm run client:analyze
 npm run client:test
 ```
 
-See the [user guide](docs/USER-GUIDE.md) for common flows and the
-[architecture guide](docs/ARCHITECTURE.md) for component and data boundaries.
+See the [user guide](docs/functionality/USER-GUIDE.md) for common flows and the
+[architecture guide](docs/architecture/README.md) for component and data
+boundaries.
 
 ## Documentation
 
-- [User guide](docs/USER-GUIDE.md) · [用户指南](docs/USER-GUIDE.zh-CN.md)
-- [Architecture](docs/ARCHITECTURE.md) · [架构](docs/ARCHITECTURE.zh-CN.md)
-- [Support](docs/releases/client-support-matrix.md) ·
-  [支持状态](docs/releases/client-support-matrix.zh-CN.md)
+- [Documentation index](docs/README.md)
+- [User guide](docs/functionality/USER-GUIDE.md) ·
+  [用户指南](docs/functionality/USER-GUIDE.zh-CN.md)
+- [Architecture](docs/architecture/README.md) ·
+  [架构](docs/architecture/README.zh-CN.md)
+- [Compatibility](docs/COMPATIBILITY.md) ·
+  [兼容性](docs/COMPATIBILITY.zh-CN.md)
 - [Security](SECURITY.md) · [安全](SECURITY.zh-CN.md)
 - [Contributing](CONTRIBUTING.md) · [参与贡献](CONTRIBUTING.zh-CN.md)
 

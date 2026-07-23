@@ -1,17 +1,15 @@
 use std::collections::HashMap;
 use std::sync::Mutex;
 
-use anyhow::{Result, anyhow, ensure};
-use zeroize::Zeroizing;
-
 use crate::core::secure_mesh_capability::{CapabilityFact, CapabilityFactState};
 use crate::core::secure_mesh_secret_store::{
-    SecretStoreAuthorizationRequest, SecretStoreAuthorizationSession, SecretStoreHandle,
-    SecureMeshSecretStore, is_persistable_secret,
+    SecretBytes, SecretStoreAuthorizationRequest, SecretStoreAuthorizationSession,
+    SecretStoreHandle, SecureMeshSecretStore,
 };
+use anyhow::{Result, anyhow, ensure};
 
 pub struct EphemeralSecretStore {
-    secrets: Mutex<HashMap<String, Zeroizing<String>>>,
+    secrets: Mutex<HashMap<String, SecretBytes>>,
     capability_facts: Mutex<Vec<CapabilityFact>>,
     #[cfg(test)]
     authorization_sessions: Mutex<Vec<SecretStoreAuthorizationSession>>,
@@ -156,25 +154,21 @@ impl SecureMeshSecretStore for EphemeralSecretStore {
         Ok(session)
     }
 
-    fn set_secret(&self, handle: &SecretStoreHandle, secret: &str) -> Result<()> {
-        ensure!(
-            is_persistable_secret(secret),
-            "secure mesh ephemeral secret value is invalid"
-        );
+    fn set_secret(&self, handle: &SecretStoreHandle, secret: SecretBytes) -> Result<()> {
         self.secrets
             .lock()
             .map_err(|_| anyhow!("secure mesh ephemeral secret store state is unavailable"))?
-            .insert(handle.account(), Zeroizing::new(secret.to_string()));
+            .insert(handle.account(), secret);
         Ok(())
     }
 
-    fn get_secret(&self, handle: &SecretStoreHandle) -> Result<Option<String>> {
+    fn get_secret(&self, handle: &SecretStoreHandle) -> Result<Option<SecretBytes>> {
         Ok(self
             .secrets
             .lock()
             .map_err(|_| anyhow!("secure mesh ephemeral secret store state is unavailable"))?
             .get(&handle.account())
-            .map(|secret| secret.to_string()))
+            .map(SecretBytes::copy_for_persistent_read))
     }
 
     fn delete_secret(&self, handle: &SecretStoreHandle) -> Result<()> {

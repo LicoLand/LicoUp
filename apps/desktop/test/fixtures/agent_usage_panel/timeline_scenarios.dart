@@ -40,11 +40,12 @@ void registerAgentUsageTimelineScenarios() {
     await tester.pumpAndSettle();
 
     expect(find.text('Usage Over Time'), findsOneWidget);
-    expect(find.text('Last 30 days'), findsAtLeastNWidgets(1));
-    expect(find.text('ChatGPT - Desktop'), findsAtLeastNWidgets(1));
+    expect(find.text('Last 30 days'), findsNothing);
+    expect(find.byKey(const Key('agent-usage-window-chip-30')), findsOneWidget);
+    expect(find.text('Codex'), findsAtLeastNWidgets(1));
     expect(find.text('40'), findsAtLeastNWidgets(1));
     expect(service.reportCalls, 1);
-    expect(service.scanCalls, 0);
+    expect(service.scanCalls, 1);
   });
 
   testWidgets('snapshot-only reports do not masquerade as daily usage deltas', (
@@ -102,7 +103,7 @@ void registerAgentUsageTimelineScenarios() {
     expect(
       find.descendant(
         of: find.byKey(const ValueKey('agent-usage-token-share')),
-        matching: find.text('ChatGPT - Desktop'),
+        matching: find.text('Codex'),
       ),
       findsNothing,
     );
@@ -140,15 +141,15 @@ void registerAgentUsageTimelineScenarios() {
       final tooltip = find.byKey(const ValueKey('usage-wave-tooltip'));
       expect(tooltip, findsOneWidget);
       expect(
-        find.descendant(of: tooltip, matching: find.text('ChatGPT - Desktop')),
+        find.descendant(of: tooltip, matching: find.text('Codex')),
         findsOneWidget,
       );
       expect(
-        find.descendant(of: tooltip, matching: find.text('Cursor - IDE')),
+        find.descendant(of: tooltip, matching: find.text('Cursor')),
         findsNothing,
       );
       expect(
-        find.descendant(of: tooltip, matching: find.text('Kimi Code - CLI')),
+        find.descendant(of: tooltip, matching: find.text('Kimi Code')),
         findsOneWidget,
       );
       expect(

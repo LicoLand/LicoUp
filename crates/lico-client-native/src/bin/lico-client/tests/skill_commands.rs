@@ -15,7 +15,7 @@ fn cli_dispatches_agent_pairing_and_skill_paths() {
             "codex".into(),
         ])
         .unwrap();
-        assert_eq!(json_payload(&requested)["status"], "requested");
+        assert_eq!(json_payload(&requested)["status"], "approved");
 
         let pair_list = execute_cli(vec![
             "agents".into(),

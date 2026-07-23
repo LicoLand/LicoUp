@@ -62,12 +62,12 @@ void main() {
     );
   });
 
-  test('loader labels use formal product and surface names', () {
-    expect(skillLoaderAgentLabel('codex'), 'ChatGPT - Desktop');
-    expect(skillLoaderAgentLabel('claude'), 'Claude Code - CLI');
-    expect(skillLoaderAgentLabel('github-copilot'), 'GitHub Copilot - Plugin');
-    expect(skillLoaderAgentLabel('cursor'), 'Cursor - IDE');
-    expect(skillLoaderAgentLabel('opencode'), 'OpenCode - CLI');
+  test('loader labels use canonical product names', () {
+    expect(skillLoaderAgentLabel('codex'), 'Codex');
+    expect(skillLoaderAgentLabel('claude'), 'Claude Code');
+    expect(skillLoaderAgentLabel('github-copilot'), 'GitHub Copilot');
+    expect(skillLoaderAgentLabel('cursor'), 'Cursor');
+    expect(skillLoaderAgentLabel('opencode'), 'OpenCode');
   });
 
   test('agent skill roots use product-specific directory names', () {

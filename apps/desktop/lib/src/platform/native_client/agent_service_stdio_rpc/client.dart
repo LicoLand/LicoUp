@@ -1,19 +1,34 @@
 import 'package:flutter_client/src/platform/native_client/agent_service_stdio_rpc/command_exchange.dart';
 import 'package:flutter_client/src/platform/native_client/agent_service_stdio_rpc/conversation_exchange.dart';
 import 'package:flutter_client/src/platform/native_client/agent_service_stdio_rpc/operation_queue.dart';
+import 'package:flutter_client/src/platform/native_client/agent_service_stdio_rpc/orchestrator_lane_pool.dart';
 import 'package:flutter_client/src/platform/native_client/agent_service_stdio_rpc/protocol.dart';
 import 'package:flutter_client/src/platform/native_client/agent_service_stdio_rpc/session_manager.dart';
 import 'package:flutter_client/src/platform/native_client/agent_service_stdio_rpc/shutdown.dart';
 import 'package:flutter_client/src/platform/native_client/native_cli_ports.dart';
+import 'package:flutter_client/src/platform/native_client/native_rpc_priority.dart';
 
 class NativeStdioRpcClient implements NativeStdioRpcTransport {
   NativeStdioRpcClient({required NativeCliProcessContext processContext})
     : _processContext = processContext,
-      _sessionManager = StdioRpcSessionManager(processContext: processContext);
+      _sessionManager = StdioRpcSessionManager(processContext: processContext),
+      _conversationSessionManager = StdioRpcSessionManager(
+        processContext: processContext,
+      ) {
+    _orchestrator = StdioRpcOrchestratorLanePool(
+      processContext: processContext,
+      nextRequestId: _nextRequestId,
+      workflowId: () => _workflowId,
+    );
+  }
 
   final NativeCliProcessContext _processContext;
   final StdioRpcSessionManager _sessionManager;
+  final StdioRpcSessionManager _conversationSessionManager;
+  late final StdioRpcOrchestratorLanePool _orchestrator;
   final StdioRpcOperationQueue _operations = StdioRpcOperationQueue();
+  final StdioRpcOperationQueue _conversationOperations =
+      StdioRpcOperationQueue();
   late final String _workflowId = newStdioRpcWorkflowId();
   var _requestSequence = 0;
 
@@ -36,6 +51,7 @@ class NativeStdioRpcClient implements NativeStdioRpcTransport {
     }
     final requestArgs = List<String>.unmodifiable(args);
     return _operations.serialize(
+      priority: currentRpcPriorityToken(),
       () =>
           executeStdioRpcCommand(
             args: requestArgs,
@@ -57,7 +73,31 @@ class NativeStdioRpcClient implements NativeStdioRpcTransport {
     String method,
     Map<String, dynamic> params,
   ) {
-    if (_operations.closing || !method.startsWith('catalog.')) {
+    const conversationMethods = <String>{
+      'agent.conversation.open',
+      'agent.conversation.history',
+      'agent.conversation.cleanup',
+      'agent.conversation.capabilities',
+      'agent.conversation.cancel',
+      'agent.conversation.steer',
+    };
+    const catalogMethods = <String>{
+      'catalog.status',
+      'catalog.invalidate',
+      'catalog.refresh',
+      'catalog.receipt',
+      'catalog.purge',
+      'catalog.reconnect',
+      'catalog.list',
+      'catalog.observe',
+    };
+    const orchestratorMethods = <String>{'orchestrator.request'};
+    const stateMethods = <String>{'state.get', 'state.set'};
+    if (_operations.closing ||
+        (!catalogMethods.contains(method) &&
+            !orchestratorMethods.contains(method) &&
+            !stateMethods.contains(method) &&
+            !conversationMethods.contains(method))) {
       return Future<Map<String, dynamic>>.error(
         const LicoClientRpcException('invalid_request'),
       );
@@ -68,18 +108,29 @@ class NativeStdioRpcClient implements NativeStdioRpcTransport {
       );
     }
     final immutableParams = Map<String, dynamic>.unmodifiable(params);
-    return _operations.serialize(
+    if (method == 'orchestrator.request') {
+      return _orchestrator.execute(immutableParams);
+    }
+    final conversationMethod = conversationMethods.contains(method);
+    final operations = conversationMethod
+        ? _conversationOperations
+        : _operations;
+    final sessionManager = conversationMethod
+        ? _conversationSessionManager
+        : _sessionManager;
+    return operations.serialize(
+      priority: currentRpcPriorityToken(),
       () =>
           executeStdioRpcStructuredCommand(
             method: method,
             params: immutableParams,
             requestId: _nextRequestId(),
             workflowId: _workflowId,
-            sessionManager: _sessionManager,
+            sessionManager: sessionManager,
           ).timeout(
             _processContext.requestTimeout,
             onTimeout: () async {
-              await _sessionManager.invalidateAndDiscard();
+              await sessionManager.invalidateAndDiscard();
               throw const LicoClientRpcException('timeout');
             },
           ),
@@ -93,32 +144,38 @@ class NativeStdioRpcClient implements NativeStdioRpcTransport {
         const LicoClientRpcException('invalid_timeout'),
       );
     }
-    return _operations.serializeStream(
+    return _conversationOperations.serializeStream(
       operation: () => executeStdioRpcConversation(
         params: params,
         requestId: _nextRequestId(),
         workflowId: _workflowId,
-        sessionManager: _sessionManager,
+        sessionManager: _conversationSessionManager,
       ),
       timeout: _processContext.requestTimeout,
-      onTimeout: _sessionManager.invalidateAndDiscard,
+      onTimeout: _conversationSessionManager.invalidateAndDiscard,
     );
   }
 
   String _nextRequestId() => 'request-${++_requestSequence}';
 
   @override
-  Future<void> dispose() {
-    return _operations.close(() async {
-      final session = _sessionManager.takeForShutdown();
-      if (session == null) {
-        return;
-      }
-      await shutdownStdioRpcSession(
-        session: session,
-        requestId: _nextRequestId(),
-        workflowId: _workflowId,
-      );
-    });
+  Future<void> dispose() async {
+    await Future.wait<void>([
+      _operations.close(
+        () => shutdownStdioRpcManager(
+          manager: _sessionManager,
+          requestId: _nextRequestId(),
+          workflowId: _workflowId,
+        ),
+      ),
+      _conversationOperations.close(
+        () => shutdownStdioRpcManager(
+          manager: _conversationSessionManager,
+          requestId: _nextRequestId(),
+          workflowId: _workflowId,
+        ),
+      ),
+      _orchestrator.dispose(),
+    ]);
   }
 }

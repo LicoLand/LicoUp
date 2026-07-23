@@ -4,7 +4,7 @@ import { loadSecureMeshPhysicalEvidenceConfig } from "../lib/secure-mesh-physica
 
 export const repoRoot = path.resolve(fileURLToPath(new URL("../../..", import.meta.url)));
 export const VERIFIER_REF = "tools/scripts/client-secure-mesh-macos-keychain-user-presence-proof.mjs";
-export const reportSchemaVersion = "licolite.secure-mesh.macos-adaptive-custody-proof.v2";
+export const reportSchemaVersion = "licomesh.secure-mesh.macos-adaptive-custody-proof.v2";
 
 export const leakPatterns = Object.freeze([
   ["local_path", /(?:^|["\s])(?:\/Users\/|\/private\/|\/var\/folders\/|\/tmp\/|[A-Za-z]:\\)/u],

@@ -4,10 +4,66 @@ import {
   command,
   rustLayer,
   rustBinaryTests,
+  rustIntegrationTest,
   defineModule,
 } from "../helpers.mjs";
 
 export const RUST_PLATFORM_MODULES = Object.freeze([
+  defineModule({
+      id: "rust.ffi.typed-error-chain",
+      kind: "rust-ffi",
+      summary: "Generated typed conversation errors across runtime, FFI, and stdio terminal frames",
+      inputs: [
+        "schemas/client_bridge/client_error.schema.json",
+        "tools/scripts/generate-client-bridge-contracts.mjs",
+        "crates/lico-client-native/src/ffi/generated/client_error.rs",
+        "crates/lico-client-native/src/platform/runtime_adapters/error.rs",
+        "crates/lico-client-native/src/bin/lico-client/tests/rpc/error.rs",
+      ],
+      command: rustBinaryTests(
+        "lico-client",
+        "tests::rpc::error::typed_client_error_metadata_survives_command_and_terminal_rpc_frames",
+      ),
+    }),
+  defineModule({
+      id: "rust.ffi.client-state-contract",
+      kind: "rust-ffi",
+      summary: "Generated typed client-state DTOs and structured stdio RPC dispatch",
+      inputs: [
+        "schemas/client_bridge/state.json",
+        "schemas/client_bridge/manifest.json",
+        "tools/scripts/generate-client-bridge-contracts.mjs",
+        "crates/lico-client-native/src/ffi/generated/client_state.rs",
+        "crates/lico-client-native/src/platform/client_state/operations.rs",
+        "crates/lico-client-native/src/bin/lico-client/stdio_rpc/model.rs",
+        "crates/lico-client-native/src/bin/lico-client/stdio_rpc/request.rs",
+        "crates/lico-client-native/src/bin/lico-client/stdio_rpc/server.rs",
+        "crates/lico-client-native/src/bin/lico-client/tests/rpc/state.rs",
+        "tests/contract/client/client-state-contract.test.mjs",
+      ],
+      command: rustBinaryTests(
+        "lico-client",
+        "tests::rpc::state::",
+      ),
+    }),
+  defineModule({
+      id: "rust.ffi.secure-mesh-contract",
+      kind: "rust-ffi",
+      summary: "Generated bounded Secure Mesh request, result, failure, and typed FFI dispatch",
+      inputs: [
+        "schemas/client_bridge/secure_mesh.json",
+        "schemas/client_bridge/manifest.json",
+        "tools/scripts/generate-client-bridge-contracts.mjs",
+        "crates/lico-client-native/src/ffi/generated/secure_mesh.rs",
+        "crates/lico-client-native/src/ffi/secure_mesh_mobile_ffi/dispatch_router.rs",
+        "crates/lico-client-native/src/ffi/secure_mesh_mobile_ffi/request_validation.rs",
+      ],
+      command: command(
+        "cargo",
+        ["check", "--manifest-path", NATIVE_MANIFEST, "--lib"],
+        10 * 60_000,
+      ),
+    }),
   defineModule({
       id: "rust.platform.skill-invocation-projection",
       kind: "rust-platform",
@@ -81,6 +137,39 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       command: rustLayer("platform::secure_mesh_secret_store::tests::authorization::"),
     }),
   defineModule({
+      id: "rust.platform.secure-mesh-secret-store.zeroizing-secret",
+      kind: "rust-platform",
+      summary: "Bounded owned secret bytes with explicit exposure and zeroizing destruction",
+      inputs: [
+        "crates/lico-client-native/src/core/secure_mesh_secret_store/secret_bytes.rs",
+        "crates/lico-client-native/src/core/secure_mesh_secret_store/tests/secret_material.rs",
+        "crates/lico-client-native/src/platform/secure_mesh_secret_store/tests/secret_material.rs",
+      ],
+      command: rustLayer("platform::secure_mesh_secret_store::tests::secret_material::"),
+    }),
+  defineModule({
+      id: "rust.platform.secure-mesh-secret-store.secret-bytes-ui",
+      kind: "rust-platform",
+      summary: "Compile-fail proof that secret bytes cannot be cloned or serialized",
+      inputs: [
+        "crates/lico-client-native/tests/secret_bytes_ui.rs",
+        "crates/lico-client-native/tests/ui/secret_bytes_forgery.rs",
+        "crates/lico-client-native/tests/ui/secret_bytes_forgery.stderr",
+      ],
+      command: rustIntegrationTest("secret_bytes_ui"),
+    }),
+  defineModule({
+      id: "rust.platform.secure-mesh-secret-store.capability-ui",
+      kind: "rust-platform",
+      summary: "External compile-fail proof that presence capabilities cannot be forged",
+      inputs: [
+        "crates/lico-client-native/tests/macos_presence_capability_ui.rs",
+        "crates/lico-client-native/tests/ui/macos_presence_capability_forgery.rs",
+        "crates/lico-client-native/tests/ui/macos_presence_capability_forgery.stderr",
+      ],
+      command: rustIntegrationTest("macos_presence_capability_ui"),
+    }),
+  defineModule({
       id: "rust.platform.secure-mesh-secret-store.capability-linux",
       kind: "rust-platform",
       summary: "Platform capability projection and Linux Secret Service runtime probing",
@@ -131,7 +220,6 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       inputs: [
         "crates/lico-client-native/src/platform/secure_mesh_secret_store/platform_backends/mod.rs",
         "crates/lico-client-native/src/platform/secure_mesh_secret_store/platform_backends/fail_closed.rs",
-        "crates/lico-client-native/src/platform/secure_mesh_secret_store/platform_backends/keyring.rs",
         "crates/lico-client-native/src/platform/secure_mesh_secret_store/platform_backends/unsupported.rs",
         "crates/lico-client-native/src/platform/secure_mesh_secret_store/tests/platform_backends.rs",
       ],
@@ -1667,15 +1755,27 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       command: rustLayer("platform::"),
     }),
   defineModule({
+      id: "rust.ffi.cli-command-admission",
+      kind: "rust-ffi",
+      summary: "Bounded typed native CLI command admission and fail-closed dispatch",
+      inputs: [
+        "crates/lico-client-native/src/ffi/commands/**",
+        "crates/lico-client-native/src/bin/lico-client.rs",
+        "crates/lico-client-native/src/bin/lico-client/stdio_rpc/**",
+        "crates/lico-client-native/tests/cli_command_contract_cases.rs",
+      ],
+      command: rustIntegrationTest("cli_command_contract_cases"),
+    }),
+  defineModule({
       id: "rust.ffi",
       kind: "rust-ffi",
       summary: "Remaining native command handlers without a dedicated bridge closure",
       inputs: [
+        "crates/lico-client-native/src/ffi/commands/adapter.rs",
         "crates/lico-client-native/src/ffi/commands/agent_conversation.rs",
         "crates/lico-client-native/src/ffi/commands/agent_usage.rs",
         "crates/lico-client-native/src/ffi/commands/client_update.rs",
         "crates/lico-client-native/src/ffi/commands/mobile.rs",
-        "crates/lico-client-native/src/ffi/commands/openclaw_gateway.rs",
         "crates/lico-client-native/src/ffi/commands/opencode_serve.rs",
         "crates/lico-client-native/src/ffi/commands/secure_mesh.rs",
         "crates/lico-client-native/src/ffi/commands/skill.rs",

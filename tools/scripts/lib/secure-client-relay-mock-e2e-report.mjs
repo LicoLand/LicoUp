@@ -4,7 +4,7 @@ import path from "node:path";
 export const secureClientRelayMockE2eProducer =
   "tools/scripts/client-secure-client-relay-mock-e2e.mjs";
 export const secureClientRelayMockE2eSchemaVersion =
-  "licolite.secure-client-relay.mock-e2e-report.v1";
+  "licomesh.secure-client-relay.mock-e2e-report.v1";
 
 const digestPattern = /^sha256:[a-f0-9]{64}$/u;
 const exactReportFields = Object.freeze([

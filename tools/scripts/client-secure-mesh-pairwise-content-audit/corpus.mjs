@@ -38,7 +38,7 @@ export async function buildVectorCorpus({
   );
   const corpus = {
     ok: contentVector.ok === true && pairwiseVector.ok === true,
-    schemaVersion: "licolite.secure-mesh.pairwise-content-vector-corpus.v1",
+    schemaVersion: "licomesh.secure-mesh.pairwise-content-vector-corpus.v1",
     generatedAt: new Date().toISOString(),
     sourceOfTruth,
     redacted: true,

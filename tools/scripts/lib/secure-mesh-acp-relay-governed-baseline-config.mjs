@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 
 const configUrl = new URL("../config/secure-mesh-acp-relay-governed-baseline.json", import.meta.url);
 const configRef = "tools/scripts/config/secure-mesh-acp-relay-governed-baseline.json";
-const schemaVersion = "licolite.secure-mesh.acp-relay-governed-baseline-config.v2";
+const schemaVersion = "licomesh.secure-mesh.acp-relay-governed-baseline-config.v2";
 const leakPatterns = Object.freeze([
   ["local_path", /\/Users\/|\/private\/|\/var\/folders\/|[A-Za-z]:\\/u],
   ["bearer", /Bearer\s+(?!\[redacted\])\S+/u],

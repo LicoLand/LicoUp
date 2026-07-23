@@ -1,8 +1,11 @@
+mod adapter_coverage;
 mod append_refresh;
 mod cache_runtime;
+mod cumulative_resume;
 mod dedup_lineage;
-mod estimates;
+mod fallback_coverage;
 mod generic_usage;
+mod native_rollup;
 mod reconciliation;
 mod retained_reports;
 mod support;

@@ -124,13 +124,16 @@ export async function checkDomainAndCryptoBoundaries(context) {
     [`${agentUsageCodexRoot}/append_guard.rs`, 80],
     [`${agentUsageCodexRoot}/cache.rs`, 190],
     [`${agentUsageCodexRoot}/cache_batch.rs`, 220],
+    [`${agentUsageCodexRoot}/cache_cleanup.rs`, 90],
     [`${agentUsageCodexRoot}/constants.rs`, 15],
     [`${agentUsageCodexRoot}/event_hash.rs`, 100],
     [`${agentUsageCodexRoot}/file_collection.rs`, 90],
     [`${agentUsageCodexRoot}/lineage.rs`, 100],
+    [`${agentUsageCodexRoot}/model_backfill.rs`, 100],
     [`${agentUsageCodexRoot}/models.rs`, 150],
     [`${agentUsageCodexRoot}/parser.rs`, 300],
-    [`${agentUsageCodexRoot}/scan.rs`, 190],
+    [`${agentUsageCodexRoot}/rollup.rs`, 220],
+    [`${agentUsageCodexRoot}/scan.rs`, 200],
     [`${agentUsageCodexRoot}/scan_params.rs`, 100],
     [`${agentUsageCodexRoot}/utils.rs`, 70]
   ]);
@@ -221,11 +224,14 @@ export async function checkDomainAndCryptoBoundaries(context) {
   const agentUsageCacheIntegrationRoot =
     "crates/lico-client-native/tests/agent_usage_cache_cases";
   const agentUsageCacheScenarioLimits = new Map([
+    [`${agentUsageCacheIntegrationRoot}/adapter_coverage.rs`, 135],
     [`${agentUsageCacheIntegrationRoot}/append_refresh.rs`, 190],
     [`${agentUsageCacheIntegrationRoot}/cache_runtime.rs`, 130],
+    [`${agentUsageCacheIntegrationRoot}/cumulative_resume.rs`, 220],
     [`${agentUsageCacheIntegrationRoot}/dedup_lineage.rs`, 170],
-    [`${agentUsageCacheIntegrationRoot}/estimates.rs`, 75],
+    [`${agentUsageCacheIntegrationRoot}/fallback_coverage.rs`, 180],
     [`${agentUsageCacheIntegrationRoot}/generic_usage.rs`, 145],
+    [`${agentUsageCacheIntegrationRoot}/native_rollup.rs`, 150],
     [`${agentUsageCacheIntegrationRoot}/reconciliation.rs`, 40],
     [`${agentUsageCacheIntegrationRoot}/retained_reports.rs`, 80],
     [`${agentUsageCacheIntegrationRoot}/support.rs`, 115],

@@ -91,4 +91,66 @@ void main() {
       findsNothing,
     );
   });
+
+  testWidgets('model selector shows the configured default model name', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        locale: const Locale('zh'),
+        supportedLocales: LicoStrings.supportedLocales,
+        localizationsDelegates: const [
+          GlobalMaterialLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+        ],
+        theme: buildLicoTheme(platformBrightness: Brightness.dark),
+        home: Scaffold(
+          body: ConversationRuntimeSettingsBar(
+            enabled: true,
+            modelOptions: const ['gpt-5.5', 'gpt-5.4-mini'],
+            selectedModel: '',
+            reasoningEffortOptions: const [],
+            selectedReasoningEffort: '',
+            onModelChanged: (_) {},
+            onReasoningEffortChanged: (_) {},
+            defaultModel: 'gpt-5.5',
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('模型 · gpt-5.5（默认）'), findsOneWidget);
+    expect(find.text('模型 · 原生默认值'), findsNothing);
+  });
+
+  testWidgets('model selector falls back to the native default label', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        locale: const Locale('zh'),
+        supportedLocales: LicoStrings.supportedLocales,
+        localizationsDelegates: const [
+          GlobalMaterialLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+        ],
+        theme: buildLicoTheme(platformBrightness: Brightness.dark),
+        home: Scaffold(
+          body: ConversationRuntimeSettingsBar(
+            enabled: true,
+            modelOptions: const ['gpt-5.5'],
+            selectedModel: '',
+            reasoningEffortOptions: const [],
+            selectedReasoningEffort: '',
+            onModelChanged: (_) {},
+            onReasoningEffortChanged: (_) {},
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('模型 · 原生默认值'), findsOneWidget);
+  });
 }

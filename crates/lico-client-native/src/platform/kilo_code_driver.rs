@@ -19,5 +19,11 @@ pub(super) const KILO_CODE_DRIVER: AcpDriverSpec = AcpDriverSpec::new(RUNTIME_PR
 pub(super) use execution::execute;
 pub(super) use probe::capability_probe;
 
+pub(in crate::platform) fn cancel(
+    session_id: &str,
+) -> super::local_service::turn_control::ControlDisposition {
+    super::local_service::turn_control::cancel(KILO_CODE_DRIVER.agent_id, session_id)
+}
+
 #[cfg(test)]
 mod tests;

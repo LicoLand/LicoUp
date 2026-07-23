@@ -55,7 +55,7 @@ mixin FakeAgentStateSupport on AgentService {
       confidence: 0.82,
       detail: 'cli',
       manual: false,
-      configPath: '/tmp/codex.toml',
+      configPath: 'test-data/codex.toml',
       binaryPath: ['', 'opt', 'lico-test', 'bin', 'codex'].join('/'),
       adapterStatus: 'implemented',
       adapterCapabilities: parityReadyAdapterCapabilities,
@@ -77,14 +77,14 @@ mixin FakeAgentStateSupport on AgentService {
     'ok': true,
     'status': 'planned',
     'skillId': 'review-helper',
-    'installDir': '/tmp/codex-skills/review-helper',
+    'installDir': 'test-data/codex-skills/review-helper',
     'packageDigestSha256': 'abc123',
   };
   Map<String, dynamic> skillInstallApplyResult = {
     'ok': true,
     'status': 'installed',
     'skillId': 'review-helper',
-    'installDir': '/tmp/codex-skills/review-helper',
+    'installDir': 'test-data/codex-skills/review-helper',
     'rollbackSnapshotId': 'skill-install-snapshot-1',
     'packageDigestSha256': 'abc123',
   };

@@ -57,12 +57,6 @@ final LayoutSurfaceBundle workbenchMobileBundle = LayoutSurfaceBundle(
     LayoutStateNamespace(
       profileId: LayoutProfileId.parse('workbench'),
       surface: LayoutRuntimeSurface.mobile,
-      destination: ClientSection.agents,
-      channel: LayoutStateChannels.agentsDestination,
-    ),
-    LayoutStateNamespace(
-      profileId: LayoutProfileId.parse('workbench'),
-      surface: LayoutRuntimeSurface.mobile,
       destination: ClientSection.settings,
       channel: LayoutStateChannels.settingsScroll,
     ),

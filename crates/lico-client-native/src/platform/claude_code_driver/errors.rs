@@ -68,5 +68,7 @@ pub(super) fn requires_transport_reset(failure: &ProtocolFailure) -> bool {
             | "claude_code_exited"
             | "claude_code_cleanup_requested"
             | "claude_code_session_mismatch"
+            | "claude_code_session_id_invalid"
+            | "claude_code_authentication_required"
     )
 }

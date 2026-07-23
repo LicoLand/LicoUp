@@ -45,7 +45,7 @@ void registerAgentConversationHistoryLoadingScenarios() {
       expect(sessions.single.sourceKind, 'codex-session-store');
       expect(sessions.single.importMode, 'precise-adapter');
       expect(sessions.single.sourceTool, 'codex');
-      expect(sessions.single.sourcePath, '/tmp/codex/history.jsonl');
+      expect(sessions.single.sourcePath, 'test-data/codex/history.jsonl');
       expect(sessions.single.messageCount, 2);
       expect(captured.single, ['conversations', 'list', '--agent', 'codex']);
     },
@@ -112,6 +112,26 @@ void registerAgentConversationHistoryLoadingScenarios() {
       ]);
     },
   );
+
+  test('projects progressive native history preview frames', () async {
+    final agentService = _StreamingAgentService([
+      {
+        'event': 'session-preview',
+        'ok': true,
+        'milestone': 3,
+        'session': _sessionJson('session-preview-1', 'Preview native history.'),
+      },
+      {'event': 'done', 'ok': true},
+    ]);
+    const service = AgentConversationService();
+
+    final sessions = await service
+        .streamSessions(agentService: agentService, agentId: 'codex')
+        .toList();
+
+    expect(sessions, hasLength(1));
+    expect(sessions.single.title, 'Preview native history.');
+  });
 
   test(
     'passes pagination arguments to native history stream command',
@@ -188,7 +208,7 @@ Map<String, dynamic> _sessionJson(String id, String text) {
     'sourceKind': 'codex-session-store',
     'importMode': 'precise-adapter',
     'sourceTool': 'codex',
-    'sourcePath': '/tmp/codex/history.jsonl',
+    'sourcePath': 'test-data/codex/history.jsonl',
     'native': true,
     'readOnly': true,
     'messageCount': 2,

@@ -4,12 +4,14 @@ use serde_json::json;
 
 #[test]
 fn create_request_rejects_uri_and_network_share_destinations() {
-    for path in [
-        "https://example.invalid/archive",
-        "file:///tmp/archive",
-        "//host/share",
-        r"\\host\share",
-    ] {
+    let windows_separator = char::from(92).to_string();
+    let invalid_destinations = [
+        "https://example.invalid/archive".to_owned(),
+        ["file:", "", "test-data", "archive"].join("/"),
+        ["", "", "host", "share"].join("/"),
+        ["", "", "host", "share"].join(&windows_separator),
+    ];
+    for path in invalid_destinations {
         let error = normalize_request(&json!({
             "selectionMode": "exact-keyword",
             "query": "local",
@@ -39,8 +41,9 @@ fn relative_destination_is_resolved_to_an_explicit_local_path() {
 
 #[test]
 fn create_request_rejects_non_local_or_untyped_state_paths() {
+    let non_local_state = ["file:", "", "test-data", "state"].join("/");
     for params in [
-        json!({"selectionMode": "exact-keyword", "query": "local", "path": "archive-output", "stateRoot": "file:///tmp/state"}),
+        json!({"selectionMode": "exact-keyword", "query": "local", "path": "archive-output", "stateRoot": non_local_state}),
         json!({"selectionMode": "exact-keyword", "query": "local", "path": "archive-output", "portableDir": 7}),
     ] {
         let error = normalize_request(&params).unwrap_err().to_string();

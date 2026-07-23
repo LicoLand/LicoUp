@@ -18,7 +18,7 @@ fn archive_keywords_dedupes_after_normalization() {
 
     assert_eq!(keywords, vec!["OSysIt"]);
     let profile =
-        derived_archive_profile(&keywords, Path::new("/tmp/archive"), &["codex".into()]).unwrap();
+        derived_archive_profile(&keywords, Path::new("test-data/archive"), &["codex".into()]).unwrap();
     assert_eq!(profile.profile_id, "osysit");
     assert_eq!(profile.collection_path_segments, vec!["osysit"]);
     assert_eq!(profile.canonical_names, vec!["OSysIt"]);
@@ -27,17 +27,17 @@ fn archive_keywords_dedupes_after_normalization() {
 #[test]
 fn archive_keywords_create_one_profile_per_keyword() {
     let keywords = archive_keywords(&json!({
-        "keywords": "LicoLite, Agent Studio, osysit"
+        "keywords": "LicoMesh, Agent Studio, osysit"
     }))
     .unwrap();
     let profiles =
-        derived_keyword_archive_profiles(&keywords, Path::new("/tmp/archive"), &["codex".into()])
+        derived_keyword_archive_profiles(&keywords, Path::new("test-data/archive"), &["codex".into()])
             .unwrap();
 
-    assert_eq!(keywords, vec!["LicoLite", "Agent Studio", "osysit"]);
+    assert_eq!(keywords, vec!["LicoMesh", "Agent Studio", "osysit"]);
     assert_eq!(profiles.len(), 3);
-    assert_eq!(profiles[0].collection_path_segments, vec!["licolite"]);
-    assert_eq!(profiles[0].canonical_names, vec!["LicoLite"]);
+    assert_eq!(profiles[0].collection_path_segments, vec!["licomesh"]);
+    assert_eq!(profiles[0].canonical_names, vec!["LicoMesh"]);
     assert_eq!(profiles[1].collection_path_segments, vec!["agent-studio"]);
     assert_eq!(profiles[1].canonical_names, vec!["Agent Studio"]);
     assert!(profiles[1].alias_names.contains(&"agentstudio".to_string()));
@@ -52,7 +52,7 @@ fn archive_profile_completes_phrase_keyword_aliases() {
     }))
     .unwrap();
     let profile =
-        derived_archive_profile(&keywords, Path::new("/tmp/archive"), &["codex".into()]).unwrap();
+        derived_archive_profile(&keywords, Path::new("test-data/archive"), &["codex".into()]).unwrap();
 
     assert_eq!(profile.profile_id, "design-studio");
     assert_eq!(profile.collection_path_segments, vec!["design-studio"]);
@@ -80,7 +80,7 @@ fn archive_profile_completes_phrase_keyword_aliases() {
     .unwrap();
     let camel_profile = derived_archive_profile(
         &camel_keywords,
-        Path::new("/tmp/archive"),
+        Path::new("test-data/archive"),
         &["codex".into()],
     )
     .unwrap();

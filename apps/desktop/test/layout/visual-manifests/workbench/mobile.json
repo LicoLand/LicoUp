@@ -1,5 +1,5 @@
 {
-  "schema": "licolite.layout-visual-manifest",
+  "schema": "licomesh.layout-visual-manifest",
   "schemaVersion": 2,
   "profile": "workbench",
   "surface": "mobile",
@@ -12,7 +12,7 @@
   "authorityEntries": [
     {
       "path": "apps/desktop/test/layout/fixtures/production_client_shell_fixture.dart",
-      "digest": "sha256:4a41f42bc0088950012721f938cff26a66c4eb8c6f1f58d44ef4e0e0009f5808"
+      "digest": "sha256:f4d3d3d371cb2e2a4a91f26c86679551f7db0fe87c73855ebb04eb6911bbd182"
     },
     {
       "path": "apps/desktop/test/layout/production_baseline/production_layout_baseline_test.dart",
@@ -20,13 +20,13 @@
     },
     {
       "path": "apps/desktop/test/layout/production_baseline/production_layout_switch_continuity_test.dart",
-      "digest": "sha256:9ddaf28b52fc61ec1b32eafbb4328754a56881cccd9f82bdbc17d4b0394c3522"
+      "digest": "sha256:329c3546171c9232c36b88bd650f44b0f75df0669bd6c011909ea5258fa4186c"
     }
   ],
   "entries": [
     {
       "path": "apps/desktop/lib/src/frontend/layout/profiles/workbench/mobile/destinations/workbench_agents_destination.dart",
-      "digest": "sha256:ed46c4aafd0fdd8a31ee4d32acb4ea394193adae4db81c1c3d217caf0370efc0"
+      "digest": "sha256:dfe802353cf198619d9acaa60d913962bda1c46c9dc46f815a6eff4ba9767a19"
     },
     {
       "path": "apps/desktop/lib/src/frontend/layout/profiles/workbench/mobile/destinations/workbench_mobile_agents_presentation.dart",
@@ -46,7 +46,7 @@
     },
     {
       "path": "apps/desktop/lib/src/frontend/layout/profiles/workbench/mobile/workbench_mobile_bundle.dart",
-      "digest": "sha256:8b8b5ffee30d126f38b521323b03a4bfc8bf939aa5d0beced8a9e8ea5ced0e6b"
+      "digest": "sha256:4f7b7735ddcce315ead4b574d4d694ff863ab28c8c5c519f5a9595cbee3c3ad0"
     },
     {
       "path": "apps/desktop/lib/src/frontend/layout/profiles/workbench/mobile/workbench_mobile_components.dart",
@@ -66,7 +66,7 @@
     },
     {
       "path": "apps/desktop/test/goldens/layout/production-baseline/workbench/mobile/agents.png",
-      "digest": "sha256:e14fb02d3e5045906a852c41ac8cf2bb0641c181a3d597d8b5bcb26f23e07447"
+      "digest": "sha256:20586f18c019ac2b9926662ffbf37ba05fb80cfd24d71d9e2923ad01f6afc6de"
     },
     {
       "path": "apps/desktop/test/goldens/layout/production-baseline/workbench/mobile/settings.png",
@@ -82,7 +82,7 @@
     },
     {
       "path": "apps/desktop/test/layout/profiles/workbench/mobile/workbench_mobile_bundle_test.dart",
-      "digest": "sha256:509d4ace85967d3dbc4aefb3e23b9f31a46dc64a73781ecc14ac43057d3c6f01"
+      "digest": "sha256:2f27b62b14d61a60f97d3c1b7c06eae8f352765b12e59a2b143316bbec85badc"
     },
     {
       "path": "apps/desktop/test/layout/profiles/workbench/mobile/workbench_mobile_golden_test.dart",
@@ -97,5 +97,5 @@
       "digest": "sha256:5dd78e3b076b31e2ce98fd58aaf860972423e82f23cd00d07f04bac71c9a45ea"
     }
   ],
-  "manifestDigest": "sha256:0d6f7231d5d103bbc97dbce235f923abe41571c1dd2ded8606b4106efd867e4b"
+  "manifestDigest": "sha256:1f36f2dcac6b1822cc06ac650490783af72692599364db63760c3a596249f8dd"
 }

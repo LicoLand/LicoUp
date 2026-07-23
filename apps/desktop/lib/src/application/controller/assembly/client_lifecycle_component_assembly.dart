@@ -5,11 +5,13 @@ import 'package:flutter_client/src/application/controller/client_lifecycle_coord
 
 final class ClientLifecycleComponentAssembly {
   ClientLifecycleComponentAssembly({
-    required void Function(bool initialized) onInitializedChanged,
     required ClientComponentStatusSink reportStatus,
   }) : controller = ClientLifecycleCoordinator(
          onReport: (report) {
-           onInitializedChanged(false);
+           if (report.code == 'client_lifecycle_disposed' ||
+               report.code == 'client_lifecycle_transition_invalid') {
+             return;
+           }
            reportStatus(
              chinese: '初始化失败。',
              english: 'Initialization failed.',

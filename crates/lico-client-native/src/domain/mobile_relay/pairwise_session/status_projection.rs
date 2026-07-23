@@ -23,7 +23,9 @@ pub(in crate::domain::mobile_relay) fn authorized_pairwise_session_status(
     config: &Value,
     secret_context: &mut RuntimeSecretContext,
 ) -> AuthorizedPairwiseSessionStatus {
-    let Ok(endpoint) = local_endpoint_state(config) else {
+    let Ok(endpoint_id) =
+        local_endpoint_state(config, &secret_context.material).map(|endpoint| endpoint.endpoint_id)
+    else {
         return AuthorizedPairwiseSessionStatus::blocked("pairwise_session_missing");
     };
     let Ok(session_id) = session_id(config) else {
@@ -32,7 +34,7 @@ pub(in crate::domain::mobile_relay) fn authorized_pairwise_session_status(
     let Ok(store) = mobile_relay_pairwise_store() else {
         return AuthorizedPairwiseSessionStatus::blocked("pairwise_session_unavailable");
     };
-    let Ok(Some(_record)) = store.read_record(&session_id, &endpoint.endpoint_id) else {
+    let Ok(Some(_record)) = store.read_record(&session_id, &endpoint_id) else {
         return AuthorizedPairwiseSessionStatus::blocked("pairwise_session_missing");
     };
     let Ok(Some(authorization_session)) = secret_context.shared_authorization_session() else {
@@ -43,7 +45,7 @@ pub(in crate::domain::mobile_relay) fn authorized_pairwise_session_status(
     }
     let Ok(Some(session)) = store.load_session_with_authorized_session(
         &session_id,
-        &endpoint.endpoint_id,
+        &endpoint_id,
         &authorization_session,
     ) else {
         return AuthorizedPairwiseSessionStatus::blocked("pairwise_session_unavailable");

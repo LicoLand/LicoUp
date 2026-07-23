@@ -18,6 +18,8 @@ mixin ClientAgentUsageFacade {
 
   bool get isScanningAgentUsage => agentUsageController.scanning;
   int get agentUsageHistoryDays => agentUsageController.historyDays;
+  bool get hasFreshAgentUsageScanCoverage =>
+      agentUsageController.hasFreshScanCoverage;
 
   AgentUsageAgentSummary? get selectedAgentUsage =>
       agentUsageController.selectedUsage;

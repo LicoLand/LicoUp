@@ -7,6 +7,7 @@ import 'package:flutter_client/src/frontend/layout/profiles/bubble/desktop/desti
 import 'package:flutter_client/src/frontend/layout/profiles/bubble/desktop/destinations/mobile_relay_destination.dart';
 import 'package:flutter_client/src/frontend/layout/profiles/bubble/desktop/destinations/monitoring_destination.dart';
 import 'package:flutter_client/src/frontend/layout/profiles/bubble/desktop/destinations/settings_destination.dart';
+import 'package:flutter_client/src/frontend/layout/profiles/bubble/desktop/destinations/plugin_management_destination.dart';
 
 final Map<ClientSection, LayoutDestinationBuilder>
 bubbleDesktopDestinationBuilders =
@@ -14,6 +15,7 @@ bubbleDesktopDestinationBuilders =
       ClientSection.agents: buildBubbleAgentsDestination,
       ClientSection.monitoring: buildBubbleMonitoringDestination,
       ClientSection.skillHub: buildBubbleSkillHubDestination,
+      ClientSection.pluginManagement: buildBubblePluginManagementDestination,
       ClientSection.mobileRelay: buildBubbleMobileRelayDestination,
       ClientSection.settings: buildBubbleSettingsDestination,
     });

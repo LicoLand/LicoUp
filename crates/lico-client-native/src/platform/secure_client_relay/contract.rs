@@ -4,18 +4,18 @@ use serde::Serialize;
 use serde_json::Value;
 
 pub const SECURE_CLIENT_RELAY_CORE_CONTRACT_DIGEST: &str =
-    "sha256:62c27e8af0348bf13909ddd9d05f07a39b153bc6d011df5ed7249499cf19dd01";
+    "sha256:0c2cdc66b4c135043b53c0c5b53533238568978a948ae98be1b45eb7a28b724b";
 pub const SECURE_CLIENT_RELAY_CORE_CONFORMANCE_DIGEST: &str =
-    "sha256:0f33bd3d5ca8ddf63e293f1d620eaf8f583b7c8998967573f726575a000bae2d";
-pub const SECURE_CLIENT_RELAY_PROTOCOL_VERSION: &str = "licolite.secure-mesh.v1";
+    "sha256:ffc60b2ebc9dc123bfabb5e8627613a2f5b8b7b3792fd68a0dd2ca0ffae96224";
+pub const SECURE_CLIENT_RELAY_PROTOCOL_VERSION: &str = "licomesh.secure-mesh.v1";
 pub const SECURE_CLIENT_RELAY_CORE_CONTRACT: &str =
     include_str!("../../../resources/secure-client-relay-core-contract.json");
 pub const SECURE_CLIENT_RELAY_CORE_CONFORMANCE: &str =
     include_str!("../../../resources/secure-client-relay-core-conformance.json");
 
-pub(super) const STORE_SCHEMA_VERSION: &str = "licolite.secure-mesh.store-schema.v2";
-pub(super) const DEVICE_TRUST_PROTOCOL_VERSION: &str = "licolite.secure-mesh.device-trust.v2";
-pub(super) const DELIVERY_PROTOCOL_VERSION: &str = "licolite.secure-mesh.delivery.v1";
+pub(super) const STORE_SCHEMA_VERSION: &str = "licomesh.secure-mesh.store-schema.v2";
+pub(super) const DEVICE_TRUST_PROTOCOL_VERSION: &str = "licomesh.secure-mesh.device-trust.v2";
+pub(super) const DELIVERY_PROTOCOL_VERSION: &str = "licomesh.secure-mesh.delivery.v1";
 pub(super) const SESSION_COOKIE_NAME: &str = "lico_console_session";
 pub(super) const MAX_AUTH_VALUE_BYTES: usize = 4 * 1024;
 pub(super) const MAX_IDENTIFIER_BYTES: usize = 255;
@@ -107,7 +107,13 @@ impl SecureClientRelayOperation {
                 "signatureAlgorithm",
                 "expiresAt",
             ],
-            Self::EndpointRegister => &["ok", "schemaVersion", "protocolVersion", "endpoint"],
+            Self::EndpointRegister => &[
+                "ok",
+                "schemaVersion",
+                "protocolVersion",
+                "endpoint",
+                "registrationReceipt",
+            ],
             Self::EnvelopeSend => &[
                 "ok",
                 "schemaVersion",

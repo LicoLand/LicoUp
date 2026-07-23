@@ -1,12 +1,12 @@
-use super::control::{ControlRequest, denied_control_response, interrupt_request};
+use super::control::{ControlRequest, denied_control_response, interrupt_request, steer_message};
 use super::errors::{ProtocolFailure, requires_transport_reset, supervisor_failure};
 use super::io::{TransportEvent, write_message};
 use super::model::{PROCESS_POLL_INTERVAL, RunResult};
 use super::params::DriverConfig;
 use super::protocol::{TurnOutcome, TurnState};
 use super::supervision::{
-    ManagedTransport, bind_session, lookup_session_transport, remove_transport, set_active_session,
-    spawn_transport,
+    ManagedTransport, bind_session, lookup_session_transport, record_success, remove_transport,
+    set_active_session, spawn_transport,
 };
 use super::transport::PersistentTransport;
 use serde_json::Value;
@@ -144,7 +144,16 @@ pub(in crate::platform) fn execute(
     set_active_session(&managed, None);
     drop(transport);
     if let Some(outcome) = outcome {
-        bind_session(&managed, &outcome.session_id);
+        if let Err(failure) = bind_session(&managed, &outcome.session_id) {
+            remove_transport(&managed, true);
+            return RunResult::failed(
+                failure.with_turn(&outcome.turn_id),
+                started_at,
+                false,
+                stderr_truncated,
+            );
+        }
+        record_success(&managed, &outcome.turn_id, &outcome.output);
         return RunResult {
             ok: true,
             output: outcome.output,
@@ -247,8 +256,16 @@ fn run_turn_loop(
                     Ok(Some(outcome)) => return (Some(outcome), None, false),
                     Ok(None) => {
                         if let Some(session_id) = state.observed_session_id.as_deref() {
-                            bind_session(managed, session_id);
+                            if let Err(failure) = bind_session(managed, session_id) {
+                                return (None, Some(failure.with_turn(&config.turn_id)), false);
+                            }
                             set_active_session(managed, Some(session_id.to_string()));
+                            super::super::turn_event_emit::emit_turn_event(
+                                "dispatch.turn.bound",
+                                session_id,
+                                &config.turn_id,
+                                serde_json::json!({"nativeSteer": true}),
+                            );
                         }
                     }
                     Err(failure) => return (None, Some(failure), false),
@@ -326,6 +343,29 @@ fn handle_control_requests(
                         "claude_code_write_failed",
                         "Claude Code stopped accepting an interrupt request.",
                         "turn/cancel",
+                    ));
+                }
+            }
+            Ok(ControlRequest::Steer {
+                session_id,
+                text,
+                acknowledged,
+            }) => {
+                let current = state
+                    .observed_session_id
+                    .as_deref()
+                    .or(state.expected_session_id.as_deref());
+                let matches = current == Some(session_id.as_str());
+                let written = matches
+                    && steer_message(&text).is_some_and(|message| {
+                        write_message(&mut transport.stdin, &message).is_ok()
+                    });
+                let _ = acknowledged.send(written);
+                if matches && !written {
+                    return Some(state.failure(
+                        "claude_code_write_failed",
+                        "Claude Code stopped accepting streamed guidance.",
+                        "turn/steer",
                     ));
                 }
             }

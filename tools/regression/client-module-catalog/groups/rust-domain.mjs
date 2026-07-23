@@ -48,6 +48,23 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       command: rustLayer("domain::agent_usage::window::tests::"),
     }),
   defineModule({
+      id: "rust.domain.agent-usage.native-cache",
+      kind: "rust-domain",
+      summary: "Exact native metadata readers with append cursors and immutable historical day/model rollups",
+      inputs: [
+        "crates/lico-client-native/src/domain/agent_usage/agent_usage_native.rs",
+        "crates/lico-client-native/src/domain/agent_usage/agent_usage_native/cache.rs",
+        "crates/lico-client-native/src/domain/agent_usage/agent_usage_native/files.rs",
+        "crates/lico-client-native/src/domain/agent_usage/agent_usage_native/models.rs",
+        "crates/lico-client-native/src/domain/agent_usage/agent_usage_native/parser.rs",
+        "crates/lico-client-native/src/domain/agent_usage/agent_usage_native/parser/cursor.rs",
+        "crates/lico-client-native/src/domain/agent_usage/agent_usage_native/parser/hermes.rs",
+        "crates/lico-client-native/src/domain/agent_usage/agent_usage_native/parser/openagent.rs",
+        "crates/lico-client-native/src/domain/agent_usage/agent_usage_native/watermark.rs",
+      ],
+      command: rustLayer("domain::agent_usage::agent_usage_native::"),
+    }),
+  defineModule({
       id: "rust.domain.agent-usage-cache",
       kind: "rust-domain",
       summary: "Codex usage scan orchestration and incremental-cache integration scenarios",
@@ -61,6 +78,18 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       command: rustIntegrationTest(
         "agent_usage_incremental_cache",
         "agent_usage_cache_cases::",
+      ),
+    }),
+  defineModule({
+      id: "rust.domain.agent-usage-cache.adapter-coverage",
+      kind: "rust-domain",
+      summary: "Adapter coverage for supported local usage-history sources",
+      inputs: [
+        "crates/lico-client-native/tests/agent_usage_cache_cases/adapter_coverage.rs",
+      ],
+      command: rustIntegrationTest(
+        "agent_usage_incremental_cache",
+        "agent_usage_cache_cases::adapter_coverage::",
       ),
     }),
   defineModule({
@@ -88,6 +117,18 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       ),
     }),
   defineModule({
+      id: "rust.domain.agent-usage-cache.cumulative-resume",
+      kind: "rust-domain",
+      summary: "Cross-day cumulative watermarks for resumed historical sessions",
+      inputs: [
+        "crates/lico-client-native/tests/agent_usage_cache_cases/cumulative_resume.rs",
+      ],
+      command: rustIntegrationTest(
+        "agent_usage_incremental_cache",
+        "agent_usage_cache_cases::cumulative_resume::",
+      ),
+    }),
+  defineModule({
       id: "rust.domain.agent-usage-cache.dedup-lineage",
       kind: "rust-domain",
       summary: "Copy identity, fork lineage, and independent-session scenarios",
@@ -100,15 +141,15 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       ),
     }),
   defineModule({
-      id: "rust.domain.agent-usage-cache.estimates",
+      id: "rust.domain.agent-usage-cache.fallback-coverage",
       kind: "rust-domain",
-      summary: "Explicit token and uncovered local estimate reconciliation scenarios",
+      summary: "Fallback coverage for unavailable and unsupported local usage-history sources",
       inputs: [
-        "crates/lico-client-native/tests/agent_usage_cache_cases/estimates.rs",
+        "crates/lico-client-native/tests/agent_usage_cache_cases/fallback_coverage.rs",
       ],
       command: rustIntegrationTest(
         "agent_usage_incremental_cache",
-        "agent_usage_cache_cases::estimates::",
+        "agent_usage_cache_cases::fallback_coverage::",
       ),
     }),
   defineModule({
@@ -121,6 +162,18 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       command: rustIntegrationTest(
         "agent_usage_incremental_cache",
         "agent_usage_cache_cases::generic_usage::",
+      ),
+    }),
+  defineModule({
+      id: "rust.domain.agent-usage-cache.native-rollup",
+      kind: "rust-domain",
+      summary: "Native append reuse, day finalization, and current-day mutable-row scenario",
+      inputs: [
+        "crates/lico-client-native/tests/agent_usage_cache_cases/native_rollup.rs",
+      ],
+      command: rustIntegrationTest(
+        "agent_usage_incremental_cache",
+        "agent_usage_cache_cases::native_rollup::",
       ),
     }),
   defineModule({
@@ -233,11 +286,21 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       command: rustLayer("domain::agent_usage::agent_usage_codex::tests::lineage::"),
     }),
   defineModule({
+      id: "rust.domain.agent-usage.codex-model-backfill",
+      kind: "rust-domain",
+      summary: "Token-weighted session model attribution for exact events without a local model label",
+      inputs: [
+        "crates/lico-client-native/src/domain/agent_usage/agent_usage_codex/model_backfill.rs",
+      ],
+      command: rustLayer("domain::agent_usage::agent_usage_codex::model_backfill::tests::"),
+    }),
+  defineModule({
       id: "rust.domain.agent-usage.codex-cache-database",
       kind: "rust-domain",
       summary: "Private SQLite cache schema, freshness, locking, and indexed source lookup",
       inputs: [
         "crates/lico-client-native/src/domain/agent_usage/agent_usage_codex/cache.rs",
+        "crates/lico-client-native/src/domain/agent_usage/agent_usage_codex/cache_cleanup.rs",
         "crates/lico-client-native/src/domain/agent_usage/agent_usage_codex/constants.rs",
         "crates/lico-client-native/src/domain/agent_usage/agent_usage_codex/tests/cache.rs",
       ],
@@ -256,10 +319,19 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
   defineModule({
       id: "rust.domain.agent-usage.codex-parser",
       kind: "rust-domain",
-      summary: "Incremental JSONL parsing, explicit token deltas, and uncovered estimates",
+      summary: "Incremental JSONL parsing and exact provider token deltas",
       inputs: [
         "crates/lico-client-native/src/domain/agent_usage/agent_usage_codex/parser.rs",
         "crates/lico-client-native/src/domain/agent_usage/agent_usage_codex/tests/parser.rs",
+      ],
+      command: rustLayer("domain::agent_usage::agent_usage_codex::tests::parser::"),
+    }),
+  defineModule({
+      id: "rust.domain.agent-usage.codex-rollup",
+      kind: "rust-domain",
+      summary: "Immutable historical day/model/session reduction with current-day detail retention",
+      inputs: [
+        "crates/lico-client-native/src/domain/agent_usage/agent_usage_codex/rollup.rs",
       ],
       command: rustLayer("domain::agent_usage::agent_usage_codex::tests::parser::"),
     }),
@@ -368,7 +440,7 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
   defineModule({
       id: "rust.domain.agent-conversations.parser-codex",
       kind: "rust-domain",
-      summary: "Codex rollout parser, grouped events, and usage estimates",
+      summary: "Codex rollout parser, grouped events, and native usage metadata",
       inputs: [
         "crates/lico-client-native/src/domain/conversation/history/codex.rs",
         "crates/lico-client-native/src/domain/conversation/history/tests/codex.rs",
@@ -1776,6 +1848,7 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       summary: "Bounded secret material generation and custody handles",
       inputs: [
         "crates/lico-client-native/src/domain/mobile_relay/secret_custody/secret_material.rs",
+        "crates/lico-client-native/src/domain/mobile_relay/secret_custody/runtime_secret_material.rs",
       ],
       command: rustLayer(
         "domain::mobile_relay::secret_custody::secret_material::tests::",
@@ -1846,6 +1919,17 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       ],
       command: rustLayer(
         "domain::mobile_relay::tests::secret_custody::disposable_cleanup::",
+      ),
+    }),
+  defineModule({
+      id: "rust.domain.mobile-relay.secret-custody.scenario.zeroizing-boundary",
+      kind: "rust-domain",
+      summary: "Owned runtime secret handoff and zeroizing replacement/drop boundary",
+      inputs: [
+        "crates/lico-client-native/src/domain/mobile_relay/tests/secret_custody/zeroizing_boundary.rs",
+      ],
+      command: rustLayer(
+        "domain::mobile_relay::tests::secret_custody::zeroizing_boundary::",
       ),
     }),
   defineModule({

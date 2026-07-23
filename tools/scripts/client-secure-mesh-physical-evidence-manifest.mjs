@@ -376,7 +376,7 @@ const summary = {
 };
 
 const manifest = {
-  schemaVersion: "licolite.secure-mesh.physical-evidence-manifest-report.v2",
+  schemaVersion: "licomesh.secure-mesh.physical-evidence-manifest-report.v2",
   evidenceRefSchemaVersion: SECURE_CLIENT_MESH_E2EE_EVIDENCE_REF_REPORT_SCHEMA_VERSION,
   verifier: "tools/scripts/client-secure-mesh-physical-evidence-manifest.mjs",
   generatedBy: "tools/scripts/client-secure-mesh-physical-evidence-manifest.mjs",

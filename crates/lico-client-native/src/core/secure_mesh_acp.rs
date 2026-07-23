@@ -8,7 +8,7 @@ use crate::core::secure_mesh_crypto::{
 use crate::core::secure_mesh_pairwise::SecureMeshPairwiseSession;
 use crate::core::secure_mesh_relay_envelope::SecureMeshRelayEnvelope;
 
-pub const SECURE_MESH_ACP_ENVELOPE_PROTOCOL: &str = "licolite.secure-mesh.acp-envelope.v1";
+pub const SECURE_MESH_ACP_ENVELOPE_PROTOCOL: &str = "licomesh.secure-mesh.acp-envelope.v1";
 pub const SECURE_MESH_ACP_STATUS: &str = "acp_protected_envelope_aad_available_plaintext_protected_payload_relay_blocked_independent_review_pending_pqxdh_mlkem1024_triple_ratchet";
 
 const ACP_AAD_MAGIC: &[u8] = b"LCOSM-ACP-AAD-v1";
@@ -56,18 +56,18 @@ impl SecureMeshAcpPayloadClass {
 
     pub fn content_type(self) -> &'static str {
         match self {
-            Self::Prompt => "application/licolite.secure-mesh.acp.prompt.v1",
-            Self::Update => "application/licolite.secure-mesh.acp.update.v1",
-            Self::Reasoning => "application/licolite.secure-mesh.acp.reasoning.v1",
-            Self::ToolArguments => "application/licolite.secure-mesh.acp.tool-arguments.v1",
-            Self::ToolResult => "application/licolite.secure-mesh.acp.tool-result.v1",
-            Self::FilesystemContent => "application/licolite.secure-mesh.acp.filesystem.v1",
-            Self::TerminalContent => "application/licolite.secure-mesh.acp.terminal.v1",
-            Self::PermissionPayload => "application/licolite.secure-mesh.acp.permission.v1",
-            Self::ApprovalDecision => "application/licolite.secure-mesh.acp.approval.v1",
-            Self::Artifact => "application/licolite.secure-mesh.acp.artifact.v1",
-            Self::ArchiveLayer => "application/licolite.secure-mesh.acp.archive.v1",
-            Self::Receipt => "application/licolite.secure-mesh.acp.receipt.v1",
+            Self::Prompt => "application/licomesh.secure-mesh.acp.prompt.v1",
+            Self::Update => "application/licomesh.secure-mesh.acp.update.v1",
+            Self::Reasoning => "application/licomesh.secure-mesh.acp.reasoning.v1",
+            Self::ToolArguments => "application/licomesh.secure-mesh.acp.tool-arguments.v1",
+            Self::ToolResult => "application/licomesh.secure-mesh.acp.tool-result.v1",
+            Self::FilesystemContent => "application/licomesh.secure-mesh.acp.filesystem.v1",
+            Self::TerminalContent => "application/licomesh.secure-mesh.acp.terminal.v1",
+            Self::PermissionPayload => "application/licomesh.secure-mesh.acp.permission.v1",
+            Self::ApprovalDecision => "application/licomesh.secure-mesh.acp.approval.v1",
+            Self::Artifact => "application/licomesh.secure-mesh.acp.artifact.v1",
+            Self::ArchiveLayer => "application/licomesh.secure-mesh.acp.archive.v1",
+            Self::Receipt => "application/licomesh.secure-mesh.acp.receipt.v1",
         }
     }
 

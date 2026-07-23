@@ -96,7 +96,10 @@ function syncPackageJson(manifest) {
 
 function syncTomlManifest(relativePath, sectionName, manifest) {
   const source = readText(relativePath);
-  const sectionRegex = new RegExp(`(\\[${sectionName.replace(".", "\\.")}\\][\\s\\S]*?\\nversion\\s*=\\s*")[^"]+(")`);
+  const sectionRegex = new RegExp(
+    String.raw`(\[${sectionName.replace(".", String.raw`\.`)}\].*?\nversion\s*=\s*")[^"]+(")`,
+    "s",
+  );
   writeText(relativePath, replaceExactly(
     source,
     sectionRegex,

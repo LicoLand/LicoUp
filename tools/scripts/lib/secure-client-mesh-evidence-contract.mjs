@@ -1,23 +1,23 @@
 export const SECURE_CLIENT_MESH_PRODUCTION_SOURCE_OF_TRUTH =
   "tools/scripts/lib/secure-client-mesh-release-contract.mjs";
 export const SECURE_CLIENT_MESH_E2EE_AUTHORITY_PROOF_SCHEMA_VERSION =
-  "licolite.secure-client-mesh.e2ee-authority-proof.v1";
+  "licomesh.secure-client-mesh.e2ee-authority-proof.v1";
 export const SECURE_CLIENT_MESH_E2EE_AUTHORITY_TRUST_ROOT_SCHEMA_VERSION =
-  "licolite.secure-client-mesh.e2ee-authority-trust-root.v1";
+  "licomesh.secure-client-mesh.e2ee-authority-trust-root.v1";
 export const SECURE_CLIENT_MESH_E2EE_AUTHORITY_PROOF_FIELD = "authorityProof";
 export const SECURE_CLIENT_MESH_E2EE_AUTHORITY_PROOF_ALGORITHM = "ed25519";
 export const SECURE_CLIENT_MESH_E2EE_AUTHORITY_TRUST_ROOT_ENV =
   "LICO_SECURE_CLIENT_MESH_E2EE_AUTHORITY_TRUST_ROOT";
 export const SECURE_CLIENT_MESH_E2EE_EVIDENCE_REF_REPORT_SCHEMA_VERSION =
-  "licolite.secure-client-mesh.e2ee-evidence-ref-report.v1";
+  "licomesh.secure-client-mesh.e2ee-evidence-ref-report.v1";
 export const SECURE_CLIENT_MESH_E2EE_PLACEHOLDER_GENERATOR =
   "secure-client-mesh-e2ee-evidence.placeholder";
 export const SECURE_CLIENT_MESH_E2EE_EVIDENCE_ABSENCE_RECEIPT_FIELD = "absenceReceipt";
 export const SECURE_CLIENT_MESH_E2EE_EVIDENCE_ABSENCE_RECEIPT_SCHEMA_VERSION =
-  "licolite.secure-client-mesh.e2ee-evidence-absence-receipt.v1";
+  "licomesh.secure-client-mesh.e2ee-evidence-absence-receipt.v1";
 export const SECURE_CLIENT_MESH_E2EE_EVIDENCE_ABSENCE_RECEIPT_TYPE = "evidence-absence";
 export const SECURE_CLIENT_RELAY_MOCK_ACCEPTANCE_REPORT_SCHEMA_VERSION =
-  "licolite.secure-client-relay.client-acceptance-report.v1";
+  "licomesh.secure-client-relay.client-acceptance-report.v1";
 const SERVER_SCRIPTS_PREFIX = "tools/" + "server" + "-scripts/";
 
 export const SECURE_CLIENT_MESH_PRODUCTION_BLOCKERS = Object.freeze([

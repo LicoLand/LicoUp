@@ -12,10 +12,10 @@ import {
 
 test("layer, FFI, bridge, packaging, and release paths select dedicated modules", () => {
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "apps/desktop/lib/src/contracts/routing/route_history.dart",
+    "apps/desktop/lib/src/platform/native_client/orchestrator_ipc/client.dart",
   ])), [
     "architecture.client-boundaries",
-    "flutter.feature.routing",
+    "flutter.feature.orchestrator-projection",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
     "crates/lico-client-native/src/domain/mobile_relay/config.rs",
@@ -43,6 +43,12 @@ test("layer, FFI, bridge, packaging, and release paths select dedicated modules"
   assert.deepEqual(ids(selectModulesForChangedPaths([
     "crates/lico-client-native/src/platform/mcp_approval_plan_store.rs",
   ])), ["architecture.client-boundaries", "rust.platform.mcp-approval-plan-store"]);
+  assert.deepEqual(ids(selectModulesForChangedPaths([
+    "crates/lico-client-native/src/platform/orchestrator_ipc/client.rs",
+  ])), ["regression.orchestrator-ipc", "architecture.client-boundaries"]);
+  assert.deepEqual(ids(selectModulesForChangedPaths([
+    "packages/contracts/client/lico-arc-orchestrator-ipc.schema.json",
+  ])), ["regression.orchestrator-ipc"]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
     "crates/lico-client-native/src/bin/lico-client.rs",
   ])), ["architecture.client-boundaries", "rust.bin.lico-client"]);
@@ -298,21 +304,20 @@ test("foundation adapters and architecture scripts have explicit changed-path ow
     "test/native_stdio_rpc_line_framer_test.dart",
     "test/native_stdio_rpc_protocol_test.dart",
   ]);
-  assert.equal(
-    stdioTransport.command.args.at(-1),
+  assert.deepEqual(stdioTransport.command.args.slice(-2), [
     "test/native_stdio_rpc_client_test.dart",
-  );
+    "test/stdio_rpc_operation_queue_test.dart",
+  ]);
   assert.deepEqual(stdioIntegration.command.args.slice(-2), ["--name", "RPC"]);
   assert.deepEqual(stdioSourceBundle.command.args, [
     "--test",
     "tests/contract/client/native-stdio-rpc-source-bundle.test.mjs",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "apps/desktop/lib/src/application/features/routing/controller/routing_module_lifecycle_controller.dart",
+    "apps/desktop/lib/src/application/features/agents/orchestration/agent_orchestration_policy_controller.dart",
   ])), [
     "architecture.client-boundaries",
-    "flutter.feature.routing",
-    "flutter.layer.shell",
+    "flutter.feature.orchestrator-projection",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
     "apps/desktop/test/directory_path_controller_test.dart",

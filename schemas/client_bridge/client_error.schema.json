@@ -1,0 +1,128 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "lico://client-bridge/client-error/v1",
+  "title": "ClientError",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "fields"
+  ],
+  "properties": {
+    "version": {
+      "const": 1
+    },
+    "fields": {
+      "type": "array"
+    }
+  },
+  "version": 1,
+  "fields": [
+    {
+      "name": "code",
+      "type": "enum",
+      "values": [
+        "invalid_request",
+        "agent_identifier_missing",
+        "agent_message_missing",
+        "agent_message_input_limit",
+        "agent_runtime_unsupported",
+        "native_agent_runtime_profile_unavailable",
+        "native_agent_executable_unavailable",
+        "agent_conversation_dispatch_failed",
+        "stream_protocol_failed",
+        "terminal_result_invalid",
+        "command_failed",
+        "command_panicked",
+        "response_too_large",
+        "request_too_large",
+        "invalid_json",
+        "invalid_protocol",
+        "invalid_request_id",
+        "invalid_workflow_id",
+        "invalid_method",
+        "invalid_args",
+        "invalid_portable_data_dir",
+        "invalid_params",
+        "invalid_collection",
+        "invalid_document",
+        "state_operation_failed",
+        "workflow_mismatch",
+        "command_usage",
+        "streaming_command_unsupported",
+        "authorization_required",
+        "authorization_failed",
+        "process_local_shutdown_failed",
+        "private_input_transport_required",
+        "cli_command_missing",
+        "cli_command_unknown",
+        "cli_operation_unsupported",
+        "cli_required_argument_missing",
+        "cli_argument_unexpected",
+        "cli_option_unknown",
+        "cli_required_option_missing",
+        "cli_option_value_missing",
+        "cli_option_duplicate",
+        "cli_option_constraint_violation",
+        "cli_json_invalid",
+        "cli_argument_count_exceeded",
+        "cli_argument_bytes_exceeded"
+      ]
+    },
+    {
+      "name": "stage",
+      "type": "enum",
+      "values": [
+        "request/validation",
+        "discovery/adapter",
+        "discovery/driver",
+        "process/launch",
+        "conversation/dispatch",
+        "conversation/stream_receive",
+        "conversation/terminal_result",
+        "stdio_rpc/response"
+      ]
+    },
+    {
+      "name": "component",
+      "type": "enum",
+      "values": [
+        "stdio_rpc",
+        "runtime_adapter",
+        "runtime_process",
+        "conversation_runtime",
+        "native_cli"
+      ]
+    },
+    {
+      "name": "retryable",
+      "type": "boolean"
+    },
+    {
+      "name": "recovery",
+      "type": "enum",
+      "values": [
+        "correct_request",
+        "select_supported_adapter",
+        "install_or_retry_runtime",
+        "preserve_draft_and_retry",
+        "review_terminal_result",
+        "retry_or_review_request"
+      ]
+    },
+    {
+      "name": "presentationArgs",
+      "type": "bounded_string_map",
+      "maxEntries": 4,
+      "maxKeyBytes": 32,
+      "maxValueBytes": 96,
+      "allowedKeys": [
+        "agentLabel",
+        "field",
+        "resultKind",
+        "runtimeLabel",
+        "sequence"
+      ]
+    }
+  ]
+}

@@ -43,7 +43,7 @@ export function validateDriverInventory(inventory, agentIds) {
     canonicalJson(contract.requiredBooleans) !==
       canonicalJson([
         "officialNativeLane",
-        "releaseUiPassed",
+        "conversationGatePassed",
         "cleanupPassed",
         "privacyPassed",
       ]) ||

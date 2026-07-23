@@ -10,13 +10,13 @@ import './fixtures/layout_scoped_state_fixture.dart';
 void main() {
   test('fixture admits only supplied presentation-state namespaces', () {
     final profile = LayoutProfileDescriptor(
-      id: LayoutProfileId.parse('studio'),
-      label: LayoutProfileCopy(english: 'Studio', chinese: '原生'),
+      id: LayoutProfileId.parse('native'),
+      label: LayoutProfileCopy(english: 'Native', chinese: '原生'),
       description: LayoutProfileCopy(
-        english: 'Studio fixture',
+        english: 'Native fixture',
         chinese: '原生夹具',
       ),
-      styleIdentity: 'dense-docked-studio',
+      styleIdentity: 'glassy-rail-native',
       isDefault: false,
     );
     final state = buildLayoutScopedStateFixture(

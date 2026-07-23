@@ -11,6 +11,7 @@ use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 mod antigravity;
+mod builtin;
 mod config;
 mod history;
 mod kilo;
@@ -22,6 +23,7 @@ mod reasoning;
 use antigravity::{
     collect_antigravity_available_models_param, collect_antigravity_cli_model_catalog,
 };
+use builtin::apply_builtin_model_catalog_overlay;
 use config::{
     collect_model_catalog_from_config_path, collect_model_catalog_from_model_collection_path,
     extra_model_collection_paths, extra_model_config_paths, home_dir_for_model_catalog,
@@ -34,9 +36,10 @@ use merge::{
 };
 use normalization::{
     canonical_model_display_name, collect_model_catalog_entries_from_collection_value,
-    collect_model_catalog_from_value, is_reasoning_option_key, model_display_name_from_object,
-    model_display_name_from_value, model_name_from_value, normalize_model_catalog_key,
-    prefer_model_display_name, sanitize_model_name, sanitize_option_name,
+    collect_model_catalog_from_value, default_model_name_from_config_document,
+    is_reasoning_option_key, model_display_name_from_object, model_display_name_from_value,
+    model_name_from_value, normalize_model_catalog_key, prefer_model_display_name,
+    sanitize_model_name, sanitize_option_name,
 };
 use provider::{
     provider_id_from_model_object, provider_id_from_model_value, provider_label_from_provider_id,
@@ -52,7 +55,19 @@ pub(super) struct ModelCatalogEntry {
     pub(super) provider_id: Option<String>,
     pub(super) provider_inferred: bool,
     pub(super) sources: BTreeSet<String>,
-    pub(super) reasoning_efforts: BTreeSet<String>,
+    /// Insertion-ordered and deduplicated so the built-in table controls the
+    /// picker order for known models.
+    pub(super) reasoning_efforts: Vec<String>,
+}
+
+impl ModelCatalogEntry {
+    pub(super) fn extend_reasoning_efforts(&mut self, efforts: impl IntoIterator<Item = String>) {
+        for effort in efforts {
+            if !effort.trim().is_empty() && !self.reasoning_efforts.contains(&effort) {
+                self.reasoning_efforts.push(effort);
+            }
+        }
+    }
 }
 
 pub(super) fn model_catalog_for_target(
@@ -64,7 +79,12 @@ pub(super) fn model_catalog_for_target(
     let mut global_efforts = BTreeSet::<String>::new();
     let mut sources = BTreeSet::<String>::new();
     let mut diagnostics = Vec::<Value>::new();
+    let mut default_model = None::<String>;
     if let Some(fixture) = model_catalog_fixture_for_target(target, params) {
+        default_model = fixture
+            .get("defaultModel")
+            .map(model_name_from_value)
+            .filter(|name| !name.trim().is_empty());
         merge_model_catalog_value_into(
             &fixture,
             "fixture",
@@ -76,23 +96,29 @@ pub(super) fn model_catalog_for_target(
 
     if let Some(path) = config_path {
         sources.insert("config".to_string());
-        collect_model_catalog_from_config_path(
+        let configured_default = collect_model_catalog_from_config_path(
             path,
             "config",
             &mut entries,
             &mut global_efforts,
             &mut diagnostics,
         );
+        if default_model.is_none() {
+            default_model = configured_default;
+        }
     }
     for path in extra_model_config_paths(target, params) {
         sources.insert("local-settings".to_string());
-        collect_model_catalog_from_config_path(
+        let configured_default = collect_model_catalog_from_config_path(
             &path,
             "local-settings",
             &mut entries,
             &mut global_efforts,
             &mut diagnostics,
         );
+        if default_model.is_none() {
+            default_model = configured_default;
+        }
     }
     for path in extra_model_collection_paths(target, params) {
         sources.insert("model-cache".to_string());
@@ -121,13 +147,13 @@ pub(super) fn model_catalog_for_target(
 
     if !global_efforts.is_empty() {
         for entry in entries.values_mut() {
-            entry
-                .reasoning_efforts
-                .extend(global_efforts.iter().cloned());
+            entry.extend_reasoning_efforts(global_efforts.iter().cloned());
         }
     }
 
-    build_model_catalog(entries, sources, diagnostics)
+    apply_builtin_model_catalog_overlay(target, &mut entries, &mut sources);
+
+    build_model_catalog(entries, sources, diagnostics, default_model)
 }
 
 pub(super) fn empty_model_catalog(status: &str, source: &str) -> Value {

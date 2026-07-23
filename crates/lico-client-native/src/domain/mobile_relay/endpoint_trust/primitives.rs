@@ -1,4 +1,7 @@
 use super::*;
+use crate::domain::mobile_relay::secret_custody::{
+    MobileRelayE2eeSecretField, RuntimeSecretMaterial,
+};
 
 pub(in crate::domain::mobile_relay) fn session_id(config: &Value) -> Result<String> {
     config
@@ -13,34 +16,50 @@ pub(in crate::domain::mobile_relay) fn session_id(config: &Value) -> Result<Stri
 
 pub(in crate::domain::mobile_relay) fn mobile_relay_claim_proof(
     config: &Value,
+    secret_material: &RuntimeSecretMaterial,
     pairing_id: &str,
     descriptor: &Value,
 ) -> Result<String> {
-    mobile_relay_claim_proof_for(config, pairing_id, descriptor)
+    mobile_relay_claim_proof_for(config, secret_material, pairing_id, descriptor)
 }
 
 pub(in crate::domain::mobile_relay) fn mobile_relay_claim_proof_for(
     config: &Value,
+    secret_material: &RuntimeSecretMaterial,
     pairing_id: &str,
     mobile_descriptor: &Value,
 ) -> Result<String> {
     let pc_descriptor = peer_secure_mesh_descriptor(config)
         .ok_or_else(|| anyhow!("mobile relay PC secure mesh descriptor is missing"))?;
-    mobile_relay_claim_proof_for_pair(config, pairing_id, mobile_descriptor, &pc_descriptor)
+    mobile_relay_claim_proof_for_pair(
+        config,
+        secret_material,
+        pairing_id,
+        mobile_descriptor,
+        &pc_descriptor,
+    )
 }
 
 pub(in crate::domain::mobile_relay) fn mobile_relay_claim_proof_for_pair(
     config: &Value,
+    secret_material: &RuntimeSecretMaterial,
     pairing_id: &str,
     mobile_descriptor: &Value,
     pc_descriptor: &Value,
 ) -> Result<String> {
-    let mac = mobile_relay_claim_proof_mac(config, pairing_id, mobile_descriptor, pc_descriptor)?;
+    let mac = mobile_relay_claim_proof_mac(
+        config,
+        secret_material,
+        pairing_id,
+        mobile_descriptor,
+        pc_descriptor,
+    )?;
     Ok(general_purpose::URL_SAFE_NO_PAD.encode(mac.finalize().into_bytes()))
 }
 
 pub(in crate::domain::mobile_relay) fn mobile_relay_claim_proof_matches(
     config: &Value,
+    secret_material: &RuntimeSecretMaterial,
     pairing_id: &str,
     mobile_descriptor: &Value,
     pc_descriptor: &Value,
@@ -52,24 +71,28 @@ pub(in crate::domain::mobile_relay) fn mobile_relay_claim_proof_matches(
     if provided.len() != MOBILE_RELAY_KEY_BYTES {
         return Ok(false);
     }
-    let mac = mobile_relay_claim_proof_mac(config, pairing_id, mobile_descriptor, pc_descriptor)?;
+    let mac = mobile_relay_claim_proof_mac(
+        config,
+        secret_material,
+        pairing_id,
+        mobile_descriptor,
+        pc_descriptor,
+    )?;
     Ok(mac.verify_slice(&provided).is_ok())
 }
 
 pub(in crate::domain::mobile_relay) fn mobile_relay_claim_proof_mac(
     config: &Value,
+    secret_material: &RuntimeSecretMaterial,
     pairing_id: &str,
     mobile_descriptor: &Value,
     pc_descriptor: &Value,
 ) -> Result<MobileRelayClaimMac> {
-    let secret = config
-        .get("mobileRelayE2ee")
-        .and_then(|state| state.get("pairingSecretBase64url"))
-        .and_then(Value::as_str)
-        .filter(|value| !value.trim().is_empty())
+    let secret = secret_material
+        .e2ee_secret(MobileRelayE2eeSecretField::PairingSecret)
         .ok_or_else(|| anyhow!("mobile relay E2EE pairing secret is missing"))?;
     let secret_bytes = general_purpose::URL_SAFE_NO_PAD
-        .decode(secret)
+        .decode(secret.expose_bytes())
         .map_err(|_| anyhow!("mobile relay E2EE pairing secret is not base64url"))?;
     ensure!(
         secret_bytes.len() == MOBILE_RELAY_KEY_BYTES,
@@ -80,7 +103,7 @@ pub(in crate::domain::mobile_relay) fn mobile_relay_claim_proof_mac(
     let pc_binding = serde_json::to_vec(&mobile_relay_claim_descriptor_binding(pc_descriptor)?)?;
     let mut mac = <MobileRelayClaimMac as Mac>::new_from_slice(&secret_bytes)
         .map_err(|_| anyhow!("mobile relay claim proof initialization failed"))?;
-    mac.update(b"licolite.mobile-relay.e2ee.claim-proof.v2");
+    mac.update(b"licomesh.mobile-relay.e2ee.claim-proof.v2");
     update_mobile_relay_claim_mac_field(&mut mac, MOBILE_RELAY_E2EE_PROTOCOL_VERSION.as_bytes())?;
     update_mobile_relay_claim_mac_field(&mut mac, pairing_id.as_bytes())?;
     update_mobile_relay_claim_mac_field(&mut mac, &mobile_binding)?;

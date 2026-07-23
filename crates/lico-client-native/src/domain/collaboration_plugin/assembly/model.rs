@@ -344,9 +344,9 @@ impl AssemblyManifest {
 
 pub(super) fn assembled_runner_relative_path(platform: &str) -> String {
     let executable = if platform == "windows" {
-        "licolite-server-runner.exe"
+        "licomesh-server-runner.exe"
     } else {
-        "licolite-server-runner"
+        "licomesh-server-runner"
     };
     format!("{ASSEMBLED_RUNNER_DIRECTORY}/{executable}")
 }

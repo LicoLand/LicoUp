@@ -1,11 +1,28 @@
+use super::secret_custody::{MobileRelayE2eeSecretField, RuntimeSecretMaterial};
 use super::{endpoint_trust::*, relay_operations::*, support::*};
+
+fn require_pairing_secret(material: &RuntimeSecretMaterial) -> Result<()> {
+    let secret = material
+        .e2ee_secret(MobileRelayE2eeSecretField::PairingSecret)
+        .ok_or_else(|| anyhow!("mobile relay pairing secret material is missing"))?;
+    ensure!(
+        !secret.expose_bytes().is_empty(),
+        "mobile relay pairing secret material is empty"
+    );
+    Ok(())
+}
 
 pub fn pairing_create(params: &Value) -> Result<Value> {
     let (mut config, mut secret_context) = load_config_with_runtime_secret_context(params)?;
     effective_gateway_url(&config)?;
     config["relayEnabled"] = json!(true);
-    let (registration, _secure_mesh) =
-        register_local_relay_endpoint(params, &mut config, "desktop_sidecar")?;
+    let (registration, _secure_mesh) = register_local_relay_endpoint(
+        params,
+        &mut config,
+        &mut secret_context.material,
+        "desktop_sidecar",
+    )?;
+    require_pairing_secret(&secret_context.material)?;
     let pairing_id = format!("pair_{}", Uuid::new_v4());
     let pairing_code = random_base64url(12);
     config["pairingId"] = json!(pairing_id);
@@ -19,7 +36,7 @@ pub fn pairing_create(params: &Value) -> Result<Value> {
         "endpointRegistration": registration,
         "serverVisiblePairingState": false
     });
-    let invite = one_time_pairing_invite(&config, &response);
+    let invite = one_time_pairing_invite(&config, &secret_context.material, &response);
     clear_pairing_presentation(&mut config);
     save_config_with_runtime_secret_context(&mut config, &mut secret_context)?;
     let mut output = with_config(response, &config);
@@ -73,8 +90,14 @@ pub fn pairing_claim(params: &Value) -> Result<Value> {
         );
     }
     let (registration, mobile_secure_mesh) =
-        register_local_relay_endpoint(params, &mut config, "mobile")?;
-    let claim_proof = mobile_relay_claim_proof(&config, &pairing_id, &mobile_secure_mesh)?;
+        register_local_relay_endpoint(params, &mut config, &mut secret_context.material, "mobile")?;
+    require_pairing_secret(&secret_context.material)?;
+    let claim_proof = mobile_relay_claim_proof(
+        &config,
+        &secret_context.material,
+        &pairing_id,
+        &mobile_secure_mesh,
+    )?;
     config["paired"] = json!(true);
     let response = json!({
         "ok": true,
@@ -174,7 +197,11 @@ pub(super) fn refresh_pairwise_acceptance_if_pending(
 
 pub fn pairing_revoke(params: &Value) -> Result<Value> {
     let (mut config, mut secret_context) = load_config_with_runtime_secret_context(params)?;
-    ensure_mobile_relay_endpoint_descriptor(&mut config, "desktop_sidecar")?;
+    ensure_mobile_relay_endpoint_descriptor(
+        &mut config,
+        &mut secret_context.material,
+        "desktop_sidecar",
+    )?;
     let current_epoch = config
         .get("mobileRelayE2ee")
         .and_then(|state| state.get("mailboxRotationEpoch"))
@@ -184,7 +211,12 @@ pub fn pairing_revoke(params: &Value) -> Result<Value> {
         .checked_add(1)
         .ok_or_else(|| anyhow!("secure client relay mailbox rotation epoch overflow"))?;
     config["mobileRelayE2ee"]["mailboxRotationEpoch"] = json!(next_epoch);
-    let (registration, _) = register_local_relay_endpoint(params, &mut config, "desktop_sidecar")?;
+    let (registration, _) = register_local_relay_endpoint(
+        params,
+        &mut config,
+        &mut secret_context.material,
+        "desktop_sidecar",
+    )?;
     clear_mobile_relay_pairing_state(&mut config)?;
     save_config_with_runtime_secret_context(&mut config, &mut secret_context)?;
     Ok(with_config(

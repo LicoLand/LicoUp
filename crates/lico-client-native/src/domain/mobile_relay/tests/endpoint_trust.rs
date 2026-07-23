@@ -127,7 +127,7 @@ fn mobile_relay_public_config_exposes_verified_trust_presentation_without_keys()
     let presentation = &public["deviceTrustPresentation"];
     assert_eq!(
         presentation["schemaVersion"],
-        "licolite.secure-mesh.device-trust-presentation.v1"
+        "licomesh.secure-mesh.device-trust-presentation.v1"
     );
     assert_eq!(presentation["verified"], true);
     assert_eq!(presentation["trustState"], "verified");
@@ -167,8 +167,12 @@ fn mobile_relay_pairwise_rejects_relay_asserted_prekey_trust_state() {
     let dir = temp_dir("mobile-relay-pqxdh-prekey-trust-state-required");
     let previous = set_portable_data_dir_override(Some(dir));
     let mut pc_config = default_config();
-    let mut pc_descriptor =
-        ensure_mobile_relay_endpoint_descriptor(&mut pc_config, "desktop_sidecar").unwrap();
+    let mut pc_descriptor = ensure_mobile_relay_endpoint_descriptor(
+        &mut pc_config,
+        test_runtime_secret_material(stringify!(&mut pc_config)),
+        "desktop_sidecar",
+    )
+    .unwrap();
     pc_descriptor["preKeyBundle"]["trustState"] = json!("verified");
     let error = pairwise_prekey_bundle_from_descriptor(&pc_descriptor)
         .unwrap_err()
@@ -176,8 +180,21 @@ fn mobile_relay_pairwise_rejects_relay_asserted_prekey_trust_state() {
     assert!(error.contains("prekey bundle shape is invalid"));
 
     let mut mobile_config = default_config();
-    ensure_mobile_relay_endpoint_descriptor(&mut mobile_config, "mobile").unwrap();
-    assert!(apply_peer_secure_mesh_descriptor(&mut mobile_config, &pc_descriptor, true).is_err());
+    ensure_mobile_relay_endpoint_descriptor(
+        &mut mobile_config,
+        test_runtime_secret_material(stringify!(&mut mobile_config)),
+        "mobile",
+    )
+    .unwrap();
+    assert!(
+        apply_peer_secure_mesh_descriptor(
+            &mut mobile_config,
+            test_runtime_secret_material(stringify!(&mut mobile_config)),
+            &pc_descriptor,
+            true
+        )
+        .is_err()
+    );
     assert_ne!(mobile_config["mobileRelayE2ee"]["peerVerified"], true);
 
     set_portable_data_dir_override(previous);
@@ -188,18 +205,42 @@ fn mobile_relay_pairwise_rejects_intro_directory_authorization_mismatch() {
     let dir = temp_dir("mobile-relay-pqxdh-intro-tree-head-mismatch");
     let previous = set_portable_data_dir_override(Some(dir));
     let mut pc_config = default_config();
-    let pc_descriptor =
-        ensure_mobile_relay_endpoint_descriptor(&mut pc_config, "desktop_sidecar").unwrap();
+    let pc_descriptor = ensure_mobile_relay_endpoint_descriptor(
+        &mut pc_config,
+        test_runtime_secret_material(stringify!(&mut pc_config)),
+        "desktop_sidecar",
+    )
+    .unwrap();
     let mut mobile_config = default_config();
-    ensure_mobile_relay_endpoint_descriptor(&mut mobile_config, "mobile").unwrap();
-    apply_peer_secure_mesh_descriptor(&mut mobile_config, &pc_descriptor, true).unwrap();
-    let mut mobile_descriptor =
-        ensure_mobile_relay_endpoint_descriptor(&mut mobile_config, "mobile").unwrap();
+    ensure_mobile_relay_endpoint_descriptor(
+        &mut mobile_config,
+        test_runtime_secret_material(stringify!(&mut mobile_config)),
+        "mobile",
+    )
+    .unwrap();
+    apply_peer_secure_mesh_descriptor(
+        &mut mobile_config,
+        test_runtime_secret_material(stringify!(&mut mobile_config)),
+        &pc_descriptor,
+        true,
+    )
+    .unwrap();
+    let mut mobile_descriptor = ensure_mobile_relay_endpoint_descriptor(
+        &mut mobile_config,
+        test_runtime_secret_material(stringify!(&mut mobile_config)),
+        "mobile",
+    )
+    .unwrap();
     mobile_descriptor["pairwiseIntro"]["directoryAuthorizationDigest"] = json!("ab".repeat(32));
 
-    let error = apply_peer_secure_mesh_descriptor(&mut pc_config, &mobile_descriptor, true)
-        .unwrap_err()
-        .to_string();
+    let error = apply_peer_secure_mesh_descriptor(
+        &mut pc_config,
+        test_runtime_secret_material(stringify!(&mut pc_config)),
+        &mobile_descriptor,
+        true,
+    )
+    .unwrap_err()
+    .to_string();
     assert!(error.contains("directory authorization"));
     assert!(
         pc_config["mobileRelayE2ee"]
@@ -215,16 +256,30 @@ fn mobile_relay_pairwise_rejects_tampered_prekey_signature_via_directory_commitm
     let dir = temp_dir("mobile-relay-pqxdh-tampered-prekey");
     let previous = set_portable_data_dir_override(Some(dir));
     let mut pc_config = default_config();
-    let mut pc_descriptor =
-        ensure_mobile_relay_endpoint_descriptor(&mut pc_config, "desktop_sidecar").unwrap();
+    let mut pc_descriptor = ensure_mobile_relay_endpoint_descriptor(
+        &mut pc_config,
+        test_runtime_secret_material(stringify!(&mut pc_config)),
+        "desktop_sidecar",
+    )
+    .unwrap();
     pc_descriptor["preKeyBundle"]["signedPrekey"]["signatureBase64url"] =
         json!(random_base64url(64));
 
     let mut mobile_config = default_config();
-    ensure_mobile_relay_endpoint_descriptor(&mut mobile_config, "mobile").unwrap();
-    let error = apply_peer_secure_mesh_descriptor(&mut mobile_config, &pc_descriptor, true)
-        .unwrap_err()
-        .to_string();
+    ensure_mobile_relay_endpoint_descriptor(
+        &mut mobile_config,
+        test_runtime_secret_material(stringify!(&mut mobile_config)),
+        "mobile",
+    )
+    .unwrap();
+    let error = apply_peer_secure_mesh_descriptor(
+        &mut mobile_config,
+        test_runtime_secret_material(stringify!(&mut mobile_config)),
+        &pc_descriptor,
+        true,
+    )
+    .unwrap_err()
+    .to_string();
     assert!(error.contains("signed prekey commitment mismatch"));
     assert!(peer_secure_mesh_descriptor(&mobile_config).is_none());
 
@@ -298,9 +353,14 @@ fn mobile_relay_protected_send_blocks_unverified_key_changed_and_revoked_peers()
 
     pc_config["mobileRelayE2ee"]["peerVerified"] = json!(false);
     for kind in payload_kinds {
-        let error = seal_mobile_relay_payload(&pc_config, kind, &json!({"body": "blocked"}))
-            .unwrap_err()
-            .to_string();
+        let error = seal_mobile_relay_payload(
+            &pc_config,
+            test_runtime_secret_material(stringify!(&pc_config)),
+            kind,
+            &json!({"body": "blocked"}),
+        )
+        .unwrap_err()
+        .to_string();
         assert!(
             error.contains("peer is not verified"),
             "unverified seal should fail closed for {kind:?}: {error}"
@@ -310,9 +370,14 @@ fn mobile_relay_protected_send_blocks_unverified_key_changed_and_revoked_peers()
     pc_config["mobileRelayE2ee"]["peerVerified"] = json!(true);
     pc_config["mobileRelayE2ee"]["peerTrustRecord"]["trustState"] = json!("key_changed");
     for kind in payload_kinds {
-        let error = seal_mobile_relay_payload(&pc_config, kind, &json!({"body": "blocked"}))
-            .unwrap_err()
-            .to_string();
+        let error = seal_mobile_relay_payload(
+            &pc_config,
+            test_runtime_secret_material(stringify!(&pc_config)),
+            kind,
+            &json!({"body": "blocked"}),
+        )
+        .unwrap_err()
+        .to_string();
         assert!(
             error.contains("peer trust record is invalid")
                 || error.contains("identity_key_changed")
@@ -323,9 +388,14 @@ fn mobile_relay_protected_send_blocks_unverified_key_changed_and_revoked_peers()
 
     pc_config["mobileRelayE2ee"]["peerTrustRecord"]["trustState"] = json!("revoked");
     for kind in payload_kinds {
-        let error = seal_mobile_relay_payload(&pc_config, kind, &json!({"body": "blocked"}))
-            .unwrap_err()
-            .to_string();
+        let error = seal_mobile_relay_payload(
+            &pc_config,
+            test_runtime_secret_material(stringify!(&pc_config)),
+            kind,
+            &json!({"body": "blocked"}),
+        )
+        .unwrap_err()
+        .to_string();
         assert!(
             error.contains("peer trust record is invalid")
                 || error.contains("device_revoked")
@@ -352,6 +422,7 @@ fn kt_authority_reset_guard_survives_restart_and_blocks_all_old_session_paths() 
             pair_mobile_relay_configs(&mut pc_config, &mut mobile_config);
             let old_envelope = seal_mobile_relay_payload(
                 &mobile_config,
+                test_runtime_secret_material(stringify!(&mobile_config)),
                 crate::core::secure_mesh_crypto::SecureMeshPayloadKind::ServiceAction,
                 &json!({"action": "old-session-before-authority-reset"}),
             )?;
@@ -398,6 +469,7 @@ fn kt_authority_reset_guard_survives_restart_and_blocks_all_old_session_paths() 
             assert!(kt_authority_reset_in_progress()?);
             let seal_error = seal_mobile_relay_payload(
                 &mobile_config,
+                test_runtime_secret_material(stringify!(&mobile_config)),
                 crate::core::secure_mesh_crypto::SecureMeshPayloadKind::ServiceAction,
                 &json!({"action": "must-not-seal-after-crash"}),
             )
@@ -406,6 +478,7 @@ fn kt_authority_reset_guard_survives_restart_and_blocks_all_old_session_paths() 
             assert!(seal_error.contains("security operations remain blocked"));
             let open_error = open_mobile_relay_payload(
                 &pc_config,
+                test_runtime_secret_material(stringify!(&pc_config)),
                 &old_envelope,
                 crate::core::secure_mesh_crypto::SecureMeshPayloadKind::ServiceAction,
             )
@@ -454,6 +527,7 @@ fn kt_authority_reset_guard_survives_restart_and_blocks_all_old_session_paths() 
             assert!(!kt_authority_reset_in_progress()?);
             let stale_session_error = seal_mobile_relay_payload(
                 &mobile_config,
+                test_runtime_secret_material(stringify!(&mobile_config)),
                 crate::core::secure_mesh_crypto::SecureMeshPayloadKind::ServiceAction,
                 &json!({"action": "must-repair-after-reset"}),
             )
@@ -482,7 +556,11 @@ fn kt_authority_confirmation_recovers_idempotently_after_config_commit_crash() {
     with_mobile_relay_secret_store_override(mobile_store, || {
         with_pairwise_secret_store_override(pairwise_store, || {
             let mut config = default_config();
-            ensure_mobile_relay_endpoint_descriptor(&mut config, "desktop_sidecar")?;
+            ensure_mobile_relay_endpoint_descriptor(
+                &mut config,
+                test_runtime_secret_material(stringify!(&mut config)),
+                "desktop_sidecar",
+            )?;
             persist_config_secret_material_to_secret_store(
                 &mut config,
                 store.as_ref(),

@@ -1,35 +1,51 @@
 use anyhow::Result;
 use serde_json::{Value, json};
 
+use crate::ffi::generated::client_state::{
+    ClientStateActivity, ClientStateDocument, ClientStateGetRequest, ClientStateGetResult,
+    ClientStateSetRequest, ClientStateSetResult,
+};
+
 use super::activity::ActivityLog;
 use super::collections::ClientStateStore;
 use super::snapshots::SnapshotStore;
 
-pub fn state_get(collection: &str) -> Result<Value> {
+pub fn state_get(request: ClientStateGetRequest) -> Result<ClientStateGetResult> {
     let store = ClientStateStore::portable()?;
-    Ok(json!({
-        "ok": true,
-        "collection": collection,
-        "document": store.read_collection(collection)?
-    }))
+    let collection = request.collection;
+    let document = ClientStateDocument::from_value(store.read_collection(collection.as_str())?)
+        .map_err(anyhow::Error::msg)?;
+    anyhow::ensure!(
+        document.collection == collection,
+        "client state document collection mismatch"
+    );
+    Ok(ClientStateGetResult {
+        ok: true,
+        collection,
+        document,
+    })
 }
 
-pub fn state_set(collection: &str, value: Value) -> Result<Value> {
+pub fn state_set(request: ClientStateSetRequest) -> Result<ClientStateSetResult> {
     let store = ClientStateStore::portable()?;
-    let document = store.write_collection(collection, value)?;
-    let activity = store.activity_log().append(
+    let collection = request.collection;
+    let document = ClientStateDocument::from_value(
+        store.write_collection(collection.as_str(), request.document.into_value())?,
+    )
+    .map_err(anyhow::Error::msg)?;
+    let activity = serde_json::from_value::<ClientStateActivity>(store.activity_log().append(
         "state.collection.saved",
         json!({
-            "collection": collection,
-            "target": collection
+            "collection": collection.as_str(),
+            "target": collection.as_str()
         }),
-    )?;
-    Ok(json!({
-        "ok": true,
-        "collection": collection,
-        "document": document,
-        "activity": activity
-    }))
+    )?)?;
+    Ok(ClientStateSetResult {
+        ok: true,
+        collection,
+        document,
+        activity,
+    })
 }
 
 pub fn activity_list(params: &Value) -> Result<Value> {

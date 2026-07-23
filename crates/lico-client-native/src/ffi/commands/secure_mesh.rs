@@ -1,32 +1,41 @@
 // secure-mesh commands: status, envelope validate, command policy/evaluate/execute
 
-use super::{CliExecution, CommandTable, cli_params, parse_json_arg};
+use super::{AdmittedCommand, CliExecution, admitted_params};
 use anyhow::Result;
 use serde_json::{Value, json};
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
-pub fn register_commands(table: &mut CommandTable) {
-    table.register_rest(
-        &["secure-mesh"],
-        handle_secure_mesh,
-        "Secure Mesh status|envelope validate|command policy|evaluate|execute|device-trust evaluate|file route|receive-destination|receive-confirmation|approval request|fanout|respond|inbox|adapter-capability",
+pub(super) fn handle_secure_mesh(admitted: AdmittedCommand) -> Result<CliExecution> {
+    let route = admitted.path();
+    let params = admitted_params(
+        &[
+            ("ledgerPath", admitted.option_text("ledger-path")),
+            ("trustState", admitted.option_text("trust-state")),
+            ("approvedRoot", admitted.option_text("approved-root")),
+            ("conflictPolicy", admitted.option_text("conflict-policy")),
+            ("userConfirmed", admitted.option_text("user-confirmed")),
+            (
+                "pendingOperationId",
+                admitted.option_text("pending-operation-id"),
+            ),
+            ("decision", admitted.option_text("decision")),
+        ],
+        &[
+            ("payload", admitted.option_json("payload")),
+            ("context", admitted.option_json("context")),
+            ("identity", admitted.option_json("identity")),
+            (
+                "previousIdentity",
+                admitted.option_json("previous-identity"),
+            ),
+            ("manifest", admitted.option_json("manifest")),
+        ],
+        &[],
     );
-}
-
-fn handle_secure_mesh(args: &[String]) -> Result<CliExecution> {
-    let noun = args.get(1).map(String::as_str).unwrap_or("status");
-    let status_command = noun == "status";
-    let action = if status_command {
-        ""
-    } else {
-        args.get(2).map(String::as_str).unwrap_or("")
-    };
-    let params = if status_command {
-        cli_params(args.get(2..).unwrap_or_default())
-    } else if args.len() > 3 {
-        cli_params(&args[3..])
-    } else {
-        cli_params(&[])
+    let (noun, action) = match route {
+        ["secure-mesh", "status"] => ("status", ""),
+        ["secure-mesh", noun, action] => (*noun, *action),
+        _ => unreachable!("admission only registers concrete secure mesh routes"),
     };
     let result = match (noun, action) {
         ("status", "") => {
@@ -54,13 +63,10 @@ fn handle_secure_mesh(args: &[String]) -> Result<CliExecution> {
         }
         ("envelope", "validate") => {
             let envelope = params
-                .get("secureEnvelope")
-                .or_else(|| params.get("envelope"))
-                .or_else(|| params.get("body"))
+                .get("payload")
                 .cloned()
                 .unwrap_or_else(|| params.clone());
-            let parsed = envelope.as_str().map(parse_json_arg).unwrap_or(envelope);
-            crate::core::secure_mesh::validate_envelope(&parsed)?
+            crate::core::secure_mesh::validate_envelope(&envelope)?
         }
         ("command", "policy") => crate::core::secure_mesh::command_policy(&params),
         ("command", "evaluate") => {
@@ -74,12 +80,10 @@ fn handle_secure_mesh(args: &[String]) -> Result<CliExecution> {
                 .get("context")
                 .cloned()
                 .unwrap_or_else(|| serde_json::json!({}));
-            let parsed_payload = payload.as_str().map(parse_json_arg).unwrap_or(payload);
-            let parsed_context = context.as_str().map(parse_json_arg).unwrap_or(context);
             let mut ledger = crate::core::secure_mesh_command::SecureCommandReplayLedger::default();
             crate::core::secure_mesh_command::evaluate_secure_command_json(
-                &parsed_payload,
-                &parsed_context,
+                &payload,
+                &context,
                 &mut ledger,
             )?
         }
@@ -94,8 +98,6 @@ fn handle_secure_mesh(args: &[String]) -> Result<CliExecution> {
                 .get("context")
                 .cloned()
                 .unwrap_or_else(|| serde_json::json!({}));
-            let parsed_payload = payload.as_str().map(parse_json_arg).unwrap_or(payload);
-            let parsed_context = context.as_str().map(parse_json_arg).unwrap_or(context);
             let completed_at = params
                 .get("completedAt")
                 .or_else(|| params.get("completed_at"))
@@ -118,71 +120,25 @@ fn handle_secure_mesh(args: &[String]) -> Result<CliExecution> {
             let mut executor =
                 crate::domain::secure_mesh_command_runtime::SecureCommandRuntimeExecutor;
             crate::core::secure_mesh_command::execute_secure_command_json(
-                &parsed_payload,
-                &parsed_context,
+                &payload,
+                &context,
                 &mut ledger,
                 &mut executor,
                 completed_at,
             )?
         }
         ("device-trust", "evaluate") => {
-            let mut policy_params = params.clone();
-            if let Some(object) = policy_params.as_object_mut() {
-                if let Some(identity) = object.get("identity").cloned() {
-                    let parsed_identity = identity.as_str().map(parse_json_arg).unwrap_or(identity);
-                    object.insert("identity".to_string(), parsed_identity);
-                }
-                if let Some(previous_identity) = object.get("previousIdentity").cloned() {
-                    let parsed_previous = previous_identity
-                        .as_str()
-                        .map(parse_json_arg)
-                        .unwrap_or(previous_identity);
-                    object.insert("previousIdentity".to_string(), parsed_previous);
-                }
-            }
-            crate::core::secure_mesh_trust::evaluate_device_trust_policy_json(&policy_params)?
+            crate::core::secure_mesh_trust::evaluate_device_trust_policy_json(&params)?
         }
-        ("file", "route") => {
-            let mut file_params = params.clone();
-            if let Some(object) = file_params.as_object_mut() {
-                if let Some(manifest) = object.get("manifest").cloned() {
-                    let parsed_manifest = manifest.as_str().map(parse_json_arg).unwrap_or(manifest);
-                    object.insert("manifest".to_string(), parsed_manifest);
-                }
-            }
-            crate::core::secure_mesh_file::evaluate_file_route_json(&file_params)?
-        }
+        ("file", "route") => crate::core::secure_mesh_file::evaluate_file_route_json(&params)?,
         ("file", "receive-destination") => {
-            let mut file_params = params.clone();
-            if let Some(object) = file_params.as_object_mut() {
-                if let Some(manifest) = object.get("manifest").cloned() {
-                    let parsed_manifest = manifest.as_str().map(parse_json_arg).unwrap_or(manifest);
-                    object.insert("manifest".to_string(), parsed_manifest);
-                }
-            }
-            crate::core::secure_mesh_file::evaluate_file_receive_destination_json(&file_params)?
+            crate::core::secure_mesh_file::evaluate_file_receive_destination_json(&params)?
         }
         ("file", "receive-confirmation") => {
-            let mut file_params = params.clone();
-            if let Some(object) = file_params.as_object_mut() {
-                if let Some(manifest) = object.get("manifest").cloned() {
-                    let parsed_manifest = manifest.as_str().map(parse_json_arg).unwrap_or(manifest);
-                    object.insert("manifest".to_string(), parsed_manifest);
-                }
-            }
-            crate::core::secure_mesh_file::evaluate_file_receive_confirmation_json(&file_params)?
+            crate::core::secure_mesh_file::evaluate_file_receive_confirmation_json(&params)?
         }
         ("approval", "request") => {
-            let mut approval_params = params.clone();
-            if let Some(object) = approval_params.as_object_mut() {
-                for key in ["trustedEndpointIds", "requestedTools"] {
-                    if let Some(value) = object.get(key).cloned() {
-                        let parsed = value.as_str().map(parse_json_arg).unwrap_or(value);
-                        object.insert(key.to_string(), parsed);
-                    }
-                }
-            }
-            crate::core::secure_mesh_approval::evaluate_approval_request_json(&approval_params)?
+            crate::core::secure_mesh_approval::evaluate_approval_request_json(&params)?
         }
         ("approval", "fanout") => {
             crate::core::secure_mesh_approval::evaluate_approval_fanout_json(&params)?
@@ -230,7 +186,7 @@ fn handle_secure_mesh(args: &[String]) -> Result<CliExecution> {
         ("approval", "adapter-capability") => {
             crate::core::secure_mesh_approval::evaluate_approval_adapter_capability_json(&params)?
         }
-        _ => return Ok(CliExecution::Usage),
+        _ => unreachable!("admission only registers supported secure mesh actions"),
     };
     Ok(CliExecution::Json(result))
 }
@@ -335,7 +291,7 @@ mod tests {
         assert_eq!(first["execution"]["outcome"], "error");
         assert_eq!(
             first["execution"]["errorCode"],
-            "native_agent_parity_not_ready"
+            "native_agent_runtime_binding_unavailable"
         );
 
         let replay = execute_fixture(
@@ -383,10 +339,8 @@ mod tests {
             serde_json::to_string(&previous).unwrap(),
             "--trust-state".to_string(),
             "verified".to_string(),
-            "--require-verified-device".to_string(),
-            "true".to_string(),
         ];
-        let result = handle_secure_mesh(&args).unwrap();
+        let result = super::super::execute_cli(args).unwrap();
         let value = match result {
             CliExecution::Json(value) => value,
             CliExecution::Usage => panic!("secure mesh device-trust evaluate returned usage"),
@@ -420,7 +374,7 @@ mod tests {
             "--manifest".to_string(),
             serde_json::to_string(&manifest).unwrap(),
         ];
-        let result = handle_secure_mesh(&args).unwrap();
+        let result = super::super::execute_cli(args).unwrap();
         let value = match result {
             CliExecution::Json(value) => value,
             CliExecution::Usage => panic!("secure mesh file route returned usage"),
@@ -463,7 +417,7 @@ mod tests {
             "--approved-root".to_string(),
             approved_root.to_string_lossy().to_string(),
         ];
-        let result = handle_secure_mesh(&args).unwrap();
+        let result = super::super::execute_cli(args).unwrap();
         let value = match result {
             CliExecution::Json(value) => value,
             CliExecution::Usage => panic!("secure mesh file receive-destination returned usage"),
@@ -511,8 +465,10 @@ mod tests {
             serde_json::to_string(&manifest).unwrap(),
             "--approved-root".to_string(),
             approved_root.to_string_lossy().to_string(),
+            "--user-confirmed".to_string(),
+            "false".to_string(),
         ];
-        let result = handle_secure_mesh(&args).unwrap();
+        let result = super::super::execute_cli(args).unwrap();
         let value = match result {
             CliExecution::Json(value) => value,
             CliExecution::Usage => panic!("secure mesh file receive-confirmation returned usage"),
@@ -555,10 +511,8 @@ mod tests {
             serde_json::to_string(&context).unwrap(),
             "--ledger-path".to_string(),
             env.ledger_path.display().to_string(),
-            "--completed-at".to_string(),
-            "2026-01-01T00:02:00Z".to_string(),
         ];
-        let result = handle_secure_mesh(&args).unwrap();
+        let result = super::super::execute_cli(args).unwrap();
         match result {
             CliExecution::Json(value) => value,
             CliExecution::Usage => panic!("secure mesh command execute returned usage"),

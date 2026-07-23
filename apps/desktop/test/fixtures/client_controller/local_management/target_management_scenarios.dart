@@ -34,12 +34,12 @@ void registerClientTargetManagementScenarios() {
 
       await controller.addManualTarget(
         target: '  openclaw  ',
-        configPath: ' /tmp/openclaw.json ',
-        historyRoot: ' /tmp/openclaw-history ',
+        configPath: ' test-data/openclaw.json ',
+        historyRoot: ' test-data/openclaw-history ',
       );
       expect(service.addedTarget, 'openclaw');
-      expect(service.addedConfigPath, '/tmp/openclaw.json');
-      expect(service.addedHistoryRoot, '/tmp/openclaw-history');
+      expect(service.addedConfigPath, 'test-data/openclaw.json');
+      expect(service.addedHistoryRoot, 'test-data/openclaw-history');
       expect(
         service.scanOneTargetCalls,
         AgentService.packagedScanTargetIds.length,
@@ -64,7 +64,7 @@ void registerClientTargetManagementScenarios() {
 
     await controller.addManualTarget(
       target: 'openclaw',
-      configPath: ' /tmp/openclaw.json ',
+      configPath: ' test-data/openclaw.json ',
     );
 
     expect(controller.lastError, 'target_add_failed');

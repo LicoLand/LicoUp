@@ -73,8 +73,8 @@
       "method": "official lane does not expose a durable active-turn cancel handle"
     },
     "interruptSteer": {
-      "status": "unsupported",
-      "method": "combined in-flight interrupt and steer is not enabled"
+      "status": "supported",
+      "method": "RPC steer with exact active session and turn identifiers"
     },
     "cleanup": {
       "status": "supported",

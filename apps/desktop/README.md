@@ -3,7 +3,7 @@
 Lico Arc 是本地优先的开源桌面与移动客户端。产品范围以
 [`PRODUCT.md`](../../PRODUCT.md) 和
 [`CLIENT-DESKTOP.md`](../../docs/functionality/CLIENT-DESKTOP.md) 为准；默认使用不依赖
-LicoLite 服务端。
+LicoMesh 服务端。
 
 ## 默认产品范围
 
@@ -23,22 +23,23 @@ LicoLite 服务端。
 - `Mobile Relay`：在桌面与移动端之间传递端到端加密的不透明信封；
 - `Settings`：本机设置、平台授权和外部传输审批。
 
-ACP 与 MCP 是内置协议适配基础，不占用独立导航入口。可选 LicoLite 协作只能通过下述
+ACP 与 MCP 是内置协议适配基础，不占用独立导航入口。可选 LicoMesh 协作只能通过下述
 默认关闭的外部插件进入。
 
 当前打包目标包括 Antigravity、Claude Code、Codex、Cursor、Copilot、Hermes、
 Kilo Code、Kimi Code、OpenClaw、OpenCode 和 Pi Agent。发现到目标、读取到历史或
 通过合成测试均不代表已支持对话；只有通过原生对话等价验收的 adapter 才能启用发送。
-当前 reducer 摘要为 `0 ready / 0 failed / 2 blocked / 9 unverified`，因此未就绪
-adapter 必须保持 fail closed。
+当前适配状态由原生驱动与 readiness 清单负责，并投影到
+[`docs/COMPATIBILITY.md`](../../docs/COMPATIBILITY.md)；未就绪 adapter 必须保持
+fail closed。
 
-## 可选 LicoLite 协作插件
+## 可选 LicoMesh 协作插件
 
-LicoLite 协作能力默认不加载，也不出现在默认启动路径。用户必须先手动启用，再从其
+LicoMesh 协作能力默认不加载，也不出现在默认启动路径。用户必须先手动启用，再从其
 指定的 GitHub 来源安装可选插件。该插件只能提供：
 
-1. 将 LicoLite 下载到本机私有部署，并让用户在安装前选择服务端功能或插件；
-2. 由用户手动触发，把选中的 LicoLite MCP 插件安装到一个或多个本机智能体。
+1. 将 LicoMesh 下载到本机私有部署，并让用户在安装前选择服务端功能或插件；
+2. 由用户手动触发，把选中的 LicoMesh MCP 插件安装到一个或多个本机智能体。
 
 插件不得因安装、启动、定时任务或智能体请求而自动传出本机数据。涉及本机文件时，
 每个文件都要单独展示目标、用途、范围与摘要，取得用户本次直接审批后才能发送；目标、

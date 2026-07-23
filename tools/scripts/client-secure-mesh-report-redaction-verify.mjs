@@ -412,7 +412,7 @@ const ok = selfTest.ok === true &&
   (!selectedClosureMode || reportCoverageComplete);
 const report = {
   ok,
-  schemaVersion: "licolite.secure-mesh.report-redaction-verifier.v1",
+  schemaVersion: "licomesh.secure-mesh.report-redaction-verifier.v1",
   verifier: "tools/scripts/client-secure-mesh-report-redaction-verify.mjs",
   generatedBy: "tools/scripts/client-secure-mesh-report-redaction-verify.mjs",
   generatedAt: checkedAt,

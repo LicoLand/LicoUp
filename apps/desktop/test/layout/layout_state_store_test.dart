@@ -12,17 +12,17 @@ void main() {
     final catalog = fixtureLayoutCatalog();
     final store = LayoutStateStore(catalog);
     final workbench = fixtureStateNamespaces().first;
-    final studio = fixtureStateNamespaces().last;
+    final native = fixtureStateNamespaces().last;
 
     store.write(workbench, LayoutScrollState(128));
-    store.write(studio, LayoutScrollState(64));
+    store.write(native, LayoutScrollState(64));
     expect((store.read(workbench) as LayoutScrollState).offset, 128);
-    expect((store.read(studio) as LayoutScrollState).offset, 64);
+    expect((store.read(native) as LayoutScrollState).offset, 64);
     expect(store.length, 2);
 
     store.resetProfile(LayoutProfileId.parse('workbench'));
     expect(store.read(workbench), isNull);
-    expect((store.read(studio) as LayoutScrollState).offset, 64);
+    expect((store.read(native) as LayoutScrollState).offset, 64);
     expect(store.length, 1);
     store.resetAll();
     expect(store.length, 0);

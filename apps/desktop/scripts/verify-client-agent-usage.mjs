@@ -42,15 +42,28 @@ const codexUsageCache = await readJoinedText([
   "crates/lico-client-native/src/domain/agent_usage/agent_usage_codex/append_guard.rs",
   "crates/lico-client-native/src/domain/agent_usage/agent_usage_codex/cache.rs",
   "crates/lico-client-native/src/domain/agent_usage/agent_usage_codex/cache_batch.rs",
+  "crates/lico-client-native/src/domain/agent_usage/agent_usage_codex/cache_cleanup.rs",
   "crates/lico-client-native/src/domain/agent_usage/agent_usage_codex/constants.rs",
   "crates/lico-client-native/src/domain/agent_usage/agent_usage_codex/event_hash.rs",
   "crates/lico-client-native/src/domain/agent_usage/agent_usage_codex/file_collection.rs",
   "crates/lico-client-native/src/domain/agent_usage/agent_usage_codex/lineage.rs",
   "crates/lico-client-native/src/domain/agent_usage/agent_usage_codex/models.rs",
   "crates/lico-client-native/src/domain/agent_usage/agent_usage_codex/parser.rs",
+  "crates/lico-client-native/src/domain/agent_usage/agent_usage_codex/rollup.rs",
   "crates/lico-client-native/src/domain/agent_usage/agent_usage_codex/scan.rs",
   "crates/lico-client-native/src/domain/agent_usage/agent_usage_codex/scan_params.rs",
   "crates/lico-client-native/src/domain/agent_usage/agent_usage_codex/utils.rs",
+]);
+const nativeUsageCache = await readJoinedText([
+  "crates/lico-client-native/src/domain/agent_usage/agent_usage_native.rs",
+  "crates/lico-client-native/src/domain/agent_usage/agent_usage_native/cache.rs",
+  "crates/lico-client-native/src/domain/agent_usage/agent_usage_native/files.rs",
+  "crates/lico-client-native/src/domain/agent_usage/agent_usage_native/models.rs",
+  "crates/lico-client-native/src/domain/agent_usage/agent_usage_native/parser.rs",
+  "crates/lico-client-native/src/domain/agent_usage/agent_usage_native/parser/cursor.rs",
+  "crates/lico-client-native/src/domain/agent_usage/agent_usage_native/parser/hermes.rs",
+  "crates/lico-client-native/src/domain/agent_usage/agent_usage_native/parser/openagent.rs",
+  "crates/lico-client-native/src/domain/agent_usage/agent_usage_native/watermark.rs",
 ]);
 const commandMod = await readText("crates/lico-client-native/src/ffi/commands/mod.rs");
 const commandUsage = await readText("crates/lico-client-native/src/ffi/commands/agent_usage.rs");
@@ -83,9 +96,6 @@ const usagePanel = await readJoinedText([
   "apps/desktop/lib/src/frontend/features/agents/ui/agent_usage_timeline/agent_usage_token_breakdown.dart",
 ]);
 const clientShell = await readText("apps/desktop/lib/src/frontend/shell/client_shell.dart");
-const workspace = await readText(
-  "apps/desktop/lib/src/frontend/features/agents/ui/agent_conversation_workspace.dart"
-);
 const serviceTest = await readText("apps/desktop/test/agent_usage_service_test.dart");
 const controllerTest = await readText("apps/desktop/test/agent_usage_controller_test.dart");
 const componentTest = await readText("apps/desktop/test/agent_usage_component_boundary_test.dart");
@@ -95,16 +105,19 @@ const chartTests = await readJoinedText([
   "apps/desktop/test/agent_usage_summary_widgets_test.dart",
   "apps/desktop/test/agent_usage_formatters_test.dart"
 ]);
-const scenarioDocs = await readText(
-  "docs/scenarios/personal-user/client-priority-scenarios.md"
+const functionalityDocs = await readText(
+  "docs/functionality/CLIENT-DESKTOP.md"
 );
 const incrementalCacheTest = await readJoinedText([
   "crates/lico-client-native/tests/agent_usage_incremental_cache.rs",
+  "crates/lico-client-native/tests/agent_usage_cache_cases/adapter_coverage.rs",
   "crates/lico-client-native/tests/agent_usage_cache_cases/append_refresh.rs",
   "crates/lico-client-native/tests/agent_usage_cache_cases/cache_runtime.rs",
+  "crates/lico-client-native/tests/agent_usage_cache_cases/cumulative_resume.rs",
   "crates/lico-client-native/tests/agent_usage_cache_cases/dedup_lineage.rs",
-  "crates/lico-client-native/tests/agent_usage_cache_cases/estimates.rs",
+  "crates/lico-client-native/tests/agent_usage_cache_cases/fallback_coverage.rs",
   "crates/lico-client-native/tests/agent_usage_cache_cases/generic_usage.rs",
+  "crates/lico-client-native/tests/agent_usage_cache_cases/native_rollup.rs",
   "crates/lico-client-native/tests/agent_usage_cache_cases/reconciliation.rs",
   "crates/lico-client-native/tests/agent_usage_cache_cases/retained_reports.rs",
   "crates/lico-client-native/tests/agent_usage_cache_cases/windows.rs",
@@ -112,14 +125,17 @@ const incrementalCacheTest = await readJoinedText([
 assertIncludes(
   nativeUsage,
   [
-    "const AGENT_USAGE_SCHEMA_VERSION: u32 = 4",
+    "const AGENT_USAGE_SCHEMA_VERSION: u32 = 6",
     'const AGENT_USAGE_MODE: &str = "local-token-usage"',
-    'const AGENT_USAGE_TOKEN_SOURCE_MODE: &str = "local-history"',
+    'const AGENT_USAGE_TOKEN_SOURCE_MODE: &str = "native-metadata-first-incremental"',
     "const DEFAULT_USAGE_WINDOW_DAYS: u64 = 30",
     '.get("historyDays")',
-    ".clamp(1, 365)",
+    ".clamp(1, MAX_USAGE_WINDOW_DAYS)",
     '"tokenSourceBreakdown"',
     '"modelTokenUsage"',
+    "summarize_sessions",
+    "estimate_tokens",
+    "UsageAccuracy::Estimated",
     "is_current_report",
     "sort_reports_by_generated_at",
     "private-local-prompt-canary"
@@ -139,12 +155,15 @@ assertIncludes(
     "counted_totals",
     "cached_input_tokens",
     "usage_rows",
-    "usage_estimates",
     "event_identity",
     "token_chain_hash",
-    "estimate_chain_hash",
     "append_guard",
     "lineage_scope",
+    "usage_daily_totals",
+    "usage_daily_models",
+    "compact_historical_details",
+    "remove_obsolete_cache_databases",
+    "VACUUM",
     "refreshDeferred",
     "forceRefresh"
   ],
@@ -155,6 +174,30 @@ assert(
   commandMod.includes("agent_usage::register_commands"),
   "command table must register local agent usage commands"
 );
+assertIncludes(
+  nativeUsageCache,
+  [
+    "native_usage_sources",
+    "native_usage_daily_totals",
+    "native_usage_daily_models",
+    "parse_append_source",
+    "parse_openagent_usage_database",
+    "parse_cursor_usage_database",
+    "parse_hermes_usage_database",
+    "append_guard_matches",
+    "seal_source",
+    "compact_source_days_before",
+    "apply_cumulative_watermarks",
+    "incremental_vacuum",
+    "estimated_records",
+    "agent-usage-rollups-v2.sqlite3",
+    "remove_legacy_cache",
+  ],
+  "shared metadata-first native usage cache"
+);
+for (const forbidden of ["raw_content", "message_content"]) {
+  assert(!nativeUsageCache.includes(forbidden), `native usage cache must exclude ${forbidden}`);
+}
 assert(
   commandUsage.includes('"agent-usage", "scan"') &&
     commandUsage.includes('"agent-usage", "report"'),
@@ -173,8 +216,8 @@ assertIncludes(
   dartService,
   [
     "class AgentUsageService",
-    "int historyDays = 30",
-    "historyDays.clamp(1, 365)",
+    "int historyDays = 90",
+    "historyDays.clamp(1, 90)",
     "--timezone-transitions-json",
     "AgentUsageReport.currentSchemaVersion",
     "AgentUsageReport.currentMode",
@@ -189,9 +232,9 @@ assert(
 assertIncludes(
   usageModels,
   [
-    "static const currentSchemaVersion = 4",
+    "static const currentSchemaVersion = 6",
     "static const currentMode = 'local-token-usage'",
-    "static const currentTokenSourceMode = 'local-history'",
+    "static const currentTokenSourceMode = 'native-metadata-first-incremental'",
     "validateEnvelope",
     "schemaVersion is! int",
     "totalTokens"
@@ -207,6 +250,11 @@ assertIncludes(
   usageController,
   [
     "class AgentUsageController",
+    "defaultAgentUsageScanHistoryDays = agentUsageDailyCacheMaxDays",
+    "defaultAgentUsageDisplayHistoryDays = 30",
+    "hasFreshScanCoverage",
+    "projectViewport",
+    "_applyViewport",
     "acquirePollingOwner",
     "releasePollingOwner",
     "_pollingOwners",
@@ -233,8 +281,7 @@ assertIncludes(
   "local-token usage UI"
 );
 assert(
-  clientShell.includes("ClientSection.monitoring => AgentUsagePanel") &&
-    workspace.includes("AgentsWorkspaceDestination.stats => AgentUsagePanel"),
+  clientShell.includes("ClientSection.monitoring => AgentUsagePanel"),
   "desktop routes must mount the dedicated local-token usage panel"
 );
 
@@ -243,9 +290,9 @@ assertIncludes(
   [
     "scans agent usage through lico-client agent-usage scan",
     "--history-days",
-    "30",
+    "90",
     "rejects retained reports outside the current contract",
-    "requires schemaVersion to be the exact integer 4",
+    "requires schemaVersion to be the exact integer 6",
     "rejects malformed entries inside retained reports"
   ],
   "Dart usage service regression"
@@ -272,20 +319,31 @@ assertIncludes(
   ["AgentUsageChartGrouping.agent", "AgentUsageChartGrouping.model", "cachedInputTokens"],
   "usage chart regressions"
 );
+assert(
+  usagePanel.includes("source.hasUsage") &&
+    usagePanel.includes("formatAgentUsageNumber(source.totalTokens)") &&
+    !usagePanel.includes("≈"),
+  "usage UI must render cached fallback totals as ordinary numeric values"
+);
 
 for (const testName of [
   "codex_usage_reconciles_subsets_duplicates_and_divergent_totals",
   "codex_usage_warm_scan_reuses_files_and_append_scan_reads_only_suffix",
-  "codex_usage_rewrite_to_larger_same_file_forces_full_rescan",
+  "codex_usage_keeps_finalized_day_immutable_after_source_rewrite",
   "codex_usage_detects_middle_rewrite_before_append_in_large_file",
   "codex_usage_force_refresh_detects_equal_metadata_rewrite",
   "codex_usage_applies_one_local_calendar_window_to_daily_and_total_values",
   "codex_usage_deduplicates_forked_rollout_prefix_before_window_filtering",
   "codex_usage_counts_identical_events_from_independent_sessions",
   "codex_usage_returns_cached_snapshot_when_same_root_refresh_is_busy",
-  "codex_usage_merges_uncovered_session_estimates_with_explicit_events",
   "generic_usage_extractor_keeps_cached_input_as_a_subset",
   "generic_usage_extractor_projects_parent_usage_once_for_content_blocks",
+  "native_usage_finalizes_past_days_and_only_parses_appended_bytes",
+  "cumulative_metadata_counts_new_usage_when_an_old_session_resumes",
+  "cumulative_append_rewrite_preserves_today_and_only_adds_new_delta",
+  "openagent_today_query_detects_a_resumed_cross_day_session",
+  "native_adapters_prefer_exact_metadata_from_bounded_standard_stores",
+  "native_adapters_cache_estimates_when_native_counters_are_absent",
   "codex_usage_applies_historical_timezone_transitions_per_event",
   "retained_reports_keep_only_current_contract_and_sort_by_timestamp"
 ]) {
@@ -302,10 +360,11 @@ const report = {
   artifactKind: "client-local-agent-token-usage-evidence",
   scenario: "agent-usage-metering",
   contract: {
-    schemaVersion: 4,
+    schemaVersion: 6,
     mode: "local-token-usage",
-    tokenSourceMode: "local-history",
-    defaultWindowDays: 30,
+    tokenSourceMode: "native-metadata-first-incremental",
+    defaultScanWindowDays: 90,
+    defaultDisplayWindowDays: 30,
     dimensions: ["agent", "model"]
   },
   evidence: {
@@ -315,7 +374,8 @@ const report = {
     strictFlutterEnvelope: usageModels.includes("validateEnvelope"),
     singleFlightController: usageController.includes("_scanFuture"),
     independentUiComponents: componentTest.includes("one-way normal-library graph"),
-    localOnlyDocumentation: scenarioDocs.includes("Exclude raw prompts, replies, accounts")
+    localOnlyDocumentation:
+      functionalityDocs.includes("No raw prompt, response, account, local path")
   },
   failures
 };

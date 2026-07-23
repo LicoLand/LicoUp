@@ -5,7 +5,7 @@ use directories::UserDirs;
 use serde_json::Value;
 use std::collections::BTreeSet;
 use std::env;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 pub(super) const BINARY_SOURCE_APPLICATION_STORE: &str = "application-store";
 pub(super) const BINARY_SOURCE_PACKAGE_MANAGER: &str = "package-manager";
@@ -70,11 +70,60 @@ pub(super) fn find_binary_in_dirs(names: &[&str], dirs: &[PathBuf]) -> Option<Pa
 }
 
 fn binary_search_dirs() -> Vec<PathBuf> {
+    let roots = PlatformBinaryRoots::from_environment();
     let mut dirs = env::var_os("PATH")
-        .map(|path_var| env::split_paths(&path_var).collect::<Vec<_>>())
+        .map(|path_var| {
+            env::split_paths(&path_var)
+                .filter(|path| {
+                    automatic_binary_search_dir_allowed(
+                        std::env::consts::OS,
+                        path,
+                        roots.home.as_deref(),
+                    )
+                })
+                .collect::<Vec<_>>()
+        })
         .unwrap_or_default();
-    dirs.extend(common_platform_binary_dirs());
+    dirs.extend(common_binary_dirs_for_platform(
+        std::env::consts::OS,
+        &roots,
+    ));
     dedupe_paths(dirs)
+}
+
+fn automatic_binary_search_dir_allowed(platform: &str, path: &Path, home: Option<&Path>) -> bool {
+    if platform != "macos" {
+        return true;
+    }
+    let mut components = path.components();
+    if !matches!(components.next(), Some(Component::RootDir)) {
+        return false;
+    }
+    let Some(Component::Normal(root_name)) = components.next() else {
+        return false;
+    };
+    if root_name == "Volumes" {
+        return false;
+    }
+    if matches!(
+        root_name.to_str(),
+        Some("usr" | "opt" | "bin" | "sbin" | "Applications")
+    ) {
+        return true;
+    }
+    let Some(home) = home else {
+        return false;
+    };
+    let Ok(relative) = path.strip_prefix(home) else {
+        return false;
+    };
+    let Some(first) = relative.components().next() else {
+        return false;
+    };
+    let first = first.as_os_str().to_string_lossy();
+    first.starts_with('.')
+        || relative.starts_with("Library/pnpm")
+        || relative.starts_with("Applications")
 }
 
 fn binary_candidate_paths(dir: &Path, name: &str) -> Vec<PathBuf> {
@@ -147,13 +196,6 @@ fn non_empty_env_path(name: &str) -> Option<PathBuf> {
     env::var_os(name)
         .filter(|value| !value.is_empty())
         .map(PathBuf::from)
-}
-
-fn common_platform_binary_dirs() -> Vec<PathBuf> {
-    common_binary_dirs_for_platform(
-        std::env::consts::OS,
-        &PlatformBinaryRoots::from_environment(),
-    )
 }
 
 fn common_binary_dirs_for_platform(platform: &str, roots: &PlatformBinaryRoots) -> Vec<PathBuf> {
@@ -288,9 +330,10 @@ fn linux_binary_dirs(roots: &PlatformBinaryRoots) -> Vec<PathBuf> {
 }
 
 fn posix_path(components: &[&str]) -> PathBuf {
-    components
-        .iter()
-        .fold(PathBuf::from("/"), |path, component| path.join(component))
+    components.iter().fold(
+        PathBuf::from(char::from(47).to_string()),
+        |path, component| path.join(component),
+    )
 }
 
 fn append_user_package_bins(dirs: &mut Vec<PathBuf>, home: &Path) {
@@ -346,7 +389,7 @@ mod tests {
 
     #[test]
     fn binary_candidates_preserve_priority_and_dedupe_case_insensitively() {
-        let dir = PathBuf::from("/tools");
+        let dir = posix_path(&["tools"]);
         let candidates = binary_candidate_paths(&dir, "codex");
         assert_eq!(candidates.first(), Some(&dir.join("codex")));
         let deduped = dedupe_paths(vec![dir.join("Codex"), dir.join("codex")]);
@@ -356,18 +399,27 @@ mod tests {
     #[test]
     fn platform_sources_cover_application_stores_and_package_managers() {
         let roots = PlatformBinaryRoots {
-            home: Some(PathBuf::from("/profile")),
-            app_data: Some(PathBuf::from("/app-data")),
-            local_app_data: Some(PathBuf::from("/local-app-data")),
-            program_data: Some(PathBuf::from("/program-data")),
-            program_files: Some(PathBuf::from("/program-files")),
+            home: Some(posix_path(&["profile"])),
+            app_data: Some(posix_path(&["app-data"])),
+            local_app_data: Some(posix_path(&["local-app-data"])),
+            program_data: Some(posix_path(&["program-data"])),
+            program_files: Some(posix_path(&["program-files"])),
             program_files_x86: None,
         };
         let windows = common_binary_dirs_for_platform("windows", &roots);
-        assert!(windows.contains(&PathBuf::from("/local-app-data/Microsoft/WindowsApps")));
-        assert!(windows.contains(&PathBuf::from("/local-app-data/Microsoft/WinGet/Links")));
-        assert!(windows.contains(&PathBuf::from("/profile/scoop/shims")));
-        assert!(windows.contains(&PathBuf::from("/program-data/chocolatey/bin")));
+        assert!(windows.contains(&posix_path(&[
+            "local-app-data",
+            "Microsoft",
+            "WindowsApps"
+        ])));
+        assert!(windows.contains(&posix_path(&[
+            "local-app-data",
+            "Microsoft",
+            "WinGet",
+            "Links"
+        ])));
+        assert!(windows.contains(&posix_path(&["profile", "scoop", "shims"])));
+        assert!(windows.contains(&posix_path(&["program-data", "chocolatey", "bin"])));
 
         let macos = common_binary_dirs_for_platform("macos", &roots);
         assert!(macos.contains(&posix_path(&["opt", "homebrew", "bin"])));
@@ -380,6 +432,42 @@ mod tests {
         let linux = common_binary_dirs_for_platform("linux", &roots);
         assert!(linux.contains(&posix_path(&["snap", "bin"])));
         assert!(linux.contains(&posix_path(&["var", "lib", "flatpak", "exports", "bin"])));
+    }
+
+    #[test]
+    fn macos_automatic_search_skips_protected_and_network_locations() {
+        let home = posix_path(&["profile"]);
+        for protected in [
+            posix_path(&["profile", "Downloads", "bin"]),
+            posix_path(&["profile", "Desktop", "tools"]),
+            posix_path(&["profile", "Documents", "scripts"]),
+            posix_path(&["Volumes", "team-share", "bin"]),
+        ] {
+            assert!(!automatic_binary_search_dir_allowed(
+                "macos",
+                &protected,
+                Some(&home),
+            ));
+        }
+    }
+
+    #[test]
+    fn macos_automatic_search_keeps_system_and_hidden_package_locations() {
+        let home = posix_path(&["profile"]);
+        for allowed in [
+            posix_path(&["usr", "local", "bin"]),
+            posix_path(&["opt", "homebrew", "bin"]),
+            posix_path(&["Applications", "Cursor.app", "Contents", "Resources", "app", "bin"]),
+            posix_path(&["profile", ".local", "bin"]),
+            posix_path(&["profile", ".nvm", "versions", "node", "current", "bin"]),
+            posix_path(&["profile", "Library", "pnpm"]),
+        ] {
+            assert!(automatic_binary_search_dir_allowed(
+                "macos",
+                &allowed,
+                Some(&home),
+            ));
+        }
     }
 
     #[test]
@@ -397,11 +485,11 @@ mod tests {
             BINARY_SOURCE_APPLICATION_STORE
         );
         assert_eq!(
-            classify_binary_source(Path::new("/profile/scoop/shims/codex.exe")),
+            classify_binary_source(&posix_path(&["profile", "scoop", "shims", "codex.exe"])),
             BINARY_SOURCE_PACKAGE_MANAGER
         );
         assert_eq!(
-            classify_binary_source(Path::new("/custom/bin/codex")),
+            classify_binary_source(&posix_path(&["custom", "bin", "codex"])),
             BINARY_SOURCE_EXECUTABLE_PATH
         );
     }

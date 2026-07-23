@@ -6,11 +6,9 @@ export 'dart:ui' show AppLifecycleState;
 export 'package:flutter_client/src/application/controller/client_controller.dart';
 export 'package:flutter_client/src/application/features/agents/policy/conversation_refresh_policy.dart';
 export 'package:flutter_client/src/backend/features/agents/services/agent_conversation_service.dart';
-export 'package:flutter_client/src/contracts/agent_orchestration_policy.dart';
 export 'package:flutter_client/src/contracts/agent_usage_models.dart';
 export 'package:flutter_client/src/contracts/appearance/appearance_preset_config.dart';
 export 'package:flutter_client/src/contracts/presentation/semantic_destination.dart';
-export 'package:flutter_client/src/contracts/routing/routing_policy_schema.dart';
 export 'package:flutter_client/src/contracts/secure_mesh_approval_models.dart';
 export 'package:flutter_client/src/contracts/secure_mesh_file_sync_models.dart';
 export 'package:flutter_client/src/contracts/secure_mesh_skill_sync_models.dart';
@@ -22,3 +20,4 @@ export 'package:flutter_client/src/platform/storage/portable_data_root.dart';
 export 'package:flutter_test/flutter_test.dart';
 
 export '../../secure_mesh_capability_projection.dart';
+export 'no_preload_client_controller.dart';

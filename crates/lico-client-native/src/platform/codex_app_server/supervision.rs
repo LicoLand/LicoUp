@@ -1,14 +1,19 @@
 use super::super::process_supervisor::{BoundedStdinWriter, SupervisedChild};
+use super::active_control::{ActiveTurnGuard, SteerRequest, bind};
 use super::io::{TransportEvent, write_message};
 use super::limits::PROCESS_POLL_INTERVAL;
 use super::model::{ProtocolEffect, ProtocolFailure, ProtocolOutcome, RunResult};
 use super::protocol::CodexProtocol;
-use std::sync::mpsc::{Receiver, RecvTimeoutError};
+use serde_json::Value;
+use std::collections::HashMap;
+use std::sync::mpsc::{Receiver, RecvTimeoutError, SyncSender, TryRecvError};
 use std::time::Instant;
 
 pub(super) fn run_protocol_loop(
     stdin: &mut BoundedStdinWriter,
     receiver: &Receiver<TransportEvent>,
+    control_sender: &SyncSender<SteerRequest>,
+    control_receiver: &Receiver<SteerRequest>,
     protocol: &mut CodexProtocol,
     deadline: Instant,
 ) -> (
@@ -17,7 +22,46 @@ pub(super) fn run_protocol_loop(
     Option<i32>,
     bool,
 ) {
+    let mut active_guard: Option<ActiveTurnGuard> = None;
+    let mut pending_steers = HashMap::<String, SyncSender<bool>>::new();
     loop {
+        if let Some((thread_id, turn_id)) = protocol.active_turn_binding() {
+            if active_guard.is_none() {
+                active_guard = bind(thread_id, turn_id, control_sender.clone());
+                if active_guard.is_some() {
+                    super::super::turn_event_emit::emit_turn_event(
+                        "dispatch.turn.bound",
+                        thread_id,
+                        turn_id,
+                        serde_json::json!({"nativeSteer": true}),
+                    );
+                }
+            }
+            loop {
+                match control_receiver.try_recv() {
+                    Ok(request) => {
+                        let (request_id, message, acknowledged) =
+                            request.into_protocol(thread_id, turn_id);
+                        if write_message(stdin, &message).is_err() {
+                            let _ = acknowledged.send(false);
+                            return (
+                                None,
+                                Some(protocol.contextualize(ProtocolFailure::new(
+                                    "codex_app_server_write_failed",
+                                    "Codex app-server stopped accepting turn guidance.",
+                                    "turn/steer",
+                                ))),
+                                None,
+                                false,
+                            );
+                        }
+                        pending_steers.insert(request_id, acknowledged);
+                    }
+                    Err(TryRecvError::Empty) => break,
+                    Err(TryRecvError::Disconnected) => break,
+                }
+            }
+        }
         if stdin.check_health().is_err() {
             return (
                 None,
@@ -46,6 +90,9 @@ pub(super) fn run_protocol_loop(
         let wait = (deadline - now).min(PROCESS_POLL_INTERVAL);
         match receiver.recv_timeout(wait) {
             Ok(TransportEvent::Message(message)) => {
+                if acknowledge_steer_response(&message, &mut pending_steers) {
+                    continue;
+                }
                 for effect in protocol.handle_message(message) {
                     match effect {
                         ProtocolEffect::Send(message) => {
@@ -110,6 +157,21 @@ pub(super) fn run_protocol_loop(
             Err(RecvTimeoutError::Timeout) => {}
         }
     }
+}
+
+fn acknowledge_steer_response(
+    message: &Value,
+    pending_steers: &mut HashMap<String, SyncSender<bool>>,
+) -> bool {
+    let Some(request_id) = message.get("id").and_then(Value::as_str) else {
+        return false;
+    };
+    let Some(acknowledged) = pending_steers.remove(request_id) else {
+        return false;
+    };
+    let accepted = message.get("error").is_none() && message.get("result").is_some();
+    let _ = acknowledged.send(accepted);
+    true
 }
 
 fn read_failure(

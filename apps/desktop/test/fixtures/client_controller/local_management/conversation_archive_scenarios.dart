@@ -17,7 +17,7 @@ void registerClientConversationArchiveScenarios() {
 
       await controller.archiveConversationExactKeyword(
         query: '  Pactium  ',
-        path: ' /tmp/pactium ',
+        path: ' test-data/pactium ',
       );
 
       expect(service.scanTargetsCalls, 0);
@@ -45,7 +45,7 @@ void registerClientConversationArchiveScenarios() {
       expect(service.archiveSelectionMode, 'exact-keyword');
       expect(service.archiveQuery, 'Pactium');
       expect(service.archivePlanBinding, 'sha256:fake-archive-plan');
-      expect(service.archiveDestinationPath, '/tmp/pactium');
+      expect(service.archiveDestinationPath, 'test-data/pactium');
       expect(controller.conversationArchivePlan?['count'], 2);
       expect(controller.isCollectingConversationArchive, isTrue);
       expect(controller.selectedConversationArchiveJobId, 'archive-job-1');
@@ -84,7 +84,7 @@ void registerClientConversationArchiveScenarios() {
 
       controller.scannedTargets = [agentArchiveTarget()];
       controller.selectedConversationAgentId = 'claude-code';
-      controller.archiveDestinationController.text = '/tmp/native-archive';
+      controller.archiveDestinationController.text = 'test-data/native-archive';
 
       await controller.archiveSelectedConversationAgent();
 
@@ -96,7 +96,7 @@ void registerClientConversationArchiveScenarios() {
       expect(service.archiveSourceAgentId, 'claude-code');
       expect(
         service.archiveDestinationPath,
-        p.join('/tmp/native-archive', 'claude-code'),
+        p.join('test-data/native-archive', 'claude-code'),
       );
       expect(controller.isCollectingConversationArchive, isTrue);
 
@@ -111,27 +111,27 @@ void registerClientConversationArchiveScenarios() {
     () {
       final controller = ClientController(agentService: FakeAgentService());
       addTearDown(controller.dispose);
-      controller.archiveDestinationDraft = '/tmp/native-archive';
+      controller.archiveDestinationDraft = 'test-data/native-archive';
 
       expect(
         controller.conversationArchiveDestinationFor(
           selectionMode: conversationArchiveAllSelection,
         ),
-        '/tmp/native-archive',
+        'test-data/native-archive',
       );
       expect(
         controller.conversationArchiveDestinationFor(
           selectionMode: conversationArchiveAllSelection,
           sourceAgentId: 'claude-code',
         ),
-        p.join('/tmp/native-archive', 'claude-code'),
+        p.join('test-data/native-archive', 'claude-code'),
       );
       expect(
         controller.conversationArchiveDestinationFor(
           selectionMode: conversationArchiveExactKeywordSelection,
           sourceAgentId: 'claude-code',
         ),
-        '/tmp/native-archive',
+        'test-data/native-archive',
       );
     },
   );
@@ -162,7 +162,7 @@ void registerClientConversationArchiveScenarios() {
 
     await controller.archiveConversationExactKeyword(
       query: 'Pactium',
-      path: '/tmp/pactium',
+      path: 'test-data/pactium',
     );
     await Future<void>.delayed(Duration.zero);
     await Future<void>.delayed(Duration.zero);
@@ -197,9 +197,9 @@ void registerClientConversationArchiveScenarios() {
     await controller.refreshConversationSnapshotRoot();
     expect(controller.snapshotRootController.text, service.snapshotRootPath);
 
-    await controller.setConversationSnapshotRoot('/tmp/native-archive');
+    await controller.setConversationSnapshotRoot('test-data/native-archive');
     expect(service.snapshotRootSetCalls, 1);
-    expect(controller.snapshotRootController.text, '/tmp/native-archive');
+    expect(controller.snapshotRootController.text, 'test-data/native-archive');
   });
 
   test('archive profile actions update controller health state', () async {
@@ -210,11 +210,11 @@ void registerClientConversationArchiveScenarios() {
     await controller.refreshConversationArchiveProfiles();
     expect(service.archiveProfilesListCalls, 1);
     expect(controller.conversationArchiveProfiles, hasLength(1));
-    expect(controller.selectedArchiveProfileId, 'licolite');
+    expect(controller.selectedArchiveProfileId, 'licomesh');
 
     await controller.runSelectedConversationArchiveProfile();
     expect(service.archiveRunCalls, 1);
-    expect(service.archiveProfileId, 'licolite');
+    expect(service.archiveProfileId, 'licomesh');
     expect(
       controller.conversationArchiveResult?['mode'],
       'conversation-archive',

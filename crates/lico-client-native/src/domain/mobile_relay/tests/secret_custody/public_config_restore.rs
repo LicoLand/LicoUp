@@ -184,11 +184,26 @@ fn e2ee_status_rejects_private_key_material_in_portable_config() {
     let dir = temp_dir("mobile-relay-e2ee-status-portable-secret-store");
     let previous = set_portable_data_dir_override(Some(dir));
     let mut pc_config = default_config();
-    let pc_descriptor =
-        ensure_mobile_relay_endpoint_descriptor(&mut pc_config, "desktop_sidecar").unwrap();
+    let pc_descriptor = ensure_mobile_relay_endpoint_descriptor(
+        &mut pc_config,
+        test_runtime_secret_material(stringify!(&mut pc_config)),
+        "desktop_sidecar",
+    )
+    .unwrap();
     let mut mobile_config = default_config();
-    ensure_mobile_relay_endpoint_descriptor(&mut mobile_config, "mobile").unwrap();
-    apply_peer_secure_mesh_descriptor(&mut mobile_config, &pc_descriptor, true).unwrap();
+    ensure_mobile_relay_endpoint_descriptor(
+        &mut mobile_config,
+        test_runtime_secret_material(stringify!(&mut mobile_config)),
+        "mobile",
+    )
+    .unwrap();
+    apply_peer_secure_mesh_descriptor(
+        &mut mobile_config,
+        test_runtime_secret_material(stringify!(&mut mobile_config)),
+        &pc_descriptor,
+        true,
+    )
+    .unwrap();
     let private_key = mobile_config["mobileRelayE2ee"]["privateKeyBase64url"]
         .as_str()
         .unwrap()

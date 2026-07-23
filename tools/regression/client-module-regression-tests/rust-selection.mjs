@@ -79,6 +79,12 @@ test("Rust domain changes select a precise cargo-filtered slice", () => {
     "crates/lico-client-native/src/domain/agent_usage/window.rs",
   ])), ["architecture.client-boundaries", "rust.domain.agent-usage.window"]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
+    "crates/lico-client-native/src/domain/agent_usage/agent_usage_native/parser.rs",
+  ])), [
+    "architecture.client-boundaries",
+    "rust.domain.agent-usage.native-cache",
+  ]);
+  assert.deepEqual(ids(selectModulesForChangedPaths([
     "crates/lico-client-native/src/domain/agent_usage/agent_usage_codex.rs",
   ])), [
     "architecture.client-boundaries",
@@ -111,6 +117,12 @@ test("Rust domain changes select a precise cargo-filtered slice", () => {
     "crates/lico-client-native/tests/agent_usage_cache_cases/cache_runtime.rs",
   ])), [
     "rust.domain.agent-usage-cache.runtime",
+    "regression.agent-usage-codex-source-bundle",
+  ]);
+  assert.deepEqual(ids(selectModulesForChangedPaths([
+    "crates/lico-client-native/tests/agent_usage_cache_cases/native_rollup.rs",
+  ])), [
+    "rust.domain.agent-usage-cache.native-rollup",
     "regression.agent-usage-codex-source-bundle",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
@@ -419,6 +431,8 @@ test("Rust domain changes select a precise cargo-filtered slice", () => {
     module.id === "rust.domain.agent-usage");
   const agentUsageCache = CLIENT_MODULE_CATALOG.find((module) =>
     module.id === "rust.domain.agent-usage-cache");
+  const nativeUsageCache = CLIENT_MODULE_CATALOG.find((module) =>
+    module.id === "rust.domain.agent-usage.native-cache");
   const targets = CLIENT_MODULE_CATALOG.find((module) =>
     module.id === "rust.domain.targets");
   const skillHub = CLIENT_MODULE_CATALOG.find((module) =>
@@ -434,6 +448,10 @@ test("Rust domain changes select a precise cargo-filtered slice", () => {
     "agent_usage_incremental_cache",
     "agent_usage_cache_cases::",
   ]);
+  assert.equal(
+    nativeUsageCache.command.args.at(-1),
+    "domain::agent_usage::agent_usage_native::",
+  );
   const codexLeafFilters = new Map([
     ["rust.domain.agent-usage.codex-models",
       "domain::agent_usage::agent_usage_codex::tests::models::"],
@@ -449,11 +467,15 @@ test("Rust domain changes select a precise cargo-filtered slice", () => {
       "domain::agent_usage::agent_usage_codex::tests::event_hash::"],
     ["rust.domain.agent-usage.codex-lineage",
       "domain::agent_usage::agent_usage_codex::tests::lineage::"],
+    ["rust.domain.agent-usage.codex-model-backfill",
+      "domain::agent_usage::agent_usage_codex::model_backfill::tests::"],
     ["rust.domain.agent-usage.codex-cache-database",
       "domain::agent_usage::agent_usage_codex::tests::cache::"],
     ["rust.domain.agent-usage.codex-cache-batch",
       "domain::agent_usage::agent_usage_codex::tests::cache_batch::"],
     ["rust.domain.agent-usage.codex-parser",
+      "domain::agent_usage::agent_usage_codex::tests::parser::"],
+    ["rust.domain.agent-usage.codex-rollup",
       "domain::agent_usage::agent_usage_codex::tests::parser::"],
     ["rust.domain.agent-usage.codex-aggregation",
       "domain::agent_usage::agent_usage_codex::tests::aggregation::"],
@@ -479,10 +501,10 @@ test("Rust domain changes select a precise cargo-filtered slice", () => {
       "agent_usage_cache_cases::cache_runtime::"],
     ["rust.domain.agent-usage-cache.dedup-lineage",
       "agent_usage_cache_cases::dedup_lineage::"],
-    ["rust.domain.agent-usage-cache.estimates",
-      "agent_usage_cache_cases::estimates::"],
     ["rust.domain.agent-usage-cache.generic-usage",
       "agent_usage_cache_cases::generic_usage::"],
+    ["rust.domain.agent-usage-cache.native-rollup",
+      "agent_usage_cache_cases::native_rollup::"],
     ["rust.domain.agent-usage-cache.reconciliation",
       "agent_usage_cache_cases::reconciliation::"],
     ["rust.domain.agent-usage-cache.retained-reports",

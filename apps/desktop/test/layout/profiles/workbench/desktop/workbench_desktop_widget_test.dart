@@ -199,4 +199,7 @@ final class _WorkbenchChromeFake extends ChangeNotifier
   Future<void> openPairing(BuildContext context) async {
     pairingRequests += 1;
   }
+
+  @override
+  Future<void> openGlobalSearch(BuildContext context) async {}
 }

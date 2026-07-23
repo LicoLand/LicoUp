@@ -56,6 +56,12 @@ pub(super) fn execute(
     )
 }
 
+pub(in crate::platform) fn cancel(
+    session_id: &str,
+) -> super::acp_driver_runtime::ControlDisposition {
+    super::acp_driver_runtime::cancel_active_turn(KIMI_CODE_DRIVER.agent_id, session_id)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

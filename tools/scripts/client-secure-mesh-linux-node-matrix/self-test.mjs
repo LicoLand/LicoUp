@@ -28,7 +28,7 @@ export function runSelfTest() {
     stale: false
   };
   const vm = {
-    schema: "licolite.secure-mesh.linux-vm-package-receipt",
+    schema: "licomesh.secure-mesh.linux-vm-package-receipt",
     schemaVersion: 2,
     ok: true,
     producer: "linux-vm-package-receipt",

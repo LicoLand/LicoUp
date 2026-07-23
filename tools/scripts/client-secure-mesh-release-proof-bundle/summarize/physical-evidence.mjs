@@ -5,7 +5,7 @@ import { reportRecord, stableStringList } from "../lists.mjs";
 export function summarizePhysicalEvidenceManifest(report = {}) {
   report = reportRecord(report);
   const inputIntegrity = releaseInputIntegrity(report, {
-    schemaVersion: "licolite.secure-mesh.physical-evidence-manifest-report.v2",
+    schemaVersion: "licomesh.secure-mesh.physical-evidence-manifest-report.v2",
     verifier: "tools/scripts/client-secure-mesh-physical-evidence-manifest.mjs"
   });
   const summary = inputIntegrity.ok ? (report?.summary || {}) : {};

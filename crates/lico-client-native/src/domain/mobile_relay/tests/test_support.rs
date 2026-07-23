@@ -84,28 +84,75 @@ pub(super) fn pair_mobile_relay_configs(pc_config: &mut Value, mobile_config: &m
     let shared_delivery_secret = random_base64url(MOBILE_RELAY_KEY_BYTES);
     pc_config["mobileRelayE2ee"]["pairingSecretBase64url"] = json!(shared_delivery_secret.clone());
     mobile_config["mobileRelayE2ee"]["pairingSecretBase64url"] = json!(shared_delivery_secret);
-    let pc_descriptor =
-        ensure_mobile_relay_endpoint_descriptor(pc_config, "desktop_sidecar").unwrap();
-    ensure_mobile_relay_endpoint_descriptor(mobile_config, "mobile").unwrap();
-    apply_peer_secure_mesh_descriptor(mobile_config, &pc_descriptor, true).unwrap();
-    let mobile_descriptor =
-        ensure_mobile_relay_endpoint_descriptor(mobile_config, "mobile").unwrap();
-    apply_peer_secure_mesh_descriptor(pc_config, &mobile_descriptor, true).unwrap();
-    let pc_accepted_descriptor =
-        ensure_mobile_relay_endpoint_descriptor(pc_config, "desktop_sidecar").unwrap();
-    apply_peer_secure_mesh_descriptor(mobile_config, &pc_accepted_descriptor, true).unwrap();
-    let mobile_finished_descriptor =
-        ensure_mobile_relay_endpoint_descriptor(mobile_config, "mobile").unwrap();
+    let pc_descriptor = ensure_mobile_relay_endpoint_descriptor(
+        pc_config,
+        test_runtime_secret_material(stringify!(pc_config)),
+        "desktop_sidecar",
+    )
+    .unwrap();
+    ensure_mobile_relay_endpoint_descriptor(
+        mobile_config,
+        test_runtime_secret_material(stringify!(mobile_config)),
+        "mobile",
+    )
+    .unwrap();
+    apply_peer_secure_mesh_descriptor(
+        mobile_config,
+        test_runtime_secret_material(stringify!(mobile_config)),
+        &pc_descriptor,
+        true,
+    )
+    .unwrap();
+    let mobile_descriptor = ensure_mobile_relay_endpoint_descriptor(
+        mobile_config,
+        test_runtime_secret_material(stringify!(mobile_config)),
+        "mobile",
+    )
+    .unwrap();
+    apply_peer_secure_mesh_descriptor(
+        pc_config,
+        test_runtime_secret_material(stringify!(pc_config)),
+        &mobile_descriptor,
+        true,
+    )
+    .unwrap();
+    let pc_accepted_descriptor = ensure_mobile_relay_endpoint_descriptor(
+        pc_config,
+        test_runtime_secret_material(stringify!(pc_config)),
+        "desktop_sidecar",
+    )
+    .unwrap();
+    apply_peer_secure_mesh_descriptor(
+        mobile_config,
+        test_runtime_secret_material(stringify!(mobile_config)),
+        &pc_accepted_descriptor,
+        true,
+    )
+    .unwrap();
+    let mobile_finished_descriptor = ensure_mobile_relay_endpoint_descriptor(
+        mobile_config,
+        test_runtime_secret_material(stringify!(mobile_config)),
+        "mobile",
+    )
+    .unwrap();
     assert!(mobile_finished_descriptor["pairwiseFinished"].is_object());
-    apply_peer_secure_mesh_descriptor(pc_config, &mobile_finished_descriptor, true).unwrap();
+    apply_peer_secure_mesh_descriptor(
+        pc_config,
+        test_runtime_secret_material(stringify!(pc_config)),
+        &mobile_finished_descriptor,
+        true,
+    )
+    .unwrap();
     let protected_payload = seal_mobile_relay_payload(
         mobile_config,
+        test_runtime_secret_material(stringify!(mobile_config)),
         crate::core::secure_mesh_crypto::SecureMeshPayloadKind::ServiceAction,
         &json!({"action": "pairwise_finished_confirmed"}),
     )
     .unwrap();
     let opened = open_mobile_relay_payload(
         pc_config,
+        test_runtime_secret_material(stringify!(pc_config)),
         &protected_payload,
         crate::core::secure_mesh_crypto::SecureMeshPayloadKind::ServiceAction,
     )
@@ -120,8 +167,16 @@ pub(super) fn paired_command_envelope_fixture() -> (Value, Value, Value) {
     let mut pc_config = default_config();
     let mut mobile_config = default_config();
     pair_mobile_relay_configs(&mut pc_config, &mut mobile_config);
-    let mobile_endpoint = local_endpoint_state(&mobile_config).unwrap();
-    let pc_endpoint = local_endpoint_state(&pc_config).unwrap();
+    let mobile_endpoint = local_endpoint_state(
+        &mobile_config,
+        test_runtime_secret_material(stringify!(&mobile_config)),
+    )
+    .unwrap();
+    let pc_endpoint = local_endpoint_state(
+        &pc_config,
+        test_runtime_secret_material(stringify!(&pc_config)),
+    )
+    .unwrap();
     let command_payload = json!({
         "schema": crate::core::secure_mesh::SECURE_MESH_COMMAND_PROTOCOL_VERSION,
         "commandId": "cmd_mobile_relay_replay_fixture",
@@ -149,6 +204,7 @@ pub(super) fn paired_command_envelope_fixture() -> (Value, Value, Value) {
     });
     let envelope = seal_mobile_relay_payload(
         &mobile_config,
+        test_runtime_secret_material(stringify!(&mobile_config)),
         crate::core::secure_mesh_crypto::SecureMeshPayloadKind::Command,
         &command_payload,
     )
@@ -159,6 +215,7 @@ pub(super) fn paired_command_envelope_fixture() -> (Value, Value, Value) {
 pub(super) fn opened_result_payload(mobile_config: &Value, envelope: &Value) -> Value {
     let opened = open_mobile_relay_payload(
         mobile_config,
+        test_runtime_secret_material(stringify!(mobile_config)),
         envelope,
         crate::core::secure_mesh_crypto::SecureMeshPayloadKind::ResultPayload,
     )
@@ -331,8 +388,8 @@ pub(super) fn canonical_challenge_response(request: &CapturedHttpRequest) -> Val
     );
     json!({
         "ok": true,
-        "schemaVersion": "licolite.secure-mesh.store-schema.v2",
-        "protocolVersion": "licolite.secure-mesh.device-trust.v2",
+        "schemaVersion": "licomesh.secure-mesh.store-schema.v2",
+        "protocolVersion": "licomesh.secure-mesh.device-trust.v2",
         "challengeId": challenge_id,
         "challenge": challenge,
         "challengeEncoding": "utf-8",
@@ -346,8 +403,8 @@ pub(super) fn canonical_register_response(request: &CapturedHttpRequest) -> Valu
     let endpoint_id = body["endpointId"].as_str().unwrap_or("endpoint-test");
     json!({
         "ok": true,
-        "schemaVersion": "licolite.secure-mesh.store-schema.v2",
-        "protocolVersion": "licolite.secure-mesh.device-trust.v2",
+        "schemaVersion": "licomesh.secure-mesh.store-schema.v2",
+        "protocolVersion": "licomesh.secure-mesh.device-trust.v2",
         "endpoint": {
             "tenantId": body["tenantId"],
             "accountId": body["accountId"],
@@ -389,8 +446,8 @@ pub(super) fn canonical_send_response(request: &CapturedHttpRequest) -> Value {
     let mailbox_token = envelope["mailboxToken"].as_str().unwrap();
     json!({
         "ok": true,
-        "schemaVersion": "licolite.secure-mesh.store-schema.v2",
-        "protocolVersion": "licolite.secure-mesh.delivery.v1",
+        "schemaVersion": "licomesh.secure-mesh.store-schema.v2",
+        "protocolVersion": "licomesh.secure-mesh.delivery.v1",
         "queued": {
             "deliverySequence": 1,
             "queuedAt": "2026-01-01T00:00:00Z",
@@ -448,8 +505,8 @@ pub(super) fn canonical_sync_response(request: &CapturedHttpRequest, envelopes: 
     let high_watermark = u64::try_from(leased.len()).unwrap();
     json!({
         "ok": true,
-        "schemaVersion": "licolite.secure-mesh.store-schema.v2",
-        "protocolVersion": "licolite.secure-mesh.delivery.v1",
+        "schemaVersion": "licomesh.secure-mesh.store-schema.v2",
+        "protocolVersion": "licomesh.secure-mesh.delivery.v1",
         "queueMode": "offline_queue",
         "mailbox": canonical_public_mailbox(&body, mailbox_token),
         "cursor": {
@@ -469,8 +526,8 @@ pub(super) fn canonical_ack_response(request: &CapturedHttpRequest) -> Value {
     let mailbox_token = body["mailboxToken"].as_str().unwrap();
     json!({
         "ok": true,
-        "schemaVersion": "licolite.secure-mesh.store-schema.v2",
-        "protocolVersion": "licolite.secure-mesh.delivery.v1",
+        "schemaVersion": "licomesh.secure-mesh.store-schema.v2",
+        "protocolVersion": "licomesh.secure-mesh.delivery.v1",
         "ack": {
             "deliveryId": delivery_id,
             "idempotent": false,

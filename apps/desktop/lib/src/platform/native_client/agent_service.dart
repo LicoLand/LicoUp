@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter_client/src/contracts/agent_command_runner.dart';
+import 'package:flutter_client/src/contracts/generated/client_state.g.dart';
 import 'package:flutter_client/src/contracts/mcp_adapter.dart';
 import 'package:flutter_client/src/contracts/skill_delete.dart';
 import 'package:flutter_client/src/contracts/skill_hub.dart';
@@ -17,6 +18,8 @@ import 'package:flutter_client/src/platform/native_client/native_cli_runtime_con
 import 'package:flutter_client/src/platform/native_client/native_command_router.dart';
 import 'package:flutter_client/src/platform/native_client/native_mcp_actions.dart';
 import 'package:flutter_client/src/platform/native_client/native_one_shot_command_executor.dart';
+import 'package:flutter_client/src/platform/native_client/native_state_actions.dart';
+import 'package:flutter_client/src/platform/native_client/orchestrator_ipc/client.dart';
 
 export 'package:flutter_client/src/contracts/target_candidate.dart';
 export 'package:flutter_client/src/platform/native_client/native_cli_ports.dart'
@@ -102,6 +105,7 @@ class AgentService
       stdioRpcTransport: rpcTransport,
       persistentStdioRpcEnabled: persistentEnabled,
     );
+    _stateActions = NativeStateActions(stdioRpcTransport: rpcTransport);
   }
 
   late final NativeCommandExecutor _commandExecutor;
@@ -110,6 +114,10 @@ class AgentService
   late final NativeCommandActions _commandActions;
   late final NativeMcpActions _mcpActions;
   late final NativeCatalogActions _catalogActions;
+  late final NativeStateActions _stateActions;
+
+  late final NativeOrchestratorClient orchestratorClient =
+      NativeOrchestratorClient(transport: _stdioRpcTransport);
 
   static const List<String> packagedScanTargetIds =
       NativeCommandActions.packagedScanTargetIds;
@@ -341,6 +349,12 @@ class AgentService
     String operation, {
     Map<String, dynamic> params = const {},
   }) => _catalogActions.execute(operation, params: params);
+
+  Future<ClientStateGetResult> getClientState(ClientStateGetRequest request) =>
+      _stateActions.get(request);
+
+  Future<ClientStateSetResult> setClientState(ClientStateSetRequest request) =>
+      _stateActions.set(request);
 
   Future<Map<String, dynamic>> ensureOpencodeServe({
     int port = 24173,

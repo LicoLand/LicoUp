@@ -137,7 +137,7 @@ export const ADAPTER_EVIDENCE_FIELDS = new Set([
   "evidenceDigest",
   "officialNativeLane",
   "consecutivePasses",
-  "releaseUiPassed",
+  "conversationGatePassed",
   "cleanupPassed",
   "privacyPassed",
   "coreChecks",

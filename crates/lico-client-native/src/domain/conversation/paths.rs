@@ -118,15 +118,20 @@ mod tests {
 
     #[test]
     fn resolves_cross_platform_home_fallbacks_and_tilde_paths() {
+        let separator = char::from(92).to_string();
+        let home_path = ["", "Profile", "Arc"].join(&separator);
         let home = home_dir_from_env(|name| match name {
             "HOMEDRIVE" => Some(OsString::from("C:")),
-            "HOMEPATH" => Some(OsString::from(r"\Profile\Arc")),
+            "HOMEPATH" => Some(OsString::from(&home_path)),
             _ => None,
         });
-        assert_eq!(home, PathBuf::from(r"C:\Profile\Arc"));
+        assert_eq!(home, PathBuf::from(["C:", "Profile", "Arc"].join(&separator)));
         assert_eq!(
-            expand_home_from(r"~\.codex\sessions", || home.clone()),
-            home.join(r".codex\sessions")
+            expand_home_from(
+                &["~", ".codex", "sessions"].join(&separator),
+                || home.clone()
+            ),
+            home.join([".codex", "sessions"].join(&separator))
         );
     }
 }

@@ -10,7 +10,6 @@ import 'package:flutter_client/src/contracts/presentation/layout_state_namespace
 import 'package:flutter_client/src/frontend/features/settings/ui/layout_profile_selector.dart';
 import 'package:flutter_client/src/frontend/features/settings/ui/client_update_settings_card.dart';
 import 'package:flutter_client/src/frontend/features/settings/ui/catalog_convergence_status_card.dart';
-import 'package:flutter_client/src/frontend/features/settings/ui/optional_collaboration_settings.dart';
 import 'package:flutter_client/src/frontend/features/settings/ui/settings_log_export_tile.dart';
 import 'package:flutter_client/src/frontend/features/settings/ui/settings_panel_widgets.dart';
 import 'package:flutter_client/src/frontend/l10n/lico_strings.dart';
@@ -23,7 +22,6 @@ import 'package:flutter_client/src/frontend/shared/ui/theme.dart';
 const _settingsSectionIds = <String>[
   'appearance',
   'updates',
-  'optional-collaboration',
   'catalog-convergence',
   'storage',
   'diagnostics',
@@ -213,14 +211,6 @@ class _SettingsPanelState extends State<SettingsPanel> {
         icon: Icons.system_update_alt,
         label: strings.clientUpdate,
         child: ClientUpdateSettingsCard(controller: widget.controller),
-      ),
-      _SettingsSection(
-        id: 'optional-collaboration',
-        icon: Icons.hub_outlined,
-        label: strings.isChinese ? '可选协作' : 'Optional Collaboration',
-        child: OptionalCollaborationSettings(
-          controller: widget.controller.optionalCollaborationController,
-        ),
       ),
       _SettingsSection(
         id: 'catalog-convergence',

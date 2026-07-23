@@ -1,10 +1,10 @@
 //! Usage time-window and timezone projection.
 
-use super::contract::{DEFAULT_USAGE_WINDOW_DAYS, number_value};
+use super::contract::{DEFAULT_USAGE_WINDOW_DAYS, MAX_USAGE_WINDOW_DAYS, number_value};
 use crate::domain::conversation::parameters::text_param;
 use serde_json::Value;
 use std::collections::BTreeMap;
-use time::{Date, Duration, OffsetDateTime, format_description::well_known::Rfc3339};
+use time::{Date, Duration, Month, OffsetDateTime, format_description::well_known::Rfc3339};
 
 #[derive(Clone, Debug)]
 pub(super) struct UsageWindow {
@@ -27,7 +27,7 @@ impl UsageWindow {
             .get("historyDays")
             .and_then(number_value)
             .unwrap_or(DEFAULT_USAGE_WINDOW_DAYS)
-            .clamp(1, 365);
+            .clamp(1, MAX_USAGE_WINDOW_DAYS);
         let timezone_offset_minutes = signed_param(params, "timezoneOffsetMinutes")
             .unwrap_or(0)
             .clamp(-24 * 60, 24 * 60);
@@ -72,6 +72,51 @@ impl UsageWindow {
             .collect::<Vec<_>>()
             .join(",");
         format!("{}|{transitions}", self.timezone_offset_minutes)
+    }
+
+    /// Parsing is intentionally independent from the report window. Historical
+    /// days are compacted once and remain queryable without rescanning logs.
+    pub(super) fn all_history(&self) -> Self {
+        Self {
+            start: "0001-01-01".to_string(),
+            end: self.end.clone(),
+            days: u64::MAX,
+            timezone_offset_minutes: self.timezone_offset_minutes,
+            timezone_transitions: self.timezone_transitions.clone(),
+        }
+    }
+
+    /// Mutable native stores are refreshed only for the current local day.
+    /// Earlier days have already been reduced to immutable daily rollups.
+    pub(super) fn today_only(&self) -> Self {
+        Self {
+            start: self.end.clone(),
+            end: self.end.clone(),
+            days: 1,
+            timezone_offset_minutes: self.timezone_offset_minutes,
+            timezone_transitions: self.timezone_transitions.clone(),
+        }
+    }
+
+    /// Coarse UTC bounds for indexed millisecond timestamp queries. The
+    /// one-day margin on either side covers every accepted local UTC offset;
+    /// callers still apply `date_key` for the exact calendar decision.
+    pub(super) fn coarse_epoch_millis_bounds(&self) -> Option<(i64, i64)> {
+        if self.days != 1 || self.start != self.end || self.end.len() != 10 {
+            return None;
+        }
+        let year = self.end.get(0..4)?.parse().ok()?;
+        let month = Month::try_from(self.end.get(5..7)?.parse::<u8>().ok()?).ok()?;
+        let day = self.end.get(8..10)?.parse().ok()?;
+        let midnight = Date::from_calendar_date(year, month, day)
+            .ok()?
+            .midnight()
+            .assume_utc()
+            .unix_timestamp();
+        Some((
+            midnight.saturating_sub(86_400).saturating_mul(1_000),
+            midnight.saturating_add(172_800).saturating_mul(1_000),
+        ))
     }
 }
 
@@ -242,7 +287,18 @@ mod tests {
     }
 
     #[test]
-    fn requested_window_is_bounded_to_one_through_three_hundred_sixty_five_days() {
+    fn today_window_exposes_safe_coarse_millisecond_query_bounds() {
+        let window = UsageWindow::from_params(&json!({
+            "now": "2026-07-15T12:00:00Z"
+        }))
+        .today_only();
+        let (lower, upper) = window.coarse_epoch_millis_bounds().unwrap();
+        assert_eq!(lower, 1_783_987_200_000);
+        assert_eq!(upper, 1_784_246_400_000);
+    }
+
+    #[test]
+    fn requested_window_is_bounded_to_the_ninety_day_cache_depth() {
         let minimum = UsageWindow::from_params(&json!({
             "now": "2026-07-15T12:00:00Z",
             "historyDays": 0
@@ -254,8 +310,8 @@ mod tests {
 
         assert_eq!(minimum.days, 1);
         assert_eq!(minimum.start, minimum.end);
-        assert_eq!(maximum.days, 365);
-        assert_eq!(maximum.start, "2025-07-16");
+        assert_eq!(maximum.days, 90);
+        assert_eq!(maximum.start, "2026-04-17");
         assert_eq!(maximum.end, "2026-07-15");
     }
 }

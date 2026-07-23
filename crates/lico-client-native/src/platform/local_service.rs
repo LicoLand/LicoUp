@@ -14,6 +14,7 @@ pub(super) mod process;
 pub(super) mod serve;
 pub(super) mod sse;
 pub(super) mod state;
+pub(super) mod turn_control;
 
 pub use endpoint::ServeEndpoint;
 pub(super) use serve::{ServeErrorCodes, ServeSpec};

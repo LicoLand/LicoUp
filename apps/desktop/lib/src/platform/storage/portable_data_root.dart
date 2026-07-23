@@ -11,6 +11,10 @@ class PortableDataRoot {
   static const productDirectoryName = 'LicoArc';
   static const portableDataDirectoryName = 'portable-data';
 
+  /// Desktop state lives in a home-directory dot folder alongside other agent
+  /// state namespaces like `.claude` and `.codex`.
+  static const homeStateDirectoryName = '.lico-arc';
+
   PortableDataRoot({
     Directory? dataDirectoryOverride,
     Map<String, String>? environmentOverride,
@@ -112,6 +116,13 @@ class PortableDataRoot {
       _mobileRuntimeOverride ?? (Platform.isAndroid || Platform.isIOS);
 
   Future<Directory> _systemDataDirectory() async {
+    if (!_isMobileRuntime) {
+      final home = (_environment['HOME'] ?? _environment['USERPROFILE'] ?? '')
+          .trim();
+      if (home.isNotEmpty) {
+        return Directory(p.join(home, homeStateDirectoryName));
+      }
+    }
     final appSupport = await _applicationSupportDirectoryResolver();
     return Directory(
       p.join(appSupport.path, productDirectoryName, portableDataDirectoryName),

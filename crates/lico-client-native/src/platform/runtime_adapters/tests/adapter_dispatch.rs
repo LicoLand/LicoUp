@@ -2,7 +2,6 @@ use super::super::adapter::adapter_for_agent;
 use super::super::dispatch::send_message;
 use super::super::params::message_param;
 use super::super::{MAX_MESSAGE_BYTES, RuntimeAdapter};
-use crate::platform::claude_code_driver;
 use serde_json::json;
 
 #[test]
@@ -52,21 +51,16 @@ fn oversized_message_is_rejected_before_runtime_launch() {
 
 #[test]
 fn configured_command_fallback_has_been_removed() {
-    let response = send_message(&json!({
+    let error = send_message(&json!({
         "agent": "claude-code",
         "text": "private prompt",
         "binary": "/definitely/not/a/claude-binary",
         "command": "/bin/echo",
         "args": ["{prompt}"]
     }))
-    .unwrap();
+    .unwrap_err();
 
-    assert_eq!(response["ok"], false);
-    assert_eq!(
-        response["runtimeProtocol"],
-        claude_code_driver::RUNTIME_PROTOCOL
-    );
-    assert_ne!(response["runtimeProtocol"], "configured-command");
+    assert_eq!(error.to_string(), "native agent executable is unavailable");
 }
 
 #[test]

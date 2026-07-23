@@ -1,27 +1,33 @@
 import 'package:flutter/material.dart';
 
 import 'package:flutter_client/src/application/controller/client_controller.dart';
-import 'package:flutter_client/src/contracts/agent_orchestration_policy.dart';
+import 'package:flutter_client/src/application/features/agents/orchestration/orchestration_policy_editor_models.dart';
+import 'package:flutter_client/src/frontend/features/agents/ui/agent_conversation_pane_controls.dart';
 import 'package:flutter_client/src/frontend/features/agents/ui/agent_orchestration_policy_dialog.dart';
 import 'package:flutter_client/src/frontend/l10n/lico_strings.dart';
 import 'package:flutter_client/src/frontend/shared/ui/apple_popup_select.dart';
-import 'package:flutter_client/src/frontend/shared/ui/theme.dart';
 
 export 'package:flutter_client/src/frontend/features/agents/ui/agent_orchestration_policy_dialog.dart';
 
 final class AgentOrchestrationPolicyHeaderControls extends StatelessWidget {
   const AgentOrchestrationPolicyHeaderControls({
     super.key,
-    required this.controller,
+    required this.policy,
+    required this.policies,
+    required this.policyLabel,
+    required this.onSelectPolicy,
+    required this.onEditPolicy,
   });
 
-  final ClientController controller;
+  final AgentOrchestrationPolicy policy;
+  final List<AgentOrchestrationPolicy> policies;
+  final String Function(AgentOrchestrationPolicy) policyLabel;
+  final ValueChanged<String> onSelectPolicy;
+  final VoidCallback onEditPolicy;
 
   @override
   Widget build(BuildContext context) {
-    final colors = context.licoColors;
     final strings = LicoStrings.of(context);
-    final policy = controller.effectiveAgentOrchestrationPolicy;
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -33,32 +39,21 @@ final class AgentOrchestrationPolicyHeaderControls extends StatelessWidget {
             isExpanded: true,
             warningBorder: !policy.configured,
             options: [
-              for (final item in controller.agentOrchestrationPolicies)
+              for (final item in policies)
                 ApplePopupSelectOption(
                   value: item.id,
-                  label: controller.agentOrchestrationPolicyDisplayLabel(item),
+                  label: policyLabel(item),
                 ),
             ],
-            onChanged: controller.selectAgentOrchestrationPolicy,
+            onChanged: onSelectPolicy,
           ),
         ),
         const SizedBox(width: 6),
-        IconButton(
+        ConversationIconButton(
           key: const Key('agent-orchestration-policy-edit'),
           tooltip: strings.editPolicy,
-          onPressed: () =>
-              showAgentOrchestrationPolicyEditor(context, controller),
-          color: colors.primary,
-          hoverColor: Color.lerp(colors.surface, colors.primary, 0.12),
-          style: IconButton.styleFrom(
-            fixedSize: const Size(36, 36),
-            minimumSize: const Size(36, 36),
-            padding: EdgeInsets.zero,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(8),
-            ),
-          ),
-          icon: const Icon(Icons.edit_outlined, size: 18),
+          onPressed: onEditPolicy,
+          icon: Icons.edit_outlined,
         ),
       ],
     );

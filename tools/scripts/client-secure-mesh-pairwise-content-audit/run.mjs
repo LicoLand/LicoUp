@@ -52,7 +52,7 @@ export async function main(argv = process.argv.slice(2)) {
     maxBytes: 1024 * 1024,
   }).toString("utf8"));
   if (reviewAuthorities?.schemaVersion !==
-      "licolite.secure-mesh.pairwise-review-authorities.v1" ||
+      "licomesh.secure-mesh.pairwise-review-authorities.v1" ||
     !Array.isArray(reviewAuthorities.reviewerKeys) ||
     !Array.isArray(reviewAuthorities.releaseOwnerKeys)) {
     throw new Error("Pairwise review authority config is invalid");
@@ -192,7 +192,7 @@ export async function main(argv = process.argv.slice(2)) {
   });
   const report = {
     ok,
-    schemaVersion: "licolite.secure-mesh.pairwise-content-audit-report.v1",
+    schemaVersion: "licomesh.secure-mesh.pairwise-content-audit-report.v1",
     evidenceRefSchemaVersion: SECURE_CLIENT_MESH_E2EE_EVIDENCE_REF_REPORT_SCHEMA_VERSION,
     verifier: VERIFIER_REF,
     generatedBy: VERIFIER_REF,

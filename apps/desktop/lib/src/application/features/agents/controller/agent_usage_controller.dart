@@ -3,12 +3,21 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 import 'package:flutter_client/src/application/features/agents/contracts/agent_usage_gateway.dart';
+import 'package:flutter_client/src/application/features/agents/controller/agent_usage_daily_cache.dart';
 import 'package:flutter_client/src/contracts/agent_usage_models.dart';
 
 const Duration defaultAgentUsagePollingInterval = Duration(minutes: 1);
-const int defaultAgentUsageHistoryDays = 30;
+
+/// Long-lived daily cache depth. One backfill scan covers all UI presets.
+const int defaultAgentUsageScanHistoryDays = agentUsageDailyCacheMaxDays;
+
+/// Default UI viewport over the cached daily series.
+const int defaultAgentUsageDisplayHistoryDays = 30;
+
+/// Backward-compatible alias for the default display window.
+const int defaultAgentUsageHistoryDays = defaultAgentUsageDisplayHistoryDays;
 const int minAgentUsageHistoryDays = 1;
-const int maxAgentUsageHistoryDays = 365;
+const int maxAgentUsageHistoryDays = agentUsageDailyCacheMaxDays;
 
 typedef AgentUsageStatusSink =
     void Function({
@@ -31,10 +40,19 @@ final class AgentUsageController extends ChangeNotifier {
   final String Function() selectedAgentId;
   final AgentUsageStatusSink onStatus;
 
+  /// Viewport-projected report for charts and summaries.
   AgentUsageReport? report;
+
+  /// Retained scan reports (newest first) for history/debug surfaces.
   List<AgentUsageReport> reports = const [];
+
+  /// True only for user-visible refresh operations (force refresh / first load).
   bool scanning = false;
-  int historyDays = defaultAgentUsageHistoryDays;
+
+  /// UI viewport in days (7 / 30 / 90 presets). Never drives scan size.
+  int historyDays = defaultAgentUsageDisplayHistoryDays;
+
+  final AgentUsageDailyCache _dailyCache = AgentUsageDailyCache();
 
   Timer? _pollingTimer;
   final Set<Object> _pollingOwners = <Object>{};
@@ -47,17 +65,46 @@ final class AgentUsageController extends ChangeNotifier {
   @visibleForTesting
   int get pollingOwnerCount => _pollingOwners.length;
 
+  @visibleForTesting
+  AgentUsageDailyCache get dailyCache => _dailyCache;
+
+  /// Backward-compatible alias for tests and facades.
+  @visibleForTesting
+  AgentUsageReport? get scanCache =>
+      _dailyCache.isEmpty ? null : _dailyCache.projectViewport(
+        agentUsageDailyCacheMaxDays,
+      );
+
+  /// True when the daily cache covers 90 days and was refreshed recently.
+  bool get hasFreshScanCoverage =>
+      _dailyCache.hasFullCoverage() && _dailyCache.hasFreshIngest();
+
   AgentUsageAgentSummary? get selectedUsage {
     final agentId = selectedAgentId().trim();
     return agentId.isEmpty ? null : report?.agent(agentId);
   }
 
   void replaceReport(AgentUsageReport? value) {
-    report = value;
+    if (value == null) {
+      report = null;
+      _dailyCache.clear();
+      return;
+    }
+    _ingestIntoDailyCache(
+      value,
+      replace: value.windowDays >= agentUsageDailyCacheMaxDays,
+    );
   }
 
   void replaceReports(List<AgentUsageReport> value) {
     reports = List.unmodifiable(value);
+    if (value.isEmpty) {
+      report = null;
+      _dailyCache.clear();
+      return;
+    }
+    _dailyCache.ingestReports(value, replace: true);
+    _applyViewport();
   }
 
   @visibleForTesting
@@ -103,7 +150,15 @@ final class AgentUsageController extends ChangeNotifier {
     _pollingTimer = Timer(interval, () {
       _pollingTimer = null;
       unawaited(() async {
-        await scan(forceRefresh: false, showProgress: false);
+        if (_dailyCache.hasFullCoverage()) {
+          await _refreshToday(showProgress: false);
+        } else {
+          await scan(
+            forceRefresh: false,
+            showProgress: false,
+            historyDays: defaultAgentUsageScanHistoryDays,
+          );
+        }
         if (!_disposed && _pollingOwners.isNotEmpty) {
           _schedulePoll(_pollingInterval);
         }
@@ -112,7 +167,12 @@ final class AgentUsageController extends ChangeNotifier {
   }
 
   Future<void> ensureLoadedAndFresh({int limit = 20}) {
-    if (_disposed || _reportMatchesActiveWindowAndIsFresh) {
+    if (_disposed) {
+      return Future<void>.value();
+    }
+    if (hasFreshScanCoverage) {
+      _applyViewport();
+      notifyListeners();
       return Future<void>.value();
     }
     final active = _refreshFuture;
@@ -126,40 +186,91 @@ final class AgentUsageController extends ChangeNotifier {
   }
 
   Future<void> _loadAndRefresh({required int limit}) async {
-    if (_disposed || _reportMatchesActiveWindowAndIsFresh) return;
-    if (report == null) await loadReports(limit: limit, showProgress: false);
-    if (!_disposed && !_reportMatchesActiveWindowAndIsFresh) {
-      await scan(forceRefresh: false, showProgress: false);
+    if (_disposed) {
+      return;
     }
+    if (hasFreshScanCoverage) {
+      _applyViewport();
+      notifyListeners();
+      return;
+    }
+    if (_dailyCache.isEmpty || report == null) {
+      await loadReports(limit: limit, showProgress: false);
+    }
+    if (_disposed) {
+      return;
+    }
+    if (hasFreshScanCoverage) {
+      _applyViewport();
+      notifyListeners();
+      return;
+    }
+    if (!_dailyCache.hasFullCoverage()) {
+      await scan(
+        forceRefresh: false,
+        showProgress: false,
+        historyDays: defaultAgentUsageScanHistoryDays,
+      );
+    } else if (_dailyCache.hasDailyBreakdown && !_dailyCache.hasFreshToday()) {
+      await _refreshToday(showProgress: false);
+    }
+    if (_disposed) {
+      return;
+    }
+    _applyViewport();
+    notifyListeners();
   }
 
-  bool get _reportMatchesActiveWindowAndIsFresh =>
-      report?.windowDays == historyDays && report?.isFresh() == true;
-
+  /// Changes only the viewport. Never triggers scan, slice, or gateway I/O.
   Future<void> setHistoryDays(int value) async {
     final normalized = value
         .clamp(minAgentUsageHistoryDays, maxAgentUsageHistoryDays)
         .toInt();
     if (normalized == historyDays) return;
     historyDays = normalized;
+    _applyViewport();
     notifyListeners();
-    final active = _scanFuture;
-    if (active != null) {
-      await active;
-    }
-    if (_disposed) return;
-    await scan(forceRefresh: true);
   }
 
-  Future<void> scan({bool forceRefresh = true, bool showProgress = true}) {
+  void _ingestIntoDailyCache(AgentUsageReport source, {required bool replace}) {
+    _dailyCache.ingestReport(source, replace: replace);
+    _applyViewport();
+  }
+
+  void _applyViewport() {
+    report = _dailyCache.projectViewport(historyDays);
+  }
+
+  AgentUsageReport _normalizeScanReport(AgentUsageReport scanned, int scanDays) {
+    if (scanned.windowDays >= scanDays) {
+      return scanned;
+    }
+    return scanned.copyWith(
+      window: {
+        ...scanned.window,
+        'days': scanDays,
+      },
+    );
+  }
+
+  Future<void> scan({
+    bool forceRefresh = true,
+    bool showProgress = true,
+    int? historyDays,
+  }) {
     final active = _scanFuture;
     if (active != null) return active;
-    if (scanning || _disposed) return Future<void>.value();
+    if ((scanning && showProgress) || _disposed) {
+      return Future<void>.value();
+    }
     late final Future<void> scanFuture;
-    scanFuture = _scan(forceRefresh: forceRefresh, showProgress: showProgress)
-        .whenComplete(() {
-          if (identical(_scanFuture, scanFuture)) _scanFuture = null;
-        });
+    scanFuture = _scan(
+      forceRefresh: forceRefresh,
+      showProgress: showProgress,
+      historyDays: historyDays,
+    ).whenComplete(() {
+      if (identical(_scanFuture, scanFuture)) _scanFuture = null;
+    });
     _scanFuture = scanFuture;
     return scanFuture;
   }
@@ -167,9 +278,14 @@ final class AgentUsageController extends ChangeNotifier {
   Future<void> _scan({
     required bool forceRefresh,
     required bool showProgress,
+    int? historyDays,
   }) async {
-    scanning = true;
+    final scanDays = historyDays ??
+        (forceRefresh
+            ? defaultAgentUsageScanHistoryDays
+            : defaultAgentUsageDisplayHistoryDays);
     if (showProgress) {
+      scanning = true;
       onStatus(
         chinese: '正在刷新本机 Token 用量。',
         english: 'Refreshing local token usage.',
@@ -180,23 +296,30 @@ final class AgentUsageController extends ChangeNotifier {
     try {
       final next = await gateway.scan(
         forceRefresh: forceRefresh,
-        historyDays: historyDays,
+        historyDays: scanDays,
       );
       if (_disposed) return;
-      report = next;
-      reports = List.unmodifiable(
-        [
-          next,
-          ...reports.where(
-            (candidate) => candidate.generatedAt != next.generatedAt,
-          ),
-        ].take(20),
-      );
+      final normalized = _normalizeScanReport(next, scanDays);
+      final replaceCache = scanDays >= agentUsageDailyCacheMaxDays &&
+          (_dailyCache.isEmpty || (forceRefresh && showProgress));
+      _ingestIntoDailyCache(normalized, replace: replaceCache);
+      if (replaceCache) {
+        reports = List.unmodifiable(
+          [
+            normalized,
+            ...reports.where(
+              (candidate) => candidate.generatedAt != normalized.generatedAt,
+            ),
+          ].take(20),
+        );
+      }
       if (showProgress) {
+        final shown = report ?? normalized;
         onStatus(
-          chinese: '已扫描 ${next.agentCount} 个智能体，共 ${next.totalTokens} 个 Token。',
+          chinese:
+              '已扫描 ${shown.agentCount} 个智能体，共 ${shown.totalTokens} 个 Token。',
           english:
-              'Scanned ${next.agentCount} agents and ${next.totalTokens} tokens.',
+              'Scanned ${shown.agentCount} agents and ${shown.totalTokens} tokens.',
           caption: 'Agent usage',
         );
       }
@@ -210,21 +333,40 @@ final class AgentUsageController extends ChangeNotifier {
         );
       }
     } finally {
-      scanning = false;
+      if (showProgress) {
+        scanning = false;
+      }
       if (!_disposed) notifyListeners();
     }
   }
 
+  Future<void> _refreshToday({required bool showProgress}) async {
+    await _scan(
+      forceRefresh: false,
+      showProgress: showProgress,
+      historyDays: 1,
+    );
+  }
+
   Future<void> loadReports({int limit = 10, bool showProgress = true}) async {
-    if (scanning || _disposed) return;
-    scanning = true;
+    if ((scanning && showProgress) || _disposed) return;
     if (showProgress) {
+      scanning = true;
       onStatus(chinese: '', english: '', caption: 'Agent usage');
+      notifyListeners();
     }
-    notifyListeners();
     try {
       reports = List.unmodifiable(await gateway.reports(limit: limit));
-      report = reports.isEmpty ? null : reports.first;
+      if (reports.isEmpty) {
+        if (_dailyCache.isEmpty) {
+          report = null;
+        } else {
+          _applyViewport();
+        }
+      } else {
+        _dailyCache.ingestReports(reports, replace: true);
+        _applyViewport();
+      }
       if (showProgress) {
         onStatus(
           chinese: '已加载 ${reports.length} 份用量报表。',
@@ -242,7 +384,9 @@ final class AgentUsageController extends ChangeNotifier {
         );
       }
     } finally {
-      scanning = false;
+      if (showProgress) {
+        scanning = false;
+      }
       if (!_disposed) notifyListeners();
     }
   }

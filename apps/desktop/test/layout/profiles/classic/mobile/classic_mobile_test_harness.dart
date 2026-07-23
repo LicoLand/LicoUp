@@ -137,17 +137,26 @@ final class ClassicMobileHarness {
   ClassicMobileHarness({
     this.activeDestination = ClientSection.agents,
     ClassicMobileFakeContentPort? content,
-  }) : content = content ?? ClassicMobileFakeContentPort(),
-       state = buildLayoutScopedStateFixture(
-         profile: classicMobileBundle.profile,
-         surface: LayoutRuntimeSurface.mobile,
-         stateNamespaces: classicMobileBundle.stateNamespaces,
-       );
+  }) : content = content ?? ClassicMobileFakeContentPort();
 
   final ClientSection activeDestination;
   final ClassicMobileFakeContentPort content;
-  final LayoutScopedState state;
   ClientSection? selectedDestination;
+
+  // Mirror production (layout_host): one scoped state per destination, so
+  // per-destination channels resolve to their declared namespaces.
+  final Map<ClientSection, LayoutScopedState> _states = {};
+
+  LayoutScopedState _stateFor(ClientSection destination) =>
+      _states.putIfAbsent(
+        destination,
+        () => buildLayoutScopedStateFixture(
+          profile: classicMobileBundle.profile,
+          surface: LayoutRuntimeSurface.mobile,
+          stateNamespaces: classicMobileBundle.stateNamespaces,
+          destination: destination,
+        ),
+      );
 
   LayoutDestinationBuildContext destinationData(
     LayoutEnvironment environment,
@@ -156,7 +165,7 @@ final class ClassicMobileHarness {
     environment: environment,
     destination: destination,
     content: content,
-    state: state,
+    state: _stateFor(destination),
   );
 
   Widget build(LayoutEnvironment environment) {

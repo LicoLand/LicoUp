@@ -95,21 +95,24 @@ class TargetCandidate {
       (adapterCapabilities['conversationEvidenceAge'] ?? '').toString();
 
   String get conversationSendGateReason {
-    final codes = conversationSummaryCodes;
-    if (codes.isNotEmpty) {
-      return codes.first;
+    if ((binaryPath ?? '').trim().isEmpty) {
+      return 'native_agent_executable_not_detected';
     }
-    final blocker = conversationBlocker.trim();
-    if (blocker.isNotEmpty) {
-      return blocker;
+    if (conversationDriverStatus == 'unsupported') {
+      return 'native_agent_runtime_profile_unavailable';
     }
-    return 'native_conversation_parity_$conversationReadiness';
+    return 'runtime_message_send_unavailable';
   }
 
+  /// Local conversation agents are client-accessible by default: parity
+  /// evidence (conversationReadiness) stays informational and never gates
+  /// local runtime use. Only runtimes without a driver profile or without a
+  /// detected binary are excluded. The projected supported-action list is
+  /// informational and cannot veto an execution path the client can resolve.
   bool get canRelayRuntime =>
       visibleInClient &&
-      conversationReadiness == 'ready' &&
-      supportsAction('runtime.message.send');
+      (binaryPath ?? '').trim().isNotEmpty &&
+      conversationDriverStatus != 'unsupported';
 
   bool get supportsNativeInterruptSteer =>
       conversationCapabilityMatrix['interruptSteer'] == true;

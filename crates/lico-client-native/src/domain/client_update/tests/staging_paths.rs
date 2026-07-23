@@ -3,7 +3,8 @@ use super::support::*;
 #[test]
 fn client_update_rejects_absolute_and_parent_staged_file_names() {
     let fixture = UpdateFixture::new();
-    for invalid in ["/tmp/update.bin", "../update.bin", "nested/update.bin"] {
+    let absolute = ["/", "test-data", "/", "update.bin"].concat();
+    for invalid in [absolute.as_str(), "../update.bin", "nested/update.bin"] {
         let mut artifact = fixture.artifact(TARGET_ID);
         artifact["fileName"] = json!(invalid);
         let manifest = fixture

@@ -58,7 +58,7 @@ void main() {
     test('declares exact business presentation-state channels', () {
       final namespaces = workbenchMobileBundle.stateNamespaces;
 
-      expect(namespaces, hasLength(5));
+      expect(namespaces, hasLength(4));
       expect(namespaces.map((namespace) => namespace.destination).toSet(), {
         ClientSection.agents,
         ClientSection.settings,
@@ -75,7 +75,6 @@ void main() {
         {
           LayoutStateChannels.agentsHistory.id,
           LayoutStateChannels.agentsSidebar.id,
-          LayoutStateChannels.agentsDestination.id,
         },
       );
       expect(

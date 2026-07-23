@@ -14,7 +14,7 @@ export function releaseCliTargetEvidenceReady(
 ) {
   const summary = report?.summary || {};
   return report?.schemaVersion ===
-      "licolite.secure-mesh.release-cli-proof-report.v1" &&
+      "licomesh.secure-mesh.release-cli-proof-report.v1" &&
     report?.verifier === "tools/scripts/client-secure-mesh-release-cli-proof.mjs" &&
     report?.ok === true && report?.platform === platform &&
     report?.artifactKind === "release-cli-binary" &&
@@ -35,7 +35,7 @@ export function releaseCliTargetEvidenceReady(
 export function androidPlatformCryptoEvidenceReady(report) {
   const summary = report?.summary || {};
   return report?.schemaVersion ===
-      "licolite.secure-mesh.android-platform-crypto-acceptance.v1" &&
+      "licomesh.secure-mesh.android-platform-crypto-acceptance.v1" &&
     report?.verifier === "tools/scripts/client-android-native-tests.mjs" &&
     report?.ok === true && report?.platform === "android" &&
     summary.ok === true &&

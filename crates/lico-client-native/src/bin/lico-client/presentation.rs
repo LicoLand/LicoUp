@@ -12,6 +12,8 @@ pub(super) fn print_usage() {
         "Usage:
   lico-client rpc stdio  # lico-client.stdio.v1 line-delimited JSON RPC
   lico-client state get|set <settings|targets|pairings|skills|pins|identities|conversation-archive-profiles|agent-usage-reports|skill-usage> [json]
+  lico-client adapter catalog
+  lico-client adapter antigravity status|install|uninstall
   lico-client opencode-serve ensure|start|restart|stop|status [--port 24173] [--executable PATH] [--attach-url URL]
   lico-client activity list [--type TYPE] [--target TARGET] [--limit N]
   lico-client snapshots list [--target TARGET]

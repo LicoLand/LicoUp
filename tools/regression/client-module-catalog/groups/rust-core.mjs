@@ -73,6 +73,17 @@ export const RUST_CORE_MODULES = Object.freeze([
       command: rustLayer("core::secure_mesh_secret_store::tests::"),
     }),
   defineModule({
+      id: "rust.core.secure-mesh.presence-authorization",
+      kind: "rust-core",
+      summary: "Exact-batch, operation-bound, one-shot Secure Mesh presence authorization",
+      inputs: [
+        "crates/lico-client-native/src/core/secure_mesh_secret_store.rs",
+        "crates/lico-client-native/src/core/secure_mesh_secret_store/authorization.rs",
+        "crates/lico-client-native/src/core/secure_mesh_trust/tests/authorization.rs",
+      ],
+      command: rustLayer("core::secure_mesh_trust::tests::authorization::"),
+    }),
+  defineModule({
       id: "rust.core.mcp.composition",
       kind: "rust-core",
       summary: "MCP facade, protocol revision, and shared adapter composition",

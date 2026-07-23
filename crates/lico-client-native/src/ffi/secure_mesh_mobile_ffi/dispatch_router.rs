@@ -5,95 +5,125 @@ use super::{
     protected_operation::secure_mesh_action_requires_protected_operation_gate,
     redacted_error::unsupported_action_response, request_validation::validate_ffi_json_structure,
 };
+use crate::ffi::generated::secure_mesh::{
+    SecureMeshFailure, SecureMeshFailureCode, SecureMeshRequest, SecureMeshResult,
+};
 
 pub fn dispatch_json(request: &Value, unsupported_code: &'static str) -> anyhow::Result<Value> {
     validate_ffi_json_structure(request)?;
-    ensure!(
-        request.is_object(),
-        "secure mesh native request must be an object"
-    );
     let action = request
         .get("action")
         .and_then(Value::as_str)
         .unwrap_or_default();
+    if !action.starts_with("secure_mesh.") {
+        ensure!(
+            request.is_object(),
+            "secure mesh native request must be an object"
+        );
+        let params = request.get("params").cloned().unwrap_or_else(|| json!({}));
+        return dispatch_value(action, &params, unsupported_code);
+    }
+    let request = match SecureMeshRequest::from_value(request.clone()) {
+        Ok(request) => request,
+        Err(failure) if failure.code == SecureMeshFailureCode::UnsupportedAction => {
+            return Ok(unsupported_action_response("", unsupported_code));
+        }
+        Err(failure) => return Err(anyhow::Error::new(failure)),
+    };
+    dispatch_request(&request, unsupported_code)
+        .map(SecureMeshResult::into_value)
+        .map_err(anyhow::Error::new)
+}
+
+pub fn dispatch_request(
+    request: &SecureMeshRequest,
+    unsupported_code: &'static str,
+) -> Result<SecureMeshResult, SecureMeshFailure> {
+    dispatch_value(request.action.as_str(), &request.params, unsupported_code)
+        .map_err(|_| SecureMeshFailure::new(SecureMeshFailureCode::NativeOperationFailed))
+        .and_then(SecureMeshResult::from_value)
+}
+
+fn dispatch_value(
+    action: &str,
+    params: &Value,
+    unsupported_code: &'static str,
+) -> anyhow::Result<Value> {
     if secure_mesh_action_requires_protected_operation_gate(action) {
         crate::domain::mobile_relay::ensure_secure_mesh_protected_operation_allowed()?;
     }
-    let params = request.get("params").cloned().unwrap_or_else(|| json!({}));
     match action {
-        "mobile.relay.config.get" => crate::domain::mobile_relay::config_get(&params),
-        "mobile.relay.config.set" => crate::domain::mobile_relay::config_set(&params),
-        "mobile.relay.pairing.claim" => crate::domain::mobile_relay::pairing_claim(&params),
-        "mobile.relay.pairing.status" => crate::domain::mobile_relay::pairing_status(&params),
+        "mobile.relay.config.get" => crate::domain::mobile_relay::config_get(params),
+        "mobile.relay.config.set" => crate::domain::mobile_relay::config_set(params),
+        "mobile.relay.pairing.claim" => crate::domain::mobile_relay::pairing_claim(params),
+        "mobile.relay.pairing.status" => crate::domain::mobile_relay::pairing_status(params),
         "mobile.relay.commands.createSecure" => {
-            crate::domain::mobile_relay::command_create_secure(&params)
+            crate::domain::mobile_relay::command_create_secure(params)
         }
         "mobile.relay.commands.resultSecure" => {
-            crate::domain::mobile_relay::command_result_secure(&params)
+            crate::domain::mobile_relay::command_result_secure(params)
         }
         "mobile.relay.commands.resultReplayProof" => {
-            crate::domain::mobile_relay::command_result_replay_proof(&params)
+            crate::domain::mobile_relay::command_result_replay_proof(params)
         }
-        "mobile.relay.e2ee.status" => crate::domain::mobile_relay::e2ee_status(&params),
+        "mobile.relay.e2ee.status" => crate::domain::mobile_relay::e2ee_status(params),
         "secure_mesh.status" => {
             let evaluation =
                 crate::domain::mobile_relay::selected_mobile_relay_capability_evaluation()?;
             crate::core::secure_mesh::protocol_status_with_capability_evaluation(&evaluation)
         }
         action if crate::domain::mobile_relay::SECURE_MESH_KT_NATIVE_ACTIONS.contains(&action) => {
-            crate::domain::mobile_relay::dispatch_key_transparency_action(action, &params)
+            crate::domain::mobile_relay::dispatch_key_transparency_action(action, params)
         }
         action
             if crate::domain::secure_mesh_mls::SECURE_MESH_MLS_NATIVE_ACTIONS.contains(&action) =>
         {
-            crate::domain::secure_mesh_mls::dispatch(action, &params)
+            crate::domain::secure_mesh_mls::dispatch(action, params)
         }
-        "secure_mesh.command.execute" => execute_secure_command(&params),
+        "secure_mesh.command.execute" => execute_secure_command(params),
         "secure_mesh.deviceTrust.evaluate" => {
-            crate::core::secure_mesh_trust::evaluate_device_trust_policy_json(&params)
+            crate::core::secure_mesh_trust::evaluate_device_trust_policy_json(params)
         }
         "secure_mesh.deviceTrust.verifyQr" => {
-            crate::core::secure_mesh_trust::evaluate_device_trust_verification_json(&params, "qr")
+            crate::core::secure_mesh_trust::evaluate_device_trust_verification_json(params, "qr")
         }
         "secure_mesh.deviceTrust.verifySas" => {
-            crate::core::secure_mesh_trust::evaluate_device_trust_verification_json(&params, "sas")
+            crate::core::secure_mesh_trust::evaluate_device_trust_verification_json(params, "sas")
         }
         "secure_mesh.deviceTrust.rotate" => {
-            crate::core::secure_mesh_trust::evaluate_device_trust_lifecycle_json(&params, "rotate")
+            crate::core::secure_mesh_trust::evaluate_device_trust_lifecycle_json(params, "rotate")
         }
         "secure_mesh.deviceTrust.revoke" => {
-            crate::core::secure_mesh_trust::evaluate_device_trust_lifecycle_json(&params, "revoke")
+            crate::core::secure_mesh_trust::evaluate_device_trust_lifecycle_json(params, "revoke")
         }
         "secure_mesh.deviceTrust.recover" => {
-            crate::core::secure_mesh_trust::evaluate_device_trust_lifecycle_json(&params, "recover")
+            crate::core::secure_mesh_trust::evaluate_device_trust_lifecycle_json(params, "recover")
         }
         "secure_mesh.lifecycle.serviceAction" => {
-            crate::core::secure_mesh_lifecycle::evaluate_service_action_json(&params)
+            crate::core::secure_mesh_lifecycle::evaluate_service_action_json(params)
         }
-        "secure_mesh.file.route" => {
-            crate::core::secure_mesh_file::evaluate_file_route_json(&params)
-        }
+        "secure_mesh.file.route" => crate::core::secure_mesh_file::evaluate_file_route_json(params),
         "secure_mesh.file.receiveDestination" => {
-            crate::core::secure_mesh_file::evaluate_file_receive_destination_json(&params)
+            crate::core::secure_mesh_file::evaluate_file_receive_destination_json(params)
         }
         "secure_mesh.file.receiveConfirmation" => {
-            crate::core::secure_mesh_file::evaluate_file_receive_confirmation_json(&params)
+            crate::core::secure_mesh_file::evaluate_file_receive_confirmation_json(params)
         }
         "secure_mesh.file.handoffProof" => {
-            crate::core::secure_mesh_file::evaluate_file_handoff_proof_json(&params)
+            crate::core::secure_mesh_file::evaluate_file_handoff_proof_json(params)
         }
         "secure_mesh.approval.request" => {
-            crate::core::secure_mesh_approval::evaluate_approval_request_json(&params)
+            crate::core::secure_mesh_approval::evaluate_approval_request_json(params)
         }
         "secure_mesh.approval.fanout" => {
-            crate::core::secure_mesh_approval::evaluate_approval_fanout_json(&params)
+            crate::core::secure_mesh_approval::evaluate_approval_fanout_json(params)
         }
-        "secure_mesh.approval.respond" => resolve_approval_response(&params),
+        "secure_mesh.approval.respond" => resolve_approval_response(params),
         "secure_mesh.approval.inbox" => {
-            crate::core::secure_mesh_approval::list_approval_inbox_json(&params)
+            crate::core::secure_mesh_approval::list_approval_inbox_json(params)
         }
         "secure_mesh.approval.adapterCapability" => {
-            crate::core::secure_mesh_approval::evaluate_approval_adapter_capability_json(&params)
+            crate::core::secure_mesh_approval::evaluate_approval_adapter_capability_json(params)
         }
         _ => Ok(unsupported_action_response(action, unsupported_code)),
     }

@@ -6,3 +6,4 @@ mod ffi_dispatcher;
 mod native_store_boundary;
 mod public_config_restore;
 mod secure_command_store;
+mod zeroizing_boundary;

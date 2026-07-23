@@ -1,13 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_client/src/contracts/target_candidate.dart';
 import 'package:flutter_client/src/frontend/l10n/lico_strings.dart';
-import 'package:flutter_client/src/frontend/shared/ui/apple_notifications.dart';
 import 'package:flutter_client/src/frontend/shared/ui/theme.dart';
 
-/// Sanitized parity disclosure copy for conversation send gates.
+/// Sanitized copy for deterministic conversation-send unavailability.
 /// Never includes paths, digests, hostnames, or machine identity.
-class ConversationParityDisclosureCopy {
-  const ConversationParityDisclosureCopy({
+class ConversationSendAvailabilityCopy {
+  const ConversationSendAvailabilityCopy({
     required this.reasonCode,
     required this.reasonLabel,
     required this.unblockLabel,
@@ -17,38 +16,36 @@ class ConversationParityDisclosureCopy {
   final String reasonCode;
   final String reasonLabel;
   final String? unblockLabel;
-  final ConversationParityUnblockAction? unblockAction;
+  final ConversationSendUnblockAction? unblockAction;
 }
 
-enum ConversationParityUnblockAction { rescanAgents, editPolicy }
+enum ConversationSendUnblockAction { rescanAgents, editPolicy }
 
-ConversationParityDisclosureCopy conversationParityDisclosureCopy({
+ConversationSendAvailabilityCopy conversationSendAvailabilityCopy({
   required LicoStrings strings,
   required String reasonCode,
   bool orchestration = false,
 }) {
   if (orchestration) {
-    return ConversationParityDisclosureCopy(
+    return ConversationSendAvailabilityCopy(
       reasonCode: 'orchestration_policy_required',
       reasonLabel: strings.configurePolicyBeforeSend,
       unblockLabel: strings.editPolicy,
-      unblockAction: ConversationParityUnblockAction.editPolicy,
+      unblockAction: ConversationSendUnblockAction.editPolicy,
     );
   }
   final normalized = reasonCode.trim().isEmpty
-      ? 'native_conversation_parity_unverified'
+      ? 'runtime_message_send_unavailable'
       : reasonCode.trim();
   final label = strings.conversationParityReason(normalized);
   final action = switch (normalized) {
-    'evidence_missing' ||
-    'evidence_incomplete' ||
-    'evidence_stale_or_incomplete' ||
-    'runtime_evidence_binding_mismatch' ||
-    'native_conversation_parity_unverified' =>
-      ConversationParityUnblockAction.rescanAgents,
+    'native_agent_executable_not_detected' ||
+    'native_agent_runtime_profile_unavailable' ||
+    'runtime_message_send_unavailable' =>
+      ConversationSendUnblockAction.rescanAgents,
     _ => null,
   };
-  return ConversationParityDisclosureCopy(
+  return ConversationSendAvailabilityCopy(
     reasonCode: normalized,
     reasonLabel: label,
     unblockLabel: action == null ? null : strings.refreshAgents,
@@ -115,7 +112,7 @@ class ConversationParityDisclosurePanel extends StatelessWidget {
               ),
               if (structuralCause.isNotEmpty)
                 _DisclosureLine(
-                  label: strings.conversationParityBlockedCause,
+                  label: strings.conversationParityEvidenceNote,
                   value: strings.conversationParityReason(structuralCause),
                   valueKey: const Key('conversation-parity-blocked-cause'),
                 ),
@@ -215,43 +212,6 @@ class ConversationParityDisclosurePanel extends StatelessWidget {
           ),
         );
       },
-    );
-  }
-}
-
-class ConversationParitySendGateBanner extends StatelessWidget {
-  const ConversationParitySendGateBanner({
-    super.key,
-    required this.copy,
-    this.onUnblock,
-  });
-
-  final ConversationParityDisclosureCopy copy;
-  final VoidCallback? onUnblock;
-
-  @override
-  Widget build(BuildContext context) {
-    final strings = LicoStrings.of(context);
-    return Container(
-      key: const Key('conversation-parity-send-gate'),
-      width: double.infinity,
-      margin: const EdgeInsets.fromLTRB(12, 6, 12, 0),
-      child: AppleGlassNoticeBanner(
-        tone: AppleGlassNoticeTone.warning,
-        message: copy.reasonLabel,
-        messageKey: const Key('conversation-parity-send-gate-reason'),
-        action: copy.unblockAction != null && onUnblock != null
-            ? TextButton(
-                key: const Key('conversation-parity-send-gate-unblock'),
-                onPressed: onUnblock,
-                style: TextButton.styleFrom(
-                  visualDensity: VisualDensity.compact,
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                ),
-                child: Text(copy.unblockLabel ?? strings.refreshAgents),
-              )
-            : null,
-      ),
     );
   }
 }

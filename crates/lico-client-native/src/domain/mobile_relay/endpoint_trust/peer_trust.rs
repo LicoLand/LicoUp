@@ -1,12 +1,19 @@
 use super::*;
+use crate::domain::mobile_relay::secret_custody::RuntimeSecretMaterial;
 
 #[allow(dead_code)]
 pub(in crate::domain::mobile_relay) fn apply_peer_secure_mesh_descriptor(
     config: &mut Value,
+    secret_material: &mut RuntimeSecretMaterial,
     descriptor: &Value,
     verified: bool,
 ) -> Result<()> {
-    apply_peer_secure_mesh_descriptor_with_context(config, descriptor, verified, None)
+    let mut context = RuntimeSecretContext::default();
+    std::mem::swap(&mut context.material, secret_material);
+    let result =
+        apply_peer_secure_mesh_descriptor_inner(config, descriptor, verified, &mut context);
+    std::mem::swap(&mut context.material, secret_material);
+    result
 }
 
 #[allow(dead_code)]
@@ -15,6 +22,18 @@ pub(in crate::domain::mobile_relay) fn apply_peer_secure_mesh_descriptor_with_co
     descriptor: &Value,
     verified: bool,
     mut secret_context: Option<&mut RuntimeSecretContext>,
+) -> Result<()> {
+    let context = secret_context
+        .as_deref_mut()
+        .ok_or_else(|| anyhow!("mobile relay runtime secret context is required"))?;
+    apply_peer_secure_mesh_descriptor_inner(config, descriptor, verified, context)
+}
+
+fn apply_peer_secure_mesh_descriptor_inner(
+    config: &mut Value,
+    descriptor: &Value,
+    verified: bool,
+    secret_context: &mut RuntimeSecretContext,
 ) -> Result<()> {
     ensure_secure_mesh_protected_operation_allowed()?;
     let endpoint_id = descriptor_text(descriptor, "endpointId")?;
@@ -28,7 +47,11 @@ pub(in crate::domain::mobile_relay) fn apply_peer_secure_mesh_descriptor_with_co
         .and_then(Value::as_str)
         .unwrap_or("desktop_sidecar")
         .to_string();
-    ensure_mobile_relay_endpoint_descriptor(&mut candidate, &local_endpoint_kind)?;
+    ensure_mobile_relay_endpoint_descriptor(
+        &mut candidate,
+        &mut secret_context.material,
+        &local_endpoint_kind,
+    )?;
     let local_endpoint_id = candidate
         .get("mobileRelayE2ee")
         .and_then(|state| state.get("endpointId"))
@@ -213,7 +236,7 @@ pub(in crate::domain::mobile_relay) fn apply_peer_secure_mesh_descriptor_with_co
     if directory_trust_state == DeviceTrustState::Verified
         && (first_pairing || identity_changed || directory_revoked)
     {
-        let local_endpoint = local_endpoint_state(&candidate)?;
+        let local_endpoint = local_endpoint_state(&candidate, &secret_context.material)?;
         let issued_at = mobile_relay_trust_record_now_epoch()?;
         let expires_at = mobile_relay_trust_record_expiry_epoch(issued_at)?;
         let trust_record = sign_device_trust_record(
@@ -309,16 +332,13 @@ pub(in crate::domain::mobile_relay) fn apply_peer_secure_mesh_descriptor_with_co
                 }),
             );
         }
-        if let Some(context) = secret_context.as_deref_mut() {
-            save_config_with_runtime_secret_context(&mut candidate, context)?;
-        } else {
-            save_config(&mut candidate)?;
-        }
+        save_config_with_runtime_secret_context(&mut candidate, secret_context)?;
         *config = candidate;
         purge_mobile_relay_pairwise_sessions()?;
-        if let Some(context) = secret_context.as_deref_mut() {
-            let local_identity = local_endpoint_state(config)?.device_identity()?;
-            let (secret_store, authorization, namespace) = context
+        {
+            let local_identity =
+                local_endpoint_state(config, &secret_context.material)?.device_identity()?;
+            let (secret_store, authorization, namespace) = secret_context
                 .secret_store_batch
                 .authorization()?
                 .ok_or_else(|| anyhow!("secure mesh MLS selected custody is unavailable"))?;
@@ -344,7 +364,12 @@ pub(in crate::domain::mobile_relay) fn apply_peer_secure_mesh_descriptor_with_co
         candidate["mobileRelayE2ee"]["sessionId"] =
             json!(format!("mrelay_session_{}", Uuid::new_v4()));
     }
-    initialize_mobile_relay_pairwise_session(&mut candidate, descriptor, &peer_identity)?;
+    initialize_mobile_relay_pairwise_session(
+        &mut candidate,
+        &mut secret_context.material,
+        descriptor,
+        &peer_identity,
+    )?;
     *config = candidate;
     Ok(())
 }
@@ -465,7 +490,7 @@ pub(in crate::domain::mobile_relay) fn ensure_peer_trust_authorized_for_protecte
             "mobile relay E2EE peer is not verified; refusing to process server-relayed commands"
         ));
     }
-    let local_identity = local_endpoint_state(config)?.device_identity()?;
+    let local_identity = local_public_device_identity(config)?;
     let peer_identity = peer_device_identity_from_state(state)?;
     let trust_record = state
         .get("peerTrustRecord")
@@ -559,7 +584,7 @@ pub(in crate::domain::mobile_relay) fn is_peer_trust_record_verified(config: &Va
     config
         .get("mobileRelayE2ee")
         .and_then(|state| {
-            let local_identity = local_endpoint_state(config).ok()?.device_identity().ok()?;
+            let local_identity = local_public_device_identity(config).ok()?;
             let peer_identity = peer_device_identity_from_state(state).ok()?;
             let trust_record = state.get("peerTrustRecord")?;
             verify_device_trust_record_json(

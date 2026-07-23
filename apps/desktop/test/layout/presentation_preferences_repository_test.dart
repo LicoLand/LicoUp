@@ -40,13 +40,13 @@ void main() {
     );
 
     await Future.wait([
-      repository.setLayoutProfile(LayoutProfileId.parse('studio')),
+      repository.setLayoutProfile(LayoutProfileId.parse('native')),
       repository.setAppearancePreset('dark'),
       repository.setLocalePreference('zh'),
     ]);
 
     final loaded = await repository.load();
-    expect(loaded.preferences.layoutProfileId, LayoutProfileId.parse('studio'));
+    expect(loaded.preferences.layoutProfileId, LayoutProfileId.parse('native'));
     expect(loaded.preferences.appearancePresetId, 'dark');
     expect(loaded.preferences.localePreference, 'zh');
   });
@@ -69,7 +69,7 @@ void main() {
       fallback: fallback,
     );
 
-    await repository.setLayoutProfile(LayoutProfileId.parse('studio'));
+    await repository.setLayoutProfile(LayoutProfileId.parse('native'));
     final decoded = jsonDecode(await file.readAsString()) as Map;
 
     expect(decoded.keys.toSet(), {
@@ -78,7 +78,7 @@ void main() {
       'appearancePresetId',
       'localePreference',
     });
-    expect(decoded['layoutProfileId'], 'studio');
+    expect(decoded['layoutProfileId'], 'native');
   });
 
   test('corrupt documents recover to fallback and converge on write', () async {
@@ -154,7 +154,7 @@ void main() {
 
       Object? failure;
       try {
-        await repository.setLayoutProfile(LayoutProfileId.parse('studio'));
+        await repository.setLayoutProfile(LayoutProfileId.parse('native'));
       } catch (error) {
         failure = error;
       }

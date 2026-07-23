@@ -8,7 +8,7 @@ fn pure_startup_logs_are_not_native_conversations() {
         [
             r#"INFO 2026-06-20T00:00:00Z args=["mcp","list"] opencode"#,
             "INFO service=config path=<user-home>/.config/opencode/config.json",
-            "INFO directory=/workspace/licolite creating instance",
+            "INFO directory=/workspace/licomesh creating instance",
         ]
         .join("\n"),
     )
@@ -53,7 +53,7 @@ fn text_transcripts_are_native_conversations() {
     let dir = temp_dir("text-transcript-history");
     fs::write(
         dir.join("conversation.txt"),
-        ["User: archive the LicoLite history", "Assistant: archived"].join("\n"),
+        ["User: archive the LicoMesh history", "Assistant: archived"].join("\n"),
     )
     .unwrap();
 
@@ -65,7 +65,7 @@ fn text_transcripts_are_native_conversations() {
 
     let sessions = listed["sessions"].as_array().unwrap();
     assert_eq!(sessions.len(), 1);
-    assert_eq!(sessions[0]["title"], "archive the LicoLite history");
+    assert_eq!(sessions[0]["title"], "archive the LicoMesh history");
 }
 
 #[test]
@@ -144,7 +144,7 @@ fn claude_code_adapter_extracts_nested_jsonl_messages() {
     fs::write(
         dir.join("project.jsonl"),
         [
-            r#"{"sessionId":"claude-session-1","type":"user","message":{"role":"user","content":[{"type":"text","text":"Open the LicoLite repo"}]}}"#,
+            r#"{"sessionId":"claude-session-1","type":"user","message":{"role":"user","content":[{"type":"text","text":"Open the LicoMesh repo"}]}}"#,
             r#"{"sessionId":"claude-session-1","type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Repo opened"}]}}"#,
         ]
         .join("\n"),
@@ -161,6 +161,32 @@ fn claude_code_adapter_extracts_nested_jsonl_messages() {
     assert_eq!(sessions.len(), 1);
     assert_eq!(sessions[0]["adapterId"], "claude-code");
     assert_eq!(sessions[0]["nativeSessionId"], "claude-session-1");
-    assert_eq!(sessions[0]["messages"][0]["text"], "Open the LicoLite repo");
+    assert_eq!(sessions[0]["messages"][0]["text"], "Open the LicoMesh repo");
     assert_eq!(sessions[0]["messages"][1]["role"], "agent");
+}
+
+#[test]
+fn claude_code_adapter_attaches_message_model() {
+    let dir = temp_dir("claude-model-history");
+    fs::write(
+        dir.join("project.jsonl"),
+        [
+            r#"{"sessionId":"claude-session-2","type":"user","message":{"role":"user","content":[{"type":"text","text":"Refactor the parser"}]}}"#,
+            r#"{"sessionId":"claude-session-2","type":"assistant","message":{"role":"assistant","model":"claude-opus-4-6","content":[{"type":"text","text":"Done"}],"usage":{"input_tokens":12,"output_tokens":4}}}"#,
+        ]
+        .join("\n"),
+    )
+    .unwrap();
+
+    let listed = conversation_list(&json!({
+        "agent": "claude-code",
+        "root": dir.to_string_lossy()
+    }))
+    .unwrap();
+
+    let sessions = listed["sessions"].as_array().unwrap();
+    assert_eq!(sessions.len(), 1);
+    let message = &sessions[0]["messages"][1];
+    assert_eq!(message["model"], "claude-opus-4-6");
+    assert_eq!(message["usage"]["totalTokens"], 16);
 }

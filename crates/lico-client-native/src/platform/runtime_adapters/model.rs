@@ -80,7 +80,7 @@ pub(super) struct ReadinessEntry {
     pub(super) status: String,
     pub(super) send_enabled: bool,
     pub(super) official_native_lane_proven: bool,
-    pub(super) release_ui_passed: bool,
+    pub(super) conversation_gate_passed: bool,
     pub(super) cleanup_passed: bool,
     pub(super) privacy_passed: bool,
     pub(super) consecutive_passes: usize,

@@ -10,7 +10,7 @@ fn mailbox_hkdf_has_stable_vector_and_rotates_without_endpoint_hashes() {
         .unwrap();
     assert_eq!(
         token.as_str(),
-        "_2HSIErOouJGw302pF7oJu5fWHXnoaYvcamcpJCN3HY"
+        "9rm1vdYgQnSWGUY6D6bY5wrM6UifaHbCJsNX1ntqpvI"
     );
     assert_eq!(
         token.epoch(),

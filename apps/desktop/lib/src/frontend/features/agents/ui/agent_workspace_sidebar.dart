@@ -3,20 +3,17 @@ import 'package:flutter/material.dart';
 import 'package:flutter_client/src/contracts/agent_conversation_models.dart';
 import 'package:flutter_client/src/contracts/agent_conversation_tab_activity.dart';
 import 'package:flutter_client/src/contracts/target_candidate.dart';
+import 'package:flutter_client/src/frontend/features/agents/ui/agent_conversation_display_names.dart';
 import 'package:flutter_client/src/frontend/features/agents/ui/history_session_panel.dart';
 import 'package:flutter_client/src/frontend/l10n/lico_strings.dart';
 import 'package:flutter_client/src/frontend/shared/ui/agent_brand_icon.dart';
 import 'package:flutter_client/src/frontend/shared/ui/theme.dart';
 
-/// Right-pane destination driven by the agents workspace sidebar.
-enum AgentsWorkspaceDestination { conversations, skills, stats }
-
-/// Background-style left rail: upper Explore-like nav + lower agent/project tree.
+/// Second-layer conversation list: a flat pane one tonal step above the
+/// window background, grouping conversations by agent, then by project.
 class AgentsWorkspaceSidebar extends StatefulWidget {
   const AgentsWorkspaceSidebar({
     super.key,
-    required this.destination,
-    required this.onSelectDestination,
     required this.targets,
     required this.sessionsByAgent,
     required this.selectedAgentId,
@@ -32,8 +29,6 @@ class AgentsWorkspaceSidebar extends StatefulWidget {
     this.adding = false,
   });
 
-  final AgentsWorkspaceDestination destination;
-  final ValueChanged<AgentsWorkspaceDestination> onSelectDestination;
   final List<TargetCandidate> targets;
   final Map<String, List<AgentConversationSession>> sessionsByAgent;
   final String selectedAgentId;
@@ -82,7 +77,14 @@ class _AgentsWorkspaceSidebarState extends State<AgentsWorkspaceSidebar> {
     if (agentId.isEmpty) {
       return;
     }
-    _expandedAgents.add(agentId);
+    var expansionId = agentId;
+    for (final group in _groups()) {
+      if (group.containsAgent(agentId)) {
+        expansionId = group.representative.id;
+        break;
+      }
+    }
+    _expandedAgents.add(expansionId);
     final sessionId = widget.selectedSessionId.trim();
     if (sessionId.isEmpty) {
       return;
@@ -91,11 +93,36 @@ class _AgentsWorkspaceSidebarState extends State<AgentsWorkspaceSidebar> {
     for (final session in sessions) {
       if (session.id == sessionId) {
         _expandedProjects.add(
-          _projectStorageKey(agentId, session.workingDirectory),
+          _projectStorageKey(
+            expansionId,
+            agentConversationSessionIsActive(session)
+                ? session.workingDirectory
+                : agentConversationArchivedProjectKey,
+          ),
         );
         break;
       }
     }
+  }
+
+  /// Targets that share a canonical product name (for example Codex CLI and
+  /// Codex Desktop) collapse into one sidebar entry; the first target in the
+  /// incoming order represents the group.
+  List<_AgentSidebarGroup> _groups() {
+    final groups = <_AgentSidebarGroup>[];
+    final indexByName = <String, int>{};
+    for (final target in widget.targets) {
+      final name = agentConversationTargetDisplayName(target);
+      final key = name.toLowerCase();
+      final index = indexByName[key];
+      if (index == null) {
+        indexByName[key] = groups.length;
+        groups.add(_AgentSidebarGroup(name, [target]));
+      } else {
+        groups[index].members.add(target);
+      }
+    }
+    return groups;
   }
 
   String _projectStorageKey(String agentId, String workingDirectory) {
@@ -106,6 +133,7 @@ class _AgentsWorkspaceSidebarState extends State<AgentsWorkspaceSidebar> {
   Widget build(BuildContext context) {
     final colors = context.licoColors;
     final strings = LicoStrings.of(context);
+    final groups = _groups();
     return ColoredBox(
       key: const Key('agents-workspace-sidebar'),
       color: Colors.transparent,
@@ -113,57 +141,33 @@ class _AgentsWorkspaceSidebarState extends State<AgentsWorkspaceSidebar> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(10, 0, 10, 8),
-            child: Column(
-              children: [
-                _SidebarNavItem(
-                  key: const Key('agents-sidebar-nav-skills'),
-                  icon: Icons.auto_awesome_outlined,
-                  label: strings.skillHub,
-                  selected:
-                      widget.destination == AgentsWorkspaceDestination.skills,
-                  onTap: () => widget.onSelectDestination(
-                    AgentsWorkspaceDestination.skills,
-                  ),
-                ),
-                _SidebarNavItem(
-                  key: const Key('agents-sidebar-nav-stats'),
-                  icon: Icons.bar_chart_rounded,
-                  label: strings.tokenUsage,
-                  selected:
-                      widget.destination == AgentsWorkspaceDestination.stats,
-                  onTap: () => widget.onSelectDestination(
-                    AgentsWorkspaceDestination.stats,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(18, 10, 14, 6),
-            child: Text(
-              strings.agentsSidebarConversations,
-              style: TextStyle(
-                color: colors.textMuted,
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-                letterSpacing: 0.8,
-              ),
-            ),
-          ),
-          if (widget.destination == AgentsWorkspaceDestination.conversations)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(10, 0, 10, 8),
+            padding: const EdgeInsets.fromLTRB(14, 10, 8, 4),
+            child: SizedBox(
+              height: 32,
               child: Row(
-                mainAxisAlignment: MainAxisAlignment.end,
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
+                  Expanded(
+                    child: Text(
+                      strings.agentsSidebarConversations,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: colors.textMuted,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: 0.8,
+                        height: 1,
+                      ),
+                    ),
+                  ),
                   if (widget.onArchive != null)
                     _SidebarActionButton(
                       key: const Key('agents-sidebar-archive'),
                       tooltip: strings.archiveAgentConversations,
                       onPressed: widget.onArchive!,
                       icon: Icons.archive_outlined,
-                      color: colors.text,
+                      color: colors.textMuted,
                     ),
                   _SidebarActionButton(
                     key: const Key('agents-sidebar-new-conversation'),
@@ -179,11 +183,12 @@ class _AgentsWorkspaceSidebarState extends State<AgentsWorkspaceSidebar> {
                       tooltip: strings.addTarget,
                       onPressed: widget.adding ? null : widget.onAddTarget,
                       icon: Icons.more_horiz_rounded,
-                      color: colors.text,
+                      color: colors.textMuted,
                     ),
                 ],
               ),
             ),
+          ),
           Expanded(
             child: widget.targets.isEmpty
                 ? _SidebarEmptyAgents(
@@ -194,36 +199,60 @@ class _AgentsWorkspaceSidebarState extends State<AgentsWorkspaceSidebar> {
                   )
                 : ListView.builder(
                     padding: const EdgeInsets.fromLTRB(8, 0, 8, 16),
-                    itemCount: widget.targets.length,
+                    itemCount: groups.length,
                     itemBuilder: (context, index) {
-                      final target = widget.targets[index];
+                      final group = groups[index];
+                      final representative = group.representative;
+                      final sessions = <AgentConversationSession>[];
+                      final seenSessionIds = <String>{};
+                      final ownerBySessionId = <String, String>{};
+                      for (final member in group.members) {
+                        final memberSessions =
+                            widget.sessionsByAgent[member.id] ??
+                            widget.sessionsByAgent[member.target] ??
+                            const <AgentConversationSession>[];
+                        for (final session in memberSessions) {
+                          if (seenSessionIds.add(session.id)) {
+                            sessions.add(session);
+                            ownerBySessionId[session.id] = member.id;
+                          }
+                        }
+                      }
+                      final activity = group.members
+                          .map((member) => widget.activityFor(member.id))
+                          .firstWhere(
+                            (value) => value != AgentConversationTabActivity.none,
+                            orElse: () => AgentConversationTabActivity.none,
+                          );
                       return _AgentTreeNode(
-                        target: target,
-                        sessions:
-                            widget.sessionsByAgent[target.id] ??
-                            widget.sessionsByAgent[target.target] ??
-                            const <AgentConversationSession>[],
-                        expanded: _expandedAgents.contains(target.id),
-                        selectedAgent:
-                            widget.destination ==
-                                AgentsWorkspaceDestination.conversations &&
-                            widget.selectedAgentId == target.id,
+                        target: representative,
+                        displayName: group.displayName,
+                        detected: group.members.any(
+                          (member) =>
+                              member.status == 'detected' || member.configured,
+                        ),
+                        sessions: sessions,
+                        expanded: _expandedAgents.contains(representative.id),
+                        selectedAgent: group.containsAgent(
+                          widget.selectedAgentId,
+                        ),
                         selectedSessionId: widget.selectedSessionId,
-                        activity: widget.activityFor(target.id),
+                        activity: activity,
                         expandedProjects: _expandedProjects,
                         projectKeyFor: (cwd) =>
-                            _projectStorageKey(target.id, cwd),
+                            _projectStorageKey(representative.id, cwd),
                         onToggleAgent: () {
                           setState(() {
-                            if (_expandedAgents.contains(target.id)) {
-                              _expandedAgents.remove(target.id);
+                            if (_expandedAgents.contains(representative.id)) {
+                              _expandedAgents.remove(representative.id);
                             } else {
-                              _expandedAgents.add(target.id);
+                              _expandedAgents.add(representative.id);
                             }
                           });
-                          widget.onSelectAgent(target.id);
-                          widget.onSelectDestination(
-                            AgentsWorkspaceDestination.conversations,
+                          widget.onSelectAgent(
+                            group.selectedOrRepresentativeId(
+                              widget.selectedAgentId,
+                            ),
                           );
                         },
                         onToggleProject: (key) {
@@ -236,10 +265,10 @@ class _AgentsWorkspaceSidebarState extends State<AgentsWorkspaceSidebar> {
                           });
                         },
                         onSelectSession: (sessionId) {
-                          widget.onSelectDestination(
-                            AgentsWorkspaceDestination.conversations,
+                          widget.onSelectSession(
+                            ownerBySessionId[sessionId] ?? representative.id,
+                            sessionId,
                           );
-                          widget.onSelectSession(target.id, sessionId);
                         },
                       );
                     },
@@ -248,6 +277,32 @@ class _AgentsWorkspaceSidebarState extends State<AgentsWorkspaceSidebar> {
         ],
       ),
     );
+  }
+}
+
+class _AgentSidebarGroup {
+  _AgentSidebarGroup(this.displayName, this.members);
+
+  final String displayName;
+  final List<TargetCandidate> members;
+
+  TargetCandidate get representative => members.first;
+
+  bool containsAgent(String agentId) {
+    final normalized = agentId.trim();
+    return members.any(
+      (member) => member.id == normalized || member.target == normalized,
+    );
+  }
+
+  String selectedOrRepresentativeId(String selectedAgentId) {
+    final normalized = selectedAgentId.trim();
+    for (final member in members) {
+      if (member.id == normalized || member.target == normalized) {
+        return member.id;
+      }
+    }
+    return representative.id;
   }
 }
 
@@ -267,80 +322,19 @@ class _SidebarActionButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.licoColors;
     return Tooltip(
       message: tooltip,
+      waitDuration: const Duration(milliseconds: 400),
       child: InkWell(
         onTap: onPressed,
         customBorder: const CircleBorder(),
+        hoverColor: colors.isDark
+            ? Colors.white.withAlpha(10)
+            : Colors.black.withAlpha(12),
         child: SizedBox.square(
-          dimension: 32,
-          child: Icon(icon, size: 18, color: color),
-        ),
-      ),
-    );
-  }
-}
-
-class _SidebarNavItem extends StatelessWidget {
-  const _SidebarNavItem({
-    super.key,
-    required this.icon,
-    required this.label,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final IconData icon;
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.licoColors;
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 2),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(10),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 140),
-            curve: Curves.easeOut,
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
-            decoration: BoxDecoration(
-              color: selected
-                  ? colors.surface.withAlpha(colors.isDark ? 160 : 220)
-                  : Colors.transparent,
-              borderRadius: BorderRadius.circular(10),
-              border: selected
-                  ? Border.all(color: colors.line.withAlpha(70))
-                  : null,
-            ),
-            child: Row(
-              children: [
-                Icon(
-                  icon,
-                  size: 18,
-                  color: selected ? colors.primaryStrong : colors.textMuted,
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: selected ? colors.text : colors.textMuted,
-                      fontSize: 13,
-                      fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
+          dimension: 28,
+          child: Icon(icon, size: 16, color: color),
         ),
       ),
     );
@@ -390,6 +384,8 @@ class _SidebarEmptyAgents extends StatelessWidget {
 class _AgentTreeNode extends StatelessWidget {
   const _AgentTreeNode({
     required this.target,
+    required this.displayName,
+    required this.detected,
     required this.sessions,
     required this.expanded,
     required this.selectedAgent,
@@ -403,6 +399,8 @@ class _AgentTreeNode extends StatelessWidget {
   });
 
   final TargetCandidate target;
+  final String displayName;
+  final bool detected;
   final List<AgentConversationSession> sessions;
   final bool expanded;
   final bool selectedAgent;
@@ -418,7 +416,16 @@ class _AgentTreeNode extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.licoColors;
     final strings = LicoStrings.of(context);
-    final projects = _groupSessionsByProject(sessions, strings);
+    final activeSessions = <AgentConversationSession>[];
+    final archivedSessions = <AgentConversationSession>[];
+    for (final session in sessions) {
+      (agentConversationSessionIsActive(session)
+              ? activeSessions
+              : archivedSessions)
+          .add(session);
+    }
+    final projects = _groupSessionsByProject(activeSessions, strings);
+    final archivedKey = projectKeyFor(agentConversationArchivedProjectKey);
     final activityColor = switch (activity) {
       AgentConversationTabActivity.needsApproval => colors.warning,
       AgentConversationTabActivity.workFinished => colors.info,
@@ -455,12 +462,12 @@ class _AgentTreeNode extends StatelessWidget {
                     size: 22,
                     iconSize: 14,
                     selected: selectedAgent,
-                    detected: target.status == 'detected' || target.configured,
+                    detected: detected,
                   ),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      target.label,
+                      displayName,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
@@ -508,12 +515,44 @@ class _AgentTreeNode extends StatelessWidget {
                     onToggle: () => onToggleProject(projectKeyFor(project.key)),
                     onSelectSession: onSelectSession,
                   ),
+                if (archivedSessions.isNotEmpty)
+                  _ProjectTreeNode(
+                    label:
+                        '${strings.archivedConversations} · ${archivedSessions.length}',
+                    icon: Icons.archive_outlined,
+                    sessions: archivedSessions,
+                    expanded: expandedProjects.contains(archivedKey),
+                    selectedSessionId: selectedSessionId,
+                    onToggle: () => onToggleProject(archivedKey),
+                    onSelectSession: onSelectSession,
+                  ),
               ],
             ),
           ),
       ],
     );
   }
+}
+
+/// Sessions updated within this window count as current conversations;
+/// anything older collapses into the per-agent archived group. Membership is
+/// purely time-based: selecting an old session keeps it inside the archived
+/// group instead of pulling it back into the active project groups.
+const int agentConversationActiveWindowDays = 7;
+
+/// Project-group key for the archived section at the end of an agent's list.
+const String agentConversationArchivedProjectKey = '__archived__';
+
+bool agentConversationSessionIsActive(
+  AgentConversationSession session, {
+  DateTime? now,
+}) {
+  final updated = DateTime.tryParse(session.updatedAt.trim())?.toLocal();
+  if (updated == null) {
+    return true;
+  }
+  return (now ?? DateTime.now()).difference(updated).inDays <
+      agentConversationActiveWindowDays;
 }
 
 class _ProjectGroup {
@@ -563,6 +602,7 @@ class _ProjectTreeNode extends StatelessWidget {
     required this.selectedSessionId,
     required this.onToggle,
     required this.onSelectSession,
+    this.icon = Icons.folder_outlined,
   });
 
   final String label;
@@ -571,6 +611,7 @@ class _ProjectTreeNode extends StatelessWidget {
   final String selectedSessionId;
   final VoidCallback onToggle;
   final ValueChanged<String> onSelectSession;
+  final IconData icon;
 
   @override
   Widget build(BuildContext context) {
@@ -595,7 +636,7 @@ class _ProjectTreeNode extends StatelessWidget {
                     color: colors.textMuted,
                   ),
                   Icon(
-                    Icons.folder_outlined,
+                    icon,
                     size: 15,
                     color: colors.textMuted,
                   ),
@@ -669,9 +710,12 @@ class _SessionTreeRow extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(4, 7, 8, 7),
             decoration: BoxDecoration(
               color: selected
-                  ? colors.surface.withAlpha(colors.isDark ? 180 : 230)
+                  ? (colors.isDark ? colors.surfaceLow : colors.surface)
                   : Colors.transparent,
               borderRadius: BorderRadius.circular(8),
+              border: selected
+                  ? Border.all(color: colors.line.withAlpha(80), width: 0.5)
+                  : null,
             ),
             child: Text(
               title,

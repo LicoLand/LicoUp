@@ -44,7 +44,7 @@ void main() {
 
   test('declares isolated business presentation-state channels', () {
     final namespaces = bubbleMobileBundle.stateNamespaces;
-    expect(namespaces, hasLength(5));
+    expect(namespaces, hasLength(4));
     expect(namespaces.map((value) => value.destination).toSet(), {
       ClientSection.agents,
       ClientSection.settings,
@@ -57,7 +57,6 @@ void main() {
       {
         LayoutStateChannels.agentsHistory.id,
         LayoutStateChannels.agentsSidebar.id,
-        LayoutStateChannels.agentsDestination.id,
       },
     );
     expect(

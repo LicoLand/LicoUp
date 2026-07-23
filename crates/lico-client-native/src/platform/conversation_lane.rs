@@ -4,36 +4,332 @@
 //! executor registry. Protocol families stay selected by `RuntimeAdapter`.
 
 use anyhow::{Result, anyhow};
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::sync::LazyLock;
 
-use super::runtime_adapters::{self, RuntimeAdapter};
+use super::runtime_adapters::{self, RuntimeAdapter, RuntimeAdapterError};
 
-const CONVERSATION_READINESS_JSON: &str =
-    include_str!("../../resources/agent-conversation-readiness.json");
+// lico-governed-orchestration:start
+use super::runtime_adapters::protocol_selector::{
+    CapabilitySnapshot, PinnedProtocol, ProtocolKind, ProtocolPolicy, SelectionError,
+    TargetProtocolRequest, select_pinned_protocol, valid_opaque_evidence, valid_pin,
+};
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct GovernedConversationRequest {
+    pub pin: PinnedProtocol,
+    pub input_artifact_handle: String,
+    pub input_digest: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct GovernedCoordinatorRequest {
+    pub target: TargetProtocolRequest,
+    pub input_artifact_handle: String,
+    pub input_digest: String,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct DispatchBounds {
+    pub max_events: usize,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct SemanticEvent {
+    pub sequence: u64,
+    pub kind: SemanticEventKind,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum SemanticEventKind {
+    Started,
+    Progress {
+        artifact_handle: String,
+        digest: String,
+    },
+    Completed {
+        artifact_handle: String,
+        digest: String,
+    },
+    Failed {
+        artifact_handle: String,
+        digest: String,
+    },
+    Cancelled,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DispatchDisposition {
+    Completed,
+    Failed,
+    Cancelled,
+    Unknown,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AdapterDispatchOutcome {
+    pub session_binding: String,
+    pub events: Vec<SemanticEvent>,
+    pub disposition: DispatchDisposition,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct GovernedDispatchOutcome {
+    pub pin: PinnedProtocol,
+    pub events: Vec<SemanticEvent>,
+    pub disposition: DispatchDisposition,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum AdapterOperationError {
+    NoAvailableProtocol,
+    PinnedBindingMismatch,
+    UnknownOutcome,
+    InvalidSemanticEvents,
+    EventLimitExceeded,
+    SensitiveEvidenceRejected,
+    AdapterFailure,
+}
+
+pub trait GovernedConversationAdapter {
+    fn adapter_id(&self) -> &str;
+    fn protocol(&self) -> ProtocolKind;
+    fn driver_id(&self) -> &str;
+    fn executable_binding(&self) -> &str;
+    fn capability_revision(&self) -> &str;
+    fn session_binding(&self) -> &str;
+    fn dispatch(
+        &mut self,
+        request: &GovernedConversationRequest,
+    ) -> std::result::Result<AdapterDispatchOutcome, AdapterOperationError>;
+    fn cancel(&mut self) -> std::result::Result<(), AdapterOperationError>;
+    fn cleanup(&mut self) -> std::result::Result<(), AdapterOperationError>;
+}
+
+pub struct ResumeCapabilityContext<'a> {
+    pub pinned_snapshot: &'a CapabilitySnapshot,
+    pub current_snapshot: &'a CapabilitySnapshot,
+    pub current_policy: &'a ProtocolPolicy,
+}
+
+pub fn dispatch_pinned_attempt(
+    request: &GovernedConversationRequest,
+    adapter: &mut dyn GovernedConversationAdapter,
+    bounds: DispatchBounds,
+) -> std::result::Result<GovernedDispatchOutcome, AdapterOperationError> {
+    validate_request(request)?;
+    validate_adapter_binding(&request.pin, adapter)?;
+    let outcome = adapter.dispatch(request)?;
+    if !valid_opaque_evidence(&outcome.session_binding) {
+        return Err(AdapterOperationError::SensitiveEvidenceRejected);
+    }
+    if outcome.session_binding != request.pin.session_binding {
+        return Err(AdapterOperationError::PinnedBindingMismatch);
+    }
+    validate_semantic_events(&outcome.events, outcome.disposition, bounds)?;
+    Ok(GovernedDispatchOutcome {
+        pin: request.pin.clone(),
+        events: outcome.events,
+        disposition: outcome.disposition,
+    })
+}
+
+pub fn resume_pinned_attempt(
+    request: &GovernedConversationRequest,
+    context: &ResumeCapabilityContext<'_>,
+    adapter: &mut dyn GovernedConversationAdapter,
+    bounds: DispatchBounds,
+) -> std::result::Result<GovernedDispatchOutcome, AdapterOperationError> {
+    // Current evidence and policy are intentionally observed but cannot
+    // rewrite a durable attempt binding. Only its original content-bound
+    // snapshot can authorize resume.
+    let _current_context = (context.current_snapshot.revision(), context.current_policy);
+    if !context.pinned_snapshot.contains_pin(&request.pin) {
+        return Err(AdapterOperationError::PinnedBindingMismatch);
+    }
+    dispatch_pinned_attempt(request, adapter, bounds)
+}
+
+pub fn cancel_pinned_attempt(
+    pin: &PinnedProtocol,
+    adapter: &mut dyn GovernedConversationAdapter,
+) -> std::result::Result<(), AdapterOperationError> {
+    validate_adapter_binding(pin, adapter)?;
+    adapter.cancel()
+}
+
+pub fn cleanup_pinned_attempt(
+    pin: &PinnedProtocol,
+    adapter: &mut dyn GovernedConversationAdapter,
+) -> std::result::Result<(), AdapterOperationError> {
+    validate_adapter_binding(pin, adapter)?;
+    adapter.cleanup()
+}
+
+pub fn coordinate_governed_attempt(
+    request: &GovernedCoordinatorRequest,
+    capabilities: &CapabilitySnapshot,
+    policy: &ProtocolPolicy,
+    adapters: &mut [&mut dyn GovernedConversationAdapter],
+    bounds: DispatchBounds,
+) -> std::result::Result<GovernedDispatchOutcome, AdapterOperationError> {
+    if !valid_opaque_evidence(&request.input_artifact_handle)
+        || !valid_opaque_evidence(&request.input_digest)
+    {
+        return Err(AdapterOperationError::SensitiveEvidenceRejected);
+    }
+    let pin =
+        select_pinned_protocol(&request.target, capabilities, policy).map_err(
+            |error| match error {
+                SelectionError::NoAvailableProtocol => AdapterOperationError::NoAvailableProtocol,
+                SelectionError::InvalidOpaqueBinding => {
+                    AdapterOperationError::SensitiveEvidenceRejected
+                }
+            },
+        )?;
+    let selected = adapters
+        .iter_mut()
+        .find(|adapter| adapter_matches(&pin, &***adapter))
+        .ok_or(AdapterOperationError::PinnedBindingMismatch)?;
+    let dispatch_request = GovernedConversationRequest {
+        pin: pin.clone(),
+        input_artifact_handle: request.input_artifact_handle.clone(),
+        input_digest: request.input_digest.clone(),
+    };
+    match dispatch_pinned_attempt(&dispatch_request, &mut **selected, bounds) {
+        Err(AdapterOperationError::UnknownOutcome) => Ok(GovernedDispatchOutcome {
+            pin,
+            events: Vec::new(),
+            disposition: DispatchDisposition::Unknown,
+        }),
+        result => result,
+    }
+}
+
+fn validate_request(
+    request: &GovernedConversationRequest,
+) -> std::result::Result<(), AdapterOperationError> {
+    // A pin is immutable dispatch authority. Any malformed field or failed
+    // content binding therefore means the caller no longer holds the exact
+    // pinned authority, rather than that its task payload leaked evidence.
+    if !valid_pin(&request.pin) {
+        return Err(AdapterOperationError::PinnedBindingMismatch);
+    }
+    if !valid_opaque_evidence(&request.input_artifact_handle)
+        || !valid_opaque_evidence(&request.input_digest)
+    {
+        return Err(AdapterOperationError::SensitiveEvidenceRejected);
+    }
+    Ok(())
+}
+
+fn validate_adapter_binding(
+    pin: &PinnedProtocol,
+    adapter: &dyn GovernedConversationAdapter,
+) -> std::result::Result<(), AdapterOperationError> {
+    if valid_pin(pin) && adapter_matches(pin, adapter) {
+        Ok(())
+    } else {
+        Err(AdapterOperationError::PinnedBindingMismatch)
+    }
+}
+
+fn adapter_matches(pin: &PinnedProtocol, adapter: &dyn GovernedConversationAdapter) -> bool {
+    adapter.adapter_id() == pin.adapter_id
+        && adapter.protocol() == pin.protocol
+        && adapter.driver_id() == pin.driver_id
+        && adapter.executable_binding() == pin.executable_binding
+        && adapter.capability_revision() == pin.capability_revision
+        && adapter.session_binding() == pin.session_binding
+}
+
+fn validate_semantic_events(
+    events: &[SemanticEvent],
+    disposition: DispatchDisposition,
+    bounds: DispatchBounds,
+) -> std::result::Result<(), AdapterOperationError> {
+    if bounds.max_events == 0 || events.len() > bounds.max_events {
+        return Err(AdapterOperationError::EventLimitExceeded);
+    }
+    if disposition == DispatchDisposition::Unknown {
+        return if events.is_empty() {
+            Ok(())
+        } else {
+            Err(AdapterOperationError::InvalidSemanticEvents)
+        };
+    }
+    if events.is_empty()
+        || events
+            .iter()
+            .enumerate()
+            .any(|(index, event)| event.sequence != index as u64 + 1)
+    {
+        return Err(AdapterOperationError::InvalidSemanticEvents);
+    }
+    let mut terminal = None;
+    for (index, event) in events.iter().enumerate() {
+        match &event.kind {
+            SemanticEventKind::Started => {}
+            SemanticEventKind::Progress {
+                artifact_handle,
+                digest,
+            }
+            | SemanticEventKind::Completed {
+                artifact_handle,
+                digest,
+            }
+            | SemanticEventKind::Failed {
+                artifact_handle,
+                digest,
+            } => {
+                if !valid_opaque_evidence(artifact_handle) || !valid_opaque_evidence(digest) {
+                    return Err(AdapterOperationError::SensitiveEvidenceRejected);
+                }
+                if matches!(
+                    event.kind,
+                    SemanticEventKind::Completed { .. } | SemanticEventKind::Failed { .. }
+                ) {
+                    if terminal.replace(index).is_some() {
+                        return Err(AdapterOperationError::InvalidSemanticEvents);
+                    }
+                }
+            }
+            SemanticEventKind::Cancelled => {
+                if terminal.replace(index).is_some() {
+                    return Err(AdapterOperationError::InvalidSemanticEvents);
+                }
+            }
+        }
+    }
+    let Some(terminal_index) = terminal else {
+        return Err(AdapterOperationError::InvalidSemanticEvents);
+    };
+    if terminal_index + 1 != events.len() {
+        return Err(AdapterOperationError::InvalidSemanticEvents);
+    }
+    let disposition_matches = matches!(
+        (&events[terminal_index].kind, disposition),
+        (
+            SemanticEventKind::Completed { .. },
+            DispatchDisposition::Completed
+        ) | (
+            SemanticEventKind::Failed { .. },
+            DispatchDisposition::Failed
+        ) | (SemanticEventKind::Cancelled, DispatchDisposition::Cancelled)
+    );
+    if !disposition_matches {
+        return Err(AdapterOperationError::InvalidSemanticEvents);
+    }
+    Ok(())
+}
+// lico-governed-orchestration:end
+
 const CONVERSATION_DRIVER_INVENTORY_JSON: &str =
     include_str!("../../resources/agent-conversation-drivers.json");
-const ACCEPTANCE_MODE: &str = "dispatch-lane-unified-1";
-const ACCEPTANCE_ENVIRONMENT: &str = "LICO_AGENT_CONVERSATION_ACCEPTANCE";
-static SEND_ENABLED_AGENT_IDS: LazyLock<HashSet<String>> = LazyLock::new(|| {
-    serde_json::from_str::<Value>(CONVERSATION_READINESS_JSON)
-        .ok()
-        .and_then(|document| document.get("adapters").and_then(Value::as_array).cloned())
-        .unwrap_or_default()
-        .into_iter()
-        .filter(|adapter| {
-            adapter.get("status").and_then(Value::as_str) == Some("ready")
-                && adapter.get("sendEnabled").and_then(Value::as_bool) == Some(true)
-        })
-        .filter_map(|adapter| {
-            adapter
-                .get("agentId")
-                .and_then(Value::as_str)
-                .map(str::to_owned)
-        })
-        .collect()
-});
 static CAPABILITY_MATRIX_BY_AGENT: LazyLock<HashMap<String, Value>> = LazyLock::new(|| {
     serde_json::from_str::<Value>(CONVERSATION_DRIVER_INVENTORY_JSON)
         .ok()
@@ -47,31 +343,6 @@ static CAPABILITY_MATRIX_BY_AGENT: LazyLock<HashMap<String, Value>> = LazyLock::
         })
         .collect()
 });
-
-fn readiness_send_enabled(agent_id: &str) -> bool {
-    SEND_ENABLED_AGENT_IDS.contains(agent_id)
-}
-
-fn acceptance_send_enabled(params: &Value) -> bool {
-    params.get("acceptanceMode").and_then(Value::as_str) == Some(ACCEPTANCE_MODE)
-        && std::env::var(ACCEPTANCE_ENVIRONMENT).as_deref() == Ok(ACCEPTANCE_MODE)
-}
-
-/// Keep every public send entry point aligned with the reducer-owned support
-/// matrix. The live acceptance harness uses an explicit two-part opt-in while
-/// gathering the evidence required to promote an adapter; ordinary CLI and UI
-/// callers cannot accidentally bypass a fail-closed readiness result.
-pub fn enforce_send_readiness(params: &Value) -> Result<()> {
-    let agent_id = agent_id_param(params)?;
-    let adapter = adapter_or_err(&agent_id)?;
-    if readiness_send_enabled(adapter.id()) || acceptance_send_enabled(params) {
-        return Ok(());
-    }
-    Err(anyhow!(
-        "agent_conversation_send_not_ready: {} is not enabled by canonical readiness",
-        adapter.id()
-    ))
-}
 
 /// Official lane family for an adapter (Architecture strategy key).
 pub fn lane_family(adapter: RuntimeAdapter) -> &'static str {
@@ -141,7 +412,7 @@ pub fn open_or_resume(params: &Value) -> Result<Value> {
             "runtimeProtocol": adapter.runtime_protocol(),
             "capabilities": matrix,
             "error": {
-                "code": blocker.unwrap_or_else(|| "antigravity_cli_structured_transport_unavailable".to_string()),
+                "code": blocker.unwrap_or_else(|| "official_conversation_transport_unavailable".to_string()),
                 "stage": "capability/transport",
                 "message": "No official public conversation transport is available for this adapter."
             }
@@ -261,7 +532,7 @@ pub fn cancel_turn(params: &Value) -> Result<Value> {
             "laneFamily": lane_family(adapter),
             "status": "blocked",
             "error": {
-                "code": "antigravity_cli_structured_transport_unavailable",
+                "code": "official_conversation_transport_unavailable",
                 "stage": "turn/cancel",
                 "message": "Cancel is unavailable because no official conversation transport exists."
             },
@@ -271,7 +542,15 @@ pub fn cancel_turn(params: &Value) -> Result<Value> {
 
     if matches!(
         adapter,
-        RuntimeAdapter::Hermes | RuntimeAdapter::ClaudeCode | RuntimeAdapter::Cursor
+        RuntimeAdapter::Hermes
+            | RuntimeAdapter::ClaudeCode
+            | RuntimeAdapter::Cursor
+            | RuntimeAdapter::Antigravity
+            | RuntimeAdapter::OpenCode
+            | RuntimeAdapter::KiloCode
+            | RuntimeAdapter::OpenClaw
+            | RuntimeAdapter::Copilot
+            | RuntimeAdapter::KimiCode
     ) {
         let session_id =
             runtime_adapters::text_param_public(params, &["sessionId", "nativeSessionId"])
@@ -287,27 +566,78 @@ pub fn cancel_turn(params: &Value) -> Result<Value> {
                 super::claude_code_driver::ControlDisposition::TransportUnavailable => 3,
             },
             RuntimeAdapter::Cursor => match super::cursor_driver::cancel(&session_id) {
+                super::cursor_driver::ControlDisposition::Accepted => 0,
+                super::cursor_driver::ControlDisposition::NoActiveTurn => 1,
+                super::cursor_driver::ControlDisposition::SessionUnavailable => 2,
+                super::cursor_driver::ControlDisposition::TransportUnavailable => 3,
+            },
+            RuntimeAdapter::Antigravity => match super::antigravity_driver::cancel(&session_id) {
+                super::antigravity_driver::ControlDisposition::Accepted => 0,
+                super::antigravity_driver::ControlDisposition::NoActiveTurn => 1,
+                super::antigravity_driver::ControlDisposition::SessionUnavailable => 2,
+                super::antigravity_driver::ControlDisposition::TransportUnavailable => 3,
+            },
+            RuntimeAdapter::Hermes => match super::hermes_driver::cancel(&session_id) {
                 super::acp_session_transport::ControlDisposition::Accepted => 0,
                 super::acp_session_transport::ControlDisposition::NoActiveTurn => 1,
                 super::acp_session_transport::ControlDisposition::SessionUnavailable => 2,
                 super::acp_session_transport::ControlDisposition::TransportUnavailable => 3,
             },
-            _ => match super::hermes_driver::cancel(&session_id) {
-                super::acp_session_transport::ControlDisposition::Accepted => 0,
-                super::acp_session_transport::ControlDisposition::NoActiveTurn => 1,
-                super::acp_session_transport::ControlDisposition::SessionUnavailable => 2,
-                super::acp_session_transport::ControlDisposition::TransportUnavailable => 3,
+            RuntimeAdapter::OpenCode => match super::opencode_driver::cancel(&session_id) {
+                super::local_service::turn_control::ControlDisposition::Accepted => 0,
+                super::local_service::turn_control::ControlDisposition::NoActiveTurn => 1,
+                super::local_service::turn_control::ControlDisposition::SessionUnavailable => 2,
+                super::local_service::turn_control::ControlDisposition::TransportUnavailable => 3,
             },
+            RuntimeAdapter::KiloCode => match super::kilo_code_driver::cancel(&session_id) {
+                super::local_service::turn_control::ControlDisposition::Accepted => 0,
+                super::local_service::turn_control::ControlDisposition::NoActiveTurn => 1,
+                super::local_service::turn_control::ControlDisposition::SessionUnavailable => 2,
+                super::local_service::turn_control::ControlDisposition::TransportUnavailable => 3,
+            },
+            RuntimeAdapter::OpenClaw => match super::openclaw_driver::cancel(&session_id) {
+                super::acp_driver_runtime::ControlDisposition::Accepted => 0,
+                super::acp_driver_runtime::ControlDisposition::NoActiveTurn => 1,
+                super::acp_driver_runtime::ControlDisposition::SessionUnavailable => 2,
+                super::acp_driver_runtime::ControlDisposition::TransportUnavailable => 3,
+            },
+            RuntimeAdapter::Copilot => match super::copilot_driver::cancel(&session_id) {
+                super::acp_driver_runtime::ControlDisposition::Accepted => 0,
+                super::acp_driver_runtime::ControlDisposition::NoActiveTurn => 1,
+                super::acp_driver_runtime::ControlDisposition::SessionUnavailable => 2,
+                super::acp_driver_runtime::ControlDisposition::TransportUnavailable => 3,
+            },
+            RuntimeAdapter::KimiCode => match super::kimi_code_driver::cancel(&session_id) {
+                super::acp_driver_runtime::ControlDisposition::Accepted => 0,
+                super::acp_driver_runtime::ControlDisposition::NoActiveTurn => 1,
+                super::acp_driver_runtime::ControlDisposition::SessionUnavailable => 2,
+                super::acp_driver_runtime::ControlDisposition::TransportUnavailable => 3,
+            },
+            _ => 3,
         };
         let prefix = match adapter {
             RuntimeAdapter::ClaudeCode => "claude_code",
             RuntimeAdapter::Cursor => "cursor",
-            _ => "hermes",
+            RuntimeAdapter::Antigravity => "antigravity",
+            RuntimeAdapter::Hermes => "hermes",
+            RuntimeAdapter::OpenCode => "opencode",
+            RuntimeAdapter::KiloCode => "kilo_code",
+            RuntimeAdapter::OpenClaw => "openclaw",
+            RuntimeAdapter::Copilot => "copilot",
+            RuntimeAdapter::KimiCode => "kimi_code",
+            _ => "agent",
         };
         let label = match adapter {
             RuntimeAdapter::ClaudeCode => "Claude Code",
-            RuntimeAdapter::Cursor => "Cursor ACP",
-            _ => "Hermes ACP",
+            RuntimeAdapter::Cursor => "Cursor CLI",
+            RuntimeAdapter::Antigravity => "Antigravity CLI",
+            RuntimeAdapter::Hermes => "Hermes ACP",
+            RuntimeAdapter::OpenCode => "OpenCode Local Service",
+            RuntimeAdapter::KiloCode => "Kilo Local Service",
+            RuntimeAdapter::OpenClaw => "OpenClaw ACP",
+            RuntimeAdapter::Copilot => "GitHub Copilot ACP",
+            RuntimeAdapter::KimiCode => "Kimi Code ACP",
+            _ => "Agent",
         };
         let (ok, status, code, message) = match disposition {
             0 => (
@@ -373,7 +703,10 @@ pub fn cleanup_conversation(params: &Value) -> Result<Value> {
     let matrix = static_capability_matrix(adapter);
     if !matches!(
         adapter,
-        RuntimeAdapter::Hermes | RuntimeAdapter::ClaudeCode | RuntimeAdapter::Cursor
+        RuntimeAdapter::Hermes
+            | RuntimeAdapter::ClaudeCode
+            | RuntimeAdapter::Cursor
+            | RuntimeAdapter::Antigravity
     ) {
         return Ok(json!({
             "ok": false,
@@ -399,10 +732,17 @@ pub fn cleanup_conversation(params: &Value) -> Result<Value> {
             _ => 2,
         },
         RuntimeAdapter::Cursor => match super::cursor_driver::cleanup_session(&session_id) {
-            super::acp_session_transport::ControlDisposition::Accepted => 0,
-            super::acp_session_transport::ControlDisposition::SessionUnavailable => 1,
+            super::cursor_driver::ControlDisposition::Accepted => 0,
+            super::cursor_driver::ControlDisposition::SessionUnavailable => 1,
             _ => 2,
         },
+        RuntimeAdapter::Antigravity => {
+            match super::antigravity_driver::cleanup_session(&session_id) {
+                super::antigravity_driver::ControlDisposition::Accepted => 0,
+                super::antigravity_driver::ControlDisposition::SessionUnavailable => 1,
+                _ => 2,
+            }
+        }
         _ => match super::hermes_driver::cleanup_session(&session_id) {
             super::acp_session_transport::ControlDisposition::Accepted => 0,
             super::acp_session_transport::ControlDisposition::SessionUnavailable => 1,
@@ -412,6 +752,7 @@ pub fn cleanup_conversation(params: &Value) -> Result<Value> {
     let prefix = match adapter {
         RuntimeAdapter::ClaudeCode => "claude_code",
         RuntimeAdapter::Cursor => "cursor",
+        RuntimeAdapter::Antigravity => "antigravity",
         _ => "hermes",
     };
     let (ok, status, code) = match disposition {
@@ -427,6 +768,9 @@ pub fn cleanup_conversation(params: &Value) -> Result<Value> {
             json!(format!("{prefix}_cleanup_transport_unavailable")),
         ),
     };
+    if adapter == RuntimeAdapter::ClaudeCode && disposition == 2 {
+        return Err(anyhow!("process_local_shutdown_failed"));
+    }
     Ok(json!({
         "ok": ok,
         "agentId": adapter.id(),
@@ -441,10 +785,74 @@ pub fn cleanup_conversation(params: &Value) -> Result<Value> {
     }))
 }
 
+/// Return only the bounded transcript owned by the exact live process-local
+/// Claude transport. No filesystem history discovery is performed.
+pub fn process_local_history(params: &Value) -> Result<Value> {
+    let agent_id = agent_id_param(params)?;
+    let adapter = adapter_or_err(&agent_id)?;
+    if adapter != RuntimeAdapter::ClaudeCode {
+        return Ok(json!({
+            "ok": false,
+            "error": {
+                "code": "process_local_history_unsupported",
+                "stage": "session/history",
+                "message": "This adapter has no process-local transcript projection."
+            }
+        }));
+    }
+    let session_id = runtime_adapters::text_param_public(params, &["sessionId", "nativeSessionId"])
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| anyhow!("history requires an exact native session identifier"))?;
+    let Some(mut history) = super::claude_code_driver::history(&session_id) else {
+        return Ok(json!({
+            "ok": false,
+            "error": {
+                "code": "claude_code_session_unavailable",
+                "stage": "session/history",
+                "message": "The exact process-local transcript is unavailable."
+            }
+        }));
+    };
+    if let Some(object) = history.as_object_mut() {
+        object.insert("ok".to_string(), json!(true));
+    }
+    Ok(history)
+}
+
+/// Drain every Claude process-local transport owned by this native host.
+pub fn shutdown_all_conversations() -> Result<()> {
+    match super::claude_code_driver::shutdown_all() {
+        super::claude_code_driver::ControlDisposition::Accepted => Ok(()),
+        _ => Err(anyhow!("process_local_shutdown_failed")),
+    }
+}
+
 /// Steer is intentionally a distinct lane operation. No packaged driver may
 /// alias cancel or a second send into steer; adapters must expose a native,
 /// exactly-once in-flight control channel before their inventory capability is
 /// promoted.
+pub(crate) fn native_steer_supported(agent_id: &str) -> bool {
+    adapter_or_err(agent_id)
+        .ok()
+        .and_then(|adapter| {
+            static_capability_matrix(adapter)
+                .get("interruptSteer")
+                .and_then(Value::as_bool)
+        })
+        .unwrap_or(false)
+}
+
+pub(crate) fn native_interrupt_supported(agent_id: &str) -> bool {
+    adapter_or_err(agent_id)
+        .ok()
+        .and_then(|adapter| {
+            static_capability_matrix(adapter)
+                .get("cancel")
+                .and_then(Value::as_bool)
+        })
+        .unwrap_or(false)
+}
+
 pub fn steer_turn(params: &Value) -> Result<Value> {
     let agent_id = agent_id_param(params)?;
     let adapter = adapter_or_err(&agent_id)?;
@@ -467,16 +875,59 @@ pub fn steer_turn(params: &Value) -> Result<Value> {
             "capabilities": matrix
         }));
     }
+    let session_id = runtime_adapters::text_param_public(params, &["sessionId", "nativeSessionId"])
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| anyhow!("steer requires an exact native session identifier"))?;
+    let text = runtime_adapters::text_param_public(params, &["text", "message", "prompt"])
+        .filter(|value| !value.trim().is_empty())
+        .ok_or_else(|| anyhow!("steer requires non-empty guidance"))?;
+    let disposition = match adapter {
+        RuntimeAdapter::ClaudeCode => match super::claude_code_driver::steer(&session_id, &text) {
+            super::claude_code_driver::ControlDisposition::Accepted => "accepted",
+            super::claude_code_driver::ControlDisposition::NoActiveTurn => "no_active_turn",
+            super::claude_code_driver::ControlDisposition::SessionUnavailable => {
+                "session_unavailable"
+            }
+            super::claude_code_driver::ControlDisposition::TransportUnavailable => "unavailable",
+        },
+        RuntimeAdapter::Codex => {
+            let turn_id = runtime_adapters::text_param_public(params, &["turnId"])
+                .filter(|value| !value.is_empty())
+                .ok_or_else(|| anyhow!("Codex steer requires the active native turn identifier"))?;
+            match super::codex_app_server::active_control::steer(&session_id, &turn_id, &text) {
+                super::codex_app_server::active_control::ControlDisposition::Accepted => "accepted",
+                super::codex_app_server::active_control::ControlDisposition::NoActiveTurn => "no_active_turn",
+                super::codex_app_server::active_control::ControlDisposition::SessionUnavailable => {
+                    "session_unavailable"
+                }
+                super::codex_app_server::active_control::ControlDisposition::TransportUnavailable => "unavailable",
+            }
+        }
+        RuntimeAdapter::Pi => {
+            let turn_id = runtime_adapters::text_param_public(params, &["turnId"])
+                .filter(|value| !value.is_empty())
+                .ok_or_else(|| anyhow!("Pi steer requires the active native turn identifier"))?;
+            match super::pi_driver::steer(&session_id, &turn_id, &text) {
+                super::pi_driver::ControlDisposition::Accepted => "accepted",
+                super::pi_driver::ControlDisposition::NoActiveTurn => "no_active_turn",
+                super::pi_driver::ControlDisposition::SessionUnavailable => "session_unavailable",
+                super::pi_driver::ControlDisposition::TransportUnavailable => "unavailable",
+            }
+        }
+        _ => "unavailable",
+    };
+    let accepted = disposition == "accepted";
     Ok(json!({
-        "ok": false,
+        "ok": accepted,
         "agentId": adapter.id(),
         "laneFamily": lane_family(adapter),
-        "status": "unavailable",
-        "error": {
+        "status": disposition,
+        "deliveryMode": if accepted { "native_steer" } else { "unavailable" },
+        "error": if accepted { Value::Null } else { json!({
             "code": "dispatch_steer_transport_unavailable",
             "stage": "turn/steer",
-            "message": "The declared native steer channel is not available."
-        },
+            "message": "The native in-flight steer channel was not available for this turn."
+        }) },
         "capabilities": matrix
     }))
 }
@@ -508,14 +959,26 @@ pub fn lane_capabilities(params: &Value) -> Result<Value> {
 }
 
 /// Dispatch a conversation lane RPC/CLI operation by name.
-pub fn dispatch_lane_operation(operation: &str, params: &Value) -> Result<Value> {
+pub fn dispatch_lane_operation(
+    operation: &str,
+    params: &Value,
+) -> std::result::Result<Value, RuntimeAdapterError> {
     match operation {
-        "open" | "openOrResume" | "resume" => open_or_resume(params),
+        "open" | "openOrResume" | "resume" => {
+            open_or_resume(params).map_err(|_| RuntimeAdapterError::ConversationDispatchFailed)
+        }
         "send" => runtime_adapters::send_message(params),
-        "steer" => steer_turn(params),
-        "cancel" => cancel_turn(params),
-        "cleanup" => cleanup_conversation(params),
-        "capabilities" | "caps" => lane_capabilities(params),
+        "steer" => steer_turn(params).map_err(|_| RuntimeAdapterError::ConversationDispatchFailed),
+        "cancel" => {
+            cancel_turn(params).map_err(|_| RuntimeAdapterError::ConversationDispatchFailed)
+        }
+        "cleanup" => cleanup_conversation(params)
+            .map_err(|_| RuntimeAdapterError::ConversationDispatchFailed),
+        "history" => process_local_history(params)
+            .map_err(|_| RuntimeAdapterError::ConversationDispatchFailed),
+        "capabilities" | "caps" => {
+            lane_capabilities(params).map_err(|_| RuntimeAdapterError::ConversationDispatchFailed)
+        }
         "stream" => Ok(json!({
             "ok": true,
             "agentId": agent_id_param(params).unwrap_or_default(),
@@ -524,10 +987,7 @@ pub fn dispatch_lane_operation(operation: &str, params: &Value) -> Result<Value>
             "status": "bound_on_send",
             "hint": "Pass streamEvents=true (or --stream-events true) on agent conversation send to receive progressive agent.message.chunk NDJSON lines before the final result."
         })),
-        _ => Err(anyhow!(
-            "unsupported agent conversation operation: {}",
-            operation
-        )),
+        _ => Err(RuntimeAdapterError::ConversationDispatchFailed),
     }
 }
 
@@ -543,19 +1003,8 @@ mod tests {
         assert_eq!(lane_family(RuntimeAdapter::OpenCode), "serve-http");
         assert_eq!(lane_family(RuntimeAdapter::KiloCode), "serve-http");
         assert_eq!(lane_family(RuntimeAdapter::Pi), "rpc");
-        assert_eq!(lane_family(RuntimeAdapter::Cursor), "acp");
-        assert_eq!(lane_family(RuntimeAdapter::Antigravity), "unavailable");
-    }
-
-    #[test]
-    fn canonical_readiness_blocks_unpromoted_product_send() {
-        assert!(!readiness_send_enabled("antigravity"));
-        let error = enforce_send_readiness(&json!({"agent": "antigravity"})).unwrap_err();
-        assert!(
-            error
-                .to_string()
-                .starts_with("agent_conversation_send_not_ready:")
-        );
+        assert_eq!(lane_family(RuntimeAdapter::Cursor), "cli");
+        assert_eq!(lane_family(RuntimeAdapter::Antigravity), "cli");
     }
 
     #[test]
@@ -588,35 +1037,43 @@ mod tests {
         .unwrap();
         assert_eq!(cursor["ok"], true);
         assert_eq!(cursor["openMode"], "resume");
-        assert_eq!(cursor["laneFamily"], "acp");
+        assert_eq!(cursor["laneFamily"], "cli");
         assert_eq!(cursor["capabilities"]["exactResume"], true);
     }
 
     #[test]
-    fn antigravity_stays_structurally_blocked() {
-        let result = open_or_resume(&json!({"agent": "antigravity"})).unwrap();
-        assert_eq!(result["ok"], false);
-        assert_eq!(
-            result["error"]["code"],
-            "antigravity_cli_structured_transport_unavailable"
-        );
+    fn antigravity_open_binds_cli_lane_like_cursor() {
+        let fresh = open_or_resume(&json!({"agent": "antigravity"})).unwrap();
+        assert_eq!(fresh["ok"], true);
+        assert_eq!(fresh["openMode"], "new");
+        assert_eq!(fresh["laneFamily"], "cli");
+        assert_eq!(fresh["capabilities"]["exactResume"], true);
+
+        let resumed = open_or_resume(&json!({
+            "agent": "antigravity",
+            "sessionId": "native-agy-1"
+        }))
+        .unwrap();
+        assert_eq!(resumed["ok"], true);
+        assert_eq!(resumed["openMode"], "resume");
+        assert_eq!(resumed["laneFamily"], "cli");
     }
 
     #[test]
     fn cancel_reports_structured_disposition_per_family() {
         let acp = cancel_turn(&json!({"agent": "opencode", "sessionId": "s1"})).unwrap();
         assert_eq!(acp["ok"], false);
-        assert_eq!(acp["status"], "unsupported");
-        assert_eq!(acp["capabilities"]["cancel"], false);
-        assert_eq!(acp["error"]["code"], "dispatch_cancel_unsupported");
+        assert_eq!(acp["status"], "not_active");
+        assert_eq!(acp["capabilities"]["cancel"], true);
+        assert_eq!(acp["error"]["code"], "opencode_turn_not_active");
 
         let claude = cancel_turn(&json!({"agent": "claude-code", "sessionId": "missing"})).unwrap();
         assert_eq!(claude["error"]["code"], "claude_code_session_unavailable");
     }
 
     #[test]
-    fn steer_is_a_distinct_fail_closed_operation_until_a_native_channel_exists() {
-        for agent in ["codex", "claude-code", "opencode", "hermes", "cursor"] {
+    fn steer_uses_only_verified_native_channels_and_fails_closed_elsewhere() {
+        for agent in ["opencode", "hermes", "cursor"] {
             let result = steer_turn(&json!({
                 "agent": agent,
                 "sessionId": "native-session",
@@ -626,6 +1083,22 @@ mod tests {
             assert_eq!(result["ok"], false);
             assert_eq!(result["status"], "unsupported");
             assert_eq!(result["error"]["code"], "dispatch_steer_unsupported");
+        }
+        for agent in ["codex", "claude-code", "pi"] {
+            assert!(native_steer_supported(agent));
+            let result = steer_turn(&json!({
+                "agent": agent,
+                "sessionId": "native-session",
+                "turnId": "native-turn",
+                "text": "follow-up"
+            }))
+            .unwrap();
+            assert_eq!(result["ok"], false);
+            assert_ne!(result["status"], "unsupported");
+            assert_eq!(
+                result["error"]["code"],
+                "dispatch_steer_transport_unavailable"
+            );
         }
     }
 
@@ -643,12 +1116,11 @@ mod tests {
 
     #[test]
     fn capabilities_emit_matrix_and_blockers() {
-        let caps = lane_capabilities(&json!({"agent": "cursor"})).unwrap();
+        let caps = lane_capabilities(&json!({"agent": "antigravity"})).unwrap();
         assert_eq!(caps["ok"], true);
-        assert_eq!(caps["laneFamily"], "acp");
+        assert_eq!(caps["laneFamily"], "cli");
         assert_eq!(caps["capabilities"]["exactResume"], true);
-        assert_eq!(caps["readiness"], "blocked");
-        assert_eq!(caps["blockerCodes"], json!(["safe_cleanup_unavailable"]));
+        assert_eq!(caps["blockerCodes"], json!([]));
         let claude = lane_capabilities(&json!({"agent": "claude-code"})).unwrap();
         assert_eq!(claude["capabilities"]["exactResume"], true);
         assert_eq!(claude["readiness"], "unverified");

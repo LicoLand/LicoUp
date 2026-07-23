@@ -100,7 +100,7 @@ extension SecureMeshIosBridge {
   }
 
   func writeMobileRelaySecret(
-    _ secret: String,
+    _ secret: Data,
     storedAccount: String,
     callbackContext: SecureMeshIosSecretStoreCallbackContext? = nil,
     callbackWrite: Bool = false,
@@ -111,7 +111,7 @@ extension SecureMeshIosBridge {
       SecItemAdd($0 as CFDictionary, nil)
     }
   ) throws {
-    guard let data = secret.data(using: .utf8), !data.isEmpty else {
+    guard !secret.isEmpty else {
       throw NSError(domain: NSOSStatusErrorDomain, code: Int(errSecDecode))
     }
     var query: [String: Any] = [
@@ -129,7 +129,7 @@ extension SecureMeshIosBridge {
       }
     }
 
-    let updateStatus = updateItem(query, [kSecValueData as String: data])
+    let updateStatus = updateItem(query, [kSecValueData as String: secret])
     if updateStatus == errSecSuccess {
       return
     }
@@ -152,7 +152,7 @@ extension SecureMeshIosBridge {
       )
     }
     var addQuery = query
-    addQuery[kSecValueData as String] = data
+    addQuery[kSecValueData as String] = secret
     addQuery[kSecAttrAccessControl as String] = access
     let addStatus = addItem(addQuery)
     if addStatus == errSecSuccess {
@@ -161,7 +161,7 @@ extension SecureMeshIosBridge {
     if addStatus == errSecDuplicateItem {
       // Resolve an insert race with one more atomic update. A failed retry
       // leaves the already committed item intact.
-      let retryStatus = updateItem(query, [kSecValueData as String: data])
+      let retryStatus = updateItem(query, [kSecValueData as String: secret])
       guard retryStatus == errSecSuccess else {
         throw NSError(domain: NSOSStatusErrorDomain, code: Int(retryStatus))
       }
@@ -177,7 +177,7 @@ extension SecureMeshIosBridge {
     copyItem: ([String: Any], UnsafeMutablePointer<CFTypeRef?>) -> OSStatus = {
       SecItemCopyMatching($0 as CFDictionary, $1)
     }
-  ) throws -> String? {
+  ) throws -> Data? {
     var query: [String: Any] = [
       kSecClass as String: kSecClassGenericPassword,
       kSecAttrService as String: mobileRelaySecretService,
@@ -210,9 +210,8 @@ extension SecureMeshIosBridge {
       throw NSError(domain: NSOSStatusErrorDomain, code: Int(status))
     }
     guard
-      let data = copied as? Data,
-      let secret = String(data: data, encoding: .utf8),
-      !secret.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+      let secret = copied as? Data,
+      !secret.isEmpty
     else {
       if callbackRead {
         callbackContext?.recordCallbackSecretReadError()
@@ -282,8 +281,9 @@ extension SecureMeshIosBridge {
       UnsafeMutableRawPointer?,
       UnsafePointer<CChar>?,
       UnsafePointer<CChar>?,
-      UnsafePointer<CChar>?
-    ) -> Bool = { context, namespace, key, secret in
+      UnsafePointer<UInt8>?,
+      Int
+    ) -> Bool = { context, namespace, key, secret, secretLen in
       do {
         let callbackContext = try callbackContextFromSecretStoreContext(context)
         let bridge = callbackContext.bridge
@@ -291,8 +291,11 @@ extension SecureMeshIosBridge {
           namespace: try callbackString(namespace, name: "namespace"),
           key: try callbackString(key, name: "key")
         )
+        guard let secret, secretLen > 0 else {
+          throw NSError(domain: "SecureMeshIosBridge.secret", code: 6)
+        }
         try bridge.writeMobileRelaySecret(
-          try callbackString(secret, name: "secret"),
+          Data(bytes: secret, count: secretLen),
           storedAccount: storedAccount,
           callbackContext: callbackContext,
           callbackWrite: true
@@ -308,12 +311,14 @@ extension SecureMeshIosBridge {
       UnsafeMutableRawPointer?,
       UnsafePointer<CChar>?,
       UnsafePointer<CChar>?,
-      UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>?
-    ) -> Int32 = { context, namespace, key, valueOut in
-      guard let valueOut else {
+      UnsafeMutablePointer<UnsafeMutablePointer<UInt8>?>?,
+      UnsafeMutablePointer<Int>?
+    ) -> Int32 = { context, namespace, key, valueOut, valueLenOut in
+      guard let valueOut, let valueLenOut else {
         return Int32(LICO_SECURE_MESH_SECRET_GET_ERROR)
       }
       valueOut.pointee = nil
+      valueLenOut.pointee = 0
       do {
         let callbackContext = try callbackContextFromSecretStoreContext(context)
         let bridge = callbackContext.bridge
@@ -328,10 +333,14 @@ extension SecureMeshIosBridge {
         ) else {
           return Int32(LICO_SECURE_MESH_SECRET_GET_NOT_FOUND)
         }
-        guard let allocated = strdup(secret) else {
+        let allocated = UnsafeMutablePointer<UInt8>.allocate(capacity: secret.count)
+        let copied = secret.copyBytes(to: allocated, count: secret.count)
+        guard copied == secret.count else {
+          allocated.deallocate()
           return Int32(LICO_SECURE_MESH_SECRET_GET_ERROR)
         }
         valueOut.pointee = allocated
+        valueLenOut.pointee = secret.count
         return Int32(LICO_SECURE_MESH_SECRET_GET_FOUND)
       } catch {
         return Int32(LICO_SECURE_MESH_SECRET_GET_ERROR)
@@ -362,11 +371,15 @@ extension SecureMeshIosBridge {
       }
     }
 
-  static let iosSecretStoreStringFreeCallback:
-    @convention(c) (UnsafeMutableRawPointer?, UnsafeMutablePointer<CChar>?) -> Void = { _, value in
-      if let value {
-        free(value)
-      }
+  static let iosSecretStoreBytesZeroizeAndFreeCallback:
+    @convention(c) (
+      UnsafeMutableRawPointer?,
+      UnsafeMutablePointer<UInt8>?,
+      Int
+    ) -> Void = { _, value, valueLen in
+      guard let value, valueLen >= 0 else { return }
+      value.initialize(repeating: 0, count: valueLen)
+      value.deallocate()
     }
 
   static func callbackContextFromSecretStoreContext(

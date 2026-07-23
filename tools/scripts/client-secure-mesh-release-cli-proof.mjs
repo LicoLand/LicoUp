@@ -147,7 +147,7 @@ function runProof() {
   ], env);
 
   const summary = {
-    statusReady: status.protocolVersion === "licolite.secure-mesh.v1" &&
+    statusReady: status.protocolVersion === "licomesh.secure-mesh.v1" &&
       Array.isArray(status.supportedTransports) &&
       status.supportedTransports.length >= 5,
     commandExecuteReady: commandFirst.ok === true &&
@@ -199,7 +199,7 @@ function runProof() {
   assert(clientSourceStateDigest(repoRoot, CANONICAL_CLIENT_SOURCE_ROOTS) ===
     sourceStateDigest, "client source changed during release CLI proof generation");
   const report = {
-    schemaVersion: "licolite.secure-mesh.release-cli-proof-report.v1",
+    schemaVersion: "licomesh.secure-mesh.release-cli-proof-report.v1",
     verifier: "tools/scripts/client-secure-mesh-release-cli-proof.mjs",
     generatedAt: new Date().toISOString(),
     ...releaseInvocationBinding,
@@ -236,7 +236,7 @@ function runProof() {
 
 function failureReport(error) {
   return {
-    schemaVersion: "licolite.secure-mesh.release-cli-proof-report.v1",
+    schemaVersion: "licomesh.secure-mesh.release-cli-proof-report.v1",
     verifier: "tools/scripts/client-secure-mesh-release-cli-proof.mjs",
     generatedAt: new Date().toISOString(),
     ...releaseInvocationBinding,
@@ -271,7 +271,7 @@ function failureReport(error) {
 
 function commandPayload(commandId, idempotencyKey) {
   return {
-    schema: "licolite.secure-mesh.command.v1",
+    schema: "licomesh.secure-mesh.command.v1",
     commandId,
     commandKind: "client.activity.sync",
     senderIdentity: {

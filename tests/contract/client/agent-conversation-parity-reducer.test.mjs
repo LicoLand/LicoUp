@@ -91,7 +91,7 @@ function fullEvidence(agentId = "codex") {
         evidenceDigest: "",
         officialNativeLane: true,
         consecutivePasses: 3,
-        releaseUiPassed: true,
+        conversationGatePassed: true,
         cleanupPassed: true,
         privacyPassed: true,
         coreChecks: Object.fromEntries(CORE_CHECK_IDS.map((id) => [id, "pass"])),
@@ -134,8 +134,8 @@ test("complete evidence is the only route to ready", () => {
   assert.equal(codex.status, "ready");
   assert.equal(codex.sendEnabled, true);
   assert.equal(codex.coreChecks.passed, 10);
-  assert.equal(codex.conditionalChecks.nativeSupported, 2);
-  assert.equal(codex.conditionalChecks.passed, 2);
+  assert.equal(codex.conditionalChecks.nativeSupported, 3);
+  assert.equal(codex.conditionalChecks.passed, 3);
   assert.equal(codex.evidenceBinding.agentId, "codex");
   assert.equal(codex.evidenceBinding.driverId, "codex-app-server");
   assert.equal(result.summary.ready, 1);
@@ -233,7 +233,16 @@ test("a known native-supported capability gap reduces to partial", () => {
 });
 
 test("inventory and official-lane blockers reduce to blocked", () => {
-  const baseline = reduceConversationParity({ packagingRegistry, inventory });
+  const blockedInventory = structuredClone(inventory);
+  const blockedDriver = blockedInventory.drivers.find(
+    (item) => item.agentId === "antigravity",
+  );
+  blockedDriver.driverMode = "blocked";
+  blockedDriver.blockerCodes = ["safe_cleanup_unavailable"];
+  const baseline = reduceConversationParity({
+    packagingRegistry,
+    inventory: blockedInventory,
+  });
   const antigravity = resultFor(baseline, "antigravity");
   assert.equal(antigravity.status, "blocked");
   assert.equal(antigravity.sendEnabled, false);
@@ -257,15 +266,30 @@ test("no-persistence cleanup can promote while declared unsafe cleanup stays blo
     "all_required_evidence_passed",
   ]);
 
-  const cursorBlocked = reduceConversationParity({
+  const cursorReady = reduceConversationParity({
     packagingRegistry,
     inventory,
     evidence: fullEvidence("cursor"),
   });
-  assert.equal(resultFor(cursorBlocked, "cursor").status, "blocked");
-  assert.equal(resultFor(cursorBlocked, "cursor").sendEnabled, false);
-  assert.deepEqual(resultFor(cursorBlocked, "cursor").summaryCodes, [
-    "safe_cleanup_unavailable",
+  assert.equal(resultFor(cursorReady, "cursor").status, "ready");
+  assert.equal(resultFor(cursorReady, "cursor").sendEnabled, true);
+  assert.deepEqual(resultFor(cursorReady, "cursor").summaryCodes, [
+    "all_required_evidence_passed",
+  ]);
+
+  const cursorUnverified = reduceConversationParity({
+    packagingRegistry,
+    inventory,
+    evidence: {
+      schemaVersion: EVIDENCE_SCHEMA_VERSION,
+      contractVersion: CONTRACT_VERSION,
+      adapters: [],
+    },
+  });
+  assert.equal(resultFor(cursorUnverified, "cursor").status, "unverified");
+  assert.equal(resultFor(cursorUnverified, "cursor").sendEnabled, false);
+  assert.deepEqual(resultFor(cursorUnverified, "cursor").summaryCodes, [
+    "evidence_missing",
   ]);
 
   const cleanupBlockedInventory = structuredClone(inventory);
@@ -285,10 +309,10 @@ test("no-persistence cleanup can promote while declared unsafe cleanup stays blo
 
 test("inventory discloses current native transports and fail-closed capability gaps", () => {
   const byId = new Map(inventory.drivers.map((driver) => [driver.agentId, driver]));
-  assert.equal(byId.get("cursor")?.driverId, "cursor-acp");
-  assert.equal(byId.get("cursor")?.runtimeProtocol, "cursor-acp-v1-stdio-jsonrpc");
-  assert.equal(byId.get("cursor")?.driverMode, "blocked");
-  assert.deepEqual(byId.get("cursor")?.blockerCodes, ["safe_cleanup_unavailable"]);
+  assert.equal(byId.get("cursor")?.driverId, "cursor-cli");
+  assert.equal(byId.get("cursor")?.runtimeProtocol, "cursor-agent-cli-v1");
+  assert.equal(byId.get("cursor")?.driverMode, "conversation");
+  assert.deepEqual(byId.get("cursor")?.blockerCodes, []);
 
   assert.equal(byId.get("claude-code")?.driverMode, "conversation");
   assert.equal(byId.get("claude-code")?.capabilityMatrix?.exactResume, true);
@@ -313,12 +337,22 @@ test("inventory discloses current native transports and fail-closed capability g
   assert.equal(byId.get("pi")?.driverMode, "conversation");
   assert.deepEqual(byId.get("pi")?.blockerCodes, []);
 
+  const supervisedCancel = new Set([
+    "antigravity",
+    "claude-code",
+    "copilot",
+    "cursor",
+    "hermes",
+    "kilo-code",
+    "kimi-code",
+    "openclaw",
+    "opencode",
+  ]);
   for (const driver of inventory.drivers) {
-    if (["hermes", "claude-code", "cursor"].includes(driver.agentId)) continue;
     assert.equal(
       driver.capabilityMatrix?.cancel,
-      false,
-      `${driver.agentId} must not advertise cancel before the product owns an active turn handle`,
+      supervisedCancel.has(driver.agentId),
+      `${driver.agentId} cancel must match its bounded active-turn control handle`,
     );
   }
 });
@@ -376,8 +410,8 @@ test("checked-in readiness is the honest canonical-evidence reduction", () => {
     ready: 0,
     partial: 0,
     failed: 0,
-    blocked: 2,
-    unverified: 9,
+    blocked: 0,
+    unverified: 11,
     historyOnly: 0,
     sendEnabled: 0,
   });
@@ -392,7 +426,7 @@ test("a fully forged ready resource is rejected by the release check", () => {
   codex.status = "ready";
   codex.sendEnabled = true;
   codex.officialNativeLaneProven = true;
-  codex.releaseUiPassed = true;
+  codex.conversationGatePassed = true;
   codex.cleanupPassed = true;
   codex.privacyPassed = true;
   codex.consecutivePasses = 3;

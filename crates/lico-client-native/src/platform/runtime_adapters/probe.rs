@@ -59,13 +59,20 @@ pub(crate) fn probe_runtime_driver(target: &str, executable: &Path, cwd: &Path) 
             64 * 1024,
             16 * 1024,
         )),
-        RuntimeAdapter::Cursor => probe_acp_runtime(cursor_driver::capability_probe(
-            &executable,
-            cwd,
-            2_000,
-            64 * 1024,
-            16 * 1024,
-        )),
+        RuntimeAdapter::Cursor => {
+            let probe = cursor_driver::probe(&executable, 2_000, 64 * 1024);
+            json!({
+                "available": probe.available,
+                "supported": probe.supported,
+                "createChat": probe.create_chat,
+                "printTurn": probe.print_turn,
+                "resumeSession": probe.resume_session,
+                "structuredStream": probe.structured_stream,
+                "versionCommandOk": probe.version_command_ok,
+                "helpCommandOk": probe.help_command_ok,
+                "errorCode": probe.error_code
+            })
+        }
         RuntimeAdapter::Hermes => {
             let probe = hermes_driver::probe(&executable, 2_000, 64 * 1024);
             json!({

@@ -5,16 +5,16 @@ import process from "node:process";
 
 function defaultCacheRoot(env = process.env) {
   if (process.platform === "darwin") {
-    return path.join(os.homedir(), "Library", "Caches", "LicoLite", "client-toolchain");
+    return path.join(os.homedir(), "Library", "Caches", "LicoMesh", "client-toolchain");
   }
   if (process.platform === "win32") {
     return path.join(
       env.LOCALAPPDATA || path.join(os.homedir(), "AppData", "Local"),
-      "LicoLite",
+      "LicoMesh",
       "ClientToolchain"
     );
   }
-  return path.join(env.XDG_CACHE_HOME || path.join(os.homedir(), ".cache"), "licolite", "client-toolchain");
+  return path.join(env.XDG_CACHE_HOME || path.join(os.homedir(), ".cache"), "licomesh", "client-toolchain");
 }
 
 export function clientCacheRoot(env = process.env) {

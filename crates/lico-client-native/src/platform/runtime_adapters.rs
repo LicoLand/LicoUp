@@ -1,10 +1,12 @@
 mod adapter;
 mod artifact;
 mod dispatch;
+pub mod error;
 mod model;
 mod normalization;
 mod params;
 mod probe;
+pub(crate) mod protocol_selector;
 mod registry;
 
 const RUNTIME_SCHEMA_VERSION: u32 = 3;
@@ -34,10 +36,12 @@ pub(crate) const PACKAGED_RUNTIME_ADAPTER_IDS: &[&str] = &[
 ];
 
 pub(crate) use adapter::{RuntimeAdapter, adapter_for_agent_public, text_param_public};
-pub(crate) use artifact::runtime_evidence_matches;
 pub use dispatch::send_message;
+pub use error::RuntimeAdapterError;
 pub(crate) use probe::probe_runtime_driver;
-pub(crate) use registry::{inventory_capability_matrix, runtime_driver_profile};
+pub(crate) use registry::{
+    adapter_management_catalog, inventory_capability_matrix, runtime_driver_profile,
+};
 
 #[cfg(test)]
 mod tests;

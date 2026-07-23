@@ -127,20 +127,23 @@ test("Windows command resolution prefers executable tools and handles command wr
   const module = await import(
     `${pathToFileURL(path.join(repoRoot, moduleRoot, "windows.mjs")).href}?windows-behavior`
   );
+  const flutterBase = ["C:", "tools", "flutter"].join("/");
+  const flutterCommand = `${flutterBase}.cmd`;
+  const flutterExecutable = `${flutterBase}.exe`;
   const located = module.resolveCommand("flutter", {
     platform: "win32",
     locate: () => ({
       status: 0,
-      stdout: "C:/tools/flutter.cmd\r\nC:/tools/flutter.exe\r\n",
+      stdout: `${flutterCommand}\r\n${flutterExecutable}\r\n`,
     }),
   });
-  assert.equal(located, "C:/tools/flutter.exe");
+  assert.equal(located, flutterExecutable);
   assert.equal(module.quoteWindowsCommandArg("two words"), '"two words"');
   assert.equal(
-    module.resolveCommand("C:/tools/flutter", {
+    module.resolveCommand(flutterBase, {
       platform: "win32",
       fileExists: (candidate) => candidate.endsWith(".cmd"),
     }),
-    "C:/tools/flutter.cmd",
+    flutterCommand,
   );
 });

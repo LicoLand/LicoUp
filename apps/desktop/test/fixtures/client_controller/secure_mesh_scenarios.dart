@@ -30,7 +30,7 @@ void registerClientSecureMeshScenarios() {
           createdAt: '2026-06-12T00:00:00.000Z',
         ),
       ];
-    final controller = ClientController(
+    final controller = NoPreloadClientController(
       portableData: PortableDataRoot(dataDirectoryOverride: directory),
       agentService: agentService,
       mobileRelayService: relayService,
@@ -159,7 +159,7 @@ void registerClientSecureMeshScenarios() {
     );
     addTearDown(() => directory.delete(recursive: true));
     final relayService = FakeMobileRelayService();
-    final controller = ClientController(
+    final controller = NoPreloadClientController(
       portableData: PortableDataRoot(dataDirectoryOverride: directory),
       agentService: FakeAgentService(),
       mobileRelayService: relayService,
@@ -288,7 +288,7 @@ void registerClientSecureMeshScenarios() {
           'chunkSize': 8,
           'chunkCount': 2,
         },
-        approvedRoot: '/tmp/approved-root',
+        approvedRoot: 'test-data/approved-root',
       );
 
       expect(relayService.fileReceiveDestinationEvaluateCalls, 1);
@@ -296,7 +296,7 @@ void registerClientSecureMeshScenarios() {
         relayService.lastFileReceiveDestinationManifest?['fileId'],
         'file-a',
       );
-      expect(relayService.lastApprovedRoot, '/tmp/approved-root');
+      expect(relayService.lastApprovedRoot, 'test-data/approved-root');
       expect(
         controller
             .secureMeshFileReceiveDestination?['receivePolicy']?['writeOperation'],
@@ -589,7 +589,7 @@ void registerClientSecureMeshScenarios() {
             type: 'secure_mesh.command',
             payload: {
               'secureCommandPayload': {
-                'schema': 'licolite.secure-mesh.command.v1',
+                'schema': 'licomesh.secure-mesh.command.v1',
                 'commandId': 'cmd-secure-1',
                 'commandKind': 'client.activity.sync',
                 'riskClass': 'read_only',

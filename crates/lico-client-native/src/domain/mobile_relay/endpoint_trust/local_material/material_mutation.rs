@@ -3,14 +3,18 @@ use super::identity_generation::{
 };
 use super::prekey_inventory::ensure_mobile_relay_pqxdh_material;
 use super::protocol_reset::reset_incompatible_local_pairwise_protocol;
+use crate::core::secure_mesh_secret_store::SecretBytes;
 use crate::domain::mobile_relay::relay_operations::current_mailbox_rotation_epoch;
-use crate::domain::mobile_relay::secret_custody::is_unredacted_secret;
+use crate::domain::mobile_relay::secret_custody::{
+    MobileRelayE2eeSecretField, RuntimeSecretMaterial,
+};
 use crate::domain::mobile_relay::support::MOBILE_RELAY_E2EE_PROTOCOL_VERSION;
 use anyhow::Result;
 use serde_json::{Value, json};
 
 pub(in crate::domain::mobile_relay) fn ensure_mobile_relay_endpoint_material(
     config: &mut Value,
+    secret_material: &mut RuntimeSecretMaterial,
     endpoint_kind: &str,
 ) -> Result<()> {
     reset_incompatible_local_pairwise_protocol(config);
@@ -25,16 +29,15 @@ pub(in crate::domain::mobile_relay) fn ensure_mobile_relay_endpoint_material(
         .get_mut("mobileRelayE2ee")
         .and_then(Value::as_object_mut)
     {
-        if !object
-            .get("privateKeyBase64url")
-            .and_then(Value::as_str)
-            .is_some_and(is_unredacted_secret)
+        if secret_material
+            .e2ee_secret(MobileRelayE2eeSecretField::PrivateKey)
+            .is_none()
         {
             let generated = generate_identity_material();
-            object.insert(
-                "privateKeyBase64url".to_string(),
-                json!(generated.private_key),
-            );
+            secret_material.insert_e2ee_secret(
+                MobileRelayE2eeSecretField::PrivateKey,
+                SecretBytes::try_from_string(generated.private_key)?,
+            )?;
             object.insert(
                 "publicKeyBase64url".to_string(),
                 json!(generated.public_key),
@@ -76,16 +79,15 @@ pub(in crate::domain::mobile_relay) fn ensure_mobile_relay_endpoint_material(
                 json!(current_mailbox_rotation_epoch()?),
             );
         }
-        if !object
-            .get("pairingSecretBase64url")
-            .and_then(Value::as_str)
-            .is_some_and(|value| !value.trim().is_empty())
+        if secret_material
+            .e2ee_secret(MobileRelayE2eeSecretField::PairingSecret)
+            .is_none()
         {
-            object.insert(
-                "pairingSecretBase64url".to_string(),
-                json!(generate_pairing_secret()),
-            );
+            secret_material.insert_e2ee_secret(
+                MobileRelayE2eeSecretField::PairingSecret,
+                SecretBytes::try_from_string(generate_pairing_secret())?,
+            )?;
         }
     }
-    ensure_mobile_relay_pqxdh_material(config)
+    ensure_mobile_relay_pqxdh_material(config, secret_material)
 }

@@ -40,15 +40,18 @@ void main() {
         locale: const Locale('en'),
       );
 
-      expect(find.text('Skill Hub'), findsOneWidget);
+      expect(
+        find.text('Browse, pair, and install skills loadable by local agents.'),
+        findsNothing,
+      );
       expect(find.text('All Skills'), findsOneWidget);
       expect(find.text('Public Skills'), findsOneWidget);
       expect(find.text('Private Skills'), findsOneWidget);
       expect(find.text('Loadable by:'), findsNothing);
       expect(find.byType(SkillCategoryIconBadge), findsNWidgets(2));
       expect(find.byType(AgentBrandIcon), findsWidgets);
-      expect(_hasTooltip(tester, 'ChatGPT - Desktop'), isTrue);
-      expect(_hasTooltip(tester, 'Claude Code - CLI'), isTrue);
+      expect(_hasTooltip(tester, 'Codex'), isTrue);
+      expect(_hasTooltip(tester, 'Claude Code'), isTrue);
 
       await tester.tap(find.byType(SkillCategoryIconBadge).first);
       await tester.pump();
@@ -100,7 +103,8 @@ void main() {
         locale: const Locale('zh'),
       );
 
-      expect(find.text('技能中心'), findsOneWidget);
+      expect(find.text('技能中心'), findsNothing);
+      expect(find.text('查看、配对并安装本机智能体可加载的技能。'), findsNothing);
       expect(find.text('全部技能'), findsOneWidget);
       expect(find.text('公共技能'), findsOneWidget);
       expect(find.text('私有技能'), findsOneWidget);
@@ -112,7 +116,7 @@ void main() {
       expect(find.text('Private Helper'), findsOneWidget);
       expect(find.text('暂无描述'), findsOneWidget);
       expect(find.text('Public Skills'), findsNothing);
-      expect(_hasTooltip(tester, 'Claude Code - CLI'), isTrue);
+      expect(_hasTooltip(tester, 'Claude Code'), isTrue);
 
       await tester.tap(find.text('Public Reviewer'));
       await tester.pump();
@@ -136,6 +140,46 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  testWidgets('settings gear opens a floating drawer with a minimal installer', (
+    tester,
+  ) async {
+    final controller = _skillHubController()
+      ..skillHubPairings = const [
+        {'agentId': 'codex', 'target': 'manual', 'status': 'approved'},
+      ];
+    addTearDown(controller.dispose);
+
+    await _pumpSkillHub(
+      tester,
+      controller: controller,
+      locale: const Locale('zh'),
+    );
+
+    // Drawer closed: no settings content, filter chips stay in the top row.
+    expect(find.text('GitHub URL'), findsNothing);
+    expect(find.text('全部技能'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('显示技能设置'));
+    await tester.pump();
+
+    expect(find.text('设置'), findsOneWidget);
+    expect(find.text('GitHub URL'), findsOneWidget);
+    expect(find.text('安装'), findsOneWidget);
+    // Pairing bookkeeping and retired settings rows stay out of the UI.
+    expect(find.text('配对记录'), findsNothing);
+    expect(find.text('多智能体删除'), findsNothing);
+    expect(find.text('手动更新与自动更新'), findsNothing);
+    expect(find.text('本机调用频率'), findsNothing);
+    // The page behind is untouched and still listed.
+    expect(find.text('Public Reviewer'), findsOneWidget);
+
+    await tester.tap(find.byIcon(Icons.close));
+    await tester.pump();
+
+    expect(find.text('GitHub URL'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
 }
 
 Future<void> _pumpSkillHub(

@@ -125,22 +125,28 @@ void main() {
       environment: classicMobileEnvironment(hasTouch: false, hasKeyboard: true),
     );
 
+    bool compactNavigationVisible() {
+      return find
+          .byWidgetPredicate((widget) {
+            final key = widget.key;
+            return key is ValueKey<String> &&
+                key.value.startsWith('classic-mobile-compact-navigation-') &&
+                key.value != 'classic-mobile-compact-navigation-trigger';
+          })
+          .evaluate()
+          .isNotEmpty;
+    }
+
     for (var step = 0; step < 4; step++) {
       await tester.sendKeyEvent(LogicalKeyboardKey.tab);
       expect(FocusManager.instance.primaryFocus, isNotNull);
       await tester.sendKeyEvent(LogicalKeyboardKey.enter);
       await tester.pumpAndSettle();
-      if (find
-          .byKey(const Key('classic-mobile-compact-navigation-feed'))
-          .evaluate()
-          .isNotEmpty) {
+      if (compactNavigationVisible()) {
         break;
       }
     }
-    expect(
-      find.byKey(const Key('classic-mobile-compact-navigation-feed')),
-      findsOneWidget,
-    );
+    expect(compactNavigationVisible(), isTrue);
   });
 
   testWidgets('safe and keyboard insets preserve the destination clearance', (

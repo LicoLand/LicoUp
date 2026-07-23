@@ -10,6 +10,12 @@ pub(super) const OPENCODE_DRIVER: AcpDriverSpec = AcpDriverSpec::new(RUNTIME_PRO
 pub(super) use probe::capability_probe;
 pub(super) use serve_transport::execute;
 
+pub(in crate::platform) fn cancel(
+    session_id: &str,
+) -> super::local_service::turn_control::ControlDisposition {
+    super::local_service::turn_control::cancel(OPENCODE_DRIVER.agent_id, session_id)
+}
+
 pub(super) fn serve_capabilities() -> CapabilityProbe {
     CapabilityProbe {
         protocol_version: Some(u64::from(crate::core::acp::PROTOCOL_VERSION)),

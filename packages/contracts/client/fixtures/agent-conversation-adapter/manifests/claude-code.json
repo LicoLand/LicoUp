@@ -76,8 +76,8 @@
       "method": "cancel active supervised turn"
     },
     "interruptSteer": {
-      "status": "unsupported",
-      "method": "combined in-flight interrupt and steer is not enabled"
+      "status": "supported",
+      "method": "stream-json user message on the bound active input transport"
     },
     "cleanup": {
       "status": "supported",
@@ -201,9 +201,10 @@
     "liveLocalForwardingRequired": true,
     "realtimeOutputRequired": true,
     "sameNativeSessionRequired": true,
+    "continuityScope": "process-local",
     "canonicalReadinessRequired": true,
-    "nativeToArcRequired": true,
-    "arcToNativeRequired": true,
+    "nativeToArcRequired": false,
+    "arcToNativeRequired": false,
     "exactArtifactRequired": true
   }
 }

@@ -1,5 +1,5 @@
 {
-  "schemaVersion": "licolite.android-release-toolchain-allowlist.v1",
+  "schemaVersion": "licomesh.android-release-toolchain-allowlist.v1",
   "platforms": {
     "darwin-arm64": {
       "buildToolsVersion": "37.0.0",

@@ -43,7 +43,7 @@ void registerAgentUsageFormattingScenarios() {
 
     expect(find.text('231.9M'), findsAtLeastNWidgets(1));
     expect(service.reportCalls, 1);
-    expect(service.scanCalls, 0);
+    expect(service.scanCalls, 1);
     expect(find.text('7.9M'), findsAtLeastNWidgets(1));
     expect(find.text('670.7K'), findsAtLeastNWidgets(1));
     expect(find.text('Token Usage'), findsOneWidget);
@@ -87,15 +87,15 @@ void registerAgentUsageFormattingScenarios() {
       lessThan(tester.getTopLeft(deepseekModel).dy),
     );
     expect(
-      find.descendant(of: tokenShare, matching: find.text('Claude Code - CLI')),
+      find.descendant(of: tokenShare, matching: find.text('Claude Code')),
       findsNothing,
     );
     expect(
-      find.descendant(of: tokenShare, matching: find.text('ChatGPT - Desktop')),
+      find.descendant(of: tokenShare, matching: find.text('Codex')),
       findsNothing,
     );
     expect(
-      find.descendant(of: tokenShare, matching: find.text('OpenCode - CLI')),
+      find.descendant(of: tokenShare, matching: find.text('OpenCode')),
       findsNothing,
     );
     expect(find.textContaining('{"id"'), findsNothing);
@@ -104,15 +104,15 @@ void registerAgentUsageFormattingScenarios() {
     await tester.pumpAndSettle();
 
     expect(
-      find.descendant(of: tokenShare, matching: find.text('Claude Code - CLI')),
+      find.descendant(of: tokenShare, matching: find.text('Claude Code')),
       findsOneWidget,
     );
     expect(
-      find.descendant(of: tokenShare, matching: find.text('ChatGPT - Desktop')),
+      find.descendant(of: tokenShare, matching: find.text('Codex')),
       findsOneWidget,
     );
     expect(
-      find.descendant(of: tokenShare, matching: find.text('OpenCode - CLI')),
+      find.descendant(of: tokenShare, matching: find.text('OpenCode')),
       findsOneWidget,
     );
     expect(
@@ -137,7 +137,7 @@ void registerAgentUsageFormattingScenarios() {
     await tester.pumpAndSettle();
 
     expect(service.reportCalls, 1);
-    expect(service.scanCalls, 0);
+    expect(service.scanCalls, 1);
   });
 }
 

@@ -22,18 +22,21 @@ pub(super) enum LifecycleFailure {
 pub(super) struct SupervisedChild {
     child: GroupChild,
     cleaned: bool,
+    pid: u32,
 }
 
 impl SupervisedChild {
     pub(super) fn spawn(command: &mut Command) -> io::Result<Self> {
         #[cfg(windows)]
-        let child = command.group().kill_on_drop(true).spawn()?;
+        let mut child = command.group().kill_on_drop(true).spawn()?;
         #[cfg(not(windows))]
-        let child = command.group_spawn()?;
+        let mut child = command.group_spawn()?;
+        let pid = child.inner().id();
 
         Ok(Self {
             child,
             cleaned: false,
+            pid,
         })
     }
 
@@ -47,6 +50,10 @@ impl SupervisedChild {
 
     pub(super) fn stderr(&mut self) -> Option<ChildStderr> {
         self.child.inner().stderr.take()
+    }
+
+    pub(super) fn pid(&self) -> u32 {
+        self.pid
     }
 
     /// Gives a batch-style child a bounded opportunity to report its natural

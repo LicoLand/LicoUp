@@ -2,6 +2,7 @@ import { quoteShellArg } from "../ssh/session.mjs";
 
 export function verifyCommand(distro) {
   const artifactName = `lico-client-${distro.id}-linux-arm64`;
+  const guestHelpPath = ["", "tmp", "lico-client-help.txt"].join("/");
   const assertSecretServicePlatformBinding = [
     "const fs=require('node:fs')",
     "const report=JSON.parse(fs.readFileSync(process.argv[1],'utf8'))",
@@ -41,14 +42,14 @@ export function verifyCommand(distro) {
     "set -euo pipefail",
     '. "$HOME/.cargo/env"',
     'cd "$HOME/lico-arc"',
-    'export CARGO_TARGET_DIR="$HOME/.cache/licolite/cargo-target"',
+    'export CARGO_TARGET_DIR="$HOME/.cache/licomesh/cargo-target"',
     "export CARGO_BUILD_JOBS=1",
     'mkdir -p "$CARGO_TARGET_DIR" "$HOME/lico-artifacts"',
     cargoTestCommand,
     "cargo build --manifest-path crates/lico-client-native/Cargo.toml --locked --release --bin lico-client",
     `cp "$CARGO_TARGET_DIR/release/lico-client" "$HOME/lico-artifacts/${artifactName}"`,
     `chmod 0755 "$HOME/lico-artifacts/${artifactName}"`,
-    `"$HOME/lico-artifacts/${artifactName}" --help >/tmp/lico-client-help.txt`,
+    `"$HOME/lico-artifacts/${artifactName}" --help >${guestHelpPath}`,
     "node tools/scripts/client-secure-mesh-linux-adaptive-custody-proof.mjs --self-test",
     `node tools/scripts/client-secure-mesh-release-cli-proof.mjs --cli "$HOME/lico-artifacts/${artifactName}" --platform "${distro.id}-linux-arm64" --report "$HOME/lico-artifacts/secure-mesh-release-cli-proof.json"`,
     `node tools/scripts/client-secure-mesh-linux-adaptive-custody-proof.mjs --cli "$HOME/lico-artifacts/${artifactName}" --platform "${distro.id}-linux-arm64" --report "$HOME/lico-artifacts/secure-mesh-linux-adaptive-custody-proof.json"`,

@@ -25,12 +25,12 @@ const SPQR_MAX_SKIPPED_KEYS: usize = 32;
 const SPQR_MAX_PERSISTED_STATE_BYTES: usize = 1024 * 1024;
 const SPQR_KEY_BASE64URL_BYTES: usize = (SPQR_KEY_BYTES * 8 + 5) / 6;
 const SPQR_MAX_ENCODED_BRAID_BYTES: usize = (512 * 1024 * 8 + 5) / 6;
-const SPQR_PROTOCOL_INFO: &[u8] = b"licolite.secure-mesh.spqr.mlkem1024-braid.v1";
+const SPQR_PROTOCOL_INFO: &[u8] = b"licomesh.secure-mesh.spqr.mlkem1024-braid.v1";
 const SPQR_CHAIN_START_LABEL: &[u8] = b" Chain Start";
 const SPQR_CHAIN_ADD_EPOCH_LABEL: &[u8] = b" Chain Add Epoch";
 const SPQR_CHAIN_STEP_LABEL: &[u8] = b" Chain Step";
 const TRIPLE_RATCHET_PROTOCOL_INFO: &[u8] =
-    b"licolite.secure-mesh.triple-ratchet.pqxdh-mlkem1024.v1";
+    b"licomesh.secure-mesh.triple-ratchet.pqxdh-mlkem1024.v1";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum SecureMeshSparsePqRole {

@@ -52,6 +52,7 @@ pub(crate) fn parse_pi_session(
                 let Some(message) = value.get("message") else {
                     continue;
                 };
+                let first_projected = messages.len();
                 let role = message
                     .get("role")
                     .and_then(Value::as_str)
@@ -111,11 +112,20 @@ pub(crate) fn parse_pi_session(
                                 }
                             }
                         }
+                        attach_native_usage_to_projection(
+                            &mut messages,
+                            first_projected,
+                            HistoryAdapter::Pi,
+                            path,
+                            index,
+                            &value,
+                            message,
+                        );
                         continue;
                     }
                 }
                 if let Some(text) = extract_text(message).or_else(|| extract_text(&value)) {
-                    if let Some(message) = plain_history_message(
+                    if let Some(mut projected) = plain_history_message(
                         HistoryAdapter::Pi,
                         path,
                         index,
@@ -124,8 +134,19 @@ pub(crate) fn parse_pi_session(
                         &text,
                         extract_timestamp(&value).or_else(|| extract_timestamp(message)),
                     ) {
-                        messages.push(message);
+                        attach_native_usage(&mut projected, &value, message);
+                        messages.push(projected);
                     }
+                } else {
+                    attach_native_usage_to_projection(
+                        &mut messages,
+                        first_projected,
+                        HistoryAdapter::Pi,
+                        path,
+                        index,
+                        &value,
+                        message,
+                    );
                 }
             }
             _ => {}
@@ -185,16 +206,19 @@ pub(crate) fn parse_copilot_transcript_session(
         }
         let structured_kind = history_message_kind_from_semantic(event_type);
         if structured_kind != HistoryMessageKind::Text {
-            messages.push(structured_history_message(
+            let data = value.get("data").unwrap_or(&value);
+            let mut projected = structured_history_message(
                 HistoryAdapter::Copilot,
                 path,
                 index,
                 0,
                 structured_kind,
                 event_type,
-                value.get("data").unwrap_or(&value),
+                data,
                 extract_timestamp(&value),
-            ));
+            );
+            attach_native_usage(&mut projected, &value, data);
+            messages.push(projected);
             continue;
         }
         let role = match event_type {
@@ -217,14 +241,16 @@ pub(crate) fn parse_copilot_transcript_session(
                 .format(&Rfc3339)
                 .unwrap_or_else(|_| "1970-01-01T00:00:00Z".to_string())
         });
-        messages.push(json!({
+        let mut projected = json!({
             "id": message_id(HistoryAdapter::Copilot.id(), path, index),
             "role": role,
             "text": text,
             "createdAt": created_at,
             "sourcePath": display_path(path),
             "sourceEventType": event_type
-        }));
+        });
+        attach_native_usage(&mut projected, &value, data);
+        messages.push(projected);
     }
 
     if messages.is_empty() {
@@ -238,4 +264,54 @@ pub(crate) fn parse_copilot_transcript_session(
         native_session_id,
         messages,
     ))
+}
+
+fn attach_native_usage(target: &mut Value, event: &Value, payload: &Value) -> bool {
+    let Some(usage) = extract_token_usage(payload).or_else(|| extract_token_usage(event)) else {
+        return false;
+    };
+    let Some(object) = target.as_object_mut() else {
+        return false;
+    };
+    object.insert("usage".to_string(), usage);
+    object.insert("usageScope".to_string(), json!("request-response"));
+    if let Some(model) = extract_native_model(payload).or_else(|| extract_native_model(event)) {
+        object.insert("model".to_string(), json!(model));
+    }
+    true
+}
+
+#[allow(clippy::too_many_arguments)]
+fn attach_native_usage_to_projection(
+    messages: &mut Vec<Value>,
+    first_projected: usize,
+    adapter: HistoryAdapter,
+    path: &Path,
+    index: usize,
+    event: &Value,
+    payload: &Value,
+) {
+    if first_projected < messages.len() {
+        let projected = &messages[first_projected..];
+        let offset = projected
+            .iter()
+            .rposition(|message| message.get("role").and_then(Value::as_str) == Some("agent"))
+            .unwrap_or(projected.len() - 1);
+        if attach_native_usage(&mut messages[first_projected + offset], event, payload) {
+            return;
+        }
+    }
+    let mut projected = json!({
+        "id": native_history_message_id(adapter, path, index, 0),
+        "role": "metadata",
+        "text": format!("{} token usage", adapter.label()),
+        "createdAt": extract_timestamp(event)
+            .or_else(|| extract_timestamp(payload))
+            .unwrap_or_else(native_message_timestamp),
+        "sourcePath": display_path(path),
+        "sourceEventType": "message.usage"
+    });
+    if attach_native_usage(&mut projected, event, payload) {
+        messages.push(projected);
+    }
 }

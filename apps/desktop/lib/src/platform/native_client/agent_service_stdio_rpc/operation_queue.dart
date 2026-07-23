@@ -1,23 +1,34 @@
 import 'dart:async';
 
+import 'package:flutter_client/src/platform/native_client/agent_service_stdio_rpc/operation_pending_queue.dart';
 import 'package:flutter_client/src/platform/native_client/native_cli_ports.dart';
+import 'package:flutter_client/src/platform/native_client/native_rpc_priority.dart';
 
-/// Serializes commands, conversation streams, and shutdown for one stdio
-/// session without owning any protocol or process behavior.
+typedef RpcOp<T> = Future<T> Function();
+
+const _timeoutError = LicoClientRpcException('timeout');
+
+/// Serializes commands, streams, and shutdown for one stdio session.
 final class StdioRpcOperationQueue {
-  Future<void> _tail = Future<void>.value();
+  final RpcOperationPendingQueue _pending = RpcOperationPendingQueue();
+  var _running = false, _closing = false;
   Future<void>? _closeFuture;
-  var _closing = false;
 
   bool get closing => _closing;
 
-  Future<T> serialize<T>(Future<T> Function() operation) {
+  Future<T> serialize<T>(RpcOp<T> operation, {RpcPriorityToken? priority}) {
     if (_closing) {
       return Future<T>.error(const LicoClientRpcException('service_disposed'));
     }
-    final result = _tail.then<T>((_) => operation());
-    _tail = result.then<void>((_) {}, onError: _ignoreError);
-    return result;
+    final completer = Completer<T>();
+    _enqueue(() async {
+      try {
+        completer.complete(await operation());
+      } on Object catch (error, stackTrace) {
+        completer.completeError(error, stackTrace);
+      }
+    }, priority);
+    return completer.future;
   }
 
   Stream<T> serializeStream<T>({
@@ -29,30 +40,20 @@ final class StdioRpcOperationQueue {
       return Stream<T>.error(const LicoClientRpcException('service_disposed'));
     }
     final controller = StreamController<T>();
-    final previous = _tail;
-    final completed = Completer<void>();
-    _tail = previous
-        .then<void>((_) => completed.future)
-        .then<void>((_) {}, onError: _ignoreError);
-    unawaited(() async {
+    _enqueue(() async {
       try {
-        await previous;
         await for (final event in operation().timeout(timeout)) {
           controller.add(event);
         }
       } on TimeoutException catch (_, stackTrace) {
         await onTimeout();
-        controller.addError(
-          const LicoClientRpcException('timeout'),
-          stackTrace,
-        );
+        controller.addError(_timeoutError, stackTrace);
       } on Object catch (error, stackTrace) {
         controller.addError(error, stackTrace);
       } finally {
         await controller.close();
-        if (!completed.isCompleted) completed.complete();
       }
-    }());
+    });
     return controller.stream;
   }
 
@@ -60,11 +61,29 @@ final class StdioRpcOperationQueue {
     final existing = _closeFuture;
     if (existing != null) return existing;
     _closing = true;
-    final result = _tail.then<void>((_) => shutdown());
-    _closeFuture = result.then<void>((_) {}, onError: _ignoreError);
-    _tail = _closeFuture!;
-    return _closeFuture!;
+    final completer = Completer<void>();
+    _enqueue(() async {
+      try {
+        await shutdown();
+      } on Object catch (_) {}
+      completer.complete();
+    });
+    return _closeFuture = completer.future;
   }
 
-  static void _ignoreError(Object _, StackTrace _) {}
+  void _enqueue(RpcOp<void> run, [RpcPriorityToken? priority]) {
+    _pending.add(run, priority: priority);
+    if (_running) return;
+    _running = true;
+    unawaited(_drain());
+  }
+
+  Future<void> _drain() async {
+    while (!_pending.isEmpty) {
+      try {
+        await _pending.takeNext()();
+      } on Object catch (_) {}
+    }
+    _running = false;
+  }
 }

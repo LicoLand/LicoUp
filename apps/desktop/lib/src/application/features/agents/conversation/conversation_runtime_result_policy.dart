@@ -1,23 +1,39 @@
 import 'package:flutter_client/src/application/features/agents/policy/conversation_session_index.dart';
+import 'package:flutter_client/src/contracts/generated/client_error.g.dart';
 
 /// Pure validation for native dispatch results. It never mutates UI state.
 abstract final class ConversationRuntimeResultPolicy {
-  static String errorCode(Map<String, dynamic> result) {
+  static ClientError clientError(Map<String, dynamic> result) {
     final nested = result['error'];
-    final raw = nested is Map ? (nested['code'] ?? '') : (result['code'] ?? '');
-    final code = raw.toString().trim();
-    return RegExp(r'^[a-z0-9][a-z0-9_-]{0,127}$').hasMatch(code)
-        ? code
-        : 'native_agent_dispatch_failed';
+    if (nested is Map) {
+      return ClientError.fromJson(Map<String, Object?>.from(nested));
+    }
+    return ClientError.fromJson(const <String, Object?>{
+      'code': 'terminal_result_invalid',
+      'stage': 'conversation/terminal_result',
+      'component': 'conversation_runtime',
+      'retryable': false,
+      'recovery': 'review_terminal_result',
+    });
   }
 
-  static bool outcomeMayBeUnknown(String errorCode) {
-    return const {
-      'secure_relay_result_timeout',
-      'secure_relay_result_fetch_failed',
-      'native_agent_timeout',
-      'native_agent_transport_failed',
-    }.contains(errorCode);
+  static bool outcomeMayBeUnknown(ClientError error) {
+    return error.retryable &&
+        (error.stage == ClientErrorStage.conversationDispatch ||
+            error.stage == ClientErrorStage.conversationStreamReceive);
+  }
+
+  static bool preserveDraft(ClientError error) {
+    if (error.isUnknown) return true;
+    return switch (error.recovery) {
+      ClientErrorRecovery.correctRequest ||
+      ClientErrorRecovery.selectSupportedAdapter ||
+      ClientErrorRecovery.installOrRetryRuntime ||
+      ClientErrorRecovery.preserveDraftAndRetry => true,
+      ClientErrorRecovery.reviewTerminalResult ||
+      ClientErrorRecovery.retryOrReviewRequest ||
+      ClientErrorRecovery.unknown => false,
+    };
   }
 
   static bool effectiveSettingsMatch(

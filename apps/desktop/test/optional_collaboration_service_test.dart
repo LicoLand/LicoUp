@@ -7,7 +7,7 @@ const _digest =
     'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
 const _sourceUrl = 'https://github.com/example/collaboration-plugin.git';
 const _commit = '0123456789abcdef0123456789abcdef01234567';
-const _runnerRepository = 'https://github.com/example/licolite-runner.git';
+const _runnerRepository = 'https://github.com/example/licomesh-runner.git';
 const _runnerPublicKey = 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
 const _runnerFingerprint =
     '66687aadf862bd776c8fc18b8e9f8e20089714856ee233b3902a591d0d5f2925';
@@ -277,8 +277,8 @@ Map<String, dynamic> _planJson() => {
     'pluginPath': 'plugin',
   },
   'plugin': {
-    'pluginId': 'licolite-collaboration',
-    'displayName': 'LicoLite Collaboration',
+    'pluginId': 'licomesh-collaboration',
+    'displayName': 'LicoMesh Collaboration',
     'version': '1.0.0',
     'capabilities': ['local-deployment', 'mcp-install'],
   },
@@ -291,8 +291,8 @@ Map<String, dynamic> _planJson() => {
 };
 
 Map<String, dynamic> _pluginJson() => {
-  'pluginId': 'licolite-collaboration',
-  'displayName': 'LicoLite Collaboration',
+  'pluginId': 'licomesh-collaboration',
+  'displayName': 'LicoMesh Collaboration',
   'version': '1.0.0',
   'packageDigestSha256': _digest,
   'signedPackageInventoryDigestSha256': _digest,

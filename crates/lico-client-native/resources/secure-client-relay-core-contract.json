@@ -1,6 +1,6 @@
 {
-  "canonicalDigest": "sha256:62c27e8af0348bf13909ddd9d05f07a39b153bc6d011df5ed7249499cf19dd01",
-  "canonicalSource": "packages/protocols/secure-client-relay-protocol.mjs",
+  "canonicalDigest": "sha256:0c2cdc66b4c135043b53c0c5b53533238568978a948ae98be1b45eb7a28b724b",
+  "canonicalSource": "plugins/client-link/src/submodules/secure-client-relay/protocol/secure-client-relay-protocol.mjs",
   "canonicalization": "json-recursive-lexicographic-keys.v1",
   "contract": {
     "authenticationPrerequisite": {
@@ -119,10 +119,10 @@
                   "const": false
                 },
                 "protocolVersion": {
-                  "const": "licolite.secure-mesh.v1"
+                  "const": "licomesh.secure-mesh.v1"
                 },
                 "schemaVersion": {
-                  "const": "licolite.secure-mesh.store-schema.v2"
+                  "const": "licomesh.secure-mesh.store-schema.v2"
                 }
               },
               "required": [
@@ -159,10 +159,10 @@
                   "const": false
                 },
                 "protocolVersion": {
-                  "const": "licolite.secure-mesh.v1"
+                  "const": "licomesh.secure-mesh.v1"
                 },
                 "schemaVersion": {
-                  "const": "licolite.secure-mesh.store-schema.v2"
+                  "const": "licomesh.secure-mesh.store-schema.v2"
                 }
               },
               "required": [
@@ -199,10 +199,10 @@
                   "const": false
                 },
                 "protocolVersion": {
-                  "const": "licolite.secure-mesh.v1"
+                  "const": "licomesh.secure-mesh.v1"
                 },
                 "schemaVersion": {
-                  "const": "licolite.secure-mesh.store-schema.v2"
+                  "const": "licomesh.secure-mesh.store-schema.v2"
                 }
               },
               "required": [
@@ -239,10 +239,10 @@
                   "const": false
                 },
                 "protocolVersion": {
-                  "const": "licolite.secure-mesh.v1"
+                  "const": "licomesh.secure-mesh.v1"
                 },
                 "schemaVersion": {
-                  "const": "licolite.secure-mesh.store-schema.v2"
+                  "const": "licomesh.secure-mesh.store-schema.v2"
                 }
               },
               "required": [
@@ -279,10 +279,10 @@
                   "const": false
                 },
                 "protocolVersion": {
-                  "const": "licolite.secure-mesh.v1"
+                  "const": "licomesh.secure-mesh.v1"
                 },
                 "schemaVersion": {
-                  "const": "licolite.secure-mesh.store-schema.v2"
+                  "const": "licomesh.secure-mesh.store-schema.v2"
                 }
               },
               "required": [
@@ -319,10 +319,10 @@
                   "const": false
                 },
                 "protocolVersion": {
-                  "const": "licolite.secure-mesh.v1"
+                  "const": "licomesh.secure-mesh.v1"
                 },
                 "schemaVersion": {
-                  "const": "licolite.secure-mesh.store-schema.v2"
+                  "const": "licomesh.secure-mesh.store-schema.v2"
                 }
               },
               "required": [
@@ -430,8 +430,8 @@
           "code": "secure_mesh_relay_request_schema_invalid",
           "responseBase": {
             "ok": false,
-            "protocolVersion": "licolite.secure-mesh.v1",
-            "schemaVersion": "licolite.secure-mesh.store-schema.v2"
+            "protocolVersion": "licomesh.secure-mesh.v1",
+            "schemaVersion": "licomesh.secure-mesh.store-schema.v2"
           },
           "status": 400
         },
@@ -459,17 +459,17 @@
               "expiresAt": {
                 "maxLength": 32,
                 "minLength": 20,
-                "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{3})?Z$",
+                "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{3})?Z$",
                 "type": "string"
               },
               "ok": {
                 "const": true
               },
               "protocolVersion": {
-                "const": "licolite.secure-mesh.device-trust.v2"
+                "const": "licomesh.secure-mesh.device-trust.v2"
               },
               "schemaVersion": {
-                "const": "licolite.secure-mesh.store-schema.v2"
+                "const": "licomesh.secure-mesh.store-schema.v2"
               },
               "signatureAlgorithm": {
                 "const": "Ed25519"
@@ -585,10 +585,10 @@
                   "const": false
                 },
                 "protocolVersion": {
-                  "const": "licolite.secure-mesh.v1"
+                  "const": "licomesh.secure-mesh.v1"
                 },
                 "schemaVersion": {
-                  "const": "licolite.secure-mesh.store-schema.v2"
+                  "const": "licomesh.secure-mesh.store-schema.v2"
                 }
               },
               "required": [
@@ -625,10 +625,10 @@
                   "const": false
                 },
                 "protocolVersion": {
-                  "const": "licolite.secure-mesh.v1"
+                  "const": "licomesh.secure-mesh.v1"
                 },
                 "schemaVersion": {
-                  "const": "licolite.secure-mesh.store-schema.v2"
+                  "const": "licomesh.secure-mesh.store-schema.v2"
                 }
               },
               "required": [
@@ -665,10 +665,10 @@
                   "const": false
                 },
                 "protocolVersion": {
-                  "const": "licolite.secure-mesh.v1"
+                  "const": "licomesh.secure-mesh.v1"
                 },
                 "schemaVersion": {
-                  "const": "licolite.secure-mesh.store-schema.v2"
+                  "const": "licomesh.secure-mesh.store-schema.v2"
                 }
               },
               "required": [
@@ -705,10 +705,10 @@
                   "const": false
                 },
                 "protocolVersion": {
-                  "const": "licolite.secure-mesh.v1"
+                  "const": "licomesh.secure-mesh.v1"
                 },
                 "schemaVersion": {
-                  "const": "licolite.secure-mesh.store-schema.v2"
+                  "const": "licomesh.secure-mesh.store-schema.v2"
                 }
               },
               "required": [
@@ -745,10 +745,10 @@
                   "const": false
                 },
                 "protocolVersion": {
-                  "const": "licolite.secure-mesh.v1"
+                  "const": "licomesh.secure-mesh.v1"
                 },
                 "schemaVersion": {
-                  "const": "licolite.secure-mesh.store-schema.v2"
+                  "const": "licomesh.secure-mesh.store-schema.v2"
                 }
               },
               "required": [
@@ -785,10 +785,10 @@
                   "const": false
                 },
                 "protocolVersion": {
-                  "const": "licolite.secure-mesh.v1"
+                  "const": "licomesh.secure-mesh.v1"
                 },
                 "schemaVersion": {
-                  "const": "licolite.secure-mesh.store-schema.v2"
+                  "const": "licomesh.secure-mesh.store-schema.v2"
                 }
               },
               "required": [
@@ -825,10 +825,10 @@
                   "const": false
                 },
                 "protocolVersion": {
-                  "const": "licolite.secure-mesh.v1"
+                  "const": "licomesh.secure-mesh.v1"
                 },
                 "schemaVersion": {
-                  "const": "licolite.secure-mesh.store-schema.v2"
+                  "const": "licomesh.secure-mesh.store-schema.v2"
                 }
               },
               "required": [
@@ -865,10 +865,10 @@
                   "const": false
                 },
                 "protocolVersion": {
-                  "const": "licolite.secure-mesh.v1"
+                  "const": "licomesh.secure-mesh.v1"
                 },
                 "schemaVersion": {
-                  "const": "licolite.secure-mesh.store-schema.v2"
+                  "const": "licomesh.secure-mesh.store-schema.v2"
                 }
               },
               "required": [
@@ -905,10 +905,10 @@
                   "const": false
                 },
                 "protocolVersion": {
-                  "const": "licolite.secure-mesh.v1"
+                  "const": "licomesh.secure-mesh.v1"
                 },
                 "schemaVersion": {
-                  "const": "licolite.secure-mesh.store-schema.v2"
+                  "const": "licomesh.secure-mesh.store-schema.v2"
                 }
               },
               "required": [
@@ -945,10 +945,10 @@
                   "const": false
                 },
                 "protocolVersion": {
-                  "const": "licolite.secure-mesh.v1"
+                  "const": "licomesh.secure-mesh.v1"
                 },
                 "schemaVersion": {
-                  "const": "licolite.secure-mesh.store-schema.v2"
+                  "const": "licomesh.secure-mesh.store-schema.v2"
                 }
               },
               "required": [
@@ -985,10 +985,10 @@
                   "const": false
                 },
                 "protocolVersion": {
-                  "const": "licolite.secure-mesh.v1"
+                  "const": "licomesh.secure-mesh.v1"
                 },
                 "schemaVersion": {
-                  "const": "licolite.secure-mesh.store-schema.v2"
+                  "const": "licomesh.secure-mesh.store-schema.v2"
                 }
               },
               "required": [
@@ -1025,10 +1025,10 @@
                   "const": false
                 },
                 "protocolVersion": {
-                  "const": "licolite.secure-mesh.v1"
+                  "const": "licomesh.secure-mesh.v1"
                 },
                 "schemaVersion": {
-                  "const": "licolite.secure-mesh.store-schema.v2"
+                  "const": "licomesh.secure-mesh.store-schema.v2"
                 }
               },
               "required": [
@@ -1046,6 +1046,46 @@
               "strategy": "do_not_retry"
             },
             "status": 400
+          },
+          "secure_mesh_rotation_authorization_invalid": {
+            "responseSchema": {
+              "additionalProperties": false,
+              "properties": {
+                "code": {
+                  "maxLength": 255,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "error": {
+                  "maxLength": 4096,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "ok": {
+                  "const": false
+                },
+                "protocolVersion": {
+                  "const": "licomesh.secure-mesh.v1"
+                },
+                "schemaVersion": {
+                  "const": "licomesh.secure-mesh.store-schema.v2"
+                }
+              },
+              "required": [
+                "ok",
+                "schemaVersion",
+                "protocolVersion",
+                "code",
+                "error"
+              ],
+              "type": "object"
+            },
+            "retry": {
+              "retryAfterHeader": false,
+              "retryable": false,
+              "strategy": "do_not_retry"
+            },
+            "status": 401
           },
           "secure_mesh_rotation_epoch_stale": {
             "responseSchema": {
@@ -1065,10 +1105,10 @@
                   "const": false
                 },
                 "protocolVersion": {
-                  "const": "licolite.secure-mesh.v1"
+                  "const": "licomesh.secure-mesh.v1"
                 },
                 "schemaVersion": {
-                  "const": "licolite.secure-mesh.store-schema.v2"
+                  "const": "licomesh.secure-mesh.store-schema.v2"
                 }
               },
               "required": [
@@ -1105,10 +1145,10 @@
                   "const": false
                 },
                 "protocolVersion": {
-                  "const": "licolite.secure-mesh.v1"
+                  "const": "licomesh.secure-mesh.v1"
                 },
                 "schemaVersion": {
-                  "const": "licolite.secure-mesh.store-schema.v2"
+                  "const": "licomesh.secure-mesh.store-schema.v2"
                 }
               },
               "required": [
@@ -1145,10 +1185,10 @@
                   "const": false
                 },
                 "protocolVersion": {
-                  "const": "licolite.secure-mesh.v1"
+                  "const": "licomesh.secure-mesh.v1"
                 },
                 "schemaVersion": {
-                  "const": "licolite.secure-mesh.store-schema.v2"
+                  "const": "licomesh.secure-mesh.store-schema.v2"
                 }
               },
               "required": [
@@ -1216,6 +1256,7 @@
                 "desktop_sidecar",
                 "mobile",
                 "cli",
+                "client_local_runtime",
                 "agent_host",
                 "web_limited"
               ],
@@ -1275,6 +1316,21 @@
               "minimum": 0,
               "type": "integer"
             },
+            "rotationProof": {
+              "additionalProperties": false,
+              "properties": {
+                "signature": {
+                  "maxLength": 86,
+                  "minLength": 86,
+                  "pattern": "^[A-Za-z0-9_-]+$",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "signature"
+              ],
+              "type": "object"
+            },
             "signingPublicKey": {
               "additionalProperties": false,
               "properties": {
@@ -1325,8 +1381,8 @@
           "code": "secure_mesh_relay_request_schema_invalid",
           "responseBase": {
             "ok": false,
-            "protocolVersion": "licolite.secure-mesh.v1",
-            "schemaVersion": "licolite.secure-mesh.store-schema.v2"
+            "protocolVersion": "licomesh.secure-mesh.v1",
+            "schemaVersion": "licomesh.secure-mesh.store-schema.v2"
           },
           "status": 400
         },
@@ -1347,7 +1403,7 @@
                   "createdAt": {
                     "maxLength": 32,
                     "minLength": 20,
-                    "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{3})?Z$",
+                    "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{3})?Z$",
                     "type": "string"
                   },
                   "endpointId": {
@@ -1359,6 +1415,7 @@
                       "desktop_sidecar",
                       "mobile",
                       "cli",
+                      "client_local_runtime",
                       "agent_host",
                       "web_limited"
                     ],
@@ -1435,7 +1492,7 @@
                   "updatedAt": {
                     "maxLength": 32,
                     "minLength": 20,
-                    "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{3})?Z$",
+                    "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{3})?Z$",
                     "type": "string"
                   },
                   "workspaceId": {
@@ -1463,17 +1520,36 @@
                 "const": true
               },
               "protocolVersion": {
-                "const": "licolite.secure-mesh.device-trust.v2"
+                "const": "licomesh.secure-mesh.device-trust.v2"
+              },
+              "registrationReceipt": {
+                "additionalProperties": false,
+                "properties": {
+                  "receiptRef": {
+                    "pattern": "^[a-f0-9]{64}$",
+                    "type": "string"
+                  },
+                  "sequence": {
+                    "minimum": 1,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "receiptRef",
+                  "sequence"
+                ],
+                "type": "object"
               },
               "schemaVersion": {
-                "const": "licolite.secure-mesh.store-schema.v2"
+                "const": "licomesh.secure-mesh.store-schema.v2"
               }
             },
             "required": [
               "ok",
               "schemaVersion",
               "protocolVersion",
-              "endpoint"
+              "endpoint",
+              "registrationReceipt"
             ],
             "type": "object"
           },
@@ -1541,10 +1617,10 @@
                   "const": false
                 },
                 "protocolVersion": {
-                  "const": "licolite.secure-mesh.v1"
+                  "const": "licomesh.secure-mesh.v1"
                 },
                 "schemaVersion": {
-                  "const": "licolite.secure-mesh.store-schema.v2"
+                  "const": "licomesh.secure-mesh.store-schema.v2"
                 }
               },
               "required": [
@@ -1581,10 +1657,10 @@
                   "const": false
                 },
                 "protocolVersion": {
-                  "const": "licolite.secure-mesh.v1"
+                  "const": "licomesh.secure-mesh.v1"
                 },
                 "schemaVersion": {
-                  "const": "licolite.secure-mesh.store-schema.v2"
+                  "const": "licomesh.secure-mesh.store-schema.v2"
                 }
               },
               "required": [
@@ -1621,10 +1697,10 @@
                   "const": false
                 },
                 "protocolVersion": {
-                  "const": "licolite.secure-mesh.v1"
+                  "const": "licomesh.secure-mesh.v1"
                 },
                 "schemaVersion": {
-                  "const": "licolite.secure-mesh.store-schema.v2"
+                  "const": "licomesh.secure-mesh.store-schema.v2"
                 }
               },
               "required": [
@@ -1661,10 +1737,10 @@
                   "const": false
                 },
                 "protocolVersion": {
-                  "const": "licolite.secure-mesh.v1"
+                  "const": "licomesh.secure-mesh.v1"
                 },
                 "schemaVersion": {
-                  "const": "licolite.secure-mesh.store-schema.v2"
+                  "const": "licomesh.secure-mesh.store-schema.v2"
                 }
               },
               "required": [
@@ -1701,10 +1777,10 @@
                   "const": false
                 },
                 "protocolVersion": {
-                  "const": "licolite.secure-mesh.v1"
+                  "const": "licomesh.secure-mesh.v1"
                 },
                 "schemaVersion": {
-                  "const": "licolite.secure-mesh.store-schema.v2"
+                  "const": "licomesh.secure-mesh.store-schema.v2"
                 }
               },
               "required": [
@@ -1741,10 +1817,10 @@
                   "const": false
                 },
                 "protocolVersion": {
-                  "const": "licolite.secure-mesh.v1"
+                  "const": "licomesh.secure-mesh.v1"
                 },
                 "schemaVersion": {
-                  "const": "licolite.secure-mesh.store-schema.v2"
+                  "const": "licomesh.secure-mesh.store-schema.v2"
                 }
               },
               "required": [
@@ -1781,10 +1857,10 @@
                   "const": false
                 },
                 "protocolVersion": {
-                  "const": "licolite.secure-mesh.v1"
+                  "const": "licomesh.secure-mesh.v1"
                 },
                 "schemaVersion": {
-                  "const": "licolite.secure-mesh.store-schema.v2"
+                  "const": "licomesh.secure-mesh.store-schema.v2"
                 }
               },
               "required": [
@@ -1821,10 +1897,10 @@
                   "const": false
                 },
                 "protocolVersion": {
-                  "const": "licolite.secure-mesh.v1"
+                  "const": "licomesh.secure-mesh.v1"
                 },
                 "schemaVersion": {
-                  "const": "licolite.secure-mesh.store-schema.v2"
+                  "const": "licomesh.secure-mesh.store-schema.v2"
                 }
               },
               "required": [
@@ -1861,10 +1937,10 @@
                   "const": false
                 },
                 "protocolVersion": {
-                  "const": "licolite.secure-mesh.v1"
+                  "const": "licomesh.secure-mesh.v1"
                 },
                 "schemaVersion": {
-                  "const": "licolite.secure-mesh.store-schema.v2"
+                  "const": "licomesh.secure-mesh.store-schema.v2"
                 }
               },
               "required": [
@@ -1901,10 +1977,10 @@
                   "const": false
                 },
                 "protocolVersion": {
-                  "const": "licolite.secure-mesh.v1"
+                  "const": "licomesh.secure-mesh.v1"
                 },
                 "schemaVersion": {
-                  "const": "licolite.secure-mesh.store-schema.v2"
+                  "const": "licomesh.secure-mesh.store-schema.v2"
                 }
               },
               "required": [
@@ -1941,10 +2017,10 @@
                   "const": false
                 },
                 "protocolVersion": {
-                  "const": "licolite.secure-mesh.v1"
+                  "const": "licomesh.secure-mesh.v1"
                 },
                 "schemaVersion": {
-                  "const": "licolite.secure-mesh.store-schema.v2"
+                  "const": "licomesh.secure-mesh.store-schema.v2"
                 }
               },
               "required": [
@@ -1981,10 +2057,10 @@
                   "const": false
                 },
                 "protocolVersion": {
-                  "const": "licolite.secure-mesh.v1"
+                  "const": "licomesh.secure-mesh.v1"
                 },
                 "schemaVersion": {
-                  "const": "licolite.secure-mesh.store-schema.v2"
+                  "const": "licomesh.secure-mesh.store-schema.v2"
                 }
               },
               "required": [
@@ -2087,8 +2163,8 @@
           "code": "secure_mesh_relay_request_schema_invalid",
           "responseBase": {
             "ok": false,
-            "protocolVersion": "licolite.secure-mesh.v1",
-            "schemaVersion": "licolite.secure-mesh.store-schema.v2"
+            "protocolVersion": "licomesh.secure-mesh.v1",
+            "schemaVersion": "licomesh.secure-mesh.store-schema.v2"
           },
           "status": 400
         },
@@ -2106,7 +2182,7 @@
                   "ackedAt": {
                     "maxLength": 32,
                     "minLength": 20,
-                    "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{3})?Z$",
+                    "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{3})?Z$",
                     "type": "string"
                   },
                   "deliveryId": {
@@ -2198,7 +2274,7 @@
                 "const": true
               },
               "protocolVersion": {
-                "const": "licolite.secure-mesh.delivery.v1"
+                "const": "licomesh.secure-mesh.delivery.v1"
               },
               "receipt": {
                 "additionalProperties": false,
@@ -2206,7 +2282,7 @@
                   "acknowledgedAt": {
                     "maxLength": 32,
                     "minLength": 20,
-                    "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{3})?Z$",
+                    "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{3})?Z$",
                     "type": "string"
                   },
                   "deliveryId": {
@@ -2236,7 +2312,7 @@
                 "type": "object"
               },
               "schemaVersion": {
-                "const": "licolite.secure-mesh.store-schema.v2"
+                "const": "licomesh.secure-mesh.store-schema.v2"
               }
             },
             "required": [
@@ -2258,7 +2334,13 @@
           "subject-in-flight-body-bytes",
           "mailbox-envelope-count",
           "mailbox-opaque-bytes",
-          "global-opaque-queue-bytes"
+          "mailbox-concurrent-admissions",
+          "tenant-envelope-count",
+          "tenant-opaque-bytes",
+          "tenant-concurrent-admissions",
+          "global-envelope-count",
+          "global-opaque-queue-bytes",
+          "global-concurrent-admissions"
         ],
         "authenticationPrerequisite": {
           "authority": "@lico/contracts/operations",
@@ -2316,10 +2398,10 @@
                   "const": false
                 },
                 "protocolVersion": {
-                  "const": "licolite.secure-mesh.v1"
+                  "const": "licomesh.secure-mesh.v1"
                 },
                 "schemaVersion": {
-                  "const": "licolite.secure-mesh.store-schema.v2"
+                  "const": "licomesh.secure-mesh.store-schema.v2"
                 }
               },
               "required": [
@@ -2356,10 +2438,10 @@
                   "const": false
                 },
                 "protocolVersion": {
-                  "const": "licolite.secure-mesh.v1"
+                  "const": "licomesh.secure-mesh.v1"
                 },
                 "schemaVersion": {
-                  "const": "licolite.secure-mesh.store-schema.v2"
+                  "const": "licomesh.secure-mesh.store-schema.v2"
                 }
               },
               "required": [
@@ -2377,6 +2459,46 @@
               "strategy": "do_not_retry"
             },
             "status": 403
+          },
+          "secure_mesh_idempotency_conflict": {
+            "responseSchema": {
+              "additionalProperties": false,
+              "properties": {
+                "code": {
+                  "maxLength": 255,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "error": {
+                  "maxLength": 4096,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "ok": {
+                  "const": false
+                },
+                "protocolVersion": {
+                  "const": "licomesh.secure-mesh.v1"
+                },
+                "schemaVersion": {
+                  "const": "licomesh.secure-mesh.store-schema.v2"
+                }
+              },
+              "required": [
+                "ok",
+                "schemaVersion",
+                "protocolVersion",
+                "code",
+                "error"
+              ],
+              "type": "object"
+            },
+            "retry": {
+              "retryAfterHeader": false,
+              "retryable": false,
+              "strategy": "do_not_retry"
+            },
+            "status": 409
           },
           "secure_mesh_mailbox_backpressure": {
             "responseSchema": {
@@ -2396,10 +2518,10 @@
                   "const": false
                 },
                 "protocolVersion": {
-                  "const": "licolite.secure-mesh.v1"
+                  "const": "licomesh.secure-mesh.v1"
                 },
                 "schemaVersion": {
-                  "const": "licolite.secure-mesh.store-schema.v2"
+                  "const": "licomesh.secure-mesh.store-schema.v2"
                 }
               },
               "required": [
@@ -2436,10 +2558,10 @@
                   "const": false
                 },
                 "protocolVersion": {
-                  "const": "licolite.secure-mesh.v1"
+                  "const": "licomesh.secure-mesh.v1"
                 },
                 "schemaVersion": {
-                  "const": "licolite.secure-mesh.store-schema.v2"
+                  "const": "licomesh.secure-mesh.store-schema.v2"
                 }
               },
               "required": [
@@ -2476,10 +2598,10 @@
                   "const": false
                 },
                 "protocolVersion": {
-                  "const": "licolite.secure-mesh.v1"
+                  "const": "licomesh.secure-mesh.v1"
                 },
                 "schemaVersion": {
-                  "const": "licolite.secure-mesh.store-schema.v2"
+                  "const": "licomesh.secure-mesh.store-schema.v2"
                 }
               },
               "required": [
@@ -2516,10 +2638,10 @@
                   "const": false
                 },
                 "protocolVersion": {
-                  "const": "licolite.secure-mesh.v1"
+                  "const": "licomesh.secure-mesh.v1"
                 },
                 "schemaVersion": {
-                  "const": "licolite.secure-mesh.store-schema.v2"
+                  "const": "licomesh.secure-mesh.store-schema.v2"
                 }
               },
               "required": [
@@ -2556,10 +2678,10 @@
                   "const": false
                 },
                 "protocolVersion": {
-                  "const": "licolite.secure-mesh.v1"
+                  "const": "licomesh.secure-mesh.v1"
                 },
                 "schemaVersion": {
-                  "const": "licolite.secure-mesh.store-schema.v2"
+                  "const": "licomesh.secure-mesh.store-schema.v2"
                 }
               },
               "required": [
@@ -2596,10 +2718,10 @@
                   "const": false
                 },
                 "protocolVersion": {
-                  "const": "licolite.secure-mesh.v1"
+                  "const": "licomesh.secure-mesh.v1"
                 },
                 "schemaVersion": {
-                  "const": "licolite.secure-mesh.store-schema.v2"
+                  "const": "licomesh.secure-mesh.store-schema.v2"
                 }
               },
               "required": [
@@ -2636,10 +2758,10 @@
                   "const": false
                 },
                 "protocolVersion": {
-                  "const": "licolite.secure-mesh.v1"
+                  "const": "licomesh.secure-mesh.v1"
                 },
                 "schemaVersion": {
-                  "const": "licolite.secure-mesh.store-schema.v2"
+                  "const": "licomesh.secure-mesh.store-schema.v2"
                 }
               },
               "required": [
@@ -2676,10 +2798,10 @@
                   "const": false
                 },
                 "protocolVersion": {
-                  "const": "licolite.secure-mesh.v1"
+                  "const": "licomesh.secure-mesh.v1"
                 },
                 "schemaVersion": {
-                  "const": "licolite.secure-mesh.store-schema.v2"
+                  "const": "licomesh.secure-mesh.store-schema.v2"
                 }
               },
               "required": [
@@ -2716,10 +2838,10 @@
                   "const": false
                 },
                 "protocolVersion": {
-                  "const": "licolite.secure-mesh.v1"
+                  "const": "licomesh.secure-mesh.v1"
                 },
                 "schemaVersion": {
-                  "const": "licolite.secure-mesh.store-schema.v2"
+                  "const": "licomesh.secure-mesh.store-schema.v2"
                 }
               },
               "required": [
@@ -2756,10 +2878,10 @@
                   "const": false
                 },
                 "protocolVersion": {
-                  "const": "licolite.secure-mesh.v1"
+                  "const": "licomesh.secure-mesh.v1"
                 },
                 "schemaVersion": {
-                  "const": "licolite.secure-mesh.store-schema.v2"
+                  "const": "licomesh.secure-mesh.store-schema.v2"
                 }
               },
               "required": [
@@ -2796,10 +2918,10 @@
                   "const": false
                 },
                 "protocolVersion": {
-                  "const": "licolite.secure-mesh.v1"
+                  "const": "licomesh.secure-mesh.v1"
                 },
                 "schemaVersion": {
-                  "const": "licolite.secure-mesh.store-schema.v2"
+                  "const": "licomesh.secure-mesh.store-schema.v2"
                 }
               },
               "required": [
@@ -2836,10 +2958,10 @@
                   "const": false
                 },
                 "protocolVersion": {
-                  "const": "licolite.secure-mesh.v1"
+                  "const": "licomesh.secure-mesh.v1"
                 },
                 "schemaVersion": {
-                  "const": "licolite.secure-mesh.store-schema.v2"
+                  "const": "licomesh.secure-mesh.store-schema.v2"
                 }
               },
               "required": [
@@ -2876,10 +2998,10 @@
                   "const": false
                 },
                 "protocolVersion": {
-                  "const": "licolite.secure-mesh.v1"
+                  "const": "licomesh.secure-mesh.v1"
                 },
                 "schemaVersion": {
-                  "const": "licolite.secure-mesh.store-schema.v2"
+                  "const": "licomesh.secure-mesh.store-schema.v2"
                 }
               },
               "required": [
@@ -2897,6 +3019,46 @@
               "strategy": "retry_after_operator_recovery"
             },
             "status": 503
+          },
+          "secure_mesh_tenant_backpressure": {
+            "responseSchema": {
+              "additionalProperties": false,
+              "properties": {
+                "code": {
+                  "maxLength": 255,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "error": {
+                  "maxLength": 4096,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "ok": {
+                  "const": false
+                },
+                "protocolVersion": {
+                  "const": "licomesh.secure-mesh.v1"
+                },
+                "schemaVersion": {
+                  "const": "licomesh.secure-mesh.store-schema.v2"
+                }
+              },
+              "required": [
+                "ok",
+                "schemaVersion",
+                "protocolVersion",
+                "code",
+                "error"
+              ],
+              "type": "object"
+            },
+            "retry": {
+              "retryAfterHeader": false,
+              "retryable": true,
+              "strategy": "exponential_backoff_with_jitter"
+            },
+            "status": 429
           },
           "secure_mesh_total_queue_backpressure": {
             "responseSchema": {
@@ -2916,10 +3078,10 @@
                   "const": false
                 },
                 "protocolVersion": {
-                  "const": "licolite.secure-mesh.v1"
+                  "const": "licomesh.secure-mesh.v1"
                 },
                 "schemaVersion": {
-                  "const": "licolite.secure-mesh.store-schema.v2"
+                  "const": "licomesh.secure-mesh.store-schema.v2"
                 }
               },
               "required": [
@@ -2956,10 +3118,10 @@
                   "const": false
                 },
                 "protocolVersion": {
-                  "const": "licolite.secure-mesh.v1"
+                  "const": "licomesh.secure-mesh.v1"
                 },
                 "schemaVersion": {
-                  "const": "licolite.secure-mesh.store-schema.v2"
+                  "const": "licomesh.secure-mesh.store-schema.v2"
                 }
               },
               "required": [
@@ -2996,10 +3158,10 @@
                   "const": false
                 },
                 "protocolVersion": {
-                  "const": "licolite.secure-mesh.v1"
+                  "const": "licomesh.secure-mesh.v1"
                 },
                 "schemaVersion": {
-                  "const": "licolite.secure-mesh.store-schema.v2"
+                  "const": "licomesh.secure-mesh.store-schema.v2"
                 }
               },
               "required": [
@@ -3036,10 +3198,10 @@
                   "const": false
                 },
                 "protocolVersion": {
-                  "const": "licolite.secure-mesh.v1"
+                  "const": "licomesh.secure-mesh.v1"
                 },
                 "schemaVersion": {
-                  "const": "licolite.secure-mesh.store-schema.v2"
+                  "const": "licomesh.secure-mesh.store-schema.v2"
                 }
               },
               "required": [
@@ -3097,7 +3259,7 @@
               "type": "string"
             },
             "envelope": {
-              "$id": "urn:licolite:secure-mesh:relay-envelope",
+              "$id": "urn:licomesh:secure-mesh:relay-envelope",
               "$schema": "https://json-schema.org/draft/2020-12/schema",
               "additionalProperties": false,
               "properties": {
@@ -3131,7 +3293,7 @@
                   "type": "string"
                 },
                 "schema": {
-                  "const": "licolite.secure-mesh.relay-envelope.v2"
+                  "const": "licomesh.secure-mesh.relay-envelope.v2"
                 }
               },
               "required": [
@@ -3180,8 +3342,8 @@
           "code": "secure_mesh_relay_request_schema_invalid",
           "responseBase": {
             "ok": false,
-            "protocolVersion": "licolite.secure-mesh.v1",
-            "schemaVersion": "licolite.secure-mesh.store-schema.v2"
+            "protocolVersion": "licomesh.secure-mesh.v1",
+            "schemaVersion": "licomesh.secure-mesh.store-schema.v2"
           },
           "status": 400
         },
@@ -3200,7 +3362,7 @@
                 "type": "boolean"
               },
               "protocolVersion": {
-                "const": "licolite.secure-mesh.delivery.v1"
+                "const": "licomesh.secure-mesh.delivery.v1"
               },
               "queueMode": {
                 "enum": [
@@ -3237,7 +3399,7 @@
                         "type": "string"
                       },
                       "schema": {
-                        "const": "licolite.secure-mesh.relay-envelope.v2"
+                        "const": "licomesh.secure-mesh.relay-envelope.v2"
                       }
                     },
                     "required": [
@@ -3324,7 +3486,7 @@
                   "queuedAt": {
                     "maxLength": 32,
                     "minLength": 20,
-                    "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{3})?Z$",
+                    "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{3})?Z$",
                     "type": "string"
                   },
                   "transport": {
@@ -3351,7 +3513,7 @@
                 "type": "object"
               },
               "schemaVersion": {
-                "const": "licolite.secure-mesh.store-schema.v2"
+                "const": "licomesh.secure-mesh.store-schema.v2"
               }
             },
             "required": [
@@ -3430,10 +3592,10 @@
                   "const": false
                 },
                 "protocolVersion": {
-                  "const": "licolite.secure-mesh.v1"
+                  "const": "licomesh.secure-mesh.v1"
                 },
                 "schemaVersion": {
-                  "const": "licolite.secure-mesh.store-schema.v2"
+                  "const": "licomesh.secure-mesh.store-schema.v2"
                 }
               },
               "required": [
@@ -3470,10 +3632,10 @@
                   "const": false
                 },
                 "protocolVersion": {
-                  "const": "licolite.secure-mesh.v1"
+                  "const": "licomesh.secure-mesh.v1"
                 },
                 "schemaVersion": {
-                  "const": "licolite.secure-mesh.store-schema.v2"
+                  "const": "licomesh.secure-mesh.store-schema.v2"
                 }
               },
               "required": [
@@ -3510,10 +3672,10 @@
                   "const": false
                 },
                 "protocolVersion": {
-                  "const": "licolite.secure-mesh.v1"
+                  "const": "licomesh.secure-mesh.v1"
                 },
                 "schemaVersion": {
-                  "const": "licolite.secure-mesh.store-schema.v2"
+                  "const": "licomesh.secure-mesh.store-schema.v2"
                 }
               },
               "required": [
@@ -3550,10 +3712,10 @@
                   "const": false
                 },
                 "protocolVersion": {
-                  "const": "licolite.secure-mesh.v1"
+                  "const": "licomesh.secure-mesh.v1"
                 },
                 "schemaVersion": {
-                  "const": "licolite.secure-mesh.store-schema.v2"
+                  "const": "licomesh.secure-mesh.store-schema.v2"
                 }
               },
               "required": [
@@ -3590,10 +3752,10 @@
                   "const": false
                 },
                 "protocolVersion": {
-                  "const": "licolite.secure-mesh.v1"
+                  "const": "licomesh.secure-mesh.v1"
                 },
                 "schemaVersion": {
-                  "const": "licolite.secure-mesh.store-schema.v2"
+                  "const": "licomesh.secure-mesh.store-schema.v2"
                 }
               },
               "required": [
@@ -3630,10 +3792,10 @@
                   "const": false
                 },
                 "protocolVersion": {
-                  "const": "licolite.secure-mesh.v1"
+                  "const": "licomesh.secure-mesh.v1"
                 },
                 "schemaVersion": {
-                  "const": "licolite.secure-mesh.store-schema.v2"
+                  "const": "licomesh.secure-mesh.store-schema.v2"
                 }
               },
               "required": [
@@ -3670,10 +3832,10 @@
                   "const": false
                 },
                 "protocolVersion": {
-                  "const": "licolite.secure-mesh.v1"
+                  "const": "licomesh.secure-mesh.v1"
                 },
                 "schemaVersion": {
-                  "const": "licolite.secure-mesh.store-schema.v2"
+                  "const": "licomesh.secure-mesh.store-schema.v2"
                 }
               },
               "required": [
@@ -3710,10 +3872,10 @@
                   "const": false
                 },
                 "protocolVersion": {
-                  "const": "licolite.secure-mesh.v1"
+                  "const": "licomesh.secure-mesh.v1"
                 },
                 "schemaVersion": {
-                  "const": "licolite.secure-mesh.store-schema.v2"
+                  "const": "licomesh.secure-mesh.store-schema.v2"
                 }
               },
               "required": [
@@ -3750,10 +3912,10 @@
                   "const": false
                 },
                 "protocolVersion": {
-                  "const": "licolite.secure-mesh.v1"
+                  "const": "licomesh.secure-mesh.v1"
                 },
                 "schemaVersion": {
-                  "const": "licolite.secure-mesh.store-schema.v2"
+                  "const": "licomesh.secure-mesh.store-schema.v2"
                 }
               },
               "required": [
@@ -3852,8 +4014,8 @@
           "code": "secure_mesh_relay_request_schema_invalid",
           "responseBase": {
             "ok": false,
-            "protocolVersion": "licolite.secure-mesh.v1",
-            "schemaVersion": "licolite.secure-mesh.store-schema.v2"
+            "protocolVersion": "licomesh.secure-mesh.v1",
+            "schemaVersion": "licomesh.secure-mesh.store-schema.v2"
           },
           "status": 400
         },
@@ -3930,7 +4092,7 @@
                     "leaseExpiresAt": {
                       "maxLength": 32,
                       "minLength": 20,
-                      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{3})?Z$",
+                      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{3})?Z$",
                       "type": "string"
                     },
                     "leaseGeneration": {
@@ -3945,7 +4107,7 @@
                     "leasedAt": {
                       "maxLength": 32,
                       "minLength": 20,
-                      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{3})?Z$",
+                      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{3})?Z$",
                       "type": "string"
                     },
                     "mailboxToken": {
@@ -3963,11 +4125,11 @@
                     "queuedAt": {
                       "maxLength": 32,
                       "minLength": 20,
-                      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{3})?Z$",
+                      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{3})?Z$",
                       "type": "string"
                     },
                     "schema": {
-                      "const": "licolite.secure-mesh.relay-envelope.v2"
+                      "const": "licomesh.secure-mesh.relay-envelope.v2"
                     },
                     "transport": {
                       "enum": [
@@ -4091,7 +4253,7 @@
                 "const": true
               },
               "protocolVersion": {
-                "const": "licolite.secure-mesh.delivery.v1"
+                "const": "licomesh.secure-mesh.delivery.v1"
               },
               "queueMode": {
                 "enum": [
@@ -4101,7 +4263,7 @@
                 "type": "string"
               },
               "schemaVersion": {
-                "const": "licolite.secure-mesh.store-schema.v2"
+                "const": "licomesh.secure-mesh.store-schema.v2"
               }
             },
             "required": [
@@ -4125,6 +4287,7 @@
       "desktop_sidecar",
       "mobile",
       "cli",
+      "client_local_runtime",
       "agent_host",
       "web_limited"
     ],
@@ -4172,7 +4335,7 @@
         "ciphertext"
       ],
       "jsonSchema": {
-        "$id": "urn:licolite:secure-mesh:relay-envelope",
+        "$id": "urn:licomesh:secure-mesh:relay-envelope",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
         "properties": {
@@ -4206,7 +4369,7 @@
             "type": "string"
           },
           "schema": {
-            "const": "licolite.secure-mesh.relay-envelope.v2"
+            "const": "licomesh.secure-mesh.relay-envelope.v2"
           }
         },
         "required": [
@@ -4229,7 +4392,7 @@
         "minCiphertextBucketBytes": 256,
         "powerOfTwoLimitBytes": 65536
       },
-      "schema": "licolite.secure-mesh.relay-envelope.v2"
+      "schema": "licomesh.secure-mesh.relay-envelope.v2"
     },
     "httpHeaders": {
       "request": {
@@ -4281,11 +4444,11 @@
       "serverTransition": "atomically replace the endpoint mailbox token while preserving the mailbox queue"
     },
     "protocolVersions": {
-      "delivery": "licolite.secure-mesh.delivery.v1",
-      "deviceTrust": "licolite.secure-mesh.device-trust.v2",
-      "endpointRegister": "licolite.secure-mesh.endpoint-register.v1",
-      "relay": "licolite.secure-mesh.v1",
-      "responseSchema": "licolite.secure-mesh.store-schema.v2"
+      "delivery": "licomesh.secure-mesh.delivery.v1",
+      "deviceTrust": "licomesh.secure-mesh.device-trust.v2",
+      "endpointRegister": "licomesh.secure-mesh.endpoint-register.v1",
+      "relay": "licomesh.secure-mesh.v1",
+      "responseSchema": "licomesh.secure-mesh.store-schema.v2"
     },
     "transports": [
       "cloud_relay",
@@ -4295,6 +4458,6 @@
       "loopback_local"
     ]
   },
-  "protocolVersion": "licolite.secure-mesh.v1",
-  "schemaVersion": "licolite.secure-client-relay.core-contract-artifact.v1"
+  "protocolVersion": "licomesh.secure-mesh.v1",
+  "schemaVersion": "licomesh.secure-client-relay.core-contract-artifact.v1"
 }

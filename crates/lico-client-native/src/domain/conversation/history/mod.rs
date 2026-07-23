@@ -67,9 +67,9 @@ use kimi::*;
 #[allow(unused_imports)]
 use message_projection::{
     HistoryMessageKind, background_context_prompt_text, clean_native_message_text,
-    delegated_subagent_prompt_message, extract_antigravity_user_request, extract_native_session_id,
-    extract_role, extract_text, extract_timestamp, find_string, generated_control_text,
-    history_message_kind_from_semantic, looks_like_delegated_agent_prompt,
+    delegated_subagent_prompt_message, extract_antigravity_user_request, extract_native_model,
+    extract_native_session_id, extract_role, extract_text, extract_timestamp, find_string,
+    generated_control_text, history_message_kind_from_semantic, looks_like_delegated_agent_prompt,
     native_history_message_id, native_message_timestamp, normalize_history_message_semantic,
     plain_history_message, strip_antigravity_artifact_noise, strip_generated_context_blocks,
     structured_history_message,
@@ -84,7 +84,7 @@ use session_merge::collect_history_model_names;
 #[allow(unused_imports)]
 use session_metadata::*;
 
-pub(crate) use codex::{codex_usage_estimate_message, parse_codex_rollout_sessions};
+pub(crate) use codex::parse_codex_rollout_sessions;
 pub(crate) use cursor_openagent::parse_sqlite_sessions;
 pub(crate) use generic::{parse_json_sessions, parse_jsonl_sessions, parse_text_session};
 pub(crate) use kimi::parse_kimi_code_wire_session;

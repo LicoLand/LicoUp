@@ -16,9 +16,9 @@ void main() {
       'configured': false,
       'confidence': 0.72,
       'detail': 'OpenCode local agent configuration',
-      'configPath': '/tmp/opencode.jsonc',
-      'binaryPath': '/usr/local/bin/opencode',
-      'historyRoots': ['/tmp/opencode-history'],
+      'configPath': 'test-data/opencode.jsonc',
+      'binaryPath': 'test-binary-opencode',
+      'historyRoots': ['test-data/opencode-history'],
       'adapterStatus': 'skeleton',
       'manual': true,
     });
@@ -26,9 +26,9 @@ void main() {
     expect(target.target, 'opencode');
     expect(target.label, 'OpenCode');
     expect(target.configured, isFalse);
-    expect(target.configPath, '/tmp/opencode.jsonc');
-    expect(target.binaryPath, '/usr/local/bin/opencode');
-    expect(target.historyRoots, ['/tmp/opencode-history']);
+    expect(target.configPath, 'test-data/opencode.jsonc');
+    expect(target.binaryPath, 'test-binary-opencode');
+    expect(target.historyRoots, ['test-data/opencode-history']);
     expect(target.adapterStatus, 'skeleton');
     expect(target.manual, isTrue);
   });
@@ -56,7 +56,7 @@ void main() {
                   'status': 'detected',
                   'configured': true,
                   'confidence': 0.88,
-                  'configPath': '/tmp/opencode',
+                  'configPath': 'test-data/opencode',
                   'adapterStatus': 'implemented',
                   'manual': true,
                 },
@@ -258,8 +258,8 @@ exec sleep 5
 
     await agentService.addTarget(
       target: 'codex',
-      configPath: ' /tmp/codex.toml ',
-      binaryPath: ' /usr/local/bin/codex ',
+      configPath: ' test-data/codex.toml ',
+      binaryPath: ' test-binary-codex ',
       historyRoot: ' /archives/codex ',
     );
 
@@ -269,9 +269,9 @@ exec sleep 5
       '--target',
       'codex',
       '--config-path',
-      '/tmp/codex.toml',
+      'test-data/codex.toml',
       '--binary-path',
-      '/usr/local/bin/codex',
+      'test-binary-codex',
       '--history-root',
       '/archives/codex',
     ]);
@@ -379,14 +379,14 @@ exec sleep 5
     await agentService.planSkillInstall(
       agent: 'codex',
       url: ' https://github.com/example/skills/tree/main/review ',
-      installRoot: ' /tmp/codex-skills ',
+      installRoot: ' test-data/codex-skills ',
       name: ' review-helper ',
       overwrite: true,
     );
     await agentService.applySkillInstall(
       agent: 'codex',
       url: 'https://github.com/example/skills/tree/main/review',
-      installRoot: '/tmp/codex-skills',
+      installRoot: 'test-data/codex-skills',
       name: 'review-helper',
       overwrite: true,
       pin: true,
@@ -405,7 +405,7 @@ exec sleep 5
       '--url',
       'https://github.com/example/skills/tree/main/review',
       '--install-root',
-      '/tmp/codex-skills',
+      'test-data/codex-skills',
       '--name',
       'review-helper',
       '--overwrite',
@@ -420,7 +420,7 @@ exec sleep 5
       '--url',
       'https://github.com/example/skills/tree/main/review',
       '--install-root',
-      '/tmp/codex-skills',
+      'test-data/codex-skills',
       '--name',
       'review-helper',
       '--overwrite',
@@ -614,6 +614,105 @@ done
             .where((event) => event.startsWith('send:'))
             .map((event) => event.split(':').last),
         everyElement(equals(events[1].split(':').last)),
+      );
+    },
+  );
+
+  test(
+    'macOS process-local controls and send share one persistent RPC host',
+    () async {
+      if (!Platform.isMacOS) {
+        return;
+      }
+      final tempDir = await Directory.systemTemp.createTemp(
+        'lico-rpc-process-local-',
+      );
+      addTearDown(() => tempDir.delete(recursive: true));
+      final cli = File('${tempDir.path}/lico-client');
+      final marker = File('${tempDir.path}/rpc-events.log');
+      await _writeExecutable(cli, r'''#!/bin/sh
+dir=$(CDPATH= cd "$(dirname "$0")" && pwd)
+marker="$dir/rpc-events.log"
+printf 'started\n' >> "$marker"
+while IFS= read -r line; do
+  id=$(printf '%s\n' "$line" | sed -E 's/.*"id":"([^"]+)".*/\1/')
+  workflow=$(printf '%s\n' "$line" | sed -E 's/.*"workflowId":"([^"]+)".*/\1/')
+  case "$line" in
+    *'"method":"shutdown"'*)
+      printf 'shutdown:%s\n' "$workflow" >> "$marker"
+      printf '{"protocol":"lico-client.stdio.v1","id":"%s","workflowId":"%s","ok":true,"result":{"status":"shutdown"}}\n' "$id" "$workflow"
+      exit 0
+      ;;
+    *'"method":"agent.conversation.send"'*)
+      printf 'send:%s\n' "$workflow" >> "$marker"
+      printf '{"protocol":"lico-client.stdio.v1","id":"%s","workflowId":"%s","kind":"event","sequence":1,"event":{"event":"agent.message.chunk","sessionId":"native-session","turnId":"turn-1","payload":{"text":"chunk"}}}\n' "$id" "$workflow"
+      printf '{"protocol":"lico-client.stdio.v1","id":"%s","workflowId":"%s","kind":"terminal","sequence":2,"ok":true,"result":{"ok":true,"nativeSessionId":"native-session","sessionId":"native-session","turnId":"turn-1","turnStatus":"completed"}}\n' "$id" "$workflow"
+      ;;
+    *'"method":"agent.conversation.open"'*) operation=open ;;
+    *'"method":"agent.conversation.history"'*) operation=history ;;
+    *'"method":"agent.conversation.cleanup"'*) operation=cleanup ;;
+    *'"method":"agent.conversation.capabilities"'*) operation=capabilities ;;
+    *) operation=unexpected ;;
+  esac
+  if [ "${operation:-}" != "" ]; then
+    printf '%s:%s\n' "$operation" "$workflow" >> "$marker"
+    printf '{"protocol":"lico-client.stdio.v1","id":"%s","workflowId":"%s","ok":true,"result":{"ok":true,"operation":"%s"}}\n' "$id" "$workflow" "$operation"
+    operation=
+  fi
+done
+''');
+      final service = AgentService(resolveCliBinary: () async => cli);
+      addTearDown(service.dispose);
+      for (final operation in const ['open', 'capabilities', 'history']) {
+        final result = await service.runCliWithStdin([
+          'agent',
+          'conversation',
+          operation,
+          '--stdin-json',
+          'true',
+        ], '{"agent":"claude-code","sessionId":"native-session"}');
+        expect(result['operation'], operation);
+      }
+      final streamed = await service.streamCliJsonLinesWithStdin(
+        const [
+          'agent',
+          'conversation',
+          'send',
+          '--stdin-json',
+          'true',
+          '--stream-events',
+          'true',
+        ],
+        '{"agent":"claude-code","sessionId":"native-session","text":"bounded"}',
+      ).toList();
+      expect(streamed.map((event) => event['event']), [
+        'agent.message.chunk',
+        'done',
+      ]);
+      final cleanup = await service.runCliWithStdin(const [
+        'agent',
+        'conversation',
+        'cleanup',
+        '--stdin-json',
+        'true',
+      ], '{"agent":"claude-code","sessionId":"native-session"}');
+      expect(cleanup['operation'], 'cleanup');
+      await service.dispose();
+
+      final rows = await marker.readAsLines();
+      expect(rows.where((row) => row == 'started'), hasLength(1));
+      final operations = rows.where((row) => row != 'started').toList();
+      expect(operations.map((row) => row.split(':').first), [
+        'open',
+        'capabilities',
+        'history',
+        'send',
+        'cleanup',
+        'shutdown',
+      ]);
+      expect(
+        operations.map((row) => row.split(':').last).toSet(),
+        hasLength(1),
       );
     },
   );

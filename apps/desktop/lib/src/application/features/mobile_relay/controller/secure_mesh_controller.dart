@@ -7,12 +7,7 @@ import 'package:flutter_client/src/application/features/mobile_relay/controller/
 import 'package:flutter_client/src/application/features/mobile_relay/controller/secure_mesh_skill_transfer_controller.dart';
 import 'package:flutter_client/src/application/features/mobile_relay/controller/secure_mesh_status_controller.dart';
 import 'package:flutter_client/src/contracts/mobile_relay_control.dart';
-import 'package:flutter_client/src/contracts/secure_mesh_approval_models.dart';
-import 'package:flutter_client/src/contracts/secure_mesh_capability_models.dart';
-import 'package:flutter_client/src/contracts/secure_mesh_file_sync_models.dart';
-import 'package:flutter_client/src/contracts/secure_mesh_kt_models.dart';
-import 'package:flutter_client/src/contracts/secure_mesh_mls_models.dart';
-import 'package:flutter_client/src/contracts/secure_mesh_skill_sync_models.dart';
+import 'package:flutter_client/src/contracts/generated/secure_mesh.g.dart';
 
 /// Stable facade over independent Secure Mesh application components.
 final class SecureMeshController extends ChangeNotifier {
@@ -158,8 +153,13 @@ final class SecureMeshController extends ChangeNotifier {
   void replaceApprovalAdapterCapability(Map<String, dynamic>? value) =>
       _approvalController.replaceAdapterCapability(value);
 
-  Future<void> refreshStatus({bool authorize = true}) =>
-      _statusController.refreshStatus(authorize: authorize);
+  Future<void> refreshStatus({
+    bool authorize = true,
+    bool showProgress = true,
+  }) => _statusController.refreshStatus(
+    authorize: authorize,
+    showProgress: showProgress,
+  );
 
   Future<void> evaluateDeviceTrust({
     required Map<String, dynamic> identity,

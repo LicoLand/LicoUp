@@ -46,9 +46,9 @@ Map<String, dynamic> _summaryFromAgents(List<AgentUsageAgentSummary> agents) {
 }
 
 class AgentUsageReport {
-  static const currentSchemaVersion = 4;
+  static const currentSchemaVersion = 6;
   static const currentMode = 'local-token-usage';
-  static const currentTokenSourceMode = 'local-history';
+  static const currentTokenSourceMode = 'native-metadata-first-incremental';
 
   const AgentUsageReport({
     required this.schemaVersion,
@@ -217,13 +217,16 @@ class AgentUsageAgentSummary {
 }
 
 String _tokenConfidence(List<AgentUsageAgentSummary> agents) {
-  if (agents.any((agent) => agent.confidence == 'high')) {
-    return 'high';
-  }
-  if (agents.any((agent) => agent.confidence == 'medium')) {
+  final hasHigh = agents.any((agent) => agent.confidence == 'high');
+  final hasMedium = agents.any((agent) => agent.confidence == 'medium');
+  final hasLow = agents.any((agent) => agent.confidence == 'low');
+  if (hasMedium || (hasHigh && hasLow)) {
     return 'medium';
   }
-  if (agents.any((agent) => agent.confidence == 'low')) {
+  if (hasHigh) {
+    return 'high';
+  }
+  if (hasLow) {
     return 'low';
   }
   return '';

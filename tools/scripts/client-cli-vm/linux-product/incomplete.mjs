@@ -19,7 +19,7 @@ export function writeLinuxProductIncomplete(distro, reason) {
     artifacts.incomplete,
     `${JSON.stringify(
       {
-        schema: "licolite.secure-mesh.linux-current-source-incomplete",
+        schema: "licomesh.secure-mesh.linux-current-source-incomplete",
         schemaVersion: 1,
         ok: false,
         artifactKind: "linux-current-source-acceptance",

@@ -16,7 +16,12 @@ pub(in crate::domain::mobile_relay) fn pc_check_in_with_context(
     config: &mut Value,
     secret_context: &mut RuntimeSecretContext,
 ) -> Result<Value> {
-    let (response, _) = register_local_relay_endpoint(params, config, "desktop_sidecar")?;
+    let (response, _) = register_local_relay_endpoint(
+        params,
+        config,
+        &mut secret_context.material,
+        "desktop_sidecar",
+    )?;
     save_config_with_runtime_secret_context(config, secret_context)?;
     Ok(response)
 }

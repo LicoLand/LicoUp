@@ -25,7 +25,10 @@ final class WorkbenchDesktopNavigation extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final strings = LicoStrings.of(context);
-    final items = [(ClientSection.agents, strings.agents)];
+    final items = [
+      (ClientSection.agents, strings.agents),
+      (ClientSection.pluginManagement, strings.pluginManagement),
+    ];
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -210,6 +213,7 @@ IconData _sectionIcon(ClientSection section) => switch (section) {
   ClientSection.agents => Icons.psychology_outlined,
   ClientSection.monitoring => Icons.query_stats_outlined,
   ClientSection.skillHub => Icons.library_books_outlined,
+  ClientSection.pluginManagement => Icons.extension_outlined,
   ClientSection.mobileRelay => Icons.phonelink_outlined,
   ClientSection.settings => Icons.settings_outlined,
 };

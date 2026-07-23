@@ -1,12 +1,13 @@
 use super::super::process_supervisor::{
     BoundedStdinWriter, SupervisedChild, TransportFinishFailure, finish_protocol_transport,
 };
+use super::control::ActiveAcpControl;
 use super::errors::ProtocolFailure;
 use super::events::{TransportEvent, read_protocol_messages};
 use super::io::{drain_stderr, write_message};
 use super::model::{AcpDriverSpec, CapabilityProbe, PROCESS_POLL_INTERVAL, RunResult};
 use super::params::{ProtocolConfig, timestamp};
-use super::protocol::{AcpProtocol, ProtocolEffect, ProtocolOutcome};
+use super::protocol::{AcpProtocol, ProtocolEffect, ProtocolOutcome, ProtocolPhase};
 use super::supervision::LaunchSpec;
 use serde_json::Value;
 use std::io::{self, BufReader};
@@ -16,6 +17,111 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError};
 use std::thread;
 use std::time::{Duration, Instant};
+
+pub(super) const PROMPT_DRAIN_QUIET_DURATION: Duration = Duration::from_millis(100);
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum PromptDrainExpiration {
+    Pending,
+    Quiet,
+    Hard,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(super) struct PromptDrainBudget {
+    hard_deadline: Instant,
+    last_valid_notification_at: Instant,
+    quiet_deadline: Instant,
+}
+
+impl PromptDrainBudget {
+    pub(super) fn new(prompt_response_at: Instant, hard_deadline: Instant) -> Self {
+        let prompt_response_at = prompt_response_at.min(hard_deadline);
+        Self {
+            hard_deadline,
+            last_valid_notification_at: prompt_response_at,
+            quiet_deadline: quiet_deadline_after(prompt_response_at, hard_deadline),
+        }
+    }
+
+    pub(super) fn hard_deadline(self) -> Instant {
+        self.hard_deadline
+    }
+
+    pub(super) fn next_deadline(self) -> Instant {
+        self.quiet_deadline
+    }
+
+    pub(super) fn observe_valid_notification(&mut self, observed_at: Instant) {
+        let observed_at = observed_at
+            .min(self.hard_deadline)
+            .max(self.last_valid_notification_at);
+        self.last_valid_notification_at = observed_at;
+        self.quiet_deadline = self
+            .quiet_deadline
+            .max(quiet_deadline_after(observed_at, self.hard_deadline));
+    }
+
+    pub(super) fn expiration_at(self, now: Instant) -> PromptDrainExpiration {
+        if now >= self.hard_deadline {
+            PromptDrainExpiration::Hard
+        } else if now >= self.quiet_deadline {
+            PromptDrainExpiration::Quiet
+        } else {
+            PromptDrainExpiration::Pending
+        }
+    }
+}
+
+fn quiet_deadline_after(observed_at: Instant, hard_deadline: Instant) -> Instant {
+    observed_at
+        .checked_add(PROMPT_DRAIN_QUIET_DURATION)
+        .unwrap_or(hard_deadline)
+        .min(hard_deadline)
+}
+
+pub(super) trait ProtocolLoopTransport {
+    fn check_health(&mut self) -> io::Result<()>;
+    fn write(&mut self, message: &Value) -> io::Result<()>;
+    fn recv_timeout(&mut self, timeout: Duration) -> Result<TransportEvent, RecvTimeoutError>;
+    fn now(&self) -> Instant;
+    fn sync_control(&mut self, _session_id: Option<&str>) -> io::Result<()> {
+        Ok(())
+    }
+}
+
+struct StdioProtocolLoopTransport<'a> {
+    stdin: &'a mut BoundedStdinWriter,
+    receiver: &'a Receiver<TransportEvent>,
+    active_control: ActiveAcpControl,
+}
+
+impl ProtocolLoopTransport for StdioProtocolLoopTransport<'_> {
+    fn check_health(&mut self) -> io::Result<()> {
+        self.stdin
+            .check_health()
+            .map_err(|_| io::Error::other("native agent protocol write failed"))
+    }
+
+    fn write(&mut self, message: &Value) -> io::Result<()> {
+        write_message(self.stdin, message)
+    }
+
+    fn recv_timeout(&mut self, timeout: Duration) -> Result<TransportEvent, RecvTimeoutError> {
+        self.receiver.recv_timeout(timeout)
+    }
+
+    fn now(&self) -> Instant {
+        Instant::now()
+    }
+
+    fn sync_control(&mut self, session_id: Option<&str>) -> io::Result<()> {
+        self.active_control
+            .sync_binding(session_id, session_id)
+            .map_err(|_| io::Error::other("ACP active-turn control registry is unavailable"))?;
+        self.active_control.poll(self.stdin)
+    }
+}
 
 pub(in crate::platform) fn execute_acp(
     driver: AcpDriverSpec,
@@ -158,8 +264,14 @@ pub(in crate::platform) fn execute_acp(
     }
 
     let deadline = Instant::now() + Duration::from_millis(timeout_ms);
-    let (outcome, failure, status_code, stdout_was_truncated) =
-        run_protocol_loop(&mut stdin, &receiver, &mut protocol, deadline);
+    let (outcome, failure, status_code, stdout_was_truncated) = {
+        let mut transport = StdioProtocolLoopTransport {
+            stdin: &mut stdin,
+            receiver: &receiver,
+            active_control: ActiveAcpControl::new(driver.agent_id),
+        };
+        run_protocol_loop(&mut transport, &mut protocol, deadline)
+    };
     let capabilities = protocol.capabilities.clone();
     let events = std::mem::take(&mut protocol.events);
 
@@ -273,19 +385,31 @@ fn pipe_failure(
     )
 }
 
-fn run_protocol_loop(
-    stdin: &mut BoundedStdinWriter,
-    receiver: &Receiver<TransportEvent>,
+pub(super) fn run_protocol_loop<T: ProtocolLoopTransport>(
+    transport: &mut T,
     protocol: &mut AcpProtocol,
-    deadline: Instant,
+    hard_deadline: Instant,
 ) -> (
     Option<ProtocolOutcome>,
     Option<ProtocolFailure>,
     Option<i32>,
     bool,
 ) {
+    let mut drain_budget: Option<PromptDrainBudget> = None;
     loop {
-        if stdin.check_health().is_err() {
+        if transport
+            .sync_control(protocol.session_id.as_deref())
+            .is_err()
+        {
+            let failure = ProtocolFailure::new(
+                "acp_control_transport_unavailable",
+                "The ACP active-turn control channel is unavailable.",
+                "turn/control",
+            )
+            .with_session(protocol.session_id.as_deref());
+            return (None, Some(failure), None, false);
+        }
+        if transport.check_health().is_err() {
             let failure = ProtocolFailure::new(
                 "acp_protocol_write_failed",
                 "The ACP agent stopped accepting protocol messages.",
@@ -294,39 +418,77 @@ fn run_protocol_loop(
             .with_session(protocol.session_id.as_deref());
             return (None, Some(failure), None, false);
         }
-        let now = Instant::now();
-        if now >= deadline {
-            let failure = ProtocolFailure::new(
-                "acp_protocol_timeout",
-                "The ACP agent timed out before the turn completed.",
-                "session/prompt",
-            )
-            .with_session(protocol.session_id.as_deref());
-            return (None, Some(failure), None, false);
-        }
-        let wait = (deadline - now).min(PROCESS_POLL_INTERVAL);
-        match receiver.recv_timeout(wait) {
-            Ok(TransportEvent::Message(message)) => {
-                for effect in protocol.handle_message(message) {
-                    match effect {
-                        ProtocolEffect::Send(message) => {
-                            if write_message(stdin, &message).is_err() {
-                                let failure = ProtocolFailure::new(
-                                    "acp_protocol_write_failed",
-                                    "The ACP agent stopped accepting protocol messages.",
-                                    "protocol/write",
-                                )
-                                .with_session(protocol.session_id.as_deref());
-                                return (None, Some(failure), None, false);
-                            }
-                        }
-                        ProtocolEffect::Complete(outcome) => {
-                            return (Some(outcome), None, None, false);
-                        }
-                        ProtocolEffect::Fail(failure) => {
-                            return (None, Some(failure), None, false);
-                        }
+        let now = transport.now();
+        if let Some(budget) = drain_budget {
+            match budget.expiration_at(now) {
+                PromptDrainExpiration::Hard => return protocol_timeout(protocol),
+                PromptDrainExpiration::Quiet => {
+                    let effects = protocol.finish_prompt_drain();
+                    if let Some(result) = apply_protocol_effects(transport, protocol, effects) {
+                        return result;
                     }
+                    return protocol_failed(protocol);
+                }
+                PromptDrainExpiration::Pending => {}
+            }
+        } else if now >= hard_deadline {
+            return protocol_timeout(protocol);
+        }
+        let next_deadline = drain_budget
+            .map(PromptDrainBudget::next_deadline)
+            .unwrap_or(hard_deadline);
+        let wait = next_deadline
+            .saturating_duration_since(now)
+            .min(PROCESS_POLL_INTERVAL);
+        let received = transport.recv_timeout(wait);
+        let observed_at = transport.now();
+        if observed_at >= hard_deadline {
+            return protocol_timeout(protocol);
+        }
+        match received {
+            Ok(TransportEvent::Message(message)) => {
+                let phase_before = protocol.phase;
+                let prompt_notification = matches!(
+                    phase_before,
+                    ProtocolPhase::AwaitPrompt | ProtocolPhase::AwaitPromptDrain
+                ) && message.get("method").and_then(Value::as_str)
+                    == Some(crate::core::acp::SESSION_UPDATE_METHOD);
+                let effects = protocol.handle_message(message);
+                let notification_accepted = prompt_notification
+                    && effects.is_empty()
+                    && matches!(
+                        protocol.phase,
+                        ProtocolPhase::AwaitPrompt | ProtocolPhase::AwaitPromptDrain
+                    );
+                if let Some(result) = apply_protocol_effects(transport, protocol, effects) {
+                    return result;
+                }
+                if phase_before != ProtocolPhase::AwaitPrompt
+                    && protocol.phase == ProtocolPhase::AwaitPrompt
+                    && let Some(session_id) = protocol.session_id.as_deref()
+                {
+                    if transport.sync_control(Some(session_id)).is_err() {
+                        let failure = ProtocolFailure::new(
+                            "acp_control_transport_unavailable",
+                            "The ACP active-turn control channel is unavailable.",
+                            "turn/control",
+                        )
+                        .with_session(Some(session_id));
+                        return (None, Some(failure), None, false);
+                    }
+                    super::super::turn_event_emit::emit_turn_event(
+                        "dispatch.turn.bound",
+                        session_id,
+                        &protocol.turn_id,
+                        serde_json::json!({}),
+                    );
+                }
+                if phase_before == ProtocolPhase::AwaitPrompt
+                    && protocol.phase == ProtocolPhase::AwaitPromptDrain
+                {
+                    drain_budget = Some(PromptDrainBudget::new(observed_at, hard_deadline));
+                } else if notification_accepted && let Some(budget) = drain_budget.as_mut() {
+                    budget.observe_valid_notification(observed_at);
                 }
             }
             Ok(TransportEvent::InvalidJson) => {
@@ -380,4 +542,72 @@ fn run_protocol_loop(
             Err(RecvTimeoutError::Timeout) => {}
         }
     }
+}
+
+fn apply_protocol_effects<T: ProtocolLoopTransport>(
+    transport: &mut T,
+    protocol: &AcpProtocol,
+    effects: Vec<ProtocolEffect>,
+) -> Option<(
+    Option<ProtocolOutcome>,
+    Option<ProtocolFailure>,
+    Option<i32>,
+    bool,
+)> {
+    for effect in effects {
+        match effect {
+            ProtocolEffect::Send(message) => {
+                if transport.write(&message).is_err() {
+                    let failure = ProtocolFailure::new(
+                        "acp_protocol_write_failed",
+                        "The ACP agent stopped accepting protocol messages.",
+                        "protocol/write",
+                    )
+                    .with_session(protocol.session_id.as_deref());
+                    return Some((None, Some(failure), None, false));
+                }
+            }
+            ProtocolEffect::Complete(outcome) => {
+                return Some((Some(outcome), None, None, false));
+            }
+            ProtocolEffect::Fail(failure) => {
+                return Some((None, Some(failure), None, false));
+            }
+        }
+    }
+    None
+}
+
+fn protocol_timeout(
+    protocol: &AcpProtocol,
+) -> (
+    Option<ProtocolOutcome>,
+    Option<ProtocolFailure>,
+    Option<i32>,
+    bool,
+) {
+    let failure = ProtocolFailure::new(
+        "acp_protocol_timeout",
+        "The ACP agent timed out before the turn completed.",
+        "session/prompt",
+    )
+    .with_session(protocol.session_id.as_deref());
+    (None, Some(failure), None, false)
+}
+
+fn protocol_failed(
+    protocol: &AcpProtocol,
+) -> (
+    Option<ProtocolOutcome>,
+    Option<ProtocolFailure>,
+    Option<i32>,
+    bool,
+) {
+    let failure = ProtocolFailure::new(
+        "acp_protocol_failed",
+        "The ACP agent did not complete the request.",
+        "protocol",
+    )
+    .with_session(protocol.session_id.as_deref());
+    (None, Some(failure), None, false)
 }

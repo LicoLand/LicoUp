@@ -56,7 +56,7 @@ function trustedKeyRecord(records, signer) {
 
 function decisionBinding(binding, signoff) {
   return {
-    schemaVersion: "licolite.secure-mesh.pairwise-content-review-signoff.v2",
+    schemaVersion: "licomesh.secure-mesh.pairwise-content-review-signoff.v2",
     sourceOfTruth: String(signoff?.sourceOfTruth || ""),
     corpusSchemaVersion: String(binding?.corpusSchemaVersion || ""),
     corpusDigest: String(binding?.corpusDigest || ""),
@@ -96,9 +96,9 @@ export function pairwiseReviewStatementBytes({
 
 function bindingReady(binding) {
   return binding?.schemaVersion ===
-      "licolite.secure-mesh.pairwise-content-review-signoff-binding.v2" &&
+      "licomesh.secure-mesh.pairwise-content-review-signoff-binding.v2" &&
     binding?.corpusSchemaVersion ===
-      "licolite.secure-mesh.pairwise-content-vector-corpus.v1" &&
+      "licomesh.secure-mesh.pairwise-content-vector-corpus.v1" &&
     SHA256.test(String(binding?.corpusDigest || "")) &&
     Number.isInteger(binding?.corpusEntryCount) && binding.corpusEntryCount > 0 &&
     SHA256.test(String(binding?.corpusEntryIdsDigest || "")) &&
@@ -127,7 +127,7 @@ export function verifyPairwiseReviewSignoff({ binding, signoff, authorities }) {
     base.sourceStateDigestBound = SHA256.test(String(binding?.sourceStateDigest || ""));
     base.producerSourceDigestBound = SHA256.test(String(binding?.producerSourceDigest || ""));
     base.decisionReady = signoff?.schemaVersion ===
-        "licolite.secure-mesh.pairwise-content-review-signoff.v2" &&
+        "licomesh.secure-mesh.pairwise-content-review-signoff.v2" &&
       signoff?.sourceOfTruth &&
       signoff?.independentCryptographicReviewComplete === true &&
       signoff?.releaseOwnerSignoffComplete === true &&

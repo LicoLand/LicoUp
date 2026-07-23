@@ -7,7 +7,7 @@ fn conversations_scan_codex_jsonl_history() {
     fs::write(
         &history,
         [
-            r#"{"role":"user","content":"Build LicoLite native history","createdAt":"2026-06-12T00:00:00Z"}"#,
+            r#"{"role":"user","content":"Build LicoMesh native history","createdAt":"2026-06-12T00:00:00Z"}"#,
             r#"{"role":"assistant","content":"Use Codex history adapter","createdAt":"2026-06-12T00:00:01Z"}"#,
         ]
         .join("\n"),
@@ -29,7 +29,7 @@ fn conversations_scan_codex_jsonl_history() {
     assert_eq!(sessions[0]["messages"].as_array().unwrap().len(), 2);
     assert_eq!(
         sessions[0]["messages"][0]["text"],
-        "Build LicoLite native history"
+        "Build LicoMesh native history"
     );
 }
 

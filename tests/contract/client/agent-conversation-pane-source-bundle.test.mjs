@@ -16,19 +16,63 @@ const productionLeaves = Object.freeze([
   "header.dart",
   "resize.dart",
 ]);
+const leafPaths = new Set(productionLeaves.map((leaf) => `${paneRoot}/${leaf}`));
+const removedRecentSessionsImport =
+  "package:flutter_client/src/frontend/features/agents/ui/agent_conversation_pane/recent_sessions.dart";
 
 async function read(relativePath) {
   return fs.readFile(path.join(repoRoot, relativePath), "utf8");
 }
 
-async function sources() {
-  return Object.fromEntries(await Promise.all(productionLeaves.map(async (leaf) => [
-    leaf,
-    await read(`${paneRoot}/${leaf}`),
-  ])));
+function resolveDartImport(from, specifier) {
+  if (specifier.startsWith("package:flutter_client/")) {
+    return path.posix.join(
+      "apps/desktop/lib",
+      specifier.slice("package:flutter_client/".length),
+    );
+  }
+  if (specifier.startsWith(".")) {
+    return path.posix.normalize(path.posix.join(path.posix.dirname(from), specifier));
+  }
+  return null;
 }
 
-test("agent conversation pane root exports exactly four ordinary libraries", async () => {
+function importedDartPaths(from, source) {
+  return importedDartSpecifiers(source)
+    .map((specifier) => resolveDartImport(from, specifier))
+    .filter((resolved) => resolved !== null);
+}
+
+function importedDartSpecifiers(source) {
+  return [...source.matchAll(/^\s*import\s+['"]([^'"]+)['"][^;]*;/gmu)]
+    .map((match) => match[1]);
+}
+
+async function dartFilesUnder(relativeRoot) {
+  const entries = await fs.readdir(path.join(repoRoot, relativeRoot), {
+    withFileTypes: true,
+  });
+  const files = await Promise.all(entries.map(async (entry) => {
+    const relativePath = path.posix.join(relativeRoot, entry.name);
+    if (entry.isDirectory()) return dartFilesUnder(relativePath);
+    return entry.isFile() && entry.name.endsWith(".dart") ? [relativePath] : [];
+  }));
+  return files.flat();
+}
+
+async function sourceGraph() {
+  const graph = new Map();
+  for (const leafPath of leafPaths) {
+    const source = await read(leafPath);
+    graph.set(
+      leafPath,
+      importedDartPaths(leafPath, source).filter((target) => leafPaths.has(target)),
+    );
+  }
+  return graph;
+}
+
+test("agent conversation pane facade exposes four leaves and one neutral port", async () => {
   const facade = await read(`${paneRoot}.dart`);
   assert.deepEqual(
     [...facade.matchAll(/^export 'agent_conversation_pane\/([^']+)';$/gmu)]
@@ -36,77 +80,77 @@ test("agent conversation pane root exports exactly four ordinary libraries", asy
       .sort(),
     [...productionLeaves].sort(),
   );
-  assert.equal(facade.trimEnd().split(/\r?\n/u).length, 4);
+  assert.match(facade, /^export 'agent_conversation_pane_presentation\.dart';$/mu);
   assert.equal(facade.includes("part "), false);
   assert.equal(facade.includes("class "), false);
 });
 
-test("pane leaves are bounded with one-way composition dependencies", async () => {
-  const source = await sources();
-  const limits = new Map([
-    ["actions.dart", 160],
-    ["composition.dart", 240],
-    ["header.dart", 340],
-    ["resize.dart", 140],
-  ]);
-  for (const [leaf, limit] of limits) {
-    assert.ok(source[leaf].trimEnd().split(/\r?\n/u).length <= limit, `${leaf} is oversized`);
-    assert.equal(source[leaf].includes("agent_conversation_pane.dart"), false);
-    assert.equal(source[leaf].includes("part of"), false);
-  }
-  assert.ok(source["composition.dart"].includes("agent_conversation_pane/actions.dart"));
-  assert.ok(source["composition.dart"].includes("agent_conversation_pane/header.dart"));
-  for (const independent of ["actions.dart", "header.dart", "resize.dart"]) {
-    assert.equal(source[independent].includes("agent_conversation_pane/composition.dart"), false);
-  }
+test("the real Dart import graph has no cross-leaf edges", async () => {
+  const graph = await sourceGraph();
+  assert.deepEqual(
+    [...graph.entries()].map(([source, targets]) => [source, [...targets]]),
+    [...leafPaths].map((source) => [source, []]),
+  );
 });
 
-test("composition owns send gating while actions remain controller-free", async () => {
-  const source = await sources();
-  for (const token of [
-    "conversationParityDisclosureCopy",
-    "controller.sendConversationMessage(text)",
-    "controller.scanTargets()",
-    "showAgentOrchestrationPolicyEditor",
-    "AgentConversationMessageList",
-    "RuntimeMessageComposer",
-    "ConversationPaneHeader",
-  ]) {
-    assert.ok(source["composition.dart"].includes(token));
+test("all four leaves are controller-free and consume neutral presentation ports", async () => {
+  for (const leafPath of leafPaths) {
+    const source = await read(leafPath);
+    assert.equal(source.includes("ClientController"), false, leafPath);
+    assert.equal(source.includes("part of"), false, leafPath);
   }
-  for (const token of [
-    "AgentConversationEmptySelection",
-    "ArchiveAgentConversationsButton",
-    "NewAgentConversationButton",
-    "MobileComposerSurface",
-  ]) {
-    assert.ok(source["actions.dart"].includes(token));
-  }
-  assert.equal(source["actions.dart"].includes("ClientController"), false);
+  const composition = await read(`${paneRoot}/composition.dart`);
+  const header = await read(`${paneRoot}/header.dart`);
+  assert.match(composition, /AgentConversationPaneState/u);
+  assert.match(composition, /AgentConversationPaneActions/u);
+  assert.match(header, /AgentConversationHeaderState/u);
+  assert.match(header, /AgentConversationHeaderActions/u);
 });
 
-test("resize and header retain independent geometry and identity policies", async () => {
-  const source = await sources();
+test("workspace is the single typed controller projection", async () => {
+  const workspace = await read(
+    "apps/desktop/lib/src/frontend/features/agents/ui/agent_conversation_workspace.dart",
+  );
+  const port = await read(
+    "apps/desktop/lib/src/frontend/features/agents/ui/agent_conversation_pane_presentation.dart",
+  );
   for (const token of [
-    "ResizableConversationSplit",
-    "PaneEdgeDragHandle",
-    "conversationHistoryMinWidth",
-    "SystemMouseCursors.resizeLeftRight",
-    "onHorizontalDragUpdate",
+    "AgentConversationPaneState(",
+    "AgentConversationPaneActions(",
+    "AgentConversationHeaderState(",
+    "AgentConversationHeaderActions(",
   ]) {
-    assert.ok(source["resize.dart"].includes(token));
+    assert.equal(workspace.match(new RegExp(token.replace("(", "\\("), "gu"))?.length, 1);
   }
-  for (const token of [
-    "ConversationPaneHeader",
-    "session?.title.trim()",
-    "ConversationParityDisclosurePanel",
-    "AgentOrchestrationPolicyHeaderControls",
-    "opencode-serve-status",
-    "AgentsSidebarCollapseControl",
-    "_SidebarToggleGlyphPainter",
-  ]) {
-    assert.ok(source["header.dart"].includes(token));
+  assert.match(port, /List\.unmodifiable/u);
+  assert.match(port, /enum AgentConversationServeStatus/u);
+  assert.equal(port.includes("Map<String, dynamic>"), false);
+});
+
+test("superseded hidden recent-sessions leaf is removed", async () => {
+  await assert.rejects(
+    fs.access(path.join(repoRoot, `${paneRoot}/recent_sessions.dart`)),
+    { code: "ENOENT" },
+  );
+  await fs.access(path.join(
+    repoRoot,
+    "apps/desktop/lib/src/frontend/features/agents/ui/agent_conversation_recent_sessions.dart",
+  ));
+});
+
+test("production and test Dart sources do not import the removed recent-sessions URI", async () => {
+  const dartFiles = (
+    await Promise.all([
+      dartFilesUnder("apps/desktop/lib"),
+      dartFilesUnder("apps/desktop/test"),
+    ])
+  ).flat();
+  const staleImports = [];
+  for (const dartFile of dartFiles) {
+    const imports = importedDartSpecifiers(await read(dartFile));
+    if (imports.includes(removedRecentSessionsImport)) staleImports.push(dartFile);
   }
+  assert.deepEqual(staleImports, []);
 });
 
 test("every pane responsibility retains a dedicated widget regression", async () => {
@@ -116,8 +160,4 @@ test("every pane responsibility retains a dedicated widget regression", async ()
       `apps/desktop/test/agent_conversation_pane/${leaf.replace(".dart", "_test.dart")}`,
     ));
   }
-  await fs.access(path.join(
-    repoRoot,
-    "apps/desktop/test/agent_conversation_pane/pane_test_harness.dart",
-  ));
 });

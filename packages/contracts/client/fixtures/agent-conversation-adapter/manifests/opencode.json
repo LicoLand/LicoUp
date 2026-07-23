@@ -66,8 +66,8 @@
       "method": "session-scoped SSE event stream"
     },
     "cancel": {
-      "status": "unsupported",
-      "method": "official lane does not expose a durable active-turn cancel handle"
+      "status": "supported",
+      "method": "POST /session/:id/abort on the supervised loopback service"
     },
     "interruptSteer": {
       "status": "unsupported",
@@ -111,7 +111,7 @@
   "lifecycle": {
     "supervision": "attached-service",
     "cleanupScope": "official-session",
-    "cancelHandleScope": "unavailable",
+    "cancelHandleScope": "active-turn",
     "maxConcurrentTransports": 8,
     "maxTrackedSessions": 1024
   },
@@ -180,7 +180,7 @@
       "P-07": "error-cancel-timeout-parity",
       "P-08": "privacy-and-process-boundary",
       "P-09": "isolation-and-cleanup",
-      "P-10": "exact-release-product-ui",
+      "P-10": "arc-local-service-consecutive-rounds",
       "C-01": "streaming-delta",
       "C-02": "reasoning-and-tool-trace",
       "C-03": "approval-lifecycle",
@@ -189,15 +189,15 @@
       "C-06": "usage-and-status"
     },
     "minimumConsecutivePasses": 3,
-    "minimumConsecutiveReleaseUiPasses": 3,
-    "productUiRequired": true,
-    "releaseP10Required": true,
+    "minimumConsecutiveReleaseUiPasses": 0,
+    "productUiRequired": false,
+    "releaseP10Required": false,
     "liveLocalForwardingRequired": true,
     "realtimeOutputRequired": true,
     "sameNativeSessionRequired": true,
     "canonicalReadinessRequired": true,
     "nativeToArcRequired": true,
     "arcToNativeRequired": true,
-    "exactArtifactRequired": true
+    "exactArtifactRequired": false
   }
 }

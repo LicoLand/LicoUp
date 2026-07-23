@@ -1,9 +1,14 @@
 use anyhow::{Result, anyhow};
 use uuid::Uuid;
 
+#[cfg(target_os = "macos")]
+use std::sync::{Arc, Mutex};
+
+#[cfg(target_os = "macos")]
+use super::macos_user_presence::MacosSecretStoreAccess;
 use crate::core::secure_mesh_secret_store::{
-    SecretStoreAuthorizationRequest, SecretStoreAuthorizationSession, SecretStoreHandle,
-    SecureMeshSecretStore,
+    SecretBytes, SecretStoreAuthorizationRequest, SecretStoreAuthorizationSession,
+    SecretStoreHandle, SecureMeshSecretStore,
 };
 
 pub struct SecretClassPersistenceProof {
@@ -17,18 +22,48 @@ pub struct SecretClassPersistenceProof {
     pub raw_secret_material_included: bool,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone)]
 pub struct PlatformSecretStore {
     pub(super) service: &'static str,
     pub(super) account_prefix: &'static str,
+    #[cfg(target_os = "macos")]
+    macos_secret_store_access: Arc<Mutex<Option<Arc<MacosSecretStoreAccess>>>>,
 }
 
 impl PlatformSecretStore {
-    pub const fn new(service: &'static str, account_prefix: &'static str) -> Self {
+    pub fn new(service: &'static str, account_prefix: &'static str) -> Self {
         Self {
             service,
             account_prefix,
+            #[cfg(target_os = "macos")]
+            macos_secret_store_access: Arc::new(Mutex::new(None)),
         }
+    }
+
+    #[cfg(target_os = "macos")]
+    pub(crate) fn with_macos_secret_store_access(mut self, access: MacosSecretStoreAccess) -> Self {
+        self.macos_secret_store_access = Arc::new(Mutex::new(Some(Arc::new(access))));
+        self
+    }
+
+    #[cfg(target_os = "macos")]
+    pub(super) fn macos_secret_store_access(&self) -> Result<Option<Arc<MacosSecretStoreAccess>>> {
+        self.macos_secret_store_access
+            .lock()
+            .map(|selected| selected.clone())
+            .map_err(|_| anyhow!("secure_mesh_presence_session_unavailable"))
+    }
+
+    #[cfg(target_os = "macos")]
+    pub(super) fn select_macos_secret_store_access(
+        &self,
+        access: Arc<MacosSecretStoreAccess>,
+    ) -> Result<()> {
+        *self
+            .macos_secret_store_access
+            .lock()
+            .map_err(|_| anyhow!("secure_mesh_presence_session_unavailable"))? = Some(access);
+        Ok(())
     }
 
     pub fn handle_for_namespace(
@@ -74,9 +109,16 @@ impl PlatformSecretStore {
                 secret_class,
                 Uuid::new_v4()
             );
-            self.set_secret_with_session(session, &handle, &proof_secret)?;
-            if self.get_secret_with_session(session, &handle)?.as_deref()
-                == Some(proof_secret.as_str())
+            self.set_secret_with_session(
+                session,
+                &handle,
+                SecretBytes::try_from_string(proof_secret.clone())?,
+            )?;
+            if self
+                .get_secret_with_session(session, &handle)?
+                .as_ref()
+                .map(SecretBytes::expose_bytes)
+                == Some(proof_secret.as_bytes())
             {
                 persisted_class_count += 1;
             }
@@ -101,5 +143,14 @@ impl PlatformSecretStore {
             all_classes_deleted: deleted_class_count == secret_classes.len(),
             raw_secret_material_included: false,
         })
+    }
+}
+
+impl std::fmt::Debug for PlatformSecretStore {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("PlatformSecretStore")
+            .field("backend_configuration", &"redacted")
+            .finish()
     }
 }

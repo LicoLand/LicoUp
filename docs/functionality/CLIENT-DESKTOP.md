@@ -2,17 +2,22 @@
 
 ## Metadata / 元数据
 
-- Last updated: 2026-07-15
-- Status: Current product and acceptance authority
-- Scope: Desktop, mobile, Rust sidecar, ACP, MCP, platform adapters, local-agent workflows, Secure Client Mesh, and optional user-enabled LicoLite collaboration plugins.
-- Staleness check: Reconciled with `PRODUCT.md`, client application boundaries, the native sidecar, packaging manifests, target adapters, Secure Mesh contracts, and module-scoped regression catalog on 2026-07-15.
+- Last updated: 2026-07-20
+- Status: Implemented capability overview
+- Scope: Desktop, mobile, Rust sidecar, ACP, MCP, platform adapters, local-agent workflows, Secure Client Mesh, and optional user-enabled LicoMesh collaboration plugins.
+- Staleness check: Reconciled with `PRODUCT.md`, client application boundaries, the native sidecar, packaging manifests, target adapters, Secure Mesh contracts, and module-scoped regression catalog on 2026-07-20.
 
 ## Product Boundary
+
+[`PRODUCT.md`](../../PRODUCT.md) owns the public product boundary. Detailed
+behavior is owned by the Rust and Flutter modules, public schemas, catalogs, and
+regression entries named below; this document is an acceptance-oriented
+projection of those authorities.
 
 Lico Arc is a local-first client. Flutter owns presentation and application
 coordination; Rust owns bounded local execution, protocol adaptation, local state,
 and cryptographic substrate. The default client does not require or start a
-LicoLite server.
+LicoMesh server.
 
 Built-in capabilities are limited to:
 
@@ -56,7 +61,7 @@ requires a separate direct approval for each file.
 | Flutter platform/backend | Implements narrow contracts and returns bounded business projections rather than raw process output. |
 | Rust local queue | Owns bounded admission, FIFO handoff, backpressure, and single-consumer ownership; it contains no UI or feature-specific policy. |
 | Rust ACP adapter | Owns ACP framing and capability translation; per-agent semantics stay in target-specific leaves. |
-| Rust MCP adapter | Owns strict bounded JSON-RPC request/notification/response codecs plus a short-lived one-shot direction/destination/purpose/digest-bound transfer gate; optional LicoLite behavior is not embedded here. |
+| Rust MCP adapter | Owns strict bounded JSON-RPC request/notification/response codecs plus a short-lived one-shot direction/destination/purpose/digest-bound transfer gate; optional LicoMesh behavior is not embedded here. |
 | Platform adapters | Own OS discovery, secure storage, authorization, paths, process launch, and packaging behind platform-neutral ports. |
 | Secure Client Mesh | Owns client-side key lifecycle, encryption, replay protection, trust, and opaque relay envelopes. Relay infrastructure never owns plaintext. |
 
@@ -209,11 +214,11 @@ Regression: pairwise/group codec vectors, cross-platform bridge tests, trust and
 revocation UX, wrong-recipient/tamper/replay controls, opaque-relay conformance,
 message/result round trips, and physical-device verification when authorized.
 
-## Optional Plugin P-01 — Local LicoLite Deployment
+## Optional Plugin P-01 — Local LicoMesh Deployment
 
 This capability is absent from the default startup and navigation. The user must
 enable collaboration, select a GitHub source, install the plugin, choose a local
-destination, and select the LicoLite server feature/plugin composition before the
+destination, and select the LicoMesh server feature/plugin composition before the
 plugin may download and build it. Disable/uninstall removes the plugin-owned
 integration without changing the built-in client.
 
@@ -234,9 +239,9 @@ digest preview, selectable composition, cancellation, fail-closed source change,
 non-executable package validation, plugin disable/uninstall, and absence from
 default navigation.
 
-## Optional Plugin P-02 — LicoLite MCP Plugin Installation
+## Optional Plugin P-02 — LicoMesh MCP Plugin Installation
 
-The user manually chooses one or more local agents and one or more LicoLite MCP
+The user manually chooses one or more local agents and one or more LicoMesh MCP
 plugins, reviews target configuration changes, and confirms the installation.
 No background, scheduled, startup, or agent-initiated installation is allowed.
 

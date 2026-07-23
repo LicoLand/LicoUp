@@ -25,6 +25,7 @@ pub(crate) enum HistoryAdapter {
     Pi,
 }
 
+#[derive(Clone, Debug)]
 pub(crate) struct HistoryRoot {
     pub(crate) path: PathBuf,
     pub(crate) source_kind: String,
@@ -259,6 +260,8 @@ pub(crate) fn history_roots(adapter: HistoryAdapter, params: &Value) -> Vec<Hist
         .map(|path| xdg_data_dir_from_home(path))
         .unwrap_or_else(xdg_data_dir);
     let kimi_code_home = kimi_code_history_home(params, &home, home_override.is_none());
+    let copilot_home = copilot_history_home(params, &home, home_override.is_none());
+    let pi_session_dir = pi_history_session_dir(params, &home, home_override.is_none());
     match adapter {
         HistoryAdapter::Codex => roots(&[
             (home.join(".codex/history.jsonl"), "codex-prompt-history"),
@@ -290,6 +293,7 @@ pub(crate) fn history_roots(adapter: HistoryAdapter, params: &Value) -> Vec<Hist
             (xdg_config.join("Antigravity IDE"), "antigravity-ide-state"),
             (home.join(".gemini/antigravity"), "antigravity-bridge"),
             (home.join(".gemini/antigravity-ide"), "antigravity-bridge"),
+            (home.join(".gemini/antigravity-cli"), "antigravity-cli"),
         ]),
         HistoryAdapter::ClaudeCode => roots(&[
             (home.join(".claude/projects"), "claude-project-transcripts"),
@@ -320,6 +324,8 @@ pub(crate) fn history_roots(adapter: HistoryAdapter, params: &Value) -> Vec<Hist
                 xdg_config.join("Cursor/User/globalStorage"),
                 "cursor-global-storage",
             ),
+            (home.join(".cursor/chats"), "cursor-cli-chats"),
+            (home.join(".cursor/projects"), "cursor-cli-projects"),
         ]),
         HistoryAdapter::Code => roots(&[
             (
@@ -348,6 +354,10 @@ pub(crate) fn history_roots(adapter: HistoryAdapter, params: &Value) -> Vec<Hist
             ),
         ]),
         HistoryAdapter::Copilot => roots(&[
+            (
+                copilot_home.join("session-state"),
+                "copilot-cli-session-store",
+            ),
             (
                 home.join("Library/Application Support/Code/User/workspaceStorage"),
                 "vscode-copilot-workspace-storage",
@@ -428,10 +438,7 @@ pub(crate) fn history_roots(adapter: HistoryAdapter, params: &Value) -> Vec<Hist
         HistoryAdapter::KimiCode => {
             roots(&[(kimi_code_home.join("sessions"), "kimi-code-session-store")])
         }
-        HistoryAdapter::Pi => roots(&[
-            (home.join(".pi/agent/sessions"), "pi-session-store"),
-            (home.join(".pi/agent"), "pi-agent-home"),
-        ]),
+        HistoryAdapter::Pi => roots(&[(pi_session_dir, "pi-session-store")]),
     }
 }
 
@@ -444,6 +451,29 @@ fn kimi_code_history_home(params: &Value, home: &Path, allow_environment: bool) 
     configured
         .map(|value| expand_home_from(&value, || home.to_path_buf()))
         .unwrap_or_else(|| home.join(".kimi-code"))
+}
+
+fn copilot_history_home(params: &Value, home: &Path, allow_environment: bool) -> PathBuf {
+    let configured = text_param(params, &["copilotHome"]).or_else(|| {
+        allow_environment
+            .then(|| env::var("COPILOT_HOME").ok())
+            .flatten()
+    });
+    configured
+        .map(|value| expand_home_from(&value, || home.to_path_buf()))
+        .unwrap_or_else(|| home.join(".copilot"))
+}
+
+fn pi_history_session_dir(params: &Value, home: &Path, allow_environment: bool) -> PathBuf {
+    let configured =
+        text_param(params, &["piSessionDir", "piCodingAgentSessionDir"]).or_else(|| {
+            allow_environment
+                .then(|| env::var("PI_CODING_AGENT_SESSION_DIR").ok())
+                .flatten()
+        });
+    configured
+        .map(|value| expand_home_from(&value, || home.to_path_buf()))
+        .unwrap_or_else(|| home.join(".pi/agent/sessions"))
 }
 
 fn roots(items: &[(PathBuf, &'static str)]) -> Vec<HistoryRoot> {
@@ -479,12 +509,13 @@ mod tests {
             Some(HistoryAdapter::KimiCode)
         );
 
+        let history_root = PathBuf::from("test-data").join("history");
         let roots = history_roots(
             HistoryAdapter::Codex,
-            &json!({"historyRoot": "/tmp/history", "rootKind": "fixture"}),
+            &json!({"historyRoot": history_root, "rootKind": "fixture"}),
         );
         assert_eq!(roots.len(), 1);
-        assert_eq!(roots[0].path, PathBuf::from("/tmp/history"));
+        assert_eq!(roots[0].path, history_root);
         assert_eq!(roots[0].source_kind, "fixture");
     }
 
@@ -493,5 +524,30 @@ mod tests {
         assert!(!HistoryAdapter::Cursor.sqlite_table_may_hold_history("chat_fts"));
         assert!(!HistoryAdapter::KiloCode.sqlite_table_may_hold_history("account"));
         assert!(HistoryAdapter::Code.sqlite_table_may_hold_history("ItemTable"));
+    }
+
+    #[test]
+    fn catalog_includes_cli_usage_stores_without_overlapping_pi_roots() {
+        let home = PathBuf::from("synthetic-home");
+        let params = json!({"homeDir": home});
+
+        let antigravity = history_roots(HistoryAdapter::Antigravity, &params);
+        assert!(antigravity.iter().any(|root| {
+            root.source_kind == "antigravity-cli"
+                && root.path == home.join(".gemini/antigravity-cli")
+        }));
+
+        let copilot = history_roots(HistoryAdapter::Copilot, &params);
+        assert!(copilot.iter().any(|root| {
+            root.source_kind == "copilot-cli-session-store"
+                && root.path == home.join(".copilot/session-state")
+        }));
+
+        let pi = history_roots(HistoryAdapter::Pi, &params);
+        assert_eq!(pi.len(), 1);
+        assert_eq!(
+            pi[0].path,
+            home.join(".pi/agent/sessions")
+        );
     }
 }

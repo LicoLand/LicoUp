@@ -56,7 +56,7 @@ export function summarizeAndroidPhysicalInstallLaunchReport(report = {}) {
     freshOneShotAuthorizationPolicyReady;
   const localReadyDiagnostic =
     report?.schemaVersion ===
-      "licolite.secure-mesh.android-physical-install-launch-report.v3" &&
+      "licomesh.secure-mesh.android-physical-install-launch-report.v3" &&
     report?.ok === true &&
     report?.physicalDevice === true &&
     summary.apkReady === true &&

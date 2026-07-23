@@ -26,8 +26,8 @@ pub fn scan_targets_with_params(params: &Value) -> Result<Value> {
     discovery::scan_targets_with_params(params)
 }
 
-pub(crate) fn ready_runtime_executable(target: &str) -> Option<PathBuf> {
-    runtime_binding::ready_runtime_executable(target)
+pub(crate) fn available_runtime_executable(target: &str) -> Option<PathBuf> {
+    runtime_binding::available_runtime_executable(target)
 }
 
 pub fn add_target(params: &Value) -> Result<Value> {

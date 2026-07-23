@@ -29,6 +29,7 @@ pub(super) use crate::core::secure_mesh_prekey::{
     authorize_test_pairwise_prekey_bundle, sign_prekey_record,
 };
 pub(super) use crate::core::secure_mesh_relay_envelope::SecureMeshRelayEnvelope;
+pub(super) use crate::core::secure_mesh_secret_store::SecretBytes;
 pub(super) use crate::core::secure_mesh_secret_store::{
     SecretStoreAuthorizationRequest, SecretStoreAuthorizationSession, SecretStoreHandle,
     SecureMeshSecretStore,
@@ -402,7 +403,7 @@ pub(super) fn deterministic_pairwise_session(
         );
     let sparse_pq_seed: [u8; 32] = Sha256::digest(
         [
-            b"licolite.secure-mesh.test.sparse-pq.v1".as_slice(),
+            b"licomesh.secure-mesh.test.sparse-pq.v1".as_slice(),
             shared_secret.as_slice(),
         ]
         .concat(),
@@ -580,11 +581,11 @@ impl SecureMeshSecretStore for FailOnceDeleteSecretStore {
         self.inner.begin_authorized_session(request)
     }
 
-    fn set_secret(&self, handle: &SecretStoreHandle, secret: &str) -> Result<()> {
+    fn set_secret(&self, handle: &SecretStoreHandle, secret: SecretBytes) -> Result<()> {
         self.inner.set_secret(handle, secret)
     }
 
-    fn get_secret(&self, handle: &SecretStoreHandle) -> Result<Option<String>> {
+    fn get_secret(&self, handle: &SecretStoreHandle) -> Result<Option<SecretBytes>> {
         self.inner.get_secret(handle)
     }
 

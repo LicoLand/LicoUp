@@ -49,13 +49,20 @@ pub(super) fn execute(
     )
 }
 
+pub(in crate::platform) fn cancel(
+    session_id: &str,
+) -> super::acp_driver_runtime::ControlDisposition {
+    super::acp_driver_runtime::cancel_active_turn(COPILOT_DRIVER.agent_id, session_id)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::json;
     use std::fs;
     use std::process::Command;
-    use std::time::{SystemTime, UNIX_EPOCH};
+    use std::sync::mpsc;
+    use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
     #[test]
     fn copilot_launch_arguments_are_fixed_and_private_values_use_acp_stdin() {
@@ -134,6 +141,55 @@ mod tests {
         let _ = fs::remove_dir_all(dir);
     }
 
+    #[test]
+    fn active_acp_turn_accepts_cancel_before_exact_session_resume() {
+        let dir = std::env::temp_dir().join(format!("lico-copilot-cancel-fake-{}", timestamp()));
+        fs::create_dir_all(&dir).unwrap();
+        let source = dir.join("fake_cancel_agent.rs");
+        let executable = dir.join(format!("fake-cancel-agent{}", std::env::consts::EXE_SUFFIX));
+        fs::write(&source, FAKE_CANCEL_AGENT_SOURCE).unwrap();
+        let status = Command::new("rustc")
+            .args(["--edition", "2021"])
+            .arg(&source)
+            .arg("-o")
+            .arg(&executable)
+            .status()
+            .unwrap();
+        assert!(status.success());
+
+        let (bound_sender, bound_receiver) = mpsc::sync_channel(1);
+        let run_dir = dir.clone();
+        let run_executable = executable.clone();
+        let run = std::thread::spawn(move || {
+            crate::platform::turn_event_emit::install_stream_sink(Box::new(move |event| {
+                if event.get("event").and_then(Value::as_str) == Some("dispatch.turn.bound") {
+                    let _ = bound_sender.try_send(());
+                }
+            }));
+            let _sink = crate::platform::turn_event_emit::StreamSinkGuard;
+            execute(
+                run_executable.to_string_lossy().as_ref(),
+                &json!({}),
+                "cancel-me",
+                "",
+                Some(run_dir.as_path()),
+                10_000,
+                1024 * 1024,
+                1024,
+            )
+        });
+        bound_receiver.recv_timeout(Duration::from_secs(3)).unwrap();
+        assert_eq!(
+            cancel("copilot-cancel-session"),
+            super::super::acp_driver_runtime::ControlDisposition::Accepted
+        );
+        let result = run.join().unwrap();
+        assert!(!result.ok);
+        assert_eq!(result.session_id, "copilot-cancel-session");
+        assert_eq!(result.turn_status, "cancelled");
+        let _ = fs::remove_dir_all(dir);
+    }
+
     fn timestamp() -> u128 {
         SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -181,6 +237,33 @@ fn main() {
     let first = stdin.lock().lines().next().unwrap().unwrap();
     assert!(first.contains("\"method\":\"initialize\""));
     println!("{{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{{\"protocolVersion\":1,\"agentCapabilities\":{{\"loadSession\":true}}}}}}");
+    io::stdout().flush().unwrap();
+    std::thread::sleep(std::time::Duration::from_secs(1));
+}
+"#;
+
+    const FAKE_CANCEL_AGENT_SOURCE: &str = r#"
+use std::io::{self, BufRead, Write};
+fn id(line: &str) -> i64 {
+    let marker = "\"id\":";
+    let start = line.find(marker).unwrap() + marker.len();
+    line[start..].chars().take_while(|c| c.is_ascii_digit()).collect::<String>().parse().unwrap()
+}
+fn main() {
+    let stdin = io::stdin();
+    let mut lines = stdin.lock().lines();
+    let initialize = lines.next().unwrap().unwrap();
+    println!("{{\"jsonrpc\":\"2.0\",\"id\":{},\"result\":{{\"protocolVersion\":1,\"agentCapabilities\":{{\"loadSession\":true}}}}}}", id(&initialize));
+    io::stdout().flush().unwrap();
+    let session = lines.next().unwrap().unwrap();
+    println!("{{\"jsonrpc\":\"2.0\",\"id\":{},\"result\":{{\"sessionId\":\"copilot-cancel-session\",\"configOptions\":[]}}}}", id(&session));
+    io::stdout().flush().unwrap();
+    let prompt = lines.next().unwrap().unwrap();
+    assert!(prompt.contains("\"method\":\"session/prompt\""));
+    let cancel = lines.next().unwrap().unwrap();
+    assert!(cancel.contains("\"method\":\"session/cancel\""));
+    assert!(cancel.contains("copilot-cancel-session"));
+    println!("{{\"jsonrpc\":\"2.0\",\"id\":{},\"result\":{{\"stopReason\":\"cancelled\"}}}}", id(&prompt));
     io::stdout().flush().unwrap();
     std::thread::sleep(std::time::Duration::from_secs(1));
 }
