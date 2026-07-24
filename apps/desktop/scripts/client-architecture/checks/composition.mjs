@@ -83,12 +83,12 @@ export async function checkConversationBridges(context, { packagedTargets, conve
     ["agent_orchestration_controller.dart", agentOrchestrationControllerSource]
   ]) {
     const sourceWithoutOrchestratorProjection = source.replaceAll(
-      "package:flutter_client/src/platform/native_client/orchestrator_ipc/client.dart",
+      "package:licoup/src/platform/native_client/orchestrator_ipc/client.dart",
       ""
     );
     assert(
-      !source.includes("package:flutter_client/src/backend/") &&
-        !sourceWithoutOrchestratorProjection.includes("package:flutter_client/src/platform/"),
+      !source.includes("package:licoup/src/backend/") &&
+        !sourceWithoutOrchestratorProjection.includes("package:licoup/src/platform/"),
       `${relativePath} must not depend on backend implementations or unrelated platform services`
     );
   }
@@ -118,8 +118,8 @@ export async function checkConversationBridges(context, { packagedTargets, conve
     "agent usage must own bounded, lease-based single-flight state behind an application gateway port"
   );
   assert(
-    !agentUsageControllerSource.includes("package:flutter_client/src/backend/") &&
-      !agentUsageControllerSource.includes("package:flutter_client/src/platform/"),
+    !agentUsageControllerSource.includes("package:licoup/src/backend/") &&
+      !agentUsageControllerSource.includes("package:licoup/src/platform/"),
     "agent usage controller must not depend on backend or platform implementations"
   );
   const agentConversationWorkspaceSource = await readJoinedText([
@@ -288,9 +288,9 @@ export async function checkClientRootAndShell(context, {
     ["conversation_presentation_signals.dart", conversationPresentationSignalsSource]
   ]) {
     assert(
-      !source.includes("package:flutter_client/src/backend/") &&
-        !source.includes("package:flutter_client/src/platform/") &&
-        !source.includes("package:flutter_client/src/frontend/"),
+      !source.includes("package:licoup/src/backend/") &&
+        !source.includes("package:licoup/src/platform/") &&
+        !source.includes("package:licoup/src/frontend/"),
       `${relativePath} must stay independent of backend, platform, and frontend implementations`
     );
   }
@@ -310,7 +310,7 @@ export async function checkClientRootAndShell(context, {
   assert(clientControllerSource.includes("secureMeshFileReceiveDestination") &&
     secureMeshControllerSource.includes("evaluateFileReceiveDestination") &&
     mobileRelayGatewayAdapterSource.includes("evaluateSecureMeshFileReceiveDestination"),
-    "LicoArc client controller must retain Secure Mesh file receive-destination policy state"
+    "LicoUp client controller must retain Secure Mesh file receive-destination policy state"
   );
   const mobileRelayPanelSource = [
     mobileRelayPanelFacadeSource,
@@ -339,14 +339,14 @@ export async function checkClientRootAndShell(context, {
     clientShellSource.includes("ClientSection.pluginManagement => AdapterPluginPanel") &&
     clientShellSource.includes("ClientSection.mobileRelay => MobileRelayPanel") &&
     clientShellSource.includes("ClientSection.settings => SettingsPanel"),
-    "LicoArc client shell must expose only the current top-level section bodies"
+    "LicoUp client shell must expose only the current top-level section bodies"
   );
   for (const [relativePath, source] of [
     ["agent_conversation_service.dart", agentConversationServiceSource],
     ["mobile_relay_service.dart", mobileRelayServiceSource]
   ]) {
     for (const token of ["HttpClient", "/api/mobile-relay", "readAsString", "writeAsString", "Directory(", "File("]) {
-      assert(!source.includes(token), `${relativePath} must not perform runtime IO/network directly; use lico-client CLI`);
+      assert(!source.includes(token), `${relativePath} must not perform runtime IO/network directly; use licoup CLI`);
     }
   }
 

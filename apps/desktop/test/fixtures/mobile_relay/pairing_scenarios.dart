@@ -1,8 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:flutter_client/src/platform/mobile_relay/mobile_relay_service.dart';
-import 'package:flutter_client/src/platform/native_client/agent_service.dart';
+import 'package:licoup/src/platform/mobile_relay/mobile_relay_service.dart';
+import 'package:licoup/src/platform/native_client/agent_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'config_fixtures.dart';
@@ -15,14 +15,14 @@ void registerMobileRelayPairingScenarios() {
         'pairedDevices': [
           {
             'id': 'old-pc',
-            'pcClientName': 'Lico Arc',
+            'pcClientName': 'LicoUp',
             'pairingId': 'pair-old',
             'credentialPresent': true,
             'gatewayUrl': 'https://relay.example.test',
           },
           {
             'id': 'new-pc',
-            'pcClientName': 'Lico Arc',
+            'pcClientName': 'LicoUp',
             'pairingId': 'pair-new',
             'credentialPresent': true,
             'gatewayUrl': 'https://relay.example.test/',
@@ -32,7 +32,7 @@ void registerMobileRelayPairingScenarios() {
 
       expect(config.deviceTabs, hasLength(1));
       expect(config.deviceTabs.single.pairingId, 'pair-new');
-      expect(config.deviceTabs.single.label, 'Lico Arc');
+      expect(config.deviceTabs.single.label, 'LicoUp');
     },
   );
 
@@ -232,7 +232,7 @@ void registerMobileRelayPairingScenarios() {
   });
 
   test(
-    'delegates gateway, pairing, and sync operations to lico-client',
+    'delegates gateway, pairing, and sync operations to licoup',
     () async {
       final captured = <List<String>>[];
       final agentService = AgentService(

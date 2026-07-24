@@ -1,15 +1,15 @@
-import 'package:flutter_client/src/contracts/presentation/layout_environment.dart';
-import 'package:flutter_client/src/contracts/presentation/layout_profile.dart';
-import 'package:flutter_client/src/contracts/presentation/layout_state_namespace.dart';
-import 'package:flutter_client/src/contracts/presentation/semantic_destination.dart';
-import 'package:flutter_client/src/frontend/layout/layout_surface_bundle.dart';
-import 'package:flutter_client/src/frontend/layout/profiles/native/mobile/destinations/native_agents_destination.dart';
-import 'package:flutter_client/src/frontend/layout/profiles/native/mobile/destinations/native_pairing_destination.dart';
-import 'package:flutter_client/src/frontend/layout/profiles/native/mobile/destinations/native_settings_destination.dart';
-import 'package:flutter_client/src/frontend/layout/profiles/native/mobile/native_mobile_components.dart';
-import 'package:flutter_client/src/frontend/layout/profiles/native/mobile/native_mobile_preview.dart';
-import 'package:flutter_client/src/frontend/layout/profiles/native/mobile/native_mobile_shell.dart';
-import 'package:flutter_client/src/frontend/layout/profiles/native/mobile/native_mobile_tokens.dart';
+import 'package:licoup/src/contracts/presentation/layout_environment.dart';
+import 'package:licoup/src/contracts/presentation/layout_profile.dart';
+import 'package:licoup/src/contracts/presentation/layout_state_namespace.dart';
+import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
+import 'package:licoup/src/frontend/layout/layout_surface_bundle.dart';
+import 'package:licoup/src/frontend/layout/profiles/native/mobile/destinations/native_agents_destination.dart';
+import 'package:licoup/src/frontend/layout/profiles/native/mobile/destinations/native_pairing_destination.dart';
+import 'package:licoup/src/frontend/layout/profiles/native/mobile/destinations/native_settings_destination.dart';
+import 'package:licoup/src/frontend/layout/profiles/native/mobile/native_mobile_components.dart';
+import 'package:licoup/src/frontend/layout/profiles/native/mobile/native_mobile_preview.dart';
+import 'package:licoup/src/frontend/layout/profiles/native/mobile/native_mobile_shell.dart';
+import 'package:licoup/src/frontend/layout/profiles/native/mobile/native_mobile_tokens.dart';
 
 /// The sole immutable entry point for the Native mobile renderer.
 final LayoutSurfaceBundle nativeMobileBundle = LayoutSurfaceBundle(

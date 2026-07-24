@@ -1,14 +1,14 @@
 {
   "schemaVersion": "v0.0.1:client-desktop:packaging-modules-1",
-  "description": "Lico Arc desktop client packaging. Modules are organized by runtime function.",
-  "packageProfile": "lico-client",
+  "description": "LicoUp desktop client packaging. Modules are organized by runtime function.",
+  "packageProfile": "licoup",
   "bundle": {
     "moduleResourceDirectory": "modules",
-    "manifestPath": "package-metadata/lico-client/packaging-modules.json"
+    "manifestPath": "package-metadata/licoup/packaging-modules.json"
   },
   "modules": {
     "portable-data": {
-      "label": "LicoArc client local settings, agent discovery cache, encrypted pairing state, skills, usage, activity, and conversation snapshots",
+      "label": "LicoUp client local settings, agent discovery cache, encrypted pairing state, skills, usage, activity, and conversation snapshots",
       "category": "storage",
       "enabled": true,
       "required": true,
@@ -19,15 +19,15 @@
       ],
       "packaging": "portable-data",
       "portableDirectories": [
-        "lico-client",
-        "lico-client/settings",
-        "lico-client/targets",
-        "lico-client/pairings",
-        "lico-client/skills",
-        "lico-client/pins",
-        "lico-client/mobile-relay",
-        "lico-client/activity",
-        "lico-client/snapshots"
+        "licoup",
+        "licoup/settings",
+        "licoup/targets",
+        "licoup/pairings",
+        "licoup/skills",
+        "licoup/pins",
+        "licoup/mobile-relay",
+        "licoup/activity",
+        "licoup/snapshots"
       ]
     },
     "target-adapters": {
@@ -138,7 +138,7 @@
       ]
     },
     "settings": {
-      "label": "LicoArc client settings store",
+      "label": "LicoUp client settings store",
       "category": "settings",
       "enabled": true,
       "required": true,
@@ -181,7 +181,7 @@
       ],
       "runtimeToggle": true,
       "stateDirectories": [
-        "lico-client/routing"
+        "licoup/routing"
       ],
       "settingsKeys": [
         "routing.enabled",
@@ -189,7 +189,7 @@
       ]
     },
     "native-sidecar": {
-      "label": "Rust LicoArc client CLI sidecar",
+      "label": "Rust LicoUp client CLI sidecar",
       "category": "core",
       "enabled": true,
       "required": true,
@@ -199,10 +199,10 @@
         "windows"
       ],
       "packaging": "sidecar-binary",
-      "cargoBin": "lico-client"
+      "cargoBin": "licoup"
     },
     "codex-orchestration-mcp": {
-      "label": "Lico Arc local Codex MCP control plane",
+      "label": "LicoUp local Codex MCP control plane",
       "category": "agents",
       "enabled": true,
       "required": true,
@@ -217,7 +217,7 @@
       ]
     },
     "codex-orchestration-plugin": {
-      "label": "Lico Arc Codex plugin bundle",
+      "label": "LicoUp Codex plugin bundle",
       "category": "agents",
       "enabled": true,
       "required": true,
@@ -227,7 +227,7 @@
       ],
       "packaging": "module-resources",
       "includePaths": [
-        "plugins/lico-arc-codex"
+        "plugins/lico-up-codex"
       ],
       "requires": [
         "codex-orchestration-mcp"

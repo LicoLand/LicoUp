@@ -1,8 +1,8 @@
 import 'package:flutter/foundation.dart';
 
-import 'package:flutter_client/src/application/localization/client_application_strings.dart';
-import 'package:flutter_client/src/contracts/appearance/appearance_preset_config.dart';
-import 'package:flutter_client/src/contracts/locale_preferences.dart';
+import 'package:licoup/src/application/localization/client_application_strings.dart';
+import 'package:licoup/src/contracts/appearance/appearance_preset_config.dart';
+import 'package:licoup/src/contracts/locale_preferences.dart';
 
 /// Owns global presentation and localized status state. Feature controllers
 /// report stable codes and messages; they do not mutate shell fields directly.
@@ -14,7 +14,7 @@ final class ClientShellController extends ChangeNotifier {
     String localePreference = LocalePreference.system,
     String statusMessageChinese = '等待扫描目标适配器。',
     String statusMessageEnglish = 'Waiting to scan target adapters.',
-    String statusCaption = 'LicoArc client',
+    String statusCaption = 'LicoUp client',
   }) : _appearancePresetId = appearancePresetId,
        _appearancePresetConfigs = List.unmodifiable(appearancePresetConfigs),
        _localePreference = LocalePreference.normalize(localePreference),

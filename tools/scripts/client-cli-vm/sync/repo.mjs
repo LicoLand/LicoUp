@@ -16,7 +16,7 @@ export const repoSyncExcludes = Object.freeze([
 ]);
 
 export function syncRepoToVm(distro) {
-  runSsh(distro, 'mkdir -p "$HOME/lico-arc"');
+  runSsh(distro, 'mkdir -p "$HOME/lico-up"');
   run("rsync", [
     "-az",
     "--delete",
@@ -24,6 +24,6 @@ export function syncRepoToVm(distro) {
     "-e",
     sshRsyncCommand(distro),
     `${repoRoot}/`,
-    `${vmUser}@127.0.0.1:~/lico-arc/`,
+    `${vmUser}@127.0.0.1:~/lico-up/`,
   ]);
 }

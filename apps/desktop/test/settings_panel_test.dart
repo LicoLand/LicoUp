@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
-import 'package:flutter_client/src/contracts/locale_preferences.dart';
-import 'package:flutter_client/src/application/controller/client_controller.dart';
-import 'package:flutter_client/src/frontend/l10n/lico_strings.dart';
-import 'package:flutter_client/src/frontend/shared/ui/panel_frame.dart';
-import 'package:flutter_client/src/frontend/features/settings/ui/settings_panel.dart';
-import 'package:flutter_client/src/frontend/shared/ui/theme.dart';
+import 'package:licoup/src/contracts/locale_preferences.dart';
+import 'package:licoup/src/application/controller/client_controller.dart';
+import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/shared/ui/panel_frame.dart';
+import 'package:licoup/src/frontend/features/settings/ui/settings_panel.dart';
+import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'fixtures/client_controller/support/fake_agent_service.dart';
@@ -63,10 +63,10 @@ void main() {
     final controller = ClientController(agentService: FakeAgentService());
     addTearDown(controller.dispose);
     controller.snapshotRootController.text =
-        'test-data/lico-arc/native-conversation-snapshots';
+        'test-data/lico-up/native-conversation-snapshots';
     controller.conversationArchiveResult = {
       'documentCount': 729,
-      'archiveRoot': 'test-data/lico-arc/native-conversation-snapshots',
+      'archiveRoot': 'test-data/lico-up/native-conversation-snapshots',
     };
 
     await tester.pumpWidget(
@@ -112,7 +112,7 @@ void main() {
     expect(find.text('Conversation Archive Directory'), findsOneWidget);
     expect(find.text('default'), findsNothing);
     expect(
-      find.text('test-data/lico-arc/native-conversation-snapshots'),
+      find.text('test-data/lico-up/native-conversation-snapshots'),
       findsWidgets,
     );
     expect(find.text('Open'), findsNothing);

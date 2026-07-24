@@ -20,7 +20,7 @@ for (let index = 0; index < args.length; index += 1) {
 }
 
 if (args.includes("llvm-cov")) {
-  mkdirSync(path.join(repoRoot, "build", "coverage", "crates", "lico-client-native"), { recursive: true });
+  mkdirSync(path.join(repoRoot, "build", "coverage", "crates", "licoup-native"), { recursive: true });
 }
 
 const lease = acquireTestArtifactLease({

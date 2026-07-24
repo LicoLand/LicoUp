@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 
-import 'package:flutter_client/src/application/features/agents/orchestration/orchestration_policy_editor_models.dart';
-import 'package:flutter_client/src/application/features/agents/orchestration/orchestration_target_catalog.dart';
-import 'package:flutter_client/src/contracts/target_candidate.dart';
-import 'package:flutter_client/src/frontend/features/agents/ui/agent_conversation_display_names.dart';
-import 'package:flutter_client/src/frontend/l10n/lico_strings.dart';
-import 'package:flutter_client/src/frontend/shared/ui/agent_brand_icon.dart';
-import 'package:flutter_client/src/frontend/shared/ui/apple_popup_select.dart';
-import 'package:flutter_client/src/frontend/shared/ui/theme.dart';
+import 'package:licoup/src/application/features/agents/orchestration/orchestration_policy_editor_models.dart';
+import 'package:licoup/src/application/features/agents/orchestration/orchestration_target_catalog.dart';
+import 'package:licoup/src/contracts/target_candidate.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_display_names.dart';
+import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/shared/ui/agent_brand_icon.dart';
+import 'package:licoup/src/frontend/shared/ui/apple_popup_select.dart';
+import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 final class AgentOrchestrationModelLibraryPolicyCard extends StatefulWidget {
   const AgentOrchestrationModelLibraryPolicyCard({

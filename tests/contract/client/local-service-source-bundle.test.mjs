@@ -5,7 +5,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = path.resolve(fileURLToPath(new URL("../../..", import.meta.url)));
-const root = "crates/lico-client-native/src/platform/local_service";
+const root = "crates/licoup-native/src/platform/local_service";
 const facadePath = `${root}.rs`;
 const productionLeaves = Object.freeze([
   "bounds.rs",

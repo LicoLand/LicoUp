@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:flutter_client/src/platform/storage/portable_data_root.dart';
+import 'package:licoup/src/platform/storage/portable_data_root.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -31,7 +31,7 @@ void main() {
     final manifest = await portableData.loadWorkspaceManifest();
 
     expect(manifest.workspaceId, 'workspace-test-id');
-    expect(manifest.appId, ClientWorkspaceManifest.licoArcAppId);
+    expect(manifest.appId, ClientWorkspaceManifest.licoUpAppId);
     expect(manifest.updatedAt, isNot(manifest.createdAt));
   });
 

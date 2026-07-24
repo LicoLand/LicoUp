@@ -1,4 +1,4 @@
-import 'package:flutter_client/src/contracts/agent_conversation_models.dart';
+import 'package:licoup/src/contracts/agent_conversation_models.dart';
 
 sealed class ConversationTimelineItem {
   const ConversationTimelineItem(this.storageKey);

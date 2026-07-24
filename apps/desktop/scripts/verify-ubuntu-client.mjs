@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 
 const workspaceRoot = path.resolve(fileURLToPath(new URL("../../..", import.meta.url)));
 const dockerfile = path.join(workspaceRoot, "apps", "desktop", "docker", "ubuntu-client.Dockerfile");
-const image = process.env.LICO_UBUNTU_IMAGE || "lico-client-ubuntu:local";
+const image = process.env.LICO_UBUNTU_IMAGE || "licoup-ubuntu:local";
 const platform = process.env.LICO_UBUNTU_PLATFORM || "linux/amd64";
 const guiArtifactDir = path.join(workspaceRoot, "build", "artifacts", "ubuntu-desktop-client");
 const containerRoot = path.posix.sep;
@@ -49,7 +49,7 @@ function main() {
       "--exclude=node_modules",
       "--exclude=build",
       "--exclude=tests/fixtures",
-      "--exclude=crates/lico-client-native/target",
+      "--exclude=crates/licoup-native/target",
       "--exclude=apps/desktop/.dart_tool",
       "--exclude=apps/desktop/build",
       "-cf -",
@@ -91,7 +91,7 @@ function main() {
     "--mount",
     `type=volume,src=lico-ubuntu-cargo-git,dst=${path.posix.join(containerAdminHome, ".cargo", "git")}`,
     "--mount",
-    `type=volume,src=lico-ubuntu-cargo-target,dst=${path.posix.join(containerWorkspace, "build", "crates", "lico-client-native", "target")}`,
+    `type=volume,src=lico-ubuntu-cargo-target,dst=${path.posix.join(containerWorkspace, "build", "crates", "licoup-native", "target")}`,
     "--mount",
     `type=bind,src=${guiArtifactDir},dst=${containerArtifacts}`,
     "-w",

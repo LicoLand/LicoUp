@@ -1,15 +1,15 @@
-import 'package:flutter_client/src/contracts/presentation/layout_environment.dart';
-import 'package:flutter_client/src/contracts/presentation/layout_profile.dart';
-import 'package:flutter_client/src/contracts/presentation/layout_state_namespace.dart';
-import 'package:flutter_client/src/contracts/presentation/semantic_destination.dart';
-import 'package:flutter_client/src/frontend/layout/layout_surface_bundle.dart';
-import 'package:flutter_client/src/frontend/layout/profiles/bubble/mobile/destinations/bubble_agents_destination.dart';
-import 'package:flutter_client/src/frontend/layout/profiles/bubble/mobile/destinations/bubble_pairing_destination.dart';
-import 'package:flutter_client/src/frontend/layout/profiles/bubble/mobile/destinations/bubble_settings_destination.dart';
-import 'package:flutter_client/src/frontend/layout/profiles/bubble/mobile/bubble_mobile_components.dart';
-import 'package:flutter_client/src/frontend/layout/profiles/bubble/mobile/bubble_mobile_preview.dart';
-import 'package:flutter_client/src/frontend/layout/profiles/bubble/mobile/bubble_mobile_shell.dart';
-import 'package:flutter_client/src/frontend/layout/profiles/bubble/mobile/bubble_mobile_tokens.dart';
+import 'package:licoup/src/contracts/presentation/layout_environment.dart';
+import 'package:licoup/src/contracts/presentation/layout_profile.dart';
+import 'package:licoup/src/contracts/presentation/layout_state_namespace.dart';
+import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
+import 'package:licoup/src/frontend/layout/layout_surface_bundle.dart';
+import 'package:licoup/src/frontend/layout/profiles/bubble/mobile/destinations/bubble_agents_destination.dart';
+import 'package:licoup/src/frontend/layout/profiles/bubble/mobile/destinations/bubble_pairing_destination.dart';
+import 'package:licoup/src/frontend/layout/profiles/bubble/mobile/destinations/bubble_settings_destination.dart';
+import 'package:licoup/src/frontend/layout/profiles/bubble/mobile/bubble_mobile_components.dart';
+import 'package:licoup/src/frontend/layout/profiles/bubble/mobile/bubble_mobile_preview.dart';
+import 'package:licoup/src/frontend/layout/profiles/bubble/mobile/bubble_mobile_shell.dart';
+import 'package:licoup/src/frontend/layout/profiles/bubble/mobile/bubble_mobile_tokens.dart';
 
 /// The sole immutable entry point for the Bubble mobile renderer.
 final LayoutSurfaceBundle bubbleMobileBundle = LayoutSurfaceBundle(

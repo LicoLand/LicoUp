@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
-import 'package:flutter_client/src/application/features/catalog_convergence/controller/catalog_convergence_controller.dart';
-import 'package:flutter_client/src/contracts/catalog_convergence/catalog_convergence_gateway.dart';
-import 'package:flutter_client/src/contracts/catalog_convergence/catalog_convergence_models.dart';
-import 'package:flutter_client/src/frontend/features/settings/ui/catalog_convergence_status_card.dart';
-import 'package:flutter_client/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/application/features/catalog_convergence/controller/catalog_convergence_controller.dart';
+import 'package:licoup/src/contracts/catalog_convergence/catalog_convergence_gateway.dart';
+import 'package:licoup/src/contracts/catalog_convergence/catalog_convergence_models.dart';
+import 'package:licoup/src/frontend/features/settings/ui/catalog_convergence_status_card.dart';
+import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

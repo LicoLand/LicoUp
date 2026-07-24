@@ -13,26 +13,26 @@ const platformSecretStoreMatrixConfigHelper =
   await readText("tools/scripts/lib/secure-mesh-platform-secret-store-matrix-config.mjs");
 const secureMeshSecretStoreRustSource =
   await readSourceBundle(
-    "crates/lico-client-native/src/platform/secure_mesh_secret_store.rs",
-    "crates/lico-client-native/src/platform/secure_mesh_secret_store",
+    "crates/licoup-native/src/platform/secure_mesh_secret_store.rs",
+    "crates/licoup-native/src/platform/secure_mesh_secret_store",
     ".rs",
   );
 const secureMeshSecretStoreCoreRustSource =
   await readSourceBundle(
-    "crates/lico-client-native/src/core/secure_mesh_secret_store.rs",
-    "crates/lico-client-native/src/core/secure_mesh_secret_store",
+    "crates/licoup-native/src/core/secure_mesh_secret_store.rs",
+    "crates/licoup-native/src/core/secure_mesh_secret_store",
     ".rs",
   );
 const mobileRelayPairwiseRustSource =
   await readSourceBundle(
-    "crates/lico-client-native/src/domain/mobile_relay.rs",
-    "crates/lico-client-native/src/domain/mobile_relay",
+    "crates/licoup-native/src/domain/mobile_relay.rs",
+    "crates/licoup-native/src/domain/mobile_relay",
     ".rs",
   );
 const mobileRelaySecretCustodyRustSource =
   await readSourceBundle(
-    "crates/lico-client-native/src/domain/mobile_relay/secret_custody.rs",
-    "crates/lico-client-native/src/domain/mobile_relay/secret_custody",
+    "crates/licoup-native/src/domain/mobile_relay/secret_custody.rs",
+    "crates/licoup-native/src/domain/mobile_relay/secret_custody",
     ".rs",
   );
 for (const token of [

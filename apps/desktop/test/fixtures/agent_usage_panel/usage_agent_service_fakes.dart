@@ -1,8 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:flutter_client/src/contracts/agent_usage_models.dart';
-import 'package:flutter_client/src/platform/native_client/agent_service.dart';
+import 'package:licoup/src/contracts/agent_usage_models.dart';
+import 'package:licoup/src/platform/native_client/agent_service.dart';
 
 class UsageAgentService extends AgentService {
   UsageAgentService({String? reportGeneratedAt})

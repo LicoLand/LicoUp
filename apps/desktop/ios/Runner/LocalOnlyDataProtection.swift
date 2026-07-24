@@ -4,7 +4,7 @@ import Foundation
 /// The root exclusion remains effective for atomic descendants; native writers
 /// additionally reapply and verify the item flag after every replacement.
 enum LocalOnlyDataProtection {
-  static let productDirectoryName = "LicoArc"
+  static let productDirectoryName = "LicoUp"
   static let portableDataDirectoryName = "portable-data"
   static let secureMeshDirectoryName = "secure-mesh"
 

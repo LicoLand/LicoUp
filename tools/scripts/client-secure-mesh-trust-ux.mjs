@@ -112,7 +112,7 @@ async function productControllerDirectSealGap() {
 function runNativeTest(filter) {
   return runCargoTestFilter({
     repoRoot,
-    manifestPath: "crates/lico-client-native/Cargo.toml",
+    manifestPath: "crates/licoup-native/Cargo.toml",
     filter,
     sanitizeError
   });
@@ -158,7 +158,7 @@ function runProductTests(targets) {
 
 async function mobileNativeTrustActionGap() {
   const source = await readText(
-    "crates/lico-client-native/src/ffi/secure_mesh_mobile_ffi/action_catalog.rs"
+    "crates/licoup-native/src/ffi/secure_mesh_mobile_ffi/action_catalog.rs"
   );
   const presentActions = expectedMobileNativeTrustActions.filter((action) => source.includes(action));
   return {

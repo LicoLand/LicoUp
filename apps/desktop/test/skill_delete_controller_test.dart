@@ -1,6 +1,6 @@
-import 'package:flutter_client/src/application/features/skill_hub/controller/skill_delete_controller.dart';
-import 'package:flutter_client/src/application/features/skill_hub/services/skill_delete_service.dart';
-import 'package:flutter_client/src/contracts/skill_delete.dart';
+import 'package:licoup/src/application/features/skill_hub/controller/skill_delete_controller.dart';
+import 'package:licoup/src/application/features/skill_hub/services/skill_delete_service.dart';
+import 'package:licoup/src/contracts/skill_delete.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

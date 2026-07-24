@@ -23,34 +23,34 @@ if (typeof productVersion !== "string" || productVersion.length === 0) {
 const targetSpecs = {
   "macos-arm64": {
     platform: "macos-arm64",
-    artifact: "LicoArc-macos-arm64.zip",
-    files: ["LicoArc-macos-arm64.zip", "LicoArc-macos-arm64.zip.sha256"],
-    checksum: "LicoArc-macos-arm64.zip.sha256",
+    artifact: "LicoUp-macos-arm64.zip",
+    files: ["LicoUp-macos-arm64.zip", "LicoUp-macos-arm64.zip.sha256"],
+    checksum: "LicoUp-macos-arm64.zip.sha256",
   },
   "linux-glibc-arm64": {
     platform: "linux-glibc-arm64",
-    artifact: "LicoArc-linux-arm64.tar.gz",
+    artifact: "LicoUp-linux-arm64.tar.gz",
     files: [
-      "LicoArc-linux-arm64.tar.gz",
-      "LicoArc-linux-arm64.tar.gz.sha256",
-      "LicoArc-linux-arm64.tar.gz.sig",
+      "LicoUp-linux-arm64.tar.gz",
+      "LicoUp-linux-arm64.tar.gz.sha256",
+      "LicoUp-linux-arm64.tar.gz.sig",
       "linux-release-verification-key.pem",
     ],
-    checksum: "LicoArc-linux-arm64.tar.gz.sha256",
-    signature: "LicoArc-linux-arm64.tar.gz.sig",
+    checksum: "LicoUp-linux-arm64.tar.gz.sha256",
+    signature: "LicoUp-linux-arm64.tar.gz.sig",
     verificationKey: "linux-release-verification-key.pem",
     verificationAlgorithm: "Ed25519",
     keyId: "linux-vm-acceptance",
   },
   "android-arm64": {
     platform: "android-arm64",
-    artifact: "LicoArc-android-arm64.apk",
+    artifact: "LicoUp-android-arm64.apk",
     files: [
-      "LicoArc-android-arm64.apk",
-      "LicoArc-android-arm64.apk.sha256",
+      "LicoUp-android-arm64.apk",
+      "LicoUp-android-arm64.apk.sha256",
       "lico-github-artifact.pem",
     ],
-    checksum: "LicoArc-android-arm64.apk.sha256",
+    checksum: "LicoUp-android-arm64.apk.sha256",
     verificationKey: "lico-github-artifact.pem",
     verificationAlgorithm: "APK Signature Scheme v2+",
   },
@@ -90,7 +90,7 @@ const args = parseArgs(process.argv.slice(2));
 const assetsRoot = realpathSync(path.resolve(repoRoot, args.assets || ""));
 const requestedOutputPath = path.resolve(repoRoot, args.output || "");
 if (realpathSync(path.dirname(requestedOutputPath)) !== assetsRoot ||
-  path.basename(requestedOutputPath) !== "LicoArc-consumer-verification.json") {
+  path.basename(requestedOutputPath) !== "LicoUp-consumer-verification.json") {
   fail("manifest must be written beside release assets");
 }
 const outputPath = path.join(assetsRoot, path.basename(requestedOutputPath));
@@ -170,7 +170,7 @@ const artifacts = selectedIds.sort().map((id) => {
 
 const manifest = {
   schemaVersion: "licomesh.consumer-verification-manifest.v1",
-  artifactName: "LicoArc",
+  artifactName: "LicoUp",
   releaseTag: args.tag,
   artifacts,
 };

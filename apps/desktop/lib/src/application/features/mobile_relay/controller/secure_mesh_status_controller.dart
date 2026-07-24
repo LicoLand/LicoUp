@@ -1,9 +1,9 @@
 import 'package:flutter/foundation.dart';
 
-import 'package:flutter_client/src/application/features/mobile_relay/controller/secure_mesh_controller_support.dart';
-import 'package:flutter_client/src/application/features/mobile_relay/policy/secure_mesh_policy.dart';
-import 'package:flutter_client/src/contracts/mobile_relay_control.dart';
-import 'package:flutter_client/src/contracts/generated/secure_mesh.g.dart';
+import 'package:licoup/src/application/features/mobile_relay/controller/secure_mesh_controller_support.dart';
+import 'package:licoup/src/application/features/mobile_relay/policy/secure_mesh_policy.dart';
+import 'package:licoup/src/contracts/mobile_relay_control.dart';
+import 'package:licoup/src/contracts/generated/secure_mesh.g.dart';
 
 /// Owns Secure Mesh runtime status, capability projection, and device trust.
 final class SecureMeshStatusController extends ChangeNotifier {

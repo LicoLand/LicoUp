@@ -3,9 +3,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
 
-import 'package:flutter_client/src/application/features/agents/agent_product_names.dart';
-import 'package:flutter_client/src/frontend/l10n/lico_strings.dart';
-import 'package:flutter_client/src/frontend/shared/ui/directory_path_field.dart';
+import 'package:licoup/src/application/features/agents/agent_product_names.dart';
+import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/shared/ui/directory_path_field.dart';
 
 class ManualTargetDraft {
   const ManualTargetDraft({

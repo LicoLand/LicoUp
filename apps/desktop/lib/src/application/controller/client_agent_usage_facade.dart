@@ -1,5 +1,5 @@
-import 'package:flutter_client/src/application/features/agents/controller/agent_usage_controller.dart';
-import 'package:flutter_client/src/contracts/agent_usage_models.dart';
+import 'package:licoup/src/application/features/agents/controller/agent_usage_controller.dart';
+import 'package:licoup/src/contracts/agent_usage_models.dart';
 
 mixin ClientAgentUsageFacade {
   AgentUsageController get agentUsageController;

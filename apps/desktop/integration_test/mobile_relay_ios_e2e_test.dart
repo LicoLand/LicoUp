@@ -1,8 +1,8 @@
 import 'dart:convert';
 
 import 'package:flutter/widgets.dart';
-import 'package:flutter_client/app.dart';
-import 'package:flutter_client/src/platform/secure_mesh/secure_mesh_ios_bridge.dart';
+import 'package:licoup/app.dart';
+import 'package:licoup/src/platform/secure_mesh/secure_mesh_ios_bridge.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 
@@ -19,7 +19,7 @@ void main() {
     const inviteB64 = String.fromEnvironment('LICO_IOS_RELAY_INVITE_B64');
     const mobileDeviceName = String.fromEnvironment(
       'LICO_IOS_MOBILE_DEVICE_NAME',
-      defaultValue: 'Lico Arc iOS',
+      defaultValue: 'LicoUp iOS',
     );
     const timeoutSeconds = int.fromEnvironment(
       'LICO_IOS_RESULT_TIMEOUT_SECONDS',

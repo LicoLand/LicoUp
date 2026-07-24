@@ -2,9 +2,9 @@
   "schemaVersion": "licomesh.secure-mesh.acp-relay-governed-baseline-config.v2",
   "reportOutput": "build/reports/secure-mesh-acp-relay-governed-baseline.json",
   "ownership": {
-    "acpRelayGovernance": "core",
+    "acpRelayGovernance": "tower",
     "secureMeshAcpEnvelope": "client",
-    "note": "LicoArc release acceptance verifies the Secure Mesh ACP envelope and archive boundary locally. External relay governance evidence is reported by the selected gateway support matrix and does not block a client-only interoperability release."
+    "note": "LicoUp release acceptance verifies the Secure Mesh ACP envelope and archive boundary locally. LicoTower relay governance evidence is reported by the selected gateway support matrix and does not block a client-only interoperability release."
   },
   "externalGatewayEvidence": {
     "pathEnvKeys": [
@@ -18,8 +18,8 @@
     {
       "id": "client-acp-envelope-aad-and-taxonomy",
       "files": [
-        "crates/lico-client-native/src/core/secure_mesh_acp.rs",
-        "crates/lico-client-native/src/core/secure_mesh_acp/tests/mod.rs"
+        "crates/licoup-native/src/core/secure_mesh_acp.rs",
+        "crates/licoup-native/src/core/secure_mesh_acp/tests/mod.rs"
       ],
       "tokens": [
         "encode_acp_envelope_aad",

@@ -26,7 +26,7 @@ export async function checkIosSecureMesh(context) {
     "apps/desktop/ios/Runner/SecureMeshIosBridge+LocalAuth.swift"
   ]);
   const secureMeshIosBridgeHeaderSource = await readText("apps/desktop/ios/Runner/Runner-Bridging-Header.h");
-  const secureMeshIosFfiSource = await readText("crates/lico-client-native/src/ffi/ios_ffi.rs");
+  const secureMeshIosFfiSource = await readText("crates/licoup-native/src/ffi/ios_ffi.rs");
   const iosXcodeProjectSource = await readText("apps/desktop/ios/Runner.xcodeproj/project.pbxproj");
   const iosRunnerSchemeSource = await readText(
     "apps/desktop/ios/Runner.xcodeproj/xcshareddata/xcschemes/Runner.xcscheme"
@@ -41,8 +41,8 @@ export async function checkIosSecureMesh(context) {
   const iosRelayVerifierSource = iosRelayIntegrationTestSource;
   assert(secureMeshIosBridgeSource.includes("native_c_abi_in_process_secret_callback") &&
     secureMeshIosBridgeSource.includes("rust_secure_mesh_secret_store_handle_v1") &&
-    secureMeshIosBridgeSource.includes("app.licoarc.mobile-relay.secret-store.v2") &&
-    !secureMeshIosBridgeSource.includes("app.licoarc.mobile-relay.secret-store.v1") &&
+    secureMeshIosBridgeSource.includes("land.lico.licoup.mobile-relay.secret-store.v2") &&
+    !secureMeshIosBridgeSource.includes("land.lico.licoup.mobile-relay.secret-store.v1") &&
     secureMeshIosBridgeSource.includes("lico_secure_mesh_json_with_secret_store") &&
       secureMeshIosBridgeSource.includes("LicoSecureMeshSecretStoreCallbacks") &&
       secureMeshIosBridgeSource.includes("SecureMeshIosSecretStoreCallbackContext") &&

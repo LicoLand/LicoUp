@@ -1,6 +1,6 @@
-import 'package:flutter_client/src/application/features/settings/controller/optional_collaboration_controller_context.dart';
-import 'package:flutter_client/src/application/features/settings/controller/optional_collaboration_plugin_binding.dart';
-import 'package:flutter_client/src/contracts/optional_collaboration_models.dart';
+import 'package:licoup/src/application/features/settings/controller/optional_collaboration_controller_context.dart';
+import 'package:licoup/src/application/features/settings/controller/optional_collaboration_plugin_binding.dart';
+import 'package:licoup/src/contracts/optional_collaboration_models.dart';
 
 final class OptionalCollaborationLifecycleActions {
   const OptionalCollaborationLifecycleActions(this.context);

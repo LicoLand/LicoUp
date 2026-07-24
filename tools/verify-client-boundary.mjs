@@ -68,7 +68,7 @@ const forbiddenPathParts = [
   "apps/desktop/macos/Flutter/ephemeral",
   "apps/desktop/macos/Pods",
   "apps/desktop/windows/flutter/ephemeral",
-  "crates/lico-client-native/target",
+  "crates/licoup-native/target",
   "docs/plan",
   "scripts/local",
   "skills",
@@ -128,33 +128,33 @@ const flutterLayerImportRules = [
   {
     root: `${flutterSrcRoot}/frontend`,
     forbiddenTokens: [
-      "package:flutter_client/src/backend/",
-      "package:flutter_client/src/platform/"
+      "package:licoup/src/backend/",
+      "package:licoup/src/platform/"
     ],
     message: "frontend must depend on application/contracts/l10n, not backend or platform implementations"
   },
   {
     root: `${flutterSrcRoot}/backend`,
     forbiddenTokens: [
-      "package:flutter_client/src/frontend/",
-      "package:flutter_client/src/platform/"
+      "package:licoup/src/frontend/",
+      "package:licoup/src/platform/"
     ],
     message: "backend must not import frontend UI or platform implementation code"
   },
   {
     root: `${flutterSrcRoot}/platform`,
     forbiddenTokens: [
-      "package:flutter_client/src/frontend/",
-      "package:flutter_client/src/backend/"
+      "package:licoup/src/frontend/",
+      "package:licoup/src/backend/"
     ],
     message: "platform bridge code must not import frontend UI or backend implementation code"
   },
   {
     root: `${flutterSrcRoot}/contracts`,
     forbiddenTokens: [
-      "package:flutter_client/src/frontend/",
-      "package:flutter_client/src/backend/",
-      "package:flutter_client/src/platform/"
+      "package:licoup/src/frontend/",
+      "package:licoup/src/backend/",
+      "package:licoup/src/platform/"
     ],
     message: "contracts must not import implementation layers"
   }
@@ -566,12 +566,12 @@ if (!licenseText.includes("GNU GENERAL PUBLIC LICENSE") ||
   addFailure("OPEN_SOURCE_LICENSE_TEXT_INVALID", "LICENSE", "GPL-3.0-or-later text missing");
 }
 
-const cargoToml = await readFile(path.join(repoRoot, "crates/lico-client-native/Cargo.toml"), "utf8");
+const cargoToml = await readFile(path.join(repoRoot, "crates/licoup-native/Cargo.toml"), "utf8");
 if (!cargoToml.includes("publish = false")) {
-  addFailure("CARGO_PUBLISH_FLAG_INVALID", "crates/lico-client-native/Cargo.toml", cargoToml);
+  addFailure("CARGO_PUBLISH_FLAG_INVALID", "crates/licoup-native/Cargo.toml", cargoToml);
 }
 if (!cargoToml.includes("license.workspace = true")) {
-  addFailure("CARGO_LICENSE_METADATA_INVALID", "crates/lico-client-native/Cargo.toml", cargoToml);
+  addFailure("CARGO_LICENSE_METADATA_INVALID", "crates/licoup-native/Cargo.toml", cargoToml);
 }
 const workspaceCargoToml = await readFile(path.join(repoRoot, "Cargo.toml"), "utf8");
 if (!workspaceCargoToml.includes('license = "GPL-3.0-or-later"')) {

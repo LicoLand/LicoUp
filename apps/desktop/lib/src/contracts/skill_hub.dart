@@ -1,4 +1,4 @@
-import 'package:flutter_client/src/contracts/skill_hub_preferences.dart';
+import 'package:licoup/src/contracts/skill_hub_preferences.dart';
 
 /// Narrow native boundary for pairing, catalog, and installation flows.
 abstract interface class SkillHubGateway {

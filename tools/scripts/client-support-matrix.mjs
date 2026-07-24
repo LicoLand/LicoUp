@@ -10,14 +10,14 @@ const catalogPath = path.join(repoRoot, "tools", "client-support-matrix.json");
 const driverInventoryPath = path.join(
   repoRoot,
   "crates",
-  "lico-client-native",
+  "licoup-native",
   "resources",
   "agent-conversation-drivers.json",
 );
 const driverReadinessPath = path.join(
   repoRoot,
   "crates",
-  "lico-client-native",
+  "licoup-native",
   "resources",
   "agent-conversation-readiness.json",
 );
@@ -36,7 +36,7 @@ function readJson(filePath) {
 }
 
 export function validateClientSupportMatrix(raw) {
-  requireValue(raw?.schema === "licoarc.client-support-matrix", "unexpected client support matrix schema");
+  requireValue(raw?.schema === "licoup.client-support-matrix", "unexpected client support matrix schema");
   requireValue(Array.isArray(raw.services) && raw.services.length > 0, "support matrix services are empty");
   requireValue(Array.isArray(raw.targets) && raw.targets.length > 0, "support matrix targets are empty");
   const serviceIds = new Set();
@@ -152,13 +152,13 @@ function chineseYesNo(value) {
 function renderEnglishReport(validated, productVersion, drivers, readiness) {
   const targetById = new Map(validated.releaseCatalog.targets.map((target) => [target.id, target]));
   const lines = [
-    "# Lico Arc Compatibility",
+    "# LicoUp Compatibility",
     "",
     "English (normative) · [简体中文](COMPATIBILITY.zh-CN.md) · [Documentation](README.md) · [Project](../README.md)",
     "",
     `Product version: \`${productVersion}\``,
     "",
-    "Generated sources: `tools/client-support-matrix.json`, `tools/client-release-targets.json`, `tools/client-version.json`, `crates/lico-client-native/resources/agent-conversation-drivers.json`, and `crates/lico-client-native/resources/agent-conversation-readiness.json`.",
+    "Generated sources: `tools/client-support-matrix.json`, `tools/client-release-targets.json`, `tools/client-version.json`, `crates/licoup-native/resources/agent-conversation-drivers.json`, and `crates/licoup-native/resources/agent-conversation-readiness.json`.",
     "",
     "Update with `npm run client:support-matrix:sync`; verify with `npm run client:support-matrix:check`. Do not edit this projection by hand.",
     "",
@@ -209,13 +209,13 @@ function renderEnglishReport(validated, productVersion, drivers, readiness) {
 function renderChineseReport(validated, productVersion, drivers, readiness) {
   const targetById = new Map(validated.releaseCatalog.targets.map((target) => [target.id, target]));
   const lines = [
-    "# Lico Arc 兼容性",
+    "# LicoUp 兼容性",
     "",
     "[English（规范版本）](COMPATIBILITY.md) · 简体中文（本地化） · [文档索引](README.md) · [项目首页](../README.zh-CN.md)",
     "",
     `产品版本：\`${productVersion}\``,
     "",
-    "生成来源：`tools/client-support-matrix.json`、`tools/client-release-targets.json`、`tools/client-version.json`、`crates/lico-client-native/resources/agent-conversation-drivers.json` 和 `crates/lico-client-native/resources/agent-conversation-readiness.json`。",
+    "生成来源：`tools/client-support-matrix.json`、`tools/client-release-targets.json`、`tools/client-version.json`、`crates/licoup-native/resources/agent-conversation-drivers.json` 和 `crates/licoup-native/resources/agent-conversation-readiness.json`。",
     "",
     "使用 `npm run client:support-matrix:sync` 更新，使用 `npm run client:support-matrix:check` 验证。请勿手工维护本投影。",
     "",

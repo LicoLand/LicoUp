@@ -1,6 +1,6 @@
-import 'package:flutter_client/src/contracts/agent_conversation_models.dart';
-import 'package:flutter_client/src/contracts/mobile_home_layout.dart';
-import 'package:flutter_client/src/frontend/features/mobile_relay/ui/mobile_home_entry_ordering.dart';
+import 'package:licoup/src/contracts/agent_conversation_models.dart';
+import 'package:licoup/src/contracts/mobile_home_layout.dart';
+import 'package:licoup/src/frontend/features/mobile_relay/ui/mobile_home_entry_ordering.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

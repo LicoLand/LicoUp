@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import 'package:flutter_client/src/frontend/layout/profiles/workbench/desktop/workbench_desktop.dart';
+import 'package:licoup/src/frontend/layout/profiles/workbench/desktop/workbench_desktop.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import './workbench_desktop_test_harness.dart';

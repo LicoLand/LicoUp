@@ -8,7 +8,7 @@ const repoRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "../../..",
 );
-const driverRoot = "crates/lico-client-native/src/platform/pi_driver";
+const driverRoot = "crates/licoup-native/src/platform/pi_driver";
 
 const productionLeaves = Object.freeze([
   "errors.rs",

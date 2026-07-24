@@ -2,8 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-import 'package:flutter_client/src/application/features/catalog_convergence/controller/catalog_convergence_controller.dart';
-import 'package:flutter_client/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/application/features/catalog_convergence/controller/catalog_convergence_controller.dart';
+import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 
 final class CatalogConvergenceStatusCard extends StatelessWidget {
   const CatalogConvergenceStatusCard({super.key, required this.controller});

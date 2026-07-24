@@ -21,25 +21,25 @@ const buildRoot = path.join(repoRoot, "build");
 const digestPattern = /^[a-f0-9]{64}$/u;
 const specs = {
   "macos-arm64": {
-    artifact: "build/apps/desktop/distribution/macos/LicoArc-macos-arm64.zip",
-    checksum: "build/apps/desktop/distribution/macos/LicoArc-macos-arm64.zip.sha256",
+    artifact: "build/apps/desktop/distribution/macos/LicoUp-macos-arm64.zip",
+    checksum: "build/apps/desktop/distribution/macos/LicoUp-macos-arm64.zip.sha256",
     manifest: "build/apps/desktop/distribution/macos/manifest.json",
     platform: "macos",
     architecture: "arm64",
   },
   "android-arm64": {
     artifact: "build/apps/desktop/android/release/app-release.apk",
-    publishedArtifact: "build/apps/desktop/android/release/LicoArc-android-arm64.apk",
-    checksum: "build/apps/desktop/android/release/LicoArc-android-arm64.apk.sha256",
+    publishedArtifact: "build/apps/desktop/android/release/LicoUp-android-arm64.apk",
+    checksum: "build/apps/desktop/android/release/LicoUp-android-arm64.apk.sha256",
     manifest: "build/apps/desktop/android/release/build-manifest.json",
     publicKey: "build/apps/desktop/android/release/lico-github-artifact.pem",
     platform: "android",
     architecture: "arm64-v8a",
   },
   "linux-glibc-arm64": {
-    artifact: "build/apps/desktop/distribution/linux-arm64/LicoArc-linux-arm64.tar.gz",
-    checksum: "build/apps/desktop/distribution/linux-arm64/LicoArc-linux-arm64.tar.gz.sha256",
-    signature: "build/apps/desktop/distribution/linux-arm64/LicoArc-linux-arm64.tar.gz.sig",
+    artifact: "build/apps/desktop/distribution/linux-arm64/LicoUp-linux-arm64.tar.gz",
+    checksum: "build/apps/desktop/distribution/linux-arm64/LicoUp-linux-arm64.tar.gz.sha256",
+    signature: "build/apps/desktop/distribution/linux-arm64/LicoUp-linux-arm64.tar.gz.sig",
     publicKey: "build/apps/desktop/distribution/linux-arm64/linux-release-verification-key.pem",
     manifest: "build/apps/desktop/distribution/linux-arm64/manifest.json",
     platform: "linux",
@@ -150,7 +150,7 @@ function validateTarget(targetId, clientVersion, sourceStateDigest) {
       manifest.publicVerificationKeyId === signerKeyId &&
       certificateKeyId === signerKeyId &&
       publishedFacts.artifactDigest === `sha256:${artifactDigest}` &&
-      publishedFacts.packageName === "com.liko.arc" &&
+      publishedFacts.packageName === "land.lico.licoup" &&
       publishedFacts.versionName === clientVersion.productVersion &&
       publishedFacts.versionCode === String(clientVersion.buildNumber) &&
       publishedFacts.debuggable === false &&

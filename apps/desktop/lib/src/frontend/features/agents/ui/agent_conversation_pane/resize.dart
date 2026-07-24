@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
-import 'package:flutter_client/src/frontend/features/agents/ui/agent_conversation_layout_metrics.dart';
-import 'package:flutter_client/src/frontend/shared/ui/theme.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_layout_metrics.dart';
+import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 class ResizableConversationSplit extends StatefulWidget {
   const ResizableConversationSplit({

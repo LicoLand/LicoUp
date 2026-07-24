@@ -1,6 +1,6 @@
 import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:flutter_client/src/platform/native_client/agent_service.dart';
+import 'package:licoup/src/platform/native_client/agent_service.dart';
 
 void main() {
   group('NativeCliRuntimeContext', () {
@@ -17,7 +17,7 @@ void main() {
         'lico-portable-data-',
       );
       cliBinary = File(
-        '${portableDir.path}${Platform.pathSeparator}lico-client',
+        '${portableDir.path}${Platform.pathSeparator}licoup',
       );
       await cliBinary.writeAsString('');
       service = AgentService(
@@ -37,7 +37,7 @@ void main() {
       }
     });
 
-    test('scanTargets passes LICOARC_PORTABLE_DIR', () async {
+    test('scanTargets passes LICOUP_PORTABLE_DIR', () async {
       await service.scanTargets();
       expect(capturedArgs, [
         'targets',
@@ -47,7 +47,7 @@ void main() {
         '--include-history-model-catalog',
         'true',
       ]);
-      expect(capturedEnv?['LICOARC_PORTABLE_DIR'], portableDir.path);
+      expect(capturedEnv?['LICOUP_PORTABLE_DIR'], portableDir.path);
       if (Platform.isMacOS) {
         expect(
           capturedEnv?['LICO_SECURE_MESH_MACOS_USER_PRESENCE_REQUIRED'],
@@ -56,44 +56,44 @@ void main() {
       }
     });
 
-    test('addTarget passes LICOARC_PORTABLE_DIR', () async {
+    test('addTarget passes LICOUP_PORTABLE_DIR', () async {
       await service.addTarget(target: 'opencode');
       expect(capturedArgs, ['targets', 'add', '--target', 'opencode']);
-      expect(capturedEnv?['LICOARC_PORTABLE_DIR'], portableDir.path);
+      expect(capturedEnv?['LICOUP_PORTABLE_DIR'], portableDir.path);
     });
 
-    test('inspectTarget passes LICOARC_PORTABLE_DIR', () async {
+    test('inspectTarget passes LICOUP_PORTABLE_DIR', () async {
       await service.inspectTarget('opencode');
       expect(capturedArgs, ['targets', 'inspect', 'opencode']);
-      expect(capturedEnv?['LICOARC_PORTABLE_DIR'], portableDir.path);
+      expect(capturedEnv?['LICOUP_PORTABLE_DIR'], portableDir.path);
     });
 
-    test('restoreSnapshot passes LICOARC_PORTABLE_DIR', () async {
+    test('restoreSnapshot passes LICOUP_PORTABLE_DIR', () async {
       await service.restoreSnapshot('snap-1');
       expect(capturedArgs, ['snapshots', 'restore', 'snap-1']);
-      expect(capturedEnv?['LICOARC_PORTABLE_DIR'], portableDir.path);
+      expect(capturedEnv?['LICOUP_PORTABLE_DIR'], portableDir.path);
     });
 
-    test('listSnapshots passes LICOARC_PORTABLE_DIR', () async {
+    test('listSnapshots passes LICOUP_PORTABLE_DIR', () async {
       await service.listSnapshots(target: 'opencode');
       expect(capturedArgs, ['snapshots', 'list', '--target', 'opencode']);
-      expect(capturedEnv?['LICOARC_PORTABLE_DIR'], portableDir.path);
+      expect(capturedEnv?['LICOUP_PORTABLE_DIR'], portableDir.path);
     });
 
-    test('listPairings passes LICOARC_PORTABLE_DIR', () async {
+    test('listPairings passes LICOUP_PORTABLE_DIR', () async {
       await service.listPairings(agent: 'codex');
       expect(capturedArgs, ['agents', 'pair', 'list', '--agent', 'codex']);
-      expect(capturedEnv?['LICOARC_PORTABLE_DIR'], portableDir.path);
+      expect(capturedEnv?['LICOUP_PORTABLE_DIR'], portableDir.path);
     });
 
-    test('listSkills passes LICOARC_PORTABLE_DIR', () async {
+    test('listSkills passes LICOUP_PORTABLE_DIR', () async {
       await service.listSkills(agent: 'codex');
       expect(capturedArgs, ['skill', 'list', '--agent', 'codex']);
-      expect(capturedEnv?['LICOARC_PORTABLE_DIR'], portableDir.path);
+      expect(capturedEnv?['LICOUP_PORTABLE_DIR'], portableDir.path);
     });
 
     test(
-      'without dataDirectory, env does not contain LICOARC_PORTABLE_DIR',
+      'without dataDirectory, env does not contain LICOUP_PORTABLE_DIR',
       () async {
         final noDataService = AgentService(
           resolveCliBinary: () async => cliBinary,
@@ -104,7 +104,7 @@ void main() {
           },
         );
         await noDataService.scanTargets();
-        expect(capturedEnv?['LICOARC_PORTABLE_DIR'], isNull);
+        expect(capturedEnv?['LICOUP_PORTABLE_DIR'], isNull);
         if (Platform.isMacOS) {
           expect(
             capturedEnv?['LICO_SECURE_MESH_MACOS_USER_PRESENCE_REQUIRED'],

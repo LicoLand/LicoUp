@@ -1,6 +1,6 @@
-import 'package:flutter_client/src/backend/features/mobile_relay/services/mobile_home_layout_service.dart';
-import 'package:flutter_client/src/contracts/mobile_home_layout.dart';
-import 'package:flutter_client/src/contracts/mobile_home_layout_repository.dart';
+import 'package:licoup/src/backend/features/mobile_relay/services/mobile_home_layout_service.dart';
+import 'package:licoup/src/contracts/mobile_home_layout.dart';
+import 'package:licoup/src/contracts/mobile_home_layout_repository.dart';
 
 final class MobileHomeLayoutRepositoryAdapter
     implements MobileHomeLayoutRepository {

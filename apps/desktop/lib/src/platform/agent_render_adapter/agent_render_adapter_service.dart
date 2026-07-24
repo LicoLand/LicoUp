@@ -5,7 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
-import 'package:flutter_client/src/contracts/agent_render_adapter_source.dart';
+import 'package:licoup/src/contracts/agent_render_adapter_source.dart';
 
 class DefaultAgentRenderAdapterJsonSource
     implements AgentRenderAdapterJsonSource {
@@ -20,7 +20,7 @@ class DefaultAgentRenderAdapterJsonSource
            getApplicationSupportDirectory;
 
   static const String externalRootsEnvironmentKey =
-      'LICO_ARC_AGENT_RENDER_ADAPTER_ROOTS';
+      'LICOUP_AGENT_RENDER_ADAPTER_ROOTS';
 
   final AssetBundle _assetBundle;
   final Map<String, String>? _environmentOverride;

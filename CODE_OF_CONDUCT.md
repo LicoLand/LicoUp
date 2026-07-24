@@ -2,7 +2,7 @@
 
 ## Our standard
 
-Lico Arc welcomes contributors with different backgrounds, tools, languages,
+LicoUp welcomes contributors with different backgrounds, tools, languages,
 experience levels, and ways of working. Participate with respect, patience, and
 care.
 

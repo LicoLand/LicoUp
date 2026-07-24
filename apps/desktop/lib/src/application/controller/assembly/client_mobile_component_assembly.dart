@@ -1,21 +1,21 @@
 import 'package:flutter/foundation.dart' show ChangeNotifier;
 
-import 'package:flutter_client/src/application/composition/mobile_home_layout_repository_adapter.dart';
-import 'package:flutter_client/src/application/composition/mobile_relay_gateway_adapter.dart';
-import 'package:flutter_client/src/application/controller/assembly/client_component_assembly_contracts.dart';
-import 'package:flutter_client/src/application/features/mobile_relay/controller/mobile_home_layout_controller.dart';
-import 'package:flutter_client/src/application/features/mobile_relay/controller/mobile_relay_controller.dart';
-import 'package:flutter_client/src/application/features/mobile_relay/controller/secure_mesh_controller.dart';
-import 'package:flutter_client/src/backend/features/mobile_relay/services/mobile_home_layout_service.dart';
-import 'package:flutter_client/src/contracts/mobile_home_layout_repository.dart';
-import 'package:flutter_client/src/contracts/mobile_relay_control.dart';
-import 'package:flutter_client/src/contracts/skill_hub.dart';
-import 'package:flutter_client/src/platform/client_clipboard_service.dart';
-import 'package:flutter_client/src/platform/mobile_relay/mobile_relay_service.dart';
-import 'package:flutter_client/src/platform/native_client/agent_service.dart';
-import 'package:flutter_client/src/platform/runtime_platform_bridge.dart';
-import 'package:flutter_client/src/platform/secure_mesh/secure_mesh_capability_service.dart';
-import 'package:flutter_client/src/platform/storage/portable_data_root.dart';
+import 'package:licoup/src/application/composition/mobile_home_layout_repository_adapter.dart';
+import 'package:licoup/src/application/composition/mobile_relay_gateway_adapter.dart';
+import 'package:licoup/src/application/controller/assembly/client_component_assembly_contracts.dart';
+import 'package:licoup/src/application/features/mobile_relay/controller/mobile_home_layout_controller.dart';
+import 'package:licoup/src/application/features/mobile_relay/controller/mobile_relay_controller.dart';
+import 'package:licoup/src/application/features/mobile_relay/controller/secure_mesh_controller.dart';
+import 'package:licoup/src/backend/features/mobile_relay/services/mobile_home_layout_service.dart';
+import 'package:licoup/src/contracts/mobile_home_layout_repository.dart';
+import 'package:licoup/src/contracts/mobile_relay_control.dart';
+import 'package:licoup/src/contracts/skill_hub.dart';
+import 'package:licoup/src/platform/client_clipboard_service.dart';
+import 'package:licoup/src/platform/mobile_relay/mobile_relay_service.dart';
+import 'package:licoup/src/platform/native_client/agent_service.dart';
+import 'package:licoup/src/platform/runtime_platform_bridge.dart';
+import 'package:licoup/src/platform/secure_mesh/secure_mesh_capability_service.dart';
+import 'package:licoup/src/platform/storage/portable_data_root.dart';
 
 final class ClientMobileComponentAssembly {
   ClientMobileComponentAssembly({

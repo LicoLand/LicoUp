@@ -46,12 +46,12 @@ const androidDebugManifest = stableReadFile(
 ).toString("utf8");
 const acceptanceIngress = stableReadFile(
   path.join(repoRoot,
-    "apps/desktop/android/app/src/debug/kotlin/com/liko/arc/ReleaseAcceptanceIngress.kt"),
+    "apps/desktop/android/app/src/debug/kotlin/land/lico/licoup/ReleaseAcceptanceIngress.kt"),
   { maxBytes: 2 * 1024 * 1024 },
 ).toString("utf8");
 const mainActivity = stableReadFile(
   path.join(repoRoot,
-    "apps/desktop/android/app/src/main/kotlin/com/liko/arc/MainActivity.kt"),
+    "apps/desktop/android/app/src/main/kotlin/land/lico/licoup/MainActivity.kt"),
   { maxBytes: 8 * 1024 * 1024 },
 ).toString("utf8");
 const backupRules = stableReadFile(
@@ -115,7 +115,7 @@ const uploadPolicyReady =
   workflow.includes('gh release edit "$RELEASE_TAG"') &&
   (workflow.match(/gh release upload/gu) || []).length === 1 &&
   publishJob.includes("client-consumer-verification-manifest.mjs") &&
-  publishJob.includes("LicoArc-consumer-verification.json") &&
+  publishJob.includes("LicoUp-consumer-verification.json") &&
   !publishJob.includes("build/release-assets/*") &&
   publishJob.includes("client-release-remote-asset-set.mjs") &&
   publishJob.includes(".assets | map({name, size, digest})") &&
@@ -130,8 +130,8 @@ const uploadPolicyReady =
   workflow.includes("Prepare ephemeral local integrity identity") &&
   !workflow.includes("LICO_MACOS_SIGNING_IDENTITY") &&
   !workflow.includes("LICO_MACOS_NOTARY_") &&
-  androidJob.includes("build/apps/desktop/android/release/LicoArc-android-arm64.apk") &&
-  androidJob.includes("build/apps/desktop/android/release/LicoArc-android-arm64.apk.sha256") &&
+  androidJob.includes("build/apps/desktop/android/release/LicoUp-android-arm64.apk") &&
+  androidJob.includes("build/apps/desktop/android/release/LicoUp-android-arm64.apk.sha256") &&
   androidJob.includes("build/apps/desktop/android/release/lico-github-artifact.pem") &&
   !androidJob.includes("build/apps/desktop/android/release/build-manifest.json") &&
   !/path:\s*build\/apps\/desktop\/android\/release\/\s*$/mu.test(androidJob) &&
@@ -139,13 +139,13 @@ const uploadPolicyReady =
     macosJob.indexOf("run: npm run client:install:macos") &&
   macosJob.indexOf("run: npm run client:install:macos") <
     macosJob.indexOf("run: npm run client:archive:macos-github-release") &&
-  macosJob.includes("build/apps/desktop/distribution/macos/LicoArc-macos-arm64.zip") &&
-  macosJob.includes("build/apps/desktop/distribution/macos/LicoArc-macos-arm64.zip.sha256") &&
-  !macosJob.includes("build/apps/desktop/runnable/macos/release/LicoArc-macos-arm64.zip") &&
+  macosJob.includes("build/apps/desktop/distribution/macos/LicoUp-macos-arm64.zip") &&
+  macosJob.includes("build/apps/desktop/distribution/macos/LicoUp-macos-arm64.zip.sha256") &&
+  !macosJob.includes("build/apps/desktop/runnable/macos/release/LicoUp-macos-arm64.zip") &&
   !/path:\s*build\/apps\/desktop\/runnable\/macos\/release\/\s*$/mu.test(macosJob) &&
-  linuxJob.includes("build/apps/desktop/distribution/linux-arm64/LicoArc-linux-arm64.tar.gz") &&
-  linuxJob.includes("build/apps/desktop/distribution/linux-arm64/LicoArc-linux-arm64.tar.gz.sha256") &&
-  linuxJob.includes("build/apps/desktop/distribution/linux-arm64/LicoArc-linux-arm64.tar.gz.sig") &&
+  linuxJob.includes("build/apps/desktop/distribution/linux-arm64/LicoUp-linux-arm64.tar.gz") &&
+  linuxJob.includes("build/apps/desktop/distribution/linux-arm64/LicoUp-linux-arm64.tar.gz.sha256") &&
+  linuxJob.includes("build/apps/desktop/distribution/linux-arm64/LicoUp-linux-arm64.tar.gz.sig") &&
   linuxJob.includes("build/apps/desktop/distribution/linux-arm64/linux-release-verification-key.pem") &&
   !linuxJob.includes("build/apps/desktop/distribution/linux-arm64/manifest.json") &&
   !/path:\s*build\/apps\/desktop\/distribution\/linux-arm64\/\s*$/mu.test(linuxJob);
@@ -221,7 +221,7 @@ if ((androidBuilder.match(/runFlutterBuild\(options, env\);/gu) || []).length !=
   throw new Error("Android release builder does not prove two clean same-source payload builds");
 }
 if (androidManifest.includes("ReleaseAcceptanceReceiver") ||
-  androidManifest.includes("com.liko.arc.RELEASE_ACCEPTANCE") ||
+  androidManifest.includes("land.lico.licoup.RELEASE_ACCEPTANCE") ||
   !androidManifest.includes('android:allowBackup="false"') ||
   !androidManifest.includes('android:dataExtractionRules="@xml/backup_rules"') ||
   !androidManifest.includes('android:fullBackupContent="@xml/backup_rules_legacy"') ||
@@ -232,7 +232,7 @@ if (androidManifest.includes("ReleaseAcceptanceReceiver") ||
   !androidDebugManifest.includes('android:name=".ReleaseAcceptanceReceiver"') ||
   !androidDebugManifest.includes('android:permission="android.permission.DUMP"') ||
   !acceptanceIngress.includes("class ReleaseAcceptanceReceiver : BroadcastReceiver()") ||
-  !acceptanceIngress.includes('const val ACTION = "com.liko.arc.RELEASE_ACCEPTANCE"') ||
+  !acceptanceIngress.includes('const val ACTION = "land.lico.licoup.RELEASE_ACCEPTANCE"') ||
   mainActivity.includes("ReleaseAcceptance") ||
   !mainActivity.includes("onLocalVerificationCreate()") ||
   !androidGradle.includes("verifyReleaseAcceptanceIsolation") ||

@@ -14,21 +14,21 @@ export async function buildVectorCorpus({
     await Promise.all(refs.map((ref) => readText(ref)))
   ).join("\n");
   const contentCryptoSource = await readBundle([
-    "crates/lico-client-native/src/core/secure_mesh_crypto.rs",
-    "crates/lico-client-native/src/core/secure_mesh_crypto/tests/stable_vector.rs",
+    "crates/licoup-native/src/core/secure_mesh_crypto.rs",
+    "crates/licoup-native/src/core/secure_mesh_crypto/tests/stable_vector.rs",
   ]);
   const pqxdhSource = await readText(
-    "crates/lico-client-native/src/core/secure_mesh_pqxdh.rs",
+    "crates/licoup-native/src/core/secure_mesh_pqxdh.rs",
   );
   const braidSource = await readBundle([
-    "crates/lico-client-native/src/core/secure_mesh_mlkem_braid.rs",
-    "crates/lico-client-native/src/core/secure_mesh_mlkem_braid/constants.rs",
-    "crates/lico-client-native/src/core/secure_mesh_mlkem_braid/tests/authenticator.rs",
+    "crates/licoup-native/src/core/secure_mesh_mlkem_braid.rs",
+    "crates/licoup-native/src/core/secure_mesh_mlkem_braid/constants.rs",
+    "crates/licoup-native/src/core/secure_mesh_mlkem_braid/tests/authenticator.rs",
   ]);
   const pairwiseSource = await readBundle([
-    "crates/lico-client-native/src/core/secure_mesh_pairwise.rs",
-    "crates/lico-client-native/src/core/secure_mesh_pairwise/support.rs",
-    "crates/lico-client-native/src/core/secure_mesh_pairwise/tests/session_negotiation.rs",
+    "crates/licoup-native/src/core/secure_mesh_pairwise.rs",
+    "crates/licoup-native/src/core/secure_mesh_pairwise/support.rs",
+    "crates/licoup-native/src/core/secure_mesh_pairwise/tests/session_negotiation.rs",
   ]);
   const contentVector = extractContentStableVector(contentCryptoSource);
   const pairwiseVector = extractPairwiseStableVector(

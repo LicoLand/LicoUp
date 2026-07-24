@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
-import 'package:flutter_client/src/frontend/layout/layout_destination_presentation.dart';
-import 'package:flutter_client/src/frontend/shared/ui/theme.dart';
+import 'package:licoup/src/frontend/layout/layout_destination_presentation.dart';
+import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 class SettingsDropdownRow<T> extends StatelessWidget {
   const SettingsDropdownRow({

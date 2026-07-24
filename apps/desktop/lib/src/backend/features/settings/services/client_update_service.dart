@@ -1,8 +1,8 @@
-import 'package:flutter_client/src/contracts/agent_command_runner.dart';
-import 'package:flutter_client/src/contracts/client_update_models.dart';
-import 'package:flutter_client/src/contracts/client_update_gateway.dart';
+import 'package:licoup/src/contracts/agent_command_runner.dart';
+import 'package:licoup/src/contracts/client_update_models.dart';
+import 'package:licoup/src/contracts/client_update_gateway.dart';
 
-export 'package:flutter_client/src/contracts/client_update_models.dart';
+export 'package:licoup/src/contracts/client_update_models.dart';
 
 class ClientUpdateService implements ClientUpdateGateway {
   const ClientUpdateService();

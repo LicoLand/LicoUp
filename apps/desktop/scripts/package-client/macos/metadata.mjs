@@ -24,7 +24,7 @@ export function updateMacosAppMetadata(bundle, options) {
   if (!existsSync(plistPath)) packageFailure("macos_info_plist_missing");
   for (const [key, value] of [
     ["CFBundleIdentifier", packageClientRuntime.bundleId],
-    ["CFBundleName", "Lico Arc"],
+    ["CFBundleName", "LicoUp"],
     ["CFBundleDisplayName", "Arc"],
     [
       "NSHumanReadableCopyright",

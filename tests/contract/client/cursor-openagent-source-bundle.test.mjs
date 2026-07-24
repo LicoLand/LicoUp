@@ -9,7 +9,7 @@ const repoRoot = path.resolve(
   "../../..",
 );
 const parserRoot =
-  "crates/lico-client-native/src/domain/conversation/history/cursor_openagent";
+  "crates/licoup-native/src/domain/conversation/history/cursor_openagent";
 const productionLeaves = Object.freeze([
   "codec.rs",
   "composition.rs",

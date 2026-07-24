@@ -2,7 +2,7 @@ import { spawn, spawnSync } from "node:child_process";
 import crypto from "node:crypto";
 import path from "node:path";
 
-const RPC_PROTOCOL = "lico-client.stdio.v1";
+const RPC_PROTOCOL = "licoup.stdio.v1";
 const MAX_FRAME_BYTES = 16 * 1024 * 1024;
 const MAX_STDERR_BYTES = 64 * 1024;
 const REQUEST_TIMEOUT_MS = 120_000;
@@ -27,7 +27,7 @@ function dockerInvocation(value = process.env.LICO_DOCKER_COMMAND_JSON || "") {
 }
 
 export class LinuxClientNode {
-  constructor({ label, image, network, cli = "./lico-client", dockerCommand = "" }) {
+  constructor({ label, image, network, cli = "./licoup", dockerCommand = "" }) {
     assert(["linux-a", "linux-b", "linux-c"].includes(label),
       "Linux node label is not an allowed stable participant label");
     assert(typeof image === "string" && image.trim(), "Linux node image is required");
@@ -185,7 +185,7 @@ class ContainerCliRpc {
       "-i",
       this.containerId,
       "env",
-      `LICOARC_PORTABLE_DIR=${this.stateRoot}`,
+      `LICOUP_PORTABLE_DIR=${this.stateRoot}`,
       this.cli,
       "rpc",
       "stdio"

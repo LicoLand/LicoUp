@@ -3,7 +3,7 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 
-pub const CATALOG_CONVERGENCE_SCHEMA: &str = "v0.0.1:licoarc:catalog-convergence-1";
+pub const CATALOG_CONVERGENCE_SCHEMA: &str = "v0.0.1:licoup:catalog-convergence-1";
 pub const OFFICIAL_CLIENT_RECEIPT_SCHEMA: &str =
     "v0.0.1:upstream-gateway:official-client-receipt-1";
 

@@ -1,10 +1,10 @@
 import 'package:flutter/widgets.dart';
 
-import 'package:flutter_client/src/contracts/presentation/layout_environment.dart';
-import 'package:flutter_client/src/contracts/presentation/semantic_destination.dart';
-import 'package:flutter_client/src/frontend/layout/layout_surface_bundle.dart';
-import 'package:flutter_client/src/frontend/layout/profiles/workbench/mobile/workbench_mobile_components.dart';
-import 'package:flutter_client/src/frontend/layout/profiles/workbench/mobile/workbench_mobile_tokens.dart';
+import 'package:licoup/src/contracts/presentation/layout_environment.dart';
+import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
+import 'package:licoup/src/frontend/layout/layout_surface_bundle.dart';
+import 'package:licoup/src/frontend/layout/profiles/workbench/mobile/workbench_mobile_components.dart';
+import 'package:licoup/src/frontend/layout/profiles/workbench/mobile/workbench_mobile_tokens.dart';
 
 Widget buildWorkbenchPairingDestination(
   BuildContext context,

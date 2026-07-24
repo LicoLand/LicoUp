@@ -39,7 +39,7 @@ fn synthetic_windows_absolute_path(drive: char, segments: &[&str]) -> String {
 fn schema_constants_match_checkpoint_contract() {
     assert_eq!(
         CATALOG_CONVERGENCE_SCHEMA,
-        "v0.0.1:licoarc:catalog-convergence-1"
+        "v0.0.1:licoup:catalog-convergence-1"
     );
     assert_eq!(
         OFFICIAL_CLIENT_RECEIPT_SCHEMA,

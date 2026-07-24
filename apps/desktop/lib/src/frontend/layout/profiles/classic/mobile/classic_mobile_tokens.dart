@@ -1,7 +1,7 @@
 import 'dart:math' as math;
 
-import 'package:flutter_client/src/contracts/presentation/layout_environment.dart';
-import 'package:flutter_client/src/frontend/layout/layout_visual_tokens.dart';
+import 'package:licoup/src/contracts/presentation/layout_environment.dart';
+import 'package:licoup/src/frontend/layout/layout_visual_tokens.dart';
 
 const String classicMobileStyleIdentity = 'spacious-card-classic';
 const String classicMobileRestorationPrefix = 'classic.mobile';

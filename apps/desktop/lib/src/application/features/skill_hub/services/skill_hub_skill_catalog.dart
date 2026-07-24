@@ -2,7 +2,7 @@ import 'dart:io';
 
 import 'package:path/path.dart' as p;
 
-import 'package:flutter_client/src/application/features/skill_hub/models/skill_agent_compatibility.dart';
+import 'package:licoup/src/application/features/skill_hub/models/skill_agent_compatibility.dart';
 
 typedef SkillHubScanLogger = void Function(String message);
 

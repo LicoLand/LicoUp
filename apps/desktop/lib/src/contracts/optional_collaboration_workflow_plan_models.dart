@@ -1,7 +1,7 @@
-import 'package:flutter_client/src/contracts/optional_collaboration_local_assembly_models.dart';
-import 'package:flutter_client/src/contracts/optional_collaboration_mcp_workflow_models.dart';
-import 'package:flutter_client/src/contracts/optional_collaboration_workflow_kind.dart';
-import 'package:flutter_client/src/contracts/optional_collaboration_workflow_parsing.dart';
+import 'package:licoup/src/contracts/optional_collaboration_local_assembly_models.dart';
+import 'package:licoup/src/contracts/optional_collaboration_mcp_workflow_models.dart';
+import 'package:licoup/src/contracts/optional_collaboration_workflow_kind.dart';
+import 'package:licoup/src/contracts/optional_collaboration_workflow_parsing.dart';
 
 final class OptionalCollaborationFileChange {
   const OptionalCollaborationFileChange({
@@ -198,7 +198,7 @@ final class OptionalCollaborationWorkflowPlan {
           (change) =>
               !selected.contains(change.selectionId) &&
               !(kind == OptionalCollaborationWorkflowKind.localDeployment &&
-                  change.selectionId == 'licoarc-assembly-manifest'),
+                  change.selectionId == 'licoup-assembly-manifest'),
         )) {
       throw const FormatException(
         'optional_collaboration_workflow_file_selection_invalid',
@@ -219,7 +219,7 @@ final class OptionalCollaborationWorkflowPlan {
             (change) =>
                 change.agentId.isNotEmpty ||
                 (!selected.contains(change.selectionId) &&
-                    change.selectionId != 'licoarc-assembly-manifest'),
+                    change.selectionId != 'licoup-assembly-manifest'),
           )) {
         throw const FormatException(
           'optional_collaboration_local_deployment_plan_invalid',

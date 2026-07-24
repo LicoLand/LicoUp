@@ -1,12 +1,12 @@
-import 'package:flutter_client/src/application/features/skill_hub/controller/skill_hub_controller.dart';
-import 'package:flutter_client/src/application/features/skill_hub/controller/skill_delete_controller.dart';
-import 'package:flutter_client/src/application/features/skill_hub/controller/skill_update_controller.dart';
-import 'package:flutter_client/src/application/features/skill_hub/controller/skill_usage_controller.dart';
-import 'package:flutter_client/src/application/features/skill_hub/services/skill_auto_update_scheduler.dart';
-import 'package:flutter_client/src/contracts/skill_delete.dart';
-import 'package:flutter_client/src/contracts/skill_hub_preferences.dart';
-import 'package:flutter_client/src/contracts/skill_update.dart';
-import 'package:flutter_client/src/contracts/skill_usage.dart';
+import 'package:licoup/src/application/features/skill_hub/controller/skill_hub_controller.dart';
+import 'package:licoup/src/application/features/skill_hub/controller/skill_delete_controller.dart';
+import 'package:licoup/src/application/features/skill_hub/controller/skill_update_controller.dart';
+import 'package:licoup/src/application/features/skill_hub/controller/skill_usage_controller.dart';
+import 'package:licoup/src/application/features/skill_hub/services/skill_auto_update_scheduler.dart';
+import 'package:licoup/src/contracts/skill_delete.dart';
+import 'package:licoup/src/contracts/skill_hub_preferences.dart';
+import 'package:licoup/src/contracts/skill_update.dart';
+import 'package:licoup/src/contracts/skill_usage.dart';
 
 mixin ClientSkillHubFacade
     implements SkillUpdateViewModel, SkillDeleteViewModel, SkillUsageViewModel {

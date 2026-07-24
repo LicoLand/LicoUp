@@ -1,4 +1,4 @@
-import 'package:flutter_client/src/contracts/target_candidate.dart';
+import 'package:licoup/src/contracts/target_candidate.dart';
 
 /// Narrow native boundary used by target discovery and configuration.
 abstract interface class TargetManagementGateway {

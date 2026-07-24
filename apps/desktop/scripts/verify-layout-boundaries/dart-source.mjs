@@ -75,9 +75,9 @@ export function importsFrom(source) {
 }
 
 export function resolveDartImport(importer, specifier) {
-  if (specifier.startsWith("package:flutter_client/")) {
+  if (specifier.startsWith("package:licoup/")) {
     return normalizeRelative(
-      `apps/desktop/lib/${specifier.slice("package:flutter_client/".length)}`,
+      `apps/desktop/lib/${specifier.slice("package:licoup/".length)}`,
     );
   }
   if (specifier.startsWith(".") || !specifier.includes(":")) {

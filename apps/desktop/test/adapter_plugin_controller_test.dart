@@ -1,6 +1,6 @@
-import 'package:flutter_client/src/application/features/plugin_management/controller/adapter_plugin_controller.dart';
-import 'package:flutter_client/src/application/features/plugin_management/models/adapter_plugin_catalog.dart';
-import 'package:flutter_client/src/contracts/agent_command_runner.dart';
+import 'package:licoup/src/application/features/plugin_management/controller/adapter_plugin_controller.dart';
+import 'package:licoup/src/application/features/plugin_management/models/adapter_plugin_catalog.dart';
+import 'package:licoup/src/contracts/agent_command_runner.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

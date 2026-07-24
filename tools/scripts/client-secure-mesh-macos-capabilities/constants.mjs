@@ -12,7 +12,7 @@ export const installedApp = "/Applications/Arc.app";
 export const capabilityProofRef =
   "build/reports/secure-mesh-macos-keychain-user-presence-proof.json";
 export const packageManifestRef =
-  "build/apps/desktop/runnable/macos/release/package-metadata/lico-client/packaging-modules.json";
+  "build/apps/desktop/runnable/macos/release/package-metadata/licoup/packaging-modules.json";
 export const packageManifestPath = path.join(repoRoot, packageManifestRef);
 export const releaseEntitlementsRef = "apps/desktop/macos/Runner/Release.entitlements";
 export const releaseEntitlementsPath = path.join(repoRoot, releaseEntitlementsRef);

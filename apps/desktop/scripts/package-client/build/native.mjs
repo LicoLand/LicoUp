@@ -15,7 +15,7 @@ export function buildNativeSidecars(selected, options) {
   const args = [
     "build",
     "--manifest-path",
-    path.join("crates", "lico-client-native", "Cargo.toml"),
+    path.join("crates", "licoup-native", "Cargo.toml"),
   ];
   if (options.mode === "release") args.push("--release", "--locked");
   if (options.platform === "windows") {

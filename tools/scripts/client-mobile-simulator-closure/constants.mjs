@@ -17,9 +17,9 @@ export const androidSimulatorArtifactRef =
 
 export const sentinel = "LICO_MOBILE_SIMULATOR_CLOSURE_SUMMARY ";
 
-export const packageName = "com.liko.arc";
+export const packageName = "land.lico.licoup";
 
-export const iosBundleIdentifier = "app.licoarc";
+export const iosBundleIdentifier = "land.lico.licoup";
 
 export const iosCoreSimulatorMachOModeNormalizationPaths = Object.freeze(new Set([
   "Frameworks/App.framework/App",

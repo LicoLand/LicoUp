@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
-import 'package:flutter_client/src/frontend/layout/layout_chrome_port.dart';
-import 'package:flutter_client/src/frontend/layout/layout_palette.dart';
+import 'package:licoup/src/frontend/layout/layout_chrome_port.dart';
+import 'package:licoup/src/frontend/layout/layout_palette.dart';
 
 /// Classic-owned status chrome driven only by the neutral shell port.
 final class ClassicDesktopStatusBar extends StatelessWidget {

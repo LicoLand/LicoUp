@@ -1,7 +1,7 @@
 import 'dart:convert';
 
-import 'package:flutter_client/src/contracts/agent_command_runner.dart';
-import 'package:flutter_client/src/contracts/mcp_adapter.dart';
+import 'package:licoup/src/contracts/agent_command_runner.dart';
+import 'package:licoup/src/contracts/mcp_adapter.dart';
 
 /// Private-stdin command adapter for MCP previews and exact one-shot transfer.
 /// No endpoint, purpose, session handle, or JSON-RPC body is placed in process

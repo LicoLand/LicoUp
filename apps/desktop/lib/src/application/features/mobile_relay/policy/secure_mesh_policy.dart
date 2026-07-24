@@ -1,4 +1,4 @@
-import 'package:flutter_client/src/contracts/generated/secure_mesh.g.dart';
+import 'package:licoup/src/contracts/generated/secure_mesh.g.dart';
 
 abstract final class SecureMeshPolicy {
   static const int maximumFileTransfers = 12;

@@ -1,5 +1,5 @@
-import 'package:flutter_client/src/contracts/agent_conversation_models.dart';
-import 'package:flutter_client/src/contracts/agent_dispatch_lane.dart';
+import 'package:licoup/src/contracts/agent_conversation_models.dart';
+import 'package:licoup/src/contracts/agent_dispatch_lane.dart';
 
 abstract interface class AgentConversationGateway {
   Future<List<AgentConversationSession>> loadSessions({

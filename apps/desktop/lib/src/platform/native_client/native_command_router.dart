@@ -1,4 +1,4 @@
-import 'package:flutter_client/src/platform/native_client/native_cli_ports.dart';
+import 'package:licoup/src/platform/native_client/native_cli_ports.dart';
 
 /// Chooses the persistent transport without exposing transport details to
 /// command builders or the public service facade.

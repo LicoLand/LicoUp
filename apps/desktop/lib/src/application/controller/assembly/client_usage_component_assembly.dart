@@ -1,10 +1,10 @@
 import 'package:flutter/foundation.dart' show ChangeNotifier;
 
-import 'package:flutter_client/src/application/composition/agent_usage_gateway_adapter.dart';
-import 'package:flutter_client/src/application/controller/assembly/client_component_assembly_contracts.dart';
-import 'package:flutter_client/src/application/features/agents/controller/agent_usage_controller.dart';
-import 'package:flutter_client/src/backend/features/agents/services/agent_usage_service.dart';
-import 'package:flutter_client/src/platform/native_client/agent_service.dart';
+import 'package:licoup/src/application/composition/agent_usage_gateway_adapter.dart';
+import 'package:licoup/src/application/controller/assembly/client_component_assembly_contracts.dart';
+import 'package:licoup/src/application/features/agents/controller/agent_usage_controller.dart';
+import 'package:licoup/src/backend/features/agents/services/agent_usage_service.dart';
+import 'package:licoup/src/platform/native_client/agent_service.dart';
 
 final class ClientUsageComponentAssembly {
   ClientUsageComponentAssembly({

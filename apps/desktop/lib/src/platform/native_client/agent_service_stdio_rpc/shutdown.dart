@@ -1,8 +1,8 @@
-import 'package:flutter_client/src/platform/native_client/agent_service_stdio_rpc/protocol.dart';
-import 'package:flutter_client/src/platform/native_client/agent_service_stdio_rpc/request_writer.dart';
-import 'package:flutter_client/src/platform/native_client/agent_service_stdio_rpc/response_codec.dart';
-import 'package:flutter_client/src/platform/native_client/agent_service_stdio_rpc/session.dart';
-import 'package:flutter_client/src/platform/native_client/agent_service_stdio_rpc/session_manager.dart';
+import 'package:licoup/src/platform/native_client/agent_service_stdio_rpc/protocol.dart';
+import 'package:licoup/src/platform/native_client/agent_service_stdio_rpc/request_writer.dart';
+import 'package:licoup/src/platform/native_client/agent_service_stdio_rpc/response_codec.dart';
+import 'package:licoup/src/platform/native_client/agent_service_stdio_rpc/session.dart';
+import 'package:licoup/src/platform/native_client/agent_service_stdio_rpc/session_manager.dart';
 
 Future<void> shutdownStdioRpcManager({
   required StdioRpcSessionManager manager,

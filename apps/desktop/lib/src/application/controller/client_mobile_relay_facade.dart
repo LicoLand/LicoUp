@@ -1,11 +1,11 @@
-import 'package:flutter_client/src/application/features/agents/workspace/agent_workspace_coordinator.dart';
-import 'package:flutter_client/src/application/features/mobile_relay/controller/mobile_home_layout_controller.dart';
-import 'package:flutter_client/src/application/features/mobile_relay/controller/mobile_relay_controller.dart';
-import 'package:flutter_client/src/application/features/mobile_relay/controller/secure_mesh_controller.dart';
-import 'package:flutter_client/src/contracts/mobile_home_layout.dart';
-import 'package:flutter_client/src/contracts/mobile_pairing_presentation.dart';
-import 'package:flutter_client/src/contracts/mobile_relay/mobile_relay_models.dart';
-import 'package:flutter_client/src/contracts/generated/secure_mesh.g.dart';
+import 'package:licoup/src/application/features/agents/workspace/agent_workspace_coordinator.dart';
+import 'package:licoup/src/application/features/mobile_relay/controller/mobile_home_layout_controller.dart';
+import 'package:licoup/src/application/features/mobile_relay/controller/mobile_relay_controller.dart';
+import 'package:licoup/src/application/features/mobile_relay/controller/secure_mesh_controller.dart';
+import 'package:licoup/src/contracts/mobile_home_layout.dart';
+import 'package:licoup/src/contracts/mobile_pairing_presentation.dart';
+import 'package:licoup/src/contracts/mobile_relay/mobile_relay_models.dart';
+import 'package:licoup/src/contracts/generated/secure_mesh.g.dart';
 
 mixin ClientMobileRelayFacade on AgentWorkspaceCoordinator {
   MobileHomeLayoutController get mobileHomeLayoutController;

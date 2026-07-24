@@ -1,16 +1,16 @@
 import 'package:flutter/material.dart';
 
-import 'package:flutter_client/src/frontend/features/agents/ui/agent_conversation_composer.dart';
-import 'package:flutter_client/src/frontend/features/agents/ui/agent_conversation_display_names.dart';
-import 'package:flutter_client/src/frontend/features/agents/ui/agent_conversation_message_view.dart';
-import 'package:flutter_client/src/frontend/features/agents/ui/agent_conversation_pane_controls.dart';
-import 'package:flutter_client/src/frontend/features/agents/ui/agent_conversation_pane_presentation.dart';
-import 'package:flutter_client/src/frontend/features/agents/ui/agent_conversation_parity_disclosure.dart';
-import 'package:flutter_client/src/frontend/features/agents/ui/agent_conversation_recent_sessions.dart';
-import 'package:flutter_client/src/frontend/l10n/lico_strings.dart';
-import 'package:flutter_client/src/frontend/shared/platform/client_platform.dart';
-import 'package:flutter_client/src/frontend/shared/ui/panel_frame.dart';
-import 'package:flutter_client/src/frontend/shared/ui/theme.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_composer.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_display_names.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_message_view.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_pane_controls.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_pane_presentation.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_parity_disclosure.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_recent_sessions.dart';
+import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/shared/platform/client_platform.dart';
+import 'package:licoup/src/frontend/shared/ui/panel_frame.dart';
+import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 /// Composes an already projected conversation view. Controller listening and
 /// domain-to-presentation adaptation belong exclusively to the workspace.

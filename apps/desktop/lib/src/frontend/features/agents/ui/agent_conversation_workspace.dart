@@ -2,27 +2,27 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-import 'package:flutter_client/src/application/controller/client_controller.dart';
-import 'package:flutter_client/src/application/features/layout/layout_state_store.dart';
-import 'package:flutter_client/src/frontend/l10n/lico_strings.dart';
-import 'package:flutter_client/src/contracts/presentation/layout_state_namespace.dart';
-import 'package:flutter_client/src/contracts/target_candidate.dart';
-import 'package:flutter_client/src/frontend/layout/layout_destination_presentation.dart';
-import 'package:flutter_client/src/frontend/layout/layout_palette.dart';
-import 'package:flutter_client/src/frontend/layout/layout_scope.dart';
-import 'package:flutter_client/src/frontend/features/agents/ui/agent_conversation_pane.dart';
-import 'package:flutter_client/src/frontend/features/agents/ui/agent_conversation_pane_controls.dart';
-import 'package:flutter_client/src/frontend/features/agents/ui/conversation_archive_dialog.dart';
-import 'package:flutter_client/src/frontend/features/agents/ui/agent_conversation_composer.dart';
-import 'package:flutter_client/src/frontend/features/agents/ui/agent_conversation_layout_metrics.dart';
-import 'package:flutter_client/src/frontend/features/agents/ui/agent_conversation_message_display.dart';
-import 'package:flutter_client/src/frontend/features/agents/ui/agent_conversation_session_presentation.dart';
-import 'package:flutter_client/src/frontend/features/agents/ui/agent_orchestration_policy_controls.dart';
-import 'package:flutter_client/src/frontend/features/agents/ui/agent_workspace_sidebar.dart';
-import 'package:flutter_client/src/frontend/shared/platform/client_platform.dart';
-import 'package:flutter_client/src/frontend/features/agents/ui/history_session_panel.dart';
-import 'package:flutter_client/src/frontend/shared/ui/panel_frame.dart';
-import 'package:flutter_client/src/frontend/shared/ui/theme.dart';
+import 'package:licoup/src/application/controller/client_controller.dart';
+import 'package:licoup/src/application/features/layout/layout_state_store.dart';
+import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/contracts/presentation/layout_state_namespace.dart';
+import 'package:licoup/src/contracts/target_candidate.dart';
+import 'package:licoup/src/frontend/layout/layout_destination_presentation.dart';
+import 'package:licoup/src/frontend/layout/layout_palette.dart';
+import 'package:licoup/src/frontend/layout/layout_scope.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_pane.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_pane_controls.dart';
+import 'package:licoup/src/frontend/features/agents/ui/conversation_archive_dialog.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_composer.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_layout_metrics.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_message_display.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_session_presentation.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_orchestration_policy_controls.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_workspace_sidebar.dart';
+import 'package:licoup/src/frontend/shared/platform/client_platform.dart';
+import 'package:licoup/src/frontend/features/agents/ui/history_session_panel.dart';
+import 'package:licoup/src/frontend/shared/ui/panel_frame.dart';
+import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 class AgentConversationWorkspace extends StatefulWidget {
   const AgentConversationWorkspace({

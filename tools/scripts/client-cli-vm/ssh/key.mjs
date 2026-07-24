@@ -8,7 +8,7 @@ export function ensureSshKey() {
   const keyPath = path.join(sshRoot, "id_ed25519");
   mkdirSync(sshRoot, { recursive: true });
   if (!existsSync(keyPath)) {
-    run("ssh-keygen", ["-t", "ed25519", "-N", "", "-f", keyPath, "-C", "lico-client-cli-vm"], {
+    run("ssh-keygen", ["-t", "ed25519", "-N", "", "-f", keyPath, "-C", "licoup-cli-vm"], {
       stdio: "ignore",
     });
     chmodSync(keyPath, 0o600);

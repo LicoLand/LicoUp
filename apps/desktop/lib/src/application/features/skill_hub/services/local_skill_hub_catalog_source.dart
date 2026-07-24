@@ -1,7 +1,7 @@
 import 'dart:io';
 
-import 'package:flutter_client/src/application/features/skill_hub/services/skill_hub_skill_catalog.dart';
-import 'package:flutter_client/src/contracts/skill_hub.dart';
+import 'package:licoup/src/application/features/skill_hub/services/skill_hub_skill_catalog.dart';
+import 'package:licoup/src/contracts/skill_hub.dart';
 
 class LocalSkillHubCatalogSource implements SkillHubLocalCatalogSource {
   const LocalSkillHubCatalogSource();

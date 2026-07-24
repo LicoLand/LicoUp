@@ -2,9 +2,9 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-import 'package:flutter_client/src/application/controller/client_controller.dart';
-import 'package:flutter_client/src/application/features/agents/archive/conversation_archive_job_controller.dart';
-import 'package:flutter_client/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/application/controller/client_controller.dart';
+import 'package:licoup/src/application/features/agents/archive/conversation_archive_job_controller.dart';
+import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 
 Future<void> showConversationArchiveDialog(
   BuildContext context,

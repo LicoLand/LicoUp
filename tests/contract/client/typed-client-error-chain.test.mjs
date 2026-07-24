@@ -14,17 +14,17 @@ const production = {
   schema: "schemas/client_bridge/client_error.schema.json",
   generator: "tools/scripts/generate-client-bridge-contracts.mjs",
   rustGenerated:
-    "crates/lico-client-native/src/ffi/generated/client_error.rs",
+    "crates/licoup-native/src/ffi/generated/client_error.rs",
   dartGenerated:
     "apps/desktop/lib/src/contracts/generated/client_error.g.dart",
   runtimeError:
-    "crates/lico-client-native/src/platform/runtime_adapters/error.rs",
+    "crates/licoup-native/src/platform/runtime_adapters/error.rs",
   ffiConversation:
-    "crates/lico-client-native/src/ffi/commands/agent_conversation.rs",
+    "crates/licoup-native/src/ffi/commands/agent_conversation.rs",
   rpcError:
-    "crates/lico-client-native/src/bin/lico-client/stdio_rpc/error.rs",
+    "crates/licoup-native/src/bin/licoup/stdio_rpc/error.rs",
   rpcResponse:
-    "crates/lico-client-native/src/bin/lico-client/stdio_rpc/response.rs",
+    "crates/licoup-native/src/bin/licoup/stdio_rpc/response.rs",
   dartCodec:
     "apps/desktop/lib/src/platform/native_client/agent_service_stdio_rpc/response_codec.dart",
   dartRoundTrip:
@@ -150,7 +150,7 @@ test("source, FFI, RPC, and Dart projections carry the complete typed error", as
 
 test("node-owned production has no ClientError twins, shims, or string projections", async () => {
   const generatedDirectories = [
-    "crates/lico-client-native/src/ffi/generated",
+    "crates/licoup-native/src/ffi/generated",
     "apps/desktop/lib/src/contracts/generated",
   ];
   const generatedFiles = (

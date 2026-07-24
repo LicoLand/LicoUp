@@ -4,7 +4,7 @@ import path from "node:path";
 import process from "node:process";
 import { packageClient } from "./package-client.mjs";
 
-const licoClientBundleId = "com.lico.client";
+const licoClientBundleId = "land.lico.licoup";
 const canonicalPackageArgs = ["--platform", "macos", "--mode", "release"];
 
 function fail(message) {
@@ -52,9 +52,9 @@ function runningClientPids() {
         return false;
       }
       return (
-        entry.command.includes("/Contents/MacOS/flutter_client") &&
+        entry.command.includes("/Contents/MacOS/licoup") &&
         (entry.command.includes("/Arc.app/") ||
-          entry.command.includes("/flutter_client.app/"))
+          entry.command.includes("/licoup.app/"))
       );
     })
     .map((entry) => entry.pid);
@@ -119,10 +119,10 @@ function assertExecutable(filePath, label) {
 }
 
 function verifyRunnable(appPath) {
-  const executable = path.join(appPath, "Contents", "MacOS", "flutter_client");
-  const sidecar = path.join(appPath, "Contents", "MacOS", "lico-client");
+  const executable = path.join(appPath, "Contents", "MacOS", "licoup");
+  const sidecar = path.join(appPath, "Contents", "MacOS", "licoup");
   assertExecutable(executable, "canonical Flutter executable");
-  assertExecutable(sidecar, "canonical lico-client sidecar");
+  assertExecutable(sidecar, "canonical licoup sidecar");
 
   const scan = runCaptured(sidecar, [
     "targets",

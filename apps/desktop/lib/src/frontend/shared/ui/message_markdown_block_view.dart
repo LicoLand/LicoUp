@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 
-import 'package:flutter_client/src/frontend/shared/ui/message_markdown_inline.dart';
-import 'package:flutter_client/src/frontend/shared/ui/message_markdown_models.dart';
-import 'package:flutter_client/src/frontend/shared/ui/message_markdown_style.dart';
+import 'package:licoup/src/frontend/shared/ui/message_markdown_inline.dart';
+import 'package:licoup/src/frontend/shared/ui/message_markdown_models.dart';
+import 'package:licoup/src/frontend/shared/ui/message_markdown_style.dart';
 
 final class MessageMarkdownBlockView extends StatelessWidget {
   const MessageMarkdownBlockView({

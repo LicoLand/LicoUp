@@ -1,6 +1,6 @@
-# Lico Arc Desktop Client
+# LicoUp Desktop Client
 
-Lico Arc 是本地优先的开源桌面与移动客户端。产品范围以
+LicoUp 是本地优先的开源桌面与移动客户端。产品范围以
 [`PRODUCT.md`](../../PRODUCT.md) 和
 [`CLIENT-DESKTOP.md`](../../docs/functionality/CLIENT-DESKTOP.md) 为准；默认使用不依赖
 LicoMesh 服务端。

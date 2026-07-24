@@ -187,13 +187,13 @@ expectRejected(() => validateAndroidCapabilityProbe(leaked),
   "Android capability schema accepted a device identifier");
 
 const sourceFiles = [
-  "apps/desktop/android/app/src/main/kotlin/com/liko/arc/SecureMeshAndroidSecretStore.kt",
-  "apps/desktop/android/app/src/main/kotlin/com/liko/arc/SecureMeshAndroidCapability.kt",
-  "apps/desktop/android/app/src/main/kotlin/com/liko/arc/SecureMeshAndroidCapabilityProbe.kt",
-  "apps/desktop/android/app/src/main/kotlin/com/liko/arc/SecureMeshAndroidCustodyManager.kt",
-  "apps/desktop/android/app/src/main/kotlin/com/liko/arc/SecureMeshAndroidEncryptedRecordStore.kt",
-  "apps/desktop/android/app/src/main/kotlin/com/liko/arc/SecureMeshAndroidKeyPolicy.kt",
-  "crates/lico-client-native/src/ffi/android_ffi.rs",
+  "apps/desktop/android/app/src/main/kotlin/land/lico/licoup/SecureMeshAndroidSecretStore.kt",
+  "apps/desktop/android/app/src/main/kotlin/land/lico/licoup/SecureMeshAndroidCapability.kt",
+  "apps/desktop/android/app/src/main/kotlin/land/lico/licoup/SecureMeshAndroidCapabilityProbe.kt",
+  "apps/desktop/android/app/src/main/kotlin/land/lico/licoup/SecureMeshAndroidCustodyManager.kt",
+  "apps/desktop/android/app/src/main/kotlin/land/lico/licoup/SecureMeshAndroidEncryptedRecordStore.kt",
+  "apps/desktop/android/app/src/main/kotlin/land/lico/licoup/SecureMeshAndroidKeyPolicy.kt",
+  "crates/licoup-native/src/ffi/android_ffi.rs",
   "tools/scripts/client-android-native-tests.mjs",
   "tools/scripts/client-android-physical-install-launch.mjs"
 ];
@@ -203,12 +203,12 @@ const sources = new Map(sourceFiles.map((relativePath) => [
 ]));
 const source = [...sources.values()].join("\n");
 requireValue(
-  sources.get("apps/desktop/android/app/src/main/kotlin/com/liko/arc/SecureMeshAndroidKeyPolicy.kt")
+  sources.get("apps/desktop/android/app/src/main/kotlin/land/lico/licoup/SecureMeshAndroidKeyPolicy.kt")
     .includes("internal object SecureMeshAndroidKeyPolicyStrategy"),
   "Android adaptive custody policy strategy declaration is missing"
 );
 requireValue(
-  sources.get("apps/desktop/android/app/src/main/kotlin/com/liko/arc/SecureMeshAndroidCustodyManager.kt")
+  sources.get("apps/desktop/android/app/src/main/kotlin/land/lico/licoup/SecureMeshAndroidCustodyManager.kt")
     .includes("SecureMeshAndroidKeyPolicyStrategy.select("),
   "Android custody manager does not invoke the adaptive key policy strategy"
 );

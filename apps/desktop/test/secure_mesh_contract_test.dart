@@ -1,6 +1,6 @@
 import 'package:flutter/services.dart';
-import 'package:flutter_client/src/contracts/generated/secure_mesh.g.dart';
-import 'package:flutter_client/src/platform/secure_mesh/secure_mesh_mobile_bridge.dart';
+import 'package:licoup/src/contracts/generated/secure_mesh.g.dart';
+import 'package:licoup/src/platform/secure_mesh/secure_mesh_mobile_bridge.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

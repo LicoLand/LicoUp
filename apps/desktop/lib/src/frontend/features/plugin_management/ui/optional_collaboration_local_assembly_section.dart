@@ -2,12 +2,12 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-import 'package:flutter_client/src/application/features/settings/controller/optional_collaboration_workflow_controller.dart';
-import 'package:flutter_client/src/contracts/optional_collaboration_models.dart';
-import 'package:flutter_client/src/contracts/optional_collaboration_workflow_models.dart';
-import 'package:flutter_client/src/frontend/features/plugin_management/ui/optional_collaboration_workflow_card.dart';
-import 'package:flutter_client/src/frontend/features/plugin_management/ui/optional_collaboration_workflow_choice_subtitle.dart';
-import 'package:flutter_client/src/frontend/features/plugin_management/ui/optional_collaboration_workflow_plan_review.dart';
+import 'package:licoup/src/application/features/settings/controller/optional_collaboration_workflow_controller.dart';
+import 'package:licoup/src/contracts/optional_collaboration_models.dart';
+import 'package:licoup/src/contracts/optional_collaboration_workflow_models.dart';
+import 'package:licoup/src/frontend/features/plugin_management/ui/optional_collaboration_workflow_card.dart';
+import 'package:licoup/src/frontend/features/plugin_management/ui/optional_collaboration_workflow_choice_subtitle.dart';
+import 'package:licoup/src/frontend/features/plugin_management/ui/optional_collaboration_workflow_plan_review.dart';
 
 final class OptionalCollaborationDeploymentSection extends StatefulWidget {
   const OptionalCollaborationDeploymentSection({
@@ -48,8 +48,8 @@ final class _OptionalCollaborationDeploymentSectionState
       icon: Icons.dns_outlined,
       title: widget.isChinese ? 'LicoMesh 本机组装' : 'Local LicoMesh assembly',
       policy: widget.isChinese
-          ? '从 commit、包清单与信任指纹绑定的包中选择组件，由 LicoArc 自有适配器组装服务端与受签名固定 runner。完成后状态为待部署；runner 只会在下一次单独确认后执行。不执行插件命令或脚本，也不授权外发。'
-          : 'Select components from a commit-, inventory-, and trust-bound bundle. A LicoArc-owned adapter assembles the server and signed fixed runner. The result awaits deployment; the runner executes only after a separate direct confirmation. Plugin commands and scripts are not run, and egress is not authorized.',
+          ? '从 commit、包清单与信任指纹绑定的包中选择组件，由 LicoUp 自有适配器组装服务端与受签名固定 runner。完成后状态为待部署；runner 只会在下一次单独确认后执行。不执行插件命令或脚本，也不授权外发。'
+          : 'Select components from a commit-, inventory-, and trust-bound bundle. A LicoUp-owned adapter assembles the server and signed fixed runner. The result awaits deployment; the runner executes only after a separate direct confirmation. Plugin commands and scripts are not run, and egress is not authorized.',
       isChinese: widget.isChinese,
       children: [
         for (final choice in widget.choices)

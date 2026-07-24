@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:flutter_client/src/platform/storage/portable_data_root.dart';
+import 'package:licoup/src/platform/storage/portable_data_root.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 
@@ -17,13 +17,13 @@ void main() {
       final portableData = PortableDataRoot(dataDirectoryOverride: directory);
       final manifest = await portableData.loadWorkspaceManifest();
 
-      final manifestFile = File('${directory.path}/.licoarc-workspace.json');
+      final manifestFile = File('${directory.path}/.licoup-workspace.json');
       expect(manifestFile.exists(), completion(isTrue));
       expect(
         manifest.schemaVersion,
         ClientWorkspaceManifest.currentSchemaVersion,
       );
-      expect(manifest.appId, ClientWorkspaceManifest.licoArcAppId);
+      expect(manifest.appId, ClientWorkspaceManifest.licoUpAppId);
       expect(manifest.workspaceId, isNotEmpty);
 
       final refreshed = await portableData.loadWorkspaceManifest();
@@ -39,7 +39,7 @@ void main() {
       'lico-workspace-corrupt-',
     );
     addTearDown(() => directory.delete(recursive: true));
-    final manifestFile = File('${directory.path}/.licoarc-workspace.json');
+    final manifestFile = File('${directory.path}/.licoup-workspace.json');
     await manifestFile.writeAsString('{not-json', flush: true);
 
     final portableData = PortableDataRoot(dataDirectoryOverride: directory);
@@ -56,7 +56,7 @@ void main() {
       'lico-workspace-bad-app-id-',
     );
     addTearDown(() => directory.delete(recursive: true));
-    final manifestFile = File('${directory.path}/.licoarc-workspace.json');
+    final manifestFile = File('${directory.path}/.licoup-workspace.json');
     await manifestFile.writeAsString(
       jsonEncode({
         'schemaVersion': 1,
@@ -79,11 +79,11 @@ void main() {
       'lico-workspace-bad-schema-',
     );
     addTearDown(() => directory.delete(recursive: true));
-    final manifestFile = File('${directory.path}/.licoarc-workspace.json');
+    final manifestFile = File('${directory.path}/.licoup-workspace.json');
     await manifestFile.writeAsString(
       jsonEncode({
         'schemaVersion': 999,
-        'appId': ClientWorkspaceManifest.licoArcAppId,
+        'appId': ClientWorkspaceManifest.licoUpAppId,
         'workspaceId': 'workspace-id',
         'createdAt': DateTime(2020).toUtc().toIso8601String(),
         'updatedAt': DateTime(2020).toUtc().toIso8601String(),
@@ -102,11 +102,11 @@ void main() {
       'lico-workspace-empty-id-',
     );
     addTearDown(() => directory.delete(recursive: true));
-    final manifestFile = File('${directory.path}/.licoarc-workspace.json');
+    final manifestFile = File('${directory.path}/.licoup-workspace.json');
     await manifestFile.writeAsString(
       jsonEncode({
         'schemaVersion': 1,
-        'appId': ClientWorkspaceManifest.licoArcAppId,
+        'appId': ClientWorkspaceManifest.licoUpAppId,
         'workspaceId': '',
         'createdAt': DateTime(2020).toUtc().toIso8601String(),
         'updatedAt': DateTime(2020).toUtc().toIso8601String(),
@@ -121,7 +121,7 @@ void main() {
   });
 
   test('resolves the home dot-directory namespace once', () async {
-    final home = await Directory.systemTemp.createTemp('licoarc-home-');
+    final home = await Directory.systemTemp.createTemp('licoup-home-');
     addTearDown(() => home.delete(recursive: true));
     final portableData = PortableDataRoot(
       environmentOverride: {'HOME': home.path},
@@ -130,9 +130,9 @@ void main() {
     final second = await portableData.dataDirectory();
 
     expect(first.path, second.path);
-    expect(first.path, p.join(home.path, '.lico-arc'));
+    expect(first.path, p.join(home.path, '.lico-up'));
     expect(
-      await File('${first.path}/.licoarc-workspace.json').exists(),
+      await File('${first.path}/.licoup-workspace.json').exists(),
       isTrue,
     );
   });
@@ -153,8 +153,8 @@ void main() {
     expect(clientState.path, p.join(directory.path, 'client-state'));
     expect(await clientState.list().isEmpty, isTrue);
     expect(topLevelEntries, {
-      '.licoarc-workspace.json',
-      '.licoarc-workspace.json.lock',
+      '.licoup-workspace.json',
+      '.licoup-workspace.json.lock',
       'client-state',
     });
   });
@@ -162,7 +162,7 @@ void main() {
   test(
     'packaged macOS app uses the home dot directory instead of portable env',
     () async {
-      final home = await Directory.systemTemp.createTemp('licoarc-mac-home-');
+      final home = await Directory.systemTemp.createTemp('licoup-mac-home-');
       final envDirectory = await Directory.systemTemp.createTemp(
         'lico-env-portable-',
       );
@@ -171,7 +171,7 @@ void main() {
 
       final portableData = PortableDataRoot(
         environmentOverride: {
-          'LICOARC_PORTABLE_DIR': envDirectory.path,
+          'LICOUP_PORTABLE_DIR': envDirectory.path,
           'HOME': home.path,
         },
         resolvedExecutableOverride: p.join(
@@ -179,16 +179,16 @@ void main() {
           'Arc.app',
           'Contents',
           'MacOS',
-          'flutter_client',
+          'licoup',
         ),
       );
 
       final resolved = await portableData.dataDirectory();
 
-      expect(resolved.path, p.join(home.path, '.lico-arc'));
+      expect(resolved.path, p.join(home.path, '.lico-up'));
       expect(resolved.path, isNot(envDirectory.path));
       expect(
-        await File('${resolved.path}/.licoarc-workspace.json').exists(),
+        await File('${resolved.path}/.licoup-workspace.json').exists(),
         isTrue,
       );
     },
@@ -209,7 +209,7 @@ void main() {
     addTearDown(() => envDirectory.delete(recursive: true));
 
     final portableData = PortableDataRoot(
-      environmentOverride: {'LICOARC_PORTABLE_DIR': envDirectory.path},
+      environmentOverride: {'LICOUP_PORTABLE_DIR': envDirectory.path},
       resolvedExecutableOverride: p.join(executableDirectory.path, 'Runner'),
       mobileRuntimeOverride: true,
       applicationSupportDirectoryResolver: () async => applicationSupport,
@@ -219,7 +219,7 @@ void main() {
 
     expect(
       resolved.path,
-      p.join(applicationSupport.path, 'LicoArc', 'portable-data'),
+      p.join(applicationSupport.path, 'LicoUp', 'portable-data'),
     );
     expect(
       await Directory(

@@ -6,12 +6,12 @@ const androidInstallLaunchVerifier = await readSourceBundle(
   ".mjs",
 );
 const androidMainActivity =
-  await readText("apps/desktop/android/app/src/main/kotlin/com/liko/arc/MainActivity.kt");
+  await readText("apps/desktop/android/app/src/main/kotlin/land/lico/licoup/MainActivity.kt");
 const androidSecureMeshUserAuthenticator =
-  await readText("apps/desktop/android/app/src/main/kotlin/com/liko/arc/SecureMeshAndroidUserAuthenticator.kt");
+  await readText("apps/desktop/android/app/src/main/kotlin/land/lico/licoup/SecureMeshAndroidUserAuthenticator.kt");
 const androidProductionSources = await readSourceBundle(
-  "apps/desktop/android/app/src/main/kotlin/com/liko/arc/MainActivity.kt",
-  "apps/desktop/android/app/src/main/kotlin/com/liko/arc",
+  "apps/desktop/android/app/src/main/kotlin/land/lico/licoup/MainActivity.kt",
+  "apps/desktop/android/app/src/main/kotlin/land/lico/licoup",
   ".kt",
 );
 const androidAuthBoundarySources = androidProductionSources;

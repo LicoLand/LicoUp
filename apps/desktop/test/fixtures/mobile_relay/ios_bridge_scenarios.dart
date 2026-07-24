@@ -1,5 +1,5 @@
 import 'package:flutter/services.dart';
-import 'package:flutter_client/src/platform/secure_mesh/secure_mesh_ios_bridge.dart';
+import 'package:licoup/src/platform/secure_mesh/secure_mesh_ios_bridge.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void registerMobileRelayIosBridgeScenarios() {

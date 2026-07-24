@@ -12,7 +12,7 @@ function findLinuxBundle() {
   const candidates = [];
   for (const mode of existsSync(bundleRoot) ? readdirSync(bundleRoot) : []) {
     const bundleDir = path.join(bundleRoot, mode, "bundle");
-    if (existsSync(path.join(bundleDir, "flutter_client"))) {
+    if (existsSync(path.join(bundleDir, "licoup"))) {
       candidates.push(bundleDir);
     }
   }
@@ -73,12 +73,12 @@ async function main() {
   }
 
   const bundleDir = findLinuxBundle();
-  const flutterBinary = path.join(bundleDir, "flutter_client");
-  const cli = path.join(bundleDir, "lico-client");
+  const flutterBinary = path.join(bundleDir, "licoup");
+  const cli = path.join(bundleDir, "licoup");
   const packagingManifest = path.join(
     bundleDir,
     "package-metadata",
-    "lico-client",
+    "licoup",
     "packaging-modules.json"
   );
   for (const file of [flutterBinary, cli]) {
@@ -107,7 +107,7 @@ async function main() {
   }
   const dataDir = path.join(os.tmpdir(), `lico-ubuntu-smoke-${process.pid}-${Date.now()}`);
   mkdirSync(dataDir, { recursive: true });
-  const env = { ...process.env, LICOARC_PORTABLE_DIR: dataDir };
+  const env = { ...process.env, LICOUP_PORTABLE_DIR: dataDir };
   try {
     const scan = runJson(cli, ["targets", "scan"], env);
     assertTargetScan(scan);

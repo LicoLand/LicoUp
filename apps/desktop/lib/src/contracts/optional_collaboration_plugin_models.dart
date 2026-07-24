@@ -1,5 +1,5 @@
-import 'package:flutter_client/src/contracts/optional_collaboration_model_parsing.dart';
-import 'package:flutter_client/src/contracts/optional_collaboration_runner_trust_models.dart';
+import 'package:licoup/src/contracts/optional_collaboration_model_parsing.dart';
+import 'package:licoup/src/contracts/optional_collaboration_runner_trust_models.dart';
 
 final class OptionalCollaborationPlugin {
   const OptionalCollaborationPlugin({

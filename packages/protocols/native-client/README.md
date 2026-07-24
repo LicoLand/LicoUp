@@ -1,13 +1,13 @@
 # packages/protocols/native-client
 
-本目录记录 LicoArc Flutter 客户端、Rust native library 与本机智能体之间的稳定协议边界。
+本目录记录 LicoUp Flutter 客户端、Rust native library 与本机智能体之间的稳定协议边界。
 
 实现入口：
 
-- `../../../crates/lico-client-native/src/core/task_queue.rs`：有界本机任务队列。
-- `../../../crates/lico-client-native/src/platform/runtime_adapters.rs`：智能体会话适配注册表。
-- `../../../crates/lico-client-native/src/core/mcp.rs`：与服务实现无关的 MCP JSON-RPC 报文适配。
-- `../../../crates/lico-client-native/src/core/secure_mesh_acp.rs`：Secure Client Mesh 上的 ACP 承载。
+- `../../../crates/licoup-native/src/core/task_queue.rs`：有界本机任务队列。
+- `../../../crates/licoup-native/src/platform/runtime_adapters.rs`：智能体会话适配注册表。
+- `../../../crates/licoup-native/src/core/mcp.rs`：与服务实现无关的 MCP JSON-RPC 报文适配。
+- `../../../crates/licoup-native/src/core/secure_mesh_acp.rs`：Secure Client Mesh 上的 ACP 承载。
 
 协议范围：
 

@@ -1,4 +1,4 @@
-import 'package:flutter_client/src/contracts/mobile_home_layout.dart';
+import 'package:licoup/src/contracts/mobile_home_layout.dart';
 
 abstract interface class MobileHomeLayoutRepository {
   Future<MobileHomeLayout> load();

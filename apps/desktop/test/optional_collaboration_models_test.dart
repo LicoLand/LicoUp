@@ -1,4 +1,4 @@
-import 'package:flutter_client/src/contracts/optional_collaboration_models.dart';
+import 'package:licoup/src/contracts/optional_collaboration_models.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support/optional_collaboration_test_fixtures.dart';
@@ -209,7 +209,7 @@ Map<String, dynamic> _catalog() => {
   'plugin': _plugin(),
   'workflows': {
     'localDeployment': {
-      'schemaVersion': 'licoarc.collaboration.local-deployment.v1',
+      'schemaVersion': 'licoup.collaboration.local-deployment.v1',
       'manualOnly': true,
       'features': <dynamic>[
         {
@@ -220,7 +220,7 @@ Map<String, dynamic> _catalog() => {
       ],
     },
     'mcpInstall': {
-      'schemaVersion': 'licoarc.collaboration.mcp-install.v2',
+      'schemaVersion': 'licoup.collaboration.mcp-install.v2',
       'manualOnly': true,
       'requiresPerFileApproval': true,
       'outboundPolicy': 'direct-user-exact-scope-one-shot',

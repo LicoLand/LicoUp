@@ -1,7 +1,7 @@
 import 'package:flutter/foundation.dart' show ValueListenable;
 
-import 'package:flutter_client/src/application/features/agents/conversation/conversation_presentation_signals.dart';
-import 'package:flutter_client/src/application/features/agents/workspace/agent_workspace_coordinator.dart';
+import 'package:licoup/src/application/features/agents/conversation/conversation_presentation_signals.dart';
+import 'package:licoup/src/application/features/agents/workspace/agent_workspace_coordinator.dart';
 
 mixin ClientConversationFacade on AgentWorkspaceCoordinator {
   ConversationPresentationSignals get conversationPresentationSignals;

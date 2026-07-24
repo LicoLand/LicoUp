@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
-import 'package:flutter_client/src/application/features/settings/controller/optional_collaboration_controller.dart';
-import 'package:flutter_client/src/contracts/optional_collaboration_gateway.dart';
-import 'package:flutter_client/src/contracts/optional_collaboration_models.dart';
-import 'package:flutter_client/src/contracts/optional_collaboration_local_server_models.dart';
-import 'package:flutter_client/src/contracts/optional_collaboration_workflow_models.dart';
-import 'package:flutter_client/src/frontend/features/plugin_management/ui/optional_collaboration_settings.dart';
-import 'package:flutter_client/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/application/features/settings/controller/optional_collaboration_controller.dart';
+import 'package:licoup/src/contracts/optional_collaboration_gateway.dart';
+import 'package:licoup/src/contracts/optional_collaboration_models.dart';
+import 'package:licoup/src/contracts/optional_collaboration_local_server_models.dart';
+import 'package:licoup/src/contracts/optional_collaboration_workflow_models.dart';
+import 'package:licoup/src/frontend/features/plugin_management/ui/optional_collaboration_settings.dart';
+import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support/optional_collaboration_test_fixtures.dart';
@@ -389,7 +389,7 @@ void main() {
       );
       await tester.enterText(
         find.byKey(const Key('collaboration-mcp-install-destination-0')),
-        'test-data/licoarc-mcp',
+        'test-data/licoup-mcp',
       );
       final planButton = find.byKey(const Key('collaboration-mcp-plan'));
       await tester.ensureVisible(planButton);
@@ -402,7 +402,7 @@ void main() {
         findsOneWidget,
       );
       expect(
-        find.textContaining('test-data/licoarc-mcp/selected-mcp'),
+        find.textContaining('test-data/licoup-mcp/selected-mcp'),
         findsOneWidget,
       );
       expect(find.textContaining('uploaded file'), findsNothing);
@@ -886,7 +886,7 @@ Map<String, dynamic> _assemblyPlan(
   'packageDigestSha256': _digest,
   'selectedComponentIds': selectedIds,
   'destination': destination,
-  'assemblyAdapterId': 'licoarc-builtin-local-http-v1',
+  'assemblyAdapterId': 'licoup-builtin-local-http-v1',
   'assemblyManifestDigestSha256': _workflowRegistrationDigest,
   'assemblyManifestBytes': 512,
   'bindHost': '127.0.0.1',
@@ -914,7 +914,7 @@ Map<String, dynamic> _localServer(
   'packageDigestSha256': _digest,
   'selectedComponentIds': selectedIds,
   'destination': destination,
-  'assemblyAdapterId': 'licoarc-builtin-local-http-v1',
+  'assemblyAdapterId': 'licoup-builtin-local-http-v1',
   'assemblyManifestDigestSha256': _workflowRegistrationDigest,
   'bindHost': '127.0.0.1',
   'port': 43121,
@@ -940,10 +940,10 @@ Map<String, dynamic> _workflowRegistrationPlan(
     'agentId': destination.agentId,
     'registrationId': registrationId,
     'destination':
-        'test-data/licoarc-private/${destination.agentId}/$registrationId.json',
+        'test-data/licoup-private/${destination.agentId}/$registrationId.json',
     'digestSha256': _workflowRegistrationDigest,
     'registration': {
-      'schemaVersion': 'licoarc.mcp-agent-registration.v2',
+      'schemaVersion': 'licoup.mcp-agent-registration.v2',
       'registrationId': registrationId,
       'registrationDigestSha256': _workflowRegistrationDigest,
       'agentId': destination.agentId,
@@ -959,7 +959,7 @@ Map<String, dynamic> _workflowRegistrationPlan(
       ],
       'payloadFiles': <dynamic>[],
       'servers': <dynamic>[],
-      'bridgeKind': 'licoarc-stdio-mcp-gate',
+      'bridgeKind': 'licoup-stdio-mcp-gate',
       'activationPolicy': 'disabled-authenticated-broker-unavailable',
       'automaticTriggersAllowed': false,
       'pluginExecutedDuringInstall': false,

@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 const repoRoot = path.resolve(fileURLToPath(new URL("../../..", import.meta.url)));
 
 const productionRoots = Object.freeze([
-  ["crates/lico-client-native/src", ".rs"],
+  ["crates/licoup-native/src", ".rs"],
   ["apps/desktop/lib", ".dart"],
   ["apps/desktop/android/app/src/main", ".kt"],
   ["apps/desktop/ios/Runner", ".swift"],
@@ -21,14 +21,14 @@ const networkTokensByExtension = Object.freeze({
 });
 
 const reviewedRustEgressFiles = Object.freeze([
-  "crates/lico-client-native/src/domain/collaboration_plugin/assembly/runtime/probe.rs",
-  "crates/lico-client-native/src/domain/collaboration_plugin/assembly/runtime/shutdown.rs",
-  "crates/lico-client-native/src/domain/collaboration_plugin/source.rs",
-  "crates/lico-client-native/src/domain/skill_hub/source.rs",
-  "crates/lico-client-native/src/platform/local_service/http.rs",
-  "crates/lico-client-native/src/platform/local_service/sse.rs",
-  "crates/lico-client-native/src/platform/mcp_streamable_http.rs",
-  "crates/lico-client-native/src/platform/secure_client_relay/http_io.rs",
+  "crates/licoup-native/src/domain/collaboration_plugin/assembly/runtime/probe.rs",
+  "crates/licoup-native/src/domain/collaboration_plugin/assembly/runtime/shutdown.rs",
+  "crates/licoup-native/src/domain/collaboration_plugin/source.rs",
+  "crates/licoup-native/src/domain/skill_hub/source.rs",
+  "crates/licoup-native/src/platform/local_service/http.rs",
+  "crates/licoup-native/src/platform/local_service/sse.rs",
+  "crates/licoup-native/src/platform/mcp_streamable_http.rs",
+  "crates/licoup-native/src/platform/secure_client_relay/http_io.rs",
 ]);
 
 async function sourceFiles(relativeRoot, extension) {
@@ -69,8 +69,8 @@ test("production network capability stays inside the reviewed client egress boun
 
 test("GitHub package fetchers are bounded inbound GET-only sources", async () => {
   const githubFetchers = [
-    "crates/lico-client-native/src/domain/collaboration_plugin/source.rs",
-    "crates/lico-client-native/src/domain/skill_hub/source.rs",
+    "crates/licoup-native/src/domain/collaboration_plugin/source.rs",
+    "crates/licoup-native/src/domain/skill_hub/source.rs",
   ];
   for (const relativePath of githubFetchers) {
     const source = await fs.readFile(path.join(repoRoot, relativePath), "utf8");
@@ -85,13 +85,13 @@ test("GitHub package fetchers are bounded inbound GET-only sources", async () =>
 
 test("local assembly runtime networking is synthetic loopback inspection only", async () => {
   const applyPath =
-    "crates/lico-client-native/src/domain/collaboration_plugin/assembly/apply.rs";
+    "crates/licoup-native/src/domain/collaboration_plugin/assembly/apply.rs";
   const probePath =
-    "crates/lico-client-native/src/domain/collaboration_plugin/assembly/runtime/probe.rs";
+    "crates/licoup-native/src/domain/collaboration_plugin/assembly/runtime/probe.rs";
   const shutdownPath =
-    "crates/lico-client-native/src/domain/collaboration_plugin/assembly/runtime/shutdown.rs";
+    "crates/licoup-native/src/domain/collaboration_plugin/assembly/runtime/shutdown.rs";
   const sandboxPath =
-    "crates/lico-client-native/src/domain/collaboration_plugin/assembly/runtime/sandbox.rs";
+    "crates/licoup-native/src/domain/collaboration_plugin/assembly/runtime/sandbox.rs";
   const [apply, probe, shutdown, sandbox] = await Promise.all(
     [applyPath, probePath, shutdownPath, sandboxPath].map((relativePath) =>
       fs.readFile(path.join(repoRoot, relativePath), "utf8"),
@@ -143,19 +143,19 @@ test("local assembly runtime networking is synthetic loopback inspection only", 
 
 test("MCP HTTP egress is reachable only through an exact one-shot direct approval", async () => {
   const approval = await fs.readFile(
-    path.join(repoRoot, "crates/lico-client-native/src/domain/mcp_adapter/approval.rs"),
+    path.join(repoRoot, "crates/licoup-native/src/domain/mcp_adapter/approval.rs"),
     "utf8",
   );
   const execution = await fs.readFile(
-    path.join(repoRoot, "crates/lico-client-native/src/domain/mcp_adapter/execution.rs"),
+    path.join(repoRoot, "crates/licoup-native/src/domain/mcp_adapter/execution.rs"),
     "utf8",
   );
   const command = await fs.readFile(
-    path.join(repoRoot, "crates/lico-client-native/src/ffi/commands/mcp.rs"),
+    path.join(repoRoot, "crates/licoup-native/src/ffi/commands/mcp.rs"),
     "utf8",
   );
   const transport = await fs.readFile(
-    path.join(repoRoot, "crates/lico-client-native/src/platform/mcp_streamable_http.rs"),
+    path.join(repoRoot, "crates/licoup-native/src/platform/mcp_streamable_http.rs"),
     "utf8",
   );
 

@@ -1,4 +1,4 @@
-import 'package:flutter_client/src/frontend/layout/layout_visual_tokens.dart';
+import 'package:licoup/src/frontend/layout/layout_visual_tokens.dart';
 
 /// Quiet-luxury geometry for the Native desktop presentation system:
 /// generous breathing room, soft radii, and unhurried motion.

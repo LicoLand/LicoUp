@@ -1046,8 +1046,8 @@ export const FLUTTER_MODULES = Object.freeze([
       kind: "flutter-feature",
       summary: "Android Secure Mesh status and app-private runtime receipt bridge",
       inputs: [
-        "apps/desktop/android/app/src/main/kotlin/com/liko/arc/SecureMeshAndroidAtomicRecordWriter.kt",
-        "apps/desktop/android/app/src/main/kotlin/com/liko/arc/SecureMeshAndroidNativeDispatchQueue.kt",
+        "apps/desktop/android/app/src/main/kotlin/land/lico/licoup/SecureMeshAndroidAtomicRecordWriter.kt",
+        "apps/desktop/android/app/src/main/kotlin/land/lico/licoup/SecureMeshAndroidNativeDispatchQueue.kt",
         "apps/desktop/test/fixtures/mobile_relay/android_bridge_scenarios.dart",
       ],
       command: flutterTests([

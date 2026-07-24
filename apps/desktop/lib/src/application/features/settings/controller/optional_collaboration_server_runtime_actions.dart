@@ -1,4 +1,4 @@
-import 'package:flutter_client/src/application/features/settings/controller/optional_collaboration_workflow_action_context.dart';
+import 'package:licoup/src/application/features/settings/controller/optional_collaboration_workflow_action_context.dart';
 
 final class OptionalCollaborationServerRuntimeActions {
   const OptionalCollaborationServerRuntimeActions(this.context);

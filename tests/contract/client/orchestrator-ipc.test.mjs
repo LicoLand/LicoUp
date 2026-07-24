@@ -16,15 +16,15 @@ const repoRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "../../..",
 );
-const schemaRef = "packages/contracts/client/lico-arc-orchestrator-ipc.schema.json";
-const ipcRoot = "crates/lico-client-native/src/platform/orchestrator_ipc";
+const schemaRef = "packages/contracts/client/lico-up-orchestrator-ipc.schema.json";
+const ipcRoot = "crates/licoup-native/src/platform/orchestrator_ipc";
 const sourceRefs = Object.freeze([
   `${ipcRoot}/mod.rs`,
   `${ipcRoot}/client.rs`,
-  "crates/lico-client-native/src/platform/orchestrator_service.rs",
-  "crates/lico-client-native/src/platform/mod.rs",
-  "crates/lico-client-native/src/bin/lico-client/orchestrator.rs",
-  "crates/lico-client-native/src/bin/lico-client.rs",
+  "crates/licoup-native/src/platform/orchestrator_service.rs",
+  "crates/licoup-native/src/platform/mod.rs",
+  "crates/licoup-native/src/bin/licoup/orchestrator.rs",
+  "crates/licoup-native/src/bin/licoup.rs",
 ]);
 const protocolVersion = "lico.orchestrator.ipc.v1";
 const methods = Object.freeze([
@@ -310,7 +310,7 @@ function runFrozenRustHarness() {
       path.join(repoRoot, "tools/scripts/cargo-client.mjs"),
       "test",
       "--manifest-path",
-      path.join(repoRoot, "crates/lico-client-native/Cargo.toml"),
+      path.join(repoRoot, "crates/licoup-native/Cargo.toml"),
       "--test",
       "orchestrator_ipc_acceptance",
     ],
@@ -999,9 +999,9 @@ use crate::platform::{
 test("private service source owns local IPC admission and bounded lifecycle only", async () => {
   const sources = await readSources();
   const ipc = `${sources[`${ipcRoot}/mod.rs`]}\n${sources[`${ipcRoot}/client.rs`]}`;
-  const lifecycle = sources["crates/lico-client-native/src/platform/orchestrator_service.rs"];
-  const cli = sources["crates/lico-client-native/src/bin/lico-client/orchestrator.rs"];
-  const platform = sources["crates/lico-client-native/src/platform/mod.rs"];
+  const lifecycle = sources["crates/licoup-native/src/platform/orchestrator_service.rs"];
+  const cli = sources["crates/licoup-native/src/bin/licoup/orchestrator.rs"];
+  const platform = sources["crates/licoup-native/src/platform/mod.rs"];
   const ownedSource = `${ipc}\n${lifecycle}\n${cli}`;
   const joined = ownedSource.toLowerCase();
 
@@ -1040,7 +1040,7 @@ test("private service source owns local IPC admission and bounded lifecycle only
 
   const imports = canonicalRustImports(ownedSource);
   const platformImports = imports.flatMap((entry) => {
-    const match = /^(?:crate|lico_client_native)::platform::([a-z][a-z0-9_]*)/u.exec(entry);
+    const match = /^(?:crate|licoup_native)::platform::([a-z][a-z0-9_]*)/u.exec(entry);
     return match ? [match[1]] : [];
   });
   assert.equal(platformImports.length > 0, true);
@@ -1081,7 +1081,7 @@ test("private service source owns local IPC admission and bounded lifecycle only
 
 test("CLI is a thin client of the same IPC request and receipt schema", async () => {
   const sources = await readSources();
-  const cli = sources["crates/lico-client-native/src/bin/lico-client/orchestrator.rs"];
+  const cli = sources["crates/licoup-native/src/bin/licoup/orchestrator.rs"];
   for (const command of [
     "serve",
     "status",
@@ -1110,7 +1110,7 @@ test("frozen external Rust harness observes pre-handler fault behavior", () => {
     "--format-version",
     "1",
     "--manifest-path",
-    path.join(repoRoot, "crates/lico-client-native/Cargo.toml"),
+    path.join(repoRoot, "crates/licoup-native/Cargo.toml"),
   ], {
     cwd: repoRoot,
     encoding: "utf8",
@@ -1120,7 +1120,7 @@ test("frozen external Rust harness observes pre-handler fault behavior", () => {
   assert.equal(metadata.status, 0, "cargo metadata failed for frozen harness");
   const expectedSource = path.join(
     repoRoot,
-    "crates/lico-client-native/tests/orchestrator_ipc_acceptance.rs",
+    "crates/licoup-native/tests/orchestrator_ipc_acceptance.rs",
   );
   const targets = JSON.parse(metadata.stdout).packages
     .flatMap((pkg) => pkg.targets)
@@ -1139,9 +1139,9 @@ test("normal macOS CLI auto-authenticates, auto-starts, reuses, and crash-recove
     path.join(repoRoot, "tools/scripts/cargo-client.mjs"),
     "build",
     "--manifest-path",
-    path.join(repoRoot, "crates/lico-client-native/Cargo.toml"),
+    path.join(repoRoot, "crates/licoup-native/Cargo.toml"),
     "--bin",
-    "lico-client",
+    "licoup",
   ], {
     cwd: repoRoot,
     encoding: "utf8",
@@ -1149,9 +1149,9 @@ test("normal macOS CLI auto-authenticates, auto-starts, reuses, and crash-recove
     timeout: 180_000,
   });
   assert.equal(build.status, 0, "normal bootstrap binary did not build");
-  const binary = path.join(repoRoot, NATIVE_CARGO_TEST_TARGET, "debug", "lico-client");
+  const binary = path.join(repoRoot, NATIVE_CARGO_TEST_TARGET, "debug", "licoup");
   const stateRoot = await fs.mkdtemp(path.join(os.tmpdir(), "lico-normal-bootstrap-"));
-  const environment = { LICO_ARC_STATE_ROOT: stateRoot };
+  const environment = { LICOUP_STATE_ROOT: stateRoot };
   const statusArgs = ["orchestrator", "status"];
   const outputs = [];
   let lastDiscovery = null;
@@ -1285,21 +1285,21 @@ test("real private endpoint proves cross-process auth, reconnect, rotation, and 
     path.join(repoRoot, "tools/scripts/cargo-client.mjs"),
     "build",
     "--manifest-path",
-    path.join(repoRoot, "crates/lico-client-native/Cargo.toml"),
+    path.join(repoRoot, "crates/licoup-native/Cargo.toml"),
     "--bin",
-    "lico-client",
+    "licoup",
   ], {
     cwd: repoRoot,
     encoding: "utf8",
     maxBuffer: 4 * 1024 * 1024,
     timeout: 180_000,
   });
-  assert.equal(build.status, 0, "lico-client acceptance binary did not build");
+  assert.equal(build.status, 0, "licoup acceptance binary did not build");
   const binary = path.join(
     repoRoot,
     NATIVE_CARGO_TEST_TARGET,
     "debug",
-    process.platform === "win32" ? "lico-client.exe" : "lico-client",
+    process.platform === "win32" ? "licoup.exe" : "licoup",
   );
   const stateRoot = await fs.mkdtemp(
     path.join(os.tmpdir(), "lico-orchestrator-acceptance-"),

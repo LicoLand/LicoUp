@@ -44,7 +44,7 @@ export async function runIdentityCases(fixtureRoot, profiles, surfaces) {
   await writeRelative(
     fixtureRoot,
     "apps/desktop/lib/src/frontend/shared_private_importer.dart",
-    "import 'package:flutter_client/src/frontend/layout/profiles/alpha/desktop/private_component.dart';\n",
+    "import 'package:licoup/src/frontend/layout/profiles/alpha/desktop/private_component.dart';\n",
   );
   await expectViolation("layout_profile_private_importer_unauthorized", () =>
     verifyLayoutBoundaries({ repositoryRoot: fixtureRoot }),
@@ -55,7 +55,7 @@ export async function runIdentityCases(fixtureRoot, profiles, surfaces) {
   await writeRelative(
     fixtureRoot,
     "apps/desktop/lib/src/unauthorized_bundle_importer.dart",
-    `import 'package:flutter_client/src/frontend/layout/profiles/alpha/desktop/alpha_desktop_bundle.dart';\n`,
+    `import 'package:licoup/src/frontend/layout/profiles/alpha/desktop/alpha_desktop_bundle.dart';\n`,
   );
   await expectViolation("layout_bundle_importer_unauthorized", () =>
     verifyLayoutBoundaries({ repositoryRoot: fixtureRoot }),

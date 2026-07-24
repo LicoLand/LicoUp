@@ -114,7 +114,7 @@ function syncCargoLock(relativePath, manifest) {
     return;
   }
   const source = readText(relativePath);
-  const regex = /(\[\[package\]\]\nname = "lico-client-native"\nversion = ")[^"]+(")/;
+  const regex = /(\[\[package\]\]\nname = "licoup-native"\nversion = ")[^"]+(")/;
   if (!regex.test(source)) {
     return;
   }
@@ -122,7 +122,7 @@ function syncCargoLock(relativePath, manifest) {
     source,
     regex,
     (_, prefix, suffix) => `${prefix}${manifest.productVersion}${suffix}`,
-    `${relativePath} lico-client-native version`
+    `${relativePath} licoup-native version`
   ));
 }
 
@@ -158,9 +158,9 @@ function syncVersion() {
   const manifest = loadManifest();
   syncPackageJson(manifest);
   syncTomlManifest("Cargo.toml", "workspace.package", manifest);
-  syncTomlManifest("crates/lico-client-native/Cargo.toml", "package", manifest);
+  syncTomlManifest("crates/licoup-native/Cargo.toml", "package", manifest);
   syncCargoLock("Cargo.lock", manifest);
-  syncCargoLock("crates/lico-client-native/Cargo.lock", manifest);
+  syncCargoLock("crates/licoup-native/Cargo.lock", manifest);
   syncPubspec(manifest);
   syncXcodeProject("apps/desktop/ios/Runner.xcodeproj/project.pbxproj", manifest);
   syncXcodeProject("apps/desktop/macos/Runner.xcodeproj/project.pbxproj", manifest);
@@ -224,28 +224,28 @@ function checkVersion() {
   ) && ok;
   ok = checkEqual(
     records,
-    "crates/lico-client-native/Cargo.toml package version",
-    valueAtRegex("crates/lico-client-native/Cargo.toml", /\[package\][\s\S]*?\nversion\s*=\s*"([^"]+)"/g, "crates/lico-client-native/Cargo.toml package version"),
+    "crates/licoup-native/Cargo.toml package version",
+    valueAtRegex("crates/licoup-native/Cargo.toml", /\[package\][\s\S]*?\nversion\s*=\s*"([^"]+)"/g, "crates/licoup-native/Cargo.toml package version"),
     manifest.productVersion
   ) && ok;
 
-  for (const cargoLockPath of ["Cargo.lock", "crates/lico-client-native/Cargo.lock"]) {
+  for (const cargoLockPath of ["Cargo.lock", "crates/licoup-native/Cargo.lock"]) {
     if (existsSync(path.join(repoRoot, cargoLockPath))) {
       const source = readText(cargoLockPath);
-      const matches = [...source.matchAll(/\[\[package\]\]\nname = "lico-client-native"\nversion = "([^"]+)"/g)];
+      const matches = [...source.matchAll(/\[\[package\]\]\nname = "licoup-native"\nversion = "([^"]+)"/g)];
       if (matches.length > 0) {
         if (matches.length !== 1) {
-          throw new Error(`${cargoLockPath} lico-client-native version must exist at most once; found ${matches.length}.`);
+          throw new Error(`${cargoLockPath} licoup-native version must exist at most once; found ${matches.length}.`);
         }
         ok = checkEqual(
           records,
-          `${cargoLockPath} lico-client-native version`,
+          `${cargoLockPath} licoup-native version`,
           matches[0][1],
           manifest.productVersion
         ) && ok;
       } else {
         records.push({
-          label: `${cargoLockPath} lico-client-native version`,
+          label: `${cargoLockPath} licoup-native version`,
           expected: manifest.productVersion,
           actual: "not present in generated lockfile",
           ok: true

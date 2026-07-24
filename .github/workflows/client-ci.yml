@@ -37,7 +37,7 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            build/crates/lico-client-native/target
+            build/crates/licoup-native/target
           key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-
       - name: Install Node dependencies

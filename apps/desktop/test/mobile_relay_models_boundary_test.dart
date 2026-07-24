@@ -1,6 +1,6 @@
 import 'dart:io';
 
-import 'package:flutter_client/src/contracts/mobile_relay/mobile_relay_models.dart';
+import 'package:licoup/src/contracts/mobile_relay/mobile_relay_models.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -18,7 +18,7 @@ void main() {
     final graph = <String, Set<String>>{};
     final dependencyPattern = RegExp(
       r"(?:import|export) '"
-      r"(?:package:flutter_client/src/contracts/mobile_relay/)?"
+      r"(?:package:licoup/src/contracts/mobile_relay/)?"
       r"(mobile_relay_[^']+\.dart)'",
     );
 

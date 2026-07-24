@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 
-import 'package:flutter_client/src/contracts/presentation/layout_environment.dart';
-import 'package:flutter_client/src/contracts/presentation/semantic_destination.dart';
-import 'package:flutter_client/src/frontend/layout/layout_palette.dart';
-import 'package:flutter_client/src/frontend/layout/layout_surface_bundle.dart';
-import 'package:flutter_client/src/frontend/layout/profiles/native/desktop/shell/native_desktop_chrome_metrics.dart';
-import 'package:flutter_client/src/frontend/layout/profiles/native/desktop/shell/native_glass.dart';
+import 'package:licoup/src/contracts/presentation/layout_environment.dart';
+import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
+import 'package:licoup/src/frontend/layout/layout_palette.dart';
+import 'package:licoup/src/frontend/layout/layout_surface_bundle.dart';
+import 'package:licoup/src/frontend/layout/profiles/native/desktop/shell/native_desktop_chrome_metrics.dart';
+import 'package:licoup/src/frontend/layout/profiles/native/desktop/shell/native_glass.dart';
 
 /// Native destination adapter: every destination rests inside one
 /// container card standing off the window's trailing and bottom edges.

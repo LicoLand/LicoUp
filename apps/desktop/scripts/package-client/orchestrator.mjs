@@ -134,7 +134,7 @@ export function packagePlanRecord(config, selected, skipped, options) {
     ok: true,
     platform: options.platform,
     mode: options.mode,
-    profile: options.profile || config.packageProfile || "lico-client",
+    profile: options.profile || config.packageProfile || "licoup",
     configPath: publicWorkspacePath(options.configPath),
     packagingConfigDigest: options.packagingConfigDigest,
     signing: packageSigningPolicyRecord(options),

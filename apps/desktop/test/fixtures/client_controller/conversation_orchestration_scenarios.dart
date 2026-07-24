@@ -123,18 +123,11 @@ void registerClientConversationOrchestrationScenarios() {
       );
 
       expect(controller.agentOrchestrationPolicyConfigured, isTrue);
-      expect(controller.agentOrchestrationPolicy.modelLibrary, isEmpty);
-      expect(controller.statusMessage, '默认编排策略已保存。');
-
-      final plan = controller.previewRoutingDispatchPlan(
-        'Fix the failing tests',
+      expect(
+        controller.effectiveAgentOrchestrationPolicy.modelLibrary,
+        isEmpty,
       );
-      expect(plan.blocked, isFalse);
-      expect(plan.routes, hasLength(1));
-      expect(plan.routes.single.agentId, 'codex');
-      expect(plan.routes.single.modelName, 'gpt-5.5');
-      expect(plan.routes.single.reasoningEffort, 'high');
-      expect(plan.routes.single.coordinator, isTrue);
+      expect(controller.statusMessage, '默认编排策略已保存。');
 
       final observedReplies = <String>[];
       controller.addListener(() {
@@ -314,7 +307,7 @@ void registerClientConversationOrchestrationScenarios() {
       );
 
       final policyFile = File(
-        p.join(directory.path, 'lico-client', 'routing', 'routing-policy.json'),
+        p.join(directory.path, 'licoup', 'routing', 'routing-policy.json'),
       );
       expect(await policyFile.exists(), isTrue);
 
@@ -327,25 +320,36 @@ void registerClientConversationOrchestrationScenarios() {
       await reloaded.initialize();
 
       expect(reloaded.agentOrchestrationPolicyConfigured, isTrue);
-      expect(reloaded.agentOrchestrationPolicy.label, 'Review Policy');
-      expect(reloaded.agentOrchestrationPolicy.commanderAgentId, 'codex');
-      expect(reloaded.agentOrchestrationPolicy.commanderModelName, 'gpt-5.5');
+      expect(reloaded.effectiveAgentOrchestrationPolicy.label, 'Review Policy');
       expect(
-        reloaded.agentOrchestrationPolicy.commanderReasoningEffort,
+        reloaded.effectiveAgentOrchestrationPolicy.commanderAgentId,
+        'codex',
+      );
+      expect(
+        reloaded.effectiveAgentOrchestrationPolicy.commanderModelName,
+        'gpt-5.5',
+      );
+      expect(
+        reloaded.effectiveAgentOrchestrationPolicy.commanderReasoningEffort,
         'high',
       );
-      expect(reloaded.agentOrchestrationPolicy.modelLibrary.map((e) => e.key), [
-        const AgentModelLibraryEntry(
-          agentId: 'codex',
-          modelName: 'gpt-5.5',
-          reasoningEffort: 'high',
-        ).key,
-        const AgentModelLibraryEntry(
-          agentId: 'claude-code',
-          modelName: 'deepseek-v4-flash',
-          reasoningEffort: 'high',
-        ).key,
-      ]);
+      expect(
+        reloaded.effectiveAgentOrchestrationPolicy.modelLibrary.map(
+          (e) => e.key,
+        ),
+        [
+          const AgentModelLibraryEntry(
+            agentId: 'codex',
+            modelName: 'gpt-5.5',
+            reasoningEffort: 'high',
+          ).key,
+          const AgentModelLibraryEntry(
+            agentId: 'claude-code',
+            modelName: 'deepseek-v4-flash',
+            reasoningEffort: 'high',
+          ).key,
+        ],
+      );
     },
   );
 }

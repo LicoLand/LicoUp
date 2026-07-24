@@ -66,7 +66,7 @@ const steps = [
   ["npm", ["run", "client:verify:secure-mesh-e2ee-evidence:authority-proof-self-test"]],
   ["npm", ["run", "client:verify:secure-mesh-e2ee-evidence:readiness-self-test"]],
   ["npm", ["run", "client:verify:secure-mesh-e2ee-evidence:leak-scan-self-test"]],
-  // A10 remains a cross-product certification diagnostic. Ordinary Lico Arc
+  // A10 remains a cross-product certification diagnostic. Ordinary LicoUp
   // publication is reduced only from selected, client-owned platform evidence.
   ["npm", ["run", "client:verify:secure-mesh-e2ee-evidence:diagnostic"]],
   ["npm", ["run", "client:support-matrix:check"]],

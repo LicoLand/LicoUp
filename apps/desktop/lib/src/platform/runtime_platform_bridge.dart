@@ -1,6 +1,6 @@
 import 'dart:io' show Platform, Process;
 
-import 'package:flutter_client/src/contracts/directory_opener.dart';
+import 'package:licoup/src/contracts/directory_opener.dart';
 
 class RuntimePlatformBridge implements DirectoryOpener {
   const RuntimePlatformBridge();
@@ -15,7 +15,7 @@ class RuntimePlatformBridge implements DirectoryOpener {
 
   String get localHostname {
     final value = Platform.localHostname.trim();
-    return value.isEmpty ? 'Lico Arc' : value;
+    return value.isEmpty ? 'LicoUp' : value;
   }
 
   @override

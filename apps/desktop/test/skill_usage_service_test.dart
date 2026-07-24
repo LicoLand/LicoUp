@@ -1,5 +1,5 @@
-import 'package:flutter_client/src/application/features/skill_hub/services/skill_usage_service.dart';
-import 'package:flutter_client/src/contracts/skill_usage.dart';
+import 'package:licoup/src/application/features/skill_hub/services/skill_usage_service.dart';
+import 'package:licoup/src/contracts/skill_usage.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

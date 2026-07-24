@@ -51,7 +51,7 @@ export function runSelfTest() {
   requireValue(parseNotifyState(`${iosBiometricEnrollmentNotification} 1`) === 1 &&
     parseNotifyState("notification-state-unavailable") === undefined,
   "simulator_ios_biometric_state_self_test_failed");
-  const component = `${packageName}/com.liko.arc.MainActivity`;
+  const component = `${packageName}/land.lico.licoup.MainActivity`;
   requireValue(parseAndroidLaunch(`Status: ok\nActivity: ${packageName}/.MainActivity\n`, component),
     "simulator_android_launch_self_test_failed");
   const digest = `sha256:${"a".repeat(64)}`;

@@ -1,14 +1,14 @@
 import 'package:flutter/material.dart';
 
-import 'package:flutter_client/src/frontend/features/agents/ui/history_session_header.dart';
-import 'package:flutter_client/src/frontend/features/agents/ui/history_session_list.dart';
-import 'package:flutter_client/src/frontend/features/agents/ui/history_session_models.dart';
-import 'package:flutter_client/src/frontend/features/agents/ui/history_session_search.dart';
-import 'package:flutter_client/src/frontend/l10n/lico_strings.dart';
-import 'package:flutter_client/src/frontend/shared/ui/theme.dart';
+import 'package:licoup/src/frontend/features/agents/ui/history_session_header.dart';
+import 'package:licoup/src/frontend/features/agents/ui/history_session_list.dart';
+import 'package:licoup/src/frontend/features/agents/ui/history_session_models.dart';
+import 'package:licoup/src/frontend/features/agents/ui/history_session_search.dart';
+import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
-export 'package:flutter_client/src/frontend/features/agents/ui/history_session_models.dart';
-export 'package:flutter_client/src/frontend/features/agents/ui/history_session_search.dart';
+export 'package:licoup/src/frontend/features/agents/ui/history_session_models.dart';
+export 'package:licoup/src/frontend/features/agents/ui/history_session_search.dart';
 
 class HistorySessionPanel extends StatefulWidget {
   const HistorySessionPanel({

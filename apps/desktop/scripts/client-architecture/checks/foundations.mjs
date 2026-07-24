@@ -73,7 +73,7 @@ export async function checkPackagingAndTargetProjection(context) {
     sameSet(futureModules, [...allFutureModules].sort()),
     `packaging.modules.json must define exactly ${allFutureModules.join(", ")}`
   );
-  assert(packaging.packageProfile === "lico-client", "default package profile must be lico-client");
+  assert(packaging.packageProfile === "licoup", "default package profile must be licoup");
   const modules = packaging.modules || {};
   const enabledConfigModules = Object.entries(modules)
     .filter(([, module]) => module.enabled !== false)
@@ -108,7 +108,7 @@ export async function checkPackagingAndTargetProjection(context) {
     "target-adapters module must define the canonical packaged target set");
   assert(new Set(packagedTargets).size === packagedTargets.length && packagedTargets.every((target) => typeof target === "string" && target.trim().length > 0),
     "target-adapters module targetAdapters must contain unique non-empty target ids");
-  const runtimeAdaptersSource = await readText("crates/lico-client-native/src/platform/runtime_adapters.rs");
+  const runtimeAdaptersSource = await readText("crates/licoup-native/src/platform/runtime_adapters.rs");
   const runtimeAdapterIdsBlock = runtimeAdaptersSource.match(/PACKAGED_RUNTIME_ADAPTER_IDS\s*:\s*&\[&str\]\s*=\s*&\[([\s\S]*?)\];/);
   assert(runtimeAdapterIdsBlock,
     "native runtime dispatch must expose its packaged adapter projection");
@@ -116,7 +116,7 @@ export async function checkPackagingAndTargetProjection(context) {
     .map((match) => match[1]);
   assert(sameSet([...nativeRuntimeAdapterIds].sort(), [...packagedTargets].sort()),
     "native runtime dispatch projection must exactly match target-adapters.targetAdapters");
-  const platformModuleSource = await readText("crates/lico-client-native/src/platform/mod.rs");
+  const platformModuleSource = await readText("crates/licoup-native/src/platform/mod.rs");
   for (const target of packagedTargets) {
     const moduleName = target === "codex"
       ? "codex_app_server"

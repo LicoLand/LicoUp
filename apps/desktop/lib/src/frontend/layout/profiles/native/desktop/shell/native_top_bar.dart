@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 
-import 'package:flutter_client/src/frontend/l10n/lico_strings.dart';
-import 'package:flutter_client/src/frontend/layout/layout_chrome_port.dart';
-import 'package:flutter_client/src/frontend/layout/layout_palette.dart';
-import 'package:flutter_client/src/frontend/layout/profiles/native/desktop/shell/native_desktop_chrome_metrics.dart';
-import 'package:flutter_client/src/frontend/layout/profiles/native/desktop/shell/native_glass.dart';
+import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/layout/layout_chrome_port.dart';
+import 'package:licoup/src/frontend/layout/layout_palette.dart';
+import 'package:licoup/src/frontend/layout/profiles/native/desktop/shell/native_desktop_chrome_metrics.dart';
+import 'package:licoup/src/frontend/layout/profiles/native/desktop/shell/native_glass.dart';
 
 /// The shell's top band: a transparent strip resting on the same lowest
 /// layer as the icon rail and the window background. A browser-style search

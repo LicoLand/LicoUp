@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import 'package:flutter_client/src/frontend/shared/ui/theme.dart';
+import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 class PanelFrame extends StatelessWidget {
   const PanelFrame({super.key, required this.child, this.elevated = false});

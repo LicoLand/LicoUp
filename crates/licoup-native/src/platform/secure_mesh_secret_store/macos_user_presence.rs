@@ -1,0 +1,1158 @@
+use std::collections::HashMap;
+use std::ffi::c_void;
+use std::fmt;
+use std::ptr;
+use std::sync::{
+    Arc, Condvar, Mutex,
+    atomic::{AtomicBool, Ordering},
+    mpsc,
+};
+use std::time::{Duration, Instant};
+
+use anyhow::{Result, anyhow};
+use core_foundation::base::{CFType, TCFType};
+use core_foundation::boolean::CFBoolean;
+use core_foundation::data::CFData;
+use core_foundation::dictionary::CFDictionary;
+use core_foundation::string::CFString;
+use core_foundation_sys::base::{CFGetTypeID, CFRelease, CFTypeRef};
+use core_foundation_sys::data::CFDataRef;
+use core_foundation_sys::string::CFStringRef;
+use objc2::rc::Retained;
+use objc2_foundation::{NSError, NSString};
+use objc2_local_authentication::{LAContext, LAError, LAPolicy};
+use security_framework::access_control::{ProtectionMode, SecAccessControl};
+use security_framework_sys::access_control::kSecAccessControlUserPresence;
+use security_framework_sys::base::{
+    errSecAuthFailed, errSecDuplicateItem, errSecItemNotFound, errSecSuccess,
+};
+use security_framework_sys::item::{
+    kSecAttrAccessControl, kSecAttrAccount, kSecAttrService, kSecClass, kSecClassGenericPassword,
+    kSecReturnData, kSecUseAuthenticationContext, kSecUseDataProtectionKeychain, kSecValueData,
+};
+use security_framework_sys::keychain_item::{
+    SecItemAdd, SecItemCopyMatching, SecItemDelete, SecItemUpdate,
+};
+use uuid::Uuid;
+
+use crate::core::secure_mesh_capability::{
+    CapabilityEvidenceKind, CapabilityFact, SecurityCapability,
+};
+use crate::core::secure_mesh_secret_store::{
+    MAX_SECRET_STORE_PRESENCE_GRANT_TTL, PresenceDecision, SecretBytes,
+    SecretStoreApprovedPresenceBatch, SecretStoreAuthorizationRequest,
+    SecretStoreAuthorizationSession, SecretStoreCallerChannel, SecretStoreConsumedPresence,
+    SecretStoreHandle, SecretStoreKeyClass, SecretStoreOperation, SecretStorePresenceBatchRequest,
+    SecretStorePresenceNonce, SecretStorePresenceProvider, SecretStorePresencePurpose,
+    SecretStorePresenceScope, derive_presence_binding_digest, digest_matches,
+};
+
+macro_rules! security_framework_static {
+    ($value:expr, $wrapper:ident) => {{
+        // SAFETY: every invocation passes a Security.framework SDK-exported static CFString.
+        unsafe { $wrapper($value) }
+    }};
+}
+
+const MACOS_AUTHORIZATION_CACHE_MAX_BATCHES: usize = 16;
+const SYSTEM_AUTHORIZATION_TIMEOUT: Duration = Duration::from_secs(120);
+const ERR_SEC_INTERACTION_NOT_ALLOWED: i32 = -25308;
+
+static TEST_USER_PRESENCE_DISABLED: AtomicBool = AtomicBool::new(false);
+
+#[derive(Clone)]
+pub struct MacosAuthorizationContext {
+    batch_binding_digest: [u8; 32],
+    context: Option<Retained<LAContext>>,
+    effect_lock: Arc<Mutex<()>>,
+}
+
+// SAFETY: the retained LAContext is only submitted to synchronous
+// LocalAuthentication/Security.framework APIs. Effect submission is serialized by effect_lock.
+unsafe impl Send for MacosAuthorizationContext {}
+// SAFETY: consumers borrow the retained context immutably and effect_lock prevents concurrent
+// Security.framework use of one native context.
+unsafe impl Sync for MacosAuthorizationContext {}
+
+impl MacosAuthorizationContext {
+    pub fn authorize(
+        &self,
+        consumed_presence: SecretStoreConsumedPresence,
+    ) -> std::result::Result<MacosAuthorizedPresence, MacosPresenceError> {
+        if !digest_matches(
+            &self.batch_binding_digest,
+            &consumed_presence.batch_binding_digest(),
+        ) {
+            return Err(MacosPresenceError::new(
+                "secure_mesh_presence_native_context_mismatch",
+            ));
+        }
+        let scope_digest = consumed_presence.scope_digest();
+        let expires_at = consumed_presence.expires_at();
+        let (operation, namespace, key) = consumed_presence.into_effect_target();
+        let handle = SecretStoreHandle::new(namespace, key)
+            .map_err(|_| MacosPresenceError::new("secure_mesh_presence_effect_target_invalid"))?;
+        Ok(MacosAuthorizedPresence(MacosAuthorizedPresenceInner {
+            authorization_context: self.clone(),
+            scope_digest,
+            operation,
+            handle,
+            expires_at,
+        }))
+    }
+
+    fn native_context(&self) -> Result<&LAContext> {
+        self.context
+            .as_deref()
+            .ok_or_else(|| anyhow!("secure_mesh_presence_native_context_unavailable"))
+    }
+
+    fn as_cf_type(&self) -> Result<CFType> {
+        let context = self.native_context()?;
+        let pointer = (context as *const LAContext).cast::<c_void>() as CFTypeRef;
+        // SAFETY: self retains the Objective-C object for the returned get-rule wrapper.
+        Ok(unsafe { CFType::wrap_under_get_rule(pointer) })
+    }
+}
+
+impl fmt::Debug for MacosAuthorizationContext {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("MacosAuthorizationContext(REDACTED)")
+    }
+}
+
+struct MacosAuthorizedPresenceInner {
+    authorization_context: MacosAuthorizationContext,
+    scope_digest: [u8; 32],
+    operation: SecretStoreOperation,
+    handle: SecretStoreHandle,
+    expires_at: Instant,
+}
+
+pub struct MacosAuthorizedPresence(MacosAuthorizedPresenceInner);
+
+impl MacosAuthorizedPresence {
+    fn into_authorized_effect(
+        self,
+        expected_operation: SecretStoreOperation,
+    ) -> Result<(MacosAuthorizationContext, SecretStoreHandle)> {
+        if self.0.operation != expected_operation {
+            return Err(anyhow!("secure_mesh_presence_effect_operation_mismatch"));
+        }
+        if Instant::now() >= self.0.expires_at {
+            return Err(anyhow!("secure_mesh_presence_expired"));
+        }
+        Ok((self.0.authorization_context, self.0.handle))
+    }
+}
+
+impl fmt::Debug for MacosAuthorizedPresence {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let _ = self.0.scope_digest;
+        formatter.write_str("MacosAuthorizedPresence(REDACTED)")
+    }
+}
+
+#[derive(Clone, Copy, Eq, PartialEq)]
+pub struct MacosPresenceError {
+    code: &'static str,
+}
+
+impl MacosPresenceError {
+    fn new(code: &'static str) -> Self {
+        Self { code }
+    }
+
+    pub fn code(&self) -> &'static str {
+        self.code
+    }
+}
+
+impl fmt::Display for MacosPresenceError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.code)
+    }
+}
+
+impl fmt::Debug for MacosPresenceError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.code)
+    }
+}
+
+impl std::error::Error for MacosPresenceError {}
+
+pub trait MacosPresencePromptPort: Send {
+    fn prompt(&mut self, request: &SecretStorePresenceBatchRequest) -> Result<PresenceDecision>;
+
+    fn take_authorization_context(&mut self) -> Option<MacosAuthorizationContext> {
+        None
+    }
+}
+
+pub trait MacosKeychainEffectPort {
+    fn set_secret(
+        &self,
+        authorized_presence: MacosAuthorizedPresence,
+        service: &str,
+        handle: &SecretStoreHandle,
+        secret: SecretBytes,
+    ) -> Result<()>;
+
+    fn get_secret(
+        &self,
+        authorized_presence: MacosAuthorizedPresence,
+        service: &str,
+        handle: &SecretStoreHandle,
+    ) -> Result<Option<SecretBytes>>;
+
+    fn delete_secret(
+        &self,
+        authorized_presence: MacosAuthorizedPresence,
+        service: &str,
+        handle: &SecretStoreHandle,
+    ) -> Result<()>;
+}
+
+pub trait MacosSecItemPort {
+    fn set_secret(
+        &self,
+        authorization_context: &MacosAuthorizationContext,
+        service: &str,
+        handle: &SecretStoreHandle,
+        secret: SecretBytes,
+    ) -> Result<()>;
+
+    fn get_secret(
+        &self,
+        authorization_context: &MacosAuthorizationContext,
+        service: &str,
+        handle: &SecretStoreHandle,
+    ) -> Result<Option<SecretBytes>>;
+
+    fn delete_secret(
+        &self,
+        authorization_context: &MacosAuthorizationContext,
+        service: &str,
+        handle: &SecretStoreHandle,
+    ) -> Result<()>;
+}
+
+#[derive(Clone)]
+struct ReadyBatch {
+    batch: Arc<SecretStoreApprovedPresenceBatch>,
+    authorization_context: Arc<MacosAuthorizationContext>,
+}
+
+enum BatchSlotState {
+    Pending,
+    Ready(ReadyBatch),
+    Failed(&'static str),
+}
+
+struct BatchSlot {
+    state: Mutex<BatchSlotState>,
+    ready: Condvar,
+}
+
+impl BatchSlot {
+    fn pending() -> Self {
+        Self {
+            state: Mutex::new(BatchSlotState::Pending),
+            ready: Condvar::new(),
+        }
+    }
+}
+
+#[derive(Default)]
+pub struct MacosPresenceBatchCoordinator {
+    batches: Mutex<HashMap<[u8; 32], Arc<BatchSlot>>>,
+}
+
+impl MacosPresenceBatchCoordinator {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn authorize_batch(
+        &self,
+        request: &SecretStorePresenceBatchRequest,
+        now: Instant,
+        prompt: &mut dyn MacosPresencePromptPort,
+    ) -> Result<MacosApprovedPresenceBatch> {
+        if request.provider() != SecretStorePresenceProvider::MacosKeychain {
+            return Err(anyhow!("secure_mesh_presence_provider_mismatch"));
+        }
+        if !request.allow_interaction() {
+            return Err(anyhow!("secure_mesh_presence_interaction_required"));
+        }
+
+        let request_digest = request.canonical_digest();
+        let (slot, prompt_owner) = {
+            let mut batches = self
+                .batches
+                .lock()
+                .map_err(|_| anyhow!("secure_mesh_presence_coordinator_unavailable"))?;
+            batches.retain(|_, slot| {
+                let Ok(state) = slot.state.lock() else {
+                    return false;
+                };
+                match &*state {
+                    BatchSlotState::Ready(ready) => now < ready.batch.expires_at(),
+                    BatchSlotState::Pending => true,
+                    BatchSlotState::Failed(_) => false,
+                }
+            });
+            if let Some(slot) = batches.get(&request_digest) {
+                (Arc::clone(slot), false)
+            } else {
+                if batches.len() >= MACOS_AUTHORIZATION_CACHE_MAX_BATCHES {
+                    return Err(anyhow!("secure_mesh_presence_cache_capacity_exceeded"));
+                }
+                let slot = Arc::new(BatchSlot::pending());
+                batches.insert(request_digest, Arc::clone(&slot));
+                (slot, true)
+            }
+        };
+
+        if !prompt_owner {
+            return wait_for_ready_batch(&slot);
+        }
+
+        // No coordinator/cache lock is held while system UI is active.
+        let completed = (|| -> Result<ReadyBatch> {
+            let decision = prompt
+                .prompt(request)
+                .map_err(|_| anyhow!("secure_mesh_presence_prompt_failed"))?;
+            let batch = Arc::new(
+                SecretStoreApprovedPresenceBatch::approve(
+                    request,
+                    now,
+                    MAX_SECRET_STORE_PRESENCE_GRANT_TTL,
+                    decision,
+                )
+                .map_err(anyhow::Error::from)?,
+            );
+            let mut authorization_context =
+                prompt
+                    .take_authorization_context()
+                    .unwrap_or(MacosAuthorizationContext {
+                        batch_binding_digest: batch.binding_digest(),
+                        context: None,
+                        effect_lock: Arc::new(Mutex::new(())),
+                    });
+            authorization_context.batch_binding_digest = batch.binding_digest();
+            let authorization_context = Arc::new(authorization_context);
+            Ok(ReadyBatch {
+                batch,
+                authorization_context,
+            })
+        })();
+
+        let mut state = slot
+            .state
+            .lock()
+            .map_err(|_| anyhow!("secure_mesh_presence_coordinator_unavailable"))?;
+        match completed {
+            Ok(ready) => {
+                *state = BatchSlotState::Ready(ready.clone());
+                slot.ready.notify_all();
+                Ok(MacosApprovedPresenceBatch(ready))
+            }
+            Err(error) => {
+                let code = stable_presence_error_code(&error);
+                *state = BatchSlotState::Failed(code);
+                slot.ready.notify_all();
+                drop(state);
+                if let Ok(mut batches) = self.batches.lock()
+                    && batches
+                        .get(&request_digest)
+                        .is_some_and(|current| Arc::ptr_eq(current, &slot))
+                {
+                    batches.remove(&request_digest);
+                }
+                Err(anyhow!(code))
+            }
+        }
+    }
+}
+
+fn wait_for_ready_batch(slot: &BatchSlot) -> Result<MacosApprovedPresenceBatch> {
+    let mut state = slot
+        .state
+        .lock()
+        .map_err(|_| anyhow!("secure_mesh_presence_coordinator_unavailable"))?;
+    loop {
+        match &*state {
+            BatchSlotState::Pending => {
+                state = slot
+                    .ready
+                    .wait(state)
+                    .map_err(|_| anyhow!("secure_mesh_presence_coordinator_unavailable"))?;
+            }
+            BatchSlotState::Ready(ready) => {
+                return Ok(MacosApprovedPresenceBatch(ready.clone()));
+            }
+            BatchSlotState::Failed(code) => return Err(anyhow!(*code)),
+        }
+    }
+}
+
+fn stable_presence_error_code(error: &anyhow::Error) -> &'static str {
+    for code in [
+        "secure_mesh_presence_cancelled",
+        "secure_mesh_presence_timed_out",
+        "secure_mesh_presence_interaction_required",
+        "secure_mesh_presence_ttl_invalid",
+        "secure_mesh_presence_prompt_failed",
+    ] {
+        if error.to_string() == code {
+            return code;
+        }
+    }
+    "secure_mesh_presence_prompt_failed"
+}
+
+#[derive(Clone)]
+pub struct MacosApprovedPresenceBatch(ReadyBatch);
+
+impl MacosApprovedPresenceBatch {
+    pub fn batch(&self) -> &SecretStoreApprovedPresenceBatch {
+        &self.0.batch
+    }
+
+    pub fn authorization_context(&self) -> &MacosAuthorizationContext {
+        &self.0.authorization_context
+    }
+}
+
+impl fmt::Debug for MacosApprovedPresenceBatch {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("MacosApprovedPresenceBatch(REDACTED)")
+    }
+}
+
+struct BoundSession {
+    backend: &'static str,
+    session_id: String,
+    request_digest: [u8; 32],
+    session_binding_digest: [u8; 32],
+    approved_batch: MacosApprovedPresenceBatch,
+}
+
+pub struct MacosSecretStoreAccess {
+    injected: bool,
+    request: SecretStorePresenceBatchRequest,
+    approved_at: Instant,
+    fixed_operation_now: Option<Instant>,
+    coordinator: MacosPresenceBatchCoordinator,
+    prompt: Mutex<Box<dyn MacosPresencePromptPort>>,
+    keychain: Arc<dyn MacosKeychainEffectPort + Send + Sync>,
+    bound_session: Mutex<Option<BoundSession>>,
+}
+
+impl MacosSecretStoreAccess {
+    pub fn new(
+        request: SecretStorePresenceBatchRequest,
+        approved_at: Instant,
+        operation_now: Instant,
+        prompt: Box<dyn MacosPresencePromptPort>,
+        keychain: Arc<dyn MacosKeychainEffectPort + Send + Sync>,
+    ) -> Self {
+        Self {
+            injected: true,
+            request,
+            approved_at,
+            fixed_operation_now: Some(operation_now),
+            coordinator: MacosPresenceBatchCoordinator::new(),
+            prompt: Mutex::new(prompt),
+            keychain,
+            bound_session: Mutex::new(None),
+        }
+    }
+
+    fn production(request: SecretStorePresenceBatchRequest) -> Self {
+        Self {
+            injected: false,
+            request,
+            approved_at: Instant::now(),
+            fixed_operation_now: None,
+            coordinator: MacosPresenceBatchCoordinator::new(),
+            prompt: Mutex::new(Box::new(LocalAuthenticationPrompt::new())),
+            keychain: Arc::new(SecurityFrameworkKeychain::new()),
+            bound_session: Mutex::new(None),
+        }
+    }
+
+    pub(crate) fn is_injected(&self) -> bool {
+        self.injected
+    }
+
+    pub(crate) fn begin_session(
+        &self,
+        backend: &'static str,
+        request: &SecretStoreAuthorizationRequest,
+    ) -> Result<SecretStoreAuthorizationSession> {
+        if request.reason() != self.request.reason()
+            || request.operation_count() != self.request.operation_count()
+            || request.allow_interaction() != self.request.allow_interaction()
+        {
+            return Err(anyhow!("secure_mesh_presence_batch_mismatch"));
+        }
+
+        let approved_batch = {
+            let mut prompt = self
+                .prompt
+                .lock()
+                .map_err(|_| anyhow!("secure_mesh_presence_prompt_unavailable"))?;
+            self.coordinator
+                .authorize_batch(&self.request, self.approved_at, &mut **prompt)?
+        };
+        let base_session = SecretStoreAuthorizationSession::new(backend, request, true, true);
+        let random_binding = Uuid::new_v4();
+        let session_binding_digest = derive_presence_binding_digest(
+            b"licoup:macos-presence-session-binding:v1",
+            [
+                base_session.session_id().as_bytes(),
+                request.canonical_digest().as_slice(),
+                approved_batch.batch().binding_digest().as_slice(),
+                random_binding.as_bytes(),
+            ],
+        );
+        let session = base_session.with_presence_binding(session_binding_digest, 1, true);
+        let bound = BoundSession {
+            backend,
+            session_id: session.session_id().to_string(),
+            request_digest: request.canonical_digest(),
+            session_binding_digest,
+            approved_batch,
+        };
+        *self
+            .bound_session
+            .lock()
+            .map_err(|_| anyhow!("secure_mesh_presence_session_unavailable"))? = Some(bound);
+        Ok(session)
+    }
+
+    fn approved_for_session(
+        &self,
+        session: &SecretStoreAuthorizationSession,
+    ) -> Result<MacosApprovedPresenceBatch> {
+        let bound = self
+            .bound_session
+            .lock()
+            .map_err(|_| anyhow!("secure_mesh_presence_session_unavailable"))?;
+        let Some(bound) = bound.as_ref() else {
+            return Err(anyhow!("secure_mesh_presence_session_batch_mismatch"));
+        };
+        let Some(session_binding_digest) = session.presence_binding_digest() else {
+            return Err(anyhow!("secure_mesh_presence_session_batch_mismatch"));
+        };
+        if session.backend() != bound.backend
+            || session.session_id() != bound.session_id
+            || !digest_matches(&session.request_digest(), &bound.request_digest)
+            || !digest_matches(&session_binding_digest, &bound.session_binding_digest)
+        {
+            return Err(anyhow!("secure_mesh_presence_session_batch_mismatch"));
+        }
+        Ok(bound.approved_batch.clone())
+    }
+
+    fn operation_now(&self) -> Instant {
+        self.fixed_operation_now.unwrap_or_else(Instant::now)
+    }
+
+    pub(crate) fn set_secret(
+        &self,
+        service: &str,
+        session: &SecretStoreAuthorizationSession,
+        handle: &SecretStoreHandle,
+        secret: SecretBytes,
+    ) -> Result<()> {
+        let approved = self.approved_for_session(session)?;
+        execute_set(
+            service,
+            &approved,
+            self.operation_now(),
+            &*self.keychain,
+            handle,
+            SecretStorePresencePurpose::new("platform-secret-store-write")?,
+            secret,
+        )
+    }
+
+    pub(crate) fn get_secret(
+        &self,
+        service: &str,
+        session: &SecretStoreAuthorizationSession,
+        handle: &SecretStoreHandle,
+    ) -> Result<Option<SecretBytes>> {
+        let approved = self.approved_for_session(session)?;
+        execute_get(
+            service,
+            &approved,
+            self.operation_now(),
+            &*self.keychain,
+            handle,
+            SecretStorePresencePurpose::new("platform-secret-store-read")?,
+        )
+    }
+
+    pub(crate) fn delete_secret(
+        &self,
+        service: &str,
+        session: &SecretStoreAuthorizationSession,
+        handle: &SecretStoreHandle,
+    ) -> Result<()> {
+        let approved = self.approved_for_session(session)?;
+        execute_delete(
+            service,
+            &approved,
+            self.operation_now(),
+            &*self.keychain,
+            handle,
+            SecretStorePresencePurpose::new("platform-secret-store-delete")?,
+        )
+    }
+}
+
+pub(crate) fn production_access(
+    request: &SecretStoreAuthorizationRequest,
+) -> Result<MacosSecretStoreAccess> {
+    let nonce = SecretStorePresenceNonce::new(Uuid::new_v4().to_string())?;
+    let presence_request = SecretStorePresenceBatchRequest::new(
+        SecretStorePresenceProvider::MacosKeychain,
+        SecretStoreKeyClass::DeviceIdentity,
+        request.operation_count(),
+        request.reason(),
+        nonce,
+        SecretStoreCallerChannel::DesktopGui,
+        request.allow_interaction(),
+    )?;
+    Ok(MacosSecretStoreAccess::production(presence_request))
+}
+
+pub fn set_secret(
+    service: &str,
+    coordinator: &MacosPresenceBatchCoordinator,
+    request: &SecretStorePresenceBatchRequest,
+    approved_at: Instant,
+    operation_now: Instant,
+    prompt: &mut dyn MacosPresencePromptPort,
+    keychain: &dyn MacosKeychainEffectPort,
+    handle: &SecretStoreHandle,
+    purpose: SecretStorePresencePurpose,
+    secret: SecretBytes,
+) -> Result<()> {
+    let approved = coordinator.authorize_batch(request, approved_at, prompt)?;
+    execute_set(
+        service,
+        &approved,
+        operation_now,
+        keychain,
+        handle,
+        purpose,
+        secret,
+    )
+}
+
+pub fn get_secret(
+    service: &str,
+    coordinator: &MacosPresenceBatchCoordinator,
+    request: &SecretStorePresenceBatchRequest,
+    approved_at: Instant,
+    operation_now: Instant,
+    prompt: &mut dyn MacosPresencePromptPort,
+    keychain: &dyn MacosKeychainEffectPort,
+    handle: &SecretStoreHandle,
+    purpose: SecretStorePresencePurpose,
+) -> Result<Option<SecretBytes>> {
+    let approved = coordinator.authorize_batch(request, approved_at, prompt)?;
+    execute_get(service, &approved, operation_now, keychain, handle, purpose)
+}
+
+pub fn delete_secret(
+    service: &str,
+    coordinator: &MacosPresenceBatchCoordinator,
+    request: &SecretStorePresenceBatchRequest,
+    approved_at: Instant,
+    operation_now: Instant,
+    prompt: &mut dyn MacosPresencePromptPort,
+    keychain: &dyn MacosKeychainEffectPort,
+    handle: &SecretStoreHandle,
+    purpose: SecretStorePresencePurpose,
+) -> Result<()> {
+    let approved = coordinator.authorize_batch(request, approved_at, prompt)?;
+    execute_delete(service, &approved, operation_now, keychain, handle, purpose)
+}
+
+fn execute_set(
+    service: &str,
+    approved: &MacosApprovedPresenceBatch,
+    now: Instant,
+    keychain: &dyn MacosKeychainEffectPort,
+    handle: &SecretStoreHandle,
+    purpose: SecretStorePresencePurpose,
+    secret: SecretBytes,
+) -> Result<()> {
+    let authorized =
+        authorize_exact_operation(approved, SecretStoreOperation::Write, handle, purpose, now)?;
+    keychain
+        .set_secret(authorized, service, handle, secret)
+        .map_err(|_| anyhow!("secure_mesh_keychain_write_failed"))
+}
+
+fn execute_get(
+    service: &str,
+    approved: &MacosApprovedPresenceBatch,
+    now: Instant,
+    keychain: &dyn MacosKeychainEffectPort,
+    handle: &SecretStoreHandle,
+    purpose: SecretStorePresencePurpose,
+) -> Result<Option<SecretBytes>> {
+    let authorized =
+        authorize_exact_operation(approved, SecretStoreOperation::Read, handle, purpose, now)?;
+    keychain
+        .get_secret(authorized, service, handle)
+        .map_err(|_| anyhow!("secure_mesh_keychain_read_failed"))
+}
+
+fn execute_delete(
+    service: &str,
+    approved: &MacosApprovedPresenceBatch,
+    now: Instant,
+    keychain: &dyn MacosKeychainEffectPort,
+    handle: &SecretStoreHandle,
+    purpose: SecretStorePresencePurpose,
+) -> Result<()> {
+    let authorized =
+        authorize_exact_operation(approved, SecretStoreOperation::Delete, handle, purpose, now)?;
+    keychain
+        .delete_secret(authorized, service, handle)
+        .map_err(|_| anyhow!("secure_mesh_keychain_delete_failed"))
+}
+
+fn authorize_exact_operation(
+    approved: &MacosApprovedPresenceBatch,
+    operation: SecretStoreOperation,
+    handle: &SecretStoreHandle,
+    purpose: SecretStorePresencePurpose,
+    now: Instant,
+) -> Result<MacosAuthorizedPresence> {
+    let scope =
+        SecretStorePresenceScope::new(operation, handle.namespace(), handle.key(), purpose)?;
+    let grant = approved.batch().issue_grant(scope.clone())?;
+    let consumed = grant.consume(approved.batch(), &scope, now)?;
+    approved
+        .authorization_context()
+        .authorize(consumed)
+        .map_err(anyhow::Error::from)
+}
+
+pub struct SecurityFrameworkKeychain {
+    sec_item_port: Arc<dyn MacosSecItemPort + Send + Sync>,
+}
+
+impl SecurityFrameworkKeychain {
+    fn new() -> Self {
+        Self {
+            sec_item_port: Arc::new(SecurityFrameworkSecItem),
+        }
+    }
+
+    pub fn with_sec_item_port(sec_item_port: Arc<dyn MacosSecItemPort + Send + Sync>) -> Self {
+        Self { sec_item_port }
+    }
+}
+
+impl MacosKeychainEffectPort for SecurityFrameworkKeychain {
+    fn set_secret(
+        &self,
+        authorized_presence: MacosAuthorizedPresence,
+        service: &str,
+        _handle: &SecretStoreHandle,
+        secret: SecretBytes,
+    ) -> Result<()> {
+        // The sealed capability owns the effect target; this repeated interface argument
+        // must never select a different Keychain item.
+        let (context, bound_handle) =
+            authorized_presence.into_authorized_effect(SecretStoreOperation::Write)?;
+        let _effect_guard = context
+            .effect_lock
+            .lock()
+            .map_err(|_| anyhow!("secure_mesh_presence_native_context_unavailable"))?;
+        self.sec_item_port
+            .set_secret(&context, service, &bound_handle, secret)
+    }
+
+    fn get_secret(
+        &self,
+        authorized_presence: MacosAuthorizedPresence,
+        service: &str,
+        _handle: &SecretStoreHandle,
+    ) -> Result<Option<SecretBytes>> {
+        // The sealed capability owns the effect target; this repeated interface argument
+        // must never select a different Keychain item.
+        let (context, bound_handle) =
+            authorized_presence.into_authorized_effect(SecretStoreOperation::Read)?;
+        let _effect_guard = context
+            .effect_lock
+            .lock()
+            .map_err(|_| anyhow!("secure_mesh_presence_native_context_unavailable"))?;
+        self.sec_item_port
+            .get_secret(&context, service, &bound_handle)
+    }
+
+    fn delete_secret(
+        &self,
+        authorized_presence: MacosAuthorizedPresence,
+        service: &str,
+        _handle: &SecretStoreHandle,
+    ) -> Result<()> {
+        // The sealed capability owns the effect target; this repeated interface argument
+        // must never select a different Keychain item.
+        let (context, bound_handle) =
+            authorized_presence.into_authorized_effect(SecretStoreOperation::Delete)?;
+        let _effect_guard = context
+            .effect_lock
+            .lock()
+            .map_err(|_| anyhow!("secure_mesh_presence_native_context_unavailable"))?;
+        self.sec_item_port
+            .delete_secret(&context, service, &bound_handle)
+    }
+}
+
+struct SecurityFrameworkSecItem;
+
+impl MacosSecItemPort for SecurityFrameworkSecItem {
+    fn set_secret(
+        &self,
+        context: &MacosAuthorizationContext,
+        service: &str,
+        handle: &SecretStoreHandle,
+        secret: SecretBytes,
+    ) -> Result<()> {
+        let account = handle.account();
+        let query = CFDictionary::from_CFType_pairs(&base_pairs(service, &account, context)?);
+        let update = CFDictionary::from_CFType_pairs(&[(
+            security_framework_static!(kSecValueData, sec_key),
+            CFData::from_buffer(secret.expose_bytes()).into_CFType(),
+        )]);
+        // SAFETY: query and update own their CF values for the synchronous call.
+        let update_status =
+            unsafe { SecItemUpdate(query.as_concrete_TypeRef(), update.as_concrete_TypeRef()) };
+        match keychain_update_transition(update_status) {
+            KeychainUpdateTransition::Complete => return Ok(()),
+            KeychainUpdateTransition::AddNew => {}
+            KeychainUpdateTransition::Fail(status) => {
+                return status_result("write", status);
+            }
+        }
+
+        let access_control = SecAccessControl::create_with_protection(
+            Some(ProtectionMode::AccessibleWhenUnlockedThisDeviceOnly),
+            kSecAccessControlUserPresence,
+        )
+        .map_err(|_| anyhow!("secure_mesh_keychain_access_control_unavailable"))?;
+        let mut pairs = base_pairs(service, &account, context)?;
+        pairs.push((
+            security_framework_static!(kSecAttrAccessControl, sec_key),
+            access_control.into_CFType(),
+        ));
+        pairs.push((
+            security_framework_static!(kSecValueData, sec_key),
+            CFData::from_buffer(secret.expose_bytes()).into_CFType(),
+        ));
+        let add_query = CFDictionary::from_CFType_pairs(&pairs);
+        // SAFETY: add_query owns all referenced values for the synchronous call.
+        let add_status = unsafe { SecItemAdd(add_query.as_concrete_TypeRef(), ptr::null_mut()) };
+        if add_status == errSecSuccess {
+            return Ok(());
+        }
+        if add_status == errSecDuplicateItem {
+            // SAFETY: query and update remain valid for the synchronous retry.
+            let retry_status =
+                unsafe { SecItemUpdate(query.as_concrete_TypeRef(), update.as_concrete_TypeRef()) };
+            return status_result("write", retry_status);
+        }
+        status_result("write", add_status)
+    }
+
+    fn get_secret(
+        &self,
+        context: &MacosAuthorizationContext,
+        service: &str,
+        handle: &SecretStoreHandle,
+    ) -> Result<Option<SecretBytes>> {
+        let account = handle.account();
+        let mut pairs = base_pairs(service, &account, context)?;
+        pairs.push((
+            security_framework_static!(kSecReturnData, sec_key),
+            CFBoolean::from(true).into_CFType(),
+        ));
+        let query = CFDictionary::from_CFType_pairs(&pairs);
+        let mut copied: CFTypeRef = ptr::null();
+        // SAFETY: query is valid and copied is an initialized out-pointer.
+        let status = unsafe { SecItemCopyMatching(query.as_concrete_TypeRef(), &mut copied) };
+        if status == errSecItemNotFound {
+            return Ok(None);
+        }
+        status_result("read", status)?;
+        if copied.is_null() {
+            return Ok(None);
+        }
+        // SAFETY: copied is a live CF object returned at +1 ownership.
+        let type_id = unsafe { CFGetTypeID(copied) };
+        if type_id != CFData::type_id() {
+            // SAFETY: copied has not yet been released.
+            unsafe { CFRelease(copied) };
+            return Err(anyhow!("secure_mesh_keychain_data_invalid"));
+        }
+        // SAFETY: type identity is CFData and +1 ownership transfers to the wrapper.
+        let data = unsafe { CFData::wrap_under_create_rule(copied as CFDataRef) };
+        SecretBytes::try_from_bytes(data.bytes().to_vec())
+            .map(Some)
+            .map_err(|_| anyhow!("secure_mesh_keychain_data_invalid"))
+    }
+
+    fn delete_secret(
+        &self,
+        context: &MacosAuthorizationContext,
+        service: &str,
+        handle: &SecretStoreHandle,
+    ) -> Result<()> {
+        let account = handle.account();
+        let query = CFDictionary::from_CFType_pairs(&base_pairs(service, &account, context)?);
+        // SAFETY: query owns valid CF values for the synchronous call.
+        let status = unsafe { SecItemDelete(query.as_concrete_TypeRef()) };
+        if status == errSecItemNotFound {
+            Ok(())
+        } else {
+            status_result("delete", status)
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum KeychainUpdateTransition {
+    Complete,
+    AddNew,
+    Fail(i32),
+}
+
+fn keychain_update_transition(status: i32) -> KeychainUpdateTransition {
+    if status == errSecSuccess {
+        KeychainUpdateTransition::Complete
+    } else if status == errSecItemNotFound {
+        KeychainUpdateTransition::AddNew
+    } else {
+        KeychainUpdateTransition::Fail(status)
+    }
+}
+
+fn base_pairs(
+    service: &str,
+    account: &str,
+    context: &MacosAuthorizationContext,
+) -> Result<Vec<(CFString, CFType)>> {
+    Ok(vec![
+        (
+            security_framework_static!(kSecClass, sec_key),
+            security_framework_static!(kSecClassGenericPassword, sec_string_value),
+        ),
+        (
+            security_framework_static!(kSecAttrService, sec_key),
+            CFString::from(service).into_CFType(),
+        ),
+        (
+            security_framework_static!(kSecAttrAccount, sec_key),
+            CFString::from(account).into_CFType(),
+        ),
+        (
+            security_framework_static!(kSecUseAuthenticationContext, sec_key),
+            context.as_cf_type()?,
+        ),
+        (
+            security_framework_static!(kSecUseDataProtectionKeychain, sec_key),
+            CFBoolean::true_value().into_CFType(),
+        ),
+    ])
+}
+
+fn status_result(operation: &'static str, status: i32) -> Result<()> {
+    if status == errSecSuccess {
+        return Ok(());
+    }
+    if status == errSecAuthFailed || status == ERR_SEC_INTERACTION_NOT_ALLOWED {
+        return Err(anyhow!("secure_mesh_authorization_required"));
+    }
+    let code = match operation {
+        "write" => "secure_mesh_keychain_write_failed",
+        "read" => "secure_mesh_keychain_read_failed",
+        "delete" => "secure_mesh_keychain_delete_failed",
+        _ => "secure_mesh_keychain_operation_failed",
+    };
+    Err(anyhow!(code))
+}
+
+struct LocalAuthenticationPrompt {
+    context: Option<MacosAuthorizationContext>,
+}
+
+impl LocalAuthenticationPrompt {
+    fn new() -> Self {
+        Self { context: None }
+    }
+}
+
+impl MacosPresencePromptPort for LocalAuthenticationPrompt {
+    fn prompt(&mut self, request: &SecretStorePresenceBatchRequest) -> Result<PresenceDecision> {
+        // SAFETY: LAContext::new returns a retained initialized Objective-C object.
+        let context = unsafe { LAContext::new() };
+        let reason = NSString::from_str(request.reason());
+        // SAFETY: all Objective-C values remain retained for these synchronous property updates.
+        unsafe {
+            context.setLocalizedReason(&reason);
+            context.setInteractionNotAllowed(false);
+            context.setTouchIDAuthenticationAllowableReuseDuration(
+                MAX_SECRET_STORE_PRESENCE_GRANT_TTL.as_secs_f64(),
+            );
+        }
+        let policy = preferred_system_authorization_policy(&context)?;
+        let decision = evaluate_system_authorization_once(&context, policy, &reason)?;
+        if decision == PresenceDecision::Approved {
+            // SAFETY: the retained context remains live; later Security.framework use must not
+            // initiate a second application-controlled prompt.
+            unsafe { context.setInteractionNotAllowed(true) };
+            self.context = Some(MacosAuthorizationContext {
+                batch_binding_digest: [0; 32],
+                context: Some(context),
+                effect_lock: Arc::new(Mutex::new(())),
+            });
+        }
+        Ok(decision)
+    }
+
+    fn take_authorization_context(&mut self) -> Option<MacosAuthorizationContext> {
+        self.context.take()
+    }
+}
+
+fn preferred_system_authorization_policy(context: &LAContext) -> Result<LAPolicy> {
+    // SAFETY: context is retained and the policy is SDK-defined.
+    unsafe {
+        context
+            .canEvaluatePolicy_error(LAPolicy::DeviceOwnerAuthentication)
+            .map_err(|_| anyhow!("secure_mesh_presence_native_authentication_unavailable"))?;
+    }
+    Ok(LAPolicy::DeviceOwnerAuthentication)
+}
+
+fn evaluate_system_authorization_once(
+    context: &LAContext,
+    policy: LAPolicy,
+    reason: &NSString,
+) -> Result<PresenceDecision> {
+    let (sender, receiver) = mpsc::channel();
+    let reply = block2::RcBlock::new(move |success: objc2::runtime::Bool, error: *mut NSError| {
+        let error_code = if error.is_null() {
+            None
+        } else {
+            // SAFETY: the callback owns a valid NSError pointer for this call.
+            Some(unsafe { (*error).code() })
+        };
+        let _ = sender.send((success.as_bool(), error_code));
+    });
+    // SAFETY: context, reason, and retained block remain valid for submission.
+    unsafe {
+        context.evaluatePolicy_localizedReason_reply(policy, reason, &reply);
+    }
+    match receiver.recv_timeout(SYSTEM_AUTHORIZATION_TIMEOUT) {
+        Ok((true, _)) => Ok(PresenceDecision::Approved),
+        Ok((false, Some(code)))
+            if code == LAError::UserCancel.0
+                || code == LAError::SystemCancel.0
+                || code == LAError::AppCancel.0 =>
+        {
+            Ok(PresenceDecision::Cancelled)
+        }
+        Ok((false, _)) => Err(anyhow!("secure_mesh_presence_native_authentication_failed")),
+        Err(mpsc::RecvTimeoutError::Timeout) => {
+            // SAFETY: context remains retained and invalidate is the documented cancellation.
+            unsafe { context.invalidate() };
+            Ok(PresenceDecision::TimedOut)
+        }
+        Err(_) => Err(anyhow!("secure_mesh_presence_native_authentication_failed")),
+    }
+}
+
+pub fn available() -> bool {
+    if TEST_USER_PRESENCE_DISABLED.load(Ordering::SeqCst) || cfg!(test) {
+        return false;
+    }
+    // SAFETY: constructor returns a retained initialized context.
+    let context = unsafe { LAContext::new() };
+    // SAFETY: context is live and the policy value is SDK-defined.
+    unsafe {
+        context
+            .canEvaluatePolicy_error(LAPolicy::DeviceOwnerAuthentication)
+            .is_ok()
+    }
+}
+
+pub fn capability_facts() -> Vec<CapabilityFact> {
+    [
+        SecurityCapability::DeviceBound,
+        SecurityCapability::UnlockedDeviceRequired,
+        SecurityCapability::OsUserPresence,
+        SecurityCapability::DeviceCredential,
+        SecurityCapability::DataProtectionKeychain,
+    ]
+    .into_iter()
+    .map(|capability| {
+        CapabilityFact::supported(capability, CapabilityEvidenceKind::OsAuthorization)
+    })
+    .collect()
+}
+
+pub fn set_test_user_presence_disabled(disabled: bool) -> bool {
+    TEST_USER_PRESENCE_DISABLED.swap(disabled, Ordering::SeqCst)
+}
+
+fn sec_key(value: CFStringRef) -> CFString {
+    // SAFETY: callers supply SDK-exported static CFString constants.
+    unsafe { CFString::wrap_under_get_rule(value) }
+}
+
+fn sec_string_value(value: CFStringRef) -> CFType {
+    sec_key(value).into_CFType()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn update_failure_never_falls_through_to_add() {
+        assert_eq!(
+            keychain_update_transition(errSecAuthFailed),
+            KeychainUpdateTransition::Fail(errSecAuthFailed)
+        );
+        assert_eq!(
+            keychain_update_transition(ERR_SEC_INTERACTION_NOT_ALLOWED),
+            KeychainUpdateTransition::Fail(ERR_SEC_INTERACTION_NOT_ALLOWED)
+        );
+    }
+
+    #[test]
+    fn add_is_reached_only_after_verified_not_found() {
+        assert_eq!(
+            keychain_update_transition(errSecSuccess),
+            KeychainUpdateTransition::Complete
+        );
+        assert_eq!(
+            keychain_update_transition(errSecItemNotFound),
+            KeychainUpdateTransition::AddNew
+        );
+    }
+}

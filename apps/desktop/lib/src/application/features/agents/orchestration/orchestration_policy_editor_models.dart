@@ -1,7 +1,7 @@
 import 'package:flutter/foundation.dart';
 
-import 'package:flutter_client/src/contracts/target_candidate.dart';
-import 'package:flutter_client/src/application/features/agents/orchestration/orchestration_target_catalog.dart';
+import 'package:licoup/src/contracts/target_candidate.dart';
+import 'package:licoup/src/application/features/agents/orchestration/orchestration_target_catalog.dart';
 
 const String defaultAgentOrchestrationPolicyId = 'default';
 

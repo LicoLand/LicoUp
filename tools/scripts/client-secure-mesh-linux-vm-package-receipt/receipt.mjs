@@ -137,12 +137,12 @@ export async function runReceipt(ctx) {
   assert(existsSync(extractedBundle), "Linux archive did not contain a bundle");
   renameSync(extractedBundle, installedBundle);
 
-  const flutterClient = requiredFile(path.join(installedBundle, "flutter_client"),
+  const flutterClient = requiredFile(path.join(installedBundle, "licoup"),
     "installed Linux desktop executable");
-  const nativeClient = requiredFile(path.join(installedBundle, "lico-client"),
+  const nativeClient = requiredFile(path.join(installedBundle, "licoup"),
     "installed Linux native sidecar");
   const bundleManifestPath = requiredFile(
-    path.join(installedBundle, "package-metadata", "lico-client", "packaging-modules.json"),
+    path.join(installedBundle, "package-metadata", "licoup", "packaging-modules.json"),
     "installed Linux bundle manifest"
   );
   const bundleManifest = JSON.parse(stableReadFile(bundleManifestPath, {
@@ -187,12 +187,12 @@ export async function runReceipt(ctx) {
     "false",
   ], {
     ...process.env,
-    LICOARC_PORTABLE_DIR: smokeState
+    LICOUP_PORTABLE_DIR: smokeState
   });
   assertTargetScan(targetScan);
   const secureMeshStatus = runJson(nativeClient, ["secure-mesh", "status"], {
     ...process.env,
-    LICOARC_PORTABLE_DIR: smokeState
+    LICOUP_PORTABLE_DIR: smokeState
   });
   const capabilityReport = secureMeshStatus.capabilityReport;
   ctx.verificationPhase = "gui_session";

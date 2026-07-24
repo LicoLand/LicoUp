@@ -1,18 +1,18 @@
-import 'package:flutter_client/src/contracts/presentation/layout_environment.dart';
-import 'package:flutter_client/src/contracts/presentation/layout_profile.dart';
-import 'package:flutter_client/src/contracts/presentation/layout_state_namespace.dart';
-import 'package:flutter_client/src/contracts/presentation/semantic_destination.dart';
-import 'package:flutter_client/src/frontend/layout/layout_surface_bundle.dart';
-import 'package:flutter_client/src/frontend/layout/profiles/classic/desktop/components/classic_desktop_component_kit.dart';
-import 'package:flutter_client/src/frontend/layout/profiles/classic/desktop/destinations/agents_destination.dart';
-import 'package:flutter_client/src/frontend/layout/profiles/classic/desktop/destinations/skill_hub_destination.dart';
-import 'package:flutter_client/src/frontend/layout/profiles/classic/desktop/destinations/mobile_relay_destination.dart';
-import 'package:flutter_client/src/frontend/layout/profiles/classic/desktop/destinations/monitoring_destination.dart';
-import 'package:flutter_client/src/frontend/layout/profiles/classic/desktop/destinations/settings_destination.dart';
-import 'package:flutter_client/src/frontend/layout/profiles/classic/desktop/destinations/plugin_management_destination.dart';
-import 'package:flutter_client/src/frontend/layout/profiles/classic/desktop/preview/classic_desktop_preview.dart';
-import 'package:flutter_client/src/frontend/layout/profiles/classic/desktop/shell/classic_desktop_shell.dart';
-import 'package:flutter_client/src/frontend/layout/profiles/classic/desktop/tokens/classic_desktop_tokens.dart';
+import 'package:licoup/src/contracts/presentation/layout_environment.dart';
+import 'package:licoup/src/contracts/presentation/layout_profile.dart';
+import 'package:licoup/src/contracts/presentation/layout_state_namespace.dart';
+import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
+import 'package:licoup/src/frontend/layout/layout_surface_bundle.dart';
+import 'package:licoup/src/frontend/layout/profiles/classic/desktop/components/classic_desktop_component_kit.dart';
+import 'package:licoup/src/frontend/layout/profiles/classic/desktop/destinations/agents_destination.dart';
+import 'package:licoup/src/frontend/layout/profiles/classic/desktop/destinations/skill_hub_destination.dart';
+import 'package:licoup/src/frontend/layout/profiles/classic/desktop/destinations/mobile_relay_destination.dart';
+import 'package:licoup/src/frontend/layout/profiles/classic/desktop/destinations/monitoring_destination.dart';
+import 'package:licoup/src/frontend/layout/profiles/classic/desktop/destinations/settings_destination.dart';
+import 'package:licoup/src/frontend/layout/profiles/classic/desktop/destinations/plugin_management_destination.dart';
+import 'package:licoup/src/frontend/layout/profiles/classic/desktop/preview/classic_desktop_preview.dart';
+import 'package:licoup/src/frontend/layout/profiles/classic/desktop/shell/classic_desktop_shell.dart';
+import 'package:licoup/src/frontend/layout/profiles/classic/desktop/tokens/classic_desktop_tokens.dart';
 
 /// The sole public artifact of the classic desktop renderer.
 final LayoutSurfaceBundle classicDesktopBundle = LayoutSurfaceBundle(

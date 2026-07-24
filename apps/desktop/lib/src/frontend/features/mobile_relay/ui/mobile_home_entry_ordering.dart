@@ -1,5 +1,5 @@
-import 'package:flutter_client/src/contracts/agent_conversation_models.dart';
-import 'package:flutter_client/src/contracts/mobile_home_layout.dart';
+import 'package:licoup/src/contracts/agent_conversation_models.dart';
+import 'package:licoup/src/contracts/mobile_home_layout.dart';
 
 final class MobileHomeEntryOrderItem {
   const MobileHomeEntryOrderItem({

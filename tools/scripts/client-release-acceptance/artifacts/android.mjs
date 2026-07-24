@@ -52,7 +52,7 @@ export function verifyAndroidArtifact(target, spec, clientVersion, receiptContex
     manifest.signerIdentityVerified === true &&
     manifest.signingPolicySatisfied === true &&
     facts.nativeSecureMeshLibrary?.path ===
-      "lib/arm64-v8a/liblico_client_native.so" &&
+      "lib/arm64-v8a/liblicoup_native.so" &&
     facts.nativeSecureMeshLibrary?.regular === true &&
     facts.nativeSecureMeshLibrary?.unique === true &&
     facts.nativeSecureMeshLibrary?.size > 0 &&

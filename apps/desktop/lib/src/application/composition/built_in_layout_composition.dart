@@ -1,21 +1,21 @@
 import 'dart:collection';
 
-import 'package:flutter_client/src/application/features/layout/layout_catalog.dart';
-import 'package:flutter_client/src/application/features/layout/layout_state_store.dart';
-import 'package:flutter_client/src/application/features/navigation/semantic_destination_catalog.dart';
-import 'package:flutter_client/src/contracts/presentation/layout_environment.dart';
-import 'package:flutter_client/src/contracts/presentation/layout_profile.dart';
-import 'package:flutter_client/src/frontend/layout/layout_definition.dart';
-import 'package:flutter_client/src/frontend/layout/layout_registry.dart';
-import 'package:flutter_client/src/frontend/layout/layout_surface_bundle.dart';
-import 'package:flutter_client/src/frontend/layout/profiles/bubble/desktop/bubble_desktop.dart';
-import 'package:flutter_client/src/frontend/layout/profiles/bubble/mobile/bubble_mobile_bundle.dart';
-import 'package:flutter_client/src/frontend/layout/profiles/classic/desktop/classic_desktop.dart';
-import 'package:flutter_client/src/frontend/layout/profiles/classic/mobile/classic_mobile_bundle.dart';
-import 'package:flutter_client/src/frontend/layout/profiles/native/desktop/native_desktop.dart';
-import 'package:flutter_client/src/frontend/layout/profiles/native/mobile/native_mobile_bundle.dart';
-import 'package:flutter_client/src/frontend/layout/profiles/workbench/desktop/workbench_desktop.dart';
-import 'package:flutter_client/src/frontend/layout/profiles/workbench/mobile/workbench_mobile_bundle.dart';
+import 'package:licoup/src/application/features/layout/layout_catalog.dart';
+import 'package:licoup/src/application/features/layout/layout_state_store.dart';
+import 'package:licoup/src/application/features/navigation/semantic_destination_catalog.dart';
+import 'package:licoup/src/contracts/presentation/layout_environment.dart';
+import 'package:licoup/src/contracts/presentation/layout_profile.dart';
+import 'package:licoup/src/frontend/layout/layout_definition.dart';
+import 'package:licoup/src/frontend/layout/layout_registry.dart';
+import 'package:licoup/src/frontend/layout/layout_surface_bundle.dart';
+import 'package:licoup/src/frontend/layout/profiles/bubble/desktop/bubble_desktop.dart';
+import 'package:licoup/src/frontend/layout/profiles/bubble/mobile/bubble_mobile_bundle.dart';
+import 'package:licoup/src/frontend/layout/profiles/classic/desktop/classic_desktop.dart';
+import 'package:licoup/src/frontend/layout/profiles/classic/mobile/classic_mobile_bundle.dart';
+import 'package:licoup/src/frontend/layout/profiles/native/desktop/native_desktop.dart';
+import 'package:licoup/src/frontend/layout/profiles/native/mobile/native_mobile_bundle.dart';
+import 'package:licoup/src/frontend/layout/profiles/workbench/desktop/workbench_desktop.dart';
+import 'package:licoup/src/frontend/layout/profiles/workbench/mobile/workbench_mobile_bundle.dart';
 
 /// Application composition root for the immutable built-in layout product.
 ///

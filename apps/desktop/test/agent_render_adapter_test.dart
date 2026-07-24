@@ -1,8 +1,8 @@
 import 'dart:io';
 
-import 'package:flutter_client/src/contracts/agent_render_adapter_source.dart';
-import 'package:flutter_client/src/platform/agent_render_adapter/agent_render_adapter_service.dart';
-import 'package:flutter_client/src/frontend/features/agents/ui/agent_render_adapter.dart';
+import 'package:licoup/src/contracts/agent_render_adapter_source.dart';
+import 'package:licoup/src/platform/agent_render_adapter/agent_render_adapter_service.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_render_adapter.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

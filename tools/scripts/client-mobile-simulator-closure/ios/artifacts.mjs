@@ -363,7 +363,7 @@ export async function waitForIosRuntimeStatus(device, launchedAtEpochMillis) {
         dataRoot,
         "Library",
         "Application Support",
-        "LicoArc",
+        "LicoUp",
         "secure-mesh",
         "ios-runtime-status.json",
       );

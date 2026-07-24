@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 
-import 'package:flutter_client/src/contracts/generated/secure_mesh.g.dart';
-import 'package:flutter_client/src/frontend/l10n/lico_strings.dart';
-import 'package:flutter_client/src/frontend/shared/ui/theme.dart';
+import 'package:licoup/src/contracts/generated/secure_mesh.g.dart';
+import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 class SecureMeshCapabilityCard extends StatefulWidget {
   const SecureMeshCapabilityCard({super.key, required this.projection});

@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:flutter_client/src/application/features/mcp/controller/mcp_transfer_controller.dart';
-import 'package:flutter_client/src/contracts/mcp_adapter.dart';
+import 'package:licoup/src/application/features/mcp/controller/mcp_transfer_controller.dart';
+import 'package:licoup/src/contracts/mcp_adapter.dart';
 
 void main() {
   test(

@@ -1,8 +1,8 @@
-import 'package:flutter_client/src/application/features/agents/workspace/agent_workspace_coordinator.dart';
-import 'package:flutter_client/src/contracts/agent_conversation_models.dart';
-import 'package:flutter_client/src/contracts/agent_conversation_tab_activity.dart';
-import 'package:flutter_client/src/contracts/agent_dispatch_lane.dart';
-import 'package:flutter_client/src/contracts/generated/secure_mesh.g.dart';
+import 'package:licoup/src/application/features/agents/workspace/agent_workspace_coordinator.dart';
+import 'package:licoup/src/contracts/agent_conversation_models.dart';
+import 'package:licoup/src/contracts/agent_conversation_tab_activity.dart';
+import 'package:licoup/src/contracts/agent_dispatch_lane.dart';
+import 'package:licoup/src/contracts/generated/secure_mesh.g.dart';
 
 /// Ephemeral message/process projection for an in-flight native turn.
 mixin AgentConversationLiveProjectionController on AgentWorkspaceCoordinator {

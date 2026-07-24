@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:flutter_client/src/application/features/agents/controller/agent_usage_daily_cache.dart';
-import 'package:flutter_client/src/contracts/agent_usage_models.dart';
+import 'package:licoup/src/application/features/agents/controller/agent_usage_daily_cache.dart';
+import 'package:licoup/src/contracts/agent_usage_models.dart';
 
 void main() {
   test('viewport projection slices cached days without rescanning source', () {

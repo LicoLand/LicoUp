@@ -1,8 +1,8 @@
 import { quoteShellArg } from "../ssh/session.mjs";
 
 export function verifyCommand(distro) {
-  const artifactName = `lico-client-${distro.id}-linux-arm64`;
-  const guestHelpPath = ["", "tmp", "lico-client-help.txt"].join("/");
+  const artifactName = `licoup-${distro.id}-linux-arm64`;
+  const guestHelpPath = ["", "tmp", "licoup-help.txt"].join("/");
   const assertSecretServicePlatformBinding = [
     "const fs=require('node:fs')",
     "const report=JSON.parse(fs.readFileSync(process.argv[1],'utf8'))",
@@ -25,7 +25,7 @@ export function verifyCommand(distro) {
       ...commands,
     ].join(" && "))} 2>/dev/null`;
   const ubuntuSecretStoreCommand = secretServiceSessionCommand([
-    'export LICOARC_PORTABLE_DIR="$(mktemp -d)"',
+    'export LICOUP_PORTABLE_DIR="$(mktemp -d)"',
     `"$LICO_VM_ORIGINAL_HOME/lico-artifacts/${artifactName}" mobile relay e2ee secret-store-self-test > "$LICO_VM_ORIGINAL_HOME/lico-artifacts/mobile-relay-secret-store-self-test.json"`,
     `node -e ${quoteShellArg(assertSecretServicePlatformBinding)} "$LICO_VM_ORIGINAL_HOME/lico-artifacts/mobile-relay-secret-store-self-test.json"`,
     `node tools/scripts/client-secure-mesh-linux-adaptive-custody-proof.mjs --input-report "$LICO_VM_ORIGINAL_HOME/lico-artifacts/mobile-relay-secret-store-self-test.json" --expect-strategy os_secure_store`,
@@ -35,19 +35,19 @@ export function verifyCommand(distro) {
   const cargoTestCommand =
     distro.id === "ubuntu"
       ? secretServiceSessionCommand([
-          "cargo test --manifest-path crates/lico-client-native/Cargo.toml --locked -- --test-threads=1",
+          "cargo test --manifest-path crates/licoup-native/Cargo.toml --locked -- --test-threads=1",
         ])
-      : "cargo test --manifest-path crates/lico-client-native/Cargo.toml --locked -- --test-threads=1";
+      : "cargo test --manifest-path crates/licoup-native/Cargo.toml --locked -- --test-threads=1";
   return [
     "set -euo pipefail",
     '. "$HOME/.cargo/env"',
-    'cd "$HOME/lico-arc"',
+    'cd "$HOME/lico-up"',
     'export CARGO_TARGET_DIR="$HOME/.cache/licomesh/cargo-target"',
     "export CARGO_BUILD_JOBS=1",
     'mkdir -p "$CARGO_TARGET_DIR" "$HOME/lico-artifacts"',
     cargoTestCommand,
-    "cargo build --manifest-path crates/lico-client-native/Cargo.toml --locked --release --bin lico-client",
-    `cp "$CARGO_TARGET_DIR/release/lico-client" "$HOME/lico-artifacts/${artifactName}"`,
+    "cargo build --manifest-path crates/licoup-native/Cargo.toml --locked --release --bin licoup",
+    `cp "$CARGO_TARGET_DIR/release/licoup" "$HOME/lico-artifacts/${artifactName}"`,
     `chmod 0755 "$HOME/lico-artifacts/${artifactName}"`,
     `"$HOME/lico-artifacts/${artifactName}" --help >${guestHelpPath}`,
     "node tools/scripts/client-secure-mesh-linux-adaptive-custody-proof.mjs --self-test",

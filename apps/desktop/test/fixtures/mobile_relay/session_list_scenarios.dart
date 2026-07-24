@@ -1,6 +1,6 @@
 import 'dart:convert';
 
-import 'package:flutter_client/src/platform/mobile_relay/mobile_relay_service.dart';
+import 'package:licoup/src/platform/mobile_relay/mobile_relay_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'session_fixtures.dart';

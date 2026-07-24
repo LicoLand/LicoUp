@@ -1,4 +1,4 @@
-import 'package:flutter_client/src/contracts/mobile_relay/mobile_relay_gateway.dart';
+import 'package:licoup/src/contracts/mobile_relay/mobile_relay_gateway.dart';
 
 class MobileRelayPairedDevice {
   const MobileRelayPairedDevice({

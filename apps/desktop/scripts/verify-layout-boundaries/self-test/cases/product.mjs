@@ -43,8 +43,8 @@ abstract interface class LayoutComponentKit {
   await appendRelative(
     fixtureRoot,
     bundlePath("alpha", "desktop"),
-    `import 'package:flutter_client/src/frontend/layout/layout_surface_bundle.dart';
-import 'package:flutter_client/src/frontend/layout/layout_component_kit.dart';
+    `import 'package:licoup/src/frontend/layout/layout_surface_bundle.dart';
+import 'package:licoup/src/frontend/layout/layout_component_kit.dart';
 `,
   );
   await verifyLayoutBoundaries({ repositoryRoot: fixtureRoot });
@@ -129,7 +129,7 @@ import 'package:flutter_client/src/frontend/layout/layout_component_kit.dart';
   await appendRelative(
     fixtureRoot,
     bundlePath("alpha", "desktop"),
-    `import 'package:flutter_client/src/frontend/layout/profiles/beta/desktop/beta_desktop_bundle.dart';\n`,
+    `import 'package:licoup/src/frontend/layout/profiles/beta/desktop/beta_desktop_bundle.dart';\n`,
   );
   await expectViolation("layout_cross_profile_import", () =>
     verifyLayoutBoundaries({ repositoryRoot: fixtureRoot }),
@@ -140,7 +140,7 @@ import 'package:flutter_client/src/frontend/layout/layout_component_kit.dart';
   await appendRelative(
     fixtureRoot,
     bundlePath("alpha", "desktop"),
-    `import 'package:flutter_client/src/frontend/layout/profiles/alpha/mobile/alpha_mobile_bundle.dart';\n`,
+    `import 'package:licoup/src/frontend/layout/profiles/alpha/mobile/alpha_mobile_bundle.dart';\n`,
   );
   await expectViolation("layout_cross_surface_import", () =>
     verifyLayoutBoundaries({ repositoryRoot: fixtureRoot }),

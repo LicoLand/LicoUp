@@ -1,4 +1,4 @@
-import 'package:flutter_client/src/contracts/mobile_home_layout.dart';
+import 'package:licoup/src/contracts/mobile_home_layout.dart';
 
 class MobileHomeLayoutService {
   const MobileHomeLayoutService({required MobileHomeLayoutStore store})

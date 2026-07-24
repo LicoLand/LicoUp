@@ -1,9 +1,9 @@
-import 'package:flutter_client/src/platform/native_client/agent_service_stdio_rpc/command_exchange.dart';
-import 'package:flutter_client/src/platform/native_client/agent_service_stdio_rpc/operation_queue.dart';
-import 'package:flutter_client/src/platform/native_client/agent_service_stdio_rpc/session_manager.dart';
-import 'package:flutter_client/src/platform/native_client/agent_service_stdio_rpc/shutdown.dart';
-import 'package:flutter_client/src/platform/native_client/native_cli_ports.dart';
-import 'package:flutter_client/src/platform/native_client/native_rpc_priority.dart';
+import 'package:licoup/src/platform/native_client/agent_service_stdio_rpc/command_exchange.dart';
+import 'package:licoup/src/platform/native_client/agent_service_stdio_rpc/operation_queue.dart';
+import 'package:licoup/src/platform/native_client/agent_service_stdio_rpc/session_manager.dart';
+import 'package:licoup/src/platform/native_client/agent_service_stdio_rpc/shutdown.dart';
+import 'package:licoup/src/platform/native_client/native_cli_ports.dart';
+import 'package:licoup/src/platform/native_client/native_rpc_priority.dart';
 
 /// Lazy bounded lanes for the Local Bridge control plane.
 ///

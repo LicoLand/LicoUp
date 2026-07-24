@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:flutter_client/src/frontend/layout/layout_palette.dart';
-import 'package:flutter_client/src/frontend/layout/profiles/bubble/mobile/bubble_mobile_bundle.dart';
-import 'package:flutter_client/src/frontend/shared/ui/theme.dart';
+import 'package:licoup/src/frontend/layout/layout_palette.dart';
+import 'package:licoup/src/frontend/layout/profiles/bubble/mobile/bubble_mobile_bundle.dart';
+import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 import './bubble_mobile_test_harness.dart';
 

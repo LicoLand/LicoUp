@@ -1,6 +1,6 @@
-import 'package:flutter_client/src/contracts/catalog_convergence/catalog_convergence_gateway.dart';
-import 'package:flutter_client/src/contracts/catalog_convergence/catalog_convergence_models.dart';
-import 'package:flutter_client/src/platform/native_client/agent_service.dart';
+import 'package:licoup/src/contracts/catalog_convergence/catalog_convergence_gateway.dart';
+import 'package:licoup/src/contracts/catalog_convergence/catalog_convergence_models.dart';
+import 'package:licoup/src/platform/native_client/agent_service.dart';
 
 final class CatalogConvergenceService implements CatalogConvergenceGateway {
   const CatalogConvergenceService({required AgentService agentService})

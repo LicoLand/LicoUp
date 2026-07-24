@@ -1,7 +1,7 @@
 import 'dart:async';
 
-import 'package:flutter_client/src/application/features/settings/controller/client_log_export_controller.dart';
-import 'package:flutter_client/src/contracts/client_log_export.dart';
+import 'package:licoup/src/application/features/settings/controller/client_log_export_controller.dart';
+import 'package:licoup/src/contracts/client_log_export.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

@@ -1,5 +1,5 @@
-import 'package:flutter_client/src/contracts/skill_hub_preferences.dart';
-import 'package:flutter_client/src/contracts/skill_hub.dart';
+import 'package:licoup/src/contracts/skill_hub_preferences.dart';
+import 'package:licoup/src/contracts/skill_hub.dart';
 
 class SkillHubPreferencesService implements SkillHubPreferencesRepository {
   const SkillHubPreferencesService({required SkillHubPreferencesStore store})

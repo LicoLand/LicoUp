@@ -1,9 +1,9 @@
 import 'package:flutter/foundation.dart';
-import 'package:flutter_client/src/application/features/skill_hub/controller/skill_hub_status.dart';
-import 'package:flutter_client/src/application/features/skill_hub/services/skill_hub_skill_catalog.dart';
-import 'package:flutter_client/src/contracts/skill_hub.dart';
-import 'package:flutter_client/src/contracts/skill_hub_preferences.dart';
-import 'package:flutter_client/src/contracts/target_candidate.dart';
+import 'package:licoup/src/application/features/skill_hub/controller/skill_hub_status.dart';
+import 'package:licoup/src/application/features/skill_hub/services/skill_hub_skill_catalog.dart';
+import 'package:licoup/src/contracts/skill_hub.dart';
+import 'package:licoup/src/contracts/skill_hub_preferences.dart';
+import 'package:licoup/src/contracts/target_candidate.dart';
 
 /// Owns Skill Hub catalog, pairing, installation and visual preferences.
 class SkillHubController extends ChangeNotifier {

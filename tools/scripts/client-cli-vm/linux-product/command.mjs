@@ -18,14 +18,14 @@ export function linuxProductCommand(distro, expectedSourceDigest, releaseBinding
     throw new Error("Linux product release-closure binding is invalid.");
   }
   const archive =
-    "$HOME/lico-arc/build/apps/desktop/distribution/linux-arm64/LicoArc-linux-arm64.tar.gz";
+    "$HOME/lico-up/build/apps/desktop/distribution/linux-arm64/LicoUp-linux-arm64.tar.gz";
   const distributionManifest =
-    "$HOME/lico-arc/build/apps/desktop/distribution/linux-arm64/manifest.json";
+    "$HOME/lico-up/build/apps/desktop/distribution/linux-arm64/manifest.json";
   const vmReceipt = "$HOME/lico-product-artifacts/secure-mesh-linux-vm-package-receipt.json";
   const nodeMatrix = "$HOME/lico-product-artifacts/secure-mesh-linux-node-matrix.json";
   const releaseCliReport =
-    "$HOME/lico-arc/build/apps/desktop/distribution/linux-arm64/secure-mesh-release-cli-proof.json";
-  const archivedCli = "$LICO_VM_PRODUCT_ROOT/release-cli/bundle/lico-client";
+    "$HOME/lico-up/build/apps/desktop/distribution/linux-arm64/secure-mesh-release-cli-proof.json";
+  const archivedCli = "$LICO_VM_PRODUCT_ROOT/release-cli/bundle/licoup";
   const generateValidationKey = [
     "const {generateKeyPairSync}=require('node:crypto')",
     "const fs=require('node:fs')",
@@ -59,7 +59,7 @@ export function linuxProductCommand(distro, expectedSourceDigest, releaseBinding
     ownerOnlyDirectoryFunction,
     prepareReportRoot,
     'trap \'rm -f "$LICO_LINUX_RELEASE_SIGNING_KEY_PATH"\' EXIT',
-    'cd "$HOME/lico-arc"',
+    'cd "$HOME/lico-up"',
     "node tools/scripts/client-source-manifest-verify.mjs >/dev/null",
     "printf '%s\\n' '{\"step\":\"source_manifest_verified_before_build\"}'",
     "npm run client:get >/dev/null 2>&1",
@@ -83,10 +83,10 @@ export function linuxProductCommand(distro, expectedSourceDigest, releaseBinding
     "printf '%s\\n' '{\"step\":\"three_node_matrix_ready\"}'",
     "node tools/scripts/client-source-manifest-verify.mjs >/dev/null",
     "printf '%s\\n' '{\"step\":\"source_manifest_verified_after_build\"}'",
-    `cp "${archive}" "$HOME/lico-product-artifacts/LicoArc-linux-arm64.tar.gz"`,
-    `cp "${archive}.sig" "$HOME/lico-product-artifacts/LicoArc-linux-arm64.tar.gz.sig"`,
+    `cp "${archive}" "$HOME/lico-product-artifacts/LicoUp-linux-arm64.tar.gz"`,
+    `cp "${archive}.sig" "$HOME/lico-product-artifacts/LicoUp-linux-arm64.tar.gz.sig"`,
     `cp "${distributionManifest}" "$HOME/lico-product-artifacts/linux-arm64-manifest.json"`,
-    `cp "$HOME/lico-arc/${linuxSourceManifestRemoteRef}" "$HOME/lico-product-artifacts/${linuxSourceManifestName}"`,
+    `cp "$HOME/lico-up/${linuxSourceManifestRemoteRef}" "$HOME/lico-product-artifacts/${linuxSourceManifestName}"`,
     "printf '%s\\n' '{\"ok\":true,\"currentSourceArchive\":true,\"vmInstallReceiptReady\":true,\"archivedReleaseCliProofReady\":true,\"threeNodeMatrixReady\":true}'",
   ].join(" && ");
 }

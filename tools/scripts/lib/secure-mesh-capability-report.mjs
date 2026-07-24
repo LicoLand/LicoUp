@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 
 export const capabilityReportSchemaVersion = 1;
 export const capabilityCatalogPath = fileURLToPath(new URL(
-  "../../../crates/lico-client-native/resources/secure-mesh-capability-catalog.json",
+  "../../../crates/licoup-native/resources/secure-mesh-capability-catalog.json",
   import.meta.url
 ));
 

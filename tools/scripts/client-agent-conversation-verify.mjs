@@ -10,8 +10,8 @@ import {
 } from "./lib/release-closure-challenge.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
-const inventoryPath = resolve(root, "crates/lico-client-native/resources/agent-conversation-drivers.json");
-const readinessPath = resolve(root, "crates/lico-client-native/resources/agent-conversation-readiness.json");
+const inventoryPath = resolve(root, "crates/licoup-native/resources/agent-conversation-drivers.json");
+const readinessPath = resolve(root, "crates/licoup-native/resources/agent-conversation-readiness.json");
 const defaultReport = resolve(root, "build/reports/agent-conversation-verification.json");
 const validationModels = Object.freeze({
   cursor: "Auto",
@@ -223,7 +223,7 @@ async function main() {
   if (drivers.length === 0) throw new Error("agent_not_found");
 
   const checks = {
-    nativePlatform: run("cargo", ["test", "-p", "lico-client-native", "--lib", "platform::", "--", "--test-threads=1"]),
+    nativePlatform: run("cargo", ["test", "-p", "licoup-native", "--lib", "platform::", "--", "--test-threads=1"]),
     reducerContract: run("node", ["tests/contract/client/agent-conversation-parity-reducer.test.mjs"]),
     readinessContract: run("node", ["tools/scripts/client-agent-conversation-parity-reducer.mjs", "--check"]),
     harnessSelfTest: runJson("node", ["tools/scripts/client-acp-conversation-parity.mjs", "--self-test"]),

@@ -1,4 +1,4 @@
-import 'package:flutter_client/src/application/features/skill_hub/models/skill_agent_compatibility.dart';
+import 'package:licoup/src/application/features/skill_hub/models/skill_agent_compatibility.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

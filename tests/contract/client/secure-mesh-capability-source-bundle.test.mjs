@@ -5,8 +5,8 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = path.resolve(fileURLToPath(new URL("../../..", import.meta.url)));
-const facadePath = "crates/lico-client-native/src/core/secure_mesh_capability.rs";
-const root = "crates/lico-client-native/src/core/secure_mesh_capability";
+const facadePath = "crates/licoup-native/src/core/secure_mesh_capability.rs";
+const root = "crates/licoup-native/src/core/secure_mesh_capability";
 const productionLeaves = Object.freeze([
   "catalog.rs",
   "custody.rs",
@@ -116,7 +116,7 @@ test("facts custody evaluation and report form one-way leaves", async () => {
 test("external consumers cannot depend on capability implementation leaves", async () => {
   const internalModules = "catalog|custody|evaluation|facts|report|taxonomy";
   const internalPath = new RegExp(`secure_mesh_capability::(?:${internalModules})::`, "u");
-  const consumers = (await sourceFiles("crates/lico-client-native/src"))
+  const consumers = (await sourceFiles("crates/licoup-native/src"))
     .filter((relativePath) => relativePath !== facadePath && !relativePath.startsWith(`${root}/`));
   for (const relativePath of consumers) {
     const source = await read(relativePath);

@@ -1,13 +1,14 @@
-# Lico Arc Architecture
+# LicoUp Architecture
 
 English (normative) · [简体中文](README.zh-CN.md) · [Documentation](../README.md) · [Project](../../README.md)
 
-`PRODUCT.md` owns the product boundary. Current component and dependency facts
-are owned by the Rust/Flutter module trees, `apps/desktop/packaging.modules.json`,
-and the architecture verifier under `apps/desktop/scripts/client-architecture/`.
-This document is their public architectural projection.
+[`PRODUCT.md`](../../PRODUCT.md) owns the current product boundary and the
+approved north star. Current component and dependency facts are owned by the
+Rust/Flutter module trees, `apps/desktop/packaging.modules.json`, and the
+architecture verifier under `apps/desktop/scripts/client-architecture/`. This
+document is their public architectural projection.
 
-Lico Arc is a local-first client. Flutter owns the interface. Rust owns the
+LicoUp is a local-first client. Flutter owns the interface. Rust owns the
 native client core, local adapters, bounded work, and Secure Client Mesh.
 
 ## Design ideas
@@ -28,7 +29,7 @@ flowchart TB
     CORE --> STORE["Local client storage"]
     CORE --> MESH["Secure Client Mesh"]
     MESH --> RELAY["Untrusted relay"]
-    RELAY --> PEER["Peer Lico Arc client"]
+    RELAY --> PEER["Peer LicoUp client"]
     KEYS["Platform secure store<br/>user presence"] --> MESH
 ```
 
@@ -53,7 +54,7 @@ one scenario does not reach into another scenario's storage or interface.
 | ACP adapter | Agent session negotiation, native continuation, streamed events, permission waits, cancellation, and sanitized errors |
 | MCP adapter | Bounded MCP/JSON-RPC validation, request-ID preservation, response forwarding, and one-shot approval for external effects |
 | Agent discovery | Concurrent probes of platform application sources, package managers, executable locations, and configured agent roots; normalized results are cached locally |
-| Adapter plugin management | One native catalog for packaged native, bundled ACP, and explicitly installable Lico Arc bridges; lifecycle actions are confirmed and limited to Lico Arc-owned state |
+| Adapter plugin management | One native catalog for packaged native, bundled ACP, and explicitly installable LicoUp bridges; lifecycle actions are confirmed and limited to LicoUp-owned state |
 | Agent conversations | New and native continued sessions plus the process-local [Local Bridge](../protocols/local-bridge.md) for wakeable progress, native steer, and exact-session safe-boundary follow-up |
 | Skill management | Local install/update/delete workflows, configured-source scheduling, and invocation counters grouped by time window |
 | Conversation management | Local all-conversation or exact-keyword backup to a user-selected directory |
@@ -202,7 +203,7 @@ The client follows these rules:
 | Path | Purpose |
 | --- | --- |
 | `apps/desktop/` | Flutter desktop and mobile client |
-| `crates/lico-client-native/` | Rust client core and command |
+| `crates/licoup-native/` | Rust client core and command |
 | `packages/contracts/client/` | Client-owned schemas |
 | `tests/` | Contract and boundary tests with synthetic data |
 | `tools/` | Reusable build and verification tools |

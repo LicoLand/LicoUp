@@ -55,7 +55,7 @@ async function writeCatalogFixture(root, profiles, surfaces) {
       const relativePath =
         `${DEFAULT_LAYOUT_VISUAL_CONFIG.profileSourceRoot}/${profile}/${surface}/${profile}_${surface}_bundle.dart`;
       imports.push(
-        `import 'package:flutter_client/${relativePath.slice("apps/desktop/lib/".length)}';`,
+        `import 'package:licoup/${relativePath.slice("apps/desktop/lib/".length)}';`,
       );
       symbols.push(symbol);
       await writeRelative(

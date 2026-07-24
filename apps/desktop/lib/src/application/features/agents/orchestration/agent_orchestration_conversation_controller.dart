@@ -1,5 +1,5 @@
-import 'package:flutter_client/src/application/features/agents/workspace/agent_workspace_coordinator.dart';
-import 'package:flutter_client/src/platform/native_client/orchestrator_ipc/client.dart';
+import 'package:licoup/src/application/features/agents/workspace/agent_workspace_coordinator.dart';
+import 'package:licoup/src/platform/native_client/orchestrator_ipc/client.dart';
 
 /// Holds only the latest immutable backend projection for rendering.
 mixin AgentOrchestrationConversationController on AgentWorkspaceCoordinator {

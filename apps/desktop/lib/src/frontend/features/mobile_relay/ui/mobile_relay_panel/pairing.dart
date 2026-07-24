@@ -2,13 +2,13 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-import 'package:flutter_client/src/application/controller/client_controller.dart';
-import 'package:flutter_client/src/contracts/mobile_pairing_presentation.dart';
-import 'package:flutter_client/src/contracts/mobile_relay/mobile_relay_models.dart';
-import 'package:flutter_client/src/frontend/features/mobile_relay/ui/mobile_relay_panel/qr.dart';
-import 'package:flutter_client/src/frontend/l10n/lico_strings.dart';
-import 'package:flutter_client/src/frontend/shared/ui/apple_notifications.dart';
-import 'package:flutter_client/src/frontend/shared/ui/theme.dart';
+import 'package:licoup/src/application/controller/client_controller.dart';
+import 'package:licoup/src/contracts/mobile_pairing_presentation.dart';
+import 'package:licoup/src/contracts/mobile_relay/mobile_relay_models.dart';
+import 'package:licoup/src/frontend/features/mobile_relay/ui/mobile_relay_panel/qr.dart';
+import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/shared/ui/apple_notifications.dart';
+import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 class MobileRelayPairingWorkspaceCard extends StatelessWidget {
   const MobileRelayPairingWorkspaceCard({

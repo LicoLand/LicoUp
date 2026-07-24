@@ -1,6 +1,6 @@
-import 'package:flutter_client/src/application/controller/client_shell_controller.dart';
-import 'package:flutter_client/src/contracts/appearance/appearance_preset_config.dart';
-import 'package:flutter_client/src/contracts/locale_preferences.dart';
+import 'package:licoup/src/application/controller/client_shell_controller.dart';
+import 'package:licoup/src/contracts/appearance/appearance_preset_config.dart';
+import 'package:licoup/src/contracts/locale_preferences.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

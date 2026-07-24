@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:flutter_client/src/frontend/layout/profiles/workbench/mobile/workbench_mobile_bundle.dart';
+import 'package:licoup/src/frontend/layout/profiles/workbench/mobile/workbench_mobile_bundle.dart';
 
 void main() {
   final appearances = <String, ColorScheme>{

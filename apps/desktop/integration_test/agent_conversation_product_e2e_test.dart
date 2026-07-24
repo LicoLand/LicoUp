@@ -1,8 +1,8 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
-import 'package:flutter_client/app.dart';
-import 'package:flutter_client/src/application/controller/client_controller.dart';
+import 'package:licoup/app.dart';
+import 'package:licoup/src/application/controller/client_controller.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 

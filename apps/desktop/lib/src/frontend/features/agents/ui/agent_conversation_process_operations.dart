@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 
-import 'package:flutter_client/src/contracts/agent_conversation_models.dart';
-import 'package:flutter_client/src/frontend/features/agents/ui/agent_conversation_event_details_builder.dart';
-import 'package:flutter_client/src/frontend/features/agents/ui/agent_conversation_process_projection.dart';
-import 'package:flutter_client/src/frontend/features/agents/ui/agent_render_adapter.dart';
-import 'package:flutter_client/src/frontend/l10n/lico_strings.dart';
-import 'package:flutter_client/src/frontend/shared/ui/lico_activity_animations.dart';
-import 'package:flutter_client/src/frontend/shared/ui/theme.dart';
+import 'package:licoup/src/contracts/agent_conversation_models.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_event_details_builder.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_process_projection.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_render_adapter.dart';
+import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_activity_animations.dart';
+import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 final class ConversationProcessOperationList extends StatelessWidget {
   const ConversationProcessOperationList({

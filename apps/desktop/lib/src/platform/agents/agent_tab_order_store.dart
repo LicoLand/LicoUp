@@ -1,5 +1,5 @@
-import 'package:flutter_client/src/platform/mobile_relay/mobile_relay_json_store.dart';
-import 'package:flutter_client/src/contracts/target_management.dart';
+import 'package:licoup/src/platform/mobile_relay/mobile_relay_json_store.dart';
+import 'package:licoup/src/contracts/target_management.dart';
 
 abstract class AgentTabOrderStore implements TargetTabOrderRepository {
   const AgentTabOrderStore();

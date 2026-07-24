@@ -1,4 +1,4 @@
-import 'package:flutter_client/src/contracts/optional_collaboration_local_server_state.dart';
+import 'package:licoup/src/contracts/optional_collaboration_local_server_state.dart';
 
 List<OptionalLocalServerState> parseOptionalLocalServerStatus(
   Map<String, dynamic> json,

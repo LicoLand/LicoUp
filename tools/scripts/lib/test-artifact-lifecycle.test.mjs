@@ -22,7 +22,7 @@ import {
 const projectRoot = path.resolve(fileURLToPath(new URL("../../..", import.meta.url)));
 
 function temporaryRepository(t) {
-  const repoRoot = mkdtempSync(path.join(os.tmpdir(), "licoarc-artifact-test-"));
+  const repoRoot = mkdtempSync(path.join(os.tmpdir(), "licoup-artifact-test-"));
   mkdirSync(path.join(repoRoot, "build"), { recursive: true });
   t.after(() => rmSync(repoRoot, { force: true, recursive: true }));
   return repoRoot;

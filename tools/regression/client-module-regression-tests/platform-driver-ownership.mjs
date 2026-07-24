@@ -18,60 +18,60 @@ test("layer, FFI, bridge, packaging, and release paths select dedicated modules"
     "flutter.feature.orchestrator-projection",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/domain/mobile_relay/config.rs",
+    "crates/licoup-native/src/domain/mobile_relay/config.rs",
   ])), ["architecture.client-boundaries", "rust.domain.mobile-relay.configuration"]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/domain/targets/binaries.rs",
+    "crates/licoup-native/src/domain/targets/binaries.rs",
   ])), [
     "architecture.client-boundaries",
     "rust.domain.targets.binaries",
     "rust.domain.targets.platform-integration",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/ffi/android_ffi.rs",
+    "crates/licoup-native/src/ffi/android_ffi.rs",
   ])), [
     "architecture.client-boundaries",
     "rust.ffi.android-secret-store-tristate",
     "bridge.android",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/ffi/commands/mcp.rs",
+    "crates/licoup-native/src/ffi/commands/mcp.rs",
   ])), ["architecture.client-boundaries", "bridge.native-mcp-command"]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/platform/mcp_streamable_http.rs",
+    "crates/licoup-native/src/platform/mcp_streamable_http.rs",
   ])), ["architecture.client-boundaries", "rust.platform.mcp-streamable-http"]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/platform/mcp_approval_plan_store.rs",
+    "crates/licoup-native/src/platform/mcp_approval_plan_store.rs",
   ])), ["architecture.client-boundaries", "rust.platform.mcp-approval-plan-store"]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/platform/orchestrator_ipc/client.rs",
+    "crates/licoup-native/src/platform/orchestrator_ipc/client.rs",
   ])), ["regression.orchestrator-ipc", "architecture.client-boundaries"]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "packages/contracts/client/lico-arc-orchestrator-ipc.schema.json",
+    "packages/contracts/client/lico-up-orchestrator-ipc.schema.json",
   ])), ["regression.orchestrator-ipc"]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/bin/lico-client.rs",
-  ])), ["architecture.client-boundaries", "rust.bin.lico-client"]);
+    "crates/licoup-native/src/bin/licoup.rs",
+  ])), ["architecture.client-boundaries", "rust.bin.licoup"]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/bin/lico-client/stdio_rpc.rs",
+    "crates/licoup-native/src/bin/licoup/stdio_rpc.rs",
   ])), [
     "architecture.client-boundaries",
-    "rust.bin.lico-client.rpc",
+    "rust.bin.licoup.rpc",
     "bridge.native-mcp-rpc-guard",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/bin/lico-client/stdio_rpc/request.rs",
+    "crates/licoup-native/src/bin/licoup/stdio_rpc/request.rs",
   ])), [
     "architecture.client-boundaries",
-    "rust.bin.lico-client.rpc",
+    "rust.bin.licoup.rpc",
     "bridge.native-mcp-rpc-guard",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/bin/lico-client/tests/rpc/request.rs",
-  ])), ["architecture.client-boundaries", "rust.bin.lico-client.rpc"]);
+    "crates/licoup-native/src/bin/licoup/tests/rpc/request.rs",
+  ])), ["architecture.client-boundaries", "rust.bin.licoup.rpc"]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/bin/lico-client/tests/skill_commands.rs",
-  ])), ["architecture.client-boundaries", "rust.bin.lico-client.skill-commands"]);
+    "crates/licoup-native/src/bin/licoup/tests/skill_commands.rs",
+  ])), ["architecture.client-boundaries", "rust.bin.licoup.skill-commands"]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
     "apps/desktop/ios/Runner/SecureMeshIosBridge.swift",
   ])), ["architecture.client-boundaries", "bridge.ios"]);
@@ -85,14 +85,14 @@ test("layer, FFI, bridge, packaging, and release paths select dedicated modules"
 
 test("Android Secure Mesh leaves select boundary tests and Kotlin compile independently", () => {
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "apps/desktop/android/app/src/main/kotlin/com/liko/arc/MainActivity.kt",
+    "apps/desktop/android/app/src/main/kotlin/land/lico/licoup/MainActivity.kt",
   ])), [
     "architecture.client-boundaries",
     "bridge.android.secure-mesh-boundaries",
     "bridge.android.kotlin-compile",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "apps/desktop/android/app/src/test/kotlin/com/liko/arc/SecureMeshAndroidBridgeBoundaryTest.kt",
+    "apps/desktop/android/app/src/test/kotlin/land/lico/licoup/SecureMeshAndroidBridgeBoundaryTest.kt",
   ])), [
     "architecture.client-boundaries",
     "bridge.android.secure-mesh-boundaries",
@@ -102,7 +102,7 @@ test("Android Secure Mesh leaves select boundary tests and Kotlin compile indepe
     "SecureMeshAndroidNativeDispatchQueue.kt",
   ]) {
     assert.deepEqual(ids(selectModulesForChangedPaths([
-      `apps/desktop/android/app/src/main/kotlin/com/liko/arc/${source}`,
+      `apps/desktop/android/app/src/main/kotlin/land/lico/licoup/${source}`,
     ])), [
       "architecture.client-boundaries",
       "flutter.feature.mobile-relay.scenario.android-bridge",
@@ -117,9 +117,9 @@ test("Android Secure Mesh leaves select boundary tests and Kotlin compile indepe
   );
   assert.equal(boundaries.command.args.includes(":app:testDebugUnitTest"), true);
   for (const className of [
-    "com.liko.arc.SecureMeshAndroidBridgeBoundaryTest",
-    "com.liko.arc.SecureMeshAndroidSecretStoreBoundaryTest",
-    "com.liko.arc.SecureMeshAndroidSecretContractTest",
+    "land.lico.licoup.SecureMeshAndroidBridgeBoundaryTest",
+    "land.lico.licoup.SecureMeshAndroidSecretStoreBoundaryTest",
+    "land.lico.licoup.SecureMeshAndroidSecretContractTest",
   ]) {
     assert.equal(boundaries.command.args.includes(className), true);
   }
@@ -134,34 +134,34 @@ test("foundation adapters and architecture scripts have explicit changed-path ow
     "architecture.client-boundaries",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/core/acp.rs",
+    "crates/licoup-native/src/core/acp.rs",
   ])), ["architecture.client-boundaries", "rust.core.acp.composition"]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/core/acp/requests.rs",
+    "crates/licoup-native/src/core/acp/requests.rs",
   ])), ["architecture.client-boundaries", "rust.core.acp.requests"]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/core/acp/responses.rs",
+    "crates/licoup-native/src/core/acp/responses.rs",
   ])), ["architecture.client-boundaries", "rust.core.acp.responses"]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/core/acp/codec.rs",
+    "crates/licoup-native/src/core/acp/codec.rs",
   ])), ["architecture.client-boundaries", "rust.core.acp.codec"]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/core/task_queue.rs",
+    "crates/licoup-native/src/core/task_queue.rs",
   ])), ["architecture.client-boundaries", "rust.core.task-queue"]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/core/authorized_secure_record.rs",
+    "crates/licoup-native/src/core/authorized_secure_record.rs",
   ])), [
     "architecture.client-boundaries",
     "rust.core.secure-mesh.secret-custody-port",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/platform/authorized_secure_record/ledger.rs",
+    "crates/licoup-native/src/platform/authorized_secure_record/ledger.rs",
   ])), [
     "architecture.client-boundaries",
     "rust.platform.secure-mesh-secret-store.authorization",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/platform/user_presence.rs",
+    "crates/licoup-native/src/platform/user_presence.rs",
   ])), [
     "architecture.client-boundaries",
     "rust.platform.secure-mesh-secret-store.authorization",
@@ -173,32 +173,32 @@ test("foundation adapters and architecture scripts have explicit changed-path ow
     "transaction.rs",
   ]) {
     assert.deepEqual(ids(selectModulesForChangedPaths([
-      `crates/lico-client-native/src/domain/collaboration_plugin/${source}`,
+      `crates/licoup-native/src/domain/collaboration_plugin/${source}`,
     ])), [
       "architecture.client-boundaries",
       "rust.domain.optional-collaboration",
     ]);
   }
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/domain/collaboration_plugin/workflow/mcp_transaction.rs",
+    "crates/licoup-native/src/domain/collaboration_plugin/workflow/mcp_transaction.rs",
   ])), [
     "architecture.client-boundaries",
     "rust.domain.optional-collaboration.workflow-operations.apply-mcp",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/core/mcp.rs",
+    "crates/licoup-native/src/core/mcp.rs",
   ])), ["architecture.client-boundaries", "rust.core.mcp.composition"]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/core/mcp/wire.rs",
+    "crates/licoup-native/src/core/mcp/wire.rs",
   ])), ["architecture.client-boundaries", "rust.core.mcp.wire"]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/core/mcp/transfer.rs",
+    "crates/licoup-native/src/core/mcp/transfer.rs",
   ])), ["architecture.client-boundaries", "rust.core.mcp.transfer"]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/core/safe_archive.rs",
+    "crates/licoup-native/src/core/safe_archive.rs",
   ])), ["architecture.client-boundaries", "rust.core.safe-archive"]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/core/secure_mesh_pairwise.rs",
+    "crates/licoup-native/src/core/secure_mesh_pairwise.rs",
   ])), [
     "architecture.client-boundaries",
     "rust.core.secure-mesh.pairwise-codec",
@@ -209,44 +209,44 @@ test("foundation adapters and architecture scripts have explicit changed-path ow
     "rust.core.secure-mesh.pairwise-session-negotiation.handshake-machine",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/core/secure_mesh_pairwise/codec.rs",
+    "crates/licoup-native/src/core/secure_mesh_pairwise/codec.rs",
   ])), [
     "architecture.client-boundaries",
     "rust.core.secure-mesh.pairwise-codec",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/core/secure_mesh_relay_envelope.rs",
+    "crates/licoup-native/src/core/secure_mesh_relay_envelope.rs",
   ])), [
     "architecture.client-boundaries",
     "rust.core.secure-mesh.relay-envelope.composition",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/core/secure_mesh_relay_envelope/mailbox/schedule.rs",
+    "crates/licoup-native/src/core/secure_mesh_relay_envelope/mailbox/schedule.rs",
   ])), [
     "architecture.client-boundaries",
     "rust.core.secure-mesh.relay-envelope.schedule",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/core/secure_mesh_relay_envelope/private_header.rs",
+    "crates/licoup-native/src/core/secure_mesh_relay_envelope/private_header.rs",
   ])), [
     "architecture.client-boundaries",
     "rust.core.secure-mesh.relay-envelope.header",
     "rust.core.secure-mesh.relay-envelope.header-negatives",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/core/secure_mesh_command.rs",
+    "crates/licoup-native/src/core/secure_mesh_command.rs",
   ])), [
     "architecture.client-boundaries",
     "rust.core.secure-mesh.command",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/core/secure_mesh_command/schema.rs",
+    "crates/licoup-native/src/core/secure_mesh_command/schema.rs",
   ])), [
     "architecture.client-boundaries",
     "rust.core.secure-mesh.command.schema",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/core/secure_mesh_directory/authority.rs",
+    "crates/licoup-native/src/core/secure_mesh_directory/authority.rs",
   ])), [
     "architecture.client-boundaries",
     "rust.core.secure-mesh.directory",
@@ -361,11 +361,11 @@ test("Cursor and OpenAgent leaves retain exact tests and complete source ownersh
     ...sourceCheck.inputs,
   ]);
   const splitSources = await sourceFiles(
-    "crates/lico-client-native/src/domain/conversation/history/cursor_openagent",
+    "crates/licoup-native/src/domain/conversation/history/cursor_openagent",
     ".rs",
   );
   for (const relativePath of [
-    "crates/lico-client-native/src/domain/conversation/history/cursor_openagent.rs",
+    "crates/licoup-native/src/domain/conversation/history/cursor_openagent.rs",
     ...splitSources,
   ]) {
     assert.equal(ownedInputs.has(relativePath), true,
@@ -413,35 +413,35 @@ test("neutral ACP runtime and session transport retain bounded ownership", async
   }
   const ownedInputs = new Set(modules.flatMap((module) => module.inputs));
   const sources = await sourceFiles(
-    "crates/lico-client-native/src/platform/acp_driver_runtime", ".rs");
+    "crates/licoup-native/src/platform/acp_driver_runtime", ".rs");
   for (const relativePath of [
-    "crates/lico-client-native/src/platform/acp_driver_runtime.rs",
+    "crates/licoup-native/src/platform/acp_driver_runtime.rs",
     ...sources,
   ]) {
     assert.equal(ownedInputs.has(relativePath), true,
       `neutral ACP runtime source must have a precise regression owner: ${relativePath}`);
   }
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/platform/acp_driver_runtime/session_plan.rs",
+    "crates/licoup-native/src/platform/acp_driver_runtime/session_plan.rs",
   ])), ["architecture.client-boundaries", "rust.platform.acp-runtime.continuity"]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/platform/acp_driver_runtime/params.rs",
+    "crates/licoup-native/src/platform/acp_driver_runtime/params.rs",
   ])), ["architecture.client-boundaries", "rust.platform.acp-runtime.params"]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/platform/acp_driver_runtime/protocol.rs",
+    "crates/licoup-native/src/platform/acp_driver_runtime/protocol.rs",
   ])), [
     "architecture.client-boundaries",
     "rust.platform.acp-runtime.interaction",
     "rust.platform.acp-runtime.protocol",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/platform/acp_driver_runtime/stdio_transport.rs",
+    "crates/licoup-native/src/platform/acp_driver_runtime/stdio_transport.rs",
   ])), [
     "architecture.client-boundaries",
     "rust.platform.acp-runtime.stdio-transport",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/platform/acp_session_transport/execution.rs",
+    "crates/licoup-native/src/platform/acp_session_transport/execution.rs",
   ])), [
     "architecture.client-boundaries",
     "rust.platform.acp-session-transport.collaboration-mcp",
@@ -458,9 +458,9 @@ test("neutral ACP runtime and session transport retain bounded ownership", async
       || candidate.id === "rust.platform.acp-session-transport.collaboration-mcp");
   const sessionInputs = new Set(sessionModules.flatMap((module) => module.inputs));
   for (const relativePath of [
-    "crates/lico-client-native/src/platform/acp_session_transport.rs",
+    "crates/licoup-native/src/platform/acp_session_transport.rs",
     ...await sourceFiles(
-      "crates/lico-client-native/src/platform/acp_session_transport",
+      "crates/licoup-native/src/platform/acp_session_transport",
       ".rs",
     ),
   ]) {
@@ -493,16 +493,16 @@ test("Kilo Code adapter leaves retain exact tests and complete source ownership"
   }
   const ownedInputs = new Set(modules.flatMap((module) => module.inputs));
   const sources = await sourceFiles(
-    "crates/lico-client-native/src/platform/kilo_code_driver", ".rs");
+    "crates/licoup-native/src/platform/kilo_code_driver", ".rs");
   for (const relativePath of [
-    "crates/lico-client-native/src/platform/kilo_code_driver.rs",
+    "crates/licoup-native/src/platform/kilo_code_driver.rs",
     ...sources,
   ]) {
     assert.equal(ownedInputs.has(relativePath), true,
       `Kilo Code adapter source must have a precise regression owner: ${relativePath}`);
   }
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/platform/kilo_code_driver/transport.rs",
+    "crates/licoup-native/src/platform/kilo_code_driver/transport.rs",
   ])), ["architecture.client-boundaries", "rust.platform.kilo-code-driver.transport"]);
 });
 
@@ -523,7 +523,7 @@ test("runtime adapter modules retain leaf-owned inputs and exact command filters
     const module = CLIENT_MODULE_CATALOG.find((candidate) => candidate.id === id);
     assert.equal(module.command.args.at(-1), filter);
     assert.equal(module.inputs.includes(
-      "crates/lico-client-native/src/platform/runtime_adapters.rs"), false);
+      "crates/licoup-native/src/platform/runtime_adapters.rs"), false);
   }
 });
 
@@ -541,7 +541,7 @@ test("Codex app-server leaves retain exact narrow regression ownership", async (
   ]);
   for (const [leaf, moduleId] of selections) {
     assert.deepEqual(ids(selectModulesForChangedPaths([
-      `crates/lico-client-native/src/platform/codex_app_server/${leaf}`,
+      `crates/licoup-native/src/platform/codex_app_server/${leaf}`,
     ])), [sourceBundleId, "architecture.client-boundaries", moduleId]);
   }
 
@@ -572,11 +572,11 @@ test("Codex app-server leaves retain exact narrow regression ownership", async (
 
   const ownedInputs = new Set(modules.flatMap((module) => module.inputs));
   const splitSources = await sourceFiles(
-    "crates/lico-client-native/src/platform/codex_app_server",
+    "crates/licoup-native/src/platform/codex_app_server",
     ".rs",
   );
   for (const relativePath of [
-    "crates/lico-client-native/src/platform/codex_app_server.rs",
+    "crates/licoup-native/src/platform/codex_app_server.rs",
     ...splitSources,
   ]) {
     assert.equal(ownedInputs.has(relativePath), true,
@@ -614,7 +614,7 @@ test("local service leaves retain exact tests and complete source ownership", as
     assert.equal(module.command.args.at(-1), filter);
     if (!id.endsWith(".composition")) {
       assert.equal(module.inputs.includes(
-        "crates/lico-client-native/src/platform/local_service.rs"), false);
+        "crates/licoup-native/src/platform/local_service.rs"), false);
     }
   }
   const sourceCheck = CLIENT_MODULE_CATALOG.find((candidate) =>
@@ -626,9 +626,9 @@ test("local service leaves retain exact tests and complete source ownership", as
     ...sourceCheck.inputs,
   ]);
   const splitSources = await sourceFiles(
-    "crates/lico-client-native/src/platform/local_service", ".rs");
+    "crates/licoup-native/src/platform/local_service", ".rs");
   for (const relativePath of [
-    "crates/lico-client-native/src/platform/local_service.rs",
+    "crates/licoup-native/src/platform/local_service.rs",
     ...splitSources,
   ]) {
     assert.equal(ownedInputs.has(relativePath), true,
@@ -657,7 +657,7 @@ test("file security leaves retain exact tests and complete source ownership", as
     assert.equal(module.command.args.at(-1), filter);
     if (!id.endsWith(".composition")) {
       assert.equal(module.inputs.includes(
-        "crates/lico-client-native/src/platform/file_security.rs"), false);
+        "crates/licoup-native/src/platform/file_security.rs"), false);
     }
   }
   const sourceCheck = CLIENT_MODULE_CATALOG.find((candidate) =>
@@ -669,9 +669,9 @@ test("file security leaves retain exact tests and complete source ownership", as
     ...sourceCheck.inputs,
   ]);
   const splitSources = await sourceFiles(
-    "crates/lico-client-native/src/platform/file_security", ".rs");
+    "crates/licoup-native/src/platform/file_security", ".rs");
   for (const relativePath of [
-    "crates/lico-client-native/src/platform/file_security.rs",
+    "crates/licoup-native/src/platform/file_security.rs",
     ...splitSources,
   ]) {
     assert.equal(ownedInputs.has(relativePath), true,
@@ -700,7 +700,7 @@ test("client state leaves retain exact tests and complete source ownership", asy
     assert.equal(module.command.args.at(-1), filter);
     if (!id.endsWith(".composition")) {
       assert.equal(module.inputs.includes(
-        "crates/lico-client-native/src/platform/client_state.rs"), false);
+        "crates/licoup-native/src/platform/client_state.rs"), false);
     }
   }
   const sourceCheck = CLIENT_MODULE_CATALOG.find((candidate) =>
@@ -712,9 +712,9 @@ test("client state leaves retain exact tests and complete source ownership", asy
     ...sourceCheck.inputs,
   ]);
   const splitSources = await sourceFiles(
-    "crates/lico-client-native/src/platform/client_state", ".rs");
+    "crates/licoup-native/src/platform/client_state", ".rs");
   for (const relativePath of [
-    "crates/lico-client-native/src/platform/client_state.rs",
+    "crates/licoup-native/src/platform/client_state.rs",
     ...splitSources,
   ]) {
     assert.equal(ownedInputs.has(relativePath), true,
@@ -742,9 +742,9 @@ test("OpenCode serve leaves retain exact tests and complete source ownership", a
     ...sourceCheck.inputs,
   ]);
   const splitSources = await sourceFiles(
-    "crates/lico-client-native/src/platform/opencode_serve", ".rs");
+    "crates/licoup-native/src/platform/opencode_serve", ".rs");
   for (const relativePath of [
-    "crates/lico-client-native/src/platform/opencode_serve.rs",
+    "crates/licoup-native/src/platform/opencode_serve.rs",
     ...splitSources,
   ]) {
     assert.equal(ownedInputs.has(relativePath), true,
@@ -772,9 +772,9 @@ test("Kilo Code serve leaves retain exact tests and complete source ownership", 
     ...sourceCheck.inputs,
   ]);
   const splitSources = await sourceFiles(
-    "crates/lico-client-native/src/platform/kilo_code_serve", ".rs");
+    "crates/licoup-native/src/platform/kilo_code_serve", ".rs");
   for (const relativePath of [
-    "crates/lico-client-native/src/platform/kilo_code_serve.rs",
+    "crates/licoup-native/src/platform/kilo_code_serve.rs",
     ...splitSources,
   ]) {
     assert.equal(ownedInputs.has(relativePath), true,
@@ -806,9 +806,9 @@ test("OpenClaw Gateway leaves retain exact tests and complete source ownership",
     ...sourceCheck.inputs,
   ]);
   const splitSources = await sourceFiles(
-    "crates/lico-client-native/src/platform/openclaw_gateway", ".rs");
+    "crates/licoup-native/src/platform/openclaw_gateway", ".rs");
   for (const relativePath of [
-    "crates/lico-client-native/src/platform/openclaw_gateway.rs",
+    "crates/licoup-native/src/platform/openclaw_gateway.rs",
     ...splitSources,
   ]) {
     assert.equal(ownedInputs.has(relativePath), true,
@@ -855,7 +855,7 @@ test("Claude Code driver leaves retain exact tests and complete source ownership
     assert.equal(module.command.args.at(-1), filter);
     if (!id.endsWith(".composition")) {
       assert.equal(module.inputs.includes(
-        "crates/lico-client-native/src/platform/claude_code_driver.rs"), false);
+        "crates/licoup-native/src/platform/claude_code_driver.rs"), false);
     }
   }
 
@@ -869,11 +869,11 @@ test("Claude Code driver leaves retain exact tests and complete source ownership
     ...sourceCheck.inputs,
   ]);
   const splitSources = await sourceFiles(
-    "crates/lico-client-native/src/platform/claude_code_driver",
+    "crates/licoup-native/src/platform/claude_code_driver",
     ".rs",
   );
   for (const relativePath of [
-    "crates/lico-client-native/src/platform/claude_code_driver.rs",
+    "crates/licoup-native/src/platform/claude_code_driver.rs",
     ...splitSources,
   ]) {
     assert.equal(ownedInputs.has(relativePath), true,
@@ -920,18 +920,18 @@ test("OpenClaw driver leaves retain exact tests and complete source ownership", 
     assert.equal(module.command.args.at(-1), filter);
     if (!id.endsWith(".composition")) {
       assert.equal(module.inputs.includes(
-        "crates/lico-client-native/src/platform/openclaw_driver.rs"), false);
+        "crates/licoup-native/src/platform/openclaw_driver.rs"), false);
     }
   }
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/platform/openclaw_driver/params.rs",
+    "crates/licoup-native/src/platform/openclaw_driver/params.rs",
   ])), [
     "architecture.client-boundaries",
     "regression.openclaw-driver-source-bundle",
     "rust.platform.openclaw-driver.params",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/platform/openclaw_driver/continuity.rs",
+    "crates/licoup-native/src/platform/openclaw_driver/continuity.rs",
   ])), [
     "architecture.client-boundaries",
     "regression.openclaw-driver-source-bundle",
@@ -948,11 +948,11 @@ test("OpenClaw driver leaves retain exact tests and complete source ownership", 
     ...sourceCheck.inputs,
   ]);
   const splitSources = await sourceFiles(
-    "crates/lico-client-native/src/platform/openclaw_driver",
+    "crates/licoup-native/src/platform/openclaw_driver",
     ".rs",
   );
   for (const relativePath of [
-    "crates/lico-client-native/src/platform/openclaw_driver.rs",
+    "crates/licoup-native/src/platform/openclaw_driver.rs",
     ...splitSources,
   ]) {
     assert.equal(ownedInputs.has(relativePath), true,
@@ -999,7 +999,7 @@ test("Pi driver leaves retain exact tests and complete source ownership", async 
     assert.equal(module.command.args.at(-1), filter);
     if (!id.endsWith(".composition")) {
       assert.equal(module.inputs.includes(
-        "crates/lico-client-native/src/platform/pi_driver.rs"), false);
+        "crates/licoup-native/src/platform/pi_driver.rs"), false);
     }
   }
 
@@ -1013,11 +1013,11 @@ test("Pi driver leaves retain exact tests and complete source ownership", async 
     ...sourceCheck.inputs,
   ]);
   const splitSources = await sourceFiles(
-    "crates/lico-client-native/src/platform/pi_driver",
+    "crates/licoup-native/src/platform/pi_driver",
     ".rs",
   );
   for (const relativePath of [
-    "crates/lico-client-native/src/platform/pi_driver.rs",
+    "crates/licoup-native/src/platform/pi_driver.rs",
     ...splitSources,
   ]) {
     assert.equal(ownedInputs.has(relativePath), true,
@@ -1044,24 +1044,24 @@ test("OpenCode driver leaves retain exact tests and complete source ownership", 
     assert.equal(module.command.args.at(-1), filter);
     if (!id.endsWith(".composition")) {
       assert.equal(module.inputs.includes(
-        "crates/lico-client-native/src/platform/opencode_driver.rs"), false);
+        "crates/licoup-native/src/platform/opencode_driver.rs"), false);
     }
   }
 
   const ownedInputs = new Set(modules.flatMap((module) => module.inputs));
   const splitSources = await sourceFiles(
-    "crates/lico-client-native/src/platform/opencode_driver",
+    "crates/licoup-native/src/platform/opencode_driver",
     ".rs",
   );
   for (const relativePath of [
-    "crates/lico-client-native/src/platform/opencode_driver.rs",
+    "crates/licoup-native/src/platform/opencode_driver.rs",
     ...splitSources,
   ]) {
     assert.equal(ownedInputs.has(relativePath), true,
       `OpenCode driver source must have a precise regression owner: ${relativePath}`);
   }
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/platform/opencode_driver/continuity.rs",
+    "crates/licoup-native/src/platform/opencode_driver/continuity.rs",
   ])), [
     "architecture.client-boundaries",
     "rust.platform.opencode-driver.serve-transport",
@@ -1103,17 +1103,17 @@ test("Hermes driver leaves retain exact tests and complete source ownership", as
     assert.equal(module.command.args.at(-1), filter);
     if (!id.endsWith(".composition")) {
       assert.equal(module.inputs.includes(
-        "crates/lico-client-native/src/platform/hermes_driver.rs"), false);
+        "crates/licoup-native/src/platform/hermes_driver.rs"), false);
     }
   }
 
   const ownedInputs = new Set(modules.flatMap((module) => module.inputs));
   const splitSources = await sourceFiles(
-    "crates/lico-client-native/src/platform/hermes_driver",
+    "crates/licoup-native/src/platform/hermes_driver",
     ".rs",
   );
   for (const relativePath of [
-    "crates/lico-client-native/src/platform/hermes_driver.rs",
+    "crates/licoup-native/src/platform/hermes_driver.rs",
     ...splitSources,
   ]) {
     assert.equal(ownedInputs.has(relativePath), true,
@@ -1123,26 +1123,26 @@ test("Hermes driver leaves retain exact tests and complete source ownership", as
 
 test("native CLI modules retain exact binary-scoped command filters", () => {
   const filters = new Map([
-    ["rust.bin.lico-client", "tests::"],
-    ["rust.bin.lico-client.rpc", "tests::rpc::"],
-    ["rust.bin.lico-client.core-commands", "tests::core_commands::"],
-    ["rust.bin.lico-client.skill-commands", "tests::skill_commands::"],
-    ["rust.bin.lico-client.conversation-commands", "tests::conversation_commands::"],
-    ["rust.bin.lico-client.parsing", "tests::parsing::"],
+    ["rust.bin.licoup", "tests::"],
+    ["rust.bin.licoup.rpc", "tests::rpc::"],
+    ["rust.bin.licoup.core-commands", "tests::core_commands::"],
+    ["rust.bin.licoup.skill-commands", "tests::skill_commands::"],
+    ["rust.bin.licoup.conversation-commands", "tests::conversation_commands::"],
+    ["rust.bin.licoup.parsing", "tests::parsing::"],
   ]);
   for (const [id, filter] of filters) {
     const module = CLIENT_MODULE_CATALOG.find((candidate) => candidate.id === id);
     assert.deepEqual(module.command.args, [
       "test",
       "-p",
-      "lico-client-native",
+      "licoup-native",
       "--bin",
-      "lico-client",
+      "licoup",
       filter,
     ]);
-    if (id !== "rust.bin.lico-client") {
+    if (id !== "rust.bin.licoup") {
       assert.equal(module.inputs.includes(
-        "crates/lico-client-native/src/bin/lico-client.rs"), false);
+        "crates/licoup-native/src/bin/licoup.rs"), false);
     }
   }
 });

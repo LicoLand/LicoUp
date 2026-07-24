@@ -1,6 +1,6 @@
 import 'package:flutter/widgets.dart';
 
-import 'package:flutter_client/src/contracts/presentation/destinations/destinations.dart';
+import 'package:licoup/src/contracts/presentation/destinations/destinations.dart';
 
 typedef LayoutDestinationPortWidgetBuilder<Snapshot extends Object> =
     Widget Function(BuildContext context, LayoutDestinationPort<Snapshot> port);

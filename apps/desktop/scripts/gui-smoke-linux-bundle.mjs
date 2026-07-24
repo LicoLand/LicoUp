@@ -12,7 +12,7 @@ function findLinuxBundle() {
   const candidates = [];
   for (const mode of existsSync(bundleRoot) ? readdirSync(bundleRoot) : []) {
     const bundleDir = path.join(bundleRoot, mode, "bundle");
-    if (existsSync(path.join(bundleDir, "flutter_client"))) {
+    if (existsSync(path.join(bundleDir, "licoup"))) {
       candidates.push(bundleDir);
     }
   }
@@ -112,12 +112,12 @@ async function main() {
   requireTool("identify");
 
   const bundleDir = findLinuxBundle();
-  const flutterBinary = path.join(bundleDir, "flutter_client");
-  const cli = path.join(bundleDir, "lico-client");
+  const flutterBinary = path.join(bundleDir, "licoup");
+  const cli = path.join(bundleDir, "licoup");
   const packagingManifest = path.join(
     bundleDir,
     "package-metadata",
-    "lico-client",
+    "licoup",
     "packaging-modules.json"
   );
   for (const file of [flutterBinary, cli]) {
@@ -159,7 +159,7 @@ async function main() {
     GDK_GL: "software",
     LIBGL_ALWAYS_SOFTWARE: "1",
     NO_AT_BRIDGE: "1",
-    LICOARC_PORTABLE_DIR: dataDir,
+    LICOUP_PORTABLE_DIR: dataDir,
   };
   const xvfb = spawn(
     "Xvfb",
@@ -191,7 +191,7 @@ async function main() {
         );
       }
       for (const args of [
-        ["search", "--onlyvisible", "--name", "Lico Arc|Arc|lico|flutter_client|Flutter"],
+        ["search", "--onlyvisible", "--name", "LicoUp|Arc|lico|licoup|Flutter"],
         ["search", "--onlyvisible", "--name", ".*"],
       ]) {
         const result = spawnSync("xdotool", args, {

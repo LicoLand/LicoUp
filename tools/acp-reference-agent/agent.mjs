@@ -158,7 +158,7 @@ async function runAcpServer() {
         protocolVersion: 1,
         agentInfo: {
           name: "lico-acp-reference-agent",
-          title: "Lico Arc ACP Reference Agent",
+          title: "LicoUp ACP Reference Agent",
           version: "1.0.0",
         },
         agentCapabilities,

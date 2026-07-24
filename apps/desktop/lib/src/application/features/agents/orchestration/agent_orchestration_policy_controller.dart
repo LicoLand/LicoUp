@@ -1,8 +1,8 @@
-import 'package:flutter_client/src/application/features/agents/workspace/agent_workspace_coordinator.dart';
-import 'package:flutter_client/src/contracts/agent_orchestration_target.dart';
-import 'package:flutter_client/src/contracts/target_candidate.dart';
-import 'package:flutter_client/src/application/features/agents/orchestration/orchestration_policy_editor_models.dart';
-import 'package:flutter_client/src/platform/native_client/orchestrator_ipc/client.dart';
+import 'package:licoup/src/application/features/agents/workspace/agent_workspace_coordinator.dart';
+import 'package:licoup/src/contracts/agent_orchestration_target.dart';
+import 'package:licoup/src/contracts/target_candidate.dart';
+import 'package:licoup/src/application/features/agents/orchestration/orchestration_policy_editor_models.dart';
+import 'package:licoup/src/platform/native_client/orchestrator_ipc/client.dart';
 
 /// Thin editor-to-backend boundary. Policy validation, storage, compilation,
 /// activation, and revision ownership all remain in the native orchestrator.

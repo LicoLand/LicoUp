@@ -1,10 +1,10 @@
-# Lico Arc Compatibility
+# LicoUp Compatibility
 
 English (normative) · [简体中文](COMPATIBILITY.zh-CN.md) · [Documentation](README.md) · [Project](../README.md)
 
 Product version: `0.0.1-alpha`
 
-Generated sources: `tools/client-support-matrix.json`, `tools/client-release-targets.json`, `tools/client-version.json`, `crates/lico-client-native/resources/agent-conversation-drivers.json`, and `crates/lico-client-native/resources/agent-conversation-readiness.json`.
+Generated sources: `tools/client-support-matrix.json`, `tools/client-release-targets.json`, `tools/client-version.json`, `crates/licoup-native/resources/agent-conversation-drivers.json`, and `crates/licoup-native/resources/agent-conversation-readiness.json`.
 
 Update with `npm run client:support-matrix:sync`; verify with `npm run client:support-matrix:check`. Do not edit this projection by hand.
 

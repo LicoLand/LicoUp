@@ -1,7 +1,7 @@
 import 'package:flutter/foundation.dart' show ChangeNotifier;
 
-import 'package:flutter_client/src/application/controller/assembly/client_component_assembly_contracts.dart';
-import 'package:flutter_client/src/application/controller/client_lifecycle_coordinator.dart';
+import 'package:licoup/src/application/controller/assembly/client_component_assembly_contracts.dart';
+import 'package:licoup/src/application/controller/client_lifecycle_coordinator.dart';
 
 final class ClientLifecycleComponentAssembly {
   ClientLifecycleComponentAssembly({

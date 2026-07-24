@@ -1,10 +1,10 @@
-# Lico Arc 兼容性
+# LicoUp 兼容性
 
 [English（规范版本）](COMPATIBILITY.md) · 简体中文（本地化） · [文档索引](README.md) · [项目首页](../README.zh-CN.md)
 
 产品版本：`0.0.1-alpha`
 
-生成来源：`tools/client-support-matrix.json`、`tools/client-release-targets.json`、`tools/client-version.json`、`crates/lico-client-native/resources/agent-conversation-drivers.json` 和 `crates/lico-client-native/resources/agent-conversation-readiness.json`。
+生成来源：`tools/client-support-matrix.json`、`tools/client-release-targets.json`、`tools/client-version.json`、`crates/licoup-native/resources/agent-conversation-drivers.json` 和 `crates/licoup-native/resources/agent-conversation-readiness.json`。
 
 使用 `npm run client:support-matrix:sync` 更新，使用 `npm run client:support-matrix:check` 验证。请勿手工维护本投影。
 

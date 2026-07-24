@@ -3,7 +3,7 @@ import 'dart:io';
 
 import 'package:path/path.dart' as p;
 
-import 'package:flutter_client/src/platform/storage/portable_data_root.dart';
+import 'package:licoup/src/platform/storage/portable_data_root.dart';
 
 class MobileRelayJsonStore {
   const MobileRelayJsonStore();

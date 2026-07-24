@@ -1,4 +1,4 @@
-import 'package:flutter_client/src/contracts/optional_collaboration_workflow_parsing.dart';
+import 'package:licoup/src/contracts/optional_collaboration_workflow_parsing.dart';
 
 final class OptionalCollaborationAgentDestination {
   const OptionalCollaborationAgentDestination({
@@ -70,8 +70,8 @@ final class OptionalCollaborationAgentRegistration {
   factory OptionalCollaborationAgentRegistration.fromJson(
     Map<String, dynamic> json,
   ) {
-    if (json['schemaVersion'] != 'licoarc.mcp-agent-registration.v2' ||
-        json['bridgeKind'] != 'licoarc-stdio-mcp-gate' ||
+    if (json['schemaVersion'] != 'licoup.mcp-agent-registration.v2' ||
+        json['bridgeKind'] != 'licoup-stdio-mcp-gate' ||
         json['activationPolicy'] !=
             'disabled-authenticated-broker-unavailable' ||
         json['automaticTriggersAllowed'] != false ||

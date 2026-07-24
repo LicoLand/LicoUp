@@ -68,7 +68,7 @@ function updateDistributionManifest(runnableRoot, platformChannelRequested) {
   const manifestPath = path.join(
     runnableRoot,
     "package-metadata",
-    "lico-client",
+    "licoup",
     "packaging-modules.json"
   );
   const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
@@ -165,7 +165,7 @@ function main() {
 
   mkdirSync(distributionRoot, { recursive: true });
   if (platformChannelRequested) {
-    const submissionZip = path.join(os.tmpdir(), `lico-arc-notary-${process.pid}.zip`);
+    const submissionZip = path.join(os.tmpdir(), `lico-up-notary-${process.pid}.zip`);
     rmSync(submissionZip, { force: true });
     run("/usr/bin/ditto", ["-c", "-k", "--keepParent", appPath, submissionZip],
       "macos_distribution_submission_archive_failed");
@@ -196,7 +196,7 @@ function main() {
     ? (() => {
         const manifestPath = path.join(
           result.runnable.root,
-          "package-metadata/lico-client/packaging-modules.json",
+          "package-metadata/licoup/packaging-modules.json",
         );
         const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
         if (manifest?.signing?.signingKind !== "local-identity-codesign" ||
@@ -224,7 +224,7 @@ function main() {
   });
 
   const architecture = process.arch === "arm64" ? "arm64" : "x64";
-  const archivePath = path.join(distributionRoot, `LicoArc-macos-${architecture}.zip`);
+  const archivePath = path.join(distributionRoot, `LicoUp-macos-${architecture}.zip`);
   rmSync(archivePath, { force: true });
   run("/usr/bin/ditto", ["-c", "-k", "--keepParent", result.runnable.root, archivePath],
     "macos_distribution_archive_failed");

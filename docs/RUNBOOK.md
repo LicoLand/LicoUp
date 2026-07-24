@@ -1,4 +1,4 @@
-# Lico Arc Runbook
+# LicoUp Runbook
 
 [Documentation index](README.md) · [Contributing](../CONTRIBUTING.md) · [Security](../SECURITY.md)
 

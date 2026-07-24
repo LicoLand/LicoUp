@@ -2,10 +2,10 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:flutter_client/src/application/controller/client_controller.dart';
-import 'package:flutter_client/src/platform/agents/scanned_targets_cache_store.dart';
-import 'package:flutter_client/src/platform/native_client/agent_service.dart';
-import 'package:flutter_client/src/platform/storage/portable_data_root.dart';
+import 'package:licoup/src/application/controller/client_controller.dart';
+import 'package:licoup/src/platform/agents/scanned_targets_cache_store.dart';
+import 'package:licoup/src/platform/native_client/agent_service.dart';
+import 'package:licoup/src/platform/storage/portable_data_root.dart';
 
 void main() {
   test('scanned targets cache round-trips visible agents only', () async {

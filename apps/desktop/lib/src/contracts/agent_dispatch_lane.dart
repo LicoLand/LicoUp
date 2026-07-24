@@ -6,7 +6,7 @@
 /// dispatch implementation node lands; this file is the architecture scaffold.
 library;
 
-import 'package:flutter_client/src/contracts/agent_command_runner.dart';
+import 'package:licoup/src/contracts/agent_command_runner.dart';
 
 /// Working-directory / binary / model bind for a dispatch call.
 final class AgentDispatchBind {

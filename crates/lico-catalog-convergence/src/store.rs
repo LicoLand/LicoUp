@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-const STORE_SCHEMA: &str = "v0.0.1:licoarc:catalog-cache-store-1";
+const STORE_SCHEMA: &str = "v0.0.1:licoup:catalog-cache-store-1";
 const MAX_STORE_BYTES: usize = 4 * 1024 * 1024;
 const MAX_PARTITIONS: usize = 64;
 const MAX_TOOLS_PER_PARTITION: usize = 4096;

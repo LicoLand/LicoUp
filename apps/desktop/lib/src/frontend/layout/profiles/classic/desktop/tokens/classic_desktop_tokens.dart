@@ -1,4 +1,4 @@
-import 'package:flutter_client/src/frontend/layout/layout_visual_tokens.dart';
+import 'package:licoup/src/frontend/layout/layout_visual_tokens.dart';
 
 /// Palette-independent values for the spacious desktop classic.
 final LayoutVisualTokens classicDesktopTokens = LayoutVisualTokens(

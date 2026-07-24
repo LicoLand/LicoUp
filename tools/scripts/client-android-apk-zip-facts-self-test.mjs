@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { inspectAndroidApkZipFacts } from "./lib/android-apk-facts.mjs";
 
-const nativePath = "lib/arm64-v8a/liblico_client_native.so";
+const nativePath = "lib/arm64-v8a/liblicoup_native.so";
 
 function requireValue(condition, code) {
   if (!condition) throw new Error(code);
@@ -94,7 +94,7 @@ try {
   ]);
   expectRejected(root, "backslash", [
     {
-      name: ["lib", "arm64-v8a", "liblico_client_native.so"].join(
+      name: ["lib", "arm64-v8a", "liblicoup_native.so"].join(
         String.fromCharCode(92),
       ),
       content: "bad",

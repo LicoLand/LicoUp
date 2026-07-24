@@ -1,7 +1,7 @@
 import 'dart:collection';
 import 'dart:convert';
 
-import 'package:flutter_client/src/contracts/generated/secure_mesh_capability_catalog.g.dart';
+import 'package:licoup/src/contracts/generated/secure_mesh_capability_catalog.g.dart';
 
 const int secureMeshCapabilityProjectionSchemaVersion = 3;
 

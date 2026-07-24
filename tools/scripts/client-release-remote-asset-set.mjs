@@ -16,36 +16,36 @@ const MAX_MANIFEST_BYTES = 128 * 1024;
 const MAX_CHECKSUM_BYTES = 4 * 1024;
 const MAX_SIGNATURE_BYTES = 16 * 1024;
 const MAX_PUBLIC_KEY_BYTES = 64 * 1024;
-const MANIFEST_NAME = "LicoArc-consumer-verification.json";
+const MANIFEST_NAME = "LicoUp-consumer-verification.json";
 
 const specs = Object.freeze({
-  "LicoArc-macos-arm64.zip": {
+  "LicoUp-macos-arm64.zip": {
     platform: "macos-arm64",
-    checksum: "LicoArc-macos-arm64.zip.sha256",
-    files: ["LicoArc-macos-arm64.zip", "LicoArc-macos-arm64.zip.sha256"],
+    checksum: "LicoUp-macos-arm64.zip.sha256",
+    files: ["LicoUp-macos-arm64.zip", "LicoUp-macos-arm64.zip.sha256"],
   },
-  "LicoArc-linux-arm64.tar.gz": {
+  "LicoUp-linux-arm64.tar.gz": {
     platform: "linux-glibc-arm64",
-    checksum: "LicoArc-linux-arm64.tar.gz.sha256",
-    signature: "LicoArc-linux-arm64.tar.gz.sig",
+    checksum: "LicoUp-linux-arm64.tar.gz.sha256",
+    signature: "LicoUp-linux-arm64.tar.gz.sig",
     publicKey: "linux-release-verification-key.pem",
     signatureAlgorithm: "Ed25519",
     keyId: "linux-vm-acceptance",
     files: [
-      "LicoArc-linux-arm64.tar.gz",
-      "LicoArc-linux-arm64.tar.gz.sha256",
-      "LicoArc-linux-arm64.tar.gz.sig",
+      "LicoUp-linux-arm64.tar.gz",
+      "LicoUp-linux-arm64.tar.gz.sha256",
+      "LicoUp-linux-arm64.tar.gz.sig",
       "linux-release-verification-key.pem",
     ],
   },
-  "LicoArc-android-arm64.apk": {
+  "LicoUp-android-arm64.apk": {
     platform: "android-arm64",
-    checksum: "LicoArc-android-arm64.apk.sha256",
+    checksum: "LicoUp-android-arm64.apk.sha256",
     publicKey: "lico-github-artifact.pem",
     signatureAlgorithm: "APK Signature Scheme v2+",
     files: [
-      "LicoArc-android-arm64.apk",
-      "LicoArc-android-arm64.apk.sha256",
+      "LicoUp-android-arm64.apk",
+      "LicoUp-android-arm64.apk.sha256",
       "lico-github-artifact.pem",
     ],
   },
@@ -86,7 +86,7 @@ function validateManifest(root, localByName) {
   const manifest = readJson(localFile(root, MANIFEST_NAME), MAX_MANIFEST_BYTES);
   if (!exactKeys(manifest, ["schemaVersion", "artifactName", "releaseTag", "artifacts"]) ||
     manifest.schemaVersion !== "licomesh.consumer-verification-manifest.v1" ||
-    manifest.artifactName !== "LicoArc" ||
+    manifest.artifactName !== "LicoUp" ||
     !/^[A-Za-z0-9][A-Za-z0-9._+-]{0,126}$/u.test(manifest.releaseTag || "") ||
     !Array.isArray(manifest.artifacts) || manifest.artifacts.length < 1 ||
     manifest.artifacts.length > Object.keys(specs).length) fail();

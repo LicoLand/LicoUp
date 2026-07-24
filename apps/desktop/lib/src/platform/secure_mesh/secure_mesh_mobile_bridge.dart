@@ -1,5 +1,5 @@
 import 'package:flutter/services.dart';
-import 'package:flutter_client/src/contracts/generated/secure_mesh.g.dart';
+import 'package:licoup/src/contracts/generated/secure_mesh.g.dart';
 
 class SecureMeshMobileBridge {
   const SecureMeshMobileBridge({

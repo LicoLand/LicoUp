@@ -2,12 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:flutter_client/src/application/controller/client_controller.dart';
-import 'package:flutter_client/src/platform/native_client/agent_service.dart';
-import 'package:flutter_client/src/frontend/features/agents/ui/agent_conversation_workspace.dart';
-import 'package:flutter_client/src/frontend/l10n/lico_strings.dart';
-import 'package:flutter_client/src/frontend/shared/ui/apple_glass.dart';
-import 'package:flutter_client/src/frontend/shared/ui/theme.dart';
+import 'package:licoup/src/application/controller/client_controller.dart';
+import 'package:licoup/src/platform/native_client/agent_service.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_workspace.dart';
+import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/shared/ui/apple_glass.dart';
+import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 import 'layout/fixtures/layout_destination_presentation_fixture.dart';
 

@@ -12,7 +12,7 @@ void registerClientBootstrapScenarios() {
     'initializes against portable data without legacy runtime services',
     () async {
       final directory = await Directory.systemTemp.createTemp(
-        'lico-lico-client-',
+        'lico-licoup-',
       );
       addTearDown(() async {
         if (await directory.exists()) {
@@ -42,7 +42,7 @@ void registerClientBootstrapScenarios() {
         agentOrchestrationTargetId,
       );
       expect(
-        await File('${directory.path}/.licoarc-workspace.json').exists(),
+        await File('${directory.path}/.licoup-workspace.json').exists(),
         isTrue,
       );
     },
@@ -50,7 +50,7 @@ void registerClientBootstrapScenarios() {
 
   test('desktop initialize surfaces target scan failures', () async {
     final directory = await Directory.systemTemp.createTemp(
-      'lico-lico-client-scan-failure-',
+      'lico-licoup-scan-failure-',
     );
     addTearDown(() async {
       if (await directory.exists()) {
@@ -184,7 +184,7 @@ void registerClientBootstrapScenarios() {
 
   test('exports client logs from the portable activity file', () async {
     final directory = await Directory.systemTemp.createTemp(
-      'lico-client-log-export-',
+      'licoup-log-export-',
     );
     addTearDown(() => directory.delete(recursive: true));
     final portableData = PortableDataRoot(dataDirectoryOverride: directory);

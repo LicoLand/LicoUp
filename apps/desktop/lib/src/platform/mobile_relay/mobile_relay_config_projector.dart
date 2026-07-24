@@ -1,6 +1,6 @@
 import 'dart:io' show Platform;
 
-import 'package:flutter_client/src/contracts/mobile_relay/mobile_relay_models.dart';
+import 'package:licoup/src/contracts/mobile_relay/mobile_relay_models.dart';
 
 /// Privacy-bounded projection from native relay output to client config.
 final class MobileRelayConfigProjector {

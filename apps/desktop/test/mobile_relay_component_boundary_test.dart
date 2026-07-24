@@ -66,7 +66,7 @@ void main() {
       expect(protocol, isNot(contains('secure_mesh.approval')));
       expect(substrate, isNot(contains('SecureMeshKt')));
       expect(substrate, isNot(contains('SecureMeshMls')));
-      expect(reducer, isNot(contains("package:flutter_client/")));
+      expect(reducer, isNot(contains("package:licoup/")));
     },
   );
 

@@ -1,5 +1,5 @@
-import 'package:flutter_client/src/platform/native_client/agent_service_actions.dart';
-import 'package:flutter_client/src/platform/native_client/native_cli_ports.dart';
+import 'package:licoup/src/platform/native_client/agent_service_actions.dart';
+import 'package:licoup/src/platform/native_client/native_cli_ports.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

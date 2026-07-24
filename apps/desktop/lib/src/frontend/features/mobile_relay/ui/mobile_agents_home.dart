@@ -2,16 +2,16 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-import 'package:flutter_client/src/application/controller/client_controller.dart';
-import 'package:flutter_client/src/contracts/agent_orchestration_target.dart';
-import 'package:flutter_client/src/contracts/mobile_relay/mobile_relay_models.dart';
-import 'package:flutter_client/src/contracts/target_candidate.dart';
-import 'package:flutter_client/src/frontend/features/mobile_relay/ui/mobile_add_agent.dart';
-import 'package:flutter_client/src/frontend/features/mobile_relay/ui/mobile_agent_list.dart';
-import 'package:flutter_client/src/frontend/features/mobile_relay/ui/mobile_local_agent.dart';
-import 'package:flutter_client/src/frontend/features/mobile_relay/ui/mobile_surface_gestures.dart';
-import 'package:flutter_client/src/frontend/features/mobile_relay/ui/shell_pair_device_dialog.dart';
-import 'package:flutter_client/src/frontend/shared/ui/theme.dart';
+import 'package:licoup/src/application/controller/client_controller.dart';
+import 'package:licoup/src/contracts/agent_orchestration_target.dart';
+import 'package:licoup/src/contracts/mobile_relay/mobile_relay_models.dart';
+import 'package:licoup/src/contracts/target_candidate.dart';
+import 'package:licoup/src/frontend/features/mobile_relay/ui/mobile_add_agent.dart';
+import 'package:licoup/src/frontend/features/mobile_relay/ui/mobile_agent_list.dart';
+import 'package:licoup/src/frontend/features/mobile_relay/ui/mobile_local_agent.dart';
+import 'package:licoup/src/frontend/features/mobile_relay/ui/mobile_surface_gestures.dart';
+import 'package:licoup/src/frontend/features/mobile_relay/ui/shell_pair_device_dialog.dart';
+import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 enum _MobileAgentSurface { list, desktopAgents, conversation, configuration }
 

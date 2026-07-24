@@ -1,8 +1,8 @@
 import 'dart:io';
 
-import 'package:flutter_client/src/platform/native_client/agent_service_stdio_rpc/protocol.dart';
-import 'package:flutter_client/src/platform/native_client/agent_service_stdio_rpc/session.dart';
-import 'package:flutter_client/src/platform/native_client/native_cli_ports.dart';
+import 'package:licoup/src/platform/native_client/agent_service_stdio_rpc/protocol.dart';
+import 'package:licoup/src/platform/native_client/agent_service_stdio_rpc/session.dart';
+import 'package:licoup/src/platform/native_client/native_cli_ports.dart';
 
 class StdioRpcSessionManager {
   StdioRpcSessionManager({required NativeCliProcessContext processContext})
@@ -33,7 +33,7 @@ class StdioRpcSessionManager {
     if (processGeneration != _generation) {
       throw const LicoClientRpcException('transport_failed');
     }
-    final executable = cli?.path ?? 'lico-client';
+    final executable = cli?.path ?? 'licoup';
     late Process process;
     try {
       process = await _processContext.startProcess(executable, const [

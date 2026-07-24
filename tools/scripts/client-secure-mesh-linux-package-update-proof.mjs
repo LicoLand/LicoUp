@@ -68,14 +68,14 @@ function runProof() {
   const packageMeta = path.join(packageRoot, "share", "licomesh");
   mkdirSync(packageBin, { recursive: true });
   mkdirSync(packageMeta, { recursive: true });
-  copyFileSync(cli, path.join(packageBin, "lico-client"));
+  copyFileSync(cli, path.join(packageBin, "licoup"));
   const manifest = {
     schemaVersion: "licomesh.secure-mesh.linux-package-manifest.v1",
-    product: "lico-arc",
+    product: "lico-up",
     platform,
     version,
     binary: {
-      path: "bin/lico-client",
+      path: "bin/licoup",
       bytes: binaryBytes,
       sha256: binaryDigest,
     },
@@ -103,7 +103,7 @@ function runProof() {
   assert(extract.status === 0, `package archive extraction failed: ${sanitizeError(extract.stderr || extract.stdout)}`);
 
   const extractedManifest = JSON.parse(readFileSync(path.join(extractRoot, "share", "licomesh", "package-manifest.json"), "utf8"));
-  const extractedBinary = path.join(extractRoot, "bin", "lico-client");
+  const extractedBinary = path.join(extractRoot, "bin", "licoup");
   const packageReady = extractedManifest?.binary?.sha256 === sha256File(extractedBinary) &&
     extractedManifest?.binary?.bytes === statSync(extractedBinary).size &&
     extractedManifest?.platform === platform &&
@@ -113,7 +113,7 @@ function runProof() {
   const previousRoot = path.join(installRoot, "releases", "previous");
   const currentRoot = path.join(installRoot, "releases", version);
   mkdirSync(path.join(previousRoot, "bin"), { recursive: true });
-  writeFileSync(path.join(previousRoot, "bin", "lico-client"), "# previous release placeholder\n", "utf8");
+  writeFileSync(path.join(previousRoot, "bin", "licoup"), "# previous release placeholder\n", "utf8");
   mkdirSync(currentRoot, { recursive: true });
   copyTree(extractRoot, currentRoot);
   writeFileSync(path.join(installRoot, "current-release.json"), `${JSON.stringify({
@@ -123,12 +123,12 @@ function runProof() {
     rollbackAvailable: true,
   }, null, 2)}\n`, "utf8");
 
-  const installedCli = path.join(currentRoot, "bin", "lico-client");
+  const installedCli = path.join(currentRoot, "bin", "licoup");
   const smoke = spawnSync(installedCli, ["--help"], {
     cwd: repoRoot,
     env: {
       ...process.env,
-      LICOARC_PORTABLE_DIR: path.join(tempDir, "smoke-portable"),
+      LICOUP_PORTABLE_DIR: path.join(tempDir, "smoke-portable"),
     },
     encoding: "utf8",
     maxBuffer: 16 * 1024 * 1024,
@@ -194,7 +194,7 @@ function runProof() {
     update: {
       strategy: manifest.update.strategy,
       rollback: manifest.update.rollback,
-      installSmokeCommand: "lico-client --help",
+      installSmokeCommand: "licoup --help",
       previousReleaseRecorded: true,
       rollbackStateRecorded: true,
     },
@@ -237,7 +237,7 @@ function packageOutputPath(platform) {
   if (options.packageOutput) {
     return path.resolve(repoRoot, options.packageOutput);
   }
-  return path.join(tempDir, `lico-client-${platform}.tar.gz`);
+  return path.join(tempDir, `licoup-${platform}.tar.gz`);
 }
 
 function packageVersion() {

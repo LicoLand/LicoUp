@@ -1,7 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/widgets.dart';
-import 'package:flutter_client/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -9,8 +9,8 @@ void main() {
     final chinese = LicoStrings.forLocale(const Locale('zh'));
     final english = LicoStrings.forLocale(const Locale('en'));
 
-    expect(chinese.appTitle, 'Lico Arc');
-    expect(english.appTitle, 'Lico Arc');
+    expect(chinese.appTitle, 'LicoUp');
+    expect(english.appTitle, 'LicoUp');
     expect(chinese.clearSearch, '清除搜索');
     expect(english.clearSearch, 'Clear search');
   });
@@ -37,7 +37,7 @@ void main() {
   test('localization consumers depend only on the public barrel', () {
     final l10nDirectory = Directory('lib/src/frontend/l10n').absolute.path;
     final implementationImport = RegExp(
-      r"import 'package:flutter_client/src/frontend/l10n/"
+      r"import 'package:licoup/src/frontend/l10n/"
       r"lico_strings_(?:base|labels)\.dart';",
     );
 

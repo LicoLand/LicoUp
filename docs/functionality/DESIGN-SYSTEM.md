@@ -1,13 +1,13 @@
-# Lico Arc Client Design System
+# LicoUp Client Design System
 
 This document describes the implemented visual and interaction system for the
-Lico Arc Flutter client. Product scope is controlled by
+LicoUp Flutter client. Product scope is controlled by
 [`CLIENT-DESKTOP.md`](CLIENT-DESKTOP.md). Theme code and appearance presets under
 `apps/desktop/` are authoritative for current tokens and behavior.
 
 ## Product Identity
 
-Lico Arc is a lightweight local environment manager for a developer's
+LicoUp is a lightweight local environment manager for a developer's
 machine. It makes local-agent discovery, target-native conversations, local
 conversation backup, skill state, Token usage, and encrypted mobile relay
 understandable without becoming a new agent framework.

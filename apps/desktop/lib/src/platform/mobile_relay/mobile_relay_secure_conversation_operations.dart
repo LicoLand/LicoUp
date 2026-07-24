@@ -1,11 +1,11 @@
 import 'dart:convert';
 
-import 'package:flutter_client/src/contracts/agent_command_runner.dart';
-import 'package:flutter_client/src/platform/mobile_relay/mobile_relay_native_dispatch.dart';
-import 'package:flutter_client/src/platform/mobile_relay/mobile_relay_secure_result_reducer.dart';
-import 'package:flutter_client/src/platform/secure_mesh/secure_mesh_android_bridge.dart';
-import 'package:flutter_client/src/platform/secure_mesh/secure_mesh_ios_bridge.dart';
-import 'package:flutter_client/src/platform/secure_mesh/secure_mesh_mobile_bridge.dart';
+import 'package:licoup/src/contracts/agent_command_runner.dart';
+import 'package:licoup/src/platform/mobile_relay/mobile_relay_native_dispatch.dart';
+import 'package:licoup/src/platform/mobile_relay/mobile_relay_secure_result_reducer.dart';
+import 'package:licoup/src/platform/secure_mesh/secure_mesh_android_bridge.dart';
+import 'package:licoup/src/platform/secure_mesh/secure_mesh_ios_bridge.dart';
+import 'package:licoup/src/platform/secure_mesh/secure_mesh_mobile_bridge.dart';
 
 const int _secureRelayResultPollAttempts = 120;
 const int _secureAgentSessionListMaximum = 20;

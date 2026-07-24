@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 
-import 'package:flutter_client/src/frontend/features/agents/ui/history_session_models.dart';
-import 'package:flutter_client/src/frontend/l10n/lico_strings.dart';
-import 'package:flutter_client/src/frontend/shared/ui/lico_activity_animations.dart';
-import 'package:flutter_client/src/frontend/shared/ui/theme.dart';
+import 'package:licoup/src/frontend/features/agents/ui/history_session_models.dart';
+import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_activity_animations.dart';
+import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 final class HistorySessionList extends StatelessWidget {
   const HistorySessionList({

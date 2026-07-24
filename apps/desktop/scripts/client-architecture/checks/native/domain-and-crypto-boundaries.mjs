@@ -22,7 +22,7 @@ export async function checkDomainAndCryptoBoundaries(context) {
     sameSet,
     sourceLineCount,
   } = context;
-  const clientUpdateRoot = "crates/lico-client-native/src/domain/client_update";
+  const clientUpdateRoot = "crates/licoup-native/src/domain/client_update";
   const clientUpdateFacadeSource = await readText(`${clientUpdateRoot}.rs`);
   const clientUpdateDeclaredModules = [...clientUpdateFacadeSource
     .matchAll(/^mod ([a-z_]+);$/gm)]
@@ -118,7 +118,7 @@ export async function checkDomainAndCryptoBoundaries(context) {
   );
 
   const agentUsageCodexRoot =
-    "crates/lico-client-native/src/domain/agent_usage/agent_usage_codex";
+    "crates/licoup-native/src/domain/agent_usage/agent_usage_codex";
   const agentUsageCodexProductionLimits = new Map([
     [`${agentUsageCodexRoot}/aggregation.rs`, 250],
     [`${agentUsageCodexRoot}/append_guard.rs`, 80],
@@ -222,7 +222,7 @@ export async function checkDomainAndCryptoBoundaries(context) {
     "Codex usage projection must expose aggregate provenance without local paths"
   );
   const agentUsageCacheIntegrationRoot =
-    "crates/lico-client-native/tests/agent_usage_cache_cases";
+    "crates/licoup-native/tests/agent_usage_cache_cases";
   const agentUsageCacheScenarioLimits = new Map([
     [`${agentUsageCacheIntegrationRoot}/adapter_coverage.rs`, 135],
     [`${agentUsageCacheIntegrationRoot}/append_refresh.rs`, 190],
@@ -238,7 +238,7 @@ export async function checkDomainAndCryptoBoundaries(context) {
     [`${agentUsageCacheIntegrationRoot}/windows.rs`, 80]
   ]);
   const agentUsageCacheIntegrationFacade = await readText(
-    "crates/lico-client-native/tests/agent_usage_incremental_cache.rs"
+    "crates/licoup-native/tests/agent_usage_incremental_cache.rs"
   );
   const agentUsageCacheIntegrationComposition = await readText(
     `${agentUsageCacheIntegrationRoot}/mod.rs`
@@ -280,7 +280,7 @@ export async function checkDomainAndCryptoBoundaries(context) {
   }
 
   const contentCryptoFacadeSource = await readText(
-    "crates/lico-client-native/src/core/secure_mesh_crypto.rs"
+    "crates/licoup-native/src/core/secure_mesh_crypto.rs"
   );
   assert(
     !contentCryptoFacadeSource.includes("impl ContentKey") &&
@@ -289,7 +289,7 @@ export async function checkDomainAndCryptoBoundaries(context) {
     "content crypto root must expose only ordinary modules and stable restricted re-exports"
   );
   const secureMeshMobileFfiFacadeSource = await readText(
-    "crates/lico-client-native/src/ffi/secure_mesh_mobile_ffi.rs"
+    "crates/licoup-native/src/ffi/secure_mesh_mobile_ffi.rs"
   );
   assert(
     !secureMeshMobileFfiFacadeSource.includes("match action") &&
@@ -301,7 +301,7 @@ export async function checkDomainAndCryptoBoundaries(context) {
     "mobile Secure Mesh FFI root must expose only ordinary modules and stable restricted re-exports"
   );
   const secureMeshMobileFfiRoot =
-    "crates/lico-client-native/src/ffi/secure_mesh_mobile_ffi";
+    "crates/licoup-native/src/ffi/secure_mesh_mobile_ffi";
   const secureMeshMobileFfiFoundationSource = await readJoinedText([
     `${secureMeshMobileFfiRoot}/action_catalog.rs`,
     `${secureMeshMobileFfiRoot}/protected_operation.rs`,
@@ -336,10 +336,10 @@ export async function checkDomainAndCryptoBoundaries(context) {
     "mobile Secure Mesh fixtures must remain shared Rust authority without platform bridge dependencies"
   );
   const secureMeshMobileAndroidBridgeSource = await readText(
-    "crates/lico-client-native/src/ffi/android_ffi.rs"
+    "crates/licoup-native/src/ffi/android_ffi.rs"
   );
   const secureMeshMobileIosBridgeSource = await readText(
-    "crates/lico-client-native/src/ffi/ios_ffi.rs"
+    "crates/licoup-native/src/ffi/ios_ffi.rs"
   );
   for (const [platform, source] of [
     ["Android", secureMeshMobileAndroidBridgeSource],
@@ -357,11 +357,11 @@ export async function checkDomainAndCryptoBoundaries(context) {
     );
   }
   const contentCryptoFoundationSource = await readJoinedText([
-    "crates/lico-client-native/src/core/secure_mesh_crypto/constants.rs",
-    "crates/lico-client-native/src/core/secure_mesh_crypto/content_key.rs",
-    "crates/lico-client-native/src/core/secure_mesh_crypto/model.rs",
-    "crates/lico-client-native/src/core/secure_mesh_crypto/length_codec.rs",
-    "crates/lico-client-native/src/core/secure_mesh_crypto/validation.rs"
+    "crates/licoup-native/src/core/secure_mesh_crypto/constants.rs",
+    "crates/licoup-native/src/core/secure_mesh_crypto/content_key.rs",
+    "crates/licoup-native/src/core/secure_mesh_crypto/model.rs",
+    "crates/licoup-native/src/core/secure_mesh_crypto/length_codec.rs",
+    "crates/licoup-native/src/core/secure_mesh_crypto/validation.rs"
   ]);
   for (const dependency of [
     "aad_binding::",
@@ -378,9 +378,9 @@ export async function checkDomainAndCryptoBoundaries(context) {
     );
   }
   const contentCryptoCodecSource = await readJoinedText([
-    "crates/lico-client-native/src/core/secure_mesh_crypto/frame_codec.rs",
-    "crates/lico-client-native/src/core/secure_mesh_crypto/header_codec.rs",
-    "crates/lico-client-native/src/core/secure_mesh_crypto/padding.rs"
+    "crates/licoup-native/src/core/secure_mesh_crypto/frame_codec.rs",
+    "crates/licoup-native/src/core/secure_mesh_crypto/header_codec.rs",
+    "crates/licoup-native/src/core/secure_mesh_crypto/padding.rs"
   ]);
   for (const dependency of ["private_context::", "public_payload::"]) {
     assert(

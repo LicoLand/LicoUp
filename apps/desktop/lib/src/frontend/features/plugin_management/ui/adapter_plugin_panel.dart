@@ -2,10 +2,10 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-import 'package:flutter_client/src/application/controller/client_controller.dart';
-import 'package:flutter_client/src/application/features/plugin_management/models/adapter_plugin_catalog.dart';
-import 'package:flutter_client/src/frontend/features/plugin_management/ui/optional_collaboration_settings.dart';
-import 'package:flutter_client/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/application/controller/client_controller.dart';
+import 'package:licoup/src/application/features/plugin_management/models/adapter_plugin_catalog.dart';
+import 'package:licoup/src/frontend/features/plugin_management/ui/optional_collaboration_settings.dart';
+import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 
 final class AdapterPluginPanel extends StatefulWidget {
   const AdapterPluginPanel({super.key, required this.controller});
@@ -51,8 +51,8 @@ final class _AdapterPluginPanelState extends State<AdapterPluginPanel> {
                     const SizedBox(height: 6),
                     Text(
                       strings.isChinese
-                          ? 'Native Support 与 Native ACP 无需额外安装。其他目标由 Lico Arc Adaptive Bridge 负责交互适配；只有目录声明的真实生命周期操作才会显示安装或卸载。对话就绪状态仅表示 Level 1 对话接续可用，不代表已实现 Level 2 双向对话。'
-                          : 'Native Support and Native ACP need no extra installation. Other targets use a Lico Arc Adaptive Bridge; install or uninstall appears only for real lifecycle actions declared by the catalog. Conversation readiness indicates Level 1 continuation only; it does not imply Level 2 bidirectional conversation.',
+                          ? 'Native Support 与 Native ACP 无需额外安装。其他目标由 LicoUp Adaptive Bridge 负责交互适配；只有目录声明的真实生命周期操作才会显示安装或卸载。对话就绪状态仅表示 Level 1 对话接续可用，不代表已实现 Level 2 双向对话。'
+                          : 'Native Support and Native ACP need no extra installation. Other targets use a LicoUp Adaptive Bridge; install or uninstall appears only for real lifecycle actions declared by the catalog. Conversation readiness indicates Level 1 continuation only; it does not imply Level 2 bidirectional conversation.',
                     ),
                   ],
                 ),
@@ -279,7 +279,7 @@ final class _ManagementKindBadge extends StatelessWidget {
       ),
       AdapterPluginManagementKind.managedBridge => (
         Icons.cable_outlined,
-        'Lico Arc Adaptive Bridge',
+        'LicoUp Adaptive Bridge',
       ),
     };
     return Chip(

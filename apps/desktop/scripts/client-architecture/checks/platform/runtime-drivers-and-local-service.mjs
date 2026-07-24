@@ -27,35 +27,35 @@ export async function checkRuntimeDriversAndLocalService(context, {
     "runtime-driver checks require reviewedRustUnsafeFiles from crate-core stage",
   );
   const claudeCodeDriverFacadeSource = await readText(
-    "crates/lico-client-native/src/platform/claude_code_driver.rs"
+    "crates/licoup-native/src/platform/claude_code_driver.rs"
   );
   const claudeCodeDriverFiles = await collectSourceFiles(
-    "crates/lico-client-native/src/platform/claude_code_driver",
+    "crates/licoup-native/src/platform/claude_code_driver",
     ".rs"
   );
   const claudeCodeDriverSource = await readJoinedText([
-    "crates/lico-client-native/src/platform/claude_code_driver.rs",
+    "crates/licoup-native/src/platform/claude_code_driver.rs",
     ...claudeCodeDriverFiles
   ]);
   const claudeCodeFoundationSource = await readJoinedText([
-    "crates/lico-client-native/src/platform/claude_code_driver/errors.rs",
-    "crates/lico-client-native/src/platform/claude_code_driver/model.rs",
-    "crates/lico-client-native/src/platform/claude_code_driver/params.rs"
+    "crates/licoup-native/src/platform/claude_code_driver/errors.rs",
+    "crates/licoup-native/src/platform/claude_code_driver/model.rs",
+    "crates/licoup-native/src/platform/claude_code_driver/params.rs"
   ]);
   const claudeCodeCommandSource = await readText(
-    "crates/lico-client-native/src/platform/claude_code_driver/command.rs"
+    "crates/licoup-native/src/platform/claude_code_driver/command.rs"
   );
   const claudeCodeEventsSource = await readText(
-    "crates/lico-client-native/src/platform/claude_code_driver/events.rs"
+    "crates/licoup-native/src/platform/claude_code_driver/events.rs"
   );
   const claudeCodeProtocolSource = await readText(
-    "crates/lico-client-native/src/platform/claude_code_driver/protocol.rs"
+    "crates/licoup-native/src/platform/claude_code_driver/protocol.rs"
   );
   const claudeCodeTransportSource = await readText(
-    "crates/lico-client-native/src/platform/claude_code_driver/transport.rs"
+    "crates/licoup-native/src/platform/claude_code_driver/transport.rs"
   );
   const claudeCodeSupervisionSource = await readText(
-    "crates/lico-client-native/src/platform/claude_code_driver/supervision.rs"
+    "crates/licoup-native/src/platform/claude_code_driver/supervision.rs"
   );
   assert(
     !claudeCodeDriverFacadeSource.includes("Command::new") &&
@@ -140,38 +140,38 @@ export async function checkRuntimeDriversAndLocalService(context, {
   assert(
     !claudeCodeDriverSource.includes("unsafe {") &&
       !reviewedRustUnsafeFiles.has(
-        "crates/lico-client-native/src/platform/claude_code_driver.rs"
+        "crates/licoup-native/src/platform/claude_code_driver.rs"
       ),
     "Claude Code driver must not retain unsafe or a stale unsafe ownership exemption"
   );
 
   const openClawDriverFacadeSource = await readText(
-    "crates/lico-client-native/src/platform/openclaw_driver.rs"
+    "crates/licoup-native/src/platform/openclaw_driver.rs"
   );
   const openClawDriverFiles = await collectSourceFiles(
-    "crates/lico-client-native/src/platform/openclaw_driver",
+    "crates/licoup-native/src/platform/openclaw_driver",
     ".rs"
   );
   const openClawDriverSource = await readJoinedText([
-    "crates/lico-client-native/src/platform/openclaw_driver.rs",
+    "crates/licoup-native/src/platform/openclaw_driver.rs",
     ...openClawDriverFiles
   ]);
   const openClawFoundationSource = await readJoinedText([
-    "crates/lico-client-native/src/platform/openclaw_driver/errors.rs",
-    "crates/lico-client-native/src/platform/openclaw_driver/model.rs",
-    "crates/lico-client-native/src/platform/openclaw_driver/params.rs"
+    "crates/licoup-native/src/platform/openclaw_driver/errors.rs",
+    "crates/licoup-native/src/platform/openclaw_driver/model.rs",
+    "crates/licoup-native/src/platform/openclaw_driver/params.rs"
   ]);
   const openClawContinuitySource = await readText(
-    "crates/lico-client-native/src/platform/openclaw_driver/continuity.rs"
+    "crates/licoup-native/src/platform/openclaw_driver/continuity.rs"
   );
   const openClawEventsSource = await readText(
-    "crates/lico-client-native/src/platform/openclaw_driver/events.rs"
+    "crates/licoup-native/src/platform/openclaw_driver/events.rs"
   );
   const openClawSupervisionSource = await readText(
-    "crates/lico-client-native/src/platform/openclaw_driver/supervision.rs"
+    "crates/licoup-native/src/platform/openclaw_driver/supervision.rs"
   );
   const openClawProbeSource = await readText(
-    "crates/lico-client-native/src/platform/openclaw_driver/probe.rs"
+    "crates/licoup-native/src/platform/openclaw_driver/probe.rs"
   );
   assert(
     !openClawDriverFacadeSource.includes("Command::new") &&
@@ -231,32 +231,32 @@ export async function checkRuntimeDriversAndLocalService(context, {
   assert(
     !openClawDriverSource.includes("unsafe {") &&
       !reviewedRustUnsafeFiles.has(
-        "crates/lico-client-native/src/platform/openclaw_driver.rs"
+        "crates/licoup-native/src/platform/openclaw_driver.rs"
       ),
     "OpenClaw driver must not retain unsafe or a stale unsafe ownership exemption"
   );
 
   const piDriverFacadeSource = await readText(
-    "crates/lico-client-native/src/platform/pi_driver.rs"
+    "crates/licoup-native/src/platform/pi_driver.rs"
   );
   const piDriverFiles = await collectSourceFiles(
-    "crates/lico-client-native/src/platform/pi_driver",
+    "crates/licoup-native/src/platform/pi_driver",
     ".rs"
   );
   const piDriverSource = await readJoinedText([
-    "crates/lico-client-native/src/platform/pi_driver.rs",
+    "crates/licoup-native/src/platform/pi_driver.rs",
     ...piDriverFiles
   ]);
   const piDriverFoundationSource = await readJoinedText([
-    "crates/lico-client-native/src/platform/pi_driver/errors.rs",
-    "crates/lico-client-native/src/platform/pi_driver/model.rs",
-    "crates/lico-client-native/src/platform/pi_driver/params.rs"
+    "crates/licoup-native/src/platform/pi_driver/errors.rs",
+    "crates/licoup-native/src/platform/pi_driver/model.rs",
+    "crates/licoup-native/src/platform/pi_driver/params.rs"
   ]);
   const piDriverSessionSource = await readText(
-    "crates/lico-client-native/src/platform/pi_driver/sessions.rs"
+    "crates/licoup-native/src/platform/pi_driver/sessions.rs"
   );
   const piDriverSupervisionSource = await readText(
-    "crates/lico-client-native/src/platform/pi_driver/supervision.rs"
+    "crates/licoup-native/src/platform/pi_driver/supervision.rs"
   );
   assert(
     !piDriverFacadeSource.includes("Command::new") &&
@@ -300,22 +300,22 @@ export async function checkRuntimeDriversAndLocalService(context, {
   assert(
     !piDriverSource.includes("unsafe {") &&
       !reviewedRustUnsafeFiles.has(
-        "crates/lico-client-native/src/platform/pi_driver.rs"
+        "crates/licoup-native/src/platform/pi_driver.rs"
       ),
     "Pi driver must not retain unsafe environment mutation or a stale unsafe ownership exemption"
   );
 
   const openCodeDriverFacadeSource = await readText(
-    "crates/lico-client-native/src/platform/opencode_driver.rs"
+    "crates/licoup-native/src/platform/opencode_driver.rs"
   );
   const openCodeServeTransportSource = await readText(
-    "crates/lico-client-native/src/platform/opencode_driver/serve_transport.rs"
+    "crates/licoup-native/src/platform/opencode_driver/serve_transport.rs"
   );
   const openCodeContinuitySource = await readText(
-    "crates/lico-client-native/src/platform/opencode_driver/continuity.rs"
+    "crates/licoup-native/src/platform/opencode_driver/continuity.rs"
   );
   const openCodeProbeSource = await readText(
-    "crates/lico-client-native/src/platform/opencode_driver/probe.rs"
+    "crates/licoup-native/src/platform/opencode_driver/probe.rs"
   );
   assert(
     !openCodeDriverFacadeSource.includes("Command::new") &&
@@ -344,27 +344,27 @@ export async function checkRuntimeDriversAndLocalService(context, {
   );
 
   const localServiceFacadeSource = await readText(
-    "crates/lico-client-native/src/platform/local_service.rs"
+    "crates/licoup-native/src/platform/local_service.rs"
   );
   const localServiceFiles = await collectSourceFiles(
-    "crates/lico-client-native/src/platform/local_service",
+    "crates/licoup-native/src/platform/local_service",
     ".rs"
   );
   const localServiceProductionFiles = localServiceFiles.filter(
     (relativePath) => !relativePath.includes("/tests/")
   );
   const localServiceSource = await readJoinedText([
-    "crates/lico-client-native/src/platform/local_service.rs",
+    "crates/licoup-native/src/platform/local_service.rs",
     ...localServiceProductionFiles
   ]);
   const localServiceHttpSource = await readText(
-    "crates/lico-client-native/src/platform/local_service/http.rs"
+    "crates/licoup-native/src/platform/local_service/http.rs"
   );
   const localServiceSseSource = await readText(
-    "crates/lico-client-native/src/platform/local_service/sse.rs"
+    "crates/licoup-native/src/platform/local_service/sse.rs"
   );
   const localServiceServeSource = await readText(
-    "crates/lico-client-native/src/platform/local_service/serve.rs"
+    "crates/licoup-native/src/platform/local_service/serve.rs"
   );
   assert(
     !localServiceFacadeSource.includes("ureq::") &&

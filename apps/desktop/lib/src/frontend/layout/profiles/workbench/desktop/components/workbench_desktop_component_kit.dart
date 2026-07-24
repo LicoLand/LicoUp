@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
-import 'package:flutter_client/src/frontend/layout/layout_component_kit.dart';
-import 'package:flutter_client/src/frontend/layout/layout_visual_tokens.dart';
+import 'package:licoup/src/frontend/layout/layout_component_kit.dart';
+import 'package:licoup/src/frontend/layout/layout_visual_tokens.dart';
 
 /// Card-oriented component recipes owned exclusively by the desktop workbench.
 final class WorkbenchDesktopComponentKit implements LayoutComponentKit {

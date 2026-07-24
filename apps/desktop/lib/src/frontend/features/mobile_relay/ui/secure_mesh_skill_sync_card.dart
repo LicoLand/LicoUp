@@ -1,10 +1,10 @@
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 
-import 'package:flutter_client/src/application/controller/client_controller.dart';
-import 'package:flutter_client/src/contracts/generated/secure_mesh.g.dart';
-import 'package:flutter_client/src/frontend/l10n/lico_strings.dart';
-import 'package:flutter_client/src/frontend/shared/ui/theme.dart';
+import 'package:licoup/src/application/controller/client_controller.dart';
+import 'package:licoup/src/contracts/generated/secure_mesh.g.dart';
+import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 /// Skill-sync browser / preview card layered on the existing handoff actions.
 class SecureMeshSkillSyncCard extends StatefulWidget {

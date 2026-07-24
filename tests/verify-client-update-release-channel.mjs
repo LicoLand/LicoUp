@@ -418,7 +418,7 @@ function summarizeAndroidPhysicalInstallLaunchReport(report) {
   };
 }
 
-function appExecutablePath(root, appName, executableName = "flutter_client") {
+function appExecutablePath(root, appName, executableName = "licoup") {
   return path.join(root, appName, "Contents", "MacOS", executableName);
 }
 
@@ -432,7 +432,7 @@ function fileSizeOrZero(filePath) {
 }
 
 function readPackageManifest(root) {
-  return readJsonIfPresent(path.join(root, "package-metadata", "lico-client", "packaging-modules.json")) || {};
+  return readJsonIfPresent(path.join(root, "package-metadata", "licoup", "packaging-modules.json")) || {};
 }
 
 function summarizeMacosBundleRoot(kind, root, appName) {
@@ -450,7 +450,7 @@ function summarizeMacosBundleRoot(kind, root, appName) {
     productionEntitlementsRequested: signing.productionEntitlementsRequested === true,
     flutterExecutable: String(manifest.flutterExecutable || ""),
     flutterExecutableBytes: fileSizeOrZero(appExecutablePath(root, appName)),
-    licoClientBytes: fileSizeOrZero(appExecutablePath(root, appName, "lico-client")),
+    licoClientBytes: fileSizeOrZero(appExecutablePath(root, appName, "licoup")),
     manifestPresent: Object.keys(manifest).length > 0,
     readmePresent: existsSync(path.join(root, "README-macos.txt")),
     runnableMarkerPresent: kind === "runnable" ? existsSync(path.join(root, "RUNNABLE_CLIENT.txt")) : null
@@ -552,7 +552,7 @@ function runMacosReleaseBundleEvidence(hostPlatform) {
     verificationOutput: summarizeOutput(verifyResult.stdout),
     codesignOutput: summarizeOutput(codesignResult.stderr || codesignResult.stdout),
     artifacts: [
-      summarizeMacosBundleRoot("bundle", bundleRoot, "flutter_client.app"),
+      summarizeMacosBundleRoot("bundle", bundleRoot, "licoup.app"),
       summarizeMacosBundleRoot("runnable", runnableRoot, "Arc.app")
     ],
     remainingProductionProofs: [
@@ -581,7 +581,7 @@ function createArtifact(target) {
     size: payload.length,
     sha256: sha256Buffer(payload),
     ...(target.installerStrategy === "app-bundle-replacement"
-      ? { applicationName: "Lico Arc.app", bundleId: "com.liko.arc" }
+      ? { applicationName: "LicoUp.app", bundleId: "land.lico.licoup" }
       : {})
   };
 }

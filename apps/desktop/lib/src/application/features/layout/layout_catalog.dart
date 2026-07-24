@@ -1,10 +1,10 @@
 import 'dart:collection';
 
-import 'package:flutter_client/src/application/features/navigation/semantic_destination_catalog.dart';
-import 'package:flutter_client/src/contracts/presentation/layout_environment.dart';
-import 'package:flutter_client/src/contracts/presentation/layout_profile.dart';
-import 'package:flutter_client/src/contracts/presentation/layout_state_namespace.dart';
-import 'package:flutter_client/src/contracts/presentation/layout_variant.dart';
+import 'package:licoup/src/application/features/navigation/semantic_destination_catalog.dart';
+import 'package:licoup/src/contracts/presentation/layout_environment.dart';
+import 'package:licoup/src/contracts/presentation/layout_profile.dart';
+import 'package:licoup/src/contracts/presentation/layout_state_namespace.dart';
+import 'package:licoup/src/contracts/presentation/layout_variant.dart';
 
 /// Immutable profile metadata and exact surface/viewport/destination product.
 final class LayoutCatalog {
