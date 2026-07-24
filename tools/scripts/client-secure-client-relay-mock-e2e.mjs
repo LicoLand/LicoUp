@@ -32,7 +32,7 @@ async function run() {
   });
   try {
   const sv_not_a_canonical_mailbox_ = syntheticValue('not-a-canonical-mailbox-token');
-    const scope = { tenantId: "tenant-fixture", accountId: "account-fixture" };
+    const scope = { tenantId: "tenant-test-fixture", accountId: "account-test-fixture" };
     const endpointId = "mobile:fixture";
     const mailboxToken = crypto.randomBytes(32).toString("base64url");
     const signing = crypto.generateKeyPairSync("ed25519");

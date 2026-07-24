@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://licomesh.dev/contracts/client/optional-collaboration-plugin.schema.json",
+  "$id": "https://licoup.example/schemas/optional-collaboration-plugin.schema.json",
   "title": "LicoUp Optional Collaboration Plugin",
   "description": "Disabled-by-default manifest for declarative collaboration payloads and digest-bound platform runner contracts.",
   "type": "object",

@@ -133,8 +133,8 @@ fn validate_mcp_servers(servers: &[Value]) -> Result<(), AcpError> {
     }
     let mut names = HashSet::with_capacity(servers.len());
     for server in servers {
-        let server = server.as_object().ok_or(AcpError::McpServerInvalid)?;
-        let name = server
+        let server_object = server.as_object().ok_or(AcpError::McpServerInvalid)?;
+        let name = server_object
             .get("name")
             .and_then(Value::as_str)
             .ok_or(AcpError::McpServerInvalid)?;
@@ -142,7 +142,7 @@ fn validate_mcp_servers(servers: &[Value]) -> Result<(), AcpError> {
         if !names.insert(name) {
             return Err(AcpError::McpServerInvalid);
         }
-        if let Some(kind) = server.get("type")
+        if let Some(kind) = server_object.get("type")
             && !matches!(kind.as_str(), Some("http" | "sse"))
         {
             return Err(AcpError::McpServerInvalid);
