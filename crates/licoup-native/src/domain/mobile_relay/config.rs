@@ -299,7 +299,9 @@ mod tests {
     fn persistence_policy_removes_ephemeral_custom_gateways() {
         let mut config = json!({
             "defaultGatewayUrl": "https://relay.example.test",
-            "customGatewayUrl": "https://temporary.trycloudflare.com",
+            // Synthetic stand-in for an ephemeral tunnel gateway; any custom
+            // gateway URL must be wiped before persistence.
+            "customGatewayUrl": "https://ephemeral-gateway.example.test",
             "useCustomGateway": true
         });
 

@@ -7,7 +7,7 @@
 **Local agents and devices in one clear workspace — open source, local
 first, and under your control.**
 
-English (normative) · [简体中文](README.zh-CN.md)
+English (normative language) · [简体中文 (localized language)](README.zh-CN.md)
 
 [![License: GPL-3.0-or-later](https://img.shields.io/badge/license-GPL--3.0--or--later-blue?style=flat-square)](LICENSE)
 [![Version: 0.0.1-alpha](https://img.shields.io/badge/version-0.0.1--alpha-orange?style=flat-square)](CHANGELOG.md)
