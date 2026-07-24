@@ -6,7 +6,7 @@
 
 **把本机智能体与设备收进一个清晰的工作空间——开源、本地优先，由你掌控。**
 
-[English（规范版本）](README.md) · 简体中文（本地化）
+[English（规范语言）](README.md) · 简体中文（本地化语言）
 
 [![许可证：GPL-3.0-or-later](https://img.shields.io/badge/license-GPL--3.0--or--later-blue?style=flat-square)](LICENSE)
 [![版本：0.0.1-alpha](https://img.shields.io/badge/version-0.0.1--alpha-orange?style=flat-square)](CHANGELOG.md)

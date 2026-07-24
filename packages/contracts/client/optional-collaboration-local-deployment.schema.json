@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://licomesh.dev/contracts/client/optional-collaboration-local-deployment.schema.json",
+  "$id": "https://licoup.example/schemas/optional-collaboration-local-deployment.schema.json",
   "title": "LicoUp Optional Local Deployment Catalog",
   "description": "Declarative, manual-only feature catalog for a user-controlled local LicoMesh deployment.",
   "type": "object",

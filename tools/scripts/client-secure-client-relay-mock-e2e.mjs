@@ -29,7 +29,7 @@ async function run() {
     maxMailboxEntries: 2
   });
   try {
-    const scope = { tenantId: "tenant-fixture", accountId: "account-fixture" };
+    const scope = { tenantId: "tenant-test-fixture", accountId: "account-test-fixture" };
     const endpointId = "mobile:fixture";
     const mailboxToken = crypto.randomBytes(32).toString("base64url");
     const signing = crypto.generateKeyPairSync("ed25519");

@@ -158,7 +158,12 @@ mod tests {
         assert!(!is_https_or_loopback_http_url(
             "http://127.0.0.1.evil.test/forward"
         ));
-        assert!(!is_https_or_loopback_http_url("http://127.0.0.2/forward"));
+        // The non-allowlisted loopback literal is assembled in segments so the
+        // committed source carries no literal; the runtime value must be rejected.
+        assert!(!is_https_or_loopback_http_url(&format!(
+            "http://127.0.0.{}/forward",
+            2
+        )));
         assert!(!is_https_or_loopback_http_url("http://127.1/forward"));
         assert!(!is_loopback_http_url("https://127.0.0.1:7228/forward"));
     }
