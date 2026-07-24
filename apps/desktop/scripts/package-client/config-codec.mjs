@@ -58,7 +58,7 @@ export function validatePackagingConfig(
   );
   if (
     config.schemaVersion !== packageClientSchemas.packagingModules ||
-    config.packageProfile !== "lico-client" ||
+    config.packageProfile !== "licoup" ||
     typeof config.description !== "string" ||
     !config.description.trim()
   ) {
@@ -205,7 +205,7 @@ export function validatePackagingConfig(
     ) {
       packageFailure("packaging_module_profile_invalid");
     }
-    if (id === "native-sidecar" && moduleConfig.cargoBin !== "lico-client") {
+    if (id === "native-sidecar" && moduleConfig.cargoBin !== "licoup") {
       packageFailure("packaging_native_sidecar_authority_invalid");
     }
   }

@@ -1,18 +1,18 @@
 import 'dart:async';
 
-import 'package:flutter_client/src/application/features/agents/conversation/conversation_live_projection_controller.dart';
-import 'package:flutter_client/src/application/features/agents/conversation/conversation_relay_projection_controller.dart';
-import 'package:flutter_client/src/application/features/agents/conversation/conversation_runtime_result_policy.dart';
-import 'package:flutter_client/src/application/features/agents/conversation/conversation_session_controller.dart';
-import 'package:flutter_client/src/application/features/agents/conversation/conversation_session_state_controller.dart';
-import 'package:flutter_client/src/application/features/agents/conversation/conversation_turn_queue.dart';
-import 'package:flutter_client/src/application/features/agents/policy/conversation_session_index.dart';
-import 'package:flutter_client/src/application/features/agents/workspace/agent_workspace_coordinator.dart';
-import 'package:flutter_client/src/application/localization/client_application_strings.dart';
-import 'package:flutter_client/src/contracts/agent_conversation_models.dart';
-import 'package:flutter_client/src/contracts/agent_conversation_tab_activity.dart';
-import 'package:flutter_client/src/contracts/agent_dispatch_lane.dart';
-import 'package:flutter_client/src/contracts/target_candidate.dart';
+import 'package:licoup/src/application/features/agents/conversation/conversation_live_projection_controller.dart';
+import 'package:licoup/src/application/features/agents/conversation/conversation_relay_projection_controller.dart';
+import 'package:licoup/src/application/features/agents/conversation/conversation_runtime_result_policy.dart';
+import 'package:licoup/src/application/features/agents/conversation/conversation_session_controller.dart';
+import 'package:licoup/src/application/features/agents/conversation/conversation_session_state_controller.dart';
+import 'package:licoup/src/application/features/agents/conversation/conversation_turn_queue.dart';
+import 'package:licoup/src/application/features/agents/policy/conversation_session_index.dart';
+import 'package:licoup/src/application/features/agents/workspace/agent_workspace_coordinator.dart';
+import 'package:licoup/src/application/localization/client_application_strings.dart';
+import 'package:licoup/src/contracts/agent_conversation_models.dart';
+import 'package:licoup/src/contracts/agent_conversation_tab_activity.dart';
+import 'package:licoup/src/contracts/agent_dispatch_lane.dart';
+import 'package:licoup/src/contracts/target_candidate.dart';
 
 const _releaseConversationAcceptanceMode =
     bool.fromEnvironment('LICO_AGENT_CONVERSATION_RELEASE_LIVE')

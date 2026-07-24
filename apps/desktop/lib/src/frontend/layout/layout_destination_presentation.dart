@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import 'package:flutter_client/src/frontend/layout/layout_palette.dart';
+import 'package:licoup/src/frontend/layout/layout_palette.dart';
 
 /// Marker shared by profile-owned destination presentation strategies.
 abstract interface class LayoutDestinationPresentation {}

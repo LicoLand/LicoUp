@@ -1,17 +1,17 @@
 import 'package:flutter/material.dart';
 
-import 'package:flutter_client/src/application/controller/client_controller.dart';
-import 'package:flutter_client/src/frontend/features/mobile_relay/ui/mobile_relay_panel/pairing.dart';
-import 'package:flutter_client/src/frontend/features/mobile_relay/ui/mobile_relay_panel/scan.dart';
-import 'package:flutter_client/src/frontend/features/mobile_relay/ui/mobile_relay_panel/trust.dart';
-import 'package:flutter_client/src/frontend/features/mobile_relay/ui/secure_mesh_approval_card.dart';
-import 'package:flutter_client/src/frontend/features/mobile_relay/ui/secure_mesh_capability_card.dart';
-import 'package:flutter_client/src/frontend/features/mobile_relay/ui/secure_mesh_file_sync_card.dart';
-import 'package:flutter_client/src/frontend/features/mobile_relay/ui/secure_mesh_skill_sync_card.dart';
-import 'package:flutter_client/src/frontend/l10n/lico_strings.dart';
-import 'package:flutter_client/src/frontend/shared/platform/client_platform.dart';
-import 'package:flutter_client/src/frontend/shared/ui/minimal_scan_icon.dart';
-import 'package:flutter_client/src/frontend/shared/ui/theme.dart';
+import 'package:licoup/src/application/controller/client_controller.dart';
+import 'package:licoup/src/frontend/features/mobile_relay/ui/mobile_relay_panel/pairing.dart';
+import 'package:licoup/src/frontend/features/mobile_relay/ui/mobile_relay_panel/scan.dart';
+import 'package:licoup/src/frontend/features/mobile_relay/ui/mobile_relay_panel/trust.dart';
+import 'package:licoup/src/frontend/features/mobile_relay/ui/secure_mesh_approval_card.dart';
+import 'package:licoup/src/frontend/features/mobile_relay/ui/secure_mesh_capability_card.dart';
+import 'package:licoup/src/frontend/features/mobile_relay/ui/secure_mesh_file_sync_card.dart';
+import 'package:licoup/src/frontend/features/mobile_relay/ui/secure_mesh_skill_sync_card.dart';
+import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/shared/platform/client_platform.dart';
+import 'package:licoup/src/frontend/shared/ui/minimal_scan_icon.dart';
+import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 class MobileRelayPanel extends StatefulWidget {
   const MobileRelayPanel({super.key, required this.controller});

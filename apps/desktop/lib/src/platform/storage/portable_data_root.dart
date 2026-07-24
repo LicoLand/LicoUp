@@ -1,19 +1,19 @@
 import 'dart:io';
 
-import 'package:flutter_client/src/platform/storage/client_workspace_manifest.dart';
+import 'package:licoup/src/platform/storage/client_workspace_manifest.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
-export 'package:flutter_client/src/platform/storage/client_workspace_manifest.dart'
+export 'package:licoup/src/platform/storage/client_workspace_manifest.dart'
     show ClientWorkspaceManifest, ClientWorkspaceManifestStore;
 
 class PortableDataRoot {
-  static const productDirectoryName = 'LicoArc';
+  static const productDirectoryName = 'LicoUp';
   static const portableDataDirectoryName = 'portable-data';
 
   /// Desktop state lives in a home-directory dot folder alongside other agent
   /// state namespaces like `.claude` and `.codex`.
-  static const homeStateDirectoryName = '.lico-arc';
+  static const homeStateDirectoryName = '.lico-up';
 
   PortableDataRoot({
     Directory? dataDirectoryOverride,
@@ -68,7 +68,7 @@ class PortableDataRoot {
       return _cachedDataDir!;
     }
 
-    final override = _environment['LICOARC_PORTABLE_DIR'];
+    final override = _environment['LICOUP_PORTABLE_DIR'];
     if (override != null && override.trim().isNotEmpty) {
       _cachedDataDir = await _prepareDataDirectory(Directory(override.trim()));
       return _cachedDataDir!;

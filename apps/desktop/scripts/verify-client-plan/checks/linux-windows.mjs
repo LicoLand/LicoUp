@@ -90,7 +90,7 @@ for (const [source, relativePath, tokens] of [
   [
     linuxNodeDockerfile,
     "apps/desktop/docker/secure-mesh-node.Dockerfile",
-    ["USER 65534:65534", "COPY client ${CLIENT_ROOT}", "WORKDIR ${CLIENT_ROOT}", "lico-client"]
+    ["USER 65534:65534", "COPY client ${CLIENT_ROOT}", "WORKDIR ${CLIENT_ROOT}", "licoup"]
   ]
 ]) {
   for (const token of tokens) {

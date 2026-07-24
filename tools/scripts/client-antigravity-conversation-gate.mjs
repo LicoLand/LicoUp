@@ -4,7 +4,7 @@
  * Antigravity same-session sequential conversation gate.
  *
  * Implementation authority: client-same-session-conversation-gate.mjs
- * Adapter ownership: crates/lico-client-native/src/platform/antigravity_driver/
+ * Adapter ownership: crates/licoup-native/src/platform/antigravity_driver/
  */
 
 import { resolve } from "node:path";

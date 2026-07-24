@@ -1,13 +1,13 @@
-# Lico Arc Local Bridge
+# LicoUp Local Bridge
 
 [English（规范版本）](local-bridge.md) · 简体中文（本地化） · [架构](../architecture/README.zh-CN.md)
 
-权威来源：`packages/contracts/client/lico-arc-orchestrator-ipc.schema.json`、
-`crates/lico-client-native/src/platform/orchestrator_ipc/` 和
-`crates/lico-client-native/src/domain/agent_orchestration/`。这些契约或验证发生变化时，
+权威来源：`packages/contracts/client/lico-up-orchestrator-ipc.schema.json`、
+`crates/licoup-native/src/platform/orchestrator_ipc/` 和
+`crates/licoup-native/src/domain/agent_orchestration/`。这些契约或验证发生变化时，
 应同步更新本投影。
 
-Lico Arc Local Bridge 是子智能体对话的进程内 Level 2 控制面。它嵌入持久编排
+LicoUp Local Bridge 是子智能体对话的进程内 Level 2 控制面。它嵌入持久编排
 服务的唯一所有者进程，不会再增加一个守护进程。智能体原生机制始终优先；当原生
 协议不能提供完整契约时，Local Bridge 补齐可唤醒进度和有序消息接入。
 

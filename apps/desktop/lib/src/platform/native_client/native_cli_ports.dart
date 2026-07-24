@@ -1,6 +1,6 @@
 import 'dart:io';
 
-import 'package:flutter_client/src/contracts/generated/client_error.g.dart';
+import 'package:licoup/src/contracts/generated/client_error.g.dart';
 
 typedef NativeRunCliExecutable =
     Future<ProcessResult> Function(
@@ -66,8 +66,8 @@ class LicoClientRpcException implements Exception {
   @override
   String toString() {
     if (authorizationRequired) {
-      return 'lico-client authorization is required.';
+      return 'licoup authorization is required.';
     }
-    return 'lico-client RPC request failed (code: $code).';
+    return 'licoup RPC request failed (code: $code).';
   }
 }

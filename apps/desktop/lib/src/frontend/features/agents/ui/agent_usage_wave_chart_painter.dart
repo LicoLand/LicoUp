@@ -2,10 +2,10 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
-import 'package:flutter_client/src/frontend/features/agents/ui/agent_usage_chart_geometry.dart';
-import 'package:flutter_client/src/frontend/features/agents/ui/agent_usage_formatters.dart';
-import 'package:flutter_client/src/frontend/features/agents/ui/agent_usage_timeline_data.dart';
-import 'package:flutter_client/src/frontend/shared/ui/theme.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_usage_chart_geometry.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_usage_formatters.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_usage_timeline_data.dart';
+import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 final class AgentUsageWaveChartPainter extends CustomPainter {
   const AgentUsageWaveChartPainter({

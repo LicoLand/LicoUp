@@ -230,7 +230,7 @@ function selfTest() {
     && packageSource.includes("LICO_AGENT_CONVERSATION_RELEASE_LIVE=true")
     && widgetSource.includes("createAcceptanceController")
     && fixtureSource.includes("AcceptanceConversationService")
-    && runnerSource.includes('LICO_CLIENT_PATH: join(appBundle, "Contents/MacOS/lico-client")')
+    && runnerSource.includes('LICO_CLIENT_PATH: join(appBundle, "Contents/MacOS/licoup")')
     && runnerSource.includes('LICO_AGENT_CONVERSATION_ACCEPTANCE: "dispatch-lane-unified-1"')
     && runnerSource.includes("delete runtimeEnvironment.CARGO_TARGET_DIR")
     && runnerSource.includes("releaseUiPassed: false");
@@ -349,7 +349,7 @@ function buildPackagedReleaseApplication() {
       : "release_app_build_failed", details);
   }
   if (!existsSync(runnableApp)) fail("packaged_release_app_missing");
-  if (!existsSync(join(runnableApp, "Contents/MacOS/lico-client"))) {
+  if (!existsSync(join(runnableApp, "Contents/MacOS/licoup"))) {
     fail("packaged_release_sidecar_missing");
   }
   return runnableApp;
@@ -367,7 +367,7 @@ function runReleaseApplication(appBundle, agentId, invocationChallengeDigest) {
       ...process.env,
       // Pin the live product process to the sidecar inside the exact app bundle
       // whose digest is joined into the receipt. Never inherit a debug target.
-      LICO_CLIENT_PATH: join(appBundle, "Contents/MacOS/lico-client"),
+      LICO_CLIENT_PATH: join(appBundle, "Contents/MacOS/licoup"),
       LICO_AGENT_CONVERSATION_ACCEPTANCE: "dispatch-lane-unified-1",
       ...(agentId === "kimi-code" ? { KIMI_CODE_HOME: isolatedRuntimeRoot } : {}),
       ...(agentId === "pi" ? { PI_CODING_AGENT_SESSION_DIR: isolatedRuntimeRoot } : {}),

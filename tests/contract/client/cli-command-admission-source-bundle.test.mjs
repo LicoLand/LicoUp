@@ -8,7 +8,7 @@ const repoRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "../../..",
 );
-const commandRoot = "crates/lico-client-native/src/ffi/commands";
+const commandRoot = "crates/licoup-native/src/ffi/commands";
 const commandFacade = `${commandRoot}/mod.rs`;
 
 const retiredRegistrationApis = new Set([

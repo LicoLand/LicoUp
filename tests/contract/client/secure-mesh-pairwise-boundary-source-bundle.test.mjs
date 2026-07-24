@@ -5,7 +5,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = path.resolve(fileURLToPath(new URL("../../..", import.meta.url)));
-const pairwiseRoot = "crates/lico-client-native/src/core/secure_mesh_pairwise";
+const pairwiseRoot = "crates/licoup-native/src/core/secure_mesh_pairwise";
 const negotiationFacade = `${pairwiseRoot}/session_negotiation.rs`;
 const negotiationRoot = `${pairwiseRoot}/session_negotiation`;
 const ratchetCore = `${pairwiseRoot}/key_ratchet.rs`;
@@ -145,7 +145,7 @@ test("payload adapter and relay codec have exact non-overlapping authorities", a
 
 test("external consumers use negotiation and ratchet facades only", async () => {
   const internalPath = /(?:session_negotiation|key_ratchet)::(?:capability_binding|handshake_machine|input_validation|key_schedule|transcript_codec|payload_adapter|relay_codec)::/u;
-  const consumers = (await sourceFiles("crates/lico-client-native/src"))
+  const consumers = (await sourceFiles("crates/licoup-native/src"))
     .filter((relativePath) =>
       !relativePath.startsWith(`${negotiationRoot}/`) &&
       !relativePath.startsWith(`${ratchetRoot}/`));

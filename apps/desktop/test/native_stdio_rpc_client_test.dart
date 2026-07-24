@@ -1,8 +1,8 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:flutter_client/src/platform/native_client/agent_service_stdio_rpc.dart';
-import 'package:flutter_client/src/platform/native_client/native_cli_ports.dart';
+import 'package:licoup/src/platform/native_client/agent_service_stdio_rpc.dart';
+import 'package:licoup/src/platform/native_client/native_cli_ports.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -54,22 +54,22 @@ void main() {
         'lico-stdio-lanes-',
       );
       addTearDown(() => directory.delete(recursive: true));
-      final executable = File('${directory.path}/lico-client');
+      final executable = File('${directory.path}/licoup');
       await executable.writeAsString(r'''#!/bin/sh
 while IFS= read -r line; do
   request_id=$(printf '%s' "$line" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p')
   workflow_id=$(printf '%s' "$line" | sed -n 's/.*"workflowId":"\([^"]*\)".*/\1/p')
   case "$line" in
     *'"method":"agent.conversation.send"'*)
-      printf '{"protocol":"lico-client.stdio.v1","id":"%s","workflowId":"%s","kind":"terminal","sequence":1,"ok":true,"result":{"sessionId":"session-1","turnId":"turn-1"}}\n' "$request_id" "$workflow_id"
+      printf '{"protocol":"licoup.stdio.v1","id":"%s","workflowId":"%s","kind":"terminal","sequence":1,"ok":true,"result":{"sessionId":"session-1","turnId":"turn-1"}}\n' "$request_id" "$workflow_id"
       ;;
     *'"method":"shutdown"'*)
-      printf '{"protocol":"lico-client.stdio.v1","id":"%s","workflowId":"%s","ok":true,"result":{}}\n' "$request_id" "$workflow_id"
+      printf '{"protocol":"licoup.stdio.v1","id":"%s","workflowId":"%s","ok":true,"result":{}}\n' "$request_id" "$workflow_id"
       exit 0
       ;;
     *)
       sleep 2
-      printf '{"protocol":"lico-client.stdio.v1","id":"%s","workflowId":"%s","ok":true,"result":{}}\n' "$request_id" "$workflow_id"
+      printf '{"protocol":"licoup.stdio.v1","id":"%s","workflowId":"%s","ok":true,"result":{}}\n' "$request_id" "$workflow_id"
       ;;
   esac
 done

@@ -110,7 +110,7 @@ final class CatalogConvergenceStatus {
   );
 
   factory CatalogConvergenceStatus.fromJson(Map<String, dynamic> json) {
-    if (json['schemaVersion'] != 'v0.0.1:licoarc:catalog-convergence-1') {
+    if (json['schemaVersion'] != 'v0.0.1:licoup:catalog-convergence-1') {
       throw const FormatException('catalog_status_schema_invalid');
     }
     final cohort = json['cohort'];

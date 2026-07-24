@@ -575,7 +575,7 @@ export class AcpClient {
         terminal: false,
         auth: { terminal: false },
       },
-      clientInfo: { name: "lico-arc-parity", title: "Lico Arc Parity", version: "1" },
+      clientInfo: { name: "lico-up-parity", title: "LicoUp Parity", version: "1" },
     });
     requireFact(result?.protocolVersion === 1, "acp_protocol_version_mismatch");
     requireFact(result?.agentCapabilities?.loadSession === true, "acp_load_session_unavailable");

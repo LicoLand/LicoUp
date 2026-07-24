@@ -2,9 +2,9 @@ import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:flutter_client/src/contracts/agent_command_runner.dart';
-import 'package:flutter_client/src/contracts/mcp_adapter.dart';
-import 'package:flutter_client/src/platform/native_client/native_mcp_actions.dart';
+import 'package:licoup/src/contracts/agent_command_runner.dart';
+import 'package:licoup/src/contracts/mcp_adapter.dart';
+import 'package:licoup/src/platform/native_client/native_mcp_actions.dart';
 
 void main() {
   test(
@@ -63,7 +63,7 @@ final class _RecordingPrivateRunner implements AgentCommandRunner {
       final request = jsonDecode(stdinText) as Map<String, dynamic>;
       return <String, dynamic>{
         'ok': true,
-        'schemaVersion': 'licoarc.mcp-transfer-preview.v1',
+        'schemaVersion': 'licoup.mcp-transfer-preview.v1',
         'direction': request['direction'],
         'destination': request['destination'],
         'purpose': request['purpose'],
@@ -77,7 +77,7 @@ final class _RecordingPrivateRunner implements AgentCommandRunner {
     }
     return <String, dynamic>{
       'ok': true,
-      'schemaVersion': 'licoarc.mcp-transfer-result.v1',
+      'schemaVersion': 'licoup.mcp-transfer-result.v1',
       'accepted': true,
       'messages': const <Map<String, dynamic>>[],
     };

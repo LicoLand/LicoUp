@@ -1,4 +1,4 @@
-// Generated from crates/lico-client-native/resources/
+// Generated from crates/licoup-native/resources/
 // secure-mesh-capability-catalog.json. Do not edit by hand.
 
 const int secureMeshCapabilityCatalogSchemaVersion = 1;

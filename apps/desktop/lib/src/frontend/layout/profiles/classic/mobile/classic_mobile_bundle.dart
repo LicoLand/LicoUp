@@ -1,15 +1,15 @@
-import 'package:flutter_client/src/contracts/presentation/layout_environment.dart';
-import 'package:flutter_client/src/contracts/presentation/layout_profile.dart';
-import 'package:flutter_client/src/contracts/presentation/layout_state_namespace.dart';
-import 'package:flutter_client/src/contracts/presentation/semantic_destination.dart';
-import 'package:flutter_client/src/frontend/layout/layout_surface_bundle.dart';
-import 'package:flutter_client/src/frontend/layout/profiles/classic/mobile/destinations/classic_agents_destination.dart';
-import 'package:flutter_client/src/frontend/layout/profiles/classic/mobile/destinations/classic_pairing_destination.dart';
-import 'package:flutter_client/src/frontend/layout/profiles/classic/mobile/destinations/classic_settings_destination.dart';
-import 'package:flutter_client/src/frontend/layout/profiles/classic/mobile/classic_mobile_components.dart';
-import 'package:flutter_client/src/frontend/layout/profiles/classic/mobile/classic_mobile_preview.dart';
-import 'package:flutter_client/src/frontend/layout/profiles/classic/mobile/classic_mobile_shell.dart';
-import 'package:flutter_client/src/frontend/layout/profiles/classic/mobile/classic_mobile_tokens.dart';
+import 'package:licoup/src/contracts/presentation/layout_environment.dart';
+import 'package:licoup/src/contracts/presentation/layout_profile.dart';
+import 'package:licoup/src/contracts/presentation/layout_state_namespace.dart';
+import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
+import 'package:licoup/src/frontend/layout/layout_surface_bundle.dart';
+import 'package:licoup/src/frontend/layout/profiles/classic/mobile/destinations/classic_agents_destination.dart';
+import 'package:licoup/src/frontend/layout/profiles/classic/mobile/destinations/classic_pairing_destination.dart';
+import 'package:licoup/src/frontend/layout/profiles/classic/mobile/destinations/classic_settings_destination.dart';
+import 'package:licoup/src/frontend/layout/profiles/classic/mobile/classic_mobile_components.dart';
+import 'package:licoup/src/frontend/layout/profiles/classic/mobile/classic_mobile_preview.dart';
+import 'package:licoup/src/frontend/layout/profiles/classic/mobile/classic_mobile_shell.dart';
+import 'package:licoup/src/frontend/layout/profiles/classic/mobile/classic_mobile_tokens.dart';
 
 final LayoutSurfaceBundle classicMobileBundle = LayoutSurfaceBundle(
   profile: LayoutProfileDescriptor(

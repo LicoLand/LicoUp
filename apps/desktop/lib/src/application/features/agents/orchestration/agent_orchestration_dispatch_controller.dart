@@ -1,9 +1,9 @@
-import 'package:flutter_client/src/application/features/agents/orchestration/agent_orchestration_conversation_controller.dart';
-import 'package:flutter_client/src/application/features/agents/orchestration/agent_orchestration_policy_controller.dart';
-import 'package:flutter_client/src/application/features/agents/workspace/agent_workspace_coordinator.dart';
-import 'package:flutter_client/src/contracts/agent_conversation_tab_activity.dart';
-import 'package:flutter_client/src/contracts/agent_orchestration_target.dart';
-import 'package:flutter_client/src/platform/native_client/orchestrator_ipc/client.dart';
+import 'package:licoup/src/application/features/agents/orchestration/agent_orchestration_conversation_controller.dart';
+import 'package:licoup/src/application/features/agents/orchestration/agent_orchestration_policy_controller.dart';
+import 'package:licoup/src/application/features/agents/workspace/agent_workspace_coordinator.dart';
+import 'package:licoup/src/contracts/agent_conversation_tab_activity.dart';
+import 'package:licoup/src/contracts/agent_orchestration_target.dart';
+import 'package:licoup/src/platform/native_client/orchestrator_ipc/client.dart';
 
 /// Submits commands and projects backend-owned workflow state. This controller
 /// never chooses an adapter, advances a step, or owns a native agent session.

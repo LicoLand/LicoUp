@@ -1,8 +1,8 @@
 import 'dart:async';
 
-import 'package:flutter_client/src/platform/native_client/agent_service_stdio_rpc/operation_pending_queue.dart';
-import 'package:flutter_client/src/platform/native_client/native_cli_ports.dart';
-import 'package:flutter_client/src/platform/native_client/native_rpc_priority.dart';
+import 'package:licoup/src/platform/native_client/agent_service_stdio_rpc/operation_pending_queue.dart';
+import 'package:licoup/src/platform/native_client/native_cli_ports.dart';
+import 'package:licoup/src/platform/native_client/native_rpc_priority.dart';
 
 typedef RpcOp<T> = Future<T> Function();
 

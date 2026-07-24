@@ -18,7 +18,7 @@ import { flutterExecutableForRoot } from "./resource-assembly.mjs";
 export function writeWindowsPlatformManifest(root, options, kind) {
   if (options.platform !== "windows") return "";
   const flutterExecutable = flutterExecutableForRoot(root, options.platform);
-  const licoClientExecutable = path.join(root, "lico-client.exe");
+  const licoClientExecutable = path.join(root, "licoup.exe");
   assertExistingFile(flutterExecutable, "windows_flutter_executable_missing");
   assertExistingFile(licoClientExecutable, "windows_sidecar_missing");
   const manifestPath = path.join(

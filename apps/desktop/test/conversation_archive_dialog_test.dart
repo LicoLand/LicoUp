@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:flutter_client/src/application/controller/client_controller.dart';
-import 'package:flutter_client/src/frontend/features/agents/ui/conversation_archive_dialog.dart';
-import 'package:flutter_client/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/application/controller/client_controller.dart';
+import 'package:licoup/src/frontend/features/agents/ui/conversation_archive_dialog.dart';
+import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 
 import 'fixtures/client_controller/support/fake_agent_service.dart';
 

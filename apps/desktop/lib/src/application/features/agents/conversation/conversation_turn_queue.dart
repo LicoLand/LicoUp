@@ -1,7 +1,7 @@
 import 'dart:collection';
 
-import 'package:flutter_client/src/contracts/agent_conversation_models.dart';
-import 'package:flutter_client/src/contracts/target_candidate.dart';
+import 'package:licoup/src/contracts/agent_conversation_models.dart';
+import 'package:licoup/src/contracts/target_candidate.dart';
 
 const int maxPendingConversationTurns = 16;
 

@@ -2,10 +2,10 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/widgets.dart';
-import 'package:flutter_client/app.dart';
-import 'package:flutter_client/src/platform/secure_mesh/secure_mesh_android_bridge.dart';
-import 'package:flutter_client/src/platform/secure_mesh/secure_mesh_ios_bridge.dart';
-import 'package:flutter_client/src/platform/secure_mesh/secure_mesh_mobile_bridge.dart';
+import 'package:licoup/app.dart';
+import 'package:licoup/src/platform/secure_mesh/secure_mesh_android_bridge.dart';
+import 'package:licoup/src/platform/secure_mesh/secure_mesh_ios_bridge.dart';
+import 'package:licoup/src/platform/secure_mesh/secure_mesh_mobile_bridge.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 
@@ -35,7 +35,7 @@ void main() {
     expect(channel['statusMethod'], true);
     expect(channel['writeRuntimeStatusMethod'], true);
     expect(channel['nativeJsonMethod'], true);
-    expect(nativeRuntime['provider'], 'lico-client-native');
+    expect(nativeRuntime['provider'], 'licoup-native');
     expect(nativeRuntime['loaded'], true);
     expect(nativeRuntime['selfTestPassed'], true);
     expect(nativeRuntime['usesSharedRustCore'], true);

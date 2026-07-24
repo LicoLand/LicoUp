@@ -1,6 +1,6 @@
 import 'dart:collection';
 
-import 'package:flutter_client/src/contracts/agent_usage_models.dart';
+import 'package:licoup/src/contracts/agent_usage_models.dart';
 
 /// Maximum calendar days retained in the long-lived daily cache.
 const int agentUsageDailyCacheMaxDays = 90;

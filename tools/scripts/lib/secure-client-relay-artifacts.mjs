@@ -6,9 +6,9 @@ import { fileURLToPath } from "node:url";
 const repoRoot = path.resolve(fileURLToPath(new URL("../../..", import.meta.url)));
 
 export const SECURE_CLIENT_RELAY_CORE_CONTRACT_PATH =
-  "crates/lico-client-native/resources/secure-client-relay-core-contract.json";
+  "crates/licoup-native/resources/secure-client-relay-core-contract.json";
 export const SECURE_CLIENT_RELAY_CORE_CONFORMANCE_PATH =
-  "crates/lico-client-native/resources/secure-client-relay-core-conformance.json";
+  "crates/licoup-native/resources/secure-client-relay-core-conformance.json";
 export const SECURE_CLIENT_RELAY_CORE_CONTRACT_DIGEST =
   "sha256:0c2cdc66b4c135043b53c0c5b53533238568978a948ae98be1b45eb7a28b724b";
 export const SECURE_CLIENT_RELAY_CORE_CONFORMANCE_DIGEST =

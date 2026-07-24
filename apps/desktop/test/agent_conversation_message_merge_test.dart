@@ -1,5 +1,5 @@
-import 'package:flutter_client/src/contracts/agent_conversation_models.dart';
-import 'package:flutter_client/src/frontend/features/agents/ui/agent_conversation_message_view.dart';
+import 'package:licoup/src/contracts/agent_conversation_models.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_message_view.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

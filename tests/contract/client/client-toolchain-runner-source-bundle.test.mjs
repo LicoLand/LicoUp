@@ -90,7 +90,7 @@ test("build-producing tests lease only compiler outputs", async () => {
     cwd: path.join(repoRoot, "apps/desktop/android"),
   }), [
     "apps/desktop/build",
-    "build/crates/lico-client-native/android-target",
+    "build/crates/licoup-native/android-target",
   ]);
   assert.deepEqual(module.toolchainTestArtifactTargets({
     command: "./gradlew",
@@ -98,7 +98,7 @@ test("build-producing tests lease only compiler outputs", async () => {
     cwd: path.join(repoRoot, "apps/desktop/android"),
   }), [
     "apps/desktop/build",
-    "build/crates/lico-client-native/android-target",
+    "build/crates/licoup-native/android-target",
   ]);
   assert.deepEqual(module.toolchainTestArtifactTargets({
     command: "flutter",

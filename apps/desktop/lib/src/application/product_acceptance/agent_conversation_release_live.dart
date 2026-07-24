@@ -5,10 +5,10 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
-import 'package:flutter_client/app.dart';
-import 'package:flutter_client/src/application/controller/client_controller.dart';
-import 'package:flutter_client/src/contracts/presentation/semantic_destination.dart';
-import 'package:flutter_client/src/contracts/target_candidate.dart';
+import 'package:licoup/app.dart';
+import 'package:licoup/src/application/controller/client_controller.dart';
+import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
+import 'package:licoup/src/contracts/target_candidate.dart';
 
 const _sentinel = 'LICO_AGENT_CONVERSATION_RELEASE_UI_LIVE ';
 
@@ -257,16 +257,6 @@ TextField? _composerTextField() {
         element.widget.key == const Key('agent-conversation-composer-field'),
   );
   return composer == null ? null : _findDescendantWidget<TextField>(composer);
-}
-
-bool _timelineVisible() {
-  return _findElement((element) {
-        final key = element.widget.key;
-        return key is ValueKey<String> &&
-            key.value.startsWith('agent-conversation-message-list-') &&
-            element.renderObject?.attached == true;
-      }) !=
-      null;
 }
 
 Element? _findElement(bool Function(Element element) predicate) {

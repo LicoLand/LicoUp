@@ -1,4 +1,4 @@
-import 'package:flutter_client/src/contracts/optional_collaboration_models.dart';
+import 'package:licoup/src/contracts/optional_collaboration_models.dart';
 
 const optionalCollaborationTestCommit =
     '0123456789abcdef0123456789abcdef01234567';
@@ -45,9 +45,9 @@ Map<String, dynamic> optionalCollaborationTestRunnerBindings({
   'runnerSourceRelativePath': 'runners/macos/aarch64/licomesh-server-runner',
   'runnerDestinationRelativePath': 'runtime/licomesh-server-runner',
   'runnerDigestSha256': digest,
-  'runnerContractVersion': 'licoarc.local-server-runner.v1',
-  'healthContractVersion': 'licoarc.local-server-health.v1',
-  'capabilitiesContractVersion': 'licoarc.local-server-capabilities.v1',
+  'runnerContractVersion': 'licoup.local-server-runner.v1',
+  'healthContractVersion': 'licoup.local-server-health.v1',
+  'capabilitiesContractVersion': 'licoup.local-server-capabilities.v1',
   'signedPackageInventoryDigestSha256': signedInventoryDigest ?? digest,
   'sourceCommitOid': optionalCollaborationTestCommit,
   'runnerTrustKeyId': optionalCollaborationTestRunnerKeyId,

@@ -1,5 +1,5 @@
-import 'package:flutter_client/src/contracts/agent_conversation_models.dart';
-import 'package:flutter_client/src/frontend/features/agents/ui/agent_conversation_timeline.dart';
+import 'package:licoup/src/contracts/agent_conversation_models.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_timeline.dart';
 
 const int maxRenderedConversationProcessOperations = 128;
 const int maxTraversedConversationProcessNodes = 4096;

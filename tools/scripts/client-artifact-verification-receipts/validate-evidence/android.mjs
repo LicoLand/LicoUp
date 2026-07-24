@@ -26,7 +26,7 @@ export function validateAndroidEvidence(payload, context) {
   "evidence_artifact_digest_mismatch");
   requireValue(payload.apk?.nativeSecureMeshAbi === "arm64-v8a",
     "evidence_target_architecture_mismatch");
-  requireValue(payload.packageName === "com.liko.arc" &&
+  requireValue(payload.packageName === "land.lico.licoup" &&
     payload.apkBinaryFacts?.packageName === payload.packageName &&
     payload.apkBinaryFacts?.versionName === payload.productVersion &&
     payload.apkBinaryFacts?.versionCode === String(payload.buildNumber) &&
@@ -36,7 +36,7 @@ export function validateAndroidEvidence(payload, context) {
     payload.apkBinaryFacts?.signerCount === 1 &&
     payload.apkBinaryFacts?.zipAligned === true &&
     payload.apkBinaryFacts?.nativeSecureMeshLibrary?.path ===
-      "lib/arm64-v8a/liblico_client_native.so" &&
+      "lib/arm64-v8a/liblicoup_native.so" &&
     payload.apkBinaryFacts?.nativeSecureMeshLibrary?.regular === true &&
     payload.apkBinaryFacts?.nativeSecureMeshLibrary?.unique === true &&
     payload.apkBinaryFacts?.nativeSecureMeshLibrary?.size > 0 &&

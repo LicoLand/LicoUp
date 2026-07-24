@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:flutter_client/src/platform/native_client/native_cli_ports.dart';
+import 'package:licoup/src/platform/native_client/native_cli_ports.dart';
 
 typedef OrchestratorTestCall =
     Future<Map<String, Object?>> Function({

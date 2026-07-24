@@ -1,6 +1,6 @@
-import 'package:flutter_client/src/application/features/settings/controller/optional_collaboration_workflow_action_context.dart';
-import 'package:flutter_client/src/application/features/settings/controller/optional_collaboration_workflow_validation.dart';
-import 'package:flutter_client/src/contracts/optional_collaboration_workflow_models.dart';
+import 'package:licoup/src/application/features/settings/controller/optional_collaboration_workflow_action_context.dart';
+import 'package:licoup/src/application/features/settings/controller/optional_collaboration_workflow_validation.dart';
+import 'package:licoup/src/contracts/optional_collaboration_workflow_models.dart';
 
 final class OptionalCollaborationMcpActions {
   const OptionalCollaborationMcpActions(this.context);
@@ -91,8 +91,8 @@ final class OptionalCollaborationMcpActions {
       );
       context.mcpInstallPlan = null;
       context.reportAction(
-        'MCP 文件和 LicoArc 私有智能体注册已按精确计划一次完成；认证审批代理尚未实现，因此外发桥接保持关闭。',
-        'MCP files and private LicoArc registrations were applied in one exact transaction. Outbound bridge activation remains disabled because the authenticated review broker is not implemented.',
+        'MCP 文件和 LicoUp 私有智能体注册已按精确计划一次完成；认证审批代理尚未实现，因此外发桥接保持关闭。',
+        'MCP files and private LicoUp registrations were applied in one exact transaction. Outbound bridge activation remains disabled because the authenticated review broker is not implemented.',
       );
       return true;
     } catch (_) {

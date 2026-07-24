@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:flutter_client/src/application/features/agents/policy/conversation_refresh_policy.dart';
+import 'package:licoup/src/application/features/agents/policy/conversation_refresh_policy.dart';
 
 void main() {
   test('maps every refresh priority to its bounded interval', () {

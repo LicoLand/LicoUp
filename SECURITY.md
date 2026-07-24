@@ -22,9 +22,9 @@ and `<peer-id>`.
 
 ## Client privacy boundary
 
-Lico Arc keeps sensitive runtime data on the device. A peer transfer is
-encrypted on the sending client and addressed to another Lico Arc client. The
-relay is untrusted. Lico Arc does not send plaintext user content to it.
+LicoUp keeps sensitive runtime data on the device. A peer transfer is
+encrypted on the sending client and addressed to another LicoUp client. The
+relay is untrusted. LicoUp does not send plaintext user content to it.
 
 An approved external MCP request is a different boundary: HTTPS protects its
 transport, but the named service can read the exact body or files the user
@@ -51,7 +51,7 @@ Read the [architecture guide](docs/architecture/README.md) for the full data bou
 ## Relay threat model
 
 An untrusted relay can observe routing fields and ciphertext. It can copy,
-drop, delay, reorder, or replay packets. Lico Arc does not rely on a claim about
+drop, delay, reorder, or replay packets. LicoUp does not rely on a claim about
 whether the relay stores them. The sender encrypts before network I/O, and the
 receiver checks peer identity, packet integrity, and replay state before use.
 The client does not send the relay plaintext user content or private keys.
@@ -63,7 +63,7 @@ store. Memory-only custody requires pairing and new keys after restart. The
 current storage interface protects sealed key data at rest, but it does not
 prove that every protocol key is hardware-backed or non-exportable.
 
-Where a current platform adapter supports protected access, Lico Arc asks for
+Where a current platform adapter supports protected access, LicoUp asks for
 native user authentication. Cancellation and timeout fail closed. The client
 does not accept executable crypto patches from a relay or service.
 There is no runtime crypto-patch loader.

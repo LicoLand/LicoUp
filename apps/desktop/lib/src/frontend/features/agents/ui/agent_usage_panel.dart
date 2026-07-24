@@ -2,8 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-import 'package:flutter_client/src/application/controller/client_controller.dart';
-import 'package:flutter_client/src/frontend/features/agents/ui/agent_usage_panel_widgets.dart';
+import 'package:licoup/src/application/controller/client_controller.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_usage_panel_widgets.dart';
 
 class AgentUsagePanel extends StatefulWidget {
   const AgentUsagePanel({

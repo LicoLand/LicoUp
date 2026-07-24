@@ -1,8 +1,8 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
-import 'package:flutter_client/src/contracts/generated/client_error.g.dart';
-import 'package:flutter_client/src/platform/native_client/agent_service_stdio_rpc/protocol.dart';
+import 'package:licoup/src/contracts/generated/client_error.g.dart';
+import 'package:licoup/src/platform/native_client/agent_service_stdio_rpc/protocol.dart';
 
 // ClientError decoding preserves code, stage, component, retryable, recovery,
 // and presentationArgs as one generated value.

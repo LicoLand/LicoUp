@@ -1,13 +1,13 @@
 import 'package:flutter/foundation.dart';
 
-import 'package:flutter_client/src/application/features/settings/controller/optional_collaboration_local_assembly_actions.dart';
-import 'package:flutter_client/src/application/features/settings/controller/optional_collaboration_mcp_actions.dart';
-import 'package:flutter_client/src/application/features/settings/controller/optional_collaboration_server_runtime_actions.dart';
-import 'package:flutter_client/src/application/features/settings/controller/optional_collaboration_workflow_action_context.dart';
-import 'package:flutter_client/src/contracts/optional_collaboration_gateway.dart';
-import 'package:flutter_client/src/contracts/optional_collaboration_local_server_models.dart';
-import 'package:flutter_client/src/contracts/optional_collaboration_models.dart';
-import 'package:flutter_client/src/contracts/optional_collaboration_workflow_models.dart';
+import 'package:licoup/src/application/features/settings/controller/optional_collaboration_local_assembly_actions.dart';
+import 'package:licoup/src/application/features/settings/controller/optional_collaboration_mcp_actions.dart';
+import 'package:licoup/src/application/features/settings/controller/optional_collaboration_server_runtime_actions.dart';
+import 'package:licoup/src/application/features/settings/controller/optional_collaboration_workflow_action_context.dart';
+import 'package:licoup/src/contracts/optional_collaboration_gateway.dart';
+import 'package:licoup/src/contracts/optional_collaboration_local_server_models.dart';
+import 'package:licoup/src/contracts/optional_collaboration_models.dart';
+import 'package:licoup/src/contracts/optional_collaboration_workflow_models.dart';
 
 typedef OptionalCollaborationWorkflowStatusSink =
     void Function({

@@ -1,4 +1,4 @@
-import 'package:flutter_client/src/contracts/agent_command_runner.dart';
+import 'package:licoup/src/contracts/agent_command_runner.dart';
 
 class AgentConversationArchiveService {
   const AgentConversationArchiveService();

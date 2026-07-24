@@ -1,4 +1,4 @@
-import 'package:flutter_client/src/application/features/agents/conversation/agent_conversation_search_index.dart';
+import 'package:licoup/src/application/features/agents/conversation/agent_conversation_search_index.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

@@ -1,5 +1,5 @@
-import 'package:flutter_client/src/frontend/layout/profiles/native/desktop/shell/native_desktop_chrome_metrics.dart';
-import 'package:flutter_client/src/frontend/shared/ui/apple_control_metrics.dart';
+import 'package:licoup/src/frontend/layout/profiles/native/desktop/shell/native_desktop_chrome_metrics.dart';
+import 'package:licoup/src/frontend/shared/ui/apple_control_metrics.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// The Native desktop profile cannot import `frontend/shared/ui`, so it

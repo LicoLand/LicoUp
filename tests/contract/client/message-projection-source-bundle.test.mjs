@@ -9,7 +9,7 @@ const repoRoot = path.resolve(
   "../../..",
 );
 const projectionRoot =
-  "crates/lico-client-native/src/domain/conversation/history/message_projection";
+  "crates/licoup-native/src/domain/conversation/history/message_projection";
 const productionLeaves = Object.freeze([
   "antigravity.rs",
   "generated_context.rs",
@@ -113,7 +113,7 @@ test("Antigravity and generated-context policies remain separate and fail closed
     assert.ok(generated.includes(token), `missing generated-context policy: ${token}`);
   }
   const sessionMetadata = await read(
-    "crates/lico-client-native/src/domain/conversation/history/session_metadata.rs",
+    "crates/licoup-native/src/domain/conversation/history/session_metadata.rs",
   );
   assert.equal(sessionMetadata.includes("fn generated_control_text"), false);
 });

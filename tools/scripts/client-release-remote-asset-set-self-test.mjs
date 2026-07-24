@@ -12,15 +12,15 @@ const verifier = path.join(repoRoot, "tools/scripts/client-release-remote-asset-
 const root = mkdtempSync(path.join(tmpdir(), "lico-remote-assets-"));
 
 try {
-  const artifactName = "LicoArc-macos-arm64.zip";
+  const artifactName = "LicoUp-macos-arm64.zip";
   const artifactBytes = Buffer.from("canonical-artifact", "utf8");
   const artifactSha256 = createHash("sha256").update(artifactBytes).digest("hex");
   const checksumName = `${artifactName}.sha256`;
   const checksumBytes = Buffer.from(`${artifactSha256}  ${artifactName}\n`, "utf8");
-  const name = "LicoArc-consumer-verification.json";
+  const name = "LicoUp-consumer-verification.json";
   const bytes = Buffer.from(`${JSON.stringify({
     schemaVersion: "licomesh.consumer-verification-manifest.v1",
-    artifactName: "LicoArc",
+    artifactName: "LicoUp",
     releaseTag: "v0.0.1-test",
     artifacts: [{
       name: artifactName,

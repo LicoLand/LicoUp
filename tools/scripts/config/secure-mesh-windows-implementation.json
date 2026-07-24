@@ -53,7 +53,7 @@
     },
     {
       "id": "windows-native-secret-store-stays-unverified-and-fail-closed",
-      "file": "crates/lico-client-native/src/platform/secure_mesh_secret_store/platform_backends/windows.rs",
+      "file": "crates/licoup-native/src/platform/secure_mesh_secret_store/platform_backends/windows.rs",
       "tokens": [
         "windows-credential-manager",
         "pub(super) fn supported() -> bool",
@@ -64,7 +64,7 @@
     },
     {
       "id": "unmeasured-native-secret-store-rejects-every-io-shape",
-      "file": "crates/lico-client-native/src/platform/secure_mesh_secret_store/platform_backends/fail_closed.rs",
+      "file": "crates/licoup-native/src/platform/secure_mesh_secret_store/platform_backends/fail_closed.rs",
       "tokens": [
         "lacks measured platform user authorization",
         "set_secret_with_session",

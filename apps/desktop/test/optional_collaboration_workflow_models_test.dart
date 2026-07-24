@@ -1,4 +1,4 @@
-import 'package:flutter_client/src/contracts/optional_collaboration_workflow_models.dart';
+import 'package:licoup/src/contracts/optional_collaboration_workflow_models.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support/optional_collaboration_test_fixtures.dart';
@@ -40,7 +40,7 @@ void main() {
     ]);
     expect(
       plan.agentRegistrations.single.registration.payloadRoots.single.path,
-      'test-data/licoarc-mcp/selected-mcp',
+      'test-data/licoup-mcp/selected-mcp',
     );
   });
 
@@ -142,14 +142,14 @@ Map<String, dynamic> _mcpPlanJson() => {
   'selectedPluginIds': ['selected-mcp'],
   'destination': null,
   'agents': [
-    {'agentId': 'cursor', 'installDestination': 'test-data/licoarc-mcp'},
+    {'agentId': 'cursor', 'installDestination': 'test-data/licoup-mcp'},
   ],
   'fileChanges': [
     {
       'agentId': 'cursor',
       'selectionId': 'selected-mcp',
       'sourceRelativePath': 'payload/mcp-selected/server',
-      'destination': 'test-data/licoarc-mcp/selected-mcp/server',
+      'destination': 'test-data/licoup-mcp/selected-mcp/server',
       'destinationRelativePath': 'selected-mcp/server',
       'digestSha256': _fileDigest,
       'bytes': 128,
@@ -159,10 +159,10 @@ Map<String, dynamic> _mcpPlanJson() => {
     {
       'agentId': 'cursor',
       'registrationId': '00000000-0000-4000-8000-000000000010',
-      'destination': 'test-data/licoarc-private-registration.json',
+      'destination': 'test-data/licoup-private-registration.json',
       'digestSha256': _registrationDigest,
       'registration': {
-        'schemaVersion': 'licoarc.mcp-agent-registration.v2',
+        'schemaVersion': 'licoup.mcp-agent-registration.v2',
         'registrationId': '00000000-0000-4000-8000-000000000010',
         'registrationDigestSha256': _registrationDigest,
         'agentId': 'cursor',
@@ -170,11 +170,11 @@ Map<String, dynamic> _mcpPlanJson() => {
         'packageDigestSha256': _packageDigest,
         'selectedPluginIds': ['selected-mcp'],
         'payloadRoots': [
-          {'pluginId': 'selected-mcp', 'path': 'test-data/licoarc-mcp/selected-mcp'},
+          {'pluginId': 'selected-mcp', 'path': 'test-data/licoup-mcp/selected-mcp'},
         ],
         'payloadFiles': <dynamic>[],
         'servers': <dynamic>[],
-        'bridgeKind': 'licoarc-stdio-mcp-gate',
+        'bridgeKind': 'licoup-stdio-mcp-gate',
         'activationPolicy': 'disabled-authenticated-broker-unavailable',
         'automaticTriggersAllowed': false,
         'pluginExecutedDuringInstall': false,
@@ -236,7 +236,7 @@ Map<String, dynamic> _assemblyPlan(
   'packageDigestSha256': _packageDigest,
   'selectedComponentIds': selectedIds,
   'destination': destination,
-  'assemblyAdapterId': 'licoarc-builtin-local-http-v1',
+  'assemblyAdapterId': 'licoup-builtin-local-http-v1',
   'assemblyManifestDigestSha256': _registrationDigest,
   'assemblyManifestBytes': 512,
   'bindHost': '127.0.0.1',
@@ -262,7 +262,7 @@ Map<String, dynamic> _localServer(
   'packageDigestSha256': _packageDigest,
   'selectedComponentIds': selectedIds,
   'destination': destination,
-  'assemblyAdapterId': 'licoarc-builtin-local-http-v1',
+  'assemblyAdapterId': 'licoup-builtin-local-http-v1',
   'assemblyManifestDigestSha256': _registrationDigest,
   'bindHost': '127.0.0.1',
   'port': 43121,

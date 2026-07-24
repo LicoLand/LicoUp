@@ -26,7 +26,7 @@ function main() {
     "--apk",
     "build/apps/desktop/android/release/app-release.apk",
     "--package",
-    "com.liko.arc",
+    "land.lico.licoup",
   ], {
     cwd: workspaceRoot,
     env: {

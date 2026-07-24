@@ -5,8 +5,8 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = path.resolve(fileURLToPath(new URL("../../..", import.meta.url)));
-const facadePath = "crates/lico-client-native/src/core/secure_mesh_prekey.rs";
-const root = "crates/lico-client-native/src/core/secure_mesh_prekey";
+const facadePath = "crates/licoup-native/src/core/secure_mesh_prekey.rs";
+const root = "crates/licoup-native/src/core/secure_mesh_prekey";
 const productionLeaves = Object.freeze([
   "inventory.rs",
   "key_package.rs",
@@ -124,7 +124,7 @@ test("directory authority fixtures remain test-only", async () => {
 test("external consumers cannot depend on prekey implementation leaves", async () => {
   const internalModules = "inventory|key_package|pairwise|validation";
   const internalPath = new RegExp(`secure_mesh_prekey::(?:${internalModules})::`, "u");
-  const consumers = (await sourceFiles("crates/lico-client-native/src"))
+  const consumers = (await sourceFiles("crates/licoup-native/src"))
     .filter((relativePath) => relativePath !== facadePath && !relativePath.startsWith(`${root}/`));
   for (const relativePath of consumers) {
     const source = await read(relativePath);

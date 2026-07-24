@@ -4,10 +4,10 @@ import 'dart:io';
 
 import 'package:path/path.dart' as p;
 
-import 'package:flutter_client/src/contracts/presentation/layout_profile.dart';
-import 'package:flutter_client/src/contracts/presentation/presentation_preferences.dart';
-import 'package:flutter_client/src/platform/presentation/presentation_preferences_repository.dart';
-import 'package:flutter_client/src/platform/storage/portable_data_root.dart';
+import 'package:licoup/src/contracts/presentation/layout_profile.dart';
+import 'package:licoup/src/contracts/presentation/presentation_preferences.dart';
+import 'package:licoup/src/platform/presentation/presentation_preferences_repository.dart';
+import 'package:licoup/src/platform/storage/portable_data_root.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

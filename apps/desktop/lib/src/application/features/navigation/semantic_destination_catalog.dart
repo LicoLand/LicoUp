@@ -1,7 +1,7 @@
 import 'dart:collection';
 
-import 'package:flutter_client/src/contracts/presentation/layout_environment.dart';
-import 'package:flutter_client/src/contracts/presentation/semantic_destination.dart';
+import 'package:licoup/src/contracts/presentation/layout_environment.dart';
+import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 
 /// The sole semantic destination and surface-coverage authority.
 final class SemanticDestinationCatalog {

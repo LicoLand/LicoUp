@@ -28,52 +28,52 @@ async function readJoinedText(relativePaths) {
 }
 
 const nativeUsage = await readJoinedText([
-  "crates/lico-client-native/src/domain/agent_usage.rs",
-  "crates/lico-client-native/src/domain/agent_usage/attribution.rs",
-  "crates/lico-client-native/src/domain/agent_usage/command.rs",
-  "crates/lico-client-native/src/domain/agent_usage/contract.rs",
-  "crates/lico-client-native/src/domain/agent_usage/persistence.rs",
-  "crates/lico-client-native/src/domain/agent_usage/window.rs",
-  "crates/lico-client-native/src/domain/agent_usage/tests.rs"
+  "crates/licoup-native/src/domain/agent_usage.rs",
+  "crates/licoup-native/src/domain/agent_usage/attribution.rs",
+  "crates/licoup-native/src/domain/agent_usage/command.rs",
+  "crates/licoup-native/src/domain/agent_usage/contract.rs",
+  "crates/licoup-native/src/domain/agent_usage/persistence.rs",
+  "crates/licoup-native/src/domain/agent_usage/window.rs",
+  "crates/licoup-native/src/domain/agent_usage/tests.rs"
 ]);
 const codexUsageCache = await readJoinedText([
-  "crates/lico-client-native/src/domain/agent_usage/agent_usage_codex.rs",
-  "crates/lico-client-native/src/domain/agent_usage/agent_usage_codex/aggregation.rs",
-  "crates/lico-client-native/src/domain/agent_usage/agent_usage_codex/append_guard.rs",
-  "crates/lico-client-native/src/domain/agent_usage/agent_usage_codex/cache.rs",
-  "crates/lico-client-native/src/domain/agent_usage/agent_usage_codex/cache_batch.rs",
-  "crates/lico-client-native/src/domain/agent_usage/agent_usage_codex/cache_cleanup.rs",
-  "crates/lico-client-native/src/domain/agent_usage/agent_usage_codex/constants.rs",
-  "crates/lico-client-native/src/domain/agent_usage/agent_usage_codex/event_hash.rs",
-  "crates/lico-client-native/src/domain/agent_usage/agent_usage_codex/file_collection.rs",
-  "crates/lico-client-native/src/domain/agent_usage/agent_usage_codex/lineage.rs",
-  "crates/lico-client-native/src/domain/agent_usage/agent_usage_codex/models.rs",
-  "crates/lico-client-native/src/domain/agent_usage/agent_usage_codex/parser.rs",
-  "crates/lico-client-native/src/domain/agent_usage/agent_usage_codex/rollup.rs",
-  "crates/lico-client-native/src/domain/agent_usage/agent_usage_codex/scan.rs",
-  "crates/lico-client-native/src/domain/agent_usage/agent_usage_codex/scan_params.rs",
-  "crates/lico-client-native/src/domain/agent_usage/agent_usage_codex/utils.rs",
+  "crates/licoup-native/src/domain/agent_usage/agent_usage_codex.rs",
+  "crates/licoup-native/src/domain/agent_usage/agent_usage_codex/aggregation.rs",
+  "crates/licoup-native/src/domain/agent_usage/agent_usage_codex/append_guard.rs",
+  "crates/licoup-native/src/domain/agent_usage/agent_usage_codex/cache.rs",
+  "crates/licoup-native/src/domain/agent_usage/agent_usage_codex/cache_batch.rs",
+  "crates/licoup-native/src/domain/agent_usage/agent_usage_codex/cache_cleanup.rs",
+  "crates/licoup-native/src/domain/agent_usage/agent_usage_codex/constants.rs",
+  "crates/licoup-native/src/domain/agent_usage/agent_usage_codex/event_hash.rs",
+  "crates/licoup-native/src/domain/agent_usage/agent_usage_codex/file_collection.rs",
+  "crates/licoup-native/src/domain/agent_usage/agent_usage_codex/lineage.rs",
+  "crates/licoup-native/src/domain/agent_usage/agent_usage_codex/models.rs",
+  "crates/licoup-native/src/domain/agent_usage/agent_usage_codex/parser.rs",
+  "crates/licoup-native/src/domain/agent_usage/agent_usage_codex/rollup.rs",
+  "crates/licoup-native/src/domain/agent_usage/agent_usage_codex/scan.rs",
+  "crates/licoup-native/src/domain/agent_usage/agent_usage_codex/scan_params.rs",
+  "crates/licoup-native/src/domain/agent_usage/agent_usage_codex/utils.rs",
 ]);
 const nativeUsageCache = await readJoinedText([
-  "crates/lico-client-native/src/domain/agent_usage/agent_usage_native.rs",
-  "crates/lico-client-native/src/domain/agent_usage/agent_usage_native/cache.rs",
-  "crates/lico-client-native/src/domain/agent_usage/agent_usage_native/files.rs",
-  "crates/lico-client-native/src/domain/agent_usage/agent_usage_native/models.rs",
-  "crates/lico-client-native/src/domain/agent_usage/agent_usage_native/parser.rs",
-  "crates/lico-client-native/src/domain/agent_usage/agent_usage_native/parser/cursor.rs",
-  "crates/lico-client-native/src/domain/agent_usage/agent_usage_native/parser/hermes.rs",
-  "crates/lico-client-native/src/domain/agent_usage/agent_usage_native/parser/openagent.rs",
-  "crates/lico-client-native/src/domain/agent_usage/agent_usage_native/watermark.rs",
+  "crates/licoup-native/src/domain/agent_usage/agent_usage_native.rs",
+  "crates/licoup-native/src/domain/agent_usage/agent_usage_native/cache.rs",
+  "crates/licoup-native/src/domain/agent_usage/agent_usage_native/files.rs",
+  "crates/licoup-native/src/domain/agent_usage/agent_usage_native/models.rs",
+  "crates/licoup-native/src/domain/agent_usage/agent_usage_native/parser.rs",
+  "crates/licoup-native/src/domain/agent_usage/agent_usage_native/parser/cursor.rs",
+  "crates/licoup-native/src/domain/agent_usage/agent_usage_native/parser/hermes.rs",
+  "crates/licoup-native/src/domain/agent_usage/agent_usage_native/parser/openagent.rs",
+  "crates/licoup-native/src/domain/agent_usage/agent_usage_native/watermark.rs",
 ]);
-const commandMod = await readText("crates/lico-client-native/src/ffi/commands/mod.rs");
-const commandUsage = await readText("crates/lico-client-native/src/ffi/commands/agent_usage.rs");
+const commandMod = await readText("crates/licoup-native/src/ffi/commands/mod.rs");
+const commandUsage = await readText("crates/licoup-native/src/ffi/commands/agent_usage.rs");
 const cliUsage = await readJoinedText([
-  "crates/lico-client-native/src/bin/lico-client.rs",
-  "crates/lico-client-native/src/bin/lico-client/presentation.rs"
+  "crates/licoup-native/src/bin/licoup.rs",
+  "crates/licoup-native/src/bin/licoup/presentation.rs"
 ]);
 const stateStore = await readJoinedText([
-  "crates/lico-client-native/src/platform/client_state.rs",
-  "crates/lico-client-native/src/platform/client_state/policy.rs",
+  "crates/licoup-native/src/platform/client_state.rs",
+  "crates/licoup-native/src/platform/client_state/policy.rs",
 ]);
 const dartService = await readText(
   "apps/desktop/lib/src/backend/features/agents/services/agent_usage_service.dart"
@@ -109,18 +109,18 @@ const functionalityDocs = await readText(
   "docs/functionality/CLIENT-DESKTOP.md"
 );
 const incrementalCacheTest = await readJoinedText([
-  "crates/lico-client-native/tests/agent_usage_incremental_cache.rs",
-  "crates/lico-client-native/tests/agent_usage_cache_cases/adapter_coverage.rs",
-  "crates/lico-client-native/tests/agent_usage_cache_cases/append_refresh.rs",
-  "crates/lico-client-native/tests/agent_usage_cache_cases/cache_runtime.rs",
-  "crates/lico-client-native/tests/agent_usage_cache_cases/cumulative_resume.rs",
-  "crates/lico-client-native/tests/agent_usage_cache_cases/dedup_lineage.rs",
-  "crates/lico-client-native/tests/agent_usage_cache_cases/fallback_coverage.rs",
-  "crates/lico-client-native/tests/agent_usage_cache_cases/generic_usage.rs",
-  "crates/lico-client-native/tests/agent_usage_cache_cases/native_rollup.rs",
-  "crates/lico-client-native/tests/agent_usage_cache_cases/reconciliation.rs",
-  "crates/lico-client-native/tests/agent_usage_cache_cases/retained_reports.rs",
-  "crates/lico-client-native/tests/agent_usage_cache_cases/windows.rs",
+  "crates/licoup-native/tests/agent_usage_incremental_cache.rs",
+  "crates/licoup-native/tests/agent_usage_cache_cases/adapter_coverage.rs",
+  "crates/licoup-native/tests/agent_usage_cache_cases/append_refresh.rs",
+  "crates/licoup-native/tests/agent_usage_cache_cases/cache_runtime.rs",
+  "crates/licoup-native/tests/agent_usage_cache_cases/cumulative_resume.rs",
+  "crates/licoup-native/tests/agent_usage_cache_cases/dedup_lineage.rs",
+  "crates/licoup-native/tests/agent_usage_cache_cases/fallback_coverage.rs",
+  "crates/licoup-native/tests/agent_usage_cache_cases/generic_usage.rs",
+  "crates/licoup-native/tests/agent_usage_cache_cases/native_rollup.rs",
+  "crates/licoup-native/tests/agent_usage_cache_cases/reconciliation.rs",
+  "crates/licoup-native/tests/agent_usage_cache_cases/retained_reports.rs",
+  "crates/licoup-native/tests/agent_usage_cache_cases/windows.rs",
 ]);
 assertIncludes(
   nativeUsage,
@@ -288,7 +288,7 @@ assert(
 assertIncludes(
   serviceTest,
   [
-    "scans agent usage through lico-client agent-usage scan",
+    "scans agent usage through licoup agent-usage scan",
     "--history-days",
     "90",
     "rejects retained reports outside the current contract",

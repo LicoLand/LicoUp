@@ -23,15 +23,15 @@ test("catalog convergence crate and native adapters retain bounded closures", ()
     ["crates/lico-catalog-convergence/src/engine.rs", [
       "rust.crate.catalog-convergence",
     ]],
-    ["crates/lico-client-native/src/domain/catalog_convergence.rs", [
+    ["crates/licoup-native/src/domain/catalog_convergence.rs", [
       "architecture.client-boundaries",
       "rust.domain.catalog-convergence-adapter",
     ]],
-    ["crates/lico-client-native/src/platform/catalog_cache_store.rs", [
+    ["crates/licoup-native/src/platform/catalog_cache_store.rs", [
       "architecture.client-boundaries",
       "rust.platform.catalog-cache-store",
     ]],
-    ["crates/lico-client-native/src/ffi/commands/catalog.rs", [
+    ["crates/licoup-native/src/ffi/commands/catalog.rs", [
       "architecture.client-boundaries",
       "rust.ffi.catalog-convergence",
     ]],
@@ -56,7 +56,7 @@ test("catalog convergence crate and native adapters retain bounded closures", ()
     assert.deepEqual(module.command.args, [
       "check",
       "--manifest-path",
-      "crates/lico-client-native/Cargo.toml",
+      "crates/licoup-native/Cargo.toml",
       "--lib",
     ]);
   }
@@ -64,42 +64,42 @@ test("catalog convergence crate and native adapters retain bounded closures", ()
 
 test("Rust domain changes select a precise cargo-filtered slice", () => {
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/domain/mcp_adapter/plan.rs",
+    "crates/licoup-native/src/domain/mcp_adapter/plan.rs",
   ])), ["architecture.client-boundaries", "rust.domain.mcp-adapter"]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/domain/mcp_adapter/execution.rs",
+    "crates/licoup-native/src/domain/mcp_adapter/execution.rs",
   ])), ["architecture.client-boundaries", "rust.domain.mcp-adapter"]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/domain/secure_mesh_command_runtime.rs",
+    "crates/licoup-native/src/domain/secure_mesh_command_runtime.rs",
   ])), [
     "architecture.client-boundaries",
     "rust.domain.secure-mesh-command-runtime",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/domain/agent_usage/window.rs",
+    "crates/licoup-native/src/domain/agent_usage/window.rs",
   ])), ["architecture.client-boundaries", "rust.domain.agent-usage.window"]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/domain/agent_usage/agent_usage_native/parser.rs",
+    "crates/licoup-native/src/domain/agent_usage/agent_usage_native/parser.rs",
   ])), [
     "architecture.client-boundaries",
     "rust.domain.agent-usage.native-cache",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/domain/agent_usage/agent_usage_codex.rs",
+    "crates/licoup-native/src/domain/agent_usage/agent_usage_codex.rs",
   ])), [
     "architecture.client-boundaries",
     "rust.domain.agent-usage-cache",
     "regression.agent-usage-codex-source-bundle",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/domain/agent_usage/agent_usage_codex/cache_batch.rs",
+    "crates/licoup-native/src/domain/agent_usage/agent_usage_codex/cache_batch.rs",
   ])), [
     "architecture.client-boundaries",
     "rust.domain.agent-usage.codex-cache-batch",
     "regression.agent-usage-codex-source-bundle",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/domain/agent_usage/agent_usage_codex/constants.rs",
+    "crates/licoup-native/src/domain/agent_usage/agent_usage_codex/constants.rs",
   ])), [
     "architecture.client-boundaries",
     "rust.domain.agent-usage.codex-models",
@@ -108,208 +108,208 @@ test("Rust domain changes select a precise cargo-filtered slice", () => {
     "regression.agent-usage-codex-source-bundle",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/tests/agent_usage_incremental_cache.rs",
+    "crates/licoup-native/tests/agent_usage_incremental_cache.rs",
   ])), [
     "rust.domain.agent-usage-cache",
     "regression.agent-usage-codex-source-bundle",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/tests/agent_usage_cache_cases/cache_runtime.rs",
+    "crates/licoup-native/tests/agent_usage_cache_cases/cache_runtime.rs",
   ])), [
     "rust.domain.agent-usage-cache.runtime",
     "regression.agent-usage-codex-source-bundle",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/tests/agent_usage_cache_cases/native_rollup.rs",
+    "crates/licoup-native/tests/agent_usage_cache_cases/native_rollup.rs",
   ])), [
     "rust.domain.agent-usage-cache.native-rollup",
     "regression.agent-usage-codex-source-bundle",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/domain/conversations.rs",
+    "crates/licoup-native/src/domain/conversations.rs",
   ])), [
     "architecture.client-boundaries",
     "rust.domain.agent-conversations.composition",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/domain/conversation_snapshots.rs",
+    "crates/licoup-native/src/domain/conversation_snapshots.rs",
   ])), [
     "architecture.client-boundaries",
     "rust.domain.agent-conversations.snapshots.composition",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/domain/conversation_archive_jobs.rs",
+    "crates/licoup-native/src/domain/conversation_archive_jobs.rs",
   ])), [
     "architecture.client-boundaries",
     "rust.domain.agent-conversations.archive-jobs.composition",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/domain/conversation_archive_jobs/request.rs",
+    "crates/licoup-native/src/domain/conversation_archive_jobs/request.rs",
   ])), [
     "architecture.client-boundaries",
     "rust.domain.agent-conversations.archive-jobs.request",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/domain/conversation_archive_jobs/plan.rs",
+    "crates/licoup-native/src/domain/conversation_archive_jobs/plan.rs",
   ])), [
     "architecture.client-boundaries",
     "rust.domain.agent-conversations.archive-jobs.plan",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/domain/conversation_archive_jobs/retry.rs",
+    "crates/licoup-native/src/domain/conversation_archive_jobs/retry.rs",
   ])), [
     "architecture.client-boundaries",
     "rust.domain.agent-conversations.archive-jobs.retry",
     "rust.domain.agent-conversations.archive-jobs.cancel",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/domain/conversation/snapshot_codec.rs",
+    "crates/licoup-native/src/domain/conversation/snapshot_codec.rs",
   ])), [
     "architecture.client-boundaries",
     "rust.domain.agent-conversations.snapshot-codec",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/domain/conversation/snapshots/settings.rs",
+    "crates/licoup-native/src/domain/conversation/snapshots/settings.rs",
   ])), [
     "architecture.client-boundaries",
     "rust.domain.agent-conversations.snapshots.settings",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/domain/conversation/snapshots/discovery.rs",
+    "crates/licoup-native/src/domain/conversation/snapshots/discovery.rs",
   ])), [
     "architecture.client-boundaries",
     "rust.domain.agent-conversations.snapshots.discovery",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/domain/conversation/snapshots/selection_plan.rs",
+    "crates/licoup-native/src/domain/conversation/snapshots/selection_plan.rs",
   ])), [
     "architecture.client-boundaries",
     "rust.domain.agent-conversations.snapshots.selection-plan",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/domain/conversation/snapshots/privacy_projection.rs",
+    "crates/licoup-native/src/domain/conversation/snapshots/privacy_projection.rs",
   ])), [
     "architecture.client-boundaries",
     "rust.domain.agent-conversations.snapshots.privacy-projection",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/domain/conversation/snapshots/materialization.rs",
+    "crates/licoup-native/src/domain/conversation/snapshots/materialization.rs",
   ])), [
     "architecture.client-boundaries",
     "rust.domain.agent-conversations.snapshots.materialization",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/domain/conversation/snapshots/validation.rs",
+    "crates/licoup-native/src/domain/conversation/snapshots/validation.rs",
   ])), [
     "architecture.client-boundaries",
     "rust.domain.agent-conversations.snapshots.validation",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/domain/conversation/archive_queue.rs",
+    "crates/licoup-native/src/domain/conversation/archive_queue.rs",
   ])), [
     "architecture.client-boundaries",
     "rust.domain.agent-conversations.archive-queue",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/domain/conversation/event_semantics.rs",
+    "crates/licoup-native/src/domain/conversation/event_semantics.rs",
   ])), [
     "architecture.client-boundaries",
     "rust.domain.agent-conversations.event-semantic",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/domain/conversation_semantic.rs",
+    "crates/licoup-native/src/domain/conversation_semantic.rs",
   ])), [
     "architecture.client-boundaries",
     "regression.conversation-semantic-source-bundle",
     "rust.domain.agent-conversations.semantic.composition",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/domain/conversation_semantic/privacy.rs",
+    "crates/licoup-native/src/domain/conversation_semantic/privacy.rs",
   ])), [
     "architecture.client-boundaries",
     "regression.conversation-semantic-source-bundle",
     "rust.domain.agent-conversations.semantic.privacy",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/domain/conversation/history/codex.rs",
+    "crates/licoup-native/src/domain/conversation/history/codex.rs",
   ])), [
     "architecture.client-boundaries",
     "rust.domain.agent-conversations.parser-codex",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/domain/conversation/history/cursor_openagent.rs",
+    "crates/licoup-native/src/domain/conversation/history/cursor_openagent.rs",
   ])), [
     "architecture.client-boundaries",
     "regression.cursor-openagent-source-bundle",
     "rust.domain.agent-conversations.parser-cursor-openagent.composition",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/domain/conversation/history/cursor_openagent/codec.rs",
+    "crates/licoup-native/src/domain/conversation/history/cursor_openagent/codec.rs",
   ])), [
     "architecture.client-boundaries",
     "regression.cursor-openagent-source-bundle",
     "rust.domain.agent-conversations.parser-cursor-openagent.codec",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/domain/conversation/history/tests/cursor_openagent.rs",
+    "crates/licoup-native/src/domain/conversation/history/tests/cursor_openagent.rs",
   ])), [
     "architecture.client-boundaries",
     "rust.domain.agent-conversations.parser-cursor-openagent.integration",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/domain/conversation/history/message_projection.rs",
+    "crates/licoup-native/src/domain/conversation/history/message_projection.rs",
   ])), [
     "architecture.client-boundaries",
     "regression.message-projection-source-bundle",
     "rust.domain.agent-conversations.message-projection.composition",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/domain/conversation/history/message_projection/structured_privacy.rs",
+    "crates/licoup-native/src/domain/conversation/history/message_projection/structured_privacy.rs",
   ])), [
     "architecture.client-boundaries",
     "regression.message-projection-source-bundle",
     "rust.domain.agent-conversations.message-projection.structured-privacy",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/domain/conversation/history/session_merge.rs",
+    "crates/licoup-native/src/domain/conversation/history/session_merge.rs",
   ])), [
     "architecture.client-boundaries",
     "regression.session-merge-source-bundle",
     "rust.domain.agent-conversations.session-merge.composition",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/domain/conversation/history/session_merge/delegated_merge.rs",
+    "crates/licoup-native/src/domain/conversation/history/session_merge/delegated_merge.rs",
   ])), [
     "architecture.client-boundaries",
     "regression.session-merge-source-bundle",
     "rust.domain.agent-conversations.session-merge.delegated",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/domain/conversation/history/tests/session_merge.rs",
+    "crates/licoup-native/src/domain/conversation/history/tests/session_merge.rs",
   ])), [
     "architecture.client-boundaries",
     "rust.domain.agent-conversations.session-merge.integration",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/domain/targets/catalog.rs",
+    "crates/licoup-native/src/domain/targets/catalog.rs",
   ])), ["architecture.client-boundaries", "rust.domain.targets.catalog"]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/domain/targets/target_cache.rs",
+    "crates/licoup-native/src/domain/targets/target_cache.rs",
   ])), ["architecture.client-boundaries", "rust.domain.targets.discovery-cache"]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/domain/targets/model_catalog/kilo.rs",
+    "crates/licoup-native/src/domain/targets/model_catalog/kilo.rs",
   ])), [
     "architecture.client-boundaries",
     "rust.domain.targets.model-catalog.kilo",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/domain/mobile_relay/pairing.rs",
+    "crates/licoup-native/src/domain/mobile_relay/pairing.rs",
   ])), [
     "architecture.client-boundaries",
     "rust.domain.mobile-relay.pairing",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/domain/mobile_relay/relay_operations.rs",
+    "crates/licoup-native/src/domain/mobile_relay/relay_operations.rs",
   ])), [
     "regression.relay-operations-source-bundle",
     "architecture.client-boundaries",
@@ -317,112 +317,112 @@ test("Rust domain changes select a precise cargo-filtered slice", () => {
     "rust.platform.secure-client-relay.composition",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/domain/mobile_relay/secret_custody.rs",
+    "crates/licoup-native/src/domain/mobile_relay/secret_custody.rs",
   ])), [
     "architecture.client-boundaries",
     "rust.domain.mobile-relay.secret-custody",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/domain/mobile_relay/secret_custody/runtime.rs",
+    "crates/licoup-native/src/domain/mobile_relay/secret_custody/runtime.rs",
   ])), [
     "architecture.client-boundaries",
     "rust.domain.mobile-relay.secret-custody.runtime",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/domain/mobile_relay/tests/secret_custody.rs",
+    "crates/licoup-native/src/domain/mobile_relay/tests/secret_custody.rs",
   ])), [
     "architecture.client-boundaries",
     "rust.domain.mobile-relay.secret-custody.scenario.config-integrity",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/domain/mobile_relay/tests/secret_custody/secure_command_store.rs",
+    "crates/licoup-native/src/domain/mobile_relay/tests/secret_custody/secure_command_store.rs",
   ])), [
     "architecture.client-boundaries",
     "rust.domain.mobile-relay.secret-custody.scenario.secure-command-store",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/domain/mobile_relay/endpoint_trust/persistence.rs",
+    "crates/licoup-native/src/domain/mobile_relay/endpoint_trust/persistence.rs",
   ])), [
     "architecture.client-boundaries",
     "rust.domain.mobile-relay.endpoint-trust.persistence",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/domain/mobile_relay/tests/endpoint_trust.rs",
+    "crates/licoup-native/src/domain/mobile_relay/tests/endpoint_trust.rs",
   ])), [
     "architecture.client-boundaries",
     "rust.domain.mobile-relay.endpoint-trust.scenarios",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/domain/collaboration_plugin/lifecycle/mod.rs",
+    "crates/licoup-native/src/domain/collaboration_plugin/lifecycle/mod.rs",
   ])), [
     "architecture.client-boundaries",
     "rust.domain.optional-collaboration",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/domain/collaboration_plugin/workflow/operations.rs",
+    "crates/licoup-native/src/domain/collaboration_plugin/workflow/operations.rs",
   ])), [
     "architecture.client-boundaries",
     "regression.collaboration-workflow-operations-source-bundle",
     "rust.domain.optional-collaboration.workflow-operations.composition",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/domain/collaboration_plugin/workflow/operations/validation.rs",
+    "crates/licoup-native/src/domain/collaboration_plugin/workflow/operations/validation.rs",
   ])), [
     "architecture.client-boundaries",
     "regression.collaboration-workflow-operations-source-bundle",
     "rust.domain.optional-collaboration.workflow-operations.validation",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/domain/collaboration_plugin/workflow/tests.rs",
+    "crates/licoup-native/src/domain/collaboration_plugin/workflow/tests.rs",
   ])), [
     "architecture.client-boundaries",
     "rust.domain.optional-collaboration.workflow-operations.integration",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/domain/client_update.rs",
+    "crates/licoup-native/src/domain/client_update.rs",
   ])), [
     "regression.client-update-source-bundle",
     "architecture.client-boundaries",
     "rust.domain.client-update",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/domain/skill_hub/usage.rs",
+    "crates/licoup-native/src/domain/skill_hub/usage.rs",
   ])), ["architecture.client-boundaries", "rust.domain.skill-hub.usage"]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/domain/skill_hub/update.rs",
+    "crates/licoup-native/src/domain/skill_hub/update.rs",
   ])), ["architecture.client-boundaries", "rust.domain.skill-hub.update"]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/domain/skill_hub/auto_update.rs",
+    "crates/licoup-native/src/domain/skill_hub/auto_update.rs",
   ])), ["architecture.client-boundaries", "rust.domain.skill-hub.auto-update"]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/domain/skill_hub/delete.rs",
+    "crates/licoup-native/src/domain/skill_hub/delete.rs",
   ])), ["architecture.client-boundaries", "rust.domain.skill-hub.delete"]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/domain/skill_hub/source.rs",
+    "crates/licoup-native/src/domain/skill_hub/source.rs",
   ])), ["architecture.client-boundaries", "rust.domain.skill-hub.source"]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/domain/skill_hub/catalog.rs",
+    "crates/licoup-native/src/domain/skill_hub/catalog.rs",
   ])), ["architecture.client-boundaries", "rust.domain.skill-hub.pairing-catalog"]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/domain/skill_hub/pairing.rs",
+    "crates/licoup-native/src/domain/skill_hub/pairing.rs",
   ])), ["architecture.client-boundaries", "rust.domain.skill-hub.pairing-catalog"]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/domain/skill_hub/install.rs",
+    "crates/licoup-native/src/domain/skill_hub/install.rs",
   ])), ["architecture.client-boundaries", "rust.domain.skill-hub.install"]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/domain/skill_hub/package.rs",
+    "crates/licoup-native/src/domain/skill_hub/package.rs",
   ])), ["architecture.client-boundaries", "rust.domain.skill-hub.package"]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/domain/skill_hub/snapshot.rs",
+    "crates/licoup-native/src/domain/skill_hub/snapshot.rs",
   ])), ["architecture.client-boundaries", "rust.domain.skill-hub.rollback"]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/domain/skill_hub/transaction.rs",
+    "crates/licoup-native/src/domain/skill_hub/transaction.rs",
   ])), ["architecture.client-boundaries", "rust.domain.skill-hub.transaction"]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/domain/skill_hub/state.rs",
+    "crates/licoup-native/src/domain/skill_hub/state.rs",
   ])), ["architecture.client-boundaries", "rust.domain.skill-hub"]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/domain/mod.rs",
+    "crates/licoup-native/src/domain/mod.rs",
   ])), ["architecture.client-boundaries", "rust.composition"]);
 
   const mobilePairing = CLIENT_MODULE_CATALOG.find((module) =>
@@ -486,7 +486,7 @@ test("Rust domain changes select a precise cargo-filtered slice", () => {
     const module = CLIENT_MODULE_CATALOG.find((candidate) => candidate.id === id);
     assert.equal(module.command.args.at(-1), filter);
     assert.equal(module.inputs.includes(
-      "crates/lico-client-native/src/domain/agent_usage/agent_usage_codex.rs"), false);
+      "crates/licoup-native/src/domain/agent_usage/agent_usage_codex.rs"), false);
   }
   const codexSourceBundle = CLIENT_MODULE_CATALOG.find((candidate) =>
     candidate.id === "regression.agent-usage-codex-source-bundle");
@@ -578,17 +578,17 @@ test("foundation and security modules retain exact narrow command filters", () =
   assert.deepEqual(composition.command.args, [
     "check",
     "--manifest-path",
-    "crates/lico-client-native/Cargo.toml",
+    "crates/licoup-native/Cargo.toml",
     "--lib",
   ]);
 
   for (const [id, sharedFacade] of [
-    ["rust.core.acp.requests", "crates/lico-client-native/src/core/acp.rs"],
-    ["rust.core.acp.responses", "crates/lico-client-native/src/core/acp.rs"],
-    ["rust.core.acp.codec", "crates/lico-client-native/src/core/acp.rs"],
-    ["rust.core.mcp.wire", "crates/lico-client-native/src/core/mcp.rs"],
-    ["rust.core.mcp.transfer", "crates/lico-client-native/src/core/mcp.rs"],
-    ["rust.domain.skill-hub.source", "crates/lico-client-native/src/domain/skill_hub.rs"],
+    ["rust.core.acp.requests", "crates/licoup-native/src/core/acp.rs"],
+    ["rust.core.acp.responses", "crates/licoup-native/src/core/acp.rs"],
+    ["rust.core.acp.codec", "crates/licoup-native/src/core/acp.rs"],
+    ["rust.core.mcp.wire", "crates/licoup-native/src/core/mcp.rs"],
+    ["rust.core.mcp.transfer", "crates/licoup-native/src/core/mcp.rs"],
+    ["rust.domain.skill-hub.source", "crates/licoup-native/src/domain/skill_hub.rs"],
   ]) {
     const module = CLIENT_MODULE_CATALOG.find((candidate) => candidate.id === id);
     assert.equal(module.inputs.includes(sharedFacade), false,
@@ -598,26 +598,26 @@ test("foundation and security modules retain exact narrow command filters", () =
 
 test("Secure Mesh custody, runtime, MLS store, and schema reset select bounded closures", () => {
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/core/secure_mesh_secret_store/authorization.rs",
+    "crates/licoup-native/src/core/secure_mesh_secret_store/authorization.rs",
   ])), [
     "architecture.client-boundaries",
     "rust.platform.secure-mesh-secret-store.authorization",
     "rust.core.secure-mesh.secret-custody-port",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/domain/secure_mesh_command_runtime.rs",
+    "crates/licoup-native/src/domain/secure_mesh_command_runtime.rs",
   ])), [
     "architecture.client-boundaries",
     "rust.domain.secure-mesh-command-runtime",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/platform/secure_mesh_mls_store.rs",
+    "crates/licoup-native/src/platform/secure_mesh_mls_store.rs",
   ])), [
     "architecture.client-boundaries",
     "rust.platform.secure-mesh-mls-store",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/core/secure_mesh_pairwise/tests/persistence_schema_reset.rs",
+    "crates/licoup-native/src/core/secure_mesh_pairwise/tests/persistence_schema_reset.rs",
   ])), [
     "architecture.client-boundaries",
     "rust.core.secure-mesh.pairwise-persistence.schema-reset",
@@ -659,9 +659,9 @@ test("snapshot modules retain leaf-owned inputs and exact command filters", () =
     const module = CLIENT_MODULE_CATALOG.find((candidate) => candidate.id === id);
     assert.equal(module.command.args.at(-1), filter);
     assert.equal(module.inputs.includes(
-      "crates/lico-client-native/src/domain/conversation_snapshots.rs"), false);
+      "crates/licoup-native/src/domain/conversation_snapshots.rs"), false);
     assert.equal(module.inputs.includes(
-      "crates/lico-client-native/src/domain/conversation/snapshots/mod.rs"), false);
+      "crates/licoup-native/src/domain/conversation/snapshots/mod.rs"), false);
   }
 });
 
@@ -671,7 +671,7 @@ test("collaboration workflow operation leaves retain exact tests and complete so
   assert.equal(registration.command.args.at(-1),
     "domain::collaboration_plugin::workflow::tests::mcp_partial_commit_rolls_back_payload_and_private_agent_registration");
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/domain/collaboration_plugin/registration.rs",
+    "crates/licoup-native/src/domain/collaboration_plugin/registration.rs",
   ])), [
     "architecture.client-boundaries",
     "rust.domain.collaboration-plugin.mcp-registration",
@@ -681,7 +681,7 @@ test("collaboration workflow operation leaves retain exact tests and complete so
   assert.equal(bridge.command.args.at(-1),
     "domain::collaboration_plugin::bridge::tests::");
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/domain/collaboration_plugin/bridge.rs",
+    "crates/licoup-native/src/domain/collaboration_plugin/bridge.rs",
   ])), [
     "architecture.client-boundaries",
     "rust.domain.collaboration-plugin.mcp-bridge",
@@ -730,11 +730,11 @@ test("collaboration workflow operation leaves retain exact tests and complete so
     ...sourceCheck.inputs,
   ]);
   const splitSources = await sourceFiles(
-    "crates/lico-client-native/src/domain/collaboration_plugin/workflow/operations",
+    "crates/licoup-native/src/domain/collaboration_plugin/workflow/operations",
     ".rs",
   );
   for (const relativePath of [
-    "crates/lico-client-native/src/domain/collaboration_plugin/workflow/operations.rs",
+    "crates/licoup-native/src/domain/collaboration_plugin/workflow/operations.rs",
     ...splitSources,
   ]) {
     assert.equal(ownedInputs.has(relativePath), true,
@@ -764,7 +764,7 @@ test("skill hub modules retain leaf-owned inputs and exact command filters", () 
     const module = CLIENT_MODULE_CATALOG.find((candidate) => candidate.id === id);
     assert.equal(module.command.args.at(-1), filter);
     assert.equal(module.inputs.includes(
-      "crates/lico-client-native/src/domain/skill_hub.rs"), false);
+      "crates/licoup-native/src/domain/skill_hub.rs"), false);
   }
 });
 
@@ -803,7 +803,7 @@ test("target modules retain leaf-owned inputs and exact command filters", () => 
     const module = CLIENT_MODULE_CATALOG.find((candidate) => candidate.id === id);
     assert.equal(module.command.args.at(-1), filter);
     assert.equal(module.inputs.includes(
-      "crates/lico-client-native/src/domain/targets.rs"), false);
+      "crates/licoup-native/src/domain/targets.rs"), false);
   }
 });
 
@@ -820,7 +820,7 @@ test("client update leaves retain exact narrow regression filters", () => {
   ]);
   for (const [leaf, moduleId] of selections) {
     assert.deepEqual(ids(selectModulesForChangedPaths([
-      `crates/lico-client-native/src/domain/client_update/${leaf}`,
+      `crates/licoup-native/src/domain/client_update/${leaf}`,
     ])), [sourceBundleId, "architecture.client-boundaries", moduleId]);
   }
   const filters = new Map([

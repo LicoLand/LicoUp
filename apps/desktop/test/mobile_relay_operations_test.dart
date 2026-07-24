@@ -1,5 +1,5 @@
-import 'package:flutter_client/src/platform/mobile_relay/mobile_relay_native_dispatch.dart';
-import 'package:flutter_client/src/platform/mobile_relay/mobile_relay_service_ops.dart';
+import 'package:licoup/src/platform/mobile_relay/mobile_relay_native_dispatch.dart';
+import 'package:licoup/src/platform/mobile_relay/mobile_relay_service_ops.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support/fake_mobile_relay_dispatch.dart';

@@ -1,12 +1,12 @@
 import path from "node:path";
 
-const rustCliRoot = "crates/lico-client-native/src";
+const rustCliRoot = "crates/licoup-native/src";
 const rustNativePublicModules = ["core", "domain", "ffi", "platform"];
 const rustNativePhysicalModuleDirs = [
-  "crates/lico-client-native/src/core",
-  "crates/lico-client-native/src/domain",
-  "crates/lico-client-native/src/ffi",
-  "crates/lico-client-native/src/platform"
+  "crates/licoup-native/src/core",
+  "crates/licoup-native/src/domain",
+  "crates/licoup-native/src/ffi",
+  "crates/licoup-native/src/platform"
 ];
 
 export async function checkCrateCoreAndFacadeBounds(context) {
@@ -31,7 +31,7 @@ export async function checkCrateCoreAndFacadeBounds(context) {
     sameSet,
     sourceLineCount,
   } = context;
-  const libRs = await readText("crates/lico-client-native/src/lib.rs");
+  const libRs = await readText("crates/licoup-native/src/lib.rs");
   const publicRustModules = collectRustPubMods(libRs);
   assert(
     sameSet(publicRustModules, rustNativePublicModules),
@@ -43,25 +43,25 @@ export async function checkCrateCoreAndFacadeBounds(context) {
     const modSource = await readText(`${relativePath}/mod.rs`);
     assert(!modSource.includes("#[path ="), `${relativePath}/mod.rs must not remount flat native files with #[path]`);
   }
-  const coreModuleSource = await readText("crates/lico-client-native/src/core/mod.rs");
-  const taskQueueSource = await readText("crates/lico-client-native/src/core/task_queue.rs");
+  const coreModuleSource = await readText("crates/licoup-native/src/core/mod.rs");
+  const taskQueueSource = await readText("crates/licoup-native/src/core/task_queue.rs");
   const mcpAdapterSource = await readJoinedText([
-    "crates/lico-client-native/src/core/mcp.rs",
-    ...await collectSourceFiles("crates/lico-client-native/src/core/mcp", ".rs")
+    "crates/licoup-native/src/core/mcp.rs",
+    ...await collectSourceFiles("crates/licoup-native/src/core/mcp", ".rs")
   ]);
   const mcpProductionSource = await readJoinedText([
-    "crates/lico-client-native/src/domain/mcp_adapter.rs",
-    ...await collectSourceFiles("crates/lico-client-native/src/domain/mcp_adapter", ".rs"),
-    "crates/lico-client-native/src/platform/mcp_approval_plan_store.rs",
-    "crates/lico-client-native/src/platform/mcp_streamable_http.rs",
-    "crates/lico-client-native/src/ffi/commands/mcp.rs",
+    "crates/licoup-native/src/domain/mcp_adapter.rs",
+    ...await collectSourceFiles("crates/licoup-native/src/domain/mcp_adapter", ".rs"),
+    "crates/licoup-native/src/platform/mcp_approval_plan_store.rs",
+    "crates/licoup-native/src/platform/mcp_streamable_http.rs",
+    "crates/licoup-native/src/ffi/commands/mcp.rs",
     "apps/desktop/lib/src/contracts/mcp_adapter.dart",
     "apps/desktop/lib/src/platform/native_client/native_mcp_actions.dart",
     "apps/desktop/lib/src/application/features/mcp/controller/mcp_transfer_controller.dart"
   ]);
-  const acpAdapterSource = await readText("crates/lico-client-native/src/core/acp.rs");
+  const acpAdapterSource = await readText("crates/licoup-native/src/core/acp.rs");
   const secureMeshCoreFiles = (await collectSourceFiles(
-    "crates/lico-client-native/src/core",
+    "crates/licoup-native/src/core",
     ".rs"
   )).filter((relativePath) =>
     relativePath.includes("secure_mesh") &&
@@ -75,16 +75,16 @@ export async function checkCrateCoreAndFacadeBounds(context) {
     );
   }
   const secureMeshCustodyPortSource = await readJoinedText([
-    "crates/lico-client-native/src/core/secure_mesh_secret_store.rs",
+    "crates/licoup-native/src/core/secure_mesh_secret_store.rs",
     ...await collectSourceFiles(
-      "crates/lico-client-native/src/core/secure_mesh_secret_store",
+      "crates/licoup-native/src/core/secure_mesh_secret_store",
       ".rs"
     )
   ]);
   const secureMeshRuntimeCompositionSource = await readJoinedText([
-    "crates/lico-client-native/src/core/secure_mesh_command/runtime.rs",
-    "crates/lico-client-native/src/domain/secure_mesh_command_runtime.rs",
-    "crates/lico-client-native/src/platform/secure_mesh_mls_store.rs"
+    "crates/licoup-native/src/core/secure_mesh_command/runtime.rs",
+    "crates/licoup-native/src/domain/secure_mesh_command_runtime.rs",
+    "crates/licoup-native/src/platform/secure_mesh_mls_store.rs"
   ]);
   assert(
     secureMeshCustodyPortSource.includes("trait SecureMeshSecretStore") &&
@@ -94,10 +94,10 @@ export async function checkCrateCoreAndFacadeBounds(context) {
     "Secure Mesh core ports and outer runtime/path-hardening composition must remain explicit"
   );
   const transparencySchemaSource = await readText(
-    "crates/lico-client-native/src/core/secure_mesh_transparency/persistence/schema.rs"
+    "crates/licoup-native/src/core/secure_mesh_transparency/persistence/schema.rs"
   );
   const secureMeshStatusSource = await readText(
-    "crates/lico-client-native/src/core/secure_mesh.rs"
+    "crates/licoup-native/src/core/secure_mesh.rs"
   );
   assert(
     !transparencySchemaSource.includes("migrate_gossip_observation_binding") &&
@@ -155,8 +155,8 @@ export async function checkCrateCoreAndFacadeBounds(context) {
     );
   }
   const cliSource = await readJoinedText([
-    "crates/lico-client-native/src/bin/lico-client.rs",
-    "crates/lico-client-native/src/bin/lico-client/presentation.rs"
+    "crates/licoup-native/src/bin/licoup.rs",
+    "crates/licoup-native/src/bin/licoup/presentation.rs"
   ]);
   for (const token of [
     "targets scan",
@@ -170,23 +170,23 @@ export async function checkCrateCoreAndFacadeBounds(context) {
     "skill delete",
     "skill usage"
   ]) {
-    assert(cliSource.includes(token), `lico-client usage must expose command: ${token}`);
+    assert(cliSource.includes(token), `licoup usage must expose command: ${token}`);
   }
   assert(!cliSource.includes("agent message send"),
-    "lico-client usage must not expose the retired agent message send entry point");
+    "licoup usage must not expose the retired agent message send entry point");
 
   const reviewedRustUnsafeFiles = new Set([
-    "crates/lico-client-native/src/core/safe_archive.rs",
-    "crates/lico-client-native/src/ffi/android_ffi.rs",
-    "crates/lico-client-native/src/ffi/ios_ffi.rs",
-    "crates/lico-client-native/src/domain/collaboration_plugin/package/writer.rs",
-    "crates/lico-client-native/src/domain/collaboration_plugin/workflow/commit.rs",
-    "crates/lico-client-native/src/domain/collaboration_plugin/assembly/runtime/immutable_file.rs",
-    "crates/lico-client-native/src/domain/collaboration_plugin/assembly/runtime/process/unix.rs",
-    "crates/lico-client-native/src/domain/collaboration_plugin/assembly/runtime/process/windows.rs",
-    "crates/lico-client-native/src/platform/authorized_secure_record/macos_keychain.rs",
-    "crates/lico-client-native/src/platform/user_presence.rs",
-    "crates/lico-client-native/src/platform/secure_mesh_secret_store/macos_user_presence.rs"
+    "crates/licoup-native/src/core/safe_archive.rs",
+    "crates/licoup-native/src/ffi/android_ffi.rs",
+    "crates/licoup-native/src/ffi/ios_ffi.rs",
+    "crates/licoup-native/src/domain/collaboration_plugin/package/writer.rs",
+    "crates/licoup-native/src/domain/collaboration_plugin/workflow/commit.rs",
+    "crates/licoup-native/src/domain/collaboration_plugin/assembly/runtime/immutable_file.rs",
+    "crates/licoup-native/src/domain/collaboration_plugin/assembly/runtime/process/unix.rs",
+    "crates/licoup-native/src/domain/collaboration_plugin/assembly/runtime/process/windows.rs",
+    "crates/licoup-native/src/platform/authorized_secure_record/macos_keychain.rs",
+    "crates/licoup-native/src/platform/user_presence.rs",
+    "crates/licoup-native/src/platform/secure_mesh_secret_store/macos_user_presence.rs"
   ]);
   const rustCliUnsafeFiles = (await collectRustUnsafeFiles(rustCliRoot))
     .filter((relativePath) => !reviewedRustUnsafeFiles.has(relativePath));
@@ -196,41 +196,41 @@ export async function checkCrateCoreAndFacadeBounds(context) {
   );
 
   for (const [relativePath, maxLines] of [
-    ["crates/lico-client-native/src/core/acp.rs", 60],
-    ["crates/lico-client-native/src/core/mcp.rs", 40],
-    ["crates/lico-client-native/src/core/secure_mesh_command.rs", 130],
-    ["crates/lico-client-native/src/core/secure_mesh_crypto.rs", 45],
-    ["crates/lico-client-native/src/core/secure_mesh_directory.rs", 75],
-    ["crates/lico-client-native/src/core/secure_mesh_file.rs", 70],
-    ["crates/lico-client-native/src/core/secure_mesh_mlkem_braid.rs", 50],
-    ["crates/lico-client-native/src/core/secure_mesh_mls.rs", 60],
-    ["crates/lico-client-native/src/core/secure_mesh_mls_product.rs", 80],
-    ["crates/lico-client-native/src/core/secure_mesh_pairwise.rs", 55],
-    ["crates/lico-client-native/src/core/secure_mesh_pairwise/persistence.rs", 45],
-    ["crates/lico-client-native/src/core/secure_mesh_approval.rs", 45],
-    ["crates/lico-client-native/src/core/secure_mesh_relay_envelope.rs", 45],
-    ["crates/lico-client-native/src/core/secure_mesh_trust.rs", 60],
-    ["crates/lico-client-native/src/platform/runtime_adapters.rs", 65],
-    ["crates/lico-client-native/src/platform/claude_code_driver.rs", 30],
-    ["crates/lico-client-native/src/platform/hermes_driver.rs", 30],
-    ["crates/lico-client-native/src/platform/openclaw_driver.rs", 30],
-    ["crates/lico-client-native/src/platform/opencode_driver.rs", 30],
-    ["crates/lico-client-native/src/platform/pi_driver.rs", 30],
-    ["crates/lico-client-native/src/domain/agent_usage.rs", 30],
-    ["crates/lico-client-native/src/domain/agent_usage/agent_usage_codex.rs", 35],
-    ["crates/lico-client-native/src/domain/conversations.rs", 50],
-    ["crates/lico-client-native/src/domain/conversation_archive_jobs.rs", 35],
-    ["crates/lico-client-native/src/domain/conversation_snapshots.rs", 70],
-    ["crates/lico-client-native/src/domain/client_update.rs", 45],
-    ["crates/lico-client-native/src/domain/client_update/macos_runner.rs", 45],
-    ["crates/lico-client-native/src/domain/mobile_relay.rs", 60],
-    ["crates/lico-client-native/src/domain/secure_mesh_mls.rs", 40],
-    ["crates/lico-client-native/src/domain/skill_hub.rs", 175],
-    ["crates/lico-client-native/src/domain/targets.rs", 70],
-    ["crates/lico-client-native/src/ffi/secure_mesh_mobile_ffi.rs", 45],
-    ["crates/lico-client-native/src/platform/secure_mesh_secret_store.rs", 50],
-    ["crates/lico-client-native/src/bin/lico-client.rs", 80],
-    ["crates/lico-client-native/src/bin/lico-client/stdio_rpc.rs", 40]
+    ["crates/licoup-native/src/core/acp.rs", 60],
+    ["crates/licoup-native/src/core/mcp.rs", 40],
+    ["crates/licoup-native/src/core/secure_mesh_command.rs", 130],
+    ["crates/licoup-native/src/core/secure_mesh_crypto.rs", 45],
+    ["crates/licoup-native/src/core/secure_mesh_directory.rs", 75],
+    ["crates/licoup-native/src/core/secure_mesh_file.rs", 70],
+    ["crates/licoup-native/src/core/secure_mesh_mlkem_braid.rs", 50],
+    ["crates/licoup-native/src/core/secure_mesh_mls.rs", 60],
+    ["crates/licoup-native/src/core/secure_mesh_mls_product.rs", 80],
+    ["crates/licoup-native/src/core/secure_mesh_pairwise.rs", 55],
+    ["crates/licoup-native/src/core/secure_mesh_pairwise/persistence.rs", 45],
+    ["crates/licoup-native/src/core/secure_mesh_approval.rs", 45],
+    ["crates/licoup-native/src/core/secure_mesh_relay_envelope.rs", 45],
+    ["crates/licoup-native/src/core/secure_mesh_trust.rs", 60],
+    ["crates/licoup-native/src/platform/runtime_adapters.rs", 65],
+    ["crates/licoup-native/src/platform/claude_code_driver.rs", 30],
+    ["crates/licoup-native/src/platform/hermes_driver.rs", 30],
+    ["crates/licoup-native/src/platform/openclaw_driver.rs", 30],
+    ["crates/licoup-native/src/platform/opencode_driver.rs", 30],
+    ["crates/licoup-native/src/platform/pi_driver.rs", 30],
+    ["crates/licoup-native/src/domain/agent_usage.rs", 30],
+    ["crates/licoup-native/src/domain/agent_usage/agent_usage_codex.rs", 35],
+    ["crates/licoup-native/src/domain/conversations.rs", 50],
+    ["crates/licoup-native/src/domain/conversation_archive_jobs.rs", 35],
+    ["crates/licoup-native/src/domain/conversation_snapshots.rs", 70],
+    ["crates/licoup-native/src/domain/client_update.rs", 45],
+    ["crates/licoup-native/src/domain/client_update/macos_runner.rs", 45],
+    ["crates/licoup-native/src/domain/mobile_relay.rs", 60],
+    ["crates/licoup-native/src/domain/secure_mesh_mls.rs", 40],
+    ["crates/licoup-native/src/domain/skill_hub.rs", 175],
+    ["crates/licoup-native/src/domain/targets.rs", 70],
+    ["crates/licoup-native/src/ffi/secure_mesh_mobile_ffi.rs", 45],
+    ["crates/licoup-native/src/platform/secure_mesh_secret_store.rs", 50],
+    ["crates/licoup-native/src/bin/licoup.rs", 80],
+    ["crates/licoup-native/src/bin/licoup/stdio_rpc.rs", 40]
   ]) {
     const source = await readText(relativePath);
     assert(
@@ -240,7 +240,7 @@ export async function checkCrateCoreAndFacadeBounds(context) {
   }
 
   const stdioRpcFacade = await readText(
-    "crates/lico-client-native/src/bin/lico-client/stdio_rpc.rs"
+    "crates/licoup-native/src/bin/licoup/stdio_rpc.rs"
   );
   const stdioRpcLeaves = new Map([
     ["context.rs", 40],
@@ -252,7 +252,7 @@ export async function checkCrateCoreAndFacadeBounds(context) {
     ["server.rs", 300]
   ]);
   for (const [leaf, maxLines] of stdioRpcLeaves) {
-    const relativePath = `crates/lico-client-native/src/bin/lico-client/stdio_rpc/${leaf}`;
+    const relativePath = `crates/licoup-native/src/bin/licoup/stdio_rpc/${leaf}`;
     const source = await readText(relativePath);
     assert(
       stdioRpcFacade.includes(`stdio_rpc/${leaf}`),
@@ -268,7 +268,7 @@ export async function checkCrateCoreAndFacadeBounds(context) {
     "stdio RPC facade must remain composition-only"
   );
   const stdioRpcRequest = await readText(
-    "crates/lico-client-native/src/bin/lico-client/stdio_rpc/request.rs"
+    "crates/licoup-native/src/bin/licoup/stdio_rpc/request.rs"
   );
   assert(
     stdioRpcRequest.includes("parse_stdio_rpc_request") &&
@@ -277,7 +277,7 @@ export async function checkCrateCoreAndFacadeBounds(context) {
     "stdio RPC request leaf must own decoding without response IO or command dispatch"
   );
   const stdioRpcResponse = await readText(
-    "crates/lico-client-native/src/bin/lico-client/stdio_rpc/response.rs"
+    "crates/licoup-native/src/bin/licoup/stdio_rpc/response.rs"
   );
   assert(
     stdioRpcResponse.includes("try_write_stdio_rpc_response") &&
@@ -286,7 +286,7 @@ export async function checkCrateCoreAndFacadeBounds(context) {
     "stdio RPC response leaf must own bounded encoding without request decoding or CLI execution"
   );
   const stdioRpcServer = await readText(
-    "crates/lico-client-native/src/bin/lico-client/stdio_rpc/server.rs"
+    "crates/licoup-native/src/bin/licoup/stdio_rpc/server.rs"
   );
   assert(
     stdioRpcServer.includes("serve_stdio_rpc") &&
@@ -295,7 +295,7 @@ export async function checkCrateCoreAndFacadeBounds(context) {
   );
 
   const stdioRpcTestFacade = await readText(
-    "crates/lico-client-native/src/bin/lico-client/tests/rpc.rs"
+    "crates/licoup-native/src/bin/licoup/tests/rpc.rs"
   );
   const stdioRpcTestLeaves = new Map([
     ["error.rs", 40],
@@ -305,7 +305,7 @@ export async function checkCrateCoreAndFacadeBounds(context) {
     ["server.rs", 150]
   ]);
   for (const [leaf, maxLines] of stdioRpcTestLeaves) {
-    const relativePath = `crates/lico-client-native/src/bin/lico-client/tests/rpc/${leaf}`;
+    const relativePath = `crates/licoup-native/src/bin/licoup/tests/rpc/${leaf}`;
     const source = await readText(relativePath);
     assert(
       stdioRpcTestFacade.includes(`rpc/${leaf}`),

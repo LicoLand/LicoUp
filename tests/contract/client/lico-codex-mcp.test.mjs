@@ -21,21 +21,21 @@ import test from "node:test";
 const syntheticValue = (label) => `${label}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 
 const repoRoot = path.resolve(fileURLToPath(new URL("../../..", import.meta.url)));
-const pluginRoot = path.join(repoRoot, "plugins/lico-arc-codex");
+const pluginRoot = path.join(repoRoot, "plugins/lico-up-codex");
 const manifestPath = path.join(pluginRoot, ".codex-plugin/plugin.json");
 const serverConfigPath = path.join(pluginRoot, "mcp/server.json");
-const skillPath = path.join(pluginRoot, "skills/lico-arc-orchestration/SKILL.md");
-const rustPath = path.join(repoRoot, "crates/lico-client-native/src/bin/lico-codex-mcp.rs");
-const cargoPath = path.join(repoRoot, "crates/lico-client-native/Cargo.toml");
+const skillPath = path.join(pluginRoot, "skills/lico-up-orchestration/SKILL.md");
+const rustPath = path.join(repoRoot, "crates/licoup-native/src/bin/lico-codex-mcp.rs");
+const cargoPath = path.join(repoRoot, "crates/licoup-native/Cargo.toml");
 const packagingPath = path.join(repoRoot, "apps/desktop/packaging.modules.json");
 const binaryPath = path.join(
   repoRoot,
-  "build/crates/lico-client-native/target/debug",
+  "build/crates/licoup-native/target/debug",
   process.platform === "win32" ? "lico-codex-mcp.exe" : "lico-codex-mcp",
 );
 const releaseBinaryPath = path.join(
   repoRoot,
-  "build/crates/lico-client-native/target/release",
+  "build/crates/licoup-native/target/release",
   process.platform === "win32" ? "lico-codex-mcp.exe" : "lico-codex-mcp",
 );
 const activeMcpProcesses = new Set();
@@ -243,7 +243,7 @@ class McpProcess {
       result: {
         protocolVersion,
         capabilities: { tools: { listChanged: false } },
-        serverInfo: { name: "lico-arc-orchestration", version: "0.1.0" },
+        serverInfo: { name: "lico-up-orchestration", version: "0.1.0" },
       },
     });
     this.send({ jsonrpc: "2.0", method: "notifications/initialized", params: {} });
@@ -295,14 +295,14 @@ async function stagePackagedFixture(packageRoot, platform, mode) {
   const executable = path.join(bundle.executableDir, `lico-codex-mcp${suffix}`);
   const moduleDirectory = path.join(
     bundle.moduleResourceDir,
-    "codex-orchestration-plugin/lico-arc-codex",
+    "codex-orchestration-plugin/lico-up-codex",
   );
   assert.equal(copied.includes(executable), true, `${platform} package omitted MCP binary`);
   assert.equal(copied.includes(moduleDirectory), true, `${platform} package omitted plugin module`);
   assert.equal(existsSync(executable), true);
   assert.equal(existsSync(path.join(moduleDirectory, ".codex-plugin/plugin.json")), true);
   assert.equal(existsSync(path.join(moduleDirectory, "mcp/server.json")), true);
-  assert.equal(existsSync(path.join(moduleDirectory, "skills/lico-arc-orchestration/SKILL.md")), true);
+  assert.equal(existsSync(path.join(moduleDirectory, "skills/lico-up-orchestration/SKILL.md")), true);
   return { executable, moduleDirectory, copied };
 }
 
@@ -356,7 +356,7 @@ class FakePrivateBackend {
     chmodSync(this.root, 0o700);
     const generation = `${process.pid.toString(16).padStart(8, "0")}${Date.now().toString(16).padStart(16, "0")}`.slice(-32).padStart(32, "a");
     const runtimeBase = process.platform === "win32" ? os.tmpdir() : "/tmp";
-    const runtimeRoot = path.join(runtimeBase, `licoarc-orchestrator-${process.getuid?.() ?? 0}`);
+    const runtimeRoot = path.join(runtimeBase, `licoup-orchestrator-${process.getuid?.() ?? 0}`);
     mkdirSync(runtimeRoot, { recursive: true, mode: 0o700 });
     chmodSync(runtimeRoot, 0o700);
     this.socketPath = path.join(runtimeRoot, `o-${generation.slice(0, 12)}.sock`);
@@ -635,7 +635,7 @@ function assertRedactedError(response, expectedReasonCode, retryable = false) {
   assert.equal(response.error, undefined);
   assert.equal(response.result.isError, true);
   assert.deepEqual(response.result.structuredContent, {
-    schemaVersion: "lico.arc.mcp.error.v1",
+    schemaVersion: "licoup.mcp.error.v1",
     reasonCode: expectedReasonCode,
     retryable,
   });
@@ -715,7 +715,7 @@ test("plugin manifest, MCP declaration, skill, Cargo target, and package lifecyc
   assert.deepEqual(Object.keys(manifest).sort(), [
     "author", "description", "interface", "license", "mcpServers", "name", "skills", "version",
   ]);
-  assert.equal(manifest.name, "lico-arc-codex");
+  assert.equal(manifest.name, "lico-up-codex");
   assert.match(manifest.version, /^\d+\.\d+\.\d+$/u);
   assert.equal(manifest.author.name, "LicoMesh");
   assert.equal(manifest.license, "GPL-3.0-or-later");
@@ -730,21 +730,21 @@ test("plugin manifest, MCP declaration, skill, Cargo target, and package lifecyc
     "authoritative plugin skill discovery failed",
   );
   assert.deepEqual(manifest.interface, {
-    displayName: "Lico Arc Orchestration",
-    shortDescription: "Submit and observe Lico Arc governed workflows.",
-    longDescription: "A local, privacy-minimal Codex control plane for backend-owned Lico Arc workflows.",
+    displayName: "LicoUp Orchestration",
+    shortDescription: "Submit and observe LicoUp governed workflows.",
+    longDescription: "A local, privacy-minimal Codex control plane for backend-owned LicoUp workflows.",
     developerName: "LicoMesh",
     category: "Productivity",
     capabilities: ["Read", "Write"],
     defaultPrompt: [
-      "Preview my active Lico Arc workflow policy.",
-      "Submit this plan to Lico Arc and track its receipt.",
+      "Preview my active LicoUp workflow policy.",
+      "Submit this plan to LicoUp and track its receipt.",
     ],
   });
 
   assert.deepEqual(serverConfig, {
     mcpServers: {
-      "lico-arc-orchestration": {
+      "lico-up-orchestration": {
         type: "stdio",
         command: "lico-codex-mcp",
         args: [],
@@ -752,16 +752,16 @@ test("plugin manifest, MCP declaration, skill, Cargo target, and package lifecyc
     },
   });
   const skill = readFileSync(skillPath, "utf8");
-  assert.match(skill, /^---\nname: lico-arc-orchestration\ndescription: [^\n]+\n---\n/u);
+  assert.match(skill, /^---\nname: lico-up-orchestration\ndescription: [^\n]+\n---\n/u);
   for (const tool of expectedTools) assert.match(skill, new RegExp(`\\b${tool}\\b`, "u"));
-  assert.match(skill, /Lico Arc remains the workflow and dispatch authority/u);
+  assert.match(skill, /LicoUp remains the workflow and dispatch authority/u);
   assert.doesNotMatch(skill, /(?:Kimi|Claude|DeepSeek|GPT-?5|provider-specific)/iu);
 
   const cargo = readFileSync(cargoPath, "utf8");
   assert.match(cargo, /\[\[bin\]\]\s+name\s*=\s*"lico-codex-mcp"\s+path\s*=\s*"src\/bin\/lico-codex-mcp\.rs"/u);
   const packaging = readJson(packagingPath);
   assert.deepEqual(packaging.modules["codex-orchestration-mcp"], {
-    label: "Lico Arc local Codex MCP control plane",
+    label: "LicoUp local Codex MCP control plane",
     category: "agents",
     enabled: true,
     required: true,
@@ -771,13 +771,13 @@ test("plugin manifest, MCP declaration, skill, Cargo target, and package lifecyc
     requires: ["native-sidecar"],
   });
   assert.deepEqual(packaging.modules["codex-orchestration-plugin"], {
-    label: "Lico Arc Codex plugin bundle",
+    label: "LicoUp Codex plugin bundle",
     category: "agents",
     enabled: true,
     required: true,
     platforms: ["macos", "linux"],
     packaging: "module-resources",
-    includePaths: ["plugins/lico-arc-codex"],
+    includePaths: ["plugins/lico-up-codex"],
     requires: ["codex-orchestration-mcp"],
   });
 });
@@ -870,7 +870,7 @@ test("STDIO MCP is strict, closed, restart-safe, bounded, cancellable, and fail-
   mkdirSync(inactiveRoot, { recursive: true, mode: 0o700 });
   chmodSync(inactiveRoot, 0o700);
   const inactive = new McpProcess({
-    LICO_ARC_STATE_ROOT: inactiveRoot,
+    LICOUP_STATE_ROOT: inactiveRoot,
   }, packagedMacosRelease.executable);
   await inactive.initialize(1);
   const releaseClosedCalls = [
@@ -1072,7 +1072,7 @@ test("STDIO MCP is strict, closed, restart-safe, bounded, cancellable, and fail-
     inputDigest: "b".repeat(64),
   })));
   assert.deepEqual(preview, {
-    schemaVersion: "lico.arc.mcp.receipt.v1",
+    schemaVersion: "licoup.mcp.receipt.v1",
     operation: "strategy.preview",
     state: "previewed",
     policyRevisionId: "policy-revision-1",
@@ -1081,7 +1081,7 @@ test("STDIO MCP is strict, closed, restart-safe, bounded, cancellable, and fail-
   });
   const capabilities = structured(await first.request(18, "tools/call", toolCall("lico_agent_capabilities", {})));
   assert.deepEqual(capabilities, {
-    schemaVersion: "lico.arc.mcp.receipt.v1",
+    schemaVersion: "licoup.mcp.receipt.v1",
     operation: "agent.capabilities",
     state: "running",
     admissionState: "accepting",
@@ -1097,7 +1097,7 @@ test("STDIO MCP is strict, closed, restart-safe, bounded, cancellable, and fail-
   })));
   assert.equal(Date.now() - submitStarted < 500, true, "submit waited for workflow execution");
   assert.deepEqual(submitted, {
-    schemaVersion: "lico.arc.mcp.receipt.v1",
+    schemaVersion: "licoup.mcp.receipt.v1",
     operation: "workflow.submit",
     workflowId: "workflow-1",
     state: "awaiting_approval",
@@ -1121,7 +1121,7 @@ test("STDIO MCP is strict, closed, restart-safe, bounded, cancellable, and fail-
     timeoutMs: 100,
   })));
   assert.deepEqual(waited, {
-    schemaVersion: "lico.arc.mcp.receipt.v1",
+    schemaVersion: "licoup.mcp.receipt.v1",
     operation: "workflow.wait",
     workflowId: "workflow-1",
     events: [{
@@ -1145,7 +1145,7 @@ test("STDIO MCP is strict, closed, restart-safe, bounded, cancellable, and fail-
     idempotencyKey: sv_message_workflow_1,
   })));
   assert.deepEqual(messaged, {
-    schemaVersion: "lico.arc.mcp.receipt.v1",
+    schemaVersion: "licoup.mcp.receipt.v1",
     operation: "workflow.message",
     workflowId: "workflow-1",
     state: "queued",
@@ -1169,7 +1169,7 @@ test("STDIO MCP is strict, closed, restart-safe, bounded, cancellable, and fail-
     limit: 16,
   })));
   assert.deepEqual(observed, {
-    schemaVersion: "lico.arc.mcp.receipt.v1",
+    schemaVersion: "licoup.mcp.receipt.v1",
     operation: "workflow.status",
     workflowId: "workflow-1",
     state: "awaiting_approval",
@@ -1198,7 +1198,7 @@ test("STDIO MCP is strict, closed, restart-safe, bounded, cancellable, and fail-
     idempotencyKey: sv_cancel_workflow_1,
   })));
   assert.deepEqual(cancelled, {
-    schemaVersion: "lico.arc.mcp.receipt.v1",
+    schemaVersion: "licoup.mcp.receipt.v1",
     operation: "workflow.cancel",
     workflowId: "workflow-1",
     state: "cancelled",

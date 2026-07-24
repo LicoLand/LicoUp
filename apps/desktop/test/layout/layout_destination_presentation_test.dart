@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:flutter_client/src/frontend/layout/layout_destination_presentation.dart';
-import 'package:flutter_client/src/frontend/layout/layout_palette.dart';
+import 'package:licoup/src/frontend/layout/layout_destination_presentation.dart';
+import 'package:licoup/src/frontend/layout/layout_palette.dart';
 
 void main() {
   testWidgets('scope exposes strategies without a profile identity', (

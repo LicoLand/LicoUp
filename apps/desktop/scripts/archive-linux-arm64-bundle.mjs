@@ -35,7 +35,7 @@ function assertArm64Bundle() {
   if (process.platform !== "linux" || !["arm64", "aarch64"].includes(process.arch)) {
     throw new Error("Linux ARM64 release archives must be produced on a native Linux ARM64 runner.");
   }
-  for (const fileName of ["flutter_client", "lico-client"]) {
+  for (const fileName of ["licoup", "licoup"]) {
     const filePath = path.join(bundleRoot, fileName);
     if (!existsSync(filePath) || !statSync(filePath).isFile()) {
       throw new Error(`Linux ARM64 bundle is missing ${fileName}.`);
@@ -57,7 +57,7 @@ function main() {
     !Number.isInteger(clientVersion.buildNumber) || clientVersion.buildNumber <= 0) {
     throw new Error("Linux client version manifest is invalid.");
   }
-  const manifestPath = path.join(bundleRoot, "package-metadata", "lico-client", "packaging-modules.json");
+  const manifestPath = path.join(bundleRoot, "package-metadata", "licoup", "packaging-modules.json");
   const manifest = JSON.parse(stableReadFile(manifestPath, {
     maxBytes: 2 * 1024 * 1024,
   }).toString("utf8"));
@@ -82,7 +82,7 @@ function main() {
   const bundleManifestDigest = sha256(manifestPath);
 
   mkdirSync(distributionRoot, { recursive: true });
-  const archivePath = path.join(distributionRoot, "LicoArc-linux-arm64.tar.gz");
+  const archivePath = path.join(distributionRoot, "LicoUp-linux-arm64.tar.gz");
   execFileSync("/usr/bin/tar", ["-czf", archivePath, "-C", path.dirname(bundleRoot), path.basename(bundleRoot)], {
     stdio: "inherit"
   });

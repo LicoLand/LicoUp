@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 
-import 'package:flutter_client/src/contracts/mobile_relay/mobile_relay_models.dart';
-import 'package:flutter_client/src/contracts/target_candidate.dart';
-import 'package:flutter_client/src/frontend/features/mobile_relay/ui/mobile_home_entry_ordering.dart';
-import 'package:flutter_client/src/frontend/features/mobile_relay/ui/mobile_swipe_pin_action.dart';
-import 'package:flutter_client/src/frontend/l10n/lico_strings.dart';
-import 'package:flutter_client/src/frontend/shared/ui/agent_brand_icon.dart';
-import 'package:flutter_client/src/frontend/shared/ui/theme.dart';
+import 'package:licoup/src/contracts/mobile_relay/mobile_relay_models.dart';
+import 'package:licoup/src/contracts/target_candidate.dart';
+import 'package:licoup/src/frontend/features/mobile_relay/ui/mobile_home_entry_ordering.dart';
+import 'package:licoup/src/frontend/features/mobile_relay/ui/mobile_swipe_pin_action.dart';
+import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/shared/ui/agent_brand_icon.dart';
+import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 final class MobilePairedDeviceListItem extends StatelessWidget {
   const MobilePairedDeviceListItem({

@@ -1,13 +1,13 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://licomesh.dev/contracts/client/optional-collaboration-mcp-install.schema.json",
-  "title": "Lico Arc Optional MCP Installation Catalog",
-  "description": "Declarative, manual-only LicoMesh MCP package catalog for LicoArc-owned exact-scope, one-shot outbound authorization.",
+  "title": "LicoUp Optional MCP Installation Catalog",
+  "description": "Declarative, manual-only LicoMesh MCP package catalog for LicoUp-owned exact-scope, one-shot outbound authorization.",
   "type": "object",
   "additionalProperties": false,
   "required": ["schemaVersion", "manualOnly", "requiresPerFileApproval", "outboundPolicy", "plugins"],
   "properties": {
-    "schemaVersion": {"const": "licoarc.collaboration.mcp-install.v2"},
+    "schemaVersion": {"const": "licoup.collaboration.mcp-install.v2"},
     "manualOnly": {"const": true},
     "requiresPerFileApproval": {"const": true},
     "outboundPolicy": {"const": "direct-user-exact-scope-one-shot"},

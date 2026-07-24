@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 
-import 'package:flutter_client/src/contracts/appearance/appearance_preset_config.dart';
+import 'package:licoup/src/contracts/appearance/appearance_preset_config.dart';
 
-export 'package:flutter_client/src/contracts/appearance/appearance_preset_config.dart';
+export 'package:licoup/src/contracts/appearance/appearance_preset_config.dart';
 
 ThemeMode themeModeForAppearance(
   String id,

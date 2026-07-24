@@ -46,7 +46,7 @@ function main() {
       androidReleaseBuildParametersReady(buildManifest.buildParameters) &&
       buildManifest.signingKind === "local-install-keystore" &&
       buildManifest.debuggable === false &&
-      buildManifest.packageName === "com.liko.arc" &&
+      buildManifest.packageName === "land.lico.licoup" &&
       buildManifest.productVersion === clientVersion.productVersion &&
       buildManifest.buildNumber === clientVersion.buildNumber &&
       buildManifest.versionName === clientVersion.productVersion &&

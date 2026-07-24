@@ -31,9 +31,9 @@ function runClient(args) {
       "run",
       "--quiet",
       "--manifest-path",
-      "crates/lico-client-native/Cargo.toml",
+      "crates/licoup-native/Cargo.toml",
       "--bin",
-      "lico-client",
+      "licoup",
       "--",
       ...args
     ], {
@@ -41,7 +41,7 @@ function runClient(args) {
       env: {
         ...process.env,
         CARGO_TARGET_DIR: cargoArtifactLease.targetPath,
-        LICOARC_PORTABLE_DIR: portableDir
+        LICOUP_PORTABLE_DIR: portableDir
       },
       stdio: ["ignore", "pipe", "pipe"]
     });

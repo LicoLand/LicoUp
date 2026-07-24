@@ -59,7 +59,7 @@ export function terminateExistingInstalledApp(executablePath) {
   if (before.length === 0) return new Set();
   run("/usr/bin/osascript", [
     "-e",
-    'tell application id "com.lico.client" to quit',
+    'tell application id "land.lico.licoup" to quit',
   ], { timeout: 5_000 });
   const deadline = Date.now() + 15_000;
   while (Date.now() < deadline) {

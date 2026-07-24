@@ -13,17 +13,17 @@ import {
 export const ANDROID_RELEASE_ACCEPTANCE_CHANNEL =
   "licomesh.android.release-acceptance.v1";
 export const ANDROID_RELEASE_ACCEPTANCE_ACTION =
-  "com.liko.arc.RELEASE_ACCEPTANCE";
+  "land.lico.licoup.RELEASE_ACCEPTANCE";
 export const ANDROID_RELEASE_ACCEPTANCE_RECEIVER =
-  "com.liko.arc/com.liko.arc.ReleaseAcceptanceReceiver";
+  "land.lico.licoup/land.lico.licoup.ReleaseAcceptanceReceiver";
 export const ANDROID_RELEASE_CLOSURE_CHALLENGE_EXTRA =
-  "com.liko.arc.extra.RELEASE_CLOSURE_CHALLENGE";
+  "land.lico.licoup.extra.RELEASE_CLOSURE_CHALLENGE";
 export const ANDROID_RELEASE_INVOCATION_NONCE_EXTRA =
-  "com.liko.arc.extra.RELEASE_INVOCATION_NONCE";
+  "land.lico.licoup.extra.RELEASE_INVOCATION_NONCE";
 export const ANDROID_RELEASE_REQUEST_NONCE_EXTRA =
-  "com.liko.arc.extra.RELEASE_REQUEST_NONCE";
+  "land.lico.licoup.extra.RELEASE_REQUEST_NONCE";
 export const ANDROID_RELEASE_REQUEST_SEQUENCE_EXTRA =
-  "com.liko.arc.extra.RELEASE_REQUEST_SEQUENCE";
+  "land.lico.licoup.extra.RELEASE_REQUEST_SEQUENCE";
 export const ANDROID_RELEASE_NATIVE_ACTION_EXTRA = "lico_native_action";
 export const ANDROID_RELEASE_NATIVE_ACTION_PARAMS_EXTRA = "lico_params_b64";
 

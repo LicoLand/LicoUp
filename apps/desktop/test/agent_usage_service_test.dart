@@ -1,12 +1,12 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:flutter_client/src/platform/native_client/agent_service.dart';
-import 'package:flutter_client/src/backend/features/agents/services/agent_usage_service.dart';
+import 'package:licoup/src/platform/native_client/agent_service.dart';
+import 'package:licoup/src/backend/features/agents/services/agent_usage_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('scans agent usage through lico-client agent-usage scan', () async {
+  test('scans agent usage through licoup agent-usage scan', () async {
     final captured = <List<String>>[];
     final agentService = AgentService(
       runCliExecutable: (executable, args, env) async {
@@ -141,7 +141,7 @@ void main() {
     expect(captured.single, containsAll(['--history-days', '90']));
   });
 
-  test('loads retained agent usage reports through lico-client', () async {
+  test('loads retained agent usage reports through licoup', () async {
     final captured = <List<String>>[];
     final agentService = AgentService(
       runCliExecutable: (executable, args, env) async {

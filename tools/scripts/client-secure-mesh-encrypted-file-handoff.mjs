@@ -67,7 +67,7 @@ async function evaluateSourceCheck(check) {
 function runNativeTest(filter) {
   return runCargoTestFilter({
     repoRoot,
-    manifestPath: "crates/lico-client-native/Cargo.toml",
+    manifestPath: "crates/licoup-native/Cargo.toml",
     filter,
     sanitizeError
   });

@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 
-import 'package:flutter_client/src/frontend/features/agents/ui/agent_conversation_runtime_settings.dart';
-import 'package:flutter_client/src/frontend/l10n/lico_strings.dart';
-import 'package:flutter_client/src/frontend/layout/layout_focus_coordinator.dart';
-import 'package:flutter_client/src/frontend/shared/platform/client_platform.dart';
-import 'package:flutter_client/src/frontend/shared/ui/apple_control_metrics.dart';
-import 'package:flutter_client/src/frontend/shared/ui/apple_glass.dart';
-import 'package:flutter_client/src/frontend/shared/ui/lico_activity_animations.dart';
-import 'package:flutter_client/src/frontend/shared/ui/theme.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_runtime_settings.dart';
+import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/layout/layout_focus_coordinator.dart';
+import 'package:licoup/src/frontend/shared/platform/client_platform.dart';
+import 'package:licoup/src/frontend/shared/ui/apple_control_metrics.dart';
+import 'package:licoup/src/frontend/shared/ui/apple_glass.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_activity_animations.dart';
+import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 class RuntimeMessageComposer extends StatefulWidget {
   const RuntimeMessageComposer({

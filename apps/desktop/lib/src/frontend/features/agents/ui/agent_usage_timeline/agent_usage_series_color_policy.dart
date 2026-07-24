@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_client/src/frontend/shared/ui/theme.dart';
+import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 Color agentUsageSeriesColor(LicoThemeColors colors, String label) {
   final key = _usageColorKey(label);

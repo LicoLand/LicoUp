@@ -1,9 +1,9 @@
 import 'package:flutter/foundation.dart';
-import 'package:flutter_client/src/contracts/presentation/layout_environment.dart';
-import 'package:flutter_client/src/contracts/presentation/layout_profile.dart';
-import 'package:flutter_client/src/contracts/presentation/layout_selection.dart';
-import 'package:flutter_client/src/contracts/presentation/layout_variant.dart';
-import 'package:flutter_client/src/contracts/presentation/presentation_preferences.dart';
+import 'package:licoup/src/contracts/presentation/layout_environment.dart';
+import 'package:licoup/src/contracts/presentation/layout_profile.dart';
+import 'package:licoup/src/contracts/presentation/layout_selection.dart';
+import 'package:licoup/src/contracts/presentation/layout_variant.dart';
+import 'package:licoup/src/contracts/presentation/presentation_preferences.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -38,7 +38,7 @@ void main() {
     }
   });
 
-  test('platform preferred defaults map Native vs Lico Arc fallback', () {
+  test('platform preferred defaults map Native vs LicoUp fallback', () {
     expect(
       LayoutProfileDefaults.preferredForPlatform(TargetPlatform.macOS),
       LayoutProfileId.parse('native'),

@@ -1,6 +1,6 @@
-import 'package:flutter_client/src/application/features/skill_hub/controller/skill_hub_status.dart';
-import 'package:flutter_client/src/application/features/skill_hub/controller/skill_operation_controller.dart';
-import 'package:flutter_client/src/application/features/skill_hub/services/skill_delete_service.dart';
+import 'package:licoup/src/application/features/skill_hub/controller/skill_hub_status.dart';
+import 'package:licoup/src/application/features/skill_hub/controller/skill_operation_controller.dart';
+import 'package:licoup/src/application/features/skill_hub/services/skill_delete_service.dart';
 
 class SkillDeleteController extends SkillOperationController {
   SkillDeleteController({

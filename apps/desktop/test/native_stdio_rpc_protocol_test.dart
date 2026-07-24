@@ -1,9 +1,9 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
-import 'package:flutter_client/src/platform/native_client/agent_service_stdio_rpc/protocol.dart';
-import 'package:flutter_client/src/platform/native_client/agent_service_stdio_rpc/response_codec.dart';
-import 'package:flutter_client/src/platform/native_client/native_cli_ports.dart';
+import 'package:licoup/src/platform/native_client/agent_service_stdio_rpc/protocol.dart';
+import 'package:licoup/src/platform/native_client/agent_service_stdio_rpc/response_codec.dart';
+import 'package:licoup/src/platform/native_client/native_cli_ports.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -65,7 +65,7 @@ void main() {
         requestId: 'request-1',
         workflowId: 'workflow-1',
       );
-      expect(failure.errorCode, 'authorization_required');
+      expect(failure.error!.code.wireName, 'authorization_required');
 
       expect(
         () => decodeStdioRpcCommandReply(

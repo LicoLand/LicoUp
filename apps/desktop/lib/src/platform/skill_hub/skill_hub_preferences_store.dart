@@ -1,5 +1,5 @@
-import 'package:flutter_client/src/contracts/skill_hub_preferences.dart';
-import 'package:flutter_client/src/platform/mobile_relay/mobile_relay_json_store.dart';
+import 'package:licoup/src/contracts/skill_hub_preferences.dart';
+import 'package:licoup/src/platform/mobile_relay/mobile_relay_json_store.dart';
 
 class PlatformSkillHubPreferencesStore implements SkillHubPreferencesStore {
   const PlatformSkillHubPreferencesStore({

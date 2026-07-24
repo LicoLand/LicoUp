@@ -37,14 +37,14 @@ async function main() {
   const missing = [];
   for (const root of roots) {
     const kind = root.includes(`${path.sep}runnable${path.sep}`) ? "runnable" : "bundle";
-    for (const relativePath of ["flutter_client.exe", "lico-client.exe"]) {
+    for (const relativePath of ["licoup.exe", "licoup.exe"]) {
       const size = await fileSize(path.join(root, relativePath));
       if (size <= 0) {
         missing.push(`${kind} missing non-empty ${relativePath}`);
       }
     }
     for (const relativePath of [
-      path.join("package-metadata", "lico-client", "packaging-modules.json"),
+      path.join("package-metadata", "licoup", "packaging-modules.json"),
       path.join("package-metadata", "windows", "client-manifest.json"),
       "README-windows.txt"
     ]) {
@@ -73,15 +73,15 @@ async function main() {
       if (!/^sha256:[a-f0-9]{64}$/u.test(String(manifest.sourceStateDigest || ""))) {
         missing.push(`${kind} Windows client manifest source digest is invalid`);
       }
-      if (manifest.executables?.flutterClient !== "flutter_client.exe") {
+      if (manifest.executables?.flutterClient !== "licoup.exe") {
         missing.push(`${kind} Windows client manifest has wrong flutterClient`);
       }
-      if (manifest.executables?.licoClient !== "lico-client.exe") {
+      if (manifest.executables?.licoClient !== "licoup.exe") {
         missing.push(`${kind} Windows client manifest has wrong licoClient`);
       }
       for (const [key, relativePath] of [
-        ["flutterClient", "flutter_client.exe"],
-        ["licoClient", "lico-client.exe"],
+        ["flutterClient", "licoup.exe"],
+        ["licoClient", "licoup.exe"],
       ]) {
         const artifactPath = path.join(root, relativePath);
         const declared = manifest.artifacts?.[key] || {};

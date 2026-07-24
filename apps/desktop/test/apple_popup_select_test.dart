@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:flutter_client/src/frontend/shared/ui/apple_glass.dart';
-import 'package:flutter_client/src/frontend/shared/ui/apple_popup_select.dart';
-import 'package:flutter_client/src/frontend/shared/ui/theme.dart';
+import 'package:licoup/src/frontend/shared/ui/apple_glass.dart';
+import 'package:licoup/src/frontend/shared/ui/apple_popup_select.dart';
+import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 void main() {
   testWidgets('ApplePopupSelect uses glass control and brand-yellow focus', (

@@ -48,7 +48,7 @@ void main() {
       };
       final graph = <String, Set<String>>{};
       final importPattern = RegExp(
-        r"import 'package:flutter_client/src/frontend/features/mobile_relay/ui/"
+        r"import 'package:licoup/src/frontend/features/mobile_relay/ui/"
         r"(mobile_[^']+\.dart)';",
       );
 

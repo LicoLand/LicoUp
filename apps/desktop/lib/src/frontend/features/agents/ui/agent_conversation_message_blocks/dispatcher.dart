@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 
-import 'package:flutter_client/src/contracts/agent_conversation_models.dart';
-import 'package:flutter_client/src/frontend/features/agents/ui/agent_conversation_message_blocks/role_blocks.dart';
-import 'package:flutter_client/src/frontend/features/agents/ui/agent_conversation_message_blocks/subagent.dart';
-import 'package:flutter_client/src/frontend/features/agents/ui/agent_render_adapter.dart';
+import 'package:licoup/src/contracts/agent_conversation_models.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_message_blocks/role_blocks.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_message_blocks/subagent.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_render_adapter.dart';
 
 class AgentConversationMessageBlock extends StatelessWidget {
   const AgentConversationMessageBlock({

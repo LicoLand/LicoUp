@@ -1,8 +1,8 @@
 import 'dart:io';
 import 'dart:math';
 
-import 'package:flutter_client/src/contracts/client_log_export.dart';
-import 'package:flutter_client/src/platform/storage/portable_data_root.dart';
+import 'package:licoup/src/contracts/client_log_export.dart';
+import 'package:licoup/src/platform/storage/portable_data_root.dart';
 import 'package:path/path.dart' as p;
 
 class ClientLogExportService implements ClientLogExporter {

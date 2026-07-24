@@ -1,11 +1,11 @@
-import 'package:flutter_client/src/contracts/mobile_relay/mobile_relay_models.dart';
-import 'package:flutter_client/src/contracts/mobile_relay_control.dart';
-import 'package:flutter_client/src/contracts/generated/secure_mesh.g.dart';
-import 'package:flutter_client/src/contracts/skill_hub.dart';
-import 'package:flutter_client/src/platform/mobile_relay/mobile_relay_service.dart'
+import 'package:licoup/src/contracts/mobile_relay/mobile_relay_models.dart';
+import 'package:licoup/src/contracts/mobile_relay_control.dart';
+import 'package:licoup/src/contracts/generated/secure_mesh.g.dart';
+import 'package:licoup/src/contracts/skill_hub.dart';
+import 'package:licoup/src/platform/mobile_relay/mobile_relay_service.dart'
     as platform;
-import 'package:flutter_client/src/platform/native_client/agent_service.dart';
-import 'package:flutter_client/src/platform/secure_mesh/secure_mesh_capability_service.dart';
+import 'package:licoup/src/platform/native_client/agent_service.dart';
+import 'package:licoup/src/platform/secure_mesh/secure_mesh_capability_service.dart';
 
 /// Application composition adapter around the stable platform facade.
 final class MobileRelayGatewayAdapter

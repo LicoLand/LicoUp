@@ -95,12 +95,12 @@ export function isMacosBuildArtifactCandidate(candidate) {
 
 function defaultCleanBuildRoot() {
   if (process.platform === "darwin") {
-    return path.join(path.sep, "private", "tmp", "lico-client-build");
+    return path.join(path.sep, "private", "tmp", "licoup-build");
   }
   if (process.platform === "win32") {
-    return path.join(os.tmpdir(), "lico-client-build");
+    return path.join(os.tmpdir(), "licoup-build");
   }
-  return path.join(path.sep, "tmp", "lico-client-build");
+  return path.join(path.sep, "tmp", "licoup-build");
 }
 
 function isExcludedFlutterSourcePath(sourcePath) {

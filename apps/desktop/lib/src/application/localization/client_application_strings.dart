@@ -1,7 +1,7 @@
 import 'dart:ui';
 
-import 'package:flutter_client/src/contracts/locale_preferences.dart';
-import 'package:flutter_client/src/contracts/generated/client_error.g.dart';
+import 'package:licoup/src/contracts/locale_preferences.dart';
+import 'package:licoup/src/contracts/generated/client_error.g.dart';
 
 /// Minimal application-layer messages used by controllers.
 ///
@@ -85,7 +85,7 @@ final class ClientApplicationStrings {
     'Client logs': '客户端日志',
     'Conversation archive': '对话归档',
     'Error': '错误',
-    'LicoArc client': '客户端',
+    'LicoUp client': '客户端',
     'Mobile agents': '移动端智能体',
     'Mobile relay': '移动中转',
     'Project archive': '项目归档',

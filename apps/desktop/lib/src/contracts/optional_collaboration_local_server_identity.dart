@@ -1,4 +1,4 @@
-import 'package:flutter_client/src/contracts/optional_collaboration_local_server_parsing.dart';
+import 'package:licoup/src/contracts/optional_collaboration_local_server_parsing.dart';
 
 final class OptionalLocalRunnerBindings {
   const OptionalLocalRunnerBindings({
@@ -46,9 +46,9 @@ final class OptionalLocalRunnerBindings {
     );
     if (!const {'macos', 'windows', 'ubuntu'}.contains(platform) ||
         !const {'x86_64', 'aarch64'}.contains(architecture) ||
-        runnerContract != 'licoarc.local-server-runner.v1' ||
-        healthContract != 'licoarc.local-server-health.v1' ||
-        capabilitiesContract != 'licoarc.local-server-capabilities.v1') {
+        runnerContract != 'licoup.local-server-runner.v1' ||
+        healthContract != 'licoup.local-server-health.v1' ||
+        capabilitiesContract != 'licoup.local-server-capabilities.v1') {
       throw const FormatException(
         'optional_local_server_runner_contract_invalid',
       );

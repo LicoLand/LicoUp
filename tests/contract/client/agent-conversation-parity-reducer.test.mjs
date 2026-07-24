@@ -31,7 +31,7 @@ const inventory = JSON.parse(
   readFileSync(
     resolve(
       REPOSITORY_ROOT,
-      "crates/lico-client-native/resources/agent-conversation-drivers.json",
+      "crates/licoup-native/resources/agent-conversation-drivers.json",
     ),
     "utf8",
   ),
@@ -40,7 +40,7 @@ const readinessResource = JSON.parse(
   readFileSync(
     resolve(
       REPOSITORY_ROOT,
-      "crates/lico-client-native/resources/agent-conversation-readiness.json",
+      "crates/licoup-native/resources/agent-conversation-readiness.json",
     ),
     "utf8",
   ),
@@ -49,7 +49,7 @@ const canonicalEvidence = JSON.parse(
   readFileSync(
     resolve(
       REPOSITORY_ROOT,
-      "crates/lico-client-native/resources/agent-conversation-evidence.json",
+      "crates/licoup-native/resources/agent-conversation-evidence.json",
     ),
     "utf8",
   ),

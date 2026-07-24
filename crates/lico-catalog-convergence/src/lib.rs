@@ -1,4 +1,4 @@
-//! Portable catalog convergence engine shared by LicoArc desktop and mobile targets.
+//! Portable catalog convergence engine shared by LicoUp desktop and mobile targets.
 //!
 //! Target adapters must depend on this crate for revision, cache, cohort, and receipt
 //! policy. Platform bridges must not reimplement those rules.

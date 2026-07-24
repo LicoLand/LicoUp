@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 
-import 'package:flutter_client/src/contracts/agent_conversation_models.dart';
-import 'package:flutter_client/src/contracts/target_candidate.dart';
-import 'package:flutter_client/src/frontend/l10n/lico_strings.dart';
-import 'package:flutter_client/src/frontend/features/agents/ui/agent_conversation_event_card.dart';
-import 'package:flutter_client/src/frontend/features/agents/ui/agent_conversation_message_blocks.dart';
-import 'package:flutter_client/src/frontend/features/agents/ui/agent_render_adapter.dart';
-import 'package:flutter_client/src/frontend/shared/ui/theme.dart';
+import 'package:licoup/src/contracts/agent_conversation_models.dart';
+import 'package:licoup/src/contracts/target_candidate.dart';
+import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_event_card.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_message_blocks.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_render_adapter.dart';
+import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 class AgentConversationMessageList extends StatefulWidget {
   const AgentConversationMessageList({

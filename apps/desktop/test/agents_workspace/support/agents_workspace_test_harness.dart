@@ -1,17 +1,17 @@
-import 'package:flutter_client/src/frontend/features/agents/ui/agent_render_adapter.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_render_adapter.dart';
 
 export 'dart:convert';
 
 export 'package:flutter/material.dart';
 export 'package:flutter/services.dart';
-export 'package:flutter_client/src/application/controller/client_controller.dart';
-export 'package:flutter_client/src/backend/features/agents/services/agent_conversation_service.dart';
-export 'package:flutter_client/src/frontend/features/agents/ui/agent_conversation_workspace.dart';
-export 'package:flutter_client/src/frontend/features/agents/ui/agent_render_adapter.dart';
-export 'package:flutter_client/src/frontend/features/agents/ui/agent_workspace_sidebar.dart';
-export 'package:flutter_client/src/frontend/l10n/lico_strings.dart';
-export 'package:flutter_client/src/frontend/shared/ui/theme.dart';
-export 'package:flutter_client/src/platform/native_client/agent_service.dart';
+export 'package:licoup/src/application/controller/client_controller.dart';
+export 'package:licoup/src/backend/features/agents/services/agent_conversation_service.dart';
+export 'package:licoup/src/frontend/features/agents/ui/agent_conversation_workspace.dart';
+export 'package:licoup/src/frontend/features/agents/ui/agent_render_adapter.dart';
+export 'package:licoup/src/frontend/features/agents/ui/agent_workspace_sidebar.dart';
+export 'package:licoup/src/frontend/l10n/lico_strings.dart';
+export 'package:licoup/src/frontend/shared/ui/theme.dart';
+export 'package:licoup/src/platform/native_client/agent_service.dart';
 export 'package:flutter_localizations/flutter_localizations.dart';
 export 'package:flutter_test/flutter_test.dart';
 

@@ -1,17 +1,17 @@
 import 'package:flutter/foundation.dart' show ChangeNotifier, VoidCallback;
 
-import 'package:flutter_client/src/application/controller/assembly/client_component_assembly_contracts.dart';
-import 'package:flutter_client/src/application/features/settings/controller/client_log_export_controller.dart';
-import 'package:flutter_client/src/application/features/settings/controller/client_update_controller.dart';
-import 'package:flutter_client/src/application/features/settings/controller/directory_path_controller.dart';
-import 'package:flutter_client/src/application/features/settings/controller/optional_collaboration_controller.dart';
-import 'package:flutter_client/src/backend/features/settings/services/client_update_service.dart';
-import 'package:flutter_client/src/backend/features/settings/services/optional_collaboration_service.dart';
-import 'package:flutter_client/src/contracts/optional_collaboration_gateway.dart';
-import 'package:flutter_client/src/platform/native_client/agent_service.dart';
-import 'package:flutter_client/src/platform/runtime_platform_bridge.dart';
-import 'package:flutter_client/src/platform/storage/client_log_export_service.dart';
-import 'package:flutter_client/src/platform/storage/portable_data_root.dart';
+import 'package:licoup/src/application/controller/assembly/client_component_assembly_contracts.dart';
+import 'package:licoup/src/application/features/settings/controller/client_log_export_controller.dart';
+import 'package:licoup/src/application/features/settings/controller/client_update_controller.dart';
+import 'package:licoup/src/application/features/settings/controller/directory_path_controller.dart';
+import 'package:licoup/src/application/features/settings/controller/optional_collaboration_controller.dart';
+import 'package:licoup/src/backend/features/settings/services/client_update_service.dart';
+import 'package:licoup/src/backend/features/settings/services/optional_collaboration_service.dart';
+import 'package:licoup/src/contracts/optional_collaboration_gateway.dart';
+import 'package:licoup/src/platform/native_client/agent_service.dart';
+import 'package:licoup/src/platform/runtime_platform_bridge.dart';
+import 'package:licoup/src/platform/storage/client_log_export_service.dart';
+import 'package:licoup/src/platform/storage/portable_data_root.dart';
 
 final class ClientSettingsComponentAssembly {
   ClientSettingsComponentAssembly({

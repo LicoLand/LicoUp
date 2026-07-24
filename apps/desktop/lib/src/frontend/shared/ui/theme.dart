@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 
-import 'package:flutter_client/src/frontend/shared/appearance/appearance_preset_config.dart';
-import 'package:flutter_client/src/frontend/shared/ui/apple_buttons.dart';
-import 'package:flutter_client/src/frontend/shared/ui/theme_colors.dart';
+import 'package:licoup/src/frontend/shared/appearance/appearance_preset_config.dart';
+import 'package:licoup/src/frontend/shared/ui/apple_buttons.dart';
+import 'package:licoup/src/frontend/shared/ui/theme_colors.dart';
 
-export 'package:flutter_client/src/frontend/shared/ui/theme_colors.dart';
+export 'package:licoup/src/frontend/shared/ui/theme_colors.dart';
 
 ThemeData buildLicoTheme({
   String presetId = AppearancePresetIds.licoCrystal,

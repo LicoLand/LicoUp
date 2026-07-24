@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:flutter_client/src/application/features/agents/conversation/conversation_turn_queue.dart';
-import 'package:flutter_client/src/contracts/target_candidate.dart';
+import 'package:licoup/src/application/features/agents/conversation/conversation_turn_queue.dart';
+import 'package:licoup/src/contracts/target_candidate.dart';
 
 void main() {
   test('bounded FIFO preserves submission order and rejects duplicate ids', () {

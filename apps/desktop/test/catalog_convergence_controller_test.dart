@@ -1,11 +1,11 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:flutter_client/src/application/controller/client_controller.dart';
-import 'package:flutter_client/src/application/features/catalog_convergence/controller/catalog_convergence_controller.dart';
-import 'package:flutter_client/src/contracts/catalog_convergence/catalog_convergence_gateway.dart';
-import 'package:flutter_client/src/contracts/catalog_convergence/catalog_convergence_models.dart';
-import 'package:flutter_client/src/platform/storage/portable_data_root.dart';
+import 'package:licoup/src/application/controller/client_controller.dart';
+import 'package:licoup/src/application/features/catalog_convergence/controller/catalog_convergence_controller.dart';
+import 'package:licoup/src/contracts/catalog_convergence/catalog_convergence_gateway.dart';
+import 'package:licoup/src/contracts/catalog_convergence/catalog_convergence_models.dart';
+import 'package:licoup/src/platform/storage/portable_data_root.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'fixtures/client_controller/support/fake_agent_service.dart';

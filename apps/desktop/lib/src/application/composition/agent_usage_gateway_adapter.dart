@@ -1,6 +1,6 @@
-import 'package:flutter_client/src/application/features/agents/contracts/agent_usage_gateway.dart';
-import 'package:flutter_client/src/backend/features/agents/services/agent_usage_service.dart';
-import 'package:flutter_client/src/contracts/agent_command_runner.dart';
+import 'package:licoup/src/application/features/agents/contracts/agent_usage_gateway.dart';
+import 'package:licoup/src/backend/features/agents/services/agent_usage_service.dart';
+import 'package:licoup/src/contracts/agent_command_runner.dart';
 
 final class AgentUsageGatewayAdapter implements AgentUsageGateway {
   const AgentUsageGatewayAdapter({required this.service, required this.runner});

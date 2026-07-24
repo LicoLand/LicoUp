@@ -1,8 +1,8 @@
-import 'package:flutter_client/src/contracts/optional_collaboration_local_server_state.dart';
-import 'package:flutter_client/src/contracts/optional_collaboration_mcp_workflow_models.dart';
-import 'package:flutter_client/src/contracts/optional_collaboration_workflow_kind.dart';
-import 'package:flutter_client/src/contracts/optional_collaboration_workflow_parsing.dart';
-import 'package:flutter_client/src/contracts/optional_collaboration_workflow_plan_models.dart';
+import 'package:licoup/src/contracts/optional_collaboration_local_server_state.dart';
+import 'package:licoup/src/contracts/optional_collaboration_mcp_workflow_models.dart';
+import 'package:licoup/src/contracts/optional_collaboration_workflow_kind.dart';
+import 'package:licoup/src/contracts/optional_collaboration_workflow_parsing.dart';
+import 'package:licoup/src/contracts/optional_collaboration_workflow_plan_models.dart';
 
 final class OptionalCollaborationWorkflowApplyResult {
   const OptionalCollaborationWorkflowApplyResult({

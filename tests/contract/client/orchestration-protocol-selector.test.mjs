@@ -5,15 +5,15 @@ import test from "node:test";
 
 const paths = {
   selector:
-    "crates/lico-client-native/src/platform/runtime_adapters/protocol_selector.rs",
-  adapters: "crates/lico-client-native/src/platform/runtime_adapters.rs",
-  lane: "crates/lico-client-native/src/platform/conversation_lane.rs",
+    "crates/licoup-native/src/platform/runtime_adapters/protocol_selector.rs",
+  adapters: "crates/licoup-native/src/platform/runtime_adapters.rs",
+  lane: "crates/licoup-native/src/platform/conversation_lane.rs",
   authRun: "tools/scripts/client-agent-auth-status/run.mjs",
   authProbe: "tools/scripts/client-agent-auth-status/probe.mjs",
   rustAcceptance:
-    "crates/lico-client-native/src/platform/runtime_adapters/tests/protocol_selector.rs",
+    "crates/licoup-native/src/platform/runtime_adapters/tests/protocol_selector.rs",
   rustRegistration:
-    "crates/lico-client-native/src/platform/runtime_adapters/tests/mod.rs",
+    "crates/licoup-native/src/platform/runtime_adapters/tests/mod.rs",
 };
 
 const fileBytes = Object.fromEntries(

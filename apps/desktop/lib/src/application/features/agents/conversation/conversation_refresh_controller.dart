@@ -1,13 +1,13 @@
 import 'dart:async';
 
-import 'package:flutter_client/src/application/features/agents/conversation/agent_conversation_controller.dart'
+import 'package:licoup/src/application/features/agents/conversation/agent_conversation_controller.dart'
     show
         conversationSessionLoadFailedSelectionId,
         conversationSessionReadbackPendingSelectionId;
-import 'package:flutter_client/src/application/features/agents/policy/conversation_refresh_policy.dart';
-import 'package:flutter_client/src/application/features/agents/workspace/agent_workspace_coordinator.dart';
-import 'package:flutter_client/src/contracts/agent_orchestration_target.dart';
-import 'package:flutter_client/src/contracts/presentation/semantic_destination.dart';
+import 'package:licoup/src/application/features/agents/policy/conversation_refresh_policy.dart';
+import 'package:licoup/src/application/features/agents/workspace/agent_workspace_coordinator.dart';
+import 'package:licoup/src/contracts/agent_orchestration_target.dart';
+import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 
 mixin ConversationRefreshController on AgentWorkspaceCoordinator {
   ConversationRefreshPriority get conversationRefreshPriority {

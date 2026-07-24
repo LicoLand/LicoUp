@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import 'package:flutter_client/src/contracts/optional_collaboration_workflow_models.dart';
+import 'package:licoup/src/contracts/optional_collaboration_workflow_models.dart';
 
 final class OptionalCollaborationWorkflowPlanReview extends StatelessWidget {
   const OptionalCollaborationWorkflowPlanReview({
@@ -151,11 +151,11 @@ final class OptionalCollaborationWorkflowPlanReview extends StatelessWidget {
             Text(
               plan.kind == OptionalCollaborationWorkflowKind.localDeployment
                   ? (isChinese
-                        ? 'LicoArc 自有适配器会组装摘要绑定的服务端和受签名固定 runner。结果处于待部署状态，runner 需要后续单独确认才会执行；组装不执行插件命令或脚本，也不授权外部传输。'
-                        : 'The LicoArc-owned adapter assembles a digest-bound server and signed fixed runner. The result awaits deployment, and the runner requires a later separate confirmation to execute. Assembly does not run plugin commands or scripts and does not authorize external transfer.')
+                        ? 'LicoUp 自有适配器会组装摘要绑定的服务端和受签名固定 runner。结果处于待部署状态，runner 需要后续单独确认才会执行；组装不执行插件命令或脚本，也不授权外部传输。'
+                        : 'The LicoUp-owned adapter assembles a digest-bound server and signed fixed runner. The result awaits deployment, and the runner requires a later separate confirmation to execute. Assembly does not run plugin commands or scripts and does not authorize external transfer.')
                   : (isChinese
                         ? '此计划不会在安装时执行插件代码、不会修改厂商配置，也不授权任何外部文件传输；认证审批代理不可用，注册保持未激活。'
-                        : 'This plan does not execute plugin code during installation, modify vendor configuration, or authorize external transfer. Registrations remain inactive because the authenticated LicoArc review broker is unavailable.'),
+                        : 'This plan does not execute plugin code during installation, modify vendor configuration, or authorize external transfer. Registrations remain inactive because the authenticated LicoUp review broker is unavailable.'),
               style: Theme.of(context).textTheme.bodySmall,
             ),
             CheckboxListTile(

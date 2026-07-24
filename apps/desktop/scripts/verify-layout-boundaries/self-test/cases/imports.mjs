@@ -16,39 +16,39 @@ export async function runImportCases(fixtureRoot, profiles, surfaces) {
   const forbiddenImports = [
     [
       "layout_shared_styled_chrome_import",
-      "package:flutter_client/src/frontend/layout/chrome/shared_shell.dart",
+      "package:licoup/src/frontend/layout/chrome/shared_shell.dart",
     ],
     [
       "layout_complete_controller_import",
-      "package:flutter_client/src/application/controller/client_controller.dart",
+      "package:licoup/src/application/controller/client_controller.dart",
     ],
     [
       "layout_controller_scope_import",
-      "package:flutter_client/src/application/features/example/controller_scope.dart",
+      "package:licoup/src/application/features/example/controller_scope.dart",
     ],
     [
       "layout_concrete_theme_import",
-      "package:flutter_client/src/frontend/shared/ui/theme.dart",
+      "package:licoup/src/frontend/shared/ui/theme.dart",
     ],
     [
       "layout_shared_feature_ui_import",
-      "package:flutter_client/src/frontend/features/agents/agents_canvas.dart",
+      "package:licoup/src/frontend/features/agents/agents_canvas.dart",
     ],
     [
       "layout_shell_implementation_import",
-      "package:flutter_client/src/frontend/shell/client_shell.dart",
+      "package:licoup/src/frontend/shell/client_shell.dart",
     ],
     [
       "layout_application_import_forbidden",
-      "package:flutter_client/src/application/features/agents/agents_service.dart",
+      "package:licoup/src/application/features/agents/agents_service.dart",
     ],
     [
       "layout_implementation_import",
-      "package:flutter_client/src/backend/agents/agents_backend.dart",
+      "package:licoup/src/backend/agents/agents_backend.dart",
     ],
     [
       "layout_implementation_import",
-      "package:flutter_client/src/platform/storage/preferences.dart",
+      "package:licoup/src/platform/storage/preferences.dart",
     ],
   ];
   for (const [code, specifier] of forbiddenImports) {
@@ -70,7 +70,7 @@ export async function runImportCases(fixtureRoot, profiles, surfaces) {
     bundlePath("alpha", "desktop"),
     `import 'package:flutter/widgets.dart'
   if (dart.library.io)
-  'package:flutter_client/src/application/controller/client_controller.dart';\n`,
+  'package:licoup/src/application/controller/client_controller.dart';\n`,
   );
   await expectViolation("layout_complete_controller_import", () =>
     verifyLayoutBoundaries({ repositoryRoot: fixtureRoot }),

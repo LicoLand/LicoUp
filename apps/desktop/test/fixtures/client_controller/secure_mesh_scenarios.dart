@@ -60,7 +60,7 @@ void registerClientSecureMeshScenarios() {
     );
     expect(
       controller.mobilePairingPresentation?.inviteText,
-      startsWith('licoarc://pair?invite='),
+      startsWith('licoup://pair?invite='),
     );
     expect(controller.mobileRelayConfig.lastPairingCode, isEmpty);
     expect(controller.mobileRelayConfig.hasPairing, isTrue);
@@ -157,7 +157,7 @@ void registerClientSecureMeshScenarios() {
         .encode(utf8.encode(jsonEncode(invite)))
         .replaceAll('=', '');
 
-    await controller.claimMobilePairingInvite('licoarc://pair?invite=$token');
+    await controller.claimMobilePairingInvite('licoup://pair?invite=$token');
 
     expect(relayService.claimPairingCalls, 1);
     expect(relayService.lastPairingInvite?['pairingId'], 'pair-1');

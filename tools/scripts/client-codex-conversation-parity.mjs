@@ -63,8 +63,8 @@ function resolveCodexBinary() {
 function resolveSidecarBinary() {
   const candidates = [
     process.env.LICO_CLIENT_PATH,
-    join(workspaceRoot, "target", "debug", "lico-client"),
-    join(workspaceRoot, "crates", "lico-client-native", "target", "debug", "lico-client"),
+    join(workspaceRoot, "target", "debug", "licoup"),
+    join(workspaceRoot, "crates", "licoup-native", "target", "debug", "licoup"),
   ].filter(Boolean);
   const binary = candidates.find((candidate) => existsSync(candidate));
   if (!binary) {
@@ -269,7 +269,7 @@ class AppServerClient {
 
 async function initialize(client) {
   await client.request("initialize", {
-    clientInfo: { name: "lico-arc-parity", title: "Lico Arc Parity", version: "1" },
+    clientInfo: { name: "lico-up-parity", title: "LicoUp Parity", version: "1" },
     capabilities: { experimentalApi: true },
   });
   client.notify("initialized");
@@ -487,7 +487,7 @@ try {
   await nativeClient.close();
   nativeClient = null;
 
-  stage = "lico-arc-entry";
+  stage = "lico-up-entry";
   const sidecarResult = await runSidecar(
     sidecar,
     {
@@ -551,7 +551,7 @@ try {
   requireCondition(nativeOutput.length > 0, "native_final_reply_missing");
   requireCondition(nativeOutput.includes(nativeCanary), "native_final_reply_canary_missing");
   requireCondition(nativeOutput === nativeCanary, "native_final_reply_not_exact");
-  requireCondition(sidecarResult?.output?.trim() === arcCanary, "lico_arc_final_reply_mismatch");
+  requireCondition(sidecarResult?.output?.trim() === arcCanary, "lico_up_final_reply_mismatch");
   requireCondition(settingsParity, "effective_settings_mismatch");
   requireCondition(historyParity, "history_projection_mismatch");
   requireCondition(promptAbsentFromArgv, "prompt_exposed_in_argv");
@@ -560,7 +560,7 @@ try {
   console.log(JSON.stringify({
     ok: true,
     nativeEntryCompleted: true,
-    licoArcEntryCompleted: true,
+    licoUpEntryCompleted: true,
     canonicalTransport,
     sameThread,
     finalReplyParity,

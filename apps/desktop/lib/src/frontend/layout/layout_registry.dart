@@ -1,12 +1,12 @@
 import 'dart:collection';
 
-import 'package:flutter_client/src/application/features/layout/layout_catalog.dart';
-import 'package:flutter_client/src/contracts/presentation/layout_environment.dart';
-import 'package:flutter_client/src/contracts/presentation/layout_profile.dart';
-import 'package:flutter_client/src/contracts/presentation/layout_state_namespace.dart';
-import 'package:flutter_client/src/contracts/presentation/layout_variant.dart';
-import 'package:flutter_client/src/frontend/layout/layout_definition.dart';
-import 'package:flutter_client/src/frontend/layout/layout_surface_bundle.dart';
+import 'package:licoup/src/application/features/layout/layout_catalog.dart';
+import 'package:licoup/src/contracts/presentation/layout_environment.dart';
+import 'package:licoup/src/contracts/presentation/layout_profile.dart';
+import 'package:licoup/src/contracts/presentation/layout_state_namespace.dart';
+import 'package:licoup/src/contracts/presentation/layout_variant.dart';
+import 'package:licoup/src/frontend/layout/layout_definition.dart';
+import 'package:licoup/src/frontend/layout/layout_surface_bundle.dart';
 
 final class RegisteredLayoutVariant {
   const RegisteredLayoutVariant({required this.bundle, required this.variant});

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import 'package:flutter_client/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 
 Widget buildWorkbenchDesktopPreview(BuildContext context) =>
     const WorkbenchDesktopPreview();

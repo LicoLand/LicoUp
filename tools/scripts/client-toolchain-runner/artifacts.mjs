@@ -5,7 +5,7 @@ import {
 import { ROOT } from "./constants.mjs";
 
 const FLUTTER_TEST_OUTPUT = "apps/desktop/build";
-const ANDROID_NATIVE_TEST_OUTPUT = "build/crates/lico-client-native/android-target";
+const ANDROID_NATIVE_TEST_OUTPUT = "build/crates/licoup-native/android-target";
 
 function workspaceRelative(cwd) {
   return path.relative(ROOT, path.resolve(cwd)).split(path.sep).join("/");

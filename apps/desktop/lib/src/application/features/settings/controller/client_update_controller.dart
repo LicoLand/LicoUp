@@ -1,8 +1,8 @@
 import 'package:flutter/foundation.dart';
 
-import 'package:flutter_client/src/contracts/agent_command_runner.dart';
-import 'package:flutter_client/src/contracts/client_update_gateway.dart';
-import 'package:flutter_client/src/contracts/client_update_models.dart';
+import 'package:licoup/src/contracts/agent_command_runner.dart';
+import 'package:licoup/src/contracts/client_update_gateway.dart';
+import 'package:licoup/src/contracts/client_update_models.dart';
 
 final class ClientUpdateStatusUpdate {
   const ClientUpdateStatusUpdate({

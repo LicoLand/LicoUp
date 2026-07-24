@@ -2,8 +2,8 @@ import 'dart:convert';
 
 import 'package:flutter/services.dart';
 
-import 'package:flutter_client/src/contracts/agent_render_adapter_source.dart';
-import 'package:flutter_client/src/frontend/shared/ui/message_markdown.dart';
+import 'package:licoup/src/contracts/agent_render_adapter_source.dart';
+import 'package:licoup/src/frontend/shared/ui/message_markdown.dart';
 
 enum AgentAssistantLayout { document, bubble }
 

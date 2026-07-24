@@ -4,7 +4,7 @@
   "sourceChecks": [
     {
       "id": "semantic-archive-privacy-defaults-hide-raw",
-      "file": "crates/lico-client-native/src/domain/conversation/event_semantics.rs",
+      "file": "crates/licoup-native/src/domain/conversation/event_semantics.rs",
       "tokens": [
         "privacy_defaults",
         "\"defaultView\": \"thread\"",
@@ -17,7 +17,7 @@
     },
     {
       "id": "semantic-archive-markdown-keeps-diagnostics-explicit",
-      "file": "crates/lico-client-native/src/domain/conversation_semantic/markdown.rs",
+      "file": "crates/licoup-native/src/domain/conversation_semantic/markdown.rs",
       "tokens": [
         "Default view: **thread**",
         "## Raw evidence (diagnostics)"
@@ -69,7 +69,7 @@
     },
     {
       "id": "acp-archive-layer-is-protected-payload-class",
-      "file": "crates/lico-client-native/src/core/secure_mesh_acp.rs",
+      "file": "crates/licoup-native/src/core/secure_mesh_acp.rs",
       "tokens": [
         "ArchiveLayer",
         "archive_layer",

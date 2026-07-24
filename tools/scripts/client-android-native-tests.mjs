@@ -18,11 +18,11 @@ const androidRoot = path.join(workspaceRoot, "apps", "desktop", "android");
 const reportRef = "build/reports/secure-mesh-android-platform-crypto-acceptance.json";
 const verifier = "tools/scripts/client-android-native-tests.mjs";
 const testClasses = [
-  "com.liko.arc.ReleaseAcceptanceChannelTest",
-  "com.liko.arc.ReleaseAcceptanceIngressTest",
-  "com.liko.arc.ReleaseClosureBindingTest",
-  "com.liko.arc.SecureMeshAndroidAdaptiveCustodyTest",
-  "com.liko.arc.SecureMeshAndroidAuthorizationPolicyTest"
+  "land.lico.licoup.ReleaseAcceptanceChannelTest",
+  "land.lico.licoup.ReleaseAcceptanceIngressTest",
+  "land.lico.licoup.ReleaseClosureBindingTest",
+  "land.lico.licoup.SecureMeshAndroidAdaptiveCustodyTest",
+  "land.lico.licoup.SecureMeshAndroidAuthorizationPolicyTest"
 ];
 const rustFfiTestFilters = Object.freeze([
   "mobile_ffi_native_action_contract_is_shared_by_platform_bridges",
@@ -30,7 +30,7 @@ const rustFfiTestFilters = Object.freeze([
 ]);
 const artifactTargets = Object.freeze([
   "apps/desktop/build",
-  "build/crates/lico-client-native/android-target"
+  "build/crates/licoup-native/android-target"
 ]);
 
 function javaExecutable(javaHome) {
@@ -144,7 +144,7 @@ try {
   }
   const rustFfiChecks = rustFfiTestFilters.map((filter) => runCargoTestFilter({
     repoRoot: workspaceRoot,
-    manifestPath: "crates/lico-client-native/Cargo.toml",
+    manifestPath: "crates/licoup-native/Cargo.toml",
     filter,
     env,
     sanitizeError: redactOutput

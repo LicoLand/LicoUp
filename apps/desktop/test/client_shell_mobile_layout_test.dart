@@ -3,23 +3,23 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
-import 'package:flutter_client/src/application/controller/client_controller.dart';
-import 'package:flutter_client/src/contracts/agent_command_runner.dart';
-import 'package:flutter_client/src/contracts/agent_usage_models.dart';
-import 'package:flutter_client/src/frontend/l10n/lico_strings.dart';
-import 'package:flutter_client/src/contracts/presentation/semantic_destination.dart';
-import 'package:flutter_client/src/contracts/presentation/layout_profile.dart';
-import 'package:flutter_client/src/contracts/presentation/presentation_preferences.dart';
-import 'package:flutter_client/src/backend/features/agents/services/agent_conversation_service.dart';
-import 'package:flutter_client/src/platform/native_client/agent_service.dart';
-import 'package:flutter_client/src/platform/mobile_relay/mobile_relay_service.dart';
-import 'package:flutter_client/src/platform/storage/portable_data_root.dart';
-import 'package:flutter_client/src/platform/secure_mesh/secure_mesh_android_bridge.dart';
-import 'package:flutter_client/src/platform/secure_mesh/secure_mesh_mobile_bridge.dart';
-import 'package:flutter_client/src/frontend/shell/client_shell.dart';
-import 'package:flutter_client/src/frontend/features/mobile_relay/ui/mobile_agents_home.dart';
-import 'package:flutter_client/src/frontend/features/mobile_relay/ui/shell_pair_device_dialog.dart';
-import 'package:flutter_client/src/frontend/shared/ui/theme.dart';
+import 'package:licoup/src/application/controller/client_controller.dart';
+import 'package:licoup/src/contracts/agent_command_runner.dart';
+import 'package:licoup/src/contracts/agent_usage_models.dart';
+import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
+import 'package:licoup/src/contracts/presentation/layout_profile.dart';
+import 'package:licoup/src/contracts/presentation/presentation_preferences.dart';
+import 'package:licoup/src/backend/features/agents/services/agent_conversation_service.dart';
+import 'package:licoup/src/platform/native_client/agent_service.dart';
+import 'package:licoup/src/platform/mobile_relay/mobile_relay_service.dart';
+import 'package:licoup/src/platform/storage/portable_data_root.dart';
+import 'package:licoup/src/platform/secure_mesh/secure_mesh_android_bridge.dart';
+import 'package:licoup/src/platform/secure_mesh/secure_mesh_mobile_bridge.dart';
+import 'package:licoup/src/frontend/shell/client_shell.dart';
+import 'package:licoup/src/frontend/features/mobile_relay/ui/mobile_agents_home.dart';
+import 'package:licoup/src/frontend/features/mobile_relay/ui/shell_pair_device_dialog.dart';
+import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
@@ -304,7 +304,7 @@ void main() {
   testWidgets('pair device dialog automatically claims detected QR capture', (
     tester,
   ) async {
-    const invite = 'licoarc://pair?invite=test-token';
+    const invite = 'licoup://pair?invite=test-token';
     final claims = <String>[];
     final claimGate = Completer<void>();
     late Future<void> Function(BarcodeCapture capture) submitCapture;
@@ -381,7 +381,7 @@ void main() {
     controller.mobileRelayConfig = MobileRelayConfig.defaults().copyWith(
       useCustomGateway: true,
       customGatewayUrl: 'https://relay.example.test',
-      pcClientName: 'Lico Arc',
+      pcClientName: 'LicoUp',
       pairingId: 'pairing_test',
       mobileTokenPresent: true,
       paired: true,
@@ -428,7 +428,7 @@ void main() {
 
 PortableDataRoot _testPortableData() {
   final directory = Directory.systemTemp.createTempSync(
-    'lico-client-shell-layout-',
+    'licoup-shell-layout-',
   );
   addTearDown(() async {
     if (await directory.exists()) {

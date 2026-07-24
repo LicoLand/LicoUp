@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import 'package:flutter_client/src/frontend/shared/ui/theme.dart';
+import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 /// The single segmented-control recipe for the Token usage surface: one
 /// connected capsule of segments with hairline dividers, a quiet hover

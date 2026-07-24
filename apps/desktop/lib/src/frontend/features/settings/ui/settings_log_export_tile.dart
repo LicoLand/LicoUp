@@ -4,10 +4,10 @@ import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
 
-import 'package:flutter_client/src/application/controller/client_controller.dart';
-import 'package:flutter_client/src/frontend/l10n/lico_strings.dart';
-import 'package:flutter_client/src/frontend/shared/ui/directory_path_field.dart';
-import 'package:flutter_client/src/frontend/shared/ui/theme.dart';
+import 'package:licoup/src/application/controller/client_controller.dart';
+import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/shared/ui/directory_path_field.dart';
+import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 class SettingsLogExportTile extends StatelessWidget {
   const SettingsLogExportTile({super.key, required this.controller});
@@ -87,5 +87,5 @@ String _clientLogFileName() {
       '${twoDigits(now.hour)}'
       '${twoDigits(now.minute)}'
       '${twoDigits(now.second)}';
-  return 'lico-arc-client-logs-$stamp.jsonl';
+  return 'lico-up-client-logs-$stamp.jsonl';
 }

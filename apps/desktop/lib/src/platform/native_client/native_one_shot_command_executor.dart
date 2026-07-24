@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:flutter_client/src/platform/native_client/native_cli_ports.dart';
+import 'package:licoup/src/platform/native_client/native_cli_ports.dart';
 
 class NativeOneShotCommandExecutor implements NativeCommandExecutor {
   NativeOneShotCommandExecutor({
@@ -29,22 +29,22 @@ class NativeOneShotCommandExecutor implements NativeCommandExecutor {
       cli = await _processContext.resolveCliBinary();
       environment = await _processContext.buildEnvironment();
     } on Object {
-      throw Exception('lico-client command could not be completed.');
+      throw Exception('licoup command could not be completed.');
     }
 
     if (cli == null) {
       try {
         final result = await _runCliExecutable(
-          'lico-client',
+          'licoup',
           arguments,
           environment,
         );
         if (result.exitCode != 0) {
-          throw Exception('lico-client command failed.');
+          throw Exception('licoup command failed.');
         }
         return _decodeResponse(result.stdout);
       } on Object {
-        throw Exception('lico-client command could not be completed.');
+        throw Exception('licoup command could not be completed.');
       }
     }
 
@@ -52,11 +52,11 @@ class NativeOneShotCommandExecutor implements NativeCommandExecutor {
     try {
       result = await _runCliExecutable(cli.path, arguments, environment);
     } on Object {
-      throw Exception('lico-client command could not be completed.');
+      throw Exception('licoup command could not be completed.');
     }
     if (result.exitCode != 0) {
       throw Exception(
-        'lico-client command failed '
+        'licoup command failed '
         '(exit code ${result.exitCode}, stderr bytes ${utf8.encode(result.stderr.toString()).length}).',
       );
     }
@@ -72,6 +72,6 @@ class NativeOneShotCommandExecutor implements NativeCommandExecutor {
     } on Object {
       // The caller receives a fixed error without native command output.
     }
-    throw Exception('lico-client returned an invalid JSON response.');
+    throw Exception('licoup returned an invalid JSON response.');
   }
 }

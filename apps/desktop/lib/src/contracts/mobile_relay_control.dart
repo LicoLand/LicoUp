@@ -1,5 +1,5 @@
-import 'package:flutter_client/src/contracts/mobile_relay/mobile_relay_models.dart';
-import 'package:flutter_client/src/contracts/generated/secure_mesh.g.dart';
+import 'package:licoup/src/contracts/mobile_relay/mobile_relay_models.dart';
+import 'package:licoup/src/contracts/generated/secure_mesh.g.dart';
 
 final class MobileRelayOperationGate {
   bool _busy = false;

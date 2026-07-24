@@ -2,8 +2,8 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:flutter_client/src/platform/native_client/agent_service.dart';
-import 'package:flutter_client/src/platform/native_client/native_cli_ports.dart';
+import 'package:licoup/src/platform/native_client/agent_service.dart';
+import 'package:licoup/src/platform/native_client/native_cli_ports.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 var _synthSeq = 0;
@@ -44,7 +44,7 @@ void main() {
   test('uses injected binary path in CLI execution', () async {
     final tempDir = await Directory.systemTemp.createTemp('lico-cli-binary-');
     addTearDown(() => tempDir.delete(recursive: true));
-    final cliPath = File('${tempDir.path}/lico-client');
+    final cliPath = File('${tempDir.path}/licoup');
     final captured = <String>[];
     final agentService = AgentService(
       resolveCliBinary: () async => cliPath,
@@ -102,7 +102,7 @@ void main() {
     }
     final tempDir = await Directory.systemTemp.createTemp('lico-cli-stdin-');
     addTearDown(() => tempDir.delete(recursive: true));
-    final cliPath = File('${tempDir.path}/lico-client');
+    final cliPath = File('${tempDir.path}/licoup');
     await cliPath.writeAsString('''#!/bin/sh
 body=\$(cat)
 if [ "\$body" = '{"text":"${sv_stdin_canary}"}' ]; then
@@ -155,7 +155,7 @@ fi
 
   test('redacts process start details from private runtime errors', () async {
     final agentService = AgentService(
-      resolveCliBinary: () async => File('/${sv_private_path_canary}/lico-client'),
+      resolveCliBinary: () async => File('/${sv_private_path_canary}/licoup'),
       startCliExecutable: (executable, args, env) async {
         throw ProcessException(
           executable,
@@ -176,7 +176,7 @@ fi
       fail('expected the private runtime request to fail');
     } catch (error) {
       final message = error.toString();
-      expect(message, contains('lico-client executable could not be started'));
+      expect(message, contains('licoup executable could not be started'));
       expect(message, isNot(contains(sv_private_path_canary)));
       expect(message, isNot(contains(sv_private_process_detail_c)));
       expect(message, isNot(contains(sv_private_request_canary)));
@@ -213,7 +213,7 @@ fi
     }
     final tempDir = await Directory.systemTemp.createTemp('lico-cli-timeout-');
     addTearDown(() => tempDir.delete(recursive: true));
-    final cliPath = File('${tempDir.path}/lico-client');
+    final cliPath = File('${tempDir.path}/licoup');
     await cliPath.writeAsString('''#!/bin/sh
 exec sleep 5
 ''');
@@ -239,7 +239,7 @@ exec sleep 5
   });
 
   test(
-    'falls back to lico-client in PATH when no binary is discovered',
+    'falls back to licoup in PATH when no binary is discovered',
     () async {
       final captured = <String>[];
       final agentService = AgentService(
@@ -251,7 +251,7 @@ exec sleep 5
       );
 
       await agentService.restoreSnapshot('snapshot-codex-1');
-      expect(captured.single, 'lico-client');
+      expect(captured.single, 'licoup');
       expect(captured.length, 1);
     },
   );
@@ -286,7 +286,7 @@ exec sleep 5
     ]);
   });
 
-  test('wraps lico-client execution failure as an exception', () async {
+  test('wraps licoup execution failure as an exception', () async {
     final agentService = AgentService(
       runCliExecutable: (executable, args, env) {
         return Future.value(ProcessResult(1, 1, '', 'cli failed'));
@@ -300,7 +300,7 @@ exec sleep 5
             .having(
               (e) => e.toString(),
               'message',
-              contains('lico-client command could not be completed'),
+              contains('licoup command could not be completed'),
             )
             .having(
               (e) => e.toString(),
@@ -456,7 +456,7 @@ exec sleep 5
       }
       final tempDir = await Directory.systemTemp.createTemp('lico-rpc-reuse-');
       addTearDown(() => tempDir.delete(recursive: true));
-      final cli = File('${tempDir.path}/lico-client');
+      final cli = File('${tempDir.path}/licoup');
       final marker = File('${tempDir.path}/rpc-events.log');
       await _writeExecutable(cli, r'''#!/bin/sh
 dir=$(CDPATH= cd "$(dirname "$0")" && pwd)
@@ -469,7 +469,7 @@ while IFS= read -r line; do
   case "$line" in
     *'"method":"shutdown"'*)
       printf 'shutdown:%s\n' "$workflow" >> "$marker"
-      printf '{"protocol":"lico-client.stdio.v1","id":"%s","workflowId":"%s","ok":true,"result":{"status":"shutdown"}}\n' "$id" "$workflow"
+      printf '{"protocol":"licoup.stdio.v1","id":"%s","workflowId":"%s","ok":true,"result":{"status":"shutdown"}}\n' "$id" "$workflow"
       exit 0
       ;;
   esac
@@ -478,7 +478,7 @@ while IFS= read -r line; do
   if [ "$sequence" -eq 1 ]; then
     sleep 0.1
   fi
-  printf '{"protocol":"lico-client.stdio.v1","id":"%s","workflowId":"%s","ok":true,"result":{"ok":true,"sequence":%s,"workflow":"%s"}}\n' "$id" "$workflow" "$sequence" "$workflow"
+  printf '{"protocol":"licoup.stdio.v1","id":"%s","workflowId":"%s","ok":true,"result":{"ok":true,"sequence":%s,"workflow":"%s"}}\n' "$id" "$workflow" "$sequence" "$workflow"
 done
 ''');
       final service = AgentService(resolveCliBinary: () async => cli);
@@ -518,18 +518,18 @@ done
       }
       final tempDir = await Directory.systemTemp.createTemp('lico-rpc-auth-');
       addTearDown(() => tempDir.delete(recursive: true));
-      final cli = File('${tempDir.path}/lico-client');
+      final cli = File('${tempDir.path}/licoup');
       await _writeExecutable(cli, r'''#!/bin/sh
 while IFS= read -r line; do
   id=$(printf '%s\n' "$line" | sed -E 's/.*"id":"([^"]+)".*/\1/')
   workflow=$(printf '%s\n' "$line" | sed -E 's/.*"workflowId":"([^"]+)".*/\1/')
   case "$line" in
     *'"method":"shutdown"'*)
-      printf '{"protocol":"lico-client.stdio.v1","id":"%s","workflowId":"%s","ok":true,"result":{"status":"shutdown"}}\n' "$id" "$workflow"
+      printf '{"protocol":"licoup.stdio.v1","id":"%s","workflowId":"%s","ok":true,"result":{"status":"shutdown"}}\n' "$id" "$workflow"
       exit 0
       ;;
   esac
-  printf '{"protocol":"lico-client.stdio.v1","id":"%s","workflowId":"%s","ok":false,"error":{"code":"authorization_required","message":"${sv_private_error_canary}"}}\n' "$id" "$workflow"
+  printf '{"protocol":"licoup.stdio.v1","id":"%s","workflowId":"%s","ok":false,"error":{"code":"authorization_required","message":"${sv_private_error_canary}"}}\n' "$id" "$workflow"
 done
 ''');
       final service = AgentService(resolveCliBinary: () async => cli);
@@ -558,7 +558,7 @@ done
       }
       final tempDir = await Directory.systemTemp.createTemp('lico-rpc-stream-');
       addTearDown(() => tempDir.delete(recursive: true));
-      final cli = File('${tempDir.path}/lico-client');
+      final cli = File('${tempDir.path}/licoup');
       final marker = File('${tempDir.path}/rpc-events.log');
       await _writeExecutable(cli, r'''#!/bin/sh
 dir=$(CDPATH= cd "$(dirname "$0")" && pwd)
@@ -570,14 +570,14 @@ while IFS= read -r line; do
   workflow=$(printf '%s\n' "$line" | sed -E 's/.*"workflowId":"([^"]+)".*/\1/')
   case "$line" in
     *'"method":"shutdown"'*)
-      printf '{"protocol":"lico-client.stdio.v1","id":"%s","workflowId":"%s","ok":true,"result":{"status":"shutdown"}}\n' "$id" "$workflow"
+      printf '{"protocol":"licoup.stdio.v1","id":"%s","workflowId":"%s","ok":true,"result":{"status":"shutdown"}}\n' "$id" "$workflow"
       exit 0
       ;;
   esac
   turn=$((turn + 1))
   printf 'send:%s:%s\n' "$turn" "$workflow" >> "$marker"
-  printf '{"protocol":"lico-client.stdio.v1","id":"%s","workflowId":"%s","kind":"event","sequence":1,"event":{"event":"agent.message.chunk","sessionId":"native-session","turnId":"turn-%s","payload":{"text":"chunk-%s"}}}\n' "$id" "$workflow" "$turn" "$turn"
-  printf '{"protocol":"lico-client.stdio.v1","id":"%s","workflowId":"%s","kind":"terminal","sequence":2,"ok":true,"result":{"ok":true,"nativeSessionId":"native-session","sessionId":"native-session","turnId":"turn-%s","turnStatus":"completed"}}\n' "$id" "$workflow" "$turn"
+  printf '{"protocol":"licoup.stdio.v1","id":"%s","workflowId":"%s","kind":"event","sequence":1,"event":{"event":"agent.message.chunk","sessionId":"native-session","turnId":"turn-%s","payload":{"text":"chunk-%s"}}}\n' "$id" "$workflow" "$turn" "$turn"
+  printf '{"protocol":"licoup.stdio.v1","id":"%s","workflowId":"%s","kind":"terminal","sequence":2,"ok":true,"result":{"ok":true,"nativeSessionId":"native-session","sessionId":"native-session","turnId":"turn-%s","turnStatus":"completed"}}\n' "$id" "$workflow" "$turn"
 done
 ''');
       final service = AgentService(resolveCliBinary: () async => cli);
@@ -638,7 +638,7 @@ done
         'lico-rpc-process-local-',
       );
       addTearDown(() => tempDir.delete(recursive: true));
-      final cli = File('${tempDir.path}/lico-client');
+      final cli = File('${tempDir.path}/licoup');
       final marker = File('${tempDir.path}/rpc-events.log');
       await _writeExecutable(cli, r'''#!/bin/sh
 dir=$(CDPATH= cd "$(dirname "$0")" && pwd)
@@ -650,13 +650,13 @@ while IFS= read -r line; do
   case "$line" in
     *'"method":"shutdown"'*)
       printf 'shutdown:%s\n' "$workflow" >> "$marker"
-      printf '{"protocol":"lico-client.stdio.v1","id":"%s","workflowId":"%s","ok":true,"result":{"status":"shutdown"}}\n' "$id" "$workflow"
+      printf '{"protocol":"licoup.stdio.v1","id":"%s","workflowId":"%s","ok":true,"result":{"status":"shutdown"}}\n' "$id" "$workflow"
       exit 0
       ;;
     *'"method":"agent.conversation.send"'*)
       printf 'send:%s\n' "$workflow" >> "$marker"
-      printf '{"protocol":"lico-client.stdio.v1","id":"%s","workflowId":"%s","kind":"event","sequence":1,"event":{"event":"agent.message.chunk","sessionId":"native-session","turnId":"turn-1","payload":{"text":"chunk"}}}\n' "$id" "$workflow"
-      printf '{"protocol":"lico-client.stdio.v1","id":"%s","workflowId":"%s","kind":"terminal","sequence":2,"ok":true,"result":{"ok":true,"nativeSessionId":"native-session","sessionId":"native-session","turnId":"turn-1","turnStatus":"completed"}}\n' "$id" "$workflow"
+      printf '{"protocol":"licoup.stdio.v1","id":"%s","workflowId":"%s","kind":"event","sequence":1,"event":{"event":"agent.message.chunk","sessionId":"native-session","turnId":"turn-1","payload":{"text":"chunk"}}}\n' "$id" "$workflow"
+      printf '{"protocol":"licoup.stdio.v1","id":"%s","workflowId":"%s","kind":"terminal","sequence":2,"ok":true,"result":{"ok":true,"nativeSessionId":"native-session","sessionId":"native-session","turnId":"turn-1","turnStatus":"completed"}}\n' "$id" "$workflow"
       ;;
     *'"method":"agent.conversation.open"'*) operation=open ;;
     *'"method":"agent.conversation.history"'*) operation=history ;;
@@ -666,7 +666,7 @@ while IFS= read -r line; do
   esac
   if [ "${operation:-}" != "" ]; then
     printf '%s:%s\n' "$operation" "$workflow" >> "$marker"
-    printf '{"protocol":"lico-client.stdio.v1","id":"%s","workflowId":"%s","ok":true,"result":{"ok":true,"operation":"%s"}}\n' "$id" "$workflow" "$operation"
+    printf '{"protocol":"licoup.stdio.v1","id":"%s","workflowId":"%s","ok":true,"result":{"ok":true,"operation":"%s"}}\n' "$id" "$workflow" "$operation"
     operation=
   fi
 done
@@ -733,12 +733,12 @@ done
     }
     final tempDir = await Directory.systemTemp.createTemp('lico-rpc-order-');
     addTearDown(() => tempDir.delete(recursive: true));
-    final cli = File('${tempDir.path}/lico-client');
+    final cli = File('${tempDir.path}/licoup');
     await _writeExecutable(cli, r'''#!/bin/sh
 while IFS= read -r line; do
   id=$(printf '%s\n' "$line" | sed -E 's/.*"id":"([^"]+)".*/\1/')
   workflow=$(printf '%s\n' "$line" | sed -E 's/.*"workflowId":"([^"]+)".*/\1/')
-  printf '{"protocol":"lico-client.stdio.v1","id":"%s","workflowId":"%s","kind":"event","sequence":2,"event":{"event":"agent.message.chunk","sessionId":"native-session","turnId":"turn-1","payload":{"text":"invalid"}}}\n' "$id" "$workflow"
+  printf '{"protocol":"licoup.stdio.v1","id":"%s","workflowId":"%s","kind":"event","sequence":2,"event":{"event":"agent.message.chunk","sessionId":"native-session","turnId":"turn-1","payload":{"text":"invalid"}}}\n' "$id" "$workflow"
 done
 ''');
     final service = AgentService(resolveCliBinary: () async => cli);
@@ -770,7 +770,7 @@ done
         'lico-rpc-terminal-',
       );
       addTearDown(() => tempDir.delete(recursive: true));
-      final cli = File('${tempDir.path}/lico-client');
+      final cli = File('${tempDir.path}/licoup');
       final marker = File('${tempDir.path}/rpc-events.log');
       await _writeExecutable(cli, r'''#!/bin/sh
 dir=$(CDPATH= cd "$(dirname "$0")" && pwd)
@@ -782,8 +782,8 @@ while IFS= read -r line; do
   case "$line" in
     *'"method":"shutdown"'*) exit 0 ;;
   esac
-  printf '{"protocol":"lico-client.stdio.v1","id":"%s","workflowId":"%s","kind":"terminal","sequence":1,"ok":true,"result":{"ok":true,"nativeSessionId":"native-session","turnId":"turn-1"}}\n' "$id" "$workflow"
-  printf '{"protocol":"lico-client.stdio.v1","id":"%s","workflowId":"%s","kind":"terminal","sequence":2,"ok":true,"result":{"ok":true,"nativeSessionId":"native-session","turnId":"turn-duplicate"}}\n' "$id" "$workflow"
+  printf '{"protocol":"licoup.stdio.v1","id":"%s","workflowId":"%s","kind":"terminal","sequence":1,"ok":true,"result":{"ok":true,"nativeSessionId":"native-session","turnId":"turn-1"}}\n' "$id" "$workflow"
+  printf '{"protocol":"licoup.stdio.v1","id":"%s","workflowId":"%s","kind":"terminal","sequence":2,"ok":true,"result":{"ok":true,"nativeSessionId":"native-session","turnId":"turn-duplicate"}}\n' "$id" "$workflow"
 done
 ''');
       final service = AgentService(resolveCliBinary: () async => cli);
@@ -811,7 +811,7 @@ done
       }
       final tempDir = await Directory.systemTemp.createTemp('lico-rpc-output-');
       addTearDown(() => tempDir.delete(recursive: true));
-      final cli = File('${tempDir.path}/lico-client');
+      final cli = File('${tempDir.path}/licoup');
       await _writeExecutable(cli, r'''#!/bin/sh
 if IFS= read -r line; then
   head -c 16777216 /dev/zero | tr '\000' x
@@ -847,7 +847,7 @@ fi
       dataDirectory: () async {
         throw StateError(sv_private_setup_canary);
       },
-      resolveCliBinary: () async => File('/${sv_private_binary_canary}/lico-client'),
+      resolveCliBinary: () async => File('/${sv_private_binary_canary}/licoup'),
     );
     addTearDown(service.dispose);
 
@@ -871,7 +871,7 @@ fi
     }
     final tempDir = await Directory.systemTemp.createTemp('lico-rpc-once-');
     addTearDown(() => tempDir.delete(recursive: true));
-    final cli = File('${tempDir.path}/lico-client');
+    final cli = File('${tempDir.path}/licoup');
     final marker = File('${tempDir.path}/rpc-events.log');
     await _writeExecutable(cli, r'''#!/bin/sh
 dir=$(CDPATH= cd "$(dirname "$0")" && pwd)
@@ -907,7 +907,7 @@ exit 0
     }
     final tempDir = await Directory.systemTemp.createTemp('lico-rpc-input-');
     addTearDown(() => tempDir.delete(recursive: true));
-    final cli = File('${tempDir.path}/lico-client');
+    final cli = File('${tempDir.path}/licoup');
     final marker = File('${tempDir.path}/started');
     await _writeExecutable(cli, r'''#!/bin/sh
 dir=$(CDPATH= cd "$(dirname "$0")" && pwd)
@@ -940,7 +940,7 @@ exit 0
     }
     final tempDir = await Directory.systemTemp.createTemp('lico-rpc-timeout-');
     addTearDown(() => tempDir.delete(recursive: true));
-    final cli = File('${tempDir.path}/lico-client');
+    final cli = File('${tempDir.path}/licoup');
     await _writeExecutable(cli, r'''#!/bin/sh
 if IFS= read -r line; then
   exec sleep 5

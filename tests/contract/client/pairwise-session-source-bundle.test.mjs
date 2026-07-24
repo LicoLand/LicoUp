@@ -5,8 +5,8 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = path.resolve(fileURLToPath(new URL("../../..", import.meta.url)));
-const facadePath = "crates/lico-client-native/src/domain/mobile_relay/pairwise_session.rs";
-const moduleRoot = "crates/lico-client-native/src/domain/mobile_relay/pairwise_session";
+const facadePath = "crates/licoup-native/src/domain/mobile_relay/pairwise_session.rs";
+const moduleRoot = "crates/licoup-native/src/domain/mobile_relay/pairwise_session";
 const productionLeaves = Object.freeze([
   "crypto_operation.rs",
   "handshake.rs",

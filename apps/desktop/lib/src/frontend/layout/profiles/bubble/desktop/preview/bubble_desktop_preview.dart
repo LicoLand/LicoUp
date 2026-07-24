@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
-import 'package:flutter_client/src/frontend/layout/layout_palette.dart';
-import 'package:flutter_client/src/frontend/layout/profiles/bubble/desktop/tokens/bubble_desktop_tokens.dart';
+import 'package:licoup/src/frontend/layout/layout_palette.dart';
+import 'package:licoup/src/frontend/layout/profiles/bubble/desktop/tokens/bubble_desktop_tokens.dart';
 
 final class BubbleDesktopPreviewMetadata {
   const BubbleDesktopPreviewMetadata({

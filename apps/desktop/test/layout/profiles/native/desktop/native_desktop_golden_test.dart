@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:flutter_client/src/contracts/presentation/semantic_destination.dart';
-import 'package:flutter_client/src/frontend/layout/profiles/native/desktop/native_desktop.dart';
-import 'package:flutter_client/src/frontend/shared/ui/theme.dart';
+import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
+import 'package:licoup/src/frontend/layout/profiles/native/desktop/native_desktop.dart';
+import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 import './native_desktop_test_harness.dart';
 import 'native_desktop_palette_fixture.dart';

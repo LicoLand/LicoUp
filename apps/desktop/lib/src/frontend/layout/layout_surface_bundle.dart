@@ -2,15 +2,15 @@ import 'dart:collection';
 
 import 'package:flutter/widgets.dart';
 
-import 'package:flutter_client/src/contracts/presentation/layout_environment.dart';
-import 'package:flutter_client/src/contracts/presentation/layout_profile.dart';
-import 'package:flutter_client/src/contracts/presentation/layout_state_namespace.dart';
-import 'package:flutter_client/src/contracts/presentation/layout_variant.dart';
-import 'package:flutter_client/src/contracts/presentation/semantic_destination.dart';
-import 'package:flutter_client/src/frontend/layout/layout_chrome_port.dart';
-import 'package:flutter_client/src/frontend/layout/layout_component_kit.dart';
-import 'package:flutter_client/src/frontend/layout/layout_scope.dart';
-import 'package:flutter_client/src/frontend/layout/layout_visual_tokens.dart';
+import 'package:licoup/src/contracts/presentation/layout_environment.dart';
+import 'package:licoup/src/contracts/presentation/layout_profile.dart';
+import 'package:licoup/src/contracts/presentation/layout_state_namespace.dart';
+import 'package:licoup/src/contracts/presentation/layout_variant.dart';
+import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
+import 'package:licoup/src/frontend/layout/layout_chrome_port.dart';
+import 'package:licoup/src/frontend/layout/layout_component_kit.dart';
+import 'package:licoup/src/frontend/layout/layout_scope.dart';
+import 'package:licoup/src/frontend/layout/layout_visual_tokens.dart';
 
 abstract interface class LayoutDestinationContentPort {
   Widget buildDestination(BuildContext context, ClientSection destination);

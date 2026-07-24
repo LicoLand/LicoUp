@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:flutter_client/src/frontend/features/agents/ui/agent_usage_window_control.dart';
-import 'package:flutter_client/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_usage_window_control.dart';
+import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 
 void main() {
   testWidgets('usage window presets apply in one tap', (tester) async {

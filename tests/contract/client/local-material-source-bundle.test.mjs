@@ -6,9 +6,9 @@ import { fileURLToPath } from "node:url";
 
 const repoRoot = path.resolve(fileURLToPath(new URL("../../..", import.meta.url)));
 const facadePath =
-  "crates/lico-client-native/src/domain/mobile_relay/endpoint_trust/local_material.rs";
+  "crates/licoup-native/src/domain/mobile_relay/endpoint_trust/local_material.rs";
 const moduleRoot =
-  "crates/lico-client-native/src/domain/mobile_relay/endpoint_trust/local_material";
+  "crates/licoup-native/src/domain/mobile_relay/endpoint_trust/local_material";
 const productionLeaves = Object.freeze([
   "accessors.rs",
   "composition.rs",

@@ -1,9 +1,9 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:flutter_client/src/frontend/features/settings/ui/settings_panel_widgets.dart';
-import 'package:flutter_client/src/frontend/layout/layout_destination_presentation.dart';
-import 'package:flutter_client/src/frontend/shared/ui/theme.dart';
+import 'package:licoup/src/frontend/features/settings/ui/settings_panel_widgets.dart';
+import 'package:licoup/src/frontend/layout/layout_destination_presentation.dart';
+import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

@@ -1,5 +1,5 @@
-import 'package:flutter_client/src/application/features/mobile_relay/policy/mobile_pairing_invite_codec.dart';
-import 'package:flutter_client/src/application/features/mobile_relay/policy/mobile_pairing_policy.dart';
+import 'package:licoup/src/application/features/mobile_relay/policy/mobile_pairing_invite_codec.dart';
+import 'package:licoup/src/application/features/mobile_relay/policy/mobile_pairing_policy.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 var _fixtureSeq = 0;
@@ -57,7 +57,7 @@ void main() {
     });
 
     expect(presentation?.pairingCode, pairingCode);
-    expect(presentation?.inviteText, startsWith('licoarc://pair?invite='));
+    expect(presentation?.inviteText, startsWith('licoup://pair?invite='));
   });
 
   test('generic action projection excludes invitation secrets and tokens', () {

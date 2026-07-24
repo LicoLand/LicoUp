@@ -8,7 +8,7 @@ const repoRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "../../..",
 );
-const driverRoot = "crates/lico-client-native/src/platform/claude_code_driver";
+const driverRoot = "crates/licoup-native/src/platform/claude_code_driver";
 
 const productionLeaves = Object.freeze([
   "command.rs",
@@ -172,8 +172,8 @@ test("Claude Code product controls and parity use one persistent stdio RPC owner
     results,
     evidence,
   ] = await Promise.all([
-    read("crates/lico-client-native/src/bin/lico-client/stdio_rpc/request.rs"),
-    read("crates/lico-client-native/src/bin/lico-client/stdio_rpc/server.rs"),
+    read("crates/licoup-native/src/bin/licoup/stdio_rpc/request.rs"),
+    read("crates/licoup-native/src/bin/licoup/stdio_rpc/server.rs"),
     read("apps/desktop/lib/src/platform/native_client/agent_service_process_io.dart"),
     read("tools/scripts/client-acp-conversation-parity/clients/stdio-rpc-client.mjs"),
     read("tools/scripts/client-acp-conversation-parity/process-local-round.mjs"),
@@ -205,7 +205,7 @@ test("Claude Code product controls and parity use one persistent stdio RPC owner
 test("Claude Code capabilities do not advertise queue-blocked concurrent cancel", async () => {
   const [manifestText, inventoryText] = await Promise.all([
     read("packages/contracts/client/fixtures/agent-conversation-adapter/manifests/claude-code.json"),
-    read("crates/lico-client-native/resources/agent-conversation-drivers.json"),
+    read("crates/licoup-native/resources/agent-conversation-drivers.json"),
   ]);
   const manifest = JSON.parse(manifestText);
   const inventory = JSON.parse(inventoryText);

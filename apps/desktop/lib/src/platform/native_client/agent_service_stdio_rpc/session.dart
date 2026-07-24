@@ -2,10 +2,10 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:flutter_client/src/platform/native_client/agent_service_stdio_rpc/line_framer.dart';
-import 'package:flutter_client/src/platform/native_client/agent_service_stdio_rpc/protocol.dart';
-import 'package:flutter_client/src/platform/native_client/agent_service_stdio_rpc/response_codec.dart';
-import 'package:flutter_client/src/platform/native_client/native_cli_ports.dart';
+import 'package:licoup/src/platform/native_client/agent_service_stdio_rpc/line_framer.dart';
+import 'package:licoup/src/platform/native_client/agent_service_stdio_rpc/protocol.dart';
+import 'package:licoup/src/platform/native_client/agent_service_stdio_rpc/response_codec.dart';
+import 'package:licoup/src/platform/native_client/native_cli_ports.dart';
 
 class StdioRpcFrame {
   const StdioRpcFrame.data(this.bytes);

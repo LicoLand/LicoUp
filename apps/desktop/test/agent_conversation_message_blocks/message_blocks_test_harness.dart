@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_client/src/contracts/agent_conversation_models.dart';
-import 'package:flutter_client/src/frontend/shared/ui/theme.dart';
+import 'package:licoup/src/contracts/agent_conversation_models.dart';
+import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 export 'package:flutter/material.dart';
-export 'package:flutter_client/src/contracts/agent_conversation_models.dart';
-export 'package:flutter_client/src/frontend/features/agents/ui/agent_conversation_message_blocks.dart';
-export 'package:flutter_client/src/frontend/features/agents/ui/agent_render_adapter.dart';
-export 'package:flutter_client/src/frontend/shared/ui/message_markdown.dart';
-export 'package:flutter_client/src/frontend/shared/ui/theme.dart';
+export 'package:licoup/src/contracts/agent_conversation_models.dart';
+export 'package:licoup/src/frontend/features/agents/ui/agent_conversation_message_blocks.dart';
+export 'package:licoup/src/frontend/features/agents/ui/agent_render_adapter.dart';
+export 'package:licoup/src/frontend/shared/ui/message_markdown.dart';
+export 'package:licoup/src/frontend/shared/ui/theme.dart';
 export 'package:flutter_test/flutter_test.dart';
 
 Widget messageBlocksTestApp(Widget child) {

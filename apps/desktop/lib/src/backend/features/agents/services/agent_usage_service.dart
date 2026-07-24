@@ -1,9 +1,9 @@
 import 'dart:convert';
 
-import 'package:flutter_client/src/contracts/agent_command_runner.dart';
-import 'package:flutter_client/src/contracts/agent_usage_models.dart';
+import 'package:licoup/src/contracts/agent_command_runner.dart';
+import 'package:licoup/src/contracts/agent_usage_models.dart';
 
-export 'package:flutter_client/src/contracts/agent_usage_models.dart';
+export 'package:licoup/src/contracts/agent_usage_models.dart';
 
 class AgentUsageService {
   const AgentUsageService();

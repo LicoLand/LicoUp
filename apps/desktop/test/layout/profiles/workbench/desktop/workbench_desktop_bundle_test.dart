@@ -1,14 +1,14 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_client/src/contracts/presentation/layout_environment.dart';
-import 'package:flutter_client/src/contracts/presentation/layout_profile.dart';
-import 'package:flutter_client/src/contracts/presentation/layout_state_namespace.dart';
-import 'package:flutter_client/src/contracts/presentation/semantic_destination.dart';
-import 'package:flutter_client/src/frontend/layout/layout_destination_presentation.dart';
-import 'package:flutter_client/src/frontend/layout/layout_surface_bundle.dart';
-import 'package:flutter_client/src/frontend/layout/profiles/workbench/desktop/destinations/workbench_agents_presentation.dart';
-import 'package:flutter_client/src/frontend/layout/profiles/workbench/desktop/destinations/workbench_settings_presentation.dart';
-import 'package:flutter_client/src/frontend/layout/profiles/workbench/desktop/workbench_desktop.dart';
-import 'package:flutter_client/src/frontend/shared/ui/theme.dart';
+import 'package:licoup/src/contracts/presentation/layout_environment.dart';
+import 'package:licoup/src/contracts/presentation/layout_profile.dart';
+import 'package:licoup/src/contracts/presentation/layout_state_namespace.dart';
+import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
+import 'package:licoup/src/frontend/layout/layout_destination_presentation.dart';
+import 'package:licoup/src/frontend/layout/layout_surface_bundle.dart';
+import 'package:licoup/src/frontend/layout/profiles/workbench/desktop/destinations/workbench_agents_presentation.dart';
+import 'package:licoup/src/frontend/layout/profiles/workbench/desktop/destinations/workbench_settings_presentation.dart';
+import 'package:licoup/src/frontend/layout/profiles/workbench/desktop/workbench_desktop.dart';
+import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../../fixtures/layout_scoped_state_fixture.dart';
@@ -19,7 +19,7 @@ void main() {
     final bundle = workbenchDesktopBundle;
 
     expect(bundle.profile.id, LayoutProfileId.parse('workbench'));
-    expect(bundle.profile.label.resolve('en'), 'Lico Arc');
+    expect(bundle.profile.label.resolve('en'), 'LicoUp');
     expect(bundle.profile.description.resolve('zh'), contains('标准布局'));
     expect(bundle.profile.styleIdentity, 'spacious-card-workbench');
     expect(bundle.profile.isDefault, isFalse);

@@ -11,7 +11,7 @@ export const CANONICAL_CLIENT_SOURCE_ROOTS = Object.freeze([
   "Cargo.lock",
   "package.json",
   "package-lock.json",
-  "crates/lico-client-native",
+  "crates/licoup-native",
   "apps/desktop",
   "packages/protocols",
   "tools",

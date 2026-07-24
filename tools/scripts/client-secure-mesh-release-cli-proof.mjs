@@ -79,7 +79,7 @@ function runProof() {
   const ledgerPath = path.join(tempDir, "secure-command-replay.sqlite");
   const env = {
     ...process.env,
-    LICOARC_PORTABLE_DIR: portableDir,
+    LICOUP_PORTABLE_DIR: portableDir,
     LICO_MOBILE_RELAY_NATIVE_SECRET_STORE:
       process.env.LICO_MOBILE_RELAY_NATIVE_SECRET_STORE || "portable",
   };

@@ -1,8 +1,8 @@
 import 'package:flutter/foundation.dart' show ChangeNotifier;
 
-import 'package:flutter_client/src/application/controller/assembly/client_component_assembly_contracts.dart';
-import 'package:flutter_client/src/application/features/plugin_management/controller/adapter_plugin_controller.dart';
-import 'package:flutter_client/src/contracts/agent_command_runner.dart';
+import 'package:licoup/src/application/controller/assembly/client_component_assembly_contracts.dart';
+import 'package:licoup/src/application/features/plugin_management/controller/adapter_plugin_controller.dart';
+import 'package:licoup/src/contracts/agent_command_runner.dart';
 
 final class ClientPluginManagementComponentAssembly {
   ClientPluginManagementComponentAssembly({

@@ -1,5 +1,5 @@
 import 'package:flutter/foundation.dart';
-import 'package:flutter_client/src/application/features/skill_hub/controller/skill_hub_status.dart';
+import 'package:licoup/src/application/features/skill_hub/controller/skill_hub_status.dart';
 
 abstract class SkillOperationController extends ChangeNotifier {
   SkillOperationController({required SkillHubStatusSink onStatus})

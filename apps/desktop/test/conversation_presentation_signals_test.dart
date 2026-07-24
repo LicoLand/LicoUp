@@ -1,4 +1,4 @@
-import 'package:flutter_client/src/application/features/agents/conversation/conversation_presentation_signals.dart';
+import 'package:licoup/src/application/features/agents/conversation/conversation_presentation_signals.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

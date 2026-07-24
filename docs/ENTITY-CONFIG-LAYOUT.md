@@ -12,13 +12,13 @@ private addresses, or runtime data.
 | Release targets | `tools/client-release-targets.json` | packaging and release verification tools |
 | Platform capability status | `tools/client-support-matrix.json` | generated `COMPATIBILITY.md` and `COMPATIBILITY.zh-CN.md` |
 | Desktop package composition | `apps/desktop/packaging.modules.json` | platform packagers and architecture checks |
-| Agent conversation drivers | `crates/lico-client-native/resources/agent-conversation-drivers.json` | generated compatibility adapter table and desktop projections |
-| Agent readiness | `crates/lico-client-native/resources/agent-conversation-readiness.json` and its reducer | composer availability and verification summaries |
+| Agent conversation drivers | `crates/licoup-native/resources/agent-conversation-drivers.json` | generated compatibility adapter table and desktop projections |
+| Agent readiness | `crates/licoup-native/resources/agent-conversation-readiness.json` and its reducer | composer availability and verification summaries |
 | Public client DTOs | JSON Schemas under `packages/contracts/client/` | generated or validated Rust, Flutter, fixture, and protocol consumers |
 | Native client protocol DTOs | schemas under `packages/protocols/native-client/` | Rust/Flutter/mobile bridge consumers |
 | Secure Client Mesh verification policy | reviewed JSON definitions under `tools/scripts/config/` plus native protocol code | bounded verification and redacted report schemas |
 | Appearance presets | `apps/desktop/assets/appearance-presets/` and the Flutter appearance contract | desktop theme projections |
-| Local persisted state roots | `crates/lico-client-native/src/platform/paths.rs` and `client_state.rs` | platform-specific resolved locations at runtime |
+| Local persisted state roots | `crates/licoup-native/src/platform/paths.rs` and `client_state.rs` | platform-specific resolved locations at runtime |
 
 ## Generated projections
 

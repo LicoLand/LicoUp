@@ -1,10 +1,10 @@
 import 'dart:io';
 
-import 'package:flutter_client/src/contracts/agent_command_runner.dart';
-import 'package:flutter_client/src/contracts/generated/secure_mesh.g.dart';
-import 'package:flutter_client/src/platform/native_client/native_cli_ports.dart';
-import 'package:flutter_client/src/platform/secure_mesh/secure_mesh_ios_bridge.dart';
-import 'package:flutter_client/src/platform/secure_mesh/secure_mesh_mobile_bridge.dart';
+import 'package:licoup/src/contracts/agent_command_runner.dart';
+import 'package:licoup/src/contracts/generated/secure_mesh.g.dart';
+import 'package:licoup/src/platform/native_client/native_cli_ports.dart';
+import 'package:licoup/src/platform/secure_mesh/secure_mesh_ios_bridge.dart';
+import 'package:licoup/src/platform/secure_mesh/secure_mesh_mobile_bridge.dart';
 
 abstract interface class MobileRelayNativeDispatch {
   bool get isAndroid;

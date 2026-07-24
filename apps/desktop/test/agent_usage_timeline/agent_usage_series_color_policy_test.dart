@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_client/src/frontend/features/agents/ui/agent_usage_timeline/agent_usage_series_color_policy.dart';
-import 'package:flutter_client/src/frontend/shared/ui/theme.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_usage_timeline/agent_usage_series_color_policy.dart';
+import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

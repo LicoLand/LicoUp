@@ -1,5 +1,5 @@
 import 'package:flutter/widgets.dart';
-import 'package:flutter_client/src/application/controller/client_conversation_archive_bindings.dart';
+import 'package:licoup/src/application/controller/client_conversation_archive_bindings.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

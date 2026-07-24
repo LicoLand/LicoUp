@@ -5,8 +5,8 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = path.resolve(fileURLToPath(new URL("../../..", import.meta.url)));
-const facadePath = "crates/lico-client-native/src/platform/codex_app_server.rs";
-const moduleRoot = "crates/lico-client-native/src/platform/codex_app_server";
+const facadePath = "crates/licoup-native/src/platform/codex_app_server.rs";
+const moduleRoot = "crates/licoup-native/src/platform/codex_app_server";
 const productionLeaves = Object.freeze([
   "config.rs",
   "contract.rs",

@@ -41,7 +41,7 @@ final class McpHttpTransferPreview {
     final digest = json['approvalDigest'];
     final messageBytes = json['messageBytes'];
     if (json['ok'] != true ||
-        json['schemaVersion'] != 'licoarc.mcp-transfer-preview.v1' ||
+        json['schemaVersion'] != 'licoup.mcp-transfer-preview.v1' ||
         json['direction'] != request.direction.wireName ||
         json['destination'] != request.destination ||
         json['purpose'] != request.purpose ||
@@ -79,7 +79,7 @@ final class McpHttpTransferResult {
 
   factory McpHttpTransferResult.fromJson(Map<String, dynamic> json) {
     if (json['ok'] != true ||
-        json['schemaVersion'] != 'licoarc.mcp-transfer-result.v1' ||
+        json['schemaVersion'] != 'licoup.mcp-transfer-result.v1' ||
         json['accepted'] != true) {
       throw const FormatException('mcp_transfer_result_invalid');
     }

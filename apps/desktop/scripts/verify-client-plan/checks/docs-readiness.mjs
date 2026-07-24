@@ -152,7 +152,7 @@ export async function checkDocsReadiness({ assert, files }) {
   }
   const packaging = await readJson("apps/desktop/packaging.modules.json");
   const driverInventory = await readJson(
-    "crates/lico-client-native/resources/agent-conversation-drivers.json",
+    "crates/licoup-native/resources/agent-conversation-drivers.json",
   );
   const adapterIds = packaging.modules?.["target-adapters"]?.targetAdapters || [];
   const driverIds = driverInventory.drivers?.map((driver) => driver.agentId) || [];
@@ -163,8 +163,8 @@ export async function checkDocsReadiness({ assert, files }) {
     "packaging and canonical driver inventory must contain the exact same adapters",
   );
   assert(
-    packaging.packageProfile === "lico-client",
-    "packaging.modules.json must default to lico-client profile",
+    packaging.packageProfile === "licoup",
+    "packaging.modules.json must default to licoup profile",
   );
   return Object.freeze({ targets: [...adapterIds], adapterCount: adapterIds.length });
 }

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
-import 'package:flutter_client/src/frontend/features/agents/ui/agent_usage_segmented_control.dart';
-import 'package:flutter_client/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_usage_segmented_control.dart';
+import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 
 const List<int> _presetDays = <int>[7, 30, 90];
 

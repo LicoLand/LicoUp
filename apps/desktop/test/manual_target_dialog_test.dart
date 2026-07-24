@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_client/src/frontend/features/targets/ui/manual_target_dialog.dart';
+import 'package:licoup/src/frontend/features/targets/ui/manual_target_dialog.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

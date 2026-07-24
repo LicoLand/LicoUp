@@ -1,4 +1,4 @@
-import 'package:flutter_client/src/contracts/agent_usage_models.dart';
+import 'package:licoup/src/contracts/agent_usage_models.dart';
 
 import 'agent_usage_display_names.dart';
 import 'agent_usage_source_parser.dart';

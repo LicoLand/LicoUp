@@ -1,5 +1,5 @@
-import 'package:flutter_client/src/application/features/agents/archive/conversation_archive_projection.dart';
-import 'package:flutter_client/src/application/features/agents/workspace/agent_workspace_coordinator.dart';
+import 'package:licoup/src/application/features/agents/archive/conversation_archive_projection.dart';
+import 'package:licoup/src/application/features/agents/workspace/agent_workspace_coordinator.dart';
 
 /// Owns explicit topic collection only; durable all/exact-keyword backups are
 /// owned by [ConversationArchiveJobController].

@@ -1,8 +1,13 @@
-import 'package:flutter_client/src/application/features/agents/policy/conversation_session_index.dart';
-import 'package:flutter_client/src/contracts/generated/client_error.g.dart';
+import 'package:licoup/src/application/features/agents/policy/conversation_session_index.dart';
+import 'package:licoup/src/contracts/generated/client_error.g.dart';
 
 /// Pure validation for native dispatch results. It never mutates UI state.
 abstract final class ConversationRuntimeResultPolicy {
+  static bool submissionConsumed(String failureCode) {
+    final code = failureCode.trim();
+    return code.isEmpty || code == 'conversation_turn_duplicate_ignored';
+  }
+
   static ClientError clientError(Map<String, dynamic> result) {
     final nested = result['error'];
     if (nested is Map) {

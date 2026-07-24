@@ -15,7 +15,7 @@ export function findWindowsBundleSource(options) {
     path.join(buildRoot, "windows", "runner", modeDir),
   ];
   const bundleDir = candidates.find((item) =>
-    existsSync(path.join(item, "flutter_client.exe")),
+    existsSync(path.join(item, "licoup.exe")),
   );
   if (!bundleDir) packageFailure("windows_bundle_missing");
   return bundleDir;
@@ -27,6 +27,6 @@ export function windowsBundleLayout(root) {
     executableDir: root,
     portableDataDir: path.join(root, "portable-data"),
     moduleResourceDir: path.join(root, "modules"),
-    flutterExecutable: path.join(root, "flutter_client.exe"),
+    flutterExecutable: path.join(root, "licoup.exe"),
   });
 }

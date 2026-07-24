@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import 'package:flutter_client/src/frontend/shared/ui/theme.dart';
+import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 /// Neutral 32×32 conversation-surface action used by independent pane leaves
 /// and adjacent policy controls without creating leaf-to-leaf dependencies.

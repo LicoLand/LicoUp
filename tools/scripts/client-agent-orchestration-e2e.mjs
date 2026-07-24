@@ -19,19 +19,19 @@ const defaultOutput = resolve(
 );
 const readinessPath = resolve(
   root,
-  "crates/lico-client-native/resources/agent-conversation-readiness.json",
+  "crates/licoup-native/resources/agent-conversation-readiness.json",
 );
 const pluginManifest = resolve(
   root,
-  "plugins/lico-arc-codex/.codex-plugin/plugin.json",
+  "plugins/lico-up-codex/.codex-plugin/plugin.json",
 );
 const mcpServerConfig = resolve(
   root,
-  "plugins/lico-arc-codex/mcp/server.json",
+  "plugins/lico-up-codex/mcp/server.json",
 );
 const mcpBinarySource = resolve(
   root,
-  "crates/lico-client-native/src/bin/lico-codex-mcp.rs",
+  "crates/licoup-native/src/bin/lico-codex-mcp.rs",
 );
 const packagingModules = resolve(root, "apps/desktop/packaging.modules.json");
 const expectedTools = Object.freeze([
@@ -119,17 +119,17 @@ function assertPackagedPluginSurface() {
   const server = JSON.parse(readFileSync(mcpServerConfig, "utf8"));
   const packaging = JSON.parse(readFileSync(packagingModules, "utf8"));
   const mcpSource = readFileSync(mcpBinarySource, "utf8");
-  if (manifest.name !== "lico-arc-codex") {
+  if (manifest.name !== "lico-up-codex") {
     throw new Error("plugin_manifest_invalid");
   }
-  if (!manifest.mcpServers?.["lico-arc-orchestration"]) {
+  if (!manifest.mcpServers?.["lico-up-orchestration"]) {
     throw new Error("plugin_mcp_missing");
   }
   if (!Array.isArray(server.tools) && !server.command && !server.type) {
     // server.json may describe launch config rather than tool list; accept either.
   }
   const packagingText = JSON.stringify(packaging);
-  if (!packagingText.includes("lico-arc-codex") && !packagingText.includes("lico-codex-mcp")) {
+  if (!packagingText.includes("lico-up-codex") && !packagingText.includes("lico-codex-mcp")) {
     throw new Error("plugin_packaging_unregistered");
   }
   for (const tool of expectedTools) {
@@ -173,7 +173,7 @@ function syntheticMatrix() {
     420_000,
   );
   const output = `${cutover.stdout ?? ""}\n${cutover.stderr ?? ""}`;
-  if (!output.includes("LICO_ARC_CUTOVER_ACCEPTANCE ")) {
+  if (!output.includes("LICOUP_CUTOVER_ACCEPTANCE ")) {
     throw new Error("cutover_harness_marker_missing");
   }
   if (!/test result: ok\. 1 passed; 0 failed/.test(output)) {

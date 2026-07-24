@@ -1,9 +1,9 @@
-import 'package:flutter_client/src/contracts/generated/client_error.g.dart';
-import 'package:flutter_client/src/platform/native_client/agent_service_stdio_rpc/protocol.dart';
-import 'package:flutter_client/src/platform/native_client/agent_service_stdio_rpc/request_writer.dart';
-import 'package:flutter_client/src/platform/native_client/agent_service_stdio_rpc/response_codec.dart';
-import 'package:flutter_client/src/platform/native_client/agent_service_stdio_rpc/session_manager.dart';
-import 'package:flutter_client/src/platform/native_client/native_cli_ports.dart';
+import 'package:licoup/src/contracts/generated/client_error.g.dart';
+import 'package:licoup/src/platform/native_client/agent_service_stdio_rpc/protocol.dart';
+import 'package:licoup/src/platform/native_client/agent_service_stdio_rpc/request_writer.dart';
+import 'package:licoup/src/platform/native_client/agent_service_stdio_rpc/response_codec.dart';
+import 'package:licoup/src/platform/native_client/agent_service_stdio_rpc/session_manager.dart';
+import 'package:licoup/src/platform/native_client/native_cli_ports.dart';
 
 Stream<Map<String, dynamic>> executeStdioRpcConversation({
   required Map<String, dynamic> params,

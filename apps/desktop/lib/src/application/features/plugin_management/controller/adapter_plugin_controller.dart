@@ -2,8 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
-import 'package:flutter_client/src/application/features/plugin_management/models/adapter_plugin_catalog.dart';
-import 'package:flutter_client/src/contracts/agent_command_runner.dart';
+import 'package:licoup/src/application/features/plugin_management/models/adapter_plugin_catalog.dart';
+import 'package:licoup/src/contracts/agent_command_runner.dart';
 
 final class AdapterPluginStatusUpdate {
   const AdapterPluginStatusUpdate({

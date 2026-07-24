@@ -1,4 +1,4 @@
-import 'package:flutter_client/src/contracts/skill_usage.dart';
+import 'package:licoup/src/contracts/skill_usage.dart';
 
 final class SkillUsageService {
   const SkillUsageService({required SkillUsageGateway gateway})

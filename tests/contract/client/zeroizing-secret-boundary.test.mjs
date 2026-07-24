@@ -5,7 +5,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = path.resolve(fileURLToPath(new URL("../../..", import.meta.url)));
-const nativeRoot = "crates/lico-client-native/src";
+const nativeRoot = "crates/licoup-native/src";
 const custodyRoot = `${nativeRoot}/domain/mobile_relay/secret_custody`;
 const platformRoot = `${nativeRoot}/platform/secure_mesh_secret_store`;
 const catalogRoot = "tools/regression/client-module-catalog";

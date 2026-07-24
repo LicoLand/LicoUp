@@ -6,10 +6,10 @@ if [ "${ACTION:-}" = "clean" ]; then
 fi
 
 REPO_ROOT="$(cd "$PROJECT_DIR/../../.." && pwd)"
-MANIFEST="$REPO_ROOT/crates/lico-client-native/Cargo.toml"
+MANIFEST="$REPO_ROOT/crates/licoup-native/Cargo.toml"
 OUT_ROOT="$PROJECT_DIR/Flutter/ephemeral/secure_mesh_ios"
 LINK_DIR="$OUT_ROOT/link/${PLATFORM_NAME:-unknown}"
-MANAGED_CARGO_TARGET="$REPO_ROOT/build/crates/lico-client-native/target"
+MANAGED_CARGO_TARGET="$REPO_ROOT/build/crates/licoup-native/target"
 mkdir -p "$LINK_DIR"
 
 if ! command -v cargo >/dev/null 2>&1; then
@@ -35,8 +35,8 @@ build_rust_target() {
 case "${PLATFORM_NAME:-}" in
   iphoneos)
     build_rust_target "aarch64-apple-ios"
-    cp "$MANAGED_CARGO_TARGET/aarch64-apple-ios/release/liblico_client_native.a" \
-      "$LINK_DIR/liblico_client_native.a"
+    cp "$MANAGED_CARGO_TARGET/aarch64-apple-ios/release/liblicoup_native.a" \
+      "$LINK_DIR/liblicoup_native.a"
     ;;
   iphonesimulator)
     REQUESTED_ARCHS="${ARCHS:-}"
@@ -72,8 +72,8 @@ case "${PLATFORM_NAME:-}" in
       esac
     fi
 
-    ARM64_LIB="$MANAGED_CARGO_TARGET/aarch64-apple-ios-sim/release/liblico_client_native.a"
-    X86_64_LIB="$MANAGED_CARGO_TARGET/x86_64-apple-ios/release/liblico_client_native.a"
+    ARM64_LIB="$MANAGED_CARGO_TARGET/aarch64-apple-ios-sim/release/liblicoup_native.a"
+    X86_64_LIB="$MANAGED_CARGO_TARGET/x86_64-apple-ios/release/liblicoup_native.a"
     if [ "$NEED_ARM64" -eq 1 ]; then
       build_rust_target "aarch64-apple-ios-sim"
     fi
@@ -82,11 +82,11 @@ case "${PLATFORM_NAME:-}" in
     fi
     if [ "$NEED_ARM64" -eq 1 ] && [ "$NEED_X86_64" -eq 1 ]; then
       lipo -create "$ARM64_LIB" "$X86_64_LIB" \
-        -output "$LINK_DIR/liblico_client_native.a"
+        -output "$LINK_DIR/liblicoup_native.a"
     elif [ "$NEED_ARM64" -eq 1 ]; then
-      cp "$ARM64_LIB" "$LINK_DIR/liblico_client_native.a"
+      cp "$ARM64_LIB" "$LINK_DIR/liblicoup_native.a"
     elif [ "$NEED_X86_64" -eq 1 ]; then
-      cp "$X86_64_LIB" "$LINK_DIR/liblico_client_native.a"
+      cp "$X86_64_LIB" "$LINK_DIR/liblicoup_native.a"
     else
       echo "No supported iOS simulator architecture requested." >&2
       exit 1

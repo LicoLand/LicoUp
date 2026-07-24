@@ -1,16 +1,16 @@
 import 'package:flutter/foundation.dart'
     show ChangeNotifier, defaultTargetPlatform;
 
-import 'package:flutter_client/src/application/composition/built_in_layout_composition.dart';
-import 'package:flutter_client/src/application/controller/client_shell_controller.dart';
-import 'package:flutter_client/src/application/features/layout/layout_manager.dart';
-import 'package:flutter_client/src/contracts/appearance/appearance_preset_config.dart';
-import 'package:flutter_client/src/contracts/locale_preferences.dart';
-import 'package:flutter_client/src/contracts/presentation/layout_environment.dart';
-import 'package:flutter_client/src/contracts/presentation/layout_profile.dart';
-import 'package:flutter_client/src/contracts/presentation/presentation_preferences.dart';
-import 'package:flutter_client/src/platform/presentation/presentation_preferences_repository.dart';
-import 'package:flutter_client/src/platform/storage/portable_data_root.dart';
+import 'package:licoup/src/application/composition/built_in_layout_composition.dart';
+import 'package:licoup/src/application/controller/client_shell_controller.dart';
+import 'package:licoup/src/application/features/layout/layout_manager.dart';
+import 'package:licoup/src/contracts/appearance/appearance_preset_config.dart';
+import 'package:licoup/src/contracts/locale_preferences.dart';
+import 'package:licoup/src/contracts/presentation/layout_environment.dart';
+import 'package:licoup/src/contracts/presentation/layout_profile.dart';
+import 'package:licoup/src/contracts/presentation/presentation_preferences.dart';
+import 'package:licoup/src/platform/presentation/presentation_preferences_repository.dart';
+import 'package:licoup/src/platform/storage/portable_data_root.dart';
 
 final class ClientPresentationComponentAssembly {
   ClientPresentationComponentAssembly({

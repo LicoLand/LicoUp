@@ -2,9 +2,9 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-import 'package:flutter_client/src/application/features/settings/controller/optional_collaboration_controller.dart';
-import 'package:flutter_client/src/contracts/optional_collaboration_models.dart';
-import 'package:flutter_client/src/frontend/features/plugin_management/ui/optional_collaboration_install_plan_review.dart';
+import 'package:licoup/src/application/features/settings/controller/optional_collaboration_controller.dart';
+import 'package:licoup/src/contracts/optional_collaboration_models.dart';
+import 'package:licoup/src/frontend/features/plugin_management/ui/optional_collaboration_install_plan_review.dart';
 
 final class OptionalCollaborationInstallSection extends StatefulWidget {
   const OptionalCollaborationInstallSection({

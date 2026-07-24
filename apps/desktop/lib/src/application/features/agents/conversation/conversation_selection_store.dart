@@ -1,8 +1,8 @@
-import 'package:flutter_client/src/application/features/agents/workspace/agent_workspace_coordinator.dart';
-import 'package:flutter_client/src/contracts/agent_conversation_models.dart';
-import 'package:flutter_client/src/contracts/agent_conversation_tab_activity.dart';
-import 'package:flutter_client/src/contracts/agent_orchestration_target.dart';
-import 'package:flutter_client/src/contracts/target_candidate.dart';
+import 'package:licoup/src/application/features/agents/workspace/agent_workspace_coordinator.dart';
+import 'package:licoup/src/contracts/agent_conversation_models.dart';
+import 'package:licoup/src/contracts/agent_conversation_tab_activity.dart';
+import 'package:licoup/src/contracts/agent_orchestration_target.dart';
+import 'package:licoup/src/contracts/target_candidate.dart';
 
 /// Owns the selected target/session and per-tab presentation state without
 /// depending on catalog loading, dispatch, or refresh scheduling.

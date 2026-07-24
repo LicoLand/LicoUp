@@ -10,7 +10,7 @@
     "Cargo.lock",
     "package.json",
     "package-lock.json",
-    "crates/lico-client-native",
+    "crates/licoup-native",
     "apps/desktop",
     "packages/protocols",
     "tools"
@@ -19,7 +19,7 @@
     "macos-arm64": {
       "platform": "macos",
       "artifactKind": "macos-distribution-archive",
-      "artifactRef": "build/apps/desktop/distribution/macos/LicoArc-macos-arm64.zip",
+      "artifactRef": "build/apps/desktop/distribution/macos/LicoUp-macos-arm64.zip",
       "artifactDigestKind": "file",
       "distributionManifestRef": "build/apps/desktop/distribution/macos/manifest.json",
       "evidenceArtifactKind": "macos-app-bundle",
@@ -57,7 +57,7 @@
     "linux-glibc-arm64": {
       "platform": "linux",
       "artifactKind": "linux-tar-archive",
-      "artifactRef": "build/apps/desktop/distribution/linux-arm64/LicoArc-linux-arm64.tar.gz",
+      "artifactRef": "build/apps/desktop/distribution/linux-arm64/LicoUp-linux-arm64.tar.gz",
       "artifactDigestKind": "file",
       "distributionManifestRef": "build/apps/desktop/distribution/linux-arm64/manifest.json",
       "evidenceRef": "build/reports/secure-mesh-linux-vm-package-receipt.json",

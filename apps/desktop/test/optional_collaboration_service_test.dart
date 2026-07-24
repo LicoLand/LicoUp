@@ -1,6 +1,6 @@
-import 'package:flutter_client/src/backend/features/settings/services/optional_collaboration_service.dart';
-import 'package:flutter_client/src/contracts/agent_command_runner.dart';
-import 'package:flutter_client/src/contracts/optional_collaboration_models.dart';
+import 'package:licoup/src/backend/features/settings/services/optional_collaboration_service.dart';
+import 'package:licoup/src/contracts/agent_command_runner.dart';
+import 'package:licoup/src/contracts/optional_collaboration_models.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 var _synthSeq = 0;
@@ -329,7 +329,7 @@ Map<String, dynamic> _catalogJson() => {
   'plugin': _pluginJson(),
   'workflows': {
     'localDeployment': {
-      'schemaVersion': 'licoarc.collaboration.local-deployment.v1',
+      'schemaVersion': 'licoup.collaboration.local-deployment.v1',
       'manualOnly': true,
       'features': [
         {
@@ -341,7 +341,7 @@ Map<String, dynamic> _catalogJson() => {
       ],
     },
     'mcpInstall': {
-      'schemaVersion': 'licoarc.collaboration.mcp-install.v2',
+      'schemaVersion': 'licoup.collaboration.mcp-install.v2',
       'manualOnly': true,
       'requiresPerFileApproval': true,
       'outboundPolicy': 'direct-user-exact-scope-one-shot',

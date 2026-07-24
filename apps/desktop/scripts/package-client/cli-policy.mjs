@@ -15,16 +15,16 @@ export const packageClientRuntime = Object.freeze((() => {
       workspaceRoot,
       "build",
       "crates",
-      "lico-client-native",
+      "licoup-native",
       "target",
     ),
     defaultConfigPath: path.join(flutterClientRoot, "packaging.modules.json"),
     canonicalPackagingConfigRef: "apps/desktop/packaging.modules.json",
     canonicalBundleManifestRef:
-      "package-metadata/lico-client/packaging-modules.json",
+      "package-metadata/licoup/packaging-modules.json",
     windowsX64TargetId: "windows-x64",
     windowsX64RustTarget: "x86_64-pc-windows-msvc",
-    bundleId: "com.lico.client",
+    bundleId: "land.lico.licoup",
     appName: "Arc.app",
   };
 })());
@@ -243,7 +243,7 @@ export function runtimeDataPolicyRecord(platform = "generic") {
           ? "system-xdg-data"
           : "system-application-support",
     directoryName: "portable-data",
-    environmentOverride: "LICOARC_PORTABLE_DIR",
+    environmentOverride: "LICOUP_PORTABLE_DIR",
     packagedMacAppIgnoresEnvironmentOverride: true,
   });
 }
@@ -267,7 +267,7 @@ function normalizeBooleanOption(value) {
 
 function normalizeProfile(value) {
   const normalized = String(value || "").trim();
-  if (normalized === "lico-client") return normalized;
+  if (normalized === "licoup") return normalized;
   packageFailure("packaging_profile_unsupported");
 }
 

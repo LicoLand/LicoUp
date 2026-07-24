@@ -1,4 +1,4 @@
-import 'package:flutter_client/src/frontend/layout/layout_visual_tokens.dart';
+import 'package:licoup/src/frontend/layout/layout_visual_tokens.dart';
 
 /// Dense, dock-oriented geometry for the Bubble desktop presentation system.
 final LayoutVisualTokens bubbleDesktopTokens = LayoutVisualTokens(

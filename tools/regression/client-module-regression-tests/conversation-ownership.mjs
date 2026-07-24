@@ -40,17 +40,17 @@ test("archive-job modules retain complete leaf ownership and exact command filte
     assert.equal(module.command.args.at(-1), filter);
     if (!id.endsWith(".composition")) {
       assert.equal(module.inputs.includes(
-        "crates/lico-client-native/src/domain/conversation_archive_jobs.rs"), false);
+        "crates/licoup-native/src/domain/conversation_archive_jobs.rs"), false);
     }
   }
 
   const ownedInputs = new Set(archiveModules.flatMap((module) => module.inputs));
   const splitSources = await sourceFiles(
-    "crates/lico-client-native/src/domain/conversation_archive_jobs",
+    "crates/licoup-native/src/domain/conversation_archive_jobs",
     ".rs",
   );
   for (const relativePath of [
-    "crates/lico-client-native/src/domain/conversation_archive_jobs.rs",
+    "crates/licoup-native/src/domain/conversation_archive_jobs.rs",
     ...splitSources,
   ]) {
     assert.equal(ownedInputs.has(relativePath), true,
@@ -82,7 +82,7 @@ test("message projection leaves retain exact tests and complete source ownership
     const module = CLIENT_MODULE_CATALOG.find((candidate) => candidate.id === id);
     assert.equal(module.command.args.at(-1), filter);
     assert.equal(module.inputs.includes(
-      "crates/lico-client-native/src/domain/conversation/history/message_projection_legacy.rs"),
+      "crates/licoup-native/src/domain/conversation/history/message_projection_legacy.rs"),
     false);
   }
   const sourceCheck = CLIENT_MODULE_CATALOG.find((candidate) =>
@@ -92,11 +92,11 @@ test("message projection leaves retain exact tests and complete source ownership
     ...sourceCheck.inputs,
   ]);
   const splitSources = await sourceFiles(
-    "crates/lico-client-native/src/domain/conversation/history/message_projection",
+    "crates/licoup-native/src/domain/conversation/history/message_projection",
     ".rs",
   );
   for (const relativePath of [
-    "crates/lico-client-native/src/domain/conversation/history/message_projection.rs",
+    "crates/licoup-native/src/domain/conversation/history/message_projection.rs",
     ...splitSources,
   ]) {
     assert.equal(ownedInputs.has(relativePath), true,
@@ -140,11 +140,11 @@ test("session merge leaves retain exact tests and complete source ownership", as
     ...sourceCheck.inputs,
   ]);
   const splitSources = await sourceFiles(
-    "crates/lico-client-native/src/domain/conversation/history/session_merge",
+    "crates/licoup-native/src/domain/conversation/history/session_merge",
     ".rs",
   );
   for (const relativePath of [
-    "crates/lico-client-native/src/domain/conversation/history/session_merge.rs",
+    "crates/licoup-native/src/domain/conversation/history/session_merge.rs",
     ...splitSources,
   ]) {
     assert.equal(ownedInputs.has(relativePath), true,
@@ -276,11 +276,11 @@ test("conversation semantic leaves retain exact tests and complete source owners
     ...sourceCheck.inputs,
   ]);
   const splitSources = await sourceFiles(
-    "crates/lico-client-native/src/domain/conversation_semantic",
+    "crates/licoup-native/src/domain/conversation_semantic",
     ".rs",
   );
   for (const relativePath of [
-    "crates/lico-client-native/src/domain/conversation_semantic.rs",
+    "crates/licoup-native/src/domain/conversation_semantic.rs",
     ...splitSources,
   ]) {
     assert.equal(ownedInputs.has(relativePath), true,

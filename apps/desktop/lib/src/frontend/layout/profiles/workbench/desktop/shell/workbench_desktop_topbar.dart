@@ -2,12 +2,12 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-import 'package:flutter_client/src/contracts/presentation/semantic_destination.dart';
-import 'package:flutter_client/src/frontend/l10n/lico_strings.dart';
-import 'package:flutter_client/src/frontend/layout/layout_chrome_port.dart';
-import 'package:flutter_client/src/frontend/layout/layout_palette.dart';
-import 'package:flutter_client/src/frontend/layout/profiles/workbench/desktop/shell/workbench_desktop_navigation.dart';
-import 'package:flutter_client/src/frontend/layout/profiles/workbench/desktop/shell/workbench_desktop_search.dart';
+import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
+import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/layout/layout_chrome_port.dart';
+import 'package:licoup/src/frontend/layout/layout_palette.dart';
+import 'package:licoup/src/frontend/layout/profiles/workbench/desktop/shell/workbench_desktop_navigation.dart';
+import 'package:licoup/src/frontend/layout/profiles/workbench/desktop/shell/workbench_desktop_search.dart';
 
 /// Workbench-private measurements required by the desktop shell and top bar.
 abstract final class WorkbenchDesktopChromeMetrics {

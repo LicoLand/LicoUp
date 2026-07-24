@@ -3,8 +3,8 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:flutter_client/src/contracts/agent_command_runner.dart';
-import 'package:flutter_client/src/platform/native_client/native_cli_ports.dart';
+import 'package:licoup/src/contracts/agent_command_runner.dart';
+import 'package:licoup/src/platform/native_client/native_cli_ports.dart';
 
 const int _privateRuntimeMaxInputBytes = 1024 * 1024;
 const int _privateRuntimeMaxStdoutBytes = 20 * 1024 * 1024;
@@ -45,10 +45,10 @@ class BoundedNativeProcessIo implements AgentCommandRunner {
   ) async {
     final stdinBytes = utf8.encode(stdinText);
     if (stdinBytes.length > _privateRuntimeMaxInputBytes) {
-      throw Exception('lico-client private runtime request is too large.');
+      throw Exception('licoup private runtime request is too large.');
     }
     if (_processContext.requestTimeout <= Duration.zero) {
-      throw Exception('lico-client private runtime timeout is invalid.');
+      throw Exception('licoup private runtime timeout is invalid.');
     }
     final conversationOperation = _conversationControlOperation(args);
     if (_persistentStdioRpcEnabled && conversationOperation != null) {
@@ -71,12 +71,12 @@ class BoundedNativeProcessIo implements AgentCommandRunner {
       final cli = await _processContext.resolveCliBinary();
       final environment = await _processContext.buildEnvironment();
       process = await _processContext.startProcess(
-        cli?.path ?? 'lico-client',
+        cli?.path ?? 'licoup',
         args,
         environment,
       );
     } on Object {
-      throw Exception('lico-client executable could not be started.');
+      throw Exception('licoup executable could not be started.');
     }
 
     final stdoutFuture = _collectBoundedProcessOutput(
@@ -108,17 +108,17 @@ class BoundedNativeProcessIo implements AgentCommandRunner {
       } on Object {
         // The error returned to the caller stays fixed and redacted.
       }
-      throw Exception('lico-client private runtime request timed out.');
+      throw Exception('licoup private runtime request timed out.');
     } on Object {
       process.kill();
-      throw Exception('lico-client private runtime request failed.');
+      throw Exception('licoup private runtime request failed.');
     }
     if (stdoutOutput.truncated || stderrOutput.truncated) {
-      throw Exception('lico-client private runtime output exceeded its limit.');
+      throw Exception('licoup private runtime output exceeded its limit.');
     }
     if (exitCode != 0) {
       throw Exception(
-        'lico-client failed while sending a private runtime request '
+        'licoup failed while sending a private runtime request '
         '(exit code $exitCode, stderr bytes ${stderrOutput.bytes.length}).',
       );
     }
@@ -126,10 +126,10 @@ class BoundedNativeProcessIo implements AgentCommandRunner {
     try {
       decoded = jsonDecode(utf8.decode(stdoutOutput.bytes));
     } on Object {
-      throw Exception('lico-client returned an invalid JSON response.');
+      throw Exception('licoup returned an invalid JSON response.');
     }
     if (decoded is! Map<String, dynamic>) {
-      throw Exception('lico-client returned an invalid JSON response.');
+      throw Exception('licoup returned an invalid JSON response.');
     }
     return decoded;
   }
@@ -163,22 +163,22 @@ class BoundedNativeProcessIo implements AgentCommandRunner {
     }
     final stdinBytes = utf8.encode(stdinText);
     if (stdinBytes.length > _privateRuntimeMaxInputBytes) {
-      throw Exception('lico-client private runtime request is too large.');
+      throw Exception('licoup private runtime request is too large.');
     }
     if (_processContext.requestTimeout <= Duration.zero) {
-      throw Exception('lico-client private runtime timeout is invalid.');
+      throw Exception('licoup private runtime timeout is invalid.');
     }
     late Process process;
     try {
       final cli = await _processContext.resolveCliBinary();
       final environment = await _processContext.buildEnvironment();
       process = await _processContext.startProcess(
-        cli?.path ?? 'lico-client',
+        cli?.path ?? 'licoup',
         args,
         environment,
       );
     } on Object {
-      throw Exception('lico-client executable could not be started.');
+      throw Exception('licoup executable could not be started.');
     }
 
     final stderrFuture = _collectBoundedProcessOutput(
@@ -203,7 +203,7 @@ class BoundedNativeProcessIo implements AgentCommandRunner {
         stdoutBytes += utf8.encode(line).length + 1;
         if (stdoutBytes > _privateRuntimeMaxStdoutBytes) {
           throw Exception(
-            'lico-client private runtime output exceeded its limit.',
+            'licoup private runtime output exceeded its limit.',
           );
         }
         final decoded = jsonDecode(trimmed);
@@ -213,20 +213,20 @@ class BoundedNativeProcessIo implements AgentCommandRunner {
       }
     } on TimeoutException {
       process.kill();
-      throw Exception('lico-client private runtime request timed out.');
+      throw Exception('licoup private runtime request timed out.');
     } on Object {
       process.kill();
-      throw Exception('lico-client private runtime stream failed.');
+      throw Exception('licoup private runtime stream failed.');
     }
 
     final exitCode = await process.exitCode;
     final stderrOutput = await stderrFuture;
     if (stderrOutput.truncated) {
-      throw Exception('lico-client stream output exceeded its limit.');
+      throw Exception('licoup stream output exceeded its limit.');
     }
     if (exitCode != 0) {
       throw Exception(
-        'lico-client stream failed '
+        'licoup stream failed '
         '(exit code $exitCode, stderr bytes ${stderrOutput.bytes.length}).',
       );
     }

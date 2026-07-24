@@ -7,7 +7,7 @@ export const repoRoot = path.resolve(
   fileURLToPath(new URL("../../..", import.meta.url)),
 );
 export const VERIFIER_PATH = "tools/scripts/client-android-physical-install-launch.mjs";
-export const defaultPackageName = "com.liko.arc";
+export const defaultPackageName = "land.lico.licoup";
 export const runtimeStatusRelativePath = "files/secure-mesh/android-runtime-status.json";
 export const ANDROID_AUTHENTICATED_PAIRWISE_RUNTIME_STATUS =
   "authenticated_pairwise_runtime_bound_to_selected_custody";

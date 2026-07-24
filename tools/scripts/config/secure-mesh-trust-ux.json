@@ -8,14 +8,14 @@
     {
       "id": "trust-helper-provides-cross-signing-sas-qr-and-key-change-policy",
       "files": [
-        "crates/lico-client-native/src/core/secure_mesh_trust.rs",
-        "crates/lico-client-native/src/core/secure_mesh_trust/authorization.rs",
-        "crates/lico-client-native/src/core/secure_mesh_trust/identity.rs",
-        "crates/lico-client-native/src/core/secure_mesh_trust/model.rs",
-        "crates/lico-client-native/src/core/secure_mesh_trust/policy.rs",
-        "crates/lico-client-native/src/core/secure_mesh_trust/record.rs",
-        "crates/lico-client-native/src/core/secure_mesh_trust/signature.rs",
-        "crates/lico-client-native/src/core/secure_mesh_trust/verification.rs"
+        "crates/licoup-native/src/core/secure_mesh_trust.rs",
+        "crates/licoup-native/src/core/secure_mesh_trust/authorization.rs",
+        "crates/licoup-native/src/core/secure_mesh_trust/identity.rs",
+        "crates/licoup-native/src/core/secure_mesh_trust/model.rs",
+        "crates/licoup-native/src/core/secure_mesh_trust/policy.rs",
+        "crates/licoup-native/src/core/secure_mesh_trust/record.rs",
+        "crates/licoup-native/src/core/secure_mesh_trust/signature.rs",
+        "crates/licoup-native/src/core/secure_mesh_trust/verification.rs"
       ],
       "tokens": [
         "pub fn sign_device_cross_signature",
@@ -34,11 +34,11 @@
     {
       "id": "trust-helper-tests-redacted-fingerprints-and-fail-closed-states",
       "files": [
-        "crates/lico-client-native/src/core/secure_mesh_trust.rs",
-        "crates/lico-client-native/src/core/secure_mesh_trust/tests/authorization.rs",
-        "crates/lico-client-native/src/core/secure_mesh_trust/tests/policy.rs",
-        "crates/lico-client-native/src/core/secure_mesh_trust/tests/signature.rs",
-        "crates/lico-client-native/src/core/secure_mesh_trust/tests/verification.rs"
+        "crates/licoup-native/src/core/secure_mesh_trust.rs",
+        "crates/licoup-native/src/core/secure_mesh_trust/tests/authorization.rs",
+        "crates/licoup-native/src/core/secure_mesh_trust/tests/policy.rs",
+        "crates/licoup-native/src/core/secure_mesh_trust/tests/signature.rs",
+        "crates/licoup-native/src/core/secure_mesh_trust/tests/verification.rs"
       ],
       "tokens": [
         "secure_mesh_device_cross_signature_verifies_and_rejects_tamper",
@@ -54,13 +54,13 @@
     {
       "id": "verify-before-send-single-policy-gates-product-seal-path",
       "files": [
-        "crates/lico-client-native/src/core/secure_mesh_trust.rs",
-        "crates/lico-client-native/src/core/secure_mesh_trust/authorization.rs",
-        "crates/lico-client-native/src/core/secure_mesh_trust/signature.rs",
-        "crates/lico-client-native/src/domain/mobile_relay/endpoint_trust/peer_trust.rs",
-        "crates/lico-client-native/src/domain/mobile_relay/pairwise_session.rs",
-        "crates/lico-client-native/src/domain/mobile_relay/tests/endpoint_trust.rs",
-        "crates/lico-client-native/src/domain/mobile_relay/tests/pairing.rs"
+        "crates/licoup-native/src/core/secure_mesh_trust.rs",
+        "crates/licoup-native/src/core/secure_mesh_trust/authorization.rs",
+        "crates/licoup-native/src/core/secure_mesh_trust/signature.rs",
+        "crates/licoup-native/src/domain/mobile_relay/endpoint_trust/peer_trust.rs",
+        "crates/licoup-native/src/domain/mobile_relay/pairwise_session.rs",
+        "crates/licoup-native/src/domain/mobile_relay/tests/endpoint_trust.rs",
+        "crates/licoup-native/src/domain/mobile_relay/tests/pairing.rs"
       ],
       "tokens": [
         "ensure_peer_authorized_for_protected_send",
@@ -86,7 +86,7 @@
     },
     {
       "id": "secure-mesh-command-policy-requires-confirmation-for-device-verify",
-      "file": "crates/lico-client-native/src/core/secure_mesh.rs",
+      "file": "crates/licoup-native/src/core/secure_mesh.rs",
       "tokens": [
         "\"secure_mesh.device.verify\"",
         "\"local_effect\"",
@@ -96,7 +96,7 @@
     },
     {
       "id": "cli-exposes-device-trust-policy-evaluator",
-      "file": "crates/lico-client-native/src/ffi/commands/secure_mesh.rs",
+      "file": "crates/licoup-native/src/ffi/commands/secure_mesh.rs",
       "tokens": [
         "(\"device-trust\", \"evaluate\")",
         "evaluate_device_trust_policy_json",
@@ -105,7 +105,7 @@
     },
     {
       "id": "cli-usage-documents-device-trust-evaluate",
-      "file": "crates/lico-client-native/src/bin/lico-client/presentation.rs",
+      "file": "crates/licoup-native/src/bin/licoup/presentation.rs",
       "tokens": [
         "secure-mesh device-trust evaluate --identity JSON",
         "caller state is advisory and cannot authorize"
@@ -145,10 +145,10 @@
     {
       "id": "rust-public-config-exposes-redacted-exact-trust-presentation",
       "files": [
-        "crates/lico-client-native/src/core/secure_mesh_trust.rs",
-        "crates/lico-client-native/src/core/secure_mesh_trust/verification.rs",
-        "crates/lico-client-native/src/domain/mobile_relay/endpoint_trust/pairing_presentation.rs",
-        "crates/lico-client-native/src/domain/mobile_relay/tests/endpoint_trust.rs"
+        "crates/licoup-native/src/core/secure_mesh_trust.rs",
+        "crates/licoup-native/src/core/secure_mesh_trust/verification.rs",
+        "crates/licoup-native/src/domain/mobile_relay/endpoint_trust/pairing_presentation.rs",
+        "crates/licoup-native/src/domain/mobile_relay/tests/endpoint_trust.rs"
       ],
       "tokens": [
         "public_device_trust_presentation",
@@ -179,7 +179,7 @@
     },
     {
       "id": "android-release-channel-allows-shared-rust-trust-actions",
-      "file": "apps/desktop/android/app/src/debug/kotlin/com/liko/arc/ReleaseAcceptanceChannel.kt",
+      "file": "apps/desktop/android/app/src/debug/kotlin/land/lico/licoup/ReleaseAcceptanceChannel.kt",
       "tokens": [
         "secure_mesh.deviceTrust.evaluate",
         "secure_mesh.deviceTrust.verifyQr",

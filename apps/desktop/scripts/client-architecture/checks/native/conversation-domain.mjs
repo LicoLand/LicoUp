@@ -21,7 +21,7 @@ export async function checkConversationDomain(context, { agentConversationServic
     sourceLineCount,
   } = context;
   const agentConversationCommandsRustSource = await readText(
-    "crates/lico-client-native/src/ffi/commands/agent_conversation.rs"
+    "crates/licoup-native/src/ffi/commands/agent_conversation.rs"
   );
   assert(
     agentConversationCommandsRustSource.includes("dispatch_lane_operation(operation, &params)") &&
@@ -33,14 +33,14 @@ export async function checkConversationDomain(context, { agentConversationServic
     assert(!agentConversationServiceSource.includes(token), `agent_conversation_service.dart must not expose LicoMesh-local write path: ${token}`);
   }
   const conversationsRustSource = await readJoinedText([
-    "crates/lico-client-native/src/domain/conversations.rs",
-    ...await collectSourceFiles("crates/lico-client-native/src/domain/conversation/history", ".rs")
+    "crates/licoup-native/src/domain/conversations.rs",
+    ...await collectSourceFiles("crates/licoup-native/src/domain/conversation/history", ".rs")
   ]);
   const conversationModuleRustSource = await readText(
-    "crates/lico-client-native/src/domain/conversation/mod.rs"
+    "crates/licoup-native/src/domain/conversation/mod.rs"
   );
   const conversationSourceCatalogRustSource = await readText(
-    "crates/lico-client-native/src/domain/conversation/source_catalog.rs"
+    "crates/licoup-native/src/domain/conversation/source_catalog.rs"
   );
   assert(
     conversationModuleRustSource.includes("pub(crate) mod parameters;") &&
@@ -64,7 +64,7 @@ export async function checkConversationDomain(context, { agentConversationServic
     "native conversation history must remain a precise, read-only projection of native agent data"
   );
   const messageProjectionRoot =
-    "crates/lico-client-native/src/domain/conversation/history/message_projection";
+    "crates/licoup-native/src/domain/conversation/history/message_projection";
   const messageProjectionLeaves = [
     "antigravity.rs",
     "generated_context.rs",
@@ -99,7 +99,7 @@ export async function checkConversationDomain(context, { agentConversationServic
     "message projection leaves must retain bounded privacy, generated-context, Antigravity, JSON, semantic, and layer policies"
   );
   const cursorOpenAgentRoot =
-    "crates/lico-client-native/src/domain/conversation/history/cursor_openagent";
+    "crates/licoup-native/src/domain/conversation/history/cursor_openagent";
   const cursorOpenAgentLeaves = [
     "codec.rs",
     "composition.rs",
@@ -137,7 +137,7 @@ export async function checkConversationDomain(context, { agentConversationServic
     "Cursor/OpenAgent leaves must retain read-only bounded codec, precise adapter parsing, usage projection, and paged generic fallback"
   );
   const sessionMergeRoot =
-    "crates/lico-client-native/src/domain/conversation/history/session_merge";
+    "crates/licoup-native/src/domain/conversation/history/session_merge";
   const sessionMergeLeaves = [
     "codex_lineage.rs",
     "composition.rs",
@@ -176,7 +176,7 @@ export async function checkConversationDomain(context, { agentConversationServic
     "session merge leaves must retain cycle-safe lineage, leaf-to-root delegation, bounded paging/model discovery, local index IO, and stable ordering"
   );
   const collaborationWorkflowOperationsRoot =
-    "crates/lico-client-native/src/domain/collaboration_plugin/workflow/operations";
+    "crates/licoup-native/src/domain/collaboration_plugin/workflow/operations";
   const collaborationWorkflowOperationLeaves = [
     "apply_local.rs",
     "apply_mcp.rs",
@@ -223,7 +223,7 @@ export async function checkConversationDomain(context, { agentConversationServic
     "collaboration workflow leaves must retain explicit approval, digest binding, no-follow destinations, package revalidation, and rollback cleanup"
   );
   const conversationSemanticRoot =
-    "crates/lico-client-native/src/domain/conversation_semantic";
+    "crates/licoup-native/src/domain/conversation_semantic";
   const conversationSemanticLeaves = [
     "artifact_projection.rs",
     "builder.rs",

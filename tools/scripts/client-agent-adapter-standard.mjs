@@ -7,7 +7,7 @@ import Ajv2020 from "ajv/dist/2020.js";
 import addFormats from "ajv-formats";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
-const inventory = readJson("crates/lico-client-native/resources/agent-conversation-drivers.json");
+const inventory = readJson("crates/licoup-native/resources/agent-conversation-drivers.json");
 const packaging = readJson("apps/desktop/packaging.modules.json");
 const schema = readJson("packages/contracts/client/agent-conversation-adapter.schema.json");
 const template = readJson("packages/contracts/client/fixtures/agent-conversation-adapter/template.json");

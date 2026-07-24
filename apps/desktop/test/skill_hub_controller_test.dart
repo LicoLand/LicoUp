@@ -1,10 +1,10 @@
 import 'dart:async';
 
-import 'package:flutter_client/src/application/features/skill_hub/controller/skill_hub_controller.dart';
-import 'package:flutter_client/src/application/features/skill_hub/controller/skill_hub_status.dart';
-import 'package:flutter_client/src/contracts/skill_hub.dart';
-import 'package:flutter_client/src/contracts/skill_hub_preferences.dart';
-import 'package:flutter_client/src/contracts/target_candidate.dart';
+import 'package:licoup/src/application/features/skill_hub/controller/skill_hub_controller.dart';
+import 'package:licoup/src/application/features/skill_hub/controller/skill_hub_status.dart';
+import 'package:licoup/src/contracts/skill_hub.dart';
+import 'package:licoup/src/contracts/skill_hub_preferences.dart';
+import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

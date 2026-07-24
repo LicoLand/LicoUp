@@ -1,7 +1,7 @@
 import 'package:flutter/widgets.dart';
 
-import 'package:flutter_client/src/contracts/presentation/layout_environment.dart';
-import 'package:flutter_client/src/frontend/layout/layout_visual_tokens.dart';
+import 'package:licoup/src/contracts/presentation/layout_environment.dart';
+import 'package:licoup/src/frontend/layout/layout_visual_tokens.dart';
 
 const bubbleMobileStyleIdentity = 'dense-docked-bubble';
 const bubbleMobileRestorationPrefix = 'bubble.mobile';

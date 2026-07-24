@@ -2,22 +2,22 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-import 'package:flutter_client/src/application/controller/client_controller.dart';
-import 'package:flutter_client/src/application/features/layout/layout_state_store.dart';
-import 'package:flutter_client/src/contracts/locale_preferences.dart';
-import 'package:flutter_client/src/contracts/presentation/layout_environment.dart';
-import 'package:flutter_client/src/contracts/presentation/layout_state_namespace.dart';
-import 'package:flutter_client/src/frontend/features/settings/ui/layout_profile_selector.dart';
-import 'package:flutter_client/src/frontend/features/settings/ui/client_update_settings_card.dart';
-import 'package:flutter_client/src/frontend/features/settings/ui/catalog_convergence_status_card.dart';
-import 'package:flutter_client/src/frontend/features/settings/ui/settings_log_export_tile.dart';
-import 'package:flutter_client/src/frontend/features/settings/ui/settings_panel_widgets.dart';
-import 'package:flutter_client/src/frontend/l10n/lico_strings.dart';
-import 'package:flutter_client/src/frontend/layout/layout_destination_presentation.dart';
-import 'package:flutter_client/src/frontend/layout/layout_scope.dart';
-import 'package:flutter_client/src/frontend/shared/platform/client_platform.dart';
-import 'package:flutter_client/src/frontend/shared/ui/directory_path_field.dart';
-import 'package:flutter_client/src/frontend/shared/ui/theme.dart';
+import 'package:licoup/src/application/controller/client_controller.dart';
+import 'package:licoup/src/application/features/layout/layout_state_store.dart';
+import 'package:licoup/src/contracts/locale_preferences.dart';
+import 'package:licoup/src/contracts/presentation/layout_environment.dart';
+import 'package:licoup/src/contracts/presentation/layout_state_namespace.dart';
+import 'package:licoup/src/frontend/features/settings/ui/layout_profile_selector.dart';
+import 'package:licoup/src/frontend/features/settings/ui/client_update_settings_card.dart';
+import 'package:licoup/src/frontend/features/settings/ui/catalog_convergence_status_card.dart';
+import 'package:licoup/src/frontend/features/settings/ui/settings_log_export_tile.dart';
+import 'package:licoup/src/frontend/features/settings/ui/settings_panel_widgets.dart';
+import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/layout/layout_destination_presentation.dart';
+import 'package:licoup/src/frontend/layout/layout_scope.dart';
+import 'package:licoup/src/frontend/shared/platform/client_platform.dart';
+import 'package:licoup/src/frontend/shared/ui/directory_path_field.dart';
+import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 const _settingsSectionIds = <String>[
   'appearance',

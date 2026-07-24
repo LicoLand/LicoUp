@@ -131,13 +131,13 @@ function assertNoPosixOnlyPackageScripts() {
 async function assertExistingWindowsBundleIfPresent() {
   const runnableRoot = path.join(repoRoot, "build", "apps", "desktop", "runnable", "windows", "release");
   const bundleRoot = path.join(repoRoot, "build", "apps", "desktop", "bundles", "windows", "release", "bundle");
-  if (!(await fileExists(path.join(runnableRoot, "flutter_client.exe")))) {
+  if (!(await fileExists(path.join(runnableRoot, "licoup.exe")))) {
     console.log("windows bundle artifact check skipped; run npm run client:build:windows first");
     return;
   }
   for (const root of [runnableRoot, bundleRoot]) {
-    assert.ok((await fileSize(path.join(root, "flutter_client.exe"))) > 0, `${root} missing non-empty flutter_client.exe`);
-    assert.ok((await fileSize(path.join(root, "lico-client.exe"))) > 0, `${root} missing non-empty lico-client.exe`);
+    assert.ok((await fileSize(path.join(root, "licoup.exe"))) > 0, `${root} missing non-empty licoup.exe`);
+    assert.ok((await fileSize(path.join(root, "licoup.exe"))) > 0, `${root} missing non-empty licoup.exe`);
     assert.equal(
       await fileExists(path.join(root, "package-metadata", "windows", "client-manifest.json")),
       true,
@@ -159,16 +159,16 @@ async function main() {
     return;
   }
 
-  await recordProgress("lico-client-build", "start");
-  await runChecked(process.execPath, ["tools/scripts/cargo-client.mjs", "build", "--manifest-path", "crates/lico-client-native/Cargo.toml", "--bin", "lico-client"], { timeoutMs: 240000 });
-  await recordProgress("lico-client-build", "ok");
+  await recordProgress("licoup-build", "start");
+  await runChecked(process.execPath, ["tools/scripts/cargo-client.mjs", "build", "--manifest-path", "crates/licoup-native/Cargo.toml", "--bin", "licoup"], { timeoutMs: 240000 });
+  await recordProgress("licoup-build", "ok");
 
-  const licoClientExe = path.join(repoRoot, "build", "crates", "lico-client-native", "target", "debug", "lico-client.exe");
-  assert.equal(await fileExists(licoClientExe), true, `lico-client.exe missing: ${licoClientExe}`);
+  const licoClientExe = path.join(repoRoot, "build", "crates", "licoup-native", "target", "debug", "licoup.exe");
+  assert.equal(await fileExists(licoClientExe), true, `licoup.exe missing: ${licoClientExe}`);
 
   const portableDir = await fs.mkdtemp(path.join(os.tmpdir(), "lico-windows-native-smoke-"));
   await recordProgress("portable-dir", "created");
-  const env = { LICOARC_PORTABLE_DIR: portableDir };
+  const env = { LICOUP_PORTABLE_DIR: portableDir };
   try {
     await recordProgress("targets-scan", "start");
     const targets = await runJson(licoClientExe, ["targets", "scan"], { env, timeoutMs: 30000 });

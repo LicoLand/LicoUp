@@ -19,8 +19,8 @@ COPY client ${CLIENT_ROOT}
 
 WORKDIR ${CLIENT_ROOT}
 
-RUN test -x ./lico-client \
-    && test -f ./package-metadata/lico-client/packaging-modules.json
+RUN test -x ./licoup \
+    && test -f ./package-metadata/licoup/packaging-modules.json
 
 USER 65534:65534
 

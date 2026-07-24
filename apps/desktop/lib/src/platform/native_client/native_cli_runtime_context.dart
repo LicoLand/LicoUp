@@ -2,7 +2,7 @@ import 'dart:io';
 
 import 'package:path/path.dart' as p;
 
-import 'package:flutter_client/src/platform/native_client/native_cli_ports.dart';
+import 'package:licoup/src/platform/native_client/native_cli_ports.dart';
 
 /// Resolves the native sidecar and its bounded, client-owned environment.
 class NativeCliRuntimeContext implements NativeCliProcessContext {
@@ -45,21 +45,21 @@ class NativeCliRuntimeContext implements NativeCliProcessContext {
         explicitBinary.trim(),
       if (cargoTargetDirectory != null &&
           cargoTargetDirectory.trim().isNotEmpty)
-        p.join(cargoTargetDirectory.trim(), 'debug', 'lico-client$suffix'),
+        p.join(cargoTargetDirectory.trim(), 'debug', 'licoup$suffix'),
       p.join(
         File(Platform.resolvedExecutable).parent.path,
-        'lico-client$suffix',
+        'licoup$suffix',
       ),
       p.join(
         Directory.current.path,
         'build',
         'crates',
-        'lico-client-native',
+        'licoup-native',
         'target',
         'debug',
-        'lico-client$suffix',
+        'licoup$suffix',
       ),
-      p.join(Directory.current.path, 'target', 'debug', 'lico-client$suffix'),
+      p.join(Directory.current.path, 'target', 'debug', 'licoup$suffix'),
     ];
     for (final candidate in candidates) {
       final file = File(p.normalize(candidate));
@@ -78,7 +78,7 @@ class NativeCliRuntimeContext implements NativeCliProcessContext {
     final dataDirectory = _dataDirectory;
     if (dataDirectory != null) {
       final directory = await dataDirectory();
-      environment['LICOARC_PORTABLE_DIR'] = directory;
+      environment['LICOUP_PORTABLE_DIR'] = directory;
     }
     return environment.isEmpty ? null : environment;
   }

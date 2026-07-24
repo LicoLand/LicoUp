@@ -1,4 +1,4 @@
-import 'package:flutter_client/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 
 String formatAgentUsageTimeLabel(DateTime time) {
   return '${time.month}-${time.day}';

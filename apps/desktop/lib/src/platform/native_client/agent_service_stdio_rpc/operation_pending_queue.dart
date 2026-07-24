@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:flutter_client/src/platform/native_client/native_rpc_priority.dart';
+import 'package:licoup/src/platform/native_client/native_rpc_priority.dart';
 
 /// FIFO pending queue for one stdio session. Entries carrying a background
 /// [RpcPriorityToken] are skipped while any foreground entry is pending;

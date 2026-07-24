@@ -1,5 +1,5 @@
-export const TEST_ARTIFACT_SCHEMA_VERSION = "licoarc.test-artifact.v1";
-export const NATIVE_CARGO_TEST_TARGET = "build/crates/lico-client-native/target";
+export const TEST_ARTIFACT_SCHEMA_VERSION = "licoup.test-artifact.v1";
+export const NATIVE_CARGO_TEST_TARGET = "build/crates/licoup-native/target";
 export const REGISTRY_PATH = "build/.test-artifacts";
 export const LOCK_WAIT_MS = 25;
 export const LOCK_TIMEOUT_MS = 5_000;

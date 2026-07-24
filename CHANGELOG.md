@@ -1,6 +1,6 @@
 # Changelog
 
-This file records notable public changes to Lico Arc. Product and package
+This file records notable public changes to LicoUp. Product and package
 versions are owned by `tools/client-version.json` and the synchronized package
 manifests.
 

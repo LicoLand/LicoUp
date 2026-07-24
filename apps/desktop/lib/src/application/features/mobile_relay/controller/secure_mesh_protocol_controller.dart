@@ -1,8 +1,8 @@
 import 'package:flutter/foundation.dart';
 
-import 'package:flutter_client/src/application/features/mobile_relay/controller/secure_mesh_controller_support.dart';
-import 'package:flutter_client/src/contracts/mobile_relay_control.dart';
-import 'package:flutter_client/src/contracts/generated/secure_mesh.g.dart';
+import 'package:licoup/src/application/features/mobile_relay/controller/secure_mesh_controller_support.dart';
+import 'package:licoup/src/contracts/mobile_relay_control.dart';
+import 'package:licoup/src/contracts/generated/secure_mesh.g.dart';
 
 /// Owns the independent KT and MLS protocol action projections.
 final class SecureMeshProtocolController extends ChangeNotifier {

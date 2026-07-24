@@ -1,4 +1,4 @@
-# Lico Arc Client Functionality
+# LicoUp Client Functionality
 
 ## Metadata / 元数据
 
@@ -14,7 +14,7 @@ behavior is owned by the Rust and Flutter modules, public schemas, catalogs, and
 regression entries named below; this document is an acceptance-oriented
 projection of those authorities.
 
-Lico Arc is a local-first client. Flutter owns presentation and application
+LicoUp is a local-first client. Flutter owns presentation and application
 coordination; Rust owns bounded local execution, protocol adaptation, local state,
 and cryptographic substrate. The default client does not require or start a
 LicoMesh server.
@@ -94,7 +94,7 @@ shared facade.
 
 | Item | Contract |
 | --- | --- |
-| Objective | Let Lico Arc issue MCP requests or forward MCP responses through a narrow protocol adapter. |
+| Objective | Let LicoUp issue MCP requests or forward MCP responses through a narrow protocol adapter. |
 | Processing | Validate JSON-RPC/MCP shape, correlate requests, bound payloads, sanitize errors, and bind any external request or response transfer to a one-shot approval over direction, destination, and exact message digest. |
 | Rejection | Invalid id, malformed response, changed destination or message, missing/cancelled approval, replay, or payload overflow fails closed. |
 | Regression | MCP codec/ID tests, bounded stdio/HTTP bodies, request-send and response-forward direction/destination/purpose/digest binding, cancellation, expiry, replay, mutation, and approval negative tests. |
@@ -136,7 +136,7 @@ continuation must preserve the native session identity, effective model and
 permission settings, event order, final response, observable effects, and error
 semantics.
 
-When official mid-turn injection is unavailable, Lico Arc may stream the active
+When official mid-turn injection is unavailable, LicoUp may stream the active
 turn for display and start the next user message only after the native reply is
 complete. It must not emulate mid-turn injection by editing private databases,
 scraping a terminal UI, or starting a replacement conversation.

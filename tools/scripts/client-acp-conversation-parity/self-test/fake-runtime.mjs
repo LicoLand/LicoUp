@@ -674,7 +674,7 @@ async function claudeStreamJson() {
 }
 
 async function rpcStdio() {
-  const protocol = "lico-client.stdio.v1";
+  const protocol = "licoup.stdio.v1";
   const transports = new Map();
   const marker = process.env.LICO_FAKE_PROCESS_LOCAL_MARKER;
   const fault = process.env.LICO_FAKE_PROCESS_LOCAL_FAULT || "";

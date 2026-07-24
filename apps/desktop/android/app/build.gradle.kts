@@ -20,7 +20,7 @@ val releaseStoreFile = releaseSigningValues["storeFile"]?.let(::File)
 val releaseSigningReady = releaseSigningFieldsReady && releaseStoreFile?.isAbsolute == true
 
 android {
-    namespace = "com.liko.arc"
+    namespace = "land.lico.licoup"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = System.getenv("LICO_ANDROID_NDK_VERSION")
         ?.takeIf { it.isNotBlank() }
@@ -52,8 +52,8 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.liko.arc"
-        manifestPlaceholders["mainActivityClass"] = "com.liko.arc.MainActivity"
+        applicationId = "land.lico.licoup"
+        manifestPlaceholders["mainActivityClass"] = "land.lico.licoup.MainActivity"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
@@ -75,7 +75,7 @@ android {
 
     buildTypes {
         getByName("debug") {
-            manifestPlaceholders["mainActivityClass"] = "com.liko.arc.DebugMainActivity"
+            manifestPlaceholders["mainActivityClass"] = "land.lico.licoup.DebugMainActivity"
         }
         release {
             signingConfig = if (releaseSigningReady) {
@@ -118,7 +118,7 @@ val verifyReleaseAcceptanceIsolation by tasks.registering {
             "ReleaseAcceptanceChannel",
             "SecureMeshAndroidReleaseAcceptanceCoordinator",
             "ReleaseAcceptanceDebugContract",
-            "com.liko.arc.RELEASE_ACCEPTANCE",
+            "land.lico.licoup.RELEASE_ACCEPTANCE",
             "secure_mesh.android.releaseAcceptance.authorize",
         )
         val intermediates = layout.buildDirectory.dir("intermediates").get().asFile
@@ -178,10 +178,10 @@ dependencies {
 
 val secureMeshAndroidTarget = "aarch64-linux-android"
 val secureMeshAndroidAbi = "arm64-v8a"
-val secureMeshNativeLibrary = "liblico_client_native.so"
+val secureMeshNativeLibrary = "liblicoup_native.so"
 val repoRoot = rootProject.projectDir.resolve("../../..").canonicalFile
 val secureMeshNativeTargetRoot =
-    repoRoot.resolve("build/crates/lico-client-native/android-target")
+    repoRoot.resolve("build/crates/licoup-native/android-target")
 val secureMeshGeneratedJniRoot =
     layout.buildDirectory.dir("generated/secureMeshJniLibs")
 val secureMeshGeneratedLibrary =
@@ -230,8 +230,8 @@ fun ndkTool(name: String): File {
 val buildSecureMeshAndroidNative by tasks.registering {
     group = "build"
     description = "Builds the Rust Secure Mesh native runtime for Android arm64."
-    inputs.file(repoRoot.resolve("crates/lico-client-native/Cargo.toml"))
-    inputs.dir(repoRoot.resolve("crates/lico-client-native/src"))
+    inputs.file(repoRoot.resolve("crates/licoup-native/Cargo.toml"))
+    inputs.dir(repoRoot.resolve("crates/licoup-native/src"))
     outputs.file(secureMeshGeneratedLibrary)
 
     doLast {
@@ -252,7 +252,7 @@ val buildSecureMeshAndroidNative by tasks.registering {
                 "cargo",
                 "build",
                 "--manifest-path",
-                repoRoot.resolve("crates/lico-client-native/Cargo.toml").path,
+                repoRoot.resolve("crates/licoup-native/Cargo.toml").path,
                 "--target",
                 secureMeshAndroidTarget,
                 "--release",

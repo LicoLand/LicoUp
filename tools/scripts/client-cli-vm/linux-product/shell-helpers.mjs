@@ -24,11 +24,11 @@ export function linuxProductReportRootPreparationCommand() {
 
 export function linuxProductDistributionReportTreePreparationCommand() {
   return [
-    "$HOME/lico-arc/build",
-    "$HOME/lico-arc/build/apps",
-    "$HOME/lico-arc/build/apps/desktop",
-    "$HOME/lico-arc/build/apps/desktop/distribution",
-    "$HOME/lico-arc/build/apps/desktop/distribution/linux-arm64",
+    "$HOME/lico-up/build",
+    "$HOME/lico-up/build/apps",
+    "$HOME/lico-up/build/apps/desktop",
+    "$HOME/lico-up/build/apps/desktop/distribution",
+    "$HOME/lico-up/build/apps/desktop/distribution/linux-arm64",
   ]
     .map((directory) => `lico_owner_only_directory "${directory}"`)
     .join(" && ");

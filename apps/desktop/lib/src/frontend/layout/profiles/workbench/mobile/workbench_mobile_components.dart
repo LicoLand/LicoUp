@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
-import 'package:flutter_client/src/frontend/layout/layout_component_kit.dart';
-import 'package:flutter_client/src/frontend/layout/profiles/workbench/mobile/workbench_mobile_tokens.dart';
+import 'package:licoup/src/frontend/layout/layout_component_kit.dart';
+import 'package:licoup/src/frontend/layout/profiles/workbench/mobile/workbench_mobile_tokens.dart';
 
 /// The complete styled component recipe for the Workbench mobile profile.
 ///

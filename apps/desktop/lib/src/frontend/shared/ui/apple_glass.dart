@@ -2,8 +2,8 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 
-import 'package:flutter_client/src/frontend/shared/ui/apple_control_metrics.dart';
-import 'package:flutter_client/src/frontend/shared/ui/theme_colors.dart';
+import 'package:licoup/src/frontend/shared/ui/apple_control_metrics.dart';
+import 'package:licoup/src/frontend/shared/ui/theme_colors.dart';
 
 /// Translucent glass surface with continuous-feeling corners and a hairline
 /// border — Flutter-first stand-in for system materials on Apple clients.

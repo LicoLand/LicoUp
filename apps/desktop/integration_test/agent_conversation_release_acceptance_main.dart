@@ -4,8 +4,8 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_client/app.dart';
-import 'package:flutter_client/src/application/controller/client_controller.dart';
+import 'package:licoup/app.dart';
+import 'package:licoup/src/application/controller/client_controller.dart';
 
 import 'support/agent_conversation_product_fixture.dart';
 

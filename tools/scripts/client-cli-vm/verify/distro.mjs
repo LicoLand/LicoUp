@@ -15,7 +15,7 @@ export function verifyDistro(distro, options) {
     runSsh(distro, bootstrapCommand(distro), { stdio: "ignore" });
     console.log(`[client-cli-vm] Syncing repository to ${distro.id}.`);
     syncRepoToVm(distro);
-    console.log(`[client-cli-vm] Verifying lico-client on ${distro.id} ARM64.`);
+    console.log(`[client-cli-vm] Verifying licoup on ${distro.id} ARM64.`);
     runSsh(distro, verifyCommand(distro));
     fetchArtifacts(distro);
   } finally {

@@ -10,7 +10,7 @@ const repositoryRoot = path.resolve(
 );
 const manifestPath = "schemas/client_bridge/manifest.json";
 const schemaPrefix = "schemas/client_bridge/";
-const rustPrefix = "crates/lico-client-native/src/ffi/generated/";
+const rustPrefix = "crates/licoup-native/src/ffi/generated/";
 const dartPrefix = "apps/desktop/lib/src/contracts/generated/";
 const allowedNonBridgeOutputs = new Set([
   `${rustPrefix}mod.rs`,
@@ -1231,7 +1231,7 @@ function dartSecureMeshOutput(schema, schemaPath) {
 import 'dart:collection';
 import 'dart:convert';
 
-import 'package:flutter_client/src/contracts/generated/secure_mesh_capability_catalog.g.dart';
+import 'package:licoup/src/contracts/generated/secure_mesh_capability_catalog.g.dart';
 
 const String secureMeshProtocolVersion = ${JSON.stringify(schema.protocolVersion).replaceAll('"', "'")};
 const int secureMeshMaxRequestBytes = ${schema.maxRequestBytes};

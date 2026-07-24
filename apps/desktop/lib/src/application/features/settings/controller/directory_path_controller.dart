@@ -1,4 +1,4 @@
-import 'package:flutter_client/src/contracts/directory_opener.dart';
+import 'package:licoup/src/contracts/directory_opener.dart';
 
 final class DirectoryPathStatusUpdate {
   const DirectoryPathStatusUpdate({

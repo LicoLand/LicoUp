@@ -60,7 +60,7 @@ class MainFlutterWindow: NSWindow {
     // hand in-flight drags to AppKit and offer deliberate zoom, mirroring the
     // native title-bar contract under the shell's control.
     let windowChromeChannel = FlutterMethodChannel(
-      name: "lico.arc/window_chrome",
+      name: "licoup/window_chrome",
       binaryMessenger: flutterViewController.engine.binaryMessenger
     )
     windowChromeChannel.setMethodCallHandler { [weak self] call, result in

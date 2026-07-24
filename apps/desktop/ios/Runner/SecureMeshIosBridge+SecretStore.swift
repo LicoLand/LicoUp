@@ -4,7 +4,7 @@ import Security
 
 extension SecureMeshIosBridge {
   func keychainStatus() -> [String: Any] {
-    let service = "app.licoarc.secure-mesh.runtime"
+    let service = "land.lico.licoup.secure-mesh.runtime"
     let account = "runtime-self-test-\(UUID().uuidString)"
     let data = Data("keychain-self-test".utf8)
     let query: [String: Any] = [

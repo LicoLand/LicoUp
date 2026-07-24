@@ -1,8 +1,8 @@
-import 'package:flutter_client/src/application/features/settings/controller/optional_collaboration_workflow_controller.dart';
-import 'package:flutter_client/src/contracts/optional_collaboration_gateway.dart';
-import 'package:flutter_client/src/contracts/optional_collaboration_models.dart';
-import 'package:flutter_client/src/contracts/optional_collaboration_local_server_models.dart';
-import 'package:flutter_client/src/contracts/optional_collaboration_workflow_models.dart';
+import 'package:licoup/src/application/features/settings/controller/optional_collaboration_workflow_controller.dart';
+import 'package:licoup/src/contracts/optional_collaboration_gateway.dart';
+import 'package:licoup/src/contracts/optional_collaboration_models.dart';
+import 'package:licoup/src/contracts/optional_collaboration_local_server_models.dart';
+import 'package:licoup/src/contracts/optional_collaboration_workflow_models.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support/optional_collaboration_test_fixtures.dart';
@@ -509,7 +509,7 @@ Map<String, dynamic> _assemblyPlan(
   'packageDigestSha256': _packageDigest,
   'selectedComponentIds': selectedIds,
   'destination': destination,
-  'assemblyAdapterId': 'licoarc-builtin-local-http-v1',
+  'assemblyAdapterId': 'licoup-builtin-local-http-v1',
   'assemblyManifestDigestSha256': _registrationDigest,
   'assemblyManifestBytes': 512,
   'bindHost': '127.0.0.1',
@@ -537,7 +537,7 @@ Map<String, dynamic> _localServerJson(
   'packageDigestSha256': _packageDigest,
   'selectedComponentIds': selectedIds,
   'destination': destination,
-  'assemblyAdapterId': 'licoarc-builtin-local-http-v1',
+  'assemblyAdapterId': 'licoup-builtin-local-http-v1',
   'assemblyManifestDigestSha256': _registrationDigest,
   'bindHost': '127.0.0.1',
   'port': 43121,
@@ -568,14 +568,14 @@ Map<String, dynamic> _registrationPlan(
   final registrationId =
       '00000000-0000-4000-8000-${(index + 10).toString().padLeft(12, '0')}';
   final registrationDestination =
-      'test-data/licoarc-private/${destination.agentId}/$registrationId.json';
+      'test-data/licoup-private/${destination.agentId}/$registrationId.json';
   return {
     'agentId': destination.agentId,
     'registrationId': registrationId,
     'destination': registrationDestination,
     'digestSha256': _registrationDigest,
     'registration': {
-      'schemaVersion': 'licoarc.mcp-agent-registration.v2',
+      'schemaVersion': 'licoup.mcp-agent-registration.v2',
       'registrationId': registrationId,
       'registrationDigestSha256': _registrationDigest,
       'agentId': destination.agentId,
@@ -591,7 +591,7 @@ Map<String, dynamic> _registrationPlan(
       ],
       'payloadFiles': <dynamic>[],
       'servers': <dynamic>[],
-      'bridgeKind': 'licoarc-stdio-mcp-gate',
+      'bridgeKind': 'licoup-stdio-mcp-gate',
       'activationPolicy': 'disabled-authenticated-broker-unavailable',
       'automaticTriggersAllowed': false,
       'pluginExecutedDuringInstall': false,

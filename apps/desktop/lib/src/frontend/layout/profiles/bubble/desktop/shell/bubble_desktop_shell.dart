@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 
-import 'package:flutter_client/src/contracts/presentation/layout_environment.dart';
-import 'package:flutter_client/src/frontend/layout/layout_palette.dart';
-import 'package:flutter_client/src/frontend/layout/layout_surface_bundle.dart';
-import 'package:flutter_client/src/frontend/layout/profiles/bubble/desktop/chrome/bubble_desktop_chrome.dart';
-import 'package:flutter_client/src/frontend/layout/profiles/bubble/desktop/chrome/bubble_desktop_glass.dart';
+import 'package:licoup/src/contracts/presentation/layout_environment.dart';
+import 'package:licoup/src/frontend/layout/layout_palette.dart';
+import 'package:licoup/src/frontend/layout/layout_surface_bundle.dart';
+import 'package:licoup/src/frontend/layout/profiles/bubble/desktop/chrome/bubble_desktop_chrome.dart';
+import 'package:licoup/src/frontend/layout/profiles/bubble/desktop/chrome/bubble_desktop_glass.dart';
 
 /// Bubble-owned carefully tuned sidebar-rail desktop chrome.
 Widget buildBubbleDesktopMediumShell(

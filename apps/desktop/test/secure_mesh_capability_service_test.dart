@@ -2,8 +2,8 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:crypto/crypto.dart';
-import 'package:flutter_client/src/contracts/generated/secure_mesh_capability_catalog.g.dart';
-import 'package:flutter_client/src/platform/secure_mesh/secure_mesh_capability_service.dart';
+import 'package:licoup/src/contracts/generated/secure_mesh_capability_catalog.g.dart';
+import 'package:licoup/src/platform/secure_mesh/secure_mesh_capability_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'fixtures/secure_mesh_capability_projection.dart';
@@ -13,7 +13,7 @@ void main() {
 
   test('generated catalog stays byte-for-byte bound to canonical source', () {
     final source = File(
-      '../../crates/lico-client-native/resources/'
+      '../../crates/licoup-native/resources/'
       'secure-mesh-capability-catalog.json',
     ).readAsStringSync();
     expect(source, secureMeshCapabilityCatalogSource);

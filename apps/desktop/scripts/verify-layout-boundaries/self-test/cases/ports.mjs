@@ -113,7 +113,7 @@ typedef HiddenRenderResult = Widget;
   await writeRelative(
     fixtureRoot,
     "apps/desktop/lib/src/frontend/layout/layout_chrome_port.dart",
-    `import 'package:flutter_client/src/contracts/presentation/render_result.dart';
+    `import 'package:licoup/src/contracts/presentation/render_result.dart';
 typedef LayoutPreviewRenderer = HiddenRenderResult Function();
 `,
   );
@@ -164,12 +164,12 @@ typedef LayoutPreviewRenderer = HiddenRenderResult Function();
   await writeRelative(
     fixtureRoot,
     "apps/desktop/lib/src/contracts/presentation/layout_agents_snapshot.dart",
-    "export 'package:flutter_client/src/frontend/features/agents/agents_surface.dart';\n",
+    "export 'package:licoup/src/frontend/features/agents/agents_surface.dart';\n",
   );
   await appendRelative(
     fixtureRoot,
     bundlePath("alpha", "desktop"),
-    "import 'package:flutter_client/src/contracts/presentation/layout_agents_snapshot.dart';\n",
+    "import 'package:licoup/src/contracts/presentation/layout_agents_snapshot.dart';\n",
   );
   await expectViolation("layout_shared_feature_ui_import", () =>
     verifyLayoutBoundaries({ repositoryRoot: fixtureRoot }),
@@ -180,7 +180,7 @@ typedef LayoutPreviewRenderer = HiddenRenderResult Function();
   await appendRelative(
     fixtureRoot,
     bundlePath("alpha", "desktop"),
-    "import /* directive gap */ 'package:flutter_client/src/application/controller/client_controller.dart';\n",
+    "import /* directive gap */ 'package:licoup/src/application/controller/client_controller.dart';\n",
   );
   await expectViolation("layout_complete_controller_import", () =>
     verifyLayoutBoundaries({ repositoryRoot: fixtureRoot }),
@@ -191,7 +191,7 @@ typedef LayoutPreviewRenderer = HiddenRenderResult Function();
   await appendRelative(
     fixtureRoot,
     "apps/desktop/lib/src/frontend/layout/layout_palette.dart",
-    "import 'package:flutter_client/src/application/controller/client_controller.dart';\n",
+    "import 'package:licoup/src/application/controller/client_controller.dart';\n",
   );
   await writeRelative(
     fixtureRoot,
