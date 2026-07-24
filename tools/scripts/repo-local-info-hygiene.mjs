@@ -325,7 +325,7 @@ function requireSelfTest(condition, reasonCode) {
 }
 
 async function runSelfTest() {
-  const temporary = await mkdtemp(path.join(tmpdir(), "lico-arc-hygiene-"));
+  const temporary = await mkdtemp(path.join(tmpdir(), "lico-up-hygiene-"));
   try {
     const placeholderDirectory = path.join(temporary, "placeholder-candidate");
     await mkdir(placeholderDirectory, { recursive: true });

@@ -1,8 +1,8 @@
 import 'dart:async';
 
-import 'package:flutter_client/src/application/features/mobile_relay/controller/mobile_home_layout_controller.dart';
-import 'package:flutter_client/src/contracts/mobile_home_layout.dart';
-import 'package:flutter_client/src/contracts/mobile_home_layout_repository.dart';
+import 'package:licoup/src/application/features/mobile_relay/controller/mobile_home_layout_controller.dart';
+import 'package:licoup/src/contracts/mobile_home_layout.dart';
+import 'package:licoup/src/contracts/mobile_home_layout_repository.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

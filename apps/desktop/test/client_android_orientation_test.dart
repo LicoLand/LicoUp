@@ -31,13 +31,13 @@ void main() {
     expect(
       gradle,
       contains(
-        'manifestPlaceholders["mainActivityClass"] = "com.liko.arc.MainActivity"',
+        'manifestPlaceholders["mainActivityClass"] = "land.lico.licoup.MainActivity"',
       ),
     );
     expect(
       gradle,
       contains(
-        'manifestPlaceholders["mainActivityClass"] = "com.liko.arc.DebugMainActivity"',
+        'manifestPlaceholders["mainActivityClass"] = "land.lico.licoup.DebugMainActivity"',
       ),
     );
     for (final activity in activities) {

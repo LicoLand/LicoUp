@@ -12,6 +12,7 @@ const requiredFiles = [
   "README.md",
   "README.zh-CN.md",
   "PRODUCT.md",
+  "PRODUCT.zh-CN.md",
   "CONTRIBUTING.md",
   "CODE_OF_CONDUCT.md",
   "CHANGELOG.md",
@@ -31,6 +32,7 @@ const requiredFiles = [
 const localRoots = ["docs/plans", "docs/reports", "cache", "build"];
 const languagePairs = [
   ["README.md", "README.zh-CN.md"],
+  ["PRODUCT.md", "PRODUCT.zh-CN.md"],
   ["CONTRIBUTING.md", "CONTRIBUTING.zh-CN.md"],
   ["SECURITY.md", "SECURITY.zh-CN.md"],
   ["docs/functionality/USER-GUIDE.md", "docs/functionality/USER-GUIDE.zh-CN.md"],
@@ -183,8 +185,8 @@ for (const generatedPath of ["docs/COMPATIBILITY.md", "docs/COMPATIBILITY.zh-CN.
   const source = readFileSync(path.join(repoRoot, generatedPath), "utf8");
   for (const token of [
     "tools/client-support-matrix.json",
-    "crates/lico-client-native/resources/agent-conversation-drivers.json",
-    "crates/lico-client-native/resources/agent-conversation-readiness.json",
+    "crates/licoup-native/resources/agent-conversation-drivers.json",
+    "crates/licoup-native/resources/agent-conversation-readiness.json",
     "client:support-matrix:sync",
     "client:support-matrix:check",
   ]) {

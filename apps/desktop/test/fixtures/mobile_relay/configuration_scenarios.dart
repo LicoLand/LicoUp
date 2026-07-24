@@ -1,10 +1,10 @@
 import 'dart:io';
 
-import 'package:flutter_client/src/backend/features/mobile_relay/services/mobile_home_layout_service.dart';
-import 'package:flutter_client/src/contracts/mobile_home_layout.dart';
-import 'package:flutter_client/src/platform/mobile_relay/mobile_home_layout_store.dart';
-import 'package:flutter_client/src/platform/mobile_relay/mobile_relay_service.dart';
-import 'package:flutter_client/src/platform/storage/portable_data_root.dart';
+import 'package:licoup/src/backend/features/mobile_relay/services/mobile_home_layout_service.dart';
+import 'package:licoup/src/contracts/mobile_home_layout.dart';
+import 'package:licoup/src/platform/mobile_relay/mobile_home_layout_store.dart';
+import 'package:licoup/src/platform/mobile_relay/mobile_relay_service.dart';
+import 'package:licoup/src/platform/storage/portable_data_root.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void registerMobileRelayConfigurationScenarios() {

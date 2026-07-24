@@ -165,7 +165,7 @@
       "id": "rust-native-core-has-no-flutter-ui-dependency",
       "description": "Rust native code owns Secure Mesh backend decisions and must not depend on Flutter or GUI toolkit concepts.",
       "roots": [
-        "crates/lico-client-native/src"
+        "crates/licoup-native/src"
       ],
       "includeExtensions": [
         ".rs"
@@ -189,7 +189,7 @@
       "id": "android-activity-does-not-own-payload-crypto",
       "description": "Android platform code may orchestrate physical proof collection, AndroidKeyStore wrapping, and JNI calls, but Secure Mesh payload crypto must stay in the shared Rust core.",
       "roots": [
-        "apps/desktop/android/app/src/main/kotlin/com/liko/arc"
+        "apps/desktop/android/app/src/main/kotlin/land/lico/licoup"
       ],
       "includeExtensions": [
         ".kt"
@@ -209,7 +209,7 @@
       "id": "android-platform-auth-does-not-collect-lock-screen-password",
       "description": "Android platform code must invoke the system credential prompt and must never collect lock-screen credentials in app-owned UI or payloads.",
       "roots": [
-        "apps/desktop/android/app/src/main/kotlin/com/liko/arc"
+        "apps/desktop/android/app/src/main/kotlin/land/lico/licoup"
       ],
       "includeExtensions": [
         ".kt"
@@ -257,7 +257,7 @@
       "id": "android-mobile-relay-bridge-does-not-send-raw-e2ee-json",
       "description": "Android may expose opaque Mobile Relay secret-store handle metadata, but it must not send endpoint private keys, pairing secrets, or relay tokens through secretOverrides JSON.",
       "roots": [
-        "apps/desktop/android/app/src/main/kotlin/com/liko/arc"
+        "apps/desktop/android/app/src/main/kotlin/land/lico/licoup"
       ],
       "includeExtensions": [
         ".kt"
@@ -344,9 +344,9 @@
     {
       "id": "rust-core-owns-secure-mesh-payload-crypto",
       "files": [
-        "crates/lico-client-native/src/core/secure_mesh_crypto/model.rs",
-        "crates/lico-client-native/src/core/secure_mesh_crypto/public_payload.rs",
-        "crates/lico-client-native/src/core/secure_mesh_crypto/key_derivation.rs"
+        "crates/licoup-native/src/core/secure_mesh_crypto/model.rs",
+        "crates/licoup-native/src/core/secure_mesh_crypto/public_payload.rs",
+        "crates/licoup-native/src/core/secure_mesh_crypto/key_derivation.rs"
       ],
       "tokens": [
         "SecureMeshContentContext",
@@ -358,21 +358,21 @@
     },
     {
       "id": "rust-mobile-ffi-forbids-raw-payload-crypto-actions",
-      "file": "crates/lico-client-native/src/ffi/secure_mesh_mobile_ffi.rs",
+      "file": "crates/licoup-native/src/ffi/secure_mesh_mobile_ffi.rs",
       "files": [
-        "crates/lico-client-native/src/ffi/secure_mesh_mobile_ffi.rs",
-        "crates/lico-client-native/src/ffi/secure_mesh_mobile_ffi/action_catalog.rs",
-        "crates/lico-client-native/src/ffi/secure_mesh_mobile_ffi/dispatch_context.rs",
-        "crates/lico-client-native/src/ffi/secure_mesh_mobile_ffi/dispatch_router.rs",
-        "crates/lico-client-native/src/ffi/secure_mesh_mobile_ffi/feature_status.rs",
-        "crates/lico-client-native/src/ffi/secure_mesh_mobile_ffi/fixture_envelope.rs",
-        "crates/lico-client-native/src/ffi/secure_mesh_mobile_ffi/fixture_file.rs",
-        "crates/lico-client-native/src/ffi/secure_mesh_mobile_ffi/fixture_lifecycle.rs",
-        "crates/lico-client-native/src/ffi/secure_mesh_mobile_ffi/fixture_payload.rs",
-        "crates/lico-client-native/src/ffi/secure_mesh_mobile_ffi/fixture_trust.rs",
-        "crates/lico-client-native/src/ffi/secure_mesh_mobile_ffi/protected_operation.rs",
-        "crates/lico-client-native/src/ffi/secure_mesh_mobile_ffi/redacted_error.rs",
-        "crates/lico-client-native/src/ffi/secure_mesh_mobile_ffi/request_validation.rs"
+        "crates/licoup-native/src/ffi/secure_mesh_mobile_ffi.rs",
+        "crates/licoup-native/src/ffi/secure_mesh_mobile_ffi/action_catalog.rs",
+        "crates/licoup-native/src/ffi/secure_mesh_mobile_ffi/dispatch_context.rs",
+        "crates/licoup-native/src/ffi/secure_mesh_mobile_ffi/dispatch_router.rs",
+        "crates/licoup-native/src/ffi/secure_mesh_mobile_ffi/feature_status.rs",
+        "crates/licoup-native/src/ffi/secure_mesh_mobile_ffi/fixture_envelope.rs",
+        "crates/licoup-native/src/ffi/secure_mesh_mobile_ffi/fixture_file.rs",
+        "crates/licoup-native/src/ffi/secure_mesh_mobile_ffi/fixture_lifecycle.rs",
+        "crates/licoup-native/src/ffi/secure_mesh_mobile_ffi/fixture_payload.rs",
+        "crates/licoup-native/src/ffi/secure_mesh_mobile_ffi/fixture_trust.rs",
+        "crates/licoup-native/src/ffi/secure_mesh_mobile_ffi/protected_operation.rs",
+        "crates/licoup-native/src/ffi/secure_mesh_mobile_ffi/redacted_error.rs",
+        "crates/licoup-native/src/ffi/secure_mesh_mobile_ffi/request_validation.rs"
       ],
       "forbiddenTokens": [
         "contentKeyBase64url",
@@ -381,14 +381,14 @@
     },
     {
       "id": "rust-core-owns-secure-mesh-pairwise-state",
-      "file": "crates/lico-client-native/src/core/secure_mesh_pairwise.rs",
+      "file": "crates/licoup-native/src/core/secure_mesh_pairwise.rs",
       "files": [
-        "crates/lico-client-native/src/core/secure_mesh_pairwise.rs",
-        "crates/lico-client-native/src/core/secure_mesh_pairwise/key_ratchet.rs",
-        "crates/lico-client-native/src/core/secure_mesh_pairwise/key_ratchet/relay_codec.rs",
-        "crates/lico-client-native/src/core/secure_mesh_pairwise/persistence/store_model.rs",
-        "crates/lico-client-native/src/core/secure_mesh_pairwise/session_negotiation/transcript_codec.rs",
-        "crates/lico-client-native/src/core/secure_mesh_pairwise/tests/persistence_recovery.rs"
+        "crates/licoup-native/src/core/secure_mesh_pairwise.rs",
+        "crates/licoup-native/src/core/secure_mesh_pairwise/key_ratchet.rs",
+        "crates/licoup-native/src/core/secure_mesh_pairwise/key_ratchet/relay_codec.rs",
+        "crates/licoup-native/src/core/secure_mesh_pairwise/persistence/store_model.rs",
+        "crates/licoup-native/src/core/secure_mesh_pairwise/session_negotiation/transcript_codec.rs",
+        "crates/licoup-native/src/core/secure_mesh_pairwise/tests/persistence_recovery.rs"
       ],
       "tokens": [
         "SecureMeshPairwiseSession",
@@ -405,10 +405,10 @@
     },
     {
       "id": "rust-core-owns-platform-secret-store-contract",
-      "file": "crates/lico-client-native/src/core/secure_mesh_secret_store.rs",
+      "file": "crates/licoup-native/src/core/secure_mesh_secret_store.rs",
       "files": [
-        "crates/lico-client-native/src/core/secure_mesh_secret_store.rs",
-        "crates/lico-client-native/src/platform/secure_mesh_secret_store.rs"
+        "crates/licoup-native/src/core/secure_mesh_secret_store.rs",
+        "crates/licoup-native/src/platform/secure_mesh_secret_store.rs"
       ],
       "tokens": [
         "pub use authorization",
@@ -419,7 +419,7 @@
     },
     {
       "id": "rust-platform-secret-store-trait-is-session-aware",
-      "file": "crates/lico-client-native/src/core/secure_mesh_secret_store/port.rs",
+      "file": "crates/licoup-native/src/core/secure_mesh_secret_store/port.rs",
       "tokens": [
         "pub trait SecureMeshSecretStore",
         "begin_authorized_session",
@@ -430,7 +430,7 @@
     },
     {
       "id": "rust-platform-secret-store-authorization-is-budgeted",
-      "file": "crates/lico-client-native/src/core/secure_mesh_secret_store/authorization.rs",
+      "file": "crates/licoup-native/src/core/secure_mesh_secret_store/authorization.rs",
       "tokens": [
         "SecretStoreAuthorizationRequest",
         "SecretStoreAuthorizationSession",
@@ -442,7 +442,7 @@
     },
     {
       "id": "rust-platform-secret-store-platform-proof-is-redacted",
-      "file": "crates/lico-client-native/src/platform/secure_mesh_secret_store/platform_store.rs",
+      "file": "crates/licoup-native/src/platform/secure_mesh_secret_store/platform_store.rs",
       "tokens": [
         "PlatformSecretStore",
         "SecretClassPersistenceProof",
@@ -451,7 +451,7 @@
     },
     {
       "id": "android-rust-secret-store-receiver-is-dedicated-bridge",
-      "file": "crates/lico-client-native/src/ffi/android_ffi.rs",
+      "file": "crates/licoup-native/src/ffi/android_ffi.rs",
       "tokens": [
         "secret_store_bridge: JObject",
         "AndroidJniSecretStore::new(env, secret_store_bridge)",
@@ -466,7 +466,7 @@
     },
     {
       "id": "android-bridge-uses-system-device-auth",
-      "file": "apps/desktop/android/app/src/main/kotlin/com/liko/arc/SecureMeshAndroidUserAuthenticator.kt",
+      "file": "apps/desktop/android/app/src/main/kotlin/land/lico/licoup/SecureMeshAndroidUserAuthenticator.kt",
       "tokens": [
         "class SecureMeshAndroidUserAuthenticator",
         "fun request(",
@@ -532,16 +532,16 @@
     },
     {
       "id": "android-bridge-uses-opaque-mobile-relay-secret-store-handle",
-      "file": "apps/desktop/android/app/src/main/kotlin/com/liko/arc/SecureMeshAndroidSecretStore.kt",
+      "file": "apps/desktop/android/app/src/main/kotlin/land/lico/licoup/SecureMeshAndroidSecretStore.kt",
       "files": [
-        "apps/desktop/android/app/src/main/kotlin/com/liko/arc/SecureMeshAndroidSecretStore.kt",
-        "apps/desktop/android/app/src/main/kotlin/com/liko/arc/SecureMeshAndroidSecretContract.kt",
-        "apps/desktop/android/app/src/main/kotlin/com/liko/arc/SecureMeshAndroidCustodyManager.kt",
-        "apps/desktop/android/app/src/main/kotlin/com/liko/arc/SecureMeshAndroidCapability.kt",
-        "apps/desktop/android/app/src/main/kotlin/com/liko/arc/SecureMeshAndroidCapabilityProbe.kt",
-        "apps/desktop/android/app/src/main/kotlin/com/liko/arc/SecureMeshAndroidKeyPolicy.kt",
-        "apps/desktop/android/app/src/main/kotlin/com/liko/arc/SecureMeshAndroidMobileRelaySecretBridge.kt",
-        "apps/desktop/android/app/src/main/kotlin/com/liko/arc/SecureMeshAndroidEncryptedRecordStore.kt"
+        "apps/desktop/android/app/src/main/kotlin/land/lico/licoup/SecureMeshAndroidSecretStore.kt",
+        "apps/desktop/android/app/src/main/kotlin/land/lico/licoup/SecureMeshAndroidSecretContract.kt",
+        "apps/desktop/android/app/src/main/kotlin/land/lico/licoup/SecureMeshAndroidCustodyManager.kt",
+        "apps/desktop/android/app/src/main/kotlin/land/lico/licoup/SecureMeshAndroidCapability.kt",
+        "apps/desktop/android/app/src/main/kotlin/land/lico/licoup/SecureMeshAndroidCapabilityProbe.kt",
+        "apps/desktop/android/app/src/main/kotlin/land/lico/licoup/SecureMeshAndroidKeyPolicy.kt",
+        "apps/desktop/android/app/src/main/kotlin/land/lico/licoup/SecureMeshAndroidMobileRelaySecretBridge.kt",
+        "apps/desktop/android/app/src/main/kotlin/land/lico/licoup/SecureMeshAndroidEncryptedRecordStore.kt"
       ],
       "tokens": [
         "class SecureMeshAndroidSecretStore",
@@ -570,11 +570,11 @@
     },
     {
       "id": "android-activity-delegates-mobile-relay-secret-store",
-      "file": "apps/desktop/android/app/src/main/kotlin/com/liko/arc/MainActivity.kt",
+      "file": "apps/desktop/android/app/src/main/kotlin/land/lico/licoup/MainActivity.kt",
       "files": [
-        "apps/desktop/android/app/src/main/kotlin/com/liko/arc/MainActivity.kt",
-        "apps/desktop/android/app/src/main/kotlin/com/liko/arc/SecureMeshAndroidCommandRouter.kt",
-        "apps/desktop/android/app/src/main/kotlin/com/liko/arc/SecureMeshAndroidNativeRuntime.kt"
+        "apps/desktop/android/app/src/main/kotlin/land/lico/licoup/MainActivity.kt",
+        "apps/desktop/android/app/src/main/kotlin/land/lico/licoup/SecureMeshAndroidCommandRouter.kt",
+        "apps/desktop/android/app/src/main/kotlin/land/lico/licoup/SecureMeshAndroidNativeRuntime.kt"
       ],
       "tokens": [
         "SecureMeshAndroidSecretStore(this, filesDir)",
@@ -622,7 +622,7 @@
     },
     {
       "id": "macos-rust-secret-store-uses-single-system-auth-context",
-      "file": "crates/lico-client-native/src/platform/secure_mesh_secret_store/macos_user_presence.rs",
+      "file": "crates/licoup-native/src/platform/secure_mesh_secret_store/macos_user_presence.rs",
       "tokens": [
         "objc2_local_authentication::{LAContext, LAError, LAPolicy}",
         "MacosAuthorizationContext",
@@ -643,7 +643,7 @@
     },
     {
       "id": "macos-rust-secret-store-authorization-session-is-single-context",
-      "file": "crates/lico-client-native/src/core/secure_mesh_secret_store/authorization.rs",
+      "file": "crates/licoup-native/src/core/secure_mesh_secret_store/authorization.rs",
       "tokens": [
         "system_authorization_attempt_count",
         "system_authorization_completed",
@@ -655,7 +655,7 @@
     },
     {
       "id": "macos-rust-secret-store-interactive-selection-fails-closed",
-      "file": "crates/lico-client-native/src/platform/secure_mesh_secret_store/platform_backends/macos.rs",
+      "file": "crates/licoup-native/src/platform/secure_mesh_secret_store/platform_backends/macos.rs",
       "tokens": [
         "if request.allow_interaction() {",
         "secure mesh macOS user-presence authorization is unavailable",
@@ -664,7 +664,7 @@
     },
     {
       "id": "macos-rust-secret-store-projects-apple-keychain-capability",
-      "file": "crates/lico-client-native/src/platform/secure_mesh_secret_store/capability.rs",
+      "file": "crates/licoup-native/src/platform/secure_mesh_secret_store/capability.rs",
       "tokens": [
         "SecurityCapability::AppleKeychain"
       ]
@@ -715,12 +715,12 @@
     },
     {
       "id": "macos-mobile-relay-composite-operations-use-operation-auth-batch",
-      "file": "crates/lico-client-native/src/domain/mobile_relay/secret_custody.rs",
+      "file": "crates/licoup-native/src/domain/mobile_relay/secret_custody.rs",
       "files": [
-        "crates/lico-client-native/src/domain/mobile_relay/secret_custody.rs",
-        "crates/lico-client-native/src/domain/mobile_relay/secret_custody/config_store.rs",
-        "crates/lico-client-native/src/domain/mobile_relay/secret_custody/presentation.rs",
-        "crates/lico-client-native/src/domain/mobile_relay/secret_custody/runtime.rs"
+        "crates/licoup-native/src/domain/mobile_relay/secret_custody.rs",
+        "crates/licoup-native/src/domain/mobile_relay/secret_custody/config_store.rs",
+        "crates/licoup-native/src/domain/mobile_relay/secret_custody/presentation.rs",
+        "crates/licoup-native/src/domain/mobile_relay/secret_custody/runtime.rs"
       ],
       "tokens": [
         "pub(in crate::domain::mobile_relay) struct RuntimeSecretContext",
@@ -768,21 +768,21 @@
     },
     {
       "id": "native-stdio-rpc-entry-is-bounded-and-panic-redacted",
-      "file": "crates/lico-client-native/src/bin/lico-client.rs",
+      "file": "crates/licoup-native/src/bin/licoup.rs",
       "tokens": [
-        "lico-client.stdio.v1",
+        "licoup.stdio.v1",
         "RPC command terminated unexpectedly"
       ]
     },
     {
       "id": "native-stdio-rpc-preserves-one-redacted-workflow",
-      "file": "crates/lico-client-native/src/bin/lico-client/stdio_rpc.rs",
+      "file": "crates/licoup-native/src/bin/licoup/stdio_rpc.rs",
       "files": [
-        "crates/lico-client-native/src/bin/lico-client/stdio_rpc.rs",
-        "crates/lico-client-native/src/bin/lico-client/stdio_rpc/context.rs",
-        "crates/lico-client-native/src/bin/lico-client/stdio_rpc/error.rs",
-        "crates/lico-client-native/src/bin/lico-client/stdio_rpc/response.rs",
-        "crates/lico-client-native/src/bin/lico-client/stdio_rpc/server.rs"
+        "crates/licoup-native/src/bin/licoup/stdio_rpc.rs",
+        "crates/licoup-native/src/bin/licoup/stdio_rpc/context.rs",
+        "crates/licoup-native/src/bin/licoup/stdio_rpc/error.rs",
+        "crates/licoup-native/src/bin/licoup/stdio_rpc/response.rs",
+        "crates/licoup-native/src/bin/licoup/stdio_rpc/server.rs"
       ],
       "tokens": [
         "PortableDataDirOverrideGuard",
@@ -806,7 +806,7 @@
         "apps/desktop/lib/src/platform/native_client/agent_service_stdio_rpc/session_manager.dart"
       ],
       "tokens": [
-        "lico-client.stdio.v1",
+        "licoup.stdio.v1",
         "_workflowId = newStdioRpcWorkflowId()",
         "_operations.serialize",
         "ensureSession()",
@@ -828,8 +828,8 @@
         "const LicoClientRpcException(this.code)",
         "final String code",
         "bool get authorizationRequired => code == 'authorization_required'",
-        "return 'lico-client authorization is required.'",
-        "return 'lico-client RPC request failed (code: $code).'"
+        "return 'licoup authorization is required.'",
+        "return 'licoup RPC request failed (code: $code).'"
       ],
       "forbiddenTokens": [
         "final String message",
@@ -861,7 +861,7 @@
     },
     {
       "id": "android-forbids-raw-payload-ffi-actions",
-      "file": "apps/desktop/android/app/src/main/kotlin/com/liko/arc/MainActivity.kt",
+      "file": "apps/desktop/android/app/src/main/kotlin/land/lico/licoup/MainActivity.kt",
       "forbiddenTokens": [
         "contentKeyBase64url",
         "includeBodyBase64url"

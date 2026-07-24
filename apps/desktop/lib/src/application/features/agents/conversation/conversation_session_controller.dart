@@ -1,13 +1,13 @@
 import 'dart:async';
 
-import 'package:flutter_client/src/application/features/agents/conversation/agent_conversation_read_only_policy.dart';
-import 'package:flutter_client/src/application/features/agents/conversation/conversation_mobile_session_controller.dart';
-import 'package:flutter_client/src/application/features/agents/conversation/conversation_session_state_controller.dart';
-import 'package:flutter_client/src/application/features/agents/policy/conversation_session_index.dart';
-import 'package:flutter_client/src/application/features/agents/workspace/agent_workspace_coordinator.dart';
-import 'package:flutter_client/src/application/features/agents/orchestration/agent_orchestration_policy_controller.dart';
-import 'package:flutter_client/src/contracts/agent_conversation_models.dart';
-import 'package:flutter_client/src/contracts/agent_orchestration_target.dart';
+import 'package:licoup/src/application/features/agents/conversation/agent_conversation_read_only_policy.dart';
+import 'package:licoup/src/application/features/agents/conversation/conversation_mobile_session_controller.dart';
+import 'package:licoup/src/application/features/agents/conversation/conversation_session_state_controller.dart';
+import 'package:licoup/src/application/features/agents/policy/conversation_session_index.dart';
+import 'package:licoup/src/application/features/agents/workspace/agent_workspace_coordinator.dart';
+import 'package:licoup/src/application/features/agents/orchestration/agent_orchestration_policy_controller.dart';
+import 'package:licoup/src/contracts/agent_conversation_models.dart';
+import 'package:licoup/src/contracts/agent_orchestration_target.dart';
 
 /// Desktop history paging plus user-driven session and agent selection.
 mixin AgentConversationSessionController

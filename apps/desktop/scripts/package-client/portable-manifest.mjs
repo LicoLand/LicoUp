@@ -212,11 +212,11 @@ export function preparePortableManifest(
 
 export function writeBundleNotes(config, selected, bundle, options) {
   const lines = [
-    `Lico Arc ${options.platform} Client Bundle`,
+    `LicoUp ${options.platform} Client Bundle`,
     "",
     "Run the Flutter desktop frontend from this bundle.",
-    "The frontend resolves lico-client as its LicoArc client sidecar.",
-    "Run lico-client for command-line operations against the same system data workspace.",
+    "The frontend resolves licoup as its LicoUp client sidecar.",
+    "Run licoup for command-line operations against the same system data workspace.",
     "",
     "Enabled modules:",
     ...selected.map((item) => `- ${item.id}: ${item.label || item.id}`),
@@ -255,7 +255,7 @@ export function writeRunnableNotes(runnable, options) {
   );
   const executableRef = relativeBundlePath(runnable.root, runnable.executable);
   const lines = [
-    `Lico Arc ${options.platform} Runnable Client`,
+    `LicoUp ${options.platform} Runnable Client`,
     "",
     `Runnable client: ${runnableRef}`,
     `Executable: ${executableRef}`,

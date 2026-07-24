@@ -22,7 +22,7 @@ test("approval modules retain leaf-owned inputs and exact command filters", () =
     const module = CLIENT_MODULE_CATALOG.find((candidate) => candidate.id === id);
     assert.equal(module.command.args.at(-1), filter);
     assert.equal(module.inputs.includes(
-      "crates/lico-client-native/src/core/secure_mesh_approval.rs"), false);
+      "crates/licoup-native/src/core/secure_mesh_approval.rs"), false);
   }
 });
 
@@ -44,14 +44,14 @@ test("Secure Client Relay modules retain focused contract, response, and HTTP cl
     const module = CLIENT_MODULE_CATALOG.find((candidate) => candidate.id === id);
     assert.equal(module.command.args.at(-1), filter);
     assert.equal(module.inputs.includes(
-      "crates/lico-client-native/src/platform/secure_client_relay_transport.rs"), false);
+      "crates/licoup-native/src/platform/secure_client_relay_transport.rs"), false);
     assert.equal(module.inputs.includes(
-      "crates/lico-client-native/src/platform/secure_client_relay_response.rs"), false);
+      "crates/licoup-native/src/platform/secure_client_relay_response.rs"), false);
   }
 
   const preciseInputs = new Set(relayModules.flatMap((module) => module.inputs));
   const splitSources = await sourceFiles(
-    "crates/lico-client-native/src/platform/secure_client_relay",
+    "crates/licoup-native/src/platform/secure_client_relay",
     ".rs",
   );
   for (const relativePath of splitSources) {
@@ -121,7 +121,7 @@ test("key transparency workflows retain precise changed-file ownership", async (
   ]);
   for (const [leaf, moduleId] of selections) {
     assert.deepEqual(ids(selectModulesForChangedPaths([
-      `crates/lico-client-native/src/domain/mobile_relay/key_transparency/${leaf}`,
+      `crates/licoup-native/src/domain/mobile_relay/key_transparency/${leaf}`,
     ])), [sourceBundleId, "architecture.client-boundaries", moduleId]);
   }
 
@@ -151,11 +151,11 @@ test("key transparency workflows retain precise changed-file ownership", async (
 
   const ownedInputs = new Set(modules.flatMap((module) => module.inputs));
   const splitSources = await sourceFiles(
-    "crates/lico-client-native/src/domain/mobile_relay/key_transparency",
+    "crates/licoup-native/src/domain/mobile_relay/key_transparency",
     ".rs",
   );
   for (const relativePath of [
-    "crates/lico-client-native/src/domain/mobile_relay/key_transparency.rs",
+    "crates/licoup-native/src/domain/mobile_relay/key_transparency.rs",
     ...splitSources,
   ]) {
     assert.equal(ownedInputs.has(relativePath), true,
@@ -186,7 +186,7 @@ test("local material leaves retain precise changed-file ownership", async () => 
   ]);
   for (const [leaf, moduleId] of selections) {
     assert.deepEqual(ids(selectModulesForChangedPaths([
-      `crates/lico-client-native/src/domain/mobile_relay/endpoint_trust/local_material/${leaf}`,
+      `crates/licoup-native/src/domain/mobile_relay/endpoint_trust/local_material/${leaf}`,
     ])), [sourceBundleId, "architecture.client-boundaries", moduleId]);
   }
 
@@ -215,11 +215,11 @@ test("local material leaves retain precise changed-file ownership", async () => 
 
   const ownedInputs = new Set(modules.flatMap((module) => module.inputs));
   const splitSources = await sourceFiles(
-    "crates/lico-client-native/src/domain/mobile_relay/endpoint_trust/local_material",
+    "crates/licoup-native/src/domain/mobile_relay/endpoint_trust/local_material",
     ".rs",
   );
   for (const relativePath of [
-    "crates/lico-client-native/src/domain/mobile_relay/endpoint_trust/local_material.rs",
+    "crates/licoup-native/src/domain/mobile_relay/endpoint_trust/local_material.rs",
     ...splitSources,
   ]) {
     assert.equal(ownedInputs.has(relativePath), true,
@@ -252,7 +252,7 @@ test("directory transparency leaves retain precise changed-file ownership", asyn
   ]);
   for (const [leaf, moduleId] of selections) {
     assert.deepEqual(ids(selectModulesForChangedPaths([
-      `crates/lico-client-native/src/domain/mobile_relay/endpoint_trust/directory_transparency/${leaf}`,
+      `crates/licoup-native/src/domain/mobile_relay/endpoint_trust/directory_transparency/${leaf}`,
     ])), [sourceBundleId, "architecture.client-boundaries", moduleId]);
   }
 
@@ -289,11 +289,11 @@ test("directory transparency leaves retain precise changed-file ownership", asyn
 
   const ownedInputs = new Set(modules.flatMap((module) => module.inputs));
   const splitSources = await sourceFiles(
-    "crates/lico-client-native/src/domain/mobile_relay/endpoint_trust/directory_transparency",
+    "crates/licoup-native/src/domain/mobile_relay/endpoint_trust/directory_transparency",
     ".rs",
   );
   for (const relativePath of [
-    "crates/lico-client-native/src/domain/mobile_relay/endpoint_trust/directory_transparency.rs",
+    "crates/licoup-native/src/domain/mobile_relay/endpoint_trust/directory_transparency.rs",
     ...splitSources,
   ]) {
     assert.equal(ownedInputs.has(relativePath), true,
@@ -322,7 +322,7 @@ test("pairwise session leaves retain precise changed-file ownership", async () =
   ]);
   for (const [leaf, moduleId] of selections) {
     assert.deepEqual(ids(selectModulesForChangedPaths([
-      `crates/lico-client-native/src/domain/mobile_relay/pairwise_session/${leaf}`,
+      `crates/licoup-native/src/domain/mobile_relay/pairwise_session/${leaf}`,
     ])), [sourceBundleId, "architecture.client-boundaries", moduleId]);
   }
 
@@ -352,11 +352,11 @@ test("pairwise session leaves retain precise changed-file ownership", async () =
 
   const ownedInputs = new Set(modules.flatMap((module) => module.inputs));
   const splitSources = await sourceFiles(
-    "crates/lico-client-native/src/domain/mobile_relay/pairwise_session",
+    "crates/licoup-native/src/domain/mobile_relay/pairwise_session",
     ".rs",
   );
   for (const relativePath of [
-    "crates/lico-client-native/src/domain/mobile_relay/pairwise_session.rs",
+    "crates/licoup-native/src/domain/mobile_relay/pairwise_session.rs",
     ...splitSources,
   ]) {
     assert.equal(ownedInputs.has(relativePath), true,
@@ -387,7 +387,7 @@ test("relay operations leaves retain precise changed-file ownership", async () =
   ]);
   for (const [leaf, moduleId] of selections) {
     assert.deepEqual(ids(selectModulesForChangedPaths([
-      `crates/lico-client-native/src/domain/mobile_relay/relay_operations/${leaf}`,
+      `crates/licoup-native/src/domain/mobile_relay/relay_operations/${leaf}`,
     ])), [sourceBundleId, "architecture.client-boundaries", moduleId]);
   }
 
@@ -423,11 +423,11 @@ test("relay operations leaves retain precise changed-file ownership", async () =
 
   const ownedInputs = new Set(modules.flatMap((module) => module.inputs));
   const splitSources = await sourceFiles(
-    "crates/lico-client-native/src/domain/mobile_relay/relay_operations",
+    "crates/licoup-native/src/domain/mobile_relay/relay_operations",
     ".rs",
   );
   for (const relativePath of [
-    "crates/lico-client-native/src/domain/mobile_relay/relay_operations.rs",
+    "crates/licoup-native/src/domain/mobile_relay/relay_operations.rs",
     ...splitSources,
   ]) {
     assert.equal(ownedInputs.has(relativePath), true,
@@ -446,7 +446,7 @@ test("relay operations leaves retain precise changed-file ownership", async () =
       `${modulePrefix}.scenario.local-result-authorization`],
   ]);
   for (const [leaf, moduleId] of scenarioSelections) {
-    const path = `crates/lico-client-native/src/domain/mobile_relay/tests/${leaf}`;
+    const path = `crates/licoup-native/src/domain/mobile_relay/tests/${leaf}`;
     assert.deepEqual(ids(selectModulesForChangedPaths([path])), [
       "architecture.client-boundaries",
       moduleId,
@@ -480,7 +480,7 @@ test("device trust modules retain leaf-owned inputs and exact command filters", 
     const module = CLIENT_MODULE_CATALOG.find((candidate) => candidate.id === id);
     assert.equal(module.command.args.at(-1), filter);
     assert.equal(module.inputs.includes(
-      "crates/lico-client-native/src/core/secure_mesh_trust.rs"), false);
+      "crates/licoup-native/src/core/secure_mesh_trust.rs"), false);
   }
 });
 
@@ -529,7 +529,7 @@ test("transparency modules retain leaf-owned inputs and exact command filters", 
     const module = CLIENT_MODULE_CATALOG.find((candidate) => candidate.id === id);
     assert.equal(module.command.args.at(-1), filter);
     assert.equal(module.inputs.includes(
-      "crates/lico-client-native/src/core/secure_mesh_transparency.rs"), false);
+      "crates/licoup-native/src/core/secure_mesh_transparency.rs"), false);
   }
 });
 
@@ -564,17 +564,17 @@ test("relay-envelope modules retain complete leaf ownership and exact command fi
     assert.equal(module.command.args.at(-1), filter);
     if (!id.endsWith(".composition")) {
       assert.equal(module.inputs.includes(
-        "crates/lico-client-native/src/core/secure_mesh_relay_envelope.rs"), false);
+        "crates/licoup-native/src/core/secure_mesh_relay_envelope.rs"), false);
     }
   }
 
   const ownedInputs = new Set(relayModules.flatMap((module) => module.inputs));
   const splitSources = await sourceFiles(
-    "crates/lico-client-native/src/core/secure_mesh_relay_envelope",
+    "crates/licoup-native/src/core/secure_mesh_relay_envelope",
     ".rs",
   );
   for (const relativePath of [
-    "crates/lico-client-native/src/core/secure_mesh_relay_envelope.rs",
+    "crates/licoup-native/src/core/secure_mesh_relay_envelope.rs",
     ...splitSources,
   ]) {
     assert.equal(ownedInputs.has(relativePath), true,
@@ -600,7 +600,7 @@ test("secure mesh capability leaves retain exact tests and complete source owner
     assert.equal(module.command.args.at(-1), filter);
     if (!id.endsWith(".composition")) {
       assert.equal(module.inputs.includes(
-        "crates/lico-client-native/src/core/secure_mesh_capability.rs"), false);
+        "crates/licoup-native/src/core/secure_mesh_capability.rs"), false);
     }
   }
   const sourceCheck = CLIENT_MODULE_CATALOG.find((candidate) =>
@@ -612,9 +612,9 @@ test("secure mesh capability leaves retain exact tests and complete source owner
     ...sourceCheck.inputs,
   ]);
   const splitSources = await sourceFiles(
-    "crates/lico-client-native/src/core/secure_mesh_capability", ".rs");
+    "crates/licoup-native/src/core/secure_mesh_capability", ".rs");
   for (const relativePath of [
-    "crates/lico-client-native/src/core/secure_mesh_capability.rs",
+    "crates/licoup-native/src/core/secure_mesh_capability.rs",
     ...splitSources,
   ]) {
     assert.equal(ownedInputs.has(relativePath), true,
@@ -638,7 +638,7 @@ test("secure mesh prekey leaves retain exact tests and complete source ownership
     assert.equal(module.command.args.at(-1), filter);
     if (!id.endsWith(".composition")) {
       assert.equal(module.inputs.includes(
-        "crates/lico-client-native/src/core/secure_mesh_prekey.rs"), false);
+        "crates/licoup-native/src/core/secure_mesh_prekey.rs"), false);
     }
   }
   const sourceCheck = CLIENT_MODULE_CATALOG.find((candidate) =>
@@ -650,9 +650,9 @@ test("secure mesh prekey leaves retain exact tests and complete source ownership
     ...sourceCheck.inputs,
   ]);
   const splitSources = await sourceFiles(
-    "crates/lico-client-native/src/core/secure_mesh_prekey", ".rs");
+    "crates/licoup-native/src/core/secure_mesh_prekey", ".rs");
   for (const relativePath of [
-    "crates/lico-client-native/src/core/secure_mesh_prekey.rs",
+    "crates/licoup-native/src/core/secure_mesh_prekey.rs",
     ...splitSources,
   ]) {
     assert.equal(ownedInputs.has(relativePath), true,
@@ -680,9 +680,9 @@ test("pairwise negotiation and ratchet boundaries retain exact leaf ownership", 
     assert.equal(module.command.args.at(-1), filter);
     if (!id.endsWith(".core") && !id.endsWith(".handshake-machine")) {
       assert.equal(module.inputs.includes(
-        "crates/lico-client-native/src/core/secure_mesh_pairwise.rs"), false);
+        "crates/licoup-native/src/core/secure_mesh_pairwise.rs"), false);
       assert.equal(module.inputs.includes(
-        "crates/lico-client-native/src/core/secure_mesh_pairwise/tests.rs"), false);
+        "crates/licoup-native/src/core/secure_mesh_pairwise/tests.rs"), false);
     }
   }
   assert.equal(CLIENT_MODULE_CATALOG.some((candidate) =>
@@ -700,22 +700,22 @@ test("pairwise negotiation and ratchet boundaries retain exact leaf ownership", 
   ]);
   const splitSources = [
     ...await sourceFiles(
-      "crates/lico-client-native/src/core/secure_mesh_pairwise/session_negotiation", ".rs"),
+      "crates/licoup-native/src/core/secure_mesh_pairwise/session_negotiation", ".rs"),
     ...await sourceFiles(
-      "crates/lico-client-native/src/core/secure_mesh_pairwise/key_ratchet", ".rs"),
+      "crates/licoup-native/src/core/secure_mesh_pairwise/key_ratchet", ".rs"),
   ];
   for (const relativePath of [
-    "crates/lico-client-native/src/core/secure_mesh_pairwise/session_negotiation.rs",
-    "crates/lico-client-native/src/core/secure_mesh_pairwise/key_ratchet.rs",
+    "crates/licoup-native/src/core/secure_mesh_pairwise/session_negotiation.rs",
+    "crates/licoup-native/src/core/secure_mesh_pairwise/key_ratchet.rs",
     ...splitSources,
-    "crates/lico-client-native/src/core/secure_mesh_pairwise/tests/session_negotiation.rs",
-    "crates/lico-client-native/src/core/secure_mesh_pairwise/tests/session_negotiation_capability_binding.rs",
-    "crates/lico-client-native/src/core/secure_mesh_pairwise/tests/session_negotiation_input_validation.rs",
-    "crates/lico-client-native/src/core/secure_mesh_pairwise/tests/session_negotiation_key_schedule.rs",
-    "crates/lico-client-native/src/core/secure_mesh_pairwise/tests/session_negotiation_transcript_codec.rs",
-    "crates/lico-client-native/src/core/secure_mesh_pairwise/tests/key_ratchet.rs",
-    "crates/lico-client-native/src/core/secure_mesh_pairwise/tests/key_ratchet_payload_adapter.rs",
-    "crates/lico-client-native/src/core/secure_mesh_pairwise/tests/key_ratchet_relay_codec.rs",
+    "crates/licoup-native/src/core/secure_mesh_pairwise/tests/session_negotiation.rs",
+    "crates/licoup-native/src/core/secure_mesh_pairwise/tests/session_negotiation_capability_binding.rs",
+    "crates/licoup-native/src/core/secure_mesh_pairwise/tests/session_negotiation_input_validation.rs",
+    "crates/licoup-native/src/core/secure_mesh_pairwise/tests/session_negotiation_key_schedule.rs",
+    "crates/licoup-native/src/core/secure_mesh_pairwise/tests/session_negotiation_transcript_codec.rs",
+    "crates/licoup-native/src/core/secure_mesh_pairwise/tests/key_ratchet.rs",
+    "crates/licoup-native/src/core/secure_mesh_pairwise/tests/key_ratchet_payload_adapter.rs",
+    "crates/licoup-native/src/core/secure_mesh_pairwise/tests/key_ratchet_relay_codec.rs",
   ]) {
     assert.equal(ownedInputs.has(relativePath), true,
       `pairwise boundary source must have a precise regression owner: ${relativePath}`);
@@ -726,23 +726,23 @@ test("core state-machine physical test leaves retain precise regression ownershi
   const sourceBundleId = "regression.core-state-machine-test-layout";
   const selections = new Map([
     [
-      "crates/lico-client-native/src/core/secure_mesh_acp/tests/mod.rs",
+      "crates/licoup-native/src/core/secure_mesh_acp/tests/mod.rs",
       "rust.core.secure-mesh.acp",
     ],
     [
-      "crates/lico-client-native/src/core/secure_mesh_capability_proof/tests/mod.rs",
+      "crates/licoup-native/src/core/secure_mesh_capability_proof/tests/mod.rs",
       "rust.core.secure-mesh.capability-proof",
     ],
     [
-      "crates/lico-client-native/src/core/secure_mesh_session_negotiation/tests/mod.rs",
+      "crates/licoup-native/src/core/secure_mesh_session_negotiation/tests/mod.rs",
       "rust.core.secure-mesh.session-negotiation",
     ],
     [
-      "crates/lico-client-native/src/core/secure_mesh_sparse_pq_ratchet/tests/mod.rs",
+      "crates/licoup-native/src/core/secure_mesh_sparse_pq_ratchet/tests/mod.rs",
       "rust.core.secure-mesh.sparse-pq-ratchet",
     ],
     [
-      "crates/lico-client-native/src/core/secure_mesh_mls_product/security_ledger/test_support.rs",
+      "crates/licoup-native/src/core/secure_mesh_mls_product/security_ledger/test_support.rs",
       "rust.core.secure-mesh.mls-product.security-ledger",
     ],
   ]);
@@ -792,7 +792,7 @@ test("endpoint trust modules retain leaf-owned inputs and exact command filters"
     const module = CLIENT_MODULE_CATALOG.find((candidate) => candidate.id === id);
     assert.equal(module.command.args.at(-1), filter);
     assert.equal(module.inputs.includes(
-      "crates/lico-client-native/src/domain/mobile_relay/endpoint_trust.rs"), false);
+      "crates/licoup-native/src/domain/mobile_relay/endpoint_trust.rs"), false);
   }
 });
 
@@ -839,7 +839,7 @@ test("secret custody modules retain leaf-owned inputs and exact command filters"
     const module = CLIENT_MODULE_CATALOG.find((candidate) => candidate.id === id);
     assert.equal(module.command.args.at(-1), filter);
     assert.equal(module.inputs.includes(
-      "crates/lico-client-native/src/domain/mobile_relay/secret_custody.rs"), false);
+      "crates/licoup-native/src/domain/mobile_relay/secret_custody.rs"), false);
   }
 
   const prefix = "rust.domain.mobile-relay.secret-custody";
@@ -858,7 +858,7 @@ test("secret custody modules retain leaf-owned inputs and exact command filters"
     ["secret_custody/secure_command_store.rs", `${prefix}.scenario.secure-command-store`],
   ]);
   for (const [leaf, moduleId] of scenarioSelections) {
-    const path = `crates/lico-client-native/src/domain/mobile_relay/tests/${leaf}`;
+    const path = `crates/licoup-native/src/domain/mobile_relay/tests/${leaf}`;
     assert.deepEqual(ids(selectModulesForChangedPaths([path])), [
       "architecture.client-boundaries",
       moduleId,

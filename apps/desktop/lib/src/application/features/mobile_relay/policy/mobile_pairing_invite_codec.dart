@@ -40,7 +40,7 @@ abstract final class MobilePairingInviteCodec {
     }
     final token = base64Url.encode(utf8.encode(payload)).replaceAll('=', '');
     return Uri(
-      scheme: 'licoarc',
+      scheme: 'licoup',
       host: 'pair',
       queryParameters: {'invite': token},
     ).toString();
@@ -76,7 +76,7 @@ abstract final class MobilePairingInviteCodec {
         return token.trim();
       }
     }
-    const prefixes = ['licoarc-pair:', 'licoarc://pair/', 'arc-pair:'];
+    const prefixes = ['licoup-pair:', 'licoup://pair/', 'arc-pair:'];
     for (final prefix in prefixes) {
       if (value.startsWith(prefix)) {
         final token = value.substring(prefix.length).trim();

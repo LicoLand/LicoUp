@@ -4,8 +4,8 @@ import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
 
-import 'package:flutter_client/src/contracts/appearance/appearance_preset_config.dart';
-import 'package:flutter_client/src/platform/storage/portable_data_root.dart';
+import 'package:licoup/src/contracts/appearance/appearance_preset_config.dart';
+import 'package:licoup/src/platform/storage/portable_data_root.dart';
 
 final class AppearancePresetCatalogLoadResult {
   const AppearancePresetCatalogLoadResult({

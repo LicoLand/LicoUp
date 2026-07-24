@@ -1,23 +1,23 @@
 import 'package:flutter/material.dart';
 
-import 'package:flutter_client/src/application/controller/client_controller.dart';
-import 'package:flutter_client/src/contracts/presentation/semantic_destination.dart';
-import 'package:flutter_client/src/contracts/presentation/layout_environment.dart';
-import 'package:flutter_client/src/frontend/l10n/lico_strings.dart';
-import 'package:flutter_client/src/frontend/features/agents/ui/agent_usage_panel.dart';
-import 'package:flutter_client/src/frontend/features/agents/ui/agents_canvas.dart';
-import 'package:flutter_client/src/frontend/shell/client_platform.dart';
-import 'package:flutter_client/src/frontend/layout/layout_focus_coordinator.dart';
-import 'package:flutter_client/src/frontend/layout/layout_host.dart';
-import 'package:flutter_client/src/frontend/layout/layout_palette.dart';
-import 'package:flutter_client/src/frontend/layout/layout_surface_bundle.dart';
-import 'package:flutter_client/src/frontend/features/skill_hub/ui/skill_hub_panel.dart';
-import 'package:flutter_client/src/frontend/features/mobile_relay/ui/mobile_agents_home.dart';
-import 'package:flutter_client/src/frontend/features/mobile_relay/ui/mobile_relay_panel.dart';
-import 'package:flutter_client/src/frontend/features/settings/ui/settings_panel.dart';
-import 'package:flutter_client/src/frontend/features/plugin_management/ui/adapter_plugin_panel.dart';
-import 'package:flutter_client/src/frontend/shell/client_layout_chrome_adapter.dart';
-import 'package:flutter_client/src/frontend/shared/ui/theme.dart';
+import 'package:licoup/src/application/controller/client_controller.dart';
+import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
+import 'package:licoup/src/contracts/presentation/layout_environment.dart';
+import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_usage_panel.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agents_canvas.dart';
+import 'package:licoup/src/frontend/shell/client_platform.dart';
+import 'package:licoup/src/frontend/layout/layout_focus_coordinator.dart';
+import 'package:licoup/src/frontend/layout/layout_host.dart';
+import 'package:licoup/src/frontend/layout/layout_palette.dart';
+import 'package:licoup/src/frontend/layout/layout_surface_bundle.dart';
+import 'package:licoup/src/frontend/features/skill_hub/ui/skill_hub_panel.dart';
+import 'package:licoup/src/frontend/features/mobile_relay/ui/mobile_agents_home.dart';
+import 'package:licoup/src/frontend/features/mobile_relay/ui/mobile_relay_panel.dart';
+import 'package:licoup/src/frontend/features/settings/ui/settings_panel.dart';
+import 'package:licoup/src/frontend/features/plugin_management/ui/adapter_plugin_panel.dart';
+import 'package:licoup/src/frontend/shell/client_layout_chrome_adapter.dart';
+import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 class ClientShell extends StatefulWidget {
   const ClientShell({super.key, required this.controller});

@@ -1,5 +1,5 @@
-import 'package:flutter_client/src/platform/mobile_relay/mobile_relay_json_store.dart';
-import 'package:flutter_client/src/contracts/mobile_home_layout.dart';
+import 'package:licoup/src/platform/mobile_relay/mobile_relay_json_store.dart';
+import 'package:licoup/src/contracts/mobile_home_layout.dart';
 
 class PlatformMobileHomeLayoutStore implements MobileHomeLayoutStore {
   const PlatformMobileHomeLayoutStore({

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import 'package:flutter_client/src/frontend/layout/profiles/classic/mobile/classic_mobile_tokens.dart';
+import 'package:licoup/src/frontend/layout/profiles/classic/mobile/classic_mobile_tokens.dart';
 
 const String classicMobilePreviewSemanticLabel = 'layout.profile.classic.label';
 

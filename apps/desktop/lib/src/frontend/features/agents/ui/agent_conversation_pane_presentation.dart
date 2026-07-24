@@ -1,7 +1,7 @@
 import 'package:flutter/foundation.dart';
 
-import 'package:flutter_client/src/contracts/agent_conversation_models.dart';
-import 'package:flutter_client/src/contracts/target_candidate.dart';
+import 'package:licoup/src/contracts/agent_conversation_models.dart';
+import 'package:licoup/src/contracts/target_candidate.dart';
 
 /// Immutable data consumed by the conversation body. The workspace is the
 /// only production adapter from mutable application controllers to this view.

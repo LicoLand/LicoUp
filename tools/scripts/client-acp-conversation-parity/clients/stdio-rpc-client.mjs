@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { spawn } from "node:child_process";
 import { AcceptanceError, requireFact } from "../errors.mjs";
 
-const protocol = "lico-client.stdio.v1";
+const protocol = "licoup.stdio.v1";
 const maxIdentifierBytes = 128;
 const maxOpaqueIdentifierBytes = 512;
 

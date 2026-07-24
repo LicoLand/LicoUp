@@ -1,7 +1,7 @@
-import 'package:flutter_client/src/application/controller/client_agent_usage_facade.dart';
-import 'package:flutter_client/src/application/features/agents/contracts/agent_usage_gateway.dart';
-import 'package:flutter_client/src/application/features/agents/controller/agent_usage_controller.dart';
-import 'package:flutter_client/src/contracts/agent_usage_models.dart';
+import 'package:licoup/src/application/controller/client_agent_usage_facade.dart';
+import 'package:licoup/src/application/features/agents/contracts/agent_usage_gateway.dart';
+import 'package:licoup/src/application/features/agents/controller/agent_usage_controller.dart';
+import 'package:licoup/src/contracts/agent_usage_models.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

@@ -1,13 +1,13 @@
 import 'dart:convert';
 
-import 'package:flutter_client/src/backend/features/agents/services/agent_conversation_archive_service.dart';
-import 'package:flutter_client/src/contracts/agent_command_runner.dart';
-import 'package:flutter_client/src/contracts/agent_conversation_models.dart';
-import 'package:flutter_client/src/contracts/agent_dispatch_lane.dart';
+import 'package:licoup/src/backend/features/agents/services/agent_conversation_archive_service.dart';
+import 'package:licoup/src/contracts/agent_command_runner.dart';
+import 'package:licoup/src/contracts/agent_conversation_models.dart';
+import 'package:licoup/src/contracts/agent_dispatch_lane.dart';
 
-export 'package:flutter_client/src/contracts/agent_conversation_models.dart';
-export 'package:flutter_client/src/contracts/agent_dispatch_lane.dart';
-export 'package:flutter_client/src/backend/features/agents/services/agent_conversation_archive_service.dart'
+export 'package:licoup/src/contracts/agent_conversation_models.dart';
+export 'package:licoup/src/contracts/agent_dispatch_lane.dart';
+export 'package:licoup/src/backend/features/agents/services/agent_conversation_archive_service.dart'
     show AgentConversationArchiveService;
 
 /// Matches CL-06 live parity default when `LICO_ACP_PARITY_TIMEOUT_MS` is unset.

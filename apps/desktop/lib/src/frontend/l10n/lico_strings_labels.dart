@@ -1,5 +1,5 @@
-import 'package:flutter_client/src/contracts/presentation/layout_selection.dart';
-import 'package:flutter_client/src/frontend/l10n/lico_strings_base.dart';
+import 'package:licoup/src/contracts/presentation/layout_selection.dart';
+import 'package:licoup/src/frontend/l10n/lico_strings_base.dart';
 
 extension LicoStringsLabels on LicoStrings {
   // Shared interface actions and labels.
@@ -116,7 +116,7 @@ extension LicoStringsLabels on LicoStrings {
       'Client logs' => '客户端日志',
       'Conversation archive' => '对话归档',
       'Error' => '错误',
-      'LicoArc client' => '客户端',
+      'LicoUp client' => '客户端',
       'Mobile agents' => '移动端智能体',
       'Mobile relay' => '移动中转',
       'Project archive' => '项目归档',
@@ -595,11 +595,11 @@ extension LicoStringsLabels on LicoStrings {
   String get e2eeReadiness => isChinese ? '端到端加密就绪' : 'E2EE Readiness';
   String get secretStore => isChinese ? '密钥存储' : 'Secret Store';
   String get gateway => isChinese ? '网关' : 'Gateway';
-  String get licoArcGateway => isChinese ? 'Lico Arc 网关' : 'Lico Arc Gateway';
+  String get licoUpGateway => isChinese ? 'LicoUp 网关' : 'LicoUp Gateway';
   String get customGateway => isChinese ? '自定义网关' : 'Custom Gateway';
   String get privateGateway => isChinese ? '自定义网关' : 'Custom Gateway';
   String get gatewayLocked =>
-      isChinese ? '默认 Lico Arc 网关不可编辑' : 'Default Lico Arc gateway is locked';
+      isChinese ? '默认 LicoUp 网关不可编辑' : 'Default LicoUp gateway is locked';
   String get saveGateway => isChinese ? '保存网关' : 'Save Gateway';
   String get defaultLabel => isChinese ? '默认' : 'Default';
   String get active => isChinese ? '当前' : 'Active';
@@ -660,8 +660,8 @@ extension LicoStringsLabels on LicoStrings {
       ? '此配对码只会展示一次。重新生成会清除当前码并创建全新的配对码。'
       : 'This pairing code is shown once. Regenerating clears it and creates a new code.';
   String get scanPairingPrompt => isChinese
-      ? '点击右上角扫描按钮，扫描 Mac 上的 Lico Arc 配对二维码。'
-      : 'Tap the scan button in the top-right corner to scan the Lico Arc pairing QR code on your Mac.';
+      ? '点击右上角扫描按钮，扫描 Mac 上的 LicoUp 配对二维码。'
+      : 'Tap the scan button in the top-right corner to scan the LicoUp pairing QR code on your Mac.';
   String get close => isChinese ? '关闭' : 'Close';
   String get scanQrToPairPhone =>
       isChinese ? '扫描此二维码完成手机配对' : 'Scan This QR Code To Pair Your Phone';

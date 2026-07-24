@@ -2,24 +2,24 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart' show debugPrint;
 
-import 'package:flutter_client/src/application/controller/client_agent_usage_facade.dart';
-import 'package:flutter_client/src/application/controller/client_lifecycle_coordinator.dart';
-import 'package:flutter_client/src/application/controller/client_mobile_relay_facade.dart';
-import 'package:flutter_client/src/application/controller/client_navigation_facade.dart';
-import 'package:flutter_client/src/application/controller/client_presentation_facade.dart';
-import 'package:flutter_client/src/application/controller/client_routing_facade.dart';
-import 'package:flutter_client/src/application/controller/client_skill_hub_facade.dart';
-import 'package:flutter_client/src/application/controller/client_target_facade.dart';
-import 'package:flutter_client/src/application/features/agents/archive/conversation_archive_controller.dart';
-import 'package:flutter_client/src/application/features/agents/workspace/agent_workspace_coordinator.dart';
-import 'package:flutter_client/src/application/features/catalog_convergence/controller/catalog_convergence_controller.dart';
-import 'package:flutter_client/src/application/features/mobile_relay/controller/mobile_home_layout_controller.dart';
-import 'package:flutter_client/src/application/features/mobile_relay/controller/mobile_relay_controller.dart';
-import 'package:flutter_client/src/application/features/skill_hub/controller/skill_hub_controller.dart';
-import 'package:flutter_client/src/application/features/targets/controller/target_controller.dart';
-import 'package:flutter_client/src/contracts/appearance/appearance_preset_config.dart';
-import 'package:flutter_client/src/contracts/locale_preferences.dart';
-import 'package:flutter_client/src/platform/native_client/agent_service.dart';
+import 'package:licoup/src/application/controller/client_agent_usage_facade.dart';
+import 'package:licoup/src/application/controller/client_lifecycle_coordinator.dart';
+import 'package:licoup/src/application/controller/client_mobile_relay_facade.dart';
+import 'package:licoup/src/application/controller/client_navigation_facade.dart';
+import 'package:licoup/src/application/controller/client_presentation_facade.dart';
+import 'package:licoup/src/application/controller/client_routing_facade.dart';
+import 'package:licoup/src/application/controller/client_skill_hub_facade.dart';
+import 'package:licoup/src/application/controller/client_target_facade.dart';
+import 'package:licoup/src/application/features/agents/archive/conversation_archive_controller.dart';
+import 'package:licoup/src/application/features/agents/workspace/agent_workspace_coordinator.dart';
+import 'package:licoup/src/application/features/catalog_convergence/controller/catalog_convergence_controller.dart';
+import 'package:licoup/src/application/features/mobile_relay/controller/mobile_home_layout_controller.dart';
+import 'package:licoup/src/application/features/mobile_relay/controller/mobile_relay_controller.dart';
+import 'package:licoup/src/application/features/skill_hub/controller/skill_hub_controller.dart';
+import 'package:licoup/src/application/features/targets/controller/target_controller.dart';
+import 'package:licoup/src/contracts/appearance/appearance_preset_config.dart';
+import 'package:licoup/src/contracts/locale_preferences.dart';
+import 'package:licoup/src/platform/native_client/agent_service.dart';
 
 mixin ClientLifecycleFacade
     on
@@ -124,11 +124,11 @@ mixin ClientLifecycleFacade
     lastError = '';
     setLocalizedStatusMessage(
       appearancePresetLoadErrors.isEmpty
-          ? 'LicoArc client 已就绪。'
-          : 'LicoArc client 已就绪，部分外观方案配置无效。',
+          ? 'LicoUp client 已就绪。'
+          : 'LicoUp client 已就绪，部分外观方案配置无效。',
       appearancePresetLoadErrors.isEmpty
-          ? 'LicoArc client is ready.'
-          : 'LicoArc client is ready, but some appearance preset configurations are invalid.',
+          ? 'LicoUp client is ready.'
+          : 'LicoUp client is ready, but some appearance preset configurations are invalid.',
       displayChinese: appearancePresetLoadErrors.isEmpty
           ? '客户端已就绪。'
           : '客户端已就绪，但部分外观方案配置无效。',

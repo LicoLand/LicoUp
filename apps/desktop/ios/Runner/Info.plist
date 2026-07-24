@@ -27,9 +27,9 @@
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSCameraUsageDescription</key>
-	<string>Lico Arc uses the camera to scan desktop pairing QR codes.</string>
+	<string>LicoUp uses the camera to scan desktop pairing QR codes.</string>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>Lico Arc uses the local network to verify encrypted pairing with your desktop relay.</string>
+	<string>LicoUp uses the local network to verify encrypted pairing with your desktop relay.</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsLocalNetworking</key>

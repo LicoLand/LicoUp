@@ -1,6 +1,6 @@
-import 'package:flutter_client/src/application/features/navigation/semantic_destination_catalog.dart';
-import 'package:flutter_client/src/contracts/presentation/layout_environment.dart';
-import 'package:flutter_client/src/contracts/presentation/semantic_destination.dart';
+import 'package:licoup/src/application/features/navigation/semantic_destination_catalog.dart';
+import 'package:licoup/src/contracts/presentation/layout_environment.dart';
+import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

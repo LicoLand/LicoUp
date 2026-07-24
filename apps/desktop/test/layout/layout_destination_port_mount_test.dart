@@ -1,10 +1,10 @@
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:flutter_client/src/contracts/presentation/destinations/destinations.dart';
-import 'package:flutter_client/src/contracts/presentation/layout_environment.dart';
-import 'package:flutter_client/src/contracts/presentation/semantic_destination.dart';
-import 'package:flutter_client/src/frontend/layout/layout_destination_port_mount.dart';
+import 'package:licoup/src/contracts/presentation/destinations/destinations.dart';
+import 'package:licoup/src/contracts/presentation/layout_environment.dart';
+import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
+import 'package:licoup/src/frontend/layout/layout_destination_port_mount.dart';
 
 void main() {
   const contract = LayoutDestinationContract<_Snapshot>(

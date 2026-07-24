@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
-import 'package:flutter_client/src/frontend/layout/layout_destination_presentation.dart';
-import 'package:flutter_client/src/frontend/layout/layout_palette.dart';
+import 'package:licoup/src/frontend/layout/layout_destination_presentation.dart';
+import 'package:licoup/src/frontend/layout/layout_palette.dart';
 
 /// Workbench mobile's private Agents strategy. The mobile workspace does not
 /// draw desktop chrome, while retaining the current generic detail treatment

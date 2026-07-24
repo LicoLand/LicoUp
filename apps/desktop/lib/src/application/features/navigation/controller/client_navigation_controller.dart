@@ -1,6 +1,6 @@
 import 'package:flutter/foundation.dart';
 
-import 'package:flutter_client/src/contracts/presentation/semantic_destination.dart';
+import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 
 typedef ClientNavigationHook = void Function();
 

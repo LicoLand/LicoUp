@@ -2,8 +2,8 @@ import { packageFailure } from "./cli-policy.mjs";
 
 export function selectPackagingModules(config, options) {
   const activeProfile =
-    options.profile || config.packageProfile || "lico-client";
-  if (activeProfile !== "lico-client") {
+    options.profile || config.packageProfile || "licoup";
+  if (activeProfile !== "licoup") {
     packageFailure("packaging_profile_unsupported");
   }
   const modules = Object.entries(config.modules).map(

@@ -1,4 +1,4 @@
-import 'package:flutter_client/src/contracts/target_candidate.dart';
+import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

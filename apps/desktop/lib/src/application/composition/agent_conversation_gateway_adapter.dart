@@ -1,8 +1,8 @@
-import 'package:flutter_client/src/application/features/agents/contracts/agent_conversation_gateway.dart';
-import 'package:flutter_client/src/backend/features/agents/services/agent_conversation_service.dart';
-import 'package:flutter_client/src/contracts/agent_command_runner.dart';
-import 'package:flutter_client/src/platform/mobile_relay/mobile_relay_service.dart';
-import 'package:flutter_client/src/platform/native_client/agent_service.dart';
+import 'package:licoup/src/application/features/agents/contracts/agent_conversation_gateway.dart';
+import 'package:licoup/src/backend/features/agents/services/agent_conversation_service.dart';
+import 'package:licoup/src/contracts/agent_command_runner.dart';
+import 'package:licoup/src/platform/mobile_relay/mobile_relay_service.dart';
+import 'package:licoup/src/platform/native_client/agent_service.dart';
 
 final class AgentConversationGatewayAdapter
     implements AgentConversationGateway {

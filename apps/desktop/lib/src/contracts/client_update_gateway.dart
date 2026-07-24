@@ -1,5 +1,5 @@
-import 'package:flutter_client/src/contracts/agent_command_runner.dart';
-import 'package:flutter_client/src/contracts/client_update_models.dart';
+import 'package:licoup/src/contracts/agent_command_runner.dart';
+import 'package:licoup/src/contracts/client_update_models.dart';
 
 abstract interface class ClientUpdateGateway {
   Future<ClientUpdateStatus> status({

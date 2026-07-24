@@ -59,7 +59,7 @@ function readPngSize(filePath) {
   const bytes = readFileSync(filePath);
   const pngSignature = "89504e470d0a1a0a";
   if (bytes.length < 24 || bytes.subarray(0, 8).toString("hex") !== pngSignature) {
-    throw new Error(`Lico Arc app icon is not a valid PNG: ${path.basename(filePath)}`);
+    throw new Error(`LicoUp app icon is not a valid PNG: ${path.basename(filePath)}`);
   }
   return {
     width: bytes.readUInt32BE(16),
@@ -84,24 +84,24 @@ function createManifest(sourcePath) {
 
 function verifyCommittedIcons(sourcePath) {
   if (!existsSync(manifestPath)) {
-    throw new Error("Committed Lico Arc app icon source manifest is missing");
+    throw new Error("Committed LicoUp app icon source manifest is missing");
   }
   const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
   const expected = createManifest(sourcePath);
   if (manifest.schemaVersion !== expected.schemaVersion ||
       manifest.source?.path !== expected.source.path ||
       manifest.source?.digest !== expected.source.digest) {
-    throw new Error("Committed Lico Arc app icons do not match the canonical SVG source");
+    throw new Error("Committed LicoUp app icons do not match the canonical SVG source");
   }
   const entries = new Map((manifest.icons || []).map((entry) => [entry.size, entry]));
   for (const expectedIcon of expected.icons) {
     const entry = entries.get(expectedIcon.size);
     if (!entry || entry.path !== expectedIcon.path || entry.digest !== expectedIcon.digest) {
-      throw new Error(`Committed Lico Arc app icon digest is stale: ${expectedIcon.path}`);
+      throw new Error(`Committed LicoUp app icon digest is stale: ${expectedIcon.path}`);
     }
     const dimensions = readPngSize(iconPath(expectedIcon.size));
     if (dimensions.width !== expectedIcon.size || dimensions.height !== expectedIcon.size) {
-      throw new Error(`Committed Lico Arc app icon has invalid dimensions: ${expectedIcon.path}`);
+      throw new Error(`Committed LicoUp app icon has invalid dimensions: ${expectedIcon.path}`);
     }
   }
 }
@@ -114,7 +114,7 @@ function renderSvgToPng(sourcePath, tempDir) {
   run("qlmanage", ["-t", "-s", "1024", "-o", tempDir, sourcePath]);
   const renderedPath = path.join(tempDir, `${path.basename(sourcePath)}.png`);
   if (!existsSync(renderedPath)) {
-    throw new Error(`Quick Look did not render the Lico Arc app icon SVG: ${renderedPath}`);
+    throw new Error(`Quick Look did not render the LicoUp app icon SVG: ${renderedPath}`);
   }
   return renderedPath;
 }
@@ -131,20 +131,20 @@ function prepareBaseImage(sourcePath, tempDir) {
 function main() {
   const options = parseArgs(process.argv.slice(2));
   if (!existsSync(options.sourcePath)) {
-    throw new Error(`Lico Arc icon source does not exist: ${options.sourcePath}`);
+    throw new Error(`LicoUp icon source does not exist: ${options.sourcePath}`);
   }
   const supportedExtensions = new Set([".svg", ".png", ".jpg", ".jpeg"]);
   if (!supportedExtensions.has(path.extname(options.sourcePath).toLowerCase())) {
-    throw new Error(`Lico Arc icon source must be an SVG or raster image (PNG/JPG): ${options.sourcePath}`);
+    throw new Error(`LicoUp icon source must be an SVG or raster image (PNG/JPG): ${options.sourcePath}`);
   }
 
   mkdirSync(iconSetRoot, { recursive: true });
   if (options.verifyOnly) {
     verifyCommittedIcons(options.sourcePath);
-    console.log("Verified committed Lico Arc macOS app icons");
+    console.log("Verified committed LicoUp macOS app icons");
     return;
   }
-  const tempDir = path.join(os.tmpdir(), "lico-client-app-icon");
+  const tempDir = path.join(os.tmpdir(), "licoup-app-icon");
   rmSync(tempDir, { recursive: true, force: true });
   mkdirSync(tempDir, { recursive: true });
   const renderedPath = prepareBaseImage(options.sourcePath, tempDir);
@@ -153,7 +153,7 @@ function main() {
     run("sips", ["-z", String(size), String(size), renderedPath, "--out", iconPath(size)]);
   }
   writeFileSync(manifestPath, `${JSON.stringify(createManifest(options.sourcePath), null, 2)}\n`);
-  console.log(`Generated Lico Arc macOS app icons from ${options.sourcePath}`);
+  console.log(`Generated LicoUp macOS app icons from ${options.sourcePath}`);
 }
 
 main();

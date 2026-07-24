@@ -1,7 +1,7 @@
 import 'dart:async';
 
-import 'package:flutter_client/src/application/features/skill_hub/services/skill_auto_update_scheduler.dart';
-import 'package:flutter_client/src/contracts/skill_update.dart';
+import 'package:licoup/src/application/features/skill_hub/services/skill_auto_update_scheduler.dart';
+import 'package:licoup/src/contracts/skill_update.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

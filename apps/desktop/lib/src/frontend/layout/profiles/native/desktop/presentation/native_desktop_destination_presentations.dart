@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 
-import 'package:flutter_client/src/frontend/layout/layout_destination_presentation.dart';
-import 'package:flutter_client/src/frontend/layout/layout_palette.dart';
-import 'package:flutter_client/src/frontend/layout/profiles/native/desktop/shell/native_desktop_chrome_metrics.dart';
-import 'package:flutter_client/src/frontend/layout/profiles/native/desktop/shell/native_glass.dart';
+import 'package:licoup/src/frontend/layout/layout_destination_presentation.dart';
+import 'package:licoup/src/frontend/layout/layout_palette.dart';
+import 'package:licoup/src/frontend/layout/profiles/native/desktop/shell/native_desktop_chrome_metrics.dart';
+import 'package:licoup/src/frontend/layout/profiles/native/desktop/shell/native_glass.dart';
 
 const LayoutAgentsPresentation nativeDesktopAgentsPresentation =
     NativeDesktopAgentsPresentation();

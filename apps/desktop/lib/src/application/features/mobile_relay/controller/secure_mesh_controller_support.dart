@@ -1,4 +1,4 @@
-import 'package:flutter_client/src/contracts/mobile_relay_control.dart';
+import 'package:licoup/src/contracts/mobile_relay_control.dart';
 
 final class SecureMeshStatusReporter {
   const SecureMeshStatusReporter(this._sink);

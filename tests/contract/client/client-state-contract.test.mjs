@@ -13,7 +13,7 @@ test("client state bridge has one generated typed path and no raw Dart CLI twin"
   assert.equal(new Set(schema.collections).size, 15);
 
   const rust = read(
-    "crates/lico-client-native/src/ffi/generated/client_state.rs",
+    "crates/licoup-native/src/ffi/generated/client_state.rs",
   );
   const dart = read(
     "apps/desktop/lib/src/contracts/generated/client_state.g.dart",

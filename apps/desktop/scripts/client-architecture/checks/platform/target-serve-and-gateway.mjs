@@ -21,16 +21,16 @@ export async function checkTargetServeAndGateway(context, { localServiceSource }
     sourceLineCount,
   } = context;
   const openCodeServeFacadeSource = await readText(
-    "crates/lico-client-native/src/platform/opencode_serve.rs"
+    "crates/licoup-native/src/platform/opencode_serve.rs"
   );
   const openCodeServePolicySource = await readText(
-    "crates/lico-client-native/src/platform/opencode_serve/policy.rs"
+    "crates/licoup-native/src/platform/opencode_serve/policy.rs"
   );
   const kiloCodeServeFacadeSource = await readText(
-    "crates/lico-client-native/src/platform/kilo_code_serve.rs"
+    "crates/licoup-native/src/platform/kilo_code_serve.rs"
   );
   const kiloCodeServePolicySource = await readText(
-    "crates/lico-client-native/src/platform/kilo_code_serve/policy.rs"
+    "crates/licoup-native/src/platform/kilo_code_serve/policy.rs"
   );
   for (const [target, facade, policy, foreignPolicy] of [
     ["OpenCode", openCodeServeFacadeSource, openCodeServePolicySource, "kilo_code"],
@@ -54,27 +54,27 @@ export async function checkTargetServeAndGateway(context, { localServiceSource }
   }
 
   const openClawGatewayFacadeSource = await readText(
-    "crates/lico-client-native/src/platform/openclaw_gateway.rs"
+    "crates/licoup-native/src/platform/openclaw_gateway.rs"
   );
   const openClawGatewayFiles = await collectSourceFiles(
-    "crates/lico-client-native/src/platform/openclaw_gateway",
+    "crates/licoup-native/src/platform/openclaw_gateway",
     ".rs"
   );
   const openClawGatewayProductionFiles = openClawGatewayFiles.filter(
     (relativePath) => !relativePath.includes("/tests/")
   );
   const openClawGatewaySource = await readJoinedText([
-    "crates/lico-client-native/src/platform/openclaw_gateway.rs",
+    "crates/licoup-native/src/platform/openclaw_gateway.rs",
     ...openClawGatewayProductionFiles
   ]);
   const openClawGatewayCommandSource = await readText(
-    "crates/lico-client-native/src/platform/openclaw_gateway/command.rs"
+    "crates/licoup-native/src/platform/openclaw_gateway/command.rs"
   );
   const openClawGatewayHealthSource = await readText(
-    "crates/lico-client-native/src/platform/openclaw_gateway/health.rs"
+    "crates/licoup-native/src/platform/openclaw_gateway/health.rs"
   );
   const openClawGatewayLifecycleSource = await readText(
-    "crates/lico-client-native/src/platform/openclaw_gateway/lifecycle.rs"
+    "crates/licoup-native/src/platform/openclaw_gateway/lifecycle.rs"
   );
   assert(
     !openClawGatewayFacadeSource.includes("Command::new") &&

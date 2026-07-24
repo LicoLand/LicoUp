@@ -1,7 +1,7 @@
-import 'package:flutter_client/src/application/features/settings/controller/client_log_export_controller.dart';
-import 'package:flutter_client/src/application/features/settings/controller/client_update_controller.dart';
-import 'package:flutter_client/src/application/features/settings/controller/directory_path_controller.dart';
-import 'package:flutter_client/src/contracts/client_update_models.dart';
+import 'package:licoup/src/application/features/settings/controller/client_log_export_controller.dart';
+import 'package:licoup/src/application/features/settings/controller/client_update_controller.dart';
+import 'package:licoup/src/application/features/settings/controller/directory_path_controller.dart';
+import 'package:licoup/src/contracts/client_update_models.dart';
 
 mixin ClientMaintenanceFacade {
   ClientLogExportController get clientLogExportController;

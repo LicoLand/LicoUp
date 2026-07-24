@@ -1,13 +1,13 @@
-import 'package:flutter_client/src/contracts/presentation/layout_environment.dart';
-import 'package:flutter_client/src/contracts/presentation/layout_profile.dart';
-import 'package:flutter_client/src/contracts/presentation/layout_state_namespace.dart';
-import 'package:flutter_client/src/contracts/presentation/semantic_destination.dart';
-import 'package:flutter_client/src/frontend/layout/layout_surface_bundle.dart';
-import 'package:flutter_client/src/frontend/layout/profiles/native/desktop/components/native_desktop_component_kit.dart';
-import 'package:flutter_client/src/frontend/layout/profiles/native/desktop/destinations/native_desktop_destination_builders.dart';
-import 'package:flutter_client/src/frontend/layout/profiles/native/desktop/preview/native_desktop_preview.dart';
-import 'package:flutter_client/src/frontend/layout/profiles/native/desktop/shell/native_desktop_shell.dart';
-import 'package:flutter_client/src/frontend/layout/profiles/native/desktop/tokens/native_desktop_tokens.dart';
+import 'package:licoup/src/contracts/presentation/layout_environment.dart';
+import 'package:licoup/src/contracts/presentation/layout_profile.dart';
+import 'package:licoup/src/contracts/presentation/layout_state_namespace.dart';
+import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
+import 'package:licoup/src/frontend/layout/layout_surface_bundle.dart';
+import 'package:licoup/src/frontend/layout/profiles/native/desktop/components/native_desktop_component_kit.dart';
+import 'package:licoup/src/frontend/layout/profiles/native/desktop/destinations/native_desktop_destination_builders.dart';
+import 'package:licoup/src/frontend/layout/profiles/native/desktop/preview/native_desktop_preview.dart';
+import 'package:licoup/src/frontend/layout/profiles/native/desktop/shell/native_desktop_shell.dart';
+import 'package:licoup/src/frontend/layout/profiles/native/desktop/tokens/native_desktop_tokens.dart';
 
 /// The sole public handoff from the Native desktop renderer boundary.
 final LayoutSurfaceBundle nativeDesktopBundle = LayoutSurfaceBundle(

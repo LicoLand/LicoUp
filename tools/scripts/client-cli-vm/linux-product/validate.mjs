@@ -136,7 +136,7 @@ export function validateLinuxProductArtifacts(distro, expectedSourceDigest, rele
     distribution.signature?.algorithm !== "Ed25519" ||
     distribution.signature?.payload !== "archive-sha256-digest" ||
     distribution.signature?.keyId !== "linux-vm-acceptance" ||
-    distribution.signature?.file !== "LicoArc-linux-arm64.tar.gz.sig" ||
+    distribution.signature?.file !== "LicoUp-linux-arm64.tar.gz.sig" ||
     distribution.sha256 !== archiveDigest.slice("sha256:".length) ||
     receipt.sourceBinding.bundleManifestDigest !== distribution.bundleManifestDigest ||
     nodeMatrix.sourceBinding.bundleManifestDigest !== distribution.bundleManifestDigest ||

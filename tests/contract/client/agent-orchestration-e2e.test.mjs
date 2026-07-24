@@ -12,7 +12,7 @@ const scriptPath = path.join(
 );
 const readinessPath = path.join(
   repoRoot,
-  "crates/lico-client-native/resources/agent-conversation-readiness.json",
+  "crates/licoup-native/resources/agent-conversation-readiness.json",
 );
 
 test("agent orchestration e2e self-test emits redacted blocked receipt when sendEnabled is zero", () => {

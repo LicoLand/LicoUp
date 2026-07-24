@@ -1,8 +1,8 @@
 import 'dart:convert';
 
-import 'package:flutter_client/src/backend/features/settings/services/optional_collaboration_service.dart';
-import 'package:flutter_client/src/contracts/agent_command_runner.dart';
-import 'package:flutter_client/src/contracts/optional_collaboration_workflow_models.dart';
+import 'package:licoup/src/backend/features/settings/services/optional_collaboration_service.dart';
+import 'package:licoup/src/contracts/agent_command_runner.dart';
+import 'package:licoup/src/contracts/optional_collaboration_workflow_models.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support/optional_collaboration_test_fixtures.dart';
@@ -19,7 +19,7 @@ const _registrationContentDigest =
     'eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee';
 const _registrationId = '00000000-0000-4000-8000-000000000010';
 const _registrationDestination =
-    'test-data/licoarc-state/mcp-agent-registrations/cursor/$_registrationId.json';
+    'test-data/licoup-state/mcp-agent-registrations/cursor/$_registrationId.json';
 const _outboundPolicy = 'direct-user-exact-scope-one-shot';
 const _deploymentId = '00000000-0000-4000-8000-000000000020';
 
@@ -157,7 +157,7 @@ void main() {
       final service = OptionalCollaborationService(runner: runner);
       const destination = OptionalCollaborationAgentDestination(
         agentId: 'cursor',
-        installDestination: 'test-data/licoarc-mcp',
+        installDestination: 'test-data/licoup-mcp',
       );
       final plan = await service.planMcpInstall(
         selectedPluginIds: const ['selected-mcp'],
@@ -381,7 +381,7 @@ Map<String, dynamic> _assemblyPlan() => {
   'packageDigestSha256': _packageDigest,
   'selectedComponentIds': ['server-core'],
   'destination': 'test-data/licomesh-local',
-  'assemblyAdapterId': 'licoarc-builtin-local-http-v1',
+  'assemblyAdapterId': 'licoup-builtin-local-http-v1',
   'assemblyManifestDigestSha256': _registrationFileDigest,
   'assemblyManifestBytes': 512,
   'bindHost': '127.0.0.1',
@@ -406,7 +406,7 @@ Map<String, dynamic> _localServer({
   'packageDigestSha256': _packageDigest,
   'selectedComponentIds': ['server-core'],
   'destination': 'test-data/licomesh-local',
-  'assemblyAdapterId': 'licoarc-builtin-local-http-v1',
+  'assemblyAdapterId': 'licoup-builtin-local-http-v1',
   'assemblyManifestDigestSha256': _registrationFileDigest,
   'bindHost': '127.0.0.1',
   'port': 43121,
@@ -433,7 +433,7 @@ Map<String, dynamic> _mcpFile() => {
   'agentId': 'cursor',
   'selectionId': 'selected-mcp',
   'sourceRelativePath': 'payload/mcp-selected/server',
-  'destination': 'test-data/licoarc-mcp/selected-mcp/server',
+  'destination': 'test-data/licoup-mcp/selected-mcp/server',
   'destinationRelativePath': 'selected-mcp/server',
   'digestSha256': _fileDigest,
   'bytes': 128,
@@ -441,7 +441,7 @@ Map<String, dynamic> _mcpFile() => {
 
 Map<String, dynamic> _agent() => {
   'agentId': 'cursor',
-  'installDestination': 'test-data/licoarc-mcp',
+  'installDestination': 'test-data/licoup-mcp',
 };
 
 Map<String, dynamic> _registrationPlan() => {
@@ -450,7 +450,7 @@ Map<String, dynamic> _registrationPlan() => {
   'destination': _registrationDestination,
   'digestSha256': _registrationFileDigest,
   'registration': {
-    'schemaVersion': 'licoarc.mcp-agent-registration.v2',
+    'schemaVersion': 'licoup.mcp-agent-registration.v2',
     'registrationId': _registrationId,
     'registrationDigestSha256': _registrationContentDigest,
     'agentId': 'cursor',
@@ -458,7 +458,7 @@ Map<String, dynamic> _registrationPlan() => {
     'packageDigestSha256': _packageDigest,
     'selectedPluginIds': ['selected-mcp'],
     'payloadRoots': [
-      {'pluginId': 'selected-mcp', 'path': 'test-data/licoarc-mcp/selected-mcp'},
+      {'pluginId': 'selected-mcp', 'path': 'test-data/licoup-mcp/selected-mcp'},
     ],
     'payloadFiles': [
       {
@@ -475,7 +475,7 @@ Map<String, dynamic> _registrationPlan() => {
         'endpoint': 'https://mcp.example.test/',
       },
     ],
-    'bridgeKind': 'licoarc-stdio-mcp-gate',
+    'bridgeKind': 'licoup-stdio-mcp-gate',
     'activationPolicy': 'disabled-authenticated-broker-unavailable',
     'automaticTriggersAllowed': false,
     'pluginExecutedDuringInstall': false,

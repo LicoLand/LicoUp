@@ -1,6 +1,6 @@
 import 'package:flutter/foundation.dart';
 
-import 'package:flutter_client/src/contracts/mcp_adapter.dart';
+import 'package:licoup/src/contracts/mcp_adapter.dart';
 
 /// Owns one explicit preview/confirm transfer closure. Construction and state
 /// changes never issue MCP requests automatically.

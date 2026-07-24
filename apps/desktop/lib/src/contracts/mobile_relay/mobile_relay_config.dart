@@ -1,6 +1,6 @@
-import 'package:flutter_client/src/contracts/mobile_relay/mobile_relay_gateway.dart';
-import 'package:flutter_client/src/contracts/mobile_relay/mobile_relay_paired_device.dart';
-import 'package:flutter_client/src/contracts/mobile_relay/mobile_relay_trust_presentation.dart';
+import 'package:licoup/src/contracts/mobile_relay/mobile_relay_gateway.dart';
+import 'package:licoup/src/contracts/mobile_relay/mobile_relay_paired_device.dart';
+import 'package:licoup/src/contracts/mobile_relay/mobile_relay_trust_presentation.dart';
 
 class MobileRelayConfig {
   const MobileRelayConfig({
@@ -91,7 +91,7 @@ class MobileRelayConfig {
       customGatewayUrl: '',
       pcClientId: 'pc_$now',
       pcClientName: normalizedPcClientName.isEmpty
-          ? 'Lico Arc'
+          ? 'LicoUp'
           : normalizedPcClientName,
       pairingId: '',
       pcToken: '',

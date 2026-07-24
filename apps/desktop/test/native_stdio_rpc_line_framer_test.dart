@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
-import 'package:flutter_client/src/platform/native_client/agent_service_stdio_rpc/line_framer.dart';
+import 'package:licoup/src/platform/native_client/agent_service_stdio_rpc/line_framer.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

@@ -1,13 +1,13 @@
-# Lico Arc 架构
+# LicoUp 架构
 
 [English（规范版本）](README.md) · 简体中文（本地化） · [文档索引](../README.md) · [项目首页](../../README.zh-CN.md)
 
-产品边界由 `PRODUCT.md` 负责。当前组件和依赖事实由 Rust/Flutter 模块树、
+当前产品边界与最终目标由[产品定义](../../PRODUCT.zh-CN.md)负责。当前组件和依赖事实由 Rust/Flutter 模块树、
 `apps/desktop/packaging.modules.json` 以及
 `apps/desktop/scripts/client-architecture/` 下的架构验证器负责。本文件是这些来源的
 公开架构投影。
 
-Lico Arc 是一个本地优先的客户端。Flutter 负责界面，Rust 负责原生客户端核心、
+LicoUp 是一个本地优先的客户端。Flutter 负责界面，Rust 负责原生客户端核心、
 本机适配器、有界任务和 Secure Client Mesh。
 
 ## 设计理念
@@ -27,7 +27,7 @@ flowchart TB
     CORE --> STORE["本地客户端存储"]
     CORE --> MESH["Secure Client Mesh"]
     MESH --> RELAY["不可信中转端"]
-    RELAY --> PEER["对端 Lico Arc 客户端"]
+    RELAY --> PEER["对端 LicoUp 客户端"]
     KEYS["平台安全存储<br/>用户确认"] --> MESH
 ```
 
@@ -51,7 +51,7 @@ flowchart TB
 | ACP 适配 | 智能体会话协商、原生继续对话、事件流、权限等待、取消和脱敏错误 |
 | MCP 适配 | 有界 MCP/JSON-RPC 校验、请求 ID 保持、响应转发，以及外部动作的一次性审批 |
 | 智能体发现 | 并发探测平台应用来源、包管理器、可执行文件位置和已配置智能体目录；结果归一化后只缓存在本机 |
-| 适配插件管理 | 用一个原生目录管理随附原生通道、随附 ACP 通道和明确可安装的 Lico Arc 桥接；生命周期操作需要确认且只能修改 Lico Arc 自有状态 |
+| 适配插件管理 | 用一个原生目录管理随附原生通道、随附 ACP 通道和明确可安装的 LicoUp 桥接；生命周期操作需要确认且只能修改 LicoUp 自有状态 |
 | 智能体对话 | 新建和原生继续会话，并通过进程内 [Local Bridge](../protocols/local-bridge.zh-CN.md) 提供可唤醒进度、原生 steer 和准确会话的安全轮次续接 |
 | 技能管理 | 本机安装、更新、删除，已配置来源的定时检查，以及按时间窗口统计真实调用次数 |
 | 对话管理 | 把全部对话或准确关键词匹配结果备份到用户选择的本地目录 |
@@ -170,7 +170,7 @@ sequenceDiagram
 | 路径 | 用途 |
 | --- | --- |
 | `apps/desktop/` | Flutter 桌面与移动客户端 |
-| `crates/lico-client-native/` | Rust 客户端核心和命令 |
+| `crates/licoup-native/` | Rust 客户端核心和命令 |
 | `packages/contracts/client/` | 客户端自有 Schema |
 | `tests/` | 使用合成数据的契约和边界测试 |
 | `tools/` | 可复用的构建与验证工具 |

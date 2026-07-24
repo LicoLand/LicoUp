@@ -149,8 +149,8 @@ export function validateRuntimeStatus(
     userAuthentication.authorizationGrantPersisted === false &&
     userAuthentication.authorizationGrantExtendedByDispatch === false;
   const nativeRuntimeReady =
-    nativeRuntime.provider === "lico-client-native" &&
-    nativeRuntime.library === "liblico_client_native.so" &&
+    nativeRuntime.provider === "licoup-native" &&
+    nativeRuntime.library === "liblicoup_native.so" &&
     nativeRuntime.ffiBoundary === "jni" &&
     nativeRuntime.loaded === true &&
     nativeRuntime.selfTestPassed === true &&

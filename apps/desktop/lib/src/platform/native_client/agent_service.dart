@@ -1,28 +1,28 @@
 import 'dart:io';
 
-import 'package:flutter_client/src/contracts/agent_command_runner.dart';
-import 'package:flutter_client/src/contracts/generated/client_state.g.dart';
-import 'package:flutter_client/src/contracts/mcp_adapter.dart';
-import 'package:flutter_client/src/contracts/skill_delete.dart';
-import 'package:flutter_client/src/contracts/skill_hub.dart';
-import 'package:flutter_client/src/contracts/skill_update.dart';
-import 'package:flutter_client/src/contracts/skill_usage.dart';
-import 'package:flutter_client/src/contracts/target_candidate.dart';
-import 'package:flutter_client/src/contracts/target_management.dart';
-import 'package:flutter_client/src/platform/native_client/agent_service_actions.dart';
-import 'package:flutter_client/src/platform/native_client/agent_service_process_io.dart';
-import 'package:flutter_client/src/platform/native_client/agent_service_stdio_rpc.dart';
-import 'package:flutter_client/src/platform/native_client/native_cli_ports.dart';
-import 'package:flutter_client/src/platform/native_client/native_catalog_actions.dart';
-import 'package:flutter_client/src/platform/native_client/native_cli_runtime_context.dart';
-import 'package:flutter_client/src/platform/native_client/native_command_router.dart';
-import 'package:flutter_client/src/platform/native_client/native_mcp_actions.dart';
-import 'package:flutter_client/src/platform/native_client/native_one_shot_command_executor.dart';
-import 'package:flutter_client/src/platform/native_client/native_state_actions.dart';
-import 'package:flutter_client/src/platform/native_client/orchestrator_ipc/client.dart';
+import 'package:licoup/src/contracts/agent_command_runner.dart';
+import 'package:licoup/src/contracts/generated/client_state.g.dart';
+import 'package:licoup/src/contracts/mcp_adapter.dart';
+import 'package:licoup/src/contracts/skill_delete.dart';
+import 'package:licoup/src/contracts/skill_hub.dart';
+import 'package:licoup/src/contracts/skill_update.dart';
+import 'package:licoup/src/contracts/skill_usage.dart';
+import 'package:licoup/src/contracts/target_candidate.dart';
+import 'package:licoup/src/contracts/target_management.dart';
+import 'package:licoup/src/platform/native_client/agent_service_actions.dart';
+import 'package:licoup/src/platform/native_client/agent_service_process_io.dart';
+import 'package:licoup/src/platform/native_client/agent_service_stdio_rpc.dart';
+import 'package:licoup/src/platform/native_client/native_cli_ports.dart';
+import 'package:licoup/src/platform/native_client/native_catalog_actions.dart';
+import 'package:licoup/src/platform/native_client/native_cli_runtime_context.dart';
+import 'package:licoup/src/platform/native_client/native_command_router.dart';
+import 'package:licoup/src/platform/native_client/native_mcp_actions.dart';
+import 'package:licoup/src/platform/native_client/native_one_shot_command_executor.dart';
+import 'package:licoup/src/platform/native_client/native_state_actions.dart';
+import 'package:licoup/src/platform/native_client/orchestrator_ipc/client.dart';
 
-export 'package:flutter_client/src/contracts/target_candidate.dart';
-export 'package:flutter_client/src/platform/native_client/native_cli_ports.dart'
+export 'package:licoup/src/contracts/target_candidate.dart';
+export 'package:licoup/src/platform/native_client/native_cli_ports.dart'
     show LicoClientRpcException;
 
 /// Public native-client facade.

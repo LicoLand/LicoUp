@@ -1,5 +1,5 @@
-import 'package:flutter_client/src/contracts/optional_collaboration_model_parsing.dart';
-import 'package:flutter_client/src/contracts/optional_collaboration_plugin_models.dart';
+import 'package:licoup/src/contracts/optional_collaboration_model_parsing.dart';
+import 'package:licoup/src/contracts/optional_collaboration_plugin_models.dart';
 
 final class OptionalCollaborationWorkflowChoice {
   const OptionalCollaborationWorkflowChoice({
@@ -60,8 +60,8 @@ final class OptionalCollaborationWorkflowCatalog {
     );
     final mcp = optionalCollaborationRequiredMap(workflows, 'mcpInstall');
     if (deployment['schemaVersion'] !=
-            'licoarc.collaboration.local-deployment.v1' ||
-        mcp['schemaVersion'] != 'licoarc.collaboration.mcp-install.v2' ||
+            'licoup.collaboration.local-deployment.v1' ||
+        mcp['schemaVersion'] != 'licoup.collaboration.mcp-install.v2' ||
         deployment['manualOnly'] != true ||
         mcp['manualOnly'] != true ||
         mcp['requiresPerFileApproval'] != true ||

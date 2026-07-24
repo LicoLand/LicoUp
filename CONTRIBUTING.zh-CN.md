@@ -2,7 +2,7 @@
 
 [English](CONTRIBUTING.md) · 简体中文 · [首页](README.zh-CN.md)
 
-感谢你帮助 Lico Arc。每次改动应只覆盖一个清晰的客户端功能、模块或流程，并且可以
+感谢你帮助 LicoUp。每次改动应只覆盖一个清晰的客户端功能、模块或流程，并且可以
 独立检查和测试。
 
 ## 环境准备
@@ -70,4 +70,4 @@ npm run client:artifacts:prune
 - 公开文档有对应的中英文版本。
 - 不包含敏感值或原始运行输出。
 
-Lico Arc 使用 `GPL-3.0-or-later` 许可证。
+LicoUp 使用 `GPL-3.0-or-later` 许可证。

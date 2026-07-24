@@ -3,13 +3,13 @@ import 'dart:math' as math;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
-import 'package:flutter_client/src/frontend/features/agents/ui/agent_usage_chart_controls.dart';
-import 'package:flutter_client/src/frontend/features/agents/ui/agent_usage_chart_geometry.dart';
-import 'package:flutter_client/src/frontend/features/agents/ui/agent_usage_timeline_data.dart';
-import 'package:flutter_client/src/frontend/features/agents/ui/agent_usage_wave_chart_painter.dart';
-import 'package:flutter_client/src/frontend/features/agents/ui/agent_usage_window_control.dart';
-import 'package:flutter_client/src/frontend/l10n/lico_strings.dart';
-import 'package:flutter_client/src/frontend/shared/ui/theme.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_usage_chart_controls.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_usage_chart_geometry.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_usage_timeline_data.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_usage_wave_chart_painter.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_usage_window_control.dart';
+import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 final class AgentUsageWaveOverview extends StatefulWidget {
   const AgentUsageWaveOverview({

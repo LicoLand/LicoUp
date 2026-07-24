@@ -1,5 +1,5 @@
-import 'package:flutter_client/src/contracts/generated/client_state.g.dart';
-import 'package:flutter_client/src/platform/native_client/native_cli_ports.dart';
+import 'package:licoup/src/contracts/generated/client_state.g.dart';
+import 'package:licoup/src/platform/native_client/native_cli_ports.dart';
 
 /// Typed client-state gateway over the private structured RPC transport.
 final class NativeStateActions {

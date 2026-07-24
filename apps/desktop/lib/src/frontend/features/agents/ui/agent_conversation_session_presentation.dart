@@ -1,4 +1,4 @@
-import 'package:flutter_client/src/contracts/agent_conversation_session.dart';
+import 'package:licoup/src/contracts/agent_conversation_session.dart';
 
 String conversationSessionRelativeUpdatedAtLabel(
   AgentConversationSession session,

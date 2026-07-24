@@ -1,7 +1,7 @@
 import 'package:flutter/foundation.dart';
-import 'package:flutter_client/src/application/features/targets/policy/target_policy.dart';
-import 'package:flutter_client/src/contracts/target_candidate.dart';
-import 'package:flutter_client/src/contracts/target_management.dart';
+import 'package:licoup/src/application/features/targets/policy/target_policy.dart';
+import 'package:licoup/src/contracts/target_candidate.dart';
+import 'package:licoup/src/contracts/target_management.dart';
 
 typedef TargetStatusSink = void Function(TargetStatusUpdate update);
 

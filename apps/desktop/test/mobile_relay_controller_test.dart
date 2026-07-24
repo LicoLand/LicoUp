@@ -1,6 +1,6 @@
-import 'package:flutter_client/src/application/features/mobile_relay/controller/mobile_relay_controller.dart';
-import 'package:flutter_client/src/contracts/mobile_relay/mobile_relay_models.dart';
-import 'package:flutter_client/src/contracts/mobile_relay_control.dart';
+import 'package:licoup/src/application/features/mobile_relay/controller/mobile_relay_controller.dart';
+import 'package:licoup/src/contracts/mobile_relay/mobile_relay_models.dart';
+import 'package:licoup/src/contracts/mobile_relay_control.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -29,7 +29,7 @@ void main() {
       expect(controller.pairingPresentation?.pairingCode, 'SAFE-CODE');
       expect(
         controller.pairingPresentation?.inviteText,
-        startsWith('licoarc://'),
+        startsWith('licoup://'),
       );
       expect(
         controller.actionResult,

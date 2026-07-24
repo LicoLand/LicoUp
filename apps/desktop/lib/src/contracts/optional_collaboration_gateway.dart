@@ -1,6 +1,6 @@
-import 'package:flutter_client/src/contracts/optional_collaboration_models.dart';
-import 'package:flutter_client/src/contracts/optional_collaboration_local_server_models.dart';
-import 'package:flutter_client/src/contracts/optional_collaboration_workflow_models.dart';
+import 'package:licoup/src/contracts/optional_collaboration_models.dart';
+import 'package:licoup/src/contracts/optional_collaboration_local_server_models.dart';
+import 'package:licoup/src/contracts/optional_collaboration_workflow_models.dart';
 
 abstract interface class OptionalCollaborationGateway {
   Future<OptionalCollaborationRuntimeState> status();

@@ -1,6 +1,6 @@
-import 'package:flutter_client/src/application/features/agents/workspace/agent_workspace_coordinator.dart';
-import 'package:flutter_client/src/application/features/targets/controller/target_controller.dart';
-import 'package:flutter_client/src/contracts/target_candidate.dart';
+import 'package:licoup/src/application/features/agents/workspace/agent_workspace_coordinator.dart';
+import 'package:licoup/src/application/features/targets/controller/target_controller.dart';
+import 'package:licoup/src/contracts/target_candidate.dart';
 
 mixin ClientTargetFacade on AgentWorkspaceCoordinator {
   TargetController get targetController;

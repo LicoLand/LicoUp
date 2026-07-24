@@ -1,12 +1,12 @@
-import 'package:flutter_client/src/platform/native_client/agent_service_stdio_rpc/command_exchange.dart';
-import 'package:flutter_client/src/platform/native_client/agent_service_stdio_rpc/conversation_exchange.dart';
-import 'package:flutter_client/src/platform/native_client/agent_service_stdio_rpc/operation_queue.dart';
-import 'package:flutter_client/src/platform/native_client/agent_service_stdio_rpc/orchestrator_lane_pool.dart';
-import 'package:flutter_client/src/platform/native_client/agent_service_stdio_rpc/protocol.dart';
-import 'package:flutter_client/src/platform/native_client/agent_service_stdio_rpc/session_manager.dart';
-import 'package:flutter_client/src/platform/native_client/agent_service_stdio_rpc/shutdown.dart';
-import 'package:flutter_client/src/platform/native_client/native_cli_ports.dart';
-import 'package:flutter_client/src/platform/native_client/native_rpc_priority.dart';
+import 'package:licoup/src/platform/native_client/agent_service_stdio_rpc/command_exchange.dart';
+import 'package:licoup/src/platform/native_client/agent_service_stdio_rpc/conversation_exchange.dart';
+import 'package:licoup/src/platform/native_client/agent_service_stdio_rpc/operation_queue.dart';
+import 'package:licoup/src/platform/native_client/agent_service_stdio_rpc/orchestrator_lane_pool.dart';
+import 'package:licoup/src/platform/native_client/agent_service_stdio_rpc/protocol.dart';
+import 'package:licoup/src/platform/native_client/agent_service_stdio_rpc/session_manager.dart';
+import 'package:licoup/src/platform/native_client/agent_service_stdio_rpc/shutdown.dart';
+import 'package:licoup/src/platform/native_client/native_cli_ports.dart';
+import 'package:licoup/src/platform/native_client/native_rpc_priority.dart';
 
 class NativeStdioRpcClient implements NativeStdioRpcTransport {
   NativeStdioRpcClient({required NativeCliProcessContext processContext})

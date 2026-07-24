@@ -17,42 +17,42 @@ const canonicalFamilies = [
     id: "client_error",
     status: "active",
     schema: "schemas/client_bridge/client_error.schema.json",
-    rustOutput: "crates/lico-client-native/src/ffi/generated/client_error.rs",
+    rustOutput: "crates/licoup-native/src/ffi/generated/client_error.rs",
     dartOutput: "apps/desktop/lib/src/contracts/generated/client_error.g.dart",
   },
   {
     id: "state",
     status: "planned",
     schema: "schemas/client_bridge/state.json",
-    rustOutput: "crates/lico-client-native/src/ffi/generated/client_state.rs",
+    rustOutput: "crates/licoup-native/src/ffi/generated/client_state.rs",
     dartOutput: "apps/desktop/lib/src/contracts/generated/client_state.g.dart",
   },
   {
     id: "secure_mesh",
     status: "planned",
     schema: "schemas/client_bridge/secure_mesh.json",
-    rustOutput: "crates/lico-client-native/src/ffi/generated/secure_mesh.rs",
+    rustOutput: "crates/licoup-native/src/ffi/generated/secure_mesh.rs",
     dartOutput: "apps/desktop/lib/src/contracts/generated/secure_mesh.g.dart",
   },
   {
     id: "conversation",
     status: "planned",
     schema: "schemas/client_bridge/conversation.json",
-    rustOutput: "crates/lico-client-native/src/ffi/generated/conversation.rs",
+    rustOutput: "crates/licoup-native/src/ffi/generated/conversation.rs",
     dartOutput: "apps/desktop/lib/src/contracts/generated/conversation.g.dart",
   },
   {
     id: "adapter_plugin",
     status: "planned",
     schema: "schemas/client_bridge/adapter_plugin.json",
-    rustOutput: "crates/lico-client-native/src/ffi/generated/adapter_plugin.rs",
+    rustOutput: "crates/licoup-native/src/ffi/generated/adapter_plugin.rs",
     dartOutput: "apps/desktop/lib/src/contracts/generated/adapter_plugin.g.dart",
   },
   {
     id: "agent_usage",
     status: "planned",
     schema: "schemas/client_bridge/agent_usage.json",
-    rustOutput: "crates/lico-client-native/src/ffi/generated/agent_usage.rs",
+    rustOutput: "crates/licoup-native/src/ffi/generated/agent_usage.rs",
     dartOutput: "apps/desktop/lib/src/contracts/generated/agent_usage.g.dart",
   },
 ];
@@ -194,7 +194,7 @@ test("2) package scripts canonicalize generation and generator is manifest-drive
     "cannot hardcode only client_error schema",
   );
   assert.equal(
-    /crates\/lico-client-native\/src\/ffi\/generated\/client_error\.rs/.test(generatorSource),
+    /crates\/licoup-native\/src\/ffi\/generated\/client_error\.rs/.test(generatorSource),
     false,
     "cannot hardcode only client_error rust output",
   );
@@ -298,7 +298,7 @@ test("4) manifest mutation and tracked artifacts produce bounded failures in che
   // unregistered generated file
   {
     const mutated = makeScratch(base);
-    const strayRust = path.join(mutated, "crates/lico-client-native/src/ffi/generated/stray.rs");
+    const strayRust = path.join(mutated, "crates/licoup-native/src/ffi/generated/stray.rs");
     const strayDart = path.join(mutated, "apps/desktop/lib/src/contracts/generated/stray.g.dart");
     fsSync.mkdirSync(path.dirname(strayRust), { recursive: true });
     fsSync.mkdirSync(path.dirname(strayDart), { recursive: true });

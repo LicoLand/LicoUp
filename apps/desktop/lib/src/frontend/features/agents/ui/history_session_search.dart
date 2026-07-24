@@ -1,4 +1,4 @@
-import 'package:flutter_client/src/frontend/features/agents/ui/history_session_models.dart';
+import 'package:licoup/src/frontend/features/agents/ui/history_session_models.dart';
 
 List<HistorySessionPanelItem> historySessionPrefixMatches(
   List<HistorySessionPanelItem> items,

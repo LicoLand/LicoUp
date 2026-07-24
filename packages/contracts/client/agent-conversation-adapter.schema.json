@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://licomesh.dev/contracts/client/agent-conversation-adapter.schema.json",
-  "title": "Lico Arc Agent Conversation Adapter Manifest",
+  "title": "LicoUp Agent Conversation Adapter Manifest",
   "type": "object",
   "additionalProperties": false,
   "required": [

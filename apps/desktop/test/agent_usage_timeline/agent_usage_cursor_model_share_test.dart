@@ -1,6 +1,6 @@
-import 'package:flutter_client/src/contracts/agent_usage_models.dart';
-import 'package:flutter_client/src/frontend/features/agents/ui/agent_usage_timeline/agent_usage_timeline_builder.dart';
-import 'package:flutter_client/src/frontend/features/agents/ui/agent_usage_timeline/agent_usage_timeline_models.dart';
+import 'package:licoup/src/contracts/agent_usage_models.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_usage_timeline/agent_usage_timeline_builder.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_usage_timeline/agent_usage_timeline_models.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

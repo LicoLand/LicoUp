@@ -1,5 +1,5 @@
-import 'package:flutter_client/src/application/features/mobile_relay/policy/mobile_pairing_invite_codec.dart';
-import 'package:flutter_client/src/contracts/mobile_pairing_presentation.dart';
+import 'package:licoup/src/application/features/mobile_relay/policy/mobile_pairing_invite_codec.dart';
+import 'package:licoup/src/contracts/mobile_pairing_presentation.dart';
 
 /// Pure presentation and disclosure policy for pairing results.
 abstract final class MobilePairingPolicy {

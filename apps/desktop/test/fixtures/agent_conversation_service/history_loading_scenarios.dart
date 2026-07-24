@@ -1,13 +1,13 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:flutter_client/src/backend/features/agents/services/agent_conversation_service.dart';
-import 'package:flutter_client/src/platform/native_client/agent_service.dart';
+import 'package:licoup/src/backend/features/agents/services/agent_conversation_service.dart';
+import 'package:licoup/src/platform/native_client/agent_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void registerAgentConversationHistoryLoadingScenarios() {
   test(
-    'loads native agent histories through lico-client conversations list',
+    'loads native agent histories through licoup conversations list',
     () async {
       final captured = <List<String>>[];
       final agentService = AgentService(
@@ -86,7 +86,7 @@ void registerAgentConversationHistoryLoadingScenarios() {
   });
 
   test(
-    'streams native agent histories through lico-client conversations stream',
+    'streams native agent histories through licoup conversations stream',
     () async {
       final agentService = _StreamingAgentService([
         {

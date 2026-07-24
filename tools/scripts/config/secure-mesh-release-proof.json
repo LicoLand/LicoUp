@@ -132,7 +132,7 @@
       "tokens": [
         "licomesh.secure-mesh.android-physical-install-launch-report.v3",
         "reportLeakScan",
-        "liblico_client_native.so",
+        "liblicoup_native.so",
         "rawPrivateMaterialIncluded: false",
         "rawPlaintextIncluded: false",
         "rawDeviceIdentifiersIncluded: false",

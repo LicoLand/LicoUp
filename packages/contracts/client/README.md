@@ -1,6 +1,6 @@
 # packages/contracts/client -- DTO Schemas
 
-This directory defines the DTO schemas owned by the LicoArc client boundary.
+This directory defines the DTO schemas owned by the LicoUp client boundary.
 They cover local agent execution, conversation backup, and encrypted mobile
 relay without defining a default server-ingestion path.
 

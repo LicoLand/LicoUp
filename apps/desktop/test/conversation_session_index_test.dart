@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:flutter_client/src/application/features/agents/policy/conversation_session_index.dart';
-import 'package:flutter_client/src/contracts/agent_conversation_models.dart';
+import 'package:licoup/src/application/features/agents/policy/conversation_session_index.dart';
+import 'package:licoup/src/contracts/agent_conversation_models.dart';
 
 void main() {
   test('sorts newest first and replaces duplicate native sessions', () {

@@ -41,19 +41,19 @@ export function syncLinuxProductSourceManifest(distro) {
   const artifacts = linuxProductArtifactPaths(distro);
   runSsh(
     distro,
-    'rm -rf "$HOME/lico-arc/.lico-source-attestation" && ' +
-      'mkdir -m 0700 "$HOME/lico-arc/.lico-source-attestation"',
+    'rm -rf "$HOME/lico-up/.lico-source-attestation" && ' +
+      'mkdir -m 0700 "$HOME/lico-up/.lico-source-attestation"',
   );
   run("rsync", [
     "-a",
     "-e",
     sshRsyncCommand(distro),
     artifacts.sourceManifest,
-    `${vmUser}@127.0.0.1:~/lico-arc/${linuxSourceManifestRemoteRef}`,
+    `${vmUser}@127.0.0.1:~/lico-up/${linuxSourceManifestRemoteRef}`,
   ]);
   runSsh(
     distro,
-    `chmod 0600 "$HOME/lico-arc/${linuxSourceManifestRemoteRef}" && ` +
-      `test "$(stat -c '%a' "$HOME/lico-arc/${linuxSourceManifestRemoteRef}")" = 600`,
+    `chmod 0600 "$HOME/lico-up/${linuxSourceManifestRemoteRef}" && ` +
+      `test "$(stat -c '%a' "$HOME/lico-up/${linuxSourceManifestRemoteRef}")" = 600`,
   );
 }

@@ -1,4 +1,4 @@
-# Lico Arc Documentation
+# LicoUp Documentation
 
 [Project](../README.md) · [简体中文项目入口](../README.zh-CN.md)
 
@@ -8,7 +8,7 @@ authority.
 
 ## Project entry documents
 
-- [Product definition](../PRODUCT.md)
+- [Product definition](../PRODUCT.md) · [产品定义](../PRODUCT.zh-CN.md)
 - [Contributing](../CONTRIBUTING.md) · [参与贡献](../CONTRIBUTING.zh-CN.md)
 - [Code of Conduct](../CODE_OF_CONDUCT.md)
 - [Changelog](../CHANGELOG.md)

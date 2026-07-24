@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import 'package:flutter_client/src/contracts/optional_collaboration_workflow_models.dart';
+import 'package:licoup/src/contracts/optional_collaboration_workflow_models.dart';
 
 final class OptionalCollaborationAgentDestinationEditors {
   final TextEditingController agentId = TextEditingController();

@@ -301,13 +301,13 @@ function buildContext(options, agentId, config) {
   const environment = disposableDataRoot
     ? { ...process.env, [config.disposableEnvironmentKey]: disposableDataRoot }
     : process.env;
-  const portableDataRoot = join(temporaryDirectory, "licoarc-portable");
+  const portableDataRoot = join(temporaryDirectory, "licoup-portable");
   mkdirSync(portableDataRoot, { recursive: true, mode: 0o700 });
   wrapper.environment = {
     ...wrapper.environment,
     ...environment,
     LICO_AGENT_CONVERSATION_ACCEPTANCE: acceptanceMode,
-    LICOARC_PORTABLE_DIR: portableDataRoot,
+    LICOUP_PORTABLE_DIR: portableDataRoot,
   };
   return {
     config,
@@ -448,7 +448,7 @@ export async function runSameSessionConversationGate(argv = process.argv.slice(2
       requireFact(reducer.ok === true, "reducer_write_failed");
       const readinessPath = resolve(
         root,
-        "crates/lico-client-native/resources/agent-conversation-readiness.json",
+        "crates/licoup-native/resources/agent-conversation-readiness.json",
       );
       const readiness = JSON.parse(readFileSync(readinessPath, "utf8"));
       readinessRow = (readiness.adapters || []).find((row) => row?.agentId === agentId) || null;

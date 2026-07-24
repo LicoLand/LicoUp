@@ -15,7 +15,7 @@ export async function writeStateAuthorityFixture(root) {
   await writeRelative(
     root,
     DEFAULT_LAYOUT_BOUNDARY_CONFIG.preferencesPath,
-    `import 'package:flutter_client/src/platform/storage/portable_data_root.dart';
+    `import 'package:licoup/src/platform/storage/portable_data_root.dart';
 final class Preferences {
   static const _fileName = 'appearance-preferences.json';
   Future<void> file() async {
@@ -29,9 +29,9 @@ final class Preferences {
     root,
     DEFAULT_LAYOUT_BOUNDARY_CONFIG.portableDataRootPath,
     `final class PortableDataRoot {
-  static const String _workspaceManifestFileName = '.licoarc-workspace.json';
+  static const String _workspaceManifestFileName = '.licoup-workspace.json';
   Future<Directory> clientDirectory() async {
-    final directory = Directory(p.join(dataDir.path, 'lico-client'));
+    final directory = Directory(p.join(dataDir.path, 'licoup'));
     return directory;
   }
 }
@@ -40,7 +40,7 @@ final class Preferences {
   await writeRelative(
     root,
     DEFAULT_LAYOUT_BOUNDARY_CONFIG.workspaceManifestPath,
-    "static const licoArcAppId = 'lico-client';\n",
+    "static const licoUpAppId = 'licoup';\n",
   );
 }
 
@@ -99,11 +99,11 @@ export async function writeCatalogFixture(
       await writeRelative(
         root,
         relativePath,
-        `import 'package:flutter_client/src/contracts/presentation/layout_profile.dart';
-import 'package:flutter_client/src/contracts/presentation/layout_environment.dart';
-import 'package:flutter_client/src/frontend/layout/layout_chrome_port.dart';
-import 'package:flutter_client/src/frontend/layout/layout_palette.dart';
-import 'package:flutter_client/src/frontend/layout/layout_destination_presentation.dart';
+        `import 'package:licoup/src/contracts/presentation/layout_profile.dart';
+import 'package:licoup/src/contracts/presentation/layout_environment.dart';
+import 'package:licoup/src/frontend/layout/layout_chrome_port.dart';
+import 'package:licoup/src/frontend/layout/layout_palette.dart';
+import 'package:licoup/src/frontend/layout/layout_destination_presentation.dart';
 
 final LayoutSurfaceBundle ${symbol} = LayoutSurfaceBundle(
   profile: LayoutProfileDescriptor(id: LayoutProfileId.parse('${identity.profile}')),
@@ -115,13 +115,13 @@ final LayoutSurfaceBundle ${symbol} = LayoutSurfaceBundle(
         root,
         `${DEFAULT_LAYOUT_BOUNDARY_CONFIG.profileTestRoot}/${profile}/${surface}/${profile}_${surface}_bundle_test.dart`,
         `import 'package:flutter_test/flutter_test.dart';
-import 'package:flutter_client/${relativePath.slice("apps/desktop/lib/".length)}';
+import 'package:licoup/${relativePath.slice("apps/desktop/lib/".length)}';
 void main() {}
 `,
       );
       if (!omitOwners.has(owner)) {
         imports.push(
-          `import 'package:flutter_client/${relativePath.slice("apps/desktop/lib/".length)}';`,
+          `import 'package:licoup/${relativePath.slice("apps/desktop/lib/".length)}';`,
         );
         symbols.push(symbol);
         if (duplicateDefinitionOwner === owner) {

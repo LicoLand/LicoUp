@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 
-import 'package:flutter_client/src/frontend/features/agents/ui/agent_conversation_display_names.dart';
-import 'package:flutter_client/src/frontend/features/agents/ui/agent_conversation_layout_metrics.dart';
-import 'package:flutter_client/src/frontend/features/agents/ui/agent_conversation_pane_controls.dart';
-import 'package:flutter_client/src/frontend/features/agents/ui/agent_conversation_pane_presentation.dart';
-import 'package:flutter_client/src/frontend/features/agents/ui/agent_conversation_parity_disclosure.dart';
-import 'package:flutter_client/src/frontend/shared/platform/client_platform.dart';
-import 'package:flutter_client/src/frontend/shared/ui/theme.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_display_names.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_layout_metrics.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_pane_controls.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_pane_presentation.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_parity_disclosure.dart';
+import 'package:licoup/src/frontend/shared/platform/client_platform.dart';
+import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 class ConversationPaneHeader extends StatelessWidget {
   const ConversationPaneHeader({

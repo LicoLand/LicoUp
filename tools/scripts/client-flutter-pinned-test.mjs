@@ -8,9 +8,9 @@ import { fileURLToPath } from "node:url";
 
 const workspaceRoot = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const sourceRoot = path.join(workspaceRoot, "apps", "desktop");
-const image = process.env.LICO_FLUTTER_TEST_IMAGE || "lico-arc-flutter-test:3.44.2";
+const image = process.env.LICO_FLUTTER_TEST_IMAGE || "lico-up-flutter-test:3.44.2";
 const pubCacheVolume = process.env.LICO_FLUTTER_TEST_PUB_CACHE ||
-  "lico-arc-flutter-3-44-2-pub";
+  "lico-up-flutter-3-44-2-pub";
 const testArgs = process.argv.slice(2);
 const containerWorkspace = path.posix.join(path.posix.sep, "workspace");
 const containerPubCache = path.posix.join(path.posix.sep, "root", ".pub-cache");
@@ -41,7 +41,7 @@ try {
   if (testArgs.length === 0) {
     throw new Error("Pass one or more flutter test arguments.");
   }
-  stagingRoot = mkdtempSync(path.join(os.tmpdir(), "lico-arc-flutter-test-"));
+  stagingRoot = mkdtempSync(path.join(os.tmpdir(), "lico-up-flutter-test-"));
   for (const entry of [
     "analysis_options.yaml",
     "assets",

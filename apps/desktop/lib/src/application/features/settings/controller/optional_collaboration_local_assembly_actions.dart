@@ -1,5 +1,5 @@
-import 'package:flutter_client/src/application/features/settings/controller/optional_collaboration_workflow_action_context.dart';
-import 'package:flutter_client/src/application/features/settings/controller/optional_collaboration_workflow_validation.dart';
+import 'package:licoup/src/application/features/settings/controller/optional_collaboration_workflow_action_context.dart';
+import 'package:licoup/src/application/features/settings/controller/optional_collaboration_workflow_validation.dart';
 
 final class OptionalCollaborationLocalAssemblyActions {
   const OptionalCollaborationLocalAssemblyActions(this.context);

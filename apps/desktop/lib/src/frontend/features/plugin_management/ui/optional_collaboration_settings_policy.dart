@@ -49,7 +49,7 @@ final class OptionalCollaborationPolicyNotice extends StatelessWidget {
         child: Text(
           isChinese
               ? '默认禁用、默认不查询、默认不加载。信任根导入、GitHub 下载、安装、组装与部署是相互独立的直接用户操作。认证逐项审批代理尚未实现，因此可选 MCP 外发保持不可用。'
-              : 'Disabled, unqueried, and unloaded by default. Trust import, GitHub download, installation, assembly, and deployment are separate direct-user actions. Optional MCP egress remains unavailable until LicoArc provides an authenticated exact-review broker.',
+              : 'Disabled, unqueried, and unloaded by default. Trust import, GitHub download, installation, assembly, and deployment are separate direct-user actions. Optional MCP egress remains unavailable until LicoUp provides an authenticated exact-review broker.',
           style: Theme.of(context).textTheme.bodySmall,
         ),
       ),

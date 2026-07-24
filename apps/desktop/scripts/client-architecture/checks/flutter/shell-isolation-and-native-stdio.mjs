@@ -182,7 +182,7 @@ export async function checkShellIsolationAndNativeStdio(context) {
   assert(!agentServiceActionsSource.match(/\[\s*'pair'/), "GUI service layer must not use top-level 'pair' command");
   const agentConversationServiceSource = await readDartSourceByBasename("agent_conversation_service.dart");
   assert(agentConversationServiceSource.includes("'conversations'") && agentConversationServiceSource.includes("agentService.runCli"),
-    "agent_conversation_service.dart must delegate conversation IO to lico-client CLI"
+    "agent_conversation_service.dart must delegate conversation IO to licoup CLI"
   );
   const nativeOrchestratorClientSource = await readText(
     "apps/desktop/lib/src/platform/native_client/orchestrator_ipc/client.dart"

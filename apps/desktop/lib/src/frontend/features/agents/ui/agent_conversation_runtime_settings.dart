@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
-import 'package:flutter_client/src/frontend/l10n/lico_strings.dart';
-import 'package:flutter_client/src/frontend/shared/ui/apple_popup_select.dart';
+import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/shared/ui/apple_popup_select.dart';
 
 class ConversationRuntimeSettingsBar extends StatelessWidget {
   const ConversationRuntimeSettingsBar({

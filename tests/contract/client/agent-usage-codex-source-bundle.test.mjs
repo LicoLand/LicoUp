@@ -10,10 +10,10 @@ const repoRoot = path.resolve(
   "../../..",
 );
 const sourceRoot =
-  "crates/lico-client-native/src/domain/agent_usage/agent_usage_codex";
-const integrationRoot = "crates/lico-client-native/tests/agent_usage_cache_cases";
+  "crates/licoup-native/src/domain/agent_usage/agent_usage_codex";
+const integrationRoot = "crates/licoup-native/tests/agent_usage_cache_cases";
 const integrationFacade =
-  "crates/lico-client-native/tests/agent_usage_incremental_cache.rs";
+  "crates/licoup-native/tests/agent_usage_incremental_cache.rs";
 const architectureRegistry =
   "apps/desktop/scripts/client-architecture/checks/native/domain-and-crypto-boundaries.mjs";
 const compositionModuleId = "rust.domain.agent-usage-cache";

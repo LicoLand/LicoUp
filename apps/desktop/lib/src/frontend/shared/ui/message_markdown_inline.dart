@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import 'package:flutter_client/src/frontend/shared/ui/message_markdown_style.dart';
+import 'package:licoup/src/frontend/shared/ui/message_markdown_style.dart';
 
 List<InlineSpan> messageMarkdownInlineSpans(
   String text,

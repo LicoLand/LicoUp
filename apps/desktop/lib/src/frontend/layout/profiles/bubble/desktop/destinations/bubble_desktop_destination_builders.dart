@@ -1,13 +1,13 @@
 import 'dart:collection';
 
-import 'package:flutter_client/src/contracts/presentation/semantic_destination.dart';
-import 'package:flutter_client/src/frontend/layout/layout_surface_bundle.dart';
-import 'package:flutter_client/src/frontend/layout/profiles/bubble/desktop/destinations/agents_destination.dart';
-import 'package:flutter_client/src/frontend/layout/profiles/bubble/desktop/destinations/skill_hub_destination.dart';
-import 'package:flutter_client/src/frontend/layout/profiles/bubble/desktop/destinations/mobile_relay_destination.dart';
-import 'package:flutter_client/src/frontend/layout/profiles/bubble/desktop/destinations/monitoring_destination.dart';
-import 'package:flutter_client/src/frontend/layout/profiles/bubble/desktop/destinations/settings_destination.dart';
-import 'package:flutter_client/src/frontend/layout/profiles/bubble/desktop/destinations/plugin_management_destination.dart';
+import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
+import 'package:licoup/src/frontend/layout/layout_surface_bundle.dart';
+import 'package:licoup/src/frontend/layout/profiles/bubble/desktop/destinations/agents_destination.dart';
+import 'package:licoup/src/frontend/layout/profiles/bubble/desktop/destinations/skill_hub_destination.dart';
+import 'package:licoup/src/frontend/layout/profiles/bubble/desktop/destinations/mobile_relay_destination.dart';
+import 'package:licoup/src/frontend/layout/profiles/bubble/desktop/destinations/monitoring_destination.dart';
+import 'package:licoup/src/frontend/layout/profiles/bubble/desktop/destinations/settings_destination.dart';
+import 'package:licoup/src/frontend/layout/profiles/bubble/desktop/destinations/plugin_management_destination.dart';
 
 final Map<ClientSection, LayoutDestinationBuilder>
 bubbleDesktopDestinationBuilders =

@@ -1,7 +1,7 @@
 import 'dart:convert';
 
-import 'package:flutter_client/src/backend/features/agents/services/agent_conversation_service.dart';
-import 'package:flutter_client/src/platform/native_client/agent_service.dart';
+import 'package:licoup/src/backend/features/agents/services/agent_conversation_service.dart';
+import 'package:licoup/src/platform/native_client/agent_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void registerAgentConversationDispatchScenarios() {
@@ -75,7 +75,7 @@ void registerAgentConversationDispatchScenarios() {
       );
 
       expect(turn.ok, isFalse);
-      expect(turn.errorCode, 'native_agent_authentication_required');
+      expect(turn.failureCode, 'native_agent_authentication_required');
       expect(turn.raw['error']['stage'], 'process/authentication');
       expect(agentService.capturedArgs, hasLength(1));
     },
@@ -119,7 +119,7 @@ void registerAgentConversationDispatchScenarios() {
         sessionId: 'native-1',
       );
       expect(steer.ok, isFalse);
-      expect(steer.errorCode, 'dispatch_steer_unsupported');
+      expect(steer.failureCode, 'dispatch_steer_unsupported');
       expect(agentService.capturedArgs.last, [
         'agent',
         'conversation',
@@ -140,7 +140,7 @@ void registerAgentConversationDispatchScenarios() {
         turnId: 'turn-1',
       );
       expect(cancel.ok, isFalse);
-      expect(cancel.errorCode, 'dispatch_cancel_unsupported');
+      expect(cancel.failureCode, 'dispatch_cancel_unsupported');
       expect(agentService.capturedArgs.last, [
         'agent',
         'conversation',

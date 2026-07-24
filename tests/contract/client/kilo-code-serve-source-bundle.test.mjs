@@ -5,8 +5,8 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = path.resolve(fileURLToPath(new URL("../../..", import.meta.url)));
-const facadePath = "crates/lico-client-native/src/platform/kilo_code_serve.rs";
-const root = "crates/lico-client-native/src/platform/kilo_code_serve";
+const facadePath = "crates/licoup-native/src/platform/kilo_code_serve.rs";
+const root = "crates/licoup-native/src/platform/kilo_code_serve";
 
 async function read(relativePath) {
   return fs.readFile(path.join(repoRoot, relativePath), "utf8");

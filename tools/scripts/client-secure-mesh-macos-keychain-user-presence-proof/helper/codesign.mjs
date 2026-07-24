@@ -106,7 +106,7 @@ export function resolveTeamIdentifier() {
 }
 
 export function helperEntitlements(teamIdentifier) {
-  const bundleIdentifier = "app.licoarc.secure-mesh.macos-adaptive-custody-proof";
+  const bundleIdentifier = "land.lico.licoup.secure-mesh.macos-adaptive-custody-proof";
   const applicationIdentifier = `${teamIdentifier}.${bundleIdentifier}`;
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -131,7 +131,7 @@ export function helperInfoPlist() {
 <plist version="1.0">
 <dict>
   <key>CFBundleIdentifier</key>
-  <string>app.licoarc.secure-mesh.macos-adaptive-custody-proof</string>
+  <string>land.lico.licoup.secure-mesh.macos-adaptive-custody-proof</string>
   <key>CFBundleExecutable</key>
   <string>MacosAdaptiveCustodyProof</string>
   <key>CFBundlePackageType</key>

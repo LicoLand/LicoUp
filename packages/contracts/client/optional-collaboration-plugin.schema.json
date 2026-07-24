@@ -1,13 +1,13 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://licomesh.dev/contracts/client/optional-collaboration-plugin.schema.json",
-  "title": "Lico Arc Optional Collaboration Plugin",
+  "title": "LicoUp Optional Collaboration Plugin",
   "description": "Disabled-by-default manifest for declarative collaboration payloads and digest-bound platform runner contracts.",
   "type": "object",
   "additionalProperties": false,
   "required": ["schemaVersion", "kind", "pluginId", "displayName", "version", "capabilities", "workflows", "serverRunners"],
   "properties": {
-    "schemaVersion": {"const": "licoarc.optional-collaboration-plugin.v2"},
+    "schemaVersion": {"const": "licoup.optional-collaboration-plugin.v2"},
     "kind": {"const": "licomesh-collaboration"},
     "pluginId": {
       "type": "string",
@@ -60,9 +60,9 @@
         "architecture": {"enum": ["x86_64", "aarch64"]},
         "relativePath": {"type": "string", "pattern": "^runners\/(macos|windows|ubuntu)\/(x86_64|aarch64)\/licomesh-server-runner(?:\\.exe)?$", "maxLength": 1024},
         "digestSha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
-        "runnerContractVersion": {"const": "licoarc.local-server-runner.v1"},
-        "healthContractVersion": {"const": "licoarc.local-server-health.v1"},
-        "capabilitiesContractVersion": {"const": "licoarc.local-server-capabilities.v1"}
+        "runnerContractVersion": {"const": "licoup.local-server-runner.v1"},
+        "healthContractVersion": {"const": "licoup.local-server-health.v1"},
+        "capabilitiesContractVersion": {"const": "licoup.local-server-capabilities.v1"}
       }
     }
   }

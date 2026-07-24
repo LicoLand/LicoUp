@@ -2,17 +2,17 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
-import 'package:flutter_client/src/application/controller/client_lifecycle_coordinator.dart';
-import 'package:flutter_client/src/application/features/agents/contracts/agent_conversation_gateway.dart';
-import 'package:flutter_client/src/application/features/agents/conversation/conversation_turn_queue.dart';
-import 'package:flutter_client/src/application/features/agents/policy/conversation_refresh_policy.dart';
-import 'package:flutter_client/src/application/localization/client_application_strings.dart';
-import 'package:flutter_client/src/contracts/agent_conversation_models.dart';
-import 'package:flutter_client/src/contracts/agent_conversation_tab_activity.dart';
-import 'package:flutter_client/src/contracts/generated/secure_mesh.g.dart';
-import 'package:flutter_client/src/contracts/target_candidate.dart';
-import 'package:flutter_client/src/contracts/presentation/semantic_destination.dart';
-import 'package:flutter_client/src/platform/native_client/orchestrator_ipc/client.dart';
+import 'package:licoup/src/application/controller/client_lifecycle_coordinator.dart';
+import 'package:licoup/src/application/features/agents/contracts/agent_conversation_gateway.dart';
+import 'package:licoup/src/application/features/agents/conversation/conversation_turn_queue.dart';
+import 'package:licoup/src/application/features/agents/policy/conversation_refresh_policy.dart';
+import 'package:licoup/src/application/localization/client_application_strings.dart';
+import 'package:licoup/src/contracts/agent_conversation_models.dart';
+import 'package:licoup/src/contracts/agent_conversation_tab_activity.dart';
+import 'package:licoup/src/contracts/generated/secure_mesh.g.dart';
+import 'package:licoup/src/contracts/target_candidate.dart';
+import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
+import 'package:licoup/src/platform/native_client/orchestrator_ipc/client.dart';
 
 /// Shared feature state plus narrow composition callbacks. Concrete feature
 /// controllers never import the root [ClientController].

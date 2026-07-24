@@ -162,7 +162,7 @@ for (const invalid of [
   { configPath: path.join(repoRoot, "external-packaging.json") },
   { configPath: path.join(repoRoot, "apps/desktop/packaging.modules.json"), enabledOverrides: ["native-sidecar"] },
   { configPath: path.join(repoRoot, "apps/desktop/packaging.modules.json"), disabledOverrides: ["native-sidecar"] },
-  { configPath: path.join(repoRoot, "apps/desktop/packaging.modules.json"), profile: "lico-client" },
+  { configPath: path.join(repoRoot, "apps/desktop/packaging.modules.json"), profile: "licoup" },
 ]) {
   expectRejected(() => validateReleaseBuildPolicy({
     mode: "release",

@@ -7,7 +7,7 @@ const readJson = (path) => JSON.parse(read(path));
 
 const extractActionCatalog = () => {
   const source = read(
-    "crates/lico-client-native/src/ffi/secure_mesh_mobile_ffi/action_catalog.rs",
+    "crates/licoup-native/src/ffi/secure_mesh_mobile_ffi/action_catalog.rs",
   );
   const begin = source.indexOf(
     "pub const MOBILE_RELAY_NATIVE_ACTIONS: &[&str] = &[",
@@ -43,7 +43,7 @@ test("secure-mesh family stays active and keeps schema identity", () => {
   assert.equal(family.schema, "schemas/client_bridge/secure_mesh.json");
   assert.equal(
     family.rustOutput,
-    "crates/lico-client-native/src/ffi/generated/secure_mesh.rs",
+    "crates/licoup-native/src/ffi/generated/secure_mesh.rs",
   );
   assert.equal(
     family.dartOutput,
@@ -68,10 +68,10 @@ test("secure-mesh schema actions match canonical native action catalog", () => {
 
 test("secure-mesh contract artifacts expose generated symbols and boundaries", () => {
   const schema = readJson("schemas/client_bridge/secure_mesh.json");
-  const rust = read("crates/lico-client-native/src/ffi/generated/secure_mesh.rs");
+  const rust = read("crates/licoup-native/src/ffi/generated/secure_mesh.rs");
   const dart = read("apps/desktop/lib/src/contracts/generated/secure_mesh.g.dart");
   const dispatchRouter = read(
-    "crates/lico-client-native/src/ffi/secure_mesh_mobile_ffi/dispatch_router.rs",
+    "crates/licoup-native/src/ffi/secure_mesh_mobile_ffi/dispatch_router.rs",
   );
 
   for (const symbol of [

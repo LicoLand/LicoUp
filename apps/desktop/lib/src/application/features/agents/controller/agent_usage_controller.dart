@@ -2,9 +2,9 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
-import 'package:flutter_client/src/application/features/agents/contracts/agent_usage_gateway.dart';
-import 'package:flutter_client/src/application/features/agents/controller/agent_usage_daily_cache.dart';
-import 'package:flutter_client/src/contracts/agent_usage_models.dart';
+import 'package:licoup/src/application/features/agents/contracts/agent_usage_gateway.dart';
+import 'package:licoup/src/application/features/agents/controller/agent_usage_daily_cache.dart';
+import 'package:licoup/src/contracts/agent_usage_models.dart';
 
 const Duration defaultAgentUsagePollingInterval = Duration(minutes: 1);
 

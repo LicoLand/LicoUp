@@ -1,8 +1,8 @@
 import 'dart:io';
 
-import 'package:flutter_client/src/contracts/agent_conversation_message.dart';
-import 'package:flutter_client/src/contracts/agent_conversation_message_parser.dart';
-import 'package:flutter_client/src/contracts/agent_conversation_session.dart';
+import 'package:licoup/src/contracts/agent_conversation_message.dart';
+import 'package:licoup/src/contracts/agent_conversation_message_parser.dart';
+import 'package:licoup/src/contracts/agent_conversation_session.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

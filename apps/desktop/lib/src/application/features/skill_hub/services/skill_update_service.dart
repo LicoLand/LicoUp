@@ -1,4 +1,4 @@
-import 'package:flutter_client/src/contracts/skill_update.dart';
+import 'package:licoup/src/contracts/skill_update.dart';
 
 /// Explicit user-operated manual and configured skill updates.
 final class SkillUpdateService {

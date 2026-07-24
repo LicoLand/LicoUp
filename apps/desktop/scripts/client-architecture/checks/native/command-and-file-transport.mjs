@@ -21,11 +21,11 @@ export async function checkCommandAndFileTransport(context, { secureMeshMobileFf
     sourceLineCount,
   } = context;
   const secureMeshCommandRustSource = await readJoinedText([
-    "crates/lico-client-native/src/core/secure_mesh_command.rs",
-    ...await collectSourceFiles("crates/lico-client-native/src/core/secure_mesh_command", ".rs")
+    "crates/licoup-native/src/core/secure_mesh_command.rs",
+    ...await collectSourceFiles("crates/licoup-native/src/core/secure_mesh_command", ".rs")
   ]);
   const secureMeshCommandRuntimeRustSource = await readText(
-    "crates/lico-client-native/src/domain/secure_mesh_command_runtime.rs"
+    "crates/licoup-native/src/domain/secure_mesh_command_runtime.rs"
   );
   assert(secureMeshCommandRustSource.includes("LOCAL_EXECUTION_FAILED_REMOTE_DETAIL") &&
     secureMeshCommandRustSource.includes("secure_mesh_command_execution_redacts_executor_error_detail") &&
@@ -42,8 +42,8 @@ export async function checkCommandAndFileTransport(context, { secureMeshMobileFf
     "Secure Mesh agent sends must keep the readiness gate and enter the shared conversation lane"
   );
   const secureMeshFileRustSource = await readJoinedText([
-    "crates/lico-client-native/src/core/secure_mesh_file.rs",
-    ...await collectSourceFiles("crates/lico-client-native/src/core/secure_mesh_file", ".rs")
+    "crates/licoup-native/src/core/secure_mesh_file.rs",
+    ...await collectSourceFiles("crates/licoup-native/src/core/secure_mesh_file", ".rs")
   ]);
   assert(secureMeshFileRustSource.includes("file_manifest_delivery_json") &&
     secureMeshFileRustSource.includes("file_chunk_delivery_json") &&
@@ -63,7 +63,7 @@ export async function checkCommandAndFileTransport(context, { secureMeshMobileFf
     secureMeshFileRustSource.includes("secure_mesh_file_receive_confirmation_requires_user_action_and_disables_auto_open"),
     "secure_mesh_file.rs must keep local receive destination and confirmation policy covered by redaction and fail-closed tests"
   );
-  const secureMeshCliSource = await readText("crates/lico-client-native/src/ffi/commands/secure_mesh.rs");
+  const secureMeshCliSource = await readText("crates/licoup-native/src/ffi/commands/secure_mesh.rs");
   assert(secureMeshCliSource.includes('"receive-destination"') &&
     secureMeshCliSource.includes('"receive-confirmation"') &&
     secureMeshCliSource.includes("evaluate_file_receive_destination_json") &&
@@ -73,7 +73,7 @@ export async function checkCommandAndFileTransport(context, { secureMeshMobileFf
     "secure-mesh CLI must expose receive-destination and receive-confirmation policy evaluation without leaking destination paths"
   );
   const secureMeshMobileFfiSource = await readJoinedText([
-    "crates/lico-client-native/src/ffi/secure_mesh_mobile_ffi.rs",
+    "crates/licoup-native/src/ffi/secure_mesh_mobile_ffi.rs",
     `${secureMeshMobileFfiRoot}/action_catalog.rs`,
     `${secureMeshMobileFfiRoot}/dispatch_context.rs`,
     `${secureMeshMobileFfiRoot}/dispatch_router.rs`,

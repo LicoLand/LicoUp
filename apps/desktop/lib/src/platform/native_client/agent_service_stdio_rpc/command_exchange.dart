@@ -1,6 +1,6 @@
-import 'package:flutter_client/src/platform/native_client/agent_service_stdio_rpc/command_round_trip.dart';
-import 'package:flutter_client/src/platform/native_client/agent_service_stdio_rpc/protocol.dart';
-import 'package:flutter_client/src/platform/native_client/agent_service_stdio_rpc/session_manager.dart';
+import 'package:licoup/src/platform/native_client/agent_service_stdio_rpc/command_round_trip.dart';
+import 'package:licoup/src/platform/native_client/agent_service_stdio_rpc/protocol.dart';
+import 'package:licoup/src/platform/native_client/agent_service_stdio_rpc/session_manager.dart';
 
 Future<Map<String, dynamic>> executeStdioRpcCommand({
   required List<String> args,

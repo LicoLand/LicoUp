@@ -1,6 +1,6 @@
 import 'package:flutter/widgets.dart';
 
-import 'package:flutter_client/src/frontend/layout/layout_chrome_port.dart';
+import 'package:licoup/src/frontend/layout/layout_chrome_port.dart';
 
 /// Explicit test-only shell chrome boundary for renderer harnesses.
 final class FixtureLayoutChromePort implements LayoutChromePort {

@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 
-import 'package:flutter_client/src/frontend/features/agents/ui/agent_conversation_message_display.dart';
-import 'package:flutter_client/src/frontend/l10n/lico_strings.dart';
-import 'package:flutter_client/src/frontend/shared/ui/apple_control_metrics.dart';
-import 'package:flutter_client/src/frontend/shared/ui/message_markdown.dart';
-import 'package:flutter_client/src/frontend/shared/ui/theme.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_message_display.dart';
+import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/shared/ui/apple_control_metrics.dart';
+import 'package:licoup/src/frontend/shared/ui/message_markdown.dart';
+import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 class AgentConversationMessageContent extends StatelessWidget {
   const AgentConversationMessageContent({

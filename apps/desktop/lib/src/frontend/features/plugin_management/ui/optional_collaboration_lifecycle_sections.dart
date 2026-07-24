@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 
-import 'package:flutter_client/src/application/features/settings/controller/optional_collaboration_controller.dart';
-import 'package:flutter_client/src/contracts/optional_collaboration_models.dart';
-import 'package:flutter_client/src/frontend/features/plugin_management/ui/optional_collaboration_settings_action_card.dart';
+import 'package:licoup/src/application/features/settings/controller/optional_collaboration_controller.dart';
+import 'package:licoup/src/contracts/optional_collaboration_models.dart';
+import 'package:licoup/src/frontend/features/plugin_management/ui/optional_collaboration_settings_action_card.dart';
 
 final class OptionalCollaborationEnableSection extends StatefulWidget {
   const OptionalCollaborationEnableSection({

@@ -1,4 +1,4 @@
-import 'package:flutter_client/src/application/features/agents/agent_product_names.dart';
+import 'package:licoup/src/application/features/agents/agent_product_names.dart';
 
 const skillCapableAgentIds = <String>{
   'antigravity',

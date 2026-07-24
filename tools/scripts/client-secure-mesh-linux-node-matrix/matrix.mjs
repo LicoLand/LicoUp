@@ -87,7 +87,7 @@ export async function runMatrix(options, phase) {
   assert(existsSync(extractedBundle), "Linux node archive did not contain the client bundle");
   renameSync(extractedBundle, imageClientRoot);
   const bundleManifestPath = requiredFile(
-    path.join(imageClientRoot, "package-metadata", "lico-client", "packaging-modules.json"),
+    path.join(imageClientRoot, "package-metadata", "licoup", "packaging-modules.json"),
     "Linux node bundle manifest"
   );
   const bundleManifest = JSON.parse(stableReadFile(bundleManifestPath, {
@@ -100,7 +100,7 @@ export async function runMatrix(options, phase) {
   assert(vmReceipt.sourceBinding.bundleManifestDigest === distribution.bundleManifestDigest,
     "Linux node bundle manifest does not match the VM install receipt");
   const nativeClientDigest = sha256File(requiredFile(
-    path.join(imageClientRoot, "lico-client"),
+    path.join(imageClientRoot, "licoup"),
     "Linux node native sidecar",
   ), { maxBytes: 512 * 1024 * 1024 });
   assert(vmReceipt.sourceBinding.nativeClientDigest === nativeClientDigest,

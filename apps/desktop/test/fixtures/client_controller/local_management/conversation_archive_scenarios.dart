@@ -1,6 +1,6 @@
 import 'package:path/path.dart' as p;
 
-import 'package:flutter_client/src/application/features/agents/archive/conversation_archive_job_controller.dart';
+import 'package:licoup/src/application/features/agents/archive/conversation_archive_job_controller.dart';
 
 import '../support/client_controller_scenario_dependencies.dart';
 import '../support/client_controller_scenario_json.dart';

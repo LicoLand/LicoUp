@@ -1,18 +1,17 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:flutter_client/src/application/controller/client_controller.dart';
-import 'package:flutter_client/src/contracts/secure_mesh_capability_models.dart';
-import 'package:flutter_client/src/platform/native_client/agent_service.dart';
-import 'package:flutter_client/src/platform/client_clipboard_service.dart';
-import 'package:flutter_client/src/platform/mobile_relay/mobile_relay_service.dart';
-import 'package:flutter_client/src/platform/storage/portable_data_root.dart';
-import 'package:flutter_client/src/platform/secure_mesh/secure_mesh_android_bridge.dart';
-import 'package:flutter_client/src/platform/secure_mesh/secure_mesh_mobile_bridge.dart';
-import 'package:flutter_client/src/frontend/shared/ui/minimal_scan_icon.dart';
-import 'package:flutter_client/src/frontend/features/mobile_relay/ui/mobile_relay_panel.dart';
-import 'package:flutter_client/src/frontend/shared/ui/panel_frame.dart';
-import 'package:flutter_client/src/frontend/shared/ui/theme.dart';
+import 'package:licoup/src/application/controller/client_controller.dart';
+import 'package:licoup/src/platform/native_client/agent_service.dart';
+import 'package:licoup/src/platform/client_clipboard_service.dart';
+import 'package:licoup/src/platform/mobile_relay/mobile_relay_service.dart';
+import 'package:licoup/src/platform/storage/portable_data_root.dart';
+import 'package:licoup/src/platform/secure_mesh/secure_mesh_android_bridge.dart';
+import 'package:licoup/src/platform/secure_mesh/secure_mesh_mobile_bridge.dart';
+import 'package:licoup/src/frontend/shared/ui/minimal_scan_icon.dart';
+import 'package:licoup/src/frontend/features/mobile_relay/ui/mobile_relay_panel.dart';
+import 'package:licoup/src/frontend/shared/ui/panel_frame.dart';
+import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'fixtures/secure_mesh_capability_projection.dart';
@@ -130,7 +129,7 @@ void main() {
 
       expect(find.byType(PanelFrame), findsNothing);
       expect(find.text('Gateway'), findsOneWidget);
-      expect(find.text('Lico Arc Gateway'), findsNothing);
+      expect(find.text('LicoUp Gateway'), findsNothing);
       expect(find.text('Custom Gateway'), findsNothing);
       expect(find.text('Address'), findsNothing);
       expect(find.text('licomesh.app'), findsNothing);
@@ -237,7 +236,7 @@ void main() {
     await tester.pump();
 
     expect(find.byType(PanelFrame), findsNothing);
-    expect(find.text('Lico Arc Gateway'), findsNothing);
+    expect(find.text('LicoUp Gateway'), findsNothing);
     expect(find.text('Custom Gateway'), findsNothing);
     expect(find.text('Private Cloud Gateway URL'), findsNothing);
     expect(find.text('https://private.example'), findsOneWidget);

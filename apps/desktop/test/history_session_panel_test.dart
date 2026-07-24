@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_client/src/frontend/features/agents/ui/history_session_panel.dart';
-import 'package:flutter_client/src/frontend/shared/ui/lico_activity_animations.dart';
+import 'package:licoup/src/frontend/features/agents/ui/history_session_panel.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_activity_animations.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 Widget _historyPanelTestApp(Widget body) {
@@ -432,8 +432,8 @@ void main() {
       HistorySessionPanelItem(
         id: 'b1',
         title: 'macOS client',
-        groupKey: '/repo/lico-arc',
-        groupLabel: 'lico-arc',
+        groupKey: '/repo/lico-up',
+        groupLabel: 'lico-up',
       ),
       HistorySessionPanelItem(
         id: 'a2',
@@ -447,7 +447,7 @@ void main() {
       entries
           .map((entry) => entry.isHeader ? entry.groupLabel : entry.item!.id)
           .toList(),
-      ['licomesh', 'a1', 'a2', 'lico-arc', 'b1'],
+      ['licomesh', 'a1', 'a2', 'lico-up', 'b1'],
     );
   });
 
@@ -473,8 +473,8 @@ void main() {
               id: 'session-2',
               title: 'macOS client frontend',
               meta: '1d',
-              groupKey: '/repo/lico-arc',
-              groupLabel: 'lico-arc',
+              groupKey: '/repo/lico-up',
+              groupLabel: 'lico-up',
             ),
           ],
           onSelect: (String _) {},
@@ -483,7 +483,7 @@ void main() {
     );
 
     expect(find.text('licomesh'), findsOneWidget);
-    expect(find.text('lico-arc'), findsOneWidget);
+    expect(find.text('lico-up'), findsOneWidget);
     expect(find.byIcon(Icons.folder_outlined), findsNWidgets(2));
     expect(find.text('CI release workflow'), findsOneWidget);
     expect(find.text('7m'), findsOneWidget);
@@ -511,8 +511,8 @@ void main() {
                 id: 'session-running',
                 title: '优化对话刷新调度',
                 meta: '1m',
-                groupKey: '/repo/LicoArc',
-                groupLabel: 'LicoArc',
+                groupKey: '/repo/LicoUp',
+                groupLabel: 'LicoUp',
                 running: true,
                 active: true,
               ),

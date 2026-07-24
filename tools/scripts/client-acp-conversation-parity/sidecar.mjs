@@ -5,8 +5,8 @@ import { coreProbeIds, dispatchLaneHarnessVersion, driversInventoryPath, workspa
 
 export function releaseSidecarCandidates() {
   return [
-    join(workspaceRoot, "build", "apps", "desktop", "runnable", "macos", "release", "Arc.app", "Contents", "MacOS", "lico-client"),
-    join(workspaceRoot, "apps", "desktop", "build", "macos", "Build", "Products", "Release", "flutter_client.app", "Contents", "MacOS", "lico-client"),
+    join(workspaceRoot, "build", "apps", "desktop", "runnable", "macos", "release", "Arc.app", "Contents", "MacOS", "licoup"),
+    join(workspaceRoot, "apps", "desktop", "build", "macos", "Build", "Products", "Release", "licoup.app", "Contents", "MacOS", "licoup"),
   ];
 }
 
@@ -55,12 +55,12 @@ export function resolveSidecar(explicit, options = {}) {
     // Prefer the workspace CARGO_TARGET_DIR debug build, then other debug
     // artifacts, ahead of packaged/release copies that may lag the checkout.
     // Skip binaries that do not yet expose agent.conversation.* (stale target/).
-    join(workspaceRoot, "build", "crates", "lico-client-native", "target", "debug", "lico-client"),
-    join(workspaceRoot, "crates", "lico-client-native", "target", "debug", "lico-client"),
-    join(workspaceRoot, "target", "debug", "lico-client"),
-    join(workspaceRoot, "build", "crates", "lico-client-native", "target", "release", "lico-client"),
-    join(workspaceRoot, "target", "release", "lico-client"),
-    join(workspaceRoot, "crates", "lico-client-native", "target", "release", "lico-client"),
+    join(workspaceRoot, "build", "crates", "licoup-native", "target", "debug", "licoup"),
+    join(workspaceRoot, "crates", "licoup-native", "target", "debug", "licoup"),
+    join(workspaceRoot, "target", "debug", "licoup"),
+    join(workspaceRoot, "build", "crates", "licoup-native", "target", "release", "licoup"),
+    join(workspaceRoot, "target", "release", "licoup"),
+    join(workspaceRoot, "crates", "licoup-native", "target", "release", "licoup"),
   ];
   const candidates = [
     normalizedExplicit,

@@ -62,7 +62,7 @@ export function stageRunnableClient(result, options) {
   copyTree(result.bundle.root, root);
   let appPath = "";
   if (options.platform === "macos") {
-    const defaultAppPath = path.join(root, "flutter_client.app");
+    const defaultAppPath = path.join(root, "licoup.app");
     appPath = path.join(root, packageClientRuntime.appName);
     if (!existsSync(defaultAppPath)) {
       packageFailure("packaged_macos_app_missing");
@@ -93,15 +93,15 @@ export function flutterExecutableForRoot(root, platform) {
   if (platform === "macos") {
     return path.join(
       root,
-      "flutter_client.app",
+      "licoup.app",
       "Contents",
       "MacOS",
-      "flutter_client",
+      "licoup",
     );
   }
   return path.join(
     root,
-    platform === "windows" ? "flutter_client.exe" : "flutter_client",
+    platform === "windows" ? "licoup.exe" : "licoup",
   );
 }
 
@@ -112,7 +112,7 @@ export function runnableExecutableForRoot(root, platform) {
       packageClientRuntime.appName,
       "Contents",
       "MacOS",
-      "flutter_client",
+      "licoup",
     );
   }
   return flutterExecutableForRoot(root, platform);

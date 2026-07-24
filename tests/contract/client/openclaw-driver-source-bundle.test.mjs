@@ -8,7 +8,7 @@ const repoRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "../../..",
 );
-const driverRoot = "crates/lico-client-native/src/platform/openclaw_driver";
+const driverRoot = "crates/licoup-native/src/platform/openclaw_driver";
 
 const productionLeaves = Object.freeze([
   "codec.rs",

@@ -1,4 +1,4 @@
-import 'package:flutter_client/src/contracts/optional_collaboration_model_parsing.dart';
+import 'package:licoup/src/contracts/optional_collaboration_model_parsing.dart';
 
 const optionalCollaborationOfficialRunnerIdentity =
     'licomesh.official-local-server-runner.v1';

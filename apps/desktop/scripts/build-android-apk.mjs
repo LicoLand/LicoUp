@@ -249,7 +249,7 @@ function stageApks(options, sourceStateDigest, reproducibility = null) {
   const apkFacts = canonical.facts;
   const expectedDebuggable = options.mode === "debug";
   if (
-    apkFacts.packageName !== "com.liko.arc" ||
+    apkFacts.packageName !== "land.lico.licoup" ||
     apkFacts.versionName !== version.productVersion ||
     apkFacts.versionCode !== String(version.buildNumber) ||
     apkFacts.debuggable !== expectedDebuggable ||

@@ -167,7 +167,7 @@ impl TemporaryCase {
             .map_err(|_| "temporary source directory cannot be created".to_string())?;
         let dependency = toml_string(&dependency_root.to_string_lossy());
         let mut manifest = format!(
-            "[package]\nname = \"trybuild-case\"\nversion = \"0.0.0\"\nedition = \"2024\"\npublish = false\n\n[dependencies]\nlico-client-native = {{ path = {dependency} }}\n\n[workspace]\nresolver = \"3\"\n"
+            "[package]\nname = \"trybuild-case\"\nversion = \"0.0.0\"\nedition = \"2024\"\npublish = false\n\n[dependencies]\nlicoup-native = {{ path = {dependency} }}\n\n[workspace]\nresolver = \"3\"\n"
         );
         manifest.push_str(&workspace_patch(workspace_root)?);
         fs::write(self.root.join("Cargo.toml"), manifest)

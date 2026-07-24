@@ -1,4 +1,4 @@
-import 'package:flutter_client/src/backend/features/agents/services/agent_conversation_service.dart';
+import 'package:licoup/src/backend/features/agents/services/agent_conversation_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void registerAgentConversationFilteringScenarios() {

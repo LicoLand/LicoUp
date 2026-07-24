@@ -1,11 +1,11 @@
 import 'dart:convert';
 
-import 'package:flutter_client/src/contracts/agent_command_runner.dart';
-import 'package:flutter_client/src/contracts/optional_collaboration_gateway.dart';
-import 'package:flutter_client/src/contracts/optional_collaboration_models.dart';
-import 'package:flutter_client/src/contracts/optional_collaboration_local_server_models.dart';
-import 'package:flutter_client/src/contracts/optional_collaboration_model_parsing.dart';
-import 'package:flutter_client/src/contracts/optional_collaboration_workflow_models.dart';
+import 'package:licoup/src/contracts/agent_command_runner.dart';
+import 'package:licoup/src/contracts/optional_collaboration_gateway.dart';
+import 'package:licoup/src/contracts/optional_collaboration_models.dart';
+import 'package:licoup/src/contracts/optional_collaboration_local_server_models.dart';
+import 'package:licoup/src/contracts/optional_collaboration_model_parsing.dart';
+import 'package:licoup/src/contracts/optional_collaboration_workflow_models.dart';
 
 /// Fixed-command adapter for the native optional-collaboration lifecycle.
 ///

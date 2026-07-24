@@ -1,8 +1,8 @@
 import 'dart:async';
 
-import 'package:flutter_client/src/application/controller/client_lifecycle_coordinator.dart';
-import 'package:flutter_client/src/contracts/presentation/semantic_destination.dart';
-import 'package:flutter_client/src/platform/native_client/native_rpc_priority.dart';
+import 'package:licoup/src/application/controller/client_lifecycle_coordinator.dart';
+import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
+import 'package:licoup/src/platform/native_client/native_rpc_priority.dart';
 
 enum _PreloadState { pending, running, done }
 

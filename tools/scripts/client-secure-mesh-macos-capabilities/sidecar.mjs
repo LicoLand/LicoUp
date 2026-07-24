@@ -5,7 +5,7 @@ import { run } from "./util.mjs";
 export function sidecarSmoke(appPath) {
   const sidecar = resolveContainedExistingPath(
     appPath,
-    path.join(appPath, "Contents/MacOS/lico-client"),
+    path.join(appPath, "Contents/MacOS/licoup"),
     { expectedKind: "file" },
   );
   const result = run(sidecar, [

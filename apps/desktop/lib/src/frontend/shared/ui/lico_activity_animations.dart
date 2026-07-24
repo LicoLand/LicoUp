@@ -257,7 +257,7 @@ class _LicoSpinningRefreshIconState extends State<LicoSpinningRefreshIcon>
       child: RotationTransition(
         turns: _controller,
         child: CustomPaint(
-          painter: _LicoArcSpinnerPainter(
+          painter: _LicoUpSpinnerPainter(
             color: color,
             strokeWidth: widget.strokeWidth,
           ),
@@ -267,8 +267,8 @@ class _LicoSpinningRefreshIconState extends State<LicoSpinningRefreshIcon>
   }
 }
 
-class _LicoArcSpinnerPainter extends CustomPainter {
-  const _LicoArcSpinnerPainter({
+class _LicoUpSpinnerPainter extends CustomPainter {
+  const _LicoUpSpinnerPainter({
     required this.color,
     required this.strokeWidth,
   });
@@ -300,7 +300,7 @@ class _LicoArcSpinnerPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _LicoArcSpinnerPainter oldDelegate) {
+  bool shouldRepaint(covariant _LicoUpSpinnerPainter oldDelegate) {
     return oldDelegate.color != color || oldDelegate.strokeWidth != strokeWidth;
   }
 }

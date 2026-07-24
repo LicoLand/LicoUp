@@ -34,7 +34,7 @@ const builtApp = path.join(repoRoot, "build/apps/desktop/runnable/macos/release/
 const installedApp = "/Applications/Arc.app";
 const packageManifestPath = path.join(
   repoRoot,
-  "build/apps/desktop/runnable/macos/release/package-metadata/lico-client/packaging-modules.json",
+  "build/apps/desktop/runnable/macos/release/package-metadata/licoup/packaging-modules.json",
 );
 const reportRef = "build/reports/client-macos-local-identity-install.json";
 const reportPath = path.join(repoRoot, reportRef);

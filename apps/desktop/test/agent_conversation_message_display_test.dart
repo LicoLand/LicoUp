@@ -1,4 +1,4 @@
-import 'package:flutter_client/src/frontend/features/agents/ui/agent_conversation_message_display.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_message_display.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

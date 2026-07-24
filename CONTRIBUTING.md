@@ -2,7 +2,7 @@
 
 English · [简体中文](CONTRIBUTING.zh-CN.md) · [Home](README.md)
 
-Thank you for helping Lico Arc. Keep each change small enough to review and
+Thank you for helping LicoUp. Keep each change small enough to review and
 test as one clear client feature, module, or flow.
 
 ## Set up
@@ -81,4 +81,4 @@ without network access using `LICO_CLIENT_VERIFY_OFFLINE=1 npm run client:verify
 - Public documentation has matching English and Chinese text.
 - No sensitive values or raw runtime output are included.
 
-Lico Arc uses the `GPL-3.0-or-later` license.
+LicoUp uses the `GPL-3.0-or-later` license.

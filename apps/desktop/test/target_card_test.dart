@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_client/src/platform/native_client/agent_service.dart';
-import 'package:flutter_client/src/frontend/features/targets/ui/target_card.dart';
-import 'package:flutter_client/src/frontend/shared/ui/agent_brand_icon.dart';
+import 'package:licoup/src/platform/native_client/agent_service.dart';
+import 'package:licoup/src/frontend/features/targets/ui/target_card.dart';
+import 'package:licoup/src/frontend/shared/ui/agent_brand_icon.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

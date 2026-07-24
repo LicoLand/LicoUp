@@ -1,5 +1,5 @@
-import 'package:flutter_client/src/application/features/navigation/controller/client_navigation_controller.dart';
-import 'package:flutter_client/src/contracts/presentation/semantic_destination.dart';
+import 'package:licoup/src/application/features/navigation/controller/client_navigation_controller.dart';
+import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

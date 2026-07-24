@@ -10,8 +10,8 @@ import { fileURLToPath } from "node:url";
 const repoRoot = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const fixtureRoot = mkdtempSync(path.join(tmpdir(), "lico-consumer-manifest-"));
 const script = path.join(repoRoot, "tools/scripts/client-consumer-verification-manifest.mjs");
-const artifact = "LicoArc-macos-arm64.zip";
-const output = path.join(fixtureRoot, "LicoArc-consumer-verification.json");
+const artifact = "LicoUp-macos-arm64.zip";
+const output = path.join(fixtureRoot, "LicoUp-consumer-verification.json");
 
 try {
   const bytes = Buffer.from("canonical-artifact-fixture", "utf8");

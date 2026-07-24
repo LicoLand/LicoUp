@@ -2,7 +2,7 @@ import 'dart:ui';
 
 import 'package:flutter/widgets.dart';
 
-import 'package:flutter_client/src/contracts/locale_preferences.dart';
+import 'package:licoup/src/contracts/locale_preferences.dart';
 
 class LicoStrings {
   const LicoStrings._(this.locale);
@@ -50,7 +50,7 @@ class LicoStrings {
     return LicoStrings._(resolve(locale));
   }
 
-  String get appTitle => 'Lico Arc';
+  String get appTitle => 'LicoUp';
   String get connectMobileRelay =>
       isChinese ? '连接移动中转' : 'Connect Mobile Relay';
   String get openSettings => isChinese ? '打开设置' : 'Open Settings';

@@ -1,6 +1,6 @@
-import 'package:flutter_client/src/contracts/optional_collaboration_local_assembly_models.dart';
-import 'package:flutter_client/src/contracts/optional_collaboration_local_server_identity.dart';
-import 'package:flutter_client/src/contracts/optional_collaboration_local_server_parsing.dart';
+import 'package:licoup/src/contracts/optional_collaboration_local_assembly_models.dart';
+import 'package:licoup/src/contracts/optional_collaboration_local_server_identity.dart';
+import 'package:licoup/src/contracts/optional_collaboration_local_server_parsing.dart';
 
 final class OptionalLocalServerState {
   const OptionalLocalServerState({

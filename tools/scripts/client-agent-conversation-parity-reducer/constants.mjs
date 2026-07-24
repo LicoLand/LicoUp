@@ -40,15 +40,15 @@ export const PACKAGING_REGISTRY_FILE = resolve(
 );
 export const DRIVER_INVENTORY_FILE = resolve(
   REPOSITORY_ROOT,
-  "crates/lico-client-native/resources/agent-conversation-drivers.json",
+  "crates/licoup-native/resources/agent-conversation-drivers.json",
 );
 export const READINESS_FILE = resolve(
   REPOSITORY_ROOT,
-  "crates/lico-client-native/resources/agent-conversation-readiness.json",
+  "crates/licoup-native/resources/agent-conversation-readiness.json",
 );
 export const CANONICAL_EVIDENCE_FILE = resolve(
   REPOSITORY_ROOT,
-  "crates/lico-client-native/resources/agent-conversation-evidence.json",
+  "crates/licoup-native/resources/agent-conversation-evidence.json",
 );
 export const ADAPTER_MANIFEST_DIRECTORY = resolve(
   REPOSITORY_ROOT,

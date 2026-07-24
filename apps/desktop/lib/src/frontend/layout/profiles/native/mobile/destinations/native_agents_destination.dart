@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 
-import 'package:flutter_client/src/contracts/presentation/semantic_destination.dart';
-import 'package:flutter_client/src/frontend/layout/layout_destination_presentation.dart';
-import 'package:flutter_client/src/frontend/layout/layout_palette.dart';
-import 'package:flutter_client/src/frontend/layout/layout_surface_bundle.dart';
-import 'package:flutter_client/src/frontend/layout/profiles/native/mobile/native_mobile_tokens.dart';
-import 'package:flutter_client/src/frontend/layout/profiles/native/mobile/presentation/native_mobile_destination_presentations.dart';
+import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
+import 'package:licoup/src/frontend/layout/layout_destination_presentation.dart';
+import 'package:licoup/src/frontend/layout/layout_palette.dart';
+import 'package:licoup/src/frontend/layout/layout_surface_bundle.dart';
+import 'package:licoup/src/frontend/layout/profiles/native/mobile/native_mobile_tokens.dart';
+import 'package:licoup/src/frontend/layout/profiles/native/mobile/presentation/native_mobile_destination_presentations.dart';
 
 Widget buildNativeMobileAgentsDestination(
   BuildContext context,

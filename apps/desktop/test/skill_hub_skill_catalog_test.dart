@@ -1,6 +1,6 @@
 import 'dart:io';
 
-import 'package:flutter_client/src/application/features/skill_hub/services/skill_hub_skill_catalog.dart';
+import 'package:licoup/src/application/features/skill_hub/services/skill_hub_skill_catalog.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 

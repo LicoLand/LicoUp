@@ -1,5 +1,5 @@
-import 'package:flutter_client/src/contracts/target_candidate.dart';
-import 'package:flutter_client/src/platform/native_client/native_cli_ports.dart';
+import 'package:licoup/src/contracts/target_candidate.dart';
+import 'package:licoup/src/platform/native_client/native_cli_ports.dart';
 
 /// Stateless native command builder. It has no process or service lifecycle.
 class NativeCommandActions {

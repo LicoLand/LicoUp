@@ -21,44 +21,44 @@ export async function checkAndroidSecureMesh(context) {
     sourceLineCount,
   } = context;
   const secureMeshAndroidBridgeSource = await readJoinedText([
-    "apps/desktop/android/app/src/main/kotlin/com/liko/arc/MainActivity.kt",
-    "apps/desktop/android/app/src/main/kotlin/com/liko/arc/SecureMeshAndroidBridgeContract.kt",
-    "apps/desktop/android/app/src/main/kotlin/com/liko/arc/SecureMeshAndroidNativeRuntime.kt",
-    "apps/desktop/android/app/src/main/kotlin/com/liko/arc/SecureMeshAndroidCommandRouter.kt",
-    "apps/desktop/android/app/src/main/kotlin/com/liko/arc/SecureMeshAndroidJsonCodec.kt",
-    "apps/desktop/android/app/src/main/kotlin/com/liko/arc/SecureMeshAndroidRuntimeStatusStore.kt"
+    "apps/desktop/android/app/src/main/kotlin/land/lico/licoup/MainActivity.kt",
+    "apps/desktop/android/app/src/main/kotlin/land/lico/licoup/SecureMeshAndroidBridgeContract.kt",
+    "apps/desktop/android/app/src/main/kotlin/land/lico/licoup/SecureMeshAndroidNativeRuntime.kt",
+    "apps/desktop/android/app/src/main/kotlin/land/lico/licoup/SecureMeshAndroidCommandRouter.kt",
+    "apps/desktop/android/app/src/main/kotlin/land/lico/licoup/SecureMeshAndroidJsonCodec.kt",
+    "apps/desktop/android/app/src/main/kotlin/land/lico/licoup/SecureMeshAndroidRuntimeStatusStore.kt"
   ]);
   const secureMeshAndroidDebugAcceptanceSource = await readJoinedText([
-    "apps/desktop/android/app/src/debug/kotlin/com/liko/arc/DebugMainActivity.kt",
-    "apps/desktop/android/app/src/debug/kotlin/com/liko/arc/ReleaseAcceptanceChannel.kt",
-    "apps/desktop/android/app/src/debug/kotlin/com/liko/arc/ReleaseAcceptanceDebugCodec.kt",
-    "apps/desktop/android/app/src/debug/kotlin/com/liko/arc/ReleaseAcceptanceDebugContract.kt",
-    "apps/desktop/android/app/src/debug/kotlin/com/liko/arc/ReleaseAcceptanceIngress.kt",
-    "apps/desktop/android/app/src/debug/kotlin/com/liko/arc/SecureMeshAndroidReleaseAcceptanceCoordinator.kt"
+    "apps/desktop/android/app/src/debug/kotlin/land/lico/licoup/DebugMainActivity.kt",
+    "apps/desktop/android/app/src/debug/kotlin/land/lico/licoup/ReleaseAcceptanceChannel.kt",
+    "apps/desktop/android/app/src/debug/kotlin/land/lico/licoup/ReleaseAcceptanceDebugCodec.kt",
+    "apps/desktop/android/app/src/debug/kotlin/land/lico/licoup/ReleaseAcceptanceDebugContract.kt",
+    "apps/desktop/android/app/src/debug/kotlin/land/lico/licoup/ReleaseAcceptanceIngress.kt",
+    "apps/desktop/android/app/src/debug/kotlin/land/lico/licoup/SecureMeshAndroidReleaseAcceptanceCoordinator.kt"
   ]);
   const secureMeshAndroidSecretStoreSource = await readJoinedText([
-    "apps/desktop/android/app/src/main/kotlin/com/liko/arc/SecureMeshAndroidSecretStore.kt",
-    "apps/desktop/android/app/src/main/kotlin/com/liko/arc/SecureMeshAndroidSecretContract.kt",
-    "apps/desktop/android/app/src/main/kotlin/com/liko/arc/SecureMeshAndroidCustodyManager.kt",
-    "apps/desktop/android/app/src/main/kotlin/com/liko/arc/SecureMeshAndroidEncryptedRecordStore.kt",
-    "apps/desktop/android/app/src/main/kotlin/com/liko/arc/SecureMeshAndroidMobileRelaySecretBridge.kt"
+    "apps/desktop/android/app/src/main/kotlin/land/lico/licoup/SecureMeshAndroidSecretStore.kt",
+    "apps/desktop/android/app/src/main/kotlin/land/lico/licoup/SecureMeshAndroidSecretContract.kt",
+    "apps/desktop/android/app/src/main/kotlin/land/lico/licoup/SecureMeshAndroidCustodyManager.kt",
+    "apps/desktop/android/app/src/main/kotlin/land/lico/licoup/SecureMeshAndroidEncryptedRecordStore.kt",
+    "apps/desktop/android/app/src/main/kotlin/land/lico/licoup/SecureMeshAndroidMobileRelaySecretBridge.kt"
   ]);
   const secureMeshAndroidCapabilitySource =
-    await readText("apps/desktop/android/app/src/main/kotlin/com/liko/arc/SecureMeshAndroidCapability.kt");
+    await readText("apps/desktop/android/app/src/main/kotlin/land/lico/licoup/SecureMeshAndroidCapability.kt");
   const secureMeshAndroidCapabilityProbeSource =
-    await readText("apps/desktop/android/app/src/main/kotlin/com/liko/arc/SecureMeshAndroidCapabilityProbe.kt");
+    await readText("apps/desktop/android/app/src/main/kotlin/land/lico/licoup/SecureMeshAndroidCapabilityProbe.kt");
   const secureMeshAndroidKeyPolicySource =
-    await readText("apps/desktop/android/app/src/main/kotlin/com/liko/arc/SecureMeshAndroidKeyPolicy.kt");
+    await readText("apps/desktop/android/app/src/main/kotlin/land/lico/licoup/SecureMeshAndroidKeyPolicy.kt");
   const secureMeshAndroidAdaptiveCustodyTestSource =
-    await readText("apps/desktop/android/app/src/test/kotlin/com/liko/arc/SecureMeshAndroidAdaptiveCustodyTest.kt");
+    await readText("apps/desktop/android/app/src/test/kotlin/land/lico/licoup/SecureMeshAndroidAdaptiveCustodyTest.kt");
   const secureMeshAndroidUserAuthenticatorSource =
-    await readText("apps/desktop/android/app/src/main/kotlin/com/liko/arc/SecureMeshAndroidUserAuthenticator.kt");
+    await readText("apps/desktop/android/app/src/main/kotlin/land/lico/licoup/SecureMeshAndroidUserAuthenticator.kt");
   const secureMeshAndroidAuthorizationPolicyTestSource =
-    await readText("apps/desktop/android/app/src/test/kotlin/com/liko/arc/SecureMeshAndroidAuthorizationPolicyTest.kt");
+    await readText("apps/desktop/android/app/src/test/kotlin/land/lico/licoup/SecureMeshAndroidAuthorizationPolicyTest.kt");
   const secureMeshAndroidBridgeBoundaryTestSource =
-    await readText("apps/desktop/android/app/src/test/kotlin/com/liko/arc/SecureMeshAndroidBridgeBoundaryTest.kt");
+    await readText("apps/desktop/android/app/src/test/kotlin/land/lico/licoup/SecureMeshAndroidBridgeBoundaryTest.kt");
   const secureMeshAndroidSecretStoreBoundaryTestSource =
-    await readText("apps/desktop/android/app/src/test/kotlin/com/liko/arc/SecureMeshAndroidSecretStoreBoundaryTest.kt");
+    await readText("apps/desktop/android/app/src/test/kotlin/land/lico/licoup/SecureMeshAndroidSecretStoreBoundaryTest.kt");
   const secureMeshAndroidManifestSource =
     await readText("apps/desktop/android/app/src/main/AndroidManifest.xml");
   const secureMeshAndroidDebugManifestSource =
@@ -155,11 +155,11 @@ export async function checkAndroidSecureMesh(context) {
     secureMeshAndroidBackupRulesSource.includes('<exclude domain="root" path="." />') &&
     secureMeshAndroidBackupRulesSource.includes('<exclude domain="device_root" path="." />') &&
     !secureMeshAndroidManifestSource.includes("ReleaseAcceptanceReceiver") &&
-    !secureMeshAndroidManifestSource.includes("com.liko.arc.RELEASE_ACCEPTANCE") &&
+    !secureMeshAndroidManifestSource.includes("land.lico.licoup.RELEASE_ACCEPTANCE") &&
     secureMeshAndroidDebugManifestSource.includes("ReleaseAcceptanceReceiver") &&
     secureMeshAndroidDebugManifestSource.includes("android.permission.DUMP") &&
-    secureMeshAndroidBuildSource.includes('"mainActivityClass"] = "com.liko.arc.MainActivity"') &&
-    secureMeshAndroidBuildSource.includes('"mainActivityClass"] = "com.liko.arc.DebugMainActivity"') &&
+    secureMeshAndroidBuildSource.includes('"mainActivityClass"] = "land.lico.licoup.MainActivity"') &&
+    secureMeshAndroidBuildSource.includes('"mainActivityClass"] = "land.lico.licoup.DebugMainActivity"') &&
     !secureMeshAndroidBridgeSource.includes("ReleaseAcceptanceChannel") &&
     secureMeshAndroidDebugAcceptanceSource.includes("ReleaseAcceptanceChannel.evaluate") &&
     secureMeshAndroidDebugAcceptanceSource.includes("ReleaseAcceptanceDebugCodec") &&
@@ -216,10 +216,10 @@ export async function checkAndroidSecureMesh(context) {
       `Android platform auth files must not collect lock-screen credentials in-app via ${forbiddenToken}`);
   }
   const androidPairingVerifierSource = await readText(
-    "apps/desktop/android/app/src/test/kotlin/com/liko/arc/SecureMeshAndroidAdaptiveCustodyTest.kt"
+    "apps/desktop/android/app/src/test/kotlin/land/lico/licoup/SecureMeshAndroidAdaptiveCustodyTest.kt"
   );
   const androidHostileVerifierSource = await readText(
-    "apps/desktop/android/app/src/test/kotlin/com/liko/arc/SecureMeshAndroidAuthorizationPolicyTest.kt"
+    "apps/desktop/android/app/src/test/kotlin/land/lico/licoup/SecureMeshAndroidAuthorizationPolicyTest.kt"
   );
   assert(secureMeshAndroidDebugAcceptanceSource.includes("safeStatusKeys") &&
     secureMeshAndroidDebugAcceptanceSource.includes('"allPrivateKeysInSelectedCustody"') &&

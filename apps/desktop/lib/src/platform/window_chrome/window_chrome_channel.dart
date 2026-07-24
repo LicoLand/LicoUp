@@ -1,7 +1,7 @@
 import 'package:flutter/services.dart';
 
 /// Channel name shared with `macos/Runner/MainFlutterWindow.swift`.
-const String windowChromeChannelName = 'lico.arc/window_chrome';
+const String windowChromeChannelName = 'licoup/window_chrome';
 
 /// macOS window-chrome bridge backing the hidden-titlebar desktop shell.
 ///

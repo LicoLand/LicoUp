@@ -1,4 +1,4 @@
-import 'package:flutter_client/src/contracts/mobile_relay/mobile_relay_models.dart';
+import 'package:licoup/src/contracts/mobile_relay/mobile_relay_models.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

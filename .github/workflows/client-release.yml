@@ -68,7 +68,7 @@ jobs:
               exit 1
             fi
           else
-            gh release create "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "$RELEASE_TAG" --notes "Verified LicoArc artifacts. See LicoArc-consumer-verification.json." --draft
+            gh release create "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "$RELEASE_TAG" --notes "Verified LicoUp artifacts. See LicoUp-consumer-verification.json." --draft
           fi
 
   macos:
@@ -99,7 +99,7 @@ jobs:
           openssl req -x509 -newkey rsa:3072 -nodes -days 1 \
             -keyout "$RUNNER_TEMP/lico-local-integrity.key" \
             -out "$RUNNER_TEMP/lico-local-integrity.pem" \
-            -subj "/CN=LicoArc GitHub Artifact Validation" \
+            -subj "/CN=LicoUp GitHub Artifact Validation" \
             -addext "extendedKeyUsage=codeSigning"
           openssl pkcs12 -export \
             -inkey "$RUNNER_TEMP/lico-local-integrity.key" \
@@ -114,7 +114,7 @@ jobs:
             -P github-artifact -T /usr/bin/codesign
           security set-key-partition-list -S apple-tool:,apple: -s \
             -k github-artifact "$RUNNER_TEMP/lico-local-integrity.keychain-db"
-          identity="$(security find-certificate -c "LicoArc GitHub Artifact Validation" \
+          identity="$(security find-certificate -c "LicoUp GitHub Artifact Validation" \
             -Z "$RUNNER_TEMP/lico-local-integrity.keychain-db" | awk '/SHA-1/{print $3; exit}')"
           if [[ ! "$identity" =~ ^[A-F0-9]{40}$ ]]; then
             echo "Ephemeral local integrity identity was not created" >&2
@@ -128,15 +128,15 @@ jobs:
       - name: Emit consumer verification metadata
         run: |
           cd build/apps/desktop/distribution/macos
-          shasum -a 256 LicoArc-macos-arm64.zip > LicoArc-macos-arm64.zip.sha256
+          shasum -a 256 LicoUp-macos-arm64.zip > LicoUp-macos-arm64.zip.sha256
       - name: Verify macOS GitHub Release acceptance
         run: npm run client:verify:github-release
       - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
         with:
-          name: lico-arc-macos
+          name: licoup-macos
           path: |
-            build/apps/desktop/distribution/macos/LicoArc-macos-arm64.zip
-            build/apps/desktop/distribution/macos/LicoArc-macos-arm64.zip.sha256
+            build/apps/desktop/distribution/macos/LicoUp-macos-arm64.zip
+            build/apps/desktop/distribution/macos/LicoUp-macos-arm64.zip.sha256
           if-no-files-found: error
 
   linux-arm64:
@@ -181,11 +181,11 @@ jobs:
         run: npm run client:verify:github-release
       - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
         with:
-          name: lico-arc-linux-arm64
+          name: licoup-linux-arm64
           path: |
-            build/apps/desktop/distribution/linux-arm64/LicoArc-linux-arm64.tar.gz
-            build/apps/desktop/distribution/linux-arm64/LicoArc-linux-arm64.tar.gz.sha256
-            build/apps/desktop/distribution/linux-arm64/LicoArc-linux-arm64.tar.gz.sig
+            build/apps/desktop/distribution/linux-arm64/LicoUp-linux-arm64.tar.gz
+            build/apps/desktop/distribution/linux-arm64/LicoUp-linux-arm64.tar.gz.sha256
+            build/apps/desktop/distribution/linux-arm64/LicoUp-linux-arm64.tar.gz.sig
             build/apps/desktop/distribution/linux-arm64/linux-release-verification-key.pem
           if-no-files-found: error
 
@@ -226,7 +226,7 @@ jobs:
         run: ./gradlew testDebugUnitTest
       - name: Prepare ephemeral Android install key
         run: |
-          keytool -genkeypair -keystore "$RUNNER_TEMP/lico-github-artifact.jks" -storepass github-artifact -keypass github-artifact -alias github-artifact -keyalg RSA -keysize 3072 -validity 30 -dname "CN=LicoArc GitHub Artifact Validation"
+          keytool -genkeypair -keystore "$RUNNER_TEMP/lico-github-artifact.jks" -storepass github-artifact -keypass github-artifact -alias github-artifact -keyalg RSA -keysize 3072 -validity 30 -dname "CN=LicoUp GitHub Artifact Validation"
           chmod 600 "$RUNNER_TEMP/lico-github-artifact.jks"
           keytool -exportcert -rfc -keystore "$RUNNER_TEMP/lico-github-artifact.jks" -storepass github-artifact -alias github-artifact -file "$RUNNER_TEMP/lico-github-artifact.pem"
       - name: Build signed Android ARM64 release
@@ -241,17 +241,17 @@ jobs:
       - name: Publish public verification material with artifact
         run: |
           cp "$RUNNER_TEMP/lico-github-artifact.pem" build/apps/desktop/android/release/
-          cp build/apps/desktop/android/release/app-release.apk build/apps/desktop/android/release/LicoArc-android-arm64.apk
+          cp build/apps/desktop/android/release/app-release.apk build/apps/desktop/android/release/LicoUp-android-arm64.apk
           cd build/apps/desktop/android/release
-          shasum -a 256 LicoArc-android-arm64.apk > LicoArc-android-arm64.apk.sha256
+          shasum -a 256 LicoUp-android-arm64.apk > LicoUp-android-arm64.apk.sha256
       - name: Verify Android GitHub Release acceptance
         run: npm run client:verify:github-release
       - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
         with:
-          name: lico-arc-android-arm64
+          name: licoup-android-arm64
           path: |
-            build/apps/desktop/android/release/LicoArc-android-arm64.apk
-            build/apps/desktop/android/release/LicoArc-android-arm64.apk.sha256
+            build/apps/desktop/android/release/LicoUp-android-arm64.apk
+            build/apps/desktop/android/release/LicoUp-android-arm64.apk.sha256
             build/apps/desktop/android/release/lico-github-artifact.pem
           if-no-files-found: error
   publish:
@@ -268,17 +268,17 @@ jobs:
       - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
         if: ${{ inputs.macos }}
         with:
-          name: lico-arc-macos
+          name: licoup-macos
           path: build/release-assets
       - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
         if: ${{ inputs.linux_arm64 }}
         with:
-          name: lico-arc-linux-arm64
+          name: licoup-linux-arm64
           path: build/release-assets
       - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
         if: ${{ inputs.android_arm64 }}
         with:
-          name: lico-arc-android-arm64
+          name: licoup-android-arm64
           path: build/release-assets
       - name: Build canonical consumer verification manifest
         env:
@@ -286,7 +286,7 @@ jobs:
           MACOS_SELECTED: ${{ inputs.macos }}
           LINUX_SELECTED: ${{ inputs.linux_arm64 }}
           ANDROID_SELECTED: ${{ inputs.android_arm64 }}
-        run: node tools/scripts/client-consumer-verification-manifest.mjs --assets build/release-assets --output build/release-assets/LicoArc-consumer-verification.json --tag "$RELEASE_TAG" --targets "macos-arm64=$MACOS_SELECTED,linux-glibc-arm64=$LINUX_SELECTED,android-arm64=$ANDROID_SELECTED"
+        run: node tools/scripts/client-consumer-verification-manifest.mjs --assets build/release-assets --output build/release-assets/LicoUp-consumer-verification.json --tag "$RELEASE_TAG" --targets "macos-arm64=$MACOS_SELECTED,linux-glibc-arm64=$LINUX_SELECTED,android-arm64=$ANDROID_SELECTED"
       - name: Upload exact verified asset set to GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -295,15 +295,15 @@ jobs:
           LINUX_SELECTED: ${{ inputs.linux_arm64 }}
           ANDROID_SELECTED: ${{ inputs.android_arm64 }}
         run: |
-          assets=(build/release-assets/LicoArc-consumer-verification.json)
+          assets=(build/release-assets/LicoUp-consumer-verification.json)
           if [[ "$MACOS_SELECTED" == "true" ]]; then
-            assets+=(build/release-assets/LicoArc-macos-arm64.zip build/release-assets/LicoArc-macos-arm64.zip.sha256)
+            assets+=(build/release-assets/LicoUp-macos-arm64.zip build/release-assets/LicoUp-macos-arm64.zip.sha256)
           fi
           if [[ "$LINUX_SELECTED" == "true" ]]; then
-            assets+=(build/release-assets/LicoArc-linux-arm64.tar.gz build/release-assets/LicoArc-linux-arm64.tar.gz.sha256 build/release-assets/LicoArc-linux-arm64.tar.gz.sig build/release-assets/linux-release-verification-key.pem)
+            assets+=(build/release-assets/LicoUp-linux-arm64.tar.gz build/release-assets/LicoUp-linux-arm64.tar.gz.sha256 build/release-assets/LicoUp-linux-arm64.tar.gz.sig build/release-assets/linux-release-verification-key.pem)
           fi
           if [[ "$ANDROID_SELECTED" == "true" ]]; then
-            assets+=(build/release-assets/LicoArc-android-arm64.apk build/release-assets/LicoArc-android-arm64.apk.sha256 build/release-assets/lico-github-artifact.pem)
+            assets+=(build/release-assets/LicoUp-android-arm64.apk build/release-assets/LicoUp-android-arm64.apk.sha256 build/release-assets/lico-github-artifact.pem)
           fi
           gh release upload "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" "${assets[@]}"
       - name: Read remote Release asset set

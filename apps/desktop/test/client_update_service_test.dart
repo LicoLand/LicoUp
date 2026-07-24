@@ -1,5 +1,5 @@
-import 'package:flutter_client/src/backend/features/settings/services/client_update_service.dart';
-import 'package:flutter_client/src/contracts/agent_command_runner.dart';
+import 'package:licoup/src/backend/features/settings/services/client_update_service.dart';
+import 'package:licoup/src/contracts/agent_command_runner.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

@@ -1,14 +1,14 @@
 import 'package:flutter/material.dart';
 
-import 'package:flutter_client/src/application/controller/client_controller.dart';
-import 'package:flutter_client/src/application/features/agents/orchestration/orchestration_policy_editor_models.dart';
-import 'package:flutter_client/src/application/features/agents/orchestration/orchestration_target_catalog.dart';
-import 'package:flutter_client/src/frontend/features/agents/ui/agent_orchestration_commander_policy_card.dart';
-import 'package:flutter_client/src/frontend/features/agents/ui/agent_orchestration_model_library_policy_card.dart';
-import 'package:flutter_client/src/frontend/features/agents/ui/agent_orchestration_rename_policy_dialog.dart';
-import 'package:flutter_client/src/frontend/l10n/lico_strings.dart';
-import 'package:flutter_client/src/frontend/shared/ui/apple_popup_select.dart';
-import 'package:flutter_client/src/frontend/shared/ui/theme.dart';
+import 'package:licoup/src/application/controller/client_controller.dart';
+import 'package:licoup/src/application/features/agents/orchestration/orchestration_policy_editor_models.dart';
+import 'package:licoup/src/application/features/agents/orchestration/orchestration_target_catalog.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_orchestration_commander_policy_card.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_orchestration_model_library_policy_card.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_orchestration_rename_policy_dialog.dart';
+import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/shared/ui/apple_popup_select.dart';
+import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 final class AgentOrchestrationPolicyDialog extends StatefulWidget {
   const AgentOrchestrationPolicyDialog({super.key, required this.controller});

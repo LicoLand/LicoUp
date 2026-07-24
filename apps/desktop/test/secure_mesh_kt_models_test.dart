@@ -1,4 +1,4 @@
-import 'package:flutter_client/src/contracts/secure_mesh_kt_models.dart';
+import 'package:licoup/src/contracts/generated/secure_mesh.g.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

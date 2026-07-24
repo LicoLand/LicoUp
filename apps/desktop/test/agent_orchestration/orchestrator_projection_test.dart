@@ -1,8 +1,7 @@
-import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:flutter_client/src/platform/native_client/orchestrator_ipc/client.dart';
+import 'package:licoup/src/platform/native_client/orchestrator_ipc/client.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -81,7 +80,7 @@ void main() {
         matches(RegExp(r'test result: ok\. 1 passed; 0 failed')),
         reason: 'a zero-test cargo filter is not acceptance',
       );
-      const marker = 'LICO_ARC_CUTOVER_ACCEPTANCE ';
+      const marker = 'LICOUP_CUTOVER_ACCEPTANCE ';
       final summaryLine = const LineSplitter()
           .convert(output)
           .where((line) => line.startsWith(marker))
@@ -519,10 +518,10 @@ void main() {
         'lib/src/platform/native_client/orchestrator_ipc/client.dart',
       ).readAsStringSync();
       final cli = File(
-        '../../crates/lico-client-native/src/bin/lico-client/orchestrator.rs',
+        '../../crates/licoup-native/src/bin/licoup/orchestrator.rs',
       ).readAsStringSync();
       final mcp = File(
-        '../../crates/lico-client-native/src/bin/lico-codex-mcp.rs',
+        '../../crates/licoup-native/src/bin/lico-codex-mcp.rs',
       ).readAsStringSync();
 
       expect(desktop, contains('NativeOrchestratorClient'));

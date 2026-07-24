@@ -10,7 +10,7 @@ const roots = [
   {
     kind: "bundle",
     root: path.join(workspaceRoot, "build", "apps", "desktop", "bundles", "macos", "release", "bundle"),
-    appName: "flutter_client.app"
+    appName: "licoup.app"
   },
   {
     kind: "runnable",
@@ -45,7 +45,7 @@ async function readText(filePath) {
   return fs.readFile(filePath, "utf8");
 }
 
-function appExecutablePath(root, appName, executableName = "flutter_client") {
+function appExecutablePath(root, appName, executableName = "licoup") {
   return path.join(root, appName, "Contents", "MacOS", executableName);
 }
 
@@ -69,21 +69,21 @@ async function main() {
       missing.push(`${appPath} missing Info.plist`);
     } else {
       const plist = await readText(plistPath);
-      if (!plistHasString(plist, "CFBundleName", "Lico Arc")) {
-        missing.push(`${appPath} CFBundleName must be Lico Arc`);
+      if (!plistHasString(plist, "CFBundleName", "LicoUp")) {
+        missing.push(`${appPath} CFBundleName must be LicoUp`);
       }
       if (!plistHasString(plist, "CFBundleDisplayName", "Arc")) {
         missing.push(`${appPath} CFBundleDisplayName must be Arc`);
       }
     }
-    for (const executableName of ["lico-client"]) {
+    for (const executableName of ["licoup"]) {
       const size = await fileSize(appExecutablePath(root, appName, executableName));
       if (size <= 0) {
         missing.push(`${appPath} missing non-empty ${executableName}`);
       }
     }
     for (const relativePath of [
-      path.join("package-metadata", "lico-client", "packaging-modules.json"),
+      path.join("package-metadata", "licoup", "packaging-modules.json"),
       "README-macos.txt"
     ]) {
       if (!(await fileExists(path.join(root, relativePath)))) {
@@ -93,7 +93,7 @@ async function main() {
     if (kind === "runnable" && !(await fileExists(path.join(root, "RUNNABLE_CLIENT.txt")))) {
       missing.push(`${root} missing RUNNABLE_CLIENT.txt`);
     }
-    const manifestPath = path.join(root, "package-metadata", "lico-client", "packaging-modules.json");
+    const manifestPath = path.join(root, "package-metadata", "licoup", "packaging-modules.json");
     if (await fileExists(manifestPath)) {
       const manifest = await readJson(manifestPath);
       if (manifest.platform !== "macos") {
@@ -123,8 +123,8 @@ async function main() {
         missing.push(`${root} macOS package manifest has signing.entitlementsFile=${signing.entitlementsFile}`);
       }
       const expectedExecutable = kind === "runnable"
-        ? path.join("Arc.app", "Contents", "MacOS", "flutter_client")
-        : path.join("flutter_client.app", "Contents", "MacOS", "flutter_client");
+        ? path.join("Arc.app", "Contents", "MacOS", "licoup")
+        : path.join("licoup.app", "Contents", "MacOS", "licoup");
       if (manifest.flutterExecutable !== expectedExecutable) {
         missing.push(`${root} macOS package manifest has flutterExecutable=${manifest.flutterExecutable}`);
       }

@@ -3,8 +3,8 @@ import 'dart:collection';
 
 import 'package:flutter/foundation.dart';
 
-import 'package:flutter_client/src/contracts/mobile_home_layout.dart';
-import 'package:flutter_client/src/contracts/mobile_home_layout_repository.dart';
+import 'package:licoup/src/contracts/mobile_home_layout.dart';
+import 'package:licoup/src/contracts/mobile_home_layout_repository.dart';
 
 /// Owns Mobile Home ordering, pinning, and serialized persistence.
 final class MobileHomeLayoutController extends ChangeNotifier {

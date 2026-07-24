@@ -17,17 +17,17 @@ export function findMacosBundleSource(options) {
   );
   const executable = path.join(
     productsDir,
-    "flutter_client.app",
+    "licoup.app",
     "Contents",
     "MacOS",
-    "flutter_client",
+    "licoup",
   );
   if (!existsSync(executable)) packageFailure("macos_bundle_missing");
   return productsDir;
 }
 
 export function macosBundleLayout(root) {
-  const appDir = path.join(root, "flutter_client.app");
+  const appDir = path.join(root, "licoup.app");
   return Object.freeze({
     root,
     executableDir: path.join(appDir, "Contents", "MacOS"),
@@ -37,7 +37,7 @@ export function macosBundleLayout(root) {
       appDir,
       "Contents",
       "MacOS",
-      "flutter_client",
+      "licoup",
     ),
   });
 }

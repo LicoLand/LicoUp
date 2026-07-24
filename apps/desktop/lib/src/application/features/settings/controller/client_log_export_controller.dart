@@ -1,6 +1,6 @@
 import 'package:flutter/foundation.dart';
 
-import 'package:flutter_client/src/contracts/client_log_export.dart';
+import 'package:licoup/src/contracts/client_log_export.dart';
 
 final class ClientLogExportStatusUpdate {
   const ClientLogExportStatusUpdate({

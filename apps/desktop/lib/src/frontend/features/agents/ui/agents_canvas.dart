@@ -2,15 +2,15 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-import 'package:flutter_client/src/application/controller/client_controller.dart';
-import 'package:flutter_client/src/frontend/l10n/lico_strings.dart';
-import 'package:flutter_client/src/frontend/features/agents/ui/agent_conversation_workspace.dart';
-import 'package:flutter_client/src/frontend/layout/layout_destination_presentation.dart';
-import 'package:flutter_client/src/frontend/layout/layout_palette.dart';
-import 'package:flutter_client/src/frontend/shared/platform/client_platform.dart';
-import 'package:flutter_client/src/frontend/features/targets/ui/manual_target_dialog.dart';
-import 'package:flutter_client/src/frontend/features/mobile_relay/ui/mobile_agents_home.dart';
-import 'package:flutter_client/src/frontend/shared/ui/theme.dart';
+import 'package:licoup/src/application/controller/client_controller.dart';
+import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_workspace.dart';
+import 'package:licoup/src/frontend/layout/layout_destination_presentation.dart';
+import 'package:licoup/src/frontend/layout/layout_palette.dart';
+import 'package:licoup/src/frontend/shared/platform/client_platform.dart';
+import 'package:licoup/src/frontend/features/targets/ui/manual_target_dialog.dart';
+import 'package:licoup/src/frontend/features/mobile_relay/ui/mobile_agents_home.dart';
+import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 class AgentsCanvas extends StatefulWidget {
   const AgentsCanvas({super.key, required this.controller, this.agentsHomeKey});

@@ -19,7 +19,7 @@ final class SecureMeshIosBridge {
   let fileManager: FileManager
   // Start a fresh custody namespace. Items created under the retired policy
   // are intentionally neither discovered nor migrated.
-  let mobileRelaySecretService = "app.licoarc.mobile-relay.secret-store.v2"
+  let mobileRelaySecretService = "land.lico.licoup.mobile-relay.secret-store.v2"
 
   init(fileManager: FileManager = .default) {
     self.fileManager = fileManager
@@ -84,7 +84,7 @@ final class SecureMeshIosBridge {
       "secureStore": keychain,
       "localAuthentication": localAuthentication,
       "nativeRuntime": [
-        "provider": "lico-client-native",
+        "provider": "licoup-native",
         "ffiBoundary": "c-abi",
         "loaded": true,
         "selfTestPassed": selfTestPassed,
@@ -129,8 +129,8 @@ final class SecureMeshIosBridge {
         "activeWhenForeground": UIApplication.shared.isIdleTimerDisabled
       ],
       "localOnlyStorage": [
-        "canonicalRoot": "Application Support/LicoArc",
-        "portableDataRelativePath": "LicoArc/portable-data",
+        "canonicalRoot": "Application Support/LicoUp",
+        "portableDataRelativePath": "LicoUp/portable-data",
         "excludedFromSystemBackup": localOnlyRootsAreProtected(),
         "dataProtection": "completeUntilFirstUserAuthentication"
       ],
@@ -141,14 +141,14 @@ final class SecureMeshIosBridge {
   func writeRuntimeStatus() -> [String: Any] {
     var payload = status()
     payload["runtimeStatusFile"] = [
-      "relativePath": "Application Support/LicoArc/secure-mesh/ios-runtime-status.json",
+      "relativePath": "Application Support/LicoUp/secure-mesh/ios-runtime-status.json",
       "writtenByAppProcess": true,
       "writtenAtEpochMillis": Int64(Date().timeIntervalSince1970 * 1000)
     ]
     return writeJsonReport(
       payload,
       filename: "ios-runtime-status.json",
-      okRelativePath: "Application Support/LicoArc/secure-mesh/ios-runtime-status.json"
+      okRelativePath: "Application Support/LicoUp/secure-mesh/ios-runtime-status.json"
     )
   }
 
@@ -168,7 +168,7 @@ final class SecureMeshIosBridge {
         "nativeJsonMethod": true
       ],
       "nativeRuntime": [
-        "provider": "lico-client-native",
+        "provider": "licoup-native",
         "ffiBoundary": "c-abi",
         "loaded": true,
         "selfTestPassed": selfTestPassed,
@@ -183,14 +183,14 @@ final class SecureMeshIosBridge {
       "productionReady": false
     ]
     payload["runtimeStatusFile"] = [
-      "relativePath": "Application Support/LicoArc/secure-mesh/ios-runtime-status.json",
+      "relativePath": "Application Support/LicoUp/secure-mesh/ios-runtime-status.json",
       "writtenByAppProcess": true,
       "writtenAtEpochMillis": Int64(Date().timeIntervalSince1970 * 1000)
     ]
     return writeJsonReport(
       payload,
       filename: "ios-runtime-status.json",
-      okRelativePath: "Application Support/LicoArc/secure-mesh/ios-runtime-status.json"
+      okRelativePath: "Application Support/LicoUp/secure-mesh/ios-runtime-status.json"
     )
   }
 

@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 
-import 'package:flutter_client/src/contracts/presentation/layout_environment.dart';
-import 'package:flutter_client/src/frontend/layout/layout_palette.dart';
-import 'package:flutter_client/src/frontend/layout/layout_surface_bundle.dart';
-import 'package:flutter_client/src/frontend/layout/profiles/native/desktop/shell/native_desktop_chrome_metrics.dart';
-import 'package:flutter_client/src/frontend/layout/profiles/native/desktop/shell/native_glass.dart';
-import 'package:flutter_client/src/frontend/layout/profiles/native/desktop/shell/native_icon_rail.dart';
-import 'package:flutter_client/src/frontend/layout/profiles/native/desktop/shell/native_top_bar.dart';
+import 'package:licoup/src/contracts/presentation/layout_environment.dart';
+import 'package:licoup/src/frontend/layout/layout_palette.dart';
+import 'package:licoup/src/frontend/layout/layout_surface_bundle.dart';
+import 'package:licoup/src/frontend/layout/profiles/native/desktop/shell/native_desktop_chrome_metrics.dart';
+import 'package:licoup/src/frontend/layout/profiles/native/desktop/shell/native_glass.dart';
+import 'package:licoup/src/frontend/layout/profiles/native/desktop/shell/native_icon_rail.dart';
+import 'package:licoup/src/frontend/layout/profiles/native/desktop/shell/native_top_bar.dart';
 
 /// Native desktop shell in three flat layers: the icon rail and the top
 /// band rest directly on the window background (lowest layer), the

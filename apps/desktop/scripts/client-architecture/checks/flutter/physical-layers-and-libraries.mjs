@@ -21,7 +21,7 @@ const flutterLayerImportRules = [
   {
     root: `${flutterSrcRoot}/application`,
     forbiddenTokens: [
-      "package:flutter_client/src/frontend/"
+      "package:licoup/src/frontend/"
     ],
     allowedPaths: new Set([
       `${flutterSrcRoot}/application/composition/built_in_layout_composition.dart`
@@ -31,36 +31,36 @@ const flutterLayerImportRules = [
   {
     root: `${flutterSrcRoot}/frontend`,
     forbiddenTokens: [
-      "package:flutter_client/src/backend/",
-      "package:flutter_client/src/platform/"
+      "package:licoup/src/backend/",
+      "package:licoup/src/platform/"
     ],
     message: "frontend must depend on application/contracts/l10n, not backend or platform implementations"
   },
   {
     root: `${flutterSrcRoot}/backend`,
     forbiddenTokens: [
-      "package:flutter_client/src/application/",
-      "package:flutter_client/src/frontend/",
-      "package:flutter_client/src/platform/"
+      "package:licoup/src/application/",
+      "package:licoup/src/frontend/",
+      "package:licoup/src/platform/"
     ],
     message: "backend must depend on contracts, not application, frontend, or platform implementation code"
   },
   {
     root: `${flutterSrcRoot}/platform`,
     forbiddenTokens: [
-      "package:flutter_client/src/application/",
-      "package:flutter_client/src/frontend/",
-      "package:flutter_client/src/backend/"
+      "package:licoup/src/application/",
+      "package:licoup/src/frontend/",
+      "package:licoup/src/backend/"
     ],
     message: "platform bridge code must depend on contracts, not application, frontend, or backend implementation code"
   },
   {
     root: `${flutterSrcRoot}/contracts`,
     forbiddenTokens: [
-      "package:flutter_client/src/application/",
-      "package:flutter_client/src/frontend/",
-      "package:flutter_client/src/backend/",
-      "package:flutter_client/src/platform/"
+      "package:licoup/src/application/",
+      "package:licoup/src/frontend/",
+      "package:licoup/src/backend/",
+      "package:licoup/src/platform/"
     ],
     message: "contracts must not import implementation layers"
   }
@@ -326,8 +326,8 @@ async function findFlutterDependencyCycle(context) {
     for (const match of source.matchAll(directivePattern)) {
       const specifier = match[1];
       let dependency = null;
-      if (specifier.startsWith("package:flutter_client/")) {
-        dependency = `${flutterLibRoot}/${specifier.slice("package:flutter_client/".length)}`;
+      if (specifier.startsWith("package:licoup/")) {
+        dependency = `${flutterLibRoot}/${specifier.slice("package:licoup/".length)}`;
       } else if (!specifier.includes(":")) {
         dependency = path.posix.normalize(
           path.posix.join(path.posix.dirname(relativePath), specifier)
@@ -492,10 +492,10 @@ export async function checkFlutterPhysicalLayersAndLibraries(context) {
     [...conversationPaneLeafLimits.keys()].map((leaf) => `${conversationPaneRoot}/${leaf}`)
   );
   const resolveConversationPaneImport = (from, specifier) => {
-    if (specifier.startsWith("package:flutter_client/")) {
+    if (specifier.startsWith("package:licoup/")) {
       return path.posix.join(
         "apps/desktop/lib",
-        specifier.slice("package:flutter_client/".length)
+        specifier.slice("package:licoup/".length)
       );
     }
     return specifier.startsWith(".")

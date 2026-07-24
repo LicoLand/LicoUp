@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://licoarc.example/schemas/agent-orchestration-policy.schema.json",
-  "title": "Lico Arc Agent Orchestration Policy",
+  "$id": "https://licoup.example/schemas/agent-orchestration-policy.schema.json",
+  "title": "LicoUp Agent Orchestration Policy",
   "type": "object",
   "additionalProperties": false,
   "required": ["schemaVersion", "id", "label", "commander", "modelLibrary", "agents", "workflow"],

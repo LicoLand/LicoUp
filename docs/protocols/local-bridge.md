@@ -1,13 +1,13 @@
-# Lico Arc Local Bridge
+# LicoUp Local Bridge
 
 English (normative) · [简体中文](local-bridge.zh-CN.md) · [Architecture](../architecture/README.md)
 
-Authority: `packages/contracts/client/lico-arc-orchestrator-ipc.schema.json`,
-`crates/lico-client-native/src/platform/orchestrator_ipc/`, and
-`crates/lico-client-native/src/domain/agent_orchestration/`. Update this
+Authority: `packages/contracts/client/lico-up-orchestrator-ipc.schema.json`,
+`crates/licoup-native/src/platform/orchestrator_ipc/`, and
+`crates/licoup-native/src/domain/agent_orchestration/`. Update this
 projection when those contracts or their verification change.
 
-Lico Arc Local Bridge is the process-local Level 2 control plane for child
+LicoUp Local Bridge is the process-local Level 2 control plane for child
 agent conversations. It is embedded in the persistent orchestrator owner; it
 does not add another daemon. Native agent mechanisms remain authoritative.
 The bridge supplies wakeable progress and ordered message admission where a

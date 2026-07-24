@@ -1,5 +1,5 @@
-name: flutter_client
-description: "Lico Arc Flutter desktop client."
+name: licoup
+description: "LicoUp Flutter desktop client."
 # This application package is distributed as source and platform artifacts,
 # not as a reusable pub.dev package.
 publish_to: 'none'

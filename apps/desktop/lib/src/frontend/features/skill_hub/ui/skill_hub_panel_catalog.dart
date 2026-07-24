@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 
-import 'package:flutter_client/src/application/controller/client_controller.dart';
-import 'package:flutter_client/src/application/features/skill_hub/models/skill_agent_compatibility.dart';
-import 'package:flutter_client/src/frontend/features/skill_hub/ui/skill_hub_panel_card_support.dart';
-import 'package:flutter_client/src/frontend/l10n/lico_strings.dart';
-import 'package:flutter_client/src/frontend/shared/ui/theme.dart';
+import 'package:licoup/src/application/controller/client_controller.dart';
+import 'package:licoup/src/application/features/skill_hub/models/skill_agent_compatibility.dart';
+import 'package:licoup/src/frontend/features/skill_hub/ui/skill_hub_panel_card_support.dart';
+import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 class SkillCategoryFilter extends StatelessWidget {
   const SkillCategoryFilter({

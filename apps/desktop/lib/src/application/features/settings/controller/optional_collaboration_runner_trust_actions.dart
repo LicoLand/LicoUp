@@ -1,8 +1,8 @@
 import 'dart:convert';
 
-import 'package:flutter_client/src/application/features/settings/controller/optional_collaboration_controller_context.dart';
-import 'package:flutter_client/src/contracts/optional_collaboration_model_parsing.dart';
-import 'package:flutter_client/src/contracts/optional_collaboration_models.dart';
+import 'package:licoup/src/application/features/settings/controller/optional_collaboration_controller_context.dart';
+import 'package:licoup/src/contracts/optional_collaboration_model_parsing.dart';
+import 'package:licoup/src/contracts/optional_collaboration_models.dart';
 
 final class OptionalCollaborationRunnerTrustActions {
   const OptionalCollaborationRunnerTrustActions(this.context);

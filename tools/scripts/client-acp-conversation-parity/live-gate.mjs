@@ -47,7 +47,7 @@ export function printLiveGateChecklist() {
         !binary ? "install_agent_binary" : null,
         "authorize_side_effects",
         arcLocal
-          ? `node tools/scripts/client-arc-local-service-conversation-gate.mjs --agent ${agentId}`
+          ? `node tools/scripts/client-up-local-service-conversation-gate.mjs --agent ${agentId}`
           : sameSession
             ? `node tools/scripts/client-same-session-conversation-gate.mjs --agent ${agentId}`
             : `node tools/scripts/client-acp-conversation-parity.mjs --agent ${agentId} --strict`,

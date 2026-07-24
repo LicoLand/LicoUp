@@ -1,6 +1,6 @@
 {
   "schemaVersion": "v0.0.1:client-cli:linux-arm64-vm-matrix-1",
-  "description": "Linux ARM64 VM matrix for validating the lico-client CLI outside Android, iOS, and Flutter desktop builds.",
+  "description": "Linux ARM64 VM matrix for validating the licoup CLI outside Android, iOS, and Flutter desktop builds.",
   "architecture": "aarch64",
   "distros": [
     {

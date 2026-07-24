@@ -151,7 +151,7 @@ export class AppServerClient {
 
   async initialize() {
     await this.request("initialize", {
-      clientInfo: { name: "lico-arc-parity", title: "Lico Arc Parity", version: "1" },
+      clientInfo: { name: "lico-up-parity", title: "LicoUp Parity", version: "1" },
       capabilities: { experimentalApi: true },
     });
     this.notify("initialized");

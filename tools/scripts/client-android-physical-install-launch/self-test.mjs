@@ -26,9 +26,9 @@ export function runSelfTest() {
     successfulAdbInstall({ ok: false, stdout: "Success\n" })) {
     throw new Error("android_install_result_self_test_failed");
   }
-  const component = "com.liko.arc/com.liko.arc.MainActivity";
+  const component = "land.lico.licoup/land.lico.licoup.MainActivity";
   if (!parseAmStartResult(`Status: ok\nActivity: ${component}\n`, component).ready ||
-    parseAmStartResult(`Status: ok\nActivity: com.liko.arc/.Other\n`, component).ready ||
+    parseAmStartResult(`Status: ok\nActivity: land.lico.licoup/.Other\n`, component).ready ||
     parseAmStartResult(`Status: timeout\nActivity: ${component}\n`, component).ready) {
     throw new Error("android_launch_result_self_test_failed");
   }
@@ -43,7 +43,7 @@ export function runSelfTest() {
     unprovenRuntime.freshOneShotAuthorizationPolicyReady) {
     throw new Error("android_unproven_one_shot_authorization_must_block");
   }
-  if (normalizeLaunchComponent("com.liko.arc/.MainActivity") !== component ||
+  if (normalizeLaunchComponent("land.lico.licoup/.MainActivity") !== component ||
     normalizeLaunchComponent("com.other/.MainActivity") === component) {
     throw new Error("android_launch_component_self_test_failed");
   }

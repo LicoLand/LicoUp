@@ -2,13 +2,13 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-import 'package:flutter_client/src/application/features/settings/controller/optional_collaboration_workflow_controller.dart';
-import 'package:flutter_client/src/contracts/optional_collaboration_models.dart';
-import 'package:flutter_client/src/contracts/optional_collaboration_workflow_models.dart';
-import 'package:flutter_client/src/frontend/features/plugin_management/ui/optional_collaboration_agent_destination_editor.dart';
-import 'package:flutter_client/src/frontend/features/plugin_management/ui/optional_collaboration_workflow_card.dart';
-import 'package:flutter_client/src/frontend/features/plugin_management/ui/optional_collaboration_workflow_choice_subtitle.dart';
-import 'package:flutter_client/src/frontend/features/plugin_management/ui/optional_collaboration_workflow_plan_review.dart';
+import 'package:licoup/src/application/features/settings/controller/optional_collaboration_workflow_controller.dart';
+import 'package:licoup/src/contracts/optional_collaboration_models.dart';
+import 'package:licoup/src/contracts/optional_collaboration_workflow_models.dart';
+import 'package:licoup/src/frontend/features/plugin_management/ui/optional_collaboration_agent_destination_editor.dart';
+import 'package:licoup/src/frontend/features/plugin_management/ui/optional_collaboration_workflow_card.dart';
+import 'package:licoup/src/frontend/features/plugin_management/ui/optional_collaboration_workflow_choice_subtitle.dart';
+import 'package:licoup/src/frontend/features/plugin_management/ui/optional_collaboration_workflow_plan_review.dart';
 
 final class OptionalCollaborationMcpInstallSection extends StatefulWidget {
   const OptionalCollaborationMcpInstallSection({
@@ -57,8 +57,8 @@ final class _OptionalCollaborationMcpInstallSectionState
       title: widget.isChinese ? 'MCP 插件本机安装' : 'Local MCP installation',
       policy: widget.requiresPerFileApproval
           ? (widget.isChinese
-                ? '精确选择 MCP 插件、支持 ACP stdio 的智能体和本机安装目标。一次直接确认会原子写入插件与 LicoArc 私有注册；不会修改厂商配置，也不会授权外发。认证审批代理尚未实现，ACP 注入和外发桥接保持关闭。'
-                : 'Select exact MCP plugins, ACP-stdio-capable agents, and local install targets. One direct confirmation atomically writes the plugins and private LicoArc registrations. Vendor configuration is untouched and outbound access is not authorized. ACP injection and outbound bridging remain disabled until an authenticated review broker exists.')
+                ? '精确选择 MCP 插件、支持 ACP stdio 的智能体和本机安装目标。一次直接确认会原子写入插件与 LicoUp 私有注册；不会修改厂商配置，也不会授权外发。认证审批代理尚未实现，ACP 注入和外发桥接保持关闭。'
+                : 'Select exact MCP plugins, ACP-stdio-capable agents, and local install targets. One direct confirmation atomically writes the plugins and private LicoUp registrations. Vendor configuration is untouched and outbound access is not authorized. ACP injection and outbound bridging remain disabled until an authenticated review broker exists.')
           : (widget.isChinese
                 ? '目录未声明逐文件审批策略，已阻止继续。'
                 : 'The catalog does not declare per-file approval, so this workflow is blocked.'),

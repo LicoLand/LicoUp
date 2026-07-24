@@ -1,4 +1,4 @@
-const rustCliRoot = "crates/lico-client-native/src";
+const rustCliRoot = "crates/licoup-native/src";
 
 export async function checkProductContractsAndPortableData(context, { modules }) {
   const {
@@ -53,15 +53,15 @@ export async function checkProductContractsAndPortableData(context, { modules })
   );
   const portableDirs = modules["portable-data"]?.portableDirectories || [];
   const expectedPortableDirs = [
-    "lico-client",
-    "lico-client/settings",
-    "lico-client/targets",
-    "lico-client/pairings",
-    "lico-client/skills",
-    "lico-client/pins",
-    "lico-client/mobile-relay",
-    "lico-client/activity",
-    "lico-client/snapshots"
+    "licoup",
+    "licoup/settings",
+    "licoup/targets",
+    "licoup/pairings",
+    "licoup/skills",
+    "licoup/pins",
+    "licoup/mobile-relay",
+    "licoup/activity",
+    "licoup/snapshots"
   ];
   assert(sameSet([...portableDirs].sort(), [...expectedPortableDirs].sort()),
     "portable-data module must list exactly the current portable runtime directories");
@@ -90,7 +90,7 @@ export async function checkFileSecurityAndClientState(context) {
     sameSet,
     sourceLineCount,
   } = context;
-  const fileSecurityRoot = "crates/lico-client-native/src/platform/file_security";
+  const fileSecurityRoot = "crates/licoup-native/src/platform/file_security";
   const fileSecurityLeaves = [
     "append_lock.rs",
     "atomic_replace.rs",
@@ -183,7 +183,7 @@ export async function checkFileSecurityAndClientState(context) {
     );
   }
 
-  const clientStateRoot = "crates/lico-client-native/src/platform/client_state";
+  const clientStateRoot = "crates/licoup-native/src/platform/client_state";
   const clientStateLeaves = [
     "accessors.rs",
     "activity.rs",

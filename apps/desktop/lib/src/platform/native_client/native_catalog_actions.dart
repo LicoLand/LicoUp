@@ -1,7 +1,7 @@
 import 'dart:convert';
 
-import 'package:flutter_client/src/contracts/agent_command_runner.dart';
-import 'package:flutter_client/src/platform/native_client/native_cli_ports.dart';
+import 'package:licoup/src/contracts/agent_command_runner.dart';
+import 'package:licoup/src/platform/native_client/native_cli_ports.dart';
 
 /// Routes catalog payloads through a structured private transport.
 final class NativeCatalogActions {

@@ -8,7 +8,7 @@ const repoRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "../../..",
 );
-const relayRoot = "crates/lico-client-native/src/platform/secure_client_relay";
+const relayRoot = "crates/licoup-native/src/platform/secure_client_relay";
 const productionLeaves = Object.freeze([
   "contract.rs",
   "http_io.rs",
@@ -44,12 +44,12 @@ test("Secure Client Relay has one exact module root and no retired implementatio
   );
   assert.ok(facade.trimEnd().split(/\r?\n/u).length <= 35);
   for (const retired of [
-    "crates/lico-client-native/src/platform/secure_client_relay_transport.rs",
-    "crates/lico-client-native/src/platform/secure_client_relay_response.rs",
+    "crates/licoup-native/src/platform/secure_client_relay_transport.rs",
+    "crates/licoup-native/src/platform/secure_client_relay_response.rs",
   ]) {
     await assert.rejects(fs.access(path.join(repoRoot, retired)));
   }
-  const platform = await read("crates/lico-client-native/src/platform/mod.rs");
+  const platform = await read("crates/licoup-native/src/platform/mod.rs");
   assert.ok(platform.includes("pub mod secure_client_relay;"));
   assert.equal(platform.includes("secure_client_relay_transport"), false);
   assert.equal(platform.includes("secure_client_relay_response"), false);

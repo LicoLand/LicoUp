@@ -2,22 +2,22 @@ import 'dart:async';
 
 import 'package:flutter/widgets.dart';
 
-import 'package:flutter_client/src/application/controller/client_agent_usage_facade.dart';
-import 'package:flutter_client/src/application/controller/client_conversation_facade.dart';
-import 'package:flutter_client/src/application/controller/client_mobile_relay_facade.dart';
-import 'package:flutter_client/src/application/controller/client_presentation_facade.dart';
-import 'package:flutter_client/src/application/controller/client_skill_hub_facade.dart';
-import 'package:flutter_client/src/application/controller/client_target_facade.dart';
-import 'package:flutter_client/src/application/features/agents/workspace/agent_workspace_coordinator.dart';
-import 'package:flutter_client/src/application/features/agents/orchestration/agent_orchestration_policy_controller.dart';
-import 'package:flutter_client/src/application/features/agents/conversation/conversation_refresh_controller.dart';
-import 'package:flutter_client/src/application/features/agents/policy/conversation_refresh_policy.dart';
-import 'package:flutter_client/src/application/features/navigation/controller/client_navigation_controller.dart';
-import 'package:flutter_client/src/application/features/navigation/controller/client_section_preload_controller.dart';
-import 'package:flutter_client/src/application/features/targets/policy/target_policy.dart';
-import 'package:flutter_client/src/contracts/agent_orchestration_target.dart';
-import 'package:flutter_client/src/contracts/presentation/semantic_destination.dart';
-import 'package:flutter_client/src/contracts/target_candidate.dart';
+import 'package:licoup/src/application/controller/client_agent_usage_facade.dart';
+import 'package:licoup/src/application/controller/client_conversation_facade.dart';
+import 'package:licoup/src/application/controller/client_mobile_relay_facade.dart';
+import 'package:licoup/src/application/controller/client_presentation_facade.dart';
+import 'package:licoup/src/application/controller/client_skill_hub_facade.dart';
+import 'package:licoup/src/application/controller/client_target_facade.dart';
+import 'package:licoup/src/application/features/agents/workspace/agent_workspace_coordinator.dart';
+import 'package:licoup/src/application/features/agents/orchestration/agent_orchestration_policy_controller.dart';
+import 'package:licoup/src/application/features/agents/conversation/conversation_refresh_controller.dart';
+import 'package:licoup/src/application/features/agents/policy/conversation_refresh_policy.dart';
+import 'package:licoup/src/application/features/navigation/controller/client_navigation_controller.dart';
+import 'package:licoup/src/application/features/navigation/controller/client_section_preload_controller.dart';
+import 'package:licoup/src/application/features/targets/policy/target_policy.dart';
+import 'package:licoup/src/contracts/agent_orchestration_target.dart';
+import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
+import 'package:licoup/src/contracts/target_candidate.dart';
 
 mixin ClientNavigationFacade
     on

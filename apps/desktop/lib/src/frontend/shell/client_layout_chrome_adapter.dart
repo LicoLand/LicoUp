@@ -1,11 +1,11 @@
 import 'package:flutter/widgets.dart';
 
-import 'package:flutter_client/src/application/controller/client_controller.dart';
-import 'package:flutter_client/src/frontend/features/agents/ui/agent_conversation_search_palette.dart';
-import 'package:flutter_client/src/frontend/features/agents/ui/global_search_features.dart';
-import 'package:flutter_client/src/frontend/features/mobile_relay/ui/mobile_relay_panel.dart';
-import 'package:flutter_client/src/frontend/l10n/lico_strings.dart';
-import 'package:flutter_client/src/frontend/layout/layout_chrome_port.dart';
+import 'package:licoup/src/application/controller/client_controller.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_search_palette.dart';
+import 'package:licoup/src/frontend/features/agents/ui/global_search_features.dart';
+import 'package:licoup/src/frontend/features/mobile_relay/ui/mobile_relay_panel.dart';
+import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/layout/layout_chrome_port.dart';
 
 typedef LayoutPairingAction = Future<void> Function(BuildContext context);
 

@@ -1,4 +1,4 @@
-import 'package:flutter_client/src/contracts/optional_collaboration_local_server_models.dart';
+import 'package:licoup/src/contracts/optional_collaboration_local_server_models.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support/optional_collaboration_test_fixtures.dart';
@@ -52,7 +52,7 @@ Map<String, dynamic> _server({
   'packageDigestSha256': _digest,
   'selectedComponentIds': ['server-core'],
   'destination': 'test-data/licomesh-local',
-  'assemblyAdapterId': 'licoarc-builtin-local-http-v1',
+  'assemblyAdapterId': 'licoup-builtin-local-http-v1',
   'assemblyManifestDigestSha256': _manifestDigest,
   'bindHost': '127.0.0.1',
   'port': 43121,

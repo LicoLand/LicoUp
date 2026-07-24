@@ -1,7 +1,7 @@
 {
-  "schema": "licoarc.client-support-matrix",
+  "schema": "licoup.client-support-matrix",
   "services": [
-    { "id": "client-shell", "label": "Lico Arc client", "category": "core-client", "releaseBlocking": true },
+    { "id": "client-shell", "label": "LicoUp client", "category": "core-client", "releaseBlocking": true },
     { "id": "rust-task-queue", "label": "Local Rust task queue", "category": "local-client-capability", "releaseBlocking": false },
     { "id": "acp-adapter", "label": "ACP adapter", "category": "local-client-capability", "releaseBlocking": false },
     { "id": "mcp-adapter", "label": "MCP adapter", "category": "local-client-capability", "releaseBlocking": false },

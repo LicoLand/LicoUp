@@ -2,15 +2,15 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-import 'package:flutter_client/src/application/features/settings/controller/optional_collaboration_controller.dart';
-import 'package:flutter_client/src/frontend/features/plugin_management/ui/optional_collaboration_catalog_action.dart';
-import 'package:flutter_client/src/frontend/features/plugin_management/ui/optional_collaboration_install_section.dart';
-import 'package:flutter_client/src/frontend/features/plugin_management/ui/optional_collaboration_lifecycle_sections.dart';
-import 'package:flutter_client/src/frontend/features/plugin_management/ui/optional_collaboration_runner_trust_section.dart';
-import 'package:flutter_client/src/frontend/features/plugin_management/ui/optional_collaboration_settings_policy.dart';
-import 'package:flutter_client/src/frontend/features/plugin_management/ui/optional_collaboration_status_card.dart';
-import 'package:flutter_client/src/frontend/features/plugin_management/ui/optional_collaboration_workflow_sections.dart';
-import 'package:flutter_client/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/application/features/settings/controller/optional_collaboration_controller.dart';
+import 'package:licoup/src/frontend/features/plugin_management/ui/optional_collaboration_catalog_action.dart';
+import 'package:licoup/src/frontend/features/plugin_management/ui/optional_collaboration_install_section.dart';
+import 'package:licoup/src/frontend/features/plugin_management/ui/optional_collaboration_lifecycle_sections.dart';
+import 'package:licoup/src/frontend/features/plugin_management/ui/optional_collaboration_runner_trust_section.dart';
+import 'package:licoup/src/frontend/features/plugin_management/ui/optional_collaboration_settings_policy.dart';
+import 'package:licoup/src/frontend/features/plugin_management/ui/optional_collaboration_status_card.dart';
+import 'package:licoup/src/frontend/features/plugin_management/ui/optional_collaboration_workflow_sections.dart';
+import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 
 final class OptionalCollaborationSettings extends StatelessWidget {
   const OptionalCollaborationSettings({super.key, required this.controller});

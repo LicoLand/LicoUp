@@ -93,8 +93,8 @@ export async function checkMobileRelayBridges(context, { secureMeshMobileFfiSour
     ["secure_mesh_controller.dart", secureMeshControllerSource]
   ]) {
     assert(
-      !source.includes("package:flutter_client/src/backend/") &&
-        !source.includes("package:flutter_client/src/platform/"),
+      !source.includes("package:licoup/src/backend/") &&
+        !source.includes("package:licoup/src/platform/"),
       `${relativePath} must depend on contracts and policies, not backend or platform implementations`
     );
   }

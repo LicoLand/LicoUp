@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
-import 'package:flutter_client/src/application/controller/client_controller.dart';
-import 'package:flutter_client/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/application/controller/client_controller.dart';
+import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 
 /// Floating right-side settings drawer for the Skill Hub panel. It is inserted
 /// as an [OverlayEntry] without a modal barrier, so the underlying page keeps

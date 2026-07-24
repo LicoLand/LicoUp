@@ -33,7 +33,7 @@ export function extractContentStableVector(source) {
     id: "content-aead-stable-vectors-all-payload-kinds",
     kind: "deterministic-content-crypto-vector",
     ok,
-    sourceFile: "crates/lico-client-native/src/core/secure_mesh_crypto.rs",
+    sourceFile: "crates/licoup-native/src/core/secure_mesh_crypto.rs",
     sourceTest: "secure_mesh_content_crypto_has_stable_vectors_for_all_payload_kinds",
     cipherSuite: "licomesh.secure-payload.v1.chacha20poly1305-hkdfsha256",
     payloadKinds: requiredLabels,
@@ -108,9 +108,9 @@ export function extractPairwiseStableVector(pqxdhSource, braidSource, pairwiseSo
     kind: "deterministic-pairwise-pqxdh-mlkem1024-triple-ratchet-vector",
     ok,
     sourceFiles: [
-      "crates/lico-client-native/src/core/secure_mesh_pqxdh.rs",
-      "crates/lico-client-native/src/core/secure_mesh_mlkem_braid.rs",
-      "crates/lico-client-native/src/core/secure_mesh_pairwise.rs",
+      "crates/licoup-native/src/core/secure_mesh_pqxdh.rs",
+      "crates/licoup-native/src/core/secure_mesh_mlkem_braid.rs",
+      "crates/licoup-native/src/core/secure_mesh_pairwise.rs",
     ],
     sourceTests: [
       "pqxdh_schedule_is_deterministic_domain_separated_and_context_bound",

@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:flutter_client/src/application/controller/client_lifecycle_coordinator.dart';
+import 'package:licoup/src/application/controller/client_lifecycle_coordinator.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

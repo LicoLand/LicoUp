@@ -3,9 +3,9 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import 'package:flutter_client/src/frontend/shared/ui/apple_control_metrics.dart';
-import 'package:flutter_client/src/frontend/shared/ui/apple_glass.dart';
-import 'package:flutter_client/src/frontend/shared/ui/theme.dart';
+import 'package:licoup/src/frontend/shared/ui/apple_control_metrics.dart';
+import 'package:licoup/src/frontend/shared/ui/apple_glass.dart';
+import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 /// macOS system accent blue used for menu item hover / selection.
 const Color kAppleMenuSelectionBlue = Color(0xFF0A84FF);

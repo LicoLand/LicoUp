@@ -15,7 +15,7 @@ export function findLinuxBundleSource(options) {
   const candidates = [];
   for (const arch of readdirSync(linuxBuildRoot)) {
     const bundleDir = path.join(linuxBuildRoot, arch, options.mode, "bundle");
-    if (existsSync(path.join(bundleDir, "flutter_client"))) {
+    if (existsSync(path.join(bundleDir, "licoup"))) {
       candidates.push(bundleDir);
     }
   }
@@ -32,6 +32,6 @@ export function linuxBundleLayout(root) {
     executableDir: root,
     portableDataDir: path.join(root, "portable-data"),
     moduleResourceDir: path.join(root, "modules"),
-    flutterExecutable: path.join(root, "flutter_client"),
+    flutterExecutable: path.join(root, "licoup"),
   });
 }

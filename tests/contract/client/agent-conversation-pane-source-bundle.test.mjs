@@ -18,17 +18,17 @@ const productionLeaves = Object.freeze([
 ]);
 const leafPaths = new Set(productionLeaves.map((leaf) => `${paneRoot}/${leaf}`));
 const removedRecentSessionsImport =
-  "package:flutter_client/src/frontend/features/agents/ui/agent_conversation_pane/recent_sessions.dart";
+  "package:licoup/src/frontend/features/agents/ui/agent_conversation_pane/recent_sessions.dart";
 
 async function read(relativePath) {
   return fs.readFile(path.join(repoRoot, relativePath), "utf8");
 }
 
 function resolveDartImport(from, specifier) {
-  if (specifier.startsWith("package:flutter_client/")) {
+  if (specifier.startsWith("package:licoup/")) {
     return path.posix.join(
       "apps/desktop/lib",
-      specifier.slice("package:flutter_client/".length),
+      specifier.slice("package:licoup/".length),
     );
   }
   if (specifier.startsWith(".")) {

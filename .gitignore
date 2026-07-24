@@ -38,7 +38,7 @@ apps/desktop/.flutter-plugins
 apps/desktop/.flutter-plugins-dependencies
 apps/desktop/build/
 apps/desktop/coverage/
-crates/lico-client-native/target/
+crates/licoup-native/target/
 
 # Platform generated outputs
 apps/desktop/android/.gradle/

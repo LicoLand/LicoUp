@@ -19,7 +19,7 @@ void optionalLocalRequirePolicy(
 
 String optionalLocalRequiredAdapter(Map<String, dynamic> json) {
   final value = optionalLocalRequiredText(json, 'assemblyAdapterId');
-  if (value != 'licoarc-builtin-local-http-v1') {
+  if (value != 'licoup-builtin-local-http-v1') {
     throw const FormatException('optional_local_server_adapter_invalid');
   }
   return value;

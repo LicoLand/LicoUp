@@ -1,21 +1,21 @@
 import 'package:flutter/material.dart';
 
-import 'package:flutter_client/src/application/features/layout/layout_manager.dart';
-import 'package:flutter_client/src/application/features/layout/layout_state_store.dart';
-import 'package:flutter_client/src/application/features/navigation/semantic_destination_catalog.dart';
-import 'package:flutter_client/src/contracts/presentation/layout_environment.dart';
-import 'package:flutter_client/src/contracts/presentation/layout_profile.dart';
-import 'package:flutter_client/src/contracts/presentation/layout_state_namespace.dart';
-import 'package:flutter_client/src/contracts/presentation/presentation_preferences.dart';
-import 'package:flutter_client/src/contracts/presentation/semantic_destination.dart';
-import 'package:flutter_client/src/frontend/layout/layout_definition.dart';
-import 'package:flutter_client/src/frontend/layout/layout_focus_coordinator.dart';
-import 'package:flutter_client/src/frontend/layout/layout_host.dart';
-import 'package:flutter_client/src/frontend/layout/layout_palette.dart';
-import 'package:flutter_client/src/frontend/layout/layout_registry.dart';
-import 'package:flutter_client/src/frontend/layout/layout_scope.dart';
-import 'package:flutter_client/src/frontend/layout/layout_surface_bundle.dart';
-import 'package:flutter_client/src/frontend/layout/layout_visual_tokens.dart';
+import 'package:licoup/src/application/features/layout/layout_manager.dart';
+import 'package:licoup/src/application/features/layout/layout_state_store.dart';
+import 'package:licoup/src/application/features/navigation/semantic_destination_catalog.dart';
+import 'package:licoup/src/contracts/presentation/layout_environment.dart';
+import 'package:licoup/src/contracts/presentation/layout_profile.dart';
+import 'package:licoup/src/contracts/presentation/layout_state_namespace.dart';
+import 'package:licoup/src/contracts/presentation/presentation_preferences.dart';
+import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
+import 'package:licoup/src/frontend/layout/layout_definition.dart';
+import 'package:licoup/src/frontend/layout/layout_focus_coordinator.dart';
+import 'package:licoup/src/frontend/layout/layout_host.dart';
+import 'package:licoup/src/frontend/layout/layout_palette.dart';
+import 'package:licoup/src/frontend/layout/layout_registry.dart';
+import 'package:licoup/src/frontend/layout/layout_scope.dart';
+import 'package:licoup/src/frontend/layout/layout_surface_bundle.dart';
+import 'package:licoup/src/frontend/layout/layout_visual_tokens.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'fixtures/layout_chrome_fixture.dart';

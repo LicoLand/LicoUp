@@ -5,8 +5,8 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = path.resolve(fileURLToPath(new URL("../../..", import.meta.url)));
-const facadePath = "crates/lico-client-native/src/platform/client_state.rs";
-const root = "crates/lico-client-native/src/platform/client_state";
+const facadePath = "crates/licoup-native/src/platform/client_state.rs";
+const root = "crates/licoup-native/src/platform/client_state";
 const productionLeaves = Object.freeze([
   "accessors.rs",
   "activity.rs",
@@ -136,7 +136,7 @@ test("serialization and path helpers own all bounded filesystem details", async 
 test("all external consumers use only the restricted client state facade", async () => {
   const internalModules = "accessors|activity|collections|operations|paths|policy|redaction|serialization|snapshots";
   const internalPath = new RegExp(`client_state::(?:${internalModules})::`, "u");
-  const consumers = (await sourceFiles("crates/lico-client-native/src"))
+  const consumers = (await sourceFiles("crates/licoup-native/src"))
     .filter((relativePath) => relativePath !== facadePath && !relativePath.startsWith(`${root}/`));
   for (const relativePath of consumers) {
     const source = await read(relativePath);

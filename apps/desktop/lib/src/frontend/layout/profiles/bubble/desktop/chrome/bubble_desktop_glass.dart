@@ -2,7 +2,7 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 
-import 'package:flutter_client/src/frontend/layout/layout_palette.dart';
+import 'package:licoup/src/frontend/layout/layout_palette.dart';
 
 /// Bubble-owned control measurements for its desktop chrome.
 abstract final class BubbleDesktopControlMetrics {

@@ -1,6 +1,6 @@
 import 'dart:io';
 
-import 'package:flutter_client/src/frontend/features/agents/ui/history_session_panel.dart';
+import 'package:licoup/src/frontend/features/agents/ui/history_session_panel.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

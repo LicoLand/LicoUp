@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:flutter_client/src/contracts/skill_update.dart';
+import 'package:licoup/src/contracts/skill_update.dart';
 
 typedef SkillAutoUpdateTimerCancel = void Function();
 typedef SkillAutoUpdateTimerScheduler =

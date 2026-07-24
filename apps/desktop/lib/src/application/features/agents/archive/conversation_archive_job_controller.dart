@@ -2,8 +2,8 @@ import 'dart:async';
 
 import 'package:path/path.dart' as p;
 
-import 'package:flutter_client/src/application/features/agents/archive/conversation_archive_projection.dart';
-import 'package:flutter_client/src/application/features/agents/workspace/agent_workspace_coordinator.dart';
+import 'package:licoup/src/application/features/agents/archive/conversation_archive_projection.dart';
+import 'package:licoup/src/application/features/agents/workspace/agent_workspace_coordinator.dart';
 
 const conversationArchiveAllSelection = 'all';
 const conversationArchiveExactKeywordSelection = 'exact-keyword';

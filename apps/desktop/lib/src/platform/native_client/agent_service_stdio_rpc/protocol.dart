@@ -1,9 +1,9 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
-import 'package:flutter_client/src/platform/native_client/native_cli_ports.dart';
+import 'package:licoup/src/platform/native_client/native_cli_ports.dart';
 
-const String stdioRpcProtocol = 'lico-client.stdio.v1';
+const String stdioRpcProtocol = 'licoup.stdio.v1';
 const int stdioRpcMaxFrameBytes = 16 * 1024 * 1024;
 const int stdioRpcMaxStderrBytes = 512 * 1024;
 const int stdioRpcMaxErrorCodeBytes = 64;
@@ -16,7 +16,7 @@ int _workflowSequence = 0;
 String newStdioRpcWorkflowId() {
   _workflowSequence = (_workflowSequence + 1) & 0x7fffffff;
   final instant = DateTime.now().microsecondsSinceEpoch.toRadixString(36);
-  return 'lico-arc-$instant-${_workflowSequence.toRadixString(36)}';
+  return 'lico-up-$instant-${_workflowSequence.toRadixString(36)}';
 }
 
 Uint8List encodeStdioRpcFrame(Map<String, dynamic> request) {

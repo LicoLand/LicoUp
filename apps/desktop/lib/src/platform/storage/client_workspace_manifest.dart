@@ -18,7 +18,7 @@ class ClientWorkspaceManifest {
   });
 
   static const currentSchemaVersion = 1;
-  static const licoArcAppId = 'licoarc-client';
+  static const licoUpAppId = 'licoup-client';
 
   final int schemaVersion;
   final String appId;
@@ -34,7 +34,7 @@ class ClientWorkspaceManifest {
     final serializedNow = now.toIso8601String();
     return ClientWorkspaceManifest(
       schemaVersion: currentSchemaVersion,
-      appId: licoArcAppId,
+      appId: licoUpAppId,
       workspaceId: workspaceId ?? _newWorkspaceId(now),
       createdAt: serializedNow,
       updatedAt: serializedNow,
@@ -79,7 +79,7 @@ class ClientWorkspaceManifestStore {
   }) : _clock = clock ?? _utcNow,
        _workspaceIdFactory = workspaceIdFactory ?? _newWorkspaceId;
 
-  static const fileName = '.licoarc-workspace.json';
+  static const fileName = '.licoup-workspace.json';
 
   final ClientWorkspaceManifestClock _clock;
   final ClientWorkspaceIdFactory _workspaceIdFactory;
@@ -108,7 +108,7 @@ class ClientWorkspaceManifestStore {
   }
 
   bool _isCompatible(ClientWorkspaceManifest manifest) {
-    return manifest.appId == ClientWorkspaceManifest.licoArcAppId &&
+    return manifest.appId == ClientWorkspaceManifest.licoUpAppId &&
         manifest.schemaVersion <=
             ClientWorkspaceManifest.currentSchemaVersion &&
         manifest.workspaceId.isNotEmpty;

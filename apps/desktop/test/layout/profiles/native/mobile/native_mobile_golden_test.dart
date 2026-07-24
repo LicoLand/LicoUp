@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:flutter_client/src/frontend/layout/profiles/native/mobile/native_mobile_bundle.dart';
-import 'package:flutter_client/src/frontend/shared/ui/theme.dart';
+import 'package:licoup/src/frontend/layout/profiles/native/mobile/native_mobile_bundle.dart';
+import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 import 'native_mobile_palette_fixture.dart';
 

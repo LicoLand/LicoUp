@@ -118,7 +118,7 @@ test("Rust modules share the managed target and release it after failure", () =>
     output: stringSink(),
     leaseFactory(options) {
       assert.equal(options.scope, "rust.domain.agent-usage");
-      assert.equal(options.targetPath, "build/crates/lico-client-native/target");
+      assert.equal(options.targetPath, "build/crates/licoup-native/target");
       return {
         targetPath: managedTarget,
         release() { releases += 1; },

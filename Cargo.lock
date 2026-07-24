@@ -1674,7 +1674,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "lico-client-native"
+name = "licoup-native"
 version = "0.0.1-alpha"
 dependencies = [
  "anyhow",

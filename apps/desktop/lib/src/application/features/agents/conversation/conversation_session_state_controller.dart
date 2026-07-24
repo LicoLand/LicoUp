@@ -1,6 +1,6 @@
-import 'package:flutter_client/src/application/features/agents/policy/conversation_session_index.dart';
-import 'package:flutter_client/src/application/features/agents/workspace/agent_workspace_coordinator.dart';
-import 'package:flutter_client/src/contracts/agent_conversation_models.dart';
+import 'package:licoup/src/application/features/agents/policy/conversation_session_index.dart';
+import 'package:licoup/src/application/features/agents/workspace/agent_workspace_coordinator.dart';
+import 'package:licoup/src/contracts/agent_conversation_models.dart';
 
 const int conversationSessionPageSize = 50;
 const List<int> conversationInitialProgressiveMilestones = [3, 10, 20];

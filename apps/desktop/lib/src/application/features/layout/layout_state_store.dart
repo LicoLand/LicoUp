@@ -1,6 +1,6 @@
-import 'package:flutter_client/src/application/features/layout/layout_catalog.dart';
-import 'package:flutter_client/src/contracts/presentation/layout_profile.dart';
-import 'package:flutter_client/src/contracts/presentation/layout_state_namespace.dart';
+import 'package:licoup/src/application/features/layout/layout_catalog.dart';
+import 'package:licoup/src/contracts/presentation/layout_profile.dart';
+import 'package:licoup/src/contracts/presentation/layout_state_namespace.dart';
 
 sealed class LayoutPresentationStateValue {
   const LayoutPresentationStateValue();

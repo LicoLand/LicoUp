@@ -101,7 +101,7 @@ test("catalog commands reference existing dedicated scripts and test targets", a
       } else {
         const packageIndex = moduleCommand.args.indexOf("-p");
         assert.equal(packageIndex >= 0, true);
-        assert.equal(moduleCommand.args[packageIndex + 1], "lico-client-native");
+        assert.equal(moduleCommand.args[packageIndex + 1], "licoup-native");
       }
     }
   }
@@ -169,8 +169,8 @@ test("catalog maps every Flutter, Rust, and platform-host source file", async ()
     ...await sourceFiles("apps/desktop/assets", ".json"),
     ...await sourceFiles("apps/desktop/assets", ".png"),
     ...await sourceFiles("apps/desktop/assets", ".svg"),
-    ...await sourceFiles("crates/lico-client-native/src", ".rs"),
-    ...await sourceFiles("crates/lico-client-native/tests", ".rs"),
+    ...await sourceFiles("crates/licoup-native/src", ".rs"),
+    ...await sourceFiles("crates/licoup-native/tests", ".rs"),
     ...await sourceFiles("crates/lico-catalog-convergence/src", ".rs"),
     ...await sourceFiles("apps/desktop/android/app/src/main", ".kt"),
     ...await sourceFiles("apps/desktop/ios/Runner", ".swift"),
@@ -194,10 +194,10 @@ test("shared Flutter and Rust manifests select their own technology families", (
 
 test("shared module roots select composition without leaf-regression fanout", () => {
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/core/mod.rs",
+    "crates/licoup-native/src/core/mod.rs",
   ])), ["architecture.client-boundaries", "rust.composition"]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/lico-client-native/src/domain/mod.rs",
+    "crates/licoup-native/src/domain/mod.rs",
   ])), ["architecture.client-boundaries", "rust.composition"]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
     "apps/desktop/analysis_options.yaml",

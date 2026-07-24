@@ -1,11 +1,11 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter_client/src/application/features/layout/layout_catalog.dart';
-import 'package:flutter_client/src/contracts/presentation/layout_environment.dart';
-import 'package:flutter_client/src/contracts/presentation/layout_profile.dart';
-import 'package:flutter_client/src/contracts/presentation/layout_selection.dart';
-import 'package:flutter_client/src/contracts/presentation/presentation_preferences.dart';
+import 'package:licoup/src/application/features/layout/layout_catalog.dart';
+import 'package:licoup/src/contracts/presentation/layout_environment.dart';
+import 'package:licoup/src/contracts/presentation/layout_profile.dart';
+import 'package:licoup/src/contracts/presentation/layout_selection.dart';
+import 'package:licoup/src/contracts/presentation/presentation_preferences.dart';
 
 typedef LayoutSelectionListener = void Function(LayoutSelectionState state);
 
@@ -397,7 +397,7 @@ final class LayoutManager {
             FlutterErrorDetails(
               exception: error,
               stack: stackTrace,
-              library: 'Lico Arc layout manager',
+              library: 'LicoUp layout manager',
               context: ErrorDescription(
                 'while notifying a layout selection listener',
               ),

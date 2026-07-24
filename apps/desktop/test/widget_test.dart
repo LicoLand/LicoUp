@@ -2,12 +2,12 @@ import 'dart:ui';
 
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:flutter_client/src/contracts/locale_preferences.dart';
-import 'package:flutter_client/src/frontend/l10n/lico_strings.dart';
-import 'package:flutter_client/src/contracts/presentation/semantic_destination.dart';
+import 'package:licoup/src/contracts/locale_preferences.dart';
+import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 
 void main() {
-  test('app sections are the LicoArc client modules', () {
+  test('app sections are the LicoUp client modules', () {
     expect(ClientSection.values, [
       ClientSection.agents,
       ClientSection.monitoring,

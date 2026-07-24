@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
-import 'package:flutter_client/src/frontend/shared/ui/minimal_scan_icon.dart';
-import 'package:flutter_client/src/frontend/shared/ui/theme.dart';
+import 'package:licoup/src/frontend/shared/ui/minimal_scan_icon.dart';
+import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 class MobileRelayScanPairingPrompt extends StatelessWidget {
   const MobileRelayScanPairingPrompt({

@@ -1,14 +1,14 @@
 import 'dart:io';
 
-import 'package:flutter_client/src/platform/storage/client_log_export_service.dart';
-import 'package:flutter_client/src/platform/storage/portable_data_root.dart';
+import 'package:licoup/src/platform/storage/client_log_export_service.dart';
+import 'package:licoup/src/platform/storage/portable_data_root.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 
 void main() {
   test('exports the activity log to a selected file path', () async {
     final directory = await Directory.systemTemp.createTemp(
-      'lico-client-log-service-',
+      'licoup-log-service-',
     );
     addTearDown(() => directory.delete(recursive: true));
     final portableData = PortableDataRoot(dataDirectoryOverride: directory);
@@ -32,7 +32,7 @@ void main() {
     'creates an empty export when the activity log does not exist',
     () async {
       final directory = await Directory.systemTemp.createTemp(
-        'lico-client-log-empty-',
+        'licoup-log-empty-',
       );
       addTearDown(() => directory.delete(recursive: true));
       final destination = File(p.join(directory.path, 'client.jsonl'));
@@ -52,7 +52,7 @@ void main() {
     'rejects exporting over the source file without truncating it',
     () async {
       final directory = await Directory.systemTemp.createTemp(
-        'lico-client-log-same-file-',
+        'licoup-log-same-file-',
       );
       addTearDown(() => directory.delete(recursive: true));
       final portableData = PortableDataRoot(dataDirectoryOverride: directory);
@@ -75,7 +75,7 @@ void main() {
     'enforces the bounded export without replacing the destination',
     () async {
       final directory = await Directory.systemTemp.createTemp(
-        'lico-client-log-bounded-',
+        'licoup-log-bounded-',
       );
       addTearDown(() => directory.delete(recursive: true));
       final portableData = PortableDataRoot(dataDirectoryOverride: directory);
@@ -99,7 +99,7 @@ void main() {
   if (!Platform.isWindows) {
     test('rejects a symbolic-link log source', () async {
       final directory = await Directory.systemTemp.createTemp(
-        'lico-client-log-source-link-',
+        'licoup-log-source-link-',
       );
       addTearDown(() => directory.delete(recursive: true));
       final portableData = PortableDataRoot(dataDirectoryOverride: directory);
@@ -124,7 +124,7 @@ void main() {
       'rejects a symbolic-link destination and preserves its target',
       () async {
         final directory = await Directory.systemTemp.createTemp(
-          'lico-client-log-destination-link-',
+          'licoup-log-destination-link-',
         );
         addTearDown(() => directory.delete(recursive: true));
         final portableData = PortableDataRoot(dataDirectoryOverride: directory);

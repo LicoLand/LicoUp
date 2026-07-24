@@ -5,7 +5,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = path.resolve(fileURLToPath(new URL("../../..", import.meta.url)));
-const coreRoot = "crates/lico-client-native/src/core";
+const coreRoot = "crates/licoup-native/src/core";
 
 const physicalTestModules = Object.freeze([
   {

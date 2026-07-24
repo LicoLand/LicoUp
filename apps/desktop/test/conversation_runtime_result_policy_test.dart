@@ -1,19 +1,41 @@
-import 'package:flutter_client/src/application/features/agents/conversation/conversation_runtime_result_policy.dart';
+import 'package:licoup/src/application/features/agents/conversation/conversation_runtime_result_policy.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   test('runtime errors expose only bounded stable codes', () {
     expect(
-      ConversationRuntimeResultPolicy.errorCode({
-        'error': {'code': 'native_timeout'},
-      }),
-      'native_timeout',
+      ConversationRuntimeResultPolicy.clientError({
+        'error': {
+          'code': 'authorization_required',
+          'stage': 'conversation/dispatch',
+          'component': 'conversation_runtime',
+          'retryable': false,
+          'recovery': 'correct_request',
+        },
+      }).code.wireName,
+      'authorization_required',
     );
     expect(
-      ConversationRuntimeResultPolicy.errorCode({
+      ConversationRuntimeResultPolicy.clientError({
         'error': {'code': 'unsafe code with details'},
-      }),
-      'native_agent_dispatch_failed',
+      }).isUnknown,
+      isTrue,
+    );
+  });
+
+  test('submission consumption is explicit and bounded', () {
+    expect(ConversationRuntimeResultPolicy.submissionConsumed(''), isTrue);
+    expect(
+      ConversationRuntimeResultPolicy.submissionConsumed(
+        'conversation_turn_duplicate_ignored',
+      ),
+      isTrue,
+    );
+    expect(
+      ConversationRuntimeResultPolicy.submissionConsumed(
+        'conversation_turn_queue_full',
+      ),
+      isFalse,
     );
   });
 

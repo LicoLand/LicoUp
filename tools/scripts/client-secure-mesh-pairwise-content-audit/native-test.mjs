@@ -5,7 +5,7 @@ import { sanitizeError } from "./privacy.mjs";
 export function runNativeTest(filter) {
   return runCargoTestFilter({
     repoRoot,
-    manifestPath: "crates/lico-client-native/Cargo.toml",
+    manifestPath: "crates/licoup-native/Cargo.toml",
     filter,
     sanitizeError
   });

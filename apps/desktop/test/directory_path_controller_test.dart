@@ -1,5 +1,5 @@
-import 'package:flutter_client/src/application/features/settings/controller/directory_path_controller.dart';
-import 'package:flutter_client/src/contracts/directory_opener.dart';
+import 'package:licoup/src/application/features/settings/controller/directory_path_controller.dart';
+import 'package:licoup/src/contracts/directory_opener.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

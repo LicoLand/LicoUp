@@ -136,7 +136,7 @@ function cleanStaleFlutterBuildArtifacts(options) {
     "Build",
     "Products",
     modeDirectoryName(options.mode),
-    "flutter_client.app",
+    "licoup.app",
   );
   rmSync(appDir, { recursive: true, force: true });
 }
@@ -214,7 +214,7 @@ function canCreateWindowsJunction() {
 function probeLink(kind) {
   const root = path.join(
     os.tmpdir(),
-    `lico-client-link-probe-${process.pid}-${Date.now()}`,
+    `licoup-link-probe-${process.pid}-${Date.now()}`,
   );
   const target = path.join(root, kind === "junction" ? "target" : "target.txt");
   const link = path.join(root, kind === "junction" ? "link" : "link.txt");

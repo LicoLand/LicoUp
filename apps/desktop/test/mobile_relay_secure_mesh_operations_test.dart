@@ -1,10 +1,9 @@
 import 'dart:convert';
 
-import 'package:flutter_client/src/contracts/secure_mesh_kt_models.dart';
-import 'package:flutter_client/src/contracts/secure_mesh_mls_models.dart';
-import 'package:flutter_client/src/platform/mobile_relay/mobile_relay_secure_conversation_operations.dart';
-import 'package:flutter_client/src/platform/mobile_relay/secure_mesh_protocol_operations.dart';
-import 'package:flutter_client/src/platform/mobile_relay/secure_mesh_substrate_operations.dart';
+import 'package:licoup/src/contracts/generated/secure_mesh.g.dart';
+import 'package:licoup/src/platform/mobile_relay/mobile_relay_secure_conversation_operations.dart';
+import 'package:licoup/src/platform/mobile_relay/secure_mesh_protocol_operations.dart';
+import 'package:licoup/src/platform/mobile_relay/secure_mesh_substrate_operations.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support/fake_mobile_relay_dispatch.dart';

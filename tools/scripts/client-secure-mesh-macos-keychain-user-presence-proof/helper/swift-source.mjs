@@ -10,7 +10,7 @@ func randomData() -> Data {
   return Data(bytes)
 }
 
-let service = "app.licoarc.secure-mesh.macos-adaptive-custody-proof"
+let service = "land.lico.licoup.secure-mesh.macos-adaptive-custody-proof"
 let secret = randomData()
 
 func baseQuery(account: String, dataProtection: Bool) -> [String: Any] {
@@ -181,7 +181,7 @@ func secureEnclaveOperationProbe() -> Bool {
 }
 
 let context = LAContext()
-context.localizedReason = "Authorize Lico Arc Secure Mesh local key access once."
+context.localizedReason = "Authorize LicoUp Secure Mesh local key access once."
 var authError: NSError?
 let localAuthenticationAvailable = context.canEvaluatePolicy(
   .deviceOwnerAuthentication,

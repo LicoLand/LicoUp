@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 
-import 'package:flutter_client/src/frontend/shared/ui/message_markdown_block_view.dart';
-import 'package:flutter_client/src/frontend/shared/ui/message_markdown_parser.dart';
-import 'package:flutter_client/src/frontend/shared/ui/message_markdown_style.dart';
+import 'package:licoup/src/frontend/shared/ui/message_markdown_block_view.dart';
+import 'package:licoup/src/frontend/shared/ui/message_markdown_parser.dart';
+import 'package:licoup/src/frontend/shared/ui/message_markdown_style.dart';
 
-export 'package:flutter_client/src/frontend/shared/ui/message_markdown_models.dart';
-export 'package:flutter_client/src/frontend/shared/ui/message_markdown_parser.dart';
-export 'package:flutter_client/src/frontend/shared/ui/message_markdown_style.dart';
+export 'package:licoup/src/frontend/shared/ui/message_markdown_models.dart';
+export 'package:licoup/src/frontend/shared/ui/message_markdown_parser.dart';
+export 'package:licoup/src/frontend/shared/ui/message_markdown_style.dart';
 
 /// Stable composer for parsed message markdown blocks.
 final class MessageMarkdown extends StatelessWidget {

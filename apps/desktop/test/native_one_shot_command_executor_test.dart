@@ -1,7 +1,7 @@
 import 'dart:io';
 
-import 'package:flutter_client/src/platform/native_client/native_cli_ports.dart';
-import 'package:flutter_client/src/platform/native_client/native_one_shot_command_executor.dart';
+import 'package:licoup/src/platform/native_client/native_cli_ports.dart';
+import 'package:licoup/src/platform/native_client/native_one_shot_command_executor.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

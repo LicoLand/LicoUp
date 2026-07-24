@@ -1,8 +1,8 @@
-# Lico Arc User Guide
+# LicoUp User Guide
 
 English (normative) · [简体中文](USER-GUIDE.zh-CN.md) · [Documentation](../README.md) · [Project](../../README.md)
 
-Lico Arc is an early alpha client. Check the
+LicoUp is an early alpha client. Check the
 [compatibility matrix](../COMPATIBILITY.md) before using a platform or
 feature for important work.
 
@@ -32,12 +32,12 @@ A command being present does not mean that its platform is fully supported.
 ## Work with local agents
 
 1. Open **Agents**.
-2. Let Lico Arc find supported agents installed on the device.
+2. Let LicoUp find supported agents installed on the device.
 3. Choose an agent.
 4. Start a new conversation or continue an existing one when the adapter
    supports it.
 
-Agent history, settings, and process details stay local. Lico Arc shows safe
+Agent history, settings, and process details stay local. LicoUp shows safe
 summaries in the interface instead of exposing raw tool input, credentials, or
 local paths.
 
@@ -47,7 +47,7 @@ probes run concurrently with a fixed bound. Normalized paths and configuration
 references are cached only in the client so later launches do not need a full
 scan.
 
-When continuing a conversation, Lico Arc prefers the agent's native attach or
+When continuing a conversation, LicoUp prefers the agent's native attach or
 resume operation. If an adapter cannot accept input during a running turn, the
 client keeps projecting its live output and starts the next turn only after the
 agent has completed its reply.
@@ -56,10 +56,10 @@ agent has completed its reply.
 
 Open **Plugin Management** from the desktop navigation to inspect every
 packaged agent adapter. Native Support and Native ACP lanes need no additional
-installation. A Lico Arc Adaptive Bridge owns the target-specific adaptation
+installation. A LicoUp Adaptive Bridge owns the target-specific adaptation
 when neither category applies. Install or uninstall appears only when its
 catalog entry declares a real lifecycle action. Each bridge action requires
-direct confirmation and changes only Lico Arc-owned files or namespaced hooks.
+direct confirmation and changes only LicoUp-owned files or namespaced hooks.
 Discovery and installation do not by themselves prove that an agent is ready
 for conversation.
 
@@ -98,14 +98,14 @@ or query it.
 6. For MCP installation, select one or more plugins and one or more local
    agents, then review the exact local changes before applying them.
 
-The Lico Arc source tree does not contain the LicoMesh server runner. A client
+The LicoUp source tree does not contain the LicoMesh server runner. A client
 build therefore proves neither that a server artifact was obtained nor that a
 deployment was started.
 
 Installation or enablement never grants continuing transfer permission. If an
 MCP operation would reach an external service, its bridge first creates a
 non-transmitting preview. Review the destination, purpose, exact request, and
-each selected file in Lico Arc, complete the platform authentication prompt,
+each selected file in LicoUp, complete the platform authentication prompt,
 and approve only that operation. The matching preview can be claimed exactly
 once. Changing the file, destination, purpose, request body, or session makes
 the digest mismatch; cancellation, expiry, or reuse also fails closed. If
@@ -116,13 +116,13 @@ disabled.
 
 Only use the protected peer flow for user content:
 
-1. Choose the receiving Lico Arc client.
+1. Choose the receiving LicoUp client.
 2. Review the exact message or file and its destination.
 3. Approve that one transfer.
-4. Lico Arc encrypts the content on the sending device.
+4. LicoUp encrypts the content on the sending device.
 5. The receiving client verifies and decrypts it.
 
-The relay is not trusted with plaintext. Lico Arc sends it only encrypted
+The relay is not trusted with plaintext. LicoUp sends it only encrypted
 content and the minimum routing data needed for the transfer. Changing the peer
 or content requires a new approval.
 

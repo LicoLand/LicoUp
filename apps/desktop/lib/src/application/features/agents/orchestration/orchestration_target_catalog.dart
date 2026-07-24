@@ -1,5 +1,5 @@
-import 'package:flutter_client/src/contracts/agent_orchestration_target.dart';
-import 'package:flutter_client/src/contracts/target_candidate.dart';
+import 'package:licoup/src/contracts/agent_orchestration_target.dart';
+import 'package:licoup/src/contracts/target_candidate.dart';
 
 List<TargetCandidate> agentOrchestrationCommanderTargets(
   Iterable<TargetCandidate> targets,
