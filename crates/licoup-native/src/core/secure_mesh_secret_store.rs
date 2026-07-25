@@ -3,6 +3,9 @@
 //! Cryptographic and persistence code depends on this port. Platform keychains,
 //! biometric contexts, and in-memory test stores implement it in the outer layer.
 
+// Linux exports this contract for cross-platform callers while native presence
+// authorization remains unavailable and fail-closed.
+#[cfg_attr(target_os = "linux", allow(dead_code))]
 mod authorization;
 mod handle;
 mod port;
@@ -22,6 +25,7 @@ pub use port::SecureMeshSecretStore;
 pub use secret_bytes::SecretZeroizeProbe;
 pub use secret_bytes::{MAX_SECRET_BYTES, SecretBytes, SecretBytesError};
 
+#[cfg(target_os = "macos")]
 pub(crate) use authorization::{derive_presence_binding_digest, digest_matches};
 
 #[cfg(test)]
