@@ -147,16 +147,15 @@ final class ClassicMobileHarness {
   // per-destination channels resolve to their declared namespaces.
   final Map<ClientSection, LayoutScopedState> _states = {};
 
-  LayoutScopedState _stateFor(ClientSection destination) =>
-      _states.putIfAbsent(
-        destination,
-        () => buildLayoutScopedStateFixture(
-          profile: classicMobileBundle.profile,
-          surface: LayoutRuntimeSurface.mobile,
-          stateNamespaces: classicMobileBundle.stateNamespaces,
-          destination: destination,
-        ),
-      );
+  LayoutScopedState _stateFor(ClientSection destination) => _states.putIfAbsent(
+    destination,
+    () => buildLayoutScopedStateFixture(
+      profile: classicMobileBundle.profile,
+      surface: LayoutRuntimeSurface.mobile,
+      stateNamespaces: classicMobileBundle.stateNamespaces,
+      destination: destination,
+    ),
+  );
 
   LayoutDestinationBuildContext destinationData(
     LayoutEnvironment environment,

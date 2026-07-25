@@ -221,7 +221,8 @@ class _AgentsWorkspaceSidebarState extends State<AgentsWorkspaceSidebar> {
                       final activity = group.members
                           .map((member) => widget.activityFor(member.id))
                           .firstWhere(
-                            (value) => value != AgentConversationTabActivity.none,
+                            (value) =>
+                                value != AgentConversationTabActivity.none,
                             orElse: () => AgentConversationTabActivity.none,
                           );
                       return _AgentTreeNode(
@@ -635,11 +636,7 @@ class _ProjectTreeNode extends StatelessWidget {
                     size: 16,
                     color: colors.textMuted,
                   ),
-                  Icon(
-                    icon,
-                    size: 15,
-                    color: colors.textMuted,
-                  ),
+                  Icon(icon, size: 15, color: colors.textMuted),
                   const SizedBox(width: 6),
                   Expanded(
                     child: Text(

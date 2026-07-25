@@ -1,6 +1,7 @@
 import 'client_controller_scenario_dependencies.dart';
 import 'fake_agent_archive_support.dart';
 import 'fake_agent_conversation_support.dart';
+import 'fake_agent_runtime_support.dart';
 import 'fake_agent_state_support.dart';
 import 'fake_agent_usage_support.dart';
 
@@ -8,6 +9,7 @@ class FakeAgentService extends AgentService
     with
         FakeAgentStateSupport,
         FakeAgentConversationSupport,
+        FakeAgentRuntimeSupport,
         FakeAgentArchiveSupport,
         FakeAgentUsageSupport {
   @override

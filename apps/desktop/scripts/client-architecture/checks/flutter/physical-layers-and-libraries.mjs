@@ -74,9 +74,11 @@ const splitTestLibraryLineLimits = new Map([
   ["apps/desktop/test/fixtures/client_controller_scenarios.dart", 40],
   ["apps/desktop/test/fixtures/client_controller/bootstrap_scenarios.dart", 520],
   ["apps/desktop/test/fixtures/client_controller/conversation_dispatch_scenarios.dart", 650],
-  ["apps/desktop/test/fixtures/client_controller/conversation_orchestration_scenarios.dart", 380],
   ["apps/desktop/test/fixtures/client_controller/history_refresh_scenarios.dart", 470],
   ["apps/desktop/test/fixtures/client_controller/history_runtime_scenarios.dart", 280],
+  ["apps/desktop/test/fixtures/client_controller/history_runtime/message_dispatch_scenarios.dart", 60],
+  ["apps/desktop/test/fixtures/client_controller/history_runtime/session_selection_scenarios.dart", 140],
+  ["apps/desktop/test/fixtures/client_controller/history_runtime/streaming_projection_scenarios.dart", 200],
   ["apps/desktop/test/fixtures/client_controller/history_scenarios.dart", 30],
   ["apps/desktop/test/fixtures/client_controller/local_management_scenarios.dart", 20],
   ["apps/desktop/test/fixtures/client_controller/local_management/conversation_archive_scenarios.dart", 250],
@@ -95,6 +97,7 @@ const splitTestLibraryLineLimits = new Map([
   ["apps/desktop/test/fixtures/client_controller/support/fake_agent_archive_support.dart", 310],
   ["apps/desktop/test/fixtures/client_controller/support/fake_agent_conversation_fixture.dart", 50],
   ["apps/desktop/test/fixtures/client_controller/support/fake_agent_conversation_support.dart", 280],
+  ["apps/desktop/test/fixtures/client_controller/support/fake_agent_runtime_support.dart", 200],
   ["apps/desktop/test/fixtures/client_controller/support/fake_agent_service.dart", 60],
   ["apps/desktop/test/fixtures/client_controller/support/fake_agent_state_support.dart", 380],
   ["apps/desktop/test/fixtures/client_controller/support/fake_agent_usage_support.dart", 90],
@@ -481,7 +484,7 @@ export async function checkFlutterPhysicalLayersAndLibraries(context) {
   )].map((match) => match[1]);
   assert(
     sameSet(conversationPaneExports, [...conversationPaneLeafLimits.keys()]) &&
-      sourceLineCount(conversationPaneFacadeSource) <= 5 &&
+      sourceLineCount(conversationPaneFacadeSource.trimEnd()) <= 5 &&
       conversationPaneFacadeSource.includes("export 'agent_conversation_pane_presentation.dart';") &&
       !/^import /mu.test(conversationPaneFacadeSource) &&
       !/^(?:class|enum|typedef|mixin|extension) /mu.test(conversationPaneFacadeSource),

@@ -153,8 +153,12 @@ class AgentConversationSearchIndex {
     final terms = tokenizeAgentConversationSearchText(trimmed).toSet();
     final candidateKeys = <String>{};
     for (final term in terms) {
-      candidateKeys.addAll(_titlePostings[term]?.keys ?? const Iterable<String>.empty());
-      candidateKeys.addAll(_contentPostings[term]?.keys ?? const Iterable<String>.empty());
+      candidateKeys.addAll(
+        _titlePostings[term]?.keys ?? const Iterable<String>.empty(),
+      );
+      candidateKeys.addAll(
+        _contentPostings[term]?.keys ?? const Iterable<String>.empty(),
+      );
     }
     if (candidateKeys.isEmpty) {
       return const [];
@@ -175,7 +179,8 @@ class AgentConversationSearchIndex {
         final idf = math.log(
           1 + _documents.length / ((_documentFrequency[term] ?? 0) + 1),
         );
-        score += idf *
+        score +=
+            idf *
             (_titleWeight * _saturated(titleTf) +
                 _contentWeight * _saturated(contentTf));
       }
@@ -184,9 +189,7 @@ class AgentConversationSearchIndex {
       }
       // And-style coverage: documents matching more distinct query terms win.
       score *= matchedTerms / terms.length;
-      final titleMatched = entry.document.title.toLowerCase().contains(
-        trimmed,
-      );
+      final titleMatched = entry.document.title.toLowerCase().contains(trimmed);
       if (titleMatched) {
         score += _titlePhraseBonus;
       } else if (entry.document.content.toLowerCase().contains(trimmed)) {
@@ -198,9 +201,8 @@ class AgentConversationSearchIndex {
           0,
           reference.difference(updatedAt).inHours / 24.0,
         );
-        score *= 1 +
-            _recencyBoost *
-                math.pow(0.5, ageDays / _recencyHalfLifeDays);
+        score *=
+            1 + _recencyBoost * math.pow(0.5, ageDays / _recencyHalfLifeDays);
       }
       hits.add(
         AgentConversationSearchHit(
@@ -227,8 +229,7 @@ class AgentConversationSearchIndex {
     return hits.take(limit).toList(growable: false);
   }
 
-  double _saturated(int termFrequency) =>
-      termFrequency / (termFrequency + 1.0);
+  double _saturated(int termFrequency) => termFrequency / (termFrequency + 1.0);
 
   String _snippetFor(_DocEntry entry, Set<String> terms, String phrase) {
     final content = entry.document.content.replaceAll('\n', ' ').trim();

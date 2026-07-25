@@ -3,6 +3,10 @@ use licoup_native::ffi::generated::client_state::{
     ClientStateCollection, ClientStateFailure, ClientStateFailureCode,
 };
 
+#[path = "request/io_policy.rs"]
+mod io_policy;
+pub(crate) use io_policy::{rpc_command_reads_external_stdin, rpc_command_writes_external_stdout};
+
 pub(crate) fn parse_stdio_rpc_request(
     bytes: &[u8],
 ) -> std::result::Result<StdioRpcRequest, StdioRpcRequestError> {
@@ -172,13 +176,4 @@ pub(crate) fn valid_rpc_identifier(value: &str) -> bool {
         && value
             .bytes()
             .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'))
-}
-
-pub(crate) fn rpc_command_writes_external_stdout(args: &[String]) -> bool {
-    args.first().map(String::as_str) == Some("conversations")
-        && args.get(1).map(String::as_str) == Some("stream")
-}
-
-pub(crate) fn rpc_command_reads_external_stdin(args: &[String]) -> bool {
-    args.windows(2).any(|pair| pair == ["--stdin-json", "true"])
 }

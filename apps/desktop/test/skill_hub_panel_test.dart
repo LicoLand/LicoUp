@@ -141,45 +141,46 @@ void main() {
     },
   );
 
-  testWidgets('settings gear opens a floating drawer with a minimal installer', (
-    tester,
-  ) async {
-    final controller = _skillHubController()
-      ..skillHubPairings = const [
-        {'agentId': 'codex', 'target': 'manual', 'status': 'approved'},
-      ];
-    addTearDown(controller.dispose);
+  testWidgets(
+    'settings gear opens a floating drawer with a minimal installer',
+    (tester) async {
+      final controller = _skillHubController()
+        ..skillHubPairings = const [
+          {'agentId': 'codex', 'target': 'manual', 'status': 'approved'},
+        ];
+      addTearDown(controller.dispose);
 
-    await _pumpSkillHub(
-      tester,
-      controller: controller,
-      locale: const Locale('zh'),
-    );
+      await _pumpSkillHub(
+        tester,
+        controller: controller,
+        locale: const Locale('zh'),
+      );
 
-    // Drawer closed: no settings content, filter chips stay in the top row.
-    expect(find.text('GitHub URL'), findsNothing);
-    expect(find.text('全部技能'), findsOneWidget);
+      // Drawer closed: no settings content, filter chips stay in the top row.
+      expect(find.text('GitHub URL'), findsNothing);
+      expect(find.text('全部技能'), findsOneWidget);
 
-    await tester.tap(find.byTooltip('显示技能设置'));
-    await tester.pump();
+      await tester.tap(find.byTooltip('显示技能设置'));
+      await tester.pump();
 
-    expect(find.text('设置'), findsOneWidget);
-    expect(find.text('GitHub URL'), findsOneWidget);
-    expect(find.text('安装'), findsOneWidget);
-    // Pairing bookkeeping and retired settings rows stay out of the UI.
-    expect(find.text('配对记录'), findsNothing);
-    expect(find.text('多智能体删除'), findsNothing);
-    expect(find.text('手动更新与自动更新'), findsNothing);
-    expect(find.text('本机调用频率'), findsNothing);
-    // The page behind is untouched and still listed.
-    expect(find.text('Public Reviewer'), findsOneWidget);
+      expect(find.text('设置'), findsOneWidget);
+      expect(find.text('GitHub URL'), findsOneWidget);
+      expect(find.text('安装'), findsOneWidget);
+      // Pairing bookkeeping and retired settings rows stay out of the UI.
+      expect(find.text('配对记录'), findsNothing);
+      expect(find.text('多智能体删除'), findsNothing);
+      expect(find.text('手动更新与自动更新'), findsNothing);
+      expect(find.text('本机调用频率'), findsNothing);
+      // The page behind is untouched and still listed.
+      expect(find.text('Public Reviewer'), findsOneWidget);
 
-    await tester.tap(find.byIcon(Icons.close));
-    await tester.pump();
+      await tester.tap(find.byIcon(Icons.close));
+      await tester.pump();
 
-    expect(find.text('GitHub URL'), findsNothing);
-    expect(tester.takeException(), isNull);
-  });
+      expect(find.text('GitHub URL'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
 }
 
 Future<void> _pumpSkillHub(

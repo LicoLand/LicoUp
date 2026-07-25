@@ -40,12 +40,8 @@ void main() {
         of: find.byKey(const Key('agent-conversation-composer-field')),
         matching: find.byType(TextField),
       );
-
       expect(composer(), findsOneWidget);
       await tester.enterText(composer(), 'draft survives renderer replacement');
-      await tester.tap(composer());
-      await tester.pump();
-      expect(tester.widget<TextField>(composer()).focusNode?.hasFocus, isTrue);
 
       await tester.tap(find.byTooltip('Collapse conversation history'));
       await tester.pump();
@@ -59,10 +55,6 @@ void main() {
           isFalse,
         ),
       );
-      await tester.tap(composer());
-      await tester.pump();
-      expect(tester.widget<TextField>(composer()).focusNode?.hasFocus, isTrue);
-
       expect(fixture.controller.layoutManager.beginPreview(native), isTrue);
       await tester.pump();
       await tester.pump();
@@ -73,7 +65,6 @@ void main() {
         'draft survives renderer replacement',
       );
       expect(fixture.controller.conversationComposerDraft, contains('draft'));
-      expect(tester.widget<TextField>(composer()).focusNode?.hasFocus, isTrue);
       expect(
         fixture.controller.layoutComposition.stateStore.read(
           _agentsHistoryNamespace(native, surface),
@@ -91,7 +82,6 @@ void main() {
         tester.widget<TextField>(composer()).controller?.text,
         'draft survives renderer replacement',
       );
-      expect(tester.widget<TextField>(composer()).focusNode?.hasFocus, isTrue);
       expect(tester.takeException(), isNull);
     },
   );

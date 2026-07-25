@@ -13,10 +13,6 @@ void main() {
       owner: 'AgentConversationGatewayAdapter(',
       forbidden: 'AgentUsageController(',
     ),
-    'client_routing_component_assembly.dart': (
-      owner: 'RoutingModuleLifecycleController(',
-      forbidden: 'MobileRelayController(',
-    ),
     'client_target_component_assembly.dart': (
       owner: 'TargetController(',
       forbidden: 'SkillHubController(',
@@ -39,7 +35,11 @@ void main() {
     ),
     'client_navigation_component_assembly.dart': (
       owner: 'ClientNavigationController(',
-      forbidden: 'RoutingModuleLifecycleController(',
+      forbidden: 'MobileRelayController(',
+    ),
+    'client_catalog_convergence_component_assembly.dart': (
+      owner: 'CatalogConvergenceController(',
+      forbidden: 'TargetController(',
     ),
     'client_presentation_component_assembly.dart': (
       owner: 'LayoutManager(',
@@ -71,7 +71,7 @@ void main() {
       for (final className in [
         'ClientLifecycleComponentAssembly(',
         'ClientConversationComponentAssembly(',
-        'ClientRoutingComponentAssembly(',
+        'ClientCatalogConvergenceComponentAssembly(',
         'ClientTargetComponentAssembly(',
         'ClientSkillComponentAssembly(',
         'ClientSettingsComponentAssembly(',

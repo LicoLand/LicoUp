@@ -117,7 +117,6 @@ pub fn status() -> Result<Value> {
         "blockers": blockers,
         "selectedCustody": evaluation.custody(),
         "actions": SECURE_MESH_MLS_NATIVE_ACTIONS,
-        "rawProoflessApiExposed": false,
-        "privateKeyMaterial": "redacted"
+        "rawProoflessApiExposed": false
     }))
 }

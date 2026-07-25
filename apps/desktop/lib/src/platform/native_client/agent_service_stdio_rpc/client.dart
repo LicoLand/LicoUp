@@ -1,5 +1,6 @@
 import 'package:licoup/src/platform/native_client/agent_service_stdio_rpc/command_exchange.dart';
 import 'package:licoup/src/platform/native_client/agent_service_stdio_rpc/conversation_exchange.dart';
+import 'package:licoup/src/platform/native_client/agent_service_stdio_rpc/method_policy.dart';
 import 'package:licoup/src/platform/native_client/agent_service_stdio_rpc/operation_queue.dart';
 import 'package:licoup/src/platform/native_client/agent_service_stdio_rpc/orchestrator_lane_pool.dart';
 import 'package:licoup/src/platform/native_client/agent_service_stdio_rpc/protocol.dart';
@@ -73,31 +74,7 @@ class NativeStdioRpcClient implements NativeStdioRpcTransport {
     String method,
     Map<String, dynamic> params,
   ) {
-    const conversationMethods = <String>{
-      'agent.conversation.open',
-      'agent.conversation.history',
-      'agent.conversation.cleanup',
-      'agent.conversation.capabilities',
-      'agent.conversation.cancel',
-      'agent.conversation.steer',
-    };
-    const catalogMethods = <String>{
-      'catalog.status',
-      'catalog.invalidate',
-      'catalog.refresh',
-      'catalog.receipt',
-      'catalog.purge',
-      'catalog.reconnect',
-      'catalog.list',
-      'catalog.observe',
-    };
-    const orchestratorMethods = <String>{'orchestrator.request'};
-    const stateMethods = <String>{'state.get', 'state.set'};
-    if (_operations.closing ||
-        (!catalogMethods.contains(method) &&
-            !orchestratorMethods.contains(method) &&
-            !stateMethods.contains(method) &&
-            !conversationMethods.contains(method))) {
+    if (_operations.closing || !validStdioRpcStructuredMethod(method)) {
       return Future<Map<String, dynamic>>.error(
         const LicoClientRpcException('invalid_request'),
       );
@@ -108,10 +85,10 @@ class NativeStdioRpcClient implements NativeStdioRpcTransport {
       );
     }
     final immutableParams = Map<String, dynamic>.unmodifiable(params);
-    if (method == 'orchestrator.request') {
+    if (stdioRpcMethodUsesOrchestrator(method)) {
       return _orchestrator.execute(immutableParams);
     }
-    final conversationMethod = conversationMethods.contains(method);
+    final conversationMethod = stdioRpcMethodUsesConversationLane(method);
     final operations = conversationMethod
         ? _conversationOperations
         : _operations;

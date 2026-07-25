@@ -242,7 +242,7 @@ void main() {
     await tester.tap(choice);
     await tester.enterText(
       find.byKey(const Key('collaboration-local-destination')),
-      'test-data/licomesh-local',
+      '/test-data/licomesh-local',
     );
     final planButton = find.byKey(const Key('collaboration-local-plan'));
     await tester.ensureVisible(planButton);
@@ -256,7 +256,10 @@ void main() {
     );
     expect(find.text(_workflowPlanDigest), findsOneWidget);
     expect(find.text(_digest), findsWidgets);
-    expect(find.textContaining('test-data/licomesh-local/server'), findsOneWidget);
+    expect(
+      find.textContaining('/test-data/licomesh-local/server'),
+      findsOneWidget,
+    );
     final apply = find.byKey(const Key('collaboration-local-apply'));
     final cancel = find.byKey(const Key('collaboration-local-cancel'));
     expect(tester.widget<FilledButton>(apply).onPressed, isNull);
@@ -292,7 +295,7 @@ void main() {
       );
       await tester.enterText(
         find.byKey(const Key('collaboration-local-destination')),
-        'test-data/licomesh-local',
+        '/test-data/licomesh-local',
       );
       final planButton = find.byKey(const Key('collaboration-local-plan'));
       await tester.ensureVisible(planButton);
@@ -389,7 +392,7 @@ void main() {
       );
       await tester.enterText(
         find.byKey(const Key('collaboration-mcp-install-destination-0')),
-        'test-data/licoup-mcp',
+        '/test-data/licoup-mcp',
       );
       final planButton = find.byKey(const Key('collaboration-mcp-plan'));
       await tester.ensureVisible(planButton);
@@ -402,7 +405,7 @@ void main() {
         findsOneWidget,
       );
       expect(
-        find.textContaining('test-data/licoup-mcp/selected-mcp'),
+        find.textContaining('/test-data/licoup-mcp/selected-mcp'),
         findsOneWidget,
       );
       expect(find.textContaining('uploaded file'), findsNothing);
@@ -660,7 +663,7 @@ final class _WidgetGateway implements OptionalCollaborationGateway {
   }) async {
     calls.add('server-start');
     localServer = OptionalLocalServerState.fromJson(
-      _localServer('test-data/licomesh-local', const [
+      _localServer('/test-data/licomesh-local', const [
         'server-core',
       ], status: 'running'),
     );
@@ -674,7 +677,7 @@ final class _WidgetGateway implements OptionalCollaborationGateway {
   }) async {
     calls.add('server-stop');
     localServer = OptionalLocalServerState.fromJson(
-      _localServer('test-data/licomesh-local', const ['server-core']),
+      _localServer('/test-data/licomesh-local', const ['server-core']),
     );
     return localServer!;
   }
@@ -940,7 +943,7 @@ Map<String, dynamic> _workflowRegistrationPlan(
     'agentId': destination.agentId,
     'registrationId': registrationId,
     'destination':
-        'test-data/licoup-private/${destination.agentId}/$registrationId.json',
+        '/test-data/licoup-private/${destination.agentId}/$registrationId.json',
     'digestSha256': _workflowRegistrationDigest,
     'registration': {
       'schemaVersion': 'licoup.mcp-agent-registration.v2',

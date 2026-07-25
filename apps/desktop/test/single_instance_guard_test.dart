@@ -27,14 +27,16 @@ void main() {
       await guard!.release();
     });
 
-    test('second launch fails while the first instance holds the lock',
-        () async {
-      final first = await SingleInstanceGuard.tryAcquire(lockFile);
-      expect(first, isNotNull);
-      final second = await SingleInstanceGuard.tryAcquire(lockFile);
-      expect(second, isNull);
-      await first!.release();
-    });
+    test(
+      'second launch fails while the first instance holds the lock',
+      () async {
+        final first = await SingleInstanceGuard.tryAcquire(lockFile);
+        expect(first, isNotNull);
+        final second = await SingleInstanceGuard.tryAcquire(lockFile);
+        expect(second, isNull);
+        await first!.release();
+      },
+    );
 
     test('lock can be reclaimed after release', () async {
       final first = await SingleInstanceGuard.tryAcquire(lockFile);

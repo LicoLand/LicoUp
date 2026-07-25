@@ -1725,7 +1725,6 @@ export const FLUTTER_MODULES = Object.freeze([
       inputs: [
         "apps/desktop/test/client_conversation_dispatch_test.dart",
         "apps/desktop/test/fixtures/client_controller/conversation_dispatch_scenarios.dart",
-        "apps/desktop/test/fixtures/client_controller/conversation_orchestration_scenarios.dart",
         "apps/desktop/test/fixtures/client_controller/support/client_controller_scenario_dependencies.dart",
         "apps/desktop/test/fixtures/client_controller/support/client_controller_scenario_environment.dart",
         "apps/desktop/test/fixtures/client_controller/support/client_controller_scenario_json.dart",

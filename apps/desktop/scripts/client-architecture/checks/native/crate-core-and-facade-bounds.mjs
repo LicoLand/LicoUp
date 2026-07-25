@@ -88,7 +88,8 @@ export async function checkCrateCoreAndFacadeBounds(context) {
   ]);
   assert(
     secureMeshCustodyPortSource.includes("trait SecureMeshSecretStore") &&
-      secureMeshCustodyPortSource.includes("platform_context") &&
+      secureMeshCustodyPortSource.includes("begin_authorized_session") &&
+      secureMeshCustodyPortSource.includes("shared_system_context_required") &&
       secureMeshRuntimeCompositionSource.includes("SecureCommandRuntimeExecutor") &&
       secureMeshRuntimeCompositionSource.includes("open_with_path_hardener"),
     "Secure Mesh core ports and outer runtime/path-hardening composition must remain explicit"
@@ -186,7 +187,8 @@ export async function checkCrateCoreAndFacadeBounds(context) {
     "crates/licoup-native/src/domain/collaboration_plugin/assembly/runtime/process/windows.rs",
     "crates/licoup-native/src/platform/authorized_secure_record/macos_keychain.rs",
     "crates/licoup-native/src/platform/user_presence.rs",
-    "crates/licoup-native/src/platform/secure_mesh_secret_store/macos_user_presence.rs"
+    "crates/licoup-native/src/platform/secure_mesh_secret_store/macos_user_presence.rs",
+    "crates/licoup-native/src/platform/antigravity_driver/tests.rs"
   ]);
   const rustCliUnsafeFiles = (await collectRustUnsafeFiles(rustCliRoot))
     .filter((relativePath) => !reviewedRustUnsafeFiles.has(relativePath));

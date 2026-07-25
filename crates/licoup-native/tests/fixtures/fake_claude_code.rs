@@ -34,7 +34,6 @@ fn main() {
         "stream-json",
         "--verbose",
         "--include-partial-messages",
-        "--no-session-persistence",
         "--model",
         "fake-model",
         "--effort",
