@@ -23,12 +23,6 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
-      - name: Checkout developer intent source of truth
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
-        with:
-          repository: LicoLand/Lico-Dev
-          ref: nightly
-          path: build/dependencies/lico-dev
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: "24"
@@ -50,11 +44,11 @@ jobs:
           restore-keys: ${{ runner.os }}-cargo-
       - name: Install Node dependencies
         run: npm ci
-      - name: Install developer intent source of truth
-        run: npm install --global ./build/dependencies/lico-dev
       - name: Install pinned cargo-audit
         run: cargo install cargo-audit --version 0.22.2 --locked
       - name: Run client source gate
+        env:
+          LICO_AUDITOR_GATE_DELEGATED: "1"
         run: npm run client:verify
       - name: Upload reports
         if: always()
