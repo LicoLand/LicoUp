@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
   acquireTestArtifactLease,
   NATIVE_CARGO_TEST_TARGET,
@@ -45,6 +46,7 @@ export function runCargoTestFilter({
   const executedTestCount = cargoTestExecutionCount(output);
   const matchedAtLeastOneTest = executedTestCount > 0;
   const ok = result.status === 0 && matchedAtLeastOneTest;
+  const failureOutput = ok ? "" : String(result.stderr || result.stdout || "");
   return {
     id: filter,
     command: `${command} ${commandArgs.join(" ")}`,
@@ -53,10 +55,15 @@ export function runCargoTestFilter({
     durationMs: Date.now() - started,
     executedTestCount,
     matchedAtLeastOneTest,
+    failureDigest: ok
+      ? ""
+      : createHash("sha256").update(failureOutput, "utf8").digest("hex"),
     failureSummary: ok
       ? ""
       : result.status === 0
         ? "cargo test filter matched zero executable tests"
-        : sanitizeError(result.stderr || result.stdout)
+        : matchedAtLeastOneTest
+          ? "cargo test filter failed"
+          : "cargo test filter execution failed"
   };
 }
