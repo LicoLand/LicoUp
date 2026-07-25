@@ -34,6 +34,16 @@ jobs:
         with:
           flutter-version: "3.44.2"
           cache: true
+      - name: Reclaim unused runner toolchains
+        uses: jlumbroso/free-disk-space@54081f138730dfa15788a46383842cd2f914a1be # v1.3.1
+        with:
+          android: false
+          dotnet: true
+          haskell: true
+          large-packages: false
+          docker-images: true
+          tool-cache: false
+          swap-storage: true
       - name: Install pinned Android NDK toolchains
         run: 'yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;27.0.12077973" "ndk;30.0.14904198"'
       - uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
