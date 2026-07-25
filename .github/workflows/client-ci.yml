@@ -45,6 +45,8 @@ jobs:
       - name: Install pinned cargo-audit
         run: cargo install cargo-audit --version 0.22.2 --locked
       - name: Run client source gate
+        env:
+          LICO_AUDITOR_GATE_DELEGATED: "1"
         run: npm run client:verify
       - name: Upload reports
         if: always()
