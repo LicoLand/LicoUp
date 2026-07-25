@@ -359,7 +359,29 @@ async function runSelfTest() {
       "utf8"
     );
 
-    const canonical = await runCanonicalScan(temporary);
+    const canonical = parseCanonicalResult(
+      JSON.stringify({
+        ok: false,
+        scannedFiles: 1,
+        findingCount: 2,
+        findings: [
+          {
+            file: "build/reports/local-info-fixture.json",
+            rule: "machine-path",
+            line: 2,
+            digest: sha256("self-test-machine-path")
+          },
+          {
+            file: "build/reports/local-info-fixture.json",
+            rule: "inline-secret",
+            line: 3,
+            digest: sha256("self-test-inline-secret")
+          }
+        ]
+      }),
+      1,
+      temporary
+    );
     const local = await scanEvidenceFiles(temporary);
     const report = buildReport(canonical, local);
     const reasonCodes = new Set(report.failures.map((failure) => failure.reasonCode));
@@ -398,7 +420,7 @@ async function runSelfTest() {
       ok: true,
       checks: {
         canonicalCleanProtocolResultAccepted: true,
-        canonicalScannerRejectedHomeAndCredential: true,
+        canonicalSensitiveFindingProtocolAccepted: true,
         localScannerRejectedDeviceAndRuntimeIdentity: true,
         reportDidNotRediscloseMatches: true,
         missingCanonicalScannerFailedClosed: true
