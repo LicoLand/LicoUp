@@ -6,6 +6,7 @@ import { packageClient } from "./package-client.mjs";
 
 const licoClientBundleId = "land.lico.licoup";
 const canonicalPackageArgs = ["--platform", "macos", "--mode", "release"];
+const sidecarScanTimeoutMillis = 45_000;
 
 function fail(message) {
   throw new Error(`[client:run:macos] ${message}`);
@@ -53,7 +54,7 @@ function runningClientPids() {
       }
       return (
         entry.command.includes("/Contents/MacOS/licoup") &&
-        (entry.command.includes("/Arc.app/") ||
+        (entry.command.includes("/LicoUp.app/") ||
           entry.command.includes("/licoup.app/"))
       );
     })
@@ -120,7 +121,7 @@ function assertExecutable(filePath, label) {
 
 function verifyRunnable(appPath) {
   const executable = path.join(appPath, "Contents", "MacOS", "licoup");
-  const sidecar = path.join(appPath, "Contents", "MacOS", "licoup");
+  const sidecar = path.join(appPath, "Contents", "MacOS", "licoup-cli");
   assertExecutable(executable, "canonical Flutter executable");
   assertExecutable(sidecar, "canonical licoup sidecar");
 
@@ -131,7 +132,13 @@ function verifyRunnable(appPath) {
     "true",
     "--include-history-model-catalog",
     "true"
-  ]);
+  ], {
+    timeout: sidecarScanTimeoutMillis,
+    killSignal: "SIGTERM"
+  });
+  if (scan.error?.code === "ETIMEDOUT") {
+    fail(`sidecar target scan exceeded ${sidecarScanTimeoutMillis}ms`);
+  }
   if (scan.status !== 0) {
     fail(`sidecar target scan failed: ${scan.stderr.trim() || scan.stdout.trim()}`);
   }

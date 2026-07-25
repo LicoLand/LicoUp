@@ -8,7 +8,6 @@ pub(crate) struct RuntimeDriverProfile {
     pub(crate) readiness: String,
     pub(crate) protocol: String,
     pub(crate) blocker: Option<String>,
-    pub(crate) runtime_version_digest: Option<String>,
     pub(crate) capability_matrix: Option<Value>,
     pub(crate) summary_codes: Vec<String>,
     pub(crate) consecutive_passes: usize,

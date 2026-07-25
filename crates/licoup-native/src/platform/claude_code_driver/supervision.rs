@@ -94,7 +94,7 @@ pub(super) fn bind_session(
     registry
         .sessions
         .retain(|_, transport| transport.strong_count() > 0);
-    if registry.transports.get(&managed.id).is_none()
+    if !registry.transports.contains_key(&managed.id)
         || registry.sessions.get(session_id).is_some_and(|existing| {
             existing
                 .upgrade()

@@ -33,14 +33,14 @@ fs2 = "0.4"
 notify = "6.1"
 interprocess = "2.4"
 icu_segmenter = { version = "2", features = ["compiled_data", "lstm"] }
-libcrux-ml-kem = { version = "=0.0.9", default-features = false, features = ["alloc", "incremental", "mlkem1024"] }
-libcrux-sha3 = "=0.0.9"
-libcrux-traits = "=0.0.7"
-openmls = { version = "0.8", features = ["openmls_rust_crypto"] }
-openmls_basic_credential = "0.5"
-openmls_memory_storage = { version = "0.5", features = ["persistence"] }
-openmls_rust_crypto = "0.5"
-openmls_traits = "0.5"
+libcrux-ml-kem = { version = "=0.0.10", default-features = false, features = ["alloc", "incremental", "mlkem1024"] }
+libcrux-sha3 = "=0.0.10"
+libcrux-traits = "=0.0.8"
+openmls = { git = "https://github.com/openmls/openmls.git", rev = "34222ef632c87df58baaa7614c8a72ac235c5f07", features = ["openmls_rust_crypto"] }
+openmls_basic_credential = { git = "https://github.com/openmls/openmls.git", rev = "34222ef632c87df58baaa7614c8a72ac235c5f07" }
+openmls_memory_storage = { git = "https://github.com/openmls/openmls.git", rev = "34222ef632c87df58baaa7614c8a72ac235c5f07", features = ["persistence"] }
+openmls_rust_crypto = { git = "https://github.com/openmls/openmls.git", rev = "34222ef632c87df58baaa7614c8a72ac235c5f07" }
+openmls_traits = { git = "https://github.com/openmls/openmls.git", rev = "34222ef632c87df58baaa7614c8a72ac235c5f07" }
 rusqlite = { version = "0.32", features = ["bundled"] }
 log = "0.4"
 env_logger = "0.11"
@@ -84,7 +84,7 @@ nix = { version = "0.27", default-features = false, features = ["fs", "user", "s
 trybuild = { path = "../trybuild" }
 
 [[bin]]
-name = "licoup"
+name = "licoup-cli"
 path = "src/bin/licoup.rs"
 
 [[bin]]

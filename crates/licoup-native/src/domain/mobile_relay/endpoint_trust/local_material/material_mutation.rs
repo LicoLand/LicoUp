@@ -17,7 +17,11 @@ pub(in crate::domain::mobile_relay) fn ensure_mobile_relay_endpoint_material(
     secret_material: &mut RuntimeSecretMaterial,
     endpoint_kind: &str,
 ) -> Result<()> {
-    reset_incompatible_local_pairwise_protocol(config);
+    if reset_incompatible_local_pairwise_protocol(config) {
+        for field in MobileRelayE2eeSecretField::ALL {
+            secret_material.remove_e2ee_secret(field);
+        }
+    }
     if config
         .get("mobileRelayE2ee")
         .and_then(Value::as_object)

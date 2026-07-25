@@ -6,6 +6,7 @@ mod model;
 mod normalization;
 mod params;
 mod probe;
+#[cfg(test)]
 pub(crate) mod protocol_selector;
 mod registry;
 

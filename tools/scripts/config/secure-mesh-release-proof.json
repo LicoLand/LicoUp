@@ -119,7 +119,7 @@
         "productionEntitlementsRequested",
         "entitlementProfile",
         "verify-macos-client-bundle.mjs",
-        "codesign --verify --deep --strict Arc.app"
+        "codesign --verify --deep --strict LicoUp.app"
       ]
     },
     {

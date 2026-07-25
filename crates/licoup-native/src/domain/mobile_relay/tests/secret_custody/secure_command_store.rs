@@ -7,7 +7,7 @@ fn secure_command_create_rejects_raw_runtime_e2ee_secret_overrides() {
     let mut pc_config = default_config();
     let pc_descriptor = ensure_mobile_relay_endpoint_descriptor(
         &mut pc_config,
-        test_runtime_secret_material(stringify!(&mut pc_config)),
+        &mut test_runtime_secret_material(stringify!(&mut pc_config)),
         "desktop_sidecar",
     )
     .unwrap();
@@ -15,44 +15,41 @@ fn secure_command_create_rejects_raw_runtime_e2ee_secret_overrides() {
     let mut mobile_config = default_config();
     ensure_mobile_relay_endpoint_descriptor(
         &mut mobile_config,
-        test_runtime_secret_material(stringify!(&mut mobile_config)),
+        &mut test_runtime_secret_material(stringify!(&mut mobile_config)),
         "mobile",
     )
     .unwrap();
     apply_peer_secure_mesh_descriptor(
         &mut mobile_config,
-        test_runtime_secret_material(stringify!(&mut mobile_config)),
+        &mut test_runtime_secret_material(stringify!(&mut mobile_config)),
         &pc_descriptor,
         true,
     )
     .unwrap();
-    let private_key = mobile_config["mobileRelayE2ee"]["privateKeyBase64url"]
-        .as_str()
-        .unwrap()
-        .to_string();
-    let signing_key = mobile_config["mobileRelayE2ee"]["signingKeyBase64url"]
-        .as_str()
-        .unwrap()
-        .to_string();
-    let signed_prekey_private_key =
-        mobile_config["mobileRelayE2ee"]["signedPrekeyPrivateKeyBase64url"]
-            .as_str()
-            .unwrap()
-            .to_string();
-    let one_time_prekey_private_key =
-        mobile_config["mobileRelayE2ee"]["oneTimePrekeyPrivateKeyBase64url"]
-            .as_str()
-            .unwrap()
-            .to_string();
-    let one_time_mlkem1024_prekey_seed =
-        mobile_config["mobileRelayE2ee"]["oneTimeMlKem1024PrekeySeedBase64url"]
-            .as_str()
-            .unwrap()
-            .to_string();
-    let pairing_secret = mobile_config["mobileRelayE2ee"]["pairingSecretBase64url"]
-        .as_str()
-        .unwrap()
-        .to_string();
+    let private_key = test_runtime_e2ee_secret(
+        stringify!(&mobile_config),
+        MobileRelayE2eeSecretField::PrivateKey,
+    );
+    let signing_key = test_runtime_e2ee_secret(
+        stringify!(&mobile_config),
+        MobileRelayE2eeSecretField::SigningKey,
+    );
+    let signed_prekey_private_key = test_runtime_e2ee_secret(
+        stringify!(&mobile_config),
+        MobileRelayE2eeSecretField::SignedPrekeyPrivateKey,
+    );
+    let one_time_prekey_private_key = test_runtime_e2ee_secret(
+        stringify!(&mobile_config),
+        MobileRelayE2eeSecretField::OneTimePrekeyPrivateKey,
+    );
+    let one_time_mlkem1024_prekey_seed = test_runtime_e2ee_secret(
+        stringify!(&mobile_config),
+        MobileRelayE2eeSecretField::OneTimeMlKem1024PrekeySeed,
+    );
+    let pairing_secret = test_runtime_e2ee_secret(
+        stringify!(&mobile_config),
+        MobileRelayE2eeSecretField::PairingSecret,
+    );
     mobile_config["pairingId"] = json!("pair_raw_runtime_e2ee_override");
     mobile_config["mobileToken"] = json!("");
     mobile_config["mobileRelayE2ee"]
@@ -147,41 +144,36 @@ fn secure_command_create_uses_mobile_relay_secret_store_override_without_raw_e2e
         Ok(())
     })
     .unwrap();
-    let private_key = mobile_config["mobileRelayE2ee"]["privateKeyBase64url"]
-        .as_str()
-        .unwrap()
-        .to_string();
-    let signing_key = mobile_config["mobileRelayE2ee"]["signingKeyBase64url"]
-        .as_str()
-        .unwrap()
-        .to_string();
-    let signed_prekey_private_key =
-        mobile_config["mobileRelayE2ee"]["signedPrekeyPrivateKeyBase64url"]
-            .as_str()
-            .unwrap()
-            .to_string();
-    let one_time_prekey_private_key =
-        mobile_config["mobileRelayE2ee"]["oneTimePrekeyPrivateKeyBase64url"]
-            .as_str()
-            .unwrap()
-            .to_string();
-    let one_time_mlkem1024_prekey_seed =
-        mobile_config["mobileRelayE2ee"]["oneTimeMlKem1024PrekeySeedBase64url"]
-            .as_str()
-            .unwrap()
-            .to_string();
+    let private_key = test_runtime_e2ee_secret(
+        stringify!(&mobile_config),
+        MobileRelayE2eeSecretField::PrivateKey,
+    );
+    let signing_key = test_runtime_e2ee_secret(
+        stringify!(&mobile_config),
+        MobileRelayE2eeSecretField::SigningKey,
+    );
+    let signed_prekey_private_key = test_runtime_e2ee_secret(
+        stringify!(&mobile_config),
+        MobileRelayE2eeSecretField::SignedPrekeyPrivateKey,
+    );
+    let one_time_prekey_private_key = test_runtime_e2ee_secret(
+        stringify!(&mobile_config),
+        MobileRelayE2eeSecretField::OneTimePrekeyPrivateKey,
+    );
+    let one_time_mlkem1024_prekey_seed = test_runtime_e2ee_secret(
+        stringify!(&mobile_config),
+        MobileRelayE2eeSecretField::OneTimeMlKem1024PrekeySeed,
+    );
     mobile_config["pairingId"] = json!("pair_secret_store_override_gateway");
     mobile_config["mobileToken"] = json!("mobile-token-secret-store-override-canary");
     mobile_config["relayEnabled"] = json!(true);
     mobile_config["useCustomGateway"] = json!(true);
     mobile_config["customGatewayUrl"] = json!(gateway.url());
-    persist_config_secret_material_to_secret_store(
-        &mut mobile_config,
-        store.as_ref(),
-        MOBILE_RELAY_PLATFORM_SECRET_STORE_NAMESPACE,
-    )
+    let setup_store_override: Arc<dyn SecureMeshSecretStore> = store.clone();
+    with_mobile_relay_secret_store_override(setup_store_override, || {
+        save_test_config_with_runtime_secret_context(&mut mobile_config, stringify!(&mobile_config))
+    })
     .unwrap();
-    save_config(&mut mobile_config).unwrap();
 
     let store_override: Arc<dyn SecureMeshSecretStore> = store.clone();
     let create_response = with_mobile_relay_secret_store_override(store_override, || {

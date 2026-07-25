@@ -82,7 +82,7 @@ pub(in crate::domain::mobile_relay) fn mobile_relay_claim_proof_matches(
 }
 
 pub(in crate::domain::mobile_relay) fn mobile_relay_claim_proof_mac(
-    config: &Value,
+    _config: &Value,
     secret_material: &RuntimeSecretMaterial,
     pairing_id: &str,
     mobile_descriptor: &Value,

@@ -91,7 +91,7 @@ export function validateProductReceipt(path, expectedAgent) {
       && report.progressiveTimelineVisible === true
       && report.sameNativeSessionId === true
       && report.historyReadback === true
-      && report.artifactName === "Arc.app"
+      && report.artifactName === "LicoUp.app"
       && report.invocationChallengeDigest === releaseClosureChallengeDigest(
         requiredReleaseClosureChallenge(process.env),
       )

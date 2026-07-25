@@ -57,7 +57,7 @@ export async function checkMobileRelayBridges(context, { secureMeshMobileFfiSour
     "mobile relay must use normal-import, independently injectable ordinary, conversation, protocol, and substrate components"
   );
   const secureMeshCapabilityModelsSource =
-    await readText("apps/desktop/lib/src/contracts/secure_mesh_capability_models.dart");
+    await readText("apps/desktop/lib/src/contracts/generated/secure_mesh.g.dart");
   const secureMeshCapabilityServiceSource =
     await readText("apps/desktop/lib/src/platform/secure_mesh/secure_mesh_capability_service.dart");
   const secureMeshCapabilityCardSource =

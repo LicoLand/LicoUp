@@ -25,7 +25,7 @@ export const packageClientRuntime = Object.freeze((() => {
     windowsX64TargetId: "windows-x64",
     windowsX64RustTarget: "x86_64-pc-windows-msvc",
     bundleId: "land.lico.licoup",
-    appName: "Arc.app",
+    appName: "LicoUp.app",
   };
 })());
 

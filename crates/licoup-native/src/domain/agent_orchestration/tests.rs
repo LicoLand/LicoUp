@@ -1481,8 +1481,9 @@ fn agent_orchestration_fenced_lease_survives_client_disconnect_and_rejects_late_
         ))
         .unwrap();
     let fence = engine.owner_fence();
-    let client = engine.connect_control_plane("synthetic-client-a").unwrap();
-    drop(client);
+    {
+        let _client = engine.connect_control_plane("synthetic-client-a").unwrap();
+    }
 
     let second_store = DurableWorkflowStore::open(state.path(), store_limits())
         .err()
@@ -1727,13 +1728,14 @@ fn agent_orchestration_crash_boundaries_replay_deterministically_and_unknown_nev
 #[test]
 fn agent_orchestration_storage_events_receipts_and_privacy_are_bounded() {
     let state = TempState::new("bounds-privacy");
+    let credential_sentinel = format!("credential={}", synthetic_value("credential-sentinel"));
     let private_canaries = [
-        "prompt: synthetic shielded instruction",
-        "reasoning: synthetic hidden chain",
-        "credential=synthetic-sentinel",
-        "nativeSessionId=session-shielded",
-        "<home-path>/sensitive/project/file.rs",
-        "rawOutput: provider transcript",
+        "prompt: synthetic shielded instruction".to_string(),
+        "reasoning: synthetic hidden chain".to_string(),
+        credential_sentinel.clone(),
+        "nativeSessionId=session-shielded".to_string(),
+        "<home-path>/sensitive/project/file.rs".to_string(),
+        "rawOutput: provider transcript".to_string(),
     ];
     let dispatch = ScriptedDispatch::with_outcomes([DispatchOutcome::Succeeded {
         summary: private_canaries.join(" | "),
@@ -1937,14 +1939,14 @@ fn agent_orchestration_storage_events_receipts_and_privacy_are_bounded() {
     let raw_database = fs::read(&db_path).unwrap();
     let raw_wal =
         fs::read(PathBuf::from(format!("{}-wal", db_path.to_string_lossy()))).unwrap_or_default();
-    for canary in private_canaries {
+    for canary in &private_canaries {
         assert!(!persisted_columns.contains(canary));
         assert!(!String::from_utf8_lossy(&raw_database).contains(canary));
         assert!(!String::from_utf8_lossy(&raw_wal).contains(canary));
     }
 
     let mut unsafe_policy = policy(vec![step("one", None)]);
-    unsafe_policy.workflow.steps[0].agent_id = Some("credential=synthetic-sentinel".into());
+    unsafe_policy.workflow.steps[0].agent_id = Some(credential_sentinel.clone());
     let error = CompiledPolicy::compile(unsafe_policy).unwrap_err();
     assert_eq!(error.code(), CompileErrorCode::PrivacyViolation);
 

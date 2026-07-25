@@ -10,18 +10,10 @@ fn mobile_relay_encrypted_local_effect_command_requires_local_confirmation() {
     let mut pc_config = default_config();
     let mut mobile_config = default_config();
     pair_mobile_relay_configs(&mut pc_config, &mut mobile_config);
-    let mobile_endpoint = local_endpoint_state(
-        &mobile_config,
-        test_runtime_secret_material(stringify!(&mobile_config)),
-    )
-    .unwrap();
-    let pc_endpoint = local_endpoint_state(
-        &pc_config,
-        test_runtime_secret_material(stringify!(&pc_config)),
-    )
-    .unwrap();
-    save_config(&mut pc_config).unwrap();
-
+    let mobile_material = test_runtime_secret_material(stringify!(&mobile_config));
+    let pc_material = test_runtime_secret_material(stringify!(&pc_config));
+    let mobile_endpoint = local_endpoint_state(&mobile_config, &mobile_material).unwrap();
+    let pc_endpoint = local_endpoint_state(&pc_config, &pc_material).unwrap();
     let command_payload = json!({
         "schema": crate::core::secure_mesh::SECURE_MESH_COMMAND_PROTOCOL_VERSION,
         "commandId": "cmd_mobile_relay_local_effect",
@@ -46,9 +38,13 @@ fn mobile_relay_encrypted_local_effect_command_requires_local_confirmation() {
             "privateCanary": sv_local_effect_body_canary.as_str()
         }
     });
+    drop(mobile_material);
+    drop(pc_material);
+    persist_test_runtime_secret_material(stringify!(&pc_config)).unwrap();
+    save_config(&mut pc_config).unwrap();
     let envelope = seal_mobile_relay_payload(
         &mobile_config,
-        test_runtime_secret_material(stringify!(&mobile_config)),
+        &mut test_runtime_secret_material(stringify!(&mobile_config)),
         crate::core::secure_mesh_crypto::SecureMeshPayloadKind::Command,
         &command_payload,
     )
@@ -83,7 +79,7 @@ fn command_result_secure_consumes_canonical_sync_and_acks_after_open() {
     let (pc_config, mut mobile_config, _envelope) = paired_command_envelope_fixture();
     let result_envelope = seal_mobile_relay_payload(
         &pc_config,
-        test_runtime_secret_material(stringify!(&pc_config)),
+        &mut test_runtime_secret_material(stringify!(&pc_config)),
         crate::core::secure_mesh_crypto::SecureMeshPayloadKind::ResultPayload,
         &json!({
             "ok": true,
@@ -99,6 +95,7 @@ fn command_result_secure_consumes_canonical_sync_and_acks_after_open() {
     mobile_config["relayEnabled"] = json!(true);
     mobile_config["useCustomGateway"] = json!(true);
     mobile_config["customGatewayUrl"] = json!(gateway.url());
+    persist_test_runtime_secret_material(stringify!(&mobile_config)).unwrap();
     save_config(&mut mobile_config).unwrap();
 
     let output = command_result_secure(&with_canonical_relay_params(json!({}))).unwrap();
@@ -143,7 +140,7 @@ fn command_result_secure_reuses_single_operation_auth_batch_for_fetch_and_result
             let (pc_config, mut mobile_config, _envelope) = paired_command_envelope_fixture();
             let result_envelope = seal_mobile_relay_payload(
                 &pc_config,
-                test_runtime_secret_material(stringify!(&pc_config)),
+                &mut test_runtime_secret_material(stringify!(&pc_config)),
                 crate::core::secure_mesh_crypto::SecureMeshPayloadKind::ResultPayload,
                 &json!({
                     "ok": true,
@@ -157,6 +154,7 @@ fn command_result_secure_reuses_single_operation_auth_batch_for_fetch_and_result
             mobile_config["relayEnabled"] = json!(true);
             mobile_config["useCustomGateway"] = json!(true);
             mobile_config["customGatewayUrl"] = json!(gateway.url());
+            persist_test_runtime_secret_material(stringify!(&mobile_config))?;
             persist_config_secret_material_to_secret_store(
                 &mut mobile_config,
                 secret_store.as_ref(),
@@ -214,6 +212,7 @@ fn command_create_secure_reuses_single_operation_auth_batch_for_hydrate_and_seal
             mobile_config["relayEnabled"] = json!(true);
             mobile_config["useCustomGateway"] = json!(true);
             mobile_config["customGatewayUrl"] = json!(gateway.url());
+            persist_test_runtime_secret_material(stringify!(&mobile_config))?;
             persist_config_secret_material_to_secret_store(
                 &mut mobile_config,
                 secret_store.as_ref(),
@@ -299,7 +298,7 @@ fn command_result_replay_proof_reuses_single_operation_auth_batch_for_fetch_and_
             let (pc_config, mut mobile_config, _envelope) = paired_command_envelope_fixture();
             let result_envelope = seal_mobile_relay_payload(
                 &pc_config,
-                test_runtime_secret_material(stringify!(&pc_config)),
+                &mut test_runtime_secret_material(stringify!(&pc_config)),
                 crate::core::secure_mesh_crypto::SecureMeshPayloadKind::ResultPayload,
                 &json!({
                     "ok": true,
@@ -318,6 +317,7 @@ fn command_result_replay_proof_reuses_single_operation_auth_batch_for_fetch_and_
             mobile_config["relayEnabled"] = json!(true);
             mobile_config["useCustomGateway"] = json!(true);
             mobile_config["customGatewayUrl"] = json!(gateway.url());
+            persist_test_runtime_secret_material(stringify!(&mobile_config))?;
             persist_config_secret_material_to_secret_store(
                 &mut mobile_config,
                 secret_store.as_ref(),
@@ -366,7 +366,7 @@ fn mobile_relay_commands_sync_reuses_single_operation_auth_batch_for_secure_comm
             for index in 0..2 {
                 let payload = secure_command_payload(
                     &mobile_config,
-                    test_runtime_secret_material(stringify!(&mobile_config)),
+                    &mut test_runtime_secret_material(stringify!(&mobile_config)),
                     "agent.sessions.list",
                     None,
                     "default",
@@ -377,7 +377,7 @@ fn mobile_relay_commands_sync_reuses_single_operation_auth_batch_for_secure_comm
                 )?;
                 envelopes.push(seal_mobile_relay_payload(
                     &mobile_config,
-                    test_runtime_secret_material(stringify!(&mobile_config)),
+                    &mut test_runtime_secret_material(stringify!(&mobile_config)),
                     crate::core::secure_mesh_crypto::SecureMeshPayloadKind::Command,
                     &payload,
                 )?);
@@ -388,6 +388,7 @@ fn mobile_relay_commands_sync_reuses_single_operation_auth_batch_for_secure_comm
             pc_config["relayEnabled"] = json!(true);
             pc_config["useCustomGateway"] = json!(true);
             pc_config["customGatewayUrl"] = json!(gateway.url());
+            persist_test_runtime_secret_material(stringify!(&pc_config))?;
             persist_config_secret_material_to_secret_store(
                 &mut pc_config,
                 secret_store.as_ref(),
@@ -445,6 +446,7 @@ fn mobile_relay_secure_command_execute_reuses_single_operation_auth_batch_for_op
 
     with_pairwise_secret_store_override(store_override, || {
         let (mut pc_config, mobile_config, envelope) = paired_command_envelope_fixture();
+        persist_test_runtime_secret_material(stringify!(&pc_config))?;
         save_config(&mut pc_config).unwrap();
         let baseline_session_count = secret_store.authorization_session_count();
 

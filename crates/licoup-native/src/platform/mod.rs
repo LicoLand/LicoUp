@@ -47,3 +47,5 @@ pub use turn_event_emit::{
     StreamSinkGuard, clear_stream_sink, emit_agent_message_chunk, emit_agent_message_completed,
     emit_turn_event, install_stdout_ndjson_sink, install_stream_sink,
 };
+
+pub(crate) use process_supervisor::run_bounded_command_output;

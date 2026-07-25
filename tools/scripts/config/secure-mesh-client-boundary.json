@@ -122,13 +122,6 @@
       ],
       "allowedMatches": [
         {
-          "file": "apps/desktop/lib/src/backend/features/routing/services/route_session_binding_store.dart",
-          "tokens": [
-            "package:crypto/crypto.dart"
-          ],
-          "reason": "Route-history privacy uses SHA-256 only to derive non-secret lookup digests; this store does not implement Secure Mesh payload cryptography."
-        },
-        {
           "file": "apps/desktop/lib/src/platform/storage/portable_data_root.dart",
           "tokens": [
             "package:crypto/crypto.dart"

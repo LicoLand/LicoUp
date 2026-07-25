@@ -50,27 +50,6 @@ pub(crate) fn lock_claude_process_local_tests() -> ClaudeProcessLocalTestGuard {
     }
 }
 
-#[cfg(unix)]
-pub(crate) struct TransportJoinProbeEnvironment;
-
-#[cfg(unix)]
-impl TransportJoinProbeEnvironment {
-    pub(crate) fn install(root: &std::path::Path) -> Self {
-        // SAFETY: callers hold the cross-process test guard for the guard's
-        // entire lifetime, so no test thread can concurrently access this seam.
-        unsafe { std::env::set_var("LICO_TEST_CLAUDE_TRANSPORT_JOIN_PROBE_ROOT", root) };
-        Self
-    }
-}
-
-#[cfg(unix)]
-impl Drop for TransportJoinProbeEnvironment {
-    fn drop(&mut self) {
-        // SAFETY: the matching test guard remains held until after this drop.
-        unsafe { std::env::remove_var("LICO_TEST_CLAUDE_TRANSPORT_JOIN_PROBE_ROOT") };
-    }
-}
-
 fn stale_lease(lease_directory: &std::path::Path) -> bool {
     let Ok(owner) = fs::read_to_string(lease_directory.join("owner")) else {
         return false;

@@ -37,11 +37,4 @@ impl ProtocolFailure {
         }
         self
     }
-
-    pub(in crate::platform) fn with_turn(mut self, turn_id: &str) -> Self {
-        if !turn_id.trim().is_empty() {
-            self.turn_id = Some(turn_id.to_string());
-        }
-        self
-    }
 }

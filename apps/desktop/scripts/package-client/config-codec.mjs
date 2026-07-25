@@ -205,7 +205,7 @@ export function validatePackagingConfig(
     ) {
       packageFailure("packaging_module_profile_invalid");
     }
-    if (id === "native-sidecar" && moduleConfig.cargoBin !== "licoup") {
+    if (id === "native-sidecar" && moduleConfig.cargoBin !== "licoup-cli") {
       packageFailure("packaging_native_sidecar_authority_invalid");
     }
   }

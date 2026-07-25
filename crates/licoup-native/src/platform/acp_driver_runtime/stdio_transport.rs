@@ -44,6 +44,7 @@ impl PromptDrainBudget {
         }
     }
 
+    #[cfg(test)]
     pub(super) fn hard_deadline(self) -> Instant {
         self.hard_deadline
     }
