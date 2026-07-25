@@ -60,6 +60,11 @@ jobs:
           restore-keys: ${{ runner.os }}-cargo-
       - name: Install Node dependencies
         run: npm ci
+      - name: Prepare Android unit test dependencies
+        run: npm run client:get
+      - name: Resolve Android unit test dependencies
+        working-directory: apps/desktop/android
+        run: ./gradlew -q --no-daemon --warning-mode none app:dependencies --configuration debugUnitTestRuntimeClasspath
       - name: Install pinned cargo-audit
         run: cargo install cargo-audit --version 0.22.2 --locked
       - name: Run client source gate
