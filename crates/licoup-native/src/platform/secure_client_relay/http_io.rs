@@ -4,6 +4,8 @@ use anyhow::{Result, anyhow, ensure};
 use serde_json::Value;
 use url::Url;
 
+use crate::platform::url_security::is_https_or_loopback_http_url;
+
 use super::contract::{
     HTTP_TIMEOUT_SECONDS, MAX_RETRY_AFTER_SECONDS, SESSION_COOKIE_NAME, SecureClientRelayAuth,
     SecureClientRelayRequest, SecureClientRelayResponseHead,
@@ -78,16 +80,8 @@ fn validate_base_url(base_url: String) -> Result<String> {
             && parsed.path() == "/",
         "secure client relay base URL is invalid"
     );
-    let host = parsed
-        .host()
-        .ok_or_else(|| anyhow!("secure client relay base URL is invalid"))?;
-    let is_loopback = matches!(
-        host,
-        url::Host::Domain(domain) if domain.eq_ignore_ascii_case("localhost")
-    ) || matches!(host, url::Host::Ipv4(address) if address.octets() == [127, 0, 0, 1])
-        || matches!(host, url::Host::Ipv6(address) if address.is_loopback());
     ensure!(
-        parsed.scheme() == "https" || (parsed.scheme() == "http" && is_loopback),
+        is_https_or_loopback_http_url(&base_url),
         "secure client relay requires HTTPS except for loopback endpoints"
     );
     Ok(base_url)

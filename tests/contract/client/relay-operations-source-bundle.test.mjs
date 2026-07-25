@@ -149,8 +149,12 @@ test("mailbox envelope and delivery enforce canonical bounded cryptographic stru
     assert.ok(source["mailbox.rs"].includes(token), token);
   }
   assert.ok(source["envelope.rs"].includes("SecureMeshRelayEnvelope::from_json"));
-  assert.ok(source["envelope.rs"].includes("MOBILE_RELAY_COMMAND_TTL_SECONDS"));
-  assert.ok(source["envelope.rs"].includes("MOBILE_RELAY_ENVELOPE_CLOCK_SKEW_SECONDS"));
+  assert.ok(source["envelope.rs"].includes("serde_json::to_string"));
+  const pairwisePayload = await read(
+    "crates/licoup-native/src/domain/mobile_relay/pairwise_session/payload.rs",
+  );
+  assert.ok(pairwisePayload.includes("MOBILE_RELAY_COMMAND_TTL_SECONDS"));
+  assert.ok(pairwisePayload.includes("timestamp_after_seconds"));
   assert.ok(source["delivery.rs"].includes("SECURE_MESH_RELAY_OUTER_FIELDS"));
   assert.ok(source["delivery.rs"].includes("delivery envelope is incomplete"));
 });
