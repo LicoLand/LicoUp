@@ -1,3 +1,5 @@
+#[cfg(target_os = "macos")]
+pub(super) use super::super::verify::verify_staged_selection;
 pub(super) use super::super::{
     apply::apply,
     canonical::{sha256_hex, stable_stringify, unsigned_document},
@@ -9,7 +11,7 @@ pub(super) use super::super::{
     dispatch::dispatch,
     download::download,
     status::status,
-    verify::{verify, verify_staged_selection},
+    verify::verify,
 };
 pub(super) use base64::{Engine as _, engine::general_purpose};
 pub(super) use ed25519_dalek::{Signer, SigningKey};

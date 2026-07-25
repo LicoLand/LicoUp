@@ -1,6 +1,8 @@
 mod acp_driver_runtime;
 mod acp_session_transport;
 pub(crate) mod antigravity_driver;
+// Linux keeps the fail-closed adapter surface without a native record backend.
+#[cfg_attr(target_os = "linux", allow(dead_code))]
 pub mod authorized_secure_record;
 mod claude_code_driver;
 mod codex_app_server;

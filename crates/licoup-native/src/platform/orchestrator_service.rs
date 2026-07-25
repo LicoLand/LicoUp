@@ -1582,6 +1582,7 @@ fn reject_stream_for(writer: &mut impl std::io::Write, request_id: &str, code: &
 
 #[cfg(unix)]
 fn owner_peer(stream: &UnixStream) -> bool {
+    #[cfg(any(target_os = "macos", target_os = "ios", target_os = "freebsd"))]
     use std::os::fd::AsRawFd;
     #[cfg(any(target_os = "macos", target_os = "ios", target_os = "freebsd"))]
     {
