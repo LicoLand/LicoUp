@@ -179,10 +179,19 @@ function validateCanonicalFindingForRoot(finding, scanRoot) {
   };
 }
 
+function isAuditorDelegationEnabled(environment = process.env) {
+  return (
+    environment.LICO_AUDITOR_GATE_DELEGATED === "1" &&
+    environment.GITHUB_ACTIONS === "true" &&
+    environment.GITHUB_WORKFLOW === "Client CI" &&
+    environment.GITHUB_JOB === "client-gate"
+  );
+}
+
 async function runCanonicalScan(scanRoot, command = "lico-dev", options = {}) {
   if (
     options.allowAuditorDelegation === true &&
-    process.env.LICO_AUDITOR_GATE_DELEGATED === "1"
+    isAuditorDelegationEnabled()
   ) {
     return {
       ok: true,
@@ -424,6 +433,44 @@ async function runSelfTest() {
       unavailable.failures[0].reasonCode === "LICOMESH_DEV_UNAVAILABLE",
       "SELF_TEST_MISSING_TOOL_NOT_FAIL_CLOSED"
     );
+    requireSelfTest(
+      isAuditorDelegationEnabled({
+        LICO_AUDITOR_GATE_DELEGATED: "1",
+        GITHUB_ACTIONS: "true",
+        GITHUB_WORKFLOW: "Client CI",
+        GITHUB_JOB: "client-gate"
+      }),
+      "SELF_TEST_GITHUB_AUDITOR_DELEGATION_REJECTED"
+    );
+    for (const incompleteEnvironment of [
+      {
+        GITHUB_ACTIONS: "true",
+        GITHUB_WORKFLOW: "Client CI",
+        GITHUB_JOB: "client-gate"
+      },
+      {
+        LICO_AUDITOR_GATE_DELEGATED: "1",
+        GITHUB_WORKFLOW: "Client CI",
+        GITHUB_JOB: "client-gate"
+      },
+      {
+        LICO_AUDITOR_GATE_DELEGATED: "1",
+        GITHUB_ACTIONS: "true",
+        GITHUB_WORKFLOW: "Another workflow",
+        GITHUB_JOB: "client-gate"
+      },
+      {
+        LICO_AUDITOR_GATE_DELEGATED: "1",
+        GITHUB_ACTIONS: "true",
+        GITHUB_WORKFLOW: "Client CI",
+        GITHUB_JOB: "another-job"
+      }
+    ]) {
+      requireSelfTest(
+        !isAuditorDelegationEnabled(incompleteEnvironment),
+        "SELF_TEST_AUDITOR_DELEGATION_SCOPE_TOO_BROAD"
+      );
+    }
 
     return {
       schemaVersion,
@@ -433,7 +480,8 @@ async function runSelfTest() {
         canonicalSensitiveFindingProtocolAccepted: true,
         localScannerRejectedDeviceAndRuntimeIdentity: true,
         reportDidNotRediscloseMatches: true,
-        missingCanonicalScannerFailedClosed: true
+        missingCanonicalScannerFailedClosed: true,
+        auditorDelegationRestrictedToClientGitHubJob: true
       }
     };
   } finally {
@@ -454,7 +502,7 @@ if (selfTestOnly) {
     process.exit(1);
   }
 } else {
-  const delegatedToAuditor = process.env.LICO_AUDITOR_GATE_DELEGATED === "1";
+  const delegatedToAuditor = isAuditorDelegationEnabled();
   const canonical = await runCanonicalScan(repoRoot, "lico-dev", {
     allowAuditorDelegation: true
   });
