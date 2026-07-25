@@ -179,7 +179,17 @@ function validateCanonicalFindingForRoot(finding, scanRoot) {
   };
 }
 
-async function runCanonicalScan(scanRoot, command = "lico-dev") {
+async function runCanonicalScan(scanRoot, command = "lico-dev", options = {}) {
+  if (
+    options.allowAuditorDelegation === true &&
+    process.env.LICO_AUDITOR_GATE_DELEGATED === "1"
+  ) {
+    return {
+      ok: true,
+      scannedFiles: 0,
+      failures: []
+    };
+  }
   let stdout = "";
   let exitCode = 0;
   try {
@@ -303,12 +313,12 @@ async function scanEvidenceFiles(root) {
   return { scannedFiles, failures: unique };
 }
 
-function buildReport(canonical, local) {
+function buildReport(canonical, local, authoritativeScanner = "lico-dev") {
   const failures = [...canonical.failures, ...local.failures];
   return {
     schemaVersion,
     ok: failures.length === 0,
-    authoritativeScanner: "lico-dev",
+    authoritativeScanner,
     authoritativeScannedFiles: canonical.scannedFiles,
     localEvidenceScannedFiles: local.scannedFiles,
     findingCount: failures.length,
@@ -444,9 +454,16 @@ if (selfTestOnly) {
     process.exit(1);
   }
 } else {
-  const canonical = await runCanonicalScan(repoRoot);
+  const delegatedToAuditor = process.env.LICO_AUDITOR_GATE_DELEGATED === "1";
+  const canonical = await runCanonicalScan(repoRoot, "lico-dev", {
+    allowAuditorDelegation: true
+  });
   const local = await scanEvidenceFiles(repoRoot);
-  const report = buildReport(canonical, local);
+  const report = buildReport(
+    canonical,
+    local,
+    delegatedToAuditor ? "lico-auditor-gate" : "lico-dev"
+  );
   await mkdir(path.dirname(reportPath), { recursive: true });
   await writeFile(reportPath, `${JSON.stringify(report, null, 2)}\n`, "utf8");
   console.log(JSON.stringify(report, null, 2));
