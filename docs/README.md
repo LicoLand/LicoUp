@@ -12,6 +12,8 @@ authority.
 - [Contributing](../CONTRIBUTING.md) · [参与贡献](../CONTRIBUTING.zh-CN.md)
 - [Code of Conduct](../CODE_OF_CONDUCT.md)
 - [Changelog](../CHANGELOG.md)
+- [Governed release status](releases/README.md) ·
+  [版本发布状态](releases/README.zh-CN.md)
 - [Security](../SECURITY.md) · [安全](../SECURITY.zh-CN.md)
 - [License](../LICENSE)
 
