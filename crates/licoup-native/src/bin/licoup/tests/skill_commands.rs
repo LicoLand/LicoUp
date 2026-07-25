@@ -73,12 +73,11 @@ fn cli_dispatches_agent_pairing_and_skill_paths() {
             "skill".into(),
             "visibility".into(),
             "set".into(),
+            "review".into(),
             "--agent".into(),
             "codex".into(),
-            "--skill".into(),
-            "review".into(),
-            "--visibility".into(),
-            "hidden".into(),
+            "--hidden".into(),
+            "true".into(),
         ])
         .unwrap();
         assert_eq!(json_payload(&visibility)["hidden"], true);
@@ -88,10 +87,9 @@ fn cli_dispatches_agent_pairing_and_skill_paths() {
             "skill".into(),
             "pin".into(),
             "set".into(),
+            "review".into(),
             "--agent".into(),
             "codex".into(),
-            "--skill".into(),
-            "review".into(),
             "--version".into(),
             "1.0.0".into(),
         ])
