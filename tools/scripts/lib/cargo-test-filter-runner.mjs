@@ -16,6 +16,24 @@ export function cargoTestExecutionCount(output) {
   return executed;
 }
 
+export function cargoFailureDiagnostic(output, sanitizeError = () => "") {
+  const sanitized = sanitizeError(String(output || "").slice(-8 * 1024))
+    .replace(/\u001b\[[0-9;]*m/gu, "");
+  const diagnosticLine = /^(?:error(?:\[[A-Z0-9]+\])?:|Caused by:|thread '.+' panicked at|Unable to find|No space left on device|warning: build failed)/u;
+  return sanitized
+    .split(/\r?\n/u)
+    .map((line) => line.trim())
+    .filter((line) => diagnosticLine.test(line))
+    .map((line) => line
+      .replace(/\/(?:Users|home|private|var\/folders)\/\S*/gu, "<local-path>")
+      .replace(/[A-Za-z]:\\\S*/gu, "<local-path>")
+      .replace(/\b(?:gh[pousr]_|github_pat_|sk-)[A-Za-z0-9._-]+\b/gu, "[redacted]")
+      .slice(0, 240))
+    .slice(-6)
+    .join("\n")
+    .slice(0, 1200);
+}
+
 export function runCargoTestFilter({
   repoRoot,
   manifestPath,
@@ -49,7 +67,7 @@ export function runCargoTestFilter({
   const failureOutput = ok ? "" : String(result.stderr || result.stdout || "");
   const failureDiagnostic = ok || matchedAtLeastOneTest
     ? ""
-    : sanitizeError(failureOutput.slice(-8 * 1024));
+    : cargoFailureDiagnostic(failureOutput, sanitizeError);
   return {
     id: filter,
     command: `${command} ${commandArgs.join(" ")}`,
