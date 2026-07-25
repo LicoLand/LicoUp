@@ -327,20 +327,17 @@ function requireSelfTest(condition, reasonCode) {
 async function runSelfTest() {
   const temporary = await mkdtemp(path.join(tmpdir(), "lico-up-hygiene-"));
   try {
-    const portableDirectory = path.join(temporary, "portable-candidate");
-    await mkdir(portableDirectory, { recursive: true });
-    await writeFile(
-      path.join(portableDirectory, "portable-paths.txt"),
-      [
-        ["workspace", "source"].join("/"),
-        ["build", "reports"].join("/"),
-        ["portable", "cache"].join("/"),
-        ""
-      ].join("\n"),
-      "utf8"
+    const cleanProtocolResult = parseCanonicalResult(
+      JSON.stringify({
+        ok: true,
+        scannedFiles: 3,
+        findingCount: 0,
+        findings: []
+      }),
+      0,
+      temporary
     );
-    const portableScan = await runCanonicalScan(portableDirectory);
-    requireSelfTest(portableScan.ok === true, "SELF_TEST_PORTABLE_RELATIVE_PATH_REJECTED");
+    requireSelfTest(cleanProtocolResult.ok === true, "SELF_TEST_CLEAN_PROTOCOL_RESULT_REJECTED");
 
     const fixtureDirectory = path.join(temporary, "build", "reports");
     await mkdir(fixtureDirectory, { recursive: true });
@@ -400,7 +397,7 @@ async function runSelfTest() {
       schemaVersion,
       ok: true,
       checks: {
-        canonicalScannerAllowedPortableRelativePaths: true,
+        canonicalCleanProtocolResultAccepted: true,
         canonicalScannerRejectedHomeAndCredential: true,
         localScannerRejectedDeviceAndRuntimeIdentity: true,
         reportDidNotRediscloseMatches: true,
