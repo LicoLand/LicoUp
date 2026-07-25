@@ -1,23 +1,23 @@
 {
-  "name": "lico-arc-codex",
+  "name": "lico-up-codex",
   "version": "0.1.0",
-  "description": "Governed Lico Arc workflow controls for Codex.",
+  "description": "Governed LicoUp workflow controls for Codex.",
   "author": {
     "name": "LicoMesh"
   },
   "license": "GPL-3.0-or-later",
   "skills": "./skills/",
   "mcpServers": {
-    "lico-arc-orchestration": {
+    "lico-up-orchestration": {
       "type": "stdio",
       "command": "lico-codex-mcp",
       "args": []
     }
   },
   "interface": {
-    "displayName": "Lico Arc Orchestration",
-    "shortDescription": "Submit and observe Lico Arc governed workflows.",
-    "longDescription": "A local, privacy-minimal Codex control plane for backend-owned Lico Arc workflows.",
+    "displayName": "LicoUp Orchestration",
+    "shortDescription": "Submit and observe LicoUp governed workflows.",
+    "longDescription": "A local, privacy-minimal Codex control plane for backend-owned LicoUp workflows.",
     "developerName": "LicoMesh",
     "category": "Productivity",
     "capabilities": [
@@ -25,8 +25,8 @@
       "Write"
     ],
     "defaultPrompt": [
-      "Preview my active Lico Arc workflow policy.",
-      "Submit this plan to Lico Arc and track its receipt."
+      "Preview my active LicoUp workflow policy.",
+      "Submit this plan to LicoUp and track its receipt."
     ]
   }
 }
