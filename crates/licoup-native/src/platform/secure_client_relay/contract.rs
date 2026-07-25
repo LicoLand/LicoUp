@@ -4,9 +4,9 @@ use serde::Serialize;
 use serde_json::Value;
 
 pub const SECURE_CLIENT_RELAY_CORE_CONTRACT_DIGEST: &str =
-    "sha256:0c2cdc66b4c135043b53c0c5b53533238568978a948ae98be1b45eb7a28b724b";
+    "sha256:b8f03b866a4af4d59fca43ddb86621f3ac6dbc6d2acc5c76177d6eeef83c0439";
 pub const SECURE_CLIENT_RELAY_CORE_CONFORMANCE_DIGEST: &str =
-    "sha256:ffc60b2ebc9dc123bfabb5e8627613a2f5b8b7b3792fd68a0dd2ca0ffae96224";
+    "sha256:34b6b92259190829348f0719e4bd60c031b43d1480bcd0b49e6c37eb25abcef0";
 pub const SECURE_CLIENT_RELAY_PROTOCOL_VERSION: &str = "licomesh.secure-mesh.v1";
 pub const SECURE_CLIENT_RELAY_CORE_CONTRACT: &str =
     include_str!("../../../resources/secure-client-relay-core-contract.json");
