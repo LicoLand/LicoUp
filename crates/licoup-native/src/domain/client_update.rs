@@ -9,6 +9,9 @@ mod download;
 mod keys;
 mod macos_runner;
 mod metadata;
+// Linux can verify update metadata, but does not yet consume every
+// platform-specific artifact descriptor field.
+#[cfg_attr(target_os = "linux", allow(dead_code))]
 mod model;
 mod params;
 mod release;
