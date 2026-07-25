@@ -102,7 +102,7 @@ fn stdio_rpc_rejects_streaming_execute_without_invoking_the_command() {
 }
 
 #[test]
-fn stdio_rpc_conversation_send_checks_readiness_before_dispatch() {
+fn stdio_rpc_conversation_send_rejects_missing_agent_before_dispatch() {
     let _serial = claude_process_local_test_lock::lock_claude_process_local_tests();
     let input = rpc_input(&[json!({
         "protocol": STDIO_RPC_PROTOCOL,
@@ -120,5 +120,5 @@ fn stdio_rpc_conversation_send_checks_readiness_before_dispatch() {
     assert_eq!(frames.len(), 1);
     assert_eq!(frames[0]["kind"], "terminal");
     assert_eq!(frames[0]["ok"], false);
-    assert_eq!(frames[0]["error"]["code"], "command_failed");
+    assert_eq!(frames[0]["error"]["code"], "agent_identifier_missing");
 }
