@@ -7,7 +7,7 @@ pub(super) use crate::core::secure_mesh_capability::{
 };
 pub(super) use crate::platform::paths::set_portable_data_dir_override;
 pub(super) use crate::platform::secure_client_relay::SecureClientRelayOperation;
-pub(super) use crate::platform::secure_mesh_secret_store::EphemeralSecretStore;
+pub(super) use crate::platform::secure_mesh_secret_store::{EphemeralSecretStore, SecretBytes};
 pub(super) use std::env;
 pub(super) use std::io::{BufRead, BufReader, Read, Write};
 pub(super) use std::net::{TcpListener, TcpStream};
@@ -82,77 +82,87 @@ pub(super) fn append_test_directory_state(
 
 pub(super) fn pair_mobile_relay_configs(pc_config: &mut Value, mobile_config: &mut Value) {
     let shared_delivery_secret = random_base64url(MOBILE_RELAY_KEY_BYTES);
-    pc_config["mobileRelayE2ee"]["pairingSecretBase64url"] = json!(shared_delivery_secret.clone());
-    mobile_config["mobileRelayE2ee"]["pairingSecretBase64url"] = json!(shared_delivery_secret);
+    test_runtime_secret_material(stringify!(pc_config))
+        .replace_e2ee_secret(
+            MobileRelayE2eeSecretField::PairingSecret,
+            SecretBytes::try_from_string(shared_delivery_secret.clone()).unwrap(),
+        )
+        .unwrap();
+    test_runtime_secret_material(stringify!(mobile_config))
+        .replace_e2ee_secret(
+            MobileRelayE2eeSecretField::PairingSecret,
+            SecretBytes::try_from_string(shared_delivery_secret).unwrap(),
+        )
+        .unwrap();
     let pc_descriptor = ensure_mobile_relay_endpoint_descriptor(
         pc_config,
-        test_runtime_secret_material(stringify!(pc_config)),
+        &mut test_runtime_secret_material(stringify!(pc_config)),
         "desktop_sidecar",
     )
     .unwrap();
     ensure_mobile_relay_endpoint_descriptor(
         mobile_config,
-        test_runtime_secret_material(stringify!(mobile_config)),
+        &mut test_runtime_secret_material(stringify!(mobile_config)),
         "mobile",
     )
     .unwrap();
     apply_peer_secure_mesh_descriptor(
         mobile_config,
-        test_runtime_secret_material(stringify!(mobile_config)),
+        &mut test_runtime_secret_material(stringify!(mobile_config)),
         &pc_descriptor,
         true,
     )
     .unwrap();
     let mobile_descriptor = ensure_mobile_relay_endpoint_descriptor(
         mobile_config,
-        test_runtime_secret_material(stringify!(mobile_config)),
+        &mut test_runtime_secret_material(stringify!(mobile_config)),
         "mobile",
     )
     .unwrap();
     apply_peer_secure_mesh_descriptor(
         pc_config,
-        test_runtime_secret_material(stringify!(pc_config)),
+        &mut test_runtime_secret_material(stringify!(pc_config)),
         &mobile_descriptor,
         true,
     )
     .unwrap();
     let pc_accepted_descriptor = ensure_mobile_relay_endpoint_descriptor(
         pc_config,
-        test_runtime_secret_material(stringify!(pc_config)),
+        &mut test_runtime_secret_material(stringify!(pc_config)),
         "desktop_sidecar",
     )
     .unwrap();
     apply_peer_secure_mesh_descriptor(
         mobile_config,
-        test_runtime_secret_material(stringify!(mobile_config)),
+        &mut test_runtime_secret_material(stringify!(mobile_config)),
         &pc_accepted_descriptor,
         true,
     )
     .unwrap();
     let mobile_finished_descriptor = ensure_mobile_relay_endpoint_descriptor(
         mobile_config,
-        test_runtime_secret_material(stringify!(mobile_config)),
+        &mut test_runtime_secret_material(stringify!(mobile_config)),
         "mobile",
     )
     .unwrap();
     assert!(mobile_finished_descriptor["pairwiseFinished"].is_object());
     apply_peer_secure_mesh_descriptor(
         pc_config,
-        test_runtime_secret_material(stringify!(pc_config)),
+        &mut test_runtime_secret_material(stringify!(pc_config)),
         &mobile_finished_descriptor,
         true,
     )
     .unwrap();
     let protected_payload = seal_mobile_relay_payload(
         mobile_config,
-        test_runtime_secret_material(stringify!(mobile_config)),
+        &mut test_runtime_secret_material(stringify!(mobile_config)),
         crate::core::secure_mesh_crypto::SecureMeshPayloadKind::ServiceAction,
         &json!({"action": "pairwise_finished_confirmed"}),
     )
     .unwrap();
     let opened = open_mobile_relay_payload(
         pc_config,
-        test_runtime_secret_material(stringify!(pc_config)),
+        &mut test_runtime_secret_material(stringify!(pc_config)),
         &protected_payload,
         crate::core::secure_mesh_crypto::SecureMeshPayloadKind::ServiceAction,
     )
@@ -163,20 +173,76 @@ pub(super) fn pair_mobile_relay_configs(pc_config: &mut Value, mobile_config: &m
     );
 }
 
+pub(super) fn test_runtime_e2ee_secret(
+    variable: &str,
+    field: MobileRelayE2eeSecretField,
+) -> String {
+    let material = test_runtime_secret_material(variable);
+    let bytes = material
+        .e2ee_secret(field)
+        .unwrap_or_else(|| {
+            panic!(
+                "test runtime secret material is missing {}",
+                field.config_field()
+            )
+        })
+        .expose_bytes();
+    String::from_utf8(bytes.to_vec()).unwrap()
+}
+
+pub(super) fn persist_test_runtime_secret_material(variable: &str) -> Result<()> {
+    let mut material = test_runtime_secret_material(variable);
+    let mut batch = MobileRelaySecretStoreAuthBatch::default();
+    persist_runtime_secret_material_to_native_store_with_batch(&mut material, &mut batch)
+}
+
+pub(super) fn take_test_runtime_secret_context(variable: &str) -> RuntimeSecretContext {
+    let mut context = RuntimeSecretContext::default();
+    if let Some(bundle) = test_runtime_secret_material(variable).take_e2ee_bundle() {
+        context.material.merge_e2ee_bundle(bundle);
+    }
+    context
+}
+
+pub(super) fn restore_test_runtime_secret_context(
+    variable: &str,
+    mut context: RuntimeSecretContext,
+) {
+    if let Some(bundle) = context.material.take_e2ee_bundle() {
+        test_runtime_secret_material(variable).merge_e2ee_bundle(bundle);
+    }
+}
+
+pub(super) fn apply_test_out_of_band_pairing_response(
+    config: &mut Value,
+    variable: &str,
+    response: &Value,
+) -> Result<()> {
+    let mut context = take_test_runtime_secret_context(variable);
+    let result =
+        apply_out_of_band_pairing_response_with_context(config, response, Some(&mut context));
+    restore_test_runtime_secret_context(variable, context);
+    result
+}
+
+pub(super) fn save_test_config_with_runtime_secret_context(
+    config: &mut Value,
+    variable: &str,
+) -> Result<()> {
+    let mut context = take_test_runtime_secret_context(variable);
+    let result = save_config_with_runtime_secret_context(config, &mut context);
+    restore_test_runtime_secret_context(variable, context);
+    result
+}
+
 pub(super) fn paired_command_envelope_fixture() -> (Value, Value, Value) {
     let mut pc_config = default_config();
     let mut mobile_config = default_config();
     pair_mobile_relay_configs(&mut pc_config, &mut mobile_config);
-    let mobile_endpoint = local_endpoint_state(
-        &mobile_config,
-        test_runtime_secret_material(stringify!(&mobile_config)),
-    )
-    .unwrap();
-    let pc_endpoint = local_endpoint_state(
-        &pc_config,
-        test_runtime_secret_material(stringify!(&pc_config)),
-    )
-    .unwrap();
+    let mobile_material = test_runtime_secret_material(stringify!(&mobile_config));
+    let pc_material = test_runtime_secret_material(stringify!(&pc_config));
+    let mobile_endpoint = local_endpoint_state(&mobile_config, &mobile_material).unwrap();
+    let pc_endpoint = local_endpoint_state(&pc_config, &pc_material).unwrap();
     let command_payload = json!({
         "schema": crate::core::secure_mesh::SECURE_MESH_COMMAND_PROTOCOL_VERSION,
         "commandId": "cmd_mobile_relay_replay_fixture",
@@ -202,9 +268,11 @@ pub(super) fn paired_command_envelope_fixture() -> (Value, Value, Value) {
             "limit": 1
         }
     });
+    drop(mobile_material);
+    drop(pc_material);
     let envelope = seal_mobile_relay_payload(
         &mobile_config,
-        test_runtime_secret_material(stringify!(&mobile_config)),
+        &mut test_runtime_secret_material(stringify!(&mobile_config)),
         crate::core::secure_mesh_crypto::SecureMeshPayloadKind::Command,
         &command_payload,
     )
@@ -215,7 +283,7 @@ pub(super) fn paired_command_envelope_fixture() -> (Value, Value, Value) {
 pub(super) fn opened_result_payload(mobile_config: &Value, envelope: &Value) -> Value {
     let opened = open_mobile_relay_payload(
         mobile_config,
-        test_runtime_secret_material(stringify!(mobile_config)),
+        &mut test_runtime_secret_material(stringify!(mobile_config)),
         envelope,
         crate::core::secure_mesh_crypto::SecureMeshPayloadKind::ResultPayload,
     )
@@ -419,6 +487,10 @@ pub(super) fn canonical_register_response(request: &CapturedHttpRequest) -> Valu
             "createdAt": "2026-01-01T00:00:00Z",
             "updatedAt": "2026-01-01T00:00:00Z",
             "revokedAt": ""
+        },
+        "registrationReceipt": {
+            "receiptRef": "b".repeat(64),
+            "sequence": 1
         }
     })
 }

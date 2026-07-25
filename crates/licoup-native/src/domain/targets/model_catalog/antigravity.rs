@@ -1,4 +1,11 @@
 use super::*;
+use crate::platform::run_bounded_command_output;
+use std::time::Duration;
+
+const DEFAULT_AGENT_CLI_MODEL_LOOKUP_TIMEOUT_MS: u64 = 3_000;
+const MIN_AGENT_CLI_MODEL_LOOKUP_TIMEOUT_MS: u64 = 100;
+const MAX_AGENT_CLI_MODEL_LOOKUP_TIMEOUT_MS: u64 = 10_000;
+const MAX_AGENT_CLI_MODEL_LOOKUP_OUTPUT_BYTES: usize = 256 * 1024;
 
 pub(super) fn collect_antigravity_cli_model_catalog(
     params: &Value,
@@ -35,7 +42,20 @@ pub(super) fn collect_antigravity_cli_model_catalog(
         }));
         return;
     };
-    let output = Command::new(program).arg("models").output();
+    let timeout_ms = param_u64(params, "antigravityCliModelLookupTimeoutMs")
+        .or_else(|| param_u64(params, "agentCliModelLookupTimeoutMs"))
+        .unwrap_or(DEFAULT_AGENT_CLI_MODEL_LOOKUP_TIMEOUT_MS)
+        .clamp(
+            MIN_AGENT_CLI_MODEL_LOOKUP_TIMEOUT_MS,
+            MAX_AGENT_CLI_MODEL_LOOKUP_TIMEOUT_MS,
+        );
+    let mut command = Command::new(program);
+    command.arg("models");
+    let output = run_bounded_command_output(
+        &mut command,
+        Duration::from_millis(timeout_ms),
+        MAX_AGENT_CLI_MODEL_LOOKUP_OUTPUT_BYTES,
+    );
     let Ok(output) = output else {
         diagnostics.push(json!({
             "source": source,
@@ -43,11 +63,25 @@ pub(super) fn collect_antigravity_cli_model_catalog(
         }));
         return;
     };
-    if !output.status.success() {
+    if output.timed_out {
+        diagnostics.push(json!({
+            "source": source,
+            "status": "timeout",
+        }));
+        return;
+    }
+    if output.truncated {
+        diagnostics.push(json!({
+            "source": source,
+            "status": "output-too-large",
+        }));
+        return;
+    }
+    if !output.status.is_some_and(|status| status.success()) {
         diagnostics.push(json!({
             "source": source,
             "status": "command-exited",
-            "code": output.status.code(),
+            "code": output.status.and_then(|status| status.code()),
         }));
         return;
     }

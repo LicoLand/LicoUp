@@ -242,6 +242,10 @@ model = "gpt-5.4-mini"
 mod antigravity {
     use super::super::antigravity::collect_model_catalog_from_cli_lines;
     use super::*;
+    #[cfg(unix)]
+    use std::os::unix::fs::PermissionsExt;
+    #[cfg(unix)]
+    use std::time::{Duration, Instant};
 
     #[test]
     fn model_catalog_preserves_antigravity_available_model_names() {
@@ -291,6 +295,70 @@ Claude Opus 4.6 (Thinking)
             entry.name == "Gemini 3.5 Flash (Medium)" && entry.provider.is_none()
         }));
         assert!(entries.values().all(|entry| !entry.provider_inferred));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn antigravity_cli_model_lookup_preserves_real_results() {
+        let dir = temp_test_dir("antigravity-cli-models");
+        let executable = dir.join("agent-models");
+        fs::write(
+            &executable,
+            "#!/bin/sh\nprintf 'Fixture Model One\\nFixture Model Two\\n'\n",
+        )
+        .unwrap();
+        fs::set_permissions(&executable, fs::Permissions::from_mode(0o700)).unwrap();
+
+        let catalog = model_catalog_for_target(
+            "antigravity",
+            None,
+            &json!({
+                "includeHistoryModelCatalog": false,
+                "enableAgentCliModelLookup": true,
+                "antigravityCliPath": display_path(executable),
+            }),
+        );
+
+        assert!(
+            catalog["models"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|model| model["name"] == "Fixture Model One")
+        );
+        assert!(
+            catalog["sources"]
+                .as_array()
+                .unwrap()
+                .contains(&json!("antigravity-cli"))
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn antigravity_cli_model_lookup_times_out_without_blocking_catalog() {
+        let dir = temp_test_dir("antigravity-cli-timeout");
+        let executable = dir.join("agent-models");
+        fs::write(&executable, "#!/bin/sh\nsleep 30\n").unwrap();
+        fs::set_permissions(&executable, fs::Permissions::from_mode(0o700)).unwrap();
+        let started = Instant::now();
+
+        let catalog = model_catalog_for_target(
+            "antigravity",
+            None,
+            &json!({
+                "includeHistoryModelCatalog": false,
+                "enableAgentCliModelLookup": true,
+                "antigravityCliPath": display_path(executable),
+                "antigravityCliModelLookupTimeoutMs": 100,
+            }),
+        );
+
+        assert!(started.elapsed() < Duration::from_secs(3));
+        assert!(catalog["diagnostics"].as_array().unwrap().iter().any(
+            |diagnostic| diagnostic["source"] == "antigravity-cli:models"
+                && diagnostic["status"] == "timeout"
+        ));
     }
 }
 

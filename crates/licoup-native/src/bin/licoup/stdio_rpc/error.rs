@@ -33,21 +33,35 @@ pub(crate) fn stdio_rpc_client_error(code: &str) -> ClientError {
         ),
         ClientErrorCode::CliCommandMissing
         | ClientErrorCode::CliCommandUnknown
-        | ClientErrorCode::CliOperationUnsupported
-        | ClientErrorCode::CliRequiredArgumentMissing
+        | ClientErrorCode::CliOperationUnsupported => (
+            ClientErrorStage::CliAdmission,
+            ClientErrorComponent::NativeCli,
+            false,
+            ClientErrorRecovery::UseCliHelp,
+        ),
+        ClientErrorCode::CliRequiredArgumentMissing
         | ClientErrorCode::CliArgumentUnexpected
         | ClientErrorCode::CliOptionUnknown
         | ClientErrorCode::CliRequiredOptionMissing
         | ClientErrorCode::CliOptionValueMissing
         | ClientErrorCode::CliOptionDuplicate
-        | ClientErrorCode::CliOptionConstraintViolation
-        | ClientErrorCode::CliJsonInvalid
-        | ClientErrorCode::CliArgumentCountExceeded
-        | ClientErrorCode::CliArgumentBytesExceeded => (
-            ClientErrorStage::RequestValidation,
+        | ClientErrorCode::CliOptionConstraintViolation => (
+            ClientErrorStage::CliAdmission,
             ClientErrorComponent::NativeCli,
             false,
-            ClientErrorRecovery::CorrectRequest,
+            ClientErrorRecovery::CorrectCommandArguments,
+        ),
+        ClientErrorCode::CliJsonInvalid => (
+            ClientErrorStage::CliAdmission,
+            ClientErrorComponent::NativeCli,
+            false,
+            ClientErrorRecovery::ProvideValidJson,
+        ),
+        ClientErrorCode::CliArgumentCountExceeded | ClientErrorCode::CliArgumentBytesExceeded => (
+            ClientErrorStage::CliAdmission,
+            ClientErrorComponent::NativeCli,
+            false,
+            ClientErrorRecovery::ReduceCommandArguments,
         ),
         _ => (
             ClientErrorStage::StdioRpcResponse,

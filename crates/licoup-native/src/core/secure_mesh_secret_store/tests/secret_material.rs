@@ -12,19 +12,19 @@ trait AmbiguousIfClone<A> {
     fn marker() {}
 }
 impl<T: ?Sized> AmbiguousIfClone<()> for TraitProbe<T> {}
-impl<T: ?Sized + Clone> AmbiguousIfClone<u8> for TraitProbe<T> {}
+impl<T: Clone> AmbiguousIfClone<u8> for TraitProbe<T> {}
 
 trait AmbiguousIfCopy<A> {
     fn marker() {}
 }
 impl<T: ?Sized> AmbiguousIfCopy<()> for TraitProbe<T> {}
-impl<T: ?Sized + Copy> AmbiguousIfCopy<u8> for TraitProbe<T> {}
+impl<T: Copy> AmbiguousIfCopy<u8> for TraitProbe<T> {}
 
 trait AmbiguousIfDefault<A> {
     fn marker() {}
 }
 impl<T: ?Sized> AmbiguousIfDefault<()> for TraitProbe<T> {}
-impl<T: ?Sized + Default> AmbiguousIfDefault<u8> for TraitProbe<T> {}
+impl<T: Default> AmbiguousIfDefault<u8> for TraitProbe<T> {}
 
 trait AmbiguousIfSerialize<A> {
     fn marker() {}
@@ -36,7 +36,7 @@ trait AmbiguousIfDeserialize<A> {
     fn marker() {}
 }
 impl<T: ?Sized> AmbiguousIfDeserialize<()> for TraitProbe<T> {}
-impl<T: ?Sized + serde::de::DeserializeOwned> AmbiguousIfDeserialize<u8> for TraitProbe<T> {}
+impl<T: serde::de::DeserializeOwned> AmbiguousIfDeserialize<u8> for TraitProbe<T> {}
 
 #[test]
 fn secret_bytes_is_bounded_single_owner_non_serde_and_explicitly_exposed() {

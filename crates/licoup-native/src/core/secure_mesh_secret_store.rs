@@ -23,7 +23,6 @@ pub use secret_bytes::SecretZeroizeProbe;
 pub use secret_bytes::{MAX_SECRET_BYTES, SecretBytes, SecretBytesError};
 
 pub(crate) use authorization::{derive_presence_binding_digest, digest_matches};
-pub(crate) use handle::is_persistable_secret;
 
 #[cfg(test)]
 mod tests;

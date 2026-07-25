@@ -30,8 +30,8 @@ import {
 const repoRoot = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const producer = "tools/scripts/client-macos-local-identity-install.mjs";
 const schemaVersion = "licomesh.client-macos-local-identity-install.v1";
-const builtApp = path.join(repoRoot, "build/apps/desktop/runnable/macos/release/Arc.app");
-const installedApp = "/Applications/Arc.app";
+const builtApp = path.join(repoRoot, "build/apps/desktop/runnable/macos/release/LicoUp.app");
+const installedApp = "/Applications/LicoUp.app";
 const packageManifestPath = path.join(
   repoRoot,
   "build/apps/desktop/runnable/macos/release/package-metadata/licoup/packaging-modules.json",

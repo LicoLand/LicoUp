@@ -1,5 +1,5 @@
 use serde_json::Value;
-use std::io::{self, BufRead, Read};
+use std::io::{BufRead, Read};
 use std::sync::mpsc::Sender;
 
 pub(super) const MAX_PROTOCOL_LINE_BYTES: usize = 8 * 1024 * 1024;

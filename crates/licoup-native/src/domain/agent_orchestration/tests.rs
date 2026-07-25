@@ -1475,8 +1475,9 @@ fn agent_orchestration_fenced_lease_survives_client_disconnect_and_rejects_late_
         ))
         .unwrap();
     let fence = engine.owner_fence();
-    let client = engine.connect_control_plane("synthetic-client-a").unwrap();
-    drop(client);
+    {
+        let _client = engine.connect_control_plane("synthetic-client-a").unwrap();
+    }
 
     let second_store = DurableWorkflowStore::open(state.path(), store_limits())
         .err()

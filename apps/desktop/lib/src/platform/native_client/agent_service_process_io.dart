@@ -71,7 +71,7 @@ class BoundedNativeProcessIo implements AgentCommandRunner {
       final cli = await _processContext.resolveCliBinary();
       final environment = await _processContext.buildEnvironment();
       process = await _processContext.startProcess(
-        cli?.path ?? 'licoup',
+        cli?.path ?? 'licoup-cli',
         args,
         environment,
       );
@@ -173,7 +173,7 @@ class BoundedNativeProcessIo implements AgentCommandRunner {
       final cli = await _processContext.resolveCliBinary();
       final environment = await _processContext.buildEnvironment();
       process = await _processContext.startProcess(
-        cli?.path ?? 'licoup',
+        cli?.path ?? 'licoup-cli',
         args,
         environment,
       );

@@ -6,7 +6,7 @@
  * Authority for send enablement on supported agents: one session create, then
  * three sequential turns on the same sessionId with a non-empty result each.
  * Writes CL-06 evidence and runs the readiness reducer. Does not launch the
- * product e2e Arc.app path.
+ * product e2e LicoUp.app path.
  */
 
 import { createHash, randomUUID } from "node:crypto";

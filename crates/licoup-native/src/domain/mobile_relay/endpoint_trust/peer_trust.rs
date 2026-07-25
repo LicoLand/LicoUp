@@ -1,7 +1,8 @@
 use super::*;
+#[cfg(test)]
 use crate::domain::mobile_relay::secret_custody::RuntimeSecretMaterial;
 
-#[allow(dead_code)]
+#[cfg(test)]
 pub(in crate::domain::mobile_relay) fn apply_peer_secure_mesh_descriptor(
     config: &mut Value,
     secret_material: &mut RuntimeSecretMaterial,
@@ -16,7 +17,6 @@ pub(in crate::domain::mobile_relay) fn apply_peer_secure_mesh_descriptor(
     result
 }
 
-#[allow(dead_code)]
 pub(in crate::domain::mobile_relay) fn apply_peer_secure_mesh_descriptor_with_context(
     config: &mut Value,
     descriptor: &Value,
@@ -263,6 +263,8 @@ fn apply_peer_secure_mesh_descriptor_inner(
         directory_trust_state,
         DeviceTrustState::KeyChanged | DeviceTrustState::Revoked
     ) {
+        let local_identity =
+            local_endpoint_state(&candidate, &secret_context.material)?.device_identity()?;
         let terminal_state = match directory_trust_state {
             DeviceTrustState::KeyChanged => "key_changed",
             DeviceTrustState::Revoked => "revoked",
@@ -336,8 +338,6 @@ fn apply_peer_secure_mesh_descriptor_inner(
         *config = candidate;
         purge_mobile_relay_pairwise_sessions()?;
         {
-            let local_identity =
-                local_endpoint_state(config, &secret_context.material)?.device_identity()?;
             let (secret_store, authorization, namespace) = secret_context
                 .secret_store_batch
                 .authorization()?

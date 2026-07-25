@@ -51,6 +51,7 @@ fn selected_public_paired_device_restores_internal_token_without_exposure() {
     let dir = temp_dir("mobile-relay-select-redacted-device");
     let previous = set_portable_data_dir_override(Some(dir));
     let mut config = default_config();
+    let store = Arc::new(EphemeralSecretStore::new());
     config["pairingId"] = json!("pair-active");
     config["mobileToken"] = json!("mobile-token-active-canary");
     config["pairedDevices"] = json!([
@@ -71,22 +72,32 @@ fn selected_public_paired_device_restores_internal_token_without_exposure() {
             "gatewayUrl": "https://relay.example.test"
         }
     ]);
-    save_config(&mut config).unwrap();
-
-    let saved = config_set(&json!({
-        "pairingId": "pair-selected",
-        "mobileToken": "",
-        "paired": true
-    }))
+    let store_override: Arc<dyn SecureMeshSecretStore> = store.clone();
+    let saved = with_mobile_relay_secret_store_override(store_override, || {
+        save_config(&mut config)?;
+        config_set(&json!({
+            "pairingId": "pair-selected",
+            "mobileToken": "",
+            "paired": true
+        }))
+    })
     .unwrap();
-    let (internal, _) = load_config_with_runtime_secret_overrides(&json!({})).unwrap();
+    let internal = load_config().unwrap();
     assert_eq!(internal["pairingId"], "pair-selected");
-    assert_eq!(internal["mobileToken"], "mobile-token-selected-canary");
+    assert_eq!(internal["mobileToken"], "");
     assert_eq!(internal["pcClientId"], "pc-selected");
     assert_eq!(internal["pcClientName"], "Selected Mac");
     let serialized = serde_json::to_string(&saved).unwrap();
     assert!(!serialized.contains("mobile-token-selected-canary"));
     assert_eq!(saved["config"]["mobileTokenPresent"], true);
+    let paired_handle_key =
+        paired_device_token_secret_store_key(&internal["pairedDevices"][1]).unwrap();
+    let paired_handle = native_secret_store_handle_for_namespace(
+        MOBILE_RELAY_PLATFORM_SECRET_STORE_NAMESPACE,
+        &paired_handle_key,
+    )
+    .unwrap();
+    assert!(store.get_secret(&paired_handle).unwrap().is_some());
 
     set_portable_data_dir_override(previous);
 }

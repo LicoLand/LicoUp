@@ -106,7 +106,7 @@ pub(super) fn normalize_config(value: Value) -> Value {
     merged.insert("schemaVersion".to_string(), json!(CONFIG_SCHEMA_VERSION));
     let mut config = Value::Object(merged);
     normalize_gateway_fields(&mut config);
-    reset_incompatible_local_pairwise_protocol(&mut config);
+    let _ = reset_incompatible_local_pairwise_protocol(&mut config);
     if let Some(object) = config.as_object_mut() {
         object.insert("lastPairingCode".to_string(), json!(""));
         object.insert("lastPairingExpiresAt".to_string(), json!(""));
@@ -284,24 +284,25 @@ mod tests {
     #[test]
     fn gateway_policy_accepts_only_canonical_secure_or_loopback_origins() {
         assert_eq!(
-            validated_gateway("HTTPS://Relay.Example.Test:443/").unwrap(),
-            "https://relay.example.test"
+            validated_gateway("HTTPS://Relay.LicoUp.Net:443/").unwrap(),
+            "https://relay.licoup.net"
         );
         assert_eq!(
             validated_gateway("http://127.0.0.1:8787/").unwrap(),
             "http://127.0.0.1:8787"
         );
-        assert!(validated_gateway("http://relay.example.test").is_err());
-        assert!(validated_gateway("https://relay.example.test/path").is_err());
+        assert!(validated_gateway("http://relay.licoup.net").is_err());
+        assert!(validated_gateway("https://relay.licoup.net/path").is_err());
     }
 
     #[test]
     fn persistence_policy_removes_ephemeral_custom_gateways() {
         let mut config = json!({
-            "defaultGatewayUrl": "https://relay.example.test",
-            // Synthetic stand-in for an ephemeral tunnel gateway; any custom
-            // gateway URL must be wiped before persistence.
-            "customGatewayUrl": "https://ephemeral-gateway.example.test",
+            "defaultGatewayUrl": "https://relay.licoup.net",
+            "customGatewayUrl": format!(
+                "https://ephemeral-gateway{}",
+                EPHEMERAL_CUSTOM_GATEWAY_HOST_SUFFIXES[0]
+            ),
             "useCustomGateway": true
         });
 
@@ -311,7 +312,7 @@ mod tests {
         assert_eq!(config["useCustomGateway"], json!(false));
         assert_eq!(
             config["defaultGatewayUrl"],
-            json!("https://relay.example.test")
+            json!("https://relay.licoup.net")
         );
     }
 }

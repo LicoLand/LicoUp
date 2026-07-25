@@ -32,6 +32,10 @@ abstract final class ConversationRuntimeResultPolicy {
     if (error.isUnknown) return true;
     return switch (error.recovery) {
       ClientErrorRecovery.correctRequest ||
+      ClientErrorRecovery.useCliHelp ||
+      ClientErrorRecovery.correctCommandArguments ||
+      ClientErrorRecovery.provideValidJson ||
+      ClientErrorRecovery.reduceCommandArguments ||
       ClientErrorRecovery.selectSupportedAdapter ||
       ClientErrorRecovery.installOrRetryRuntime ||
       ClientErrorRecovery.preserveDraftAndRetry => true,

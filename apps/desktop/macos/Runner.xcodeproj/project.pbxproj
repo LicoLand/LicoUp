@@ -409,11 +409,11 @@
 			outputFileListPaths = (
 			);
 			outputPaths = (
-				"$(TARGET_BUILD_DIR)/$(EXECUTABLE_FOLDER_PATH)/licoup",
+				"$(TARGET_BUILD_DIR)/$(EXECUTABLE_FOLDER_PATH)/licoup-cli",
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "set -eu\n\nif [ \"${ACTION:-}\" = \"clean\" ]; then\n  exit 0\nfi\n\nif [ \"${LICO_CLIENT_SKIP_XCODE_SIDECAR_BUNDLE:-}\" = \"1\" ]; then\n  exit 0\nfi\n\nREPO_ROOT=\"$(cd \"$PROJECT_DIR/../../..\" && pwd)\"\nMANIFEST=\"$REPO_ROOT/crates/licoup-native/Cargo.toml\"\nTARGET_ROOT=\"$REPO_ROOT/build/crates/licoup-native/target\"\nPROFILE_DIR=\"debug\"\n\nif [ \"${CONFIGURATION:-Debug}\" != \"Debug\" ]; then\n  PROFILE_DIR=\"release\"\nfi\n\nif ! command -v cargo >/dev/null 2>&1; then\n  echo \"error: cargo is required to build bundled licoup.\" >&2\n  exit 1\nfi\n\nif [ \"$PROFILE_DIR\" = \"release\" ]; then\n  CARGO_TARGET_DIR=\"$TARGET_ROOT\" cargo build --manifest-path \"$MANIFEST\" --release --bin licoup\nelse\n  CARGO_TARGET_DIR=\"$TARGET_ROOT\" cargo build --manifest-path \"$MANIFEST\" --bin licoup\nfi\n\nSOURCE=\"$TARGET_ROOT/$PROFILE_DIR/licoup\"\nDESTINATION=\"$TARGET_BUILD_DIR/$EXECUTABLE_FOLDER_PATH/licoup\"\n\nif [ ! -x \"$SOURCE\" ]; then\n  echo \"error: licoup build did not produce $SOURCE.\" >&2\n  exit 1\nfi\n\nmkdir -p \"$(dirname \"$DESTINATION\")\"\ninstall -m 755 \"$SOURCE\" \"$DESTINATION\"\n";
+			shellScript = "set -eu\n\nif [ \"${ACTION:-}\" = \"clean\" ]; then\n  exit 0\nfi\n\nif [ \"${LICO_CLIENT_SKIP_XCODE_SIDECAR_BUNDLE:-}\" = \"1\" ]; then\n  exit 0\nfi\n\nREPO_ROOT=\"$(cd \"$PROJECT_DIR/../../..\" && pwd)\"\nMANIFEST=\"$REPO_ROOT/crates/licoup-native/Cargo.toml\"\nTARGET_ROOT=\"$REPO_ROOT/build/crates/licoup-native/target\"\nPROFILE_DIR=\"debug\"\n\nif [ \"${CONFIGURATION:-Debug}\" != \"Debug\" ]; then\n  PROFILE_DIR=\"release\"\nfi\n\nif ! command -v cargo >/dev/null 2>&1; then\n  echo \"error: cargo is required to build bundled licoup.\" >&2\n  exit 1\nfi\n\nif [ \"$PROFILE_DIR\" = \"release\" ]; then\n  CARGO_TARGET_DIR=\"$TARGET_ROOT\" cargo build --manifest-path \"$MANIFEST\" --release --bin licoup-cli\nelse\n  CARGO_TARGET_DIR=\"$TARGET_ROOT\" cargo build --manifest-path \"$MANIFEST\" --bin licoup-cli\nfi\n\nSOURCE=\"$TARGET_ROOT/$PROFILE_DIR/licoup-cli\"\nDESTINATION=\"$TARGET_BUILD_DIR/$EXECUTABLE_FOLDER_PATH/licoup-cli\"\n\nif [ ! -x \"$SOURCE\" ]; then\n  echo \"error: licoup-cli build did not produce $SOURCE.\" >&2\n  exit 1\nfi\n\nmkdir -p \"$(dirname \"$DESTINATION\")\"\ninstall -m 755 \"$SOURCE\" \"$DESTINATION\"\n";
 		};
 		938324C1C8945BF7F72D2938 /* [CP] Embed Pods Frameworks */ = {
 			isa = PBXShellScriptBuildPhase;

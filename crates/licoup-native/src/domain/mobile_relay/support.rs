@@ -20,15 +20,14 @@ pub(super) use super::config::{
 };
 pub(super) use super::secret_custody::{
     CONFIG_SCHEMA_VERSION, RuntimeSecretContext, ensure_secure_mesh_protected_operation_allowed,
-    is_unredacted_secret, load_config_with_runtime_secret_context,
-    load_config_with_runtime_secret_overrides, load_config_without_persistence,
-    public_secret_storage_backend, save_config, save_config_with_runtime_secret_context,
-    secret_present,
+    load_config_with_runtime_secret_context, load_config_with_runtime_secret_overrides,
+    load_config_without_persistence, public_secret_storage_backend,
+    save_config_with_runtime_secret_context, secret_present,
 };
 #[cfg(test)]
 pub(super) use super::secret_custody::{
     load_config, load_config_with_runtime_secret_context_for_operation,
-    mobile_relay_e2ee_secret_store_authorization_batch_operation_count,
+    mobile_relay_e2ee_secret_store_authorization_batch_operation_count, save_config,
 };
 #[cfg(test)]
 pub(super) use crate::core::secure_mesh_capability::SecurityCapability;
@@ -82,12 +81,6 @@ pub(super) const MOBILE_RELAY_RESULT_TTL_SECONDS: i64 = 10 * 60;
 pub(super) const MOBILE_RELAY_KEY_BYTES: usize = 32;
 pub(super) const MOBILE_RELAY_PREKEY_VALIDITY_DAYS: i64 = 30;
 pub(super) const MOBILE_RELAY_TRUST_RECORD_VALIDITY_DAYS: i64 = 90;
-#[allow(dead_code)]
-pub(super) const MOBILE_RELAY_ENVELOPE_CLOCK_SKEW_SECONDS: i64 = 5 * 60;
-#[allow(dead_code)]
-pub(super) const MOBILE_RELAY_MAX_ENVELOPE_TEXT_BYTES: usize = 4096;
-#[allow(dead_code)]
-pub(super) const MOBILE_RELAY_MAX_ENCRYPTED_HEADER_BYTES: usize = 512;
 pub(super) const SECURE_MESH_ENDPOINT_CRYPTO_RUNTIME_FAILED_CODE: &str =
     "secure_mesh_endpoint_crypto_runtime_failed";
 pub(super) const SECURE_MESH_ENDPOINT_CRYPTO_RUNTIME_FAILED_DETAIL: &str =

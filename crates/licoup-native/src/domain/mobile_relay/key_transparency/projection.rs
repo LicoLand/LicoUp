@@ -11,7 +11,6 @@ pub(super) fn authority_challenge_response(challenge: &Value, schema_version: u3
         "requiresSecurityReset": challenge["requiresSecurityReset"],
         "requiresUserPresence": true,
         "directoryResponseAccepted": false,
-        "privateKeyMaterial": "redacted",
     })
 }
 
@@ -31,8 +30,7 @@ pub(super) fn authority_configuration_response(
         "productionAuthority": production_authority,
         "scopeCommitted": true,
         "authorityChanged": authority_changed,
-        "directoryResponseAccepted": false,
-        "privateKeyMaterial": "redacted"
+        "directoryResponseAccepted": false
     });
     if already_committed {
         response["alreadyCommitted"] = json!(true);

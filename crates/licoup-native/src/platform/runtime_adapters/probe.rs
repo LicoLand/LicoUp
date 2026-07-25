@@ -24,7 +24,12 @@ pub(crate) fn probe_runtime_driver(target: &str, executable: &Path, cwd: &Path) 
                 "structuredStream": probe.structured_stream,
                 "newSession": probe.new_session,
                 "resumeSession": probe.resume_session,
+                "model": probe.model,
+                "reasoningEffort": probe.reasoning_effort,
+                "permissionMode": probe.permission_mode,
                 "interactiveApprovalEvents": probe.interactive_approval_events,
+                "versionCommandOk": probe.version_command_ok,
+                "helpCommandOk": probe.help_command_ok,
                 "errorCode": probe.error_code
             })
         }

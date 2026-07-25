@@ -143,11 +143,8 @@ impl fmt::Debug for SecretStorePresencePurpose {
 #[derive(Clone)]
 pub struct SecretStorePresenceBatchRequest {
     provider: SecretStorePresenceProvider,
-    key_class: SecretStoreKeyClass,
     operation_count: usize,
     reason: String,
-    nonce: SecretStorePresenceNonce,
-    caller_channel: SecretStoreCallerChannel,
     allow_interaction: bool,
     canonical_digest: [u8; 32],
 }
@@ -188,11 +185,8 @@ impl SecretStorePresenceBatchRequest {
         );
         Ok(Self {
             provider,
-            key_class,
             operation_count,
             reason,
-            nonce,
-            caller_channel,
             allow_interaction,
             canonical_digest,
         })
@@ -206,20 +200,12 @@ impl SecretStorePresenceBatchRequest {
         self.provider
     }
 
-    pub(crate) fn key_class(&self) -> SecretStoreKeyClass {
-        self.key_class
-    }
-
     pub(crate) fn operation_count(&self) -> usize {
         self.operation_count
     }
 
     pub(crate) fn reason(&self) -> &str {
         &self.reason
-    }
-
-    pub(crate) fn caller_channel(&self) -> SecretStoreCallerChannel {
-        self.caller_channel
     }
 
     pub(crate) fn allow_interaction(&self) -> bool {
@@ -238,7 +224,6 @@ pub struct SecretStorePresenceScope {
     operation: SecretStoreOperation,
     namespace: String,
     key: String,
-    purpose: SecretStorePresencePurpose,
     canonical_digest: [u8; 32],
 }
 
@@ -266,13 +251,8 @@ impl SecretStorePresenceScope {
             operation,
             namespace,
             key,
-            purpose,
             canonical_digest,
         })
-    }
-
-    pub(crate) fn canonical_digest(&self) -> [u8; 32] {
-        self.canonical_digest
     }
 }
 
@@ -283,7 +263,6 @@ impl fmt::Debug for SecretStorePresenceScope {
 }
 
 pub struct SecretStoreApprovedPresenceBatch {
-    request_digest: [u8; 32],
     binding_digest: [u8; 32],
     expires_at: Instant,
     operation_count: usize,
@@ -332,7 +311,6 @@ impl SecretStoreApprovedPresenceBatch {
             ],
         );
         Ok(Self {
-            request_digest: request.canonical_digest,
             binding_digest,
             expires_at,
             operation_count: request.operation_count,
@@ -370,10 +348,6 @@ impl SecretStoreApprovedPresenceBatch {
             expires_at: self.expires_at,
             state: AtomicU8::new(GRANT_AVAILABLE),
         }))
-    }
-
-    pub(crate) fn request_digest(&self) -> [u8; 32] {
-        self.request_digest
     }
 
     pub(crate) fn binding_digest(&self) -> [u8; 32] {

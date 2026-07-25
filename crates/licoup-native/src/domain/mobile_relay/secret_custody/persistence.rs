@@ -70,6 +70,33 @@ fn strip_runtime_secret_overrides(config: &mut Value, overrides: &RuntimeSecretO
     if overrides.mobile_token || !overrides.paired_device_tokens.is_empty() {
         config["mobileToken"] = json!("");
     }
+    let selected_pairing_id = config
+        .get("pairingId")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .unwrap_or_default();
+    let selected_paired_device_credential = config
+        .get("pairedDevices")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter(|device| {
+            !selected_pairing_id.is_empty()
+                && device
+                    .get("pairingId")
+                    .and_then(Value::as_str)
+                    .map(str::trim)
+                    == Some(selected_pairing_id)
+        })
+        .any(|device| {
+            overrides
+                .paired_device_tokens
+                .iter()
+                .any(|entry| paired_device_override_matches(device, entry))
+        });
+    if overrides.mobile_token || selected_paired_device_credential {
+        config["mobileTokenPresent"] = json!(true);
+    }
     if let Some(e2ee) = config
         .get_mut("mobileRelayE2ee")
         .and_then(Value::as_object_mut)

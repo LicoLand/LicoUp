@@ -8,7 +8,7 @@ pub(super) fn endpoint_config() -> Value {
     let mut config = json!({});
     ensure_mobile_relay_endpoint_material(
         &mut config,
-        test_runtime_secret_material(stringify!(&mut config)),
+        &mut test_runtime_secret_material(stringify!(&mut config)),
         "desktop",
     )
     .unwrap();

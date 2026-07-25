@@ -17,11 +17,8 @@ pub(super) use execution::execute;
 #[cfg(test)]
 pub(super) use hooks::uninstall_hook_bridge;
 pub(crate) use hooks::{hook_bridge_status, install_hook_bridge, uninstall_hook_bridge_report};
-pub(super) use model::{
-    CapabilityProbe, DRIVER_ID, EffectiveSettings, RUNTIME_PROTOCOL, RunResult,
-};
+pub(super) use model::{DRIVER_ID, RUNTIME_PROTOCOL, RunResult};
 pub(super) use probe::probe;
-pub(super) use probe::probe as capability_probe;
 
 #[cfg(test)]
 mod tests;

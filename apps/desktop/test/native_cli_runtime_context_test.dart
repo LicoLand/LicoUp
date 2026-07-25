@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:licoup/src/platform/native_client/agent_service.dart';
+import 'package:licoup/src/platform/native_client/native_cli_runtime_context.dart';
 
 void main() {
   group('NativeCliRuntimeContext', () {
@@ -115,5 +116,68 @@ void main() {
         }
       },
     );
+  });
+
+  group('resolveCliBinaryFor', () {
+    late Directory bundleDir;
+    late File appExecutable;
+    late File sidecarBinary;
+
+    setUp(() async {
+      bundleDir = await Directory.systemTemp.createTemp('lico-cli-resolve-');
+      appExecutable = File('${bundleDir.path}/licoup');
+      sidecarBinary = File('${bundleDir.path}/licoup-cli');
+    });
+
+    tearDown(() async {
+      if (await bundleDir.exists()) {
+        await bundleDir.delete(recursive: true);
+      }
+    });
+
+    test('resolves the bundled licoup-cli sidecar, never the client', () async {
+      await appExecutable.writeAsString('app');
+      await sidecarBinary.writeAsString('cli');
+      final resolved = await NativeCliRuntimeContext().resolveCliBinaryFor(
+        executablePath: appExecutable.path,
+        environment: const {},
+        workingDirectory: bundleDir.path,
+      );
+      expect(resolved?.path, await sidecarBinary.resolveSymbolicLinks());
+    });
+
+    test('returns null when the only sibling binary is the client itself',
+        () async {
+      await appExecutable.writeAsString('app');
+      final resolved = await NativeCliRuntimeContext().resolveCliBinaryFor(
+        executablePath: appExecutable.path,
+        environment: const {},
+        workingDirectory: bundleDir.path,
+      );
+      expect(resolved, isNull);
+    });
+
+    test('ignores LICO_CLIENT_PATH pointing at the client itself', () async {
+      await appExecutable.writeAsString('app');
+      final resolved = await NativeCliRuntimeContext().resolveCliBinaryFor(
+        executablePath: appExecutable.path,
+        environment: {'LICO_CLIENT_PATH': appExecutable.path},
+        workingDirectory: bundleDir.path,
+      );
+      expect(resolved, isNull);
+    });
+
+    test('ignores a symlink that resolves to the client itself', () async {
+      if (Platform.isWindows) return;
+      await appExecutable.writeAsString('app');
+      final alias = File('${bundleDir.path}/client-alias');
+      await Link(alias.path).create(appExecutable.path);
+      final resolved = await NativeCliRuntimeContext().resolveCliBinaryFor(
+        executablePath: appExecutable.path,
+        environment: {'LICO_CLIENT_PATH': alias.path},
+        workingDirectory: bundleDir.path,
+      );
+      expect(resolved, isNull);
+    });
   });
 }

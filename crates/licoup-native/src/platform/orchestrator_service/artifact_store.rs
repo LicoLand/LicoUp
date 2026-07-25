@@ -5,10 +5,9 @@
 
 use anyhow::{Result, anyhow};
 use sha2::{Digest, Sha256};
-use std::{
-    fs,
-    path::{Path, PathBuf},
-};
+#[cfg(test)]
+use std::fs;
+use std::path::{Path, PathBuf};
 
 use super::super::file_security;
 

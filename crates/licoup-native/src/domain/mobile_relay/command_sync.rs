@@ -13,9 +13,11 @@ use super::relay_operations::{
     command_complete_with_config, commands_poll_with_config, local_command_from_relay_delivery,
     pc_check_in_with_context, validate_secure_envelope,
 };
+#[cfg(test)]
+use super::secret_custody::load_config_with_runtime_secret_context;
 use super::secret_custody::{
     CONFIG_SCHEMA_VERSION, RUNTIME_SECRET_OVERRIDE_TRANSPORT, RuntimeSecretMaterial,
-    load_config_with_runtime_secret_context, load_config_with_runtime_secret_context_for_operation,
+    load_config_with_runtime_secret_context_for_operation,
     mobile_relay_e2ee_secret_store_authorization_batch_operation_count,
 };
 use super::support::{
@@ -234,7 +236,7 @@ fn attach_canonical_relay_params(target: &mut Value, source: &Value) {
 
 #[cfg(test)]
 pub(super) fn execute_secure_envelope_command(command: &Value, params: &Value) -> Result<Value> {
-    let (config, mut secret_context) = load_config_with_runtime_secret_context(params)?;
+    let (config, secret_context) = load_config_with_runtime_secret_context(params)?;
     ensure_peer_verified(&config)?;
     let mut pairwise_operation = mobile_relay_pairwise_operation(
         &config,

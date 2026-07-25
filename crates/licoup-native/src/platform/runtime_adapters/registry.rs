@@ -361,10 +361,6 @@ impl RuntimeDriverRegistry {
             readiness: readiness.status.clone(),
             protocol: driver.runtime_protocol.clone(),
             blocker,
-            runtime_version_digest: readiness
-                .evidence_binding
-                .as_ref()
-                .map(|binding| binding.runtime_version_digest.clone()),
             capability_matrix: driver.capability_matrix.clone(),
             summary_codes: readiness.summary_codes.clone(),
             consecutive_passes: readiness.consecutive_passes,

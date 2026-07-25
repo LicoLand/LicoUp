@@ -434,15 +434,3 @@ pub(crate) fn write_frame(writer: &mut impl Write, payload: &[u8]) -> Result<()>
     writer.flush()?;
     Ok(())
 }
-
-pub(crate) fn read_frame(reader: &mut impl Read) -> Result<Vec<u8>> {
-    let mut header = [0_u8; 4];
-    reader.read_exact(&mut header)?;
-    let length = u32::from_be_bytes(header) as usize;
-    if length > MAX_FRAME_BYTES {
-        return Err(anyhow!("frame too large"));
-    }
-    let mut payload = vec![0_u8; length];
-    reader.read_exact(&mut payload)?;
-    Ok(payload)
-}

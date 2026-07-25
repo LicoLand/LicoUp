@@ -14,16 +14,16 @@ fn legitimate_peer_identity_rotation_is_terminal_until_explicit_repair() {
             pair_mobile_relay_configs(&mut pc_config, &mut mobile_config);
             let prior_identity = local_endpoint_state(
                 &pc_config,
-                test_runtime_secret_material(stringify!(&pc_config)),
+                &mut test_runtime_secret_material(stringify!(&pc_config)),
             )?
             .device_identity()?;
             rotate_mobile_relay_local_identity_for_repair(
                 &mut pc_config,
-                test_runtime_secret_material(stringify!(&mut pc_config)),
+                &mut test_runtime_secret_material(stringify!(&mut pc_config)),
             )?;
             let rotated_descriptor = ensure_mobile_relay_endpoint_descriptor(
                 &mut pc_config,
-                test_runtime_secret_material(stringify!(&mut pc_config)),
+                &mut test_runtime_secret_material(stringify!(&mut pc_config)),
                 "desktop_sidecar",
             )?;
             let rotated_identity =
@@ -37,7 +37,7 @@ fn legitimate_peer_identity_rotation_is_terminal_until_explicit_repair() {
 
             let error = apply_peer_secure_mesh_descriptor(
                 &mut mobile_config,
-                test_runtime_secret_material(stringify!(&mut mobile_config)),
+                &mut test_runtime_secret_material(stringify!(&mut mobile_config)),
                 &rotated_descriptor,
                 true,
             )
@@ -74,7 +74,7 @@ fn out_of_band_mobile_response_cannot_replace_pinned_pc_identity() {
     let mut pinned_pc_config = default_config();
     let pinned_pc_descriptor = ensure_mobile_relay_endpoint_descriptor(
         &mut pinned_pc_config,
-        test_runtime_secret_material(stringify!(&mut pinned_pc_config)),
+        &mut test_runtime_secret_material(stringify!(&mut pinned_pc_config)),
         "desktop_sidecar",
     )
     .unwrap();
@@ -82,13 +82,13 @@ fn out_of_band_mobile_response_cannot_replace_pinned_pc_identity() {
     mobile_config["pairingId"] = json!("pair_pinned_pc");
     ensure_mobile_relay_endpoint_descriptor(
         &mut mobile_config,
-        test_runtime_secret_material(stringify!(&mut mobile_config)),
+        &mut test_runtime_secret_material(stringify!(&mut mobile_config)),
         "mobile",
     )
     .unwrap();
     apply_peer_secure_mesh_descriptor(
         &mut mobile_config,
-        test_runtime_secret_material(stringify!(&mut mobile_config)),
+        &mut test_runtime_secret_material(stringify!(&mut mobile_config)),
         &pinned_pc_descriptor,
         true,
     )
@@ -100,13 +100,14 @@ fn out_of_band_mobile_response_cannot_replace_pinned_pc_identity() {
     let mut attacker_pc_config = default_config();
     let attacker_pc_descriptor = ensure_mobile_relay_endpoint_descriptor(
         &mut attacker_pc_config,
-        test_runtime_secret_material(stringify!(&mut attacker_pc_config)),
+        &mut test_runtime_secret_material(stringify!(&mut attacker_pc_config)),
         "desktop_sidecar",
     )
     .unwrap();
     assert_ne!(pinned_pc_descriptor, attacker_pc_descriptor);
-    let error = apply_out_of_band_pairing_response(
+    let error = apply_test_out_of_band_pairing_response(
         &mut mobile_config,
+        stringify!(&mobile_config),
         &json!({
             "mobileSecureMesh": attacker_pc_descriptor,
             "secureMeshClaimProof": "forged-proof"
@@ -137,6 +138,7 @@ fn tampered_mobile_relay_command_envelope_is_rejected_before_execution() {
     let dir = temp_dir("mobile-relay-tampered-command");
     let previous = set_portable_data_dir_override(Some(dir));
     let (mut pc_config, _mobile_config, envelope) = paired_command_envelope_fixture();
+    persist_test_runtime_secret_material(stringify!(&pc_config)).unwrap();
     save_config(&mut pc_config).unwrap();
 
     let mut tampered = envelope;
@@ -169,6 +171,7 @@ fn commands_sync_redacts_malicious_relay_crypto_errors() {
     pc_config["relayEnabled"] = json!(true);
     pc_config["useCustomGateway"] = json!(true);
     pc_config["customGatewayUrl"] = json!(gateway.url());
+    persist_test_runtime_secret_material(stringify!(&pc_config)).unwrap();
     save_config(&mut pc_config).unwrap();
 
     let output = commands_sync(&with_canonical_relay_params(json!({"targets": []}))).unwrap();
@@ -199,6 +202,7 @@ fn mobile_relay_command_error_result_redacts_internal_detail() {
     let dir = temp_dir("mobile-relay-command-redacted-internal-error");
     let previous = set_portable_data_dir_override(Some(dir));
     let (mut pc_config, mobile_config, _envelope) = paired_command_envelope_fixture();
+    persist_test_runtime_secret_material(stringify!(&pc_config)).unwrap();
     save_config(&mut pc_config).unwrap();
     let invalid_command_payload = json!({
         "schema": "unsupported-schema-local-secret-canary",
@@ -208,7 +212,7 @@ fn mobile_relay_command_error_result_redacts_internal_detail() {
     });
     let envelope = seal_mobile_relay_payload(
         &mobile_config,
-        test_runtime_secret_material(stringify!(&mobile_config)),
+        &mut test_runtime_secret_material(stringify!(&mobile_config)),
         crate::core::secure_mesh_crypto::SecureMeshPayloadKind::Command,
         &invalid_command_payload,
     )
@@ -245,6 +249,7 @@ fn replayed_mobile_relay_command_envelope_does_not_execute_twice() {
     let dir = temp_dir("mobile-relay-replayed-command");
     let previous = set_portable_data_dir_override(Some(dir));
     let (mut pc_config, mobile_config, envelope) = paired_command_envelope_fixture();
+    persist_test_runtime_secret_material(stringify!(&pc_config)).unwrap();
     save_config(&mut pc_config).unwrap();
     let command = json!({
         "type": SECURE_MESH_ENVELOPE_COMMAND,
@@ -275,6 +280,7 @@ fn mobile_relay_result_replay_proof_rejects_second_open_without_plaintext() {
     let dir = temp_dir("mobile-relay-result-replay-proof");
     let previous = set_portable_data_dir_override(Some(dir));
     let (mut pc_config, mobile_config, envelope) = paired_command_envelope_fixture();
+    persist_test_runtime_secret_material(stringify!(&pc_config)).unwrap();
     save_config(&mut pc_config).unwrap();
     let result_envelope = execute_secure_envelope_command(
         &json!({
@@ -297,7 +303,7 @@ fn mobile_relay_result_replay_proof_rejects_second_open_without_plaintext() {
     }));
     let proof = result_envelope_replay_proof(
         &mobile_config,
-        test_runtime_secret_material(stringify!(&mobile_config)),
+        &mut test_runtime_secret_material(stringify!(&mobile_config)),
         &result_envelope,
         response_summary,
     )
