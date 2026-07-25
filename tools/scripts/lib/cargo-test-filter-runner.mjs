@@ -21,7 +21,7 @@ export function runCargoTestFilter({
   manifestPath,
   filter,
   env = process.env,
-  sanitizeError = (value) => String(value || "")
+  sanitizeError = () => ""
 }) {
   const started = Date.now();
   const command = "cargo";
@@ -47,6 +47,9 @@ export function runCargoTestFilter({
   const matchedAtLeastOneTest = executedTestCount > 0;
   const ok = result.status === 0 && matchedAtLeastOneTest;
   const failureOutput = ok ? "" : String(result.stderr || result.stdout || "");
+  const failureDiagnostic = ok || matchedAtLeastOneTest
+    ? ""
+    : sanitizeError(failureOutput.slice(-8 * 1024));
   return {
     id: filter,
     command: `${command} ${commandArgs.join(" ")}`,
@@ -58,6 +61,7 @@ export function runCargoTestFilter({
     failureDigest: ok
       ? ""
       : createHash("sha256").update(failureOutput, "utf8").digest("hex"),
+    failureDiagnostic,
     failureSummary: ok
       ? ""
       : result.status === 0
