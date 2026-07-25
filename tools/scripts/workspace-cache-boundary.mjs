@@ -122,6 +122,40 @@ function classifyForbiddenPath(relativePath) {
   return null;
 }
 
+function runSelfTest() {
+  const allowedSourceFiles = [
+    "apps/desktop/scripts/package-client/build/flutter.mjs",
+    "apps/desktop/scripts/package-client/build/native.mjs",
+    "apps/desktop/scripts/package-client/build/swift.mjs"
+  ];
+  for (const sourceFile of allowedSourceFiles) {
+    if (classifyForbiddenPath(sourceFile) !== null) {
+      throw new Error("version-controlled source directory was rejected");
+    }
+  }
+
+  const rejectedBuildPaths = [
+    "build/output.json",
+    "apps/desktop/build/output.json",
+    "tools/scripts/build/output.mjs",
+    "apps/desktop/scripts/package-client/other/build/output.mjs"
+  ];
+  for (const buildPath of rejectedBuildPaths) {
+    const finding = classifyForbiddenPath(buildPath);
+    if (
+      finding?.kind !== "generated-or-cache-directory" ||
+      finding.pattern !== "build"
+    ) {
+      throw new Error("unapproved build directory was accepted");
+    }
+  }
+
+  return {
+    allowedSourceFiles: allowedSourceFiles.length,
+    rejectedBuildPaths: rejectedBuildPaths.length
+  };
+}
+
 function scanGitignore(repo) {
   const gitignore = path.join(repo, ".gitignore");
   if (!existsSync(gitignore)) {
@@ -166,6 +200,17 @@ function scanRepo(repo) {
   }
   findings.push(...scanGitignore(repo));
   return { repo: repoLabel, findings };
+}
+
+if (process.argv.slice(2).includes("--self-test")) {
+  try {
+    const result = runSelfTest();
+    console.log(JSON.stringify({ ok: true, ...result }, null, 2));
+  } catch {
+    console.error(JSON.stringify({ ok: false, reasonCode: "SELF_TEST_FAILED" }, null, 2));
+    process.exitCode = 1;
+  }
+  process.exit();
 }
 
 const repos = findGitRoots();
