@@ -143,7 +143,12 @@ void main() {
       targets: [_target('codex', 'ChatGPT Codex - CLI')],
       sessionsByAgent: {
         'codex': [
-          _session('selected-old', 'codex', 'Selected old session', updatedDaysAgo: 45),
+          _session(
+            'selected-old',
+            'codex',
+            'Selected old session',
+            updatedDaysAgo: 45,
+          ),
         ],
       },
       selectedSessionId: 'selected-old',
@@ -168,10 +173,8 @@ void main() {
 
   test('session activity window classification', () {
     final now = DateTime(2026, 7, 20, 12);
-    String daysAgo(int days) => now
-        .subtract(Duration(days: days))
-        .toUtc()
-        .toIso8601String();
+    String daysAgo(int days) =>
+        now.subtract(Duration(days: days)).toUtc().toIso8601String();
     final recent = _session('a', 'codex', 'a', updatedDaysAgo: 2);
     final stale = AgentConversationSession(
       id: 'b',

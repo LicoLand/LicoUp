@@ -191,7 +191,10 @@ void main() {
       expect(controller.mobileClientRuntimePlatform, isTrue);
       expect(controller.selectedConversationAgentId, 'codex');
       expect(controller.lastError, isEmpty);
-      final composer = find.widgetWithText(TextField, 'Message Codex');
+      final composer = find.descendant(
+        of: find.byKey(const Key('agent-conversation-composer-field')),
+        matching: find.byType(TextField),
+      );
       expect(composer, findsOneWidget);
 
       await tester.enterText(composer, 'hello');
@@ -427,9 +430,7 @@ void main() {
 }
 
 PortableDataRoot _testPortableData() {
-  final directory = Directory.systemTemp.createTempSync(
-    'licoup-shell-layout-',
-  );
+  final directory = Directory.systemTemp.createTempSync('licoup-shell-layout-');
   addTearDown(() async {
     if (await directory.exists()) {
       await directory.delete(recursive: true);
@@ -472,8 +473,12 @@ final List<TargetCandidate> _targets = [
     status: 'detected',
     configured: false,
     confidence: 0.72,
+    binaryPath: '/test-bin/codex',
     adapterStatus: 'implemented',
-    adapterCapabilities: const {'conversationReadiness': 'ready'},
+    adapterCapabilities: const {
+      'conversationDriver': 'implemented',
+      'conversationReadiness': 'ready',
+    },
     supportedActions: ['runtime.message.send'],
   ),
 ];

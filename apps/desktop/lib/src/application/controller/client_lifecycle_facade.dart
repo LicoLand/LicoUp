@@ -121,19 +121,20 @@ mixin ClientLifecycleFacade
         unawaited(loadConversationSessions(agentId));
       }
     }
-    lastError = '';
-    setLocalizedStatusMessage(
-      appearancePresetLoadErrors.isEmpty
-          ? 'LicoUp client 已就绪。'
-          : 'LicoUp client 已就绪，部分外观方案配置无效。',
-      appearancePresetLoadErrors.isEmpty
-          ? 'LicoUp client is ready.'
-          : 'LicoUp client is ready, but some appearance preset configurations are invalid.',
-      displayChinese: appearancePresetLoadErrors.isEmpty
-          ? '客户端已就绪。'
-          : '客户端已就绪，但部分外观方案配置无效。',
-    );
-    statusCaption = 'Ready';
+    if (lastError.isEmpty) {
+      setLocalizedStatusMessage(
+        appearancePresetLoadErrors.isEmpty
+            ? 'LicoUp client 已就绪。'
+            : 'LicoUp client 已就绪，部分外观方案配置无效。',
+        appearancePresetLoadErrors.isEmpty
+            ? 'LicoUp client is ready.'
+            : 'LicoUp client is ready, but some appearance preset configurations are invalid.',
+        displayChinese: appearancePresetLoadErrors.isEmpty
+            ? '客户端已就绪。'
+            : '客户端已就绪，但部分外观方案配置无效。',
+      );
+      statusCaption = 'Ready';
+    }
     notifyAppPresentationChanged();
     notifyClientStateChanged();
   }

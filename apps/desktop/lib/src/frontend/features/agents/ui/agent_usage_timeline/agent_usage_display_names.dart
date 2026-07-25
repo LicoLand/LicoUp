@@ -93,8 +93,10 @@ String agentUsageModelDisplayName(String value) {
   final lower = plain.toLowerCase();
   final knownName = switch (lower) {
     'cursor-auto' || 'default' => 'Cursor Auto',
-    'composer-2.5-fast' || 'composer-2-5-fast' || 'composer-2.5' || 'composer-2-5' =>
-      'Composer 2.5',
+    'composer-2.5-fast' ||
+    'composer-2-5-fast' ||
+    'composer-2.5' ||
+    'composer-2-5' => 'Composer 2.5',
     'others' => 'Others',
     _ => null,
   };

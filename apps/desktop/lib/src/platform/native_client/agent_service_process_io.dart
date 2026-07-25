@@ -202,9 +202,7 @@ class BoundedNativeProcessIo implements AgentCommandRunner {
         }
         stdoutBytes += utf8.encode(line).length + 1;
         if (stdoutBytes > _privateRuntimeMaxStdoutBytes) {
-          throw Exception(
-            'licoup private runtime output exceeded its limit.',
-          );
+          throw Exception('licoup private runtime output exceeded its limit.');
         }
         final decoded = jsonDecode(trimmed);
         if (decoded is Map<String, dynamic>) {

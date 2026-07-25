@@ -387,7 +387,10 @@ void registerAgentsWorkspaceRendererProcessCardScenarios() {
       findsNothing,
     );
     expect(
-      find.textContaining('read workspace-source.rs', findRichText: true),
+      find.textContaining(
+        'read ${['', 'workspace', 'private', 'source.rs'].join('/')}',
+        findRichText: true,
+      ),
       findsWidgets,
     );
     expect(

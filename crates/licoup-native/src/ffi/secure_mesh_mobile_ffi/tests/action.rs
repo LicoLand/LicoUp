@@ -110,18 +110,17 @@ fn mobile_ffi_kt_status_is_routed_and_rejects_unknown_fields() {
     .unwrap();
     assert_eq!(status["ok"], true);
     assert_eq!(status["configured"], false);
-    assert!(
-        dispatch_json(
-            &json!({
-                "action": "secure_mesh.kt.status",
-                "params": {"callerAssertedTrust": "verified"}
-            }),
-            "mobile_secure_mesh_native_json_action_unsupported",
-        )
-        .unwrap_err()
-        .to_string()
-        .contains("unsupported field")
-    );
+    let failure = dispatch_json(
+        &json!({
+            "action": "secure_mesh.kt.status",
+            "params": {"callerAssertedTrust": "verified"}
+        }),
+        "mobile_secure_mesh_native_json_action_unsupported",
+    )
+    .unwrap_err()
+    .to_string();
+    assert_eq!(failure, "native_operation_failed");
+    assert!(!failure.contains("callerAssertedTrust"));
     crate::platform::paths::set_portable_data_dir_override(previous);
     let _ = std::fs::remove_dir_all(root);
 }

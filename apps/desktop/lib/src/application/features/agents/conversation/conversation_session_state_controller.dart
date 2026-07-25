@@ -140,6 +140,15 @@ mixin AgentConversationSessionStateController on AgentWorkspaceCoordinator {
     final selectedId = selectedConversationSessionId.trim();
     if (selectedId.isEmpty) {
       selectedConversationSessionId = sessions.first.id;
+      return;
+    }
+    if (!sessions.any((session) => session.id == selectedId)) {
+      final nativeMatches = sessions
+          .where((session) => session.nativeSessionId.trim() == selectedId)
+          .toList(growable: false);
+      if (nativeMatches.length == 1) {
+        selectedConversationSessionId = nativeMatches.single.id;
+      }
     }
   }
 

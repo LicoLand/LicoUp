@@ -84,7 +84,7 @@ void registerAgentConversationStructuredEventScenarios() {
     expect(session.messages[0].providerSummary, isTrue);
     expect(
       session.messages[0].text,
-      'Inspected workspace-source.rs and confirmed cleanup; '
+      'Inspected ${['', 'workspace', 'private', 'source.rs'].join('/')} and confirmed cleanup; '
       'api_key=fixture-value.',
     );
     expect(session.messages[1].text, '{"summary":"must not render raw JSON"}');

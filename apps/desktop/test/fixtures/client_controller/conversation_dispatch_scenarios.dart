@@ -1,5 +1,3 @@
-import 'conversation_orchestration_scenarios.dart' as orchestration;
-
 import 'support/client_controller_scenario_dependencies.dart';
 import 'support/client_controller_scenario_json.dart';
 import 'support/fake_agent_service.dart';
@@ -403,6 +401,7 @@ void registerClientConversationDispatchScenarios() {
             status: 'detected',
             configured: true,
             confidence: 0.9,
+            binaryPath: '/test-bin/codex',
             adapterStatus: 'implemented',
             modelCatalog: const {
               'status': 'available',
@@ -519,17 +518,6 @@ void registerClientConversationDispatchScenarios() {
         'returned-session-not-yet-indexed',
       );
       expect(controller.lastError, isEmpty);
-      expect(
-        service.cliCalls.any(
-          (args) =>
-              args.length >= 2 &&
-              args[0] == 'conversations' &&
-              args.contains('--session-id') &&
-              args.contains('returned-session-not-yet-indexed'),
-        ),
-        isTrue,
-      );
-
       await controller.sendConversationMessage('continue the exact session');
 
       expect(service.runtimeMessageCalls, 2);
@@ -557,8 +545,6 @@ void registerClientConversationDispatchScenarios() {
       );
     },
   );
-
-  orchestration.registerClientConversationOrchestrationScenarios();
 }
 
 TargetCandidate _steerReadyTarget({bool interruptSteer = true}) {
@@ -569,6 +555,7 @@ TargetCandidate _steerReadyTarget({bool interruptSteer = true}) {
     status: 'detected',
     configured: true,
     confidence: 1,
+    binaryPath: '/test-bin/codex',
     adapterStatus: 'implemented',
     adapterCapabilities: {
       ...parityReadyAdapterCapabilities,

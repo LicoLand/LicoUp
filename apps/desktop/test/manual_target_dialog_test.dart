@@ -48,7 +48,10 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.tap(find.byType(TextField).at(0));
-    await tester.enterText(find.byType(TextField).at(0), ' test-data/config.json ');
+    await tester.enterText(
+      find.byType(TextField).at(0),
+      ' test-data/config.json ',
+    );
     await tester.tap(find.byType(TextField).at(1));
     await tester.enterText(
       find.byType(TextField).at(1),

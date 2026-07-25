@@ -1,7 +1,5 @@
 #[cfg(test)]
 use super::config::default_config;
-#[cfg(test)]
-pub(crate) use super::secret_custody::test_runtime_secret_material;
 use super::{pairwise_session::*, relay_operations::*, support::*};
 
 mod directory_transparency;

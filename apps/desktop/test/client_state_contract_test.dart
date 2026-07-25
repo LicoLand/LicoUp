@@ -8,16 +8,18 @@ void main() {
     final transport = _StateTransport();
     final actions = NativeStateActions(stdioRpcTransport: transport);
 
-    final get = await actions.get(ClientStateGetRequest(
-      collection: ClientStateCollection.settings,
-    ));
+    final get = await actions.get(
+      ClientStateGetRequest(collection: ClientStateCollection.settings),
+    );
     expect(get.collection, ClientStateCollection.settings);
     expect(transport.methods, ['state.get']);
 
-    final set = await actions.set(ClientStateSetRequest(
-      collection: ClientStateCollection.settings,
-      document: get.document,
-    ));
+    final set = await actions.set(
+      ClientStateSetRequest(
+        collection: ClientStateCollection.settings,
+        document: get.document,
+      ),
+    );
     expect(set.collection, ClientStateCollection.settings);
     expect(set.activity.type, 'state.collection.saved');
     expect(transport.methods, ['state.get', 'state.set']);
@@ -39,9 +41,9 @@ void main() {
     );
 
     await expectLater(
-      actions.get(ClientStateGetRequest(
-        collection: ClientStateCollection.settings,
-      )),
+      actions.get(
+        ClientStateGetRequest(collection: ClientStateCollection.settings),
+      ),
       throwsA(
         isA<ClientStateFailure>().having(
           (failure) => failure.code,

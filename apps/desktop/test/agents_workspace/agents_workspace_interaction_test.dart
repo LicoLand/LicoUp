@@ -246,6 +246,7 @@ void registerAgentsWorkspaceInteractionScenarios() {
         status: 'detected',
         configured: true,
         confidence: 0.9,
+        binaryPath: '/test-bin/codex',
         adapterStatus: 'implemented',
         adapterCapabilities: const {
           'conversationDriver': 'implemented',

@@ -69,7 +69,8 @@ export async function checkRuntimeDriversAndLocalService(context, {
     claudeCodeCommandSource.includes("FIXED_STREAM_ARGS") &&
       claudeCodeCommandSource.includes('"--input-format"') &&
       claudeCodeCommandSource.includes('"stream-json"') &&
-      claudeCodeCommandSource.includes('"--no-session-persistence"') &&
+      claudeCodeCommandSource.includes('"CLAUDE_CODE_SKIP_PROMPT_HISTORY"') &&
+      !claudeCodeCommandSource.includes('"--no-session-persistence"') &&
       !claudeCodeCommandSource.includes('"--resume"') &&
       claudeCodeDriverSource.includes("MAX_POOLED_TRANSPORTS") &&
       claudeCodeDriverSource.includes("MAX_TRACKED_SESSIONS") &&

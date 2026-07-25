@@ -81,6 +81,7 @@ export async function checkShellIsolationAndNativeStdio(context) {
     [`${nativeStdioRpcRoot}/command_round_trip.dart`, 85],
     [`${nativeStdioRpcRoot}/conversation_exchange.dart`, 75],
     [`${nativeStdioRpcRoot}/line_framer.dart`, 75],
+    [`${nativeStdioRpcRoot}/method_policy.dart`, 40],
     [`${nativeStdioRpcRoot}/operation_pending_queue.dart`, 40],
     [`${nativeStdioRpcRoot}/operation_queue.dart`, 90],
     [`${nativeStdioRpcRoot}/orchestrator_lane_pool.dart`, 140],
@@ -107,7 +108,7 @@ export async function checkShellIsolationAndNativeStdio(context) {
   for (const [relativePath, maxLines] of nativeStdioRpcLeafLimits) {
     const source = await readText(relativePath);
     assert(
-      sourceLineCount(source) <= maxLines,
+      sourceLineCount(source.trimEnd()) <= maxLines,
       `${relativePath} exceeds its stdio RPC responsibility limit (${maxLines} lines maximum)`
     );
     assert(

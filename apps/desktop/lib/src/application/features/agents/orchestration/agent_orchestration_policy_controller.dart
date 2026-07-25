@@ -84,7 +84,10 @@ mixin AgentOrchestrationPolicyController on AgentWorkspaceCoordinator {
     if (!orchestrationAvailable) {
       throw const OrchestratorClientException(code: 'service_unavailable');
     }
-    final draft = sanitizeOrchestrationPolicyEditorDraft(scannedTargets, policy);
+    final draft = sanitizeOrchestrationPolicyEditorDraft(
+      scannedTargets,
+      policy,
+    );
     try {
       if (!draft.configured ||
           orchestrationEditorOrderedEntries(draft).isEmpty) {

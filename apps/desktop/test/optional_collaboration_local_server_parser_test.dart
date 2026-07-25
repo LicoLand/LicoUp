@@ -51,7 +51,7 @@ Map<String, dynamic> _server({
   'serverVersion': '1.0.0',
   'packageDigestSha256': _digest,
   'selectedComponentIds': ['server-core'],
-  'destination': 'test-data/licomesh-local',
+  'destination': '/test-data/licomesh-local',
   'assemblyAdapterId': 'licoup-builtin-local-http-v1',
   'assemblyManifestDigestSha256': _manifestDigest,
   'bindHost': '127.0.0.1',

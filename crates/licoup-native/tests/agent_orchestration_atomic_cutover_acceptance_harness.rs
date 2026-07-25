@@ -475,7 +475,10 @@ fn assert_production_builder_linkage_and_real_authority() {
     const DART_BRIDGE: &str = include_str!(
         "../../../apps/desktop/lib/src/platform/native_client/orchestrator_ipc/client.dart"
     );
-    const DESKTOP_STDIO_HANDLER: &str = include_str!("../src/bin/licoup/stdio_rpc/server.rs");
+    const DESKTOP_STDIO_HANDLER: &str = concat!(
+        include_str!("../src/bin/licoup/stdio_rpc/server.rs"),
+        include_str!("../src/bin/licoup/stdio_rpc/server/orchestrator_request.rs")
+    );
     const CLI_HANDLER: &str = include_str!("../src/bin/licoup/orchestrator.rs");
     const MCP_HANDLER: &str = include_str!("../src/bin/lico-codex-mcp.rs");
     const SHARED_BUILDERS: &str = include_str!("../src/platform/orchestrator_control_plane.rs");

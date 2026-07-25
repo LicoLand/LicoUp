@@ -2,7 +2,16 @@ use super::*;
 use serde_json::json;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::{Mutex, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
+
+#[cfg(unix)]
+fn environment_lock() -> std::sync::MutexGuard<'static, ()> {
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(()))
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
 
 #[test]
 fn missing_executable_is_unavailable_and_never_supported() {
@@ -18,6 +27,7 @@ fn missing_executable_is_unavailable_and_never_supported() {
 #[cfg(unix)]
 #[test]
 fn uninstall_removes_only_lico_hook_namespace() {
+    let _environment_guard = environment_lock();
     let gemini = std::env::temp_dir().join(format!(
         "lico-agy-gemini-uninstall-{}-{}",
         std::process::id(),
@@ -116,6 +126,7 @@ fn probe_detects_official_print_and_conversation_surface() {
 #[cfg(unix)]
 #[test]
 fn execute_reads_hook_receipt_and_returns_session_output() {
+    let _environment_guard = environment_lock();
     let portable = std::env::temp_dir().join(format!(
         "lico-agy-portable-{}-{}",
         std::process::id(),

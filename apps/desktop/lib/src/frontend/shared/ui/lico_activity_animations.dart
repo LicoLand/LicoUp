@@ -268,10 +268,7 @@ class _LicoSpinningRefreshIconState extends State<LicoSpinningRefreshIcon>
 }
 
 class _LicoUpSpinnerPainter extends CustomPainter {
-  const _LicoUpSpinnerPainter({
-    required this.color,
-    required this.strokeWidth,
-  });
+  const _LicoUpSpinnerPainter({required this.color, required this.strokeWidth});
 
   final Color color;
   final double strokeWidth;

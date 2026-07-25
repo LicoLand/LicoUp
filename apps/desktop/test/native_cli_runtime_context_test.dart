@@ -17,9 +17,7 @@ void main() {
       portableDir = await Directory.systemTemp.createTemp(
         'lico-portable-data-',
       );
-      cliBinary = File(
-        '${portableDir.path}${Platform.pathSeparator}licoup',
-      );
+      cliBinary = File('${portableDir.path}${Platform.pathSeparator}licoup');
       await cliBinary.writeAsString('');
       service = AgentService(
         dataDirectory: () async => portableDir.path,
@@ -146,16 +144,18 @@ void main() {
       expect(resolved?.path, await sidecarBinary.resolveSymbolicLinks());
     });
 
-    test('returns null when the only sibling binary is the client itself',
-        () async {
-      await appExecutable.writeAsString('app');
-      final resolved = await NativeCliRuntimeContext().resolveCliBinaryFor(
-        executablePath: appExecutable.path,
-        environment: const {},
-        workingDirectory: bundleDir.path,
-      );
-      expect(resolved, isNull);
-    });
+    test(
+      'returns null when the only sibling binary is the client itself',
+      () async {
+        await appExecutable.writeAsString('app');
+        final resolved = await NativeCliRuntimeContext().resolveCliBinaryFor(
+          executablePath: appExecutable.path,
+          environment: const {},
+          workingDirectory: bundleDir.path,
+        );
+        expect(resolved, isNull);
+      },
+    );
 
     test('ignores LICO_CLIENT_PATH pointing at the client itself', () async {
       await appExecutable.writeAsString('app');

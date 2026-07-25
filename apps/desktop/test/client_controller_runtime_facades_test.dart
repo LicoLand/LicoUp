@@ -30,8 +30,9 @@ void main() {
 
   test('thin controller delegates lifecycle navigation and presentation', () {
     final controller = File('$root/client_controller.dart').readAsStringSync();
+    final routing = File('$root/client_routing_facade.dart').readAsStringSync();
     expect(controller, contains('ClientComponentAssembly('));
-    expect(controller, contains('onRoutingPolicy: clientApplyRoutingPolicy'));
+    expect(routing, contains('agentService.orchestratorClient'));
     expect(controller, contains('onEnterAgents: clientEnterAgentsSection'));
     expect(
       controller,

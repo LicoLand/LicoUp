@@ -286,6 +286,7 @@ List<TargetCandidate> _fixtureTargets() {
         status: id == primaryId ? 'detected' : 'not-detected',
         configured: id == primaryId,
         confidence: id == primaryId ? 1 : 0,
+        binaryPath: id == primaryId ? '/test-bin/$id' : '',
         adapterStatus: 'implemented',
         adapterCapabilities: const {
           'conversationDriver': 'implemented',

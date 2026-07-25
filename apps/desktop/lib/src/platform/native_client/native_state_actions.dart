@@ -10,7 +10,10 @@ final class NativeStateActions {
 
   Future<ClientStateGetResult> get(ClientStateGetRequest request) async {
     try {
-      final result = await _stdioRpcTransport.executeStructured('state.get', request.toJson());
+      final result = await _stdioRpcTransport.executeStructured(
+        'state.get',
+        request.toJson(),
+      );
       return ClientStateGetResult.fromJson(result);
     } on LicoClientRpcException catch (error) {
       throw _stateFailure(error);
@@ -19,7 +22,10 @@ final class NativeStateActions {
 
   Future<ClientStateSetResult> set(ClientStateSetRequest request) async {
     try {
-      final result = await _stdioRpcTransport.executeStructured('state.set', request.toJson());
+      final result = await _stdioRpcTransport.executeStructured(
+        'state.set',
+        request.toJson(),
+      );
       return ClientStateSetResult.fromJson(result);
     } on LicoClientRpcException catch (error) {
       throw _stateFailure(error);

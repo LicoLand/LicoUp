@@ -1,5 +1,9 @@
 use super::*;
-use licoup_native::ffi::generated::client_state::{ClientStateFailure, ClientStateFailureCode};
+
+#[path = "server/orchestrator_request.rs"]
+mod orchestrator_request;
+#[path = "server/state.rs"]
+mod state;
 
 const ORCHESTRATOR_REQUEST_METHOD: &str = "orchestrator.request";
 
@@ -62,97 +66,28 @@ where
                 request: state_request,
                 portable_data_dir,
             } => {
-                let execution = catch_unwind(AssertUnwindSafe(|| {
-                    let _guard = PortableDataDirOverrideGuard::set(portable_data_dir);
-                    licoup_native::platform::client_state::state_get(state_request)
-                }));
-                match execution {
-                    Ok(Ok(result)) => write_stdio_rpc_success_shared(
-                        &writer,
-                        &request.id,
-                        &request.workflow_id,
-                        serde_json::to_value(result)?,
-                    )?,
-                    Ok(Err(_)) | Err(_) => write_stdio_rpc_client_error_shared(
-                        &writer,
-                        Some(&request.id),
-                        Some(&request.workflow_id),
-                        &stdio_rpc_state_failure(ClientStateFailure::new(
-                            ClientStateFailureCode::StateOperationFailed,
-                        )),
-                    )?,
-                }
+                state::get(
+                    &writer,
+                    &request.id,
+                    &request.workflow_id,
+                    state_request,
+                    portable_data_dir,
+                )?;
             }
             StdioRpcMethod::StateSet {
                 request: state_request,
                 portable_data_dir,
             } => {
-                let execution = catch_unwind(AssertUnwindSafe(|| {
-                    let _guard = PortableDataDirOverrideGuard::set(portable_data_dir);
-                    licoup_native::platform::client_state::state_set(state_request)
-                }));
-                match execution {
-                    Ok(Ok(result)) => write_stdio_rpc_success_shared(
-                        &writer,
-                        &request.id,
-                        &request.workflow_id,
-                        serde_json::to_value(result)?,
-                    )?,
-                    Ok(Err(_)) | Err(_) => write_stdio_rpc_client_error_shared(
-                        &writer,
-                        Some(&request.id),
-                        Some(&request.workflow_id),
-                        &stdio_rpc_state_failure(ClientStateFailure::new(
-                            ClientStateFailureCode::StateOperationFailed,
-                        )),
-                    )?,
-                }
-            }
-            StdioRpcMethod::Orchestrator { params } => {
-                debug_assert_eq!(ORCHESTRATOR_REQUEST_METHOD, "orchestrator.request");
-                use licoup_native::platform::{
-                    orchestrator_control_plane::build_desktop_orchestrator_request,
-                    orchestrator_ipc::OrchestratorIpcClient,
-                    orchestrator_service::default_orchestrator_state_root,
-                };
-                let receipt = match default_orchestrator_state_root() {
-                    Ok(root) => match super::orchestrator::desktop_orchestrator_command(
-                        &params, &root,
-                    )
-                    .and_then(build_desktop_orchestrator_request)
-                    {
-                        Ok(request) => {
-                            let timeout = request
-                                .params
-                                .get("timeoutMs")
-                                .and_then(serde_json::Value::as_u64)
-                                .map(|millis| {
-                                    std::time::Duration::from_millis(
-                                        millis.saturating_add(2_000),
-                                    )
-                                })
-                                .unwrap_or(std::time::Duration::from_secs(10));
-                            OrchestratorIpcClient::new(root)
-                                .with_client_kind("desktop")
-                                .with_timeout(timeout)
-                                .execute(&request)
-                        }
-                        Err(_) => licoup_native::platform::orchestrator_ipc::OrchestratorIpcReceipt::failure(
-                            &request.id,
-                            "invalid_request",
-                        ),
-                    },
-                    Err(_) => licoup_native::platform::orchestrator_ipc::OrchestratorIpcReceipt::failure(
-                        &request.id,
-                        "invalid_request",
-                    ),
-                };
-                write_stdio_rpc_success_shared(
+                state::set(
                     &writer,
                     &request.id,
                     &request.workflow_id,
-                    serde_json::to_value(receipt)?,
+                    state_request,
+                    portable_data_dir,
                 )?;
+            }
+            StdioRpcMethod::Orchestrator { params } => {
+                orchestrator_request::handle(&writer, &request.id, &request.workflow_id, &params)?;
             }
             StdioRpcMethod::Shutdown => {
                 if let Err(error) = licoup_native::platform::shutdown_all_conversations() {

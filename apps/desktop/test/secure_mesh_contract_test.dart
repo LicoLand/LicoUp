@@ -62,21 +62,22 @@ void main() {
     expect(requests.last.toString(), isNot(contains('unit-test-secret')));
   });
 
-  test('generated request rejects secret-bearing parameters before dispatch', () {
-    expect(
-      () => SecureMeshRequest(
-        action: SecureMeshAction.ktStatus,
-        params: const <String, Object?>{
-          'privateKey': 'unit-test-secret',
-        },
-      ),
-      throwsA(
-        isA<SecureMeshFailure>().having(
-          (failure) => failure.code,
-          'code',
-          SecureMeshFailureCode.forbiddenSecretMaterial,
+  test(
+    'generated request rejects secret-bearing parameters before dispatch',
+    () {
+      expect(
+        () => SecureMeshRequest(
+          action: SecureMeshAction.ktStatus,
+          params: const <String, Object?>{'privateKey': 'unit-test-secret'},
         ),
-      ),
-    );
-  });
+        throwsA(
+          isA<SecureMeshFailure>().having(
+            (failure) => failure.code,
+            'code',
+            SecureMeshFailureCode.forbiddenSecretMaterial,
+          ),
+        ),
+      );
+    },
+  );
 }

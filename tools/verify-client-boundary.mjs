@@ -204,18 +204,36 @@ function addFailure(reasonCode, relativePath, privateDetail = "") {
 
 async function scanPublicFiles() {
   let output;
+  let deletedOutput;
   try {
-    ({ stdout: output } = await execFileAsync(
-      "git",
-      ["ls-files", "--cached", "--others", "--exclude-standard", "-z"],
-      { cwd: repoRoot, encoding: "utf8", maxBuffer: 16 * 1024 * 1024 },
-    ));
+    [
+      { stdout: output },
+      { stdout: deletedOutput },
+    ] = await Promise.all([
+      execFileAsync(
+        "git",
+        ["ls-files", "--cached", "--others", "--exclude-standard", "-z"],
+        { cwd: repoRoot, encoding: "utf8", maxBuffer: 16 * 1024 * 1024 },
+      ),
+      execFileAsync(
+        "git",
+        ["ls-files", "--deleted", "-z"],
+        { cwd: repoRoot, encoding: "utf8", maxBuffer: 16 * 1024 * 1024 },
+      ),
+    ]);
   } catch (error) {
     addFailure("PUBLIC_FILE_LIST_FAILED", ".", error?.message);
     return;
   }
 
-  const candidates = [...new Set(output.split("\0").filter(Boolean))].sort();
+  const deletedPaths = new Set(deletedOutput.split("\0").filter(Boolean));
+  const candidates = [
+    ...new Set(
+      output.split("\0").filter((relativePath) =>
+        relativePath && !deletedPaths.has(relativePath)
+      ),
+    ),
+  ].sort();
   for (const relativePath of candidates) {
     const normalized = relativePath.split(path.sep).join("/");
     if (normalized !== relativePath || path.posix.normalize(normalized) !== normalized) {
