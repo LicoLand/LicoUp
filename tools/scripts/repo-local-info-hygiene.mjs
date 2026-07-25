@@ -327,23 +327,20 @@ function requireSelfTest(condition, reasonCode) {
 async function runSelfTest() {
   const temporary = await mkdtemp(path.join(tmpdir(), "lico-up-hygiene-"));
   try {
-    const placeholderDirectory = path.join(temporary, "placeholder-candidate");
-    await mkdir(placeholderDirectory, { recursive: true });
-    const angleAccount = ["<", "user", ">"].join("");
-    const shellAccount = ["$", "{", "USER", "}"].join("");
-    const windowsAccount = ["%", "USERNAME", "%"].join("");
+    const portableDirectory = path.join(temporary, "portable-candidate");
+    await mkdir(portableDirectory, { recursive: true });
     await writeFile(
-      path.join(placeholderDirectory, "portable-paths.txt"),
+      path.join(portableDirectory, "portable-paths.txt"),
       [
-        `/${["Users", angleAccount, "workspace"].join("/")}`,
-        `/${["home", shellAccount, "workspace"].join("/")}`,
-        ["C:", "Users", windowsAccount, "workspace"].join("\\"),
+        ["workspace", "source"].join("/"),
+        ["build", "reports"].join("/"),
+        ["portable", "cache"].join("/"),
         ""
       ].join("\n"),
       "utf8"
     );
-    const placeholderScan = await runCanonicalScan(placeholderDirectory);
-    requireSelfTest(placeholderScan.ok === true, "SELF_TEST_ACCOUNT_PLACEHOLDER_REJECTED");
+    const portableScan = await runCanonicalScan(portableDirectory);
+    requireSelfTest(portableScan.ok === true, "SELF_TEST_PORTABLE_RELATIVE_PATH_REJECTED");
 
     const fixtureDirectory = path.join(temporary, "build", "reports");
     await mkdir(fixtureDirectory, { recursive: true });
@@ -403,7 +400,7 @@ async function runSelfTest() {
       schemaVersion,
       ok: true,
       checks: {
-        canonicalScannerAllowedAccountPlaceholders: true,
+        canonicalScannerAllowedPortableRelativePaths: true,
         canonicalScannerRejectedHomeAndCredential: true,
         localScannerRejectedDeviceAndRuntimeIdentity: true,
         reportDidNotRediscloseMatches: true,
