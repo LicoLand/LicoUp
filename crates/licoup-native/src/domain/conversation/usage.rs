@@ -99,8 +99,6 @@ pub(crate) fn collect_token_usage(value: &Value, depth: usize, usage: &mut Usage
         || object.contains_key("inputCacheCreation")
         || object.contains_key("input_cache_creation");
     let flat_additive_cache = [
-        "cacheReadInputTokens",
-        "cache_read_input_tokens",
         "cacheReadTokens",
         "cache_read_tokens",
         "cacheRead",
@@ -146,14 +144,14 @@ pub(crate) fn collect_token_usage(value: &Value, depth: usize, usage: &mut Usage
             "total_cached_tokens",
             "cachedContentTokenCount",
             "cached_content_token_count",
+            "cacheReadInputTokens",
+            "cache_read_input_tokens",
         ],
         usage,
     );
     let cache_read = token_count_field(
         object,
         &[
-            "cacheReadInputTokens",
-            "cache_read_input_tokens",
             "cacheReadTokens",
             "cache_read_tokens",
             "cacheRead",

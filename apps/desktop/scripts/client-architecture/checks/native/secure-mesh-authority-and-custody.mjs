@@ -43,6 +43,9 @@ export async function checkSecureMeshAuthorityAndCustody(context) {
     ])
   ));
   const secureClientRelayFacadeSource = await readText(`${secureClientRelayRoot}/mod.rs`);
+  const urlSecuritySource = await readText(
+    "crates/licoup-native/src/platform/url_security.rs"
+  );
   assert(secureClientRelayLeaves.every((leaf) =>
       secureClientRelayFacadeSource.includes(`mod ${leaf.replace(".rs", "")};`)) &&
     secureClientRelayFacadeSource.includes("pub use transport::SecureClientRelayTransport;"),
@@ -51,16 +54,18 @@ export async function checkSecureMeshAuthorityAndCustody(context) {
   assert(secureClientRelaySources["contract.rs"].includes("enum SecureClientRelayOperation") &&
     secureClientRelaySources["contract.rs"].includes("struct SecureClientRelayHttpError") &&
     secureClientRelaySources["contract.rs"].includes("MAX_HTTP_RESPONSE_BYTES") &&
-    !secureClientRelaySources["contract.rs"].includes("client_local_runtime") &&
     secureClientRelaySources["request.rs"].includes("envelope.validate()?") &&
     secureClientRelaySources["request.rs"].includes("envelope.to_json()") &&
+    !secureClientRelaySources["request.rs"].includes("client_local_runtime") &&
     !secureClientRelaySources["request.rs"].includes("plaintext"),
     "Secure Client Relay contract and request leaves must keep an exact ciphertext-only surface"
   );
   assert(secureClientRelayLeaves.filter((leaf) =>
       secureClientRelaySources[leaf].includes("ureq::")).join(",") === "http_io.rs" &&
-    secureClientRelaySources["http_io.rs"].includes('parsed.scheme() == "https"') &&
-    secureClientRelaySources["http_io.rs"].includes('parsed.scheme() == "http" && is_loopback') &&
+    secureClientRelaySources["http_io.rs"].includes("is_https_or_loopback_http_url") &&
+    urlSecuritySource.includes('"https" =>') &&
+    urlSecuritySource.includes('"http"') &&
+    urlSecuritySource.includes("if is_exact_loopback_host") &&
     secureClientRelaySources["http_io.rs"].includes("Duration::from_secs(HTTP_TIMEOUT_SECONDS)") &&
     secureClientRelaySources["response_codec.rs"].includes("MAX_HTTP_ERROR_RESPONSE_BYTES") &&
     secureClientRelaySources["response_codec.rs"].includes("take((maximum_bytes + 1) as u64)") &&
@@ -324,7 +329,8 @@ export async function checkSecureMeshAuthorityAndCustody(context) {
     relayOperationSources["mailbox.rs"].includes("SecureMeshMailboxSchedule") &&
     relayOperationSources["mailbox.rs"].includes("checked_mul") &&
     relayOperationSources["envelope.rs"].includes("SecureMeshRelayEnvelope::from_json") &&
-    relayOperationSources["envelope.rs"].includes("MOBILE_RELAY_COMMAND_TTL_SECONDS") &&
+    pairwiseSessionSources["payload.rs"].includes("MOBILE_RELAY_COMMAND_TTL_SECONDS") &&
+    pairwiseSessionSources["crypto_operation.rs"].includes("MOBILE_RELAY_COMMAND_TTL_SECONDS") &&
     relayOperationSources["delivery.rs"].includes("SECURE_MESH_RELAY_OUTER_FIELDS") &&
     relayOperationSources["registration.rs"].includes("challengeEncoding") &&
     relayOperationSources["registration.rs"].includes("challenge_signature") &&
@@ -719,7 +725,8 @@ export async function checkSecureMeshAuthorityAndCustody(context) {
     ) &&
     mobileRelayRustSource.includes("NATIVE_SECRET_STORE_SERVICE") &&
     mobileRelayRustSource.includes("persist_config_secret_material_to_native_store") &&
-    mobileRelayRustSource.includes("hydrate_config_secret_material_from_native_store") &&
+    mobileRelayRustSource.includes("RuntimeSecretContext") &&
+    mobileRelayRustSource.includes("load_config_with_runtime_secret_context") &&
     mobileRelayRustSource.includes("SecretStoreAuthorizationSession") &&
     mobileRelayRustSource.includes("begin_authorized_session") &&
     mobileRelayRustSource.includes("set_secret_with_session") &&

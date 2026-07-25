@@ -70,10 +70,9 @@ final class AgentUsageController extends ChangeNotifier {
 
   /// Backward-compatible alias for tests and facades.
   @visibleForTesting
-  AgentUsageReport? get scanCache =>
-      _dailyCache.isEmpty ? null : _dailyCache.projectViewport(
-        agentUsageDailyCacheMaxDays,
-      );
+  AgentUsageReport? get scanCache => _dailyCache.isEmpty
+      ? null
+      : _dailyCache.projectViewport(agentUsageDailyCacheMaxDays);
 
   /// True when the daily cache covers 90 days and was refreshed recently.
   bool get hasFreshScanCoverage =>
@@ -241,16 +240,14 @@ final class AgentUsageController extends ChangeNotifier {
     report = _dailyCache.projectViewport(historyDays);
   }
 
-  AgentUsageReport _normalizeScanReport(AgentUsageReport scanned, int scanDays) {
+  AgentUsageReport _normalizeScanReport(
+    AgentUsageReport scanned,
+    int scanDays,
+  ) {
     if (scanned.windowDays >= scanDays) {
       return scanned;
     }
-    return scanned.copyWith(
-      window: {
-        ...scanned.window,
-        'days': scanDays,
-      },
-    );
+    return scanned.copyWith(window: {...scanned.window, 'days': scanDays});
   }
 
   Future<void> scan({
@@ -264,13 +261,14 @@ final class AgentUsageController extends ChangeNotifier {
       return Future<void>.value();
     }
     late final Future<void> scanFuture;
-    scanFuture = _scan(
-      forceRefresh: forceRefresh,
-      showProgress: showProgress,
-      historyDays: historyDays,
-    ).whenComplete(() {
-      if (identical(_scanFuture, scanFuture)) _scanFuture = null;
-    });
+    scanFuture =
+        _scan(
+          forceRefresh: forceRefresh,
+          showProgress: showProgress,
+          historyDays: historyDays,
+        ).whenComplete(() {
+          if (identical(_scanFuture, scanFuture)) _scanFuture = null;
+        });
     _scanFuture = scanFuture;
     return scanFuture;
   }
@@ -280,7 +278,8 @@ final class AgentUsageController extends ChangeNotifier {
     required bool showProgress,
     int? historyDays,
   }) async {
-    final scanDays = historyDays ??
+    final scanDays =
+        historyDays ??
         (forceRefresh
             ? defaultAgentUsageScanHistoryDays
             : defaultAgentUsageDisplayHistoryDays);
@@ -300,7 +299,8 @@ final class AgentUsageController extends ChangeNotifier {
       );
       if (_disposed) return;
       final normalized = _normalizeScanReport(next, scanDays);
-      final replaceCache = scanDays >= agentUsageDailyCacheMaxDays &&
+      final replaceCache =
+          scanDays >= agentUsageDailyCacheMaxDays &&
           (_dailyCache.isEmpty || (forceRefresh && showProgress));
       _ingestIntoDailyCache(normalized, replace: replaceCache);
       if (replaceCache) {

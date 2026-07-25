@@ -91,10 +91,7 @@ class _RuntimeSettingSelect extends StatelessWidget {
         dense: true,
         enabled: enabled,
         options: [
-          ApplePopupSelectOption(
-            value: '',
-            label: '$label · $defaultLabel',
-          ),
+          ApplePopupSelectOption(value: '', label: '$label · $defaultLabel'),
           for (final option in options)
             ApplePopupSelectOption(value: option, label: '$label · $option'),
         ],

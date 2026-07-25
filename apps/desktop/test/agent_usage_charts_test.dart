@@ -200,7 +200,10 @@ void main() {
       findsNWidgets(unavailableAgents.length),
     );
     expect(
-      find.descendant(of: tokenShare, matching: find.textContaining('Estimate')),
+      find.descendant(
+        of: tokenShare,
+        matching: find.textContaining('Estimate'),
+      ),
       findsNothing,
     );
     expect(

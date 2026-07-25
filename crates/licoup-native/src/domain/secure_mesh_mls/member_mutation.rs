@@ -138,8 +138,7 @@ pub(super) fn member_add(params: &Value) -> Result<Value> {
                 "group": Value::Null,
                 "commitMessageBase64url": encode_base64url(&welcome.commit_message),
                 "welcomeMessageBase64url": encode_base64url(&welcome.welcome_message),
-                "memberEndpointId": member_identity.endpoint_id,
-                "privateKeyMaterial": "redacted"
+                "memberEndpointId": member_identity.endpoint_id
             });
             let expected = current_group_metadata(&group, runtime.identity)?;
             security_ledger.stage_operation(
@@ -255,8 +254,7 @@ pub(super) fn member_remove(params: &Value) -> Result<Value> {
                 "ok": true,
                 "group": Value::Null,
                 "commitMessageBase64url": encode_base64url(&commit.commit_message),
-                "memberEndpointId": removed_member_identity.endpoint_id,
-                "privateKeyMaterial": "redacted"
+                "memberEndpointId": removed_member_identity.endpoint_id
             });
             let expected = current_group_metadata(&group, runtime.identity)?;
             security_ledger.stage_operation(

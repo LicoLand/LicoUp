@@ -201,11 +201,8 @@ void registerClientTargetScenarios() {
 
     await controller.scanTargets();
     expect(controller.selectedConversationAgentId, agentOrchestrationTargetId);
-    expect(controller.selectedConversationSessions, hasLength(1));
-    expect(
-      controller.selectedConversationSession?.agentId,
-      agentOrchestrationTargetId,
-    );
+    expect(controller.selectedConversationSessions, isEmpty);
+    expect(controller.selectedConversationSession, isNull);
 
     await controller.selectConversationAgent('codex');
     controller.selectConversationSession('native-codex-1');

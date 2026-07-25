@@ -31,7 +31,6 @@ Stream<Map<String, dynamic>> executeStdioRpcConversation({
     await sessionManager.discard(session: session, kill: true);
     throw const LicoClientRpcException('transport_failed');
   }
-
   var terminalSeen = false;
   try {
     await for (final frame in frames) {

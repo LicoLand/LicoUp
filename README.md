@@ -15,7 +15,7 @@ English (normative language) · [简体中文 (localized language)](README.zh-CN
 
 </div>
 
-LicoUp is an open-source desktop and mobile client for discovering,
+LicoUp is an open-source client for desktop and mobile devices that discovers,
 operating, and securely reaching your own agents. It supports different
 tools and ways of working while keeping you in control.
 [`PRODUCT.md`](PRODUCT.md) is the product-definition authority.

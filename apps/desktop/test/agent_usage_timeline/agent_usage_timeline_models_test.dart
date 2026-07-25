@@ -65,7 +65,11 @@ void main() {
         'Tail A': 3,
         'Tail B': 2,
       },
-      shareSeriesLabels: ['Grok 4.5', 'Composer 2.5', agentUsageOverflowSeriesLabel],
+      shareSeriesLabels: [
+        'Grok 4.5',
+        'Composer 2.5',
+        agentUsageOverflowSeriesLabel,
+      ],
       groupTotal: 145,
       hasDailyBreakdown: true,
     );

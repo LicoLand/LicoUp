@@ -115,7 +115,9 @@ final class AgentOrchestrationPolicy {
     };
   }
 
-  static AgentOrchestrationPolicy fromBackendPolicy(Map<String, Object?> policy) {
+  static AgentOrchestrationPolicy fromBackendPolicy(
+    Map<String, Object?> policy,
+  ) {
     final commander = _asMap(policy['commander']);
     final library = <AgentModelLibraryEntry>[
       for (final item in _asList(policy['modelLibrary']))

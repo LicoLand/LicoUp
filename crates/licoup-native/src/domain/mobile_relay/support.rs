@@ -27,7 +27,7 @@ pub(super) use super::secret_custody::{
 #[cfg(test)]
 pub(super) use super::secret_custody::{
     load_config, load_config_with_runtime_secret_context_for_operation,
-    mobile_relay_e2ee_secret_store_authorization_batch_operation_count, save_config,
+    mobile_relay_e2ee_secret_store_authorization_batch_operation_count,
 };
 #[cfg(test)]
 pub(super) use crate::core::secure_mesh_capability::SecurityCapability;

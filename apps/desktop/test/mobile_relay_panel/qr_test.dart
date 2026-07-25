@@ -51,6 +51,6 @@ void main() {
     await tester.pump();
 
     expect(find.byType(QrImageView), findsOneWidget);
-    expect(find.text('Scan with your phone to pair'), findsOneWidget);
+    expect(find.text('Scan This QR Code To Pair Your Phone'), findsOneWidget);
   });
 }
