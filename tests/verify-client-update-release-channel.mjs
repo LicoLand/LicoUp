@@ -470,7 +470,7 @@ function runMacosReleaseBundleEvidence(hostPlatform) {
     gatekeeperVerified: false,
     command: "node apps/desktop/scripts/package-client.mjs --platform macos --mode release --production-entitlements",
     verificationCommand: "node apps/desktop/scripts/verify-macos-client-bundle.mjs",
-    codesignCommand: "codesign --verify --deep --strict Arc.app",
+    codesignCommand: "codesign --verify --deep --strict LicoUp.app",
     ok: false
   };
   if (!evidence.attempted) {
@@ -526,7 +526,7 @@ function runMacosReleaseBundleEvidence(hostPlatform) {
   );
 
   const runnableRoot = path.join(repoRoot, "build", "apps", "desktop", "runnable", "macos", "release");
-  const runnableAppPath = path.join(runnableRoot, "Arc.app");
+  const runnableAppPath = path.join(runnableRoot, "LicoUp.app");
   const codesignResult = spawnSync("codesign", ["--verify", "--deep", "--strict", runnableAppPath], {
     cwd: repoRoot,
     encoding: "utf8",
@@ -553,7 +553,7 @@ function runMacosReleaseBundleEvidence(hostPlatform) {
     codesignOutput: summarizeOutput(codesignResult.stderr || codesignResult.stdout),
     artifacts: [
       summarizeMacosBundleRoot("bundle", bundleRoot, "licoup.app"),
-      summarizeMacosBundleRoot("runnable", runnableRoot, "Arc.app")
+      summarizeMacosBundleRoot("runnable", runnableRoot, "LicoUp.app")
     ],
     remainingProductionProofs: [
       "Developer ID signing",

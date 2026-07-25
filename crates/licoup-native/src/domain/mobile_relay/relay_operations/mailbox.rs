@@ -2,7 +2,7 @@ use crate::core::secure_mesh_relay_envelope::{
     SECURE_MESH_MAILBOX_ROTATION_WINDOW_SECONDS, SecureMeshDeliverySecret,
     SecureMeshMailboxDirection, SecureMeshMailboxSchedule, SecureMeshRelayChannelBinding,
 };
-use crate::domain::mobile_relay::endpoint_trust::{decode_key_32, local_endpoint_state};
+use crate::domain::mobile_relay::endpoint_trust::decode_key_32;
 use crate::domain::mobile_relay::secret_custody::{
     MobileRelayE2eeSecretField, RuntimeSecretMaterial,
 };

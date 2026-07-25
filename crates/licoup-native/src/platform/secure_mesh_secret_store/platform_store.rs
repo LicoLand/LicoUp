@@ -41,6 +41,7 @@ impl PlatformSecretStore {
     }
 
     #[cfg(target_os = "macos")]
+    #[cfg(test)]
     pub(crate) fn with_macos_secret_store_access(mut self, access: MacosSecretStoreAccess) -> Self {
         self.macos_secret_store_access = Arc::new(Mutex::new(Some(Arc::new(access))));
         self

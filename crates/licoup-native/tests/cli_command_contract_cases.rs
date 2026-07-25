@@ -1258,17 +1258,6 @@ fn assert_admission_error(error: &Error, expected: ExpectedAdmission, forbidden_
     }
 }
 
-fn assert_typed_admission_failure(error: &Error) {
-    let typed = error
-        .downcast_ref::<CliCommandError>()
-        .expect("CLI admission failures must be downcastable to CliCommandError");
-    assert_eq!(typed.stage(), ADMISSION_STAGE);
-    assert_eq!(typed.component(), ADMISSION_COMPONENT);
-    assert!(!typed.retryable());
-    assert!(!typed.code().is_empty());
-    assert!(!typed.recovery().is_empty());
-}
-
 fn assert_private_failure_pair(
     label: &str,
     alpha_args: Vec<String>,
@@ -1305,7 +1294,7 @@ fn public_error_surfaces(error: &Error) -> (String, String, String) {
 }
 
 fn run_lico_client(args: &[String]) -> Output {
-    Command::new(env!("CARGO_BIN_EXE_lico-client"))
+    Command::new(env!("CARGO_BIN_EXE_licoup-cli"))
         .args(args)
         .env_remove("RUST_LOG")
         .env_remove("RUST_BACKTRACE")
@@ -1314,7 +1303,7 @@ fn run_lico_client(args: &[String]) -> Output {
 }
 
 fn run_lico_client_rpc(args: Vec<String>) -> Output {
-    let mut child = Command::new(env!("CARGO_BIN_EXE_lico-client"))
+    let mut child = Command::new(env!("CARGO_BIN_EXE_licoup-cli"))
         .args(["rpc", "stdio"])
         .env_remove("RUST_LOG")
         .env_remove("RUST_BACKTRACE")

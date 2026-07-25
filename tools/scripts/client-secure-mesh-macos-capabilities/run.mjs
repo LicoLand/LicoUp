@@ -221,7 +221,7 @@ export function main() {
     artifactDigest: builtDigest,
     runtimeExecutableDigest: sha256File(resolveContainedExistingPath(
       installed,
-      path.join(installed, "Contents/MacOS/licoup"),
+      path.join(installed, "Contents/MacOS/licoup-cli"),
       { expectedKind: "file" },
     ), { maxBytes: 512 * 1024 * 1024 }),
     signatureMetadataDigest,

@@ -4,14 +4,6 @@ use crate::domain::mobile_relay::secret_custody::{
     MobileRelayE2eeSecretField, RuntimeSecretMaterial,
 };
 
-#[cfg(test)]
-pub(in crate::domain::mobile_relay) fn apply_out_of_band_pairing_response(
-    config: &mut Value,
-    response: &Value,
-) -> Result<()> {
-    apply_out_of_band_pairing_response_with_context(config, response, None)
-}
-
 pub(in crate::domain::mobile_relay) fn apply_out_of_band_pairing_response_with_context(
     config: &mut Value,
     response: &Value,
@@ -86,8 +78,29 @@ pub(in crate::domain::mobile_relay) fn public_config(config: &Value) -> Value {
     let mut public = config.clone();
     let pc_token_present = secret_present(config.get("pcToken"))
         || config.get("pcTokenPresent").and_then(Value::as_bool) == Some(true);
+    let selected_pairing_id = config
+        .get("pairingId")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .unwrap_or_default();
+    let selected_device_credential_present = config.get("secretStorageStatus").is_some()
+        && config
+            .get("pairedDevices")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .any(|device| {
+                !selected_pairing_id.is_empty()
+                    && device
+                        .get("pairingId")
+                        .and_then(Value::as_str)
+                        .map(str::trim)
+                        == Some(selected_pairing_id)
+                    && device.get("credentialPresent").and_then(Value::as_bool) == Some(true)
+            });
     let mobile_token_present = secret_present(config.get("mobileToken"))
-        || config.get("mobileTokenPresent").and_then(Value::as_bool) == Some(true);
+        || config.get("mobileTokenPresent").and_then(Value::as_bool) == Some(true)
+        || selected_device_credential_present;
     let secret_storage_backend = public_secret_storage_backend(config);
     public["pcToken"] = json!("");
     public["mobileToken"] = json!("");
@@ -334,7 +347,7 @@ pub(in crate::domain::mobile_relay) fn one_time_pairing_invite(
     })
 }
 
-#[allow(dead_code)]
+#[cfg(test)]
 pub(in crate::domain::mobile_relay) fn apply_pairing_invite_params(
     config: &mut Value,
     params: &Value,
@@ -343,7 +356,6 @@ pub(in crate::domain::mobile_relay) fn apply_pairing_invite_params(
     apply_pairing_invite_params_with_context(config, params, Some(&mut context))
 }
 
-#[allow(dead_code)]
 pub(in crate::domain::mobile_relay) fn apply_pairing_invite_params_with_context(
     config: &mut Value,
     params: &Value,

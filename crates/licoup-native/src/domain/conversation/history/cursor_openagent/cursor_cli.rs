@@ -7,7 +7,7 @@ use serde_json::{Value, json};
 use super::super::HistoryAdapter;
 use super::super::generic::messages_from_json;
 use super::super::message_projection::{extract_role, extract_text, native_message_timestamp};
-use super::super::query_filter::{display_path, epoch_number_to_rfc3339, epoch_value_to_rfc3339};
+use super::super::query_filter::{epoch_number_to_rfc3339, epoch_value_to_rfc3339};
 use super::super::session_metadata::session_from_messages_with_title;
 use super::codec::sqlite_table_exists;
 use super::cursor_projection::normalize_cursor_model_name;

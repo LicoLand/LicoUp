@@ -9,7 +9,7 @@ mod approval_wait;
 mod capabilities;
 mod command;
 mod continuity;
-mod errors;
+pub(in crate::platform) mod errors;
 mod events;
 mod execution;
 mod io;
@@ -19,7 +19,6 @@ mod supervision;
 pub(in crate::platform) use approval_store::resolve_parked_permission;
 pub(in crate::platform) use capabilities::{AcpSessionDriverSpec, CapabilityProbe, RunResult};
 pub(in crate::platform) use continuity::{ControlDisposition, cancel, cleanup_session};
-pub(in crate::platform) use errors::ProtocolFailure;
 pub(in crate::platform) use execution::execute;
 pub(in crate::platform) use io::{drain_bounded, read_bounded};
 

@@ -8,7 +8,7 @@ fn mobile_relay_user_level_config_mutation_reuses_single_secret_store_authorizat
     let mut config = default_config();
     ensure_mobile_relay_endpoint_descriptor(
         &mut config,
-        test_runtime_secret_material(stringify!(&mut config)),
+        &mut test_runtime_secret_material(stringify!(&mut config)),
         "mobile",
     )
     .unwrap();

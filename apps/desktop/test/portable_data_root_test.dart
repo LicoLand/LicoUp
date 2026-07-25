@@ -176,7 +176,7 @@ void main() {
         },
         resolvedExecutableOverride: p.join(
           Directory.systemTemp.path,
-          'Arc.app',
+          'LicoUp.app',
           'Contents',
           'MacOS',
           'licoup',

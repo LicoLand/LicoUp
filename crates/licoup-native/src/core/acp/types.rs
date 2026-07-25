@@ -1,5 +1,5 @@
 use super::AcpError;
-use super::validation::{MAX_SESSION_ID_BYTES, normalized_text};
+use super::validation::normalized_text;
 use serde_json::{Map, Value, json};
 use std::path::{Path, PathBuf};
 
@@ -325,8 +325,4 @@ pub(super) fn validate_implementation_value(value: &Value) -> Result<(), AcpErro
         )?;
     }
     Ok(())
-}
-
-pub(super) fn validate_session_update_text(value: &str) -> Result<(), AcpError> {
-    normalized_text(value, MAX_SESSION_ID_BYTES, AcpError::SessionUpdateInvalid)
 }

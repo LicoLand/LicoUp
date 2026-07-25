@@ -163,6 +163,7 @@ impl MacosPresenceError {
         Self { code }
     }
 
+    #[cfg(test)]
     pub fn code(&self) -> &'static str {
         self.code
     }
@@ -452,6 +453,7 @@ pub struct MacosSecretStoreAccess {
 }
 
 impl MacosSecretStoreAccess {
+    #[cfg(test)]
     pub fn new(
         request: SecretStorePresenceBatchRequest,
         approved_at: Instant,
@@ -632,6 +634,7 @@ pub(crate) fn production_access(
     Ok(MacosSecretStoreAccess::production(presence_request))
 }
 
+#[cfg(test)]
 pub fn set_secret(
     service: &str,
     coordinator: &MacosPresenceBatchCoordinator,
@@ -656,6 +659,7 @@ pub fn set_secret(
     )
 }
 
+#[cfg(test)]
 pub fn get_secret(
     service: &str,
     coordinator: &MacosPresenceBatchCoordinator,
@@ -671,6 +675,7 @@ pub fn get_secret(
     execute_get(service, &approved, operation_now, keychain, handle, purpose)
 }
 
+#[cfg(test)]
 pub fn delete_secret(
     service: &str,
     coordinator: &MacosPresenceBatchCoordinator,
@@ -760,6 +765,7 @@ impl SecurityFrameworkKeychain {
         }
     }
 
+    #[cfg(test)]
     pub fn with_sec_item_port(sec_item_port: Arc<dyn MacosSecItemPort + Send + Sync>) -> Self {
         Self { sec_item_port }
     }

@@ -138,7 +138,7 @@ function main() {
     "build/apps/desktop/runnable/macos/release",
   );
   const result = archiveCurrentLocalIntegrity
-    ? { runnable: { root: runnableRoot, appPath: path.join(runnableRoot, "Arc.app") } }
+    ? { runnable: { root: runnableRoot, appPath: path.join(runnableRoot, "LicoUp.app") } }
     : packageClient(packageArguments);
   const appPath = result?.runnable?.appPath;
   if (!appPath || !existsSync(appPath) ||

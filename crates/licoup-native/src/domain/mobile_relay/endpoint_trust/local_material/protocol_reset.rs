@@ -4,7 +4,7 @@ use serde_json::{Value, json};
 
 pub(in crate::domain::mobile_relay) fn reset_incompatible_local_pairwise_protocol(
     config: &mut Value,
-) {
+) -> bool {
     let incompatible = config
         .get("mobileRelayE2ee")
         .and_then(|state| state.get("protocolVersion"))
@@ -12,7 +12,7 @@ pub(in crate::domain::mobile_relay) fn reset_incompatible_local_pairwise_protoco
         .map(str::trim)
         .is_some_and(|protocol| protocol != MOBILE_RELAY_E2EE_PROTOCOL_VERSION);
     if !incompatible {
-        return;
+        return false;
     }
     config["mobileRelayE2ee"] = json!({});
     config["pairingId"] = json!("");
@@ -32,4 +32,5 @@ pub(in crate::domain::mobile_relay) fn reset_incompatible_local_pairwise_protoco
             root.remove(key);
         }
     }
+    true
 }

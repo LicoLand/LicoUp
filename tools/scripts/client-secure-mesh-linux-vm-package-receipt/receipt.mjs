@@ -139,7 +139,7 @@ export async function runReceipt(ctx) {
 
   const flutterClient = requiredFile(path.join(installedBundle, "licoup"),
     "installed Linux desktop executable");
-  const nativeClient = requiredFile(path.join(installedBundle, "licoup"),
+  const nativeClient = requiredFile(path.join(installedBundle, "licoup-cli"),
     "installed Linux native sidecar");
   const bundleManifestPath = requiredFile(
     path.join(installedBundle, "package-metadata", "licoup", "packaging-modules.json"),

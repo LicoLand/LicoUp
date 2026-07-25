@@ -1,6 +1,7 @@
 #[cfg(test)]
 use super::identity_generation::generate_identity_material;
 use super::prekey_inventory::ensure_mobile_relay_pqxdh_material;
+#[cfg(test)]
 use crate::core::secure_mesh_secret_store::SecretBytes;
 use crate::domain::mobile_relay::secret_custody::{
     MobileRelayE2eeSecretField, RuntimeSecretMaterial,

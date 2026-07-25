@@ -89,7 +89,6 @@ pub(super) fn key_transparency_publication_request(params: &Value) -> Result<Val
         "authorityOperation": "publish-directory-claim",
         "claim": claim,
         "derivedPurpose": purpose.stable_code(),
-        "privateKeyMaterial": "redacted",
         "authorityRequired": true
     }))
 }

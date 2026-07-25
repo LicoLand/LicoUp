@@ -61,6 +61,10 @@ const forbiddenDataFiles = new Set([
   "settings.json"
 ]);
 
+const versionControlledSourceDirectories = new Set([
+  "apps/desktop/scripts/package-client/build"
+]);
+
 function runGit(repo, args) {
   const result = spawnSync("git", args, {
     cwd: repo,
@@ -97,8 +101,12 @@ function findGitRoots() {
 
 function classifyForbiddenPath(relativePath) {
   const segments = relativePath.split(/[\\/]+/).filter(Boolean);
-  for (const segment of segments) {
+  for (const [index, segment] of segments.entries()) {
     if (forbiddenAnySegment.has(segment)) {
+      const directory = segments.slice(0, index + 1).join("/");
+      if (segment === "build" && versionControlledSourceDirectories.has(directory)) {
+        continue;
+      }
       return { kind: "generated-or-cache-directory", pattern: segment };
     }
   }

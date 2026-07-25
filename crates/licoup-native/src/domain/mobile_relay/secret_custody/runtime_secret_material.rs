@@ -1,5 +1,7 @@
 use std::collections::BTreeMap;
 use std::fmt;
+#[cfg(test)]
+use std::sync::{Mutex, MutexGuard, OnceLock, PoisonError};
 
 use crate::core::secure_mesh_secret_store::SecretBytes;
 #[cfg(test)]
@@ -219,20 +221,8 @@ impl RuntimeSecretMaterial {
         }
     }
 
-    pub fn token(&self, field: &str) -> Option<&SecretBytes> {
-        match field {
-            "pcToken" => self.pc_token.as_ref(),
-            "mobileToken" => self.mobile_token.as_ref(),
-            _ => None,
-        }
-    }
-
     pub fn set_paired_device_token(&mut self, key: String, secret: SecretBytes) {
         self.paired_device_tokens.insert(key, secret);
-    }
-
-    pub fn paired_device_token(&self, key: &str) -> Option<&SecretBytes> {
-        self.paired_device_tokens.get(key)
     }
 
     #[cfg(test)]
@@ -252,28 +242,26 @@ impl RuntimeSecretMaterial {
 
 #[cfg(test)]
 pub(crate) fn test_runtime_secret_material(
-    variable: &'static str,
-) -> &'static mut RuntimeSecretMaterial {
-    use std::cell::RefCell;
+    variable: &str,
+) -> MutexGuard<'static, RuntimeSecretMaterial> {
+    static MATERIALS: OnceLock<Mutex<BTreeMap<String, &'static Mutex<RuntimeSecretMaterial>>>> =
+        OnceLock::new();
 
-    thread_local! {
-        static MATERIALS: RefCell<BTreeMap<String, *mut RuntimeSecretMaterial>> =
-            const { RefCell::new(BTreeMap::new()) };
-    }
     let current_thread = std::thread::current();
     let test_name = current_thread.name().unwrap_or("unnamed-test");
+    let variable = variable.trim().trim_start_matches('&').trim();
+    let variable = variable.strip_prefix("mut ").unwrap_or(variable).trim();
     let key = format!("{test_name}:{variable}");
-    MATERIALS.with(|materials| {
-        let pointer = *materials
-            .borrow_mut()
+    let material = {
+        let mut materials = MATERIALS
+            .get_or_init(|| Mutex::new(BTreeMap::new()))
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        *materials
             .entry(key)
-            .or_insert_with(|| Box::into_raw(Box::new(RuntimeSecretMaterial::new())));
-        // SAFETY: Rust's test harness gives each test a unique named thread,
-        // the variable label distinguishes independent configs in that test,
-        // and test call sites borrow one material only for the duration of a
-        // synchronous helper invocation.
-        unsafe { &mut *pointer }
-    })
+            .or_insert_with(|| Box::leak(Box::new(Mutex::new(RuntimeSecretMaterial::new()))))
+    };
+    material.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
 pub fn encode_mobile_relay_e2ee_secret_bundle(

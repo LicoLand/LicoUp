@@ -9,9 +9,6 @@ mod freshness;
 mod test_support;
 mod verifier;
 
-#[cfg(test)]
-pub(super) use super::test_runtime_secret_material;
-
 pub(in crate::domain::mobile_relay) use authority::open_mobile_relay_directory_authority;
 pub(in crate::domain::mobile_relay) use authorization::{
     authorize_exact_local_directory_response, authorize_local_pairwise_directory,

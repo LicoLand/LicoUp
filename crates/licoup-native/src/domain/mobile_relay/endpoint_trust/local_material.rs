@@ -10,9 +10,6 @@ mod rotation;
 mod state;
 mod state_codec;
 
-#[cfg(test)]
-pub(super) use super::test_runtime_secret_material;
-
 pub(in crate::domain::mobile_relay) use composition::ensure_mobile_relay_endpoint_descriptor;
 pub(in crate::domain::mobile_relay) use descriptor::local_endpoint_public_descriptor;
 pub(in crate::domain::mobile_relay) use material_mutation::ensure_mobile_relay_endpoint_material;

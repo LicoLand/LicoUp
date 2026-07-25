@@ -17,7 +17,7 @@ fn state_codec_fails_closed_when_required_private_material_is_absent() {
     .err()
     .expect("missing private material must be rejected");
 
-    assert!(error.to_string().contains("privateKeyBase64url"));
+    assert!(error.to_string().contains("local private key is missing"));
 }
 
 #[test]

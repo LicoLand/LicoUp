@@ -15,7 +15,7 @@ const roots = [
   {
     kind: "runnable",
     root: path.join(workspaceRoot, "build", "apps", "desktop", "runnable", "macos", "release"),
-    appName: "Arc.app"
+    appName: "LicoUp.app"
   }
 ];
 
@@ -123,7 +123,7 @@ async function main() {
         missing.push(`${root} macOS package manifest has signing.entitlementsFile=${signing.entitlementsFile}`);
       }
       const expectedExecutable = kind === "runnable"
-        ? path.join("Arc.app", "Contents", "MacOS", "licoup")
+        ? path.join("LicoUp.app", "Contents", "MacOS", "licoup")
         : path.join("licoup.app", "Contents", "MacOS", "licoup");
       if (manifest.flutterExecutable !== expectedExecutable) {
         missing.push(`${root} macOS package manifest has flutterExecutable=${manifest.flutterExecutable}`);

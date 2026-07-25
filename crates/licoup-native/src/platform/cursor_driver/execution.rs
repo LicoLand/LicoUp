@@ -364,7 +364,7 @@ fn consume_turn_stream(
     let mut output = String::new();
     let mut observed_session = requested_session.to_string();
     let mut stdout_bytes = 0usize;
-    let mut stdout_truncated = false;
+    let stdout_truncated = false;
     let mut turn_id = String::new();
     loop {
         if Instant::now() >= deadline {

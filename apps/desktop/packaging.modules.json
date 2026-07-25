@@ -199,7 +199,7 @@
         "windows"
       ],
       "packaging": "sidecar-binary",
-      "cargoBin": "licoup"
+      "cargoBin": "licoup-cli"
     },
     "codex-orchestration-mcp": {
       "label": "LicoUp local Codex MCP control plane",

@@ -29,7 +29,7 @@ export const packagedReleaseAppPath = join(
   "runnable",
   "macos",
   "release",
-  "Arc.app",
+  "LicoUp.app",
 );
 
 export const sidecarArgs = ["agent", "conversation", "send", "--stdin-json", "true"];
