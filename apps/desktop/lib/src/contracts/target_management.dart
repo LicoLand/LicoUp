@@ -9,6 +9,8 @@ abstract interface class TargetManagementGateway {
     String configPath = '',
     String binaryPath = '',
     String historyRoot = '',
+    String location = 'local',
+    Map<String, dynamic> runtimeConnection = const <String, dynamic>{},
   });
 
   Future<Map<String, dynamic>> inspectTarget(String target);

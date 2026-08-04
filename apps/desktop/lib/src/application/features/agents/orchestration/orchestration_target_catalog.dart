@@ -44,6 +44,7 @@ String agentOrchestrationModelDisplayName(
 }
 
 List<String> agentOrchestrationReasoningEffortsFor(TargetCandidate target) {
+  if (target.target == 'antigravity') return const [];
   return _dedupe([
     ..._reasoningEffortsFromModelCatalog(target.modelCatalog),
     ..._reasoningEffortsFromMap(target.adapterCapabilities),
@@ -54,6 +55,7 @@ List<String> agentOrchestrationReasoningEffortsForModel(
   TargetCandidate target,
   String modelName,
 ) {
+  if (target.target == 'antigravity') return const [];
   final catalogEfforts = _reasoningEffortsFromModelCatalog(
     target.modelCatalog,
     modelName: modelName,

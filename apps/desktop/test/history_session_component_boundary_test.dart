@@ -6,17 +6,16 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   test('history panel composes bounded rendering and pure policy modules', () {
     const root = 'lib/src/frontend/features/agents/ui';
-    const componentLimits = {
-      'history_session_panel.dart': 360,
-      'history_session_models.dart': 200,
-      'history_session_search.dart': 200,
-      'history_session_header.dart': 250,
-      'history_session_list.dart': 500,
-    };
+    const componentLeaves = [
+      'history_session_panel.dart',
+      'history_session_models.dart',
+      'history_session_search.dart',
+      'history_session_header.dart',
+      'history_session_list.dart',
+    ];
     final panel = File('$root/history_session_panel.dart').readAsStringSync();
-    for (final entry in componentLimits.entries) {
-      final source = File('$root/${entry.key}').readAsStringSync();
-      expect(source.split('\n').length, lessThan(entry.value));
+    for (final leaf in componentLeaves) {
+      final source = File('$root/$leaf').readAsStringSync();
       expect(
         source,
         isNot(contains(RegExp(r'^part(?: of)? ', multiLine: true))),

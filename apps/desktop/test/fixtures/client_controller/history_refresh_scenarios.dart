@@ -78,6 +78,50 @@ void registerClientHistoryRefreshScenarios() {
   );
 
   test(
+    'provider readback rebinds stale cursor projection ids without losing selection',
+    () async {
+      final service = FakeAgentService()
+        ..conversationSessions['cursor'] = [
+          conversationSessionJson(
+            id: 'cursor-projection-v1',
+            nativeSessionId: 'composer-uuid-1',
+            agentId: 'cursor',
+            text: 'Cursor first turn',
+            updatedAt: '2026-07-10T00:00:01Z',
+          ),
+        ];
+      final controller = ClientController(agentService: service);
+      addTearDown(controller.dispose);
+
+      controller.selectedConversationAgentId = 'cursor';
+      await controller.loadConversationSessions('cursor');
+      controller.selectConversationSession('cursor-projection-v1');
+
+      expect(controller.selectedConversationSession?.id, 'cursor-projection-v1');
+      expect(controller.preparingNewConversation, isFalse);
+
+      service.conversationSessions['cursor'] = [
+        conversationSessionJson(
+          id: 'cursor-projection-v2',
+          nativeSessionId: 'composer-uuid-1',
+          agentId: 'cursor',
+          text: 'Cursor first turn updated',
+          updatedAt: '2026-07-10T00:00:02Z',
+        ),
+      ];
+
+      await controller.refreshConversationSessions('cursor');
+
+      expect(controller.selectedConversationSession?.id, 'cursor-projection-v2');
+      expect(
+        controller.selectedConversationSession?.messages.first.text,
+        'Cursor first turn updated',
+      );
+      expect(controller.preparingNewConversation, isFalse);
+    },
+  );
+
+  test(
     'loadConversationSessions reveals native history in pages of fifty',
     () async {
       final pagedSessions = List.generate(120, (index) {
@@ -384,6 +428,135 @@ void registerClientHistoryRefreshScenarios() {
       );
       await Future<void>.delayed(const Duration(milliseconds: 20));
       expect(service.conversationStreamCalls, greaterThan(callsWhileHidden));
+    },
+  );
+
+  test(
+    'open native-history session live-echoes appended turns without forking identities',
+    () async {
+      const uuidA = '7bb7b109-f089-4529-a6c9-2c019a71c106';
+      const uuidB = '2f7230ca-e675-4846-a922-1104cf0a1854';
+      final service = FakeAgentService()
+        ..conversationSessions['antigravity'] = [
+          conversationSessionJson(
+            id: 'ag-transcript',
+            nativeSessionId: uuidA,
+            agentId: 'antigravity',
+            text: 'IDE conversation turn one',
+            updatedAt: '2026-07-31T08:18:32Z',
+          ),
+          conversationSessionJson(
+            id: 'ag-cli',
+            nativeSessionId: uuidB,
+            agentId: 'antigravity',
+            text: 'CLI conversation turn one',
+            updatedAt: '2026-07-31T08:04:37Z',
+          ),
+        ];
+      final controller = ClientController(
+        agentService: service,
+        conversationRefreshPolicy: const ConversationRefreshPolicy(
+          activeInterval: Duration(milliseconds: 8),
+          warmInterval: Duration(milliseconds: 40),
+          backgroundInterval: Duration(milliseconds: 60),
+          activeCatalogInterval: Duration(milliseconds: 60),
+          warmCatalogInterval: Duration(milliseconds: 60),
+          backgroundCatalogInterval: Duration(milliseconds: 60),
+        ),
+      );
+      addTearDown(controller.dispose);
+      await controller.lifecycleController.initialize(
+        sequentialSteps: const [],
+      );
+      controller.currentSection = ClientSection.agents;
+      controller.selectedConversationAgentId = 'antigravity';
+      await controller.loadConversationSessions('antigravity');
+
+      // Distinct native identities keep both conversations visible.
+      expect(
+        controller.selectedConversationSessions.map((session) => session.id),
+        ['ag-transcript', 'ag-cli'],
+      );
+      controller.selectConversationSession('ag-transcript');
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+
+      // The native store gains a turn: the open transcript appends in place,
+      // and a duplicate projection of the same conversation appears.
+      service.conversationSessions['antigravity'] = [
+        conversationSessionJson(
+          id: 'ag-transcript',
+          nativeSessionId: uuidA,
+          agentId: 'antigravity',
+          text: 'IDE conversation turn two',
+          updatedAt: '2026-07-31T08:24:32Z',
+        ),
+        conversationSessionJson(
+          id: 'ag-transcript-full',
+          nativeSessionId: uuidA,
+          agentId: 'antigravity',
+          text: 'IDE conversation turn two',
+          updatedAt: '2026-07-31T08:24:32Z',
+        ),
+        conversationSessionJson(
+          id: 'ag-cli',
+          nativeSessionId: uuidB,
+          agentId: 'antigravity',
+          text: 'CLI conversation turn one',
+          updatedAt: '2026-07-31T08:04:37Z',
+        ),
+      ];
+      Future<void> until(bool Function() condition) async {
+        for (var attempt = 0; attempt < 100; attempt += 1) {
+          if (condition()) {
+            return;
+          }
+          await Future<void>.delayed(const Duration(milliseconds: 10));
+        }
+        expect(condition(), isTrue);
+      }
+
+      // The open conversation live-echoes the appended turn.
+      await until(
+        () =>
+            controller.selectedConversationSession?.messages
+                .map((message) => message.text)
+                .join(' ')
+                .contains('IDE conversation turn two') ??
+            false,
+      );
+      // The duplicate projection of the same native conversation collapses
+      // instead of forking the list; the other conversation stays distinct.
+      await until(
+        () =>
+            controller.selectedConversationSessions
+                .where((session) => session.nativeSessionId == uuidA)
+                .length ==
+            1,
+      );
+      expect(
+        controller.selectedConversationSessions
+            .where((session) => session.nativeSessionId == uuidB),
+        hasLength(1),
+      );
+
+      // Leaving the agents destination drops the live echo to the bounded
+      // background cadence instead of the focused one.
+      controller.currentSection = ClientSection.settings;
+      expect(
+        controller.conversationRefreshPriority,
+        ConversationRefreshPriority.background,
+      );
+      controller.updateConversationAttention(
+        lifecycleState: AppLifecycleState.hidden,
+      );
+      expect(
+        controller.conversationRefreshPriority,
+        ConversationRefreshPriority.suspended,
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      final callsBeforeSuspend = service.conversationStreamCalls;
+      await Future<void>.delayed(const Duration(milliseconds: 40));
+      expect(service.conversationStreamCalls, callsBeforeSuspend);
     },
   );
 

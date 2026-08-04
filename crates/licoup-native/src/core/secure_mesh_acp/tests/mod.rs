@@ -4,6 +4,7 @@ use super::{
     open_acp_protected_payload, reject_plaintext_acp_protected_payload_relay,
     seal_acp_protected_payload,
 };
+use crate::core::licoarc_relay::LicoArcRelayEnvelope;
 use crate::core::secure_mesh_crypto::{
     ContentKey, SecureMeshContentContext, SecureMeshPayloadKind, SecureMeshPlaintext,
     open_payload_with_aad_binding, seal_payload_with_aad_binding,
@@ -14,7 +15,6 @@ use crate::core::secure_mesh_prekey::{
     SecureMeshPairwisePreKeyBundle, SecureMeshPreKeyKind, SecureMeshPreKeyValidationPolicy,
     authorize_test_pairwise_prekey_bundle, sign_prekey_record,
 };
-use crate::core::secure_mesh_relay_envelope::SecureMeshRelayEnvelope;
 use crate::core::secure_mesh_trust::{DeviceTrustPublicIdentity, DeviceTrustState};
 use base64::{Engine, engine::general_purpose};
 use ed25519_dalek::SigningKey;
@@ -274,15 +274,14 @@ fn acp_canary_variants(canary: &str) -> Vec<String> {
     ]
 }
 
-fn relay_visible_envelope_text(envelope: &SecureMeshRelayEnvelope) -> String {
+fn relay_visible_envelope_text(envelope: &LicoArcRelayEnvelope) -> String {
     format!(
-        "{}|{}|{}|{}|{}|{}",
-        envelope.schema(),
-        envelope.delivery_id(),
-        envelope.mailbox_token(),
-        envelope.encrypted_header(),
-        envelope.ciphertext_bucket(),
-        envelope.ciphertext()
+        "{}|{}|{}|{}|{}",
+        envelope.contract_version(),
+        envelope.envelope_id(),
+        envelope.mailbox_id(),
+        envelope.ciphertext(),
+        envelope.expires_at()
     )
 }
 

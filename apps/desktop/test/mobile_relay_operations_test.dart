@@ -1,15 +1,21 @@
+import 'package:licoup/src/contracts/mobile_relay/mobile_relay_models.dart';
 import 'package:licoup/src/platform/mobile_relay/mobile_relay_native_dispatch.dart';
 import 'package:licoup/src/platform/mobile_relay/mobile_relay_service_ops.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support/fake_mobile_relay_dispatch.dart';
 
+var _fixtureSeq = 0;
+
+String _synth(String label) => '$label-${_fixtureSeq++}';
+
+
 void main() {
   test('ordinary desktop config uses the narrow CLI dispatch port', () async {
     final dispatch = FakeMobileRelayDispatch(
       cliResult: const {
         'config': {
-          'defaultGatewayUrl': 'https://relay.example.test',
+          'stationBaseUrl': 'https://station.example.test',
           'pcClientId': 'desktop-client',
           'pcClientName': 'Desktop',
         },
@@ -41,7 +47,7 @@ void main() {
     final dispatch = FakeMobileRelayDispatch(
       isAndroid: true,
       mobileResult: const {
-        'config': {'defaultGatewayUrl': 'https://relay.example.test'},
+        'config': {'stationBaseUrl': 'https://station.example.test'},
       },
     );
     final operations = MobileRelayOperations(dispatch: dispatch);
@@ -59,6 +65,61 @@ void main() {
       'authorize': true,
       'hydrateSecrets': true,
     });
+  });
+
+  test('desktop private relay inputs never enter CLI arguments', () async {
+    final dispatch = FakeMobileRelayDispatch();
+    final mobileToken = _synth('synthetic-private-token');
+    final pairingSecret = _synth('synthetic-private-secret');
+    final operations = MobileRelayOperations(dispatch: dispatch);
+    final runner = FakeAgentCommandRunner();
+
+    await operations.saveConfig(
+      agentService: runner,
+      config: MobileRelayConfig(
+        schemaVersion: MobileRelayConfig.currentSchemaVersion,
+        stationBaseUrl: 'https://station.example.test',
+        pcClientId: 'synthetic-client',
+        pcClientName: 'Synthetic Client',
+        pairingId: 'synthetic-pairing',
+        pcToken: '',
+        mobileToken: mobileToken,
+        lastPairingCode: '',
+        lastPairingExpiresAt: '',
+        paired: true,
+        relayEnabled: true,
+        pollIntervalSeconds: 5,
+        pcTokenPresent: false,
+        mobileTokenPresent: true,
+      ),
+    );
+    await operations.claimPairing(
+      agentService: runner,
+      invite: {'pairingSecret': pairingSecret},
+    );
+
+    expect(dispatch.cliCalls, isEmpty);
+    expect(dispatch.privateCliCalls, hasLength(2));
+    expect(
+      dispatch.privateCliCalls.expand((call) => call.arguments),
+      isNot(contains(mobileToken)),
+    );
+    expect(
+      dispatch.privateCliCalls.expand((call) => call.arguments),
+      isNot(contains(pairingSecret)),
+    );
+    expect(
+      dispatch.privateCliCalls.first.params['mobileToken'],
+      mobileToken,
+    );
+    expect(
+      dispatch.privateCliCalls.first.params['stationBaseUrl'],
+      'https://station.example.test',
+    );
+    expect(
+      (dispatch.privateCliCalls.last.params['invite'] as Map)['pairingSecret'],
+      pairingSecret,
+    );
   });
 
   test('external URL validation prevents non-HTTPS native dispatch', () async {

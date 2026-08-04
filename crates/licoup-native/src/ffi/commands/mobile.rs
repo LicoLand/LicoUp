@@ -5,27 +5,45 @@ use anyhow::Result;
 
 pub(super) fn handle_mobile_relay(command: AdmittedCommand) -> Result<CliExecution> {
     let route = command.path();
-    let params = admitted_params(
-        &[
-            (
-                "useCustomGateway",
-                command.option_text("use-custom-gateway"),
-            ),
-            (
-                "customGatewayUrl",
-                command.option_text("custom-gateway-url"),
-            ),
-            ("relayEnabled", command.option_text("relay-enabled")),
-            ("pairingCode", command.option_text("pairing-code")),
-            ("pairingId", command.option_text("pairing-id")),
-            ("mobileToken", command.option_text("mobile-token")),
-            ("commandId", command.option_text("command-id")),
-            ("type", command.option_text("type")),
-            ("disposableProof", command.option_text("disposable-proof")),
-        ],
-        &[("payload", command.option_json("payload"))],
-        &[],
-    );
+    let params = command
+        .option_json("stdin-json")
+        .cloned()
+        .unwrap_or_else(|| {
+            admitted_params(
+                &[
+                    ("stationBaseUrl", command.option_text("station-base-url")),
+                    ("relayEnabled", command.option_text("relay-enabled")),
+                    ("authorize", command.option_text("authorize")),
+                    ("hydrateSecrets", command.option_text("hydrate-secrets")),
+                    ("pcClientId", command.option_text("pc-client-id")),
+                    ("pcClientName", command.option_text("pc-client-name")),
+                    ("paired", command.option_text("paired")),
+                    ("resetPairing", command.option_text("reset-pairing")),
+                    ("pairingId", command.option_text("pairing-id")),
+                    ("allowInteraction", command.option_text("allow-interaction")),
+                    ("commandId", command.option_text("command-id")),
+                    ("idempotencyKey", command.option_text("idempotency-key")),
+                    ("clientIntentId", command.option_text("client-intent-id")),
+                    ("commandKind", command.option_text("command-kind")),
+                    ("targetAgentId", command.option_text("target-agent-id")),
+                    ("workspaceId", command.option_text("workspace-id")),
+                    (
+                        "acknowledgeReceiptId",
+                        command.option_text("acknowledge-receipt-id"),
+                    ),
+                    ("leaseSeconds", command.option_text("lease-seconds")),
+                    ("limit", command.option_text("limit")),
+                    ("type", command.option_text("type")),
+                    ("disposableProof", command.option_text("disposable-proof")),
+                ],
+                &[
+                    ("body", command.option_json("body")),
+                    ("payload", command.option_json("payload")),
+                    ("secureEnvelope", command.option_json("secure-envelope")),
+                ],
+                &[],
+            )
+        });
     let (noun, action) = match route {
         ["mobile", "relay", noun, action] => (*noun, *action),
         _ => unreachable!("admission only registers concrete mobile relay routes"),
@@ -40,8 +58,10 @@ pub(super) fn handle_mobile_relay(command: AdmittedCommand) -> Result<CliExecuti
         ("pc", "check-in") => crate::domain::mobile_relay::pc_check_in(&params)?,
         ("commands", "poll") => crate::domain::mobile_relay::commands_poll(&params)?,
         ("commands", "sync") => crate::domain::mobile_relay::commands_sync(&params)?,
-        ("commands", "complete") => crate::domain::mobile_relay::command_complete(&params)?,
         ("commands", "create") => crate::domain::mobile_relay::command_create(&params)?,
+        ("commands", "create-secure") => {
+            crate::domain::mobile_relay::command_create_secure(&params)?
+        }
         ("commands", "result") => crate::domain::mobile_relay::command_result(&params)?,
         ("commands", "result-secure") => {
             crate::domain::mobile_relay::command_result_secure(&params)?

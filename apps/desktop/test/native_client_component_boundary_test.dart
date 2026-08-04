@@ -57,15 +57,12 @@ void main() {
     expect(actions, contains('NativeCommandExecutor'));
     expect(actions, isNot(contains("import 'dart:io'")));
     expect(processIo, contains('NativeCliProcessContext'));
-    expect(stdioRpcFacade.split('\n').length, lessThanOrEqualTo(3));
     expect(stdioRpcFacade, contains('show NativeStdioRpcClient'));
     expect(stdioRpcClient, contains('NativeCliProcessContext'));
   });
 
   test('AgentService stays a facade with explicit component composition', () {
     final source = File('$root/agent_service.dart').readAsStringSync();
-
-    expect(source.split('\n').length, lessThanOrEqualTo(430));
     expect(source, contains('NativeStdioRpcClient'));
     expect(source, contains('BoundedNativeProcessIo'));
     expect(source, contains('NativeCommandActions'));

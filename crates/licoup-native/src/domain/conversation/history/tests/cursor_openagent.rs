@@ -408,6 +408,210 @@ fn cursor_adapter_prefers_selected_models_over_composer_label() {
 }
 
 #[test]
+fn cursor_adapter_folds_subagent_composers_into_parent_session_cards() {
+    let dir = temp_dir("cursor-subagent-merge");
+    let database = dir.join("state.vscdb");
+    let parent_id = "0a0a0a0a-0000-4000-8000-000000000001";
+    let child_id = "0a0a0a0a-0000-4000-8000-000000000002";
+    let parent_user_bubble = "1b1b1b1b-0000-4000-8000-000000000001";
+    let parent_agent_bubble = "1b1b1b1b-0000-4000-8000-000000000002";
+    let child_user_bubble = "2c2c2c2c-0000-4000-8000-000000000001";
+    let child_agent_bubble = "2c2c2c2c-0000-4000-8000-000000000002";
+    {
+        let connection = Connection::open(&database).unwrap();
+        connection
+            .execute(
+                "CREATE TABLE cursorDiskKV (key TEXT NOT NULL, value BLOB NOT NULL)",
+                [],
+            )
+            .unwrap();
+        for (key, value) in [
+            (
+                format!("composerData:{parent_id}"),
+                json!({
+                    "composerId": parent_id,
+                    "name": "Main Cursor thread",
+                    "createdAt": 1_773_798_000_000i64,
+                    "lastUpdatedAt": 1_773_798_400_000i64,
+                    "subagentComposerIds": [child_id],
+                    "fullConversationHeadersOnly": [
+                        { "bubbleId": parent_user_bubble, "type": 1 },
+                        { "bubbleId": parent_agent_bubble, "type": 2 }
+                    ]
+                }),
+            ),
+            (
+                format!("composerData:{child_id}"),
+                json!({
+                    "composerId": child_id,
+                    "name": "Explore the cursor parser",
+                    "createdAt": 1_773_798_100_000i64,
+                    "lastUpdatedAt": 1_773_798_300_000i64,
+                    "subagentInfo": {
+                        "subagentType": 1,
+                        "parentComposerId": parent_id,
+                        "subagentTypeName": "explore",
+                        "toolCallId": "tool-call-1",
+                        "rootParentConversationId": parent_id
+                    },
+                    "fullConversationHeadersOnly": [
+                        { "bubbleId": child_user_bubble, "type": 1 },
+                        { "bubbleId": child_agent_bubble, "type": 2 }
+                    ]
+                }),
+            ),
+            (
+                format!("bubbleId:{parent_id}:{parent_user_bubble}"),
+                json!({
+                    "bubbleId": parent_user_bubble,
+                    "type": 1,
+                    "createdAt": 1_773_798_000_000i64,
+                    "text": "Where does the Cursor parser live?"
+                }),
+            ),
+            (
+                format!("bubbleId:{parent_id}:{parent_agent_bubble}"),
+                json!({
+                    "bubbleId": parent_agent_bubble,
+                    "type": 2,
+                    "createdAt": 1_773_798_400_000i64,
+                    "text": "The main thread wraps up."
+                }),
+            ),
+            (
+                format!("bubbleId:{child_id}:{child_user_bubble}"),
+                json!({
+                    "bubbleId": child_user_bubble,
+                    "type": 1,
+                    "createdAt": 1_773_798_100_000i64,
+                    "text": "Map the cursor history parser."
+                }),
+            ),
+            (
+                format!("bubbleId:{child_id}:{child_agent_bubble}"),
+                json!({
+                    "bubbleId": child_agent_bubble,
+                    "type": 2,
+                    "createdAt": 1_773_798_300_000i64,
+                    "text": "The parser lives in cursor.rs."
+                }),
+            ),
+        ] {
+            connection
+                .execute(
+                    "INSERT INTO cursorDiskKV (key, value) VALUES (?1, ?2)",
+                    rusqlite::params![key, serde_json::to_vec(&value).unwrap()],
+                )
+                .unwrap();
+        }
+    }
+
+    let listed = conversation_list(&json!({
+        "agent": "cursor",
+        "root": dir.to_string_lossy()
+    }))
+    .unwrap();
+
+    let sessions = listed["sessions"].as_array().unwrap();
+    assert_eq!(
+        sessions.len(),
+        1,
+        "subagent composer must not stay top-level"
+    );
+    let session = &sessions[0];
+    assert_eq!(session["nativeSessionId"], parent_id);
+    let messages = session["messages"].as_array().unwrap();
+    assert_eq!(messages.len(), 3, "expected user, subagent card, agent");
+    assert_eq!(messages[0]["role"], "user");
+    let card = &messages[1];
+    assert_eq!(card["role"], "subagent");
+    assert_eq!(card["cardType"], "subagent");
+    assert_eq!(card["cardTitle"], "Explore the cursor parser");
+    assert_eq!(card["collapsed"], true);
+    let child_messages = card["messages"].as_array().unwrap();
+    assert_eq!(child_messages.len(), 2);
+    assert_eq!(child_messages[0]["role"], "user");
+    assert_eq!(child_messages[0]["text"], "Map the cursor history parser.");
+    assert_eq!(child_messages[1]["role"], "agent");
+    assert_eq!(child_messages[1]["text"], "The parser lives in cursor.rs.");
+    assert_eq!(messages[2]["role"], "agent");
+    assert_eq!(messages[2]["text"], "The main thread wraps up.");
+}
+
+#[test]
+fn cursor_adapter_keeps_orphan_subagent_composer_as_top_level_session() {
+    let dir = temp_dir("cursor-subagent-orphan");
+    let database = dir.join("state.vscdb");
+    let child_id = "0a0a0a0a-0000-4000-8000-000000000003";
+    let child_user_bubble = "2c2c2c2c-0000-4000-8000-000000000003";
+    {
+        let connection = Connection::open(&database).unwrap();
+        connection
+            .execute(
+                "CREATE TABLE cursorDiskKV (key TEXT NOT NULL, value BLOB NOT NULL)",
+                [],
+            )
+            .unwrap();
+        for (key, value) in [
+            (
+                format!("composerData:{child_id}"),
+                json!({
+                    "composerId": child_id,
+                    "name": "Subagent without a parent session",
+                    "subagentInfo": {
+                        "subagentType": 1,
+                        "parentComposerId": "missing-parent-composer",
+                        "subagentTypeName": "explore"
+                    },
+                    "fullConversationHeadersOnly": [
+                        { "bubbleId": child_user_bubble, "type": 1 }
+                    ]
+                }),
+            ),
+            (
+                format!("bubbleId:{child_id}:{child_user_bubble}"),
+                json!({
+                    "bubbleId": child_user_bubble,
+                    "type": 1,
+                    "createdAt": 1_773_798_100_000i64,
+                    "text": "Orphan subagent task prompt."
+                }),
+            ),
+        ] {
+            connection
+                .execute(
+                    "INSERT INTO cursorDiskKV (key, value) VALUES (?1, ?2)",
+                    rusqlite::params![key, serde_json::to_vec(&value).unwrap()],
+                )
+                .unwrap();
+        }
+    }
+
+    let listed = conversation_list(&json!({
+        "agent": "cursor",
+        "root": dir.to_string_lossy()
+    }))
+    .unwrap();
+
+    let sessions = listed["sessions"].as_array().unwrap();
+    assert_eq!(sessions.len(), 1);
+    let session = &sessions[0];
+    assert_eq!(session["nativeSessionId"], child_id);
+    assert!(
+        session.get("delegatedSubagent").is_none(),
+        "orphan subagent must not carry delegated markers: {session:?}"
+    );
+    assert!(
+        session["messages"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|message| message.get("cardType").is_none()),
+        "orphan subagent messages must stay flat: {session:?}"
+    );
+}
+
+#[test]
 fn cursor_usage_scan_ignores_composer_context_occupancy() {
     let dir = temp_dir("cursor-composer-usage");
     let database = dir.join("state.vscdb");

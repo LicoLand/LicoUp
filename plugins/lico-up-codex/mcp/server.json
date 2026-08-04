@@ -1,9 +1,0 @@
-{
-  "mcpServers": {
-    "lico-up-orchestration": {
-      "type": "stdio",
-      "command": "lico-codex-mcp",
-      "args": []
-    }
-  }
-}

@@ -13,8 +13,6 @@ export const leakPatterns = Object.freeze([
   ["file_url", /file:\/\/\//u]
 ]);
 
-export const relayMockAcceptanceSchemaVersion =
-  "licomesh.secure-client-relay.client-acceptance-report.v1";
 export const rustCryptoSchemaVersion =
   "licomesh.secure-mesh.pairwise-content-audit-report.v1";
 export const platformCryptoSchemaVersion =

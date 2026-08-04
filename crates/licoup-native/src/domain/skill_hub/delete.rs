@@ -1,183 +1,181 @@
-//! Transactional deletion of one skill from one or more selected agents.
+//! Recoverable removal of one catalog skill directory.
 //!
-//! Planning preflights every target and binds the sorted agent set into an
-//! exact confirmation. Applying quarantines all directories before removing
-//! local state so a partial filesystem failure can be rolled back.
+//! Planning validates the exact local skill package and binds both its path and
+//! content digest into the confirmation. Applying moves the directory to the
+//! operating system's Trash or Recycle Bin; it never permanently removes the
+//! skill directory.
 
 use super::{
-    ClientStateStore, PathBuf, Result, Value, absolute_lexical_path, agent_id,
-    directory_exists_no_follow, find_installed_skill_record, fs, is_agent_approved, json,
-    recover_skill_install_journal, resolve_install_root, sanitize_skill_id, skill_id, string_param,
-    uuid_v4, validate_no_symlink_ancestors,
+    ClientStateStore, Path, PathBuf, Result, Value, absolute_lexical_path,
+    directory_exists_no_follow, home_dir, inspect_skill_dir, is_path_inside, json,
+    sanitize_skill_id, skill_id, string_param, validate_no_symlink_ancestors,
 };
-use crate::platform::file_security::open_private_lock_file;
 use anyhow::{anyhow, ensure};
-use fs2::FileExt;
-use std::collections::BTreeSet;
+use sha2::{Digest, Sha256};
+use std::{collections::BTreeSet, env};
+
+const CATALOG_ROOT_PATTERNS: &[&[&str]] = &[
+    &[".config", "agents", "skills"],
+    &[".config", "opencode", "skills"],
+    &[".gemini", "antigravity", "builtin", "skills"],
+    &[".gemini", "config", "skills"],
+    &[".agents", "skills"],
+    &["content", "skills"],
+    &[".claude", "skills"],
+    &[".codex", "skills"],
+    &[".github", "skills"],
+    &[".copilot", "skills"],
+    &[".cursor", "skills"],
+    &[".opencode", "skills"],
+    &[".kilo", "skills"],
+    &[".kimi", "skills"],
+    &[".openclaw", "skills"],
+];
 
 #[derive(Clone, Debug)]
 struct DeleteTarget {
-    agent_id: String,
-    install_root: PathBuf,
     install_dir: PathBuf,
     exists: bool,
+    package_digest: String,
 }
 
-pub(super) fn plan(store: &ClientStateStore, params: &Value) -> Result<Value> {
+pub(super) fn plan(_store: &ClientStateStore, params: &Value) -> Result<Value> {
     let skill_id = sanitize_skill_id(&skill_id(params)?)?;
-    let agents = agent_ids(params)?;
-    let targets = delete_targets(store, params, &skill_id, &agents)?;
-    let all_present = targets.iter().all(|target| target.exists);
+    let target = resolve_target(params, &skill_id)?;
+    let allowed = target.exists;
+    let confirmation = confirmation(&skill_id, &target);
     Ok(json!({
         "ok": true,
-        "status": if all_present { "delete_planned" } else { "not_found" },
-        "operation": "skill.delete",
+        "status": if allowed { "trash_planned" } else { "not_found" },
+        "operation": "skill.trash",
         "skillId": skill_id,
-        "agents": agents,
-        "targets": targets.iter().map(summary).collect::<Vec<_>>(),
+        "target": summary(&target),
         "requiresConfirmation": true,
-        "confirmation": confirmation(&skill_id, &agents),
-        "deleteAllowed": all_present
+        "confirmation": confirmation,
+        "trashAllowed": allowed
     }))
 }
 
 pub(super) fn apply(store: &ClientStateStore, params: &Value) -> Result<Value> {
+    apply_with_trash(store, params, move_to_system_trash)
+}
+
+fn apply_with_trash<F>(store: &ClientStateStore, params: &Value, move_to_trash: F) -> Result<Value>
+where
+    F: FnOnce(&Path) -> Result<()>,
+{
     let skill_id = sanitize_skill_id(&skill_id(params)?)?;
-    let agents = agent_ids(params)?;
-    require_confirmation(params, &confirmation(&skill_id, &agents))?;
-    let mut targets = delete_targets(store, params, &skill_id, &agents)?;
+    let target = resolve_target(params, &skill_id)?;
+    require_confirmation(params, &confirmation(&skill_id, &target))?;
     ensure!(
-        targets.iter().all(|target| target.exists),
-        "skill deletion requires every selected agent target to exist"
+        target.exists,
+        "skill trash requires the selected catalog target to exist"
     );
-    targets.sort_by(|left, right| {
-        left.install_root
-            .cmp(&right.install_root)
-            .then_with(|| left.install_dir.cmp(&right.install_dir))
-    });
-    ensure_unique_paths(&targets)?;
-
-    let roots = targets
-        .iter()
-        .map(|target| target.install_root.clone())
-        .collect::<BTreeSet<_>>();
-    let mut locks = Vec::with_capacity(roots.len());
-    for root in &roots {
-        let lock = open_private_lock_file(&root.join(".lico-skill-install.lock"))?;
-        lock.lock_exclusive()?;
-        recover_skill_install_journal(root)?;
-        locks.push(lock);
-    }
-
-    let mut quarantined = Vec::<(PathBuf, PathBuf)>::new();
-    for target in &targets {
-        let quarantine = target
-            .install_root
-            .join(format!(".lico-skill-delete-{}", uuid_v4().replace('-', "")));
-        if let Err(error) = fs::rename(&target.install_dir, &quarantine) {
-            restore_quarantined(&quarantined);
-            return Err(error.into());
-        }
-        quarantined.push((target.install_dir.clone(), quarantine));
-    }
 
     let original_skills = store.read_collection("skills")?;
     let original_pins = store.read_collection("pins")?;
-    if let Err(error) =
-        remove_skill_state(store, &original_skills, &original_pins, &skill_id, &agents)
-    {
-        restore_quarantined(&quarantined);
+    let affected_agents = remove_skill_state(
+        store,
+        &original_skills,
+        &original_pins,
+        &skill_id,
+        &target.install_dir,
+    )?;
+    if let Err(error) = move_to_trash(&target.install_dir) {
+        let _ = store.write_collection("skills", original_skills);
+        let _ = store.write_collection("pins", original_pins);
         return Err(error);
     }
-    for (_, quarantine) in &quarantined {
-        if let Err(error) = fs::remove_dir_all(quarantine) {
-            let _ = store.write_collection("skills", original_skills.clone());
-            let _ = store.write_collection("pins", original_pins.clone());
-            restore_quarantined(&quarantined);
-            return Err(error.into());
-        }
-    }
-    drop(locks);
-
-    for agent_id in &agents {
+    if affected_agents.is_empty() {
         let _ = store.activity_log().append(
-            "skill.deleted",
-            json!({"target": agent_id, "agentId": agent_id, "skillId": skill_id}),
+            "skill.trashed",
+            json!({"target": "local-catalog", "skillId": skill_id}),
         );
+    } else {
+        for agent_id in &affected_agents {
+            let _ = store.activity_log().append(
+                "skill.trashed",
+                json!({"target": agent_id, "agentId": agent_id, "skillId": skill_id}),
+            );
+        }
     }
     Ok(json!({
         "ok": true,
-        "status": "deleted",
-        "operation": "skill.delete",
+        "status": "trashed",
+        "operation": "skill.trash",
         "skillId": skill_id,
-        "agents": agents,
-        "deletedCount": targets.len()
+        "trashedCount": 1
     }))
 }
 
-fn delete_targets(
-    store: &ClientStateStore,
-    params: &Value,
-    skill_id: &str,
-    agents: &[String],
-) -> Result<Vec<DeleteTarget>> {
-    agents
-        .iter()
-        .map(|agent| {
-            ensure!(
-                is_agent_approved(store, agent)?,
-                "skill deletion requires an approved pairing for every selected agent"
-            );
-            resolve_target(store, params, agent, skill_id)
-        })
-        .collect()
-}
-
-fn resolve_target(
-    store: &ClientStateStore,
-    params: &Value,
-    agent_id: &str,
-    skill_id: &str,
-) -> Result<DeleteTarget> {
-    let record = find_installed_skill_record(store, agent_id, skill_id)?;
-    let (install_root, install_dir) = if let Some(record) = record {
-        let root = record
-            .get("installRoot")
-            .and_then(Value::as_str)
-            .map(PathBuf::from)
-            .ok_or_else(|| anyhow!("managed skill record is missing installRoot"))?;
-        let directory = record
-            .get("path")
-            .and_then(Value::as_str)
-            .map(PathBuf::from)
-            .ok_or_else(|| anyhow!("managed skill record is missing path"))?;
-        (
-            absolute_lexical_path(&root)?,
-            absolute_lexical_path(&directory)?,
-        )
+fn resolve_target(params: &Value, skill_id: &str) -> Result<DeleteTarget> {
+    let requested_path = string_param(params, &["path"], usize::MAX)
+        .ok_or_else(|| anyhow!("skill trash requires an exact catalog path"))?;
+    let install_dir = absolute_lexical_path(Path::new(&requested_path))?;
+    trusted_catalog_root(&install_dir)?;
+    validate_no_symlink_ancestors(&install_dir)?;
+    let exists = directory_exists_no_follow(&install_dir)?;
+    let package_digest = if exists {
+        let preview = inspect_skill_dir(&install_dir)?;
+        ensure!(
+            preview.skill_id == skill_id,
+            "skill path does not match the selected catalog skill"
+        );
+        preview.digest_sha256
     } else {
-        let request = request_for_agent(params, agent_id);
-        let root = absolute_lexical_path(&resolve_install_root(agent_id, &request)?)?;
-        let directory = root.join(skill_id);
-        (root, directory)
-    };
-    ensure!(
-        install_dir == install_root.join(skill_id),
-        "skill target is outside the selected agent root"
-    );
-    validate_no_symlink_ancestors(&install_root)?;
-    let exists = if directory_exists_no_follow(&install_root)? {
-        validate_no_symlink_ancestors(&install_dir)?;
-        directory_exists_no_follow(&install_dir)?
-    } else {
-        false
+        String::new()
     };
     Ok(DeleteTarget {
-        agent_id: agent_id.to_string(),
-        install_root,
         install_dir,
         exists,
+        package_digest,
     })
+}
+
+fn trusted_catalog_root(path: &Path) -> Result<PathBuf> {
+    let catalog_root = recognized_catalog_root(path)
+        .ok_or_else(|| anyhow!("skill path is outside a recognized catalog root"))?;
+    let workspace_root = absolute_lexical_path(&env::current_dir()?)?;
+    let within_workspace =
+        workspace_root.parent().is_some() && is_path_inside(&workspace_root, &catalog_root);
+    let within_home = home_dir()
+        .and_then(|root| absolute_lexical_path(&root).ok())
+        .is_some_and(|root| is_path_inside(&root, &catalog_root));
+    ensure!(
+        within_workspace || within_home,
+        "skill path is outside the local Skill Hub scan roots"
+    );
+    Ok(catalog_root)
+}
+
+fn recognized_catalog_root(path: &Path) -> Option<PathBuf> {
+    let components = path.components().collect::<Vec<_>>();
+    let normalized = components
+        .iter()
+        .map(|component| component.as_os_str().to_string_lossy().to_ascii_lowercase())
+        .collect::<Vec<_>>();
+    let mut closest_root_end = None::<usize>;
+    for start in 0..normalized.len() {
+        for pattern in CATALOG_ROOT_PATTERNS {
+            let end = start.saturating_add(pattern.len());
+            if end >= normalized.len() {
+                continue;
+            }
+            if normalized[start..end]
+                .iter()
+                .map(String::as_str)
+                .eq(pattern.iter().copied())
+            {
+                closest_root_end = Some(closest_root_end.map_or(end, |current| current.max(end)));
+            }
+        }
+    }
+    let end = closest_root_end?;
+    let mut root = PathBuf::new();
+    for component in components.iter().take(end) {
+        root.push(component.as_os_str());
+    }
+    Some(root)
 }
 
 fn remove_skill_state(
@@ -185,22 +183,51 @@ fn remove_skill_state(
     original_skills: &Value,
     original_pins: &Value,
     skill_id: &str,
-    agents: &[String],
-) -> Result<()> {
-    let selected = agents.iter().map(String::as_str).collect::<BTreeSet<_>>();
+    install_dir: &Path,
+) -> Result<BTreeSet<String>> {
+    let affected_agents = affected_agents_for_path(original_skills, skill_id, install_dir);
+    if affected_agents.is_empty() {
+        return Ok(affected_agents);
+    }
+
     let mut skills = original_skills.clone();
-    retain_other_records(&mut skills, skill_id, &selected);
+    retain_other_records(&mut skills, skill_id, &affected_agents);
     let mut pins = original_pins.clone();
-    retain_other_records(&mut pins, skill_id, &selected);
+    retain_other_records(&mut pins, skill_id, &affected_agents);
     store.write_collection("pins", pins)?;
     if let Err(error) = store.write_collection("skills", skills) {
         let _ = store.write_collection("pins", original_pins.clone());
         return Err(error);
     }
-    Ok(())
+    Ok(affected_agents)
 }
 
-fn retain_other_records(document: &mut Value, skill_id: &str, agents: &BTreeSet<&str>) {
+fn affected_agents_for_path(
+    document: &Value,
+    skill_id: &str,
+    install_dir: &Path,
+) -> BTreeSet<String> {
+    document
+        .get("items")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter(|item| item.get("kind").and_then(Value::as_str) == Some("skill"))
+        .filter(|item| item.get("skillId").and_then(Value::as_str) == Some(skill_id))
+        .filter(|item| record_path_matches(item, install_dir))
+        .filter_map(|item| item.get("agentId").and_then(Value::as_str))
+        .map(str::to_string)
+        .collect()
+}
+
+fn record_path_matches(item: &Value, install_dir: &Path) -> bool {
+    let Some(path) = item.get("path").and_then(Value::as_str) else {
+        return false;
+    };
+    absolute_lexical_path(Path::new(path)).is_ok_and(|resolved| resolved == install_dir)
+}
+
+fn retain_other_records(document: &mut Value, skill_id: &str, agents: &BTreeSet<String>) {
     if let Some(items) = document.get_mut("items").and_then(Value::as_array_mut) {
         items.retain(|item| {
             !(item.get("skillId").and_then(Value::as_str) == Some(skill_id)
@@ -212,144 +239,135 @@ fn retain_other_records(document: &mut Value, skill_id: &str, agents: &BTreeSet<
     }
 }
 
-fn restore_quarantined(quarantined: &[(PathBuf, PathBuf)]) {
-    for (target, quarantine) in quarantined.iter().rev() {
-        if quarantine.exists() && !target.exists() {
-            let _ = fs::rename(quarantine, target);
-        }
-    }
-}
-
-fn ensure_unique_paths(targets: &[DeleteTarget]) -> Result<()> {
-    let mut paths = BTreeSet::new();
-    for target in targets {
-        ensure!(
-            paths.insert(target.install_dir.clone()),
-            "selected agents resolve to the same skill directory"
-        );
-    }
-    Ok(())
+fn move_to_system_trash(path: &Path) -> Result<()> {
+    trash::delete(path).map_err(|_| anyhow!("moving skill to system trash failed"))
 }
 
 fn summary(target: &DeleteTarget) -> Value {
-    json!({"agentId": target.agent_id, "exists": target.exists})
-}
-
-fn agent_ids(params: &Value) -> Result<Vec<String>> {
-    let mut agents = Vec::<String>::new();
-    if let Some(values) = params.get("agents").and_then(Value::as_array) {
-        agents.extend(values.iter().filter_map(Value::as_str).map(str::to_string));
-    }
-    if let Some(value) = params.get("agents").and_then(Value::as_str) {
-        agents.extend(value.split(',').map(str::to_string));
-    }
-    if agents.is_empty() {
-        agents.push(agent_id(params)?);
-    }
-    let mut unique = BTreeSet::new();
-    for agent in agents {
-        let trimmed = agent.trim();
-        ensure!(!trimmed.is_empty(), "selected agent id is empty");
-        ensure!(
-            trimmed.len() <= 128
-                && trimmed
-                    .bytes()
-                    .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_')),
-            "selected agent id is invalid"
-        );
-        unique.insert(trimmed.to_string());
-    }
-    ensure!(!unique.is_empty(), "at least one agent must be selected");
-    Ok(unique.into_iter().collect())
-}
-
-fn request_for_agent(params: &Value, agent: &str) -> Value {
-    let mut request = params.clone();
-    if !request.is_object() {
-        request = json!({});
-    }
-    request["agent"] = json!(agent);
-    request
+    json!({"exists": target.exists})
 }
 
 fn require_confirmation(params: &Value, expected: &str) -> Result<()> {
     let provided = string_param(params, &["confirmation", "confirm"], usize::MAX)
-        .ok_or_else(|| anyhow!("skill deletion requires its exact plan confirmation"))?;
+        .ok_or_else(|| anyhow!("skill trash requires its exact plan confirmation"))?;
     ensure!(
         provided == expected,
-        "skill deletion confirmation does not match the selected action"
+        "skill trash confirmation does not match the selected action"
     );
     Ok(())
 }
 
-fn confirmation(skill_id: &str, agents: &[String]) -> String {
-    format!("delete:{skill_id}:{}", agents.join(","))
+fn confirmation(skill_id: &str, target: &DeleteTarget) -> String {
+    let mut digest = Sha256::new();
+    digest.update(target.install_dir.to_string_lossy().as_bytes());
+    digest.update([0]);
+    digest.update(target.package_digest.as_bytes());
+    let encoded = digest
+        .finalize()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>();
+    format!("trash:{skill_id}:{encoded}")
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::skill_hub::{pair_approve_in, pair_request_in, skill_install_apply_in};
-    use std::{env, fs};
+    use std::fs;
     use uuid::Uuid;
 
     #[test]
-    fn one_confirmation_deletes_all_selected_agent_targets() {
-        let store = test_store("multi-agent");
-        let codex_root = install(&store, "codex", "codex");
-        let claude_root = install(&store, "claude-code", "claude");
-        let params = json!({"agents": "claude-code,codex", "skill": "review-helper"});
+    fn exact_confirmation_moves_catalog_skill_to_recoverable_trash() {
+        let store = test_store("recoverable");
+        let catalog_root = catalog_root("recoverable");
+        let skill_dir = skill_package(&catalog_root, "review-helper-folder");
+        let recycle_root = temp_dir("recycle");
+        let params = json!({
+            "skill": "review-helper",
+            "path": skill_dir.to_string_lossy()
+        });
 
         let planned = plan(&store, &params).unwrap();
-        assert_eq!(planned["status"], "delete_planned");
-        assert_eq!(planned["agents"], json!(["claude-code", "codex"]));
-        assert!(apply(&store, &params).is_err());
+        assert_eq!(planned["status"], "trash_planned");
+        assert_eq!(planned["trashAllowed"], true);
+        assert!(apply_with_trash(&store, &params, |_| Ok(())).is_err());
 
         let mut confirmed = params;
         confirmed["confirmation"] = planned["confirmation"].clone();
-        let result = apply(&store, &confirmed).unwrap();
-        assert_eq!(result["deletedCount"], 2);
-        assert!(!codex_root.join("review-helper").exists());
-        assert!(!claude_root.join("review-helper").exists());
+        let recycled = recycle_root.join("review-helper-folder");
+        let result = apply_with_trash(&store, &confirmed, |source| {
+            fs::rename(source, &recycled)?;
+            Ok(())
+        })
+        .unwrap();
+        assert_eq!(result["status"], "trashed");
+        assert_eq!(result["trashedCount"], 1);
+        assert!(!skill_dir.exists());
+        assert!(recycled.join("SKILL.md").is_file());
     }
 
     #[test]
-    fn plan_fails_closed_when_any_selected_target_is_missing() {
-        let store = test_store("missing");
-        install(&store, "codex", "present");
-        pair(&store, "claude-code");
-        let plan = plan(
+    fn plan_rejects_skill_packages_outside_recognized_catalog_roots() {
+        let store = test_store("outside");
+        let root = temp_dir("outside-package");
+        let skill_dir = skill_package(&root, "review-helper-folder");
+        let result = plan(
             &store,
-            &json!({"agents": "codex,claude-code", "skill": "review-helper"}),
-        )
-        .unwrap();
-        assert_eq!(plan["status"], "not_found");
-        assert_eq!(plan["deleteAllowed"], false);
+            &json!({
+                "skill": "review-helper",
+                "path": skill_dir.to_string_lossy()
+            }),
+        );
+        assert!(result.is_err());
+        assert!(skill_dir.exists());
     }
 
-    fn install(store: &ClientStateStore, agent: &str, suffix: &str) -> PathBuf {
-        pair(store, agent);
-        let package = skill_package(&format!("package-{suffix}"));
-        let root = temp_dir(&format!("root-{suffix}"));
-        skill_install_apply_in(
-            store,
+    #[test]
+    #[cfg(not(windows))]
+    fn plan_rejects_recognized_catalog_paths_outside_local_scan_roots() {
+        let store = test_store("untrusted-root");
+        let root = system_temp_dir("untrusted-root")
+            .join(".agents")
+            .join("skills");
+        fs::create_dir_all(&root).unwrap();
+        let skill_dir = skill_package(&root, "review-helper-folder");
+        let result = plan(
+            &store,
             &json!({
-                "agent": agent,
-                "sourcePath": package.to_string_lossy(),
-                "installRoot": root.to_string_lossy()
+                "skill": "review-helper",
+                "path": skill_dir.to_string_lossy()
             }),
-        )
-        .unwrap();
+        );
+        assert!(result.is_err());
+        assert!(skill_dir.exists());
+    }
+
+    #[test]
+    fn confirmation_is_invalidated_when_skill_contents_change() {
+        let store = test_store("changed");
+        let catalog_root = catalog_root("changed");
+        let skill_dir = skill_package(&catalog_root, "review-helper-folder");
+        let mut params = json!({
+            "skill": "review-helper",
+            "path": skill_dir.to_string_lossy()
+        });
+        let planned = plan(&store, &params).unwrap();
+        params["confirmation"] = planned["confirmation"].clone();
+        fs::write(skill_dir.join("notes.txt"), "changed after planning").unwrap();
+
+        assert!(apply_with_trash(&store, &params, |_| Ok(())).is_err());
+        assert!(skill_dir.exists());
+    }
+
+    fn catalog_root(name: &str) -> PathBuf {
+        let root = temp_dir(name).join(".agents").join("skills");
+        fs::create_dir_all(&root).unwrap();
         root
     }
 
-    fn pair(store: &ClientStateStore, agent: &str) {
-        pair_request_in(store, &json!({"agent": agent})).unwrap();
-        pair_approve_in(store, &json!({"agent": agent})).unwrap();
-    }
-
-    fn skill_package(name: &str) -> PathBuf {
-        let root = temp_dir(name);
+    fn skill_package(catalog_root: &Path, directory_name: &str) -> PathBuf {
+        let root = catalog_root.join(directory_name);
+        fs::create_dir_all(&root).unwrap();
         fs::write(
             root.join("SKILL.md"),
             "---\nname: review-helper\ntitle: Review Helper\nversion: 1.0.0\n---\n",
@@ -359,11 +377,21 @@ mod tests {
     }
 
     fn test_store(name: &str) -> ClientStateStore {
-        ClientStateStore::new(temp_dir(name)).unwrap()
+        ClientStateStore::new(temp_dir(&format!("state-{name}"))).unwrap()
     }
 
     fn temp_dir(name: &str) -> PathBuf {
-        let path = env::temp_dir().join(format!("lico-skill-delete-{name}-{}", Uuid::new_v4()));
+        let path = env::current_dir()
+            .unwrap()
+            .join("target")
+            .join("skill-trash-tests")
+            .join(format!("{name}-{}", Uuid::new_v4()));
+        fs::create_dir_all(&path).unwrap();
+        path.canonicalize().unwrap()
+    }
+
+    fn system_temp_dir(name: &str) -> PathBuf {
+        let path = env::temp_dir().join(format!("lico-skill-trash-{name}-{}", Uuid::new_v4()));
         fs::create_dir_all(&path).unwrap();
         path.canonicalize().unwrap()
     }

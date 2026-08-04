@@ -63,7 +63,7 @@ void main() {
       ' test-data/native-history ',
     );
 
-    await tester.tap(find.byIcon(Icons.arrow_drop_down));
+    await tester.tap(find.byKey(const Key('manual-target-kind')));
     await tester.pumpAndSettle();
     expect(find.text('Kimi'), findsOneWidget);
     await tester.tap(find.text('Kimi Code').last);
@@ -85,4 +85,77 @@ void main() {
 
     expect(dialogCanceled, isTrue);
   });
+
+  testWidgets('ManualTargetDialog submits a bounded SSH VM target', (
+    tester,
+  ) async {
+    ManualTargetDraft? draft;
+    final remoteExecutable = _guestPath(['opt', 'openclaw', 'bin', 'openclaw']);
+    final workingDirectory = _guestPath(['srv', 'project']);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Builder(
+            builder: (context) => ElevatedButton(
+              onPressed: () async {
+                draft = await showDialog<ManualTargetDraft>(
+                  context: context,
+                  builder: (_) => const ManualTargetDialog(),
+                );
+              },
+              child: const Text('OpenVm'),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('OpenVm'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('manual-target-kind')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('OpenClaw').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('manual-target-location')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Virtual machine (SSH)').last);
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.byKey(const Key('manual-target-vm-host')),
+      'vm.example',
+    );
+    await tester.enterText(
+      find.byKey(const Key('manual-target-vm-port')),
+      '2222',
+    );
+    await tester.enterText(
+      find.byKey(const Key('manual-target-vm-user')),
+      'agent-user',
+    );
+    await tester.enterText(
+      find.byKey(const Key('manual-target-vm-executable')),
+      remoteExecutable,
+    );
+    await tester.enterText(
+      find.byKey(const Key('manual-target-vm-working-directory')),
+      workingDirectory,
+    );
+    await tester.tap(find.byKey(const Key('manual-target-submit')));
+    await tester.pumpAndSettle();
+
+    expect(draft?.target, 'openclaw');
+    expect(draft?.location, 'virtual-machine');
+    expect(draft?.configPath, isEmpty);
+    expect(draft?.runtimeConnection, {
+      'kind': 'ssh',
+      'host': 'vm.example',
+      'port': 2222,
+      'user': 'agent-user',
+      'remoteExecutable': remoteExecutable,
+      'workingDirectory': workingDirectory,
+    });
+  });
 }
+
+String _guestPath(List<String> segments) => ['', ...segments].join('/');

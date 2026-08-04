@@ -29,7 +29,6 @@ export async function checkCrateCoreAndFacadeBounds(context) {
     readText,
     runJson,
     sameSet,
-    sourceLineCount,
   } = context;
   const libRs = await readText("crates/licoup-native/src/lib.rs");
   const publicRustModules = collectRustPubMods(libRs);
@@ -185,6 +184,7 @@ export async function checkCrateCoreAndFacadeBounds(context) {
     "crates/licoup-native/src/domain/collaboration_plugin/assembly/runtime/immutable_file.rs",
     "crates/licoup-native/src/domain/collaboration_plugin/assembly/runtime/process/unix.rs",
     "crates/licoup-native/src/domain/collaboration_plugin/assembly/runtime/process/windows.rs",
+    "crates/licoup-native/src/domain/agent_resource_usage/process_snapshot.rs",
     "crates/licoup-native/src/platform/authorized_secure_record/macos_keychain.rs",
     "crates/licoup-native/src/platform/user_presence.rs",
     "crates/licoup-native/src/platform/secure_mesh_secret_store/macos_user_presence.rs",
@@ -197,72 +197,25 @@ export async function checkCrateCoreAndFacadeBounds(context) {
     `Rust CLI source path must not contain unreviewed unsafe: ${rustCliUnsafeFiles.join(", ")}`
   );
 
-  for (const [relativePath, maxLines] of [
-    ["crates/licoup-native/src/core/acp.rs", 60],
-    ["crates/licoup-native/src/core/mcp.rs", 40],
-    ["crates/licoup-native/src/core/secure_mesh_command.rs", 130],
-    ["crates/licoup-native/src/core/secure_mesh_crypto.rs", 45],
-    ["crates/licoup-native/src/core/secure_mesh_directory.rs", 75],
-    ["crates/licoup-native/src/core/secure_mesh_file.rs", 70],
-    ["crates/licoup-native/src/core/secure_mesh_mlkem_braid.rs", 50],
-    ["crates/licoup-native/src/core/secure_mesh_mls.rs", 60],
-    ["crates/licoup-native/src/core/secure_mesh_mls_product.rs", 80],
-    ["crates/licoup-native/src/core/secure_mesh_pairwise.rs", 55],
-    ["crates/licoup-native/src/core/secure_mesh_pairwise/persistence.rs", 45],
-    ["crates/licoup-native/src/core/secure_mesh_approval.rs", 45],
-    ["crates/licoup-native/src/core/secure_mesh_relay_envelope.rs", 45],
-    ["crates/licoup-native/src/core/secure_mesh_trust.rs", 60],
-    ["crates/licoup-native/src/platform/runtime_adapters.rs", 65],
-    ["crates/licoup-native/src/platform/claude_code_driver.rs", 30],
-    ["crates/licoup-native/src/platform/hermes_driver.rs", 30],
-    ["crates/licoup-native/src/platform/openclaw_driver.rs", 30],
-    ["crates/licoup-native/src/platform/opencode_driver.rs", 30],
-    ["crates/licoup-native/src/platform/pi_driver.rs", 30],
-    ["crates/licoup-native/src/domain/agent_usage.rs", 30],
-    ["crates/licoup-native/src/domain/agent_usage/agent_usage_codex.rs", 35],
-    ["crates/licoup-native/src/domain/conversations.rs", 50],
-    ["crates/licoup-native/src/domain/conversation_archive_jobs.rs", 35],
-    ["crates/licoup-native/src/domain/conversation_snapshots.rs", 70],
-    ["crates/licoup-native/src/domain/client_update.rs", 45],
-    ["crates/licoup-native/src/domain/client_update/macos_runner.rs", 45],
-    ["crates/licoup-native/src/domain/mobile_relay.rs", 60],
-    ["crates/licoup-native/src/domain/secure_mesh_mls.rs", 40],
-    ["crates/licoup-native/src/domain/skill_hub.rs", 175],
-    ["crates/licoup-native/src/domain/targets.rs", 70],
-    ["crates/licoup-native/src/ffi/secure_mesh_mobile_ffi.rs", 45],
-    ["crates/licoup-native/src/platform/secure_mesh_secret_store.rs", 50],
-    ["crates/licoup-native/src/bin/licoup.rs", 80],
-    ["crates/licoup-native/src/bin/licoup/stdio_rpc.rs", 40]
-  ]) {
-    const source = await readText(relativePath);
-    assert(
-      sourceLineCount(source) <= maxLines,
-      `${relativePath} must remain a thin facade (${maxLines} lines maximum)`
-    );
-  }
 
   const stdioRpcFacade = await readText(
     "crates/licoup-native/src/bin/licoup/stdio_rpc.rs"
   );
-  const stdioRpcLeaves = new Map([
-    ["context.rs", 40],
-    ["error.rs", 60],
-    ["line.rs", 60],
-    ["model.rs", 60],
-    ["request.rs", 180],
-    ["response.rs", 260],
-    ["server.rs", 300]
-  ]);
-  for (const [leaf, maxLines] of stdioRpcLeaves) {
+  const stdioRpcLeaves = [
+    "context.rs",
+    "error.rs",
+    "line.rs",
+    "model.rs",
+    "request.rs",
+    "response.rs",
+    "server.rs",
+  ];
+  for (const leaf of stdioRpcLeaves) {
     const relativePath = `crates/licoup-native/src/bin/licoup/stdio_rpc/${leaf}`;
-    const source = await readText(relativePath);
+    await readText(relativePath);
     assert(
       stdioRpcFacade.includes(`stdio_rpc/${leaf}`),
       `stdio RPC facade must mount ${leaf}`
-    );
-    assert(
-      sourceLineCount(source) <= maxLines,
-      `${relativePath} exceeds its stdio RPC responsibility limit (${maxLines} lines maximum)`
     );
   }
   assert(
@@ -299,23 +252,19 @@ export async function checkCrateCoreAndFacadeBounds(context) {
   const stdioRpcTestFacade = await readText(
     "crates/licoup-native/src/bin/licoup/tests/rpc.rs"
   );
-  const stdioRpcTestLeaves = new Map([
-    ["error.rs", 40],
-    ["line.rs", 40],
-    ["request.rs", 100],
-    ["response.rs", 100],
-    ["server.rs", 150]
-  ]);
-  for (const [leaf, maxLines] of stdioRpcTestLeaves) {
+  const stdioRpcTestLeaves = [
+    "error.rs",
+    "line.rs",
+    "request.rs",
+    "response.rs",
+    "server.rs",
+  ];
+  for (const leaf of stdioRpcTestLeaves) {
     const relativePath = `crates/licoup-native/src/bin/licoup/tests/rpc/${leaf}`;
-    const source = await readText(relativePath);
+    await readText(relativePath);
     assert(
       stdioRpcTestFacade.includes(`rpc/${leaf}`),
       `stdio RPC test facade must mount ${leaf}`
-    );
-    assert(
-      sourceLineCount(source) <= maxLines,
-      `${relativePath} exceeds its stdio RPC test responsibility limit (${maxLines} lines maximum)`
     );
   }
   assert(

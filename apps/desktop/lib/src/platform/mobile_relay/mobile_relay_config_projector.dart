@@ -77,7 +77,7 @@ final class MobileRelayConfigProjector {
         output,
         pairing,
       );
-      updated['gatewayUrl'] = _gatewayEcho(config, output);
+      updated['stationBaseUrl'] = _stationEcho(config, output);
       devices[index] = updated;
       config['pairedDevices'] = devices;
       return;
@@ -88,7 +88,7 @@ final class MobileRelayConfigProjector {
       'pcClientName': pcClientName,
       'pairingId': pairingId,
       'credentialPresent': _credentialPresent(config, output, pairing),
-      'gatewayUrl': _gatewayEcho(config, output),
+      'stationBaseUrl': _stationEcho(config, output),
     });
     config['pairedDevices'] = devices;
   }
@@ -112,30 +112,13 @@ final class MobileRelayConfigProjector {
             ]).isNotEmpty);
   }
 
-  String _gatewayEcho(
+  String _stationEcho(
     Map<String, dynamic> config,
     Map<String, dynamic> output,
   ) {
-    final explicit = canonicalMobileRelayGatewayOrigin(
-      _firstNonBlank([output['gatewayUrl'], config['gatewayUrl']]),
+    return normalizeMobileRelayStationBaseUrl(
+      _firstNonBlank([output['stationBaseUrl'], config['stationBaseUrl']]),
     );
-    if (explicit != null && !mobileRelayGatewayIsEphemeralCustom(explicit)) {
-      return explicit;
-    }
-    final custom = canonicalMobileRelayGatewayOrigin(
-      (config['customGatewayUrl'] ?? '').toString(),
-    );
-    if (config['useCustomGateway'] == true &&
-        custom != null &&
-        !mobileRelayGatewayIsEphemeralCustom(custom)) {
-      return custom;
-    }
-    final fallback = canonicalMobileRelayGatewayOrigin(
-      config['defaultGatewayUrl']?.toString() ?? '',
-    );
-    return fallback == null || mobileRelayGatewayIsEphemeralCustom(fallback)
-        ? ''
-        : fallback;
   }
 
   String _firstNonBlank(Iterable<Object?> values) {

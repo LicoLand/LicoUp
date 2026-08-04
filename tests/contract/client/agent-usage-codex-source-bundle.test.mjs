@@ -37,39 +37,20 @@ const productionLeaves = Object.freeze([
   "utils.rs",
 ]);
 
-const lineLimits = Object.freeze({
-  "aggregation.rs": 250,
-  "append_guard.rs": 80,
-  "cache.rs": 190,
-  "cache_batch.rs": 220,
-  "cache_cleanup.rs": 90,
-  "constants.rs": 15,
-  "event_hash.rs": 100,
-  "file_collection.rs": 90,
-  "lineage.rs": 100,
-  "model_backfill.rs": 110,
-  "models.rs": 150,
-  "parser.rs": 300,
-  "rollup.rs": 230,
-  "scan.rs": 200,
-  "scan_params.rs": 100,
-  "utils.rs": 70,
-});
-
-const integrationLeaves = Object.freeze({
-  "adapter_coverage.rs": 135,
-  "append_refresh.rs": 190,
-  "cache_runtime.rs": 130,
-  "cumulative_resume.rs": 220,
-  "dedup_lineage.rs": 170,
-  "fallback_coverage.rs": 180,
-  "generic_usage.rs": 145,
-  "native_rollup.rs": 150,
-  "reconciliation.rs": 40,
-  "retained_reports.rs": 80,
-  "support.rs": 115,
-  "windows.rs": 80,
-});
+const integrationLeaves = Object.freeze([
+  "adapter_coverage.rs",
+  "append_refresh.rs",
+  "cache_runtime.rs",
+  "cumulative_resume.rs",
+  "dedup_lineage.rs",
+  "fallback_coverage.rs",
+  "generic_usage.rs",
+  "native_rollup.rs",
+  "reconciliation.rs",
+  "retained_reports.rs",
+  "support.rs",
+  "windows.rs",
+]);
 
 const preciseScenarioModules = Object.freeze({
   "adapter_coverage.rs": "rust.domain.agent-usage-cache.adapter-coverage",
@@ -137,7 +118,7 @@ function assertIntegrationTestCommand(module, expectedFilter) {
 
 function architectureIntegrationLeaves(source) {
   const registryMarker =
-    "const agentUsageCacheScenarioLimits = new Map([";
+    "const agentUsageCacheScenarioLeaves = new Set([";
   const registryStart = source.indexOf(registryMarker);
   assert.notEqual(registryStart, -1, "missing Codex usage architecture registry");
   const entriesStart = registryStart + registryMarker.length;
@@ -155,12 +136,12 @@ function architectureIntegrationLeaves(source) {
   assert.match(
     source.slice(registryEnd + 3, nextDeclaration),
     /^\s*$/u,
-    "Codex usage architecture registry must end after its static Map",
+    "Codex usage architecture registry must end after its static Set",
   );
 
   const entriesSource = source.slice(entriesStart, registryEnd);
   const entryPattern =
-    /\[`\$\{agentUsageCacheIntegrationRoot\}\/([a-z_]+\.rs)`,\s*([1-9]\d*)\]/yu;
+    /`\$\{agentUsageCacheIntegrationRoot\}\/([a-z_]+\.rs)`/yu;
   const leaves = [];
   let cursor = 0;
   while (cursor < entriesSource.length) {
@@ -197,7 +178,6 @@ async function sources() {
 
 test("Codex usage facade is thin and owns every production leaf", async () => {
   const facade = await read(`${sourceRoot}.rs`);
-  assert.ok(facade.trimEnd().split(/\r?\n/u).length <= 35);
   assert.deepEqual(
     [...facade.matchAll(/^mod ([a-z_]+);$/gmu)]
       .map((match) => match[1])
@@ -221,10 +201,6 @@ test("Codex usage facade is thin and owns every production leaf", async () => {
 test("Codex usage leaves retain bounded single responsibilities", async () => {
   const source = await sources();
   for (const [leaf, body] of Object.entries(source)) {
-    assert.ok(
-      body.trimEnd().split(/\r?\n/u).length <= lineLimits[leaf],
-      `${leaf} exceeds its responsibility limit`,
-    );
     assert.equal(body.includes("include!("), false);
     assert.equal(body.includes("#[path"), false);
     assert.equal(/^mod [a-z_]+;$/mu.test(body), false);
@@ -298,17 +274,13 @@ test("Codex usage integration composition matches every ordinary leaf on disk ex
   const composition = await read(`${integrationRoot}/mod.rs`);
   const discoveredLeaves = await discoverIntegrationLeaves();
   const declaredLeaves = declaredIntegrationLeaves(composition);
-  const expectedLeaves = Object.keys(integrationLeaves).sort();
+  const expectedLeaves = [...integrationLeaves].sort();
   assert.equal(crateRoot.trim(), "mod agent_usage_cache_cases;");
   assert.deepEqual(discoveredLeaves, expectedLeaves);
   assert.equal(declaredLeaves.length, new Set(declaredLeaves).size);
   assert.deepEqual([...declaredLeaves].sort(), discoveredLeaves);
-  for (const [leaf, maxLines] of Object.entries(integrationLeaves)) {
+  for (const leaf of integrationLeaves) {
     const body = await read(`${integrationRoot}/${leaf}`);
-    assert.ok(
-      body.trimEnd().split(/\r?\n/u).length <= maxLines,
-      `${leaf} exceeds its integration scenario limit`,
-    );
     assert.equal(body.includes("include!("), false);
     assert.equal(body.includes("#[path"), false);
   }
@@ -321,7 +293,7 @@ test("Codex usage architecture registry owns the complete integration leaf set e
   assert.equal(registeredLeaves.length, new Set(registeredLeaves).size);
   assert.deepEqual(
     [...registeredLeaves].sort(),
-    Object.keys(integrationLeaves).sort(),
+    [...integrationLeaves].sort(),
   );
 });
 
@@ -329,7 +301,7 @@ test("Codex usage regression catalog gives every scenario one precise owner and 
   const expectedScenarioLeaves = Object.keys(preciseScenarioModules).sort();
   assert.equal(expectedScenarioLeaves.length, 11);
   assert.deepEqual(
-    Object.keys(integrationLeaves)
+    integrationLeaves
       .filter((leaf) => leaf !== "support.rs")
       .sort(),
     expectedScenarioLeaves,

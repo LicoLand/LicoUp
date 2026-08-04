@@ -1,19 +1,24 @@
 use super::PACKAGED_RUNTIME_ADAPTER_IDS;
-use super::adapter::adapter_for_agent;
+use super::adapter::{NativeCapabilityKind, RuntimeAdapter, adapter_for_agent};
+use super::live_status::LiveSnapshot;
 use super::model::{
-    DriverInventoryDocument, DriverInventoryEntry, ReadinessDocument, ReadinessEntry,
-    ReadinessSummary, RuntimeDriverProfile, RuntimeDriverRegistry,
+    DriverInventoryDocument, DriverInventoryEntry, NativeCapabilityDocument, ReadinessDocument,
+    ReadinessEntry, ReadinessSummary, RuntimeDriverProfile, RuntimeDriverRegistry,
 };
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
+use std::path::Path;
 use std::sync::OnceLock;
 
 const DRIVER_INVENTORY_SCHEMA_VERSION: &str = "v0.0.1:client-agent-conversation-drivers-1";
+const NATIVE_CAPABILITY_SCHEMA_VERSION: &str = "v0.0.1:client-agent-native-capabilities-1";
 const READINESS_SCHEMA_VERSION: &str = "v0.0.1:client-agent-conversation-readiness-1";
 const CONVERSATION_PARITY_CONTRACT_VERSION: &str = "CL-06";
 const MINIMUM_CONSECUTIVE_PASSES: usize = 3;
 pub(super) const DRIVER_INVENTORY_JSON: &str =
     include_str!("../../../resources/agent-conversation-drivers.json");
+pub(super) const NATIVE_CAPABILITY_JSON: &str =
+    include_str!("../../../resources/agent-native-capabilities.json");
 pub(super) const READINESS_JSON: &str =
     include_str!("../../../resources/agent-conversation-readiness.json");
 const CORE_CHECK_IDS: &[&str] = &[
@@ -48,6 +53,8 @@ const REQUIRED_EVIDENCE_BINDINGS: &[&str] = &[
 ];
 
 static RUNTIME_DRIVER_REGISTRY: OnceLock<Option<RuntimeDriverRegistry>> = OnceLock::new();
+static NATIVE_CAPABILITY_REGISTRY: OnceLock<Option<BTreeMap<String, Vec<NativeCapabilityKind>>>> =
+    OnceLock::new();
 
 pub(crate) fn runtime_driver_profile(target: &str) -> Option<RuntimeDriverProfile> {
     let adapter = adapter_for_agent(target)?;
@@ -58,6 +65,52 @@ pub(super) fn runtime_driver_registry() -> Option<&'static RuntimeDriverRegistry
     RUNTIME_DRIVER_REGISTRY
         .get_or_init(|| parse_runtime_driver_registry(DRIVER_INVENTORY_JSON, READINESS_JSON).ok())
         .as_ref()
+}
+
+fn native_capability_registry() -> Option<&'static BTreeMap<String, Vec<NativeCapabilityKind>>> {
+    NATIVE_CAPABILITY_REGISTRY
+        .get_or_init(|| parse_native_capability_registry(NATIVE_CAPABILITY_JSON).ok())
+        .as_ref()
+}
+
+pub(super) fn parse_native_capability_registry(
+    inventory_json: &str,
+) -> std::result::Result<BTreeMap<String, Vec<NativeCapabilityKind>>, &'static str> {
+    let inventory: NativeCapabilityDocument = serde_json::from_str(inventory_json)
+        .map_err(|_| "native_capability_inventory_parse_failed")?;
+    if inventory.schema_version != NATIVE_CAPABILITY_SCHEMA_VERSION {
+        return Err("native_capability_inventory_contract_invalid");
+    }
+    let expected_ids = PACKAGED_RUNTIME_ADAPTER_IDS
+        .iter()
+        .map(|id| (*id).to_string())
+        .collect::<BTreeSet<_>>();
+    let mut agents = BTreeMap::new();
+    for entry in inventory.agents {
+        if adapter_for_agent(&entry.agent_id).is_none() || entry.capabilities.is_empty() {
+            return Err("native_capability_inventory_entry_invalid");
+        }
+        let capabilities = entry
+            .capabilities
+            .iter()
+            .filter_map(|kind| NativeCapabilityKind::parse(kind))
+            .collect::<Vec<_>>();
+        if capabilities.len() != entry.capabilities.len()
+            || capabilities
+                .iter()
+                .map(|kind| kind.wire_name())
+                .collect::<BTreeSet<_>>()
+                .len()
+                != capabilities.len()
+            || agents.insert(entry.agent_id, capabilities).is_some()
+        {
+            return Err("native_capability_inventory_entry_invalid");
+        }
+    }
+    if agents.keys().cloned().collect::<BTreeSet<_>>() != expected_ids {
+        return Err("native_capability_inventory_set_drift");
+    }
+    Ok(agents)
 }
 
 pub(super) fn parse_runtime_driver_registry(
@@ -381,6 +434,9 @@ pub(crate) fn inventory_capability_matrix(agent_id: &str) -> Option<Value> {
 /// packaged registry used for runtime dispatch. Installation lifecycle is
 /// exposed only for LicoUp-owned bridges; official native lanes and bundled
 /// ACP clients never pretend to require installation into a vendor product.
+/// Native capability kinds come from the canonical capability inventory and are
+/// annotated with one live on-host evidence snapshot (matched pid, process
+/// name, and port only).
 pub(crate) fn adapter_management_catalog(antigravity_bridge_installed: bool) -> Value {
     let Some(registry) = runtime_driver_registry() else {
         return json!({
@@ -390,6 +446,15 @@ pub(crate) fn adapter_management_catalog(antigravity_bridge_installed: bool) -> 
             "error": {"code": "adapter_plugin_catalog_unavailable"},
         });
     };
+    let Some(native_capability_registry) = native_capability_registry() else {
+        return json!({
+            "ok": false,
+            "schemaVersion": "lico.adapter-plugin-catalog.v1",
+            "adapters": [],
+            "error": {"code": "adapter_native_capability_catalog_unavailable"},
+        });
+    };
+    let live_snapshot = LiveSnapshot::capture();
 
     let adapters = PACKAGED_RUNTIME_ADAPTER_IDS
         .iter()
@@ -429,6 +494,37 @@ pub(crate) fn adapter_management_catalog(antigravity_bridge_installed: bool) -> 
             } else {
                 Vec::new()
             };
+            let cli_executable = crate::domain::targets::agent_cli_executable(agent_id);
+            let desktop_detected = crate::domain::targets::agent_desktop_app_detected(agent_id);
+            let native_capabilities = native_capability_registry
+                .get(*agent_id)?
+                .iter()
+                .map(|kind| {
+                    let detected = match kind {
+                        NativeCapabilityKind::Desktop => desktop_detected,
+                        // Protocol and service lanes are capabilities of the
+                        // agent runtime itself, so their detection follows the
+                        // real CLI detection result.
+                        _ => cli_executable.is_some(),
+                    };
+                    let live = live_snapshot.status(adapter, *kind);
+                    json!({
+                        "kind": kind.wire_name(),
+                        "detected": detected,
+                        "running": live.running,
+                        "pid": live.pid,
+                        "processName": live.process_name,
+                        "port": live.port,
+                    })
+                })
+                .collect::<Vec<_>>();
+            let adapter_plugins = adapter_plugin_entries(
+                adapter,
+                &driver.runtime_protocol,
+                installation_state,
+                &lifecycle_actions,
+                cli_executable.as_deref(),
+            );
             Some(json!({
                 "agentId": adapter.id(),
                 "label": adapter.label(),
@@ -439,6 +535,8 @@ pub(crate) fn adapter_management_catalog(antigravity_bridge_installed: bool) -> 
                 "installationState": installation_state,
                 "readiness": readiness.status,
                 "lifecycleActions": lifecycle_actions,
+                "nativeCapabilities": native_capabilities,
+                "adapterPlugins": adapter_plugins,
                 "nativePreferred": true,
             }))
         })
@@ -449,4 +547,59 @@ pub(crate) fn adapter_management_catalog(antigravity_bridge_installed: bool) -> 
         "schemaVersion": "lico.adapter-plugin-catalog.v1",
         "adapters": adapters,
     })
+}
+
+/// Project the LicoUp-managed adapter plugin entries for one agent. Only
+/// plugins with real install management appear here; native lanes and bundled
+/// ACP clients are capabilities, not installed plugins.
+fn adapter_plugin_entries(
+    adapter: RuntimeAdapter,
+    runtime_protocol: &str,
+    installation_state: &str,
+    lifecycle_actions: &[&str],
+    cli_executable: Option<&Path>,
+) -> Vec<Value> {
+    match adapter.managed_adapter_plugin_id() {
+        Some("acp-bridge") => vec![json!({
+            "id": "acp-bridge",
+            "label": "ACP Bridge",
+            "detail": runtime_protocol,
+            "installationState": installation_state,
+            "lifecycleActions": lifecycle_actions,
+        })],
+        Some("lico-up-codex") => {
+            let installation_state = codex_plugin_installation_state(cli_executable);
+            vec![json!({
+                "id": "lico-up-codex",
+                "label": "LicoUp Codex Plugin",
+                "detail": "lico-subagent-mcp",
+                "installationState": installation_state,
+                "lifecycleActions": codex_plugin_lifecycle_actions(installation_state),
+            })]
+        }
+        _ => Vec::new(),
+    }
+}
+
+/// The LicoUp Codex Plugin is installable only from a confirmed
+/// not-installed state; execution always goes through the digest-bound
+/// confirmation flow, never the generic unmanaged lane.
+pub(super) fn codex_plugin_lifecycle_actions(installation_state: &str) -> Vec<&'static str> {
+    if installation_state == "not-installed" {
+        vec!["install"]
+    } else {
+        Vec::new()
+    }
+}
+
+fn codex_plugin_installation_state(cli_executable: Option<&Path>) -> &'static str {
+    use crate::domain::agent_workflow_loop::CodexPluginState;
+    let Some(executable) = cli_executable else {
+        return "unavailable";
+    };
+    match crate::platform::codex_plugin_manager::status(executable) {
+        CodexPluginState::Ready => "installed",
+        CodexPluginState::Missing => "not-installed",
+        CodexPluginState::Unavailable => "unavailable",
+    }
 }

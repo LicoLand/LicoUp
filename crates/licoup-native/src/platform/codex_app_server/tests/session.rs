@@ -1,6 +1,8 @@
 use super::support::{config, initialize, open_thread, sent_messages};
 use crate::platform::codex_app_server::protocol::CodexProtocol;
+use crate::platform::turn_event_emit::{StreamSinkGuard, install_stream_sink};
 use serde_json::{Map, Value, json};
+use std::sync::{Arc, Mutex};
 
 #[test]
 fn new_thread_sends_prompt_only_in_turn_start_stdio_message() {
@@ -49,4 +51,25 @@ fn resume_accepts_session_path_aliases_and_extracts_thread_id() {
         );
         assert!(resume["params"]["path"].as_str().is_some());
     }
+}
+
+#[test]
+fn turn_start_ack_emits_accepted_lifecycle_receipt() {
+    let captured = Arc::new(Mutex::new(Vec::new()));
+    let sink_target = Arc::clone(&captured);
+    install_stream_sink(Box::new(move |event| {
+        sink_target.lock().unwrap().push(event);
+    }));
+    let _guard = StreamSinkGuard;
+    let mut protocol = CodexProtocol::new(config(json!({}), "hello", ""));
+    initialize(&mut protocol);
+    open_thread(&mut protocol);
+    super::support::start_turn(&mut protocol);
+
+    let events = captured.lock().unwrap().clone();
+    assert!(events.iter().any(|event| {
+        event["event"] == "agent.turn.accepted"
+            && event["sessionId"] == "thread-1"
+            && event["turnId"] == "turn-1"
+    }));
 }

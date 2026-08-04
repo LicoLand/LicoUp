@@ -61,6 +61,10 @@ pub struct TargetCandidate {
     pub binary_path: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub history_roots: Vec<String>,
+    #[serde(default = "local_location")]
+    pub location: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub runtime_connection: Option<Value>,
     pub manual: bool,
     pub adapter_status: String,
     pub adapter_capabilities: AdapterCapabilities,
@@ -69,6 +73,10 @@ pub struct TargetCandidate {
     pub scan_source: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model_catalog: Option<Value>,
+}
+
+fn local_location() -> String {
+    "local".to_string()
 }
 
 pub(super) fn target_supports_skill_install(target: &str) -> bool {

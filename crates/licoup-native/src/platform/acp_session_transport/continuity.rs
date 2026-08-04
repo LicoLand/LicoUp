@@ -8,6 +8,7 @@ use super::io::write_cancel_notification;
 use super::protocol::SessionProtocol;
 use super::supervision::PersistentTransport;
 use crate::core::acp;
+use crate::platform::virtual_machine::SshRuntimeConnection;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, SyncSender, TryRecvError};
@@ -23,14 +24,26 @@ pub(super) struct TransportKey {
     driver_id: &'static str,
     executable: String,
     cwd: PathBuf,
+    runtime_connection: Option<SshRuntimeConnection>,
 }
 
 impl TransportKey {
+    #[cfg(test)]
     pub(super) fn new(driver: AcpSessionDriverSpec, executable: &str, cwd: &Path) -> Self {
+        Self::for_runtime(driver, executable, cwd, None)
+    }
+
+    pub(super) fn for_runtime(
+        driver: AcpSessionDriverSpec,
+        executable: &str,
+        cwd: &Path,
+        runtime_connection: Option<&SshRuntimeConnection>,
+    ) -> Self {
         Self {
             driver_id: driver.driver_id,
             executable: executable.to_string(),
             cwd: cwd.to_path_buf(),
+            runtime_connection: runtime_connection.cloned(),
         }
     }
 }
@@ -76,8 +89,9 @@ pub(super) fn acquire_transport(
     timeout_ms: u64,
     max_stdout: usize,
     max_stderr: usize,
+    runtime_connection: Option<&SshRuntimeConnection>,
 ) -> Result<Arc<ManagedTransport>, ProtocolFailure> {
-    let key = TransportKey::new(driver, executable, cwd);
+    let key = TransportKey::for_runtime(driver, executable, cwd, runtime_connection);
     if let Some(existing) = transport_pool()
         .lock()
         .map_err(|_| supervisor_failure())?
@@ -99,7 +113,8 @@ pub(super) fn acquire_transport(
         ));
     }
     let (control_sender, control_receiver) = mpsc::sync_channel(CONTROL_QUEUE_CAPACITY);
-    let launch = LaunchSpec::new(driver, executable, cwd);
+    let launch = LaunchSpec::new(driver, executable, cwd)
+        .with_runtime_connection(runtime_connection.cloned());
     let transport = PersistentTransport::spawn(
         &launch,
         control_receiver,

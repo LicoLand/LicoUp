@@ -1,79 +1,90 @@
-name: Client GitHub release artifacts
+name: Client GitHub release artifact
 
 on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: GitHub Release tag to create or update
+        description: GitHub Release tag to create or extend
         required: true
         type: string
+      target:
+        description: Independently releasable platform target
+        required: true
+        type: choice
+        options:
+            - macos-arm64
+            - linux-glibc-arm64
+            - android-arm64
       publish_release:
-        description: Publish the Release after every selected artifact succeeds
+        description: Publish after this target and the merged manifest verify
         required: true
         default: false
         type: boolean
-      macos:
-        description: Build the independently releasable macOS artifact
-        required: true
-        default: false
-        type: boolean
-      linux_arm64:
-        description: Build the independently releasable Linux ARM64 artifact
-        required: true
-        default: false
-        type: boolean
-      android_arm64:
-        description: Build the independently releasable Android ARM64 artifact
-        required: true
-        default: false
-        type: boolean
+
 permissions:
   contents: read
 
 concurrency:
-  group: client-github-release-${{ inputs.release_tag }}
+  group: client-github-release-${{ inputs.release_tag }}-${{ inputs.target }}
   cancel-in-progress: false
 
 jobs:
-  github-release:
-    permissions:
-      contents: write
+  source:
+    name: Source policy
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
-      - name: Validate selected targets and Release tag
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: "24"
+          cache: npm
+      - name: Validate release request
         env:
           RELEASE_TAG: ${{ inputs.release_tag }}
-          MACOS_SELECTED: ${{ inputs.macos }}
-          LINUX_SELECTED: ${{ inputs.linux_arm64 }}
-          ANDROID_SELECTED: ${{ inputs.android_arm64 }}
         run: |
           if [[ ! "$RELEASE_TAG" =~ ^[A-Za-z0-9][A-Za-z0-9._+-]{0,126}$ ]]; then
             echo "Invalid GitHub Release tag" >&2
             exit 1
           fi
-          if [[ "$MACOS_SELECTED" != "true" && "$LINUX_SELECTED" != "true" && "$ANDROID_SELECTED" != "true" ]]; then
-            echo "Select at least one release-supported target" >&2
-            exit 1
-          fi
-      - name: Create or reuse GitHub Release
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ inputs.release_tag }}
-        run: |
-          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            existing="$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json isDraft,targetCommitish,assets --jq '.isDraft as $draft | .targetCommitish as $target | (.assets | length) as $assets | "\($draft) \($target) \($assets)"')"
-            if [[ "$existing" != "true $GITHUB_SHA 0" ]]; then
-              echo "Existing GitHub Release must be an empty draft bound to this source revision" >&2
-              exit 1
-            fi
-          else
-            gh release create "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "$RELEASE_TAG" --notes "Verified LicoUp artifacts. See LicoUp-consumer-verification.json." --draft
-          fi
+      - run: npm ci
+      - run: npm run client:gate:source
+      - name: Require complete local-agent conversation release evidence
+        run: npm run client:verify:agent-conversations:release-ready
 
-  macos:
-    if: ${{ inputs.macos }}
-    needs: github-release
+  dependencies:
+    name: Dependency policy
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: "24"
+          cache: npm
+      - uses: dtolnay/rust-toolchain@42520bdb3cb59f71dae6f8557f7056cf3a46c898 # 1.91.0
+      - run: npm ci
+      - name: Install pinned cargo-audit
+        run: cargo install cargo-audit --version 0.22.2 --locked
+      - run: npm run client:gate:dependencies
+
+  release-policy:
+    name: Release policy contracts
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: "24"
+          cache: npm
+      - run: npm ci
+      - run: npm run client:gate:release-policy
+
+  build-macos:
+    name: Build macOS ARM64
+    if: ${{ inputs.target == 'macos-arm64' }}
+    needs: [source, dependencies, release-policy]
     runs-on: macos-15
     timeout-minutes: 90
     env:
@@ -90,10 +101,6 @@ jobs:
           flutter-version: "3.44.2"
           cache: true
       - run: npm ci
-      - name: Install pinned cargo-audit
-        run: cargo install cargo-audit --version 0.22.2 --locked
-      - name: Run platform-neutral source gate
-        run: npm run client:verify:source
       - name: Prepare ephemeral local integrity identity
         run: |
           openssl req -x509 -newkey rsa:3072 -nodes -days 1 \
@@ -139,9 +146,10 @@ jobs:
             build/apps/desktop/distribution/macos/LicoUp-macos-arm64.zip.sha256
           if-no-files-found: error
 
-  linux-arm64:
-    if: ${{ inputs.linux_arm64 }}
-    needs: github-release
+  build-linux-arm64:
+    name: Build Linux glibc ARM64
+    if: ${{ inputs.target == 'linux-glibc-arm64' }}
+    needs: [source, dependencies, release-policy]
     runs-on: [self-hosted, linux, ARM64, lico-release]
     timeout-minutes: 90
     env:
@@ -158,10 +166,6 @@ jobs:
           flutter-version: "3.44.2"
           cache: true
       - run: npm ci
-      - name: Install pinned cargo-audit
-        run: cargo install cargo-audit --version 0.22.2 --locked
-      - name: Run platform-neutral source gate
-        run: npm run client:verify:source
       - run: npm run client:build:linux
       - run: npm run client:linux:smoke
       - run: npm run client:linux:gui-smoke
@@ -189,9 +193,10 @@ jobs:
             build/apps/desktop/distribution/linux-arm64/linux-release-verification-key.pem
           if-no-files-found: error
 
-  android-arm64:
-    if: ${{ inputs.android_arm64 }}
-    needs: github-release
+  build-android-arm64:
+    name: Build Android ARM64
+    if: ${{ inputs.target == 'android-arm64' }}
+    needs: [source, dependencies, release-policy]
     runs-on: [self-hosted, macOS, ARM64, lico-release, android]
     timeout-minutes: 90
     env:
@@ -211,10 +216,6 @@ jobs:
           flutter-version: "3.44.2"
           cache: true
       - run: npm ci
-      - name: Install pinned cargo-audit
-        run: cargo install cargo-audit --version 0.22.2 --locked
-      - name: Run platform-neutral source gate
-        run: npm run client:verify:source
       - name: Build same-source macOS relay CLI prerequisite
         run: npm run client:build:macos
       - name: Install pinned Android NDK
@@ -254,68 +255,78 @@ jobs:
             build/apps/desktop/android/release/LicoUp-android-arm64.apk.sha256
             build/apps/desktop/android/release/lico-github-artifact.pem
           if-no-files-found: error
-  publish:
-    if: ${{ always() && needs.github-release.result == 'success' && (needs.macos.result == 'success' || needs.macos.result == 'skipped') && (needs.linux-arm64.result == 'success' || needs.linux-arm64.result == 'skipped') && (needs.android-arm64.result == 'success' || needs.android-arm64.result == 'skipped') }}
-    needs: [github-release, macos, linux-arm64, android-arm64]
+
+  publish-macos:
+    name: Append macOS ARM64
+    if: ${{ inputs.target == 'macos-arm64' }}
+    needs: [source, dependencies, release-policy, build-macos]
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 15
     permissions:
       contents: write
+    concurrency:
+      group: client-github-release-publish-${{ inputs.release_tag }}
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
         with:
           persist-credentials: false
       - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
-        if: ${{ inputs.macos }}
         with:
           name: licoup-macos
-          path: build/release-assets
+          path: build/release-incoming
+      - name: Append target and verify merged Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PUBLISH_RELEASE: ${{ inputs.publish_release }}
+        run: node tools/scripts/client-github-release-publish.mjs --tag "${{ inputs.release_tag }}" --target "${{ inputs.target }}" --incoming build/release-incoming --assets build/release-assets --publish "$PUBLISH_RELEASE"
+
+  publish-linux-arm64:
+    name: Append Linux glibc ARM64
+    if: ${{ inputs.target == 'linux-glibc-arm64' }}
+    needs: [source, dependencies, release-policy, build-linux-arm64]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    concurrency:
+      group: client-github-release-publish-${{ inputs.release_tag }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          persist-credentials: false
       - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
-        if: ${{ inputs.linux_arm64 }}
         with:
           name: licoup-linux-arm64
-          path: build/release-assets
+          path: build/release-incoming
+      - name: Append target and verify merged Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PUBLISH_RELEASE: ${{ inputs.publish_release }}
+        run: node tools/scripts/client-github-release-publish.mjs --tag "${{ inputs.release_tag }}" --target "${{ inputs.target }}" --incoming build/release-incoming --assets build/release-assets --publish "$PUBLISH_RELEASE"
+
+  publish-android-arm64:
+    name: Append Android ARM64
+    if: ${{ inputs.target == 'android-arm64' }}
+    needs: [source, dependencies, release-policy, build-android-arm64]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    concurrency:
+      group: client-github-release-publish-${{ inputs.release_tag }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          persist-credentials: false
       - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
-        if: ${{ inputs.android_arm64 }}
         with:
           name: licoup-android-arm64
-          path: build/release-assets
-      - name: Build canonical consumer verification manifest
-        env:
-          RELEASE_TAG: ${{ inputs.release_tag }}
-          MACOS_SELECTED: ${{ inputs.macos }}
-          LINUX_SELECTED: ${{ inputs.linux_arm64 }}
-          ANDROID_SELECTED: ${{ inputs.android_arm64 }}
-        run: node tools/scripts/client-consumer-verification-manifest.mjs --assets build/release-assets --output build/release-assets/LicoUp-consumer-verification.json --tag "$RELEASE_TAG" --targets "macos-arm64=$MACOS_SELECTED,linux-glibc-arm64=$LINUX_SELECTED,android-arm64=$ANDROID_SELECTED"
-      - name: Upload exact verified asset set to GitHub Release
+          path: build/release-incoming
+      - name: Append target and verify merged Release
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ inputs.release_tag }}
-          MACOS_SELECTED: ${{ inputs.macos }}
-          LINUX_SELECTED: ${{ inputs.linux_arm64 }}
-          ANDROID_SELECTED: ${{ inputs.android_arm64 }}
-        run: |
-          assets=(build/release-assets/LicoUp-consumer-verification.json)
-          if [[ "$MACOS_SELECTED" == "true" ]]; then
-            assets+=(build/release-assets/LicoUp-macos-arm64.zip build/release-assets/LicoUp-macos-arm64.zip.sha256)
-          fi
-          if [[ "$LINUX_SELECTED" == "true" ]]; then
-            assets+=(build/release-assets/LicoUp-linux-arm64.tar.gz build/release-assets/LicoUp-linux-arm64.tar.gz.sha256 build/release-assets/LicoUp-linux-arm64.tar.gz.sig build/release-assets/linux-release-verification-key.pem)
-          fi
-          if [[ "$ANDROID_SELECTED" == "true" ]]; then
-            assets+=(build/release-assets/LicoUp-android-arm64.apk build/release-assets/LicoUp-android-arm64.apk.sha256 build/release-assets/lico-github-artifact.pem)
-          fi
-          gh release upload "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" "${assets[@]}"
-      - name: Read remote Release asset set
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ inputs.release_tag }}
-        run: gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" --jq '.assets | map({name, size, digest})' > "$RUNNER_TEMP/release-assets.json"
-      - name: Verify exact remote Release asset set
-        run: node tools/scripts/client-release-remote-asset-set.mjs --assets build/release-assets --remote "$RUNNER_TEMP/release-assets.json"
-      - name: Publish complete GitHub Release
-        if: ${{ inputs.publish_release }}
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ inputs.release_tag }}
-        run: gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --draft=false
+          PUBLISH_RELEASE: ${{ inputs.publish_release }}
+        run: node tools/scripts/client-github-release-publish.mjs --tag "${{ inputs.release_tag }}" --target "${{ inputs.target }}" --incoming build/release-incoming --assets build/release-assets --publish "$PUBLISH_RELEASE"

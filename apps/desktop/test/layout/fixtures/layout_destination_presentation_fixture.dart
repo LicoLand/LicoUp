@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import 'package:licoup/src/frontend/layout/layout_destination_presentation.dart';
 import 'package:licoup/src/frontend/layout/layout_palette.dart';
+import 'package:licoup/src/frontend/shell/layout_palette_projection.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 /// Test-only explicit visual contract for shared feature widget tests.
@@ -17,25 +19,7 @@ final class FixtureLayoutPresentationScope extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.licoColors;
     return LayoutPaletteScope(
-      palette: LayoutPalette(
-        background: colors.background,
-        surface: colors.surface,
-        surfaceLow: colors.surfaceLow,
-        surfaceHigh: colors.surfaceHigh,
-        surfaceHighest: colors.surfaceHighest,
-        line: colors.line,
-        text: colors.text,
-        textMuted: colors.textMuted,
-        primary: colors.primary,
-        primaryStrong: colors.primaryStrong,
-        primaryFixed: colors.primaryFixed,
-        textOnPrimary: colors.textOnPrimary,
-        info: colors.info,
-        infoMuted: colors.infoMuted,
-        success: colors.success,
-        warning: colors.warning,
-        error: colors.error,
-      ),
+      palette: layoutPaletteFromColors(colors),
       child: LayoutDestinationPresentationScope(
         agents: const FixtureLayoutAgentsPresentation(),
         settings: const FixtureLayoutSettingsPresentation(),
@@ -75,6 +59,13 @@ final class FixtureLayoutAgentsPresentation
 
   @override
   bool get showConversationSidebarControl => true;
+
+  @override
+  Widget frameWorkspace(
+    BuildContext context, {
+    required Key key,
+    required Widget child,
+  }) => KeyedSubtree(key: key, child: child);
 
   @override
   Widget frameSidebar(
@@ -126,27 +117,49 @@ final class FixtureLayoutSettingsPresentation
   const FixtureLayoutSettingsPresentation();
 
   @override
-  EdgeInsetsGeometry get contentPadding =>
-      const EdgeInsets.symmetric(vertical: 16, horizontal: 20);
+  bool get indexHostedByNavigation => false;
+
+  @override
+  EdgeInsetsGeometry get contentPadding => const EdgeInsets.symmetric(
+    vertical: LicoContentSpacing.item,
+    horizontal: 20,
+  );
 
   @override
   EdgeInsetsGeometry get indexPadding =>
-      const EdgeInsets.symmetric(vertical: 12);
+      const EdgeInsets.symmetric(vertical: LicoContentSpacing.item);
 
   @override
-  EdgeInsetsGeometry get sectionHeaderPadding =>
-      const EdgeInsets.fromLTRB(16, 14, 16, 4);
+  EdgeInsetsGeometry get sectionHeaderPadding => const EdgeInsets.fromLTRB(
+    LicoContentSpacing.item,
+    LicoContentSpacing.item,
+    LicoContentSpacing.item,
+    LicoContentSpacing.inline,
+  );
 
   @override
-  EdgeInsetsGeometry get rowPadding => const EdgeInsets.fromLTRB(16, 14, 16, 0);
+  EdgeInsetsGeometry get rowPadding => const EdgeInsets.fromLTRB(
+    LicoContentSpacing.item,
+    LicoContentSpacing.item,
+    LicoContentSpacing.item,
+    0,
+  );
 
   @override
-  EdgeInsetsGeometry get selectorGridPadding =>
-      const EdgeInsets.fromLTRB(16, 8, 16, 0);
+  EdgeInsetsGeometry get selectorGridPadding => const EdgeInsets.fromLTRB(
+    LicoContentSpacing.item,
+    LicoContentSpacing.item,
+    LicoContentSpacing.item,
+    0,
+  );
 
   @override
-  EdgeInsetsGeometry get selectorActionPadding =>
-      const EdgeInsets.fromLTRB(16, 0, 16, 14);
+  EdgeInsetsGeometry get selectorActionPadding => const EdgeInsets.fromLTRB(
+    LicoContentSpacing.item,
+    0,
+    LicoContentSpacing.item,
+    LicoContentSpacing.item,
+  );
 
   @override
   Widget frameIndex(
@@ -175,12 +188,14 @@ final class FixtureLayoutSettingsPresentation
     required Widget child,
   }) => Padding(
     key: key,
-    padding: const EdgeInsets.only(bottom: 16),
+    padding: const EdgeInsets.only(bottom: LicoContentSpacing.item),
     child: Card(
       elevation: 0,
       margin: EdgeInsets.zero,
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8),
+        padding: const EdgeInsets.symmetric(
+          vertical: LicoContentSpacing.compact,
+        ),
         child: child,
       ),
     ),

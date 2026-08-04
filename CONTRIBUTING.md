@@ -7,23 +7,26 @@ test as one clear client feature, module, or flow.
 
 ## Set up
 
-You need Node.js 22 or 24, Flutter stable, and Rust stable.
+You need Node.js 22 or 24 for the source policy. Install Flutter, Rust, Java,
+and Android tooling only when the affected technology lane requires them.
 
 ```bash
 npm ci
-npm run client:get
 ```
 
 During development, run the smallest relevant checks. Before handoff, run the
-targeted tests for the changed module. Run the full client verification once,
-and only after every intended change has been confirmed effective. Never repeat
-the full regression during implementation; it expands the feedback loop and
-contends with other agents working in parallel.
+targeted tests for the changed module. After every intended change is confirmed
+effective, run the mandatory Node-only source policy once and only the affected
+technology lanes. The lanes are independent and may run in parallel. The commit
+gate never builds or publishes every platform.
 
 ```bash
-npm run client:analyze
-npm run client:test
-npm run client:native:test
+npm run client:gate:source
+npm run client:gate:flutter         # Flutter changes only
+npm run client:gate:rust            # Rust changes only
+npm run client:gate:android         # Android changes only
+npm run client:gate:dependencies    # dependency authority changes only
+npm run client:gate:release-policy  # release policy changes only
 ```
 
 Build-producing tests share one managed compiler target. The test runner holds
@@ -42,8 +45,9 @@ targets are reported but are not deleted automatically. After an abnormal test
 exit, a structurally valid dead lease remains protected for a grace period and
 only then becomes reclaimable; malformed or tampered records always fail closed.
 
-When every locked dependency is already cached, run the one final verification
-without network access using `LICO_CLIENT_VERIFY_OFFLINE=1 npm run client:verify`.
+When every locked dependency is already cached, the dependency audit has a
+separate offline form: `npm run client:deps:audit:offline`. It does not cause
+unaffected language or platform lanes to run.
 
 ## Privacy rules
 
@@ -57,6 +61,31 @@ without network access using `LICO_CLIENT_VERIFY_OFFLINE=1 npm run client:verify
   service.
 - Any allowed external transfer must require a fresh direct user approval bound
   to the exact destination, purpose, scope, and content digest.
+
+## Native interface consistency
+
+The Flutter client and the Rust native core share two interfaces:
+
+- Generated contract types, owned by `schemas/client_bridge/` and generated
+  into Dart (`apps/desktop/lib/src/contracts/generated/*.g.dart`) and Rust
+  (`crates/licoup-native/src/ffi/generated/*.rs`) from one schema.
+- The native CLI command surface (`licoup.stdio.v1` frames and one-shot
+  arguments). The Rust side admits options through `admitted_params` in
+  `crates/licoup-native/src/ffi/commands/`; the Flutter side sends them from
+  `apps/desktop/lib/src/platform/native_client/`.
+
+A change on one side must update the other side in the same change:
+
+- Adding, renaming, or removing a CLI command or option requires updating the
+  matching Rust command handler and every Flutter caller together. A missing
+  Rust admission makes the sidecar reject the request (`cli_option_unknown`);
+  a stale caller sends an option the sidecar no longer accepts. Both failures
+  surface as broken client flows, not build errors.
+- Changing a generated contract type requires regenerating both outputs from
+  the shared schema. Never hand-edit a generated file.
+- The packaged app carries its own sidecar, so a running app keeps the old
+  native binary until it is rebuilt. Rebuild and verify the client bundle
+  after any native interface change.
 
 ## Documentation rules
 
@@ -76,6 +105,8 @@ without network access using `LICO_CLIENT_VERIFY_OFFLINE=1 npm run client:verify
 ## Pull request checklist
 
 - The change has one clear scope.
+- Native CLI or generated contract changes keep the Flutter and Rust sides
+  consistent in the same change.
 - Old paths and old names are removed when a migration is complete.
 - New or changed tests use made-up, redacted data.
 - Public documentation has matching English and Chinese text.

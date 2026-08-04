@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+
 import 'package:licoup/src/application/features/layout/layout_catalog.dart';
 import 'package:licoup/src/contracts/presentation/layout_profile.dart';
 import 'package:licoup/src/contracts/presentation/layout_state_namespace.dart';
@@ -66,7 +68,11 @@ final class LayoutTabState extends LayoutPresentationStateValue {
 }
 
 /// Bounded, presentation-only state keyed exclusively by catalog declarations.
-final class LayoutStateStore {
+///
+/// Listeners are notified after every mutation so shell chrome and destination
+/// content sharing one channel (for example the settings section tab) stay in
+/// sync without a direct widget link.
+final class LayoutStateStore extends ChangeNotifier {
   LayoutStateStore(this.catalog);
 
   final LayoutCatalog catalog;
@@ -91,18 +97,25 @@ final class LayoutStateStore {
       throw const FormatException('layout_state_value_kind_mismatch');
     }
     _values[namespace] = value;
+    notifyListeners();
   }
 
   void remove(LayoutStateNamespace namespace) {
     _requireDeclared(namespace);
-    _values.remove(namespace);
+    if (_values.remove(namespace) != null) {
+      notifyListeners();
+    }
   }
 
   void resetProfile(LayoutProfileId profileId) {
     _values.removeWhere((namespace, _) => namespace.profileId == profileId);
+    notifyListeners();
   }
 
-  void resetAll() => _values.clear();
+  void resetAll() {
+    _values.clear();
+    notifyListeners();
+  }
 
   void _requireDeclared(LayoutStateNamespace namespace) {
     if (!declares(namespace)) {

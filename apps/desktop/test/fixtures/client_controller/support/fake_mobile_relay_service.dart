@@ -43,8 +43,7 @@ class FakeMobileRelayService extends MobileRelayService {
   String? lastApprovalPendingOperationId;
   String? lastApprovalDecision;
   MobileRelayConfig config = MobileRelayConfig.defaults().copyWith(
-    useCustomGateway: true,
-    customGatewayUrl: 'https://relay.example.test',
+    stationBaseUrl: 'https://station.example.test',
   );
   List<MobileRelayCommand> queuedCommands = const [];
   Object? syncError;
@@ -90,16 +89,12 @@ class FakeMobileRelayService extends MobileRelayService {
   }
 
   @override
-  Future<MobileRelayConfig> configureGateway({
+  Future<MobileRelayConfig> configureStation({
     required AgentService agentService,
-    required bool useCustomGateway,
-    required String customGatewayUrl,
+    required String stationBaseUrl,
     SecureMeshMobileBridge bridge = const SecureMeshAndroidBridge(),
   }) async {
-    config = config.copyWith(
-      useCustomGateway: useCustomGateway,
-      customGatewayUrl: customGatewayUrl,
-    );
+    config = config.copyWith(stationBaseUrl: stationBaseUrl);
     return config;
   }
 
@@ -144,7 +139,7 @@ class FakeMobileRelayService extends MobileRelayService {
       'mobileRelayPairingInvite': {
         'protocolVersion': 'licomesh.mobile-relay.e2ee.v2',
         'oneTime': true,
-        'gatewayUrl': 'https://relay.example.test',
+        'stationBaseUrl': 'https://station.example.test',
         'pairingId': 'pair-1',
         'pairingCode': pairingCode,
         'pcSecureMesh': {'endpointId': 'pc'},
@@ -177,8 +172,9 @@ class FakeMobileRelayService extends MobileRelayService {
           pairingId: (invite['pairingId'] ?? 'pair-1').toString(),
           mobileToken: mobileToken,
           credentialPresent: true,
-          gatewayUrl: (invite['gatewayUrl'] ?? 'https://relay.example.test')
-              .toString(),
+          stationBaseUrl:
+              (invite['stationBaseUrl'] ?? 'https://station.example.test')
+                  .toString(),
         ),
       ],
     );

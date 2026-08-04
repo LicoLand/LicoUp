@@ -47,6 +47,10 @@ void main() {
         'true',
       ]);
       expect(capturedEnv?['LICOUP_PORTABLE_DIR'], portableDir.path);
+      final parentPath = Platform.environment['PATH']?.trim() ?? '';
+      if (parentPath.isNotEmpty && parentPath.length <= 32 * 1024) {
+        expect(capturedEnv?['PATH'], parentPath);
+      }
       if (Platform.isMacOS) {
         expect(
           capturedEnv?['LICO_SECURE_MESH_MACOS_USER_PRESENCE_REQUIRED'],
@@ -63,7 +67,13 @@ void main() {
 
     test('inspectTarget passes LICOUP_PORTABLE_DIR', () async {
       await service.inspectTarget('opencode');
-      expect(capturedArgs, ['targets', 'inspect', 'opencode']);
+      expect(capturedArgs, [
+        'targets',
+        'inspect',
+        'opencode',
+        '--include-accessible-environments',
+        'true',
+      ]);
       expect(capturedEnv?['LICOUP_PORTABLE_DIR'], portableDir.path);
     });
 

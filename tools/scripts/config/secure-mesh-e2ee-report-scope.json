@@ -4,7 +4,7 @@
   "scopeEvidenceFreshnessSeconds": 604800,
   "claimAuthorities": {
     "independentCryptoReviewClaims": "independent-audit",
-    "relayProtocolClaims": "external-client"
+    "stationInteroperabilityClaims": "external-client"
   },
   "reports": {
     "build/reports/secure-mesh-pairwise-content-crypto-audit.json": {
@@ -37,13 +37,13 @@
       ],
       "evidenceType": "redacted-physical-evidence-manifest-gap-evidence"
     },
-    "build/reports/secure-client-relay-mock-e2e.json": {
-      "blocker": "opaque relay protocol mock",
+    "build/reports/licoarc-badtower-acceptance.json": {
+      "blocker": "Lico Arc BadTower interoperability",
       "claims": [
         "clientRuntimeClaims",
-        "relayProtocolClaims"
+        "stationInteroperabilityClaims"
       ],
-      "evidenceType": "redacted-client-owned-opaque-relay-protocol-mock-evidence"
+      "evidenceType": "redacted-licoarc-badtower-interoperability-acceptance"
     },
     "build/reports/secure-mesh-encrypted-file-handoff.json": {
       "blocker": "encrypted file handoff",

@@ -4,6 +4,9 @@ import 'package:licoup/src/platform/native_client/agent_service_process_io.dart'
 import 'package:licoup/src/platform/native_client/native_cli_ports.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+var _synthSeq = 0;
+String _synth(String label) => '$label-${_synthSeq++}';
+
 void main() {
   test(
     'bounded process I/O delegates public commands to its narrow port',
@@ -157,6 +160,59 @@ void main() {
     },
   );
 
+  test(
+    'LLM credential writes reuse the persistent authorized process',
+    () async {
+  final sv_synthetic = _synth('synthetic');
+      final transport = _FakeStdioTransport();
+      final context = _FakeProcessContext();
+      final processIo = BoundedNativeProcessIo(
+        processContext: context,
+        commandExecutor: _StaticExecutor(const {}),
+        stdioRpcTransport: transport,
+        persistentStdioRpcEnabled: true,
+      );
+
+      final createBody =
+          '{"provider":"kimi","label":"Primary","apiKey":"${sv_synthetic}",'
+          '"leaseDays":30}';
+      await processIo.runCliWithStdin(const [
+        'llm-gateway',
+        'credentials',
+        'create',
+        '--stdin-json',
+        'true',
+      ], createBody);
+      await processIo.runCliWithStdin(const [
+        'llm-gateway',
+        'credentials',
+        'update',
+        '11111111-1111-4111-8111-111111111111',
+        '--stdin-json',
+        'true',
+      ], '{"label":"Renamed"}');
+
+      expect(context.startCount, 0);
+      expect(transport.executions, [
+        const [
+          'llm-gateway',
+          'credentials',
+          'create',
+          '--stdin-json',
+          createBody,
+        ],
+        const [
+          'llm-gateway',
+          'credentials',
+          'update',
+          '11111111-1111-4111-8111-111111111111',
+          '--stdin-json',
+          '{"label":"Renamed"}',
+        ],
+      ]);
+    },
+  );
+
   test('process I/O drains stderr with a fixed upper bound', () async {
     if (Platform.isWindows) {
       return;
@@ -227,6 +283,7 @@ class _FakeProcessContext implements NativeCliProcessContext {
 
 class _FakeStdioTransport implements NativeStdioRpcTransport {
   Map<String, dynamic>? conversationRequest;
+  final List<List<String>> executions = [];
   final List<({String method, Map<String, dynamic> params})> structuredCalls =
       [];
 
@@ -235,6 +292,7 @@ class _FakeStdioTransport implements NativeStdioRpcTransport {
 
   @override
   Future<Map<String, dynamic>> execute(List<String> arguments) async {
+    executions.add(List<String>.unmodifiable(arguments));
     return const {};
   }
 

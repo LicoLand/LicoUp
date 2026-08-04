@@ -200,7 +200,7 @@ test("CLI list is side-effect free and no-argument invocation does not run all t
   assert.match(listed.stdout, /flutter\.feature\.agents/u);
   assert.match(listed.stdout, /rust\.ffi/u);
   assert.match(listed.stdout, /release\.workflows/u);
-  assert.doesNotMatch(listed.stdout, /client:verify/u);
+  assert.doesNotMatch(listed.stdout, /client:gate:/u);
 
   const unselected = spawnSync(process.execPath, [runnerPath], {
     cwd: repoRoot,

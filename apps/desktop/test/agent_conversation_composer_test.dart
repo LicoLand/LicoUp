@@ -3,8 +3,8 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_composer.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_runtime_settings.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
-import 'package:licoup/src/frontend/shared/ui/lico_activity_animations.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 void main() {
@@ -108,17 +108,46 @@ void main() {
     );
 
     expect(tester.widget<TextField>(find.byType(TextField)).enabled, isTrue);
-    final pulse = tester.widget<LicoPerimeterPulse>(
-      find.byKey(const Key('agent-conversation-composer-running-border')),
+    // The running pulse lives on the header divider, never on the composer.
+    expect(
+      find.byKey(const Key('agent-conversation-composer-running-edge')),
+      findsNothing,
     );
-    expect(pulse.enabled, isTrue);
-    expect(find.byKey(const Key('lico-perimeter-pulse-paint')), findsOneWidget);
+    expect(find.byKey(const Key('lico-top-edge-pulse-paint')), findsNothing);
+    expect(find.byKey(const Key('lico-perimeter-pulse-paint')), findsNothing);
     await tester.tap(find.byKey(const Key('agent-conversation-composer-send')));
     await tester.pump();
     expect(submissions, ['queued follow-up']);
   });
 
-  testWidgets('reduced motion keeps a static execution outline', (
+  testWidgets('idle composer shows no running pulse on the top edge', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _ComposerTestApp(
+        child: RuntimeMessageComposer(
+          targetLabel: 'Fixture Agent',
+          initialDraft: '',
+          busy: false,
+          enabled: true,
+          modelOptions: const [],
+          selectedModel: '',
+          reasoningEffortOptions: const [],
+          selectedReasoningEffort: '',
+          onModelChanged: (_) {},
+          onReasoningEffortChanged: (_) {},
+          onDraftChanged: (_) {},
+          onSend: (_) async => true,
+        ),
+      ),
+    );
+
+    expect(find.byKey(const Key('lico-top-edge-pulse-paint')), findsNothing);
+    expect(find.byKey(const Key('lico-perimeter-pulse-paint')), findsNothing);
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('reduced motion composer renders no execution edge line', (
     tester,
   ) async {
     await tester.pumpWidget(
@@ -141,7 +170,8 @@ void main() {
       ),
     );
 
-    expect(find.byKey(const Key('lico-perimeter-pulse-paint')), findsOneWidget);
+    expect(find.byKey(const Key('lico-top-edge-pulse-paint')), findsNothing);
+    expect(find.byKey(const Key('lico-perimeter-pulse-paint')), findsNothing);
     await tester.pumpAndSettle();
   });
 
@@ -173,6 +203,124 @@ void main() {
     expect(
       tester.widget<TextField>(find.byType(TextField)).controller?.text,
       'retry this request',
+    );
+  });
+
+  testWidgets('composer embeds the runtime settings bar by default', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _ComposerTestApp(
+        child: RuntimeMessageComposer(
+          targetLabel: 'Fixture Agent',
+          initialDraft: '',
+          busy: false,
+          enabled: true,
+          modelOptions: const ['fixture-model'],
+          selectedModel: 'fixture-model',
+          reasoningEffortOptions: const [],
+          selectedReasoningEffort: '',
+          onModelChanged: (_) {},
+          onReasoningEffortChanged: (_) {},
+          onDraftChanged: (_) {},
+          onSend: (_) async => true,
+        ),
+      ),
+    );
+
+    expect(find.byType(ConversationRuntimeSettingsBar), findsOneWidget);
+    expect(find.byType(TextField), findsOneWidget);
+  });
+
+  testWidgets('showRuntimeSettings false hides the runtime settings bar', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _ComposerTestApp(
+        child: RuntimeMessageComposer(
+          targetLabel: 'Fixture Agent',
+          initialDraft: '',
+          busy: false,
+          enabled: true,
+          modelOptions: const ['fixture-model'],
+          selectedModel: 'fixture-model',
+          reasoningEffortOptions: const [],
+          selectedReasoningEffort: '',
+          onModelChanged: (_) {},
+          onReasoningEffortChanged: (_) {},
+          onDraftChanged: (_) {},
+          onSend: (_) async => true,
+          showRuntimeSettings: false,
+        ),
+      ),
+    );
+
+    expect(find.byType(ConversationRuntimeSettingsBar), findsNothing);
+    expect(find.byType(TextField), findsOneWidget);
+  });
+
+  testWidgets('floating matte composer shows external attach capsule', (
+    tester,
+  ) async {
+    var attachTapped = false;
+    await tester.pumpWidget(
+      _ComposerTestApp(
+        child: RuntimeMessageComposer(
+          targetLabel: 'Fixture Agent',
+          initialDraft: '',
+          busy: false,
+          enabled: true,
+          modelOptions: const [],
+          selectedModel: '',
+          reasoningEffortOptions: const [],
+          selectedReasoningEffort: '',
+          onModelChanged: (_) {},
+          onReasoningEffortChanged: (_) {},
+          onDraftChanged: (_) {},
+          onSend: (_) async => true,
+          floatingMatteCapsule: true,
+          onAttach: () => attachTapped = true,
+        ),
+      ),
+    );
+
+    expect(
+      find.byKey(const Key('agent-conversation-composer-attach')),
+      findsOneWidget,
+    );
+    await tester.tap(
+      find.byKey(const Key('agent-conversation-composer-attach')),
+    );
+    await tester.pump();
+    expect(attachTapped, isTrue);
+  });
+
+  testWidgets('non-floating composer hides external attach capsule', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _ComposerTestApp(
+        child: RuntimeMessageComposer(
+          targetLabel: 'Fixture Agent',
+          initialDraft: '',
+          busy: false,
+          enabled: true,
+          modelOptions: const [],
+          selectedModel: '',
+          reasoningEffortOptions: const [],
+          selectedReasoningEffort: '',
+          onModelChanged: (_) {},
+          onReasoningEffortChanged: (_) {},
+          onDraftChanged: (_) {},
+          onSend: (_) async => true,
+          onAttach: () {},
+        ),
+      ),
+    );
+
+    expect(
+      find.byKey(const Key('agent-conversation-composer-attach')),
+      findsNothing,
     );
   });
 }

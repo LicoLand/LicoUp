@@ -12,7 +12,7 @@
         "build/reports/secure-mesh-platform-secret-store-matrix.json",
         "build/reports/secure-mesh-android-platform-crypto-acceptance.json",
         "build/reports/secure-mesh-physical-device-matrix.json",
-        "build/reports/secure-client-relay-mock-e2e.json",
+        "build/reports/licoarc-badtower-acceptance.json",
         "build/reports/secure-mesh-encrypted-file-handoff.json",
         "build/reports/secure-mesh-trust-ux.json",
         "build/reports/secure-mesh-macos-keychain-user-presence-proof.json",
@@ -47,7 +47,7 @@
         "build/reports/secure-mesh-pairwise-content-crypto-audit.json",
         "build/reports/secure-mesh-platform-secret-store-matrix.json",
         "build/reports/secure-mesh-android-platform-crypto-acceptance.json",
-        "build/reports/secure-client-relay-mock-e2e.json",
+        "build/reports/licoarc-badtower-acceptance.json",
         "build/reports/android-physical-install-launch.json",
         "build/reports/secure-mesh-physical-evidence-manifest.json",
         "build/reports/secure-mesh-windows-implementation.json"

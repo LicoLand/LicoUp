@@ -107,6 +107,14 @@ class NativeCliRuntimeContext implements NativeCliProcessContext {
     final environment = <String, String>{
       ..._macOSLocalAuthenticationEnvironment(),
     };
+    final executablePath = Platform.environment['PATH']?.trim() ?? '';
+    if (executablePath.isNotEmpty && executablePath.length <= 32 * 1024) {
+      // Process APIs normally inherit the parent environment, but desktop app
+      // launch contexts are platform-dependent. Preserve PATH explicitly once
+      // an environment overlay is required so the bundled sidecar can discover
+      // the same local agent executables as the product process.
+      environment['PATH'] = executablePath;
+    }
     final dataDirectory = _dataDirectory;
     if (dataDirectory != null) {
       final directory = await dataDirectory();

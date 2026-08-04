@@ -20,7 +20,6 @@ export async function checkRuntimeDriversAndLocalService(context, {
     readText,
     runJson,
     sameSet,
-    sourceLineCount,
   } = context;
   assert(
     reviewedRustUnsafeFiles instanceof Set,

@@ -141,7 +141,11 @@ class _TokenUsageOverviewCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              Icon(Icons.query_stats_rounded, color: colors.primary, size: 21),
+              Icon(
+              Icons.query_stats_rounded,
+              color: colors.textSecondary,
+              size: 21,
+            ),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
@@ -161,7 +165,7 @@ class _TokenUsageOverviewCard extends StatelessWidget {
                   height: 16,
                   child: CircularProgressIndicator(
                     strokeWidth: 2,
-                    color: colors.primary,
+                    color: colors.accent,
                   ),
                 ),
             ],
@@ -321,8 +325,8 @@ class _AgentUsageRow extends StatelessWidget {
           child: LinearProgressIndicator(
             value: fill,
             minHeight: 5,
-            color: colors.primary,
-            backgroundColor: colors.surfaceHigh,
+            color: colors.accent,
+            backgroundColor: colors.surfaceLow,
           ),
         ),
       ],

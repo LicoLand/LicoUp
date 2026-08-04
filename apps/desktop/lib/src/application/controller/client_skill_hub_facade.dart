@@ -91,6 +91,9 @@ mixin ClientSkillHubFacade
     showProgress: showProgress,
   );
 
+  void removeSkillHubEntryAtPath(String path) =>
+      skillHubController.removeSkillAtPath(path);
+
   Future<void> requestSkillHubPairing(String agent, {String target = ''}) =>
       skillHubController.requestPairing(agent, target: target);
 
@@ -141,6 +144,10 @@ mixin ClientSkillHubFacade
 
   @override
   Map<String, dynamic>? get skillDeletePlan => skillDeleteController.plan;
+
+  @override
+  Map<String, dynamic>? get skillDeleteResult =>
+      skillDeleteController.actionResult;
 
   @override
   Map<String, dynamic>? get skillUsageReport => skillUsageController.report;
@@ -200,26 +207,19 @@ mixin ClientSkillHubFacade
 
   @override
   Future<void> previewSkillDelete({
-    required Iterable<String> agents,
     required String skillId,
-    String installRoot = '',
-  }) => skillDeleteController.preview(
-    agents: agents,
-    skillId: skillId,
-    installRoot: installRoot,
-  );
+    required String path,
+  }) => skillDeleteController.preview(skillId: skillId, path: path);
 
   @override
   Future<void> applySkillDelete({
-    required Iterable<String> agents,
     required String skillId,
+    required String path,
     required String confirmation,
-    String installRoot = '',
   }) => skillDeleteController.apply(
-    agents: agents,
     skillId: skillId,
+    path: path,
     confirmation: confirmation,
-    installRoot: installRoot,
   );
 
   @override
@@ -228,6 +228,14 @@ mixin ClientSkillHubFacade
     String agent = '',
     String skillId = '',
   }) => skillUsageController.load(days: days, agent: agent, skillId: skillId);
+
+  @override
+  Future<void> loadSkillUsageCounts() => skillUsageController.loadCounts();
+
+  Future<void> scanSkillUsage({
+    String agent = '',
+    bool forceRefresh = false,
+  }) => skillUsageController.scan(agent: agent, forceRefresh: forceRefresh);
 
   Future<void> updateSkillVisualOverride({
     required String skillId,

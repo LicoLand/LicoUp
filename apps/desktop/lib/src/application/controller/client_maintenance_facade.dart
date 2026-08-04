@@ -1,12 +1,17 @@
+import 'package:flutter/foundation.dart' show debugPrint;
+
 import 'package:licoup/src/application/features/settings/controller/client_log_export_controller.dart';
 import 'package:licoup/src/application/features/settings/controller/client_update_controller.dart';
 import 'package:licoup/src/application/features/settings/controller/directory_path_controller.dart';
 import 'package:licoup/src/contracts/client_update_models.dart';
+import 'package:licoup/src/platform/native_client/agent_service.dart';
 
 mixin ClientMaintenanceFacade {
+  AgentService get agentService;
   ClientLogExportController get clientLogExportController;
   ClientUpdateController get clientUpdateController;
   DirectoryPathController get directoryPathController;
+  Map<String, dynamic>? opencodeServeState;
 
   String get clientLogExportPath => clientLogExportController.exportedPath;
 
@@ -51,4 +56,43 @@ mixin ClientMaintenanceFacade {
 
   Future<void> openDirectoryPath(String path, {String caption = ''}) =>
       directoryPathController.open(path, caption: caption);
+
+  Future<void> ensureOpencodeServeSilently() async {
+    try {
+      opencodeServeState = await agentService.ensureOpencodeServe();
+      if (opencodeServeState?['ok'] != true) {
+        debugPrint('OpenCode serve bootstrap unavailable.');
+      }
+    } catch (_) {
+      opencodeServeState = <String, dynamic>{
+        'ok': false,
+        'status': 'unavailable',
+        'errorCode': 'opencode_serve_unavailable',
+      };
+      debugPrint('OpenCode serve bootstrap failed.');
+    }
+  }
+
+  Future<void> stopClientRuntimeServices() async {
+    try {
+      opencodeServeState = await agentService.stopOpencodeServe();
+    } catch (_) {
+      debugPrint('OpenCode serve shutdown failed.');
+    }
+  }
+
+  /// Coordinator-facing runtime authorization entry; satisfies
+  /// [AgentWorkspaceCoordinator] once mixed into the root controller.
+  Future<Map<String, dynamic>> agentWorkspaceAuthorizeRuntime(
+    String agentId, {
+    String binaryPath = '',
+  }) {
+    if (agentId.trim() != 'antigravity') {
+      return Future.value(const <String, dynamic>{
+        'ok': false,
+        'error': <String, dynamic>{'code': 'runtime_authorize_unsupported'},
+      });
+    }
+    return agentService.authorizeAntigravityRuntime(binaryPath: binaryPath);
+  }
 }

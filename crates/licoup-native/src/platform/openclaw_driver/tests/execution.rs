@@ -103,3 +103,52 @@ fn main() {
     io::stdout().flush().unwrap();
 }
 "###;
+
+#[test]
+fn fresh_session_stream_events_always_carry_bound_identity() {
+    let (directory, executable) = compile_fake_openclaw("lico-openclaw-stream-identity");
+    let captured = Arc::new(std::sync::Mutex::new(Vec::<Value>::new()));
+    let sink_target = Arc::clone(&captured);
+    crate::platform::turn_event_emit::install_stream_sink(Box::new(move |event| {
+        sink_target.lock().unwrap().push(event);
+    }));
+    let _sink = crate::platform::turn_event_emit::StreamSinkGuard;
+    let result = execute(
+        executable.to_string_lossy().as_ref(),
+        &json!({
+            "reasoningEffort": "medium",
+            "gatewayWsUrl": "ws://127.0.0.1:9"
+        }),
+        "private-openclaw-prompt",
+        "",
+        Some(directory.as_path()),
+        10_000,
+        128 * 1024,
+        8 * 1024,
+    );
+    assert!(result.ok, "OpenClaw fake failure: {:?}", result.error);
+    let events = captured.lock().unwrap().clone();
+    assert!(!events.is_empty());
+    // The stdio RPC conversation server drops the whole turn to
+    // `stream_protocol_failed` when any single event lacks a non-empty
+    // sessionId, turnId, or event kind. Every driver emission must stay
+    // writable, including before the native session identity is known.
+    for event in &events {
+        let session_id = event
+            .get("sessionId")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        let turn_id = event
+            .get("turnId")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        let kind = event
+            .get("event")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        assert!(!session_id.is_empty(), "event missing sessionId: {event}");
+        assert!(!turn_id.is_empty(), "event missing turnId: {event}");
+        assert!(!kind.is_empty(), "event missing kind: {event}");
+    }
+    let _ = fs::remove_dir_all(directory);
+}

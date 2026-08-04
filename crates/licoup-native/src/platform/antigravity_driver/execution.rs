@@ -34,6 +34,16 @@ pub(in crate::platform) fn execute(
             false,
         );
     }
+    // Consent gate: the vendor CLI opens a browser OAuth flow for print turns
+    // while logged out. Probe first so a send never jumps to the browser.
+    if let Err(failure) = super::auth::ensure_authorized(executable) {
+        return RunResult::failed(
+            failure.with_session(Some(session_id)),
+            started_at,
+            false,
+            false,
+        );
+    }
     if let Err(failure) = ensure_hook_bridge() {
         return RunResult::failed(
             failure.with_session(Some(session_id)),
@@ -229,13 +239,10 @@ pub(in crate::platform) fn execute(
             .unwrap_or_default()
             .as_millis()
     );
+    // Antigravity exposes only the final stdout after the CLI process exits.
+    // Projecting that terminal value as a chunk would falsely claim realtime
+    // response evidence, so this adapter intentionally skips the chunk event.
     let events = vec![
-        json!({
-            "event": "agent.message.chunk",
-            "sessionId": native_session,
-            "turnId": turn_id,
-            "payload": { "text": output }
-        }),
         json!({
             "event": "agent.message.completed",
             "sessionId": native_session,

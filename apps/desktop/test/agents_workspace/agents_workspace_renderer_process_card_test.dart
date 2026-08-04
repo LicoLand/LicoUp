@@ -304,8 +304,12 @@ void registerAgentsWorkspaceRendererProcessCardScenarios() {
     );
 
     expect(find.byKey(processKey), findsOneWidget);
-    expect(find.text('Worked for 5s'), findsOneWidget);
-    expect(find.text('6 steps · 2 issues'), findsOneWidget);
+    // Provider bookkeeping (metadata, lifecycle_notice) is not agent
+    // activity: it renders as a quiet runtime-log row, and the process card
+    // converges only the tool call, reasoning, and error.
+    expect(find.text('Agent activity'), findsOneWidget);
+    expect(find.text('Worked for 3s · 3 steps · 1 issue'), findsOneWidget);
+    expect(find.text('Runtime log · 2 entries'), findsOneWidget);
     expect(find.text('Inspect and validate the workspace.'), findsOneWidget);
     expect(find.text('Validation completed.'), findsWidgets);
     expect(
@@ -315,7 +319,8 @@ void registerAgentsWorkspaceRendererProcessCardScenarios() {
     expect(
       tester.getSemantics(find.byKey(processSemanticsKey)),
       isSemantics(
-        label: 'Agent process. Worked for 5s. 6 steps · 2 issues.',
+        label:
+            'Agent process. Agent activity. Worked for 3s · 3 steps · 1 issue.',
         hint: 'Expand process details',
         isButton: true,
         isFocusable: true,
@@ -360,28 +365,30 @@ void registerAgentsWorkspaceRendererProcessCardScenarios() {
       findsOneWidget,
     );
     expect(
-      find.byKey(const Key('conversation-process-operation-message-metadata')),
-      findsOneWidget,
-    );
-    expect(
       find.byKey(const Key('conversation-process-operation-message-error')),
       findsOneWidget,
     );
+    // Bookkeeping events stay out of the expanded card: they belong to the
+    // runtime-log row, not to process operations.
+    expect(
+      find.byKey(const Key('conversation-process-operation-message-metadata')),
+      findsNothing,
+    );
     expect(
       find.byKey(const Key('conversation-process-operation-message-event')),
-      findsOneWidget,
+      findsNothing,
     );
     expect(
       find.byKey(
         const Key('conversation-process-operation-message-nested-error'),
       ),
-      findsOneWidget,
+      findsNothing,
     );
     expect(find.text('exec_command'), findsOneWidget);
     expect(find.text('Reasoning summary'), findsOneWidget);
-    expect(find.text('Metadata'), findsOneWidget);
-    expect(find.text('Error'), findsNWidgets(2));
-    expect(find.text('Native event'), findsOneWidget);
+    expect(find.text('Metadata'), findsNothing);
+    expect(find.text('Error'), findsOneWidget);
+    expect(find.text('Native event'), findsNothing);
     expect(
       find.text('Invocation details are hidden.', findRichText: true),
       findsNothing,
@@ -408,7 +415,7 @@ void registerAgentsWorkspaceRendererProcessCardScenarios() {
     );
     expect(
       find.textContaining('private-thread', findRichText: true),
-      findsWidgets,
+      findsNothing,
     );
     expect(find.textContaining('{"', findRichText: true), findsWidgets);
     expect(

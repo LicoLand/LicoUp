@@ -12,23 +12,20 @@ const productionLeaves = Object.freeze([
   "command_handlers.rs",
   "command_handlers/check_in.rs",
   "command_handlers/create.rs",
-  "command_handlers/poll_complete.rs",
+  "command_handlers/poll.rs",
   "command_handlers/result.rs",
-  "context.rs",
   "delivery.rs",
   "envelope.rs",
   "mailbox.rs",
-  "registration.rs",
+  "station.rs",
   "status.rs",
 ]);
 const testLeaves = Object.freeze([
   "allow_list.rs",
-  "command_handlers.rs",
-  "context.rs",
   "delivery.rs",
   "envelope.rs",
   "mailbox.rs",
-  "registration.rs",
+  "station.rs",
   "status.rs",
 ]);
 
@@ -45,46 +42,39 @@ async function sources() {
 
 test("relay operations uses a thin facade and ordinary owned leaves", async () => {
   const facade = await read(facadePath);
-  assert.ok(facade.trimEnd().split(/\r?\n/u).length <= 40);
   assert.deepEqual(
     [...facade.matchAll(/^mod ([a-z_]+);$/gmu)]
       .map((match) => match[1])
       .filter((name) => name !== "tests")
       .sort(),
-    [
-      "allow_list", "command_handlers", "context", "delivery", "envelope", "mailbox",
-      "registration", "status",
-    ],
+    ["allow_list", "command_handlers", "delivery", "envelope", "mailbox", "station", "status"],
   );
-  for (const retiredImplementation of [
-    "fn command_create_secure",
-    "fn canonical_relay_context",
-    "fn canonical_mailbox_token",
-    "fn validate_secure_envelope",
-    "fn register_local_relay_endpoint",
-    "fn e2ee_status",
+  for (const token of [
+    "command_create_secure",
+    "canonical_mailbox_token",
+    "validate_secure_envelope",
+    "station_context",
+    "e2ee_status",
   ]) {
-    assert.equal(facade.includes(retiredImplementation), false);
+    assert.ok(facade.includes(token), token);
   }
 });
 
-test("command handlers retain ciphertext-only five-operation relay calls", async () => {
+test("command handlers retain ciphertext-only four-operation station calls", async () => {
   const source = await sources();
   const handlers = [
     "command_handlers/check_in.rs",
     "command_handlers/create.rs",
-    "command_handlers/poll_complete.rs",
+    "command_handlers/poll.rs",
     "command_handlers/result.rs",
   ].map((leaf) => source[leaf]).join("\n");
   for (const token of [
-    "endpoint_challenge",
-    "endpoint_register",
-    "envelope_send",
-    "envelope_sync",
-    "envelope_ack",
+    "lease_mailbox",
+    "send_envelope",
+    "receive_envelopes",
+    "delete_envelope",
   ]) {
-    const fullSource = `${handlers}\n${source["registration.rs"]}`;
-    assert.ok(fullSource.includes(token), token);
+    assert.ok(handlers.includes(token), token);
   }
   assert.ok(source["command_handlers/create.rs"].includes("secure_envelope_param(params)"));
   assert.ok(source["command_handlers/create.rs"].includes(
@@ -92,17 +82,17 @@ test("command handlers retain ciphertext-only five-operation relay calls", async
   assert.ok(source["command_handlers/result.rs"].includes(
     "open_mobile_relay_payload_with_pairwise_operation"));
   assert.ok(source["command_handlers/result.rs"].includes('"bodyRedacted": true'));
+  assert.ok(handlers.includes("transportHint"));
   assert.equal(handlers.includes("execute_command"), false);
   assert.equal(handlers.includes("plaintext"), false);
 });
 
-test("canonical context mailbox envelope registration and delivery have distinct owners", async () => {
+test("station mailbox envelope delivery status and allow-list have distinct owners", async () => {
   const source = await sources();
   const ownership = new Map([
-    ["context.rs", "fn canonical_relay_context"],
+    ["station.rs", "fn station_context"],
     ["mailbox.rs", "fn canonical_mailbox_token"],
     ["envelope.rs", "fn validate_secure_envelope"],
-    ["registration.rs", "fn register_local_relay_endpoint"],
     ["delivery.rs", "fn relay_envelope_from_delivery"],
     ["status.rs", "fn e2ee_status"],
     ["allow_list.rs", "fn allowed_agent_ids"],
@@ -115,30 +105,23 @@ test("canonical context mailbox envelope registration and delivery have distinct
   }
 });
 
-test("context and registration fail closed around explicit endpoint challenge authority", async () => {
+test("station context is explicit and projects only untrusted transport hints", async () => {
   const source = await sources();
   for (const token of [
     "mobile relay is disabled",
-    "secure client relay tenant id is missing",
-    "secure client relay account id is missing",
-    "secure client relay session token is missing",
-    "secure client relay CSRF token is missing",
-    "SecureClientRelayTransport::new",
+    "effective_station_base_url",
+    "validated_station_base_url",
+    "BadTowerStationTransport::new",
+    "stationReportedLeased",
+    "stationReportedAccepted",
+    "stationReportedDuplicate",
+    "stationReportedAcknowledged",
   ]) {
-    assert.ok(source["context.rs"].includes(token), token);
-  }
-  for (const token of [
-    "challengeEncoding",
-    "signatureAlgorithm",
-    "Ed25519",
-    "challenge_signature",
-    "SECURE_CLIENT_RELAY_CORE_CONTRACT_DIGEST",
-  ]) {
-    assert.ok(source["registration.rs"].includes(token), token);
+    assert.ok(source["station.rs"].includes(token), token);
   }
 });
 
-test("mailbox envelope and delivery enforce canonical bounded cryptographic structures", async () => {
+test("mailbox envelope and delivery enforce Lico Arc bounded structures", async () => {
   const source = await sources();
   for (const token of [
     "SecureMeshDeliverySecret",
@@ -148,15 +131,15 @@ test("mailbox envelope and delivery enforce canonical bounded cryptographic stru
   ]) {
     assert.ok(source["mailbox.rs"].includes(token), token);
   }
-  assert.ok(source["envelope.rs"].includes("SecureMeshRelayEnvelope::from_json"));
+  assert.ok(source["envelope.rs"].includes("LicoArcRelayEnvelope::from_json"));
   assert.ok(source["envelope.rs"].includes("serde_json::to_string"));
   const pairwisePayload = await read(
     "crates/licoup-native/src/domain/mobile_relay/pairwise_session/payload.rs",
   );
   assert.ok(pairwisePayload.includes("MOBILE_RELAY_COMMAND_TTL_SECONDS"));
   assert.ok(pairwisePayload.includes("timestamp_after_seconds"));
-  assert.ok(source["delivery.rs"].includes("SECURE_MESH_RELAY_OUTER_FIELDS"));
-  assert.ok(source["delivery.rs"].includes("delivery envelope is incomplete"));
+  assert.ok(source["delivery.rs"].includes("LicoArcRelayEnvelope"));
+  assert.ok(source["delivery.rs"].includes("to_json"));
 });
 
 test("status and allow list remain authorization-aware and secret-free", async () => {

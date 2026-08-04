@@ -1,8 +1,9 @@
 use super::super::adapter::adapter_for_agent;
-use super::super::dispatch::send_message;
+use super::super::dispatch::{params_with_workspace, send_message};
 use super::super::params::message_param;
 use super::super::{MAX_MESSAGE_BYTES, RuntimeAdapter};
 use serde_json::json;
+use std::path::Path;
 
 #[test]
 fn adapter_aliases_resolve_to_canonical_ids() {
@@ -61,6 +62,28 @@ fn configured_command_fallback_has_been_removed() {
     .unwrap_err();
 
     assert_eq!(error.to_string(), "native agent executable is unavailable");
+}
+
+/// Every driver reads its working directory from the request, so the resolved
+/// workspace has to replace the requested one under both keys.
+#[test]
+fn a_local_turn_republishes_only_the_resolved_workspace() {
+    let resolved = params_with_workspace(
+        &json!({
+            "agent": "cursor",
+            "text": "hello",
+            "cwd": "/synthetic/home/resident",
+            "workingDirectory": "/synthetic/home/resident"
+        }),
+        Path::new("/synthetic/state/agent-workspaces/cursor"),
+    );
+
+    assert_eq!(resolved["cwd"], "/synthetic/state/agent-workspaces/cursor");
+    assert_eq!(
+        resolved["workingDirectory"],
+        "/synthetic/state/agent-workspaces/cursor"
+    );
+    assert_eq!(resolved["text"], "hello");
 }
 
 #[test]

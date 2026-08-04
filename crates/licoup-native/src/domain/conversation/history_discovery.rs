@@ -157,18 +157,19 @@ fn exact_session_candidate(
     let Some(session_id) = options.exact_session_id.as_deref() else {
         return true;
     };
-    if adapter != HistoryAdapter::Codex {
-        return true;
-    }
-    match source_kind {
-        "codex-session-store" | "codex-archived-session-store" => path
+    match (adapter, source_kind) {
+        (HistoryAdapter::Codex, "codex-session-store" | "codex-archived-session-store")
+        | (HistoryAdapter::ClaudeCode, "claude-project-transcripts") => path
             .file_name()
             .and_then(|name| name.to_str())
             .is_some_and(|name| name.contains(session_id)),
-        "codex-prompt-history"
-        | "codex-session-index"
-        | "codex-memory"
-        | "codex-rollout-summary" => false,
+        (
+            HistoryAdapter::Codex,
+            "codex-prompt-history"
+            | "codex-session-index"
+            | "codex-memory"
+            | "codex-rollout-summary",
+        ) => false,
         _ => true,
     }
 }
@@ -283,6 +284,35 @@ mod tests {
                 .file_name()
                 .and_then(|name| name.to_str())
                 .is_some_and(|name| name.contains("wanted"))
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn exact_claude_discovery_only_keeps_the_requested_transcript() {
+        let root = temp_root("exact-claude");
+        fs::create_dir_all(&root).unwrap();
+        fs::write(root.join("wanted.jsonl"), b"{}\n").unwrap();
+        fs::write(root.join("other.jsonl"), b"{}\n").unwrap();
+        let roots = [HistoryRoot {
+            path: root.clone(),
+            source_kind: "claude-project-transcripts".to_owned(),
+        }];
+        let discovery = discover_history_files(
+            HistoryAdapter::ClaudeCode,
+            &roots,
+            HistoryDiscoveryOptions {
+                archive_mode: false,
+                exact_session_id: Some("wanted".to_owned()),
+            },
+        );
+        assert_eq!(discovery.candidates.len(), 1);
+        assert_eq!(
+            discovery.candidates[0]
+                .path
+                .file_name()
+                .and_then(|name| name.to_str()),
+            Some("wanted.jsonl")
         );
         fs::remove_dir_all(root).unwrap();
     }

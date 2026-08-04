@@ -234,12 +234,13 @@ fn archive_mode_streams_jsonl_that_browse_mode_skips_as_large() {
     let home = temp_dir("archive-large-home");
     let archive_root = temp_dir("archive-large-root");
     let codex = home.join(".codex");
-    fs::create_dir_all(&codex).unwrap();
+    let sessions_dir = codex.join("sessions");
+    fs::create_dir_all(&sessions_dir).unwrap();
     let large_text = "x".repeat((32 * 1024 * 1024) + 2048);
     fs::write(
-        codex.join("history.jsonl"),
+        sessions_dir.join("rollout-2026-08-01T00-00-00-019f0000-0000-7000-8000-00000000e001.jsonl"),
         format!(
-            "{{\"sessionId\":\"large-1\",\"role\":\"user\",\"content\":\"LicoMesh {}\"}}\n",
+            "{{\"timestamp\":\"2026-08-01T00:00:00Z\",\"type\":\"session_meta\",\"payload\":{{\"id\":\"large-1\",\"cwd\":\"/workspace/large\"}}}}\n{{\"timestamp\":\"2026-08-01T00:00:01Z\",\"type\":\"response_item\",\"payload\":{{\"type\":\"message\",\"role\":\"user\",\"content\":[{{\"type\":\"input_text\",\"text\":\"LicoMesh {}\"}}]}}}}\n",
             large_text
         ),
     )

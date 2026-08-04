@@ -3,10 +3,15 @@ import 'package:flutter/material.dart';
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/layout/layout_agents_strategy.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_event_card.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_log_event_row.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_message_blocks.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_render_adapter.dart';
+import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_participant_flow.dart';
+import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_process_status_row.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
 
 class AgentConversationMessageList extends StatefulWidget {
   const AgentConversationMessageList({
@@ -16,6 +21,11 @@ class AgentConversationMessageList extends StatefulWidget {
     required this.target,
     this.turnActive = false,
     this.liveMessages = const [],
+    this.messageStyle = AgentsMessageStyle.documentTranscript,
+    this.processStyle = AgentsProcessStyle.processCard,
+    this.participantTargets = const [],
+    this.topOverlayInset = 0,
+    this.bottomOverlayInset = 0,
   });
 
   final bool loading;
@@ -23,6 +33,20 @@ class AgentConversationMessageList extends StatefulWidget {
   final TargetCandidate target;
   final bool turnActive;
   final List<AgentConversationMessage> liveMessages;
+
+  /// How messages render: the shared document transcript or the messaging
+  /// participant flow.
+  final AgentsMessageStyle messageStyle;
+
+  /// How structured process events render between messages.
+  final AgentsProcessStyle processStyle;
+  final List<TargetCandidate> participantTargets;
+
+  /// Extra top padding when a floating header overlays the transcript.
+  final double topOverlayInset;
+
+  /// Extra bottom padding when a floating composer overlays the transcript.
+  final double bottomOverlayInset;
 
   @override
   State<AgentConversationMessageList> createState() =>
@@ -44,6 +68,7 @@ class AgentConversationMessageListState
   List<AgentSemanticArtifactRef> _artifacts = const [];
   int _footerCount = 0;
   String _activeProcessStorageKey = '';
+  bool _hasMessages = false;
 
   @override
   void initState() {
@@ -137,6 +162,7 @@ class AgentConversationMessageListState
     );
     _artifacts = artifacts;
     _footerCount = footerCount;
+    _hasMessages = messages.isNotEmpty;
     return true;
   }
 
@@ -158,14 +184,10 @@ class AgentConversationMessageListState
     final colors = context.licoColors;
     final strings = LicoStrings.of(context);
     final session = widget.session;
-    final messages = mergeConversationReadbackAndLiveMessages(
-      session?.messages ?? const [],
-      widget.liveMessages,
-    );
-    if (widget.loading && messages.isEmpty) {
+    if (widget.loading && !_hasMessages) {
       return const Center(child: CircularProgressIndicator());
     }
-    if (messages.isEmpty) {
+    if (!_hasMessages) {
       return Center(
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -181,16 +203,30 @@ class AgentConversationMessageListState
       future: _adapterFuture,
       builder: (context, snapshot) {
         final adapter = snapshot.data ?? AgentRenderAdapter.fallback();
+        if (widget.messageStyle == AgentsMessageStyle.participantFlow) {
+          return MessagingParticipantFlow(
+            items: _timelineItems,
+            adapter: adapter,
+            target: widget.target,
+            activeProcessStorageKey: _activeProcessStorageKey,
+            sessionKey: _timelineSessionKey,
+            participantTargets: widget.participantTargets,
+            topOverlayInset: widget.topOverlayInset,
+            bottomOverlayInset: widget.bottomOverlayInset,
+          );
+        }
         return ListView.builder(
           key: PageStorageKey<String>(
             'agent-conversation-message-list-$_timelineSessionKey',
           ),
           reverse: true,
           padding: EdgeInsets.fromLTRB(
-            16,
-            16,
-            16,
-            16 + adapter.assistantVerticalPadding,
+            LicoContentSpacing.item,
+            LicoContentSpacing.item + widget.topOverlayInset,
+            LicoContentSpacing.item,
+            LicoContentSpacing.item +
+                adapter.assistantVerticalPadding +
+                widget.bottomOverlayInset,
           ),
           findChildIndexCallback: (key) {
             if (key case ValueKey<String>(:final value)) {
@@ -204,9 +240,7 @@ class AgentConversationMessageListState
                 if (index == 0) {
                   return Padding(
                     key: const ValueKey<String>('conversation-diagnostics'),
-                    padding: EdgeInsets.only(
-                      bottom: adapter.assistantVerticalPadding,
-                    ),
+                    padding: EdgeInsets.only(bottom: LicoContentSpacing.item),
                     child: _ConversationDiagnosticsPanel(
                       session: session!,
                       expanded: _showDiagnostics,
@@ -221,18 +255,14 @@ class AgentConversationMessageListState
                 if (_artifacts.isNotEmpty && index == 1) {
                   return Padding(
                     key: const ValueKey<String>('conversation-artifacts'),
-                    padding: EdgeInsets.only(
-                      bottom: adapter.assistantVerticalPadding,
-                    ),
+                    padding: EdgeInsets.only(bottom: LicoContentSpacing.item),
                     child: _ConversationArtifactsPanel(artifacts: _artifacts),
                   );
                 }
               } else if (_artifacts.isNotEmpty && index == 0) {
                 return Padding(
                   key: const ValueKey<String>('conversation-artifacts'),
-                  padding: EdgeInsets.only(
-                    bottom: adapter.assistantVerticalPadding,
-                  ),
+                  padding: EdgeInsets.only(bottom: LicoContentSpacing.item),
                   child: _ConversationArtifactsPanel(artifacts: _artifacts),
                 );
               }
@@ -245,12 +275,22 @@ class AgentConversationMessageListState
                   adapter: adapter,
                 ),
               ConversationProcessTimelineItem(:final events) =>
-                ConversationProcessCard(
-                  events: events,
-                  adapter: adapter,
-                  detailsBuilder: buildAgentConversationEventDetails,
-                  active: item.storageKey == _activeProcessStorageKey,
-                ),
+                switch (widget.processStyle) {
+                  AgentsProcessStyle.processCard => ConversationProcessCard(
+                    events: events,
+                    adapter: adapter,
+                    detailsBuilder: buildAgentConversationEventDetails,
+                    active: item.storageKey == _activeProcessStorageKey,
+                  ),
+                  AgentsProcessStyle.inlineStatus => MessagingProcessStatusRow(
+                    events: events,
+                    adapter: adapter,
+                    detailsBuilder: buildAgentConversationEventDetails,
+                    active: item.storageKey == _activeProcessStorageKey,
+                  ),
+                },
+              ConversationLogTimelineItem(:final events) =>
+                ConversationLogEventRow(events: events),
               ConversationTruncationTimelineItem(
                 :final historyTruncated,
                 :final messageTreeTruncated,
@@ -264,7 +304,7 @@ class AgentConversationMessageListState
               key: ValueKey<String>(item.storageKey),
               padding: EdgeInsets.only(
                 bottom: index + 1 < _timelineItems.length + _footerCount
-                    ? adapter.assistantVerticalPadding
+                    ? LicoContentSpacing.item
                     : 0,
               ),
               child: content,

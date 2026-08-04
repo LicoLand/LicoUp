@@ -104,6 +104,8 @@ class _AgentsCanvasState extends State<AgentsCanvas> {
         configPath: draft.configPath,
         binaryPath: draft.binaryPath,
         historyRoot: draft.historyRoot,
+        location: draft.location,
+        runtimeConnection: draft.runtimeConnection,
       ),
     );
   }

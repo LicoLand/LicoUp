@@ -29,6 +29,8 @@ mixin ClientPresentationFacade
 
   List<AppearancePresetConfig> get appearancePresetConfigs =>
       shellController.appearancePresetConfigs;
+  List<AppearancePresetConfig> get selectableAppearancePresetConfigs =>
+      shellController.selectableAppearancePresetConfigs;
   String get appearancePresetDirectoryPath =>
       shellController.appearancePresetDirectoryPath;
   List<String> get appearancePresetLoadErrors =>
@@ -107,7 +109,7 @@ mixin ClientPresentationFacade
         await layoutManager.setAppearancePreset(appearancePresetId);
       }
       setLocalizedStatusMessage(
-        appearancePresetLoadErrors.isEmpty ? '外观方案已重新加载。' : '外观方案已重新加载，部分配置无效。',
+        appearancePresetLoadErrors.isEmpty ? '外观预设已重新加载。' : '外观预设已重新加载，部分配置无效。',
         appearancePresetLoadErrors.isEmpty
             ? 'Appearance presets reloaded.'
             : 'Appearance presets reloaded, but some configurations are invalid.',
@@ -116,7 +118,7 @@ mixin ClientPresentationFacade
     } catch (_) {
       lastError = 'appearance_preset_reload_failed';
       setLocalizedStatusMessage(
-        '外观方案重新加载失败。',
+        '外观预设重新加载失败。',
         'Failed to reload appearance presets.',
       );
       statusCaption = 'Error';

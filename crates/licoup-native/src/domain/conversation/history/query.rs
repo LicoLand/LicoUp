@@ -1,6 +1,7 @@
 //! Read-only conversation queries, model discovery, filters, and pagination.
 
 use super::*;
+use crate::domain::conversation::parameters::text_param;
 
 impl HistoryScanConfig {
     pub(crate) fn from_params(params: &Value) -> Self {
@@ -164,10 +165,21 @@ impl HistoryPageConfig {
 }
 
 pub fn conversation_list(params: &Value) -> Result<Value> {
+    if crate::platform::remote_acp_history::has_runtime_connection(params) {
+        return crate::platform::remote_acp_history::conversation_list(params);
+    }
     let agent_id = agent_param(params)?;
     let adapter = adapter_for_agent(&agent_id)
         .ok_or_else(|| anyhow!("unsupported native history adapter: {}", agent_id))?;
     let scan_config = HistoryScanConfig::from_params(params);
+    if browse_catalog_applies(params, &scan_config) {
+        return super::catalog::conversation_list_from_catalog(
+            adapter,
+            &agent_id,
+            params,
+            &scan_config,
+        );
+    }
     let roots = history_roots(adapter, params);
     let mut sessions = Vec::<Value>::new();
     let discovery = discover_history_files(adapter, &roots, scan_config.discovery_options());
@@ -228,6 +240,16 @@ pub fn conversation_list(params: &Value) -> Result<Value> {
             "skipped": skipped
         }
     }))
+}
+
+/// Browse-mode lists (no search terms, no explicit session selection, no root
+/// override, no archive discovery) load through the tiered metadata catalog
+/// instead of parsing every history file up front.
+fn browse_catalog_applies(params: &Value, scan_config: &HistoryScanConfig) -> bool {
+    !scan_config.archive_mode
+        && scan_config.session_ids.is_empty()
+        && !scan_config.has_match_filters()
+        && text_param(params, &["root", "historyRoot"]).is_none_or(|value| value.trim().is_empty())
 }
 
 pub fn model_catalog(params: &Value) -> Result<Value> {

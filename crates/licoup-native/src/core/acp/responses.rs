@@ -1,12 +1,13 @@
 use super::types::validate_implementation_value;
 use super::validation::{
-    MAX_SESSION_ID_BYTES, ensure_message_limit, normalized_text, optional_object,
+    MAX_CURSOR_BYTES, MAX_SESSION_ID_BYTES, ensure_message_limit, normalized_text, optional_object,
     validate_optional_meta, validated_session_id,
 };
 use super::{
     AcpAgentCapabilities, AcpError, AcpInitializeResponse, AcpPromptResponse, AcpRequestId,
-    AcpSessionMethod, AcpSessionResponse, AcpSessionUpdate, AcpSessionUpdateKind, AcpStopReason,
-    DEFAULT_MAX_MESSAGE_BYTES, JSON_RPC_VERSION, PROTOCOL_VERSION, SESSION_UPDATE_METHOD,
+    AcpSessionInfo, AcpSessionListResponse, AcpSessionMethod, AcpSessionResponse, AcpSessionUpdate,
+    AcpSessionUpdateKind, AcpStopReason, DEFAULT_MAX_MESSAGE_BYTES, JSON_RPC_VERSION,
+    MAX_ADDITIONAL_DIRECTORIES, MAX_SESSION_LIST_ITEMS, PROTOCOL_VERSION, SESSION_UPDATE_METHOD,
 };
 use serde_json::{Map, Value};
 
@@ -139,6 +140,141 @@ pub fn validate_session_response(
         modes,
         config_options,
     })
+}
+
+pub fn validate_session_list_response(
+    message: &Value,
+    expected_id: impl Into<AcpRequestId>,
+) -> Result<AcpSessionListResponse, AcpError> {
+    let result = validated_result(message, expected_id.into())?
+        .as_object()
+        .ok_or(AcpError::SessionListResponseInvalid)?;
+    if !result
+        .keys()
+        .all(|key| matches!(key.as_str(), "sessions" | "nextCursor" | "_meta"))
+    {
+        return Err(AcpError::SessionListResponseInvalid);
+    }
+    validate_optional_meta(result.get("_meta"), AcpError::SessionListResponseInvalid)?;
+    let raw_sessions = result
+        .get("sessions")
+        .and_then(Value::as_array)
+        .ok_or(AcpError::SessionListResponseInvalid)?;
+    if raw_sessions.len() > MAX_SESSION_LIST_ITEMS {
+        return Err(AcpError::SessionListLimitExceeded);
+    }
+    let sessions = raw_sessions
+        .iter()
+        .map(validate_session_info)
+        .collect::<Result<Vec<_>, _>>()?;
+    let next_cursor = match result.get("nextCursor") {
+        None | Some(Value::Null) => None,
+        Some(Value::String(value)) => {
+            normalized_text(
+                value,
+                MAX_CURSOR_BYTES,
+                AcpError::SessionListResponseInvalid,
+            )?;
+            Some(value.clone())
+        }
+        Some(_) => return Err(AcpError::SessionListResponseInvalid),
+    };
+    Ok(AcpSessionListResponse {
+        sessions,
+        next_cursor,
+    })
+}
+
+fn validate_session_info(value: &Value) -> Result<AcpSessionInfo, AcpError> {
+    let value = value
+        .as_object()
+        .ok_or(AcpError::SessionListResponseInvalid)?;
+    if !value.keys().all(|key| {
+        matches!(
+            key.as_str(),
+            "sessionId" | "cwd" | "additionalDirectories" | "title" | "updatedAt" | "_meta"
+        )
+    }) {
+        return Err(AcpError::SessionListResponseInvalid);
+    }
+    let session_id = value
+        .get("sessionId")
+        .and_then(Value::as_str)
+        .ok_or(AcpError::SessionListResponseInvalid)
+        .and_then(validated_session_id)?
+        .to_owned();
+    let cwd = value
+        .get("cwd")
+        .and_then(Value::as_str)
+        .ok_or(AcpError::SessionListResponseInvalid)?;
+    normalized_text(
+        cwd,
+        DEFAULT_MAX_MESSAGE_BYTES,
+        AcpError::SessionListResponseInvalid,
+    )?;
+    if !cwd.starts_with('/') && !std::path::Path::new(cwd).is_absolute() {
+        return Err(AcpError::SessionListResponseInvalid);
+    }
+    let additional_directories = match value.get("additionalDirectories") {
+        None => Vec::new(),
+        Some(Value::Array(directories)) => {
+            if directories.len() > MAX_ADDITIONAL_DIRECTORIES {
+                return Err(AcpError::AdditionalDirectoryLimitExceeded);
+            }
+            directories
+                .iter()
+                .map(|directory| {
+                    let directory = directory
+                        .as_str()
+                        .ok_or(AcpError::SessionListResponseInvalid)?;
+                    normalized_text(
+                        directory,
+                        DEFAULT_MAX_MESSAGE_BYTES,
+                        AcpError::SessionListResponseInvalid,
+                    )?;
+                    if !directory.starts_with('/') && !std::path::Path::new(directory).is_absolute()
+                    {
+                        return Err(AcpError::SessionListResponseInvalid);
+                    }
+                    Ok(directory.to_owned())
+                })
+                .collect::<Result<Vec<_>, _>>()?
+        }
+        Some(_) => return Err(AcpError::SessionListResponseInvalid),
+    };
+    let title = optional_session_info_text(value, "title")?;
+    let updated_at = optional_session_info_text(value, "updatedAt")?;
+    let meta = match value.get("_meta") {
+        None | Some(Value::Null) => None,
+        Some(Value::Object(meta)) => Some(meta.clone()),
+        Some(_) => return Err(AcpError::SessionListResponseInvalid),
+    };
+    Ok(AcpSessionInfo {
+        session_id,
+        cwd: cwd.to_owned(),
+        additional_directories,
+        title,
+        updated_at,
+        meta,
+    })
+}
+
+fn optional_session_info_text(
+    object: &Map<String, Value>,
+    key: &str,
+) -> Result<Option<String>, AcpError> {
+    match object.get(key) {
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::String(value)) => {
+            normalized_text(
+                value,
+                DEFAULT_MAX_MESSAGE_BYTES,
+                AcpError::SessionListResponseInvalid,
+            )?;
+            Ok(Some(value.clone()))
+        }
+        Some(_) => Err(AcpError::SessionListResponseInvalid),
+    }
 }
 
 pub fn validate_prompt_response(
@@ -372,7 +508,7 @@ fn validate_config_option(option: &Value, error: AcpError) -> Result<(), AcpErro
     match option.get("type").and_then(Value::as_str) {
         Some("boolean") if matches!(option.get("currentValue"), Some(Value::Bool(_))) => Ok(()),
         Some("select") => {
-            validate_required_text(option, "currentValue", error.clone())?;
+            validate_config_select_current_value(option, error.clone())?;
             let values = option
                 .get("options")
                 .and_then(Value::as_array)
@@ -395,9 +531,33 @@ fn validate_config_option(option: &Value, error: AcpError) -> Result<(), AcpErro
     }
 }
 
+/// A select current value must be a bounded, normalized string. Vendor
+/// agents (real Copilot) advertise an empty string for "unset/default", so
+/// empty is accepted where the option id and names remain strictly required.
+fn validate_config_select_current_value(
+    option: &Map<String, Value>,
+    error: AcpError,
+) -> Result<(), AcpError> {
+    let value = option
+        .get("currentValue")
+        .and_then(Value::as_str)
+        .ok_or_else(|| error.clone())?;
+    if value.len() > MAX_SESSION_ID_BYTES || value.trim() != value {
+        return Err(error);
+    }
+    Ok(())
+}
+
 fn validate_config_select_value(value: &Value, error: AcpError) -> Result<(), AcpError> {
     let value = value.as_object().ok_or_else(|| error.clone())?;
-    validate_required_text(value, "value", error.clone())?;
+    // Vendor agents use an empty select value for the "default/unset" entry.
+    if value
+        .get("value")
+        .and_then(Value::as_str)
+        .is_none_or(|text| text.len() > MAX_SESSION_ID_BYTES || text.trim() != text)
+    {
+        return Err(error);
+    }
     validate_required_text(value, "name", error.clone())?;
     validate_optional_text(value, "description", error.clone())?;
     validate_optional_meta(value.get("_meta"), error)
@@ -569,16 +729,31 @@ fn validate_available_commands_update(update: &Map<String, Value>) -> Result<(),
         .ok_or(AcpError::SessionUpdateInvalid)?;
     for command in commands {
         let command = command.as_object().ok_or(AcpError::SessionUpdateInvalid)?;
-        validate_required_text(command, "name", AcpError::SessionUpdateInvalid)?;
-        validate_required_text(command, "description", AcpError::SessionUpdateInvalid)?;
+        validate_required_display_text(command, "name")?;
+        validate_required_display_text(command, "description")?;
         validate_optional_meta(command.get("_meta"), AcpError::SessionUpdateInvalid)?;
         if let Some(input) = command.get("input")
             && !input.is_null()
         {
             let input = input.as_object().ok_or(AcpError::SessionUpdateInvalid)?;
-            validate_required_text(input, "hint", AcpError::SessionUpdateInvalid)?;
+            validate_required_display_text(input, "hint")?;
             validate_optional_meta(input.get("_meta"), AcpError::SessionUpdateInvalid)?;
         }
+    }
+    Ok(())
+}
+
+/// Display strings (command names, descriptions, hints) carry third-party
+/// text that real agents do not whitespace-normalize: Copilot advertises
+/// skill descriptions with surrounding whitespace. Unlike identifiers,
+/// surrounding whitespace is tolerated while emptiness and size stay bounded.
+fn validate_required_display_text(object: &Map<String, Value>, key: &str) -> Result<(), AcpError> {
+    let value = object
+        .get(key)
+        .and_then(Value::as_str)
+        .ok_or(AcpError::SessionUpdateInvalid)?;
+    if value.trim().is_empty() || value.len() > MAX_SESSION_ID_BYTES {
+        return Err(AcpError::SessionUpdateInvalid);
     }
     Ok(())
 }

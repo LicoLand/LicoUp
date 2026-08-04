@@ -12,7 +12,7 @@ import { requireValue, text } from "./util.mjs";
 
 export function validateConfig(config) {
   requireValue(config?.schemaVersion === "licomesh.client-release-acceptance-config.v3", "client release acceptance config schema mismatch");
-  requireValue(config?.reportSchemaVersion === "licomesh.client-release-acceptance-report.v3", "client release acceptance report schema mismatch");
+  requireValue(config?.reportSchemaVersion === "licomesh.client-release-acceptance-report.v4", "client release acceptance report schema mismatch");
   requireValue(config?.producerPolicy === "same-process-required", "client release acceptance must run approved producers in the same process closure");
   const authorityIds = config?.releaseTargetAuthority?.selectedTargetIds;
   requireValue(
@@ -35,7 +35,7 @@ export function validateConfig(config) {
   );
   const requiredReports = [
     "pairwise",
-    "relayMock",
+    "stationAcceptance",
     "file",
     "trust",
     "acp",
@@ -49,7 +49,7 @@ export function validateConfig(config) {
     "client release acceptance source roots are not canonical");
   requireValue(JSON.stringify(config.reportOrder) === JSON.stringify([
     "pairwise",
-    "relayMock",
+    "stationAcceptance",
     "file",
     "trust",
     "acp",
@@ -67,6 +67,13 @@ export function validateConfig(config) {
     config.reports.trust.schemaVersion === SECURE_MESH_TRUST_UX_REPORT_SCHEMA_VERSION &&
       config.reports.trust.producer === "tools/scripts/client-secure-mesh-trust-ux.mjs",
     "client release acceptance must bind Trust UX v2 to its canonical producer"
+  );
+  requireValue(
+    config.reports.stationAcceptance.schemaVersion ===
+      "licoup.licoarc-badtower.acceptance.v1" &&
+      config.reports.stationAcceptance.producer ===
+        "tools/scripts/client-licoarc-badtower-acceptance.mjs",
+    "client release acceptance must bind the strict Lico Arc BadTower report",
   );
   requireValue(
     JSON.stringify(config.reports.androidPlatformCrypto?.targetIds) ===

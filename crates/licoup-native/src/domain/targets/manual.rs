@@ -2,7 +2,8 @@ use super::catalog::{TargetDef, normalize_target, target_def};
 use super::parameters::{optional_path, optional_paths, param_paths, param_string, target_param};
 use super::support::{client_state_store, display_path, timestamp};
 use crate::platform::client_state::ClientStateStore;
-use anyhow::Result;
+use crate::platform::virtual_machine::SshRuntimeConnection;
+use anyhow::{Result, ensure};
 use serde_json::{Value, json};
 use std::path::PathBuf;
 
@@ -14,6 +15,8 @@ pub(super) struct ManualTarget {
     pub(super) config_path: Option<PathBuf>,
     pub(super) binary_path: Option<PathBuf>,
     pub(super) history_roots: Vec<PathBuf>,
+    pub(super) location: String,
+    pub(super) runtime_connection: Option<SshRuntimeConnection>,
 }
 
 pub(super) fn add_target(params: &Value) -> Result<Value> {
@@ -80,6 +83,18 @@ pub(super) fn manual_targets(store: &ClientStateStore) -> Result<Vec<ManualTarge
                 .into_iter()
                 .chain(optional_path(&item, "historyRoot"))
                 .collect(),
+            location: item
+                .get("location")
+                .and_then(Value::as_str)
+                .filter(|value| !value.trim().is_empty())
+                .unwrap_or("local")
+                .to_string(),
+            runtime_connection: SshRuntimeConnection::from_value(
+                item.get("runtimeConnection"),
+                def.id,
+            )
+            .ok()
+            .flatten(),
         });
     }
     Ok(manual)
@@ -90,6 +105,22 @@ pub(super) fn upsert_manual_target(
     def: &TargetDef,
     params: &Value,
 ) -> Result<Value> {
+    let runtime_connection = SshRuntimeConnection::from_params(params, def.id)?;
+    let requested_location =
+        param_string(params, "location").unwrap_or_else(|| "local".to_string());
+    let location = if runtime_connection.is_some() {
+        "virtual-machine"
+    } else {
+        requested_location.as_str()
+    };
+    ensure!(
+        matches!(location, "local" | "virtual-machine"),
+        "target_location_invalid"
+    );
+    ensure!(
+        location != "virtual-machine" || runtime_connection.is_some(),
+        "virtual_machine_connection_required"
+    );
     let mut document = store.read_collection("targets")?;
     let mut items = document
         .get("items")
@@ -118,12 +149,18 @@ pub(super) fn upsert_manual_target(
         "label": param_string(params, "label").unwrap_or_else(|| def.label.to_string()),
         "kind": param_string(params, "kind").unwrap_or_else(|| def.kind.to_string()),
         "manual": true,
-        "configPath": param_string(params, "configPath"),
-        "binaryPath": param_string(params, "binaryPath"),
-        "historyRoots": history_roots
-            .iter()
-            .map(|path| display_path(path.clone()))
-            .collect::<Vec<_>>(),
+        "configPath": (location == "local").then(|| param_string(params, "configPath")).flatten(),
+        "binaryPath": (location == "local").then(|| param_string(params, "binaryPath")).flatten(),
+        "historyRoots": if location == "local" {
+            history_roots
+                .iter()
+                .map(|path| display_path(path.clone()))
+                .collect::<Vec<_>>()
+        } else {
+            Vec::new()
+        },
+        "location": location,
+        "runtimeConnection": runtime_connection.map(|connection| connection.to_value()),
         "createdAt": created_at,
         "updatedAt": now
     });

@@ -2,6 +2,7 @@ use super::super::cursor_driver::{self, ControlDisposition, DRIVER_ID, RUNTIME_P
 use serde_json::json;
 use std::fs;
 use std::process::Command;
+use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 #[test]
@@ -27,6 +28,13 @@ fn cli_exact_resume_places_session_and_prompt_in_argv() {
         .status()
         .unwrap();
     assert!(status.success());
+
+    let captured = Arc::new(Mutex::new(Vec::new()));
+    let sink_target = Arc::clone(&captured);
+    super::super::turn_event_emit::install_stream_sink(Box::new(move |event| {
+        sink_target.lock().unwrap().push(event);
+    }));
+    let _guard = super::super::turn_event_emit::StreamSinkGuard;
 
     let first = cursor_driver::execute(
         executable.to_string_lossy().as_ref(),
@@ -55,11 +63,16 @@ fn cli_exact_resume_places_session_and_prompt_in_argv() {
     assert!(second.ok, "resume Cursor CLI failure: {:?}", second.error);
     assert_eq!(second.session_id, first.session_id);
     assert_eq!(second.output, "second response");
+    let events = captured.lock().unwrap().clone();
+    assert!(events.iter().any(|event| {
+        event["event"] == "agent.turn.accepted"
+            && event["sessionId"].as_str() == Some(first.session_id.as_str())
+    }));
     assert_eq!(RUNTIME_PROTOCOL, "cursor-agent-cli-v1");
     assert_eq!(DRIVER_ID, "cursor-cli");
     assert_eq!(
         cursor_driver::cleanup_session(&second.session_id),
-        ControlDisposition::Accepted
+        ControlDisposition::NotPersisted
     );
     let _ = fs::remove_dir_all(dir);
 }

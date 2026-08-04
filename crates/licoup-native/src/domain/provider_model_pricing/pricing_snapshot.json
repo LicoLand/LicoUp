@@ -1,0 +1,69 @@
+{
+  "schema_version": 1,
+  "snapshot_date": "2026-08-02",
+  "providers": [
+    {
+      "id": "deepseek",
+      "source_urls": ["https://api-docs.deepseek.com/quick_start/pricing/"],
+      "unit": "usd_per_million_tokens",
+      "models": [
+        {"model_id":"deepseek-v4-flash","input":0.14,"cached_input":0.0028,"output":0.28,"included_by_harness":false},
+        {"model_id":"deepseek-v4-pro","input":0.435,"cached_input":0.003625,"output":0.87,"included_by_harness":false}
+      ]
+    },
+    {
+      "id": "kimi",
+      "source_urls": [
+        "https://www.kimi.com/resources/kimi-k3-pricing",
+        "https://www.kimi.com/en/resources/kimi-k2-7-code"
+      ],
+      "unit": "usd_per_million_tokens",
+      "models": [
+        {"model_id":"kimi-k3","input":3.0,"cached_input":0.30,"output":15.0,"included_by_harness":false},
+        {"model_id":"kimi-k2-7-code","input":0.95,"cached_input":0.19,"output":4.0,"included_by_harness":false}
+      ]
+    },
+    {
+      "id": "google",
+      "source_urls": ["https://ai.google.dev/gemini-api/docs/pricing"],
+      "unit": "usd_per_million_tokens",
+      "models": [
+        {"model_id":"gemini-3-6-flash","input":1.50,"cached_input":0.15,"output":7.50,"included_by_harness":false},
+        {"model_id":"gemini-3-1-pro-preview","input":2.0,"cached_input":0.20,"output":12.0,"included_by_harness":false}
+      ]
+    },
+    {
+      "id": "cursor",
+      "source_urls": [
+        "https://cursor.com/pricing",
+        "https://cursor.com/changelog/composer-2-5"
+      ],
+      "unit": "usd_per_million_tokens",
+      "models": [
+        {"model_id":"composer-2-5","input":0.50,"cached_input":null,"output":2.50,"included_by_harness":true},
+        {"model_id":"composer-2-5-fast","input":3.0,"cached_input":null,"output":15.0,"included_by_harness":false}
+      ]
+    },
+    {
+      "id": "openai-chatgpt",
+      "source_urls": ["https://help.openai.com/en/articles/20001106-codex-rate-card"],
+      "unit": "credits_per_million_tokens",
+      "models": [
+        {"model_id":"gpt-5-6-sol","input":125.0,"cached_input":12.5,"output":750.0,"included_by_harness":false},
+        {"model_id":"gpt-5-6-terra","input":50.0,"cached_input":5.0,"output":300.0,"included_by_harness":false},
+        {"model_id":"gpt-5-6-luna","input":5.0,"cached_input":0.5,"output":30.0,"included_by_harness":false}
+      ]
+    },
+    {
+      "id": "kilo",
+      "source_urls": [
+        "https://kilo.ai/docs/getting-started/using-kilo-for-free",
+        "https://kilo.ai/docs/gateway/usage-and-billing"
+      ],
+      "unit": "usd_per_million_tokens",
+      "models": [
+        {"model_id":"free","input":0.0,"cached_input":null,"output":0.0,"included_by_harness":true}
+      ]
+    }
+  ]
+}

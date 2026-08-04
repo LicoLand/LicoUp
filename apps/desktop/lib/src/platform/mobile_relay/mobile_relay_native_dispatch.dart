@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:licoup/src/contracts/agent_command_runner.dart';
@@ -18,6 +19,12 @@ abstract interface class MobileRelayNativeDispatch {
   Future<Map<String, dynamic>> runCli(
     AgentCommandRunner runner,
     List<String> arguments,
+  );
+
+  Future<Map<String, dynamic>> runPrivateCli(
+    AgentCommandRunner runner,
+    List<String> arguments,
+    Map<String, dynamic> params,
   );
 
   Future<Map<String, dynamic>> runMobile({
@@ -56,6 +63,24 @@ final class DefaultMobileRelayNativeDispatch
   ) async {
     try {
       return await runner.runCli(List<String>.unmodifiable(arguments));
+    } on LicoClientRpcException {
+      rethrow;
+    } on Object {
+      throw const MobileRelayDispatchException('native_command_failed');
+    }
+  }
+
+  @override
+  Future<Map<String, dynamic>> runPrivateCli(
+    AgentCommandRunner runner,
+    List<String> arguments,
+    Map<String, dynamic> params,
+  ) async {
+    try {
+      return await runner.runCliWithStdin(
+        List<String>.unmodifiable([...arguments, '--stdin-json', 'true']),
+        jsonEncode(Map<String, dynamic>.unmodifiable(params)),
+      );
     } on LicoClientRpcException {
       rethrow;
     } on Object {

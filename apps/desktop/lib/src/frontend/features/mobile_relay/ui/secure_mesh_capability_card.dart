@@ -45,7 +45,7 @@ class _SecureMeshCapabilityCardState extends State<SecureMeshCapabilityCard> {
     final actionHint = _expanded
         ? strings.collapseSecurityCapabilities
         : strings.expandSecurityCapabilities;
-    // Neutral carbon charcoal — not brand-subtle (yellow-tinted) surfaceHigh.
+    // Neutral charcoal, deliberately not the brand-tinted surface.
     final cardFill = colors.surfaceLow;
 
     return AnimatedContainer(
@@ -103,7 +103,7 @@ class _SecureMeshCapabilityCardState extends State<SecureMeshCapabilityCard> {
                           children: [
                             Icon(
                               Icons.security_outlined,
-                              color: colors.primary,
+                              color: colors.textSecondary,
                             ),
                             const SizedBox(width: 10),
                             Expanded(

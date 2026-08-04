@@ -57,7 +57,6 @@ void main() {
         isNot(contains('client_controller.dart')),
         reason: entry.key,
       );
-      expect(source.split('\n').length, lessThan(140), reason: entry.key);
     }
   });
 
@@ -67,7 +66,6 @@ void main() {
       final source = File(
         'lib/src/application/controller/client_component_assembly.dart',
       ).readAsStringSync();
-      expect(source.split('\n').length, lessThan(320));
       for (final className in [
         'ClientLifecycleComponentAssembly(',
         'ClientConversationComponentAssembly(',

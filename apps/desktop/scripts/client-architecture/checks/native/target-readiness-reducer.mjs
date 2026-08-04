@@ -18,7 +18,6 @@ export async function checkTargetReadinessReducer(context) {
     readText,
     runJson,
     sameSet,
-    sourceLineCount,
   } = context;
   // Target catalog and merge policy must share one runtime-availability reducer.
   const targetSourceFiles = [

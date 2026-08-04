@@ -22,6 +22,9 @@ reports/
 tmp/
 .tmp/
 apps/desktop/test/layout/production_baseline/failures/
+# Golden comparison residue. Flutter writes these on any pixel mismatch, and
+# the layout visual-manifest verifier rejects them as generated residue.
+apps/desktop/test/**/failures/
 
 # Node / Rust / Flutter
 node_modules/

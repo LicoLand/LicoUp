@@ -185,6 +185,12 @@ impl CodexProtocol {
         };
 
         self.turn_id = Some(turn_id.to_string());
+        crate::platform::turn_event_emit::emit_turn_event(
+            "agent.turn.accepted",
+            self.thread_id.as_deref().unwrap_or_default(),
+            turn_id,
+            json!({ "evidenceKind": "turn-start-ack" }),
+        );
         if let Some(model) = self.config.model.as_ref() {
             self.effective.model = Some(model.clone());
         }

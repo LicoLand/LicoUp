@@ -3,11 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:licoup/src/application/controller/client_controller.dart';
 import 'package:licoup/src/application/features/agents/orchestration/orchestration_policy_editor_models.dart';
 import 'package:licoup/src/application/features/agents/orchestration/orchestration_target_catalog.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_orchestration_code_engineering_policy_card.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_orchestration_commander_policy_card.dart';
-import 'package:licoup/src/frontend/features/agents/ui/agent_orchestration_model_library_policy_card.dart';
-import 'package:licoup/src/frontend/features/agents/ui/agent_orchestration_rename_policy_dialog.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
-import 'package:licoup/src/frontend/shared/ui/apple_popup_select.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 final class AgentOrchestrationPolicyDialog extends StatefulWidget {
@@ -23,7 +21,6 @@ final class AgentOrchestrationPolicyDialog extends StatefulWidget {
 final class _AgentOrchestrationPolicyDialogState
     extends State<AgentOrchestrationPolicyDialog> {
   late AgentOrchestrationPolicy _policy;
-  late List<AgentModelLibraryEntry> _modelLibrary;
 
   @override
   void initState() {
@@ -31,7 +28,6 @@ final class _AgentOrchestrationPolicyDialogState
     _policy = _policyWithCommanderDefaults(
       widget.controller.effectiveAgentOrchestrationPolicy,
     );
-    _modelLibrary = _policy.modelLibrary.toList(growable: true);
   }
 
   AgentOrchestrationPolicy _policyWithCommanderDefaults(
@@ -47,6 +43,11 @@ final class _AgentOrchestrationPolicyDialogState
       commanderAgentId,
       policy.commanderModelName,
     );
+    final roleAssignments =
+        <CodeEngineeringRoleSlot, AgentOrchestrationRoleAssignment>{
+          for (final role in CodeEngineeringRoleSlot.values)
+            role: _roleAssignmentWithDefaults(policy.assignmentFor(role)),
+        };
     return policy.copyWith(
       commanderAgentId: commanderAgentId,
       commanderModelName: commanderModel,
@@ -55,6 +56,35 @@ final class _AgentOrchestrationPolicyDialogState
         commanderModel,
         policy.commanderReasoningEffort,
       ),
+      codeEngineeringRoles: roleAssignments,
+    );
+  }
+
+  AgentOrchestrationRoleAssignment _roleAssignmentWithDefaults(
+    AgentOrchestrationRoleAssignment assignment,
+  ) {
+    var agentId = assignment.agentId.trim();
+    if (!_modelsByAgentContains(agentId)) {
+      agentId = defaultAgentOrchestrationCommanderAgentId(
+        widget.controller.orchestrationAvailableTargets,
+      );
+    }
+    final modelName = _commanderModelOrDefault(agentId, assignment.modelName);
+    return AgentOrchestrationRoleAssignment(
+      agentId: agentId,
+      modelName: modelName,
+      reasoningEffort: _commanderReasoningOrDefault(
+        agentId,
+        modelName,
+        assignment.reasoningEffort,
+      ),
+    );
+  }
+
+  bool _modelsByAgentContains(String agentId) {
+    if (agentId.isEmpty) return false;
+    return widget.controller.orchestrationAvailableTargets.any(
+      (target) => target.target == agentId,
     );
   }
 
@@ -100,21 +130,6 @@ final class _AgentOrchestrationPolicyDialogState
     return const [];
   }
 
-  void _selectPolicy(String policyId) {
-    AgentOrchestrationPolicy? policy;
-    for (final item in widget.controller.agentOrchestrationPolicies) {
-      if (item.id == policyId) {
-        policy = item;
-        break;
-      }
-    }
-    if (policy == null || policy.id == _policy.id) return;
-    setState(() {
-      _policy = _policyWithCommanderDefaults(policy!);
-      _modelLibrary = _policy.modelLibrary.toList(growable: true);
-    });
-  }
-
   void _setCommanderAgent(String agentId) {
     final modelName = _commanderModelOrDefault(agentId, '');
     setState(() {
@@ -149,56 +164,68 @@ final class _AgentOrchestrationPolicyDialogState
     });
   }
 
-  void _addModelLibraryEntry(AgentModelLibraryEntry entry) {
-    setState(() {
-      final next = _modelLibrary.toList(growable: true);
-      if (!next.any((item) => item.key == entry.key)) next.add(entry);
-      _modelLibrary = next;
-      _policy = _policy.copyWith(modelLibrary: List.unmodifiable(next));
-    });
-  }
-
-  void _removeModelLibraryEntry(AgentModelLibraryEntry entry) {
-    setState(() {
-      final next = _modelLibrary
-          .where((item) => item.key != entry.key)
-          .toList(growable: false);
-      _modelLibrary = next;
-      _policy = _policy.copyWith(modelLibrary: List.unmodifiable(next));
-    });
-  }
-
-  Future<void> _renamePolicy() async {
-    final strings = LicoStrings.of(context);
-    final initialName = _policy.label.trim().isEmpty
-        ? strings.defaultPolicy
-        : _policy.label.trim();
-    final name = await showDialog<String>(
-      context: context,
-      builder: (context) =>
-          AgentOrchestrationRenamePolicyDialog(initialName: initialName),
+  void _setCodeEngineeringAgent(CodeEngineeringRoleSlot role, String agentId) {
+    final modelName = _commanderModelOrDefault(agentId, '');
+    _setCodeEngineeringAssignment(
+      role,
+      AgentOrchestrationRoleAssignment(
+        agentId: agentId,
+        modelName: modelName,
+        reasoningEffort: _commanderReasoningOrDefault(agentId, modelName, ''),
+      ),
     );
-    if (name == null) return;
+  }
+
+  void _setCodeEngineeringModel(
+    CodeEngineeringRoleSlot role,
+    String modelName,
+  ) {
+    final assignment = _policy.assignmentFor(role);
+    _setCodeEngineeringAssignment(
+      role,
+      assignment.copyWith(
+        modelName: modelName,
+        reasoningEffort: _commanderReasoningOrDefault(
+          assignment.agentId,
+          modelName,
+          '',
+        ),
+      ),
+    );
+  }
+
+  void _setCodeEngineeringReasoningEffort(
+    CodeEngineeringRoleSlot role,
+    String reasoningEffort,
+  ) {
+    _setCodeEngineeringAssignment(
+      role,
+      _policy.assignmentFor(role).copyWith(reasoningEffort: reasoningEffort),
+    );
+  }
+
+  void _setCodeEngineeringAssignment(
+    CodeEngineeringRoleSlot role,
+    AgentOrchestrationRoleAssignment assignment,
+  ) {
     setState(() {
       _policy = _policy.copyWith(
-        label: name.trim().isEmpty ? strings.defaultPolicy : name.trim(),
+        codeEngineeringRoles: {
+          ..._policy.codeEngineeringRoles,
+          role: assignment,
+        },
       );
     });
   }
 
   void _save() {
-    final modelLibrary = normalizeAgentModelLibrary(
-      widget.controller.scannedTargets,
-      _modelLibrary,
-    );
-    Navigator.of(context).pop(_policy.copyWith(modelLibrary: modelLibrary));
+    Navigator.of(context).pop(_policy);
   }
 
   @override
   Widget build(BuildContext context) {
     final colors = context.licoColors;
     final strings = LicoStrings.of(context);
-    final policies = widget.controller.agentOrchestrationPolicies;
     return Dialog(
       backgroundColor: colors.surface,
       insetPadding: const EdgeInsets.symmetric(horizontal: 48, vertical: 36),
@@ -211,24 +238,17 @@ final class _AgentOrchestrationPolicyDialogState
               padding: const EdgeInsets.fromLTRB(18, 16, 12, 12),
               child: Row(
                 children: [
-                  Icon(Icons.account_tree_outlined, color: colors.primary),
+                  Icon(Icons.hub_outlined, color: colors.textSecondary),
                   const SizedBox(width: 10),
                   Expanded(
-                    child: _DialogPolicySelect(
-                      policies: [
-                        for (final policy in policies)
-                          policy.id == _policy.id ? _policy : policy,
-                      ],
-                      value: _policy.id,
-                      onChanged: _selectPolicy,
+                    child: Text(
+                      strings.editMainAgent,
+                      style: TextStyle(
+                        color: colors.text,
+                        fontSize: 17,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
-                  ),
-                  IconButton(
-                    key: const Key('agent-orchestration-policy-rename'),
-                    tooltip: strings.renamePolicy,
-                    onPressed: _renamePolicy,
-                    color: colors.primary,
-                    icon: const Icon(Icons.drive_file_rename_outline, size: 18),
                   ),
                   IconButton(
                     tooltip: strings.close,
@@ -241,7 +261,7 @@ final class _AgentOrchestrationPolicyDialogState
             Divider(height: 1, color: colors.line),
             Expanded(
               child: ListView(
-                key: const Key('agent-orchestration-policy-rule-list'),
+                key: const Key('main-agent-settings'),
                 padding: const EdgeInsets.all(16),
                 children: [
                   AgentOrchestrationCommanderPolicyCard(
@@ -253,14 +273,16 @@ final class _AgentOrchestrationPolicyDialogState
                     onModelChanged: _setCommanderModel,
                     onReasoningEffortChanged: _setCommanderReasoningEffort,
                   ),
-                  const SizedBox(height: 12),
-                  AgentOrchestrationModelLibraryPolicyCard(
-                    entries: _modelLibrary,
+                  const SizedBox(height: 14),
+                  AgentOrchestrationCodeEngineeringPolicyCard(
+                    policy: _policy,
                     targets: agentOrchestrationCommanderTargets(
                       widget.controller.orchestrationAvailableTargets,
                     ),
-                    onAdd: _addModelLibraryEntry,
-                    onRemove: _removeModelLibraryEntry,
+                    onAgentChanged: _setCodeEngineeringAgent,
+                    onModelChanged: _setCodeEngineeringModel,
+                    onReasoningEffortChanged:
+                        _setCodeEngineeringReasoningEffort,
                   ),
                 ],
               ),
@@ -277,7 +299,7 @@ final class _AgentOrchestrationPolicyDialogState
                   ),
                   const SizedBox(width: 8),
                   FilledButton(
-                    key: const Key('agent-orchestration-save-policy'),
+                    key: const Key('main-agent-save'),
                     onPressed: _save,
                     child: Text(strings.save),
                   ),
@@ -286,42 +308,6 @@ final class _AgentOrchestrationPolicyDialogState
             ),
           ],
         ),
-      ),
-    );
-  }
-}
-
-final class _DialogPolicySelect extends StatelessWidget {
-  const _DialogPolicySelect({
-    required this.policies,
-    required this.value,
-    required this.onChanged,
-  });
-
-  final List<AgentOrchestrationPolicy> policies;
-  final String value;
-  final ValueChanged<String> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    final strings = LicoStrings.of(context);
-    return ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: 360),
-      child: ApplePopupSelect<String>(
-        key: const Key('agent-orchestration-dialog-policy-select'),
-        value: value,
-        isExpanded: true,
-        emphasized: true,
-        options: [
-          for (final policy in policies)
-            ApplePopupSelectOption(
-              value: policy.id,
-              label: policy.label.trim().isEmpty
-                  ? strings.defaultPolicy
-                  : policy.label.trim(),
-            ),
-        ],
-        onChanged: onChanged,
       ),
     );
   }

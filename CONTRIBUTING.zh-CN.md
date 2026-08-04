@@ -7,21 +7,24 @@
 
 ## 环境准备
 
-需要 Node.js 22 或 24、Flutter stable 和 Rust stable。
+源码策略只需要 Node.js 22 或 24。仅当受影响的技术通道需要时，才安装 Flutter、
+Rust、Java 和 Android 工具链。
 
 ```bash
 npm ci
-npm run client:get
 ```
 
 开发过程中只运行与改动直接相关的最小检查。交付前运行对应模块的定向测试。所有改动
-均确认有效后，才运行一次完整客户端验证。严禁在实现过程中多次执行全量回归，以免扩大
-反馈闭环并影响其它智能体的并行开发。
+均确认有效后，只运行一次必需的 Node 源码策略，以及真正受影响的技术通道。各通道彼此
+独立并可并行；提交门禁不会构建或发布所有平台。
 
 ```bash
-npm run client:analyze
-npm run client:test
-npm run client:native:test
+npm run client:gate:source
+npm run client:gate:flutter         # 仅 Flutter 改动
+npm run client:gate:rust            # 仅 Rust 改动
+npm run client:gate:android         # 仅 Android 改动
+npm run client:gate:dependencies    # 仅依赖权威文件改动
+npm run client:gate:release-policy  # 仅发布策略改动
 ```
 
 产生构建输出的测试共用一个受管编译目标。构建使用期间，测试运行器会持有活动租约；无论
@@ -38,8 +41,8 @@ npm run client:artifacts:prune
 下载的依赖。未纳管的旧目标只会被报告，不会自动删除。测试异常退出后，结构完整的失效
 租约会先经过保护宽限期，之后才进入可回收状态；格式错误或被篡改的记录始终关闭失败。
 
-锁定依赖均已缓存时，可用 `LICO_CLIENT_VERIFY_OFFLINE=1 npm run client:verify` 执行唯一
-一次最终全量验收，全程不访问网络。
+锁定依赖均已缓存时，可单独运行离线依赖审计
+`npm run client:deps:audit:offline`。它不会带动未受影响的语言或平台通道。
 
 ## 隐私规则
 
@@ -49,6 +52,27 @@ npm run client:artifacts:prune
 - 不得增加把用户内容或运行时数据发送给服务端的通用路径。
 - 任何允许的对外传输都必须要求一次新的用户直接确认，并准确绑定目标、用途、范围和
   内容摘要。
+
+## 原生接口一致性
+
+Flutter 客户端与 Rust 原生核心共享两类接口：
+
+- 生成的契约类型：由 `schemas/client_bridge/` 中的单一 schema 生成到 Dart
+  （`apps/desktop/lib/src/contracts/generated/*.g.dart`）和 Rust
+  （`crates/licoup-native/src/ffi/generated/*.rs`）。
+- 原生 CLI 命令面（`licoup.stdio.v1` 帧与一次性参数）。Rust 侧在
+  `crates/licoup-native/src/ffi/commands/` 通过 `admitted_params` 接纳参数；
+  Flutter 侧在 `apps/desktop/lib/src/platform/native_client/` 发送参数。
+
+任一端改动必须在本改动内同步另一端：
+
+- 新增、重命名或删除 CLI 命令或参数时，必须同时更新对应的 Rust 命令处理器和所有
+  Flutter 调用方。Rust 侧缺少接纳会让 sidecar 拒绝请求（`cli_option_unknown`）；
+  调用方落后则会把旧参数发给已不再接受的 sidecar。这两种失败都表现为客户端流程
+  损坏，而不是编译错误。
+- 修改生成的契约类型时，必须从共享 schema 重新生成两侧输出。严禁手改生成文件。
+- 打包后的 App 自带 sidecar；不重新打包前，运行中的 App 会一直使用旧的原生二进制。
+  任何原生接口改动后都要重新打包并验证客户端。
 
 ## 文档规则
 
@@ -65,6 +89,7 @@ npm run client:artifacts:prune
 ## 合并请求检查
 
 - 改动只有一个清晰范围。
+- 原生 CLI 或生成契约的改动，在同一改动内保持 Flutter 与 Rust 两侧一致。
 - 完成迁移时，旧路径和旧名称已经删除。
 - 新增或修改的测试只使用虚构并脱敏的数据。
 - 公开文档有对应的中英文版本。

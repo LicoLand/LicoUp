@@ -11,25 +11,26 @@ abstract final class AppleControlButtons {
       elevation: const WidgetStatePropertyAll(0),
       backgroundColor: WidgetStateProperty.resolveWith((states) {
         if (states.contains(WidgetState.disabled)) {
-          return Colors.white.withAlpha(colors.isDark ? 10 : 8);
+          return colors.surfaceLow.withValues(alpha: 0.5);
         }
         if (states.contains(WidgetState.pressed)) {
-          return Colors.white.withAlpha(colors.isDark ? 44 : 36);
+          return Color.alphaBlend(colors.pressedOverlay, colors.surfaceRaised);
         }
-        return Colors.white.withAlpha(colors.isDark ? 28 : 24);
+        if (states.contains(WidgetState.hovered)) {
+          return Color.alphaBlend(colors.hoverOverlay, colors.surfaceRaised);
+        }
+        return colors.surfaceRaised;
       }),
       foregroundColor: WidgetStateProperty.resolveWith((states) {
         if (states.contains(WidgetState.disabled)) {
-          return colors.textMuted.withAlpha(120);
+          return colors.textDisabled;
         }
-        return colors.text.withAlpha(240);
+        return colors.text;
       }),
       side: WidgetStateProperty.resolveWith((states) {
         final enabled = !states.contains(WidgetState.disabled);
         return BorderSide(
-          color: Colors.white.withAlpha(
-            colors.isDark ? (enabled ? 56 : 28) : (enabled ? 80 : 40),
-          ),
+          color: enabled ? colors.line : colors.line.withValues(alpha: 0.5),
           width: AppleControlMetrics.hairline,
         );
       }),
@@ -63,22 +64,20 @@ abstract final class AppleControlButtons {
         }
         if (states.contains(WidgetState.hovered) ||
             states.contains(WidgetState.pressed)) {
-          return Colors.white.withAlpha(colors.isDark ? 18 : 14);
+          return colors.hoverOverlay;
         }
         return Colors.transparent;
       }),
       foregroundColor: WidgetStateProperty.resolveWith((states) {
         if (states.contains(WidgetState.disabled)) {
-          return colors.textMuted.withAlpha(120);
+          return colors.textDisabled;
         }
-        return colors.text.withAlpha(230);
+        return colors.text;
       }),
       side: WidgetStateProperty.resolveWith((states) {
         final enabled = !states.contains(WidgetState.disabled);
         return BorderSide(
-          color: Colors.white.withAlpha(
-            colors.isDark ? (enabled ? 52 : 24) : (enabled ? 70 : 36),
-          ),
+          color: enabled ? colors.line : colors.line.withValues(alpha: 0.5),
           width: AppleControlMetrics.hairline,
         );
       }),
@@ -105,8 +104,8 @@ abstract final class AppleControlButtons {
 
   static ButtonStyle glassText(LicoThemeColors colors) {
     return TextButton.styleFrom(
-      foregroundColor: colors.info,
-      disabledForegroundColor: colors.textMuted.withAlpha(110),
+      foregroundColor: colors.accent,
+      disabledForegroundColor: colors.textDisabled,
       textStyle: const TextStyle(
         fontSize: 13,
         fontWeight: FontWeight.w500,
@@ -154,7 +153,6 @@ class AppleGlassActionButton extends StatelessWidget {
             AppleControlMetrics.controlCornerRadius,
           ),
           focused: emphasized && enabled,
-          fillAlpha: emphasized && enabled ? 36 : (enabled ? 22 : 12),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
             child: Row(
@@ -164,9 +162,7 @@ class AppleGlassActionButton extends StatelessWidget {
                   Icon(
                     icon,
                     size: 15,
-                    color: enabled
-                        ? colors.text.withAlpha(235)
-                        : colors.textMuted.withAlpha(120),
+                    color: enabled ? colors.text : colors.textDisabled,
                   ),
                   const SizedBox(width: 6),
                 ],
@@ -176,12 +172,9 @@ class AppleGlassActionButton extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      color: enabled
-                          ? colors.text.withAlpha(235)
-                          : colors.textMuted.withAlpha(120),
-                      fontSize: 12.5,
+                      color: enabled ? colors.text : colors.textDisabled,
+                      fontSize: 12,
                       fontWeight: FontWeight.w600,
-                      letterSpacing: -0.08,
                     ),
                   ),
                 ),

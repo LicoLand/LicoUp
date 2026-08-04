@@ -25,7 +25,9 @@ pub(in crate::domain::mobile_relay) use config::{
 pub(in crate::domain::mobile_relay) use ensure::ensure_mobile_relay_key_transparency;
 pub(in crate::domain::mobile_relay) use freshness::require_current_pairwise_directory_authority;
 #[cfg(test)]
-pub(in crate::domain::mobile_relay) use test_support::with_mobile_relay_test_kt_log;
+pub(in crate::domain::mobile_relay) use test_support::{
+    with_mobile_relay_test_kt_authority_scope, with_mobile_relay_test_kt_log,
+};
 
 #[cfg(test)]
 mod tests;

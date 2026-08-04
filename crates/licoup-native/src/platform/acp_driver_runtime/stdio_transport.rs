@@ -163,7 +163,26 @@ pub(in crate::platform) fn execute_acp(
             Vec::new(),
         );
     }
-    let launch = LaunchSpec::new(executable, driver, Path::new(&config.cwd));
+    let launch = match LaunchSpec::for_execution(
+        executable,
+        driver,
+        Path::new(&config.cwd),
+        &mut config.settings,
+    ) {
+        Ok(launch) => launch,
+        Err(failure) => {
+            return RunResult::failed(
+                driver,
+                failure,
+                started_at,
+                None,
+                false,
+                false,
+                CapabilityProbe::default(),
+                Vec::new(),
+            );
+        }
+    };
     let mut child = match launch.spawn() {
         Ok(child) => child,
         Err(error) => {
@@ -313,6 +332,8 @@ pub(in crate::platform) fn execute_acp(
     }
 
     if let Some(outcome) = outcome {
+        let mut effective = outcome.effective;
+        launch.apply_effective_settings(&mut effective);
         return RunResult {
             ok: true,
             output: outcome.output,
@@ -322,7 +343,7 @@ pub(in crate::platform) fn execute_acp(
             thread_id: outcome.thread_id,
             turn_id: outcome.turn_id,
             turn_status: outcome.turn_status,
-            effective: outcome.effective,
+            effective,
             capabilities: outcome.capabilities,
             status_code,
             stdout_truncated: stdout_was_truncated,
@@ -507,11 +528,14 @@ pub(super) fn run_protocol_loop<T: ProtocolLoopTransport>(
             Ok(TransportEvent::StdoutLimitExceeded) => {
                 return (
                     None,
-                    Some(ProtocolFailure::new(
-                        "acp_protocol_output_limit",
-                        "The ACP agent exceeded the configured protocol output limit.",
-                        "protocol/read",
-                    )),
+                    Some(
+                        ProtocolFailure::new(
+                            "acp_protocol_output_limit",
+                            "The ACP agent exceeded the configured protocol output limit.",
+                            "protocol/read",
+                        )
+                        .with_session(protocol.session_id.as_deref()),
+                    ),
                     None,
                     true,
                 );

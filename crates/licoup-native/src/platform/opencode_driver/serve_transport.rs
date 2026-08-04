@@ -193,10 +193,6 @@ fn execute_via_serve(
         )
         .with_session(Some(&session_id)));
     }
-    if streamed.is_empty() {
-        super::super::turn_event_emit::emit_agent_message_chunk(&session_id, &turn_id, &output);
-        streamed.push(output.clone());
-    }
     super::super::turn_event_emit::emit_agent_message_completed(&session_id, &turn_id, &output);
     let mut events = project_agent_chunks(streamed);
     events.extend(super::super::skill_invocation_projection::project_skill_invocations(&response));

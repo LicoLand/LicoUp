@@ -25,10 +25,10 @@ const reviewedRustEgressFiles = Object.freeze([
   "crates/licoup-native/src/domain/collaboration_plugin/assembly/runtime/shutdown.rs",
   "crates/licoup-native/src/domain/collaboration_plugin/source.rs",
   "crates/licoup-native/src/domain/skill_hub/source.rs",
+  "crates/licoup-native/src/platform/badtower_station/http_io.rs",
   "crates/licoup-native/src/platform/local_service/http.rs",
   "crates/licoup-native/src/platform/local_service/sse.rs",
   "crates/licoup-native/src/platform/mcp_streamable_http.rs",
-  "crates/licoup-native/src/platform/secure_client_relay/http_io.rs",
 ]);
 
 async function sourceFiles(relativeRoot, extension) {

@@ -19,7 +19,6 @@ import 'package:licoup/src/platform/native_client/native_command_router.dart';
 import 'package:licoup/src/platform/native_client/native_mcp_actions.dart';
 import 'package:licoup/src/platform/native_client/native_one_shot_command_executor.dart';
 import 'package:licoup/src/platform/native_client/native_state_actions.dart';
-import 'package:licoup/src/platform/native_client/orchestrator_ipc/client.dart';
 
 export 'package:licoup/src/contracts/target_candidate.dart';
 export 'package:licoup/src/platform/native_client/native_cli_ports.dart'
@@ -98,6 +97,7 @@ class AgentService
         NativeCommandActions(
           commandExecutor: commandExecutor,
           concurrentCommandExecutor: oneShotExecutor,
+          privateRunner: _processIo,
         );
     _mcpActions = NativeMcpActions(privateRunner: _processIo);
     _catalogActions = NativeCatalogActions(
@@ -116,15 +116,50 @@ class AgentService
   late final NativeCatalogActions _catalogActions;
   late final NativeStateActions _stateActions;
 
-  late final NativeOrchestratorClient orchestratorClient =
-      NativeOrchestratorClient(transport: _stdioRpcTransport);
-
   static const List<String> packagedScanTargetIds =
       NativeCommandActions.packagedScanTargetIds;
 
   @override
-  Future<Map<String, dynamic>> runCli(List<String> args) {
-    return _commandExecutor.execute(args);
+  Future<Map<String, dynamic>> runCli(List<String> args) =>
+      _commandExecutor.execute(args);
+
+  Future<Map<String, dynamic>> planCodexPlugin({required String binaryPath}) {
+    return runCli([
+      'adapter',
+      'codex',
+      'plugin',
+      'plan',
+      '--binary-path',
+      binaryPath,
+    ]);
+  }
+
+  Future<Map<String, dynamic>> codexPluginStatus({required String binaryPath}) {
+    return runCli([
+      'adapter',
+      'codex',
+      'plugin',
+      'status',
+      '--binary-path',
+      binaryPath,
+    ]);
+  }
+
+  Future<Map<String, dynamic>> installCodexPlugin({
+    required String binaryPath,
+    required String confirmation,
+  }) {
+    return runCli([
+      'adapter',
+      'codex',
+      'plugin',
+      'install',
+      '--binary-path',
+      binaryPath,
+      '--confirmation',
+      confirmation,
+      '--confirmed',
+    ]);
   }
 
   @override
@@ -148,14 +183,12 @@ class AgentService
     return _processIo.streamCliJsonLinesWithStdin(args, stdinText);
   }
 
-  Future<List<Map<String, dynamic>>> listSnapshots({String target = ''}) {
-    return _commandActions.listSnapshots(target: target);
-  }
+  Future<List<Map<String, dynamic>>> listSnapshots({String target = ''}) =>
+      _commandActions.listSnapshots(target: target);
 
   @override
-  Future<List<Map<String, dynamic>>> listPairings({String agent = ''}) {
-    return _commandActions.listPairings(agent: agent);
-  }
+  Future<List<Map<String, dynamic>>> listPairings({String agent = ''}) =>
+      _commandActions.listPairings(agent: agent);
 
   @override
   Future<Map<String, dynamic>> requestPairing({
@@ -300,31 +333,28 @@ class AgentService
     return _commandActions.runDueSkillUpdates();
   }
 
+  Future<Map<String, dynamic>> authorizeAntigravityRuntime({
+    String binaryPath = '',
+  }) => _commandActions.authorizeAntigravityRuntime(binaryPath: binaryPath);
+
   @override
   Future<Map<String, dynamic>> planSkillDelete({
-    required List<String> agents,
     required String skillId,
-    String installRoot = '',
+    required String path,
   }) {
-    return _commandActions.planSkillDelete(
-      agents: agents,
-      skillId: skillId,
-      installRoot: installRoot,
-    );
+    return _commandActions.planSkillDelete(skillId: skillId, path: path);
   }
 
   @override
   Future<Map<String, dynamic>> applySkillDelete({
-    required List<String> agents,
     required String skillId,
+    required String path,
     required String confirmation,
-    String installRoot = '',
   }) {
     return _commandActions.applySkillDelete(
-      agents: agents,
       skillId: skillId,
+      path: path,
       confirmation: confirmation,
-      installRoot: installRoot,
     );
   }
 
@@ -338,6 +368,17 @@ class AgentService
       days: days,
       agent: agent,
       skillId: skillId,
+    );
+  }
+
+  @override
+  Future<Map<String, dynamic>> scanSkillUsage({
+    String agent = '',
+    bool forceRefresh = false,
+  }) {
+    return _commandActions.scanSkillUsage(
+      agent: agent,
+      forceRefresh: forceRefresh,
     );
   }
 
@@ -368,13 +409,10 @@ class AgentService
     );
   }
 
-  Future<Map<String, dynamic>> stopOpencodeServe() {
-    return _commandActions.stopOpencodeServe();
-  }
+  Future<Map<String, dynamic>> stopOpencodeServe() =>
+      _commandActions.stopOpencodeServe();
 
-  Future<List<TargetCandidate>> scanTargets() {
-    return _commandActions.scanTargets();
-  }
+  Future<List<TargetCandidate>> scanTargets() => _commandActions.scanTargets();
 
   @override
   Future<TargetCandidate?> scanOneTarget(String targetId) {
@@ -387,12 +425,16 @@ class AgentService
     String configPath = '',
     String binaryPath = '',
     String historyRoot = '',
+    String location = 'local',
+    Map<String, dynamic> runtimeConnection = const <String, dynamic>{},
   }) {
     return _commandActions.addTarget(
       target: target,
       configPath: configPath,
       binaryPath: binaryPath,
       historyRoot: historyRoot,
+      location: location,
+      runtimeConnection: runtimeConnection,
     );
   }
 

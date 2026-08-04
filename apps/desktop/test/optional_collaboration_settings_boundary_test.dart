@@ -3,7 +3,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('optional collaboration is owned only by plugin management', () {
+  test('optional collaboration is not composed into a client surface', () {
     final root = Directory('lib/src/frontend');
     final imports = <String>[];
     for (final entity in root.listSync(recursive: true)) {
@@ -16,9 +16,7 @@ void main() {
       }
     }
 
-    expect(imports, [
-      'lib/src/frontend/features/plugin_management/ui/adapter_plugin_panel.dart',
-    ]);
+    expect(imports, isEmpty);
 
     final settings = _read(
       'lib/src/frontend/features/settings/ui/settings_panel.dart',

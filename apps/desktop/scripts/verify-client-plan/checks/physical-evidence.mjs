@@ -15,7 +15,7 @@ for (const token of [
   "physicalReportRefs",
   "physicalEvidenceConfig.reportOutput",
   "reportPath = physicalReportRefs.physicalDeviceMatrix",
-  "relayMockCoverage",
+  "stationAcceptanceCoverage",
   "androidPlatformCryptoCoverage",
   "deriveMatrix",
   "loadSecureClientContract",
@@ -42,11 +42,11 @@ for (const token of [
   "pairing-and-trust",
   "command-result",
   "file-handoff",
-  "relay-protocol",
+  "licoarc-badtower-interoperability",
   "android-platform-crypto-acceptance-is-client-owned-and-redacted",
-  "client-relay-mock-exercises-pinned-opaque-protocol",
+  "licoarc-badtower-acceptance-exercises-strict-interoperability",
   "physical-evidence-config-links-current-client-reports",
-  "physical-evidence-manifest-consumes-relay-and-platform-crypto"
+  "physical-evidence-manifest-consumes-station-and-platform-crypto"
 ]) {
   assert(physicalDeviceMatrixConfig.includes(token),
     `physical device matrix config must keep token ${token}`);
@@ -62,9 +62,9 @@ const physicalDeviceMatrixSourceCheckIds = new Set(
 for (const id of [
   "android-platform-crypto-acceptance-is-client-owned-and-redacted",
   "ios-client-tests-shared-rust-crypto-lifecycle",
-  "client-relay-mock-exercises-pinned-opaque-protocol",
+  "licoarc-badtower-acceptance-exercises-strict-interoperability",
   "physical-evidence-config-links-current-client-reports",
-  "physical-device-matrix-consumes-relay-and-platform-crypto"
+  "physical-device-matrix-consumes-station-and-platform-crypto"
 ]) {
   assert(physicalDeviceMatrixSourceCheckIds.has(id),
     `physical device matrix config must keep current client-owned source check ${id}`);
@@ -88,7 +88,7 @@ for (const token of [
   "licomesh.secure-mesh.physical-evidence-config.v2",
   "build/reports/secure-mesh-physical-evidence-manifest.json",
   "build/reports/secure-mesh-android-platform-crypto-acceptance.json",
-  "build/reports/secure-client-relay-mock-e2e.json",
+  "build/reports/licoarc-badtower-acceptance.json",
   "build/reports/android-physical-install-launch.json",
   "build/client-cli-vm/ubuntu-arm64/mobile-relay-secret-store-self-test.json",
   "build/reports/secure-mesh-release-cli-proof-macos.json",
@@ -105,7 +105,7 @@ for (const token of [
   "freshnessWindows",
   "androidPlatformCryptoSeconds",
   "evidenceCommands",
-  "npm run client:verify:secure-client-relay-mock-e2e",
+  "npm run client:verify:licoarc-badtower-acceptance",
   "npm run client:test:android:native",
   "npm run client:build:android",
   "node tools/scripts/client-android-physical-install-launch.mjs --install --launch --apk build/apps/desktop/android/release/app-release.apk",
@@ -131,14 +131,14 @@ assert(Object.keys(physicalEvidenceConfigJson.freshnessWindows || {}).length ===
   Number.isInteger(physicalEvidenceConfigJson.freshnessWindows.androidPlatformCryptoSeconds),
   "physical evidence config must define the Android platform crypto freshness window");
 assert((physicalEvidenceConfigJson.evidenceCommands?.android || []).includes("npm run client:test:android:native") &&
-  (physicalEvidenceConfigJson.evidenceCommands?.android || []).includes("npm run client:verify:secure-client-relay-mock-e2e") &&
+  (physicalEvidenceConfigJson.evidenceCommands?.android || []).includes("npm run client:verify:licoarc-badtower-acceptance") &&
   (physicalEvidenceConfigJson.evidenceCommands?.android || []).includes("node tools/scripts/client-android-physical-install-launch.mjs --install --launch --apk build/apps/desktop/android/release/app-release.apk") &&
   !(physicalEvidenceConfigJson.evidenceCommands?.android || []).some((command) =>
     command.includes("app-debug.apk")),
   "physical evidence config must expose Android release install/launch and reject debug physical receipts");
 assert((physicalEvidenceConfigJson.evidenceCommands?.ios || []).includes("npm run client:verify:mobile-simulator-closure:ios") &&
-  (physicalEvidenceConfigJson.evidenceCommands?.ios || []).includes("npm run client:verify:secure-client-relay-mock-e2e"),
-  "physical evidence config must expose iOS client simulator and relay Mock commands");
+  (physicalEvidenceConfigJson.evidenceCommands?.ios || []).includes("npm run client:verify:licoarc-badtower-acceptance"),
+  "physical evidence config must expose iOS client simulator and Lico Arc BadTower acceptance commands");
 assert((physicalEvidenceConfigJson.evidenceCommands?.macos || []).includes("npm run client:verify:secure-mesh-macos-keychain-user-presence") &&
   (physicalEvidenceConfigJson.evidenceCommands?.linux || []).includes("npm run client:verify:secure-mesh-linux-adaptive-custody") &&
   (physicalEvidenceConfigJson.evidenceCommands?.windows || []).includes("npm run client:verify:secure-mesh-windows-implementation"),
@@ -174,12 +174,12 @@ for (const token of [
   "linkedReportFreshnessReady",
   "linkedReportFreshnessStaleOrInvalidCount",
   "androidPlatformCryptoFreshnessReady",
-  "relayProtocolMockReady",
+  "stationAcceptanceReady",
   "androidPlatformCryptoAcceptanceReady",
   "mlsMemberRemoveReleaseActionReady",
-  "relayMockCoverage",
+  "stationAcceptanceCoverage",
   "androidPlatformCryptoCoverage",
-  "client-owned relay Mock protocol acceptance"
+  "strict Lico Arc BadTower interoperability acceptance"
 ]) {
   assert(physicalEvidenceManifest.includes(token),
     `physical evidence manifest must keep linked-report freshness token ${token}`);

@@ -24,6 +24,9 @@ pub(crate) fn conversation_stream(params: &Value) -> Result<()> {
 }
 
 fn stream_to_writer<W: Write>(params: &Value, writer: &mut W) -> Result<()> {
+    if crate::platform::remote_acp_history::has_runtime_connection(params) {
+        return stream_remote_acp(params, writer);
+    }
     let agent_id = agent_param(params)?;
     let adapter = adapter_for_agent(&agent_id)
         .ok_or_else(|| anyhow!("unsupported native history adapter: {}", agent_id))?;
@@ -135,6 +138,60 @@ fn stream_to_writer<W: Write>(params: &Value, writer: &mut W) -> Result<()> {
         returned_sessions,
         matched_sessions,
         has_more,
+    )
+}
+
+fn stream_remote_acp<W: Write>(params: &Value, writer: &mut W) -> Result<()> {
+    let listed = crate::platform::remote_acp_history::conversation_list(params)?;
+    let agent_id = listed
+        .get("agentId")
+        .and_then(Value::as_str)
+        .ok_or_else(|| anyhow!("remote_acp_history_projection_invalid"))?;
+    let page = listed
+        .get("page")
+        .cloned()
+        .ok_or_else(|| anyhow!("remote_acp_history_projection_invalid"))?;
+    write_json_line(
+        writer,
+        &json!({
+            "event": "start",
+            "ok": true,
+            "schemaVersion": CONVERSATION_SCHEMA_VERSION,
+            "mode": "native-history",
+            "scanMode": "browse",
+            "importMode": "precise-adapter",
+            "readOnly": true,
+            "agentId": agent_id,
+            "adapterId": listed.get("adapterId"),
+            "adapterLabel": listed.get("adapterLabel"),
+            "sources": listed.get("sources"),
+            "page": page
+        }),
+    )?;
+    let sessions = listed
+        .get("sessions")
+        .and_then(Value::as_array)
+        .ok_or_else(|| anyhow!("remote_acp_history_projection_invalid"))?;
+    for session in sessions {
+        write_json_line(
+            writer,
+            &json!({
+                "event": "session",
+                "ok": true,
+                "agentId": agent_id,
+                "session": session
+            }),
+        )?;
+    }
+    write_json_line(
+        writer,
+        &json!({
+            "event": "done",
+            "ok": true,
+            "schemaVersion": CONVERSATION_SCHEMA_VERSION,
+            "agentId": agent_id,
+            "page": page
+        }),
     )
 }
 

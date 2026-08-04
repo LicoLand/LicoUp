@@ -38,16 +38,24 @@ mixin ClientTargetFacade on AgentWorkspaceCoordinator {
     forceRescanKnown: forceRescanKnown,
   );
 
+  @override
+  Future<bool> agentWorkspaceEnsureConversationRuntimeBinding(String agentId) =>
+      targetController.ensureConversationRuntimeBinding(agentId);
+
   Future<void> addManualTarget({
     required String target,
     String configPath = '',
     String binaryPath = '',
     String historyRoot = '',
+    String location = 'local',
+    Map<String, dynamic> runtimeConnection = const <String, dynamic>{},
   }) => targetController.addManualTarget(
     target: target,
     configPath: configPath,
     binaryPath: binaryPath,
     historyRoot: historyRoot,
+    location: location,
+    runtimeConnection: runtimeConnection,
   );
 
   Future<void> inspectTarget(String target) =>

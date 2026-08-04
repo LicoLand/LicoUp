@@ -99,6 +99,72 @@ class AgentConversationSession {
         : _agentConversationSessionPreview(messages, semantic);
   }
 
+  AgentConversationSession withWorkingDirectory(String value) {
+    return AgentConversationSession(
+      id: id,
+      agentId: agentId,
+      title: title,
+      createdAt: createdAt,
+      updatedAt: updatedAt,
+      messages: messages,
+      semantic: semantic,
+      adapterId: adapterId,
+      nativeSessionId: nativeSessionId,
+      parentSessionId: parentSessionId,
+      lineageRootId: lineageRootId,
+      sourceKind: sourceKind,
+      importMode: importMode,
+      sourceTool: sourceTool,
+      sourceClient: sourceClient,
+      sourceClientLabel: sourceClientLabel,
+      hostApp: hostApp,
+      hostAppLabel: hostAppLabel,
+      sourceLabel: sourceLabel,
+      sourcePath: sourcePath,
+      workingDirectory: value,
+      native: native,
+      readOnly: readOnly,
+      messageCount: messageCount,
+      sourceMessageCount: sourceMessageCount,
+      historyTruncated: historyTruncated,
+      messageTreeTruncated: messageTreeTruncated,
+      cachedPreview: _preview,
+    );
+  }
+
+  AgentConversationSession withTitle(String value) {
+    return AgentConversationSession(
+      id: id,
+      agentId: agentId,
+      title: value,
+      createdAt: createdAt,
+      updatedAt: updatedAt,
+      messages: messages,
+      semantic: semantic,
+      adapterId: adapterId,
+      nativeSessionId: nativeSessionId,
+      parentSessionId: parentSessionId,
+      lineageRootId: lineageRootId,
+      sourceKind: sourceKind,
+      importMode: importMode,
+      sourceTool: sourceTool,
+      sourceClient: sourceClient,
+      sourceClientLabel: sourceClientLabel,
+      hostApp: hostApp,
+      hostAppLabel: hostAppLabel,
+      sourceLabel: sourceLabel,
+      sourcePath: sourcePath,
+      workingDirectory: workingDirectory,
+      native: native,
+      readOnly: readOnly,
+      messageCount: messageCount,
+      sourceMessageCount: sourceMessageCount,
+      historyTruncated: historyTruncated,
+      messageTreeTruncated: messageTreeTruncated,
+      cachedPreview: _preview,
+    );
+  }
+
   factory AgentConversationSession.fromJson(Map<String, dynamic> json) {
     final agentId = (json['agentId'] ?? '').toString();
     final adapterId = (json['adapterId'] ?? '').toString();

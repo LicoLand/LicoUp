@@ -33,7 +33,6 @@ fn main() {
         "--output-format",
         "stream-json",
         "--verbose",
-        "--include-partial-messages",
         "--model",
         "fake-model",
         "--effort",

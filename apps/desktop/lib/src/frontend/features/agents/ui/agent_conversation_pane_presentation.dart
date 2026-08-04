@@ -23,10 +23,16 @@ final class AgentConversationPaneState {
     required this.defaultModel,
     required List<String> reasoningEffortOptions,
     required this.selectedReasoningEffort,
+    this.showWorkingDirectory = false,
+    this.workingDirectory = '',
+    this.workingDirectorySelectable = false,
+    this.sendAuthorizeActive = false,
+    List<TargetCandidate> participantTargets = const [],
   }) : liveMessages = List.unmodifiable(liveMessages),
        recentSessions = List.unmodifiable(recentSessions),
        modelOptions = List.unmodifiable(modelOptions),
-       reasoningEffortOptions = List.unmodifiable(reasoningEffortOptions);
+       reasoningEffortOptions = List.unmodifiable(reasoningEffortOptions),
+       participantTargets = List.unmodifiable(participantTargets);
 
   final TargetCandidate target;
   final AgentConversationSession? session;
@@ -44,6 +50,11 @@ final class AgentConversationPaneState {
   final String defaultModel;
   final List<String> reasoningEffortOptions;
   final String selectedReasoningEffort;
+  final bool showWorkingDirectory;
+  final String workingDirectory;
+  final bool workingDirectorySelectable;
+  final bool sendAuthorizeActive;
+  final List<TargetCandidate> participantTargets;
 }
 
 /// Typed commands available to the conversation body.
@@ -55,6 +66,8 @@ final class AgentConversationPaneActions {
     required this.onSend,
     required this.onSelectSession,
     this.onUnblockSend,
+    this.onChooseWorkingDirectory,
+    this.onAttach,
   });
 
   final ValueChanged<String> onModelChanged;
@@ -63,6 +76,8 @@ final class AgentConversationPaneActions {
   final Future<bool> Function(String) onSend;
   final ValueChanged<String> onSelectSession;
   final VoidCallback? onUnblockSend;
+  final VoidCallback? onChooseWorkingDirectory;
+  final VoidCallback? onAttach;
 }
 
 /// Immutable identity and status projection consumed only by the header leaf.

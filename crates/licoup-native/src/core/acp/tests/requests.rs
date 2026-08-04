@@ -96,3 +96,19 @@ fn prompt_cancel_and_close_builders_preserve_distinct_envelopes() {
     assert_eq!(close["method"], SESSION_CLOSE_METHOD);
     assert_eq!(close["params"]["sessionId"], "session-1");
 }
+
+#[test]
+fn session_list_builder_keeps_filters_optional_and_cursors_opaque() {
+    let minimal = session_list_request(5, None, None).unwrap();
+    assert_eq!(minimal["method"], SESSION_LIST_METHOD);
+    assert_eq!(minimal["params"], json!({}));
+
+    let filtered =
+        session_list_request(6, Some("/workspace/project"), Some("opaque-page-2")).unwrap();
+    assert_eq!(filtered["params"]["cwd"], "/workspace/project");
+    assert_eq!(filtered["params"]["cursor"], "opaque-page-2");
+    assert!(
+        session_list_request(7, Some("relative/project"), None).is_err(),
+        "session/list cwd must remain absolute"
+    );
+}

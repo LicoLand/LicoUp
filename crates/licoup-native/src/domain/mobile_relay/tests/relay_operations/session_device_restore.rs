@@ -64,16 +64,14 @@ fn selected_public_paired_device_restores_internal_token_without_exposure() {
             "pcClientId": "pc-active",
             "pcClientName": "Active Mac",
             "pairingId": "pair-active",
-            "mobileToken": sv_mobile_token_active_cana.as_str(),
-            "gatewayUrl": "https://relay.example.test"
+            "mobileToken": sv_mobile_token_active_cana.as_str()
         },
         {
             "id": "pc-selected",
             "pcClientId": "pc-selected",
             "pcClientName": "Selected Mac",
             "pairingId": "pair-selected",
-            "mobileToken": sv_mobile_token_selected_ca.as_str(),
-            "gatewayUrl": "https://relay.example.test"
+            "mobileToken": sv_mobile_token_selected_ca.as_str()
         }
     ]);
     let store_override: Arc<dyn SecureMeshSecretStore> = store.clone();

@@ -134,9 +134,7 @@ pub(super) fn handle_skill_delete_plan(command: AdmittedCommand) -> Result<CliEx
     let params = admitted_params(
         &[
             ("skill", command.option_text("skill")),
-            ("agent", command.option_text("agent")),
-            ("agents", command.option_text("agents")),
-            ("confirmation", command.option_text("confirmation")),
+            ("path", command.option_text("path")),
         ],
         &[],
         &[],
@@ -150,8 +148,7 @@ pub(super) fn handle_skill_delete_apply(command: AdmittedCommand) -> Result<CliE
     let params = admitted_params(
         &[
             ("skill", command.option_text("skill")),
-            ("agent", command.option_text("agent")),
-            ("agents", command.option_text("agents")),
+            ("path", command.option_text("path")),
             ("confirmation", command.option_text("confirmation")),
         ],
         &[],
@@ -257,5 +254,20 @@ pub(super) fn handle_skill_usage_report(command: AdmittedCommand) -> Result<CliE
     );
     Ok(CliExecution::Json(
         crate::domain::skill_hub::skill_usage_report(&params)?,
+    ))
+}
+
+pub(super) fn handle_skill_usage_scan(command: AdmittedCommand) -> Result<CliExecution> {
+    let params = admitted_params(
+        &[
+            ("agent", command.option_text("agent")),
+            ("historyRoot", command.option_text("history-root")),
+            ("homeDir", command.option_text("home-dir")),
+        ],
+        &[],
+        &[("forceRefresh", command.option_flag("force-refresh"))],
+    );
+    Ok(CliExecution::Json(
+        crate::domain::skill_hub::skill_usage_scan(&params)?,
     ))
 }

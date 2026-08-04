@@ -6,9 +6,17 @@ class SkillUsageController extends SkillOperationController {
   SkillUsageController({
     required SkillUsageService service,
     required super.onStatus,
+    this.scanCooldownInterval = scanCooldown,
   }) : _service = service;
 
   final SkillUsageService _service;
+
+  /// Minimum interval between two history backfill scans. The scan is
+  /// incremental (watermarks) but not free on first run, so panel refreshes
+  /// share one throttled scan instead of scanning every time.
+  static const Duration scanCooldown = Duration(minutes: 5);
+
+  final Duration scanCooldownInterval;
 
   Map<String, dynamic>? report;
 
@@ -34,4 +42,50 @@ class SkillUsageController extends SkillOperationController {
           );
         },
       );
+
+  Future<void> scan({String agent = '', bool forceRefresh = false}) =>
+      runOperation(
+        busyChinese: '正在回填本机技能调用历史。',
+        busyEnglish: 'Backfilling local skill invocation history.',
+        failureChinese: '技能调用历史回填失败。',
+        failureEnglish: 'Backfilling skill invocation history failed.',
+        failureCode: 'skill_usage_scan_failed',
+        action: () async {
+          await _service.scan(agent: agent, forceRefresh: forceRefresh);
+        },
+      );
+
+  DateTime? _lastScanAt;
+  bool _countsLoading = false;
+
+  /// Background scan + report refresh for card invocation counts. Never
+  /// blocks the panel and never surfaces an error state: scan or report
+  /// failures simply leave the previous counts in place.
+  Future<void> loadCounts({int days = 30}) async {
+    if (_countsLoading) {
+      return;
+    }
+    _countsLoading = true;
+    try {
+      final now = DateTime.now();
+      final lastScan = _lastScanAt;
+      if (lastScan == null ||
+          now.difference(lastScan) >= scanCooldownInterval) {
+        try {
+          await _service.scan();
+          _lastScanAt = now;
+        } catch (_) {
+          // A failed scan leaves earlier backfills usable; report anyway.
+        }
+      }
+      try {
+        report = await _service.report(days: days);
+      } catch (_) {
+        // Invocation counts are an enhancement, never a panel error.
+      }
+    } finally {
+      _countsLoading = false;
+      notifyListeners();
+    }
+  }
 }

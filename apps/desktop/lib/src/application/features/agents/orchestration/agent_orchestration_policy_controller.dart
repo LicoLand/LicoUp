@@ -2,10 +2,9 @@ import 'package:licoup/src/application/features/agents/workspace/agent_workspace
 import 'package:licoup/src/contracts/agent_orchestration_target.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/application/features/agents/orchestration/orchestration_policy_editor_models.dart';
-import 'package:licoup/src/platform/native_client/orchestrator_ipc/client.dart';
 
-/// Thin editor-to-backend boundary. Policy validation, storage, compilation,
-/// activation, and revision ownership all remain in the native orchestrator.
+/// Persists the adaptive flywheel: one main agent plus the code-engineering
+/// Designer, frontend/backend Worker, and frontend/backend Reviewer roles.
 mixin AgentOrchestrationPolicyController on AgentWorkspaceCoordinator {
   bool get orchestrationAvailable => !agentWorkspaceMobileRuntime;
 
@@ -21,60 +20,65 @@ mixin AgentOrchestrationPolicyController on AgentWorkspaceCoordinator {
         .toList(growable: false);
   }
 
-  List<AgentOrchestrationPolicy> get agentOrchestrationPolicies {
-    if (!orchestrationAvailable) return const [];
-    return [effectiveAgentOrchestrationPolicy];
-  }
-
   AgentOrchestrationPolicy get effectiveAgentOrchestrationPolicy {
     if (orchestrationPolicyDraft.isNotEmpty) {
-      return sanitizeOrchestrationPolicyEditorDraft(
-        scannedTargets,
-        AgentOrchestrationPolicy.fromBackendPolicy(orchestrationPolicyDraft),
+      return normalizeOrchestrationPolicyForPersistence(
+        AgentOrchestrationPolicy.fromTomlConfig(orchestrationPolicyDraft),
       );
     }
-    return sanitizeOrchestrationPolicyEditorDraft(
-      scannedTargets,
-      const AgentOrchestrationPolicy(),
-    );
+    return const AgentOrchestrationPolicy();
   }
 
   bool get agentOrchestrationPolicyConfigured =>
-      orchestrationPolicyConfigured &&
       effectiveAgentOrchestrationPolicy.configured;
 
-  bool get orchestrationPolicyConfigured =>
-      activeOrchestrationPolicyRevision.isNotEmpty;
+  bool get orchestrationPolicyConfigured => agentOrchestrationPolicyConfigured;
 
   Map<String, Object?> get effectiveOrchestrationPolicy =>
       orchestrationPolicyDraft;
 
   Set<String> get agentOrchestrationOpenCircuitAgentIds => const {};
 
-  String agentOrchestrationPolicyDisplayLabel(AgentOrchestrationPolicy policy) {
-    final base = policy.label.trim().isEmpty
-        ? agentWorkspaceStrings.defaultPolicy
-        : policy.label.trim();
-    return policy.configured
-        ? base
-        : '$base (${agentWorkspaceStrings.notConfigured})';
+  TargetCandidate? get agentOrchestrationManagerTarget {
+    final id = effectiveAgentOrchestrationPolicy.commanderAgentId;
+    for (final target in orchestrationAvailableTargets) {
+      if (target.target == id) return target;
+    }
+    return null;
   }
 
-  void selectAgentOrchestrationPolicy(String policyId) {
-    if (policyId.trim() == effectiveAgentOrchestrationPolicy.id) return;
-    agentWorkspaceSetLocalizedStatusMessage(
-      '当前仅内置默认策略。',
-      'Only the default policy is currently available.',
-    );
-    statusCaption = 'Agent orchestration';
-    agentWorkspaceNotifyStateChanged();
+  /// The configured main agent, even when its executable binding is not yet
+  /// runnable. This is presentation state; dispatch continues to use
+  /// [agentOrchestrationManagerTarget].
+  TargetCandidate? get agentOrchestrationConfiguredManagerTarget {
+    final id = effectiveAgentOrchestrationPolicy.commanderAgentId;
+    for (final target in scannedTargets) {
+      if (target.target == id) return target;
+    }
+    return null;
   }
 
-  void selectOrchestrationPolicy(String policyRevision) {
-    if (policyRevision.trim() != activeOrchestrationPolicyRevision) {
-      throw const OrchestratorClientException(
-        code: 'policy_revision_unavailable',
-      );
+  List<TargetCandidate> get agentOrchestrationSubordinates {
+    final managerId = effectiveAgentOrchestrationPolicy.commanderAgentId;
+    return orchestrationAvailableTargets
+        .where((target) => target.target != managerId)
+        .toList(growable: false);
+  }
+
+  @override
+  Future<void> loadAgentOrchestrationPolicy() async {
+    try {
+      final stored = await agentWorkspaceReadAdaptiveFlywheelState();
+      final storedPolicy = AgentOrchestrationPolicy.fromTomlConfig(stored);
+      if (!storedPolicy.configured) return;
+      // Startup first hydrates a paint-fast target cache whose executable
+      // bindings are intentionally removed. Do not validate persisted
+      // selection against that non-authoritative projection: the background
+      // scan will make [effectiveAgentOrchestrationPolicy] resolve it
+      // dynamically as soon as the real runtime target is available.
+      _applyMainAgentSelection(storedPolicy);
+    } catch (_) {
+      // A missing or malformed optional setting must not block client startup.
     }
   }
 
@@ -82,68 +86,77 @@ mixin AgentOrchestrationPolicyController on AgentWorkspaceCoordinator {
     AgentOrchestrationPolicy policy,
   ) async {
     if (!orchestrationAvailable) {
-      throw const OrchestratorClientException(code: 'service_unavailable');
+      return;
     }
-    final draft = sanitizeOrchestrationPolicyEditorDraft(
-      scannedTargets,
-      policy,
-    );
-    try {
-      if (!draft.configured ||
-          orchestrationEditorOrderedEntries(draft).isEmpty) {
-        orchestrationPolicyDraft = const {};
-        activeOrchestrationPolicyRevision = '';
-        agentWorkspaceSetLocalizedStatusMessage(
-          '默认编排策略已清空。',
-          'Default orchestration policy cleared.',
-        );
-        statusCaption = 'Agent orchestration';
-        agentWorkspaceNotifyStateChanged();
+    final draft = normalizeOrchestrationPolicyForPersistence(policy);
+    if (!draft.configured) {
+      if (!await _persistAdaptiveFlywheel(
+        const AgentOrchestrationPolicy().toTomlConfig(),
+      )) {
         return;
       }
-      await saveOrchestrationPolicy(draft.toBackendPolicy());
+      orchestrationPolicyDraft = const {};
+      activeOrchestrationPolicyRevision = '';
       agentWorkspaceSetLocalizedStatusMessage(
-        '默认编排策略已保存。',
-        'Default orchestration policy saved.',
+        '适应性飞轮设置已清空。',
+        'Adaptive flywheel settings cleared.',
       );
-      statusCaption = 'Agent orchestration';
-    } on OrchestratorClientException catch (error) {
-      lastError = error.code;
-      agentWorkspaceSetLocalizedStatusMessage(
-        '默认编排策略保存失败。',
-        'Failed to save the default orchestration policy.',
-      );
-      statusCaption = 'Agent orchestration';
+      statusCaption = 'Adaptive flywheel';
       agentWorkspaceNotifyStateChanged();
-      rethrow;
+      return;
     }
-  }
-
-  Future<OrchestratorPolicyProjection> saveOrchestrationPolicy(
-    Map<String, Object?> policy,
-  ) async {
-    final next = Map<String, Object?>.unmodifiable(policy);
-    final policyId = (next['id'] ?? '').toString().trim();
-    if (policyId.isEmpty) {
-      throw const OrchestratorClientException(code: 'policy_schema_invalid');
-    }
-    final NativeOrchestratorClient client = orchestratorClient;
-    final registered = await client.registerPolicy(
-      policy: next,
-      idempotencyKey: 'policy-register-$policyId',
+    if (!await _persistAdaptiveFlywheel(draft.toTomlConfig())) return;
+    _applyMainAgentSelection(draft);
+    agentWorkspaceSetLocalizedStatusMessage(
+      '适应性飞轮已保存，代码工程将按前后端角色策略调度。',
+      'Adaptive flywheel saved; code engineering now follows the frontend/backend role policy.',
     );
-    final activated = await client.activatePolicy(
-      policyRevision: registered.policyRevision,
-      idempotencyKey: 'policy-activate-${registered.policyRevision}',
-    );
-    orchestrationPolicyDraft = next;
-    activeOrchestrationPolicyRevision = activated.policyRevision;
+    statusCaption = 'Adaptive flywheel';
     agentWorkspaceNotifyStateChanged();
-    return activated;
   }
 
-  void resetAgentOrchestrationCircuitBreakers() {
-    // Circuit breakers are owned by the native orchestrator; the GUI no longer
-    // keeps a local breaker registry.
+  void _applyMainAgentSelection(AgentOrchestrationPolicy draft) {
+    orchestrationPolicyDraft = Map<String, Object?>.unmodifiable(
+      draft.toTomlConfig(),
+    );
+    activeOrchestrationPolicyRevision = _policyRevision(draft);
+    conversationModelsByAgent = {
+      ...conversationModelsByAgent,
+      agentOrchestrationTargetId: draft.commanderModelName,
+    };
+    conversationReasoningEffortsByAgent = {
+      ...conversationReasoningEffortsByAgent,
+      agentOrchestrationTargetId: draft.commanderReasoningEffort,
+    };
+  }
+
+  Future<bool> _persistAdaptiveFlywheel(Map<String, Object?> policy) async {
+    try {
+      await agentWorkspaceWriteAdaptiveFlywheelState(policy);
+      lastError = '';
+      return true;
+    } catch (_) {
+      lastError = 'main_agent_settings_write_failed';
+      agentWorkspaceSetLocalizedStatusMessage(
+        '适应性飞轮设置保存失败。',
+        'Could not save the adaptive flywheel settings.',
+      );
+      statusCaption = 'Adaptive flywheel';
+      agentWorkspaceNotifyStateChanged();
+      return false;
+    }
+  }
+
+  String _policyRevision(AgentOrchestrationPolicy policy) {
+    return [
+      policy.commanderAgentId,
+      policy.commanderModelName,
+      policy.commanderReasoningEffort,
+      for (final role in CodeEngineeringRoleSlot.values) ...[
+        policy.assignmentFor(role).agentId,
+        policy.assignmentFor(role).modelName,
+        policy.assignmentFor(role).reasoningEffort,
+      ],
+    ].join('\u0000');
   }
 }

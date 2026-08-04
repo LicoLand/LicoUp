@@ -59,6 +59,9 @@ final class _TestSettingsPresentation implements LayoutSettingsPresentation {
   const _TestSettingsPresentation();
 
   @override
+  bool get indexHostedByNavigation => false;
+
+  @override
   EdgeInsetsGeometry get contentPadding => EdgeInsets.zero;
   @override
   EdgeInsetsGeometry get indexPadding => EdgeInsets.zero;

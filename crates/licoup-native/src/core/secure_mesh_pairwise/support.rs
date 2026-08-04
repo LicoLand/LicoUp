@@ -44,7 +44,7 @@ pub(super) const INITIATOR_FINISHED_MAGIC: &[u8] = b"LCOSM-PAIRWISE-INITIATOR-FI
 pub(super) const HANDSHAKE_HASH_LEN: usize = 32;
 pub(super) const SIGNATURE_LEN: usize = 64;
 pub(super) const KEY_CONFIRMATION_LEN: usize = 32;
-pub(super) const PAIRWISE_SNAPSHOT_SCHEMA_VERSION: u32 = 10;
+pub(super) const PAIRWISE_SNAPSHOT_SCHEMA_VERSION: u32 = 11;
 pub(super) const PAIRWISE_SECRET_STORE_CLASS: &str = "pairwiseSessionSnapshot";
 
 pub(super) type HmacSha256 = Hmac<Sha256>;

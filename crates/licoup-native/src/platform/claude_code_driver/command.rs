@@ -14,7 +14,6 @@ pub(super) const FIXED_STREAM_ARGS: &[&str] = &[
     "--output-format",
     "stream-json",
     "--verbose",
-    "--include-partial-messages",
 ];
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -80,7 +79,6 @@ impl LaunchIdentity {
         let mut command = Command::new(&self.executable);
         command
             .args(self.args())
-            .env("CLAUDE_CODE_SKIP_PROMPT_HISTORY", "1")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());

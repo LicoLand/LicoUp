@@ -131,8 +131,7 @@ fn mobile_relay_public_config_redacts_secret_material() {
             "pcClientId": "pc-redacted",
             "pcClientName": "Mac",
             "pairingId": "pair-redacted",
-            "mobileToken": sv_paired_device_synthetic_.as_str(),
-            "gatewayUrl": "https://relay.example.test"
+            "mobileToken": sv_paired_device_synthetic_.as_str()
         }
     ]);
     let runtime_secrets = MobileRelayE2eeSecretField::ALL

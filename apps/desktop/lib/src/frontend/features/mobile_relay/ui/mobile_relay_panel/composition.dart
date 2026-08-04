@@ -23,30 +23,30 @@ class MobileRelayPanel extends StatefulWidget {
 }
 
 class _MobileRelayPanelState extends State<MobileRelayPanel> {
-  late final TextEditingController _customUrlController;
+  late final TextEditingController _stationBaseUrlController;
 
   ClientController get controller => widget.controller;
 
   @override
   void initState() {
     super.initState();
-    _customUrlController = TextEditingController(
-      text: controller.mobileRelayConfig.effectiveGatewayUrl,
+    _stationBaseUrlController = TextEditingController(
+      text: controller.mobileRelayConfig.stationBaseUrl,
     );
   }
 
   @override
   void didUpdateWidget(covariant MobileRelayPanel oldWidget) {
     super.didUpdateWidget(oldWidget);
-    final next = controller.mobileRelayConfig.effectiveGatewayUrl;
-    if (_customUrlController.text != next) {
-      _customUrlController.text = next;
+    final next = controller.mobileRelayConfig.stationBaseUrl;
+    if (_stationBaseUrlController.text != next) {
+      _stationBaseUrlController.text = next;
     }
   }
 
   @override
   void dispose() {
-    _customUrlController.dispose();
+    _stationBaseUrlController.dispose();
     super.dispose();
   }
 
@@ -61,7 +61,7 @@ class _MobileRelayPanelState extends State<MobileRelayPanel> {
       padding: const EdgeInsets.all(20),
       children: [
         _MobileRelaySectionTitle(
-          iconWidget: MinimalScanIcon(color: colors.primary, size: 22),
+          iconWidget: MinimalScanIcon(color: colors.accent, size: 22),
           title: strings.pairing,
         ),
         const SizedBox(height: 12),
@@ -86,7 +86,7 @@ class _MobileRelayPanelState extends State<MobileRelayPanel> {
         ] else
           MobileRelayPairingWorkspaceCard(
             controller: controller,
-            customUrlController: _customUrlController,
+            stationBaseUrlController: _stationBaseUrlController,
             presentation: controller.mobilePairingPresentation,
             onGenerate: controller.createMobilePairing,
           ),

@@ -53,3 +53,32 @@ fn cli_parse_json_args_and_keys() {
     let bare_flag = commands::cli_params(&["--dry-run".into()]);
     assert_eq!(bare_flag["dryRun"], true);
 }
+
+#[test]
+fn cli_materializes_bounded_private_stdin_json_without_echoing_it() {
+    let args = materialize_private_stdin_json(
+        vec![
+            "agent".into(),
+            "conversation".into(),
+            "capabilities".into(),
+            "--stdin-json".into(),
+            "true".into(),
+        ],
+        Cursor::new(br#"{"agent":"codex"}"#),
+    )
+    .unwrap();
+    assert_eq!(args[4], r#"{"agent":"codex"}"#);
+
+    let invalid = materialize_private_stdin_json(
+        vec![
+            "mcp".into(),
+            "http".into(),
+            "preview".into(),
+            "--stdin-json".into(),
+            "true".into(),
+        ],
+        Cursor::new(b"[]"),
+    )
+    .unwrap_err();
+    assert_eq!(invalid.to_string(), "private_stdin_json_object_required");
+}

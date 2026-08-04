@@ -6,10 +6,13 @@ import 'package:licoup/src/application/features/agents/conversation/conversation
 import 'package:licoup/src/application/features/agents/conversation/conversation_session_controller.dart';
 import 'package:licoup/src/application/features/agents/conversation/conversation_session_state_controller.dart';
 import 'package:licoup/src/application/features/agents/conversation/conversation_turn_queue.dart';
+import 'package:licoup/src/application/features/agents/conversation/conversation_working_directory_fallback.dart';
+import 'package:licoup/src/application/features/agents/orchestration/agent_orchestration_policy_controller.dart';
 import 'package:licoup/src/application/features/agents/policy/conversation_session_index.dart';
 import 'package:licoup/src/application/features/agents/workspace/agent_workspace_coordinator.dart';
 import 'package:licoup/src/application/localization/client_application_strings.dart';
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
+import 'package:licoup/src/contracts/agent_orchestration_target.dart';
 import 'package:licoup/src/contracts/agent_conversation_tab_activity.dart';
 import 'package:licoup/src/contracts/agent_dispatch_lane.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
@@ -18,21 +21,40 @@ const _releaseConversationAcceptanceMode =
     bool.fromEnvironment('LICO_AGENT_CONVERSATION_RELEASE_LIVE')
     ? 'dispatch-lane-unified-1'
     : '';
+const _liveReplyPublishInterval = Duration(milliseconds: 32);
 
 /// Sends one native turn and coordinates only the state transitions around it.
 mixin AgentConversationMessageController
     on
         AgentWorkspaceCoordinator,
+        AgentOrchestrationPolicyController,
         AgentConversationSessionController,
         AgentConversationLiveProjectionController,
         AgentConversationRelayProjectionController {
   Future<bool> sendConversationMessage(String text) async {
-    final agent = selectedConversationAgent;
+    var agent = selectedConversationAgent;
+    var conversationOwnerAgentId = agent?.target ?? '';
+    var participantRole = '';
     final messageText = text.trim();
     if (agent == null || messageText.isEmpty || agentWorkspaceDisposed) {
       return false;
     }
-    if (!selectedConversationIsOrchestration && !agent.canRelayRuntime) {
+    if (selectedConversationIsOrchestration) {
+      conversationOwnerAgentId = agentOrchestrationTargetId;
+      participantRole = 'main-agent';
+      agent = agentOrchestrationManagerTarget;
+      if (agent == null) {
+        lastError = 'main_agent_unavailable';
+        agentWorkspaceSetLocalizedStatusMessage(
+          '请先选择一个可用的主智能体。',
+          'Select an available main agent first.',
+        );
+        statusCaption = 'Main agent';
+        agentWorkspaceNotifyStateChanged();
+        return false;
+      }
+    }
+    if (!agent.canRelayRuntime) {
       lastError = agent.conversationSendGateReason;
       agentWorkspaceSetLocalizedStatusMessage(
         '${agent.label} could not start sending.',
@@ -41,25 +63,6 @@ mixin AgentConversationMessageController
       statusCaption = 'Agent chat';
       agentWorkspaceNotifyStateChanged();
       return false;
-    }
-    if (selectedConversationIsOrchestration) {
-      final turn = _captureConversationTurn(
-        agent: agent,
-        messageText: messageText,
-        orchestration: true,
-      );
-      if (isSendingConversationMessage) {
-        _enqueueConversationTurn(turn);
-        return true;
-      }
-      lastError = '';
-      await sendOrchestratedConversationMessage(messageText);
-      if (lastError.isEmpty && !agentWorkspaceDisposed) {
-        _scheduleNextConversationTurn();
-      } else {
-        conversationTurnQueue.clear();
-      }
-      return lastError.isEmpty;
     }
     final selectedSession = selectedConversationSession;
     if (selectedSession == null &&
@@ -89,6 +92,8 @@ mixin AgentConversationMessageController
       agent: agent,
       messageText: messageText,
       session: selectedSession,
+      conversationOwnerAgentId: conversationOwnerAgentId,
+      participantRole: participantRole,
     );
     if (isSendingConversationMessage) {
       await _steerOrEnqueueConversationTurn(turn);
@@ -98,14 +103,41 @@ mixin AgentConversationMessageController
     return lastError.isEmpty;
   }
 
+  String _orchestrationConversationWorkingDirectory({
+    required TargetCandidate agent,
+    AgentConversationSession? session,
+  }) {
+    final sessionDirectory = session?.workingDirectory.trim() ?? '';
+    if (isUsableLocalConversationWorkingDirectory(sessionDirectory)) {
+      return sessionDirectory;
+    }
+    final draftDirectory =
+        (newConversationWorkingDirectories[agent.target] ?? '').trim();
+    if (isUsableLocalConversationWorkingDirectory(draftDirectory)) {
+      return draftDirectory;
+    }
+    final historicalDirectory = historicalConversationWorkingDirectory(
+      conversationSessionsByAgent[agent.target] ?? const [],
+    );
+    if (historicalDirectory.isNotEmpty) {
+      return historicalDirectory;
+    }
+    final remoteDirectory = agent.remoteWorkingDirectory.trim();
+    if (isUsableLocalConversationWorkingDirectory(remoteDirectory)) {
+      return remoteDirectory;
+    }
+    return localConversationWorkingDirectoryFallback(agentId: agent.target);
+  }
+
   ConversationQueuedTurn _captureConversationTurn({
     required TargetCandidate agent,
     required String messageText,
     AgentConversationSession? session,
-    bool orchestration = false,
+    required String conversationOwnerAgentId,
+    required String participantRole,
   }) {
     final newConversationDraftToken = newConversationDraftTokenFor(
-      agent.target,
+      conversationOwnerAgentId,
     );
     final startsNewConversation = newConversationDraftToken.isNotEmpty;
     final activeNativeSession = sendingConversationAgentId == agent.target
@@ -119,9 +151,16 @@ mixin AgentConversationMessageController
         : startsNewConversation
         ? ''
         : activeNativeSession;
-    final workingDirectory = session?.workingDirectory.trim().isNotEmpty == true
-        ? session!.workingDirectory.trim()
-        : (newConversationWorkingDirectories[agent.target] ?? '').trim();
+    // Keep send-path resolution identical to the composer capsule. For the
+    // selected local agent that means session cwd → draft → historical cwd →
+    // target → client-owned fallback. Orchestration still resolves against the
+    // manager agent because the selected working-directory getter is blank.
+    final workingDirectory = selectedConversationIsOrchestration
+        ? _orchestrationConversationWorkingDirectory(
+            agent: agent,
+            session: session,
+          )
+        : selectedConversationWorkingDirectory;
     return ConversationQueuedTurn(
       submissionId: ++conversationTurnSubmissionSequence,
       agent: agent,
@@ -132,8 +171,10 @@ mixin AgentConversationMessageController
       model: selectedConversationModel,
       reasoningEffort: selectedConversationReasoningEffort,
       throughMobileRelay: agentWorkspaceMobileRuntime,
+      conversationOwnerAgentId: conversationOwnerAgentId,
+      participantLabel: agent.label,
+      participantRole: participantRole,
       newConversationDraftToken: newConversationDraftToken,
-      orchestration: orchestration,
       awaitActiveSession:
           isSendingConversationMessage &&
           sendingConversationAgentId == agent.target &&
@@ -145,10 +186,12 @@ mixin AgentConversationMessageController
     ConversationQueuedTurn turn,
   ) async {
     final activeNativeSessionId = sendingConversationNativeSessionId.trim();
+    final activeTurnId = sendingConversationTurnId.trim();
     final canSteer =
         turn.agent.supportsNativeInterruptSteer &&
         turn.agent.target == sendingConversationAgentId &&
         activeNativeSessionId.isNotEmpty &&
+        activeTurnId.isNotEmpty &&
         turn.nativeSessionId == activeNativeSessionId &&
         !turn.throughMobileRelay;
     if (!canSteer) {
@@ -159,12 +202,14 @@ mixin AgentConversationMessageController
       agentId: turn.agent.target,
       text: turn.text,
       sessionId: turn.nativeSessionId,
+      turnId: activeTurnId,
       bind: AgentDispatchBind(
         sessionPath: turn.session?.sourcePath ?? '',
         workingDirectory: turn.workingDirectory,
         binaryPath: turn.agent.binaryPath ?? '',
         model: turn.model,
         reasoningEffort: turn.reasoningEffort,
+        runtimeConnection: turn.agent.runtimeConnection,
       ),
     );
     if (agentWorkspaceDisposed) return;
@@ -251,8 +296,70 @@ mixin AgentConversationMessageController
     agentWorkspaceNotifyStateChanged();
   }
 
+  /// Explicit, user-consented runtime authorization. The only path that may
+  /// open the vendor OAuth flow; a send must never launch it implicitly.
+  Future<void> authorizeSelectedConversationRuntime() async {
+    final agent = selectedConversationAgent;
+    if (agent == null ||
+        agentWorkspaceDisposed ||
+        isAuthorizingConversationRuntime) {
+      return;
+    }
+    final agentId = agent.target;
+    if (conversationSendErrorFor(agentId) != 'antigravity_auth_required') {
+      return;
+    }
+    isAuthorizingConversationRuntime = true;
+    agentWorkspaceSetLocalizedStatusMessage(
+      '正在打开 ${agent.label} 授权流程，请在浏览器中完成登录。',
+      'Opening the ${agent.label} authorization flow. Complete the sign-in in the browser.',
+    );
+    statusCaption = 'Agent chat';
+    agentWorkspaceNotifyStateChanged();
+    try {
+      final result = await agentWorkspaceAuthorizeRuntime(
+        agentId,
+        binaryPath: agent.binaryPath ?? '',
+      );
+      if (agentWorkspaceDisposed) return;
+      final authorized = result['ok'] == true && result['authorized'] == true;
+      if (authorized) {
+        clearConversationSendError(agentId);
+        setConversationTabActivity(agentId, AgentConversationTabActivity.none);
+        agentWorkspaceSetLocalizedStatusMessage(
+          '${agent.label} 授权完成，请重新发送消息。',
+          '${agent.label} authorization completed. Send your message again.',
+        );
+      } else {
+        agentWorkspaceSetLocalizedStatusMessage(
+          '${agent.label} 授权未完成，完成登录后重试。',
+          '${agent.label} authorization did not complete. Finish the sign-in and try again.',
+        );
+      }
+    } catch (_) {
+      if (agentWorkspaceDisposed) return;
+      agentWorkspaceSetLocalizedStatusMessage(
+        '${agent.label} 授权流程未能完成。',
+        'The ${agent.label} authorization flow could not be completed.',
+      );
+    } finally {
+      statusCaption = 'Agent chat';
+      if (!agentWorkspaceDisposed) {
+        isAuthorizingConversationRuntime = false;
+        agentWorkspaceNotifyStateChanged();
+      }
+    }
+  }
+
   Future<void> _sendConversationTurn(ConversationQueuedTurn queuedTurn) async {
     final agent = queuedTurn.agent;
+    final conversationOwnerAgentId =
+        queuedTurn.conversationOwnerAgentId.trim().isEmpty
+        ? agent.target
+        : queuedTurn.conversationOwnerAgentId.trim();
+    final orchestrationOwned = isAgentOrchestrationTargetId(
+      conversationOwnerAgentId,
+    );
     final messageText = queuedTurn.text;
     final selectedSession = queuedTurn.session;
     var completedSuccessfully = false;
@@ -261,13 +368,48 @@ mixin AgentConversationMessageController
     sendingConversationAgentId = agent.target;
     sendingConversationSessionId = selectedSession?.id.trim() ?? '';
     sendingConversationNativeSessionId = queuedTurn.nativeSessionId;
+    sendingConversationTurnId = '';
+    _discardPendingLiveReply();
     final liveTurnId =
         'live-${agent.target}-${DateTime.now().toUtc().microsecondsSinceEpoch}';
     conversationStartLiveProjection(
-      agentId: agent.target,
+      agentId: conversationOwnerAgentId,
       turnId: liveTurnId,
       userText: messageText,
     );
+    var lifecycleStage = 'submitted';
+    void publishLifecycle(String stage) {
+      const stageRank = <String, int>{
+        'submitted': 0,
+        'accepted': 1,
+        'processing': 2,
+        'responding': 3,
+        'completed': 4,
+      };
+      if (agentWorkspaceDisposed || lifecycleStage == 'failed') return;
+      if (stage == 'failed') {
+        lifecycleStage = stage;
+      } else {
+        final nextRank = stageRank[stage];
+        final currentRank = stageRank[lifecycleStage];
+        if (nextRank == null ||
+            currentRank == null ||
+            nextRank <= currentRank) {
+          return;
+        }
+        lifecycleStage = stage;
+      }
+      conversationUpsertLiveLifecycle(
+        agentId: conversationOwnerAgentId,
+        turnId: liveTurnId,
+        stage: stage,
+        participantAgentId: agent.target,
+        participantLabel: queuedTurn.participantLabel,
+        participantRole: queuedTurn.participantRole,
+      );
+      agentWorkspaceNotifyLiveConversationChanged();
+    }
+
     lastError = '';
     setConversationTabActivity(agent.target, AgentConversationTabActivity.none);
     agentWorkspaceSetLocalizedStatusMessage(
@@ -293,6 +435,7 @@ mixin AgentConversationMessageController
         );
       } else {
         var streamedText = '';
+        final streamedTextByParticipant = <String, String>{};
         AgentDispatchTurnResult? turn;
         await for (final event in conversationGateway.sendStreaming(
           agentId: agent.target,
@@ -305,34 +448,80 @@ mixin AgentConversationMessageController
             model: queuedTurn.model,
             reasoningEffort: queuedTurn.reasoningEffort,
             acceptanceMode: _releaseConversationAcceptanceMode,
+            runtimeConnection: agent.runtimeConnection,
           ),
         )) {
           if (agentWorkspaceDisposed) return;
+          final eventSessionId = event.sessionId.trim();
+          final eventTurnId = event.turnId.trim();
+          if (eventSessionId.isNotEmpty) {
+            sendingConversationNativeSessionId = eventSessionId;
+          }
+          if (eventTurnId.isNotEmpty) {
+            sendingConversationTurnId = eventTurnId;
+          }
+          if (event.kind == 'dispatch.turn.bound' ||
+              event.kind == 'agent.turn.accepted') {
+            publishLifecycle('accepted');
+            continue;
+          }
+          if (event.kind == 'agent.turn.processing') {
+            publishLifecycle('processing');
+            continue;
+          }
+          if (event.kind.contains('reason') ||
+              event.kind.contains('tool') ||
+              event.kind.contains('plan')) {
+            publishLifecycle('processing');
+          }
           if (event.kind == 'agent.message.chunk' ||
               event.kind == 'agent.message.completed') {
+            if (event.kind == 'agent.message.chunk') {
+              publishLifecycle('responding');
+            }
             final chunk = (event.payload['text'] ?? '').toString();
             if (chunk.isNotEmpty) {
-              streamedText =
+              final participantAgentId =
+                  (event.payload['participantAgentId'] ?? agent.target)
+                      .toString()
+                      .trim();
+              final participantLabel =
+                  (event.payload['participantLabel'] ??
+                          queuedTurn.participantLabel)
+                      .toString()
+                      .trim();
+              final participantRole =
+                  (event.payload['participantRole'] ??
+                          queuedTurn.participantRole)
+                      .toString()
+                      .trim();
+              final participantKey =
+                  '$participantAgentId\u0000$participantRole';
+              final participantText =
                   ConversationRuntimeResultPolicy.mergeProgressiveText(
-                    streamedText,
+                    streamedTextByParticipant[participantKey] ?? '',
                     chunk,
                     completed: event.kind == 'agent.message.completed',
                   );
-              conversationUpsertLiveReply(
-                agentId: agent.target,
-                turnId: liveTurnId,
-                text: streamedText,
+              streamedTextByParticipant[participantKey] = participantText;
+              if (participantAgentId == agent.target) {
+                streamedText = participantText;
+              }
+              final participantTurnId = participantAgentId == agent.target
+                  ? liveTurnId
+                  : '$liveTurnId-participant-$participantAgentId';
+              _queueLiveReplyPublish(
+                agentId: conversationOwnerAgentId,
+                turnId: participantTurnId,
+                text: participantText,
+                participantAgentId: participantAgentId,
+                participantLabel: participantLabel,
+                participantRole: participantRole,
+                immediate: event.kind == 'agent.message.completed',
               );
-              agentWorkspaceSetLocalizedStatusMessage(
-                'Receiving the ${agent.label} reply…',
-                'Receiving the ${agent.label} reply…',
-              );
-              statusCaption = streamedText.length > 80
-                  ? '${streamedText.substring(0, 80)}…'
-                  : streamedText;
-              agentWorkspaceNotifyStateChanged();
             }
           } else if (event.kind == 'agent.approval.needed') {
+            _flushPendingLiveReply();
             await conversationHandleNativeApprovalNeeded(
               agentId: agent.target,
               event: event,
@@ -341,6 +530,7 @@ mixin AgentConversationMessageController
               event.kind == 'dispatch.turn.failed') {
             final raw = Map<String, dynamic>.from(event.payload);
             final ok = raw['ok'] == true;
+            publishLifecycle(ok ? 'completed' : 'failed');
             final nested = raw['error'];
             final rawCode = nested is Map
                 ? (nested['code'] ?? '')
@@ -356,14 +546,61 @@ mixin AgentConversationMessageController
                   : (nested is Map ? (nested['message'] ?? '') : '').toString(),
               raw: raw,
             );
+            if (ok && streamedText.trim().isEmpty) {
+              final terminalText = (raw['text'] ?? '').toString().trim();
+              if (terminalText.isNotEmpty) {
+                streamedText = terminalText;
+                _queueLiveReplyPublish(
+                  agentId: conversationOwnerAgentId,
+                  turnId: liveTurnId,
+                  text: streamedText,
+                  participantAgentId: agent.target,
+                  participantLabel: queuedTurn.participantLabel,
+                  participantRole: queuedTurn.participantRole,
+                  immediate: true,
+                );
+              }
+            }
+            if (!ok) {
+              // A bounded driver failure must also close the live turn in the
+              // transcript; otherwise its process card spins forever.
+              final failedTurn = turn;
+              final failureText = failedTurn.errorMessage.trim().isNotEmpty
+                  ? failedTurn.errorMessage.trim()
+                  : failedTurn.failureCode;
+              conversationAppendLiveProcessEvent(
+                agentId: conversationOwnerAgentId,
+                turnId: liveTurnId,
+                participantAgentId: agent.target,
+                participantLabel: queuedTurn.participantLabel,
+                participantRole: queuedTurn.participantRole,
+                event: AgentDispatchEvent(
+                  kind: 'dispatch.turn.failed',
+                  sessionId: event.sessionId,
+                  turnId: event.turnId,
+                  payload: <String, dynamic>{
+                    'text': failedTurn.status.trim().isNotEmpty
+                        ? '$failureText (${failedTurn.status.trim()})'
+                        : failureText,
+                  },
+                ),
+              );
+              agentWorkspaceNotifyLiveConversationChanged();
+            }
           } else {
+            _flushPendingLiveReply();
             conversationAppendLiveProcessEvent(
-              agentId: agent.target,
+              agentId: conversationOwnerAgentId,
               turnId: liveTurnId,
               event: event,
+              participantAgentId: agent.target,
+              participantLabel: queuedTurn.participantLabel,
+              participantRole: queuedTurn.participantRole,
             );
+            agentWorkspaceNotifyLiveConversationChanged();
           }
         }
+        _flushPendingLiveReply();
         result =
             (turn ??
                     AgentDispatchTurnResult(
@@ -451,8 +688,9 @@ mixin AgentConversationMessageController
         }
       }
       if (result['ok'] != true) {
+        publishLifecycle('failed');
         final clientError = ConversationRuntimeResultPolicy.clientError(result);
-        lastError = clientError.code.wireName;
+        lastError = ConversationRuntimeResultPolicy.surfacedFailureCode(result);
         recordConversationTabSendOutcome(
           agentId: agent.target,
           ok: false,
@@ -471,6 +709,7 @@ mixin AgentConversationMessageController
         statusCaption = 'Agent chat';
         return;
       }
+      publishLifecycle('completed');
       if (sendThroughMobileRelay) {
         final receivedAt = DateTime.now().toUtc().toIso8601String();
         appendRelayConversationMessages(
@@ -495,35 +734,65 @@ mixin AgentConversationMessageController
         // The streamed turn is authoritative for immediate interaction. Keep
         // it selected and usable, then reconcile provider history in the
         // background once the runtime has finished persisting its transcript.
-        conversationCommitTurnBoundNativeReadback(
-          agentId: agent.target,
+        final projectionSaved = await conversationCommitTurnBoundNativeReadback(
+          agentId: conversationOwnerAgentId,
           nativeSessionId: returnedSessionId,
-          messages: liveConversationMessagesByAgent[agent.target] ?? const [],
+          messages:
+              liveConversationMessagesByAgent[conversationOwnerAgentId] ??
+              const [],
           mergeWithSelectedSession: sessionId.isNotEmpty,
+          workingDirectory: workingDirectory,
+          localSessionId: orchestrationOwned
+              ? selectedSession?.id.trim() ?? ''
+              : '',
+          locallyOwned: orchestrationOwned,
         );
+        final committedLocalSessionId = orchestrationOwned
+            ? selectedConversationSessionId.trim()
+            : '';
+        if (!projectionSaved) {
+          agentWorkspaceSetLocalizedStatusMessage(
+            '消息已发送，但本地会话记录保存失败。',
+            'The message was sent, but its local conversation record could not be saved.',
+          );
+        }
         finishNewConversationDraft(
-          agent.target,
+          conversationOwnerAgentId,
           queuedTurn.newConversationDraftToken,
         );
-        unawaited(
-          reloadSelectedConversationSessionsAfterSend(
-            agent.target,
-            preferredNativeSessionId: returnedSessionId,
-          ),
-        );
-        newConversationWorkingDirectories = {
-          ...newConversationWorkingDirectories,
-        }..remove(agent.target);
+        if (orchestrationOwned && committedLocalSessionId.isNotEmpty) {
+          unawaited(
+            reloadDualConversationSessionsAfterSend(
+              ownerAgentId: conversationOwnerAgentId,
+              localSessionId: committedLocalSessionId,
+              nativeAgentId: agent.target,
+              nativeSessionId: returnedSessionId,
+              nativeAgentLabel: queuedTurn.participantLabel,
+            ),
+          );
+        } else {
+          unawaited(
+            reloadSelectedConversationSessionsAfterSend(
+              agent.target,
+              preferredNativeSessionId: returnedSessionId,
+            ),
+          );
+        }
+        newConversationWorkingDirectories =
+            {...newConversationWorkingDirectories}
+              ..remove(agent.target)
+              ..remove(conversationOwnerAgentId);
       } else {
         finishNewConversationDraft(
-          agent.target,
+          conversationOwnerAgentId,
           queuedTurn.newConversationDraftToken,
         );
-        conversationClearLiveProjection(agent.target);
+        conversationClearLiveProjection(conversationOwnerAgentId);
       }
       statusCaption = 'Agent chat';
       completedSuccessfully = true;
     } on AgentDispatchStreamException catch (error) {
+      publishLifecycle('failed');
       lastError = 'native_agent_${error.failureCode}';
       recordConversationTabSendOutcome(
         agentId: agent.target,
@@ -536,6 +805,7 @@ mixin AgentConversationMessageController
       );
       statusCaption = 'Agent chat';
     } catch (_) {
+      publishLifecycle('failed');
       lastError = 'native_agent_transport_failed';
       recordConversationTabSendOutcome(
         agentId: agent.target,
@@ -548,10 +818,12 @@ mixin AgentConversationMessageController
       );
       statusCaption = 'Agent chat';
     } finally {
+      _flushPendingLiveReply();
       isSendingConversationMessage = false;
       sendingConversationAgentId = '';
       sendingConversationSessionId = '';
       sendingConversationNativeSessionId = '';
+      sendingConversationTurnId = '';
       if (!agentWorkspaceDisposed) {
         agentWorkspaceNotifyConversationStructureChanged();
         agentWorkspaceNotifyStateChanged();
@@ -565,6 +837,75 @@ mixin AgentConversationMessageController
         conversationTurnQueue.clear();
       }
     }
+  }
+
+  void _queueLiveReplyPublish({
+    required String agentId,
+    required String turnId,
+    required String text,
+    String participantAgentId = '',
+    String participantLabel = '',
+    String participantRole = '',
+    bool immediate = false,
+  }) {
+    if (pendingConversationLiveReplyText.isNotEmpty &&
+        (pendingConversationLiveReplyAgentId != agentId ||
+            pendingConversationLiveReplyTurnId != turnId)) {
+      _flushPendingLiveReply();
+    }
+    pendingConversationLiveReplyAgentId = agentId;
+    pendingConversationLiveReplyTurnId = turnId;
+    pendingConversationLiveReplyText = text;
+    pendingConversationLiveReplyParticipantAgentId = participantAgentId;
+    pendingConversationLiveReplyParticipantLabel = participantLabel;
+    pendingConversationLiveReplyParticipantRole = participantRole;
+    if (immediate) {
+      _flushPendingLiveReply();
+      return;
+    }
+    if (conversationLiveReplyPublishTimer != null) return;
+    conversationLiveReplyPublishTimer = Timer(_liveReplyPublishInterval, () {
+      conversationLiveReplyPublishTimer = null;
+      _flushPendingLiveReply();
+    });
+  }
+
+  void _flushPendingLiveReply() {
+    conversationLiveReplyPublishTimer?.cancel();
+    conversationLiveReplyPublishTimer = null;
+    final agentId = pendingConversationLiveReplyAgentId;
+    final turnId = pendingConversationLiveReplyTurnId;
+    final text = pendingConversationLiveReplyText;
+    final participantAgentId = pendingConversationLiveReplyParticipantAgentId;
+    final participantLabel = pendingConversationLiveReplyParticipantLabel;
+    final participantRole = pendingConversationLiveReplyParticipantRole;
+    _discardPendingLiveReply();
+    if (agentWorkspaceDisposed ||
+        agentId.isEmpty ||
+        turnId.isEmpty ||
+        text.isEmpty) {
+      return;
+    }
+    conversationUpsertLiveReply(
+      agentId: agentId,
+      turnId: turnId,
+      text: text,
+      participantAgentId: participantAgentId,
+      participantLabel: participantLabel,
+      participantRole: participantRole,
+    );
+    agentWorkspaceNotifyLiveConversationChanged();
+  }
+
+  void _discardPendingLiveReply() {
+    conversationLiveReplyPublishTimer?.cancel();
+    conversationLiveReplyPublishTimer = null;
+    pendingConversationLiveReplyAgentId = '';
+    pendingConversationLiveReplyTurnId = '';
+    pendingConversationLiveReplyText = '';
+    pendingConversationLiveReplyParticipantAgentId = '';
+    pendingConversationLiveReplyParticipantLabel = '';
+    pendingConversationLiveReplyParticipantRole = '';
   }
 
   void _scheduleNextConversationTurn() {
@@ -590,22 +931,12 @@ mixin AgentConversationMessageController
         agentWorkspaceNotifyStateChanged();
         return;
       }
-      if (next.orchestration) {
-        lastError = '';
-        await sendOrchestratedConversationMessage(next.text);
-        if (lastError.isEmpty && !agentWorkspaceDisposed) {
-          _scheduleNextConversationTurn();
-        } else {
-          conversationTurnQueue.clear();
-        }
-        return;
-      }
       await _sendConversationTurn(next);
     });
   }
 
   @override
   String runtimeAdapterFailureCode(Map<String, dynamic> result) {
-    return ConversationRuntimeResultPolicy.clientError(result).code.wireName;
+    return ConversationRuntimeResultPolicy.surfacedFailureCode(result);
   }
 }

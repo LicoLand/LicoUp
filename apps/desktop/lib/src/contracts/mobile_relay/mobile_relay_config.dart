@@ -1,13 +1,11 @@
-import 'package:licoup/src/contracts/mobile_relay/mobile_relay_gateway.dart';
 import 'package:licoup/src/contracts/mobile_relay/mobile_relay_paired_device.dart';
+import 'package:licoup/src/contracts/mobile_relay/mobile_relay_station.dart';
 import 'package:licoup/src/contracts/mobile_relay/mobile_relay_trust_presentation.dart';
 
 class MobileRelayConfig {
   const MobileRelayConfig({
     required this.schemaVersion,
-    required this.defaultGatewayUrl,
-    required this.useCustomGateway,
-    required this.customGatewayUrl,
+    required this.stationBaseUrl,
     required this.pcClientId,
     required this.pcClientName,
     required this.pairingId,
@@ -24,12 +22,10 @@ class MobileRelayConfig {
     this.trustPresentation,
   });
 
-  static const currentSchemaVersion = 1;
+  static const currentSchemaVersion = 2;
 
   final int schemaVersion;
-  final String defaultGatewayUrl;
-  final bool useCustomGateway;
-  final String customGatewayUrl;
+  final String stationBaseUrl;
   final String pcClientId;
   final String pcClientName;
   final String pairingId;
@@ -44,16 +40,6 @@ class MobileRelayConfig {
   final bool mobileTokenPresent;
   final List<MobileRelayPairedDevice> pairedDevices;
   final MobileRelayTrustPresentation? trustPresentation;
-
-  String get effectiveGatewayUrl {
-    final custom = normalizeMobileRelayGatewayUrl(customGatewayUrl);
-    final configured = normalizeMobileRelayGatewayUrl(defaultGatewayUrl);
-    return useCustomGateway &&
-            custom.isNotEmpty &&
-            !mobileRelayGatewayIsEphemeralCustom(custom)
-        ? custom
-        : configured;
-  }
 
   bool get hasPairing =>
       pairingId.trim().isNotEmpty &&
@@ -86,9 +72,7 @@ class MobileRelayConfig {
     final normalizedPcClientName = (pcClientName ?? '').trim();
     return MobileRelayConfig(
       schemaVersion: currentSchemaVersion,
-      defaultGatewayUrl: '',
-      useCustomGateway: false,
-      customGatewayUrl: '',
+      stationBaseUrl: '',
       pcClientId: 'pc_$now',
       pcClientName: normalizedPcClientName.isEmpty
           ? 'LicoUp'
@@ -112,23 +96,12 @@ class MobileRelayConfig {
     String? pcClientName,
   }) {
     final defaults = MobileRelayConfig.defaults(pcClientName: pcClientName);
-    final customGatewayUrl = normalizeMobileRelayGatewayUrl(
-      (json['customGatewayUrl'] ?? '').toString(),
-    );
-    final customGatewayIsEphemeral = mobileRelayGatewayIsEphemeralCustom(
-      customGatewayUrl,
-    );
     return MobileRelayConfig(
       schemaVersion:
           (json['schemaVersion'] as num?)?.toInt() ?? currentSchemaVersion,
-      defaultGatewayUrl: normalizeMobileRelayGatewayUrl(
-        (json['defaultGatewayUrl'] ?? '').toString(),
+      stationBaseUrl: normalizeMobileRelayStationBaseUrl(
+        (json['stationBaseUrl'] ?? '').toString(),
       ),
-      useCustomGateway:
-          json['useCustomGateway'] == true &&
-          customGatewayUrl.isNotEmpty &&
-          !customGatewayIsEphemeral,
-      customGatewayUrl: customGatewayIsEphemeral ? '' : customGatewayUrl,
       pcClientId: (json['pcClientId'] ?? defaults.pcClientId).toString(),
       pcClientName: (json['pcClientName'] ?? defaults.pcClientName).toString(),
       pairingId: (json['pairingId'] ?? '').toString(),
@@ -165,9 +138,7 @@ class MobileRelayConfig {
   }
 
   MobileRelayConfig copyWith({
-    String? defaultGatewayUrl,
-    bool? useCustomGateway,
-    String? customGatewayUrl,
+    String? stationBaseUrl,
     String? pcClientId,
     String? pcClientName,
     String? pairingId,
@@ -183,24 +154,11 @@ class MobileRelayConfig {
     List<MobileRelayPairedDevice>? pairedDevices,
     MobileRelayTrustPresentation? trustPresentation,
   }) {
-    final nextCustomGatewayUrl = normalizeMobileRelayGatewayUrl(
-      customGatewayUrl ?? this.customGatewayUrl,
-    );
-    final nextCustomGatewayIsEphemeral = mobileRelayGatewayIsEphemeralCustom(
-      nextCustomGatewayUrl,
-    );
     return MobileRelayConfig(
       schemaVersion: schemaVersion,
-      defaultGatewayUrl: normalizeMobileRelayGatewayUrl(
-        defaultGatewayUrl ?? this.defaultGatewayUrl,
+      stationBaseUrl: normalizeMobileRelayStationBaseUrl(
+        stationBaseUrl ?? this.stationBaseUrl,
       ),
-      useCustomGateway:
-          (useCustomGateway ?? this.useCustomGateway) &&
-          nextCustomGatewayUrl.isNotEmpty &&
-          !nextCustomGatewayIsEphemeral,
-      customGatewayUrl: nextCustomGatewayIsEphemeral
-          ? ''
-          : nextCustomGatewayUrl,
       pcClientId: pcClientId ?? this.pcClientId,
       pcClientName: pcClientName ?? this.pcClientName,
       pairingId: pairingId ?? this.pairingId,
@@ -238,7 +196,7 @@ class MobileRelayConfig {
         pairingId: pairingId,
         mobileToken: mobileToken,
         credentialPresent: mobileTokenPresent || mobileToken.trim().isNotEmpty,
-        gatewayUrl: effectiveGatewayUrl,
+        stationBaseUrl: stationBaseUrl,
       ),
     ];
   }

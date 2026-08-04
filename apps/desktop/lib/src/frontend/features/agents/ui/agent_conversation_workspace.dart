@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 
 import 'package:licoup/src/application/controller/client_controller.dart';
@@ -7,6 +8,7 @@ import 'package:licoup/src/application/features/layout/layout_state_store.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/contracts/presentation/layout_state_namespace.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
+import 'package:licoup/src/frontend/layout/layout_agents_strategy.dart';
 import 'package:licoup/src/frontend/layout/layout_destination_presentation.dart';
 import 'package:licoup/src/frontend/layout/layout_palette.dart';
 import 'package:licoup/src/frontend/layout/layout_scope.dart';
@@ -17,8 +19,11 @@ import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_compos
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_layout_metrics.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_message_display.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_session_presentation.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_display_names.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_orchestration_policy_controls.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_workspace_sidebar.dart';
+import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_contact_list.dart';
+import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_conversation_header.dart';
 import 'package:licoup/src/frontend/shared/platform/client_platform.dart';
 import 'package:licoup/src/frontend/features/agents/ui/history_session_panel.dart';
 import 'package:licoup/src/frontend/shared/ui/panel_frame.dart';
@@ -59,6 +64,9 @@ class _AgentConversationWorkspaceState
     widget.controller.activeConversationListenable.addListener(
       _handleControllerChanged,
     );
+    widget.controller.liveConversationListenable.addListener(
+      _handleControllerChanged,
+    );
   }
 
   @override
@@ -74,11 +82,17 @@ class _AgentConversationWorkspaceState
     oldWidget.controller.activeConversationListenable.removeListener(
       _handleControllerChanged,
     );
+    oldWidget.controller.liveConversationListenable.removeListener(
+      _handleControllerChanged,
+    );
     widget.controller.addListener(_handleControllerChanged);
     widget.controller.conversationStructureListenable.addListener(
       _handleControllerChanged,
     );
     widget.controller.activeConversationListenable.addListener(
+      _handleControllerChanged,
+    );
+    widget.controller.liveConversationListenable.addListener(
       _handleControllerChanged,
     );
   }
@@ -90,6 +104,9 @@ class _AgentConversationWorkspaceState
       _handleControllerChanged,
     );
     widget.controller.activeConversationListenable.removeListener(
+      _handleControllerChanged,
+    );
+    widget.controller.liveConversationListenable.removeListener(
       _handleControllerChanged,
     );
     super.dispose();
@@ -201,6 +218,35 @@ class _ConversationWorkspaceBodyState
     );
   }
 
+  Future<void> _chooseWorkingDirectory({
+    required ClientController controller,
+    required String agentId,
+    required String draftToken,
+    required String currentDirectory,
+  }) async {
+    final selected = await getDirectoryPath(
+      initialDirectory: currentDirectory.trim().isEmpty
+          ? null
+          : currentDirectory.trim(),
+    );
+    if (!mounted ||
+        selected == null ||
+        selected.trim().isEmpty ||
+        controller.selectedConversationAgentId != agentId ||
+        controller.newConversationDraftTokenFor(agentId) != draftToken) {
+      return;
+    }
+    controller.selectNewConversationWorkingDirectory(selected);
+  }
+
+  Future<void> _pickConversationAttachments() async {
+    const imageTypes = XTypeGroup(
+      label: 'Images',
+      extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp'],
+    );
+    await openFiles(acceptedTypeGroups: [imageTypes]);
+  }
+
   Widget _activeConversationPane({
     required ClientController controller,
     required TargetCandidate target,
@@ -208,14 +254,32 @@ class _ConversationWorkspaceBodyState
     bool framed = true,
     bool showSidebarToggle = true,
   }) {
+    final strategy = LayoutAgentsStrategyScope.maybeOf(context);
     final orchestrationSelected =
         controller.selectedConversationIsOrchestration;
+    final managerTarget = orchestrationSelected
+        ? controller.agentOrchestrationManagerTarget
+        : null;
+    final configuredManagerTarget = orchestrationSelected
+        ? controller.agentOrchestrationConfiguredManagerTarget
+        : null;
+    final configuredManagerId = orchestrationSelected
+        ? controller.effectiveAgentOrchestrationPolicy.commanderAgentId
+        : '';
+    final showWorkingDirectory =
+        !orchestrationSelected &&
+        !controller.mobileClientRuntimePlatform &&
+        !target.hasValidVirtualMachineConnection;
+    final workingDirectorySelectable =
+        showWorkingDirectory &&
+        controller.canSelectNewConversationWorkingDirectory;
     final composerEnabled = orchestrationSelected
-        ? controller.agentOrchestrationPolicyConfigured &&
-              controller.orchestrationAvailableTargets.isNotEmpty
+        ? managerTarget != null
         : target.canRelayRuntime;
     final gateReasonCode = orchestrationSelected
-        ? (!controller.agentOrchestrationPolicyConfigured
+        ? (composerEnabled
+              ? controller.conversationSendErrorFor(managerTarget!.target)
+              : !controller.agentOrchestrationPolicyConfigured
               ? 'orchestration_policy_required'
               : 'orchestration_targets_unavailable')
         : (composerEnabled
@@ -259,6 +323,13 @@ class _ConversationWorkspaceBodyState
       selectedReasoningEffort: orchestrationSelected
           ? ''
           : controller.selectedConversationReasoningEffort,
+      showWorkingDirectory: showWorkingDirectory,
+      workingDirectory: showWorkingDirectory
+          ? controller.selectedConversationWorkingDirectory
+          : '',
+      workingDirectorySelectable: workingDirectorySelectable,
+      sendAuthorizeActive: controller.isAuthorizingConversationRuntime,
+      participantTargets: controller.scannedTargets,
     );
     final onUnblockSend = switch (gateReasonCode) {
       'orchestration_policy_required' => () => unawaited(
@@ -269,6 +340,9 @@ class _ConversationWorkspaceBodyState
       'runtime_message_send_unavailable' => () => unawaited(
         controller.scanTargets(),
       ),
+      'antigravity_auth_required' => () => unawaited(
+        controller.authorizeSelectedConversationRuntime(),
+      ),
       _ => null,
     };
     final actions = AgentConversationPaneActions(
@@ -278,6 +352,22 @@ class _ConversationWorkspaceBodyState
       onSend: controller.sendConversationMessage,
       onSelectSession: controller.selectConversationSession,
       onUnblockSend: onUnblockSend,
+      onChooseWorkingDirectory: workingDirectorySelectable
+          ? () => unawaited(
+              _chooseWorkingDirectory(
+                controller: controller,
+                agentId: target.target,
+                draftToken: controller.selectedNewConversationDraftToken,
+                currentDirectory:
+                    controller.selectedConversationWorkingDirectory,
+              ),
+            )
+          : null,
+      onAttach:
+          strategy.messageStyle == AgentsMessageStyle.participantFlow &&
+              !controller.mobileClientRuntimePlatform
+          ? () => unawaited(_pickConversationAttachments())
+          : null,
     );
     final headerState = AgentConversationHeaderState(
       target: target,
@@ -297,30 +387,68 @@ class _ConversationWorkspaceBodyState
             ),
       showSidebarToggle: showSidebarToggle,
     );
-    final policy = controller.effectiveAgentOrchestrationPolicy;
     final policyControls = orchestrationSelected
         ? AgentOrchestrationPolicyHeaderControls(
-            policy: policy,
-            policies: List.unmodifiable(controller.agentOrchestrationPolicies),
-            policyLabel: controller.agentOrchestrationPolicyDisplayLabel,
-            onSelectPolicy: controller.selectAgentOrchestrationPolicy,
-            onEditPolicy: () => unawaited(
+            mainAgentLabel: configuredManagerTarget != null
+                ? agentConversationTargetDisplayName(configuredManagerTarget)
+                : configuredManagerId.isNotEmpty
+                ? configuredManagerId
+                : strings.notConfigured,
+            mainAgentTarget: configuredManagerTarget,
+            onEdit: () => unawaited(
               showAgentOrchestrationPolicyEditor(context, controller),
             ),
           )
         : null;
-    return AgentConversationActivePane(
+    final messaging =
+        strategy.messageStyle == AgentsMessageStyle.participantFlow;
+    final pane = AgentConversationActivePane(
       state: state,
       actions: actions,
-      header: ConversationPaneHeader(
-        state: headerState,
-        actions: AgentConversationHeaderActions(
-          onToggleHistory: _toggleHistoryCollapsed,
-        ),
-        orchestrationControls: policyControls,
-      ),
+      header: messaging
+          ? MessagingConversationHeader(
+              target: target,
+              session: session,
+              detailsState: state,
+              detailsActions: actions,
+              opencodeServeState: headerState.opencodeServeState,
+              switcherSessions: controller.selectedConversationSessions,
+              switcherSelectedSessionId:
+                  controller.selectedConversationSession?.id ?? '',
+              onSwitchConversation: controller.selectConversationSession,
+              onSwitchNewConversation: controller.startNewConversationSession,
+              switcherRunningFor: (candidate) {
+                final nativeId = candidate.nativeSessionId.trim();
+                final selectedSessionId =
+                    controller.selectedConversationSession?.id ?? '';
+                return controller.isSendingConversationMessage &&
+                    ((controller.sendingConversationSessionId.isNotEmpty &&
+                            candidate.id ==
+                                controller.sendingConversationSessionId) ||
+                        (controller
+                                .sendingConversationNativeSessionId
+                                .isNotEmpty &&
+                            nativeId ==
+                                controller
+                                    .sendingConversationNativeSessionId) ||
+                        (controller.sendingConversationSessionId.isEmpty &&
+                            controller
+                                .sendingConversationNativeSessionId
+                                .isEmpty &&
+                            candidate.id == selectedSessionId));
+              },
+            )
+          : ConversationPaneHeader(
+              state: headerState,
+              actions: AgentConversationHeaderActions(
+                onToggleHistory: _toggleHistoryCollapsed,
+              ),
+              orchestrationControls: policyControls,
+              strategy: strategy,
+            ),
       framed: framed,
     );
+    return pane;
   }
 
   Widget _detailForSelection({
@@ -360,19 +488,19 @@ class _ConversationWorkspaceBodyState
           final sidebarWidth = _sidebarWidth
               .clamp(agentsSidebarMinWidth, maxSidebarWidth)
               .toDouble();
-          final sidebar = AgentsWorkspaceSidebar(
+          final strategy = LayoutAgentsStrategyScope.maybeOf(context);
+          final agentTreeSidebar = AgentsWorkspaceSidebar(
             targets: widget.targets,
             sessionsByAgent: controller.conversationSessionsByAgent,
-            selectedAgentId: controller.selectedConversationAgentId,
             selectedSessionId: controller.selectedConversationSession?.id ?? '',
             activityFor: controller.conversationTabActivityFor,
-            onSelectAgent: (agentId) =>
-                unawaited(controller.selectConversationAgent(agentId)),
             onSelectSession: (agentId, sessionId) async {
               await controller.selectConversationAgent(agentId);
               controller.selectConversationSession(sessionId);
             },
             onNewConversation: controller.startNewConversationSession,
+            onPrefetchSessions: (agentId) =>
+                unawaited(controller.refreshConversationSessions(agentId)),
             onArchive: () => unawaited(
               showConversationArchiveDialog(
                 context,
@@ -381,80 +509,87 @@ class _ConversationWorkspaceBodyState
               ),
             ),
             onAddTarget: onAddTarget,
+            onRefresh: () {
+              for (final target in widget.targets) {
+                if (target.isConversationAgent) {
+                  unawaited(controller.refreshConversationSessions(target.id));
+                }
+              }
+            },
+            refreshing: controller.isLoadingConversations,
             allowManualTargetActions: allowManualTargetActions,
             scanning: widget.scanning,
             adding: widget.adding,
           );
+          final sidebar = switch (strategy.sidebarStyle) {
+            AgentsSidebarStyle.agentTree => agentTreeSidebar,
+            AgentsSidebarStyle.flatRecencyList => MessagingContactList(
+              targets: widget.targets,
+              sessionsByAgent: controller.conversationSessionsByAgent,
+              selectedAgentId: controller.selectedConversationAgentId,
+              activityFor: controller.conversationTabActivityFor,
+              onSelectAgent: (agentId) => unawaited(() async {
+                if (agentId == controller.selectedConversationAgentId) {
+                  // Tapping the active contact returns to its
+                  // new-conversation home.
+                  controller.startNewConversationSession();
+                  return;
+                }
+                await controller.selectConversationAgent(agentId);
+              }()),
+              onNewConversation: controller.startNewConversationSession,
+              onPrefetchSessions: (agentId) =>
+                  unawaited(controller.refreshConversationSessions(agentId)),
+              scanning: widget.scanning,
+              loading: controller.isLoadingConversations,
+            ),
+          };
           final detail = _detailForSelection(
             target: target,
             conversationPane: conversationPane,
           );
           final sidebarPane = Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              if (presentation.showExpandedSidebarControl)
-                Padding(
-                  padding: presentation.expandedSidebarControlPadding,
-                  child: Align(
-                    alignment: Alignment.centerRight,
-                    child: AgentsSidebarCollapseControl(
-                      key: const Key('agents-workspace-sidebar-collapse'),
-                      expanded: true,
-                      tooltip: strings.collapseAgentsSidebar,
-                      onPressed: _toggleHistoryCollapsed,
-                    ),
-                  ),
-                ),
-              Expanded(child: sidebar),
-            ],
+            children: [Expanded(child: sidebar)],
           );
-          return Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              if (_historyCollapsed && presentation.showCollapsedSidebarControl)
-                Padding(
-                  padding: presentation.collapsedSidebarControlPadding,
-                  child: Align(
-                    alignment: Alignment.topLeft,
-                    child: AgentsSidebarCollapseControl(
-                      key: const Key('agents-workspace-sidebar-expand'),
-                      expanded: false,
-                      tooltip: strings.expandAgentsSidebar,
-                      onPressed: _toggleHistoryCollapsed,
+          return presentation.frameWorkspace(
+            context,
+            key: const Key('agents-workspace-layout'),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (!_historyCollapsed)
+                  presentation.frameSidebar(
+                    context,
+                    key: const Key('agents-workspace-sidebar-card'),
+                    child: SizedBox(width: sidebarWidth, child: sidebarPane),
+                  ),
+                Expanded(
+                  child: PaneEdgeDragHandle(
+                    dragHandleKey: const Key('agents-workspace-split-divider'),
+                    width: agentsSidebarDividerWidth,
+                    enabled: !_historyCollapsed,
+                    onDragDelta: (delta) {
+                      setState(() {
+                        _sidebarWidth = (sidebarWidth + delta)
+                            .clamp(agentsSidebarMinWidth, maxSidebarWidth)
+                            .toDouble();
+                      });
+                      _writeLayoutState(
+                        LayoutStateChannels.agentsSidebar,
+                        LayoutPaneExtentState(_sidebarWidth),
+                      );
+                    },
+                    child: presentation.frameDetail(
+                      context,
+                      key: const Key('agents-workspace-detail-pane'),
+                      sidebarCollapsed: _historyCollapsed,
+                      child: detail,
                     ),
                   ),
-                )
-              else if (!_historyCollapsed)
-                presentation.frameSidebar(
-                  context,
-                  key: const Key('agents-workspace-sidebar-card'),
-                  child: SizedBox(width: sidebarWidth, child: sidebarPane),
                 ),
-              Expanded(
-                child: PaneEdgeDragHandle(
-                  dragHandleKey: const Key('agents-workspace-split-divider'),
-                  width: agentsSidebarDividerWidth,
-                  enabled: !_historyCollapsed,
-                  onDragDelta: (delta) {
-                    setState(() {
-                      _sidebarWidth = (sidebarWidth + delta)
-                          .clamp(agentsSidebarMinWidth, maxSidebarWidth)
-                          .toDouble();
-                    });
-                    _writeLayoutState(
-                      LayoutStateChannels.agentsSidebar,
-                      LayoutPaneExtentState(_sidebarWidth),
-                    );
-                  },
-                  child: presentation.frameDetail(
-                    context,
-                    key: const Key('agents-workspace-floating-card'),
-                    sidebarCollapsed: _historyCollapsed,
-                    child: detail,
-                  ),
-                ),
-              ),
-            ],
+              ],
+            ),
           );
         },
       ),

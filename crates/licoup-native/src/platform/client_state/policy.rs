@@ -21,6 +21,7 @@ pub(super) const MAX_REDACTION_DEPTH: usize = 64;
 pub(super) const MAX_REDACTION_PATHS: usize = 4_096;
 
 pub(super) const COLLECTIONS: &[&str] = &[
+    "adaptive-flywheel",
     "settings",
     "targets",
     "target-discovery-cache",

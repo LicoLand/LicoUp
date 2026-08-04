@@ -1,12 +1,16 @@
 import 'package:flutter/material.dart';
 
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_runtime_settings.dart';
+import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_conversation_overlay_glass.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/layout/layout_focus_coordinator.dart';
+import 'package:licoup/src/frontend/layout/profiles/messaging/desktop/tokens/messaging_desktop_tokens.dart';
 import 'package:licoup/src/frontend/shared/platform/client_platform.dart';
-import 'package:licoup/src/frontend/shared/ui/apple_control_metrics.dart';
 import 'package:licoup/src/frontend/shared/ui/apple_glass.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_activity_animations.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_icon_button.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 class RuntimeMessageComposer extends StatefulWidget {
@@ -25,6 +29,13 @@ class RuntimeMessageComposer extends StatefulWidget {
     required this.onDraftChanged,
     required this.onSend,
     this.defaultModel = '',
+    this.showRuntimeSettings = true,
+    this.showWorkingDirectory = false,
+    this.workingDirectory = '',
+    this.workingDirectorySelectable = false,
+    this.onChooseWorkingDirectory,
+    this.floatingMatteCapsule = false,
+    this.onAttach,
   });
 
   final String targetLabel;
@@ -40,6 +51,23 @@ class RuntimeMessageComposer extends StatefulWidget {
   final ValueChanged<String> onDraftChanged;
   final Future<bool> Function(String) onSend;
   final String defaultModel;
+
+  /// Whether the composer embeds the runtime settings bar above the input
+  /// row. Layout presentation strategies that relocate runtime settings keep
+  /// the input row and hide the bar through this port.
+  final bool showRuntimeSettings;
+  final bool showWorkingDirectory;
+  final String workingDirectory;
+  final bool workingDirectorySelectable;
+  final VoidCallback? onChooseWorkingDirectory;
+
+  /// Messaging desktop: floating matte glass capsule over the transcript
+  /// (blur + lower-transparency fill). Console keeps [AppleGlassSurface].
+  final bool floatingMatteCapsule;
+
+  /// Optional attach affordance shown as a separate overlay-glass capsule to
+  /// the left of [floatingMatteCapsule] composer fields.
+  final VoidCallback? onAttach;
 
   @override
   State<RuntimeMessageComposer> createState() => _RuntimeMessageComposerState();
@@ -128,24 +156,97 @@ class _RuntimeMessageComposerState extends State<RuntimeMessageComposer> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     final colors = context.licoColors;
     final strings = LicoStrings.of(context);
     final mobileClient = isMobileClientPlatform(context);
     final interactive = widget.enabled;
     final canSend = interactive && _hasText;
     final fieldRadius = BorderRadius.circular(
-      AppleControlMetrics.controlCornerRadius,
+      widget.floatingMatteCapsule
+          ? MessagingDesktopMetrics.conversationComposerCapsuleCornerRadius
+          : LicoRadius.composerField,
     );
+    final fieldBody = Padding(
+      padding: const EdgeInsets.all(LicoRadius.composerInset),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(8, 6, 4, 6),
+              child: TextField(
+                controller: _controller,
+                focusNode: _focusNode,
+                minLines: 1,
+                maxLines: 4,
+                textInputAction: TextInputAction.send,
+                onSubmitted: (_) => _submit(),
+                enabled: interactive,
+                style: theme.textTheme.bodyLarge,
+                decoration: InputDecoration(
+                  hintText: interactive
+                      ? strings.messageTarget(widget.targetLabel)
+                      : null,
+                  hintStyle: theme.textTheme.bodyLarge?.copyWith(
+                    color: colors.textDisabled,
+                  ),
+                  isDense: true,
+                  filled: false,
+                  border: InputBorder.none,
+                  enabledBorder: InputBorder.none,
+                  focusedBorder: InputBorder.none,
+                  disabledBorder: InputBorder.none,
+                  contentPadding: EdgeInsets.zero,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: LicoContentSpacing.compact),
+          _ComposerSendButton(
+            canSend: canSend,
+            busy: widget.busy,
+            onTap: canSend ? _submit : null,
+            tooltip: strings.send,
+          ),
+        ],
+      ),
+    );
+    final field = widget.floatingMatteCapsule
+        ? Material(
+            key: const Key('agent-conversation-composer-field'),
+            color: Colors.transparent,
+            child: MessagingConversationOverlayGlass(
+              borderRadius: fieldRadius,
+              focused: _focused && interactive,
+              child: fieldBody,
+            ),
+          )
+        : AppleGlassSurface(
+            key: const Key('agent-conversation-composer-field'),
+            borderRadius: fieldRadius,
+            focused: _focused && interactive,
+            child: fieldBody,
+          );
     return Padding(
       padding: mobileClient
           ? const EdgeInsets.fromLTRB(12, 10, 12, 12)
+          : widget.floatingMatteCapsule
+          ? const EdgeInsets.fromLTRB(
+              MessagingDesktopMetrics.conversationComposerCapsuleInsetH,
+              8,
+              MessagingDesktopMetrics.conversationComposerCapsuleInsetH,
+              MessagingDesktopMetrics.conversationComposerCapsuleInsetV,
+            )
           : const EdgeInsets.fromLTRB(12, 8, 12, 10),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          if (widget.modelOptions.isNotEmpty ||
-              widget.reasoningEffortOptions.isNotEmpty) ...[
+          if (widget.showRuntimeSettings &&
+              (widget.modelOptions.isNotEmpty ||
+                  widget.reasoningEffortOptions.isNotEmpty ||
+                  widget.showWorkingDirectory)) ...[
             ConversationRuntimeSettingsBar(
               enabled: interactive,
               modelOptions: widget.modelOptions,
@@ -155,83 +256,28 @@ class _RuntimeMessageComposerState extends State<RuntimeMessageComposer> {
               onModelChanged: widget.onModelChanged,
               onReasoningEffortChanged: widget.onReasoningEffortChanged,
               defaultModel: widget.defaultModel,
+              showWorkingDirectory: widget.showWorkingDirectory,
+              workingDirectory: widget.workingDirectory,
+              workingDirectorySelectable: widget.workingDirectorySelectable,
+              onChooseWorkingDirectory: widget.onChooseWorkingDirectory,
             ),
             const SizedBox(height: 8),
           ],
           Row(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              Expanded(
-                child: LicoPerimeterPulse(
-                  key: const Key('agent-conversation-composer-running-border'),
-                  enabled: widget.busy,
-                  borderRadius: fieldRadius,
-                  color: colors.primaryStrong,
-                  child: AppleGlassSurface(
-                    key: const Key('agent-conversation-composer-field'),
-                    borderRadius: fieldRadius,
-                    focused: _focused && interactive,
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(12, 4, 4, 4),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          Expanded(
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(vertical: 4),
-                              child: TextField(
-                                controller: _controller,
-                                focusNode: _focusNode,
-                                minLines: 1,
-                                maxLines: 4,
-                                textInputAction: TextInputAction.send,
-                                onSubmitted: (_) => _submit(),
-                                enabled: interactive,
-                                cursorColor: colors.info,
-                                cursorWidth: 1.2,
-                                style: TextStyle(
-                                  color: colors.text.withAlpha(235),
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w400,
-                                  letterSpacing: -0.08,
-                                  height: 1.35,
-                                ),
-                                decoration: InputDecoration(
-                                  hintText: interactive
-                                      ? strings.messageTarget(
-                                          widget.targetLabel,
-                                        )
-                                      : null,
-                                  hintStyle: TextStyle(
-                                    color: colors.textMuted.withAlpha(150),
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w400,
-                                    letterSpacing: -0.08,
-                                  ),
-                                  isDense: true,
-                                  filled: false,
-                                  border: InputBorder.none,
-                                  enabledBorder: InputBorder.none,
-                                  focusedBorder: InputBorder.none,
-                                  disabledBorder: InputBorder.none,
-                                  contentPadding: EdgeInsets.zero,
-                                ),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 6),
-                          _ComposerSendButton(
-                            canSend: canSend,
-                            busy: widget.busy,
-                            onTap: canSend ? _submit : null,
-                            tooltip: strings.send,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
+              if (widget.floatingMatteCapsule && widget.onAttach != null) ...[
+                _ComposerAttachCapsuleButton(
+                  enabled: interactive,
+                  tooltip: strings.attachments,
+                  onPressed: widget.onAttach,
                 ),
-              ),
+                const SizedBox(
+                  width: MessagingDesktopMetrics
+                      .conversationHeaderCapsuleButtonGap,
+                ),
+              ],
+              Expanded(child: field),
             ],
           ),
         ],
@@ -240,9 +286,67 @@ class _RuntimeMessageComposerState extends State<RuntimeMessageComposer> {
   }
 }
 
-/// The composer's embedded send affordance: a quiet ghost while idle and a
-/// solid brand circle the moment a real message can go out — the one
-/// control that must always read as immediately usable.
+/// External attach control for messaging desktop floating composer rows.
+/// Matches header capsule icon buttons — square overlay glass, shared radius.
+class _ComposerAttachCapsuleButton extends StatelessWidget {
+  const _ComposerAttachCapsuleButton({
+    required this.enabled,
+    required this.tooltip,
+    required this.onPressed,
+  });
+
+  final bool enabled;
+  final String tooltip;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.licoColors;
+    final radius = BorderRadius.circular(
+      MessagingDesktopMetrics.conversationComposerCapsuleCornerRadius,
+    );
+    return Tooltip(
+      message: tooltip,
+      waitDuration: const Duration(milliseconds: 400),
+      child: Semantics(
+        button: true,
+        enabled: enabled,
+        label: tooltip,
+        child: SizedBox.square(
+          dimension:
+              MessagingDesktopMetrics.conversationHeaderCapsuleButtonExtent,
+          child: MessagingConversationOverlayGlass(
+            borderRadius: radius,
+            child: InkWell(
+              key: const Key('agent-conversation-composer-attach'),
+              onTap: enabled ? onPressed : null,
+              customBorder: RoundedRectangleBorder(borderRadius: radius),
+              hoverColor: colors.isDark
+                  ? Colors.white.withAlpha(10)
+                  : Colors.black.withAlpha(12),
+              child: Icon(
+                Icons.attach_file_rounded,
+                size: 19,
+                color: enabled
+                    ? colors.textMuted
+                    : colors.textMuted.withAlpha(120),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The composer's embedded send affordance.
+///
+/// Quiet while there is nothing to send, brand-filled the moment a real
+/// message can go out. Because lemon appears only in the sendable state, the
+/// brand color stays scarce in a surface the user stares at all day.
+///
+/// The control is a perfect circle — a deliberate accent inside the rounded
+/// field capsule, not a concentric nested square.
 class _ComposerSendButton extends StatelessWidget {
   const _ComposerSendButton({
     required this.canSend,
@@ -259,42 +363,20 @@ class _ComposerSendButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.licoColors;
-    return Tooltip(
-      message: tooltip,
-      waitDuration: const Duration(milliseconds: 400),
-      child: Material(
-        color: Colors.transparent,
-        shape: const CircleBorder(),
-        child: InkWell(
-          key: const Key('agent-conversation-composer-send'),
-          customBorder: const CircleBorder(),
-          onTap: onTap,
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 140),
-            width: 30,
-            height: 30,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: canSend ? colors.primary : colors.surfaceLow,
-            ),
-            child: Center(
-              child: busy
-                  ? LicoSpinningRefreshIcon(
-                      size: 14,
-                      strokeWidth: 1.8,
-                      color: canSend ? colors.textOnPrimary : colors.textMuted,
-                    )
-                  : Icon(
-                      Icons.arrow_upward_rounded,
-                      size: 16,
-                      color: canSend
-                          ? colors.textOnPrimary
-                          : colors.textMuted.withAlpha(140),
-                    ),
-            ),
-          ),
-        ),
-      ),
+    return LicoIconButton(
+      key: const Key('agent-conversation-composer-send'),
+      tooltip: tooltip,
+      onPressed: onTap,
+      size: LicoIconButtonSize.medium,
+      shape: LicoIconButtonShape.circle,
+      tone: canSend ? LicoIconButtonTone.brand : LicoIconButtonTone.ghost,
+      icon: busy
+          ? LicoSpinningRefreshIcon(
+              size: 15,
+              strokeWidth: 1.8,
+              color: canSend ? colors.textOnPrimary : colors.textMuted,
+            )
+          : const Icon(Icons.arrow_upward_rounded),
     );
   }
 }
@@ -306,6 +388,7 @@ class InactiveRuntimeMessageComposer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     final colors = context.licoColors;
     final strings = LicoStrings.of(context);
     return Padding(
@@ -315,10 +398,7 @@ class InactiveRuntimeMessageComposer extends StatelessWidget {
         children: [
           Expanded(
             child: AppleGlassSurface(
-              borderRadius: BorderRadius.circular(
-                AppleControlMetrics.controlCornerRadius,
-              ),
-              fillAlpha: 14,
+              borderRadius: BorderRadius.circular(LicoRadius.composerField),
               child: Padding(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 12,
@@ -326,11 +406,8 @@ class InactiveRuntimeMessageComposer extends StatelessWidget {
                 ),
                 child: Text(
                   strings.messageTarget(targetLabel),
-                  style: TextStyle(
-                    color: colors.textMuted.withAlpha(140),
-                    fontSize: 14,
-                    fontWeight: FontWeight.w400,
-                    letterSpacing: -0.08,
+                  style: theme.textTheme.bodyLarge?.copyWith(
+                    color: colors.textDisabled,
                   ),
                 ),
               ),

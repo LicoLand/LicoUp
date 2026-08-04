@@ -26,7 +26,12 @@ pub(super) fn snapshot_root(root: &Path) -> PathBuf {
 }
 
 pub(super) fn collection_path(root: &Path, collection: &str) -> PathBuf {
-    root.join(format!("{collection}.json"))
+    let extension = if collection == "adaptive-flywheel" {
+        "toml"
+    } else {
+        "json"
+    };
+    root.join(format!("{collection}.{extension}"))
 }
 
 pub(super) fn snapshot_path(root: &Path, snapshot_id: &str) -> Result<PathBuf> {

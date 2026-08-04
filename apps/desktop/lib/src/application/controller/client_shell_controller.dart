@@ -44,6 +44,17 @@ final class ClientShellController extends ChangeNotifier {
   String get appearancePresetId => _appearancePresetId;
   List<AppearancePresetConfig> get appearancePresetConfigs =>
       _appearancePresetConfigs;
+
+  /// The presets offered as picker choices: fixed light and dark themes only.
+  /// System-following and resolution-only built-ins stay out of the picker.
+  List<AppearancePresetConfig> get selectableAppearancePresetConfigs =>
+      _appearancePresetConfigs
+          .where(
+            (config) =>
+                !AppearancePresetIds.resolutionOnly.contains(config.id) &&
+                config.mode != AppearancePresetMode.system,
+          )
+          .toList(growable: false);
   String get appearancePresetDirectoryPath => _appearancePresetDirectoryPath;
   List<String> get appearancePresetLoadErrors => _appearancePresetLoadErrors;
   String get localePreference => _localePreference;

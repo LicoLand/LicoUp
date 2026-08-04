@@ -161,7 +161,8 @@ void main() {
       expect(controller.projection.phase, ClientLifecyclePhase.failed);
       expect(controller.projection.initialized, isFalse);
       expect(reports.single.code, 'client_initialize_failed');
-      expect(reports.single.stepId, 'sequential_bootstrap');
+      expect(reports.single.stepId, 'unknown_background_step');
+      expect(controller.lastFailureStepId, 'unknown_background_step');
       expect(reports.toString(), isNot(contains('private runtime detail')));
 
       await controller.initialize(

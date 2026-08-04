@@ -1,16 +1,24 @@
 use base64::{Engine as _, engine::general_purpose};
-use serde_json::{Value, json};
+use serde_json::Value;
 
 pub(super) fn native_envelope_fixture() -> Value {
-    json!({
-        "schema": crate::core::secure_mesh_relay_envelope::SECURE_MESH_RELAY_ENVELOPE_SCHEMA,
-        "deliveryId": general_purpose::URL_SAFE_NO_PAD.encode([1u8; 24]),
-        "mailboxToken": general_purpose::URL_SAFE_NO_PAD.encode([2u8; 32]),
-        "encryptedHeader": general_purpose::URL_SAFE_NO_PAD.encode(vec![
-            3u8;
-            crate::core::secure_mesh_relay_envelope::SECURE_MESH_ENCRYPTED_HEADER_BUCKET_BYTES
-        ]),
-        "ciphertextBucket": 256,
-        "ciphertext": general_purpose::URL_SAFE_NO_PAD.encode([4u8; 256])
-    })
+    let draft = crate::core::licoarc_relay::LicoArcRelayEnvelopeDraft::from_contract_fields(
+        &general_purpose::URL_SAFE_NO_PAD.encode([2u8; 32]),
+        &general_purpose::URL_SAFE_NO_PAD.encode([1u8; 24]),
+        "2030-01-01T00:00:00Z",
+        256,
+    )
+    .expect("synthetic Lico Arc fixture metadata is valid");
+    let envelope = draft
+        .finish(
+            &[3u8; crate::core::licoarc_relay::LICOARC_ENCRYPTED_HEADER_BYTES],
+            &[4u8; 256],
+        )
+        .expect("synthetic Lico Arc fixture carrier is valid");
+    serde_json::from_str(
+        &envelope
+            .to_json()
+            .expect("synthetic Lico Arc fixture serializes"),
+    )
+    .expect("synthetic Lico Arc fixture JSON parses")
 }

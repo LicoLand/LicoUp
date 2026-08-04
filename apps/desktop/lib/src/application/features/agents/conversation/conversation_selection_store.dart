@@ -1,3 +1,4 @@
+import 'package:licoup/src/application/features/agents/orchestration/orchestration_target_catalog.dart';
 import 'package:licoup/src/application/features/agents/workspace/agent_workspace_coordinator.dart';
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
 import 'package:licoup/src/contracts/agent_conversation_tab_activity.dart';
@@ -119,6 +120,15 @@ mixin ConversationSelectionStore on AgentWorkspaceCoordinator {
   String conversationSendErrorFor(String agentId) =>
       (conversationSendErrorsByAgent[agentId.trim()] ?? '').trim();
 
+  @override
+  void clearConversationSendError(String agentId) {
+    final normalized = agentId.trim();
+    if (normalized.isEmpty) {
+      return;
+    }
+    _setConversationSendError(normalized, '');
+  }
+
   void _setConversationSendError(String agentId, String errorCode) {
     final next = <String, String>{...conversationSendErrorsByAgent};
     final normalizedCode = errorCode.trim();
@@ -161,26 +171,23 @@ mixin ConversationSelectionStore on AgentWorkspaceCoordinator {
     ]);
   }
 
+  /// The model the conversation actually runs on: the explicit selection, or
+  /// the agent's own discovered default when the selection is left on Auto.
+  String get selectedConversationEffectiveModel {
+    final selected = selectedConversationModel;
+    return selected.isNotEmpty ? selected : selectedConversationDefaultModel;
+  }
+
+  /// Reasoning-effort catalog for the effective model. Model and effort are
+  /// independent first-class runtime controls, so an Auto model selection still
+  /// resolves the efforts the agent would actually run with.
   List<String> get selectedConversationReasoningEffortOptions {
     final agent = selectedConversationAgent;
     if (agent == null) return const [];
-    final models = agent.modelCatalog['models'];
-    if (models is! List) return const [];
-    for (final model in models) {
-      if (model is! Map ||
-          (model['name'] ?? '').toString().trim() !=
-              selectedConversationModel) {
-        continue;
-      }
-      final efforts = model['reasoningEfforts'];
-      if (efforts is! List) return const [];
-      return List<String>.unmodifiable(
-        efforts
-            .map((effort) => effort.toString().trim())
-            .where((effort) => effort.isNotEmpty),
-      );
-    }
-    return const [];
+    return agentOrchestrationReasoningEffortsForModel(
+      agent,
+      selectedConversationEffectiveModel,
+    );
   }
 
   void selectConversationModel(String model) {
