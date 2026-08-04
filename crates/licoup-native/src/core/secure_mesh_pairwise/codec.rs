@@ -30,8 +30,8 @@ pub struct SecureMeshPairwiseMessage {
 pub(super) struct SecureMeshPairwisePrivateRelayHeader {
     pub(super) protocol_version: String,
     pub(super) cipher_suite: String,
-    pub(super) delivery_id: String,
-    pub(super) mailbox_token: String,
+    pub(super) envelope_id: String,
+    pub(super) mailbox_id: String,
     pub(super) message_id: String,
     pub(super) session_id: String,
     pub(super) sender_endpoint_id: String,

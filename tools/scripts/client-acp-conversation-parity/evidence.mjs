@@ -71,6 +71,7 @@ export function conditionalChecksFromMatrix(matrix, probes = {}) {
   const supportedStreaming = matrix?.streaming === true;
   const supportedApprovals = matrix?.approvals === true;
   const supportedMultimodal = matrix?.multimodal === true;
+  const supportedInterruptSteer = matrix?.interruptSteer === true;
   const supportedUsage = matrix?.usageStatus === true;
   const supportedStructured = matrix?.structuredEvents === true;
   // Supported conditionals stay unverified until this harness records a direct
@@ -94,7 +95,12 @@ export function conditionalChecksFromMatrix(matrix, probes = {}) {
     "C-04": supportedMultimodal
       ? { nativeSupport: "supported", result: "unverified" }
       : { nativeSupport: "unsupported", result: "unsupported-by-native" },
-    "C-05": { nativeSupport: "unsupported", result: "unsupported-by-native" },
+    "C-05": supportedInterruptSteer
+      ? {
+        nativeSupport: "supported",
+        result: conditionalResultForSupported(probes.interruptSteer),
+      }
+      : { nativeSupport: "unsupported", result: "unsupported-by-native" },
     "C-06": supportedUsage
       ? { nativeSupport: "supported", result: "unverified" }
       : { nativeSupport: "unsupported", result: "unsupported-by-native" },
@@ -195,6 +201,9 @@ export function writeReleaseUiAdapterEvidence(aggregate, context) {
     structured: aggregate.structuredProven === true
       ? true
       : (aggregate.structuredProven === false ? false : undefined),
+    interruptSteer: aggregate.interruptSteerProven === true
+      ? true
+      : (aggregate.interruptSteerProven === false ? false : undefined),
   });
   const conditionalChecks = Object.fromEntries(
     CONDITIONAL_CHECK_IDS.map((id) => [id, conditionalRaw[id]]),

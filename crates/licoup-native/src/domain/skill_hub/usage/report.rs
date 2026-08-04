@@ -21,6 +21,8 @@ pub(super) fn report(store: &ClientStateStore, params: &Value) -> Result<Value> 
     let mut by_agent = BTreeMap::<String, u64>::new();
     let mut by_skill = BTreeMap::<String, u64>::new();
     let mut by_day = BTreeMap::<String, u64>::new();
+    let mut all_time_total = 0_u64;
+    let mut totals_by_skill = BTreeMap::<String, u64>::new();
     for item in document
         .get("items")
         .and_then(Value::as_array)
@@ -30,18 +32,24 @@ pub(super) fn report(store: &ClientStateStore, params: &Value) -> Result<Value> 
         let Some((agent_id, skill_id, day_text, count)) = report_item(item) else {
             continue;
         };
-        let Ok(day) = parse_date(day_text) else {
-            continue;
-        };
-        if day < from
-            || day > to
-            || agent_filter
-                .as_deref()
-                .is_some_and(|value| value != agent_id)
+        if agent_filter
+            .as_deref()
+            .is_some_and(|value| value != agent_id)
             || skill_filter
                 .as_deref()
                 .is_some_and(|value| value != skill_id)
         {
+            continue;
+        }
+        // All-time totals ignore the window but honor the same filters.
+        all_time_total = all_time_total
+            .checked_add(count)
+            .ok_or_else(|| anyhow!("skill usage report counter overflow"))?;
+        add_count(&mut totals_by_skill, skill_id, count)?;
+        let Ok(day) = parse_date(day_text) else {
+            continue;
+        };
+        if day < from || day > to {
             continue;
         }
         total = total
@@ -66,7 +74,9 @@ pub(super) fn report(store: &ClientStateStore, params: &Value) -> Result<Value> 
         "byAgent": counts_as_items("agentId", by_agent),
         "bySkill": counts_as_items("skillId", by_skill),
         "byDay": counts_as_items("date", by_day),
-        "collectionSource": "runtime-skill-invocation-events",
+        "allTimeInvocations": all_time_total,
+        "totalsBySkill": counts_as_items("skillId", totals_by_skill),
+        "collectionSource": "runtime-skill-invocation-events+history-backfill-scan",
         "privacy": "aggregate-only"
     }))
 }

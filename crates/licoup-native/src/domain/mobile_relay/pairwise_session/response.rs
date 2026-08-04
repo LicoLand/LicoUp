@@ -10,6 +10,7 @@ use crate::domain::mobile_relay::support::CONFIG_SCHEMA_VERSION;
 use anyhow::{Result, anyhow};
 use serde_json::{Value, json};
 
+#[cfg(test)]
 pub(in crate::domain::mobile_relay) fn secure_result_response_summary(response: &Value) -> Value {
     let command = response.get("command").unwrap_or(&Value::Null);
     json!({

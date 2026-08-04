@@ -145,9 +145,17 @@ fn load_config_with_runtime_secret_context_unchecked(
     reason: impl Into<String>,
     operation_count: usize,
 ) -> Result<(Value, RuntimeSecretContext)> {
-    let mut config = load_config()?;
+    // Explicitly non-interactive callers must never trigger a system
+    // authorization prompt: they get the in-memory normalized config without
+    // the migration write, and the batch fails closed instead of prompting.
+    // Flag-less callers keep the interactive default (user-initiated flows).
     let allow_interaction =
         bool_param(params, &["allowInteraction", "allow-interaction"]).unwrap_or(true);
+    let mut config = if allow_interaction {
+        load_config()?
+    } else {
+        load_config_without_persistence()?
+    };
     let mut context = RuntimeSecretContext {
         material: RuntimeSecretMaterial::new(),
         overrides: RuntimeSecretOverrides::default(),
@@ -254,7 +262,7 @@ pub(in crate::domain::mobile_relay) fn save_config_raw_with_reset_policy(
     config: &mut Value,
     allow_reset_write: bool,
 ) -> Result<()> {
-    prepare_gateway_fields_for_persistence(config)?;
+    prepare_station_fields_for_persistence(config)?;
     validate_config_generations(config)?;
     let expected_generation = config_generation(config, CONFIG_GENERATION_FIELD)?;
     let candidate_authority_generation = config_generation(config, AUTHORITY_GENERATION_FIELD)?;

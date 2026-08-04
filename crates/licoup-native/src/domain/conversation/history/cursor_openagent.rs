@@ -1,6 +1,6 @@
 //! Stable composition root for bounded Cursor and OpenAgent SQLite history parsing.
 
-mod codec;
+pub(super) mod codec;
 mod composition;
 mod cursor;
 mod cursor_cli;

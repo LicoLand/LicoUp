@@ -8,11 +8,11 @@ import 'package:licoup/src/application/features/agents/conversation/conversation
 import 'package:licoup/src/application/features/agents/policy/conversation_refresh_policy.dart';
 import 'package:licoup/src/application/localization/client_application_strings.dart';
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
+import 'package:licoup/src/contracts/agent_conversation_projection_repository.dart';
 import 'package:licoup/src/contracts/agent_conversation_tab_activity.dart';
 import 'package:licoup/src/contracts/generated/secure_mesh.g.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
-import 'package:licoup/src/platform/native_client/orchestrator_ipc/client.dart';
 
 /// Shared feature state plus narrow composition callbacks. Concrete feature
 /// controllers never import the root [ClientController].
@@ -33,10 +33,21 @@ abstract class AgentWorkspaceCoordinator extends ChangeNotifier {
   bool get agentWorkspaceMobileRuntime;
   ClientSection get agentWorkspaceCurrentSection;
   ClientApplicationStrings get agentWorkspaceStrings;
-  NativeOrchestratorClient get orchestratorClient;
+  Object get agentWorkspacePortableData;
+  Future<Map<String, Object?>> agentWorkspaceReadSettingsState();
+  Future<void> agentWorkspaceWriteSettingsState(Map<String, Object?> content);
+  Future<Map<String, Object?>> agentWorkspaceReadAdaptiveFlywheelState();
+  Future<void> agentWorkspaceWriteAdaptiveFlywheelState(
+    Map<String, Object?> content,
+  );
+  Future<void> loadAgentOrchestrationPolicy();
+  AgentConversationProjectionRepository
+  get agentConversationProjectionRepository;
+  Future<void> hydrateConversationProjectionCache();
   void agentWorkspaceSelectDefaultConversationAgent({
     bool preferDirectAgent = false,
   });
+  Future<bool> agentWorkspaceEnsureConversationRuntimeBinding(String agentId);
   void agentWorkspaceSetLocalizedStatusMessage(
     String chinese,
     String english, {
@@ -47,6 +58,7 @@ abstract class AgentWorkspaceCoordinator extends ChangeNotifier {
     bool activeChanged = true,
   });
   void agentWorkspaceNotifyActiveConversationChanged();
+  void agentWorkspaceNotifyLiveConversationChanged();
   Future<void> agentWorkspaceOpenDirectory(String path, {String caption = ''});
   String get relaySourceClientId;
   String get relaySourceClientLabel;
@@ -60,7 +72,6 @@ abstract class AgentWorkspaceCoordinator extends ChangeNotifier {
   String get selectedConversationModel;
   String get selectedConversationReasoningEffort;
   bool get selectedConversationIsOrchestration;
-  Future<void> sendOrchestratedConversationMessage(String text);
   void recordConversationTabSendOutcome({
     required String agentId,
     required bool ok,
@@ -68,6 +79,11 @@ abstract class AgentWorkspaceCoordinator extends ChangeNotifier {
     String failureCode,
   });
   String conversationSendErrorFor(String agentId);
+  void clearConversationSendError(String agentId);
+  Future<Map<String, dynamic>> agentWorkspaceAuthorizeRuntime(
+    String agentId, {
+    String binaryPath = '',
+  });
   void setConversationTabActivity(
     String agentId,
     AgentConversationTabActivity activity,
@@ -110,15 +126,26 @@ abstract class AgentWorkspaceCoordinator extends ChangeNotifier {
 
   Map<String, List<AgentConversationSession>> conversationSessionsByAgent =
       const {};
+  Map<String, List<AgentConversationSession>>
+  durableConversationProjectionsByAgent = const {};
   Map<String, bool> conversationSessionsHasMoreByAgent = const {};
   String selectedConversationAgentId = '';
   Map<String, String> pendingConversationNativeSessionIds = const {};
   Map<String, String> conversationModelsByAgent = const {};
   Map<String, String> conversationReasoningEffortsByAgent = const {};
   bool isSendingConversationMessage = false;
+  bool isAuthorizingConversationRuntime = false;
   String sendingConversationAgentId = '';
   String sendingConversationSessionId = '';
   String sendingConversationNativeSessionId = '';
+  String sendingConversationTurnId = '';
+  Timer? conversationLiveReplyPublishTimer;
+  String pendingConversationLiveReplyAgentId = '';
+  String pendingConversationLiveReplyTurnId = '';
+  String pendingConversationLiveReplyText = '';
+  String pendingConversationLiveReplyParticipantAgentId = '';
+  String pendingConversationLiveReplyParticipantLabel = '';
+  String pendingConversationLiveReplyParticipantRole = '';
   final ConversationTurnQueue conversationTurnQueue = ConversationTurnQueue();
   int conversationTurnSubmissionSequence = 0;
   bool conversationTurnDrainScheduled = false;
@@ -131,7 +158,6 @@ abstract class AgentWorkspaceCoordinator extends ChangeNotifier {
 
   Map<String, Object?> orchestrationPolicyDraft = const {};
   String activeOrchestrationPolicyRevision = '';
-  OrchestratorWorkflowProjection? currentOrchestrationProjection;
 
   Map<String, dynamic>? conversationArchiveResult;
   Map<String, dynamic>? conversationArchivePlan;
@@ -218,6 +244,14 @@ abstract class AgentWorkspaceCoordinator extends ChangeNotifier {
     conversationTurnCancellationRequested = true;
     conversationTurnQueue.clear();
     conversationTurnDrainScheduled = false;
+    conversationLiveReplyPublishTimer?.cancel();
+    conversationLiveReplyPublishTimer = null;
+    pendingConversationLiveReplyAgentId = '';
+    pendingConversationLiveReplyTurnId = '';
+    pendingConversationLiveReplyText = '';
+    pendingConversationLiveReplyParticipantAgentId = '';
+    pendingConversationLiveReplyParticipantLabel = '';
+    pendingConversationLiveReplyParticipantRole = '';
     conversationActiveRefreshTimer?.cancel();
     conversationBackgroundRefreshTimer?.cancel();
   }

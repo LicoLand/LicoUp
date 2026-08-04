@@ -18,6 +18,15 @@ final class ConversationProcessTimelineItem extends ConversationTimelineItem {
   final List<AgentConversationMessage> events;
 }
 
+/// Provider runtime records that are useful for inspection but are not agent
+/// reasoning or tool execution. They intentionally render below the visual
+/// hierarchy of a process item.
+final class ConversationLogTimelineItem extends ConversationTimelineItem {
+  const ConversationLogTimelineItem(super.storageKey, this.events);
+
+  final List<AgentConversationMessage> events;
+}
+
 final class ConversationTruncationTimelineItem
     extends ConversationTimelineItem {
   const ConversationTruncationTimelineItem(
@@ -39,6 +48,7 @@ List<ConversationTimelineItem> buildConversationTimelineItems(
   final items = <ConversationTimelineItem>[];
   final usedStorageKeys = <String>{};
   var pendingEvents = <AgentConversationMessage>[];
+  var pendingLogs = <AgentConversationMessage>[];
   var processAnchor = 'session-start';
   var messageIndex = 0;
 
@@ -96,12 +106,28 @@ List<ConversationTimelineItem> buildConversationTimelineItems(
     pendingEvents = <AgentConversationMessage>[];
   }
 
+  void flushLogs() {
+    if (pendingLogs.isEmpty) return;
+    items.add(
+      ConversationLogTimelineItem(
+        stableStorageKey('log', processAnchor, collisionPosition: messageIndex),
+        List<AgentConversationMessage>.unmodifiable(pendingLogs),
+      ),
+    );
+    pendingLogs = <AgentConversationMessage>[];
+  }
+
   for (final message in messages) {
     if (message.isStructuredEvent) {
+      if (isConversationRuntimeLogEvent(message)) {
+        pendingLogs.add(message);
+        continue;
+      }
       pendingEvents.add(message);
       continue;
     }
     flushEvents();
+    flushLogs();
     final identity = messageIdentity(message, messageIndex);
     items.add(
       ConversationMessageTimelineItem(
@@ -113,7 +139,14 @@ List<ConversationTimelineItem> buildConversationTimelineItems(
     messageIndex += 1;
   }
   flushEvents();
+  flushLogs();
   return List.unmodifiable(items);
+}
+
+bool isConversationRuntimeLogEvent(AgentConversationMessage message) {
+  if (message.cardType.trim().toLowerCase() == 'lifecycle') return false;
+  return message.kind == AgentConversationMessageKind.event ||
+      message.kind == AgentConversationMessageKind.metadata;
 }
 
 String stableConversationTimelineIdentity(String value) {

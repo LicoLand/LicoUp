@@ -184,6 +184,9 @@ for (const mutate of [
   (value) => { value.unknown = true; },
   (value) => { value.modules["../escape"] = value.modules["native-sidecar"]; },
   (value) => { value.modules["native-sidecar"].includePaths = ["../outside"]; },
+  (value) => {
+    value.modules["codex-plugin"].embeddedCargoTarget = "../outside";
+  },
 ]) {
   const fixture = structuredClone(canonicalConfig);
   mutate(fixture);

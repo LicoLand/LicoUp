@@ -47,6 +47,97 @@ fn management_catalog_distinguishes_bundled_native_and_installable_bridges() {
 }
 
 #[test]
+fn management_catalog_projects_native_capabilities_and_adapter_plugins() {
+    let catalog = adapter_management_catalog(false);
+    let adapters = catalog["adapters"].as_array().unwrap();
+    let by_id = adapters
+        .iter()
+        .map(|entry| (entry["agentId"].as_str().unwrap(), entry))
+        .collect::<std::collections::BTreeMap<_, _>>();
+
+    let capability_kinds = |agent: &str| {
+        by_id[agent]["nativeCapabilities"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|capability| {
+                assert!(capability["detected"].is_boolean());
+                capability["kind"].as_str().unwrap()
+            })
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(capability_kinds("codex"), ["desktop", "cli", "app-server"]);
+    assert_eq!(capability_kinds("claude-code"), ["cli"]);
+    assert_eq!(capability_kinds("antigravity"), ["desktop", "cli"]);
+    assert_eq!(capability_kinds("opencode"), ["cli", "local-server"]);
+    assert_eq!(capability_kinds("kilo-code"), ["cli", "local-server"]);
+    assert_eq!(capability_kinds("openclaw"), ["cli", "acp", "gateway"]);
+    assert_eq!(capability_kinds("hermes"), ["cli", "acp", "tui-gateway"]);
+    assert_eq!(capability_kinds("cursor"), ["desktop", "cli"]);
+    assert_eq!(capability_kinds("pi"), ["cli", "rpc"]);
+    assert_eq!(capability_kinds("copilot"), ["cli", "acp"]);
+    assert_eq!(capability_kinds("kimi-code"), ["cli", "acp", "web-server"]);
+
+    // Only agents with real managed plugins list adapter plugin entries.
+    let plugin_ids = |agent: &str| {
+        by_id[agent]["adapterPlugins"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|plugin| plugin["id"].as_str().unwrap())
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(plugin_ids("antigravity"), ["acp-bridge"]);
+    assert_eq!(plugin_ids("codex"), ["lico-up-codex"]);
+    for agent in [
+        "claude-code",
+        "copilot",
+        "cursor",
+        "hermes",
+        "kilo-code",
+        "kimi-code",
+        "openclaw",
+        "opencode",
+        "pi",
+    ] {
+        assert!(
+            plugin_ids(agent).is_empty(),
+            "{agent} must not list plugins"
+        );
+    }
+
+    // The bridge entry mirrors the managed-bridge lifecycle projection; the
+    // LicoUp Codex Plugin declares install only from a confirmed
+    // not-installed state and executes it through the digest-bound flow.
+    let bridge = &by_id["antigravity"]["adapterPlugins"][0];
+    assert_eq!(bridge["label"], "ACP Bridge");
+    assert_eq!(bridge["installationState"], "not-installed");
+    assert_eq!(bridge["lifecycleActions"], json!(["install"]));
+    let subagents = &by_id["codex"]["adapterPlugins"][0];
+    assert_eq!(subagents["label"], "LicoUp Codex Plugin");
+    let subagents_state = subagents["installationState"].as_str().unwrap();
+    assert!(["installed", "not-installed", "unavailable"].contains(&subagents_state));
+    let expected_actions: Vec<&str> = if subagents_state == "not-installed" {
+        vec!["install"]
+    } else {
+        Vec::new()
+    };
+    assert_eq!(subagents["lifecycleActions"], json!(expected_actions));
+}
+
+#[test]
+fn codex_plugin_declares_install_only_when_not_installed() {
+    use super::super::registry::codex_plugin_lifecycle_actions;
+    assert_eq!(
+        codex_plugin_lifecycle_actions("not-installed"),
+        vec!["install"]
+    );
+    for state in ["installed", "unavailable", "not-required", ""] {
+        assert!(codex_plugin_lifecycle_actions(state).is_empty(), "{state}");
+    }
+}
+
+#[test]
 fn canonical_resources_are_the_only_runtime_profile_source() {
     let registry = parse_runtime_driver_registry(DRIVER_INVENTORY_JSON, READINESS_JSON).unwrap();
     assert_eq!(registry.drivers.len(), PACKAGED_RUNTIME_ADAPTER_IDS.len());

@@ -11,7 +11,7 @@ pub(super) fn print_usage() {
     eprintln!(
         "Usage:
   licoup rpc stdio  # licoup.stdio.v1 line-delimited JSON RPC
-  licoup state get|set <settings|targets|pairings|skills|pins|identities|conversation-archive-profiles|agent-usage-reports|skill-usage> [json]
+  licoup state get|set <adaptive-flywheel|settings|targets|pairings|skills|pins|identities|conversation-archive-profiles|agent-usage-reports|skill-usage> [json]
   licoup adapter catalog
   licoup adapter antigravity status|install|uninstall
   licoup opencode-serve ensure|start|restart|stop|status [--port 24173] [--executable PATH] [--attach-url URL]
@@ -32,6 +32,7 @@ pub(super) fn print_usage() {
   licoup conversations list|append|delete|stream --agent AGENT [--limit N] [--offset N] [--session-id ID] [--text TEXT]
   licoup agent-usage scan [--agent AGENT] [--history-days DAYS] [--timezone-offset-minutes MINUTES] [--timezone-transitions-json JSON] [--force-refresh] [--state-root PATH]
   licoup agent-usage report [--agent AGENT] [--limit N] [--state-root PATH]
+  licoup resource-usage scan [--state-root PATH]
   licoup mcp http preview|execute --stdin-json true  # exact-scope private input and fresh platform user-presence confirmation
   licoup update status|check|download|verify|apply [--channel stable] [--manifest-path PATH] [--public-keys-path PATH] [--source-path PATH]
   licoup collaboration status|enable|disable|cleanup

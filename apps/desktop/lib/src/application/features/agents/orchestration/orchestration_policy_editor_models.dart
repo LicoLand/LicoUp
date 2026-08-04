@@ -1,154 +1,25 @@
 import 'package:flutter/foundation.dart';
 
-import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/application/features/agents/orchestration/orchestration_target_catalog.dart';
+import 'package:licoup/src/contracts/target_candidate.dart';
 
-const String defaultAgentOrchestrationPolicyId = 'default';
+enum CodeEngineeringRoleSlot {
+  designer('designer'),
+  backendWorker('backendWorker'),
+  frontendWorker('frontendWorker'),
+  backendReviewer('backendReviewer'),
+  frontendReviewer('frontendReviewer');
 
-/// Presentation draft for the policy editor. Backend ownership remains in the
-/// native orchestrator; this type never executes or stores authority state.
-@immutable
-final class AgentOrchestrationPolicy {
-  const AgentOrchestrationPolicy({
-    this.id = defaultAgentOrchestrationPolicyId,
-    this.label = '',
-    this.commanderAgentId = '',
-    this.commanderModelName = '',
-    this.commanderReasoningEffort = '',
-    this.modelLibrary = const [],
-  });
+  const CodeEngineeringRoleSlot(this.configKey);
 
-  final String id;
-  final String label;
-  final String commanderAgentId;
-  final String commanderModelName;
-  final String commanderReasoningEffort;
-  final List<AgentModelLibraryEntry> modelLibrary;
-
-  bool get configured =>
-      commanderAgentId.trim().isNotEmpty &&
-      commanderModelName.trim().isNotEmpty;
-
-  AgentOrchestrationPolicy copyWith({
-    String? id,
-    String? label,
-    String? commanderAgentId,
-    String? commanderModelName,
-    String? commanderReasoningEffort,
-    List<AgentModelLibraryEntry>? modelLibrary,
-  }) {
-    return AgentOrchestrationPolicy(
-      id: id ?? this.id,
-      label: label ?? this.label,
-      commanderAgentId: commanderAgentId ?? this.commanderAgentId,
-      commanderModelName: commanderModelName ?? this.commanderModelName,
-      commanderReasoningEffort:
-          commanderReasoningEffort ?? this.commanderReasoningEffort,
-      modelLibrary: modelLibrary ?? this.modelLibrary,
-    );
-  }
-
-  /// Builds a schemaVersion=3 policy map for backend register/activate.
-  Map<String, Object?> toBackendPolicy() {
-    final entries = orchestrationEditorOrderedEntries(this);
-    final agents = <Map<String, Object?>>[
-      for (final entry in entries)
-        <String, Object?>{
-          'id': entry.agentId,
-          'roles': const <String>['implementation'],
-          'capabilities': const <String>['conversation.send'],
-        },
-    ];
-    final steps = <Map<String, Object?>>[
-      for (var index = 0; index < entries.length; index += 1)
-        <String, Object?>{
-          'id': 'step-${index + 1}',
-          'predecessorId': index == 0 ? null : 'step-$index',
-          'purpose': 'action',
-          'roleId': 'implementation',
-          'agentId': entries[index].agentId,
-          'modelId': entries[index].modelName,
-          'reasoningLevel': _reasoningLevel(entries[index].reasoningEffort),
-          'contextStepIds': index == 0
-              ? const <String>[]
-              : <String>['step-$index'],
-          'maxContextBytes': 4096,
-          'outputMode': 'text',
-          'timeoutMs': 600000,
-          'maxAttempts': 1,
-          'failureAction': 'stop',
-          'approval': const <String, Object?>{'required': false},
-          'condition': null,
-          'validation': null,
-        },
-    ];
-    final commander = entries.isEmpty
-        ? null
-        : <String, Object?>{
-            'agentId': commanderAgentId.trim().isEmpty
-                ? entries.first.agentId
-                : commanderAgentId.trim(),
-            'modelId': commanderModelName.trim().isEmpty
-                ? entries.first.modelName
-                : commanderModelName.trim(),
-            'reasoningLevel': _reasoningLevel(
-              commanderReasoningEffort.trim().isEmpty
-                  ? entries.first.reasoningEffort
-                  : commanderReasoningEffort,
-            ),
-          };
-    return <String, Object?>{
-      'schemaVersion': 3,
-      'id': id.trim().isEmpty ? defaultAgentOrchestrationPolicyId : id.trim(),
-      'label': label.trim(),
-      'commander': commander,
-      'modelLibrary': <Map<String, Object?>>[
-        for (final entry in entries)
-          <String, Object?>{
-            'agentId': entry.agentId,
-            'modelId': entry.modelName,
-            'reasoningLevel': _reasoningLevel(entry.reasoningEffort),
-          },
-      ],
-      'agents': agents,
-      'workflow': <String, Object?>{'steps': steps},
-    };
-  }
-
-  static AgentOrchestrationPolicy fromBackendPolicy(
-    Map<String, Object?> policy,
-  ) {
-    final commander = _asMap(policy['commander']);
-    final library = <AgentModelLibraryEntry>[
-      for (final item in _asList(policy['modelLibrary']))
-        AgentModelLibraryEntry(
-          agentId: _string(item['agentId']),
-          modelName: _string(item['modelId'] ?? item['modelName']),
-          reasoningEffort: _string(
-            item['reasoningLevel'] ?? item['reasoningEffort'],
-          ),
-        ),
-    ];
-    return AgentOrchestrationPolicy(
-      id: _string(policy['id'], fallback: defaultAgentOrchestrationPolicyId),
-      label: _string(policy['label']),
-      commanderAgentId: _string(commander['agentId']),
-      commanderModelName: _string(
-        commander['modelId'] ?? commander['modelName'],
-      ),
-      commanderReasoningEffort: _string(
-        commander['reasoningLevel'] ?? commander['reasoningEffort'],
-      ),
-      modelLibrary: List.unmodifiable(library),
-    );
-  }
+  final String configKey;
 }
 
 @immutable
-final class AgentModelLibraryEntry {
-  const AgentModelLibraryEntry({
-    required this.agentId,
-    required this.modelName,
+final class AgentOrchestrationRoleAssignment {
+  const AgentOrchestrationRoleAssignment({
+    this.agentId = '',
+    this.modelName = '',
     this.reasoningEffort = '',
   });
 
@@ -156,50 +27,154 @@ final class AgentModelLibraryEntry {
   final String modelName;
   final String reasoningEffort;
 
-  bool get configured =>
-      agentId.trim().isNotEmpty && modelName.trim().isNotEmpty;
+  bool get configured => agentId.trim().isNotEmpty;
 
-  String get key =>
-      '${agentId.trim()}\u001f${modelName.trim()}\u001f${reasoningEffort.trim()}';
-
-  AgentModelLibraryEntry copyWith({
+  AgentOrchestrationRoleAssignment copyWith({
     String? agentId,
     String? modelName,
     String? reasoningEffort,
   }) {
-    return AgentModelLibraryEntry(
+    return AgentOrchestrationRoleAssignment(
       agentId: agentId ?? this.agentId,
       modelName: modelName ?? this.modelName,
       reasoningEffort: reasoningEffort ?? this.reasoningEffort,
     );
   }
+
+  Map<String, Object?> toTomlConfig() => <String, Object?>{
+    'agent': agentId.trim(),
+    'model': modelName.trim(),
+    'reasoning_effort': reasoningEffort.trim(),
+  };
+
+  static AgentOrchestrationRoleAssignment fromTomlConfig(Object? value) {
+    if (value is! Map) return const AgentOrchestrationRoleAssignment();
+    final config = Map<String, Object?>.from(value);
+    return AgentOrchestrationRoleAssignment(
+      agentId: _string(config['agent']),
+      modelName: _string(config['model']),
+      reasoningEffort: _string(config['reasoning_effort']),
+    );
+  }
 }
 
-AgentModelLibraryEntry? orchestrationEditorCommanderEntry(
-  AgentOrchestrationPolicy policy,
-) {
-  if (policy.commanderAgentId.trim().isEmpty ||
-      policy.commanderModelName.trim().isEmpty) {
-    return null;
-  }
-  return AgentModelLibraryEntry(
-    agentId: policy.commanderAgentId.trim(),
-    modelName: policy.commanderModelName.trim(),
-    reasoningEffort: policy.commanderReasoningEffort.trim(),
+/// Local main-agent selection. A plugin-ready Codex main agent owns dispatch;
+/// otherwise LicoUp's native sequential workflow is the fallback owner.
+@immutable
+final class AgentOrchestrationPolicy {
+  const AgentOrchestrationPolicy({
+    this.commanderAgentId = '',
+    this.commanderModelName = '',
+    this.commanderReasoningEffort = '',
+    this.codeEngineeringRoles = const {},
+  });
+
+  final String commanderAgentId;
+  final String commanderModelName;
+  final String commanderReasoningEffort;
+  final Map<CodeEngineeringRoleSlot, AgentOrchestrationRoleAssignment>
+  codeEngineeringRoles;
+
+  /// A main-agent selection is usable without an explicit model override.
+  ///
+  /// Some native runtimes do not publish a model catalog. In that case an
+  /// empty model delegates model selection to the runtime and must not erase
+  /// or disable the selected main agent.
+  bool get configured => commanderAgentId.trim().isNotEmpty;
+
+  bool get codeEngineeringConfigured => CodeEngineeringRoleSlot.values.every(
+    (role) => assignmentFor(role).configured,
   );
-}
 
-List<AgentModelLibraryEntry> orchestrationEditorOrderedEntries(
-  AgentOrchestrationPolicy policy,
-) {
-  final result = <AgentModelLibraryEntry>[];
-  final seen = <String>{};
-  final commander = orchestrationEditorCommanderEntry(policy);
-  if (commander != null && seen.add(commander.key)) result.add(commander);
-  for (final entry in policy.modelLibrary) {
-    if (entry.configured && seen.add(entry.key)) result.add(entry);
+  AgentOrchestrationRoleAssignment assignmentFor(
+    CodeEngineeringRoleSlot role,
+  ) => codeEngineeringRoles[role] ?? const AgentOrchestrationRoleAssignment();
+
+  AgentOrchestrationPolicy copyWith({
+    String? commanderAgentId,
+    String? commanderModelName,
+    String? commanderReasoningEffort,
+    Map<CodeEngineeringRoleSlot, AgentOrchestrationRoleAssignment>?
+    codeEngineeringRoles,
+  }) {
+    return AgentOrchestrationPolicy(
+      commanderAgentId: commanderAgentId ?? this.commanderAgentId,
+      commanderModelName: commanderModelName ?? this.commanderModelName,
+      commanderReasoningEffort:
+          commanderReasoningEffort ?? this.commanderReasoningEffort,
+      codeEngineeringRoles: Map.unmodifiable(
+        codeEngineeringRoles ?? this.codeEngineeringRoles,
+      ),
+    );
   }
-  return List.unmodifiable(result);
+
+  Map<String, Object?> toTomlConfig() {
+    return <String, Object?>{
+      'version': 1,
+      'main_agent': <String, Object?>{
+        'agent': commanderAgentId.trim(),
+        'model': commanderModelName.trim(),
+        'reasoning_effort': commanderReasoningEffort.trim(),
+      },
+      'code_engineering': <String, Object?>{
+        'strategy': 'frontend_backend_roles',
+        'designer': assignmentFor(
+          CodeEngineeringRoleSlot.designer,
+        ).toTomlConfig(),
+        'worker': <String, Object?>{
+          'backend': assignmentFor(
+            CodeEngineeringRoleSlot.backendWorker,
+          ).toTomlConfig(),
+          'frontend': assignmentFor(
+            CodeEngineeringRoleSlot.frontendWorker,
+          ).toTomlConfig(),
+        },
+        'reviewer': <String, Object?>{
+          'backend': assignmentFor(
+            CodeEngineeringRoleSlot.backendReviewer,
+          ).toTomlConfig(),
+          'frontend': assignmentFor(
+            CodeEngineeringRoleSlot.frontendReviewer,
+          ).toTomlConfig(),
+        },
+      },
+    };
+  }
+
+  static AgentOrchestrationPolicy fromTomlConfig(Map<String, Object?> config) {
+    final mainAgent = config['main_agent'];
+    final main = mainAgent is Map ? mainAgent : const {};
+    final codeEngineering = config['code_engineering'];
+    final code = codeEngineering is Map ? codeEngineering : const {};
+    final worker = code['worker'] is Map ? code['worker'] as Map : const {};
+    final reviewer = code['reviewer'] is Map
+        ? code['reviewer'] as Map
+        : const {};
+    return AgentOrchestrationPolicy(
+      commanderAgentId: _string(main['agent']),
+      commanderModelName: _string(main['model']),
+      commanderReasoningEffort: _string(main['reasoning_effort']),
+      codeEngineeringRoles: Map.unmodifiable(<
+        CodeEngineeringRoleSlot,
+        AgentOrchestrationRoleAssignment
+      >{
+        CodeEngineeringRoleSlot.designer:
+            AgentOrchestrationRoleAssignment.fromTomlConfig(code['designer']),
+        CodeEngineeringRoleSlot.backendWorker:
+            AgentOrchestrationRoleAssignment.fromTomlConfig(worker['backend']),
+        CodeEngineeringRoleSlot.frontendWorker:
+            AgentOrchestrationRoleAssignment.fromTomlConfig(worker['frontend']),
+        CodeEngineeringRoleSlot.backendReviewer:
+            AgentOrchestrationRoleAssignment.fromTomlConfig(
+              reviewer['backend'],
+            ),
+        CodeEngineeringRoleSlot.frontendReviewer:
+            AgentOrchestrationRoleAssignment.fromTomlConfig(
+              reviewer['frontend'],
+            ),
+      }),
+    );
+  }
 }
 
 AgentOrchestrationPolicy sanitizeOrchestrationPolicyEditorDraft(
@@ -216,10 +191,6 @@ AgentOrchestrationPolicy sanitizeOrchestrationPolicyEditorDraft(
     policy.commanderModelName,
   );
   return policy.copyWith(
-    id: policy.id.trim().isEmpty
-        ? defaultAgentOrchestrationPolicyId
-        : policy.id.trim(),
-    label: policy.label.trim(),
     commanderAgentId: commanderAgentId,
     commanderModelName: commanderModelName,
     commanderReasoningEffort: _normalizeCommanderReasoningEffort(
@@ -228,62 +199,65 @@ AgentOrchestrationPolicy sanitizeOrchestrationPolicyEditorDraft(
       commanderModelName,
       policy.commanderReasoningEffort,
     ),
-    modelLibrary: normalizeAgentModelLibrary(targets, policy.modelLibrary),
+    codeEngineeringRoles: Map.unmodifiable({
+      for (final role in CodeEngineeringRoleSlot.values)
+        role: _normalizeRoleAssignment(targets, policy.assignmentFor(role)),
+    }),
   );
 }
 
-List<AgentModelLibraryEntry> agentOrchestrationModelLibraryCandidates(
-  Iterable<TargetCandidate> targets,
+/// Normalizes user input for persistence without treating the live runtime
+/// scan as the source of truth for saved configuration.
+///
+/// Target discovery is asynchronous and may briefly publish an empty or
+/// paint-only catalog while the policy dialog is open. Persisting through the
+/// catalog-aware editor sanitizer would erase a valid selection during that
+/// window. Runtime availability is checked separately when a conversation is
+/// dispatched.
+AgentOrchestrationPolicy normalizeOrchestrationPolicyForPersistence(
+  AgentOrchestrationPolicy policy,
 ) {
-  final entries = <AgentModelLibraryEntry>[];
-  for (final target in agentOrchestrationCommanderTargets(targets)) {
-    for (final modelName in agentOrchestrationCommanderModels(target)) {
-      final reasoningEfforts = agentOrchestrationReasoningEffortsForModel(
-        target,
-        modelName,
-      );
-      if (reasoningEfforts.isEmpty) {
-        entries.add(
-          AgentModelLibraryEntry(agentId: target.target, modelName: modelName),
-        );
-      } else {
-        entries.addAll([
-          for (final reasoningEffort in reasoningEfforts)
-            AgentModelLibraryEntry(
-              agentId: target.target,
-              modelName: modelName,
-              reasoningEffort: reasoningEffort,
-            ),
-        ]);
-      }
-    }
+  AgentOrchestrationRoleAssignment normalizeAssignment(
+    AgentOrchestrationRoleAssignment assignment,
+  ) {
+    return AgentOrchestrationRoleAssignment(
+      agentId: assignment.agentId.trim(),
+      modelName: assignment.modelName.trim(),
+      reasoningEffort: assignment.reasoningEffort.trim(),
+    );
   }
-  return List.unmodifiable(entries);
+
+  return AgentOrchestrationPolicy(
+    commanderAgentId: policy.commanderAgentId.trim(),
+    commanderModelName: policy.commanderModelName.trim(),
+    commanderReasoningEffort: policy.commanderReasoningEffort.trim(),
+    codeEngineeringRoles: Map.unmodifiable({
+      for (final role in CodeEngineeringRoleSlot.values)
+        role: normalizeAssignment(policy.assignmentFor(role)),
+    }),
+  );
 }
 
-List<AgentModelLibraryEntry> normalizeAgentModelLibrary(
+AgentOrchestrationRoleAssignment _normalizeRoleAssignment(
   Iterable<TargetCandidate> targets,
-  Iterable<AgentModelLibraryEntry> entries,
+  AgentOrchestrationRoleAssignment assignment,
 ) {
-  final candidateKeys = {
-    for (final entry in agentOrchestrationModelLibraryCandidates(targets))
-      entry.key,
-  };
-  final result = <AgentModelLibraryEntry>[];
-  final seen = <String>{};
-  for (final entry in entries) {
-    final normalized = AgentModelLibraryEntry(
-      agentId: entry.agentId.trim(),
-      modelName: entry.modelName.trim(),
-      reasoningEffort: entry.reasoningEffort.trim(),
-    );
-    if (normalized.configured &&
-        candidateKeys.contains(normalized.key) &&
-        seen.add(normalized.key)) {
-      result.add(normalized);
-    }
-  }
-  return List.unmodifiable(result);
+  final agentId = _normalizeCommanderAgentId(targets, assignment.agentId);
+  final modelName = _normalizeCommanderModelName(
+    targets,
+    agentId,
+    assignment.modelName,
+  );
+  return AgentOrchestrationRoleAssignment(
+    agentId: agentId,
+    modelName: modelName,
+    reasoningEffort: _normalizeCommanderReasoningEffort(
+      targets,
+      agentId,
+      modelName,
+      assignment.reasoningEffort,
+    ),
+  );
 }
 
 String _normalizeCommanderAgentId(
@@ -333,44 +307,10 @@ TargetCandidate? _targetById(
   Iterable<TargetCandidate> targets,
   String targetId,
 ) {
-  if (targetId.trim().isEmpty) return null;
   for (final target in targets) {
     if (target.target == targetId) return target;
   }
   return null;
-}
-
-Object? _reasoningLevel(String effort) {
-  switch (effort.trim().toLowerCase()) {
-    case 'low':
-    case 'medium':
-    case 'high':
-    case 'max':
-      return effort.trim().toLowerCase();
-    default:
-      return null;
-  }
-}
-
-Map<String, Object?> _asMap(Object? value) {
-  if (value is Map<String, Object?>) return value;
-  if (value is Map) {
-    return <String, Object?>{
-      for (final entry in value.entries) entry.key.toString(): entry.value,
-    };
-  }
-  return const {};
-}
-
-List<Map<String, Object?>> _asList(Object? value) {
-  if (value is! List) return const [];
-  return [
-    for (final item in value)
-      if (item is Map)
-        <String, Object?>{
-          for (final entry in item.entries) entry.key.toString(): entry.value,
-        },
-  ];
 }
 
 String _string(Object? value, {String fallback = ''}) {

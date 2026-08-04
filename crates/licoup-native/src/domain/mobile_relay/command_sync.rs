@@ -1,22 +1,26 @@
 use anyhow::{Result, anyhow};
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
 use super::endpoint_trust::{ensure_peer_verified, now_iso};
 #[cfg(test)]
 use super::pairwise_session::mobile_relay_pairwise_operation;
 use super::pairwise_session::{
-    MobileRelayPairwiseOperation, mobile_relay_pairwise_operation_with_runtime_secret_context,
-    open_mobile_relay_payload_with_pairwise_operation,
-    seal_mobile_relay_payload_with_pairwise_operation, secure_command_context,
+    MobileRelayPairwiseOperation, is_pairwise_replay_rejection_error,
+    mobile_relay_pairwise_operation_with_runtime_secret_context,
+    open_mobile_relay_payload_deferred, seal_mobile_relay_payload_deferred, secure_command_context,
 };
 use super::relay_operations::{
-    command_complete_with_config, commands_poll_with_config, local_command_from_relay_delivery,
-    pc_check_in_with_context, validate_secure_envelope,
+    deletion_transport_hint, delivery_transport_hint, lease_transport_hint,
+    local_command_from_relay_delivery, pc_check_in_with_context,
+    receive_station_envelopes_with_config, relay_envelope_from_value, station_binding_digest,
+    station_context, station_lease_seconds, validate_secure_envelope,
 };
 #[cfg(test)]
 use super::secret_custody::load_config_with_runtime_secret_context;
 use super::secret_custody::{
-    CONFIG_SCHEMA_VERSION, RUNTIME_SECRET_OVERRIDE_TRANSPORT, RuntimeSecretMaterial,
+    CONFIG_SCHEMA_VERSION, RuntimeSecretMaterial,
     load_config_with_runtime_secret_context_for_operation,
     mobile_relay_e2ee_secret_store_authorization_batch_operation_count,
 };
@@ -24,143 +28,296 @@ use super::support::{
     SECURE_MESH_ENDPOINT_CRYPTO_RUNTIME_FAILED_CODE,
     SECURE_MESH_ENDPOINT_CRYPTO_RUNTIME_FAILED_DETAIL,
 };
+use crate::core::secure_mesh_pairwise::SecureMeshPairwisePendingDelivery;
+
+const PENDING_RESULT_BINDING_SCHEMA: &str = "licoup.mobile-relay.pending-result.v1";
+const PENDING_RESULT_DELIVERY_KIND: &str = "result";
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct PendingSecureResultBinding {
+    schema: String,
+    station_binding_digest: String,
+    received_mailbox_id: String,
+    received_envelope_id: String,
+}
 
 /// Synchronize relay deliveries using one bounded secret-store authorization context.
 pub fn commands_sync(params: &Value) -> Result<Value> {
     let command_limit = params.get("limit").and_then(Value::as_u64).unwrap_or(10) as usize;
-    let (mut config, mut secret_context) = load_config_with_runtime_secret_context_for_operation(
+    let (config, mut secret_context) = load_config_with_runtime_secret_context_for_operation(
         params,
         "Mobile Relay commands sync operation authorization batch",
         mobile_relay_e2ee_secret_store_authorization_batch_operation_count()
             .saturating_add(command_limit.saturating_mul(4))
             .saturating_add(4),
     )?;
-    let check_in = pc_check_in_with_context(params, &mut config, &mut secret_context)?;
-    let polled = commands_poll_with_config(params, &config, &secret_context.material)?;
-    let deliveries = polled
-        .get("envelopes")
-        .and_then(Value::as_array)
-        .cloned()
-        .unwrap_or_default();
-    let commands = deliveries
+    let check_in = pc_check_in_with_context(params, &config, &secret_context)?;
+    let mut completed = Vec::<Value>::new();
+    if let Some(recovered) = recover_pending_result_delivery(params, &config, &mut secret_context)?
+    {
+        completed.push(recovered);
+    }
+    let polled = receive_station_envelopes_with_config(params, &config, &secret_context.material)?;
+    let delivery_values = polled
+        .envelopes
+        .iter()
+        .map(|envelope| {
+            envelope
+                .to_json()
+                .and_then(|wire| serde_json::from_str::<Value>(&wire).map_err(Into::into))
+        })
+        .collect::<Result<Vec<_>>>()?;
+    let commands = delivery_values
         .iter()
         .map(local_command_from_relay_delivery)
         .collect::<Result<Vec<_>>>()?;
-    let secure_command_count = commands
-        .iter()
-        .filter(|command| {
-            let command_type = command
-                .get("type")
-                .and_then(Value::as_str)
-                .unwrap_or_default();
-            command_type == "secure_mesh.envelope" || command_type == "secure-mesh.envelope"
-        })
-        .count();
-    let pairwise_operation_count = secure_command_count.saturating_mul(4).saturating_add(2);
-    let mut pairwise_operation = None;
-    let mut completed = Vec::<Value>::new();
     let mut visible_commands = Vec::<Value>::new();
-    for command in &commands {
-        let command_id = command
-            .get("commandId")
-            .and_then(Value::as_str)
-            .unwrap_or_default()
-            .to_string();
-        let command_type = command
-            .get("type")
-            .and_then(Value::as_str)
-            .unwrap_or_default();
+    for (command, delivery) in commands.iter().zip(delivery_values.iter()) {
         let redacted_command = redacted_relay_command(command);
         visible_commands.push(redacted_command.clone());
-        if command_type == "secure_mesh.envelope" || command_type == "secure-mesh.envelope" {
-            if pairwise_operation.is_none() {
-                match mobile_relay_pairwise_operation_with_runtime_secret_context(
+        let mut operation = match mobile_relay_pairwise_operation_with_runtime_secret_context(
+            &config,
+            "Mobile Relay commands sync operation authorization batch",
+            5,
+            &mut secret_context,
+        ) {
+            Ok(operation) => operation,
+            Err(_error) => {
+                completed.push(failed_completion(&redacted_command));
+                continue;
+            }
+        };
+        match execute_secure_envelope_command_with_pairwise_operation(
+            command,
+            params,
+            &config,
+            &secret_context.material,
+            &mut operation,
+        ) {
+            Ok(result_envelope) => {
+                let pending = pending_result_delivery(params, &config, delivery, &result_envelope)?;
+                if operation.commit_with_pending_delivery(&pending).is_err() {
+                    completed.push(failed_completion(&redacted_command));
+                    continue;
+                }
+                match complete_authenticated_station_command(
+                    params,
                     &config,
-                    "Mobile Relay commands sync operation authorization batch",
-                    pairwise_operation_count,
-                    &mut secret_context,
+                    delivery,
+                    &result_envelope,
+                    &mut operation,
                 ) {
-                    Ok(operation) => {
-                        pairwise_operation = Some(operation);
+                    Ok(completion) => {
+                        completed.push(json!({
+                            "command": redacted_command,
+                            "ok": true,
+                            "bodyRedacted": true,
+                            "resultEnvelope": result_envelope,
+                            "completion": completion
+                        }));
                     }
                     Err(_error) => {
                         completed.push(json!({
                             "command": redacted_command,
                             "ok": false,
                             "bodyRedacted": true,
-                            "error": SECURE_MESH_ENDPOINT_CRYPTO_RUNTIME_FAILED_DETAIL,
+                            "error": "secure mesh result delivery remains pending",
                             "completion": {
                                 "ok": false,
-                                "code": SECURE_MESH_ENDPOINT_CRYPTO_RUNTIME_FAILED_CODE
+                                "code": "mobile_relay_result_delivery_pending"
                             }
                         }));
-                        continue;
+                        break;
                     }
                 }
             }
-            let operation = pairwise_operation
-                .as_mut()
-                .ok_or_else(|| anyhow!("mobile relay commands sync authorization batch missing"))?;
-            match execute_secure_envelope_command_with_pairwise_operation(
-                command,
-                params,
-                &config,
-                &secret_context.material,
-                operation,
-            ) {
-                Ok(result_envelope) => {
-                    let mut completion_params = json!({
-                        "commandId": command_id,
-                        "ok": true,
-                        "resultEnvelope": result_envelope,
-                        "leaseId": command.get("leaseId").cloned().unwrap_or(Value::Null),
-                        "leaseGeneration": command.get("leaseGeneration").cloned().unwrap_or(Value::Null)
-                    });
-                    attach_runtime_secret_overrides_param(&mut completion_params, params);
-                    attach_canonical_relay_params(&mut completion_params, params);
-                    let completion = command_complete_with_config(
-                        &completion_params,
-                        &config,
-                        &secret_context.material,
-                    )?;
+            Err(error) => {
+                if is_pairwise_replay_rejection_error(&error) {
+                    let received = relay_envelope_from_value(delivery)?;
+                    let station = station_context(params, &config)?;
+                    let deletion = station
+                        .transport
+                        .delete_envelope(received.mailbox_id(), received.envelope_id())
+                        .map(deletion_transport_hint)
+                        .unwrap_or_else(|_| deletion_not_reported_hint());
                     completed.push(json!({
                         "command": redacted_command,
                         "ok": true,
                         "bodyRedacted": true,
-                        "resultEnvelope": result_envelope,
-                        "completion": completion
-                    }));
-                }
-                Err(_error) => {
-                    completed.push(json!({
-                        "command": redacted_command,
-                        "ok": false,
-                        "bodyRedacted": true,
-                        "error": SECURE_MESH_ENDPOINT_CRYPTO_RUNTIME_FAILED_DETAIL,
                         "completion": {
-                            "ok": false,
-                            "code": SECURE_MESH_ENDPOINT_CRYPTO_RUNTIME_FAILED_CODE
+                            "ok": true,
+                            "code": "mobile_relay_authenticated_replay_cleaned",
+                            "transportHint": {
+                                "delete": deletion
+                            }
                         }
                     }));
+                } else {
+                    completed.push(failed_completion(&redacted_command));
                 }
             }
-            continue;
         }
-        let mut rejection = reject_plaintext_relay_command(command);
-        if let Some(object) = rejection.as_object_mut() {
-            object.insert("command".to_string(), redacted_command);
-        }
-        completed.push(rejection);
     }
     Ok(json!({
         "ok": true,
         "schemaVersion": CONFIG_SCHEMA_VERSION,
         "checkIn": check_in,
         "commands": visible_commands,
-        "completed": completed
+        "completed": completed,
+        "transportHint": {
+            "pollLease": lease_transport_hint(polled.lease_hint)
+        }
     }))
 }
 
+fn complete_authenticated_station_command(
+    params: &Value,
+    config: &Value,
+    received_envelope: &Value,
+    result_envelope: &Value,
+    pairwise_operation: &mut MobileRelayPairwiseOperation,
+) -> Result<Value> {
+    let received = relay_envelope_from_value(received_envelope)?;
+    let result = relay_envelope_from_value(result_envelope)?;
+    let station = station_context(params, config)?;
+    let delivery_hint = station.transport.send_envelope(&result)?;
+    anyhow::ensure!(
+        pairwise_operation
+            .delete_pending_delivery(PENDING_RESULT_DELIVERY_KIND, result.envelope_id())?,
+        "mobile relay pending result delivery disappeared"
+    );
+    let deletion_hint = station
+        .transport
+        .delete_envelope(received.mailbox_id(), received.envelope_id())
+        .map(deletion_transport_hint)
+        .unwrap_or_else(|_| deletion_not_reported_hint());
+    Ok(json!({
+        "ok": true,
+        "schemaVersion": CONFIG_SCHEMA_VERSION,
+        "transportHint": {
+            "result": delivery_transport_hint(delivery_hint),
+            "delete": deletion_hint
+        }
+    }))
+}
+
+fn pending_result_delivery(
+    params: &Value,
+    config: &Value,
+    received_envelope: &Value,
+    result_envelope: &Value,
+) -> Result<SecureMeshPairwisePendingDelivery> {
+    let received = relay_envelope_from_value(received_envelope)?;
+    let result = relay_envelope_from_value(result_envelope)?;
+    let binding = PendingSecureResultBinding {
+        schema: PENDING_RESULT_BINDING_SCHEMA.to_string(),
+        station_binding_digest: station_binding_digest(params, config)?,
+        received_mailbox_id: received.mailbox_id().to_string(),
+        received_envelope_id: received.envelope_id().to_string(),
+    };
+    Ok(SecureMeshPairwisePendingDelivery {
+        delivery_kind: PENDING_RESULT_DELIVERY_KIND.to_string(),
+        envelope_id: result.envelope_id().to_string(),
+        expires_at: result.expires_at().to_string(),
+        envelope_json: result.to_json()?,
+        binding_json: serde_json::to_string(&binding)?,
+        created_at: now_iso(),
+    })
+}
+
+fn recover_pending_result_delivery(
+    params: &Value,
+    config: &Value,
+    secret_context: &mut super::secret_custody::RuntimeSecretContext,
+) -> Result<Option<Value>> {
+    let mut operation = match mobile_relay_pairwise_operation_with_runtime_secret_context(
+        config,
+        "Mobile Relay pending result recovery authorization batch",
+        3,
+        secret_context,
+    ) {
+        Ok(operation) => operation,
+        Err(_) => return Ok(None),
+    };
+    let Some(pending) = operation.pending_delivery(PENDING_RESULT_DELIVERY_KIND)? else {
+        return Ok(None);
+    };
+    let binding: PendingSecureResultBinding = serde_json::from_str(&pending.binding_json)
+        .map_err(|_| anyhow!("mobile relay pending result binding is invalid"))?;
+    anyhow::ensure!(
+        binding.schema == PENDING_RESULT_BINDING_SCHEMA
+            && binding.station_binding_digest == station_binding_digest(params, config)?,
+        "mobile relay pending result station binding changed"
+    );
+    let result =
+        crate::core::licoarc_relay::LicoArcRelayEnvelope::from_json(&pending.envelope_json)?;
+    anyhow::ensure!(
+        result.envelope_id() == pending.envelope_id && result.expires_at() == pending.expires_at,
+        "mobile relay pending result envelope binding is invalid"
+    );
+    let station = station_context(params, config)?;
+    let expired = OffsetDateTime::parse(&pending.expires_at, &Rfc3339)
+        .map_err(|_| anyhow!("mobile relay pending result expiry is invalid"))?
+        <= OffsetDateTime::now_utc();
+    anyhow::ensure!(
+        !expired,
+        "mobile relay pending result expired after ratchet commit; re-pairing is required"
+    );
+    let result_hint = delivery_transport_hint(station.transport.send_envelope(&result)?);
+    anyhow::ensure!(
+        operation.delete_pending_delivery(PENDING_RESULT_DELIVERY_KIND, result.envelope_id())?,
+        "mobile relay pending result delivery disappeared"
+    );
+    let _ = station
+        .transport
+        .lease_mailbox(&binding.received_mailbox_id, station_lease_seconds(params));
+    let deletion = station
+        .transport
+        .delete_envelope(&binding.received_mailbox_id, &binding.received_envelope_id)
+        .map(deletion_transport_hint)
+        .unwrap_or_else(|_| deletion_not_reported_hint());
+    Ok(Some(json!({
+        "command": {
+            "commandId": binding.received_envelope_id,
+            "type": super::support::SECURE_MESH_ENVELOPE_COMMAND,
+            "bodyRedacted": true,
+            "secureEnvelopePresent": true
+        },
+        "ok": true,
+        "bodyRedacted": true,
+        "completion": {
+            "ok": true,
+            "code": "mobile_relay_pending_result_recovered",
+            "recoveredPendingDelivery": true,
+            "transportHint": {
+                "result": result_hint,
+                "delete": deletion
+            }
+        }
+    })))
+}
+
+fn failed_completion(redacted_command: &Value) -> Value {
+    json!({
+        "command": redacted_command,
+        "ok": false,
+        "bodyRedacted": true,
+        "error": SECURE_MESH_ENDPOINT_CRYPTO_RUNTIME_FAILED_DETAIL,
+        "completion": {
+            "ok": false,
+            "code": SECURE_MESH_ENDPOINT_CRYPTO_RUNTIME_FAILED_CODE
+        }
+    })
+}
+
+fn deletion_not_reported_hint() -> Value {
+    json!({
+        "stationReportedAcknowledged": false
+    })
+}
+
+#[cfg(test)]
 fn reject_plaintext_relay_command(command: &Value) -> Value {
     let command_type = command
         .get("type")
@@ -202,38 +359,6 @@ fn command_has_secure_envelope(command: &Value) -> bool {
             .is_some_and(Value::is_object)
 }
 
-fn attach_runtime_secret_overrides_param(target: &mut Value, source: &Value) {
-    if source
-        .get("secretOverrideTransport")
-        .and_then(Value::as_str)
-        .map(str::trim)
-        != Some(RUNTIME_SECRET_OVERRIDE_TRANSPORT)
-    {
-        return;
-    }
-    if let Some(overrides) = source
-        .get("secretOverrides")
-        .filter(|value| value.is_object())
-    {
-        target["secretOverrideTransport"] = json!(RUNTIME_SECRET_OVERRIDE_TRANSPORT);
-        target["secretOverrides"] = overrides.clone();
-    }
-}
-
-fn attach_canonical_relay_params(target: &mut Value, source: &Value) {
-    for key in [
-        "relaySessionToken",
-        "relayCsrfToken",
-        "relayTenantId",
-        "relayAccountId",
-        "relayWorkspaceId",
-    ] {
-        if let Some(value) = source.get(key).and_then(Value::as_str) {
-            target[key] = json!(value);
-        }
-    }
-}
-
 #[cfg(test)]
 pub(super) fn execute_secure_envelope_command(command: &Value, params: &Value) -> Result<Value> {
     let (config, secret_context) = load_config_with_runtime_secret_context(params)?;
@@ -244,13 +369,21 @@ pub(super) fn execute_secure_envelope_command(command: &Value, params: &Value) -
         "Mobile Relay secure command operation authorization batch",
         5,
     )?;
-    execute_secure_envelope_command_with_pairwise_operation(
-        command,
-        params,
-        &config,
-        &secret_context.material,
-        &mut pairwise_operation,
-    )
+    let history_home = crate::platform::paths::portable_data_dir()?;
+    let result = crate::domain::secure_mesh_command_runtime::with_secure_command_test_history_home(
+        &history_home,
+        || {
+            execute_secure_envelope_command_with_pairwise_operation(
+                command,
+                params,
+                &config,
+                &secret_context.material,
+                &mut pairwise_operation,
+            )
+        },
+    )?;
+    pairwise_operation.commit()?;
+    Ok(result)
 }
 
 fn execute_secure_envelope_command_with_pairwise_operation(
@@ -266,7 +399,7 @@ fn execute_secure_envelope_command_with_pairwise_operation(
         .cloned()
         .ok_or_else(|| anyhow!("secure mesh relay command is missing envelope"))?;
     validate_secure_envelope(&envelope)?;
-    let opened = open_mobile_relay_payload_with_pairwise_operation(
+    let opened = open_mobile_relay_payload_deferred(
         config,
         secret_material,
         &envelope,
@@ -298,7 +431,7 @@ fn execute_secure_envelope_command_with_pairwise_operation(
             "bodyRedacted": true
         })
     });
-    seal_mobile_relay_payload_with_pairwise_operation(
+    seal_mobile_relay_payload_deferred(
         config,
         secret_material,
         crate::core::secure_mesh_crypto::SecureMeshPayloadKind::ResultPayload,
@@ -333,25 +466,5 @@ mod tests {
             json!("mobile_relay_plaintext_command_rejected")
         );
         assert_eq!(rejection["bodyRedacted"], json!(true));
-    }
-
-    #[test]
-    fn runtime_secret_overrides_require_the_memory_transport_marker() {
-        let mut without_marker = json!({});
-        attach_runtime_secret_overrides_param(
-            &mut without_marker,
-            &json!({"secretOverrides": {"pcToken": "test-only"}}),
-        );
-        assert!(without_marker.get("secretOverrides").is_none());
-
-        let mut with_marker = json!({});
-        attach_runtime_secret_overrides_param(
-            &mut with_marker,
-            &json!({
-                "secretOverrideTransport": RUNTIME_SECRET_OVERRIDE_TRANSPORT,
-                "secretOverrides": {"pcToken": "test-only"}
-            }),
-        );
-        assert!(with_marker["secretOverrides"].is_object());
     }
 }

@@ -299,7 +299,12 @@ pub(crate) fn history_roots(adapter: HistoryAdapter, params: &Value) -> Vec<Hist
             (home.join(".claude/projects"), "claude-project-transcripts"),
             (home.join(".claude.json"), "claude-global-state"),
         ]),
+        // Chats and projects carry the conversation working directory; scan them
+        // before Application Support trees so the shared catalog walk budget is
+        // not spent on agent-cli installs and checkpoint noise first.
         HistoryAdapter::Cursor => roots(&[
+            (home.join(".cursor/chats"), "cursor-cli-chats"),
+            (home.join(".cursor/projects"), "cursor-cli-projects"),
             (
                 home.join("Library/Application Support/Cursor/User/workspaceStorage"),
                 "cursor-workspace-storage",
@@ -324,8 +329,6 @@ pub(crate) fn history_roots(adapter: HistoryAdapter, params: &Value) -> Vec<Hist
                 xdg_config.join("Cursor/User/globalStorage"),
                 "cursor-global-storage",
             ),
-            (home.join(".cursor/chats"), "cursor-cli-chats"),
-            (home.join(".cursor/projects"), "cursor-cli-projects"),
         ]),
         HistoryAdapter::Code => roots(&[
             (

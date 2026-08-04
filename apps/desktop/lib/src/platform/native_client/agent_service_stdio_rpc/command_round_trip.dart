@@ -21,7 +21,7 @@ Future<Map<String, dynamic>> exchangeStdioRpcCommandFrame({
   final session = await sessionManager.ensureSession();
   late Future<StdioRpcFrame> responseFuture;
   try {
-    responseFuture = session.expectFrame();
+    responseFuture = session.expectFrame(requestId: requestId);
   } on Object {
     await sessionManager.discard(session: session, kill: true);
     throw const LicoClientRpcException('transport_failed');
@@ -32,7 +32,7 @@ Future<Map<String, dynamic>> exchangeStdioRpcCommandFrame({
   try {
     await writeStdioRpcFrame(session, encoded);
   } on Object {
-    session.abandonExpectedFrame();
+    session.abandonExpectedFrame(requestId);
     await sessionManager.discard(session: session, kill: true);
     throw const LicoClientRpcException('transport_failed');
   }

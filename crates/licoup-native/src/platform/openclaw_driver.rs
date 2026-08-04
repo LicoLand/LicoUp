@@ -12,7 +12,7 @@ mod supervision;
 
 #[allow(unused_imports)]
 pub(super) use errors::ProtocolFailure;
-pub(super) use execution::execute;
+pub(super) use execution::execute_with_connection;
 #[allow(unused_imports)]
 pub(super) use model::{CapabilityProbe, EffectiveSettings, RUNTIME_PROTOCOL, RunResult};
 pub(super) use probe::probe;

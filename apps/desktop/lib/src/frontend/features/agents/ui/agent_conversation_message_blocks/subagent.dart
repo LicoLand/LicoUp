@@ -13,10 +13,12 @@ class AgentConversationSubagentCardBlock extends StatefulWidget {
     super.key,
     required this.message,
     required this.adapter,
+    this.fullWidth = false,
   });
 
   final AgentConversationMessage message;
   final AgentRenderAdapter adapter;
+  final bool fullWidth;
 
   @override
   State<AgentConversationSubagentCardBlock> createState() =>
@@ -38,25 +40,21 @@ class _AgentConversationSubagentCardBlockState
         ? '${strings.subagentTask} · ${strings.messagesCount(widget.message.childMessages.length)}'
         : widget.message.cardSubtitle.trim();
     final preview = conversationMessagePreviewText(widget.message.text);
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: ConstrainedBox(
-        constraints: BoxConstraints(maxWidth: widget.adapter.assistantMaxWidth),
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            color: Colors.white.withAlpha(colors.isDark ? 18 : 24),
-            borderRadius: BorderRadius.circular(
-              AppleControlMetrics.menuCornerRadius,
-            ),
-            border: Border.all(
-              color: Colors.white.withAlpha(colors.isDark ? 48 : 70),
-              width: AppleControlMetrics.hairline,
-            ),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
+    final card = DecoratedBox(
+      decoration: BoxDecoration(
+        color: Colors.white.withAlpha(colors.isDark ? 18 : 24),
+        borderRadius: BorderRadius.circular(
+          AppleControlMetrics.menuCornerRadius,
+        ),
+        border: Border.all(
+          color: Colors.white.withAlpha(colors.isDark ? 48 : 70),
+          width: AppleControlMetrics.hairline,
+        ),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
               InkWell(
                 borderRadius: BorderRadius.circular(
                   AppleControlMetrics.menuCornerRadius,
@@ -71,7 +69,7 @@ class _AgentConversationSubagentCardBlockState
                     children: [
                       Icon(
                         Icons.account_tree_outlined,
-                        color: colors.info.withAlpha(200),
+                        color: colors.accent.withAlpha(200),
                         size: 18,
                       ),
                       const SizedBox(width: 10),
@@ -158,7 +156,17 @@ class _AgentConversationSubagentCardBlockState
               ],
             ],
           ),
-        ),
+    );
+
+    if (widget.fullWidth) {
+      return SizedBox(width: double.infinity, child: card);
+    }
+
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxWidth: widget.adapter.assistantMaxWidth),
+        child: card,
       ),
     );
   }

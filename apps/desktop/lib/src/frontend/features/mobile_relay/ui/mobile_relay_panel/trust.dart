@@ -34,7 +34,7 @@ class MobileRelayTrustVerificationCard extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: colors.surfaceHigh,
+        color: colors.surfaceLow,
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: statusColor),
       ),

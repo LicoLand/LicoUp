@@ -11,7 +11,7 @@ void main() {
         child: MobileRelayPairingQrFrame(
           inviteText: '',
           busy: false,
-          gatewayConfigured: false,
+          stationConfigured: false,
           onGenerate: () async {
             generationCalls += 1;
           },
@@ -27,7 +27,7 @@ void main() {
         child: MobileRelayPairingQrFrame(
           inviteText: '',
           busy: false,
-          gatewayConfigured: true,
+          stationConfigured: true,
           onGenerate: () async {
             generationCalls += 1;
           },
@@ -43,7 +43,7 @@ void main() {
         child: MobileRelayPairingQrFrame(
           inviteText: 'opaque-pairing-invite',
           busy: false,
-          gatewayConfigured: true,
+          stationConfigured: true,
           onGenerate: () async {},
         ),
       ),

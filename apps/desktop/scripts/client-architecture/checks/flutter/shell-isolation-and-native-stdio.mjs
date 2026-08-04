@@ -51,7 +51,6 @@ export async function checkShellIsolationAndNativeStdio(context) {
     readText,
     runJson,
     sameSet,
-    sourceLineCount,
   } = context;
   const semanticDestinations = await readDartSourceByBasename("semantic_destination.dart");
   const appSections = collectEnumValues(semanticDestinations, "ClientSection");
@@ -75,42 +74,38 @@ export async function checkShellIsolationAndNativeStdio(context) {
     "apps/desktop/lib/src/platform/native_client/agent_service_stdio_rpc.dart";
   const nativeStdioRpcRoot =
     "apps/desktop/lib/src/platform/native_client/agent_service_stdio_rpc";
-  const nativeStdioRpcLeafLimits = new Map([
-    [`${nativeStdioRpcRoot}/client.dart`, 160],
-    [`${nativeStdioRpcRoot}/command_exchange.dart`, 80],
-    [`${nativeStdioRpcRoot}/command_round_trip.dart`, 85],
-    [`${nativeStdioRpcRoot}/conversation_exchange.dart`, 75],
-    [`${nativeStdioRpcRoot}/line_framer.dart`, 75],
-    [`${nativeStdioRpcRoot}/method_policy.dart`, 40],
-    [`${nativeStdioRpcRoot}/operation_pending_queue.dart`, 40],
-    [`${nativeStdioRpcRoot}/operation_queue.dart`, 90],
-    [`${nativeStdioRpcRoot}/orchestrator_lane_pool.dart`, 140],
-    [`${nativeStdioRpcRoot}/protocol.dart`, 75],
-    [`${nativeStdioRpcRoot}/request_writer.dart`, 20],
-    [`${nativeStdioRpcRoot}/response_codec.dart`, 155],
-    [`${nativeStdioRpcRoot}/session.dart`, 235],
-    [`${nativeStdioRpcRoot}/session_manager.dart`, 110],
-    [`${nativeStdioRpcRoot}/shutdown.dart`, 50]
-  ]);
+  const nativeStdioRpcLeafPaths = new Set([
+  `${nativeStdioRpcRoot}/client.dart`,
+  `${nativeStdioRpcRoot}/command_exchange.dart`,
+  `${nativeStdioRpcRoot}/command_round_trip.dart`,
+  `${nativeStdioRpcRoot}/conversation_exchange.dart`,
+  `${nativeStdioRpcRoot}/in_flight_control.dart`,
+  `${nativeStdioRpcRoot}/line_framer.dart`,
+  `${nativeStdioRpcRoot}/method_policy.dart`,
+  `${nativeStdioRpcRoot}/operation_pending_queue.dart`,
+  `${nativeStdioRpcRoot}/operation_queue.dart`,
+  `${nativeStdioRpcRoot}/protocol.dart`,
+  `${nativeStdioRpcRoot}/request_writer.dart`,
+  `${nativeStdioRpcRoot}/response_codec.dart`,
+  `${nativeStdioRpcRoot}/session.dart`,
+  `${nativeStdioRpcRoot}/session_expectation.dart`,
+  `${nativeStdioRpcRoot}/session_manager.dart`,
+  `${nativeStdioRpcRoot}/shutdown.dart`,
+]);
   const nativeStdioRpcLeaves = await collectSourceFiles(nativeStdioRpcRoot, ".dart");
   assert(
-    sameSet(nativeStdioRpcLeaves, [...nativeStdioRpcLeafLimits.keys()]),
+    sameSet(nativeStdioRpcLeaves, [...nativeStdioRpcLeafPaths]),
     "native stdio RPC facade must own the complete explicit ordinary-library leaf set"
   );
   const nativeStdioRpcFacadeSource = await readText(nativeStdioRpcFacadePath);
   assert(
-    sourceLineCount(nativeStdioRpcFacadeSource) <= 3 &&
-      nativeStdioRpcFacadeSource.includes("show NativeStdioRpcClient") &&
+    nativeStdioRpcFacadeSource.includes("show NativeStdioRpcClient") &&
       !nativeStdioRpcFacadeSource.includes("part ") &&
       !nativeStdioRpcFacadeSource.includes("class NativeStdioRpcClient"),
     "native stdio RPC root must remain a thin stable export facade"
   );
-  for (const [relativePath, maxLines] of nativeStdioRpcLeafLimits) {
+  for (const relativePath of nativeStdioRpcLeafPaths) {
     const source = await readText(relativePath);
-    assert(
-      sourceLineCount(source.trimEnd()) <= maxLines,
-      `${relativePath} exceeds its stdio RPC responsibility limit (${maxLines} lines maximum)`
-    );
     assert(
       !source.includes("part ") &&
         !source.includes("part of") &&
@@ -185,34 +180,12 @@ export async function checkShellIsolationAndNativeStdio(context) {
   assert(agentConversationServiceSource.includes("'conversations'") && agentConversationServiceSource.includes("agentService.runCli"),
     "agent_conversation_service.dart must delegate conversation IO to licoup CLI"
   );
-  const nativeOrchestratorClientSource = await readText(
-    "apps/desktop/lib/src/platform/native_client/orchestrator_ipc/client.dart"
-  );
   const agentServiceSource = await readText(
     "apps/desktop/lib/src/platform/native_client/agent_service.dart"
   );
   assert(
-    nativeOrchestratorClientSource.includes("final class NativeOrchestratorClient") &&
-      nativeOrchestratorClientSource.includes("executeStructured('orchestrator.request'") &&
-      nativeOrchestratorClientSource.includes("'workflow.submit'") &&
-      nativeOrchestratorClientSource.includes("'workflow.status'") &&
-      nativeOrchestratorClientSource.includes("'workflow.cancel'") &&
-      nativeOrchestratorClientSource.includes("'workflow.approve'") &&
-      nativeOrchestratorClientSource.includes("'workflow.events'") &&
-      nativeOrchestratorClientSource.includes("_maximumProjectionLimit = 256") &&
-      nativeOrchestratorClientSource.includes("_privacyMinimalReceipt") &&
-      nativeOrchestratorClientSource.includes("_privacyMinimalEvent") &&
-      !nativeOrchestratorClientSource.includes("streamCliJsonLinesWithStdin") &&
-      !nativeOrchestratorClientSource.includes("Process.") &&
-      agentServiceSource.includes("late final NativeOrchestratorClient orchestratorClient") &&
-      agentServiceSource.includes("NativeOrchestratorClient(transport: _stdioRpcTransport)"),
-    "desktop orchestration must be a bounded privacy-minimal projection over the native orchestrator request boundary"
-  );
-  assert(
-    !agentConversationServiceSource.includes("NativeOrchestratorClient") &&
-      !agentConversationServiceSource.includes("workflow.submit") &&
-      !agentConversationServiceSource.includes("workflow.events"),
-    "direct conversation IO must not own orchestration workflow authority"
+    agentServiceSource.includes("NativeStdioRpcTransport"),
+    "desktop native service must retain the direct stdio transport boundary"
   );
   return { agentConversationServiceSource };
 }

@@ -217,6 +217,22 @@ pub struct AcpSessionResponse {
     pub config_options: Vec<Value>,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct AcpSessionInfo {
+    pub session_id: String,
+    pub cwd: String,
+    pub additional_directories: Vec<String>,
+    pub title: Option<String>,
+    pub updated_at: Option<String>,
+    pub meta: Option<Map<String, Value>>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct AcpSessionListResponse {
+    pub sessions: Vec<AcpSessionInfo>,
+    pub next_cursor: Option<String>,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum AcpStopReason {
     EndTurn,
@@ -266,6 +282,10 @@ pub struct AcpSessionUpdate {
 }
 
 impl AcpSessionUpdate {
+    pub const fn kind(&self) -> AcpSessionUpdateKind {
+        self.kind
+    }
+
     pub fn payload(&self) -> &Value {
         &self.update
     }
@@ -276,6 +296,12 @@ impl AcpSessionUpdate {
 
     pub fn agent_message_text(&self) -> Option<&str> {
         (self.kind == AcpSessionUpdateKind::AgentMessageChunk)
+            .then(|| self.update.pointer("/content/text").and_then(Value::as_str))
+            .flatten()
+    }
+
+    pub fn user_message_text(&self) -> Option<&str> {
+        (self.kind == AcpSessionUpdateKind::UserMessageChunk)
             .then(|| self.update.pointer("/content/text").and_then(Value::as_str))
             .flatten()
     }
@@ -291,6 +317,17 @@ impl AcpSessionUpdate {
             .then(|| self.update.get("configOptions").and_then(Value::as_array))
             .flatten()
             .map(Vec::as_slice)
+    }
+}
+
+impl AcpSessionUpdateKind {
+    pub const fn processing_evidence_kind(self) -> Option<&'static str> {
+        match self {
+            Self::AgentThoughtChunk => Some("reasoning"),
+            Self::ToolCall | Self::ToolCallUpdate => Some("tool"),
+            Self::Plan => Some("plan"),
+            _ => None,
+        }
     }
 }
 

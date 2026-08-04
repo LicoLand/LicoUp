@@ -206,9 +206,9 @@ void registerAgentsWorkspaceStateScenarios() {
 
     expect(find.text('历史对话'), findsNothing);
     expect(find.text('搜索历史对话'), findsNothing);
-    expect(find.text('0 条对话'), findsNothing);
-    expect(find.byTooltip('归档当前智能体对话'), findsOneWidget);
-    expect(find.byTooltip('新对话'), findsOneWidget);
+    expect(find.text('0 条对话'), findsOneWidget);
+    expect(find.text('备份对话'), findsOneWidget);
+    expect(find.text('新对话'), findsOneWidget);
     expect(find.byTooltip('收起历史对话'), findsOneWidget);
     expect(find.text('查看'), findsNothing);
     expect(find.text('计划'), findsNothing);

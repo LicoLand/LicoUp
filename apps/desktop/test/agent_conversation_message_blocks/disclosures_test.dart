@@ -25,7 +25,7 @@ Hidden detail value
               data: data,
               foreground: colors.text,
               accent: colors.primary,
-              codeBackground: colors.surfaceHigh,
+              codeBackground: colors.surfaceRaised,
               blockBackground: colors.surface,
               borderColor: colors.line,
               renderStyle: adapter.markdownStyle,

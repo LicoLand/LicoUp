@@ -1,16 +1,14 @@
-/// Native boundary for one-or-many-agent skill deletion.
+/// Native boundary for moving one catalog skill directory to the system trash.
 abstract interface class SkillDeleteGateway {
   Future<Map<String, dynamic>> planSkillDelete({
-    required List<String> agents,
     required String skillId,
-    String installRoot = '',
+    required String path,
   });
 
   Future<Map<String, dynamic>> applySkillDelete({
-    required List<String> agents,
     required String skillId,
+    required String path,
     required String confirmation,
-    String installRoot = '',
   });
 }
 
@@ -19,16 +17,16 @@ abstract interface class SkillDeleteViewModel {
 
   Map<String, dynamic>? get skillDeletePlan;
 
+  Map<String, dynamic>? get skillDeleteResult;
+
   Future<void> previewSkillDelete({
-    required Iterable<String> agents,
     required String skillId,
-    String installRoot = '',
+    required String path,
   });
 
   Future<void> applySkillDelete({
-    required Iterable<String> agents,
     required String skillId,
+    required String path,
     required String confirmation,
-    String installRoot = '',
   });
 }

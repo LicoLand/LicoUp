@@ -17,10 +17,14 @@ mod protocol;
 mod supervision;
 
 pub(in crate::platform) use approval_store::resolve_parked_permission;
-pub(in crate::platform) use capabilities::{AcpSessionDriverSpec, CapabilityProbe, RunResult};
+pub(in crate::platform) use capabilities::{
+    AcpSessionDriverSpec, CapabilityProbe, EffectiveSettings, RunResult,
+};
 pub(in crate::platform) use continuity::{ControlDisposition, cancel, cleanup_session};
+pub(in crate::platform) use errors::ProtocolFailure;
+pub(in crate::platform) use events::{TransportEvent, read_protocol_messages, request_id_matches};
 pub(in crate::platform) use execution::execute;
-pub(in crate::platform) use io::{drain_bounded, read_bounded};
+pub(in crate::platform) use io::{drain_bounded, drain_stderr, read_bounded, write_message};
 
 #[cfg(test)]
 pub(in crate::platform) use capabilities::{
@@ -29,8 +33,6 @@ pub(in crate::platform) use capabilities::{
 };
 #[cfg(test)]
 pub(in crate::platform) use command::{LaunchSpec, ProtocolConfig};
-#[cfg(test)]
-pub(in crate::platform) use io::drain_stderr;
 #[cfg(test)]
 pub(in crate::platform) use protocol::{
     INITIALIZE_REQUEST_ID, MODEL_REQUEST_ID, PROMPT_REQUEST_ID, ProtocolEffect, ProtocolPhase,

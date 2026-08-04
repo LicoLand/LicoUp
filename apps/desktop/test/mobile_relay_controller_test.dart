@@ -7,11 +7,11 @@ void main() {
   test(
     'pairing keeps credentials private and exposes a bounded presentation',
     () async {
-      final gateway = _FakeMobileRelayGateway();
+      final client = _FakeMobileRelayClient();
       final statuses = <MobileRelayFeatureStatus>[];
       var targetScans = 0;
       final controller = MobileRelayController(
-        gateway: gateway,
+        client: client,
         operationGate: MobileRelayOperationGate(),
         isMobileRuntime: () => false,
         isAndroid: () => true,
@@ -22,7 +22,7 @@ void main() {
         discoverTargets: (_) async {},
       );
       addTearDown(controller.dispose);
-      controller.replaceConfig(gateway.config);
+      controller.replaceConfig(client.config);
 
       await controller.createPairing();
 
@@ -52,9 +52,9 @@ void main() {
   test(
     'polling projects commands without payloads or raw execution output',
     () async {
-      final gateway = _FakeMobileRelayGateway();
+      final client = _FakeMobileRelayClient();
       final controller = MobileRelayController(
-        gateway: gateway,
+        client: client,
         operationGate: MobileRelayOperationGate(),
         isMobileRuntime: () => false,
         isAndroid: () => true,
@@ -65,7 +65,7 @@ void main() {
         discoverTargets: (_) async {},
       );
       addTearDown(controller.dispose);
-      controller.replaceConfig(gateway.config);
+      controller.replaceConfig(client.config);
 
       await controller.pollOnce(showProgress: true);
 
@@ -83,13 +83,13 @@ void main() {
   );
 
   test(
-    'pairing fails closed until a gateway is explicitly configured',
+    'pairing fails closed until a station is explicitly configured',
     () async {
-      final gateway = _FakeMobileRelayGateway()
+      final client = _FakeMobileRelayClient()
         ..config = MobileRelayConfig.defaults();
       final statuses = <MobileRelayFeatureStatus>[];
       final controller = MobileRelayController(
-        gateway: gateway,
+        client: client,
         operationGate: MobileRelayOperationGate(),
         isMobileRuntime: () => false,
         isAndroid: () => false,
@@ -103,17 +103,16 @@ void main() {
 
       await controller.createPairing();
 
-      expect(gateway.createPairingCalls, 0);
-      expect(statuses.last.errorCode, 'mobile_relay_gateway_required');
+      expect(client.createPairingCalls, 0);
+      expect(statuses.last.errorCode, 'mobile_relay_station_required');
     },
   );
 }
 
-final class _FakeMobileRelayGateway implements MobileRelayGateway {
+final class _FakeMobileRelayClient implements MobileRelayClient {
   int createPairingCalls = 0;
   MobileRelayConfig config = MobileRelayConfig.defaults().copyWith(
-    useCustomGateway: true,
-    customGatewayUrl: 'https://relay.example.test',
+    stationBaseUrl: 'https://station.example.test',
     pairingId: 'pairing-1',
     pcToken: 'secret-value',
     pcTokenPresent: true,
@@ -130,9 +129,8 @@ final class _FakeMobileRelayGateway implements MobileRelayGateway {
   }
 
   @override
-  Future<MobileRelayConfig> configureGateway({
-    required bool useCustomGateway,
-    required String customGatewayUrl,
+  Future<MobileRelayConfig> configureStation({
+    required String stationBaseUrl,
   }) async => config;
 
   @override
@@ -142,7 +140,7 @@ final class _FakeMobileRelayGateway implements MobileRelayGateway {
       'ok': true,
       'pairingCode': 'SAFE-CODE',
       'mobileRelayPairingInvite': {
-        'gatewayUrl': 'https://relay.example.test',
+        'stationBaseUrl': 'https://station.example.test',
         'pairingCode': 'SAFE-CODE',
         'pairingId': 'pairing-1',
         'e2eePairingSecret': 'secret-value',

@@ -11,10 +11,10 @@ mod private_context;
 mod public_payload;
 mod validation;
 
-pub(crate) use constants::MAX_PADDING_BUCKET_BYTES;
 #[cfg(test)]
 pub(crate) use constants::{
-    LARGE_PADDING_BUCKET_STEP_BYTES, MIN_PADDING_BUCKET_BYTES, POWER_OF_TWO_PADDING_LIMIT_BYTES,
+    LARGE_PADDING_BUCKET_STEP_BYTES, MAX_PADDING_BUCKET_BYTES, MIN_PADDING_BUCKET_BYTES,
+    POWER_OF_TWO_PADDING_LIMIT_BYTES,
 };
 pub use constants::{SECURE_MESH_CONTENT_CIPHER_SUITE, SECURE_MESH_CONTENT_CRYPTO_STATUS};
 pub use content_key::ContentKey;

@@ -20,6 +20,9 @@ final class AgentUsageWaveOverview extends StatefulWidget {
     required this.windowDays,
     required this.windowBusy,
     required this.onWindowChanged,
+    this.showGroupingControl = true,
+    this.title,
+    this.tooltipSemanticLabel,
   });
 
   final AgentUsageChartGrouping grouping;
@@ -28,6 +31,9 @@ final class AgentUsageWaveOverview extends StatefulWidget {
   final int windowDays;
   final bool windowBusy;
   final ValueChanged<int> onWindowChanged;
+  final bool showGroupingControl;
+  final String? title;
+  final String Function(DateTime date)? tooltipSemanticLabel;
 
   @override
   State<AgentUsageWaveOverview> createState() => _AgentUsageWaveOverviewState();
@@ -112,6 +118,9 @@ final class _AgentUsageWaveOverviewState extends State<AgentUsageWaveOverview> {
         child: AgentUsageChartTooltip(
           timeline: widget.timeline,
           snapshot: widget.timeline.snapshots[index],
+          semanticLabel: widget.tooltipSemanticLabel?.call(
+            widget.timeline.snapshots[index].time,
+          ),
         ),
       ),
     );
@@ -146,7 +155,7 @@ final class _AgentUsageWaveOverviewState extends State<AgentUsageWaveOverview> {
           children: [
             Expanded(
               child: Text(
-                strings.usageOverTime,
+                widget.title ?? strings.tokenUsage,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
@@ -156,11 +165,13 @@ final class _AgentUsageWaveOverviewState extends State<AgentUsageWaveOverview> {
                 ),
               ),
             ),
-            AgentUsageGroupingSwitch(
-              grouping: widget.grouping,
-              onChanged: widget.onGroupingChanged,
-            ),
-            const SizedBox(width: 8),
+            if (widget.showGroupingControl) ...[
+              AgentUsageGroupingSwitch(
+                grouping: widget.grouping,
+                onChanged: widget.onGroupingChanged,
+              ),
+              const SizedBox(width: 8),
+            ],
             AgentUsageWindowControl(
               days: widget.windowDays,
               busy: widget.windowBusy,

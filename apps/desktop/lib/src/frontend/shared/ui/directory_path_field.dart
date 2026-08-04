@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 class DirectoryPathField extends StatelessWidget {
@@ -24,7 +25,12 @@ class DirectoryPathField extends StatelessWidget {
     this.actions = const [],
     this.headerTrailing,
     this.valueTextStyle,
-    this.padding = const EdgeInsets.fromLTRB(16, 8, 16, 16),
+    this.padding = const EdgeInsets.fromLTRB(
+      LicoContentSpacing.item,
+      LicoContentSpacing.compact,
+      LicoContentSpacing.item,
+      LicoContentSpacing.item,
+    ),
   }) : assert(path != null || controller != null);
 
   final String title;
@@ -64,8 +70,8 @@ class DirectoryPathField extends StatelessWidget {
             Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                Icon(icon, color: colors.primary, size: 18),
-                const SizedBox(width: 10),
+                Icon(icon, color: colors.textSecondary, size: 18),
+                const SizedBox(width: LicoContentSpacing.compact),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -80,7 +86,7 @@ class DirectoryPathField extends StatelessWidget {
                         ),
                       ),
                       if (subtitle != null && subtitle!.trim().isNotEmpty) ...[
-                        const SizedBox(height: 2),
+                        const SizedBox(height: LicoContentSpacing.inline / 2),
                         Text(
                           subtitle!.trim(),
                           maxLines: 1,
@@ -96,12 +102,12 @@ class DirectoryPathField extends StatelessWidget {
                   ),
                 ),
                 if (headerTrailing != null) ...[
-                  const SizedBox(width: 8),
+                  const SizedBox(width: LicoContentSpacing.compact),
                   headerTrailing!,
                 ],
               ],
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: LicoContentSpacing.compact),
           ],
           LayoutBuilder(
             builder: (context, constraints) {
@@ -119,8 +125,8 @@ class DirectoryPathField extends StatelessWidget {
                     : null,
               );
               final actionRow = Wrap(
-                spacing: 10,
-                runSpacing: 10,
+                spacing: LicoContentSpacing.compact,
+                runSpacing: LicoContentSpacing.compact,
                 crossAxisAlignment: WrapCrossAlignment.center,
                 children: actions,
               );
@@ -132,7 +138,7 @@ class DirectoryPathField extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     input,
-                    const SizedBox(height: 12),
+                    const SizedBox(height: LicoContentSpacing.item),
                     Align(alignment: Alignment.centerLeft, child: actionRow),
                   ],
                 );
@@ -141,7 +147,7 @@ class DirectoryPathField extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Expanded(child: input),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: LicoContentSpacing.item),
                   actionRow,
                 ],
               );
@@ -199,9 +205,9 @@ class _PathInput extends StatelessWidget {
     final openButton = Tooltip(
       message: openTooltip,
       child: Padding(
-        padding: const EdgeInsets.only(right: 3),
+        padding: const EdgeInsets.only(right: LicoContentSpacing.inline),
         child: Material(
-          color: canOpen ? colors.primaryFixed : colors.surfaceLow,
+          color: canOpen ? colors.brandSurface : colors.surfaceLow,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
           clipBehavior: Clip.antiAlias,
           child: InkWell(
@@ -215,7 +221,7 @@ class _PathInput extends StatelessWidget {
               child: Icon(
                 Icons.open_in_new_outlined,
                 size: 14,
-                color: canOpen ? colors.primaryStrong : colors.textMuted,
+                color: canOpen ? colors.accent : colors.textMuted,
               ),
             ),
           ),
@@ -295,7 +301,10 @@ class _PathInput extends StatelessWidget {
           children: [
             Expanded(
               child: Padding(
-                padding: const EdgeInsets.only(left: 12, right: 8),
+                padding: const EdgeInsets.only(
+                  left: LicoContentSpacing.item,
+                  right: LicoContentSpacing.compact,
+                ),
                 child: valueChild,
               ),
             ),

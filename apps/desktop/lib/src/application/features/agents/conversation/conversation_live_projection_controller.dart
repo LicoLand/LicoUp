@@ -1,5 +1,6 @@
 import 'package:licoup/src/application/features/agents/workspace/agent_workspace_coordinator.dart';
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
+import 'package:licoup/src/contracts/agent_conversation_privacy_projection.dart';
 import 'package:licoup/src/contracts/agent_conversation_tab_activity.dart';
 import 'package:licoup/src/contracts/agent_dispatch_lane.dart';
 import 'package:licoup/src/contracts/generated/secure_mesh.g.dart';
@@ -22,6 +23,76 @@ mixin AgentConversationLiveProjectionController on AgentWorkspaceCoordinator {
           createdAt: now,
           stableIdentity: '$turnId-user',
         ),
+        AgentConversationMessage(
+          id: '$turnId-lifecycle',
+          role: 'event',
+          text: 'submitted',
+          createdAt: now,
+          layer: AgentConversationSemanticLayer.execution,
+          cardType: 'lifecycle',
+          cardTitle: 'lifecycle.submitted',
+          cardSubtitle: 'submitted',
+          stableIdentity: '$turnId-lifecycle',
+        ),
+      ]),
+    };
+  }
+
+  void conversationUpsertLiveLifecycle({
+    required String agentId,
+    required String turnId,
+    required String stage,
+    String participantAgentId = '',
+    String participantLabel = '',
+    String participantRole = '',
+  }) {
+    final normalizedStage = stage.trim().toLowerCase();
+    if (normalizedStage.isEmpty) return;
+    final messageId = '$turnId-lifecycle';
+    final current = liveConversationMessagesByAgent[agentId] ?? const [];
+    final previous = current
+        .where((message) => message.id == messageId)
+        .firstOrNull;
+    const orderedStages = [
+      'submitted',
+      'accepted',
+      'processing',
+      'responding',
+      'completed',
+    ];
+    final observedStages =
+        previous?.cardSubtitle
+            .split(',')
+            .map((value) => value.trim())
+            .where(orderedStages.contains)
+            .toSet() ??
+        <String>{};
+    if (orderedStages.contains(normalizedStage)) {
+      observedStages.add(normalizedStage);
+    }
+    final lifecycleMessage = AgentConversationMessage(
+      id: messageId,
+      role: normalizedStage == 'failed' ? 'error' : 'event',
+      text: normalizedStage,
+      createdAt:
+          previous?.createdAt ?? DateTime.now().toUtc().toIso8601String(),
+      layer: AgentConversationSemanticLayer.execution,
+      cardType: 'lifecycle',
+      cardTitle: 'lifecycle.$normalizedStage',
+      cardSubtitle: orderedStages.where(observedStages.contains).join(','),
+      stableIdentity: messageId,
+      participantAgentId: participantAgentId,
+      participantLabel: participantLabel,
+      participantRole: participantRole,
+    );
+    liveConversationMessagesByAgent = {
+      ...liveConversationMessagesByAgent,
+      agentId: List<AgentConversationMessage>.unmodifiable([
+        if (previous == null) ...current,
+        if (previous == null) lifecycleMessage,
+        if (previous != null)
+          for (final message in current)
+            if (message.id == messageId) lifecycleMessage else message,
       ]),
     };
   }
@@ -30,6 +101,9 @@ mixin AgentConversationLiveProjectionController on AgentWorkspaceCoordinator {
     required String agentId,
     required String turnId,
     required String text,
+    String participantAgentId = '',
+    String participantLabel = '',
+    String participantRole = '',
   }) {
     final messageId = '$turnId-assistant';
     final current = liveConversationMessagesByAgent[agentId] ?? const [];
@@ -37,6 +111,22 @@ mixin AgentConversationLiveProjectionController on AgentWorkspaceCoordinator {
         .where((message) => message.id == messageId)
         .firstOrNull;
     final now = DateTime.now().toUtc().toIso8601String();
+    final visibleText = visibleConversationMessageText(
+      'assistant',
+      text,
+      kind: AgentConversationMessageKind.assistant,
+      agentId: participantAgentId,
+    );
+    if (visibleText.isEmpty) {
+      liveConversationMessagesByAgent = {
+        ...liveConversationMessagesByAgent,
+        agentId: List<AgentConversationMessage>.unmodifiable([
+          for (final message in current)
+            if (message.id != messageId) message,
+        ]),
+      };
+      return;
+    }
     liveConversationMessagesByAgent = {
       ...liveConversationMessagesByAgent,
       agentId: List<AgentConversationMessage>.unmodifiable([
@@ -45,9 +135,12 @@ mixin AgentConversationLiveProjectionController on AgentWorkspaceCoordinator {
         AgentConversationMessage(
           id: messageId,
           role: 'assistant',
-          text: text,
+          text: visibleText,
           createdAt: previous?.createdAt ?? now,
           stableIdentity: messageId,
+          participantAgentId: participantAgentId,
+          participantLabel: participantLabel,
+          participantRole: participantRole,
         ),
       ]),
     };
@@ -125,6 +218,9 @@ mixin AgentConversationLiveProjectionController on AgentWorkspaceCoordinator {
     required String agentId,
     required String turnId,
     required AgentDispatchEvent event,
+    String participantAgentId = '',
+    String participantLabel = '',
+    String participantRole = '',
   }) {
     final kind = event.kind.trim();
     if (kind.isEmpty || kind == 'dispatch.turn.started') {
@@ -164,6 +260,17 @@ mixin AgentConversationLiveProjectionController on AgentWorkspaceCoordinator {
           cardType: role.replaceAll('_', '-'),
           cardTitle: kind,
           stableIdentity: messageId,
+          participantAgentId:
+              (event.payload['participantAgentId'] ?? participantAgentId)
+                  .toString()
+                  .trim(),
+          participantLabel:
+              (event.payload['participantLabel'] ?? participantLabel)
+                  .toString()
+                  .trim(),
+          participantRole: (event.payload['participantRole'] ?? participantRole)
+              .toString()
+              .trim(),
         ),
       ]),
     };

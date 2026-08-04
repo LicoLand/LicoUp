@@ -13,14 +13,15 @@ use std::{
     },
 };
 
-#[path = "licoup/orchestrator.rs"]
-mod orchestrator;
 #[path = "licoup/presentation.rs"]
 mod presentation;
+#[path = "licoup/private_stdin_json.rs"]
+mod private_stdin_json;
 #[path = "licoup/stdio_rpc.rs"]
 mod stdio_rpc;
 
 use presentation::{print_json, print_usage};
+use private_stdin_json::materialize_private_stdin_json;
 use stdio_rpc::{execute_rpc_cli, serve_stdio_rpc};
 
 const STDIO_RPC_PROTOCOL: &str = "licoup.stdio.v1";
@@ -28,15 +29,11 @@ const STDIO_RPC_MAX_REQUEST_BYTES: usize = 16 * 1024 * 1024;
 const STDIO_RPC_MAX_RESPONSE_BYTES: usize = 16 * 1024 * 1024;
 const STDIO_RPC_MAX_ID_BYTES: usize = 128;
 const STDIO_RPC_MAX_ARGS: usize = 4_097;
-
 fn main() -> Result<()> {
     env_logger::Builder::from_default_env()
         .target(env_logger::Target::Stderr)
         .init();
     let args = env::args().skip(1).collect::<Vec<_>>();
-    if orchestrator::is_orchestrator_command(&args) {
-        std::process::exit(orchestrator::execute(&args)?);
-    }
     if args.as_slice() == ["rpc", "stdio"] {
         // The RPC wire response is already fail-closed and redacted. Keep the
         // process panic hook equally bounded so a panic payload cannot leak a
@@ -47,6 +44,7 @@ fn main() -> Result<()> {
         let stdin = io::stdin();
         return serve_stdio_rpc(stdin.lock(), io::stdout(), execute_rpc_cli).map(|_| ());
     }
+    let args = materialize_private_stdin_json(args, io::stdin().lock())?;
     match licoup_native::ffi::commands::execute_cli(args)? {
         licoup_native::ffi::commands::CliExecution::Usage => print_usage(),
         licoup_native::ffi::commands::CliExecution::Json(value) => print_json(&value),

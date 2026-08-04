@@ -18,7 +18,6 @@ export async function checkMobileRelayBridges(context, { secureMeshMobileFfiSour
     readText,
     runJson,
     sameSet,
-    sourceLineCount,
   } = context;
   const mobileRelayServiceSource = await readJoinedDartSourcesByBasename([
     "mobile_relay_service.dart",
@@ -75,17 +74,17 @@ export async function checkMobileRelayBridges(context, { secureMeshMobileFfiSour
       ".dart"
     )
   ]);
-  const mobileRelayGatewayAdapterSource = await readDartSourceByBasename(
-    "mobile_relay_gateway_adapter.dart"
+  const mobileRelayClientAdapterSource = await readDartSourceByBasename(
+    "mobile_relay_client_adapter.dart"
   );
   assert(
-    mobileRelayControlSource.includes("abstract interface class MobileRelayGateway") &&
+    mobileRelayControlSource.includes("abstract interface class MobileRelayClient") &&
       mobileRelayControlSource.includes("abstract interface class SecureMeshGateway") &&
-      mobileRelayControllerSource.includes("final MobileRelayGateway _gateway") &&
+      mobileRelayControllerSource.includes("final MobileRelayClient _client") &&
       secureMeshControllerSource.includes("final SecureMeshGateway _gateway") &&
-      mobileRelayGatewayAdapterSource.includes("implements MobileRelayGateway, SecureMeshGateway") &&
-      mobileRelayGatewayAdapterSource.includes("_relayService.loadConfig(") &&
-      mobileRelayGatewayAdapterSource.includes("_relayService.secureMeshStatus("),
+      mobileRelayClientAdapterSource.includes("implements MobileRelayClient, SecureMeshGateway") &&
+      mobileRelayClientAdapterSource.includes("_relayService.loadConfig(") &&
+      mobileRelayClientAdapterSource.includes("_relayService.secureMeshStatus("),
     "Mobile Relay and Secure Mesh controllers must depend on separate application ports implemented by the composition adapter"
   );
   for (const [relativePath, source] of [
@@ -104,7 +103,7 @@ export async function checkMobileRelayBridges(context, { secureMeshMobileFfiSour
     secureMeshCapabilityModelsSource.includes("negotiatedProtocolCapabilities") &&
     secureMeshCapabilityModelsSource.includes("exact protocol intersection") &&
     secureMeshCapabilityServiceSource.includes("SecureMeshCapabilityProjection.fromJson") &&
-    mobileRelayGatewayAdapterSource.includes("_capabilityService.projectStatus(status)") &&
+    mobileRelayClientAdapterSource.includes("_capabilityService.projectStatus(status)") &&
     secureMeshControllerSource.includes("_gateway.projectStatus(raw)") &&
     secureMeshCapabilityCardSource.includes("keyPrefix: 'secure-mesh-local'") &&
     secureMeshCapabilityCardSource.includes("keyPrefix: 'secure-mesh-peer'") &&
@@ -115,5 +114,5 @@ export async function checkMobileRelayBridges(context, { secureMeshMobileFfiSour
     !secureMeshCapabilityCardSource.includes("productionReady"),
     "Secure Mesh capability projection must flow through native FFI into strict Dart contracts and exact-set UI"
   );
-  return { mobileRelayServiceSource, secureMeshControllerSource, mobileRelayGatewayAdapterSource };
+  return { mobileRelayServiceSource, secureMeshControllerSource, mobileRelayClientAdapterSource };
 }

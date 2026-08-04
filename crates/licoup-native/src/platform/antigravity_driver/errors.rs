@@ -34,4 +34,9 @@ impl ProtocolFailure {
         self.thread_id = Some(session_id.to_string());
         self
     }
+
+    pub(super) fn with_user_interaction(mut self) -> Self {
+        self.user_interaction_required = true;
+        self
+    }
 }

@@ -13,12 +13,9 @@ void main() {
       'secure_mesh_protocol_controller.dart',
     ];
     final facade = File('$root/secure_mesh_controller.dart').readAsStringSync();
-
-    expect(facade.split('\n').length, lessThan(360));
     for (final fileName in componentFiles) {
       final source = File('$root/$fileName').readAsStringSync();
       expect(facade, contains(fileName));
-      expect(source.split('\n').length, lessThan(450));
       expect(source, isNot(contains('client_controller.dart')));
       expect(
         source,

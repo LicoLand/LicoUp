@@ -1,3 +1,4 @@
+use super::super::virtual_machine::SshRuntimeConnection;
 use super::approval_wait::{ApprovalWaitOutcome, await_external_approval};
 use super::capabilities::{AcpSessionDriverSpec, PROCESS_POLL_INTERVAL, RunResult, timestamp};
 use super::command::ProtocolConfig;
@@ -20,6 +21,7 @@ use std::time::{Duration, Instant};
 pub(in crate::platform) fn execute(
     driver: AcpSessionDriverSpec,
     executable: &str,
+    runtime_connection: Option<&SshRuntimeConnection>,
     params: &Value,
     prompt: &str,
     session_id: &str,
@@ -33,7 +35,9 @@ pub(in crate::platform) fn execute(
         Ok(config) => config,
         Err(failure) => return RunResult::failed(failure, started_at, None, false, false),
     };
-    if let Err(failure) = config.load_collaboration_mcp(driver.driver_id) {
+    if runtime_connection.is_none()
+        && let Err(failure) = config.load_collaboration_mcp(driver.driver_id)
+    {
         return RunResult::failed(failure, started_at, None, false, false);
     }
     let managed = match acquire_transport(
@@ -43,6 +47,7 @@ pub(in crate::platform) fn execute(
         timeout_ms,
         max_stdout,
         max_stderr,
+        runtime_connection,
     ) {
         Ok(managed) => managed,
         Err(failure) => return RunResult::failed(failure, started_at, None, false, false),

@@ -36,6 +36,8 @@ icu_segmenter = { version = "2", features = ["compiled_data", "lstm"] }
 libcrux-ml-kem = { version = "=0.0.10", default-features = false, features = ["alloc", "incremental", "mlkem1024"] }
 libcrux-sha3 = "=0.0.10"
 libcrux-traits = "=0.0.8"
+libc = "0.2"
+trash = "5.2"
 openmls = { git = "https://github.com/openmls/openmls.git", rev = "34222ef632c87df58baaa7614c8a72ac235c5f07", features = ["openmls_rust_crypto"] }
 openmls_basic_credential = { git = "https://github.com/openmls/openmls.git", rev = "34222ef632c87df58baaa7614c8a72ac235c5f07" }
 openmls_memory_storage = { git = "https://github.com/openmls/openmls.git", rev = "34222ef632c87df58baaa7614c8a72ac235c5f07", features = ["persistence"] }
@@ -88,8 +90,12 @@ name = "licoup-cli"
 path = "src/bin/licoup.rs"
 
 [[bin]]
-name = "lico-codex-mcp"
-path = "src/bin/lico-codex-mcp.rs"
+name = "lico-subagent-mcp"
+path = "src/bin/lico-subagent-mcp.rs"
+
+[[bin]]
+name = "lico-llm-gateway"
+path = "src/bin/lico-llm-gateway.rs"
 
 [[bin]]
 name = "lico-secure-mesh-kt-mock"

@@ -19,8 +19,10 @@ final class ConversationQueuedTurn {
     required this.model,
     required this.reasoningEffort,
     required this.throughMobileRelay,
+    this.conversationOwnerAgentId = '',
+    this.participantLabel = '',
+    this.participantRole = '',
     this.newConversationDraftToken = '',
-    this.orchestration = false,
     this.awaitActiveSession = false,
   });
 
@@ -33,8 +35,10 @@ final class ConversationQueuedTurn {
   final String model;
   final String reasoningEffort;
   final bool throughMobileRelay;
+  final String conversationOwnerAgentId;
+  final String participantLabel;
+  final String participantRole;
   final String newConversationDraftToken;
-  final bool orchestration;
   final bool awaitActiveSession;
 
   ConversationQueuedTurn bindActiveSession(String sessionId) {
@@ -50,8 +54,10 @@ final class ConversationQueuedTurn {
       model: model,
       reasoningEffort: reasoningEffort,
       throughMobileRelay: throughMobileRelay,
+      conversationOwnerAgentId: conversationOwnerAgentId,
+      participantLabel: participantLabel,
+      participantRole: participantRole,
       newConversationDraftToken: newConversationDraftToken,
-      orchestration: orchestration,
     );
   }
 }

@@ -1,8 +1,9 @@
 //! Local-first skill management facade.
 //!
 //! Pairing, catalog, discovery, installation, lifecycle, snapshots,
-//! transactions, source resolution, and usage accounting live in focused
-//! modules. This facade preserves the native command API.
+//! transactions, source resolution, and usage accounting (runtime metering
+//! plus history backfill) live in focused modules. This facade preserves the
+//! native command API.
 
 use crate::platform::client_state::ClientStateStore;
 use crate::platform::file_security::{
@@ -50,9 +51,12 @@ use snapshot::{
 };
 use source::{resolve_skill_package, skill_source};
 use state::*;
+use transaction::install_skill_dir;
 #[cfg(test)]
-use transaction::{SkillInstallJournal, skill_install_journal_path, write_skill_install_journal};
-use transaction::{install_skill_dir, recover_skill_install_journal};
+use transaction::{
+    SkillInstallJournal, recover_skill_install_journal, skill_install_journal_path,
+    write_skill_install_journal,
+};
 
 const STATUS_APPROVED: &str = "approved";
 const STATUS_REVOKED: &str = "revoked";
@@ -111,6 +115,10 @@ pub fn observe_agent_skill_invocations(agent_id: &str, result: &Value) -> Result
 
 pub fn skill_usage_report(params: &Value) -> Result<Value> {
     usage::report(&ClientStateStore::portable()?, params)
+}
+
+pub fn skill_usage_scan(params: &Value) -> Result<Value> {
+    usage::scan(&ClientStateStore::portable()?, params)
 }
 
 pub fn skill_update_plan(params: &Value) -> Result<Value> {

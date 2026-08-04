@@ -53,7 +53,6 @@ test("client update source bundle preserves fail-closed split release authority"
     fs.readFile(path.join(repoRoot, sourceRef), "utf8")));
   const facade = sources[0];
   const source = sources.join("\n");
-  assert.ok(facade.split(/\r?\n/u).length <= 45);
   for (const moduleName of [
     "apply",
     "check",

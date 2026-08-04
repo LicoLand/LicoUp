@@ -85,7 +85,7 @@ const phasePlan = Object.freeze([
   }),
   (context, checks, state) => checks.checkClientRootAndShell(context, {
     agentConversationServiceSource: state.agentConversationServiceSource,
-    mobileRelayGatewayAdapterSource: state.mobileRelayGatewayAdapterSource,
+    mobileRelayClientAdapterSource: state.mobileRelayClientAdapterSource,
     mobileRelayPanelFacadeSource: state.mobileRelayPanelFacadeSource,
     mobileRelayPanelSources: state.mobileRelayPanelSources,
     mobileRelayServiceSource: state.mobileRelayServiceSource,

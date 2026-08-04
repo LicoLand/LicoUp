@@ -2,16 +2,26 @@ use super::*;
 use crate::platform::run_bounded_command_output;
 use std::time::Duration;
 
-const DEFAULT_AGENT_CLI_MODEL_LOOKUP_TIMEOUT_MS: u64 = 3_000;
+// The native account catalog is network-backed and takes about five seconds
+// on a normal warm invocation. Keep it bounded without timing out valid data.
+const DEFAULT_AGENT_CLI_MODEL_LOOKUP_TIMEOUT_MS: u64 = 8_000;
 const MIN_AGENT_CLI_MODEL_LOOKUP_TIMEOUT_MS: u64 = 100;
 const MAX_AGENT_CLI_MODEL_LOOKUP_TIMEOUT_MS: u64 = 10_000;
 const MAX_AGENT_CLI_MODEL_LOOKUP_OUTPUT_BYTES: usize = 256 * 1024;
+
+pub(super) fn remove_unsupported_antigravity_reasoning_efforts(
+    entries: &mut BTreeMap<String, ModelCatalogEntry>,
+) {
+    for entry in entries.values_mut() {
+        entry.reasoning_efforts.clear();
+    }
+}
 
 pub(super) fn collect_antigravity_cli_model_catalog(
     params: &Value,
     entries: &mut BTreeMap<String, ModelCatalogEntry>,
     diagnostics: &mut Vec<Value>,
-) {
+) -> bool {
     let source = "antigravity-cli:models";
     if param_bool(params, "disableAgentCliModelLookup").unwrap_or(false)
         || param_bool(params, "disableAntigravityCliModelLookup").unwrap_or(false)
@@ -20,14 +30,14 @@ pub(super) fn collect_antigravity_cli_model_catalog(
             "source": source,
             "status": "disabled",
         }));
-        return;
+        return false;
     }
     if cfg!(test) && !param_bool(params, "enableAgentCliModelLookup").unwrap_or(false) {
         diagnostics.push(json!({
             "source": source,
             "status": "disabled-in-tests",
         }));
-        return;
+        return false;
     }
 
     let program = param_string(params, "antigravityCliPath")
@@ -40,7 +50,7 @@ pub(super) fn collect_antigravity_cli_model_catalog(
             "source": source,
             "status": "binary-unavailable",
         }));
-        return;
+        return false;
     };
     let timeout_ms = param_u64(params, "antigravityCliModelLookupTimeoutMs")
         .or_else(|| param_u64(params, "agentCliModelLookupTimeoutMs"))
@@ -61,21 +71,21 @@ pub(super) fn collect_antigravity_cli_model_catalog(
             "source": source,
             "status": "command-failed",
         }));
-        return;
+        return false;
     };
     if output.timed_out {
         diagnostics.push(json!({
             "source": source,
             "status": "timeout",
         }));
-        return;
+        return false;
     }
     if output.truncated {
         diagnostics.push(json!({
             "source": source,
             "status": "output-too-large",
         }));
-        return;
+        return false;
     }
     if !output.status.is_some_and(|status| status.success()) {
         diagnostics.push(json!({
@@ -83,16 +93,20 @@ pub(super) fn collect_antigravity_cli_model_catalog(
             "status": "command-exited",
             "code": output.status.and_then(|status| status.code()),
         }));
-        return;
+        return false;
     }
     let stdout = String::from_utf8_lossy(&output.stdout);
-    let added = collect_model_catalog_from_cli_lines(&stdout, source, entries);
+    let mut official_entries = BTreeMap::new();
+    let added = collect_model_catalog_from_cli_lines(&stdout, source, &mut official_entries);
     if added == 0 {
         diagnostics.push(json!({
             "source": source,
             "status": "empty",
         }));
+        return false;
     }
+    *entries = official_entries;
+    true
 }
 
 pub(super) fn collect_antigravity_available_models_param(

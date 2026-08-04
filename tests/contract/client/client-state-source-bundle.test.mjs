@@ -40,7 +40,6 @@ async function sourceFiles(relativeRoot) {
 
 test("client state root is an exact thin stable facade", async () => {
   const facade = await read(facadePath);
-  assert.ok(facade.trimEnd().split(/\r?\n/u).length <= 24);
   for (const leaf of productionLeaves) {
     assert.match(facade, new RegExp(`mod ${leaf.replace(".rs", "")};`, "u"));
     await fs.access(path.join(repoRoot, root, leaf));

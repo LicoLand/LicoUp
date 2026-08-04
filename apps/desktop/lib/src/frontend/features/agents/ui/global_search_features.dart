@@ -95,6 +95,15 @@ List<GlobalSearchFeatureEntry> buildGlobalSearchFeatures({
       Icons.phonelink_outlined,
       const ['mobile', 'relay', 'pair', '配对'],
     ),
+    section(ClientSection.models, strings.keys, Icons.key_outlined, const [
+      'model',
+      'api',
+      'key',
+      'gateway',
+      '模型',
+      '密钥',
+      '网关',
+    ]),
     section(
       ClientSection.settings,
       strings.settings,

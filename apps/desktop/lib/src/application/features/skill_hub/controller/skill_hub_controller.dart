@@ -60,6 +60,17 @@ class SkillHubController extends ChangeNotifier {
     notifyListeners();
   }
 
+  void removeSkillAtPath(String path) {
+    final normalizedPath = path.trim();
+    if (normalizedPath.isEmpty) return;
+    final remaining = skills
+        .where((skill) => (skill['path'] ?? '').toString() != normalizedPath)
+        .toList(growable: false);
+    if (remaining.length == skills.length) return;
+    skills = List.unmodifiable(remaining);
+    notifyListeners();
+  }
+
   void replacePreferences(SkillHubPreferences value) {
     preferences = value;
     notifyListeners();

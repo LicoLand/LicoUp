@@ -22,6 +22,23 @@ abstract final class ConversationRuntimeResultPolicy {
     });
   }
 
+  /// Driver failures carry their own precise wire code in the execution
+  /// envelope. Those codes are not part of the schema-bound [ClientErrorCode]
+  /// enum, so [ClientError.code] degrades to `unknown` for them; the raw code
+  /// must stay available or the send failure would surface as an empty code.
+  static String rawFailureCode(Map<String, dynamic> result) {
+    final nested = result['error'];
+    final raw = nested is Map ? nested['code'] : result['code'];
+    return (raw ?? '').toString().trim();
+  }
+
+  /// User-facing failure code: the schema-bound wire name when known, else
+  /// the driver-reported raw code, so a failed send never surfaces silently.
+  static String surfacedFailureCode(Map<String, dynamic> result) {
+    final wireName = clientError(result).code.wireName;
+    return wireName.isNotEmpty ? wireName : rawFailureCode(result);
+  }
+
   static bool outcomeMayBeUnknown(ClientError error) {
     return error.retryable &&
         (error.stage == ClientErrorStage.conversationDispatch ||

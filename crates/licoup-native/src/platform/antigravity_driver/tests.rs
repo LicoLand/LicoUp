@@ -244,3 +244,253 @@ impl Drop for FakeExecutable {
         let _ = fs::remove_dir_all(&self.root);
     }
 }
+
+#[cfg(unix)]
+struct AuthFakeExecutable {
+    root: PathBuf,
+    executable: PathBuf,
+    print_marker: PathBuf,
+}
+
+#[cfg(unix)]
+impl AuthFakeExecutable {
+    /// `mode`: `logged_out` (models exit 1), `authorized` (models exit 0),
+    /// `authorize_flow` (models fails until a print turn creates the login
+    /// flag), or `authorize_incomplete` (print never completes the login).
+    fn new(label: &str, mode: &str) -> Self {
+        use std::os::unix::fs::PermissionsExt;
+
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "lico-antigravity-auth-{label}-{}-{nonce}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&root).unwrap();
+        let executable = root.join("fake-agy");
+        let print_marker = root.join("print-invocations.log");
+        let login_flag = root.join("login-complete.flag");
+        let script = format!(
+            r#"#!/bin/sh
+set -eu
+mode="{mode}"
+marker="{marker}"
+login_flag="{login_flag}"
+for arg in "$@"; do
+  case "$arg" in
+    models)
+      if [ "$mode" = "authorized" ]; then
+        printf '%s\n' 'gemini-test-model'
+        exit 0
+      fi
+      if [ "$mode" = "authorize_flow" ] && [ -f "$login_flag" ]; then
+        printf '%s\n' 'gemini-test-model'
+        exit 0
+      fi
+      printf '%s\n' 'Error: Please sign in to view available models. Launch the CLI without arguments to sign in.'
+      exit 1
+      ;;
+    --print=*)
+      printf '%s\n' invoked >> "$marker"
+      if [ "$mode" = "authorize_flow" ]; then
+        : > "$login_flag"
+      fi
+      if [ -n "${{LICO_ANTIGRAVITY_SESSION_RECEIPT:-}}" ]; then
+        python3 - "$LICO_ANTIGRAVITY_SESSION_RECEIPT" <<'PY'
+import json, sys
+json.dump({{"conversationId": "11111111-2222-3333-4444-555555555555"}}, open(sys.argv[1], "w"))
+PY
+      fi
+      printf '%s\n' 'PONG'
+      exit 0
+      ;;
+    --help)
+      printf '%s\n' '--print --conversation --model --effort --dangerously-skip-permissions'
+      exit 0
+      ;;
+    --version)
+      printf '%s\n' '1.1.8'
+      exit 0
+      ;;
+  esac
+done
+receipt="${{LICO_ANTIGRAVITY_SESSION_RECEIPT:?}}"
+python3 - "$receipt" <<'PY'
+import json, sys
+json.dump({{"conversationId": "11111111-2222-3333-4444-555555555555"}}, open(sys.argv[1], "w"))
+PY
+printf '%s\n' 'PONG'
+exit 0
+"#,
+            mode = mode,
+            marker = print_marker.display(),
+            login_flag = login_flag.display(),
+        );
+        fs::write(&executable, script).unwrap();
+        let mut permissions = fs::metadata(&executable).unwrap().permissions();
+        permissions.set_mode(0o700);
+        fs::set_permissions(&executable, permissions).unwrap();
+        Self {
+            root,
+            executable,
+            print_marker,
+        }
+    }
+
+    fn executable_str(&self) -> &str {
+        self.executable.to_str().unwrap()
+    }
+
+    fn print_invoked(&self) -> bool {
+        self.print_marker.exists()
+    }
+}
+
+#[cfg(unix)]
+impl Drop for AuthFakeExecutable {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.root);
+    }
+}
+
+#[cfg(unix)]
+fn scoped_gemini_dir(label: &str) -> PathBuf {
+    let dir = std::env::temp_dir().join(format!(
+        "lico-agy-auth-gemini-{label}-{}-{}",
+        std::process::id(),
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos()
+    ));
+    fs::create_dir_all(&dir).unwrap();
+    dir
+}
+
+#[cfg(unix)]
+#[test]
+fn logged_out_send_returns_auth_required_without_spawning_a_turn() {
+    let _environment_guard = environment_lock();
+    let gemini = scoped_gemini_dir("logged-out");
+    let portable = scoped_gemini_dir("logged-out-portable");
+    let previous_gemini = std::env::var_os("LICO_ANTIGRAVITY_GEMINI_CONFIG_DIR");
+    unsafe {
+        std::env::set_var("LICO_ANTIGRAVITY_GEMINI_CONFIG_DIR", &gemini);
+    }
+    let previous_portable = crate::platform::paths::set_portable_data_dir_override(Some(portable));
+    let fixture = AuthFakeExecutable::new("logged-out", "logged_out");
+    let workspace = fixture.root.join("workspace");
+    fs::create_dir_all(&workspace).unwrap();
+
+    let result = execute(
+        fixture.executable_str(),
+        &json!({}),
+        "hello",
+        "",
+        Some(&workspace),
+        5_000,
+        8_192,
+        8_192,
+    );
+
+    crate::platform::paths::set_portable_data_dir_override(previous_portable);
+    if let Some(value) = previous_gemini {
+        unsafe {
+            std::env::set_var("LICO_ANTIGRAVITY_GEMINI_CONFIG_DIR", value);
+        }
+    } else {
+        unsafe {
+            std::env::remove_var("LICO_ANTIGRAVITY_GEMINI_CONFIG_DIR");
+        }
+    }
+    assert!(!result.ok);
+    let failure = result.error.unwrap();
+    assert_eq!(failure.code, "antigravity_auth_required");
+    assert!(failure.user_interaction_required);
+    assert!(
+        !fixture.print_invoked(),
+        "a logged-out send must never spawn the OAuth-opening turn"
+    );
+    assert!(
+        !gemini.join("hooks.json").exists(),
+        "the hook bridge must not be installed before authorization"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn authorized_send_proceeds_past_the_probe() {
+    let _environment_guard = environment_lock();
+    let gemini = scoped_gemini_dir("authorized");
+    let portable = scoped_gemini_dir("authorized-portable");
+    let previous_gemini = std::env::var_os("LICO_ANTIGRAVITY_GEMINI_CONFIG_DIR");
+    unsafe {
+        std::env::set_var("LICO_ANTIGRAVITY_GEMINI_CONFIG_DIR", &gemini);
+    }
+    let previous_portable = crate::platform::paths::set_portable_data_dir_override(Some(portable));
+    let fixture = AuthFakeExecutable::new("authorized", "authorized");
+    let workspace = fixture.root.join("workspace");
+    fs::create_dir_all(&workspace).unwrap();
+
+    let result = execute(
+        fixture.executable_str(),
+        &json!({}),
+        "hello-from-lico",
+        "",
+        Some(&workspace),
+        5_000,
+        8_192,
+        8_192,
+    );
+
+    crate::platform::paths::set_portable_data_dir_override(previous_portable);
+    if let Some(value) = previous_gemini {
+        unsafe {
+            std::env::set_var("LICO_ANTIGRAVITY_GEMINI_CONFIG_DIR", value);
+        }
+    } else {
+        unsafe {
+            std::env::remove_var("LICO_ANTIGRAVITY_GEMINI_CONFIG_DIR");
+        }
+    }
+    assert!(result.ok, "{:?}", result.error);
+    assert_eq!(result.output, "PONG");
+    assert!(fixture.print_invoked());
+}
+
+#[cfg(unix)]
+#[test]
+fn authorize_runs_the_explicit_vendor_flow_and_reprobes() {
+    let fixture = AuthFakeExecutable::new("authorize", "authorize_flow");
+    let report = authorize(Some(fixture.executable_str())).unwrap();
+    assert_eq!(report["ok"], true);
+    assert_eq!(report["action"], "authorize");
+    assert_eq!(report["authorized"], true);
+    assert_eq!(report["status"], "authorized");
+    assert!(
+        fixture.print_invoked(),
+        "the explicit authorize action must run the vendor OAuth trigger"
+    );
+    let serialized = report.to_string();
+    assert!(!serialized.contains(&fixture.root.display().to_string()));
+}
+
+#[cfg(unix)]
+#[test]
+fn authorize_reports_incomplete_when_login_does_not_finish() {
+    let fixture = AuthFakeExecutable::new("incomplete", "authorize_incomplete");
+    let report = authorize(Some(fixture.executable_str())).unwrap();
+    assert_eq!(report["ok"], true);
+    assert_eq!(report["authorized"], false);
+    assert_eq!(report["status"], "authorization_incomplete");
+    assert!(fixture.print_invoked());
+}
+
+#[cfg(unix)]
+#[test]
+fn authorize_missing_executable_is_a_typed_failure() {
+    let result = authorize(Some("/definitely/missing/lico-antigravity-agy"));
+    assert_eq!(result, Err("antigravity_authorize_unavailable"));
+}

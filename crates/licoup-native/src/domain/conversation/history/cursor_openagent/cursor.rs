@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
 
@@ -67,17 +68,55 @@ pub(super) fn parse_cursor_sqlite_sessions(
             composer.title.clone(),
         );
         if let Some(object) = session.as_object_mut() {
-            object.insert("model".to_string(), json!(composer.model));
-            if let Some(created_at) = composer.created_at {
+            object.insert("model".to_string(), json!(composer.model.clone()));
+            if let Some(created_at) = composer.created_at.as_ref() {
                 object.insert("createdAt".to_string(), json!(created_at));
             }
-            if let Some(updated_at) = composer.updated_at {
+            if let Some(updated_at) = composer.updated_at.as_ref() {
                 object.insert("updatedAt".to_string(), json!(updated_at));
             }
         }
-        sessions.push(session);
+        sessions.push((composer, session));
     }
-    sessions
+    tag_delegated_subagent_sessions(&mut sessions);
+    sessions.into_iter().map(|(_, session)| session).collect()
+}
+
+/// Marks subagent composer sessions with the explicit delegated-lineage
+/// markers the session merge consumes, so each subagent thread folds into its
+/// parent composer as a collapsed subagent card instead of surfacing as an
+/// indistinguishable top-level session. Subagents whose parent composer did
+/// not yield a session keep their flat top-level entry.
+fn tag_delegated_subagent_sessions(sessions: &mut [(CursorComposerMeta, Value)]) {
+    let emitted_ids = sessions
+        .iter()
+        .filter_map(|(_, session)| {
+            session
+                .get("nativeSessionId")
+                .and_then(Value::as_str)
+                .map(str::to_string)
+        })
+        .collect::<HashSet<_>>();
+    for (composer, session) in sessions.iter_mut() {
+        let Some(parent_id) = composer.parent_composer_id.as_deref() else {
+            continue;
+        };
+        if !emitted_ids.contains(parent_id) {
+            continue;
+        }
+        let Some(object) = session.as_object_mut() else {
+            continue;
+        };
+        object.insert("delegatedSubagent".to_string(), json!(true));
+        object.insert("parentSessionId".to_string(), json!(parent_id));
+        if let Some(title) = composer
+            .title
+            .clone()
+            .or_else(|| composer.subagent_type_name.clone())
+        {
+            object.insert("subagentTitle".to_string(), json!(title));
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -88,6 +127,8 @@ pub(super) struct CursorComposerMeta {
     created_at: Option<String>,
     updated_at: Option<String>,
     bubble_ids: Vec<String>,
+    parent_composer_id: Option<String>,
+    subagent_type_name: Option<String>,
 }
 
 pub(super) fn cursor_composer_rows(connection: &Connection) -> Vec<CursorComposerMeta> {
@@ -153,6 +194,19 @@ pub(super) fn cursor_composer_rows(connection: &Connection) -> Vec<CursorCompose
                     .collect::<Vec<_>>()
             })
             .unwrap_or_default();
+        let subagent_info = json.get("subagentInfo");
+        let parent_composer_id = subagent_info
+            .and_then(|info| info.get("parentComposerId"))
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string);
+        let subagent_type_name = subagent_info
+            .and_then(|info| info.get("subagentTypeName"))
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string);
         composers.push(CursorComposerMeta {
             id,
             title,
@@ -164,6 +218,8 @@ pub(super) fn cursor_composer_rows(connection: &Connection) -> Vec<CursorCompose
                     .unwrap_or(&Value::Null),
             ),
             bubble_ids,
+            parent_composer_id,
+            subagent_type_name,
         });
     }
     composers

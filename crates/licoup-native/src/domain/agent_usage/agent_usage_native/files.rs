@@ -64,6 +64,7 @@ pub(super) fn is_usage_source(adapter: HistoryAdapter, path: &Path, source_kind:
         HistoryAdapter::Copilot if source_kind.starts_with("vscode-copilot-") => {
             matches!(file_name.as_str(), "state.vscdb" | "store.db")
         }
+        HistoryAdapter::Hermes => file_name == "state.db",
         HistoryAdapter::Pi if source_kind == "pi-session-store" => is_append_format(path),
         _ => is_append_format(path) || is_snapshot_format(path),
     }
@@ -74,13 +75,26 @@ pub(super) fn source_metadata(path: &Path) -> Option<SourceMetadata> {
     if !metadata.file_type().is_file() || metadata.file_type().is_symlink() {
         return None;
     }
-    let modified_ns = metadata
+    let mut modified_ns = metadata
         .modified()
         .ok()?
         .duration_since(UNIX_EPOCH)
         .ok()?
         .as_nanos()
         .min(u64::MAX as u128) as u64;
+    let mut size = metadata.len();
+    if is_snapshot_database(path)
+        && let Ok(wal_metadata) = fs::symlink_metadata(sqlite_sidecar(path, "-wal"))
+        && wal_metadata.file_type().is_file()
+        && !wal_metadata.file_type().is_symlink()
+    {
+        size = size.saturating_add(wal_metadata.len());
+        if let Ok(wal_modified) = wal_metadata.modified()
+            && let Ok(wal_elapsed) = wal_modified.duration_since(UNIX_EPOCH)
+        {
+            modified_ns = modified_ns.max(wal_elapsed.as_nanos().min(u64::MAX as u128) as u64);
+        }
+    }
     #[cfg(unix)]
     let file_id = Some(format!("{}:{}", metadata.dev(), metadata.ino()));
     #[cfg(windows)]
@@ -90,9 +104,22 @@ pub(super) fn source_metadata(path: &Path) -> Option<SourceMetadata> {
     let file_id = None;
     Some(SourceMetadata {
         modified_ns,
-        size: metadata.len(),
+        size,
         file_id,
     })
+}
+
+fn is_snapshot_database(path: &Path) -> bool {
+    matches!(
+        extension(path).as_str(),
+        "sqlite" | "sqlite3" | "db" | "vscdb"
+    )
+}
+
+fn sqlite_sidecar(path: &Path, suffix: &str) -> PathBuf {
+    let mut sidecar = path.as_os_str().to_os_string();
+    sidecar.push(suffix);
+    PathBuf::from(sidecar)
 }
 
 pub(super) fn roots_fingerprint(agent_id: &str, roots: &[PathBuf], timezone_key: &str) -> String {
@@ -188,6 +215,7 @@ mod tests {
     use super::*;
     use serde_json::json;
     use std::io::Write;
+    use std::time::SystemTime;
 
     #[test]
     fn append_guard_accepts_only_an_unchanged_prefix() {
@@ -232,6 +260,28 @@ mod tests {
     }
 
     #[test]
+    fn snapshot_metadata_tracks_uncheckpointed_sqlite_wal_bytes() {
+        let root = std::env::temp_dir().join(format!(
+            "lico-native-usage-wal-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir_all(&root).unwrap();
+        let database = root.join("state.db");
+        fs::write(&database, b"db").unwrap();
+        let before = source_metadata(&database).unwrap();
+
+        fs::write(sqlite_sidecar(&database, "-wal"), b"gateway-wal").unwrap();
+        let after = source_metadata(&database).unwrap();
+        assert_eq!(after.size, before.size + 11);
+
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
     fn usage_sources_keep_native_metadata_and_bounded_estimation_sources() {
         assert!(is_usage_source(
             HistoryAdapter::Antigravity,
@@ -257,6 +307,16 @@ mod tests {
             HistoryAdapter::Copilot,
             Path::new("session-state/id/events.jsonl"),
             "copilot-cli-session-store"
+        ));
+        assert!(is_usage_source(
+            HistoryAdapter::Hermes,
+            Path::new("profile/state.db"),
+            "hermes-home"
+        ));
+        assert!(!is_usage_source(
+            HistoryAdapter::Hermes,
+            Path::new("profile/session.json"),
+            "hermes-home"
         ));
     }
 

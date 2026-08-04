@@ -2,7 +2,9 @@ mod capability_proof;
 mod initial_write;
 mod local_prekey;
 mod namespace_binding;
+mod pending_delivery;
 mod public_snapshot;
+mod received_payload;
 mod remote_prekey;
 mod replay_watermark;
 mod restoration_validation;
@@ -22,5 +24,6 @@ pub(crate) use namespace_binding::pairwise_secret_store_namespace;
 pub(super) use public_snapshot::PersistedPairwisePublicSession;
 pub use store_model::{
     SecureMeshLocalPreKeyUse, SecureMeshPairwiseDurableRecord, SecureMeshPairwiseDurableStore,
+    SecureMeshPairwisePendingDelivery, SecureMeshPairwiseReceivedPayload,
     SecureMeshRemotePreKeyUse,
 };

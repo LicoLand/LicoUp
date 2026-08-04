@@ -241,6 +241,16 @@ pub(in crate::domain::mobile_relay) fn timestamp_after_seconds(seconds: i64) -> 
     Ok((OffsetDateTime::now_utc() + Duration::seconds(seconds)).format(&Rfc3339)?)
 }
 
+pub(in crate::domain::mobile_relay) fn bounded_time_window(
+    lifetime_seconds: i64,
+) -> Result<(String, String)> {
+    let created_at = OffsetDateTime::now_utc();
+    Ok((
+        created_at.format(&Rfc3339)?,
+        (created_at + Duration::seconds(lifetime_seconds)).format(&Rfc3339)?,
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

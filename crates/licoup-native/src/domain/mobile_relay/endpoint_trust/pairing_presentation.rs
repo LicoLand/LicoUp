@@ -267,7 +267,7 @@ pub(in crate::domain::mobile_relay) fn clear_mobile_relay_pairing_state(
             .and_then(Value::as_u64)
             .unwrap_or(current_mailbox_rotation_epoch()?)
             .checked_add(1)
-            .ok_or_else(|| anyhow!("secure client relay mailbox rotation epoch overflow"))?;
+            .ok_or_else(|| anyhow!("Lico Arc mailbox rotation epoch overflow"))?;
         for key in [
             "peerEndpointId",
             "peerEndpointKind",
@@ -329,13 +329,13 @@ pub(in crate::domain::mobile_relay) fn one_time_pairing_invite(
         return None;
     };
     local_endpoint_state(config, secret_material).ok().and_then(|endpoint| {
-        let gateway_url = effective_gateway_url(config).ok()?;
+        let station_base_url = effective_station_base_url(config).ok()?;
         let pc_secure_mesh = endpoint.public_descriptor().ok()?;
         Some(json!({
             "protocolVersion": MOBILE_RELAY_E2EE_PROTOCOL_VERSION,
             "oneTime": true,
             "createdAt": now_iso(),
-            "gatewayUrl": gateway_url,
+            "stationBaseUrl": station_base_url,
             "pcClientId": config.get("pcClientId").and_then(Value::as_str).unwrap_or_default(),
             "pcClientName": config.get("pcClientName").and_then(Value::as_str).unwrap_or("LicoUp"),
             "pairingId": pairing_id,
@@ -379,12 +379,12 @@ pub(in crate::domain::mobile_relay) fn apply_pairing_invite_params_with_context(
         if !invite.is_object() {
             return Err(anyhow!("mobile relay pairing invite must be a JSON object"));
         }
-        let validated_invite_gateway = match invite.get("gatewayUrl") {
+        let validated_invite_station = match invite.get("stationBaseUrl") {
             None => None,
-            Some(Value::String(value)) => Some(validated_gateway(value)?),
+            Some(Value::String(value)) => Some(validated_station_base_url(value)?),
             Some(_) => {
                 return Err(anyhow!(
-                    "mobile relay pairing invite gateway must be a valid URL"
+                    "mobile relay pairing invite station must be a valid URL"
                 ));
             }
         };
@@ -405,10 +405,9 @@ pub(in crate::domain::mobile_relay) fn apply_pairing_invite_params_with_context(
         if let Some(pairing_code) = invite.get("pairingCode").and_then(Value::as_str) {
             config["lastPairingCode"] = json!(pairing_code);
         }
-        if let Some(gateway_url) = validated_invite_gateway {
-            config["customGatewayUrl"] = json!(gateway_url);
-            config["useCustomGateway"] = json!(true);
-            normalize_gateway_fields(config);
+        if let Some(station_base_url) = validated_invite_station {
+            config["stationBaseUrl"] = json!(station_base_url);
+            normalize_station_fields(config);
         }
         if let Some(pc_client_id) = invite.get("pcClientId").and_then(Value::as_str) {
             config["pcClientId"] = json!(pc_client_id);

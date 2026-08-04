@@ -17,9 +17,9 @@ pub(crate) fn stdio_rpc_state_failure(error: ClientStateFailure) -> ClientError 
 
 pub(crate) fn stdio_rpc_command_error(error: &anyhow::Error) -> ClientError {
     if error.chain().any(|cause| {
-        cause
-            .to_string()
-            .contains("secure_mesh_authorization_required")
+        let message = cause.to_string();
+        message.contains("secure_mesh_authorization_required")
+            || message.contains("lacks measured platform user authorization")
     }) {
         return stdio_rpc_client_error("authorization_required");
     }

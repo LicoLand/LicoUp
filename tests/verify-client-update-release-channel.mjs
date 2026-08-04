@@ -125,6 +125,14 @@ function compareVersions(left, right) {
   return 0;
 }
 
+function nextReleaseVersion(currentVersion) {
+  const parsed = parseSemanticVersion(currentVersion, "current client version");
+  if (parsed.prerelease.length > 0) {
+    return parsed.core.join(".");
+  }
+  return `${parsed.core[0]}.${parsed.core[1]}.${parsed.core[2] + 1}`;
+}
+
 function unsignedPayload(manifest) {
   const clone = structuredClone(manifest);
   delete clone.signatures;
@@ -844,6 +852,7 @@ function main() {
   );
   strictAssert.equal(blockedMacosTrain.githubReleaseReady, false, "selected target blocker must fail the GitHub Release closure");
   const dryRunInstallerPlans = createDryRunInstallerPlans(artifacts);
+  const releaseVersion = nextReleaseVersion(currentClientVersion);
   const manifest = signManifest(
     {
       schemaVersion: "v0.0.1:client-update:manifest-1",
@@ -864,10 +873,10 @@ function main() {
       },
       releases: [
         {
-          version: "0.0.2",
+          version: releaseVersion,
           minimumSupportedVersion: currentClientVersion,
           classification: "optional",
-          releaseNotesUrl: "https://updates.example.com/releases/0.0.2",
+          releaseNotesUrl: `https://updates.example.com/releases/${releaseVersion}`,
           migrationNotes: ["No destructive migration is required for this dry-run vector."],
           artifacts
         }
@@ -883,9 +892,9 @@ function main() {
   const publicationReceipt = signEnvelope(
     {
       schemaVersion: "v0.0.1:client-update:publication-receipt-1",
-      publicationId: "client-update-release-channel-stable-0.0.2",
+      publicationId: `client-update-release-channel-stable-${releaseVersion}`,
       channel: "stable",
-      releaseVersion: "0.0.2",
+      releaseVersion,
       manifestSha256: sha256Buffer(Buffer.from(stableStringify(unsignedPayload(manifest)), "utf8")),
       artifactCount: artifacts.length,
       artifactTargetIds: artifacts.map((artifact) => artifact.targetId),
@@ -1141,7 +1150,7 @@ function main() {
       verifyPublicationReceipt(tamperedPublicationReceipt, publicKeysById)
     ),
     expectFailure("downgrade is rejected without signed policy allowance", () =>
-      verifyManifest(downgradeManifest, publicKeysById, { currentVersion: "0.0.2", target: productionTargets[0] })
+      verifyManifest(downgradeManifest, publicKeysById, { currentVersion: releaseVersion, target: productionTargets[0] })
     ),
     expectFailure("unsupported platform is rejected", () =>
       verifyManifest(manifest, publicKeysById, { currentVersion: currentClientVersion, target: unsupportedTarget })

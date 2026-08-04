@@ -81,7 +81,7 @@ final class HistorySessionHeader extends StatelessWidget {
                               icon: const Icon(Icons.close, size: 16),
                             ),
                       filled: true,
-                      fillColor: colors.surfaceHigh,
+                      fillColor: colors.surfaceLow,
                       contentPadding: const EdgeInsets.symmetric(
                         horizontal: 10,
                         vertical: 10,
@@ -136,8 +136,8 @@ final class HistorySessionHeader extends StatelessWidget {
             IconButton(
               tooltip: collapsed ? expandTooltip : collapseTooltip,
               onPressed: onToggleCollapsed,
-              color: colors.primary,
-              hoverColor: Color.lerp(colors.surface, colors.primary, 0.12),
+              color: colors.accent,
+              hoverColor: colors.hoverOverlay,
               style: IconButton.styleFrom(
                 fixedSize: const Size(32, 32),
                 minimumSize: const Size(32, 32),

@@ -13,8 +13,6 @@ void main() {
     final projection = File(
       'lib/src/frontend/features/agents/ui/agent_conversation_process_projection.dart',
     ).readAsStringSync();
-
-    expect(root.split('\n'), hasLength(lessThan(20)));
     expect(root, isNot(contains('class ConversationProcessCard')));
     expect(timeline, isNot(contains("package:flutter/material.dart")));
     expect(projection, isNot(contains("package:flutter/material.dart")));

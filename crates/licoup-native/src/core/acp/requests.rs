@@ -1,9 +1,11 @@
-use super::validation::{ensure_message_limit, normalized_text, validated_session_id};
+use super::validation::{
+    MAX_CURSOR_BYTES, ensure_message_limit, normalized_text, validated_session_id,
+};
 use super::{
     AcpClientCapabilities, AcpError, AcpImplementation, AcpRequestId, AcpSessionMethod,
-    AcpSessionOptions, INITIALIZE_METHOD, JSON_RPC_VERSION, MAX_ADDITIONAL_DIRECTORIES,
-    MAX_MCP_SERVERS, PROTOCOL_VERSION, SESSION_CANCEL_METHOD, SESSION_CLOSE_METHOD,
-    SESSION_PROMPT_METHOD,
+    AcpSessionOptions, DEFAULT_MAX_MESSAGE_BYTES, INITIALIZE_METHOD, JSON_RPC_VERSION,
+    MAX_ADDITIONAL_DIRECTORIES, MAX_MCP_SERVERS, PROTOCOL_VERSION, SESSION_CANCEL_METHOD,
+    SESSION_CLOSE_METHOD, SESSION_LIST_METHOD, SESSION_PROMPT_METHOD,
 };
 use serde_json::{Map, Value, json};
 use std::collections::HashSet;
@@ -83,6 +85,27 @@ pub fn text_prompt_request(
     request_envelope(id.into(), SESSION_PROMPT_METHOD, params)
 }
 
+pub fn session_list_request(
+    id: impl Into<AcpRequestId>,
+    cwd: Option<&str>,
+    cursor: Option<&str>,
+) -> Result<Value, AcpError> {
+    let mut params = Map::new();
+    if let Some(cwd) = cwd {
+        validate_absolute_working_directory(cwd, AcpError::SessionListRequestInvalid)?;
+        params.insert("cwd".into(), Value::String(cwd.to_owned()));
+    }
+    if let Some(cursor) = cursor {
+        normalized_text(
+            cursor,
+            MAX_CURSOR_BYTES,
+            AcpError::SessionListRequestInvalid,
+        )?;
+        params.insert("cursor".into(), Value::String(cursor.to_owned()));
+    }
+    request_envelope(id.into(), SESSION_LIST_METHOD, Value::Object(params))
+}
+
 pub fn cancel_notification(session_id: &str) -> Result<Value, AcpError> {
     notification_envelope(
         SESSION_CANCEL_METHOD,
@@ -152,8 +175,15 @@ fn validate_mcp_servers(servers: &[Value]) -> Result<(), AcpError> {
 }
 
 fn absolute_path_text(path: &Path, error: AcpError) -> Result<String, AcpError> {
-    if !path.is_absolute() {
-        return Err(error);
+    let text = path.to_str().ok_or_else(|| error.clone())?;
+    validate_absolute_working_directory(text, error)?;
+    Ok(text.to_owned())
+}
+
+fn validate_absolute_working_directory(value: &str, error: AcpError) -> Result<(), AcpError> {
+    if value.starts_with('/') || Path::new(value).is_absolute() {
+        normalized_text(value, DEFAULT_MAX_MESSAGE_BYTES, error)
+    } else {
+        Err(error)
     }
-    path.to_str().map(str::to_owned).ok_or(error)
 }

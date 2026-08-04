@@ -27,7 +27,7 @@ Stream<Map<String, dynamic>> executeStdioRpcConversation({
     );
     await writeStdioRpcFrame(session, encoded);
   } on Object {
-    session.abandonExpectedFrame();
+    session.abandonExpectedFrame(requestId);
     await sessionManager.discard(session: session, kill: true);
     throw const LicoClientRpcException('transport_failed');
   }
@@ -42,7 +42,7 @@ Stream<Map<String, dynamic>> executeStdioRpcConversation({
         throw const LicoClientRpcException('invalid_response');
       }
       terminalSeen = true;
-      session.completeExpectedFrames();
+      session.completeExpectedFrames(requestId);
       final result = frame.result;
       if (result != null) {
         yield <String, dynamic>{...result, 'event': 'done'};
@@ -68,7 +68,7 @@ Stream<Map<String, dynamic>> executeStdioRpcConversation({
       throw const LicoClientRpcException('transport_failed');
     }
   } on Object {
-    session.abandonExpectedFrame();
+    session.abandonExpectedFrame(requestId);
     await sessionManager.discard(session: session, kill: true);
     rethrow;
   }

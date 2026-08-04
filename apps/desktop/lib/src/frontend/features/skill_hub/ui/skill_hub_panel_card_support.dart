@@ -4,6 +4,7 @@ import 'package:licoup/src/application/controller/client_controller.dart';
 import 'package:licoup/src/application/features/skill_hub/models/skill_agent_compatibility.dart';
 import 'package:licoup/src/application/features/skill_hub/models/skill_category_catalog.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_usage_formatters.dart';
 import 'package:licoup/src/frontend/features/skill_hub/ui/skill_hub_panel_icon_picker.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/agent_brand_icon.dart';
@@ -89,6 +90,7 @@ class SkillCardFooter extends StatelessWidget {
     required this.loaderAgentIds,
     required this.version,
     required this.colors,
+    this.invocationCount = 0,
   });
 
   final ClientController controller;
@@ -96,8 +98,13 @@ class SkillCardFooter extends StatelessWidget {
   final String version;
   final LicoThemeColors colors;
 
+  /// All-time invocation count joined from the usage report; the affordance
+  /// stays hidden while the report is absent or the count is zero.
+  final int invocationCount;
+
   @override
   Widget build(BuildContext context) {
+    final strings = LicoStrings.of(context);
     return Container(
       height: 38,
       decoration: BoxDecoration(
@@ -144,6 +151,28 @@ class SkillCardFooter extends StatelessWidget {
               },
             ),
           ),
+          if (invocationCount > 0) ...[
+            Tooltip(
+              key: const Key('skill-card-invocations'),
+              message: strings.skillInvocationsCount(invocationCount),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.bolt_rounded, size: 13, color: colors.textMuted),
+                  const SizedBox(width: 3),
+                  Text(
+                    formatAgentUsageNumber(invocationCount),
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: colors.textMuted,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+          ],
           if (version.isNotEmpty && version != 'local')
             Text(
               'v$version',
@@ -207,7 +236,7 @@ class SkillScanningPlaceholder extends StatelessWidget {
             height: 36,
             child: CircularProgressIndicator(
               strokeWidth: 3,
-              color: colors.primary,
+              color: colors.accent,
             ),
           ),
           const SizedBox(height: 16),

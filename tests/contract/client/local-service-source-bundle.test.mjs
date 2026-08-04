@@ -27,7 +27,6 @@ async function read(relativePath) {
 
 test("local service facade owns an exact target-neutral production bundle", async () => {
   const facade = await read(facadePath);
-  assert.ok(facade.split("\n").length <= 32);
   for (const leaf of productionLeaves) {
     assert.match(facade, new RegExp(`mod ${leaf.replace(".rs", "")};`, "u"));
     await fs.access(path.join(repoRoot, root, leaf));

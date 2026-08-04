@@ -71,3 +71,30 @@ pub(super) fn timestamp() -> String {
         .as_millis();
     millis.to_string()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn output_budget_preserves_the_public_sixty_four_mibibyte_bound() {
+        assert_eq!(MAX_OUTPUT_BYTES, 64 * 1024 * 1024);
+        assert_eq!(
+            bounded_output_param(
+                &json!({"maxStdoutBytes": MAX_OUTPUT_BYTES}),
+                "maxStdoutBytes",
+                1,
+            ),
+            MAX_OUTPUT_BYTES
+        );
+        assert_eq!(
+            bounded_output_param(
+                &json!({"maxStdoutBytes": MAX_OUTPUT_BYTES as u64 + 1}),
+                "maxStdoutBytes",
+                1,
+            ),
+            MAX_OUTPUT_BYTES
+        );
+    }
+}

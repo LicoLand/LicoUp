@@ -500,26 +500,28 @@
       ]
     },
     {
-      "id": "client-relay-mock-covers-opaque-wire-adversarial-semantics",
-      "file": "tools/scripts/client-secure-client-relay-mock-e2e.mjs",
+      "id": "licoarc-badtower-acceptance-is-strict-and-endpoint-authenticated",
+      "files": [
+        "tools/scripts/client-licoarc-badtower-acceptance.mjs",
+        "tools/scripts/lib/licoarc-badtower-acceptance-report.mjs",
+        "tools/scripts/lib/licoarc-v1-bundle-validator.mjs",
+        "tools/scripts/lib/licoarc-badtower-candidate-binding.mjs"
+      ],
       "tokens": [
-        "exactFiveOperationsObserved",
-        "exactSixOuterFieldsObserved",
-        "replayRejected",
-        "staleLeaseRejected",
-        "ackIdempotencyVerified",
-        "plaintextAbsentFromServerVisibleWire",
-        "wireBytesMeasured"
-      ]
-    },
-    {
-      "id": "client-relay-contract-pin-validates-exact-operation-and-envelope-sets",
-      "file": "tools/scripts/lib/secure-client-relay-artifacts.mjs",
-      "tokens": [
-        "SECURE_CLIENT_RELAY_CORE_CONTRACT_DIGEST",
-        "loadDigestBoundJsonInput",
-        "Secure Client Relay core operations",
-        "Secure Client Relay outer envelope fields are not exact"
+        "licoup.licoarc-badtower.acceptance.v1",
+        "freshEndpointCount",
+        "positiveExchange",
+        "roundTrip",
+        "stationPlaintextAbsent",
+        "nonConformantEnvelopeRejected",
+        "transportHintsNonAuthoritative",
+        "exactFiveOuterFields",
+        "validateLicoArcV1BundleBytes",
+        "candidateBindingsReady",
+        "createBadTowerStationEnvironment",
+        "endpointContentIncluded",
+        "clientRelease",
+        "hostedOperation"
       ]
     },
     {

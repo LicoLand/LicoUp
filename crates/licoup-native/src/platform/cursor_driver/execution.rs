@@ -24,6 +24,7 @@ pub(in crate::platform) fn execute(
     max_stderr: usize,
 ) -> RunResult {
     let started_at = timestamp();
+    let deadline = Instant::now() + Duration::from_millis(timeout_ms);
     if prompt.trim().is_empty() {
         return RunResult::failed(
             ProtocolFailure::new(
@@ -47,28 +48,51 @@ pub(in crate::platform) fn execute(
             }
         }
     }
+    let remaining_timeout_ms = deadline
+        .saturating_duration_since(Instant::now())
+        .as_millis()
+        .try_into()
+        .unwrap_or(u64::MAX);
+    if remaining_timeout_ms == 0 {
+        return RunResult::failed(
+            ProtocolFailure::new(
+                "cursor_cli_timeout",
+                "Cursor Agent CLI exhausted the turn timeout while creating the chat session.",
+                "turn/execute",
+            )
+            .with_session(Some(&native_session)),
+            started_at,
+            false,
+            false,
+        );
+    }
     run_turn(
         executable,
         params,
         prompt,
         &native_session,
         &workspace,
-        timeout_ms,
+        remaining_timeout_ms,
         max_stdout,
         max_stderr,
         started_at,
     )
 }
 
+/// The caller resolves one bounded workspace before dispatch, so its value wins
+/// over the raw request. The client-owned default keeps a direct driver call
+/// from indexing whatever directory the client process happens to run in.
 fn resolve_workspace(params: &Value, cwd: Option<&Path>) -> PathBuf {
-    params
-        .get("cwd")
-        .or_else(|| params.get("workingDirectory"))
-        .and_then(Value::as_str)
-        .filter(|value| !value.is_empty())
-        .map(PathBuf::from)
-        .or_else(|| cwd.map(Path::to_path_buf))
-        .or_else(|| std::env::current_dir().ok())
+    cwd.map(Path::to_path_buf)
+        .or_else(|| {
+            params
+                .get("cwd")
+                .or_else(|| params.get("workingDirectory"))
+                .and_then(Value::as_str)
+                .filter(|value| !value.is_empty())
+                .map(PathBuf::from)
+        })
+        .or_else(|| crate::platform::agent_workspace::default_local_agent_workspace("cursor"))
         .unwrap_or_else(|| PathBuf::from("."))
 }
 
@@ -366,6 +390,7 @@ fn consume_turn_stream(
     let mut stdout_bytes = 0usize;
     let stdout_truncated = false;
     let mut turn_id = String::new();
+    let mut accepted_emitted = false;
     loop {
         if Instant::now() >= deadline {
             return (
@@ -401,6 +426,24 @@ fn consume_turn_stream(
                 events.push(message.clone());
                 if let Some(id) = session_id(&message) {
                     observed_session = id.to_string();
+                }
+                if !accepted_emitted {
+                    let native_turn_id = message
+                        .get("uuid")
+                        .or_else(|| message.get("turn_id"))
+                        .and_then(Value::as_str)
+                        .filter(|value| !value.is_empty())
+                        .unwrap_or("cursor-turn");
+                    if turn_id.is_empty() {
+                        turn_id = native_turn_id.to_string();
+                    }
+                    super::super::turn_event_emit::emit_turn_event(
+                        "agent.turn.accepted",
+                        &observed_session,
+                        &turn_id,
+                        serde_json::json!({"evidenceKind": "native-event"}),
+                    );
+                    accepted_emitted = true;
                 }
                 if let Some(delta) = delta_text(&message) {
                     chunks.push_str(delta);

@@ -46,6 +46,14 @@ const canonicalPackagingConfigDigest = sha256File(path.join(
   "apps/desktop/packaging.modules.json",
 ), { maxBytes: 2 * 1024 * 1024 });
 
+function signingKeychainArgs() {
+  const keychain = String(process.env.LICO_MACOS_LOCAL_SIGNING_KEYCHAIN || "").trim();
+  if (!keychain) return [];
+  requireValue(path.isAbsolute(keychain) && existsSync(keychain),
+    "macos_local_signing_keychain_invalid");
+  return ["--keychain", keychain];
+}
+
 function requireValue(condition, reason) {
   if (!condition) throw new Error(reason);
 }
@@ -337,6 +345,7 @@ function main() {
   removeContainedReportIfExists(repoRoot, reportRef);
   const identity = String(process.env.LICO_MACOS_LOCAL_SIGNING_IDENTITY || "").trim();
   requireValue(identity, "macos_local_signing_identity_missing");
+  const keychainArgs = signingKeychainArgs();
   requireValue(existsSync(builtApp) && existsSync(packageManifestPath),
     "macos_release_artifact_missing");
   const buildRoot = path.join(repoRoot, "build");
@@ -364,6 +373,7 @@ function main() {
       "--timestamp=none",
       "--options",
       "runtime",
+      ...keychainArgs,
       "--sign",
       identity,
       nestedPath,
@@ -376,6 +386,7 @@ function main() {
     "--timestamp=none",
     "--options",
     "runtime",
+    ...keychainArgs,
     "--sign",
     identity,
     "--entitlements",
@@ -506,10 +517,14 @@ function main() {
 
 try {
   main();
-} catch {
+} catch (error) {
+  const stage = error instanceof Error && /^macos_[a-z0-9_]+$/u.test(error.message)
+    ? error.message
+    : "macos_local_identity_install_failed";
   console.error(JSON.stringify({
     ok: false,
     reason: "macos_local_identity_install_failed",
+    stage,
     privatePathsIncluded: false,
   }));
   process.exitCode = 1;

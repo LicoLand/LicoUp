@@ -5,36 +5,29 @@ pub(super) use super::super::{
 pub(super) use crate::core::secure_mesh_capability::{
     CapabilityEvidenceKind, CapabilityFact, capability_catalog, mandatory_protocol_facts,
 };
+pub(super) use crate::platform::badtower_station::BadTowerStationOperation;
 pub(super) use crate::platform::paths::set_portable_data_dir_override;
-pub(super) use crate::platform::secure_client_relay::SecureClientRelayOperation;
 pub(super) use crate::platform::secure_mesh_secret_store::{EphemeralSecretStore, SecretBytes};
 pub(super) use std::env;
 pub(super) use std::io::{BufRead, BufReader, Read, Write};
 pub(super) use std::net::{TcpListener, TcpStream};
 pub(super) use std::sync::{Arc, Mutex};
 pub(super) use std::thread;
+pub(super) use std::time::{Duration, Instant};
 
 pub(super) fn secure_envelope_fixture() -> Value {
-    let ciphertext = vec![9u8; 32];
-    let header = vec![
-                7u8;
-                crate::core::secure_mesh_relay_envelope::SECURE_MESH_ENCRYPTED_HEADER_BUCKET_BYTES
-            ];
-    json!({
-        "schema": crate::core::secure_mesh_relay_envelope::SECURE_MESH_RELAY_ENVELOPE_SCHEMA,
-        "deliveryId": general_purpose::URL_SAFE_NO_PAD.encode(vec![1u8; 24]),
-        "mailboxToken": general_purpose::URL_SAFE_NO_PAD.encode(vec![2u8; 32]),
-        "encryptedHeader": general_purpose::URL_SAFE_NO_PAD.encode(&header),
-        "ciphertextBucket": 256u64,
-        "ciphertext": general_purpose::URL_SAFE_NO_PAD.encode(pad_to_bucket(&ciphertext, 256)),
-    })
-}
-
-pub(super) fn pad_to_bucket(data: &[u8], bucket: usize) -> Vec<u8> {
-    let mut padded = Vec::with_capacity(bucket);
-    padded.extend_from_slice(data);
-    padded.resize(bucket, 0);
-    padded
+    let mailbox = crate::core::licoarc_relay::SecureMeshMailboxToken::from_base64url(
+        general_purpose::URL_SAFE_NO_PAD.encode([2u8; 32]),
+    )
+    .unwrap();
+    let envelope = crate::core::licoarc_relay::LicoArcRelayEnvelope::new(
+        &mailbox,
+        "2099-01-01T00:10:00Z",
+        &[7u8; crate::core::licoarc_relay::LICOARC_ENCRYPTED_HEADER_BYTES],
+        &[9u8; crate::core::secure_mesh_crypto::MIN_PADDING_BUCKET_BYTES],
+    )
+    .unwrap();
+    serde_json::from_str(&envelope.to_json().unwrap()).unwrap()
 }
 
 pub(super) fn append_test_directory_state(
@@ -255,7 +248,7 @@ pub(super) fn paired_command_envelope_fixture() -> (Value, Value, Value) {
         },
         "targetBinding": {
             "targetEndpointId": pc_endpoint.endpoint_id,
-            "targetAgentId": null,
+            "targetAgentId": "codex",
             "workspaceId": "default"
         },
         "riskClass": "read_only",
@@ -264,7 +257,6 @@ pub(super) fn paired_command_envelope_fixture() -> (Value, Value, Value) {
         "createdAt": now_iso(),
         "expiresAt": timestamp_after_seconds(MOBILE_RELAY_COMMAND_TTL_SECONDS).unwrap(),
         "body": {
-            "agent": "codex",
             "limit": 1
         }
     });
@@ -299,38 +291,92 @@ pub(super) fn temp_dir(name: &str) -> PathBuf {
 
 #[derive(Clone, Debug)]
 pub(super) struct CapturedHttpRequest {
+    pub(super) method: String,
     pub(super) path: String,
     pub(super) body: String,
 }
 
-pub(super) struct CanonicalRelayGateway {
+pub(super) struct CanonicalStation {
     pub(super) address: String,
     pub(super) captured: Arc<Mutex<Vec<CapturedHttpRequest>>>,
     pub(super) handle: thread::JoinHandle<()>,
 }
 
-impl CanonicalRelayGateway {
-    pub(super) fn start(expected_requests: usize, sync_envelopes: Vec<Value>) -> Self {
-        Self::start_with(expected_requests, move |request| {
-            canonical_relay_response(request, &sync_envelopes)
-        })
+impl CanonicalStation {
+    pub(super) fn start(expected_requests: usize, receive_envelopes: Vec<Value>) -> Self {
+        Self::start_with_send_response_drop(expected_requests, receive_envelopes, false)
     }
 
-    pub(super) fn start_with<F>(expected_requests: usize, responder: F) -> Self
-    where
-        F: Fn(&CapturedHttpRequest) -> Value + Send + 'static,
-    {
+    pub(super) fn start_with_first_send_response_dropped(expected_requests: usize) -> Self {
+        Self::start_with_send_response_drop(expected_requests, Vec::new(), true)
+    }
+
+    pub(super) fn start_with_envelopes_and_first_send_response_dropped(
+        expected_requests: usize,
+        receive_envelopes: Vec<Value>,
+    ) -> Self {
+        Self::start_with_send_response_drop(expected_requests, receive_envelopes, true)
+    }
+
+    fn start_with_send_response_drop(
+        expected_requests: usize,
+        receive_envelopes: Vec<Value>,
+        drop_first_send_response: bool,
+    ) -> Self {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        listener.set_nonblocking(true).unwrap();
         let address = listener.local_addr().unwrap().to_string();
         let captured = Arc::new(Mutex::new(Vec::<CapturedHttpRequest>::new()));
         let thread_captured = Arc::clone(&captured);
         let handle = thread::spawn(move || {
-            for stream in listener.incoming().take(expected_requests) {
-                let mut stream = stream.unwrap();
-                let request = read_http_request(&mut stream);
-                let response = responder(&request);
-                thread_captured.lock().unwrap().push(request);
-                write_http_json_response(&mut stream, &response);
+            let deadline = Instant::now() + Duration::from_secs(15);
+            let mut first_send_response_dropped = false;
+            let mut available_envelopes = receive_envelopes;
+            while thread_captured.lock().unwrap().len() < expected_requests
+                && Instant::now() < deadline
+            {
+                match listener.accept() {
+                    Ok((mut stream, _)) => {
+                        stream.set_nonblocking(false).unwrap();
+                        let request = read_http_request(&mut stream);
+                        let operation = station_operation(&request);
+                        let mut response =
+                            canonical_station_response(&request, &available_envelopes);
+                        if operation == BadTowerStationOperation::DeleteEnvelope {
+                            let mailbox_id = mailbox_id_from_path(&request.path).to_string();
+                            let envelope_id = request
+                                .path
+                                .rsplit('/')
+                                .next()
+                                .unwrap_or_default()
+                                .to_string();
+                            available_envelopes.retain(|envelope| {
+                                envelope.get("mailboxId").and_then(Value::as_str)
+                                    != Some(mailbox_id.as_str())
+                                    || envelope.get("envelopeId").and_then(Value::as_str)
+                                        != Some(envelope_id.as_str())
+                            });
+                        }
+                        thread_captured.lock().unwrap().push(request);
+                        if drop_first_send_response
+                            && operation == BadTowerStationOperation::SendEnvelope
+                            && !first_send_response_dropped
+                        {
+                            first_send_response_dropped = true;
+                            continue;
+                        }
+                        if first_send_response_dropped
+                            && operation == BadTowerStationOperation::SendEnvelope
+                        {
+                            response.body["duplicate"] = json!(true);
+                        }
+                        write_http_json_response(&mut stream, response.status, &response.body);
+                    }
+                    Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                        thread::sleep(Duration::from_millis(2));
+                    }
+                    Err(error) => panic!("canonical station accept failed: {error}"),
+                }
             }
         });
         Self {
@@ -353,23 +399,26 @@ impl CanonicalRelayGateway {
             .unwrap_or_default()
     }
 
-    pub(super) fn request_paths(&self) -> Vec<String> {
+    pub(super) fn request_path(&self, index: usize) -> String {
+        self.captured
+            .lock()
+            .unwrap()
+            .get(index)
+            .map(|request| request.path.clone())
+            .unwrap_or_default()
+    }
+
+    pub(super) fn operations(&self) -> Vec<BadTowerStationOperation> {
         self.captured
             .lock()
             .unwrap()
             .iter()
-            .map(|request| request.path.clone())
+            .map(station_operation)
             .collect()
     }
 
-    pub(super) fn assert_operations(&self, operations: &[SecureClientRelayOperation]) {
-        assert_eq!(
-            self.request_paths(),
-            operations
-                .iter()
-                .map(|operation| operation.path().to_string())
-                .collect::<Vec<_>>()
-        );
+    pub(super) fn assert_operations(&self, operations: &[BadTowerStationOperation]) {
+        assert_eq!(self.operations(), operations);
     }
 
     pub(super) fn join(self) {
@@ -381,11 +430,9 @@ pub(super) fn read_http_request(stream: &mut TcpStream) -> CapturedHttpRequest {
     let mut reader = BufReader::new(stream.try_clone().unwrap());
     let mut request_line = String::new();
     reader.read_line(&mut request_line).unwrap();
-    let path = request_line
-        .split_whitespace()
-        .nth(1)
-        .unwrap_or("/")
-        .to_string();
+    let mut request_parts = request_line.split_whitespace();
+    let method = request_parts.next().unwrap_or_default().to_string();
+    let path = request_parts.next().unwrap_or("/").to_string();
     let mut content_length = 0usize;
     loop {
         let mut line = String::new();
@@ -403,227 +450,91 @@ pub(super) fn read_http_request(stream: &mut TcpStream) -> CapturedHttpRequest {
     let mut body = vec![0u8; content_length];
     reader.read_exact(&mut body).unwrap();
     CapturedHttpRequest {
+        method,
         path,
         body: String::from_utf8(body).unwrap(),
     }
 }
 
-pub(super) fn with_canonical_relay_params(mut params: Value) -> Value {
-    params["relaySessionToken"] = json!("test-session-token");
-    params["relayCsrfToken"] = json!("test-csrf-token");
-    params["relayTenantId"] = json!("tenant-test");
-    params["relayAccountId"] = json!("account-test");
+pub(super) fn with_station_params(params: Value) -> Value {
     params
 }
 
-pub(super) fn captured_body(request: &CapturedHttpRequest) -> Value {
-    serde_json::from_str(&request.body).unwrap()
+struct StationHttpResponse {
+    status: u16,
+    body: Value,
 }
 
-pub(super) fn canonical_relay_response(
+fn canonical_station_response(
     request: &CapturedHttpRequest,
-    sync_envelopes: &[Value],
-) -> Value {
-    match request.path.as_str() {
-        path if path == SecureClientRelayOperation::EndpointChallenge.path() => {
-            canonical_challenge_response(request)
+    receive_envelopes: &[Value],
+) -> StationHttpResponse {
+    match station_operation(request) {
+        BadTowerStationOperation::LeaseMailbox => StationHttpResponse {
+            status: 200,
+            body: json!({
+                "mailboxId": mailbox_id_from_path(&request.path),
+                "leaseExpiresAt": "2099-01-01T00:01:00Z"
+            }),
+        },
+        BadTowerStationOperation::SendEnvelope => StationHttpResponse {
+            status: 202,
+            body: json!({
+                "accepted": true,
+                "duplicate": false
+            }),
+        },
+        BadTowerStationOperation::ReceiveEnvelopes => StationHttpResponse {
+            status: 200,
+            body: json!({
+                "envelopes": receive_envelopes
+                    .iter()
+                    .filter(|envelope| {
+                        envelope.get("mailboxId").and_then(Value::as_str)
+                            == Some(mailbox_id_from_path(&request.path))
+                    })
+                    .cloned()
+                    .collect::<Vec<_>>()
+            }),
+        },
+        BadTowerStationOperation::DeleteEnvelope => StationHttpResponse {
+            status: 200,
+            body: json!({
+                "acknowledged": true
+            }),
+        },
+        BadTowerStationOperation::ConfigureTransport => {
+            panic!("transport construction has no HTTP operation")
         }
-        path if path == SecureClientRelayOperation::EndpointRegister.path() => {
-            canonical_register_response(request)
-        }
-        path if path == SecureClientRelayOperation::EnvelopeSend.path() => {
-            canonical_send_response(request)
-        }
-        path if path == SecureClientRelayOperation::EnvelopeSync.path() => {
-            canonical_sync_response(request, sync_envelopes)
-        }
-        path if path == SecureClientRelayOperation::EnvelopeAck.path() => {
-            canonical_ack_response(request)
-        }
-        _ => panic!("unexpected non-canonical relay operation"),
     }
 }
 
-pub(super) fn canonical_challenge_response(request: &CapturedHttpRequest) -> Value {
-    let body = captured_body(request);
-    let challenge_id = "challenge-test";
-    let challenge = format!(
-        "{}:{challenge_id}:{}:{}:{}:2026-01-01T00:00:00Z",
-        crate::platform::secure_client_relay::SECURE_CLIENT_RELAY_PROTOCOL_VERSION,
-        body["tenantId"].as_str().unwrap(),
-        body["accountId"].as_str().unwrap(),
-        body["endpointId"].as_str().unwrap(),
-    );
-    json!({
-        "ok": true,
-        "schemaVersion": "licomesh.secure-mesh.store-schema.v2",
-        "protocolVersion": "licomesh.secure-mesh.device-trust.v2",
-        "challengeId": challenge_id,
-        "challenge": challenge,
-        "challengeEncoding": "utf-8",
-        "signatureAlgorithm": "Ed25519",
-        "expiresAt": "2026-01-01T00:05:00Z"
-    })
-}
-
-pub(super) fn canonical_register_response(request: &CapturedHttpRequest) -> Value {
-    let body = captured_body(request);
-    let endpoint_id = body["endpointId"].as_str().unwrap_or("endpoint-test");
-    json!({
-        "ok": true,
-        "schemaVersion": "licomesh.secure-mesh.store-schema.v2",
-        "protocolVersion": "licomesh.secure-mesh.device-trust.v2",
-        "endpoint": {
-            "tenantId": body["tenantId"],
-            "accountId": body["accountId"],
-            "workspaceId": body.get("workspaceId").cloned().unwrap_or_else(|| json!("")),
-            "endpointId": endpoint_id,
-            "endpointKind": body["endpointKind"],
-            "mailboxToken": body["mailboxToken"],
-            "identityPublicKey": body["identityPublicKey"],
-            "signingPublicKey": body["signingPublicKey"],
-            "fingerprint": sha256_hex(endpoint_id.as_bytes()),
-            "rotationEpoch": body.get("rotationEpoch").cloned().unwrap_or_else(|| json!(0)),
-            "createdAt": "2026-01-01T00:00:00Z",
-            "updatedAt": "2026-01-01T00:00:00Z",
-            "revokedAt": ""
-        },
-        "registrationReceipt": {
-            "receiptRef": "b".repeat(64),
-            "sequence": 1
+fn station_operation(request: &CapturedHttpRequest) -> BadTowerStationOperation {
+    match request.method.as_str() {
+        "POST" if request.path == "/v1/envelopes" => BadTowerStationOperation::SendEnvelope,
+        "POST" if request.path.ends_with("/lease") => BadTowerStationOperation::LeaseMailbox,
+        "GET" if request.path.contains("/envelopes?limit=") => {
+            BadTowerStationOperation::ReceiveEnvelopes
         }
-    })
+        "DELETE" if request.path.contains("/envelopes/") => {
+            BadTowerStationOperation::DeleteEnvelope
+        }
+        _ => panic!("unexpected station request"),
+    }
 }
 
-pub(super) fn canonical_public_mailbox(request: &Value, mailbox_token: &str) -> Value {
-    json!({
-        "tenantId": request["tenantId"],
-        "accountId": request["accountId"],
-        "workspaceId": request.get("workspaceId").cloned().unwrap_or_else(|| json!("")),
-        "endpointId": "endpoint-test",
-        "mailboxToken": mailbox_token,
-        "queueBytes": 0,
-        "queuedCount": 0,
-        "oldestQueuedAt": "",
-        "deliverySequence": 1,
-        "receiptCount": 0,
-        "ackedCount": 0,
-        "updatedAt": "2026-01-01T00:00:00Z"
-    })
+fn mailbox_id_from_path(path: &str) -> &str {
+    path.split('/').nth(3).unwrap_or_default()
 }
 
-pub(super) fn canonical_send_response(request: &CapturedHttpRequest) -> Value {
-    let body = captured_body(request);
-    let envelope = &body["envelope"];
-    let mailbox_token = envelope["mailboxToken"].as_str().unwrap();
-    json!({
-        "ok": true,
-        "schemaVersion": "licomesh.secure-mesh.store-schema.v2",
-        "protocolVersion": "licomesh.secure-mesh.delivery.v1",
-        "queued": {
-            "deliverySequence": 1,
-            "queuedAt": "2026-01-01T00:00:00Z",
-            "transport": body.get("transport").cloned().unwrap_or_else(|| json!("mobile_relay")),
-            "envelope": {
-                "schema": envelope["schema"],
-                "deliveryId": envelope["deliveryId"],
-                "mailboxToken": envelope["mailboxToken"],
-                "ciphertextBucket": envelope["ciphertextBucket"]
-            },
-            "opaqueSequenceLabelHash": "",
-            "opaqueSequenceLabelPresent": body.get("opaqueSequenceLabel").is_some(),
-            "mailbox": canonical_public_mailbox(&body, mailbox_token),
-            "metadataOnly": true
-        },
-        "persisted": true,
-        "queueMode": "offline_queue"
-    })
-}
-
-pub(super) fn canonical_leased_envelope(
-    envelope: &Value,
-    mailbox_token: &str,
-    index: usize,
-) -> Value {
-    let sequence = u64::try_from(index).unwrap().saturating_add(1);
-    json!({
-        "schema": envelope["schema"],
-        "deliveryId": envelope["deliveryId"],
-        "mailboxToken": mailbox_token,
-        "encryptedHeader": envelope["encryptedHeader"],
-        "ciphertextBucket": envelope["ciphertextBucket"],
-        "ciphertext": envelope["ciphertext"],
-        "deliverySequence": sequence,
-        "queuedAt": "2026-01-01T00:00:00Z",
-        "transport": "mobile_relay",
-        "deliveryAttempts": 1,
-        "leaseId": format!("lease-test-{sequence}"),
-        "leaseGeneration": 1,
-        "leasedAt": "2026-01-01T00:00:01Z",
-        "leaseExpiresAt": "2026-01-01T00:00:31Z",
-        "opaqueSequenceLabelHash": "",
-        "opaqueSequenceLabelPresent": false
-    })
-}
-
-pub(super) fn canonical_sync_response(request: &CapturedHttpRequest, envelopes: &[Value]) -> Value {
-    let body = captured_body(request);
-    let mailbox_token = body["mailboxToken"].as_str().unwrap();
-    let leased = envelopes
-        .iter()
-        .enumerate()
-        .map(|(index, envelope)| canonical_leased_envelope(envelope, mailbox_token, index))
-        .collect::<Vec<_>>();
-    let high_watermark = u64::try_from(leased.len()).unwrap();
-    json!({
-        "ok": true,
-        "schemaVersion": "licomesh.secure-mesh.store-schema.v2",
-        "protocolVersion": "licomesh.secure-mesh.delivery.v1",
-        "queueMode": "offline_queue",
-        "mailbox": canonical_public_mailbox(&body, mailbox_token),
-        "cursor": {
-            "afterDeliverySequence": body.get("afterDeliverySequence").and_then(Value::as_u64).unwrap_or(0),
-            "nextDeliverySequence": high_watermark,
-            "highWatermark": high_watermark,
-            "hasMore": false
-        },
-        "gapRanges": [],
-        "envelopes": leased
-    })
-}
-
-pub(super) fn canonical_ack_response(request: &CapturedHttpRequest) -> Value {
-    let body = captured_body(request);
-    let delivery_id = body["deliveryId"].as_str().unwrap();
-    let mailbox_token = body["mailboxToken"].as_str().unwrap();
-    json!({
-        "ok": true,
-        "schemaVersion": "licomesh.secure-mesh.store-schema.v2",
-        "protocolVersion": "licomesh.secure-mesh.delivery.v1",
-        "ack": {
-            "deliveryId": delivery_id,
-            "idempotent": false,
-            "ackedAt": "2026-01-01T00:00:02Z",
-            "purged": true
-        },
-        "receipt": {
-            "deliveryId": delivery_id,
-            "deliverySequence": 1,
-            "receiptType": "ack",
-            "acknowledgedAt": "2026-01-01T00:00:02Z",
-            "purged": true
-        },
-        "mailbox": canonical_public_mailbox(&body, mailbox_token)
-    })
-}
-
-pub(super) fn write_http_json_response(stream: &mut TcpStream, body: &Value) {
+pub(super) fn write_http_json_response(stream: &mut TcpStream, status: u16, body: &Value) {
     let serialized = serde_json::to_string(body).unwrap();
+    let reason = if status == 202 { "Accepted" } else { "OK" };
     write!(
-            stream,
-            "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{}",
-            serialized.len(),
-            serialized
-        )
-        .unwrap();
+        stream,
+        "HTTP/1.1 {status} {reason}\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{}",
+        serialized.len(),
+        serialized
+    )
+    .unwrap();
 }

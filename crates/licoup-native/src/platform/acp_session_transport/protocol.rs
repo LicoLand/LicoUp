@@ -466,6 +466,13 @@ impl SessionProtocol {
         let text = update.agent_message_text().map(str::to_owned);
         let current_mode = update.current_mode_id().map(str::to_owned);
         if self.phase == ProtocolPhase::AwaitPrompt {
+            if let Some(evidence_kind) = update.kind().processing_evidence_kind() {
+                super::super::turn_event_emit::emit_agent_processing(
+                    self.session_id.as_deref().unwrap_or_default(),
+                    &self.config.turn_id,
+                    evidence_kind,
+                );
+            }
             let skill_events = super::super::skill_invocation_projection::project_skill_invocations(
                 update.payload(),
             );

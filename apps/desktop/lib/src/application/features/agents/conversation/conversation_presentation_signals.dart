@@ -5,11 +5,13 @@ import 'package:flutter/foundation.dart';
 final class ConversationPresentationSignals {
   final ValueNotifier<int> _structureRevision = ValueNotifier<int>(0);
   final ValueNotifier<int> _activeRevision = ValueNotifier<int>(0);
+  final ValueNotifier<int> _liveRevision = ValueNotifier<int>(0);
   String _composerDraft = '';
   bool _disposed = false;
 
   ValueListenable<int> get structureListenable => _structureRevision;
   ValueListenable<int> get activeListenable => _activeRevision;
+  ValueListenable<int> get liveListenable => _liveRevision;
   String get composerDraft => _composerDraft;
 
   void replaceComposerDraft(String value) {
@@ -28,10 +30,16 @@ final class ConversationPresentationSignals {
     _activeRevision.value += 1;
   }
 
+  void notifyLiveChanged() {
+    if (_disposed) return;
+    _liveRevision.value += 1;
+  }
+
   void dispose() {
     if (_disposed) return;
     _disposed = true;
     _structureRevision.dispose();
     _activeRevision.dispose();
+    _liveRevision.dispose();
   }
 }

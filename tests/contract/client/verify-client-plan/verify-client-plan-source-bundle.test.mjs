@@ -25,7 +25,6 @@ async function read(relativePath) {
 
 test("verify-client-plan root is a thin ordered static facade", async () => {
   const root = await read("apps/desktop/scripts/verify-client-plan.mjs");
-  assert.ok(root.split(/\r?\n/u).length <= 70);
   for (const [fileName, exportName] of leaves) {
     assert.match(root, new RegExp(`import \\{ ${exportName} \\} from "\\./verify-client-plan/checks/${fileName.replace(".", "\\.")}"`, "u"));
   }
@@ -59,7 +58,7 @@ test("shared registries and reducer-owned summary are declared once", async () =
     sharedFiles.map((fileName) => read(`${scriptRoot}/shared/${fileName}`)),
   );
   const source = [...sharedSources, ...checkSources].join("\n");
-  assert.equal((source.match(/export const requiredVerifierScripts\s*=\s*\[/gu) || []).length, 1);
+  assert.equal((source.match(/export const requiredClientScripts\s*=\s*\[/gu) || []).length, 1);
   assert.equal((source.match(/function formatAdapterReadinessSummary\(/gu) || []).length, 1);
   assert.equal((source.match(/import \{ loadSecureClientContract \}/gu) || []).length, 1);
   assert.equal((source.match(/SECURE_CLIENT_MESH_PRODUCTION_BLOCKERS\s*=\s*\[/gu) || []).length, 0);

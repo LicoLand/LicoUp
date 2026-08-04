@@ -12,7 +12,7 @@ import { loadSecureMeshPhysicalEvidenceConfig } from "./lib/secure-mesh-physical
 import {
   androidPlatformCryptoCoverage as sharedAndroidPlatformCryptoCoverage,
   platformSecretStoreCustodyCoverage,
-  relayMockCoverage as sharedRelayMockCoverage
+  stationAcceptanceCoverage as sharedStationAcceptanceCoverage
 } from "./lib/secure-mesh-physical-report-coverage.mjs";
 
 const repoRoot = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
@@ -69,17 +69,21 @@ function dedupe(values) {
 }
 
 function reportSummary(id, ref, report) {
+  const present = Boolean(report && Object.keys(report).length > 0);
+  const privacyReady = id === "stationAcceptance"
+    ? sharedStationAcceptanceCoverage(report).ready === true
+    : report?.redacted === true &&
+      report?.rawPrivateMaterialIncluded === false &&
+      report?.rawPlaintextIncluded === false &&
+      report?.rawPublicWireBytesIncluded === false &&
+      report?.reportLeakScan === true;
   return {
     id,
     report: ref,
-    present: Boolean(report && Object.keys(report).length > 0),
+    present,
     ok: report?.ok === true,
     schemaVersion: String(report?.schemaVersion || ""),
-    redacted: report?.redacted === true,
-    rawPrivateMaterialIncluded: report?.rawPrivateMaterialIncluded === true,
-    rawPlaintextIncluded: report?.rawPlaintextIncluded === true,
-    rawPublicWireBytesIncluded: report?.rawPublicWireBytesIncluded === true,
-    reportLeakScan: report?.reportLeakScan === true
+    privacyReady,
   };
 }
 
@@ -99,9 +103,9 @@ function evaluateFreshness(report, checkedAt, maxAgeSeconds) {
   return { ready: true, status: "fresh", ageSeconds };
 }
 
-function relayMockCoverage(report) {
-  return sharedRelayMockCoverage(report, {
-    reportRef: reportRefs.relayMock
+function stationAcceptanceCoverage(report) {
+  return sharedStationAcceptanceCoverage(report, {
+    reportRef: reportRefs.stationAcceptance
   });
 }
 
@@ -206,7 +210,7 @@ const androidPlatformCryptoFreshness = evaluateFreshness(
   checkedAt,
   freshnessWindows.androidPlatformCryptoSeconds
 );
-const relayMock = relayMockCoverage(reports.relayMock);
+const stationAcceptance = stationAcceptanceCoverage(reports.stationAcceptance);
 const androidPlatformCrypto = androidPlatformCryptoCoverage(
   reports.androidPlatformCrypto,
   androidPlatformCryptoFreshness
@@ -227,16 +231,10 @@ const missingConfiguredReportIds = linkedReports
 const allConfiguredReportsPresent = missingConfiguredReportIds.length === 0;
 const allPresentReportsRedacted = linkedReports
   .filter((entry) => entry.present)
-  .every((entry) =>
-    entry.redacted &&
-    !entry.rawPrivateMaterialIncluded &&
-    !entry.rawPlaintextIncluded &&
-    !entry.rawPublicWireBytesIncluded &&
-    entry.reportLeakScan
-  );
+  .every((entry) => entry.privacyReady);
 const localIntegrityReportIds = new Set([
   "androidPlatformCrypto",
-  "relayMock",
+  "stationAcceptance",
   "platformSecretStore",
   "physicalDeviceMatrix",
   "encryptedFileHandoff",
@@ -246,24 +244,19 @@ const localIntegrityReportIds = new Set([
 ]);
 const localReportsIntegrityReady = linkedReports
   .filter((entry) => localIntegrityReportIds.has(entry.id))
-  .every((entry) =>
-    entry.present &&
-    entry.redacted &&
-    !entry.rawPrivateMaterialIncluded &&
-    !entry.rawPlaintextIncluded &&
-    !entry.rawPublicWireBytesIncluded &&
-    entry.reportLeakScan
-  );
+  .every((entry) => entry.present && entry.privacyReady);
 const physicalEvidenceChainReady =
   physicalMatrixSummary.physicalEvidenceChainReady === true &&
-  relayMock.ready &&
+  stationAcceptance.ready &&
   androidPlatformCrypto.ready &&
   platforms.find((entry) => entry.platform === "android")?.platformCustodyReady === true &&
   platforms.find((entry) => entry.platform === "ios")?.platformCustodyReady === true &&
   platforms.find((entry) => entry.platform === "macos")?.platformCustodyReady === true;
 const remainingGates = dedupe([
   ...platforms.flatMap((entry) => entry.remainingGates),
-  ...(relayMock.ready ? [] : ["client-owned relay Mock protocol acceptance"]),
+  ...(stationAcceptance.ready
+    ? []
+    : ["strict Lico Arc BadTower interoperability acceptance"]),
   ...(androidPlatformCrypto.ready
     ? []
     : ["fresh Android platform cryptography acceptance"]),
@@ -280,7 +273,7 @@ const remainingGates = dedupe([
 // producer and every present report while `evidenceChainComplete` remains
 // fail-closed until every configured receipt exists.
 const diagnosticOk = localReportsIntegrityReady &&
-  relayMock.ready &&
+  stationAcceptance.ready &&
   androidPlatformCrypto.ready &&
   reports.platformSecretStore?.ok === true &&
   reports.physicalDeviceMatrix?.ok === true;
@@ -313,7 +306,7 @@ const summary = {
     androidPlatformCryptoFreshness.ready,
   androidPlatformCryptoFreshnessStatus:
     androidPlatformCryptoFreshness.status,
-  relayProtocolMockReady: relayMock.ready,
+  stationAcceptanceReady: stationAcceptance.ready,
   androidPlatformCryptoAcceptanceReady: androidPlatformCrypto.ready,
   androidPlatformCustodyContractReady:
     androidPlatformCrypto.platformCustodyContractReady,
@@ -419,14 +412,14 @@ const manifest = {
   linkedReportFreshness: {
     androidPlatformCrypto: androidPlatformCryptoFreshness
   },
-  relayProtocolMock: relayMock,
+  stationAcceptance,
   androidPlatformCrypto,
   platformCoverage: platforms,
   physicalProofClasses: [
     "physical-device proof classes",
     "platform secret-store proof classes",
     "client Rust and platform cryptography proof classes",
-    "client-owned opaque relay Mock proof classes"
+    "Lico Arc BadTower interoperability proof classes"
   ],
   releaseProofClasses: [
     "signing/deployment proof classes",
@@ -448,7 +441,7 @@ console.log(JSON.stringify({
   ok: manifest.ok,
   report: reportPath,
   diagnosticStatus: manifest.diagnosticStatus,
-  relayProtocolMockReady: summary.relayProtocolMockReady,
+  stationAcceptanceReady: summary.stationAcceptanceReady,
   androidPlatformCryptoAcceptanceReady:
     summary.androidPlatformCryptoAcceptanceReady,
   manifestIntegrityReady,

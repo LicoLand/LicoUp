@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
 
+import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_connection_chips.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_display_names.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_layout_metrics.dart';
-import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_pane_controls.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_pane_presentation.dart';
-import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_parity_disclosure.dart';
+import 'package:licoup/src/frontend/layout/layout_agents_strategy.dart';
 import 'package:licoup/src/frontend/shared/platform/client_platform.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_icon_button.dart';
 
 class ConversationPaneHeader extends StatelessWidget {
   const ConversationPaneHeader({
@@ -14,11 +15,17 @@ class ConversationPaneHeader extends StatelessWidget {
     required this.state,
     required this.actions,
     this.orchestrationControls,
+    this.strategy = const AgentsPresentationStrategy.console(),
   });
 
   final AgentConversationHeaderState state;
   final AgentConversationHeaderActions actions;
   final Widget? orchestrationControls;
+
+  /// Layout-owned presentation strategy. The messaging header variant lands
+  /// with the messaging feature step; every style currently renders the
+  /// shared console header.
+  final AgentsPresentationStrategy strategy;
 
   @override
   Widget build(BuildContext context) {
@@ -30,24 +37,21 @@ class ConversationPaneHeader extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         final mobileClient = isMobileClientPlatform(context);
-        final identity = Row(
+        final consoleIdentity = Row(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: mobileClient
               ? const <Widget>[]
               : [
                   if (state.showSidebarToggle) ...[
-                    ConversationIconButton(
-                      key: const Key('conversation-history-toggle'),
+                    AgentsSidebarCollapseControl(
+                      key: const Key('agents-workspace-sidebar-collapse'),
+                      expanded: !state.historyCollapsed,
                       tooltip: state.historyCollapsed
                           ? state.expandHistoryTooltip
                           : state.collapseHistoryTooltip,
                       onPressed: actions.onToggleHistory,
-                      child: _SidebarToggleGlyph(
-                        expanded: !state.historyCollapsed,
-                        color: colors.textMuted.withAlpha(230),
-                      ),
                     ),
-                    const SizedBox(width: 10),
+                    const SizedBox(width: 12),
                   ],
                   Expanded(
                     child: Align(
@@ -64,14 +68,11 @@ class ConversationPaneHeader extends StatelessWidget {
                       ),
                     ),
                   ),
-                  if (!state.orchestrationSelected) ...[
-                    const SizedBox(width: 10),
-                    ConversationParityDisclosurePanel(target: state.target),
-                  ],
-                  if (state.target.target == 'opencode') ...[
-                    const SizedBox(width: 8),
-                    _OpencodeServeStatusChip(state: state.opencodeServeState),
-                  ],
+                  ...conversationConnectionChipChildren(
+                    target: state.target,
+                    opencodeServeState: state.opencodeServeState,
+                    showParity: !state.orchestrationSelected,
+                  ),
                   if (state.orchestrationSelected &&
                       orchestrationControls != null) ...[
                     const SizedBox(width: 12),
@@ -79,6 +80,12 @@ class ConversationPaneHeader extends StatelessWidget {
                   ],
                 ],
         );
+        final identity = switch (strategy.messageStyle) {
+          AgentsMessageStyle.documentTranscript => consoleIdentity,
+          // The messaging header variant lands with the messaging feature
+          // step; until then it falls back to the shared console header.
+          AgentsMessageStyle.participantFlow => consoleIdentity,
+        };
 
         final content = Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -93,53 +100,7 @@ class ConversationPaneHeader extends StatelessWidget {
   }
 }
 
-class _OpencodeServeStatusChip extends StatelessWidget {
-  const _OpencodeServeStatusChip({required this.state});
-
-  final AgentConversationServeState? state;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.licoColors;
-    final status = state?.status ?? AgentConversationServeStatus.stopped;
-    final port = state?.port;
-    final label = switch (status) {
-      AgentConversationServeStatus.running =>
-        port == null ? 'OpenCode serve' : 'OpenCode :$port',
-      AgentConversationServeStatus.blocked =>
-        state?.portConflict == true
-            ? 'OpenCode port blocked'
-            : 'OpenCode blocked',
-      AgentConversationServeStatus.unavailable => 'OpenCode unavailable',
-      _ => 'OpenCode stopped',
-    };
-    final color = switch (status) {
-      AgentConversationServeStatus.running => colors.success,
-      AgentConversationServeStatus.blocked ||
-      AgentConversationServeStatus.unavailable => colors.error,
-      _ => colors.textMuted,
-    };
-    return Container(
-      key: const Key('opencode-serve-status'),
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: color.withValues(alpha: 0.35)),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          color: color,
-          fontSize: 11,
-          fontWeight: FontWeight.w700,
-        ),
-      ),
-    );
-  }
-}
-
-class AgentsSidebarCollapseControl extends StatefulWidget {
+class AgentsSidebarCollapseControl extends StatelessWidget {
   const AgentsSidebarCollapseControl({
     super.key,
     required this.expanded,
@@ -152,135 +113,18 @@ class AgentsSidebarCollapseControl extends StatefulWidget {
   final VoidCallback onPressed;
 
   @override
-  State<AgentsSidebarCollapseControl> createState() =>
-      _AgentsSidebarCollapseControlState();
-}
-
-class _AgentsSidebarCollapseControlState
-    extends State<AgentsSidebarCollapseControl> {
-  bool _hovered = false;
-  bool _pressed = false;
-
-  static const double _hitSize = 32;
-
-  @override
   Widget build(BuildContext context) {
-    final colors = context.licoColors;
-    final iconColor = colors.text.withAlpha(220);
-    final showCircle = _hovered || _pressed;
-    return Tooltip(
-      message: widget.tooltip,
-      waitDuration: const Duration(milliseconds: 400),
-      child: MouseRegion(
-        cursor: SystemMouseCursors.click,
-        onEnter: (_) => setState(() => _hovered = true),
-        onExit: (_) => setState(() {
-          _hovered = false;
-          _pressed = false;
-        }),
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTapDown: (_) => setState(() => _pressed = true),
-          onTapUp: (_) {
-            setState(() => _pressed = false);
-            widget.onPressed();
-          },
-          onTapCancel: () => setState(() => _pressed = false),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 140),
-            width: _hitSize,
-            height: _hitSize,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: showCircle
-                  ? colors.surface.withAlpha(colors.isDark ? 160 : 220)
-                  : Colors.transparent,
-              border: showCircle
-                  ? Border.all(color: colors.line.withAlpha(110))
-                  : null,
+    return LicoIconButton(
+      tooltip: tooltip,
+      onPressed: onPressed,
+      size: LicoIconButtonSize.large,
+      tone: LicoIconButtonTone.outlined,
+      icon: expanded
+          ? const Icon(Icons.view_sidebar_outlined)
+          : Transform.scale(
+              scaleX: -1,
+              child: const Icon(Icons.view_sidebar_outlined),
             ),
-            child: _SidebarToggleGlyph(
-              expanded: widget.expanded,
-              color: iconColor,
-            ),
-          ),
-        ),
-      ),
     );
-  }
-}
-
-class _SidebarToggleGlyph extends StatelessWidget {
-  const _SidebarToggleGlyph({required this.expanded, required this.color});
-
-  final bool expanded;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return CustomPaint(
-      size: const Size(22, 22),
-      painter: _SidebarToggleGlyphPainter(expanded: expanded, color: color),
-    );
-  }
-}
-
-class _SidebarToggleGlyphPainter extends CustomPainter {
-  const _SidebarToggleGlyphPainter({
-    required this.expanded,
-    required this.color,
-  });
-
-  final bool expanded;
-  final Color color;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final outerRect = Rect.fromLTWH(3, 4, size.width - 6, size.height - 8);
-    final stroke = Paint()
-      ..color = color
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.8
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round;
-    final fill = Paint()
-      ..color = color.withAlpha(76)
-      ..style = PaintingStyle.fill;
-    final outer = RRect.fromRectAndRadius(
-      outerRect,
-      const Radius.circular(2.5),
-    );
-    canvas.drawRRect(outer, stroke);
-
-    final panelWidth = outerRect.width * 0.4;
-    final panelRect = expanded
-        ? Rect.fromLTWH(
-            outerRect.left,
-            outerRect.top,
-            panelWidth,
-            outerRect.height,
-          )
-        : Rect.fromLTWH(
-            outerRect.right - panelWidth,
-            outerRect.top,
-            panelWidth,
-            outerRect.height,
-          );
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(panelRect.deflate(1.8), const Radius.circular(1)),
-      fill,
-    );
-    final dividerX = expanded ? panelRect.right : panelRect.left;
-    canvas.drawLine(
-      Offset(dividerX, outerRect.top + 1.5),
-      Offset(dividerX, outerRect.bottom - 1.5),
-      stroke,
-    );
-  }
-
-  @override
-  bool shouldRepaint(_SidebarToggleGlyphPainter oldDelegate) {
-    return oldDelegate.expanded != expanded || oldDelegate.color != color;
   }
 }

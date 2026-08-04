@@ -46,7 +46,3 @@ export function lineNumberForToken(source, token) {
   const index = lines.findIndex((line) => line.includes(token));
   return index >= 0 ? index + 1 : 1;
 }
-
-export function sourceLineCount(source) {
-  return source.split(/\r?\n/u).length;
-}

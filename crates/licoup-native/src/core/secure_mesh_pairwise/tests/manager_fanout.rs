@@ -81,10 +81,6 @@ fn secure_mesh_sesame_multi_device_fanout_uses_independent_pairwise_envelopes_an
         .seal_payload_envelope(&mobile_context, &mobile_plaintext)
         .unwrap();
     assert_ne!(desktop_envelope.ciphertext(), mobile_envelope.ciphertext());
-    assert_ne!(
-        desktop_envelope.encrypted_header(),
-        mobile_envelope.encrypted_header()
-    );
     for forbidden in [
         canary,
         "desktop_sidecar:alice-pc-a",
@@ -92,13 +88,11 @@ fn secure_mesh_sesame_multi_device_fanout_uses_independent_pairwise_envelopes_an
         "mobile:bob-mobile-c",
         "agent.message.send",
     ] {
-        assert!(!desktop_envelope.delivery_id().contains(forbidden));
-        assert!(!desktop_envelope.mailbox_token().contains(forbidden));
-        assert!(!desktop_envelope.encrypted_header().contains(forbidden));
+        assert!(!desktop_envelope.envelope_id().contains(forbidden));
+        assert!(!desktop_envelope.mailbox_id().contains(forbidden));
         assert!(!desktop_envelope.ciphertext().contains(forbidden));
-        assert!(!mobile_envelope.delivery_id().contains(forbidden));
-        assert!(!mobile_envelope.mailbox_token().contains(forbidden));
-        assert!(!mobile_envelope.encrypted_header().contains(forbidden));
+        assert!(!mobile_envelope.envelope_id().contains(forbidden));
+        assert!(!mobile_envelope.mailbox_id().contains(forbidden));
         assert!(!mobile_envelope.ciphertext().contains(forbidden));
     }
 

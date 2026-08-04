@@ -22,13 +22,13 @@ class AgentUsageEmptyState extends StatelessWidget {
 class AgentUsageBarSection extends StatelessWidget {
   const AgentUsageBarSection({
     super.key,
-    required this.title,
+    this.title,
     required this.rows,
     required this.emptyLabel,
     this.valueHeader,
   });
 
-  final String title;
+  final String? title;
   final List<AgentUsageBarData> rows;
   final String emptyLabel;
   final String? valueHeader;
@@ -39,15 +39,17 @@ class AgentUsageBarSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text(
-          title,
-          style: TextStyle(
-            color: colors.text,
-            fontWeight: FontWeight.w800,
-            fontSize: 13,
+        if (title != null) ...[
+          Text(
+            title!,
+            style: TextStyle(
+              color: colors.text,
+              fontWeight: FontWeight.w800,
+              fontSize: 13,
+            ),
           ),
-        ),
-        const SizedBox(height: 8),
+          const SizedBox(height: 8),
+        ],
         if (rows.isNotEmpty && valueHeader != null) ...[
           _UsageBarHeader(valueHeader: valueHeader!),
           const SizedBox(height: 6),

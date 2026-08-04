@@ -50,7 +50,6 @@ void main() {
       final fileName = file.uri.pathSegments.last;
       if (!source.contains('AppleControlMetrics') ||
           source.contains('class AppleControlMetrics') ||
-          fileName == 'native_desktop_chrome_metrics.dart' ||
           source.trimLeft().startsWith('part of ')) {
         continue;
       }

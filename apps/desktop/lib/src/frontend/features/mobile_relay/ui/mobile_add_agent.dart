@@ -58,7 +58,7 @@ class _MobileScanQrOption extends StatelessWidget {
     final strings = LicoStrings.of(context);
     return Material(
       key: const Key('mobile-agent-scan-qr-option'),
-      color: colors.primaryFixed.withAlpha(220),
+      color: colors.brandSurface.withAlpha(220),
       borderRadius: BorderRadius.circular(10),
       child: InkWell(
         borderRadius: BorderRadius.circular(10),
@@ -75,7 +75,7 @@ class _MobileScanQrOption extends StatelessWidget {
                 dimension: 48,
                 child: Center(
                   child: MinimalScanIcon(
-                    color: colors.primary,
+                    color: colors.accent,
                     size: 30,
                     strokeWidth: 2.2,
                   ),
@@ -101,7 +101,7 @@ class _MobileScanQrOption extends StatelessWidget {
                   ],
                 ),
               ),
-              Icon(Icons.chevron_right_rounded, color: colors.primary),
+              Icon(Icons.chevron_right_rounded, color: colors.accent),
             ],
           ),
         ),

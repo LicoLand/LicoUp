@@ -281,8 +281,28 @@ pub(crate) fn parse_kimi_code_wire_session(
         messages,
         explicit_title,
     );
+    mark_kimi_code_working_directory(state.as_ref(), &mut session);
     mark_kimi_code_delegated_subagent(path, session_root, state.as_ref(), &mut session);
     vec![session]
+}
+
+fn mark_kimi_code_working_directory(state: Option<&Value>, session: &mut Value) {
+    let Some(directory) = state
+        .and_then(|state| state.get("workDir"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| {
+            !value.is_empty()
+                && value.len() <= 4096
+                && !value.contains('\0')
+                && Path::new(value).is_absolute()
+        })
+    else {
+        return;
+    };
+    if let Some(object) = session.as_object_mut() {
+        object.insert("workingDirectory".to_string(), json!(directory));
+    }
 }
 
 /// Kimi Code keeps every agent of one conversation under

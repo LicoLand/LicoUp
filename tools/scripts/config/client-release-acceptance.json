@@ -1,6 +1,6 @@
 {
   "schemaVersion": "licomesh.client-release-acceptance-config.v3",
-  "reportSchemaVersion": "licomesh.client-release-acceptance-report.v3",
+  "reportSchemaVersion": "licomesh.client-release-acceptance-report.v4",
   "producerPolicy": "same-process-required",
   "releaseTargetAuthority": {
     "schemaVersion": "licomesh.client-release-target-authority.v1",
@@ -23,7 +23,7 @@
   ],
   "reportOrder": [
     "pairwise",
-    "relayMock",
+    "stationAcceptance",
     "file",
     "trust",
     "acp",
@@ -48,7 +48,7 @@
         "build/reports/secure-mesh-pairwise-content-review-signoff.json"
       ]
     },
-    "relayMock": { "ref": "build/reports/secure-client-relay-mock-e2e.json", "schemaVersion": "licomesh.secure-client-relay.client-acceptance-report.v1", "producer": "tools/scripts/client-secure-client-relay-mock-e2e.mjs" },
+    "stationAcceptance": { "ref": "build/reports/licoarc-badtower-acceptance.json", "schemaVersion": "licoup.licoarc-badtower.acceptance.v1", "producer": "tools/scripts/client-licoarc-badtower-acceptance.mjs" },
     "file": { "ref": "build/reports/secure-mesh-encrypted-file-handoff.json", "schemaVersion": "licomesh.secure-mesh.encrypted-file-handoff-report.v1", "producer": "tools/scripts/client-secure-mesh-encrypted-file-handoff.mjs" },
     "trust": { "ref": "build/reports/secure-mesh-trust-ux.json", "schemaVersion": "licomesh.secure-mesh.trust-ux-report.v2", "producer": "tools/scripts/client-secure-mesh-trust-ux.mjs" },
     "acp": { "ref": "build/reports/secure-mesh-acp-relay-governed-baseline.json", "schemaVersion": "licomesh.secure-mesh.acp-relay-governed-baseline-report.v1", "producer": "tools/scripts/client-secure-mesh-acp-relay-governed-baseline.mjs" },

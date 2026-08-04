@@ -1,6 +1,13 @@
 //! Service-neutral JSON, JSONL, embedded JSON, and text parsers.
 
 use super::*;
+use std::collections::HashMap;
+
+struct JsonlSessionAccumulator {
+    native_session_id: String,
+    messages: Vec<Value>,
+    working_directory: Option<String>,
+}
 
 pub(crate) fn parse_jsonl_sessions(
     adapter: HistoryAdapter,
@@ -9,7 +16,8 @@ pub(crate) fn parse_jsonl_sessions(
     metadata: &fs::Metadata,
     scan_config: HistoryScanConfig,
 ) -> Vec<Value> {
-    let mut grouped = Vec::<(String, Vec<Value>)>::new();
+    let mut grouped = Vec::<JsonlSessionAccumulator>::new();
+    let mut indexes = HashMap::<String, usize>::new();
     if scan_config.archive_mode {
         let file = match fs::File::open(path) {
             Ok(file) => file,
@@ -20,7 +28,7 @@ pub(crate) fn parse_jsonl_sessions(
             let Ok(line) = line else {
                 continue;
             };
-            push_jsonl_message(adapter, path, index, &line, &mut grouped);
+            push_jsonl_record(adapter, path, index, &line, &mut grouped, &mut indexes);
         }
     } else {
         let raw = match fs::read_to_string(path) {
@@ -28,41 +36,88 @@ pub(crate) fn parse_jsonl_sessions(
             Err(_) => return Vec::new(),
         };
         for (index, line) in raw.lines().enumerate() {
-            push_jsonl_message(adapter, path, index, line, &mut grouped);
+            push_jsonl_record(adapter, path, index, line, &mut grouped, &mut indexes);
         }
     }
     grouped
         .into_iter()
-        .map(|(native_session_id, messages)| {
-            session_from_messages(
+        .filter(|session| !session.messages.is_empty())
+        .map(|session| {
+            let mut projection = session_from_messages(
                 adapter,
                 path,
                 metadata,
                 source_kind,
-                native_session_id,
-                messages,
-            )
+                session.native_session_id,
+                session.messages,
+            );
+            if let (Some(object), Some(working_directory)) =
+                (projection.as_object_mut(), session.working_directory)
+            {
+                object.insert(
+                    "workingDirectory".to_string(),
+                    Value::String(working_directory),
+                );
+            }
+            projection
         })
         .collect()
 }
 
-pub(super) fn push_jsonl_message(
+fn push_jsonl_record(
     adapter: HistoryAdapter,
     path: &Path,
     index: usize,
     line: &str,
-    grouped: &mut Vec<(String, Vec<Value>)>,
+    grouped: &mut Vec<JsonlSessionAccumulator>,
+    indexes: &mut HashMap<String, usize>,
 ) {
     let trimmed = line.trim();
     if trimmed.is_empty() {
         return;
     }
     if let Ok(value) = serde_json::from_str::<Value>(trimmed) {
-        let session_id = extract_native_session_id(&value).unwrap_or_else(|| "file".to_string());
-        for message in messages_from_json(adapter, path, index, &value) {
-            push_grouped_message(grouped, session_id.clone(), message);
+        let session_id = native_session_id_or_path(&value, path);
+        let group_index = match indexes.get(&session_id).copied() {
+            Some(group_index) => group_index,
+            None => {
+                let group_index = grouped.len();
+                indexes.insert(session_id.clone(), group_index);
+                grouped.push(JsonlSessionAccumulator {
+                    native_session_id: session_id,
+                    messages: Vec::new(),
+                    working_directory: None,
+                });
+                group_index
+            }
+        };
+        let group = &mut grouped[group_index];
+        if group.working_directory.is_none() {
+            group.working_directory = claude_launch_working_directory(adapter, &value);
         }
+        group
+            .messages
+            .extend(messages_from_json(adapter, path, index, &value));
     }
+}
+
+fn claude_launch_working_directory(adapter: HistoryAdapter, value: &Value) -> Option<String> {
+    if adapter != HistoryAdapter::ClaudeCode {
+        return None;
+    }
+    let object = value.as_object()?;
+    let directory = ["cwd", "workingDirectory", "projectPath"]
+        .iter()
+        .find_map(|key| object.get(*key).and_then(Value::as_str))?
+        .trim();
+    if directory.is_empty()
+        || directory.len() > 4096
+        || !Path::new(directory).is_absolute()
+        || directory.chars().any(char::is_control)
+    {
+        return None;
+    }
+    Some(directory.to_string())
 }
 
 pub(crate) fn parse_json_sessions(
@@ -93,7 +148,7 @@ pub(crate) fn parse_json_sessions(
         path,
         metadata,
         source_kind,
-        extract_native_session_id(&value).unwrap_or_else(|| "file".to_string()),
+        native_session_id_or_path(&value, path),
         messages,
         extract_conversation_title(&value),
     )]
@@ -385,4 +440,34 @@ pub(super) fn native_content_semantic(value: &Value) -> String {
         })
         .unwrap_or_default()
         .to_string()
+}
+
+/// Directory-layout stores (for example Antigravity
+/// `brain/<conversation-uuid>/…/transcript.jsonl`) carry the conversation
+/// identity in the path rather than in the records. Falling back to the
+/// literal "file" collapses every conversation of the agent into a single
+/// native identity, which breaks dedupe and open-session refresh targeting.
+fn native_session_id_or_path(value: &Value, path: &Path) -> String {
+    extract_native_session_id(value)
+        .or_else(|| directory_component_session_id(path))
+        .unwrap_or_else(|| "file".to_string())
+}
+
+fn directory_component_session_id(path: &Path) -> Option<String> {
+    path.components().rev().skip(1).find_map(|component| {
+        let value = component.as_os_str().to_str()?;
+        is_conversation_uuid_component(value).then(|| value.to_string())
+    })
+}
+
+fn is_conversation_uuid_component(value: &str) -> bool {
+    let bytes = value.as_bytes();
+    bytes.len() == 36
+        && bytes.iter().enumerate().all(|(index, byte)| {
+            if matches!(index, 8 | 13 | 18 | 23) {
+                *byte == b'-'
+            } else {
+                byte.is_ascii_hexdigit()
+            }
+        })
 }

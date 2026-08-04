@@ -18,14 +18,14 @@ void registerMobileRelayPairingScenarios() {
             'pcClientName': 'LicoUp',
             'pairingId': 'pair-old',
             'credentialPresent': true,
-            'gatewayUrl': 'https://relay.example.test',
+            'stationBaseUrl': 'https://station.example.test',
           },
           {
             'id': 'new-pc',
             'pcClientName': 'LicoUp',
             'pairingId': 'pair-new',
             'credentialPresent': true,
-            'gatewayUrl': 'https://relay.example.test/',
+            'stationBaseUrl': 'https://station.example.test/',
           },
         ],
       });
@@ -111,7 +111,7 @@ void registerMobileRelayPairingScenarios() {
             'pcClientName': 'ARC Desktop',
             'pairingId': 'pair-1',
             'credentialPresent': true,
-            'gatewayUrl': 'https://relay.example.test',
+            'stationBaseUrl': 'https://station.example.test',
           },
         ],
       });
@@ -168,7 +168,7 @@ void registerMobileRelayPairingScenarios() {
     },
   );
 
-  test('paired computer echo ignores stale ephemeral gateway', () async {
+  test('paired computer echo keeps the canonical station base URL', () async {
     final service = MobileRelayService();
     final agentService = AgentService(
       runCliExecutable: (executable, args, env) async {
@@ -177,11 +177,10 @@ void registerMobileRelayPairingScenarios() {
           0,
           jsonEncode({
             'ok': true,
-            'gatewayUrl': 'https://old-relay.trycloudflare.com',
+            'stationBaseUrl': 'HTTPS://Station.Example.Test:443/',
             'config': {
               ...mobileRelayConfigJson(
-                useCustomGateway: true,
-                customGatewayUrl: 'https://old-relay.trycloudflare.com/',
+                stationBaseUrl: 'https://station.example.test',
                 pairingId: 'pair-1',
               ),
               'paired': true,
@@ -200,7 +199,10 @@ void registerMobileRelayPairingScenarios() {
     final config = await service.loadConfig(agentService: agentService);
 
     expect(config.deviceTabs, hasLength(1));
-    expect(config.deviceTabs.single.gatewayUrl, 'https://relay.example.test');
+    expect(
+      config.deviceTabs.single.stationBaseUrl,
+      'https://station.example.test',
+    );
   });
 
   test('reset pairing delegates to config set resetPairing', () async {
@@ -231,7 +233,7 @@ void registerMobileRelayPairingScenarios() {
     ]);
   });
 
-  test('delegates gateway, pairing, and sync operations to licoup', () async {
+  test('delegates station, pairing, and sync operations to licoup', () async {
     final captured = <List<String>>[];
     final agentService = AgentService(
       runCliExecutable: (executable, args, env) async {
@@ -245,8 +247,7 @@ void registerMobileRelayPairingScenarios() {
               'pairingId': 'pair-1',
               'pairingCode': '1234-5678',
               'config': mobileRelayConfigJson(
-                useCustomGateway: true,
-                customGatewayUrl: 'https://relay.example.test',
+                stationBaseUrl: 'https://station.example.test',
                 pairingId: 'pair-1',
                 pcToken: 'pc-token',
                 lastPairingCode: '',
@@ -395,8 +396,7 @@ void registerMobileRelayPairingScenarios() {
           jsonEncode({
             'ok': true,
             'config': mobileRelayConfigJson(
-              useCustomGateway: args.contains('true'),
-              customGatewayUrl: 'https://relay.example.test',
+              stationBaseUrl: 'https://station.example.test',
             ),
           }),
           '',
@@ -405,10 +405,9 @@ void registerMobileRelayPairingScenarios() {
     );
     const service = MobileRelayService();
 
-    final config = await service.configureGateway(
+    final config = await service.configureStation(
       agentService: agentService,
-      useCustomGateway: true,
-      customGatewayUrl: 'https://relay.example.test/',
+      stationBaseUrl: 'https://station.example.test/',
     );
     final response = await service.createPairing(agentService: agentService);
     final sync = await service.syncCommands(agentService: agentService);
@@ -475,7 +474,7 @@ void registerMobileRelayPairingScenarios() {
           approvedRoot: 'test-data/approved-root',
         );
 
-    expect(config.effectiveGatewayUrl, 'https://relay.example.test');
+    expect(config.stationBaseUrl, 'https://station.example.test');
     expect(response['pairingId'], 'pair-1');
     expect((sync['commands'] as List).single['commandId'], 'cmd-1');
     expect(status['protocolVersion'], 'licomesh.secure-mesh.v1');
@@ -499,10 +498,8 @@ void registerMobileRelayPairingScenarios() {
       'relay',
       'config',
       'set',
-      '--use-custom-gateway',
-      'true',
-      '--custom-gateway-url',
-      'https://relay.example.test/',
+      '--station-base-url',
+      'https://station.example.test/',
     ]);
     expect(captured[1], ['mobile', 'relay', 'pairing', 'create']);
     expect(captured[2], [

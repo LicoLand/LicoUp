@@ -376,7 +376,10 @@ pub(super) fn normalize_openclaw(execution: openclaw_driver::RunResult) -> Norma
     }
 }
 
-pub(super) fn normalize_hermes(execution: hermes_driver::RunResult) -> NormalizedExecution {
+pub(super) fn normalize_hermes_with_protocol(
+    execution: hermes_driver::RunResult,
+    runtime_protocol: &'static str,
+) -> NormalizedExecution {
     let error = execution.error.map(|failure| {
         let thread_id = failure.session_id.clone();
         NormalizedFailure {
@@ -421,7 +424,7 @@ pub(super) fn normalize_hermes(execution: hermes_driver::RunResult) -> Normalize
         stdout_truncated: execution.stdout_truncated,
         stderr_truncated: execution.stderr_truncated,
         started_at: execution.started_at,
-        runtime_protocol: hermes_driver::RUNTIME_PROTOCOL,
+        runtime_protocol,
         driver_id: "hermes-acp",
     }
 }

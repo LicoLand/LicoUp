@@ -15,15 +15,16 @@ void main() {
       addTearDown(controller.dispose);
 
       await controller.preview(
-        agents: const ['codex', 'claude-code'],
         skillId: 'review',
+        path: '/workspace/.agents/skills/review',
       );
       await controller.apply(
-        agents: const ['codex', 'claude-code'],
         skillId: 'review',
+        path: '/workspace/.agents/skills/review',
         confirmation: controller.plan!['confirmation'].toString(),
       );
-      expect(gateway.confirmation, 'delete:review:claude-code,codex');
+      expect(gateway.confirmation, 'trash:review:plan-digest');
+      expect(controller.actionResult?['status'], 'trashed');
     },
   );
 }
@@ -33,22 +34,17 @@ class _Gateway implements SkillDeleteGateway {
 
   @override
   Future<Map<String, dynamic>> planSkillDelete({
-    required List<String> agents,
     required String skillId,
-    String installRoot = '',
-  }) async => {
-    'ok': true,
-    'confirmation': 'delete:$skillId:${([...agents]..sort()).join(',')}',
-  };
+    required String path,
+  }) async => {'ok': true, 'confirmation': 'trash:$skillId:plan-digest'};
 
   @override
   Future<Map<String, dynamic>> applySkillDelete({
-    required List<String> agents,
     required String skillId,
+    required String path,
     required String confirmation,
-    String installRoot = '',
   }) async {
     this.confirmation = confirmation;
-    return {'ok': true};
+    return {'ok': true, 'status': 'trashed'};
   }
 }

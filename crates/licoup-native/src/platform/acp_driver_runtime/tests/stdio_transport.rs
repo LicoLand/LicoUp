@@ -328,6 +328,8 @@ fn prompt_drain_fails_closed_on_output_limit_process_loss_and_hard_deadline() {
             .map(|failure| failure.code.as_str()),
         Some("acp_protocol_output_limit")
     );
+    assert_eq!(output_limit.session_id, "native-fake-session");
+    assert_eq!(output_limit.thread_id, "native-fake-session");
     assert!(output_limit.stdout_truncated);
 
     let process_loss = execute_acp(

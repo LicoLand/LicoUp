@@ -71,7 +71,7 @@ class AgentBrandIcon extends StatelessWidget {
             ? Icon(
                 Icons.account_tree_outlined,
                 size: iconSize,
-                color: selected ? colors.primary : colors.text,
+                color: selected ? colors.accent : colors.text,
               )
             : asset == null
             ? Icon(

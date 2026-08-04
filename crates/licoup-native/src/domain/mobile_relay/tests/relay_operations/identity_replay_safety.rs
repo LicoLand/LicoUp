@@ -142,7 +142,7 @@ fn tampered_mobile_relay_command_envelope_is_rejected_before_execution() {
     save_config(&mut pc_config).unwrap();
 
     let mut tampered = envelope;
-    tampered["deliveryId"] = json!(general_purpose::URL_SAFE_NO_PAD.encode([0x7fu8; 24]));
+    tampered["envelopeId"] = json!(general_purpose::URL_SAFE_NO_PAD.encode([0x7fu8; 24]));
     let error = execute_secure_envelope_command(
         &json!({
             "type": SECURE_MESH_ENVELOPE_COMMAND,
@@ -161,20 +161,24 @@ fn tampered_mobile_relay_command_envelope_is_rejected_before_execution() {
 }
 
 #[test]
-fn commands_sync_redacts_malicious_relay_crypto_errors() {
-    let gateway = CanonicalRelayGateway::start(3, vec![secure_envelope_fixture()]);
+fn commands_sync_redacts_malicious_station_crypto_errors() {
     let dir = temp_dir("mobile-relay-sync-redacted-crypto-error");
     let previous = set_portable_data_dir_override(Some(dir));
-    let (mut pc_config, _mobile_config, _envelope) = paired_command_envelope_fixture();
+    let (mut pc_config, _mobile_config, mut envelope) = paired_command_envelope_fixture();
+    let mut carrier = general_purpose::URL_SAFE_NO_PAD
+        .decode(envelope["ciphertext"].as_str().unwrap())
+        .unwrap();
+    carrier[16] ^= 0x01;
+    envelope["ciphertext"] = json!(general_purpose::URL_SAFE_NO_PAD.encode(carrier));
+    let station = CanonicalStation::start(6, vec![envelope]);
     pc_config["pairingId"] = json!("pair_sync_redacted_crypto_error");
     pc_config["pcToken"] = json!("pc-token-sync-redacted-crypto-error");
     pc_config["relayEnabled"] = json!(true);
-    pc_config["useCustomGateway"] = json!(true);
-    pc_config["customGatewayUrl"] = json!(gateway.url());
+    pc_config["stationBaseUrl"] = json!(station.url());
     persist_test_runtime_secret_material(stringify!(&pc_config)).unwrap();
     save_config(&mut pc_config).unwrap();
 
-    let output = commands_sync(&with_canonical_relay_params(json!({"targets": []}))).unwrap();
+    let output = commands_sync(&with_station_params(json!({"targets": []}))).unwrap();
     assert_eq!(output["completed"][0]["ok"], false);
     assert_eq!(
         output["completed"][0]["completion"]["code"],
@@ -187,13 +191,16 @@ fn commands_sync_redacts_malicious_relay_crypto_errors() {
     let serialized = serde_json::to_string(&output).unwrap();
     assert!(!serialized.contains("authentication failed"));
     assert!(!serialized.contains("AAD hash mismatch"));
-    gateway.assert_operations(&[
-        SecureClientRelayOperation::EndpointChallenge,
-        SecureClientRelayOperation::EndpointRegister,
-        SecureClientRelayOperation::EnvelopeSync,
+    station.assert_operations(&[
+        BadTowerStationOperation::LeaseMailbox,
+        BadTowerStationOperation::LeaseMailbox,
+        BadTowerStationOperation::LeaseMailbox,
+        BadTowerStationOperation::ReceiveEnvelopes,
+        BadTowerStationOperation::LeaseMailbox,
+        BadTowerStationOperation::ReceiveEnvelopes,
     ]);
 
-    gateway.join();
+    station.join();
     set_portable_data_dir_override(previous);
 }
 
@@ -258,11 +265,8 @@ fn replayed_mobile_relay_command_envelope_does_not_execute_twice() {
 
     let first_result_envelope = execute_secure_envelope_command(&command, &json!({})).unwrap();
     let first_result = opened_result_payload(&mobile_config, &first_result_envelope);
-    assert_eq!(
-        first_result["evaluation"]["code"],
-        "user_confirmation_required"
-    );
-    assert_eq!(first_result["execution"]["outcome"], "error");
+    assert_eq!(first_result["evaluation"]["code"], "execute");
+    assert_eq!(first_result["execution"]["outcome"], "result");
 
     let second_result = execute_secure_envelope_command(&command, &json!({}));
     assert!(

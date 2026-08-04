@@ -10,6 +10,7 @@ import {
   INVENTORY_SCHEMA_VERSION,
   INVENTORY_TOP_LEVEL_FIELDS,
   LANE_FAMILIES,
+  LIFECYCLE_EVIDENCE_FIELDS,
   MINIMUM_CONSECUTIVE_PASSES,
   SAFE_CODE,
   SHA256_DIGEST,
@@ -119,6 +120,22 @@ export function validateDriverInventory(inventory, agentIds) {
       ) {
         fail("driver_inventory_invalid");
       }
+    }
+    if (!isPlainObject(driver.lifecycleEvidence)) {
+      fail("driver_inventory_invalid");
+    }
+    assertOnlyFields(
+      driver.lifecycleEvidence,
+      LIFECYCLE_EVIDENCE_FIELDS,
+      "driver_inventory_invalid",
+    );
+    if (
+      typeof driver.lifecycleEvidence.accepted !== "boolean" ||
+      typeof driver.lifecycleEvidence.processing !== "boolean" ||
+      typeof driver.lifecycleEvidence.responding !== "boolean" ||
+      typeof driver.lifecycleEvidence.completed !== "boolean"
+    ) {
+      fail("driver_inventory_invalid");
     }
     inventoryIds.push(driver.agentId);
   }

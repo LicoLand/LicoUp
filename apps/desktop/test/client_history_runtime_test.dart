@@ -25,7 +25,9 @@ const _scenarioFingerprints = <String, List<String>>{
       ],
   'sendConversationMessage projects progressive reply and process events in the active conversation':
       [
-        "containsAll(['Hello', 'Hello world', 'Hello world.'])",
+        "containsAll(['Hello world', 'Hello world.'])",
+        "isNot(contains('Hello'))",
+        'lessThanOrEqualTo(7)',
         "isNot(contains('Hello worldworld'))",
         'contains(AgentConversationMessageKind.toolCall)',
         "expect(committedSession?.id, 'native-codex-turn-bound')",
@@ -49,6 +51,8 @@ const _expectedGroups = <String, List<String>>{
   ],
   'history_runtime/streaming_projection_scenarios.dart': [
     'sendConversationMessage projects progressive reply and process events in the active conversation',
+  ],
+  'history_runtime/streaming_readback_scenarios.dart': [
     'completed streamed reply remains visible until native history catches up',
   ],
 };

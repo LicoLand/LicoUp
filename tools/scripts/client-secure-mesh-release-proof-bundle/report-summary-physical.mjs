@@ -16,8 +16,6 @@ export function buildReleaseProofSummaryPhysical({
   physicalEvidenceManifestContractReadiness,
   reportRedactionProof,
   redactionFreshnessSelfTest,
-  clientRelayCryptoInputs,
-  clientRelayCryptoInputsReadinessSelfTest,
   physicalMatrixReport,
   androidPhysicalInstallLaunchReport,
   ubuntuLinuxPackageUpdateReady,

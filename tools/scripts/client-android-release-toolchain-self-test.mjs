@@ -2,6 +2,11 @@
 
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { validateClientGateTopology } from "./client-gate.mjs";
+import {
+  CLIENT_GATE_LANES,
+  CLIENT_RELEASE_TARGETS,
+} from "./client-gate-policy.mjs";
 import { findAndroidAdbTool } from "./lib/android-apk-facts.mjs";
 import { stableReadFile } from "./lib/client-release-artifact-digest.mjs";
 import { minimalReleaseToolEnvironment } from "./lib/release-tool-environment.mjs";
@@ -24,8 +29,8 @@ const ciWorkflow = stableReadFile(
   path.join(repoRoot, ".github/workflows/client-ci.yml"),
   { maxBytes: 2 * 1024 * 1024 },
 ).toString("utf8");
-const sourceVerify = stableReadFile(
-  path.join(repoRoot, "tools/run-client-source-verify.mjs"),
+const publisher = stableReadFile(
+  path.join(repoRoot, "tools/scripts/client-github-release-publish.mjs"),
   { maxBytes: 2 * 1024 * 1024 },
 ).toString("utf8");
 const androidBuilder = stableReadFile(
@@ -66,6 +71,16 @@ const acceptanceBinding = stableReadFile(
   path.join(repoRoot, "tools/scripts/lib/android-release-acceptance-binding.mjs"),
   { maxBytes: 2 * 1024 * 1024 },
 ).toString("utf8");
+
+function jobBlock(source, jobId) {
+  const match = new RegExp(`^  ${jobId}:\\s*$`, "mu").exec(source);
+  if (!match) throw new Error(`workflow job is missing: ${jobId}`);
+  const remainder = source.slice(match.index + match[0].length);
+  const next = remainder.search(/\n  [a-z0-9][a-z0-9-]*:\s*(?:\n|$)/u);
+  return next < 0
+    ? source.slice(match.index)
+    : source.slice(match.index, match.index + match[0].length + next);
+}
 const requiredDigests = [
   "adb",
   "aapt2",
@@ -82,7 +97,8 @@ if (manifest.schemaVersion !== "licomesh.android-release-toolchain-allowlist.v1"
     ))) {
   throw new Error("Android release toolchain allowlist is incomplete");
 }
-const androidJob = workflow.split(/\n  android-arm64:/u)[1]?.split(/\n  publish:/u)[0] || "";
+validateClientGateTopology();
+const androidJob = jobBlock(workflow, "build-android-arm64");
 if (!androidJob.includes("runs-on: [self-hosted, macOS, ARM64, lico-release, android]") ||
   androidJob.includes("runs-on: ubuntu")) {
   throw new Error("Android release workflow is not pinned to an approved host class");
@@ -95,9 +111,8 @@ if (!androidJob.includes("LICO_CLIENT_RELEASE_TARGETS: android-arm64") ||
   !androidJob.includes("run: npm run client:verify:github-release")) {
   throw new Error("Android GitHub Release acceptance is not bound to same-source prerequisites");
 }
-const macosJob = workflow.split(/\n  macos:/u)[1]?.split(/\n  linux-arm64:/u)[0] || "";
-const linuxJob = workflow.split(/\n  linux-arm64:/u)[1]?.split(/\n  android-arm64:/u)[0] || "";
-const publishJob = workflow.split(/\n  publish:/u)[1] || "";
+const macosJob = jobBlock(workflow, "build-macos");
+const linuxJob = jobBlock(workflow, "build-linux-arm64");
 if (!macosJob.includes("LICO_CLIENT_RELEASE_TARGETS: macos-arm64") ||
   !macosJob.includes("Verify macOS GitHub Release acceptance") ||
   !macosJob.includes("run: npm run client:verify:github-release") ||
@@ -108,23 +123,27 @@ if (!macosJob.includes("LICO_CLIENT_RELEASE_TARGETS: macos-arm64") ||
   workflow.includes("\n  windows-x64:")) {
   throw new Error("GitHub Release jobs are not bound to selected-target acceptance");
 }
+const publisherJobs = Object.values(CLIENT_RELEASE_TARGETS)
+  .map((target) => jobBlock(workflow, target.publishJob));
 const uploadPolicyReady =
   workflow.includes("permissions:\n  contents: read") &&
-  (workflow.match(/contents: write/gu) || []).length === 2 &&
-  workflow.includes('gh release create "$RELEASE_TAG"') &&
-  workflow.includes('gh release edit "$RELEASE_TAG"') &&
-  (workflow.match(/gh release upload/gu) || []).length === 1 &&
-  publishJob.includes("client-consumer-verification-manifest.mjs") &&
-  publishJob.includes("LicoUp-consumer-verification.json") &&
-  !publishJob.includes("build/release-assets/*") &&
-  publishJob.includes("client-release-remote-asset-set.mjs") &&
-  publishJob.includes(".assets | map({name, size, digest})") &&
+  (workflow.match(/contents: write/gu) || []).length === 3 &&
+  publisher.includes('"release",\n      "create"') &&
+  publisher.includes('"release", "edit"') &&
+  publisher.includes('"release",\n      "upload"') &&
+  publisher.includes("client-consumer-verification-manifest.mjs") &&
+  publisher.includes("LicoUp-consumer-verification.json") &&
+  publisher.includes("client-release-remote-asset-set.mjs") &&
+  publisher.includes(".assets | map({name, size, digest})") &&
+  publisher.includes("COPYFILE_EXCL") &&
+  publisher.includes("--clobber") &&
+  publisherJobs.every((job) =>
+    job.includes("client-github-release-publish.mjs") &&
+    job.includes("persist-credentials: false")) &&
   !macosJob.includes("GH_TOKEN:") &&
   !linuxJob.includes("GH_TOKEN:") &&
   !androidJob.includes("GH_TOKEN:") &&
-  !workflow.includes("run: npm run client:verify\n") &&
-  (workflow.match(/run: npm run client:verify:source/gu) || []).length === 3 &&
-  workflow.includes("persist-credentials: false") &&
+  (workflow.match(/npm run client:gate:source/gu) || []).length === 1 &&
   !workflow.includes("--generate-notes") &&
   !workflow.includes("yes |") &&
   workflow.includes("Prepare ephemeral local integrity identity") &&
@@ -159,15 +178,23 @@ for (const forbidden of [
   "client:verify:product-line-security",
   "client:verify:android-physical-install-launch",
 ]) {
-  if (sourceVerify.includes(forbidden)) {
+  if (CLIENT_GATE_LANES.source.includes(forbidden)) {
     throw new Error("GitHub source gate consumes product-line or physical evidence");
   }
 }
 const pinnedCargoAudit = "cargo install cargo-audit --version 0.22.2 --locked";
-if (!ciWorkflow.includes(pinnedCargoAudit) ||
-  (workflow.match(/cargo install cargo-audit --version 0\.22\.2 --locked/gu) || [])
-    .length !== 3) {
-  throw new Error("Client CI release jobs do not install the pinned cargo-audit tool");
+const ciSourceJob = jobBlock(ciWorkflow, "source");
+const ciDependencyJob = jobBlock(ciWorkflow, "dependencies");
+const releaseDependencyJob = jobBlock(workflow, "dependencies");
+if (
+  ciSourceJob.includes(pinnedCargoAudit) ||
+  !ciDependencyJob.includes(pinnedCargoAudit) ||
+  !releaseDependencyJob.includes(pinnedCargoAudit) ||
+  macosJob.includes(pinnedCargoAudit) ||
+  linuxJob.includes(pinnedCargoAudit) ||
+  androidJob.includes(pinnedCargoAudit)
+) {
+  throw new Error("Pinned cargo-audit must remain isolated to dependency policy jobs");
 }
 if (!androidBuilder.includes("path.isAbsolute(keystorePath)") ||
   !androidGradle.includes("releaseStoreFile?.isAbsolute == true") ||
@@ -270,7 +297,7 @@ console.log(JSON.stringify({
   approvedHostClassCovered: true,
   explicitAndroidReleaseTargetSelected: true,
   sameSourceRelayCliPrerequisiteBound: true,
-  pinnedCargoAuditInstalled: true,
+  pinnedDependencyAuditIsolated: true,
   toolDigestAllowlistReady: true,
   environmentInjectionRejected: true,
   absoluteSigningPathRequired: true,

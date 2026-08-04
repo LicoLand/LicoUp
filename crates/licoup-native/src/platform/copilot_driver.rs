@@ -113,6 +113,41 @@ mod tests {
     }
 
     #[test]
+    fn pre_binding_session_updates_from_real_copilot_do_not_kill_the_turn() {
+        let dir = std::env::temp_dir().join(format!("lico-copilot-prebind-fake-{}", timestamp()));
+        fs::create_dir_all(&dir).unwrap();
+        let source = dir.join("fake_prebind_agent.rs");
+        let executable = dir.join(format!(
+            "fake-prebind-agent{}",
+            std::env::consts::EXE_SUFFIX
+        ));
+        fs::write(&source, FAKE_PREBIND_AGENT_SOURCE).unwrap();
+        let status = Command::new("rustc")
+            .args(["--edition", "2021"])
+            .arg(&source)
+            .arg("-o")
+            .arg(&executable)
+            .status()
+            .unwrap();
+        assert!(status.success());
+        let result = execute(
+            executable.to_string_lossy().as_ref(),
+            &json!({}),
+            "private-stdin-prompt",
+            "",
+            Some(dir.as_path()),
+            10_000,
+            1024 * 1024,
+            1024,
+        );
+        assert!(result.ok, "pre-bind Copilot failure: {:?}", result.error);
+        assert_eq!(result.output, "copilot prebind final");
+        assert_eq!(result.session_id, "copilot-prebind-session");
+        assert_eq!(result.turn_status, "end_turn");
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
     fn capability_probe_uses_the_same_canonical_acp_entrypoint() {
         let dir = std::env::temp_dir().join(format!("lico-copilot-probe-fake-{}", timestamp()));
         fs::create_dir_all(&dir).unwrap();
@@ -222,6 +257,42 @@ fn main() {
     assert!(third.contains("private-stdin-prompt"));
     assert!(third.contains("\"method\":\"session/prompt\""));
     println!("{{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{{\"sessionId\":\"copilot-native-session\",\"update\":{{\"sessionUpdate\":\"agent_message_chunk\",\"content\":{{\"type\":\"text\",\"text\":\"copilot final\"}}}}}}}}");
+    println!("{{\"jsonrpc\":\"2.0\",\"id\":{},\"result\":{{\"stopReason\":\"end_turn\"}}}}", id(&third));
+    io::stdout().flush().unwrap();
+    std::thread::sleep(std::time::Duration::from_secs(1));
+}
+"#;
+
+    const FAKE_PREBIND_AGENT_SOURCE: &str = r#"
+use std::io::{self, BufRead, Write};
+fn id(line: &str) -> i64 {
+    let marker = "\"id\":";
+    let start = line.find(marker).unwrap() + marker.len();
+    line[start..].chars().take_while(|c| c.is_ascii_digit()).collect::<String>().parse().unwrap()
+}
+fn main() {
+    let args = std::env::args().skip(1).collect::<Vec<_>>();
+    assert_eq!(args, vec!["--acp", "--stdio", "--no-auto-update"]);
+    let stdin = io::stdin();
+    let mut lines = stdin.lock().lines();
+    let first = lines.next().unwrap().unwrap();
+    assert!(first.contains("\"method\":\"initialize\""));
+    println!("{{\"jsonrpc\":\"2.0\",\"id\":{},\"result\":{{\"protocolVersion\":1,\"agentCapabilities\":{{\"loadSession\":true}},\"agentInfo\":{{\"name\":\"Copilot\",\"version\":\"1.0.46\"}},\"authMethods\":[]}}}}", id(&first));
+    io::stdout().flush().unwrap();
+    let second = lines.next().unwrap().unwrap();
+    assert!(second.contains("\"method\":\"session/new\""));
+    // Real Copilot 1.0.46 announces session updates for the conversation that
+    // is still being created, before the session/new response arrives.
+    for _ in 0..2 {
+        println!("{{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{{\"sessionId\":\"copilot-prebind-session\",\"update\":{{\"sessionUpdate\":\"available_commands_update\",\"availableCommands\":[{{\"name\":\"compact\",\"description\":\"Summarize conversation history\"}}]}}}}}}");
+    }
+    io::stdout().flush().unwrap();
+    println!("{{\"jsonrpc\":\"2.0\",\"id\":{},\"result\":{{\"sessionId\":\"copilot-prebind-session\",\"models\":{{\"availableModels\":[],\"currentModelId\":\"gpt-5-mini\"}},\"modes\":{{\"availableModes\":[],\"currentModeId\":\"agent\"}},\"configOptions\":[]}}}}", id(&second));
+    io::stdout().flush().unwrap();
+    let third = lines.next().unwrap().unwrap();
+    assert!(third.contains("private-stdin-prompt"));
+    assert!(third.contains("\"method\":\"session/prompt\""));
+    println!("{{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{{\"sessionId\":\"copilot-prebind-session\",\"update\":{{\"sessionUpdate\":\"agent_message_chunk\",\"content\":{{\"type\":\"text\",\"text\":\"copilot prebind final\"}}}}}}}}");
     println!("{{\"jsonrpc\":\"2.0\",\"id\":{},\"result\":{{\"stopReason\":\"end_turn\"}}}}", id(&third));
     io::stdout().flush().unwrap();
     std::thread::sleep(std::time::Duration::from_secs(1));

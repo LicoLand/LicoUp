@@ -7,6 +7,7 @@ abstract interface class AgentConversationGateway {
     String sessionId = '',
     int? limit,
     int offset = 0,
+    AgentDispatchBind bind = const AgentDispatchBind(),
   });
 
   Stream<AgentConversationSession> streamSessions({
@@ -14,6 +15,7 @@ abstract interface class AgentConversationGateway {
     String sessionId = '',
     int? limit,
     int offset = 0,
+    AgentDispatchBind bind = const AgentDispatchBind(),
   });
 
   Future<AgentDispatchSession> openOrResume({
@@ -40,6 +42,7 @@ abstract interface class AgentConversationGateway {
     required String agentId,
     required String text,
     required String sessionId,
+    required String turnId,
     AgentDispatchBind bind = const AgentDispatchBind(),
   });
 

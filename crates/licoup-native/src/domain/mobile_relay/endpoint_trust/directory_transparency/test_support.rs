@@ -15,25 +15,82 @@ use anyhow::{Result, anyhow, ensure};
 use ed25519_dalek::SigningKey;
 use rand::rngs::OsRng;
 use serde_json::{Value, json};
+use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
 
-static MOBILE_RELAY_TEST_KT_LOGS: OnceLock<Mutex<BTreeMap<PathBuf, SecureMeshKtLog>>> =
-    OnceLock::new();
+#[derive(Clone, Eq, Ord, PartialEq, PartialOrd)]
+enum MobileRelayTestKtAuthority {
+    PortableRoot(PathBuf),
+    Scenario(String),
+}
+
+thread_local! {
+    static MOBILE_RELAY_TEST_KT_AUTHORITY_OVERRIDE: RefCell<Option<String>> =
+        const { RefCell::new(None) };
+}
+
+static MOBILE_RELAY_TEST_KT_LOGS: OnceLock<
+    Mutex<BTreeMap<MobileRelayTestKtAuthority, SecureMeshKtLog>>,
+> = OnceLock::new();
+
+struct MobileRelayTestKtAuthorityGuard {
+    previous: Option<String>,
+}
+
+impl Drop for MobileRelayTestKtAuthorityGuard {
+    fn drop(&mut self) {
+        MOBILE_RELAY_TEST_KT_AUTHORITY_OVERRIDE.with(|slot| {
+            slot.replace(self.previous.take());
+        });
+    }
+}
+
+pub(in crate::domain::mobile_relay) fn with_mobile_relay_test_kt_authority_scope<T>(
+    scope: &str,
+    operation: impl FnOnce() -> Result<T>,
+) -> Result<T> {
+    ensure!(
+        !scope.is_empty()
+            && scope.len() <= 128
+            && scope
+                .as_bytes()
+                .iter()
+                .all(|byte| byte.is_ascii_alphanumeric() || matches!(*byte, b'-' | b'_')),
+        "mobile relay test KT authority scope is invalid"
+    );
+    let previous =
+        MOBILE_RELAY_TEST_KT_AUTHORITY_OVERRIDE.with(|slot| slot.replace(Some(scope.to_string())));
+    let guard = MobileRelayTestKtAuthorityGuard { previous };
+    ensure!(
+        guard.previous.is_none(),
+        "mobile relay test KT authority scope is already active"
+    );
+    operation()
+}
 
 pub(in crate::domain::mobile_relay) fn with_mobile_relay_test_kt_log<T>(
     operation: impl FnOnce(&mut SecureMeshKtLog) -> Result<T>,
 ) -> Result<T> {
-    let authority_root = ClientStateStore::portable()?
-        .root()
-        .join("mobile-relay")
-        .join("secure-mesh-kt");
+    let authority = MOBILE_RELAY_TEST_KT_AUTHORITY_OVERRIDE
+        .with(|slot| slot.borrow().clone())
+        .map(MobileRelayTestKtAuthority::Scenario)
+        .map_or_else(
+            || {
+                ClientStateStore::portable().map(|store| {
+                    MobileRelayTestKtAuthority::PortableRoot(
+                        store.root().join("mobile-relay").join("secure-mesh-kt"),
+                    )
+                })
+            },
+            Ok,
+        )?;
     let logs = MOBILE_RELAY_TEST_KT_LOGS.get_or_init(|| Mutex::new(BTreeMap::new()));
     let mut logs = logs
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
-    let log = logs.entry(authority_root).or_insert_with(|| {
+    let log = logs.entry(authority).or_insert_with(|| {
         SecureMeshKtLog::with_identity(
             SigningKey::generate(&mut OsRng),
             "local-mock-kt-log",

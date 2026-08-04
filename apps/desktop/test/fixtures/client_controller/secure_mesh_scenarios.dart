@@ -132,7 +132,7 @@ void registerClientSecureMeshScenarios() {
     addTearDown(controller.dispose);
 
     final invite = {
-      'gatewayUrl': 'https://relay.example.test',
+      'stationBaseUrl': 'https://station.example.test',
       'pairingId': 'pair-1',
       'pairingCode': '1234-5678',
       'pcClientId': 'pc-1',
@@ -536,8 +536,7 @@ void registerClientSecureMeshScenarios() {
     addTearDown(() => deleteTempDirectory(directory));
     final relayService = FakeMobileRelayService()
       ..config = MobileRelayConfig.defaults().copyWith(
-        useCustomGateway: true,
-        customGatewayUrl: 'https://relay.example.test',
+        stationBaseUrl: 'https://station.example.test',
         pairingId: 'pair-1',
         pcClientId: 'pc-1',
         pcClientName: 'MacBook Pro',

@@ -50,7 +50,7 @@ final class MobileDesktopAgentList extends StatelessWidget {
                   onPressed: onBack,
                   icon: const Icon(Icons.chevron_left_rounded),
                 ),
-                Icon(Icons.computer_rounded, color: colors.primary, size: 28),
+                Icon(Icons.computer_rounded, color: colors.accent, size: 28),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(
@@ -128,7 +128,7 @@ final class _MobileDesktopEmptyState extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.hub_outlined, color: colors.primary, size: 34),
+            Icon(Icons.hub_outlined, color: colors.accent, size: 34),
             const SizedBox(height: 12),
             Text(
               strings.desktopAgents,

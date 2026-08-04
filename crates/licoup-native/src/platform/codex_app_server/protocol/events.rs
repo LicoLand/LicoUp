@@ -8,6 +8,10 @@ use serde_json::Value;
 impl CodexProtocol {
     pub(super) fn handle_notification(&mut self, message: &Value) -> Vec<ProtocolEffect> {
         match message.get("method").and_then(Value::as_str) {
+            Some("item/started") => {
+                self.observe_processing_item(message);
+                Vec::new()
+            }
             Some("item/completed") => {
                 self.capture_completed_item(message);
                 Vec::new()
@@ -32,6 +36,7 @@ impl CodexProtocol {
             return;
         }
         if let Some(item) = params.get("item") {
+            self.emit_processing_item(item);
             self.completed_items.push(item.clone());
             if item.get("type").and_then(Value::as_str) == Some("agentMessage")
                 && let Some(text) = item.get("text").and_then(Value::as_str)
@@ -43,6 +48,45 @@ impl CodexProtocol {
                 );
             }
         }
+    }
+
+    fn observe_processing_item(&self, message: &Value) {
+        if self.phase != ProtocolPhase::AwaitTurnCompleted {
+            return;
+        }
+        let Some(params) = message.get("params") else {
+            return;
+        };
+        if !matches_current_ids(params, self.thread_id.as_deref(), self.turn_id.as_deref()) {
+            return;
+        }
+        if let Some(item) = params.get("item") {
+            self.emit_processing_item(item);
+        }
+    }
+
+    fn emit_processing_item(&self, item: &Value) {
+        let item_type = item.get("type").and_then(Value::as_str).unwrap_or_default();
+        if item_type == "agentMessage" {
+            return;
+        }
+        let evidence_kind = if item_type.contains("reason") {
+            "reasoning"
+        } else if item_type.contains("plan") {
+            "plan"
+        } else if item_type.contains("command")
+            || item_type.contains("tool")
+            || item_type.contains("mcp")
+        {
+            "tool"
+        } else {
+            "activity"
+        };
+        crate::platform::turn_event_emit::emit_agent_processing(
+            self.thread_id.as_deref().unwrap_or_default(),
+            self.turn_id.as_deref().unwrap_or_default(),
+            evidence_kind,
+        );
     }
 
     fn emit_agent_message_delta(&self, message: &Value) {
@@ -112,6 +156,12 @@ impl CodexProtocol {
 
         self.phase = ProtocolPhase::Finished;
         if status != "completed" {
+            crate::platform::turn_event_emit::emit_turn_event(
+                "dispatch.turn.failed",
+                self.thread_id.as_deref().unwrap_or_default(),
+                self.turn_id.as_deref().unwrap_or_default(),
+                serde_json::json!({ "turnStatus": status }),
+            );
             let mut failure = self.contextualize(ProtocolFailure::new(
                 "codex_turn_not_completed",
                 "Codex did not complete the requested turn.",
@@ -120,6 +170,12 @@ impl CodexProtocol {
             failure.turn_status = Some(status);
             return vec![ProtocolEffect::Fail(failure)];
         }
+        crate::platform::turn_event_emit::emit_turn_event(
+            "dispatch.turn.completed",
+            self.thread_id.as_deref().unwrap_or_default(),
+            self.turn_id.as_deref().unwrap_or_default(),
+            serde_json::json!({ "turnStatus": "completed" }),
+        );
         let Some(output) = final_message else {
             let mut failure = self.contextualize(ProtocolFailure::new(
                 "codex_final_message_missing",

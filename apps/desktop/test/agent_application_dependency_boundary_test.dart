@@ -12,21 +12,13 @@ void main() {
 
     for (final file in sources) {
       final source = file.readAsStringSync();
-      final applicationSource = source.replaceAll(
-        "import 'package:licoup/src/platform/native_client/orchestrator_ipc/client.dart';",
-        '',
-      );
       expect(
         source,
         isNot(contains('/application/controller/client_controller.dart')),
         reason: file.path,
       );
       expect(source, isNot(contains('/backend/')), reason: file.path);
-      expect(
-        applicationSource,
-        isNot(contains('/platform/')),
-        reason: file.path,
-      );
+      expect(source, isNot(contains('/platform/')), reason: file.path);
       expect(
         source,
         isNot(contains('TextEditingController')),

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:licoup/src/application/controller/client_controller.dart';
+import 'package:licoup/src/contracts/skill_delete.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/frontend/features/skill_hub/ui/skill_hub_panel.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
@@ -142,6 +143,55 @@ void main() {
   );
 
   testWidgets(
+    'skill details move the selected catalog directory to system trash',
+    (tester) async {
+      final gateway = _SkillTrashGateway();
+      final controller = _skillHubController(skillDeleteGateway: gateway);
+      addTearDown(controller.dispose);
+
+      await _pumpSkillHub(
+        tester,
+        controller: controller,
+        locale: const Locale('en'),
+      );
+
+      await tester.tap(find.text('Public Reviewer'));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('skill-delete-button')), findsOneWidget);
+      expect(find.text('Delete'), findsOneWidget);
+
+      await tester.tap(find.byKey(const ValueKey('skill-delete-button')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Delete this skill?'), findsOneWidget);
+      expect(
+        find.text(
+          '"Public Reviewer" will move to the system trash, where it can be restored.',
+        ),
+        findsOneWidget,
+      );
+
+      await tester.tap(
+        find.byKey(const ValueKey('skill-move-to-trash-confirm')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(gateway.plannedSkillId, 'public-reviewer');
+      expect(
+        gateway.plannedPath,
+        '<portable-root>/.agents/skills/public-reviewer',
+      );
+      expect(gateway.appliedConfirmation, 'trash:public-reviewer:test-plan');
+      expect(find.text('Public Reviewer'), findsNothing);
+      expect(
+        find.text('Moved "Public Reviewer" to the system trash.'),
+        findsOneWidget,
+      );
+    },
+  );
+
+  testWidgets(
     'settings gear opens a floating drawer with a minimal installer',
     (tester) async {
       final controller = _skillHubController()
@@ -210,8 +260,8 @@ Future<void> _pumpSkillHub(
   await tester.pump();
 }
 
-ClientController _skillHubController() {
-  return ClientController()
+ClientController _skillHubController({SkillDeleteGateway? skillDeleteGateway}) {
+  return ClientController(skillDeleteGateway: skillDeleteGateway)
     ..isSkillHubBusy = true
     ..scannedTargets = [
       _target('codex', 'ChatGPT - Desktop'),
@@ -240,6 +290,37 @@ ClientController _skillHubController() {
         'usedByAgents': <String>[],
       },
     ];
+}
+
+class _SkillTrashGateway implements SkillDeleteGateway {
+  String plannedSkillId = '';
+  String plannedPath = '';
+  String appliedConfirmation = '';
+
+  @override
+  Future<Map<String, dynamic>> planSkillDelete({
+    required String skillId,
+    required String path,
+  }) async {
+    plannedSkillId = skillId;
+    plannedPath = path;
+    return {
+      'ok': true,
+      'status': 'trash_planned',
+      'trashAllowed': true,
+      'confirmation': 'trash:$skillId:test-plan',
+    };
+  }
+
+  @override
+  Future<Map<String, dynamic>> applySkillDelete({
+    required String skillId,
+    required String path,
+    required String confirmation,
+  }) async {
+    appliedConfirmation = confirmation;
+    return {'ok': true, 'status': 'trashed', 'trashedCount': 1};
+  }
 }
 
 TargetCandidate _target(String id, String label) {
