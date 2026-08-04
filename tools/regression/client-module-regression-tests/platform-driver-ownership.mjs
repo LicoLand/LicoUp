@@ -12,12 +12,6 @@ import {
 
 test("layer, FFI, bridge, packaging, and release paths select dedicated modules", () => {
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "apps/desktop/lib/src/platform/native_client/orchestrator_ipc/client.dart",
-  ])), [
-    "architecture.client-boundaries",
-    "flutter.feature.orchestrator-projection",
-  ]);
-  assert.deepEqual(ids(selectModulesForChangedPaths([
     "crates/licoup-native/src/domain/mobile_relay/config.rs",
   ])), ["architecture.client-boundaries", "rust.domain.mobile-relay.configuration"]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
@@ -43,12 +37,6 @@ test("layer, FFI, bridge, packaging, and release paths select dedicated modules"
   assert.deepEqual(ids(selectModulesForChangedPaths([
     "crates/licoup-native/src/platform/mcp_approval_plan_store.rs",
   ])), ["architecture.client-boundaries", "rust.platform.mcp-approval-plan-store"]);
-  assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/licoup-native/src/platform/orchestrator_ipc/client.rs",
-  ])), ["regression.orchestrator-ipc", "architecture.client-boundaries"]);
-  assert.deepEqual(ids(selectModulesForChangedPaths([
-    "packages/contracts/client/lico-up-orchestrator-ipc.schema.json",
-  ])), ["regression.orchestrator-ipc"]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
     "crates/licoup-native/src/bin/licoup.rs",
   ])), ["architecture.client-boundaries", "rust.bin.licoup"]);
@@ -215,23 +203,22 @@ test("foundation adapters and architecture scripts have explicit changed-path ow
     "rust.core.secure-mesh.pairwise-codec",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/licoup-native/src/core/secure_mesh_relay_envelope.rs",
+    "crates/licoup-native/src/core/licoarc_relay.rs",
   ])), [
     "architecture.client-boundaries",
-    "rust.core.secure-mesh.relay-envelope.composition",
+    "rust.core.licoarc-relay.contract",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/licoup-native/src/core/secure_mesh_relay_envelope/mailbox/schedule.rs",
+    "crates/licoup-native/src/core/licoarc_relay/mailbox/schedule.rs",
   ])), [
     "architecture.client-boundaries",
-    "rust.core.secure-mesh.relay-envelope.schedule",
+    "rust.core.licoarc-relay.schedule",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/licoup-native/src/core/secure_mesh_relay_envelope/private_header.rs",
+    "crates/licoup-native/src/core/licoarc_relay/private_header.rs",
   ])), [
     "architecture.client-boundaries",
-    "rust.core.secure-mesh.relay-envelope.header",
-    "rust.core.secure-mesh.relay-envelope.header-negatives",
+    "rust.core.licoarc-relay.header",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
     "crates/licoup-native/src/core/secure_mesh_command.rs",
@@ -317,7 +304,7 @@ test("foundation adapters and architecture scripts have explicit changed-path ow
     "apps/desktop/lib/src/application/features/agents/orchestration/agent_orchestration_policy_controller.dart",
   ])), [
     "architecture.client-boundaries",
-    "flutter.feature.orchestrator-projection",
+    "flutter.feature.main-agent-selection",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
     "apps/desktop/test/directory_path_controller_test.dart",
@@ -1094,6 +1081,8 @@ test("Hermes driver leaves retain exact tests and complete source ownership", as
       "platform::hermes_driver::tests::probe::"],
     ["rust.platform.hermes-driver.error-normalization",
       "platform::hermes_driver::tests::errors::"],
+    ["rust.platform.hermes-driver.tui-gateway",
+      "platform::hermes_tui_gateway"],
   ]);
   const modules = CLIENT_MODULE_CATALOG.filter((candidate) =>
     candidate.id.startsWith("rust.platform.hermes-driver."));

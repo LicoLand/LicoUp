@@ -254,7 +254,7 @@ function readStateSchema(family) {
     schema.maxDocumentBytes <= 0 ||
     schema.maxDocumentBytes > 16 * 1024 * 1024 ||
     !Array.isArray(schema.collections) ||
-    schema.collections.length !== 15 ||
+    schema.collections.length !== 16 ||
     new Set(schema.collections).size !== schema.collections.length ||
     schema.collections.some(
       (value) =>

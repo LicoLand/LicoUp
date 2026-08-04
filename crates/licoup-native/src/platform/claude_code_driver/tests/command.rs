@@ -1,7 +1,7 @@
 use super::*;
 
 #[test]
-fn fixed_stream_command_excludes_prompt_and_session() {
+fn fixed_stream_command_excludes_prompt_and_session_and_partial_replay() {
     let prompt = "private prompt must stay off argv";
     let session = "private session must stay off argv";
     let config = config(
@@ -15,7 +15,7 @@ fn fixed_stream_command_excludes_prompt_and_session() {
     );
     let identity = LaunchIdentity::new("claude-test", &config, Some(&absolute_test_cwd()));
     let args = identity.args();
-    assert!(FIXED_STREAM_ARGS.contains(&"--include-partial-messages"));
+    assert!(!FIXED_STREAM_ARGS.contains(&"--include-partial-messages"));
     assert!(!FIXED_STREAM_ARGS.contains(&"--no-session-persistence"));
     assert!(
         args.iter()

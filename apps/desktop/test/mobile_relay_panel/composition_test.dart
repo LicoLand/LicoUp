@@ -5,8 +5,7 @@ void main() {
     final controller = mobileRelayPanelTestController();
     addTearDown(controller.dispose);
     controller.mobileRelayConfig = controller.mobileRelayConfig.copyWith(
-      useCustomGateway: true,
-      customGatewayUrl: 'https://relay.example.test',
+      stationBaseUrl: 'https://station.example.test',
     );
 
     await tester.pumpWidget(

@@ -1,5 +1,5 @@
 use super::errors::ProtocolFailure;
-use super::events::sanitized_event;
+use super::events::{processing_evidence_kind, sanitized_event};
 use super::model::EffectiveSettings;
 use super::params::ProtocolConfig;
 use serde_json::{Value, json};
@@ -375,6 +375,15 @@ impl PiProtocol {
     fn handle_event(&mut self, message: &Value) -> Vec<ProtocolEffect> {
         let message_type = message.get("type").and_then(Value::as_str).unwrap_or("");
         if self.phase == ProtocolPhase::AwaitSettled {
+            if let Some(evidence_kind) = processing_evidence_kind(message)
+                && let Some(session_id) = self.session_id.as_deref()
+            {
+                super::super::turn_event_emit::emit_agent_processing(
+                    session_id,
+                    &self.config.turn_id,
+                    evidence_kind,
+                );
+            }
             self.events.extend(
                 super::super::skill_invocation_projection::project_skill_invocations(message),
             );

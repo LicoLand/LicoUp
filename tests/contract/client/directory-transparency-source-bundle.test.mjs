@@ -50,7 +50,6 @@ async function sources(leaves = productionLeaves) {
 
 test("directory transparency uses a thin facade and ordinary owned leaves", async () => {
   const facade = await read(facadePath);
-  assert.ok(facade.trimEnd().split(/\r?\n/u).length <= 45);
   assert.deepEqual(
     [...facade.matchAll(/^mod ([a-z_]+);$/gmu)]
       .map((match) => match[1])

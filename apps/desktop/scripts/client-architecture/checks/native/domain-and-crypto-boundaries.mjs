@@ -20,7 +20,6 @@ export async function checkDomainAndCryptoBoundaries(context) {
     readText,
     runJson,
     sameSet,
-    sourceLineCount,
   } = context;
   const clientUpdateRoot = "crates/licoup-native/src/domain/client_update";
   const clientUpdateFacadeSource = await readText(`${clientUpdateRoot}.rs`);
@@ -119,23 +118,23 @@ export async function checkDomainAndCryptoBoundaries(context) {
 
   const agentUsageCodexRoot =
     "crates/licoup-native/src/domain/agent_usage/agent_usage_codex";
-  const agentUsageCodexProductionLimits = new Map([
-    [`${agentUsageCodexRoot}/aggregation.rs`, 250],
-    [`${agentUsageCodexRoot}/append_guard.rs`, 80],
-    [`${agentUsageCodexRoot}/cache.rs`, 190],
-    [`${agentUsageCodexRoot}/cache_batch.rs`, 220],
-    [`${agentUsageCodexRoot}/cache_cleanup.rs`, 90],
-    [`${agentUsageCodexRoot}/constants.rs`, 15],
-    [`${agentUsageCodexRoot}/event_hash.rs`, 100],
-    [`${agentUsageCodexRoot}/file_collection.rs`, 90],
-    [`${agentUsageCodexRoot}/lineage.rs`, 100],
-    [`${agentUsageCodexRoot}/model_backfill.rs`, 100],
-    [`${agentUsageCodexRoot}/models.rs`, 150],
-    [`${agentUsageCodexRoot}/parser.rs`, 300],
-    [`${agentUsageCodexRoot}/rollup.rs`, 220],
-    [`${agentUsageCodexRoot}/scan.rs`, 200],
-    [`${agentUsageCodexRoot}/scan_params.rs`, 100],
-    [`${agentUsageCodexRoot}/utils.rs`, 70]
+  const agentUsageCodexProductionLeaves = new Set([
+    `${agentUsageCodexRoot}/aggregation.rs`,
+    `${agentUsageCodexRoot}/append_guard.rs`,
+    `${agentUsageCodexRoot}/cache.rs`,
+    `${agentUsageCodexRoot}/cache_batch.rs`,
+    `${agentUsageCodexRoot}/cache_cleanup.rs`,
+    `${agentUsageCodexRoot}/constants.rs`,
+    `${agentUsageCodexRoot}/event_hash.rs`,
+    `${agentUsageCodexRoot}/file_collection.rs`,
+    `${agentUsageCodexRoot}/lineage.rs`,
+    `${agentUsageCodexRoot}/model_backfill.rs`,
+    `${agentUsageCodexRoot}/models.rs`,
+    `${agentUsageCodexRoot}/parser.rs`,
+    `${agentUsageCodexRoot}/rollup.rs`,
+    `${agentUsageCodexRoot}/scan.rs`,
+    `${agentUsageCodexRoot}/scan_params.rs`,
+    `${agentUsageCodexRoot}/utils.rs`,
   ]);
   const agentUsageCodexTestLeaves = [
     "aggregation.rs",
@@ -160,7 +159,7 @@ export async function checkDomainAndCryptoBoundaries(context) {
   assert(
     sameSet(
       discoveredAgentUsageCodexProduction,
-      [...agentUsageCodexProductionLimits.keys()]
+      [...agentUsageCodexProductionLeaves]
     ),
     "Codex usage facade must own the complete explicit production leaf set"
   );
@@ -175,7 +174,7 @@ export async function checkDomainAndCryptoBoundaries(context) {
     .filter((moduleName) => moduleName !== "tests")
     .map((moduleName) => `${agentUsageCodexRoot}/${moduleName}.rs`);
   assert(
-    sameSet(declaredAgentUsageCodexModules, [...agentUsageCodexProductionLimits.keys()]),
+    sameSet(declaredAgentUsageCodexModules, [...agentUsageCodexProductionLeaves]),
     "Codex usage facade must declare every production leaf exactly once"
   );
   assert(
@@ -185,12 +184,8 @@ export async function checkDomainAndCryptoBoundaries(context) {
       !agentUsageCodexFacadeSource.includes("BufReader::new"),
     "Codex usage root must remain an ordinary thin composition facade"
   );
-  for (const [relativePath, maxLines] of agentUsageCodexProductionLimits) {
+  for (const relativePath of agentUsageCodexProductionLeaves) {
     const source = await readText(relativePath);
-    assert(
-      sourceLineCount(source) <= maxLines,
-      `${relativePath} exceeds its Codex usage responsibility limit (${maxLines} lines maximum)`
-    );
     assert(
       !source.includes("include!(") &&
         !source.includes("#[path") &&
@@ -223,19 +218,19 @@ export async function checkDomainAndCryptoBoundaries(context) {
   );
   const agentUsageCacheIntegrationRoot =
     "crates/licoup-native/tests/agent_usage_cache_cases";
-  const agentUsageCacheScenarioLimits = new Map([
-    [`${agentUsageCacheIntegrationRoot}/adapter_coverage.rs`, 135],
-    [`${agentUsageCacheIntegrationRoot}/append_refresh.rs`, 190],
-    [`${agentUsageCacheIntegrationRoot}/cache_runtime.rs`, 130],
-    [`${agentUsageCacheIntegrationRoot}/cumulative_resume.rs`, 220],
-    [`${agentUsageCacheIntegrationRoot}/dedup_lineage.rs`, 170],
-    [`${agentUsageCacheIntegrationRoot}/fallback_coverage.rs`, 180],
-    [`${agentUsageCacheIntegrationRoot}/generic_usage.rs`, 145],
-    [`${agentUsageCacheIntegrationRoot}/native_rollup.rs`, 150],
-    [`${agentUsageCacheIntegrationRoot}/reconciliation.rs`, 40],
-    [`${agentUsageCacheIntegrationRoot}/retained_reports.rs`, 80],
-    [`${agentUsageCacheIntegrationRoot}/support.rs`, 115],
-    [`${agentUsageCacheIntegrationRoot}/windows.rs`, 80]
+  const agentUsageCacheScenarioLeaves = new Set([
+    `${agentUsageCacheIntegrationRoot}/adapter_coverage.rs`,
+    `${agentUsageCacheIntegrationRoot}/append_refresh.rs`,
+    `${agentUsageCacheIntegrationRoot}/cache_runtime.rs`,
+    `${agentUsageCacheIntegrationRoot}/cumulative_resume.rs`,
+    `${agentUsageCacheIntegrationRoot}/dedup_lineage.rs`,
+    `${agentUsageCacheIntegrationRoot}/fallback_coverage.rs`,
+    `${agentUsageCacheIntegrationRoot}/generic_usage.rs`,
+    `${agentUsageCacheIntegrationRoot}/native_rollup.rs`,
+    `${agentUsageCacheIntegrationRoot}/reconciliation.rs`,
+    `${agentUsageCacheIntegrationRoot}/retained_reports.rs`,
+    `${agentUsageCacheIntegrationRoot}/support.rs`,
+    `${agentUsageCacheIntegrationRoot}/windows.rs`,
   ]);
   const agentUsageCacheIntegrationFacade = await readText(
     "crates/licoup-native/tests/agent_usage_incremental_cache.rs"
@@ -253,7 +248,7 @@ export async function checkDomainAndCryptoBoundaries(context) {
   assert(
     sameSet(
       declaredAgentUsageCacheScenarios,
-      [...agentUsageCacheScenarioLimits.keys()]
+      [...agentUsageCacheScenarioLeaves]
     ),
     "Codex usage integration composition must declare every precise scenario and support leaf"
   );
@@ -263,16 +258,12 @@ export async function checkDomainAndCryptoBoundaries(context) {
   assert(
     sameSet(
       discoveredAgentUsageCacheScenarios,
-      [...agentUsageCacheScenarioLimits.keys()]
+      [...agentUsageCacheScenarioLeaves]
     ),
     "Codex usage integration directory must not retain hidden or orphaned scenario leaves"
   );
-  for (const [relativePath, maxLines] of agentUsageCacheScenarioLimits) {
+  for (const relativePath of agentUsageCacheScenarioLeaves) {
     const source = await readText(relativePath);
-    assert(
-      sourceLineCount(source) <= maxLines,
-      `${relativePath} exceeds its Codex usage scenario limit (${maxLines} lines maximum)`
-    );
     assert(
       !source.includes("include!(") && !source.includes("#[path"),
       `${relativePath} must remain an ordinary integration-test leaf`

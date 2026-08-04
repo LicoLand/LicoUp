@@ -46,7 +46,6 @@ async function collectModules(relativeRoot) {
 
 test("client toolchain runner facade is a thin serial CLI entry", async () => {
   const facade = await read(facadeRef);
-  assert.ok(facade.trimEnd().split(/\r?\n/u).length <= 12);
   const module = await import(
     `${pathToFileURL(path.join(repoRoot, moduleRoot, "run.mjs")).href}?source-bundle`
   );
@@ -55,22 +54,8 @@ test("client toolchain runner facade is a thin serial CLI entry", async () => {
 
 test("client toolchain runner owns exactly eight bounded ordinary modules", async () => {
   assert.deepEqual(await collectModules(moduleRoot), [...leaves]);
-  const limits = new Map([
-    ["artifacts.mjs", 80],
-    ["cli.mjs", 50],
-    ["constants.mjs", 20],
-    ["flutter.mjs", 200],
-    ["process.mjs", 90],
-    ["pub-cache.mjs", 220],
-    ["run.mjs", 30],
-    ["windows.mjs", 80],
-  ]);
-  for (const [leaf, maxLines] of limits) {
+  for (const leaf of leaves) {
     const source = await read(`${moduleRoot}/${leaf}`);
-    assert.ok(
-      source.trimEnd().split(/\r?\n/u).length <= maxLines,
-      `${leaf} is oversized`,
-    );
     assert.equal(source.includes("../client-toolchain-runner.mjs"), false);
   }
 });

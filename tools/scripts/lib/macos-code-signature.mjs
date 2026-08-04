@@ -86,7 +86,7 @@ export function inspectMacosCodeSignature(
     : /(?:^|\n)Authority=/u.test(detailText)
       ? "local-identity-codesign"
       : "unknown";
-  const hardenedRuntime = /(?:^|\n)flags=0x[0-9a-f]+\([^\n)]*runtime[^\n)]*\)/iu.test(
+  const hardenedRuntime = /\bflags=0x[0-9a-f]+\([^\n)]*runtime[^\n)]*\)/iu.test(
     detailText,
   );
   let actualEntitlements = "";

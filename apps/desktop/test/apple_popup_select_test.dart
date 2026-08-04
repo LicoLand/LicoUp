@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:licoup/src/frontend/shared/ui/apple_control_metrics.dart';
 import 'package:licoup/src/frontend/shared/ui/apple_glass.dart';
 import 'package:licoup/src/frontend/shared/ui/apple_popup_select.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
@@ -69,7 +70,10 @@ void main() {
           .first,
     );
     final shape = focusedMaterial.shape! as RoundedRectangleBorder;
-    expect(shape.side.color, brandGold.withAlpha(200));
+    // The focus ring is drawn at full strength: a translucent one-pixel color
+    // shift is not a reliable focus signal, so the ring is opaque and wider.
+    expect(shape.side.color, brandGold);
+    expect(shape.side.width, AppleControlMetrics.searchFocusRingWidth);
     expect(shape.side.color, isNot(kAppleMenuSelectionBlue));
 
     expect(find.text('Beta'), findsOneWidget);

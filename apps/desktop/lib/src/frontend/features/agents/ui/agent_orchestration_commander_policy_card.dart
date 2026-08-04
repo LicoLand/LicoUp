@@ -1,11 +1,9 @@
 import 'package:flutter/material.dart';
 
 import 'package:licoup/src/application/features/agents/orchestration/orchestration_policy_editor_models.dart';
-import 'package:licoup/src/application/features/agents/orchestration/orchestration_target_catalog.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
-import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_display_names.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_orchestration_target_policy_fields.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
-import 'package:licoup/src/frontend/shared/ui/apple_popup_select.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 final class AgentOrchestrationCommanderPolicyCard extends StatelessWidget {
@@ -28,25 +26,6 @@ final class AgentOrchestrationCommanderPolicyCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.licoColors;
     final strings = LicoStrings.of(context);
-    final selectedTarget = _selectedTarget();
-    final models = selectedTarget == null
-        ? const <String>[]
-        : agentOrchestrationCommanderModels(selectedTarget);
-    final selectedModel = models.contains(policy.commanderModelName)
-        ? policy.commanderModelName
-        : null;
-    final reasoningEfforts = selectedTarget == null || selectedModel == null
-        ? const <String>[]
-        : agentOrchestrationReasoningEffortsForModel(
-            selectedTarget,
-            selectedModel,
-          );
-    final selectedReasoningEffort =
-        reasoningEfforts.contains(policy.commanderReasoningEffort)
-        ? policy.commanderReasoningEffort
-        : reasoningEfforts.isEmpty
-        ? null
-        : reasoningEfforts.first;
     return DecoratedBox(
       decoration: BoxDecoration(
         color: colors.surfaceLow,
@@ -67,74 +46,19 @@ final class AgentOrchestrationCommanderPolicyCard extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: ApplePopupSelectField<String>(
-                    key: const Key('agent-orchestration-commander-agent'),
-                    label: strings.agentClient,
-                    value: selectedTarget?.target,
-                    options: [
-                      for (final target in targets)
-                        ApplePopupSelectOption(
-                          value: target.target,
-                          label: agentConversationTargetDisplayName(target),
-                        ),
-                    ],
-                    onChanged: onAgentChanged,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: ApplePopupSelectField<String>(
-                    key: const Key('agent-orchestration-commander-model'),
-                    label: strings.model,
-                    value: selectedModel,
-                    hint: models.isEmpty ? strings.noModelsFound : null,
-                    options: [
-                      for (final model in models)
-                        ApplePopupSelectOption(
-                          value: model,
-                          label: selectedTarget == null
-                              ? model
-                              : agentOrchestrationModelDisplayName(
-                                  selectedTarget,
-                                  model,
-                                ),
-                        ),
-                    ],
-                    onChanged: models.isEmpty ? null : onModelChanged,
-                    enabled: models.isNotEmpty,
-                  ),
-                ),
-                if (reasoningEfforts.isNotEmpty) ...[
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: ApplePopupSelectField<String>(
-                      key: const Key('agent-orchestration-commander-reasoning'),
-                      label: strings.reasoningEffort,
-                      value: selectedReasoningEffort,
-                      options: [
-                        for (final effort in reasoningEfforts)
-                          ApplePopupSelectOption(value: effort, label: effort),
-                      ],
-                      onChanged: onReasoningEffortChanged,
-                    ),
-                  ),
-                ],
-              ],
+            AgentOrchestrationTargetPolicyFields(
+              keyPrefix: 'agent-orchestration-commander',
+              agentId: policy.commanderAgentId,
+              modelName: policy.commanderModelName,
+              reasoningEffort: policy.commanderReasoningEffort,
+              targets: targets,
+              onAgentChanged: onAgentChanged,
+              onModelChanged: onModelChanged,
+              onReasoningEffortChanged: onReasoningEffortChanged,
             ),
           ],
         ),
       ),
     );
-  }
-
-  TargetCandidate? _selectedTarget() {
-    final selected = policy.commanderAgentId.trim();
-    for (final target in targets) {
-      if (target.target == selected) return target;
-    }
-    return targets.isEmpty ? null : targets.first;
   }
 }

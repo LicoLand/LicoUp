@@ -4,7 +4,7 @@
   "linkedReports": {
     "androidPlatformCrypto": "build/reports/secure-mesh-android-platform-crypto-acceptance.json",
     "androidInstallLaunch": "build/reports/android-physical-install-launch.json",
-    "relayMock": "build/reports/secure-client-relay-mock-e2e.json",
+    "stationAcceptance": "build/reports/licoarc-badtower-acceptance.json",
     "ubuntuVmSecretStore": "build/client-cli-vm/ubuntu-arm64/mobile-relay-secret-store-self-test.json",
     "macosReleaseCliProof": "build/reports/secure-mesh-release-cli-proof-macos.json",
     "macosUserPresenceProof": "build/reports/secure-mesh-macos-keychain-user-presence-proof.json",
@@ -25,28 +25,28 @@
   },
   "evidenceCommands": {
     "android": [
-      "npm run client:verify:secure-client-relay-mock-e2e",
+      "npm run client:verify:licoarc-badtower-acceptance",
       "npm run client:test:android:native",
       "npm run client:build:android",
       "node tools/scripts/client-android-physical-install-launch.mjs --install --launch --apk build/apps/desktop/android/release/app-release.apk"
     ],
     "ios": [
-      "npm run client:verify:secure-client-relay-mock-e2e",
+      "npm run client:verify:licoarc-badtower-acceptance",
       "npm run client:verify:mobile-simulator-closure:ios"
     ],
     "macos": [
-      "npm run client:verify:secure-client-relay-mock-e2e",
+      "npm run client:verify:licoarc-badtower-acceptance",
       "npm run client:verify:secure-mesh-macos-keychain-user-presence",
       "npm run client:verify:secure-mesh-release-cli-proof",
       "npm run client:verify:macos-bundle"
     ],
     "windows": [
-      "npm run client:verify:secure-client-relay-mock-e2e",
+      "npm run client:verify:licoarc-badtower-acceptance",
       "npm run client:verify:windows-file-security",
       "npm run client:verify:secure-mesh-windows-implementation"
     ],
     "linux": [
-      "npm run client:verify:secure-client-relay-mock-e2e",
+      "npm run client:verify:licoarc-badtower-acceptance",
       "npm run client:cli:vm:verify -- --distro ubuntu",
       "npm run client:cli:vm:linux-product -- --distro ubuntu",
       "npm run client:verify:secure-mesh-linux-adaptive-custody",

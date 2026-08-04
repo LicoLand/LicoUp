@@ -8,11 +8,43 @@ extension LicoStringsLabels on LicoStrings {
   String get nativeDefault => isChinese ? '原生默认值' : 'Native default';
   String defaultValueDisplay(String value) =>
       isChinese ? '$value（默认）' : '$value (default)';
+  String get defaultModelUnavailable =>
+      isChinese ? '未检测到默认模型' : 'Default model not detected';
   String get reasoningSetting => isChinese ? '思考' : 'Reasoning';
+  String get workingDirectory => isChinese ? '工作目录' : 'Working directory';
+  String get chooseWorkingDirectory =>
+      isChinese ? '选择工作目录' : 'Choose working directory';
+  String get changeWorkingDirectory =>
+      isChinese ? '更改工作目录' : 'Change working directory';
+  String get workingDirectoryFixedForSession => isChinese
+      ? '工作目录由当前原生会话固定；新建对话后可重新选择。'
+      : 'The current native session fixes its working directory. Start a new conversation to choose another.';
   String get appearance => isChinese ? '外观' : 'Appearance';
   String get network => isChinese ? '网络' : 'Network';
   String get storageAndData => isChinese ? '存储与数据' : 'Storage & Data';
   String get diagnostics => isChinese ? '诊断' : 'Diagnostics';
+  String get resourceUsage => isChinese ? '资源占用' : 'Resource Usage';
+  String get resourceUsageUnsupported => isChinese
+      ? '当前平台不支持进程资源统计。'
+      : 'Process resource statistics are not supported on this platform.';
+  String get resourceSamplingHint => isChinese
+      ? '每 5 秒采样一次，仅保留最近 15 分钟；全部保存在内存中，不会写入磁盘。'
+      : 'Sampled every 5 seconds; the last 15 minutes are kept in memory and nothing is written to disk.';
+  String get memoryUsage => isChinese ? '内存占用' : 'Memory';
+  String get diskReadRate => isChinese ? '磁盘读取' : 'Disk Read';
+  String get diskWriteRate => isChinese ? '磁盘写入' : 'Disk Write';
+  String sessionTransferTotal(String read, String write) => isChinese
+      ? '本次查看累计：读取 $read · 写入 $write'
+      : 'Since opened: $read read · $write written';
+  String get agentResources => isChinese ? '智能体资源' : 'Agent Resources';
+  String get agentResourcesIdle =>
+      isChinese ? '尚未检测到运行中的智能体。' : 'No running agents detected yet.';
+  String get agentResourcesIdleDetail => isChinese
+      ? '正在运行中的本地智能体会在这里显示其实时内存与磁盘读写。'
+      : 'Running local agents appear here with live memory and disk I/O.';
+  String agentResourcesHint(int count) => isChinese
+      ? '正在检测 $count 个运行中的本地智能体，每 5 秒采样一次；仅保存在内存中。'
+      : 'Sampling $count running local agents every 5 seconds; kept in memory only.';
   String get systemConfiguration => isChinese ? '系统配置' : 'System';
   String get clientUpdate => isChinese ? '客户端更新' : 'Client Update';
   String get clientUpdateHint => isChinese
@@ -56,7 +88,6 @@ extension LicoStringsLabels on LicoStrings {
   String get noAgentUsageInLatestDailyBreakdown => isChinese
       ? '最新每日明细中没有智能体用量'
       : 'No agent usage in the latest daily breakdown';
-  String get usageOverTime => isChinese ? '用量趋势' : 'Usage Over Time';
   String get tokenUsageWindow =>
       isChinese ? 'Token 用量时间窗口' : 'Token usage window';
   String lastDays(int days) => isChinese ? '最近 $days 天' : 'Last $days days';
@@ -212,6 +243,24 @@ extension LicoStringsLabels on LicoStrings {
   String get configPath => isChinese ? '配置路径' : 'Config path';
   String get binaryPath => isChinese ? '程序路径' : 'Binary path';
   String get historyRoot => isChinese ? '历史目录' : 'History root';
+  String get targetLocation => isChinese ? '运行位置' : 'Runtime location';
+  String get localMachine => isChinese ? '本机' : 'Local machine';
+  String get virtualMachine => isChinese ? '虚拟机（SSH）' : 'Virtual machine (SSH)';
+  String get virtualMachineHost => isChinese ? '虚拟机主机名或 IP' : 'VM host or IP';
+  String get sshPort => isChinese ? 'SSH 端口（可选）' : 'SSH port (optional)';
+  String get sshUser => isChinese ? 'SSH 用户（可选）' : 'SSH user (optional)';
+  String get remoteExecutable => isChinese ? '虚拟机内程序路径' : 'Executable in VM';
+  String get remoteWorkingDirectory =>
+      isChinese ? '虚拟机内工作目录' : 'Working directory in VM';
+  String virtualMachineDestination(String destination) => isChinese
+      ? '虚拟机对话目标：$destination'
+      : 'Virtual machine conversation destination: $destination';
+  String get fieldRequired => isChinese ? '此项必填' : 'This field is required';
+  String get invalidSshValue =>
+      isChinese ? '请输入有效的 SSH 参数' : 'Enter a valid SSH value';
+  String get absoluteGuestPathRequired => isChinese
+      ? '请输入以 / 开头的虚拟机绝对路径'
+      : 'Enter an absolute VM path beginning with /';
   String get cancel => isChinese ? '取消' : 'Cancel';
   String get apply => isChinese ? '应用' : 'Apply';
   String get inspect => isChinese ? '查看' : 'Inspect';
@@ -234,7 +283,13 @@ extension LicoStringsLabels on LicoStrings {
   String conversationCount(int count) =>
       isChinese ? '$count 条对话' : '$count conversations';
   String get conversations => isChinese ? '对话' : 'Conversations';
-  String get newConversation => isChinese ? '新对话' : 'New Conversation';
+  String get conversationListNav => isChinese ? '对话' : 'Chats';
+  String get skillsNav => isChinese ? '技能' : 'Skills';
+  String get pluginsNav => isChinese ? '插件' : 'Plugins';
+  String get mobileNav => isChinese ? '移动' : 'Mobile';
+  String get statsNav => isChinese ? '统计' : 'Stats';
+  String get statsPanel => isChinese ? '统计面板' : 'Statistics';
+  String get newConversation => isChinese ? '新对话' : 'New Chat';
   String get recycleBin => isChinese ? '回收站' : 'Recycle Bin';
   String get archivedConversations => isChinese ? '已归档' : 'Archived';
   String get recentConversations => isChinese ? '最近对话' : 'Recent conversations';
@@ -242,6 +297,16 @@ extension LicoStringsLabels on LicoStrings {
   String get noTrashedConversations =>
       isChinese ? '回收站为空' : 'Recycle bin is empty';
   String get delete => isChinese ? '删除' : 'Delete';
+  String get deleteSkillTitle => isChinese ? '删除这个技能？' : 'Delete this skill?';
+  String trashSkillMessage(String title) => isChinese
+      ? '“$title” 将移入系统回收站，可在回收站中恢复。'
+      : '"$title" will move to the system trash, where it can be restored.';
+  String get moveToSystemTrash => isChinese ? '移入回收站' : 'Move to Trash';
+  String skillMovedToSystemTrash(String title) =>
+      isChinese ? '已将“$title”移入系统回收站。' : 'Moved "$title" to the system trash.';
+  String get skillTrashFailed => isChinese
+      ? '无法将技能移入系统回收站，请确认技能仍存在且路径可访问。'
+      : 'Could not move the skill to the system trash. Check that it still exists and is accessible.';
   String get restore => isChinese ? '恢复' : 'Restore';
   String get confirmDeleteConversationTitle =>
       isChinese ? '删除这段对话？' : 'Delete this conversation?';
@@ -291,7 +356,14 @@ extension LicoStringsLabels on LicoStrings {
   String get agent => isChinese ? '智能体' : 'Agent';
   String get subagentTask => isChinese ? '子智能体任务' : 'Subagent task';
   String get agentProcess => isChinese ? '智能体过程' : 'Agent process';
-  String get workedBriefly => isChinese ? '短暂处理' : 'Worked briefly';
+  String get workedBriefly => isChinese ? '少于 1 秒' : 'Under 1s';
+  String get reasoningProcess => isChinese ? '思考过程' : 'Reasoning';
+  String get toolExecution => isChinese ? '工具执行' : 'Tool activity';
+  String get agentActivity => isChinese ? '智能体活动' : 'Agent activity';
+  String get runtimeLog => isChinese ? '运行记录' : 'Runtime log';
+  String runtimeLogEntries(int count) => isChinese
+      ? '运行记录 · $count 条'
+      : 'Runtime log · $count ${count == 1 ? 'entry' : 'entries'}';
   String workedForSeconds(int seconds) =>
       isChinese ? '处理了 $seconds秒' : 'Worked for ${seconds}s';
   String workedForMinutes(int minutes, int seconds) {
@@ -318,6 +390,68 @@ extension LicoStringsLabels on LicoStrings {
       isChinese ? '收起过程详情' : 'Collapse process details';
   String get reasoningSummary => isChinese ? '思考摘要' : 'Reasoning summary';
   String get providerSummary => isChinese ? '提供方摘要' : 'Provider summary';
+
+  // Messaging presentation (participant flow, details panel).
+  String get agentBadge => 'AGENT';
+  String get contacts => isChinese ? '对话' : 'Conversations';
+  String get attachments => isChinese ? '附件' : 'Attachments';
+  String get imageAttachment => isChinese ? '图片' : 'Image';
+  String get imageUnavailable => isChinese ? '图片不可用' : 'Image unavailable';
+  String get localUser => isChinese ? '本地用户' : 'Local User';
+  String get appearanceAndLayout => isChinese ? '外观与布局' : 'Appearance & Layout';
+  String get notifications => isChinese ? '通知' : 'Notifications';
+  String get noNotifications => isChinese ? '暂无通知' : 'No notifications';
+  String skillInvocationsCount(int count) => isChinese
+      ? '$count 次调用'
+      : '$count ${count == 1 ? 'invocation' : 'invocations'}';
+  String get allTimeInvocations => isChinese ? '累计调用' : 'All-time invocations';
+  String get today => isChinese ? '今天' : 'Today';
+  String get yesterday => isChinese ? '昨天' : 'Yesterday';
+  String get earlier => isChinese ? '更早' : 'Earlier';
+
+  /// Full localized weekday name for the sidebar time groups.
+  /// [weekday] follows [DateTime.weekday]: 1 is Monday, 7 is Sunday.
+  String conversationWeekdayLabel(int weekday) {
+    const chinese = ['星期一', '星期二', '星期三', '星期四', '星期五', '星期六', '星期日'];
+    const english = [
+      'Monday',
+      'Tuesday',
+      'Wednesday',
+      'Thursday',
+      'Friday',
+      'Saturday',
+      'Sunday',
+    ];
+    final index = (weekday - 1).clamp(0, 6);
+    return isChinese ? chinese[index] : english[index];
+  }
+
+  String get working => isChinese ? '正在工作…' : 'Working…';
+  String get lifecycleSubmitted => isChinese ? '消息已发送' : 'Message sent';
+  String get lifecycleAccepted => isChinese ? '智能体已接收' : 'Agent received';
+  String get lifecycleProcessing => isChinese ? '智能体处理中' : 'Agent is working';
+  String get lifecycleResponding => isChinese ? '正在生成回复' : 'Writing response';
+  String get lifecycleCompleted => isChinese ? '回复已完成' : 'Response complete';
+  String get lifecycleFailed => isChinese ? '处理失败' : 'Processing failed';
+  String get lifecycleSubmittedShort => isChinese ? '已发送' : 'Sent';
+  String get lifecycleAcceptedShort => isChinese ? '已接收' : 'Received';
+  String get lifecycleProcessingShort => isChinese ? '处理' : 'Working';
+  String get lifecycleRespondingShort => isChinese ? '回复中' : 'Replying';
+  String get lifecycleCompletedShort => isChinese ? '完成' : 'Done';
+  String lifecycleObserved(int count, int total) =>
+      isChinese ? '已观测 $count/$total 个阶段' : '$count of $total stages observed';
+  String get messagingEmptyConversationGuide => isChinese
+      ? '选择一个对话，或开始一个新对话'
+      : 'Select a conversation or start a new one';
+  String get runtimeSection => isChinese ? '运行时' : 'Runtime';
+  String get capabilitiesSection => isChinese ? '能力' : 'Capabilities';
+  String get connectionSection => isChinese ? '连接' : 'Connection';
+  String get sessionSection => isChinese ? '会话' : 'Session';
+  String get messages => isChinese ? '消息' : 'Messages';
+  String get createdTime => isChinese ? '创建时间' : 'Created';
+  String get showDetails => isChinese ? '显示详情' : 'Show details';
+  String get hideDetails => isChinese ? '隐藏详情' : 'Hide details';
+
   String get toolCall => isChinese ? '工具调用' : 'Tool call';
   String get nativeAgentActivity =>
       isChinese ? '原生智能体活动' : 'Native agent activity';
@@ -368,17 +502,26 @@ extension LicoStringsLabels on LicoStrings {
   String get primaryAgentShort => isChinese ? '主' : 'P';
   String get resetCircuitBreaker => isChinese ? '重置熔断' : 'Reset Circuit';
   String get circuitBroken => isChinese ? '已熔断' : 'Circuit Open';
-  String get commander => isChinese ? '指挥官' : 'Commander';
+  String get commander => isChinese ? '主智能体' : 'Main Agent';
   String get agentClient => isChinese ? '智能体客户端' : 'Agent Client';
   String get noModelsFound => isChinese ? '未发现模型' : 'No Models Found';
   String get noReasoningEffortsFound =>
       isChinese ? '未发现思考强度' : 'No Reasoning Efforts Found';
-  String get noModelLibraryEntries =>
-      isChinese ? '尚未添加模型组合' : 'No Model Combinations Added';
   String get defaultPolicy => isChinese ? '默认策略' : 'Default Policy';
-  String get editPolicy => isChinese ? '编辑策略' : 'Edit Policy';
-  String get renamePolicy => isChinese ? '重命名策略' : 'Rename Policy';
-  String get policyName => isChinese ? '策略名称' : 'Policy Name';
+  String get editPolicy => isChinese ? '适应性飞轮' : 'Adaptive Flywheel';
+  String get editMainAgent => isChinese ? '适应性飞轮' : 'Adaptive Flywheel';
+  String get codeEngineering => isChinese ? '代码工程' : 'Code Engineering';
+  String get backendLane => isChinese ? '后端线' : 'Backend lane';
+  String get frontendLane => isChinese ? '前端线' : 'Frontend lane';
+  String get codeEngineeringDesignerDescription => isChinese
+      ? '共享前后端设计与任务拆分。'
+      : 'Shared design and task decomposition for both lanes.';
+  String get codeEngineeringWorkerDescription => isChinese
+      ? '前后端分别实现，互不替代。'
+      : 'Separate implementation ownership for frontend and backend.';
+  String get codeEngineeringReviewerDescription => isChinese
+      ? '前后端分别审查并形成闭环。'
+      : 'Separate review closure for frontend and backend.';
   String get addRule => isChinese ? '新增规则' : 'Add Rule';
   String ruleLabel(int index) => isChinese ? '规则 $index' : 'Rule $index';
   String get configurePolicyBeforeSend =>
@@ -449,6 +592,10 @@ extension LicoStringsLabels on LicoStrings {
         isChinese
             ? '当前策略没有可用的发送目标。'
             : 'The current policy has no available send targets.',
+      'antigravity_auth_required' =>
+        isChinese
+            ? '发送前需要完成 Google 账号授权。'
+            : 'Google account authorization is required before sending.',
       _ => isChinese ? '操作不可用：$code' : 'Operation unavailable: $code',
     };
   }
@@ -458,19 +605,56 @@ extension LicoStringsLabels on LicoStrings {
   String get send => isChinese ? '发送' : 'Send';
   String conversationSendFailed(String reason) =>
       isChinese ? '发送失败：$reason' : 'Send failed: $reason';
+  String get conversationAuthorizeRuntimeAction =>
+      isChinese ? '授权' : 'Authorize';
+  String get conversationAuthorizingRuntimeAction =>
+      isChinese ? '授权中…' : 'Authorizing…';
 
-  String get appearancePreset => isChinese ? '外观方案' : 'Appearance Preset';
+  String get llmGatewayAuthorizeAndStart =>
+      isChinese ? '授权并启动' : 'Authorize and Start';
+  String get llmGatewayStart => isChinese ? '启动' : 'Start';
+  String get llmGatewayStop => isChinese ? '停止' : 'Stop';
+  String get llmGatewayAuthorizing =>
+      isChinese ? '授权中…' : 'Authorizing…';
+  String get llmGatewayStarting => isChinese ? '启动中…' : 'Starting…';
+  String get llmGatewayRequestingAuthorization => isChinese
+      ? '正在请求系统授权…'
+      : 'Requesting system authorization…';
+  String get llmGatewayAuthorizationFailed => isChinese
+      ? '系统授权未完成，请重试。'
+      : 'System authorization did not complete. Try again.';
+  String get llmGatewayNoCredentialsAvailable => isChinese
+      ? '没有可加载的 API Key，请先在上方添加。'
+      : 'No API keys are available. Add one above first.';
+  String get llmGatewayStarted =>
+      isChinese ? 'Gateway 已启动。' : 'Gateway started.';
+  String get llmGatewayStartFailed =>
+      isChinese ? 'Gateway 启动失败。' : 'Gateway failed to start.';
+  String get llmGatewayStopped =>
+      isChinese ? 'Gateway 已停止。' : 'Gateway stopped.';
+  String get llmGatewayStopFailed =>
+      isChinese ? 'Gateway 停止失败。' : 'Gateway failed to stop.';
+  String get llmGatewayNotReadyWaitingForAuthorization => isChinese
+      ? '尚未就绪，点击授权并启动以加载 API Key'
+      : 'Not ready; authorize and start to load API keys';
+  String get llmGatewayKeysLoadedStartToApply => isChinese
+      ? 'API Key 已加载，点击启动应用到 Gateway'
+      : 'API keys loaded; start to apply them';
+  String get llmGatewayKeysLoadedWaitingForService => isChinese
+      ? 'API Key 已加载，等待服务启动'
+      : 'API keys loaded; waiting for service';
+
+  String get appearanceDayNight => isChinese ? '明暗模式' : 'Brightness';
+  String get appearanceDay => isChinese ? '明亮' : 'Light';
+  String get appearanceNight => isChinese ? '暗黑' : 'Dark';
+  String get appearancePreset => isChinese ? '外观预设' : 'Appearance Preset';
   String get layoutProfile => isChinese ? '界面布局' : 'Interface Layout';
   String get layoutProfileDescription => isChinese
-      ? '预览并选择整套组件风格、页面排布与交互外观。'
-      : 'Preview and choose a complete component, arrangement, and interaction system.';
-  String get previewLayout => isChinese ? '预览布局' : 'Preview layout';
-  String get confirmLayout => isChinese ? '使用此布局' : 'Use this layout';
-  String get cancelLayoutPreview => isChinese ? '取消预览' : 'Cancel preview';
+      ? '选择整套组件风格、页面排布与交互外观。'
+      : 'Choose a complete component, arrangement, and interaction system.';
   String get resetLayout =>
       isChinese ? '恢复系统默认布局' : 'Restore system default layout';
   String get layoutLoading => isChinese ? '正在加载布局…' : 'Loading layouts…';
-  String get layoutPreviewing => isChinese ? '正在预览布局' : 'Previewing layout';
   String get layoutCommitting => isChinese ? '正在保存布局…' : 'Saving layout…';
   String get currentLayout => isChinese ? '当前布局' : 'Current layout';
   String layoutSelectionError(LayoutSelectionErrorCode code) => switch (code) {
@@ -488,17 +672,13 @@ extension LicoStringsLabels on LicoStrings {
           : 'An invalid layout preference was ignored and the default was restored.',
     LayoutSelectionErrorCode.persistenceFailed =>
       isChinese ? '无法保存布局，请稍后重试。' : 'The layout could not be saved. Try again.',
-    LayoutSelectionErrorCode.previewExpired =>
-      isChinese
-          ? '布局预览已结束，已恢复原布局。'
-          : 'The layout preview ended and the previous layout was restored.',
   };
 
   String get appearancePresetDirectory =>
-      isChinese ? '外观方案目录' : 'Appearance Preset Directory';
-  String get reloadPresets => isChinese ? '重新加载方案' : 'Reload Presets';
+      isChinese ? '外观预设目录' : 'Appearance Preset Directory';
+  String get reloadPresets => isChinese ? '重新加载预设' : 'Reload Presets';
   String invalidPresetConfigs(int count) =>
-      isChinese ? '$count 个外观方案配置无效' : '$count invalid preset configs';
+      isChinese ? '$count 个外观预设配置无效' : '$count invalid preset configs';
   String get portableData => isChinese ? '便携数据' : 'Portable Data';
   String get clientLogs => isChinese ? '客户端日志' : 'Client Logs';
   String get exportLogs => isChinese ? '导出日志' : 'Export Logs';
@@ -594,13 +774,8 @@ extension LicoStringsLabels on LicoStrings {
   String get readiness => isChinese ? '就绪状态' : 'Readiness';
   String get e2eeReadiness => isChinese ? '端到端加密就绪' : 'E2EE Readiness';
   String get secretStore => isChinese ? '密钥存储' : 'Secret Store';
-  String get gateway => isChinese ? '网关' : 'Gateway';
-  String get licoUpGateway => isChinese ? 'LicoUp 网关' : 'LicoUp Gateway';
-  String get customGateway => isChinese ? '自定义网关' : 'Custom Gateway';
-  String get privateGateway => isChinese ? '自定义网关' : 'Custom Gateway';
-  String get gatewayLocked =>
-      isChinese ? '默认 LicoUp 网关不可编辑' : 'Default LicoUp gateway is locked';
-  String get saveGateway => isChinese ? '保存网关' : 'Save Gateway';
+  String get station => isChinese ? '中转站' : 'Station';
+  String get saveStation => isChinese ? '保存中转站' : 'Save Station';
   String get defaultLabel => isChinese ? '默认' : 'Default';
   String get active => isChinese ? '当前' : 'Active';
   String get pairing => isChinese ? '配对' : 'Pairing';
@@ -667,7 +842,6 @@ extension LicoStringsLabels on LicoStrings {
       isChinese ? '扫描此二维码完成手机配对' : 'Scan This QR Code To Pair Your Phone';
   String get status => isChinese ? '状态' : 'Status';
   String get model => isChinese ? '模型' : 'Model';
-  String get modelLibrary => isChinese ? '模型库' : 'Model Library';
   String get reasoningEffort => isChinese ? '思考强度' : 'Reasoning Effort';
   String reasoningEffortOptionLabel(String value, String fallback) {
     return switch (value.trim().toLowerCase()) {

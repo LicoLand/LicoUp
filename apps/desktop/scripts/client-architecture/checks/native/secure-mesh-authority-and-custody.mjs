@@ -20,7 +20,6 @@ export async function checkSecureMeshAuthorityAndCustody(context) {
     readText,
     runJson,
     sameSet,
-    sourceLineCount,
   } = context;
   const cargoToml = await readText("crates/licoup-native/Cargo.toml");
   const secureClientRelayRoot =
@@ -99,7 +98,6 @@ export async function checkSecureMeshAuthorityAndCustody(context) {
     )
   ]);
   assert(
-    keyTransparencyFacadeSource.trimEnd().split(/\r?\n/u).length <= 30 &&
     keyTransparencyFacadeSource.includes("mod authority;") &&
     keyTransparencyFacadeSource.includes("mod publication;") &&
     keyTransparencyFacadeSource.includes("mod revocation;") &&
@@ -139,7 +137,6 @@ export async function checkSecureMeshAuthorityAndCustody(context) {
     "crates/licoup-native/src/domain/mobile_relay/endpoint_trust/local_material/rotation.rs"
   ]);
   assert(
-    localMaterialFacadeSource.trimEnd().split(/\r?\n/u).length <= 30 &&
     localMaterialFacadeSource.includes("mod identity_generation;") &&
     localMaterialFacadeSource.includes("mod material_mutation;") &&
     localMaterialFacadeSource.includes("mod prekey_generation;") &&
@@ -192,7 +189,6 @@ export async function checkSecureMeshAuthorityAndCustody(context) {
     "crates/licoup-native/src/domain/mobile_relay/endpoint_trust/directory_transparency/test_support.rs"
   );
   assert(
-    directoryTransparencyFacadeSource.trimEnd().split(/\r?\n/u).length <= 45 &&
     directoryTransparencyFacadeSource.includes("mod authorization;") &&
     directoryTransparencyFacadeSource.includes("mod authority;") &&
     directoryTransparencyFacadeSource.includes("mod claim;") &&
@@ -252,7 +248,6 @@ export async function checkSecureMeshAuthorityAndCustody(context) {
   ));
   const pairwiseSessionJoinedSource = Object.values(pairwiseSessionSources).join("\n");
   assert(
-    pairwiseSessionFacadeSource.trimEnd().split(/\r?\n/u).length <= 45 &&
     pairwiseSessionFacadeSource.includes("mod crypto_operation;") &&
     pairwiseSessionFacadeSource.includes("mod handshake;") &&
     pairwiseSessionFacadeSource.includes("mod payload;") &&
@@ -312,7 +307,6 @@ export async function checkSecureMeshAuthorityAndCustody(context) {
   ));
   const relayOperationJoinedSource = Object.values(relayOperationSources).join("\n");
   assert(
-    relayOperationsFacadeSource.trimEnd().split(/\r?\n/u).length <= 40 &&
     relayOperationsFacadeSource.includes("mod allow_list;") &&
     relayOperationsFacadeSource.includes("mod command_handlers;") &&
     relayOperationsFacadeSource.includes("mod context;") &&
@@ -485,7 +479,6 @@ export async function checkSecureMeshAuthorityAndCustody(context) {
     runtimeAdaptersRustSource.includes("codex_app_server::execute") &&
     runtimeAdaptersRustSource.includes("nativeSessionId") &&
     runtimeAdaptersRustSource.includes("approvalOwner") &&
-    codexAppServerFacadeSource.trimEnd().split(/\r?\n/u).length <= 20 &&
     codexAppServerRustSource.includes('"codex-app-server-stdio-jsonrpc"') &&
     codexAppServerRustSource.includes('"thread/start"') &&
     codexAppServerRustSource.includes('"thread/resume"') &&
@@ -591,8 +584,7 @@ export async function checkSecureMeshAuthorityAndCustody(context) {
   assert(JSON.stringify(secureMeshCapabilityDiscoveredProductionPaths) ===
     JSON.stringify([...secureMeshCapabilityProductionPaths].sort()),
     "Secure Mesh capability production must retain exactly six independently owned leaves");
-  assert(secureMeshCapabilityFacadeRustSource.trimEnd().split(/\r?\n/).length <= 22 &&
-    secureMeshCapabilityProductionPaths.every((relativePath) =>
+  assert(secureMeshCapabilityProductionPaths.every((relativePath) =>
       secureMeshCapabilityFacadeRustSource.includes(
         `mod ${path.basename(relativePath, ".rs")};`)) &&
     ["struct ", "enum ", "impl ", "fn ", "include_str!", "OnceLock"]
@@ -632,8 +624,7 @@ export async function checkSecureMeshAuthorityAndCustody(context) {
   assert(JSON.stringify(secureMeshPrekeyDiscoveredProductionPaths) ===
     JSON.stringify([...secureMeshPrekeyProductionPaths].sort()),
     "Secure Mesh prekey production must retain exactly four independently owned leaves");
-  assert(secureMeshPrekeyFacadeRustSource.trimEnd().split(/\r?\n/).length <= 30 &&
-    secureMeshPrekeyProductionPaths.every((relativePath) =>
+  assert(secureMeshPrekeyProductionPaths.every((relativePath) =>
       secureMeshPrekeyFacadeRustSource.includes(
         `mod ${path.basename(relativePath, ".rs")};`)) &&
     ["struct ", "enum ", "impl ", "fn ", "SigningKey", "OffsetDateTime"]

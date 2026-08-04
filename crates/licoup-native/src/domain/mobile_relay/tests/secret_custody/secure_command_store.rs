@@ -89,7 +89,6 @@ fn secure_command_create_rejects_raw_runtime_e2ee_secret_overrides() {
         "targetAgentId": "codex",
         "workspaceId": "default",
         "body": {
-            "agentId": "codex",
             "text": "raw-runtime-override-plaintext-canary"
         },
         "secretOverrideTransport": RUNTIME_SECRET_OVERRIDE_TRANSPORT,
@@ -131,7 +130,7 @@ fn secure_command_create_rejects_raw_runtime_e2ee_secret_overrides() {
 
 #[test]
 fn secure_command_create_uses_mobile_relay_secret_store_override_without_raw_e2ee_json() {
-    let gateway = CanonicalRelayGateway::start(1, Vec::new());
+    let station = CanonicalStation::start(1, Vec::new());
     let dir = temp_dir("mobile-relay-secure-command-secret-store-override");
     let previous = set_portable_data_dir_override(Some(dir));
 
@@ -164,11 +163,10 @@ fn secure_command_create_uses_mobile_relay_secret_store_override_without_raw_e2e
         stringify!(&mobile_config),
         MobileRelayE2eeSecretField::OneTimeMlKem1024PrekeySeed,
     );
-    mobile_config["pairingId"] = json!("pair_secret_store_override_gateway");
+    mobile_config["pairingId"] = json!("pair_secret_store_override_station");
     mobile_config["mobileToken"] = json!("mobile-token-secret-store-override-canary");
     mobile_config["relayEnabled"] = json!(true);
-    mobile_config["useCustomGateway"] = json!(true);
-    mobile_config["customGatewayUrl"] = json!(gateway.url());
+    mobile_config["stationBaseUrl"] = json!(station.url());
     let setup_store_override: Arc<dyn SecureMeshSecretStore> = store.clone();
     with_mobile_relay_secret_store_override(setup_store_override, || {
         save_test_config_with_runtime_secret_context(&mut mobile_config, stringify!(&mobile_config))
@@ -177,12 +175,11 @@ fn secure_command_create_uses_mobile_relay_secret_store_override_without_raw_e2e
 
     let store_override: Arc<dyn SecureMeshSecretStore> = store.clone();
     let create_response = with_mobile_relay_secret_store_override(store_override, || {
-        command_create_secure(&with_canonical_relay_params(json!({
+        command_create_secure(&with_station_params(json!({
             "commandKind": "agent.message.send",
             "targetAgentId": "codex",
             "workspaceId": "default",
             "body": {
-                "agentId": "codex",
                 "text": "secret-store-override-plaintext-canary"
             },
             "secretOverrideTransport": RUNTIME_SECRET_OVERRIDE_TRANSPORT,
@@ -198,8 +195,25 @@ fn secure_command_create_uses_mobile_relay_secret_store_override_without_raw_e2e
     .unwrap();
     assert_eq!(create_response["ok"], true);
 
-    let request = gateway.request_body(0);
-    assert!(serde_json::from_str::<Value>(&request).unwrap()["envelope"].is_object());
+    let request = station.request_body(0);
+    let request_body = serde_json::from_str::<Value>(&request).unwrap();
+    assert_eq!(
+        request_body
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(String::as_str)
+            .collect::<std::collections::BTreeSet<_>>(),
+        [
+            "ciphertext",
+            "contractVersion",
+            "envelopeId",
+            "expiresAt",
+            "mailboxId",
+        ]
+        .into_iter()
+        .collect()
+    );
     assert!(!request.contains(SECURE_MESH_ENVELOPE_COMMAND));
     for canary in [
         "secret-store-override-plaintext-canary",
@@ -231,7 +245,7 @@ fn secure_command_create_uses_mobile_relay_secret_store_override_without_raw_e2e
         assert!(!persisted.contains(secret));
     }
 
-    gateway.assert_operations(&[SecureClientRelayOperation::EnvelopeSend]);
-    gateway.join();
+    station.assert_operations(&[BadTowerStationOperation::SendEnvelope]);
+    station.join();
     set_portable_data_dir_override(previous);
 }

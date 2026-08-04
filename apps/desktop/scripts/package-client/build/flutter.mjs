@@ -54,9 +54,6 @@ export function buildFlutterApp(options) {
   });
   runFlutterPubGet(stagedRoot, flutterEnv, options);
   const args = ["build", options.platform, `--${options.mode}`, "--no-pub"];
-  args.push(
-    `--dart-define=LICO_ROUTING_MODULE_INCLUDED=${options.routingModuleIncluded !== false}`,
-  );
   if (process.env.LICO_AGENT_CONVERSATION_RELEASE_LIVE === "1") {
     args.push("--dart-define=LICO_AGENT_CONVERSATION_RELEASE_LIVE=true");
   }

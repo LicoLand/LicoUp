@@ -100,12 +100,6 @@ test("changed Flutter feature paths select only their bounded feature module", (
     "flutter.feature.optional-collaboration.mcp-install",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "apps/desktop/lib/src/platform/native_client/orchestrator_ipc/client.dart",
-  ])), [
-    "architecture.client-boundaries",
-    "flutter.feature.orchestrator-projection",
-  ]);
-  assert.deepEqual(ids(selectModulesForChangedPaths([
     "apps/desktop/lib/src/frontend/features/agents/ui/history_session_search.dart",
   ])), [
     "architecture.client-boundaries",
@@ -124,18 +118,18 @@ test("changed Flutter feature paths select only their bounded feature module", (
     "flutter.feature.mobile-relay.secure-mesh-controller",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "apps/desktop/lib/src/frontend/layout/profiles/workbench/desktop/shell/workbench_desktop_chrome.dart",
+    "apps/desktop/lib/src/frontend/layout/profiles/dashboard/desktop/shell/dashboard_desktop_chrome.dart",
   ])), [
     "architecture.client-boundaries",
-    "regression.workbench-desktop-chrome-source-bundle",
-    "flutter.layout.workbench-desktop-chrome.composition",
+    "regression.dashboard-desktop-chrome-source-bundle",
+    "flutter.layout.dashboard-desktop-chrome.composition",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "apps/desktop/lib/src/frontend/layout/profiles/workbench/desktop/shell/workbench_desktop_search.dart",
+    "apps/desktop/lib/src/frontend/layout/profiles/dashboard/desktop/shell/dashboard_desktop_search.dart",
   ])), [
     "architecture.client-boundaries",
-    "regression.workbench-desktop-chrome-source-bundle",
-    "flutter.layout.workbench-desktop-chrome.search",
+    "regression.dashboard-desktop-chrome-source-bundle",
+    "flutter.layout.dashboard-desktop-chrome.search",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
     "apps/desktop/lib/src/frontend/features/agents/ui/agent_conversation_pane.dart",
@@ -181,7 +175,7 @@ test("changed Flutter feature paths select only their bounded feature module", (
   ]);
 });
 
-test("Flutter controller assembly and native orchestrator projection select precise closures", () => {
+test("Flutter controller assembly and main-agent selection select precise closures", () => {
   assert.deepEqual(ids(selectModulesForChangedPaths([
     "apps/desktop/lib/src/application/controller/client_controller.dart",
   ])), [
@@ -195,14 +189,17 @@ test("Flutter controller assembly and native orchestrator projection select prec
     "flutter.controller.assembly.mobile",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "apps/desktop/lib/src/application/features/agents/orchestration/agent_orchestration_dispatch_controller.dart",
+    "apps/desktop/lib/src/application/features/agents/orchestration/agent_orchestration_policy_controller.dart",
   ])), [
     "architecture.client-boundaries",
-    "flutter.feature.orchestrator-projection",
+    "flutter.feature.main-agent-selection",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "apps/desktop/test/agent_orchestration/orchestrator_projection_test.dart",
-  ])), ["flutter.feature.orchestrator-projection"]);
+    "apps/desktop/test/agent_orchestration_target_test.dart",
+  ])), [
+    "flutter.contract.main-agent.target",
+    "flutter.feature.main-agent-selection",
+  ]);
 
   const facade = CLIENT_MODULE_CATALOG.find(
     (module) => module.id === "flutter.controller.facade",
@@ -211,47 +208,43 @@ test("Flutter controller assembly and native orchestrator projection select prec
     facade.command.args.includes("test/client_controller_runtime_facades_test.dart"),
     true,
   );
-  const orchestratorProjection = CLIENT_MODULE_CATALOG.find(
-    (module) => module.id === "flutter.feature.orchestrator-projection",
+  const mainAgentSelection = CLIENT_MODULE_CATALOG.find(
+    (module) => module.id === "flutter.feature.main-agent-selection",
   );
-  assert.equal(orchestratorProjection.command.args.length < 16, true);
+  assert.equal(mainAgentSelection.command.args.length < 16, true);
   assert.equal(
-    orchestratorProjection.command.args.includes(
-      "test/agent_orchestration/orchestrator_projection_test.dart",
+    mainAgentSelection.command.args.includes(
+      "test/agent_orchestration_target_test.dart",
     ),
     true,
   );
 });
 
-test("native orchestrator projection owns one bounded desktop acceptance target", () => {
+test("main-agent selection owns one bounded desktop acceptance target", () => {
   const projection = CLIENT_MODULE_CATALOG.find(
-    (module) => module.id === "flutter.feature.orchestrator-projection",
+    (module) => module.id === "flutter.feature.main-agent-selection",
   );
   assert.deepEqual(projection.inputs, [
     "apps/desktop/lib/src/application/features/agents/orchestration/**",
-    "apps/desktop/lib/src/platform/native_client/orchestrator_ipc/**",
-    "apps/desktop/test/agent_orchestration/orchestrator_projection_test.dart",
+    "apps/desktop/lib/src/application/features/agents/conversation/conversation_message_controller.dart",
+    "apps/desktop/test/agent_orchestration_target_test.dart",
   ]);
   assert.deepEqual(projection.command.args.slice(-1), [
-    "test/agent_orchestration/orchestrator_projection_test.dart",
+    "test/agent_orchestration_target_test.dart",
   ]);
 });
 
-test("Workbench desktop chrome leaves retain exact widget tests and bounded catalog ownership", () => {
+test("Dashboard desktop chrome leaves retain exact widget tests and bounded catalog ownership", () => {
   const filters = new Map([
-    ["flutter.layout.workbench-desktop-chrome.composition",
-      "test/layout/profiles/workbench/desktop/workbench_desktop_widget_test.dart"],
-    ["flutter.layout.workbench-desktop-chrome.topbar",
-      "test/layout/profiles/workbench/desktop/workbench_desktop_topbar_test.dart"],
-    ["flutter.layout.workbench-desktop-chrome.search",
-      "test/layout/profiles/workbench/desktop/workbench_desktop_search_test.dart"],
-    ["flutter.layout.workbench-desktop-chrome.status",
-      "test/layout/profiles/workbench/desktop/workbench_desktop_status_test.dart"],
-    ["flutter.layout.workbench-desktop-chrome.navigation",
-      "test/layout/profiles/workbench/desktop/workbench_desktop_navigation_test.dart"],
+    ["flutter.layout.dashboard-desktop-chrome.composition",
+      "test/layout/profiles/dashboard/desktop/dashboard_desktop_widget_test.dart"],
+    ["flutter.layout.dashboard-desktop-chrome.folder-sidebar",
+      "test/layout/profiles/dashboard/desktop/dashboard_folder_sidebar_test.dart"],
+    ["flutter.layout.dashboard-desktop-chrome.search",
+      "test/layout/profiles/dashboard/desktop/dashboard_desktop_search_test.dart"],
   ]);
   const modules = CLIENT_MODULE_CATALOG.filter((candidate) =>
-    candidate.id.startsWith("flutter.layout.workbench-desktop-chrome."));
+    candidate.id.startsWith("flutter.layout.dashboard-desktop-chrome."));
   assert.equal(modules.length, filters.size);
   for (const [id, testPath] of filters) {
     const module = CLIENT_MODULE_CATALOG.find((candidate) => candidate.id === id);
@@ -259,20 +252,18 @@ test("Workbench desktop chrome leaves retain exact widget tests and bounded cata
   }
 
   const sourceCheck = CLIENT_MODULE_CATALOG.find((candidate) =>
-    candidate.id === "regression.workbench-desktop-chrome-source-bundle");
+    candidate.id === "regression.dashboard-desktop-chrome-source-bundle");
   const ownedInputs = new Set([
     ...modules.flatMap((module) => module.inputs),
     ...sourceCheck.inputs,
   ]);
   for (const relativePath of [
-    "apps/desktop/lib/src/frontend/layout/profiles/workbench/desktop/shell/workbench_desktop_chrome.dart",
-    "apps/desktop/lib/src/frontend/layout/profiles/workbench/desktop/shell/workbench_desktop_navigation.dart",
-    "apps/desktop/lib/src/frontend/layout/profiles/workbench/desktop/shell/workbench_desktop_search.dart",
-    "apps/desktop/lib/src/frontend/layout/profiles/workbench/desktop/shell/workbench_desktop_status.dart",
-    "apps/desktop/lib/src/frontend/layout/profiles/workbench/desktop/shell/workbench_desktop_topbar.dart",
+    "apps/desktop/lib/src/frontend/layout/profiles/dashboard/desktop/shell/dashboard_desktop_chrome.dart",
+    "apps/desktop/lib/src/frontend/layout/profiles/dashboard/desktop/shell/dashboard_desktop_search.dart",
+    "apps/desktop/lib/src/frontend/layout/profiles/dashboard/desktop/shell/dashboard_folder_sidebar.dart",
   ]) {
     assert.equal(ownedInputs.has(relativePath), true,
-      `Workbench desktop chrome source must have a focused regression owner: ${relativePath}`);
+      `Dashboard desktop chrome source must have a focused regression owner: ${relativePath}`);
   }
 
   const layoutFoundation = CLIENT_MODULE_CATALOG.find((candidate) =>

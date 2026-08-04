@@ -52,8 +52,8 @@ void registerAgentUsageFormattingScenarios() {
     expect(find.text('Report Totals'), findsNothing);
     expect(find.text('Metered Traffic'), findsNothing);
     expect(find.text('Estimated History'), findsNothing);
-    expect(find.text('Usage Over Time'), findsOneWidget);
-    expect(tester.getTopLeft(find.text('Usage Over Time')).dx, lessThan(40));
+    expect(find.text('Usage Over Time'), findsNothing);
+    expect(tester.getTopLeft(find.text('Token Usage')).dx, lessThan(40));
     expect(find.text('By Agent'), findsOneWidget);
     expect(find.text('By Model'), findsOneWidget);
 

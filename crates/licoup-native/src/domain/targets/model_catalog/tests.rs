@@ -236,6 +236,7 @@ model = "gpt-5.4-mini"
                 .iter()
                 .any(|model| model["name"] == "deepseek-v4-pro")
         );
+        assert_eq!(catalog["defaultModel"], json!("deepseek-v4-pro[1m]"));
     }
 }
 
@@ -257,10 +258,12 @@ mod antigravity {
                 "antigravityAvailableModelsJson": json!({
                     "models": {
                         "gemini-flash-medium": {
-                            "displayName": "Gemini 3.5 Flash (Medium)"
+                            "displayName": "Gemini 3.5 Flash (Medium)",
+                            "reasoningEfforts": ["low", "medium", "high"]
                         },
                         "claude-opus-thinking": {
-                            "displayName": "Claude Opus 4.6 (Thinking)"
+                            "displayName": "Claude Opus 4.6 (Thinking)",
+                            "reasoningEfforts": ["high"]
                         }
                     }
                 }).to_string()
@@ -275,6 +278,13 @@ mod antigravity {
             .collect::<Vec<_>>();
         assert!(names.contains(&"Gemini 3.5 Flash (Medium)"));
         assert!(names.contains(&"Claude Opus 4.6 (Thinking)"));
+        assert!(
+            catalog["models"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|model| model["reasoningEfforts"].as_array().unwrap().is_empty())
+        );
     }
 
     #[test]
@@ -301,17 +311,19 @@ Claude Opus 4.6 (Thinking)
     #[test]
     fn antigravity_cli_model_lookup_preserves_real_results() {
         let dir = temp_test_dir("antigravity-cli-models");
+        let config_path = dir.join("settings.json");
+        fs::write(&config_path, r#"{"model":"gemini-3.1-pro-preview"}"#).unwrap();
         let executable = dir.join("agent-models");
         fs::write(
             &executable,
-            "#!/bin/sh\nprintf 'Fixture Model One\\nFixture Model Two\\n'\n",
+            "#!/bin/sh\nprintf 'gemini-3.6-flash-medium\\nclaude-opus-4-6-thinking\\ngpt-oss-120b-medium\\n'\n",
         )
         .unwrap();
         fs::set_permissions(&executable, fs::Permissions::from_mode(0o700)).unwrap();
 
         let catalog = model_catalog_for_target(
             "antigravity",
-            None,
+            Some(&config_path),
             &json!({
                 "includeHistoryModelCatalog": false,
                 "enableAgentCliModelLookup": true,
@@ -324,7 +336,14 @@ Claude Opus 4.6 (Thinking)
                 .as_array()
                 .unwrap()
                 .iter()
-                .any(|model| model["name"] == "Fixture Model One")
+                .any(|model| model["name"] == "gemini-3.6-flash-medium")
+        );
+        assert!(
+            !catalog["models"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|model| model["name"] == "gemini-3.1-pro-preview")
         );
         assert!(
             catalog["sources"]
@@ -359,6 +378,151 @@ Claude Opus 4.6 (Thinking)
             |diagnostic| diagnostic["source"] == "antigravity-cli:models"
                 && diagnostic["status"] == "timeout"
         ));
+    }
+}
+
+mod cursor {
+    use super::super::cursor::collect_cursor_model_catalog_from_cli_output;
+    use super::*;
+    #[cfg(unix)]
+    use std::os::unix::fs::PermissionsExt;
+
+    #[test]
+    fn cursor_cli_output_preserves_native_selector_ids() {
+        let mut entries = BTreeMap::<String, ModelCatalogEntry>::new();
+        let added = collect_cursor_model_catalog_from_cli_output(
+            "Available models\n\ncursor-grok-4.5-high - Cursor Grok 4.5\ngemini-3.6-flash-high - Gemini 3.6 Flash\n\nTip: use --model <id>\n",
+            "cursor-cli:models",
+            &mut entries,
+        );
+
+        assert_eq!(added.added, 2);
+        let grok = entries.get("cursor-grok-4.5-high").unwrap();
+        assert_eq!(grok.name, "cursor-grok-4.5-high");
+        assert_eq!(grok.display_name, "Cursor Grok 4.5");
+        assert!(!entries.contains_key("Available models"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn cursor_cli_model_lookup_reads_installed_catalog() {
+        let dir = temp_test_dir("cursor-cli-models");
+        let executable = dir.join("cursor-agent");
+        fs::write(
+            &executable,
+            "#!/bin/sh\nprintf 'Available models\\n\\nauto - Auto (default)\\ncursor-grok-4.5-high - Cursor Grok 4.5\\ncomposer-2.5 - Composer 2.5 (current)\\n'\n",
+        )
+        .unwrap();
+        fs::set_permissions(&executable, fs::Permissions::from_mode(0o700)).unwrap();
+
+        let catalog = model_catalog_for_target(
+            "cursor",
+            None,
+            &json!({
+                "includeHistoryModelCatalog": false,
+                "enableAgentCliModelLookup": true,
+                "cursorCliPath": display_path(executable),
+            }),
+        );
+
+        assert!(catalog["models"].as_array().unwrap().iter().any(|model| {
+            model["name"] == "cursor-grok-4.5-high" && model["displayName"] == "Cursor Grok 4.5"
+        }));
+        assert_eq!(catalog["defaultModel"], json!("auto"));
+        assert!(catalog["models"].as_array().unwrap().iter().any(|model| {
+            model["name"] == "composer-2.5" && model["displayName"] == "Composer 2.5"
+        }));
+        assert!(
+            catalog["sources"]
+                .as_array()
+                .unwrap()
+                .contains(&json!("cursor-cli"))
+        );
+    }
+
+    #[test]
+    fn cursor_cli_output_keeps_default_and_current_rows_separate() {
+        let mut entries = BTreeMap::<String, ModelCatalogEntry>::new();
+        let parsed = collect_cursor_model_catalog_from_cli_output(
+            "Available models\n\nauto - Auto (default)\ncomposer-2.5 - Composer 2.5 (current)\n",
+            "cursor-cli:models",
+            &mut entries,
+        );
+
+        assert_eq!(parsed.default_model.as_deref(), Some("auto"));
+        assert_eq!(parsed.current_model.as_deref(), Some("composer-2.5"));
+        assert_eq!(entries.get("auto").unwrap().display_name, "Auto");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn cursor_native_catalog_replaces_stale_config_models() {
+        let dir = temp_test_dir("cursor-authoritative-models");
+        let config_path = dir.join("settings.json");
+        fs::write(&config_path, r#"{"model":"stale-cursor-model"}"#).unwrap();
+        let executable = dir.join("cursor-agent");
+        fs::write(
+            &executable,
+            "#!/bin/sh\nprintf 'Available models\\n\\ncomposer-2.5 - Composer 2.5 (current)\\n'\n",
+        )
+        .unwrap();
+        fs::set_permissions(&executable, fs::Permissions::from_mode(0o700)).unwrap();
+
+        let catalog = model_catalog_for_target(
+            "cursor",
+            Some(&config_path),
+            &json!({
+                "includeHistoryModelCatalog": false,
+                "enableAgentCliModelLookup": true,
+                "cursorCliPath": display_path(executable),
+            }),
+        );
+
+        let names = catalog["models"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|model| model["name"].as_str().unwrap())
+            .collect::<Vec<_>>();
+        assert_eq!(names, vec!["composer-2.5"]);
+        assert_eq!(catalog["defaultModel"], json!("composer-2.5"));
+    }
+}
+
+mod kimi_code {
+    use super::*;
+
+    #[test]
+    fn qualified_history_names_fold_into_official_native_ids() {
+        let catalog = model_catalog_for_target(
+            "kimi-code",
+            None,
+            &json!({
+                "includeHistoryModelCatalog": false,
+                "modelCatalogFixture": {
+                    "kimi-code": {
+                        "defaultModel": "kimi-code/k3",
+                        "models": [
+                            "k3",
+                            "kimi-code/k3",
+                            "k3-256k",
+                            "kimi-code/k3-256k",
+                            "kimi-for-coding",
+                            "kimi-code/kimi-for-coding"
+                        ]
+                    }
+                }
+            }),
+        );
+
+        let names = catalog["models"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|model| model["name"].as_str().unwrap())
+            .collect::<Vec<_>>();
+        assert_eq!(names, vec!["k3", "k3-256k", "kimi-for-coding"]);
+        assert_eq!(catalog["defaultModel"], json!("k3"));
     }
 }
 
@@ -557,6 +721,53 @@ mod history {
 
 mod normalization {
     use super::*;
+
+    #[test]
+    fn default_model_projection_reads_explicit_nested_native_state_only() {
+        let document = json!({
+            "env": {
+                "ANTHROPIC_MODEL": "deepseek-v4-pro[1m]"
+            },
+            "profiles": {
+                "review": {
+                    "selectedModel": "profile-only-model"
+                }
+            }
+        });
+
+        assert_eq!(
+            default_model_name_from_config_document(&document).as_deref(),
+            Some("deepseek-v4-pro[1m]")
+        );
+        assert_eq!(
+            default_model_name_from_config_document(&json!({
+                "profiles": {
+                    "review": {
+                        "selectedModel": "profile-only-model"
+                    }
+                }
+            })),
+            None
+        );
+    }
+
+    #[test]
+    fn default_model_projection_reads_flagged_catalog_entry() {
+        let document = json!({
+            "themes": [
+                {"name": "dark", "default": true}
+            ],
+            "models": [
+                {"name": "model-a"},
+                {"name": "model-b", "isDefault": true}
+            ]
+        });
+
+        assert_eq!(
+            default_model_name_from_config_document(&document).as_deref(),
+            Some("model-b")
+        );
+    }
 
     #[test]
     fn model_normalization_rejects_unsafe_names_and_canonicalizes_known_families() {
@@ -770,6 +981,27 @@ mod builtin {
                 .as_array()
                 .unwrap()
                 .contains(&json!("builtin"))
+        );
+    }
+
+    #[test]
+    fn antigravity_never_exposes_a_separate_reasoning_effort() {
+        let catalog = catalog_with_fixture(
+            "antigravity",
+            json!({
+                "models": [
+                    { "name": "gemini-3.5-flash", "reasoningEfforts": ["low", "high"] },
+                    { "name": "Claude Opus 4.6 (Thinking)", "reasoningEfforts": ["high"] }
+                ]
+            }),
+        );
+
+        assert!(
+            catalog["models"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|model| model["reasoningEfforts"].as_array().unwrap().is_empty())
         );
     }
 

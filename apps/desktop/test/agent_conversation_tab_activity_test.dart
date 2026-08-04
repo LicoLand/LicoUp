@@ -129,6 +129,10 @@ void main() {
       targetFixture('cursor'),
     ];
     controller.selectedConversationAgentId = 'codex';
+    controller.conversationSessionsByAgent = {
+      'codex': [_activitySession('session-approval', 'codex')],
+      'cursor': [_activitySession('session-finished', 'cursor')],
+    };
     controller.conversationTabActivityByAgent = const {
       'codex': AgentConversationTabActivity.needsApproval,
       'cursor': AgentConversationTabActivity.workFinished,
@@ -141,13 +145,13 @@ void main() {
     ).extension<LicoThemeColors>()!;
 
     final approvalDot = tester.widget<Container>(
-      find.byKey(const Key('agent-sidebar-activity-codex')),
+      find.byKey(const Key('agents-sidebar-activity-session-approval')),
     );
     final finishedDot = tester.widget<Container>(
-      find.byKey(const Key('agent-sidebar-activity-cursor')),
+      find.byKey(const Key('agents-sidebar-activity-session-finished')),
     );
     expect((approvalDot.decoration as BoxDecoration).color, colors.warning);
-    expect((finishedDot.decoration as BoxDecoration).color, colors.info);
+    expect((finishedDot.decoration as BoxDecoration).color, colors.accent);
   });
 
   testWidgets('selecting a sidebar agent clears unfinished work light only', (
@@ -161,16 +165,8 @@ void main() {
     ];
     controller.selectedConversationAgentId = 'codex';
     controller.conversationSessionsByAgent = {
-      'codex': [
-        AgentConversationSession(
-          id: 'session-1',
-          agentId: 'codex',
-          title: 'Session',
-          createdAt: '2026-01-01T00:00:00Z',
-          updatedAt: '2026-01-01T00:00:00Z',
-          messages: const [],
-        ),
-      ],
+      'codex': [_activitySession('session-1', 'codex')],
+      'cursor': [_activitySession('session-2', 'cursor')],
     };
     controller.conversationTabActivityByAgent = {
       'codex': AgentConversationTabActivity.workFinished,
@@ -179,16 +175,19 @@ void main() {
 
     await pumpWorkspace(tester, controller);
     expect(
-      find.byKey(const Key('agent-sidebar-activity-codex')),
+      find.byKey(const Key('agents-sidebar-activity-session-1')),
       findsOneWidget,
     );
 
     await controller.selectConversationAgent('codex');
     await tester.pump();
 
-    expect(find.byKey(const Key('agent-sidebar-activity-codex')), findsNothing);
     expect(
-      find.byKey(const Key('agent-sidebar-activity-cursor')),
+      find.byKey(const Key('agents-sidebar-activity-session-1')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const Key('agents-sidebar-activity-session-2')),
       findsOneWidget,
     );
     expect(
@@ -196,4 +195,15 @@ void main() {
       AgentConversationTabActivity.needsApproval,
     );
   });
+}
+
+AgentConversationSession _activitySession(String id, String agentId) {
+  return AgentConversationSession(
+    id: id,
+    agentId: agentId,
+    title: 'Session',
+    createdAt: '2026-01-01T00:00:00Z',
+    updatedAt: '2026-01-01T00:00:00Z',
+    messages: const [],
+  );
 }

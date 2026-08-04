@@ -9,18 +9,24 @@ use super::parameters::{param_bool, param_string};
 use super::platform_paths::{default_config_path_with_params, default_detection_path_with_params};
 use super::processes::{ScanContext, running_process_for, target_uses_running_process_detection};
 use super::support::display_path;
+use super::virtual_machine_discovery::AutomaticVmTarget;
+use crate::platform::agent_workspace::default_local_agent_workspace;
 use crate::platform::runtime_adapters;
+use crate::platform::virtual_machine::SshRuntimeConnection;
 use anyhow::Result;
 use serde_json::{Value, json};
-use std::env;
 use std::path::PathBuf;
 
 pub(super) fn scan_target_with_manual(
     def: &TargetDef,
     manual: Option<&ManualTarget>,
+    automatic_vm: Option<&AutomaticVmTarget>,
     scan_context: &mut ScanContext,
     params: &Value,
 ) -> Result<TargetCandidate> {
+    if let Some(manual) = manual.filter(|item| item.location == "virtual-machine") {
+        return Ok(scan_virtual_machine_target(def, manual));
+    }
     let config_path = manual
         .and_then(|item| item.config_path.clone())
         .or_else(|| default_config_path_with_params(def.id, params));
@@ -54,6 +60,12 @@ pub(super) fn scan_target_with_manual(
     let detected =
         config_exists || binary_path.is_some() || detection_exists || running_process.is_some();
     let manual_entry = manual.is_some();
+    if manual.is_none()
+        && binary_path.is_none()
+        && let Some(automatic_vm) = automatic_vm
+    {
+        return Ok(scan_automatic_virtual_machine_target(def, automatic_vm));
+    }
     let configured = config_exists;
     let status = if configured {
         "configured"
@@ -108,7 +120,7 @@ pub(super) fn scan_target_with_manual(
             .or_else(|| param_string(params, "cwd"))
             .map(PathBuf::from)
             .filter(|path| path.is_absolute())
-            .or_else(|| env::current_dir().ok());
+            .or_else(|| default_local_agent_workspace(def.id));
         if let Some(probe_cwd) = probe_cwd.as_deref() {
             capabilities.conversation_probe =
                 runtime_adapters::probe_runtime_driver(def.id, binary, probe_cwd);
@@ -160,6 +172,8 @@ pub(super) fn scan_target_with_manual(
         config_path: config_path.map(display_path),
         binary_path: binary_path.map(display_path),
         history_roots: history_roots.into_iter().map(display_path).collect(),
+        location: "local".to_string(),
+        runtime_connection: None,
         manual: manual_entry,
         adapter_status: adapter_status.to_string(),
         adapter_capabilities: capabilities,
@@ -180,4 +194,124 @@ pub(super) fn scan_target_with_manual(
         ),
         model_catalog: Some(model_catalog),
     })
+}
+
+fn scan_virtual_machine_target(def: &TargetDef, manual: &ManualTarget) -> TargetCandidate {
+    project_virtual_machine_target(
+        def,
+        &manual.label,
+        &manual.kind,
+        manual.runtime_connection.as_ref(),
+        true,
+        "Manual virtual machine connection; runtime validation is deferred until use.",
+        "Manual virtual machine connection is incomplete.",
+        "virtual-machine-ssh",
+    )
+}
+
+pub(super) fn scan_automatic_virtual_machine_target(
+    def: &TargetDef,
+    automatic: &AutomaticVmTarget,
+) -> TargetCandidate {
+    project_virtual_machine_target(
+        def,
+        &automatic.label,
+        def.kind,
+        Some(&automatic.runtime_connection),
+        false,
+        "Detected in an accessible local virtual machine; runtime validation is deferred until use.",
+        "Automatic virtual machine connection is unavailable.",
+        "virtual-machine-orbstack",
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn project_virtual_machine_target(
+    def: &TargetDef,
+    label: &str,
+    kind: &str,
+    runtime_connection: Option<&SshRuntimeConnection>,
+    manual: bool,
+    ready_detail: &str,
+    unavailable_detail: &str,
+    scan_source: &str,
+) -> TargetCandidate {
+    let mut capabilities = adapter_capabilities_for(def.id);
+    let runtime_ready =
+        runtime_connection.is_some() && runtime_adapters::runtime_driver_profile(def.id).is_some();
+    let uses_hermes_gateway =
+        runtime_connection.is_some_and(SshRuntimeConnection::is_hermes_tui_gateway);
+    if uses_hermes_gateway {
+        capabilities.conversation_protocol =
+            crate::platform::hermes_tui_gateway::RUNTIME_PROTOCOL.to_string();
+        if let Some(matrix) = capabilities.conversation_capability_matrix.as_object_mut() {
+            matrix.insert("laneFamily".to_string(), json!("rpc"));
+            matrix.insert("cancel".to_string(), json!(false));
+            matrix.insert("interruptSteer".to_string(), json!(false));
+        }
+    }
+    capabilities.conversation_probe = if runtime_ready {
+        json!({
+            "available": true,
+            "supported": false,
+            "errorCode": "probe_not_run",
+            "transport": "ssh-stdio",
+            "protocol": if uses_hermes_gateway {
+                crate::platform::hermes_tui_gateway::RUNTIME_PROTOCOL
+            } else {
+                "acp"
+            }
+        })
+    } else {
+        json!({
+            "available": false,
+            "supported": false,
+            "errorCode": "virtual_machine_connection_invalid"
+        })
+    };
+    if runtime_ready {
+        capabilities.conversation_blocker = None;
+    }
+    let supported_actions = runtime_ready
+        .then(|| vec!["runtime.message.send".to_string()])
+        .unwrap_or_default();
+    TargetCandidate {
+        id: Some(def.id.to_string()),
+        target: def.id.to_string(),
+        label: label.to_string(),
+        kind: kind.to_string(),
+        status: if runtime_ready {
+            if manual { "configured" } else { "detected" }
+        } else {
+            if manual { "manual" } else { "not-detected" }
+        }
+        .to_string(),
+        configured: runtime_ready,
+        confidence: if runtime_ready {
+            if manual { 1.0 } else { 0.92 }
+        } else {
+            0.15
+        },
+        detail: if runtime_ready {
+            ready_detail
+        } else {
+            unavailable_detail
+        }
+        .to_string(),
+        config_path: None,
+        binary_path: runtime_connection
+            .map(|connection| connection.remote_executable().to_string()),
+        history_roots: Vec::new(),
+        location: "virtual-machine".to_string(),
+        runtime_connection: runtime_connection.map(|connection| connection.to_value()),
+        manual,
+        adapter_status: "implemented".to_string(),
+        adapter_capabilities: capabilities,
+        supported_actions,
+        scan_source: Some(scan_source.to_string()),
+        model_catalog: Some(empty_model_catalog(
+            "unavailable",
+            "virtual-machine-runtime-deferred",
+        )),
+    }
 }

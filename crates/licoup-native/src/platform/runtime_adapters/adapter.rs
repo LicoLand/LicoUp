@@ -20,6 +20,55 @@ pub(crate) enum RuntimeAdapter {
     Pi,
 }
 
+/// Native delivery channels an agent itself ships, as opposed to a
+/// LicoUp-installed adapter plugin or LicoUp-owned gateway. Detection of
+/// `desktop` and `cli` is real filesystem detection;
+/// `acp`, `rpc`, `gateway`, `local-server`, and `web-server` are capabilities
+/// of the CLI/runtime itself, so their detection follows the CLI result.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum NativeCapabilityKind {
+    Desktop,
+    Cli,
+    Acp,
+    Rpc,
+    AppServer,
+    Gateway,
+    LocalServer,
+    WebServer,
+    TuiGateway,
+}
+
+impl NativeCapabilityKind {
+    pub(crate) fn wire_name(self) -> &'static str {
+        match self {
+            Self::Desktop => "desktop",
+            Self::Cli => "cli",
+            Self::Acp => "acp",
+            Self::Rpc => "rpc",
+            Self::AppServer => "app-server",
+            Self::Gateway => "gateway",
+            Self::LocalServer => "local-server",
+            Self::WebServer => "web-server",
+            Self::TuiGateway => "tui-gateway",
+        }
+    }
+
+    pub(crate) fn parse(value: &str) -> Option<Self> {
+        match value {
+            "desktop" => Some(Self::Desktop),
+            "cli" => Some(Self::Cli),
+            "acp" => Some(Self::Acp),
+            "rpc" => Some(Self::Rpc),
+            "app-server" => Some(Self::AppServer),
+            "gateway" => Some(Self::Gateway),
+            "local-server" => Some(Self::LocalServer),
+            "web-server" => Some(Self::WebServer),
+            "tui-gateway" => Some(Self::TuiGateway),
+            _ => None,
+        }
+    }
+}
+
 pub(crate) fn adapter_for_agent_public(agent_id: &str) -> Option<RuntimeAdapter> {
     adapter_for_agent(agent_id)
 }
@@ -123,6 +172,16 @@ impl RuntimeAdapter {
             Self::OpenClaw => "openclaw",
             Self::OpenCode => "opencode",
             Self::Pi => "pi",
+        }
+    }
+
+    /// The LicoUp-managed adapter plugin this agent supports, if any. Only
+    /// managed plugins with real install management may be listed here.
+    pub(crate) fn managed_adapter_plugin_id(self) -> Option<&'static str> {
+        match self {
+            Self::Antigravity => Some("acp-bridge"),
+            Self::Codex => Some("lico-up-codex"),
+            _ => None,
         }
     }
 }

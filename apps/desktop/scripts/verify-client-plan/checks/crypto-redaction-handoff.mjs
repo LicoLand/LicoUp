@@ -12,7 +12,7 @@ for (const token of [
   "deferredGraphRefs",
   "build/reports/secure-mesh-pairwise-content-crypto-audit.json",
   "build/reports/secure-mesh-android-platform-crypto-acceptance.json",
-  "build/reports/secure-client-relay-mock-e2e.json",
+  "build/reports/licoarc-badtower-acceptance.json",
   "build/reports/secure-mesh-physical-evidence-manifest.json",
   "build/reports/secure-mesh-release-cli-proof-macos.json",
   "build/client-cli-vm/ubuntu-arm64/secure-mesh-release-cli-proof.json",
@@ -119,8 +119,7 @@ for (const token of [
   "LICO_SECURE_MESH_PAIRWISE_CONTENT_SIGNOFF",
   "sourceChecks",
   "nativeTestFilters",
-  "client-relay-mock-covers-opaque-wire-adversarial-semantics",
-  "client-relay-contract-pin-validates-exact-operation-and-envelope-sets",
+  "licoarc-badtower-acceptance-is-strict-and-endpoint-authenticated",
   "mobile_relay_pairwise_rejects_relay_asserted_prekey_trust_state",
   "mobile_relay_pairwise_rejects_intro_signed_prekey_mismatch",
   "mobile_relay_pairwise_rejects_reused_remote_one_time_prekey",
@@ -248,52 +247,50 @@ for (const token of [
   assert(!pairwiseContentAudit.includes(token),
     `pairwise/content audit must load configured evidence ref instead of hardcoding ${token}`);
 }
-const secureClientRelayMockE2e =
-  await readText("tools/scripts/client-secure-client-relay-mock-e2e.mjs");
-const secureClientRelayMock = await readSourceBundle(
-  "tools/scripts/lib/secure-client-relay-mock.mjs",
-  "tools/scripts/lib/secure-client-relay-mock",
-  ".mjs",
-);
-const secureClientRelayMockReport =
-  await readText("tools/scripts/lib/secure-client-relay-mock-e2e-report.mjs");
+const licoArcBadTowerAcceptance =
+  await readText("tools/scripts/client-licoarc-badtower-acceptance.mjs");
+const secureClientStationAcceptanceReport =
+  await readText("tools/scripts/lib/licoarc-badtower-acceptance-report.mjs");
 for (const token of [
-  "licomesh.secure-client-relay.client-acceptance-report.v1",
-  "licomesh.secure-client-relay.mock-e2e-report.v1",
-  "opaque relay protocol mock",
-  "evidenceRefSchemaVersion",
-  "productionReady: mock.ok === true",
-  "releaseReady: mock.ok === true",
-  "exactFiveOperationsObserved",
-  "exactSixOuterFieldsObserved",
-  "replayRejected",
-  "staleLeaseRejected",
-  "ackIdempotencyVerified",
-  "plaintextAbsentFromServerVisibleWire",
-  "wireBytesMeasured"
+  "licoup.licoarc-badtower.acceptance.v1",
+  "freshEndpointCount",
+  "positiveExchange",
+  "roundTrip",
+  "stationPlaintextAbsent",
+  "nonConformantEnvelopeRejected",
+  "transportHintsNonAuthoritative",
+  "exactFiveOuterFields",
+  "validateLicoArcV1BundleBytes",
+  "runLicoArcV1BundleValidatorSelfTest",
+  "createBadTowerStationEnvironment",
+  "runBadTowerStationEnvironmentSelfTest",
+  "runLicoArcBadTowerCandidatePathSelfTest",
+  "clientRelease: false",
+  "protocolPublication: false",
+  "stationRelease: false",
+  "hostedOperation: false"
 ]) {
-  assert(secureClientRelayMockE2e.includes(token),
-    `secure client relay Mock E2E must keep protocol fact ${token}`);
+  assert(licoArcBadTowerAcceptance.includes(token),
+    `Lico Arc BadTower acceptance must keep canonical fact ${token}`);
 }
 for (const token of [
-  "loadSecureClientRelayArtifacts",
-  "exactKeys(envelope, outerFields",
-  "secure_mesh_replay_rejected",
-  "secure_mesh_stale_lease",
-  "maxMailboxEntries",
-  "maxMailboxBytes"
+  "licoArcBadTowerAcceptanceReady",
+  "licoArcBadTowerAcceptanceCoverage",
+  "licoArcBadTowerCandidateBindingsReady",
+  "candidateBindingsReady",
+  "freshEndpointCount",
+  "stationPlaintextAbsent",
+  "nonConformantEnvelopeRejected",
+  "transportHintsNonAuthoritative",
+  "exactFiveOuterFields",
+  "endpointContentIncluded",
+  "ciphertextIncluded",
+  "keyMaterialIncluded",
+  "machineIdentityIncluded",
+  "rawRuntimeDataIncluded"
 ]) {
-  assert(secureClientRelayMock.includes(token),
-    `secure client relay Mock must keep bounded protocol behavior ${token}`);
-}
-for (const token of [
-  "secureClientRelayMockE2eReady",
-  "operationCount === 5",
-  "outerEnvelopeFieldCount === 6",
-  "plaintextAbsentFromServerVisibleWire === true"
-]) {
-  assert(secureClientRelayMockReport.includes(token),
-    `secure client relay Mock report reducer must keep strict fact ${token}`);
+  assert(secureClientStationAcceptanceReport.includes(token),
+    `Lico Arc BadTower report reducer must keep strict fact ${token}`);
 }
 const encryptedFileHandoff = await readText("tools/scripts/client-secure-mesh-encrypted-file-handoff.mjs");
 const encryptedFileHandoffConfig =
@@ -312,13 +309,13 @@ for (const token of [
   "nativeTestFilters = Object.freeze(encryptedFileHandoffConfig.nativeTestFilters)",
   "reportPath = physicalReportRefs.encryptedFileHandoff",
   "physicalReportRefs.androidPlatformCrypto",
-  "physicalReportRefs.relayMock",
+  "physicalReportRefs.stationAcceptance",
   "physicalReportRefs.macosReleaseCliProof",
   "physicalReportRefs.ubuntuReleaseCliProof",
   "physicalReportRefs.windowsImplementation",
   "loadAndroidPlatformCryptoEvidence",
-  "loadRelayMockEvidence",
-  "secureClientRelayMockE2eReady",
+  "loadStationAcceptanceEvidence",
+  "licoArcBadTowerAcceptanceCoverage",
   "loadSecureClientContract",
   "SECURE_CLIENT_MESH_PRODUCTION_BLOCKERS",
   "SECURE_CLIENT_MESH_PRODUCTION_SOURCE_OF_TRUTH",
@@ -333,9 +330,14 @@ for (const token of [
   "releaseBuiltDesktopMatrixSatisfied",
   "releaseBuiltDesktopWindowsLocalBlockersCleared",
   "androidPlatformCryptoReady",
-  "relayMockReady",
-  "plaintextAbsentFromRelayVisibleWire",
-  "relayAckIdempotencyVerified",
+  "stationAcceptanceReady",
+  "stationAcceptanceFreshEndpointCount",
+  "stationAcceptancePositiveExchange",
+  "stationAcceptanceRoundTrip",
+  "stationAcceptancePlaintextAbsent",
+  "stationAcceptanceNonConformantEnvelopeRejected",
+  "stationAcceptanceTransportHintsNonAuthoritative",
+  "stationAcceptanceExactFiveOuterFields",
   "shared Rust endpoint-specific reseal proof for every recipient"
 ]) {
   assert(encryptedFileHandoff.includes(token) || encryptedFileHandoffConfig.includes(token),
@@ -374,7 +376,7 @@ for (const token of [
 for (const token of [
   "const reportPath = \"build/reports/secure-mesh-encrypted-file-handoff.json\"",
   "const report = \"build/reports/secure-mesh-android-platform-crypto-acceptance.json\"",
-  "const report = \"build/reports/secure-client-relay-mock-e2e.json\"",
+  "const report = \"build/reports/licoarc-badtower-acceptance.json\"",
   "report: \"build/reports/secure-mesh-release-cli-proof-macos.json\"",
   "report: \"build/client-cli-vm/ubuntu-arm64/secure-mesh-release-cli-proof.json\"",
   "const report = \"build/reports/secure-mesh-windows-implementation.json\""
@@ -396,7 +398,7 @@ for (const token of [
   "missingRequiredScopeClaims",
   "missingRequiredScopeEvidenceClaims",
   "freshUntil",
-  "relayMockReportRef",
+  "stationAcceptanceReportRef",
   "productionBlockerStates",
   "readinessReduction",
   "authorityTrustRootProvided",
@@ -423,10 +425,6 @@ await Promise.all([
   assertContractBoundEvidenceReport(
     "tools/scripts/client-secure-mesh-physical-evidence-manifest.mjs",
     "physical device matrix"
-  ),
-  assertContractBoundEvidenceReport(
-    "tools/scripts/client-secure-client-relay-mock-e2e.mjs",
-    "opaque relay protocol mock"
   ),
   assertContractBoundEvidenceReport(
     "tools/scripts/client-secure-mesh-encrypted-file-handoff.mjs",

@@ -4,7 +4,10 @@ use serde_json::Value;
 use std::io::{self, Read};
 use std::sync::atomic::{AtomicBool, Ordering};
 
-pub(super) fn write_message(stdin: &mut BoundedStdinWriter, message: &Value) -> io::Result<()> {
+pub(in crate::platform) fn write_message(
+    stdin: &mut BoundedStdinWriter,
+    message: &Value,
+) -> io::Result<()> {
     let bytes = acp::encode_json_line(message).map_err(io::Error::other)?;
     stdin
         .enqueue(bytes)

@@ -45,7 +45,7 @@ SnackBar appleGlassSnackBar({
               TextButton(
                 onPressed: action.onPressed,
                 style: TextButton.styleFrom(
-                  foregroundColor: colors.info,
+                  foregroundColor: colors.accent,
                   visualDensity: VisualDensity.compact,
                   padding: const EdgeInsets.symmetric(horizontal: 8),
                 ),
@@ -79,19 +79,26 @@ class AppleGlassNoticeBanner extends StatelessWidget {
     final colors = context.licoColors;
     final accent = switch (tone) {
       AppleGlassNoticeTone.warning => colors.warning,
-      AppleGlassNoticeTone.info => colors.info,
+      AppleGlassNoticeTone.info => colors.accent,
       AppleGlassNoticeTone.neutral => colors.textMuted,
     };
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: Colors.white.withAlpha(colors.isDark ? 16 : 22),
+        // A notice is a low wash of its own signal color over the neutral
+        // surface, so the tone is legible without a second surface token.
+        color: tone == AppleGlassNoticeTone.neutral
+            ? colors.surfaceLow
+            : Color.alphaBlend(
+                accent.withValues(alpha: colors.isDark ? 0.12 : 0.10),
+                colors.surface,
+              ),
         borderRadius: BorderRadius.circular(
           AppleControlMetrics.controlCornerRadius,
         ),
         border: Border.all(
-          color: accent.withAlpha(
-            tone == AppleGlassNoticeTone.neutral ? 50 : 110,
-          ),
+          color: tone == AppleGlassNoticeTone.neutral
+              ? colors.line
+              : accent.withValues(alpha: 0.42),
           width: AppleControlMetrics.hairline,
         ),
       ),

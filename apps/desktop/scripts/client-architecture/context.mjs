@@ -8,7 +8,6 @@ import {
   lineNumberForToken,
   moduleSupportsPlatform,
   sameSet,
-  sourceLineCount,
 } from "./assertions.mjs";
 import { createArchitectureFilesystem } from "./filesystem.mjs";
 
@@ -48,7 +47,6 @@ export function createArchitectureContext({ repoRoot, spawn = spawnSync }) {
     repoRoot,
     runJson,
     sameSet,
-    sourceLineCount,
   };
 }
 

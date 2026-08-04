@@ -49,8 +49,7 @@ fn native_secret_store_restores_selected_device_without_raw_json_overrides() {
             "pcClientName": "Selected Mac",
             "pairingId": "pair-selected",
             "mobileToken": "paired-device-secret-store-canary",
-            "credentialPresent": true,
-            "gatewayUrl": "https://relay.example.test"
+            "credentialPresent": true
         }
     ]);
     persist_config_secret_material_to_secret_store(
@@ -127,8 +126,7 @@ fn runtime_secret_overrides_require_platform_transport_marker() {
             "pcClientName": "Selected Mac",
             "pairingId": "pair-selected",
             "mobileToken": "",
-            "credentialPresent": true,
-            "gatewayUrl": "https://relay.example.test"
+            "credentialPresent": true
         }
     ]);
     save_config(&mut config).unwrap();

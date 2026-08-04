@@ -110,6 +110,48 @@ fn secure_mesh_pairwise_envelope_failure_rolls_back_complete_triple_ratchet_stat
 }
 
 #[test]
+fn licoarc_carrier_limit_fails_before_pairwise_ratchet_commit() {
+    let (mut sender, _) = pairwise_sessions();
+    let context = payload_context_with_mailbox(
+        &sender,
+        "msg-carrier-limit",
+        "mailbox-carrier-limit",
+        &sender.local_endpoint_id,
+        &sender.remote_endpoint_id,
+    );
+    let before = Zeroizing::new(
+        serde_json::to_vec(
+            &sender
+                .to_secret_snapshot(1, "carrier-limit-test".to_string())
+                .unwrap(),
+        )
+        .unwrap(),
+    );
+
+    let error = sender
+        .seal_payload_envelope(
+            &context,
+            &SecureMeshPlaintext::new(SecureMeshPayloadKind::Command, vec![0x41; 730 * 1024]),
+        )
+        .unwrap_err();
+    assert!(
+        error
+            .to_string()
+            .contains("carrier exceeds the ciphertext character limit")
+    );
+
+    let after = Zeroizing::new(
+        serde_json::to_vec(
+            &sender
+                .to_secret_snapshot(1, "carrier-limit-test".to_string())
+                .unwrap(),
+        )
+        .unwrap(),
+    );
+    assert_eq!(before.as_slice(), after.as_slice());
+}
+
+#[test]
 fn secure_mesh_pairwise_pc_pc_command_result_relay_round_trip() {
     let canary = "pc-pc-command-canary-secret";
     let (mut pc_a_session, mut pc_b_session) =
@@ -440,7 +482,7 @@ fn secure_mesh_pairwise_encrypted_relay_header_hides_ratchet_structure_and_rejec
     let wire = envelope.decoded_encrypted_header().unwrap();
     assert_eq!(
         wire.len(),
-        crate::core::secure_mesh_relay_envelope::SECURE_MESH_ENCRYPTED_HEADER_BUCKET_BYTES
+        crate::core::licoarc_relay::LICOARC_ENCRYPTED_HEADER_BYTES
     );
     assert!(!wire.windows(8).any(|window| window == 1u64.to_be_bytes()));
     assert!(
@@ -450,14 +492,14 @@ fn secure_mesh_pairwise_encrypted_relay_header_hides_ratchet_structure_and_rejec
     );
 
     let mut tampered_value: Value = serde_json::from_str(&envelope.to_json().unwrap()).unwrap();
-    let mut tampered_wire = wire.clone();
-    let last = tampered_wire.len() - 1;
-    tampered_wire[last] ^= 1;
-    tampered_value["encryptedHeader"] =
+    let mut tampered_wire = general_purpose::URL_SAFE_NO_PAD
+        .decode(envelope.ciphertext())
+        .unwrap();
+    tampered_wire[32] ^= 1;
+    tampered_value["ciphertext"] =
         Value::String(general_purpose::URL_SAFE_NO_PAD.encode(tampered_wire));
     let tampered =
-        SecureMeshRelayEnvelope::from_json(&serde_json::to_string(&tampered_value).unwrap())
-            .unwrap();
+        LicoArcRelayEnvelope::from_json(&serde_json::to_string(&tampered_value).unwrap()).unwrap();
     assert!(
         receiver
             .open_payload_envelope(&tampered, SecureMeshPayloadKind::Command)
@@ -468,11 +510,10 @@ fn secure_mesh_pairwise_encrypted_relay_header_hides_ratchet_structure_and_rejec
     assert_eq!(receiver.received_count(), 0);
 
     let mut rebound_value: Value = serde_json::from_str(&envelope.to_json().unwrap()).unwrap();
-    rebound_value["deliveryId"] =
+    rebound_value["envelopeId"] =
         Value::String(general_purpose::URL_SAFE_NO_PAD.encode([0x7fu8; 24]));
     let rebound =
-        SecureMeshRelayEnvelope::from_json(&serde_json::to_string(&rebound_value).unwrap())
-            .unwrap();
+        LicoArcRelayEnvelope::from_json(&serde_json::to_string(&rebound_value).unwrap()).unwrap();
     assert!(
         receiver
             .open_payload_envelope(&rebound, SecureMeshPayloadKind::Command)

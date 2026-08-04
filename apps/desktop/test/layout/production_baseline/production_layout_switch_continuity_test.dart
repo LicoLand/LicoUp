@@ -13,12 +13,12 @@ void main() {
   testWidgets(
     'production shell preserves business draft and isolates profile state',
     (tester) async {
-      final workbench = LayoutProfileId.parse('workbench');
-      final native = LayoutProfileId.parse('native');
+      final dashboard = LayoutProfileId.parse('dashboard');
+      final messaging = LayoutProfileId.parse('messaging');
       const surface = LayoutRuntimeSurface.desktop;
       const size = Size(1180, 820);
       final fixture = await ProductionClientShellFixture.create(
-        profileId: workbench,
+        profileId: dashboard,
         surface: surface,
         destination: ClientSection.agents,
         size: size,
@@ -47,7 +47,7 @@ void main() {
       await tester.pump();
       expect(
         fixture.controller.layoutComposition.stateStore.read(
-          _agentsHistoryNamespace(workbench, surface),
+          _agentsHistoryNamespace(dashboard, surface),
         ),
         isA<LayoutExpansionState>().having(
           (value) => value.expanded,
@@ -55,9 +55,12 @@ void main() {
           isFalse,
         ),
       );
-      expect(fixture.controller.layoutManager.beginPreview(native), isTrue);
+      final switchToMessaging = fixture.controller.layoutManager.selectLayout(
+        messaging,
+      );
       await tester.pump();
       await tester.pump();
+      expect(await switchToMessaging, isTrue);
 
       expect(composer(), findsOneWidget);
       expect(
@@ -67,15 +70,19 @@ void main() {
       expect(fixture.controller.conversationComposerDraft, contains('draft'));
       expect(
         fixture.controller.layoutComposition.stateStore.read(
-          _agentsHistoryNamespace(native, surface),
+          _agentsHistoryNamespace(messaging, surface),
         ),
         isNull,
       );
-      expect(find.byTooltip('Collapse conversation history'), findsOneWidget);
+      // The dashboard-only history affordance is gone with its shell.
+      expect(find.byTooltip('Collapse conversation history'), findsNothing);
 
-      fixture.controller.layoutManager.cancelPreview();
+      final switchBack = fixture.controller.layoutManager.selectLayout(
+        dashboard,
+      );
       await tester.pump();
       await tester.pump();
+      expect(await switchBack, isTrue);
 
       expect(find.byTooltip('Expand conversation history'), findsOneWidget);
       expect(

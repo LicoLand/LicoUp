@@ -4,7 +4,7 @@ pub(in crate::domain::mobile_relay) fn save_config_with_runtime_secret_overrides
     config: &mut Value,
     overrides: &RuntimeSecretOverrides,
 ) -> Result<()> {
-    prepare_gateway_fields_for_persistence(config)?;
+    prepare_station_fields_for_persistence(config)?;
     let mut persistable = config.clone();
     persist_config_secret_material_to_native_store(&mut persistable)?;
     strip_runtime_secret_overrides(&mut persistable, overrides);
@@ -16,7 +16,7 @@ pub(in crate::domain::mobile_relay) fn save_config_with_runtime_secret_context(
     config: &mut Value,
     context: &mut RuntimeSecretContext,
 ) -> Result<()> {
-    prepare_gateway_fields_for_persistence(config)?;
+    prepare_station_fields_for_persistence(config)?;
     let mut persistable = config.clone();
     persist_config_secret_material_to_native_store_with_batch(
         &mut persistable,
@@ -35,7 +35,7 @@ pub(in crate::domain::mobile_relay) fn save_config_with_runtime_secret_context_f
     config: &mut Value,
     context: &mut RuntimeSecretContext,
 ) -> Result<()> {
-    prepare_gateway_fields_for_persistence(config)?;
+    prepare_station_fields_for_persistence(config)?;
     let mut persistable = config.clone();
     persist_config_secret_material_to_native_store_with_batch(
         &mut persistable,

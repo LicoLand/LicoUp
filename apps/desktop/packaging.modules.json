@@ -164,30 +164,6 @@
       ],
       "packaging": "flutter-app"
     },
-    "multi-agent-routing": {
-      "label": "Multi-agent routing and context distillation",
-      "category": "routing",
-      "enabled": true,
-      "required": false,
-      "platforms": [
-        "macos",
-        "linux",
-        "windows"
-      ],
-      "packaging": "runtime-capability",
-      "requires": [
-        "target-adapters",
-        "portable-data"
-      ],
-      "runtimeToggle": true,
-      "stateDirectories": [
-        "licoup/routing"
-      ],
-      "settingsKeys": [
-        "routing.enabled",
-        "routing.policyPath"
-      ]
-    },
     "native-sidecar": {
       "label": "Rust LicoUp client CLI sidecar",
       "category": "core",
@@ -201,36 +177,53 @@
       "packaging": "sidecar-binary",
       "cargoBin": "licoup-cli"
     },
-    "codex-orchestration-mcp": {
-      "label": "LicoUp local Codex MCP control plane",
+    "subagents-mcp": {
+      "label": "LicoUp local subagent MCP",
       "category": "agents",
       "enabled": true,
       "required": true,
       "platforms": [
         "macos",
-        "linux"
+        "linux",
+        "windows"
       ],
       "packaging": "sidecar-binary",
-      "cargoBin": "lico-codex-mcp",
+      "cargoBin": "lico-subagent-mcp",
       "requires": [
         "native-sidecar"
       ]
     },
-    "codex-orchestration-plugin": {
-      "label": "LicoUp Codex plugin bundle",
+    "llm-gateway-sidecar": {
+      "label": "LicoUp loopback model protocol and provider routing gateway",
       "category": "agents",
       "enabled": true,
       "required": true,
       "platforms": [
         "macos",
-        "linux"
+        "linux",
+        "windows"
+      ],
+      "packaging": "sidecar-binary",
+      "cargoBin": "lico-llm-gateway",
+      "requires": [
+        "native-sidecar"
+      ]
+    },
+    "codex-plugin": {
+      "label": "LicoUp Codex Plugin companion runtime",
+      "category": "agents",
+      "enabled": true,
+      "required": true,
+      "platforms": [
+        "macos",
+        "linux",
+        "windows"
       ],
       "packaging": "module-resources",
-      "includePaths": [
-        "plugins/lico-up-codex"
-      ],
+      "embeddedCargoBin": "lico-subagent-mcp",
+      "embeddedCargoTarget": "plugins/lico-up-codex/bin/lico-subagent-mcp",
       "requires": [
-        "codex-orchestration-mcp"
+        "subagents-mcp"
       ]
     }
   },

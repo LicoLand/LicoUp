@@ -17,6 +17,7 @@ final class AgentDispatchBind {
     this.model = '',
     this.reasoningEffort = '',
     this.acceptanceMode = '',
+    this.runtimeConnection = const <String, dynamic>{},
   });
 
   final String workingDirectory;
@@ -25,6 +26,7 @@ final class AgentDispatchBind {
   final String model;
   final String reasoningEffort;
   final String acceptanceMode;
+  final Map<String, dynamic> runtimeConnection;
 }
 
 final class AgentDispatchSession {

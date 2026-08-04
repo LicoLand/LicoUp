@@ -49,7 +49,7 @@ void main() {
     expect(runtime.catalog.stateNamespaces, hasLength(expectedNamespaceCount));
     expect(
       runtime.registry
-          .definition(LayoutProfileId.parse('workbench'))
+          .definition(LayoutProfileId.parse('dashboard'))
           .bundles
           .keys
           .toSet(),
@@ -74,13 +74,13 @@ void main() {
       destinationCatalog: semantic,
       destinationOverride: {ClientSection.agents, ClientSection.settings},
     );
-    final badWorkbench = LayoutDefinition([desktop, badMobile]);
+    final badDashboard = LayoutDefinition([desktop, badMobile]);
     expect(
       () => LayoutRegistry(
         catalog: validRuntime.catalog,
         definitions: [
-          badWorkbench,
-          validRuntime.registry.definition(LayoutProfileId.parse('native')),
+          badDashboard,
+          validRuntime.registry.definition(LayoutProfileId.parse('atlas')),
         ],
       ),
       throwsFormatException,
@@ -89,15 +89,15 @@ void main() {
 
   test('tokens interpolate deterministically and validate bounds', () {
     final runtime = buildFixtureLayoutRuntime();
-    final workbench = runtime.registry
-        .definition(LayoutProfileId.parse('workbench'))
+    final dashboard = runtime.registry
+        .definition(LayoutProfileId.parse('dashboard'))
         .bundles[LayoutRuntimeSurface.desktop]!
         .tokens;
     final native = runtime.registry
-        .definition(LayoutProfileId.parse('native'))
+        .definition(LayoutProfileId.parse('atlas'))
         .bundles[LayoutRuntimeSurface.desktop]!
         .tokens;
-    final midpoint = workbench.lerp(native, 0.5);
+    final midpoint = dashboard.lerp(native, 0.5);
 
     expect(midpoint.spacingUnit, 6);
     expect(midpoint.cardRadius, 11);
@@ -227,28 +227,29 @@ void main() {
 
     expect(parentBuilds.value, 1);
     expect(
-      find.byKey(const Key('layout-host-workbench/desktop/medium')),
+      find.byKey(const Key('layout-host-dashboard/desktop/medium')),
       findsOneWidget,
     );
     expect(
-      find.byKey(const Key('layout-host-native/desktop/medium')),
+      find.byKey(const Key('layout-host-atlas/desktop/medium')),
       findsNothing,
     );
-    expect(tracker.shellBuilds[LayoutProfileId.parse('workbench')], 1);
-    expect(tracker.shellBuilds[LayoutProfileId.parse('native')] ?? 0, 0);
+    expect(tracker.shellBuilds[LayoutProfileId.parse('dashboard')], 1);
+    expect(tracker.shellBuilds[LayoutProfileId.parse('atlas')] ?? 0, 0);
 
-    manager.beginPreview(LayoutProfileId.parse('native'));
+    final selection = manager.selectLayout(LayoutProfileId.parse('atlas'));
     await tester.pump();
     expect(parentBuilds.value, 1);
     expect(
-      find.byKey(const Key('layout-host-workbench/desktop/medium')),
+      find.byKey(const Key('layout-host-dashboard/desktop/medium')),
       findsNothing,
     );
     expect(
-      find.byKey(const Key('layout-host-native/desktop/medium')),
+      find.byKey(const Key('layout-host-atlas/desktop/medium')),
       findsOneWidget,
     );
-    expect(tracker.shellBuilds[LayoutProfileId.parse('native')], 1);
+    expect(tracker.shellBuilds[LayoutProfileId.parse('atlas')], 1);
+    expect(await selection, isTrue);
     manager.dispose();
   });
 
@@ -382,7 +383,7 @@ void main() {
     await manager.initialize();
     await tester.pump();
     expect(
-      find.byKey(const Key('layout-host-workbench/desktop/expanded')),
+      find.byKey(const Key('layout-host-dashboard/desktop/expanded')),
       findsOneWidget,
     );
     manager.dispose();
@@ -436,7 +437,7 @@ LayoutEnvironment desktopEnvironment(double width) =>
     );
 
 PresentationPreferences fixturePreferences() => PresentationPreferences(
-  layoutProfileId: LayoutProfileId.parse('workbench'),
+  layoutProfileId: LayoutProfileId.parse('dashboard'),
   appearancePresetId: 'default-system',
   localePreference: 'system',
 );

@@ -13,7 +13,7 @@ export const {
   physicalEvidenceManifest: physicalEvidenceManifestReportPath,
   windowsImplementation: windowsImplementationReportPath,
   reportRedaction: reportRedactionReportPath,
-  relayMock: relayMockReportPath,
+  stationAcceptance: stationAcceptanceReportPath,
   rustCrypto: rustCryptoReportPath,
   platformCrypto: platformCryptoReportPath,
   androidPlatformCrypto: androidPlatformCryptoReportPath

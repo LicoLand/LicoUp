@@ -47,6 +47,7 @@ pub(crate) struct HistoryPageConfig {
     pub(crate) limit: Option<usize>,
 }
 
+mod catalog;
 mod codex;
 mod cursor_openagent;
 mod generic;

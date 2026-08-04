@@ -40,6 +40,7 @@ import 'package:licoup/src/backend/features/mobile_relay/services/mobile_home_la
 import 'package:licoup/src/backend/features/settings/services/client_update_service.dart';
 import 'package:licoup/src/backend/features/skill_hub/services/skill_hub_preferences_service.dart';
 import 'package:licoup/src/contracts/mobile_home_layout_repository.dart';
+import 'package:licoup/src/contracts/agent_conversation_projection_repository.dart';
 import 'package:licoup/src/contracts/catalog_convergence/catalog_convergence_gateway.dart';
 import 'package:licoup/src/contracts/optional_collaboration_gateway.dart';
 import 'package:licoup/src/contracts/presentation/presentation_preferences.dart';
@@ -48,6 +49,7 @@ import 'package:licoup/src/contracts/skill_hub.dart';
 import 'package:licoup/src/contracts/skill_update.dart';
 import 'package:licoup/src/contracts/skill_usage.dart';
 import 'package:licoup/src/platform/agents/agent_tab_order_store.dart';
+import 'package:licoup/src/platform/agents/agent_conversation_projection_store.dart';
 import 'package:licoup/src/platform/agents/scanned_targets_cache_store.dart';
 import 'package:licoup/src/platform/client_clipboard_service.dart';
 import 'package:licoup/src/platform/mobile_relay/mobile_relay_service.dart';
@@ -75,6 +77,8 @@ final class ClientComponentAssembly {
     required ClientLogExportService clientLogExportService,
     required ClientClipboardService clientClipboardService,
     required RuntimePlatformBridge runtimePlatformBridge,
+    AgentConversationProjectionRepository?
+    agentConversationProjectionRepository,
     required bool Function() isMobileRuntime,
     required String Function() selectedAgentId,
     required List<TargetCandidate> Function() scannedTargets,
@@ -107,7 +111,10 @@ final class ClientComponentAssembly {
     LayoutManager? layoutManager,
     PresentationPreferencesRepository? presentationPreferencesRepository,
     CatalogConvergenceGateway? catalogConvergenceGateway,
-  }) : _notifyStateChanged = notifyStateChanged {
+  }) : _notifyStateChanged = notifyStateChanged,
+       agentConversationProjectionRepository =
+           agentConversationProjectionRepository ??
+           const PlatformAgentConversationProjectionStore() {
     presentation = ClientPresentationComponentAssembly(
       portableData: portableData,
       layoutComposition: layoutComposition,
@@ -208,6 +215,8 @@ final class ClientComponentAssembly {
   }
 
   final VoidCallback _notifyStateChanged;
+  final AgentConversationProjectionRepository
+  agentConversationProjectionRepository;
   late final ClientPresentationComponentAssembly presentation;
   late final ClientLifecycleComponentAssembly lifecycle;
   late final ClientCatalogConvergenceComponentAssembly catalogConvergence;

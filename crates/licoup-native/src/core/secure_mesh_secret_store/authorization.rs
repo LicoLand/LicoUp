@@ -45,6 +45,7 @@ pub enum SecretStoreKeyClass {
     DeviceIdentity,
     PairwiseSession,
     GroupEpoch,
+    GatewayCredential,
 }
 
 impl SecretStoreKeyClass {
@@ -53,6 +54,7 @@ impl SecretStoreKeyClass {
             Self::DeviceIdentity => b"device-identity",
             Self::PairwiseSession => b"pairwise-session",
             Self::GroupEpoch => b"group-epoch",
+            Self::GatewayCredential => b"gateway-credential",
         }
     }
 }
@@ -62,6 +64,7 @@ pub enum SecretStoreCallerChannel {
     DesktopGui,
     Mobile,
     NativeCli,
+    GatewaySidecar,
 }
 
 impl SecretStoreCallerChannel {
@@ -70,6 +73,7 @@ impl SecretStoreCallerChannel {
             Self::DesktopGui => b"desktop-gui",
             Self::Mobile => b"mobile",
             Self::NativeCli => b"native-cli",
+            Self::GatewaySidecar => b"gateway-sidecar",
         }
     }
 }
@@ -527,18 +531,54 @@ pub struct SecretStoreAuthorizationRequest {
     operation_count: usize,
     allow_interaction: bool,
     canonical_digest: [u8; 32],
+    key_class: SecretStoreKeyClass,
+    caller_channel: SecretStoreCallerChannel,
 }
 
 impl SecretStoreAuthorizationRequest {
     pub fn new(reason: impl Into<String>, operation_count: usize) -> Self {
-        Self::build(reason.into(), operation_count, true)
+        Self::build(
+            reason.into(),
+            operation_count,
+            true,
+            SecretStoreKeyClass::DeviceIdentity,
+            SecretStoreCallerChannel::DesktopGui,
+        )
     }
 
     pub fn noninteractive(reason: impl Into<String>, operation_count: usize) -> Self {
-        Self::build(reason.into(), operation_count, false)
+        Self::build(
+            reason.into(),
+            operation_count,
+            false,
+            SecretStoreKeyClass::DeviceIdentity,
+            SecretStoreCallerChannel::DesktopGui,
+        )
     }
 
-    fn build(reason: String, operation_count: usize, allow_interaction: bool) -> Self {
+    pub fn for_scope(
+        reason: impl Into<String>,
+        operation_count: usize,
+        allow_interaction: bool,
+        key_class: SecretStoreKeyClass,
+        caller_channel: SecretStoreCallerChannel,
+    ) -> Self {
+        Self::build(
+            reason.into(),
+            operation_count,
+            allow_interaction,
+            key_class,
+            caller_channel,
+        )
+    }
+
+    fn build(
+        reason: String,
+        operation_count: usize,
+        allow_interaction: bool,
+        key_class: SecretStoreKeyClass,
+        caller_channel: SecretStoreCallerChannel,
+    ) -> Self {
         let canonical_digest = digest_fields(
             b"licoup:secret-store-authorization-request:v1",
             [
@@ -547,6 +587,8 @@ impl SecretStoreAuthorizationRequest {
                     .unwrap_or(u64::MAX)
                     .to_be_bytes(),
                 &[u8::from(allow_interaction)],
+                key_class.tag(),
+                caller_channel.tag(),
             ],
         );
         Self {
@@ -554,6 +596,8 @@ impl SecretStoreAuthorizationRequest {
             operation_count,
             allow_interaction,
             canonical_digest,
+            key_class,
+            caller_channel,
         }
     }
 
@@ -567,6 +611,14 @@ impl SecretStoreAuthorizationRequest {
 
     pub fn allow_interaction(&self) -> bool {
         self.allow_interaction
+    }
+
+    pub fn key_class(&self) -> SecretStoreKeyClass {
+        self.key_class
+    }
+
+    pub fn caller_channel(&self) -> SecretStoreCallerChannel {
+        self.caller_channel
     }
 
     pub(crate) fn canonical_digest(&self) -> [u8; 32] {

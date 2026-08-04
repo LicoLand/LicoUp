@@ -344,6 +344,18 @@ impl OpenClawProtocol {
         let text = update.agent_message_text().map(str::to_owned);
         let current_mode = update.current_mode_id().map(str::to_owned);
         if self.phase == ProtocolPhase::AwaitPrompt {
+            if let Some(evidence_kind) = update.kind().processing_evidence_kind() {
+                let session_for_emit = self
+                    .binding
+                    .native_id()
+                    .or(self.binding.protocol_id())
+                    .unwrap_or_default();
+                super::super::turn_event_emit::emit_agent_processing(
+                    session_for_emit,
+                    &self.config.turn_id,
+                    evidence_kind,
+                );
+            }
             let skill_events = super::super::skill_invocation_projection::project_skill_invocations(
                 update.payload(),
             );

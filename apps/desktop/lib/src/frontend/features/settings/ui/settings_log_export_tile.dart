@@ -48,7 +48,7 @@ class SettingsLogExportTile extends StatelessWidget {
     }
     final subtitle = strings.exportLogsDescription.trim();
     return ListTile(
-      leading: Icon(Icons.file_download_outlined, color: colors.primary),
+      leading: Icon(Icons.file_download_outlined, color: colors.textSecondary),
       title: Text(strings.clientLogs),
       subtitle: subtitle.isEmpty ? null : Text(subtitle),
       trailing: exportButton,

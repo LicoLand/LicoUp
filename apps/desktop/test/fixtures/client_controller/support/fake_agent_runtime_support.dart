@@ -8,7 +8,6 @@ mixin FakeAgentRuntimeSupport
   int runtimeMessageCalls = 0;
   int runtimeSteerCalls = 0;
   int runtimeCancelCalls = 0;
-
   String runtimeSessionIdResult = '';
   String runtimeThreadIdResult = '';
   String runtimeNativeSessionIdResult = '';
@@ -22,15 +21,8 @@ mixin FakeAgentRuntimeSupport
   String runtimeMessageRpcErrorCode = '';
   Completer<void>? runtimeMessageGate;
   bool runtimeSteerThrows = false;
-  Map<String, dynamic> runtimeSteerResult = const {
-    'ok': true,
-    'status': 'steer_accepted',
-  };
-  Map<String, dynamic> runtimeCancelResult = const {
-    'ok': true,
-    'status': 'cancel_requested',
-  };
-
+  Map<String, dynamic> runtimeSteerResult = const {'ok': true};
+  Map<String, dynamic> runtimeCancelResult = const {'ok': true};
   @override
   Stream<Map<String, dynamic>> streamCliJsonLinesWithStdin(
     List<String> args,
@@ -39,7 +31,29 @@ mixin FakeAgentRuntimeSupport
     if (runtimeMessageRpcErrorCode.isNotEmpty) {
       throw LicoClientRpcException(runtimeMessageRpcErrorCode);
     }
-    final result = await runCliWithStdin(args, stdinText);
+    final messageGate = runtimeMessageGate;
+    late final Map<String, dynamic> result;
+    if (messageGate != null &&
+        !messageGate.isCompleted &&
+        args.take(3).join(' ') == 'agent conversation send') {
+      runtimeMessageGate = null;
+      try {
+        result = await runCliWithStdin(args, stdinText);
+      } finally {
+        runtimeMessageGate = messageGate;
+      }
+      final sessionId =
+          '${result['nativeSessionId'] ?? result['sessionId'] ?? ''}';
+      yield {
+        'event': 'agent.turn.started',
+        'sessionId': sessionId,
+        'turnId': 'native-turn-$runtimeMessageCalls',
+        'payload': const <String, dynamic>{},
+      };
+      await messageGate.future;
+    } else {
+      result = await runCliWithStdin(args, stdinText);
+    }
     final streamEvents = runtimeMessageStreamEventQueue.isEmpty
         ? const <Map<String, dynamic>>[]
         : runtimeMessageStreamEventQueue.removeAt(0);

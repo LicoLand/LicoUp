@@ -2,5 +2,5 @@ import 'package:licoup/src/application/features/agents/workspace/agent_workspace
 
 mixin AgentOrchestrationPresentation on AgentWorkspaceCoordinator {
   String get orchestrationProjectionStatus =>
-      currentOrchestrationProjection?.state ?? 'unavailable';
+      orchestrationPolicyDraft.isEmpty ? 'unavailable' : 'ready';
 }

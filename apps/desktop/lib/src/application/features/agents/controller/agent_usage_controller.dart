@@ -6,7 +6,7 @@ import 'package:licoup/src/application/features/agents/contracts/agent_usage_gat
 import 'package:licoup/src/application/features/agents/controller/agent_usage_daily_cache.dart';
 import 'package:licoup/src/contracts/agent_usage_models.dart';
 
-const Duration defaultAgentUsagePollingInterval = Duration(minutes: 1);
+const Duration defaultAgentUsagePollingInterval = Duration(minutes: 5);
 
 /// Long-lived daily cache depth. One backfill scan covers all UI presets.
 const int defaultAgentUsageScanHistoryDays = agentUsageDailyCacheMaxDays;

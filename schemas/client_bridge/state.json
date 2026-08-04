@@ -3,6 +3,7 @@
   "version": 1,
   "maxDocumentBytes": 16777216,
   "collections": [
+    "adaptive-flywheel",
     "settings",
     "targets",
     "target-discovery-cache",

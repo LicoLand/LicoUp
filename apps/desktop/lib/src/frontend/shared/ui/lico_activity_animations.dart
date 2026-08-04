@@ -1,21 +1,23 @@
-import 'dart:ui' show PathMetric;
-
 import 'package:flutter/material.dart';
 
-/// A bounded activity indicator that runs around an existing rounded surface.
+import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
+
+/// A bounded activity indicator that sweeps along the top edge of an existing
+/// rounded surface.
 ///
 /// The child keeps ownership of its fill and idle border. This widget paints
-/// only transient execution feedback and becomes a static accent outline when
-/// reduced motion is enabled.
-class LicoPerimeterPulse extends StatefulWidget {
-  const LicoPerimeterPulse({
+/// only transient execution feedback: an indeterminate brand pulse traveling
+/// left to right along the top hairline while [enabled], and a static accent
+/// line when reduced motion is enabled.
+class LicoTopEdgePulse extends StatefulWidget {
+  const LicoTopEdgePulse({
     super.key,
     required this.enabled,
     required this.borderRadius,
     required this.color,
     required this.child,
-    this.strokeWidth = 1.6,
-    this.duration = const Duration(milliseconds: 1350),
+    this.strokeWidth = 1.8,
+    this.duration = LicoMotion.loopLong,
   });
 
   final bool enabled;
@@ -26,10 +28,10 @@ class LicoPerimeterPulse extends StatefulWidget {
   final Duration duration;
 
   @override
-  State<LicoPerimeterPulse> createState() => _LicoPerimeterPulseState();
+  State<LicoTopEdgePulse> createState() => _LicoTopEdgePulseState();
 }
 
-class _LicoPerimeterPulseState extends State<LicoPerimeterPulse>
+class _LicoTopEdgePulseState extends State<LicoTopEdgePulse>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
 
@@ -46,7 +48,7 @@ class _LicoPerimeterPulseState extends State<LicoPerimeterPulse>
   }
 
   @override
-  void didUpdateWidget(covariant LicoPerimeterPulse oldWidget) {
+  void didUpdateWidget(covariant LicoTopEdgePulse oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.duration != widget.duration) {
       _controller.duration = widget.duration;
@@ -86,8 +88,8 @@ class _LicoPerimeterPulseState extends State<LicoPerimeterPulse>
         Positioned.fill(
           child: IgnorePointer(
             child: CustomPaint(
-              key: const Key('lico-perimeter-pulse-paint'),
-              painter: _LicoPerimeterPulsePainter(
+              key: const Key('lico-top-edge-pulse-paint'),
+              painter: _LicoTopEdgePulsePainter(
                 progress: _controller,
                 borderRadius: widget.borderRadius,
                 color: widget.color,
@@ -102,8 +104,8 @@ class _LicoPerimeterPulseState extends State<LicoPerimeterPulse>
   }
 }
 
-class _LicoPerimeterPulsePainter extends CustomPainter {
-  _LicoPerimeterPulsePainter({
+class _LicoTopEdgePulsePainter extends CustomPainter {
+  _LicoTopEdgePulsePainter({
     required this.progress,
     required this.borderRadius,
     required this.color,
@@ -120,76 +122,39 @@ class _LicoPerimeterPulsePainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     if (size.isEmpty) return;
-    final inset = strokeWidth / 2;
-    final rect = Offset.zero & size;
-    final path = Path()..addRRect(borderRadius.toRRect(rect.deflate(inset)));
+    final strip = Rect.fromLTWH(0, 0, size.width, strokeWidth);
+    canvas.save();
+    // Confine the line to the surface silhouette so it dies out around the
+    // top corner arcs instead of overhanging them.
+    canvas.clipRRect(borderRadius.toRRect(Offset.zero & size));
     if (reduceMotion) {
-      canvas.drawPath(
-        path,
-        Paint()
-          ..color = color.withValues(alpha: 0.72)
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = strokeWidth,
-      );
+      canvas.drawRect(strip, Paint()..color = color.withValues(alpha: 0.72));
+      canvas.restore();
       return;
     }
 
-    canvas.drawPath(
-      path,
-      Paint()
-        ..color = color.withValues(alpha: 0.16)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = strokeWidth,
-    );
-    final metric = path.computeMetrics().firstOrNull;
-    if (metric == null || metric.length <= 0) return;
-    final head = progress.value * metric.length;
-    final segmentLength = metric.length * 0.24;
-    const trailSections = 5;
-    final sectionLength = segmentLength / trailSections;
-    for (var index = 0; index < trailSections; index += 1) {
-      final end = head - (sectionLength * index);
-      final start = end - sectionLength;
-      final alpha = 0.30 + ((trailSections - index) * 0.12);
-      _drawWrappedSegment(
-        canvas,
-        metric,
-        start,
-        end,
-        Paint()
-          ..color = color.withValues(alpha: alpha.clamp(0, 0.9))
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = strokeWidth
-          ..strokeCap = StrokeCap.round,
-      );
-    }
-  }
-
-  void _drawWrappedSegment(
-    Canvas canvas,
-    PathMetric metric,
-    double start,
-    double end,
-    Paint paint,
-  ) {
-    final length = metric.length;
-    var normalizedStart = start % length;
-    var normalizedEnd = end % length;
-    if (normalizedStart < 0) normalizedStart += length;
-    if (normalizedEnd < 0) normalizedEnd += length;
-    if (normalizedStart <= normalizedEnd) {
-      canvas.drawPath(
-        metric.extractPath(normalizedStart, normalizedEnd),
-        paint,
-      );
-      return;
-    }
-    canvas.drawPath(metric.extractPath(normalizedStart, length), paint);
-    canvas.drawPath(metric.extractPath(0, normalizedEnd), paint);
+    canvas.drawRect(strip, Paint()..color = color.withValues(alpha: 0.16));
+    // A soft comet band: the bright core leads, both ends fade to transparent
+    // so the sweep reads as a pulse, never as progress.
+    final bandWidth = size.width * 0.42;
+    final travel = size.width + bandWidth * 2;
+    final head = -bandWidth + travel * progress.value;
+    final band = Rect.fromLTWH(head - bandWidth, 0, bandWidth, strokeWidth);
+    final shader = LinearGradient(
+      colors: [
+        color.withValues(alpha: 0),
+        color.withValues(alpha: 0.5),
+        color,
+        color.withValues(alpha: 0),
+      ],
+      stops: const [0.0, 0.45, 0.8, 1.0],
+    ).createShader(band);
+    canvas.drawRect(band, Paint()..shader = shader);
+    canvas.restore();
   }
 
   @override
-  bool shouldRepaint(covariant _LicoPerimeterPulsePainter oldDelegate) {
+  bool shouldRepaint(covariant _LicoTopEdgePulsePainter oldDelegate) {
     return oldDelegate.borderRadius != borderRadius ||
         oldDelegate.color != color ||
         oldDelegate.strokeWidth != strokeWidth ||
@@ -224,7 +189,7 @@ class _LicoSpinningRefreshIconState extends State<LicoSpinningRefreshIcon>
     super.initState();
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 900),
+      duration: LicoMotion.loopShort,
     );
   }
 
@@ -332,7 +297,7 @@ class _LicoShimmerTextState extends State<LicoShimmerText>
     super.initState();
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1600),
+      duration: LicoMotion.loopLong,
     );
   }
 

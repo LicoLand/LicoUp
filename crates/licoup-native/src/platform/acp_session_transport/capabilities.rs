@@ -14,6 +14,7 @@ pub(in crate::platform) const APPROVAL_POLL_INTERVAL: Duration = Duration::from_
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub(in crate::platform) struct AcpSessionDriverSpec {
     pub(in crate::platform) driver_id: &'static str,
+    pub(in crate::platform) runtime_id: &'static str,
     pub(in crate::platform) launch_args: &'static [&'static str],
 }
 
@@ -24,8 +25,14 @@ impl AcpSessionDriverSpec {
     ) -> Self {
         Self {
             driver_id,
+            runtime_id: driver_id,
             launch_args,
         }
+    }
+
+    pub(in crate::platform) const fn with_runtime_id(mut self, runtime_id: &'static str) -> Self {
+        self.runtime_id = runtime_id;
+        self
     }
 }
 

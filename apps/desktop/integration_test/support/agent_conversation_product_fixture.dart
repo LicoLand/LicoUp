@@ -116,6 +116,7 @@ class AcceptanceConversationService extends AgentConversationService {
     String sessionId = '',
     int? limit,
     int offset = 0,
+    AgentDispatchBind bind = const AgentDispatchBind(),
   }) async* {
     historyReadCount += 1;
     if (_messages.isNotEmpty &&
@@ -131,6 +132,7 @@ class AcceptanceConversationService extends AgentConversationService {
     String sessionId = '',
     int? limit,
     int offset = 0,
+    AgentDispatchBind bind = const AgentDispatchBind(),
   }) async {
     historyReadCount += 1;
     if (_messages.isEmpty ||

@@ -57,20 +57,14 @@ fn cli_dispatches_state_targets_and_mobile_relay() {
                         "relay".into(),
                         "config".into(),
                         "set".into(),
-                        "--use-custom-gateway".into(),
-                        "true".into(),
-                        "--custom-gateway-url".into(),
+                        "--station-base-url".into(),
                         "https://relay.example.test/".into(),
                     ])
                 },
             )
             .unwrap();
         assert_eq!(
-            json_payload(&relay_config)["config"]["useCustomGateway"],
-            true
-        );
-        assert_eq!(
-            json_payload(&relay_config)["config"]["customGatewayUrl"],
+            json_payload(&relay_config)["config"]["stationBaseUrl"],
             "https://relay.example.test"
         );
     }

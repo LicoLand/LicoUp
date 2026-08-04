@@ -37,4 +37,46 @@ void main() {
       findsOneWidget,
     );
   });
+
+  testWidgets('full-width card spans the detail column', (tester) async {
+    const paneWidth = 800.0;
+    const detailWidth = 600.0;
+    final adapter = AgentRenderAdapter.fallback();
+    final message = messageBlockTestMessage(
+      role: 'subagent',
+      cardType: 'subagent',
+      cardTitle: 'Retry client after chevron fix',
+      text: 'Worker preview line',
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildLicoTheme(platformBrightness: Brightness.dark),
+        home: Scaffold(
+          body: SizedBox(
+            width: paneWidth,
+            height: 400,
+            child: Center(
+              child: SizedBox(
+                width: detailWidth,
+                child: AgentConversationSubagentCardBlock(
+                  message: message,
+                  adapter: adapter,
+                  fullWidth: true,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final card = tester.renderObject<RenderBox>(
+      find.byType(DecoratedBox).first,
+    );
+    final cardCenter = card.localToGlobal(Offset(card.size.width / 2, 0)).dx;
+    expect(cardCenter, closeTo(paneWidth / 2, 1));
+    expect(card.size.width, closeTo(detailWidth, 1));
+  });
 }

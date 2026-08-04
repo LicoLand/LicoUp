@@ -1,3 +1,4 @@
+mod catalog;
 mod codex;
 mod cursor_openagent;
 mod generic;

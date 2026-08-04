@@ -232,7 +232,7 @@ fn kimi_code_wire_readback_preserves_session_and_structured_order() {
     fs::create_dir_all(wire.parent().unwrap()).unwrap();
     fs::write(
         session_root.join("state.json"),
-        r#"{"title":"Synthetic Kimi Code session"}"#,
+        r#"{"title":"Synthetic Kimi Code session","workDir":"/workspace/kimi-project"}"#,
     )
     .unwrap();
     let reasoning_canary = "PRIVATE_REASONING_CANARY";
@@ -262,6 +262,7 @@ fn kimi_code_wire_readback_preserves_session_and_structured_order() {
     assert_eq!(sessions[0]["adapterId"], "kimi-code");
     assert_eq!(sessions[0]["adapterLabel"], "Kimi Code - CLI");
     assert_eq!(sessions[0]["nativeSessionId"], "native-session-42");
+    assert_eq!(sessions[0]["workingDirectory"], "/workspace/kimi-project");
 
     let messages = sessions[0]["messages"].as_array().unwrap();
     let roles = messages

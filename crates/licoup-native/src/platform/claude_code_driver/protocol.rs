@@ -1,6 +1,6 @@
 use super::command::LaunchIdentity;
 use super::errors::ProtocolFailure;
-use super::events::{partial_text_delta, project_event};
+use super::events::{partial_text_delta, processing_evidence_kind, project_event};
 use super::model::EffectiveSettings;
 use super::params::DriverConfig;
 use serde_json::Value;
@@ -95,6 +95,16 @@ impl<'a> TurnState<'a> {
         }
         self.events
             .extend(super::super::skill_invocation_projection::project_skill_invocations(&message));
+        if let Some(evidence_kind) = processing_evidence_kind(&message) {
+            super::super::turn_event_emit::emit_agent_processing(
+                self.observed_session_id
+                    .as_deref()
+                    .or(self.expected_session_id.as_deref())
+                    .unwrap_or_default(),
+                &self.config.turn_id,
+                evidence_kind,
+            );
+        }
         if let Some(projected) = project_event(&message) {
             self.events.push(projected);
         }
@@ -130,10 +140,10 @@ impl<'a> TurnState<'a> {
         self.observed_session_id = Some(value.to_string());
         if !self.started_emitted {
             super::super::turn_event_emit::emit_turn_event(
-                "dispatch.turn.started",
+                "agent.turn.accepted",
                 value,
                 &self.config.turn_id,
-                serde_json::json!({"transport": "claude-code-cli-stream-json"}),
+                serde_json::json!({"evidenceKind": "stream-init"}),
             );
             self.started_emitted = true;
         }

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'package:licoup/src/frontend/shared/ui/apple_control_metrics.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
 import 'package:licoup/src/frontend/shared/ui/apple_glass.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
@@ -564,7 +565,7 @@ class _ApplePopupMenuItem<T> extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
           child: AnimatedContainer(
-            duration: const Duration(milliseconds: 80),
+            duration: LicoMotion.micro,
             curve: Curves.easeOut,
             padding: const EdgeInsets.fromLTRB(4, 4, 10, 4),
             decoration: BoxDecoration(

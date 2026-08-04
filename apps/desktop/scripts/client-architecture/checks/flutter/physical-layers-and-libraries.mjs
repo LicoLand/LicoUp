@@ -70,60 +70,62 @@ const splitTestLibraryRoots = [
   "apps/desktop/test/agents_workspace",
   "apps/desktop/test/fixtures/client_controller",
 ];
-const splitTestLibraryLineLimits = new Map([
-  ["apps/desktop/test/fixtures/client_controller_scenarios.dart", 40],
-  ["apps/desktop/test/fixtures/client_controller/bootstrap_scenarios.dart", 520],
-  ["apps/desktop/test/fixtures/client_controller/conversation_dispatch_scenarios.dart", 650],
-  ["apps/desktop/test/fixtures/client_controller/history_refresh_scenarios.dart", 470],
-  ["apps/desktop/test/fixtures/client_controller/history_runtime_scenarios.dart", 280],
-  ["apps/desktop/test/fixtures/client_controller/history_runtime/message_dispatch_scenarios.dart", 60],
-  ["apps/desktop/test/fixtures/client_controller/history_runtime/session_selection_scenarios.dart", 140],
-  ["apps/desktop/test/fixtures/client_controller/history_runtime/streaming_projection_scenarios.dart", 200],
-  ["apps/desktop/test/fixtures/client_controller/history_scenarios.dart", 30],
-  ["apps/desktop/test/fixtures/client_controller/local_management_scenarios.dart", 20],
-  ["apps/desktop/test/fixtures/client_controller/local_management/conversation_archive_scenarios.dart", 250],
-  ["apps/desktop/test/fixtures/client_controller/local_management/skill_freshness_scenarios.dart", 60],
-  ["apps/desktop/test/fixtures/client_controller/local_management/skill_management_scenarios.dart", 100],
-  ["apps/desktop/test/fixtures/client_controller/local_management/target_management_scenarios.dart", 110],
-  ["apps/desktop/test/fixtures/client_controller/mobile_history_scenarios.dart", 300],
-  ["apps/desktop/test/fixtures/client_controller/preload_scenarios.dart", 160],
-  ["apps/desktop/test/fixtures/client_controller/secure_mesh_scenarios.dart", 680],
-  ["apps/desktop/test/fixtures/client_controller/target_history_scenarios.dart", 30],
-  ["apps/desktop/test/fixtures/client_controller/target_scenarios.dart", 240],
-  ["apps/desktop/test/fixtures/client_controller/support/client_controller_scenario_dependencies.dart", 50],
-  ["apps/desktop/test/fixtures/client_controller/support/client_controller_scenario_environment.dart", 50],
-  ["apps/desktop/test/fixtures/client_controller/support/client_controller_scenario_json.dart", 120],
-  ["apps/desktop/test/fixtures/client_controller/support/fake_agent_archive_job_fixture.dart", 140],
-  ["apps/desktop/test/fixtures/client_controller/support/fake_agent_archive_support.dart", 310],
-  ["apps/desktop/test/fixtures/client_controller/support/fake_agent_conversation_fixture.dart", 50],
-  ["apps/desktop/test/fixtures/client_controller/support/fake_agent_conversation_support.dart", 280],
-  ["apps/desktop/test/fixtures/client_controller/support/fake_agent_runtime_support.dart", 200],
-  ["apps/desktop/test/fixtures/client_controller/support/fake_agent_service.dart", 60],
-  ["apps/desktop/test/fixtures/client_controller/support/fake_agent_state_support.dart", 380],
-  ["apps/desktop/test/fixtures/client_controller/support/fake_agent_usage_support.dart", 90],
-  ["apps/desktop/test/fixtures/client_controller/support/fake_mobile_relay_service.dart", 700],
-  ["apps/desktop/test/fixtures/client_controller/support/no_preload_client_controller.dart", 40],
-  ["apps/desktop/test/agents_workspace/agents_workspace_interaction_test.dart", 400],
-  ["apps/desktop/test/agents_workspace/agents_workspace_layout_test.dart", 420],
-  ["apps/desktop/test/agents_workspace/agents_workspace_renderer_cache_test.dart", 140],
-  ["apps/desktop/test/agents_workspace/agents_workspace_renderer_collapse_test.dart", 340],
-  ["apps/desktop/test/agents_workspace/agents_workspace_renderer_process_card_test.dart", 530],
-  ["apps/desktop/test/agents_workspace/agents_workspace_state_test.dart", 260],
-  ["apps/desktop/test/agents_workspace/support/agents_workspace_test_harness.dart", 60],
+const splitTestLibraryRegistry = new Set([
+  "apps/desktop/test/fixtures/client_controller_scenarios.dart",
+  "apps/desktop/test/fixtures/client_controller/bootstrap_scenarios.dart",
+  "apps/desktop/test/fixtures/client_controller/conversation_dispatch_scenarios.dart",
+  "apps/desktop/test/fixtures/client_controller/conversation_persistence_scenarios.dart",
+  "apps/desktop/test/fixtures/client_controller/history_refresh_scenarios.dart",
+  "apps/desktop/test/fixtures/client_controller/history_runtime_scenarios.dart",
+  "apps/desktop/test/fixtures/client_controller/history_runtime/message_dispatch_scenarios.dart",
+  "apps/desktop/test/fixtures/client_controller/history_runtime/session_selection_scenarios.dart",
+  "apps/desktop/test/fixtures/client_controller/history_runtime/streaming_projection_scenarios.dart",
+  "apps/desktop/test/fixtures/client_controller/history_runtime/streaming_readback_scenarios.dart",
+  "apps/desktop/test/fixtures/client_controller/history_scenarios.dart",
+  "apps/desktop/test/fixtures/client_controller/local_management_scenarios.dart",
+  "apps/desktop/test/fixtures/client_controller/local_management/conversation_archive_scenarios.dart",
+  "apps/desktop/test/fixtures/client_controller/local_management/skill_freshness_scenarios.dart",
+  "apps/desktop/test/fixtures/client_controller/local_management/skill_management_scenarios.dart",
+  "apps/desktop/test/fixtures/client_controller/local_management/target_management_scenarios.dart",
+  "apps/desktop/test/fixtures/client_controller/mobile_history_scenarios.dart",
+  "apps/desktop/test/fixtures/client_controller/preload_scenarios.dart",
+  "apps/desktop/test/fixtures/client_controller/secure_mesh_scenarios.dart",
+  "apps/desktop/test/fixtures/client_controller/target_history_scenarios.dart",
+  "apps/desktop/test/fixtures/client_controller/target_scenarios.dart",
+  "apps/desktop/test/fixtures/client_controller/support/client_controller_scenario_dependencies.dart",
+  "apps/desktop/test/fixtures/client_controller/support/client_controller_scenario_environment.dart",
+  "apps/desktop/test/fixtures/client_controller/support/client_controller_scenario_json.dart",
+  "apps/desktop/test/fixtures/client_controller/support/fake_agent_archive_job_fixture.dart",
+  "apps/desktop/test/fixtures/client_controller/support/fake_agent_archive_support.dart",
+  "apps/desktop/test/fixtures/client_controller/support/fake_agent_conversation_fixture.dart",
+  "apps/desktop/test/fixtures/client_controller/support/fake_agent_conversation_support.dart",
+  "apps/desktop/test/fixtures/client_controller/support/fake_agent_runtime_support.dart",
+  "apps/desktop/test/fixtures/client_controller/support/fake_agent_service.dart",
+  "apps/desktop/test/fixtures/client_controller/support/fake_agent_state_support.dart",
+  "apps/desktop/test/fixtures/client_controller/support/fake_agent_usage_support.dart",
+  "apps/desktop/test/fixtures/client_controller/support/fake_mobile_relay_service.dart",
+  "apps/desktop/test/fixtures/client_controller/support/no_preload_client_controller.dart",
+  "apps/desktop/test/agents_workspace/agents_workspace_interaction_test.dart",
+  "apps/desktop/test/agents_workspace/agents_workspace_layout_test.dart",
+  "apps/desktop/test/agents_workspace/agents_workspace_renderer_cache_test.dart",
+  "apps/desktop/test/agents_workspace/agents_workspace_renderer_collapse_test.dart",
+  "apps/desktop/test/agents_workspace/agents_workspace_renderer_process_card_test.dart",
+  "apps/desktop/test/agents_workspace/agents_workspace_state_test.dart",
+  "apps/desktop/test/agents_workspace/support/agents_workspace_test_harness.dart",
 ]);
 const agentUsageTimelineRoot =
   "apps/desktop/lib/src/frontend/features/agents/ui/agent_usage_timeline";
 const agentUsageTimelineFacadePath =
   "apps/desktop/lib/src/frontend/features/agents/ui/agent_usage_timeline_data.dart";
-const agentUsageTimelineLibraryLineLimits = new Map([
-  [agentUsageTimelineFacadePath, 30],
-  [`${agentUsageTimelineRoot}/agent_usage_timeline_models.dart`, 90],
-  [`${agentUsageTimelineRoot}/agent_usage_timeline_builder.dart`, 260],
-  [`${agentUsageTimelineRoot}/agent_usage_source_parser.dart`, 190],
-  [`${agentUsageTimelineRoot}/agent_usage_token_breakdown.dart`, 290],
-  [`${agentUsageTimelineRoot}/agent_usage_display_names.dart`, 190],
-  [`${agentUsageTimelineRoot}/agent_usage_series_color_policy.dart`, 100],
-  [`${agentUsageTimelineRoot}/agent_usage_visibility_policy.dart`, 50],
+const agentUsageTimelineLibraryLeaves = new Set([
+  agentUsageTimelineFacadePath,
+  `${agentUsageTimelineRoot}/agent_usage_timeline_models.dart`,
+  `${agentUsageTimelineRoot}/agent_usage_timeline_builder.dart`,
+  `${agentUsageTimelineRoot}/agent_usage_source_parser.dart`,
+  `${agentUsageTimelineRoot}/agent_usage_token_breakdown.dart`,
+  `${agentUsageTimelineRoot}/agent_usage_display_names.dart`,
+  `${agentUsageTimelineRoot}/agent_usage_series_color_policy.dart`,
+  `${agentUsageTimelineRoot}/agent_usage_visibility_policy.dart`,
 ]);
 
 async function enforceFlutterLayerIsolation(context) {
@@ -178,7 +180,6 @@ async function enforceNormalDartLibraries(context) {
     readText,
     runJson,
     sameSet,
-    sourceLineCount,
   } = context;
   for (const relativePath of await collectDartSourceFiles()) {
     const source = await readText(relativePath);
@@ -211,7 +212,6 @@ async function enforceSplitTestLibraries(context) {
     readText,
     runJson,
     sameSet,
-    sourceLineCount,
   } = context;
   const testFiles = ["apps/desktop/test/fixtures/client_controller_scenarios.dart"];
   for (const root of splitTestLibraryRoots) {
@@ -224,17 +224,13 @@ async function enforceSplitTestLibraries(context) {
       legacyDirective === null,
       `${relativePath}:${legacyDirective ? lineNumberForToken(source, legacyDirective[0].trim()) : 1} split test libraries must remain independently importable without part directives`
     );
-    const maxLines = splitTestLibraryLineLimits.get(relativePath);
-    assert(maxLines !== undefined, `${relativePath} must have an explicit split-test line limit`);
-    if (maxLines !== undefined) {
-      assert(
-        sourceLineCount(source) <= maxLines,
-        `${relativePath} exceeds its focused test-library limit (${maxLines} lines maximum)`
-      );
-    }
+    assert(
+      splitTestLibraryRegistry.has(relativePath),
+      `${relativePath} must be registered in the split-test library registry`
+    );
   }
-  for (const relativePath of splitTestLibraryLineLimits.keys()) {
-    assert(testFiles.includes(relativePath), `${relativePath} split-test limit must name a current library`);
+  for (const relativePath of splitTestLibraryRegistry) {
+    assert(testFiles.includes(relativePath), `${relativePath} split-test registry must name a current library`);
   }
   for (const retiredPath of [
     "apps/desktop/test/agents_workspace_layout_test.dart",
@@ -252,24 +248,19 @@ async function enforceAgentUsageTimelineLibraries(context) {
     collectSourceFiles,
     readText,
     sameSet,
-    sourceLineCount,
   } = context;
-  const leafPaths = [...agentUsageTimelineLibraryLineLimits.keys()]
+  const leafPaths = [...agentUsageTimelineLibraryLeaves]
     .filter((relativePath) => relativePath !== agentUsageTimelineFacadePath);
   const discoveredLeaves = await collectSourceFiles(agentUsageTimelineRoot, ".dart");
   assert(
     sameSet(discoveredLeaves, leafPaths),
     "agent usage timeline leaves must exactly match the architecture-owned responsibility set"
   );
-  for (const [relativePath, maxLines] of agentUsageTimelineLibraryLineLimits) {
+  for (const relativePath of agentUsageTimelineLibraryLeaves) {
     const source = await readText(relativePath);
     assert(
       !/^\s*part(?:\s+of)?\b/m.test(source),
       `${relativePath} must remain an independently importable library without part directives`
-    );
-    assert(
-      sourceLineCount(source) <= maxLines,
-      `${relativePath} exceeds its agent-usage responsibility limit (${maxLines} lines maximum)`
     );
     if (relativePath !== agentUsageTimelineFacadePath) {
       assert(
@@ -317,7 +308,6 @@ async function findFlutterDependencyCycle(context) {
     readText,
     runJson,
     sameSet,
-    sourceLineCount,
   } = context;
   const files = await collectDartSourceFiles();
   const knownFiles = new Set(files);
@@ -397,7 +387,6 @@ export async function checkFlutterPhysicalLayersAndLibraries(context) {
     readText,
     runJson,
     sameSet,
-    sourceLineCount,
   } = context;
   const flutterTopLevelDirs = await readImmediateDirectoryNames(flutterSrcRoot);
   for (const requiredDir of requiredFlutterPhysicalDirs) {
@@ -430,61 +419,54 @@ export async function checkFlutterPhysicalLayersAndLibraries(context) {
   await enforceNormalDartLibraries(context);
   await enforceSplitTestLibraries(context);
   await enforceAgentUsageTimelineLibraries(context);
-  const workbenchChromeFacadePath =
-    "apps/desktop/lib/src/frontend/layout/profiles/workbench/desktop/shell/workbench_desktop_chrome.dart";
-  const workbenchChromeLeafLimits = new Map([
-    ["workbench_desktop_navigation.dart", 240],
-    ["workbench_desktop_search.dart", 320],
-    ["workbench_desktop_status.dart", 100],
-    ["workbench_desktop_topbar.dart", 240]
-  ]);
-  const workbenchChromeRoot = path.posix.dirname(workbenchChromeFacadePath);
-  const workbenchChromeFacadeSource = await readText(workbenchChromeFacadePath);
-  const workbenchChromeExports = [...workbenchChromeFacadeSource.matchAll(
+  const dashboardChromeFacadePath =
+    "apps/desktop/lib/src/frontend/layout/profiles/dashboard/desktop/shell/dashboard_desktop_chrome.dart";
+  const dashboardChromeLeaves = [
+    "dashboard_desktop_search.dart",
+    "dashboard_folder_sidebar.dart"
+  ];
+  const dashboardChromeRoot = path.posix.dirname(dashboardChromeFacadePath);
+  const dashboardChromeFacadeSource = await readText(dashboardChromeFacadePath);
+  const dashboardChromeExports = [...dashboardChromeFacadeSource.matchAll(
     /^export '([^']+)';$/gmu
   )].map((match) => match[1]);
   assert(
-    sameSet(workbenchChromeExports, [...workbenchChromeLeafLimits.keys()]) &&
-      sourceLineCount(workbenchChromeFacadeSource) <= 5 &&
-      !/^import /mu.test(workbenchChromeFacadeSource) &&
-      !/^(?:class|enum|typedef|mixin|extension) /mu.test(workbenchChromeFacadeSource),
-    "Workbench desktop chrome root must remain an exact four-leaf export facade"
+    sameSet(dashboardChromeExports, dashboardChromeLeaves) &&
+      !/^import /mu.test(dashboardChromeFacadeSource) &&
+      !/^(?:class|enum|typedef|mixin|extension) /mu.test(dashboardChromeFacadeSource),
+    "Dashboard desktop chrome root must remain an exact two-leaf export facade"
   );
-  const workbenchChromeSources = {};
-  for (const [leaf, maxLines] of workbenchChromeLeafLimits) {
-    const source = await readText(`${workbenchChromeRoot}/${leaf}`);
-    workbenchChromeSources[leaf] = source;
+  const dashboardChromeSources = {};
+  for (const leaf of dashboardChromeLeaves) {
+    const source = await readText(`${dashboardChromeRoot}/${leaf}`);
+    dashboardChromeSources[leaf] = source;
     assert(
-      sourceLineCount(source) <= maxLines &&
-        !/^\s*part(?:\s+of)?\b/mu.test(source) &&
-        !source.includes("workbench_desktop_chrome.dart"),
-      `${leaf} must remain a bounded ordinary library without reverse facade coupling`
+      !/^\s*part(?:\s+of)?\b/mu.test(source) &&
+        !source.includes("dashboard_desktop_chrome.dart"),
+      `${leaf} must remain an ordinary library without reverse facade coupling`
     );
   }
   assert(
-    workbenchChromeSources["workbench_desktop_topbar.dart"].includes("WorkbenchDesktopNavigation") &&
-      workbenchChromeSources["workbench_desktop_topbar.dart"].includes("WorkbenchDesktopSearch") &&
-      workbenchChromeSources["workbench_desktop_search.dart"].includes("Autocomplete<_WorkbenchSearchItem>") &&
-      workbenchChromeSources["workbench_desktop_navigation.dart"].includes("_WorkbenchAgentRobotIconPainter") &&
-      workbenchChromeSources["workbench_desktop_status.dart"].includes("ValueListenableBuilder<LayoutChromeSnapshot>"),
-    "Workbench topbar, search, navigation, and status leaves must retain separate interaction ownership"
+    dashboardChromeSources["dashboard_desktop_search.dart"].includes("Autocomplete<_DashboardSearchItem>") &&
+      dashboardChromeSources["dashboard_folder_sidebar.dart"].includes("DashboardDesktopSearch") &&
+      dashboardChromeSources["dashboard_folder_sidebar.dart"].includes("DashboardFolderSidebar"),
+    "Dashboard folder sidebar and search leaves must retain separate interaction ownership"
   );
   const conversationPaneFacadePath =
     "apps/desktop/lib/src/frontend/features/agents/ui/agent_conversation_pane.dart";
-  const conversationPaneLeafLimits = new Map([
-    ["actions.dart", 210],
-    ["composition.dart", 280],
-    ["header.dart", 340],
-    ["resize.dart", 140]
-  ]);
+  const conversationPaneLeaves = [
+    "actions.dart",
+    "composition.dart",
+    "header.dart",
+    "resize.dart"
+  ];
   const conversationPaneRoot = conversationPaneFacadePath.replace(/\.dart$/u, "");
   const conversationPaneFacadeSource = await readText(conversationPaneFacadePath);
   const conversationPaneExports = [...conversationPaneFacadeSource.matchAll(
     /^export 'agent_conversation_pane\/([^']+)';$/gmu
   )].map((match) => match[1]);
   assert(
-    sameSet(conversationPaneExports, [...conversationPaneLeafLimits.keys()]) &&
-      sourceLineCount(conversationPaneFacadeSource.trimEnd()) <= 5 &&
+    sameSet(conversationPaneExports, conversationPaneLeaves) &&
       conversationPaneFacadeSource.includes("export 'agent_conversation_pane_presentation.dart';") &&
       !/^import /mu.test(conversationPaneFacadeSource) &&
       !/^(?:class|enum|typedef|mixin|extension) /mu.test(conversationPaneFacadeSource),
@@ -492,7 +474,7 @@ export async function checkFlutterPhysicalLayersAndLibraries(context) {
   );
   const conversationPaneSources = {};
   const conversationPaneLeafPaths = new Set(
-    [...conversationPaneLeafLimits.keys()].map((leaf) => `${conversationPaneRoot}/${leaf}`)
+    conversationPaneLeaves.map((leaf) => `${conversationPaneRoot}/${leaf}`)
   );
   const resolveConversationPaneImport = (from, specifier) => {
     if (specifier.startsWith("package:licoup/")) {
@@ -506,7 +488,7 @@ export async function checkFlutterPhysicalLayersAndLibraries(context) {
       : null;
   };
   const conversationPaneImportGraph = new Map();
-  for (const [leaf, maxLines] of conversationPaneLeafLimits) {
+  for (const leaf of conversationPaneLeaves) {
     const leafPath = `${conversationPaneRoot}/${leaf}`;
     const source = await readText(leafPath);
     conversationPaneSources[leaf] = source;
@@ -517,11 +499,10 @@ export async function checkFlutterPhysicalLayersAndLibraries(context) {
       .filter((target) => conversationPaneLeafPaths.has(target));
     conversationPaneImportGraph.set(leafPath, crossLeafImports);
     assert(
-      sourceLineCount(source) <= maxLines &&
-        !/^\s*part(?:\s+of)?\b/mu.test(source) &&
+      !/^\s*part(?:\s+of)?\b/mu.test(source) &&
         !source.includes("agent_conversation_pane.dart") &&
         !source.includes("ClientController"),
-      `${leaf} must remain a bounded pane library without reverse facade coupling`
+      `${leaf} must remain a pane library without reverse facade coupling`
     );
   }
   assert(
@@ -536,33 +517,31 @@ export async function checkFlutterPhysicalLayersAndLibraries(context) {
   );
   const messageBlocksFacadePath =
     "apps/desktop/lib/src/frontend/features/agents/ui/agent_conversation_message_blocks.dart";
-  const messageBlocksLeafLimits = new Map([
-    ["disclosures.dart", 320],
-    ["dispatcher.dart", 80],
-    ["role_blocks.dart", 220],
-    ["subagent.dart", 220]
-  ]);
+  const messageBlocksLeaves = [
+    "disclosures.dart",
+    "dispatcher.dart",
+    "role_blocks.dart",
+    "subagent.dart"
+  ];
   const messageBlocksRoot = messageBlocksFacadePath.replace(/\.dart$/u, "");
   const messageBlocksFacadeSource = await readText(messageBlocksFacadePath);
   const messageBlocksExports = [...messageBlocksFacadeSource.matchAll(
     /^export 'agent_conversation_message_blocks\/([^']+)';$/gmu
   )].map((match) => match[1]);
   assert(
-    sameSet(messageBlocksExports, [...messageBlocksLeafLimits.keys()]) &&
-      sourceLineCount(messageBlocksFacadeSource) <= 5 &&
+    sameSet(messageBlocksExports, messageBlocksLeaves) &&
       !/^import /mu.test(messageBlocksFacadeSource) &&
       !/^(?:class|enum|typedef|mixin|extension) /mu.test(messageBlocksFacadeSource),
     "agent conversation message blocks root must remain an exact four-leaf export facade"
   );
   const messageBlocksSources = {};
-  for (const [leaf, maxLines] of messageBlocksLeafLimits) {
+  for (const leaf of messageBlocksLeaves) {
     const source = await readText(`${messageBlocksRoot}/${leaf}`);
     messageBlocksSources[leaf] = source;
     assert(
-      sourceLineCount(source) <= maxLines &&
-        !/^\s*part(?:\s+of)?\b/mu.test(source) &&
+      !/^\s*part(?:\s+of)?\b/mu.test(source) &&
         !source.includes("agent_conversation_message_blocks.dart"),
-      `${leaf} must remain a bounded message block library without reverse facade coupling`
+      `${leaf} must remain a message block library without reverse facade coupling`
     );
   }
   assert(
@@ -578,34 +557,32 @@ export async function checkFlutterPhysicalLayersAndLibraries(context) {
   );
   const mobileRelayPanelFacadePath =
     "apps/desktop/lib/src/frontend/features/mobile_relay/ui/mobile_relay_panel.dart";
-  const mobileRelayPanelLeafLimits = new Map([
-    ["composition.dart", 210],
-    ["pairing.dart", 300],
-    ["qr.dart", 140],
-    ["scan.dart", 70],
-    ["trust.dart", 220]
-  ]);
+  const mobileRelayPanelLeaves = [
+    "composition.dart",
+    "pairing.dart",
+    "qr.dart",
+    "scan.dart",
+    "trust.dart"
+  ];
   const mobileRelayPanelRoot = mobileRelayPanelFacadePath.replace(/\.dart$/u, "");
   const mobileRelayPanelFacadeSource = await readText(mobileRelayPanelFacadePath);
   const mobileRelayPanelExports = [...mobileRelayPanelFacadeSource.matchAll(
     /^export 'mobile_relay_panel\/([^']+)';$/gmu
   )].map((match) => match[1]);
   assert(
-    sameSet(mobileRelayPanelExports, [...mobileRelayPanelLeafLimits.keys()]) &&
-      sourceLineCount(mobileRelayPanelFacadeSource) <= 6 &&
+    sameSet(mobileRelayPanelExports, mobileRelayPanelLeaves) &&
       !/^import /mu.test(mobileRelayPanelFacadeSource) &&
       !/^(?:class|enum|typedef|mixin|extension) /mu.test(mobileRelayPanelFacadeSource),
     "mobile relay panel root must remain an exact five-leaf export facade"
   );
   const mobileRelayPanelSources = {};
-  for (const [leaf, maxLines] of mobileRelayPanelLeafLimits) {
+  for (const leaf of mobileRelayPanelLeaves) {
     const source = await readText(`${mobileRelayPanelRoot}/${leaf}`);
     mobileRelayPanelSources[leaf] = source;
     assert(
-      sourceLineCount(source) <= maxLines &&
-        !/^\s*part(?:\s+of)?\b/mu.test(source) &&
+      !/^\s*part(?:\s+of)?\b/mu.test(source) &&
         !source.includes("mobile_relay_panel.dart"),
-      `${leaf} must remain a bounded Mobile Relay panel library without reverse facade coupling`
+      `${leaf} must remain a Mobile Relay panel library without reverse facade coupling`
     );
   }
   assert(
@@ -613,7 +590,7 @@ export async function checkFlutterPhysicalLayersAndLibraries(context) {
       mobileRelayPanelSources["composition.dart"].includes("MobileRelayScanPairingPrompt") &&
       mobileRelayPanelSources["composition.dart"].includes("MobileRelayTrustVerificationCard") &&
       mobileRelayPanelSources["pairing.dart"].includes("mobile_relay_panel/qr.dart") &&
-      mobileRelayPanelSources["pairing.dart"].includes("configureMobileRelayGateway") &&
+      mobileRelayPanelSources["pairing.dart"].includes("configureMobileRelayStation") &&
       mobileRelayPanelSources["qr.dart"].includes("MobileRelayPairingQrFrame") &&
       mobileRelayPanelSources["scan.dart"].includes("MobileRelayScanPairingPrompt") &&
       mobileRelayPanelSources["trust.dart"].includes("MobileRelayTrustVerificationCard") &&

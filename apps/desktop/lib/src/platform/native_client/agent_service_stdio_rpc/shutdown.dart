@@ -31,7 +31,7 @@ Future<void> shutdownStdioRpcSession({
   });
   var acknowledged = false;
   try {
-    final responseFuture = session.expectFrame();
+    final responseFuture = session.expectFrame(requestId: requestId);
     await writeStdioRpcFrame(session, frame);
     final responseFrame = await responseFuture.timeout(stdioRpcShutdownTimeout);
     final response = responseFrame.bytes;
@@ -43,7 +43,7 @@ Future<void> shutdownStdioRpcSession({
           workflowId: workflowId,
         );
   } on Object {
-    session.abandonExpectedFrame();
+    session.abandonExpectedFrame(requestId);
   }
   await session.close(kill: !acknowledged);
 }

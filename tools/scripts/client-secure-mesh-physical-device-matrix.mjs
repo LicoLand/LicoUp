@@ -14,7 +14,7 @@ import {
   androidPlatformCryptoCoverage as sharedAndroidPlatformCryptoCoverage,
   platformSecretStoreCustodyCoverage,
   redactedReportReady,
-  relayMockCoverage as sharedRelayMockCoverage,
+  stationAcceptanceCoverage as sharedStationAcceptanceCoverage,
   windowsImplementationReady,
   windowsPersistentCustodyBoundaryValid,
 } from "./lib/secure-mesh-physical-report-coverage.mjs";
@@ -76,9 +76,9 @@ async function evaluateSourceCheck(check) {
   };
 }
 
-function relayMockCoverage(report) {
-  return sharedRelayMockCoverage(report, {
-    reportRef: physicalReportRefs.relayMock
+function stationAcceptanceCoverage(report) {
+  return sharedStationAcceptanceCoverage(report, {
+    reportRef: physicalReportRefs.stationAcceptance
   });
 }
 
@@ -144,7 +144,7 @@ function platformCryptoCoverage(report) {
   };
 }
 
-function deriveMatrix({ relayMock, androidPlatformCrypto, androidInstallLaunch, platformCrypto, trustReady, fileReady, windowsReady }) {
+function deriveMatrix({ stationAcceptance, androidPlatformCrypto, androidInstallLaunch, platformCrypto, trustReady, fileReady, windowsReady }) {
   return physicalDeviceMatrixConfig.physicalMatrix.map((entry) => {
     if (entry.scenario === "pairing-and-trust") {
       return {
@@ -163,11 +163,11 @@ function deriveMatrix({ relayMock, androidPlatformCrypto, androidInstallLaunch, 
         status: partial ? "partial" : "missing",
         evidenceReports: [
           ...(androidPlatformCrypto.ready ? [androidPlatformCrypto.report] : []),
-          ...(relayMock.ready ? [relayMock.report] : []),
+          ...(stationAcceptance.ready ? [stationAcceptance.report] : []),
           ...(platformCrypto.iosReady ? [platformCrypto.report] : [])
         ],
         remainingGates: [
-          "Run physical Android and iPhone client command/result, restart, replay, stale-envelope, and ACK-purge checks."
+          "Run physical Android and iPhone client command/result, restart, freshness, and replay checks."
         ]
       };
     }
@@ -181,14 +181,14 @@ function deriveMatrix({ relayMock, androidPlatformCrypto, androidInstallLaunch, 
         ]
       };
     }
-    if (entry.scenario === "relay-protocol") {
+    if (entry.scenario === "licoarc-badtower-interoperability") {
       return {
         ...entry,
-        status: relayMock.ready ? "partial" : "missing",
-        evidenceReports: relayMock.ready ? [relayMock.report] : [],
-        remainingGates: relayMock.ready
-          ? ["Repeat client ciphertext and replay checks on physical Android and iPhone clients."]
-          : ["Run the client-owned relay Mock protocol acceptance."]
+        status: stationAcceptance.ready ? "partial" : "missing",
+        evidenceReports: stationAcceptance.ready ? [stationAcceptance.report] : [],
+        remainingGates: stationAcceptance.ready
+          ? ["Repeat the Lico Arc endpoint exchange on physical Android and iPhone clients."]
+          : ["Run the strict Lico Arc BadTower interoperability acceptance."]
       };
     }
     if (entry.scenario === "desktop-release-platforms") {
@@ -225,10 +225,10 @@ if (!blocker) {
 const sourceResults = await Promise.all(
   physicalDeviceMatrixConfig.sourceChecks.map(evaluateSourceCheck)
 );
-const [relayMockReport, androidPlatformCryptoReport, androidInstallLaunchReport,
+const [stationAcceptanceReport, androidPlatformCryptoReport, androidInstallLaunchReport,
   platformSecretStoreReport, trustUxReport, encryptedFileHandoffReport,
   physicalEvidenceManifestReport, windowsImplementationReport] = await Promise.all([
-  readJsonIfPresent(physicalReportRefs.relayMock),
+  readJsonIfPresent(physicalReportRefs.stationAcceptance),
   readJsonIfPresent(physicalReportRefs.androidPlatformCrypto),
   readJsonIfPresent(physicalReportRefs.androidInstallLaunch),
   readJsonIfPresent(physicalReportRefs.platformSecretStore),
@@ -238,7 +238,7 @@ const [relayMockReport, androidPlatformCryptoReport, androidInstallLaunchReport,
   readJsonIfPresent(physicalReportRefs.windowsImplementation)
 ]);
 
-const relayMock = relayMockCoverage(relayMockReport);
+const stationAcceptance = stationAcceptanceCoverage(stationAcceptanceReport);
 const androidPlatformCrypto = androidPlatformCryptoCoverage(androidPlatformCryptoReport);
 const androidInstallLaunch = installLaunchCoverage(androidInstallLaunchReport);
 const platformCrypto = platformCryptoCoverage(platformSecretStoreReport);
@@ -249,7 +249,7 @@ const windowsReady = windowsImplementationReady(windowsImplementationReport);
 const windowsConservativeBoundaryValid =
   windowsPersistentCustodyBoundaryValid(windowsImplementationReport);
 const physicalMatrix = deriveMatrix({
-  relayMock,
+  stationAcceptance,
   androidPlatformCrypto,
   androidInstallLaunch,
   platformCrypto,
@@ -261,14 +261,14 @@ const allPhysicalScenariosReady = physicalMatrix.every((entry) =>
   entry.status === "ready" && entry.remainingGates.length === 0
 );
 const physicalEvidenceChainReadyForSummary = allPhysicalScenariosReady &&
-  relayMock.ready &&
+  stationAcceptance.ready &&
   androidPlatformCrypto.ready &&
   androidInstallLaunch.physicalDeviceProofReady &&
   platformCrypto.androidReady &&
   platformCrypto.iosReady &&
   platformCrypto.macosReady;
 const diagnosticOk = sourceResults.every((result) => result.ok) &&
-  relayMock.ready &&
+  stationAcceptance.ready &&
   androidPlatformCrypto.ready &&
   platformCrypto.ok &&
   trustReady &&
@@ -336,7 +336,7 @@ const report = {
   },
   sourceResults,
   evidenceSnapshots: {
-    relayMock,
+    stationAcceptance,
     androidPlatformCrypto,
     androidInstallLaunch,
     platformCrypto,
@@ -352,7 +352,7 @@ const report = {
   },
   physicalMatrix,
   currentProofSurface: {
-    relayProtocolMockReady: relayMock.ready,
+    stationAcceptanceReady: stationAcceptance.ready,
     androidPlatformCryptoAcceptanceReady: androidPlatformCrypto.ready,
     androidPhysicalInstallLaunchReady: androidInstallLaunch.ready,
     androidPhysicalDeviceProofPresent:
@@ -365,7 +365,7 @@ const report = {
   },
   summary: {
     diagnosticOk,
-    relayProtocolMockReady: relayMock.ready,
+    stationAcceptanceReady: stationAcceptance.ready,
     androidPlatformCryptoAcceptanceReady: androidPlatformCrypto.ready,
     androidPlatformCustodyContractReady:
       androidPlatformCrypto.platformCustodyContractReady,
@@ -434,7 +434,7 @@ console.log(JSON.stringify({
   ok: report.ok,
   report: reportPath,
   diagnosticStatus: report.diagnosticStatus,
-  relayProtocolMockReady: report.summary.relayProtocolMockReady,
+  stationAcceptanceReady: report.summary.stationAcceptanceReady,
   androidPlatformCryptoAcceptanceReady:
     report.summary.androidPlatformCryptoAcceptanceReady,
   allPhysicalScenariosReady,

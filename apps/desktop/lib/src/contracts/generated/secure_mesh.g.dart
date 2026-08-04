@@ -95,6 +95,7 @@ enum SecureMeshFailureCode {
   }
 }
 
+
 final class SecureMeshFailure implements Exception {
   const SecureMeshFailure({required this.code});
 
@@ -189,32 +190,24 @@ void _validateSecureMeshValue(Object? root) {
     }
     if (value is String) {
       if (utf8.encode(value).length > secureMeshMaxStringBytes) {
-        throw const SecureMeshFailure(
-          code: SecureMeshFailureCode.invalidPayload,
-        );
+        throw const SecureMeshFailure(code: SecureMeshFailureCode.invalidPayload);
       }
     } else if (value is List) {
       if (value.length > secureMeshMaxCollectionEntries) {
-        throw const SecureMeshFailure(
-          code: SecureMeshFailureCode.invalidPayload,
-        );
+        throw const SecureMeshFailure(code: SecureMeshFailureCode.invalidPayload);
       }
       for (final nested in value.reversed) {
         stack.add((nested, depth + 1));
       }
     } else if (value is Map) {
       if (value.length > secureMeshMaxCollectionEntries) {
-        throw const SecureMeshFailure(
-          code: SecureMeshFailureCode.invalidPayload,
-        );
+        throw const SecureMeshFailure(code: SecureMeshFailureCode.invalidPayload);
       }
       for (final entry in value.entries) {
         final key = entry.key;
         if (key is! String ||
             utf8.encode(key).length > secureMeshMaxStringBytes) {
-          throw const SecureMeshFailure(
-            code: SecureMeshFailureCode.invalidPayload,
-          );
+          throw const SecureMeshFailure(code: SecureMeshFailureCode.invalidPayload);
         }
         if (_secureMeshForbiddenFields.any(
           (forbidden) => forbidden.toLowerCase() == key.toLowerCase(),

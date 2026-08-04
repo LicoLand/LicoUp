@@ -16,7 +16,6 @@ const _clientMethods = <String>{
   'catalog.reconnect',
   'catalog.list',
   'catalog.observe',
-  'orchestrator.request',
   'state.get',
   'state.set',
 };
@@ -27,5 +26,6 @@ bool validStdioRpcStructuredMethod(String method) =>
 bool stdioRpcMethodUsesConversationLane(String method) =>
     _conversationMethods.contains(method);
 
-bool stdioRpcMethodUsesOrchestrator(String method) =>
-    method == 'orchestrator.request';
+bool stdioRpcMethodIsInFlightControl(String method) =>
+    method == 'agent.conversation.cancel' ||
+    method == 'agent.conversation.steer';

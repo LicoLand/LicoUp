@@ -12,6 +12,8 @@ mod hooks;
 mod model;
 mod probe;
 
+mod auth;
+pub(crate) use auth::authorize;
 pub(super) use control::{ControlDisposition, cancel, cleanup_session};
 pub(super) use execution::execute;
 #[cfg(test)]

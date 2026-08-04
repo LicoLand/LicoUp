@@ -136,7 +136,7 @@ void registerClientBootstrapScenarios() {
       '${(await portableData.clientDirectory()).path}/appearance-preferences.json',
     );
     await preferencesFile.writeAsString(
-      '{"schemaVersion":1,"appearancePresetId":"sunset-ember"}',
+      '{"schemaVersion":1,"appearancePresetId":"lico-soda"}',
       flush: true,
     );
 
@@ -146,14 +146,38 @@ void registerClientBootstrapScenarios() {
     );
     addTearDown(controller.dispose);
     await controller.initialize();
-    expect(controller.appearancePresetId, AppearancePresetIds.sunsetEmber);
+    expect(controller.appearancePresetId, AppearancePresetIds.licoSoda);
 
-    await controller.setAppearancePreset(AppearancePresetIds.cappuccinoDark);
-    expect(controller.appearancePresetId, AppearancePresetIds.cappuccinoDark);
+    await controller.setAppearancePreset(AppearancePresetIds.defaultSystem);
+    expect(controller.appearancePresetId, AppearancePresetIds.defaultSystem);
     expect(
       await preferencesFile.readAsString(),
-      contains('"appearancePresetId": "cappuccino-dark"'),
+      contains('"appearancePresetId": "default-system"'),
     );
+  });
+
+  test('retired appearance preset falls back to default-system', () async {
+    final directory = await Directory.systemTemp.createTemp(
+      'lico-appearance-retired-',
+    );
+    addTearDown(() => directory.delete(recursive: true));
+    final portableData = PortableDataRoot(dataDirectoryOverride: directory);
+    final preferencesFile = File(
+      '${(await portableData.clientDirectory()).path}/appearance-preferences.json',
+    );
+    await preferencesFile.writeAsString(
+      '{"schemaVersion":1,"appearancePresetId":"sunset-ember"}',
+      flush: true,
+    );
+
+    final controller = ClientController(
+      portableData: portableData,
+      agentService: FakeAgentService(),
+    );
+    addTearDown(controller.dispose);
+
+    await controller.initialize();
+    expect(controller.appearancePresetId, AppearancePresetIds.defaultSystem);
   });
 
   test('invalid local appearance preset falls back to default-system', () async {

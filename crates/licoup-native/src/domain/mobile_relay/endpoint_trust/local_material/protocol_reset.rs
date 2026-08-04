@@ -14,6 +14,15 @@ pub(in crate::domain::mobile_relay) fn reset_incompatible_local_pairwise_protoco
     if !incompatible {
         return false;
     }
+    reset_local_pairwise_state(config);
+    true
+}
+
+pub(in crate::domain::mobile_relay) fn force_reset_local_pairwise_protocol(config: &mut Value) {
+    reset_local_pairwise_state(config);
+}
+
+fn reset_local_pairwise_state(config: &mut Value) {
     config["mobileRelayE2ee"] = json!({});
     config["pairingId"] = json!("");
     config["pcToken"] = json!("");
@@ -26,11 +35,9 @@ pub(in crate::domain::mobile_relay) fn reset_incompatible_local_pairwise_protoco
             "mobileTokenPresent",
             "pairedDevices",
             "pcTokenPresent",
-            "relayRegisteredEndpointId",
             "secretStorageStatus",
         ] {
             root.remove(key);
         }
     }
-    true
 }

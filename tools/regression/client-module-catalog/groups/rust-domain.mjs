@@ -1295,26 +1295,25 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
   defineModule({
       id: "rust.domain.mobile-relay.relay-operations.command-handlers",
       kind: "rust-domain",
-      summary: "Ciphertext-only check-in poll complete create and result command handlers",
+      summary: "Ciphertext-only lease poll send receive delete and result command handlers",
       inputs: [
         "crates/licoup-native/src/domain/mobile_relay/relay_operations/command_handlers.rs",
         "crates/licoup-native/src/domain/mobile_relay/relay_operations/command_handlers/check_in.rs",
         "crates/licoup-native/src/domain/mobile_relay/relay_operations/command_handlers/create.rs",
-        "crates/licoup-native/src/domain/mobile_relay/relay_operations/command_handlers/poll_complete.rs",
+        "crates/licoup-native/src/domain/mobile_relay/relay_operations/command_handlers/poll.rs",
         "crates/licoup-native/src/domain/mobile_relay/relay_operations/command_handlers/result.rs",
-        "crates/licoup-native/src/domain/mobile_relay/relay_operations/tests/command_handlers.rs",
       ],
-      command: rustLayer("domain::mobile_relay::relay_operations::tests::command_handlers::"),
+      command: rustLayer("domain::mobile_relay::relay_operations::tests::"),
     }),
   defineModule({
-      id: "rust.domain.mobile-relay.relay-operations.context",
+      id: "rust.domain.mobile-relay.relay-operations.station",
       kind: "rust-domain",
-      summary: "Canonical authenticated relay context and scope persistence",
+      summary: "Explicit BadTower station selection and untrusted transport-hint projection",
       inputs: [
-        "crates/licoup-native/src/domain/mobile_relay/relay_operations/context.rs",
-        "crates/licoup-native/src/domain/mobile_relay/relay_operations/tests/context.rs",
+        "crates/licoup-native/src/domain/mobile_relay/relay_operations/station.rs",
+        "crates/licoup-native/src/domain/mobile_relay/relay_operations/tests/station.rs",
       ],
-      command: rustLayer("domain::mobile_relay::relay_operations::tests::context::"),
+      command: rustLayer("domain::mobile_relay::relay_operations::tests::station::"),
     }),
   defineModule({
       id: "rust.domain.mobile-relay.relay-operations.mailbox",
@@ -1335,16 +1334,6 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
         "crates/licoup-native/src/domain/mobile_relay/relay_operations/tests/envelope.rs",
       ],
       command: rustLayer("domain::mobile_relay::relay_operations::tests::envelope::"),
-    }),
-  defineModule({
-      id: "rust.domain.mobile-relay.relay-operations.registration",
-      kind: "rust-domain",
-      summary: "Ed25519 challenge-bound local relay endpoint registration",
-      inputs: [
-        "crates/licoup-native/src/domain/mobile_relay/relay_operations/registration.rs",
-        "crates/licoup-native/src/domain/mobile_relay/relay_operations/tests/registration.rs",
-      ],
-      command: rustLayer("domain::mobile_relay::relay_operations::tests::registration::"),
     }),
   defineModule({
       id: "rust.domain.mobile-relay.relay-operations.delivery",
@@ -2112,6 +2101,15 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       command: rustLayer("domain::targets::model_catalog::tests::antigravity::"),
     }),
   defineModule({
+      id: "rust.domain.targets.model-catalog.cursor",
+      kind: "rust-domain",
+      summary: "Bounded Cursor Agent CLI model discovery",
+      inputs: [
+        "crates/licoup-native/src/domain/targets/model_catalog/cursor.rs",
+      ],
+      command: rustLayer("domain::targets::model_catalog::tests::cursor::"),
+    }),
+  defineModule({
       id: "rust.domain.targets.model-catalog.config",
       kind: "rust-domain",
       summary: "Local model settings and cache document discovery",
@@ -2284,6 +2282,15 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
         "crates/licoup-native/src/ffi/commands/agent_conversation.rs",
       ],
       command: rustLayer("domain::skill_hub::usage::"),
+    }),
+  defineModule({
+      id: "rust.domain.skill-hub.usage-backfill",
+      kind: "rust-domain",
+      summary: "Incremental history backfill for skill invocation counts with watermark and digest idempotency",
+      inputs: [
+        "crates/licoup-native/tests/skill_usage_backfill_cases.rs",
+      ],
+      command: rustIntegrationTest("skill_usage_backfill_cases"),
     }),
   defineModule({
       id: "rust.domain.skill-hub.source",

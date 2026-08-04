@@ -400,9 +400,30 @@ fn adapter_or_err(agent_id: &str) -> Result<RuntimeAdapter> {
 pub fn open_or_resume(params: &Value) -> Result<Value> {
     let agent_id = agent_id_param(params)?;
     let adapter = adapter_or_err(&agent_id)?;
+    let runtime_connection =
+        super::virtual_machine::SshRuntimeConnection::from_params(params, adapter.id())
+            .map_err(|error| anyhow!(error.code()))?;
     let native_id = runtime_adapters::text_param_public(params, &["sessionId", "nativeSessionId"])
         .unwrap_or_default();
-    let matrix = static_capability_matrix(adapter);
+    let uses_hermes_gateway = runtime_connection
+        .as_ref()
+        .is_some_and(super::virtual_machine::SshRuntimeConnection::is_hermes_tui_gateway);
+    let mut matrix = static_capability_matrix(adapter);
+    if uses_hermes_gateway && let Some(matrix) = matrix.as_object_mut() {
+        matrix.insert("laneFamily".to_string(), json!("rpc"));
+        matrix.insert("cancel".to_string(), json!(false));
+        matrix.insert("interruptSteer".to_string(), json!(false));
+    }
+    let effective_lane_family = if uses_hermes_gateway {
+        "rpc"
+    } else {
+        lane_family(adapter)
+    };
+    let effective_runtime_protocol = if uses_hermes_gateway {
+        super::hermes_tui_gateway::RUNTIME_PROTOCOL
+    } else {
+        adapter.runtime_protocol()
+    };
     let profile = runtime_adapters::runtime_driver_profile(&agent_id);
     let blocker = profile.as_ref().and_then(|p| p.blocker.clone());
     let driver_mode = profile
@@ -410,13 +431,13 @@ pub fn open_or_resume(params: &Value) -> Result<Value> {
         .map(|p| p.driver_status.clone())
         .unwrap_or_else(|| "unknown".to_string());
 
-    if lane_family(adapter) == "unavailable" {
+    if effective_lane_family == "unavailable" {
         return Ok(json!({
             "ok": false,
             "agentId": adapter.id(),
-            "laneFamily": lane_family(adapter),
+            "laneFamily": effective_lane_family,
             "driverId": adapter.driver_id(),
-            "runtimeProtocol": adapter.runtime_protocol(),
+            "runtimeProtocol": effective_runtime_protocol,
             "capabilities": matrix,
             "error": {
                 "code": blocker.unwrap_or_else(|| "official_conversation_transport_unavailable".to_string()),
@@ -451,7 +472,7 @@ pub fn open_or_resume(params: &Value) -> Result<Value> {
             }
         }
     }
-    if adapter == RuntimeAdapter::OpenClaw {
+    if adapter == RuntimeAdapter::OpenClaw && runtime_connection.is_none() {
         // Prefer vendor Gateway attach/reuse (18789); never steal that port.
         // Disclose gateway state on open; send still fail-closes via ensure.
         gateway_status = crate::platform::openclaw_gateway::ensure(&json!({
@@ -467,6 +488,15 @@ pub fn open_or_resume(params: &Value) -> Result<Value> {
                 "vendorDefaultPort": crate::platform::openclaw_gateway::VENDOR_DEFAULT_PORT
             })
         });
+    } else if adapter == RuntimeAdapter::OpenClaw {
+        gateway_status = json!({
+            "ok": true,
+            "status": "deferred",
+            "running": false,
+            "healthy": false,
+            "attachMode": "ssh-stdio",
+            "hostClass": "virtual-machine"
+        });
     }
 
     if !native_id.is_empty() {
@@ -476,9 +506,9 @@ pub fn open_or_resume(params: &Value) -> Result<Value> {
             return Ok(json!({
                 "ok": false,
                 "agentId": adapter.id(),
-                "laneFamily": lane_family(adapter),
+                "laneFamily": effective_lane_family,
                 "driverId": adapter.driver_id(),
-                "runtimeProtocol": adapter.runtime_protocol(),
+                "runtimeProtocol": effective_runtime_protocol,
                 "capabilities": matrix,
                 "gateway": gateway_status,
                 "error": {
@@ -494,9 +524,9 @@ pub fn open_or_resume(params: &Value) -> Result<Value> {
             return Ok(json!({
                 "ok": false,
                 "agentId": adapter.id(),
-                "laneFamily": lane_family(adapter),
+                "laneFamily": effective_lane_family,
                 "driverId": adapter.driver_id(),
-                "runtimeProtocol": adapter.runtime_protocol(),
+                "runtimeProtocol": effective_runtime_protocol,
                 "capabilities": matrix,
                 "error": {
                     "code": "claude_code_live_session_unavailable",
@@ -510,9 +540,9 @@ pub fn open_or_resume(params: &Value) -> Result<Value> {
     Ok(json!({
         "ok": true,
         "agentId": adapter.id(),
-        "laneFamily": lane_family(adapter),
+        "laneFamily": effective_lane_family,
         "driverId": adapter.driver_id(),
-        "runtimeProtocol": adapter.runtime_protocol(),
+        "runtimeProtocol": effective_runtime_protocol,
         "nativeSessionId": native_id,
         "sessionId": native_id,
         "threadId": native_id,
@@ -575,13 +605,15 @@ pub fn cancel_turn(params: &Value) -> Result<Value> {
             RuntimeAdapter::Cursor => match super::cursor_driver::cancel(&session_id) {
                 super::cursor_driver::ControlDisposition::Accepted => 0,
                 super::cursor_driver::ControlDisposition::NoActiveTurn => 1,
-                super::cursor_driver::ControlDisposition::SessionUnavailable => 2,
+                super::cursor_driver::ControlDisposition::NotPersisted
+                | super::cursor_driver::ControlDisposition::SessionUnavailable => 2,
                 super::cursor_driver::ControlDisposition::TransportUnavailable => 3,
             },
             RuntimeAdapter::Antigravity => match super::antigravity_driver::cancel(&session_id) {
                 super::antigravity_driver::ControlDisposition::Accepted => 0,
                 super::antigravity_driver::ControlDisposition::NoActiveTurn => 1,
-                super::antigravity_driver::ControlDisposition::SessionUnavailable => 2,
+                super::antigravity_driver::ControlDisposition::NotPersisted
+                | super::antigravity_driver::ControlDisposition::SessionUnavailable => 2,
                 super::antigravity_driver::ControlDisposition::TransportUnavailable => 3,
             },
             RuntimeAdapter::Hermes => match super::hermes_driver::cancel(&session_id) {
@@ -740,12 +772,14 @@ pub fn cleanup_conversation(params: &Value) -> Result<Value> {
         },
         RuntimeAdapter::Cursor => match super::cursor_driver::cleanup_session(&session_id) {
             super::cursor_driver::ControlDisposition::Accepted => 0,
+            super::cursor_driver::ControlDisposition::NotPersisted => 3,
             super::cursor_driver::ControlDisposition::SessionUnavailable => 1,
             _ => 2,
         },
         RuntimeAdapter::Antigravity => {
             match super::antigravity_driver::cleanup_session(&session_id) {
                 super::antigravity_driver::ControlDisposition::Accepted => 0,
+                super::antigravity_driver::ControlDisposition::NotPersisted => 3,
                 super::antigravity_driver::ControlDisposition::SessionUnavailable => 1,
                 _ => 2,
             }
@@ -769,6 +803,7 @@ pub fn cleanup_conversation(params: &Value) -> Result<Value> {
             "not_found",
             json!(format!("{prefix}_session_unavailable")),
         ),
+        3 => (true, "not_persisted", Value::Null),
         _ => (
             false,
             "unavailable",
@@ -838,23 +873,13 @@ pub fn shutdown_all_conversations() -> Result<()> {
 /// alias cancel or a second send into steer; adapters must expose a native,
 /// exactly-once in-flight control channel before their inventory capability is
 /// promoted.
-pub(crate) fn native_steer_supported(agent_id: &str) -> bool {
+#[cfg(test)]
+fn native_steer_supported(agent_id: &str) -> bool {
     adapter_or_err(agent_id)
         .ok()
         .and_then(|adapter| {
             static_capability_matrix(adapter)
                 .get("interruptSteer")
-                .and_then(Value::as_bool)
-        })
-        .unwrap_or(false)
-}
-
-pub(crate) fn native_interrupt_supported(agent_id: &str) -> bool {
-    adapter_or_err(agent_id)
-        .ok()
-        .and_then(|adapter| {
-            static_capability_matrix(adapter)
-                .get("cancel")
                 .and_then(Value::as_bool)
         })
         .unwrap_or(false)

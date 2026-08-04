@@ -87,7 +87,10 @@ export function selfTestTrustReport({
 }
 
 export function selfTestReports({
-  plaintextReady = true,
+  stationPlaintextAbsent = true,
+  stationClientCandidateDigest = `sha256:${"a".repeat(64)}`,
+  stationProtocolCandidateDigest = `sha256:${"b".repeat(64)}`,
+  stationBinaryCandidateDigest = `sha256:${"c".repeat(64)}`,
   tamperReady = true,
   reviewSignoffReady = true,
   productTrustUxReady = true,
@@ -131,16 +134,39 @@ export function selfTestReports({
         { id: "secure_mesh_pairwise_agent_host_command_result_relay_round_trip", ok: true }
       ] : []
     },
-    relayMock: { summary: {
+    stationAcceptance: {
+      schemaVersion: "licoup.licoarc-badtower.acceptance.v1",
       ok: true,
-      exactFiveOperationsObserved: true,
-      exactSixOuterFieldsObserved: true,
-      plaintextAbsentFromServerVisibleWire: plaintextReady,
-      wireBytesMeasured: true,
-      replayRejected: true,
-      staleLeaseRejected: true,
-      ackIdempotencyVerified: true
-    } },
+      protocolCandidateDigest: stationProtocolCandidateDigest,
+      stationCandidateDigest: stationBinaryCandidateDigest,
+      clientCandidateDigest: stationClientCandidateDigest,
+      scenario: {
+        freshEndpointCount: 2,
+        positiveExchange: true,
+        roundTrip: true,
+        stationPlaintextAbsent,
+        nonConformantEnvelopeRejected: true,
+        transportHintsNonAuthoritative: true,
+        exactFiveOuterFields: true,
+        mobileFfiDispatch: true,
+        typedPendingObserved: true,
+        durableResultReceiptAcknowledged: true,
+      },
+      privacy: {
+        redacted: true,
+        endpointContentIncluded: false,
+        ciphertextIncluded: false,
+        keyMaterialIncluded: false,
+        machineIdentityIncluded: false,
+        rawRuntimeDataIncluded: false,
+      },
+      claims: {
+        clientRelease: false,
+        protocolPublication: false,
+        stationRelease: false,
+        hostedOperation: false,
+      },
+    },
     file: { summary: { verificationPassed: true, multiRecipientEndpointSpecificResealProofReady: true, releaseBuiltDesktopFilePolicyReady: true, releaseBuiltDesktopReadyPlatforms: ["macos"], androidPhysicalEndpointFilePolicyReady: true, androidPhysicalReceiveConfirmationReady: true } },
     trust: selfTestTrustReport({
       productTrustUxReady,

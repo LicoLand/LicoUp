@@ -5,6 +5,7 @@ pub(super) use super::super::persistence::*;
 pub(super) use super::super::runtime_self_test::*;
 pub(super) use super::super::session_negotiation::*;
 pub(super) use super::super::support::*;
+pub(super) use crate::core::licoarc_relay::LicoArcRelayEnvelope;
 pub(super) use crate::core::secure_mesh::{
     SECURE_MESH_PROTOCOL_BUILD_REVISION, SECURE_MESH_PROTOCOL_VERSION,
 };
@@ -28,7 +29,6 @@ pub(super) use crate::core::secure_mesh_prekey::{
     SecureMeshPairwisePreKeyBundle, SecureMeshPreKeyKind, SecureMeshPreKeyValidationPolicy,
     authorize_test_pairwise_prekey_bundle, sign_prekey_record,
 };
-pub(super) use crate::core::secure_mesh_relay_envelope::SecureMeshRelayEnvelope;
 pub(super) use crate::core::secure_mesh_secret_store::SecretBytes;
 pub(super) use crate::core::secure_mesh_secret_store::{
     SecretStoreAuthorizationRequest, SecretStoreAuthorizationSession, SecretStoreHandle,
@@ -54,7 +54,7 @@ pub(super) use std::sync::{
     atomic::{AtomicBool, Ordering},
 };
 pub(super) use std::time::{SystemTime, UNIX_EPOCH};
-pub(super) use time::OffsetDateTime;
+pub(super) use time::{Duration, OffsetDateTime, format_description::well_known::Rfc3339};
 pub(super) use zeroize::Zeroizing;
 
 pub(super) struct EndpointFixture {
@@ -655,6 +655,8 @@ pub(super) fn payload_context_with_mailbox(
     sender: &str,
     recipient: &str,
 ) -> SecureMeshContentContext {
+    let created_at = OffsetDateTime::now_utc();
+    let expires_at = created_at + Duration::minutes(10);
     SecureMeshContentContext::new(
         relay_delivery_id(message_id),
         message_id,
@@ -662,8 +664,8 @@ pub(super) fn payload_context_with_mailbox(
         sender,
         recipient,
         session.session_id.clone(),
-        "2026-06-26T00:00:00Z",
-        "2026-06-26T00:10:00Z",
+        created_at.format(&Rfc3339).unwrap(),
+        expires_at.format(&Rfc3339).unwrap(),
     )
 }
 
@@ -677,24 +679,23 @@ pub(super) fn relay_mailbox_token(label: &str) -> String {
 
 #[derive(Default)]
 pub(super) struct OpaquePairwiseRelay {
-    pub(super) pending: Vec<SecureMeshRelayEnvelope>,
+    pub(super) pending: Vec<LicoArcRelayEnvelope>,
     pub(super) acked_delivery_ids: Vec<String>,
 }
 
 impl OpaquePairwiseRelay {
-    pub(super) fn send(&mut self, envelope: SecureMeshRelayEnvelope, forbidden_plaintext: &str) {
+    pub(super) fn send(&mut self, envelope: LicoArcRelayEnvelope, forbidden_plaintext: &str) {
         assert_eq!(
-            envelope.schema(),
-            crate::core::secure_mesh_relay_envelope::SECURE_MESH_RELAY_ENVELOPE_SCHEMA
+            envelope.contract_version(),
+            crate::core::licoarc_relay::LICOARC_RELAY_CONTRACT_VERSION
         );
-        assert!(!envelope.delivery_id().contains(forbidden_plaintext));
-        assert!(!envelope.mailbox_token().contains(forbidden_plaintext));
-        assert!(!envelope.encrypted_header().contains(forbidden_plaintext));
+        assert!(!envelope.envelope_id().contains(forbidden_plaintext));
+        assert!(!envelope.mailbox_id().contains(forbidden_plaintext));
         assert!(!envelope.ciphertext().contains(forbidden_plaintext));
         self.pending.push(envelope);
     }
 
-    pub(super) fn sync(&self, mailbox_token: &str) -> Vec<SecureMeshRelayEnvelope> {
+    pub(super) fn sync(&self, mailbox_token: &str) -> Vec<LicoArcRelayEnvelope> {
         let mailbox_token = if mailbox_token.len() == 43 {
             mailbox_token.to_string()
         } else {
@@ -702,7 +703,7 @@ impl OpaquePairwiseRelay {
         };
         self.pending
             .iter()
-            .filter(|envelope| envelope.mailbox_token() == mailbox_token)
+            .filter(|envelope| envelope.mailbox_id() == mailbox_token)
             .cloned()
             .collect()
     }
@@ -711,7 +712,7 @@ impl OpaquePairwiseRelay {
         let delivery_id = relay_delivery_id(message_label);
         let before = self.pending.len();
         self.pending
-            .retain(|envelope| envelope.delivery_id() != delivery_id);
+            .retain(|envelope| envelope.envelope_id() != delivery_id);
         let idempotent = before == self.pending.len();
         if !self.acked_delivery_ids.iter().any(|id| id == &delivery_id) {
             self.acked_delivery_ids.push(delivery_id);
@@ -846,21 +847,17 @@ pub(super) fn command_context_for_endpoints(
 }
 
 pub(super) fn assert_relay_envelope_hides(
-    envelope: &SecureMeshRelayEnvelope,
+    envelope: &LicoArcRelayEnvelope,
     forbidden_plaintext: &[&str],
 ) {
     for forbidden in forbidden_plaintext {
         assert!(
-            !envelope.delivery_id().contains(forbidden),
-            "delivery id leaked {forbidden}"
+            !envelope.envelope_id().contains(forbidden),
+            "envelope id leaked {forbidden}"
         );
         assert!(
-            !envelope.mailbox_token().contains(forbidden),
-            "mailbox token leaked {forbidden}"
-        );
-        assert!(
-            !envelope.encrypted_header().contains(forbidden),
-            "encrypted header leaked {forbidden}"
+            !envelope.mailbox_id().contains(forbidden),
+            "mailbox id leaked {forbidden}"
         );
         assert!(
             !envelope.ciphertext().contains(forbidden),

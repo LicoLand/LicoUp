@@ -16,17 +16,17 @@ pub(super) use time::{Duration, OffsetDateTime, format_description::well_known::
 pub(super) use uuid::Uuid;
 
 pub(super) use super::config::{
-    effective_gateway_url, normalize_gateway_fields, validated_gateway,
+    effective_station_base_url, normalize_station_fields, validated_station_base_url,
 };
 pub(super) use super::secret_custody::{
     CONFIG_SCHEMA_VERSION, RuntimeSecretContext, ensure_secure_mesh_protected_operation_allowed,
-    load_config_with_runtime_secret_context, load_config_with_runtime_secret_overrides,
-    load_config_without_persistence, public_secret_storage_backend,
-    save_config_with_runtime_secret_context, secret_present,
+    load_config_for_read, load_config_with_runtime_secret_context, load_config_without_persistence,
+    public_secret_storage_backend, save_config_with_runtime_secret_context, secret_present,
 };
 #[cfg(test)]
 pub(super) use super::secret_custody::{
     load_config, load_config_with_runtime_secret_context_for_operation,
+    load_config_with_runtime_secret_overrides,
     mobile_relay_e2ee_secret_store_authorization_batch_operation_count,
 };
 #[cfg(test)]
@@ -72,7 +72,6 @@ pub(super) use crate::platform::secure_mesh_secret_store::{
 
 pub(super) type MobileRelayClaimMac = Hmac<Sha256>;
 
-pub(super) const SECURE_MESH_PROTOCOL_VERSION: &str = "licomesh.secure-mesh.v1";
 pub(super) const MOBILE_RELAY_E2EE_PROTOCOL_VERSION: &str =
     "licomesh.mobile-relay.e2ee.pqxdh-mlkem1024.v1";
 pub(super) const SECURE_MESH_ENVELOPE_COMMAND: &str = "secure_mesh.envelope";

@@ -8,10 +8,11 @@ import 'package:licoup/src/contracts/presentation/layout_state_namespace.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:licoup/src/frontend/layout/layout_component_kit.dart';
 import 'package:licoup/src/frontend/layout/layout_definition.dart';
-import 'package:licoup/src/frontend/layout/layout_palette.dart';
 import 'package:licoup/src/frontend/layout/layout_registry.dart';
 import 'package:licoup/src/frontend/layout/layout_surface_bundle.dart';
 import 'package:licoup/src/frontend/layout/layout_visual_tokens.dart';
+
+import '../support/test_layout_palette.dart';
 
 final class FixtureBuildTracker {
   final Map<LayoutProfileId, int> shellBuilds = {};
@@ -26,25 +27,7 @@ final class FixtureBuildTracker {
   }
 }
 
-const fixtureLayoutPalette = LayoutPalette(
-  background: Color(0xFFF8FAFC),
-  surface: Color(0xFFFFFFFF),
-  surfaceLow: Color(0xFFF1F5F9),
-  surfaceHigh: Color(0xFFDBEAFE),
-  surfaceHighest: Color(0xFFBFDBFE),
-  line: Color(0xFFCBD5E1),
-  text: Color(0xFF0F172A),
-  textMuted: Color(0xFF475569),
-  primary: Color(0xFF2563EB),
-  primaryStrong: Color(0xFF1D4ED8),
-  primaryFixed: Color(0xFFDBEAFE),
-  textOnPrimary: Color(0xFFFFFFFF),
-  info: Color(0xFF0E7490),
-  infoMuted: Color(0xFFCFFAFE),
-  success: Color(0xFF15803D),
-  warning: Color(0xFFB45309),
-  error: Color(0xFFB91C1C),
-);
+final fixtureLayoutPalette = testLayoutPalette;
 
 final class FixtureLayoutRuntime {
   const FixtureLayoutRuntime({
@@ -100,20 +83,20 @@ FixtureLayoutRuntime buildFixtureLayoutRuntime({
 
 List<LayoutProfileDescriptor> fixtureLayoutDescriptors() => [
   LayoutProfileDescriptor(
-    id: LayoutProfileId.parse('workbench'),
-    label: LayoutProfileCopy(english: 'Workbench', chinese: '工作台'),
+    id: LayoutProfileId.parse('dashboard'),
+    label: LayoutProfileCopy(english: 'Dashboard', chinese: '工作台'),
     description: LayoutProfileCopy(
-      english: 'Workbench fixture',
+      english: 'Dashboard fixture',
       chinese: '工作台夹具',
     ),
-    styleIdentity: 'spacious-card-workbench',
+    styleIdentity: 'spacious-card-dashboard',
     isDefault: true,
   ),
   LayoutProfileDescriptor(
-    id: LayoutProfileId.parse('native'),
-    label: LayoutProfileCopy(english: 'Native', chinese: '原生'),
-    description: LayoutProfileCopy(english: 'Native fixture', chinese: '原生夹具'),
-    styleIdentity: 'glassy-rail-native',
+    id: LayoutProfileId.parse('atlas'),
+    label: LayoutProfileCopy(english: 'Atlas', chinese: '图集'),
+    description: LayoutProfileCopy(english: 'Atlas fixture', chinese: '图集夹具'),
+    styleIdentity: 'glassy-rail-atlas',
     isDefault: false,
   ),
 ];
@@ -137,7 +120,7 @@ LayoutSurfaceBundle buildFixtureSurfaceBundle({
       LayoutStateValueKind.scroll,
     ),
   );
-  final tokens = descriptor.id == LayoutProfileId.parse('workbench')
+  final tokens = descriptor.id == LayoutProfileId.parse('dashboard')
       ? LayoutVisualTokens(
           spacingUnit: 8,
           density: 1,

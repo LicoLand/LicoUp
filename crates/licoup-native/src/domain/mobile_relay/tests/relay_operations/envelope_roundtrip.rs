@@ -15,8 +15,15 @@ fn secure_mesh_envelope_command_is_transport_only() {
         .unwrap_err()
         .to_string();
     assert!(
-        error.contains("mobile relay E2EE endpoint state is missing"),
+        error.contains("mobile relay"),
         "unexpected redacted secure command rejection: {error}"
+    );
+    assert!(
+        !error.contains(
+            command["payload"]["envelope"]["ciphertext"]
+                .as_str()
+                .unwrap()
+        )
     );
     assert!(
         secure_envelope_param(&json!({
@@ -29,7 +36,7 @@ fn secure_mesh_envelope_command_is_transport_only() {
 
 #[test]
 fn secure_envelope_validation_rejects_malicious_relay_shapes_before_decrypt() {
-    // v2 envelope rejects extra fields via deny_unknown_fields.
+    // Lico Arc v1 rejects extra fields via deny_unknown_fields.
     let mut oversized = secure_envelope_fixture();
     oversized["unknownField"] = json!("should be rejected");
     assert!(
@@ -41,45 +48,25 @@ fn secure_envelope_validation_rejects_malicious_relay_shapes_before_decrypt() {
 
     let mut invalid_base64 = secure_envelope_fixture();
     invalid_base64["ciphertext"] = json!("not base64!");
+    assert!(validate_secure_envelope(&invalid_base64).is_err());
+
+    let mut invalid_expiry = secure_envelope_fixture();
+    invalid_expiry["expiresAt"] = json!("not-a-timestamp");
     assert!(
-        validate_secure_envelope(&invalid_base64)
+        validate_secure_envelope(&invalid_expiry)
             .unwrap_err()
             .to_string()
-            .contains("base64")
+            .contains("expiresAt")
     );
 
-    let mut mismatched_size = secure_envelope_fixture();
-    mismatched_size["ciphertextBucket"] = json!(65536u64);
+    let mut bad_contract = secure_envelope_fixture();
+    bad_contract["contractVersion"] = json!("unsupported.v1");
     assert!(
-        validate_secure_envelope(&mismatched_size)
+        validate_secure_envelope(&bad_contract)
             .unwrap_err()
             .to_string()
-            .contains("ciphertext")
+            .contains("contract version")
     );
-
-    let mut bad_schema = secure_envelope_fixture();
-    bad_schema["schema"] = json!("unsupported.v1");
-    assert!(
-        validate_secure_envelope(&bad_schema)
-            .unwrap_err()
-            .to_string()
-            .contains("schema")
-    );
-
-    // v2 rejects the retired metadata-rich (10-field) shape.
-    let retired = json!({
-        "protocolVersion": "1.0",
-        "envelopeId": "env_test",
-        "opaqueMailboxId": "mailbox_test",
-        "messageId": "msg_test",
-        "cipherSuite": "AES-256-GCM",
-        "createdAt": "2026-01-01T00:00:00Z",
-        "expiresAt": "2026-01-01T00:10:00Z",
-        "ciphertextSize": 32,
-        "encryptedHeader": "AAAA",
-        "ciphertext": "AAAA"
-    });
-    assert!(validate_secure_envelope(&retired).is_err());
 }
 
 #[test]
@@ -113,10 +100,9 @@ fn mobile_relay_e2ee_round_trips_command_and_result_without_plaintext() {
         "riskClass": "safe_write",
         "requiresUserConfirmation": false,
         "idempotencyKey": "idem_mobile_test",
-        "createdAt": "2026-01-01T00:00:00Z",
-        "expiresAt": "2099-01-01T00:00:00Z",
+        "createdAt": now_iso(),
+        "expiresAt": timestamp_after_seconds(MOBILE_RELAY_COMMAND_TTL_SECONDS).unwrap(),
         "body": {
-            "agentId": "codex",
             "text": "plaintext-canary-mobile-relay"
         }
     });
@@ -128,8 +114,8 @@ fn mobile_relay_e2ee_round_trips_command_and_result_without_plaintext() {
     )
     .unwrap();
     assert_eq!(
-        command_envelope["schema"],
-        crate::core::secure_mesh_relay_envelope::SECURE_MESH_RELAY_ENVELOPE_SCHEMA
+        command_envelope["contractVersion"],
+        crate::core::licoarc_relay::LICOARC_RELAY_CONTRACT_VERSION
     );
     let command_wire = serde_json::to_string(&command_envelope).unwrap();
     assert!(!command_wire.contains("plaintext-canary-mobile-relay"));
@@ -160,8 +146,8 @@ fn mobile_relay_e2ee_round_trips_command_and_result_without_plaintext() {
     )
     .unwrap();
     assert_eq!(
-        result_envelope["schema"],
-        crate::core::secure_mesh_relay_envelope::SECURE_MESH_RELAY_ENVELOPE_SCHEMA
+        result_envelope["contractVersion"],
+        crate::core::licoarc_relay::LICOARC_RELAY_CONTRACT_VERSION
     );
     let result_wire = serde_json::to_string(&result_envelope).unwrap();
     assert!(!result_wire.contains("plaintext-result-canary"));
@@ -370,11 +356,10 @@ fn mobile_relay_file_key_envelope_metadata_boundary_is_exhaustive() {
     visible_keys.sort_unstable();
     let mut expected_keys = vec![
         "ciphertext",
-        "ciphertextBucket",
-        "deliveryId",
-        "encryptedHeader",
-        "mailboxToken",
-        "schema",
+        "contractVersion",
+        "envelopeId",
+        "expiresAt",
+        "mailboxId",
     ];
     expected_keys.sort_unstable();
     assert_eq!(visible_keys, expected_keys);
@@ -397,5 +382,34 @@ fn mobile_relay_file_key_envelope_metadata_boundary_is_exhaustive() {
         );
     }
 
+    set_portable_data_dir_override(previous);
+}
+
+#[test]
+fn mailbox_rotation_boundary_accepts_current_and_previous_epoch_only() {
+    let dir = temp_dir("mobile-relay-mailbox-rotation-overlap");
+    let previous = set_portable_data_dir_override(Some(dir));
+    let mut pc_config = default_config();
+    let mut mobile_config = default_config();
+    pair_mobile_relay_configs(&mut pc_config, &mut mobile_config);
+    let pc_material = test_runtime_secret_material(stringify!(&pc_config));
+    let pc = local_endpoint_state(&pc_config, &pc_material).unwrap();
+
+    let accepted = local_canonical_mailbox_tokens_at_epoch(&pc_config, &pc_material, 420).unwrap();
+    let current =
+        canonical_mailbox_token(&pc_material, &pc.endpoint_id, &pc.endpoint_kind, 420).unwrap();
+    let previous_epoch =
+        canonical_mailbox_token(&pc_material, &pc.endpoint_id, &pc.endpoint_kind, 419).unwrap();
+    let expired =
+        canonical_mailbox_token(&pc_material, &pc.endpoint_id, &pc.endpoint_kind, 418).unwrap();
+
+    assert_eq!(accepted, vec![current, previous_epoch]);
+    assert!(!accepted.contains(&expired));
+    assert_eq!(
+        local_canonical_mailbox_tokens_at_epoch(&pc_config, &pc_material, 0)
+            .unwrap()
+            .len(),
+        1
+    );
     set_portable_data_dir_override(previous);
 }

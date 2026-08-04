@@ -50,6 +50,7 @@ import {
   conditionalChecksFromMatrix,
 } from "./client-acp-conversation-parity/evidence.mjs";
 import { AcceptanceError, digest, requireFact } from "./client-acp-conversation-parity/errors.mjs";
+import { parityModelForAgent } from "./client-acp-conversation-parity/agent-ids.mjs";
 import { runSidecar } from "./client-acp-conversation-parity/native/acp-turn.mjs";
 import { nativeAppServerTurn } from "./client-acp-conversation-parity/native/app-server.mjs";
 import { createPrivateWrapper } from "./client-acp-conversation-parity/process.mjs";
@@ -174,6 +175,16 @@ async function runBidirectionalRound(context, roundIndex) {
   const arcFirstPrompt = `Reply with exactly ${marker("AF")}`;
   const nativeResumePrompt = `Reply with exactly ${marker("NR")}`;
 
+  // Arc turns must ride the same parity model as native turns; otherwise the
+  // sidecar falls back to the operator's default model and can diverge (or
+  // fail on accounts where the default model is unavailable).
+  const parityModel = parityModelForAgent(context.config.id);
+  const parityEffort = parityModel.toLowerCase().includes("spark") ? "low" : "";
+  const arcModelFields = {
+    ...(parityModel ? { model: parityModel } : {}),
+    ...(parityEffort ? { reasoningEffort: parityEffort } : {}),
+  };
+
   const nativeFirst = await nativeTurnForAgent(context, "", nativeFirstPrompt);
   requireFact(nativeFirst.sessionId.length > 0, "native_session_id_missing");
   requireFact(nativeFirst.output.trim().length > 0, "native_final_message_missing");
@@ -184,6 +195,7 @@ async function runBidirectionalRound(context, roundIndex) {
     sessionId: nativeFirst.sessionId,
     workingDirectory: context.cwd,
     binaryPath: sidecarBinaryPath(context),
+    ...arcModelFields,
     timeoutMs: context.timeoutMs,
     maxStdoutBytes: context.maxOutputBytes,
     maxStderrBytes: context.maxOutputBytes,
@@ -198,6 +210,7 @@ async function runBidirectionalRound(context, roundIndex) {
     text: arcFirstPrompt,
     workingDirectory: context.cwd,
     binaryPath: sidecarBinaryPath(context),
+    ...arcModelFields,
     timeoutMs: context.timeoutMs,
     maxStdoutBytes: context.maxOutputBytes,
     maxStderrBytes: context.maxOutputBytes,

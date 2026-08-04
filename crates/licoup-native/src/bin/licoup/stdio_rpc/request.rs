@@ -136,13 +136,6 @@ pub(crate) fn parse_stdio_rpc_request(
                 portable_data_dir,
             }
         }
-        "orchestrator.request" => {
-            let params = object.get("params").cloned().unwrap_or_else(|| json!({}));
-            if !params.is_object() {
-                return Err(invalid("invalid_params"));
-            }
-            StdioRpcMethod::Orchestrator { params }
-        }
         "shutdown" => StdioRpcMethod::Shutdown,
         _ => return Err(invalid("invalid_method")),
     };

@@ -6,6 +6,20 @@ import 'package:licoup/src/contracts/agent_conversation_session.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test('parseAgentConversationTimestamp accepts ISO and epoch values', () {
+    final iso = DateTime.utc(2026, 7, 20, 18, 58);
+    expect(
+      parseAgentConversationTimestamp(iso.toIso8601String()),
+      iso.toLocal(),
+    );
+    expect(
+      parseAgentConversationTimestamp('${iso.millisecondsSinceEpoch}'),
+      iso.toLocal(),
+    );
+    expect(parseAgentConversationTimestamp(''), isNull);
+    expect(parseAgentConversationTimestamp('not-a-time'), isNull);
+  });
+
   test('conversation contracts keep a one-way dependency graph', () {
     const root = 'lib/src/contracts';
     final message = File(

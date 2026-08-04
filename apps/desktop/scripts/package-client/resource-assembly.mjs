@@ -35,7 +35,8 @@ export function assemblePackageResources(selected, skipped, options) {
   const bundle = resolveBundle(options);
   mkdirSync(bundle.executableDir, { recursive: true });
   mkdirSync(bundle.moduleResourceDir, { recursive: true });
-  removeSkippedArtifacts(skipped, bundle);
+  mkdirSync(bundle.pluginResourceDir, { recursive: true });
+  removeSkippedArtifacts(skipped, bundle, options);
   const copiedArtifacts = stageSelectedModuleArtifacts(selected, bundle, options);
   return { bundle, copiedArtifacts };
 }
@@ -50,9 +51,31 @@ export function stageSelectedModuleArtifacts(selected, bundle, options) {
       copiedArtifacts.push(copySwiftSidecar(moduleConfig, bundle, options));
     } else if (moduleConfig.packaging === "module-resources") {
       copiedArtifacts.push(...copyModuleResources(moduleConfig, bundle));
+      if (moduleConfig.embeddedCargoBin) {
+        copiedArtifacts.push(
+          copyEmbeddedCargoBin(moduleConfig, bundle, options),
+        );
+      }
     }
   }
   return copiedArtifacts;
+}
+
+function copyEmbeddedCargoBin(moduleConfig, bundle, options) {
+  const suffix = binarySuffix(options.platform);
+  const source = path.join(
+    cargoTargetDir(options.mode, options),
+    `${moduleConfig.embeddedCargoBin}${suffix}`,
+  );
+  if (!existsSync(source)) packageFailure("embedded_sidecar_binary_missing");
+  const target = path.join(
+    bundle.pluginResourceDir,
+    `${moduleConfig.embeddedCargoTarget}${suffix}`,
+  );
+  mkdirSync(path.dirname(target), { recursive: true });
+  copyFileSync(source, target);
+  if (options.platform !== "windows") chmodSync(target, 0o755);
+  return target;
 }
 
 export function stageRunnableClient(result, options) {
@@ -184,10 +207,23 @@ function copyModuleResources(moduleConfig, bundle) {
     copyTree(source, target);
     copied.push(target);
   }
+  for (const mapping of moduleConfig.mappedResources || []) {
+    const source = path.join(packageClientRuntime.workspaceRoot, mapping.source);
+    if (!existsSync(source)) packageFailure("module_resource_missing");
+    const target = path.join(
+      bundle.moduleResourceDir,
+      moduleConfig.id,
+      mapping.target,
+    );
+    rmSync(target, { recursive: true, force: true });
+    mkdirSync(path.dirname(target), { recursive: true });
+    copyFileSync(source, target);
+    copied.push(target);
+  }
   return copied;
 }
 
-function removeSkippedArtifacts(skipped, bundle) {
+function removeSkippedArtifacts(skipped, bundle, options) {
   for (const moduleConfig of skipped) {
     if (moduleConfig.packaging === "swift-sidecar") {
       const artifactName = moduleConfig.artifactName || moduleConfig.id;
@@ -197,6 +233,12 @@ function removeSkippedArtifacts(skipped, bundle) {
         recursive: true,
         force: true,
       });
+      if (moduleConfig.embeddedCargoTarget) {
+        rmSync(path.join(
+          bundle.pluginResourceDir,
+          `${moduleConfig.embeddedCargoTarget}${binarySuffix(options.platform)}`,
+        ), { force: true });
+      }
     }
   }
 }

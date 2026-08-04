@@ -602,7 +602,6 @@ pub(in crate::domain::mobile_relay) struct PeerEndpointState {
     pub(in crate::domain::mobile_relay) endpoint_id: String,
     pub(in crate::domain::mobile_relay) endpoint_kind: String,
     pub(in crate::domain::mobile_relay) fingerprint: String,
-    pub(in crate::domain::mobile_relay) mailbox_rotation_epoch: u64,
 }
 
 pub(in crate::domain::mobile_relay) fn peer_endpoint_state(
@@ -614,16 +613,15 @@ pub(in crate::domain::mobile_relay) fn peer_endpoint_state(
     let endpoint_id = descriptor_text(state, "peerEndpointId")?;
     let endpoint_kind = descriptor_text(state, "peerEndpointKind")?;
     let public_key = descriptor_text(state, "peerPublicKeyBase64url")?;
-    let mailbox_rotation_epoch = state
+    let _mailbox_rotation_epoch = state
         .get("peerMailboxRotationEpoch")
         .and_then(Value::as_u64)
-        .ok_or_else(|| anyhow!("secure client relay peer mailbox rotation epoch is missing"))?;
+        .ok_or_else(|| anyhow!("Lico Arc peer mailbox rotation epoch is missing"))?;
     let public_bytes = decode_key_32(&public_key, "mobile relay peer public key")?;
     Ok(PeerEndpointState {
         endpoint_id,
         endpoint_kind,
         fingerprint: public_key_fingerprint(&public_bytes),
-        mailbox_rotation_epoch,
     })
 }
 

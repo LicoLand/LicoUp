@@ -92,6 +92,66 @@ done
       await pendingCommand;
     },
   );
+
+  test(
+    'in-flight control is multiplexed onto the active conversation lane',
+    () async {
+      if (Platform.isWindows) return;
+      final directory = await Directory.systemTemp.createTemp(
+        'lico-stdio-control-',
+      );
+      addTearDown(() => directory.delete(recursive: true));
+      final executable = File('${directory.path}/licoup');
+      await executable.writeAsString(r'''#!/bin/sh
+send_id=
+send_workflow=
+while IFS= read -r line; do
+  request_id=$(printf '%s' "$line" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p')
+  workflow_id=$(printf '%s' "$line" | sed -n 's/.*"workflowId":"\([^"]*\)".*/\1/p')
+  case "$line" in
+    *'"method":"agent.conversation.send"'*)
+      send_id=$request_id
+      send_workflow=$workflow_id
+      printf '{"protocol":"licoup.stdio.v1","id":"%s","workflowId":"%s","kind":"event","sequence":1,"event":{"event":"agent.message.chunk","sessionId":"session-1","turnId":"turn-1","payload":{"text":"working"}}}\n' "$send_id" "$send_workflow"
+      ;;
+    *'"method":"agent.conversation.steer"'*)
+      printf '{"protocol":"licoup.stdio.v1","id":"%s","workflowId":"%s","kind":"terminal","sequence":1,"ok":true,"result":{"ok":true,"status":"accepted"}}\n' "$request_id" "$workflow_id"
+      printf '{"protocol":"licoup.stdio.v1","id":"%s","workflowId":"%s","kind":"terminal","sequence":2,"ok":true,"result":{"ok":true,"sessionId":"session-1","turnId":"turn-1"}}\n' "$send_id" "$send_workflow"
+      ;;
+    *'"method":"shutdown"'*)
+      printf '{"protocol":"licoup.stdio.v1","id":"%s","workflowId":"%s","ok":true,"result":{}}\n' "$request_id" "$workflow_id"
+      exit 0
+      ;;
+  esac
+done
+''');
+      final chmod = await Process.run('chmod', ['+x', executable.path]);
+      expect(chmod.exitCode, 0);
+      final context = _LiveProcessContext(executable);
+      final client = NativeStdioRpcClient(processContext: context);
+      addTearDown(client.dispose);
+
+      final events = <Map<String, dynamic>>[];
+      final completed = Completer<void>();
+      client
+          .streamConversation(const {'agent': 'codex', 'text': 'probe'})
+          .listen(events.add, onDone: completed.complete);
+      await _waitUntil(() => events.isNotEmpty);
+
+      final steer = await client
+          .executeStructured('agent.conversation.steer', const {
+            'agent': 'codex',
+            'text': 'new guidance',
+            'sessionId': 'session-1',
+            'turnId': 'turn-1',
+          });
+      await completed.future.timeout(const Duration(seconds: 1));
+
+      expect(steer['ok'], isTrue);
+      expect(events.last['event'], 'done');
+      expect(context.startCount, 1);
+    },
+  );
 }
 
 Future<void> _waitUntil(bool Function() predicate) async {

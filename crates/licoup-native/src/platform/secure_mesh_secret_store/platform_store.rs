@@ -75,6 +75,28 @@ impl PlatformSecretStore {
         SecretStoreHandle::new(format!("{}:{}", self.account_prefix, namespace.into()), key)
     }
 
+    #[cfg(target_os = "macos")]
+    pub(crate) fn get_legacy_classic_secret_with_session(
+        &self,
+        session: &SecretStoreAuthorizationSession,
+        handle: &SecretStoreHandle,
+    ) -> Result<Option<SecretBytes>> {
+        self.macos_secret_store_access()?
+            .ok_or_else(|| anyhow!("secure_mesh_presence_session_batch_mismatch"))?
+            .get_legacy_classic_secret(self.service, session, handle)
+    }
+
+    #[cfg(target_os = "macos")]
+    pub(crate) fn delete_legacy_classic_secret_with_session(
+        &self,
+        session: &SecretStoreAuthorizationSession,
+        handle: &SecretStoreHandle,
+    ) -> Result<()> {
+        self.macos_secret_store_access()?
+            .ok_or_else(|| anyhow!("secure_mesh_presence_session_batch_mismatch"))?
+            .delete_legacy_classic_secret(self.service, session, handle)
+    }
+
     pub fn verify_secret_class_persistence(
         &self,
         namespace: impl Into<String>,

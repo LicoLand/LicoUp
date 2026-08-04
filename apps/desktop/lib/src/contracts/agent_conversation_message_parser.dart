@@ -169,10 +169,66 @@ AgentConversationMessage? _parseAgentConversationMessage(
         : conversationCardCollapsedByDefault(kind),
     providerSummary: providerSummary,
     stableIdentity: stableIdentity,
+    participantAgentId: sanitizeStructuredLabel(
+      (json['participantAgentId'] ?? '').toString(),
+    ),
+    participantLabel: sanitizeStructuredLabel(
+      (json['participantLabel'] ?? '').toString(),
+    ),
+    participantRole: sanitizeStructuredLabel(
+      (json['participantRole'] ?? '').toString(),
+    ),
     childMessagesTruncated:
         childMessagesTruncated || json['childMessagesTruncated'] == true,
     childMessages: childMessages,
+    images: parseAgentConversationImageAttachments(json['images']),
   );
+}
+
+/// Largest inline base64 payload accepted for one image attachment
+/// (~4.5 MiB decoded); larger payloads are dropped as unrenderable.
+const int maxConversationImageBase64Chars = 6000000;
+
+/// Most image attachments carried by one message.
+const int maxConversationMessageImages = 4;
+
+/// Parses the typed image-attachment channel of a projected message. Entries
+/// without a usable source (neither inline data nor a file path) are dropped;
+/// names pass through the same structured-label sanitization as card labels.
+List<AgentConversationImageAttachment> parseAgentConversationImageAttachments(
+  Object? raw,
+) {
+  if (raw is! List) {
+    return const [];
+  }
+  final images = <AgentConversationImageAttachment>[];
+  for (final entry in raw) {
+    if (images.length >= maxConversationMessageImages) {
+      break;
+    }
+    if (entry is! Map) {
+      continue;
+    }
+    final data = (entry['data'] ?? '').toString().trim();
+    final path = (entry['path'] ?? '').toString().trim();
+    if (data.isEmpty && path.isEmpty) {
+      continue;
+    }
+    if (data.length > maxConversationImageBase64Chars) {
+      continue;
+    }
+    images.add(
+      AgentConversationImageAttachment(
+        mediaType: (entry['mediaType'] ?? '').toString().trim().isEmpty
+            ? 'image/png'
+            : (entry['mediaType'] ?? '').toString().trim(),
+        dataBase64: data,
+        filePath: path,
+        name: sanitizeStructuredLabel((entry['name'] ?? '').toString()),
+      ),
+    );
+  }
+  return List<AgentConversationImageAttachment>.unmodifiable(images);
 }
 
 final class AgentConversationMessageParseResult {

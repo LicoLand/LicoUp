@@ -8,7 +8,9 @@ import { runPackageProcess } from "../process-runner.mjs";
 export function buildNativeSidecars(selected, options) {
   const bins = [
     ...new Set(
-      selected.filter((item) => item.cargoBin).map((item) => item.cargoBin),
+      selected.flatMap((item) =>
+        [item.cargoBin, item.embeddedCargoBin].filter(Boolean),
+      ),
     ),
   ];
   if (bins.length === 0 || options.skipNativeBuild || options.dryRun) return;

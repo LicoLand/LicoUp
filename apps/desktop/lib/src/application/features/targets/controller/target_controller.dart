@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:licoup/src/application/features/targets/policy/target_policy.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
@@ -69,6 +71,10 @@ class TargetController extends ChangeNotifier {
   bool isAdding = false;
   bool _disposed = false;
   bool _refreshing = false;
+  Completer<void>? _refreshCompletion;
+  Future<void>? _queuedForcedScan;
+  final Map<String, Future<TargetCandidate?>> _targetProbeFlights = {};
+  final Set<String> _cachedTargetIds = {};
   bool _cachedTargetsNeedRefresh = false;
   int _scanGeneration = 0;
   String _lastErrorCode = '';
@@ -79,6 +85,8 @@ class TargetController extends ChangeNotifier {
 
   void replaceTargets(List<TargetCandidate> value) {
     _targets = List.unmodifiable(value);
+    _cachedTargetIds.clear();
+    _cachedTargetsNeedRefresh = false;
     notifyListeners();
   }
 
@@ -107,7 +115,10 @@ class TargetController extends ChangeNotifier {
     final cached = await _loadCachedTargets();
     if (cached.isEmpty) return;
     _targets = List.unmodifiable(cached);
-    _cachedTargetsNeedRefresh = true;
+    _cachedTargetIds
+      ..clear()
+      ..addAll(cached.map((target) => target.target));
+    _cachedTargetsNeedRefresh = _cachedTargetIds.isNotEmpty;
     _onTargetsSettled();
     notifyListeners();
   }
@@ -116,10 +127,61 @@ class TargetController extends ChangeNotifier {
     bool showProgress = true,
     bool? surfaceErrors,
     bool forceRescanKnown = false,
+  }) => _scan(
+    showProgress: showProgress,
+    surfaceErrors: surfaceErrors,
+    forceRescanKnown: forceRescanKnown,
+    coalescedExecution: false,
+  );
+
+  Future<void> _scan({
+    required bool showProgress,
+    required bool? surfaceErrors,
+    required bool forceRescanKnown,
+    required bool coalescedExecution,
   }) async {
-    if (_disposed || _refreshing) return;
+    if (_disposed) return;
+    if (_refreshing) {
+      final active = _refreshCompletion;
+      if (!forceRescanKnown) {
+        if (active != null) await active.future;
+        return;
+      }
+      if (coalescedExecution) {
+        if (active != null) await active.future;
+        if (_disposed) return;
+        return _scan(
+          showProgress: showProgress,
+          surfaceErrors: surfaceErrors,
+          forceRescanKnown: true,
+          coalescedExecution: true,
+        );
+      }
+      final queued = _queuedForcedScan;
+      if (queued != null) return queued;
+      late final Future<void> nextForcedScan;
+      nextForcedScan =
+          () async {
+            if (active != null) await active.future;
+            if (_disposed) return;
+            await _scan(
+              showProgress: showProgress,
+              surfaceErrors: surfaceErrors,
+              forceRescanKnown: true,
+              coalescedExecution: true,
+            );
+          }().whenComplete(() {
+            if (identical(_queuedForcedScan, nextForcedScan)) {
+              _queuedForcedScan = null;
+            }
+          });
+      _queuedForcedScan = nextForcedScan;
+      return nextForcedScan;
+    }
     final reportErrors = surfaceErrors ?? showProgress;
     _refreshing = true;
+    final refreshCompletion = Completer<void>();
+    _refreshCompletion = refreshCompletion;
     final generation = ++_scanGeneration;
     if (showProgress) {
       isScanning = true;
@@ -148,7 +210,10 @@ class TargetController extends ChangeNotifier {
         if (!_isCurrentScan(generation)) return;
         if (cached.isNotEmpty) {
           _targets = List.unmodifiable(cached);
-          _cachedTargetsNeedRefresh = true;
+          _cachedTargetIds
+            ..clear()
+            ..addAll(cached.map((target) => target.target));
+          _cachedTargetsNeedRefresh = _cachedTargetIds.isNotEmpty;
           _onTargetsSettled();
           notifyListeners();
         }
@@ -166,18 +231,32 @@ class TargetController extends ChangeNotifier {
         if (showProgress) _emitScanComplete();
         return;
       }
-      var discovered = 0;
-      var failures = 0;
-      await Future.wait<void>([
-        for (final id in ids)
-          _probe(
-            id,
-            generation: generation,
-            discovered: () => discovered += 1,
-            failed: () => failures += 1,
-          ),
+      final knownIds = _targets.map((target) => target.target).toSet();
+      final probes = await Future.wait<_TargetProbeResult>([
+        for (final id in ids) _probe(id),
       ]);
       if (!_isCurrentScan(generation)) return;
+      var discovered = 0;
+      var failures = 0;
+      var nextTargets = _targets;
+      for (final probe in probes) {
+        if (probe.failed) {
+          failures += 1;
+          continue;
+        }
+        _markCachedTargetVerified(probe.targetId);
+        if (probe.candidate != null && !knownIds.contains(probe.targetId)) {
+          discovered += 1;
+        }
+        nextTargets = TargetPolicy.mergeProbe(
+          nextTargets,
+          probe.targetId,
+          probe.candidate,
+        );
+      }
+      if (!_sameTargets(_targets, nextTargets)) {
+        _targets = List.unmodifiable(nextTargets);
+      }
       _onTargetsSettled();
       await _persistCache();
       if (!_isCurrentScan(generation)) return;
@@ -227,28 +306,90 @@ class TargetController extends ChangeNotifier {
         if (showProgress) isScanning = false;
         notifyListeners();
       }
+      if (identical(_refreshCompletion, refreshCompletion)) {
+        _refreshCompletion = null;
+        if (!refreshCompletion.isCompleted) refreshCompletion.complete();
+      }
     }
   }
 
-  Future<void> _probe(
-    String targetId, {
-    required int generation,
-    required VoidCallback discovered,
-    required VoidCallback failed,
-  }) async {
+  Future<_TargetProbeResult> _probe(String targetId) async {
     try {
-      final before = _targets.any((target) => target.target == targetId);
-      final candidate = await _gateway.scanOneTarget(targetId);
-      if (!_isCurrentScan(generation)) return;
+      final candidate = await _probeTarget(targetId);
+      return _TargetProbeResult(targetId: targetId, candidate: candidate);
+    } catch (_) {
+      return _TargetProbeResult(targetId: targetId, failed: true);
+    }
+  }
+
+  /// Revalidates only the selected conversation target. Cached discovery
+  /// metadata intentionally carries no executable authority, so reopening an
+  /// agent restores its current binding before the selection flow returns.
+  Future<bool> ensureConversationRuntimeBinding(String targetId) {
+    final id = targetId.trim();
+    if (_disposed || id.isEmpty || _isMobileRuntime()) {
+      return Future<bool>.value(
+        _targets.any((target) => target.target == id && target.canRelayRuntime),
+      );
+    }
+    for (final target in _targets) {
+      if (target.target == id && target.canRelayRuntime) {
+        return Future<bool>.value(true);
+      }
+    }
+    if (!_cachedTargetIds.contains(id)) {
+      return Future<bool>.value(false);
+    }
+    return _revalidateConversationRuntimeBinding(id);
+  }
+
+  Future<bool> _revalidateConversationRuntimeBinding(String targetId) async {
+    try {
+      final candidate = await _probeTarget(targetId);
+      if (_disposed) return false;
+      _markCachedTargetVerified(targetId);
+      if (candidate == null) return false;
       final next = TargetPolicy.mergeProbe(_targets, targetId, candidate);
-      if (!before && candidate != null) discovered();
       if (!_sameTargets(_targets, next)) {
         _targets = next;
+        _onTargetsSettled();
         notifyListeners();
         await _persistCache();
       }
+      return candidate.canRelayRuntime;
     } catch (_) {
-      failed();
+      if (!_disposed) {
+        _lastErrorCode = 'target_scan_failed';
+        _onStatus(
+          const TargetStatusUpdate(
+            chinese: '目标适配器扫描失败。',
+            english: 'Failed to scan target adapters.',
+            errorCode: 'target_scan_failed',
+          ),
+        );
+        notifyListeners();
+      }
+      return false;
+    }
+  }
+
+  Future<TargetCandidate?> _probeTarget(String targetId) {
+    final existing = _targetProbeFlights[targetId];
+    if (existing != null) return existing;
+    late final Future<TargetCandidate?> probe;
+    probe = _gateway.scanOneTarget(targetId).whenComplete(() {
+      if (identical(_targetProbeFlights[targetId], probe)) {
+        _targetProbeFlights.remove(targetId);
+      }
+    });
+    _targetProbeFlights[targetId] = probe;
+    return probe;
+  }
+
+  void _markCachedTargetVerified(String targetId) {
+    _cachedTargetIds.remove(targetId);
+    if (_cachedTargetIds.isEmpty) {
+      _cachedTargetsNeedRefresh = false;
     }
   }
 
@@ -297,6 +438,8 @@ class TargetController extends ChangeNotifier {
     String configPath = '',
     String binaryPath = '',
     String historyRoot = '',
+    String location = 'local',
+    Map<String, dynamic> runtimeConnection = const <String, dynamic>{},
   }) async {
     final id = target.trim();
     if (id.isEmpty) return;
@@ -315,6 +458,8 @@ class TargetController extends ChangeNotifier {
         configPath: configPath.trim(),
         binaryPath: binaryPath.trim(),
         historyRoot: historyRoot.trim(),
+        location: location.trim(),
+        runtimeConnection: runtimeConnection,
       );
       await scan(showProgress: true, forceRescanKnown: true);
       if (_lastErrorCode.isEmpty) {
@@ -463,7 +608,27 @@ class TargetController extends ChangeNotifier {
     _disposed = true;
     _scanGeneration += 1;
     _refreshing = false;
+    final refreshCompletion = _refreshCompletion;
+    _refreshCompletion = null;
+    if (refreshCompletion != null && !refreshCompletion.isCompleted) {
+      refreshCompletion.complete();
+    }
+    _queuedForcedScan = null;
+    _targetProbeFlights.clear();
+    _cachedTargetIds.clear();
     isScanning = false;
     super.dispose();
   }
+}
+
+final class _TargetProbeResult {
+  const _TargetProbeResult({
+    required this.targetId,
+    this.candidate,
+    this.failed = false,
+  });
+
+  final String targetId;
+  final TargetCandidate? candidate;
+  final bool failed;
 }

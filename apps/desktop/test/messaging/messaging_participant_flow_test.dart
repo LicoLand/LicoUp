@@ -1,0 +1,580 @@
+import 'package:flutter/gestures.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+import 'package:licoup/src/contracts/agent_conversation_models.dart';
+import 'package:licoup/src/contracts/target_candidate.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_timeline.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_render_adapter.dart';
+import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_message_group.dart';
+import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_participant_flow.dart';
+import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_process_status_row.dart';
+import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_user_bubble_glass.dart';
+import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/shared/ui/agent_brand_icon.dart';
+import 'package:licoup/src/frontend/shared/ui/theme.dart';
+
+void main() {
+  group('buildMessagingFlowEntries', () {
+    test('groups consecutive same-author messages and breaks on long gaps', () {
+      final entries = buildMessagingFlowEntries([
+        _messageItem('k1', 'user', 'one', _at(10, 0)),
+        _messageItem('k2', 'user', 'two', _at(10, 3)),
+        _messageItem('k3', 'user', 'three', _at(10, 12)),
+      ]);
+
+      expect(entries.map((entry) => entry.runtimeType).toList(), [
+        MessagingFlowDayDivider,
+        MessagingFlowMessageGroup,
+        MessagingFlowMessageGroup,
+      ]);
+      final first = entries[1] as MessagingFlowMessageGroup;
+      final second = entries[2] as MessagingFlowMessageGroup;
+      expect(first.authorIsUser, isTrue);
+      expect(first.messages.map((message) => message.text), ['one', 'two']);
+      expect(second.messages.map((message) => message.text), ['three']);
+    });
+
+    test('breaks groups on author change and on process items', () {
+      final entries = buildMessagingFlowEntries([
+        _messageItem('k1', 'user', 'question', _at(10, 0)),
+        _processItem('p1', [_event('e1', _at(10, 1))]),
+        _messageItem('k2', 'user', 'follow-up', _at(10, 2)),
+        _messageItem('k3', 'assistant', 'answer', _at(10, 3)),
+      ]);
+
+      expect(entries.map((entry) => entry.runtimeType).toList(), [
+        MessagingFlowDayDivider,
+        MessagingFlowMessageGroup,
+        MessagingFlowProcess,
+        MessagingFlowMessageGroup,
+        MessagingFlowMessageGroup,
+      ]);
+      final agentGroup = entries[4] as MessagingFlowMessageGroup;
+      expect(agentGroup.authorIsUser, isFalse);
+    });
+
+    test('breaks agent groups when the orchestration participant changes', () {
+      final entries = buildMessagingFlowEntries([
+        _participantMessageItem(
+          'k1',
+          'designer',
+          'Designer',
+          'design',
+          _at(10, 0),
+        ),
+        _participantMessageItem(
+          'k2',
+          'backend-worker',
+          'Backend Worker',
+          'implementation',
+          _at(10, 1),
+        ),
+      ]);
+
+      expect(entries.whereType<MessagingFlowMessageGroup>().length, 2);
+      final groups = entries.whereType<MessagingFlowMessageGroup>().toList();
+      expect(groups.first.participantLabel, 'Designer');
+      expect(groups.last.participantLabel, 'Backend Worker');
+    });
+
+    test('marks the active process entry from its storage key', () {
+      final entries = buildMessagingFlowEntries([
+        _processItem('p1', [_event('e1', _at(10, 1))]),
+      ], activeProcessStorageKey: 'p1');
+
+      final process = entries.single as MessagingFlowProcess;
+      expect(process.active, isTrue);
+    });
+
+    test('inserts day dividers when the local day changes', () {
+      final entries = buildMessagingFlowEntries([
+        _messageItem('k1', 'user', 'before', _date(2026, 7, 27, 23)),
+        _messageItem('k2', 'user', 'after', _date(2026, 7, 28, 1)),
+      ]);
+
+      expect(entries.map((entry) => entry.runtimeType).toList(), [
+        MessagingFlowDayDivider,
+        MessagingFlowMessageGroup,
+        MessagingFlowDayDivider,
+        MessagingFlowMessageGroup,
+      ]);
+    });
+
+    test('routes subagent cards into their own entry', () {
+      final entries = buildMessagingFlowEntries([
+        _messageItem('k1', 'assistant', 'delegating', _at(10, 0)),
+        ConversationMessageTimelineItem(
+          'k2',
+          AgentConversationMessage(
+            id: 'm2',
+            role: 'assistant',
+            text: 'subagent card',
+            createdAt: _at(10, 1),
+            cardType: 'subagent',
+          ),
+        ),
+        _messageItem('k3', 'assistant', 'done', _at(10, 2)),
+      ]);
+
+      expect(entries.map((entry) => entry.runtimeType).toList(), [
+        MessagingFlowDayDivider,
+        MessagingFlowMessageGroup,
+        MessagingFlowSubagent,
+        MessagingFlowMessageGroup,
+      ]);
+    });
+  });
+
+  testWidgets('flow renders group headers, agent badge, and day dividers', (
+    tester,
+  ) async {
+    final now = DateTime.now();
+    final todayAt = DateTime(now.year, now.month, now.day, 9);
+    final yesterdayAt = DateTime(now.year, now.month, now.day - 1, 22);
+    final chronological = [
+      _messageItem('k1', 'user', 'old request', yesterdayAt.toIso8601String()),
+      _messageItem(
+        'k2',
+        'assistant',
+        'old answer',
+        yesterdayAt.toIso8601String(),
+      ),
+      _messageItem('k3', 'assistant', 'new answer', todayAt.toIso8601String()),
+      _messageItem('k4', 'user', 'new request', todayAt.toIso8601String()),
+    ];
+    await _pumpFlow(tester, chronological.reversed.toList());
+
+    expect(find.text('You'), findsNWidgets(2));
+    expect(find.text('Codex'), findsNWidgets(2));
+    expect(find.byKey(const Key('messaging-agent-badge')), findsNWidgets(2));
+    expect(find.text('AGENT'), findsNWidgets(2));
+    expect(find.byType(AgentBrandIcon), findsNWidgets(2));
+    expect(find.byKey(const Key('messaging-user-avatar')), findsNWidgets(2));
+    expect(find.byIcon(Icons.person_outline_rounded), findsNWidgets(2));
+    expect(find.text('Today'), findsOneWidget);
+    expect(find.text('Yesterday'), findsOneWidget);
+    expect(find.text('old request', findRichText: true), findsOneWidget);
+    expect(find.text('new answer', findRichText: true), findsOneWidget);
+    expect(find.byKey(const Key('messaging-message-bubble')), findsNWidgets(4));
+    expect(
+      find.byKey(const Key('messaging-message-hover-timestamp')),
+      findsNWidgets(4),
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('group headers omit timestamps', (tester) async {
+    final messageAt = DateTime(2026, 7, 20, 18, 58);
+    final chronological = [
+      _messageItem('k1', 'assistant', 'agent reply', messageAt.toIso8601String()),
+      _messageItem('k2', 'user', 'user request', messageAt.toIso8601String()),
+    ];
+    await _pumpFlow(tester, chronological.reversed.toList());
+
+    // Timestamps live in reserved hover slots (opacity 0), never in headers.
+    final timestamps = find.byKey(const Key('messaging-message-hover-timestamp'));
+    expect(timestamps, findsNWidgets(2));
+    for (final element in timestamps.evaluate()) {
+      final opacity = element
+          .findAncestorWidgetOfExactType<AnimatedOpacity>()
+          ?.opacity;
+      expect(opacity, 0);
+    }
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('hover reveals per-message timestamp outside bubble bottom-right', (
+    tester,
+  ) async {
+    final messageAt = DateTime(2026, 7, 20, 18, 58);
+    final chronological = [
+      _messageItem('k1', 'assistant', 'agent reply', messageAt.toIso8601String()),
+      _messageItem('k2', 'user', 'user request', messageAt.toIso8601String()),
+    ];
+    await _pumpFlow(tester, chronological.reversed.toList());
+
+    final formattedTime = MaterialLocalizations.of(
+      tester.element(find.byType(Scaffold)),
+    ).formatTimeOfDay(TimeOfDay.fromDateTime(messageAt));
+
+    final agentBubble = find.ancestor(
+      of: find.text('agent reply', findRichText: true),
+      matching: find.byKey(const Key('messaging-message-bubble')),
+    );
+    final agentRow = find.ancestor(
+      of: agentBubble,
+      matching: find.byType(MouseRegion),
+    );
+    final agentTimestamp = find.descendant(
+      of: agentRow,
+      matching: find.byKey(const Key('messaging-message-hover-timestamp')),
+    );
+    final heightBeforeHover = tester.getSize(agentRow).height;
+
+    expect(
+      find.byKey(const Key('messaging-message-hover-timestamp')),
+      findsNWidgets(2),
+    );
+    expect(
+      tester.widget<AnimatedOpacity>(
+        find.ancestor(
+          of: agentTimestamp,
+          matching: find.byType(AnimatedOpacity),
+        ),
+      ).opacity,
+      0,
+    );
+    expect(find.text(formattedTime), findsNWidgets(2));
+
+    final hoverGesture = await tester.createGesture(
+      kind: PointerDeviceKind.mouse,
+    );
+    await hoverGesture.moveTo(tester.getCenter(agentBubble));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 120));
+
+    expect(
+      tester.widget<AnimatedOpacity>(
+        find.ancestor(
+          of: agentTimestamp,
+          matching: find.byType(AnimatedOpacity),
+        ),
+      ).opacity,
+      1,
+    );
+    expect(find.text(formattedTime), findsNWidgets(2));
+    expect(tester.getSize(agentRow).height, closeTo(heightBeforeHover, 0.1));
+
+    final bubbleBox = tester.renderObject<RenderBox>(agentBubble);
+    final timestampBox = tester.renderObject<RenderBox>(agentTimestamp);
+    final bubbleBottomRight = bubbleBox.localToGlobal(
+      Offset(bubbleBox.size.width, bubbleBox.size.height),
+    );
+    final timestampBottomRight = timestampBox.localToGlobal(
+      Offset(timestampBox.size.width, timestampBox.size.height),
+    );
+    expect(timestampBox.size.width, lessThanOrEqualTo(bubbleBox.size.width));
+    expect(
+      timestampBottomRight.dx,
+      closeTo(bubbleBottomRight.dx, 1),
+    );
+    expect(timestampBottomRight.dy, greaterThan(bubbleBottomRight.dy));
+
+    await hoverGesture.moveTo(const Offset(-1, -1));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 120));
+    expect(
+      find.byKey(const Key('messaging-message-hover-timestamp')),
+      findsNWidgets(2),
+    );
+    expect(tester.getSize(agentRow).height, closeTo(heightBeforeHover, 0.1));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+    'hover timestamp parses native epoch createdAt without layout shift',
+    (tester) async {
+      final messageAt = DateTime.utc(2026, 3, 13, 12, 40);
+      final chronological = [
+        _messageItem(
+          'k1',
+          'assistant',
+          'epoch reply',
+          '${messageAt.millisecondsSinceEpoch}',
+        ),
+      ];
+      await _pumpFlow(tester, chronological.reversed.toList());
+
+      final formattedTime = MaterialLocalizations.of(
+        tester.element(find.byType(Scaffold)),
+      ).formatTimeOfDay(TimeOfDay.fromDateTime(messageAt.toLocal()));
+
+      final bubble = find.byKey(const Key('messaging-message-bubble'));
+      final row = find.ancestor(
+        of: bubble,
+        matching: find.byType(MouseRegion),
+      );
+      final heightBeforeHover = tester.getSize(row).height;
+      final hoverTimestamp = find.byKey(
+        const Key('messaging-message-hover-timestamp'),
+      );
+      expect(hoverTimestamp, findsOneWidget);
+      expect(find.text(formattedTime), findsOneWidget);
+
+      final hoverGesture = await tester.createGesture(
+        kind: PointerDeviceKind.mouse,
+      );
+      await hoverGesture.moveTo(tester.getCenter(bubble));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 120));
+
+      expect(
+        tester.widget<AnimatedOpacity>(
+          find.ancestor(
+            of: hoverTimestamp,
+            matching: find.byType(AnimatedOpacity),
+          ),
+        ).opacity,
+        1,
+      );
+      expect(tester.getSize(row).height, closeTo(heightBeforeHover, 0.1));
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('user message groups align to the right of the transcript', (
+    tester,
+  ) async {
+    final now = DateTime.now();
+    final todayAt = DateTime(now.year, now.month, now.day, 9);
+    final chronological = [
+      _messageItem('k1', 'assistant', 'agent reply', todayAt.toIso8601String()),
+      _messageItem('k2', 'user', 'user request', todayAt.toIso8601String()),
+    ];
+    await _pumpFlow(tester, chronological.reversed.toList());
+
+    expect(find.byKey(const Key('messaging-user-message-group')), findsOneWidget);
+    expect(find.byKey(const Key('messaging-agent-message-group')), findsOneWidget);
+    expect(find.byKey(const Key('messaging-user-avatar')), findsOneWidget);
+    expect(find.byIcon(Icons.person_outline_rounded), findsOneWidget);
+
+    final agentGroupFinder = find.byKey(const Key('messaging-agent-message-group'));
+    final agentBrandIcon = tester.widget<AgentBrandIcon>(
+      find.descendant(
+        of: agentGroupFinder,
+        matching: find.byType(AgentBrandIcon),
+      ),
+    );
+    expect(agentBrandIcon.target.target, 'codex');
+
+    final userGroup = tester.renderObject<RenderBox>(
+      find.byKey(const Key('messaging-user-message-group')),
+    );
+    final agentGroup = tester.renderObject<RenderBox>(
+      find.byKey(const Key('messaging-agent-message-group')),
+    );
+    final userBubble = tester.renderObject<RenderBox>(
+      find.ancestor(
+        of: find.text('user request', findRichText: true),
+        matching: find.byKey(const Key('messaging-message-bubble')),
+      ),
+    );
+    final agentBubble = tester.renderObject<RenderBox>(
+      find.ancestor(
+        of: find.text('agent reply', findRichText: true),
+        matching: find.byKey(const Key('messaging-message-bubble')),
+      ),
+    );
+
+    expect(userGroup.size.width, agentGroup.size.width);
+    expect(
+      userBubble.localToGlobal(Offset.zero).dx +
+          userBubble.size.width,
+      closeTo(userGroup.localToGlobal(Offset.zero).dx + userGroup.size.width, 1),
+    );
+    expect(
+      agentBubble.localToGlobal(Offset.zero).dx,
+      closeTo(agentGroup.localToGlobal(Offset.zero).dx, 1),
+    );
+    expect(
+      userBubble.localToGlobal(Offset.zero).dx,
+      greaterThan(agentBubble.localToGlobal(Offset.zero).dx),
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('user bubbles use frosted glass instead of solid brandSurface', (
+    tester,
+  ) async {
+    final now = DateTime.now();
+    final todayAt = DateTime(now.year, now.month, now.day, 9);
+    final chronological = [
+      _messageItem('k1', 'user', 'user request', todayAt.toIso8601String()),
+    ];
+    await _pumpFlow(tester, chronological.reversed.toList());
+
+    expect(find.byType(MessagingUserBubbleGlass), findsOneWidget);
+    final themeColors = buildLicoTheme(platformBrightness: Brightness.dark)
+        .extension<LicoThemeColors>()!;
+    final animated = tester.widget<AnimatedContainer>(
+      find.descendant(
+        of: find.byType(MessagingUserBubbleGlass),
+        matching: find.byType(AnimatedContainer),
+      ),
+    );
+    final decoration = animated.decoration! as BoxDecoration;
+    expect(decoration.color, isNot(themeColors.brandSurface));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('flow renders process runs as inline status rows', (
+    tester,
+  ) async {
+    final chronological = [
+      _messageItem('k1', 'user', 'run it', _at(10, 0)),
+      _processItem('p1', [
+        _event('e1', _at(10, 1)),
+        _event('e2', _at(10, 1, 12)),
+      ]),
+      _messageItem('k2', 'assistant', 'done', _at(10, 2)),
+    ];
+    await _pumpFlow(tester, chronological.reversed.toList());
+
+    expect(find.byType(MessagingProcessStatusRow), findsOneWidget);
+    expect(find.textContaining('Worked for 12s'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('process status rows span and center in transcript column', (
+    tester,
+  ) async {
+    final chronological = [
+      _messageItem('k1', 'user', 'run it', _at(10, 0)),
+      _processItem('p1', [
+        _lifecycleEvent('completed', observed: 'submitted,accepted,processing,responding,completed'),
+        _event('e1', _at(10, 1)),
+        _event('e2', _at(10, 1, 12)),
+      ]),
+      _messageItem('k2', 'assistant', 'done', _at(10, 2)),
+    ];
+    await _pumpFlow(tester, chronological.reversed.toList());
+
+    final processCard = tester.renderObject<RenderBox>(
+      find.byKey(const Key('messaging-process-status-idle')),
+    );
+    final agentBubble = tester.renderObject<RenderBox>(
+      find.ancestor(
+        of: find.text('done', findRichText: true),
+        matching: find.byKey(const Key('messaging-message-bubble')),
+      ),
+    );
+    final agentGroup = tester.renderObject<RenderBox>(
+      find.byKey(const Key('messaging-agent-message-group')),
+    );
+
+    expect(processCard.size.width, closeTo(agentGroup.size.width, 1));
+    expect(processCard.size.width, greaterThan(agentBubble.size.width));
+    final processCenter = processCard
+        .localToGlobal(Offset(processCard.size.width / 2, 0))
+        .dx;
+    final groupCenter =
+        agentGroup.localToGlobal(Offset(agentGroup.size.width / 2, 0)).dx;
+    expect(processCenter, closeTo(groupCenter, 1));
+    expect(tester.takeException(), isNull);
+  });
+}
+
+AgentConversationMessage _lifecycleEvent(
+  String stage, {
+  required String observed,
+}) {
+  return AgentConversationMessage(
+    id: 'lifecycle',
+    role: 'event',
+    text: stage,
+    createdAt: _at(10, 1, 0),
+    cardType: 'lifecycle',
+    cardTitle: 'lifecycle.$stage',
+    cardSubtitle: observed,
+  );
+}
+
+ConversationMessageTimelineItem _participantMessageItem(
+  String key,
+  String participantAgentId,
+  String participantLabel,
+  String text,
+  String createdAt,
+) {
+  return ConversationMessageTimelineItem(
+    key,
+    AgentConversationMessage(
+      id: key,
+      role: 'assistant',
+      text: text,
+      createdAt: createdAt,
+      participantAgentId: participantAgentId,
+      participantLabel: participantLabel,
+      participantRole: participantAgentId,
+    ),
+  );
+}
+
+String _at(int hour, int minute, [int second = 0]) =>
+    DateTime(2026, 7, 20, hour, minute, second).toIso8601String();
+
+String _date(int year, int month, int day, int hour) =>
+    DateTime(year, month, day, hour).toIso8601String();
+
+ConversationMessageTimelineItem _messageItem(
+  String key,
+  String role,
+  String text,
+  String createdAt,
+) {
+  return ConversationMessageTimelineItem(
+    key,
+    AgentConversationMessage(
+      id: key,
+      role: role,
+      text: text,
+      createdAt: createdAt,
+    ),
+  );
+}
+
+AgentConversationMessage _event(String id, String createdAt) {
+  return AgentConversationMessage(
+    id: id,
+    role: 'tool',
+    text: 'ran tool',
+    createdAt: createdAt,
+  );
+}
+
+ConversationProcessTimelineItem _processItem(
+  String key,
+  List<AgentConversationMessage> events,
+) {
+  return ConversationProcessTimelineItem(key, events);
+}
+
+Future<void> _pumpFlow(
+  WidgetTester tester,
+  List<ConversationTimelineItem> newestFirst,
+) async {
+  await tester.pumpWidget(
+    MaterialApp(
+      locale: const Locale('en'),
+      supportedLocales: LicoStrings.supportedLocales,
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+      ],
+      theme: buildLicoTheme(platformBrightness: Brightness.dark),
+      home: Scaffold(
+        body: SizedBox(
+          width: 800,
+          height: 600,
+          child: MessagingParticipantFlow(
+            items: newestFirst,
+            adapter: AgentRenderAdapter.fallback(),
+            target: TargetCandidate(
+              target: 'codex',
+              label: 'Codex',
+              kind: 'cli',
+              status: 'detected',
+              configured: true,
+              confidence: 1,
+              adapterStatus: 'implemented',
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+  await tester.pump();
+}

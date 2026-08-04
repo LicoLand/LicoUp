@@ -39,7 +39,8 @@ void registerAgentUsageTimelineScenarios() {
     await tester.pump(const Duration(milliseconds: 1));
     await tester.pumpAndSettle();
 
-    expect(find.text('Usage Over Time'), findsOneWidget);
+    expect(find.text('Token Usage'), findsOneWidget);
+    expect(find.text('Usage Over Time'), findsNothing);
     expect(find.text('Last 30 days'), findsNothing);
     expect(find.byKey(const Key('agent-usage-window-chip-30')), findsOneWidget);
     expect(find.text('Codex'), findsAtLeastNWidgets(1));
@@ -140,6 +141,20 @@ void registerAgentUsageTimelineScenarios() {
 
       final tooltip = find.byKey(const ValueKey('usage-wave-tooltip'));
       expect(tooltip, findsOneWidget);
+      expect(
+        find.descendant(of: tooltip, matching: find.byType(BackdropFilter)),
+        findsOneWidget,
+      );
+      final glassFill = tester.widget<ColoredBox>(
+        find.descendant(
+          of: tooltip,
+          matching: find.byKey(const ValueKey('usage-wave-tooltip-glass-fill')),
+        ),
+      );
+      expect(glassFill.color.a, closeTo(0.72, 0.01));
+      expect(glassFill.color.r, closeTo(0x17 / 255, 0.01));
+      expect(glassFill.color.g, closeTo(0x19 / 255, 0.01));
+      expect(glassFill.color.b, closeTo(0x1c / 255, 0.01));
       expect(
         find.descendant(of: tooltip, matching: find.text('Codex')),
         findsOneWidget,

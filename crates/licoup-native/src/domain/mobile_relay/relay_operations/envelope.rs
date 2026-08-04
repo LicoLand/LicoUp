@@ -1,4 +1,4 @@
-use crate::core::secure_mesh_relay_envelope::SecureMeshRelayEnvelope;
+use crate::core::licoarc_relay::LicoArcRelayEnvelope;
 use crate::domain::mobile_relay::support::json_param;
 #[cfg(test)]
 use anyhow::anyhow;
@@ -17,7 +17,7 @@ pub(in crate::domain::mobile_relay) fn secure_envelope_param(params: &Value) -> 
 pub(in crate::domain::mobile_relay) fn validate_secure_envelope(envelope: &Value) -> Result<()> {
     let wire = serde_json::to_string(envelope)
         .context("secure mesh relay envelope serialization failed")?;
-    SecureMeshRelayEnvelope::from_json(&wire)?;
+    LicoArcRelayEnvelope::from_json(&wire)?;
     Ok(())
 }
 
@@ -43,8 +43,7 @@ pub(in crate::domain::mobile_relay) fn encoded_len_limit(decoded_bytes: usize) -
 
 pub(in crate::domain::mobile_relay) fn relay_envelope_from_value(
     value: &Value,
-) -> Result<SecureMeshRelayEnvelope> {
-    let wire = serde_json::to_string(value)
-        .context("secure client relay envelope serialization failed")?;
-    SecureMeshRelayEnvelope::from_json(&wire)
+) -> Result<LicoArcRelayEnvelope> {
+    let wire = serde_json::to_string(value).context("Lico Arc envelope serialization failed")?;
+    LicoArcRelayEnvelope::from_json(&wire)
 }
