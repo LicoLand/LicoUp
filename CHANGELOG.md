@@ -6,6 +6,14 @@ manifests.
 
 ## Unreleased
 
+- Codex model pickers now merge `~/.codex/models_cache.json` and
+  `model-catalogs` with App Server `model/list`, so the Adaptive Flywheel and
+  composer show the full local Codex directory (plus custom providers) instead
+  of a sparse config-only fallback. Cache documents prefer the nested `models`
+  array so metadata such as etag / fetched_at never appears as model ids.
+- Cursor Agent CLI (`cursor-agent`) is bound for Adaptive Flywheel and runtime
+  relay even when the short capability probe fails, so a detected Cursor install
+  is no longer missing from Designer / Worker / Reviewer pickers.
 - The client-owned local-agent fallback workspace is now the shared
   `.lico-up/agent-workspace` directory (no per-agent subdirectory). The
   composer workspace capsule stays clickable on local desktop so the user can
@@ -18,6 +26,9 @@ manifests.
   plus expands into a search capsule and three floating cards (agent, model,
   reasoning effort + Fast); the first capsule is the dispatch owner, and
   selections persist in `adaptive-flywheel.toml`.
+- Adaptive Flywheel Code Engineering Designer, Worker, and Reviewer use the same
+  multi-capsule picker (without Fast). Worker/Reviewer list order projects to
+  backend then frontend lanes for Subagent MCP.
 - Documented the tuned Messaging Agents desktop surface in
   `docs/functionality/DESIGN-SYSTEM.md` and the user guides: shared main-content
   glass card, overlay header/composer capsules, hover-anchored conversation and

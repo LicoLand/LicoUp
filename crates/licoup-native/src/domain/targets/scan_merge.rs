@@ -32,7 +32,19 @@ pub(super) fn scan_target_with_manual(
         .or_else(|| default_config_path_with_params(def.id, params));
     let manual_binary = manual.and_then(|item| item.binary_path.clone());
     let located_binary = manual_binary
-        .filter(|path| def.id != "cursor" || cursor_binary_supports_acp(path, params))
+        .filter(|path| {
+            if def.id != "cursor" {
+                return true;
+            }
+            // Accept a manual cursor-agent binding even when the short probe
+            // fails; reject only the IDE `cursor` shim without Agent CLI help.
+            let file_name = path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or_default()
+                .to_ascii_lowercase();
+            file_name.starts_with("cursor-agent") || cursor_binary_supports_acp(path, params)
+        })
         .map(|path| (path, "manual"))
         .or_else(|| find_target_binary_with_source(def, params));
     let binary_path = located_binary.as_ref().map(|(path, _)| path.clone());

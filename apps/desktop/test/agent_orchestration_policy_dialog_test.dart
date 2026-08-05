@@ -11,7 +11,7 @@ import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 void main() {
   testWidgets(
-    'adaptive flywheel shows shared Designer and lane-specific Worker and Reviewer roles',
+    'adaptive flywheel shows Daily Conversation and multi-capsule Designer Worker Reviewer',
     (tester) async {
       final controller = ClientController();
       addTearDown(controller.dispose);
@@ -113,6 +113,8 @@ void main() {
         isTrue,
       );
 
+      expect(find.byIcon(Icons.search_rounded), findsNothing);
+
       await tester.tap(
         find.byKey(
           const Key('agent-orchestration-daily-conversation-option-codex'),
@@ -123,6 +125,17 @@ void main() {
       expect(
         find.byKey(const Key('agent-orchestration-daily-conversation-confirm')),
         findsOneWidget,
+      );
+      expect(
+        tester
+            .widget<TextField>(
+              find.byKey(
+                const Key('agent-orchestration-daily-conversation-input'),
+              ),
+            )
+            .controller!
+            .text,
+        'Codex',
       );
 
       await tester.tap(
@@ -166,7 +179,7 @@ void main() {
       expect(find.text('主智能体'), findsNothing);
 
       await tester.scrollUntilVisible(
-        find.text('代码工程'),
+        find.text('设计师'),
         80,
         scrollable: find
             .descendant(
@@ -175,17 +188,19 @@ void main() {
             )
             .first,
       );
-      expect(find.text('代码工程'), findsOneWidget);
-      expect(find.text('Designer'), findsOneWidget);
-      expect(find.text('Worker'), findsOneWidget);
-      expect(find.text('Reviewer'), findsOneWidget);
-      expect(find.text('后端线'), findsNWidgets(2));
-      expect(find.text('前端线'), findsNWidgets(2));
-      for (final role in CodeEngineeringRoleSlot.values) {
-        expect(
-          find.byKey(Key('agent-orchestration-code-${role.configKey}-agent')),
-          findsOneWidget,
-        );
+      expect(find.text('代码工程'), findsNothing);
+      expect(find.text('设计师'), findsOneWidget);
+      expect(find.text('执行者'), findsOneWidget);
+      expect(find.text('审查官'), findsOneWidget);
+      expect(find.text('后端线'), findsNothing);
+      expect(find.text('前端线'), findsNothing);
+      for (final prefix in [
+        'agent-orchestration-code-designer',
+        'agent-orchestration-code-worker',
+        'agent-orchestration-code-reviewer',
+      ]) {
+        expect(find.byKey(Key('$prefix-add')), findsOneWidget);
+        expect(_codeEngineeringChips(prefix), findsAtLeastNWidgets(1));
       }
 
       await tester.tap(find.byKey(const Key('main-agent-save')));
@@ -209,6 +224,9 @@ void main() {
       // First Daily Conversation capsule is the dispatch / main-agent owner.
       expect(result!.commanderAgentId, 'codex');
       expect(result!.commanderModelName, 'gpt-5');
+      expect(result!.designerAgents, isNotEmpty);
+      expect(result!.workerAgents, isNotEmpty);
+      expect(result!.reviewerAgents, isNotEmpty);
       expect(result!.codeEngineeringConfigured, isTrue);
     },
   );
@@ -231,6 +249,16 @@ Finder _dailyConversationChipRemoves() {
     return key.value.startsWith(
       'agent-orchestration-daily-conversation-chip-remove-',
     );
+  });
+}
+
+Finder _codeEngineeringChips(String keyPrefix) {
+  return find.byWidgetPredicate((widget) {
+    final key = widget.key;
+    if (key is! ValueKey<String>) return false;
+    final value = key.value;
+    return value.startsWith('$keyPrefix-chip-') &&
+        !value.contains('-chip-remove-');
   });
 }
 
