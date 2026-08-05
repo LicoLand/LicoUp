@@ -44,6 +44,10 @@
     {
       "agentId": "pi",
       "capabilities": ["cli", "rpc"]
+    },
+    {
+      "agentId": "lico-agent",
+      "capabilities": ["cli", "rpc"]
     }
   ]
 }

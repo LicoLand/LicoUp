@@ -142,10 +142,10 @@ class _TokenUsageOverviewCard extends StatelessWidget {
           Row(
             children: [
               Icon(
-              Icons.query_stats_rounded,
-              color: colors.textSecondary,
-              size: 21,
-            ),
+                Icons.query_stats_rounded,
+                color: colors.textSecondary,
+                size: 21,
+              ),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(

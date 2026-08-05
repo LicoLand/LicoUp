@@ -56,12 +56,20 @@ active provider.
 }
 ```
 
-The shipped default config additionally defines a Kilo Gateway provider (id
-`kilo`, base URL `https://api.kilo.ai/api/gateway`, OpenAI Chat Completions
-protocol, Bearer credential style) whose routes map `claude-sonnet-4-6`,
-`claude-opus-4-7`, and `claude-haiku-4-5` to the `anthropic/claude-sonnet-4.6`,
-`anthropic/claude-opus-4.7`, and `anthropic/claude-haiku-4.5` upstream models
-across all three client protocols.
+The shipped default catalog defines Kimi, DeepSeek, and Kilo providers. Routes
+are the closed product catalog in `domain/llm_gateway_default_catalog.rs`.
+At Gateway start and agent-config plan/apply time, only providers that currently
+have at least one non-expired saved API key are materialized: their routes and
+OpenCode/Pi model lists are projected; providers without a usable key are
+omitted entirely. When no usable keys exist, the Gateway config is empty and
+advertises no models. Client-facing `requestedModel` ids use
+`{provider}:{alias}` (for example `kimi:k3`, `deepseek:deepseek-v4-flash`,
+`kilo:kilo-auto/free`); `upstreamModel` remains the vendor or Kilo API id.
+The curated Kilo set includes the stable `kilo-auto/*` tiers and current named
+upstream ids. Agent-config adapters advertise only the client-facing aliases
+for providers with usable keys. Kilo’s full hosted inventory is hundreds of
+models; the Gateway keeps an explicit curated subset rather than proxying the
+entire remote list.
 
 The configuration must be an absolute regular file no larger than 1 MiB. Run
 `lico-llm-gateway --config <absolute-path> --check` before starting the
@@ -86,10 +94,23 @@ The native surface is closed to these operations:
 - `llm-gateway service status`
 - `llm-gateway service start [--port]`
 - `llm-gateway service stop [--port]`
-- `llm-gateway agent-config plan <codex|claude-code> <absolute-config-root>`
+- `llm-gateway agent-config plan <codex|claude-code|opencode|pi> <absolute-config-root>`
 
 The agent configuration command produces a reviewable, secret-free plan. Codex
 uses an official custom `model_providers` profile with a Responses API base URL;
 Claude Code uses its official `ANTHROPIC_BASE_URL`/`apiKeyHelper` gateway fields.
-Unknown agents fail closed until a precise adapter is added to the canonical
-runtime registry.
+OpenCode writes a sidecar `opencode.licoup-gateway.json` (OpenAI-compatible
+Chat Completions provider) and never rewrites `opencode.json` / `opencode.jsonc`;
+load the sidecar with `OPENCODE_CONFIG` so OpenCode merges it with the existing
+global config. Pi writes a sidecar `models.licoup-gateway.json` (OpenAI
+Completions provider) and never rewrites `models.json` wholesale; the helper
+merges only `providers.licoup-gateway` into `~/.pi/agent/models.json`. Unknown
+agents fail closed until a precise adapter is added to the canonical runtime
+registry.
+
+Developer one-click helpers (same sidecar semantics):
+
+```bash
+npm run client:opencode:add-gateway
+npm run client:pi:add-gateway
+```

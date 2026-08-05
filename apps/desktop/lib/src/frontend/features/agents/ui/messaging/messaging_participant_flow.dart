@@ -78,10 +78,15 @@ final class MessagingFlowTruncation extends MessagingFlowEntry {
 /// consecutive same-author user/assistant messages group together, groups
 /// break on process items, subagent cards, and silences longer than
 /// [maxGroupGap], and local-day changes insert day dividers.
+///
+/// When [preferPeerAgents] is true (Lico group Conversation), subagent cards
+/// are projected as ordinary peer assistant message groups instead of nested
+/// cards.
 List<MessagingFlowEntry> buildMessagingFlowEntries(
   List<ConversationTimelineItem> chronologicalItems, {
   String activeProcessStorageKey = '',
   Duration maxGroupGap = messagingFlowMaxGroupGap,
+  bool preferPeerAgents = false,
 }) {
   final entries = <MessagingFlowEntry>[];
   var currentAuthorIsUser = false;
@@ -130,6 +135,41 @@ List<MessagingFlowEntry> buildMessagingFlowEntries(
         final isUser = kind == AgentConversationMessageKind.user;
         final isAssistant = kind == AgentConversationMessageKind.assistant;
         if (!isUser && !isAssistant) {
+          if (preferPeerAgents && message.isSubagentCard) {
+            flushGroup();
+            trackDay(parseAgentConversationTimestamp(message.createdAt));
+            final peerText = message.text.trim().isNotEmpty
+                ? message.text
+                : message.cardTitle;
+            final peer = AgentConversationMessage(
+              id: message.id,
+              role: 'assistant',
+              text: peerText,
+              createdAt: message.createdAt,
+              layer: AgentConversationSemanticLayer.thread,
+              participantAgentId: message.participantAgentId,
+              participantLabel: message.participantLabel.trim().isNotEmpty
+                  ? message.participantLabel
+                  : message.cardTitle,
+              participantRole: message.participantRole.trim().isNotEmpty
+                  ? message.participantRole
+                  : 'peer-agent',
+              images: message.images,
+            );
+            entries.add(
+              MessagingFlowMessageGroup(
+                authorIsUser: false,
+                participantAgentId: peer.participantAgentId.trim(),
+                participantLabel: peer.participantLabel.trim(),
+                participantRole: peer.participantRole.trim(),
+                messages: List<AgentConversationMessage>.unmodifiable([peer]),
+              ),
+            );
+            lastMessageTime =
+                parseAgentConversationTimestamp(message.createdAt) ??
+                lastMessageTime;
+            continue;
+          }
           flushGroup();
           entries.add(MessagingFlowSubagent(item));
           continue;
@@ -194,6 +234,7 @@ class MessagingParticipantFlow extends StatelessWidget {
     this.activeProcessStorageKey = '',
     this.sessionKey = '',
     this.participantTargets = const [],
+    this.preferPeerAgents = false,
     this.topOverlayInset = 0,
     this.bottomOverlayInset = 0,
   });
@@ -205,6 +246,9 @@ class MessagingParticipantFlow extends StatelessWidget {
   final String activeProcessStorageKey;
   final String sessionKey;
   final List<TargetCandidate> participantTargets;
+
+  /// Lico group Conversation: render delegated agents as peer bubbles.
+  final bool preferPeerAgents;
 
   /// Extra top padding when a floating header overlays the transcript.
   final double topOverlayInset;
@@ -226,6 +270,7 @@ class MessagingParticipantFlow extends StatelessWidget {
     final entries = buildMessagingFlowEntries(
       items.reversed.toList(growable: false),
       activeProcessStorageKey: activeProcessStorageKey,
+      preferPeerAgents: preferPeerAgents,
     );
     final displayEntries = entries.reversed.toList(growable: false);
     // Conversation text must be selectable and copyable. Selection is hosted at
@@ -249,68 +294,72 @@ class MessagingParticipantFlow extends StatelessWidget {
         itemCount: displayEntries.length,
         itemBuilder: (context, index) {
           final entry = displayEntries[index];
-          return switch (entry) {
-            MessagingFlowDayDivider(:final day) => _MessagingDayDividerRow(
-              day: day,
-            ),
-            MessagingFlowMessageGroup(
-              :final authorIsUser,
-              :final participantAgentId,
-              :final participantLabel,
-              :final participantRole,
-              :final messages,
-            ) =>
-              Padding(
-                padding: LicoContentSpacing.peerItem,
-                child: MessagingMessageGroup(
-                  authorIsUser: authorIsUser,
-                  participantLabel: participantLabel,
-                  participantRole: participantRole,
-                  participantTarget: _participantTarget(participantAgentId),
-                  messages: messages,
-                  target: target,
-                  adapter: adapter,
-                ),
-              ),
-            MessagingFlowProcess(:final item, :final active) => Padding(
-              padding: LicoContentSpacing.peerItem,
-              child: SelectionContainer.disabled(
-                child: MessagingProcessStatusRow(
-                  events: item.events,
-                  adapter: adapter,
-                  detailsBuilder: buildAgentConversationEventDetails,
-                  active: active,
-                ),
-              ),
-            ),
-            MessagingFlowLog(:final item) => Padding(
-              padding: const EdgeInsets.only(
-                left: 48,
-                bottom: LicoContentSpacing.item,
-              ),
-              child: SelectionContainer.disabled(
-                child: ConversationLogEventRow(events: item.events),
-              ),
-            ),
-            MessagingFlowSubagent(:final item) => Padding(
-              padding: LicoContentSpacing.peerItem,
-              child: AgentConversationSubagentCardBlock(
-                message: item.message,
-                adapter: adapter,
-                fullWidth: true,
-              ),
-            ),
-            MessagingFlowTruncation(:final item) => Padding(
-              padding: LicoContentSpacing.peerItem,
-              child: ConversationTruncationNotice(
-                historyTruncated: item.historyTruncated,
-                messageTreeTruncated: item.messageTreeTruncated,
-              ),
-            ),
-          };
+          // A streamed reply changes one entry per frame. Without a repaint
+          // boundary per entry the whole visible flow repaints with it.
+          return RepaintBoundary(child: _entryContent(context, entry));
         },
       ),
     );
+  }
+
+  Widget _entryContent(BuildContext context, MessagingFlowEntry entry) {
+    return switch (entry) {
+      MessagingFlowDayDivider(:final day) => _MessagingDayDividerRow(day: day),
+      MessagingFlowMessageGroup(
+        :final authorIsUser,
+        :final participantAgentId,
+        :final participantLabel,
+        :final participantRole,
+        :final messages,
+      ) =>
+        Padding(
+          padding: LicoContentSpacing.peerItem,
+          child: MessagingMessageGroup(
+            authorIsUser: authorIsUser,
+            participantLabel: participantLabel,
+            participantRole: participantRole,
+            participantTarget: _participantTarget(participantAgentId),
+            messages: messages,
+            target: target,
+            adapter: adapter,
+          ),
+        ),
+      MessagingFlowProcess(:final item, :final active) => Padding(
+        padding: LicoContentSpacing.peerItem,
+        child: SelectionContainer.disabled(
+          child: MessagingProcessStatusRow(
+            events: item.events,
+            adapter: adapter,
+            detailsBuilder: buildAgentConversationEventDetails,
+            active: active,
+          ),
+        ),
+      ),
+      MessagingFlowLog(:final item) => Padding(
+        padding: const EdgeInsets.only(
+          left: 48,
+          bottom: LicoContentSpacing.item,
+        ),
+        child: SelectionContainer.disabled(
+          child: ConversationLogEventRow(events: item.events),
+        ),
+      ),
+      MessagingFlowSubagent(:final item) => Padding(
+        padding: LicoContentSpacing.peerItem,
+        child: AgentConversationSubagentCardBlock(
+          message: item.message,
+          adapter: adapter,
+          fullWidth: true,
+        ),
+      ),
+      MessagingFlowTruncation(:final item) => Padding(
+        padding: LicoContentSpacing.peerItem,
+        child: ConversationTruncationNotice(
+          historyTruncated: item.historyTruncated,
+          messageTreeTruncated: item.messageTreeTruncated,
+        ),
+      ),
+    };
   }
 }
 

@@ -18,6 +18,9 @@ enum _GatewayServiceState { detecting, running, stopped, unhealthy, unknown }
 
 /// Local LLM Gateway endpoint, lifecycle, readiness, and local usage summary.
 /// Credential authorization and process startup share one explicit card action.
+///
+/// When [belowDivider] is set, that widget is placed after the gateway controls
+/// divider and before the local usage summary — keeping sibling cards unnested.
 final class LlmGatewayCard extends StatefulWidget {
   const LlmGatewayCard({
     super.key,
@@ -26,6 +29,7 @@ final class LlmGatewayCard extends StatefulWidget {
     required this.readSettings,
     required this.writeSettings,
     this.lifecycleController,
+    this.belowDivider,
   });
 
   final AgentCommandRunner agentService;
@@ -33,6 +37,7 @@ final class LlmGatewayCard extends StatefulWidget {
   final Future<Map<String, Object?>> Function() readSettings;
   final Future<void> Function(Map<String, Object?> content) writeSettings;
   final LlmGatewayLifecycleController? lifecycleController;
+  final Widget? belowDivider;
 
   @override
   State<LlmGatewayCard> createState() => _LlmGatewayCardState();
@@ -271,6 +276,8 @@ final class _LlmGatewayCardState extends State<LlmGatewayCard> {
     if (_busy || widget.authorization.busy) return;
     final strings = LicoStrings.of(context);
     final needsAuthorization = !widget.authorization.authorized;
+    final needsCredentialReload =
+        _serviceState == _GatewayServiceState.running && !_modelReady;
     setState(() {
       _busy = true;
       _messageIsError = false;
@@ -301,6 +308,25 @@ final class _LlmGatewayCardState extends State<LlmGatewayCard> {
         await widget.lifecycleController?.pollNow();
       }
       if (!mounted) return;
+      // A CLI/orphan restart can leave the sidecar running without a key
+      // handoff. Stop first so start can re-apply credentials.
+      if (needsCredentialReload ||
+          (_serviceState == _GatewayServiceState.running &&
+              !_credentialsApplied)) {
+        final lifecycle = widget.lifecycleController;
+        if (lifecycle == null) {
+          await widget.agentService.runCli([
+            'llm-gateway',
+            'service',
+            'stop',
+            '--port',
+            '$_servicePort',
+          ]);
+        } else {
+          await lifecycle.stop();
+        }
+        if (!mounted) return;
+      }
       setState(() => _message = null);
       late Map<String, dynamic> payload;
       final lifecycle = widget.lifecycleController;
@@ -382,10 +408,10 @@ final class _LlmGatewayCardState extends State<LlmGatewayCard> {
       switch (_serviceState) {
         _GatewayServiceState.stopped || _GatewayServiceState.unknown => true,
         _GatewayServiceState.unhealthy => _serviceManaged,
+        // Allow re-authorize when a managed process is up but has no usable
+        // key lease (common after an external CLI restart without handoff).
         _GatewayServiceState.running =>
-          _serviceManaged &&
-              widget.authorization.authorized &&
-              !_credentialsApplied,
+          _serviceManaged && (!_credentialsApplied || !_modelReady),
         _ => false,
       };
 
@@ -492,169 +518,211 @@ final class _LlmGatewayCardState extends State<LlmGatewayCard> {
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
+  Widget _buildControls(BuildContext context) {
     final strings = LicoStrings.of(context);
     final chinese = strings.isChinese;
     final colors = context.licoColors;
-    final modelTimeline = _gatewayModelTimeline();
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
           children: [
-            Row(
-              children: [
-                const Icon(Icons.lan_outlined),
-                const SizedBox(width: 10),
-                Text(
-                  'LLM Gateway',
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-              ],
+            const Icon(Icons.lan_outlined),
+            const SizedBox(width: 10),
+            Text(
+              'LLM Gateway',
+              style: Theme.of(context).textTheme.titleMedium,
             ),
-            const SizedBox(height: 16),
-            EndpointUrlField(
-              key: const ValueKey('gateway-url'),
-              controller: _urlController,
-              enabled: !_loading && !_saving,
-              hintText: _url(defaultLlmGatewayPort),
-              saveTooltip: chinese ? '保存 Gateway URL' : 'Save Gateway URL',
-              onSave: () => unawaited(_save()),
-            ),
-            if (_message != null)
-              Padding(
-                padding: const EdgeInsets.only(top: 10),
-                child: Text(
-                  _message!,
-                  style: TextStyle(
-                    color: _messageIsError ? colors.error : colors.textMuted,
-                  ),
-                ),
-              ),
-            const SizedBox(height: 14),
-            EndpointStatusRow(
-              key: const ValueKey('gateway-service-status'),
-              label: chinese ? '服务' : 'Service',
-              value: _serviceText(chinese),
-              valueColor: _serviceState == _GatewayServiceState.running
-                  ? colors.success
-                  : null,
-            ),
-            EndpointStatusRow(
-              key: const ValueKey('gateway-model-status'),
-              label: chinese ? '模型' : 'Models',
-              value: _modelText(strings),
-              valueColor: _modelReady ? colors.success : colors.textMuted,
-            ),
-            EndpointStatusRow(
-              key: const ValueKey('gateway-process-status'),
-              label: chinese ? '进程 ID' : 'Process ID',
-              value: _processText,
-            ),
-            const SizedBox(height: 12),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                FilledButton.icon(
-                  key: const ValueKey('gateway-authorize-and-start'),
-                  onPressed: _canAuthorizeAndStart
-                      ? () => unawaited(_authorizeAndStart())
-                      : null,
-                  icon: _busy || widget.authorization.busy
-                      ? const SizedBox.square(
-                          dimension: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : Icon(
-                          widget.authorization.authorized
-                              ? Icons.play_arrow_rounded
-                              : Icons.fingerprint,
-                          size: 18,
-                        ),
-                  label: Text(_primaryActionLabel(strings)),
-                ),
-                const SizedBox(width: 10),
-                FilledButton.tonal(
-                  key: const ValueKey('gateway-service-stop'),
-                  style: FilledButton.styleFrom(foregroundColor: colors.error),
-                  onPressed: _canStop ? () => unawaited(_stopService()) : null,
-                  child: Text(strings.llmGatewayStop),
-                ),
-              ],
-            ),
-            const Divider(height: 32),
-            LayoutBuilder(
-              builder: (context, constraints) {
-                final cards = [
-                  _GatewayAgentUsageCard(
-                    target: 'codex',
-                    label: 'Codex',
-                    requests: _agentRequests('codex'),
-                    chinese: chinese,
-                  ),
-                  _GatewayAgentUsageCard(
-                    target: 'claude-code',
-                    label: 'Claude Code',
-                    requests: _agentRequests('claude-code'),
-                    chinese: chinese,
-                  ),
-                ];
-                if (constraints.maxWidth < 620) {
-                  return Column(
-                    children: [
-                      for (final card in cards)
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 10),
-                          child: card,
-                        ),
-                    ],
-                  );
-                }
-                return Row(
-                  children: [
-                    Expanded(child: cards[0]),
-                    const SizedBox(width: 12),
-                    Expanded(child: cards[1]),
-                  ],
-                );
-              },
-            ),
-            const SizedBox(height: 20),
-            if (modelTimeline.isEmpty)
-              Container(
-                key: const ValueKey('gateway-model-usage-empty'),
-                height: 180,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: colors.surfaceLow,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: colors.line.withAlpha(90)),
-                ),
-                child: Text(
-                  chinese ? '暂无 Gateway API 请求' : 'No Gateway API requests yet',
-                  style: TextStyle(color: colors.textMuted),
-                ),
-              )
-            else
-              AgentUsageWaveOverview(
-                grouping: AgentUsageChartGrouping.model,
-                timeline: modelTimeline,
-                onGroupingChanged: (_) {},
-                windowDays: _usageWindowDays,
-                windowBusy: false,
-                onWindowChanged: (days) =>
-                    setState(() => _usageWindowDays = days),
-                showGroupingControl: false,
-                title: chinese ? 'API 请求次数' : 'API requests',
-                tooltipSemanticLabel: (date) => chinese
-                    ? '${_dateKey(date)} Gateway API 请求次数'
-                    : '${_dateKey(date)} Gateway API requests',
-              ),
           ],
         ),
-      ),
+        const SizedBox(height: 16),
+        EndpointUrlField(
+          key: const ValueKey('gateway-url'),
+          controller: _urlController,
+          enabled: !_loading && !_saving,
+          hintText: _url(defaultLlmGatewayPort),
+          saveTooltip: chinese ? '保存 Gateway URL' : 'Save Gateway URL',
+          onSave: () => unawaited(_save()),
+        ),
+        if (_message != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 10),
+            child: Text(
+              _message!,
+              style: TextStyle(
+                color: _messageIsError ? colors.error : colors.textMuted,
+              ),
+            ),
+          ),
+        const SizedBox(height: 14),
+        EndpointStatusRow(
+          key: const ValueKey('gateway-service-status'),
+          label: chinese ? '服务' : 'Service',
+          value: _serviceText(chinese),
+          valueColor: _serviceState == _GatewayServiceState.running
+              ? colors.success
+              : null,
+        ),
+        EndpointStatusRow(
+          key: const ValueKey('gateway-model-status'),
+          label: chinese ? '模型' : 'Models',
+          value: _modelText(strings),
+          valueColor: _modelReady ? colors.success : colors.textMuted,
+        ),
+        EndpointStatusRow(
+          key: const ValueKey('gateway-process-status'),
+          label: chinese ? '进程 ID' : 'Process ID',
+          value: _processText,
+        ),
+        const SizedBox(height: 12),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.end,
+          children: [
+            FilledButton.icon(
+              key: const ValueKey('gateway-authorize-and-start'),
+              onPressed: _canAuthorizeAndStart
+                  ? () => unawaited(_authorizeAndStart())
+                  : null,
+              icon: _busy || widget.authorization.busy
+                  ? const SizedBox.square(
+                      dimension: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : Icon(
+                      widget.authorization.authorized
+                          ? Icons.play_arrow_rounded
+                          : Icons.fingerprint,
+                      size: 18,
+                    ),
+              label: Text(_primaryActionLabel(strings)),
+            ),
+            const SizedBox(width: 10),
+            FilledButton.tonal(
+              key: const ValueKey('gateway-service-stop'),
+              style: FilledButton.styleFrom(foregroundColor: colors.error),
+              onPressed: _canStop ? () => unawaited(_stopService()) : null,
+              child: Text(strings.llmGatewayStop),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildUsage(BuildContext context) {
+    final chinese = LicoStrings.of(context).isChinese;
+    final colors = context.licoColors;
+    final modelTimeline = _gatewayModelTimeline();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final cards = [
+              _GatewayAgentUsageCard(
+                target: 'codex',
+                label: 'Codex',
+                requests: _agentRequests('codex'),
+                chinese: chinese,
+              ),
+              _GatewayAgentUsageCard(
+                target: 'claude-code',
+                label: 'Claude Code',
+                requests: _agentRequests('claude-code'),
+                chinese: chinese,
+              ),
+            ];
+            if (constraints.maxWidth < 620) {
+              return Column(
+                children: [
+                  for (final card in cards)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: card,
+                    ),
+                ],
+              );
+            }
+            return Row(
+              children: [
+                Expanded(child: cards[0]),
+                const SizedBox(width: 12),
+                Expanded(child: cards[1]),
+              ],
+            );
+          },
+        ),
+        const SizedBox(height: 20),
+        if (modelTimeline.isEmpty)
+          Container(
+            key: const ValueKey('gateway-model-usage-empty'),
+            height: 180,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: colors.surfaceLow,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: colors.line.withAlpha(90)),
+            ),
+            child: Text(
+              chinese ? '暂无 Gateway API 请求' : 'No Gateway API requests yet',
+              style: TextStyle(color: colors.textMuted),
+            ),
+          )
+        else
+          AgentUsageWaveOverview(
+            grouping: AgentUsageChartGrouping.model,
+            timeline: modelTimeline,
+            onGroupingChanged: (_) {},
+            windowDays: _usageWindowDays,
+            windowBusy: false,
+            onWindowChanged: (days) => setState(() => _usageWindowDays = days),
+            showGroupingControl: false,
+            title: chinese ? 'API 请求次数' : 'API requests',
+            tooltipSemanticLabel: (date) => chinese
+                ? '${_dateKey(date)} Gateway API 请求次数'
+                : '${_dateKey(date)} Gateway API requests',
+          ),
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final belowDivider = widget.belowDivider;
+    if (belowDivider == null) {
+      return Card(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _buildControls(context),
+              const Divider(height: 32),
+              _buildUsage(context),
+            ],
+          ),
+        ),
+      );
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: _buildControls(context),
+          ),
+        ),
+        const SizedBox(height: 16),
+        belowDivider,
+        const SizedBox(height: 16),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: _buildUsage(context),
+          ),
+        ),
+      ],
     );
   }
 }

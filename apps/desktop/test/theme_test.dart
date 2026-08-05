@@ -408,7 +408,11 @@ void main() {
           );
         }
       });
-      expect(leaks, isEmpty, reason: '${preset.id} leaked: ${leaks.join(', ')}');
+      expect(
+        leaks,
+        isEmpty,
+        reason: '${preset.id} leaked: ${leaks.join(', ')}',
+      );
     }
   });
 
@@ -442,10 +446,7 @@ void main() {
       appearancePresetIdForBrightness(false),
       AppearancePresetIds.licoSodaLight,
     );
-    expect(
-      appearancePresetIdForBrightness(true),
-      AppearancePresetIds.licoSoda,
-    );
+    expect(appearancePresetIdForBrightness(true), AppearancePresetIds.licoSoda);
     expect(
       isResolvedAppearanceDark(
         AppearancePresetIds.defaultSystem,
@@ -469,19 +470,17 @@ void main() {
       builtInAppearancePresetConfigs,
       true,
     );
-    expect(
-      darkPresets.map((preset) => preset.id),
-      [AppearancePresetIds.licoSoda],
-    );
+    expect(darkPresets.map((preset) => preset.id), [
+      AppearancePresetIds.licoSoda,
+    ]);
 
     final lightPresets = selectableAppearancePresetsForBrightness(
       builtInAppearancePresetConfigs,
       false,
     );
-    expect(
-      lightPresets.map((preset) => preset.id),
-      [AppearancePresetIds.licoSodaLight],
-    );
+    expect(lightPresets.map((preset) => preset.id), [
+      AppearancePresetIds.licoSodaLight,
+    ]);
   });
 
   test('brightness selection maps to persisted preset ids', () {

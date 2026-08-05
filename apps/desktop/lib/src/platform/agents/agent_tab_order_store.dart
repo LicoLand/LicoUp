@@ -9,6 +9,15 @@ abstract class AgentTabOrderStore implements TargetTabOrderRepository {
 
   @override
   Future<void> save(Object portableData, List<String> order);
+
+  @override
+  Future<List<String>> loadPinned(Object portableData);
+
+  @override
+  Future<void> savePinned(Object portableData, List<String> pinned);
+
+  @override
+  Future<bool> hasCustomPinnedIds(Object portableData);
 }
 
 class PlatformAgentTabOrderStore implements AgentTabOrderStore {
@@ -22,21 +31,52 @@ class PlatformAgentTabOrderStore implements AgentTabOrderStore {
 
   @override
   Future<List<String>> load(Object portableData) async {
-    final decoded = await _jsonStore.read(portableData, _fileName);
-    final rawOrder = decoded is Map
-        ? decoded['order']
-        : decoded is List
-        ? decoded
-        : null;
-    return _normalizeOrder(rawOrder);
+    final decoded = await _readDocument(portableData);
+    return _normalizeOrder(decoded?['order']);
   }
 
   @override
-  Future<void> save(Object portableData, List<String> order) {
-    return _jsonStore.write(portableData, _fileName, {
+  Future<void> save(Object portableData, List<String> order) async {
+    final decoded = await _readDocument(portableData) ?? <String, dynamic>{};
+    await _jsonStore.write(portableData, _fileName, {
       'schemaVersion': 1,
       'order': _normalizeOrder(order),
+      if (decoded.containsKey('pinned'))
+        'pinned': _normalizeOrder(decoded['pinned']),
     }, lock: true);
+  }
+
+  @override
+  Future<List<String>> loadPinned(Object portableData) async {
+    final decoded = await _readDocument(portableData);
+    return _normalizeOrder(decoded?['pinned']);
+  }
+
+  @override
+  Future<void> savePinned(Object portableData, List<String> pinned) async {
+    final decoded = await _readDocument(portableData) ?? <String, dynamic>{};
+    await _jsonStore.write(portableData, _fileName, {
+      'schemaVersion': 1,
+      'order': _normalizeOrder(decoded['order']),
+      'pinned': _normalizeOrder(pinned),
+    }, lock: true);
+  }
+
+  @override
+  Future<bool> hasCustomPinnedIds(Object portableData) async {
+    final decoded = await _readDocument(portableData);
+    return decoded?.containsKey('pinned') == true;
+  }
+
+  Future<Map<String, dynamic>?> _readDocument(Object portableData) async {
+    final decoded = await _jsonStore.read(portableData, _fileName);
+    if (decoded is Map) {
+      return Map<String, dynamic>.from(decoded);
+    }
+    if (decoded is List) {
+      return <String, dynamic>{'order': decoded};
+    }
+    return null;
   }
 
   List<String> _normalizeOrder(Object? value) {

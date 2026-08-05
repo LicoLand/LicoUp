@@ -62,9 +62,7 @@ final class ClientResourceUsageController extends ChangeNotifier {
 
   int get sessionWriteBytes => _sessionWriteBytes;
 
-  void start({
-    Duration interval = clientResourceUsageSamplingInterval,
-  }) {
+  void start({Duration interval = clientResourceUsageSamplingInterval}) {
     if (_disposed || _probe == null || _timer != null) {
       return;
     }
@@ -100,10 +98,7 @@ final class ClientResourceUsageController extends ChangeNotifier {
     if (interval.isNegative) {
       interval = Duration.zero;
     }
-    final deltaRead = _nonNegativeDelta(
-      reading.diskReadBytes,
-      _lastReadBytes,
-    );
+    final deltaRead = _nonNegativeDelta(reading.diskReadBytes, _lastReadBytes);
     final deltaWrite = _nonNegativeDelta(
       reading.diskWriteBytes,
       _lastWriteBytes,

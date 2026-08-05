@@ -24,6 +24,23 @@ Map<String, dynamic> _acceptanceDispatchFields(AgentDispatchBind bind) {
   };
 }
 
+Map<String, dynamic> _bindDispatchFields(AgentDispatchBind bind) {
+  return <String, dynamic>{
+    if (bind.sessionPath.trim().isNotEmpty)
+      'sessionPath': bind.sessionPath.trim(),
+    if (bind.workingDirectory.trim().isNotEmpty)
+      'workingDirectory': bind.workingDirectory.trim(),
+    if (bind.binaryPath.trim().isNotEmpty) 'binaryPath': bind.binaryPath.trim(),
+    if (bind.model.trim().isNotEmpty) 'model': bind.model.trim(),
+    if (bind.reasoningEffort.trim().isNotEmpty)
+      'reasoningEffort': bind.reasoningEffort.trim(),
+    if (bind.licoProfile.trim().isNotEmpty)
+      'licoProfile': bind.licoProfile.trim(),
+    if (bind.runtimeConnection.isNotEmpty)
+      'runtimeConnection': bind.runtimeConnection,
+  };
+}
+
 /// Backend adapter that implements the unified [AgentConversationLane] over the
 /// sidecar. Conversation callers consume this contract instead of owning
 /// native conversation command shapes.
@@ -289,17 +306,7 @@ class AgentConversationService implements AgentConversationLane {
       jsonEncode(<String, dynamic>{
         'agent': normalizedAgent,
         if (normalizedSession.isNotEmpty) 'sessionId': normalizedSession,
-        if (bind.sessionPath.trim().isNotEmpty)
-          'sessionPath': bind.sessionPath.trim(),
-        if (bind.workingDirectory.trim().isNotEmpty)
-          'workingDirectory': bind.workingDirectory.trim(),
-        if (bind.binaryPath.trim().isNotEmpty)
-          'binaryPath': bind.binaryPath.trim(),
-        if (bind.model.trim().isNotEmpty) 'model': bind.model.trim(),
-        if (bind.reasoningEffort.trim().isNotEmpty)
-          'reasoningEffort': bind.reasoningEffort.trim(),
-        if (bind.runtimeConnection.isNotEmpty)
-          'runtimeConnection': bind.runtimeConnection,
+        ..._bindDispatchFields(bind),
       }),
     );
     if (result['ok'] != true) {
@@ -396,17 +403,7 @@ class AgentConversationService implements AgentConversationLane {
       'text': text,
       'streamEvents': true,
       if (sessionId.trim().isNotEmpty) 'sessionId': sessionId.trim(),
-      if (bind.sessionPath.trim().isNotEmpty)
-        'sessionPath': bind.sessionPath.trim(),
-      if (bind.workingDirectory.trim().isNotEmpty)
-        'workingDirectory': bind.workingDirectory.trim(),
-      if (bind.binaryPath.trim().isNotEmpty)
-        'binaryPath': bind.binaryPath.trim(),
-      if (bind.model.trim().isNotEmpty) 'model': bind.model.trim(),
-      if (bind.reasoningEffort.trim().isNotEmpty)
-        'reasoningEffort': bind.reasoningEffort.trim(),
-      if (bind.runtimeConnection.isNotEmpty)
-        'runtimeConnection': bind.runtimeConnection,
+      ..._bindDispatchFields(bind),
       ..._acceptanceDispatchFields(bind),
     };
 
@@ -482,17 +479,7 @@ class AgentConversationService implements AgentConversationLane {
           'text': normalizedText,
           'sessionId': normalizedSession,
           'turnId': normalizedTurn,
-          if (bind.sessionPath.trim().isNotEmpty)
-            'sessionPath': bind.sessionPath.trim(),
-          if (bind.workingDirectory.trim().isNotEmpty)
-            'workingDirectory': bind.workingDirectory.trim(),
-          if (bind.binaryPath.trim().isNotEmpty)
-            'binaryPath': bind.binaryPath.trim(),
-          if (bind.model.trim().isNotEmpty) 'model': bind.model.trim(),
-          if (bind.reasoningEffort.trim().isNotEmpty)
-            'reasoningEffort': bind.reasoningEffort.trim(),
-          if (bind.runtimeConnection.isNotEmpty)
-            'runtimeConnection': bind.runtimeConnection,
+          ..._bindDispatchFields(bind),
         }),
       );
       final ok = result['ok'] == true;

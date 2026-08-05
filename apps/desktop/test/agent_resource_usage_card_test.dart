@@ -52,7 +52,10 @@ void main() {
       tester,
     ) async {
       var now = DateTime(2026, 7, 31, 12, 0, 0);
-      AgentResourceUsageReport both({required int codexRss, required int cursorRss}) {
+      AgentResourceUsageReport both({
+        required int codexRss,
+        required int cursorRss,
+      }) {
         return AgentResourceUsageReport(
           schemaVersion: AgentResourceUsageReport.currentSchemaVersion,
           generatedAt: '2026-07-31T12:00:00Z',

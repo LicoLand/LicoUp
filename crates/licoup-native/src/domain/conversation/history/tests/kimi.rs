@@ -181,9 +181,14 @@ fn kimi_code_subagent_wires_collapse_into_main_session_cards() {
         .iter()
         .map(|card| card["cardTitle"].as_str().unwrap_or_default())
         .collect::<BTreeSet<_>>();
+    // A delegated agent with no declared swarm label is titled by its own task
+    // instruction rather than a generic placeholder.
     assert_eq!(
         titles,
-        BTreeSet::from(["Subagent task", "Survey the first synthetic subtask"])
+        BTreeSet::from([
+            "Subtask synthetic prompt",
+            "Survey the first synthetic subtask"
+        ])
     );
     let titled = cards
         .iter()

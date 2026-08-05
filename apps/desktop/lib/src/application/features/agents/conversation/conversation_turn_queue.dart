@@ -19,6 +19,7 @@ final class ConversationQueuedTurn {
     required this.model,
     required this.reasoningEffort,
     required this.throughMobileRelay,
+    this.licoProfile = '',
     this.conversationOwnerAgentId = '',
     this.participantLabel = '',
     this.participantRole = '',
@@ -35,6 +36,7 @@ final class ConversationQueuedTurn {
   final String model;
   final String reasoningEffort;
   final bool throughMobileRelay;
+  final String licoProfile;
   final String conversationOwnerAgentId;
   final String participantLabel;
   final String participantRole;
@@ -54,6 +56,7 @@ final class ConversationQueuedTurn {
       model: model,
       reasoningEffort: reasoningEffort,
       throughMobileRelay: throughMobileRelay,
+      licoProfile: licoProfile,
       conversationOwnerAgentId: conversationOwnerAgentId,
       participantLabel: participantLabel,
       participantRole: participantRole,

@@ -162,11 +162,7 @@ void main() {
       ]
       ..conversationSessionsByAgent = {
         agentOrchestrationTargetId: [
-          _session(
-            sessionId,
-            agentOrchestrationTargetId,
-            'Orchestration chat',
-          ),
+          _session(sessionId, agentOrchestrationTargetId, 'Orchestration chat'),
         ],
       };
     addTearDown(controller.dispose);
@@ -177,10 +173,7 @@ void main() {
     controller.agentWorkspaceNotifyStateChanged();
     await tester.pump();
 
-    expect(
-      find.byKey(Key('messaging-chrome-tab-$sessionId')),
-      findsOneWidget,
-    );
+    expect(find.byKey(Key('messaging-chrome-tab-$sessionId')), findsOneWidget);
     expect(find.text('Orchestration chat'), findsOneWidget);
   });
 }

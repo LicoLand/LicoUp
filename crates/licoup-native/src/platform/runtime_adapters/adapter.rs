@@ -1,7 +1,8 @@
 use super::params::text_param;
 use crate::platform::{
     antigravity_driver, claude_code_driver, codex_app_server, copilot_driver, cursor_driver,
-    hermes_driver, kilo_code_driver, kimi_code_driver, openclaw_driver, opencode_driver, pi_driver,
+    hermes_driver, kilo_code_driver, kimi_code_driver, lico_agent_driver, openclaw_driver,
+    opencode_driver, pi_driver,
 };
 use serde_json::Value;
 
@@ -18,6 +19,7 @@ pub(crate) enum RuntimeAdapter {
     OpenClaw,
     OpenCode,
     Pi,
+    LicoAgent,
 }
 
 /// Native delivery channels an agent itself ships, as opposed to a
@@ -90,6 +92,7 @@ pub(super) fn adapter_for_agent(agent_id: &str) -> Option<RuntimeAdapter> {
         "openclaw" => Some(RuntimeAdapter::OpenClaw),
         "opencode" => Some(RuntimeAdapter::OpenCode),
         "pi" | "pi-agent" | "pi-coding-agent" => Some(RuntimeAdapter::Pi),
+        "lico-agent" | "lico" => Some(RuntimeAdapter::LicoAgent),
         _ => None,
     }
 }
@@ -108,6 +111,7 @@ impl RuntimeAdapter {
             Self::OpenClaw => "openclaw",
             Self::OpenCode => "opencode",
             Self::Pi => "pi",
+            Self::LicoAgent => "lico-agent",
         }
     }
 
@@ -124,6 +128,7 @@ impl RuntimeAdapter {
             Self::OpenClaw => "OpenClaw - CLI",
             Self::OpenCode => "OpenCode - CLI",
             Self::Pi => "Pi Agent - CLI",
+            Self::LicoAgent => "Lico Agent - CLI",
         }
     }
 
@@ -140,6 +145,7 @@ impl RuntimeAdapter {
             Self::OpenClaw => "openclaw-acp",
             Self::OpenCode => "opencode-serve",
             Self::Pi => "pi-rpc",
+            Self::LicoAgent => "lico-agent-rpc",
         }
     }
 
@@ -156,6 +162,7 @@ impl RuntimeAdapter {
             Self::OpenClaw => openclaw_driver::RUNTIME_PROTOCOL,
             Self::OpenCode => opencode_driver::RUNTIME_PROTOCOL,
             Self::Pi => pi_driver::RUNTIME_PROTOCOL,
+            Self::LicoAgent => lico_agent_driver::RUNTIME_PROTOCOL,
         }
     }
 
@@ -172,6 +179,7 @@ impl RuntimeAdapter {
             Self::OpenClaw => "openclaw",
             Self::OpenCode => "opencode",
             Self::Pi => "pi",
+            Self::LicoAgent => "lico-agent",
         }
     }
 

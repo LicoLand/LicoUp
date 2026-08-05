@@ -31,7 +31,7 @@
       ]
     },
     "target-adapters": {
-      "label": "Target adapters for Antigravity, Claude Code, Codex, Cursor, GitHub Copilot, Hermes Agent, Kilo Code, Kimi Code, OpenClaw, OpenCode, and Pi Agent",
+      "label": "Target adapters for Antigravity, Claude Code, Codex, Cursor, GitHub Copilot, Hermes Agent, Kilo Code, Kimi Code, Lico Agent, OpenClaw, OpenCode, and Pi Agent",
       "category": "agents",
       "enabled": true,
       "required": true,
@@ -56,7 +56,8 @@
         "cursor",
         "hermes",
         "kimi-code",
-        "pi"
+        "pi",
+        "lico-agent"
       ]
     },
     "local-task-queue": {
@@ -207,6 +208,23 @@
       "cargoBin": "lico-llm-gateway",
       "requires": [
         "native-sidecar"
+      ]
+    },
+    "lico-agent-sidecar": {
+      "label": "LicoUp first-party Agent runtime (Gateway + Plan profile)",
+      "category": "agents",
+      "enabled": true,
+      "required": true,
+      "platforms": [
+        "macos",
+        "linux",
+        "windows"
+      ],
+      "packaging": "sidecar-binary",
+      "cargoBin": "lico-agent",
+      "requires": [
+        "native-sidecar",
+        "llm-gateway-sidecar"
       ]
     },
     "codex-plugin": {

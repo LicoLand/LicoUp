@@ -55,6 +55,7 @@ Lifecycle evidence columns describe whether the lane can emit a native receipt f
 | hermes | conversation | unverified | no | hermes-acp-stdio-jsonrpc | acp | yes | yes | yes | yes | yes | yes | no |
 | kimi-code | conversation | unverified | no | kimi-code-acp-v1-stdio-ndjson | acp | yes | yes | yes | yes | yes | yes | no |
 | pi | conversation | unverified | no | pi-rpc-stdio-jsonl | rpc | yes | yes | yes | yes | yes | yes | yes |
+| lico-agent | conversation | unverified | no | lico-agent-rpc-stdio-jsonl | rpc | yes | yes | yes | yes | yes | yes | yes |
 
 ## Native capability inventory
 
@@ -82,6 +83,7 @@ Classification rules:
 | hermes | CLI, ACP, TUI Gateway | acp | stdio ACP | conditional remote only | direct ACP; TUI Gateway only for manual VM |
 | kimi-code | CLI, ACP, Web Server | acp | stdio ACP | loopback TCP | direct control plane and Web UI |
 | pi | CLI, RPC | rpc | stdio JSONL | none | direct process interface |
+| lico-agent | CLI, RPC | rpc | stdio JSONL | none | direct process interface |
 
 ## Manual VM conversation transport
 

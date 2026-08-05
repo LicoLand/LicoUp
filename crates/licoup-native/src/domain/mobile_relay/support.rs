@@ -26,7 +26,6 @@ pub(super) use super::secret_custody::{
 #[cfg(test)]
 pub(super) use super::secret_custody::{
     load_config, load_config_with_runtime_secret_context_for_operation,
-    load_config_with_runtime_secret_overrides,
     mobile_relay_e2ee_secret_store_authorization_batch_operation_count,
 };
 #[cfg(test)]

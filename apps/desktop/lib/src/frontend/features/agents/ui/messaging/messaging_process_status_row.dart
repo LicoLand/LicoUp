@@ -115,7 +115,9 @@ class _MessagingProcessStatusRowState extends State<MessagingProcessStatusRow> {
         (!lifecycle.terminal || lifecycle.observedStages.length < 5);
     final motionDisabled = MediaQuery.disableAnimationsOf(context);
     final containerDuration = motionDisabled ? Duration.zero : LicoMotion.short;
-    final sizeDuration = motionDisabled ? Duration.zero : const Duration(milliseconds: 200);
+    final sizeDuration = motionDisabled
+        ? Duration.zero
+        : const Duration(milliseconds: 200);
     final operationList = ConversationProcessOperationList(
       operations: operations,
       adapter: widget.adapter,

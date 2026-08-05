@@ -17,6 +17,7 @@ class MessagingHoverPopover extends StatefulWidget {
     this.readabilityVeil = true,
     this.wrapInGlass = true,
     this.width,
+    this.maxWidth,
     this.maxHeight = 420,
     this.borderRadius,
     this.targetAnchor = Alignment.bottomRight,
@@ -44,6 +45,9 @@ class MessagingHoverPopover extends StatefulWidget {
   /// glass cards). The overlay still shrink-wraps and hit-tests the body.
   final bool wrapInGlass;
   final double? width;
+
+  /// Upper bound when [width] is null. Defaults to the compact popover cap.
+  final double? maxWidth;
   final double maxHeight;
   final BorderRadius? borderRadius;
   final Alignment targetAnchor;
@@ -173,7 +177,9 @@ class MessagingHoverPopoverState extends State<MessagingHoverPopover> {
       child: ConstrainedBox(
         constraints: BoxConstraints(
           maxWidth:
-              widget.width ?? MessagingHoverPopover._defaultMaxWidth(context),
+              widget.width ??
+              widget.maxWidth ??
+              MessagingHoverPopover._defaultMaxWidth(context),
           maxHeight: widget.maxHeight,
         ),
         child: widget.cardBuilder(context, close),

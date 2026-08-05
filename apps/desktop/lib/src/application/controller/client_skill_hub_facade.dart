@@ -232,10 +232,8 @@ mixin ClientSkillHubFacade
   @override
   Future<void> loadSkillUsageCounts() => skillUsageController.loadCounts();
 
-  Future<void> scanSkillUsage({
-    String agent = '',
-    bool forceRefresh = false,
-  }) => skillUsageController.scan(agent: agent, forceRefresh: forceRefresh);
+  Future<void> scanSkillUsage({String agent = '', bool forceRefresh = false}) =>
+      skillUsageController.scan(agent: agent, forceRefresh: forceRefresh);
 
   Future<void> updateSkillVisualOverride({
     required String skillId,

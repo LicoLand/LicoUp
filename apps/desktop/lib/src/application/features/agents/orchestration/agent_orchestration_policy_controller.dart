@@ -2,6 +2,7 @@ import 'package:licoup/src/application/features/agents/workspace/agent_workspace
 import 'package:licoup/src/contracts/agent_orchestration_target.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/application/features/agents/orchestration/orchestration_policy_editor_models.dart';
+import 'package:licoup/src/platform/agents/group_conversation_store.dart';
 
 /// Persists the adaptive flywheel: one main agent plus the code-engineering
 /// Designer, frontend/backend Worker, and frontend/backend Reviewer roles.
@@ -77,6 +78,7 @@ mixin AgentOrchestrationPolicyController on AgentWorkspaceCoordinator {
       // scan will make [effectiveAgentOrchestrationPolicy] resolve it
       // dynamically as soon as the real runtime target is available.
       _applyMainAgentSelection(storedPolicy);
+      await _syncGroupConversationRosterFromPolicy();
     } catch (_) {
       // A missing or malformed optional setting must not block client startup.
     }
@@ -107,6 +109,7 @@ mixin AgentOrchestrationPolicyController on AgentWorkspaceCoordinator {
     }
     if (!await _persistAdaptiveFlywheel(draft.toTomlConfig())) return;
     _applyMainAgentSelection(draft);
+    await _syncGroupConversationRosterFromPolicy();
     agentWorkspaceSetLocalizedStatusMessage(
       '适应性飞轮已保存，代码工程将按前后端角色策略调度。',
       'Adaptive flywheel saved; code engineering now follows the frontend/backend role policy.',
@@ -158,5 +161,45 @@ mixin AgentOrchestrationPolicyController on AgentWorkspaceCoordinator {
         policy.assignmentFor(role).reasoningEffort,
       ],
     ].join('\u0000');
+  }
+
+  Future<void> _syncGroupConversationRosterFromPolicy() async {
+    if (!orchestrationAvailable) return;
+    try {
+      final policy = effectiveAgentOrchestrationPolicy;
+      final selected = <String, String>{};
+      void put(String agentId) {
+        final id = agentId.trim();
+        if (id.isEmpty) return;
+        TargetCandidate? match;
+        for (final target in scannedTargets) {
+          if (target.target == id) {
+            match = target;
+            break;
+          }
+        }
+        selected.putIfAbsent(
+          id,
+          () =>
+              match?.label.trim().isNotEmpty == true ? match!.label.trim() : id,
+        );
+      }
+
+      put(policy.commanderAgentId);
+      for (final role in CodeEngineeringRoleSlot.values) {
+        put(policy.assignmentFor(role).agentId);
+      }
+      final record = await GroupConversationStore().syncRosterFromFlywheel(
+        portableData: agentWorkspacePortableData,
+        mainAgentId: policy.commanderAgentId,
+        agents: [
+          for (final entry in selected.entries)
+            (id: entry.key, label: entry.value),
+        ],
+      );
+      groupConversationRoster = record.roster;
+    } catch (_) {
+      // Group roster sync is best-effort and must not block policy saves.
+    }
   }
 }

@@ -355,6 +355,14 @@ extension LicoStringsLabels on LicoStrings {
   String get you => isChinese ? '你' : 'You';
   String get agent => isChinese ? '智能体' : 'Agent';
   String get subagentTask => isChinese ? '子智能体任务' : 'Subagent task';
+  String subagentSteps(int count) =>
+      isChinese ? '$count 步' : '$count ${count == 1 ? 'step' : 'steps'}';
+  String subagentToolCalls(int count) => isChinese
+      ? '$count 次工具调用'
+      : '$count tool ${count == 1 ? 'call' : 'calls'}';
+  String subagentNestedTasks(int count) => isChinese
+      ? '$count 个子任务'
+      : '$count nested ${count == 1 ? 'task' : 'tasks'}';
   String get agentProcess => isChinese ? '智能体过程' : 'Agent process';
   String get workedBriefly => isChinese ? '少于 1 秒' : 'Under 1s';
   String get reasoningProcess => isChinese ? '思考过程' : 'Reasoning';
@@ -510,6 +518,8 @@ extension LicoStringsLabels on LicoStrings {
   String get defaultPolicy => isChinese ? '默认策略' : 'Default Policy';
   String get editPolicy => isChinese ? '适应性飞轮' : 'Adaptive Flywheel';
   String get editMainAgent => isChinese ? '适应性飞轮' : 'Adaptive Flywheel';
+  String get agentModeLabel => isChinese ? 'Agent' : 'Agent';
+  String get planModeLabel => isChinese ? 'Plan' : 'Plan';
   String get codeEngineering => isChinese ? '代码工程' : 'Code Engineering';
   String get backendLane => isChinese ? '后端线' : 'Backend lane';
   String get frontendLane => isChinese ? '前端线' : 'Frontend lane';
@@ -614,12 +624,10 @@ extension LicoStringsLabels on LicoStrings {
       isChinese ? '授权并启动' : 'Authorize and Start';
   String get llmGatewayStart => isChinese ? '启动' : 'Start';
   String get llmGatewayStop => isChinese ? '停止' : 'Stop';
-  String get llmGatewayAuthorizing =>
-      isChinese ? '授权中…' : 'Authorizing…';
+  String get llmGatewayAuthorizing => isChinese ? '授权中…' : 'Authorizing…';
   String get llmGatewayStarting => isChinese ? '启动中…' : 'Starting…';
-  String get llmGatewayRequestingAuthorization => isChinese
-      ? '正在请求系统授权…'
-      : 'Requesting system authorization…';
+  String get llmGatewayRequestingAuthorization =>
+      isChinese ? '正在请求系统授权…' : 'Requesting system authorization…';
   String get llmGatewayAuthorizationFailed => isChinese
       ? '系统授权未完成，请重试。'
       : 'System authorization did not complete. Try again.';
@@ -640,9 +648,8 @@ extension LicoStringsLabels on LicoStrings {
   String get llmGatewayKeysLoadedStartToApply => isChinese
       ? 'API Key 已加载，点击启动应用到 Gateway'
       : 'API keys loaded; start to apply them';
-  String get llmGatewayKeysLoadedWaitingForService => isChinese
-      ? 'API Key 已加载，等待服务启动'
-      : 'API keys loaded; waiting for service';
+  String get llmGatewayKeysLoadedWaitingForService =>
+      isChinese ? 'API Key 已加载，等待服务启动' : 'API keys loaded; waiting for service';
 
   String get appearanceDayNight => isChinese ? '明暗模式' : 'Brightness';
   String get appearanceDay => isChinese ? '明亮' : 'Light';
@@ -776,7 +783,12 @@ extension LicoStringsLabels on LicoStrings {
   String get secretStore => isChinese ? '密钥存储' : 'Secret Store';
   String get station => isChinese ? '中转站' : 'Station';
   String get saveStation => isChinese ? '保存中转站' : 'Save Station';
-  String get defaultLabel => isChinese ? '默认' : 'Default';
+  String get defaultLabel => isChinese ? 'Lico' : 'Lico';
+  String get planDocumentTitle => isChinese ? '计划文档' : 'Plan document';
+  String get planDocumentEmpty =>
+      isChinese ? '尚未写入计划内容。' : 'No plan content yet.';
+  String get planDocumentUnavailable =>
+      isChinese ? '无法读取计划文件。' : 'The plan file could not be read.';
   String get active => isChinese ? '当前' : 'Active';
   String get pairing => isChinese ? '配对' : 'Pairing';
   String get tapToGeneratePairingQr =>

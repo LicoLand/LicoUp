@@ -2,11 +2,15 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:licoup/src/application/features/models/controller/llm_gateway_lifecycle_controller.dart';
 import 'package:licoup/src/contracts/agent_command_runner.dart';
 import 'package:licoup/src/contracts/llm_vault_authorization.dart';
+import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 /// Fixed validity periods offered when a key is created or extended.
 const _validityDayOptions = [7, 30, 60, 90, 180, 365];
+const _authorizeToggleWidth = 52.0;
+const _rowActionsWidth = 88.0;
 
 String _formatEpochDay(int epochSeconds) {
   final local = DateTime.fromMillisecondsSinceEpoch(
@@ -23,9 +27,15 @@ class LlmGatewayCredentialsCard extends StatefulWidget {
     super.key,
     required this.agentService,
     required this.authorization,
+    this.lifecycleController,
   });
   final AgentCommandRunner agentService;
   final LlmVaultAuthorization authorization;
+
+  /// When present, the per-row authorize toggle is enabled only while the
+  /// local Gateway reports [LlmGatewayRuntimeState.running]. Authorization
+  /// itself never starts or restarts that process.
+  final LlmGatewayLifecycleController? lifecycleController;
 
   @override
   State<LlmGatewayCredentialsCard> createState() =>
@@ -42,7 +52,8 @@ class _LlmGatewayCredentialsCardState extends State<LlmGatewayCredentialsCard> {
   void initState() {
     super.initState();
     _entries = widget.authorization.inventoryEntries;
-    widget.authorization.addListener(_inventoryChanged);
+    widget.authorization.addListener(_sessionChanged);
+    widget.lifecycleController?.addListener(_sessionChanged);
     if (!widget.authorization.inventoryHydrated) {
       // The normal bootstrap has already hydrated this cache. This fallback is
       // for isolated widgets and startup races; it still reads metadata only.
@@ -53,22 +64,31 @@ class _LlmGatewayCredentialsCardState extends State<LlmGatewayCredentialsCard> {
   @override
   void didUpdateWidget(covariant LlmGatewayCredentialsCard oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.authorization == widget.authorization) return;
-    oldWidget.authorization.removeListener(_inventoryChanged);
-    _entries = widget.authorization.inventoryEntries;
-    widget.authorization.addListener(_inventoryChanged);
+    if (oldWidget.authorization != widget.authorization) {
+      oldWidget.authorization.removeListener(_sessionChanged);
+      _entries = widget.authorization.inventoryEntries;
+      widget.authorization.addListener(_sessionChanged);
+    }
+    if (oldWidget.lifecycleController != widget.lifecycleController) {
+      oldWidget.lifecycleController?.removeListener(_sessionChanged);
+      widget.lifecycleController?.addListener(_sessionChanged);
+    }
   }
 
   @override
   void dispose() {
-    widget.authorization.removeListener(_inventoryChanged);
+    widget.authorization.removeListener(_sessionChanged);
+    widget.lifecycleController?.removeListener(_sessionChanged);
     super.dispose();
   }
 
-  void _inventoryChanged() {
+  void _sessionChanged() {
     if (!mounted) return;
     setState(() => _entries = widget.authorization.inventoryEntries);
   }
+
+  bool get _serviceRunning =>
+      widget.lifecycleController?.state == LlmGatewayRuntimeState.running;
 
   List<Map<String, dynamic>> _entriesFrom(Map<String, dynamic> result) =>
       (result['entries'] as List<dynamic>? ?? const [])
@@ -118,10 +138,7 @@ class _LlmGatewayCredentialsCardState extends State<LlmGatewayCredentialsCard> {
         }),
       );
       if (!mounted) return;
-      final entries = _entriesFrom(result);
-      widget.authorization
-        ..authorized = entries.isNotEmpty
-        ..adoptInventory(result);
+      widget.authorization.adoptInventory(result);
     } catch (_) {
       if (mounted) {
         final chinese = Localizations.localeOf(context).languageCode == 'zh';
@@ -176,6 +193,130 @@ class _LlmGatewayCredentialsCardState extends State<LlmGatewayCredentialsCard> {
     }
   }
 
+  bool get _credentialsApplied =>
+      widget.lifecycleController?.lastReport?['credentialsApplied'] == true;
+
+  bool get _canToggleAuthorization =>
+      !_busy && !widget.authorization.busy && _serviceRunning;
+
+  /// Authorizes one credential into the Gateway session without cold-starting
+  /// a stopped service. Disabled unless Gateway is already running.
+  Future<void> _authorizeAccess(String credentialId) async {
+    if (!_canToggleAuthorization ||
+        widget.authorization.isCredentialAuthorized(credentialId)) {
+      return;
+    }
+    final chinese = Localizations.localeOf(context).languageCode == 'zh';
+    final lifecycle = widget.lifecycleController;
+    setState(() {
+      _busy = true;
+      _message = null;
+      _messageIsError = false;
+    });
+    try {
+      final authorized = await widget.authorization.authorizeCredential(
+        widget.agentService,
+        credentialId,
+      );
+      if (!mounted) return;
+      final failure = widget.authorization.failure;
+      if (authorized ||
+          failure == LlmVaultAuthorizationFailure.noCredentials) {
+        await widget.authorization.refreshInventory(widget.agentService);
+      }
+      if (!authorized) {
+        setState(() {
+          _messageIsError = true;
+          _message = failure == LlmVaultAuthorizationFailure.noCredentials
+              ? (chinese
+                    ? '没有可加载的 API Key，请先添加。'
+                    : 'No API keys are available. Add one first.')
+              : (chinese
+                    ? '系统授权未完成，请重试。'
+                    : 'System authorization did not complete. Try again.');
+        });
+        return;
+      }
+      if (lifecycle != null &&
+          lifecycle.state == LlmGatewayRuntimeState.running) {
+        await lifecycle.start();
+      } else {
+        await lifecycle?.pollNow();
+      }
+      if (!mounted) return;
+      setState(() {
+        _messageIsError = false;
+        _message = chinese ? '已授权该密钥。' : 'Authorized this key.';
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _messageIsError = true;
+        _message = chinese
+            ? '系统授权未完成，请重试。'
+            : 'System authorization did not complete. Try again.';
+      });
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  /// Revokes one credential from the Gateway session. When Gateway is running
+  /// with applied keys, restarts that live process so the sidecar drops the
+  /// key — never cold-starts from stopped.
+  Future<void> _revokeAccess(String credentialId) async {
+    if (!_canToggleAuthorization ||
+        !widget.authorization.isCredentialAuthorized(credentialId)) {
+      return;
+    }
+    final chinese = Localizations.localeOf(context).languageCode == 'zh';
+    final lifecycle = widget.lifecycleController;
+    final wasApplied = _credentialsApplied;
+    setState(() {
+      _busy = true;
+      _message = null;
+      _messageIsError = false;
+    });
+    try {
+      final cleared = await widget.authorization.clearCredential(
+        widget.agentService,
+        credentialId,
+      );
+      if (!mounted) return;
+      if (!cleared) {
+        setState(() {
+          _messageIsError = true;
+          _message = chinese
+              ? '未能撤销授权，请重试。'
+              : 'Could not revoke authorization. Try again.';
+        });
+        return;
+      }
+      if (lifecycle != null &&
+          wasApplied &&
+          lifecycle.state == LlmGatewayRuntimeState.running) {
+        await lifecycle.start();
+      } else {
+        await lifecycle?.pollNow();
+      }
+      if (!mounted) return;
+      setState(() {
+        _messageIsError = false;
+        _message = chinese ? '已撤销该密钥授权。' : 'Revoked this key authorization.';
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _messageIsError = true;
+        _message = chinese
+            ? '未能撤销授权，请重试。'
+            : 'Could not revoke authorization. Try again.';
+      });
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   Future<void> _delete(String id) async {
     setState(() => _busy = true);
     try {
@@ -186,10 +327,11 @@ class _LlmGatewayCredentialsCardState extends State<LlmGatewayCredentialsCard> {
         id,
       ]);
       if (!mounted) return;
-      final entries = _entriesFrom(result);
-      widget.authorization
-        ..authorized = entries.isNotEmpty
-        ..adoptInventory(result);
+      if (widget.authorization.isCredentialAuthorized(id)) {
+        await widget.authorization.clearCredential(widget.agentService, id);
+      }
+      if (!mounted) return;
+      widget.authorization.adoptInventory(result);
     } catch (_) {
       if (mounted) {
         final chinese = Localizations.localeOf(context).languageCode == 'zh';
@@ -247,6 +389,14 @@ class _LlmGatewayCredentialsCardState extends State<LlmGatewayCredentialsCard> {
               entries: _entries,
               busy: _busy,
               chinese: chinese,
+              authorizedCredentialIds:
+                  widget.authorization.authorizedCredentialIds.toSet(),
+              canToggleAuthorization: _canToggleAuthorization,
+              onAuthorizeChanged: (credentialId, enabled) => unawaited(
+                enabled
+                    ? _authorizeAccess(credentialId)
+                    : _revokeAccess(credentialId),
+              ),
               onEdit: (entry) => unawaited(_edit(entry)),
               onDelete: (id) => unawaited(_delete(id)),
             ),
@@ -257,11 +407,19 @@ class _LlmGatewayCredentialsCardState extends State<LlmGatewayCredentialsCard> {
   }
 }
 
+typedef _CredentialAuthorizeChanged = void Function(
+  String credentialId,
+  bool enabled,
+);
+
 class _CredentialsTable extends StatelessWidget {
   const _CredentialsTable({
     required this.entries,
     required this.busy,
     required this.chinese,
+    required this.authorizedCredentialIds,
+    required this.canToggleAuthorization,
+    required this.onAuthorizeChanged,
     required this.onEdit,
     required this.onDelete,
   });
@@ -269,6 +427,9 @@ class _CredentialsTable extends StatelessWidget {
   final List<Map<String, dynamic>> entries;
   final bool busy;
   final bool chinese;
+  final Set<String> authorizedCredentialIds;
+  final bool canToggleAuthorization;
+  final _CredentialAuthorizeChanged onAuthorizeChanged;
   final ValueChanged<Map<String, dynamic>> onEdit;
   final ValueChanged<String> onDelete;
 
@@ -294,7 +455,15 @@ class _CredentialsTable extends StatelessWidget {
               headerCell(chinese ? '密钥名称' : 'Name', 2),
               headerCell(chinese ? '创建时间' : 'Created'),
               headerCell(chinese ? '到期时间' : 'Expires'),
-              const SizedBox(width: 88),
+              SizedBox(
+                width: _authorizeToggleWidth,
+                child: Text(
+                  chinese ? '授权' : 'Auth',
+                  style: headerStyle,
+                  textAlign: TextAlign.center,
+                ),
+              ),
+              const SizedBox(width: _rowActionsWidth),
             ],
           ),
         ),
@@ -323,6 +492,11 @@ class _CredentialsTable extends StatelessWidget {
               busy: busy,
               chinese: chinese,
               nowEpoch: nowEpoch,
+              authorizeOn: authorizedCredentialIds.contains(
+                '${entry['credentialId']}',
+              ),
+              canToggleAuthorization: canToggleAuthorization,
+              onAuthorizeChanged: onAuthorizeChanged,
               onEdit: onEdit,
               onDelete: onDelete,
             ),
@@ -337,6 +511,9 @@ class _CredentialRow extends StatelessWidget {
     required this.busy,
     required this.chinese,
     required this.nowEpoch,
+    required this.authorizeOn,
+    required this.canToggleAuthorization,
+    required this.onAuthorizeChanged,
     required this.onEdit,
     required this.onDelete,
   });
@@ -345,12 +522,16 @@ class _CredentialRow extends StatelessWidget {
   final bool busy;
   final bool chinese;
   final int nowEpoch;
+  final bool authorizeOn;
+  final bool canToggleAuthorization;
+  final _CredentialAuthorizeChanged onAuthorizeChanged;
   final ValueChanged<Map<String, dynamic>> onEdit;
   final ValueChanged<String> onDelete;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final credentialId = '${entry['credentialId']}';
     final provider = switch (entry['provider']) {
       'deepseek' => 'DeepSeek',
       'kilo' => 'Kilo',
@@ -362,6 +543,13 @@ class _CredentialRow extends StatelessWidget {
     final expiryStyle = expired
         ? TextStyle(color: theme.colorScheme.error)
         : null;
+    final authorizeTooltip = !canToggleAuthorization
+        ? (chinese
+              ? 'Gateway 运行中才可切换授权'
+              : 'Toggle authorization only while Gateway is running')
+        : authorizeOn
+        ? (chinese ? '撤销此密钥授权' : 'Revoke this key authorization')
+        : (chinese ? '授权此密钥' : 'Authorize this key');
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       child: Row(
@@ -389,7 +577,22 @@ class _CredentialRow extends StatelessWidget {
             ),
           ),
           SizedBox(
-            width: 88,
+            width: _authorizeToggleWidth,
+            child: Center(
+              child: Tooltip(
+                message: authorizeTooltip,
+                child: _AuthorizeSwitch(
+                  credentialId: credentialId,
+                  value: authorizeOn,
+                  onChanged: canToggleAuthorization
+                      ? (enabled) => onAuthorizeChanged(credentialId, enabled)
+                      : null,
+                ),
+              ),
+            ),
+          ),
+          SizedBox(
+            width: _rowActionsWidth,
             child: Row(
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
@@ -430,6 +633,51 @@ class _CredentialRow extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Authorization toggle uses success green when on — matching Gateway
+/// "running" / "ready" — instead of the global brand-yellow switch track.
+final class _AuthorizeSwitch extends StatelessWidget {
+  const _AuthorizeSwitch({
+    required this.credentialId,
+    required this.value,
+    required this.onChanged,
+  });
+
+  final String credentialId;
+  final bool value;
+  final ValueChanged<bool>? onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.licoColors;
+    return Switch(
+      key: ValueKey<String>('credential-authorize-$credentialId'),
+      value: value,
+      onChanged: onChanged,
+      thumbColor: WidgetStateProperty.resolveWith((states) {
+        if (states.contains(WidgetState.selected)) {
+          return const Color(0xFFFFFFFF);
+        }
+        return colors.textMuted;
+      }),
+      trackColor: WidgetStateProperty.resolveWith((states) {
+        if (states.contains(WidgetState.selected)) {
+          final green = colors.success;
+          return states.contains(WidgetState.disabled)
+              ? green.withValues(alpha: 0.45)
+              : green;
+        }
+        return colors.surfaceLow;
+      }),
+      trackOutlineColor: WidgetStateProperty.resolveWith((states) {
+        if (states.contains(WidgetState.selected)) {
+          return colors.success.withValues(alpha: 0.85);
+        }
+        return colors.line;
+      }),
     );
   }
 }

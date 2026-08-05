@@ -1,4 +1,4 @@
-import 'dart:io' show Platform;
+import 'dart:io' as io show Directory, Platform;
 
 import 'package:licoup/src/application/features/agents/policy/conversation_session_index.dart';
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
@@ -12,7 +12,7 @@ const clientAgentWorkspaceDirectoryName = 'agent-workspaces';
 
 /// User home directory, used to render an absolute path as `~/...`.
 String userHomeDirectory({Map<String, String>? environment}) {
-  final resolved = environment ?? Platform.environment;
+  final resolved = environment ?? io.Platform.environment;
   return (resolved['HOME'] ?? resolved['USERPROFILE'] ?? '').trim();
 }
 
@@ -25,6 +25,7 @@ String userHomeDirectory({Map<String, String>? environment}) {
 String historicalConversationWorkingDirectory(
   Iterable<AgentConversationSession> sessions, {
   Map<String, String>? environment,
+  bool Function(String path)? directoryExists,
 }) {
   for (final session in sortConversationSessionsByUpdatedAt(
     List<AgentConversationSession>.of(sessions),
@@ -33,6 +34,7 @@ String historicalConversationWorkingDirectory(
     if (!isUsableLocalConversationWorkingDirectory(
       directory,
       environment: environment,
+      directoryExists: directoryExists,
     )) {
       continue;
     }
@@ -43,15 +45,36 @@ String historicalConversationWorkingDirectory(
 
 /// Whether [path] is a concrete project directory the client may treat as a
 /// conversation's own working directory (absolute, non-empty, not an unbounded
-/// personal root, and not the client-owned agent-workspaces fallback).
+/// personal root, not the client-owned agent-workspaces fallback, and still
+/// present on this machine).
+///
+/// Presence matters because an agent store records whatever directory a turn ran
+/// in, including temporary workspaces and projects that have since been deleted
+/// or moved. Binding one of those looks bound in the UI while the local agent
+/// silently resolves a different directory, so a directory that no longer exists
+/// is not usable. [directoryExists] is injectable so tests stay filesystem-free.
 bool isUsableLocalConversationWorkingDirectory(
   String path, {
   Map<String, String>? environment,
+  bool Function(String path)? directoryExists,
 }) {
   final normalized = path.trim();
-  return normalized.isNotEmpty &&
-      !isUnboundedLocalAgentWorkspace(normalized, environment: environment) &&
-      !isClientOwnedAgentWorkspace(normalized, environment: environment);
+  if (normalized.isEmpty ||
+      isUnboundedLocalAgentWorkspace(normalized, environment: environment) ||
+      isClientOwnedAgentWorkspace(normalized, environment: environment)) {
+    return false;
+  }
+  return (directoryExists ?? localProjectDirectoryExists)(normalized);
+}
+
+/// Whether a recorded project directory is still present as a directory.
+bool localProjectDirectoryExists(String path) {
+  try {
+    return io.Directory(path).existsSync();
+  } on Object {
+    // A path the platform refuses to stat cannot be bound either.
+    return false;
+  }
 }
 
 /// Whether [path] is under the LicoUp-owned `agent-workspaces` tree. That tree

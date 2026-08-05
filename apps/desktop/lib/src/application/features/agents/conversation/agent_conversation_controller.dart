@@ -4,6 +4,7 @@ import 'package:licoup/src/application/features/agents/conversation/conversation
 import 'package:licoup/src/application/features/agents/conversation/conversation_relay_projection_controller.dart';
 import 'package:licoup/src/application/features/agents/conversation/conversation_session_controller.dart';
 import 'package:licoup/src/application/features/agents/conversation/conversation_session_state_controller.dart';
+import 'package:licoup/src/application/features/agents/group_conversation/group_conversation_controller.dart';
 import 'package:licoup/src/application/features/agents/orchestration/agent_orchestration_policy_controller.dart';
 import 'package:licoup/src/application/features/agents/workspace/agent_workspace_coordinator.dart';
 
@@ -21,6 +22,7 @@ abstract class AgentConversationController extends AgentWorkspaceCoordinator
         AgentConversationSessionStateController,
         AgentConversationMobileSessionController,
         AgentOrchestrationPolicyController,
+        GroupConversationController,
         AgentConversationSessionController,
         AgentConversationLiveProjectionController,
         AgentConversationRelayProjectionController,

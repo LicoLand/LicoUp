@@ -99,10 +99,7 @@ final class ClientStateGetRequest {
 }
 
 final class ClientStateSetRequest {
-  ClientStateSetRequest({
-    required this.collection,
-    required this.document,
-  }) {
+  ClientStateSetRequest({required this.collection, required this.document}) {
     if (collection == ClientStateCollection.unknown ||
         collection != document.collection) {
       throw const FormatException('invalid_document');
@@ -160,6 +157,7 @@ final class ClientStateActivity {
       }
       return value;
     }
+
     final schemaVersion = requiredString('schemaVersion');
     if (schemaVersion != clientStateSchemaVersion) {
       throw const FormatException('invalid_state_response');
@@ -236,9 +234,7 @@ final class ClientStateFailure implements Exception {
 
   final ClientStateFailureCode code;
 
-  Map<String, Object> toJson() => <String, Object>{
-    'code': code.wireName,
-  };
+  Map<String, Object> toJson() => <String, Object>{'code': code.wireName};
 
   @override
   String toString() => 'ClientStateFailure(${code.wireName})';

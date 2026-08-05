@@ -204,8 +204,10 @@ DateTime? parseAgentConversationTimestamp(String raw) {
       : absolute >= 10000000000
       ? epoch ~/ 1000
       : epoch;
-  return DateTime.fromMillisecondsSinceEpoch(seconds * 1000, isUtc: true)
-      .toLocal();
+  return DateTime.fromMillisecondsSinceEpoch(
+    seconds * 1000,
+    isUtc: true,
+  ).toLocal();
 }
 
 /// One typed image attachment on a conversation message. Exactly one of

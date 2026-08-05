@@ -7,6 +7,8 @@ import 'package:licoup/src/application/features/agents/conversation/conversation
 import 'package:licoup/src/application/features/agents/conversation/conversation_session_state_controller.dart';
 import 'package:licoup/src/application/features/agents/conversation/conversation_turn_queue.dart';
 import 'package:licoup/src/application/features/agents/conversation/conversation_working_directory_fallback.dart';
+import 'package:licoup/src/platform/agents/group_conversation_store.dart';
+import 'package:licoup/src/application/features/agents/group_conversation/group_conversation_controller.dart';
 import 'package:licoup/src/application/features/agents/orchestration/agent_orchestration_policy_controller.dart';
 import 'package:licoup/src/application/features/agents/policy/conversation_session_index.dart';
 import 'package:licoup/src/application/features/agents/workspace/agent_workspace_coordinator.dart';
@@ -28,6 +30,7 @@ mixin AgentConversationMessageController
     on
         AgentWorkspaceCoordinator,
         AgentOrchestrationPolicyController,
+        GroupConversationController,
         AgentConversationSessionController,
         AgentConversationLiveProjectionController,
         AgentConversationRelayProjectionController {
@@ -40,9 +43,24 @@ mixin AgentConversationMessageController
       return false;
     }
     if (selectedConversationIsOrchestration) {
+      await ensureGroupConversationReady();
       conversationOwnerAgentId = agentOrchestrationTargetId;
-      participantRole = 'main-agent';
-      agent = agentOrchestrationManagerTarget;
+      final planned = GroupConversationStore.planTurn(
+        roster: groupConversationRoster,
+        userText: messageText,
+      );
+      if (planned.isNotEmpty) {
+        final dispatcher = planned.first;
+        participantRole = dispatcher.role == PlannedTurnRole.dispatcher
+            ? 'main-agent'
+            : 'peer-agent';
+        agent =
+            groupConversationTargetFor(dispatcher.agentId) ??
+            agentOrchestrationManagerTarget;
+      } else {
+        participantRole = 'main-agent';
+        agent = agentOrchestrationManagerTarget;
+      }
       if (agent == null) {
         lastError = 'main_agent_unavailable';
         agentWorkspaceSetLocalizedStatusMessage(
@@ -88,12 +106,41 @@ mixin AgentConversationMessageController
       agentWorkspaceNotifyStateChanged();
       return false;
     }
+    final plannedOrchestrationTurns = selectedConversationIsOrchestration
+        ? GroupConversationStore.planTurn(
+            roster: groupConversationRoster,
+            userText: messageText,
+          )
+        : const <PlannedAgentTurn>[];
+    if (selectedConversationIsOrchestration) {
+      for (final plannedTurn in plannedOrchestrationTurns.skip(1)) {
+        final peerAgent = groupConversationTargetFor(plannedTurn.agentId);
+        if (peerAgent == null || !peerAgent.canRelayRuntime) continue;
+        conversationTurnQueue.add(
+          _captureConversationTurn(
+            agent: peerAgent,
+            messageText: messageText,
+            session: selectedSession,
+            conversationOwnerAgentId: conversationOwnerAgentId,
+            participantRole: 'peer-agent',
+            modelOverride: _conversationModelForAgent(peerAgent),
+            reasoningEffortOverride: _conversationReasoningForAgent(peerAgent),
+          ),
+        );
+      }
+    }
     final turn = _captureConversationTurn(
       agent: agent,
       messageText: messageText,
       session: selectedSession,
       conversationOwnerAgentId: conversationOwnerAgentId,
       participantRole: participantRole,
+      modelOverride: selectedConversationIsOrchestration
+          ? effectiveAgentOrchestrationPolicy.commanderModelName
+          : null,
+      reasoningEffortOverride: selectedConversationIsOrchestration
+          ? effectiveAgentOrchestrationPolicy.commanderReasoningEffort
+          : null,
     );
     if (isSendingConversationMessage) {
       await _steerOrEnqueueConversationTurn(turn);
@@ -135,6 +182,8 @@ mixin AgentConversationMessageController
     AgentConversationSession? session,
     required String conversationOwnerAgentId,
     required String participantRole,
+    String? modelOverride,
+    String? reasoningEffortOverride,
   }) {
     final newConversationDraftToken = newConversationDraftTokenFor(
       conversationOwnerAgentId,
@@ -161,6 +210,12 @@ mixin AgentConversationMessageController
             session: session,
           )
         : selectedConversationWorkingDirectory;
+    final model = (modelOverride ?? '').trim().isNotEmpty
+        ? modelOverride!.trim()
+        : selectedConversationModel;
+    final reasoningEffort = (reasoningEffortOverride ?? '').trim().isNotEmpty
+        ? reasoningEffortOverride!.trim()
+        : selectedConversationReasoningEffort;
     return ConversationQueuedTurn(
       submissionId: ++conversationTurnSubmissionSequence,
       agent: agent,
@@ -168,9 +223,10 @@ mixin AgentConversationMessageController
       session: session,
       nativeSessionId: nativeSessionId,
       workingDirectory: workingDirectory,
-      model: selectedConversationModel,
-      reasoningEffort: selectedConversationReasoningEffort,
+      model: model,
+      reasoningEffort: reasoningEffort,
       throughMobileRelay: agentWorkspaceMobileRuntime,
+      licoProfile: selectedConversationLicoProfile,
       conversationOwnerAgentId: conversationOwnerAgentId,
       participantLabel: agent.label,
       participantRole: participantRole,
@@ -180,6 +236,16 @@ mixin AgentConversationMessageController
           sendingConversationAgentId == agent.target &&
           nativeSessionId.isEmpty,
     );
+  }
+
+  String _conversationModelForAgent(TargetCandidate agent) {
+    final selected = (conversationModelsByAgent[agent.target] ?? '').trim();
+    if (selected.isNotEmpty) return selected;
+    return (agent.modelCatalog['defaultModel'] ?? '').toString().trim();
+  }
+
+  String _conversationReasoningForAgent(TargetCandidate agent) {
+    return (conversationReasoningEffortsByAgent[agent.target] ?? '').trim();
   }
 
   Future<void> _steerOrEnqueueConversationTurn(
@@ -209,6 +275,7 @@ mixin AgentConversationMessageController
         binaryPath: turn.agent.binaryPath ?? '',
         model: turn.model,
         reasoningEffort: turn.reasoningEffort,
+        licoProfile: turn.licoProfile,
         runtimeConnection: turn.agent.runtimeConnection,
       ),
     );
@@ -447,6 +514,7 @@ mixin AgentConversationMessageController
             binaryPath: agent.binaryPath ?? '',
             model: queuedTurn.model,
             reasoningEffort: queuedTurn.reasoningEffort,
+            licoProfile: queuedTurn.licoProfile,
             acceptanceMode: _releaseConversationAcceptanceMode,
             runtimeConnection: agent.runtimeConnection,
           ),

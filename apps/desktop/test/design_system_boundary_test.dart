@@ -138,7 +138,9 @@ void main() {
             .sublist(index < 4 ? 0 : index - 4, index + 1)
             .join('\n');
         final isGlyphOrText =
-            RegExp(r'Icon\(|IconTheme|TextStyle\(|TextSpan\(').hasMatch(context) ||
+            RegExp(
+              r'Icon\(|IconTheme|TextStyle\(|TextSpan\(',
+            ).hasMatch(context) ||
             RegExp(r'(foregroundColor|iconColor):').hasMatch(line);
         if (isGlyphOrText) {
           offenders.add('${file.path}:${index + 1}: ${line.trim()}');

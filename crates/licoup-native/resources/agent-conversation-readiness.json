@@ -3,14 +3,14 @@
   "contractVersion": "CL-06",
   "minimumConsecutivePasses": 3,
   "summary": {
-    "total": 11,
-    "ready": 1,
+    "total": 12,
+    "ready": 0,
     "partial": 0,
     "failed": 0,
     "blocked": 0,
-    "unverified": 10,
+    "unverified": 12,
     "historyOnly": 0,
-    "sendEnabled": 1
+    "sendEnabled": 0
   },
   "adapters": [
     {
@@ -67,8 +67,8 @@
     },
     {
       "agentId": "codex",
-      "status": "ready",
-      "sendEnabled": true,
+      "status": "unverified",
+      "sendEnabled": false,
       "officialNativeLaneProven": true,
       "conversationGatePassed": true,
       "cleanupPassed": true,
@@ -86,25 +86,9 @@
         "gaps": 0,
         "failed": 0
       },
-      "evidenceBinding": {
-        "agentId": "codex",
-        "driverId": "codex-app-server",
-        "runtimeProtocol": "codex-app-server-stdio-jsonrpc",
-        "harnessVersion": "dispatch-lane-unified-1",
-        "runtimeVersionClass": "verified-release",
-        "runtimeVersionDigest": "sha256:ae1d3ffe6d48aec6a4dc3f50e7eb8e0d11962485a6a9406c5a7012139383da02",
-        "capabilitySnapshotDigest": "sha256:421da7b0da2a1925b4d3d0c8c62956b3826461f39ecec4b6e2d2ca5ada354b81",
-        "adapterManifestDigest": "sha256:64e444bd617d31fa6b69d46c61a5b05f46c100d3d7720df99b6fedbb8eeff316",
-        "releaseArtifactDigest": "sha256:b6831426699892e3954e987f1d8f2706ffb233ee9521d93502870346409f23b1",
-        "releaseSidecarDigest": "sha256:caf6f3dee46cb79791187e5b5f6d6b238e0bc1e7746c6b15d98a9ea63d1db75b",
-        "productContinuityBindingDigest": "sha256:128dd1b55b5b6f6a85136a45baa1db15da02b262c82e730db4b7638473ef8fc5",
-        "runtimeSourceClass": "discovered-binary",
-        "registryDigest": "sha256:46b66f31ae5514e58cc26918f03839cedf69f1c11bc4d93b7626de0418c9d628",
-        "driverInventoryDigest": "sha256:1c3b439cb08bc4df1878a4ae2d2f3445f4e2e8381400ac4acbf7e1fcf64532f7",
-        "evidenceDigest": "sha256:ca5abd3bd66db1d6731a19e3bffeff3f28587539f4f1b2b319af2f848de5e0d7"
-      },
+      "evidenceBinding": null,
       "summaryCodes": [
-        "all_required_evidence_passed"
+        "evidence_stale_or_incomplete"
       ]
     },
     {
@@ -291,6 +275,32 @@
     },
     {
       "agentId": "pi",
+      "status": "unverified",
+      "sendEnabled": false,
+      "officialNativeLaneProven": false,
+      "conversationGatePassed": false,
+      "cleanupPassed": false,
+      "privacyPassed": false,
+      "consecutivePasses": 0,
+      "coreChecks": {
+        "required": 10,
+        "passed": 0,
+        "failed": 0
+      },
+      "conditionalChecks": {
+        "total": 6,
+        "nativeSupported": 0,
+        "passed": 0,
+        "gaps": 0,
+        "failed": 0
+      },
+      "evidenceBinding": null,
+      "summaryCodes": [
+        "evidence_missing"
+      ]
+    },
+    {
+      "agentId": "lico-agent",
       "status": "unverified",
       "sendEnabled": false,
       "officialNativeLaneProven": false,

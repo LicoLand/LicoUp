@@ -16,11 +16,7 @@ Widget _appearanceSegmentLabel(String label) {
   return SizedBox(
     width: _appearanceSegmentLabelWidth,
     child: Center(
-      child: Text(
-        label,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-      ),
+      child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
     ),
   );
 }
@@ -161,9 +157,15 @@ class SettingsDayNightToggleRow extends StatelessWidget {
           final compact = constraints.maxWidth < 560;
           final titleRow = Row(
             children: [
-              Icon(Icons.brightness_6_outlined, color: colors.textSecondary, size: 18),
+              Icon(
+                Icons.brightness_6_outlined,
+                color: colors.textSecondary,
+                size: 18,
+              ),
               const SizedBox(width: LicoContentSpacing.compact),
-              Expanded(child: Text(strings.appearanceDayNight, style: titleStyle)),
+              Expanded(
+                child: Text(strings.appearanceDayNight, style: titleStyle),
+              ),
             ],
           );
           if (compact) {

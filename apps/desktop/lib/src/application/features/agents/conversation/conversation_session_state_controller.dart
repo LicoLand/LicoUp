@@ -78,11 +78,27 @@ mixin AgentConversationSessionStateController on AgentWorkspaceCoordinator {
       if (matchingIndex < 0) {
         next = insertConversationSessionByUpdatedAt(next, previousSelected);
       } else if (!_sessionCoversMessages(next[matchingIndex], liveProjection)) {
+        // Keep the catalog project directory on the retained turn projection.
+        // Replacing the whole session used to drop workingDirectory and force
+        // the composer back onto the client-owned agent-workspaces fallback.
+        var retainedSession = previousSelected;
+        final catalogDirectory = next[matchingIndex].workingDirectory;
+        if (!isUsableLocalConversationWorkingDirectory(
+              retainedSession.workingDirectory,
+            ) &&
+            isUsableLocalConversationWorkingDirectory(catalogDirectory)) {
+          retainedSession = retainedSession.withWorkingDirectory(
+            catalogDirectory,
+          );
+        }
         final retained = List<AgentConversationSession>.from(next);
-        retained[matchingIndex] = previousSelected;
+        retained[matchingIndex] = retainedSession;
         next = List<AgentConversationSession>.unmodifiable(retained);
       }
     }
+    // Live retention can reintroduce an empty cwd; recover again from the
+    // native page so the composer bind path stays aligned with catalog facts.
+    next = _conversationRecoverUsableWorkingDirectories(page.sessions, next);
     final sessionsChanged = !conversationSessionListsEquivalent(previous, next);
     final hasMoreChanged =
         (conversationSessionsHasMoreByAgent[agentId] ?? false) != page.hasMore;
@@ -620,9 +636,19 @@ mixin AgentConversationSessionStateController on AgentWorkspaceCoordinator {
         previous: previous?.workingDirectory ?? '',
       ),
     );
+    // Merge into the existing catalog instead of replacing it with a single
+    // turn projection. A replaceAll of `[session]` wiped every recovered
+    // project directory for the agent and left only the client-owned fallback.
+    final existing =
+        conversationSessionsByAgent[normalizedAgent] ??
+        const <AgentConversationSession>[];
+    final merged = insertConversationSessionByUpdatedAt(existing, session);
     conversationCommitCatalog(
       normalizedAgent,
-      ConversationSessionPage(sessions: [session], hasMore: false),
+      ConversationSessionPage(
+        sessions: merged,
+        hasMore: conversationSessionsHasMoreByAgent[normalizedAgent] ?? false,
+      ),
       replaceAll: true,
       updateStatus: false,
       clearLiveProjectionFromProviderReadback: false,

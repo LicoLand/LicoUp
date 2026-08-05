@@ -72,6 +72,7 @@ pub(in crate::domain::mobile_relay) fn config_generation(
     Ok(config.get(field).and_then(Value::as_u64).unwrap_or(0))
 }
 
+#[cfg(test)]
 pub(in crate::domain::mobile_relay) fn load_config_with_runtime_secret_overrides(
     params: &Value,
 ) -> Result<(Value, RuntimeSecretOverrides)> {

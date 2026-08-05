@@ -16,6 +16,7 @@ final class AgentDispatchBind {
     this.sessionPath = '',
     this.model = '',
     this.reasoningEffort = '',
+    this.licoProfile = '',
     this.acceptanceMode = '',
     this.runtimeConnection = const <String, dynamic>{},
   });
@@ -25,6 +26,9 @@ final class AgentDispatchBind {
   final String sessionPath;
   final String model;
   final String reasoningEffort;
+
+  /// Lico Agent profile (`base` / `plan`). Empty leaves the runtime default.
+  final String licoProfile;
   final String acceptanceMode;
   final Map<String, dynamic> runtimeConnection;
 }

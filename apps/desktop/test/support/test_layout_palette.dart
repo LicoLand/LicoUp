@@ -23,7 +23,7 @@ final LayoutPalette testLayoutPaletteDark = layoutPaletteFromColors(
 /// A palette with a deliberately distinct background, for tests that need two
 /// palettes to compare unequal.
 final LayoutPalette testLayoutPaletteAlternate = layoutPaletteFromColors(
-  licoColorsFor(AppearancePresetIds.licoSodaLight).copyWith(
-    background: const Color(0xFFFFEEDD),
-  ),
+  licoColorsFor(
+    AppearancePresetIds.licoSodaLight,
+  ).copyWith(background: const Color(0xFFFFEEDD)),
 );

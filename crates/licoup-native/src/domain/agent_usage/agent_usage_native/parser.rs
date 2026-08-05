@@ -262,6 +262,8 @@ fn append_message_envelope(
                     .pointer("/message/role")
                     .and_then(Value::as_str)
                     .map(str::to_owned)
+            } else if adapter == HistoryAdapter::LicoAgent && event_type == "message" {
+                event.get("role").and_then(Value::as_str).map(str::to_owned)
             } else {
                 None
             }

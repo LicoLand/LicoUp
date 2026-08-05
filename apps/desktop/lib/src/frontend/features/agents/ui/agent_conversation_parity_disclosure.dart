@@ -19,7 +19,11 @@ class ConversationSendAvailabilityCopy {
   final ConversationSendUnblockAction? unblockAction;
 }
 
-enum ConversationSendUnblockAction { rescanAgents, editPolicy, authorizeRuntime }
+enum ConversationSendUnblockAction {
+  rescanAgents,
+  editPolicy,
+  authorizeRuntime,
+}
 
 ConversationSendAvailabilityCopy conversationSendAvailabilityCopy({
   required LicoStrings strings,
@@ -43,7 +47,8 @@ ConversationSendAvailabilityCopy conversationSendAvailabilityCopy({
     'native_agent_runtime_profile_unavailable' ||
     'runtime_message_send_unavailable' =>
       ConversationSendUnblockAction.rescanAgents,
-    'antigravity_auth_required' => ConversationSendUnblockAction.authorizeRuntime,
+    'antigravity_auth_required' =>
+      ConversationSendUnblockAction.authorizeRuntime,
     _ => null,
   };
   final unblockLabel = switch (action) {

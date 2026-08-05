@@ -48,10 +48,7 @@ void main() {
     await tester.pumpWidget(
       Directionality(
         textDirection: TextDirection.ltr,
-        child: LayoutPaletteScope(
-          palette: testLayoutPalette,
-          child: consumer,
-        ),
+        child: LayoutPaletteScope(palette: testLayoutPalette, child: consumer),
       ),
     );
     expect(builds.value, 1);

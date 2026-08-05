@@ -161,20 +161,14 @@ class MessagingDetailsPanelBody extends StatelessWidget {
           title: strings.capabilitiesSection,
           child: Align(
             alignment: Alignment.centerLeft,
-            child: ConversationParityDisclosurePanel(
-              target: state.target,
-            ),
+            child: ConversationParityDisclosurePanel(target: state.target),
           ),
         ),
         if (connectionChips.isNotEmpty) ...[
           const SizedBox(height: 16),
           _MessagingDetailsSection(
             title: strings.connectionSection,
-            child: Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: connectionChips,
-            ),
+            child: Wrap(spacing: 8, runSpacing: 8, children: connectionChips),
           ),
         ],
         if (session != null) ...[

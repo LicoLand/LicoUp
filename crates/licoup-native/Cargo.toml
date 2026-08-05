@@ -98,6 +98,10 @@ name = "lico-llm-gateway"
 path = "src/bin/lico-llm-gateway.rs"
 
 [[bin]]
+name = "lico-agent"
+path = "src/bin/lico-agent.rs"
+
+[[bin]]
 name = "lico-secure-mesh-kt-mock"
 path = "src/bin/lico-secure-mesh-kt-mock.rs"
 required-features = ["secure-mesh-acceptance-mock-kt"]

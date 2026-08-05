@@ -110,10 +110,7 @@ void main() {
       find.byKey(const Key('conversation-header-running-edge')),
     );
     expect(pulse.enabled, isTrue);
-    expect(
-      find.byKey(const Key('lico-top-edge-pulse-paint')),
-      findsOneWidget,
-    );
+    expect(find.byKey(const Key('lico-top-edge-pulse-paint')), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -587,17 +584,12 @@ void main() {
     );
     await tester.pump();
 
-    expect(
-      find.byKey(const Key('conversation-model-button')),
-      findsOneWidget,
-    );
+    expect(find.byKey(const Key('conversation-model-button')), findsOneWidget);
     expect(find.text('gpt-5.4-mini'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('messaging model capsule opens the model menu', (
-    tester,
-  ) async {
+  testWidgets('messaging model capsule opens the model menu', (tester) async {
     _useComposerPopoverViewport(tester);
     await tester.pumpWidget(
       paneTestApp(
@@ -643,10 +635,7 @@ void main() {
     );
     await tester.pump();
 
-    expect(
-      find.byKey(const Key('conversation-model-button')),
-      findsNothing,
-    );
+    expect(find.byKey(const Key('conversation-model-button')), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
@@ -667,10 +656,7 @@ void main() {
     );
     await tester.pump();
 
-    expect(
-      find.byKey(const Key('conversation-model-button')),
-      findsNothing,
-    );
+    expect(find.byKey(const Key('conversation-model-button')), findsNothing);
     expect(
       find.byKey(const ValueKey('conversation-model-select')),
       findsOneWidget,

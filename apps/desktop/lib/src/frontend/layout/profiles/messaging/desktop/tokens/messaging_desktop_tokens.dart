@@ -126,6 +126,13 @@ abstract final class MessagingDesktopMetrics {
   /// Max height of the runtime selector hover popover (primary ± submenu).
   static const double composerRuntimeSelectorPopoverMaxHeight = 260;
 
+  /// Max height of the Flywheel agent/model hover picker (taller model lists).
+  static const double composerFlywheelSelectorPopoverMaxHeight = 360;
+
+  /// Max width of the Flywheel agent list plus detached model submenu
+  /// (agent max 260 + gap 8 + model max 240, with a little room for chrome).
+  static const double composerFlywheelSelectorPopoverMaxWidth = 520;
+
   /// Max height of the bounded, scrollable runtime selector submenu.
   static const double composerRuntimeSelectorSubmenuMaxHeight = 220;
 
@@ -175,10 +182,7 @@ abstract final class MessagingDesktopMetrics {
       );
 
   /// Neutral rim for frosted user bubbles on [line].
-  static Color userBubbleGlassBorder(
-    Color line, {
-    required bool isDark,
-  }) =>
+  static Color userBubbleGlassBorder(Color line, {required bool isDark}) =>
       line.withAlpha(
         isDark
             ? userBubbleGlassBorderAlphaDark
@@ -349,10 +353,8 @@ abstract final class MessagingDesktopMetrics {
 
   /// Translucent overlay on shell glass — same alpha in both presets; overlay
   /// color flips with mode (light wash in dark, dark wash in light).
-  static Color chromeGlassOverlay({
-    required bool isDark,
-    required int alpha,
-  }) => isDark ? Colors.white.withAlpha(alpha) : Colors.black.withAlpha(alpha);
+  static Color chromeGlassOverlay({required bool isDark, required int alpha}) =>
+      isDark ? Colors.white.withAlpha(alpha) : Colors.black.withAlpha(alpha);
 
   /// Search capsule and similar chrome control fills on glass.
   static const int chromeControlFillAlpha = 12;

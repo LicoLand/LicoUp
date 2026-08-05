@@ -66,6 +66,9 @@ pub(super) fn is_usage_source(adapter: HistoryAdapter, path: &Path, source_kind:
         }
         HistoryAdapter::Hermes => file_name == "state.db",
         HistoryAdapter::Pi if source_kind == "pi-session-store" => is_append_format(path),
+        HistoryAdapter::LicoAgent if source_kind == "lico-agent-session-store" => {
+            is_append_format(path)
+        }
         _ => is_append_format(path) || is_snapshot_format(path),
     }
 }

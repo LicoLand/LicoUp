@@ -50,7 +50,6 @@ class MessagingConversationHeader extends StatelessWidget {
   final bool Function(AgentConversationSession session)? switcherRunningFor;
 
   void _openDetailsSheet(BuildContext context) {
-    final strings = LicoStrings.of(context);
     unawaited(
       showModalBottomSheet<void>(
         context: context,
@@ -170,8 +169,7 @@ class MessagingConversationHeader extends StatelessWidget {
           children: [
             Expanded(child: identityCapsule),
             SizedBox(
-              width:
-                  MessagingDesktopMetrics.conversationHeaderCapsuleButtonGap,
+              width: MessagingDesktopMetrics.conversationHeaderCapsuleButtonGap,
             ),
             ..._trailingActions(
               context: context,
@@ -212,9 +210,7 @@ class MessagingConversationHeader extends StatelessWidget {
         useBottomSheet: mobileClient,
       );
       actions.add(
-        capsuleButtons
-            ? _HeaderCapsuleButton(child: switcher)
-            : switcher,
+        capsuleButtons ? _HeaderCapsuleButton(child: switcher) : switcher,
       );
     }
 
@@ -321,9 +317,10 @@ class _DetailsTrigger extends StatelessWidget {
           forPopover: true,
         );
       },
-      triggerBuilder: (context, {required open, required toggle, required close}) {
-        return _buildButton(open: open, onTap: toggle);
-      },
+      triggerBuilder:
+          (context, {required open, required toggle, required close}) {
+            return _buildButton(open: open, onTap: toggle);
+          },
     );
   }
 }
