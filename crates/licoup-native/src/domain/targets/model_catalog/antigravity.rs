@@ -2,11 +2,13 @@ use super::*;
 use crate::platform::run_bounded_command_output;
 use std::time::Duration;
 
-// The native account catalog is network-backed and takes about five seconds
-// on a normal warm invocation. Keep it bounded without timing out valid data.
-const DEFAULT_AGENT_CLI_MODEL_LOOKUP_TIMEOUT_MS: u64 = 8_000;
+// The native account catalog is network-backed. Cold start, auth refresh, or a
+// busy machine can take tens of seconds; on timeout the catalog collapses to
+// the one-or-two models named in local settings.json. Product policy: every
+// model-catalog scan waits up to one minute.
+const DEFAULT_AGENT_CLI_MODEL_LOOKUP_TIMEOUT_MS: u64 = 60_000;
 const MIN_AGENT_CLI_MODEL_LOOKUP_TIMEOUT_MS: u64 = 100;
-const MAX_AGENT_CLI_MODEL_LOOKUP_TIMEOUT_MS: u64 = 10_000;
+const MAX_AGENT_CLI_MODEL_LOOKUP_TIMEOUT_MS: u64 = 60_000;
 const MAX_AGENT_CLI_MODEL_LOOKUP_OUTPUT_BYTES: usize = 256 * 1024;
 
 pub(super) fn remove_unsupported_antigravity_reasoning_efforts(

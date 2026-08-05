@@ -75,13 +75,13 @@ fn a_local_turn_republishes_only_the_resolved_workspace() {
             "cwd": "/synthetic/home/resident",
             "workingDirectory": "/synthetic/home/resident"
         }),
-        Path::new("/synthetic/state/agent-workspaces/cursor"),
+        Path::new("/synthetic/state/agent-workspace"),
     );
 
-    assert_eq!(resolved["cwd"], "/synthetic/state/agent-workspaces/cursor");
+    assert_eq!(resolved["cwd"], "/synthetic/state/agent-workspace");
     assert_eq!(
         resolved["workingDirectory"],
-        "/synthetic/state/agent-workspaces/cursor"
+        "/synthetic/state/agent-workspace"
     );
     assert_eq!(resolved["text"], "hello");
 }

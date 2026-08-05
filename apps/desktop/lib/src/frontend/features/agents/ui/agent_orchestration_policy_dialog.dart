@@ -4,7 +4,7 @@ import 'package:licoup/src/application/controller/client_controller.dart';
 import 'package:licoup/src/application/features/agents/orchestration/orchestration_policy_editor_models.dart';
 import 'package:licoup/src/application/features/agents/orchestration/orchestration_target_catalog.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_orchestration_code_engineering_policy_card.dart';
-import 'package:licoup/src/frontend/features/agents/ui/agent_orchestration_commander_policy_card.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_orchestration_daily_conversation_policy_card.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
@@ -25,39 +25,23 @@ final class _AgentOrchestrationPolicyDialogState
   @override
   void initState() {
     super.initState();
-    _policy = _policyWithCommanderDefaults(
+    _policy = _policyWithDefaults(
       widget.controller.effectiveAgentOrchestrationPolicy,
     );
   }
 
-  AgentOrchestrationPolicy _policyWithCommanderDefaults(
+  AgentOrchestrationPolicy _policyWithDefaults(
     AgentOrchestrationPolicy policy,
   ) {
-    var commanderAgentId = policy.commanderAgentId.trim();
-    if (commanderAgentId.isEmpty) {
-      commanderAgentId = defaultAgentOrchestrationCommanderAgentId(
-        widget.controller.scannedTargets,
-      );
-    }
-    final commanderModel = _commanderModelOrDefault(
-      commanderAgentId,
-      policy.commanderModelName,
-    );
+    final seeded = policy.withDailyConversationSeededFromCommander();
     final roleAssignments =
         <CodeEngineeringRoleSlot, AgentOrchestrationRoleAssignment>{
           for (final role in CodeEngineeringRoleSlot.values)
-            role: _roleAssignmentWithDefaults(policy.assignmentFor(role)),
+            role: _roleAssignmentWithDefaults(seeded.assignmentFor(role)),
         };
-    return policy.copyWith(
-      commanderAgentId: commanderAgentId,
-      commanderModelName: commanderModel,
-      commanderReasoningEffort: _commanderReasoningOrDefault(
-        commanderAgentId,
-        commanderModel,
-        policy.commanderReasoningEffort,
-      ),
-      codeEngineeringRoles: roleAssignments,
-    );
+    return seeded
+        .copyWith(codeEngineeringRoles: roleAssignments)
+        .withCommanderSyncedFromDailyConversation();
   }
 
   AgentOrchestrationRoleAssignment _roleAssignmentWithDefaults(
@@ -69,11 +53,11 @@ final class _AgentOrchestrationPolicyDialogState
         widget.controller.orchestrationAvailableTargets,
       );
     }
-    final modelName = _commanderModelOrDefault(agentId, assignment.modelName);
+    final modelName = _modelOrDefault(agentId, assignment.modelName);
     return AgentOrchestrationRoleAssignment(
       agentId: agentId,
       modelName: modelName,
-      reasoningEffort: _commanderReasoningOrDefault(
+      reasoningEffort: _reasoningOrDefault(
         agentId,
         modelName,
         assignment.reasoningEffort,
@@ -88,14 +72,14 @@ final class _AgentOrchestrationPolicyDialogState
     );
   }
 
-  String _commanderModelOrDefault(String commanderAgentId, String modelName) {
-    final models = _modelsForCommanderAgent(commanderAgentId);
+  String _modelOrDefault(String agentId, String modelName) {
+    final models = _modelsForAgent(agentId);
     final normalized = modelName.trim();
     if (models.isEmpty) return normalized;
     return models.contains(normalized) ? normalized : models.first;
   }
 
-  List<String> _modelsForCommanderAgent(String agentId) {
+  List<String> _modelsForAgent(String agentId) {
     for (final target in widget.controller.orchestrationAvailableTargets) {
       if (target.target == agentId) {
         return agentOrchestrationCommanderModels(target);
@@ -104,24 +88,18 @@ final class _AgentOrchestrationPolicyDialogState
     return const [];
   }
 
-  String _commanderReasoningOrDefault(
-    String commanderAgentId,
+  String _reasoningOrDefault(
+    String agentId,
     String modelName,
     String reasoningEffort,
   ) {
-    final efforts = _reasoningEffortsForCommanderModel(
-      commanderAgentId,
-      modelName,
-    );
+    final efforts = _reasoningEffortsForModel(agentId, modelName);
     final normalized = reasoningEffort.trim();
     if (efforts.isEmpty) return '';
     return efforts.contains(normalized) ? normalized : efforts.first;
   }
 
-  List<String> _reasoningEffortsForCommanderModel(
-    String agentId,
-    String modelName,
-  ) {
+  List<String> _reasoningEffortsForModel(String agentId, String modelName) {
     for (final target in widget.controller.orchestrationAvailableTargets) {
       if (target.target == agentId) {
         return agentOrchestrationReasoningEffortsForModel(target, modelName);
@@ -130,48 +108,24 @@ final class _AgentOrchestrationPolicyDialogState
     return const [];
   }
 
-  void _setCommanderAgent(String agentId) {
-    final modelName = _commanderModelOrDefault(agentId, '');
+  void _setDailyConversationAgents(
+    List<DailyConversationAgentAssignment> agents,
+  ) {
     setState(() {
-      _policy = _policy.copyWith(
-        commanderAgentId: agentId,
-        commanderModelName: modelName,
-        commanderReasoningEffort: _commanderReasoningOrDefault(
-          agentId,
-          modelName,
-          '',
-        ),
-      );
-    });
-  }
-
-  void _setCommanderModel(String modelName) {
-    setState(() {
-      _policy = _policy.copyWith(
-        commanderModelName: modelName,
-        commanderReasoningEffort: _commanderReasoningOrDefault(
-          _policy.commanderAgentId,
-          modelName,
-          '',
-        ),
-      );
-    });
-  }
-
-  void _setCommanderReasoningEffort(String reasoningEffort) {
-    setState(() {
-      _policy = _policy.copyWith(commanderReasoningEffort: reasoningEffort);
+      _policy = _policy
+          .copyWith(dailyConversationAgents: agents)
+          .withCommanderSyncedFromDailyConversation();
     });
   }
 
   void _setCodeEngineeringAgent(CodeEngineeringRoleSlot role, String agentId) {
-    final modelName = _commanderModelOrDefault(agentId, '');
+    final modelName = _modelOrDefault(agentId, '');
     _setCodeEngineeringAssignment(
       role,
       AgentOrchestrationRoleAssignment(
         agentId: agentId,
         modelName: modelName,
-        reasoningEffort: _commanderReasoningOrDefault(agentId, modelName, ''),
+        reasoningEffort: _reasoningOrDefault(agentId, modelName, ''),
       ),
     );
   }
@@ -185,11 +139,7 @@ final class _AgentOrchestrationPolicyDialogState
       role,
       assignment.copyWith(
         modelName: modelName,
-        reasoningEffort: _commanderReasoningOrDefault(
-          assignment.agentId,
-          modelName,
-          '',
-        ),
+        reasoningEffort: _reasoningOrDefault(assignment.agentId, modelName, ''),
       ),
     );
   }
@@ -219,7 +169,9 @@ final class _AgentOrchestrationPolicyDialogState
   }
 
   void _save() {
-    Navigator.of(context).pop(_policy);
+    Navigator.of(
+      context,
+    ).pop(_policy.withCommanderSyncedFromDailyConversation());
   }
 
   @override
@@ -264,14 +216,12 @@ final class _AgentOrchestrationPolicyDialogState
                 key: const Key('main-agent-settings'),
                 padding: const EdgeInsets.all(16),
                 children: [
-                  AgentOrchestrationCommanderPolicyCard(
-                    policy: _policy,
+                  AgentOrchestrationDailyConversationPolicyCard(
+                    assignments: _policy.dailyConversationAgents,
                     targets: agentOrchestrationCommanderTargets(
                       widget.controller.orchestrationAvailableTargets,
                     ),
-                    onAgentChanged: _setCommanderAgent,
-                    onModelChanged: _setCommanderModel,
-                    onReasoningEffortChanged: _setCommanderReasoningEffort,
+                    onChanged: _setDailyConversationAgents,
                   ),
                   const SizedBox(height: 14),
                   AgentOrchestrationCodeEngineeringPolicyCard(

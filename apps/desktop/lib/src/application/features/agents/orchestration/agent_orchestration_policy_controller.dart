@@ -4,8 +4,9 @@ import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/application/features/agents/orchestration/orchestration_policy_editor_models.dart';
 import 'package:licoup/src/platform/agents/group_conversation_store.dart';
 
-/// Persists the adaptive flywheel: one main agent plus the code-engineering
-/// Designer, frontend/backend Worker, and frontend/backend Reviewer roles.
+/// Persists the adaptive flywheel: Daily Conversation priority, Current
+/// Conversation (`main_agent`) dispatch owner, plus code-engineering Designer,
+/// frontend/backend Worker, and frontend/backend Reviewer roles.
 mixin AgentOrchestrationPolicyController on AgentWorkspaceCoordinator {
   bool get orchestrationAvailable => !agentWorkspaceMobileRuntime;
 
@@ -152,6 +153,13 @@ mixin AgentOrchestrationPolicyController on AgentWorkspaceCoordinator {
 
   String _policyRevision(AgentOrchestrationPolicy policy) {
     return [
+      for (final assignment in policy.dailyConversationAgents) ...[
+        assignment.id,
+        assignment.agentId,
+        assignment.modelName,
+        assignment.reasoningEffort,
+        assignment.fast ? '1' : '0',
+      ],
       policy.commanderAgentId,
       policy.commanderModelName,
       policy.commanderReasoningEffort,
@@ -185,6 +193,9 @@ mixin AgentOrchestrationPolicyController on AgentWorkspaceCoordinator {
         );
       }
 
+      for (final agentId in policy.dailyConversationAgentIds) {
+        put(agentId);
+      }
       put(policy.commanderAgentId);
       for (final role in CodeEngineeringRoleSlot.values) {
         put(policy.assignmentFor(role).agentId);

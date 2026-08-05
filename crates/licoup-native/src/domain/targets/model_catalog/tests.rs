@@ -379,6 +379,52 @@ Claude Opus 4.6 (Thinking)
                 && diagnostic["status"] == "timeout"
         ));
     }
+
+    #[cfg(unix)]
+    #[test]
+    fn antigravity_cli_timeout_keeps_configured_settings_models_only() {
+        // Mirrors the Adaptive Flywheel failure mode: when `agy models` does
+        // not finish in time, only the models named in local settings remain.
+        let dir = temp_test_dir("antigravity-cli-timeout-settings");
+        let home = dir.join("home");
+        let gemini = home.join(".gemini");
+        fs::create_dir_all(gemini.join("antigravity-cli")).unwrap();
+        fs::write(
+            gemini.join("settings.json"),
+            r#"{"model":{"name":"gemini-3.1-pro-preview"}}"#,
+        )
+        .unwrap();
+        fs::write(
+            gemini.join("antigravity-cli").join("settings.json"),
+            r#"{"model":"Gemini 3.5 Flash (High)"}"#,
+        )
+        .unwrap();
+        let executable = dir.join("agent-models");
+        fs::write(&executable, "#!/bin/sh\nsleep 30\n").unwrap();
+        fs::set_permissions(&executable, fs::Permissions::from_mode(0o700)).unwrap();
+
+        let catalog = model_catalog_for_target(
+            "antigravity",
+            None,
+            &json!({
+                "homeDir": display_path(home),
+                "includeHistoryModelCatalog": false,
+                "enableAgentCliModelLookup": true,
+                "antigravityCliPath": display_path(executable),
+                "antigravityCliModelLookupTimeoutMs": 100,
+            }),
+        );
+
+        let names = catalog["models"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|model| model["name"].as_str().unwrap())
+            .collect::<Vec<_>>();
+        assert_eq!(names.len(), 2);
+        assert!(names.contains(&"gemini-3.1-pro-preview"));
+        assert!(names.contains(&"Gemini 3.5 Flash (High)"));
+    }
 }
 
 mod cursor {

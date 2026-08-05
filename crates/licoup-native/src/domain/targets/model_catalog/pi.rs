@@ -3,6 +3,8 @@ use crate::platform::run_bounded_command_output;
 use std::time::Duration;
 
 const MAX_OUTPUT_BYTES: usize = 512 * 1024;
+// Product policy: every model-catalog scan waits up to one minute.
+const PI_CLI_MODEL_LOOKUP_TIMEOUT: Duration = Duration::from_secs(60);
 
 pub(super) fn collect_pi_cli_model_catalog(
     params: &Value,
@@ -23,7 +25,7 @@ pub(super) fn collect_pi_cli_model_catalog(
     let mut command = Command::new(program);
     command.arg("--list-models");
     let Ok(output) =
-        run_bounded_command_output(&mut command, Duration::from_millis(3_000), MAX_OUTPUT_BYTES)
+        run_bounded_command_output(&mut command, PI_CLI_MODEL_LOOKUP_TIMEOUT, MAX_OUTPUT_BYTES)
     else {
         diagnostics.push(json!({"source": SOURCE, "status": "command-failed"}));
         return;
