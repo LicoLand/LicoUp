@@ -50,6 +50,32 @@ void main() {
     );
   });
 
+  test(
+    'composeOrchestrationAssignmentCapsuleLabel joins agent model effort Fast',
+    () {
+      expect(
+        composeOrchestrationAssignmentCapsuleLabel(
+          agentLabel: 'Antigravity',
+          modelName: 'claude-opus-4-6-thinking',
+          reasoningEffort: 'high',
+          fast: true,
+          effortLabel: (effort) => effort == 'high' ? '高' : effort,
+        ),
+        'Antigravity · claude-opus-4-6-thinking · 高 · Fast',
+      );
+      expect(
+        composeOrchestrationAssignmentCapsuleLabel(
+          agentLabel: 'Codex',
+          modelName: '',
+          reasoningEffort: '',
+          fast: false,
+          effortLabel: (effort) => effort,
+        ),
+        'Codex',
+      );
+    },
+  );
+
   test('formatComposerReasoningEffortLabel title-cases effort tokens', () {
     expect(formatComposerReasoningEffortLabel('high'), 'High');
   });
@@ -524,6 +550,73 @@ void main() {
   });
 
   testWidgets(
+    'ComposerFlywheelCapsule labels the agent column Current Conversation',
+    (tester) async {
+      _useComposerPopoverViewport(tester);
+      final agents = [
+        TargetCandidate(
+          target: 'codex',
+          label: 'Codex',
+          kind: 'native-history',
+          status: 'detected',
+          configured: true,
+          confidence: 1,
+          adapterStatus: 'implemented',
+          modelCatalog: {
+            'models': [
+              {'name': 'gpt-5.4'},
+            ],
+          },
+        ),
+      ];
+
+      await tester.pumpWidget(
+        MaterialApp(
+          locale: const Locale('zh'),
+          theme: buildLicoTheme(platformBrightness: Brightness.dark),
+          supportedLocales: LicoStrings.supportedLocales,
+          localizationsDelegates: const [
+            GlobalMaterialLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+          ],
+          home: Scaffold(
+            body: Align(
+              alignment: Alignment.bottomLeft,
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: ComposerFlywheelCapsule(
+                  mainAgentLabel: 'Codex',
+                  mainAgentTarget: agents.first,
+                  agentOptions: agents,
+                  selectedAgentId: 'codex',
+                  selectedModel: 'gpt-5.4',
+                  onEdit: () {},
+                  onSelectAgent: (_) {},
+                  onSelectModel: (_, __) {},
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      final gesture = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      await gesture.addPointer(location: Offset.zero);
+      addTearDown(gesture.removePointer);
+      await tester.pump();
+      await gesture.moveTo(
+        tester.getCenter(find.byKey(const Key('conversation-flywheel-button'))),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('当前对话'), findsOneWidget);
+      expect(find.text('主智能体'), findsNothing);
+    },
+  );
+
+  testWidgets(
     'ComposerFlywheelCapsule aligns first model option with hovered agent',
     (tester) async {
       _useComposerPopoverViewport(tester);
@@ -555,7 +648,18 @@ void main() {
           label: 'Claude Code',
           models: const ['deepseek-v4-flash', 'opus'],
         ),
+        agent(id: 'antigravity', label: 'Antigravity', models: const ['a']),
         agent(id: 'opencode', label: 'OpenCode', models: const ['kimi:k3']),
+        agent(id: 'copilot', label: 'GitHub Copilot', models: const ['c']),
+        agent(id: 'kilo-code', label: 'Kilo Code', models: const ['k']),
+        agent(
+          id: 'cursor',
+          label: 'Cursor',
+          models: const ['deepseek-v4-flash', 'opus'],
+        ),
+        agent(id: 'kimi-code', label: 'Kimi Code', models: const ['m']),
+        agent(id: 'pi', label: 'Pi Agent', models: const ['p']),
+        agent(id: 'openclaw', label: 'OpenClaw', models: const ['o']),
       ];
 
       await tester.pumpWidget(
@@ -573,10 +677,10 @@ void main() {
               child: Padding(
                 padding: const EdgeInsets.all(24),
                 child: ComposerFlywheelCapsule(
-                  mainAgentLabel: 'Claude Code',
-                  mainAgentTarget: agents[1],
+                  mainAgentLabel: 'Cursor',
+                  mainAgentTarget: agents[6],
                   agentOptions: agents,
-                  selectedAgentId: 'claude-code',
+                  selectedAgentId: 'cursor',
                   selectedModel: 'deepseek-v4-flash',
                   onEdit: () {},
                   onSelectAgent: (_) {},
@@ -597,28 +701,31 @@ void main() {
         tester.getCenter(find.byKey(const Key('conversation-flywheel-button'))),
       );
       await tester.pumpAndSettle();
-      await gesture.moveTo(
-        tester.getCenter(
-          find.byKey(const Key('conversation-flywheel-agent-claude-code')),
-        ),
-      );
-      await tester.pumpAndSettle();
 
-      final agentTop = tester
-          .getTopLeft(
-            find.byKey(const Key('conversation-flywheel-agent-claude-code')),
-          )
-          .dy;
-      final firstModelTop = tester
-          .getTopLeft(
-            find.byKey(
-              const Key(
-                'conversation-flywheel-model-claude-code-deepseek-v4-flash',
-              ),
-            ),
-          )
-          .dy;
-      expect(firstModelTop, closeTo(agentTop, 2));
+      Future<void> expectAligned(String agentId, String firstModel) async {
+        await gesture.moveTo(
+          tester.getCenter(
+            find.byKey(Key('conversation-flywheel-agent-$agentId')),
+          ),
+        );
+        await tester.pumpAndSettle();
+        final agentTop = tester
+            .getTopLeft(find.byKey(Key('conversation-flywheel-agent-$agentId')))
+            .dy;
+        final firstModelTop = tester
+            .getTopLeft(
+              find.byKey(Key('conversation-flywheel-model-$agentId-$firstModel')),
+            )
+            .dy;
+        expect(
+          firstModelTop,
+          closeTo(agentTop, 2),
+          reason: '$firstModel should share a baseline with $agentId',
+        );
+      }
+
+      await expectAligned('claude-code', 'deepseek-v4-flash');
+      await expectAligned('cursor', 'deepseek-v4-flash');
     },
   );
 }

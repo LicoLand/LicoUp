@@ -3,11 +3,10 @@ use crate::platform::run_bounded_command_output;
 use std::time::Duration;
 
 // The account-scoped native catalog performs a network-backed entitlement
-// lookup. A warm local invocation is commonly just over three seconds, so the
-// old three-second bound discarded valid catalogs on every scan.
-const DEFAULT_CURSOR_CLI_MODEL_LOOKUP_TIMEOUT_MS: u64 = 8_000;
+// lookup. Product policy: every model-catalog scan waits up to one minute.
+const DEFAULT_CURSOR_CLI_MODEL_LOOKUP_TIMEOUT_MS: u64 = 60_000;
 const MIN_CURSOR_CLI_MODEL_LOOKUP_TIMEOUT_MS: u64 = 100;
-const MAX_CURSOR_CLI_MODEL_LOOKUP_TIMEOUT_MS: u64 = 10_000;
+const MAX_CURSOR_CLI_MODEL_LOOKUP_TIMEOUT_MS: u64 = 60_000;
 const MAX_CURSOR_CLI_MODEL_LOOKUP_OUTPUT_BYTES: usize = 256 * 1024;
 
 #[derive(Debug, Default)]

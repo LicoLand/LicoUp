@@ -13,10 +13,12 @@ import 'package:licoup/src/frontend/layout/layout_agents_strategy.dart';
 import 'package:licoup/src/frontend/layout/layout_destination_presentation.dart';
 import 'package:licoup/src/frontend/layout/layout_palette.dart';
 import 'package:licoup/src/frontend/layout/layout_scope.dart';
+import 'package:licoup/src/application/features/agents/orchestration/orchestration_target_catalog.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_pane.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_pane_controls.dart';
 import 'package:licoup/src/frontend/features/agents/ui/conversation_archive_dialog.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_composer.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_composer_capsules.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_layout_metrics.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_message_display.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_session_presentation.dart';
@@ -298,11 +300,41 @@ class _ConversationWorkspaceBodyState
           'unavailable' => AgentConversationServeStatus.unavailable,
           _ => AgentConversationServeStatus.stopped,
         };
-    final flywheelLabel = configuredManagerTarget != null
+    final flywheelPolicy = orchestrationSelected
+        ? controller.effectiveAgentOrchestrationPolicy
+        : null;
+    final flywheelDailyMatch =
+        flywheelPolicy?.dailyConversationMatchForCurrentConversation();
+    final flywheelAgentLabel = configuredManagerTarget != null
         ? agentConversationTargetDisplayName(configuredManagerTarget)
         : configuredManagerId.isNotEmpty
         ? configuredManagerId
         : strings.notConfigured;
+    final flywheelModel =
+        (flywheelPolicy?.commanderModelName.trim().isNotEmpty ?? false)
+        ? flywheelPolicy!.commanderModelName.trim()
+        : (flywheelDailyMatch?.modelName ?? '').trim();
+    final flywheelEffort =
+        (flywheelPolicy?.commanderReasoningEffort.trim().isNotEmpty ?? false)
+        ? flywheelPolicy!.commanderReasoningEffort.trim()
+        : (flywheelDailyMatch?.reasoningEffort ?? '').trim();
+    final flywheelLabel = orchestrationSelected
+        ? composeOrchestrationAssignmentCapsuleLabel(
+            agentLabel: flywheelAgentLabel,
+            modelName: flywheelModel,
+            reasoningEffort: flywheelEffort,
+            fast: flywheelDailyMatch?.fast ?? false,
+            fastLabel: strings.fastModeLabel,
+            effortLabel: (effort) =>
+                strings.reasoningEffortOptionLabel(effort, effort),
+            modelDisplayName: configuredManagerTarget == null
+                ? null
+                : (model) => agentOrchestrationModelDisplayName(
+                    configuredManagerTarget,
+                    model,
+                  ),
+          )
+        : flywheelAgentLabel;
     final participantTargets = orchestrationSelected
         ? controller.groupConversationParticipantTargets
         : controller.scannedTargets;
@@ -403,24 +435,39 @@ class _ConversationWorkspaceBodyState
               showAgentOrchestrationPolicyEditor(context, controller),
             )
           : null,
+      // Current Conversation override: persists as `main_agent` without
+      // reordering Daily Conversation. When it differs from the first daily
+      // capsule, dispatch uses this selection.
       onSelectFlywheelAgent: orchestrationSelected
-          ? (agentId) => unawaited(
-              controller.saveAgentOrchestrationPolicy(
-                controller.effectiveAgentOrchestrationPolicy.copyWith(
-                  commanderAgentId: agentId,
+          ? (agentId) {
+              final policy = controller.effectiveAgentOrchestrationPolicy;
+              final match = policy.dailyConversationAssignmentFor(agentId);
+              return unawaited(
+                controller.saveAgentOrchestrationPolicy(
+                  policy.copyWith(
+                    commanderAgentId: agentId,
+                    commanderModelName: match?.modelName ?? '',
+                    commanderReasoningEffort: match?.reasoningEffort ?? '',
+                  ),
                 ),
-              ),
-            )
+              );
+            }
           : null,
       onSelectFlywheelModel: orchestrationSelected
-          ? (agentId, model) => unawaited(
-              controller.saveAgentOrchestrationPolicy(
-                controller.effectiveAgentOrchestrationPolicy.copyWith(
-                  commanderAgentId: agentId,
-                  commanderModelName: model,
+          ? (agentId, model) {
+              final policy = controller.effectiveAgentOrchestrationPolicy;
+              final match = policy.dailyConversationAssignmentFor(agentId);
+              return unawaited(
+                controller.saveAgentOrchestrationPolicy(
+                  policy.copyWith(
+                    commanderAgentId: agentId,
+                    commanderModelName: model,
+                    commanderReasoningEffort: match?.reasoningEffort ??
+                        policy.commanderReasoningEffort,
+                  ),
                 ),
-              ),
-            )
+              );
+            }
           : null,
       onLicoProfileChanged: controller.selectedConversationSupportsLicoProfile
           ? controller.selectConversationLicoProfile

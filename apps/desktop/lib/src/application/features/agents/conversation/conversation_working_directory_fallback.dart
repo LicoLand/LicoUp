@@ -5,10 +5,14 @@ import 'package:licoup/src/contracts/agent_conversation_models.dart';
 import 'package:licoup/src/platform/storage/portable_data_root.dart';
 import 'package:path/path.dart' as p;
 
-/// Directory holding the client-owned default workspace of each local agent,
-/// relative to the LicoUp state root. The native client owns the same layout and
-/// re-resolves it before every local turn.
-const clientAgentWorkspaceDirectoryName = 'agent-workspaces';
+/// Client-owned default workspace under the LicoUp state root. Shared by every
+/// local agent — not partitioned by main-agent id. The native client owns the
+/// same layout and re-resolves it before every local turn.
+const clientAgentWorkspaceDirectoryName = 'agent-workspace';
+
+/// Retired plural tree from the per-agent workspace layout. Still treated as
+/// client-owned so historical session cwd values never bind as projects.
+const _retiredClientAgentWorkspaceDirectoryName = 'agent-workspaces';
 
 /// User home directory, used to render an absolute path as `~/...`.
 String userHomeDirectory({Map<String, String>? environment}) {
@@ -19,7 +23,7 @@ String userHomeDirectory({Map<String, String>? environment}) {
 /// Most recent usable project path recorded on [sessions], newest first.
 ///
 /// Skips empty paths, unbounded personal roots (home, Movies, Pictures, …), and
-/// the client-owned `agent-workspaces` fallback. That fallback is only a last
+/// the client-owned `agent-workspace` fallback. That fallback is only a last
 /// resort for process start — it must not masquerade as a conversation's
 /// historical project directory after a prior turn wrote it onto the session.
 String historicalConversationWorkingDirectory(
@@ -43,9 +47,29 @@ String historicalConversationWorkingDirectory(
   return '';
 }
 
+/// Whether [path] is an admissible explicit working-directory bind: absolute,
+/// non-empty, not an unbounded personal root, and not the client-owned
+/// `agent-workspace` fallback. Used for user-chosen next-turn binds (folder
+/// picker / draft). Presence is not required here — recorded agent-store
+/// directories use [isUsableLocalConversationWorkingDirectory] instead.
+bool isBoundableConversationWorkingDirectory(
+  String path, {
+  Map<String, String>? environment,
+}) {
+  final normalized = path.trim();
+  if (normalized.isEmpty || !p.isAbsolute(normalized)) {
+    return false;
+  }
+  return !isUnboundedLocalAgentWorkspace(
+        normalized,
+        environment: environment,
+      ) &&
+      !isClientOwnedAgentWorkspace(normalized, environment: environment);
+}
+
 /// Whether [path] is a concrete project directory the client may treat as a
 /// conversation's own working directory (absolute, non-empty, not an unbounded
-/// personal root, not the client-owned agent-workspaces fallback, and still
+/// personal root, not the client-owned agent-workspace fallback, and still
 /// present on this machine).
 ///
 /// Presence matters because an agent store records whatever directory a turn ran
@@ -58,13 +82,13 @@ bool isUsableLocalConversationWorkingDirectory(
   Map<String, String>? environment,
   bool Function(String path)? directoryExists,
 }) {
-  final normalized = path.trim();
-  if (normalized.isEmpty ||
-      isUnboundedLocalAgentWorkspace(normalized, environment: environment) ||
-      isClientOwnedAgentWorkspace(normalized, environment: environment)) {
+  if (!isBoundableConversationWorkingDirectory(
+    path,
+    environment: environment,
+  )) {
     return false;
   }
-  return (directoryExists ?? localProjectDirectoryExists)(normalized);
+  return (directoryExists ?? localProjectDirectoryExists)(path.trim());
 }
 
 /// Whether a recorded project directory is still present as a directory.
@@ -77,8 +101,9 @@ bool localProjectDirectoryExists(String path) {
   }
 }
 
-/// Whether [path] is under the LicoUp-owned `agent-workspaces` tree. That tree
-/// is a safe send fallback, not a project the user (or Cursor history) chose.
+/// Whether [path] is under the LicoUp-owned `agent-workspace` tree (or the
+/// retired per-agent `agent-workspaces` tree). That tree is a safe send
+/// fallback, not a project the user (or Cursor history) chose.
 bool isClientOwnedAgentWorkspace(
   String path, {
   Map<String, String>? environment,
@@ -91,14 +116,18 @@ bool isClientOwnedAgentWorkspace(
   if (home.isEmpty) {
     return false;
   }
-  final root = p.normalize(
-    p.join(
-      home,
-      PortableDataRoot.homeStateDirectoryName,
-      clientAgentWorkspaceDirectoryName,
-    ),
-  );
-  return p.equals(normalized, root) || p.isWithin(root, normalized);
+  for (final directoryName in [
+    clientAgentWorkspaceDirectoryName,
+    _retiredClientAgentWorkspaceDirectoryName,
+  ]) {
+    final root = p.normalize(
+      p.join(home, PortableDataRoot.homeStateDirectoryName, directoryName),
+    );
+    if (p.equals(normalized, root) || p.isWithin(root, normalized)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /// Effective fallback working directory for a conversation with a locally
@@ -111,6 +140,9 @@ bool isClientOwnedAgentWorkspace(
 /// documents and media libraries the conversation never needs. Returns an empty
 /// path when the state root cannot be resolved, which leaves the choice to the
 /// native client.
+///
+/// [agentId] is accepted for call-site compatibility and ignored: the fallback
+/// is shared across agents.
 String localConversationWorkingDirectoryFallback({
   required String agentId,
   Map<String, String>? environment,
@@ -123,18 +155,7 @@ String localConversationWorkingDirectoryFallback({
     home,
     PortableDataRoot.homeStateDirectoryName,
     clientAgentWorkspaceDirectoryName,
-    clientAgentWorkspaceSegment(agentId),
   );
-}
-
-/// Single stable path element for one agent identifier.
-String clientAgentWorkspaceSegment(String agentId) {
-  final segment = agentId
-      .trim()
-      .toLowerCase()
-      .replaceAll(RegExp(r'[^a-z0-9]'), '-')
-      .replaceAll(RegExp(r'^-+|-+$'), '');
-  return segment.isEmpty ? 'agent' : segment;
 }
 
 /// Whether an explicitly chosen directory is a personal root whose whole tree

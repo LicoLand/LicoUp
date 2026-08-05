@@ -70,27 +70,36 @@ agent has completed its reply.
 
 The top contact **Lico** opens a LicoUp-owned **group Conversation** where each
 agent is a peer participant. The composer shows the workspace capsule, a
-Flywheel capsule for the current main agent, and a circular edit control. Hover
-the Flywheel capsule to pick an agent and that agent's model (Gateway providers
-A–Z for Lico Agent; native catalogs for third-party agents). Click the capsule
-or the edit control to open the full Adaptive Flywheel editor.
+Flywheel capsule for **Current Conversation**, and a circular edit control.
+Hover the Flywheel capsule to pick an agent and that agent's model (Gateway
+providers A–Z for Lico Agent; native catalogs for third-party agents). Click the
+capsule or the edit control to open the full Adaptive Flywheel editor.
 
 **Lico Agent** is a separate first-party runtime in the agent list (not the
 group entry itself). When chatting with it, choose Agent or Plan mode; Plan
 mode may only write the bound local plan file under OS sandbox. See
 [Lico Agent](../protocols/lico-agent.md).
 
-Open **Adaptive Flywheel** to select the main agent and configure
-code-engineering roles. Designer is shared across the project. Worker and
-Reviewer each have independent Backend and Frontend assignments, including the
-agent, model, and reasoning effort. The saved assignments are stored in the
-private client-state file `adaptive-flywheel.toml` and projected to the local
-Subagent MCP without exposing executable paths or the raw file. Every role
-picker uses the same live target scan: a detected runnable agent is selectable
-in any role, and its model picker is populated from that agent's native model
-directory when available, then verified local configuration or cache. A static
-catalog only annotates known models and never replaces a successful native
-directory response.
+Open **Adaptive Flywheel** to choose everyday conversation agents and configure
+code-engineering roles. **Daily Conversation** is the configured priority list;
+the first capsule is the default dispatch owner. On the Lico group composer, the
+flywheel **Current Conversation** picker uses the same agent/model choice and
+becomes the live dispatch owner when it differs from that first capsule. Saving
+Adaptive Flywheel again re-syncs Current Conversation from the first Daily
+Conversation capsule. Daily Conversation starts from a circular plus control
+that expands into a capsule search field and three horizontal floating cards —
+agent, that agent’s models, and reasoning effort plus a Fast switch; confirmed
+combinations become capsules. Remove a capsule only with its trailing close
+control; long-press and drag to reorder — list order is the effective priority.
+Designer is shared across the project. Worker and Reviewer each have
+independent Backend and Frontend assignments, including the agent, model, and
+reasoning effort. The saved assignments are stored in the private client-state
+file `adaptive-flywheel.toml` and projected to the local Subagent MCP without
+exposing executable paths or the raw file. Every role picker uses the same live
+target scan: a detected runnable agent is selectable in any role, and its model
+picker is populated from that agent's native model directory when available,
+then verified local configuration or cache. A static catalog only annotates
+known models and never replaces a successful native directory response.
 
 ## Connect OpenClaw or Hermes in your VM
 

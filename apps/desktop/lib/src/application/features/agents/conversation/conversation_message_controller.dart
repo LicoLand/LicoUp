@@ -154,14 +154,16 @@ mixin AgentConversationMessageController
     required TargetCandidate agent,
     AgentConversationSession? session,
   }) {
+    // Keep send-path resolution identical to the composer capsule: user bind
+    // first, then session provenance, then historical / remote / fallback.
+    final draftDirectory =
+        (newConversationWorkingDirectories[agent.target] ?? '').trim();
+    if (isBoundableConversationWorkingDirectory(draftDirectory)) {
+      return draftDirectory;
+    }
     final sessionDirectory = session?.workingDirectory.trim() ?? '';
     if (isUsableLocalConversationWorkingDirectory(sessionDirectory)) {
       return sessionDirectory;
-    }
-    final draftDirectory =
-        (newConversationWorkingDirectories[agent.target] ?? '').trim();
-    if (isUsableLocalConversationWorkingDirectory(draftDirectory)) {
-      return draftDirectory;
     }
     final historicalDirectory = historicalConversationWorkingDirectory(
       conversationSessionsByAgent[agent.target] ?? const [],
