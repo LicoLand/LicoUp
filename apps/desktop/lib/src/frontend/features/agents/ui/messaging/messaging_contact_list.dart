@@ -16,9 +16,9 @@ import 'package:licoup/src/frontend/shared/ui/theme.dart';
 /// contact list of a messaging app. Merged products (for example Codex CLI
 /// and Codex Desktop) stay one contact with the group representative's brand
 /// icon. Rows carry the latest conversation's preview and relative activity
-/// time, sort by most recent activity, and tapping a contact lands on that
-/// agent's new-conversation home (old conversations stay reachable through
-/// the recent list and the switcher).
+/// time, sort pinned contacts first then by most recent activity, and tapping
+/// a contact lands on that agent's new-conversation home (old conversations
+/// stay reachable through the recent list and the switcher).
 class MessagingContactList extends StatefulWidget {
   const MessagingContactList({
     super.key,
@@ -29,6 +29,8 @@ class MessagingContactList extends StatefulWidget {
     required this.onSelectAgent,
     required this.onNewConversation,
     this.onPrefetchSessions,
+    this.isPinned,
+    this.onTogglePinned,
     this.scanning = false,
     this.loading = false,
   });
@@ -47,6 +49,8 @@ class MessagingContactList extends StatefulWidget {
   /// build for every conversation agent without loaded sessions, mirroring
   /// the search palette prefetch.
   final ValueChanged<String>? onPrefetchSessions;
+  final bool Function(String targetId)? isPinned;
+  final ValueChanged<String>? onTogglePinned;
   final bool scanning;
   final bool loading;
 
@@ -81,6 +85,14 @@ class _MessagingContactListState extends State<MessagingContactList> {
         prefetch(target.id);
       }
     }
+  }
+
+  bool _isPinned(TargetCandidate target) {
+    final check = widget.isPinned;
+    if (check == null) {
+      return false;
+    }
+    return check(target.id) || check(target.target);
   }
 
   /// Targets that share a canonical product name collapse into one contact,
@@ -137,10 +149,14 @@ class _MessagingContactListState extends State<MessagingContactList> {
                 (value) => value != AgentConversationTabActivity.none,
                 orElse: () => AgentConversationTabActivity.none,
               ),
+          pinned: group.members.any(_isPinned),
         ),
       );
     }
     entries.sort((left, right) {
+      if (left.pinned != right.pinned) {
+        return left.pinned ? -1 : 1;
+      }
       final leftTime = left.latestSession == null
           ? -1
           : conversationSessionSortTime(left.latestSession!);
@@ -150,6 +166,39 @@ class _MessagingContactListState extends State<MessagingContactList> {
       return rightTime.compareTo(leftTime);
     });
     return List<_MessagingContactEntry>.unmodifiable(entries);
+  }
+
+  Future<void> _showPinMenu(
+    BuildContext context,
+    Offset globalPosition,
+    _MessagingContactEntry entry,
+  ) async {
+    final onToggle = widget.onTogglePinned;
+    if (onToggle == null) {
+      return;
+    }
+    final strings = LicoStrings.of(context);
+    final overlay =
+        Overlay.of(context).context.findRenderObject() as RenderBox?;
+    if (overlay == null) {
+      return;
+    }
+    final selected = await showMenu<String>(
+      context: context,
+      position: RelativeRect.fromRect(
+        globalPosition & const Size(1, 1),
+        Offset.zero & overlay.size,
+      ),
+      items: [
+        PopupMenuItem<String>(
+          value: 'toggle-pin',
+          child: Text(entry.pinned ? strings.unpinFromTop : strings.pinToTop),
+        ),
+      ],
+    );
+    if (selected == 'toggle-pin') {
+      onToggle(entry.group.members.first.id);
+    }
   }
 
   @override
@@ -219,6 +268,13 @@ class _MessagingContactListState extends State<MessagingContactList> {
                           onTap: () => widget.onSelectAgent(
                             entry.group.members.first.id,
                           ),
+                          onSecondaryTapDown: widget.onTogglePinned == null
+                              ? null
+                              : (details) => _showPinMenu(
+                                  context,
+                                  details.globalPosition,
+                                  entry,
+                                ),
                         );
                       },
                     ),
@@ -236,11 +292,13 @@ final class _MessagingContactEntry {
     required this.group,
     required this.latestSession,
     required this.activity,
+    required this.pinned,
   });
 
   final _MessagingContactGroup group;
   final AgentConversationSession? latestSession;
   final AgentConversationTabActivity activity;
+  final bool pinned;
 }
 
 /// Targets merged under one canonical product name, mirroring the tree
@@ -333,11 +391,13 @@ class _MessagingContactRow extends StatelessWidget {
     required this.entry,
     required this.selected,
     required this.onTap,
+    this.onSecondaryTapDown,
   });
 
   final _MessagingContactEntry entry;
   final bool selected;
   final VoidCallback onTap;
+  final GestureTapDownCallback? onSecondaryTapDown;
 
   @override
   Widget build(BuildContext context) {
@@ -368,6 +428,7 @@ class _MessagingContactRow extends StatelessWidget {
         color: Colors.transparent,
         child: InkWell(
           onTap: onTap,
+          onSecondaryTapDown: onSecondaryTapDown,
           borderRadius: BorderRadius.circular(10),
           hoverColor: colors.isDark
               ? Colors.white.withAlpha(8)
@@ -414,6 +475,16 @@ class _MessagingContactRow extends StatelessWidget {
                               ),
                             ),
                           ),
+                          if (entry.pinned) ...[
+                            const SizedBox(width: 6),
+                            Icon(
+                              Icons.push_pin_rounded,
+                              size: 12,
+                              color: selected
+                                  ? colors.textOnPrimary.withAlpha(180)
+                                  : colors.textMuted,
+                            ),
+                          ],
                           if (latest != null) ...[
                             const SizedBox(width: 8),
                             Text(

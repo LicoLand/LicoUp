@@ -78,11 +78,9 @@ final class _DarwinResourceProbe implements ClientResourceUsageProbe {
   final (int, int) Function() _rusage;
   final int Function() _rss;
 
-  _DarwinResourceProbe({
-    (int, int) Function()? rusage,
-    int Function()? rss,
-  }) : _rusage = rusage ?? _darwinRusageBytes,
-       _rss = rss ?? _currentRssBytes;
+  _DarwinResourceProbe({(int, int) Function()? rusage, int Function()? rss})
+    : _rusage = rusage ?? _darwinRusageBytes,
+      _rss = rss ?? _currentRssBytes;
 
   @override
   bool get supported => true;
@@ -146,8 +144,7 @@ final class _Rusage extends Struct {
 }
 
 (int, int) _darwinRusageBytes() {
-  final getrusage = DynamicLibrary
-      .process()
+  final getrusage = DynamicLibrary.process()
       .lookupFunction<_GetrusageNative, _GetrusageDart>('getrusage');
   final usage = calloc.allocate<_Rusage>(sizeOf<_Rusage>());
   try {
@@ -188,14 +185,10 @@ final class _WindowsResourceProbe implements ClientResourceUsageProbe {
 
 typedef _GetCurrentProcessNative = IntPtr Function();
 typedef _GetCurrentProcessDart = int Function();
-typedef _GetProcessIoCountersNative = Int32 Function(
-  IntPtr process,
-  Pointer<_IoCounters> counters,
-);
-typedef _GetProcessIoCountersDart = int Function(
-  int process,
-  Pointer<_IoCounters> counters,
-);
+typedef _GetProcessIoCountersNative =
+    Int32 Function(IntPtr process, Pointer<_IoCounters> counters);
+typedef _GetProcessIoCountersDart =
+    int Function(int process, Pointer<_IoCounters> counters);
 
 final class _IoCounters extends Struct {
   @Uint64()
@@ -228,10 +221,7 @@ final class _IoCounters extends Struct {
     if (result == 0) {
       throw const FileSystemException('GetProcessIoCounters failed');
     }
-    return (
-      counters.ref.readTransferCount,
-      counters.ref.writeTransferCount,
-    );
+    return (counters.ref.readTransferCount, counters.ref.writeTransferCount);
   } finally {
     calloc.free(counters);
   }

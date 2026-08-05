@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
+import 'package:path/path.dart' as p;
 
 import 'package:licoup/src/application/controller/client_controller.dart';
 import 'package:licoup/src/application/features/layout/layout_state_store.dart';
@@ -267,9 +268,12 @@ class _ConversationWorkspaceBodyState
         ? controller.effectiveAgentOrchestrationPolicy.commanderAgentId
         : '';
     final showWorkingDirectory =
-        !orchestrationSelected &&
         !controller.mobileClientRuntimePlatform &&
-        !target.hasValidVirtualMachineConnection;
+        !(orchestrationSelected
+            ? (configuredManagerTarget ?? managerTarget)
+                      ?.hasValidVirtualMachineConnection ==
+                  true
+            : target.hasValidVirtualMachineConnection);
     final workingDirectorySelectable =
         showWorkingDirectory &&
         controller.canSelectNewConversationWorkingDirectory;
@@ -294,6 +298,14 @@ class _ConversationWorkspaceBodyState
           'unavailable' => AgentConversationServeStatus.unavailable,
           _ => AgentConversationServeStatus.stopped,
         };
+    final flywheelLabel = configuredManagerTarget != null
+        ? agentConversationTargetDisplayName(configuredManagerTarget)
+        : configuredManagerId.isNotEmpty
+        ? configuredManagerId
+        : strings.notConfigured;
+    final participantTargets = orchestrationSelected
+        ? controller.groupConversationParticipantTargets
+        : controller.scannedTargets;
     final state = AgentConversationPaneState(
       target: target,
       session: session,
@@ -308,6 +320,8 @@ class _ConversationWorkspaceBodyState
       composerEnabled: composerEnabled,
       sendGateReasonCode: gateReasonCode,
       composerDraft: controller.conversationComposerDraft,
+      // Group entry: model selection lives in the flywheel hover panel, not a
+      // top-level Model capsule.
       modelOptions: orchestrationSelected
           ? const []
           : controller.selectedConversationModelOptions,
@@ -329,7 +343,23 @@ class _ConversationWorkspaceBodyState
           : '',
       workingDirectorySelectable: workingDirectorySelectable,
       sendAuthorizeActive: controller.isAuthorizingConversationRuntime,
-      participantTargets: controller.scannedTargets,
+      participantTargets: participantTargets,
+      flywheelMainAgentLabel: orchestrationSelected ? flywheelLabel : '',
+      flywheelMainAgentTarget: configuredManagerTarget,
+      flywheelAgentOptions: orchestrationSelected
+          ? controller.orchestrationAvailableTargets
+          : const [],
+      flywheelSelectedAgentId: configuredManagerId,
+      flywheelSelectedModel: orchestrationSelected
+          ? controller.effectiveAgentOrchestrationPolicy.commanderModelName
+          : '',
+      showLicoProfileCapsule:
+          controller.selectedConversationSupportsLicoProfile,
+      selectedLicoProfile: controller.selectedConversationLicoProfile,
+      planDocumentPath: _planDocumentPath(controller),
+      groupRosterParticipants: orchestrationSelected
+          ? controller.groupConversationRosterParticipants
+          : const [],
     );
     final onUnblockSend = switch (gateReasonCode) {
       'orchestration_policy_required' => () => unawaited(
@@ -368,6 +398,33 @@ class _ConversationWorkspaceBodyState
               !controller.mobileClientRuntimePlatform
           ? () => unawaited(_pickConversationAttachments())
           : null,
+      onEditFlywheel: orchestrationSelected
+          ? () => unawaited(
+              showAgentOrchestrationPolicyEditor(context, controller),
+            )
+          : null,
+      onSelectFlywheelAgent: orchestrationSelected
+          ? (agentId) => unawaited(
+              controller.saveAgentOrchestrationPolicy(
+                controller.effectiveAgentOrchestrationPolicy.copyWith(
+                  commanderAgentId: agentId,
+                ),
+              ),
+            )
+          : null,
+      onSelectFlywheelModel: orchestrationSelected
+          ? (agentId, model) => unawaited(
+              controller.saveAgentOrchestrationPolicy(
+                controller.effectiveAgentOrchestrationPolicy.copyWith(
+                  commanderAgentId: agentId,
+                  commanderModelName: model,
+                ),
+              ),
+            )
+          : null,
+      onLicoProfileChanged: controller.selectedConversationSupportsLicoProfile
+          ? controller.selectConversationLicoProfile
+          : null,
     );
     final headerState = AgentConversationHeaderState(
       target: target,
@@ -387,21 +444,19 @@ class _ConversationWorkspaceBodyState
             ),
       showSidebarToggle: showSidebarToggle,
     );
-    final policyControls = orchestrationSelected
+    // Messaging moves flywheel controls into the composer capsule row; console
+    // keeps the compact header pill.
+    final messaging =
+        strategy.messageStyle == AgentsMessageStyle.participantFlow;
+    final policyControls = orchestrationSelected && !messaging
         ? AgentOrchestrationPolicyHeaderControls(
-            mainAgentLabel: configuredManagerTarget != null
-                ? agentConversationTargetDisplayName(configuredManagerTarget)
-                : configuredManagerId.isNotEmpty
-                ? configuredManagerId
-                : strings.notConfigured,
+            mainAgentLabel: flywheelLabel,
             mainAgentTarget: configuredManagerTarget,
             onEdit: () => unawaited(
               showAgentOrchestrationPolicyEditor(context, controller),
             ),
           )
         : null;
-    final messaging =
-        strategy.messageStyle == AgentsMessageStyle.participantFlow;
     final pane = AgentConversationActivePane(
       state: state,
       actions: actions,
@@ -540,6 +595,9 @@ class _ConversationWorkspaceBodyState
               onNewConversation: controller.startNewConversationSession,
               onPrefetchSessions: (agentId) =>
                   unawaited(controller.refreshConversationSessions(agentId)),
+              isPinned: controller.isConversationTargetPinned,
+              onTogglePinned: (agentId) =>
+                  unawaited(controller.toggleConversationTargetPinned(agentId)),
               scanning: widget.scanning,
               loading: controller.isLoadingConversations,
             ),
@@ -875,4 +933,14 @@ class _ConversationWorkspaceBodyState
       },
     );
   }
+}
+
+String _planDocumentPath(ClientController controller) {
+  if (!controller.selectedConversationSupportsLicoProfile ||
+      controller.selectedConversationLicoProfile != 'plan') {
+    return '';
+  }
+  final root = controller.portableDataPath.trim();
+  if (root.isEmpty) return '';
+  return p.join(root, 'client-state', 'plans', 'active-plan.md');
 }

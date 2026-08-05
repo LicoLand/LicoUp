@@ -1,7 +1,9 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_composer_capsules.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/layout/profiles/messaging/desktop/tokens/messaging_desktop_tokens.dart';
@@ -520,4 +522,103 @@ void main() {
 
     expect(find.byKey(const Key('conversation-model-button')), findsNothing);
   });
+
+  testWidgets(
+    'ComposerFlywheelCapsule aligns first model option with hovered agent',
+    (tester) async {
+      _useComposerPopoverViewport(tester);
+      TargetCandidate agent({
+        required String id,
+        required String label,
+        required List<String> models,
+      }) {
+        return TargetCandidate(
+          target: id,
+          label: label,
+          kind: 'native-history',
+          status: 'detected',
+          configured: true,
+          confidence: 1,
+          adapterStatus: 'implemented',
+          modelCatalog: {
+            'models': [
+              for (final model in models) {'name': model},
+            ],
+          },
+        );
+      }
+
+      final agents = [
+        agent(id: 'codex', label: 'Codex', models: const ['gpt-5.4']),
+        agent(
+          id: 'claude-code',
+          label: 'Claude Code',
+          models: const ['deepseek-v4-flash', 'opus'],
+        ),
+        agent(id: 'opencode', label: 'OpenCode', models: const ['kimi:k3']),
+      ];
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: buildLicoTheme(platformBrightness: Brightness.dark),
+          supportedLocales: LicoStrings.supportedLocales,
+          localizationsDelegates: const [
+            GlobalMaterialLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+          ],
+          home: Scaffold(
+            body: Align(
+              alignment: Alignment.bottomLeft,
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: ComposerFlywheelCapsule(
+                  mainAgentLabel: 'Claude Code',
+                  mainAgentTarget: agents[1],
+                  agentOptions: agents,
+                  selectedAgentId: 'claude-code',
+                  selectedModel: 'deepseek-v4-flash',
+                  onEdit: () {},
+                  onSelectAgent: (_) {},
+                  onSelectModel: (_, __) {},
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      final gesture = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      await gesture.addPointer(location: Offset.zero);
+      addTearDown(gesture.removePointer);
+      await tester.pump();
+      await gesture.moveTo(
+        tester.getCenter(find.byKey(const Key('conversation-flywheel-button'))),
+      );
+      await tester.pumpAndSettle();
+      await gesture.moveTo(
+        tester.getCenter(
+          find.byKey(const Key('conversation-flywheel-agent-claude-code')),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final agentTop = tester
+          .getTopLeft(
+            find.byKey(const Key('conversation-flywheel-agent-claude-code')),
+          )
+          .dy;
+      final firstModelTop = tester
+          .getTopLeft(
+            find.byKey(
+              const Key(
+                'conversation-flywheel-model-claude-code-deepseek-v4-flash',
+              ),
+            ),
+          )
+          .dy;
+      expect(firstModelTop, closeTo(agentTop, 2));
+    },
+  );
 }

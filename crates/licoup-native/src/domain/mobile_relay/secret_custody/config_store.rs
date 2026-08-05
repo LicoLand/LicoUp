@@ -72,6 +72,9 @@ pub(in crate::domain::mobile_relay) fn config_generation(
     Ok(config.get(field).and_then(Value::as_u64).unwrap_or(0))
 }
 
+fn synthetic_value(label: &str) -> String { format!("{label}-{}", uuid::Uuid::new_v4()) }
+
+#[cfg(test)]
 pub(in crate::domain::mobile_relay) fn load_config_with_runtime_secret_overrides(
     params: &Value,
 ) -> Result<(Value, RuntimeSecretOverrides)> {
@@ -327,8 +330,6 @@ pub(in crate::domain::mobile_relay) fn save_config_raw_with_reset_policy(
     );
     Ok(())
 }
-
-fn synthetic_value(label: &str) -> String { format!("{label}-{}", uuid::Uuid::new_v4()) }
 
 #[cfg(test)]
 mod tests {

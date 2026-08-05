@@ -228,6 +228,16 @@ fn match_spec(adapter: RuntimeAdapter, kind: NativeCapabilityKind) -> Option<Mat
             token: Some("rpc"),
             ..BASE
         },
+        (RuntimeAdapter::LicoAgent, Cli) => MatchSpec {
+            names: &["lico-agent"],
+            exclude_tokens: &["--mode"],
+            ..BASE
+        },
+        (RuntimeAdapter::LicoAgent, Rpc) => MatchSpec {
+            names: &["lico-agent"],
+            token: Some("rpc"),
+            ..BASE
+        },
         _ => return None,
     };
     Some(spec)

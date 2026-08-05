@@ -8,6 +8,7 @@ import 'package:licoup/src/application/features/agents/conversation/conversation
 import 'package:licoup/src/application/features/agents/conversation/conversation_working_directory_fallback.dart';
 import 'package:licoup/src/application/features/agents/policy/conversation_session_index.dart';
 import 'package:licoup/src/application/features/agents/workspace/agent_workspace_coordinator.dart';
+import 'package:licoup/src/application/features/agents/group_conversation/group_conversation_controller.dart';
 import 'package:licoup/src/application/features/agents/orchestration/agent_orchestration_policy_controller.dart';
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
 import 'package:licoup/src/contracts/agent_dispatch_lane.dart';
@@ -20,7 +21,8 @@ mixin AgentConversationSessionController
         AgentWorkspaceCoordinator,
         AgentConversationSessionStateController,
         AgentConversationMobileSessionController,
-        AgentOrchestrationPolicyController {
+        AgentOrchestrationPolicyController,
+        GroupConversationController {
   @override
   Future<void> refreshConversationCatalogInternal(
     String agentId, {
@@ -464,13 +466,22 @@ mixin AgentConversationSessionController
   }
 
   String get selectedConversationWorkingDirectory {
-    final agent = selectedConversationAgent;
-    if (agent == null || selectedConversationIsOrchestration) {
-      return '';
+    final agent = selectedConversationIsOrchestration
+        ? (agentOrchestrationManagerTarget ??
+              agentOrchestrationConfiguredManagerTarget)
+        : selectedConversationAgent;
+    if (agent == null) {
+      return selectedConversationIsOrchestration
+          ? localConversationWorkingDirectoryFallback(
+              agentId: agentOrchestrationTargetId,
+            )
+          : '';
     }
     if (agent.hasValidVirtualMachineConnection) {
       return agent.remoteWorkingDirectory.trim();
     }
+    final agentSessions =
+        conversationSessionsByAgent[agent.target] ?? const [];
     if (preparingNewConversation) {
       final draftDirectory =
           (newConversationWorkingDirectories[agent.target] ?? '').trim();
@@ -483,9 +494,24 @@ mixin AgentConversationSessionController
       if (isUsableLocalConversationWorkingDirectory(sessionDirectory)) {
         return sessionDirectory;
       }
+      // Same native identity may appear twice (turn projection + catalog).
+      // Prefer the catalog copy's project directory before agent-wide history.
+      final selectedNativeId =
+          selectedConversationSession?.nativeSessionId.trim() ?? '';
+      if (selectedNativeId.isNotEmpty) {
+        for (final session in agentSessions) {
+          if (session.nativeSessionId.trim() != selectedNativeId) {
+            continue;
+          }
+          final directory = session.workingDirectory.trim();
+          if (isUsableLocalConversationWorkingDirectory(directory)) {
+            return directory;
+          }
+        }
+      }
     }
     final historicalDirectory = historicalConversationWorkingDirectory(
-      conversationSessionsByAgent[agent.target] ?? const [],
+      agentSessions,
     );
     if (historicalDirectory.isNotEmpty) {
       return historicalDirectory;
@@ -498,17 +524,22 @@ mixin AgentConversationSessionController
   }
 
   bool get canSelectNewConversationWorkingDirectory {
-    final agent = selectedConversationAgent;
+    final agent = selectedConversationIsOrchestration
+        ? (agentOrchestrationManagerTarget ??
+              agentOrchestrationConfiguredManagerTarget)
+        : selectedConversationAgent;
     return agent != null &&
         !agentWorkspaceMobileRuntime &&
-        !selectedConversationIsOrchestration &&
         !agent.hasValidVirtualMachineConnection &&
         preparingNewConversation &&
         !isSendingConversationMessage;
   }
 
   void selectNewConversationWorkingDirectory(String path) {
-    final agent = selectedConversationAgent;
+    final agent = selectedConversationIsOrchestration
+        ? (agentOrchestrationManagerTarget ??
+              agentOrchestrationConfiguredManagerTarget)
+        : selectedConversationAgent;
     if (agent == null || !canSelectNewConversationWorkingDirectory) {
       return;
     }
@@ -655,6 +686,13 @@ mixin AgentConversationSessionController
       acknowledgeConversationTabWorkFinished(agentOrchestrationTargetId);
       selectedConversationAgentId = agentOrchestrationTargetId;
       stopConversationRefreshScheduling();
+      unawaited(
+        ensureGroupConversationReady().then((_) {
+          if (!agentWorkspaceDisposed) {
+            agentWorkspaceNotifyStateChanged();
+          }
+        }),
+      );
       agentWorkspaceSetLocalizedStatusMessage(
         '已切换到默认智能体编排。',
         'Switched to the default agent orchestration.',

@@ -2,7 +2,8 @@ use super::adapter::adapter_for_agent;
 use super::artifact::runtime_executable;
 use super::normalization::{
     execution_response, normalize_acp, normalize_antigravity, normalize_claude, normalize_codex,
-    normalize_cursor, normalize_hermes_with_protocol, normalize_openclaw, normalize_pi,
+    normalize_cursor, normalize_hermes_with_protocol, normalize_lico_agent, normalize_openclaw,
+    normalize_pi,
 };
 use super::params::{
     binary_param, bounded_output_param, codex_binary_param, message_param, text_param, u64_param,
@@ -15,7 +16,8 @@ use crate::platform::agent_workspace::resolve_local_agent_workspace;
 use crate::platform::virtual_machine::{SshRuntimeConnection, is_valid_guest_working_directory};
 use crate::platform::{
     antigravity_driver, claude_code_driver, codex_app_server, copilot_driver, cursor_driver,
-    hermes_driver, kilo_code_driver, kimi_code_driver, openclaw_driver, opencode_driver, pi_driver,
+    hermes_driver, kilo_code_driver, kimi_code_driver, lico_agent_driver, openclaw_driver,
+    opencode_driver, pi_driver,
 };
 use serde_json::Value;
 use std::{
@@ -208,6 +210,16 @@ pub fn send_message(params: &Value) -> Result<Value, RuntimeAdapterError> {
             ),
         ),
         RuntimeAdapter::Pi => normalize_pi(pi_driver::execute(
+            &executable,
+            params,
+            &text,
+            &session_id,
+            cwd.as_deref(),
+            timeout_ms,
+            max_stdout,
+            max_stderr,
+        )),
+        RuntimeAdapter::LicoAgent => normalize_lico_agent(lico_agent_driver::execute(
             &executable,
             params,
             &text,

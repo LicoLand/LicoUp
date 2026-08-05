@@ -19,6 +19,7 @@ class NativeCommandActions {
   final AgentCommandRunner? _privateRunner;
 
   static const List<String> packagedScanTargetIds = [
+    'lico-agent',
     'openclaw',
     'claude-code',
     'codex',

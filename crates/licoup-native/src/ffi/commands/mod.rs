@@ -10,6 +10,7 @@ mod agent_conversation;
 mod agent_usage;
 mod client_update;
 mod collaboration;
+mod group_conversation;
 mod llm_gateway;
 mod mcp;
 mod mobile;
@@ -838,6 +839,23 @@ fn build_command_table() -> CommandTable {
     });
     table.register_command(CommandSpec {
         source_module: "adapter.rs",
+        handler_name: "handle_antigravity_authorize",
+        path: &["adapter", "antigravity", "authorize"],
+        required_positionals: &[],
+        options: &[OptionSpec {
+            name: "binary-path",
+            arity: OptionArity::Value,
+            repeatable: false,
+            value_kind: RequiredArgumentKind::Text,
+            required: false,
+        }],
+        constraints: &[],
+        cardinality: CommandCardinality::Options,
+        handler: adapter::handle_antigravity_authorize,
+        help: "",
+    });
+    table.register_command(CommandSpec {
+        source_module: "adapter.rs",
         handler_name: "handle_codex_plugin_status",
         path: &["adapter", "codex", "plugin", "status"],
         required_positionals: &[],
@@ -1021,6 +1039,34 @@ fn build_command_table() -> CommandTable {
         cardinality: CommandCardinality::Options,
         handler: agent_conversation::handle_agent_conversation,
         help: "",
+    });
+    table.register_command(CommandSpec {
+        source_module: "group_conversation.rs",
+        handler_name: "handle_group_ensure",
+        path: &["agent", "group", "ensure"],
+        required_positionals: &[],
+        options: &[],
+        constraints: &[],
+        cardinality: CommandCardinality::Exact,
+        handler: group_conversation::handle_group_ensure,
+        help: "Ensure the default Lico group Conversation room exists.",
+    });
+    table.register_command(CommandSpec {
+        source_module: "group_conversation.rs",
+        handler_name: "handle_group_plan_turn",
+        path: &["agent", "group", "plan-turn"],
+        required_positionals: &[],
+        options: &[OptionSpec {
+            name: "stdin-json",
+            arity: OptionArity::Value,
+            repeatable: false,
+            value_kind: RequiredArgumentKind::Json,
+            required: true,
+        }],
+        constraints: &[],
+        cardinality: CommandCardinality::Options,
+        handler: group_conversation::handle_group_plan_turn,
+        help: "Plan turn-taking for a Lico group Conversation send.",
     });
     table.register_command(CommandSpec {
         source_module: "agent_conversation.rs",
@@ -3810,6 +3856,46 @@ fn build_command_table() -> CommandTable {
         help: "",
     });
     table.register_command(CommandSpec {
+        source_module: "skill.rs",
+        handler_name: "handle_skill_usage_scan",
+        path: &["skill", "usage", "scan"],
+        required_positionals: &[],
+        options: &[
+            OptionSpec {
+                name: "agent",
+                arity: OptionArity::Value,
+                repeatable: false,
+                value_kind: RequiredArgumentKind::Text,
+                required: false,
+            },
+            OptionSpec {
+                name: "history-root",
+                arity: OptionArity::Value,
+                repeatable: false,
+                value_kind: RequiredArgumentKind::Text,
+                required: false,
+            },
+            OptionSpec {
+                name: "home-dir",
+                arity: OptionArity::Value,
+                repeatable: false,
+                value_kind: RequiredArgumentKind::Text,
+                required: false,
+            },
+            OptionSpec {
+                name: "force-refresh",
+                arity: OptionArity::Boolean,
+                repeatable: false,
+                value_kind: RequiredArgumentKind::Text,
+                required: false,
+            },
+        ],
+        constraints: &[],
+        cardinality: CommandCardinality::Options,
+        handler: skill::handle_skill_usage_scan,
+        help: "",
+    });
+    table.register_command(CommandSpec {
         source_module: "snapshots.rs",
         handler_name: "handle_snapshots_list",
         path: &["snapshots", "list"],
@@ -4758,11 +4844,34 @@ fn build_command_table() -> CommandTable {
         handler_name: "handle_authorize",
         path: &["llm-gateway", "credentials", "authorize"],
         required_positionals: &[],
-        options: &[],
+        options: &[OptionSpec {
+            name: "credential-id",
+            arity: OptionArity::Value,
+            repeatable: false,
+            value_kind: RequiredArgumentKind::Text,
+            required: false,
+        }],
         constraints: &[],
-        cardinality: CommandCardinality::Exact,
+        cardinality: CommandCardinality::Options,
         handler: llm_gateway::handle_authorize,
         help: "Authorize loading model API keys into the native app session",
+    });
+    table.register_command(CommandSpec {
+        source_module: "llm_gateway.rs",
+        handler_name: "handle_clear",
+        path: &["llm-gateway", "credentials", "clear"],
+        required_positionals: &[],
+        options: &[OptionSpec {
+            name: "credential-id",
+            arity: OptionArity::Value,
+            repeatable: false,
+            value_kind: RequiredArgumentKind::Text,
+            required: false,
+        }],
+        constraints: &[],
+        cardinality: CommandCardinality::Options,
+        handler: llm_gateway::handle_clear,
+        help: "Clear model API keys from the native app session without deleting vault entries",
     });
     table.register_command(CommandSpec {
         source_module: "llm_gateway.rs",
@@ -4853,7 +4962,7 @@ fn build_command_table() -> CommandTable {
         constraints: &[],
         cardinality: CommandCardinality::Options,
         handler: llm_gateway::handle_agent_plan,
-        help: "Preview a secret-free Codex or Claude Code Gateway configuration",
+        help: "Preview a secret-free Codex, Claude Code, OpenCode, or Pi Gateway configuration",
     });
     table.register_command(CommandSpec {
         source_module: "llm_gateway.rs",

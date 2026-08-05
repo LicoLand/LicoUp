@@ -21,7 +21,10 @@ void main() {
     );
 
     expect(find.byKey(const Key('messaging-details-popover')), findsOneWidget);
-    expect(find.byKey(const Key('messaging-details-panel-body')), findsOneWidget);
+    expect(
+      find.byKey(const Key('messaging-details-panel-body')),
+      findsOneWidget,
+    );
     expect(find.text('Details'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });

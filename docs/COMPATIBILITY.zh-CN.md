@@ -55,6 +55,7 @@
 | hermes | conversation | unverified | 否 | hermes-acp-stdio-jsonrpc | acp | 是 | 是 | 是 | 是 | 是 | 是 | 否 |
 | kimi-code | conversation | unverified | 否 | kimi-code-acp-v1-stdio-ndjson | acp | 是 | 是 | 是 | 是 | 是 | 是 | 否 |
 | pi | conversation | unverified | 否 | pi-rpc-stdio-jsonl | rpc | 是 | 是 | 是 | 是 | 是 | 是 | 是 |
+| lico-agent | conversation | unverified | 否 | lico-agent-rpc-stdio-jsonl | rpc | 是 | 是 | 是 | 是 | 是 | 是 | 是 |
 
 ## 原生能力清单
 
@@ -82,6 +83,7 @@
 | hermes | CLI, ACP, TUI Gateway | acp | stdio ACP | 仅条件式远程连接 | ACP 直连；TUI Gateway 仅用于手动虚拟机 |
 | kimi-code | CLI, ACP, Web Server | acp | stdio ACP | 回环 TCP | 直接控制面与 Web UI |
 | pi | CLI, RPC | rpc | stdio JSONL | 无 | 直接进程接口 |
+| lico-agent | CLI, RPC | rpc | stdio JSONL | 无 | 直接进程接口 |
 
 ## 手动虚拟机对话传输
 

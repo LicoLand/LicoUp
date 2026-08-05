@@ -52,8 +52,20 @@ void main() {
     test('samples running agents and computes per-agent deltas', () async {
       var now = DateTime(2026, 7, 31, 12, 0, 0);
       final gateway = _SequenceGateway([
-        _report(target: 'codex', running: true, rss: 100, read: 1000, write: 2000),
-        _report(target: 'codex', running: true, rss: 120, read: 1600, write: 2100),
+        _report(
+          target: 'codex',
+          running: true,
+          rss: 100,
+          read: 1000,
+          write: 2000,
+        ),
+        _report(
+          target: 'codex',
+          running: true,
+          rss: 120,
+          read: 1600,
+          write: 2100,
+        ),
         _report(target: 'codex', running: false, rss: 0),
       ]);
       final controller = AgentResourceUsageController(
@@ -94,30 +106,33 @@ void main() {
       expect(controller.samplesFor('cursor'), isEmpty);
     });
 
-    test('retains at most the configured number of samples per agent', () async {
-      var now = DateTime(2026, 7, 31, 12, 0, 0);
-      final reports = [
-        for (var i = 0; i < 220; i += 1)
-          _report(target: 'codex', running: true, rss: 100 + i),
-      ];
-      final gateway = _SequenceGateway(reports);
-      final controller = AgentResourceUsageController(
-        gateway: gateway,
-        now: () => now,
-      );
-      addTearDown(controller.dispose);
+    test(
+      'retains at most the configured number of samples per agent',
+      () async {
+        var now = DateTime(2026, 7, 31, 12, 0, 0);
+        final reports = [
+          for (var i = 0; i < 220; i += 1)
+            _report(target: 'codex', running: true, rss: 100 + i),
+        ];
+        final gateway = _SequenceGateway(reports);
+        final controller = AgentResourceUsageController(
+          gateway: gateway,
+          now: () => now,
+        );
+        addTearDown(controller.dispose);
 
-      await controller.refresh();
-      for (var i = 0; i < 200; i += 1) {
-        now = now.add(const Duration(seconds: 5));
         await controller.refresh();
-      }
+        for (var i = 0; i < 200; i += 1) {
+          now = now.add(const Duration(seconds: 5));
+          await controller.refresh();
+        }
 
-      final samples = controller.samplesFor('codex');
-      expect(samples.length, agentResourceUsageMaxSamples);
-      expect(samples.first.rssBytes, 121);
-      expect(samples.last.rssBytes, 300);
-    });
+        final samples = controller.samplesFor('codex');
+        expect(samples.length, agentResourceUsageMaxSamples);
+        expect(samples.first.rssBytes, 121);
+        expect(samples.last.rssBytes, 300);
+      },
+    );
 
     test('scan failures set an error and do not add samples', () async {
       final gateway = _SequenceGateway([

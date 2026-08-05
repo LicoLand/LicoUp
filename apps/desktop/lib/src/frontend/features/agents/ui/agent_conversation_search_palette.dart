@@ -426,9 +426,7 @@ class _GroupedHitList extends StatelessWidget {
         final selected = index == selectedIndex;
         rows.add(
           Material(
-            color: selected
-                ? colors.selectedSurface
-                : Colors.transparent,
+            color: selected ? colors.selectedSurface : Colors.transparent,
             child: InkWell(
               onTap: () => onActivateAt(index),
               child: Padding(
@@ -478,9 +476,7 @@ class _GroupedHitList extends StatelessWidget {
         final description = (skill['description'] ?? '').toString();
         rows.add(
           Material(
-            color: selected
-                ? colors.selectedSurface
-                : Colors.transparent,
+            color: selected ? colors.selectedSurface : Colors.transparent,
             child: InkWell(
               onTap: () => onActivateAt(flatIndex),
               child: Padding(
@@ -548,9 +544,7 @@ class _GroupedHitList extends StatelessWidget {
         final selected = flatIndex == selectedIndex;
         rows.add(
           Material(
-            color: selected
-                ? colors.selectedSurface
-                : Colors.transparent,
+            color: selected ? colors.selectedSurface : Colors.transparent,
             child: InkWell(
               onTap: () => onActivateAt(flatIndex),
               child: Padding(

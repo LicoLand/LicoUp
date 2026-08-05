@@ -69,9 +69,7 @@ final class AgentResourceUsageController extends ChangeNotifier {
     };
   }
 
-  void start({
-    Duration interval = agentResourceUsageSamplingInterval,
-  }) {
+  void start({Duration interval = agentResourceUsageSamplingInterval}) {
     if (_disposed || _timer != null) {
       return;
     }
@@ -123,10 +121,7 @@ final class AgentResourceUsageController extends ChangeNotifier {
     if (interval.isNegative) {
       interval = Duration.zero;
     }
-    final deltaRead = _delta(
-      agent.totalDiskReadBytes,
-      _lastReadBytes[target],
-    );
+    final deltaRead = _delta(agent.totalDiskReadBytes, _lastReadBytes[target]);
     final deltaWrite = _delta(
       agent.totalDiskWriteBytes,
       _lastWriteBytes[target],

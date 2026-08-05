@@ -46,7 +46,8 @@ fn scan_includes_required_first_targets() {
             "hermes",
             "kimi",
             "kimi-code",
-            "pi"
+            "pi",
+            "lico-agent"
         ]
     );
     let _ = fs::remove_dir_all(dir);

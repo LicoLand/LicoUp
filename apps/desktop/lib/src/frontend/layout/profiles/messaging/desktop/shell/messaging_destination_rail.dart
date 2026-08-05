@@ -49,9 +49,7 @@ final class MessagingDestinationRail extends StatelessWidget {
                     for (var index = 0; index < items.length; index++) ...[
                       if (index > 0) const SizedBox(height: 8),
                       MessagingRailToggleButton(
-                        key: Key(
-                          'messaging-rail-nav-${items[index].$1.name}',
-                        ),
+                        key: Key('messaging-rail-nav-${items[index].$1.name}'),
                         selected: !profileOpen && section == items[index].$1,
                         tooltip: items[index].$2,
                         icon: messagingDesktopSectionIcon(items[index].$1),

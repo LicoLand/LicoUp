@@ -165,12 +165,7 @@ final class _LicoIconButtonState extends State<LicoIconButton> {
                         ),
                       ]
                     : widget.selected
-                    ? [
-                        BoxShadow(
-                          color: colors.accentGlow,
-                          blurRadius: 10,
-                        ),
-                      ]
+                    ? [BoxShadow(color: colors.accentGlow, blurRadius: 10)]
                     : null,
               ),
               child: Stack(
@@ -246,9 +241,10 @@ final class _LicoIconButtonState extends State<LicoIconButton> {
     return switch (widget.tone) {
       // A brand fill can fall below 3:1 against a light surface, so its rim
       // is mandatory rather than decorative.
-      LicoIconButtonTone.brand => enabled
-          ? Border.all(color: colors.brandBorder, width: 1)
-          : Border.all(color: colors.line, width: 1),
+      LicoIconButtonTone.brand =>
+        enabled
+            ? Border.all(color: colors.brandBorder, width: 1)
+            : Border.all(color: colors.line, width: 1),
       LicoIconButtonTone.outlined => Border.all(
         color: active ? colors.lineStrong : colors.line,
         width: 1,

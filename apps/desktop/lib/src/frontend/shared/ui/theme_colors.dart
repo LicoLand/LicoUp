@@ -298,24 +298,22 @@ LicoThemeColors licoColorsFor(
       '#deeef0',
     ),
     accentBorder: colorFromAppearanceToken(tokens, 'accent-border', '#67c8d6'),
-    textOnAccent: colorFromAppearanceToken(
-      tokens,
-      'text-on-accent',
-      '#ffffff',
-    ),
+    textOnAccent: colorFromAppearanceToken(tokens, 'text-on-accent', '#ffffff'),
     success: colorFromAppearanceToken(tokens, 'success', '#158351'),
     warning: colorFromAppearanceToken(tokens, 'warning', '#9c660c'),
     error: colorFromAppearanceToken(tokens, 'danger', '#ce1828'),
-    hoverOverlay: colorFromAppearanceToken(
-      tokens,
-      'hover-overlay',
-      '#101519',
-    ).withValues(alpha: resolved.mode == AppearancePresetMode.dark ? 0.06 : 0.05),
-    pressedOverlay: colorFromAppearanceToken(
-      tokens,
-      'pressed-overlay',
-      '#101519',
-    ).withValues(alpha: resolved.mode == AppearancePresetMode.dark ? 0.10 : 0.09),
+    hoverOverlay: colorFromAppearanceToken(tokens, 'hover-overlay', '#101519')
+        .withValues(
+          alpha: resolved.mode == AppearancePresetMode.dark ? 0.06 : 0.05,
+        ),
+    pressedOverlay:
+        colorFromAppearanceToken(
+          tokens,
+          'pressed-overlay',
+          '#101519',
+        ).withValues(
+          alpha: resolved.mode == AppearancePresetMode.dark ? 0.10 : 0.09,
+        ),
     selectedSurface: colorFromAppearanceToken(
       tokens,
       'selected-surface',

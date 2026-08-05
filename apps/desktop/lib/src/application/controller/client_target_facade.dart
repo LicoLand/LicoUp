@@ -19,6 +19,15 @@ mixin ClientTargetFacade on AgentWorkspaceCoordinator {
     targetController.replaceTabOrder(value);
   }
 
+  List<String> get pinnedConversationTargetIds =>
+      targetController.pinnedConversationTargetIds;
+
+  bool isConversationTargetPinned(String targetId) =>
+      targetController.isConversationTargetPinned(targetId);
+
+  Future<void> toggleConversationTargetPinned(String targetId) =>
+      targetController.toggleConversationTargetPinned(targetId);
+
   Map<String, dynamic>? get targetInspection => targetController.inspection;
   Map<String, dynamic>? get snapshotRestoreResult =>
       targetController.snapshotRestoreResult;

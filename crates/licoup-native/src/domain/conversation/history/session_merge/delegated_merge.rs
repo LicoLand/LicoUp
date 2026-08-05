@@ -51,17 +51,31 @@ pub(super) fn merge_delegated_subagent_sessions(sessions: Vec<Value>) -> Vec<Val
 /// when their parent becomes ready, and cyclic components remain unmerged so
 /// they can follow the bounded nearest-session fallback below.
 fn merge_explicit_parent_child_lineages(indexed_sessions: &mut [(usize, i128, Option<Value>)]) {
-    let native_ids = indexed_sessions
-        .iter()
-        .enumerate()
-        .filter_map(|(slot, (_, _, session))| {
-            session
-                .as_ref()?
-                .get("nativeSessionId")
-                .and_then(Value::as_str)
-                .map(|id| (id.to_string(), slot))
-        })
-        .collect::<HashMap<_, _>>();
+    // One identity can appear more than once: an agent store may split records
+    // that carry no session field into their own group. Attaching delegated tasks
+    // to whichever copy happened to be last would hide them behind a copy that a
+    // later dedupe discards, so the copy holding the most of the conversation wins.
+    let mut native_ids = HashMap::<String, usize>::new();
+    for (slot, (_, _, session)) in indexed_sessions.iter().enumerate() {
+        let Some(session) = session.as_ref() else {
+            continue;
+        };
+        let Some(id) = session.get("nativeSessionId").and_then(Value::as_str) else {
+            continue;
+        };
+        let message_count = session
+            .get("messages")
+            .and_then(Value::as_array)
+            .map(Vec::len)
+            .unwrap_or(0);
+        match native_ids.get(id).copied() {
+            Some(existing)
+                if session_message_count(indexed_sessions, existing) >= message_count => {}
+            _ => {
+                native_ids.insert(id.to_string(), slot);
+            }
+        }
+    }
     let parent_by_child = indexed_sessions
         .iter()
         .enumerate()
@@ -105,6 +119,16 @@ fn merge_explicit_parent_child_lineages(indexed_sessions: &mut [(usize, i128, Op
             ready.push_back(parent_index);
         }
     }
+}
+
+fn session_message_count(indexed_sessions: &[(usize, i128, Option<Value>)], slot: usize) -> usize {
+    indexed_sessions
+        .get(slot)
+        .and_then(|(_, _, session)| session.as_ref())
+        .and_then(|session| session.get("messages"))
+        .and_then(Value::as_array)
+        .map(Vec::len)
+        .unwrap_or(0)
 }
 
 pub(super) fn nearest_main_session_index(
@@ -155,7 +179,8 @@ pub(super) fn subagent_card_from_session(session: &Value) -> Option<Value> {
     let prompt = messages
         .iter()
         .find(|message| message_role(message) == "subagent_prompt");
-    if prompt.is_none() && !session_is_explicit_delegated_subagent(session) {
+    let explicit = session_is_explicit_delegated_subagent(session);
+    if prompt.is_none() && !explicit {
         return None;
     }
     let title = session
@@ -170,9 +195,21 @@ pub(super) fn subagent_card_from_session(session: &Value) -> Option<Value> {
         .filter(|message| subagent_card_child_message_is_visible(message))
         .cloned()
         .collect::<Vec<_>>();
-    if child_messages.is_empty() {
+    // A delegated task whose whole trace is tool work still has to appear. It
+    // used to be dropped here, which discarded the task and, because the session
+    // stays marked as delegated, the work vanished from the conversation.
+    if child_messages.is_empty() && !explicit {
         return None;
     }
+    let tool_call_count = messages
+        .iter()
+        .filter(|message| subagent_card_child_message_is_tool_step(message))
+        .count();
+    let nested_depth = child_messages
+        .iter()
+        .filter_map(|message| message.get("subagentDepth").and_then(Value::as_u64))
+        .max()
+        .unwrap_or(0);
     let preview = child_messages
         .iter()
         .rev()
@@ -207,20 +244,68 @@ pub(super) fn subagent_card_from_session(session: &Value) -> Option<Value> {
         "sourcePath": source_path,
         "cardType": "subagent",
         "cardTitle": title,
+        // The declared agent type is the only label the store owns; counts stay
+        // numeric so the client renders them in the user's language.
+        "cardSubtitle": session
+            .get("subagentType")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .unwrap_or_default(),
         "collapsed": true,
+        // Nesting level of this card inside the conversation. A card whose own
+        // children contain cards sits one level above the deepest of them, so the
+        // client can indent a delegated task that delegated further.
+        "subagentDepth": nested_depth.saturating_add(1),
+        "subagentChildCount": child_messages.len(),
+        "subagentToolCallCount": tool_call_count,
         "messages": child_messages
     }))
 }
 
+/// Whether one message of a delegated task belongs in its card.
+///
+/// Only the conversation's own framing is dropped. Tool steps stay: an explore
+/// or verification task is often nothing but tool work, and hiding it leaves an
+/// empty card that says nothing about what the task did.
 fn subagent_card_child_message_is_visible(message: &Value) -> bool {
     let role = message_role(message);
-    !matches!(
+    if matches!(
         role.as_str(),
-        "subagent_prompt" | "system" | "developer" | "metadata" | "tool" | "function"
-    ) && message
+        "subagent_prompt" | "system" | "developer" | "metadata"
+    ) {
+        return false;
+    }
+    if message
         .get("text")
         .and_then(Value::as_str)
         .is_some_and(|text| !text.trim().is_empty())
+    {
+        return true;
+    }
+    // A structured step carries its meaning in its event fields, not in text.
+    message_is_structured_step(message)
+}
+
+fn subagent_card_child_message_is_tool_step(message: &Value) -> bool {
+    matches!(
+        message_role(message).as_str(),
+        "tool" | "function" | "tool_use" | "tool_result" | "tool_call"
+    ) || message
+        .get("eventKind")
+        .and_then(Value::as_str)
+        .is_some_and(|kind| kind.contains("tool"))
+}
+
+fn message_is_structured_step(message: &Value) -> bool {
+    ["eventKind", "cardType", "toolName", "kind"]
+        .iter()
+        .any(|field| {
+            message
+                .get(*field)
+                .and_then(Value::as_str)
+                .is_some_and(|value| !value.trim().is_empty())
+        })
 }
 
 pub(super) fn subagent_card_preview_text(text: &str) -> String {

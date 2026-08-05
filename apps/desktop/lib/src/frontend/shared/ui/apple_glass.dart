@@ -107,7 +107,9 @@ BoxDecoration appleGlassControlDecoration({
 }) {
   final fill = emphasized
       ? colors.surfaceRaised
-      : (enabled ? colors.surfaceLow : colors.surfaceLow.withValues(alpha: 0.5));
+      : (enabled
+            ? colors.surfaceLow
+            : colors.surfaceLow.withValues(alpha: 0.5));
   final border = emphasized
       ? colors.accentBorder
       : (enabled ? colors.line : colors.line.withValues(alpha: 0.5));

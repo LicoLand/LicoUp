@@ -323,10 +323,7 @@ void main() {
       ],
     );
 
-    expect(
-      find.byKey(const Key('messaging-details-popover')),
-      findsNothing,
-    );
+    expect(find.byKey(const Key('messaging-details-popover')), findsNothing);
     await tester.tap(find.byKey(const Key('messaging-details-toggle')));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 200));

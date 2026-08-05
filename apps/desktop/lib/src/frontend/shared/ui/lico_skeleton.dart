@@ -51,9 +51,10 @@ class _LicoSkeletonState extends State<LicoSkeleton>
     // Ambient loops are created only when motion is allowed. A zero-duration
     // repeating controller would busy-spin the ticker.
     if (context.allowsAmbientMotion) {
-      _controller ??=
-          AnimationController(vsync: this, duration: LicoMotion.loopLong)
-            ..repeat();
+      _controller ??= AnimationController(
+        vsync: this,
+        duration: LicoMotion.loopLong,
+      )..repeat();
     } else {
       _controller?.dispose();
       _controller = null;
@@ -122,7 +123,6 @@ class _LicoSkeletonState extends State<LicoSkeleton>
       ),
     );
   }
-
 }
 
 /// A stack of line skeletons approximating a paragraph.

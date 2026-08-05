@@ -629,7 +629,15 @@ void registerClientConversationDispatchScenarios() {
   test(
     'a session stuck on agent-workspaces recovers a historical project path',
     () async {
-      const historicalDirectory = '/synthetic/workspaces/history-project';
+      final historicalDirectory = Directory.systemTemp
+          .createTempSync('licoup-history-cwd-')
+          .path;
+      addTearDown(() {
+        final directory = Directory(historicalDirectory);
+        if (directory.existsSync()) {
+          directory.deleteSync(recursive: true);
+        }
+      });
       final fallback = localConversationWorkingDirectoryFallback(
         agentId: 'codex',
       );
@@ -674,6 +682,82 @@ void registerClientConversationDispatchScenarios() {
       expect(
         service.lastRuntimeMessageRequest['workingDirectory'],
         historicalDirectory,
+      );
+    },
+  );
+
+  test(
+    'turn-bound readback keeps catalog project directories for the agent',
+    () async {
+      final projectDirectory = Directory.systemTemp
+          .createTempSync('licoup-turn-cwd-')
+          .path;
+      addTearDown(() {
+        final directory = Directory(projectDirectory);
+        if (directory.existsSync()) {
+          directory.deleteSync(recursive: true);
+        }
+      });
+      const nativeSessionId = 'native-turn-cwd';
+      final service = FakeAgentService()
+        ..conversationSessions = {
+          'codex': [
+            conversationSessionJson(
+              id: 'catalog',
+              agentId: 'codex',
+              nativeSessionId: nativeSessionId,
+              text: 'catalog project',
+              updatedAt: '2026-08-01T00:00:00Z',
+              workingDirectory: projectDirectory,
+            ),
+          ],
+        };
+      final controller = ClientController(agentService: service);
+      addTearDown(controller.dispose);
+
+      await controller.scanTargets();
+      await controller.selectConversationAgent('codex');
+      expect(
+        controller.selectedConversationWorkingDirectory,
+        projectDirectory,
+      );
+
+      await controller.conversationCommitTurnBoundNativeReadback(
+        agentId: 'codex',
+        nativeSessionId: nativeSessionId,
+        messages: [
+          const AgentConversationMessage(
+            id: 'u1',
+            role: 'user',
+            text: 'follow up',
+            createdAt: '2026-08-05T00:00:00Z',
+          ),
+          const AgentConversationMessage(
+            id: 'a1',
+            role: 'assistant',
+            text: 'ok',
+            createdAt: '2026-08-05T00:00:01Z',
+          ),
+        ],
+        mergeWithSelectedSession: true,
+        workingDirectory: localConversationWorkingDirectoryFallback(
+          agentId: 'codex',
+        ),
+      );
+
+      expect(
+        controller.selectedConversationWorkingDirectory,
+        projectDirectory,
+        reason: 'composer must not fall back to agent-workspaces after readback',
+      );
+      expect(
+        controller.selectedConversationSessions.any(
+          (session) =>
+              isUsableLocalConversationWorkingDirectory(
+                session.workingDirectory,
+              ),
+        ),
+        isTrue,
       );
     },
   );

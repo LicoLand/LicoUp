@@ -62,7 +62,9 @@ void main() {
   });
 
   group('ClientResourceUsageCard', () {
-    testWidgets('renders current memory, read, and write values', (tester) async {
+    testWidgets('renders current memory, read, and write values', (
+      tester,
+    ) async {
       final probe = _StepProbe();
       var now = DateTime(2026, 7, 31, 12, 0, 0);
       final controller = ClientResourceUsageController(
@@ -95,10 +97,7 @@ void main() {
       expect(find.text('Memory'), findsOneWidget);
       expect(find.text('Disk Read'), findsOneWidget);
       expect(find.text('Disk Write'), findsOneWidget);
-      expect(
-        find.textContaining('Since opened'),
-        findsOneWidget,
-      );
+      expect(find.textContaining('Since opened'), findsOneWidget);
 
       controller.stop();
       await tester.pumpWidget(const SizedBox.shrink());
@@ -124,7 +123,9 @@ void main() {
       );
 
       expect(
-        find.text('Process resource statistics are not supported on this platform.'),
+        find.text(
+          'Process resource statistics are not supported on this platform.',
+        ),
         findsOneWidget,
       );
       expect(find.text('Memory'), findsNothing);

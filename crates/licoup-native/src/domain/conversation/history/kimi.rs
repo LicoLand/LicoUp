@@ -332,6 +332,19 @@ fn mark_kimi_code_delegated_subagent(
         .map(str::trim)
         .filter(|value| !value.is_empty() && *value != "None")
         .unwrap_or("main");
+    // The store labels the agent slot, not the task, so the task instruction is
+    // the only real label. `swarmItem` only exists on swarm runs.
+    let task_title = agent_state
+        .and_then(|agent| agent.get("swarmItem"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+        .or_else(|| {
+            super::delegated_transcripts::delegated_task_label(
+                super::delegated_transcripts::delegated_task_prompt_text(session)?,
+            )
+        });
     let (Some(session_root), Some(object)) = (session_root, session.as_object_mut()) else {
         return;
     };
@@ -356,14 +369,12 @@ fn mark_kimi_code_delegated_subagent(
     };
     object.insert("parentSessionId".to_string(), json!(parent_session_id));
     object.insert("delegatedSubagent".to_string(), json!(true));
-    if let Some(title) = agent_state
-        .and_then(|agent| agent.get("swarmItem"))
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-    {
+    if let Some(title) = task_title {
         object.insert("subagentTitle".to_string(), json!(title));
     }
+    // The agent slot is still worth showing: it is how the conversation refers to
+    // the delegated run in its own transcript.
+    object.insert("subagentType".to_string(), json!(agent_id));
 }
 
 pub(super) fn flush_kimi_code_assistant(

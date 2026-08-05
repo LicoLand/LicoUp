@@ -35,7 +35,9 @@ bool isResolvedAppearanceDark(
 
 /// Maps an explicit day/night choice to the built-in fixed preset id.
 String appearancePresetIdForBrightness(bool dark) {
-  return dark ? AppearancePresetIds.licoSoda : AppearancePresetIds.licoSodaLight;
+  return dark
+      ? AppearancePresetIds.licoSoda
+      : AppearancePresetIds.licoSodaLight;
 }
 
 enum AppearanceBrightnessSelection { light, dark, system }

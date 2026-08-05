@@ -9,16 +9,15 @@ import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
 /// Destinations whose body sits flush on the shell [MessagingMainContentCard]
 /// glass wash. These use a transparent canvas so the card's veil shows through;
 /// they do not paint an opaque surface fill inside the card.
-const Set<ClientSection> messagingMainContentCardDestinations =
-    <ClientSection>{
-      ClientSection.agents,
-      ClientSection.skillHub,
-      ClientSection.pluginManagement,
-      ClientSection.monitoring,
-      ClientSection.models,
-      ClientSection.mobileRelay,
-      ClientSection.settings,
-    };
+const Set<ClientSection> messagingMainContentCardDestinations = <ClientSection>{
+  ClientSection.agents,
+  ClientSection.skillHub,
+  ClientSection.pluginManagement,
+  ClientSection.monitoring,
+  ClientSection.models,
+  ClientSection.mobileRelay,
+  ClientSection.settings,
+};
 
 const LayoutAgentsPresentation messagingDesktopAgentsPresentation =
     MessagingDesktopAgentsPresentation();

@@ -32,11 +32,25 @@ void main() {
       persistedOrder: const ['opencode', 'missing', 'codex'],
       isOrchestrationTarget: (id) => id == 'agent-orchestration',
       orchestrationTarget: orchestration,
+      pinnedIds: const ['agent-orchestration'],
     );
     expect(ordered.map((target) => target.target), [
       'agent-orchestration',
       'opencode',
       'codex',
+    ]);
+
+    final pinnedCodex = TargetPolicy.orderedConversationTargets(
+      targets: [_target('codex'), _target('opencode')],
+      persistedOrder: const ['opencode', 'codex'],
+      isOrchestrationTarget: (id) => id == 'agent-orchestration',
+      orchestrationTarget: orchestration,
+      pinnedIds: const ['codex'],
+    );
+    expect(pinnedCodex.map((target) => target.target), [
+      'codex',
+      'agent-orchestration',
+      'opencode',
     ]);
 
     final next = TargetPolicy.reorderedTabIds(
@@ -238,6 +252,8 @@ class _SnapshotRepository implements TargetSnapshotRepository {
 
 class _TabOrderRepository implements TargetTabOrderRepository {
   List<String> value = const [];
+  List<String> pinned = const [];
+  bool customPinned = false;
 
   @override
   Future<List<String>> load(Object portableData) async => value;
@@ -246,4 +262,16 @@ class _TabOrderRepository implements TargetTabOrderRepository {
   Future<void> save(Object portableData, List<String> order) async {
     value = List.unmodifiable(order);
   }
+
+  @override
+  Future<List<String>> loadPinned(Object portableData) async => pinned;
+
+  @override
+  Future<void> savePinned(Object portableData, List<String> next) async {
+    pinned = List.unmodifiable(next);
+    customPinned = true;
+  }
+
+  @override
+  Future<bool> hasCustomPinnedIds(Object portableData) async => customPinned;
 }

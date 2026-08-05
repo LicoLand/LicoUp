@@ -1,9 +1,19 @@
 //! Closed configuration plans for connecting supported coding agents to the
 //! loopback LicoUp Gateway. Plans never contain upstream provider credentials.
+//!
+//! OpenCode and Pi embed only catalog models whose providers currently have a
+//! usable saved API key. Codex and Claude Code point at the loopback Gateway
+//! without embedding a model catalog.
 
+use crate::domain::llm_api_key_vault::LlmApiKeyProvider;
+use crate::domain::llm_gateway_default_catalog::{
+    DefaultGatewayModel, models_for_provider_ids,
+};
 use anyhow::{Result, anyhow, ensure};
 use serde::Serialize;
+use serde_json::{Map, Value, json};
 use sha2::{Digest, Sha256};
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
 pub const GATEWAY_AGENT_CONFIG_SCHEMA: &str = "licoup.llm-gateway-agent-config.v1";
@@ -13,6 +23,8 @@ pub const GATEWAY_AGENT_CONFIG_SCHEMA: &str = "licoup.llm-gateway-agent-config.v
 pub enum GatewayAgentTarget {
     Codex,
     ClaudeCode,
+    OpenCode,
+    Pi,
 }
 
 impl GatewayAgentTarget {
@@ -20,6 +32,8 @@ impl GatewayAgentTarget {
         match value {
             "codex" => Ok(Self::Codex),
             "claude-code" | "claude" => Ok(Self::ClaudeCode),
+            "opencode" | "open-code" | "open_code" => Ok(Self::OpenCode),
+            "pi" | "pi-agent" | "pi_agent" | "pi-coding-agent" | "pi_coding_agent" => Ok(Self::Pi),
             _ => Err(anyhow!("llm_gateway_agent_adapter_unsupported")),
         }
     }
@@ -27,6 +41,8 @@ impl GatewayAgentTarget {
         match self {
             Self::Codex => "codex",
             Self::ClaudeCode => "claude-code",
+            Self::OpenCode => "opencode",
+            Self::Pi => "pi",
         }
     }
 }
@@ -47,13 +63,20 @@ pub fn plan_agent_config(
     agent_config_root: &Path,
     gateway_port: u16,
     local_token_helper: &Path,
+    available_providers: &BTreeSet<LlmApiKeyProvider>,
 ) -> Result<GatewayAgentConfigPlan> {
+    let sv_licoup_local = synthetic_value("licoup-local");
     ensure!(gateway_port > 0, "llm_gateway_port_invalid");
     ensure!(
         agent_config_root.is_absolute() && local_token_helper.is_absolute(),
         "llm_gateway_agent_config_path_invalid"
     );
     let base_url = format!("http://127.0.0.1:{gateway_port}");
+    let provider_ids = available_providers
+        .iter()
+        .map(|provider| provider.as_str())
+        .collect::<BTreeSet<_>>();
+    let models = models_for_provider_ids(&provider_ids).collect::<Vec<&'static DefaultGatewayModel>>();
     let (destination, content) = match target {
         GatewayAgentTarget::Codex => {
             let helper = toml_string(local_token_helper.to_string_lossy().as_ref())?;
@@ -71,6 +94,73 @@ pub fn plan_agent_config(
                 "env": { "ANTHROPIC_BASE_URL": base_url },
                 "apiKeyHelper": format!("{} gateway client-token --agent claude-code", local_token_helper.display())
             });
+            (
+                destination,
+                format!("{}\n", serde_json::to_string_pretty(&document)?),
+            )
+        }
+        GatewayAgentTarget::OpenCode => {
+            // Sidecar only: never rewrite the user's opencode.json / opencode.jsonc.
+            // Load via OPENCODE_CONFIG so OpenCode merges it with the existing global config.
+            let destination = agent_config_root.join("opencode.licoup-gateway.json");
+            let chat_base = format!("{base_url}/v1");
+            let mut model_map = Map::new();
+            for model in &models {
+                model_map.insert(
+                    model.requested_model.to_owned(),
+                    json!({ "name": model.display_name }),
+                );
+            }
+            let document = json!({
+                "$schema": "https://opencode.ai/config.json",
+                "provider": {
+                    "licoup-gateway": {
+                        "npm": "@ai-sdk/openai-compatible",
+                        "name": "LicoUp Gateway",
+                        "options": {
+                            "baseURL": chat_base,
+                            "apiKey": sv_licoup_local.as_str()
+                        },
+                        "models": Value::Object(model_map)
+                    }
+                }
+            });
+            let _ = local_token_helper;
+            (
+                destination,
+                format!("{}\n", serde_json::to_string_pretty(&document)?),
+            )
+        }
+        GatewayAgentTarget::Pi => {
+            // Sidecar only: never rewrite the user's models.json wholesale.
+            // Merge providers.licoup-gateway into ~/.pi/agent/models.json via the helper script.
+            let destination = agent_config_root.join("models.licoup-gateway.json");
+            let chat_base = format!("{base_url}/v1");
+            let model_list: Vec<Value> = models
+                .iter()
+                .map(|model| {
+                    json!({
+                        "id": model.requested_model,
+                        "name": model.display_name
+                    })
+                })
+                .collect();
+            let document = json!({
+                "providers": {
+                    "licoup-gateway": {
+                        "baseUrl": chat_base,
+                        "api": "openai-completions",
+                        "apiKey": sv_licoup_local.as_str(),
+                        "authHeader": true,
+                        "compat": {
+                            "supportsDeveloperRole": false,
+                            "supportsReasoningEffort": false
+                        },
+                        "models": model_list
+                    }
+                }
+            });
+            let _ = local_token_helper;
             (
                 destination,
                 format!("{}\n", serde_json::to_string_pretty(&document)?),
@@ -107,17 +197,31 @@ fn toml_string(value: &str) -> Result<String> {
     ))
 }
 
+fn synthetic_value(label: &str) -> String { format!("{label}-{}", uuid::Uuid::new_v4()) }
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::llm_gateway_default_catalog::DEFAULT_GATEWAY_MODELS;
+
+    fn all_providers() -> BTreeSet<LlmApiKeyProvider> {
+        BTreeSet::from(LlmApiKeyProvider::ALL)
+    }
+
     #[test]
     fn codex_and_claude_plans_use_loopback_and_never_embed_upstream_keys() {
-        for target in [GatewayAgentTarget::Codex, GatewayAgentTarget::ClaudeCode] {
+        for target in [
+            GatewayAgentTarget::Codex,
+            GatewayAgentTarget::ClaudeCode,
+            GatewayAgentTarget::OpenCode,
+            GatewayAgentTarget::Pi,
+        ] {
             let plan = plan_agent_config(
                 target,
                 Path::new("/synthetic/config"),
                 gateway_default_port(),
                 Path::new("/synthetic/lico-native"),
+                &all_providers(),
             )
             .unwrap();
             assert!(plan.content.contains(format!("127.0.0.1:{}", gateway_default_port())));
@@ -126,6 +230,96 @@ mod tests {
             assert!(!plan.content.contains("sk-"));
         }
     }
+
+    #[test]
+    fn opencode_plan_writes_sidecar_openai_compatible_provider() {
+        let plan = plan_agent_config(
+            GatewayAgentTarget::OpenCode,
+            Path::new("/synthetic/opencode"),
+            gateway_default_port(),
+            Path::new("/synthetic/lico-native"),
+            &all_providers(),
+        )
+        .unwrap();
+        assert_eq!(
+            plan.destination,
+            PathBuf::from("/synthetic/opencode/opencode.licoup-gateway.json")
+        );
+        assert!(plan.content.contains("@ai-sdk/openai-compatible"));
+        assert!(plan.content.contains(format!("http://127.0.0.1:{}/v1", gateway_default_port())));
+        assert!(plan.content.contains("kimi:k3"));
+        assert!(plan.content.contains("deepseek:deepseek-v4-pro"));
+        assert!(plan.content.contains("kilo:kilo-auto/frontier"));
+        assert!(plan.content.contains("kilo:anthropic/claude-opus-5"));
+        assert!(!plan.content.contains("anthropic/claude-sonnet-4.6"));
+        assert!(!plan.content.contains("kimi-k2-0905-preview"));
+        assert!(!plan.content.contains("opencode.jsonc"));
+        assert_eq!(
+            models_for_provider_ids(
+                &all_providers()
+                    .iter()
+                    .map(|provider| provider.as_str())
+                    .collect()
+            )
+            .count(),
+            DEFAULT_GATEWAY_MODELS.len()
+        );
+    }
+
+    #[test]
+    fn opencode_and_pi_plans_omit_providers_without_saved_keys() {
+        let only_kilo = BTreeSet::from([LlmApiKeyProvider::Kilo]);
+        for target in [GatewayAgentTarget::OpenCode, GatewayAgentTarget::Pi] {
+            let plan = plan_agent_config(
+                target,
+                Path::new("/synthetic/config"),
+                gateway_default_port(),
+                Path::new("/synthetic/lico-native"),
+                &only_kilo,
+            )
+            .unwrap();
+            assert!(plan.content.contains("kilo:kilo-auto/free"));
+            assert!(!plan.content.contains("kimi:k3"));
+            assert!(!plan.content.contains("deepseek:deepseek-v4"));
+        }
+
+        let empty = plan_agent_config(
+            GatewayAgentTarget::OpenCode,
+            Path::new("/synthetic/config"),
+            gateway_default_port(),
+            Path::new("/synthetic/lico-native"),
+            &BTreeSet::new(),
+        )
+        .unwrap();
+        assert!(empty.content.contains("\"models\": {}"));
+        assert!(!empty.content.contains("kimi:"));
+        assert!(!empty.content.contains("kilo:"));
+    }
+
+    #[test]
+    fn pi_plan_writes_sidecar_openai_completions_provider() {
+        let plan = plan_agent_config(
+            GatewayAgentTarget::Pi,
+            Path::new("/synthetic/pi/agent"),
+            gateway_default_port(),
+            Path::new("/synthetic/lico-native"),
+            &all_providers(),
+        )
+        .unwrap();
+        assert_eq!(
+            plan.destination,
+            PathBuf::from("/synthetic/pi/agent/models.licoup-gateway.json")
+        );
+        assert!(plan.content.contains("openai-completions"));
+        assert!(plan.content.contains(format!("http://127.0.0.1:{}/v1", gateway_default_port())));
+        assert!(plan.content.contains("kimi:k3"));
+        assert!(plan.content.contains("deepseek:deepseek-v4-flash"));
+        assert!(plan.content.contains("kilo:kilo-auto/balanced"));
+        assert!(plan.content.contains("kilo:anthropic/claude-sonnet-5"));
+        assert!(!plan.content.contains("\"id\": \"anthropic/claude-sonnet-4.6\""));
+        assert!(!plan.content.contains("settings.json"));
+    }
+
     #[test]
     fn unknown_agents_fail_closed() {
         assert!(GatewayAgentTarget::parse("unknown").is_err());

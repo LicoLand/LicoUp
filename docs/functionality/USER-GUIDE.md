@@ -68,17 +68,29 @@ resume operation. If an adapter cannot accept input during a running turn, the
 client keeps projecting its live output and starts the next turn only after the
 agent has completed its reply.
 
-Open **Adaptive Flywheel** from the Agents workspace to select the main agent
-and configure code-engineering roles. Designer is shared across the project.
-Worker and Reviewer each have independent Backend and Frontend assignments,
-including the agent, model, and reasoning effort. The saved assignments are
-stored in the private client-state file `adaptive-flywheel.toml` and projected
-to the local Subagent MCP without exposing executable paths or the raw file.
-Every role picker uses the same live target scan: a detected runnable agent is
-selectable in any role, and its model picker is populated from that agent's
-native model directory when available, then verified local configuration or
-cache. A static catalog only annotates known models and never replaces a
-successful native directory response.
+The top contact **Lico** opens a LicoUp-owned **group Conversation** where each
+agent is a peer participant. The composer shows the workspace capsule, a
+Flywheel capsule for the current main agent, and a circular edit control. Hover
+the Flywheel capsule to pick an agent and that agent's model (Gateway providers
+A–Z for Lico Agent; native catalogs for third-party agents). Click the capsule
+or the edit control to open the full Adaptive Flywheel editor.
+
+**Lico Agent** is a separate first-party runtime in the agent list (not the
+group entry itself). When chatting with it, choose Agent or Plan mode; Plan
+mode may only write the bound local plan file under OS sandbox. See
+[Lico Agent](../protocols/lico-agent.md).
+
+Open **Adaptive Flywheel** to select the main agent and configure
+code-engineering roles. Designer is shared across the project. Worker and
+Reviewer each have independent Backend and Frontend assignments, including the
+agent, model, and reasoning effort. The saved assignments are stored in the
+private client-state file `adaptive-flywheel.toml` and projected to the local
+Subagent MCP without exposing executable paths or the raw file. Every role
+picker uses the same live target scan: a detected runnable agent is selectable
+in any role, and its model picker is populated from that agent's native model
+directory when available, then verified local configuration or cache. A static
+catalog only annotates known models and never replaces a successful native
+directory response.
 
 ## Connect OpenClaw or Hermes in your VM
 
