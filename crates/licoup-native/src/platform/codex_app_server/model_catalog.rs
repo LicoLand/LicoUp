@@ -12,7 +12,9 @@ use std::time::{Duration, Instant};
 
 const INITIALIZE_ID: i64 = 91_001;
 const MODEL_LIST_ID: i64 = 91_002;
-const MODEL_SCAN_TIMEOUT: Duration = Duration::from_secs(4);
+// Product policy: every model-catalog scan waits up to one minute. On timeout
+// the Codex catalog falls back to sparse config/history/cache rows.
+const MODEL_SCAN_TIMEOUT: Duration = Duration::from_secs(60);
 const MAX_PROTOCOL_BYTES: usize = 2 * 1024 * 1024;
 const MAX_STDERR_BYTES: usize = 256 * 1024;
 const MAX_MODELS: usize = 256;

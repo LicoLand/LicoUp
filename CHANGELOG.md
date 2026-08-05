@@ -6,6 +6,18 @@ manifests.
 
 ## Unreleased
 
+- The client-owned local-agent fallback workspace is now the shared
+  `.lico-up/agent-workspace` directory (no per-agent subdirectory). The
+  composer workspace capsule stays clickable on local desktop so the user can
+  rebind a project directory instead of remaining locked on the fallback.
+- The Lico group flywheel section is labeled **Current Conversation**; when its
+  agent differs from the first Daily Conversation capsule, that selection is the
+  live dispatch owner without reordering the Daily Conversation list. The
+  flywheel capsule shows agent · model · reasoning effort · Fast when set.
+- Adaptive Flywheel Daily Conversation replaces the Main Agent card: a circular
+  plus expands into a search capsule and three floating cards (agent, model,
+  reasoning effort + Fast); the first capsule is the dispatch owner, and
+  selections persist in `adaptive-flywheel.toml`.
 - Documented the tuned Messaging Agents desktop surface in
   `docs/functionality/DESIGN-SYSTEM.md` and the user guides: shared main-content
   glass card, overlay header/composer capsules, hover-anchored conversation and

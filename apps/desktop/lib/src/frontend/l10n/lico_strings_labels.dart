@@ -511,8 +511,20 @@ extension LicoStringsLabels on LicoStrings {
   String get resetCircuitBreaker => isChinese ? '重置熔断' : 'Reset Circuit';
   String get circuitBroken => isChinese ? '已熔断' : 'Circuit Open';
   String get commander => isChinese ? '主智能体' : 'Main Agent';
+  /// Composer flywheel section: active dispatch owner for this conversation.
+  /// May differ from the first Daily Conversation capsule; when it does, this
+  /// selection wins for the current session.
+  String get currentConversation => isChinese ? '当前对话' : 'Current Conversation';
+  String get dailyConversation => isChinese ? '日常对话' : 'Daily Conversation';
+  String get addDailyConversationAgent => isChinese ? '添加智能体' : 'Add agent';
+  String get confirmDailyConversationSelection =>
+      isChinese ? '确认添加' : 'Confirm';
+  String get searchDailyConversationAgents =>
+      isChinese ? '搜索智能体' : 'Search agents';
+  String get fastModeLabel => 'Fast';
   String get agentClient => isChinese ? '智能体客户端' : 'Agent Client';
   String get noModelsFound => isChinese ? '未发现模型' : 'No Models Found';
+  String get noAgentsFound => isChinese ? '未发现智能体' : 'No Agents Found';
   String get noReasoningEffortsFound =>
       isChinese ? '未发现思考强度' : 'No Reasoning Efforts Found';
   String get defaultPolicy => isChinese ? '默认策略' : 'Default Policy';

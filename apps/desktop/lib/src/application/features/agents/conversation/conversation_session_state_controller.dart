@@ -55,7 +55,7 @@ mixin AgentConversationSessionStateController on AgentWorkspaceCoordinator {
       next = _conversationPreserveSummarizedTitles(durable, next);
     }
     next = _conversationPreserveBoundWorkingDirectories(previous, next);
-    // Native catalog cwd wins over a locally baked agent-workspaces path when
+    // Native catalog cwd wins over a locally baked agent-workspace path when
     // a newer turn-bound projection otherwise shadows the project directory.
     next = _conversationRecoverUsableWorkingDirectories(page.sessions, next);
     _conversationPromoteNativeTitles(agentId, page.sessions, next);
@@ -80,7 +80,7 @@ mixin AgentConversationSessionStateController on AgentWorkspaceCoordinator {
       } else if (!_sessionCoversMessages(next[matchingIndex], liveProjection)) {
         // Keep the catalog project directory on the retained turn projection.
         // Replacing the whole session used to drop workingDirectory and force
-        // the composer back onto the client-owned agent-workspaces fallback.
+        // the composer back onto the client-owned agent-workspace fallback.
         var retainedSession = previousSelected;
         final catalogDirectory = next[matchingIndex].workingDirectory;
         if (!isUsableLocalConversationWorkingDirectory(

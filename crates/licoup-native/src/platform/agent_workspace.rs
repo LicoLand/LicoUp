@@ -11,8 +11,9 @@ use crate::platform::paths::portable_data_dir;
 use directories::UserDirs;
 use std::path::{Component, Path, PathBuf};
 
-const AGENT_WORKSPACE_ROOT: &str = "agent-workspaces";
-const UNNAMED_AGENT_WORKSPACE: &str = "agent";
+/// Single client-owned fallback workspace under the LicoUp state root. Not
+/// partitioned by agent — every local turn that needs the fallback shares it.
+const AGENT_WORKSPACE_ROOT: &str = "agent-workspace";
 
 /// Personal roots that hold documents, media, and application state rather than
 /// a project. Only the root itself is unbounded; a directory the user
@@ -59,36 +60,13 @@ pub(crate) fn resolve_local_agent_workspace(
     default_local_agent_workspace(agent_id)
 }
 
-/// Client-owned default workspace for one agent, created on demand under the
-/// LicoUp state root.
-pub(crate) fn default_local_agent_workspace(agent_id: &str) -> Option<PathBuf> {
-    let workspace = portable_data_dir()
-        .ok()?
-        .join(AGENT_WORKSPACE_ROOT)
-        .join(workspace_segment(agent_id));
+/// Client-owned default workspace, created on demand under the LicoUp state
+/// root. [agent_id] is accepted for call-site compatibility and ignored: the
+/// fallback is shared across agents.
+pub(crate) fn default_local_agent_workspace(_agent_id: &str) -> Option<PathBuf> {
+    let workspace = portable_data_dir().ok()?.join(AGENT_WORKSPACE_ROOT);
     ensure_private_dir(&workspace).ok()?;
     Some(workspace)
-}
-
-fn workspace_segment(agent_id: &str) -> String {
-    let segment = agent_id
-        .trim()
-        .to_ascii_lowercase()
-        .chars()
-        .map(|character| {
-            if character.is_ascii_alphanumeric() {
-                character
-            } else {
-                '-'
-            }
-        })
-        .collect::<String>();
-    let segment = segment.trim_matches('-').to_string();
-    if segment.is_empty() {
-        UNNAMED_AGENT_WORKSPACE.to_string()
-    } else {
-        segment
-    }
 }
 
 fn user_home() -> Option<PathBuf> {
@@ -217,24 +195,20 @@ mod tests {
     }
 
     #[test]
-    fn workspace_segment_is_a_stable_single_path_element() {
-        assert_eq!(workspace_segment("Claude-Code"), "claude-code");
-        assert_eq!(workspace_segment(" cursor "), "cursor");
-        assert_eq!(workspace_segment("../escape"), "escape");
-        assert_eq!(workspace_segment("/"), UNNAMED_AGENT_WORKSPACE);
-        assert_eq!(workspace_segment(""), UNNAMED_AGENT_WORKSPACE);
-    }
-
-    #[test]
-    fn default_workspace_lives_under_the_client_state_root() {
+    fn default_workspace_is_shared_under_the_client_state_root() {
         let root =
             std::env::temp_dir().join(format!("licoup-agent-workspace-{}", uuid::Uuid::new_v4()));
         let previous = crate::platform::paths::set_portable_data_dir_override(Some(root.clone()));
 
         let workspace = default_local_agent_workspace("cursor").unwrap();
 
-        assert_eq!(workspace, root.join(AGENT_WORKSPACE_ROOT).join("cursor"));
+        assert_eq!(workspace, root.join(AGENT_WORKSPACE_ROOT));
         assert!(workspace.is_dir());
+        assert_eq!(
+            default_local_agent_workspace("codex").unwrap(),
+            workspace,
+            "fallback workspace must not vary by agent"
+        );
         assert_eq!(
             resolve_local_agent_workspace("cursor", Some(Path::new("relative"))),
             Some(workspace.clone())

@@ -123,7 +123,7 @@ export const FLUTTER_MODULES = Object.freeze([
         "apps/desktop/lib/src/application/features/agents/workspace/**",
         "apps/desktop/lib/src/frontend/features/agents/ui/agent_conversation_display_names.dart",
         "apps/desktop/lib/src/frontend/features/agents/ui/agent_orchestration_policy_controls.dart",
-        "apps/desktop/lib/src/frontend/features/agents/ui/agent_orchestration_commander_policy_card.dart",
+        "apps/desktop/lib/src/frontend/features/agents/ui/agent_orchestration_daily_conversation_policy_card.dart",
         "apps/desktop/lib/src/frontend/features/agents/ui/agent_orchestration_policy_dialog.dart",
         "apps/desktop/lib/src/frontend/features/agents/ui/agent_render_adapter.dart",
         "apps/desktop/lib/src/frontend/features/agents/ui/agent_workspace_sidebar.dart",

@@ -627,7 +627,7 @@ void registerClientConversationDispatchScenarios() {
   );
 
   test(
-    'a session stuck on agent-workspaces recovers a historical project path',
+    'a session stuck on agent-workspace recovers a historical project path',
     () async {
       final historicalDirectory = Directory.systemTemp
           .createTempSync('licoup-history-cwd-')
@@ -748,7 +748,7 @@ void registerClientConversationDispatchScenarios() {
       expect(
         controller.selectedConversationWorkingDirectory,
         projectDirectory,
-        reason: 'composer must not fall back to agent-workspaces after readback',
+        reason: 'composer must not fall back to agent-workspace after readback',
       );
       expect(
         controller.selectedConversationSessions.any(
@@ -759,6 +759,56 @@ void registerClientConversationDispatchScenarios() {
         ),
         isTrue,
       );
+    },
+  );
+
+  test(
+    'local workspace capsule stays selectable outside a new-conversation draft',
+    () async {
+      final service = FakeAgentService();
+      final controller = ClientController(agentService: service);
+      addTearDown(controller.dispose);
+
+      await controller.scanTargets();
+      await controller.selectConversationAgent('codex');
+      expect(controller.preparingNewConversation, isTrue);
+      expect(controller.canSelectNewConversationWorkingDirectory, isTrue);
+      expect(
+        controller.selectedConversationWorkingDirectory,
+        localConversationWorkingDirectoryFallback(agentId: 'codex'),
+      );
+
+      // Selecting a session abandons the new-conversation draft; the shared
+      // client-owned fallback must remain clickable so the user can rebind.
+      controller.conversationSessionsByAgent = {
+        'codex': [
+          AgentConversationSession(
+            id: 'codex-1',
+            agentId: 'codex',
+            title: 'Prior turn',
+            createdAt: '2026-01-01T00:00:00Z',
+            updatedAt: '2026-01-02T00:00:00Z',
+            messages: const [],
+            workingDirectory: localConversationWorkingDirectoryFallback(
+              agentId: 'codex',
+            ),
+          ),
+        ],
+      };
+      controller.selectConversationSession('codex-1');
+      expect(controller.preparingNewConversation, isFalse);
+      expect(controller.canSelectNewConversationWorkingDirectory, isTrue);
+      expect(
+        controller.selectedConversationWorkingDirectory,
+        localConversationWorkingDirectoryFallback(agentId: 'codex'),
+      );
+
+      final project = ['', 'synthetic', 'workspaces', 'rebind-project'].join(
+        '/',
+      );
+      controller.selectNewConversationWorkingDirectory(project);
+      expect(controller.lastError, isEmpty);
+      expect(controller.selectedConversationWorkingDirectory, project);
     },
   );
 

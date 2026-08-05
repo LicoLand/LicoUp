@@ -459,6 +459,7 @@ mixin AgentConversationSessionController
   void selectConversationSession(String sessionId) {
     conversationClearNativeSessionPending(selectedConversationAgentId);
     abandonNewConversationDraft(selectedConversationAgentId);
+    clearConversationWorkingDirectoryOverride();
     selectedConversationSessionId = sessionId;
     agentWorkspaceNotifyConversationStructureChanged();
     agentWorkspaceNotifyStateChanged();
@@ -482,13 +483,14 @@ mixin AgentConversationSessionController
     }
     final agentSessions =
         conversationSessionsByAgent[agent.target] ?? const [];
-    if (preparingNewConversation) {
-      final draftDirectory =
-          (newConversationWorkingDirectories[agent.target] ?? '').trim();
-      if (isUsableLocalConversationWorkingDirectory(draftDirectory)) {
-        return draftDirectory;
-      }
-    } else {
+    // Explicit user bind for the next turn wins over session provenance and
+    // the shared client-owned fallback.
+    final draftDirectory =
+        (newConversationWorkingDirectories[agent.target] ?? '').trim();
+    if (isBoundableConversationWorkingDirectory(draftDirectory)) {
+      return draftDirectory;
+    }
+    if (!preparingNewConversation) {
       final sessionDirectory =
           selectedConversationSession?.workingDirectory.trim() ?? '';
       if (isUsableLocalConversationWorkingDirectory(sessionDirectory)) {
@@ -523,6 +525,10 @@ mixin AgentConversationSessionController
     return localConversationWorkingDirectoryFallback(agentId: agent.target);
   }
 
+  /// Local desktop agents may always rebind the next-turn working directory.
+  /// The composer defaults to the shared client-owned `agent-workspace` and
+  /// must stay clickable — never locked — so the user can pick a project.
+  /// Sending a turn does not lock the capsule; the bind applies to later turns.
   bool get canSelectNewConversationWorkingDirectory {
     final agent = selectedConversationIsOrchestration
         ? (agentOrchestrationManagerTarget ??
@@ -530,9 +536,7 @@ mixin AgentConversationSessionController
         : selectedConversationAgent;
     return agent != null &&
         !agentWorkspaceMobileRuntime &&
-        !agent.hasValidVirtualMachineConnection &&
-        preparingNewConversation &&
-        !isSendingConversationMessage;
+        !agent.hasValidVirtualMachineConnection;
   }
 
   void selectNewConversationWorkingDirectory(String path) {
@@ -573,12 +577,29 @@ mixin AgentConversationSessionController
     };
     lastError = '';
     agentWorkspaceSetLocalizedStatusMessage(
-      '已更新新对话的工作目录。',
-      'Updated the working directory for the new conversation.',
+      '已更新工作目录。',
+      'Updated the working directory.',
     );
     statusCaption = 'Agent chat';
     agentWorkspaceNotifyActiveConversationChanged();
     agentWorkspaceNotifyStateChanged();
+  }
+
+  /// Drops a pending next-turn working-directory bind for the selected agent
+  /// (manager agent when orchestration is selected).
+  void clearConversationWorkingDirectoryOverride() {
+    final agent = selectedConversationIsOrchestration
+        ? (agentOrchestrationManagerTarget ??
+              agentOrchestrationConfiguredManagerTarget)
+        : selectedConversationAgent;
+    final key = agent?.target.trim() ?? '';
+    if (key.isEmpty || !newConversationWorkingDirectories.containsKey(key)) {
+      return;
+    }
+    newConversationWorkingDirectories = {
+      for (final entry in newConversationWorkingDirectories.entries)
+        if (entry.key != key) entry.key: entry.value,
+    };
   }
 
   /// Primes the new-conversation draft for the selected agent: the first sent
@@ -595,7 +616,7 @@ mixin AgentConversationSessionController
     }
     final existingDraft =
         (newConversationWorkingDirectories[agent.target] ?? '').trim();
-    if (isUsableLocalConversationWorkingDirectory(existingDraft)) {
+    if (isBoundableConversationWorkingDirectory(existingDraft)) {
       return;
     }
     final selectedDirectory =
@@ -715,7 +736,7 @@ mixin AgentConversationSessionController
         }
       }
       // Cached/durable sessions often lack a real project cwd (or still carry
-      // the retired agent-workspaces fallback). Refresh native history so the
+      // the retired agent-workspace fallback). Refresh native history so the
       // composer can bind the trusted workspace path from Cursor projects.
       final hasUsableWorkingDirectory =
           (conversationSessionsByAgent[normalizedAgentId] ?? const []).any(

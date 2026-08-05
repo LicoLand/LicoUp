@@ -65,11 +65,16 @@ void main() {
     expect(chosen, isEmpty);
   });
 
-  test('historical cwd skips the client-owned agent-workspaces fallback', () {
+  test('historical cwd skips the client-owned agent-workspace fallback', () {
     final fallback = localConversationWorkingDirectoryFallback(
       agentId: 'cursor',
     );
     expect(fallback, isNotEmpty);
+    expect(fallback.endsWith('/.lico-up/agent-workspace'), isTrue);
+    expect(
+      localConversationWorkingDirectoryFallback(agentId: 'codex'),
+      fallback,
+    );
     expect(isClientOwnedAgentWorkspace(fallback), isTrue);
     expect(
       isUsableLocalConversationWorkingDirectory(
@@ -95,6 +100,21 @@ void main() {
     expect(chosen, '/synthetic/workspaces/real-project');
   });
 
+  test('explicit binds stay admissible without a presence check', () {
+    expect(
+      isBoundableConversationWorkingDirectory(
+        '/synthetic/workspaces/draft-project',
+      ),
+      isTrue,
+    );
+    expect(
+      isBoundableConversationWorkingDirectory(
+        localConversationWorkingDirectoryFallback(agentId: 'cursor'),
+      ),
+      isFalse,
+    );
+  });
+
   test('a recorded project directory that no longer exists is not bindable', () {
     // Agent stores keep whatever directory a turn ran in, including temporary
     // workspaces and projects that have since been deleted or moved. Binding one
@@ -105,6 +125,12 @@ void main() {
         directoryExists: (_) => false,
       ),
       isFalse,
+    );
+    expect(
+      isBoundableConversationWorkingDirectory(
+        '/synthetic/workspaces/deleted-project',
+      ),
+      isTrue,
     );
     expect(
       isUsableLocalConversationWorkingDirectory(
