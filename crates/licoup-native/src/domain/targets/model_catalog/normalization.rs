@@ -402,6 +402,17 @@ pub(super) fn collect_model_catalog_entries_from_collection_value(
             if !model_catalog_object_is_selectable(object) {
                 return;
             }
+            // Codex `models_cache.json` (and similar) wrap the directory in a
+            // `models` array beside metadata scalars such as `fetched_at` /
+            // `etag` / `client_version`. Prefer that collection and do not
+            // treat the metadata strings as model ids.
+            if let Some((_, models)) = object.iter().find(|(key, child)| {
+                is_model_collection_key(&key.to_ascii_lowercase())
+                    && (child.is_array() || child.is_object())
+            }) {
+                collect_model_catalog_entries_from_collection_value(models, source, entries);
+                return;
+            }
             if let Some(name) = model_name_from_object(object) {
                 let display_name = model_display_name_from_object(object, &name);
                 add_model_catalog_entry_with_provider(
@@ -464,7 +475,25 @@ pub(super) fn sanitize_model_name(value: &str) -> Option<String> {
         || trimmed.starts_with('$')
         || trimmed.starts_with("http://")
         || trimmed.starts_with("https://")
+        || trimmed.starts_with("W/\"")
         || trimmed.to_ascii_lowercase().contains("api_key")
+    {
+        return None;
+    }
+    // Reject cache metadata that previously leaked in as model ids when a
+    // models_cache document was walked as a generic object tree.
+    if trimmed.contains('T')
+        && trimmed.contains(':')
+        && trimmed
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '-' | ':' | '.' | 'T' | 'Z' | '+'))
+    {
+        return None;
+    }
+    if trimmed
+        .chars()
+        .all(|ch| ch.is_ascii_digit() || ch == '.')
+        && trimmed.contains('.')
     {
         return None;
     }

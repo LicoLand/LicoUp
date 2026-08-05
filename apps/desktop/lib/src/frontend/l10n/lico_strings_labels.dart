@@ -515,7 +515,10 @@ extension LicoStringsLabels on LicoStrings {
   /// May differ from the first Daily Conversation capsule; when it does, this
   /// selection wins for the current session.
   String get currentConversation => isChinese ? '当前对话' : 'Current Conversation';
-  String get dailyConversation => isChinese ? '日常对话' : 'Daily Conversation';
+  String get dailyConversation => isChinese ? '日常对话' : 'Assistant';
+  String get codeEngineeringDesigner => isChinese ? '设计师' : 'Designer';
+  String get codeEngineeringWorker => isChinese ? '执行者' : 'Worker';
+  String get codeEngineeringReviewer => isChinese ? '审查官' : 'Reviewer';
   String get addDailyConversationAgent => isChinese ? '添加智能体' : 'Add agent';
   String get confirmDailyConversationSelection =>
       isChinese ? '确认添加' : 'Confirm';
@@ -532,18 +535,6 @@ extension LicoStringsLabels on LicoStrings {
   String get editMainAgent => isChinese ? '适应性飞轮' : 'Adaptive Flywheel';
   String get agentModeLabel => isChinese ? 'Agent' : 'Agent';
   String get planModeLabel => isChinese ? 'Plan' : 'Plan';
-  String get codeEngineering => isChinese ? '代码工程' : 'Code Engineering';
-  String get backendLane => isChinese ? '后端线' : 'Backend lane';
-  String get frontendLane => isChinese ? '前端线' : 'Frontend lane';
-  String get codeEngineeringDesignerDescription => isChinese
-      ? '共享前后端设计与任务拆分。'
-      : 'Shared design and task decomposition for both lanes.';
-  String get codeEngineeringWorkerDescription => isChinese
-      ? '前后端分别实现，互不替代。'
-      : 'Separate implementation ownership for frontend and backend.';
-  String get codeEngineeringReviewerDescription => isChinese
-      ? '前后端分别审查并形成闭环。'
-      : 'Separate review closure for frontend and backend.';
   String get addRule => isChinese ? '新增规则' : 'Add Rule';
   String ruleLabel(int index) => isChinese ? '规则 $index' : 'Rule $index';
   String get configurePolicyBeforeSend =>

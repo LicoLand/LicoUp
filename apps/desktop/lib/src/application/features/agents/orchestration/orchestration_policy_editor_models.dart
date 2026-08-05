@@ -131,7 +131,9 @@ final class AgentOrchestrationPolicy {
     this.commanderAgentId = '',
     this.commanderModelName = '',
     this.commanderReasoningEffort = '',
-    this.codeEngineeringRoles = const {},
+    this.designerAgents = const [],
+    this.workerAgents = const [],
+    this.reviewerAgents = const [],
   });
 
   /// Participants invited into everyday (non–code-engineering) conversation.
@@ -139,8 +141,13 @@ final class AgentOrchestrationPolicy {
   final String commanderAgentId;
   final String commanderModelName;
   final String commanderReasoningEffort;
-  final Map<CodeEngineeringRoleSlot, AgentOrchestrationRoleAssignment>
-  codeEngineeringRoles;
+
+  /// Code-engineering multi-capsule lists (order is priority). Worker/Reviewer
+  /// project to backend/frontend lanes: first capsule → backend, second →
+  /// frontend (or the sole capsule for both lanes).
+  final List<DailyConversationAgentAssignment> designerAgents;
+  final List<DailyConversationAgentAssignment> workerAgents;
+  final List<DailyConversationAgentAssignment> reviewerAgents;
 
   /// Distinct agent ids — used by roster sync (order follows first appearance).
   List<String> get dailyConversationAgentIds {
@@ -178,13 +185,42 @@ final class AgentOrchestrationPolicy {
       primaryDailyConversationAgent != null ||
       commanderAgentId.trim().isNotEmpty;
 
-  bool get codeEngineeringConfigured => CodeEngineeringRoleSlot.values.every(
-    (role) => assignmentFor(role).configured,
-  );
+  bool get codeEngineeringConfigured =>
+      _primaryCapsule(designerAgents) != null &&
+      _primaryCapsule(workerAgents) != null &&
+      _primaryCapsule(reviewerAgents) != null;
 
+  /// Slot projection used by roster sync and Subagent MCP's five-path shape.
   AgentOrchestrationRoleAssignment assignmentFor(
     CodeEngineeringRoleSlot role,
-  ) => codeEngineeringRoles[role] ?? const AgentOrchestrationRoleAssignment();
+  ) {
+    final capsule = switch (role) {
+      CodeEngineeringRoleSlot.designer => _primaryCapsule(designerAgents),
+      CodeEngineeringRoleSlot.backendWorker => _primaryCapsule(workerAgents),
+      CodeEngineeringRoleSlot.frontendWorker =>
+        _laneCapsule(workerAgents, frontend: true),
+      CodeEngineeringRoleSlot.backendReviewer => _primaryCapsule(reviewerAgents),
+      CodeEngineeringRoleSlot.frontendReviewer =>
+        _laneCapsule(reviewerAgents, frontend: true),
+    };
+    if (capsule == null) return const AgentOrchestrationRoleAssignment();
+    return AgentOrchestrationRoleAssignment(
+      agentId: capsule.agentId,
+      modelName: capsule.modelName,
+      reasoningEffort: capsule.reasoningEffort,
+    );
+  }
+
+  /// Distinct agent ids across every code-engineering capsule.
+  Iterable<String> get codeEngineeringAgentIds sync* {
+    final seen = <String>{};
+    for (final list in [designerAgents, workerAgents, reviewerAgents]) {
+      for (final assignment in list) {
+        final id = assignment.agentId.trim();
+        if (id.isNotEmpty && seen.add(id)) yield id;
+      }
+    }
+  }
 
   DailyConversationAgentAssignment? dailyConversationAssignmentFor(
     String agentId,
@@ -257,8 +293,9 @@ final class AgentOrchestrationPolicy {
     String? commanderAgentId,
     String? commanderModelName,
     String? commanderReasoningEffort,
-    Map<CodeEngineeringRoleSlot, AgentOrchestrationRoleAssignment>?
-    codeEngineeringRoles,
+    List<DailyConversationAgentAssignment>? designerAgents,
+    List<DailyConversationAgentAssignment>? workerAgents,
+    List<DailyConversationAgentAssignment>? reviewerAgents,
   }) {
     return AgentOrchestrationPolicy(
       dailyConversationAgents: List.unmodifiable(
@@ -268,13 +305,24 @@ final class AgentOrchestrationPolicy {
       commanderModelName: commanderModelName ?? this.commanderModelName,
       commanderReasoningEffort:
           commanderReasoningEffort ?? this.commanderReasoningEffort,
-      codeEngineeringRoles: Map.unmodifiable(
-        codeEngineeringRoles ?? this.codeEngineeringRoles,
-      ),
+      designerAgents: List.unmodifiable(designerAgents ?? this.designerAgents),
+      workerAgents: List.unmodifiable(workerAgents ?? this.workerAgents),
+      reviewerAgents: List.unmodifiable(reviewerAgents ?? this.reviewerAgents),
     );
   }
 
   Map<String, Object?> toTomlConfig() {
+    final designerPrimary = assignmentFor(CodeEngineeringRoleSlot.designer);
+    final workerBackend = assignmentFor(CodeEngineeringRoleSlot.backendWorker);
+    final workerFrontend = assignmentFor(
+      CodeEngineeringRoleSlot.frontendWorker,
+    );
+    final reviewerBackend = assignmentFor(
+      CodeEngineeringRoleSlot.backendReviewer,
+    );
+    final reviewerFrontend = assignmentFor(
+      CodeEngineeringRoleSlot.frontendReviewer,
+    );
     return <String, Object?>{
       'version': 1,
       'daily_conversation': <String, Object?>{
@@ -290,24 +338,30 @@ final class AgentOrchestrationPolicy {
       },
       'code_engineering': <String, Object?>{
         'strategy': 'frontend_backend_roles',
-        'designer': assignmentFor(
-          CodeEngineeringRoleSlot.designer,
-        ).toTomlConfig(),
+        // Primary object fields keep Subagent MCP's five-path reader working;
+        // `agents` carries the full ordered multi-capsule list for the editor.
+        'designer': <String, Object?>{
+          ...designerPrimary.toTomlConfig(),
+          'agents': [
+            for (final assignment in designerAgents)
+              if (assignment.configured) assignment.toTomlConfig(),
+          ],
+        },
         'worker': <String, Object?>{
-          'backend': assignmentFor(
-            CodeEngineeringRoleSlot.backendWorker,
-          ).toTomlConfig(),
-          'frontend': assignmentFor(
-            CodeEngineeringRoleSlot.frontendWorker,
-          ).toTomlConfig(),
+          'backend': workerBackend.toTomlConfig(),
+          'frontend': workerFrontend.toTomlConfig(),
+          'agents': [
+            for (final assignment in workerAgents)
+              if (assignment.configured) assignment.toTomlConfig(),
+          ],
         },
         'reviewer': <String, Object?>{
-          'backend': assignmentFor(
-            CodeEngineeringRoleSlot.backendReviewer,
-          ).toTomlConfig(),
-          'frontend': assignmentFor(
-            CodeEngineeringRoleSlot.frontendReviewer,
-          ).toTomlConfig(),
+          'backend': reviewerBackend.toTomlConfig(),
+          'frontend': reviewerFrontend.toTomlConfig(),
+          'agents': [
+            for (final assignment in reviewerAgents)
+              if (assignment.configured) assignment.toTomlConfig(),
+          ],
         },
       },
     };
@@ -329,27 +383,80 @@ final class AgentOrchestrationPolicy {
       commanderAgentId: _string(main['agent']),
       commanderModelName: _string(main['model']),
       commanderReasoningEffort: _string(main['reasoning_effort']),
-      codeEngineeringRoles: Map.unmodifiable(<
-        CodeEngineeringRoleSlot,
-        AgentOrchestrationRoleAssignment
-      >{
-        CodeEngineeringRoleSlot.designer:
-            AgentOrchestrationRoleAssignment.fromTomlConfig(code['designer']),
-        CodeEngineeringRoleSlot.backendWorker:
-            AgentOrchestrationRoleAssignment.fromTomlConfig(worker['backend']),
-        CodeEngineeringRoleSlot.frontendWorker:
-            AgentOrchestrationRoleAssignment.fromTomlConfig(worker['frontend']),
-        CodeEngineeringRoleSlot.backendReviewer:
-            AgentOrchestrationRoleAssignment.fromTomlConfig(
-              reviewer['backend'],
-            ),
-        CodeEngineeringRoleSlot.frontendReviewer:
-            AgentOrchestrationRoleAssignment.fromTomlConfig(
-              reviewer['frontend'],
-            ),
-      }),
+      designerAgents: _codeEngineeringAgents(
+        code['designer'],
+        fallbackSingles: [code['designer']],
+        idPrefix: 'ce-designer',
+      ),
+      workerAgents: _codeEngineeringAgents(
+        worker,
+        fallbackSingles: [worker['backend'], worker['frontend']],
+        idPrefix: 'ce-worker',
+      ),
+      reviewerAgents: _codeEngineeringAgents(
+        reviewer,
+        fallbackSingles: [reviewer['backend'], reviewer['frontend']],
+        idPrefix: 'ce-reviewer',
+      ),
     );
   }
+}
+
+DailyConversationAgentAssignment? _primaryCapsule(
+  List<DailyConversationAgentAssignment> agents,
+) {
+  for (final assignment in agents) {
+    if (assignment.configured) return assignment;
+  }
+  return null;
+}
+
+DailyConversationAgentAssignment? _laneCapsule(
+  List<DailyConversationAgentAssignment> agents, {
+  required bool frontend,
+}) {
+  final configured = [
+    for (final assignment in agents)
+      if (assignment.configured) assignment,
+  ];
+  if (configured.isEmpty) return null;
+  if (!frontend || configured.length == 1) return configured.first;
+  return configured[1];
+}
+
+List<DailyConversationAgentAssignment> _codeEngineeringAgents(
+  Object? group, {
+  required List<Object?> fallbackSingles,
+  required String idPrefix,
+}) {
+  if (group is Map) {
+    final agents = group['agents'];
+    if (agents is List && agents.isNotEmpty) {
+      return _dailyConversationAssignments(agents, idPrefix: idPrefix);
+    }
+  }
+  if (group is List && group.isNotEmpty) {
+    return _dailyConversationAssignments(group, idPrefix: idPrefix);
+  }
+  final migrated = <DailyConversationAgentAssignment>[];
+  final seen = <String>{};
+  var index = 0;
+  for (final single in fallbackSingles) {
+    final role = AgentOrchestrationRoleAssignment.fromTomlConfig(single);
+    if (!role.configured) continue;
+    final key = '${role.agentId}\u0000${role.modelName}\u0000${role.reasoningEffort}';
+    if (!seen.add(key)) continue;
+    migrated.add(
+      DailyConversationAgentAssignment(
+        id: '$idPrefix-${role.agentId}-$index',
+        agentId: role.agentId,
+        modelName: role.modelName,
+        reasoningEffort: role.reasoningEffort,
+      ),
+    );
+    index += 1;
+  }
+  return List.unmodifiable(migrated);
 }
 
 AgentOrchestrationPolicy sanitizeOrchestrationPolicyEditorDraft(
@@ -382,10 +489,21 @@ AgentOrchestrationPolicy sanitizeOrchestrationPolicyEditorDraft(
       commanderModelName,
       synced.commanderReasoningEffort,
     ),
-    codeEngineeringRoles: Map.unmodifiable({
-      for (final role in CodeEngineeringRoleSlot.values)
-        role: _normalizeRoleAssignment(targets, policy.assignmentFor(role)),
-    }),
+    designerAgents: _normalizeDailyConversationAgents(
+      targets,
+      policy.designerAgents,
+      idPrefix: 'ce-designer',
+    ),
+    workerAgents: _normalizeDailyConversationAgents(
+      targets,
+      policy.workerAgents,
+      idPrefix: 'ce-worker',
+    ),
+    reviewerAgents: _normalizeDailyConversationAgents(
+      targets,
+      policy.reviewerAgents,
+      idPrefix: 'ce-reviewer',
+    ),
   );
 }
 
@@ -400,37 +518,11 @@ AgentOrchestrationPolicy sanitizeOrchestrationPolicyEditorDraft(
 AgentOrchestrationPolicy normalizeOrchestrationPolicyForPersistence(
   AgentOrchestrationPolicy policy,
 ) {
-  AgentOrchestrationRoleAssignment normalizeAssignment(
-    AgentOrchestrationRoleAssignment assignment,
-  ) {
-    return AgentOrchestrationRoleAssignment(
-      agentId: assignment.agentId.trim(),
-      modelName: assignment.modelName.trim(),
-      reasoningEffort: assignment.reasoningEffort.trim(),
-    );
-  }
-
   final seeded = policy.withDailyConversationSeededFromCommander();
-  final seenIds = <String>{};
-  final dailyAgents = <DailyConversationAgentAssignment>[];
-  for (final assignment in seeded.dailyConversationAgents) {
-    final agentId = assignment.agentId.trim();
-    if (agentId.isEmpty) continue;
-    var id = assignment.id.trim();
-    if (id.isEmpty || !seenIds.add(id)) {
-      id = 'dc-$agentId-${dailyAgents.length}';
-      seenIds.add(id);
-    }
-    dailyAgents.add(
-      DailyConversationAgentAssignment(
-        id: id,
-        agentId: agentId,
-        modelName: assignment.modelName.trim(),
-        reasoningEffort: assignment.reasoningEffort.trim(),
-        fast: assignment.fast,
-      ),
-    );
-  }
+  final dailyAgents = _trimCapsuleList(
+    seeded.dailyConversationAgents,
+    idPrefix: 'dc',
+  );
   // Preserve an explicit Current Conversation (`main_agent`) selection even
   // when it differs from the first Daily Conversation capsule. Only fill
   // Current Conversation from Daily Conversation when it is unset. When the
@@ -442,10 +534,15 @@ AgentOrchestrationPolicy normalizeOrchestrationPolicyForPersistence(
     commanderAgentId: policy.commanderAgentId.trim(),
     commanderModelName: policy.commanderModelName.trim(),
     commanderReasoningEffort: policy.commanderReasoningEffort.trim(),
-    codeEngineeringRoles: Map.unmodifiable({
-      for (final role in CodeEngineeringRoleSlot.values)
-        role: normalizeAssignment(policy.assignmentFor(role)),
-    }),
+    designerAgents: _trimCapsuleList(
+      policy.designerAgents,
+      idPrefix: 'ce-designer',
+    ),
+    workerAgents: _trimCapsuleList(policy.workerAgents, idPrefix: 'ce-worker'),
+    reviewerAgents: _trimCapsuleList(
+      policy.reviewerAgents,
+      idPrefix: 'ce-reviewer',
+    ),
   );
   if (preserved.commanderAgentId.isEmpty) {
     return preserved.withCommanderSyncedFromDailyConversation();
@@ -464,32 +561,38 @@ AgentOrchestrationPolicy normalizeOrchestrationPolicyForPersistence(
   );
 }
 
-AgentOrchestrationRoleAssignment _normalizeRoleAssignment(
-  Iterable<TargetCandidate> targets,
-  AgentOrchestrationRoleAssignment assignment,
-) {
-  final agentId = _normalizeCommanderAgentId(targets, assignment.agentId);
-  final modelName = _normalizeCommanderModelName(
-    targets,
-    agentId,
-    assignment.modelName,
-  );
-  return AgentOrchestrationRoleAssignment(
-    agentId: agentId,
-    modelName: modelName,
-    reasoningEffort: _normalizeCommanderReasoningEffort(
-      targets,
-      agentId,
-      modelName,
-      assignment.reasoningEffort,
-    ),
-  );
+List<DailyConversationAgentAssignment> _trimCapsuleList(
+  Iterable<DailyConversationAgentAssignment> agents, {
+  required String idPrefix,
+}) {
+  final seenIds = <String>{};
+  final result = <DailyConversationAgentAssignment>[];
+  for (final assignment in agents) {
+    final agentId = assignment.agentId.trim();
+    if (agentId.isEmpty) continue;
+    var id = assignment.id.trim();
+    if (id.isEmpty || !seenIds.add(id)) {
+      id = '$idPrefix-$agentId-${result.length}';
+      seenIds.add(id);
+    }
+    result.add(
+      DailyConversationAgentAssignment(
+        id: id,
+        agentId: agentId,
+        modelName: assignment.modelName.trim(),
+        reasoningEffort: assignment.reasoningEffort.trim(),
+        fast: assignment.fast,
+      ),
+    );
+  }
+  return result;
 }
 
 List<DailyConversationAgentAssignment> _normalizeDailyConversationAgents(
   Iterable<TargetCandidate> targets,
-  Iterable<DailyConversationAgentAssignment> configured,
-) {
+  Iterable<DailyConversationAgentAssignment> configured, {
+  String idPrefix = 'dc',
+}) {
   final available = {
     for (final target in agentOrchestrationCommanderTargets(targets))
       target.target: target,
@@ -501,7 +604,7 @@ List<DailyConversationAgentAssignment> _normalizeDailyConversationAgents(
     if (available[agentId] == null) continue;
     var id = assignment.id.trim();
     if (id.isEmpty || !seenIds.add(id)) {
-      id = 'dc-$agentId-${result.length}';
+      id = '$idPrefix-$agentId-${result.length}';
       seenIds.add(id);
     }
     final modelName = _normalizeCommanderModelName(
@@ -586,8 +689,9 @@ String _string(Object? value, {String fallback = ''}) {
 }
 
 List<DailyConversationAgentAssignment> _dailyConversationAssignments(
-  Object? value,
-) {
+  Object? value, {
+  String idPrefix = 'dc',
+}) {
   if (value is! List) return const [];
   final seenIds = <String>{};
   final result = <DailyConversationAgentAssignment>[];
@@ -597,7 +701,7 @@ List<DailyConversationAgentAssignment> _dailyConversationAssignments(
     if (agentId.isEmpty) continue;
     var id = assignment.id.trim();
     if (id.isEmpty || !seenIds.add(id)) {
-      id = 'dc-$agentId-${result.length}';
+      id = '$idPrefix-$agentId-${result.length}';
       seenIds.add(id);
     }
     result.add(assignment.id == id ? assignment : assignment.copyWith(id: id));

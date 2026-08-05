@@ -81,25 +81,28 @@ mode may only write the bound local plan file under OS sandbox. See
 [Lico Agent](../protocols/lico-agent.md).
 
 Open **Adaptive Flywheel** to choose everyday conversation agents and configure
-code-engineering roles. **Daily Conversation** is the configured priority list;
-the first capsule is the default dispatch owner. On the Lico group composer, the
-flywheel **Current Conversation** picker uses the same agent/model choice and
-becomes the live dispatch owner when it differs from that first capsule. Saving
-Adaptive Flywheel again re-syncs Current Conversation from the first Daily
-Conversation capsule. Daily Conversation starts from a circular plus control
-that expands into a capsule search field and three horizontal floating cards —
-agent, that agent’s models, and reasoning effort plus a Fast switch; confirmed
-combinations become capsules. Remove a capsule only with its trailing close
-control; long-press and drag to reorder — list order is the effective priority.
-Designer is shared across the project. Worker and Reviewer each have
-independent Backend and Frontend assignments, including the agent, model, and
-reasoning effort. The saved assignments are stored in the private client-state
-file `adaptive-flywheel.toml` and projected to the local Subagent MCP without
-exposing executable paths or the raw file. Every role picker uses the same live
-target scan: a detected runnable agent is selectable in any role, and its model
-picker is populated from that agent's native model directory when available,
-then verified local configuration or cache. A static catalog only annotates
-known models and never replaces a successful native directory response.
+code-engineering roles. **Assistant** is the configured priority list; the first
+capsule is the default dispatch owner. On the Lico group composer, the flywheel
+**Current Conversation** picker uses the same agent/model choice and becomes the
+live dispatch owner when it differs from that first capsule. Saving Adaptive
+Flywheel again re-syncs Current Conversation from the first Assistant capsule.
+Assistant starts from a circular plus control that expands into a capsule search
+field and three horizontal floating cards — agent, that agent’s models, and
+reasoning effort plus a Fast switch; confirmed combinations become capsules.
+Remove a capsule only with its trailing close control; long-press and drag to
+reorder — list order is the effective priority. **Code Engineering** uses the
+same multi-capsule picker for Designer, Worker, and Reviewer (without Fast).
+Designer capsules are shared across the project; list order is priority. Worker
+and Reviewer project to backend/frontend lanes:
+the first capsule is the backend assignment, the second is frontend, and a
+single capsule covers both lanes. The saved assignments are stored in the
+private client-state file `adaptive-flywheel.toml` and projected to the local
+Subagent MCP without exposing executable paths or the raw file. Every role
+picker uses the same live target scan: a detected runnable agent is selectable
+in any role, and its model picker is populated from that agent's native model
+directory when available, then verified local configuration or cache. A static
+catalog only annotates known models and never replaces a successful native
+directory response.
 
 ## Connect OpenClaw or Hermes in your VM
 

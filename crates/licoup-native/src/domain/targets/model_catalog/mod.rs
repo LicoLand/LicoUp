@@ -81,14 +81,6 @@ pub(super) fn model_catalog_for_target(
     config_path: Option<&Path>,
     params: &Value,
 ) -> Value {
-    if target == "codex"
-        && model_catalog_fixture_for_target(target, params).is_none()
-        && (!cfg!(test) || param_bool(params, "enableAgentCliModelLookup").unwrap_or(false))
-        && let Some(binary) = find_binary(&["codex"])
-        && let Ok(catalog) = crate::platform::codex_app_server_model_catalog(&binary)
-    {
-        return catalog;
-    }
     let mut entries = BTreeMap::<String, ModelCatalogEntry>::new();
     let mut global_efforts = BTreeSet::<String>::new();
     let mut sources = BTreeSet::<String>::new();
@@ -103,6 +95,30 @@ pub(super) fn model_catalog_for_target(
         merge_model_catalog_value_into(
             &fixture,
             "fixture",
+            &mut entries,
+            &mut sources,
+            &mut diagnostics,
+        );
+    }
+
+    // Codex App Server is a live projection, not an exclusive directory.
+    // Merge it with ~/.codex/models_cache.json and model-catalogs so custom
+    // providers (for example DeepSeek) and cache-only rows stay selectable.
+    if target == "codex"
+        && model_catalog_fixture_for_target(target, params).is_none()
+        && (!cfg!(test) || param_bool(params, "enableAgentCliModelLookup").unwrap_or(false))
+        && let Some(binary) = find_binary(&["codex"])
+        && let Ok(catalog) = crate::platform::codex_app_server_model_catalog(&binary)
+    {
+        if default_model.is_none() {
+            default_model = catalog
+                .get("defaultModel")
+                .map(model_name_from_value)
+                .filter(|name| !name.trim().is_empty());
+        }
+        merge_model_catalog_value_into(
+            &catalog,
+            "codex-app-server",
             &mut entries,
             &mut sources,
             &mut diagnostics,

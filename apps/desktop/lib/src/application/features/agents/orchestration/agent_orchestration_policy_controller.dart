@@ -163,11 +163,17 @@ mixin AgentOrchestrationPolicyController on AgentWorkspaceCoordinator {
       policy.commanderAgentId,
       policy.commanderModelName,
       policy.commanderReasoningEffort,
-      for (final role in CodeEngineeringRoleSlot.values) ...[
-        policy.assignmentFor(role).agentId,
-        policy.assignmentFor(role).modelName,
-        policy.assignmentFor(role).reasoningEffort,
-      ],
+      for (final list in [
+        policy.designerAgents,
+        policy.workerAgents,
+        policy.reviewerAgents,
+      ])
+        for (final assignment in list) ...[
+          assignment.id,
+          assignment.agentId,
+          assignment.modelName,
+          assignment.reasoningEffort,
+        ],
     ].join('\u0000');
   }
 
@@ -197,8 +203,8 @@ mixin AgentOrchestrationPolicyController on AgentWorkspaceCoordinator {
         put(agentId);
       }
       put(policy.commanderAgentId);
-      for (final role in CodeEngineeringRoleSlot.values) {
-        put(policy.assignmentFor(role).agentId);
+      for (final agentId in policy.codeEngineeringAgentIds) {
+        put(agentId);
       }
       final record = await GroupConversationStore().syncRosterFromFlywheel(
         portableData: agentWorkspacePortableData,
