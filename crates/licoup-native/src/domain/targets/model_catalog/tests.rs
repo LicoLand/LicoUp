@@ -192,6 +192,116 @@ model = "gpt-5.4-mini"
     }
 
     #[test]
+    fn model_catalog_reads_codex_models_cache_json() {
+        let home = temp_test_dir("codex-models-cache");
+        let cache_path = home.join(".codex").join("models_cache.json");
+        fs::create_dir_all(cache_path.parent().unwrap()).unwrap();
+        fs::write(
+            &cache_path,
+            json!({
+                "fetched_at": "2026-08-05T13:00:00.334386Z",
+                "etag": "W/\"bbfb24a13d309e497dccc03e80defa5f\"",
+                "client_version": "0.146.0",
+                "models": [
+                    {
+                        "slug": "gpt-5.6-sol",
+                        "display_name": "GPT-5.6-Sol",
+                        "visibility": "list",
+                        "supported_reasoning_levels": [
+                            {"effort": "low"},
+                            {"effort": "max"}
+                        ]
+                    },
+                    {
+                        "slug": "gpt-5.6-terra",
+                        "display_name": "GPT-5.6-Terra",
+                        "visibility": "list",
+                        "supported_reasoning_levels": [
+                            {"effort": "medium"}
+                        ]
+                    },
+                    {
+                        "slug": "gpt-5.6-luna",
+                        "display_name": "GPT-5.6-Luna",
+                        "visibility": "list",
+                        "supported_reasoning_levels": [
+                            {"effort": "high"}
+                        ]
+                    },
+                    {
+                        "slug": "gpt-5.5",
+                        "display_name": "GPT-5.5",
+                        "visibility": "list",
+                        "supported_reasoning_levels": [
+                            {"effort": "medium"}
+                        ]
+                    },
+                    {
+                        "slug": "gpt-5.3-codex-spark",
+                        "display_name": "GPT-5.3-Codex-Spark",
+                        "visibility": "list",
+                        "supported_reasoning_levels": [
+                            {"effort": "low"}
+                        ]
+                    },
+                    {
+                        "slug": "gpt-5.6-sol-wm",
+                        "display_name": "GPT-5.6-Sol-WM",
+                        "visibility": "hide",
+                        "supported_reasoning_levels": [
+                            {"effort": "low"}
+                        ]
+                    }
+                ]
+            })
+            .to_string(),
+        )
+        .unwrap();
+        let custom_catalog = home
+            .join(".codex")
+            .join("model-catalogs")
+            .join("deepseek.json");
+        fs::create_dir_all(custom_catalog.parent().unwrap()).unwrap();
+        fs::write(
+            &custom_catalog,
+            json!({
+                "models": [
+                    {
+                        "slug": "deepseek-v4-flash",
+                        "display_name": "DeepSeek V4 Flash",
+                        "visibility": "list",
+                        "supported_reasoning_levels": [{"effort": "max"}]
+                    }
+                ]
+            })
+            .to_string(),
+        )
+        .unwrap();
+
+        let catalog = model_catalog_for_target(
+            "codex",
+            None,
+            &json!({
+                "homeDir": display_path(home),
+                "includeHistoryModelCatalog": false,
+            }),
+        );
+        let models = catalog["models"].as_array().unwrap();
+        let names: Vec<&str> = models.iter().filter_map(|model| model["name"].as_str()).collect();
+        assert!(names.contains(&"gpt-5.6-sol"));
+        assert!(names.contains(&"gpt-5.6-terra"));
+        assert!(names.contains(&"gpt-5.6-luna"));
+        assert!(names.contains(&"gpt-5.5"));
+        assert!(names.contains(&"gpt-5.3-codex-spark"));
+        assert!(names.contains(&"deepseek-v4-flash"));
+        assert!(!names.contains(&"gpt-5.6-sol-wm"));
+        assert!(
+            !names.iter().any(|name| name.contains('T') || name.starts_with("W/") || *name == "0.146.0"),
+            "cache metadata leaked into model names: {names:?}"
+        );
+    }
+
+    #[test]
     fn model_catalog_reads_claude_code_settings_models() {
         let home = temp_test_dir("claude-code-model-catalog");
         let settings_path = home.join(".claude").join("settings.json");

@@ -177,11 +177,30 @@ void main() {
     },
   );
 
-  test('code engineering persists one Designer and lane-specific roles', () {
-    const assignment = AgentOrchestrationRoleAssignment(
+  test('code engineering persists multi-capsule lists and lane projection', () {
+    const designer = DailyConversationAgentAssignment(
+      id: 'ce-designer-1',
       agentId: 'codex',
       modelName: 'gpt-5',
       reasoningEffort: 'high',
+    );
+    const workerBackend = DailyConversationAgentAssignment(
+      id: 'ce-worker-1',
+      agentId: 'codex',
+      modelName: 'gpt-5',
+      reasoningEffort: 'high',
+    );
+    const workerFrontend = DailyConversationAgentAssignment(
+      id: 'ce-worker-2',
+      agentId: 'cursor',
+      modelName: 'composer',
+      reasoningEffort: 'medium',
+    );
+    const reviewer = DailyConversationAgentAssignment(
+      id: 'ce-reviewer-1',
+      agentId: 'codex',
+      modelName: 'gpt-5',
+      reasoningEffort: 'medium',
     );
     const policy = AgentOrchestrationPolicy(
       dailyConversationAgents: [
@@ -201,13 +220,9 @@ void main() {
         DailyConversationAgentAssignment(id: 'dc-3', agentId: 'cursor'),
       ],
       commanderAgentId: 'codex',
-      codeEngineeringRoles: {
-        CodeEngineeringRoleSlot.designer: assignment,
-        CodeEngineeringRoleSlot.backendWorker: assignment,
-        CodeEngineeringRoleSlot.frontendWorker: assignment,
-        CodeEngineeringRoleSlot.backendReviewer: assignment,
-        CodeEngineeringRoleSlot.frontendReviewer: assignment,
-      },
+      designerAgents: [designer],
+      workerAgents: [workerBackend, workerFrontend],
+      reviewerAgents: [reviewer],
     );
 
     final encoded = policy.toTomlConfig();
@@ -215,6 +230,8 @@ void main() {
     final codeEngineering = encoded['code_engineering'] as Map;
     final dailyConversation = encoded['daily_conversation'] as Map;
     final dailyAgents = dailyConversation['agents'] as List;
+    final worker = codeEngineering['worker'] as Map;
+    final reviewerConfig = codeEngineering['reviewer'] as Map;
 
     expect(dailyAgents, hasLength(3));
     expect(dailyAgents.first, {
@@ -228,21 +245,80 @@ void main() {
     expect(decoded.dailyConversationAgentIds, ['codex', 'cursor']);
     expect(decoded.dailyConversationAgents.first.fast, isTrue);
     expect(codeEngineering['strategy'], 'frontend_backend_roles');
-    expect((codeEngineering['worker'] as Map).keys.toSet(), {
-      'backend',
-      'frontend',
-    });
-    expect((codeEngineering['reviewer'] as Map).keys.toSet(), {
-      'backend',
-      'frontend',
-    });
+    expect(worker.keys.toSet(), {'backend', 'frontend', 'agents'});
+    expect(reviewerConfig.keys.toSet(), {'backend', 'frontend', 'agents'});
+    expect((worker['agents'] as List), hasLength(2));
+    expect((reviewerConfig['agents'] as List), hasLength(1));
+    expect(decoded.designerAgents, hasLength(1));
+    expect(decoded.workerAgents, hasLength(2));
+    expect(decoded.reviewerAgents, hasLength(1));
     expect(decoded.codeEngineeringConfigured, isTrue);
+    expect(
+      decoded.assignmentFor(CodeEngineeringRoleSlot.backendWorker).agentId,
+      'codex',
+    );
+    expect(
+      decoded.assignmentFor(CodeEngineeringRoleSlot.frontendWorker).agentId,
+      'cursor',
+    );
     expect(
       decoded.assignmentFor(CodeEngineeringRoleSlot.frontendReviewer),
       isA<AgentOrchestrationRoleAssignment>()
           .having((value) => value.agentId, 'agentId', 'codex')
           .having((value) => value.modelName, 'modelName', 'gpt-5')
-          .having((value) => value.reasoningEffort, 'reasoningEffort', 'high'),
+          .having(
+            (value) => value.reasoningEffort,
+            'reasoningEffort',
+            'medium',
+          ),
+    );
+  });
+
+  test('legacy five-path code engineering migrates into capsule lists', () {
+    final decoded = AgentOrchestrationPolicy.fromTomlConfig({
+      'version': 1,
+      'main_agent': {'agent': 'codex', 'model': 'gpt-5', 'reasoning_effort': 'high'},
+      'code_engineering': {
+        'strategy': 'frontend_backend_roles',
+        'designer': {
+          'agent': 'codex',
+          'model': 'gpt-5',
+          'reasoning_effort': 'high',
+        },
+        'worker': {
+          'backend': {
+            'agent': 'codex',
+            'model': 'gpt-5',
+            'reasoning_effort': 'high',
+          },
+          'frontend': {
+            'agent': 'cursor',
+            'model': 'composer',
+            'reasoning_effort': 'medium',
+          },
+        },
+        'reviewer': {
+          'backend': {
+            'agent': 'codex',
+            'model': 'gpt-5',
+            'reasoning_effort': 'medium',
+          },
+          'frontend': {
+            'agent': 'codex',
+            'model': 'gpt-5',
+            'reasoning_effort': 'medium',
+          },
+        },
+      },
+    });
+
+    expect(decoded.designerAgents, hasLength(1));
+    expect(decoded.workerAgents, hasLength(2));
+    expect(decoded.reviewerAgents, hasLength(1));
+    expect(decoded.workerAgents.map((a) => a.agentId), ['codex', 'cursor']);
+    expect(
+      decoded.assignmentFor(CodeEngineeringRoleSlot.frontendWorker).agentId,
+      'cursor',
     );
   });
 }

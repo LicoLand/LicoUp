@@ -34,18 +34,55 @@ final class _AgentOrchestrationPolicyDialogState
     AgentOrchestrationPolicy policy,
   ) {
     final seeded = policy.withDailyConversationSeededFromCommander();
-    final roleAssignments =
-        <CodeEngineeringRoleSlot, AgentOrchestrationRoleAssignment>{
-          for (final role in CodeEngineeringRoleSlot.values)
-            role: _roleAssignmentWithDefaults(seeded.assignmentFor(role)),
-        };
     return seeded
-        .copyWith(codeEngineeringRoles: roleAssignments)
+        .copyWith(
+          designerAgents: _seededRoleAgents(
+            seeded.designerAgents,
+            idPrefix: 'ce-designer',
+          ),
+          workerAgents: _seededRoleAgents(
+            seeded.workerAgents,
+            idPrefix: 'ce-worker',
+          ),
+          reviewerAgents: _seededRoleAgents(
+            seeded.reviewerAgents,
+            idPrefix: 'ce-reviewer',
+          ),
+        )
         .withCommanderSyncedFromDailyConversation();
   }
 
-  AgentOrchestrationRoleAssignment _roleAssignmentWithDefaults(
-    AgentOrchestrationRoleAssignment assignment,
+  List<DailyConversationAgentAssignment> _seededRoleAgents(
+    List<DailyConversationAgentAssignment> existing, {
+    required String idPrefix,
+  }) {
+    if (existing.any((assignment) => assignment.configured)) {
+      return [
+        for (final assignment in existing)
+          if (assignment.configured) _capsuleWithDefaults(assignment, idPrefix),
+      ];
+    }
+    final seed = _defaultCapsule(idPrefix);
+    return seed == null ? const [] : [seed];
+  }
+
+  DailyConversationAgentAssignment? _defaultCapsule(String idPrefix) {
+    final agentId = defaultAgentOrchestrationCommanderAgentId(
+      widget.controller.orchestrationAvailableTargets,
+    );
+    if (agentId.isEmpty) return null;
+    final modelName = _modelOrDefault(agentId, '');
+    return DailyConversationAgentAssignment(
+      id: '$idPrefix-$agentId-0',
+      agentId: agentId,
+      modelName: modelName,
+      reasoningEffort: _reasoningOrDefault(agentId, modelName, ''),
+    );
+  }
+
+  DailyConversationAgentAssignment _capsuleWithDefaults(
+    DailyConversationAgentAssignment assignment,
+    String idPrefix,
   ) {
     var agentId = assignment.agentId.trim();
     if (!_modelsByAgentContains(agentId)) {
@@ -54,7 +91,11 @@ final class _AgentOrchestrationPolicyDialogState
       );
     }
     final modelName = _modelOrDefault(agentId, assignment.modelName);
-    return AgentOrchestrationRoleAssignment(
+    final id = assignment.id.trim().isEmpty
+        ? '$idPrefix-$agentId-0'
+        : assignment.id.trim();
+    return DailyConversationAgentAssignment(
+      id: id,
       agentId: agentId,
       modelName: modelName,
       reasoningEffort: _reasoningOrDefault(
@@ -62,6 +103,7 @@ final class _AgentOrchestrationPolicyDialogState
         modelName,
         assignment.reasoningEffort,
       ),
+      fast: assignment.fast,
     );
   }
 
@@ -118,56 +160,6 @@ final class _AgentOrchestrationPolicyDialogState
     });
   }
 
-  void _setCodeEngineeringAgent(CodeEngineeringRoleSlot role, String agentId) {
-    final modelName = _modelOrDefault(agentId, '');
-    _setCodeEngineeringAssignment(
-      role,
-      AgentOrchestrationRoleAssignment(
-        agentId: agentId,
-        modelName: modelName,
-        reasoningEffort: _reasoningOrDefault(agentId, modelName, ''),
-      ),
-    );
-  }
-
-  void _setCodeEngineeringModel(
-    CodeEngineeringRoleSlot role,
-    String modelName,
-  ) {
-    final assignment = _policy.assignmentFor(role);
-    _setCodeEngineeringAssignment(
-      role,
-      assignment.copyWith(
-        modelName: modelName,
-        reasoningEffort: _reasoningOrDefault(assignment.agentId, modelName, ''),
-      ),
-    );
-  }
-
-  void _setCodeEngineeringReasoningEffort(
-    CodeEngineeringRoleSlot role,
-    String reasoningEffort,
-  ) {
-    _setCodeEngineeringAssignment(
-      role,
-      _policy.assignmentFor(role).copyWith(reasoningEffort: reasoningEffort),
-    );
-  }
-
-  void _setCodeEngineeringAssignment(
-    CodeEngineeringRoleSlot role,
-    AgentOrchestrationRoleAssignment assignment,
-  ) {
-    setState(() {
-      _policy = _policy.copyWith(
-        codeEngineeringRoles: {
-          ..._policy.codeEngineeringRoles,
-          role: assignment,
-        },
-      );
-    });
-  }
-
   void _save() {
     Navigator.of(
       context,
@@ -178,6 +170,9 @@ final class _AgentOrchestrationPolicyDialogState
   Widget build(BuildContext context) {
     final colors = context.licoColors;
     final strings = LicoStrings.of(context);
+    final targets = agentOrchestrationCommanderTargets(
+      widget.controller.orchestrationAvailableTargets,
+    );
     return Dialog(
       backgroundColor: colors.surface,
       insetPadding: const EdgeInsets.symmetric(horizontal: 48, vertical: 36),
@@ -218,21 +213,22 @@ final class _AgentOrchestrationPolicyDialogState
                 children: [
                   AgentOrchestrationDailyConversationPolicyCard(
                     assignments: _policy.dailyConversationAgents,
-                    targets: agentOrchestrationCommanderTargets(
-                      widget.controller.orchestrationAvailableTargets,
-                    ),
+                    targets: targets,
                     onChanged: _setDailyConversationAgents,
                   ),
-                  const SizedBox(height: 14),
+                  const SizedBox(height: 18),
                   AgentOrchestrationCodeEngineeringPolicyCard(
                     policy: _policy,
-                    targets: agentOrchestrationCommanderTargets(
-                      widget.controller.orchestrationAvailableTargets,
-                    ),
-                    onAgentChanged: _setCodeEngineeringAgent,
-                    onModelChanged: _setCodeEngineeringModel,
-                    onReasoningEffortChanged:
-                        _setCodeEngineeringReasoningEffort,
+                    targets: targets,
+                    onDesignerChanged: (agents) => setState(() {
+                      _policy = _policy.copyWith(designerAgents: agents);
+                    }),
+                    onWorkerChanged: (agents) => setState(() {
+                      _policy = _policy.copyWith(workerAgents: agents);
+                    }),
+                    onReviewerChanged: (agents) => setState(() {
+                      _policy = _policy.copyWith(reviewerAgents: agents);
+                    }),
                   ),
                 ],
               ),

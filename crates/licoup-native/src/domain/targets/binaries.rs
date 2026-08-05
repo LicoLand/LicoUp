@@ -23,15 +23,27 @@ pub(super) fn find_target_binary(def: &TargetDef, params: &Value) -> Option<Path
     if def.id != "cursor" {
         return find_binary(def.binary_names);
     }
-    let dirs = binary_search_dirs();
-    for name in def.binary_names {
-        if let Some(candidate) = find_binary_in_dirs(&[*name], &dirs)
-            && cursor_binary_supports_acp(&candidate, params)
-        {
+    find_cursor_binary_in_dirs(&binary_search_dirs(), params)
+}
+
+fn find_cursor_binary_in_dirs(dirs: &[PathBuf], params: &Value) -> Option<PathBuf> {
+    let mut first_cursor_agent = None::<PathBuf>;
+    for name in ["cursor-agent", "cursor"] {
+        let Some(candidate) = find_binary_in_dirs(&[name], dirs) else {
+            continue;
+        };
+        // Prefer a probed Agent CLI. Keep the first `cursor-agent` as fallback
+        // so a flaky short probe (or missing default workspace) cannot hide a
+        // PATH-visible conversation binary. Never fall back to the IDE `cursor`
+        // shim — it is not the Agent CLI lane.
+        if name == "cursor-agent" {
+            first_cursor_agent.get_or_insert_with(|| candidate.clone());
+        }
+        if cursor_binary_supports_acp(&candidate, params) {
             return Some(candidate);
         }
     }
-    None
+    first_cursor_agent
 }
 
 pub(super) fn find_target_binary_with_source(
@@ -179,14 +191,16 @@ fn kilo_extension_version_rank(extension_dir_name: &str) -> Vec<u64> {
 }
 
 pub(super) fn cursor_binary_supports_acp(binary: &Path, params: &Value) -> bool {
+    // The Cursor capability probe only runs `--version` / `--help` and does not
+    // need a project workspace. Keep a cwd for the shared probe API, but never
+    // treat a missing default workspace as "binary unsupported" — that hid a
+    // working `cursor-agent` from Adaptive Flywheel and conversation relays.
     let cwd = param_string(params, "workingDirectory")
         .or_else(|| param_string(params, "cwd"))
         .map(PathBuf::from)
         .filter(|path| path.is_absolute())
-        .or_else(|| default_local_agent_workspace("cursor"));
-    let Some(cwd) = cwd else {
-        return false;
-    };
+        .or_else(|| default_local_agent_workspace("cursor"))
+        .unwrap_or_else(env::temp_dir);
     runtime_adapters::probe_runtime_driver("cursor", binary, &cwd)
         .get("supported")
         .and_then(Value::as_bool)
@@ -809,6 +823,26 @@ mod tests {
                 assert!(desktop_app_executable(agent).is_none());
             }
         }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn cursor_agent_binds_even_when_short_capability_probe_fails() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = unique_temp_dir("cursor-agent-fallback-bind");
+        let agent = dir.join("cursor-agent");
+        // Help intentionally omits create-chat so the short probe rejects it.
+        fs::write(
+            &agent,
+            "#!/bin/sh\ncase \"$1\" in\n--version) echo 1; exit 0 ;;\n--help) echo 'Usage: agent'; exit 0 ;;\n*) exit 1 ;;\nesac\n",
+        )
+        .unwrap();
+        fs::set_permissions(&agent, fs::Permissions::from_mode(0o755)).unwrap();
+
+        let found = find_cursor_binary_in_dirs(&[dir.clone()], &serde_json::json!({}));
+        assert_eq!(found.as_deref(), Some(agent.as_path()));
+        assert!(!cursor_binary_supports_acp(&agent, &serde_json::json!({})));
     }
 
     fn unique_temp_dir(name: &str) -> PathBuf {

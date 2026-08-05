@@ -13,7 +13,9 @@ use std::time::{Duration, Instant};
 const INITIALIZE_ID: i64 = 91_001;
 const MODEL_LIST_ID: i64 = 91_002;
 // Product policy: every model-catalog scan waits up to one minute. On timeout
-// the Codex catalog falls back to sparse config/history/cache rows.
+// or failure the Codex catalog still merges config, models_cache.json, and
+// model-catalogs; a successful App Server list is merged the same way rather
+// than replacing those local sources.
 const MODEL_SCAN_TIMEOUT: Duration = Duration::from_secs(60);
 const MAX_PROTOCOL_BYTES: usize = 2 * 1024 * 1024;
 const MAX_STDERR_BYTES: usize = 256 * 1024;
