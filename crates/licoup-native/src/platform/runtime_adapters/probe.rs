@@ -2,7 +2,8 @@ use super::RuntimeAdapter;
 use super::adapter::adapter_for_agent;
 use crate::platform::{
     acp_driver_runtime, antigravity_driver, claude_code_driver, copilot_driver, cursor_driver,
-    hermes_driver, kilo_code_driver, kimi_code_driver, openclaw_driver, opencode_driver, pi_driver,
+    hermes_driver, kilo_code_driver, kimi_code_driver, lico_agent_driver, openclaw_driver,
+    opencode_driver, pi_driver,
 };
 use serde_json::{Value, json};
 use std::path::Path;
@@ -133,6 +134,19 @@ pub(crate) fn probe_runtime_driver(target: &str, executable: &Path, cwd: &Path) 
         )),
         RuntimeAdapter::Pi => {
             let probe = pi_driver::probe(&executable, 2_000, 64 * 1024);
+            json!({
+                "available": probe.available,
+                "supported": probe.supported,
+                "newSession": probe.supported,
+                "resumeSession": probe.supported,
+                "structuredStream": probe.supported,
+                "versionCommandOk": probe.version_command_ok,
+                "helpCommandOk": probe.help_command_ok,
+                "errorCode": probe.error_code
+            })
+        }
+        RuntimeAdapter::LicoAgent => {
+            let probe = lico_agent_driver::probe(Path::new(executable.as_ref()));
             json!({
                 "available": probe.available,
                 "supported": probe.supported,

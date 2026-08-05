@@ -7,7 +7,6 @@ import 'package:licoup/src/contracts/agent_conversation_models.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_timeline.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_render_adapter.dart';
-import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_message_group.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_participant_flow.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_process_status_row.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_user_bubble_glass.dart';
@@ -168,13 +167,20 @@ void main() {
   testWidgets('group headers omit timestamps', (tester) async {
     final messageAt = DateTime(2026, 7, 20, 18, 58);
     final chronological = [
-      _messageItem('k1', 'assistant', 'agent reply', messageAt.toIso8601String()),
+      _messageItem(
+        'k1',
+        'assistant',
+        'agent reply',
+        messageAt.toIso8601String(),
+      ),
       _messageItem('k2', 'user', 'user request', messageAt.toIso8601String()),
     ];
     await _pumpFlow(tester, chronological.reversed.toList());
 
     // Timestamps live in reserved hover slots (opacity 0), never in headers.
-    final timestamps = find.byKey(const Key('messaging-message-hover-timestamp'));
+    final timestamps = find.byKey(
+      const Key('messaging-message-hover-timestamp'),
+    );
     expect(timestamps, findsNWidgets(2));
     for (final element in timestamps.evaluate()) {
       final opacity = element
@@ -185,93 +191,100 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('hover reveals per-message timestamp outside bubble bottom-right', (
-    tester,
-  ) async {
-    final messageAt = DateTime(2026, 7, 20, 18, 58);
-    final chronological = [
-      _messageItem('k1', 'assistant', 'agent reply', messageAt.toIso8601String()),
-      _messageItem('k2', 'user', 'user request', messageAt.toIso8601String()),
-    ];
-    await _pumpFlow(tester, chronological.reversed.toList());
-
-    final formattedTime = MaterialLocalizations.of(
-      tester.element(find.byType(Scaffold)),
-    ).formatTimeOfDay(TimeOfDay.fromDateTime(messageAt));
-
-    final agentBubble = find.ancestor(
-      of: find.text('agent reply', findRichText: true),
-      matching: find.byKey(const Key('messaging-message-bubble')),
-    );
-    final agentRow = find.ancestor(
-      of: agentBubble,
-      matching: find.byType(MouseRegion),
-    );
-    final agentTimestamp = find.descendant(
-      of: agentRow,
-      matching: find.byKey(const Key('messaging-message-hover-timestamp')),
-    );
-    final heightBeforeHover = tester.getSize(agentRow).height;
-
-    expect(
-      find.byKey(const Key('messaging-message-hover-timestamp')),
-      findsNWidgets(2),
-    );
-    expect(
-      tester.widget<AnimatedOpacity>(
-        find.ancestor(
-          of: agentTimestamp,
-          matching: find.byType(AnimatedOpacity),
+  testWidgets(
+    'hover reveals per-message timestamp outside bubble bottom-right',
+    (tester) async {
+      final messageAt = DateTime(2026, 7, 20, 18, 58);
+      final chronological = [
+        _messageItem(
+          'k1',
+          'assistant',
+          'agent reply',
+          messageAt.toIso8601String(),
         ),
-      ).opacity,
-      0,
-    );
-    expect(find.text(formattedTime), findsNWidgets(2));
+        _messageItem('k2', 'user', 'user request', messageAt.toIso8601String()),
+      ];
+      await _pumpFlow(tester, chronological.reversed.toList());
 
-    final hoverGesture = await tester.createGesture(
-      kind: PointerDeviceKind.mouse,
-    );
-    await hoverGesture.moveTo(tester.getCenter(agentBubble));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 120));
+      final formattedTime = MaterialLocalizations.of(
+        tester.element(find.byType(Scaffold)),
+      ).formatTimeOfDay(TimeOfDay.fromDateTime(messageAt));
 
-    expect(
-      tester.widget<AnimatedOpacity>(
-        find.ancestor(
-          of: agentTimestamp,
-          matching: find.byType(AnimatedOpacity),
-        ),
-      ).opacity,
-      1,
-    );
-    expect(find.text(formattedTime), findsNWidgets(2));
-    expect(tester.getSize(agentRow).height, closeTo(heightBeforeHover, 0.1));
+      final agentBubble = find.ancestor(
+        of: find.text('agent reply', findRichText: true),
+        matching: find.byKey(const Key('messaging-message-bubble')),
+      );
+      final agentRow = find.ancestor(
+        of: agentBubble,
+        matching: find.byType(MouseRegion),
+      );
+      final agentTimestamp = find.descendant(
+        of: agentRow,
+        matching: find.byKey(const Key('messaging-message-hover-timestamp')),
+      );
+      final heightBeforeHover = tester.getSize(agentRow).height;
 
-    final bubbleBox = tester.renderObject<RenderBox>(agentBubble);
-    final timestampBox = tester.renderObject<RenderBox>(agentTimestamp);
-    final bubbleBottomRight = bubbleBox.localToGlobal(
-      Offset(bubbleBox.size.width, bubbleBox.size.height),
-    );
-    final timestampBottomRight = timestampBox.localToGlobal(
-      Offset(timestampBox.size.width, timestampBox.size.height),
-    );
-    expect(timestampBox.size.width, lessThanOrEqualTo(bubbleBox.size.width));
-    expect(
-      timestampBottomRight.dx,
-      closeTo(bubbleBottomRight.dx, 1),
-    );
-    expect(timestampBottomRight.dy, greaterThan(bubbleBottomRight.dy));
+      expect(
+        find.byKey(const Key('messaging-message-hover-timestamp')),
+        findsNWidgets(2),
+      );
+      expect(
+        tester
+            .widget<AnimatedOpacity>(
+              find.ancestor(
+                of: agentTimestamp,
+                matching: find.byType(AnimatedOpacity),
+              ),
+            )
+            .opacity,
+        0,
+      );
+      expect(find.text(formattedTime), findsNWidgets(2));
 
-    await hoverGesture.moveTo(const Offset(-1, -1));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 120));
-    expect(
-      find.byKey(const Key('messaging-message-hover-timestamp')),
-      findsNWidgets(2),
-    );
-    expect(tester.getSize(agentRow).height, closeTo(heightBeforeHover, 0.1));
-    expect(tester.takeException(), isNull);
-  });
+      final hoverGesture = await tester.createGesture(
+        kind: PointerDeviceKind.mouse,
+      );
+      await hoverGesture.moveTo(tester.getCenter(agentBubble));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 120));
+
+      expect(
+        tester
+            .widget<AnimatedOpacity>(
+              find.ancestor(
+                of: agentTimestamp,
+                matching: find.byType(AnimatedOpacity),
+              ),
+            )
+            .opacity,
+        1,
+      );
+      expect(find.text(formattedTime), findsNWidgets(2));
+      expect(tester.getSize(agentRow).height, closeTo(heightBeforeHover, 0.1));
+
+      final bubbleBox = tester.renderObject<RenderBox>(agentBubble);
+      final timestampBox = tester.renderObject<RenderBox>(agentTimestamp);
+      final bubbleBottomRight = bubbleBox.localToGlobal(
+        Offset(bubbleBox.size.width, bubbleBox.size.height),
+      );
+      final timestampBottomRight = timestampBox.localToGlobal(
+        Offset(timestampBox.size.width, timestampBox.size.height),
+      );
+      expect(timestampBox.size.width, lessThanOrEqualTo(bubbleBox.size.width));
+      expect(timestampBottomRight.dx, closeTo(bubbleBottomRight.dx, 1));
+      expect(timestampBottomRight.dy, greaterThan(bubbleBottomRight.dy));
+
+      await hoverGesture.moveTo(const Offset(-1, -1));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 120));
+      expect(
+        find.byKey(const Key('messaging-message-hover-timestamp')),
+        findsNWidgets(2),
+      );
+      expect(tester.getSize(agentRow).height, closeTo(heightBeforeHover, 0.1));
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets(
     'hover timestamp parses native epoch createdAt without layout shift',
@@ -292,10 +305,7 @@ void main() {
       ).formatTimeOfDay(TimeOfDay.fromDateTime(messageAt.toLocal()));
 
       final bubble = find.byKey(const Key('messaging-message-bubble'));
-      final row = find.ancestor(
-        of: bubble,
-        matching: find.byType(MouseRegion),
-      );
+      final row = find.ancestor(of: bubble, matching: find.byType(MouseRegion));
       final heightBeforeHover = tester.getSize(row).height;
       final hoverTimestamp = find.byKey(
         const Key('messaging-message-hover-timestamp'),
@@ -311,12 +321,14 @@ void main() {
       await tester.pump(const Duration(milliseconds: 120));
 
       expect(
-        tester.widget<AnimatedOpacity>(
-          find.ancestor(
-            of: hoverTimestamp,
-            matching: find.byType(AnimatedOpacity),
-          ),
-        ).opacity,
+        tester
+            .widget<AnimatedOpacity>(
+              find.ancestor(
+                of: hoverTimestamp,
+                matching: find.byType(AnimatedOpacity),
+              ),
+            )
+            .opacity,
         1,
       );
       expect(tester.getSize(row).height, closeTo(heightBeforeHover, 0.1));
@@ -335,12 +347,20 @@ void main() {
     ];
     await _pumpFlow(tester, chronological.reversed.toList());
 
-    expect(find.byKey(const Key('messaging-user-message-group')), findsOneWidget);
-    expect(find.byKey(const Key('messaging-agent-message-group')), findsOneWidget);
+    expect(
+      find.byKey(const Key('messaging-user-message-group')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('messaging-agent-message-group')),
+      findsOneWidget,
+    );
     expect(find.byKey(const Key('messaging-user-avatar')), findsOneWidget);
     expect(find.byIcon(Icons.person_outline_rounded), findsOneWidget);
 
-    final agentGroupFinder = find.byKey(const Key('messaging-agent-message-group'));
+    final agentGroupFinder = find.byKey(
+      const Key('messaging-agent-message-group'),
+    );
     final agentBrandIcon = tester.widget<AgentBrandIcon>(
       find.descendant(
         of: agentGroupFinder,
@@ -370,9 +390,11 @@ void main() {
 
     expect(userGroup.size.width, agentGroup.size.width);
     expect(
-      userBubble.localToGlobal(Offset.zero).dx +
-          userBubble.size.width,
-      closeTo(userGroup.localToGlobal(Offset.zero).dx + userGroup.size.width, 1),
+      userBubble.localToGlobal(Offset.zero).dx + userBubble.size.width,
+      closeTo(
+        userGroup.localToGlobal(Offset.zero).dx + userGroup.size.width,
+        1,
+      ),
     );
     expect(
       agentBubble.localToGlobal(Offset.zero).dx,
@@ -396,8 +418,9 @@ void main() {
     await _pumpFlow(tester, chronological.reversed.toList());
 
     expect(find.byType(MessagingUserBubbleGlass), findsOneWidget);
-    final themeColors = buildLicoTheme(platformBrightness: Brightness.dark)
-        .extension<LicoThemeColors>()!;
+    final themeColors = buildLicoTheme(
+      platformBrightness: Brightness.dark,
+    ).extension<LicoThemeColors>()!;
     final animated = tester.widget<AnimatedContainer>(
       find.descendant(
         of: find.byType(MessagingUserBubbleGlass),
@@ -433,7 +456,10 @@ void main() {
     final chronological = [
       _messageItem('k1', 'user', 'run it', _at(10, 0)),
       _processItem('p1', [
-        _lifecycleEvent('completed', observed: 'submitted,accepted,processing,responding,completed'),
+        _lifecycleEvent(
+          'completed',
+          observed: 'submitted,accepted,processing,responding,completed',
+        ),
         _event('e1', _at(10, 1)),
         _event('e2', _at(10, 1, 12)),
       ]),
@@ -459,8 +485,9 @@ void main() {
     final processCenter = processCard
         .localToGlobal(Offset(processCard.size.width / 2, 0))
         .dx;
-    final groupCenter =
-        agentGroup.localToGlobal(Offset(agentGroup.size.width / 2, 0)).dx;
+    final groupCenter = agentGroup
+        .localToGlobal(Offset(agentGroup.size.width / 2, 0))
+        .dx;
     expect(processCenter, closeTo(groupCenter, 1));
     expect(tester.takeException(), isNull);
   });

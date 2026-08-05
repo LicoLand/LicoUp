@@ -36,7 +36,11 @@ void main() {
             'totalDiskWriteBytes': null,
           },
         ],
-        'summary': {'agentCount': 2, 'runningAgentCount': 1, 'totalRssBytes': 4096},
+        'summary': {
+          'agentCount': 2,
+          'runningAgentCount': 1,
+          'totalRssBytes': 4096,
+        },
       });
 
       expect(report.schemaVersion, 1);
@@ -58,7 +62,13 @@ void main() {
         'schemaVersion': 1,
         'generatedAt': '2026-07-31T12:00:00Z',
         'agents': [
-          {'target': 'codex', 'label': 'Codex', 'running': true, 'processes': [], 'totalRssBytes': 5},
+          {
+            'target': 'codex',
+            'label': 'Codex',
+            'running': true,
+            'processes': [],
+            'totalRssBytes': 5,
+          },
         ],
         'summary': {},
       });

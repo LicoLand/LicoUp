@@ -118,10 +118,7 @@ class _MessagingNotificationBellBody extends StatelessWidget {
                 ),
                 child: Text(
                   strings.noNotifications,
-                  style: TextStyle(
-                    color: colors.textMuted,
-                    fontSize: 12.5,
-                  ),
+                  style: TextStyle(color: colors.textMuted, fontSize: 12.5),
                 ),
               )
             : SingleChildScrollView(
@@ -141,59 +138,58 @@ class _MessagingNotificationBellBody extends StatelessWidget {
                         ),
                         agent: agent,
                         activity: activity,
-                        onTap: () => unawaited(
-                          _openConversation(agent, close),
-                        ),
+                        onTap: () => unawaited(_openConversation(agent, close)),
                       ),
                   ],
                 ),
               );
       },
-      triggerBuilder: (context, {required open, required toggle, required close}) {
-        return Tooltip(
-          message: strings.notifications,
-          waitDuration: const Duration(milliseconds: 400),
-          child: InkWell(
-            key: const Key('messaging-notification-bell'),
-            onTap: toggle,
-            customBorder: const CircleBorder(),
-            hoverColor: MessagingDesktopMetrics.chromeControlHover(
-              isDark: colors.isDark,
-            ),
-            child: SizedBox.square(
-              dimension: 32,
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  Icon(
-                    Icons.notifications_none_rounded,
-                    size: 19,
-                    color: MessagingDesktopMetrics.chromeIconMuted(),
-                  ),
-                  if (badgeColor != null)
-                    Positioned(
-                      top: 7,
-                      right: 7,
-                      child: Container(
-                        key: const Key('messaging-notification-bell-badge'),
-                        width: 8,
-                        height: 8,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: badgeColor,
-                          border: Border.all(
-                            color: colors.background,
-                            width: 1.5,
+      triggerBuilder:
+          (context, {required open, required toggle, required close}) {
+            return Tooltip(
+              message: strings.notifications,
+              waitDuration: const Duration(milliseconds: 400),
+              child: InkWell(
+                key: const Key('messaging-notification-bell'),
+                onTap: toggle,
+                customBorder: const CircleBorder(),
+                hoverColor: MessagingDesktopMetrics.chromeControlHover(
+                  isDark: colors.isDark,
+                ),
+                child: SizedBox.square(
+                  dimension: 32,
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      Icon(
+                        Icons.notifications_none_rounded,
+                        size: 19,
+                        color: MessagingDesktopMetrics.chromeIconMuted(),
+                      ),
+                      if (badgeColor != null)
+                        Positioned(
+                          top: 7,
+                          right: 7,
+                          child: Container(
+                            key: const Key('messaging-notification-bell-badge'),
+                            width: 8,
+                            height: 8,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: badgeColor,
+                              border: Border.all(
+                                color: colors.background,
+                                width: 1.5,
+                              ),
+                            ),
                           ),
                         ),
-                      ),
-                    ),
-                ],
+                    ],
+                  ),
+                ),
               ),
-            ),
-          ),
-        );
-      },
+            );
+          },
     );
   }
 }

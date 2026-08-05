@@ -660,9 +660,10 @@ class _AppearanceSettings extends StatelessWidget {
       controller.appearancePresetConfigs,
       isDark,
     );
-    final selectedPresetId = selectablePresets.any(
-      (config) => config.id == controller.appearancePresetId,
-    )
+    final selectedPresetId =
+        selectablePresets.any(
+          (config) => config.id == controller.appearancePresetId,
+        )
         ? controller.appearancePresetId
         : null;
 
@@ -869,9 +870,10 @@ class _MobileSettingsBody extends StatelessWidget {
       controller.appearancePresetConfigs,
       isDark,
     );
-    final selectedPresetId = selectablePresets.any(
-      (config) => config.id == controller.appearancePresetId,
-    )
+    final selectedPresetId =
+        selectablePresets.any(
+          (config) => config.id == controller.appearancePresetId,
+        )
         ? controller.appearancePresetId
         : null;
 

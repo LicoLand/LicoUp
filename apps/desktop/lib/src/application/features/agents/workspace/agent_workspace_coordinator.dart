@@ -13,6 +13,7 @@ import 'package:licoup/src/contracts/agent_conversation_tab_activity.dart';
 import 'package:licoup/src/contracts/generated/secure_mesh.g.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
+import 'package:licoup/src/platform/agents/group_conversation_store.dart';
 
 /// Shared feature state plus narrow composition callbacks. Concrete feature
 /// controllers never import the root [ClientController].
@@ -71,6 +72,7 @@ abstract class AgentWorkspaceCoordinator extends ChangeNotifier {
   AgentConversationSession? get selectedConversationSession;
   String get selectedConversationModel;
   String get selectedConversationReasoningEffort;
+  String get selectedConversationLicoProfile;
   bool get selectedConversationIsOrchestration;
   void recordConversationTabSendOutcome({
     required String agentId,
@@ -133,6 +135,7 @@ abstract class AgentWorkspaceCoordinator extends ChangeNotifier {
   Map<String, String> pendingConversationNativeSessionIds = const {};
   Map<String, String> conversationModelsByAgent = const {};
   Map<String, String> conversationReasoningEffortsByAgent = const {};
+  Map<String, String> conversationLicoProfilesByAgent = const {};
   bool isSendingConversationMessage = false;
   bool isAuthorizingConversationRuntime = false;
   String sendingConversationAgentId = '';
@@ -155,6 +158,8 @@ abstract class AgentWorkspaceCoordinator extends ChangeNotifier {
   Map<String, AgentConversationTabActivity> conversationTabActivityByAgent =
       const {};
   Map<String, String> conversationSendErrorsByAgent = const {};
+
+  GroupRoster groupConversationRoster = GroupRoster.empty;
 
   Map<String, Object?> orchestrationPolicyDraft = const {};
   String activeOrchestrationPolicyRevision = '';

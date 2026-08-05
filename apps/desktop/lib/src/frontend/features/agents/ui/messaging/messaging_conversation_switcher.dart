@@ -108,13 +108,14 @@ class _MessagingConversationSwitcherState
           runningFor: widget.runningFor,
         );
       },
-      triggerBuilder: (context, {required open, required toggle, required close}) {
-        return _SwitcherButton(
-          key: const Key('messaging-conversation-switcher-button'),
-          tooltip: strings.conversations,
-          onPressed: toggle,
-        );
-      },
+      triggerBuilder:
+          (context, {required open, required toggle, required close}) {
+            return _SwitcherButton(
+              key: const Key('messaging-conversation-switcher-button'),
+              tooltip: strings.conversations,
+              onPressed: toggle,
+            );
+          },
     );
   }
 }

@@ -306,6 +306,7 @@ class _MessagingAgentBadge extends StatelessWidget {
     final strings = LicoStrings.of(context);
     final role = switch (participantRole.trim().toLowerCase()) {
       'main-agent' => 'MAIN AGENT',
+      'peer-agent' => 'AGENT',
       'designer' => 'DESIGNER',
       'backend-worker' => 'BACKEND WORKER',
       'frontend-worker' => 'FRONTEND WORKER',

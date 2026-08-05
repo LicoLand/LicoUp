@@ -97,7 +97,10 @@ void registerClientHistoryRefreshScenarios() {
       await controller.loadConversationSessions('cursor');
       controller.selectConversationSession('cursor-projection-v1');
 
-      expect(controller.selectedConversationSession?.id, 'cursor-projection-v1');
+      expect(
+        controller.selectedConversationSession?.id,
+        'cursor-projection-v1',
+      );
       expect(controller.preparingNewConversation, isFalse);
 
       service.conversationSessions['cursor'] = [
@@ -112,7 +115,10 @@ void registerClientHistoryRefreshScenarios() {
 
       await controller.refreshConversationSessions('cursor');
 
-      expect(controller.selectedConversationSession?.id, 'cursor-projection-v2');
+      expect(
+        controller.selectedConversationSession?.id,
+        'cursor-projection-v2',
+      );
       expect(
         controller.selectedConversationSession?.messages.first.text,
         'Cursor first turn updated',
@@ -534,8 +540,9 @@ void registerClientHistoryRefreshScenarios() {
             1,
       );
       expect(
-        controller.selectedConversationSessions
-            .where((session) => session.nativeSessionId == uuidB),
+        controller.selectedConversationSessions.where(
+          (session) => session.nativeSessionId == uuidB,
+        ),
         hasLength(1),
       );
 

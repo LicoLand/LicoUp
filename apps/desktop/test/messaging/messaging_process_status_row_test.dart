@@ -4,7 +4,6 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_message_blocks.dart';
-import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_lifecycle_indicator.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_process_operations.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_render_adapter.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_process_status_row.dart';
@@ -160,9 +159,7 @@ void main() {
     expect(find.byKey(const Key('conversation-lifecycle-rail')), findsNothing);
   });
 
-  testWidgets('row stretches to the full detail column width', (
-    tester,
-  ) async {
+  testWidgets('row stretches to the full detail column width', (tester) async {
     const detailWidth = 600.0;
     await _pumpRow(
       tester,
@@ -181,9 +178,7 @@ void main() {
     expect(card.size.width, closeTo(detailWidth, 1));
   });
 
-  testWidgets('expand chevron sits at the card trailing edge', (
-    tester,
-  ) async {
+  testWidgets('expand chevron sits at the card trailing edge', (tester) async {
     const detailWidth = 600.0;
     await _pumpRow(
       tester,
@@ -205,14 +200,13 @@ void main() {
     // Idle header uses 8px horizontal padding; chevron sits at content trailing edge.
     const horizontalPadding = 8.0;
     final cardTrailing = card.localToGlobal(Offset(card.size.width, 0)).dx;
-    final chevronTrailing =
-        chevron.localToGlobal(Offset(chevron.size.width, 0)).dx;
+    final chevronTrailing = chevron
+        .localToGlobal(Offset(chevron.size.width, 0))
+        .dx;
     expect(chevronTrailing, closeTo(cardTrailing - horizontalPadding, 1));
   });
 
-  testWidgets('row centers horizontally in the detail column', (
-    tester,
-  ) async {
+  testWidgets('row centers horizontally in the detail column', (tester) async {
     const paneWidth = 800.0;
     const detailWidth = 600.0;
     await tester.pumpWidget(

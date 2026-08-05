@@ -38,6 +38,7 @@ pub(crate) const PACKAGED_RUNTIME_ADAPTER_IDS: &[&str] = &[
     "hermes",
     "kimi-code",
     "pi",
+    "lico-agent",
 ];
 
 pub(crate) use adapter::{RuntimeAdapter, adapter_for_agent_public, text_param_public};

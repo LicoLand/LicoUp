@@ -24,6 +24,12 @@ use time::format_description::well_known::Rfc3339;
 
 use super::codex::rollout_session_id_from_filename;
 use super::cursor_openagent::codec::{open_read_only_connection, sqlite_table_exists};
+use super::cursor_openagent::cursor_composer_catalog;
+use super::delegated_transcripts::{
+    CURSOR_TRANSCRIPTS_DIRECTORY, delegated_file_is_transcript, delegated_task_label,
+    delegated_task_prompt_text, transcript_conversation_id, transcript_is_delegated,
+};
+use super::project_workspace::bounded_project_workspace;
 use super::query_filter::{epoch_number_to_rfc3339, system_time, title_from_text};
 use super::session_metadata::{meaningful_explicit_title, session_from_messages_with_title};
 use super::{CONVERSATION_SCHEMA_VERSION, HistoryScanConfig, finalize_history_sessions};
@@ -40,6 +46,17 @@ use crate::domain::conversation::source_catalog::{HistoryAdapter, HistoryRoot, h
 pub(crate) const CATALOG_WINDOW_DAYS: u64 = 30;
 
 const MAX_CATALOG_DIRECTORY_ENTRIES: usize = 16_000;
+const CURSOR_IDE_STORE_FILE: &str = "state.vscdb";
+const CURSOR_IDE_STORE_WALK_DEPTH: usize = 2;
+/// Bound on delegated-task transcripts a browse row folds in.
+///
+/// A browse row keeps only [`CATALOG_HYDRATED_MESSAGE_CAP`] messages, so parsing
+/// every delegated transcript of every row on the page is work that is thrown
+/// away: one orchestration run can hold seventy of them, and a page holds
+/// dozens of rows. The newest transcripts are kept and the row reports the
+/// remainder as truncated; the single-session read has no such bound and folds
+/// the complete set.
+const MAX_BROWSE_DELEGATED_TASK_TRANSCRIPTS: usize = 8;
 const MAX_CATALOG_WALK_DEPTH: usize = 8;
 const MAX_STATE_FILE_BYTES: u64 = 1024 * 1024;
 const MAX_TITLE_PROBE_LINES: usize = 200;
@@ -66,6 +83,20 @@ pub(crate) enum CatalogHydration {
     File(PathBuf),
     /// Parse every `agents/*/wire.jsonl` below this session directory.
     KimiWireDirectory(PathBuf),
+    /// Parse one conversation transcript together with the delegated task
+    /// transcripts recorded for it, so delegated work folds into the
+    /// conversation instead of surfacing as separate conversations.
+    TranscriptWithDelegatedTasks {
+        transcript: PathBuf,
+        delegated: Vec<PathBuf>,
+        /// Whether delegated transcripts were left out of this browse row.
+        delegated_truncated: bool,
+        /// Conversation the delegated transcripts belong to, for stores whose
+        /// layout does not encode lineage in the path. Cursor and Claude Code
+        /// leave this empty because their transcript path already names the
+        /// conversation; Codex records lineage in its thread database instead.
+        delegated_parent_session_id: Option<String>,
+    },
     /// Metadata-only entry; the page keeps a stub session.
     None,
 }
@@ -154,7 +185,10 @@ pub(crate) fn load_session_catalog(
         HistoryAdapter::KimiCode => kimi_code_catalog(&roots, cutoff, &mut catalog),
         HistoryAdapter::Cursor => cursor_catalog(&roots, cutoff, &mut catalog),
         HistoryAdapter::ClaudeCode => claude_catalog(&roots, cutoff, &mut catalog),
-        HistoryAdapter::Pi => pi_catalog(&roots, cutoff, &mut catalog),
+        HistoryAdapter::Pi | HistoryAdapter::LicoAgent => {
+            pi_catalog(&roots, cutoff, &mut catalog);
+        }
+        HistoryAdapter::Antigravity => antigravity_catalog(&roots, cutoff, &mut catalog),
         _ => generic_file_catalog(adapter, &roots, cutoff, &mut catalog),
     }
     sort_and_dedupe_catalog(adapter, &mut catalog.sessions);
@@ -163,18 +197,87 @@ pub(crate) fn load_session_catalog(
 
 fn sort_and_dedupe_catalog(adapter: HistoryAdapter, sessions: &mut Vec<CatalogSession>) {
     sessions.sort_by(|left, right| {
+        catalog_content_rank(right)
+            .cmp(&catalog_content_rank(left))
+            .then_with(|| right.recency().cmp(&left.recency()))
+            .then_with(|| left.source_path.cmp(&right.source_path))
+            .then_with(|| left.native_session_id.cmp(&right.native_session_id))
+    });
+    let mut kept = BTreeMap::<String, usize>::new();
+    let mut merged = Vec::<CatalogSession>::with_capacity(sessions.len());
+    for entry in sessions.drain(..) {
+        let key = catalog_dedupe_key(adapter, &entry);
+        match kept.get(&key).copied() {
+            Some(index) => absorb_duplicate_catalog_entry(&mut merged[index], entry),
+            None => {
+                kept.insert(key, merged.len());
+                merged.push(entry);
+            }
+        }
+    }
+    merged.sort_by(|left, right| {
         right
             .recency()
             .cmp(&left.recency())
             .then_with(|| left.source_path.cmp(&right.source_path))
             .then_with(|| left.native_session_id.cmp(&right.native_session_id))
     });
-    let mut seen = HashSet::<String>::new();
-    sessions.retain(|entry| seen.insert(catalog_dedupe_key(adapter, entry)));
+    *sessions = merged;
+}
+
+/// A metadata-only entry never wins over an entry that can hydrate content, so
+/// the same conversation recorded in several agent stores keeps the richest
+/// source and only borrows metadata from the others.
+///
+/// For Cursor the CLI project transcript is the richest of the three stores: it
+/// keeps the tool trace and the delegated-task transcripts, while the IDE store
+/// keeps only conversation bubbles and the chat store keeps no content the
+/// catalog can hydrate.
+fn catalog_content_rank(entry: &CatalogSession) -> u8 {
+    if matches!(entry.hydrate, CatalogHydration::None) {
+        return 0;
+    }
+    match entry.source_kind.as_str() {
+        "cursor-cli-projects" => 2,
+        _ => 1,
+    }
+}
+
+/// Carry metadata a duplicate entry knows and the kept entry does not.
+///
+/// Cursor records one conversation in the IDE store, the CLI chat store, and the
+/// CLI project tree; only some of them know the project directory, the title, or
+/// the model. Dropping the duplicate outright loses that metadata, which is how
+/// a conversation ends up with no working directory at all.
+fn absorb_duplicate_catalog_entry(kept: &mut CatalogSession, duplicate: CatalogSession) {
+    if kept.working_directory.is_none() {
+        kept.working_directory = duplicate.working_directory;
+    }
+    if kept.title.is_none() {
+        kept.title = duplicate.title;
+    }
+    if kept.model.is_none() {
+        kept.model = duplicate.model;
+    }
+    if kept.created_at.is_none() {
+        kept.created_at = duplicate.created_at;
+    }
+    kept.updated_at = match (kept.updated_at, duplicate.updated_at) {
+        (Some(kept_at), Some(other)) => Some(kept_at.max(other)),
+        (kept_at, other) => kept_at.or(other),
+    };
+    if kept.message_count.is_none() {
+        kept.message_count = duplicate.message_count;
+    }
 }
 
 fn catalog_dedupe_key(adapter: HistoryAdapter, entry: &CatalogSession) -> String {
-    if adapter == HistoryAdapter::Codex && !entry.native_session_id.is_empty() {
+    // Cursor and Codex both write one conversation into several stores under a
+    // single native identity, so identity alone is the key. Adapters without a
+    // native identity fall back to the source file.
+    if matches!(adapter, HistoryAdapter::Codex | HistoryAdapter::Cursor)
+        && !entry.native_session_id.is_empty()
+    {
         return format!("{}\n{}", adapter.id(), entry.native_session_id);
     }
     format!(
@@ -225,13 +328,37 @@ fn hydrate_catalog_page(
                 });
                 unit.2.push(index);
             }
+            CatalogHydration::TranscriptWithDelegatedTasks {
+                transcript,
+                delegated,
+                delegated_truncated,
+                delegated_parent_session_id,
+            } => {
+                let unit = units.entry(transcript.clone()).or_insert_with(|| {
+                    (
+                        entry.source_kind.clone(),
+                        CatalogHydration::TranscriptWithDelegatedTasks {
+                            transcript: transcript.clone(),
+                            delegated: delegated.clone(),
+                            delegated_truncated: *delegated_truncated,
+                            delegated_parent_session_id: delegated_parent_session_id.clone(),
+                        },
+                        Vec::new(),
+                    )
+                });
+                unit.2.push(index);
+            }
             CatalogHydration::None => {}
         }
     }
 
     let mut resolved = BTreeMap::<usize, Value>::new();
+    let mut units_with_content = HashSet::<&PathBuf>::new();
     for (unit_path, (source_kind, hydration, indexes)) in &units {
         let sessions = parse_catalog_unit(adapter, unit_path, source_kind, hydration);
+        if !sessions.is_empty() {
+            units_with_content.insert(unit_path);
+        }
         for index in indexes {
             let wanted = page[*index].native_session_id.as_str();
             let Some(session) = sessions.iter().find(|session| {
@@ -308,17 +435,41 @@ fn hydrate_catalog_page(
     page.iter()
         .enumerate()
         .filter_map(|(index, entry)| {
-            resolved.remove(&index).or_else(|| {
-                catalog_session_stub(adapter, entry).or_else(|| {
-                    skipped.push(json!({
-                        "path": entry.source_path.to_string_lossy(),
-                        "reason": "catalog_metadata_unavailable"
-                    }));
-                    None
-                })
+            if let Some(session) = resolved.remove(&index) {
+                return Some(session);
+            }
+            // A source that parsed into conversations, none of which is this
+            // entry, means the entry identity does not name a conversation in it
+            // — an index key, a config record, or workflow bookkeeping. A stub
+            // there would put an empty row in the browse list.
+            if catalog_entry_content_source(entry)
+                .is_some_and(|unit| units_with_content.contains(&unit))
+            {
+                skipped.push(json!({
+                    "path": entry.source_path.to_string_lossy(),
+                    "reason": "catalog_entry_is_not_a_conversation"
+                }));
+                return None;
+            }
+            catalog_session_stub(adapter, entry).or_else(|| {
+                skipped.push(json!({
+                    "path": entry.source_path.to_string_lossy(),
+                    "reason": "catalog_metadata_unavailable"
+                }));
+                None
             })
         })
         .collect()
+}
+
+/// Hydration unit key of one catalog entry, when it has content to parse.
+fn catalog_entry_content_source(entry: &CatalogSession) -> Option<&PathBuf> {
+    match &entry.hydrate {
+        CatalogHydration::File(path) => Some(path),
+        CatalogHydration::KimiWireDirectory(directory) => Some(directory),
+        CatalogHydration::TranscriptWithDelegatedTasks { transcript, .. } => Some(transcript),
+        CatalogHydration::None => None,
+    }
 }
 
 fn parse_catalog_unit(
@@ -354,6 +505,52 @@ fn parse_catalog_unit(
                 }
             }
         }
+        CatalogHydration::TranscriptWithDelegatedTasks {
+            transcript,
+            delegated,
+            delegated_truncated,
+            delegated_parent_session_id,
+        } => {
+            // Curated delegated labels are read once per unit and only when the
+            // store actually keeps them outside the transcript.
+            let mut declared_labels: Option<BTreeMap<String, CodexDelegatedLabel>> = None;
+            if let Ok(metadata) = fs::metadata(transcript) {
+                sessions.extend(parse_history_file(
+                    adapter,
+                    transcript,
+                    source_kind,
+                    &metadata,
+                    scan_config.clone(),
+                ));
+            }
+            // Cursor and Claude Code transcripts are marked by the parser from
+            // their path. A store that records lineage elsewhere supplies the
+            // conversation identity here instead.
+            for child in delegated {
+                let Ok(metadata) = fs::metadata(child) else {
+                    continue;
+                };
+                let mut child_sessions =
+                    parse_history_file(adapter, child, source_kind, &metadata, scan_config.clone());
+                if let Some(parent_session_id) = delegated_parent_session_id.as_deref() {
+                    let labels =
+                        declared_labels.get_or_insert_with(|| codex_delegated_labels(&json!({})));
+                    mark_declared_delegated_sessions(
+                        &mut child_sessions,
+                        parent_session_id,
+                        labels,
+                    );
+                }
+                sessions.extend(child_sessions);
+            }
+            if *delegated_truncated {
+                for session in sessions.iter_mut() {
+                    if let Some(object) = session.as_object_mut() {
+                        object.insert("messageTreeTruncated".to_string(), json!(true));
+                    }
+                }
+            }
+        }
         CatalogHydration::None => {
             let _ = unit_path;
         }
@@ -362,6 +559,51 @@ fn parse_catalog_unit(
         return sessions;
     }
     finalize_history_sessions(sessions, &scan_config)
+}
+
+/// Mark delegated sessions whose lineage the store declares outside the
+/// transcript, so the shared merge folds them into their conversation.
+///
+/// Codex records one thread per delegated task and keeps the parent/child edge
+/// in its thread database, so nothing in the child rollout says which
+/// conversation spawned it.
+fn mark_declared_delegated_sessions(
+    sessions: &mut [Value],
+    parent_session_id: &str,
+    labels: &BTreeMap<String, CodexDelegatedLabel>,
+) {
+    for session in sessions.iter_mut() {
+        let own_id = session
+            .get("nativeSessionId")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string();
+        if own_id == parent_session_id {
+            continue;
+        }
+        let declared = labels.get(&own_id).cloned().unwrap_or_default();
+        let title = declared.title.or_else(|| declared_delegated_title(session));
+        let Some(object) = session.as_object_mut() else {
+            continue;
+        };
+        object.insert("delegatedSubagent".to_string(), json!(true));
+        object.insert("parentSessionId".to_string(), json!(parent_session_id));
+        if let Some(title) = title {
+            object
+                .entry("subagentTitle".to_string())
+                .or_insert_with(|| json!(title));
+        }
+        if let Some(role) = declared.role {
+            object
+                .entry("subagentType".to_string())
+                .or_insert_with(|| json!(role));
+        }
+    }
+}
+
+/// Task label from the instruction the conversation handed the delegated agent.
+fn declared_delegated_title(session: &Value) -> Option<String> {
+    delegated_task_label(delegated_task_prompt_text(session)?)
 }
 
 fn kimi_wire_files(session_dir: &Path) -> Vec<PathBuf> {
@@ -444,10 +686,13 @@ fn codex_catalog(roots: &[HistoryRoot], cutoff: SystemTime, catalog: &mut Sessio
         match read_codex_state_threads(&state_db, cutoff) {
             Ok(entries) => {
                 catalog.files_seen += 1;
-                for entry in entries {
-                    known_ids.insert(entry.native_session_id.clone());
-                    catalog.sessions.push(entry);
-                }
+                // Every indexed thread counts as known, including a delegated
+                // thread folded into its conversation. Otherwise the rollout scan
+                // below re-adds it as its own row.
+                known_ids.extend(entries.iter().map(|entry| entry.native_session_id.clone()));
+                catalog
+                    .sessions
+                    .extend(fold_codex_delegated_threads(&state_db, entries));
             }
             Err(skip) => catalog.skipped.push(skip),
         }
@@ -483,12 +728,277 @@ fn codex_catalog(roots: &[HistoryRoot], cutoff: SystemTime, catalog: &mut Sessio
             title: None,
             created_at: None,
             updated_at: Some(candidate.modified_at),
-            working_directory: None,
+            // The rollout header records the directory the turn ran in. Without
+            // it a rollout the thread database has not indexed yet reaches the
+            // client with no project directory at all.
+            working_directory: codex_rollout_working_directory(&candidate.path),
             message_count: None,
             model: None,
             hydrate: CatalogHydration::File(candidate.path),
         });
     }
+}
+
+/// Fold Codex delegated threads into the conversation that spawned them.
+///
+/// Codex runs each delegated task as its own thread and records the edge in
+/// `thread_spawn_edges`. Without reading that graph every delegated task occupies
+/// its own browse row and its conversation shows none of the work it delegated.
+fn fold_codex_delegated_threads(
+    state_db: &Path,
+    entries: Vec<CatalogSession>,
+) -> Vec<CatalogSession> {
+    let Some(parents_by_child) = read_codex_spawn_edges(state_db) else {
+        return entries;
+    };
+    if parents_by_child.is_empty() {
+        return entries;
+    }
+    let rollout_by_id = entries
+        .iter()
+        .map(|entry| (entry.native_session_id.clone(), entry.source_path.clone()))
+        .collect::<BTreeMap<_, _>>();
+    let mut delegated_by_parent = BTreeMap::<String, Vec<PathBuf>>::new();
+    for (child, parent) in &parents_by_child {
+        // A delegated thread whose conversation is not in this window keeps its
+        // own row so the work stays reachable.
+        if !rollout_by_id.contains_key(parent) {
+            continue;
+        }
+        if let Some(rollout) = rollout_by_id.get(child) {
+            delegated_by_parent
+                .entry(parent.clone())
+                .or_default()
+                .push(rollout.clone());
+        }
+    }
+    entries
+        .into_iter()
+        .filter(|entry| {
+            parents_by_child
+                .get(&entry.native_session_id)
+                .is_none_or(|parent| !rollout_by_id.contains_key(parent))
+        })
+        .map(|mut entry| {
+            let Some(mut delegated) = delegated_by_parent.remove(&entry.native_session_id) else {
+                return entry;
+            };
+            delegated.sort();
+            let delegated_truncated = delegated.len() > MAX_BROWSE_DELEGATED_TASK_TRANSCRIPTS;
+            delegated.truncate(MAX_BROWSE_DELEGATED_TASK_TRANSCRIPTS);
+            entry.hydrate = CatalogHydration::TranscriptWithDelegatedTasks {
+                transcript: entry.source_path.clone(),
+                delegated,
+                delegated_truncated,
+                delegated_parent_session_id: Some(entry.native_session_id.clone()),
+            };
+            entry
+        })
+        .collect()
+}
+
+/// Mark every parsed Codex session the thread database records as delegated, so
+/// the shared merge folds it into its conversation on read paths that build no
+/// catalog.
+pub(crate) fn apply_codex_spawn_lineage(params: &Value, sessions: &mut [Value]) {
+    let parents_by_child = codex_spawn_lineage(params);
+    if parents_by_child.is_empty() {
+        return;
+    }
+    let labels = codex_delegated_labels(params);
+    let present = sessions
+        .iter()
+        .filter_map(|session| session.get("nativeSessionId").and_then(Value::as_str))
+        .map(str::to_string)
+        .collect::<HashSet<_>>();
+    for session in sessions.iter_mut() {
+        let Some(own_id) = session
+            .get("nativeSessionId")
+            .and_then(Value::as_str)
+            .map(str::to_string)
+        else {
+            continue;
+        };
+        let Some(parent) = parents_by_child.get(&own_id) else {
+            continue;
+        };
+        // A delegated thread whose conversation is out of scope keeps its own
+        // entry so the work stays reachable.
+        if !present.contains(parent.as_str()) {
+            continue;
+        }
+        let declared = labels.get(&own_id).cloned().unwrap_or_default();
+        let title = declared.title.or_else(|| declared_delegated_title(session));
+        let Some(object) = session.as_object_mut() else {
+            continue;
+        };
+        object.insert("delegatedSubagent".to_string(), json!(true));
+        object.insert("parentSessionId".to_string(), json!(parent));
+        if let Some(title) = title {
+            object
+                .entry("subagentTitle".to_string())
+                .or_insert_with(|| json!(title));
+        }
+        if let Some(role) = declared.role {
+            object
+                .entry("subagentType".to_string())
+                .or_insert_with(|| json!(role));
+        }
+    }
+}
+
+/// Delegated thread ids the requested Codex conversations spawned, so a
+/// single-conversation read can pull their rollouts into scope.
+pub(crate) fn codex_delegated_thread_ids(params: &Value, requested: &[String]) -> Vec<String> {
+    if requested.is_empty() {
+        return Vec::new();
+    }
+    let Some(state_db) = history_roots(HistoryAdapter::Codex, params)
+        .iter()
+        .find(|root| root.source_kind == "codex-session-store")
+        .and_then(|root| newest_codex_state_database(&root.path))
+    else {
+        return Vec::new();
+    };
+    let Some(parents_by_child) = read_codex_spawn_edges(&state_db) else {
+        return Vec::new();
+    };
+    let wanted = requested.iter().collect::<HashSet<_>>();
+    parents_by_child
+        .into_iter()
+        .filter(|(_, parent)| wanted.contains(parent))
+        .map(|(child, _)| child)
+        .take(MAX_BROWSE_DELEGATED_TASK_TRANSCRIPTS * 8)
+        .collect()
+}
+
+/// Parent thread of each Codex conversation, for read paths that carry no
+/// catalog. Returns an empty map when the database has no lineage table.
+pub(crate) fn codex_spawn_lineage(params: &Value) -> BTreeMap<String, String> {
+    codex_state_database(params)
+        .and_then(|state_db| read_codex_spawn_edges(&state_db))
+        .unwrap_or_default()
+}
+
+fn codex_state_database(params: &Value) -> Option<PathBuf> {
+    history_roots(HistoryAdapter::Codex, params)
+        .iter()
+        .find(|root| root.source_kind == "codex-session-store")
+        .and_then(|root| newest_codex_state_database(&root.path))
+}
+
+/// How Codex names one delegated thread.
+///
+/// Codex gives each delegated agent a nickname and a role and keeps them in the
+/// thread database, not in the rollout. They are the only curated labels the
+/// store has for delegated work, so a card that ignores them falls back to
+/// whatever the first prompt line happens to be.
+#[derive(Clone, Debug, Default)]
+pub(crate) struct CodexDelegatedLabel {
+    pub(crate) title: Option<String>,
+    pub(crate) role: Option<String>,
+}
+
+pub(crate) fn codex_delegated_labels(params: &Value) -> BTreeMap<String, CodexDelegatedLabel> {
+    let Some(state_db) = codex_state_database(params) else {
+        return BTreeMap::new();
+    };
+    let Some(connection) = open_read_only_connection(&state_db) else {
+        return BTreeMap::new();
+    };
+    if !sqlite_table_exists(&connection, "threads") {
+        return BTreeMap::new();
+    }
+    let Ok(columns) = sqlite_columns(&connection, "threads") else {
+        return BTreeMap::new();
+    };
+    let optional = |name: &str| {
+        if columns.contains(name) {
+            format!("\"{name}\"")
+        } else {
+            "NULL".to_string()
+        }
+    };
+    let sql = format!(
+        "SELECT id, {}, {}, {} FROM threads",
+        optional("agent_nickname"),
+        optional("agent_role"),
+        optional("first_user_message"),
+    );
+    let Ok(mut statement) = connection.prepare(&sql) else {
+        return BTreeMap::new();
+    };
+    let Ok(rows) = statement.query_map([], |row| {
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, Option<String>>(1)?,
+            row.get::<_, Option<String>>(2)?,
+            row.get::<_, Option<String>>(3)?,
+        ))
+    }) else {
+        return BTreeMap::new();
+    };
+    let mut labels = BTreeMap::new();
+    for (id, nickname, role, first_message) in rows.flatten() {
+        let clean = |value: Option<String>| {
+            value
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty())
+        };
+        let title = clean(first_message)
+            .and_then(|message| delegated_task_label(&message))
+            .or_else(|| clean(nickname));
+        let role = clean(role);
+        if title.is_some() || role.is_some() {
+            labels.insert(id, CodexDelegatedLabel { title, role });
+        }
+    }
+    labels
+}
+
+/// Child thread to parent thread, from the Codex thread database. Returns `None`
+/// when the table is absent so an older database simply keeps flat rows.
+fn read_codex_spawn_edges(state_db: &Path) -> Option<BTreeMap<String, String>> {
+    let connection = open_read_only_connection(state_db)?;
+    if !sqlite_table_exists(&connection, "thread_spawn_edges") {
+        return None;
+    }
+    let columns = sqlite_columns(&connection, "thread_spawn_edges").ok()?;
+    if !columns.contains("parent_thread_id") || !columns.contains("child_thread_id") {
+        return None;
+    }
+    let mut statement = connection
+        .prepare("SELECT child_thread_id, parent_thread_id FROM thread_spawn_edges")
+        .ok()?;
+    let rows = statement
+        .query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })
+        .ok()?;
+    let mut edges = BTreeMap::<String, String>::new();
+    for (child, parent) in rows.flatten() {
+        if child.trim().is_empty() || parent.trim().is_empty() || child == parent {
+            continue;
+        }
+        edges.insert(child, parent);
+    }
+    Some(edges)
+}
+
+/// Directory one Codex rollout ran in, from its `session_meta` header. Only the
+/// bounded head of the file is read; the header is always the first record.
+fn codex_rollout_working_directory(path: &Path) -> Option<String> {
+    let file = fs::File::open(path).ok()?;
+    let mut head = Vec::new();
+    BufReader::new(file)
+        .take(MAX_TITLE_PROBE_BYTES)
+        .read_to_end(&mut head)
+        .ok()?;
+    let head = String::from_utf8_lossy(&head);
+    let line = head.lines().next()?;
+    let value = serde_json::from_str::<Value>(line).ok()?;
+    let payload = value.get("payload").unwrap_or(&value);
+    bounded_project_workspace(payload.get("cwd").and_then(Value::as_str)?)
 }
 
 fn newest_codex_state_database(sessions_dir: &Path) -> Option<PathBuf> {
@@ -561,7 +1071,8 @@ fn read_codex_state_threads(
                 updated_at: row.get::<_, Option<i64>>(3)?.and_then(epoch_to_system_time),
                 working_directory: row
                     .get::<_, Option<String>>(5)?
-                    .filter(|value| !value.trim().is_empty()),
+                    .as_deref()
+                    .and_then(bounded_project_workspace),
                 message_count: None,
                 model: row
                     .get::<_, Option<String>>(6)?
@@ -672,12 +1183,15 @@ fn read_openagent_sessions(
                 updated_at: row.get::<_, Option<i64>>(5)?.and_then(epoch_to_system_time),
                 working_directory: row
                     .get::<_, Option<String>>(2)?
-                    .filter(|value| !value.trim().is_empty()),
+                    .as_deref()
+                    .and_then(bounded_project_workspace),
                 message_count: None,
                 model: row
                     .get::<_, Option<String>>(3)?
                     .filter(|value| !value.trim().is_empty()),
-                hydrate: CatalogHydration::None,
+                // The session store holds the conversation too, so the browse row
+                // carries its messages instead of rendering as an empty row.
+                hydrate: CatalogHydration::File(db_path.to_path_buf()),
             })
         })
         .map_err(|_| fail("openagent_state_read_failed"))?;
@@ -892,72 +1406,270 @@ fn cursor_catalog(roots: &[HistoryRoot], cutoff: SystemTime, catalog: &mut Sessi
     for root in roots {
         match root.source_kind.as_str() {
             "cursor-workspace-storage" | "cursor-global-storage" => {
-                generic_file_root_catalog(HistoryAdapter::Cursor, root, cutoff, catalog);
+                cursor_ide_store_catalog(root, cutoff, catalog);
             }
             _ => {}
         }
     }
 }
 
-fn cursor_cli_projects_catalog(root: &HistoryRoot, cutoff: SystemTime, catalog: &mut SessionCatalog) {
-    let discovery = discover_history_files(
-        HistoryAdapter::Cursor,
-        std::slice::from_ref(root),
-        HistoryDiscoveryOptions::default(),
+/// Cursor keeps every IDE conversation inside one `state.vscdb`, so a
+/// file-metadata catalog only ever sees the database itself and no conversation
+/// in it. This walks the IDE storage tree for those databases and lists their
+/// composers directly, which is what makes IDE conversations reachable in browse
+/// mode at all.
+fn cursor_ide_store_catalog(root: &HistoryRoot, cutoff: SystemTime, catalog: &mut SessionCatalog) {
+    // `globalStorage/state.vscdb` and `workspaceStorage/<id>/state.vscdb` are the
+    // only two shapes. Walking deeper would descend into the bundled agent-CLI
+    // installs that share these trees and cost thousands of directory entries.
+    let mut stores = Vec::<PathBuf>::new();
+    collect_named_files_bounded(
+        &root.path,
+        CURSOR_IDE_STORE_FILE,
+        0,
+        CURSOR_IDE_STORE_WALK_DEPTH,
+        catalog,
+        &mut stores,
     );
-    catalog.files_seen += discovery.files_seen;
-    catalog.directory_entries_seen += discovery.directory_entries_seen;
-    catalog.skipped.extend(discovery.skipped);
-    for candidate in discovery.candidates {
-        if candidate.modified_at < cutoff {
+    stores.sort();
+    for store in stores {
+        catalog.files_seen += 1;
+        let Some(connection) = open_read_only_connection(&store) else {
+            catalog.skipped.push(json!({
+                "path": store.to_string_lossy(),
+                "reason": "cursor_ide_store_unreadable"
+            }));
+            continue;
+        };
+        if !sqlite_table_exists(&connection, "cursorDiskKV") {
             continue;
         }
-        let native_session_id = candidate
-            .path
-            .file_stem()
-            .and_then(|value| value.to_str())
-            .unwrap_or_default()
-            .to_string();
+        let store_recency = fs::metadata(&store)
+            .ok()
+            .and_then(|metadata| metadata.modified().ok());
+        for entry in cursor_composer_catalog(&connection) {
+            if entry.parent_composer_id.is_some() {
+                // Delegated work folds into its parent conversation.
+                continue;
+            }
+            let created_at = entry.created_at.as_deref().and_then(rfc3339_to_system_time);
+            let updated_at = entry
+                .updated_at
+                .as_deref()
+                .and_then(rfc3339_to_system_time)
+                .or(created_at)
+                .or(store_recency);
+            if updated_at.or(created_at).unwrap_or(UNIX_EPOCH) < cutoff {
+                continue;
+            }
+            catalog.sessions.push(CatalogSession {
+                native_session_id: entry.composer_id,
+                source_path: store.clone(),
+                source_kind: root.source_kind.clone(),
+                title: entry.title,
+                created_at,
+                updated_at,
+                working_directory: entry.working_directory,
+                message_count: Some(entry.message_count),
+                model: entry.model,
+                hydrate: CatalogHydration::File(store.clone()),
+            });
+        }
+    }
+}
+
+/// Cursor CLI project trees hold far more than conversations: `mcps/` tool
+/// descriptors, `agent-tools/`, `canvases/`, `terminals/`, and `assets/` are all
+/// JSON under the same root. Only `agent-transcripts/` holds conversations, so
+/// the catalog walks that subtree per project instead of the whole project root.
+///
+/// Inside it the layout is
+/// `agent-transcripts/<sessionId>/<sessionId>.jsonl` for the conversation and
+/// `agent-transcripts/<sessionId>/subagents/<childId>.jsonl` for each delegated
+/// task. Child transcripts are attached to their parent's hydration unit rather
+/// than listed as their own conversations.
+fn cursor_cli_projects_catalog(
+    root: &HistoryRoot,
+    cutoff: SystemTime,
+    catalog: &mut SessionCatalog,
+) {
+    for project in cursor_project_directories(&root.path, catalog) {
+        let transcripts_root = project.join(CURSOR_TRANSCRIPTS_DIRECTORY);
+        if !transcripts_root.is_dir() {
+            continue;
+        }
+        let working_directory = cursor_project_workspace_path(&project);
+        let discovery = discover_history_files(
+            HistoryAdapter::Cursor,
+            std::slice::from_ref(&HistoryRoot {
+                path: transcripts_root,
+                source_kind: root.source_kind.clone(),
+            }),
+            HistoryDiscoveryOptions::default(),
+        );
+        catalog.files_seen += discovery.files_seen;
+        catalog.directory_entries_seen += discovery.directory_entries_seen;
+        catalog.skipped.extend(discovery.skipped);
+        push_delegated_transcript_units(
+            group_delegated_transcripts(discovery.candidates),
+            working_directory.as_deref(),
+            cutoff,
+            catalog,
+        );
+    }
+}
+
+/// Group discovered transcripts by the conversation they belong to, so each
+/// conversation carries its delegated task transcripts instead of letting them
+/// occupy their own browse rows.
+fn group_delegated_transcripts(
+    candidates: Vec<super::super::history_discovery::HistoryFileCandidate>,
+) -> BTreeMap<String, DelegatedTranscriptUnit> {
+    let mut transcripts = BTreeMap::<String, DelegatedTranscriptUnit>::new();
+    for candidate in candidates {
+        let Some(session_id) = transcript_conversation_id(&candidate.path) else {
+            continue;
+        };
+        if transcript_is_delegated(&candidate.path)
+            && !delegated_file_is_transcript(&candidate.path)
+        {
+            // Workflow bookkeeping beside a delegated task is not a conversation.
+            continue;
+        }
+        let unit = transcripts.entry(session_id).or_default();
+        if transcript_is_delegated(&candidate.path) {
+            unit.delegated
+                .push((candidate.modified_at, candidate.path.clone()));
+        } else {
+            unit.transcript = Some(candidate.path.clone());
+        }
+        unit.modified_at = unit.modified_at.max(candidate.modified_at);
+        unit.source_kind = candidate.source_kind;
+    }
+    for unit in transcripts.values_mut() {
+        // Newest delegated work first, then keep the browse bound.
+        unit.delegated
+            .sort_by(|left, right| right.0.cmp(&left.0).then_with(|| left.1.cmp(&right.1)));
+        if unit.delegated.len() > MAX_BROWSE_DELEGATED_TASK_TRANSCRIPTS {
+            unit.delegated
+                .truncate(MAX_BROWSE_DELEGATED_TASK_TRANSCRIPTS);
+            unit.delegated_truncated = true;
+        }
+    }
+    transcripts
+}
+
+fn push_delegated_transcript_units(
+    units: BTreeMap<String, DelegatedTranscriptUnit>,
+    working_directory: Option<&str>,
+    cutoff: SystemTime,
+    catalog: &mut SessionCatalog,
+) {
+    for (native_session_id, unit) in units {
+        if unit.modified_at < cutoff {
+            continue;
+        }
+        let Some(transcript) = unit.transcript else {
+            // A delegated transcript whose conversation is gone keeps its own
+            // entry so the work stays reachable.
+            let Some((_, orphan)) = unit.delegated.first().cloned() else {
+                continue;
+            };
+            catalog.sessions.push(CatalogSession {
+                native_session_id,
+                source_path: orphan.clone(),
+                source_kind: unit.source_kind,
+                title: None,
+                created_at: None,
+                updated_at: Some(unit.modified_at),
+                working_directory: working_directory.map(str::to_string),
+                message_count: None,
+                model: None,
+                hydrate: CatalogHydration::File(orphan),
+            });
+            continue;
+        };
         catalog.sessions.push(CatalogSession {
             native_session_id,
-            source_path: candidate.path.clone(),
-            source_kind: candidate.source_kind,
+            source_path: transcript.clone(),
+            source_kind: unit.source_kind,
             title: None,
             created_at: None,
-            updated_at: Some(candidate.modified_at),
-            working_directory: cursor_project_workspace_path(&candidate.path),
+            updated_at: Some(unit.modified_at),
+            working_directory: working_directory.map(str::to_string),
             message_count: None,
             model: None,
-            hydrate: CatalogHydration::File(candidate.path),
+            hydrate: CatalogHydration::TranscriptWithDelegatedTasks {
+                transcript,
+                delegated: unit.delegated.into_iter().map(|(_, path)| path).collect(),
+                delegated_truncated: unit.delegated_truncated,
+                delegated_parent_session_id: None,
+            },
         });
     }
 }
 
-/// Cursor CLI project trees record the trusted workspace in
-/// `.workspace-trusted`. Walk from the history file up to that marker so agent
-/// transcripts inherit the real project path instead of leaving cwd empty.
-fn cursor_project_workspace_path(source_path: &Path) -> Option<String> {
-    for ancestor in source_path.ancestors().take(8) {
-        let trusted = ancestor.join(".workspace-trusted");
-        if !trusted.is_file() {
-            continue;
+struct DelegatedTranscriptUnit {
+    transcript: Option<PathBuf>,
+    /// Delegated transcripts with their last-modified time, newest first after
+    /// grouping so the browse bound keeps the most recent work.
+    delegated: Vec<(SystemTime, PathBuf)>,
+    delegated_truncated: bool,
+    modified_at: SystemTime,
+    source_kind: String,
+}
+
+impl Default for DelegatedTranscriptUnit {
+    fn default() -> Self {
+        Self {
+            transcript: None,
+            delegated: Vec::new(),
+            delegated_truncated: false,
+            modified_at: UNIX_EPOCH,
+            source_kind: String::new(),
         }
-        if fs::metadata(&trusted)
-            .ok()
-            .is_some_and(|metadata| metadata.len() > MAX_STATE_FILE_BYTES)
-        {
-            continue;
-        }
-        let raw = fs::read_to_string(&trusted).ok()?;
-        let value = serde_json::from_str::<Value>(&raw).ok()?;
-        let path = value
-            .get("workspacePath")
-            .and_then(Value::as_str)
-            .map(str::trim)
-            .filter(|value| !value.is_empty())?;
-        return Some(path.to_string());
     }
-    None
+}
+
+/// Immediate project directories below `~/.cursor/projects`.
+fn cursor_project_directories(root: &Path, catalog: &mut SessionCatalog) -> Vec<PathBuf> {
+    let Ok(entries) = fs::read_dir(root) else {
+        return Vec::new();
+    };
+    let mut projects = Vec::new();
+    for entry in entries.flatten() {
+        if catalog.directory_entries_seen >= MAX_CATALOG_DIRECTORY_ENTRIES {
+            break;
+        }
+        catalog.directory_entries_seen += 1;
+        let path = entry.path();
+        if path.is_dir() {
+            projects.push(path);
+        }
+    }
+    projects.sort();
+    projects
+}
+
+/// Cursor CLI project trees record the trusted workspace in
+/// `.workspace-trusted` at the project root. Only that exact file is read: a
+/// marker further up (`~/.cursor/projects/.workspace-trusted` is written with
+/// `workspacePath: "/"`) belongs to a different trust decision and would hand
+/// every conversation the filesystem root.
+fn cursor_project_workspace_path(project: &Path) -> Option<String> {
+    let trusted = project.join(".workspace-trusted");
+    if !trusted.is_file() {
+        return None;
+    }
+    if fs::metadata(&trusted)
+        .ok()
+        .is_some_and(|metadata| metadata.len() > MAX_STATE_FILE_BYTES)
+    {
+        return None;
+    }
+    let raw = fs::read_to_string(&trusted).ok()?;
+    let value = serde_json::from_str::<Value>(&raw).ok()?;
+    bounded_project_workspace(value.get("workspacePath").and_then(Value::as_str)?)
 }
 
 fn cursor_cli_meta_catalog(root: &HistoryRoot, cutoff: SystemTime, catalog: &mut SessionCatalog) {
@@ -1004,12 +1716,142 @@ fn read_cursor_cli_meta(path: &Path) -> Option<CatalogSession> {
         working_directory: value
             .get("cwd")
             .and_then(Value::as_str)
-            .filter(|value| !value.trim().is_empty())
-            .map(str::to_string),
+            .and_then(bounded_project_workspace),
         message_count: None,
         model: None,
         hydrate: CatalogHydration::None,
     })
+}
+
+// ---------------------------------------------------------------------------
+// Antigravity: one conversation per brain directory, project path in the
+// trajectory database beside it.
+// ---------------------------------------------------------------------------
+
+const ANTIGRAVITY_BRAIN_DIRECTORY: &str = "brain";
+const ANTIGRAVITY_TRAJECTORY_DIRECTORY: &str = "conversations";
+const ANTIGRAVITY_TRANSCRIPT: &str = ".system_generated/logs/transcript.jsonl";
+/// The trajectory metadata record is a small protobuf; a conversation that grew
+/// a large one is not describing a project directory.
+const MAX_ANTIGRAVITY_TRAJECTORY_METADATA_BYTES: usize = 64 * 1024;
+
+/// Antigravity keeps one conversation per directory under
+/// `~/.gemini/antigravity/brain/<conversationId>/` and its readable transcript at
+/// `.system_generated/logs/transcript.jsonl`.
+///
+/// The same tree also holds the CLI's own rotating logs, crash reports, skill
+/// bundles, and knowledge files. Cataloguing files generically turned thousands
+/// of log lines into conversations and exhausted the discovery budget before any
+/// real conversation was reached, so the browse list held no Antigravity
+/// conversation at all and none of them had a project directory.
+fn antigravity_catalog(roots: &[HistoryRoot], cutoff: SystemTime, catalog: &mut SessionCatalog) {
+    for root in roots {
+        if root.source_kind != "antigravity-bridge" {
+            // IDE state and CLI logs hold no conversation transcript.
+            continue;
+        }
+        let brain = root.path.join(ANTIGRAVITY_BRAIN_DIRECTORY);
+        let Ok(entries) = fs::read_dir(&brain) else {
+            continue;
+        };
+        let trajectories = root.path.join(ANTIGRAVITY_TRAJECTORY_DIRECTORY);
+        let mut conversations = Vec::<PathBuf>::new();
+        for entry in entries.flatten() {
+            if catalog.directory_entries_seen >= MAX_CATALOG_DIRECTORY_ENTRIES {
+                break;
+            }
+            catalog.directory_entries_seen += 1;
+            let path = entry.path();
+            if path.is_dir() {
+                conversations.push(path);
+            }
+        }
+        conversations.sort();
+        for conversation in conversations {
+            let Some(conversation_id) = conversation
+                .file_name()
+                .and_then(|name| name.to_str())
+                .filter(|name| !name.is_empty())
+            else {
+                continue;
+            };
+            let transcript = conversation.join(ANTIGRAVITY_TRANSCRIPT);
+            let Ok(metadata) = fs::metadata(&transcript) else {
+                continue;
+            };
+            catalog.files_seen += 1;
+            let modified_at = metadata.modified().unwrap_or(UNIX_EPOCH);
+            if modified_at < cutoff {
+                continue;
+            }
+            catalog.sessions.push(CatalogSession {
+                native_session_id: conversation_id.to_string(),
+                source_path: transcript.clone(),
+                source_kind: root.source_kind.clone(),
+                title: None,
+                created_at: None,
+                updated_at: Some(modified_at),
+                working_directory: antigravity_trajectory_workspace(&trajectories, conversation_id),
+                message_count: None,
+                model: None,
+                hydrate: CatalogHydration::File(transcript),
+            });
+        }
+    }
+}
+
+/// Project directory of one Antigravity conversation.
+///
+/// Antigravity records the workspace as a `file://` URI inside the trajectory
+/// metadata record of `conversations/<conversationId>.db`. The record is a
+/// protobuf with no published schema, so the URI is recovered by scanning the
+/// bytes rather than by decoding fields, and only a bounded absolute project
+/// directory is accepted.
+fn antigravity_trajectory_workspace(trajectories: &Path, conversation_id: &str) -> Option<String> {
+    let database = trajectories.join(format!("{conversation_id}.db"));
+    if !database.is_file() {
+        return None;
+    }
+    let connection = open_read_only_connection(&database)?;
+    if !sqlite_table_exists(&connection, "trajectory_metadata_blob") {
+        return None;
+    }
+    let mut statement = connection
+        .prepare("SELECT data FROM trajectory_metadata_blob LIMIT 4")
+        .ok()?;
+    let rows = statement
+        .query_map([], |row| row.get::<_, Vec<u8>>(0))
+        .ok()?;
+    for record in rows.flatten() {
+        if record.len() > MAX_ANTIGRAVITY_TRAJECTORY_METADATA_BYTES {
+            continue;
+        }
+        if let Some(workspace) = first_file_uri_workspace(&record) {
+            return Some(workspace);
+        }
+    }
+    None
+}
+
+/// First `file:///…` path embedded in an opaque record, as a bounded project
+/// directory. Scanning stops at the first byte that cannot belong to a path so a
+/// neighbouring protobuf field is never absorbed into it.
+fn first_file_uri_workspace(record: &[u8]) -> Option<String> {
+    const PREFIX: &[u8] = b"file:///";
+    let start = record
+        .windows(PREFIX.len())
+        .position(|window| window == PREFIX)?
+        + PREFIX.len()
+        - 1;
+    let end = record[start..]
+        .iter()
+        .position(|byte| {
+            !matches!(byte, 0x20..=0x7e) || matches!(byte, b'"' | b'<' | b'>' | b'|' | b'?' | b'*')
+        })
+        .map(|offset| start + offset)
+        .unwrap_or(record.len());
+    let candidate = std::str::from_utf8(&record[start..end]).ok()?;
+    bounded_project_workspace(candidate)
 }
 
 // ---------------------------------------------------------------------------
@@ -1018,6 +1860,11 @@ fn read_cursor_cli_meta(path: &Path) -> Option<CatalogSession> {
 
 fn claude_catalog(roots: &[HistoryRoot], cutoff: SystemTime, catalog: &mut SessionCatalog) {
     for root in roots {
+        if root.source_kind != "claude-project-transcripts" {
+            // `~/.claude.json` is client configuration and prompt history, not a
+            // conversation store.
+            continue;
+        }
         let discovery = discover_history_files(
             HistoryAdapter::ClaudeCode,
             std::slice::from_ref(root),
@@ -1026,30 +1873,47 @@ fn claude_catalog(roots: &[HistoryRoot], cutoff: SystemTime, catalog: &mut Sessi
         catalog.files_seen += discovery.files_seen;
         catalog.directory_entries_seen += discovery.directory_entries_seen;
         catalog.skipped.extend(discovery.skipped);
-        for candidate in discovery.candidates {
-            if candidate.modified_at < cutoff {
-                continue;
-            }
-            let native_session_id = candidate
-                .path
-                .file_stem()
-                .and_then(|value| value.to_str())
-                .unwrap_or_default()
-                .to_string();
-            catalog.sessions.push(CatalogSession {
-                native_session_id,
-                source_path: candidate.path.clone(),
-                source_kind: candidate.source_kind,
-                title: claude_head_title(&candidate.path),
-                created_at: None,
-                updated_at: Some(candidate.modified_at),
-                working_directory: None,
-                message_count: None,
-                model: None,
-                hydrate: CatalogHydration::File(candidate.path),
-            });
+        // Claude Code stores each delegated task under
+        // `<sessionId>/subagents/agent-<taskId>.jsonl`, so grouping is what keeps
+        // sidechain work inside its conversation. Tool results, workflow records,
+        // and other per-session artifacts share the tree and are not
+        // conversations.
+        let candidates = discovery
+            .candidates
+            .into_iter()
+            .filter(|candidate| claude_transcript_candidate(&candidate.path))
+            .collect::<Vec<_>>();
+        let units = group_delegated_transcripts(candidates);
+        let mut grouped = SessionCatalog::default();
+        push_delegated_transcript_units(units, None, cutoff, &mut grouped);
+        for mut entry in grouped.sessions {
+            entry.title = claude_head_title(&entry.source_path);
+            catalog.sessions.push(entry);
         }
     }
+}
+
+/// Whether one file in the Claude Code project tree is a conversation transcript.
+///
+/// The tree also holds `tool-results/<id>.txt`, `workflows/<id>.json`, and other
+/// per-session artifacts. None of them is a conversation, and listing them fills
+/// the browse list with empty rows.
+fn claude_transcript_candidate(path: &Path) -> bool {
+    let extension = path
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    if !matches!(extension.as_str(), "jsonl" | "ndjson") {
+        return false;
+    }
+    if transcript_is_delegated(path) {
+        return delegated_file_is_transcript(path);
+    }
+    !path
+        .components()
+        .filter_map(|component| component.as_os_str().to_str())
+        .any(|component| matches!(component, "tool-results" | "workflows"))
 }
 
 /// Cheap title probe: scan only a bounded head prefix of the transcript for the
@@ -1239,9 +2103,18 @@ fn collect_named_files(
     catalog: &mut SessionCatalog,
     out: &mut Vec<PathBuf>,
 ) {
-    if depth >= MAX_CATALOG_WALK_DEPTH
-        || catalog.directory_entries_seen >= MAX_CATALOG_DIRECTORY_ENTRIES
-    {
+    collect_named_files_bounded(dir, name, depth, MAX_CATALOG_WALK_DEPTH, catalog, out);
+}
+
+fn collect_named_files_bounded(
+    dir: &Path,
+    name: &str,
+    depth: usize,
+    max_depth: usize,
+    catalog: &mut SessionCatalog,
+    out: &mut Vec<PathBuf>,
+) {
+    if depth >= max_depth || catalog.directory_entries_seen >= MAX_CATALOG_DIRECTORY_ENTRIES {
         return;
     }
     let Ok(entries) = fs::read_dir(dir) else {
@@ -1254,7 +2127,7 @@ fn collect_named_files(
         catalog.directory_entries_seen += 1;
         let path = entry.path();
         if path.is_dir() {
-            collect_named_files(&path, name, depth + 1, catalog, out);
+            collect_named_files_bounded(&path, name, depth + 1, max_depth, catalog, out);
         } else if entry.file_name().to_str() == Some(name) {
             out.push(path);
         }

@@ -21,9 +21,10 @@ use crate::platform::file_security::{
     remove_private_state_marker,
 };
 use crate::platform::paths;
-use anyhow::{Result, anyhow};
+use anyhow::{Result, anyhow, ensure};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use std::collections::BTreeSet;
 use std::fs::OpenOptions;
 use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpStream};
@@ -53,9 +54,45 @@ const POLL_INTERVAL: Duration = Duration::from_millis(100);
 #[cfg(unix)]
 static GATEWAY_SESSION_CREDENTIALS: OnceLock<Mutex<Option<SecretBytes>>> = OnceLock::new();
 
+/// Credential IDs currently bound into the in-memory Gateway handoff. Selection
+/// is process-local and never persisted.
+#[cfg(unix)]
+static GATEWAY_ENABLED_CREDENTIAL_IDS: OnceLock<Mutex<BTreeSet<String>>> = OnceLock::new();
+
 #[cfg(unix)]
 fn gateway_session_credentials() -> &'static Mutex<Option<SecretBytes>> {
     GATEWAY_SESSION_CREDENTIALS.get_or_init(|| Mutex::new(None))
+}
+
+#[cfg(unix)]
+fn gateway_enabled_credential_ids() -> &'static Mutex<BTreeSet<String>> {
+    GATEWAY_ENABLED_CREDENTIAL_IDS.get_or_init(|| Mutex::new(BTreeSet::new()))
+}
+
+fn validate_credential_id(credential_id: &str) -> Result<()> {
+    ensure!(
+        uuid::Uuid::parse_str(credential_id)
+            .is_ok_and(|value| value.to_string() == credential_id),
+        "llm_api_key_credential_id_invalid"
+    );
+    Ok(())
+}
+
+fn authorization_report(
+    authorized: bool,
+    providers: Vec<String>,
+    credential_ids: impl IntoIterator<Item = String>,
+    reason_code: Option<&str>,
+) -> Value {
+    let ids: Vec<String> = credential_ids.into_iter().collect();
+    json!({
+        "ok": true,
+        "schemaVersion": "licoup.llm-gateway-authorization.v1",
+        "authorized": authorized,
+        "reasonCode": reason_code,
+        "providers": providers,
+        "authorizedCredentialIds": ids,
+    })
 }
 
 #[cfg(unix)]
@@ -126,35 +163,153 @@ pub fn service_initialize(port: u16) -> Result<Value> {
     service_start(port)
 }
 
-/// Request user presence once and load the system-keyring credentials into
-/// the native app process. This operation performs no network request and does
-/// not start, stop, or restart the local Gateway process.
-pub fn credentials_authorize() -> Result<Value> {
+/// Request user presence and load selected system-keyring credentials into
+/// the native app process. When `credential_id` is set, only that key is added
+/// to the active selection; when omitted, every non-expired key is enabled.
+/// This operation performs no network request and does not start, stop, or
+/// restart the local Gateway process.
+pub fn credentials_authorize(credential_id: Option<&str>) -> Result<Value> {
     #[cfg(unix)]
     {
-        let handoff = crate::platform::llm_api_key_vault::PlatformLlmApiKeyVault::production()?
-            .authorize_gateway_handoff()?;
+        if let Some(credential_id) = credential_id {
+            validate_credential_id(credential_id)?;
+        }
+        let vault = crate::platform::llm_api_key_vault::PlatformLlmApiKeyVault::production()?;
+        let inventory = vault.list()?;
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_err(|_| anyhow!("llm_api_key_clock_invalid"))?
+            .as_secs();
+        let available: BTreeSet<String> = inventory
+            .entries
+            .iter()
+            .filter(|entry| !entry.is_expired(now))
+            .map(|entry| entry.credential_id.clone())
+            .collect();
+        let mut enabled = gateway_enabled_credential_ids()
+            .lock()
+            .map_err(|_| anyhow!("llm_gateway_session_credentials_unavailable"))?;
+        let next_enabled = match credential_id {
+            Some(credential_id) => {
+                ensure!(
+                    available.contains(credential_id),
+                    "llm_api_key_credential_unavailable"
+                );
+                let mut next = enabled.clone();
+                next.insert(credential_id.to_owned());
+                next
+            }
+            None => available,
+        };
+        let ids: Vec<String> = next_enabled.iter().cloned().collect();
+        let handoff = if ids.is_empty() {
+            None
+        } else {
+            vault.authorize_gateway_handoff_filtered(Some(&ids))?
+        };
         let providers = handoff
             .as_ref()
             .map(|value| {
                 value
                     .providers()
-                    .map(|provider| provider.as_str())
+                    .map(|provider| provider.as_str().to_owned())
                     .collect::<Vec<_>>()
             })
             .unwrap_or_default();
         let authorized = handoff.is_some();
         replace_gateway_session_credentials(handoff)?;
-        Ok(json!({
-            "ok": true,
-            "schemaVersion": "licoup.llm-gateway-authorization.v1",
-            "authorized": authorized,
-            "reasonCode": if authorized { Value::Null } else { Value::String("no_credentials".to_owned()) },
-            "providers": providers,
-        }))
+        *enabled = if authorized {
+            next_enabled
+        } else {
+            BTreeSet::new()
+        };
+        let ids: Vec<String> = enabled.iter().cloned().collect();
+        Ok(authorization_report(
+            authorized,
+            providers,
+            ids,
+            if authorized {
+                None
+            } else {
+                Some("no_credentials")
+            },
+        ))
     }
     #[cfg(not(unix))]
     {
+        let _ = credential_id;
+        Err(anyhow!("llm_gateway_credential_authorization_unsupported"))
+    }
+}
+
+/// Drop selected or all in-memory Gateway credentials without deleting vault
+/// entries and without starting or stopping the sidecar. When `credential_id`
+/// is set, only that key leaves the active selection.
+pub fn credentials_clear(credential_id: Option<&str>) -> Result<Value> {
+    #[cfg(unix)]
+    {
+        if let Some(credential_id) = credential_id {
+            validate_credential_id(credential_id)?;
+        }
+        let mut enabled = gateway_enabled_credential_ids()
+            .lock()
+            .map_err(|_| anyhow!("llm_gateway_session_credentials_unavailable"))?;
+        match credential_id {
+            None => {
+                enabled.clear();
+                replace_gateway_session_credentials(None)?;
+                return Ok(authorization_report(
+                    false,
+                    Vec::new(),
+                    Vec::<String>::new(),
+                    None,
+                ));
+            }
+            Some(credential_id) => {
+                enabled.remove(credential_id);
+            }
+        }
+        if enabled.is_empty() {
+            replace_gateway_session_credentials(None)?;
+            return Ok(authorization_report(
+                false,
+                Vec::new(),
+                Vec::<String>::new(),
+                None,
+            ));
+        }
+        let vault = crate::platform::llm_api_key_vault::PlatformLlmApiKeyVault::production()?;
+        let ids: Vec<String> = enabled.iter().cloned().collect();
+        let handoff = vault.authorize_gateway_handoff_filtered(Some(&ids))?;
+        let providers = handoff
+            .as_ref()
+            .map(|value| {
+                value
+                    .providers()
+                    .map(|provider| provider.as_str().to_owned())
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        let authorized = handoff.is_some();
+        replace_gateway_session_credentials(handoff)?;
+        if !authorized {
+            enabled.clear();
+        }
+        let remaining: Vec<String> = enabled.iter().cloned().collect();
+        Ok(authorization_report(
+            authorized,
+            providers,
+            remaining,
+            if authorized {
+                None
+            } else {
+                Some("no_credentials")
+            },
+        ))
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = credential_id;
         Err(anyhow!("llm_gateway_credential_authorization_unsupported"))
     }
 }
@@ -369,8 +524,8 @@ fn session_credentials_loaded() -> bool {
     false
 }
 
-fn default_config() -> GatewayConfig {
-    let providers = vec![
+fn default_config(available_providers: &BTreeSet<LlmApiKeyProvider>) -> GatewayConfig {
+    let all_providers = [
         GatewayProvider {
             id: "kimi".to_owned(),
             base_url: "https://api.moonshot.cn/v1".to_owned(),
@@ -393,14 +548,18 @@ fn default_config() -> GatewayConfig {
             credential_style: CredentialStyle::Bearer,
         },
     ];
+    let providers = all_providers
+        .into_iter()
+        .filter(|provider| available_providers.contains(&provider.credential_provider))
+        .collect::<Vec<_>>();
+    let provider_ids = available_providers
+        .iter()
+        .map(|provider| provider.as_str())
+        .collect::<BTreeSet<_>>();
     let mut routes = Vec::new();
-    for (model, provider, upstream) in [
-        ("kimi-k2-0905-preview", "kimi", "kimi-k2-0905-preview"),
-        ("deepseek-chat", "deepseek", "deepseek-chat"),
-        ("claude-sonnet-4-6", "kilo", "anthropic/claude-sonnet-4.6"),
-        ("claude-opus-4-7", "kilo", "anthropic/claude-opus-4.7"),
-        ("claude-haiku-4-5", "kilo", "anthropic/claude-haiku-4.5"),
-    ] {
+    for model in
+        crate::domain::llm_gateway_default_catalog::models_for_provider_ids(&provider_ids)
+    {
         for client_protocol in [
             ClientProtocol::OpenAiResponses,
             ClientProtocol::OpenAiChatCompletions,
@@ -408,9 +567,9 @@ fn default_config() -> GatewayConfig {
         ] {
             routes.push(ModelRoute {
                 client_protocol,
-                requested_model: model.to_owned(),
-                provider_id: provider.to_owned(),
-                upstream_model: upstream.to_owned(),
+                requested_model: model.requested_model.to_owned(),
+                provider_id: model.provider_id.to_owned(),
+                upstream_model: model.upstream_model.to_owned(),
             });
         }
     }
@@ -421,11 +580,28 @@ fn default_config() -> GatewayConfig {
     }
 }
 
-/// Materialize the closed product-owned routing configuration. Provider and
-/// protocol routes are not user configuration; rewriting this private file
-/// ensures a freshly packaged sidecar never inherits a retired route set.
+/// Providers that currently have at least one non-expired saved API key.
+/// Inventory metadata only; never opens Keychain secrets.
+pub(crate) fn providers_with_usable_saved_keys() -> BTreeSet<LlmApiKeyProvider> {
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_secs())
+        .unwrap_or(0);
+    match crate::platform::llm_api_key_vault::PlatformLlmApiKeyVault::production()
+        .and_then(|vault| vault.list())
+    {
+        Ok(inventory) => inventory.providers_with_usable_keys(now),
+        Err(_) => BTreeSet::new(),
+    }
+}
+
+/// Materialize the closed product-owned routing configuration for providers
+/// that currently have a usable saved API key. Providers without keys are
+/// omitted so the Gateway does not advertise their model catalogs. Rewriting
+/// this private file ensures a freshly packaged sidecar never inherits a
+/// retired route set.
 fn ensure_default_config(paths: &ServicePaths) -> Result<()> {
-    let config = default_config();
+    let config = default_config(&providers_with_usable_saved_keys());
     let body = serde_json::to_string_pretty(&config)?;
     atomic_write_private_text(&paths.config, &body)?;
     validate_config(&paths.config)
@@ -782,18 +958,14 @@ mod tests {
 
     #[test]
     fn default_config_compiles_and_covers_both_client_protocols() {
-        let config = default_config();
+        use crate::domain::llm_gateway_default_catalog::DEFAULT_GATEWAY_MODELS;
+        let all_providers = BTreeSet::from(LlmApiKeyProvider::ALL);
+        let config = default_config(&all_providers);
         let text = serde_json::to_string_pretty(&config).unwrap();
         let parsed: GatewayConfig = serde_json::from_str(&text).unwrap();
         CompiledGateway::compile(parsed).unwrap();
-        assert_eq!(config.routes.len(), 15);
-        for (model, provider, upstream) in [
-            ("kimi-k2-0905-preview", "kimi", "kimi-k2-0905-preview"),
-            ("deepseek-chat", "deepseek", "deepseek-chat"),
-            ("claude-sonnet-4-6", "kilo", "anthropic/claude-sonnet-4.6"),
-            ("claude-opus-4-7", "kilo", "anthropic/claude-opus-4.7"),
-            ("claude-haiku-4-5", "kilo", "anthropic/claude-haiku-4.5"),
-        ] {
+        assert_eq!(config.routes.len(), DEFAULT_GATEWAY_MODELS.len() * 3);
+        for model in DEFAULT_GATEWAY_MODELS {
             for client_protocol in [
                 ClientProtocol::OpenAiResponses,
                 ClientProtocol::OpenAiChatCompletions,
@@ -801,19 +973,55 @@ mod tests {
             ] {
                 assert!(config.routes.iter().any(|route| {
                     route.client_protocol == client_protocol
-                        && route.requested_model == model
-                        && route.provider_id == provider
-                        && route.upstream_model == upstream
+                        && route.requested_model == model.requested_model
+                        && route.provider_id == model.provider_id
+                        && route.upstream_model == model.upstream_model
                 }));
             }
         }
         assert!(text.contains("\"credentialProvider\": \"kimi\""));
         assert!(text.contains("\"credentialProvider\": \"kilo\""));
+        assert!(text.contains("\"requestedModel\": \"deepseek:deepseek-v4-pro\""));
+        assert!(text.contains("\"requestedModel\": \"kimi:k3\""));
+        assert!(text.contains("\"requestedModel\": \"kilo:kilo-auto/frontier\""));
+        assert!(text.contains("\"requestedModel\": \"kilo:anthropic/claude-opus-5\""));
+        assert!(text.contains("\"upstreamModel\": \"deepseek-v4-pro\""));
+        assert!(text.contains("\"upstreamModel\": \"kimi-k3\""));
+        assert!(text.contains("\"upstreamModel\": \"kilo-auto/free\""));
+        assert!(!text.contains("\"requestedModel\": \"anthropic/claude-sonnet-4.6\""));
+        assert!(!text.contains("kimi-k2-0905-preview"));
+        assert!(!text.contains("\"requestedModel\": \"deepseek-chat\""));
         assert!(text.contains("\"baseUrl\": \"https://api.kilo.ai/api/gateway\""));
         assert!(text.contains("\"protocol\": \"open_ai_chat_completions\""));
         assert!(text.contains("\"clientProtocol\": \"anthropic_messages\""));
         assert!(text.contains("\"clientProtocol\": \"open_ai_chat_completions\""));
         assert!(text.contains("\"clientProtocol\": \"open_ai_responses\""));
+    }
+
+    #[test]
+    fn default_config_omits_providers_without_saved_keys() {
+        let only_kimi = BTreeSet::from([LlmApiKeyProvider::Kimi]);
+        let config = default_config(&only_kimi);
+        CompiledGateway::compile(config.clone()).unwrap();
+        assert_eq!(config.providers.len(), 1);
+        assert_eq!(config.providers[0].credential_provider, LlmApiKeyProvider::Kimi);
+        assert!(
+            config
+                .routes
+                .iter()
+                .all(|route| route.provider_id == "kimi")
+        );
+        assert!(
+            config
+                .routes
+                .iter()
+                .any(|route| route.requested_model == "kimi:k3")
+        );
+
+        let empty = default_config(&BTreeSet::new());
+        CompiledGateway::compile(empty.clone()).unwrap();
+        assert!(empty.providers.is_empty());
+        assert!(empty.routes.is_empty());
     }
 
     #[test]

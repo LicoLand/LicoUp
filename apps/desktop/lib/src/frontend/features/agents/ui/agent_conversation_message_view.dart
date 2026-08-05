@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
+import 'package:licoup/src/contracts/agent_orchestration_target.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/layout/layout_agents_strategy.dart';
@@ -122,6 +123,9 @@ class AgentConversationMessageListState
         _timelineSessionIdentity == sessionIdentity) {
       return false;
     }
+    if (_reuseTimelineForStreamedTail(session, sessionIdentity)) {
+      return true;
+    }
 
     final messages = mergeConversationReadbackAndLiveMessages(
       session?.messages ?? const [],
@@ -164,6 +168,81 @@ class AgentConversationMessageListState
     _footerCount = footerCount;
     _hasMessages = messages.isNotEmpty;
     return true;
+  }
+
+  /// Reuse the built timeline while a reply streams in.
+  ///
+  /// A streamed turn republishes the live list every few frames, and only the
+  /// text of its last message changes. Rebuilding the whole timeline each time
+  /// re-derives every item, every storage key, and the whole key index for a
+  /// conversation that can hold hundreds of messages, which is work proportional
+  /// to history length on every frame of every reply. Timeline identity is
+  /// derived from message id, timestamp, role, and card type — never from text —
+  /// so the tail item can be swapped in place and every key stays stable.
+  ///
+  /// Returns false whenever anything but the last live message text differs, so
+  /// the full rebuild stays the only path that can change structure.
+  bool _reuseTimelineForStreamedTail(
+    AgentConversationSession? session,
+    String sessionIdentity,
+  ) {
+    if (!identical(_timelineSession, session) ||
+        _timelineSessionIdentity != sessionIdentity) {
+      return false;
+    }
+    final previous = _timelineLiveMessages;
+    final next = widget.liveMessages;
+    if (previous == null ||
+        previous.isEmpty ||
+        previous.length != next.length) {
+      return false;
+    }
+    for (var index = 0; index < previous.length - 1; index += 1) {
+      if (!identical(previous[index], next[index])) {
+        return false;
+      }
+    }
+    final previousTail = previous.last;
+    final nextTail = next.last;
+    if (identical(previousTail, nextTail)) {
+      return false;
+    }
+    if (!_isStreamedTextRevision(previousTail, nextTail)) {
+      return false;
+    }
+    // The tail item must already be the last timeline item; the list is stored
+    // reversed for the reverse-scrolling viewport, so that is index 0.
+    if (_timelineItems.isEmpty) {
+      return false;
+    }
+    final head = _timelineItems.first;
+    if (head is! ConversationMessageTimelineItem ||
+        !identical(head.message, previousTail)) {
+      return false;
+    }
+    final items = List<ConversationTimelineItem>.of(_timelineItems);
+    items[0] = ConversationMessageTimelineItem(head.storageKey, nextTail);
+    _timelineItems = List.unmodifiable(items);
+    _timelineLiveMessages = next;
+    return true;
+  }
+
+  /// Whether two versions of one live message differ only in streamed content.
+  static bool _isStreamedTextRevision(
+    AgentConversationMessage previous,
+    AgentConversationMessage next,
+  ) {
+    return previous.id == next.id &&
+        previous.role == next.role &&
+        previous.createdAt == next.createdAt &&
+        previous.cardType == next.cardType &&
+        previous.stableIdentity == next.stableIdentity &&
+        previous.participantAgentId == next.participantAgentId &&
+        previous.participantRole == next.participantRole &&
+        previous.childMessages.isEmpty &&
+        next.childMessages.isEmpty &&
+        !previous.isStructuredEvent &&
+        !next.isStructuredEvent;
   }
 
   void _syncActiveProcessStorageKey() {
@@ -211,6 +290,9 @@ class AgentConversationMessageListState
             activeProcessStorageKey: _activeProcessStorageKey,
             sessionKey: _timelineSessionKey,
             participantTargets: widget.participantTargets,
+            preferPeerAgents: isAgentOrchestrationTargetId(
+              widget.target.target,
+            ),
             topOverlayInset: widget.topOverlayInset,
             bottomOverlayInset: widget.bottomOverlayInset,
           );
@@ -300,6 +382,8 @@ class AgentConversationMessageListState
                   messageTreeTruncated: messageTreeTruncated,
                 ),
             };
+            // A streamed reply changes one item per frame. Without a repaint
+            // boundary per item the whole visible transcript repaints with it.
             return Padding(
               key: ValueKey<String>(item.storageKey),
               padding: EdgeInsets.only(
@@ -307,7 +391,7 @@ class AgentConversationMessageListState
                     ? LicoContentSpacing.item
                     : 0,
               ),
-              child: content,
+              child: RepaintBoundary(child: content),
             );
           },
           itemCount: _timelineItems.length + _footerCount,

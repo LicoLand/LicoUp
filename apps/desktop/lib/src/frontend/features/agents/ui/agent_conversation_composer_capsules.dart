@@ -3,10 +3,14 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import 'package:licoup/src/application/features/agents/conversation/conversation_working_directory_fallback.dart';
+import 'package:licoup/src/application/features/agents/orchestration/orchestration_target_catalog.dart';
+import 'package:licoup/src/contracts/target_candidate.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_display_names.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_conversation_overlay_glass.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_hover_popover.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/layout/profiles/messaging/desktop/tokens/messaging_desktop_tokens.dart';
+import 'package:licoup/src/frontend/shared/ui/agent_brand_icon.dart';
 import 'package:licoup/src/frontend/shared/ui/apple_control_metrics.dart';
 import 'package:licoup/src/frontend/shared/ui/apple_glass.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
@@ -32,6 +36,8 @@ class ComposerCapsuleRow extends StatelessWidget {
     this.reasoningEffortOptions = const [],
     this.selectedReasoningEffort = '',
     this.onReasoningEffortChanged,
+    this.flywheel,
+    this.licoProfileCapsule,
   });
 
   final String? workingDirectory;
@@ -45,6 +51,8 @@ class ComposerCapsuleRow extends StatelessWidget {
   final List<String> reasoningEffortOptions;
   final String selectedReasoningEffort;
   final ValueChanged<String>? onReasoningEffortChanged;
+  final Widget? flywheel;
+  final Widget? licoProfileCapsule;
 
   bool get _showWorkspace {
     final path = workingDirectory?.trim() ?? '';
@@ -52,11 +60,18 @@ class ComposerCapsuleRow extends StatelessWidget {
   }
 
   bool get _showRuntimeSelector =>
-      modelOptions.isNotEmpty || reasoningEffortOptions.isNotEmpty;
+      flywheel == null &&
+      (modelOptions.isNotEmpty || reasoningEffortOptions.isNotEmpty);
+
+  bool get _showRow =>
+      _showWorkspace ||
+      _showRuntimeSelector ||
+      flywheel != null ||
+      licoProfileCapsule != null;
 
   @override
   Widget build(BuildContext context) {
-    if (!_showWorkspace && !_showRuntimeSelector) {
+    if (!_showRow) {
       return const SizedBox.shrink();
     }
     return Padding(
@@ -74,6 +89,8 @@ class ComposerCapsuleRow extends StatelessWidget {
                 selectable: workingDirectorySelectable,
                 onChoose: onChooseWorkingDirectory,
               ),
+            ?flywheel,
+            ?licoProfileCapsule,
             if (_showRuntimeSelector)
               ComposerRuntimeCapsule(
                 modelOptions: modelOptions,
@@ -766,6 +783,556 @@ class _RuntimeSelectorOptionRow extends StatelessWidget {
                 Icon(Icons.check_rounded, size: 15, color: colors.accent),
               ],
             ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Orchestration / Lico group-entry capsule: main agent label with hover agent
+/// list (models cascade to the right) and a circular edit affordance.
+class ComposerFlywheelCapsule extends StatelessWidget {
+  const ComposerFlywheelCapsule({
+    super.key,
+    required this.mainAgentLabel,
+    required this.mainAgentTarget,
+    required this.agentOptions,
+    required this.selectedAgentId,
+    required this.selectedModel,
+    required this.onEdit,
+    this.onSelectAgent,
+    this.onSelectModel,
+  });
+
+  final String mainAgentLabel;
+  final TargetCandidate? mainAgentTarget;
+  final List<TargetCandidate> agentOptions;
+  final String selectedAgentId;
+  final String selectedModel;
+  final VoidCallback onEdit;
+  final ValueChanged<String>? onSelectAgent;
+  final void Function(String agentId, String model)? onSelectModel;
+
+  @override
+  Widget build(BuildContext context) {
+    final strings = LicoStrings.of(context);
+    final colors = context.licoColors;
+    final menuRadius = BorderRadius.circular(
+      AppleControlMetrics.menuCornerRadius,
+    );
+    final trigger = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        MessagingHoverPopover(
+          popoverKey: const Key('conversation-flywheel-selector-panel'),
+          targetAnchor: Alignment.topLeft,
+          followerAnchor: Alignment.bottomLeft,
+          offset: const Offset(0, -4),
+          maxWidth:
+              MessagingDesktopMetrics.composerFlywheelSelectorPopoverMaxWidth,
+          maxHeight:
+              MessagingDesktopMetrics.composerFlywheelSelectorPopoverMaxHeight,
+          borderRadius: menuRadius,
+          wrapInGlass: false,
+          readabilityVeil: true,
+          cardBuilder: (context, close) {
+            return _ComposerFlywheelSelectorPanel(
+              borderRadius: menuRadius,
+              maxHeight: MessagingDesktopMetrics
+                  .composerFlywheelSelectorPopoverMaxHeight,
+              agentOptions: agentOptions,
+              selectedAgentId: selectedAgentId,
+              selectedModel: selectedModel,
+              onSelectAgent: onSelectAgent == null
+                  ? null
+                  : (agentId) {
+                      onSelectAgent!(agentId);
+                      close();
+                    },
+              onSelectModel: onSelectModel == null
+                  ? null
+                  : (agentId, model) {
+                      onSelectModel!(agentId, model);
+                      close();
+                    },
+            );
+          },
+          triggerBuilder:
+              (context, {required open, required toggle, required close}) {
+                return Tooltip(
+                  message: strings.editMainAgent,
+                  waitDuration: const Duration(milliseconds: 400),
+                  child: Semantics(
+                    button: true,
+                    label: '${strings.commander}: $mainAgentLabel',
+                    child: AppleGlassSurface(
+                      borderRadius: kComposerCapsuleBorderRadius,
+                      fillAlpha: colors.isDark ? 22 : 10,
+                      child: InkWell(
+                        key: const Key('conversation-flywheel-button'),
+                        onTap: onEdit,
+                        borderRadius: kComposerCapsuleBorderRadius,
+                        mouseCursor: SystemMouseCursors.click,
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 6,
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (mainAgentTarget case final target?)
+                                AgentBrandIcon(
+                                  target: target,
+                                  size: 15,
+                                  iconSize: 15,
+                                )
+                              else
+                                Icon(
+                                  Icons.auto_awesome,
+                                  size: 15,
+                                  color: colors.primaryStrong,
+                                ),
+                              const SizedBox(width: 7),
+                              Flexible(
+                                child: Text(
+                                  mainAgentLabel,
+                                  key: const Key('conversation-flywheel-label'),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    color: colors.text.withAlpha(235),
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                    letterSpacing: -0.08,
+                                    height: 1.15,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 4),
+                              Icon(
+                                open
+                                    ? Icons.expand_less_rounded
+                                    : Icons.expand_more_rounded,
+                                size: 15,
+                                color: colors.textMuted.withAlpha(160),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              },
+        ),
+        const SizedBox(width: 6),
+        Tooltip(
+          message: strings.editMainAgent,
+          waitDuration: const Duration(milliseconds: 400),
+          child: AppleGlassSurface(
+            borderRadius: BorderRadius.circular(999),
+            fillAlpha: colors.isDark ? 22 : 10,
+            child: InkWell(
+              key: const Key('conversation-flywheel-edit'),
+              onTap: onEdit,
+              customBorder: const CircleBorder(),
+              child: SizedBox.square(
+                dimension: 28,
+                child: Icon(
+                  Icons.edit_outlined,
+                  size: 14,
+                  color: colors.textMuted.withAlpha(200),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+    return trigger;
+  }
+}
+
+class _ComposerFlywheelSelectorPanel extends StatefulWidget {
+  const _ComposerFlywheelSelectorPanel({
+    required this.borderRadius,
+    required this.maxHeight,
+    required this.agentOptions,
+    required this.selectedAgentId,
+    required this.selectedModel,
+    required this.onSelectAgent,
+    required this.onSelectModel,
+  });
+
+  final BorderRadius borderRadius;
+  final double maxHeight;
+  final List<TargetCandidate> agentOptions;
+  final String selectedAgentId;
+  final String selectedModel;
+  final ValueChanged<String>? onSelectAgent;
+  final void Function(String agentId, String model)? onSelectModel;
+
+  @override
+  State<_ComposerFlywheelSelectorPanel> createState() =>
+      _ComposerFlywheelSelectorPanelState();
+}
+
+class _ComposerFlywheelSelectorPanelState
+    extends State<_ComposerFlywheelSelectorPanel> {
+  String? _hoveredAgentId;
+  Timer? _dismissTimer;
+  final GlobalKey _agentCardKey = GlobalKey();
+  final GlobalKey _agentHeaderKey = GlobalKey();
+  final Map<String, GlobalKey> _agentRowKeys = <String, GlobalKey>{};
+  double _submenuTopOffset = 0;
+
+  static const Duration _sectionDismissGrace = Duration(milliseconds: 180);
+
+  GlobalKey _agentRowKey(String agentId) =>
+      _agentRowKeys.putIfAbsent(agentId, GlobalKey.new);
+
+  @override
+  void dispose() {
+    _dismissTimer?.cancel();
+    super.dispose();
+  }
+
+  void _onAgentEnter(String agentId) {
+    _dismissTimer?.cancel();
+    setState(() => _hoveredAgentId = agentId);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _hoveredAgentId != agentId) {
+        return;
+      }
+      _syncSubmenuTopOffset(agentId);
+    });
+  }
+
+  void _onAgentExit() {
+    _dismissTimer?.cancel();
+    _dismissTimer = Timer(_sectionDismissGrace, () {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _hoveredAgentId = null;
+        _submenuTopOffset = 0;
+      });
+    });
+  }
+
+  /// Places the model card so its first option shares a baseline with the
+  /// hovered agent row. Both cards use the same section-header geometry, so
+  /// the inset is (hovered row top) − (agent header height).
+  void _syncSubmenuTopOffset(String agentId) {
+    final cardBox =
+        _agentCardKey.currentContext?.findRenderObject() as RenderBox?;
+    final headerBox =
+        _agentHeaderKey.currentContext?.findRenderObject() as RenderBox?;
+    final rowBox =
+        _agentRowKeys[agentId]?.currentContext?.findRenderObject() as RenderBox?;
+    if (cardBox == null ||
+        headerBox == null ||
+        rowBox == null ||
+        !cardBox.hasSize ||
+        !headerBox.hasSize ||
+        !rowBox.hasSize) {
+      return;
+    }
+    final hoveredTop = rowBox.localToGlobal(Offset.zero, ancestor: cardBox).dy;
+    final nextOffset = (hoveredTop - headerBox.size.height).clamp(
+      0.0,
+      double.infinity,
+    );
+    if ((nextOffset - _submenuTopOffset).abs() <= 0.5) {
+      return;
+    }
+    setState(() => _submenuTopOffset = nextOffset);
+  }
+
+  List<String> _modelsFor(TargetCandidate target) =>
+      agentOrchestrationCommanderModels(target);
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.licoColors;
+    final strings = LicoStrings.of(context);
+    TargetCandidate? hovered;
+    for (final target in widget.agentOptions) {
+      if (target.target == _hoveredAgentId) {
+        hovered = target;
+        break;
+      }
+    }
+    final hoveredModels = hovered == null
+        ? const <String>[]
+        : _modelsFor(hovered);
+    final panelMaxHeight = widget.maxHeight;
+    Widget sectionHeader(String label, {Key? key}) => Padding(
+      key: key,
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: colors.textMuted,
+          fontSize: 11,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
+    Widget scrollableCard({
+      Key? key,
+      required double minWidth,
+      required double maxWidth,
+      required Widget header,
+      required List<Widget> rows,
+    }) {
+      return MessagingConversationOverlayGlass(
+        key: key,
+        borderRadius: widget.borderRadius,
+        readabilityVeil: true,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            minWidth: minWidth,
+            maxWidth: maxWidth,
+            maxHeight: panelMaxHeight,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              header,
+              Flexible(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: rows,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // Start-align + translate keeps the primary agent card's layout height
+    // stable (popover is bottom-anchored) while painting the model card so its
+    // first option shares a horizontal baseline with the hovered agent row.
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        scrollableCard(
+          key: _agentCardKey,
+          minWidth: 180,
+          maxWidth: 260,
+          header: sectionHeader(strings.commander, key: _agentHeaderKey),
+          rows: [
+            for (final agent in widget.agentOptions)
+              MouseRegion(
+                key: _agentRowKey(agent.target),
+                onEnter: (_) => _onAgentEnter(agent.target),
+                onExit: (_) => _onAgentExit(),
+                child: InkWell(
+                  key: Key('conversation-flywheel-agent-${agent.target}'),
+                  onTap: widget.onSelectAgent == null
+                      ? null
+                      : () => widget.onSelectAgent!(agent.target),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 8,
+                    ),
+                    child: Row(
+                      children: [
+                        AgentBrandIcon(target: agent, size: 16, iconSize: 16),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            agentConversationTargetDisplayName(agent),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: colors.text,
+                              fontSize: 12.5,
+                              fontWeight: agent.target == widget.selectedAgentId
+                                  ? FontWeight.w600
+                                  : FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                        if (agent.target == widget.selectedAgentId)
+                          Icon(
+                            Icons.check_rounded,
+                            size: 15,
+                            color: colors.accent,
+                          )
+                        else if (_modelsFor(agent).isNotEmpty)
+                          Icon(
+                            Icons.chevron_right_rounded,
+                            size: 16,
+                            color: colors.textMuted.withAlpha(160),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
+        if (hovered case final hoveredAgent? when hoveredModels.isNotEmpty) ...[
+          const SizedBox(width: 8),
+          Transform.translate(
+            offset: Offset(0, _submenuTopOffset),
+            child: MouseRegion(
+              onEnter: (_) => _onAgentEnter(hoveredAgent.target),
+              onExit: (_) => _onAgentExit(),
+              child: scrollableCard(
+                minWidth: 160,
+                maxWidth: 240,
+                header: sectionHeader(strings.model),
+                rows: [
+                  for (final model in hoveredModels)
+                    InkWell(
+                      key: Key(
+                        'conversation-flywheel-model-${hoveredAgent.target}-$model',
+                      ),
+                      onTap: widget.onSelectModel == null
+                          ? null
+                          : () => widget.onSelectModel!(
+                              hoveredAgent.target,
+                              model,
+                            ),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                shortenComposerModelName(model),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: colors.text,
+                                  fontSize: 12.5,
+                                  fontWeight:
+                                      hoveredAgent.target ==
+                                              widget.selectedAgentId &&
+                                          model == widget.selectedModel
+                                      ? FontWeight.w600
+                                      : FontWeight.w500,
+                                ),
+                              ),
+                            ),
+                            if (hoveredAgent.target == widget.selectedAgentId &&
+                                model == widget.selectedModel)
+                              Icon(
+                                Icons.check_rounded,
+                                size: 15,
+                                color: colors.accent,
+                              ),
+                          ],
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+/// Compact Agent / Plan mode capsule for Lico Agent conversations.
+class ComposerLicoProfileCapsule extends StatelessWidget {
+  const ComposerLicoProfileCapsule({
+    super.key,
+    required this.selectedProfile,
+    required this.onChanged,
+  });
+
+  final String selectedProfile;
+  final ValueChanged<String> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final strings = LicoStrings.of(context);
+    final colors = context.licoColors;
+    final isPlan = selectedProfile.trim().toLowerCase() == 'plan';
+    return AppleGlassSurface(
+      borderRadius: kComposerCapsuleBorderRadius,
+      fillAlpha: colors.isDark ? 22 : 10,
+      child: Padding(
+        padding: const EdgeInsets.all(2),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _LicoProfileChip(
+              key: const Key('conversation-lico-profile-agent'),
+              label: strings.agentModeLabel,
+              selected: !isPlan,
+              onTap: () => onChanged('base'),
+            ),
+            _LicoProfileChip(
+              key: const Key('conversation-lico-profile-plan'),
+              label: strings.planModeLabel,
+              selected: isPlan,
+              onTap: () => onChanged('plan'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _LicoProfileChip extends StatelessWidget {
+  const _LicoProfileChip({
+    super.key,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.licoColors;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: kComposerCapsuleBorderRadius,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 120),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+          borderRadius: kComposerCapsuleBorderRadius,
+          color: selected
+              ? (colors.isDark
+                    ? Colors.white.withAlpha(22)
+                    : Colors.black.withAlpha(14))
+              : Colors.transparent,
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: selected ? colors.text : colors.textMuted,
+            fontSize: 12,
+            fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+            letterSpacing: -0.08,
+            height: 1.15,
           ),
         ),
       ),

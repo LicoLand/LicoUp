@@ -65,6 +65,8 @@ class TargetController extends ChangeNotifier {
 
   List<TargetCandidate> _targets = const [];
   List<String> _tabOrder = const [];
+  List<String> _pinnedIds = const [];
+  bool _pinsInitialized = false;
   Map<String, dynamic>? inspection;
   Map<String, dynamic>? snapshotRestoreResult;
   bool isScanning = false;
@@ -81,6 +83,11 @@ class TargetController extends ChangeNotifier {
 
   List<TargetCandidate> get targets => _targets;
   List<String> get tabOrder => _tabOrder;
+  List<String> get pinnedConversationTargetIds =>
+      TargetPolicy.effectivePinnedConversationTargetIds(
+        persistedPinnedIds: _pinnedIds,
+        pinsInitialized: _pinsInitialized,
+      );
   String get lastErrorCode => _lastErrorCode;
 
   void replaceTargets(List<TargetCandidate> value) {
@@ -92,6 +99,12 @@ class TargetController extends ChangeNotifier {
 
   void replaceTabOrder(List<String> value) {
     _tabOrder = List.unmodifiable(value);
+    notifyListeners();
+  }
+
+  void replacePinnedConversationTargetIds(List<String> value) {
+    _pinnedIds = List.unmodifiable(value);
+    _pinsInitialized = true;
     notifyListeners();
   }
 
@@ -107,7 +120,49 @@ class TargetController extends ChangeNotifier {
 
   Future<void> loadTabOrder() async {
     _tabOrder = await _tabOrderRepository.load(_portableData);
+    _pinnedIds = await _tabOrderRepository.loadPinned(_portableData);
+    _pinsInitialized = await _tabOrderRepository.hasCustomPinnedIds(
+      _portableData,
+    );
     notifyListeners();
+  }
+
+  bool isConversationTargetPinned(String targetId) {
+    final normalized = targetId.trim();
+    if (normalized.isEmpty) {
+      return false;
+    }
+    return pinnedConversationTargetIds.contains(normalized);
+  }
+
+  Future<void> toggleConversationTargetPinned(String targetId) async {
+    final normalized = targetId.trim();
+    if (normalized.isEmpty) {
+      return;
+    }
+    final current = pinnedConversationTargetIds.toList(growable: true);
+    if (current.contains(normalized)) {
+      current.remove(normalized);
+    } else {
+      current.add(normalized);
+    }
+    _pinnedIds = List.unmodifiable(current);
+    _pinsInitialized = true;
+    notifyListeners();
+    try {
+      await _tabOrderRepository.savePinned(_portableData, _pinnedIds);
+    } catch (_) {
+      _lastErrorCode = 'target_pin_save_failed';
+      _onStatus(
+        const TargetStatusUpdate(
+          chinese: '智能体置顶状态保存失败。',
+          english: 'Failed to save the agent pin state.',
+          caption: 'Agent pins',
+          errorCode: 'target_pin_save_failed',
+        ),
+      );
+      notifyListeners();
+    }
   }
 
   Future<void> hydrateCache() async {
@@ -568,6 +623,7 @@ class TargetController extends ChangeNotifier {
       persistedOrder: _tabOrder,
       isOrchestrationTarget: _isOrchestrationTarget,
       orchestrationTarget: orchestrationTarget,
+      pinnedIds: pinnedConversationTargetIds,
     );
   }
 

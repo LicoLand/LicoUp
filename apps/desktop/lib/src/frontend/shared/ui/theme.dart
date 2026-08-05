@@ -101,11 +101,7 @@ ThemeData buildLicoTheme({
     ),
     extensions: [colors],
     iconTheme: IconThemeData(color: colors.textMuted, size: 20),
-    dividerTheme: DividerThemeData(
-      color: colors.line,
-      thickness: 1,
-      space: 1,
-    ),
+    dividerTheme: DividerThemeData(color: colors.line, thickness: 1, space: 1),
     // The text selection colors are part of the interaction language: a
     // selection is an interactive state, so it uses the accent rather than
     // the brand.

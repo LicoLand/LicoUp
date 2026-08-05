@@ -5,6 +5,7 @@ use serde_json::{Value, json};
 use crate::domain::llm_api_key_vault::{
     GatewayCredentialLeaseDays, LlmApiKeyCredentialUpdate, LlmApiKeyProvider, NewLlmApiKey,
 };
+use crate::platform::llm_gateway_service::providers_with_usable_saved_keys;
 
 pub(super) fn handle_status(_command: AdmittedCommand) -> Result<CliExecution> {
     Ok(CliExecution::Json(json!({
@@ -23,9 +24,17 @@ pub(super) fn handle_list(_command: AdmittedCommand) -> Result<CliExecution> {
     Ok(CliExecution::Json(serde_json::to_value(inventory)?))
 }
 
-pub(super) fn handle_authorize(_command: AdmittedCommand) -> Result<CliExecution> {
+pub(super) fn handle_authorize(command: AdmittedCommand) -> Result<CliExecution> {
+    let credential_id = command.option_text("credential-id");
     Ok(CliExecution::Json(
-        crate::platform::llm_gateway_service::credentials_authorize()?,
+        crate::platform::llm_gateway_service::credentials_authorize(credential_id)?,
+    ))
+}
+
+pub(super) fn handle_clear(command: AdmittedCommand) -> Result<CliExecution> {
+    let credential_id = command.option_text("credential-id");
+    Ok(CliExecution::Json(
+        crate::platform::llm_gateway_service::credentials_clear(credential_id)?,
     ))
 }
 
@@ -96,8 +105,14 @@ pub(super) fn handle_agent_plan(command: AdmittedCommand) -> Result<CliExecution
         .unwrap_or("15722")
         .parse::<u16>()?;
     let helper = std::path::Path::new("/usr/bin/printf");
-    let plan =
-        crate::domain::llm_gateway_agent_config::plan_agent_config(target, root, port, helper)?;
+    let available_providers = providers_with_usable_saved_keys();
+    let plan = crate::domain::llm_gateway_agent_config::plan_agent_config(
+        target,
+        root,
+        port,
+        helper,
+        &available_providers,
+    )?;
     Ok(CliExecution::Json(serde_json::to_value(plan)?))
 }
 
@@ -110,11 +125,13 @@ pub(super) fn handle_agent_apply(command: AdmittedCommand) -> Result<CliExecutio
         .option_text("port")
         .unwrap_or("15722")
         .parse::<u16>()?;
+    let available_providers = providers_with_usable_saved_keys();
     let plan = crate::domain::llm_gateway_agent_config::plan_agent_config(
         target,
         root,
         port,
         std::path::Path::new("/usr/bin/printf"),
+        &available_providers,
     )?;
     let confirmation = command
         .option_text("confirmation")

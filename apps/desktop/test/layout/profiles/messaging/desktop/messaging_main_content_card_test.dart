@@ -6,18 +6,20 @@ import 'package:licoup/src/frontend/layout/profiles/messaging/desktop/destinatio
 import 'package:licoup/src/frontend/layout/profiles/messaging/desktop/presentation/messaging_desktop_destination_presentations.dart';
 import 'package:licoup/src/frontend/layout/profiles/messaging/desktop/shell/messaging_main_content_card.dart';
 import 'package:licoup/src/frontend/layout/profiles/messaging/desktop/tokens/messaging_desktop_tokens.dart';
-import 'package:licoup/src/frontend/shell/layout_palette_projection.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 import 'messaging_desktop_test_harness.dart';
 
 void main() {
-  test('messagingMainContentCardDestinations covers all desktop destinations', () {
-    expect(
-      messagingMainContentCardDestinations,
-      messagingDesktopDestinationBuilders.keys.toSet(),
-    );
-  });
+  test(
+    'messagingMainContentCardDestinations covers all desktop destinations',
+    () {
+      expect(
+        messagingMainContentCardDestinations,
+        messagingDesktopDestinationBuilders.keys.toSet(),
+      );
+    },
+  );
 
   testWidgets('MessagingMainContentCard uses shared mainContentCard tokens', (
     tester,
@@ -56,8 +58,10 @@ void main() {
       MessagingDesktopMetrics.mainCardCornerRadius,
     );
     expect(decoration.border!.top.width, MessagingDesktopMetrics.hairline);
-    expect(decoration.boxShadow!.single.blurRadius,
-        MessagingDesktopMetrics.mainContentCardShadowBlur);
+    expect(
+      decoration.boxShadow!.single.blurRadius,
+      MessagingDesktopMetrics.mainContentCardShadowBlur,
+    );
     expect(find.byKey(const Key('card-child')), findsOneWidget);
     expect(tester.takeException(), isNull);
   });

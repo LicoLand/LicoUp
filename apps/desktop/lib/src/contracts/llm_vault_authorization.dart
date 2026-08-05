@@ -7,12 +7,13 @@ enum LlmVaultAuthorizationFailure { noCredentials, unavailable }
 /// One process-scoped authorization session for loading model API keys.
 ///
 /// Authorization performs no provider network check and owns no Gateway
-/// process lifecycle. Every consumer observes the same session, so the owner
-/// is never prompted twice during one LicoUp process lifetime.
+/// process lifecycle. Individual credential IDs may be enabled or cleared
+/// independently; [authorized] is true when any credential remains enabled.
 final class LlmVaultAuthorization extends ChangeNotifier {
   bool _authorized = false;
   bool _busy = false;
   List<String> _providers = const [];
+  List<String> _authorizedCredentialIds = const [];
   List<Map<String, dynamic>> _inventoryEntries = const [];
   bool _inventoryHydrated = false;
   LlmVaultAuthorizationFailure? _failure;
@@ -22,15 +23,23 @@ final class LlmVaultAuthorization extends ChangeNotifier {
   bool get authorized => _authorized;
   bool get busy => _busy;
   List<String> get providers => _providers;
+  List<String> get authorizedCredentialIds => _authorizedCredentialIds;
   List<Map<String, dynamic>> get inventoryEntries => _inventoryEntries;
   bool get inventoryHydrated => _inventoryHydrated;
   LlmVaultAuthorizationFailure? get failure => _failure;
 
+  bool isCredentialAuthorized(String credentialId) =>
+      _authorizedCredentialIds.contains(credentialId);
+
   set authorized(bool value) {
-    if (_authorized == value) return;
+    if (_authorized == value &&
+        (value || _authorizedCredentialIds.isEmpty)) {
+      return;
+    }
     _authorized = value;
     if (!value) {
       _providers = const [];
+      _authorizedCredentialIds = const [];
     } else {
       _failure = null;
     }
@@ -39,11 +48,32 @@ final class LlmVaultAuthorization extends ChangeNotifier {
 
   Future<bool> authorize(AgentCommandRunner runner) {
     if (_authorized) return Future.value(true);
-    final active = _inFlight;
-    if (active != null) return active;
-    final operation = _authorize(runner);
-    _inFlight = operation;
-    return operation.whenComplete(() => _inFlight = null);
+    return _runExclusive(() => _authorize(runner));
+  }
+
+  Future<bool> authorizeCredential(
+    AgentCommandRunner runner,
+    String credentialId,
+  ) {
+    if (isCredentialAuthorized(credentialId)) return Future.value(true);
+    return _runExclusive(() => _authorize(runner, credentialId: credentialId));
+  }
+
+  /// Drops the in-memory Gateway credential session without deleting vault
+  /// entries. Concurrent callers share one clear so toggle and lifecycle
+  /// refreshes cannot race duplicate native clears.
+  Future<bool> clearAuthorization(AgentCommandRunner runner) {
+    return _runExclusive(() => _clearAuthorization(runner));
+  }
+
+  Future<bool> clearCredential(
+    AgentCommandRunner runner,
+    String credentialId,
+  ) {
+    if (!isCredentialAuthorized(credentialId)) return Future.value(true);
+    return _runExclusive(
+      () => _clearAuthorization(runner, credentialId: credentialId),
+    );
   }
 
   /// Starts the automatic client bootstrap without opening the protected
@@ -55,12 +85,14 @@ final class LlmVaultAuthorization extends ChangeNotifier {
       await refreshInventory(runner);
       if (_inventoryEntries.isEmpty) {
         _providers = const [];
+        _authorizedCredentialIds = const [];
         _failure = LlmVaultAuthorizationFailure.noCredentials;
         notifyListeners();
         return false;
       }
     } catch (_) {
       _providers = const [];
+      _authorizedCredentialIds = const [];
       _failure = LlmVaultAuthorizationFailure.unavailable;
       notifyListeners();
       return false;
@@ -100,21 +132,32 @@ final class LlmVaultAuthorization extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<bool> _authorize(AgentCommandRunner runner) async {
+  Future<bool> _runExclusive(Future<bool> Function() operation) {
+    final active = _inFlight;
+    if (active != null) {
+      return active.then((_) => _runExclusive(operation));
+    }
+    final started = operation();
+    _inFlight = started;
+    return started.whenComplete(() => _inFlight = null);
+  }
+
+  Future<bool> _authorize(
+    AgentCommandRunner runner, {
+    String? credentialId,
+  }) async {
     _busy = true;
     _failure = null;
     notifyListeners();
     try {
-      final result = await runner.runCli(const [
-        'llm-gateway',
-        'credentials',
-        'authorize',
-      ]);
-      _providers = (result['providers'] as List<dynamic>? ?? const [])
-          .map((value) => value.toString())
-          .where((value) => value.isNotEmpty)
-          .toList(growable: false);
-      _authorized = result['authorized'] == true;
+      final args = <String>['llm-gateway', 'credentials', 'authorize'];
+      if (credentialId != null) {
+        args
+          ..add('--credential-id')
+          ..add(credentialId);
+      }
+      final result = await runner.runCli(args);
+      _adoptAuthorizationResult(result);
       if (!_authorized) {
         _failure = result['reasonCode'] == 'no_credentials'
             ? LlmVaultAuthorizationFailure.noCredentials
@@ -124,11 +167,59 @@ final class LlmVaultAuthorization extends ChangeNotifier {
     } catch (_) {
       _authorized = false;
       _providers = const [];
+      _authorizedCredentialIds = const [];
       _failure = LlmVaultAuthorizationFailure.unavailable;
       return false;
     } finally {
       _busy = false;
       notifyListeners();
+    }
+  }
+
+  Future<bool> _clearAuthorization(
+    AgentCommandRunner runner, {
+    String? credentialId,
+  }) async {
+    _busy = true;
+    _failure = null;
+    notifyListeners();
+    try {
+      final args = <String>['llm-gateway', 'credentials', 'clear'];
+      if (credentialId != null) {
+        args
+          ..add('--credential-id')
+          ..add(credentialId);
+      }
+      final result = await runner.runCli(args);
+      if (result['ok'] != true) {
+        _failure = LlmVaultAuthorizationFailure.unavailable;
+        return false;
+      }
+      _adoptAuthorizationResult(result);
+      return true;
+    } catch (_) {
+      _failure = LlmVaultAuthorizationFailure.unavailable;
+      return false;
+    } finally {
+      _busy = false;
+      notifyListeners();
+    }
+  }
+
+  void _adoptAuthorizationResult(Map<String, dynamic> result) {
+    _providers = (result['providers'] as List<dynamic>? ?? const [])
+        .map((value) => value.toString())
+        .where((value) => value.isNotEmpty)
+        .toList(growable: false);
+    _authorizedCredentialIds =
+        (result['authorizedCredentialIds'] as List<dynamic>? ?? const [])
+            .map((value) => value.toString())
+            .where((value) => value.isNotEmpty)
+            .toList(growable: false);
+    _authorized =
+        result['authorized'] == true || _authorizedCredentialIds.isNotEmpty;
+    if (_authorized) {
+      _failure = null;
     }
   }
 }

@@ -38,7 +38,19 @@ pub(in crate::platform) fn execute(
             false,
         );
     }
-    let workspace = resolve_workspace(params, cwd);
+    let Some(workspace) = resolve_workspace(params, cwd) else {
+        return RunResult::failed(
+            ProtocolFailure::new(
+                "cursor_cli_workspace_unavailable",
+                "Cursor Agent CLI needs one bounded absolute project directory.",
+                "request/validate",
+            )
+            .with_session(Some(session_id)),
+            started_at,
+            false,
+            false,
+        );
+    };
     let mut native_session = session_id.trim().to_string();
     if native_session.is_empty() {
         match create_chat_session(executable, &workspace, timeout_ms, max_stdout) {
@@ -82,18 +94,22 @@ pub(in crate::platform) fn execute(
 /// The caller resolves one bounded workspace before dispatch, so its value wins
 /// over the raw request. The client-owned default keeps a direct driver call
 /// from indexing whatever directory the client process happens to run in.
-fn resolve_workspace(params: &Value, cwd: Option<&Path>) -> PathBuf {
-    cwd.map(Path::to_path_buf)
-        .or_else(|| {
-            params
-                .get("cwd")
-                .or_else(|| params.get("workingDirectory"))
-                .and_then(Value::as_str)
-                .filter(|value| !value.is_empty())
-                .map(PathBuf::from)
-        })
-        .or_else(|| crate::platform::agent_workspace::default_local_agent_workspace("cursor"))
-        .unwrap_or_else(|| PathBuf::from("."))
+///
+/// Every candidate passes the same bounded-workspace rule. A relative path is
+/// never used: `cursor-agent` resolves it against the client process directory
+/// and then indexes and trusts that tree, which is how a turn ends up walking
+/// the whole home directory.
+fn resolve_workspace(params: &Value, cwd: Option<&Path>) -> Option<PathBuf> {
+    let requested = cwd.map(Path::to_path_buf).or_else(|| {
+        params
+            .get("cwd")
+            .or_else(|| params.get("workingDirectory"))
+            .and_then(Value::as_str)
+            .filter(|value| !value.trim().is_empty())
+            .map(PathBuf::from)
+    });
+    crate::platform::agent_workspace::resolve_local_agent_workspace("cursor", requested.as_deref())
+        .filter(|workspace| workspace.is_absolute())
 }
 
 fn create_chat_session(

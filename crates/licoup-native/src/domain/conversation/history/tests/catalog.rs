@@ -618,3 +618,285 @@ fn pi_catalog_reads_the_session_header_line() {
     );
     assert_eq!(sessions[0]["workingDirectory"], "/workspace/pi");
 }
+#[test]
+fn claude_code_sidechain_transcripts_fold_into_the_conversation() {
+    let home = temp_dir("claude-sidechain-fold");
+    let project_dir = home.join(".claude/projects/-workspace-project");
+    let session_id = "cd2442dd-a04c-4503-8ce3-1d114047ce63";
+    fs::create_dir_all(project_dir.join(session_id).join("subagents")).unwrap();
+    fs::write(
+        project_dir.join(format!("{session_id}.jsonl")),
+        [
+            json!({"type":"user","sessionId":session_id,"cwd":"/workspace/project","message":{"role":"user","content":[{"type":"text","text":"Audit the parser"}]}}),
+            json!({"type":"assistant","sessionId":session_id,"message":{"role":"assistant","content":[{"type":"text","text":"Audit finished"}]}}),
+        ]
+        .iter()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>()
+        .join("\n"),
+    )
+    .unwrap();
+    fs::write(
+        project_dir
+            .join(session_id)
+            .join("subagents")
+            .join("agent-a7975e289d9a63743.jsonl"),
+        [
+            json!({"type":"user","isSidechain":true,"sessionId":session_id,"agentId":"a7975e289d9a63743","message":{"role":"user","content":[{"type":"text","text":"Map the scan pipeline"}]}}),
+            json!({"type":"assistant","isSidechain":true,"sessionId":session_id,"message":{"role":"assistant","content":[{"type":"text","text":"Pipeline mapped"}]}}),
+        ]
+        .iter()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>()
+        .join("\n"),
+    )
+    .unwrap();
+
+    let listed = conversation_list(&json!({
+        "agent": "claude-code",
+        "homeDir": display_path(&home),
+        "sessionId": session_id
+    }))
+    .unwrap();
+
+    let sessions = listed["sessions"].as_array().unwrap();
+    assert_eq!(
+        sessions.len(),
+        1,
+        "sidechain must not be its own conversation"
+    );
+    let cards = sessions[0]["messages"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|message| message["cardType"] == "subagent")
+        .collect::<Vec<_>>();
+    assert_eq!(
+        cards.len(),
+        1,
+        "expected one delegated task card: {:?}",
+        sessions[0]["messages"]
+    );
+    assert_eq!(cards[0]["cardTitle"], "Map the scan pipeline");
+}
+
+#[test]
+fn codex_delegated_threads_fold_into_the_conversation_that_spawned_them() {
+    let home = temp_dir("codex-spawn-edges");
+    let sessions_dir = home.join(".codex/sessions/2026/08/01");
+    fs::create_dir_all(&sessions_dir).unwrap();
+    let parent_id = "019f0000-0000-7000-8000-00000000e001";
+    let child_id = "019f0000-0000-7000-8000-00000000e002";
+    let parent_rollout =
+        sessions_dir.join(format!("rollout-2026-08-01T00-00-00-{parent_id}.jsonl"));
+    let child_rollout = sessions_dir.join(format!("rollout-2026-08-01T00-00-01-{child_id}.jsonl"));
+    fs::write(
+        &parent_rollout,
+        codex_rollout_fixture(parent_id, "Plan the migration", "Delegating the survey"),
+    )
+    .unwrap();
+    fs::write(
+        &child_rollout,
+        codex_rollout_fixture(child_id, "Survey the adapter modules", "Survey complete"),
+    )
+    .unwrap();
+    let now = now_epoch_seconds();
+    let state_db = home.join(".codex/state_5.sqlite");
+    create_codex_state_db(
+        &state_db,
+        &[
+            (
+                parent_id,
+                &*parent_rollout.to_string_lossy(),
+                now - 20,
+                now,
+                "Migration plan",
+                0,
+            ),
+            (
+                child_id,
+                &*child_rollout.to_string_lossy(),
+                now - 10,
+                now - 5,
+                "Adapter survey",
+                0,
+            ),
+        ],
+    );
+    {
+        let connection = Connection::open(&state_db).unwrap();
+        connection
+            .execute(
+                "CREATE TABLE thread_spawn_edges (
+                    parent_thread_id TEXT NOT NULL,
+                    child_thread_id TEXT NOT NULL,
+                    status TEXT NOT NULL
+                )",
+                [],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO thread_spawn_edges VALUES (?1, ?2, 'closed')",
+                (parent_id, child_id),
+            )
+            .unwrap();
+    }
+
+    let listed = conversation_list(&json!({
+        "agent": "codex",
+        "homeDir": display_path(&home),
+        "limit": 20
+    }))
+    .unwrap();
+
+    assert_eq!(
+        session_ids(&listed),
+        vec![parent_id.to_string()],
+        "a delegated thread must not occupy its own browse row"
+    );
+    let cards = listed["sessions"][0]["messages"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|message| message["cardType"] == "subagent")
+        .collect::<Vec<_>>();
+    assert_eq!(cards.len(), 1, "expected one delegated task card");
+    assert_eq!(cards[0]["cardTitle"], "Survey the adapter modules");
+    assert_eq!(
+        listed["sessions"][0]["workingDirectory"], "/workspace/catalog",
+        "the thread record keeps the project directory"
+    );
+}
+
+#[test]
+fn codex_rollouts_outside_the_thread_index_still_carry_their_project_directory() {
+    let home = temp_dir("codex-rollout-cwd");
+    let sessions_dir = home.join(".codex/sessions/2026/08/01");
+    fs::create_dir_all(&sessions_dir).unwrap();
+    let session_id = "019f0000-0000-7000-8000-00000000f001";
+    fs::write(
+        sessions_dir.join(format!("rollout-2026-08-01T00-00-00-{session_id}.jsonl")),
+        codex_rollout_fixture(session_id, "Unindexed prompt", "Unindexed reply"),
+    )
+    .unwrap();
+
+    let listed = conversation_list(&json!({
+        "agent": "codex",
+        "homeDir": display_path(&home),
+        "limit": 20
+    }))
+    .unwrap();
+
+    assert_eq!(session_ids(&listed), vec![session_id.to_string()]);
+    assert_eq!(
+        listed["sessions"][0]["workingDirectory"], "/workspace/catalog",
+        "the rollout header is the project directory of an unindexed rollout"
+    );
+}
+
+#[test]
+fn antigravity_catalog_lists_brain_conversations_and_skips_cli_logs() {
+    let home = temp_dir("antigravity-catalog");
+    let bridge = home.join(".gemini/antigravity");
+    let conversation_id = "2e6e527a-4c4d-48ef-a512-59d8fc55e85a";
+    let logs = bridge
+        .join("brain")
+        .join(conversation_id)
+        .join(".system_generated/logs");
+    fs::create_dir_all(&logs).unwrap();
+    fs::write(
+        logs.join("transcript.jsonl"),
+        [
+            r#"{"step_index":0,"source":"USER_EXPLICIT","type":"USER_INPUT","status":"DONE","created_at":"2026-08-01T00:00:00Z","content":"Audit the transport profile"}"#,
+            r#"{"step_index":1,"source":"MODEL","type":"PLANNER_RESPONSE","status":"DONE","created_at":"2026-08-01T00:00:02Z","content":"Audit finished"}"#,
+        ]
+        .join("\n"),
+    )
+    .unwrap();
+    // Rotating CLI logs and crash reports share the tree and are not conversations.
+    let cli_logs = home.join(".gemini/antigravity-cli/log");
+    fs::create_dir_all(&cli_logs).unwrap();
+    fs::write(cli_logs.join("cli-20260801_000000.log"), "starting cli\n").unwrap();
+    fs::write(
+        home.join(".gemini/antigravity-cli/cli.log"),
+        "cli lifecycle\n",
+    )
+    .unwrap();
+
+    // Antigravity records the conversation workspace in the trajectory metadata
+    // record as a `file://` URI inside an opaque protobuf payload.
+    let trajectories = bridge.join("conversations");
+    fs::create_dir_all(&trajectories).unwrap();
+    let trajectory_db = trajectories.join(format!("{conversation_id}.db"));
+    {
+        let connection = Connection::open(&trajectory_db).unwrap();
+        connection
+            .execute(
+                "CREATE TABLE trajectory_metadata_blob (id TEXT PRIMARY KEY, data BLOB)",
+                [],
+            )
+            .unwrap();
+        let mut payload = vec![0x0a, 0x2c];
+        payload.extend_from_slice(b"file:///workspace/antigravity-project");
+        payload.extend_from_slice(&[0x12, 0x04]);
+        payload.extend_from_slice(b"name");
+        connection
+            .execute(
+                "INSERT INTO trajectory_metadata_blob VALUES ('main', ?1)",
+                [payload],
+            )
+            .unwrap();
+    }
+
+    let listed = conversation_list(&json!({
+        "agent": "antigravity",
+        "homeDir": display_path(&home),
+        "limit": 20
+    }))
+    .unwrap();
+
+    assert_eq!(
+        session_ids(&listed),
+        vec![conversation_id.to_string()],
+        "only brain conversations are conversations"
+    );
+    assert_eq!(
+        listed["sessions"][0]["workingDirectory"], "/workspace/antigravity-project",
+        "the trajectory record is the conversation project directory"
+    );
+    assert!(
+        listed["sessions"][0]["messages"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|message| message["text"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("Audit the transport profile")),
+        "the transcript content must reach the browse row"
+    );
+
+    // Flutter loads history through `conversations stream`, not `list`.
+    let mut stream_output = Vec::<u8>::new();
+    crate::domain::conversation::streaming::stream_to_writer(
+        &json!({
+            "agent": "antigravity",
+            "homeDir": display_path(&home),
+            "limit": 20
+        }),
+        &mut stream_output,
+    )
+    .unwrap();
+    let streamed = String::from_utf8(stream_output)
+        .unwrap()
+        .lines()
+        .map(|line| serde_json::from_str::<Value>(line).unwrap())
+        .filter(|frame| frame["event"] == "session")
+        .collect::<Vec<_>>();
+    assert_eq!(streamed.len(), 1, "stream must use the catalog browse path");
+    assert_eq!(
+        streamed[0]["session"]["workingDirectory"], "/workspace/antigravity-project",
+        "stream must carry the same project directory as list"
+    );
+}

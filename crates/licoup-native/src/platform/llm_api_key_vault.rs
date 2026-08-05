@@ -7,7 +7,7 @@
 
 use anyhow::{Result, anyhow, ensure};
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     path::{Path, PathBuf},
     sync::Arc,
     time::{SystemTime, UNIX_EPOCH},
@@ -201,6 +201,15 @@ impl PlatformLlmApiKeyVault {
     /// normal typed result so the UI can respond instead of treating it as an
     /// opaque authorization failure.
     pub fn authorize_gateway_handoff(&self) -> Result<Option<GatewayCredentialHandoff>> {
+        self.authorize_gateway_handoff_filtered(None)
+    }
+
+    /// Like [`authorize_gateway_handoff`], but only includes the selected
+    /// credential IDs in the handoff. `None` means every non-expired entry.
+    pub fn authorize_gateway_handoff_filtered(
+        &self,
+        credential_ids: Option<&[String]>,
+    ) -> Result<Option<GatewayCredentialHandoff>> {
         let session =
             self.store
                 .begin_authorized_session(&SecretStoreAuthorizationRequest::for_scope(
@@ -211,7 +220,7 @@ impl PlatformLlmApiKeyVault {
                     SecretStoreCallerChannel::GatewaySidecar,
                 ))?;
         let inventory = self.inventory_for_authorized_operation(&session)?;
-        self.gateway_handoff_from_inventory(&session, &inventory)
+        self.gateway_handoff_from_inventory(&session, &inventory, credential_ids)
     }
 
     pub fn unlock_gateway_handoff(&self) -> Result<GatewayCredentialHandoff> {
@@ -224,7 +233,7 @@ impl PlatformLlmApiKeyVault {
         session: &SecretStoreAuthorizationSession,
         inventory: &LlmApiKeyInventory,
     ) -> Result<()> {
-        let handoff = self.gateway_handoff_from_inventory(session, inventory)?;
+        let handoff = self.gateway_handoff_from_inventory(session, inventory, None)?;
         #[cfg(unix)]
         crate::platform::llm_gateway_service::replace_gateway_session_credentials(handoff)?;
         #[cfg(not(unix))]
@@ -236,11 +245,24 @@ impl PlatformLlmApiKeyVault {
         &self,
         session: &SecretStoreAuthorizationSession,
         inventory: &LlmApiKeyInventory,
+        credential_ids: Option<&[String]>,
     ) -> Result<Option<GatewayCredentialHandoff>> {
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map_err(|_| anyhow!("llm_api_key_clock_invalid"))?
             .as_secs();
+        let selected = credential_ids.map(|ids| ids.iter().cloned().collect::<BTreeSet<_>>());
+        if let Some(selected) = selected.as_ref() {
+            for id in selected {
+                ensure!(
+                    inventory
+                        .entries
+                        .iter()
+                        .any(|entry| entry.credential_id == *id),
+                    "llm_api_key_credential_unavailable"
+                );
+            }
+        }
         let mut credentials = BTreeMap::<LlmApiKeyProvider, Vec<SecretBytes>>::new();
         for entry in &inventory.entries {
             let is_expired = entry.is_expired(now);
@@ -257,6 +279,12 @@ impl PlatformLlmApiKeyVault {
             let protected_copy = SecretBytes::try_from_bytes(secret.expose_bytes().to_vec())?;
             self.write_secret(session, &key, protected_copy)?;
             if is_expired {
+                continue;
+            }
+            if selected
+                .as_ref()
+                .is_some_and(|ids| !ids.contains(&entry.credential_id))
+            {
                 continue;
             }
             credentials.entry(entry.provider).or_default().push(secret);

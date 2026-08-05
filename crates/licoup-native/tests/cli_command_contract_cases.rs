@@ -167,7 +167,7 @@ fn readonly_registry_projection_exactly_matches_public_help_authority() {
         .collect::<BTreeMap<_, _>>();
     assert_eq!(
         expected_by_path.len(),
-        134,
+        143,
         "public help authority must not contain duplicate routes"
     );
     let projected_by_path = projected
@@ -209,9 +209,7 @@ fn stdin_json_routes_freeze_value_json_admission() {
         ("agent conversation cleanup", false),
         ("agent conversation capabilities", false),
         ("agent conversation stream", false),
-        ("conversations list", false),
-        ("conversations stream", false),
-        ("targets add", false),
+        ("agent group plan-turn", true),
     ] {
         let route = route_authorities()
             .into_iter()
@@ -234,8 +232,8 @@ fn every_authoritative_route_is_admitted_without_executing_its_handler() {
     let authority = route_authorities();
     assert_eq!(
         authority.len(),
-        134,
-        "the public presentation help must expand to exactly 134 routes"
+        143,
+        "the public presentation help must expand to exactly 143 routes"
     );
 
     for route in authority {
@@ -289,8 +287,12 @@ fn every_authoritative_route_is_admitted_without_executing_its_handler() {
         for option in &present_options {
             append_option(&mut valid, *option);
         }
-        let admitted = admit_cli_command(valid.clone())
-            .expect("the route's documented minimum schema must be admitted");
+        let admitted = admit_cli_command(valid.clone()).unwrap_or_else(|error| {
+            panic!(
+                "the route's documented minimum schema must be admitted for {}: {error}",
+                route.path
+            )
+        });
         assert_admitted_route(&admitted, &route, &required_values, &present_options);
 
         for required in route.options.iter().filter(|option| option.required) {
@@ -1394,13 +1396,23 @@ fn assert_projected_schema(actual: &CliCommandSchema, expected: &RouteAuthority)
         actual.path(),
         expected.path.split_ascii_whitespace().collect::<Vec<_>>()
     );
-    assert_eq!(actual.cardinality(), expected.cardinality);
+    assert_eq!(
+        actual.cardinality(),
+        expected.cardinality,
+        "cardinality mismatch for {}",
+        expected.path
+    );
     assert_eq!(actual.required_positionals().len(), expected.required.len());
     for (actual, (name, kind)) in actual.required_positionals().iter().zip(expected.required) {
         assert_eq!(actual.name(), *name);
         assert_eq!(actual.kind(), *kind);
     }
-    assert_eq!(actual.options().len(), expected.options.len());
+    assert_eq!(
+        actual.options().len(),
+        expected.options.len(),
+        "option count mismatch for {}",
+        expected.path
+    );
     for (actual, expected) in actual.options().iter().zip(&expected.options) {
         assert_eq!(actual.name(), expected.name);
         assert_eq!(actual.arity(), expected.arity);
@@ -1435,7 +1447,12 @@ fn assert_admitted_route(
     assert_eq!(admitted.path(), expected_path);
     assert_eq!(admitted.required_positionals(), expected_required);
     assert_eq!(admitted.cardinality(), expected.cardinality);
-    assert_eq!(admitted.option_specs().len(), expected.options.len());
+    assert_eq!(
+        admitted.option_specs().len(),
+        expected.options.len(),
+        "admitted option count mismatch for {}",
+        expected.path
+    );
     for (actual, option) in admitted.option_specs().iter().zip(&expected.options) {
         assert_eq!(actual.name(), option.name);
         assert_eq!(actual.arity(), option.arity);
@@ -1585,6 +1602,27 @@ fn route_authorities() -> Vec<RouteAuthority> {
     });
     add_authority_routes(
         &mut routes,
+        "adapter.rs",
+        "handle_codex_plugin_status",
+        &["adapter codex plugin status"],
+        Options,
+    );
+    add_authority_routes(
+        &mut routes,
+        "adapter.rs",
+        "handle_codex_plugin_plan",
+        &["adapter codex plugin plan"],
+        Options,
+    );
+    add_authority_routes(
+        &mut routes,
+        "adapter.rs",
+        "handle_codex_plugin_install",
+        &["adapter codex plugin install"],
+        Options,
+    );
+    add_authority_routes(
+        &mut routes,
         "agent_conversation.rs",
         "handle_agent_conversation",
         &[
@@ -1598,6 +1636,22 @@ fn route_authorities() -> Vec<RouteAuthority> {
         ],
         Options,
     );
+    add_authority_routes(
+        &mut routes,
+        "group_conversation.rs",
+        "handle_group_ensure",
+        &["agent group ensure"],
+        Exact,
+    );
+    routes.push(RouteAuthority {
+        module: "group_conversation.rs",
+        handler: "handle_group_plan_turn",
+        path: "agent group plan-turn",
+        required: &[],
+        cardinality: Options,
+        options: vec![value_option("stdin-json", Json, true)],
+        constraints: &[],
+    });
     add_authority_routes(
         &mut routes,
         "agent_conversation.rs",
@@ -1622,6 +1676,13 @@ fn route_authorities() -> Vec<RouteAuthority> {
         "agent_usage.rs",
         "handle_agent_usage_report",
         &["agent-usage report"],
+        Options,
+    );
+    add_authority_routes(
+        &mut routes,
+        "resource_usage.rs",
+        "handle_resource_usage_scan",
+        &["resource-usage scan"],
         Options,
     );
     add_authority_routes(
@@ -1737,6 +1798,15 @@ fn route_authorities() -> Vec<RouteAuthority> {
         module: "llm_gateway.rs",
         handler: "handle_authorize",
         path: "llm-gateway credentials authorize",
+        required: &[],
+        cardinality: Exact,
+        options: vec![],
+        constraints: &[],
+    });
+    routes.push(RouteAuthority {
+        module: "llm_gateway.rs",
+        handler: "handle_clear",
+        path: "llm-gateway credentials clear",
         required: &[],
         cardinality: Exact,
         options: vec![],
@@ -2083,6 +2153,9 @@ const fn boolean_option(name: &'static str) -> OptionAuthority {
 fn options_for_route(path: &str) -> Vec<OptionAuthority> {
     use RequiredArgumentKind::{Json, Text};
     let options: &[OptionAuthority] = match path {
+        "llm-gateway credentials authorize" | "llm-gateway credentials clear" => {
+            &[value_option("credential-id", Text, false)]
+        }
         "llm-gateway credentials create" | "llm-gateway credentials update" => {
             &[value_option("stdin-json", Json, true)]
         }
@@ -2168,7 +2241,6 @@ fn options_for_route(path: &str) -> Vec<OptionAuthority> {
             value_option("offset", Text, false),
             value_option("session-id", Text, false),
             value_option("text", Text, false),
-            value_option("stdin-json", Json, false),
         ],
         "conversations append" | "conversations delete" => &[
             value_option("agent", Text, true),
@@ -2189,6 +2261,22 @@ fn options_for_route(path: &str) -> Vec<OptionAuthority> {
             value_option("agent", Text, false),
             value_option("limit", Text, false),
             value_option("state-root", Text, false),
+        ],
+        "resource-usage scan" => &[value_option("state-root", Text, false)],
+        "adapter antigravity authorize" => &[value_option("binary-path", Text, false)],
+        "adapter codex plugin status" | "adapter codex plugin plan" => {
+            &[value_option("binary-path", Text, true)]
+        }
+        "adapter codex plugin install" => &[
+            value_option("binary-path", Text, true),
+            value_option("confirmation", Text, true),
+            OptionAuthority {
+                name: "confirmed",
+                arity: OptionArity::Boolean,
+                repeatable: false,
+                value_kind: Text,
+                required: true,
+            },
         ],
         "mcp http preview" | "mcp http execute" => &[value_option("stdin-json", Json, true)],
         "update status" | "update check" | "update download" | "update verify" | "update apply" => {
@@ -2255,6 +2343,7 @@ fn options_for_route(path: &str) -> Vec<OptionAuthority> {
         | "agent conversation cleanup"
         | "agent conversation capabilities"
         | "agent conversation stream" => &[value_option("stdin-json", Json, false)],
+        "agent group plan-turn" => &[value_option("stdin-json", Json, true)],
         "agents pair request"
         | "agents pair approve"
         | "agents pair revoke"
@@ -2310,14 +2399,11 @@ fn options_for_route(path: &str) -> Vec<OptionAuthority> {
             value_option("direct-user-action", Text, true),
             value_option("skill", Text, false),
         ],
-        "skill delete plan" => &[
+        "skill delete plan" | "skill delete apply" => &[
             value_option("skill", Text, true),
-            value_option("path", Text, true),
-        ],
-        "skill delete apply" => &[
-            value_option("skill", Text, true),
-            value_option("path", Text, true),
-            value_option("confirmation", Text, true),
+            value_option("agent", Text, false),
+            value_option("agents", Text, false),
+            value_option("confirmation", Text, false),
         ],
         "skill visibility set" => &[
             value_option("agent", Text, true),
@@ -2344,6 +2430,7 @@ fn options_for_route(path: &str) -> Vec<OptionAuthority> {
             value_option("state-root", Text, false),
             value_option("include-accessible-environments", Text, false),
             value_option("include-history-model-catalog", Text, false),
+            value_option("installer-scan-command", Text, false),
         ],
         "targets add" => &[
             value_option("target", Text, true),
@@ -2351,7 +2438,6 @@ fn options_for_route(path: &str) -> Vec<OptionAuthority> {
             value_option("binary-path", Text, false),
             value_option("history-root", Text, false),
             value_option("state-root", Text, false),
-            value_option("stdin-json", Json, false),
         ],
         "targets inspect" => &[
             value_option("state-root", Text, false),
@@ -2452,7 +2538,7 @@ fn options_for_route(path: &str) -> Vec<OptionAuthority> {
 }
 
 fn constraints_for_route(path: &str) -> &'static [ConstraintAuthority] {
-    use OptionConstraintKind::{ConditionalRequired, MutuallyExclusive, OneOf};
+    use OptionConstraintKind::{AtLeastOne, ConditionalRequired, MutuallyExclusive, OneOf};
     match path {
         "snapshots profiles list" | "snapshots profiles get" | "snapshots profiles import" => {
             &[ConstraintAuthority {
@@ -2488,6 +2574,22 @@ fn constraints_for_route(path: &str) -> &'static [ConstraintAuthority] {
             condition_value: None,
             required_option: None,
         }],
+        "skill delete plan" | "skill delete apply" => &[
+            ConstraintAuthority {
+                kind: AtLeastOne,
+                members: &["agent", "agents"],
+                condition_option: None,
+                condition_value: None,
+                required_option: None,
+            },
+            ConstraintAuthority {
+                kind: MutuallyExclusive,
+                members: &["agent", "agents"],
+                condition_option: None,
+                condition_value: None,
+                required_option: None,
+            },
+        ],
         "skill update plan" | "skill update apply" | "skill auto-update set" => {
             &[ConstraintAuthority {
                 kind: MutuallyExclusive,

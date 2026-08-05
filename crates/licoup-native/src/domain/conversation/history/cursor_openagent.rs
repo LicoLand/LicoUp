@@ -9,6 +9,7 @@ mod fallback;
 mod openagent;
 
 pub(crate) use composition::parse_sqlite_sessions;
+pub(crate) use cursor::cursor_composer_catalog;
 
 #[cfg(test)]
 mod tests;

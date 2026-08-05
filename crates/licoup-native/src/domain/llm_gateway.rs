@@ -113,11 +113,13 @@ struct ResponseHistory {
 
 impl CompiledGateway {
     pub fn compile(config: GatewayConfig) -> Result<Self, GatewayError> {
+        // Empty providers and empty routes together are valid: the machine has
+        // no usable saved API keys, so the Gateway advertises no model catalog.
+        // One side empty and the other not is still invalid configuration.
         if config.schema_version != 1
-            || config.providers.is_empty()
             || config.providers.len() > MAX_CONFIG_ENTRIES
-            || config.routes.is_empty()
             || config.routes.len() > MAX_CONFIG_ENTRIES
+            || config.providers.is_empty() != config.routes.is_empty()
         {
             return Err(GatewayError::InvalidConfig);
         }
@@ -1058,13 +1060,45 @@ fn valid_id(value: &str) -> bool {
         && value.len() <= MAX_ID_BYTES
         && value.bytes().all(|byte| {
             byte.is_ascii_alphanumeric()
-                || matches!(byte, b'-' | b'_' | b'.' | b':' | b'/' | b'[' | b']')
+                || matches!(byte, b'-' | b'_' | b'.' | b':' | b'/' | b'[' | b']' | b'~')
         })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn empty_providers_and_routes_compile_when_no_saved_keys() {
+        let gateway = CompiledGateway::compile(GatewayConfig {
+            schema_version: 1,
+            providers: vec![],
+            routes: vec![],
+        })
+        .unwrap();
+        assert!(
+            gateway
+                .prepare(
+                    "/v1/chat/completions",
+                    br#"{"model":"kimi:k3","messages":[]}"#
+                )
+                .is_err()
+        );
+        assert!(
+            CompiledGateway::compile(GatewayConfig {
+                schema_version: 1,
+                providers: vec![GatewayProvider {
+                    id: "kimi".into(),
+                    base_url: "https://api.moonshot.cn/v1".into(),
+                    protocol: UpstreamProtocol::OpenAiChatCompletions,
+                    credential_provider: LlmApiKeyProvider::Kimi,
+                    credential_style: CredentialStyle::Bearer,
+                }],
+                routes: vec![],
+            })
+            .is_err()
+        );
+    }
 
     fn gateway() -> CompiledGateway {
         CompiledGateway::compile(GatewayConfig {

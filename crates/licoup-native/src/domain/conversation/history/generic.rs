@@ -59,6 +59,30 @@ pub(crate) fn parse_jsonl_sessions(
                     Value::String(working_directory),
                 );
             }
+            // Cursor CLI transcripts carry neither a session field nor a working
+            // directory: identity, delegated lineage, and the project directory
+            // all come from the transcript's place in the project tree.
+            if adapter == HistoryAdapter::Cursor
+                && let (Some(workspace), Some(object)) = (
+                    super::delegated_transcripts::cursor_transcript_project_workspace(path),
+                    projection.as_object_mut(),
+                )
+            {
+                object
+                    .entry("workingDirectory".to_string())
+                    .or_insert_with(|| Value::String(workspace));
+            }
+            // Cursor and Claude Code both store a delegated task beside its
+            // conversation under the conversation's own identity. Marking it here
+            // makes every read path fold it into the conversation instead of
+            // listing it as its own conversation.
+            if matches!(adapter, HistoryAdapter::Cursor | HistoryAdapter::ClaudeCode) {
+                super::delegated_transcripts::apply_transcript_identity(&mut projection, path);
+                super::delegated_transcripts::mark_delegated_transcript_session(
+                    &mut projection,
+                    path,
+                );
+            }
             projection
         })
         .collect()
@@ -117,7 +141,10 @@ fn claude_launch_working_directory(adapter: HistoryAdapter, value: &Value) -> Op
     {
         return None;
     }
-    Some(directory.to_string())
+    // Claude Code records the directory it was launched in, which is often the
+    // home directory. An unbounded personal root must not reach the client as a
+    // conversation's project directory.
+    super::project_workspace::bounded_project_workspace(directory)
 }
 
 pub(crate) fn parse_json_sessions(

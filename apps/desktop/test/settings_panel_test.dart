@@ -111,9 +111,9 @@ void main() {
     );
     expect(toggle.showSelectedIcon, isFalse);
 
-    final initialToggleWidth = tester.getSize(
-      find.byKey(const Key('appearance-day-night-toggle')),
-    ).width;
+    final initialToggleWidth = tester
+        .getSize(find.byKey(const Key('appearance-day-night-toggle')))
+        .width;
 
     await tester.tap(find.text('明亮'));
     await tester.pump();
@@ -127,9 +127,9 @@ void main() {
     await tester.pump();
     expect(selection, AppearanceBrightnessSelection.system);
 
-    final finalToggleWidth = tester.getSize(
-      find.byKey(const Key('appearance-day-night-toggle')),
-    ).width;
+    final finalToggleWidth = tester
+        .getSize(find.byKey(const Key('appearance-day-night-toggle')))
+        .width;
     expect(finalToggleWidth, initialToggleWidth);
   });
 
@@ -209,58 +209,59 @@ void main() {
     );
   });
 
-  testWidgets('appearance preset picker filters dark presets on dark platform', (
-    tester,
-  ) async {
-    final controller = ClientController(agentService: FakeAgentService());
-    addTearDown(controller.dispose);
-    controller.appearancePresetId = 'lico-soda';
+  testWidgets(
+    'appearance preset picker filters dark presets on dark platform',
+    (tester) async {
+      final controller = ClientController(agentService: FakeAgentService());
+      addTearDown(controller.dispose);
+      controller.appearancePresetId = 'lico-soda';
 
-    await tester.pumpWidget(
-      MediaQuery(
-        data: const MediaQueryData(platformBrightness: Brightness.dark),
-        child: MaterialApp(
-          builder: (context, child) =>
-              FixtureLayoutPresentationScope(child: child!),
-          locale: const Locale('en'),
-          supportedLocales: LicoStrings.supportedLocales,
-          localizationsDelegates: const [
-            GlobalMaterialLocalizations.delegate,
-            GlobalCupertinoLocalizations.delegate,
-            GlobalWidgetsLocalizations.delegate,
-          ],
-          theme: buildLicoTheme(
-            platformBrightness: Brightness.dark,
-          ).copyWith(platform: TargetPlatform.macOS),
-          home: Scaffold(
-            body: SizedBox(
-              width: 980,
-              height: 460,
-              child: SettingsPanel(controller: controller),
+      await tester.pumpWidget(
+        MediaQuery(
+          data: const MediaQueryData(platformBrightness: Brightness.dark),
+          child: MaterialApp(
+            builder: (context, child) =>
+                FixtureLayoutPresentationScope(child: child!),
+            locale: const Locale('en'),
+            supportedLocales: LicoStrings.supportedLocales,
+            localizationsDelegates: const [
+              GlobalMaterialLocalizations.delegate,
+              GlobalCupertinoLocalizations.delegate,
+              GlobalWidgetsLocalizations.delegate,
+            ],
+            theme: buildLicoTheme(
+              platformBrightness: Brightness.dark,
+            ).copyWith(platform: TargetPlatform.macOS),
+            home: Scaffold(
+              body: SizedBox(
+                width: 980,
+                height: 460,
+                child: SettingsPanel(controller: controller),
+              ),
             ),
           ),
         ),
-      ),
-    );
-    await tester.pump();
+      );
+      await tester.pump();
 
-    await tester.tap(find.byType(DropdownButtonFormField<String>).at(1));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 300));
+      await tester.tap(find.byType(DropdownButtonFormField<String>).at(1));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
 
-    final offeredValues = tester
-        .widgetList<DropdownMenuItem<String>>(
-          find.byType(DropdownMenuItem<String>),
-        )
-        .map((item) => item.value)
-        .toSet();
-    expect(
-      offeredValues.intersection(const {'default-system', 'lico-soda'}),
-      const {'lico-soda'},
-    );
-    expect(offeredValues, isNot(contains('lico-soda-light')));
-    expect(find.text('LicoUp Dark'), findsWidgets);
-  });
+      final offeredValues = tester
+          .widgetList<DropdownMenuItem<String>>(
+            find.byType(DropdownMenuItem<String>),
+          )
+          .map((item) => item.value)
+          .toSet();
+      expect(
+        offeredValues.intersection(const {'default-system', 'lico-soda'}),
+        const {'lico-soda'},
+      );
+      expect(offeredValues, isNot(contains('lico-soda-light')));
+      expect(find.text('LicoUp Dark'), findsWidgets);
+    },
+  );
 
   testWidgets('settings index follows scroll and jumps back on tap', (
     tester,

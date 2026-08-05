@@ -9,6 +9,8 @@ import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_pane_p
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_parity_disclosure.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_recent_sessions.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_virtual_machine_destination.dart';
+import 'package:licoup/src/frontend/features/agents/ui/lico_plan_document_panel.dart';
+import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_group_roster.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/layout/layout_agents_strategy.dart';
 import 'package:licoup/src/frontend/layout/profiles/messaging/desktop/tokens/messaging_desktop_tokens.dart';
@@ -102,20 +104,41 @@ class AgentConversationActivePane extends StatelessWidget {
                 : null,
           )
         : null;
+    final flywheelCapsule = state.orchestrationSelected
+        ? ComposerFlywheelCapsule(
+            mainAgentLabel: state.flywheelMainAgentLabel.isEmpty
+                ? strings.notConfigured
+                : state.flywheelMainAgentLabel,
+            mainAgentTarget: state.flywheelMainAgentTarget,
+            agentOptions: state.flywheelAgentOptions,
+            selectedAgentId: state.flywheelSelectedAgentId,
+            selectedModel: state.flywheelSelectedModel,
+            onEdit: actions.onEditFlywheel ?? () {},
+            onSelectAgent: actions.onSelectFlywheelAgent,
+            onSelectModel: actions.onSelectFlywheelModel,
+          )
+        : null;
+    final licoProfileCapsule = state.showLicoProfileCapsule
+        ? ComposerLicoProfileCapsule(
+            selectedProfile: state.selectedLicoProfile,
+            onChanged: actions.onLicoProfileChanged ?? (_) {},
+          )
+        : null;
     final showComposerCapsuleRow =
         messagingFlow &&
         ((state.showWorkingDirectory &&
                 state.workingDirectory.trim().isNotEmpty) ||
             state.modelOptions.isNotEmpty ||
-            state.reasoningEffortOptions.isNotEmpty);
+            state.reasoningEffortOptions.isNotEmpty ||
+            flywheelCapsule != null ||
+            licoProfileCapsule != null);
     final headerOverlayInset = !mobileClient && messagingFlow
         ? MessagingDesktopMetrics.conversationHeaderOverlayExtent
         : 0.0;
     final composerOverlayInset = !mobileClient && messagingFlow
         ? MessagingDesktopMetrics.conversationComposerOverlayExtent +
               (showComposerCapsuleRow
-                  ? MessagingDesktopMetrics
-                        .conversationComposerCapsuleRowExtent
+                  ? MessagingDesktopMetrics.conversationComposerCapsuleRowExtent
                   : 0)
         : 0.0;
     final messages =
@@ -140,6 +163,26 @@ class AgentConversationActivePane extends StatelessWidget {
             topOverlayInset: headerOverlayInset,
             bottomOverlayInset: composerOverlayInset,
           );
+    final showPlanDocumentPanel =
+        !mobileClient &&
+        messagingFlow &&
+        state.selectedLicoProfile == 'plan' &&
+        state.planDocumentPath.trim().isNotEmpty;
+    final rosterTargets = {
+      for (final target in state.participantTargets) target.target: target,
+    };
+    final groupRoster =
+        state.orchestrationSelected && state.groupRosterParticipants.isNotEmpty
+        ? MessagingGroupRoster(
+            participants: state.groupRosterParticipants,
+            targetsByAgentId: rosterTargets,
+          )
+        : null;
+    // Roster sits under the title-bar capsule (not above it).
+    final messagingHeader = Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [header, ?groupRoster],
+    );
     if (mobileClient) {
       return Column(
         children: [
@@ -170,9 +213,7 @@ class AgentConversationActivePane extends StatelessWidget {
           Expanded(child: messages),
           ?sendUnavailable,
           ?sendFailure,
-          if (messagingFlow &&
-              (state.modelOptions.isNotEmpty ||
-                  state.reasoningEffortOptions.isNotEmpty))
+          if (messagingFlow && showComposerCapsuleRow)
             ComposerCapsuleRow(
               modelOptions: state.modelOptions,
               selectedModel: state.selectedModel,
@@ -182,6 +223,8 @@ class AgentConversationActivePane extends StatelessWidget {
               reasoningEffortOptions: state.reasoningEffortOptions,
               selectedReasoningEffort: state.selectedReasoningEffort,
               onReasoningEffortChanged: actions.onReasoningEffortChanged,
+              flywheel: flywheelCapsule,
+              licoProfileCapsule: licoProfileCapsule,
             ),
           MobileComposerSurface(child: composer),
         ],
@@ -210,6 +253,8 @@ class AgentConversationActivePane extends StatelessWidget {
             reasoningEffortOptions: state.reasoningEffortOptions,
             selectedReasoningEffort: state.selectedReasoningEffort,
             onReasoningEffortChanged: actions.onReasoningEffortChanged,
+            flywheel: flywheelCapsule,
+            licoProfileCapsule: licoProfileCapsule,
           ),
         composer,
       ],
@@ -218,14 +263,51 @@ class AgentConversationActivePane extends StatelessWidget {
       children: [
         if (messagingFlow)
           Expanded(
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                messages,
-                Align(alignment: Alignment.topCenter, child: header),
-                Align(alignment: Alignment.bottomCenter, child: bottomDock),
-              ],
-            ),
+            child: showPlanDocumentPanel
+                ? Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Expanded(
+                        child: Stack(
+                          fit: StackFit.expand,
+                          children: [
+                            messages,
+                            Align(
+                              alignment: Alignment.topCenter,
+                              child: messagingHeader,
+                            ),
+                            Align(
+                              alignment: Alignment.bottomCenter,
+                              child: bottomDock,
+                            ),
+                          ],
+                        ),
+                      ),
+                      SizedBox(
+                        width: 300,
+                        child: LicoPlanDocumentPanel(
+                          planPath: state.planDocumentPath,
+                          refreshToken:
+                              state.liveMessages.length +
+                              (state.turnActive ? 1 : 0),
+                        ),
+                      ),
+                    ],
+                  )
+                : Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      messages,
+                      Align(
+                        alignment: Alignment.topCenter,
+                        child: messagingHeader,
+                      ),
+                      Align(
+                        alignment: Alignment.bottomCenter,
+                        child: bottomDock,
+                      ),
+                    ],
+                  ),
           )
         else ...[
           header,
@@ -255,6 +337,8 @@ class AgentConversationActivePane extends StatelessWidget {
               reasoningEffortOptions: state.reasoningEffortOptions,
               selectedReasoningEffort: state.selectedReasoningEffort,
               onReasoningEffortChanged: actions.onReasoningEffortChanged,
+              flywheel: flywheelCapsule,
+              licoProfileCapsule: licoProfileCapsule,
             ),
           composer,
         ],

@@ -820,3 +820,443 @@ fn sqlite_history_preserves_user_record_rows() {
             .any(|session| session["nativeSessionId"] == "chat.first")
     );
 }
+
+#[test]
+fn cursor_adapter_reads_the_project_directory_from_the_composer_record() {
+    let dir = temp_dir("cursor-composer-workspace");
+    let database = dir.join("state.vscdb");
+    let composer_id = "0c0c0c0c-0000-4000-8000-000000000001";
+    let bubble_id = "3d3d3d3d-0000-4000-8000-000000000001";
+    let project = dir.join("project-alpha");
+    fs::create_dir_all(&project).unwrap();
+    {
+        let connection = Connection::open(&database).unwrap();
+        connection
+            .execute(
+                "CREATE TABLE cursorDiskKV (key TEXT NOT NULL, value BLOB NOT NULL)",
+                [],
+            )
+            .unwrap();
+        for (key, value) in [
+            (
+                format!("composerData:{composer_id}"),
+                json!({
+                    "composerId": composer_id,
+                    "name": "Composer with a workspace",
+                    "createdAt": 1_773_798_000_000i64,
+                    "lastUpdatedAt": 1_773_798_400_000i64,
+                    "workspaceIdentifier": {
+                        "id": "workspace-1",
+                        "uri": {
+                            "scheme": "file",
+                            "path": project.to_string_lossy(),
+                            "fsPath": project.to_string_lossy(),
+                            "external": format!("file://{}", project.to_string_lossy())
+                        }
+                    },
+                    "fullConversationHeadersOnly": [
+                        { "bubbleId": bubble_id, "type": 1 }
+                    ]
+                }),
+            ),
+            (
+                format!("bubbleId:{composer_id}:{bubble_id}"),
+                json!({
+                    "bubbleId": bubble_id,
+                    "type": 1,
+                    "createdAt": 1_773_798_000_000i64,
+                    "text": "Which directory am I bound to?"
+                }),
+            ),
+        ] {
+            connection
+                .execute(
+                    "INSERT INTO cursorDiskKV (key, value) VALUES (?1, ?2)",
+                    rusqlite::params![key, serde_json::to_vec(&value).unwrap()],
+                )
+                .unwrap();
+        }
+    }
+
+    let listed = conversation_list(&json!({
+        "agent": "cursor",
+        "root": dir.to_string_lossy()
+    }))
+    .unwrap();
+
+    let sessions = listed["sessions"].as_array().unwrap();
+    assert_eq!(sessions.len(), 1);
+    assert_eq!(
+        sessions[0]["workingDirectory"].as_str(),
+        Some(project.to_string_lossy().as_ref()),
+        "the composer record is the authoritative project directory"
+    );
+}
+
+#[test]
+fn cursor_adapter_rejects_an_unbounded_recorded_project_directory() {
+    let dir = temp_dir("cursor-composer-unbounded-workspace");
+    let database = dir.join("state.vscdb");
+    let composer_id = "0c0c0c0c-0000-4000-8000-000000000002";
+    let bubble_id = "3d3d3d3d-0000-4000-8000-000000000002";
+    {
+        let connection = Connection::open(&database).unwrap();
+        connection
+            .execute(
+                "CREATE TABLE cursorDiskKV (key TEXT NOT NULL, value BLOB NOT NULL)",
+                [],
+            )
+            .unwrap();
+        for (key, value) in [
+            (
+                format!("composerData:{composer_id}"),
+                json!({
+                    "composerId": composer_id,
+                    "name": "Composer bound to the filesystem root",
+                    "createdAt": 1_773_798_000_000i64,
+                    "lastUpdatedAt": 1_773_798_400_000i64,
+                    "workspaceIdentifier": {
+                        "uri": { "scheme": "file", "path": "/" }
+                    },
+                    "fullConversationHeadersOnly": [
+                        { "bubbleId": bubble_id, "type": 1 }
+                    ]
+                }),
+            ),
+            (
+                format!("bubbleId:{composer_id}:{bubble_id}"),
+                json!({
+                    "bubbleId": bubble_id,
+                    "type": 1,
+                    "createdAt": 1_773_798_000_000i64,
+                    "text": "Residual workspace record."
+                }),
+            ),
+        ] {
+            connection
+                .execute(
+                    "INSERT INTO cursorDiskKV (key, value) VALUES (?1, ?2)",
+                    rusqlite::params![key, serde_json::to_vec(&value).unwrap()],
+                )
+                .unwrap();
+        }
+    }
+
+    let listed = conversation_list(&json!({
+        "agent": "cursor",
+        "root": dir.to_string_lossy()
+    }))
+    .unwrap();
+
+    let sessions = listed["sessions"].as_array().unwrap();
+    assert_eq!(sessions.len(), 1);
+    assert!(
+        sessions[0].get("workingDirectory").is_none(),
+        "the filesystem root must never become a bindable project directory"
+    );
+}
+
+#[test]
+fn cursor_cli_transcripts_fold_delegated_tasks_and_inherit_the_project_directory() {
+    let dir = temp_dir("cursor-cli-transcript-lineage");
+    let project_root = dir.join("project-beta");
+    let project = dir.join("workspace-beta");
+    fs::create_dir_all(&project).unwrap();
+    let conversation_id = "4e4e4e4e-0000-4000-8000-000000000001";
+    let task_id = "5f5f5f5f-0000-4000-8000-000000000001";
+    let conversation_dir = project_root.join("agent-transcripts").join(conversation_id);
+    fs::create_dir_all(conversation_dir.join("subagents")).unwrap();
+    // A trust marker above the project root must not be inherited: Cursor writes
+    // one with the filesystem root as its workspace.
+    fs::write(
+        dir.join(".workspace-trusted"),
+        json!({ "workspacePath": "/" }).to_string(),
+    )
+    .unwrap();
+    fs::write(
+        project_root.join(".workspace-trusted"),
+        json!({ "workspacePath": project.to_string_lossy() }).to_string(),
+    )
+    .unwrap();
+    fs::write(
+        conversation_dir.join(format!("{conversation_id}.jsonl")),
+        [
+            json!({"role": "user", "message": {"content": [{"type": "text", "text": "Audit the parser"}]}}),
+            json!({"role": "assistant", "message": {"content": [{"type": "text", "text": "Audit finished"}]}}),
+        ]
+        .iter()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>()
+        .join("\n"),
+    )
+    .unwrap();
+    fs::write(
+        conversation_dir
+            .join("subagents")
+            .join(format!("{task_id}.jsonl")),
+        [
+            json!({"role": "user", "message": {"content": [{"type": "text", "text": "Map the scan pipeline"}]}}),
+            json!({"role": "assistant", "message": {"content": [{"type": "text", "text": "Pipeline mapped"}]}}),
+        ]
+        .iter()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>()
+        .join("\n"),
+    )
+    .unwrap();
+
+    let listed = conversation_list(&json!({
+        "agent": "cursor",
+        "root": dir.to_string_lossy(),
+        "historyRootKind": "cursor-cli-projects"
+    }))
+    .unwrap();
+
+    let sessions = listed["sessions"].as_array().unwrap();
+    assert_eq!(
+        sessions.len(),
+        1,
+        "a delegated task transcript must not become its own conversation"
+    );
+    let session = &sessions[0];
+    assert_eq!(session["nativeSessionId"], conversation_id);
+    assert_eq!(
+        session["workingDirectory"].as_str(),
+        Some(project.to_string_lossy().as_ref()),
+        "only the project root trust marker describes the conversation"
+    );
+    let cards = session["messages"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|message| message["cardType"] == "subagent")
+        .collect::<Vec<_>>();
+    assert_eq!(cards.len(), 1, "expected one delegated task card");
+    assert_eq!(cards[0]["cardTitle"], "Map the scan pipeline");
+}
+
+#[test]
+fn cursor_conversation_recorded_in_several_stores_collapses_to_one_session() {
+    let dir = temp_dir("cursor-multi-store-identity");
+    let conversation_id = "6a6a6a6a-0000-4000-8000-000000000001";
+    let project = dir.join("workspace-gamma");
+    fs::create_dir_all(&project).unwrap();
+
+    // The IDE store knows the project directory but keeps fewer messages.
+    let database = dir.join("state.vscdb");
+    let bubble_id = "7b7b7b7b-0000-4000-8000-000000000001";
+    {
+        let connection = Connection::open(&database).unwrap();
+        connection
+            .execute(
+                "CREATE TABLE cursorDiskKV (key TEXT NOT NULL, value BLOB NOT NULL)",
+                [],
+            )
+            .unwrap();
+        for (key, value) in [
+            (
+                format!("composerData:{conversation_id}"),
+                json!({
+                    "composerId": conversation_id,
+                    "name": "Recorded twice",
+                    "createdAt": 1_773_798_000_000i64,
+                    "lastUpdatedAt": 1_773_798_100_000i64,
+                    "workspaceIdentifier": {
+                        "uri": { "scheme": "file", "path": project.to_string_lossy() }
+                    },
+                    "fullConversationHeadersOnly": [
+                        { "bubbleId": bubble_id, "type": 1 }
+                    ]
+                }),
+            ),
+            (
+                format!("bubbleId:{conversation_id}:{bubble_id}"),
+                json!({
+                    "bubbleId": bubble_id,
+                    "type": 1,
+                    "createdAt": 1_773_798_000_000i64,
+                    "text": "Only the opening turn."
+                }),
+            ),
+        ] {
+            connection
+                .execute(
+                    "INSERT INTO cursorDiskKV (key, value) VALUES (?1, ?2)",
+                    rusqlite::params![key, serde_json::to_vec(&value).unwrap()],
+                )
+                .unwrap();
+        }
+    }
+
+    // The CLI project tree keeps the full transcript but no project record.
+    let conversation_dir = dir
+        .join("projects-tree")
+        .join("agent-transcripts")
+        .join(conversation_id);
+    fs::create_dir_all(&conversation_dir).unwrap();
+    fs::write(
+        conversation_dir.join(format!("{conversation_id}.jsonl")),
+        [
+            json!({"role": "user", "message": {"content": [{"type": "text", "text": "Only the opening turn."}]}}),
+            json!({"role": "assistant", "message": {"content": [{"type": "text", "text": "And the reply."}]}}),
+            json!({"role": "user", "message": {"content": [{"type": "text", "text": "And a follow-up."}]}}),
+        ]
+        .iter()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>()
+        .join("\n"),
+    )
+    .unwrap();
+
+    let listed = conversation_list(&json!({
+        "agent": "cursor",
+        "root": dir.to_string_lossy()
+    }))
+    .unwrap();
+
+    let sessions = listed["sessions"].as_array().unwrap();
+    assert_eq!(
+        sessions.len(),
+        1,
+        "one conversation recorded in two stores is one conversation"
+    );
+    let session = &sessions[0];
+    assert_eq!(session["nativeSessionId"], conversation_id);
+    assert_eq!(
+        session["messages"].as_array().unwrap().len(),
+        3,
+        "the richest recorded copy wins"
+    );
+    assert_eq!(
+        session["workingDirectory"].as_str(),
+        Some(project.to_string_lossy().as_ref()),
+        "the project directory is carried over from the copy that knows it"
+    );
+}
+
+#[test]
+fn openagent_store_without_agent_or_token_columns_still_yields_its_conversations() {
+    let dir = temp_dir("openagent-narrow-schema");
+    let database = dir.join("kilo.db");
+    {
+        let connection = Connection::open(&database).unwrap();
+        // The shipped Kilo Code and OpenCode schema has no `agent`, `model`, or
+        // token columns at all.
+        connection
+            .execute(
+                "CREATE TABLE session (
+                    id TEXT PRIMARY KEY,
+                    project_id TEXT NOT NULL,
+                    parent_id TEXT,
+                    slug TEXT,
+                    directory TEXT NOT NULL,
+                    title TEXT NOT NULL,
+                    time_created INTEGER NOT NULL,
+                    time_updated INTEGER NOT NULL,
+                    time_archived INTEGER
+                )",
+                [],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "CREATE TABLE message (
+                    id TEXT PRIMARY KEY,
+                    session_id TEXT NOT NULL,
+                    time_created INTEGER,
+                    time_updated INTEGER,
+                    data TEXT NOT NULL
+                )",
+                [],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "CREATE TABLE part (
+                    id TEXT PRIMARY KEY,
+                    message_id TEXT NOT NULL,
+                    session_id TEXT NOT NULL,
+                    time_created INTEGER,
+                    time_updated INTEGER,
+                    data TEXT NOT NULL
+                )",
+                [],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO session VALUES ('ses_narrow', 'prj_1', NULL, 'slug', \
+                 '/workspace/narrow', 'Narrow schema prompt', 1787616000000, 1787616060000, NULL)",
+                [],
+            )
+            .unwrap();
+        for (message_id, part_id, role, text) in [
+            ("msg_1", "prt_1", "user", "Narrow schema prompt"),
+            ("msg_2", "prt_2", "assistant", "Narrow schema reply"),
+        ] {
+            connection
+                .execute(
+                    "INSERT INTO message VALUES (?1, 'ses_narrow', 1787616000000, 1787616000000, ?2)",
+                    (message_id, json!({"role": role}).to_string()),
+                )
+                .unwrap();
+            connection
+                .execute(
+                    "INSERT INTO part VALUES (?1, ?2, 'ses_narrow', 1787616000000, 1787616000000, ?3)",
+                    (
+                        part_id,
+                        message_id,
+                        json!({"type": "text", "text": text}).to_string(),
+                    ),
+                )
+                .unwrap();
+        }
+    }
+
+    let listed = conversation_list(&json!({
+        "agent": "kilo-code",
+        "root": dir.to_string_lossy()
+    }))
+    .unwrap();
+
+    let sessions = listed["sessions"].as_array().unwrap();
+    assert_eq!(sessions.len(), 1);
+    assert_eq!(sessions[0]["nativeSessionId"], "ses_narrow");
+    assert_eq!(
+        sessions[0]["workingDirectory"], "/workspace/narrow",
+        "the narrow schema still records the project directory"
+    );
+    let messages = sessions[0]["messages"].as_array().unwrap();
+    assert_eq!(
+        messages.len(),
+        2,
+        "a narrower schema must not silently drop the conversation content"
+    );
+    assert_eq!(messages[0]["text"], "Narrow schema prompt");
+}
+
+#[test]
+fn openagent_store_never_reports_an_unbounded_project_directory() {
+    let dir = temp_dir("openagent-unbounded-directory");
+    let database = dir.join("kilo.db");
+    create_openagent_fixture_database(&database, "Unbounded prompt");
+    {
+        let connection = Connection::open(&database).unwrap();
+        connection
+            .execute("UPDATE session SET directory = '/'", [])
+            .unwrap();
+    }
+
+    let listed = conversation_list(&json!({
+        "agent": "kilo-code",
+        "root": dir.to_string_lossy()
+    }))
+    .unwrap();
+
+    let sessions = listed["sessions"].as_array().unwrap();
+    assert_eq!(sessions.len(), 1);
+    assert!(
+        sessions[0].get("workingDirectory").is_none(),
+        "the filesystem root must never become a bindable project directory"
+    );
+}

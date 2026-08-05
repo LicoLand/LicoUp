@@ -246,6 +246,14 @@ pub(super) fn target_defs() -> Vec<TargetDef> {
             binary_names: &["pi"],
             process_names: &["pi.exe", "pi"],
         },
+        TargetDef {
+            id: "lico-agent",
+            label: "Lico Agent - CLI",
+            kind: "cli",
+            config_hint: "LicoUp first-party Agent sessions",
+            binary_names: &["lico-agent"],
+            process_names: &["lico-agent.exe", "lico-agent"],
+        },
     ]
 }
 
@@ -265,6 +273,7 @@ pub(super) fn normalize_target(value: &str) -> String {
         "github-copilot" => "copilot".to_string(),
         "kimi_code" | "kimicode" => "kimi-code".to_string(),
         "pi-agent" | "pi_agent" | "pi-coding-agent" | "pi_coding_agent" => "pi".to_string(),
+        "lico" | "lico_agent" => "lico-agent".to_string(),
         "open-code" | "open_code" => "opencode".to_string(),
         "openclaw-kate" | "openclaw_kate" => "openclaw".to_string(),
         "hermes-agent" | "hermes_serena" | "hermes-serena" => "hermes".to_string(),

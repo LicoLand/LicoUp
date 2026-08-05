@@ -41,8 +41,16 @@ void main() {
   group('ClientResourceUsageController', () {
     test('first reading establishes the baseline and produces no sample', () {
       final probe = _SequenceProbe([
-        ResourceProbeReading(rssBytes: 100, diskReadBytes: 1000, diskWriteBytes: 2000),
-        ResourceProbeReading(rssBytes: 110, diskReadBytes: 1600, diskWriteBytes: 2100),
+        ResourceProbeReading(
+          rssBytes: 100,
+          diskReadBytes: 1000,
+          diskWriteBytes: 2000,
+        ),
+        ResourceProbeReading(
+          rssBytes: 110,
+          diskReadBytes: 1600,
+          diskWriteBytes: 2100,
+        ),
       ]);
       final controller = ClientResourceUsageController(probe: probe);
       addTearDown(controller.dispose);
@@ -63,8 +71,16 @@ void main() {
 
     test('non-increasing counters produce zero deltas', () {
       final probe = _SequenceProbe([
-        ResourceProbeReading(rssBytes: 100, diskReadBytes: 1000, diskWriteBytes: 2000),
-        ResourceProbeReading(rssBytes: 100, diskReadBytes: 800, diskWriteBytes: 2000),
+        ResourceProbeReading(
+          rssBytes: 100,
+          diskReadBytes: 1000,
+          diskWriteBytes: 2000,
+        ),
+        ResourceProbeReading(
+          rssBytes: 100,
+          diskReadBytes: 800,
+          diskWriteBytes: 2000,
+        ),
       ]);
       final controller = ClientResourceUsageController(probe: probe);
       addTearDown(controller.dispose);
@@ -80,8 +96,16 @@ void main() {
     test('samples carry the wall-clock interval between readings', () {
       var now = DateTime(2026, 7, 31, 12, 0, 0);
       final probe = _SequenceProbe([
-        ResourceProbeReading(rssBytes: 100, diskReadBytes: 1000, diskWriteBytes: 0),
-        ResourceProbeReading(rssBytes: 100, diskReadBytes: 1500, diskWriteBytes: 0),
+        ResourceProbeReading(
+          rssBytes: 100,
+          diskReadBytes: 1000,
+          diskWriteBytes: 0,
+        ),
+        ResourceProbeReading(
+          rssBytes: 100,
+          diskReadBytes: 1500,
+          diskWriteBytes: 0,
+        ),
       ]);
       final controller = ClientResourceUsageController(
         probe: probe,
@@ -106,10 +130,7 @@ void main() {
         controller.refresh();
       }
 
-      expect(
-        controller.samples.length,
-        clientResourceUsageMaxSamples,
-      );
+      expect(controller.samples.length, clientResourceUsageMaxSamples);
       expect(controller.samples.first.rssBytes, 121);
       expect(controller.samples.last.rssBytes, 300);
     });
@@ -153,8 +174,16 @@ void main() {
 
     test('notifies listeners only when a sample is produced', () {
       final probe = _SequenceProbe([
-        ResourceProbeReading(rssBytes: 100, diskReadBytes: 1000, diskWriteBytes: 0),
-        ResourceProbeReading(rssBytes: 110, diskReadBytes: 1500, diskWriteBytes: 0),
+        ResourceProbeReading(
+          rssBytes: 100,
+          diskReadBytes: 1000,
+          diskWriteBytes: 0,
+        ),
+        ResourceProbeReading(
+          rssBytes: 110,
+          diskReadBytes: 1500,
+          diskWriteBytes: 0,
+        ),
       ]);
       final controller = ClientResourceUsageController(probe: probe);
       addTearDown(controller.dispose);

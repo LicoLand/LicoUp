@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
+import 'package:licoup/src/platform/agents/group_conversation_store.dart';
 
 /// Immutable data consumed by the conversation body. The workspace is the
 /// only production adapter from mutable application controllers to this view.
@@ -28,11 +29,22 @@ final class AgentConversationPaneState {
     this.workingDirectorySelectable = false,
     this.sendAuthorizeActive = false,
     List<TargetCandidate> participantTargets = const [],
+    this.flywheelMainAgentLabel = '',
+    this.flywheelMainAgentTarget,
+    List<TargetCandidate> flywheelAgentOptions = const [],
+    this.flywheelSelectedAgentId = '',
+    this.flywheelSelectedModel = '',
+    this.showLicoProfileCapsule = false,
+    this.selectedLicoProfile = 'base',
+    this.planDocumentPath = '',
+    List<GroupParticipant> groupRosterParticipants = const [],
   }) : liveMessages = List.unmodifiable(liveMessages),
        recentSessions = List.unmodifiable(recentSessions),
        modelOptions = List.unmodifiable(modelOptions),
        reasoningEffortOptions = List.unmodifiable(reasoningEffortOptions),
-       participantTargets = List.unmodifiable(participantTargets);
+       participantTargets = List.unmodifiable(participantTargets),
+       flywheelAgentOptions = List.unmodifiable(flywheelAgentOptions),
+       groupRosterParticipants = List.unmodifiable(groupRosterParticipants);
 
   final TargetCandidate target;
   final AgentConversationSession? session;
@@ -55,6 +67,15 @@ final class AgentConversationPaneState {
   final bool workingDirectorySelectable;
   final bool sendAuthorizeActive;
   final List<TargetCandidate> participantTargets;
+  final String flywheelMainAgentLabel;
+  final TargetCandidate? flywheelMainAgentTarget;
+  final List<TargetCandidate> flywheelAgentOptions;
+  final String flywheelSelectedAgentId;
+  final String flywheelSelectedModel;
+  final bool showLicoProfileCapsule;
+  final String selectedLicoProfile;
+  final String planDocumentPath;
+  final List<GroupParticipant> groupRosterParticipants;
 }
 
 /// Typed commands available to the conversation body.
@@ -68,6 +89,10 @@ final class AgentConversationPaneActions {
     this.onUnblockSend,
     this.onChooseWorkingDirectory,
     this.onAttach,
+    this.onEditFlywheel,
+    this.onSelectFlywheelAgent,
+    this.onSelectFlywheelModel,
+    this.onLicoProfileChanged,
   });
 
   final ValueChanged<String> onModelChanged;
@@ -78,6 +103,10 @@ final class AgentConversationPaneActions {
   final VoidCallback? onUnblockSend;
   final VoidCallback? onChooseWorkingDirectory;
   final VoidCallback? onAttach;
+  final VoidCallback? onEditFlywheel;
+  final ValueChanged<String>? onSelectFlywheelAgent;
+  final void Function(String agentId, String model)? onSelectFlywheelModel;
+  final ValueChanged<String>? onLicoProfileChanged;
 }
 
 /// Immutable identity and status projection consumed only by the header leaf.

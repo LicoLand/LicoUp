@@ -160,8 +160,7 @@ final class _MessagingDesktopShellState extends State<_MessagingDesktopShell> {
           ? MessagingProfilePage(
               onOpenPairing: () =>
                   _selectDestination(ClientSection.mobileRelay),
-              onOpenSettings: () =>
-                  _selectDestination(ClientSection.settings),
+              onOpenSettings: () => _selectDestination(ClientSection.settings),
             )
           : data.destination,
     );

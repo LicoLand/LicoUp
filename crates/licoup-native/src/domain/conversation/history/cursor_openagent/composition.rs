@@ -39,8 +39,13 @@ pub(crate) fn parse_sqlite_sessions(
                 return precise_sessions;
             }
         }
-        let precise_sessions =
-            parse_cursor_sqlite_sessions(path, source_kind, metadata, &mut connection);
+        let precise_sessions = parse_cursor_sqlite_sessions(
+            path,
+            source_kind,
+            metadata,
+            &mut connection,
+            scan_config.single_session_id(),
+        );
         if !precise_sessions.is_empty() {
             return precise_sessions;
         }

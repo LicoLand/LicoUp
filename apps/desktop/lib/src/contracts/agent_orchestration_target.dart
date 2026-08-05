@@ -5,7 +5,7 @@ const String agentOrchestrationTargetId = 'lico-default-orchestrator';
 bool isAgentOrchestrationTargetId(String targetId) =>
     targetId.trim() == agentOrchestrationTargetId;
 
-TargetCandidate agentOrchestrationTargetCandidate({String label = 'Default'}) {
+TargetCandidate agentOrchestrationTargetCandidate({String label = 'Lico'}) {
   return TargetCandidate(
     target: agentOrchestrationTargetId,
     label: label,
