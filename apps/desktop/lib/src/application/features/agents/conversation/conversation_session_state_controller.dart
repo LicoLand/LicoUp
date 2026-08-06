@@ -586,6 +586,7 @@ mixin AgentConversationSessionStateController on AgentWorkspaceCoordinator {
     String workingDirectory = '',
     String localSessionId = '',
     bool locallyOwned = false,
+    String sourcePath = '',
   }) {
     final normalizedAgent = agentId.trim();
     final normalizedSession = nativeSessionId.trim();
@@ -615,6 +616,9 @@ mixin AgentConversationSessionStateController on AgentWorkspaceCoordinator {
               ? localSessionId.trim()
               : 'lico-${DateTime.now().toUtc().microsecondsSinceEpoch}')
         : normalizedSession;
+    final resolvedSourcePath = sourcePath.trim().isNotEmpty
+        ? sourcePath.trim()
+        : previous?.sourcePath.trim() ?? '';
     final session = AgentConversationSession(
       id: projectedSessionId,
       agentId: normalizedAgent,
@@ -626,6 +630,7 @@ mixin AgentConversationSessionStateController on AgentWorkspaceCoordinator {
       sourceKind: locallyOwned ? 'lico-owned-orchestration' : '',
       sourceClient: locallyOwned ? 'licoup' : '',
       sourceClientLabel: locallyOwned ? 'LicoUp' : '',
+      sourcePath: resolvedSourcePath,
       native: !locallyOwned,
       readOnly: !locallyOwned,
       messages: List<AgentConversationMessage>.unmodifiable(mergedMessages),

@@ -168,15 +168,45 @@ final class AgentOrchestrationPolicy {
     return null;
   }
 
+  /// Agent that owns plain-send (no `@`) turns and the flywheel capsule chrome:
+  /// first Daily Conversation capsule, else Current Conversation (`main_agent`).
+  String get plainSendDispatchAgentId {
+    final daily = primaryDailyConversationAgent?.agentId.trim() ?? '';
+    if (daily.isNotEmpty) return daily;
+    return commanderAgentId.trim();
+  }
+
+  /// Model override for [plainSendDispatchAgentId].
+  String get plainSendModelName {
+    final primary = primaryDailyConversationAgent;
+    if (primary != null && primary.agentId.trim().isNotEmpty) {
+      return primary.modelName.trim();
+    }
+    return commanderModelName.trim();
+  }
+
+  /// Reasoning-effort override for [plainSendDispatchAgentId].
+  String get plainSendReasoningEffort {
+    final primary = primaryDailyConversationAgent;
+    if (primary != null && primary.agentId.trim().isNotEmpty) {
+      return primary.reasoningEffort.trim();
+    }
+    return commanderReasoningEffort.trim();
+  }
+
   /// A current-conversation selection is usable without an explicit model
   /// override.
   ///
-  /// **Daily Conversation** is the configured priority list; its first capsule
-  /// is the default dispatch owner. **Current Conversation**
-  /// ([commanderAgentId] / model / effort) is the active owner for the live
-  /// Lico group entry. When the two differ, Current Conversation wins for
-  /// dispatch; Daily Conversation stays the Adaptive Flywheel default until
-  /// the dialog is saved again (which re-syncs Current from the first capsule).
+  /// **Daily Conversation** is the configured priority list: its first capsule
+  /// is the default Current Conversation, and list order is also the automatic
+  /// quota / credit / rate-limit / capacity fallback chain for the Lico group
+  /// send path. **Current Conversation** ([commanderAgentId] / model / effort)
+  /// is the active plain-send owner. When Current matches a Daily capsule
+  /// (including after a successful fallback to a later capsule), that Current
+  /// selection is preserved; a stale Current outside the Daily list is synced
+  /// back to the first capsule. Saving the Adaptive Flywheel dialog also
+  /// re-syncs Current from the first Daily capsule. Fallback success updates
+  /// Current without reordering this list.
   ///
   /// Some native runtimes do not publish a model catalog. In that case an
   /// empty model delegates model selection to the runtime and must not erase
@@ -222,6 +252,28 @@ final class AgentOrchestrationPolicy {
     }
   }
 
+  /// Distinct Adaptive Flywheel agents for the Lico group roster, in role
+  /// order: Daily Conversation → Current Conversation → code-engineering
+  /// capsules (Designer / Worker / Reviewer).
+  List<String> get flywheelRosterAgentIds {
+    final seen = <String>{};
+    final ids = <String>[];
+    void put(String agentId) {
+      final id = agentId.trim();
+      if (id.isEmpty || !seen.add(id)) return;
+      ids.add(id);
+    }
+
+    for (final agentId in dailyConversationAgentIds) {
+      put(agentId);
+    }
+    put(commanderAgentId);
+    for (final agentId in codeEngineeringAgentIds) {
+      put(agentId);
+    }
+    return ids;
+  }
+
   DailyConversationAgentAssignment? dailyConversationAssignmentFor(
     String agentId,
   ) {
@@ -249,6 +301,44 @@ final class AgentOrchestrationPolicy {
       agentOnly ??= assignment;
     }
     return agentOnly;
+  }
+
+  /// Capsules strictly after the Current Conversation match in list order.
+  ///
+  /// Used when a Lico group send hits quota / credit / rate-limit / capacity:
+  /// later Daily Conversation combinations are tried in priority order.
+  /// Unique by `(agentId, modelName)`. Empty when Current Conversation is not
+  /// found in the Daily Conversation list.
+  List<DailyConversationAgentAssignment>
+  dailyConversationFallbackCandidatesAfterCurrent() {
+    final match = dailyConversationMatchForCurrentConversation();
+    if (match == null) return const [];
+    var passedMatch = false;
+    final seen = <String>{};
+    final out = <DailyConversationAgentAssignment>[];
+    for (final assignment in dailyConversationAgents) {
+      if (!assignment.configured) continue;
+      if (!passedMatch) {
+        final sameId =
+            match.id.trim().isNotEmpty &&
+            assignment.id.trim() == match.id.trim();
+        final sameCombo =
+            assignment.agentId.trim() == match.agentId.trim() &&
+            assignment.modelName.trim() == match.modelName.trim();
+        if (sameId || sameCombo) {
+          passedMatch = true;
+          seen.add(
+            '${assignment.agentId.trim()}\u0000${assignment.modelName.trim()}',
+          );
+        }
+        continue;
+      }
+      final key =
+          '${assignment.agentId.trim()}\u0000${assignment.modelName.trim()}';
+      if (!seen.add(key)) continue;
+      out.add(assignment);
+    }
+    return List.unmodifiable(out);
   }
 
   /// Seeds everyday conversation from a legacy `main_agent` block when the
@@ -523,11 +613,12 @@ AgentOrchestrationPolicy normalizeOrchestrationPolicyForPersistence(
     seeded.dailyConversationAgents,
     idPrefix: 'dc',
   );
-  // Preserve an explicit Current Conversation (`main_agent`) selection even
-  // when it differs from the first Daily Conversation capsule. Only fill
-  // Current Conversation from Daily Conversation when it is unset. When the
-  // agent is set but model/effort were left blank, borrow those fields from
-  // the matching Daily Conversation capsule so the composer flywheel can show
+  // Keep a Current Conversation that still matches a Daily Conversation
+  // capsule (for example after quota fallback advanced Current). Only fill or
+  // replace Current from the Daily primary when it is unset or stale (not in
+  // the Daily list — e.g. Cursor left over from an older save). When the agent
+  // matches but model/effort were left blank, borrow those fields from the
+  // matching Daily capsule so the composer flywheel can show
   // agent · model · effort · Fast.
   final preserved = AgentOrchestrationPolicy(
     dailyConversationAgents: dailyAgents,
@@ -549,7 +640,9 @@ AgentOrchestrationPolicy normalizeOrchestrationPolicyForPersistence(
   }
   final match = preserved.dailyConversationMatchForCurrentConversation();
   if (match == null) {
-    return preserved;
+    // Stale Current outside Daily Conversation must not outrank the priority
+    // list.
+    return preserved.withCommanderSyncedFromDailyConversation();
   }
   return preserved.copyWith(
     commanderModelName: preserved.commanderModelName.isNotEmpty
@@ -670,7 +763,11 @@ String _normalizeCommanderReasoningEffort(
   );
   if (efforts.isEmpty) return '';
   final normalized = configuredReasoningEffort.trim();
-  return efforts.contains(normalized) ? normalized : efforts.first;
+  if (efforts.contains(normalized)) return normalized;
+  return agentOrchestrationDefaultReasoningEffortForModel(
+    commander,
+    commanderModelName,
+  );
 }
 
 TargetCandidate? _targetById(

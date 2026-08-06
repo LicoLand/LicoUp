@@ -6,6 +6,7 @@ import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_event_
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_log_event_row.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_message_blocks.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_render_adapter.dart';
+import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_details_panel.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_message_group.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_process_status_row.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
@@ -234,6 +235,8 @@ class MessagingParticipantFlow extends StatelessWidget {
     this.activeProcessStorageKey = '',
     this.sessionKey = '',
     this.participantTargets = const [],
+    this.participantConversationIds = const {},
+    this.primaryConversationId = '',
     this.preferPeerAgents = false,
     this.topOverlayInset = 0,
     this.bottomOverlayInset = 0,
@@ -246,6 +249,12 @@ class MessagingParticipantFlow extends StatelessWidget {
   final String activeProcessStorageKey;
   final String sessionKey;
   final List<TargetCandidate> participantTargets;
+
+  /// Agent id → that agent's conversation id for hover metadata.
+  final Map<String, String> participantConversationIds;
+
+  /// Fallback conversation id when a message has no participant agent id.
+  final String primaryConversationId;
 
   /// Lico group Conversation: render delegated agents as peer bubbles.
   final bool preferPeerAgents;
@@ -322,6 +331,12 @@ class MessagingParticipantFlow extends StatelessWidget {
             messages: messages,
             target: target,
             adapter: adapter,
+            conversationId: messagingHoverConversationId(
+              authorIsUser: authorIsUser,
+              participantAgentId: participantAgentId,
+              participantConversationIds: participantConversationIds,
+              primaryConversationId: primaryConversationId,
+            ),
           ),
         ),
       MessagingFlowProcess(:final item, :final active) => Padding(

@@ -27,6 +27,7 @@ final class AgentOrchestrationDailyConversationPolicyCard
       keyPrefix: 'agent-orchestration-daily-conversation',
       idPrefix: 'dc',
       showFast: true,
+      highlightFirstAsCurrentConversation: true,
       assignments: assignments,
       targets: targets,
       onChanged: onChanged,

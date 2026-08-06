@@ -162,6 +162,76 @@ class AgentService
     ]);
   }
 
+  Future<Map<String, dynamic>> subagentMcpStatus({
+    required String agentId,
+    String? binaryPath,
+    String? mcpBinaryPath,
+  }) {
+    return runCli([
+      'adapter',
+      'subagent-mcp',
+      'status',
+      '--agent-id',
+      agentId,
+      if (binaryPath != null && binaryPath.trim().isNotEmpty) ...[
+        '--binary-path',
+        binaryPath.trim(),
+      ],
+      if (mcpBinaryPath != null && mcpBinaryPath.trim().isNotEmpty) ...[
+        '--mcp-binary-path',
+        mcpBinaryPath.trim(),
+      ],
+    ]);
+  }
+
+  Future<Map<String, dynamic>> planSubagentMcp({
+    required String agentId,
+    String? binaryPath,
+    String? mcpBinaryPath,
+  }) {
+    return runCli([
+      'adapter',
+      'subagent-mcp',
+      'plan',
+      '--agent-id',
+      agentId,
+      if (binaryPath != null && binaryPath.trim().isNotEmpty) ...[
+        '--binary-path',
+        binaryPath.trim(),
+      ],
+      if (mcpBinaryPath != null && mcpBinaryPath.trim().isNotEmpty) ...[
+        '--mcp-binary-path',
+        mcpBinaryPath.trim(),
+      ],
+    ]);
+  }
+
+  Future<Map<String, dynamic>> installSubagentMcp({
+    required String agentId,
+    required String confirmation,
+    String? binaryPath,
+    String? mcpBinaryPath,
+  }) {
+    return runCli([
+      'adapter',
+      'subagent-mcp',
+      'install',
+      '--agent-id',
+      agentId,
+      if (binaryPath != null && binaryPath.trim().isNotEmpty) ...[
+        '--binary-path',
+        binaryPath.trim(),
+      ],
+      if (mcpBinaryPath != null && mcpBinaryPath.trim().isNotEmpty) ...[
+        '--mcp-binary-path',
+        mcpBinaryPath.trim(),
+      ],
+      '--confirmation',
+      confirmation,
+      '--confirmed',
+    ]);
+  }
+
   @override
   Future<Map<String, dynamic>> runCliWithStdin(
     List<String> args,

@@ -32,6 +32,7 @@ class MessagingMessageGroup extends StatelessWidget {
     required this.messages,
     required this.target,
     required this.adapter,
+    this.conversationId = '',
   });
 
   final bool authorIsUser;
@@ -41,6 +42,10 @@ class MessagingMessageGroup extends StatelessWidget {
   final List<AgentConversationMessage> messages;
   final TargetCandidate target;
   final AgentRenderAdapter adapter;
+
+  /// This author's native/local conversation id, revealed on message hover
+  /// immediately before the timestamp (agent bubbles only).
+  final String conversationId;
 
   @override
   Widget build(BuildContext context) {
@@ -121,6 +126,7 @@ class MessagingMessageGroup extends StatelessWidget {
             message: messages[index],
             adapter: adapter,
             authorIsUser: authorIsUser,
+            conversationId: conversationId,
           ),
           if (index != messages.length - 1)
             const SizedBox(height: LicoContentSpacing.compact),
@@ -136,6 +142,7 @@ class _MessagingGroupMessageRow extends StatefulWidget {
     required this.message,
     required this.adapter,
     required this.authorIsUser,
+    this.conversationId = '',
   });
 
   final AgentConversationMessage message;
@@ -145,6 +152,7 @@ class _MessagingGroupMessageRow extends StatefulWidget {
   /// bubble is why the surface did not read like a chat client: there was no
   /// visual cue for who is speaking beyond the avatar.
   final bool authorIsUser;
+  final String conversationId;
 
   @override
   State<_MessagingGroupMessageRow> createState() =>
@@ -165,7 +173,9 @@ class _MessagingGroupMessageRowState extends State<_MessagingGroupMessageRow> {
         : MaterialLocalizations.of(
             context,
           ).formatTimeOfDay(TimeOfDay.fromDateTime(messageTime));
-    final timestampStyle = TextStyle(
+    final conversationId = widget.conversationId.trim();
+    final showMeta = timestampLabel != null || conversationId.isNotEmpty;
+    final metaStyle = TextStyle(
       color: colors.textMuted.withAlpha(colors.isDark ? 180 : 200),
       fontSize: 10.5,
       fontWeight: FontWeight.w400,
@@ -176,17 +186,42 @@ class _MessagingGroupMessageRowState extends State<_MessagingGroupMessageRow> {
       mainAxisSize: MainAxisSize.min,
       children: [
         bubble,
-        if (timestampLabel != null)
+        if (showMeta)
           Padding(
             padding: const EdgeInsets.only(top: 2),
             child: AnimatedOpacity(
               opacity: _hovered ? 1 : 0,
               duration: context.motion(LicoMotion.micro),
               curve: LicoMotion.standard,
-              child: Text(
-                timestampLabel,
-                key: const Key('messaging-message-hover-timestamp'),
-                style: timestampStyle,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (conversationId.isNotEmpty) ...[
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 220),
+                      child: Tooltip(
+                        message: conversationId,
+                        waitDuration: const Duration(milliseconds: 400),
+                        child: Text(
+                          conversationId,
+                          key: const Key(
+                            'messaging-message-hover-conversation-id',
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: metaStyle,
+                        ),
+                      ),
+                    ),
+                    if (timestampLabel != null) const SizedBox(width: 8),
+                  ],
+                  if (timestampLabel != null)
+                    Text(
+                      timestampLabel,
+                      key: const Key('messaging-message-hover-timestamp'),
+                      style: metaStyle,
+                    ),
+                ],
               ),
             ),
           ),

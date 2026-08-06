@@ -181,6 +181,28 @@ pub(super) fn handle_service_stop(command: AdmittedCommand) -> Result<CliExecuti
     ))
 }
 
+pub(super) fn handle_service_autostart_status(
+    _command: AdmittedCommand,
+) -> Result<CliExecution> {
+    Ok(CliExecution::Json(
+        crate::platform::llm_gateway_autostart::autostart_status()?,
+    ))
+}
+
+pub(super) fn handle_service_autostart_enable(command: AdmittedCommand) -> Result<CliExecution> {
+    Ok(CliExecution::Json(
+        crate::platform::llm_gateway_autostart::autostart_enable(service_port(&command)?)?,
+    ))
+}
+
+pub(super) fn handle_service_autostart_disable(
+    _command: AdmittedCommand,
+) -> Result<CliExecution> {
+    Ok(CliExecution::Json(
+        crate::platform::llm_gateway_autostart::autostart_disable()?,
+    ))
+}
+
 fn service_port(command: &AdmittedCommand) -> Result<u16> {
     match command.option_text("port") {
         Some(value) => value

@@ -39,6 +39,28 @@ abstract final class ConversationRuntimeResultPolicy {
     return wireName.isNotEmpty ? wireName : rawFailureCode(result);
   }
 
+  /// Quota, credit, rate-limit, or provider-capacity failures that may walk the
+  /// Daily Conversation priority list. Matches Subagent MCP markers on both
+  /// raw `error.code` and `error.message` (drivers often keep a generic code).
+  static bool isQuotaOrCapacityFailure(Map<String, dynamic> result) {
+    final nested = result['error'];
+    final code = rawFailureCode(result).toLowerCase();
+    final message = nested is Map
+        ? (nested['message'] ?? '').toString().trim().toLowerCase()
+        : '';
+    const markers = <String>[
+      'quota',
+      'credit',
+      'rate_limit',
+      'rate-limit',
+      'capacity',
+      'exhaust',
+    ];
+    return markers.any(
+      (marker) => code.contains(marker) || message.contains(marker),
+    );
+  }
+
   static bool outcomeMayBeUnknown(ClientError error) {
     return error.retryable &&
         (error.stage == ClientErrorStage.conversationDispatch ||

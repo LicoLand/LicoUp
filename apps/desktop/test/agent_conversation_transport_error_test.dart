@@ -275,6 +275,110 @@ void main() {
   );
 
   test(
+    'daily conversation quota failure falls back and persists Current Conversation',
+    () async {
+      final service = _RecordingFlywheelService()
+        ..runtimeMessageResultQueue = [
+          {
+            'ok': false,
+            'error': {
+              'code': 'quota_exhausted',
+              'message': 'Primary model quota is exhausted.',
+            },
+          },
+        ];
+      final controller = ClientController(agentService: service);
+      addTearDown(controller.dispose);
+
+      await controller.scanTargets();
+      await controller.saveAgentOrchestrationPolicy(
+        const AgentOrchestrationPolicy(
+          dailyConversationAgents: [
+            DailyConversationAgentAssignment(
+              id: 'dc-1',
+              agentId: 'codex',
+              modelName: 'primary-model',
+            ),
+            DailyConversationAgentAssignment(
+              id: 'dc-2',
+              agentId: 'codex',
+              modelName: 'fallback-model',
+            ),
+          ],
+          commanderAgentId: 'codex',
+          commanderModelName: 'primary-model',
+        ),
+      );
+      await controller.selectConversationAgent(agentOrchestrationTargetId);
+      controller.startNewConversationSession();
+
+      await controller.sendConversationMessage('Need a reply');
+      await _settleAsyncProjection();
+
+      expect(service.runtimeMessageCalls, 2);
+      expect(service.runtimeMessageRequests.first['model'], 'primary-model');
+      expect(service.runtimeMessageRequests.last['model'], 'fallback-model');
+      expect(
+        controller.effectiveAgentOrchestrationPolicy.commanderModelName,
+        'fallback-model',
+      );
+      expect(
+        (service.lastAdaptiveFlywheel?['main_agent'] as Map?)?['model'],
+        'fallback-model',
+      );
+      expect(controller.lastError, isEmpty);
+    },
+  );
+
+  test(
+    'daily conversation non-quota failure does not walk the priority list',
+    () async {
+      final service = FakeAgentService()
+        ..runtimeMessageResultQueue = [
+          {
+            'ok': false,
+            'error': {
+              'code': 'authorization_denied',
+              'message': 'Sign in required.',
+            },
+          },
+        ];
+      final controller = ClientController(agentService: service);
+      addTearDown(controller.dispose);
+
+      await controller.scanTargets();
+      controller.orchestrationPolicyDraft = const AgentOrchestrationPolicy(
+        dailyConversationAgents: [
+          DailyConversationAgentAssignment(
+            id: 'dc-1',
+            agentId: 'codex',
+            modelName: 'primary-model',
+          ),
+          DailyConversationAgentAssignment(
+            id: 'dc-2',
+            agentId: 'codex',
+            modelName: 'fallback-model',
+          ),
+        ],
+        commanderAgentId: 'codex',
+        commanderModelName: 'primary-model',
+      ).toTomlConfig();
+      await controller.selectConversationAgent(agentOrchestrationTargetId);
+      controller.startNewConversationSession();
+
+      await controller.sendConversationMessage('Should not fall back');
+
+      expect(service.runtimeMessageCalls, 1);
+      expect(service.lastRuntimeMessageRequest['model'], 'primary-model');
+      expect(
+        controller.effectiveAgentOrchestrationPolicy.commanderModelName,
+        'primary-model',
+      );
+      expect(controller.lastError, isNotEmpty);
+    },
+  );
+
+  test(
     'delayed native readback does not fail or disable a completed turn',
     () async {
       final service = FakeAgentService()
@@ -344,6 +448,135 @@ void main() {
       expect(
         secondMessages.any((message) => message.text == 'First conversation'),
         isFalse,
+      );
+    },
+  );
+
+  test(
+    'cursor IDE history send injects one-time handoff and clears sessionId',
+    () async {
+      final ideSession = buildFakeConversationSession(
+        id: 'ide-composer-1',
+        agentId: 'cursor',
+        agentLabel: 'Cursor',
+        text: 'Earlier IDE user turn',
+      )
+        ..['nativeSessionId'] = 'ide-composer-1'
+        ..['sourceKind'] = 'cursor-global-storage'
+        ..['sourcePath'] = '/tmp/Cursor/User/globalStorage/state.vscdb'
+        ..['messages'] = [
+          {
+            'id': 'msg-user-ide',
+            'role': 'user',
+            'text': 'Earlier IDE user turn',
+            'createdAt': '2026-08-06T00:00:00Z',
+          },
+          {
+            'id': 'msg-agent-ide',
+            'role': 'assistant',
+            'text': 'Last IDE return about quota fallback.',
+            'createdAt': '2026-08-06T00:00:01Z',
+          },
+        ];
+      final service = FakeAgentService()
+        ..scanTargetsResult = [_cursorTarget(runtimeBound: true)]
+        ..conversationSessions['cursor'] = [ideSession];
+      final controller = ClientController(agentService: service);
+      addTearDown(controller.dispose);
+
+      await controller.scanTargets();
+      await controller.selectConversationAgent('cursor');
+      await controller.refreshConversationCatalogInternal(
+        'cursor',
+        foreground: true,
+      );
+      controller.selectConversationSession('ide-composer-1');
+
+      await controller.sendConversationMessage('Continue from IDE');
+      await _settleAsyncProjection();
+
+      expect(service.runtimeMessageCalls, 1);
+      final firstText =
+          (service.runtimeMessageRequests.first['text'] ?? '').toString();
+      expect(firstText, contains('[LicoUp IDE→CLI handoff — once]'));
+      expect(firstText, contains('composerSessionId: ide-composer-1'));
+      expect(firstText, contains('Last IDE return about quota fallback.'));
+      expect(firstText, contains('Continue from IDE'));
+      expect(service.runtimeMessageRequests.first['sessionId'], isNull);
+      expect(
+        controller.cursorIdeCliHandoffComposerIds.contains('ide-composer-1'),
+        isTrue,
+      );
+
+      await controller.sendConversationMessage('Second CLI turn');
+      expect(service.runtimeMessageCalls, 2);
+      final secondText =
+          (service.runtimeMessageRequests.last['text'] ?? '').toString();
+      expect(secondText, isNot(contains('[LicoUp IDE→CLI handoff — once]')));
+      expect(secondText, 'Second CLI turn');
+    },
+  );
+
+  test(
+    'cursor IDE handoff survives a failed first send for retry',
+    () async {
+      final ideSession = buildFakeConversationSession(
+        id: 'ide-composer-2',
+        agentId: 'cursor',
+        agentLabel: 'Cursor',
+        text: 'IDE history',
+      )
+        ..['nativeSessionId'] = 'ide-composer-2'
+        ..['sourceKind'] = 'cursor-workspace-storage'
+        ..['sourcePath'] = '/tmp/workspace/state.vscdb'
+        ..['messages'] = [
+          {
+            'id': 'a1',
+            'role': 'assistant',
+            'text': 'Prior IDE assistant text',
+            'createdAt': '2026-08-06T00:00:01Z',
+          },
+        ];
+      final service = FakeAgentService()
+        ..scanTargetsResult = [_cursorTarget(runtimeBound: true)]
+        ..conversationSessions['cursor'] = [ideSession]
+        ..runtimeMessageResultQueue = [
+          {
+            'ok': false,
+            'error': {
+              'code': 'authorization_denied',
+              'message': 'Sign in required.',
+            },
+          },
+        ];
+      final controller = ClientController(agentService: service);
+      addTearDown(controller.dispose);
+
+      await controller.scanTargets();
+      await controller.selectConversationAgent('cursor');
+      await controller.refreshConversationCatalogInternal(
+        'cursor',
+        foreground: true,
+      );
+      controller.selectConversationSession('ide-composer-2');
+
+      await controller.sendConversationMessage('First attempt');
+      expect(service.runtimeMessageCalls, 1);
+      expect(
+        controller.cursorIdeCliHandoffComposerIds.contains('ide-composer-2'),
+        isFalse,
+      );
+
+      await controller.sendConversationMessage('Retry attempt');
+      expect(service.runtimeMessageCalls, 2);
+      final retryText =
+          (service.runtimeMessageRequests.last['text'] ?? '').toString();
+      expect(retryText, contains('[LicoUp IDE→CLI handoff — once]'));
+      expect(retryText, contains('Prior IDE assistant text'));
+      expect(retryText, contains('Retry attempt'));
+      expect(
+        controller.cursorIdeCliHandoffComposerIds.contains('ide-composer-2'),
+        isTrue,
       );
     },
   );
@@ -425,6 +658,25 @@ TargetCandidate _codexTarget({required bool runtimeBound}) {
       'conversationProtocol': 'synthetic-native-protocol',
       'conversationReadiness': 'ready',
     },
+  );
+}
+
+TargetCandidate _cursorTarget({required bool runtimeBound}) {
+  return TargetCandidate(
+    target: 'cursor',
+    label: 'Cursor',
+    kind: 'cli',
+    status: 'detected',
+    configured: true,
+    confidence: 1,
+    binaryPath: runtimeBound ? '/synthetic/bin/cursor-agent' : null,
+    adapterStatus: 'implemented',
+    adapterCapabilities: const <String, dynamic>{
+      'conversationDriver': 'implemented',
+      'conversationProtocol': 'cursor-agent-cli-v1',
+      'conversationReadiness': 'ready',
+    },
+    supportedActions: const ['runtime.message.send'],
   );
 }
 

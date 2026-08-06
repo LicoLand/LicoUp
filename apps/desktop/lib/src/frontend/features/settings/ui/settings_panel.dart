@@ -16,6 +16,7 @@ import 'package:licoup/src/frontend/features/settings/ui/client_resource_usage_c
 import 'package:licoup/src/frontend/features/settings/ui/settings_log_export_tile.dart';
 import 'package:licoup/src/frontend/features/settings/ui/settings_panel_widgets.dart';
 import 'package:licoup/src/frontend/features/settings/ui/settings_section_catalog.dart';
+import 'package:licoup/src/frontend/features/settings/ui/startup_autostart_card.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_pane/resize.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/layout/layout_destination_presentation.dart';
@@ -465,6 +466,7 @@ class _SettingsPanelState extends State<SettingsPanel> {
         controller: widget.controller.catalogConvergenceController,
       ),
       'storage' => _StorageSettings(controller: widget.controller),
+      'startup' => StartupAutostartCard(controller: widget.controller),
       _ => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [

@@ -49,8 +49,6 @@ final class MessagingChromeBand extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 8),
-                if (features != null) features.buildNotificationBell(context),
-                const SizedBox(width: 4),
                 if (compact)
                   _ChromeIconAction(
                     key: const Key('messaging-topstrip-search'),
@@ -60,6 +58,10 @@ final class MessagingChromeBand extends StatelessWidget {
                   )
                 else
                   _ChromeSearchField(chrome: chrome),
+                // Bell sits at the far-right chrome edge so the notification
+                // panel (window top-right) reads as anchored to that corner.
+                const SizedBox(width: 4),
+                if (features != null) features.buildNotificationBell(context),
                 const SizedBox(width: 10),
               ],
             );

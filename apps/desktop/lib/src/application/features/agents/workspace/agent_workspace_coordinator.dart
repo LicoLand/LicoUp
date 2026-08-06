@@ -6,18 +6,21 @@ import 'package:licoup/src/application/controller/client_lifecycle_coordinator.d
 import 'package:licoup/src/application/features/agents/contracts/agent_conversation_gateway.dart';
 import 'package:licoup/src/application/features/agents/conversation/conversation_turn_queue.dart';
 import 'package:licoup/src/application/features/agents/policy/conversation_refresh_policy.dart';
+import 'package:licoup/src/application/features/messaging/messaging_notification_center.dart';
 import 'package:licoup/src/application/localization/client_application_strings.dart';
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
 import 'package:licoup/src/contracts/agent_conversation_projection_repository.dart';
 import 'package:licoup/src/contracts/agent_conversation_tab_activity.dart';
 import 'package:licoup/src/contracts/generated/secure_mesh.g.dart';
-import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
+import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/platform/agents/group_conversation_store.dart';
+import 'package:licoup/src/platform/native_client/agent_service.dart';
 
 /// Shared feature state plus narrow composition callbacks. Concrete feature
 /// controllers never import the root [ClientController].
 abstract class AgentWorkspaceCoordinator extends ChangeNotifier {
+  AgentService get agentService;
   AgentConversationGateway get conversationGateway;
   MobileAgentConversationGateway get mobileConversationGateway;
   List<TargetCandidate> get scannedTargets;
@@ -53,6 +56,14 @@ abstract class AgentWorkspaceCoordinator extends ChangeNotifier {
     String chinese,
     String english, {
     String? displayChinese,
+  });
+  MessagingNotificationCenter get messagingNotificationCenter;
+  void agentWorkspacePublishNotification({
+    required String id,
+    required String messageChinese,
+    required String messageEnglish,
+    MessagingNotificationTone tone = MessagingNotificationTone.info,
+    String code = '',
   });
   void agentWorkspaceNotifyStateChanged();
   void agentWorkspaceNotifyConversationStructureChanged({
@@ -153,6 +164,10 @@ abstract class AgentWorkspaceCoordinator extends ChangeNotifier {
   int conversationTurnSubmissionSequence = 0;
   bool conversationTurnDrainScheduled = false;
   bool conversationTurnCancellationRequested = false;
+
+  /// Cursor IDE composer ids that already received a one-time IDE→CLI handoff
+  /// in this process (metadata + last assistant return).
+  final Set<String> cursorIdeCliHandoffComposerIds = <String>{};
   Map<String, List<AgentConversationMessage>> liveConversationMessagesByAgent =
       const {};
   Map<String, AgentConversationTabActivity> conversationTabActivityByAgent =
@@ -160,6 +175,9 @@ abstract class AgentWorkspaceCoordinator extends ChangeNotifier {
   Map<String, String> conversationSendErrorsByAgent = const {};
 
   GroupRoster groupConversationRoster = GroupRoster.empty;
+  Map<String, GroupAgentSessionBinding> groupConversationAgentSessions =
+      const {};
+  String groupConversationLastLocalSessionId = '';
 
   Map<String, Object?> orchestrationPolicyDraft = const {};
   String activeOrchestrationPolicyRevision = '';

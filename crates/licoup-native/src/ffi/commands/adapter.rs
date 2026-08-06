@@ -137,6 +137,88 @@ fn codex_plugin_error(
     })
 }
 
+pub(super) fn handle_subagent_mcp_status(command: AdmittedCommand) -> Result<CliExecution> {
+    let agent_id = command
+        .option_text("agent-id")
+        .unwrap_or_default();
+    let binary = command.option_text("binary-path").map(Path::new);
+    let mcp_binary = command.option_text("mcp-binary-path").map(Path::new);
+    let state = crate::platform::subagent_mcp_ensure::status(&agent_id, binary, mcp_binary);
+    Ok(CliExecution::Json(serde_json::json!({
+        "ok": true,
+        "agentId": agent_id,
+        "state": state.as_str(),
+        "ready": state.ready(),
+        "orchestrationOwner": if state.ready() { "main-agent-plugin" } else { "licoup" },
+    })))
+}
+
+pub(super) fn handle_subagent_mcp_plan(command: AdmittedCommand) -> Result<CliExecution> {
+    let agent_id = command.option_text("agent-id").unwrap_or_default();
+    let binary = command.option_text("binary-path").map(Path::new);
+    let mcp_binary = command.option_text("mcp-binary-path").map(Path::new);
+    Ok(CliExecution::Json(
+        match crate::platform::subagent_mcp_ensure::plan(&agent_id, binary, mcp_binary) {
+            Ok(plan) => serde_json::json!({
+                "ok": true,
+                "agentId": plan.agent_id,
+                "digest": plan.digest,
+                "pluginVersion": plan.plugin_version,
+                "marketplaceSource": plan.source,
+                "marketplaceRelease": plan.release,
+                "requiresConfirmation": plan.requires_confirmation,
+                "fallbackOwner": "licoup",
+            }),
+            Err(error) => subagent_mcp_error(error),
+        },
+    ))
+}
+
+pub(super) fn handle_subagent_mcp_install(command: AdmittedCommand) -> Result<CliExecution> {
+    let agent_id = command.option_text("agent-id").unwrap_or_default();
+    let binary = command.option_text("binary-path").map(Path::new);
+    let mcp_binary = command.option_text("mcp-binary-path").map(Path::new);
+    let confirmation = command.option_text("confirmation").unwrap_or_default();
+    let confirmed = command.option_flag("confirmed");
+    Ok(CliExecution::Json(
+        match crate::platform::subagent_mcp_ensure::install(
+            &agent_id,
+            binary,
+            mcp_binary,
+            &confirmation,
+            confirmed,
+        ) {
+            Ok((installed, ready)) => serde_json::json!({
+                "ok": true,
+                "agentId": agent_id,
+                "installed": installed,
+                "pluginReadyForNewConversations": ready,
+                "orchestrationOwner": "main-agent-plugin",
+            }),
+            Err(error) => subagent_mcp_error(error),
+        },
+    ))
+}
+
+fn subagent_mcp_error(
+    error: crate::platform::subagent_mcp_ensure::SubagentMcpEnsureError,
+) -> serde_json::Value {
+    serde_json::json!({
+        "ok": false,
+        "error": {
+            "code": error.code(),
+            "stage": "adapter/subagent-mcp",
+            "component": "managed-plugin",
+            "retryable": matches!(
+                error,
+                crate::platform::subagent_mcp_ensure::SubagentMcpEnsureError::ProcessUnavailable
+                    | crate::platform::subagent_mcp_ensure::SubagentMcpEnsureError::InstallFailed
+            ),
+        },
+        "fallbackOwner": "licoup",
+    })
+}
+
 fn adapter_lifecycle_result(
     adapter_id: &str,
     action: &str,

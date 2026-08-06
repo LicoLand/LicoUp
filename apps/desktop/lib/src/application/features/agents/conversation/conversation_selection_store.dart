@@ -197,6 +197,26 @@ mixin ConversationSelectionStore on AgentWorkspaceCoordinator {
     );
   }
 
+  /// Effort the conversation runs with when the user has not overridden it.
+  String get selectedConversationDefaultReasoningEffort {
+    final agent = selectedConversationAgent;
+    if (agent == null) return '';
+    return agentOrchestrationDefaultReasoningEffortForModel(
+      agent,
+      selectedConversationEffectiveModel,
+    );
+  }
+
+  /// Explicit selection, or the catalog default when the turn is on Auto.
+  String get selectedConversationEffectiveReasoningEffort {
+    final selected = selectedConversationReasoningEffort;
+    if (selected.isNotEmpty &&
+        selectedConversationReasoningEffortOptions.contains(selected)) {
+      return selected;
+    }
+    return selectedConversationDefaultReasoningEffort;
+  }
+
   void selectConversationModel(String model) {
     final agent = selectedConversationAgent;
     if (agent == null) {

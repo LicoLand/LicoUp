@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
+import 'package:licoup/src/frontend/features/agents/ui/composer_agent_mention.dart';
 import 'package:licoup/src/platform/agents/group_conversation_store.dart';
 
 /// Immutable data consumed by the conversation body. The workspace is the
@@ -24,6 +25,7 @@ final class AgentConversationPaneState {
     required this.defaultModel,
     required List<String> reasoningEffortOptions,
     required this.selectedReasoningEffort,
+    this.defaultReasoningEffort = '',
     this.showWorkingDirectory = false,
     this.workingDirectory = '',
     this.workingDirectorySelectable = false,
@@ -31,20 +33,22 @@ final class AgentConversationPaneState {
     List<TargetCandidate> participantTargets = const [],
     this.flywheelMainAgentLabel = '',
     this.flywheelMainAgentTarget,
-    List<TargetCandidate> flywheelAgentOptions = const [],
-    this.flywheelSelectedAgentId = '',
-    this.flywheelSelectedModel = '',
+    List<ComposerFlywheelMentionSection> flywheelMentionSections = const [],
     this.showLicoProfileCapsule = false,
     this.selectedLicoProfile = 'base',
     this.planDocumentPath = '',
     List<GroupParticipant> groupRosterParticipants = const [],
+    Map<String, String> participantConversationIds = const {},
   }) : liveMessages = List.unmodifiable(liveMessages),
        recentSessions = List.unmodifiable(recentSessions),
        modelOptions = List.unmodifiable(modelOptions),
        reasoningEffortOptions = List.unmodifiable(reasoningEffortOptions),
        participantTargets = List.unmodifiable(participantTargets),
-       flywheelAgentOptions = List.unmodifiable(flywheelAgentOptions),
-       groupRosterParticipants = List.unmodifiable(groupRosterParticipants);
+       flywheelMentionSections = List.unmodifiable(flywheelMentionSections),
+       groupRosterParticipants = List.unmodifiable(groupRosterParticipants),
+       participantConversationIds = Map.unmodifiable(
+         participantConversationIds,
+       );
 
   final TargetCandidate target;
   final AgentConversationSession? session;
@@ -62,6 +66,7 @@ final class AgentConversationPaneState {
   final String defaultModel;
   final List<String> reasoningEffortOptions;
   final String selectedReasoningEffort;
+  final String defaultReasoningEffort;
   final bool showWorkingDirectory;
   final String workingDirectory;
   final bool workingDirectorySelectable;
@@ -69,13 +74,14 @@ final class AgentConversationPaneState {
   final List<TargetCandidate> participantTargets;
   final String flywheelMainAgentLabel;
   final TargetCandidate? flywheelMainAgentTarget;
-  final List<TargetCandidate> flywheelAgentOptions;
-  final String flywheelSelectedAgentId;
-  final String flywheelSelectedModel;
+  final List<ComposerFlywheelMentionSection> flywheelMentionSections;
   final bool showLicoProfileCapsule;
   final String selectedLicoProfile;
   final String planDocumentPath;
   final List<GroupParticipant> groupRosterParticipants;
+
+  /// Agent id → that agent's conversation id for bubble hover metadata.
+  final Map<String, String> participantConversationIds;
 }
 
 /// Typed commands available to the conversation body.
@@ -90,9 +96,9 @@ final class AgentConversationPaneActions {
     this.onChooseWorkingDirectory,
     this.onAttach,
     this.onEditFlywheel,
-    this.onSelectFlywheelAgent,
-    this.onSelectFlywheelModel,
+    this.onMentionFlywheelAgent,
     this.onLicoProfileChanged,
+    this.mentionBridge,
   });
 
   final ValueChanged<String> onModelChanged;
@@ -104,9 +110,9 @@ final class AgentConversationPaneActions {
   final VoidCallback? onChooseWorkingDirectory;
   final VoidCallback? onAttach;
   final VoidCallback? onEditFlywheel;
-  final ValueChanged<String>? onSelectFlywheelAgent;
-  final void Function(String agentId, String model)? onSelectFlywheelModel;
+  final ValueChanged<ComposerFlywheelMentionEntry>? onMentionFlywheelAgent;
   final ValueChanged<String>? onLicoProfileChanged;
+  final ComposerMentionBridge? mentionBridge;
 }
 
 /// Immutable identity and status projection consumed only by the header leaf.

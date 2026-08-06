@@ -74,6 +74,8 @@ test-results/
 /.agents/
 /.claude/
 /.codex/
+/.cursor/
+/.kilo/
 /skills/
 /scripts/local/
 /tools/local/

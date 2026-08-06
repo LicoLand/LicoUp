@@ -8,6 +8,7 @@ use std::fmt;
 mod adapter;
 mod agent_conversation;
 mod agent_usage;
+mod autostart;
 mod client_update;
 mod collaboration;
 mod group_conversation;
@@ -920,6 +921,119 @@ fn build_command_table() -> CommandTable {
         cardinality: CommandCardinality::Options,
         handler: adapter::handle_codex_plugin_install,
         help: "Install the digest-bound LicoUp Codex Plugin after confirmation.",
+    });
+    table.register_command(CommandSpec {
+        source_module: "adapter.rs",
+        handler_name: "handle_subagent_mcp_status",
+        path: &["adapter", "subagent-mcp", "status"],
+        required_positionals: &[],
+        options: &[
+            OptionSpec {
+                name: "agent-id",
+                arity: OptionArity::Value,
+                repeatable: false,
+                value_kind: RequiredArgumentKind::Text,
+                required: true,
+            },
+            OptionSpec {
+                name: "binary-path",
+                arity: OptionArity::Value,
+                repeatable: false,
+                value_kind: RequiredArgumentKind::Text,
+                required: false,
+            },
+            OptionSpec {
+                name: "mcp-binary-path",
+                arity: OptionArity::Value,
+                repeatable: false,
+                value_kind: RequiredArgumentKind::Text,
+                required: false,
+            },
+        ],
+        constraints: &[],
+        cardinality: CommandCardinality::Options,
+        handler: adapter::handle_subagent_mcp_status,
+        help: "Probe Subagent MCP readiness for a main agent without silent install.",
+    });
+    table.register_command(CommandSpec {
+        source_module: "adapter.rs",
+        handler_name: "handle_subagent_mcp_plan",
+        path: &["adapter", "subagent-mcp", "plan"],
+        required_positionals: &[],
+        options: &[
+            OptionSpec {
+                name: "agent-id",
+                arity: OptionArity::Value,
+                repeatable: false,
+                value_kind: RequiredArgumentKind::Text,
+                required: true,
+            },
+            OptionSpec {
+                name: "binary-path",
+                arity: OptionArity::Value,
+                repeatable: false,
+                value_kind: RequiredArgumentKind::Text,
+                required: false,
+            },
+            OptionSpec {
+                name: "mcp-binary-path",
+                arity: OptionArity::Value,
+                repeatable: false,
+                value_kind: RequiredArgumentKind::Text,
+                required: false,
+            },
+        ],
+        constraints: &[],
+        cardinality: CommandCardinality::Options,
+        handler: adapter::handle_subagent_mcp_plan,
+        help: "Plan a digest-confirmed Subagent MCP install for a supported main agent.",
+    });
+    table.register_command(CommandSpec {
+        source_module: "adapter.rs",
+        handler_name: "handle_subagent_mcp_install",
+        path: &["adapter", "subagent-mcp", "install"],
+        required_positionals: &[],
+        options: &[
+            OptionSpec {
+                name: "agent-id",
+                arity: OptionArity::Value,
+                repeatable: false,
+                value_kind: RequiredArgumentKind::Text,
+                required: true,
+            },
+            OptionSpec {
+                name: "binary-path",
+                arity: OptionArity::Value,
+                repeatable: false,
+                value_kind: RequiredArgumentKind::Text,
+                required: false,
+            },
+            OptionSpec {
+                name: "mcp-binary-path",
+                arity: OptionArity::Value,
+                repeatable: false,
+                value_kind: RequiredArgumentKind::Text,
+                required: false,
+            },
+            OptionSpec {
+                name: "confirmation",
+                arity: OptionArity::Value,
+                repeatable: false,
+                value_kind: RequiredArgumentKind::Text,
+                required: true,
+            },
+            OptionSpec {
+                name: "confirmed",
+                arity: OptionArity::Boolean,
+                repeatable: false,
+                value_kind: RequiredArgumentKind::Text,
+                required: true,
+            },
+        ],
+        constraints: &[],
+        cardinality: CommandCardinality::Options,
+        handler: adapter::handle_subagent_mcp_install,
+        help: "Install Subagent MCP for a supported main agent after digest confirmation.",
     });
     table.register_command(CommandSpec {
         source_module: "agent_conversation.rs",
@@ -5084,6 +5198,107 @@ fn build_command_table() -> CommandTable {
         cardinality: CommandCardinality::Options,
         handler: llm_gateway::handle_service_stop,
         help: "Stop the managed local LLM Gateway service",
+    });
+    table.register_command(CommandSpec {
+        source_module: "llm_gateway.rs",
+        handler_name: "handle_service_autostart_status",
+        path: &["llm-gateway", "service", "autostart-status"],
+        required_positionals: &[],
+        options: &[],
+        constraints: &[],
+        cardinality: CommandCardinality::Exact,
+        handler: llm_gateway::handle_service_autostart_status,
+        help: "Report whether the LLM Gateway starts at user login",
+    });
+    table.register_command(CommandSpec {
+        source_module: "llm_gateway.rs",
+        handler_name: "handle_service_autostart_enable",
+        path: &["llm-gateway", "service", "autostart-enable"],
+        required_positionals: &[],
+        options: &[OptionSpec {
+            name: "port",
+            arity: OptionArity::Value,
+            repeatable: false,
+            value_kind: RequiredArgumentKind::Text,
+            required: false,
+        }],
+        constraints: &[],
+        cardinality: CommandCardinality::Options,
+        handler: llm_gateway::handle_service_autostart_enable,
+        help: "Install login autostart for the local LLM Gateway (starts alone, no credentials)",
+    });
+    table.register_command(CommandSpec {
+        source_module: "llm_gateway.rs",
+        handler_name: "handle_service_autostart_disable",
+        path: &["llm-gateway", "service", "autostart-disable"],
+        required_positionals: &[],
+        options: &[],
+        constraints: &[],
+        cardinality: CommandCardinality::Exact,
+        handler: llm_gateway::handle_service_autostart_disable,
+        help: "Remove login autostart for the local LLM Gateway",
+    });
+    table.register_command(CommandSpec {
+        source_module: "autostart.rs",
+        handler_name: "handle_status",
+        path: &["autostart", "status"],
+        required_positionals: &[],
+        options: &[],
+        constraints: &[],
+        cardinality: CommandCardinality::Exact,
+        handler: autostart::handle_status,
+        help: "Report desktop, Gateway, and local MCP login autostart state",
+    });
+    table.register_command(CommandSpec {
+        source_module: "autostart.rs",
+        handler_name: "handle_set",
+        path: &["autostart", "set"],
+        required_positionals: &[],
+        options: &[
+            OptionSpec {
+                name: "component",
+                arity: OptionArity::Value,
+                repeatable: false,
+                value_kind: RequiredArgumentKind::Text,
+                required: true,
+            },
+            OptionSpec {
+                name: "enabled",
+                arity: OptionArity::Value,
+                repeatable: false,
+                value_kind: RequiredArgumentKind::Text,
+                required: true,
+            },
+            OptionSpec {
+                name: "silent",
+                arity: OptionArity::Value,
+                repeatable: false,
+                value_kind: RequiredArgumentKind::Text,
+                required: false,
+            },
+            OptionSpec {
+                name: "port",
+                arity: OptionArity::Value,
+                repeatable: false,
+                value_kind: RequiredArgumentKind::Text,
+                required: false,
+            },
+        ],
+        constraints: &[],
+        cardinality: CommandCardinality::Options,
+        handler: autostart::handle_set,
+        help: "Enable or disable login autostart for desktop, gateway, or mcp",
+    });
+    table.register_command(CommandSpec {
+        source_module: "autostart.rs",
+        handler_name: "handle_prepare_mcp",
+        path: &["autostart", "prepare-mcp"],
+        required_positionals: &[],
+        options: &[],
+        constraints: &[],
+        cardinality: CommandCardinality::Exact,
+        handler: autostart::handle_prepare_mcp,
+        help: "Login oneshot: verify packaged local MCP binaries without silent install",
     });
     table
 }

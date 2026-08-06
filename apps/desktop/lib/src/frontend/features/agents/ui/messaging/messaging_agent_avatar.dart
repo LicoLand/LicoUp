@@ -16,6 +16,7 @@ class MessagingAgentAvatar extends StatelessWidget {
     this.size = 40,
     this.iconSize = 22,
     this.onSolidAccent = false,
+    this.showWell = true,
   });
 
   final TargetCandidate? target;
@@ -26,6 +27,10 @@ class MessagingAgentAvatar extends StatelessWidget {
   /// When the avatar sits on a solid brand-yellow selection, the activity
   /// dot and its rim switch to dark tones for contrast.
   final bool onSolidAccent;
+
+  /// When false, the circular surface fill and hairline rim are omitted so
+  /// the brand mark sits bare (e.g. inside the group-roster capsule).
+  final bool showWell;
 
   @override
   Widget build(BuildContext context) {
@@ -38,36 +43,42 @@ class MessagingAgentAvatar extends StatelessWidget {
     final resolvedTarget = target;
     final dotColor = onSolidAccent ? colors.textOnPrimary : activityColor;
     final dotBorderColor = onSolidAccent ? colors.primary : colors.surface;
+    final mark = Center(
+      child: resolvedTarget == null
+          ? Icon(
+              Icons.smart_toy_outlined,
+              size: iconSize,
+              color: colors.textMuted,
+            )
+          : AgentBrandIcon(
+              target: resolvedTarget,
+              size: size,
+              iconSize: iconSize,
+              selected: false,
+              detected:
+                  resolvedTarget.status == 'detected' ||
+                  resolvedTarget.configured,
+            ),
+    );
     return SizedBox(
       width: size,
       height: size,
       child: Stack(
         children: [
           Positioned.fill(
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: colors.surfaceLow,
-                border: Border.all(color: colors.line.withAlpha(90), width: 1),
-              ),
-              child: Center(
-                child: resolvedTarget == null
-                    ? Icon(
-                        Icons.smart_toy_outlined,
-                        size: iconSize,
-                        color: colors.textMuted,
-                      )
-                    : AgentBrandIcon(
-                        target: resolvedTarget,
-                        size: size,
-                        iconSize: iconSize,
-                        selected: false,
-                        detected:
-                            resolvedTarget.status == 'detected' ||
-                            resolvedTarget.configured,
+            child: showWell
+                ? DecoratedBox(
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: colors.surfaceLow,
+                      border: Border.all(
+                        color: colors.line.withAlpha(90),
+                        width: 1,
                       ),
-              ),
-            ),
+                    ),
+                    child: mark,
+                  )
+                : mark,
           ),
           if (activityColor != null)
             Positioned(

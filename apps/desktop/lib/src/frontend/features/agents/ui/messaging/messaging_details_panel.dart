@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 
+import 'package:licoup/src/contracts/agent_conversation_session.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_connection_chips.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_pane_presentation.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_parity_disclosure.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_runtime_settings.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/shared/ui/apple_notifications.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
+import 'package:licoup/src/platform/client_clipboard_service.dart';
 
 /// Messaging details surface: runtime settings, capability disclosure,
 /// connection status, and session metadata. Rendered as a hover card on
@@ -150,6 +153,7 @@ class MessagingDetailsPanelBody extends StatelessWidget {
             onModelChanged: actions.onModelChanged,
             onReasoningEffortChanged: actions.onReasoningEffortChanged,
             defaultModel: state.defaultModel,
+            defaultReasoningEffort: state.defaultReasoningEffort,
             showWorkingDirectory: state.showWorkingDirectory,
             workingDirectory: state.workingDirectory,
             workingDirectorySelectable: state.workingDirectorySelectable,
@@ -178,6 +182,12 @@ class MessagingDetailsPanelBody extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                if (messagingDetailsConversationId(session).isNotEmpty)
+                  _MessagingDetailsCopyRow(
+                    label: strings.conversationId,
+                    value: messagingDetailsConversationId(session),
+                    copiedMessage: strings.conversationIdCopied,
+                  ),
                 if (session.workingDirectory.trim().isNotEmpty)
                   _MessagingDetailsInfoRow(
                     label: strings.workingDirectory,
@@ -202,6 +212,43 @@ class MessagingDetailsPanelBody extends StatelessWidget {
       ],
     );
   }
+}
+
+/// Canonical ID shown in Details and accepted by LicoUp conversation MCP get.
+String messagingDetailsConversationId(AgentConversationSession session) {
+  final localId = session.id.trim();
+  final nativeId = session.nativeSessionId.trim();
+  final locallyOwned =
+      session.adapterId.trim() == 'lico-orchestration' ||
+      session.sourceKind.trim() == 'lico-owned-orchestration' ||
+      session.sourceClient.trim() == 'licoup';
+  if (locallyOwned) {
+    return localId.isNotEmpty ? localId : nativeId;
+  }
+  return nativeId.isNotEmpty ? nativeId : localId;
+}
+
+/// Conversation ID shown on hover next to a message timestamp for one author.
+///
+/// Agent bubbles use that agent's native (or local) conversation id. User
+/// bubbles omit the id — only the timestamp is revealed.
+String messagingHoverConversationId({
+  required bool authorIsUser,
+  required String participantAgentId,
+  required Map<String, String> participantConversationIds,
+  required String primaryConversationId,
+}) {
+  if (authorIsUser) {
+    return '';
+  }
+  final agentId = participantAgentId.trim();
+  if (agentId.isNotEmpty) {
+    final mapped = participantConversationIds[agentId]?.trim() ?? '';
+    if (mapped.isNotEmpty) {
+      return mapped;
+    }
+  }
+  return primaryConversationId.trim();
 }
 
 class _MessagingDetailsSection extends StatelessWidget {
@@ -267,6 +314,89 @@ class _MessagingDetailsInfoRow extends StatelessWidget {
               color: colors.text,
               fontSize: 12.5,
               fontWeight: FontWeight.w400,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MessagingDetailsCopyRow extends StatelessWidget {
+  const _MessagingDetailsCopyRow({
+    required this.label,
+    required this.value,
+    required this.copiedMessage,
+  });
+
+  final String label;
+  final String value;
+  final String copiedMessage;
+
+  Future<void> _copy(BuildContext context) async {
+    await const ClientClipboardService().writeText(value);
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      appleGlassSnackBar(context: context, message: copiedMessage),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.licoColors;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: colors.textMuted,
+              fontSize: 11.5,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Material(
+            color: Colors.transparent,
+            child: InkWell(
+              key: const Key('messaging-details-conversation-id'),
+              borderRadius: BorderRadius.circular(8),
+              onTap: () => _copy(context),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 2),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        value,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: colors.text,
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w500,
+                          fontFamily: 'Menlo',
+                          fontFamilyFallback: const [
+                            'Monaco',
+                            'Consolas',
+                            'monospace',
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Icon(
+                      Icons.copy_outlined,
+                      size: 14,
+                      color: colors.textMuted,
+                    ),
+                  ],
+                ),
+              ),
             ),
           ),
         ],
