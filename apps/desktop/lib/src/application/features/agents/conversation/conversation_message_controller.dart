@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:licoup/src/application/features/agents/conversation/composer_agent_mention_parsing.dart';
 import 'package:licoup/src/application/features/agents/conversation/conversation_live_projection_controller.dart';
 import 'package:licoup/src/application/features/agents/conversation/conversation_relay_projection_controller.dart';
 import 'package:licoup/src/application/features/agents/conversation/conversation_runtime_result_policy.dart';
@@ -7,17 +8,22 @@ import 'package:licoup/src/application/features/agents/conversation/conversation
 import 'package:licoup/src/application/features/agents/conversation/conversation_session_state_controller.dart';
 import 'package:licoup/src/application/features/agents/conversation/conversation_turn_queue.dart';
 import 'package:licoup/src/application/features/agents/conversation/conversation_working_directory_fallback.dart';
-import 'package:licoup/src/platform/agents/group_conversation_store.dart';
+import 'package:licoup/src/application/features/agents/conversation/cursor_ide_cli_handoff.dart';
 import 'package:licoup/src/application/features/agents/group_conversation/group_conversation_controller.dart';
 import 'package:licoup/src/application/features/agents/orchestration/agent_orchestration_policy_controller.dart';
 import 'package:licoup/src/application/features/agents/policy/conversation_session_index.dart';
 import 'package:licoup/src/application/features/agents/workspace/agent_workspace_coordinator.dart';
+import 'package:licoup/src/application/features/messaging/messaging_notification_center.dart';
 import 'package:licoup/src/application/localization/client_application_strings.dart';
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
-import 'package:licoup/src/contracts/agent_orchestration_target.dart';
 import 'package:licoup/src/contracts/agent_conversation_tab_activity.dart';
 import 'package:licoup/src/contracts/agent_dispatch_lane.dart';
+import 'package:licoup/src/contracts/agent_orchestration_target.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_display_names.dart';
+import 'package:licoup/src/platform/agents/group_conversation_store.dart';
+import 'package:licoup/src/platform/agents/subagent_handoff_store.dart';
+import 'package:licoup/src/platform/storage/portable_data_root.dart';
 
 const _releaseConversationAcceptanceMode =
     bool.fromEnvironment('LICO_AGENT_CONVERSATION_RELEASE_LIVE')
@@ -34,6 +40,8 @@ mixin AgentConversationMessageController
         AgentConversationSessionController,
         AgentConversationLiveProjectionController,
         AgentConversationRelayProjectionController {
+  final Set<String> _projectedHandoffDispatchIds = <String>{};
+
   Future<bool> sendConversationMessage(String text) async {
     var agent = selectedConversationAgent;
     var conversationOwnerAgentId = agent?.target ?? '';
@@ -45,10 +53,50 @@ mixin AgentConversationMessageController
     if (selectedConversationIsOrchestration) {
       await ensureGroupConversationReady();
       conversationOwnerAgentId = agentOrchestrationTargetId;
-      final planned = GroupConversationStore.planTurn(
-        roster: groupConversationRoster,
-        userText: messageText,
+      final mentionCatalog = <({String id, String label})>[];
+      final mentionKeys = <String>{};
+      void putMention(String agentId, String label) {
+        final id = agentId.trim();
+        final resolved = label.trim().isNotEmpty ? label.trim() : id;
+        if (id.isEmpty || resolved.isEmpty) return;
+        final key = '$id\u0000$resolved';
+        if (!mentionKeys.add(key)) return;
+        mentionCatalog.add((id: id, label: resolved));
+      }
+
+      for (final participant in groupConversationRoster.participants) {
+        if (participant.kind != GroupParticipantKind.agent) continue;
+        putMention(participant.agentId ?? '', participant.displayName);
+      }
+      final policy = effectiveAgentOrchestrationPolicy;
+      for (final agentId in [
+        policy.commanderAgentId,
+        ...policy.dailyConversationAgentIds,
+        ...policy.codeEngineeringAgentIds,
+      ]) {
+        final target = groupConversationTargetFor(agentId);
+        putMention(agentId, agentId);
+        putMention(agentId, target?.label ?? '');
+        putMention(agentId, agentProductDisplayName(agentId) ?? '');
+        if (target != null) {
+          putMention(agentId, agentProductLabel(target.label));
+        }
+      }
+      final mentionedIds = parseComposerAgentMentionIds(
+        text: messageText,
+        agents: mentionCatalog,
       );
+      final planned = mentionedIds.isEmpty
+          ? GroupConversationStore.planTurn(
+              roster: groupConversationRoster,
+              userText: messageText,
+            )
+          : GroupConversationStore.planTurn(
+              roster: groupConversationRoster,
+              userText: messageText,
+              policy: TurnTakingPolicy.mentionOnly,
+              selectedAgentIds: mentionedIds,
+            );
       if (planned.isNotEmpty) {
         final dispatcher = planned.first;
         participantRole = dispatcher.role == PlannedTurnRole.dispatcher
@@ -71,6 +119,14 @@ mixin AgentConversationMessageController
         agentWorkspaceNotifyStateChanged();
         return false;
       }
+      // Subagent MCP is required only for the plain-send main agent so it can
+      // hand off peers. @mention peer turns receive the user text directly.
+      if (mentionedIds.isEmpty) {
+        final mcpReady = await _ensureSubagentMcpReadyForSend(agent);
+        if (!mcpReady) {
+          return false;
+        }
+      }
     }
     if (!agent.canRelayRuntime) {
       lastError = agent.conversationSendGateReason;
@@ -86,17 +142,29 @@ mixin AgentConversationMessageController
     if (selectedSession == null &&
         selectedNewConversationDraftToken.isEmpty &&
         selectedConversationSessionId.trim().isNotEmpty) {
-      lastError = 'native_session_unresolved';
-      agentWorkspaceSetLocalizedStatusMessage(
-        'The native ${agent.label} session has not been resolved. Sending is disabled.',
-        'The native ${agent.label} session has not been resolved. Sending is disabled.',
-      );
-      statusCaption = 'Agent chat';
-      agentWorkspaceNotifyStateChanged();
-      return false;
+      final roomBinding = selectedConversationIsOrchestration
+          ? groupConversationBindingFor(agent.target)
+          : null;
+      if (roomBinding == null || !roomBinding.hasResumeHandle) {
+        lastError = 'native_session_unresolved';
+        agentWorkspaceSetLocalizedStatusMessage(
+          'The native ${agent.label} session has not been resolved. Sending is disabled.',
+          'The native ${agent.label} session has not been resolved. Sending is disabled.',
+        );
+        statusCaption = 'Agent chat';
+        agentWorkspaceNotifyStateChanged();
+        return false;
+      }
     }
-    if (selectedSession != null &&
-        selectedSession.nativeSessionId.trim().isEmpty) {
+    final resumeSession = selectedConversationIsOrchestration
+        ? _resolveGroupResumeSession(
+            dispatcher: agent,
+            selectedSession: selectedSession,
+          )
+        : selectedSession;
+    if (resumeSession != null &&
+        resumeSession.nativeSessionId.trim().isEmpty &&
+        newConversationDraftTokenFor(conversationOwnerAgentId).isEmpty) {
       lastError = 'native_session_id_missing';
       agentWorkspaceSetLocalizedStatusMessage(
         'The ${agent.label} history is missing its native session ID. Sending is disabled.',
@@ -106,40 +174,18 @@ mixin AgentConversationMessageController
       agentWorkspaceNotifyStateChanged();
       return false;
     }
-    final plannedOrchestrationTurns = selectedConversationIsOrchestration
-        ? GroupConversationStore.planTurn(
-            roster: groupConversationRoster,
-            userText: messageText,
-          )
-        : const <PlannedAgentTurn>[];
-    if (selectedConversationIsOrchestration) {
-      for (final plannedTurn in plannedOrchestrationTurns.skip(1)) {
-        final peerAgent = groupConversationTargetFor(plannedTurn.agentId);
-        if (peerAgent == null || !peerAgent.canRelayRuntime) continue;
-        conversationTurnQueue.add(
-          _captureConversationTurn(
-            agent: peerAgent,
-            messageText: messageText,
-            session: selectedSession,
-            conversationOwnerAgentId: conversationOwnerAgentId,
-            participantRole: 'peer-agent',
-            modelOverride: _conversationModelForAgent(peerAgent),
-            reasoningEffortOverride: _conversationReasoningForAgent(peerAgent),
-          ),
-        );
-      }
-    }
+    final plainSendPolicy = effectiveAgentOrchestrationPolicy;
     final turn = _captureConversationTurn(
       agent: agent,
       messageText: messageText,
-      session: selectedSession,
+      session: resumeSession,
       conversationOwnerAgentId: conversationOwnerAgentId,
       participantRole: participantRole,
       modelOverride: selectedConversationIsOrchestration
-          ? effectiveAgentOrchestrationPolicy.commanderModelName
+          ? plainSendPolicy.plainSendModelName
           : null,
       reasoningEffortOverride: selectedConversationIsOrchestration
-          ? effectiveAgentOrchestrationPolicy.commanderReasoningEffort
+          ? plainSendPolicy.plainSendReasoningEffort
           : null,
     );
     if (isSendingConversationMessage) {
@@ -147,7 +193,233 @@ mixin AgentConversationMessageController
       return ConversationRuntimeResultPolicy.submissionConsumed(lastError);
     }
     await _sendConversationTurn(turn);
+    if (selectedConversationIsOrchestration && lastError.isEmpty) {
+      unawaited(projectSubagentHandoffPeerBubbles());
+    }
     return lastError.isEmpty;
+  }
+
+  /// Prefer the room's last returned main/subagent conversation when the local
+  /// orchestration projection has no usable native resume handle yet.
+  AgentConversationSession? _resolveGroupResumeSession({
+    required TargetCandidate dispatcher,
+    required AgentConversationSession? selectedSession,
+  }) {
+    if (newConversationDraftTokenFor(agentOrchestrationTargetId).isNotEmpty) {
+      return selectedSession;
+    }
+    final selectedNative = selectedSession?.nativeSessionId.trim() ?? '';
+    final selectedPath = selectedSession?.sourcePath.trim() ?? '';
+    if (selectedNative.isNotEmpty) {
+      final binding = groupConversationBindingFor(dispatcher.target);
+      if (binding == null ||
+          !binding.hasResumeHandle ||
+          (binding.nativeSessionId.isNotEmpty &&
+              binding.nativeSessionId != selectedNative)) {
+        // Selected local group session wins when it already names a native id.
+        return selectedSession;
+      }
+      if (selectedPath.isEmpty && binding.sourcePath.isNotEmpty) {
+        return _sessionWithGroupBinding(selectedSession, binding);
+      }
+      return selectedSession;
+    }
+    final binding = groupConversationBindingFor(dispatcher.target);
+    if (binding == null || !binding.hasResumeHandle) {
+      return selectedSession;
+    }
+    return _sessionWithGroupBinding(selectedSession, binding);
+  }
+
+  AgentConversationSession _sessionWithGroupBinding(
+    AgentConversationSession? selectedSession,
+    GroupAgentSessionBinding binding,
+  ) {
+    final now = DateTime.now().toUtc().toIso8601String();
+    return AgentConversationSession(
+      id: selectedSession?.id.trim().isNotEmpty == true
+          ? selectedSession!.id
+          : (groupConversationLastLocalSessionId.trim().isNotEmpty
+                ? groupConversationLastLocalSessionId.trim()
+                : 'lico-group-resume'),
+      agentId: selectedSession?.agentId.trim().isNotEmpty == true
+          ? selectedSession!.agentId
+          : agentOrchestrationTargetId,
+      title: selectedSession?.title ?? '',
+      createdAt: selectedSession?.createdAt ?? now,
+      updatedAt: selectedSession?.updatedAt ?? now,
+      messages: selectedSession?.messages ?? const [],
+      nativeSessionId: binding.nativeSessionId.isNotEmpty
+          ? binding.nativeSessionId
+          : selectedSession?.nativeSessionId ?? '',
+      adapterId: selectedSession?.adapterId ?? 'lico-orchestration',
+      sourceKind: selectedSession?.sourceKind ?? 'lico-owned-orchestration',
+      sourceClient: selectedSession?.sourceClient ?? 'licoup',
+      sourceClientLabel: selectedSession?.sourceClientLabel ?? 'LicoUp',
+      sourcePath: binding.sourcePath.isNotEmpty
+          ? binding.sourcePath
+          : selectedSession?.sourcePath ?? '',
+      workingDirectory: binding.workingDirectory.isNotEmpty
+          ? binding.workingDirectory
+          : selectedSession?.workingDirectory ?? '',
+      native: false,
+      readOnly: false,
+      messageCount: selectedSession?.messageCount ?? 0,
+      sourceMessageCount: selectedSession?.sourceMessageCount ?? 0,
+    );
+  }
+
+  /// Project LicoUp-owned subordinate handoffs into the group mirror as peer
+  /// bubbles. MCP tool payloads stay path-only; this reads local handoff state.
+  Future<void> projectSubagentHandoffPeerBubbles() async {
+    if (!selectedConversationIsOrchestration || agentWorkspaceDisposed) {
+      return;
+    }
+    final portable = agentWorkspacePortableData;
+    if (portable is! PortableDataRoot) return;
+    final ownerId = agentOrchestrationTargetId.trim();
+    if (ownerId.isEmpty) return;
+    final handoffs = await SubagentHandoffStore.list(portable);
+    var changed = false;
+    for (final handoff in handoffs) {
+      if (handoff.dispatchId.isEmpty || handoff.agentId.isEmpty) continue;
+      final key = '${handoff.dispatchId}\u0000${handoff.state}';
+      if (_projectedHandoffDispatchIds.contains(key)) continue;
+      if (handoff.state != 'running' &&
+          handoff.state != 'completed' &&
+          handoff.state != 'failed') {
+        continue;
+      }
+      final peer = groupConversationTargetFor(handoff.agentId);
+      final label = (peer?.label.trim().isNotEmpty ?? false)
+          ? peer!.label.trim()
+          : handoff.agentId;
+      var text = switch (handoff.state) {
+        'running' => 'Working on LicoUp handoff ${handoff.dispatchId}…',
+        'failed' =>
+          'LicoUp handoff ${handoff.dispatchId} failed'
+              '${handoff.errorCode == null || handoff.errorCode!.isEmpty ? '' : ' (${handoff.errorCode})'}.',
+        _ => 'LicoUp handoff ${handoff.dispatchId} finished.',
+      };
+      final path = handoff.conversationPath?.trim() ?? '';
+      var peerNativeSessionId = '';
+      var peerWorkingDirectory = '';
+      if (path.isNotEmpty &&
+          (handoff.state == 'completed' || handoff.state == 'running')) {
+        try {
+          final sessions = await conversationGateway.loadSessions(
+            agentId: handoff.agentId,
+            limit: 4,
+          );
+          for (final session in sessions) {
+            if (session.sourcePath.trim() != path) continue;
+            peerNativeSessionId = session.nativeSessionId.trim().isNotEmpty
+                ? session.nativeSessionId.trim()
+                : session.id.trim();
+            peerWorkingDirectory = session.workingDirectory.trim();
+            if (handoff.state == 'completed') {
+              for (final message in session.messages.reversed) {
+                if (message.role == 'assistant' &&
+                    message.text.trim().isNotEmpty) {
+                  text = message.text.trim();
+                  break;
+                }
+              }
+            }
+            break;
+          }
+        } catch (_) {
+          // Keep the redacted handoff status text.
+        }
+      }
+      if (path.isNotEmpty || peerNativeSessionId.isNotEmpty) {
+        unawaited(
+          rememberGroupAgentSession(
+            agentId: handoff.agentId,
+            nativeSessionId: peerNativeSessionId,
+            sourcePath: path,
+            workingDirectory: peerWorkingDirectory,
+          ),
+        );
+      }
+      final mainPath = handoff.mainConversationPath?.trim() ?? '';
+      if (mainPath.isNotEmpty && handoff.managerAgentId.trim().isNotEmpty) {
+        unawaited(
+          rememberGroupAgentSession(
+            agentId: handoff.managerAgentId,
+            sourcePath: mainPath,
+          ),
+        );
+      }
+      conversationUpsertLiveReply(
+        agentId: ownerId,
+        turnId: 'handoff-${handoff.dispatchId}',
+        text: text,
+        participantAgentId: handoff.agentId,
+        participantLabel: label,
+        participantRole: 'peer-agent',
+      );
+      _projectedHandoffDispatchIds.add(key);
+      changed = true;
+    }
+    if (changed) {
+      agentWorkspaceNotifyLiveConversationChanged();
+    }
+  }
+
+  Future<bool> _ensureSubagentMcpReadyForSend(TargetCandidate agent) async {
+    final agentId = agent.target.trim();
+    if (agentId.isEmpty) return false;
+    final binaryPath = agent.binaryPath?.trim() ?? '';
+    try {
+      final status = await agentService.subagentMcpStatus(
+        agentId: agentId,
+        binaryPath: binaryPath.isEmpty ? null : binaryPath,
+      );
+      if (status['ok'] == true && status['ready'] == true) {
+        messagingNotificationCenter.dismiss('subagent-mcp-$agentId');
+        return true;
+      }
+      final state = status['state']?.toString() ?? '';
+      if (state == 'unsupported') {
+        // Handoffs unavailable; inbound user turns still proceed.
+        lastError = '';
+        agentWorkspacePublishNotification(
+          id: 'subagent-mcp-$agentId',
+          messageChinese:
+              '主智能体（$agentId）不支持 Subagent MCP，无法通过 handoff 调度同伴；普通发送仍会继续。',
+          messageEnglish:
+              'Main agent ($agentId) does not support Subagent MCP, so peer handoffs are unavailable; plain send continues.',
+          tone: MessagingNotificationTone.warning,
+          code: 'subagent_mcp_unsupported',
+        );
+        statusCaption = 'Subagent MCP';
+        agentWorkspaceNotifyStateChanged();
+        return true;
+      }
+      lastError = 'subagent_mcp_required';
+      agentWorkspacePublishNotification(
+        id: 'subagent-mcp-$agentId',
+        messageChinese: '请先为日常对话主智能体（$agentId）安装 Subagent MCP。',
+        messageEnglish:
+            'Install Subagent MCP for the Daily Conversation main agent ($agentId) first.',
+        tone: MessagingNotificationTone.warning,
+        code: 'subagent_mcp_required',
+      );
+    } catch (_) {
+      lastError = 'subagent_mcp_required';
+      agentWorkspacePublishNotification(
+        id: 'subagent-mcp-$agentId',
+        messageChinese: '请先为日常对话主智能体（$agentId）安装 Subagent MCP。',
+        messageEnglish:
+            'Install Subagent MCP for the Daily Conversation main agent ($agentId) first.',
+        tone: MessagingNotificationTone.warning,
+        code: 'subagent_mcp_required',
+      );
+    }
+    statusCaption = 'Subagent MCP';
+    agentWorkspaceNotifyStateChanged();
+    return false;
   }
 
   String _orchestrationConversationWorkingDirectory({
@@ -191,15 +463,29 @@ mixin AgentConversationMessageController
       conversationOwnerAgentId,
     );
     final startsNewConversation = newConversationDraftToken.isNotEmpty;
+    final ideHandoff =
+        !selectedConversationIsOrchestration &&
+        shouldInjectCursorIdeCliHandoff(
+          agentId: agent.target,
+          session: session,
+          handedOffComposerIds: cursorIdeCliHandoffComposerIds,
+        );
+    final ideHandoffComposerId = ideHandoff
+        ? session!.nativeSessionId.trim()
+        : '';
+    final outboundText = ideHandoff
+        ? buildIdeToCliHandoffPrompt(session: session!, userText: messageText)
+        : messageText;
     final activeNativeSession = sendingConversationAgentId == agent.target
         ? sendingConversationNativeSessionId.trim()
         : '';
-    final selectedNativeSession = startsNewConversation
+    final selectedNativeSession =
+        startsNewConversation || ideHandoff
         ? ''
         : session?.nativeSessionId.trim() ?? '';
     final nativeSessionId = selectedNativeSession.isNotEmpty
         ? selectedNativeSession
-        : startsNewConversation
+        : startsNewConversation || ideHandoff
         ? ''
         : activeNativeSession;
     // Keep send-path resolution identical to the composer capsule. For the
@@ -221,7 +507,7 @@ mixin AgentConversationMessageController
     return ConversationQueuedTurn(
       submissionId: ++conversationTurnSubmissionSequence,
       agent: agent,
-      text: messageText,
+      text: outboundText,
       session: session,
       nativeSessionId: nativeSessionId,
       workingDirectory: workingDirectory,
@@ -237,17 +523,8 @@ mixin AgentConversationMessageController
           isSendingConversationMessage &&
           sendingConversationAgentId == agent.target &&
           nativeSessionId.isEmpty,
+      ideHandoffComposerId: ideHandoffComposerId,
     );
-  }
-
-  String _conversationModelForAgent(TargetCandidate agent) {
-    final selected = (conversationModelsByAgent[agent.target] ?? '').trim();
-    if (selected.isNotEmpty) return selected;
-    return (agent.modelCatalog['defaultModel'] ?? '').toString().trim();
-  }
-
-  String _conversationReasoningForAgent(TargetCandidate agent) {
-    return (conversationReasoningEffortsByAgent[agent.target] ?? '').trim();
   }
 
   Future<void> _steerOrEnqueueConversationTurn(
@@ -420,11 +697,11 @@ mixin AgentConversationMessageController
     }
   }
 
-  Future<void> _sendConversationTurn(ConversationQueuedTurn queuedTurn) async {
-    final agent = queuedTurn.agent;
+  Future<void> _sendConversationTurn(ConversationQueuedTurn initialTurn) async {
+    var queuedTurn = initialTurn;
     final conversationOwnerAgentId =
         queuedTurn.conversationOwnerAgentId.trim().isEmpty
-        ? agent.target
+        ? queuedTurn.agent.target
         : queuedTurn.conversationOwnerAgentId.trim();
     final orchestrationOwned = isAgentOrchestrationTargetId(
       conversationOwnerAgentId,
@@ -434,13 +711,13 @@ mixin AgentConversationMessageController
     var completedSuccessfully = false;
     isSendingConversationMessage = true;
     conversationTurnCancellationRequested = false;
-    sendingConversationAgentId = agent.target;
+    sendingConversationAgentId = queuedTurn.agent.target;
     sendingConversationSessionId = selectedSession?.id.trim() ?? '';
     sendingConversationNativeSessionId = queuedTurn.nativeSessionId;
     sendingConversationTurnId = '';
     _discardPendingLiveReply();
     final liveTurnId =
-        'live-${agent.target}-${DateTime.now().toUtc().microsecondsSinceEpoch}';
+        'live-${queuedTurn.agent.target}-${DateTime.now().toUtc().microsecondsSinceEpoch}';
     conversationStartLiveProjection(
       agentId: conversationOwnerAgentId,
       turnId: liveTurnId,
@@ -472,24 +749,35 @@ mixin AgentConversationMessageController
         agentId: conversationOwnerAgentId,
         turnId: liveTurnId,
         stage: stage,
-        participantAgentId: agent.target,
+        participantAgentId: queuedTurn.agent.target,
         participantLabel: queuedTurn.participantLabel,
         participantRole: queuedTurn.participantRole,
       );
       agentWorkspaceNotifyLiveConversationChanged();
     }
 
-    lastError = '';
-    setConversationTabActivity(agent.target, AgentConversationTabActivity.none);
-    agentWorkspaceSetLocalizedStatusMessage(
-      'Sending the message through the ${agent.label} runtime adapter.',
-      'Sending the message through the ${agent.label} runtime adapter.',
-    );
     statusCaption = 'Agent chat';
     agentWorkspaceNotifyActiveConversationChanged();
     agentWorkspaceNotifyStateChanged();
     conversationAttentionContextChanged();
     try {
+      while (true) {
+      final agent = queuedTurn.agent;
+      sendingConversationAgentId = agent.target;
+      sendingConversationSessionId = selectedSession?.id.trim() ?? '';
+      sendingConversationNativeSessionId = queuedTurn.nativeSessionId;
+      sendingConversationTurnId = '';
+      lastError = '';
+      setConversationTabActivity(
+        agent.target,
+        AgentConversationTabActivity.none,
+      );
+      agentWorkspaceSetLocalizedStatusMessage(
+        'Sending the message through the ${agent.label} runtime adapter.',
+        'Sending the message through the ${agent.label} runtime adapter.',
+      );
+      statusCaption = 'Agent chat';
+      agentWorkspaceNotifyStateChanged();
       final sessionId = queuedTurn.nativeSessionId;
       final workingDirectory = queuedTurn.workingDirectory;
       final sendThroughMobileRelay = queuedTurn.throughMobileRelay;
@@ -600,7 +888,11 @@ mixin AgentConversationMessageController
               event.kind == 'dispatch.turn.failed') {
             final raw = Map<String, dynamic>.from(event.payload);
             final ok = raw['ok'] == true;
-            publishLifecycle(ok ? 'completed' : 'failed');
+            // Defer lifecycle `failed` until quota fallback is ruled out so a
+            // later Daily Conversation capsule can still advance the turn.
+            if (ok) {
+              publishLifecycle('completed');
+            }
             final nested = raw['error'];
             final rawCode = nested is Map
                 ? (nested['code'] ?? '')
@@ -632,8 +924,8 @@ mixin AgentConversationMessageController
               }
             }
             if (!ok) {
-              // A bounded driver failure must also close the live turn in the
-              // transcript; otherwise its process card spins forever.
+              // Surface the driver failure in the transcript; the outer loop
+              // may still walk Daily Conversation fallback capsules.
               final failedTurn = turn;
               final failureText = failedTurn.errorMessage.trim().isNotEmpty
                   ? failedTurn.errorMessage.trim()
@@ -716,7 +1008,7 @@ mixin AgentConversationMessageController
             '${agent.label} did not return a native session ID. The result was rejected.',
           );
           statusCaption = 'Agent chat';
-          return;
+          break;
         }
         if (sessionId.isNotEmpty && returnedSessionId != sessionId) {
           setSelectedConversationSessionId(
@@ -734,7 +1026,7 @@ mixin AgentConversationMessageController
             '${agent.label} returned a different native session. The result was rejected.',
           );
           statusCaption = 'Agent chat';
-          return;
+          break;
         }
         if (!ConversationRuntimeResultPolicy.effectiveSettingsMatch(
           result,
@@ -754,10 +1046,41 @@ mixin AgentConversationMessageController
             '${agent.label} did not confirm the requested native model settings. The result was rejected.',
           );
           statusCaption = 'Agent chat';
-          return;
+          break;
         }
       }
       if (result['ok'] != true) {
+        final fallbackTurn = orchestrationOwned
+            ? _orchestrationDailyQuotaFallbackTurn(
+                failedResult: result,
+                failedTurn: queuedTurn,
+              )
+            : null;
+        if (fallbackTurn != null) {
+          final fallbackLabel = fallbackTurn.model.trim().isEmpty
+              ? fallbackTurn.agent.label
+              : '${fallbackTurn.agent.label} · ${fallbackTurn.model.trim()}';
+          conversationAppendLiveProcessEvent(
+            agentId: conversationOwnerAgentId,
+            turnId: liveTurnId,
+            participantAgentId: fallbackTurn.agent.target,
+            participantLabel: fallbackTurn.participantLabel,
+            participantRole: fallbackTurn.participantRole,
+            event: AgentDispatchEvent(
+              kind: 'dispatch.turn.fallback',
+              sessionId: sessionId,
+              turnId: sendingConversationTurnId,
+              payload: <String, dynamic>{
+                'text':
+                    'Quota or capacity limit reached; trying $fallbackLabel.',
+              },
+            ),
+          );
+          agentWorkspaceNotifyLiveConversationChanged();
+          queuedTurn = fallbackTurn;
+          lifecycleStage = 'submitted';
+          continue;
+        }
         publishLifecycle('failed');
         final clientError = ConversationRuntimeResultPolicy.clientError(result);
         lastError = ConversationRuntimeResultPolicy.surfacedFailureCode(result);
@@ -777,7 +1100,7 @@ mixin AgentConversationMessageController
         ).conversationClientError(clientError);
         agentWorkspaceSetLocalizedStatusMessage(localized, localized);
         statusCaption = 'Agent chat';
-        return;
+        break;
       }
       publishLifecycle('completed');
       if (sendThroughMobileRelay) {
@@ -791,14 +1114,36 @@ mixin AgentConversationMessageController
         );
       }
       recordConversationTabSendOutcome(agentId: agent.target, ok: true);
-      agentWorkspaceSetLocalizedStatusMessage(
-        sendThroughMobileRelay
-            ? 'Sent the ${agent.label} command through the E2EE mobile relay.'
-            : 'Sent the message through the ${agent.label} runtime adapter.',
-        sendThroughMobileRelay
-            ? 'Sent the ${agent.label} command through the E2EE mobile relay.'
-            : 'Sent the message through the ${agent.label} runtime adapter.',
-      );
+      final handedOffComposerId = queuedTurn.ideHandoffComposerId.trim();
+      if (handedOffComposerId.isNotEmpty) {
+        cursorIdeCliHandoffComposerIds.add(handedOffComposerId);
+      }
+      if (queuedTurn.promoteToCurrentConversationOnSuccess) {
+        final policy = effectiveAgentOrchestrationPolicy;
+        await saveAgentOrchestrationPolicy(
+          policy.copyWith(
+            commanderAgentId: agent.target,
+            commanderModelName: queuedTurn.model,
+            commanderReasoningEffort: queuedTurn.reasoningEffort,
+          ),
+        );
+        final fallbackLabel = queuedTurn.model.trim().isEmpty
+            ? agent.label
+            : '${agent.label} · ${queuedTurn.model.trim()}';
+        agentWorkspaceSetLocalizedStatusMessage(
+          '额度不足，已切换当前对话到 $fallbackLabel。',
+          'Quota exhausted; Current Conversation switched to $fallbackLabel.',
+        );
+      } else {
+        agentWorkspaceSetLocalizedStatusMessage(
+          sendThroughMobileRelay
+              ? 'Sent the ${agent.label} command through the E2EE mobile relay.'
+              : 'Sent the message through the ${agent.label} runtime adapter.',
+          sendThroughMobileRelay
+              ? 'Sent the ${agent.label} command through the E2EE mobile relay.'
+              : 'Sent the message through the ${agent.label} runtime adapter.',
+        );
+      }
 
       if (!sendThroughMobileRelay) {
         // The streamed turn is authoritative for immediate interaction. Keep
@@ -816,6 +1161,7 @@ mixin AgentConversationMessageController
               ? selectedSession?.id.trim() ?? ''
               : '',
           locallyOwned: orchestrationOwned,
+          sourcePath: selectedSession?.sourcePath.trim() ?? '',
         );
         final committedLocalSessionId = orchestrationOwned
             ? selectedConversationSessionId.trim()
@@ -830,6 +1176,29 @@ mixin AgentConversationMessageController
           conversationOwnerAgentId,
           queuedTurn.newConversationDraftToken,
         );
+        if (orchestrationOwned) {
+          var resumeSourcePath = selectedSession?.sourcePath.trim() ?? '';
+          for (final native
+              in conversationSessionsByAgent[agent.target] ?? const []) {
+            final nativeId = native.nativeSessionId.trim().isNotEmpty
+                ? native.nativeSessionId.trim()
+                : native.id.trim();
+            if (nativeId != returnedSessionId) continue;
+            if (native.sourcePath.trim().isNotEmpty) {
+              resumeSourcePath = native.sourcePath.trim();
+            }
+            break;
+          }
+          unawaited(
+            rememberGroupAgentSession(
+              agentId: agent.target,
+              nativeSessionId: returnedSessionId,
+              sourcePath: resumeSourcePath,
+              workingDirectory: workingDirectory,
+              localOrchestrationSessionId: committedLocalSessionId,
+            ),
+          );
+        }
         if (orchestrationOwned && committedLocalSessionId.isNotEmpty) {
           unawaited(
             reloadDualConversationSessionsAfterSend(
@@ -838,7 +1207,19 @@ mixin AgentConversationMessageController
               nativeAgentId: agent.target,
               nativeSessionId: returnedSessionId,
               nativeAgentLabel: queuedTurn.participantLabel,
-            ),
+            ).then((mirrored) async {
+              if (!mirrored || agentWorkspaceDisposed) return;
+              final mirroredSession = selectedConversationSession;
+              final path = mirroredSession?.sourcePath.trim() ?? '';
+              if (path.isEmpty) return;
+              await rememberGroupAgentSession(
+                agentId: agent.target,
+                nativeSessionId: returnedSessionId,
+                sourcePath: path,
+                workingDirectory: workingDirectory,
+                localOrchestrationSessionId: committedLocalSessionId,
+              );
+            }),
           );
         } else {
           unawaited(
@@ -861,11 +1242,13 @@ mixin AgentConversationMessageController
       }
       statusCaption = 'Agent chat';
       completedSuccessfully = true;
+      break;
+      }
     } on AgentDispatchStreamException catch (error) {
       publishLifecycle('failed');
       lastError = 'native_agent_${error.failureCode}';
       recordConversationTabSendOutcome(
-        agentId: agent.target,
+        agentId: queuedTurn.agent.target,
         ok: false,
         failureCode: lastError,
       );
@@ -878,7 +1261,7 @@ mixin AgentConversationMessageController
       publishLifecycle('failed');
       lastError = 'native_agent_transport_failed';
       recordConversationTabSendOutcome(
-        agentId: agent.target,
+        agentId: queuedTurn.agent.target,
         ok: false,
         failureCode: lastError,
       );
@@ -1008,5 +1391,57 @@ mixin AgentConversationMessageController
   @override
   String runtimeAdapterFailureCode(Map<String, dynamic> result) {
     return ConversationRuntimeResultPolicy.surfacedFailureCode(result);
+  }
+
+  /// Next Daily Conversation capsule after a quota/capacity failure, or null.
+  ConversationQueuedTurn? _orchestrationDailyQuotaFallbackTurn({
+    required Map<String, dynamic> failedResult,
+    required ConversationQueuedTurn failedTurn,
+  }) {
+    if (!ConversationRuntimeResultPolicy.isQuotaOrCapacityFailure(
+      failedResult,
+    )) {
+      return null;
+    }
+    final attempted = <String>{
+      ...failedTurn.dailyQuotaFallbackAttemptedKeys,
+      _dailyQuotaFallbackKey(failedTurn.agent.target, failedTurn.model),
+    };
+    final policy = effectiveAgentOrchestrationPolicy;
+    for (final capsule
+        in policy.dailyConversationFallbackCandidatesAfterCurrent()) {
+      final key = _dailyQuotaFallbackKey(capsule.agentId, capsule.modelName);
+      if (attempted.contains(key)) continue;
+      final agent = groupConversationTargetFor(capsule.agentId.trim());
+      if (agent == null || !agent.canRelayRuntime) {
+        attempted.add(key);
+        continue;
+      }
+      final sameAgent = agent.target == failedTurn.agent.target;
+      return ConversationQueuedTurn(
+        submissionId: failedTurn.submissionId,
+        agent: agent,
+        text: failedTurn.text,
+        session: failedTurn.session,
+        nativeSessionId: sameAgent ? failedTurn.nativeSessionId : '',
+        workingDirectory: failedTurn.workingDirectory,
+        model: capsule.modelName.trim(),
+        reasoningEffort: capsule.reasoningEffort.trim(),
+        throughMobileRelay: failedTurn.throughMobileRelay,
+        licoProfile: failedTurn.licoProfile,
+        conversationOwnerAgentId: failedTurn.conversationOwnerAgentId,
+        participantLabel: agent.label,
+        participantRole: 'main-agent',
+        newConversationDraftToken: failedTurn.newConversationDraftToken,
+        awaitActiveSession: false,
+        promoteToCurrentConversationOnSuccess: true,
+        dailyQuotaFallbackAttemptedKeys: attempted,
+      );
+    }
+    return null;
+  }
+
+  static String _dailyQuotaFallbackKey(String agentId, String model) {
+    return '${agentId.trim()}\u0000${model.trim()}';
   }
 }

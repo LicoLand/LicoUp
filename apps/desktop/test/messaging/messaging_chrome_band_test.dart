@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:licoup/src/application/features/messaging/messaging_notification_center.dart';
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
 import 'package:licoup/src/contracts/agent_conversation_tab_activity.dart';
 import 'package:licoup/src/contracts/presentation/layout_environment.dart';
@@ -231,15 +232,13 @@ void main() {
 
     await controller.llmGatewayLifecycleController.initialize();
     await tester.pump();
+    await tester.pump(); // auto-open post-frame callback
 
     expect(
       find.byKey(const Key('messaging-notification-bell-badge')),
       findsOneWidget,
     );
-    await tester.tap(find.byKey(const Key('messaging-notification-bell')));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 200));
-
+    // New Gateway notices auto-open the top-right panel.
     expect(
       find.byKey(const Key('llm-gateway-notification-item')),
       findsOneWidget,
@@ -247,6 +246,49 @@ void main() {
     expect(find.byKey(const Key('llm-gateway-restart-action')), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets(
+    'operation feedback auto-opens the top-right notification panel',
+    (tester) async {
+      final fixture = await pumpMessagingApp(tester);
+      final controller = fixture.controller;
+
+      controller.agentWorkspacePublishNotification(
+        id: 'subagent-mcp-cursor',
+        messageChinese: '主智能体（cursor）不支持 Subagent MCP。',
+        messageEnglish:
+            'Main agent (cursor) does not support Subagent MCP.',
+        tone: MessagingNotificationTone.warning,
+        code: 'subagent_mcp_unsupported',
+      );
+      await tester.pump();
+      await tester.pump();
+
+      expect(
+        find.byKey(const Key('messaging-notification-bell-badge')),
+        findsOneWidget,
+      );
+      expect(find.byType(SnackBar), findsNothing);
+      expect(
+        find.byKey(
+          const Key(
+            'messaging-operation-notification-item-subagent-mcp-cursor',
+          ),
+        ),
+        findsOneWidget,
+      );
+      expect(find.textContaining('does not support Subagent MCP'), findsOneWidget);
+
+      // Panel is window-anchored at the top-right, not mid-content.
+      final panel = tester.getTopLeft(
+        find.byKey(const Key('messaging-notification-bell-panel')),
+      );
+      final size = tester.getSize(find.byType(MaterialApp));
+      expect(panel.dx + 300, greaterThan(size.width - 40));
+      expect(panel.dy, lessThan(80));
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets(
     'tab tap from a non-agents section switches to the conversation',

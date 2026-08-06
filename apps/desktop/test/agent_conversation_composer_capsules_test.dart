@@ -43,10 +43,22 @@ void main() {
     );
   });
 
-  test('composeRuntimeCapsuleLabel joins model and effort', () {
+  test('composeRuntimeCapsuleLabel joins model effort and Fast', () {
     expect(
-      composeRuntimeCapsuleLabel(model: 'gpt-5.6-sol', effort: 'medium'),
-      'gpt-5.6-sol Medium',
+      composeRuntimeCapsuleLabel(model: 'gpt-5.6-sol', effort: 'Medium'),
+      'gpt-5.6-sol · Medium',
+    );
+    expect(
+      composeRuntimeCapsuleLabel(
+        model: 'gpt-5.6-sol',
+        effort: '高',
+        fast: true,
+      ),
+      'gpt-5.6-sol · 高 · Fast',
+    );
+    expect(
+      composeRuntimeCapsuleLabel(model: 'gpt-5.6-sol', effort: '', fast: false),
+      'gpt-5.6-sol',
     );
   });
 
@@ -153,10 +165,60 @@ void main() {
     );
     await tester.pump();
 
-    expect(find.text('gpt-5.6-sol Medium'), findsOneWidget);
+    expect(find.text('gpt-5.6-sol · Medium'), findsOneWidget);
   });
 
-  testWidgets('ComposerRuntimeCapsule labels an unset model as the default', (
+  testWidgets(
+    'ComposerRuntimeCapsule omits effort when no model is resolved',
+    (tester) async {
+      _useComposerPopoverViewport(tester);
+      await tester.pumpWidget(
+        MaterialApp(
+          locale: const Locale('zh'),
+          supportedLocales: LicoStrings.supportedLocales,
+          localizationsDelegates: const [
+            GlobalMaterialLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+          ],
+          theme: buildLicoTheme(platformBrightness: Brightness.dark),
+          home: Scaffold(
+            body: Align(
+              alignment: Alignment.bottomLeft,
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: ComposerRuntimeCapsule(
+                  modelOptions: const ['composer-2.5'],
+                  selectedModel: '',
+                  defaultModel: '',
+                  enabled: true,
+                  onModelChanged: (_) {},
+                  reasoningEffortOptions: const ['low', 'max'],
+                  selectedReasoningEffort: 'max',
+                  defaultReasoningEffort: 'max',
+                  onReasoningEffortChanged: (_) {},
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.text('未检测到默认模型'), findsOneWidget);
+      expect(find.textContaining('Max'), findsNothing);
+      expect(find.textContaining('·'), findsNothing);
+
+      await tester.tap(find.byKey(const Key('conversation-model-button')));
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const Key('conversation-runtime-effort-row')),
+        findsNothing,
+      );
+    },
+  );
+
+  testWidgets('ComposerRuntimeCapsule labels an unset model with the real default', (
     tester,
   ) async {
     _useComposerPopoverViewport(tester);
@@ -174,9 +236,10 @@ void main() {
                 defaultModel: 'auto',
                 enabled: true,
                 onModelChanged: (_) {},
-                reasoningEffortOptions: const [],
+                reasoningEffortOptions: const ['low', 'high'],
                 selectedReasoningEffort: '',
-                onReasoningEffortChanged: null,
+                defaultReasoningEffort: 'low',
+                onReasoningEffortChanged: (_) {},
               ),
             ),
           ),
@@ -185,8 +248,8 @@ void main() {
     );
     await tester.pump();
 
-    // The capsule must not borrow the catalog default model id as its label.
-    expect(find.text('Native default'), findsOneWidget);
+    expect(find.text('Native default'), findsNothing);
+    expect(find.text('auto · Low'), findsOneWidget);
     expect(find.text('composer-2.5'), findsNothing);
 
     await tester.tap(find.byKey(const Key('conversation-model-button')));
@@ -217,11 +280,11 @@ void main() {
             child: Padding(
               padding: const EdgeInsets.all(24),
               child: ComposerRuntimeCapsule(
-                modelOptions: const [],
-                selectedModel: '',
-                defaultModel: '',
+                modelOptions: const ['gpt-5.6-sol'],
+                selectedModel: 'gpt-5.6-sol',
+                defaultModel: 'gpt-5.6-sol',
                 enabled: true,
-                onModelChanged: null,
+                onModelChanged: (_) {},
                 reasoningEffortOptions: const ['low', 'high'],
                 selectedReasoningEffort: 'low',
                 onReasoningEffortChanged: (value) => selected = value,
@@ -305,8 +368,9 @@ void main() {
     // A two-word control name must stay on one line, so both rows share the
     // same height and the primary card keeps its menu proportions.
     expect(tester.getSize(effortRow).height, tester.getSize(modelRow).height);
-    // The effort row reads as Auto until the user picks an explicit effort.
-    expect(find.text('Auto'), findsOneWidget);
+    // Unset effort shows the catalog default (first supported effort here).
+    expect(find.text('Low'), findsOneWidget);
+    expect(find.text('Auto'), findsNothing);
 
     // Each row opens its own submenu without reshaping the primary card.
     final primaryRect = tester.getRect(primaryCard);
@@ -371,7 +435,7 @@ void main() {
     expect(find.text('高'), findsWidgets);
   });
 
-  testWidgets('effort submenu can return the turn to the native default', (
+  testWidgets('effort submenu can return the turn to the catalog default', (
     tester,
   ) async {
     _useComposerPopoverViewport(tester);
@@ -385,13 +449,14 @@ void main() {
             child: Padding(
               padding: const EdgeInsets.all(24),
               child: ComposerRuntimeCapsule(
-                modelOptions: const [],
-                selectedModel: '',
-                defaultModel: '',
+                modelOptions: const ['gpt-5.6-sol'],
+                selectedModel: 'gpt-5.6-sol',
+                defaultModel: 'gpt-5.6-sol',
                 enabled: true,
-                onModelChanged: null,
+                onModelChanged: (_) {},
                 reasoningEffortOptions: const ['low', 'high'],
                 selectedReasoningEffort: 'high',
+                defaultReasoningEffort: 'low',
                 onReasoningEffortChanged: (value) => selected = value,
               ),
             ),
@@ -410,7 +475,7 @@ void main() {
     await tester.tap(
       find.descendant(
         of: find.byKey(const Key('conversation-runtime-submenu')),
-        matching: find.text('Auto'),
+        matching: find.text('Low (default)'),
       ),
     );
     await tester.pumpAndSettle();

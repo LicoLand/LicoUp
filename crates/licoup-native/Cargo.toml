@@ -94,6 +94,10 @@ name = "lico-subagent-mcp"
 path = "src/bin/lico-subagent-mcp.rs"
 
 [[bin]]
+name = "lico-conversation-mcp"
+path = "src/bin/lico-conversation-mcp.rs"
+
+[[bin]]
 name = "lico-llm-gateway"
 path = "src/bin/lico-llm-gateway.rs"
 

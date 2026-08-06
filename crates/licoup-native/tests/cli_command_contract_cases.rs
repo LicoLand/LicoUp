@@ -167,7 +167,7 @@ fn readonly_registry_projection_exactly_matches_public_help_authority() {
         .collect::<BTreeMap<_, _>>();
     assert_eq!(
         expected_by_path.len(),
-        143,
+        152,
         "public help authority must not contain duplicate routes"
     );
     let projected_by_path = projected
@@ -232,8 +232,8 @@ fn every_authoritative_route_is_admitted_without_executing_its_handler() {
     let authority = route_authorities();
     assert_eq!(
         authority.len(),
-        143,
-        "the public presentation help must expand to exactly 143 routes"
+        152,
+        "the public presentation help must expand to exactly 152 routes"
     );
 
     for route in authority {
@@ -1623,6 +1623,27 @@ fn route_authorities() -> Vec<RouteAuthority> {
     );
     add_authority_routes(
         &mut routes,
+        "adapter.rs",
+        "handle_subagent_mcp_status",
+        &["adapter subagent-mcp status"],
+        Options,
+    );
+    add_authority_routes(
+        &mut routes,
+        "adapter.rs",
+        "handle_subagent_mcp_plan",
+        &["adapter subagent-mcp plan"],
+        Options,
+    );
+    add_authority_routes(
+        &mut routes,
+        "adapter.rs",
+        "handle_subagent_mcp_install",
+        &["adapter subagent-mcp install"],
+        Options,
+    );
+    add_authority_routes(
+        &mut routes,
         "agent_conversation.rs",
         "handle_agent_conversation",
         &[
@@ -1884,6 +1905,10 @@ fn route_authorities() -> Vec<RouteAuthority> {
         ),
         ("llm-gateway service start", "handle_service_start"),
         ("llm-gateway service stop", "handle_service_stop"),
+        (
+            "llm-gateway service autostart-enable",
+            "handle_service_autostart_enable",
+        ),
     ] {
         routes.push(RouteAuthority {
             module: "llm_gateway.rs",
@@ -1902,6 +1927,48 @@ fn route_authorities() -> Vec<RouteAuthority> {
         &["llm-gateway service usage"],
         Exact,
     );
+    add_authority_routes(
+        &mut routes,
+        "llm_gateway.rs",
+        "handle_service_autostart_status",
+        &["llm-gateway service autostart-status"],
+        Exact,
+    );
+    add_authority_routes(
+        &mut routes,
+        "llm_gateway.rs",
+        "handle_service_autostart_disable",
+        &["llm-gateway service autostart-disable"],
+        Exact,
+    );
+    add_authority_routes(
+        &mut routes,
+        "autostart.rs",
+        "handle_status",
+        &["autostart status"],
+        Exact,
+    );
+    add_authority_routes(
+        &mut routes,
+        "autostart.rs",
+        "handle_prepare_mcp",
+        &["autostart prepare-mcp"],
+        Exact,
+    );
+    routes.push(RouteAuthority {
+        module: "autostart.rs",
+        handler: "handle_set",
+        path: "autostart set",
+        required: &[],
+        cardinality: Options,
+        options: vec![
+            value_option("component", Text, true),
+            value_option("enabled", Text, true),
+            value_option("silent", Text, false),
+            value_option("port", Text, false),
+        ],
+        constraints: &[],
+    });
     add_authority_routes(
         &mut routes,
         "opencode_serve.rs",
@@ -2174,7 +2241,14 @@ fn options_for_route(path: &str) -> Vec<OptionAuthority> {
         "llm-gateway service status"
         | "llm-gateway service initialize"
         | "llm-gateway service start"
-        | "llm-gateway service stop" => &[value_option("port", Text, false)],
+        | "llm-gateway service stop"
+        | "llm-gateway service autostart-enable" => &[value_option("port", Text, false)],
+        "autostart set" => &[
+            value_option("component", Text, true),
+            value_option("enabled", Text, true),
+            value_option("silent", Text, false),
+            value_option("port", Text, false),
+        ],
         "opencode-serve ensure"
         | "opencode-serve start"
         | "opencode-serve stop"
@@ -2269,6 +2343,24 @@ fn options_for_route(path: &str) -> Vec<OptionAuthority> {
         }
         "adapter codex plugin install" => &[
             value_option("binary-path", Text, true),
+            value_option("confirmation", Text, true),
+            OptionAuthority {
+                name: "confirmed",
+                arity: OptionArity::Boolean,
+                repeatable: false,
+                value_kind: Text,
+                required: true,
+            },
+        ],
+        "adapter subagent-mcp status" | "adapter subagent-mcp plan" => &[
+            value_option("agent-id", Text, true),
+            value_option("binary-path", Text, false),
+            value_option("mcp-binary-path", Text, false),
+        ],
+        "adapter subagent-mcp install" => &[
+            value_option("agent-id", Text, true),
+            value_option("binary-path", Text, false),
+            value_option("mcp-binary-path", Text, false),
             value_option("confirmation", Text, true),
             OptionAuthority {
                 name: "confirmed",

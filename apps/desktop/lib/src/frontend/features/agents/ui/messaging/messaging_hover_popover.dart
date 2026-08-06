@@ -24,6 +24,9 @@ class MessagingHoverPopover extends StatefulWidget {
     this.followerAnchor = Alignment.topRight,
     this.offset = const Offset(0, 6),
     this.popoverKey,
+    this.anchorToWindowTopRight = false,
+    this.windowTopInset = 0,
+    this.windowEdgeInset = 10,
   });
 
   /// Builds the trigger; [open] reflects hover/tap visibility and [toggle] /
@@ -54,6 +57,12 @@ class MessagingHoverPopover extends StatefulWidget {
   final Alignment followerAnchor;
   final Offset offset;
   final Key? popoverKey;
+
+  /// When true, the card is pinned to the window's top-right instead of
+  /// following the trigger — used by the chrome notification center.
+  final bool anchorToWindowTopRight;
+  final double windowTopInset;
+  final double windowEdgeInset;
 
   @override
   State<MessagingHoverPopover> createState() => MessagingHoverPopoverState();
@@ -97,6 +106,17 @@ class MessagingHoverPopoverState extends State<MessagingHoverPopover> {
       } else {
         _pinnedOpen = true;
       }
+    });
+    _syncPortal();
+  }
+
+  /// Programmatically pin the card open (for example when a new notification
+  /// arrives and the chrome center should auto-reveal).
+  void openPinned() {
+    _dismissTimer?.cancel();
+    if (!mounted) return;
+    setState(() {
+      _pinnedOpen = true;
     });
     _syncPortal();
   }
@@ -204,6 +224,27 @@ class MessagingHoverPopoverState extends State<MessagingHoverPopover> {
     return OverlayPortal(
       controller: _portalController,
       overlayChildBuilder: (context) {
+        final card = MouseRegion(
+          onEnter: _onCardEnter,
+          onExit: _onCardExit,
+          child: Material(
+            color: Colors.transparent,
+            elevation: 0,
+            child: _buildOverlayCard(context, radius),
+          ),
+        );
+        if (widget.anchorToWindowTopRight) {
+          final media = MediaQuery.of(context);
+          return Stack(
+            children: [
+              Positioned(
+                top: media.padding.top + widget.windowTopInset,
+                right: media.padding.right + widget.windowEdgeInset,
+                child: card,
+              ),
+            ],
+          );
+        }
         // The overlay lays its child out with tight full-screen constraints.
         // [followerAnchor] resolves against the follower's own size, so the
         // follower must shrink-wrap the card; otherwise every anchor is
@@ -218,15 +259,7 @@ class MessagingHoverPopoverState extends State<MessagingHoverPopover> {
             followerAnchor: widget.followerAnchor,
             offset: widget.offset,
             showWhenUnlinked: false,
-            child: MouseRegion(
-              onEnter: _onCardEnter,
-              onExit: _onCardExit,
-              child: Material(
-                color: Colors.transparent,
-                elevation: 0,
-                child: _buildOverlayCard(context, radius),
-              ),
-            ),
+            child: card,
           ),
         );
       },

@@ -24,6 +24,9 @@ import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_messag
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_session_presentation.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_display_names.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_orchestration_policy_controls.dart';
+import 'package:licoup/src/frontend/features/agents/ui/composer_agent_mention.dart';
+import 'package:licoup/src/frontend/features/agents/ui/ensure_main_agent_subagent_mcp.dart';
+import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_details_panel.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_workspace_sidebar.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_contact_list.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_conversation_header.dart';
@@ -169,6 +172,7 @@ class _ConversationWorkspaceBody extends StatefulWidget {
 
 class _ConversationWorkspaceBodyState
     extends State<_ConversationWorkspaceBody> {
+  final ComposerMentionBridge _composerMentionBridge = ComposerMentionBridge();
   bool _historyCollapsed = false;
   // Default to the narrowest usable rail; users can drag wider.
   double _sidebarWidth = agentsSidebarMinWidth;
@@ -267,7 +271,7 @@ class _ConversationWorkspaceBodyState
         ? controller.agentOrchestrationConfiguredManagerTarget
         : null;
     final configuredManagerId = orchestrationSelected
-        ? controller.effectiveAgentOrchestrationPolicy.commanderAgentId
+        ? controller.effectiveAgentOrchestrationPolicy.plainSendDispatchAgentId
         : '';
     final showWorkingDirectory =
         !controller.mobileClientRuntimePlatform &&
@@ -303,34 +307,48 @@ class _ConversationWorkspaceBodyState
     final flywheelPolicy = orchestrationSelected
         ? controller.effectiveAgentOrchestrationPolicy
         : null;
-    final flywheelDailyMatch =
-        flywheelPolicy?.dailyConversationMatchForCurrentConversation();
-    final flywheelAgentLabel = configuredManagerTarget != null
-        ? agentConversationTargetDisplayName(configuredManagerTarget)
-        : configuredManagerId.isNotEmpty
-        ? configuredManagerId
+    // Capsule chrome defaults to the first Daily Conversation agent (Adaptive
+    // Flywheel priority list). Current Conversation (`main_agent`) still owns
+    // send dispatch when it differs.
+    final primaryDaily = flywheelPolicy?.primaryDailyConversationAgent;
+    final flywheelAgentId =
+        (primaryDaily?.agentId.trim().isNotEmpty ?? false)
+        ? primaryDaily!.agentId.trim()
+        : configuredManagerId.trim();
+    TargetCandidate? flywheelDisplayTarget;
+    if (flywheelAgentId.isNotEmpty) {
+      for (final candidate in controller.scannedTargets) {
+        if (candidate.target == flywheelAgentId) {
+          flywheelDisplayTarget = candidate;
+          break;
+        }
+      }
+    }
+    final flywheelAgentLabel = flywheelDisplayTarget != null
+        ? agentConversationTargetDisplayName(flywheelDisplayTarget)
+        : flywheelAgentId.isNotEmpty
+        ? flywheelAgentId
         : strings.notConfigured;
-    final flywheelModel =
-        (flywheelPolicy?.commanderModelName.trim().isNotEmpty ?? false)
-        ? flywheelPolicy!.commanderModelName.trim()
-        : (flywheelDailyMatch?.modelName ?? '').trim();
-    final flywheelEffort =
-        (flywheelPolicy?.commanderReasoningEffort.trim().isNotEmpty ?? false)
-        ? flywheelPolicy!.commanderReasoningEffort.trim()
-        : (flywheelDailyMatch?.reasoningEffort ?? '').trim();
+    final flywheelModel = primaryDaily != null
+        ? primaryDaily.modelName.trim()
+        : (flywheelPolicy?.commanderModelName.trim() ?? '');
+    final flywheelEffort = primaryDaily != null
+        ? primaryDaily.reasoningEffort.trim()
+        : (flywheelPolicy?.commanderReasoningEffort.trim() ?? '');
+    final flywheelFast = primaryDaily?.fast ?? false;
     final flywheelLabel = orchestrationSelected
         ? composeOrchestrationAssignmentCapsuleLabel(
             agentLabel: flywheelAgentLabel,
             modelName: flywheelModel,
             reasoningEffort: flywheelEffort,
-            fast: flywheelDailyMatch?.fast ?? false,
+            fast: flywheelFast,
             fastLabel: strings.fastModeLabel,
             effortLabel: (effort) =>
                 strings.reasoningEffortOptionLabel(effort, effort),
-            modelDisplayName: configuredManagerTarget == null
+            modelDisplayName: flywheelDisplayTarget == null
                 ? null
                 : (model) => agentOrchestrationModelDisplayName(
-                    configuredManagerTarget,
+                    flywheelDisplayTarget!,
                     model,
                   ),
           )
@@ -338,6 +356,32 @@ class _ConversationWorkspaceBodyState
     final participantTargets = orchestrationSelected
         ? controller.groupConversationParticipantTargets
         : controller.scannedTargets;
+    final primaryConversationId = session == null
+        ? ''
+        : messagingDetailsConversationId(session);
+    final participantConversationIds = <String, String>{};
+    if (orchestrationSelected) {
+      for (final entry in controller.groupConversationAgentSessions.entries) {
+        final nativeId = entry.value.nativeSessionId.trim();
+        if (nativeId.isNotEmpty) {
+          participantConversationIds[entry.key] = nativeId;
+        }
+      }
+      final mainId = controller
+          .effectiveAgentOrchestrationPolicy
+          .plainSendDispatchAgentId;
+      if (mainId.isNotEmpty && primaryConversationId.isNotEmpty) {
+        participantConversationIds.putIfAbsent(
+          mainId,
+          () => primaryConversationId,
+        );
+      }
+    } else {
+      final agentId = target.target.trim();
+      if (agentId.isNotEmpty && primaryConversationId.isNotEmpty) {
+        participantConversationIds[agentId] = primaryConversationId;
+      }
+    }
     final state = AgentConversationPaneState(
       target: target,
       session: session,
@@ -352,8 +396,8 @@ class _ConversationWorkspaceBodyState
       composerEnabled: composerEnabled,
       sendGateReasonCode: gateReasonCode,
       composerDraft: controller.conversationComposerDraft,
-      // Group entry: model selection lives in the flywheel hover panel, not a
-      // top-level Model capsule.
+      // Group entry: model selection lives in Adaptive Flywheel edit, not a
+      // top-level Model capsule. The flywheel hover panel inserts @mentions.
       modelOptions: orchestrationSelected
           ? const []
           : controller.selectedConversationModelOptions,
@@ -369,6 +413,9 @@ class _ConversationWorkspaceBodyState
       selectedReasoningEffort: orchestrationSelected
           ? ''
           : controller.selectedConversationReasoningEffort,
+      defaultReasoningEffort: orchestrationSelected
+          ? ''
+          : controller.selectedConversationDefaultReasoningEffort,
       showWorkingDirectory: showWorkingDirectory,
       workingDirectory: showWorkingDirectory
           ? controller.selectedConversationWorkingDirectory
@@ -377,14 +424,16 @@ class _ConversationWorkspaceBodyState
       sendAuthorizeActive: controller.isAuthorizingConversationRuntime,
       participantTargets: participantTargets,
       flywheelMainAgentLabel: orchestrationSelected ? flywheelLabel : '',
-      flywheelMainAgentTarget: configuredManagerTarget,
-      flywheelAgentOptions: orchestrationSelected
-          ? controller.orchestrationAvailableTargets
+      flywheelMainAgentTarget: orchestrationSelected
+          ? flywheelDisplayTarget
+          : null,
+      flywheelMentionSections: orchestrationSelected && flywheelPolicy != null
+          ? buildComposerFlywheelMentionSections(
+              policy: flywheelPolicy,
+              scannedTargets: controller.scannedTargets,
+              strings: strings,
+            )
           : const [],
-      flywheelSelectedAgentId: configuredManagerId,
-      flywheelSelectedModel: orchestrationSelected
-          ? controller.effectiveAgentOrchestrationPolicy.commanderModelName
-          : '',
       showLicoProfileCapsule:
           controller.selectedConversationSupportsLicoProfile,
       selectedLicoProfile: controller.selectedConversationLicoProfile,
@@ -392,6 +441,7 @@ class _ConversationWorkspaceBodyState
       groupRosterParticipants: orchestrationSelected
           ? controller.groupConversationRosterParticipants
           : const [],
+      participantConversationIds: participantConversationIds,
     );
     final onUnblockSend = switch (gateReasonCode) {
       'orchestration_policy_required' => () => unawaited(
@@ -411,7 +461,42 @@ class _ConversationWorkspaceBodyState
       onModelChanged: controller.selectConversationModel,
       onReasoningEffortChanged: controller.selectConversationReasoningEffort,
       onDraftChanged: controller.updateConversationComposerDraft,
-      onSend: controller.sendConversationMessage,
+      onSend: (text) async {
+        if (controller.selectedConversationIsOrchestration) {
+          final mentionCatalog = [
+            for (final participant
+                in controller.groupConversationRosterParticipants)
+              if ((participant.agentId?.trim().isNotEmpty ?? false))
+                (
+                  id: participant.agentId!.trim(),
+                  label: participant.displayName.trim().isNotEmpty
+                      ? participant.displayName.trim()
+                      : participant.agentId!.trim(),
+                ),
+          ];
+          final mentioned = parseComposerAgentMentionIds(
+            text: text,
+            agents: mentionCatalog,
+          );
+          // Plain send (no @) must match the flywheel capsule: first Daily
+          // Conversation agent. @mentions route to the named peer and do not
+          // require Subagent MCP on that peer to receive the user turn.
+          if (mentioned.isEmpty) {
+            final ensureId = controller
+                .effectiveAgentOrchestrationPolicy
+                .plainSendDispatchAgentId;
+            if (ensureId.isNotEmpty) {
+              final ready = await ensureMainAgentSubagentMcp(
+                context: context,
+                controller: controller,
+                agentId: ensureId,
+              );
+              if (!ready) return false;
+            }
+          }
+        }
+        return controller.sendConversationMessage(text);
+      },
       onSelectSession: controller.selectConversationSession,
       onUnblockSend: onUnblockSend,
       onChooseWorkingDirectory: workingDirectorySelectable
@@ -435,40 +520,14 @@ class _ConversationWorkspaceBodyState
               showAgentOrchestrationPolicyEditor(context, controller),
             )
           : null,
-      // Current Conversation override: persists as `main_agent` without
-      // reordering Daily Conversation. When it differs from the first daily
-      // capsule, dispatch uses this selection.
-      onSelectFlywheelAgent: orchestrationSelected
-          ? (agentId) {
-              final policy = controller.effectiveAgentOrchestrationPolicy;
-              final match = policy.dailyConversationAssignmentFor(agentId);
-              return unawaited(
-                controller.saveAgentOrchestrationPolicy(
-                  policy.copyWith(
-                    commanderAgentId: agentId,
-                    commanderModelName: match?.modelName ?? '',
-                    commanderReasoningEffort: match?.reasoningEffort ?? '',
-                  ),
-                ),
-              );
-            }
+      onMentionFlywheelAgent: orchestrationSelected
+          ? (entry) => _composerMentionBridge.insertMention(
+              agentId: entry.agentId,
+              displayLabel: entry.displayLabel,
+              target: entry.target,
+            )
           : null,
-      onSelectFlywheelModel: orchestrationSelected
-          ? (agentId, model) {
-              final policy = controller.effectiveAgentOrchestrationPolicy;
-              final match = policy.dailyConversationAssignmentFor(agentId);
-              return unawaited(
-                controller.saveAgentOrchestrationPolicy(
-                  policy.copyWith(
-                    commanderAgentId: agentId,
-                    commanderModelName: model,
-                    commanderReasoningEffort: match?.reasoningEffort ??
-                        policy.commanderReasoningEffort,
-                  ),
-                ),
-              );
-            }
-          : null,
+      mentionBridge: orchestrationSelected ? _composerMentionBridge : null,
       onLicoProfileChanged: controller.selectedConversationSupportsLicoProfile
           ? controller.selectConversationLicoProfile
           : null,
@@ -498,7 +557,7 @@ class _ConversationWorkspaceBodyState
     final policyControls = orchestrationSelected && !messaging
         ? AgentOrchestrationPolicyHeaderControls(
             mainAgentLabel: flywheelLabel,
-            mainAgentTarget: configuredManagerTarget,
+            mainAgentTarget: flywheelDisplayTarget,
             onEdit: () => unawaited(
               showAgentOrchestrationPolicyEditor(context, controller),
             ),

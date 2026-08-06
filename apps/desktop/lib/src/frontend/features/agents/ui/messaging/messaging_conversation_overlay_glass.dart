@@ -16,15 +16,21 @@ class MessagingConversationOverlayGlass extends StatelessWidget {
     required this.borderRadius,
     this.focused = false,
     this.readabilityVeil = false,
+    this.veilFill,
   });
 
   final Widget child;
   final BorderRadius borderRadius;
   final bool focused;
 
-  /// When true, layers [MessagingDesktopMetrics.notificationPopoverVeilFill]
-  /// under the shared overlay-glass wash (notification popover only).
+  /// When true, layers a black readability veil under the shared overlay-glass
+  /// wash. Defaults to [MessagingDesktopMetrics.notificationPopoverVeilFill]
+  /// unless [veilFill] is provided.
   final bool readabilityVeil;
+
+  /// Optional override for the black readability veil (e.g. the stronger
+  /// group-roster mask). Ignored when [readabilityVeil] is false.
+  final Color? veilFill;
 
   @override
   Widget build(BuildContext context) {
@@ -56,16 +62,22 @@ class MessagingConversationOverlayGlass extends StatelessWidget {
             fit: StackFit.passthrough,
             children: [
               Positioned.fill(
+                child: ColoredBox(color: washFill),
+              ),
+              // Black mask above the wash so the capsule reads as veiled glass.
+              Positioned.fill(
                 child: DecoratedBox(
                   decoration: BoxDecoration(
-                    color: MessagingDesktopMetrics.notificationPopoverVeilFill(
-                      isDark: isDark,
-                    ),
+                    color:
+                        veilFill ??
+                        MessagingDesktopMetrics.notificationPopoverVeilFill(
+                          isDark: isDark,
+                        ),
                     borderRadius: borderRadius,
                   ),
                 ),
               ),
-              ColoredBox(color: washFill, child: child),
+              child,
             ],
           )
         : child;

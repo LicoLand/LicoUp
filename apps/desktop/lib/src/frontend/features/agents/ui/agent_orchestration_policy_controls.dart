@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 
 import 'package:licoup/src/application/controller/client_controller.dart';
 import 'package:licoup/src/application/features/agents/orchestration/orchestration_policy_editor_models.dart';
+import 'package:licoup/src/application/features/messaging/messaging_notification_center.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_orchestration_policy_dialog.dart';
+import 'package:licoup/src/frontend/features/agents/ui/ensure_main_agent_subagent_mcp.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/agent_brand_icon.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
@@ -95,105 +97,29 @@ Future<void> showAgentOrchestrationPolicyEditor(
   );
   if (policy == null || !context.mounted) return;
   var pluginReady = false;
-  if (policy.commanderAgentId == 'codex') {
-    pluginReady = await _offerCodexPlugin(context, controller, policy);
+  final commanderId = policy.commanderAgentId.trim();
+  if (commanderId == 'codex' || commanderId == 'antigravity') {
+    pluginReady = await ensureMainAgentSubagentMcp(
+      context: context,
+      controller: controller,
+      agentId: commanderId,
+    );
     if (!context.mounted) return;
   }
   await controller.saveAgentOrchestrationPolicy(policy);
-  if (!context.mounted || policy.commanderAgentId != 'codex') return;
-  ScaffoldMessenger.of(context).showSnackBar(
-    SnackBar(
-      content: Text(
-        pluginReady
-            ? 'LicoUp Codex Plugin 已就绪，新对话将由 Codex 主线程调度。'
-            : 'Codex 插件未就绪，将使用 LicoUp 顺序调度作为回退。',
-      ),
-    ),
+  if (!context.mounted) return;
+  if (commanderId != 'codex' && commanderId != 'antigravity') return;
+  controller.agentWorkspacePublishNotification(
+    id: 'subagent-mcp-$commanderId',
+    messageChinese: pluginReady
+        ? 'Subagent MCP 已就绪，$commanderId 可通过 LicoUp handoff 调度同伴。'
+        : 'Subagent MCP 未就绪；群聊发送前仍需完成安装确认。',
+    messageEnglish: pluginReady
+        ? 'Subagent MCP is ready; $commanderId can hand off peers through LicoUp.'
+        : 'Subagent MCP is not ready; finish install confirmation before group send.',
+    tone: pluginReady
+        ? MessagingNotificationTone.success
+        : MessagingNotificationTone.warning,
+    code: pluginReady ? 'subagent_mcp_ready' : 'subagent_mcp_required',
   );
-}
-
-Future<bool> _offerCodexPlugin(
-  BuildContext context,
-  ClientController controller,
-  AgentOrchestrationPolicy policy,
-) async {
-  TargetCandidate? target;
-  for (final candidate in controller.orchestrationAvailableTargets) {
-    if (candidate.target == policy.commanderAgentId) {
-      target = candidate;
-      break;
-    }
-  }
-  final binaryPath = target?.binaryPath?.trim() ?? '';
-  if (binaryPath.isEmpty) return false;
-
-  try {
-    final status = await controller.agentService.codexPluginStatus(
-      binaryPath: binaryPath,
-    );
-    if (status['ok'] == true && status['ready'] == true) return true;
-  } catch (_) {
-    // A failed optional probe selects the LicoUp fallback unless installation
-    // is explicitly approved below.
-  }
-
-  Map<String, dynamic> plan;
-  try {
-    plan = await controller.agentService.planCodexPlugin(
-      binaryPath: binaryPath,
-    );
-  } catch (_) {
-    return false;
-  }
-  if (plan['ok'] != true || plan['requiresConfirmation'] != true) {
-    return false;
-  }
-  final digest = plan['digest']?.toString() ?? '';
-  final source = plan['marketplaceSource']?.toString() ?? '';
-  final release = plan['marketplaceRelease']?.toString() ?? '';
-  final version = plan['pluginVersion']?.toString() ?? '';
-  if (digest.isEmpty ||
-      source.isEmpty ||
-      release.isEmpty ||
-      version.isEmpty ||
-      !context.mounted) {
-    return false;
-  }
-
-  final confirmed =
-      await showDialog<bool>(
-        context: context,
-        builder: (dialogContext) => AlertDialog(
-          title: const Text('启用 LicoUp Codex Plugin'),
-          content: Text(
-            'Codex 将从 GitHub $source 的 $release 安装 $version。'
-            'LicoUp 只提供本机运行时；安装后，新建 Codex 对话可直接调度其它智能体。'
-            '跳过安装时，LicoUp 会继续提供顺序调度回退。',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(false),
-              child: const Text('使用 LicoUp 回退'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.of(dialogContext).pop(true),
-              child: const Text('安装插件'),
-            ),
-          ],
-        ),
-      ) ??
-      false;
-  if (!confirmed) return false;
-
-  try {
-    final result = await controller.agentService.installCodexPlugin(
-      binaryPath: binaryPath,
-      confirmation: digest,
-    );
-    return result['ok'] == true &&
-        result['installed'] == true &&
-        result['pluginReadyForNewConversations'] == true;
-  } catch (_) {
-    return false;
-  }
 }

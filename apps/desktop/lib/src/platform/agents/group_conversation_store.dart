@@ -165,6 +165,59 @@ final class GroupRoster {
   };
 }
 
+/// Last native conversation bound to one agent inside a Lico group room.
+final class GroupAgentSessionBinding {
+  const GroupAgentSessionBinding({
+    required this.agentId,
+    this.nativeSessionId = '',
+    this.sourcePath = '',
+    this.workingDirectory = '',
+    this.updatedAtUnixMs = 0,
+  });
+
+  final String agentId;
+  final String nativeSessionId;
+  final String sourcePath;
+  final String workingDirectory;
+  final int updatedAtUnixMs;
+
+  bool get hasResumeHandle =>
+      nativeSessionId.trim().isNotEmpty || sourcePath.trim().isNotEmpty;
+
+  factory GroupAgentSessionBinding.fromJson(Map<String, dynamic> json) {
+    return GroupAgentSessionBinding(
+      agentId: (json['agentId'] ?? '').toString().trim(),
+      nativeSessionId: (json['nativeSessionId'] ?? '').toString().trim(),
+      sourcePath: (json['sourcePath'] ?? '').toString().trim(),
+      workingDirectory: (json['workingDirectory'] ?? '').toString().trim(),
+      updatedAtUnixMs: (json['updatedAtUnixMs'] as num?)?.toInt() ?? 0,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    'agentId': agentId,
+    if (nativeSessionId.isNotEmpty) 'nativeSessionId': nativeSessionId,
+    if (sourcePath.isNotEmpty) 'sourcePath': sourcePath,
+    if (workingDirectory.isNotEmpty) 'workingDirectory': workingDirectory,
+    'updatedAtUnixMs': updatedAtUnixMs,
+  };
+
+  GroupAgentSessionBinding copyWith({
+    String? nativeSessionId,
+    String? sourcePath,
+    String? workingDirectory,
+    int? updatedAtUnixMs,
+  }) {
+    return GroupAgentSessionBinding(
+      agentId: agentId,
+      nativeSessionId: nativeSessionId ?? this.nativeSessionId,
+      sourcePath: sourcePath ?? this.sourcePath,
+      workingDirectory: workingDirectory ?? this.workingDirectory,
+      updatedAtUnixMs: updatedAtUnixMs ?? this.updatedAtUnixMs,
+    );
+  }
+}
+
 final class GroupConversationRecord {
   const GroupConversationRecord({
     required this.id,
@@ -172,6 +225,8 @@ final class GroupConversationRecord {
     required this.roster,
     required this.turnTaking,
     required this.transcriptPath,
+    this.agentSessions = const {},
+    this.lastLocalOrchestrationSessionId = '',
   });
 
   final String id;
@@ -180,7 +235,40 @@ final class GroupConversationRecord {
   final TurnTakingPolicy turnTaking;
   final String transcriptPath;
 
+  /// Last returned native conversations for main/sub agents in this room.
+  final Map<String, GroupAgentSessionBinding> agentSessions;
+
+  /// Lico-owned orchestration projection session id last used in this room.
+  final String lastLocalOrchestrationSessionId;
+
+  GroupAgentSessionBinding? bindingFor(String agentId) {
+    final id = agentId.trim();
+    if (id.isEmpty) return null;
+    return agentSessions[id];
+  }
+
   factory GroupConversationRecord.fromJson(Map<String, dynamic> json) {
+    final rawSessions = json['agentSessions'];
+    final sessions = <String, GroupAgentSessionBinding>{};
+    if (rawSessions is Map) {
+      for (final entry in rawSessions.entries) {
+        final key = entry.key.toString().trim();
+        final value = entry.value;
+        if (key.isEmpty || value is! Map) continue;
+        final parsed = GroupAgentSessionBinding.fromJson(
+          Map<String, dynamic>.from(value),
+        );
+        final agentId = parsed.agentId.isEmpty ? key : parsed.agentId;
+        if (agentId.isEmpty) continue;
+        sessions[agentId] = GroupAgentSessionBinding(
+          agentId: agentId,
+          nativeSessionId: parsed.nativeSessionId,
+          sourcePath: parsed.sourcePath,
+          workingDirectory: parsed.workingDirectory,
+          updatedAtUnixMs: parsed.updatedAtUnixMs,
+        );
+      }
+    }
     return GroupConversationRecord(
       id: (json['id'] ?? '').toString(),
       title: (json['title'] ?? '').toString(),
@@ -189,6 +277,9 @@ final class GroupConversationRecord {
           : GroupRoster.empty,
       turnTaking: TurnTakingPolicy.parse((json['turnTaking'] ?? '').toString()),
       transcriptPath: (json['transcriptPath'] ?? '').toString(),
+      agentSessions: sessions,
+      lastLocalOrchestrationSessionId:
+          (json['lastLocalOrchestrationSessionId'] ?? '').toString().trim(),
     );
   }
 
@@ -198,7 +289,32 @@ final class GroupConversationRecord {
     'roster': roster.toJson(),
     'turnTaking': turnTaking.toJson(),
     'transcriptPath': transcriptPath,
+    'agentSessions': {
+      for (final entry in agentSessions.entries) entry.key: entry.value.toJson(),
+    },
+    if (lastLocalOrchestrationSessionId.isNotEmpty)
+      'lastLocalOrchestrationSessionId': lastLocalOrchestrationSessionId,
   };
+
+  GroupConversationRecord copyWith({
+    GroupRoster? roster,
+    TurnTakingPolicy? turnTaking,
+    String? transcriptPath,
+    Map<String, GroupAgentSessionBinding>? agentSessions,
+    String? lastLocalOrchestrationSessionId,
+  }) {
+    return GroupConversationRecord(
+      id: id,
+      title: title,
+      roster: roster ?? this.roster,
+      turnTaking: turnTaking ?? this.turnTaking,
+      transcriptPath: transcriptPath ?? this.transcriptPath,
+      agentSessions: agentSessions ?? this.agentSessions,
+      lastLocalOrchestrationSessionId:
+          lastLocalOrchestrationSessionId ??
+          this.lastLocalOrchestrationSessionId,
+    );
+  }
 }
 
 final class PlannedAgentTurn {
@@ -302,15 +418,61 @@ final class GroupConversationStore {
         ),
       );
     }
-    final updated = GroupConversationRecord(
-      id: room.id,
-      title: room.title,
+    final updated = room.copyWith(
       roster: GroupRoster(
         participants: participants,
         mainAgentId: mainAgentId.trim().isEmpty ? null : mainAgentId.trim(),
       ),
-      turnTaking: room.turnTaking,
-      transcriptPath: room.transcriptPath,
+    );
+    await save(portableData, updated);
+    return updated;
+  }
+
+  /// Remember the last native conversation returned for [agentId] in this room.
+  Future<GroupConversationRecord> upsertAgentSession({
+    required Object portableData,
+    required String agentId,
+    String nativeSessionId = '',
+    String sourcePath = '',
+    String workingDirectory = '',
+    String localOrchestrationSessionId = '',
+  }) async {
+    final room = await ensureDefaultLicoRoom(portableData);
+    final id = agentId.trim();
+    final localId = localOrchestrationSessionId.trim();
+    final previous = id.isEmpty ? null : room.bindingFor(id);
+    final binding = id.isEmpty
+        ? null
+        : GroupAgentSessionBinding(
+            agentId: id,
+            nativeSessionId: nativeSessionId.trim().isNotEmpty
+                ? nativeSessionId.trim()
+                : previous?.nativeSessionId ?? '',
+            sourcePath: sourcePath.trim().isNotEmpty
+                ? sourcePath.trim()
+                : previous?.sourcePath ?? '',
+            workingDirectory: workingDirectory.trim().isNotEmpty
+                ? workingDirectory.trim()
+                : previous?.workingDirectory ?? '',
+            updatedAtUnixMs: DateTime.now().toUtc().millisecondsSinceEpoch,
+          );
+    final shouldWriteBinding =
+        binding != null &&
+        (binding.hasResumeHandle || binding.workingDirectory.isNotEmpty);
+    if (!shouldWriteBinding && localId.isEmpty) {
+      return room;
+    }
+    final sessions = Map<String, GroupAgentSessionBinding>.from(
+      room.agentSessions,
+    );
+    if (shouldWriteBinding) {
+      sessions[id] = binding;
+    }
+    final updated = room.copyWith(
+      agentSessions: sessions,
+      lastLocalOrchestrationSessionId: localId.isNotEmpty
+          ? localId
+          : room.lastLocalOrchestrationSessionId,
     );
     await save(portableData, updated);
     return updated;
@@ -326,18 +488,10 @@ final class GroupConversationStore {
       case TurnTakingPolicy.flywheelMainDispatch:
         final main = roster.mainAgentId?.trim() ?? '';
         if (main.isEmpty) return const [];
-        final planned = <PlannedAgentTurn>[
+        // Peers are scheduled by LicoUp handoff, not client fan-out.
+        return [
           PlannedAgentTurn(agentId: main, role: PlannedTurnRole.dispatcher),
         ];
-        for (final participant in roster.participants) {
-          if (participant.kind != GroupParticipantKind.agent) continue;
-          final agentId = participant.agentId?.trim() ?? '';
-          if (agentId.isEmpty || agentId == main) continue;
-          planned.add(
-            PlannedAgentTurn(agentId: agentId, role: PlannedTurnRole.peer),
-          );
-        }
-        return planned;
       case TurnTakingPolicy.mentionOnly:
       case TurnTakingPolicy.parallelSelected:
         return [

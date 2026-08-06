@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 
+import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_runtime_settings.dart';
+import 'package:licoup/src/frontend/features/agents/ui/composer_agent_mention.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_conversation_overlay_glass.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/layout/layout_focus_coordinator.dart';
 import 'package:licoup/src/frontend/layout/profiles/messaging/desktop/tokens/messaging_desktop_tokens.dart';
 import 'package:licoup/src/frontend/shared/platform/client_platform.dart';
+import 'package:licoup/src/frontend/shared/ui/agent_brand_icon.dart';
 import 'package:licoup/src/frontend/shared/ui/apple_glass.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_activity_animations.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
@@ -29,6 +32,7 @@ class RuntimeMessageComposer extends StatefulWidget {
     required this.onDraftChanged,
     required this.onSend,
     this.defaultModel = '',
+    this.defaultReasoningEffort = '',
     this.showRuntimeSettings = true,
     this.showWorkingDirectory = false,
     this.workingDirectory = '',
@@ -36,6 +40,7 @@ class RuntimeMessageComposer extends StatefulWidget {
     this.onChooseWorkingDirectory,
     this.floatingMatteCapsule = false,
     this.onAttach,
+    this.mentionBridge,
   });
 
   final String targetLabel;
@@ -51,6 +56,7 @@ class RuntimeMessageComposer extends StatefulWidget {
   final ValueChanged<String> onDraftChanged;
   final Future<bool> Function(String) onSend;
   final String defaultModel;
+  final String defaultReasoningEffort;
 
   /// Whether the composer embeds the runtime settings bar above the input
   /// row. Layout presentation strategies that relocate runtime settings keep
@@ -69,8 +75,23 @@ class RuntimeMessageComposer extends StatefulWidget {
   /// the left of [floatingMatteCapsule] composer fields.
   final VoidCallback? onAttach;
 
+  /// Optional bridge for inserting Adaptive Flywheel `@agent` mention chips.
+  final ComposerMentionBridge? mentionBridge;
+
   @override
   State<RuntimeMessageComposer> createState() => _RuntimeMessageComposerState();
+}
+
+class _ComposerMentionChip {
+  const _ComposerMentionChip({
+    required this.agentId,
+    required this.displayLabel,
+    this.target,
+  });
+
+  final String agentId;
+  final String displayLabel;
+  final TargetCandidate? target;
 }
 
 class _RuntimeMessageComposerState extends State<RuntimeMessageComposer> {
@@ -79,6 +100,7 @@ class _RuntimeMessageComposerState extends State<RuntimeMessageComposer> {
   LayoutFocusCoordinator? _layoutFocusCoordinator;
   bool _focused = false;
   late bool _hasText;
+  final List<_ComposerMentionChip> _mentionChips = [];
 
   @override
   void initState() {
@@ -87,6 +109,16 @@ class _RuntimeMessageComposerState extends State<RuntimeMessageComposer> {
     _hasText = widget.initialDraft.trim().isNotEmpty;
     _controller.addListener(_onTextChanged);
     _focusNode.addListener(_onFocusChanged);
+    widget.mentionBridge?.bind(_insertAgentMention);
+  }
+
+  @override
+  void didUpdateWidget(covariant RuntimeMessageComposer oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.mentionBridge != widget.mentionBridge) {
+      oldWidget.mentionBridge?.unbind(_insertAgentMention);
+      widget.mentionBridge?.bind(_insertAgentMention);
+    }
   }
 
   @override
@@ -109,6 +141,7 @@ class _RuntimeMessageComposerState extends State<RuntimeMessageComposer> {
 
   @override
   void dispose() {
+    widget.mentionBridge?.unbind(_insertAgentMention);
     _layoutFocusCoordinator?.unregister(
       LayoutFocusTargets.composerField,
       _focusNode,
@@ -122,9 +155,72 @@ class _RuntimeMessageComposerState extends State<RuntimeMessageComposer> {
     super.dispose();
   }
 
+  void _insertAgentMention({
+    required String agentId,
+    required String displayLabel,
+    TargetCandidate? target,
+  }) {
+    final id = agentId.trim();
+    final label = displayLabel.trim().isNotEmpty ? displayLabel.trim() : id;
+    if (id.isEmpty || label.isEmpty || !widget.enabled) {
+      return;
+    }
+    final token = composerAgentMentionToken(label);
+    if (token.isEmpty) {
+      return;
+    }
+    final selection = _controller.selection;
+    final text = _controller.text;
+    final start = selection.isValid ? selection.start : text.length;
+    final end = selection.isValid ? selection.end : start;
+    final before = start > 0 ? text.substring(0, start) : '';
+    final after = end < text.length ? text.substring(end) : '';
+    final needsLeadingSpace =
+        before.isNotEmpty && !RegExp(r'\s$').hasMatch(before);
+    final needsTrailingSpace =
+        after.isEmpty || !RegExp(r'^\s').hasMatch(after);
+    final insertion =
+        '${needsLeadingSpace ? ' ' : ''}$token${needsTrailingSpace ? ' ' : ''}';
+    final next = text.replaceRange(start, end, insertion);
+    final caret = start + insertion.length;
+    _controller.value = TextEditingValue(
+      text: next,
+      selection: TextSelection.collapsed(offset: caret),
+    );
+    if (!_mentionChips.any((chip) => chip.agentId == id)) {
+      setState(() {
+        _mentionChips.add(
+          _ComposerMentionChip(
+            agentId: id,
+            displayLabel: label,
+            target: target,
+          ),
+        );
+      });
+    }
+    _focusNode.requestFocus();
+  }
+
+  void _removeMentionChip(_ComposerMentionChip chip) {
+    final token = composerAgentMentionToken(chip.displayLabel);
+    var next = _controller.text;
+    if (token.isNotEmpty) {
+      next = next.replaceFirst('$token ', token);
+      next = next.replaceFirst(token, '');
+      next = next.replaceAll(RegExp(r'  +'), ' ');
+    }
+    _controller.value = TextEditingValue(
+      text: next,
+      selection: TextSelection.collapsed(
+        offset: next.length.clamp(0, next.length),
+      ),
+    );
+    setState(() => _mentionChips.removeWhere((item) => item.agentId == chip.agentId));
+  }
+
   void _onTextChanged() {
     widget.onDraftChanged(_controller.text);
-    final next = _controller.text.trim().isNotEmpty;
+    final next = _controller.text.trim().isNotEmpty || _mentionChips.isNotEmpty;
     if (next == _hasText || !mounted) {
       return;
     }
@@ -141,15 +237,24 @@ class _RuntimeMessageComposerState extends State<RuntimeMessageComposer> {
 
   Future<void> _submit() async {
     final text = _controller.text.trim();
-    if (text.isEmpty || !widget.enabled) {
+    if ((text.isEmpty && _mentionChips.isEmpty) || !widget.enabled) {
       return;
     }
+    final chips = List<_ComposerMentionChip>.from(_mentionChips);
     _controller.clear();
+    if (_mentionChips.isNotEmpty) {
+      setState(() => _mentionChips.clear());
+    }
     final consumed = await widget.onSend(text);
     if (!consumed && mounted && _controller.text.trim().isEmpty) {
       _controller
         ..text = text
         ..selection = TextSelection.collapsed(offset: text.length);
+      setState(() {
+        _mentionChips
+          ..clear()
+          ..addAll(chips);
+      });
       _focusNode.requestFocus();
     }
   }
@@ -169,45 +274,72 @@ class _RuntimeMessageComposerState extends State<RuntimeMessageComposer> {
     );
     final fieldBody = Padding(
       padding: const EdgeInsets.all(LicoRadius.composerInset),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(8, 6, 4, 6),
-              child: TextField(
-                controller: _controller,
-                focusNode: _focusNode,
-                minLines: 1,
-                maxLines: 4,
-                textInputAction: TextInputAction.send,
-                onSubmitted: (_) => _submit(),
-                enabled: interactive,
-                style: theme.textTheme.bodyLarge,
-                decoration: InputDecoration(
-                  hintText: interactive
-                      ? strings.messageTarget(widget.targetLabel)
-                      : null,
-                  hintStyle: theme.textTheme.bodyLarge?.copyWith(
-                    color: colors.textDisabled,
-                  ),
-                  isDense: true,
-                  filled: false,
-                  border: InputBorder.none,
-                  enabledBorder: InputBorder.none,
-                  focusedBorder: InputBorder.none,
-                  disabledBorder: InputBorder.none,
-                  contentPadding: EdgeInsets.zero,
-                ),
+          if (_mentionChips.isNotEmpty) ...[
+            Padding(
+              padding: const EdgeInsets.fromLTRB(8, 6, 8, 0),
+              child: Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  for (final chip in _mentionChips)
+                    _ComposerAgentMentionChip(
+                      key: Key('composer-agent-mention-${chip.agentId}'),
+                      label: chip.displayLabel,
+                      target: chip.target,
+                      enabled: interactive,
+                      onDeleted: interactive
+                          ? () => _removeMentionChip(chip)
+                          : null,
+                    ),
+                ],
               ),
             ),
-          ),
-          const SizedBox(width: LicoContentSpacing.compact),
-          _ComposerSendButton(
-            canSend: canSend,
-            busy: widget.busy,
-            onTap: canSend ? _submit : null,
-            tooltip: strings.send,
+          ],
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(8, 6, 4, 6),
+                  child: TextField(
+                    controller: _controller,
+                    focusNode: _focusNode,
+                    minLines: 1,
+                    maxLines: 4,
+                    textInputAction: TextInputAction.send,
+                    onSubmitted: (_) => _submit(),
+                    enabled: interactive,
+                    style: theme.textTheme.bodyLarge,
+                    decoration: InputDecoration(
+                      hintText: interactive
+                          ? strings.messageTarget(widget.targetLabel)
+                          : null,
+                      hintStyle: theme.textTheme.bodyLarge?.copyWith(
+                        color: colors.textDisabled,
+                      ),
+                      isDense: true,
+                      filled: false,
+                      border: InputBorder.none,
+                      enabledBorder: InputBorder.none,
+                      focusedBorder: InputBorder.none,
+                      disabledBorder: InputBorder.none,
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: LicoContentSpacing.compact),
+              _ComposerSendButton(
+                canSend: canSend,
+                busy: widget.busy,
+                onTap: canSend ? _submit : null,
+                tooltip: strings.send,
+              ),
+            ],
           ),
         ],
       ),
@@ -256,6 +388,7 @@ class _RuntimeMessageComposerState extends State<RuntimeMessageComposer> {
               onModelChanged: widget.onModelChanged,
               onReasoningEffortChanged: widget.onReasoningEffortChanged,
               defaultModel: widget.defaultModel,
+              defaultReasoningEffort: widget.defaultReasoningEffort,
               showWorkingDirectory: widget.showWorkingDirectory,
               workingDirectory: widget.workingDirectory,
               workingDirectorySelectable: widget.workingDirectorySelectable,
@@ -281,6 +414,71 @@ class _RuntimeMessageComposerState extends State<RuntimeMessageComposer> {
             ],
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Encapsulated `@agent` chip shown inside the composer field glass.
+class _ComposerAgentMentionChip extends StatelessWidget {
+  const _ComposerAgentMentionChip({
+    super.key,
+    required this.label,
+    required this.enabled,
+    this.target,
+    this.onDeleted,
+  });
+
+  final String label;
+  final bool enabled;
+  final TargetCandidate? target;
+  final VoidCallback? onDeleted;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.licoColors;
+    return Material(
+      color: colors.isDark
+          ? colors.accent.withAlpha(36)
+          : colors.accent.withAlpha(28),
+      borderRadius: BorderRadius.circular(999),
+      child: InkWell(
+        onTap: onDeleted,
+        borderRadius: BorderRadius.circular(999),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(8, 4, 8, 4),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (target case final target?)
+                AgentBrandIcon(target: target, size: 14, iconSize: 14)
+              else
+                Icon(
+                  Icons.alternate_email_rounded,
+                  size: 13,
+                  color: colors.accent,
+                ),
+              const SizedBox(width: 5),
+              Text(
+                '@$label',
+                style: TextStyle(
+                  color: colors.text.withAlpha(235),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  height: 1.1,
+                ),
+              ),
+              if (enabled && onDeleted != null) ...[
+                const SizedBox(width: 4),
+                Icon(
+                  Icons.close_rounded,
+                  size: 13,
+                  color: colors.textMuted.withAlpha(180),
+                ),
+              ],
+            ],
+          ),
+        ),
       ),
     );
   }

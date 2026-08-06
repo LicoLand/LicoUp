@@ -1,11 +1,13 @@
 use licoup_native::{
     domain::{
         agent_intelligence_catalog::AgentIntelligenceCatalog,
-        agent_workflow_loop::{WorkflowRole, subordinate_role_prompt},
-        conversations, provider_model_pricing, targets,
+        agent_workflow_loop::{AgentTarget, MainResume, WorkflowRole, subordinate_role_prompt},
+        conversations, provider_model_pricing,
+        subagent_handoff::{self, HandoffRecord, HandoffState, SessionMode},
+        targets,
     },
     ffi::generated::client_state::{ClientStateCollection, ClientStateGetRequest},
-    platform::{client_state, dispatch_lane_operation},
+    platform::{agent_workflow_runtime, client_state, dispatch_lane_operation, paths},
 };
 use serde_json::{Map, Value, json};
 use std::{
@@ -1047,8 +1049,9 @@ fn dispatch_subagent(
     )?;
     let allow_all = optional_bool(arguments, "allowAll")?;
     let permission_mode = optional_permission_mode(arguments)?;
+    let session_mode = resolve_session_mode(arguments, continuing)?;
     let mut continuation = None;
-    if continuing {
+    if session_mode == SessionMode::Resume {
         let conversation_path =
             required_text(arguments, "conversationPath", MAX_CONVERSATION_PATH_BYTES)?;
         let resume_target = resume_target_for_path(&candidates[0].agent_id, &conversation_path)?;
@@ -1057,16 +1060,176 @@ fn dispatch_subagent(
             resume_target.working_directory.as_deref(),
         )?);
         continuation = Some((resume_target.session_id, conversation_path));
+    } else if arguments
+        .get("conversationPath")
+        .and_then(Value::as_str)
+        .is_some_and(|value| !value.trim().is_empty())
+    {
+        // New sessions must not carry a resume handle.
+        return Err(ToolFailure::new("invalid_request", false));
     }
+    // Validate at least the first candidate before ACK so invalid requests fail closed.
+    let first = candidates
+        .first()
+        .ok_or(ToolFailure::new("invalid_request", false))?;
+    let inspected = ensure_subordinate_available(&first.agent_id)?;
+    validate_dispatch_selection(first, &inspected)?;
+
+    let operation = if session_mode == SessionMode::Resume {
+        "subagent.continue"
+    } else {
+        "subagent.delegate"
+    };
+    let main_conversation_path = optional_text(arguments, "mainConversationPath", MAX_CONVERSATION_PATH_BYTES)?
+        .or_else(|| resolve_manager_conversation_path(manager_agent_id));
+    let portable = paths::portable_data_dir()
+        .map_err(|_| ToolFailure::new("handoff_store_unavailable", true))?;
+    let dispatch_id = subagent_handoff::new_dispatch_id();
+    let record = HandoffRecord::new(
+        dispatch_id.clone(),
+        operation,
+        manager_agent_id,
+        first.agent_id.clone(),
+        session_mode,
+        main_conversation_path.clone(),
+    );
+    subagent_handoff::persist_handoff(&portable, &record)
+        .map_err(|_| ToolFailure::new("handoff_store_unavailable", true))?;
+
+    let manager_agent_id = manager_agent_id.to_owned();
+    let portable_for_worker = portable.clone();
+    thread::spawn(move || {
+        run_accepted_handoff(
+            portable_for_worker,
+            dispatch_id,
+            manager_agent_id,
+            operation.to_owned(),
+            candidates,
+            prompt,
+            working_directory,
+            timeout_ms,
+            max_stdout_bytes,
+            max_stderr_bytes,
+            allow_all,
+            permission_mode,
+            continuation,
+            main_conversation_path,
+        );
+    });
+
+    Ok(record.ack_receipt())
+}
+
+fn run_accepted_handoff(
+    portable: std::path::PathBuf,
+    dispatch_id: String,
+    manager_agent_id: String,
+    operation: String,
+    candidates: Vec<DispatchCandidate>,
+    prompt: String,
+    working_directory: Option<String>,
+    timeout_ms: Option<u64>,
+    max_stdout_bytes: Option<u64>,
+    max_stderr_bytes: Option<u64>,
+    allow_all: Option<bool>,
+    permission_mode: Option<String>,
+    continuation: Option<(String, String)>,
+    main_conversation_path: Option<String>,
+) {
+    let mut record = match subagent_handoff::load_handoff(&portable, &dispatch_id) {
+        Ok(record) => record,
+        Err(_) => return,
+    };
+    record.state = HandoffState::Running;
+    record.updated_at_unix_ms = subagent_handoff::unix_ms_now();
+    let _ = subagent_handoff::persist_handoff(&portable, &record);
+
+    match execute_subagent_send(
+        &candidates,
+        &prompt,
+        working_directory.as_deref(),
+        timeout_ms,
+        max_stdout_bytes,
+        max_stderr_bytes,
+        allow_all,
+        permission_mode.as_deref(),
+        continuation.as_ref(),
+    ) {
+        Ok((agent_id, conversation_path)) => {
+            record.agent_id = agent_id.clone();
+            record.conversation_path = Some(conversation_path.clone());
+            record.state = HandoffState::Completed;
+            record.error_code = None;
+            record.updated_at_unix_ms = subagent_handoff::unix_ms_now();
+            let _ = subagent_handoff::persist_handoff(&portable, &record);
+            if let Some(main_path) = main_conversation_path.as_deref().filter(|path| !path.is_empty())
+            {
+                let resume = MainResume {
+                    workflow_id: dispatch_id.clone(),
+                    target: AgentTarget {
+                        adapter_id: manager_agent_id,
+                        display_name: record.manager_agent_id.clone(),
+                        model: None,
+                        reasoning_effort: None,
+                        working_directory: None,
+                    },
+                    conversation_path: main_path.to_owned(),
+                    prompt: format!(
+                        "LicoUp handoff {dispatch_id} for subordinate `{agent_id}` finished ({operation}). Decide the next step. Do not probe the subordinate; request another handoff if more work is needed."
+                    ),
+                };
+                let _ = agent_workflow_runtime::resume_main(&resume);
+            }
+        }
+        Err(code) => {
+            record.state = HandoffState::Failed;
+            record.error_code = Some(code);
+            record.updated_at_unix_ms = subagent_handoff::unix_ms_now();
+            let _ = subagent_handoff::persist_handoff(&portable, &record);
+            if let Some(main_path) = main_conversation_path.as_deref().filter(|path| !path.is_empty())
+            {
+                let resume = MainResume {
+                    workflow_id: dispatch_id.clone(),
+                    target: AgentTarget {
+                        adapter_id: manager_agent_id.clone(),
+                        display_name: manager_agent_id,
+                        model: None,
+                        reasoning_effort: None,
+                        working_directory: None,
+                    },
+                    conversation_path: main_path.to_owned(),
+                    prompt: format!(
+                        "LicoUp handoff {dispatch_id} failed ({operation}). Decide the next step. Do not probe the subordinate; request another handoff if retrying."
+                    ),
+                };
+                let _ = agent_workflow_runtime::resume_main(&resume);
+            }
+        }
+    }
+}
+
+fn execute_subagent_send(
+    candidates: &[DispatchCandidate],
+    prompt: &str,
+    working_directory: Option<&str>,
+    timeout_ms: Option<u64>,
+    max_stdout_bytes: Option<u64>,
+    max_stderr_bytes: Option<u64>,
+    allow_all: Option<bool>,
+    permission_mode: Option<&str>,
+    continuation: Option<&(String, String)>,
+) -> Result<(String, String), String> {
     for (index, candidate) in candidates.iter().enumerate() {
-        let inspected = ensure_subordinate_available(&candidate.agent_id)?;
-        validate_dispatch_selection(candidate, &inspected)?;
+        let inspected = ensure_subordinate_available(&candidate.agent_id)
+            .map_err(|failure| failure.code.to_owned())?;
+        validate_dispatch_selection(candidate, &inspected)
+            .map_err(|failure| failure.code.to_owned())?;
         let quota_key = quota_key(candidate);
         if quota_is_cooling_down(&quota_key) {
             if index + 1 < candidates.len() {
                 continue;
             }
-            return Err(ToolFailure::new("subagent_quota_exhausted", true));
+            return Err("subagent_quota_exhausted".to_owned());
         }
         let mut params = json!({
             "agentId": candidate.agent_id,
@@ -1079,7 +1242,7 @@ fn dispatch_subagent(
         if let Some(reasoning) = &candidate.reasoning_effort {
             params["reasoningEffort"] = json!(reasoning);
         }
-        if let Some(working_directory) = &working_directory {
+        if let Some(working_directory) = working_directory {
             params["workingDirectory"] = json!(working_directory);
         }
         if let Some(timeout_ms) = timeout_ms {
@@ -1094,37 +1257,67 @@ fn dispatch_subagent(
         if let Some(allow_all) = allow_all {
             params["allowAll"] = json!(allow_all);
         }
-        if let Some(permission_mode) = &permission_mode {
+        if let Some(permission_mode) = permission_mode {
             params["permissionMode"] = json!(permission_mode);
         }
-        if let Some((session_id, source_path)) = &continuation {
+        if let Some((session_id, source_path)) = continuation {
             params["sessionId"] = json!(session_id);
             params["sourcePath"] = json!(source_path);
         }
         let value = dispatch_lane_operation("send", &params)
-            .map_err(|_| ToolFailure::new("subagent_transport_failed", true))?;
+            .map_err(|_| "subagent_transport_failed".to_owned())?;
         if value.get("ok").and_then(Value::as_bool) == Some(true) {
             clear_quota_cooldown(&quota_key);
-            return project_dispatch_result(
-                if continuing {
-                    "subagent.continue"
-                } else {
-                    "subagent.delegate"
-                },
-                &candidate.agent_id,
-                &value,
-            );
+            let projected = project_dispatch_result("subagent.delegate", &candidate.agent_id, &value)
+                .map_err(|failure| failure.code.to_owned())?;
+            let conversation_path = projected
+                .get("conversationPath")
+                .and_then(Value::as_str)
+                .filter(|path| !path.is_empty())
+                .ok_or_else(|| "conversation_location_unavailable".to_owned())?
+                .to_owned();
+            return Ok((candidate.agent_id.clone(), conversation_path));
         }
         if quota_or_capacity_failure(&value) {
             record_quota_cooldown(quota_key);
             if index + 1 < candidates.len() {
                 continue;
             }
-            return Err(ToolFailure::new("subagent_quota_exhausted", true));
+            return Err("subagent_quota_exhausted".to_owned());
         }
-        return Err(project_dispatch_failure(&candidate.agent_id, &value));
+        return Err(project_dispatch_failure(&candidate.agent_id, &value).code.to_owned());
     }
-    Err(ToolFailure::new("subagent_quota_exhausted", true))
+    Err("subagent_quota_exhausted".to_owned())
+}
+
+fn resolve_manager_conversation_path(manager_agent_id: &str) -> Option<String> {
+    let response = conversations::conversation_list(&json!({
+        "agent": manager_agent_id,
+        "limit": 8
+    }))
+    .ok()?;
+    response
+        .get("sessions")
+        .and_then(Value::as_array)?
+        .iter()
+        .find_map(|session| {
+            session
+                .get("sourcePath")
+                .and_then(Value::as_str)
+                .filter(|path| std::path::Path::new(path).is_absolute())
+                .map(str::to_owned)
+        })
+}
+
+fn resolve_session_mode(arguments: &Value, continuing: bool) -> Result<SessionMode, ToolFailure> {
+    if continuing {
+        // lico_subagent_continue is always resume.
+        return Ok(SessionMode::Resume);
+    }
+    match optional_text(arguments, "sessionMode", 16)? {
+        None => Ok(SessionMode::New),
+        Some(value) => SessionMode::parse(&value).ok_or(ToolFailure::new("invalid_request", false)),
+    }
 }
 
 fn dispatch_candidates(
@@ -1848,7 +2041,7 @@ fn tool_catalog() -> Vec<Value> {
         }),
         json!({
             "name": "lico_subagent_probe",
-            "description": "Run one disposable readiness probe. By default LicoUp selects the cheapest locally available model using the provider-owned billing table, including harness-included routes; an exact model may be requested only when that route is itself under acceptance. Any created probe conversation is moved to Trash and its disappearance is verified before success is returned.",
+            "description": "LicoUp-owned disposable readiness probe. Main agents must not use this to drive subordinates; LicoUp runs readiness during handoff accept. By default LicoUp selects the cheapest locally available model using the provider-owned billing table, including harness-included routes; an exact model may be requested only when that route is itself under acceptance. Any created probe conversation is moved to Trash and its disappearance is verified before success is returned.",
             "inputSchema": closed_object(
                 &["agentId", "workingDirectory"],
                 json!({
@@ -1862,7 +2055,7 @@ fn tool_catalog() -> Vec<Value> {
         }),
         json!({
             "name": "lico_subagent_delegate",
-            "description": "Delegate one concrete task and return only the completed local conversation file location. Worker and Reviewer calls may name the frontend or backend lane; the saved role assignment is authoritative when configured. Optional reviewed fallbacks are tried only for quota, rate-limit, or capacity failures.",
+            "description": "Request a LicoUp-owned subordinate handoff. Choose sessionMode=new (default, fresh session) or sessionMode=resume with conversationPath. Returns immediately with accepted+dispatchId; the main turn should stop. LicoUp runs the subordinate, then resumes the original main conversation. Worker and Reviewer calls may name the frontend or backend lane; the saved role assignment is authoritative when configured. Optional reviewed fallbacks are tried only for quota, rate-limit, or capacity failures.",
             "inputSchema": closed_object(
                 &["agentId", "role", "prompt"],
                 json!({
@@ -1870,9 +2063,12 @@ fn tool_catalog() -> Vec<Value> {
                     "role": workflow_role_schema(),
                     "lane": code_engineering_lane_schema(),
                     "prompt": bounded_string(MAX_PROMPT_BYTES),
+                    "sessionMode": session_mode_schema(),
+                    "conversationPath": bounded_string(MAX_CONVERSATION_PATH_BYTES),
                     "model": bounded_string(MAX_ID_BYTES),
                     "reasoningEffort": bounded_string(32),
                     "workingDirectory": bounded_string(MAX_WORKING_DIRECTORY_BYTES),
+                    "mainConversationPath": bounded_string(MAX_CONVERSATION_PATH_BYTES),
                     "timeoutMs": bounded_integer(MIN_SUBAGENT_TIMEOUT_MS, MAX_SUBAGENT_TIMEOUT_MS),
                     "maxStdoutBytes": bounded_integer(MIN_SUBAGENT_STDOUT_BYTES, MAX_SUBAGENT_STDOUT_BYTES),
                     "maxStderrBytes": bounded_integer(MIN_SUBAGENT_STDERR_BYTES, MAX_SUBAGENT_STDERR_BYTES),
@@ -1896,18 +2092,20 @@ fn tool_catalog() -> Vec<Value> {
         }),
         json!({
             "name": "lico_subagent_continue",
-            "description": "Continue the exact subordinate conversation identified by its local file location.",
+            "description": "Request LicoUp to resume an exact subordinate conversation (sessionMode=resume). Equivalent to lico_subagent_delegate with sessionMode=resume and conversationPath. Returns immediately with accepted+dispatchId; the main turn should stop.",
             "inputSchema": closed_object(
                 &["agentId", "conversationPath", "role", "prompt"],
                 json!({
                     "agentId": bounded_string(MAX_ID_BYTES),
                     "conversationPath": bounded_string(MAX_CONVERSATION_PATH_BYTES),
+                    "sessionMode": session_mode_schema(),
                     "role": workflow_role_schema(),
                     "lane": code_engineering_lane_schema(),
                     "prompt": bounded_string(MAX_PROMPT_BYTES),
                     "model": bounded_string(MAX_ID_BYTES),
                     "reasoningEffort": bounded_string(32),
                     "workingDirectory": bounded_string(MAX_WORKING_DIRECTORY_BYTES),
+                    "mainConversationPath": bounded_string(MAX_CONVERSATION_PATH_BYTES),
                     "timeoutMs": bounded_integer(MIN_SUBAGENT_TIMEOUT_MS, MAX_SUBAGENT_TIMEOUT_MS),
                     "maxStdoutBytes": bounded_integer(MIN_SUBAGENT_STDOUT_BYTES, MAX_SUBAGENT_STDOUT_BYTES),
                     "maxStderrBytes": bounded_integer(MIN_SUBAGENT_STDERR_BYTES, MAX_SUBAGENT_STDERR_BYTES),
@@ -1969,6 +2167,13 @@ fn workflow_role_schema() -> Value {
     })
 }
 
+fn session_mode_schema() -> Value {
+    json!({
+        "type": "string",
+        "enum": ["new", "resume"]
+    })
+}
+
 fn code_engineering_lane_schema() -> Value {
     json!({
         "type": "string",
@@ -2004,9 +2209,12 @@ fn validate_tool_arguments(name: &str, value: &Value) -> bool {
             "role",
             "lane",
             "prompt",
+            "sessionMode",
+            "conversationPath",
             "model",
             "reasoningEffort",
             "workingDirectory",
+            "mainConversationPath",
             "timeoutMs",
             "maxStdoutBytes",
             "maxStderrBytes",
@@ -2017,12 +2225,14 @@ fn validate_tool_arguments(name: &str, value: &Value) -> bool {
         "lico_subagent_continue" => &[
             "agentId",
             "conversationPath",
+            "sessionMode",
             "role",
             "lane",
             "prompt",
             "model",
             "reasoningEffort",
             "workingDirectory",
+            "mainConversationPath",
             "timeoutMs",
             "maxStdoutBytes",
             "maxStderrBytes",
@@ -2050,9 +2260,12 @@ fn validate_tool_arguments(name: &str, value: &Value) -> bool {
             valid_required(object, "agentId", MAX_ID_BYTES)
                 && valid_workflow_role_and_lane(object)
                 && valid_required(object, "prompt", MAX_PROMPT_BYTES)
+                && valid_optional_session_mode(object)
+                && valid_delegate_conversation_path(object)
                 && valid_optional(object, "model", MAX_ID_BYTES)
                 && valid_optional(object, "reasoningEffort", 32)
                 && valid_optional(object, "workingDirectory", MAX_WORKING_DIRECTORY_BYTES)
+                && valid_optional(object, "mainConversationPath", MAX_CONVERSATION_PATH_BYTES)
                 && valid_optional_timeout(object, "timeoutMs")
                 && valid_optional_bounded_u64(
                     object,
@@ -2073,11 +2286,13 @@ fn validate_tool_arguments(name: &str, value: &Value) -> bool {
         "lico_subagent_continue" => {
             valid_required(object, "agentId", MAX_ID_BYTES)
                 && valid_required(object, "conversationPath", MAX_CONVERSATION_PATH_BYTES)
+                && valid_optional_session_mode_resume_only(object)
                 && valid_workflow_role_and_lane(object)
                 && valid_required(object, "prompt", MAX_PROMPT_BYTES)
                 && valid_optional(object, "model", MAX_ID_BYTES)
                 && valid_optional(object, "reasoningEffort", 32)
                 && valid_optional(object, "workingDirectory", MAX_WORKING_DIRECTORY_BYTES)
+                && valid_optional(object, "mainConversationPath", MAX_CONVERSATION_PATH_BYTES)
                 && valid_optional_timeout(object, "timeoutMs")
                 && valid_optional_bounded_u64(
                     object,
@@ -2153,6 +2368,42 @@ fn valid_optional_bounded_u64(object: &Map<String, Value>, key: &str, min: u64, 
 
 fn valid_optional_bool(object: &Map<String, Value>, key: &str) -> bool {
     !object.contains_key(key) || object.get(key).is_some_and(Value::is_boolean)
+}
+
+fn valid_optional_session_mode(object: &Map<String, Value>) -> bool {
+    !object.contains_key("sessionMode")
+        || object
+            .get("sessionMode")
+            .and_then(Value::as_str)
+            .and_then(SessionMode::parse)
+            .is_some()
+}
+
+fn valid_optional_session_mode_resume_only(object: &Map<String, Value>) -> bool {
+    !object.contains_key("sessionMode")
+        || object
+            .get("sessionMode")
+            .and_then(Value::as_str)
+            .and_then(SessionMode::parse)
+            == Some(SessionMode::Resume)
+}
+
+fn valid_delegate_conversation_path(object: &Map<String, Value>) -> bool {
+    let mode = object
+        .get("sessionMode")
+        .and_then(Value::as_str)
+        .and_then(SessionMode::parse)
+        .unwrap_or(SessionMode::New);
+    match mode {
+        SessionMode::New => {
+            !object.contains_key("conversationPath")
+                || object
+                    .get("conversationPath")
+                    .and_then(Value::as_str)
+                    .is_none_or(|value| value.trim().is_empty())
+        }
+        SessionMode::Resume => valid_required(object, "conversationPath", MAX_CONVERSATION_PATH_BYTES),
+    }
 }
 
 fn valid_optional_permission_mode(object: &Map<String, Value>) -> bool {

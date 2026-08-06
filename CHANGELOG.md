@@ -6,6 +6,14 @@ manifests.
 
 ## Unreleased
 
+- Continuing a Cursor IDE-listed conversation from LicoUp now opens a new Agent
+  CLI session and injects a one-time handoff (composer id, `state.vscdb`
+  key prefixes, and the last IDE assistant return) instead of resuming the IDE
+  composer id on `cursor-agent`.
+- Lico group Current Conversation now walks the Adaptive Flywheel Daily
+  Conversation priority list after quota, credit, rate-limit, or provider-capacity
+  failures, and persists Current Conversation to the capsule that succeeds
+  without reordering the list.
 - Codex model pickers now merge `~/.codex/models_cache.json` and
   `model-catalogs` with App Server `model/list`, so the Adaptive Flywheel and
   composer show the full local Codex directory (plus custom providers) instead

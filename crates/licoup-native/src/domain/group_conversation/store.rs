@@ -7,6 +7,20 @@ use std::path::{Path, PathBuf};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct GroupAgentSessionBinding {
+    pub agent_id: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub native_session_id: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub source_path: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub working_directory: String,
+    #[serde(default)]
+    pub updated_at_unix_ms: i64,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct GroupConversationRecord {
     pub id: String,
     pub title: String,
@@ -14,6 +28,12 @@ pub struct GroupConversationRecord {
     pub turn_taking: TurnTakingPolicy,
     /// Canonical message projection path (parent-owned JSONL).
     pub transcript_path: PathBuf,
+    /// Last returned native conversations for main/sub agents in this room.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub agent_sessions: std::collections::BTreeMap<String, GroupAgentSessionBinding>,
+    /// Lico-owned orchestration projection session id last used in this room.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub last_local_orchestration_session_id: String,
 }
 
 pub struct GroupConversationStore {
@@ -79,6 +99,8 @@ impl GroupConversationStore {
             roster,
             turn_taking: TurnTakingPolicy::FlywheelMainDispatch,
             transcript_path,
+            agent_sessions: std::collections::BTreeMap::new(),
+            last_local_orchestration_session_id: String::new(),
         };
         self.save(&record)?;
         Ok(record)
@@ -99,6 +121,37 @@ mod tests {
         assert_eq!(room.id, "lico-group-default");
         let loaded = store.load(&room.id).unwrap().unwrap();
         assert_eq!(loaded.title, "Lico");
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn agent_session_bindings_round_trip() {
+        let root = std::env::temp_dir().join(format!("lico-group-{}", Uuid::new_v4()));
+        fs::create_dir_all(&root).unwrap();
+        let store = GroupConversationStore::open(&root).unwrap();
+        let mut room = store.ensure_default_lico_room(&root).unwrap();
+        room.agent_sessions.insert(
+            "antigravity".into(),
+            GroupAgentSessionBinding {
+                agent_id: "antigravity".into(),
+                native_session_id: "native-1".into(),
+                source_path: "/tmp/conversation.json".into(),
+                working_directory: "/tmp/project".into(),
+                updated_at_unix_ms: 1,
+            },
+        );
+        room.last_local_orchestration_session_id = "lico-local-1".into();
+        store.save(&room).unwrap();
+        let loaded = store.load(&room.id).unwrap().unwrap();
+        assert_eq!(
+            loaded
+                .agent_sessions
+                .get("antigravity")
+                .unwrap()
+                .native_session_id,
+            "native-1"
+        );
+        assert_eq!(loaded.last_local_orchestration_session_id, "lico-local-1");
         let _ = fs::remove_dir_all(root);
     }
 }

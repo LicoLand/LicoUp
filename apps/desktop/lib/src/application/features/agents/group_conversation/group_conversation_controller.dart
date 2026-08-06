@@ -10,13 +10,13 @@ mixin GroupConversationController on AgentOrchestrationPolicyController {
   Future<void> ensureGroupConversationReady() async {
     if (!selectedConversationIsOrchestration) return;
     final record = await _syncGroupConversationRecord();
-    groupConversationRoster = record.roster;
+    _applyGroupConversationRecord(record);
   }
 
   Future<GroupConversationRecord> _syncGroupConversationRecord() async {
     final portableData = agentWorkspacePortableData;
     final policy = effectiveAgentOrchestrationPolicy;
-    final mainAgentId = policy.commanderAgentId.trim();
+    final mainAgentId = policy.plainSendDispatchAgentId;
     return _store.syncRosterFromFlywheel(
       portableData: portableData,
       mainAgentId: mainAgentId,
@@ -24,27 +24,26 @@ mixin GroupConversationController on AgentOrchestrationPolicyController {
     );
   }
 
+  void _applyGroupConversationRecord(GroupConversationRecord record) {
+    groupConversationRoster = record.roster;
+    groupConversationAgentSessions = Map.unmodifiable(record.agentSessions);
+    groupConversationLastLocalSessionId =
+        record.lastLocalOrchestrationSessionId;
+  }
+
   List<({String id, String label})> _flywheelSelectedAgents(
     AgentOrchestrationPolicy policy,
   ) {
-    final selected = <String, String>{};
-    void put(String agentId) {
-      final id = agentId.trim();
-      if (id.isEmpty) return;
-      final target = groupConversationTargetFor(id);
-      selected.putIfAbsent(
-        id,
-        () =>
-            target?.label.trim().isNotEmpty == true ? target!.label.trim() : id,
-      );
-    }
-
-    put(policy.commanderAgentId);
-    for (final role in CodeEngineeringRoleSlot.values) {
-      put(policy.assignmentFor(role).agentId);
-    }
     return [
-      for (final entry in selected.entries) (id: entry.key, label: entry.value),
+      for (final id in policy.flywheelRosterAgentIds)
+        (
+          id: id,
+          label: () {
+            final target = groupConversationTargetFor(id);
+            final label = target?.label.trim() ?? '';
+            return label.isNotEmpty ? label : id;
+          }(),
+        ),
     ];
   }
 
@@ -74,4 +73,30 @@ mixin GroupConversationController on AgentOrchestrationPolicyController {
 
   List<GroupParticipant> get groupConversationRosterParticipants =>
       groupConversationRoster.participants;
+
+  GroupAgentSessionBinding? groupConversationBindingFor(String agentId) {
+    final id = agentId.trim();
+    if (id.isEmpty) return null;
+    return groupConversationAgentSessions[id];
+  }
+
+  /// Persist the last returned native conversation for one room participant.
+  Future<void> rememberGroupAgentSession({
+    required String agentId,
+    String nativeSessionId = '',
+    String sourcePath = '',
+    String workingDirectory = '',
+    String localOrchestrationSessionId = '',
+  }) async {
+    final portableData = agentWorkspacePortableData;
+    final record = await _store.upsertAgentSession(
+      portableData: portableData,
+      agentId: agentId,
+      nativeSessionId: nativeSessionId,
+      sourcePath: sourcePath,
+      workingDirectory: workingDirectory,
+      localOrchestrationSessionId: localOrchestrationSessionId,
+    );
+    _applyGroupConversationRecord(record);
+  }
 }

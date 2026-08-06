@@ -5,7 +5,8 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum TurnTakingPolicy {
-    /// Flywheel main agent dispatches; peer agents reply as equal bubbles.
+    /// Flywheel main agent only. Peers are scheduled by LicoUp handoff, not
+    /// by client fan-out of the same user text.
     #[default]
     FlywheelMainDispatch,
     MentionOnly,
@@ -36,31 +37,19 @@ pub enum PlannedTurnRole {
     Peer,
 }
 
-/// Plan which agents should act for one user message. Presentation is always
-/// peer bubbles; hierarchy only affects dispatch order.
+/// Plan which agents the client should drive for one user message.
+/// `FlywheelMainDispatch` returns only the main dispatcher; peer speech comes
+/// from LicoUp-owned subordinate handoffs projected into the group thread.
 pub fn plan_turn(roster: &GroupRoster, request: &GroupTurnRequest) -> Vec<PlannedAgentTurn> {
     match request.policy {
         TurnTakingPolicy::FlywheelMainDispatch => {
             let Some(main) = roster.main_agent_id.as_deref() else {
                 return Vec::new();
             };
-            let mut planned = vec![PlannedAgentTurn {
+            vec![PlannedAgentTurn {
                 agent_id: main.to_string(),
                 role: PlannedTurnRole::Dispatcher,
-            }];
-            for participant in &roster.participants {
-                if participant.kind == super::membership::GroupParticipantKind::Agent {
-                    if let Some(id) = participant.agent_id.as_deref() {
-                        if id != main {
-                            planned.push(PlannedAgentTurn {
-                                agent_id: id.to_string(),
-                                role: PlannedTurnRole::Peer,
-                            });
-                        }
-                    }
-                }
-            }
-            planned
+            }]
         }
         TurnTakingPolicy::MentionOnly | TurnTakingPolicy::ParallelSelected => request
             .selected_agent_ids
@@ -80,7 +69,7 @@ mod tests {
     use crate::domain::group_conversation::membership::{GroupParticipantKind, GroupRoster};
 
     #[test]
-    fn flywheel_dispatch_lists_main_then_peers() {
+    fn flywheel_dispatch_lists_main_only() {
         let mut roster = GroupRoster::default();
         roster.ensure_human("You");
         roster.upsert_agent("codex", "Codex");
@@ -94,13 +83,10 @@ mod tests {
                 selected_agent_ids: vec![],
             },
         );
+        assert_eq!(planned.len(), 1);
         assert_eq!(planned[0].agent_id, "codex");
         assert_eq!(planned[0].role, PlannedTurnRole::Dispatcher);
-        assert!(
-            planned
-                .iter()
-                .any(|p| p.agent_id == "lico-agent" && p.role == PlannedTurnRole::Peer)
-        );
+        assert!(!planned.iter().any(|p| p.agent_id == "lico-agent"));
         assert!(!planned.iter().any(|p| p.agent_id == "human:local"));
         let _ = GroupParticipantKind::Human;
     }

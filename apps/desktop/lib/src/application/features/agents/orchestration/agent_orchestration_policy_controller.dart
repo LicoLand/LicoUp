@@ -42,7 +42,7 @@ mixin AgentOrchestrationPolicyController on AgentWorkspaceCoordinator {
   Set<String> get agentOrchestrationOpenCircuitAgentIds => const {};
 
   TargetCandidate? get agentOrchestrationManagerTarget {
-    final id = effectiveAgentOrchestrationPolicy.commanderAgentId;
+    final id = effectiveAgentOrchestrationPolicy.plainSendDispatchAgentId;
     for (final target in orchestrationAvailableTargets) {
       if (target.target == id) return target;
     }
@@ -53,7 +53,7 @@ mixin AgentOrchestrationPolicyController on AgentWorkspaceCoordinator {
   /// runnable. This is presentation state; dispatch continues to use
   /// [agentOrchestrationManagerTarget].
   TargetCandidate? get agentOrchestrationConfiguredManagerTarget {
-    final id = effectiveAgentOrchestrationPolicy.commanderAgentId;
+    final id = effectiveAgentOrchestrationPolicy.plainSendDispatchAgentId;
     for (final target in scannedTargets) {
       if (target.target == id) return target;
     }
@@ -61,7 +61,8 @@ mixin AgentOrchestrationPolicyController on AgentWorkspaceCoordinator {
   }
 
   List<TargetCandidate> get agentOrchestrationSubordinates {
-    final managerId = effectiveAgentOrchestrationPolicy.commanderAgentId;
+    final managerId =
+        effectiveAgentOrchestrationPolicy.plainSendDispatchAgentId;
     return orchestrationAvailableTargets
         .where((target) => target.target != managerId)
         .toList(growable: false);
@@ -181,40 +182,29 @@ mixin AgentOrchestrationPolicyController on AgentWorkspaceCoordinator {
     if (!orchestrationAvailable) return;
     try {
       final policy = effectiveAgentOrchestrationPolicy;
-      final selected = <String, String>{};
-      void put(String agentId) {
-        final id = agentId.trim();
-        if (id.isEmpty) return;
-        TargetCandidate? match;
+      String labelFor(String agentId) {
         for (final target in scannedTargets) {
-          if (target.target == id) {
-            match = target;
+          if (target.target == agentId) {
+            final label = target.label.trim();
+            if (label.isNotEmpty) return label;
             break;
           }
         }
-        selected.putIfAbsent(
-          id,
-          () =>
-              match?.label.trim().isNotEmpty == true ? match!.label.trim() : id,
-        );
+        return agentId;
       }
 
-      for (final agentId in policy.dailyConversationAgentIds) {
-        put(agentId);
-      }
-      put(policy.commanderAgentId);
-      for (final agentId in policy.codeEngineeringAgentIds) {
-        put(agentId);
-      }
       final record = await GroupConversationStore().syncRosterFromFlywheel(
         portableData: agentWorkspacePortableData,
         mainAgentId: policy.commanderAgentId,
         agents: [
-          for (final entry in selected.entries)
-            (id: entry.key, label: entry.value),
+          for (final id in policy.flywheelRosterAgentIds)
+            (id: id, label: labelFor(id)),
         ],
       );
       groupConversationRoster = record.roster;
+      groupConversationAgentSessions = Map.unmodifiable(record.agentSessions);
+      groupConversationLastLocalSessionId =
+          record.lastLocalOrchestrationSessionId;
     } catch (_) {
       // Group roster sync is best-effort and must not block policy saves.
     }

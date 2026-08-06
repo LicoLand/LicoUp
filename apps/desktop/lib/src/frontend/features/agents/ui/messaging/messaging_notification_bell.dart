@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import 'package:licoup/src/application/controller/client_controller.dart';
+import 'package:licoup/src/application/features/messaging/messaging_notification_center.dart';
 import 'package:licoup/src/application/features/models/controller/llm_gateway_lifecycle_controller.dart';
 import 'package:licoup/src/application/features/agents/policy/conversation_session_index.dart';
 import 'package:licoup/src/contracts/agent_conversation_tab_activity.dart';
@@ -16,13 +17,10 @@ import 'package:licoup/src/frontend/shared/ui/agent_brand_icon.dart';
 import 'package:licoup/src/frontend/shared/ui/apple_control_metrics.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
-/// The messaging chrome-band notification bell: a badge dot whenever any
-/// conversation agent reports tab activity (amber = needs approval, blue =
-/// work finished), and a hover card listing the active agents. Selecting an
-/// item jumps to the agents destination and opens that agent's most recent
-/// conversation. Reads all state from the shared controller — no duplicated
-/// activity bookkeeping.
-class MessagingNotificationBell extends StatelessWidget {
+/// The messaging chrome-band notification bell: a badge when tab activity,
+/// Gateway lifecycle, or operation feedback is present. New operation notices
+/// auto-open the panel, which is pinned to the window's top-right corner.
+class MessagingNotificationBell extends StatefulWidget {
   const MessagingNotificationBell({
     super.key,
     required this.controller,
@@ -37,33 +35,89 @@ class MessagingNotificationBell extends StatelessWidget {
   final VoidCallback? onCloseAuxChromePanel;
 
   @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: controller,
-      builder: (context, _) => _MessagingNotificationBellBody(
-        controller: controller,
-        onCloseAuxChromePanel: onCloseAuxChromePanel,
-      ),
-    );
-  }
+  State<MessagingNotificationBell> createState() =>
+      _MessagingNotificationBellState();
 }
 
-class _MessagingNotificationBellBody extends StatelessWidget {
-  const _MessagingNotificationBellBody({
-    required this.controller,
-    this.onCloseAuxChromePanel,
-  });
+class _MessagingNotificationBellState extends State<MessagingNotificationBell> {
+  final GlobalKey<MessagingHoverPopoverState> _popoverKey =
+      GlobalKey<MessagingHoverPopoverState>();
+  int _seenOperationRevision = 0;
+  LlmGatewayNoticeKind? _seenGatewayNotice;
 
-  final ClientController controller;
-  final VoidCallback? onCloseAuxChromePanel;
+  @override
+  void initState() {
+    super.initState();
+    _seenOperationRevision =
+        widget.controller.messagingNotificationCenter.revision;
+    _seenGatewayNotice = widget.controller.llmGatewayLifecycleController.notice;
+    widget.controller.messagingNotificationCenter.addListener(
+      _onNotificationSourcesChanged,
+    );
+    widget.controller.llmGatewayLifecycleController.addListener(
+      _onNotificationSourcesChanged,
+    );
+  }
+
+  @override
+  void didUpdateWidget(covariant MessagingNotificationBell oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller == widget.controller) return;
+    oldWidget.controller.messagingNotificationCenter.removeListener(
+      _onNotificationSourcesChanged,
+    );
+    oldWidget.controller.llmGatewayLifecycleController.removeListener(
+      _onNotificationSourcesChanged,
+    );
+    widget.controller.messagingNotificationCenter.addListener(
+      _onNotificationSourcesChanged,
+    );
+    widget.controller.llmGatewayLifecycleController.addListener(
+      _onNotificationSourcesChanged,
+    );
+  }
+
+  @override
+  void dispose() {
+    widget.controller.messagingNotificationCenter.removeListener(
+      _onNotificationSourcesChanged,
+    );
+    widget.controller.llmGatewayLifecycleController.removeListener(
+      _onNotificationSourcesChanged,
+    );
+    super.dispose();
+  }
+
+  void _onNotificationSourcesChanged() {
+    if (!mounted) return;
+    final center = widget.controller.messagingNotificationCenter;
+    final gatewayNotice =
+        widget.controller.llmGatewayLifecycleController.notice;
+    final operationArrived = center.revision > _seenOperationRevision;
+    final gatewayArrived =
+        gatewayNotice != null && gatewayNotice != _seenGatewayNotice;
+    if (operationArrived) {
+      _seenOperationRevision = center.revision;
+    }
+    if (gatewayArrived) {
+      _seenGatewayNotice = gatewayNotice;
+    }
+    if (operationArrived || gatewayArrived) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _popoverKey.currentState?.openPinned();
+      });
+    }
+    setState(() {});
+  }
 
   List<(TargetCandidate, AgentConversationTabActivity)> _activeAgents() {
     return [
-      for (final target in controller.scannedTargets)
+      for (final target in widget.controller.scannedTargets)
         if (target.isConversationAgent &&
-            controller.conversationTabActivityFor(target.id) !=
+            widget.controller.conversationTabActivityFor(target.id) !=
                 AgentConversationTabActivity.none)
-          (target, controller.conversationTabActivityFor(target.id)),
+          (target, widget.controller.conversationTabActivityFor(target.id)),
     ];
   }
 
@@ -72,16 +126,16 @@ class _MessagingNotificationBellBody extends StatelessWidget {
     VoidCallback closePopover,
   ) async {
     closePopover();
-    controller.selectSection(ClientSection.agents);
-    onCloseAuxChromePanel?.call();
+    widget.controller.selectSection(ClientSection.agents);
+    widget.onCloseAuxChromePanel?.call();
     final sessions = sortConversationSessionsByUpdatedAt(
-      controller.conversationSessionsByAgent[agent.id] ??
-          controller.conversationSessionsByAgent[agent.target] ??
+      widget.controller.conversationSessionsByAgent[agent.id] ??
+          widget.controller.conversationSessionsByAgent[agent.target] ??
           const [],
     );
-    await controller.selectConversationAgent(agent.id);
+    await widget.controller.selectConversationAgent(agent.id);
     if (sessions.isNotEmpty) {
-      controller.selectConversationSession(sessions.first.id);
+      widget.controller.selectConversationSession(sessions.first.id);
     }
   }
 
@@ -90,26 +144,36 @@ class _MessagingNotificationBellBody extends StatelessWidget {
     final colors = context.licoColors;
     final strings = LicoStrings.of(context);
     final active = _activeAgents();
-    final gatewayNotice = controller.llmGatewayLifecycleController.notice;
+    final gatewayNotice =
+        widget.controller.llmGatewayLifecycleController.notice;
+    final operationNotices =
+        widget.controller.messagingNotificationCenter.items;
     final badgeColor =
         gatewayNotice != null ||
+            widget.controller.messagingNotificationCenter.hasWarningOrFailure ||
             active.any(
               (entry) => entry.$2 == AgentConversationTabActivity.needsApproval,
             )
         ? colors.warning
-        : active.isNotEmpty
+        : active.isNotEmpty || operationNotices.isNotEmpty
         ? colors.accent
         : null;
     final menuRadius = BorderRadius.circular(
       AppleControlMetrics.menuCornerRadius,
     );
     return MessagingHoverPopover(
+      key: _popoverKey,
       popoverKey: const Key('messaging-notification-bell-panel'),
       width: 300,
       maxHeight: 360,
       borderRadius: menuRadius,
+      anchorToWindowTopRight: true,
+      windowTopInset: MessagingDesktopMetrics.topBandExtent + 4,
+      windowEdgeInset: 10,
       cardBuilder: (context, close) {
-        return active.isEmpty && gatewayNotice == null
+        return active.isEmpty &&
+                gatewayNotice == null &&
+                operationNotices.isEmpty
             ? Padding(
                 key: const Key('messaging-notification-empty'),
                 padding: const EdgeInsets.symmetric(
@@ -129,7 +193,19 @@ class _MessagingNotificationBellBody extends StatelessWidget {
                   children: [
                     if (gatewayNotice != null)
                       LlmGatewayNotificationRow(
-                        controller: controller.llmGatewayLifecycleController,
+                        controller:
+                            widget.controller.llmGatewayLifecycleController,
+                      ),
+                    for (final notice in operationNotices)
+                      _MessagingOperationNotificationRow(
+                        key: ValueKey<String>(
+                          'messaging-operation-notification-${notice.id}',
+                        ),
+                        item: notice,
+                        onDismiss: () => widget
+                            .controller
+                            .messagingNotificationCenter
+                            .dismiss(notice.id),
                       ),
                     for (final (agent, activity) in active)
                       _MessagingNotificationRow(
@@ -190,6 +266,78 @@ class _MessagingNotificationBellBody extends StatelessWidget {
               ),
             );
           },
+    );
+  }
+}
+
+/// Operation-feedback row for the chrome notification center.
+final class _MessagingOperationNotificationRow extends StatelessWidget {
+  const _MessagingOperationNotificationRow({
+    super.key,
+    required this.item,
+    required this.onDismiss,
+  });
+
+  final MessagingNotificationItem item;
+  final VoidCallback onDismiss;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.licoColors;
+    final chinese = Localizations.localeOf(context).languageCode == 'zh';
+    final message = item.messageForLocale(chinese: chinese);
+    final iconColor = switch (item.tone) {
+      MessagingNotificationTone.failure ||
+      MessagingNotificationTone.warning => colors.warning,
+      MessagingNotificationTone.success => colors.accent,
+      MessagingNotificationTone.info => colors.textMuted,
+    };
+    final icon = switch (item.tone) {
+      MessagingNotificationTone.failure ||
+      MessagingNotificationTone.warning => Icons.warning_amber_rounded,
+      MessagingNotificationTone.success => Icons.check_circle_outline_rounded,
+      MessagingNotificationTone.info => Icons.info_outline_rounded,
+    };
+    return Semantics(
+      liveRegion: true,
+      label: message,
+      child: Padding(
+        key: Key('messaging-operation-notification-item-${item.id}'),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(icon, size: 20, color: iconColor),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                message,
+                maxLines: 4,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: colors.text,
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            const SizedBox(width: 4),
+            IconButton(
+              key: Key('messaging-operation-notification-dismiss-${item.id}'),
+              tooltip: chinese ? '关闭' : 'Dismiss',
+              onPressed: onDismiss,
+              visualDensity: VisualDensity.compact,
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints.tightFor(width: 28, height: 28),
+              icon: Icon(
+                Icons.close_rounded,
+                size: 16,
+                color: colors.textMuted,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

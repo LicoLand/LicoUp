@@ -156,10 +156,20 @@ fn project_model(model: &Value) -> Option<Value> {
         .filter(|effort| !effort.is_empty() && effort.len() <= 32)
         .map(Value::from)
         .collect::<Vec<_>>();
+    let default_reasoning_effort = model
+        .get("defaultReasoningEffort")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|effort| !effort.is_empty() && effort.len() <= 32)
+        .map(|effort| Value::String(effort.to_owned()))
+        .unwrap_or(Value::Null);
     let mut projected = Map::new();
     projected.insert("name".into(), Value::String(name.to_owned()));
     projected.insert("displayName".into(), Value::String(display_name.to_owned()));
     projected.insert("reasoningEfforts".into(), Value::Array(efforts));
+    if !default_reasoning_effort.is_null() {
+        projected.insert("defaultReasoningEffort".into(), default_reasoning_effort);
+    }
     projected.insert(
         "isDefault".into(),
         Value::Bool(model.get("isDefault").and_then(Value::as_bool) == Some(true)),
@@ -176,7 +186,8 @@ mod tests {
         let result = project_model_list_response(&json!({
             "data": [
                 {"model":"first","displayName":"Same","hidden":false,"isDefault":true,
-                 "supportedReasoningEfforts":[{"reasoningEffort":"low"}]},
+                 "defaultReasoningEffort":"medium",
+                 "supportedReasoningEfforts":[{"reasoningEffort":"low"},{"reasoningEffort":"medium"}]},
                 {"model":"second","displayName":"Same","hidden":false,"isDefault":false,
                  "supportedReasoningEfforts":[{"reasoningEffort":"high"}]},
                 {"model":"hidden","displayName":"Hidden","hidden":true}
@@ -186,6 +197,8 @@ mod tests {
         assert_eq!(result["defaultModel"], "first");
         assert_eq!(result["models"].as_array().unwrap().len(), 2);
         assert_eq!(result["models"][0]["displayName"], "Same");
+        assert_eq!(result["models"][0]["defaultReasoningEffort"], "medium");
         assert_eq!(result["models"][1]["displayName"], "Same");
+        assert!(result["models"][1].get("defaultReasoningEffort").is_none());
     }
 }

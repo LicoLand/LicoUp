@@ -35,6 +35,7 @@ final class AgentOrchestrationMultiCapsuleSection extends StatefulWidget {
     required this.targets,
     required this.onChanged,
     this.showFast = false,
+    this.highlightFirstAsCurrentConversation = false,
     this.description = '',
   });
 
@@ -43,6 +44,9 @@ final class AgentOrchestrationMultiCapsuleSection extends StatefulWidget {
   final String keyPrefix;
   final String idPrefix;
   final bool showFast;
+
+  /// When true, the first capsule draws a Current Conversation accent border.
+  final bool highlightFirstAsCurrentConversation;
   final List<DailyConversationAgentAssignment> assignments;
   final List<TargetCandidate> targets;
   final ValueChanged<List<DailyConversationAgentAssignment>> onChanged;
@@ -428,6 +432,9 @@ final class _AgentOrchestrationMultiCapsuleSectionState
                                       keyPrefix: widget.keyPrefix,
                                       assignment: assignment,
                                       target: _targetById(assignment.agentId),
+                                      isCurrentConversation:
+                                          widget.highlightFirstAsCurrentConversation &&
+                                          index == 0,
                                       onRemove: () =>
                                           _removeAssignment(assignment.id),
                                     ),
@@ -1220,12 +1227,14 @@ final class _SelectedAgentCapsule extends StatelessWidget {
     required this.assignment,
     required this.target,
     required this.onRemove,
+    this.isCurrentConversation = false,
   });
 
   final String keyPrefix;
   final DailyConversationAgentAssignment assignment;
   final TargetCandidate? target;
   final VoidCallback onRemove;
+  final bool isCurrentConversation;
 
   @override
   Widget build(BuildContext context) {
@@ -1249,10 +1258,19 @@ final class _SelectedAgentCapsule extends StatelessWidget {
     final chipKey = assignment.id.trim().isEmpty
         ? assignment.agentId
         : assignment.id;
-    return AppleGlassSurface(
-      key: Key('$keyPrefix-chip-$chipKey'),
+    final chip = AppleGlassSurface(
+      key: Key(
+        isCurrentConversation
+            ? '$keyPrefix-chip-current-$chipKey'
+            : '$keyPrefix-chip-$chipKey',
+      ),
       borderRadius: kComposerCapsuleBorderRadius,
       fillAlpha: colors.isDark ? 18 : 10,
+      // Accent ring marks the Daily Conversation head as Current Conversation
+      // — the plain-send dispatch owner.
+      focused: isCurrentConversation,
+      focusColor: colors.accent,
+      focusedBorderWidth: isCurrentConversation ? 1.25 : null,
       child: Padding(
         padding: const EdgeInsets.fromLTRB(8, 5, 4, 5),
         child: Row(
@@ -1293,6 +1311,14 @@ final class _SelectedAgentCapsule extends StatelessWidget {
           ],
         ),
       ),
+    );
+    if (!isCurrentConversation) {
+      return chip;
+    }
+    return Tooltip(
+      message: strings.currentConversation,
+      waitDuration: const Duration(milliseconds: 400),
+      child: chip,
     );
   }
 }

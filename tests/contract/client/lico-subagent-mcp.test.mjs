@@ -12,6 +12,7 @@ const root = path.resolve(fileURLToPath(new URL("../../..", import.meta.url)));
 const read = (relative) => readFileSync(path.join(root, relative), "utf8");
 
 const source = read("crates/licoup-native/src/bin/lico-subagent-mcp.rs");
+const handoff = read("crates/licoup-native/src/domain/subagent_handoff.rs");
 const workflowLoop = read("crates/licoup-native/src/domain/agent_workflow_loop.rs");
 const providerPricing = read("crates/licoup-native/src/domain/provider_model_pricing.rs");
 const pricingSnapshot = JSON.parse(
@@ -45,6 +46,14 @@ test("subagent MCP exposes only direct subordinate operations", () => {
   );
   assert.match(source, /dispatch_lane_operation\("send"/u);
   assert.match(source, /dispatch_lane_operation\(\s*"cancel"/u);
+  assert.match(handoff, /"accepted": true/u);
+  assert.match(handoff, /HandoffState::Accepted|Self::Accepted => "accepted"/u);
+  assert.match(handoff, /SessionMode/u);
+  assert.match(source, /sessionMode/u);
+  assert.match(source, /"enum": \["new", "resume"\]/u);
+  assert.match(source, /thread::spawn/u);
+  assert.match(source, /resume_main/u);
+  assert.match(source, /ack_receipt/u);
   assert.match(source, /AgentIntelligenceCatalog::embedded\(\)/u);
   assert.match(source, /provider_model_pricing::refresh_official_sources\(\)/u);
   assert.match(source, /provider_model_pricing::quote_probe/u);
@@ -87,11 +96,10 @@ test("every target framework receives the reviewer probe contract", () => {
 test("code engineering uses one Designer and lane-specific Worker and Reviewer assignments", () => {
   assert.match(source, /"enum": \["designer", "worker", "reviewer"\]/u);
   assert.match(source, /"enum": \["backend", "frontend"\]/u);
-  assert.match(source, /"designer", WorkflowRole::Designer, None/u);
-  assert.match(source, /"backendWorker"/u);
-  assert.match(source, /"frontendWorker"/u);
-  assert.match(source, /"backendReviewer"/u);
-  assert.match(source, /"frontendReviewer"/u);
+  assert.match(source, /WorkflowRole::Designer, None/u);
+  assert.match(source, /CodeEngineeringLane::Backend/u);
+  assert.match(source, /CodeEngineeringLane::Frontend/u);
+  assert.match(source, /"frontend_backend_roles"/u);
   assert.match(source, /"codeEngineeringStrategy"/u);
   assert.match(source, /configured_code_engineering_assignment\(role, lane\)/u);
 });

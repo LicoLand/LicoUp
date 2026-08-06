@@ -10,6 +10,7 @@ const settingsSectionIdOrder = <String>[
   'catalog-convergence',
   'storage',
   'diagnostics',
+  'startup',
 ];
 
 /// One settings section's navigation identity, shared by the in-page index
@@ -41,5 +42,10 @@ List<SettingsSectionDescriptor> settingsSectionDescriptors(
     id: 'diagnostics',
     icon: Icons.bug_report_outlined,
     label: strings.diagnostics,
+  ),
+  (
+    id: 'startup',
+    icon: Icons.rocket_launch_outlined,
+    label: strings.isChinese ? '启动' : 'Startup',
   ),
 ];

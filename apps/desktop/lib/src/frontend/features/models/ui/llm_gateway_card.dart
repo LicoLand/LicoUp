@@ -272,6 +272,48 @@ final class _LlmGatewayCardState extends State<LlmGatewayCard> {
     }
   }
 
+  Future<void> _startAlone() async {
+    if (_busy) return;
+    final strings = LicoStrings.of(context);
+    setState(() {
+      _busy = true;
+      _message = null;
+    });
+    try {
+      late Map<String, dynamic> payload;
+      final lifecycle = widget.lifecycleController;
+      if (lifecycle == null) {
+        payload = await widget.agentService.runCli([
+          'llm-gateway',
+          'service',
+          'start',
+          '--port',
+          '$_servicePort',
+        ]);
+      } else {
+        await lifecycle.start();
+        payload = lifecycle.lastReport ?? const {};
+      }
+      if (!mounted) return;
+      setState(() {
+        _applyServiceStatus(payload, fallbackPort: _servicePort);
+        _messageIsError = _serviceState != _GatewayServiceState.running;
+        _message = _serviceState == _GatewayServiceState.running
+            ? strings.llmGatewayStarted
+            : strings.llmGatewayStartFailed;
+      });
+      await _loadUsage();
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _messageIsError = true;
+        _message = strings.llmGatewayStartFailed;
+      });
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   Future<void> _authorizeAndStart() async {
     if (_busy || widget.authorization.busy) return;
     final strings = LicoStrings.of(context);
@@ -403,6 +445,15 @@ final class _LlmGatewayCardState extends State<LlmGatewayCard> {
     }
   }
 
+  bool get _canStartAlone =>
+      !_busy &&
+      switch (_serviceState) {
+        _GatewayServiceState.stopped ||
+        _GatewayServiceState.unknown ||
+        _GatewayServiceState.unhealthy => true,
+        _ => false,
+      };
+
   bool get _canAuthorizeAndStart =>
       !_busy &&
       switch (_serviceState) {
@@ -439,17 +490,6 @@ final class _LlmGatewayCardState extends State<LlmGatewayCard> {
       return strings.llmGatewayKeysLoadedStartToApply;
     }
     return strings.llmGatewayKeysLoadedWaitingForService;
-  }
-
-  String _primaryActionLabel(LicoStrings strings) {
-    if (_busy || widget.authorization.busy) {
-      return widget.authorization.authorized
-          ? strings.llmGatewayStarting
-          : strings.llmGatewayAuthorizing;
-    }
-    return widget.authorization.authorized
-        ? strings.llmGatewayStart
-        : strings.llmGatewayAuthorizeAndStart;
   }
 
   String get _processText {
@@ -575,28 +615,43 @@ final class _LlmGatewayCardState extends State<LlmGatewayCard> {
           value: _processText,
         ),
         const SizedBox(height: 12),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.end,
+        Wrap(
+          alignment: WrapAlignment.end,
+          spacing: 10,
+          runSpacing: 10,
           children: [
+            FilledButton.tonalIcon(
+              key: const ValueKey('gateway-start-alone'),
+              onPressed: _canStartAlone ? () => unawaited(_startAlone()) : null,
+              icon: _busy && !widget.authorization.busy
+                  ? const SizedBox.square(
+                      dimension: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.play_arrow_rounded, size: 18),
+              label: Text(
+                _busy && !widget.authorization.busy
+                    ? strings.llmGatewayStarting
+                    : strings.llmGatewayStartAlone,
+              ),
+            ),
             FilledButton.icon(
               key: const ValueKey('gateway-authorize-and-start'),
               onPressed: _canAuthorizeAndStart
                   ? () => unawaited(_authorizeAndStart())
                   : null,
-              icon: _busy || widget.authorization.busy
+              icon: widget.authorization.busy
                   ? const SizedBox.square(
                       dimension: 16,
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
-                  : Icon(
-                      widget.authorization.authorized
-                          ? Icons.play_arrow_rounded
-                          : Icons.fingerprint,
-                      size: 18,
-                    ),
-              label: Text(_primaryActionLabel(strings)),
+                  : const Icon(Icons.fingerprint, size: 18),
+              label: Text(
+                widget.authorization.busy
+                    ? strings.llmGatewayAuthorizing
+                    : strings.llmGatewayAuthorizeAndStart,
+              ),
             ),
-            const SizedBox(width: 10),
             FilledButton.tonal(
               key: const ValueKey('gateway-service-stop'),
               style: FilledButton.styleFrom(foregroundColor: colors.error),
