@@ -88,6 +88,7 @@ test-results/
 # Agent entrypoints are retired; agent guidance lives in lico-dev skills.
 AGENTS.md
 AGENT.md
+CLAUDE.md
 
 # Client state written by migration tools or local runs must stay out of the
 # repository tree; real data roots live outside the checkout.
