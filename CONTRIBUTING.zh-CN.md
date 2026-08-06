@@ -64,15 +64,8 @@ Flutter 客户端与 Rust 原生核心共享两类接口：
   `crates/licoup-native/src/ffi/commands/` 通过 `admitted_params` 接纳参数；
   Flutter 侧在 `apps/desktop/lib/src/platform/native_client/` 发送参数。
 
-任一端改动必须在本改动内同步另一端：
-
-- 新增、重命名或删除 CLI 命令或参数时，必须同时更新对应的 Rust 命令处理器和所有
-  Flutter 调用方。Rust 侧缺少接纳会让 sidecar 拒绝请求（`cli_option_unknown`）；
-  调用方落后则会把旧参数发给已不再接受的 sidecar。这两种失败都表现为客户端流程
-  损坏，而不是编译错误。
-- 修改生成的契约类型时，必须从共享 schema 重新生成两侧输出。严禁手改生成文件。
-- 打包后的 App 自带 sidecar；不重新打包前，运行中的 App 会一直使用旧的原生二进制。
-  任何原生接口改动后都要重新打包并验证客户端。
+打包后的 App 自带 sidecar；不重新打包前，运行中的 App 会一直使用旧的原生二进制。
+任何原生接口改动后都要重新打包并验证客户端。
 
 ## 文档规则
 

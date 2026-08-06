@@ -74,18 +74,9 @@ The Flutter client and the Rust native core share two interfaces:
   `crates/licoup-native/src/ffi/commands/`; the Flutter side sends them from
   `apps/desktop/lib/src/platform/native_client/`.
 
-A change on one side must update the other side in the same change:
-
-- Adding, renaming, or removing a CLI command or option requires updating the
-  matching Rust command handler and every Flutter caller together. A missing
-  Rust admission makes the sidecar reject the request (`cli_option_unknown`);
-  a stale caller sends an option the sidecar no longer accepts. Both failures
-  surface as broken client flows, not build errors.
-- Changing a generated contract type requires regenerating both outputs from
-  the shared schema. Never hand-edit a generated file.
-- The packaged app carries its own sidecar, so a running app keeps the old
-  native binary until it is rebuilt. Rebuild and verify the client bundle
-  after any native interface change.
+The packaged app carries its own sidecar, so a running app keeps the old
+native binary until it is rebuilt. Rebuild and verify the client bundle
+after any native interface change.
 
 ## Documentation rules
 
