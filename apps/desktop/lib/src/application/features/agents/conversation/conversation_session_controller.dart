@@ -461,9 +461,67 @@ mixin AgentConversationSessionController
     abandonNewConversationDraft(selectedConversationAgentId);
     clearConversationWorkingDirectoryOverride();
     selectedConversationSessionId = sessionId;
+    if (selectedConversationIsOrchestration) {
+      final session = selectedConversationSession;
+      final mainId =
+          groupConversationRoster.mainAgentId?.trim().isNotEmpty == true
+          ? groupConversationRoster.mainAgentId!.trim()
+          : effectiveAgentOrchestrationPolicy.plainSendDispatchAgentId;
+      if (session != null && mainId.isNotEmpty) {
+        unawaited(
+          rememberGroupAgentSession(
+            agentId: mainId,
+            nativeSessionId: session.nativeSessionId,
+            sourcePath: session.sourcePath,
+            workingDirectory: session.workingDirectory,
+            localOrchestrationSessionId: session.id,
+          ),
+        );
+      } else if (sessionId.trim().isNotEmpty) {
+        unawaited(
+          rememberGroupAgentSession(
+            agentId: '',
+            localOrchestrationSessionId: sessionId,
+          ),
+        );
+      }
+    }
     agentWorkspaceNotifyConversationStructureChanged();
     agentWorkspaceNotifyStateChanged();
     conversationAttentionContextChanged();
+  }
+
+  /// Re-open the last main/subagent-bound group thread when returning to Lico.
+  Future<void> _restoreGroupConversationContinuity() async {
+    if (!selectedConversationIsOrchestration) return;
+    final owner = agentOrchestrationTargetId;
+    final sessions = conversationSessionsByAgent[owner] ?? const [];
+    final localId = groupConversationLastLocalSessionId.trim();
+    if (localId.isNotEmpty) {
+      for (final session in sessions) {
+        if (session.id.trim() != localId) continue;
+        abandonNewConversationDraft(owner);
+        clearConversationWorkingDirectoryOverride();
+        selectedConversationSessionId = localId;
+        agentWorkspaceNotifyConversationStructureChanged();
+        return;
+      }
+    }
+    final mainId =
+        groupConversationRoster.mainAgentId?.trim().isNotEmpty == true
+        ? groupConversationRoster.mainAgentId!.trim()
+        : effectiveAgentOrchestrationPolicy.plainSendDispatchAgentId;
+    final nativeId =
+        groupConversationBindingFor(mainId)?.nativeSessionId.trim() ?? '';
+    if (nativeId.isEmpty) return;
+    for (final session in sessions) {
+      if (session.nativeSessionId.trim() != nativeId) continue;
+      abandonNewConversationDraft(owner);
+      clearConversationWorkingDirectoryOverride();
+      selectedConversationSessionId = session.id;
+      agentWorkspaceNotifyConversationStructureChanged();
+      return;
+    }
   }
 
   String get selectedConversationWorkingDirectory {
@@ -708,7 +766,9 @@ mixin AgentConversationSessionController
       selectedConversationAgentId = agentOrchestrationTargetId;
       stopConversationRefreshScheduling();
       unawaited(
-        ensureGroupConversationReady().then((_) {
+        ensureGroupConversationReady().then((_) async {
+          if (agentWorkspaceDisposed) return;
+          await _restoreGroupConversationContinuity();
           if (!agentWorkspaceDisposed) {
             agentWorkspaceNotifyStateChanged();
           }

@@ -29,6 +29,7 @@ import 'package:licoup/src/application/features/agents/policy/conversation_refre
 import 'package:licoup/src/application/features/layout/layout_manager.dart';
 import 'package:licoup/src/application/features/mobile_relay/controller/mobile_home_layout_controller.dart';
 import 'package:licoup/src/application/features/mobile_relay/controller/mobile_relay_controller.dart';
+import 'package:licoup/src/application/features/messaging/messaging_notification_center.dart';
 import 'package:licoup/src/application/features/models/controller/llm_gateway_lifecycle_controller.dart';
 import 'package:licoup/src/application/features/mobile_relay/controller/secure_mesh_controller.dart';
 import 'package:licoup/src/application/features/navigation/controller/client_navigation_controller.dart';
@@ -221,6 +222,8 @@ class ClientController extends AgentOrchestrationController
       readSettings: agentWorkspaceReadSettingsState,
       monitorInterval: llmGatewayMonitorInterval,
     )..addListener(notifyClientStateChanged);
+    messagingNotificationCenter = MessagingNotificationCenter()
+      ..addListener(notifyClientStateChanged);
   }
 
   @override
@@ -250,6 +253,8 @@ class ClientController extends AgentOrchestrationController
   final RuntimePlatformBridge runtimePlatformBridge;
   @override
   late final LlmGatewayLifecycleController llmGatewayLifecycleController;
+  @override
+  late final MessagingNotificationCenter messagingNotificationCenter;
   @override
   final ConversationRefreshPolicy conversationRefreshPolicy;
   final bool? _mobileClientRuntimePlatformOverride;
@@ -357,6 +362,9 @@ class ClientController extends AgentOrchestrationController
       unawaited(stopClientRuntimeServices());
     }
     llmGatewayLifecycleController
+      ..removeListener(notifyClientStateChanged)
+      ..dispose();
+    messagingNotificationCenter
       ..removeListener(notifyClientStateChanged)
       ..dispose();
     llmVaultAuthorization.dispose();

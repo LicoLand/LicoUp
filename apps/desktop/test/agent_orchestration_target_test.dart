@@ -63,6 +63,24 @@ void main() {
     expect(synced.commanderAgentId, 'cursor');
     expect(synced.commanderModelName, 'composer-2');
     expect(synced.commanderReasoningEffort, 'high');
+    expect(policy.plainSendDispatchAgentId, 'cursor');
+    expect(policy.plainSendModelName, 'composer-2');
+    expect(policy.plainSendReasoningEffort, 'high');
+    // Stale Current Conversation must not steal plain-send from the Daily capsule.
+    expect(
+      const AgentOrchestrationPolicy(
+        dailyConversationAgents: [
+          DailyConversationAgentAssignment(
+            id: 'dc-1',
+            agentId: 'antigravity',
+            modelName: 'claude-opus-4-6-thinking',
+          ),
+        ],
+        commanderAgentId: 'cursor',
+        commanderModelName: 'composer-2',
+      ).plainSendDispatchAgentId,
+      'antigravity',
+    );
 
     const legacy = AgentOrchestrationPolicy(
       commanderAgentId: 'codex',
@@ -105,7 +123,64 @@ void main() {
   );
 
   test(
-    'normalize keeps Current Conversation when it differs from Daily primary',
+    'dailyConversationFallbackCandidatesAfterCurrent returns later unique capsules',
+    () {
+      const policy = AgentOrchestrationPolicy(
+        dailyConversationAgents: [
+          DailyConversationAgentAssignment(
+            id: 'dc-1',
+            agentId: 'antigravity',
+            modelName: 'claude-opus-4-6-thinking',
+          ),
+          DailyConversationAgentAssignment(
+            id: 'dc-2',
+            agentId: 'antigravity',
+            modelName: 'gemini-3.6-flash-high',
+          ),
+          DailyConversationAgentAssignment(
+            id: 'dc-3',
+            agentId: 'antigravity',
+            modelName: 'gemini-3.6-flash-high',
+          ),
+          DailyConversationAgentAssignment(
+            id: 'dc-4',
+            agentId: 'claude-code',
+            modelName: 'claude-opus-4-6',
+          ),
+        ],
+        commanderAgentId: 'antigravity',
+        commanderModelName: 'claude-opus-4-6-thinking',
+      );
+
+      final fallbacks = policy.dailyConversationFallbackCandidatesAfterCurrent();
+      expect(
+        fallbacks.map((capsule) => '${capsule.agentId}/${capsule.modelName}'),
+        [
+          'antigravity/gemini-3.6-flash-high',
+          'claude-code/claude-opus-4-6',
+        ],
+      );
+
+      const unmatched = AgentOrchestrationPolicy(
+        dailyConversationAgents: [
+          DailyConversationAgentAssignment(
+            id: 'dc-1',
+            agentId: 'cursor',
+            modelName: 'composer-2',
+          ),
+        ],
+        commanderAgentId: 'codex',
+        commanderModelName: 'gpt-5',
+      );
+      expect(
+        unmatched.dailyConversationFallbackCandidatesAfterCurrent(),
+        isEmpty,
+      );
+    },
+  );
+
+  test(
+    'normalize keeps Current Conversation when it matches a later Daily capsule',
     () {
       const policy = AgentOrchestrationPolicy(
         dailyConversationAgents: [
@@ -120,6 +195,7 @@ void main() {
             modelName: 'gpt-5',
           ),
         ],
+        // Fallback (or prior selection) advanced Current to Daily #2.
         commanderAgentId: 'codex',
         commanderModelName: 'gpt-5',
         commanderReasoningEffort: 'high',
@@ -130,6 +206,77 @@ void main() {
       expect(normalized.commanderAgentId, 'codex');
       expect(normalized.commanderModelName, 'gpt-5');
       expect(normalized.commanderReasoningEffort, 'high');
+    },
+  );
+
+  test(
+    'normalize syncs stale Current Conversation back to the Daily primary',
+    () {
+      const policy = AgentOrchestrationPolicy(
+        dailyConversationAgents: [
+          DailyConversationAgentAssignment(
+            id: 'dc-1',
+            agentId: 'antigravity',
+            modelName: 'claude-opus-4-6-thinking',
+            reasoningEffort: '',
+          ),
+          DailyConversationAgentAssignment(
+            id: 'dc-2',
+            agentId: 'codex',
+            modelName: 'gpt-5',
+          ),
+        ],
+        // Stale Current outside Daily Conversation must not outrank priority.
+        commanderAgentId: 'cursor',
+        commanderModelName: 'composer-2',
+        commanderReasoningEffort: 'high',
+      );
+
+      final normalized = normalizeOrchestrationPolicyForPersistence(policy);
+      expect(normalized.dailyConversationAgentIds.first, 'antigravity');
+      expect(normalized.commanderAgentId, 'antigravity');
+      expect(normalized.commanderModelName, 'claude-opus-4-6-thinking');
+      expect(normalized.commanderReasoningEffort, '');
+    },
+  );
+
+  test(
+    'flywheelRosterAgentIds unions Daily, Current, and code-engineering roles',
+    () {
+      const policy = AgentOrchestrationPolicy(
+        dailyConversationAgents: [
+          DailyConversationAgentAssignment(
+            id: 'dc-1',
+            agentId: 'antigravity',
+            modelName: 'claude-opus-4-6-thinking',
+          ),
+          DailyConversationAgentAssignment(
+            id: 'dc-2',
+            agentId: 'claude-code',
+            modelName: 'sonnet',
+          ),
+        ],
+        commanderAgentId: 'antigravity',
+        designerAgents: [
+          DailyConversationAgentAssignment(id: 'd-1', agentId: 'codex'),
+        ],
+        workerAgents: [
+          DailyConversationAgentAssignment(id: 'w-1', agentId: 'cursor'),
+        ],
+        reviewerAgents: [
+          DailyConversationAgentAssignment(id: 'r-1', agentId: 'kimi-code'),
+          // Duplicate of Daily Conversation — roster keeps first appearance.
+          DailyConversationAgentAssignment(id: 'r-2', agentId: 'claude-code'),
+        ],
+      );
+
+      expect(policy.flywheelRosterAgentIds, [
+        'antigravity',
+        'claude-code',
+        'codex',
+        'cursor',
+        'kimi-code',
+      ]);
     },
   );
 

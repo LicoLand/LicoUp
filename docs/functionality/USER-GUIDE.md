@@ -68,6 +68,14 @@ resume operation. If an adapter cannot accept input during a running turn, the
 client keeps projecting its live output and starts the next turn only after the
 agent has completed its reply.
 
+**Cursor** send always uses the Agent CLI lane (`cursor-agent`), not the in-app
+IDE Agent panel. Cursor IDE chats and CLI chats use separate stores; CLI
+`--resume` does not load IDE history. When you continue an IDE-listed Cursor
+conversation from LicoUp, the first send opens a **new** CLI session and injects
+a one-time handoff: the IDE composer id, `state.vscdb` path/key prefixes, and
+the last IDE assistant return, followed by your message. Later sends on that
+CLI session resume normally without repeating the handoff.
+
 The top contact **Lico** opens a LicoUp-owned **group Conversation** where each
 agent is a peer participant. The composer shows the workspace capsule, a
 Flywheel capsule for **Current Conversation**, and a circular edit control.
@@ -82,16 +90,20 @@ mode may only write the bound local plan file under OS sandbox. See
 
 Open **Adaptive Flywheel** to choose everyday conversation agents and configure
 code-engineering roles. **Assistant** is the configured priority list; the first
-capsule is the default dispatch owner. On the Lico group composer, the flywheel
-**Current Conversation** picker uses the same agent/model choice and becomes the
-live dispatch owner when it differs from that first capsule. Saving Adaptive
-Flywheel again re-syncs Current Conversation from the first Assistant capsule.
-Assistant starts from a circular plus control that expands into a capsule search
-field and three horizontal floating cards — agent, that agent’s models, and
-reasoning effort plus a Fast switch; confirmed combinations become capsules.
-Remove a capsule only with its trailing close control; long-press and drag to
-reorder — list order is the effective priority. **Code Engineering** uses the
-same multi-capsule picker for Designer, Worker, and Reviewer (without Fast).
+capsule is the default dispatch owner, and list order is also the automatic
+fallback chain when a Lico group Current Conversation send hits quota, credit,
+rate-limit, or provider-capacity limits. A successful fallback updates Current
+Conversation to the capsule that worked without reordering the Assistant list.
+On the Lico group composer, the flywheel **Current Conversation** picker uses
+the same agent/model choice and becomes the live dispatch owner when it differs
+from that first capsule. Saving Adaptive Flywheel again re-syncs Current
+Conversation from the first Assistant capsule. Assistant starts from a circular
+plus control that expands into a capsule search field and three horizontal
+floating cards — agent, that agent’s models, and reasoning effort plus a Fast
+switch; confirmed combinations become capsules. Remove a capsule only with its
+trailing close control; long-press and drag to reorder — list order is the
+effective priority. **Code Engineering** uses the same multi-capsule picker for
+Designer, Worker, and Reviewer (without Fast).
 Designer capsules are shared across the project; list order is priority. Worker
 and Reviewer project to backend/frontend lanes:
 the first capsule is the backend assignment, the second is frontend, and a

@@ -3,10 +3,10 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import 'package:licoup/src/application/features/agents/conversation/conversation_working_directory_fallback.dart';
-import 'package:licoup/src/application/features/agents/orchestration/orchestration_target_catalog.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
-import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_display_names.dart';
+import 'package:licoup/src/frontend/features/agents/ui/composer_agent_mention.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_conversation_overlay_glass.dart';
+import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_glass_option_card.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_hover_popover.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/layout/profiles/messaging/desktop/tokens/messaging_desktop_tokens.dart';
@@ -35,7 +35,9 @@ class ComposerCapsuleRow extends StatelessWidget {
     this.onModelChanged,
     this.reasoningEffortOptions = const [],
     this.selectedReasoningEffort = '',
+    this.defaultReasoningEffort = '',
     this.onReasoningEffortChanged,
+    this.fast = false,
     this.flywheel,
     this.licoProfileCapsule,
   });
@@ -50,7 +52,9 @@ class ComposerCapsuleRow extends StatelessWidget {
   final ValueChanged<String>? onModelChanged;
   final List<String> reasoningEffortOptions;
   final String selectedReasoningEffort;
+  final String defaultReasoningEffort;
   final ValueChanged<String>? onReasoningEffortChanged;
+  final bool fast;
   final Widget? flywheel;
   final Widget? licoProfileCapsule;
 
@@ -100,7 +104,9 @@ class ComposerCapsuleRow extends StatelessWidget {
                 onModelChanged: onModelChanged,
                 reasoningEffortOptions: reasoningEffortOptions,
                 selectedReasoningEffort: selectedReasoningEffort,
+                defaultReasoningEffort: defaultReasoningEffort,
                 onReasoningEffortChanged: onReasoningEffortChanged,
+                fast: fast,
               ),
           ],
         ),
@@ -228,6 +234,8 @@ class ComposerRuntimeCapsule extends StatelessWidget {
     required this.reasoningEffortOptions,
     required this.selectedReasoningEffort,
     required this.onReasoningEffortChanged,
+    this.defaultReasoningEffort = '',
+    this.fast = false,
   });
 
   final List<String> modelOptions;
@@ -237,7 +245,9 @@ class ComposerRuntimeCapsule extends StatelessWidget {
   final ValueChanged<String>? onModelChanged;
   final List<String> reasoningEffortOptions;
   final String selectedReasoningEffort;
+  final String defaultReasoningEffort;
   final ValueChanged<String>? onReasoningEffortChanged;
+  final bool fast;
 
   bool get _menuEnabled =>
       enabled &&
@@ -249,21 +259,39 @@ class ComposerRuntimeCapsule extends StatelessWidget {
   Widget build(BuildContext context) {
     final strings = LicoStrings.of(context);
     final effectiveDefault = _effectiveDefaultModel(modelOptions, defaultModel);
+    final resolvedModel = _activeModelName(
+      modelOptions: modelOptions,
+      selectedModel: selectedModel,
+    );
+    // Effort is model-scoped: without a concrete model, omit intensity/Fast.
+    final hasResolvedModel =
+        resolvedModel.isNotEmpty || effectiveDefault.isNotEmpty;
+    final effectiveEffortDefault = hasResolvedModel
+        ? _effectiveDefaultEffort(
+            reasoningEffortOptions,
+            defaultReasoningEffort,
+          )
+        : '';
     final activeEffort =
-        reasoningEffortOptions.contains(selectedReasoningEffort.trim())
+        hasResolvedModel &&
+            reasoningEffortOptions.contains(selectedReasoningEffort.trim())
         ? selectedReasoningEffort.trim()
         : '';
+    final effortForLabel = activeEffort.isNotEmpty
+        ? activeEffort
+        : effectiveEffortDefault;
     final capsuleLabel = composeRuntimeCapsuleLabel(
       model: _runtimeModelDisplayLabel(
         modelOptions: modelOptions,
         selectedModel: selectedModel,
-        nativeDefaultLabel: strings.nativeDefault,
+        defaultModel: effectiveDefault,
+        unavailableLabel: strings.defaultModelUnavailable,
       ),
-      // An unset effort adds nothing to the capsule; the model already reads as
-      // the agent's own default.
-      effort: activeEffort.isEmpty
+      effort: effortForLabel.isEmpty
           ? ''
-          : _runtimeEffortOptionLabel(strings, activeEffort),
+          : _runtimeEffortOptionLabel(strings, effortForLabel),
+      fast: hasResolvedModel && fast,
+      fastLabel: strings.fastModeLabel,
     );
     final tooltip = capsuleLabel.isEmpty
         ? strings.model
@@ -306,6 +334,7 @@ class ComposerRuntimeCapsule extends StatelessWidget {
                 },
           reasoningEffortOptions: reasoningEffortOptions,
           selectedReasoningEffort: selectedReasoningEffort,
+          defaultReasoningEffort: effectiveEffortDefault,
           onReasoningEffortChanged: onReasoningEffortChanged == null
               ? null
               : (value) {
@@ -423,6 +452,7 @@ class _ComposerRuntimeSelectorPanel extends StatefulWidget {
     required this.onModelChanged,
     required this.reasoningEffortOptions,
     required this.selectedReasoningEffort,
+    required this.defaultReasoningEffort,
     required this.onReasoningEffortChanged,
   });
 
@@ -433,6 +463,7 @@ class _ComposerRuntimeSelectorPanel extends StatefulWidget {
   final ValueChanged<String>? onModelChanged;
   final List<String> reasoningEffortOptions;
   final String selectedReasoningEffort;
+  final String defaultReasoningEffort;
   final ValueChanged<String>? onReasoningEffortChanged;
 
   @override
@@ -490,15 +521,30 @@ class _ComposerRuntimeSelectorPanelState
     final modelDisplay = _runtimeModelDisplayLabel(
       modelOptions: widget.modelOptions,
       selectedModel: widget.selectedModel,
-      nativeDefaultLabel: strings.nativeDefault,
+      defaultModel: widget.defaultModel,
+      unavailableLabel: strings.defaultModelUnavailable,
     );
+    final hasResolvedModel =
+        _activeModelName(
+          modelOptions: widget.modelOptions,
+          selectedModel: widget.selectedModel,
+        ).isNotEmpty ||
+        widget.defaultModel.trim().isNotEmpty;
     final activeEffort =
-        widget.reasoningEffortOptions.contains(
-          widget.selectedReasoningEffort.trim(),
-        )
+        hasResolvedModel &&
+            widget.reasoningEffortOptions.contains(
+              widget.selectedReasoningEffort.trim(),
+            )
         ? widget.selectedReasoningEffort.trim()
         : '';
-    final effortDisplay = _runtimeEffortOptionLabel(strings, activeEffort);
+    final effortForDisplay = !hasResolvedModel
+        ? ''
+        : (activeEffort.isNotEmpty
+              ? activeEffort
+              : widget.defaultReasoningEffort);
+    final effortDisplay = effortForDisplay.isEmpty
+        ? ''
+        : _runtimeEffortOptionLabel(strings, effortForDisplay);
 
     // Primary card width is fixed. Submenu is a second glass card with a gap —
     // hovering a row must not grow or reshape the primary card.
@@ -521,7 +567,7 @@ class _ComposerRuntimeSelectorPanelState
                 onEnter: () => _onSectionEnter(_RuntimeSelectorSection.model),
                 onTap: () => _onSectionTap(_RuntimeSelectorSection.model),
               ),
-            if (widget.reasoningEffortOptions.isNotEmpty)
+            if (hasResolvedModel && widget.reasoningEffortOptions.isNotEmpty)
               _RuntimeSelectorPrimaryRow(
                 key: const Key('conversation-runtime-effort-row'),
                 label: strings.reasoningEffort,
@@ -613,29 +659,29 @@ class _ComposerRuntimeSelectorPanelState
     }
     if (section == _RuntimeSelectorSection.effort &&
         widget.reasoningEffortOptions.isNotEmpty) {
-      final selected =
-          widget.reasoningEffortOptions.contains(
-            widget.selectedReasoningEffort.trim(),
-          )
-          ? widget.selectedReasoningEffort.trim()
-          : '';
+      final effectiveDefault = widget.defaultReasoningEffort;
+      final selectedMenuValue = _selectedEffortMenuValue(
+        reasoningEffortOptions: widget.reasoningEffortOptions,
+        selectedReasoningEffort: widget.selectedReasoningEffort,
+        defaultReasoningEffort: effectiveDefault,
+      );
       return _RuntimeSelectorSubmenuList(
         children: [
-          // Leading row returns the turn to the agent's own effort default.
-          _RuntimeSelectorOptionRow(
-            label: _runtimeEffortOptionLabel(strings, ''),
-            selected: selected.isEmpty,
-            onTap: widget.onReasoningEffortChanged == null
-                ? null
-                : () => widget.onReasoningEffortChanged!(''),
-          ),
           for (final option in widget.reasoningEffortOptions)
             _RuntimeSelectorOptionRow(
-              label: _runtimeEffortOptionLabel(strings, option),
-              selected: option == selected,
+              label: option == effectiveDefault
+                  ? strings.defaultValueDisplay(
+                      _runtimeEffortOptionLabel(strings, option),
+                    )
+                  : _runtimeEffortOptionLabel(strings, option),
+              selected:
+                  (option == effectiveDefault ? '' : option) ==
+                  selectedMenuValue,
               onTap: widget.onReasoningEffortChanged == null
                   ? null
-                  : () => widget.onReasoningEffortChanged!(option),
+                  : () => widget.onReasoningEffortChanged!(
+                      option == effectiveDefault ? '' : option,
+                    ),
             ),
         ],
       );
@@ -791,30 +837,24 @@ class _RuntimeSelectorOptionRow extends StatelessWidget {
   }
 }
 
-/// Orchestration / Lico group-entry capsule: current-conversation agent with
-/// hover agent list (models cascade to the right) and a circular edit
-/// affordance for Adaptive Flywheel.
+/// Orchestration / Lico group-entry capsule: shows the Current Conversation
+/// owner, hover-lists configured Adaptive Flywheel roles/agents for `@`
+/// mentions, and a circular edit affordance for the full Adaptive Flywheel.
 class ComposerFlywheelCapsule extends StatelessWidget {
   const ComposerFlywheelCapsule({
     super.key,
     required this.mainAgentLabel,
     required this.mainAgentTarget,
-    required this.agentOptions,
-    required this.selectedAgentId,
-    required this.selectedModel,
+    required this.mentionSections,
     required this.onEdit,
-    this.onSelectAgent,
-    this.onSelectModel,
+    this.onMentionAgent,
   });
 
   final String mainAgentLabel;
   final TargetCandidate? mainAgentTarget;
-  final List<TargetCandidate> agentOptions;
-  final String selectedAgentId;
-  final String selectedModel;
+  final List<ComposerFlywheelMentionSection> mentionSections;
   final VoidCallback onEdit;
-  final ValueChanged<String>? onSelectAgent;
-  final void Function(String agentId, String model)? onSelectModel;
+  final ValueChanged<ComposerFlywheelMentionEntry>? onMentionAgent;
 
   @override
   Widget build(BuildContext context) {
@@ -839,23 +879,15 @@ class ComposerFlywheelCapsule extends StatelessWidget {
           wrapInGlass: false,
           readabilityVeil: true,
           cardBuilder: (context, close) {
-            return _ComposerFlywheelSelectorPanel(
+            return _ComposerFlywheelMentionPanel(
               borderRadius: menuRadius,
               maxHeight: MessagingDesktopMetrics
                   .composerFlywheelSelectorPopoverMaxHeight,
-              agentOptions: agentOptions,
-              selectedAgentId: selectedAgentId,
-              selectedModel: selectedModel,
-              onSelectAgent: onSelectAgent == null
+              sections: mentionSections,
+              onMentionAgent: onMentionAgent == null
                   ? null
-                  : (agentId) {
-                      onSelectAgent!(agentId);
-                      close();
-                    },
-              onSelectModel: onSelectModel == null
-                  ? null
-                  : (agentId, model) {
-                      onSelectModel!(agentId, model);
+                  : (entry) {
+                      onMentionAgent!(entry);
                       close();
                     },
             );
@@ -863,7 +895,7 @@ class ComposerFlywheelCapsule extends StatelessWidget {
           triggerBuilder:
               (context, {required open, required toggle, required close}) {
                 return Tooltip(
-                  message: strings.editMainAgent,
+                  message: strings.mentionConfiguredAgents,
                   waitDuration: const Duration(milliseconds: 400),
                   child: Semantics(
                     button: true,
@@ -934,7 +966,7 @@ class ComposerFlywheelCapsule extends StatelessWidget {
         ),
         const SizedBox(width: 6),
         Tooltip(
-          message: strings.editMainAgent,
+          message: strings.edit,
           waitDuration: const Duration(milliseconds: 400),
           child: AppleGlassSurface(
             borderRadius: BorderRadius.circular(999),
@@ -960,254 +992,71 @@ class ComposerFlywheelCapsule extends StatelessWidget {
   }
 }
 
-class _ComposerFlywheelSelectorPanel extends StatefulWidget {
-  const _ComposerFlywheelSelectorPanel({
+class _ComposerFlywheelMentionPanel extends StatelessWidget {
+  const _ComposerFlywheelMentionPanel({
     required this.borderRadius,
     required this.maxHeight,
-    required this.agentOptions,
-    required this.selectedAgentId,
-    required this.selectedModel,
-    required this.onSelectAgent,
-    required this.onSelectModel,
+    required this.sections,
+    required this.onMentionAgent,
   });
 
   final BorderRadius borderRadius;
   final double maxHeight;
-  final List<TargetCandidate> agentOptions;
-  final String selectedAgentId;
-  final String selectedModel;
-  final ValueChanged<String>? onSelectAgent;
-  final void Function(String agentId, String model)? onSelectModel;
+  final List<ComposerFlywheelMentionSection> sections;
+  final ValueChanged<ComposerFlywheelMentionEntry>? onMentionAgent;
 
-  @override
-  State<_ComposerFlywheelSelectorPanel> createState() =>
-      _ComposerFlywheelSelectorPanelState();
-}
-
-class _ComposerFlywheelSelectorPanelState
-    extends State<_ComposerFlywheelSelectorPanel> {
-  String? _hoveredAgentId;
-  Timer? _dismissTimer;
-
-  static const Duration _sectionDismissGrace = Duration(milliseconds: 180);
-
-  /// Agent / model row: vertical padding 8+8 and 16px leading icon.
-  static const double _agentRowExtent = 32;
-
-  /// Fixed agent-column width so the model card can sit at a known [left].
-  static const double _agentCardWidth = 220;
-
-  @override
-  void dispose() {
-    _dismissTimer?.cancel();
-    super.dispose();
-  }
-
-  void _onAgentEnter(String agentId) {
-    _dismissTimer?.cancel();
-    setState(() => _hoveredAgentId = agentId);
-  }
-
-  void _onAgentExit() {
-    _dismissTimer?.cancel();
-    _dismissTimer = Timer(_sectionDismissGrace, () {
-      if (!mounted) {
-        return;
-      }
-      setState(() => _hoveredAgentId = null);
-    });
-  }
-
-  List<String> _modelsFor(TargetCandidate target) =>
-      agentOrchestrationCommanderModels(target);
+  static const double _agentCardWidth = 240;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.licoColors;
     final strings = LicoStrings.of(context);
-    var hoveredIndex = -1;
-    TargetCandidate? hovered;
-    for (var i = 0; i < widget.agentOptions.length; i++) {
-      final target = widget.agentOptions[i];
-      if (target.target == _hoveredAgentId) {
-        hovered = target;
-        hoveredIndex = i;
-        break;
-      }
-    }
-    final hoveredModels = hovered == null
-        ? const <String>[]
-        : _modelsFor(hovered);
-    final panelMaxHeight = widget.maxHeight;
 
-    // Fixed header extent so long titles (e.g. Current Conversation) cannot
-    // wrap and break the model-card baseline math below.
-    const headerExtent = 30.0;
-    // Both cards share this header geometry, so padding the model card by
-    // [hoveredIndex] * [_agentRowExtent] puts its first option on the same
-    // baseline as the hovered agent row (no LayerLink — nested followers
-    // inside the bottom-anchored popover were mis-positioned).
-    Widget sectionHeader(String label) => SizedBox(
-      height: headerExtent,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
-        child: Text(
-          label,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-            color: colors.textMuted,
-            fontSize: 11,
-            fontWeight: FontWeight.w600,
-            height: 14 / 11,
+    Widget agentRow(ComposerFlywheelMentionEntry entry) {
+      final target = entry.target;
+      return MessagingGlassMenuItem(
+        key: Key('conversation-flywheel-mention-${entry.agentId}'),
+        dense: true,
+        label: '@${entry.displayLabel}',
+        leading: target != null
+            ? AgentBrandIcon(target: target, size: 16, iconSize: 16)
+            : Icon(
+                Icons.alternate_email_rounded,
+                size: 16,
+                color: colors.textMuted,
+              ),
+        onTap: onMentionAgent == null ? null : () => onMentionAgent!(entry),
+      );
+    }
+
+    final rows = <Widget>[
+      MessagingGlassMenuSectionHeader(label: strings.mentionConfiguredAgents),
+      if (sections.isEmpty)
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+          child: Text(
+            strings.mentionConfiguredAgentsEmpty,
+            style: TextStyle(color: colors.textMuted, fontSize: 12),
           ),
+        )
+      else
+        for (final section in sections) ...[
+          MessagingGlassMenuSectionHeader(label: section.title),
+          for (final entry in section.entries) agentRow(entry),
+        ],
+    ];
+
+    return MessagingGlassOptionCard(
+      borderRadius: borderRadius,
+      width: _agentCardWidth,
+      constraints: BoxConstraints(maxHeight: maxHeight),
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: rows,
         ),
       ),
-    );
-
-    Widget glassCard({
-      required double width,
-      required Widget header,
-      required List<Widget> rows,
-    }) {
-      return MessagingConversationOverlayGlass(
-        borderRadius: widget.borderRadius,
-        readabilityVeil: true,
-        child: SizedBox(
-          width: width,
-          child: ConstrainedBox(
-            constraints: BoxConstraints(maxHeight: panelMaxHeight),
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  header,
-                  ...rows,
-                  const SizedBox(height: 6),
-                ],
-              ),
-            ),
-          ),
-        ),
-      );
-    }
-
-    Widget agentRow(TargetCandidate agent) {
-      return MouseRegion(
-        onEnter: (_) => _onAgentEnter(agent.target),
-        onExit: (_) => _onAgentExit(),
-        child: InkWell(
-          key: Key('conversation-flywheel-agent-${agent.target}'),
-          onTap: widget.onSelectAgent == null
-              ? null
-              : () => widget.onSelectAgent!(agent.target),
-          child: SizedBox(
-            height: _agentRowExtent,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 10),
-              child: Row(
-                children: [
-                  AgentBrandIcon(target: agent, size: 16, iconSize: 16),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      agentConversationTargetDisplayName(agent),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: colors.text,
-                        fontSize: 12.5,
-                        fontWeight: agent.target == widget.selectedAgentId
-                            ? FontWeight.w600
-                            : FontWeight.w500,
-                      ),
-                    ),
-                  ),
-                  if (agent.target == widget.selectedAgentId)
-                    Icon(Icons.check_rounded, size: 15, color: colors.accent)
-                  else if (_modelsFor(agent).isNotEmpty)
-                    Icon(
-                      Icons.chevron_right_rounded,
-                      size: 16,
-                      color: colors.textMuted.withAlpha(160),
-                    ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      );
-    }
-
-    Widget modelRow(TargetCandidate agent, String model) {
-      final selected =
-          agent.target == widget.selectedAgentId && model == widget.selectedModel;
-      return InkWell(
-        key: Key('conversation-flywheel-model-${agent.target}-$model'),
-        onTap: widget.onSelectModel == null
-            ? null
-            : () => widget.onSelectModel!(agent.target, model),
-        child: SizedBox(
-          height: _agentRowExtent,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    shortenComposerModelName(model),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: colors.text,
-                      fontSize: 12.5,
-                      fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
-                    ),
-                  ),
-                ),
-                if (selected)
-                  Icon(Icons.check_rounded, size: 15, color: colors.accent),
-              ],
-            ),
-          ),
-        ),
-      );
-    }
-
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        glassCard(
-          width: _agentCardWidth,
-          header: sectionHeader(strings.currentConversation),
-          rows: [for (final agent in widget.agentOptions) agentRow(agent)],
-        ),
-        if (hovered case final hoveredAgent?
-            when hoveredModels.isNotEmpty && hoveredIndex >= 0) ...[
-          SizedBox(
-            width: MessagingDesktopMetrics.composerRuntimeSelectorSubmenuGap,
-          ),
-          Padding(
-            // Equal headers ⇒ first model option aligns with agent row [i]
-            // when the model card is inset by i × row height from the top.
-            padding: EdgeInsets.only(top: hoveredIndex * _agentRowExtent),
-            child: MouseRegion(
-              onEnter: (_) => _onAgentEnter(hoveredAgent.target),
-              onExit: (_) => _onAgentExit(),
-              child: glassCard(
-                width: 200,
-                header: sectionHeader(strings.model),
-                rows: [
-                  for (final model in hoveredModels)
-                    modelRow(hoveredAgent, model),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ],
     );
   }
 }
@@ -1307,6 +1156,31 @@ String _effectiveDefaultModel(List<String> options, String defaultModel) {
   return options.contains(normalized) ? normalized : '';
 }
 
+String _effectiveDefaultEffort(List<String> options, String defaultEffort) {
+  final normalized = defaultEffort.trim();
+  if (options.contains(normalized)) return normalized;
+  return options.isEmpty ? '' : options.first;
+}
+
+String _selectedEffortMenuValue({
+  required List<String> reasoningEffortOptions,
+  required String selectedReasoningEffort,
+  required String defaultReasoningEffort,
+}) {
+  final trimmed = selectedReasoningEffort.trim();
+  if (trimmed.isNotEmpty &&
+      trimmed != defaultReasoningEffort &&
+      reasoningEffortOptions.contains(trimmed)) {
+    return trimmed;
+  }
+  if (defaultReasoningEffort.isNotEmpty) {
+    return '';
+  }
+  return trimmed.isNotEmpty && reasoningEffortOptions.contains(trimmed)
+      ? trimmed
+      : '';
+}
+
 /// The explicitly selected model, or empty when the conversation runs on the
 /// agent's own default selection (Auto).
 String _activeModelName({
@@ -1317,13 +1191,14 @@ String _activeModelName({
   return trimmed.isNotEmpty && modelOptions.contains(trimmed) ? trimmed : '';
 }
 
-/// Capsule and menu-row text for the runtime model. An empty selection reads as
-/// the agent's own default (Auto) instead of borrowing the catalog default name,
-/// so the label always matches the checked menu row.
+/// Capsule and menu-row text for the runtime model. An empty selection shows
+/// the agent's discovered catalog default (the model the turn actually runs
+/// on), not a placeholder like "Native default".
 String _runtimeModelDisplayLabel({
   required List<String> modelOptions,
   required String selectedModel,
-  required String nativeDefaultLabel,
+  required String defaultModel,
+  String unavailableLabel = '',
 }) {
   final active = _activeModelName(
     modelOptions: modelOptions,
@@ -1332,7 +1207,11 @@ String _runtimeModelDisplayLabel({
   if (active.isNotEmpty) {
     return shortenComposerModelName(active);
   }
-  return modelOptions.isEmpty ? '' : nativeDefaultLabel;
+  final effectiveDefault = _effectiveDefaultModel(modelOptions, defaultModel);
+  if (effectiveDefault.isNotEmpty) {
+    return shortenComposerModelName(effectiveDefault);
+  }
+  return modelOptions.isEmpty ? '' : unavailableLabel;
 }
 
 /// Localized display text for one reasoning-effort token, falling back to the
@@ -1363,20 +1242,30 @@ String _selectedMenuValue({
   return trimmed.isNotEmpty && modelOptions.contains(trimmed) ? trimmed : '';
 }
 
-/// Compact capsule label: short model name plus short effort when both exist.
+/// Compact runtime capsule label: `Model · Effort · Fast`
+/// (omit empty trailing parts; [effort] is already display-ready).
 String composeRuntimeCapsuleLabel({
   required String model,
-  required String effort,
+  String effort = '',
+  bool fast = false,
+  String fastLabel = 'Fast',
 }) {
   final parts = <String>[];
   final shortModel = shortenComposerModelName(model);
   if (shortModel.isNotEmpty) {
     parts.add(shortModel);
   }
-  if (effort.isNotEmpty) {
-    parts.add(formatComposerReasoningEffortLabel(effort));
+  final effortLabel = effort.trim();
+  if (effortLabel.isNotEmpty) {
+    parts.add(effortLabel);
   }
-  return parts.join(' ');
+  if (fast) {
+    final label = fastLabel.trim();
+    if (label.isNotEmpty) {
+      parts.add(label);
+    }
+  }
+  return parts.join(' · ');
 }
 
 /// Daily Conversation / Current Conversation capsule text:

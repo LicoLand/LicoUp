@@ -5,7 +5,6 @@ extension LicoStringsLabels on LicoStrings {
   // Shared interface actions and labels.
   String get clearSearch => isChinese ? '清除搜索' : 'Clear search';
   String get details => isChinese ? '详情' : 'Details';
-  String get nativeDefault => isChinese ? '原生默认值' : 'Native default';
   String defaultValueDisplay(String value) =>
       isChinese ? '$value（默认）' : '$value (default)';
   String get defaultModelUnavailable =>
@@ -918,4 +917,61 @@ extension LicoStringsLabels on LicoStrings {
       _ => value,
     };
   }
+
+  String get conversationId => isChinese ? '会话 ID' : 'Conversation ID';
+  String get conversationIdCopied =>
+      isChinese ? '会话 ID 已复制' : 'Conversation ID copied';
+  String get edit => isChinese ? '编辑' : 'Edit';
+  String get llmGatewayLaunchAtLogin =>
+      isChinese ? '开机自启动' : 'Launch at login';
+  String get llmGatewayLaunchAtLoginDisabled =>
+      isChinese ? '已关闭开机自启动。' : 'Launch at login disabled.';
+  String get llmGatewayLaunchAtLoginEnabled =>
+      isChinese ? '已开启开机自启动。' : 'Launch at login enabled.';
+  String get llmGatewayLaunchAtLoginFailed =>
+      isChinese ? '开机自启动未能更新。' : 'Launch at login could not be updated.';
+  String get llmGatewayLaunchAtLoginHint => isChinese
+      ? '登录后单独启动 Gateway（不加载 API Key；授权仍在应用内完成）'
+      : 'Start the Gateway alone after login (no API keys; authorize in the app)';
+  String get llmGatewayLaunchAtLoginUnsupported => isChinese
+      ? '当前系统不支持 Gateway 开机自启动。'
+      : 'Launch at login is not supported on this system.';
+  String get llmGatewayStartAlone => isChinese ? '单独启动' : 'Start alone';
+  String get mentionConfiguredAgents =>
+      isChinese ? '提及角色与智能体' : 'Mention roles and agents';
+  String get mentionConfiguredAgentsEmpty => isChinese
+      ? '尚未配置角色或智能体。点击编辑打开适应性飞轮。'
+      : 'No roles or agents configured yet. Edit Adaptive Flywheel to add some.';
+  String get startupAutostartHint => isChinese
+      ? '登录后自动启动桌面客户端与可选后台进程；Gateway 启动时不加载 API Key。'
+      : 'Start the desktop client and optional helpers at login. Gateway starts without API keys.';
+  String get startupAutostartLoadFailed =>
+      isChinese ? '无法读取自启动状态。' : 'Could not load auto-start status.';
+  String get startupAutostartSaveFailed =>
+      isChinese ? '自启动设置未能更新。' : 'Auto-start settings could not be updated.';
+  String get startupAutostartSaved =>
+      isChinese ? '自启动设置已保存。' : 'Auto-start settings saved.';
+  String get startupAutostartTitle =>
+      isChinese ? '开启自启动' : 'Enable auto-start';
+  String get startupAutostartUnsupported => isChinese
+      ? '当前系统不支持登录自启动。'
+      : 'Login auto-start is not supported on this system.';
+  String get startupBackgroundSection =>
+      isChinese ? '后台进程' : 'Background processes';
+  String get startupDesktopClientAutostart =>
+      isChinese ? '登录时启动桌面客户端' : 'Launch desktop client at login';
+  String get startupDesktopClientSection =>
+      isChinese ? '桌面客户端' : 'Desktop client';
+  String get startupGatewayHint => isChinese
+      ? '登录后单独启动 Gateway（不加载 API Key；授权仍在应用内完成）'
+      : 'Start the Gateway alone after login (no API keys; authorize in the app)';
+  String get startupLocalMcpHint => isChinese
+      ? '登录时校验打包的本地 MCP 二进制；不会静默安装智能体 MCP'
+      : 'Verify packaged local MCP binaries at login; never silently install agent MCP';
+  String get startupLocalMcpServices =>
+      isChinese ? '本地 MCP 服务' : 'Local MCP services';
+  String get startupSilentStart => isChinese ? '静默启动' : 'Silent start';
+  String get startupSilentStartHint => isChinese
+      ? '启动后自动最小化，不展示界面'
+      : 'Start minimized without showing the window';
 }

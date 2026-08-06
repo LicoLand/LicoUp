@@ -110,6 +110,36 @@ void main() {
     );
   });
 
+  test('quota or capacity failures match code and message markers', () {
+    expect(
+      ConversationRuntimeResultPolicy.isQuotaOrCapacityFailure({
+        'ok': false,
+        'error': {'code': 'quota_exhausted', 'message': 'done'},
+      }),
+      isTrue,
+    );
+    expect(
+      ConversationRuntimeResultPolicy.isQuotaOrCapacityFailure({
+        'ok': false,
+        'error': {
+          'code': 'provider_turn_failed',
+          'message': 'Insufficient credits for this model.',
+        },
+      }),
+      isTrue,
+    );
+    expect(
+      ConversationRuntimeResultPolicy.isQuotaOrCapacityFailure({
+        'ok': false,
+        'error': {
+          'code': 'authorization_denied',
+          'message': 'Sign in required.',
+        },
+      }),
+      isFalse,
+    );
+  });
+
   test('driver failure codes survive outside the schema enum', () {
     // Driver envelope codes (copilot_acp_*, hermes_gateway_*, …) are not part
     // of the schema-bound ClientErrorCode enum; they must still surface.

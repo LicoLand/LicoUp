@@ -25,14 +25,22 @@ replace a successful native response.
 
 ## Implemented contract
 
+Steel rule: the main agent does not probe subordinates and subordinates do not
+report directly to the main agent. The main agent only requests work from
+LicoUp. After LicoUp acknowledges the request, the main turn stops. LicoUp runs
+the subordinate, detects completion, projects peer speech into the Lico group
+mirror when applicable, and resumes the original main conversation.
+
 ```mermaid
-flowchart LR
-    U["User prompt"] --> M["Selected main agent"]
-    M -->|"lico_subagents_list"| S["LicoUp target scanner"]
-    M -->|"probe / delegate / continue / cancel"| P["Local subagent MCP"]
-    P --> L["Shared native conversation lane"]
-    L --> C["Selected subordinate agent"]
-    C -->|"local conversation file location"| M
+flowchart TD
+  U["User prompt"] --> M["Selected main agent"]
+  M -->|"lico_subagents_list"| S["LicoUp target scanner"]
+  M -->|"delegate / continue request"| P["Local subagent MCP"]
+  P -->|"accepted + dispatchId"| Stop["Main turn stops"]
+  Stop --> L["LicoUp runs subordinate lane"]
+  L --> C["Selected subordinate agent"]
+  C --> Detect["LicoUp detects thread end"]
+  Detect --> Resume["Resume original main conversation"]
 ```
 
 - `lico_subagents_list` returns scanned targets that currently expose
@@ -42,10 +50,12 @@ flowchart LR
   excludes the non-conversation editor target. Its bounded
   `codeEngineeringStrategy` projection reports the saved shared Designer and
   separate frontend/backend Worker and Reviewer assignments without exposing
-  executable paths or the raw TOML document.
-- `lico_subagent_probe` runs a disposable readiness check. Ordinary probes
-  intersect the scanned target's model catalog with LicoUp's embedded measured
-  price table and choose the cheapest available route. `exactModel` and
+  executable paths or the raw TOML document. The list is a catalog for choosing
+  whom to request; readiness remains LicoUp-owned.
+- `lico_subagent_probe` is a LicoUp-owned disposable readiness check. Main
+  agents must not use it to drive subordinates. Ordinary probes intersect the
+  scanned target's model catalog with LicoUp's embedded measured price table
+  and choose the cheapest available route. `exactModel` and
   `exactReasoningEffort` are reserved for acceptance of that exact route.
   Persistent history created by the probe is moved to the operating-system
   Trash. Claude Code's non-persistent path instead requires a fresh scan
@@ -54,15 +64,24 @@ flowchart LR
   fresh scan must prove disappearance before the probe can pass. Transport,
   response, cleanup, and cleanup-verification failures all fail closed. The
   receipt is redacted and never exposes a disposable conversation path.
-- `lico_subagent_delegate` sends one bounded prompt through the selected
-  agent's native conversation lane and waits for that turn to finish, but
-  returns only the local `conversationPath`; it does not copy subordinate output.
-  Delegation and continuation require one lifecycle `role`: `designer`,
-  `worker`, or `reviewer`. Worker and Reviewer calls may identify the `backend`
-  or `frontend` lane; a matching saved assignment is selected first. Before
-  transport, LicoUp injects the same probe-and-cleanup acceptance contract into
-  every Reviewer prompt, regardless of the target framework or whether that
-  framework has a LicoUp skill installed.
+- `lico_subagent_delegate` accepts a LicoUp-owned handoff and returns
+  immediately with `accepted: true`, `dispatchId`, `sessionMode`, and
+  `state: accepted`. It does not wait for the subordinate turn and does not
+  copy subordinate output. The main agent chooses `sessionMode`:
+  - `new` (default): start a fresh subordinate session; `conversationPath` must
+    be omitted.
+  - `resume`: continue an exact prior subordinate conversation; requires
+    `conversationPath`.
+  LicoUp runs the subordinate in the background, records handoff state under
+  client-state, optionally projects peer bubbles in the Lico group room, then
+  resumes the original main conversation (via `mainConversationPath` or the
+  latest resolvable main session). Delegation and continuation require one
+  lifecycle `role`: `designer`, `worker`, or `reviewer`. Worker and Reviewer
+  calls may identify the `backend` or `frontend` lane; a matching saved
+  assignment is selected first. Before transport, LicoUp injects the same
+  probe-and-cleanup acceptance contract into every Reviewer prompt, regardless
+  of the target framework or whether that framework has a LicoUp skill
+  installed.
 - Delegation and continuation accept an explicit `timeoutMs` from 1 second to
   30 minutes. The process deadline remains mandatory and bounded.
 - Native approval settings are explicit per call. `allowAll` and the closed
@@ -80,11 +99,12 @@ flowchart LR
   candidates. LicoUp tries them only after quota, credit, rate-limit, or
   provider-capacity errors and keeps at most 64 bounded cooldown records.
   Continuations and every non-capacity failure fail closed without fallback.
-- `lico_subagent_continue` resumes the exact native conversation returned by a
-  previous delegation and recovers its recorded canonical working directory
-  from that conversation projection. A caller may omit `workingDirectory`;
-  an explicit value must resolve to the same directory or the continuation
-  fails closed.
+- `lico_subagent_continue` is the resume-mode alias: it requires
+  `conversationPath` and always uses `sessionMode=resume` (optional explicit
+  `sessionMode` must be `resume`). Like delegate, it returns immediately with
+  `accepted` + `dispatchId`; LicoUp owns execution and later resumes the main
+  conversation. A caller may omit `workingDirectory`; an explicit value must
+  resolve to the same directory or the continuation fails closed.
 - `lico_subagent_cancel` requests cancellation through the selected adapter's
   native control surface.
 - The MCP may infer the main agent from the MCP client name. A packaged launch

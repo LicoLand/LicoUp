@@ -18,6 +18,7 @@ class ConversationRuntimeSettingsBar extends StatelessWidget {
     required this.onModelChanged,
     required this.onReasoningEffortChanged,
     this.defaultModel = '',
+    this.defaultReasoningEffort = '',
     this.showWorkingDirectory = false,
     this.workingDirectory = '',
     this.workingDirectorySelectable = false,
@@ -32,6 +33,7 @@ class ConversationRuntimeSettingsBar extends StatelessWidget {
   final ValueChanged<String> onModelChanged;
   final ValueChanged<String> onReasoningEffortChanged;
   final String defaultModel;
+  final String defaultReasoningEffort;
   final bool showWorkingDirectory;
   final String workingDirectory;
   final bool workingDirectorySelectable;
@@ -44,6 +46,19 @@ class ConversationRuntimeSettingsBar extends StatelessWidget {
     final reasoning = reasoningEffortOptions.contains(selectedReasoningEffort)
         ? selectedReasoningEffort
         : '';
+    final effortDefault = () {
+      final configured = defaultReasoningEffort.trim();
+      if (configured.isNotEmpty &&
+          reasoningEffortOptions.contains(configured)) {
+        return configured;
+      }
+      return reasoningEffortOptions.isEmpty
+          ? ''
+          : reasoningEffortOptions.first;
+    }();
+    final effortDefaultLabel = effortDefault.isEmpty
+        ? strings.defaultModelUnavailable
+        : strings.reasoningEffortOptionLabel(effortDefault, effortDefault);
     return Wrap(
       spacing: 8,
       runSpacing: 8,
@@ -64,7 +79,7 @@ class ConversationRuntimeSettingsBar extends StatelessWidget {
             value: reasoning,
             options: reasoningEffortOptions,
             enabled: enabled,
-            defaultLabel: strings.nativeDefault,
+            defaultLabel: effortDefaultLabel,
             onChanged: onReasoningEffortChanged,
           ),
         if (showWorkingDirectory)

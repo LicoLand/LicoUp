@@ -9,6 +9,7 @@ import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_event_
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_log_event_row.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_message_blocks.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_render_adapter.dart';
+import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_details_panel.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_participant_flow.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_process_status_row.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
@@ -25,6 +26,7 @@ class AgentConversationMessageList extends StatefulWidget {
     this.messageStyle = AgentsMessageStyle.documentTranscript,
     this.processStyle = AgentsProcessStyle.processCard,
     this.participantTargets = const [],
+    this.participantConversationIds = const {},
     this.topOverlayInset = 0,
     this.bottomOverlayInset = 0,
   });
@@ -42,6 +44,9 @@ class AgentConversationMessageList extends StatefulWidget {
   /// How structured process events render between messages.
   final AgentsProcessStyle processStyle;
   final List<TargetCandidate> participantTargets;
+
+  /// Agent id → conversation id used on hover next to message timestamps.
+  final Map<String, String> participantConversationIds;
 
   /// Extra top padding when a floating header overlays the transcript.
   final double topOverlayInset;
@@ -283,6 +288,10 @@ class AgentConversationMessageListState
       builder: (context, snapshot) {
         final adapter = snapshot.data ?? AgentRenderAdapter.fallback();
         if (widget.messageStyle == AgentsMessageStyle.participantFlow) {
+          final session = widget.session;
+          final primaryConversationId = session == null
+              ? ''
+              : messagingDetailsConversationId(session);
           return MessagingParticipantFlow(
             items: _timelineItems,
             adapter: adapter,
@@ -290,6 +299,8 @@ class AgentConversationMessageListState
             activeProcessStorageKey: _activeProcessStorageKey,
             sessionKey: _timelineSessionKey,
             participantTargets: widget.participantTargets,
+            participantConversationIds: widget.participantConversationIds,
+            primaryConversationId: primaryConversationId,
             preferPeerAgents: isAgentOrchestrationTargetId(
               widget.target.target,
             ),

@@ -19,52 +19,38 @@ Worker-to-Reviewer 执行拓扑。两条路径都只把本机对话文件位置�
 
 ## 已实现契约
 
+钢铁规则：主智能体不负责探测子智能体，子智能体也不直接反馈主智能体。主智能体只向
+LicoUp 发出诉求；LicoUp 确认收到后主线程立即停止；由 LicoUp 转接子智能体、检测完成、
+在群聊中投影 peer 气泡，并回调原先主智能体对话线程。
+
 ```mermaid
-flowchart LR
-    U["用户提示词"] --> M["已选主智能体"]
-    M -->|"lico_subagents_list"| S["LicoUp 目标扫描器"]
-    M -->|"探针 / 委派 / 续接 / 取消"| P["本地下属 MCP"]
-    P --> L["共享原生对话通道"]
-    L --> C["指定下属智能体"]
-    C -->|"本机对话文件位置"| M
+flowchart TD
+  U["用户提示词"] --> M["已选主智能体"]
+  M -->|"lico_subagents_list"| S["LicoUp 目标扫描器"]
+  M -->|"委派 / 续接请求"| P["本地下属 MCP"]
+  P -->|"accepted + dispatchId"| Stop["主线程停止"]
+  Stop --> L["LicoUp 运行下属通道"]
+  L --> C["指定下属智能体"]
+  C --> Detect["LicoUp 检测线程结束"]
+  Detect --> Resume["回调原主对话线程"]
 ```
 
-- `lico_subagents_list` 返回当前支持 `runtime.message.send` 的扫描目标。主智能体
-  框架可通过 `sameFramework: true` 出现；选择它会新建一个独立下属对话，绝不会
-  续接已经挂起的主对话。MCP 仍排除非对话编辑器目标。其有界的
-  `codeEngineeringStrategy` 投影会返回已保存的共享 Designer，以及前后端各自的
-  Worker 和 Reviewer 分配，但不会暴露可执行文件地址或原始 TOML 文档。
-- `lico_subagent_probe` 执行一次性就绪探测。普通探针会把扫描得到的目标模型清单
-  与 LicoUp 内嵌的实测价格表求交集，并选择当前可用的最低成本路由；只有验收该条
-  精确路由本身时，才应设置 `exactModel` 和 `exactReasoningEffort`。探针创建的持久化
-  历史都会移入操作系统废纸篓。Claude Code 的非持久化路径必须复扫并证明未创建
-  历史；Cursor 和 Antigravity 使用精确原生会话清理，把各自的单会话存储叶移入
-  废纸篓。所有路径都必须再次扫描并确认记录消失后才算通过。
-  传输、响应、清理或清理复核任一步失败都会关闭失败；回执经过脱敏，不会暴露
-  一次性对话地址。
-- `lico_subagent_delegate` 通过指定智能体的原生对话通道发送一条有界提示词，
-  等待该轮结束，但只返回本机 `conversationPath`，不复制下属输出。委派和续接都必须
-  携带 `designer`、`worker` 或 `reviewer` 生命周期 `role`。Worker 和 Reviewer 可指定
-  `backend` 或 `frontend` 工作线；存在匹配的已保存分配时会优先使用。LicoUp 会在
-  传输前向所有 Reviewer 提示词注入同一份探针与清理验收约束，不依赖目标框架类型
-  或该框架是否安装 LicoUp 技能。
-- 委派和续接可显式设置 1 秒至 30 分钟的 `timeoutMs`；进程期限始终强制且有界。
-- 原生许可设置按调用显式传递。只有在用户已授权当前工作且已绑定准确规范化工作目录
-  时，才可使用 `allowAll` 或封闭白名单中的 `permissionMode`；它们会批准智能体工具，
-  但不会额外建立操作系统沙箱。对 ACP 智能体，显式 `allowAll: true` 只能选择请求中
-  提供的一次性允许选项；持久授权、缺少允许选项或隐式授权仍会失败关闭。
-- 高体量原生工具事件可显式设置 stdout/stderr 预算，上限分别为 64 MiB 和 4 MiB；
-  这些字节仍留在原生传输内，MCP 只返回对话交接地址。可恢复的超时或事件预算错误
-  也可携带该地址，以便续接准确的部分完成会话。
-- 新委派最多可提供 8 个事先审核、同能力档位的回退候选。LicoUp 只会在额度、
-  余额、限流或供应商容量错误后尝试它们，并最多保存 64 条有界冷却记录；续接和
-  所有非容量故障都会关闭失败，不触发回退。
-- `lico_subagent_continue` 使用上一次委派返回的准确原生会话继续对话，并从该对话投影
-  恢复已记录的规范工作目录。调用方可以省略 `workingDirectory`；若显式提供，则必须
-  解析为同一目录，否则续接会失败关闭。
+- `lico_subagents_list` 返回当前支持 `runtime.message.send` 的扫描目标，供主智能体选择
+  诉求对象；就绪探测仍由 LicoUp 拥有。主智能体框架可通过 `sameFramework: true` 出现；
+  选择它会新建独立下属对话，绝不会续接已挂起的主对话。
+- `lico_subagent_probe` 是 LicoUp 拥有的一次性就绪探测；主智能体不得用它驱动下属。
+- `lico_subagent_delegate` 接受 LicoUp 拥有的 handoff，并立即返回 `accepted: true`、
+  `dispatchId`、`sessionMode` 与 `state: accepted`。主智能体用 `sessionMode` 选择：
+  `new`（默认，新建下属会话，不得带 `conversationPath`）或 `resume`（续接，必须带
+  `conversationPath`）。`lico_subagent_continue` 是 resume 别名。不等待下属完成，
+  也不复制下属输出。LicoUp 在后台运行下属、写入 handoff 状态、在 Lico 群线程投影
+  peer 气泡，再通过 `mainConversationPath` 或可解析的主会话回调原主对话。
+- 委派与续接仍要求生命周期 `role`（`designer` / `worker` / `reviewer`），并可指定
+  `backend` / `frontend` 工作线；Reviewer 提示词仍注入探针与清理验收约束。
 - `lico_subagent_cancel` 通过指定适配器的原生控制面请求取消。
 - MCP 可从客户端名称推断主智能体；需要显式绑定时，打包启动配置可设置
-  `LICOUP_MAIN_AGENT_ID`。
+  `LICOUP_MAIN_AGENT_ID`。Codex 与 Antigravity 可通过 digest 确认安装 Subagent MCP；
+  Antigravity 写入 `~/.gemini/config/mcp_config.json`（与 Hook/ACP Bridge 分条管理）。
 
 ## 有界并发
 
@@ -81,14 +67,12 @@ flowchart LR
 | 回退候选 | 8 个 |
 | 额度冷却记录 | 64 条 |
 
-不同工具调用可以并发执行；主智能体负责保持同一原生会话的追问顺序。
+不同工具调用可以并发执行；主智能体在收到 ACK 后停止本轮，由 LicoUp 在完成后回调主线程。
 
 ## 隐私与失败语义
 
-提示词和下属输出只留在本地 MCP 会话与原生智能体通道内。委派结果只返回后续调度
-需要的本机对话文件位置；一次性探针只返回基于价格表选择的路由和已复核的清理状态。
-列表投影不会暴露可执行路径、账户数据、目标诊断或原始配置；仅返回智能体标识、
-显示名称、已审核的对话能力、有界模型选项和已配置的代码工程角色映射。队列满、
-目标不可用、续接无效或原生传输失败都会返回有类型且有界的错误。
+提示词和下属输出只留在本地会话与原生通道内。MCP 工具回执不携带下属全文；群聊 peer
+气泡由 LicoUp 读取本机 handoff / 下属会话后投影。列表投影不暴露可执行路径、账户数据
+或原始配置。队列满、目标不可用或原生传输失败都会返回有类型且有界的错误。
 
 逐智能体机制由原生驱动清单投影到[兼容性文档](../COMPATIBILITY.zh-CN.md#智能体适配目标)。

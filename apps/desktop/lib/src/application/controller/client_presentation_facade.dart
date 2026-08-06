@@ -4,6 +4,7 @@ import 'package:licoup/src/application/controller/client_conversation_facade.dar
 import 'package:licoup/src/application/controller/client_shell_controller.dart';
 import 'package:licoup/src/application/features/agents/workspace/agent_workspace_coordinator.dart';
 import 'package:licoup/src/application/features/layout/layout_manager.dart';
+import 'package:licoup/src/application/features/messaging/messaging_notification_center.dart';
 import 'package:licoup/src/application/localization/client_application_strings.dart';
 import 'package:licoup/src/contracts/appearance/appearance_preset_config.dart';
 import 'package:licoup/src/contracts/locale_preferences.dart';
@@ -149,4 +150,22 @@ mixin ClientPresentationFacade
     english,
     displayChinese: displayChinese,
   );
+
+  @override
+  void agentWorkspacePublishNotification({
+    required String id,
+    required String messageChinese,
+    required String messageEnglish,
+    MessagingNotificationTone tone = MessagingNotificationTone.info,
+    String code = '',
+  }) {
+    messagingNotificationCenter.publish(
+      id: id,
+      messageChinese: messageChinese,
+      messageEnglish: messageEnglish,
+      tone: tone,
+      code: code,
+    );
+    notifyClientStateChanged();
+  }
 }
