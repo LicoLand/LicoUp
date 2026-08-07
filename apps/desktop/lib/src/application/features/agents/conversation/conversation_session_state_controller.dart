@@ -546,6 +546,10 @@ mixin AgentConversationSessionStateController on AgentWorkspaceCoordinator {
     if (!_sessionCoversMessages(providerReadback, live)) {
       return;
     }
+    conversationTurnProcessStateByAgent = {
+      for (final entry in conversationTurnProcessStateByAgent.entries)
+        if (entry.key != agentId) entry.key: entry.value,
+    };
     liveConversationMessagesByAgent = {
       for (final entry in liveConversationMessagesByAgent.entries)
         if (entry.key != agentId) entry.key: entry.value,

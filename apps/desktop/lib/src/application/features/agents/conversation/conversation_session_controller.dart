@@ -731,6 +731,10 @@ mixin AgentConversationSessionController
     }
     conversationClearNativeSessionPending(agent.target);
     conversationPrimeNewConversationDraft();
+    conversationTurnProcessStateByAgent = {
+      for (final entry in conversationTurnProcessStateByAgent.entries)
+        if (entry.key != agent.target) entry.key: entry.value,
+    };
     liveConversationMessagesByAgent = {
       for (final entry in liveConversationMessagesByAgent.entries)
         if (entry.key != agent.target) entry.key: entry.value,

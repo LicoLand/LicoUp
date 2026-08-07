@@ -444,11 +444,7 @@ class _MessagingParticipantFlowState extends State<MessagingParticipantFlow> {
         child: SelectionContainer.disabled(
           child: AgentRuntimeUpdateCard(
             message: item.message,
-<<<<<<< Updated upstream
-            adapter: adapter,
-=======
             adapter: widget.adapter,
->>>>>>> Stashed changes
           ),
         ),
       ),
