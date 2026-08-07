@@ -30,7 +30,7 @@ pub(super) fn capability_probe(
     executable: &str,
     cwd: &Path,
     timeout_ms: u64,
-    max_stdout: usize,
+    max_stdout: Option<usize>,
     max_stderr: usize,
 ) -> Result<CapabilityProbe, ProtocolFailure> {
     probe_acp(
@@ -50,7 +50,7 @@ pub(super) fn execute(
     session_id: &str,
     cwd: Option<&Path>,
     timeout_ms: u64,
-    max_stdout: usize,
+    max_stdout: Option<usize>,
     max_stderr: usize,
 ) -> RunResult {
     execute_acp(
@@ -115,7 +115,7 @@ mod tests {
             "private-session",
             Some(Path::new("relative")),
             10,
-            1024,
+            Some(1024),
             1024,
         );
         assert!(!result.ok);

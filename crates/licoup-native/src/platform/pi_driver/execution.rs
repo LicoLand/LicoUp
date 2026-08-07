@@ -25,7 +25,7 @@ pub(in crate::platform) fn execute(
     session_id: &str,
     cwd: Option<&Path>,
     timeout_ms: u64,
-    max_stdout: usize,
+    max_stdout: Option<usize>,
     max_stderr: usize,
 ) -> RunResult {
     let started_at = timestamp();
@@ -103,7 +103,11 @@ pub(in crate::platform) fn execute(
         );
     }
 
-    let deadline = Instant::now() + Duration::from_millis(timeout_ms);
+    let deadline = if timeout_ms == 0 {
+        None
+    } else {
+        Some(Instant::now() + Duration::from_millis(timeout_ms))
+    };
     let (outcome, failure, status_code, stdout_was_truncated) = run_protocol_loop(
         &mut stdin,
         &receiver,
@@ -181,7 +185,7 @@ pub(super) fn run_protocol_loop(
     control_sender: &SyncSender<SteerRequest>,
     control_receiver: &Receiver<SteerRequest>,
     protocol: &mut PiProtocol,
-    deadline: Instant,
+    deadline: Option<Instant>,
 ) -> (
     Option<ProtocolOutcome>,
     Option<ProtocolFailure>,
@@ -240,7 +244,7 @@ pub(super) fn run_protocol_loop(
             );
         }
         let now = Instant::now();
-        if now >= deadline {
+        if deadline.is_some_and(|deadline| now >= deadline) {
             return (
                 None,
                 Some(protocol.failure_with_ids(
@@ -252,7 +256,10 @@ pub(super) fn run_protocol_loop(
                 false,
             );
         }
-        match receiver.recv_timeout((deadline - now).min(PROCESS_POLL_INTERVAL)) {
+        let wait = deadline
+            .map(|deadline| (deadline - now).min(PROCESS_POLL_INTERVAL))
+            .unwrap_or(PROCESS_POLL_INTERVAL);
+        match receiver.recv_timeout(wait) {
             Ok(TransportEvent::Message(message)) => {
                 if acknowledge_steer_response(&message, &mut pending_steers) {
                     continue;

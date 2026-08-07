@@ -94,7 +94,8 @@ mixin AgentConversationSessionController
       );
       AgentConversationSession? refreshed;
       for (final session in page.sessions) {
-        if (session.id == sessionId) {
+        if (session.id == sessionId ||
+            session.nativeSessionId.trim() == sessionId) {
           refreshed = session;
           break;
         }
@@ -142,14 +143,20 @@ mixin AgentConversationSessionController
     ConversationSessionProgressCallback? onProgress,
   }) async {
     final bind = _historyBindFor(agentId);
+    // The sidebar hands over the display id, while the native reader matches
+    // the stable native session id. Resolving against the local catalog keeps
+    // an exact-session read on the full transcript instead of falling back to
+    // the 50-message browse preview (which drops cards placed mid-conversation).
+    final resolvedSessionId =
+        _resolveNativeSessionIdForRead(agentId, sessionId) ?? sessionId;
     try {
       final streamedByIdentity = <String, AgentConversationSession>{};
       var hasMore = false;
       var nextMilestoneIndex = 0;
       await for (final session in conversationGateway.streamSessions(
         agentId: agentId,
-        sessionId: sessionId,
-        limit: pageSize + (sessionId.isEmpty ? 1 : 0),
+        sessionId: resolvedSessionId,
+        limit: pageSize + (resolvedSessionId.isEmpty ? 1 : 0),
         offset: offset,
         bind: bind,
       )) {
@@ -190,8 +197,8 @@ mixin AgentConversationSessionController
       final loaded = sortConversationSessionsByUpdatedAt(
         await conversationGateway.loadSessions(
           agentId: agentId,
-          sessionId: sessionId,
-          limit: pageSize + (sessionId.isEmpty ? 1 : 0),
+          sessionId: resolvedSessionId,
+          limit: pageSize + (resolvedSessionId.isEmpty ? 1 : 0),
           offset: offset,
           bind: bind,
         ),
@@ -539,8 +546,7 @@ mixin AgentConversationSessionController
     if (agent.hasValidVirtualMachineConnection) {
       return agent.remoteWorkingDirectory.trim();
     }
-    final agentSessions =
-        conversationSessionsByAgent[agent.target] ?? const [];
+    final agentSessions = conversationSessionsByAgent[agent.target] ?? const [];
     // Explicit user bind for the next turn wins over session provenance and
     // the shared client-owned fallback.
     final draftDirectory =
@@ -940,6 +946,26 @@ mixin AgentConversationSessionController
 
   Future<void> refreshConversationSessions(String agentId) {
     return refreshConversationCatalogInternal(agentId.trim(), foreground: true);
+  }
+
+  /// Maps a display session id to the stable native session id the native
+  /// reader matches, when the local catalog knows the mapping. Returns null
+  /// when [sessionId] is empty or the session has no native identity, so the
+  /// caller keeps using the display id (catalog browse path).
+  String? _resolveNativeSessionIdForRead(String agentId, String sessionId) {
+    if (sessionId.isEmpty) {
+      return null;
+    }
+    final sessions =
+        conversationSessionsByAgent[agentId] ??
+        const <AgentConversationSession>[];
+    for (final session in sessions) {
+      if (session.id == sessionId) {
+        final nativeId = session.nativeSessionId.trim();
+        return nativeId.isNotEmpty ? nativeId : null;
+      }
+    }
+    return null;
   }
 }
 

@@ -33,18 +33,39 @@ fn main() {
         "--output-format",
         "stream-json",
         "--verbose",
-        "--model",
-        "fake-model",
-        "--effort",
-        "high",
-        "--permission-mode",
-        "plan",
+        "--include-partial-messages",
     ];
-    if args != expected
-        || args.iter().any(|argument| {
-            argument.contains("fake-claude-private-prompt")
-                || argument.contains("fake-claude-session")
-        })
+    // A fresh-process resume passes the native conversation via --resume; the
+    // fixture strips that pair before comparing the remaining launch args.
+    let mut remaining = args.clone();
+    let mut resume_session = None;
+    if let Some(position) = remaining.iter().position(|argument| argument == "--resume") {
+        resume_session = remaining.get(position + 1).cloned();
+        remaining.drain(position..(position + 2).min(remaining.len()));
+    }
+    // Configuration switches (model, effort, permission mode, allowlist) must
+    // not reject the launch: the fixture accepts the bounded value sets the
+    // driver may legitimately pass.
+    let mut value_arguments = remaining.clone();
+    for key in ["--model", "--effort", "--permission-mode", "--allowedTools"] {
+        if let Some(position) = value_arguments.iter().position(|argument| argument == key) {
+            let value = value_arguments.get(position + 1).cloned().unwrap_or_default();
+            let allowed = if key == "--allowedTools" {
+                !value.is_empty()
+            } else {
+                ["fake-model", "fake-model-2", "high", "max", "plan"]
+                    .contains(&value.as_str())
+            };
+            if !allowed {
+                std::process::exit(2);
+            }
+            value_arguments.drain(position..(position + 2).min(value_arguments.len()));
+        }
+    }
+    if value_arguments != expected
+        || args
+            .iter()
+            .any(|argument| argument.contains("fake-claude-private-prompt"))
     {
         std::process::exit(2);
     }
@@ -56,7 +77,14 @@ fn main() {
                 .map(|value| value.to_string_lossy().into_owned())
         })
         .unwrap_or_default();
-    let session_id = if working_directory_name.contains("transport-a") {
+    let session_id = if let Some(requested) = resume_session {
+        // Unknown conversations fail closed like the real CLI.
+        if requested.contains("missing") {
+            eprintln!("Conversation {requested} not found");
+            std::process::exit(8);
+        }
+        requested
+    } else if working_directory_name.contains("transport-a") {
         "fake-claude-session-a".to_string()
     } else if working_directory_name.contains("transport-b") {
         "fake-claude-session-b".to_string()
@@ -83,6 +111,104 @@ fn main() {
         let is_cancel_turn = line.contains("fake-claude-cancel-prompt");
         let is_auth_turn = line.contains("fake-claude-auth-prompt");
         let is_steer_turn = line.contains("fake-claude-steer-prompt");
+        let is_whole_assistant_turn = line.contains("fake-claude-whole-assistant-prompt");
+        if is_whole_assistant_turn {
+            if turns == 1 {
+                send(
+                    &mut stdout,
+                    &format!(
+                        r#"{{"type":"system","subtype":"init","session_id":"{session_id}","model":"fake-model","permissionMode":"plan"}}"#
+                    ),
+                );
+            }
+            // Real CLI 2.x shape: whole assistant message with content text
+            // blocks instead of content_block_delta stream events.
+            send(
+                &mut stdout,
+                &format!(
+                    r#"{{"type":"assistant","message":{{"role":"assistant","content":[{{"type":"text","text":"First round answer"}},{{"type":"tool_use","id":"toolu_a","name":"Bash","input":{{"command":"ls"}}}}]}},"session_id":"{session_id}","uuid":"msg-{turns}"}}"#
+                ),
+            );
+            send(
+                &mut stdout,
+                &format!(
+                    r#"{{"type":"assistant","message":{{"role":"assistant","content":[{{"type":"text","text":"Final round answer"}}]}},"session_id":"{session_id}","uuid":"msg-{turns}b"}}"#
+                ),
+            );
+            send(
+                &mut stdout,
+                &format!(
+                    r#"{{"type":"result","subtype":"success","is_error":false,"result":"Final round answer","session_id":"{session_id}","uuid":"turn-{turns}","permission_denials":[]}}"#
+                ),
+            );
+            continue;
+        }
+        let is_error_execution_turn = line.contains("fake-claude-error-execution-prompt");
+        if is_error_execution_turn {
+            if turns == 1 {
+                send(
+                    &mut stdout,
+                    &format!(
+                        r#"{{"type":"system","subtype":"init","session_id":"{session_id}","model":"fake-model","permissionMode":"plan"}}"#
+                    ),
+                );
+            }
+            // Tool errors surface as error_during_execution with is_error
+            // false: the turn completed with a real reply and must not fail.
+            send(
+                &mut stdout,
+                &format!(
+                    r#"{{"type":"result","subtype":"error_during_execution","is_error":false,"result":"Reply despite a tool error","session_id":"{session_id}","uuid":"turn-{turns}","permission_denials":[]}}"#
+                ),
+            );
+            continue;
+        }
+        let is_denied_turn = line.contains("fake-claude-denied-prompt");
+        if is_denied_turn {
+            if turns == 1 {
+                send(
+                    &mut stdout,
+                    &format!(
+                        r#"{{"type":"system","subtype":"init","session_id":"{session_id}","model":"fake-model","permissionMode":"plan"}}"#
+                    ),
+                );
+            }
+            send(
+                &mut stdout,
+                &format!(
+                    r#"{{"type":"result","subtype":"success","is_error":false,"result":"The command was blocked.","session_id":"{session_id}","uuid":"turn-{turns}","permission_denials":[{{"tool_name":"Bash","tool_use_id":"toolu_denied","tool_input":{{"command":"ls /tmp"}}}}]}}"#
+                ),
+            );
+            continue;
+        }
+        let is_permission_turn = line.contains("fake-claude-permission-prompt");
+        if is_permission_turn {
+            if turns == 1 {
+                send(
+                    &mut stdout,
+                    &format!(
+                        r#"{{"type":"system","subtype":"init","session_id":"{session_id}","model":"fake-model","permissionMode":"plan"}}"#
+                    ),
+                );
+            }
+            send(
+                &mut stdout,
+                r#"{"type":"control_request","request_id":"perm-1","request":{"subtype":"permission_request","prompt":"Run Bash command","toolUse":{"id":"toolu_perm","name":"Bash","input":{}}}}"#,
+            );
+            let response = lines.next().and_then(Result::ok).unwrap_or_default();
+            if !response.contains(r#""subtype":"permission_response""#)
+                || !response.contains(r#""response":"allow""#)
+            {
+                std::process::exit(6);
+            }
+            send(
+                &mut stdout,
+                &format!(
+                    r#"{{"type":"result","subtype":"success","is_error":false,"result":"fake Claude allowed answer","session_id":"{session_id}","uuid":"turn-{turns}","permission_denials":[]}}"#
+                ),
+            );
+            continue;
+        }
         if line.contains("fake-claude-retained-pipe") {
             let mut descendant = Command::new(std::env::current_exe().unwrap());
             descendant

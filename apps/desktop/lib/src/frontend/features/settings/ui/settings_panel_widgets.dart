@@ -6,9 +6,6 @@ import 'package:licoup/src/frontend/shared/appearance/appearance_preset_config.d
 import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
-const _appearanceDaySegment = 'day';
-const _appearanceNightSegment = 'night';
-const _appearanceSystemSegment = 'system';
 const _appearanceSegmentLabelWidth = 72.0;
 const _appearanceToggleWidth = 320.0;
 
@@ -101,10 +98,14 @@ class SettingsDayNightToggleRow extends StatelessWidget {
     super.key,
     required this.selection,
     required this.onChanged,
+    this.disabledSegments = const {},
   });
 
   final AppearanceBrightnessSelection selection;
   final ValueChanged<AppearanceBrightnessSelection> onChanged;
+
+  /// Brightness choices that are not ready yet and render disabled.
+  final Set<AppearanceBrightnessSelection> disabledSegments;
 
   @override
   Widget build(BuildContext context) {
@@ -115,38 +116,48 @@ class SettingsDayNightToggleRow extends StatelessWidget {
       color: colors.text,
       fontWeight: FontWeight.w600,
     );
-    final selected = switch (selection) {
-      AppearanceBrightnessSelection.light => _appearanceDaySegment,
-      AppearanceBrightnessSelection.dark => _appearanceNightSegment,
-      AppearanceBrightnessSelection.system => _appearanceSystemSegment,
-    };
+    final segments = [
+      (
+        value: AppearanceBrightnessSelection.system,
+        label: strings.followSystem,
+      ),
+      (
+        value: AppearanceBrightnessSelection.light,
+        label: strings.appearanceDay,
+      ),
+      (
+        value: AppearanceBrightnessSelection.dark,
+        label: strings.appearanceNight,
+      ),
+    ];
+    // SegmentedButton cannot disable individual segments, so the toggle is a
+    // custom three-segment row where each segment decides its own enabled
+    // state.
     final toggle = SizedBox(
       width: _appearanceToggleWidth,
-      child: SegmentedButton<String>(
+      child: DecoratedBox(
         key: const Key('appearance-day-night-toggle'),
-        showSelectedIcon: false,
-        segments: [
-          ButtonSegment(
-            value: _appearanceSystemSegment,
-            label: _appearanceSegmentLabel(strings.followSystem),
-          ),
-          ButtonSegment(
-            value: _appearanceDaySegment,
-            label: _appearanceSegmentLabel(strings.appearanceDay),
-          ),
-          ButtonSegment(
-            value: _appearanceNightSegment,
-            label: _appearanceSegmentLabel(strings.appearanceNight),
-          ),
-        ],
-        selected: {selected},
-        onSelectionChanged: (value) {
-          onChanged(switch (value.single) {
-            _appearanceDaySegment => AppearanceBrightnessSelection.light,
-            _appearanceNightSegment => AppearanceBrightnessSelection.dark,
-            _ => AppearanceBrightnessSelection.system,
-          });
-        },
+        decoration: BoxDecoration(
+          color: colors.surfaceLow,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: colors.line),
+        ),
+        child: Row(
+          children: [
+            for (var index = 0; index < segments.length; index++) ...[
+              if (index > 0)
+                Container(width: 1, height: 20, color: colors.line),
+              Expanded(
+                child: _DayNightSegment(
+                  label: _appearanceSegmentLabel(segments[index].label),
+                  selected: selection == segments[index].value,
+                  enabled: !disabledSegments.contains(segments[index].value),
+                  onTap: () => onChanged(segments[index].value),
+                ),
+              ),
+            ],
+          ],
+        ),
       ),
     );
 
@@ -186,6 +197,54 @@ class SettingsDayNightToggleRow extends StatelessWidget {
             ],
           );
         },
+      ),
+    );
+  }
+}
+
+class _DayNightSegment extends StatelessWidget {
+  const _DayNightSegment({
+    required this.label,
+    required this.selected,
+    required this.enabled,
+    required this.onTap,
+  });
+
+  final Widget label;
+  final bool selected;
+  final bool enabled;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.licoColors;
+    final foreground = !enabled
+        ? colors.textMuted.withAlpha(110)
+        : selected
+        ? colors.primaryStrong
+        : colors.text;
+    final background = selected ? colors.surface : Colors.transparent;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: enabled ? onTap : null,
+        borderRadius: BorderRadius.circular(7),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          curve: Curves.easeOutCubic,
+          padding: const EdgeInsets.symmetric(vertical: 7),
+          decoration: BoxDecoration(
+            color: background,
+            borderRadius: BorderRadius.circular(7),
+          ),
+          child: DefaultTextStyle.merge(
+            style: TextStyle(
+              color: foreground,
+              fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+            ),
+            child: label,
+          ),
+        ),
       ),
     );
   }

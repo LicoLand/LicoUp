@@ -87,6 +87,7 @@ use session_merge::collect_history_model_names;
 #[allow(unused_imports)]
 use session_metadata::*;
 
+pub(crate) use catalog::conversation_list_from_catalog;
 pub(crate) use codex::parse_codex_rollout_sessions;
 pub(crate) use cursor_openagent::parse_sqlite_sessions;
 pub(crate) use generic::{parse_json_sessions, parse_jsonl_sessions, parse_text_session};
@@ -94,7 +95,6 @@ pub(crate) use kimi::parse_kimi_code_wire_session;
 pub(crate) use pi_copilot::{
     parse_copilot_transcript_session, parse_lico_agent_session, parse_pi_session,
 };
-pub(crate) use catalog::conversation_list_from_catalog;
 pub(crate) use query::{
     browse_catalog_applies, conversation_append, conversation_delete, conversation_list,
     conversation_stream, model_catalog,

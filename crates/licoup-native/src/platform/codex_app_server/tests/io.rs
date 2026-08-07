@@ -7,7 +7,7 @@ use std::sync::mpsc;
 fn stdout_reader_is_line_framed_and_enforces_total_limit() {
     let input = b"{\"id\":1,\"result\":{}}\n{\"method\":\"initialized\"}\n";
     let (sender, receiver) = mpsc::channel();
-    read_protocol_messages(Cursor::new(input), input.len(), sender);
+    read_protocol_messages(Cursor::new(input), Some(input.len()), sender);
     assert!(matches!(
         receiver.recv().unwrap(),
         TransportEvent::Message(_)
@@ -22,7 +22,7 @@ fn stdout_reader_is_line_framed_and_enforces_total_limit() {
     ));
 
     let (sender, receiver) = mpsc::channel();
-    read_protocol_messages(Cursor::new(input), input.len() - 1, sender);
+    read_protocol_messages(Cursor::new(input), Some(input.len() - 1), sender);
     assert!(matches!(
         receiver.recv().unwrap(),
         TransportEvent::Message(_)

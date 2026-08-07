@@ -33,7 +33,7 @@ pub(in crate::domain::conversation::history) fn plain_history_message(
         "id": native_history_message_id(adapter, path, index, block_index),
         "role": role,
         "text": text,
-        "createdAt": created_at.unwrap_or_else(native_message_timestamp),
+        "createdAt": created_at.unwrap_or_default(),
         "sourcePath": display_path(path)
     });
     crate::domain::conversation_semantic::annotate_message_layer(
@@ -121,7 +121,7 @@ pub(in crate::domain::conversation::history) fn structured_history_message(
         "id": native_history_message_id(adapter, path, index, block_index),
         "role": role,
         "text": text,
-        "createdAt": created_at.unwrap_or_else(native_message_timestamp),
+        "createdAt": created_at.unwrap_or_default(),
         "cardType": card_type,
         "cardTitle": title,
         "cardSubtitle": subtitle,
@@ -200,7 +200,7 @@ pub(in crate::domain::conversation::history) fn delegated_subagent_prompt_messag
         "id": message_id(adapter.id(), path, index),
         "role": "subagent_prompt",
         "text": title.clone(),
-        "createdAt": created_at.unwrap_or_else(native_message_timestamp),
+        "createdAt": created_at.unwrap_or_default(),
         "sourcePath": display_path(path),
         "subagentPrompt": true,
         "subagentTitle": title

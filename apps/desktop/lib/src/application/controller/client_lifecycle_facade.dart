@@ -18,6 +18,8 @@ import 'package:licoup/src/application/features/models/controller/llm_gateway_li
 import 'package:licoup/src/application/features/skill_hub/controller/skill_hub_controller.dart';
 import 'package:licoup/src/application/features/targets/controller/target_controller.dart';
 import 'package:licoup/src/contracts/appearance/appearance_preset_config.dart';
+import 'package:licoup/src/frontend/shared/appearance/appearance_preset_config.dart'
+    as appearance_ui;
 import 'package:licoup/src/contracts/llm_vault_authorization.dart';
 import 'package:licoup/src/contracts/locale_preferences.dart';
 
@@ -114,6 +116,7 @@ mixin ClientLifecycleFacade
     final dataDir = await portableData.dataDirectory();
     portableDataPath = dataDir.path;
     await hydrateConversationProjectionCache();
+    await loadConversationToolAllowlists();
     final catalog = await appearancePresetCatalogService.loadCatalog(
       portableData,
     );
@@ -124,15 +127,27 @@ mixin ClientLifecycleFacade
   Future<void> _initializeClientPreferences() async {
     final presentation = layoutManager.preferences;
     final requestedAppearancePresetId =
-        presentation?.appearancePresetId ?? AppearancePresetIds.defaultSystem;
+        presentation?.appearancePresetId ?? AppearancePresetIds.licoSoda;
+    // System-following and light themes are not ready yet, so a configured
+    // brightness that lands on them falls back to the dark theme at startup.
+    final resolvedAppearancePresetId = switch (appearance_ui
+        .appearanceBrightnessSelectionFor(
+          requestedAppearancePresetId,
+          appearancePresetConfigs,
+        )) {
+      appearance_ui.AppearanceBrightnessSelection.system ||
+      appearance_ui.AppearanceBrightnessSelection.light =>
+        AppearancePresetIds.licoSoda,
+      _ => requestedAppearancePresetId,
+    };
     if (!hasAppearancePresetConfig(
-      requestedAppearancePresetId,
+      resolvedAppearancePresetId,
       appearancePresetConfigs,
     )) {
-      appearancePresetId = AppearancePresetIds.defaultSystem;
+      appearancePresetId = AppearancePresetIds.licoSoda;
       await layoutManager.setAppearancePreset(appearancePresetId);
     } else {
-      appearancePresetId = requestedAppearancePresetId;
+      appearancePresetId = resolvedAppearancePresetId;
     }
     localePreference = LocalePreference.normalize(
       presentation?.localePreference ?? LocalePreference.system,

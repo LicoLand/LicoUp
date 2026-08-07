@@ -71,8 +71,7 @@ fn gateway_enabled_credential_ids() -> &'static Mutex<BTreeSet<String>> {
 
 fn validate_credential_id(credential_id: &str) -> Result<()> {
     ensure!(
-        uuid::Uuid::parse_str(credential_id)
-            .is_ok_and(|value| value.to_string() == credential_id),
+        uuid::Uuid::parse_str(credential_id).is_ok_and(|value| value.to_string() == credential_id),
         "llm_api_key_credential_id_invalid"
     );
     Ok(())
@@ -557,8 +556,7 @@ fn default_config(available_providers: &BTreeSet<LlmApiKeyProvider>) -> GatewayC
         .map(|provider| provider.as_str())
         .collect::<BTreeSet<_>>();
     let mut routes = Vec::new();
-    for model in
-        crate::domain::llm_gateway_default_catalog::models_for_provider_ids(&provider_ids)
+    for model in crate::domain::llm_gateway_default_catalog::models_for_provider_ids(&provider_ids)
     {
         for client_protocol in [
             ClientProtocol::OpenAiResponses,
@@ -1004,7 +1002,10 @@ mod tests {
         let config = default_config(&only_kimi);
         CompiledGateway::compile(config.clone()).unwrap();
         assert_eq!(config.providers.len(), 1);
-        assert_eq!(config.providers[0].credential_provider, LlmApiKeyProvider::Kimi);
+        assert_eq!(
+            config.providers[0].credential_provider,
+            LlmApiKeyProvider::Kimi
+        );
         assert!(
             config
                 .routes

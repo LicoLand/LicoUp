@@ -139,7 +139,11 @@ final class _LayoutProfileSelectorState extends State<LayoutProfileSelector> {
                             profiles[index],
                             committedProfile,
                           ),
-                          enabled: !committing,
+                          // The Dashboard layout is not ready yet: it stays
+                          // visible as a preview but cannot be selected.
+                          enabled:
+                              !committing &&
+                              profiles[index].id.value != 'dashboard',
                           reducedMotion: reducedMotion,
                           onPressed: () {
                             unawaited(
@@ -338,16 +342,23 @@ final class _LayoutProfileOption extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(6),
-                        child: AspectRatio(
-                          aspectRatio: 16 / 10,
-                          child: FittedBox(
-                            fit: BoxFit.cover,
-                            alignment: Alignment.topCenter,
-                            child: SizedBox(
-                              width: 320,
-                              child: RepaintBoundary(child: preview),
+                      // Side gutters keep the thumbnail from touching the
+                      // option card edge; the canvas stays full width below.
+                      Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: LicoContentSpacing.compact,
+                        ),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(6),
+                          child: AspectRatio(
+                            aspectRatio: 16 / 8,
+                            child: FittedBox(
+                              fit: BoxFit.cover,
+                              alignment: Alignment.topCenter,
+                              child: SizedBox(
+                                width: 320,
+                                child: RepaintBoundary(child: preview),
+                              ),
                             ),
                           ),
                         ),

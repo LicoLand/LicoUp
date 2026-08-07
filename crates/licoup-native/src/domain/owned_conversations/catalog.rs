@@ -63,7 +63,13 @@ impl OwnedConversationRecord {
 
     fn searchable_text(&self) -> String {
         let mut parts = Vec::new();
-        for key in ["id", "nativeSessionId", "title", "workingDirectory", "sourcePath"] {
+        for key in [
+            "id",
+            "nativeSessionId",
+            "title",
+            "workingDirectory",
+            "sourcePath",
+        ] {
             if let Some(value) = self.session.get(key).and_then(Value::as_str) {
                 if !value.is_empty() {
                     parts.push(value.to_owned());
@@ -178,10 +184,7 @@ fn load_records() -> Result<Vec<OwnedConversationRecord>> {
             session.insert("updatedAt".into(), json!(""));
             session.insert("messages".into(), json!([]));
             session.insert("messageCount".into(), json!(0));
-            session.insert(
-                "sourceKind".into(),
-                json!("lico-owned-group-conversation"),
-            );
+            session.insert("sourceKind".into(), json!("lico-owned-group-conversation"));
             session.insert("sourceClient".into(), json!("licoup"));
             session.insert("adapterId".into(), json!("lico-group"));
             session.insert(
@@ -250,7 +253,11 @@ pub fn search_owned_conversations(
         OwnedConversationMatchMode::Keyword => {
             let needle = query.to_ascii_lowercase();
             for record in records {
-                if record.searchable_text().to_ascii_lowercase().contains(&needle) {
+                if record
+                    .searchable_text()
+                    .to_ascii_lowercase()
+                    .contains(&needle)
+                {
                     hits.push(record.summary_json());
                     if hits.len() >= limit {
                         break;
@@ -259,7 +266,8 @@ pub fn search_owned_conversations(
             }
         }
         OwnedConversationMatchMode::Regex => {
-            let regex = Regex::new(query).map_err(|_| anyhow!("owned_conversation_regex_invalid"))?;
+            let regex =
+                Regex::new(query).map_err(|_| anyhow!("owned_conversation_regex_invalid"))?;
             for record in records {
                 if regex.is_match(&record.searchable_text()) {
                     hits.push(record.summary_json());
@@ -360,9 +368,7 @@ pub fn import_owned_conversations(source_path: &str, replace_existing: bool) -> 
         .get("kind")
         .and_then(Value::as_str)
         .unwrap_or_default();
-    if kind != "lico-owned-conversations-export"
-        && bundle.get("sessionsByAgent").is_none()
-    {
+    if kind != "lico-owned-conversations-export" && bundle.get("sessionsByAgent").is_none() {
         bail!("owned_conversation_import_kind_invalid");
     }
     let incoming = bundle
@@ -512,28 +518,19 @@ mod tests {
         let by_native = get_owned_conversation("native-antigravity-1").unwrap();
         assert_eq!(by_native["conversation"]["session"]["id"], "lico-local-1");
 
-        let keyword = search_owned_conversations(
-            "Claude Opus",
-            OwnedConversationMatchMode::Keyword,
-            10,
-        )
-        .unwrap();
+        let keyword =
+            search_owned_conversations("Claude Opus", OwnedConversationMatchMode::Keyword, 10)
+                .unwrap();
         assert_eq!(keyword["count"], 1);
 
-        let regex = search_owned_conversations(
-            r"模型|Opus",
-            OwnedConversationMatchMode::Regex,
-            10,
-        )
-        .unwrap();
+        let regex = search_owned_conversations(r"模型|Opus", OwnedConversationMatchMode::Regex, 10)
+            .unwrap();
         assert_eq!(regex["count"], 1);
 
         let export_path = root.join("export.json");
-        let exported = export_owned_conversations(
-            export_path.to_str().unwrap(),
-            &["lico-local-1".into()],
-        )
-        .unwrap();
+        let exported =
+            export_owned_conversations(export_path.to_str().unwrap(), &["lico-local-1".into()])
+                .unwrap();
         assert_eq!(exported["count"], 1);
 
         fs::write(
@@ -545,8 +542,7 @@ mod tests {
             .unwrap(),
         )
         .unwrap();
-        let imported =
-            import_owned_conversations(export_path.to_str().unwrap(), true).unwrap();
+        let imported = import_owned_conversations(export_path.to_str().unwrap(), true).unwrap();
         assert_eq!(imported["imported"], 1);
         let restored = get_owned_conversation("lico-local-1").unwrap();
         assert_eq!(restored["ok"], true);

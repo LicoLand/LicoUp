@@ -10,8 +10,9 @@ export 'package:licoup/src/contracts/agent_dispatch_lane.dart';
 export 'package:licoup/src/backend/features/agents/services/agent_conversation_archive_service.dart'
     show AgentConversationArchiveService;
 
-/// Matches CL-06 live parity default when `LICO_ACP_PARITY_TIMEOUT_MS` is unset.
-const _acceptanceDispatchTimeoutMs = 600000;
+/// Every dispatch opts out of a turn deadline (timeoutMs 0): the agent runs
+/// until the turn completes, however long that takes.
+const _unboundedDispatchTimeoutMs = 0;
 
 Map<String, dynamic> _acceptanceDispatchFields(AgentDispatchBind bind) {
   final acceptanceMode = bind.acceptanceMode.trim();
@@ -20,12 +21,16 @@ Map<String, dynamic> _acceptanceDispatchFields(AgentDispatchBind bind) {
   }
   return {
     'acceptanceMode': acceptanceMode,
-    'timeoutMs': _acceptanceDispatchTimeoutMs,
+    'timeoutMs': _unboundedDispatchTimeoutMs,
   };
 }
 
 Map<String, dynamic> _bindDispatchFields(AgentDispatchBind bind) {
   return <String, dynamic>{
+    if (bind.permissionMode.trim().isNotEmpty)
+      'permissionMode': bind.permissionMode.trim(),
+    if (bind.allowedTools.isNotEmpty)
+      'allowedTools': List<String>.unmodifiable(bind.allowedTools),
     if (bind.sessionPath.trim().isNotEmpty)
       'sessionPath': bind.sessionPath.trim(),
     if (bind.workingDirectory.trim().isNotEmpty)
@@ -402,6 +407,7 @@ class AgentConversationService implements AgentConversationLane {
       'agent': agentId,
       'text': text,
       'streamEvents': true,
+      'timeoutMs': _unboundedDispatchTimeoutMs,
       if (sessionId.trim().isNotEmpty) 'sessionId': sessionId.trim(),
       ..._bindDispatchFields(bind),
       ..._acceptanceDispatchFields(bind),

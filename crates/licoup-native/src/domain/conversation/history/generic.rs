@@ -43,13 +43,15 @@ pub(crate) fn parse_jsonl_sessions(
         .into_iter()
         .filter(|session| !session.messages.is_empty())
         .map(|session| {
+            let mut messages = session.messages;
+            backfill_transcript_message_times(&mut messages, path);
             let mut projection = session_from_messages(
                 adapter,
                 path,
                 metadata,
                 source_kind,
                 session.native_session_id,
-                session.messages,
+                messages,
             );
             if let (Some(object), Some(working_directory)) =
                 (projection.as_object_mut(), session.working_directory)
@@ -86,6 +88,77 @@ pub(crate) fn parse_jsonl_sessions(
             projection
         })
         .collect()
+}
+
+/// Transcript records often carry no timestamp (Cursor and Claude Code write
+/// plain role/message lines). Without a stable per-message key, delegated-task
+/// cards cannot rejoin their conversation at the real position and collapse at
+/// the end instead. The transcript directory records when the conversation
+/// started and the file when it last wrote, so missing message times are
+/// interpolated across that interval in record order: monotonic, stable across
+/// rescans, and close to the real flow.
+pub(super) fn backfill_transcript_message_times(messages: &mut [Value], path: &Path) {
+    if messages.is_empty() {
+        return;
+    }
+    let Some(start_ms) = path
+        .parent()
+        .and_then(|directory| directory.metadata().ok())
+        .and_then(|metadata| metadata.modified().ok())
+        .and_then(|time| time.duration_since(SystemTime::UNIX_EPOCH).ok())
+        .map(|duration| duration.as_millis() as i128)
+    else {
+        return;
+    };
+    let Some(end_ms) = fs::metadata(path)
+        .ok()
+        .and_then(|metadata| metadata.modified().ok())
+        .and_then(|time| time.duration_since(SystemTime::UNIX_EPOCH).ok())
+        .map(|duration| duration.as_millis() as i128)
+    else {
+        return;
+    };
+    let count = messages.len();
+    if end_ms < start_ms {
+        // The directory mtime can be later than the file's: a `subagents/`
+        // directory records when its last task file appeared, not when this
+        // task started. Degrade to the file mtime as a single anchor so the
+        // messages still carry a stable, real key instead of parse time.
+        for message in messages.iter_mut() {
+            let already_timed = message
+                .get("createdAt")
+                .and_then(Value::as_str)
+                .is_some_and(|value| !value.trim().is_empty());
+            if !already_timed && let Some(formatted) = epoch_millis_to_rfc3339(end_ms) {
+                message["createdAt"] = json!(formatted);
+            }
+        }
+        return;
+    }
+    for (index, message) in messages.iter_mut().enumerate() {
+        let already_timed = message
+            .get("createdAt")
+            .and_then(Value::as_str)
+            .is_some_and(|value| !value.trim().is_empty());
+        if already_timed {
+            continue;
+        }
+        let offset = if count > 1 {
+            (end_ms - start_ms) * index as i128 / (count.saturating_sub(1)) as i128
+        } else {
+            0
+        };
+        if let Some(formatted) = epoch_millis_to_rfc3339(start_ms + offset) {
+            message["createdAt"] = json!(formatted);
+        }
+    }
+}
+
+fn epoch_millis_to_rfc3339(millis: i128) -> Option<String> {
+    use time::{OffsetDateTime, format_description::well_known::Rfc3339};
+    OffsetDateTime::from_unix_timestamp(i64::try_from(millis / 1000).ok()?)
+        .ok()
+        .and_then(|time| time.format(&Rfc3339).ok())
 }
 
 fn push_jsonl_record(
@@ -497,4 +570,93 @@ fn is_conversation_uuid_component(value: &str) -> bool {
                 byte.is_ascii_hexdigit()
             }
         })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs::File;
+    use std::time::{Duration, SystemTime};
+
+    #[test]
+    fn missing_message_times_interpolate_across_the_transcript_interval() {
+        let directory =
+            std::env::temp_dir().join(format!("lico-transcript-times-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&directory);
+        fs::create_dir_all(&directory).unwrap();
+        let path = directory.join("conversation.jsonl");
+        fs::write(&path, "ignored\n").unwrap();
+        let start = SystemTime::UNIX_EPOCH + Duration::from_secs(1_784_000_000);
+        let end = start + Duration::from_secs(600);
+        File::create(&path).unwrap().set_modified(end).unwrap();
+        let directory_handle = File::open(&directory).unwrap();
+        directory_handle.set_modified(start).unwrap();
+        drop(directory_handle);
+
+        let session = json!({
+            "nativeSessionId": "conversation",
+            "messages": [
+                {"role": "user", "text": "Start"},
+                {"role": "agent", "text": "Working"},
+                {"role": "user", "text": "Delegate"},
+                {"role": "agent", "text": "Done"}
+            ]
+        });
+        let mut messages = session["messages"].as_array().unwrap().clone();
+        backfill_transcript_message_times(&mut messages, &path);
+        let messages = messages;
+        let keys = messages
+            .iter()
+            .map(|message| {
+                message["createdAt"]
+                    .as_str()
+                    .unwrap()
+                    .parse::<i128>()
+                    .unwrap_or_else(|_| {
+                        OffsetDateTime::parse(
+                            message["createdAt"].as_str().unwrap(),
+                            &time::format_description::well_known::Rfc3339,
+                        )
+                        .unwrap()
+                        .unix_timestamp() as i128
+                    })
+            })
+            .collect::<Vec<_>>();
+        assert!(keys.windows(2).all(|pair| pair[0] < pair[1]));
+        assert_eq!(keys[0], 1_784_000_000);
+        assert_eq!(keys[3], 1_784_000_600);
+        let _ = fs::remove_dir_all(&directory);
+    }
+
+    #[test]
+    fn messages_with_their_own_timestamps_are_left_alone() {
+        let directory =
+            std::env::temp_dir().join(format!("lico-transcript-keep-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&directory);
+        fs::create_dir_all(&directory).unwrap();
+        let path = directory.join("conversation.jsonl");
+        fs::write(&path, "ignored\n").unwrap();
+        let start = SystemTime::UNIX_EPOCH + Duration::from_secs(1_784_000_000);
+        let end = start + Duration::from_secs(600);
+        File::create(&path).unwrap().set_modified(end).unwrap();
+        File::open(&directory).unwrap().set_modified(start).unwrap();
+
+        let session = json!({
+            "nativeSessionId": "conversation",
+            "messages": [
+                {"role": "user", "text": "Keep me", "createdAt": "2026-07-20T00:00:00Z"},
+                {"role": "agent", "text": "Backfilled"}
+            ]
+        });
+        let mut messages = session["messages"].as_array().unwrap().clone();
+        backfill_transcript_message_times(&mut messages, &path);
+        assert_eq!(messages[0]["createdAt"], "2026-07-20T00:00:00Z");
+        assert!(
+            messages[1]["createdAt"]
+                .as_str()
+                .is_some_and(|v| !v.is_empty())
+        );
+        assert_ne!(messages[1]["createdAt"], "2026-07-20T00:00:00Z");
+        let _ = fs::remove_dir_all(&directory);
+    }
 }

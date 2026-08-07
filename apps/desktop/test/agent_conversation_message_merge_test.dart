@@ -52,6 +52,56 @@ void main() {
       'live-assistant',
     ]);
   });
+
+  test(
+    'multi-block assistant readback covers the live turn without duplicating',
+    () {
+      // One assistant reply with tool calls is recorded as several content
+      // blocks: two assistant text messages around a tool card.
+      final persisted = [
+        _message('native-user', 'user', 'build it'),
+        _message('native-assistant-1', 'assistant', 'I will build it.'),
+        _message('native-tool', 'tool_call', ''),
+        _message('native-assistant-2', 'assistant', 'Build complete.'),
+      ];
+      final live = [
+        _message('live-user', 'user', 'build it'),
+        _message('live-assistant', 'assistant', 'Build complete.'),
+      ];
+
+      final merged = mergeConversationReadbackAndLiveMessages(persisted, live);
+
+      expect(merged.map((message) => message.id), [
+        'native-user',
+        'native-assistant-1',
+        'native-tool',
+        'native-assistant-2',
+      ]);
+    },
+  );
+
+  test(
+    'readback that does not cover the live tail still appends it',
+    () {
+      final persisted = [
+        _message('native-user', 'user', 'old'),
+        _message('native-assistant', 'assistant', 'answer'),
+      ];
+      final live = [
+        _message('live-user', 'user', 'build it'),
+        _message('live-assistant', 'assistant', 'Build complete.'),
+      ];
+
+      final merged = mergeConversationReadbackAndLiveMessages(persisted, live);
+
+      expect(merged.map((message) => message.id), [
+        'native-user',
+        'native-assistant',
+        'live-user',
+        'live-assistant',
+      ]);
+    },
+  );
 }
 
 AgentConversationMessage _message(String id, String role, String text) =>

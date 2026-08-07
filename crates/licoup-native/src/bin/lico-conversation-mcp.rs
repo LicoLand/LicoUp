@@ -188,7 +188,10 @@ fn call_tool(shared: &ServerState, id: Value, params: Option<&Value>) {
         write_json(&shared.output, rpc_error(id, -32602));
         return;
     };
-    let arguments = object.get("arguments").cloned().unwrap_or_else(|| json!({}));
+    let arguments = object
+        .get("arguments")
+        .cloned()
+        .unwrap_or_else(|| json!({}));
     if !arguments.is_object() {
         write_json(&shared.output, rpc_error(id, -32602));
         return;
@@ -201,7 +204,9 @@ fn call_tool(shared: &ServerState, id: Value, params: Option<&Value>) {
 }
 
 fn execute_tool(name: &str, arguments: &Value) -> Result<Value, String> {
-    let object = arguments.as_object().ok_or_else(|| "invalid_arguments".to_owned())?;
+    let object = arguments
+        .as_object()
+        .ok_or_else(|| "invalid_arguments".to_owned())?;
     match name {
         "lico_conversation_list" => {
             ensure_only_keys(object, &["limit"])?;
@@ -442,11 +447,7 @@ mod tests {
     fn tool_catalog_names_are_stable() {
         let names: Vec<_> = tool_catalog()
             .into_iter()
-            .filter_map(|tool| {
-                tool.get("name")
-                    .and_then(Value::as_str)
-                    .map(str::to_owned)
-            })
+            .filter_map(|tool| tool.get("name").and_then(Value::as_str).map(str::to_owned))
             .collect();
         assert_eq!(
             names,

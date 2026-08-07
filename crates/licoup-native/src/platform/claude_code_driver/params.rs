@@ -11,6 +11,7 @@ pub(super) struct DriverConfig {
     pub(super) model: Option<String>,
     pub(super) reasoning_effort: Option<String>,
     pub(super) permission_mode: Option<String>,
+    pub(super) allowed_tools: Option<String>,
     pub(super) turn_id: String,
 }
 
@@ -56,6 +57,21 @@ impl DriverConfig {
             "never" => "dontAsk".to_string(),
             _ => value,
         });
+        let allowed_tools = params
+            .get("allowedTools")
+            .or_else(|| params.get("allowed-tools"))
+            .and_then(Value::as_array)
+            .map(|tools| {
+                tools
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .take(64)
+                    .collect::<Vec<_>>()
+                    .join(",")
+            })
+            .filter(|joined| !joined.is_empty());
         if permission_mode.as_deref().is_some_and(|value| {
             !matches!(
                 value,
@@ -80,12 +96,14 @@ impl DriverConfig {
             model: text_param(params, &["model", "modelId"]),
             reasoning_effort,
             permission_mode,
+            allowed_tools,
             turn_id: Uuid::new_v4().to_string(),
         })
     }
 
     pub(super) fn stdin_message(&self) -> io::Result<Value> {
-        // The live process owns continuity; neither prompt nor session ID is argv data.
+        // The prompt stays off argv entirely; a fresh-process resume passes
+        // only the native session identifier via --resume (LaunchIdentity).
         serde_json::to_value(json!({
             "type": "user",
             "message": {

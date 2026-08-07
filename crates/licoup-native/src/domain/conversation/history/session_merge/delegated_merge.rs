@@ -156,15 +156,30 @@ pub(super) fn insert_subagent_card_into_session(session: &mut Value, card: Value
         .get_mut("messages")
         .and_then(Value::as_array_mut)
         .map(|messages| {
-            let card_order_key = message_order_key(&card).unwrap_or(i128::MAX);
-            let insert_at = messages
-                .iter()
-                .position(|message| {
-                    message_order_key(message)
-                        .map(|order_key| order_key > card_order_key)
-                        .unwrap_or(false)
-                })
-                .unwrap_or(messages.len());
+            let insert_at = match message_order_key(&card) {
+                Some(card_order_key) => messages
+                    .iter()
+                    .position(|message| {
+                        message_order_key(message)
+                            .map(|order_key| order_key > card_order_key)
+                            .unwrap_or(false)
+                    })
+                    .unwrap_or(messages.len()),
+                // The card carries no reliable timestamp (the source history
+                // recorded none). Keep it right after the conversation's own
+                // user/assistant flow instead of pushing it past trailing
+                // runtime events, so it still reads as part of the dialogue.
+                None => messages
+                    .iter()
+                    .rposition(|message| {
+                        matches!(
+                            message_role(message).as_str(),
+                            "user" | "human" | "agent" | "assistant"
+                        )
+                    })
+                    .map(|index| index + 1)
+                    .unwrap_or(messages.len()),
+            };
             messages.insert(insert_at, card);
             messages.len()
         })

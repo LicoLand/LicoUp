@@ -66,4 +66,72 @@ void main() {
       );
     },
   );
+
+  test(
+    'multi-block assistant readback still clears the live turn',
+    () {
+      final controller = ClientController();
+      addTearDown(controller.dispose);
+      const liveTurn = [
+        AgentConversationMessage(
+          id: 'live-user',
+          role: 'user',
+          text: 'Build and install it',
+          createdAt: '2026-06-15T00:00:00Z',
+        ),
+        AgentConversationMessage(
+          id: 'live-assistant',
+          role: 'assistant',
+          text: 'Installed successfully',
+          createdAt: '2026-06-15T00:00:05Z',
+        ),
+      ];
+      controller.liveConversationMessagesByAgent = {'codex': liveTurn};
+
+      // The native transcript records one assistant reply with tool calls as
+      // several content blocks: two assistant text messages around a tool card.
+      const multiBlockReadback = [
+        AgentConversationMessage(
+          id: 'native-user',
+          role: 'user',
+          text: 'Build and install it',
+          createdAt: '2026-06-15T00:00:00Z',
+        ),
+        AgentConversationMessage(
+          id: 'native-assistant-1',
+          role: 'assistant',
+          text: 'I will build it.',
+          createdAt: '2026-06-15T00:00:01Z',
+        ),
+        AgentConversationMessage(
+          id: 'native-tool',
+          role: 'tool_call',
+          text: '',
+          createdAt: '2026-06-15T00:00:02Z',
+        ),
+        AgentConversationMessage(
+          id: 'native-assistant-2',
+          role: 'assistant',
+          text: 'Installed successfully',
+          createdAt: '2026-06-15T00:00:05Z',
+        ),
+      ];
+      controller.conversationClearLiveProjectionWhenReadBack(
+        'codex',
+        providerReadback: AgentConversationSession(
+          id: 'session-1',
+          agentId: 'codex',
+          title: 'Multi-block conversation',
+          createdAt: '2026-06-15T00:00:00Z',
+          updatedAt: '2026-06-15T00:00:06Z',
+          nativeSessionId: 'native-session-1',
+          messages: multiBlockReadback,
+        ),
+      );
+      expect(
+        controller.liveConversationMessagesByAgent.containsKey('codex'),
+        isFalse,
+      );
+    },
+  );
 }

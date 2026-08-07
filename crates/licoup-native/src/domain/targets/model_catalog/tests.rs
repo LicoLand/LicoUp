@@ -287,7 +287,10 @@ model = "gpt-5.4-mini"
             }),
         );
         let models = catalog["models"].as_array().unwrap();
-        let names: Vec<&str> = models.iter().filter_map(|model| model["name"].as_str()).collect();
+        let names: Vec<&str> = models
+            .iter()
+            .filter_map(|model| model["name"].as_str())
+            .collect();
         assert!(names.contains(&"gpt-5.6-sol"));
         assert!(names.contains(&"gpt-5.6-terra"));
         assert!(names.contains(&"gpt-5.6-luna"));
@@ -296,7 +299,9 @@ model = "gpt-5.4-mini"
         assert!(names.contains(&"deepseek-v4-flash"));
         assert!(!names.contains(&"gpt-5.6-sol-wm"));
         assert!(
-            !names.iter().any(|name| name.contains('T') || name.starts_with("W/") || *name == "0.146.0"),
+            !names
+                .iter()
+                .any(|name| name.contains('T') || name.starts_with("W/") || *name == "0.146.0"),
             "cache metadata leaked into model names: {names:?}"
         );
     }

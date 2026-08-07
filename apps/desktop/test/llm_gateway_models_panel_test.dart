@@ -66,8 +66,9 @@ void main() {
     await _pumpCredentials(tester, runner);
     await tester.pumpAndSettle();
 
-    expect(find.text('授权'), findsOneWidget);
+    expect(find.text('授权'), findsNWidgets(2));
     expect(find.text('授权并启动'), findsNothing);
+    expect(find.byKey(const Key('credentials-authorize')), findsOneWidget);
     expect(find.text('添加'), findsOneWidget);
     expect(find.byKey(const Key('credentials-table')), findsOneWidget);
     expect(find.text('模型服务商'), findsOneWidget);
@@ -125,13 +126,16 @@ void main() {
     expect(find.text('Kilo'), findsOneWidget);
     expect(find.textContaining('（已到期）'), findsOneWidget);
     expect(find.text('永久'), findsOneWidget);
-    expect(find.text('授权'), findsOneWidget);
+    expect(find.text('授权'), findsNWidgets(2));
     expect(find.text('授权并启动'), findsNothing);
+    expect(find.byKey(const Key('credentials-authorize')), findsOneWidget);
     expect(
       tester
           .widget<Switch>(
             find.byKey(
-              const Key('credential-authorize-11111111-1111-4111-8111-111111111111'),
+              const Key(
+                'credential-authorize-11111111-1111-4111-8111-111111111111',
+              ),
             ),
           )
           .onChanged,
@@ -171,8 +175,9 @@ void main() {
     await _pumpCredentials(tester, runner);
     await tester.pumpAndSettle();
 
-    expect(find.text('授权'), findsOneWidget);
+    expect(find.text('授权'), findsNWidgets(2));
     expect(find.text('授权并启动'), findsNothing);
+    expect(find.byKey(const Key('credentials-authorize')), findsOneWidget);
     expect(find.text('尚未保存密钥。'), findsOneWidget);
   });
 
@@ -196,16 +201,14 @@ void main() {
         monitorInterval: Duration.zero,
       );
       await lifecycle.initialize();
-      await _pumpCredentials(
-        tester,
-        runner,
-        lifecycleController: lifecycle,
-      );
+      await _pumpCredentials(tester, runner, lifecycleController: lifecycle);
       await tester.pumpAndSettle();
 
       final toggle = tester.widget<Switch>(
         find.byKey(
-          const Key('credential-authorize-11111111-1111-4111-8111-111111111111'),
+          const Key(
+            'credential-authorize-11111111-1111-4111-8111-111111111111',
+          ),
         ),
       );
       expect(toggle.value, isFalse);
@@ -253,9 +256,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(
-        find.byKey(Key('credential-authorize-$credentialId')),
-      );
+      await tester.tap(find.byKey(Key('credential-authorize-$credentialId')));
       await tester.pumpAndSettle();
 
       expect(authorization.authorized, isTrue);
@@ -308,85 +309,77 @@ void main() {
     },
   );
 
-  testWidgets(
-    'credential authorize toggle can revoke one key independently',
-    (tester) async {
-      const credentialId = '11111111-1111-4111-8111-111111111111';
-      final runner = _FakeCredentialsRunner()
-        ..entries = [
-          _entry(
-            id: credentialId,
-            provider: 'kimi',
-            label: 'Valid key',
-            created: _daysFromNow(-10),
-            expires: _daysFromNow(20),
-          ),
-        ]
-        ..authorizedIds = {credentialId};
-      final serviceRunner = _FakeServiceRunner()
-        ..statusResult = _statusPayload(
-          state: 'running',
-          pid: 42189,
-          credentialsApplied: true,
-        );
-      final lifecycle = LlmGatewayLifecycleController(
-        agentService: serviceRunner,
-        readSettings: () async => const {},
-        monitorInterval: Duration.zero,
+  testWidgets('credential authorize toggle can revoke one key independently', (
+    tester,
+  ) async {
+    const credentialId = '11111111-1111-4111-8111-111111111111';
+    final runner = _FakeCredentialsRunner()
+      ..entries = [
+        _entry(
+          id: credentialId,
+          provider: 'kimi',
+          label: 'Valid key',
+          created: _daysFromNow(-10),
+          expires: _daysFromNow(20),
+        ),
+      ]
+      ..authorizedIds = {credentialId};
+    final serviceRunner = _FakeServiceRunner()
+      ..statusResult = _statusPayload(
+        state: 'running',
+        pid: 42189,
+        credentialsApplied: true,
       );
-      await lifecycle.initialize();
-      final authorization = LlmVaultAuthorization();
-      expect(
-        await authorization.authorizeCredential(
-          runner,
+    final lifecycle = LlmGatewayLifecycleController(
+      agentService: serviceRunner,
+      readSettings: () async => const {},
+      monitorInterval: Duration.zero,
+    );
+    await lifecycle.initialize();
+    final authorization = LlmVaultAuthorization();
+    expect(
+      await authorization.authorizeCredential(runner, credentialId),
+      isTrue,
+    );
+    await _pumpCredentials(
+      tester,
+      runner,
+      authorization: authorization,
+      lifecycleController: lifecycle,
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(Key('credential-authorize-$credentialId')));
+    await tester.pumpAndSettle();
+
+    expect(authorization.authorized, isFalse);
+    expect(authorization.authorizedCredentialIds, isEmpty);
+    expect(find.text('已撤销该密钥授权。'), findsOneWidget);
+    expect(
+      runner.calls,
+      contains(
+        equals([
+          'llm-gateway',
+          'credentials',
+          'clear',
+          '--credential-id',
           credentialId,
-        ),
-        isTrue,
-      );
-      await _pumpCredentials(
-        tester,
-        runner,
-        authorization: authorization,
-        lifecycleController: lifecycle,
-      );
-      await tester.pumpAndSettle();
-
-      await tester.tap(
-        find.byKey(Key('credential-authorize-$credentialId')),
-      );
-      await tester.pumpAndSettle();
-
-      expect(authorization.authorized, isFalse);
-      expect(authorization.authorizedCredentialIds, isEmpty);
-      expect(find.text('已撤销该密钥授权。'), findsOneWidget);
-      expect(
-        runner.calls,
-        contains(
-          equals([
-            'llm-gateway',
-            'credentials',
-            'clear',
-            '--credential-id',
-            credentialId,
-          ]),
-        ),
-      );
-      expect(
-        serviceRunner.calls.where((args) => args[2] == 'start'),
-        hasLength(1),
-      );
-      expect(
-        tester
-            .widget<Switch>(
-              find.byKey(Key('credential-authorize-$credentialId')),
-            )
-            .value,
-        isFalse,
-      );
-      lifecycle.dispose();
-      authorization.dispose();
-    },
-  );
+        ]),
+      ),
+    );
+    expect(
+      serviceRunner.calls.where((args) => args[2] == 'start'),
+      hasLength(1),
+    );
+    expect(
+      tester
+          .widget<Switch>(find.byKey(Key('credential-authorize-$credentialId')))
+          .value,
+      isFalse,
+    );
+    lifecycle.dispose();
+    authorization.dispose();
+  });
 
   testWidgets('add dialog sends the chosen per-key validity period', (
     tester,
@@ -565,75 +558,29 @@ void main() {
     lifecycle.dispose();
   });
 
-  testWidgets(
-    'gateway authorize-and-start responds immediately and refreshes metadata',
-    (tester) async {
-      final authorization = LlmVaultAuthorization();
-      final completion = Completer<Map<String, dynamic>>();
-      final runner = _FakeServiceRunner()..authorizationCompletion = completion;
-      await _pumpGateway(
-        tester,
-        _FakeSettings({}),
-        runner,
-        authorization: authorization,
-      );
-      await tester.pumpAndSettle();
-
-      await tester.tap(find.byKey(const Key('gateway-authorize-and-start')));
-      await tester.pump();
-
-      expect(find.text('授权中…'), findsOneWidget);
-      expect(find.text('正在请求系统授权…'), findsOneWidget);
-
-      completion.complete({
-        'ok': true,
-        'schemaVersion': 'licoup.llm-gateway-authorization.v1',
-        'authorized': true,
-        'providers': ['kimi'],
-      });
-      await tester.pumpAndSettle();
-
-      expect(authorization.authorized, isTrue);
-      expect(authorization.inventoryHydrated, isTrue);
-      expect(runner.calls.where((args) => args[2] == 'list'), hasLength(1));
-      expect(
-        runner.calls,
-        contains(
-          equals(['llm-gateway', 'service', 'start', '--port', '15722']),
-        ),
-      );
-      expect(find.text('Gateway 已启动。'), findsOneWidget);
-    },
-  );
-
-  testWidgets('empty gateway authorization reports a retryable action', (
+  testWidgets('start runs the service without requesting authorization', (
     tester,
   ) async {
-    final runner = _FakeServiceRunner()
-      ..authorizationResult = {
-        'ok': true,
-        'schemaVersion': 'licoup.llm-gateway-authorization.v1',
-        'authorized': false,
-        'reasonCode': 'no_credentials',
-        'providers': const [],
-      };
-    await _pumpGateway(tester, _FakeSettings({}), runner);
-    await tester.pumpAndSettle();
-
-    await tester.tap(find.byKey(const Key('gateway-authorize-and-start')));
-    await tester.pumpAndSettle();
-
-    expect(runner.calls.where((args) => args[2] == 'list'), hasLength(1));
-    expect(find.text('没有可加载的 API Key，请先在上方添加。'), findsOneWidget);
-    expect(find.text('授权并启动'), findsOneWidget);
-    expect(
-      tester
-          .widget<FilledButton>(
-            find.byKey(const Key('gateway-authorize-and-start')),
-          )
-          .onPressed,
-      isNotNull,
+    final authorization = LlmVaultAuthorization();
+    final runner = _FakeServiceRunner();
+    await _pumpGateway(
+      tester,
+      _FakeSettings({}),
+      runner,
+      authorization: authorization,
     );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('gateway-service-start')));
+    await tester.pumpAndSettle();
+
+    expect(authorization.authorized, isFalse);
+    expect(runner.calls, isNot(contains(equals(['llm-gateway', 'authorize']))));
+    expect(
+      runner.calls,
+      contains(equals(['llm-gateway', 'service', 'start', '--port', '15722'])),
+    );
+    expect(find.text('Gateway 已启动。'), findsOneWidget);
   });
 
   testWidgets('gateway cards and model chart use gateway request counters', (
@@ -685,7 +632,7 @@ void main() {
     expect(find.text('Stopped'), findsOneWidget);
     expect(find.text('Start'), findsOneWidget);
 
-    await tester.tap(find.byKey(const Key('gateway-authorize-and-start')));
+    await tester.tap(find.byKey(const Key('gateway-service-start')));
     await tester.pumpAndSettle();
 
     expect(
@@ -724,7 +671,7 @@ void main() {
     await _pumpGateway(tester, settings, runner, authorization: authorization);
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(const Key('gateway-authorize-and-start')));
+    await tester.tap(find.byKey(const Key('gateway-service-start')));
     await tester.pumpAndSettle();
 
     expect(find.text('Gateway 启动失败。'), findsOneWidget);
@@ -742,10 +689,7 @@ void main() {
 
     expect(find.text('状态未知'), findsOneWidget);
     expect(find.text('Gateway 状态检测失败。'), findsOneWidget);
-    expect(
-      find.byKey(const Key('gateway-authorize-and-start')),
-      findsOneWidget,
-    );
+    expect(find.byKey(const Key('gateway-service-start')), findsOneWidget);
   });
 }
 

@@ -6,9 +6,7 @@
 //! without embedding a model catalog.
 
 use crate::domain::llm_api_key_vault::LlmApiKeyProvider;
-use crate::domain::llm_gateway_default_catalog::{
-    DefaultGatewayModel, models_for_provider_ids,
-};
+use crate::domain::llm_gateway_default_catalog::{DefaultGatewayModel, models_for_provider_ids};
 use anyhow::{Result, anyhow, ensure};
 use serde::Serialize;
 use serde_json::{Map, Value, json};
@@ -75,7 +73,8 @@ pub fn plan_agent_config(
         .iter()
         .map(|provider| provider.as_str())
         .collect::<BTreeSet<_>>();
-    let models = models_for_provider_ids(&provider_ids).collect::<Vec<&'static DefaultGatewayModel>>();
+    let models =
+        models_for_provider_ids(&provider_ids).collect::<Vec<&'static DefaultGatewayModel>>();
     let (destination, content) = match target {
         GatewayAgentTarget::Codex => {
             let helper = toml_string(local_token_helper.to_string_lossy().as_ref())?;
@@ -313,7 +312,11 @@ mod tests {
         assert!(plan.content.contains("deepseek:deepseek-v4-flash"));
         assert!(plan.content.contains("kilo:kilo-auto/balanced"));
         assert!(plan.content.contains("kilo:anthropic/claude-sonnet-5"));
-        assert!(!plan.content.contains("\"id\": \"anthropic/claude-sonnet-4.6\""));
+        assert!(
+            !plan
+                .content
+                .contains("\"id\": \"anthropic/claude-sonnet-4.6\"")
+        );
         assert!(!plan.content.contains("settings.json"));
     }
 

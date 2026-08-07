@@ -13,6 +13,11 @@ import 'package:licoup/src/frontend/shared/ui/theme.dart';
 /// unbounded widget tree.
 const int _maxInlineSubagentDepth = 4;
 
+/// Height cap of the expanded card body. The delegated task content scrolls
+/// inside this bounded frame like a page, instead of stretching the whole
+/// conversation to the length of one subagent run.
+const double _maxExpandedCardHeight = 320;
+
 class AgentConversationSubagentCardBlock extends StatefulWidget {
   const AgentConversationSubagentCardBlock({
     super.key,
@@ -145,10 +150,17 @@ class _AgentConversationSubagentCardBlockState
             Divider(height: 1, color: colors.line),
             Padding(
               padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
-              child: _SubagentChildList(
-                children: children,
-                adapter: widget.adapter,
-                depth: widget.depth,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(
+                  maxHeight: _maxExpandedCardHeight,
+                ),
+                child: SingleChildScrollView(
+                  child: _SubagentChildList(
+                    children: children,
+                    adapter: widget.adapter,
+                    depth: widget.depth,
+                  ),
+                ),
               ),
             ),
           ],

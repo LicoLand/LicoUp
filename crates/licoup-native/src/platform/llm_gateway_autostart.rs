@@ -44,9 +44,10 @@ impl AutostartMarker {
         }
         Some(Self {
             enabled: object.get("enabled").and_then(Value::as_bool)?,
-            port: object.get("port").and_then(Value::as_u64).and_then(|value| {
-                u16::try_from(value).ok().filter(|port| *port != 0)
-            })?,
+            port: object
+                .get("port")
+                .and_then(Value::as_u64)
+                .and_then(|value| u16::try_from(value).ok().filter(|port| *port != 0))?,
             program: object
                 .get("program")
                 .and_then(Value::as_str)
@@ -67,7 +68,8 @@ fn marker_path() -> Result<PathBuf> {
 }
 
 fn cli_program_path() -> Result<PathBuf> {
-    let current = std::env::current_exe().map_err(|_| anyhow!("llm_gateway_autostart_cli_missing"))?;
+    let current =
+        std::env::current_exe().map_err(|_| anyhow!("llm_gateway_autostart_cli_missing"))?;
     let metadata =
         fs::symlink_metadata(&current).map_err(|_| anyhow!("llm_gateway_autostart_cli_missing"))?;
     ensure!(
@@ -218,7 +220,11 @@ fn platform_install(program: &Path, port: u16) -> Result<()> {
     // Replace any previous registration, then bootstrap the new definition.
     let _ = launchctl_bootout();
     let status = Command::new("/bin/launchctl")
-        .args(["bootstrap", &gui_domain()?, path.to_str().unwrap_or_default()])
+        .args([
+            "bootstrap",
+            &gui_domain()?,
+            path.to_str().unwrap_or_default(),
+        ])
         .status()
         .map_err(|_| anyhow!("llm_gateway_autostart_install_failed"))?;
     ensure!(status.success(), "llm_gateway_autostart_install_failed");

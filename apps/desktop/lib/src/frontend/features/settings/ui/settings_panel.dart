@@ -434,9 +434,18 @@ class _SettingsPanelState extends State<SettingsPanel> {
           key: const Key('settings-content-scroll'),
           controller: _scrollController,
           padding: presentation.contentPadding,
-          itemCount: sections.length,
+          itemCount: sections.length * 2 - 1,
           itemBuilder: (context, index) {
-            final section = sections[index];
+            if (index.isOdd) {
+              // One hairline between adjacent settings sections keeps the
+              // canonical section order visually separated.
+              return Divider(
+                key: Key('settings-section-divider-${sections[index ~/ 2].id}'),
+                height: 1,
+                color: context.licoColors.line,
+              );
+            }
+            final section = sections[index ~/ 2];
             return presentation.frameSection(
               context,
               key: _keyFor(section.id),
@@ -668,7 +677,6 @@ class _AppearanceSettings extends StatelessWidget {
         )
         ? controller.appearancePresetId
         : null;
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -700,6 +708,10 @@ class _AppearanceSettings extends StatelessWidget {
             controller.appearancePresetId,
             controller.appearancePresetConfigs,
           ),
+          disabledSegments: const {
+            AppearanceBrightnessSelection.system,
+            AppearanceBrightnessSelection.light,
+          },
           onChanged: (selection) {
             unawaited(
               controller.setAppearancePreset(
@@ -911,6 +923,10 @@ class _MobileSettingsBody extends StatelessWidget {
             controller.appearancePresetId,
             controller.appearancePresetConfigs,
           ),
+          disabledSegments: const {
+            AppearanceBrightnessSelection.system,
+            AppearanceBrightnessSelection.light,
+          },
           onChanged: (selection) {
             unawaited(
               controller.setAppearancePreset(

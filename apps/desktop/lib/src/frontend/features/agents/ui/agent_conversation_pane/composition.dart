@@ -106,6 +106,15 @@ class AgentConversationActivePane extends StatelessWidget {
                 : null,
           )
         : null;
+    final permissionRetry = state.permissionRetryTool.trim().isNotEmpty &&
+            !state.turnActive
+        ? _ConversationPermissionRetryRow(
+            tool: state.permissionRetryTool,
+            onAllow: actions.onPermissionRetry,
+            onAllowAndRemember: actions.onPermissionRetryRemember,
+            onDeny: actions.onPermissionDeny,
+          )
+        : null;
     final flywheelCapsule = state.orchestrationSelected
         ? ComposerFlywheelCapsule(
             mainAgentLabel: state.flywheelMainAgentLabel.isEmpty
@@ -226,6 +235,7 @@ class AgentConversationActivePane extends StatelessWidget {
           Expanded(child: messages),
           ?sendUnavailable,
           ?sendFailure,
+          ?permissionRetry,
           if (messagingFlow && showComposerCapsuleRow)
             ComposerCapsuleRow(
               modelOptions: state.modelOptions,
@@ -252,6 +262,7 @@ class AgentConversationActivePane extends StatelessWidget {
       children: [
         ?sendUnavailable,
         ?sendFailure,
+        ?permissionRetry,
         if (showComposerCapsuleRow)
           ComposerCapsuleRow(
             workingDirectory: state.showWorkingDirectory
@@ -339,6 +350,7 @@ class AgentConversationActivePane extends StatelessWidget {
           const Divider(height: 1),
           ?sendUnavailable,
           ?sendFailure,
+          ?permissionRetry,
           if (showComposerCapsuleRow)
             ComposerCapsuleRow(
               workingDirectory: state.showWorkingDirectory
@@ -365,7 +377,9 @@ class AgentConversationActivePane extends StatelessWidget {
     // Messaging capsules float on the glass canvas — PanelFrame's surface
     // band + border would reintroduce a full-width header partition.
     final useFrame = framed && !messagingFlow;
-    return useFrame ? PanelFrame(child: content) : content;
+    final pane = useFrame ? PanelFrame(child: content) : content;
+    // Every text in the conversation pane is selectable for copy.
+    return SelectionArea(child: pane);
   }
 }
 
@@ -420,6 +434,93 @@ class _ConversationSendFailureRow extends StatelessWidget {
               ),
               child: Text(actionLabel!),
             ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ConversationPermissionRetryRow extends StatelessWidget {
+  const _ConversationPermissionRetryRow({
+    required this.tool,
+    this.onAllow,
+    this.onAllowAndRemember,
+    this.onDeny,
+  });
+
+  final String tool;
+  final VoidCallback? onAllow;
+  final VoidCallback? onAllowAndRemember;
+  final VoidCallback? onDeny;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.licoColors;
+    final strings = LicoStrings.of(context);
+    return Padding(
+      key: const Key('conversation-permission-retry'),
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Icon(Icons.security_rounded, size: 14, color: colors.warning),
+          const SizedBox(width: 7),
+          Expanded(
+            child: Text(
+              strings.conversationPermissionDenied(tool),
+              key: const Key('conversation-permission-retry-reason'),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: colors.textMuted,
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+                height: 1.25,
+              ),
+            ),
+          ),
+          TextButton(
+            key: const Key('conversation-permission-retry-action'),
+            onPressed: onAllow,
+            style: TextButton.styleFrom(
+              foregroundColor: colors.accent,
+              visualDensity: VisualDensity.compact,
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              textStyle: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            child: Text(strings.conversationPermissionAllowAction),
+          ),
+          TextButton(
+            key: const Key('conversation-permission-retry-remember'),
+            onPressed: onAllowAndRemember,
+            style: TextButton.styleFrom(
+              foregroundColor: colors.accent,
+              visualDensity: VisualDensity.compact,
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              textStyle: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            child: Text(strings.conversationPermissionAllowAndRememberAction),
+          ),
+          TextButton(
+            key: const Key('conversation-permission-retry-deny'),
+            onPressed: onDeny,
+            style: TextButton.styleFrom(
+              foregroundColor: colors.textMuted,
+              visualDensity: VisualDensity.compact,
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              textStyle: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            child: Text(strings.conversationPermissionDenyAction),
+          ),
         ],
       ),
     );

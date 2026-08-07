@@ -98,18 +98,13 @@ void main() {
     );
     await tester.pump();
 
-    final toggle = tester.widget<SegmentedButton<String>>(
-      find.byKey(const Key('appearance-day-night-toggle')),
-    );
     expect(
-      toggle.segments
-          .map((segment) => (segment.label! as SizedBox).child)
-          .map((label) => (label as Center).child)
-          .map((text) => (text as Text).data)
-          .toList(),
-      ['跟随系统', '明亮', '暗黑'],
+      find.byKey(const Key('appearance-day-night-toggle')),
+      findsOneWidget,
     );
-    expect(toggle.showSelectedIcon, isFalse);
+    expect(find.text('跟随系统'), findsOneWidget);
+    expect(find.text('明亮'), findsOneWidget);
+    expect(find.text('暗黑'), findsOneWidget);
 
     final initialToggleWidth = tester
         .getSize(find.byKey(const Key('appearance-day-night-toggle')))

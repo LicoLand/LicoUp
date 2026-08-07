@@ -96,8 +96,14 @@ fn read_desktop_marker() -> Result<DesktopMarker> {
         return Ok(DesktopMarker::default());
     };
     Ok(DesktopMarker {
-        enabled: value.get("enabled").and_then(Value::as_bool).unwrap_or(false),
-        silent: value.get("silent").and_then(Value::as_bool).unwrap_or(false),
+        enabled: value
+            .get("enabled")
+            .and_then(Value::as_bool)
+            .unwrap_or(false),
+        silent: value
+            .get("silent")
+            .and_then(Value::as_bool)
+            .unwrap_or(false),
         program: value
             .get("program")
             .and_then(Value::as_str)
@@ -111,7 +117,10 @@ fn read_mcp_marker() -> Result<McpMarker> {
         return Ok(McpMarker::default());
     };
     Ok(McpMarker {
-        enabled: value.get("enabled").and_then(Value::as_bool).unwrap_or(false),
+        enabled: value
+            .get("enabled")
+            .and_then(Value::as_bool)
+            .unwrap_or(false),
         program: value
             .get("program")
             .and_then(Value::as_str)
@@ -288,7 +297,9 @@ fn launchctl_bootstrap(plist: &Path) -> Result<()> {
         .args([
             "bootstrap",
             &gui_domain()?,
-            plist.to_str().ok_or_else(|| anyhow!("client_autostart_install_failed"))?,
+            plist
+                .to_str()
+                .ok_or_else(|| anyhow!("client_autostart_install_failed"))?,
         ])
         .status()
         .map_err(|_| anyhow!("client_autostart_install_failed"))?;
@@ -307,12 +318,16 @@ fn write_plist(label: &str, body: &str) -> Result<PathBuf> {
 
 #[cfg(target_os = "macos")]
 fn platform_desktop_installed() -> Result<bool> {
-    Ok(launch_agents_dir()?.join(format!("{DESKTOP_LABEL}.plist")).is_file())
+    Ok(launch_agents_dir()?
+        .join(format!("{DESKTOP_LABEL}.plist"))
+        .is_file())
 }
 
 #[cfg(target_os = "macos")]
 fn platform_mcp_installed() -> Result<bool> {
-    Ok(launch_agents_dir()?.join(format!("{MCP_LABEL}.plist")).is_file())
+    Ok(launch_agents_dir()?
+        .join(format!("{MCP_LABEL}.plist"))
+        .is_file())
 }
 
 #[cfg(target_os = "macos")]

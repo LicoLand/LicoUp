@@ -517,6 +517,7 @@ extension LicoStringsLabels on LicoStrings {
   String get resetCircuitBreaker => isChinese ? '重置熔断' : 'Reset Circuit';
   String get circuitBroken => isChinese ? '已熔断' : 'Circuit Open';
   String get commander => isChinese ? '主智能体' : 'Main Agent';
+
   /// Composer flywheel section: active dispatch owner for this conversation.
   /// May differ from the first Daily Conversation capsule; when it does, this
   /// selection wins for the current session.
@@ -628,21 +629,19 @@ extension LicoStringsLabels on LicoStrings {
       isChinese ? '授权' : 'Authorize';
   String get conversationAuthorizingRuntimeAction =>
       isChinese ? '授权中…' : 'Authorizing…';
+  String conversationPermissionDenied(String tool) => isChinese
+      ? '$tool 的权限请求被拒绝，回复中未执行该操作。'
+      : '$tool was denied permission; the action was not performed.';
+  String get conversationPermissionAllowAction =>
+      isChinese ? '允许' : 'Allow';
+  String get conversationPermissionAllowAndRememberAction =>
+      isChinese ? '允许并加入白名单' : 'Allow and remember';
+  String get conversationPermissionDenyAction =>
+      isChinese ? '拒绝' : 'Deny';
 
-  String get llmGatewayAuthorizeAndStart =>
-      isChinese ? '授权并启动' : 'Authorize and Start';
   String get llmGatewayStart => isChinese ? '启动' : 'Start';
-  String get llmGatewayStop => isChinese ? '停止' : 'Stop';
-  String get llmGatewayAuthorizing => isChinese ? '授权中…' : 'Authorizing…';
   String get llmGatewayStarting => isChinese ? '启动中…' : 'Starting…';
-  String get llmGatewayRequestingAuthorization =>
-      isChinese ? '正在请求系统授权…' : 'Requesting system authorization…';
-  String get llmGatewayAuthorizationFailed => isChinese
-      ? '系统授权未完成，请重试。'
-      : 'System authorization did not complete. Try again.';
-  String get llmGatewayNoCredentialsAvailable => isChinese
-      ? '没有可加载的 API Key，请先在上方添加。'
-      : 'No API keys are available. Add one above first.';
+  String get llmGatewayStop => isChinese ? '停止' : 'Stop';
   String get llmGatewayStarted =>
       isChinese ? 'Gateway 已启动。' : 'Gateway started.';
   String get llmGatewayStartFailed =>
@@ -929,8 +928,7 @@ extension LicoStringsLabels on LicoStrings {
   String get conversationIdCopied =>
       isChinese ? '会话 ID 已复制' : 'Conversation ID copied';
   String get edit => isChinese ? '编辑' : 'Edit';
-  String get llmGatewayLaunchAtLogin =>
-      isChinese ? '开机自启动' : 'Launch at login';
+  String get llmGatewayLaunchAtLogin => isChinese ? '开机自启动' : 'Launch at login';
   String get llmGatewayLaunchAtLoginDisabled =>
       isChinese ? '已关闭开机自启动。' : 'Launch at login disabled.';
   String get llmGatewayLaunchAtLoginEnabled =>
@@ -943,7 +941,6 @@ extension LicoStringsLabels on LicoStrings {
   String get llmGatewayLaunchAtLoginUnsupported => isChinese
       ? '当前系统不支持 Gateway 开机自启动。'
       : 'Launch at login is not supported on this system.';
-  String get llmGatewayStartAlone => isChinese ? '单独启动' : 'Start alone';
   String get mentionConfiguredAgents =>
       isChinese ? '提及角色与智能体' : 'Mention roles and agents';
   String get mentionConfiguredAgentsEmpty => isChinese
@@ -958,8 +955,7 @@ extension LicoStringsLabels on LicoStrings {
       isChinese ? '自启动设置未能更新。' : 'Auto-start settings could not be updated.';
   String get startupAutostartSaved =>
       isChinese ? '自启动设置已保存。' : 'Auto-start settings saved.';
-  String get startupAutostartTitle =>
-      isChinese ? '开启自启动' : 'Enable auto-start';
+  String get startupAutostartTitle => isChinese ? '开启自启动' : 'Enable auto-start';
   String get startupAutostartUnsupported => isChinese
       ? '当前系统不支持登录自启动。'
       : 'Login auto-start is not supported on this system.';

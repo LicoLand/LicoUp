@@ -24,7 +24,7 @@ pub(super) fn write_message(stdin: &mut BoundedStdinWriter, message: &Value) -> 
 
 pub(super) fn read_protocol_messages<R: Read>(
     mut reader: BufReader<R>,
-    max_stdout: usize,
+    max_stdout: Option<usize>,
     sender: Sender<TransportEvent>,
 ) {
     let mut total = 0usize;
@@ -37,10 +37,12 @@ pub(super) fn read_protocol_messages<R: Read>(
                 return;
             }
             Ok(read) => {
-                total = total.saturating_add(read);
-                if total > max_stdout {
-                    let _ = sender.send(TransportEvent::StdoutLimitExceeded);
-                    return;
+                if let Some(max_stdout) = max_stdout {
+                    total = total.saturating_add(read);
+                    if total > max_stdout {
+                        let _ = sender.send(TransportEvent::StdoutLimitExceeded);
+                        return;
+                    }
                 }
                 let trimmed = line.trim_end_matches(['\r', '\n']);
                 if trimmed.is_empty() {

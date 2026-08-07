@@ -35,7 +35,7 @@ pub(crate) fn list_models(executable: &Path) -> Result<Value, ()> {
     let mut stdin = BoundedStdinWriter::new(stdin);
     let (sender, receiver) = mpsc::channel();
     let stdout_handle = thread::spawn(move || {
-        read_protocol_messages(BufReader::new(stdout), MAX_PROTOCOL_BYTES, sender)
+        read_protocol_messages(BufReader::new(stdout), Some(MAX_PROTOCOL_BYTES), sender)
     });
     let stderr_truncated = Arc::new(AtomicBool::new(false));
     let stderr_flag = Arc::clone(&stderr_truncated);
