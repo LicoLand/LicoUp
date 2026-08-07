@@ -67,10 +67,6 @@ pub fn send_message(params: &Value) -> Result<Value, RuntimeAdapterError> {
         _ => Cow::Borrowed(params),
     };
     let params = params.as_ref();
-<<<<<<< Updated upstream
-    let timeout_ms =
-        u64_param(params, "timeoutMs", DEFAULT_TIMEOUT_MS).clamp(MIN_TIMEOUT_MS, MAX_TIMEOUT_MS);
-=======
     let timeout_ms = u64_param(params, "timeoutMs", DEFAULT_TIMEOUT_MS);
     // timeoutMs 0 opts out of any turn deadline: the agent runs until the turn
     // completes, however long that takes. A non-zero value stays bounded by the
@@ -80,7 +76,6 @@ pub fn send_message(params: &Value) -> Result<Value, RuntimeAdapterError> {
     } else {
         timeout_ms.clamp(MIN_TIMEOUT_MS, MAX_TIMEOUT_MS)
     };
->>>>>>> Stashed changes
     let max_stdout = optional_output_param(params, "maxStdoutBytes");
     let max_stderr = bounded_output_param(params, "maxStderrBytes", DEFAULT_MAX_STDERR_BYTES);
     let requested_executable = if adapter == RuntimeAdapter::Codex {
@@ -102,7 +97,7 @@ pub fn send_message(params: &Value) -> Result<Value, RuntimeAdapterError> {
             &session_id,
             cwd.as_deref(),
             timeout_ms,
-            Some(max_stdout),
+            max_stdout,
             max_stderr,
         )),
         RuntimeAdapter::ClaudeCode => normalize_claude(claude_code_driver::execute(
@@ -145,7 +140,7 @@ pub fn send_message(params: &Value) -> Result<Value, RuntimeAdapterError> {
             &session_id,
             cwd.as_deref(),
             timeout_ms,
-            Some(max_stdout),
+            max_stdout,
             max_stderr,
         )),
         RuntimeAdapter::KiloCode => normalize_acp(
