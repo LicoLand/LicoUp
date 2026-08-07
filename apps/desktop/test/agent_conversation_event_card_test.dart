@@ -195,4 +195,58 @@ void main() {
     expect(find.text('Runtime log · 1 entry'), findsOneWidget);
     expect(find.byType(ConversationProcessCard), findsNothing);
   });
+
+  test('runtime update card is its own timeline item with a stable key', () {
+    const lifecycle = AgentConversationMessage(
+      id: 'lifecycle',
+      role: 'event',
+      text: 'accepted',
+      createdAt: '2026-01-01T00:00:01Z',
+      cardType: 'lifecycle',
+    );
+    const updateDownloading = AgentConversationMessage(
+      id: 'turn-runtime-update',
+      role: 'event',
+      text: 'downloading',
+      createdAt: '2026-01-01T00:00:02Z',
+      cardType: 'runtime-update',
+      cardSubtitle: 'Cursor Agent 正在更新 2026.08.04 · 下载中',
+      stableIdentity: 'turn-runtime-update',
+    );
+    const updateInstalling = AgentConversationMessage(
+      id: 'turn-runtime-update',
+      role: 'event',
+      text: 'installing',
+      createdAt: '2026-01-01T00:00:02Z',
+      cardType: 'runtime-update',
+      cardSubtitle: 'Cursor Agent 正在更新 2026.08.04 · 安装中',
+      stableIdentity: 'turn-runtime-update',
+    );
+    const assistant = AgentConversationMessage(
+      id: 'assistant-1',
+      role: 'assistant',
+      text: 'Done',
+      createdAt: '2026-01-01T00:00:03Z',
+      stableIdentity: 'stable-assistant',
+    );
+
+    final first = buildConversationTimelineItems(
+      const [lifecycle, updateDownloading, assistant],
+      'update-fixture',
+    );
+    expect(first, hasLength(3));
+    expect(first[0], isA<ConversationProcessTimelineItem>());
+    final card = first[1] as ConversationRuntimeUpdateTimelineItem;
+    expect(card.message.cardSubtitle, contains('下载中'));
+    expect(first[2], isA<ConversationMessageTimelineItem>());
+
+    // Phase upserts keep the same storage key (in-place card, no churn).
+    final second = buildConversationTimelineItems(
+      const [lifecycle, updateInstalling, assistant],
+      'update-fixture',
+    );
+    final secondCard = second[1] as ConversationRuntimeUpdateTimelineItem;
+    expect(secondCard.storageKey, card.storageKey);
+    expect(secondCard.message.cardSubtitle, contains('安装中'));
+  });
 }

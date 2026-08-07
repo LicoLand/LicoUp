@@ -39,6 +39,14 @@ const _scenarioFingerprints = <String, List<String>>{
     "await controller.refreshConversationSessions('claude-code')",
     'expect(controller.selectedLiveConversationMessages, isEmpty)',
   ],
+  'runtime update events project one in-place runtime-update card': [
+    "endsWith('-runtime-update')",
+    "anyElement(contains('下载中'))",
+    "contains('2026.08.04-aaa8809')",
+    "expect(card.role, 'event')",
+    "expect(card.text, 'completed')",
+    "'submitted,accepted'",
+  ],
 };
 
 const _expectedGroups = <String, List<String>>{
@@ -51,6 +59,7 @@ const _expectedGroups = <String, List<String>>{
   ],
   'history_runtime/streaming_projection_scenarios.dart': [
     'sendConversationMessage projects progressive reply and process events in the active conversation',
+    'runtime update events project one in-place runtime-update card',
   ],
   'history_runtime/streaming_readback_scenarios.dart': [
     'completed streamed reply remains visible until native history catches up',

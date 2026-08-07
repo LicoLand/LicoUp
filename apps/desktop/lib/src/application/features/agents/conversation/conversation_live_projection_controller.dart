@@ -97,6 +97,66 @@ mixin AgentConversationLiveProjectionController on AgentWorkspaceCoordinator {
     };
   }
 
+  /// One in-place card per turn describing a cursor-agent auto-update that
+  /// blocks the turn (stable id, same position, only text/terminal change).
+  void conversationUpsertLiveRuntimeUpdate({
+    required String agentId,
+    required String turnId,
+    String phase = '',
+    String version = '',
+    String terminal = '',
+    String hint = '',
+    String participantAgentId = '',
+    String participantLabel = '',
+    String participantRole = '',
+  }) {
+    final messageId = '$turnId-runtime-update';
+    final current = liveConversationMessagesByAgent[agentId] ?? const [];
+    final previous = current
+        .where((message) => message.id == messageId)
+        .firstOrNull;
+    final phaseLabel = switch (phase.trim()) {
+      'preparing' => '准备中',
+      'downloading' => '下载中',
+      'installing' => '安装中',
+      _ => '',
+    };
+    final subtitle = switch (terminal.trim()) {
+      'completed' =>
+        'Cursor Agent 更新完成${version.isEmpty ? '' : ' · $version'}',
+      'interrupted' =>
+        'Cursor Agent 更新中断${hint.isEmpty ? '' : ' · $hint'}',
+      _ =>
+        'Cursor Agent 正在更新${version.isEmpty ? '' : ' $version'}'
+            '${phaseLabel.isEmpty ? '' : ' · $phaseLabel'}',
+    };
+    final updateMessage = AgentConversationMessage(
+      id: messageId,
+      role: 'event',
+      text: terminal.isEmpty ? phase.trim() : terminal.trim(),
+      createdAt:
+          previous?.createdAt ?? DateTime.now().toUtc().toIso8601String(),
+      layer: AgentConversationSemanticLayer.execution,
+      cardType: 'runtime-update',
+      cardTitle: 'runtime.update',
+      cardSubtitle: subtitle,
+      stableIdentity: messageId,
+      participantAgentId: participantAgentId,
+      participantLabel: participantLabel,
+      participantRole: participantRole,
+    );
+    liveConversationMessagesByAgent = {
+      ...liveConversationMessagesByAgent,
+      agentId: List<AgentConversationMessage>.unmodifiable([
+        if (previous == null) ...current,
+        if (previous == null) updateMessage,
+        if (previous != null)
+          for (final message in current)
+            if (message.id == messageId) updateMessage else message,
+      ]),
+    };
+  }
+
   void conversationUpsertLiveReply({
     required String agentId,
     required String turnId,

@@ -27,6 +27,16 @@ final class ConversationLogTimelineItem extends ConversationTimelineItem {
   final List<AgentConversationMessage> events;
 }
 
+/// One in-place card describing an agent runtime auto-update (e.g.
+/// cursor-agent) blocking the turn. Stands alone: it must not render as a
+/// process operation nor as a runtime log row.
+final class ConversationRuntimeUpdateTimelineItem
+    extends ConversationTimelineItem {
+  const ConversationRuntimeUpdateTimelineItem(super.storageKey, this.message);
+
+  final AgentConversationMessage message;
+}
+
 final class ConversationTruncationTimelineItem
     extends ConversationTimelineItem {
   const ConversationTruncationTimelineItem(
@@ -119,6 +129,21 @@ List<ConversationTimelineItem> buildConversationTimelineItems(
 
   for (final message in messages) {
     if (message.isStructuredEvent) {
+      if (isConversationRuntimeUpdateEvent(message)) {
+        // Own timeline item: close the batches ahead of the card so it never
+        // renders inside the process card nor the log rows.
+        flushEvents();
+        flushLogs();
+        final identity = messageIdentity(message, messageIndex);
+        items.add(
+          ConversationRuntimeUpdateTimelineItem(
+            stableStorageKey('runtime-update', identity,
+                collisionPosition: messageIndex),
+            message,
+          ),
+        );
+        continue;
+      }
       if (isConversationRuntimeLogEvent(message)) {
         pendingLogs.add(message);
         continue;
@@ -147,6 +172,10 @@ bool isConversationRuntimeLogEvent(AgentConversationMessage message) {
   if (message.cardType.trim().toLowerCase() == 'lifecycle') return false;
   return message.kind == AgentConversationMessageKind.event ||
       message.kind == AgentConversationMessageKind.metadata;
+}
+
+bool isConversationRuntimeUpdateEvent(AgentConversationMessage message) {
+  return message.cardType.trim().toLowerCase() == 'runtime-update';
 }
 
 String stableConversationTimelineIdentity(String value) {
