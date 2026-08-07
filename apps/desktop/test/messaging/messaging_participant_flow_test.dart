@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_message_blocks.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_timeline.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_render_adapter.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_participant_flow.dart';
@@ -429,6 +430,101 @@ void main() {
     );
     final decoration = animated.decoration! as BoxDecoration;
     expect(decoration.color, isNot(themeColors.brandSurface));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('long transcripts page in as the user scrolls to the top', (
+    tester,
+  ) async {
+    final chronological = [
+      for (var index = 0; index < 120; index++)
+        _messageItem(
+          'k$index',
+          index.isEven ? 'user' : 'assistant',
+          'message-$index',
+          _at(1, 0, index),
+        ),
+    ];
+    await _pumpFlow(tester, chronological.reversed.toList());
+
+    int listItemCount() =>
+        (tester.widget<ListView>(find.byType(ListView)).childrenDelegate
+                as SliverChildBuilderDelegate)
+            .estimatedChildCount ??
+        0;
+
+    // The newest window renders first; older entries are not in the list yet.
+    expect(find.text('message-119', findRichText: true), findsOneWidget);
+    expect(listItemCount(), 50);
+
+    // Scrolling to the top loads earlier pages; one long scroll can pull
+    // several pages, and reaching the new top again loads the rest.
+    await tester.drag(find.byType(ListView), const Offset(0, 12000));
+    await tester.pumpAndSettle();
+    expect(listItemCount(), greaterThan(50));
+
+    await tester.drag(find.byType(ListView), const Offset(0, 12000));
+    await tester.pumpAndSettle();
+    expect(listItemCount(), 121);
+    expect(find.text('message-0', findRichText: true), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('subagent cards inside the paging window appear on scroll', (
+    tester,
+  ) async {
+    final chronological = <ConversationTimelineItem>[
+      for (var index = 0; index < 5; index++)
+        _messageItem(
+          'k$index',
+          index.isEven ? 'user' : 'assistant',
+          'message-$index',
+          _at(1, 0, index),
+        ),
+      // A delegated card sits near the start, well outside the first window.
+      ConversationMessageTimelineItem(
+        'k-card',
+        AgentConversationMessage(
+          id: 'm-card',
+          role: 'assistant',
+          text: 'delegated work',
+          createdAt: _at(1, 0, 5),
+          cardType: 'subagent',
+          cardTitle: 'Discovery worker',
+        ),
+      ),
+      for (var index = 6; index < 100; index++)
+        _messageItem(
+          'k$index',
+          index.isEven ? 'user' : 'assistant',
+          'message-$index',
+          _at(1, 0, index),
+        ),
+    ];
+    await _pumpFlow(tester, chronological.reversed.toList());
+
+    // The card is outside the initial window: not built yet.
+    expect(find.byType(AgentConversationSubagentCardBlock), findsNothing);
+
+    // Scrolling to the top loads it.
+    await tester.drag(find.byType(ListView), const Offset(0, 12000));
+    await tester.pumpAndSettle();
+    await tester.drag(find.byType(ListView), const Offset(0, 12000));
+    await tester.pumpAndSettle();
+    int listItemCount() =>
+        (tester.widget<ListView>(find.byType(ListView)).childrenDelegate
+                as SliverChildBuilderDelegate)
+            .estimatedChildCount ??
+        0;
+    // The full history is loaded (99 message groups + day divider + card)
+    // and the card row is part of the flow projection.
+    expect(listItemCount(), 101);
+    final entries = buildMessagingFlowEntries(chronological.reversed.toList());
+    expect(
+      entries.whereType<MessagingFlowSubagent>().length,
+      1,
+      reason: 'the delegated card must stay in the flow projection',
+    );
     expect(tester.takeException(), isNull);
   });
 

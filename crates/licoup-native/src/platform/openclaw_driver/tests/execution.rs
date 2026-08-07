@@ -13,7 +13,7 @@ fn fake_child_streams_redacted_events_and_drains_stderr() {
         "",
         Some(directory.as_path()),
         10_000,
-        128 * 1024,
+        Some(128 * 1024),
         8 * 1024,
     );
     assert!(result.ok, "OpenClaw fake failure: {:?}", result.error);
@@ -55,7 +55,7 @@ fn active_gateway_session_accepts_acp_cancel_before_exact_resume() {
             "",
             Some(run_directory.as_path()),
             10_000,
-            128 * 1024,
+            Some(128 * 1024),
             8 * 1024,
         )
     });
@@ -123,7 +123,7 @@ fn fresh_session_stream_events_always_carry_bound_identity() {
         "",
         Some(directory.as_path()),
         10_000,
-        128 * 1024,
+        Some(128 * 1024),
         8 * 1024,
     );
     assert!(result.ok, "OpenClaw fake failure: {:?}", result.error);

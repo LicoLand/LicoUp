@@ -151,6 +151,7 @@ pub(super) fn lookup_session_transport(session_id: &str) -> Option<Arc<ManagedTr
     let managed = registry.sessions.get(session_id)?.upgrade()?;
     managed.lifecycle.is_live().then_some(managed)
 }
+#[cfg(test)]
 pub(in crate::platform) fn has_live_session(session_id: &str) -> bool {
     lookup_session_transport(session_id).is_some()
 }

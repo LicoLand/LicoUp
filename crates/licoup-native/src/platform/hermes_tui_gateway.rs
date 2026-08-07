@@ -64,7 +64,7 @@ pub(crate) struct GatewayClient {
     stderr_handle: Option<thread::JoinHandle<()>>,
     stderr_truncated: Arc<AtomicBool>,
     observed_stdout_bytes: usize,
-    max_stdout_bytes: usize,
+    max_stdout_bytes: Option<usize>,
     next_request_id: i64,
     finished: bool,
 }
@@ -72,7 +72,7 @@ pub(crate) struct GatewayClient {
 impl GatewayClient {
     pub(crate) fn connect(
         connection: &SshRuntimeConnection,
-        max_stdout_bytes: usize,
+        max_stdout_bytes: Option<usize>,
         max_stderr_bytes: usize,
     ) -> Result<Self, GatewayFailure> {
         let command = connection
@@ -83,7 +83,7 @@ impl GatewayClient {
 
     fn connect_command(
         mut command: Command,
-        max_stdout_bytes: usize,
+        max_stdout_bytes: Option<usize>,
         max_stderr_bytes: usize,
     ) -> Result<Self, GatewayFailure> {
         command
@@ -124,7 +124,7 @@ impl GatewayClient {
     #[cfg(test)]
     pub(crate) fn connect_test_command(
         command: Command,
-        max_stdout_bytes: usize,
+        max_stdout_bytes: Option<usize>,
         max_stderr_bytes: usize,
     ) -> Result<Self, GatewayFailure> {
         Self::connect_command(command, max_stdout_bytes, max_stderr_bytes)
@@ -192,9 +192,12 @@ impl GatewayClient {
                 .recv_timeout((deadline - now).min(PROCESS_POLL_INTERVAL))
             {
                 Ok(TransportEvent::Message { message, bytes }) => {
-                    self.observed_stdout_bytes = self.observed_stdout_bytes.saturating_add(bytes);
-                    if self.observed_stdout_bytes > self.max_stdout_bytes {
-                        return Err(GatewayFailure::OutputLimit);
+                    if let Some(max_stdout_bytes) = self.max_stdout_bytes {
+                        self.observed_stdout_bytes =
+                            self.observed_stdout_bytes.saturating_add(bytes);
+                        if self.observed_stdout_bytes > max_stdout_bytes {
+                            return Err(GatewayFailure::OutputLimit);
+                        }
                     }
                     return Ok(message);
                 }

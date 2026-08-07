@@ -206,8 +206,8 @@ void main() {
       greaterThanOrEqualTo(48),
     );
 
-    await tester.sendKeyEvent(LogicalKeyboardKey.tab);
-    await tester.pump();
+    // The Dashboard layout is disabled (not ready), so keyboard traversal
+    // skips it and lands on the next selectable option.
     await tester.sendKeyEvent(LogicalKeyboardKey.tab);
     await tester.pump();
     await tester.sendKeyEvent(LogicalKeyboardKey.enter);

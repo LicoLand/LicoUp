@@ -263,37 +263,46 @@ mod tests {
         for model in DEFAULT_GATEWAY_MODELS {
             assert!(!model.requested_model.is_empty());
             assert!(!model.display_name.is_empty());
-            assert!(matches!(
-                model.provider_id,
-                "kimi" | "deepseek" | "kilo"
-            ));
+            assert!(matches!(model.provider_id, "kimi" | "deepseek" | "kilo"));
             assert!(
-                model.requested_model.starts_with(&format!("{}:", model.provider_id)),
+                model
+                    .requested_model
+                    .starts_with(&format!("{}:", model.provider_id)),
                 "{}",
                 model.requested_model
             );
             assert!(seen.insert(model.requested_model));
         }
         assert!(DEFAULT_GATEWAY_MODELS.len() >= 20);
-        assert!(DEFAULT_GATEWAY_MODELS
-            .iter()
-            .any(|model| model.requested_model == "kimi:k3"));
-        assert!(DEFAULT_GATEWAY_MODELS
-            .iter()
-            .any(|model| model.requested_model == "deepseek:deepseek-v4-flash"));
-        assert!(DEFAULT_GATEWAY_MODELS
-            .iter()
-            .any(|model| model.requested_model == "kilo:kilo-auto/free"));
-        assert!(DEFAULT_GATEWAY_MODELS
-            .iter()
-            .any(|model| model.requested_model == "kilo:anthropic/claude-opus-5"));
+        assert!(
+            DEFAULT_GATEWAY_MODELS
+                .iter()
+                .any(|model| model.requested_model == "kimi:k3")
+        );
+        assert!(
+            DEFAULT_GATEWAY_MODELS
+                .iter()
+                .any(|model| model.requested_model == "deepseek:deepseek-v4-flash")
+        );
+        assert!(
+            DEFAULT_GATEWAY_MODELS
+                .iter()
+                .any(|model| model.requested_model == "kilo:kilo-auto/free")
+        );
+        assert!(
+            DEFAULT_GATEWAY_MODELS
+                .iter()
+                .any(|model| model.requested_model == "kilo:anthropic/claude-opus-5")
+        );
         assert!(DEFAULT_GATEWAY_MODELS.iter().any(|model| {
             model.requested_model == "kilo:~anthropic/claude-opus-latest"
                 && model.upstream_model == "~anthropic/claude-opus-latest"
         }));
-        assert!(!DEFAULT_GATEWAY_MODELS
-            .iter()
-            .any(|model| model.requested_model == "anthropic/claude-sonnet-4.6"));
+        assert!(
+            !DEFAULT_GATEWAY_MODELS
+                .iter()
+                .any(|model| model.requested_model == "anthropic/claude-sonnet-4.6")
+        );
     }
 
     #[test]
@@ -302,7 +311,11 @@ mod tests {
         let models: Vec<_> = models_for_provider_ids(&only_kilo).collect();
         assert!(!models.is_empty());
         assert!(models.iter().all(|model| model.provider_id == "kilo"));
-        assert!(models.iter().any(|model| model.requested_model == "kilo:kilo-auto/free"));
+        assert!(
+            models
+                .iter()
+                .any(|model| model.requested_model == "kilo:kilo-auto/free")
+        );
 
         let empty = BTreeSet::new();
         assert_eq!(models_for_provider_ids(&empty).count(), 0);

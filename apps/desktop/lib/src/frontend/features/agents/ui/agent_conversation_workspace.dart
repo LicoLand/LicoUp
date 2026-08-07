@@ -422,6 +422,7 @@ class _ConversationWorkspaceBodyState
           : '',
       workingDirectorySelectable: workingDirectorySelectable,
       sendAuthorizeActive: controller.isAuthorizingConversationRuntime,
+      permissionRetryTool: controller.pendingPermissionRetryTool,
       participantTargets: participantTargets,
       flywheelMainAgentLabel: orchestrationSelected ? flywheelLabel : '',
       flywheelMainAgentTarget: orchestrationSelected
@@ -461,6 +462,10 @@ class _ConversationWorkspaceBodyState
       onModelChanged: controller.selectConversationModel,
       onReasoningEffortChanged: controller.selectConversationReasoningEffort,
       onDraftChanged: controller.updateConversationComposerDraft,
+      onPermissionRetry: () => controller.retryDeniedConversationTurn(),
+      onPermissionRetryRemember: () =>
+          controller.retryDeniedConversationTurn(remember: true),
+      onPermissionDeny: controller.dismissDeniedConversationTurn,
       onSend: (text) async {
         if (controller.selectedConversationIsOrchestration) {
           final mentionCatalog = [

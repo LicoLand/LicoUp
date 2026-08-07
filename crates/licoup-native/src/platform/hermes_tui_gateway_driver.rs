@@ -18,7 +18,7 @@ pub(in crate::platform) fn execute(
     requested_session_id: &str,
     cwd: Option<&Path>,
     timeout_ms: u64,
-    max_stdout: usize,
+    max_stdout: Option<usize>,
     max_stderr: usize,
 ) -> RunResult {
     let started_at = timestamp();
@@ -153,7 +153,7 @@ fn run_turn(
     client: &mut GatewayClient,
     config: &GatewayConfig,
     deadline: Instant,
-    max_output_bytes: usize,
+    max_output_bytes: Option<usize>,
 ) -> Result<GatewayOutcome, ProtocolFailure> {
     client
         .wait_ready(deadline)
@@ -339,7 +339,7 @@ struct TurnState {
     output: String,
     events: Vec<Value>,
     model: Option<String>,
-    max_output_bytes: usize,
+    max_output_bytes: Option<usize>,
     completed: bool,
 }
 
@@ -349,7 +349,7 @@ impl TurnState {
         durable_session_id: String,
         turn_id: String,
         model: Option<String>,
-        max_output_bytes: usize,
+        max_output_bytes: Option<usize>,
     ) -> Self {
         Self {
             live_session_id,
@@ -394,7 +394,10 @@ impl TurnState {
                 if let Some(text) = payload.get("text").and_then(Value::as_str)
                     && !text.is_empty()
                 {
-                    if text.len() > self.max_output_bytes {
+                    if self
+                        .max_output_bytes
+                        .is_some_and(|limit| text.len() > limit)
+                    {
                         return Err(GatewayFailure::OutputLimit);
                     }
                     self.output = text.to_string();
@@ -430,7 +433,10 @@ impl TurnState {
     }
 
     fn append_output(&mut self, text: &str) -> Result<(), GatewayFailure> {
-        if self.output.len().saturating_add(text.len()) > self.max_output_bytes {
+        if self
+            .max_output_bytes
+            .is_some_and(|limit| self.output.len().saturating_add(text.len()) > limit)
+        {
             return Err(GatewayFailure::OutputLimit);
         }
         self.output.push_str(text);
@@ -614,7 +620,7 @@ mod tests {
             "durable-1".to_string(),
             "turn-1".to_string(),
             None,
-            1024,
+            Some(1024),
         )
     }
 
@@ -682,7 +688,7 @@ mod tests {
             "durable".to_string(),
             "turn".to_string(),
             None,
-            3,
+            Some(3),
         );
         assert_eq!(turn.append_output("four"), Err(GatewayFailure::OutputLimit));
     }
@@ -701,7 +707,7 @@ sleep 30
         let mut command = Command::new("sh");
         command.args(["-c", script]);
         let mut client =
-            GatewayClient::connect_test_command(command, 64 * 1024, 64 * 1024).unwrap();
+            GatewayClient::connect_test_command(command, Some(64 * 1024), 64 * 1024).unwrap();
         let config = GatewayConfig {
             prompt: "test prompt".to_string(),
             requested_session_id: String::new(),
@@ -714,7 +720,7 @@ sleep 30
             &mut client,
             &config,
             started + Duration::from_millis(600),
-            64 * 1024,
+            Some(64 * 1024),
         ) {
             Ok(_) => panic!("a silent gateway must not complete the turn"),
             Err(failure) => failure,
@@ -754,7 +760,7 @@ printf '%s\n' '{{"jsonrpc":"2.0","id":3,"result":{{"closed":true}}}}'
             let mut command = Command::new("sh");
             command.args(["-c", &script]);
             let mut client =
-                GatewayClient::connect_test_command(command, 64 * 1024, 64 * 1024).unwrap();
+                GatewayClient::connect_test_command(command, Some(64 * 1024), 64 * 1024).unwrap();
             let config = GatewayConfig {
                 prompt: "test prompt".to_string(),
                 requested_session_id: requested_session_id.to_string(),
@@ -766,7 +772,7 @@ printf '%s\n' '{{"jsonrpc":"2.0","id":3,"result":{{"closed":true}}}}'
                 &mut client,
                 &config,
                 Instant::now() + Duration::from_secs(2),
-                64 * 1024,
+                Some(64 * 1024),
             )
             .unwrap();
             client.finish().unwrap();

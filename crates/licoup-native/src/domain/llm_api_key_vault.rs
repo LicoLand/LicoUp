@@ -246,7 +246,10 @@ impl LlmApiKeyInventory {
     ///
     /// Gateway model projections use this set so a provider with no usable key
     /// never appears in agent-visible model lists or default routes.
-    pub fn providers_with_usable_keys(&self, now_epoch_seconds: u64) -> BTreeSet<LlmApiKeyProvider> {
+    pub fn providers_with_usable_keys(
+        &self,
+        now_epoch_seconds: u64,
+    ) -> BTreeSet<LlmApiKeyProvider> {
         self.entries
             .iter()
             .filter(|entry| !entry.is_expired(now_epoch_seconds))

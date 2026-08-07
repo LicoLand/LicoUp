@@ -518,23 +518,9 @@ pub fn open_or_resume(params: &Value) -> Result<Value> {
                 }
             }));
         }
-        if adapter == RuntimeAdapter::ClaudeCode
-            && !super::claude_code_driver::has_live_session(&native_id)
-        {
-            return Ok(json!({
-                "ok": false,
-                "agentId": adapter.id(),
-                "laneFamily": effective_lane_family,
-                "driverId": adapter.driver_id(),
-                "runtimeProtocol": effective_runtime_protocol,
-                "capabilities": matrix,
-                "error": {
-                    "code": "claude_code_live_session_unavailable",
-                    "stage": "session/resume",
-                    "message": "The exact Claude Code streaming process is not available in this client process."
-                }
-            }));
-        }
+        // Claude Code resumes a native conversation by launching a fresh
+        // --resume process when no process-local live transport owns it; send
+        // still fails closed on an unknown or diverged conversation.
     }
 
     Ok(json!({
@@ -1049,17 +1035,16 @@ mod tests {
     }
 
     #[test]
-    fn open_resume_requires_a_live_claude_process_and_accepts_cursor_binding() {
+    fn open_resume_accepts_claude_and_cursor_binding() {
         let claude = open_or_resume(&json!({
             "agent": "claude-code",
             "sessionId": "native-1"
         }))
         .unwrap();
-        assert_eq!(claude["ok"], false);
-        assert_eq!(
-            claude["error"]["code"],
-            "claude_code_live_session_unavailable"
-        );
+        assert_eq!(claude["ok"], true);
+        assert_eq!(claude["openMode"], "resume");
+        assert_eq!(claude["laneFamily"], "stream-json");
+        assert_eq!(claude["capabilities"]["exactResume"], true);
         assert_eq!(claude["capabilities"]["processLocalContinuation"], true);
 
         let cursor = open_or_resume(&json!({

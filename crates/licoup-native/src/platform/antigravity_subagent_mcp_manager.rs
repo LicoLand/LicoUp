@@ -2,8 +2,8 @@
 
 use crate::domain::agent_workflow_loop::CodexPluginState;
 use directories::UserDirs;
-use sha2::{Digest, Sha256};
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 use std::{
     fs,
     path::{Path, PathBuf},
@@ -54,8 +54,8 @@ impl AntigravitySubagentMcpPlan {
             return Err(AntigravitySubagentMcpError::NotAntigravity);
         }
         let mcp_binary = canonical_executable(mcp_binary)?;
-        let config_path = antigravity_mcp_config_path()
-            .ok_or(AntigravitySubagentMcpError::ConfigUnavailable)?;
+        let config_path =
+            antigravity_mcp_config_path().ok_or(AntigravitySubagentMcpError::ConfigUnavailable)?;
         Ok(Self {
             digest: release_digest(&mcp_binary),
             mcp_binary,
@@ -221,7 +221,8 @@ fn canonical_executable(path: &Path) -> Result<PathBuf, AntigravitySubagentMcpEr
 }
 
 fn read_config(path: &Path) -> Result<Value, AntigravitySubagentMcpError> {
-    let raw = fs::read_to_string(path).map_err(|_| AntigravitySubagentMcpError::ConfigUnavailable)?;
+    let raw =
+        fs::read_to_string(path).map_err(|_| AntigravitySubagentMcpError::ConfigUnavailable)?;
     serde_json::from_str(&raw).map_err(|_| AntigravitySubagentMcpError::ConfigUnavailable)
 }
 

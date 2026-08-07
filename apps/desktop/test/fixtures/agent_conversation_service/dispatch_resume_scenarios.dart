@@ -48,7 +48,7 @@ void registerAgentConversationDispatchScenarios() {
         'model': 'gpt-5.5',
         'reasoningEffort': 'xhigh',
         'acceptanceMode': 'dispatch-lane-unified-1',
-        'timeoutMs': 600000,
+        'timeoutMs': 0,
       });
     },
   );

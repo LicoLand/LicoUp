@@ -237,7 +237,11 @@ List<MessagingFlowEntry> buildMessagingFlowEntries(
 /// (avatar, name, AGENT badge), process runs collapse into inline status rows,
 /// and day dividers separate local days. The same timeline data the console
 /// transcript renders, projected into a chat surface.
-class MessagingParticipantFlow extends StatelessWidget {
+///
+/// Long transcripts load in pages: the newest [initialEntryWindow] flow
+/// entries render first and scrolling to the top pulls in earlier entries,
+/// so exploring history is progressive instead of truncated.
+class MessagingParticipantFlow extends StatefulWidget {
   const MessagingParticipantFlow({
     super.key,
     required this.items,
@@ -252,6 +256,17 @@ class MessagingParticipantFlow extends StatelessWidget {
     this.topOverlayInset = 0,
     this.bottomOverlayInset = 0,
   });
+
+  /// Flow entries (after author grouping) shown before the user scrolls.
+  static const int initialEntryWindow = 50;
+
+  /// Flow entries added each time the user scrolls to the top of the loaded
+  /// history.
+  static const int earlierEntryPage = 50;
+
+  /// Distance from the top of the loaded history that starts loading the
+  /// earlier page, so the request finishes before the user hits the edge.
+  static const double earlierPageLeadIn = 120;
 
   /// Timeline items in the message-list cache order (newest first).
   final List<ConversationTimelineItem> items;
@@ -276,48 +291,102 @@ class MessagingParticipantFlow extends StatelessWidget {
   /// Extra bottom padding when a floating composer overlays the transcript.
   final double bottomOverlayInset;
 
+  @override
+  State<MessagingParticipantFlow> createState() =>
+      _MessagingParticipantFlowState();
+}
+
+class _MessagingParticipantFlowState extends State<MessagingParticipantFlow> {
+  late int _visibleEntryCount;
+
+  @override
+  void initState() {
+    super.initState();
+    _visibleEntryCount = MessagingParticipantFlow.initialEntryWindow;
+  }
+
+  @override
+  void didUpdateWidget(MessagingParticipantFlow oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.sessionKey != widget.sessionKey) {
+      // A different conversation starts from its own newest window.
+      _visibleEntryCount = MessagingParticipantFlow.initialEntryWindow;
+    }
+  }
+
   TargetCandidate? _participantTarget(String participantAgentId) {
     final normalized = participantAgentId.trim();
     if (normalized.isEmpty) return null;
-    for (final candidate in participantTargets) {
+    for (final candidate in widget.participantTargets) {
       if (candidate.target == normalized) return candidate;
     }
     return null;
   }
 
+  bool _loadEarlierOnScroll(ScrollNotification notification) {
+    if (notification.depth != 0) {
+      return false;
+    }
+    final metrics = notification.metrics;
+    final total = _displayEntries.length;
+    if (_visibleEntryCount >= total) {
+      return false;
+    }
+    if (metrics.pixels <
+        metrics.maxScrollExtent - MessagingParticipantFlow.earlierPageLeadIn) {
+      return false;
+    }
+    setState(() {
+      _visibleEntryCount =
+          (_visibleEntryCount + MessagingParticipantFlow.earlierEntryPage)
+              .clamp(0, total);
+    });
+    return false;
+  }
+
+  List<MessagingFlowEntry> get _displayEntries {
+    final entries = buildMessagingFlowEntries(
+      widget.items.reversed.toList(growable: false),
+      activeProcessStorageKey: widget.activeProcessStorageKey,
+      preferPeerAgents: widget.preferPeerAgents,
+    );
+    return entries.reversed.toList(growable: false);
+  }
+
   @override
   Widget build(BuildContext context) {
-    final entries = buildMessagingFlowEntries(
-      items.reversed.toList(growable: false),
-      activeProcessStorageKey: activeProcessStorageKey,
-      preferPeerAgents: preferPeerAgents,
-    );
-    final displayEntries = entries.reversed.toList(growable: false);
+    final displayEntries = _displayEntries;
+    final visibleEntries = displayEntries.take(_visibleEntryCount).toList();
     // Conversation text must be selectable and copyable. Selection is hosted at
     // the scroll level so a drag can span several messages; it only reaches the
     // rows the list has built, which is why individual messages also expose an
     // explicit copy action. Chrome that would pollute a selection — process
     // rows, log rows — opts out with SelectionContainer.disabled at its own
     // site.
-    return SelectionArea(
-      child: ListView.builder(
-        key: PageStorageKey<String>('messaging-participant-flow-$sessionKey'),
-        reverse: true,
-        padding: EdgeInsets.fromLTRB(
-          LicoContentSpacing.item,
-          LicoContentSpacing.item + topOverlayInset,
-          LicoContentSpacing.item,
-          LicoContentSpacing.item +
-              adapter.assistantVerticalPadding +
-              bottomOverlayInset,
+    return NotificationListener<ScrollNotification>(
+      onNotification: _loadEarlierOnScroll,
+      child: SelectionArea(
+        child: ListView.builder(
+          key: PageStorageKey<String>(
+            'messaging-participant-flow-${widget.sessionKey}',
+          ),
+          reverse: true,
+          padding: EdgeInsets.fromLTRB(
+            LicoContentSpacing.item,
+            LicoContentSpacing.item + widget.topOverlayInset,
+            LicoContentSpacing.item,
+            LicoContentSpacing.item +
+                widget.adapter.assistantVerticalPadding +
+                widget.bottomOverlayInset,
+          ),
+          itemCount: visibleEntries.length,
+          itemBuilder: (context, index) {
+            final entry = visibleEntries[index];
+            // A streamed reply changes one entry per frame. Without a repaint
+            // boundary per entry the whole visible flow repaints with it.
+            return RepaintBoundary(child: _entryContent(context, entry));
+          },
         ),
-        itemCount: displayEntries.length,
-        itemBuilder: (context, index) {
-          final entry = displayEntries[index];
-          // A streamed reply changes one entry per frame. Without a repaint
-          // boundary per entry the whole visible flow repaints with it.
-          return RepaintBoundary(child: _entryContent(context, entry));
-        },
       ),
     );
   }
@@ -340,13 +409,13 @@ class MessagingParticipantFlow extends StatelessWidget {
             participantRole: participantRole,
             participantTarget: _participantTarget(participantAgentId),
             messages: messages,
-            target: target,
-            adapter: adapter,
+            target: widget.target,
+            adapter: widget.adapter,
             conversationId: messagingHoverConversationId(
               authorIsUser: authorIsUser,
               participantAgentId: participantAgentId,
-              participantConversationIds: participantConversationIds,
-              primaryConversationId: primaryConversationId,
+              participantConversationIds: widget.participantConversationIds,
+              primaryConversationId: widget.primaryConversationId,
             ),
           ),
         ),
@@ -355,7 +424,7 @@ class MessagingParticipantFlow extends StatelessWidget {
         child: SelectionContainer.disabled(
           child: MessagingProcessStatusRow(
             events: item.events,
-            adapter: adapter,
+            adapter: widget.adapter,
             detailsBuilder: buildAgentConversationEventDetails,
             active: active,
           ),
@@ -375,7 +444,11 @@ class MessagingParticipantFlow extends StatelessWidget {
         child: SelectionContainer.disabled(
           child: AgentRuntimeUpdateCard(
             message: item.message,
+<<<<<<< Updated upstream
             adapter: adapter,
+=======
+            adapter: widget.adapter,
+>>>>>>> Stashed changes
           ),
         ),
       ),
@@ -383,7 +456,7 @@ class MessagingParticipantFlow extends StatelessWidget {
         padding: LicoContentSpacing.peerItem,
         child: AgentConversationSubagentCardBlock(
           message: item.message,
-          adapter: adapter,
+          adapter: widget.adapter,
           fullWidth: true,
         ),
       ),

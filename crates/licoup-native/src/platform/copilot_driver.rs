@@ -13,7 +13,7 @@ pub(super) fn capability_probe(
     executable: &str,
     cwd: &Path,
     timeout_ms: u64,
-    max_stdout: usize,
+    max_stdout: Option<usize>,
     max_stderr: usize,
 ) -> Result<CapabilityProbe, ProtocolFailure> {
     probe_acp(
@@ -33,7 +33,7 @@ pub(super) fn execute(
     session_id: &str,
     cwd: Option<&Path>,
     timeout_ms: u64,
-    max_stdout: usize,
+    max_stdout: Option<usize>,
     max_stderr: usize,
 ) -> RunResult {
     execute_acp(
@@ -99,7 +99,7 @@ mod tests {
             "",
             Some(dir.as_path()),
             10_000,
-            1024 * 1024,
+            Some(1024 * 1024),
             1024,
         );
         assert!(result.ok, "fake Copilot ACP failure: {:?}", result.error);
@@ -137,7 +137,7 @@ mod tests {
             "",
             Some(dir.as_path()),
             10_000,
-            1024 * 1024,
+            Some(1024 * 1024),
             1024,
         );
         assert!(result.ok, "pre-bind Copilot failure: {:?}", result.error);
@@ -166,7 +166,7 @@ mod tests {
             executable.to_string_lossy().as_ref(),
             dir.as_path(),
             5_000,
-            64 * 1024,
+            Some(64 * 1024),
             1024,
         )
         .unwrap();
@@ -209,7 +209,7 @@ mod tests {
                 "",
                 Some(run_dir.as_path()),
                 10_000,
-                1024 * 1024,
+                Some(1024 * 1024),
                 1024,
             )
         });

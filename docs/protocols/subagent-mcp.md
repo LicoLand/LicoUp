@@ -82,8 +82,10 @@ flowchart TD
   probe-and-cleanup acceptance contract into every Reviewer prompt, regardless
   of the target framework or whether that framework has a LicoUp skill
   installed.
-- Delegation and continuation accept an explicit `timeoutMs` from 1 second to
-  30 minutes. The process deadline remains mandatory and bounded.
+- Delegation and continuation accept an explicit `timeoutMs`; `0` opts out of
+  any turn deadline and the subordinate runs until the turn completes, however
+  long that takes. **Developer-mandated rule: sending to an agent is never
+  time-limited.** Non-zero values are bounded between 1 second and 30 minutes.
 - Native approval settings are explicit per call. `allowAll` and the closed
   `permissionMode` allowlist may be used only for user-authorized work with an
   exact canonical working directory; they approve agent tools but do not add

@@ -1,6 +1,21 @@
+import 'package:licoup/src/contracts/agent_conversation_message.dart';
+
 import 'message_blocks_test_harness.dart';
 
 void main() {
+  test('native subagent_prompt role resolves to the subagent card', () {
+    final message = messageBlockTestMessage(
+      role: 'subagent_prompt',
+      text: 'Discovery worker',
+    );
+    expect(
+      agentConversationMessageKindFor(role: message.role),
+      AgentConversationMessageKind.subagent,
+    );
+    expect(message.isSubagentCard, isTrue);
+    expect(message.isDisplayable, isTrue);
+  });
+
   testWidgets('subagent card reveals child messages on demand', (tester) async {
     final adapter = AgentRenderAdapter.fallback();
     final message = messageBlockTestMessage(
@@ -34,6 +49,52 @@ void main() {
     await tester.pumpAndSettle();
     expect(
       find.textContaining('Detailed worker result', findRichText: true),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('expanded card body is height-capped and scrolls like a page', (
+    tester,
+  ) async {
+    final adapter = AgentRenderAdapter.fallback();
+    final message = messageBlockTestMessage(
+      role: 'subagent',
+      cardType: 'subagent',
+      cardTitle: 'Deep exploration',
+      text: 'Worker preview line',
+      childMessages: [
+        for (var index = 0; index < 12; index++)
+          messageBlockTestMessage(
+            id: 'step-$index',
+            role: 'assistant',
+            text: 'Step $index outcome ${'with some words ' * 8}',
+          ),
+      ],
+    );
+
+    await tester.pumpWidget(
+      messageBlocksTestApp(
+        AgentConversationSubagentCardBlock(message: message, adapter: adapter),
+      ),
+    );
+    await tester.tap(find.text('Deep exploration'));
+    await tester.pumpAndSettle();
+
+    final scrollable = find.byType(SingleChildScrollView);
+    expect(scrollable, findsOneWidget);
+    final bodyHeight = tester.renderObject<RenderBox>(scrollable).size.height;
+    expect(bodyHeight, lessThanOrEqualTo(320));
+
+    // The bounded frame keeps the tail of the task outside the viewport
+    // until the user scrolls it into view.
+    expect(
+      find.textContaining('Step 11 outcome', findRichText: true).hitTestable(),
+      findsNothing,
+    );
+    await tester.drag(scrollable, const Offset(0, -800));
+    await tester.pumpAndSettle();
+    expect(
+      find.textContaining('Step 11 outcome', findRichText: true).hitTestable(),
       findsOneWidget,
     );
   });

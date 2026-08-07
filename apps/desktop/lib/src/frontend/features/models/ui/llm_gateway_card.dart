@@ -272,83 +272,17 @@ final class _LlmGatewayCardState extends State<LlmGatewayCard> {
     }
   }
 
-  Future<void> _startAlone() async {
+  Future<void> _startService() async {
     if (_busy) return;
     final strings = LicoStrings.of(context);
-    setState(() {
-      _busy = true;
-      _message = null;
-    });
-    try {
-      late Map<String, dynamic> payload;
-      final lifecycle = widget.lifecycleController;
-      if (lifecycle == null) {
-        payload = await widget.agentService.runCli([
-          'llm-gateway',
-          'service',
-          'start',
-          '--port',
-          '$_servicePort',
-        ]);
-      } else {
-        await lifecycle.start();
-        payload = lifecycle.lastReport ?? const {};
-      }
-      if (!mounted) return;
-      setState(() {
-        _applyServiceStatus(payload, fallbackPort: _servicePort);
-        _messageIsError = _serviceState != _GatewayServiceState.running;
-        _message = _serviceState == _GatewayServiceState.running
-            ? strings.llmGatewayStarted
-            : strings.llmGatewayStartFailed;
-      });
-      await _loadUsage();
-    } catch (_) {
-      if (!mounted) return;
-      setState(() {
-        _messageIsError = true;
-        _message = strings.llmGatewayStartFailed;
-      });
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-  }
-
-  Future<void> _authorizeAndStart() async {
-    if (_busy || widget.authorization.busy) return;
-    final strings = LicoStrings.of(context);
-    final needsAuthorization = !widget.authorization.authorized;
     final needsCredentialReload =
         _serviceState == _GatewayServiceState.running && !_modelReady;
     setState(() {
       _busy = true;
       _messageIsError = false;
-      _message = needsAuthorization
-          ? strings.llmGatewayRequestingAuthorization
-          : null;
+      _message = null;
     });
     try {
-      if (needsAuthorization) {
-        final authorized = await widget.authorization.authorize(
-          widget.agentService,
-        );
-        if (!mounted) return;
-        final failure = widget.authorization.failure;
-        if (authorized ||
-            failure == LlmVaultAuthorizationFailure.noCredentials) {
-          await widget.authorization.refreshInventory(widget.agentService);
-        }
-        if (!authorized) {
-          setState(() {
-            _messageIsError = true;
-            _message = failure == LlmVaultAuthorizationFailure.noCredentials
-                ? strings.llmGatewayNoCredentialsAvailable
-                : strings.llmGatewayAuthorizationFailed;
-          });
-          return;
-        }
-        await widget.lifecycleController?.pollNow();
-      }
       if (!mounted) return;
       // A CLI/orphan restart can leave the sidecar running without a key
       // handoff. Stop first so start can re-apply credentials.
@@ -445,24 +379,12 @@ final class _LlmGatewayCardState extends State<LlmGatewayCard> {
     }
   }
 
-  bool get _canStartAlone =>
+  bool get _canStart =>
       !_busy &&
       switch (_serviceState) {
         _GatewayServiceState.stopped ||
         _GatewayServiceState.unknown ||
         _GatewayServiceState.unhealthy => true,
-        _ => false,
-      };
-
-  bool get _canAuthorizeAndStart =>
-      !_busy &&
-      switch (_serviceState) {
-        _GatewayServiceState.stopped || _GatewayServiceState.unknown => true,
-        _GatewayServiceState.unhealthy => _serviceManaged,
-        // Allow re-authorize when a managed process is up but has no usable
-        // key lease (common after an external CLI restart without handoff).
-        _GatewayServiceState.running =>
-          _serviceManaged && (!_credentialsApplied || !_modelReady),
         _ => false,
       };
 
@@ -569,10 +491,7 @@ final class _LlmGatewayCardState extends State<LlmGatewayCard> {
           children: [
             const Icon(Icons.lan_outlined),
             const SizedBox(width: 10),
-            Text(
-              'LLM Gateway',
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
+            Text('LLM Gateway', style: Theme.of(context).textTheme.titleMedium),
           ],
         ),
         const SizedBox(height: 16),
@@ -620,36 +539,17 @@ final class _LlmGatewayCardState extends State<LlmGatewayCard> {
           spacing: 10,
           runSpacing: 10,
           children: [
-            FilledButton.tonalIcon(
-              key: const ValueKey('gateway-start-alone'),
-              onPressed: _canStartAlone ? () => unawaited(_startAlone()) : null,
-              icon: _busy && !widget.authorization.busy
+            FilledButton.icon(
+              key: const ValueKey('gateway-service-start'),
+              onPressed: _canStart ? () => unawaited(_startService()) : null,
+              icon: _busy
                   ? const SizedBox.square(
                       dimension: 16,
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
                   : const Icon(Icons.play_arrow_rounded, size: 18),
               label: Text(
-                _busy && !widget.authorization.busy
-                    ? strings.llmGatewayStarting
-                    : strings.llmGatewayStartAlone,
-              ),
-            ),
-            FilledButton.icon(
-              key: const ValueKey('gateway-authorize-and-start'),
-              onPressed: _canAuthorizeAndStart
-                  ? () => unawaited(_authorizeAndStart())
-                  : null,
-              icon: widget.authorization.busy
-                  ? const SizedBox.square(
-                      dimension: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.fingerprint, size: 18),
-              label: Text(
-                widget.authorization.busy
-                    ? strings.llmGatewayAuthorizing
-                    : strings.llmGatewayAuthorizeAndStart,
+                _busy ? strings.llmGatewayStarting : strings.llmGatewayStart,
               ),
             ),
             FilledButton.tonal(

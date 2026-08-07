@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:licoup/src/application/features/agents/conversation/conversation_working_directory_fallback.dart';
 import 'package:licoup/src/application/features/agents/policy/conversation_session_index.dart';
 import 'package:licoup/src/application/features/agents/workspace/agent_workspace_coordinator.dart';
+import 'package:licoup/src/platform/agents/agent_conversation_projection_store.dart';
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
 import 'package:licoup/src/contracts/agent_conversation_context_projection.dart';
 
@@ -157,6 +158,17 @@ mixin AgentConversationSessionStateController on AgentWorkspaceCoordinator {
   }
 
   @override
+  @override
+  Future<void> loadConversationToolAllowlists() async {
+    try {
+      const store = AgentToolAllowlistStore();
+      final restored = await store.load(agentWorkspacePortableData);
+      replaceConversationToolAllowlists(restored);
+    } on Object {
+      // A damaged allowlist file must not block the client.
+    }
+  }
+
   Future<void> hydrateConversationProjectionCache() async {
     Map<String, List<AgentConversationSession>> restored;
     try {
@@ -562,15 +574,31 @@ mixin AgentConversationSessionStateController on AgentWorkspaceCoordinator {
         nativeMessages.length < pendingReadback.length) {
       return false;
     }
-    final nativeOffset = nativeMessages.length - pendingReadback.length;
-    for (var index = 0; index < pendingReadback.length; index += 1) {
+    // The native transcript may record one assistant reply as several content
+    // blocks (text before/after tool calls), so readback can carry more
+    // participant messages than the live projection. The readback tail must
+    // still end on the live tail; only the blocks between the live messages
+    // may be extra.
+    final pendingTail = pendingReadback.last;
+    final nativeTail = nativeMessages.last;
+    if (nativeTail.role.trim().toLowerCase() !=
+            pendingTail.role.trim().toLowerCase() ||
+        nativeTail.text.trim() != pendingTail.text.trim()) {
+      return false;
+    }
+    var nativeIndex = nativeMessages.length - 2;
+    for (var index = pendingReadback.length - 2; index >= 0; index -= 1) {
       final pending = pendingReadback[index];
-      final persisted = nativeMessages[nativeOffset + index];
-      if (persisted.role.trim().toLowerCase() !=
-              pending.role.trim().toLowerCase() ||
-          persisted.text.trim() != pending.text.trim()) {
+      while (nativeIndex >= 0 &&
+          (nativeMessages[nativeIndex].role.trim().toLowerCase() !=
+                  pending.role.trim().toLowerCase() ||
+              nativeMessages[nativeIndex].text.trim() != pending.text.trim())) {
+        nativeIndex -= 1;
+      }
+      if (nativeIndex < 0) {
         return false;
       }
+      nativeIndex -= 1;
     }
     return true;
   }

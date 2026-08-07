@@ -20,7 +20,7 @@ pub(in crate::platform) fn execute(
     session_id: &str,
     cwd: Option<&Path>,
     timeout_ms: u64,
-    _max_stdout: usize,
+    _max_stdout: Option<usize>,
     _max_stderr: usize,
 ) -> RunResult {
     let started_at = timestamp();

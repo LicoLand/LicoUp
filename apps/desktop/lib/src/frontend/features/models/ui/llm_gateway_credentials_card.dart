@@ -153,6 +153,50 @@ class _LlmGatewayCredentialsCardState extends State<LlmGatewayCredentialsCard> {
     }
   }
 
+  Future<void> _authorizeAll() async {
+    setState(() {
+      _busy = true;
+      _message = null;
+    });
+    try {
+      final authorized = await widget.authorization.authorize(
+        widget.agentService,
+      );
+      if (!mounted) return;
+      final failure = widget.authorization.failure;
+      if (authorized || failure == LlmVaultAuthorizationFailure.noCredentials) {
+        await widget.authorization.refreshInventory(widget.agentService);
+      }
+      if (!mounted) return;
+      if (!authorized) {
+        final chinese = Localizations.localeOf(context).languageCode == 'zh';
+        _messageIsError = true;
+        setState(
+          () => _message = failure == LlmVaultAuthorizationFailure.noCredentials
+              ? (chinese
+                    ? '没有可授权的 API 密钥，请先添加。'
+                    : 'No API key to authorize. Add one first.')
+              : (chinese
+                    ? '系统授权未完成，请重试。'
+                    : 'System authorization did not complete. Try again.'),
+        );
+        return;
+      }
+    } catch (_) {
+      if (mounted) {
+        final chinese = Localizations.localeOf(context).languageCode == 'zh';
+        _messageIsError = true;
+        setState(
+          () => _message = chinese
+              ? '授权未完成，请重试。'
+              : 'Authorization did not complete. Try again.',
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   Future<void> _edit(Map<String, dynamic> entry) async {
     final input = await showDialog<_EditKeyInput>(
       context: context,
@@ -220,8 +264,7 @@ class _LlmGatewayCredentialsCardState extends State<LlmGatewayCredentialsCard> {
       );
       if (!mounted) return;
       final failure = widget.authorization.failure;
-      if (authorized ||
-          failure == LlmVaultAuthorizationFailure.noCredentials) {
+      if (authorized || failure == LlmVaultAuthorizationFailure.noCredentials) {
         await widget.authorization.refreshInventory(widget.agentService);
       }
       if (!authorized) {
@@ -370,6 +413,24 @@ class _LlmGatewayCredentialsCardState extends State<LlmGatewayCredentialsCard> {
                   icon: const Icon(Icons.add),
                   label: Text(chinese ? '添加' : 'Add'),
                 ),
+                const SizedBox(width: 8),
+                FilledButton.icon(
+                  key: const ValueKey<String>('credentials-authorize'),
+                  onPressed: _busy || widget.authorization.busy
+                      ? null
+                      : () => unawaited(_authorizeAll()),
+                  icon: widget.authorization.busy
+                      ? const SizedBox.square(
+                          dimension: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.fingerprint, size: 18),
+                  label: Text(
+                    widget.authorization.busy
+                        ? (chinese ? '授权中…' : 'Authorizing…')
+                        : (chinese ? '授权' : 'Authorize'),
+                  ),
+                ),
               ],
             ),
             if (_message != null)
@@ -389,8 +450,10 @@ class _LlmGatewayCredentialsCardState extends State<LlmGatewayCredentialsCard> {
               entries: _entries,
               busy: _busy,
               chinese: chinese,
-              authorizedCredentialIds:
-                  widget.authorization.authorizedCredentialIds.toSet(),
+              authorizedCredentialIds: widget
+                  .authorization
+                  .authorizedCredentialIds
+                  .toSet(),
               canToggleAuthorization: _canToggleAuthorization,
               onAuthorizeChanged: (credentialId, enabled) => unawaited(
                 enabled
@@ -407,10 +470,8 @@ class _LlmGatewayCredentialsCardState extends State<LlmGatewayCredentialsCard> {
   }
 }
 
-typedef _CredentialAuthorizeChanged = void Function(
-  String credentialId,
-  bool enabled,
-);
+typedef _CredentialAuthorizeChanged =
+    void Function(String credentialId, bool enabled);
 
 class _CredentialsTable extends StatelessWidget {
   const _CredentialsTable({
