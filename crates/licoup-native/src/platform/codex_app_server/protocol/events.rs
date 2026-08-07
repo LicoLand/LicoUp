@@ -86,6 +86,7 @@ impl CodexProtocol {
             self.thread_id.as_deref().unwrap_or_default(),
             self.turn_id.as_deref().unwrap_or_default(),
             evidence_kind,
+            None,
         );
     }
 
