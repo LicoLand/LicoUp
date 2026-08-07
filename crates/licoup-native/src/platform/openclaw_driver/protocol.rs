@@ -354,6 +354,7 @@ impl OpenClawProtocol {
                     session_for_emit,
                     &self.config.turn_id,
                     evidence_kind,
+                    None,
                 );
             }
             let skill_events = super::super::skill_invocation_projection::project_skill_invocations(

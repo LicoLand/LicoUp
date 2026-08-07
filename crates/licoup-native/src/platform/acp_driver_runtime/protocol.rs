@@ -364,6 +364,7 @@ impl AcpProtocol {
                 self.session_id.as_deref().unwrap_or_default(),
                 &self.turn_id,
                 evidence_kind,
+                None,
             );
         }
         let text = update.agent_message_text().map(str::to_owned);

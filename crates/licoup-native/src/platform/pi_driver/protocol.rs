@@ -382,6 +382,7 @@ impl PiProtocol {
                     session_id,
                     &self.config.turn_id,
                     evidence_kind,
+                    None,
                 );
             }
             self.events.extend(
