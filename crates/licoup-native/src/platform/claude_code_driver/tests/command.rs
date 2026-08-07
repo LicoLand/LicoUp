@@ -1,10 +1,10 @@
 use super::*;
 
 #[test]
-fn fixed_stream_command_excludes_prompt_and_session_and_partial_replay() {
+fn fixed_stream_command_keeps_prompt_off_argv_and_resumes_by_session_flag() {
     let prompt = "private prompt must stay off argv";
-    let session = "private session must stay off argv";
-    let config = config(
+    let session = "native-session-1";
+    let driver_config = config(
         json!({
             "model": "claude-test-model",
             "reasoningEffort": "xhigh",
@@ -13,15 +13,26 @@ fn fixed_stream_command_excludes_prompt_and_session_and_partial_replay() {
         prompt,
         session,
     );
-    let identity = LaunchIdentity::new("claude-test", &config, Some(&absolute_test_cwd()));
+    let identity = LaunchIdentity::new("claude-test", &driver_config, Some(&absolute_test_cwd()));
     let args = identity.args();
-    assert!(!FIXED_STREAM_ARGS.contains(&"--include-partial-messages"));
+    assert!(FIXED_STREAM_ARGS.contains(&"--include-partial-messages"));
     assert!(!FIXED_STREAM_ARGS.contains(&"--no-session-persistence"));
-    assert!(
-        args.iter()
-            .all(|argument| !argument.contains(prompt) && !argument.contains(session))
+    // The prompt never leaves the stdin transport; resuming a native
+    // conversation requires the CLI's --resume session flag (like Cursor).
+    assert!(args.iter().all(|argument| !argument.contains(prompt)));
+    let resume_position = args.iter().position(|argument| argument == "--resume");
+    assert_eq!(
+        resume_position.map(|index| args[index + 1].as_str()),
+        Some(session)
     );
-    assert!(!args.iter().any(|argument| argument == "--resume"));
+    let fresh = config(json!({}), prompt, "");
+    let fresh_identity = LaunchIdentity::new("claude-test", &fresh, Some(&absolute_test_cwd()));
+    assert!(
+        !fresh_identity
+            .args()
+            .iter()
+            .any(|argument| argument == "--resume")
+    );
 }
 
 #[test]

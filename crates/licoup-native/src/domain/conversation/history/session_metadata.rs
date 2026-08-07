@@ -45,6 +45,16 @@ pub(super) fn session_from_messages_with_title(
     let mut tagged_messages = messages;
     for message in &mut tagged_messages {
         ensure_message_semantic_layer(message);
+        // A source without any message timestamp keeps one stable session
+        // timestamp instead of an empty key. JSONL transcripts are backfilled
+        // with interpolated transcript times afterwards by the parser.
+        if message
+            .get("createdAt")
+            .and_then(Value::as_str)
+            .is_none_or(|value| value.trim().is_empty())
+        {
+            message["createdAt"] = json!(super::message_projection::native_message_timestamp());
+        }
     }
     let path_display = display_path(path);
     let source_bytes = metadata.len();

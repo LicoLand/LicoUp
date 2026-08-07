@@ -16,7 +16,9 @@ mod io;
 mod protocol;
 mod supervision;
 
-pub(in crate::platform) use approval_store::resolve_parked_permission;
+#[cfg(test)]
+pub(in crate::platform) use approval_store::parked_permissions;
+pub(in crate::platform) use approval_store::{register_park_and_inbox, resolve_parked_permission};
 pub(in crate::platform) use capabilities::{
     AcpSessionDriverSpec, CapabilityProbe, EffectiveSettings, RunResult,
 };

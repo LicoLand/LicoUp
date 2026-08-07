@@ -62,7 +62,7 @@ pub(crate) fn probe_runtime_driver(target: &str, executable: &Path, cwd: &Path) 
             &executable,
             cwd,
             2_000,
-            64 * 1024,
+            Some(64 * 1024),
             16 * 1024,
         )),
         RuntimeAdapter::Cursor => {
@@ -99,14 +99,14 @@ pub(crate) fn probe_runtime_driver(target: &str, executable: &Path, cwd: &Path) 
             &executable,
             cwd,
             2_000,
-            64 * 1024,
+            Some(64 * 1024),
             16 * 1024,
         )),
         RuntimeAdapter::KimiCode => probe_acp_runtime(kimi_code_driver::capability_probe(
             &executable,
             cwd,
             2_000,
-            64 * 1024,
+            Some(64 * 1024),
             16 * 1024,
         )),
         RuntimeAdapter::OpenClaw => {
@@ -129,7 +129,7 @@ pub(crate) fn probe_runtime_driver(target: &str, executable: &Path, cwd: &Path) 
             &executable,
             cwd,
             2_000,
-            64 * 1024,
+            Some(64 * 1024),
             16 * 1024,
         )),
         RuntimeAdapter::Pi => {

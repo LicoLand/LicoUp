@@ -312,8 +312,15 @@ fn initialize(shared: &ServerState, id: Value, params: Option<&Value>) {
         write_json(&shared.output, rpc_error(id, -32602));
         return;
     };
-    if object.get("protocolVersion").and_then(Value::as_str) != Some(MCP_VERSION)
-        || !object.get("capabilities").is_some_and(Value::is_object)
+    let Some(negotiated_version) = object
+        .get("protocolVersion")
+        .and_then(Value::as_str)
+        .filter(|version| supported_protocol_version(version))
+    else {
+        write_json(&shared.output, rpc_error(id, -32602));
+        return;
+    };
+    if !object.get("capabilities").is_some_and(Value::is_object)
         || !object.get("clientInfo").is_some_and(Value::is_object)
     {
         write_json(&shared.output, rpc_error(id, -32602));
@@ -341,7 +348,7 @@ fn initialize(shared: &ServerState, id: Value, params: Option<&Value>) {
         rpc_success(
             id,
             json!({
-                "protocolVersion": MCP_VERSION,
+                "protocolVersion": negotiated_version,
                 "capabilities": {"tools": {"listChanged": false}},
                 "serverInfo": {"name": SERVER_NAME, "version": SERVER_VERSION}
             }),
@@ -1080,8 +1087,12 @@ fn dispatch_subagent(
     } else {
         "subagent.delegate"
     };
-    let main_conversation_path = optional_text(arguments, "mainConversationPath", MAX_CONVERSATION_PATH_BYTES)?
-        .or_else(|| resolve_manager_conversation_path(manager_agent_id));
+    let main_conversation_path = optional_text(
+        arguments,
+        "mainConversationPath",
+        MAX_CONVERSATION_PATH_BYTES,
+    )?
+    .or_else(|| resolve_manager_conversation_path(manager_agent_id));
     let portable = paths::portable_data_dir()
         .map_err(|_| ToolFailure::new("handoff_store_unavailable", true))?;
     let dispatch_id = subagent_handoff::new_dispatch_id();
@@ -1162,7 +1173,9 @@ fn run_accepted_handoff(
             record.error_code = None;
             record.updated_at_unix_ms = subagent_handoff::unix_ms_now();
             let _ = subagent_handoff::persist_handoff(&portable, &record);
-            if let Some(main_path) = main_conversation_path.as_deref().filter(|path| !path.is_empty())
+            if let Some(main_path) = main_conversation_path
+                .as_deref()
+                .filter(|path| !path.is_empty())
             {
                 let resume = MainResume {
                     workflow_id: dispatch_id.clone(),
@@ -1186,7 +1199,9 @@ fn run_accepted_handoff(
             record.error_code = Some(code);
             record.updated_at_unix_ms = subagent_handoff::unix_ms_now();
             let _ = subagent_handoff::persist_handoff(&portable, &record);
-            if let Some(main_path) = main_conversation_path.as_deref().filter(|path| !path.is_empty())
+            if let Some(main_path) = main_conversation_path
+                .as_deref()
+                .filter(|path| !path.is_empty())
             {
                 let resume = MainResume {
                     workflow_id: dispatch_id.clone(),
@@ -1268,8 +1283,9 @@ fn execute_subagent_send(
             .map_err(|_| "subagent_transport_failed".to_owned())?;
         if value.get("ok").and_then(Value::as_bool) == Some(true) {
             clear_quota_cooldown(&quota_key);
-            let projected = project_dispatch_result("subagent.delegate", &candidate.agent_id, &value)
-                .map_err(|failure| failure.code.to_owned())?;
+            let projected =
+                project_dispatch_result("subagent.delegate", &candidate.agent_id, &value)
+                    .map_err(|failure| failure.code.to_owned())?;
             let conversation_path = projected
                 .get("conversationPath")
                 .and_then(Value::as_str)
@@ -1285,7 +1301,9 @@ fn execute_subagent_send(
             }
             return Err("subagent_quota_exhausted".to_owned());
         }
-        return Err(project_dispatch_failure(&candidate.agent_id, &value).code.to_owned());
+        return Err(project_dispatch_failure(&candidate.agent_id, &value)
+            .code
+            .to_owned());
     }
     Err("subagent_quota_exhausted".to_owned())
 }
@@ -1767,6 +1785,25 @@ fn project_dispatch_failure(agent_id: &str, source: &Value) -> ToolFailure {
     ToolFailure::new(projected_code, retryable).with_conversation_path(conversation_path)
 }
 
+/// Accept the client's proposed protocol revision when it is at least the
+/// server's supported baseline (`MCP_VERSION`, a `YYYY-MM-DD` revision).
+/// Newer clients propose later revisions; the negotiated response echoes the
+/// client's proposal so clients never observe a downgrade.
+fn supported_protocol_version(version: &str) -> bool {
+    let bytes = version.as_bytes();
+    if bytes.len() != 10 || bytes[4] != b'-' || bytes[7] != b'-' {
+        return false;
+    }
+    if !bytes
+        .iter()
+        .enumerate()
+        .all(|(index, byte)| index == 4 || index == 7 || byte.is_ascii_digit())
+    {
+        return false;
+    }
+    version >= MCP_VERSION
+}
+
 fn canonical_agent_id(value: &str) -> Option<&'static str> {
     let normalized = value.trim().to_ascii_lowercase();
     [
@@ -1850,9 +1887,14 @@ fn optional_timeout_ms(value: &Value) -> Result<Option<u64>, ToolFailure> {
     let Some(timeout_ms) = value.get("timeoutMs") else {
         return Ok(None);
     };
+    // timeoutMs 0 opts out of any turn deadline: the subordinate runs until
+    // the turn completes, however long that takes. This is a developer-mandated
+    // rule; sending to an agent is never time-limited.
     timeout_ms
         .as_u64()
-        .filter(|value| (MIN_SUBAGENT_TIMEOUT_MS..=MAX_SUBAGENT_TIMEOUT_MS).contains(value))
+        .filter(|value| {
+            *value == 0 || (MIN_SUBAGENT_TIMEOUT_MS..=MAX_SUBAGENT_TIMEOUT_MS).contains(value)
+        })
         .map(Some)
         .ok_or(ToolFailure::new("invalid_request", false))
 }
@@ -2049,7 +2091,7 @@ fn tool_catalog() -> Vec<Value> {
                     "workingDirectory": bounded_string(MAX_WORKING_DIRECTORY_BYTES),
                     "exactModel": bounded_string(MAX_ID_BYTES),
                     "exactReasoningEffort": bounded_string(32),
-                    "timeoutMs": bounded_integer(MIN_SUBAGENT_TIMEOUT_MS, MAX_SUBAGENT_TIMEOUT_MS)
+                    "timeoutMs": bounded_integer(0, MAX_SUBAGENT_TIMEOUT_MS)
                 })
             )
         }),
@@ -2069,7 +2111,7 @@ fn tool_catalog() -> Vec<Value> {
                     "reasoningEffort": bounded_string(32),
                     "workingDirectory": bounded_string(MAX_WORKING_DIRECTORY_BYTES),
                     "mainConversationPath": bounded_string(MAX_CONVERSATION_PATH_BYTES),
-                    "timeoutMs": bounded_integer(MIN_SUBAGENT_TIMEOUT_MS, MAX_SUBAGENT_TIMEOUT_MS),
+                    "timeoutMs": bounded_integer(0, MAX_SUBAGENT_TIMEOUT_MS),
                     "maxStdoutBytes": bounded_integer(MIN_SUBAGENT_STDOUT_BYTES, MAX_SUBAGENT_STDOUT_BYTES),
                     "maxStderrBytes": bounded_integer(MIN_SUBAGENT_STDERR_BYTES, MAX_SUBAGENT_STDERR_BYTES),
                     "allowAll": {"type": "boolean"},
@@ -2106,7 +2148,7 @@ fn tool_catalog() -> Vec<Value> {
                     "reasoningEffort": bounded_string(32),
                     "workingDirectory": bounded_string(MAX_WORKING_DIRECTORY_BYTES),
                     "mainConversationPath": bounded_string(MAX_CONVERSATION_PATH_BYTES),
-                    "timeoutMs": bounded_integer(MIN_SUBAGENT_TIMEOUT_MS, MAX_SUBAGENT_TIMEOUT_MS),
+                    "timeoutMs": bounded_integer(0, MAX_SUBAGENT_TIMEOUT_MS),
                     "maxStdoutBytes": bounded_integer(MIN_SUBAGENT_STDOUT_BYTES, MAX_SUBAGENT_STDOUT_BYTES),
                     "maxStderrBytes": bounded_integer(MIN_SUBAGENT_STDERR_BYTES, MAX_SUBAGENT_STDERR_BYTES),
                     "allowAll": {"type": "boolean"},
@@ -2354,7 +2396,7 @@ fn valid_optional_timeout(object: &Map<String, Value>, key: &str) -> bool {
             .get(key)
             .and_then(Value::as_u64)
             .is_some_and(|value| {
-                (MIN_SUBAGENT_TIMEOUT_MS..=MAX_SUBAGENT_TIMEOUT_MS).contains(&value)
+                value == 0 || (MIN_SUBAGENT_TIMEOUT_MS..=MAX_SUBAGENT_TIMEOUT_MS).contains(&value)
             })
 }
 
@@ -2402,7 +2444,9 @@ fn valid_delegate_conversation_path(object: &Map<String, Value>) -> bool {
                     .and_then(Value::as_str)
                     .is_none_or(|value| value.trim().is_empty())
         }
-        SessionMode::Resume => valid_required(object, "conversationPath", MAX_CONVERSATION_PATH_BYTES),
+        SessionMode::Resume => {
+            valid_required(object, "conversationPath", MAX_CONVERSATION_PATH_BYTES)
+        }
     }
 }
 
@@ -2530,6 +2574,17 @@ mod tests {
     use super::*;
 
     #[test]
+    #[test]
+    fn protocol_version_negotiation_accepts_newer_clients() {
+        assert!(supported_protocol_version("2025-06-18"));
+        assert!(supported_protocol_version("2025-11-25"));
+        assert!(supported_protocol_version("2026-03-26"));
+        assert!(!supported_protocol_version("2025-03-26"));
+        assert!(!supported_protocol_version("2025-6-18"));
+        assert!(!supported_protocol_version("2025-06-18-extra"));
+        assert!(!supported_protocol_version(""));
+    }
+
     fn client_name_selects_the_main_agent() {
         assert_eq!(canonical_agent_id("Codex Desktop"), Some("codex"));
         assert_eq!(canonical_agent_id("Claude Code"), Some("claude-code"));
@@ -2893,13 +2948,18 @@ mod tests {
     }
 
     #[test]
-    fn subagent_timeouts_are_optional_and_bounded() {
+    fn subagent_timeouts_are_optional_and_unbounded_by_zero() {
         assert_eq!(optional_timeout_ms(&json!({})).unwrap(), None);
         assert_eq!(
             optional_timeout_ms(&json!({"timeoutMs": MAX_SUBAGENT_TIMEOUT_MS})).unwrap(),
             Some(MAX_SUBAGENT_TIMEOUT_MS)
         );
-        for timeout_ms in [0, MIN_SUBAGENT_TIMEOUT_MS - 1, MAX_SUBAGENT_TIMEOUT_MS + 1] {
+        // timeoutMs 0 opts out of any turn deadline (developer-mandated rule).
+        assert_eq!(
+            optional_timeout_ms(&json!({"timeoutMs": 0})).unwrap(),
+            Some(0)
+        );
+        for timeout_ms in [MIN_SUBAGENT_TIMEOUT_MS - 1, MAX_SUBAGENT_TIMEOUT_MS + 1] {
             assert_eq!(
                 optional_timeout_ms(&json!({"timeoutMs": timeout_ms}))
                     .unwrap_err()

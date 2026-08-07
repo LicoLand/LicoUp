@@ -101,6 +101,7 @@ class AgentConversationMessage {
 
   bool get isDisplayable =>
       (!_messageRoleIsInternal(role) ||
+          isSubagentCard ||
           (isStructuredEvent && cardType.trim().isNotEmpty)) &&
       (text.trim().isNotEmpty || isSubagentCard || isStructuredEvent);
 
@@ -244,7 +245,10 @@ AgentConversationMessageKind agentConversationMessageKindFor({
   final normalizedCard = _normalizeConversationSemantic(cardType);
   final normalizedRole = _normalizeConversationSemantic(role);
   final semantic = normalizedCard.isEmpty ? normalizedRole : normalizedCard;
-  if (semantic == 'subagent') {
+  // The native adapter reports delegated subagent prompts with the internal
+  // role "subagent_prompt" (normalized "subagent-prompt"); both spellings
+  // resolve to the subagent card.
+  if (semantic == 'subagent' || semantic == 'subagent-prompt') {
     return AgentConversationMessageKind.subagent;
   }
   if (_toolResultConversationSemantic(semantic) ||

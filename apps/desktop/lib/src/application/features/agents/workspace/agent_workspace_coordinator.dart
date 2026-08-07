@@ -48,6 +48,7 @@ abstract class AgentWorkspaceCoordinator extends ChangeNotifier {
   AgentConversationProjectionRepository
   get agentConversationProjectionRepository;
   Future<void> hydrateConversationProjectionCache();
+  Future<void> loadConversationToolAllowlists();
   void agentWorkspaceSelectDefaultConversationAgent({
     bool preferDirectAgent = false,
   });
@@ -160,6 +161,40 @@ abstract class AgentWorkspaceCoordinator extends ChangeNotifier {
   String pendingConversationLiveReplyParticipantAgentId = '';
   String pendingConversationLiveReplyParticipantLabel = '';
   String pendingConversationLiveReplyParticipantRole = '';
+  /// Last permission-denied turn: agent, denied tool, and the user text that
+  /// can be resent with the tool allowed (`--allowedTools`).
+  String pendingPermissionRetryAgentId = '';
+  String pendingPermissionRetryTool = '';
+  String pendingPermissionRetryText = '';
+  /// Per-agent tool allowlists ("allow and remember"): every send merges the
+  /// remembered tools into `--allowedTools` so they are auto-approved.
+  Map<String, List<String>> conversationToolAllowlistsByAgent =
+      const <String, List<String>>{};
+
+  List<String> conversationToolAllowlistFor(String agentId) =>
+      conversationToolAllowlistsByAgent[agentId.trim()] ?? const <String>[];
+
+  void rememberConversationToolAllowlist(String agentId, String tool) {
+    final normalizedAgent = agentId.trim();
+    final normalizedTool = tool.trim();
+    if (normalizedAgent.isEmpty || normalizedTool.isEmpty) return;
+    final current = conversationToolAllowlistsByAgent[normalizedAgent] ??
+        const <String>[];
+    if (current.contains(normalizedTool)) return;
+    conversationToolAllowlistsByAgent = {
+      ...conversationToolAllowlistsByAgent,
+      normalizedAgent: List<String>.unmodifiable(
+        [...current, normalizedTool],
+      ),
+    };
+    agentWorkspaceNotifyStateChanged();
+  }
+
+  void replaceConversationToolAllowlists(Map<String, List<String>> value) {
+    conversationToolAllowlistsByAgent = Map.unmodifiable(
+      Map<String, List<String>>.from(value),
+    );
+  }
   final ConversationTurnQueue conversationTurnQueue = ConversationTurnQueue();
   int conversationTurnSubmissionSequence = 0;
   bool conversationTurnDrainScheduled = false;

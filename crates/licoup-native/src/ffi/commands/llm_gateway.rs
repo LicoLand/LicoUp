@@ -181,9 +181,7 @@ pub(super) fn handle_service_stop(command: AdmittedCommand) -> Result<CliExecuti
     ))
 }
 
-pub(super) fn handle_service_autostart_status(
-    _command: AdmittedCommand,
-) -> Result<CliExecution> {
+pub(super) fn handle_service_autostart_status(_command: AdmittedCommand) -> Result<CliExecution> {
     Ok(CliExecution::Json(
         crate::platform::llm_gateway_autostart::autostart_status()?,
     ))
@@ -195,9 +193,7 @@ pub(super) fn handle_service_autostart_enable(command: AdmittedCommand) -> Resul
     ))
 }
 
-pub(super) fn handle_service_autostart_disable(
-    _command: AdmittedCommand,
-) -> Result<CliExecution> {
+pub(super) fn handle_service_autostart_disable(_command: AdmittedCommand) -> Result<CliExecution> {
     Ok(CliExecution::Json(
         crate::platform::llm_gateway_autostart::autostart_disable()?,
     ))

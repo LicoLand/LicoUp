@@ -138,9 +138,7 @@ fn codex_plugin_error(
 }
 
 pub(super) fn handle_subagent_mcp_status(command: AdmittedCommand) -> Result<CliExecution> {
-    let agent_id = command
-        .option_text("agent-id")
-        .unwrap_or_default();
+    let agent_id = command.option_text("agent-id").unwrap_or_default();
     let binary = command.option_text("binary-path").map(Path::new);
     let mcp_binary = command.option_text("mcp-binary-path").map(Path::new);
     let state = crate::platform::subagent_mcp_ensure::status(&agent_id, binary, mcp_binary);

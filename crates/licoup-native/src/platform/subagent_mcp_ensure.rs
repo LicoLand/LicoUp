@@ -62,7 +62,11 @@ impl SubagentMcpEnsureError {
     }
 }
 
-pub fn status(agent_id: &str, binary_path: Option<&Path>, mcp_binary_path: Option<&Path>) -> SubagentMcpEnsureState {
+pub fn status(
+    agent_id: &str,
+    binary_path: Option<&Path>,
+    mcp_binary_path: Option<&Path>,
+) -> SubagentMcpEnsureState {
     match agent_id {
         "codex" => {
             let Some(path) = binary_path else {
@@ -115,17 +119,17 @@ pub fn plan(
                 .map(Path::to_path_buf)
                 .or_else(antigravity_subagent_mcp_manager::default_mcp_binary_path)
                 .ok_or(SubagentMcpEnsureError::InvalidBinary)?;
-            let plan =
-                antigravity_subagent_mcp_manager::AntigravitySubagentMcpPlan::prepare(
-                    "antigravity",
-                    &path,
-                )
-                .map_err(map_antigravity_error)?;
+            let plan = antigravity_subagent_mcp_manager::AntigravitySubagentMcpPlan::prepare(
+                "antigravity",
+                &path,
+            )
+            .map_err(map_antigravity_error)?;
             Ok(SubagentMcpEnsurePlan {
                 agent_id: agent_id.to_owned(),
                 digest: plan.digest().to_owned(),
-                plugin_version: antigravity_subagent_mcp_manager::AntigravitySubagentMcpPlan::version()
-                    .to_owned(),
+                plugin_version:
+                    antigravity_subagent_mcp_manager::AntigravitySubagentMcpPlan::version()
+                        .to_owned(),
                 source: antigravity_subagent_mcp_manager::AntigravitySubagentMcpPlan::source()
                     .to_owned(),
                 release: "packaged".to_owned(),
@@ -148,7 +152,9 @@ pub fn install(
             let path = binary_path.ok_or(SubagentMcpEnsureError::InvalidBinary)?;
             let plan = codex_plugin_manager::CodexPluginInstallPlan::prepare("codex", path)
                 .map_err(map_codex_error)?;
-            let mut permit = plan.approve(confirmed, confirmation).map_err(map_codex_error)?;
+            let mut permit = plan
+                .approve(confirmed, confirmation)
+                .map_err(map_codex_error)?;
             let receipt =
                 codex_plugin_manager::install(&plan, &mut permit).map_err(map_codex_error)?;
             Ok((
@@ -161,12 +167,11 @@ pub fn install(
                 .map(Path::to_path_buf)
                 .or_else(antigravity_subagent_mcp_manager::default_mcp_binary_path)
                 .ok_or(SubagentMcpEnsureError::InvalidBinary)?;
-            let plan =
-                antigravity_subagent_mcp_manager::AntigravitySubagentMcpPlan::prepare(
-                    "antigravity",
-                    &path,
-                )
-                .map_err(map_antigravity_error)?;
+            let plan = antigravity_subagent_mcp_manager::AntigravitySubagentMcpPlan::prepare(
+                "antigravity",
+                &path,
+            )
+            .map_err(map_antigravity_error)?;
             let mut permit = plan
                 .approve(confirmed, confirmation)
                 .map_err(map_antigravity_error)?;
@@ -181,9 +186,7 @@ pub fn install(
     }
 }
 
-fn map_codex_error(
-    error: codex_plugin_manager::CodexPluginInstallError,
-) -> SubagentMcpEnsureError {
+fn map_codex_error(error: codex_plugin_manager::CodexPluginInstallError) -> SubagentMcpEnsureError {
     use codex_plugin_manager::CodexPluginInstallError::*;
     match error {
         NotCodex => SubagentMcpEnsureError::Unsupported,

@@ -6,11 +6,12 @@ use super::normalization::{
     normalize_pi,
 };
 use super::params::{
-    binary_param, bounded_output_param, codex_binary_param, message_param, text_param, u64_param,
+    binary_param, bounded_output_param, codex_binary_param, message_param, optional_output_param,
+    text_param, u64_param,
 };
 use super::{
-    DEFAULT_MAX_STDERR_BYTES, DEFAULT_MAX_STDOUT_BYTES, DEFAULT_TIMEOUT_MS, MAX_MESSAGE_BYTES,
-    MAX_TIMEOUT_MS, MIN_TIMEOUT_MS, RuntimeAdapter, RuntimeAdapterError,
+    DEFAULT_MAX_STDERR_BYTES, DEFAULT_TIMEOUT_MS, MAX_MESSAGE_BYTES, MAX_TIMEOUT_MS,
+    MIN_TIMEOUT_MS, RuntimeAdapter, RuntimeAdapterError,
 };
 use crate::platform::agent_workspace::resolve_local_agent_workspace;
 use crate::platform::virtual_machine::{SshRuntimeConnection, is_valid_guest_working_directory};
@@ -66,9 +67,21 @@ pub fn send_message(params: &Value) -> Result<Value, RuntimeAdapterError> {
         _ => Cow::Borrowed(params),
     };
     let params = params.as_ref();
+<<<<<<< Updated upstream
     let timeout_ms =
         u64_param(params, "timeoutMs", DEFAULT_TIMEOUT_MS).clamp(MIN_TIMEOUT_MS, MAX_TIMEOUT_MS);
-    let max_stdout = bounded_output_param(params, "maxStdoutBytes", DEFAULT_MAX_STDOUT_BYTES);
+=======
+    let timeout_ms = u64_param(params, "timeoutMs", DEFAULT_TIMEOUT_MS);
+    // timeoutMs 0 opts out of any turn deadline: the agent runs until the turn
+    // completes, however long that takes. A non-zero value stays bounded by the
+    // configured window.
+    let timeout_ms = if timeout_ms == 0 {
+        0
+    } else {
+        timeout_ms.clamp(MIN_TIMEOUT_MS, MAX_TIMEOUT_MS)
+    };
+>>>>>>> Stashed changes
+    let max_stdout = optional_output_param(params, "maxStdoutBytes");
     let max_stderr = bounded_output_param(params, "maxStderrBytes", DEFAULT_MAX_STDERR_BYTES);
     let requested_executable = if adapter == RuntimeAdapter::Codex {
         codex_binary_param(params)

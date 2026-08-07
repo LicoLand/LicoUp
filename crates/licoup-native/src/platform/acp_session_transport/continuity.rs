@@ -87,7 +87,7 @@ pub(super) fn acquire_transport(
     executable: &str,
     cwd: &Path,
     timeout_ms: u64,
-    max_stdout: usize,
+    max_stdout: Option<usize>,
     max_stderr: usize,
     runtime_connection: Option<&SshRuntimeConnection>,
 ) -> Result<Arc<ManagedTransport>, ProtocolFailure> {

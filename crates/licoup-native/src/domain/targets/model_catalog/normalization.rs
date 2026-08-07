@@ -490,11 +490,7 @@ pub(super) fn sanitize_model_name(value: &str) -> Option<String> {
     {
         return None;
     }
-    if trimmed
-        .chars()
-        .all(|ch| ch.is_ascii_digit() || ch == '.')
-        && trimmed.contains('.')
-    {
+    if trimmed.chars().all(|ch| ch.is_ascii_digit() || ch == '.') && trimmed.contains('.') {
         return None;
     }
     Some(trimmed.to_string())

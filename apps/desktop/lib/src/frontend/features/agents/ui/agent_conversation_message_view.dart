@@ -74,6 +74,21 @@ class AgentConversationMessageListState
   Map<String, int> _timelineIndexByStorageKey = const {};
   List<AgentSemanticArtifactRef> _artifacts = const [];
   int _footerCount = 0;
+
+  /// Flow entries (after author grouping) shown before the user scrolls.
+  static const int _initialEntryWindow = 50;
+
+  /// Flow entries added each time the user scrolls to the top of the loaded
+  /// history.
+  static const int _earlierEntryPage = 50;
+
+  /// Distance from the top of the loaded history that starts loading the
+  /// earlier page.
+  static const double _earlierPageLeadIn = 120;
+
+  int _visibleItemCount = 0;
+  bool _loadingEarlier = false;
+  int _timelineTotal = 0;
   String _activeProcessStorageKey = '';
   bool _hasMessages = false;
 
@@ -167,6 +182,9 @@ class AgentConversationMessageListState
         .toUnsigned(32)
         .toRadixString(16);
     _timelineItems = timelineItems;
+    _timelineTotal = timelineItems.length + footerCount;
+    _visibleItemCount = _timelineTotal.clamp(0, _initialEntryWindow);
+    _loadingEarlier = false;
     _timelineIndexByStorageKey = Map<String, int>.unmodifiable(
       indexByStorageKey,
     );
@@ -268,7 +286,6 @@ class AgentConversationMessageListState
   Widget build(BuildContext context) {
     final colors = context.licoColors;
     final strings = LicoStrings.of(context);
-    final session = widget.session;
     if (widget.loading && !_hasMessages) {
       return const Center(child: CircularProgressIndicator());
     }
@@ -293,128 +310,183 @@ class AgentConversationMessageListState
           final primaryConversationId = session == null
               ? ''
               : messagingDetailsConversationId(session);
-          return MessagingParticipantFlow(
-            items: _timelineItems,
-            adapter: adapter,
-            target: widget.target,
-            activeProcessStorageKey: _activeProcessStorageKey,
-            sessionKey: _timelineSessionKey,
-            participantTargets: widget.participantTargets,
-            participantConversationIds: widget.participantConversationIds,
-            primaryConversationId: primaryConversationId,
-            preferPeerAgents: isAgentOrchestrationTargetId(
-              widget.target.target,
+          return SelectionArea(
+            child: MessagingParticipantFlow(
+              items: _timelineItems,
+              adapter: adapter,
+              target: widget.target,
+              activeProcessStorageKey: _activeProcessStorageKey,
+              sessionKey: _timelineSessionKey,
+              participantTargets: widget.participantTargets,
+              participantConversationIds: widget.participantConversationIds,
+              primaryConversationId: primaryConversationId,
+              preferPeerAgents: isAgentOrchestrationTargetId(
+                widget.target.target,
+              ),
+              topOverlayInset: widget.topOverlayInset,
+              bottomOverlayInset: widget.bottomOverlayInset,
             ),
-            topOverlayInset: widget.topOverlayInset,
-            bottomOverlayInset: widget.bottomOverlayInset,
           );
         }
-        return ListView.builder(
-          key: PageStorageKey<String>(
-            'agent-conversation-message-list-$_timelineSessionKey',
-          ),
-          reverse: true,
-          padding: EdgeInsets.fromLTRB(
-            LicoContentSpacing.item,
-            LicoContentSpacing.item + widget.topOverlayInset,
-            LicoContentSpacing.item,
-            LicoContentSpacing.item +
-                adapter.assistantVerticalPadding +
-                widget.bottomOverlayInset,
-          ),
-          findChildIndexCallback: (key) {
-            if (key case ValueKey<String>(:final value)) {
-              return _timelineIndexByStorageKey[value];
-            }
-            return null;
-          },
-          itemBuilder: (context, index) {
-            if (index < _footerCount) {
-              if (session?.hasDiagnostics ?? false) {
-                if (index == 0) {
-                  return Padding(
-                    key: const ValueKey<String>('conversation-diagnostics'),
-                    padding: EdgeInsets.only(bottom: LicoContentSpacing.item),
-                    child: _ConversationDiagnosticsPanel(
-                      session: session!,
-                      expanded: _showDiagnostics,
-                      onToggle: () {
-                        setState(() {
-                          _showDiagnostics = !_showDiagnostics;
-                        });
-                      },
+        final itemCount = _visibleItemCount;
+        final showLoadingIndicator =
+            _loadingEarlier && itemCount < _timelineTotal;
+        return SelectionArea(
+          child: NotificationListener<ScrollNotification>(
+            onNotification: _loadEarlierOnScroll,
+            child: ListView.builder(
+            key: PageStorageKey<String>(
+              'agent-conversation-message-list-$_timelineSessionKey',
+            ),
+            reverse: true,
+            padding: EdgeInsets.fromLTRB(
+              LicoContentSpacing.item,
+              LicoContentSpacing.item + widget.topOverlayInset,
+              LicoContentSpacing.item,
+              LicoContentSpacing.item +
+                  adapter.assistantVerticalPadding +
+                  widget.bottomOverlayInset,
+            ),
+            findChildIndexCallback: (key) {
+              if (key case ValueKey<String>(:final value)) {
+                return _timelineIndexByStorageKey[value];
+              }
+              return null;
+            },
+            itemCount: itemCount + (showLoadingIndicator ? 1 : 0),
+            itemBuilder: (context, index) {
+              if (showLoadingIndicator && index == itemCount) {
+                return const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 14),
+                  child: Center(
+                    child: SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
                     ),
-                  );
-                }
-                if (_artifacts.isNotEmpty && index == 1) {
-                  return Padding(
-                    key: const ValueKey<String>('conversation-artifacts'),
-                    padding: EdgeInsets.only(bottom: LicoContentSpacing.item),
-                    child: _ConversationArtifactsPanel(artifacts: _artifacts),
-                  );
-                }
-              } else if (_artifacts.isNotEmpty && index == 0) {
-                return Padding(
-                  key: const ValueKey<String>('conversation-artifacts'),
-                  padding: EdgeInsets.only(bottom: LicoContentSpacing.item),
-                  child: _ConversationArtifactsPanel(artifacts: _artifacts),
+                  ),
                 );
               }
-            }
-            final item = _timelineItems[index - _footerCount];
-            final content = switch (item) {
-              ConversationMessageTimelineItem(:final message) =>
-                AgentConversationMessageBlock(
-                  message: message,
-                  adapter: adapter,
-                ),
-              ConversationProcessTimelineItem(:final events) =>
-                switch (widget.processStyle) {
-                  AgentsProcessStyle.processCard => ConversationProcessCard(
-                    events: events,
-                    adapter: adapter,
-                    detailsBuilder: buildAgentConversationEventDetails,
-                    active: item.storageKey == _activeProcessStorageKey,
-                  ),
-                  AgentsProcessStyle.inlineStatus => MessagingProcessStatusRow(
-                    events: events,
-                    adapter: adapter,
-                    detailsBuilder: buildAgentConversationEventDetails,
-                    active: item.storageKey == _activeProcessStorageKey,
-                  ),
-                },
-              ConversationLogTimelineItem(:final events) =>
-                ConversationLogEventRow(events: events),
-              ConversationRuntimeUpdateTimelineItem(:final message) =>
-                AgentRuntimeUpdateCard(
-                  message: message,
-                  adapter: adapter,
-                  active: widget.turnActive,
-                ),
-              ConversationTruncationTimelineItem(
-                :final historyTruncated,
-                :final messageTreeTruncated,
-              ) =>
-                ConversationTruncationNotice(
-                  historyTruncated: historyTruncated,
-                  messageTreeTruncated: messageTreeTruncated,
-                ),
-            };
-            // A streamed reply changes one item per frame. Without a repaint
-            // boundary per item the whole visible transcript repaints with it.
-            return Padding(
-              key: ValueKey<String>(item.storageKey),
-              padding: EdgeInsets.only(
-                bottom: index + 1 < _timelineItems.length + _footerCount
-                    ? LicoContentSpacing.item
-                    : 0,
-              ),
-              child: RepaintBoundary(child: content),
-            );
-          },
-          itemCount: _timelineItems.length + _footerCount,
+              return _buildConsoleRow(context, adapter, index);
+            },
+          ),
+          ),
         );
       },
+    );
+  }
+
+  bool _loadEarlierOnScroll(ScrollNotification notification) {
+    if (notification.depth != 0 || _loadingEarlier) {
+      return false;
+    }
+    final metrics = notification.metrics;
+    if (_visibleItemCount >= _timelineTotal) {
+      return false;
+    }
+    if (metrics.pixels < metrics.maxScrollExtent - _earlierPageLeadIn) {
+      return false;
+    }
+    setState(() => _loadingEarlier = true);
+    Future<void>.delayed(const Duration(milliseconds: 180), () {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _visibleItemCount = (_visibleItemCount + _earlierEntryPage).clamp(
+          0,
+          _timelineTotal,
+        );
+        _loadingEarlier = false;
+      });
+    });
+    return false;
+  }
+
+  Widget _buildConsoleRow(
+    BuildContext context,
+    AgentRenderAdapter adapter,
+    int index,
+  ) {
+    if (index < _footerCount) {
+      if (widget.session?.hasDiagnostics ?? false) {
+        if (index == 0) {
+          return Padding(
+            key: const ValueKey<String>('conversation-diagnostics'),
+            padding: EdgeInsets.only(bottom: LicoContentSpacing.item),
+            child: _ConversationDiagnosticsPanel(
+              session: widget.session!,
+              expanded: _showDiagnostics,
+              onToggle: () {
+                setState(() {
+                  _showDiagnostics = !_showDiagnostics;
+                });
+              },
+            ),
+          );
+        }
+        if (_artifacts.isNotEmpty && index == 1) {
+          return Padding(
+            key: const ValueKey<String>('conversation-artifacts'),
+            padding: EdgeInsets.only(bottom: LicoContentSpacing.item),
+            child: _ConversationArtifactsPanel(artifacts: _artifacts),
+          );
+        }
+      } else if (_artifacts.isNotEmpty && index == 0) {
+        return Padding(
+          key: const ValueKey<String>('conversation-artifacts'),
+          padding: EdgeInsets.only(bottom: LicoContentSpacing.item),
+          child: _ConversationArtifactsPanel(artifacts: _artifacts),
+        );
+      }
+    }
+    final item = _timelineItems[index - _footerCount];
+    final content = switch (item) {
+      ConversationMessageTimelineItem(:final message) =>
+        AgentConversationMessageBlock(message: message, adapter: adapter),
+      ConversationProcessTimelineItem(:final events) =>
+        switch (widget.processStyle) {
+          AgentsProcessStyle.processCard => ConversationProcessCard(
+            events: events,
+            adapter: adapter,
+            detailsBuilder: buildAgentConversationEventDetails,
+            active: item.storageKey == _activeProcessStorageKey,
+          ),
+          AgentsProcessStyle.inlineStatus => MessagingProcessStatusRow(
+            events: events,
+            adapter: adapter,
+            detailsBuilder: buildAgentConversationEventDetails,
+            active: item.storageKey == _activeProcessStorageKey,
+          ),
+        },
+      ConversationLogTimelineItem(:final events) => ConversationLogEventRow(
+        events: events,
+      ),
+      ConversationRuntimeUpdateTimelineItem(:final message) =>
+        AgentRuntimeUpdateCard(
+          message: message,
+          adapter: adapter,
+          active: widget.turnActive,
+        ),
+      ConversationTruncationTimelineItem(
+        :final historyTruncated,
+        :final messageTreeTruncated,
+      ) =>
+        ConversationTruncationNotice(
+          historyTruncated: historyTruncated,
+          messageTreeTruncated: messageTreeTruncated,
+        ),
+    };
+    // A streamed reply changes one item per frame. Without a repaint
+    // boundary per item the whole visible transcript repaints with it.
+    return Padding(
+      key: ValueKey<String>(item.storageKey),
+      padding: EdgeInsets.only(
+        bottom: index + 1 < _timelineItems.length + _footerCount
+            ? LicoContentSpacing.item
+            : 0,
+      ),
+      child: RepaintBoundary(child: content),
     );
   }
 }
@@ -443,17 +515,36 @@ List<AgentConversationMessage> mergeConversationReadbackAndLiveMessages(
   if (persistedConversation.length < liveConversation.length) {
     return List<AgentConversationMessage>.unmodifiable([...readBack, ...live]);
   }
-  final suffixStart = persistedConversation.length - liveConversation.length;
-  for (var index = 0; index < liveConversation.length; index += 1) {
-    if (!_sameConversationMessage(
-      persistedConversation[suffixStart + index],
-      liveConversation[index],
-    )) {
+  // The native transcript may record one assistant reply as several content
+  // blocks (text before/after tool calls), so readback can carry more
+  // participant messages than the live projection. The readback tail must
+  // still end on the live tail; only the blocks between the live messages may
+  // be extra.
+  if (!_sameConversationMessage(
+    persistedConversation.last,
+    liveConversation.last,
+  )) {
+    return List<AgentConversationMessage>.unmodifiable([
+      ...readBack,
+      ...live,
+    ]);
+  }
+  var persistedIndex = persistedConversation.length - 2;
+  for (var index = liveConversation.length - 2; index >= 0; index -= 1) {
+    while (persistedIndex >= 0 &&
+        !_sameConversationMessage(
+          persistedConversation[persistedIndex],
+          liveConversation[index],
+        )) {
+      persistedIndex -= 1;
+    }
+    if (persistedIndex < 0) {
       return List<AgentConversationMessage>.unmodifiable([
         ...readBack,
         ...live,
       ]);
     }
+    persistedIndex -= 1;
   }
   return List<AgentConversationMessage>.unmodifiable(readBack);
 }

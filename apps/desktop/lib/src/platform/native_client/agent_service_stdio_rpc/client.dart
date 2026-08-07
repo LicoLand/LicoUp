@@ -117,7 +117,8 @@ class NativeStdioRpcClient implements NativeStdioRpcTransport {
         workflowId: _workflowId,
         sessionManager: _chat,
       ),
-      timeout: _processContext.requestTimeout,
+      // Agent turns are unbounded: no end-to-end timeout on the send stream.
+      timeout: null,
       onTimeout: _chat.invalidateAndDiscard,
     );
   }

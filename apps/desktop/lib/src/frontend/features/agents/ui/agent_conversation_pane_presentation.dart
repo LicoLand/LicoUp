@@ -30,6 +30,7 @@ final class AgentConversationPaneState {
     this.workingDirectory = '',
     this.workingDirectorySelectable = false,
     this.sendAuthorizeActive = false,
+    this.permissionRetryTool = '',
     List<TargetCandidate> participantTargets = const [],
     this.flywheelMainAgentLabel = '',
     this.flywheelMainAgentTarget,
@@ -71,6 +72,7 @@ final class AgentConversationPaneState {
   final String workingDirectory;
   final bool workingDirectorySelectable;
   final bool sendAuthorizeActive;
+  final String permissionRetryTool;
   final List<TargetCandidate> participantTargets;
   final String flywheelMainAgentLabel;
   final TargetCandidate? flywheelMainAgentTarget;
@@ -99,6 +101,9 @@ final class AgentConversationPaneActions {
     this.onMentionFlywheelAgent,
     this.onLicoProfileChanged,
     this.mentionBridge,
+    this.onPermissionRetry,
+    this.onPermissionRetryRemember,
+    this.onPermissionDeny,
   });
 
   final ValueChanged<String> onModelChanged;
@@ -113,6 +118,9 @@ final class AgentConversationPaneActions {
   final ValueChanged<ComposerFlywheelMentionEntry>? onMentionFlywheelAgent;
   final ValueChanged<String>? onLicoProfileChanged;
   final ComposerMentionBridge? mentionBridge;
+  final VoidCallback? onPermissionRetry;
+  final VoidCallback? onPermissionRetryRemember;
+  final VoidCallback? onPermissionDeny;
 }
 
 /// Immutable identity and status projection consumed only by the header leaf.

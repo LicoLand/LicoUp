@@ -247,59 +247,102 @@ final class _MarkdownTable extends StatelessWidget {
   final Color blockBackground;
   final Color borderColor;
 
+  static const _cellHorizontalPadding = 10.0;
+
   @override
   Widget build(BuildContext context) {
     if (rows.isEmpty) return const SizedBox.shrink();
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          border: Border.all(color: borderColor),
-          borderRadius: BorderRadius.circular(6),
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(6),
-          child: Table(
-            defaultColumnWidth: const IntrinsicColumnWidth(),
-            border: TableBorder(
-              horizontalInside: BorderSide(color: borderColor),
-              verticalInside: BorderSide(color: borderColor),
-            ),
-            children: [
-              for (var rowIndex = 0; rowIndex < rows.length; rowIndex++)
-                TableRow(
-                  decoration: BoxDecoration(
-                    color: rowIndex == 0 ? blockBackground : Colors.transparent,
-                  ),
-                  children: [
-                    for (final cell in rows[rowIndex])
-                      Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 8,
-                        ),
-                        child: Text.rich(
-                          TextSpan(
-                            children: messageMarkdownInlineSpans(
-                              cell,
-                              rowIndex == 0
-                                  ? baseStyle.copyWith(
-                                      fontWeight: FontWeight.w800,
-                                    )
-                                  : baseStyle,
-                              accent: accent,
-                              codeBackground: codeBackground,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Columns narrower than an equal share keep their intrinsic content
+        // width; wider columns become flex columns that take the remaining
+        // space, so their text wraps instead of scrolling horizontally.
+        final tableWidth = constraints.maxWidth;
+        final columnWidths = <int, TableColumnWidth>{};
+        if (tableWidth.isFinite) {
+          final contentWidth =
+              tableWidth - 2 - rows.first.length * _cellHorizontalPadding * 2;
+          final equalShare = contentWidth / rows.first.length;
+          for (var c = 0; c < rows.first.length; c++) {
+            columnWidths[c] = _maxIntrinsicCellWidth(c) <= equalShare
+                ? const IntrinsicColumnWidth()
+                : const FlexColumnWidth();
+          }
+        }
+        return DecoratedBox(
+          decoration: BoxDecoration(
+            border: Border.all(color: borderColor),
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(6),
+            child: Table(
+              columnWidths: columnWidths,
+              defaultColumnWidth: const FlexColumnWidth(),
+              border: TableBorder(
+                horizontalInside: BorderSide(color: borderColor),
+                verticalInside: BorderSide(color: borderColor),
+              ),
+              children: [
+                for (var rowIndex = 0; rowIndex < rows.length; rowIndex++)
+                  TableRow(
+                    decoration: BoxDecoration(
+                      color: rowIndex == 0
+                          ? blockBackground
+                          : Colors.transparent,
+                    ),
+                    children: [
+                      for (final cell in rows[rowIndex])
+                        Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: _cellHorizontalPadding,
+                            vertical: 8,
+                          ),
+                          child: Text.rich(
+                            TextSpan(
+                              children: messageMarkdownInlineSpans(
+                                cell,
+                                rowIndex == 0
+                                    ? baseStyle.copyWith(
+                                        fontWeight: FontWeight.w800,
+                                      )
+                                    : baseStyle,
+                                accent: accent,
+                                codeBackground: codeBackground,
+                              ),
                             ),
                           ),
                         ),
-                      ),
-                  ],
-                ),
-            ],
+                    ],
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  /// The widest cell in [column], measured with the same inline spans and
+  /// base style the table renders with, so column choices match the layout.
+  double _maxIntrinsicCellWidth(int column) {
+    var width = 0.0;
+    for (final row in rows) {
+      final painter = TextPainter(
+        text: TextSpan(
+          style: baseStyle,
+          children: messageMarkdownInlineSpans(
+            row[column],
+            baseStyle,
+            accent: accent,
+            codeBackground: codeBackground,
           ),
         ),
-      ),
-    );
+        textDirection: TextDirection.ltr,
+      )..layout();
+      width = painter.width > width ? painter.width : width;
+    }
+    return width;
   }
 }
 

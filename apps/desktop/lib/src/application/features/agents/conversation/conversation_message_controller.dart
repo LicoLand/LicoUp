@@ -23,6 +23,7 @@ import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_display_names.dart';
 import 'package:licoup/src/platform/agents/group_conversation_store.dart';
 import 'package:licoup/src/platform/agents/subagent_handoff_store.dart';
+import 'package:licoup/src/platform/agents/agent_conversation_projection_store.dart';
 import 'package:licoup/src/platform/storage/portable_data_root.dart';
 
 const _releaseConversationAcceptanceMode =
@@ -42,7 +43,19 @@ mixin AgentConversationMessageController
         AgentConversationRelayProjectionController {
   final Set<String> _projectedHandoffDispatchIds = <String>{};
 
-  Future<bool> sendConversationMessage(String text) async {
+  Future<bool> sendConversationMessage(
+    String text, {
+    List<String> allowedTools = const <String>[],
+  }) async {
+    // Merge the per-agent remembered allowlist so allow-and-remember tools
+    // are auto-approved on every send.
+    final remembered = conversationToolAllowlistFor(selectedConversationAgentId);
+    if (remembered.isNotEmpty) {
+      allowedTools = List<String>.unmodifiable({
+        ...allowedTools,
+        ...remembered,
+      });
+    }
     var agent = selectedConversationAgent;
     var conversationOwnerAgentId = agent?.target ?? '';
     var participantRole = '';
@@ -187,6 +200,7 @@ mixin AgentConversationMessageController
       reasoningEffortOverride: selectedConversationIsOrchestration
           ? plainSendPolicy.plainSendReasoningEffort
           : null,
+      allowedTools: allowedTools,
     );
     if (isSendingConversationMessage) {
       await _steerOrEnqueueConversationTurn(turn);
@@ -197,6 +211,48 @@ mixin AgentConversationMessageController
       unawaited(projectSubagentHandoffPeerBubbles());
     }
     return lastError.isEmpty;
+  }
+
+  /// Resend the last permission-denied turn with the denied tool allowed
+  /// (`--allowedTools`). When [remember] is true the tool is persisted to the
+  /// agent allowlist first, so future sends auto-approve it.
+  Future<bool> retryDeniedConversationTurn({bool remember = false}) async {
+    final tool = pendingPermissionRetryTool.trim();
+    final text = pendingPermissionRetryText.trim();
+    final agentId = pendingPermissionRetryAgentId.trim();
+    if (tool.isEmpty || text.isEmpty) {
+      return false;
+    }
+    if (remember && agentId.isNotEmpty) {
+      rememberConversationToolAllowlist(agentId, tool);
+      unawaited(_persistConversationToolAllowlists());
+    }
+    pendingPermissionRetryAgentId = '';
+    pendingPermissionRetryTool = '';
+    pendingPermissionRetryText = '';
+    agentWorkspaceNotifyStateChanged();
+    return sendConversationMessage(text, allowedTools: [tool]);
+  }
+
+  /// Dismiss the permission-denied retry card without resending.
+  void dismissDeniedConversationTurn() {
+    if (pendingPermissionRetryTool.isEmpty) return;
+    pendingPermissionRetryAgentId = '';
+    pendingPermissionRetryTool = '';
+    pendingPermissionRetryText = '';
+    agentWorkspaceNotifyStateChanged();
+  }
+
+  Future<void> _persistConversationToolAllowlists() async {
+    try {
+      const store = AgentToolAllowlistStore();
+      await store.save(
+        agentWorkspacePortableData,
+        conversationToolAllowlistsByAgent,
+      );
+    } on Object {
+      // A failed allowlist write must never block a retry.
+    }
   }
 
   /// Prefer the room's last returned main/subagent conversation when the local
@@ -458,6 +514,7 @@ mixin AgentConversationMessageController
     required String participantRole,
     String? modelOverride,
     String? reasoningEffortOverride,
+    List<String> allowedTools = const <String>[],
   }) {
     final newConversationDraftToken = newConversationDraftTokenFor(
       conversationOwnerAgentId,
@@ -524,6 +581,7 @@ mixin AgentConversationMessageController
           sendingConversationAgentId == agent.target &&
           nativeSessionId.isEmpty,
       ideHandoffComposerId: ideHandoffComposerId,
+      allowedTools: allowedTools,
     );
   }
 
@@ -806,6 +864,11 @@ mixin AgentConversationMessageController
             reasoningEffort: queuedTurn.reasoningEffort,
             licoProfile: queuedTurn.licoProfile,
             acceptanceMode: _releaseConversationAcceptanceMode,
+            // Auto mode: skip native permission prompts so agent turns run
+            // without interaction (developer-mandated; approvals are surfaced
+            // honestly when the runtime still reports denials).
+            permissionMode: 'bypassPermissions',
+            allowedTools: queuedTurn.allowedTools,
             runtimeConnection: agent.runtimeConnection,
           ),
         )) {
@@ -878,6 +941,23 @@ mixin AgentConversationMessageController
                 immediate: event.kind == 'agent.message.completed',
               );
             }
+          } else if (event.kind == 'permission.denied') {
+            _flushPendingLiveReply();
+            final toolName = (event.payload['toolName'] ?? '').toString().trim();
+            if (toolName.isNotEmpty) {
+              pendingPermissionRetryAgentId = agent.target;
+              pendingPermissionRetryTool = toolName;
+              pendingPermissionRetryText = queuedTurn.text;
+            }
+            conversationAppendLiveProcessEvent(
+              agentId: conversationOwnerAgentId,
+              turnId: liveTurnId,
+              event: event,
+              participantAgentId: agent.target,
+              participantLabel: queuedTurn.participantLabel,
+              participantRole: queuedTurn.participantRole,
+            );
+            agentWorkspaceNotifyLiveConversationChanged();
           } else if (event.kind == 'agent.approval.needed') {
             _flushPendingLiveReply();
             await conversationHandleNativeApprovalNeeded(

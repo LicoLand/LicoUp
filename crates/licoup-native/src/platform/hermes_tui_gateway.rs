@@ -64,7 +64,7 @@ pub(crate) struct GatewayClient {
     stderr_handle: Option<thread::JoinHandle<()>>,
     stderr_truncated: Arc<AtomicBool>,
     observed_stdout_bytes: usize,
-    max_stdout_bytes: usize,
+    max_stdout_bytes: Option<usize>,
     next_request_id: i64,
     finished: bool,
 }
@@ -72,7 +72,7 @@ pub(crate) struct GatewayClient {
 impl GatewayClient {
     pub(crate) fn connect(
         connection: &SshRuntimeConnection,
-        max_stdout_bytes: usize,
+        max_stdout_bytes: Option<usize>,
         max_stderr_bytes: usize,
     ) -> Result<Self, GatewayFailure> {
         let command = connection
@@ -83,7 +83,7 @@ impl GatewayClient {
 
     fn connect_command(
         mut command: Command,
-        max_stdout_bytes: usize,
+        max_stdout_bytes: Option<usize>,
         max_stderr_bytes: usize,
     ) -> Result<Self, GatewayFailure> {
         command
@@ -124,13 +124,13 @@ impl GatewayClient {
     #[cfg(test)]
     pub(crate) fn connect_test_command(
         command: Command,
-        max_stdout_bytes: usize,
+        max_stdout_bytes: Option<usize>,
         max_stderr_bytes: usize,
     ) -> Result<Self, GatewayFailure> {
         Self::connect_command(command, max_stdout_bytes, max_stderr_bytes)
     }
 
-    pub(crate) fn wait_ready(&mut self, deadline: Instant) -> Result<(), GatewayFailure> {
+    pub(crate) fn wait_ready(&mut self, deadline: Option<Instant>) -> Result<(), GatewayFailure> {
         let message = self.next_message(deadline)?;
         if event_type(&message) == Some("gateway.ready") && event_session_id(&message).is_none() {
             return Ok(());
@@ -142,7 +142,7 @@ impl GatewayClient {
         &mut self,
         method: &str,
         params: Value,
-        deadline: Instant,
+        deadline: Option<Instant>,
         mut observe: F,
     ) -> Result<Value, GatewayFailure>
     where
@@ -178,23 +178,26 @@ impl GatewayClient {
         }
     }
 
-    pub(crate) fn next_message(&mut self, deadline: Instant) -> Result<Value, GatewayFailure> {
+    pub(crate) fn next_message(&mut self, deadline: Option<Instant>) -> Result<Value, GatewayFailure> {
         loop {
             self.stdin
                 .check_health()
                 .map_err(|_| GatewayFailure::Write)?;
             let now = Instant::now();
-            if now >= deadline {
+            if deadline.is_some_and(|limit| now >= limit) {
                 return Err(GatewayFailure::Timeout);
             }
             match self
                 .receiver
-                .recv_timeout((deadline - now).min(PROCESS_POLL_INTERVAL))
+                .recv_timeout(deadline.map_or(PROCESS_POLL_INTERVAL, |limit| (limit - now).min(PROCESS_POLL_INTERVAL)))
             {
                 Ok(TransportEvent::Message { message, bytes }) => {
-                    self.observed_stdout_bytes = self.observed_stdout_bytes.saturating_add(bytes);
-                    if self.observed_stdout_bytes > self.max_stdout_bytes {
-                        return Err(GatewayFailure::OutputLimit);
+                    if let Some(max_stdout_bytes) = self.max_stdout_bytes {
+                        self.observed_stdout_bytes =
+                            self.observed_stdout_bytes.saturating_add(bytes);
+                        if self.observed_stdout_bytes > max_stdout_bytes {
+                            return Err(GatewayFailure::OutputLimit);
+                        }
                     }
                     return Ok(message);
                 }

@@ -28,6 +28,7 @@ final class ConversationQueuedTurn {
     this.promoteToCurrentConversationOnSuccess = false,
     this.dailyQuotaFallbackAttemptedKeys = const <String>{},
     this.ideHandoffComposerId = '',
+    this.allowedTools = const <String>[],
   });
 
   final int submissionId;
@@ -43,6 +44,7 @@ final class ConversationQueuedTurn {
   final String conversationOwnerAgentId;
   final String participantLabel;
   final String participantRole;
+  final List<String> allowedTools;
   final String newConversationDraftToken;
   final bool awaitActiveSession;
 

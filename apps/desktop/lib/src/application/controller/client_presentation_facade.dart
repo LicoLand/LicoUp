@@ -86,7 +86,7 @@ mixin ClientPresentationFacade
 
   Future<void> setAppearancePreset(String presetId) async {
     if (!hasAppearancePresetConfig(presetId, appearancePresetConfigs)) {
-      presetId = AppearancePresetIds.defaultSystem;
+      presetId = AppearancePresetIds.licoSoda;
     }
     if (await layoutManager.setAppearancePreset(presetId)) {
       appearancePresetId = presetId;

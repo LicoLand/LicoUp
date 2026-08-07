@@ -1,5 +1,5 @@
 mod acp_driver_runtime;
-mod acp_session_transport;
+pub(in crate::platform) mod acp_session_transport;
 pub(crate) mod agent_workspace;
 pub(crate) mod antigravity_driver;
 pub(crate) mod badtower_station;
@@ -39,12 +39,11 @@ pub(crate) mod virtual_machine;
 pub mod agent_workflow_runtime;
 pub mod antigravity_subagent_mcp_manager;
 pub mod catalog_cache_store;
+pub mod client_autostart;
 pub mod client_state;
 pub mod codex_plugin_manager;
-pub mod subagent_mcp_ensure;
 pub mod file_security;
 pub mod llm_api_key_vault;
-pub mod client_autostart;
 pub mod llm_gateway_autostart;
 pub mod llm_gateway_server;
 pub mod llm_gateway_service;
@@ -56,6 +55,7 @@ pub mod paths;
 pub mod runtime_adapters;
 pub mod secure_mesh_capability_probe;
 pub mod secure_mesh_secret_store;
+pub mod subagent_mcp_ensure;
 pub mod url_security;
 
 pub(crate) use codex_app_server::list_models as codex_app_server_model_catalog;

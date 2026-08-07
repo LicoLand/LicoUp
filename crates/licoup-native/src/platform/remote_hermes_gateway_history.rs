@@ -29,7 +29,7 @@ pub(crate) fn conversation_list_with_connection(
         .unwrap_or(MAX_PAGE_LIMIT)
         .clamp(1, MAX_PAGE_LIMIT);
 
-    let mut client = GatewayClient::connect(connection, MAX_STDOUT_BYTES, MAX_STDERR_BYTES)
+    let mut client = GatewayClient::connect(connection, Some(MAX_STDOUT_BYTES), MAX_STDERR_BYTES)
         .map_err(gateway_error)?;
     client.wait_ready(None).map_err(gateway_error)?;
 

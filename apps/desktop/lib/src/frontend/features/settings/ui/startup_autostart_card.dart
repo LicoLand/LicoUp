@@ -47,11 +47,9 @@ final class _StartupAutostartCardState extends State<StartupAutostartCard> {
       final mcp = payload['mcp'];
       setState(() {
         _supported = payload['supported'] == true;
-        _desktopEnabled =
-            desktop is Map && desktop['enabled'] == true;
+        _desktopEnabled = desktop is Map && desktop['enabled'] == true;
         _desktopSilent = desktop is Map && desktop['silent'] == true;
-        _gatewayEnabled =
-            gateway is Map && gateway['enabled'] == true;
+        _gatewayEnabled = gateway is Map && gateway['enabled'] == true;
         _mcpEnabled = mcp is Map && mcp['enabled'] == true;
         _loading = false;
       });
@@ -90,7 +88,8 @@ final class _StartupAutostartCardState extends State<StartupAutostartCard> {
         args.addAll(['--silent', silent ? 'true' : 'false']);
       }
       if (component == 'gateway') {
-        final port = widget.controller.llmGatewayLifecycleController?.port ??
+        final port =
+            widget.controller.llmGatewayLifecycleController.port ??
             defaultLlmGatewayPort;
         args.addAll(['--port', '$port']);
       }
@@ -101,11 +100,9 @@ final class _StartupAutostartCardState extends State<StartupAutostartCard> {
       final mcp = payload['mcp'];
       setState(() {
         _supported = payload['supported'] != false;
-        _desktopEnabled =
-            desktop is Map && desktop['enabled'] == true;
+        _desktopEnabled = desktop is Map && desktop['enabled'] == true;
         _desktopSilent = desktop is Map && desktop['silent'] == true;
-        _gatewayEnabled =
-            gateway is Map && gateway['enabled'] == true;
+        _gatewayEnabled = gateway is Map && gateway['enabled'] == true;
         _mcpEnabled = mcp is Map && mcp['enabled'] == true;
         _messageIsError = false;
         _message = strings.startupAutostartSaved;
@@ -219,17 +216,10 @@ final class _StartupAutostartCardState extends State<StartupAutostartCard> {
                 style: TextStyle(color: colors.textMuted, fontSize: 11),
               ),
               value: _desktopSilent,
-              onChanged: !_supported ||
-                      !_desktopEnabled ||
-                      _busy ||
-                      _loading
+              onChanged: !_supported || !_desktopEnabled || _busy || _loading
                   ? null
                   : (value) => unawaited(
-                      _set(
-                        component: 'desktop',
-                        enabled: true,
-                        silent: value,
-                      ),
+                      _set(component: 'desktop', enabled: true, silent: value),
                     ),
             ),
           ),
@@ -247,9 +237,8 @@ final class _StartupAutostartCardState extends State<StartupAutostartCard> {
             value: _gatewayEnabled,
             onChanged: !_supported || _busy || _loading
                 ? null
-                : (value) => unawaited(
-                    _set(component: 'gateway', enabled: value),
-                  ),
+                : (value) =>
+                      unawaited(_set(component: 'gateway', enabled: value)),
           ),
           SwitchListTile.adaptive(
             key: const Key('startup-mcp-autostart'),
@@ -263,9 +252,7 @@ final class _StartupAutostartCardState extends State<StartupAutostartCard> {
             value: _mcpEnabled,
             onChanged: !_supported || _busy || _loading
                 ? null
-                : (value) => unawaited(
-                    _set(component: 'mcp', enabled: value),
-                  ),
+                : (value) => unawaited(_set(component: 'mcp', enabled: value)),
           ),
         ],
       ),
