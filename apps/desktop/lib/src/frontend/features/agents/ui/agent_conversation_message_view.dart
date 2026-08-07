@@ -335,41 +335,41 @@ class AgentConversationMessageListState
           child: NotificationListener<ScrollNotification>(
             onNotification: _loadEarlierOnScroll,
             child: ListView.builder(
-            key: PageStorageKey<String>(
-              'agent-conversation-message-list-$_timelineSessionKey',
-            ),
-            reverse: true,
-            padding: EdgeInsets.fromLTRB(
-              LicoContentSpacing.item,
-              LicoContentSpacing.item + widget.topOverlayInset,
-              LicoContentSpacing.item,
-              LicoContentSpacing.item +
-                  adapter.assistantVerticalPadding +
-                  widget.bottomOverlayInset,
-            ),
-            findChildIndexCallback: (key) {
-              if (key case ValueKey<String>(:final value)) {
-                return _timelineIndexByStorageKey[value];
-              }
-              return null;
-            },
-            itemCount: itemCount + (showLoadingIndicator ? 1 : 0),
-            itemBuilder: (context, index) {
-              if (showLoadingIndicator && index == itemCount) {
-                return const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 14),
-                  child: Center(
-                    child: SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
+              key: PageStorageKey<String>(
+                'agent-conversation-message-list-$_timelineSessionKey',
+              ),
+              reverse: true,
+              padding: EdgeInsets.fromLTRB(
+                LicoContentSpacing.item,
+                LicoContentSpacing.item + widget.topOverlayInset,
+                LicoContentSpacing.item,
+                LicoContentSpacing.item +
+                    adapter.assistantVerticalPadding +
+                    widget.bottomOverlayInset,
+              ),
+              findChildIndexCallback: (key) {
+                if (key case ValueKey<String>(:final value)) {
+                  return _timelineIndexByStorageKey[value];
+                }
+                return null;
+              },
+              itemCount: itemCount + (showLoadingIndicator ? 1 : 0),
+              itemBuilder: (context, index) {
+                if (showLoadingIndicator && index == itemCount) {
+                  return const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 14),
+                    child: Center(
+                      child: SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
                     ),
-                  ),
-                );
-              }
-              return _buildConsoleRow(context, adapter, index);
-            },
-          ),
+                  );
+                }
+                return _buildConsoleRow(context, adapter, index);
+              },
+            ),
           ),
         );
       },
@@ -524,10 +524,7 @@ List<AgentConversationMessage> mergeConversationReadbackAndLiveMessages(
     persistedConversation.last,
     liveConversation.last,
   )) {
-    return List<AgentConversationMessage>.unmodifiable([
-      ...readBack,
-      ...live,
-    ]);
+    return List<AgentConversationMessage>.unmodifiable([...readBack, ...live]);
   }
   var persistedIndex = persistedConversation.length - 2;
   for (var index = liveConversation.length - 2; index >= 0; index -= 1) {
@@ -546,8 +543,157 @@ List<AgentConversationMessage> mergeConversationReadbackAndLiveMessages(
     }
     persistedIndex -= 1;
   }
-  return List<AgentConversationMessage>.unmodifiable(readBack);
+  // Readback covers the live participant messages, but the live turn's
+  // structured events (lifecycle stages + evidence operations) never appear
+  // in any native transcript and must survive the handover: drop them and
+  // the blackboard card would disappear mid-turn. Retain them, pinned after
+  // the turn's user message so the card keeps its place between the user
+  // message and the reply. Entries the readback already carries (same kind,
+  // card type, and content) are not duplicated.
+  final liveStructured = live
+      .where((message) => message.isStructuredEvent)
+      .toList(growable: false);
+  if (liveStructured.isEmpty) {
+    return List<AgentConversationMessage>.unmodifiable(readBack);
+  }
+  // Readback convergence: the transcript records the same reasoning / tool
+  // operations as the live projection but under transcript-owned identities,
+  // so without a bridge the timeline would render them as a second process
+  // card next to the turn's blackboard card. Rewrite the identities of the
+  // covered turn's readback operations to the turn key; the timeline then
+  // groups them into the same pinned card and both sources converge.
+  final convergedReadBack = _convergeTurnReadbackOperations(
+    readBack,
+    live,
+    liveStructured,
+  );
+  final readbackSignatures = convergedReadBack
+      .where((message) => message.isStructuredEvent)
+      .map(_structuredEventSignature)
+      .toSet();
+  final retained = <AgentConversationMessage>[
+    for (final message in liveStructured)
+      if (!readbackSignatures.contains(_structuredEventSignature(message)))
+        message,
+  ];
+  if (retained.isEmpty) {
+    return List<AgentConversationMessage>.unmodifiable(convergedReadBack);
+  }
+  var insertIndex = convergedReadBack.length;
+  for (var index = convergedReadBack.length - 1; index >= 0; index -= 1) {
+    if (convergedReadBack[index].role.trim().toLowerCase() == 'user') {
+      insertIndex = index + 1;
+      break;
+    }
+  }
+  return List<AgentConversationMessage>.unmodifiable([
+    ...convergedReadBack.take(insertIndex),
+    ...retained,
+    ...convergedReadBack.skip(insertIndex),
+  ]);
 }
+
+/// Rewrite the stable identities of the covered turn's readback operations
+/// (reasoning / tool calls / tool results) to the live turn key so the
+/// timeline groups them into the same blackboard card as the live evidence.
+///
+/// The caller has already verified that the readback covers the live turn:
+/// the last readback participant message is this turn's reply and one of the
+/// earlier participant messages is this turn's user message. Operations
+/// between those two boundaries belong to the turn; everything else keeps
+/// its transcript identity. Returns [readBack] unchanged when no turn key or
+/// turn span can be recovered.
+List<AgentConversationMessage> _convergeTurnReadbackOperations(
+  List<AgentConversationMessage> readBack,
+  List<AgentConversationMessage> live,
+  List<AgentConversationMessage> liveStructured,
+) {
+  String? turnKey;
+  for (final message in liveStructured) {
+    if (message.cardType.trim().toLowerCase() == 'lifecycle') {
+      turnKey = liveTurnKeyOf(message);
+      break;
+    }
+  }
+  if (turnKey == null) {
+    return readBack;
+  }
+  AgentConversationMessage? liveUser;
+  for (final message in live) {
+    if (_isConversationParticipantMessage(message)) {
+      liveUser = message;
+      break;
+    }
+  }
+  if (liveUser == null) {
+    return readBack;
+  }
+  final participantIndexes = <int>[];
+  for (var index = 0; index < readBack.length; index += 1) {
+    if (_isConversationParticipantMessage(readBack[index])) {
+      participantIndexes.add(index);
+    }
+  }
+  if (participantIndexes.isEmpty) {
+    return readBack;
+  }
+  final tailIndex = participantIndexes.last;
+  int? userIndex;
+  for (var index = participantIndexes.length - 1; index >= 0; index -= 1) {
+    if (_sameConversationMessage(
+      readBack[participantIndexes[index]],
+      liveUser,
+    )) {
+      userIndex = participantIndexes[index];
+      break;
+    }
+  }
+  if (userIndex == null || userIndex + 1 >= tailIndex) {
+    return readBack;
+  }
+  final converged = List<AgentConversationMessage>.of(readBack);
+  var operationIndex = 0;
+  for (var index = userIndex + 1; index < tailIndex; index += 1) {
+    final message = readBack[index];
+    if (!_isBridgeableReadbackOperation(message)) {
+      continue;
+    }
+    converged[index] = AgentConversationMessage(
+      id: message.id,
+      role: message.role,
+      text: message.text,
+      createdAt: message.createdAt,
+      layer: message.layer,
+      cardType: message.cardType,
+      cardTitle: message.cardTitle,
+      cardSubtitle: message.cardSubtitle,
+      collapsed: message.collapsed,
+      providerSummary: message.providerSummary,
+      stableIdentity: '$turnKey-process-$operationIndex',
+      participantAgentId: message.participantAgentId,
+      participantLabel: message.participantLabel,
+      participantRole: message.participantRole,
+      childMessagesTruncated: message.childMessagesTruncated,
+      childMessages: message.childMessages,
+      images: message.images,
+    );
+    operationIndex += 1;
+  }
+  if (operationIndex == 0) {
+    return readBack;
+  }
+  return converged;
+}
+
+/// Whether a readback structured event may join the turn's blackboard card.
+/// Runtime log rows and runtime-update cards keep their own timeline items.
+bool _isBridgeableReadbackOperation(AgentConversationMessage message) =>
+    message.isStructuredEvent &&
+    !isConversationRuntimeUpdateEvent(message) &&
+    !isConversationRuntimeLogEvent(message);
+
+String _structuredEventSignature(AgentConversationMessage message) =>
+    '${message.kind}|${message.cardType}|${message.text.trim()}';
 
 bool _isConversationParticipantMessage(AgentConversationMessage message) {
   final role = message.role.trim().toLowerCase();

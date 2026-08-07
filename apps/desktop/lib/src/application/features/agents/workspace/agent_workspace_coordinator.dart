@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 
 import 'package:licoup/src/application/controller/client_lifecycle_coordinator.dart';
 import 'package:licoup/src/application/features/agents/contracts/agent_conversation_gateway.dart';
+import 'package:licoup/src/application/features/agents/conversation/conversation_turn_process_state.dart';
 import 'package:licoup/src/application/features/agents/conversation/conversation_turn_queue.dart';
 import 'package:licoup/src/application/features/agents/policy/conversation_refresh_policy.dart';
 import 'package:licoup/src/application/features/messaging/messaging_notification_center.dart';
@@ -161,11 +162,13 @@ abstract class AgentWorkspaceCoordinator extends ChangeNotifier {
   String pendingConversationLiveReplyParticipantAgentId = '';
   String pendingConversationLiveReplyParticipantLabel = '';
   String pendingConversationLiveReplyParticipantRole = '';
+
   /// Last permission-denied turn: agent, denied tool, and the user text that
   /// can be resent with the tool allowed (`--allowedTools`).
   String pendingPermissionRetryAgentId = '';
   String pendingPermissionRetryTool = '';
   String pendingPermissionRetryText = '';
+
   /// Per-agent tool allowlists ("allow and remember"): every send merges the
   /// remembered tools into `--allowedTools` so they are auto-approved.
   Map<String, List<String>> conversationToolAllowlistsByAgent =
@@ -178,14 +181,12 @@ abstract class AgentWorkspaceCoordinator extends ChangeNotifier {
     final normalizedAgent = agentId.trim();
     final normalizedTool = tool.trim();
     if (normalizedAgent.isEmpty || normalizedTool.isEmpty) return;
-    final current = conversationToolAllowlistsByAgent[normalizedAgent] ??
-        const <String>[];
+    final current =
+        conversationToolAllowlistsByAgent[normalizedAgent] ?? const <String>[];
     if (current.contains(normalizedTool)) return;
     conversationToolAllowlistsByAgent = {
       ...conversationToolAllowlistsByAgent,
-      normalizedAgent: List<String>.unmodifiable(
-        [...current, normalizedTool],
-      ),
+      normalizedAgent: List<String>.unmodifiable([...current, normalizedTool]),
     };
     agentWorkspaceNotifyStateChanged();
   }
@@ -195,6 +196,7 @@ abstract class AgentWorkspaceCoordinator extends ChangeNotifier {
       Map<String, List<String>>.from(value),
     );
   }
+
   final ConversationTurnQueue conversationTurnQueue = ConversationTurnQueue();
   int conversationTurnSubmissionSequence = 0;
   bool conversationTurnDrainScheduled = false;
@@ -205,6 +207,8 @@ abstract class AgentWorkspaceCoordinator extends ChangeNotifier {
   final Set<String> cursorIdeCliHandoffComposerIds = <String>{};
   Map<String, List<AgentConversationMessage>> liveConversationMessagesByAgent =
       const {};
+  Map<String, ConversationTurnProcessState>
+  conversationTurnProcessStateByAgent = const {};
   Map<String, AgentConversationTabActivity> conversationTabActivityByAgent =
       const {};
   Map<String, String> conversationSendErrorsByAgent = const {};
