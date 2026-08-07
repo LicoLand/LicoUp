@@ -8,6 +8,7 @@ import 'package:licoup/src/frontend/layout/layout_agents_strategy.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_event_card.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_log_event_row.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_message_blocks.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_runtime_update_card.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_render_adapter.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_details_panel.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_participant_flow.dart';
@@ -384,6 +385,12 @@ class AgentConversationMessageListState
                 },
               ConversationLogTimelineItem(:final events) =>
                 ConversationLogEventRow(events: events),
+              ConversationRuntimeUpdateTimelineItem(:final message) =>
+                AgentRuntimeUpdateCard(
+                  message: message,
+                  adapter: adapter,
+                  active: widget.turnActive,
+                ),
               ConversationTruncationTimelineItem(
                 :final historyTruncated,
                 :final messageTreeTruncated,

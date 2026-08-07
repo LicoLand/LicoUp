@@ -89,7 +89,7 @@ pub fn send_message(params: &Value) -> Result<Value, RuntimeAdapterError> {
             &session_id,
             cwd.as_deref(),
             timeout_ms,
-            max_stdout,
+            Some(max_stdout),
             max_stderr,
         )),
         RuntimeAdapter::ClaudeCode => normalize_claude(claude_code_driver::execute(
@@ -132,7 +132,7 @@ pub fn send_message(params: &Value) -> Result<Value, RuntimeAdapterError> {
             &session_id,
             cwd.as_deref(),
             timeout_ms,
-            max_stdout,
+            Some(max_stdout),
             max_stderr,
         )),
         RuntimeAdapter::KiloCode => normalize_acp(

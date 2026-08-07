@@ -5,6 +5,7 @@ import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_event_card.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_log_event_row.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_message_blocks.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_runtime_update_card.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_render_adapter.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_details_panel.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_message_group.dart';
@@ -59,6 +60,13 @@ final class MessagingFlowLog extends MessagingFlowEntry {
   const MessagingFlowLog(this.item);
 
   final ConversationLogTimelineItem item;
+}
+
+/// The agent runtime auto-update card, kept in its existing rendering.
+final class MessagingFlowRuntimeUpdate extends MessagingFlowEntry {
+  const MessagingFlowRuntimeUpdate(this.item);
+
+  final ConversationRuntimeUpdateTimelineItem item;
 }
 
 /// A subagent card, kept in its existing rendering inside the content column.
@@ -213,6 +221,9 @@ List<MessagingFlowEntry> buildMessagingFlowEntries(
       case ConversationLogTimelineItem():
         flushGroup();
         entries.add(MessagingFlowLog(item));
+      case ConversationRuntimeUpdateTimelineItem():
+        flushGroup();
+        entries.add(MessagingFlowRuntimeUpdate(item));
       case ConversationTruncationTimelineItem():
         flushGroup();
         entries.add(MessagingFlowTruncation(item));
@@ -357,6 +368,15 @@ class MessagingParticipantFlow extends StatelessWidget {
         ),
         child: SelectionContainer.disabled(
           child: ConversationLogEventRow(events: item.events),
+        ),
+      ),
+      MessagingFlowRuntimeUpdate(:final item) => Padding(
+        padding: LicoContentSpacing.peerItem,
+        child: SelectionContainer.disabled(
+          child: AgentRuntimeUpdateCard(
+            message: item.message,
+            adapter: adapter,
+          ),
         ),
       ),
       MessagingFlowSubagent(:final item) => Padding(

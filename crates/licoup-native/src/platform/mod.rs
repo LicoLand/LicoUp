@@ -26,6 +26,8 @@ mod opencode_driver;
 mod pi_driver;
 pub mod process_sandbox;
 mod process_supervisor;
+#[cfg(unix)]
+mod pty_transport;
 pub(crate) mod remote_acp_history;
 pub(crate) mod remote_hermes_gateway_history;
 pub(crate) mod secure_mesh_mls_store;
