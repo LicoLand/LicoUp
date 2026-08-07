@@ -150,7 +150,7 @@
         "laneFamily": "cli",
         "openNew": true,
         "exactResume": true,
-        "streaming": false,
+        "streaming": true,
         "cancel": true,
         "structuredEvents": true,
         "approvals": false,
@@ -160,9 +160,9 @@
         "interruptSteer": false
       },
       "lifecycleEvidence": {
-        "accepted": false,
+        "accepted": true,
         "processing": false,
-        "responding": false,
+        "responding": true,
         "completed": true
       }
     },

@@ -363,6 +363,13 @@ extension LicoStringsLabels on LicoStrings {
       ? '$count 个子任务'
       : '$count nested ${count == 1 ? 'task' : 'tasks'}';
   String get agentProcess => isChinese ? '智能体过程' : 'Agent process';
+  String get runtimeUpdateTitle =>
+      isChinese ? 'Cursor Agent 正在自动更新' : 'Cursor Agent is updating automatically';
+  String get runtimeUpdateCompleted => isChinese ? '更新完成' : 'Update completed';
+  String get runtimeUpdateInterrupted =>
+      isChinese ? '更新中断' : 'Update interrupted';
+  String get runtimeUpdateStaleLockHint =>
+      isChinese ? '已清理过期安装锁' : 'Stale install lock removed';
   String get workedBriefly => isChinese ? '少于 1 秒' : 'Under 1s';
   String get reasoningProcess => isChinese ? '思考过程' : 'Reasoning';
   String get toolExecution => isChinese ? '工具执行' : 'Tool activity';

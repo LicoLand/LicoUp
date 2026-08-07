@@ -949,6 +949,41 @@ mixin AgentConversationMessageController
               );
               agentWorkspaceNotifyLiveConversationChanged();
             }
+          } else if (event.kind == 'agent.runtime.updating') {
+            // cursor-agent auto-update blocking the turn: one in-place card.
+            conversationUpsertLiveRuntimeUpdate(
+              agentId: conversationOwnerAgentId,
+              turnId: liveTurnId,
+              phase: (event.payload['phase'] ?? '').toString(),
+              version: (event.payload['version'] ?? '').toString(),
+              participantAgentId: agent.target,
+              participantLabel: queuedTurn.participantLabel,
+              participantRole: queuedTurn.participantRole,
+            );
+            agentWorkspaceNotifyLiveConversationChanged();
+          } else if (event.kind == 'agent.runtime.update.completed') {
+            conversationUpsertLiveRuntimeUpdate(
+              agentId: conversationOwnerAgentId,
+              turnId: liveTurnId,
+              version: (event.payload['version'] ?? '').toString(),
+              terminal: 'completed',
+              participantAgentId: agent.target,
+              participantLabel: queuedTurn.participantLabel,
+              participantRole: queuedTurn.participantRole,
+            );
+            agentWorkspaceNotifyLiveConversationChanged();
+          } else if (event.kind == 'agent.runtime.update.interrupted') {
+            conversationUpsertLiveRuntimeUpdate(
+              agentId: conversationOwnerAgentId,
+              turnId: liveTurnId,
+              version: (event.payload['version'] ?? '').toString(),
+              terminal: 'interrupted',
+              hint: (event.payload['hint'] ?? '').toString(),
+              participantAgentId: agent.target,
+              participantLabel: queuedTurn.participantLabel,
+              participantRole: queuedTurn.participantRole,
+            );
+            agentWorkspaceNotifyLiveConversationChanged();
           } else {
             _flushPendingLiveReply();
             conversationAppendLiveProcessEvent(

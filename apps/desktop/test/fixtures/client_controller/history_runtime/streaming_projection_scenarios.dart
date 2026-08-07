@@ -123,4 +123,122 @@ void registerClientHistoryRuntimeStreamingProjectionScenarios() {
       );
     },
   );
+
+  test(
+    'runtime update events project one in-place runtime-update card',
+    () async {
+      final service = FakeAgentService()
+        ..conversationSessions['codex'] = [
+          conversationSessionJson(
+            id: 'native-codex-live',
+            agentId: 'codex',
+            text: 'Existing native Codex history',
+          ),
+        ]
+        ..runtimeSessionIdResult = 'native-codex-turn-bound'
+        ..runtimeNativeSessionIdResult = 'native-codex-turn-bound'
+        ..runtimeMessageStreamEventQueue = [
+          [
+            {
+              'event': 'dispatch.turn.bound',
+              'sessionId': 'native-codex-turn-bound',
+              'turnId': 'turn-1',
+              'payload': {'nativeSteer': true},
+            },
+            {
+              'event': 'agent.runtime.updating',
+              'sessionId': 'native-codex-turn-bound',
+              'turnId': 'turn-1',
+              'payload': {
+                'artifact': 'cursor-agent',
+                'version': '2026.08.04-aaa8809',
+                'phase': 'downloading',
+              },
+            },
+            {
+              'event': 'agent.runtime.updating',
+              'sessionId': 'native-codex-turn-bound',
+              'turnId': 'turn-1',
+              'payload': {
+                'artifact': 'cursor-agent',
+                'version': '2026.08.04-aaa8809',
+                'phase': 'installing',
+              },
+            },
+            {
+              'event': 'agent.runtime.update.completed',
+              'sessionId': 'native-codex-turn-bound',
+              'turnId': 'turn-1',
+              'payload': {
+                'artifact': 'cursor-agent',
+                'version': '2026.08.04-aaa8809',
+              },
+            },
+            {
+              'event': 'agent.message.chunk',
+              'payload': {'text': 'Hello world.'},
+            },
+            {
+              'event': 'agent.message.completed',
+              'payload': {'text': 'Hello world.'},
+            },
+          ],
+        ];
+      final controller = ClientController(agentService: service);
+      addTearDown(controller.dispose);
+      await controller.scanTargets();
+      await controller.selectConversationAgent('codex');
+      final readbackGate = Completer<void>();
+      service.conversationStreamGates['codex'] = readbackGate;
+      addTearDown(() {
+        if (!readbackGate.isCompleted) readbackGate.complete();
+      });
+      var updateCardCounts = <int>[];
+      var updateCardSubtitles = <String>[];
+      controller.liveConversationListenable.addListener(() {
+        final live = controller.selectedLiveConversationMessages;
+        final cards =
+            live.where((message) => message.cardType == 'runtime-update');
+        updateCardCounts.add(cards.length);
+        updateCardSubtitles.addAll(cards.map((message) => message.cardSubtitle));
+      });
+      await controller.sendConversationMessage('Send while updating');
+      // One in-place card per turn at every revision (upsert, not append).
+      // The live projection clears after the turn commits, so later revisions
+      // may observe zero cards; never more than one.
+      expect(updateCardCounts, isNotEmpty);
+      expect(updateCardCounts.any((count) => count == 1), isTrue);
+      expect(updateCardCounts.every((count) => count <= 1), isTrue);
+      final cards = controller.selectedLiveConversationMessages
+          .where((message) => message.cardType == 'runtime-update')
+          .toList();
+      expect(cards, hasLength(1));
+      final card = cards.single;
+      expect(card.id, endsWith('-runtime-update'));
+      expect(card.role, 'event');
+      expect(card.text, 'completed');
+      // Phase text surfaced before completion, version preserved.
+      expect(
+        updateCardSubtitles,
+        anyElement(contains('下载中')),
+      );
+      expect(card.cardSubtitle, contains('2026.08.04-aaa8809'));
+      // Update events must not advance the turn lifecycle beyond accepted;
+      // the later message events advance it to responding/completed as usual.
+      final lifecycle = controller.selectedLiveConversationMessages
+          .where((message) => message.cardType == 'lifecycle')
+          .single;
+      expect(
+        lifecycle.cardSubtitle,
+        'submitted,accepted,responding,completed',
+      );
+      // The turn itself still converges.
+      expect(
+        controller.selectedLiveConversationMessages
+            .where((message) => message.role == 'assistant')
+            .map((message) => message.text),
+        contains('Hello world.'),
+      );
+    },
+  );
 }

@@ -174,6 +174,28 @@ fn canonical_resources_are_the_only_runtime_profile_source() {
             .and_then(Value::as_str),
         Some("cli")
     );
+    // The pty transport makes the lane stream progressively (antigravity was
+    // previously final-stdout-only); processing evidence stays absent because
+    // the driver never emits agent.turn.processing.
+    assert_eq!(
+        antigravity
+            .capability_matrix
+            .as_ref()
+            .and_then(|matrix| matrix.get("streaming"))
+            .and_then(Value::as_bool),
+        Some(true)
+    );
+    let inventory = serde_json::from_str::<Value>(DRIVER_INVENTORY_JSON).unwrap();
+    let antigravity_entry = inventory["drivers"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|entry| entry["agentId"] == "antigravity")
+        .unwrap();
+    assert_eq!(
+        antigravity_entry["lifecycleEvidence"]["processing"],
+        json!(false)
+    );
 
     let cursor = registry.profile("cursor").unwrap();
     assert_eq!(cursor.driver_status, "implemented");
