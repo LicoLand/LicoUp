@@ -50,6 +50,27 @@ pub(super) fn processing_evidence_kind(message: &Value) -> Option<&'static str> 
     None
 }
 
+/// The name of the first tool the assistant used in this message (for example
+/// `Bash`), so the client can label the evidence step instead of a bare
+/// `tool`. Bounded to the tool name only; tool input stays local.
+pub(super) fn processing_tool_name(message: &Value) -> Option<&str> {
+    let blocks = message
+        .pointer("/message/content")
+        .and_then(Value::as_array)?;
+    for block in blocks {
+        if matches!(
+            block.get("type").and_then(Value::as_str),
+            Some("tool_use" | "server_tool_use")
+        ) {
+            let name = block.get("name").and_then(Value::as_str)?;
+            if !name.trim().is_empty() {
+                return Some(name);
+            }
+        }
+    }
+    None
+}
+
 /// Project only user-visible assistant text and bounded status metadata.
 /// Tool input, message bodies, paths, identifiers, and vendor metadata stay local.
 pub(super) fn project_event(message: &Value) -> Option<Value> {

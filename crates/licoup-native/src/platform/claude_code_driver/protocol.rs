@@ -1,6 +1,8 @@
 use super::command::LaunchIdentity;
 use super::errors::ProtocolFailure;
-use super::events::{partial_text_delta, processing_evidence_kind, project_event};
+use super::events::{
+    partial_text_delta, processing_evidence_kind, processing_tool_name, project_event,
+};
 use super::model::EffectiveSettings;
 use super::params::DriverConfig;
 use serde_json::{Value, json};
@@ -131,6 +133,7 @@ impl<'a> TurnState<'a> {
                     .unwrap_or_default(),
                 &self.config.turn_id,
                 evidence_kind,
+                processing_tool_name(&message),
             );
         }
         if let Some(projected) = project_event(&message) {

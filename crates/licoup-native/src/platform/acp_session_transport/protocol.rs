@@ -471,6 +471,7 @@ impl SessionProtocol {
                     self.session_id.as_deref().unwrap_or_default(),
                     &self.config.turn_id,
                     evidence_kind,
+                    None,
                 );
             }
             let skill_events = super::super::skill_invocation_projection::project_skill_invocations(
