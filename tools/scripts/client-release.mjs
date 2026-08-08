@@ -113,7 +113,7 @@ function validateContract() {
 }
 
 function assertRepository() {
-  run("gh", ["auth", "status"]);
+  assert(gh(["api", "user", "--jq", ".login"]).stdout.length > 0, "release_github_auth_invalid");
   const origin = git(["remote", "get-url", "origin"]).stdout;
   assert(
     origin === "https://github.com/LicoLand/LicoUp.git" || origin === "git@github.com:LicoLand/LicoUp.git",
@@ -143,8 +143,8 @@ function hasTargetedRelease(ref, version, target) {
 }
 
 function changedFiles() {
-  const output = git(["status", "--porcelain=v1", "-z"]).stdout;
-  return output ? output.split("\0").filter(Boolean).map((record) => record.slice(3)) : [];
+  const output = git(["diff", "--name-only", "-z"]).stdout;
+  return output ? output.split("\0").filter(Boolean) : [];
 }
 
 function candidateBranch(version, target) {
