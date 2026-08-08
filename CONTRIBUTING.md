@@ -79,28 +79,34 @@ contact details is false identity information and a provenance violation; the
 local hooks and remote Rulesets reject it. The developer must review and accept
 the change personally before committing it.
 
-The upstream repository rejects creation of additional branches so that a
-branch's first commit cannot evade metadata enforcement. Contributors must
-push their branch to a fork and open a pull request against `nightly`.
+Every change starts on a temporary upstream branch. Use `changes/<topic>` for
+ordinary work and `release-candidate/v<version>` for a release candidate. The
+all-branch metadata Ruleset applies while either branch is created, so its
+first commit cannot evade identity enforcement. Merge temporary branches only
+into `nightly`; never write a change directly to a long-lived branch.
 
 ## Release preflight
 
 Release preparation is defined by `tools/client-release-template.json`. Do not
-reconstruct runner commands by trial and error. Start from a clean, current
-`nightly` branch and run one command:
+reconstruct runner commands by trial and error. Run one bounded command for
+each stage:
 
 ```bash
-npm run client:release -- --version 0.1.1 --target macos-arm64
+npm run client:release -- push nightly --version 0.1.1 --target macos-arm64
+npm run client:release -- push stable --version 0.1.1
+npm run client:release -- push release --version 0.1.1
+npm run client:release -- publish --version 0.1.1 --target macos-arm64
 ```
 
-The command changes the version once, runs the unified local gates, builds,
-installs, checks the update path, and creates exactly one release commit. It
-then submits that commit to `nightly`, performs the two direct pull-request
-merges `nightly -> stable -> release`, dispatches publication, and watches it
-to a terminal result without an operator-side timeout. A failed invocation can
-be run again with the same arguments; completed GitHub stages are discovered
-and reused. Active Rulesets must not be disabled, bypassed, or changed during
-promotion or publication.
+The first command creates `release-candidate/v<version>` before changing any
+file. On that temporary branch it changes the version once, runs the unified
+local gates, builds, installs, checks the update path, and creates exactly one
+release commit. Only after the temporary branch passes every declared required
+LicoUp pull-request check does it merge into `nightly`. The next two commands independently
+promote `nightly -> stable` and `stable -> release`. The last command only
+publishes and monitors to a terminal result without an operator-side timeout.
+Each command is independently resumable. Active Rulesets must not be disabled,
+bypassed, or changed during any stage.
 
 ## Privacy rules
 
