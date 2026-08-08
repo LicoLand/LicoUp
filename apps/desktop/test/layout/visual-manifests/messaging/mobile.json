@@ -1,0 +1,85 @@
+{
+  "schema": "licomesh.layout-visual-manifest",
+  "schemaVersion": 2,
+  "profile": "messaging",
+  "surface": "mobile",
+  "bundleEntry": "apps/desktop/lib/src/frontend/layout/profiles/messaging/mobile/messaging_mobile_bundle.dart",
+  "sourceRoots": [
+    "apps/desktop/lib/src/frontend/layout/profiles/messaging/mobile",
+    "apps/desktop/test/goldens/layout/production-baseline/messaging/mobile",
+    "apps/desktop/test/layout/profiles/messaging/mobile"
+  ],
+  "authorityEntries": [
+    {
+      "path": "apps/desktop/test/layout/fixtures/production_client_shell_fixture.dart",
+      "digest": "sha256:e605151ff36b846717baa90d558af6597981af63900c71ac94a6c3a631c2c537"
+    },
+    {
+      "path": "apps/desktop/test/layout/production_baseline/production_layout_baseline_test.dart",
+      "digest": "sha256:871dbd038ed71bc77bddc4666b34753a5fe6bc829938030ed14e0c16f2e47c19"
+    },
+    {
+      "path": "apps/desktop/test/layout/production_baseline/production_layout_switch_continuity_test.dart",
+      "digest": "sha256:bfc78cef3248aaefef0ac110fa1e07a5141d42d66b878faf00468e821a2812fd"
+    }
+  ],
+  "entries": [
+    {
+      "path": "apps/desktop/lib/src/frontend/layout/profiles/messaging/mobile/destinations/messaging_agents_destination.dart",
+      "digest": "sha256:ca0598b11f42ef13cedfab7e13da6bcc94e19c59003bb7e02c0804133836565d"
+    },
+    {
+      "path": "apps/desktop/lib/src/frontend/layout/profiles/messaging/mobile/destinations/messaging_pairing_destination.dart",
+      "digest": "sha256:be33e22b4f353d08f3a9697105b79bc39c8763788567bce3e98f9ad98bcdff20"
+    },
+    {
+      "path": "apps/desktop/lib/src/frontend/layout/profiles/messaging/mobile/destinations/messaging_settings_destination.dart",
+      "digest": "sha256:5e784db623e5538daa766c5b1a28997c3792d9b55f739b98def537b2cbab77d9"
+    },
+    {
+      "path": "apps/desktop/lib/src/frontend/layout/profiles/messaging/mobile/messaging_mobile_bundle.dart",
+      "digest": "sha256:1ff02dfca1ad33715397f2729f18e0be5c2083818e787e6b9f161dcbe9481d12"
+    },
+    {
+      "path": "apps/desktop/lib/src/frontend/layout/profiles/messaging/mobile/messaging_mobile_components.dart",
+      "digest": "sha256:3e06094112689416a36a762148f32f35c153e74e37bedba637504686bb6fb174"
+    },
+    {
+      "path": "apps/desktop/lib/src/frontend/layout/profiles/messaging/mobile/messaging_mobile_preview.dart",
+      "digest": "sha256:1b4f05b2770a887cac8c52f3003de95b692a47832cdfb6efbd2e91ae4c1f4289"
+    },
+    {
+      "path": "apps/desktop/lib/src/frontend/layout/profiles/messaging/mobile/messaging_mobile_shell.dart",
+      "digest": "sha256:5795b205deb68bf3aa9b13d12ae17faab07d0d64fc7656d283bd117dedfaaab0"
+    },
+    {
+      "path": "apps/desktop/lib/src/frontend/layout/profiles/messaging/mobile/messaging_mobile_tokens.dart",
+      "digest": "sha256:37a642e02418888fec0af0a9e43b8b80ac750c1e3ee4e42c89fe9cc85e27ca59"
+    },
+    {
+      "path": "apps/desktop/lib/src/frontend/layout/profiles/messaging/mobile/presentation/messaging_mobile_destination_presentations.dart",
+      "digest": "sha256:0da5491592eb25862464546c2821e61f719c0db50cf77fbf088200c6b743dc86"
+    },
+    {
+      "path": "apps/desktop/test/goldens/layout/production-baseline/messaging/mobile/agents.png",
+      "digest": "sha256:7a523820fb20f87df90cf703b1f7140cf6d78cf0105d5597dc646f70d9a29a66"
+    },
+    {
+      "path": "apps/desktop/test/goldens/layout/production-baseline/messaging/mobile/settings.png",
+      "digest": "sha256:12ad4cc0c50d5d9eace9671b51533ebad69fca2aad0b391d21c6697cd8451b82"
+    },
+    {
+      "path": "apps/desktop/test/layout/profiles/messaging/mobile/messaging_mobile_bundle_test.dart",
+      "digest": "sha256:1a59ad5a5dae0098bae55abc467e812cead602a604237cd17d5a8e6d8e7232b8"
+    },
+    {
+      "path": "apps/desktop/test/layout/profiles/messaging/mobile/messaging_mobile_shell_test.dart",
+      "digest": "sha256:d1a76641adb1b4feef5385c43f28fe68dc003a116c831a4cedf6a33b19b7716d"
+    },
+    {
+      "path": "apps/desktop/test/layout/profiles/messaging/mobile/messaging_mobile_test_harness.dart",
+      "digest": "sha256:ccc1d93ad6bfd51ec8456e4f4d976f32ee8a8f94fc680536e0c1f88b9037035a"
+    }
+  ],
+  "manifestDigest": "sha256:5bfd06510b0943da07dbdf0de93cdb63198a33f769da7b522a8de910006d52ca"
+}

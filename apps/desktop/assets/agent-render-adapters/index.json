@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "adapters": [
+    "claude-code.json",
+    "codex.json",
+    "code.json",
+    "copilot.json",
+    "cursor.json",
+    "antigravity.json",
+    "opencode.json",
+    "kilo-code.json",
+    "openclaw.json",
+    "hermes.json",
+    "kimi.json",
+    "kimi-code.json",
+    "pi.json",
+    "lico-agent.json",
+    "generic.json"
+  ]
+}

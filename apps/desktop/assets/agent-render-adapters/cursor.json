@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 1,
+  "id": "cursor",
+  "displayName": "Cursor",
+  "match": {
+    "agentIds": ["cursor"],
+    "sourceClients": ["cursor"],
+    "adapterIds": ["cursor"]
+  },
+  "layout": {
+    "assistant": "document",
+    "assistantMaxWidth": 820,
+    "assistantHorizontalInset": 28,
+    "assistantVerticalPadding": 16,
+    "showAssistantRoleLabel": false,
+    "showUserRoleLabel": false
+  },
+  "userBubble": {
+    "maxWidth": 650,
+    "radius": 22,
+    "paddingX": 18,
+    "paddingY": 12,
+    "tone": "neutral"
+  },
+  "markdown": {
+    "bodyFontSize": 15,
+    "bodyLineHeight": 1.54,
+    "blockSpacing": 14,
+    "heading1FontSize": 20,
+    "heading2FontSize": 18,
+    "heading3FontSize": 16,
+    "headingWeight": 800,
+    "codeFontSize": 13,
+    "codeLineHeight": 1.45,
+    "codeRadius": 12,
+    "codePadding": 14,
+    "showCodeLanguage": true,
+    "quoteRadius": 12,
+    "quotePaddingX": 14,
+    "quotePaddingY": 10,
+    "listMarkerWidth": 24,
+    "orderedListMarkerWidth": 34,
+    "listItemSpacing": 7,
+    "unorderedMarker": "\u2022"
+  },
+  "tones": {
+    "code": "surface",
+    "quote": "subtle"
+  }
+}

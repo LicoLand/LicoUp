@@ -1,0 +1,653 @@
+use super::*;
+use std::sync::{Arc, Mutex};
+
+#[test]
+fn live_process_continuation_cancel_cleanup_and_redaction_close_end_to_end() {
+    let _serial = process_local_test_guard();
+    let (directory, executable) = compile_fake_claude("lico-claude-execution");
+    let executable_text = executable.to_string_lossy().to_string();
+    let params = json!({
+        "model": "fake-model",
+        "reasoningEffort": "high",
+        "permissionMode": "plan"
+    });
+    let first = execute(
+        &executable_text,
+        &params,
+        "fake-claude-private-prompt-1",
+        "",
+        Some(&directory),
+        10_000,
+        Some(1024 * 1024),
+        1024,
+    );
+    assert!(first.ok, "first turn failed: {:?}", first.error);
+    assert_eq!(first.output, "fake Claude final answer 1");
+    assert_eq!(first.session_id, "fake-claude-session");
+    assert!(has_live_session(&first.session_id));
+    let second = execute(
+        &executable_text,
+        &json!({}),
+        "fake-claude-private-prompt-2",
+        &first.session_id,
+        Some(&directory),
+        10_000,
+        Some(1024 * 1024),
+        1024,
+    );
+    assert!(second.ok, "second turn failed: {:?}", second.error);
+    assert_eq!(second.output, "fake Claude final answer 2");
+    assert_eq!(second.session_id, first.session_id);
+    let history = super::super::conversation_lane::process_local_history(&json!({
+        "agent": "claude-code",
+        "sessionId": second.session_id
+    }))
+    .unwrap();
+    assert_eq!(history["ok"], true);
+    assert_eq!(history["continuityScope"], "process-local");
+    assert_eq!(history["nativeSessionId"], second.session_id);
+    assert_eq!(history["turnCount"], 2);
+    assert_eq!(history["turns"].as_array().unwrap().len(), 2);
+    assert_eq!(
+        history
+            .as_object()
+            .unwrap()
+            .keys()
+            .cloned()
+            .collect::<std::collections::BTreeSet<_>>(),
+        [
+            "byteCount",
+            "continuityScope",
+            "nativeSessionId",
+            "ok",
+            "turnCount",
+            "turns"
+        ]
+        .into_iter()
+        .map(str::to_string)
+        .collect()
+    );
+    for turn in history["turns"].as_array().unwrap() {
+        assert_eq!(
+            turn.as_object()
+                .unwrap()
+                .keys()
+                .cloned()
+                .collect::<std::collections::BTreeSet<_>>(),
+            ["output", "turnId"]
+                .into_iter()
+                .map(str::to_string)
+                .collect()
+        );
+    }
+    assert_eq!(history["turns"][0]["turnId"], first.turn_id);
+    assert_eq!(history["turns"][1]["turnId"], second.turn_id);
+    assert_eq!(history["turns"][0]["output"], "fake Claude final answer 1");
+    assert_eq!(history["turns"][1]["output"], "fake Claude final answer 2");
+    let projected_bytes = history["turns"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|turn| turn["output"].as_str().unwrap().len())
+        .sum::<usize>();
+    assert_eq!(history["byteCount"], json!(projected_bytes));
+    let forged = super::super::conversation_lane::process_local_history(&json!({
+        "agent": "claude-code",
+        "sessionId": "fake-claude-session-forged"
+    }))
+    .unwrap();
+    assert_eq!(forged["ok"], false);
+    assert_eq!(forged["error"]["code"], "claude_code_session_unavailable");
+    assert_eq!(
+        cleanup_session(&second.session_id),
+        ControlDisposition::Accepted
+    );
+    let cleared = super::super::conversation_lane::process_local_history(&json!({
+        "agent": "claude-code",
+        "sessionId": second.session_id
+    }))
+    .unwrap();
+    assert_eq!(cleared["ok"], false);
+    assert_eq!(cleared["error"]["code"], "claude_code_session_unavailable");
+    // After cleanup no process-local transport owns the conversation: a fresh
+    // Claude Code process resumes the persisted transcript via --resume.
+    let resumed = execute(
+        &executable_text,
+        &json!({
+            "model": "fake-model",
+            "reasoningEffort": "high",
+            "permissionMode": "plan"
+        }),
+        "fake-claude-private-prompt-1",
+        &second.session_id,
+        Some(&directory),
+        5_000,
+        Some(1024 * 1024),
+        1024,
+    );
+    assert!(
+        resumed.ok,
+        "resume after cleanup failed: {:?}",
+        resumed.error
+    );
+    assert_eq!(resumed.session_id, second.session_id);
+    assert_eq!(resumed.output, "fake Claude final answer 1");
+    assert!(has_live_session(&resumed.session_id));
+    // Release the resumed transport so later fixture turns bind the shared
+    // fixture session to their own fresh process.
+    assert_eq!(
+        cleanup_session(&resumed.session_id),
+        ControlDisposition::Accepted
+    );
+    // An unknown conversation fails closed with the CLI's resume error surface.
+    let missing = execute(
+        &executable_text,
+        &json!({
+            "model": "fake-model",
+            "reasoningEffort": "high",
+            "permissionMode": "plan"
+        }),
+        "fake-claude-private-prompt-1",
+        "missing-conversation",
+        Some(&directory),
+        5_000,
+        Some(1024 * 1024),
+        1024,
+    );
+    assert!(!missing.ok);
+    assert_eq!(missing.error.unwrap().code, "claude_code_exited");
+
+    let working_dir = directory.clone();
+    let executable_for_cancel = executable_text.clone();
+    let run = thread::spawn(move || {
+        execute(
+            &executable_for_cancel,
+            &json!({
+                "model": "fake-model",
+                "reasoningEffort": "high",
+                "permissionMode": "plan"
+            }),
+            "fake-claude-cancel-prompt",
+            "",
+            Some(&working_dir),
+            10_000,
+            Some(1024 * 1024),
+            1024,
+        )
+    });
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let disposition = loop {
+        let disposition = cancel("fake-claude-session");
+        if disposition == ControlDisposition::Accepted || Instant::now() >= deadline {
+            break disposition;
+        }
+        thread::sleep(Duration::from_millis(10));
+    };
+    assert_eq!(disposition, ControlDisposition::Accepted);
+    let cancelled = run.join().unwrap();
+    assert_eq!(cancelled.error.unwrap().code, "claude_code_turn_failed");
+    let failed_history = super::super::conversation_lane::process_local_history(&json!({
+        "agent": "claude-code",
+        "sessionId": "fake-claude-session"
+    }))
+    .unwrap();
+    assert_eq!(failed_history["ok"], true);
+    assert_eq!(failed_history["turnCount"], 0);
+    assert_eq!(
+        cleanup_session("fake-claude-session"),
+        ControlDisposition::Accepted
+    );
+    let _ = fs::remove_dir_all(directory);
+}
+
+#[test]
+fn permission_denials_render_honestly_without_failing_the_turn() {
+    let _serial = process_local_test_guard();
+    let (directory, executable) = compile_fake_claude("lico-claude-denied");
+    let executable_text = executable.to_string_lossy().to_string();
+    let captured: Arc<Mutex<Vec<Value>>> = Arc::new(Mutex::new(Vec::new()));
+    let events: Arc<Mutex<Vec<Value>>> = Arc::clone(&captured);
+    crate::platform::install_stream_sink(Box::new(move |event| {
+        events.lock().unwrap().push(event);
+    }));
+    let params = json!({
+        "model": "fake-model",
+        "reasoningEffort": "high",
+        "permissionMode": "plan"
+    });
+    let turn = execute(
+        &executable_text,
+        &params,
+        "fake-claude-denied-prompt-1",
+        "",
+        Some(&directory),
+        10_000,
+        Some(1024 * 1024),
+        1024,
+    );
+    crate::platform::clear_stream_sink();
+    // The denied turn completes honestly instead of failing the client.
+    assert!(turn.ok, "denied turn failed: {:?}", turn.error);
+    let denied = captured
+        .lock()
+        .unwrap()
+        .iter()
+        .find(|event| event.get("event").and_then(Value::as_str) == Some("permission.denied"))
+        .cloned()
+        .expect("permission.denied event never emitted");
+    assert_eq!(denied["payload"]["toolName"], "Bash");
+    assert_eq!(denied["payload"]["toolUseId"], "toolu_denied");
+    assert_eq!(
+        cleanup_session(&turn.session_id),
+        ControlDisposition::Accepted
+    );
+    let _ = fs::remove_dir_all(directory);
+}
+
+#[test]
+fn configuration_change_resumes_in_a_fresh_process_instead_of_failing() {
+    let _serial = process_local_test_guard();
+    let (directory, executable) = compile_fake_claude("lico-claude-config-switch");
+    let executable_text = executable.to_string_lossy().to_string();
+    let working_dir = directory.clone();
+    let first = execute(
+        &executable_text,
+        &json!({
+            "model": "fake-model",
+            "reasoningEffort": "high",
+            "permissionMode": "plan"
+        }),
+        "fake-claude-private-prompt-1",
+        "",
+        Some(&working_dir),
+        10_000,
+        Some(1024 * 1024),
+        1024,
+    );
+    assert!(first.ok, "first turn failed: {:?}", first.error);
+    // Switching the reasoning effort is a launch-configuration change: the
+    // pinned live process is released and a fresh process resumes the same
+    // conversation with the new settings instead of failing the turn.
+    let resumed = execute(
+        &executable_text,
+        &json!({
+            "model": "fake-model",
+            "reasoningEffort": "max",
+            "permissionMode": "plan"
+        }),
+        "fake-claude-private-prompt-1",
+        &first.session_id,
+        Some(&directory),
+        10_000,
+        Some(1024 * 1024),
+        1024,
+    );
+    assert!(
+        resumed.ok,
+        "configuration switch failed: {:?}",
+        resumed.error
+    );
+    assert_eq!(resumed.session_id, first.session_id);
+    // A follow-up turn with the new configuration reuses the fresh process.
+    let follow_up = execute(
+        &executable_text,
+        &json!({
+            "model": "fake-model",
+            "reasoningEffort": "max",
+            "permissionMode": "plan"
+        }),
+        "fake-claude-private-prompt-2",
+        &first.session_id,
+        Some(&directory),
+        10_000,
+        Some(1024 * 1024),
+        1024,
+    );
+    assert!(follow_up.ok, "follow-up failed: {:?}", follow_up.error);
+    assert_eq!(follow_up.session_id, first.session_id);
+    assert_eq!(
+        cleanup_session(&first.session_id),
+        ControlDisposition::Accepted
+    );
+    let _ = fs::remove_dir_all(directory);
+}
+
+#[test]
+fn error_during_execution_with_reply_stays_successful() {
+    let _serial = process_local_test_guard();
+    let (directory, executable) = compile_fake_claude("lico-claude-error-execution");
+    let executable_text = executable.to_string_lossy().to_string();
+    let params = json!({
+        "model": "fake-model",
+        "reasoningEffort": "high",
+        "permissionMode": "plan"
+    });
+    let turn = execute(
+        &executable_text,
+        &params,
+        "fake-claude-error-execution-prompt-1",
+        "",
+        Some(&directory),
+        10_000,
+        Some(1024 * 1024),
+        1024,
+    );
+    assert!(turn.ok, "error_during_execution failed: {:?}", turn.error);
+    assert_eq!(turn.output, "Reply despite a tool error");
+    assert_eq!(
+        cleanup_session(&turn.session_id),
+        ControlDisposition::Accepted
+    );
+    let _ = fs::remove_dir_all(directory);
+}
+
+#[test]
+fn whole_assistant_messages_stream_progress_chunks() {
+    let _serial = process_local_test_guard();
+    let (directory, executable) = compile_fake_claude("lico-claude-whole-assistant");
+    let executable_text = executable.to_string_lossy().to_string();
+    let captured: Arc<Mutex<Vec<Value>>> = Arc::new(Mutex::new(Vec::new()));
+    let events: Arc<Mutex<Vec<Value>>> = Arc::clone(&captured);
+    crate::platform::install_stream_sink(Box::new(move |event| {
+        events.lock().unwrap().push(event);
+    }));
+    let params = json!({
+        "model": "fake-model",
+        "reasoningEffort": "high",
+        "permissionMode": "plan"
+    });
+    let turn = execute(
+        &executable_text,
+        &params,
+        "fake-claude-whole-assistant-prompt-1",
+        "",
+        Some(&directory),
+        10_000,
+        Some(1024 * 1024),
+        1024,
+    );
+    crate::platform::clear_stream_sink();
+    assert!(turn.ok, "whole-assistant turn failed: {:?}", turn.error);
+    let chunks = captured
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|event| event.get("event").and_then(Value::as_str) == Some("agent.message.chunk"))
+        .map(|event| {
+            event
+                .get("payload")
+                .and_then(|payload| payload.get("text"))
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string()
+        })
+        .collect::<Vec<_>>();
+    assert!(
+        chunks.contains(&"First round answer".to_string()),
+        "first round text never chunked: {chunks:?}"
+    );
+    assert!(
+        chunks.contains(&"Final round answer".to_string()),
+        "final round text never chunked: {chunks:?}"
+    );
+    assert_eq!(
+        cleanup_session(&turn.session_id),
+        ControlDisposition::Accepted
+    );
+    let _ = fs::remove_dir_all(directory);
+}
+
+#[test]
+fn permission_request_suspends_the_turn_until_external_approval() {
+    let _serial = process_local_test_guard();
+    let (directory, executable) = compile_fake_claude("lico-claude-approval");
+    let executable_text = executable.to_string_lossy().to_string();
+    let params = json!({
+        "model": "fake-model",
+        "reasoningEffort": "high",
+        "permissionMode": "plan"
+    });
+    let working_dir = directory.clone();
+    let executable_for_run = executable_text.clone();
+    let run_params = params.clone();
+    let run = thread::spawn(move || {
+        execute(
+            &executable_for_run,
+            &run_params,
+            "fake-claude-permission-prompt-1",
+            "",
+            Some(&working_dir),
+            10_000,
+            Some(1024 * 1024),
+            1024,
+        )
+    });
+    // The turn suspends on the permission request instead of failing; resolve
+    // the parked approval to allow and let the turn continue.
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let token = loop {
+        let parked = super::super::super::acp_session_transport::parked_permissions()
+            .lock()
+            .unwrap();
+        let token = parked
+            .iter()
+            .find(|(_, parked)| parked.display_summary.contains("Bash"))
+            .map(|(token, _)| token.clone());
+        drop(parked);
+        if let Some(token) = token {
+            break token;
+        }
+        if Instant::now() >= deadline {
+            panic!("permission request never parked");
+        }
+        thread::sleep(Duration::from_millis(10));
+    };
+    let resolved =
+        super::super::super::acp_session_transport::resolve_parked_permission(&token, true)
+            .unwrap();
+    assert_eq!(resolved["decision"], "allow");
+    assert_eq!(resolved["agentId"], "claude-code");
+    let allowed = run.join().unwrap();
+    assert!(allowed.ok, "allowed turn failed: {:?}", allowed.error);
+    assert_eq!(allowed.output, "fake Claude allowed answer");
+    // Release the transport so the second fixture turn binds the shared
+    // fixture session to its own fresh process.
+    assert_eq!(
+        cleanup_session(&allowed.session_id),
+        ControlDisposition::Accepted
+    );
+
+    // Denying a later permission request ends the turn with an interaction
+    // failure instead of failing the transport.
+    let working_dir = directory.clone();
+    let executable_for_deny = executable_text.clone();
+    let deny_params = params.clone();
+    let run = thread::spawn(move || {
+        execute(
+            &executable_for_deny,
+            &deny_params,
+            "fake-claude-permission-prompt-1",
+            "",
+            Some(&working_dir),
+            10_000,
+            Some(1024 * 1024),
+            1024,
+        )
+    });
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let token = loop {
+        let parked = super::super::super::acp_session_transport::parked_permissions()
+            .lock()
+            .unwrap();
+        let token = parked
+            .iter()
+            .find(|(_, parked)| parked.display_summary.contains("Bash"))
+            .map(|(token, _)| token.clone());
+        drop(parked);
+        if let Some(token) = token {
+            break token;
+        }
+        if Instant::now() >= deadline {
+            panic!("second permission request never parked");
+        }
+        thread::sleep(Duration::from_millis(10));
+    };
+    let denied =
+        super::super::super::acp_session_transport::resolve_parked_permission(&token, false)
+            .unwrap();
+    assert_eq!(denied["decision"], "deny");
+    let turn = run.join().unwrap();
+    assert!(!turn.ok);
+    let failure = turn.error.unwrap();
+    assert_eq!(failure.code, "claude_code_user_interaction_required");
+    // The denied transport still owns the shared fixture session; release it
+    // so later fixture turns bind their own fresh process.
+    if let Some(session_id) = failure.session_id.as_deref() {
+        assert_eq!(cleanup_session(session_id), ControlDisposition::Accepted);
+    }
+    let _ = fs::remove_dir_all(directory);
+}
+
+#[test]
+fn native_stream_input_accepts_guidance_during_the_active_turn() {
+    let _serial = process_local_test_guard();
+    let (directory, executable) = compile_fake_claude("lico-claude-native-steer");
+    let executable = executable.to_string_lossy().to_string();
+    let working_directory = directory.clone();
+    let run = thread::spawn(move || {
+        execute(
+            &executable,
+            &json!({
+                "model": "fake-model",
+                "reasoningEffort": "high",
+                "permissionMode": "plan"
+            }),
+            "fake-claude-steer-prompt",
+            "",
+            Some(&working_directory),
+            10_000,
+            Some(1024 * 1024),
+            1024,
+        )
+    });
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let disposition = loop {
+        let disposition = steer("fake-claude-session", "fake-claude-steer-guidance");
+        if disposition == ControlDisposition::Accepted || Instant::now() >= deadline {
+            break disposition;
+        }
+        thread::sleep(Duration::from_millis(10));
+    };
+    assert_eq!(disposition, ControlDisposition::Accepted);
+    let result = run.join().unwrap();
+    assert!(result.ok, "native steer turn failed: {:?}", result.error);
+    assert_eq!(result.output, "fake Claude guided answer");
+    assert_eq!(
+        cleanup_session(&result.session_id),
+        ControlDisposition::Accepted
+    );
+    let _ = fs::remove_dir_all(directory);
+}
+
+#[test]
+fn output_overflow_fails_closed_without_recording_a_successful_turn() {
+    let _serial = process_local_test_guard();
+    let (directory, executable) = compile_fake_claude("lico-claude-output-overflow");
+    let result = execute(
+        &executable.to_string_lossy(),
+        &json!({
+            "model": "fake-model",
+            "reasoningEffort": "high",
+            "permissionMode": "plan"
+        }),
+        "fake-claude-private-prompt-1",
+        "",
+        Some(&directory),
+        10_000,
+        Some(32),
+        1024,
+    );
+    assert!(!result.ok);
+    assert!(result.stdout_truncated);
+    assert_eq!(result.error.unwrap().code, "claude_code_output_limit");
+    assert!(!has_live_session("fake-claude-session"));
+    let history = super::super::conversation_lane::process_local_history(&json!({
+        "agent": "claude-code",
+        "sessionId": "fake-claude-session"
+    }))
+    .unwrap();
+    assert_eq!(history["ok"], false);
+    let _ = fs::remove_dir_all(directory);
+}
+
+#[test]
+fn successful_utf8_output_history_reports_exact_encoded_byte_count() {
+    let _serial = process_local_test_guard();
+    let (directory, executable) = compile_fake_claude("lico-claude-utf8-history");
+    let result = execute(
+        &executable.to_string_lossy(),
+        &json!({
+            "model": "fake-model",
+            "reasoningEffort": "high",
+            "permissionMode": "plan"
+        }),
+        "fake-claude-private-prompt-1 fake-claude-utf8-output",
+        "",
+        Some(&directory),
+        10_000,
+        Some(1024 * 1024),
+        1024,
+    );
+    let expected = "多字节🙂";
+    assert!(result.ok, "UTF-8 fixture turn failed: {:?}", result.error);
+    assert_eq!(result.output, expected);
+    assert_ne!(expected.as_bytes().len(), expected.chars().count());
+
+    let history = super::super::conversation_lane::process_local_history(&json!({
+        "agent": "claude-code",
+        "sessionId": result.session_id,
+    }))
+    .unwrap();
+    assert_eq!(history["ok"], true);
+    assert_eq!(history["turnCount"], 1);
+    assert_eq!(history["turns"][0]["turnId"], result.turn_id);
+    assert_eq!(history["turns"][0]["output"], expected);
+    assert_eq!(history["byteCount"], json!(expected.as_bytes().len()));
+    assert_eq!(
+        cleanup_session(result.session_id.as_str()),
+        ControlDisposition::Accepted
+    );
+    let _ = fs::remove_dir_all(directory);
+}
+
+#[test]
+fn authentication_failure_is_a_stable_redacted_blocker_and_closes_the_transport() {
+    let _serial = process_local_test_guard();
+    let (directory, executable) = compile_fake_claude("lico-claude-authentication");
+    let result = execute(
+        &executable.to_string_lossy(),
+        &json!({
+            "model": "fake-model",
+            "reasoningEffort": "high",
+            "permissionMode": "plan"
+        }),
+        "fake-claude-auth-prompt",
+        "",
+        Some(&directory),
+        10_000,
+        Some(1024 * 1024),
+        1024,
+    );
+    assert!(!result.ok);
+    let failure = result.error.unwrap();
+    assert_eq!(failure.code, "claude_code_authentication_required");
+    assert!(
+        !failure
+            .message
+            .contains("synthetic private authentication detail")
+    );
+    let directory_text = directory.to_string_lossy();
+    assert!(!failure.message.contains(directory_text.as_ref()));
+    assert!(!has_live_session("fake-claude-session"));
+    let _ = fs::remove_dir_all(directory);
+}
