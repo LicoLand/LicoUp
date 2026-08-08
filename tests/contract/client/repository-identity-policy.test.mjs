@@ -107,7 +107,12 @@ test("Rulesets cover all branch metadata and protect the default branch without 
 
   assert.deepEqual(creationRuleset.conditions.ref_name.include, ["~ALL"]);
   assert.deepEqual(creationRuleset.conditions.ref_name.exclude, [
-    "refs/heads/changes/**/*",
+    "refs/heads/feature/**/*",
+    "refs/heads/fix/**/*",
+    "refs/heads/docs/**/*",
+    "refs/heads/refactor/**/*",
+    "refs/heads/test/**/*",
+    "refs/heads/chore/**/*",
     "refs/heads/release-candidate/**/*",
     "refs/heads/stable",
     "refs/heads/release",
@@ -118,12 +123,16 @@ test("Rulesets cover all branch metadata and protect the default branch without 
   for (const requiredType of [
     "deletion",
     "non_fast_forward",
-    "required_linear_history",
     "pull_request",
     "required_status_checks",
   ]) {
     assert.ok(defaultRuleset.rules.some(({ type }) => type === requiredType));
   }
+  assert.ok(!defaultRuleset.rules.some(({ type }) => type === "required_linear_history"));
+  assert.deepEqual(
+    defaultRuleset.rules.find(({ type }) => type === "pull_request").parameters.allowed_merge_methods,
+    ["merge"],
+  );
   const statusRule = defaultRuleset.rules.find(
     ({ type }) => type === "required_status_checks",
   );
