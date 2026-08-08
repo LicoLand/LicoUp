@@ -171,11 +171,23 @@ function parseArray(value) {
   return parsed;
 }
 
-function requiredChecks(prNumber) {
-  run("gh", ["pr", "checks", String(prNumber), "--repo", repository, "--required", "--watch", "--interval", "10"]);
+async function requiredChecks(prNumber) {
+  const headSha = gh(["pr", "view", String(prNumber), "--repo", repository, "--json", "headRefOid", "--jq", ".headRefOid"]).stdout;
+  while (true) {
+    const combined = JSON.parse(gh(["api", `repos/${repository}/commits/${headSha}/status`]).stdout);
+    const identity = (combined.statuses || []).find(({ context }) => context === "LicoUp / commit identity");
+    const checks = parseArray(gh([
+      "pr", "checks", String(prNumber), "--repo", repository, "--json", "name,state",
+    ], { allowFailure: true }).stdout || "[]");
+    const branchFlow = checks.find(({ name }) => name === "Branch flow policy");
+    if (identity?.state === "failure" || identity?.state === "error") fail("release_identity_gate_failed");
+    if (branchFlow?.state === "FAILURE" || branchFlow?.state === "ERROR") fail("release_branch_flow_gate_failed");
+    if (identity?.state === "success" && branchFlow?.state === "SUCCESS") return;
+    await new Promise((resolve) => setTimeout(resolve, 10000));
+  }
 }
 
-function nightlyPullRequest(options, login) {
+async function nightlyPullRequest(options, login) {
   const branch = `release/v${options.version}`;
   run("git", ["push", "release-fork", `HEAD:refs/heads/${branch}`]);
   const prs = parseArray(gh([
@@ -191,12 +203,12 @@ function nightlyPullRequest(options, login) {
     pr = { number: Number(url.split("/").at(-1)), state: "OPEN", mergedAt: null };
   }
   if (!pr.mergedAt) {
-    requiredChecks(pr.number);
+    await requiredChecks(pr.number);
     run("gh", ["pr", "merge", String(pr.number), "--repo", repository, "--rebase", "--delete-branch"]);
   }
 }
 
-function promotionPullRequest({ base, head, version }) {
+async function promotionPullRequest({ base, head, version }) {
   run("git", ["fetch", "origin", head, base]);
   if (versionAt(`origin/${base}`) === version) return;
   assert(versionAt(`origin/${head}`) === version, "release_promotion_source_version_mismatch");
@@ -215,7 +227,7 @@ function promotionPullRequest({ base, head, version }) {
     pr = { number: Number(url.split("/").at(-1)), state: "OPEN", mergedAt: null };
   }
   if (!pr.mergedAt) {
-    requiredChecks(pr.number);
+    await requiredChecks(pr.number);
     run("gh", ["pr", "merge", String(pr.number), "--repo", repository, "--merge"]);
   }
 }
@@ -272,9 +284,9 @@ async function main() {
   const needsNightlyIntegration = ensureReleaseCommit(options);
   const login = gh(["api", "user", "--jq", ".login"]).stdout;
   ensureFork(login);
-  if (needsNightlyIntegration) nightlyPullRequest(options, login);
-  promotionPullRequest({ base: "stable", head: "nightly", version: options.version });
-  promotionPullRequest({ base: "release", head: "stable", version: options.version });
+  if (needsNightlyIntegration) await nightlyPullRequest(options, login);
+  await promotionPullRequest({ base: "stable", head: "nightly", version: options.version });
+  await promotionPullRequest({ base: "release", head: "stable", version: options.version });
   await dispatchAndWatch(options, template);
   process.stdout.write(`client_release=published version=${options.version} target=${options.target}\n`);
 }
