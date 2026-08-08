@@ -102,6 +102,9 @@ jobs:
           flutter-version: "3.44.2"
           cache: true
       - run: npm ci
+      - name: Populate the locked Flutter package cache
+        working-directory: apps/desktop/flutter_client
+        run: flutter pub get --enforce-lockfile
       - name: Prepare ephemeral local integrity identity
         run: |
           openssl req -x509 -newkey rsa:3072 -nodes -days 1 \
