@@ -103,7 +103,7 @@ jobs:
           cache: true
       - run: npm ci
       - name: Populate the locked Flutter package cache
-        working-directory: apps/desktop/flutter_client
+        working-directory: apps/desktop
         run: flutter pub get --enforce-lockfile
       - name: Prepare ephemeral local integrity identity
         run: |
