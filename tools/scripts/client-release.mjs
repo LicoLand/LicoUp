@@ -143,8 +143,9 @@ function hasTargetedRelease(ref, version, target) {
 }
 
 function changedFiles() {
-  const output = git(["diff", "--name-only", "-z"]).stdout;
-  return output ? output.split("\0").filter(Boolean) : [];
+  const unstaged = git(["diff", "--name-only", "-z"]).stdout;
+  const staged = git(["diff", "--cached", "--name-only", "-z"]).stdout;
+  return [...new Set(`${unstaged}\0${staged}`.split("\0").filter(Boolean))].sort();
 }
 
 function candidateBranch(version, target) {
@@ -153,21 +154,32 @@ function candidateBranch(version, target) {
 
 function switchToCandidate(version, target) {
   const branch = candidateBranch(version, target);
-  assert(git(["status", "--porcelain"]).stdout === "", "release_worktree_not_clean");
+  const initialBranch = git(["branch", "--show-current"]).stdout;
+  const pending = changedFiles();
+  const untracked = git(["ls-files", "--others", "--exclude-standard", "-z"]).stdout;
+  assert(untracked === "", "release_worktree_untracked_files");
+  if (pending.length > 0) {
+    assert(initialBranch === branch, "release_worktree_not_clean");
+    assert(pending.every((file) => versionFiles.includes(file)), "release_worktree_not_clean");
+  }
   run("git", ["fetch", "origin", "nightly", "stable", "release"]);
   git(["fetch", "origin", branch], { allowFailure: true });
   const localExists = git(["show-ref", "--verify", `refs/heads/${branch}`], { allowFailure: true }).ok;
   const remoteExists = git(["show-ref", "--verify", `refs/remotes/origin/${branch}`], { allowFailure: true }).ok;
   if (localExists) {
     if (!remoteExists && !hasTargetedRelease(branch, version, target)) {
-      assert(
-        git(["merge-base", "--is-ancestor", branch, "origin/nightly"], { allowFailure: true }).ok,
-        "release_candidate_stale_branch_invalid",
-      );
-      if (git(["branch", "--show-current"]).stdout === branch) {
-        run("git", ["switch", "--detach", "origin/nightly"]);
+      if (pending.length > 0) {
+        assert(git(["rev-parse", branch]).stdout === git(["rev-parse", "origin/nightly"]).stdout, "release_candidate_stale_branch_invalid");
+      } else {
+        assert(
+          git(["merge-base", "--is-ancestor", branch, "origin/nightly"], { allowFailure: true }).ok,
+          "release_candidate_stale_branch_invalid",
+        );
+        if (git(["branch", "--show-current"]).stdout === branch) {
+          run("git", ["switch", "--detach", "origin/nightly"]);
+        }
+        run("git", ["branch", "--force", branch, "origin/nightly"]);
       }
-      run("git", ["branch", "--force", branch, "origin/nightly"]);
     }
     run("git", ["switch", branch]);
   } else if (remoteExists) {
@@ -180,7 +192,11 @@ function switchToCandidate(version, target) {
 
 function createReleaseCommit(options) {
   const manifest = loadJson("tools/client-version.json");
-  run("npm", ["run", "client:version:set", "--", "--version", options.version, "--build-number", String(manifest.buildNumber + 1), "--target", options.target]);
+  if (changedFiles().length === 0) {
+    run("npm", ["run", "client:version:set", "--", "--version", options.version, "--build-number", String(manifest.buildNumber + 1), "--target", options.target]);
+  } else {
+    assert(manifest.productVersion === options.version && manifest.releaseTarget === options.target, "release_prepared_candidate_invalid");
+  }
   const allowed = new Set(versionFiles);
   const actual = changedFiles().sort();
   assert(actual.length > 0 && actual.every((file) => allowed.has(file)), "release_change_scope_invalid");
