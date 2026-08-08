@@ -91,6 +91,7 @@ test("Rulesets cover all branch metadata and protect the default branch without 
 
   const [identityRuleset, defaultRuleset] = rulesets;
   assert.deepEqual(identityRuleset.conditions.ref_name.include, ["~ALL"]);
+  assert.ok(identityRuleset.rules.some(({ type }) => type === "creation"));
   assert.ok(identityRuleset.rules.some(({ type }) => type === "commit_author_email_pattern"));
   assert.equal(
     identityRuleset.rules.filter(({ type }) => type === "commit_message_pattern").length,

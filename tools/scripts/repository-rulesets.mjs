@@ -79,6 +79,7 @@ export function buildRulesets(actionsIntegrationId) {
         ref_name: { include: ["~ALL"], exclude: [] },
       },
       rules: [
+        { type: "creation" },
         metadataRule(
           "commit_author_email_pattern",
           "Author must use a canonical GitHub noreply identity",

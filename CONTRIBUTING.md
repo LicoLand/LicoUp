@@ -76,6 +76,10 @@ contact details is false identity information and a provenance violation; the
 local hooks and remote Rulesets reject it. The developer must review and accept
 the change personally before committing it.
 
+The upstream repository rejects creation of additional branches so that a
+branch's first commit cannot evade metadata enforcement. Contributors must
+push their branch to a fork and open a pull request against `nightly`.
+
 ## Privacy rules
 
 - Never commit secrets, local paths, user content, account data, device details,
