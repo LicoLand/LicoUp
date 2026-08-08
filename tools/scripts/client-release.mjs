@@ -148,6 +148,16 @@ function switchToCandidate(version) {
   const localExists = git(["show-ref", "--verify", `refs/heads/${branch}`], { allowFailure: true }).ok;
   const remoteExists = git(["show-ref", "--verify", `refs/remotes/origin/${branch}`], { allowFailure: true }).ok;
   if (localExists) {
+    if (!remoteExists && !hasReleaseCommit(branch, version)) {
+      assert(
+        git(["merge-base", "--is-ancestor", branch, "origin/nightly"], { allowFailure: true }).ok,
+        "release_candidate_stale_branch_invalid",
+      );
+      if (git(["branch", "--show-current"]).stdout === branch) {
+        run("git", ["switch", "--detach", "origin/nightly"]);
+      }
+      run("git", ["branch", "--force", branch, "origin/nightly"]);
+    }
     run("git", ["switch", branch]);
   } else if (remoteExists) {
     run("git", ["switch", "--track", "-c", branch, `origin/${branch}`]);
