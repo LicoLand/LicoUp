@@ -225,9 +225,9 @@ function validateReleaseTopology() {
     fail("release workflow jobs must match the independent target topology");
   }
   assertIncludes(
-    jobBlock(workflow, "source"),
+    jobBlock(workflow, "build-macos"),
     "npm run client:verify:agent-conversations:release-ui",
-    "release source policy must require reproducible local-agent UI evidence",
+    "macOS release build must require reproducible local-agent UI evidence",
   );
   assertIncludes(
     workflow,
