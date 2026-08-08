@@ -51,10 +51,13 @@ unaffected language or platform lanes to run.
 
 ## Commit identity and authorship
 
-Every commit must carry exactly one developer identity. Its Git `Author` and
-`Committer` name and email must match the account currently authenticated by
-GitHub CLI. After cloning the repository, and whenever `gh auth` changes to a
-different account, install the repository policy:
+Every commit must carry exactly one developer identity. Its Git `Author` name,
+email, and immutable GitHub account must match the account currently
+authenticated by GitHub CLI. The immutable GitHub `Committer` account must be
+that same developer; GitHub may rewrite the raw committer name or email while
+performing a server-side merge. Locally created commits still require matching
+Author and Committer name and email. After cloning the repository, and whenever
+`gh auth` changes to a different account, install the repository policy:
 
 ```bash
 npm run repo:identity:install
