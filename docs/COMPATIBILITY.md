@@ -2,7 +2,7 @@
 
 English (normative) · [简体中文](COMPATIBILITY.zh-CN.md) · [Documentation](README.md) · [Project](../README.md)
 
-Product version: `0.1.0-alpha`
+Product version: `0.1.0`
 
 Generated sources: `tools/client-support-matrix.json`, `tools/client-release-targets.json`, `tools/client-version.json`, `crates/licoup-native/resources/agent-conversation-drivers.json`, `crates/licoup-native/resources/agent-native-capabilities.json`, and `crates/licoup-native/resources/agent-conversation-readiness.json`.
 
@@ -46,8 +46,8 @@ Lifecycle evidence columns describe whether the lane can emit a native receipt f
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | openclaw | conversation | unverified | no | openclaw-acp-stdio-jsonrpc | acp | yes | yes | yes | yes | yes | yes | no |
 | claude-code | conversation | unverified | no | claude-code-cli-stream-json | stream-json | yes | yes | yes | yes | yes | yes | yes |
-| codex | conversation | ready | yes | codex-app-server-stdio-jsonrpc | app-server | yes | yes | yes | yes | yes | yes | yes |
-| antigravity | conversation | unverified | no | antigravity-cli-argv-hook-v1 | cli | yes | no | no | no | no | yes | no |
+| codex | conversation | unverified | no | codex-app-server-stdio-jsonrpc | app-server | yes | yes | yes | yes | yes | yes | yes |
+| antigravity | conversation | unverified | no | antigravity-cli-argv-hook-v1 | cli | yes | yes | yes | no | yes | yes | no |
 | opencode | conversation | unverified | no | opencode-serve-http-v1 | serve-http | yes | yes | yes | no | yes | yes | no |
 | copilot | conversation | unverified | no | copilot-acp-v1-stdio-ndjson | acp | yes | yes | yes | yes | yes | yes | no |
 | kilo-code | conversation | unverified | no | kilo-code-serve-http-v1 | serve-http | yes | yes | yes | no | yes | yes | no |

@@ -6,7 +6,9 @@ import { pathToFileURL } from "node:url";
 
 const repository = "LicoLand/LicoUp";
 const allBranchesRulesetName = "LicoUp commit identity — all branches";
+const branchCreationRulesetName = "LicoUp upstream branch creation";
 const defaultBranchRulesetName = "LicoUp protected default branch";
+const promotionBranchesRulesetName = "LicoUp protected promotion branches";
 const identityStatusContext = "LicoUp / commit identity";
 const githubNoreplyHostPattern = ["users", "noreply", "github", "com"].join("\\.");
 const canonicalNoreplyPattern = `^[0-9]+\\+[A-Za-z0-9][A-Za-z0-9-]{0,38}@${githubNoreplyHostPattern}$`;
@@ -79,7 +81,6 @@ export function buildRulesets(actionsIntegrationId) {
         ref_name: { include: ["~ALL"], exclude: [] },
       },
       rules: [
-        { type: "creation" },
         metadataRule(
           "commit_author_email_pattern",
           "Author must use a canonical GitHub noreply identity",
@@ -101,12 +102,66 @@ export function buildRulesets(actionsIntegrationId) {
       ],
     },
     {
+      name: branchCreationRulesetName,
+      target: "branch",
+      enforcement: "active",
+      bypass_actors: [],
+      conditions: {
+        ref_name: {
+          include: ["~ALL"],
+          exclude: ["refs/heads/stable", "refs/heads/release"],
+        },
+      },
+      rules: [{ type: "creation" }],
+    },
+    {
       name: defaultBranchRulesetName,
       target: "branch",
       enforcement: "active",
       bypass_actors: [],
       conditions: {
         ref_name: { include: ["~DEFAULT_BRANCH"], exclude: [] },
+      },
+      rules: [
+        { type: "deletion" },
+        { type: "non_fast_forward" },
+        { type: "required_linear_history" },
+        {
+          type: "pull_request",
+          parameters: {
+            allowed_merge_methods: ["rebase"],
+            dismiss_stale_reviews_on_push: true,
+            require_code_owner_review: false,
+            require_last_push_approval: false,
+            required_approving_review_count: 0,
+            required_review_thread_resolution: true,
+          },
+        },
+        {
+          type: "required_status_checks",
+          parameters: {
+            do_not_enforce_on_create: true,
+            required_status_checks: [
+              {
+                context: identityStatusContext,
+                integration_id: actionsIntegrationId,
+              },
+            ],
+            strict_required_status_checks_policy: true,
+          },
+        },
+      ],
+    },
+    {
+      name: promotionBranchesRulesetName,
+      target: "branch",
+      enforcement: "active",
+      bypass_actors: [],
+      conditions: {
+        ref_name: {
+          include: ["refs/heads/stable", "refs/heads/release"],
+          exclude: [],
+        },
       },
       rules: [
         { type: "deletion" },
@@ -244,11 +299,12 @@ function apply() {
       .filter((ruleset) => ruleset.enforcement === "active")
       .map((ruleset) => ruleset.name),
   );
-  if (![allBranchesRulesetName, defaultBranchRulesetName].every((name) => activeNames.has(name))) {
+  const desiredNames = desired.map(({ name }) => name);
+  if (!desiredNames.every((name) => activeNames.has(name))) {
     reject("RULESET_VERIFICATION_FAILED", "The managed repository Rulesets are not active.");
   }
   const legacy = removeLegacyBranchProtection(repositoryDetails.default_branch);
-  process.stdout.write(`rulesets=active count=2 legacy_branch_protection=${legacy}\n`);
+  process.stdout.write(`rulesets=active count=${desired.length} legacy_branch_protection=${legacy}\n`);
 }
 
 function main() {
@@ -272,6 +328,8 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
 
 export {
   allBranchesRulesetName,
+  branchCreationRulesetName,
   defaultBranchRulesetName,
+  promotionBranchesRulesetName,
   identityStatusContext,
 };

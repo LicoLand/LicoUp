@@ -52,9 +52,7 @@ class ConversationRuntimeSettingsBar extends StatelessWidget {
           reasoningEffortOptions.contains(configured)) {
         return configured;
       }
-      return reasoningEffortOptions.isEmpty
-          ? ''
-          : reasoningEffortOptions.first;
+      return reasoningEffortOptions.isEmpty ? '' : reasoningEffortOptions.first;
     }();
     final effortDefaultLabel = effortDefault.isEmpty
         ? strings.defaultModelUnavailable

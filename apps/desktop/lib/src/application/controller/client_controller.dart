@@ -250,6 +250,9 @@ class ClientController extends AgentOrchestrationController
   final AppearancePresetCatalogService appearancePresetCatalogService;
   final ClientLogExportService clientLogExportService;
   final ClientClipboardService clientClipboardService;
+
+  Future<void> copyClientText(String text) =>
+      clientClipboardService.writeText(text);
   final RuntimePlatformBridge runtimePlatformBridge;
   @override
   late final LlmGatewayLifecycleController llmGatewayLifecycleController;

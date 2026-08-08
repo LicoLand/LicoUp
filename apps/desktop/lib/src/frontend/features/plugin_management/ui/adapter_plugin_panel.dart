@@ -192,8 +192,9 @@ final class _AdapterPluginPanelState extends State<AdapterPluginPanel> {
     final source = plan['marketplaceSource']?.toString() ?? '';
     final release = plan['marketplaceRelease']?.toString() ?? '';
     final version = plan['pluginVersion']?.toString() ?? '';
-    if (source.isEmpty || release.isEmpty || version.isEmpty || !mounted)
+    if (source.isEmpty || release.isEmpty || version.isEmpty || !mounted) {
       return;
+    }
 
     final confirmed =
         await showDialog<bool>(

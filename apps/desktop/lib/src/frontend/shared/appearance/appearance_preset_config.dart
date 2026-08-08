@@ -40,21 +40,6 @@ String appearancePresetIdForBrightness(bool dark) {
       : AppearancePresetIds.licoSodaLight;
 }
 
-enum AppearanceBrightnessSelection { light, dark, system }
-
-AppearanceBrightnessSelection appearanceBrightnessSelectionFor(
-  String selectedId,
-  List<AppearancePresetConfig> configs,
-) {
-  final selected = findAppearancePresetConfig(selectedId, configs);
-  if (selected.mode == AppearancePresetMode.system) {
-    return AppearanceBrightnessSelection.system;
-  }
-  return selected.mode == AppearancePresetMode.dark
-      ? AppearanceBrightnessSelection.dark
-      : AppearanceBrightnessSelection.light;
-}
-
 /// Maps a brightness-mode choice to the preset id that should be persisted.
 ///
 /// Light and dark keep the current preset when it already matches that mode;

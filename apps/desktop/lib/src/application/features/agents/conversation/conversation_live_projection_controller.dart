@@ -109,13 +109,33 @@ mixin AgentConversationLiveProjectionController on AgentWorkspaceCoordinator {
     String participantRole = '',
   }) {
     final state = conversationTurnProcessStateByAgent[agentId];
-    if (state == null || state.turnId != turnId) return;
+    if (state == null) return;
     final visibleText = visibleConversationMessageText(
       'assistant',
       text,
       kind: AgentConversationMessageKind.assistant,
       agentId: participantAgentId,
     );
+    if (state.turnId != turnId) {
+      if (!turnId.startsWith('${state.turnId}-participant-') ||
+          visibleText.isEmpty) {
+        return;
+      }
+      state.appendEvidence(
+        AgentConversationMessage(
+          id: '$turnId-assistant',
+          role: 'assistant',
+          text: visibleText,
+          createdAt: DateTime.now().toUtc().toIso8601String(),
+          stableIdentity: '$turnId-assistant',
+          participantAgentId: participantAgentId,
+          participantLabel: participantLabel,
+          participantRole: participantRole,
+        ),
+      );
+      _projectConversationTurnMessages(agentId);
+      return;
+    }
     state.recordParticipant(
       participantAgentId: participantAgentId,
       participantLabel: participantLabel,

@@ -177,8 +177,7 @@ class _RuntimeMessageComposerState extends State<RuntimeMessageComposer> {
     final after = end < text.length ? text.substring(end) : '';
     final needsLeadingSpace =
         before.isNotEmpty && !RegExp(r'\s$').hasMatch(before);
-    final needsTrailingSpace =
-        after.isEmpty || !RegExp(r'^\s').hasMatch(after);
+    final needsTrailingSpace = after.isEmpty || !RegExp(r'^\s').hasMatch(after);
     final insertion =
         '${needsLeadingSpace ? ' ' : ''}$token${needsTrailingSpace ? ' ' : ''}';
     final next = text.replaceRange(start, end, insertion);
@@ -215,7 +214,9 @@ class _RuntimeMessageComposerState extends State<RuntimeMessageComposer> {
         offset: next.length.clamp(0, next.length),
       ),
     );
-    setState(() => _mentionChips.removeWhere((item) => item.agentId == chip.agentId));
+    setState(
+      () => _mentionChips.removeWhere((item) => item.agentId == chip.agentId),
+    );
   }
 
   void _onTextChanged() {

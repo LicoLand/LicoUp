@@ -90,11 +90,6 @@ class _LlmGatewayCredentialsCardState extends State<LlmGatewayCredentialsCard> {
   bool get _serviceRunning =>
       widget.lifecycleController?.state == LlmGatewayRuntimeState.running;
 
-  List<Map<String, dynamic>> _entriesFrom(Map<String, dynamic> result) =>
-      (result['entries'] as List<dynamic>? ?? const [])
-          .whereType<Map<String, dynamic>>()
-          .toList(growable: false);
-
   Future<void> _loadInventory() async {
     setState(() {
       _busy = true;

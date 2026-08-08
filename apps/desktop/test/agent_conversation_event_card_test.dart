@@ -230,10 +230,11 @@ void main() {
       stableIdentity: 'stable-assistant',
     );
 
-    final first = buildConversationTimelineItems(
-      const [lifecycle, updateDownloading, assistant],
-      'update-fixture',
-    );
+    final first = buildConversationTimelineItems(const [
+      lifecycle,
+      updateDownloading,
+      assistant,
+    ], 'update-fixture');
     expect(first, hasLength(3));
     expect(first[0], isA<ConversationProcessTimelineItem>());
     final card = first[1] as ConversationRuntimeUpdateTimelineItem;
@@ -241,10 +242,11 @@ void main() {
     expect(first[2], isA<ConversationMessageTimelineItem>());
 
     // Phase upserts keep the same storage key (in-place card, no churn).
-    final second = buildConversationTimelineItems(
-      const [lifecycle, updateInstalling, assistant],
-      'update-fixture',
-    );
+    final second = buildConversationTimelineItems(const [
+      lifecycle,
+      updateInstalling,
+      assistant,
+    ], 'update-fixture');
     final secondCard = second[1] as ConversationRuntimeUpdateTimelineItem;
     expect(secondCard.storageKey, card.storageKey);
     expect(secondCard.message.cardSubtitle, contains('安装中'));

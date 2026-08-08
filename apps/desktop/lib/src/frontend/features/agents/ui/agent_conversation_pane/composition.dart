@@ -106,8 +106,8 @@ class AgentConversationActivePane extends StatelessWidget {
                 : null,
           )
         : null;
-    final permissionRetry = state.permissionRetryTool.trim().isNotEmpty &&
-            !state.turnActive
+    final permissionRetry =
+        state.permissionRetryTool.trim().isNotEmpty && !state.turnActive
         ? _ConversationPermissionRetryRow(
             tool: state.permissionRetryTool,
             onAllow: actions.onPermissionRetry,

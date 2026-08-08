@@ -32,7 +32,7 @@ final class MessagingDestinationRail extends StatelessWidget {
     final strings = LicoStrings.of(context);
     final items = messagingDesktopNavigationItems(strings);
     final dark = colors.isDark;
-    return Container(
+    return SizedBox(
       key: const Key('messaging-destination-rail'),
       width: MessagingDesktopMetrics.navigationRailExtent,
       // Light frosted tint only — blur is supplied by the native

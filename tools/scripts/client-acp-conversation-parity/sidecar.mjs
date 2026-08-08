@@ -168,6 +168,13 @@ export function probeDispatchLaneFamilies(sidecar) {
   );
   return {
     ok: allPassed,
+    failedRows: results
+      .filter((row) => !(
+        row.capabilitiesOk && row.openNewOk && row.streamStructured &&
+        row.cancelStructured && row.resumeFailClosed && row.resumeOkWhenSupported &&
+        coreProbeIds.every((id) => id === "P-10" || row.coreProbeMap[id] === true)
+      ))
+      .map((row) => ({ agentId: row.agentId, laneFamily: row.laneFamily })),
     laneFamiliesCovered: [...families].sort(),
     coreProbesCovered: coreProbeIds.filter((id) => id !== "P-10"),
     toolVersionClass: dispatchLaneHarnessVersion,
