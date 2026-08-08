@@ -107,6 +107,8 @@ test("Rulesets cover all branch metadata and protect the default branch without 
 
   assert.deepEqual(creationRuleset.conditions.ref_name.include, ["~ALL"]);
   assert.deepEqual(creationRuleset.conditions.ref_name.exclude, [
+    "refs/heads/changes/**/*",
+    "refs/heads/release-candidate/**/*",
     "refs/heads/stable",
     "refs/heads/release",
   ]);

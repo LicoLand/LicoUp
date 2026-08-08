@@ -66,23 +66,28 @@ Agent 可以辅助开发者，但严禁替换、覆盖或抢占开发者署名�
 其它 Agent 或 bot。把人类代码归到 Agent 联系方式名下属于虚假身份信息和来源追溯
 违规，本地 hook 与远程 Ruleset 都会拒绝。开发者必须亲自审查并接受改动后才能提交。
 
-上游仓库拒绝创建额外分支，防止分支首个提交绕过元数据门禁。贡献者必须把分支推送到
-自己的 fork，再向 `nightly` 发起 Pull Request。
+所有改动都必须先落到上游临时分支。普通改动使用 `changes/<topic>`，发布候选使用
+`release-candidate/v<version>`。全分支元数据 Ruleset 在临时分支创建时同样生效，首个
+提交无法绕过身份门禁。临时分支只能合并到 `nightly`，严禁把改动直接写入长期分支。
 
 ## 发布前门禁
 
 发布准备由 `tools/client-release-template.json` 统一定义，严禁在失败后临时拼装并逐次
-试探远端 runner 命令。从干净且最新的 `nightly` 分支执行唯一入口：
+试探远端 runner 命令。每个阶段只执行一个有边界的命令：
 
 ```bash
-npm run client:release -- --version 0.1.1 --target macos-arm64
+npm run client:release -- push nightly --version 0.1.1 --target macos-arm64
+npm run client:release -- push stable --version 0.1.1
+npm run client:release -- push release --version 0.1.1
+npm run client:release -- publish --version 0.1.1 --target macos-arm64
 ```
 
-该命令只修改一次版本号，统一运行本地门禁，构建、安装并检查升级路径，然后创建唯一
-一条发布提交。脚本随后把提交送入 `nightly`，连续完成
-`nightly -> stable -> release` 两次直接 Pull Request 合并，触发发布并持续监控到
-明确成功或失败，不设置操作者侧终止超时。失败后使用相同参数重跑，脚本会识别并复用
-已经完成的 GitHub 阶段。晋升和发布过程中严禁关闭、绕过或修改活动 Rulesets。
+第一个命令必须先创建 `release-candidate/v<version>` 临时分支，之后才修改一次版本号、
+运行统一本地门禁、构建、安装、检查升级路径并创建唯一发布提交。临时分支通过全部
+声明为必需的 LicoUp Pull Request 校验后才合入 `nightly`。后两个推送命令分别独立完成
+`nightly -> stable` 与 `stable -> release`；最后一个命令只负责发布并持续监控到明确
+结果，不设置操作者侧终止超时。每个命令都可以独立重跑。任何阶段都严禁关闭、绕过或
+修改活动 Rulesets。
 
 ## 隐私规则
 

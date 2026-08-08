@@ -109,7 +109,12 @@ export function buildRulesets(actionsIntegrationId) {
       conditions: {
         ref_name: {
           include: ["~ALL"],
-          exclude: ["refs/heads/stable", "refs/heads/release"],
+          exclude: [
+            "refs/heads/changes/**/*",
+            "refs/heads/release-candidate/**/*",
+            "refs/heads/stable",
+            "refs/heads/release",
+          ],
         },
       },
       rules: [{ type: "creation" }],

@@ -54,10 +54,7 @@ function validateTemplate() {
   const template = readJson(templatePath);
   const version = readJson(path.join(repoRoot, "tools", "client-version.json"));
   assert(template.schemaVersion === "licoup.client-release-template.v1", "release_template_schema_invalid");
-  assert(
-    template.entryCommand === "npm run client:release -- --version <version> --target <target>",
-    "release_entry_command_invalid",
-  );
+  assert(typeof template.entryCommands === "object", "release_entry_commands_invalid");
   assert(
     JSON.stringify(template.promotion?.branches) === JSON.stringify(["nightly", "stable", "release"]),
     "release_promotion_order_invalid",
@@ -65,6 +62,7 @@ function validateTemplate() {
   assert(template.promotion?.mergeMethod === "merge", "release_promotion_merge_method_invalid");
   assert(template.promotion?.rulesetMutation === "forbidden", "release_ruleset_mutation_policy_invalid");
   assert(template.publication?.ref === "release", "release_publication_ref_invalid");
+  assert(template.localPreflight?.refPrefix === "release-candidate/", "release_preflight_ref_prefix_invalid");
   assert(template.publication?.jobTimeoutPolicy === "github-default", "release_job_timeout_policy_invalid");
   assert(
     template.publication?.operatorMonitoringTimeoutMinutes === null,
@@ -129,7 +127,10 @@ function main() {
   }
   assert(options.allowSideEffects, "release_preflight_side_effects_not_allowed");
   assert(options.tag === `v${version.productVersion}`, "release_preflight_tag_mismatch");
-  assert(currentBranch() === template.localPreflight.ref, "release_preflight_branch_invalid");
+  assert(
+    currentBranch().startsWith(template.localPreflight.refPrefix),
+    "release_preflight_branch_invalid",
+  );
   const target = template.localPreflight.targets[options.target];
   assert(target, "release_preflight_target_unsupported");
   assert(process.platform === target.hostPlatform, "release_preflight_platform_mismatch");

@@ -8,6 +8,8 @@ import { fileURLToPath } from "node:url";
 
 const repoRoot = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const repository = "LicoLand/LicoUp";
+const longLivedBranches = Object.freeze(["nightly", "stable", "release"]);
+const upstream = Object.freeze({ nightly: "release-candidate", stable: "nightly", release: "stable" });
 const versionFiles = Object.freeze([
   "Cargo.lock",
   "Cargo.toml",
@@ -37,10 +39,7 @@ function run(command, args, { capture = false, allowFailure = false } = {}) {
     maxBuffer: 16 * 1024 * 1024,
   });
   if (result.error || (!allowFailure && result.status !== 0)) fail("release_command_failed");
-  return {
-    ok: !result.error && result.status === 0,
-    stdout: result.stdout?.trim() || "",
-  };
+  return { ok: !result.error && result.status === 0, stdout: result.stdout?.trim() || "" };
 }
 
 function git(args, options) {
@@ -53,14 +52,19 @@ function gh(args, options) {
 
 function parseArgs(argv) {
   if (argv.length === 1 && argv[0] === "--self-test") return { selfTest: true };
-  const options = { version: "", target: "macos-arm64", publish: true };
-  for (let index = 0; index < argv.length; index += 1) {
-    const flag = argv[index];
+  const [action, destination, ...rest] = argv;
+  assert(action === "push" || action === "publish", "release_action_invalid");
+  if (action === "push") assert(longLivedBranches.includes(destination), "release_destination_invalid");
+  if (action === "publish") assert(destination === undefined || destination.startsWith("--"), "release_publish_argument_invalid");
+  const args = action === "publish" ? [destination, ...rest].filter(Boolean) : rest;
+  const options = { action, destination: action === "push" ? destination : "", version: "", target: "macos-arm64", publish: true };
+  for (let index = 0; index < args.length; index += 1) {
+    const flag = args[index];
     if (flag === "--draft") {
       options.publish = false;
     } else if (flag === "--version" || flag === "--target") {
-      assert(index + 1 < argv.length, "release_argument_missing");
-      options[flag.slice(2)] = argv[index + 1];
+      assert(index + 1 < args.length, "release_argument_missing");
+      options[flag.slice(2)] = args[index + 1];
       index += 1;
     } else {
       fail("release_argument_invalid");
@@ -68,6 +72,9 @@ function parseArgs(argv) {
   }
   assert(/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/u.test(options.version), "release_version_invalid");
   assert(/^[a-z0-9-]+$/u.test(options.target), "release_target_invalid");
+  if (action === "push" && destination !== "nightly") {
+    assert(!args.includes("--target") && !args.includes("--draft"), "release_promotion_argument_invalid");
+  }
   return options;
 }
 
@@ -79,7 +86,16 @@ function validateContract() {
   const template = loadJson("tools/client-release-template.json");
   assert(template.schemaVersion === "licoup.client-release-template.v1", "release_template_invalid");
   assert(
-    JSON.stringify(template.promotion?.branches) === JSON.stringify(["nightly", "stable", "release"]),
+    JSON.stringify(template.entryCommands) === JSON.stringify({
+      nightly: "npm run client:release -- push nightly --version <version> --target <target>",
+      stable: "npm run client:release -- push stable --version <version>",
+      release: "npm run client:release -- push release --version <version>",
+      publish: "npm run client:release -- publish --version <version> --target <target>",
+    }),
+    "release_entry_commands_invalid",
+  );
+  assert(
+    JSON.stringify(template.promotion?.branches) === JSON.stringify(longLivedBranches),
     "release_promotion_order_invalid",
   );
   assert(template.promotion?.mergeMethod === "merge", "release_promotion_method_invalid");
@@ -87,78 +103,21 @@ function validateContract() {
   assert(template.publication?.operatorMonitoringTimeoutMinutes === null, "release_monitor_timeout_invalid");
   assert(template.localPreflight?.targets?.["macos-arm64"], "release_macos_template_missing");
   assert(
-    JSON.stringify(template.stages) === JSON.stringify([
-      "version-and-local-preflight",
-      "single-release-commit",
-      "nightly-integration",
-      "stable-promotion",
-      "release-promotion",
-      "publication-and-monitoring",
+    JSON.stringify(template.requiredPullRequestChecks) === JSON.stringify([
+      "Branch flow policy", "Commit identity", "Client required",
     ]),
-    "release_stage_order_invalid",
+    "release_required_checks_invalid",
   );
   return template;
 }
 
-function hasReleaseCommit(ref, version) {
-  const subject = git([
-    "log", "-1", "--format=%s", ref, "--", "tools/client-version.json",
-  ], { allowFailure: true });
-  return subject.ok && subject.stdout === `Release v${version}`;
-}
-
-function assertCleanNightly() {
-  assert(git(["branch", "--show-current"]).stdout === "nightly", "release_branch_must_be_nightly");
-  assert(git(["status", "--porcelain"]).stdout === "", "release_worktree_not_clean");
-}
-
-function changedFiles() {
-  const output = git(["status", "--porcelain=v1", "-z"]).stdout;
-  if (!output) return [];
-  return output.split("\0").filter(Boolean).map((record) => record.slice(3));
-}
-
-function createReleaseCommit(options) {
-  const manifest = loadJson("tools/client-version.json");
-  run("npm", ["run", "client:version:set", "--", "--version", options.version, "--build-number", String(manifest.buildNumber + 1)]);
-  run("npm", ["run", "client:release:preflight", "--", "--target", options.target, "--tag", `v${options.version}`, "--allow-side-effects"]);
-  const actual = changedFiles().sort();
-  const allowed = new Set(versionFiles);
-  assert(actual.length > 0 && actual.every((file) => allowed.has(file)), "release_change_scope_invalid");
-  run("npm", ["run", "repo:identity:install"]);
-  run("git", ["add", "--", ...versionFiles]);
-  run("git", ["commit", "-m", `Release v${options.version}`]);
-}
-
-function ensureReleaseCommit(options) {
-  run("git", ["fetch", "origin", "nightly", "stable", "release"]);
-  assertCleanNightly();
-  const local = git(["rev-parse", "HEAD"]).stdout;
-  const upstream = git(["rev-parse", "origin/nightly"]).stdout;
-  if (hasReleaseCommit("origin/nightly", options.version)) return false;
-  if (local === upstream) {
-    createReleaseCommit(options);
-    return true;
-  }
-  assert(git(["merge-base", "--is-ancestor", upstream, local], { allowFailure: true }).ok, "release_nightly_diverged");
-  assert(git(["rev-list", "--count", `${upstream}..${local}`]).stdout === "1", "release_commit_count_invalid");
-  assert(loadJson("tools/client-version.json").productVersion === options.version, "release_resume_version_mismatch");
-  assert(git(["show", "-s", "--format=%s", "HEAD"]).stdout === `Release v${options.version}`, "release_resume_commit_invalid");
-  return true;
-}
-
-function ensureFork(login) {
-  if (!gh(["repo", "view", `${login}/LicoUp`], { allowFailure: true }).ok) {
-    run("gh", ["repo", "fork", repository, "--clone=false"]);
-  }
-  run("gh", ["repo", "sync", `${login}/LicoUp`, "--source", repository, "--branch", "nightly"]);
-  const url = `https://github.com/${login}/LicoUp.git`;
-  if (git(["remote", "get-url", "release-fork"], { allowFailure: true }).ok) {
-    run("git", ["remote", "set-url", "release-fork", url]);
-  } else {
-    run("git", ["remote", "add", "release-fork", url]);
-  }
-  run("git", ["fetch", "release-fork", "nightly"]);
+function assertRepository() {
+  run("gh", ["auth", "status"]);
+  const origin = git(["remote", "get-url", "origin"]).stdout;
+  assert(
+    origin === "https://github.com/LicoLand/LicoUp.git" || origin === "git@github.com:LicoLand/LicoUp.git",
+    "release_origin_invalid",
+  );
 }
 
 function parseArray(value) {
@@ -167,124 +126,184 @@ function parseArray(value) {
   return parsed;
 }
 
-async function requiredChecks(prNumber) {
-  const headSha = gh(["pr", "view", String(prNumber), "--repo", repository, "--json", "headRefOid", "--jq", ".headRefOid"]).stdout;
+function hasReleaseCommit(ref, version) {
+  const subject = git(["log", "-1", "--format=%s", ref, "--", "tools/client-version.json"], { allowFailure: true });
+  return subject.ok && subject.stdout === `Release v${version}`;
+}
+
+function changedFiles() {
+  const output = git(["status", "--porcelain=v1", "-z"]).stdout;
+  return output ? output.split("\0").filter(Boolean).map((record) => record.slice(3)) : [];
+}
+
+function candidateBranch(version) {
+  return `release-candidate/v${version}`;
+}
+
+function switchToCandidate(version) {
+  const branch = candidateBranch(version);
+  assert(git(["status", "--porcelain"]).stdout === "", "release_worktree_not_clean");
+  run("git", ["fetch", "origin", "nightly", "stable", "release"]);
+  git(["fetch", "origin", branch], { allowFailure: true });
+  const localExists = git(["show-ref", "--verify", `refs/heads/${branch}`], { allowFailure: true }).ok;
+  const remoteExists = git(["show-ref", "--verify", `refs/remotes/origin/${branch}`], { allowFailure: true }).ok;
+  if (localExists) {
+    run("git", ["switch", branch]);
+  } else if (remoteExists) {
+    run("git", ["switch", "--track", "-c", branch, `origin/${branch}`]);
+  } else {
+    run("git", ["switch", "-c", branch, "origin/nightly"]);
+  }
+  return branch;
+}
+
+function createReleaseCommit(options) {
+  const manifest = loadJson("tools/client-version.json");
+  run("npm", ["run", "client:version:set", "--", "--version", options.version, "--build-number", String(manifest.buildNumber + 1)]);
+  run("npm", ["run", "client:release:preflight", "--", "--target", options.target, "--tag", `v${options.version}`, "--allow-side-effects"]);
+  const allowed = new Set(versionFiles);
+  const actual = changedFiles().sort();
+  assert(actual.length > 0 && actual.every((file) => allowed.has(file)), "release_change_scope_invalid");
+  run("npm", ["run", "repo:identity:install"]);
+  run("git", ["add", "--", ...versionFiles]);
+  run("git", ["commit", "-m", `Release v${options.version}`]);
+}
+
+function prepareCandidate(options) {
+  const branch = switchToCandidate(options.version);
+  if (!hasReleaseCommit("HEAD", options.version)) {
+    assert(git(["rev-parse", "HEAD"]).stdout === git(["rev-parse", "origin/nightly"]).stdout, "release_candidate_base_invalid");
+    createReleaseCommit(options);
+  }
+  assert(git(["status", "--porcelain"]).stdout === "", "release_candidate_not_clean");
+  assert(git(["rev-list", "--count", "origin/nightly..HEAD"]).stdout === "1", "release_commit_count_invalid");
+  run("git", ["push", "-u", "origin", `HEAD:refs/heads/${branch}`]);
+  return branch;
+}
+
+async function waitForChecks(prNumber, requiredNames) {
+  const required = new Set(requiredNames);
   while (true) {
-    const combined = JSON.parse(gh(["api", `repos/${repository}/commits/${headSha}/status`]).stdout);
-    const identity = (combined.statuses || []).find(({ context }) => context === "LicoUp / commit identity");
-    const checks = parseArray(gh([
-      "pr", "checks", String(prNumber), "--repo", repository, "--json", "name,state",
-    ], { allowFailure: true }).stdout || "[]");
-    const branchFlow = checks.find(({ name }) => name === "Branch flow policy");
-    if (identity?.state === "failure" || identity?.state === "error") fail("release_identity_gate_failed");
-    if (branchFlow?.state === "FAILURE" || branchFlow?.state === "ERROR") fail("release_branch_flow_gate_failed");
-    if (identity?.state === "success" && branchFlow?.state === "SUCCESS") return;
+    const checks = parseArray(gh(["pr", "checks", String(prNumber), "--repo", repository, "--json", "name,state"], { allowFailure: true }).stdout || "[]");
+    const selected = checks.filter(({ name }) => required.has(name));
+    if (selected.length === required.size) {
+      const pending = selected.some(({ state }) => ["PENDING", "QUEUED", "IN_PROGRESS", "WAITING", "REQUESTED"].includes(state));
+      const failed = selected.some(({ state }) => ["FAILURE", "ERROR", "CANCELLED", "TIMED_OUT", "ACTION_REQUIRED", "STALE"].includes(state));
+      if (failed) fail("release_pull_request_check_failed");
+      if (!pending) return;
+    }
     await new Promise((resolve) => setTimeout(resolve, 10000));
   }
 }
 
-async function nightlyPullRequest(options, login) {
-  const branch = `release/v${options.version}`;
-  run("git", ["push", "release-fork", `HEAD:refs/heads/${branch}`]);
-  const prs = parseArray(gh([
-    "pr", "list", "--repo", repository, "--base", "nightly", "--head", `${login}:${branch}`,
-    "--state", "all", "--json", "number,state,mergedAt",
-  ]).stdout);
-  let pr = prs.find((candidate) => candidate.state === "OPEN" || candidate.mergedAt);
-  if (!pr) {
-    const url = gh([
-      "pr", "create", "--repo", repository, "--base", "nightly", "--head", `${login}:${branch}`,
-      "--title", `Release v${options.version}`, "--body", "Automated release promotion generated after the complete local preflight passed.",
-    ]).stdout;
-    pr = { number: Number(url.split("/").at(-1)), state: "OPEN", mergedAt: null };
-  }
-  if (!pr.mergedAt) {
-    await requiredChecks(pr.number);
-    run("gh", ["pr", "merge", String(pr.number), "--repo", repository, "--rebase", "--delete-branch"]);
-  }
-}
-
-async function promotionPullRequest({ base, head, version }) {
-  run("git", ["fetch", "origin", head, base]);
-  if (hasReleaseCommit(`origin/${base}`, version)) return;
-  assert(hasReleaseCommit(`origin/${head}`, version), "release_promotion_source_version_mismatch");
-  const headSha = git(["rev-parse", `origin/${head}`]).stdout;
+function findPullRequest({ base, head, headSha = "" }) {
   const prs = parseArray(gh([
     "pr", "list", "--repo", repository, "--base", base, "--head", head,
     "--state", "all", "--json", "number,state,mergedAt,headRefOid",
   ]).stdout);
-  let pr = prs.find((candidate) => candidate.headRefOid === headSha && (candidate.state === "OPEN" || candidate.mergedAt));
+  return prs.find((candidate) => (!headSha || candidate.headRefOid === headSha) && (candidate.state === "OPEN" || candidate.mergedAt));
+}
+
+async function pushNightly(options, template) {
+  run("git", ["fetch", "origin", "nightly"]);
+  if (hasReleaseCommit("origin/nightly", options.version)) {
+    process.stdout.write(`client_release=already_advanced destination=nightly version=${options.version}\n`);
+    return;
+  }
+  const branch = prepareCandidate(options);
+  let pr = findPullRequest({ base: "nightly", head: branch });
+  if (!pr) {
+    const url = gh([
+      "pr", "create", "--repo", repository, "--base", "nightly", "--head", branch,
+      "--title", `Release v${options.version}`, "--body", "Automated release candidate. The exact local target and unified preflight passed before this branch was pushed.",
+    ]).stdout;
+    pr = { number: Number(url.split("/").at(-1)), mergedAt: null };
+  }
+  if (!pr.mergedAt) {
+    await waitForChecks(pr.number, template.requiredPullRequestChecks);
+    run("gh", ["pr", "merge", String(pr.number), "--repo", repository, "--rebase", "--delete-branch"]);
+  }
+  process.stdout.write(`client_release=advanced destination=nightly version=${options.version}\n`);
+}
+
+async function pushPromotion(options, template) {
+  const base = options.destination;
+  const head = upstream[base];
+  run("git", ["fetch", "origin", head, base]);
+  if (hasReleaseCommit(`origin/${base}`, options.version)) {
+    process.stdout.write(`client_release=already_advanced destination=${base} version=${options.version}\n`);
+    return;
+  }
+  assert(hasReleaseCommit(`origin/${head}`, options.version), "release_promotion_source_version_mismatch");
+  const headSha = git(["rev-parse", `origin/${head}`]).stdout;
+  let pr = findPullRequest({ base, head, headSha });
   if (!pr) {
     const url = gh([
       "pr", "create", "--repo", repository, "--base", base, "--head", head,
-      "--title", `Promote v${version}: ${head} to ${base}`,
-      "--body", "Automated direct-branch promotion. The source commit already passed the local release preflight.",
+      "--title", `Promote v${options.version}: ${head} to ${base}`,
+      "--body", "Automated direct-branch promotion of the previously validated release candidate.",
     ]).stdout;
-    pr = { number: Number(url.split("/").at(-1)), state: "OPEN", mergedAt: null };
+    pr = { number: Number(url.split("/").at(-1)), mergedAt: null };
   }
   if (!pr.mergedAt) {
-    await requiredChecks(pr.number);
+    await waitForChecks(pr.number, template.requiredPullRequestChecks);
     run("gh", ["pr", "merge", String(pr.number), "--repo", repository, "--merge"]);
   }
+  process.stdout.write(`client_release=advanced destination=${base} version=${options.version}\n`);
 }
 
-async function dispatchAndWatch(options, template) {
-  if (gh(["release", "view", `v${options.version}`, "--repo", repository], { allowFailure: true }).ok) return;
+async function publish(options, template) {
+  if (gh(["release", "view", `v${options.version}`, "--repo", repository], { allowFailure: true }).ok) {
+    process.stdout.write(`client_release=already_published version=${options.version} target=${options.target}\n`);
+    return;
+  }
   run("git", ["fetch", "origin", "release"]);
+  assert(hasReleaseCommit("origin/release", options.version), "release_publication_source_version_mismatch");
   const releaseSha = git(["rev-parse", "origin/release"]).stdout;
-  const existingRuns = parseArray(gh([
+  const existing = parseArray(gh([
     "run", "list", "--repo", repository, "--workflow", template.publication.workflow,
     "--event", "workflow_dispatch", "--branch", template.publication.ref,
     "--limit", "20", "--json", "databaseId,headSha,status",
   ]).stdout);
-  const active = existingRuns.find((candidate) => candidate.headSha === releaseSha && candidate.status !== "completed");
-  if (active) {
-    run("gh", ["run", "watch", String(active.databaseId), "--repo", repository, "--exit-status", "--interval", "10"]);
-    run("gh", ["release", "view", `v${options.version}`, "--repo", repository]);
-    return;
-  }
-  const before = new Set(existingRuns.map(({ databaseId }) => databaseId));
-  run("gh", [
-    "workflow", "run", template.publication.workflow, "--repo", repository, "--ref", template.publication.ref,
-    "-f", `release_tag=v${options.version}`, "-f", `target=${options.target}`,
-    "-f", `publish_release=${options.publish}`,
-  ]);
-  let runId = 0;
-  while (!runId) {
-    const runs = parseArray(gh([
-      "run", "list", "--repo", repository, "--workflow", template.publication.workflow,
-      "--event", "workflow_dispatch", "--branch", template.publication.ref,
-      "--limit", "20", "--json", "databaseId,headSha",
-    ]).stdout);
-    runId = runs.find((candidate) => candidate.headSha === releaseSha && !before.has(candidate.databaseId))?.databaseId || 0;
-    if (!runId) await new Promise((resolve) => setTimeout(resolve, 5000));
+  let runId = existing.find(({ headSha, status }) => headSha === releaseSha && status !== "completed")?.databaseId || 0;
+  if (!runId) {
+    const before = new Set(existing.map(({ databaseId }) => databaseId));
+    run("gh", [
+      "workflow", "run", template.publication.workflow, "--repo", repository, "--ref", template.publication.ref,
+      "-f", `release_tag=v${options.version}`, "-f", `target=${options.target}`,
+      "-f", `publish_release=${options.publish}`,
+    ]);
+    while (!runId) {
+      const runs = parseArray(gh([
+        "run", "list", "--repo", repository, "--workflow", template.publication.workflow,
+        "--event", "workflow_dispatch", "--branch", template.publication.ref,
+        "--limit", "20", "--json", "databaseId,headSha",
+      ]).stdout);
+      runId = runs.find(({ databaseId, headSha }) => headSha === releaseSha && !before.has(databaseId))?.databaseId || 0;
+      if (!runId) await new Promise((resolve) => setTimeout(resolve, 5000));
+    }
   }
   run("gh", ["run", "watch", String(runId), "--repo", repository, "--exit-status", "--interval", "10"]);
   run("gh", ["release", "view", `v${options.version}`, "--repo", repository]);
+  process.stdout.write(`client_release=published version=${options.version} target=${options.target}\n`);
 }
 
 async function main() {
   const options = parseArgs(process.argv.slice(2));
   const template = validateContract();
   if (options.selfTest) {
-    assert(versionFiles.includes("tools/client-version.json"), "release_version_authority_missing");
+    assert(upstream.stable === "nightly" && upstream.release === "stable", "release_upstream_map_invalid");
+    assert(parseArgs(["push", "nightly", "--version", "1.2.3"]).destination === "nightly", "release_nightly_action_invalid");
+    assert(parseArgs(["push", "stable", "--version", "1.2.3"]).destination === "stable", "release_stable_action_invalid");
+    assert(parseArgs(["push", "release", "--version", "1.2.3"]).destination === "release", "release_release_action_invalid");
+    assert(parseArgs(["publish", "--version", "1.2.3"]).action === "publish", "release_publish_action_invalid");
     process.stdout.write("client_release=self_test_passed\n");
     return;
   }
-  run("gh", ["auth", "status"]);
-  const origin = git(["remote", "get-url", "origin"]).stdout;
-  assert(
-    origin === "https://github.com/LicoLand/LicoUp.git" || origin === "git@github.com:LicoLand/LicoUp.git",
-    "release_origin_invalid",
-  );
-  const needsNightlyIntegration = ensureReleaseCommit(options);
-  const login = gh(["api", "user", "--jq", ".login"]).stdout;
-  ensureFork(login);
-  if (needsNightlyIntegration) await nightlyPullRequest(options, login);
-  await promotionPullRequest({ base: "stable", head: "nightly", version: options.version });
-  await promotionPullRequest({ base: "release", head: "stable", version: options.version });
-  await dispatchAndWatch(options, template);
-  process.stdout.write(`client_release=published version=${options.version} target=${options.target}\n`);
+  assertRepository();
+  if (options.action === "publish") return publish(options, template);
+  if (options.destination === "nightly") return pushNightly(options, template);
+  return pushPromotion(options, template);
 }
 
 main().catch((error) => {

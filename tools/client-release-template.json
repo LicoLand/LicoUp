@@ -1,19 +1,21 @@
 {
   "schemaVersion": "licoup.client-release-template.v1",
-  "entryCommand": "npm run client:release -- --version <version> --target <target>",
-  "stages": [
-    "version-and-local-preflight",
-    "single-release-commit",
-    "nightly-integration",
-    "stable-promotion",
-    "release-promotion",
-    "publication-and-monitoring"
-  ],
+  "entryCommands": {
+    "nightly": "npm run client:release -- push nightly --version <version> --target <target>",
+    "stable": "npm run client:release -- push stable --version <version>",
+    "release": "npm run client:release -- push release --version <version>",
+    "publish": "npm run client:release -- publish --version <version> --target <target>"
+  },
   "promotion": {
     "branches": ["nightly", "stable", "release"],
     "mergeMethod": "merge",
     "rulesetMutation": "forbidden"
   },
+  "requiredPullRequestChecks": [
+    "Branch flow policy",
+    "Commit identity",
+    "Client required"
+  ],
   "publication": {
     "workflow": ".github/workflows/client-release.yml",
     "ref": "release",
@@ -21,7 +23,7 @@
     "operatorMonitoringTimeoutMinutes": null
   },
   "localPreflight": {
-    "ref": "nightly",
+    "refPrefix": "release-candidate/",
     "targets": {
       "macos-arm64": {
         "hostPlatform": "darwin",
