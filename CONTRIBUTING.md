@@ -86,20 +86,21 @@ push their branch to a fork and open a pull request against `nightly`.
 ## Release preflight
 
 Release preparation is defined by `tools/client-release-template.json`. Do not
-reconstruct runner commands by trial and error. Before dispatching a macOS
-release, run the exact local gate from `nightly`:
+reconstruct runner commands by trial and error. Start from a clean, current
+`nightly` branch and run one command:
 
 ```bash
-npm run client:release:preflight -- --target macos-arm64 --tag v0.1.0 --allow-side-effects
+npm run client:release -- --version 0.1.1 --target macos-arm64
 ```
 
-The command runs the unified source, dependency, and release-policy gates,
-then builds, installs, checks the update-facing UI, archives, and verifies the
-macOS artifact locally. Promotion then uses pull-request merge commits in the
-strict order `nightly -> stable -> release`. Active Rulesets must not be
-disabled, bypassed, or changed during promotion or publication. Remote release
-jobs use the platform default timeout and must be monitored through completion
-without an operator-side terminal timeout.
+The command changes the version once, runs the unified local gates, builds,
+installs, checks the update path, and creates exactly one release commit. It
+then submits that commit to `nightly`, performs the two direct pull-request
+merges `nightly -> stable -> release`, dispatches publication, and watches it
+to a terminal result without an operator-side timeout. A failed invocation can
+be run again with the same arguments; completed GitHub stages are discovered
+and reused. Active Rulesets must not be disabled, bypassed, or changed during
+promotion or publication.
 
 ## Privacy rules
 
