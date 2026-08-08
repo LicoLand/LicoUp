@@ -92,19 +92,20 @@ reconstruct runner commands by trial and error. Run one bounded command for
 each stage:
 
 ```bash
-npm run client:release -- push nightly --version 0.1.1 --target macos-arm64
+npm run client:release -- push nightly --version 0.1.1
 npm run client:release -- push stable --version 0.1.1
 npm run client:release -- push release --version 0.1.1
 npm run client:release -- publish --version 0.1.1 --target macos-arm64
 ```
 
 The first command creates `release-candidate/v<version>` before changing any
-file. On that temporary branch it changes the version once, runs the unified
-local gates, builds, installs, checks the update path, and creates exactly one
-release commit. Only after the temporary branch passes every declared required
+file. On that temporary branch it changes the version once, runs the same code
+and platform gates required by the pull request, and creates exactly one release
+commit. Only after the temporary branch passes every declared required
 LicoUp pull-request check does it merge into `nightly`. The next two commands independently
 promote `nightly -> stable` and `stable -> release`. The last command only
-publishes and monitors to a terminal result without an operator-side timeout.
+performs artifact installation, live release acceptance, archiving and publishing,
+then monitors to a terminal result without an operator-side timeout.
 Each command is independently resumable. Active Rulesets must not be disabled,
 bypassed, or changed during any stage.
 

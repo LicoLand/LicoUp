@@ -72,8 +72,8 @@ function parseArgs(argv) {
   }
   assert(/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/u.test(options.version), "release_version_invalid");
   assert(/^[a-z0-9-]+$/u.test(options.target), "release_target_invalid");
-  if (action === "push" && destination !== "nightly") {
-    assert(!args.includes("--target") && !args.includes("--draft"), "release_promotion_argument_invalid");
+  if (action === "push") {
+    assert(!args.includes("--target") && !args.includes("--draft"), "release_push_argument_invalid");
   }
   return options;
 }
@@ -87,7 +87,7 @@ function validateContract() {
   assert(template.schemaVersion === "licoup.client-release-template.v1", "release_template_invalid");
   assert(
     JSON.stringify(template.entryCommands) === JSON.stringify({
-      nightly: "npm run client:release -- push nightly --version <version> --target <target>",
+      nightly: "npm run client:release -- push nightly --version <version>",
       stable: "npm run client:release -- push stable --version <version>",
       release: "npm run client:release -- push release --version <version>",
       publish: "npm run client:release -- publish --version <version> --target <target>",
@@ -101,7 +101,7 @@ function validateContract() {
   assert(template.promotion?.mergeMethod === "merge", "release_promotion_method_invalid");
   assert(template.promotion?.rulesetMutation === "forbidden", "release_ruleset_mutation_invalid");
   assert(template.publication?.operatorMonitoringTimeoutMinutes === null, "release_monitor_timeout_invalid");
-  assert(template.localPreflight?.targets?.["macos-arm64"], "release_macos_template_missing");
+  assert(Array.isArray(template.candidatePreflight?.commands), "release_candidate_preflight_missing");
   assert(
     JSON.stringify(template.requiredPullRequestChecks) === JSON.stringify([
       "Branch flow policy", "Commit identity", "Client required",
@@ -160,7 +160,7 @@ function switchToCandidate(version) {
 function createReleaseCommit(options) {
   const manifest = loadJson("tools/client-version.json");
   run("npm", ["run", "client:version:set", "--", "--version", options.version, "--build-number", String(manifest.buildNumber + 1)]);
-  run("npm", ["run", "client:release:preflight", "--", "--target", options.target, "--tag", `v${options.version}`, "--allow-side-effects"]);
+  run("npm", ["run", "client:release:preflight", "--", "--tag", `v${options.version}`]);
   const allowed = new Set(versionFiles);
   const actual = changedFiles().sort();
   assert(actual.length > 0 && actual.every((file) => allowed.has(file)), "release_change_scope_invalid");
