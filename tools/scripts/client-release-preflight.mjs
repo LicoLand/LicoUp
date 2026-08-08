@@ -23,12 +23,12 @@ function assert(condition, code) {
 }
 
 function parseArgs(argv) {
-  const options = { mode: "check", tag: "" };
+  const options = { mode: "check", tag: "", target: "" };
   for (let index = 0; index < argv.length; index += 1) {
     const value = argv[index];
     if (value === "check" || value === "run") {
       options.mode = value;
-    } else if (value === "--tag") {
+    } else if (value === "--tag" || value === "--target") {
       assert(index + 1 < argv.length, "release_preflight_argument_missing");
       options[value.slice(2)] = argv[index + 1];
       index += 1;
@@ -85,14 +85,13 @@ function validateTemplate() {
     "release_promotion_ruleset_merge_method_invalid",
   );
 
-  const commands = template.candidatePreflight?.commands;
-  assert(Array.isArray(commands) && commands.length > 0, "release_candidate_commands_missing");
-  for (const step of commands) {
-    assert(typeof step.command === "string" && step.command.length > 0, "release_command_invalid");
-    assert(Array.isArray(step.args) && step.args.every((arg) => typeof arg === "string"), "release_command_args_invalid");
-    if (step.cwd) {
-      assert(!path.isAbsolute(step.cwd) && !step.cwd.includes(".."), "release_command_cwd_invalid");
-    }
+  const targets = template.candidatePreflight?.targets;
+  assert(targets && typeof targets === "object", "release_candidate_targets_missing");
+  for (const [target, lanes] of Object.entries(targets)) {
+    assert(/^[a-z0-9-]+$/u.test(target), "release_target_invalid");
+    assert(Array.isArray(lanes) && lanes.length > 0, "release_candidate_lanes_missing");
+    assert(new Set(lanes).size === lanes.length, "release_candidate_lanes_duplicated");
+    assert(lanes[0] === "source" && lanes.at(-1) === "release-policy", "release_candidate_lane_order_invalid");
   }
   return { template, version };
 }
@@ -120,12 +119,15 @@ function main() {
     return;
   }
   assert(options.tag === `v${version.productVersion}`, "release_preflight_tag_mismatch");
+  assert(options.target === version.releaseTarget, "release_preflight_target_mismatch");
   assert(
     currentBranch().startsWith(template.candidatePreflight.refPrefix),
     "release_preflight_branch_invalid",
   );
-  for (const step of template.candidatePreflight.commands) runStep(step);
-  process.stdout.write(`release_preflight=passed tag=${options.tag}\n`);
+  const lanes = template.candidatePreflight.targets[options.target];
+  assert(lanes, "release_preflight_target_unsupported");
+  for (const lane of lanes) runStep({ command: "npm", args: ["run", `client:gate:${lane}`] });
+  process.stdout.write(`release_preflight=passed target=${options.target} tag=${options.tag}\n`);
 }
 
 try {

@@ -80,7 +80,7 @@ local hooks and remote Rulesets reject it. The developer must review and accept
 the change personally before committing it.
 
 Every change starts on a temporary upstream branch. Use `changes/<topic>` for
-ordinary work and `release-candidate/v<version>` for a release candidate. The
+ordinary work and `release-candidate/v<version>-<target>` for a release candidate. The
 all-branch metadata Ruleset applies while either branch is created, so its
 first commit cannot evade identity enforcement. Merge temporary branches only
 into `nightly`; never write a change directly to a long-lived branch.
@@ -92,18 +92,19 @@ reconstruct runner commands by trial and error. Run one bounded command for
 each stage:
 
 ```bash
-npm run client:release -- push nightly --version 0.1.1
-npm run client:release -- push stable --version 0.1.1
-npm run client:release -- push release --version 0.1.1
+npm run client:release -- push nightly --version 0.1.1 --target macos-arm64
+npm run client:release -- push stable --version 0.1.1 --target macos-arm64
+npm run client:release -- push release --version 0.1.1 --target macos-arm64
 npm run client:release -- publish --version 0.1.1 --target macos-arm64
 ```
 
-The first command creates `release-candidate/v<version>` before changing any
-file. On that temporary branch it changes the version once, runs the same code
-and platform gates required by the pull request, and creates exactly one release
+The first command creates `release-candidate/v<version>-<target>` before changing any
+file. On that temporary branch it records one release target, changes the version
+once, runs only the common and selected-platform gates required by the pull request, and creates exactly one release
 commit. Only after the temporary branch passes every declared required
 LicoUp pull-request check does it merge into `nightly`. The next two commands independently
-promote `nightly -> stable` and `stable -> release`. The last command only
+promote the same target through `nightly -> stable` and `stable -> release`; a
+target mismatch fails closed. The last command only
 performs artifact installation, live release acceptance, archiving and publishing,
 then monitors to a terminal result without an operator-side timeout.
 Each command is independently resumable. Active Rulesets must not be disabled,

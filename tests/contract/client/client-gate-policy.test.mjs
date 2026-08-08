@@ -81,6 +81,13 @@ test("changed paths select only their independent technology lanes", () => {
   );
 });
 
+test("release target selects only its platform-specific lane", () => {
+  const versionPath = ["tools/client-version.json"];
+  assert.equal(classifyClientGatePaths(versionPath, { releaseTarget: "macos-arm64" }).lanes.android, false);
+  assert.equal(classifyClientGatePaths(versionPath, { releaseTarget: "linux-glibc-arm64" }).lanes.android, false);
+  assert.equal(classifyClientGatePaths(versionPath, { releaseTarget: "android-arm64" }).lanes.android, true);
+});
+
 test("gate policy rejects paths that escape the repository", () => {
   assert.throws(
     () => classifyClientGatePaths(["../outside"]),

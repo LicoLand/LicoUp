@@ -205,7 +205,7 @@ function isReleasePolicyPath(file) {
   );
 }
 
-export function classifyClientGatePaths(changedPaths) {
+export function classifyClientGatePaths(changedPaths, { releaseTarget = null } = {}) {
   if (!Array.isArray(changedPaths)) {
     throw new Error("changed paths must be an array");
   }
@@ -225,6 +225,9 @@ export function classifyClientGatePaths(changedPaths) {
     if (isAndroidPath(file)) lanes.android = true;
     if (DEPENDENCY_PATHS.has(file)) lanes.dependencies = true;
     if (isReleasePolicyPath(file)) lanes["release-policy"] = true;
+  }
+  if (normalized.includes("tools/client-version.json") && releaseTarget === "android-arm64") {
+    lanes.android = true;
   }
 
   return Object.freeze({
