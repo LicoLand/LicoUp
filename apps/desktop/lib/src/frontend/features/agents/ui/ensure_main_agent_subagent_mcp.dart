@@ -38,8 +38,7 @@ Future<bool> ensureMainAgentSubagentMcp({
       // for agents that never support the plugin (for example Cursor).
       controller.agentWorkspacePublishNotification(
         id: 'subagent-mcp-$id',
-        messageChinese:
-            '主智能体（$id）不支持 Subagent MCP，无法通过 handoff 调度同伴；普通发送仍会继续。',
+        messageChinese: '主智能体（$id）不支持 Subagent MCP，无法通过 handoff 调度同伴；普通发送仍会继续。',
         messageEnglish:
             'Main agent ($id) does not support Subagent MCP, so peer handoffs are unavailable; plain send continues.',
         tone: MessagingNotificationTone.warning,

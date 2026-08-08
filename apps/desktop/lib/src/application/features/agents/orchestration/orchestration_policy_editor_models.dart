@@ -221,17 +221,21 @@ final class AgentOrchestrationPolicy {
       _primaryCapsule(reviewerAgents) != null;
 
   /// Slot projection used by roster sync and Subagent MCP's five-path shape.
-  AgentOrchestrationRoleAssignment assignmentFor(
-    CodeEngineeringRoleSlot role,
-  ) {
+  AgentOrchestrationRoleAssignment assignmentFor(CodeEngineeringRoleSlot role) {
     final capsule = switch (role) {
       CodeEngineeringRoleSlot.designer => _primaryCapsule(designerAgents),
       CodeEngineeringRoleSlot.backendWorker => _primaryCapsule(workerAgents),
-      CodeEngineeringRoleSlot.frontendWorker =>
-        _laneCapsule(workerAgents, frontend: true),
-      CodeEngineeringRoleSlot.backendReviewer => _primaryCapsule(reviewerAgents),
-      CodeEngineeringRoleSlot.frontendReviewer =>
-        _laneCapsule(reviewerAgents, frontend: true),
+      CodeEngineeringRoleSlot.frontendWorker => _laneCapsule(
+        workerAgents,
+        frontend: true,
+      ),
+      CodeEngineeringRoleSlot.backendReviewer => _primaryCapsule(
+        reviewerAgents,
+      ),
+      CodeEngineeringRoleSlot.frontendReviewer => _laneCapsule(
+        reviewerAgents,
+        frontend: true,
+      ),
     };
     if (capsule == null) return const AgentOrchestrationRoleAssignment();
     return AgentOrchestrationRoleAssignment(
@@ -288,7 +292,8 @@ final class AgentOrchestrationPolicy {
   /// Daily Conversation capsule that best matches Current Conversation
   /// (`main_agent`): prefer same agent + model, else the first same agent.
   /// Used for display fields such as Fast that live only on daily capsules.
-  DailyConversationAgentAssignment? dailyConversationMatchForCurrentConversation() {
+  DailyConversationAgentAssignment?
+  dailyConversationMatchForCurrentConversation() {
     final agentId = commanderAgentId.trim();
     if (agentId.isEmpty) return null;
     final model = commanderModelName.trim();
@@ -534,7 +539,8 @@ List<DailyConversationAgentAssignment> _codeEngineeringAgents(
   for (final single in fallbackSingles) {
     final role = AgentOrchestrationRoleAssignment.fromTomlConfig(single);
     if (!role.configured) continue;
-    final key = '${role.agentId}\u0000${role.modelName}\u0000${role.reasoningEffort}';
+    final key =
+        '${role.agentId}\u0000${role.modelName}\u0000${role.reasoningEffort}';
     if (!seen.add(key)) continue;
     migrated.add(
       DailyConversationAgentAssignment(

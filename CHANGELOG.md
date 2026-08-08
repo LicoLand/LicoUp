@@ -6,6 +6,13 @@ manifests.
 
 ## Unreleased
 
+## 0.1.0 — 2026-08-08
+
+- Added signed GitHub update discovery, Wi-Fi background download, digest and
+  dual-role Ed25519 verification, safe macOS app replacement, rollback, and
+  restart.
+- Published the first stable macOS ARM64 GitHub distribution under AGPL-3.0-or-later.
+
 - Continuing a Cursor IDE-listed conversation from LicoUp now opens a new Agent
   CLI session and injects a one-time handoff (composer id, `state.vscdb`
   key prefixes, and the last IDE assistant return) instead of resuming the IDE

@@ -1,9 +1,9 @@
 import 'package:flutter/foundation.dart';
 
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
+import 'package:licoup/src/contracts/group_conversation_models.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/frontend/features/agents/ui/composer_agent_mention.dart';
-import 'package:licoup/src/platform/agents/group_conversation_store.dart';
 
 /// Immutable data consumed by the conversation body. The workspace is the
 /// only production adapter from mutable application controllers to this view.
@@ -94,6 +94,7 @@ final class AgentConversationPaneActions {
     required this.onDraftChanged,
     required this.onSend,
     required this.onSelectSession,
+    required this.onCopyText,
     this.onUnblockSend,
     this.onChooseWorkingDirectory,
     this.onAttach,
@@ -111,6 +112,7 @@ final class AgentConversationPaneActions {
   final ValueChanged<String> onDraftChanged;
   final Future<bool> Function(String) onSend;
   final ValueChanged<String> onSelectSession;
+  final Future<void> Function(String) onCopyText;
   final VoidCallback? onUnblockSend;
   final VoidCallback? onChooseWorkingDirectory;
   final VoidCallback? onAttach;

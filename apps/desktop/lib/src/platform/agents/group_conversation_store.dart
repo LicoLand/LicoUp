@@ -2,23 +2,13 @@ import 'dart:io';
 
 import 'package:path/path.dart' as p;
 
+import 'package:licoup/src/contracts/group_conversation_models.dart';
 import 'package:licoup/src/platform/mobile_relay/mobile_relay_json_store.dart';
 import 'package:licoup/src/platform/storage/portable_data_root.dart';
 
+export 'package:licoup/src/contracts/group_conversation_models.dart';
+
 const defaultLicoGroupConversationId = 'lico-group-default';
-
-enum GroupParticipantKind {
-  human,
-  agent;
-
-  static GroupParticipantKind parse(String raw) {
-    return raw.trim().toLowerCase() == 'agent'
-        ? GroupParticipantKind.agent
-        : GroupParticipantKind.human;
-  }
-
-  String toJson() => this == GroupParticipantKind.agent ? 'agent' : 'human';
-}
 
 enum TurnTakingPolicy {
   flywheelMainDispatch,
@@ -45,38 +35,6 @@ enum PlannedTurnRole {
   peer;
 
   String toJson() => this == PlannedTurnRole.dispatcher ? 'dispatcher' : 'peer';
-}
-
-final class GroupParticipant {
-  const GroupParticipant({
-    required this.id,
-    required this.kind,
-    required this.displayName,
-    this.agentId,
-  });
-
-  final String id;
-  final GroupParticipantKind kind;
-  final String displayName;
-  final String? agentId;
-
-  factory GroupParticipant.fromJson(Map<String, dynamic> json) {
-    return GroupParticipant(
-      id: (json['id'] ?? '').toString(),
-      kind: GroupParticipantKind.parse((json['kind'] ?? '').toString()),
-      displayName: (json['displayName'] ?? '').toString(),
-      agentId: (json['agentId'] ?? '').toString().trim().isEmpty
-          ? null
-          : (json['agentId'] ?? '').toString().trim(),
-    );
-  }
-
-  Map<String, dynamic> toJson() => {
-    'id': id,
-    'kind': kind.toJson(),
-    'displayName': displayName,
-    if (agentId != null && agentId!.isNotEmpty) 'agentId': agentId,
-  };
 }
 
 final class GroupRoster {
@@ -290,7 +248,8 @@ final class GroupConversationRecord {
     'turnTaking': turnTaking.toJson(),
     'transcriptPath': transcriptPath,
     'agentSessions': {
-      for (final entry in agentSessions.entries) entry.key: entry.value.toJson(),
+      for (final entry in agentSessions.entries)
+        entry.key: entry.value.toJson(),
     },
     if (lastLocalOrchestrationSessionId.isNotEmpty)
       'lastLocalOrchestrationSessionId': lastLocalOrchestrationSessionId,

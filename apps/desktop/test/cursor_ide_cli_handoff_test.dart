@@ -95,39 +95,42 @@ void main() {
     expect(prompt, contains('Continue from IDE'));
   });
 
-  test('shouldInject requires cursor agent, IDE kind, and unused composer id', () {
-    final ide = session();
-    expect(
-      shouldInjectCursorIdeCliHandoff(
-        agentId: 'cursor',
-        session: ide,
-        handedOffComposerIds: const {},
-      ),
-      isTrue,
-    );
-    expect(
-      shouldInjectCursorIdeCliHandoff(
-        agentId: 'codex',
-        session: ide,
-        handedOffComposerIds: const {},
-      ),
-      isFalse,
-    );
-    expect(
-      shouldInjectCursorIdeCliHandoff(
-        agentId: 'cursor',
-        session: session(sourceKind: 'cursor-cli-projects'),
-        handedOffComposerIds: const {},
-      ),
-      isFalse,
-    );
-    expect(
-      shouldInjectCursorIdeCliHandoff(
-        agentId: 'cursor',
-        session: ide,
-        handedOffComposerIds: const {'composer-1'},
-      ),
-      isFalse,
-    );
-  });
+  test(
+    'shouldInject requires cursor agent, IDE kind, and unused composer id',
+    () {
+      final ide = session();
+      expect(
+        shouldInjectCursorIdeCliHandoff(
+          agentId: 'cursor',
+          session: ide,
+          handedOffComposerIds: const {},
+        ),
+        isTrue,
+      );
+      expect(
+        shouldInjectCursorIdeCliHandoff(
+          agentId: 'codex',
+          session: ide,
+          handedOffComposerIds: const {},
+        ),
+        isFalse,
+      );
+      expect(
+        shouldInjectCursorIdeCliHandoff(
+          agentId: 'cursor',
+          session: session(sourceKind: 'cursor-cli-projects'),
+          handedOffComposerIds: const {},
+        ),
+        isFalse,
+      );
+      expect(
+        shouldInjectCursorIdeCliHandoff(
+          agentId: 'cursor',
+          session: ide,
+          handedOffComposerIds: const {'composer-1'},
+        ),
+        isFalse,
+      );
+    },
+  );
 }

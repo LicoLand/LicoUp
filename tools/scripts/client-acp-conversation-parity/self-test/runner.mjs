@@ -1667,6 +1667,7 @@ export async function runSelfTest() {
       productFixtureReceiptRejected,
       disposableProfileSeedSafe,
       dispatchLaneContract: dispatchLaneProbe.ok,
+      dispatchLaneFailures: dispatchLaneProbe.failedRows,
       laneFamiliesCovered: dispatchLaneProbe.laneFamiliesCovered,
       harnessVersion: dispatchLaneHarnessVersion,
       evidenceWrite,

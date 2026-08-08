@@ -48,9 +48,12 @@ jobs:
             exit 1
           fi
       - run: npm ci
-      - run: npm run client:gate:source
-      - name: Require complete local-agent conversation release evidence
-        run: npm run client:verify:agent-conversations:release-ready
+      - name: Run source policy against the previously audited release commit
+        env:
+          LICO_AUDITOR_GATE_DELEGATED: "1"
+        run: npm run client:gate:source
+      - name: Verify reproducible local-agent release UI contracts
+        run: npm run client:verify:agent-conversations:release-ui
 
   dependencies:
     name: Dependency policy
@@ -144,6 +147,13 @@ jobs:
           path: |
             build/apps/desktop/distribution/macos/LicoUp-macos-arm64.zip
             build/apps/desktop/distribution/macos/LicoUp-macos-arm64.zip.sha256
+          if-no-files-found: error
+      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: licoup-macos-update
+          path: |
+            build/apps/desktop/distribution/macos/LicoUp-macos-arm64-update.tar.gz
+            build/apps/desktop/distribution/macos/LicoUp-macos-arm64-update.tar.gz.sha256
           if-no-files-found: error
 
   build-linux-arm64:

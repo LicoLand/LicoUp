@@ -22,7 +22,7 @@ import 'package:licoup/src/frontend/shared/ui/theme.dart';
 /// Title sits outside, above a stadium (full-pill) shell that matches the
 /// inner assignment capsules. Collapsed: circular plus. Expanded: the shell
 /// stays a single row (chips + draft field + confirm); agent / model /
-/// reasoning cards float via [OverlayPortal.targetsRootOverlay] (flip above
+/// reasoning cards float via a root [OverlayPortal] (flip above
 /// when space below is tight) and do not resize the stadium. The draft field
 /// mirrors cascade picks: agent icon and `Agent · Model · Effort`.
 final class AgentOrchestrationMultiCapsuleSection extends StatefulWidget {
@@ -209,10 +209,7 @@ final class _AgentOrchestrationMultiCapsuleSectionState
   ({bool openUpward, double maxCardHeight}) _cascadePlacement() {
     final box = _stadiumKey.currentContext?.findRenderObject() as RenderBox?;
     if (box == null || !box.hasSize) {
-      return (
-        openUpward: false,
-        maxCardHeight: _cascadePreferredHeight,
-      );
+      return (openUpward: false, maxCardHeight: _cascadePreferredHeight);
     }
     final origin = box.localToGlobal(Offset.zero);
     final media = MediaQuery.sizeOf(context);
@@ -318,7 +315,7 @@ final class _AgentOrchestrationMultiCapsuleSectionState
 
     // Root overlay paints above the dialog footer so Reviewer/Worker cards
     // are not covered by Cancel/Save. Flip upward when space below is tight.
-    return OverlayPortal.targetsRootOverlay(
+    return OverlayPortal(
       controller: _cascadePortalController,
       overlayChildBuilder: (context) {
         final placement = _cascadePlacement();
@@ -433,7 +430,8 @@ final class _AgentOrchestrationMultiCapsuleSectionState
                                       assignment: assignment,
                                       target: _targetById(assignment.agentId),
                                       isCurrentConversation:
-                                          widget.highlightFirstAsCurrentConversation &&
+                                          widget
+                                              .highlightFirstAsCurrentConversation &&
                                           index == 0,
                                       onRemove: () =>
                                           _removeAssignment(assignment.id),
@@ -477,8 +475,9 @@ final class _AgentOrchestrationMultiCapsuleSectionState
                                           selectedTarget: _targetById(
                                             _draft.agentId,
                                           ),
-                                          readOnly:
-                                              _draft.agentId.trim().isNotEmpty,
+                                          readOnly: _draft.agentId
+                                              .trim()
+                                              .isNotEmpty,
                                           onClose: _closePicker,
                                           onSubmitted: (raw) {
                                             final match = _firstMatch(raw);
@@ -494,13 +493,11 @@ final class _AgentOrchestrationMultiCapsuleSectionState
                                         ),
                                         fillAlpha: colors.isDark ? 22 : 10,
                                         child: Tooltip(
-                                          message: strings
-                                              .addDailyConversationAgent,
+                                          message:
+                                              strings.addDailyConversationAgent,
                                           waitDuration: LicoMotion.tooltipWait,
                                           child: InkWell(
-                                            key: Key(
-                                              '${widget.keyPrefix}-add',
-                                            ),
+                                            key: Key('${widget.keyPrefix}-add'),
                                             customBorder: const CircleBorder(),
                                             onTap: _openPicker,
                                             child: Center(
@@ -529,8 +526,7 @@ final class _AgentOrchestrationMultiCapsuleSectionState
                           focused: _draft.agentId.trim().isNotEmpty,
                           focusColor: colors.accent,
                           child: Tooltip(
-                            message:
-                                strings.confirmDailyConversationSelection,
+                            message: strings.confirmDailyConversationSelection,
                             waitDuration: LicoMotion.tooltipWait,
                             child: InkWell(
                               key: Key('${widget.keyPrefix}-confirm'),
@@ -822,7 +818,9 @@ final class _DailyConversationCascadeCardsState
                   else
                     for (final model in models)
                       _CascadeOptionRow(
-                        key: Key('${widget.keyPrefix}-model-${active.target}-$model'),
+                        key: Key(
+                          '${widget.keyPrefix}-model-${active.target}-$model',
+                        ),
                         label: agentOrchestrationModelDisplayName(
                           active,
                           model,
@@ -865,7 +863,9 @@ final class _DailyConversationCascadeCardsState
                   else
                     for (final effort in efforts)
                       _CascadeOptionRow(
-                        key: Key('${widget.keyPrefix}-effort-${active.target}-$effort'),
+                        key: Key(
+                          '${widget.keyPrefix}-effort-${active.target}-$effort',
+                        ),
                         label: strings.reasoningEffortOptionLabel(
                           effort,
                           effort,
@@ -1070,7 +1070,7 @@ final class _FastSwitchRow extends StatelessWidget {
           Transform.scale(
             scale: 0.78,
             child: Switch.adaptive(
-              key: Key('${keyPrefix}-fast-switch'),
+              key: Key('$keyPrefix-fast-switch'),
               value: enabled,
               onChanged: onChanged,
               materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,

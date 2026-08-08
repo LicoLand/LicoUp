@@ -46,11 +46,22 @@ fn mobile_relay_disposable_secret_cleanup_is_complete_noninteractive_and_exactly
                 &config,
                 MOBILE_RELAY_PLATFORM_SECRET_STORE_NAMESPACE,
             )?;
+            let paired_device_handle_count = config
+                .get("pairedDevices")
+                .and_then(Value::as_array)
+                .map(|devices| {
+                    devices
+                        .iter()
+                        .filter_map(paired_device_token_secret_store_key)
+                        .collect::<std::collections::HashSet<_>>()
+                        .len()
+                })
+                .unwrap_or_default();
             assert_eq!(
                 root_handles.len(),
                 1 + MOBILE_RELAY_NATIVE_TOKEN_SECRET_FIELDS.len()
                     + MOBILE_RELAY_E2EE_NATIVE_SECRET_FIELDS.len()
-                    + 2
+                    + paired_device_handle_count
             );
             let mut cleanup_probes = Vec::new();
             for handle in &root_handles {

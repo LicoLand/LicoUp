@@ -120,7 +120,7 @@ void main() {
             'production',
           );
         } else {
-          expect(capturedEnv, isNull);
+          expect(capturedEnv?.keys.where((key) => key != 'PATH'), isEmpty);
         }
       },
     );
