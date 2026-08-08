@@ -166,11 +166,10 @@ export function buildRulesets(actionsIntegrationId) {
       rules: [
         { type: "deletion" },
         { type: "non_fast_forward" },
-        { type: "required_linear_history" },
         {
           type: "pull_request",
           parameters: {
-            allowed_merge_methods: ["rebase"],
+            allowed_merge_methods: ["merge"],
             dismiss_stale_reviews_on_push: true,
             require_code_owner_review: false,
             require_last_push_approval: false,

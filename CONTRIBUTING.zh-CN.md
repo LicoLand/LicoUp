@@ -69,6 +69,21 @@ Agent 可以辅助开发者，但严禁替换、覆盖或抢占开发者署名�
 上游仓库拒绝创建额外分支，防止分支首个提交绕过元数据门禁。贡献者必须把分支推送到
 自己的 fork，再向 `nightly` 发起 Pull Request。
 
+## 发布前门禁
+
+发布准备由 `tools/client-release-template.json` 统一定义，严禁在失败后临时拼装并逐次
+试探远端 runner 命令。发布 macOS 版本前，必须在 `nightly` 分支本机执行完整门禁：
+
+```bash
+npm run client:release:preflight -- --target macos-arm64 --tag v0.1.0 --allow-side-effects
+```
+
+该命令统一运行源码、依赖和发布策略门禁，然后在本机构建、安装、检查升级相关界面、
+归档并验收 macOS 产物。之后必须通过 Pull Request 的 merge commit 严格按照
+`nightly -> stable -> release` 晋升。晋升和发布过程中严禁关闭、绕过或修改活动
+Rulesets。远程发布任务使用平台默认超时；监控方不得设置终止性超时，必须持续监控到
+明确成功或失败。
+
 ## 隐私规则
 
 - 严禁提交秘密、本地路径、用户内容、账户数据、设备信息、日志或原始运行时报告。

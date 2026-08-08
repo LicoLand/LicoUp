@@ -215,15 +215,23 @@ function validateReleaseTopology() {
     fail("release workflow must accept one target and bounded publication inputs");
   }
   const expectedJobs = [
-    "source",
-    "dependencies",
-    "release-policy",
+    "preflight",
     ...Object.values(CLIENT_RELEASE_TARGETS)
       .flatMap((target) => [target.buildJob, target.publishJob]),
   ].sort();
   if (JSON.stringify(workflowJobIds(workflow).sort()) !== JSON.stringify(expectedJobs)) {
     fail("release workflow jobs must match the independent target topology");
   }
+  const preflight = jobBlock(workflow, "preflight");
+  for (const command of [
+    "npm run client:release:preflight:check",
+    "npm run client:gate:source",
+    "npm run client:gate:dependencies",
+    "npm run client:gate:release-policy",
+  ]) {
+    assertIncludes(preflight, command, `unified release preflight must invoke ${command}`);
+  }
+  assertExcludes(workflow, "timeout-minutes:", "release workflow must use the platform default job timeout");
   assertIncludes(
     jobBlock(workflow, "build-macos"),
     "npm run client:verify:agent-conversations:release-ui",
@@ -249,8 +257,8 @@ function validateReleaseTopology() {
     );
     assertIncludes(
       build,
-      "needs: [source, dependencies, release-policy]",
-      `release build ${topology.buildJob} must depend only on shared policy proofs`,
+      "needs: preflight",
+      `release build ${topology.buildJob} must depend on the unified preflight`,
     );
     assertIncludes(
       publish,
@@ -259,7 +267,7 @@ function validateReleaseTopology() {
     );
     assertIncludes(
       publish,
-      `needs: [source, dependencies, release-policy, ${topology.buildJob}]`,
+      `needs: [preflight, ${topology.buildJob}]`,
       `release publisher ${topology.publishJob} must wait only for its own build`,
     );
     assertIncludes(

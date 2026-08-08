@@ -83,6 +83,24 @@ The upstream repository rejects creation of additional branches so that a
 branch's first commit cannot evade metadata enforcement. Contributors must
 push their branch to a fork and open a pull request against `nightly`.
 
+## Release preflight
+
+Release preparation is defined by `tools/client-release-template.json`. Do not
+reconstruct runner commands by trial and error. Before dispatching a macOS
+release, run the exact local gate from `nightly`:
+
+```bash
+npm run client:release:preflight -- --target macos-arm64 --tag v0.1.0 --allow-side-effects
+```
+
+The command runs the unified source, dependency, and release-policy gates,
+then builds, installs, checks the update-facing UI, archives, and verifies the
+macOS artifact locally. Promotion then uses pull-request merge commits in the
+strict order `nightly -> stable -> release`. Active Rulesets must not be
+disabled, bypassed, or changed during promotion or publication. Remote release
+jobs use the platform default timeout and must be monitored through completion
+without an operator-side terminal timeout.
+
 ## Privacy rules
 
 - Never commit secrets, local paths, user content, account data, device details,

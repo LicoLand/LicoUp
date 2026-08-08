@@ -1,0 +1,33 @@
+{
+  "schemaVersion": "licoup.client-release-template.v1",
+  "promotion": {
+    "branches": ["nightly", "stable", "release"],
+    "mergeMethod": "merge",
+    "rulesetMutation": "forbidden"
+  },
+  "publication": {
+    "workflow": ".github/workflows/client-release.yml",
+    "ref": "release",
+    "jobTimeoutPolicy": "github-default",
+    "operatorMonitoringTimeoutMinutes": null
+  },
+  "localPreflight": {
+    "ref": "nightly",
+    "targets": {
+      "macos-arm64": {
+        "hostPlatform": "darwin",
+        "commands": [
+          { "command": "npm", "args": ["run", "client:gate:source"] },
+          { "command": "npm", "args": ["run", "client:gate:dependencies"] },
+          { "command": "npm", "args": ["run", "client:gate:release-policy"] },
+          { "command": "flutter", "args": ["pub", "get", "--enforce-lockfile"], "cwd": "apps/desktop" },
+          { "command": "npm", "args": ["run", "client:install:macos"] },
+          { "command": "npm", "args": ["run", "client:verify:agent-conversations:release-ui"] },
+          { "command": "npm", "args": ["run", "client:archive:macos-github-release"] },
+          { "command": "shasum", "args": ["-a", "256", "LicoUp-macos-arm64.zip"], "cwd": "build/apps/desktop/distribution/macos", "stdoutFile": "LicoUp-macos-arm64.zip.sha256" },
+          { "command": "npm", "args": ["run", "client:verify:github-release"] }
+        ]
+      }
+    }
+  }
+}
