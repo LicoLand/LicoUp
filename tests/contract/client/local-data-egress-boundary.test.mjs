@@ -20,12 +20,18 @@ const networkTokensByExtension = Object.freeze({
   ".swift": ["URLSession", "NWConnection", "URLSessionWebSocketTask"],
 });
 
-const reviewedRustEgressFiles = Object.freeze([
+const reviewedEgressFiles = Object.freeze([
+  "apps/desktop/lib/src/backend/features/settings/services/client_update_service.dart",
   "crates/licoup-native/src/domain/collaboration_plugin/assembly/runtime/probe.rs",
   "crates/licoup-native/src/domain/collaboration_plugin/assembly/runtime/shutdown.rs",
   "crates/licoup-native/src/domain/collaboration_plugin/source.rs",
+  "crates/licoup-native/src/domain/lico_agent/transport.rs",
+  "crates/licoup-native/src/domain/provider_model_pricing.rs",
   "crates/licoup-native/src/domain/skill_hub/source.rs",
   "crates/licoup-native/src/platform/badtower_station/http_io.rs",
+  "crates/licoup-native/src/platform/llm_gateway_server.rs",
+  "crates/licoup-native/src/platform/llm_gateway_service.rs",
+  "crates/licoup-native/src/platform/llm_gateway_transport.rs",
   "crates/licoup-native/src/platform/local_service/http.rs",
   "crates/licoup-native/src/platform/local_service/sse.rs",
   "crates/licoup-native/src/platform/mcp_streamable_http.rs",
@@ -64,7 +70,7 @@ async function networkCapableSources() {
 }
 
 test("production network capability stays inside the reviewed client egress boundary", async () => {
-  assert.deepEqual(await networkCapableSources(), reviewedRustEgressFiles);
+  assert.deepEqual(await networkCapableSources(), reviewedEgressFiles);
 });
 
 test("GitHub package fetchers are bounded inbound GET-only sources", async () => {
@@ -83,6 +89,27 @@ test("GitHub package fetchers are bounded inbound GET-only sources", async () =>
   }
 });
 
+test("client updates are bounded to the signed LicoUp GitHub release channel", async () => {
+  const relativePath =
+    "apps/desktop/lib/src/backend/features/settings/services/client_update_service.dart";
+  const source = await fs.readFile(path.join(repoRoot, relativePath), "utf8");
+
+  assert.match(
+    source,
+    /https:\/\/github\.com\/LicoLand\/LicoUp\/releases\/latest\/download\/LicoUp-update-stable\.json/u,
+  );
+  assert.match(source, /static const _maxMetadataBytes = 1024 \* 1024;/u);
+  assert.match(source, /static const _maxArtifactBytes = 1024 \* 1024 \* 1024;/u);
+  assert.match(source, /http\.Request\('GET', uri\)/u);
+  assert.match(source, /_requireGitHubReleaseAsset\(uri\)/u);
+  assert.match(source, /uri\.host != 'github\.com'/u);
+  assert.match(source, /\/LicoLand\/LicoUp\/releases\/download\//u);
+  assert.match(source, /LicoUp-macos-arm64-update\.tar\.gz/u);
+  for (const forbidden of ["http.post", "http.put", "http.patch", "'Authorization'"]) {
+    assert.equal(source.includes(forbidden), false, `${relativePath} contains ${forbidden}`);
+  }
+});
+
 test("local assembly runtime networking is synthetic loopback inspection only", async () => {
   const applyPath =
     "crates/licoup-native/src/domain/collaboration_plugin/assembly/apply.rs";
@@ -91,7 +118,7 @@ test("local assembly runtime networking is synthetic loopback inspection only", 
   const shutdownPath =
     "crates/licoup-native/src/domain/collaboration_plugin/assembly/runtime/shutdown.rs";
   const sandboxPath =
-    "crates/licoup-native/src/domain/collaboration_plugin/assembly/runtime/sandbox.rs";
+    "crates/licoup-native/src/platform/process_sandbox/seatbelt.rs";
   const [apply, probe, shutdown, sandbox] = await Promise.all(
     [applyPath, probePath, shutdownPath, sandboxPath].map((relativePath) =>
       fs.readFile(path.join(repoRoot, relativePath), "utf8"),

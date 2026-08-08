@@ -2,7 +2,6 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:licoup/src/application/features/agents/conversation/composer_agent_mention_parsing.dart';
 import 'package:licoup/src/application/features/agents/orchestration/orchestration_policy_editor_models.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_composer.dart';
@@ -66,10 +65,10 @@ void main() {
       'daily-conversation',
       'designer',
     ]);
-    expect(
-      sections.first.entries.map((entry) => entry.agentId),
-      ['antigravity', 'codex'],
-    );
+    expect(sections.first.entries.map((entry) => entry.agentId), [
+      'antigravity',
+      'codex',
+    ]);
   });
 
   testWidgets('flywheel mention panel inserts chip and token into composer', (
@@ -173,7 +172,10 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.byKey(const Key('composer-agent-mention-codex')), findsOneWidget);
+    expect(
+      find.byKey(const Key('composer-agent-mention-codex')),
+      findsOneWidget,
+    );
     expect(find.text('@Codex'), findsWidgets);
     expect(find.textContaining('@Codex'), findsWidgets);
   });

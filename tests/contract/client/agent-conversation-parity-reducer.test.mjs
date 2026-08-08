@@ -345,6 +345,7 @@ test("inventory discloses current native transports and fail-closed capability g
     "cursor",
     "hermes",
     "kilo-code",
+    "lico-agent",
     "kimi-code",
     "openclaw",
     "opencode",
@@ -407,14 +408,14 @@ test("checked-in readiness is the honest canonical-evidence reduction", () => {
   });
   assert.deepEqual(result, readinessResource);
   assert.deepEqual(result.summary, {
-    total: 11,
-    ready: 1,
+    total: 12,
+    ready: 0,
     partial: 0,
     failed: 0,
     blocked: 0,
-    unverified: 10,
+    unverified: 12,
     historyOnly: 0,
-    sendEnabled: 1,
+    sendEnabled: 0,
   });
   const receipt = runCli(["--check"]);
   assert.equal(receipt.ok, true);

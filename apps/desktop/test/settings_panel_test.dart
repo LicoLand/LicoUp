@@ -316,11 +316,18 @@ void main() {
     // Scroll to the bottom: the spy selection follows into the diagnostics
     // section (the last one, with the resource usage card), away from
     // Appearance.
-    final scrollable = find.byKey(const Key('settings-content-scroll'));
-    await tester.drag(scrollable, const Offset(0, -3200));
-    for (var i = 0; i < 20; i++) {
-      await tester.pump(const Duration(milliseconds: 100));
-    }
+    final scrollable = find
+        .descendant(
+          of: find.byKey(const Key('settings-content-scroll')),
+          matching: find.byType(Scrollable),
+        )
+        .first;
+    await tester.scrollUntilVisible(
+      find.text('Resource Usage'),
+      480,
+      scrollable: scrollable,
+    );
+    await tester.pump();
     expect(indexForeground('Diagnostics'), colors.textOnPrimary);
     expect(indexForeground('Storage'), isNot(colors.textOnPrimary));
     expect(indexForeground('Appearance'), isNot(colors.textOnPrimary));

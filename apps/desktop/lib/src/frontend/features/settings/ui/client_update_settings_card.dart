@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 
 import 'package:licoup/src/application/controller/client_controller.dart';
@@ -13,37 +12,6 @@ class ClientUpdateSettingsCard extends StatelessWidget {
   const ClientUpdateSettingsCard({super.key, required this.controller});
 
   final ClientController controller;
-
-  Future<void> _pickManifestAndCheck() async {
-    final manifest = await openFile(
-      acceptedTypeGroups: [
-        const XTypeGroup(label: 'JSON', extensions: ['json']),
-      ],
-    );
-    if (manifest == null) {
-      return;
-    }
-    final keys = await openFile(
-      acceptedTypeGroups: [
-        const XTypeGroup(label: 'JSON', extensions: ['json']),
-      ],
-    );
-    if (keys == null) {
-      return;
-    }
-    await controller.checkClientUpdate(
-      manifestPath: manifest.path,
-      publicKeysPath: keys.path,
-    );
-  }
-
-  Future<void> _pickArtifactAndDownload() async {
-    final artifact = await openFile();
-    if (artifact == null) {
-      return;
-    }
-    await controller.downloadClientUpdateArtifact(sourcePath: artifact.path);
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -116,6 +84,21 @@ class ClientUpdateSettingsCard extends StatelessWidget {
             value: status.productionReady ? strings.yes : strings.no,
           ),
           const SizedBox(height: LicoContentSpacing.item),
+          Material(
+            color: Colors.transparent,
+            child: SwitchListTile.adaptive(
+              key: const Key('client-update-auto-download-wifi'),
+              contentPadding: EdgeInsets.zero,
+              title: Text(strings.autoDownloadUpdatesOverWifi),
+              subtitle: Text(strings.autoDownloadUpdatesOverWifiHint),
+              value: controller.autoDownloadClientUpdatesOverWifi,
+              onChanged: busy
+                  ? null
+                  : (value) => unawaited(
+                      controller.setAutoDownloadClientUpdatesOverWifi(value),
+                    ),
+            ),
+          ),
           Wrap(
             spacing: LicoContentSpacing.compact,
             runSpacing: LicoContentSpacing.compact,
@@ -131,14 +114,15 @@ class ClientUpdateSettingsCard extends StatelessWidget {
                 key: const Key('client-update-check'),
                 onPressed: busy
                     ? null
-                    : () => unawaited(_pickManifestAndCheck()),
+                    : () => unawaited(controller.checkClientUpdate()),
                 child: Text(strings.checkUpdate),
               ),
               OutlinedButton(
                 key: const Key('client-update-download'),
                 onPressed: busy || !status.updateAvailable
                     ? null
-                    : () => unawaited(_pickArtifactAndDownload()),
+                    : () =>
+                          unawaited(controller.downloadClientUpdateArtifact()),
                 child: Text(strings.downloadUpdate),
               ),
               OutlinedButton(
@@ -153,11 +137,11 @@ class ClientUpdateSettingsCard extends StatelessWidget {
                 child: Text(strings.verifyUpdate),
               ),
               OutlinedButton(
-                key: const Key('client-update-apply-plan'),
+                key: const Key('client-update-apply'),
                 onPressed: busy || status.phase != ClientUpdatePhase.verified
                     ? null
-                    : () => unawaited(controller.planClientUpdateApply()),
-                child: Text(strings.planUpdateInstall),
+                    : () => unawaited(controller.applyClientUpdate()),
+                child: Text(strings.installUpdate),
               ),
             ],
           ),
@@ -178,6 +162,7 @@ class ClientUpdateSettingsCard extends StatelessWidget {
       ClientUpdatePhase.verifying => strings.clientUpdatePhaseVerifying,
       ClientUpdatePhase.verified => strings.clientUpdatePhaseVerified,
       ClientUpdatePhase.applyPlanned => strings.clientUpdatePhaseApplyPlanned,
+      ClientUpdatePhase.applied => strings.clientUpdatePhaseApplied,
       ClientUpdatePhase.failed => strings.clientUpdatePhaseFailed,
     };
   }

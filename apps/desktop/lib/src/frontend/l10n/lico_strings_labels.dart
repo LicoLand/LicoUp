@@ -52,7 +52,12 @@ extension LicoStringsLabels on LicoStrings {
   String get checkUpdate => isChinese ? '检查更新' : 'Check Update';
   String get downloadUpdate => isChinese ? '下载更新' : 'Download Update';
   String get verifyUpdate => isChinese ? '校验更新' : 'Verify Update';
-  String get planUpdateInstall => isChinese ? '生成安装计划' : 'Plan Install';
+  String get installUpdate => isChinese ? '安装并重启' : 'Install & Restart';
+  String get autoDownloadUpdatesOverWifi =>
+      isChinese ? '通过 Wi-Fi 自动下载更新' : 'Auto-download updates over Wi-Fi';
+  String get autoDownloadUpdatesOverWifiHint => isChinese
+      ? '启动时检查；下载并完成双签名与摘要校验后再提示安装。'
+      : 'Checks at startup, then verifies both signatures and the digest before offering installation.';
   String get channel => isChinese ? '通道' : 'Channel';
   String get availableVersion => isChinese ? '可用版本' : 'Available Version';
   String get digest => isChinese ? '摘要' : 'Digest';
@@ -70,6 +75,7 @@ extension LicoStringsLabels on LicoStrings {
   String get clientUpdatePhaseVerified => isChinese ? '已校验' : 'Verified';
   String get clientUpdatePhaseApplyPlanned =>
       isChinese ? '已规划安装' : 'Install planned';
+  String get clientUpdatePhaseApplied => isChinese ? '已安装' : 'Installed';
   String get clientUpdatePhaseFailed => isChinese ? '失败' : 'Failed';
   String get done => isChinese ? '完成' : 'Done';
   String get customize => isChinese ? '自定义' : 'Customize';
@@ -363,8 +369,9 @@ extension LicoStringsLabels on LicoStrings {
       ? '$count 个子任务'
       : '$count nested ${count == 1 ? 'task' : 'tasks'}';
   String get agentProcess => isChinese ? '智能体过程' : 'Agent process';
-  String get runtimeUpdateTitle =>
-      isChinese ? 'Cursor Agent 正在自动更新' : 'Cursor Agent is updating automatically';
+  String get runtimeUpdateTitle => isChinese
+      ? 'Cursor Agent 正在自动更新'
+      : 'Cursor Agent is updating automatically';
   String get runtimeUpdateCompleted => isChinese ? '更新完成' : 'Update completed';
   String get runtimeUpdateInterrupted =>
       isChinese ? '更新中断' : 'Update interrupted';
@@ -632,12 +639,10 @@ extension LicoStringsLabels on LicoStrings {
   String conversationPermissionDenied(String tool) => isChinese
       ? '$tool 的权限请求被拒绝，回复中未执行该操作。'
       : '$tool was denied permission; the action was not performed.';
-  String get conversationPermissionAllowAction =>
-      isChinese ? '允许' : 'Allow';
+  String get conversationPermissionAllowAction => isChinese ? '允许' : 'Allow';
   String get conversationPermissionAllowAndRememberAction =>
       isChinese ? '允许并加入白名单' : 'Allow and remember';
-  String get conversationPermissionDenyAction =>
-      isChinese ? '拒绝' : 'Deny';
+  String get conversationPermissionDenyAction => isChinese ? '拒绝' : 'Deny';
 
   String get llmGatewayStart => isChinese ? '启动' : 'Start';
   String get llmGatewayStarting => isChinese ? '启动中…' : 'Starting…';

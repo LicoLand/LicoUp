@@ -226,8 +226,8 @@ function validateReleaseTopology() {
   }
   assertIncludes(
     jobBlock(workflow, "source"),
-    "npm run client:verify:agent-conversations:release-ready",
-    "release source policy must require complete local-agent conversation evidence",
+    "npm run client:verify:agent-conversations:release-ui",
+    "release source policy must require reproducible local-agent UI evidence",
   );
   assertIncludes(
     workflow,

@@ -68,8 +68,8 @@ void main() {
       expect(searchRect.top, greaterThanOrEqualTo(bandRect.top));
       expect(searchRect.bottom, lessThanOrEqualTo(bandRect.bottom));
       expect(searchRect.width, 200);
-      // Right cluster order: tabs | bell | search, with the stadium search
-      // field pinned at the band's far right edge.
+      // Right cluster order: tabs | search | bell, with notifications pinned
+      // at the band's far-right edge.
       final tabsRect = tester.getRect(
         find.byKey(const Key('fixture-conversation-tabs')),
       );
@@ -78,9 +78,9 @@ void main() {
       final bellRect = tester.getRect(
         find.byKey(const Key('fixture-notification-bell')),
       );
-      expect(tabsRect.left, lessThan(bellRect.left));
-      expect(bellRect.left, lessThan(searchRect.left));
-      expect(searchRect.right, bandRect.right - 10);
+      expect(tabsRect.left, lessThan(searchRect.left));
+      expect(searchRect.right, lessThan(bellRect.left));
+      expect(bellRect.right, bandRect.right - 10);
       // The band stays frosted glass: native blur only — no Flutter tint overlay.
       final band = find.byKey(const Key('messaging-chrome-band'));
       expect(

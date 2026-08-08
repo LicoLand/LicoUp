@@ -2,7 +2,7 @@
 
 [English（规范版本）](COMPATIBILITY.md) · 简体中文（本地化） · [文档索引](README.md) · [项目首页](../README.zh-CN.md)
 
-产品版本：`0.1.0-alpha`
+产品版本：`0.1.0`
 
 生成来源：`tools/client-support-matrix.json`、`tools/client-release-targets.json`、`tools/client-version.json`、`crates/licoup-native/resources/agent-conversation-drivers.json`、`crates/licoup-native/resources/agent-native-capabilities.json` 和 `crates/licoup-native/resources/agent-conversation-readiness.json`。
 
@@ -46,8 +46,8 @@
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | openclaw | conversation | unverified | 否 | openclaw-acp-stdio-jsonrpc | acp | 是 | 是 | 是 | 是 | 是 | 是 | 否 |
 | claude-code | conversation | unverified | 否 | claude-code-cli-stream-json | stream-json | 是 | 是 | 是 | 是 | 是 | 是 | 是 |
-| codex | conversation | ready | 是 | codex-app-server-stdio-jsonrpc | app-server | 是 | 是 | 是 | 是 | 是 | 是 | 是 |
-| antigravity | conversation | unverified | 否 | antigravity-cli-argv-hook-v1 | cli | 是 | 否 | 否 | 否 | 否 | 是 | 否 |
+| codex | conversation | unverified | 否 | codex-app-server-stdio-jsonrpc | app-server | 是 | 是 | 是 | 是 | 是 | 是 | 是 |
+| antigravity | conversation | unverified | 否 | antigravity-cli-argv-hook-v1 | cli | 是 | 是 | 是 | 否 | 是 | 是 | 否 |
 | opencode | conversation | unverified | 否 | opencode-serve-http-v1 | serve-http | 是 | 是 | 是 | 否 | 是 | 是 | 否 |
 | copilot | conversation | unverified | 否 | copilot-acp-v1-stdio-ndjson | acp | 是 | 是 | 是 | 是 | 是 | 是 | 否 |
 | kilo-code | conversation | unverified | 否 | kilo-code-serve-http-v1 | serve-http | 是 | 是 | 是 | 否 | 是 | 是 | 否 |

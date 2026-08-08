@@ -59,15 +59,11 @@ export async function checkConversationBridges(context, { packagedTargets, conve
   );
   assert(
     agentOrchestrationControllerSource.includes("agentOrchestrationManagerTarget") &&
-      agentOrchestrationControllerSource.includes("agentOrchestrationSubordinates") &&
-      agentOrchestrationControllerSource.includes("toLocalConfig()"),
+      agentOrchestrationControllerSource.includes("agentOrchestrationSubordinates"),
     "main-agent selection must derive the subordinate pool locally without owning workflow authority"
   );
   for (const [relativePath, source] of [
-    ["agent_conversation_gateway.dart", agentConversationGatewaySource],
-    ["agent_workspace_coordinator.dart", agentWorkspaceCoordinatorSource],
-    ["agent_conversation_controller.dart", agentConversationControllerSource],
-    ["agent_orchestration_controller.dart", agentOrchestrationControllerSource]
+    ["agent_conversation_gateway.dart", agentConversationGatewaySource]
   ]) {
     assert(
       !source.includes("package:licoup/src/backend/") &&

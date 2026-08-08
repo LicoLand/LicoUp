@@ -10,6 +10,7 @@ import 'package:licoup/src/application/features/agents/conversation/conversation
 import 'package:licoup/src/application/features/agents/conversation/conversation_working_directory_fallback.dart';
 import 'package:licoup/src/application/features/agents/conversation/cursor_ide_cli_handoff.dart';
 import 'package:licoup/src/application/features/agents/group_conversation/group_conversation_controller.dart';
+import 'package:licoup/src/application/features/agents/agent_product_names.dart';
 import 'package:licoup/src/application/features/agents/orchestration/agent_orchestration_policy_controller.dart';
 import 'package:licoup/src/application/features/agents/policy/conversation_session_index.dart';
 import 'package:licoup/src/application/features/agents/workspace/agent_workspace_coordinator.dart';
@@ -18,13 +19,12 @@ import 'package:licoup/src/application/localization/client_application_strings.d
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
 import 'package:licoup/src/contracts/agent_conversation_tab_activity.dart';
 import 'package:licoup/src/contracts/agent_dispatch_lane.dart';
-import 'package:licoup/src/contracts/agent_orchestration_target.dart';
-import 'package:licoup/src/contracts/target_candidate.dart';
-import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_display_names.dart';
+import 'package:licoup/src/platform/agents/agent_conversation_projection_store.dart';
 import 'package:licoup/src/platform/agents/group_conversation_store.dart';
 import 'package:licoup/src/platform/agents/subagent_handoff_store.dart';
-import 'package:licoup/src/platform/agents/agent_conversation_projection_store.dart';
 import 'package:licoup/src/platform/storage/portable_data_root.dart';
+import 'package:licoup/src/contracts/agent_orchestration_target.dart';
+import 'package:licoup/src/contracts/target_candidate.dart';
 
 const _releaseConversationAcceptanceMode =
     bool.fromEnvironment('LICO_AGENT_CONVERSATION_RELEASE_LIVE')

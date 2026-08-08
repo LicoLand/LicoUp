@@ -20,7 +20,7 @@ final class MessagingChromeBand extends StatelessWidget {
     final strings = LicoStrings.of(context);
     final features = LayoutChromeFeaturesScope.maybeOf(context);
     final dark = colors.isDark;
-    return Container(
+    return SizedBox(
       key: const Key('messaging-chrome-band'),
       height: MessagingDesktopMetrics.topBandExtent,
       // Light frosted tint only — blur is supplied by the native

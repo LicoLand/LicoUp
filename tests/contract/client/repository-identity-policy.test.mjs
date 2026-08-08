@@ -10,9 +10,11 @@ import {
 } from "../../../tools/scripts/repository-identity-policy.mjs";
 import {
   allBranchesRulesetName,
+  branchCreationRulesetName,
   buildRulesets,
   defaultBranchRulesetName,
   identityStatusContext,
+  promotionBranchesRulesetName,
 } from "../../../tools/scripts/repository-rulesets.mjs";
 
 const identity = Object.freeze({ login: "human-developer", id: "123456" });
@@ -79,24 +81,36 @@ test("identity-shaped Agent lines are rejected without banning product discussio
 test("Rulesets cover all branch metadata and protect the default branch without bypass", () => {
   const integrationId = 15368;
   const rulesets = buildRulesets(integrationId);
-  assert.equal(rulesets.length, 2);
+  assert.equal(rulesets.length, 4);
   assert.deepEqual(
     rulesets.map(({ name }) => name),
-    [allBranchesRulesetName, defaultBranchRulesetName],
+    [
+      allBranchesRulesetName,
+      branchCreationRulesetName,
+      defaultBranchRulesetName,
+      promotionBranchesRulesetName,
+    ],
   );
   for (const ruleset of rulesets) {
     assert.equal(ruleset.enforcement, "active");
     assert.deepEqual(ruleset.bypass_actors, []);
   }
 
-  const [identityRuleset, defaultRuleset] = rulesets;
+  const [identityRuleset, creationRuleset, defaultRuleset, promotionRuleset] = rulesets;
   assert.deepEqual(identityRuleset.conditions.ref_name.include, ["~ALL"]);
-  assert.ok(identityRuleset.rules.some(({ type }) => type === "creation"));
+  assert.ok(!identityRuleset.rules.some(({ type }) => type === "creation"));
   assert.ok(identityRuleset.rules.some(({ type }) => type === "commit_author_email_pattern"));
   assert.equal(
     identityRuleset.rules.filter(({ type }) => type === "commit_message_pattern").length,
     1,
   );
+
+  assert.deepEqual(creationRuleset.conditions.ref_name.include, ["~ALL"]);
+  assert.deepEqual(creationRuleset.conditions.ref_name.exclude, [
+    "refs/heads/stable",
+    "refs/heads/release",
+  ]);
+  assert.deepEqual(creationRuleset.rules, [{ type: "creation" }]);
 
   assert.deepEqual(defaultRuleset.conditions.ref_name.include, ["~DEFAULT_BRANCH"]);
   for (const requiredType of [
@@ -114,4 +128,18 @@ test("Rulesets cover all branch metadata and protect the default branch without 
   assert.deepEqual(statusRule.parameters.required_status_checks, [
     { context: identityStatusContext, integration_id: integrationId },
   ]);
+
+  assert.deepEqual(promotionRuleset.conditions.ref_name.include, [
+    "refs/heads/stable",
+    "refs/heads/release",
+  ]);
+  for (const requiredType of [
+    "deletion",
+    "non_fast_forward",
+    "required_linear_history",
+    "pull_request",
+    "required_status_checks",
+  ]) {
+    assert.ok(promotionRuleset.rules.some(({ type }) => type === requiredType));
+  }
 });

@@ -13,6 +13,20 @@ class FakeAgentService extends AgentService
         FakeAgentArchiveSupport,
         FakeAgentUsageSupport {
   @override
+  Future<Map<String, dynamic>> subagentMcpStatus({
+    required String agentId,
+    String? binaryPath,
+    String? mcpBinaryPath,
+  }) async {
+    return {
+      'ok': true,
+      'ready': false,
+      'state': 'unsupported',
+      'agentId': agentId,
+    };
+  }
+
+  @override
   Future<Map<String, dynamic>> runCli(List<String> args) async {
     cliCalls = [...cliCalls, List<String>.from(args)];
 

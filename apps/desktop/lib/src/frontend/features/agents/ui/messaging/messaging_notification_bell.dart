@@ -115,9 +115,9 @@ class _MessagingNotificationBellState extends State<MessagingNotificationBell> {
     return [
       for (final target in widget.controller.scannedTargets)
         if (target.isConversationAgent &&
-            widget.controller.conversationTabActivityFor(target.id) !=
+            widget.controller.conversationTabActivityFor(target.target) !=
                 AgentConversationTabActivity.none)
-          (target, widget.controller.conversationTabActivityFor(target.id)),
+          (target, widget.controller.conversationTabActivityFor(target.target)),
     ];
   }
 
@@ -129,11 +129,13 @@ class _MessagingNotificationBellState extends State<MessagingNotificationBell> {
     widget.controller.selectSection(ClientSection.agents);
     widget.onCloseAuxChromePanel?.call();
     final sessions = sortConversationSessionsByUpdatedAt(
-      widget.controller.conversationSessionsByAgent[agent.id] ??
+      widget.controller.conversationSessionsByAgent[agent.target] ??
           widget.controller.conversationSessionsByAgent[agent.target] ??
           const [],
     );
-    await widget.controller.selectConversationAgent(agent.id);
+    if (widget.controller.selectedConversationAgentId != agent.target) {
+      await widget.controller.selectConversationAgent(agent.target);
+    }
     if (sessions.isNotEmpty) {
       widget.controller.selectConversationSession(sessions.first.id);
     }
@@ -210,7 +212,7 @@ class _MessagingNotificationBellState extends State<MessagingNotificationBell> {
                     for (final (agent, activity) in active)
                       _MessagingNotificationRow(
                         key: ValueKey<String>(
-                          'messaging-notification-item-${agent.id}',
+                          'messaging-notification-item-${agent.target}',
                         ),
                         agent: agent,
                         activity: activity,

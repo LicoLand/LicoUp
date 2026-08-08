@@ -29,6 +29,10 @@ fn client_update_macos_runner_applies_and_rolls_back_only_the_signed_archive_app
         fs::read(current_app.join("Contents/Info.plist")).unwrap(),
         b"staged"
     );
+    assert_eq!(
+        fs::read_link(current_app.join("Contents/Current")).unwrap(),
+        Path::new("Versions/A")
+    );
     assert_redacted(&applied, &fixture.root);
 
     let rolled_back = super::super::macos_runner::rollback_for_test(
@@ -43,6 +47,28 @@ fn client_update_macos_runner_applies_and_rolls_back_only_the_signed_archive_app
         b"current"
     );
     assert_redacted(&rolled_back, &fixture.root);
+}
+
+#[test]
+fn client_update_macos_runner_rejects_archive_links_that_escape_the_app() {
+    let fixture = UpdateFixture::new();
+    let archive = fixture.root.join("client-update.tar.gz");
+    write_app_archive_with_link(&archive, b"staged", "../../../outside");
+    let artifact = app_bundle_artifact(&archive);
+    let manifest =
+        fixture.sign_manifest(fixture.unsigned_manifest(json!([release("999.0.0", artifact,)])));
+    let mut params = fixture.params(manifest);
+    params["sourcePath"] = json!(archive);
+    download(&params).unwrap();
+    let (selection, staged_path) = verify_staged_selection(&params).unwrap();
+    let install_root = fixture.root.join("Applications");
+    fs::create_dir_all(&install_root).unwrap();
+    assert!(
+        super::super::macos_runner::apply_for_test(&selection, &staged_path, &install_root)
+            .unwrap_err()
+            .to_string()
+            .contains("escapes its root")
+    );
 }
 
 #[test]
@@ -62,6 +88,10 @@ fn client_update_macos_archive_paths_reject_parent_absolute_and_current_componen
 }
 
 fn write_app_archive(path: &Path, marker: &[u8]) {
+    write_app_archive_with_link(path, marker, "Versions/A");
+}
+
+fn write_app_archive_with_link(path: &Path, marker: &[u8], link_target: &str) {
     let encoder = GzEncoder::new(fs::File::create(path).unwrap(), Compression::default());
     let mut archive = Builder::new(encoder);
     let mut directory = tar::Header::new_gnu();
@@ -78,6 +108,27 @@ fn write_app_archive(path: &Path, marker: &[u8]) {
     file.set_cksum();
     archive
         .append_data(&mut file, "LicoUp.app/Contents/Info.plist", marker)
+        .unwrap();
+    let mut version_directory = tar::Header::new_gnu();
+    version_directory.set_entry_type(tar::EntryType::Directory);
+    version_directory.set_mode(0o755);
+    version_directory.set_size(0);
+    version_directory.set_cksum();
+    archive
+        .append_data(
+            &mut version_directory,
+            "LicoUp.app/Contents/Versions/A",
+            io::empty(),
+        )
+        .unwrap();
+    let mut link = tar::Header::new_gnu();
+    link.set_entry_type(tar::EntryType::Symlink);
+    link.set_mode(0o777);
+    link.set_size(0);
+    link.set_link_name(link_target).unwrap();
+    link.set_cksum();
+    archive
+        .append_data(&mut link, "LicoUp.app/Contents/Current", io::empty())
         .unwrap();
     archive.into_inner().unwrap().finish().unwrap();
 }

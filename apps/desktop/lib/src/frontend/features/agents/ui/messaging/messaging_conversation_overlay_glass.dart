@@ -61,9 +61,7 @@ class MessagingConversationOverlayGlass extends StatelessWidget {
         ? Stack(
             fit: StackFit.passthrough,
             children: [
-              Positioned.fill(
-                child: ColoredBox(color: washFill),
-              ),
+              Positioned.fill(child: ColoredBox(color: washFill)),
               // Black mask above the wash so the capsule reads as veiled glass.
               Positioned.fill(
                 child: DecoratedBox(

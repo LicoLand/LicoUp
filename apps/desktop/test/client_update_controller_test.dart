@@ -6,7 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   test(
-    'signed update slice enforces check-download-verify-plan order',
+    'signed update slice enforces check-download-verify-apply order',
     () async {
       final gateway = _FakeClientUpdateGateway();
       final updates = <ClientUpdateStatusUpdate>[];
@@ -20,19 +20,16 @@ void main() {
       await controller.verify();
       expect(updates.last.errorCode, 'client_update_verify_invalid');
 
-      await controller.check(
-        manifestPath: ' manifest.json ',
-        publicKeysPath: ' keys.json ',
-      );
-      await controller.download(sourcePath: 'client-update.bin');
+      await controller.check();
+      await controller.download();
       await controller.verify();
-      await controller.planApply();
+      await controller.apply();
 
       expect(gateway.calls, ['check', 'download', 'verify', 'apply']);
       expect(controller.manifestPath, 'manifest.json');
       expect(controller.publicKeysPath, 'keys.json');
       expect(controller.artifactReceiptId, startsWith('sha256:'));
-      expect(controller.status.phase, ClientUpdatePhase.applyPlanned);
+      expect(controller.status.phase, ClientUpdatePhase.applied);
       expect(controller.busy, isFalse);
     },
   );
@@ -47,10 +44,7 @@ void main() {
     );
     addTearDown(controller.dispose);
 
-    await controller.check(
-      manifestPath: 'manifest.json',
-      publicKeysPath: 'keys.json',
-    );
+    await controller.check();
 
     expect(controller.status.phase, ClientUpdatePhase.failed);
     expect(controller.status.errorCode, 'client_update_check_failed');
@@ -67,11 +61,8 @@ void main() {
     );
     addTearDown(controller.dispose);
 
-    await controller.check(
-      manifestPath: 'manifest.json',
-      publicKeysPath: 'keys.json',
-    );
-    await controller.download(sourcePath: 'client-update.bin');
+    await controller.check();
+    await controller.download();
 
     expect(controller.status.phase, ClientUpdatePhase.failed);
     expect(controller.status.errorCode, 'client_update_download_failed');
@@ -84,6 +75,15 @@ final class _FakeClientUpdateGateway implements ClientUpdateGateway {
   bool failCheck = false;
   bool mismatchDownloadReceipt = false;
 
+  @override
+  Future<bool> autoDownloadOverWifiEnabled() async => true;
+
+  @override
+  Future<void> setAutoDownloadOverWifiEnabled(bool enabled) async {}
+
+  @override
+  Future<bool> isWifiConnected() async => true;
+
   ClientUpdateStatus _status(ClientUpdatePhase phase) => ClientUpdateStatus(
     phase: phase,
     currentVersion: '1.0.0',
@@ -94,10 +94,11 @@ final class _FakeClientUpdateGateway implements ClientUpdateGateway {
     artifactReceiptId: 'sha256:receipt',
     manifestSha256: 'sha256:manifest',
     targetId: 'test-target',
+    totalBytes: 123,
   );
 
   @override
-  Future<ClientUpdateStatus> applyDryRun({
+  Future<ClientUpdateStatus> apply({
     required AgentCommandRunner agentService,
     required String manifestPath,
     required String publicKeysPath,
@@ -106,20 +107,23 @@ final class _FakeClientUpdateGateway implements ClientUpdateGateway {
     String stagingRoot = '',
   }) async {
     calls.add('apply');
-    return _status(ClientUpdatePhase.applyPlanned);
+    return _status(ClientUpdatePhase.applied);
   }
 
   @override
-  Future<ClientUpdateStatus> check({
+  Future<ClientUpdateRemoteCheck> check({
     required AgentCommandRunner agentService,
-    required String manifestPath,
-    required String publicKeysPath,
     String channel = 'stable',
-    String revocationPath = '',
   }) async {
     calls.add('check');
     if (failCheck) throw StateError('check_failed');
-    return _status(ClientUpdatePhase.updateAvailable);
+    return ClientUpdateRemoteCheck(
+      status: _status(ClientUpdatePhase.updateAvailable),
+      manifestPath: 'manifest.json',
+      publicKeysPath: 'keys.json',
+      artifactUrl:
+          'https://github.com/LicoLand/LicoUp/releases/download/v1.1.0/LicoUp-macos-arm64-update.tar.gz',
+    );
   }
 
   @override
@@ -127,7 +131,8 @@ final class _FakeClientUpdateGateway implements ClientUpdateGateway {
     required AgentCommandRunner agentService,
     required String manifestPath,
     required String publicKeysPath,
-    required String sourcePath,
+    required String artifactUrl,
+    required int expectedBytes,
     String channel = 'stable',
     String revocationPath = '',
     String stagingRoot = '',

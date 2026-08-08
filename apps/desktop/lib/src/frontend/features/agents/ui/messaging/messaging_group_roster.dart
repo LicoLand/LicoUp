@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'package:licoup/src/contracts/group_conversation_models.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
-import 'package:licoup/src/platform/agents/group_conversation_store.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_agent_avatar.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_conversation_overlay_glass.dart';
 import 'package:licoup/src/frontend/layout/profiles/messaging/desktop/tokens/messaging_desktop_tokens.dart';

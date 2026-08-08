@@ -114,11 +114,16 @@ void registerClientHistoryRuntimeSessionSelectionScenarios() {
       service.runtimeSessionIdResult = 'native-codex-new';
       await controller.sendConversationMessage('Fresh prompt');
 
+      final fallbackWorkspace = localConversationWorkingDirectoryFallback(
+        agentId: 'codex',
+      );
       expect(service.lastRuntimeMessageRequest, {
         'agent': 'codex',
         'text': 'Fresh prompt',
         'streamEvents': true,
-        'workingDirectory': '/workspace/codex',
+        'timeoutMs': 0,
+        'permissionMode': 'bypassPermissions',
+        'workingDirectory': fallbackWorkspace,
         'binaryPath': '/synthetic/bin/codex',
       });
       expect(controller.selectedConversationSession?.id, 'native-codex-new');

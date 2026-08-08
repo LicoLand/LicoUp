@@ -577,7 +577,10 @@ mod tests {
         let lico_override = json!({"licoAgentSessionDir": "/fixture/location/lico-agent-sessions"});
         let lico = history_roots(HistoryAdapter::LicoAgent, &lico_override);
         assert_eq!(lico.len(), 1);
-        assert_eq!(lico[0].path, PathBuf::from("/fixture/location/lico-agent-sessions"));
+        assert_eq!(
+            lico[0].path,
+            PathBuf::from("/fixture/location/lico-agent-sessions")
+        );
         assert_eq!(lico[0].source_kind, "lico-agent-session-store");
         assert_eq!(
             adapter_for_agent("lico-agent"),

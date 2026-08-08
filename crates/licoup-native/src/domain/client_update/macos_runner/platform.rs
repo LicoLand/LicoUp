@@ -28,3 +28,12 @@ pub(super) fn register_application(app_path: &Path) {
     }
     let _ = Command::new("mdimport").arg(app_path).status();
 }
+
+pub(super) fn launch_application(app_path: &Path) -> Result<()> {
+    let status = Command::new("/usr/bin/open").arg(app_path).status()?;
+    ensure!(
+        status.success(),
+        "client update failed to restart the application"
+    );
+    Ok(())
+}

@@ -14,7 +14,6 @@ import 'package:licoup/src/contracts/agent_conversation_projection_repository.da
 import 'package:licoup/src/contracts/agent_conversation_tab_activity.dart';
 import 'package:licoup/src/contracts/generated/secure_mesh.g.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
-import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/platform/agents/group_conversation_store.dart';
 import 'package:licoup/src/platform/native_client/agent_service.dart';
 

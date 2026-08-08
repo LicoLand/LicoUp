@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
+
 import 'package:licoup/src/application/controller/client_agent_usage_facade.dart';
 import 'package:licoup/src/application/controller/client_lifecycle_coordinator.dart';
 import 'package:licoup/src/application/controller/client_maintenance_facade.dart';
@@ -18,8 +20,6 @@ import 'package:licoup/src/application/features/models/controller/llm_gateway_li
 import 'package:licoup/src/application/features/skill_hub/controller/skill_hub_controller.dart';
 import 'package:licoup/src/application/features/targets/controller/target_controller.dart';
 import 'package:licoup/src/contracts/appearance/appearance_preset_config.dart';
-import 'package:licoup/src/frontend/shared/appearance/appearance_preset_config.dart'
-    as appearance_ui;
 import 'package:licoup/src/contracts/llm_vault_authorization.dart';
 import 'package:licoup/src/contracts/locale_preferences.dart';
 
@@ -126,25 +126,13 @@ mixin ClientLifecycleFacade
 
   Future<void> _initializeClientPreferences() async {
     final presentation = layoutManager.preferences;
-    final requestedAppearancePresetId =
-        presentation?.appearancePresetId ?? AppearancePresetIds.licoSoda;
-    // System-following and light themes are not ready yet, so a configured
-    // brightness that lands on them falls back to the dark theme at startup.
-    final resolvedAppearancePresetId = switch (appearance_ui
-        .appearanceBrightnessSelectionFor(
-          requestedAppearancePresetId,
-          appearancePresetConfigs,
-        )) {
-      appearance_ui.AppearanceBrightnessSelection.system ||
-      appearance_ui.AppearanceBrightnessSelection.light =>
-        AppearancePresetIds.licoSoda,
-      _ => requestedAppearancePresetId,
-    };
+    final resolvedAppearancePresetId =
+        presentation?.appearancePresetId ?? AppearancePresetIds.defaultSystem;
     if (!hasAppearancePresetConfig(
       resolvedAppearancePresetId,
       appearancePresetConfigs,
     )) {
-      appearancePresetId = AppearancePresetIds.licoSoda;
+      appearancePresetId = AppearancePresetIds.defaultSystem;
       await layoutManager.setAppearancePreset(appearancePresetId);
     } else {
       appearancePresetId = resolvedAppearancePresetId;
@@ -187,6 +175,9 @@ mixin ClientLifecycleFacade
       if (lifecycleProjection.disposed) return;
       startAgentUsagePolling();
       skillAutoUpdateScheduler.start();
+      if (kReleaseMode) {
+        unawaited(clientUpdateController.prepareInBackground());
+      }
       final agentId = selectedConversationAgentId.trim();
       if (agentId.isNotEmpty && !selectedConversationIsOrchestration) {
         unawaited(loadConversationSessions(agentId));

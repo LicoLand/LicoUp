@@ -311,8 +311,7 @@ class _ConversationWorkspaceBodyState
     // Flywheel priority list). Current Conversation (`main_agent`) still owns
     // send dispatch when it differs.
     final primaryDaily = flywheelPolicy?.primaryDailyConversationAgent;
-    final flywheelAgentId =
-        (primaryDaily?.agentId.trim().isNotEmpty ?? false)
+    final flywheelAgentId = (primaryDaily?.agentId.trim().isNotEmpty ?? false)
         ? primaryDaily!.agentId.trim()
         : configuredManagerId.trim();
     TargetCandidate? flywheelDisplayTarget;
@@ -367,9 +366,8 @@ class _ConversationWorkspaceBodyState
           participantConversationIds[entry.key] = nativeId;
         }
       }
-      final mainId = controller
-          .effectiveAgentOrchestrationPolicy
-          .plainSendDispatchAgentId;
+      final mainId =
+          controller.effectiveAgentOrchestrationPolicy.plainSendDispatchAgentId;
       if (mainId.isNotEmpty && primaryConversationId.isNotEmpty) {
         participantConversationIds.putIfAbsent(
           mainId,
@@ -503,6 +501,7 @@ class _ConversationWorkspaceBodyState
         return controller.sendConversationMessage(text);
       },
       onSelectSession: controller.selectConversationSession,
+      onCopyText: controller.copyClientText,
       onUnblockSend: onUnblockSend,
       onChooseWorkingDirectory: workingDirectorySelectable
           ? () => unawaited(
@@ -678,7 +677,9 @@ class _ConversationWorkspaceBodyState
             onRefresh: () {
               for (final target in widget.targets) {
                 if (target.isConversationAgent) {
-                  unawaited(controller.refreshConversationSessions(target.id));
+                  unawaited(
+                    controller.refreshConversationSessions(target.target),
+                  );
                 }
               }
             },

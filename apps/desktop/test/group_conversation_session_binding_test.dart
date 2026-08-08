@@ -9,7 +9,9 @@ void main() {
     final record = GroupConversationRecord(
       id: defaultLicoGroupConversationId,
       title: 'Lico',
-      roster: GroupRoster.empty.ensureHuman('You').copyWithMainAgent('antigravity'),
+      roster: GroupRoster.empty
+          .ensureHuman('You')
+          .copyWithMainAgent('antigravity'),
       turnTaking: TurnTakingPolicy.flywheelMainDispatch,
       transcriptPath: '/fixture/location/transcript.jsonl',
       agentSessions: {
@@ -33,50 +35,59 @@ void main() {
     final restored = GroupConversationRecord.fromJson(record.toJson());
     expect(restored.lastLocalOrchestrationSessionId, 'lico-local-1');
     expect(restored.bindingFor('antigravity')?.nativeSessionId, 'native-main');
-    expect(restored.bindingFor('codex')?.sourcePath, '/fixture/location/peer.json');
-  });
-
-  test('upsertAgentSession preserves roster and remembers resume handles', () async {
-    final directory = await Directory.systemTemp.createTemp(
-      'lico-group-binding-',
-    );
-    addTearDown(() async {
-      if (await directory.exists()) {
-        await directory.delete(recursive: true);
-      }
-    });
-    final portable = PortableDataRoot(dataDirectoryOverride: directory);
-    final store = GroupConversationStore();
-    await store.syncRosterFromFlywheel(
-      portableData: portable,
-      mainAgentId: 'antigravity',
-      agents: [(id: 'antigravity', label: 'Antigravity')],
-    );
-
-    final updated = await store.upsertAgentSession(
-      portableData: portable,
-      agentId: 'antigravity',
-      nativeSessionId: 'native-42',
-      sourcePath: '/path/user/.gemini/conversations/abc',
-      workingDirectory: '/path/user/project',
-      localOrchestrationSessionId: 'lico-local-9',
-    );
-
-    expect(updated.roster.mainAgentId, 'antigravity');
-    expect(updated.bindingFor('antigravity')?.nativeSessionId, 'native-42');
     expect(
-      updated.bindingFor('antigravity')?.sourcePath,
-      '/path/user/.gemini/conversations/abc',
+      restored.bindingFor('codex')?.sourcePath,
+      '/fixture/location/peer.json',
     );
-    expect(updated.lastLocalOrchestrationSessionId, 'lico-local-9');
-
-    final peer = await store.upsertAgentSession(
-      portableData: portable,
-      agentId: 'codex',
-      sourcePath: '/fixture/location/codex-session.jsonl',
-    );
-    expect(peer.bindingFor('antigravity')?.nativeSessionId, 'native-42');
-    expect(peer.bindingFor('codex')?.sourcePath, '/fixture/location/codex-session.jsonl');
-    expect(peer.lastLocalOrchestrationSessionId, 'lico-local-9');
   });
+
+  test(
+    'upsertAgentSession preserves roster and remembers resume handles',
+    () async {
+      final directory = await Directory.systemTemp.createTemp(
+        'lico-group-binding-',
+      );
+      addTearDown(() async {
+        if (await directory.exists()) {
+          await directory.delete(recursive: true);
+        }
+      });
+      final portable = PortableDataRoot(dataDirectoryOverride: directory);
+      final store = GroupConversationStore();
+      await store.syncRosterFromFlywheel(
+        portableData: portable,
+        mainAgentId: 'antigravity',
+        agents: [(id: 'antigravity', label: 'Antigravity')],
+      );
+
+      final updated = await store.upsertAgentSession(
+        portableData: portable,
+        agentId: 'antigravity',
+        nativeSessionId: 'native-42',
+        sourcePath: '/path/user/.gemini/conversations/abc',
+        workingDirectory: '/path/user/project',
+        localOrchestrationSessionId: 'lico-local-9',
+      );
+
+      expect(updated.roster.mainAgentId, 'antigravity');
+      expect(updated.bindingFor('antigravity')?.nativeSessionId, 'native-42');
+      expect(
+        updated.bindingFor('antigravity')?.sourcePath,
+        '/path/user/.gemini/conversations/abc',
+      );
+      expect(updated.lastLocalOrchestrationSessionId, 'lico-local-9');
+
+      final peer = await store.upsertAgentSession(
+        portableData: portable,
+        agentId: 'codex',
+        sourcePath: '/fixture/location/codex-session.jsonl',
+      );
+      expect(peer.bindingFor('antigravity')?.nativeSessionId, 'native-42');
+      expect(
+        peer.bindingFor('codex')?.sourcePath,
+        '/fixture/location/codex-session.jsonl',
+      );
+      expect(peer.lastLocalOrchestrationSessionId, 'lico-local-9');
+    },
+  );
 }

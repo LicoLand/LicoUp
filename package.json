@@ -1,6 +1,6 @@
 {
   "name": "@licoland/licoup",
-  "version": "0.1.0-alpha",
+  "version": "0.1.0",
   "description": "LicoUp is the open-source official LicoMesh client repository.",
   "private": false,
   "license": "AGPL-3.0-or-later",
@@ -147,6 +147,7 @@
     "client:verify:secure-mesh-platform-acceptance": "node tools/scripts/client-secure-mesh-release-proof-bundle.mjs --strict && npm run client:verify:secure-mesh-e2ee-evidence",
     "client:verify:agent-usage": "node apps/desktop/scripts/verify-client-agent-usage.mjs",
     "client:verify:update-release": "node tests/verify-client-update-release-channel.mjs",
+    "client:update-manifest:sign": "node tools/scripts/client-update-manifest-sign.mjs",
     "client:verify:windows-file-security": "node tests/verify-windows-file-security-boundary.mjs",
     "client:cli:vm:list": "node tools/scripts/client-cli-vm.mjs list",
     "client:cli:vm:self-test": "node tools/scripts/client-cli-vm.mjs self-test",

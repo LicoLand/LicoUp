@@ -101,7 +101,7 @@ class AgentConversationMessage {
 
   bool get isDisplayable =>
       (!_messageRoleIsInternal(role) ||
-          isSubagentCard ||
+          (isSubagentCard && cardType.trim().isNotEmpty) ||
           (isStructuredEvent && cardType.trim().isNotEmpty)) &&
       (text.trim().isNotEmpty || isSubagentCard || isStructuredEvent);
 
@@ -376,8 +376,8 @@ bool _metadataConversationSemantic(String value) {
 }
 
 bool _messageRoleIsInternal(String role) {
-  final normalized = role.toLowerCase().trim();
+  final normalized = _normalizeConversationSemantic(role);
   return normalized == 'system' ||
       normalized == 'developer' ||
-      normalized == 'subagent_prompt';
+      normalized == 'subagent-prompt';
 }

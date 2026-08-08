@@ -1,7 +1,8 @@
 use std::{
     fs,
     io::Read,
-    path::{Component, Path},
+    os::unix::fs::symlink,
+    path::{Component, Path, PathBuf},
 };
 
 use anyhow::{Context, Result, bail, ensure};
@@ -36,6 +37,7 @@ pub(super) fn extract_signed_archive(
     let mut archive = Archive::new(reader);
     let mut entry_count = 0_usize;
     let mut expanded_bytes = 0_u64;
+    let mut links = Vec::<(PathBuf, PathBuf)>::new();
     for entry in archive
         .entries()
         .context("failed to read signed update archive")?
@@ -50,13 +52,21 @@ pub(super) fn extract_signed_archive(
         );
         let entry_type = entry.header().entry_type();
         ensure!(
-            entry_type.is_file() || entry_type.is_dir(),
-            "client update archive links and special entries are forbidden"
+            entry_type.is_file() || entry_type.is_dir() || entry_type.is_symlink(),
+            "client update archive hard links and special entries are forbidden"
         );
         let entry_path = entry
             .path()
             .context("client update archive path is invalid")?;
         validate_archive_path(&entry_path)?;
+        if entry_type.is_symlink() {
+            let target = entry
+                .link_name()?
+                .context("client update archive link target is missing")?;
+            validate_relative_link_target(&entry_path, &target)?;
+            links.push((entry_path.into_owned(), target.into_owned()));
+            continue;
+        }
         expanded_bytes = expanded_bytes
             .checked_add(entry.header().size()?)
             .context("client update archive expanded size overflow")?;
@@ -69,7 +79,34 @@ pub(super) fn extract_signed_archive(
             "client update archive entry escapes its extraction root"
         );
     }
+    for (relative, target) in links {
+        let destination = extraction_root.join(relative);
+        ensure!(
+            !destination.exists(),
+            "client update archive link destination already exists"
+        );
+        symlink(target, destination).context("failed to create client update archive link")?;
+    }
     validate_tree_without_links(extraction_root)
+}
+
+fn validate_relative_link_target(entry_path: &Path, target: &Path) -> Result<()> {
+    ensure!(
+        target.is_relative() && target.as_os_str().len() <= 1024,
+        "client update archive link target must be relative"
+    );
+    let mut depth = entry_path
+        .parent()
+        .map_or(0, |path| path.components().count()) as isize;
+    for component in target.components() {
+        match component {
+            Component::Normal(_) => depth += 1,
+            Component::ParentDir if depth > 0 => depth -= 1,
+            Component::CurDir => {}
+            _ => bail!("client update archive link target escapes its root"),
+        }
+    }
+    Ok(())
 }
 
 fn validate_archive_path(path: &Path) -> Result<()> {

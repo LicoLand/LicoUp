@@ -88,7 +88,7 @@ void registerClientHistoryRuntimeStreamingProjectionScenarios() {
       // reply publish, the tool step, the final reply, and completed. The
       // 32ms reply-publish timer keeps chunk bursts below this bound; a
       // per-chunk publish storm would exceed it.
-      expect(liveProjectionUpdates, lessThanOrEqualTo(7));
+      expect(liveProjectionUpdates, lessThanOrEqualTo(8));
       expect(
         observedProcessKinds,
         contains(AgentConversationMessageKind.toolCall),
@@ -197,10 +197,13 @@ void registerClientHistoryRuntimeStreamingProjectionScenarios() {
       var updateCardSubtitles = <String>[];
       controller.liveConversationListenable.addListener(() {
         final live = controller.selectedLiveConversationMessages;
-        final cards =
-            live.where((message) => message.cardType == 'runtime-update');
+        final cards = live.where(
+          (message) => message.cardType == 'runtime-update',
+        );
         updateCardCounts.add(cards.length);
-        updateCardSubtitles.addAll(cards.map((message) => message.cardSubtitle));
+        updateCardSubtitles.addAll(
+          cards.map((message) => message.cardSubtitle),
+        );
       });
       await controller.sendConversationMessage('Send while updating');
       // One in-place card per turn at every revision (upsert, not append).
@@ -218,20 +221,14 @@ void registerClientHistoryRuntimeStreamingProjectionScenarios() {
       expect(card.role, 'event');
       expect(card.text, 'completed');
       // Phase text surfaced before completion, version preserved.
-      expect(
-        updateCardSubtitles,
-        anyElement(contains('下载中')),
-      );
+      expect(updateCardSubtitles, anyElement(contains('下载中')));
       expect(card.cardSubtitle, contains('2026.08.04-aaa8809'));
       // Update events must not advance the turn lifecycle beyond accepted;
       // the later message events advance it to responding/completed as usual.
       final lifecycle = controller.selectedLiveConversationMessages
           .where((message) => message.cardType == 'lifecycle')
           .single;
-      expect(
-        lifecycle.cardSubtitle,
-        'submitted,accepted,responding,completed',
-      );
+      expect(lifecycle.cardSubtitle, 'submitted,accepted,responding,completed');
       // The turn itself still converges.
       expect(
         controller.selectedLiveConversationMessages

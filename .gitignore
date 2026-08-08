@@ -69,6 +69,8 @@ apps/desktop/windows/flutter/ephemeral/
 test-results/
 
 # Local planning, agent, and one-off work
+/docs/plans/
+/docs/reports/
 /docs/plans
 /docs/reports
 /.agents/

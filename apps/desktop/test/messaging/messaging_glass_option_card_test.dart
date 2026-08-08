@@ -30,14 +30,8 @@ void main() {
                       context: context,
                       globalPosition: const Offset(140, 180),
                       actions: const [
-                        MessagingGlassMenuAction(
-                          value: 'unpin',
-                          label: '取消置顶',
-                        ),
-                        MessagingGlassMenuAction(
-                          value: 'pin',
-                          label: '置顶',
-                        ),
+                        MessagingGlassMenuAction(value: 'unpin', label: '取消置顶'),
+                        MessagingGlassMenuAction(value: 'pin', label: '置顶'),
                       ],
                     );
                   },
@@ -54,7 +48,10 @@ void main() {
     await tester.tap(find.byKey(const Key('open-glass-menu')));
     await tester.pumpAndSettle();
 
-    expect(find.byKey(const Key('messaging-glass-context-menu')), findsOneWidget);
+    expect(
+      find.byKey(const Key('messaging-glass-context-menu')),
+      findsOneWidget,
+    );
     expect(find.text('取消置顶'), findsOneWidget);
 
     await tester.tap(find.text('取消置顶'));

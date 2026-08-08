@@ -8,7 +8,7 @@ import 'package:licoup/src/contracts/locale_preferences.dart';
 /// report stable codes and messages; they do not mutate shell fields directly.
 final class ClientShellController extends ChangeNotifier {
   ClientShellController({
-    String appearancePresetId = AppearancePresetIds.licoSoda,
+    String appearancePresetId = AppearancePresetIds.defaultSystem,
     List<AppearancePresetConfig> appearancePresetConfigs =
         builtInAppearancePresetConfigs,
     String localePreference = LocalePreference.system,
@@ -79,7 +79,7 @@ final class ClientShellController extends ChangeNotifier {
     final normalized =
         hasAppearancePresetConfig(value, _appearancePresetConfigs)
         ? value
-        : AppearancePresetIds.licoSoda;
+        : AppearancePresetIds.defaultSystem;
     if (_appearancePresetId == normalized) return false;
     _appearancePresetId = normalized;
     _notifyPresentationChanged();
@@ -111,7 +111,7 @@ final class ClientShellController extends ChangeNotifier {
       _appearancePresetConfigs,
     );
     if (fellBack) {
-      _appearancePresetId = AppearancePresetIds.licoSoda;
+      _appearancePresetId = AppearancePresetIds.defaultSystem;
     }
     _notifyPresentationChanged();
     return fellBack;

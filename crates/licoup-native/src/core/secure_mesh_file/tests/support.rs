@@ -287,6 +287,8 @@ pub(super) fn pairwise_file_context(
     envelope_id: &str,
     message_id: &str,
 ) -> SecureMeshContentContext {
+    let created_at = OffsetDateTime::now_utc();
+    let expires_at = created_at + time::Duration::minutes(5);
     SecureMeshContentContext::new(
         general_purpose::URL_SAFE_NO_PAD.encode(&Sha256::digest(envelope_id.as_bytes())[..24]),
         message_id,
@@ -294,8 +296,8 @@ pub(super) fn pairwise_file_context(
         session.local_endpoint_id.clone(),
         session.remote_endpoint_id.clone(),
         session.session_id.clone(),
-        "2026-01-01T00:00:00.000Z",
-        "2026-01-01T00:10:00.000Z",
+        created_at.format(&Rfc3339).unwrap(),
+        expires_at.format(&Rfc3339).unwrap(),
     )
 }
 

@@ -2574,7 +2574,6 @@ mod tests {
     use super::*;
 
     #[test]
-    #[test]
     fn protocol_version_negotiation_accepts_newer_clients() {
         assert!(supported_protocol_version("2025-06-18"));
         assert!(supported_protocol_version("2025-11-25"));
@@ -2585,6 +2584,7 @@ mod tests {
         assert!(!supported_protocol_version(""));
     }
 
+    #[test]
     fn client_name_selects_the_main_agent() {
         assert_eq!(canonical_agent_id("Codex Desktop"), Some("codex"));
         assert_eq!(canonical_agent_id("Claude Code"), Some("claude-code"));
@@ -2877,7 +2877,10 @@ mod tests {
             kimi.iter()
                 .any(|value| value == "session_5ba759f6-100a-4d23-ac3a-adbe0b66ed59")
         );
-        assert!(session_id_candidates(std::path::Path::new("/fixture/location/opaque.jsonl")).len() <= 16);
+        assert!(
+            session_id_candidates(std::path::Path::new("/fixture/location/opaque.jsonl")).len()
+                <= 16
+        );
     }
 
     #[test]
@@ -2902,7 +2905,8 @@ mod tests {
             })
         );
         assert_eq!(
-            exact_session_id_for_path(&response, "/fixture/location/conversations/other.jsonl").unwrap(),
+            exact_session_id_for_path(&response, "/fixture/location/conversations/other.jsonl")
+                .unwrap(),
             None
         );
     }
