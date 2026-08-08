@@ -55,6 +55,10 @@ function validateTemplate() {
   const version = readJson(path.join(repoRoot, "tools", "client-version.json"));
   assert(template.schemaVersion === "licoup.client-release-template.v1", "release_template_schema_invalid");
   assert(
+    template.entryCommand === "npm run client:release -- --version <version> --target <target>",
+    "release_entry_command_invalid",
+  );
+  assert(
     JSON.stringify(template.promotion?.branches) === JSON.stringify(["nightly", "stable", "release"]),
     "release_promotion_order_invalid",
   );
