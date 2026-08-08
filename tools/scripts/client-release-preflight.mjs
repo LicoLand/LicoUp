@@ -74,7 +74,16 @@ function validateTemplate() {
   assert(!workflow.includes("timeout-minutes:"), "release_workflow_timeout_forbidden");
   assert(workflow.includes("npm run client:release:preflight:check"), "release_remote_preflight_missing");
 
-  const [, , , promotionRuleset] = buildRulesets(1);
+  const [, , defaultRuleset, promotionRuleset] = buildRulesets(1);
+  assert(
+    !defaultRuleset.rules.some(({ type }) => type === "required_linear_history"),
+    "release_nightly_linear_history_conflict",
+  );
+  const nightlyPullRequest = defaultRuleset.rules.find(({ type }) => type === "pull_request");
+  assert(
+    JSON.stringify(nightlyPullRequest?.parameters?.allowed_merge_methods) === JSON.stringify(["merge"]),
+    "release_nightly_ruleset_merge_method_invalid",
+  );
   assert(
     !promotionRuleset.rules.some(({ type }) => type === "required_linear_history"),
     "release_promotion_linear_history_conflict",
