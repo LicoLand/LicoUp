@@ -220,12 +220,29 @@ function prepareCandidate(options) {
 
 async function waitForChecks(prNumber, requiredNames) {
   const required = new Set(requiredNames);
+  const runEvents = new Map();
   while (true) {
-    const checks = parseArray(gh(["pr", "checks", String(prNumber), "--repo", repository, "--json", "name,state"], { allowFailure: true }).stdout || "[]");
-    const selected = checks.filter(({ name }) => required.has(name));
-    if (selected.length === required.size) {
-      const pending = selected.some(({ state }) => ["PENDING", "QUEUED", "IN_PROGRESS", "WAITING", "REQUESTED"].includes(state));
-      const failed = selected.some(({ state }) => ["FAILURE", "ERROR", "CANCELLED", "TIMED_OUT", "ACTION_REQUIRED", "STALE"].includes(state));
+    const checks = parseArray(gh([
+      "pr", "checks", String(prNumber), "--repo", repository, "--json", "name,state,link",
+    ], { allowFailure: true }).stdout || "[]");
+    const selected = [];
+    for (const check of checks) {
+      if (!required.has(check.name)) continue;
+      const runId = check.link?.match(/\/actions\/runs\/(\d+)(?:\/|$)/u)?.[1] || "";
+      if (!runId) continue;
+      if (!runEvents.has(runId)) {
+        const response = gh([
+          "run", "view", runId, "--repo", repository, "--json", "event", "--jq", ".event",
+        ], { allowFailure: true });
+        runEvents.set(runId, response.ok ? response.stdout : "");
+      }
+      if (["pull_request", "pull_request_target"].includes(runEvents.get(runId))) selected.push(check);
+    }
+    const grouped = new Map([...required].map((name) => [name, selected.filter((check) => check.name === name)]));
+    if ([...grouped.values()].every((checksForName) => checksForName.length > 0)) {
+      const states = [...grouped.values()].flat().map(({ state }) => state);
+      const pending = states.some((state) => ["PENDING", "QUEUED", "IN_PROGRESS", "WAITING", "REQUESTED"].includes(state));
+      const failed = states.some((state) => !["SUCCESS", "PENDING", "QUEUED", "IN_PROGRESS", "WAITING", "REQUESTED"].includes(state));
       if (failed) fail("release_pull_request_check_failed");
       if (!pending) return;
     }
@@ -258,7 +275,7 @@ async function pushNightly(options, template) {
   }
   if (!pr.mergedAt) {
     await waitForChecks(pr.number, template.requiredPullRequestChecks);
-    run("gh", ["pr", "merge", String(pr.number), "--repo", repository, "--rebase", "--delete-branch"]);
+    run("gh", ["pr", "merge", String(pr.number), "--repo", repository, "--merge", "--delete-branch"]);
   }
   process.stdout.write(`client_release=advanced destination=nightly version=${options.version}\n`);
 }

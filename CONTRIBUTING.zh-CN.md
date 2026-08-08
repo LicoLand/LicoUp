@@ -66,9 +66,12 @@ Agent 可以辅助开发者，但严禁替换、覆盖或抢占开发者署名�
 其它 Agent 或 bot。把人类代码归到 Agent 联系方式名下属于虚假身份信息和来源追溯
 违规，本地 hook 与远程 Ruleset 都会拒绝。开发者必须亲自审查并接受改动后才能提交。
 
-所有改动都必须先落到上游临时分支。普通改动使用 `changes/<topic>`，发布候选使用
+所有改动都必须先落到上游临时分支。普通分支必须使用能说明改动目的的动作前缀，推荐
+`feature/<topic>`、`fix/<topic>`、`docs/<topic>`、`refactor/<topic>`、
+`test/<topic>` 或 `chore/<topic>`；发布候选使用
 `release-candidate/v<version>-<target>`。全分支元数据 Ruleset 在临时分支创建时同样生效，首个
-提交无法绕过身份门禁。临时分支只能合并到 `nightly`，严禁把改动直接写入长期分支。
+提交无法绕过身份门禁。临时分支只能通过 Pull Request 创建合并提交进入 `nightly`，严禁
+以 rebase 或 squash 方式合入，也严禁把改动直接写入长期分支。
 
 ## 发布前门禁
 
@@ -84,7 +87,8 @@ npm run client:release -- publish --version 0.1.1 --target macos-arm64
 
 第一个命令必须先创建含版本与目标平台的 `release-candidate/` 临时分支，之后记录唯一
 发布目标、修改一次版本号，只运行公共门禁和该平台对应的 Pull Request 门禁并创建唯一发布提交。临时分支通过全部
-声明为必需的 LicoUp Pull Request 校验后才合入 `nightly`。后两个推送命令分别独立完成
+声明为必需的 LicoUp Pull Request 校验后，必须创建合并提交进入 `nightly`，不得以 rebase
+或 squash 方式合入。后两个推送命令分别独立完成
 同一目标的 `nightly -> stable` 与 `stable -> release`，目标不一致时必须失败关闭；最后一个命令才执行该目标的安装、实时发布验收、归档和发布，并持续监控到明确
 结果，不设置操作者侧终止超时。每个命令都可以独立重跑。任何阶段都严禁关闭、绕过或
 修改活动 Rulesets。
