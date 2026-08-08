@@ -1,0 +1,371 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://licoup.example/schemas/agent-conversation-adapter.schema.json",
+  "title": "LicoUp Agent Conversation Adapter Manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "identity",
+    "officialCapabilityAssessment",
+    "transport",
+    "configuration",
+    "operations",
+    "events",
+    "lifecycle",
+    "privacy",
+    "routedContext",
+    "productIntegration",
+    "acceptance"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "lico.agent-conversation-adapter.v1"
+    },
+    "identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["agentId", "driverId", "runtimeProtocol", "packagingTargetId"],
+      "properties": {
+        "agentId": { "$ref": "#/$defs/safeId" },
+        "driverId": { "$ref": "#/$defs/safeId" },
+        "runtimeProtocol": { "$ref": "#/$defs/safeId" },
+        "packagingTargetId": { "$ref": "#/$defs/safeId" }
+      }
+    },
+    "officialCapabilityAssessment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "completedBeforeImplementation",
+        "sourceAuthority",
+        "interfaceName",
+        "assessedVersion",
+        "versionProbe",
+        "capabilityProbe",
+        "newSessionMethod",
+        "exactResumeMethod",
+        "streamingMethod",
+        "historyMethod",
+        "cleanupMethod",
+        "officialReferences"
+      ],
+      "properties": {
+        "completedBeforeImplementation": { "const": true },
+        "sourceAuthority": { "const": "official" },
+        "interfaceName": { "$ref": "#/$defs/safeDescription" },
+        "assessedVersion": { "$ref": "#/$defs/safeDescription" },
+        "versionProbe": { "$ref": "#/$defs/safeDescription" },
+        "capabilityProbe": { "$ref": "#/$defs/safeDescription" },
+        "newSessionMethod": { "$ref": "#/$defs/safeDescription" },
+        "exactResumeMethod": { "$ref": "#/$defs/safeDescription" },
+        "streamingMethod": { "$ref": "#/$defs/safeDescription" },
+        "historyMethod": { "$ref": "#/$defs/safeDescription" },
+        "cleanupMethod": { "$ref": "#/$defs/safeDescription" },
+        "officialReferences": {
+          "type": "array",
+          "items": { "type": "string", "format": "uri", "maxLength": 512 },
+          "minItems": 1,
+          "maxItems": 8,
+          "uniqueItems": true
+        }
+      }
+    },
+    "transport": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "family",
+        "origin",
+        "promptChannel",
+        "continuityChannel",
+        "workingDirectoryChannel",
+        "framing",
+        "sessionScope",
+        "fixedLaunchArguments"
+      ],
+      "properties": {
+        "family": {
+          "enum": ["acp", "app-server", "cli", "rpc", "serve-http", "stream-json", "unavailable"]
+        },
+        "origin": { "enum": ["official", "official-wrapper", "unavailable"] },
+        "promptChannel": { "enum": ["stdin", "json-rpc", "http-body", "launch-argument", "unavailable"] },
+        "continuityChannel": { "enum": ["protocol-field", "protected-mapping", "launch-argument", "unavailable"] },
+        "workingDirectoryChannel": { "enum": ["process-cwd", "protocol-field", "unavailable"] },
+        "framing": { "enum": ["jsonl", "json-rpc", "http-sse", "http-json", "text", "unavailable"] },
+        "sessionScope": { "enum": ["persistent", "process", "remote", "unavailable"] },
+        "fixedLaunchArguments": {
+          "type": "array",
+          "items": { "type": "string", "maxLength": 128 },
+          "maxItems": 32
+        }
+      }
+    },
+    "configuration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "binaryEnvironmentKeys",
+        "authentication",
+        "modelSelection",
+        "reasoningSelection",
+        "permissionSelection"
+      ],
+      "properties": {
+        "binaryEnvironmentKeys": {
+          "type": "array",
+          "items": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]{0,63}$" },
+          "maxItems": 8,
+          "uniqueItems": true
+        },
+        "authentication": { "enum": ["runtime-owned", "not-required", "unavailable"] },
+        "modelSelection": { "enum": ["request-field", "runtime-owned", "unavailable"] },
+        "reasoningSelection": { "enum": ["request-field", "runtime-owned", "unavailable"] },
+        "permissionSelection": { "enum": ["request-field", "callback", "runtime-owned", "unavailable"] }
+      }
+    },
+    "operations": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["discover", "openNew", "exactResume", "send", "stream", "cancel", "interruptSteer", "cleanup", "history", "approvals", "usage", "multimodal"],
+      "properties": {
+        "discover": { "$ref": "#/$defs/operation" },
+        "openNew": { "$ref": "#/$defs/operation" },
+        "exactResume": { "$ref": "#/$defs/operation" },
+        "send": { "$ref": "#/$defs/operation" },
+        "stream": { "$ref": "#/$defs/operation" },
+        "cancel": { "$ref": "#/$defs/operation" },
+        "interruptSteer": { "$ref": "#/$defs/operation" },
+        "cleanup": { "$ref": "#/$defs/operation" },
+        "history": { "$ref": "#/$defs/operation" },
+        "approvals": { "$ref": "#/$defs/operation" },
+        "usage": { "$ref": "#/$defs/operation" },
+        "multimodal": { "$ref": "#/$defs/operation" }
+      }
+    },
+    "events": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["framing", "realtimeKinds", "terminalKinds", "sessionOwned", "turnOwned"],
+      "properties": {
+        "framing": { "enum": ["jsonl", "json-rpc", "sse", "text", "unavailable"] },
+        "realtimeKinds": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/eventKind" },
+          "uniqueItems": true,
+          "maxItems": 32
+        },
+        "terminalKinds": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/eventKind" },
+          "minItems": 1,
+          "uniqueItems": true,
+          "maxItems": 16
+        },
+        "sessionOwned": { "const": true },
+        "turnOwned": { "const": true }
+      }
+    },
+    "lifecycle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["supervision", "cleanupScope", "cancelHandleScope", "maxConcurrentTransports", "maxTrackedSessions"],
+      "properties": {
+        "supervision": { "enum": ["process-tree", "attached-service", "runtime-owned", "unavailable"] },
+        "cleanupScope": { "enum": ["official-session", "disposable-root", "process-session", "unavailable"] },
+        "cancelHandleScope": { "enum": ["active-turn", "unavailable"] },
+        "maxConcurrentTransports": { "type": "integer", "minimum": 1, "maximum": 128 },
+        "maxTrackedSessions": { "type": "integer", "minimum": 1, "maximum": 65536 }
+      }
+    },
+    "privacy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "promptInArguments",
+        "continuityIdInArguments",
+        "boundedInput",
+        "boundedOutput",
+        "structuredEventProjection",
+        "safeCleanup",
+        "redactedEvidence"
+      ],
+      "properties": {
+        "promptInArguments": { "type": "boolean" },
+        "continuityIdInArguments": { "type": "boolean" },
+        "boundedInput": { "const": true },
+        "boundedOutput": { "const": true },
+        "structuredEventProjection": { "const": true },
+        "safeCleanup": { "type": "boolean" },
+        "redactedEvidence": { "const": true }
+      }
+    },
+    "routedContext": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contractVersion",
+        "deliveryChannel",
+        "maxPackageBytes",
+        "requiredSections",
+        "sourceReferences",
+        "rawConversationAllowed",
+        "contextDigestRequired",
+        "fidelityFailure",
+        "finalReplyFeedsNextDistillation"
+      ],
+      "properties": {
+        "contractVersion": { "const": "lico.routing.distillation-package.v1" },
+        "deliveryChannel": { "enum": ["prompt-envelope", "protocol-field"] },
+        "maxPackageBytes": { "type": "integer", "minimum": 1024, "maximum": 1048576 },
+        "requiredSections": {
+          "const": ["objective", "currentState", "decisions", "constraints", "openItems"]
+        },
+        "sourceReferences": { "const": "opaque-digest-only" },
+        "rawConversationAllowed": { "const": false },
+        "contextDigestRequired": { "const": true },
+        "fidelityFailure": { "const": "fail-closed" },
+        "finalReplyFeedsNextDistillation": { "const": true }
+      }
+    },
+    "productIntegration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "dispatchLane",
+        "cliUsesCanonicalReadiness",
+        "guiUsesCanonicalReadiness",
+        "routingUsesCanonicalReadiness",
+        "sharedNativeHistoryAuthority",
+        "finalReplyFeedsThreadAndDistillation"
+      ],
+      "properties": {
+        "dispatchLane": { "const": "AgentDispatchLane" },
+        "cliUsesCanonicalReadiness": { "const": true },
+        "guiUsesCanonicalReadiness": { "const": true },
+        "routingUsesCanonicalReadiness": { "const": true },
+        "sharedNativeHistoryAuthority": { "const": true },
+        "finalReplyFeedsThreadAndDistillation": { "const": true }
+      }
+    },
+    "acceptance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "coreChecks",
+        "conditionalChecks",
+        "checkSemantics",
+        "minimumConsecutivePasses",
+        "minimumConsecutiveReleaseUiPasses",
+        "productUiRequired",
+        "releaseP10Required",
+        "liveLocalForwardingRequired",
+        "realtimeOutputRequired",
+        "sameNativeSessionRequired",
+        "canonicalReadinessRequired",
+        "nativeToArcRequired",
+        "arcToNativeRequired",
+        "exactArtifactRequired"
+      ],
+      "properties": {
+        "coreChecks": {
+          "type": "array",
+          "minItems": 10,
+          "maxItems": 10,
+          "prefixItems": [
+            { "const": "P-01" }, { "const": "P-02" }, { "const": "P-03" },
+            { "const": "P-04" }, { "const": "P-05" }, { "const": "P-06" },
+            { "const": "P-07" }, { "const": "P-08" }, { "const": "P-09" },
+            { "const": "P-10" }
+          ],
+          "items": false
+        },
+        "conditionalChecks": {
+          "type": "array",
+          "minItems": 6,
+          "maxItems": 6,
+          "prefixItems": [
+            { "const": "C-01" }, { "const": "C-02" }, { "const": "C-03" },
+            { "const": "C-04" }, { "const": "C-05" }, { "const": "C-06" }
+          ],
+          "items": false
+        },
+        "checkSemantics": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "P-01", "P-02", "P-03", "P-04", "P-05", "P-06", "P-07", "P-08", "P-09", "P-10",
+            "C-01", "C-02", "C-03", "C-04", "C-05", "C-06"
+          ],
+          "properties": {
+            "P-01": { "type": "string", "minLength": 1, "maxLength": 96 },
+            "P-02": { "type": "string", "minLength": 1, "maxLength": 96 },
+            "P-03": { "type": "string", "minLength": 1, "maxLength": 96 },
+            "P-04": { "type": "string", "minLength": 1, "maxLength": 96 },
+            "P-05": { "type": "string", "minLength": 1, "maxLength": 96 },
+            "P-06": { "type": "string", "minLength": 1, "maxLength": 96 },
+            "P-07": { "type": "string", "minLength": 1, "maxLength": 96 },
+            "P-08": { "type": "string", "minLength": 1, "maxLength": 96 },
+            "P-09": { "type": "string", "minLength": 1, "maxLength": 96 },
+            "P-10": { "type": "string", "minLength": 1, "maxLength": 96 },
+            "C-01": { "type": "string", "minLength": 1, "maxLength": 96 },
+            "C-02": { "type": "string", "minLength": 1, "maxLength": 96 },
+            "C-03": { "type": "string", "minLength": 1, "maxLength": 96 },
+            "C-04": { "type": "string", "minLength": 1, "maxLength": 96 },
+            "C-05": { "type": "string", "minLength": 1, "maxLength": 96 },
+            "C-06": { "type": "string", "minLength": 1, "maxLength": 96 }
+          }
+        },
+        "minimumConsecutivePasses": { "type": "integer", "minimum": 3 },
+        "minimumConsecutiveReleaseUiPasses": { "type": "integer", "minimum": 0 },
+        "productUiRequired": { "type": "boolean" },
+        "releaseP10Required": { "type": "boolean" },
+        "liveLocalForwardingRequired": { "type": "boolean" },
+        "realtimeOutputRequired": { "type": "boolean" },
+        "sameNativeSessionRequired": { "type": "boolean" },
+        "canonicalReadinessRequired": { "type": "boolean" },
+        "nativeToArcRequired": { "type": "boolean" },
+        "arcToNativeRequired": { "type": "boolean" },
+        "exactArtifactRequired": { "type": "boolean" },
+        "continuityScope": {
+          "type": "string",
+          "enum": ["process-local", "persistent"]
+        }
+      }
+    }
+  },
+  "$defs": {
+    "safeId": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._:+-]{0,127}$"
+    },
+    "eventKind": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+){1,7}$",
+      "maxLength": 128
+    },
+    "safeDescription": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 240,
+      "pattern": "^(?:(?!\\u000d|\\u000a).)+$"
+    },
+    "operation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "method"],
+      "properties": {
+        "status": { "enum": ["supported", "unsupported", "blocked"] },
+        "method": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "blockerCode": { "$ref": "#/$defs/safeId" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "status": { "const": "blocked" } } },
+          "then": { "required": ["blockerCode"] },
+          "else": { "not": { "required": ["blockerCode"] } }
+        }
+      ]
+    }
+  }
+}

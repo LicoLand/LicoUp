@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none">
+  <title>lico-agent</title>
+  <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.75"/>
+  <path d="M12 6.5v11M6.5 12h11" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/>
+  <circle cx="12" cy="12" r="2.25" fill="currentColor"/>
+</svg>

@@ -1,0 +1,44 @@
+{
+  "schemaVersion": "lico-macos-app-icon-source-v1",
+  "source": {
+    "path": "apps/desktop/assets/brand/lico-app-icon.png",
+    "digest": "sha256:6f60b4e6daca5d5a59e391d36a17218b46a1df98b5ccf8c51df3f9e4b2736c56"
+  },
+  "icons": [
+    {
+      "size": 16,
+      "path": "app_icon_16.png",
+      "digest": "sha256:9a0837498adfab20357e70fc7c1981d8496a238f54aa081f36e504443387bf0b"
+    },
+    {
+      "size": 32,
+      "path": "app_icon_32.png",
+      "digest": "sha256:866dc0786ab4c1c8f41745e898894bf154ad588386018bfb449b3dd4e5f5031f"
+    },
+    {
+      "size": 64,
+      "path": "app_icon_64.png",
+      "digest": "sha256:3411b784636d7294625d6370b1c6c213f1c8236179438729152248e5403a3a34"
+    },
+    {
+      "size": 128,
+      "path": "app_icon_128.png",
+      "digest": "sha256:bf0e4a7927ba4990206e5ea94f3902a2e023f3dcb9f4b92eec3ced67de075be0"
+    },
+    {
+      "size": 256,
+      "path": "app_icon_256.png",
+      "digest": "sha256:894afe222546877f584fecb48b183073c9a3f7020a3233e9dcc7671cf5f677c7"
+    },
+    {
+      "size": 512,
+      "path": "app_icon_512.png",
+      "digest": "sha256:27ae39b4fb2fbfc3b4e8829d80a105d29de77721bfa04bdbb1da8b88e9d7b87c"
+    },
+    {
+      "size": 1024,
+      "path": "app_icon_1024.png",
+      "digest": "sha256:6f60b4e6daca5d5a59e391d36a17218b46a1df98b5ccf8c51df3f9e4b2736c56"
+    }
+  ]
+}

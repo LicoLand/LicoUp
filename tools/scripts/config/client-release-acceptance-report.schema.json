@@ -1,0 +1,301 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "licomesh.client-release-acceptance-report.v4",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "generatedAt",
+    "productVersion",
+    "inputIntegrity",
+    "ok",
+    "githubReleaseReady",
+    "nonBlockingDistributionGuidance",
+    "selectedTargetIds",
+    "gateResults",
+    "targetResults",
+    "blockers",
+    "scope"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "licomesh.client-release-acceptance-report.v4" },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "productVersion": { "type": "string", "minLength": 1 },
+    "inputIntegrity": { "$ref": "#/$defs/inputIntegrity" },
+    "ok": { "type": "boolean" },
+    "githubReleaseReady": { "type": "boolean" },
+    "nonBlockingDistributionGuidance": { "$ref": "#/$defs/nonBlockingDistributionGuidance" },
+    "selectedTargetIds": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "enum": ["macos-arm64", "android-arm64", "linux-glibc-arm64"] }
+    },
+    "gateResults": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/result" }
+    },
+    "targetResults": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/targetResult" }
+    },
+    "blockers": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["clientOwnedOnly", "untrustedStationAllowed", "externalCoreAcceptanceRequired", "optionalExternalServicesBlocking", "unselectedTargetsBlocking", "telegramLevelClaimed"],
+      "properties": {
+        "clientOwnedOnly": { "const": true },
+        "untrustedStationAllowed": { "const": true },
+        "externalCoreAcceptanceRequired": { "const": false },
+        "optionalExternalServicesBlocking": { "const": false },
+        "unselectedTargetsBlocking": { "const": false },
+        "telegramLevelClaimed": { "const": false }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "githubReleaseReady": { "const": true } }, "required": ["githubReleaseReady"] },
+      "then": {
+        "properties": {
+          "ok": { "const": true },
+          "blockers": { "type": "array", "maxItems": 0 },
+          "inputIntegrity": { "type": "object", "properties": { "ok": { "const": true } } }
+        }
+      },
+      "else": {
+        "properties": {
+          "ok": { "const": false },
+          "blockers": { "type": "array", "minItems": 1 }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "producerReceipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "ok", "schemaVersion", "producer", "producerExitCode", "sourceDigest", "reportDigest", "freshnessReady", "closureChallengeBound", "invocationNonceDigest", "dependencies"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "ok": { "type": "boolean" },
+        "schemaVersion": { "type": "string", "minLength": 1 },
+        "producer": { "type": "string", "minLength": 1 },
+        "producerExitCode": { "type": "integer" },
+        "sourceDigest": { "type": "string", "pattern": "^(|sha256:[a-f0-9]{64})$" },
+        "reportDigest": { "type": "string", "pattern": "^(|sha256:[a-f0-9]{64})$" },
+        "freshnessReady": { "type": "boolean" }
+        ,"closureChallengeBound": { "type": "boolean" }
+        ,"invocationNonceDigest": { "$ref": "#/$defs/digest" },
+        "dependencies": {
+          "type": "array",
+          "maxItems": 64,
+          "items": { "$ref": "#/$defs/dependency" }
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "id": { "const": "pairwise" } }, "required": ["id"] },
+          "then": {
+            "properties": {
+              "dependencies": {
+                "type": "array",
+                "minItems": 3,
+                "maxItems": 3,
+                "prefixItems": [
+                  { "allOf": [{ "$ref": "#/$defs/dependency" }, { "type": "object", "properties": { "id": { "const": "pairwise-vector-corpus" }, "ref": { "const": "build/reports/secure-mesh-pairwise-content-vector-corpus.json" } } }] },
+                  { "allOf": [{ "$ref": "#/$defs/dependency" }, { "type": "object", "properties": { "id": { "const": "pairwise-review-signoff" }, "ref": { "const": "build/reports/secure-mesh-pairwise-content-review-signoff.json" } } }] },
+                  { "allOf": [{ "$ref": "#/$defs/dependency" }, { "type": "object", "properties": { "id": { "const": "pairwise-vector-corpus-snapshot" }, "ref": { "type": "string", "pattern": "^build/reports/secure-mesh-pairwise-content-vector-corpus-[a-f0-9]{16}\\.json$" } } }] }
+                ]
+              }
+            }
+          }
+        }
+      ]
+    },
+    "dependency": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "ref", "digest"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "ref": { "type": "string", "pattern": "^build/(?!.*(?:^|/)[.][.](?:/|$))(?!.*\\x00)(?!.*\\x5c).+$" },
+        "digest": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "policyBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "ref", "digest"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "ref": { "type": "string", "pattern": "^(?!/)(?!.*(?:^|/)[.][.](?:/|$))(?!.*\\x00)(?!.*\\x5c).+$" },
+        "digest": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "inputIntegrity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ok", "productVersion", "sourceStateDigest", "sourceStateStable", "artifactInputsStable", "candidateInputsStable", "supportMatrixStable", "targetCatalogStable", "policyInputsStable", "closureEvidenceDigestsStable", "closureStartedAt", "closureChallengeDigest", "supportMatrixDigest", "targetCatalogDigest", "policyBindings", "reports"],
+      "properties": {
+        "ok": { "type": "boolean" },
+        "productVersion": { "type": "string", "minLength": 1 },
+        "sourceStateDigest": { "$ref": "#/$defs/digest" },
+        "sourceStateStable": { "type": "boolean" },
+        "artifactInputsStable": { "type": "boolean" },
+        "candidateInputsStable": { "type": "boolean" },
+        "supportMatrixStable": { "type": "boolean" },
+        "targetCatalogStable": { "type": "boolean" },
+        "policyInputsStable": { "type": "boolean" },
+        "closureEvidenceDigestsStable": { "type": "boolean" },
+        "closureStartedAt": { "type": "string", "format": "date-time" },
+        "closureChallengeDigest": { "$ref": "#/$defs/digest" },
+        "supportMatrixDigest": { "$ref": "#/$defs/digest" },
+        "targetCatalogDigest": { "$ref": "#/$defs/digest" },
+        "policyBindings": {
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "prefixItems": [
+            { "allOf": [{ "$ref": "#/$defs/policyBinding" }, { "type": "object", "properties": { "id": { "const": "acceptance-config" }, "ref": { "const": "tools/scripts/config/client-release-acceptance.json" } } }] },
+            { "allOf": [{ "$ref": "#/$defs/policyBinding" }, { "type": "object", "properties": { "id": { "const": "target-catalog" }, "ref": { "const": "tools/client-release-targets.json" } } }] },
+            { "allOf": [{ "$ref": "#/$defs/policyBinding" }, { "type": "object", "properties": { "id": { "const": "receipt-config" }, "ref": { "const": "tools/scripts/config/client-artifact-verification-receipts.json" } } }] },
+            { "allOf": [{ "$ref": "#/$defs/policyBinding" }, { "type": "object", "properties": { "id": { "const": "client-version" }, "ref": { "const": "tools/client-version.json" } } }] }
+          ]
+        },
+        "reports": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/producerReceipt" } }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "ok": { "const": true } }, "required": ["ok"] },
+          "then": {
+            "properties": {
+              "sourceStateStable": { "const": true },
+              "artifactInputsStable": { "const": true },
+              "candidateInputsStable": { "const": true },
+              "supportMatrixStable": { "const": true },
+              "targetCatalogStable": { "const": true },
+              "policyInputsStable": { "const": true },
+              "closureEvidenceDigestsStable": { "const": true }
+            }
+          }
+        }
+      ]
+    },
+    "artifactBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["targetId", "productVersion", "artifactKind", "artifactDigest", "runtimeExecutableDigest", "artifactEvidenceReportDigest", "artifactEvidenceInvocationNonceDigest", "versionReady", "targetReady", "consumerIntegritySignatureReady", "publicVerificationMaterialReady", "consumerVerificationReady", "platformSecurityReady", "consumerIntegritySignatureKind", "installReceiptReady", "receiptProvenanceReady", "receiptProducer", "receiptSourceDigest", "receiptReportDigest", "ready"],
+      "properties": {
+        "targetId": { "enum": ["macos-arm64", "android-arm64", "linux-glibc-arm64"] },
+        "productVersion": { "type": "string" },
+        "artifactKind": { "type": "string" },
+        "artifactDigest": { "type": "string", "pattern": "^(|sha256:[a-f0-9]{64})$" },
+        "runtimeExecutableDigest": { "type": "string", "pattern": "^(|sha256:[a-f0-9]{64})$" },
+        "artifactEvidenceReportDigest": { "type": "string", "pattern": "^(|sha256:[a-f0-9]{64})$" },
+        "artifactEvidenceInvocationNonceDigest": { "type": "string", "pattern": "^(|sha256:[a-f0-9]{64})$" },
+        "versionReady": { "type": "boolean" },
+        "targetReady": { "type": "boolean" },
+        "consumerIntegritySignatureReady": { "type": "boolean" },
+        "publicVerificationMaterialReady": { "type": "boolean" },
+        "consumerVerificationReady": { "type": "boolean" },
+        "platformSecurityReady": { "type": "boolean" },
+        "consumerIntegritySignatureKind": { "enum": ["", "none", "platform-local-validation", "detached-validation"] },
+        "installReceiptReady": { "type": "boolean" },
+        "receiptProvenanceReady": { "type": "boolean" },
+        "receiptProducer": { "type": "string" },
+        "receiptSourceDigest": { "type": "string", "pattern": "^(|sha256:[a-f0-9]{64})$" },
+        "receiptReportDigest": { "type": "string", "pattern": "^(|sha256:[a-f0-9]{64})$" },
+        "ready": { "type": "boolean" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "ready": { "const": true } }, "required": ["ready"] },
+          "then": {
+            "properties": {
+              "artifactDigest": { "$ref": "#/$defs/digest" },
+              "runtimeExecutableDigest": { "$ref": "#/$defs/digest" },
+              "artifactEvidenceReportDigest": { "$ref": "#/$defs/digest" },
+              "artifactEvidenceInvocationNonceDigest": { "$ref": "#/$defs/digest" },
+              "receiptSourceDigest": { "$ref": "#/$defs/digest" },
+              "receiptReportDigest": { "$ref": "#/$defs/digest" }
+            }
+          }
+        }
+      ]
+    },
+    "nonBlockingDistributionGuidance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["blocking", "storeListingStatus", "platformSigningStatus", "notarizationStatus", "publicDownloadStatus", "updateChannelStatus", "rollbackChannelStatus"],
+      "properties": {
+        "blocking": { "const": false },
+        "storeListingStatus": { "enum": ["not-configured", "planned", "ready"] },
+        "platformSigningStatus": { "enum": ["not-configured", "planned", "ready"] },
+        "notarizationStatus": { "enum": ["not-configured", "planned", "ready", "not-applicable"] },
+        "publicDownloadStatus": { "enum": ["not-configured", "planned", "ready"] },
+        "updateChannelStatus": { "enum": ["not-configured", "planned", "ready"] },
+        "rollbackChannelStatus": { "enum": ["not-configured", "planned", "ready"] }
+      }
+    },
+    "result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "ok", "blockers"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "ok": { "type": "boolean" },
+        "blockers": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "ok": { "const": true } }, "required": ["ok"] },
+          "then": { "properties": { "blockers": { "type": "array", "maxItems": 0 } } },
+          "else": { "properties": { "blockers": { "type": "array", "minItems": 1 } } }
+        }
+      ]
+    },
+    "targetResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "ok", "blockers", "targetId", "selected", "artifactBinding"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "ok": { "type": "boolean" },
+        "blockers": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "targetId": { "enum": ["macos-arm64", "android-arm64", "linux-glibc-arm64"] },
+        "selected": { "const": true },
+        "artifactBinding": { "$ref": "#/$defs/artifactBinding" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "ok": { "const": true } }, "required": ["ok"] },
+          "then": {
+            "properties": {
+              "blockers": { "type": "array", "maxItems": 0 },
+              "artifactBinding": { "type": "object", "properties": { "ready": { "const": true } } }
+            }
+          },
+          "else": { "properties": { "blockers": { "type": "array", "minItems": 1 } } }
+        }
+      ]
+    }
+  }
+}

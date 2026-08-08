@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://licoup.example/schemas/optional-collaboration-plugin.schema.json",
+  "title": "LicoUp Optional Collaboration Plugin",
+  "description": "Disabled-by-default manifest for declarative collaboration payloads and digest-bound platform runner contracts.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "kind", "pluginId", "displayName", "version", "capabilities", "workflows", "serverRunners"],
+  "properties": {
+    "schemaVersion": {"const": "licoup.optional-collaboration-plugin.v2"},
+    "kind": {"const": "licomesh-collaboration"},
+    "pluginId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+      "maxLength": 255
+    },
+    "displayName": {"type": "string", "minLength": 1, "maxLength": 255},
+    "version": {"type": "string", "minLength": 1, "maxLength": 255},
+    "capabilities": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "uniqueItems": true,
+      "items": {
+        "enum": ["licomesh.local-deployment.compose", "licomesh.mcp.install"]
+      },
+      "allOf": [
+        {"contains": {"const": "licomesh.local-deployment.compose"}},
+        {"contains": {"const": "licomesh.mcp.install"}}
+      ]
+    },
+    "workflows": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["localDeployment", "mcpInstall"],
+      "properties": {
+        "localDeployment": {"$ref": "#/$defs/relativeJsonPath"},
+        "mcpInstall": {"$ref": "#/$defs/relativeJsonPath"}
+      }
+    },
+    "serverRunners": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 6,
+      "items": {"$ref": "#/$defs/serverRunner"}
+    }
+  },
+  "$defs": {
+    "relativeJsonPath": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-][A-Za-z0-9._-]*(?:/[A-Za-z0-9_-][A-Za-z0-9._-]*)*\\.json$",
+      "maxLength": 1024
+    },
+    "serverRunner": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["platform", "architecture", "relativePath", "digestSha256", "runnerContractVersion", "healthContractVersion", "capabilitiesContractVersion"],
+      "properties": {
+        "platform": {"enum": ["macos", "windows", "ubuntu"]},
+        "architecture": {"enum": ["x86_64", "aarch64"]},
+        "relativePath": {"type": "string", "pattern": "^runners\/(macos|windows|ubuntu)\/(x86_64|aarch64)\/licomesh-server-runner(?:\\.exe)?$", "maxLength": 1024},
+        "digestSha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "runnerContractVersion": {"const": "licoup.local-server-runner.v1"},
+        "healthContractVersion": {"const": "licoup.local-server-health.v1"},
+        "capabilitiesContractVersion": {"const": "licoup.local-server-capabilities.v1"}
+      }
+    }
+  }
+}

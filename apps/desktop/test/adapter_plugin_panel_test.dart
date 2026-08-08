@@ -1,0 +1,301 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:licoup/src/application/controller/client_controller.dart';
+import 'package:licoup/src/contracts/presentation/layout_profile.dart';
+import 'package:licoup/src/contracts/presentation/presentation_preferences.dart';
+import 'package:licoup/src/frontend/features/plugin_management/ui/adapter_plugin_panel.dart';
+import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/shared/ui/theme.dart';
+import 'package:licoup/src/platform/native_client/agent_service.dart';
+
+void main() {
+  testWidgets('adapter cards fit at minimum desktop size at 200% text scale', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(760, 560);
+    tester.view.devicePixelRatio = 1;
+    tester.platformDispatcher.textScaleFactorTestValue = 2;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+
+    await _pumpPanel(tester, locale: const Locale('zh'));
+
+    expect(find.byKey(const Key('adapter-plugin-kimi-code')), findsOneWidget);
+    expect(find.byKey(const Key('adapter-plugin-claude-code')), findsOneWidget);
+    expect(find.byKey(const Key('adapter-plugin-antigravity')), findsOneWidget);
+    expect(
+      find.byKey(const Key('adapter-install-antigravity-acp-bridge')),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('adapter cards fit at compact width at 200% text scale', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(320, 568);
+    tester.view.devicePixelRatio = 1;
+    tester.platformDispatcher.textScaleFactorTestValue = 2;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+
+    await _pumpPanel(tester, locale: const Locale('zh'));
+
+    for (final agentId in const ['kimi-code', 'claude-code', 'antigravity']) {
+      await tester.scrollUntilVisible(
+        find.byKey(Key('adapter-plugin-$agentId')),
+        240,
+        scrollable: find.byType(Scrollable).first,
+      );
+    }
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('adapter cards render in the wide two-column layout', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1280, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await _pumpPanel(tester, locale: const Locale('en'));
+
+    expect(find.byKey(const Key('adapter-plugin-kimi-code')), findsOneWidget);
+    expect(find.byKey(const Key('adapter-plugin-claude-code')), findsOneWidget);
+    expect(find.byKey(const Key('adapter-plugin-antigravity')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+  testWidgets('adapter cards group native capabilities and adapter plugins', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1280, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await _pumpPanel(tester, locale: const Locale('zh'));
+
+    // Delivery-channel suffixes are stripped from card titles.
+    expect(find.text('Kimi Code'), findsOneWidget);
+    expect(find.text('Kimi Code - CLI'), findsNothing);
+    expect(find.text('Claude Code'), findsOneWidget);
+    expect(find.text('Antigravity'), findsOneWidget);
+
+    // Native capability chips render with detection states and live evidence.
+    expect(find.text('原生能力'), findsWidgets);
+    expect(
+      find.byKey(const Key('adapter-capability-antigravity-desktop')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('adapter-capability-kimi-code-cli')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('adapter-capability-kimi-code-acp')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('adapter-capability-kimi-code-web-server')),
+      findsOneWidget,
+    );
+    expect(find.text('ACP'), findsOneWidget);
+    expect(find.text('Web Server'), findsOneWidget);
+    expect(find.text('PID 58627 · kimi · :58627'), findsOneWidget);
+    expect(find.text('已检测'), findsWidgets);
+    expect(find.text('PID 4242 · claude'), findsOneWidget);
+    expect(
+      find.byKey(const Key('adapter-capability-live-antigravity-desktop')),
+      findsOneWidget,
+    );
+    expect(find.text('未运行'), findsWidgets);
+
+    // The Antigravity adapter plugin entry replaces the old meta tiles.
+    expect(find.text('适配插件'), findsWidgets);
+    expect(
+      find.byKey(const Key('adapter-plugin-entry-antigravity-acp-bridge')),
+      findsOneWidget,
+    );
+    expect(find.text('ACP Bridge'), findsOneWidget);
+    expect(find.text('驱动'), findsNothing);
+    expect(find.text('通道'), findsNothing);
+
+    // An installed plugin exposes a disabled update action and a warning
+    // uninstall action below the in-card divider.
+    final updateButton = tester.widget<FilledButton>(
+      find.byKey(const Key('adapter-update-claude-code-lico-up-codex')),
+    );
+    expect(updateButton.onPressed, isNull);
+    expect(
+      find.byKey(const Key('adapter-uninstall-claude-code-lico-up-codex')),
+      findsOneWidget,
+    );
+    expect(find.text('更新'), findsOneWidget);
+    expect(find.text('卸载'), findsOneWidget);
+
+    // Optional collaboration remains implemented but is intentionally absent
+    // from the client surface until the product flow is ready again.
+    expect(find.text('协作插件'), findsNothing);
+    expect(find.text('LicoMesh'), findsNothing);
+    expect(
+      find.byKey(const Key('optional-collaboration-settings')),
+      findsNothing,
+    );
+    expect(tester.takeException(), isNull);
+  });
+}
+
+Future<void> _pumpPanel(WidgetTester tester, {required Locale locale}) async {
+  final controller = ClientController(
+    agentService: _CatalogAgentService(),
+    presentationPreferencesRepository: _PanelPreferencesRepository(),
+  );
+  addTearDown(controller.dispose);
+  await tester.pumpWidget(
+    MaterialApp(
+      locale: locale,
+      supportedLocales: LicoStrings.supportedLocales,
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+      ],
+      theme: buildLicoTheme(
+        platformBrightness: Brightness.dark,
+      ).copyWith(platform: TargetPlatform.macOS),
+      home: Scaffold(body: AdapterPluginPanel(controller: controller)),
+    ),
+  );
+  await tester.pumpAndSettle();
+}
+
+final class _CatalogAgentService extends AgentService {
+  _CatalogAgentService() : super(persistentStdioRpcEnabled: false);
+
+  @override
+  Future<Map<String, dynamic>> runCli(List<String> args) async => const {
+    'ok': true,
+    'schemaVersion': 'lico.adapter-plugin-catalog.v1',
+    'adapters': [
+      {
+        'agentId': 'kimi-code',
+        'label': 'Kimi Code - CLI',
+        'driverId': 'kimi-code',
+        'runtimeProtocol': 'kimi-code-acp-v1-stdio-ndjson',
+        'laneFamily': 'acp',
+        'managementKind': 'bundled-acp',
+        'installationState': 'not-required',
+        'readiness': 'ready',
+        'lifecycleActions': <String>[],
+        'nativeCapabilities': [
+          {
+            'kind': 'cli',
+            'detected': true,
+            'running': true,
+            'pid': 67099,
+            'processName': 'kimi',
+          },
+          {'kind': 'acp', 'detected': true, 'running': false},
+          {
+            'kind': 'web-server',
+            'detected': true,
+            'running': true,
+            'pid': 58627,
+            'processName': 'kimi',
+            'port': 58627,
+          },
+        ],
+        'adapterPlugins': <Map<String, Object>>[],
+      },
+      {
+        'agentId': 'claude-code',
+        'label': 'Claude Code - CLI',
+        'driverId': 'claude-code',
+        'runtimeProtocol': 'claude-code-cli-stream-json',
+        'laneFamily': 'official-native',
+        'managementKind': 'native',
+        'installationState': 'not-required',
+        'readiness': 'unverified',
+        'lifecycleActions': <String>[],
+        'nativeCapabilities': [
+          {
+            'kind': 'cli',
+            'detected': true,
+            'running': true,
+            'pid': 4242,
+            'processName': 'claude',
+          },
+        ],
+        'adapterPlugins': [
+          {
+            'id': 'lico-up-codex',
+            'label': 'LicoUp Codex Plugin',
+            'detail': 'lico-subagent-mcp',
+            'installationState': 'installed',
+            'lifecycleActions': ['uninstall'],
+          },
+        ],
+      },
+      {
+        'agentId': 'antigravity',
+        'label': 'Antigravity - CLI',
+        'driverId': 'antigravity',
+        'runtimeProtocol': 'antigravity-cli-argv-hook-v1',
+        'laneFamily': 'bridge-supervised',
+        'managementKind': 'managed-bridge',
+        'installationState': 'not-installed',
+        'readiness': 'partial',
+        'lifecycleActions': ['install'],
+        'nativeCapabilities': [
+          {
+            'kind': 'desktop',
+            'detected': true,
+            'running': true,
+            'pid': 65773,
+            'processName': 'antigravity',
+          },
+          {'kind': 'cli', 'detected': true, 'running': false},
+        ],
+        'adapterPlugins': [
+          {
+            'id': 'acp-bridge',
+            'label': 'ACP Bridge',
+            'detail': 'antigravity-cli-argv-hook-v1',
+            'installationState': 'not-installed',
+            'lifecycleActions': ['install'],
+          },
+        ],
+      },
+    ],
+  };
+}
+
+final class _PanelPreferencesRepository
+    implements PresentationPreferencesRepository {
+  var _preferences = PresentationPreferences(
+    layoutProfileId: LayoutProfileId.parse('dashboard'),
+    appearancePresetId: 'default-system',
+    localePreference: 'system',
+  );
+
+  @override
+  Future<PresentationPreferencesLoadResult> load() async =>
+      PresentationPreferencesLoadResult(preferences: _preferences);
+
+  @override
+  Future<PresentationPreferences> setAppearancePreset(String id) async =>
+      _preferences = _preferences.copyWith(appearancePresetId: id);
+
+  @override
+  Future<PresentationPreferences> setLayoutProfile(LayoutProfileId id) async =>
+      _preferences = _preferences.copyWith(layoutProfileId: id);
+
+  @override
+  Future<PresentationPreferences> setLocalePreference(
+    String preference,
+  ) async => _preferences = _preferences.copyWith(localePreference: preference);
+}

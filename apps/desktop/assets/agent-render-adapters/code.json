@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 1,
+  "id": "code",
+  "displayName": "VS Code",
+  "match": {
+    "agentIds": ["code", "vscode", "vs-code"],
+    "sourceClients": ["code", "vscode"],
+    "adapterIds": ["code"]
+  },
+  "layout": {
+    "assistant": "document",
+    "assistantMaxWidth": 820,
+    "assistantHorizontalInset": 28,
+    "assistantVerticalPadding": 16,
+    "showAssistantRoleLabel": false,
+    "showUserRoleLabel": false
+  },
+  "userBubble": {
+    "maxWidth": 650,
+    "radius": 20,
+    "paddingX": 18,
+    "paddingY": 12,
+    "tone": "neutral"
+  },
+  "markdown": {
+    "bodyFontSize": 15,
+    "bodyLineHeight": 1.52,
+    "blockSpacing": 14,
+    "heading1FontSize": 20,
+    "heading2FontSize": 17,
+    "heading3FontSize": 16,
+    "headingWeight": 800,
+    "codeFontSize": 13,
+    "codeLineHeight": 1.44,
+    "codeRadius": 10,
+    "codePadding": 14,
+    "showCodeLanguage": true,
+    "quoteRadius": 10,
+    "quotePaddingX": 14,
+    "quotePaddingY": 10,
+    "listMarkerWidth": 24,
+    "orderedListMarkerWidth": 34,
+    "listItemSpacing": 7,
+    "unorderedMarker": "-"
+  },
+  "tones": {
+    "code": "surface",
+    "quote": "subtle"
+  }
+}
