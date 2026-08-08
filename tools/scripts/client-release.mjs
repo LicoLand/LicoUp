@@ -57,7 +57,7 @@ function parseArgs(argv) {
   if (action === "push") assert(longLivedBranches.includes(destination), "release_destination_invalid");
   if (action === "publish") assert(destination === undefined || destination.startsWith("--"), "release_publish_argument_invalid");
   const args = action === "publish" ? [destination, ...rest].filter(Boolean) : rest;
-  const options = { action, destination: action === "push" ? destination : "", version: "", target: "macos-arm64", publish: true };
+  const options = { action, destination: action === "push" ? destination : "", version: "", target: "", publish: true };
   for (let index = 0; index < args.length; index += 1) {
     const flag = args[index];
     if (flag === "--draft") {
@@ -72,9 +72,7 @@ function parseArgs(argv) {
   }
   assert(/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/u.test(options.version), "release_version_invalid");
   assert(/^[a-z0-9-]+$/u.test(options.target), "release_target_invalid");
-  if (action === "push") {
-    assert(!args.includes("--target") && !args.includes("--draft"), "release_push_argument_invalid");
-  }
+  if (action === "push") assert(!args.includes("--draft"), "release_push_argument_invalid");
   return options;
 }
 
@@ -87,9 +85,9 @@ function validateContract() {
   assert(template.schemaVersion === "licoup.client-release-template.v1", "release_template_invalid");
   assert(
     JSON.stringify(template.entryCommands) === JSON.stringify({
-      nightly: "npm run client:release -- push nightly --version <version>",
-      stable: "npm run client:release -- push stable --version <version>",
-      release: "npm run client:release -- push release --version <version>",
+      nightly: "npm run client:release -- push nightly --version <version> --target <target>",
+      stable: "npm run client:release -- push stable --version <version> --target <target>",
+      release: "npm run client:release -- push release --version <version> --target <target>",
       publish: "npm run client:release -- publish --version <version> --target <target>",
     }),
     "release_entry_commands_invalid",
@@ -101,7 +99,10 @@ function validateContract() {
   assert(template.promotion?.mergeMethod === "merge", "release_promotion_method_invalid");
   assert(template.promotion?.rulesetMutation === "forbidden", "release_ruleset_mutation_invalid");
   assert(template.publication?.operatorMonitoringTimeoutMinutes === null, "release_monitor_timeout_invalid");
-  assert(Array.isArray(template.candidatePreflight?.commands), "release_candidate_preflight_missing");
+  assert(typeof template.candidatePreflight?.targets === "object", "release_candidate_preflight_missing");
+  assert(Array.isArray(template.candidatePreflight.targets["macos-arm64"]), "release_macos_preflight_missing");
+  const supportedTargets = Object.keys(template.candidatePreflight.targets);
+  assert(supportedTargets.length > 0, "release_targets_missing");
   assert(
     JSON.stringify(template.requiredPullRequestChecks) === JSON.stringify([
       "Branch flow policy", "Commit identity", "Client required",
@@ -131,24 +132,34 @@ function hasReleaseCommit(ref, version) {
   return subject.ok && subject.stdout === `Release v${version}`;
 }
 
+function releaseTargetAt(ref) {
+  const manifest = git(["show", `${ref}:tools/client-version.json`], { allowFailure: true });
+  if (!manifest.ok) return "";
+  try { return JSON.parse(manifest.stdout).releaseTarget || ""; } catch { return ""; }
+}
+
+function hasTargetedRelease(ref, version, target) {
+  return hasReleaseCommit(ref, version) && releaseTargetAt(ref) === target;
+}
+
 function changedFiles() {
   const output = git(["status", "--porcelain=v1", "-z"]).stdout;
   return output ? output.split("\0").filter(Boolean).map((record) => record.slice(3)) : [];
 }
 
-function candidateBranch(version) {
-  return `release-candidate/v${version}`;
+function candidateBranch(version, target) {
+  return `release-candidate/v${version}-${target}`;
 }
 
-function switchToCandidate(version) {
-  const branch = candidateBranch(version);
+function switchToCandidate(version, target) {
+  const branch = candidateBranch(version, target);
   assert(git(["status", "--porcelain"]).stdout === "", "release_worktree_not_clean");
   run("git", ["fetch", "origin", "nightly", "stable", "release"]);
   git(["fetch", "origin", branch], { allowFailure: true });
   const localExists = git(["show-ref", "--verify", `refs/heads/${branch}`], { allowFailure: true }).ok;
   const remoteExists = git(["show-ref", "--verify", `refs/remotes/origin/${branch}`], { allowFailure: true }).ok;
   if (localExists) {
-    if (!remoteExists && !hasReleaseCommit(branch, version)) {
+    if (!remoteExists && !hasTargetedRelease(branch, version, target)) {
       assert(
         git(["merge-base", "--is-ancestor", branch, "origin/nightly"], { allowFailure: true }).ok,
         "release_candidate_stale_branch_invalid",
@@ -169,8 +180,7 @@ function switchToCandidate(version) {
 
 function createReleaseCommit(options) {
   const manifest = loadJson("tools/client-version.json");
-  run("npm", ["run", "client:version:set", "--", "--version", options.version, "--build-number", String(manifest.buildNumber + 1)]);
-  run("npm", ["run", "client:release:preflight", "--", "--tag", `v${options.version}`]);
+  run("npm", ["run", "client:version:set", "--", "--version", options.version, "--build-number", String(manifest.buildNumber + 1), "--target", options.target]);
   const allowed = new Set(versionFiles);
   const actual = changedFiles().sort();
   assert(actual.length > 0 && actual.every((file) => allowed.has(file)), "release_change_scope_invalid");
@@ -180,13 +190,14 @@ function createReleaseCommit(options) {
 }
 
 function prepareCandidate(options) {
-  const branch = switchToCandidate(options.version);
-  if (!hasReleaseCommit("HEAD", options.version)) {
+  const branch = switchToCandidate(options.version, options.target);
+  if (!hasTargetedRelease("HEAD", options.version, options.target)) {
     assert(git(["rev-parse", "HEAD"]).stdout === git(["rev-parse", "origin/nightly"]).stdout, "release_candidate_base_invalid");
     createReleaseCommit(options);
   }
   assert(git(["status", "--porcelain"]).stdout === "", "release_candidate_not_clean");
   assert(git(["rev-list", "--count", "origin/nightly..HEAD"]).stdout === "1", "release_commit_count_invalid");
+  run("npm", ["run", "client:release:preflight", "--", "--target", options.target, "--tag", `v${options.version}`]);
   run("git", ["push", "-u", "origin", `HEAD:refs/heads/${branch}`]);
   return branch;
 }
@@ -216,7 +227,7 @@ function findPullRequest({ base, head, headSha = "" }) {
 
 async function pushNightly(options, template) {
   run("git", ["fetch", "origin", "nightly"]);
-  if (hasReleaseCommit("origin/nightly", options.version)) {
+  if (hasTargetedRelease("origin/nightly", options.version, options.target)) {
     process.stdout.write(`client_release=already_advanced destination=nightly version=${options.version}\n`);
     return;
   }
@@ -225,7 +236,7 @@ async function pushNightly(options, template) {
   if (!pr) {
     const url = gh([
       "pr", "create", "--repo", repository, "--base", "nightly", "--head", branch,
-      "--title", `Release v${options.version}`, "--body", "Automated release candidate. The exact local target and unified preflight passed before this branch was pushed.",
+      "--title", `Release v${options.version} for ${options.target}`, "--body", `Automated ${options.target} release candidate. Only the selected target's local gates passed before this branch was pushed.`,
     ]).stdout;
     pr = { number: Number(url.split("/").at(-1)), mergedAt: null };
   }
@@ -240,18 +251,18 @@ async function pushPromotion(options, template) {
   const base = options.destination;
   const head = upstream[base];
   run("git", ["fetch", "origin", head, base]);
-  if (hasReleaseCommit(`origin/${base}`, options.version)) {
+  if (hasTargetedRelease(`origin/${base}`, options.version, options.target)) {
     process.stdout.write(`client_release=already_advanced destination=${base} version=${options.version}\n`);
     return;
   }
-  assert(hasReleaseCommit(`origin/${head}`, options.version), "release_promotion_source_version_mismatch");
+  assert(hasTargetedRelease(`origin/${head}`, options.version, options.target), "release_promotion_source_version_mismatch");
   const headSha = git(["rev-parse", `origin/${head}`]).stdout;
   let pr = findPullRequest({ base, head, headSha });
   if (!pr) {
     const url = gh([
       "pr", "create", "--repo", repository, "--base", base, "--head", head,
-      "--title", `Promote v${options.version}: ${head} to ${base}`,
-      "--body", "Automated direct-branch promotion of the previously validated release candidate.",
+      "--title", `Promote v${options.version} (${options.target}): ${head} to ${base}`,
+      "--body", `Automated direct-branch promotion of the previously validated ${options.target} release candidate.`,
     ]).stdout;
     pr = { number: Number(url.split("/").at(-1)), mergedAt: null };
   }
@@ -268,7 +279,7 @@ async function publish(options, template) {
     return;
   }
   run("git", ["fetch", "origin", "release"]);
-  assert(hasReleaseCommit("origin/release", options.version), "release_publication_source_version_mismatch");
+  assert(hasTargetedRelease("origin/release", options.version, options.target), "release_publication_source_version_mismatch");
   const releaseSha = git(["rev-parse", "origin/release"]).stdout;
   const existing = parseArray(gh([
     "run", "list", "--repo", repository, "--workflow", template.publication.workflow,
@@ -303,13 +314,14 @@ async function main() {
   const template = validateContract();
   if (options.selfTest) {
     assert(upstream.stable === "nightly" && upstream.release === "stable", "release_upstream_map_invalid");
-    assert(parseArgs(["push", "nightly", "--version", "1.2.3"]).destination === "nightly", "release_nightly_action_invalid");
-    assert(parseArgs(["push", "stable", "--version", "1.2.3"]).destination === "stable", "release_stable_action_invalid");
-    assert(parseArgs(["push", "release", "--version", "1.2.3"]).destination === "release", "release_release_action_invalid");
-    assert(parseArgs(["publish", "--version", "1.2.3"]).action === "publish", "release_publish_action_invalid");
+    assert(parseArgs(["push", "nightly", "--version", "1.2.3", "--target", "macos-arm64"]).destination === "nightly", "release_nightly_action_invalid");
+    assert(parseArgs(["push", "stable", "--version", "1.2.3", "--target", "macos-arm64"]).destination === "stable", "release_stable_action_invalid");
+    assert(parseArgs(["push", "release", "--version", "1.2.3", "--target", "macos-arm64"]).destination === "release", "release_release_action_invalid");
+    assert(parseArgs(["publish", "--version", "1.2.3", "--target", "macos-arm64"]).action === "publish", "release_publish_action_invalid");
     process.stdout.write("client_release=self_test_passed\n");
     return;
   }
+  assert(Object.hasOwn(template.candidatePreflight.targets, options.target), "release_target_unsupported");
   assertRepository();
   if (options.action === "publish") return publish(options, template);
   if (options.destination === "nightly") return pushNightly(options, template);

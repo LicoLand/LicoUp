@@ -1,9 +1,9 @@
 {
   "schemaVersion": "licoup.client-release-template.v1",
   "entryCommands": {
-    "nightly": "npm run client:release -- push nightly --version <version>",
-    "stable": "npm run client:release -- push stable --version <version>",
-    "release": "npm run client:release -- push release --version <version>",
+    "nightly": "npm run client:release -- push nightly --version <version> --target <target>",
+    "stable": "npm run client:release -- push stable --version <version> --target <target>",
+    "release": "npm run client:release -- push release --version <version> --target <target>",
     "publish": "npm run client:release -- publish --version <version> --target <target>"
   },
   "promotion": {
@@ -24,13 +24,10 @@
   },
   "candidatePreflight": {
     "refPrefix": "release-candidate/",
-    "commands": [
-      { "command": "npm", "args": ["run", "client:gate:source"] },
-      { "command": "npm", "args": ["run", "client:gate:flutter"] },
-      { "command": "npm", "args": ["run", "client:gate:rust"] },
-      { "command": "npm", "args": ["run", "client:gate:android"] },
-      { "command": "npm", "args": ["run", "client:gate:dependencies"] },
-      { "command": "npm", "args": ["run", "client:gate:release-policy"] }
-    ]
+    "targets": {
+      "macos-arm64": ["source", "flutter", "rust", "dependencies", "release-policy"],
+      "linux-glibc-arm64": ["source", "flutter", "rust", "dependencies", "release-policy"],
+      "android-arm64": ["source", "flutter", "rust", "android", "dependencies", "release-policy"]
+    }
   }
 }

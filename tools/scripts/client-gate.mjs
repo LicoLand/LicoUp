@@ -430,7 +430,19 @@ function parsePlanArgs(args) {
 function planGate(args) {
   const revisions = parsePlanArgs(args);
   const paths = changedPaths(revisions);
-  const plan = classifyClientGatePaths(paths);
+  let releaseTarget = null;
+  if (paths.includes("tools/client-version.json")) {
+    const manifest = spawnSync("git", ["show", `${validateRevision(revisions.head, "head")}:tools/client-version.json`], {
+      cwd: repoRoot,
+      encoding: "utf8",
+      shell: false,
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    if (manifest.status === 0) {
+      try { releaseTarget = JSON.parse(manifest.stdout).releaseTarget || null; } catch { fail("client release target manifest is invalid"); }
+    }
+  }
+  const plan = classifyClientGatePaths(paths, { releaseTarget });
   const digest = createHash("sha256")
     .update([...new Set(paths)].sort().join("\0"))
     .digest("hex");
