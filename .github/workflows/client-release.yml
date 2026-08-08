@@ -29,16 +29,16 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  source:
-    name: Source policy
+  preflight:
+    name: Unified release preflight
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: "24"
           cache: npm
+      - uses: dtolnay/rust-toolchain@42520bdb3cb59f71dae6f8557f7056cf3a46c898 # 1.91.0
       - name: Validate release request
         env:
           RELEASE_TAG: ${{ inputs.release_tag }}
@@ -48,46 +48,21 @@ jobs:
             exit 1
           fi
       - run: npm ci
+      - run: npm run client:release:preflight:check
       - name: Run source policy against the previously audited release commit
         env:
           LICO_AUDITOR_GATE_DELEGATED: "1"
         run: npm run client:gate:source
-
-  dependencies:
-    name: Dependency policy
-    runs-on: ubuntu-24.04
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
-        with:
-          node-version: "24"
-          cache: npm
-      - uses: dtolnay/rust-toolchain@42520bdb3cb59f71dae6f8557f7056cf3a46c898 # 1.91.0
-      - run: npm ci
       - name: Install pinned cargo-audit
         run: cargo install cargo-audit --version 0.22.2 --locked
       - run: npm run client:gate:dependencies
-
-  release-policy:
-    name: Release policy contracts
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
-        with:
-          node-version: "24"
-          cache: npm
-      - run: npm ci
       - run: npm run client:gate:release-policy
 
   build-macos:
     name: Build macOS ARM64
     if: ${{ inputs.target == 'macos-arm64' }}
-    needs: [source, dependencies, release-policy]
+    needs: preflight
     runs-on: macos-15
-    timeout-minutes: 90
     env:
       LICO_CLIENT_RELEASE_TARGETS: macos-arm64
     steps:
@@ -164,9 +139,8 @@ jobs:
   build-linux-arm64:
     name: Build Linux glibc ARM64
     if: ${{ inputs.target == 'linux-glibc-arm64' }}
-    needs: [source, dependencies, release-policy]
+    needs: preflight
     runs-on: [self-hosted, linux, ARM64, lico-release]
-    timeout-minutes: 90
     env:
       LICO_CLIENT_RELEASE_TARGETS: linux-glibc-arm64
     steps:
@@ -211,9 +185,8 @@ jobs:
   build-android-arm64:
     name: Build Android ARM64
     if: ${{ inputs.target == 'android-arm64' }}
-    needs: [source, dependencies, release-policy]
+    needs: preflight
     runs-on: [self-hosted, macOS, ARM64, lico-release, android]
-    timeout-minutes: 90
     env:
       JAVA_HOME: /Applications/Android Studio.app/Contents/jbr/Contents/Home
       LICO_CLIENT_RELEASE_TARGETS: android-arm64
@@ -274,9 +247,8 @@ jobs:
   publish-macos:
     name: Append macOS ARM64
     if: ${{ inputs.target == 'macos-arm64' }}
-    needs: [source, dependencies, release-policy, build-macos]
+    needs: [preflight, build-macos]
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
     permissions:
       contents: write
     concurrency:
@@ -299,9 +271,8 @@ jobs:
   publish-linux-arm64:
     name: Append Linux glibc ARM64
     if: ${{ inputs.target == 'linux-glibc-arm64' }}
-    needs: [source, dependencies, release-policy, build-linux-arm64]
+    needs: [preflight, build-linux-arm64]
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
     permissions:
       contents: write
     concurrency:
@@ -324,9 +295,8 @@ jobs:
   publish-android-arm64:
     name: Append Android ARM64
     if: ${{ inputs.target == 'android-arm64' }}
-    needs: [source, dependencies, release-policy, build-android-arm64]
+    needs: [preflight, build-android-arm64]
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
     permissions:
       contents: write
     concurrency:

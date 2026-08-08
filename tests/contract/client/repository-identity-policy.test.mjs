@@ -136,10 +136,14 @@ test("Rulesets cover all branch metadata and protect the default branch without 
   for (const requiredType of [
     "deletion",
     "non_fast_forward",
-    "required_linear_history",
     "pull_request",
     "required_status_checks",
   ]) {
     assert.ok(promotionRuleset.rules.some(({ type }) => type === requiredType));
   }
+  assert.ok(!promotionRuleset.rules.some(({ type }) => type === "required_linear_history"));
+  assert.deepEqual(
+    promotionRuleset.rules.find(({ type }) => type === "pull_request").parameters.allowed_merge_methods,
+    ["merge"],
+  );
 });
