@@ -215,7 +215,6 @@ class _MessagingConversationTabStripState
     for (final group in groups) {
       for (final member in group.members) {
         final memberSessions =
-            controller.conversationSessionsByAgent[member.id] ??
             controller.conversationSessionsByAgent[member.target] ??
             const <AgentConversationSession>[];
         for (final session in memberSessions) {
@@ -262,7 +261,7 @@ class _MessagingConversationTabStripState
                 key: ValueKey<String>('messaging-chrome-tab-$sessionId'),
                 entry: entry,
                 pinned: _pinnedIds.contains(sessionId),
-                selected: entry.owner.id == selectedAgentId,
+                selected: entry.owner.target == selectedAgentId,
                 onTap: () => unawaited(_open(entry)),
                 onDoubleTap: _pinnedIds.contains(sessionId)
                     ? null
@@ -297,7 +296,9 @@ class _MessagingConversationTabStripState
     }
     controller.selectSection(ClientSection.agents);
     widget.onCloseAuxChromePanel?.call();
-    await controller.selectConversationAgent(entry.owner.id);
+    if (controller.selectedConversationAgentId != entry.owner.target) {
+      await controller.selectConversationAgent(entry.owner.target);
+    }
     controller.selectConversationSession(resolvedId);
   }
 
@@ -306,7 +307,6 @@ class _MessagingConversationTabStripState
   /// survives a refresh that re-emitted the session under a fresh id.
   String? _currentSessionId(_MessagingChromeTabEntry entry) {
     final sessions =
-        controller.conversationSessionsByAgent[entry.owner.id] ??
         controller.conversationSessionsByAgent[entry.owner.target] ??
         const <AgentConversationSession>[];
     final wantedId = entry.session.id;

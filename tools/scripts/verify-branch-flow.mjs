@@ -25,6 +25,11 @@ function sameRepository(payload) {
     && repositories.base === repositories.head;
 }
 
+function hasRepositoryIdentity(payload) {
+  const repositories = identity(payload);
+  return repositories.base.length > 0 && repositories.head.length > 0;
+}
+
 export function evaluateBranchFlow({
   eventName = "",
   refName = "",
@@ -45,12 +50,15 @@ export function evaluateBranchFlow({
   const head = headRef || payload.pull_request?.head?.ref || "";
   if (RETIRED.has(base)) return { ok: false, code: "retired-base" };
   if (!LONG_LIVED.has(base)) return { ok: true, code: "base-not-governed" };
-  if (!sameRepository(payload)) return { ok: false, code: "cross-repository-promotion" };
+  if (!hasRepositoryIdentity(payload)) {
+    return { ok: false, code: "repository-identity-missing" };
+  }
   if (base === "nightly") {
     return !LONG_LIVED.has(head) && !RETIRED.has(head) && head.length > 0
-      ? { ok: true, code: "temporary-to-nightly" }
+      ? { ok: true, code: sameRepository(payload) ? "temporary-to-nightly" : "fork-to-nightly" }
       : { ok: false, code: "nightly-source-invalid" };
   }
+  if (!sameRepository(payload)) return { ok: false, code: "cross-repository-promotion" };
   const required = DIRECT_UPSTREAM[base];
   return head === required
     ? { ok: true, code: `${required}-to-${base}` }
@@ -97,8 +105,18 @@ export function verifyProtectedPushTopology({
   ancestor = isAncestor
 } = {}) {
   if (!LONG_LIVED.has(branch)) return { ok: false, code: "protected-branch-invalid" };
-  if (!before || !after || before === ZERO_OID || after === ZERO_OID) {
-    return { ok: false, code: "protected-branch-bootstrap-forbidden" };
+  if (!before || !after || after === ZERO_OID) {
+    return { ok: false, code: "protected-branch-ref-invalid" };
+  }
+  if (before === ZERO_OID) {
+    if (branch === "nightly") {
+      return { ok: false, code: "nightly-bootstrap-forbidden" };
+    }
+    const upstream = DIRECT_UPSTREAM[branch];
+    const tip = branchTip(upstream);
+    return tip && after === tip
+      ? { ok: true, code: `${upstream}-tip-bootstrapped-${branch}` }
+      : { ok: false, code: "promotion-bootstrap-tip-mismatch" };
   }
   const afterParents = commitParents(after);
   if (afterParents.length !== 2 || afterParents[0] !== before) {
@@ -162,12 +180,20 @@ export function runSelfTest() {
   if (missingIdentity.ok) throw new Error("policy fixture failed: missing repository identity");
   const crossRepository = sameRepositoryPayload("nightly", "agent/security-review");
   crossRepository.pull_request.head.repo.full_name = "fork/repository";
-  if (evaluateBranchFlow({
+  if (!evaluateBranchFlow({
     eventName: "pull_request",
     baseRef: "nightly",
     headRef: "agent/security-review",
     payload: crossRepository
-  }).ok) throw new Error("policy fixture failed: cross-repository source");
+  }).ok) throw new Error("policy fixture failed: fork source to nightly");
+  crossRepository.pull_request.base.ref = "stable";
+  crossRepository.pull_request.head.ref = "nightly";
+  if (evaluateBranchFlow({
+    eventName: "pull_request",
+    baseRef: "stable",
+    headRef: "nightly",
+    payload: crossRepository
+  }).ok) throw new Error("policy fixture failed: cross-repository promotion");
   const tips = { nightly: "nightly-tip", stable: "stable-tip", release: "release-tip" };
   const topologyCases = [
     ["temporary merge", true, "nightly", ["old-nightly", "feature-tip"]],
@@ -188,7 +214,21 @@ export function runSelfTest() {
     });
     if (result.ok !== expected) throw new Error(`topology fixture failed: ${label}`);
   }
-  return { fixtures: policyCases.length + topologyCases.length + 2 };
+  for (const [label, expected, branch, after] of [
+    ["stable bootstrap", true, "stable", "nightly-tip"],
+    ["release bootstrap", true, "release", "stable-tip"],
+    ["wrong bootstrap", false, "release", "nightly-tip"],
+    ["nightly bootstrap", false, "nightly", "nightly-tip"]
+  ]) {
+    const result = verifyProtectedPushTopology({
+      branch,
+      before: ZERO_OID,
+      after,
+      branchTip: (name) => tips[name] || ""
+    });
+    if (result.ok !== expected) throw new Error(`topology fixture failed: ${label}`);
+  }
+  return { fixtures: policyCases.length + topologyCases.length + 7 };
 }
 
 function readPayload(file) {

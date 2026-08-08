@@ -8,7 +8,6 @@ import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_runtim
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/apple_notifications.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
-import 'package:licoup/src/platform/client_clipboard_service.dart';
 
 /// Messaging details surface: runtime settings, capability disclosure,
 /// connection status, and session metadata. Rendered as a hover card on
@@ -187,6 +186,7 @@ class MessagingDetailsPanelBody extends StatelessWidget {
                     label: strings.conversationId,
                     value: messagingDetailsConversationId(session),
                     copiedMessage: strings.conversationIdCopied,
+                    onCopy: actions.onCopyText,
                   ),
                 if (session.workingDirectory.trim().isNotEmpty)
                   _MessagingDetailsInfoRow(
@@ -327,14 +327,16 @@ class _MessagingDetailsCopyRow extends StatelessWidget {
     required this.label,
     required this.value,
     required this.copiedMessage,
+    required this.onCopy,
   });
 
   final String label;
   final String value;
   final String copiedMessage;
+  final Future<void> Function(String) onCopy;
 
   Future<void> _copy(BuildContext context) async {
-    await const ClientClipboardService().writeText(value);
+    await onCopy(value.trim());
     if (!context.mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       appleGlassSnackBar(context: context, message: copiedMessage),

@@ -80,9 +80,9 @@ class _MessagingContactListState extends State<MessagingContactList> {
       if (!target.isConversationAgent) {
         continue;
       }
-      final loaded = widget.sessionsByAgent[target.id];
+      final loaded = widget.sessionsByAgent[target.target];
       if (loaded == null || loaded.isEmpty) {
-        prefetch(target.id);
+        prefetch(target.target);
       }
     }
   }
@@ -92,7 +92,7 @@ class _MessagingContactListState extends State<MessagingContactList> {
     if (check == null) {
       return false;
     }
-    return check(target.id) || check(target.target);
+    return check(target.target);
   }
 
   /// Targets that share a canonical product name collapse into one contact,
@@ -126,7 +126,6 @@ class _MessagingContactListState extends State<MessagingContactList> {
       final seenSessionIds = <String>{};
       for (final member in group.members) {
         final memberSessions =
-            widget.sessionsByAgent[member.id] ??
             widget.sessionsByAgent[member.target] ??
             const <AgentConversationSession>[];
         for (final session in memberSessions) {
@@ -144,7 +143,7 @@ class _MessagingContactListState extends State<MessagingContactList> {
           group: group,
           latestSession: latest,
           activity: group.members
-              .map((member) => widget.activityFor(member.id))
+              .map((member) => widget.activityFor(member.target))
               .firstWhere(
                 (value) => value != AgentConversationTabActivity.none,
                 orElse: () => AgentConversationTabActivity.none,
@@ -197,7 +196,7 @@ class _MessagingContactListState extends State<MessagingContactList> {
       ],
     );
     if (selected == 'toggle-pin') {
-      onToggle(entry.group.members.first.id);
+      onToggle(entry.group.members.first.target);
     }
   }
 
@@ -255,19 +254,20 @@ class _MessagingContactListState extends State<MessagingContactList> {
                       itemCount: entries.length,
                       itemBuilder: (context, index) {
                         final entry = entries[index];
+                        final representative = entry.group.members.firstWhere(
+                          (member) => member.target == widget.selectedAgentId,
+                          orElse: () => entry.group.members.first,
+                        );
                         return _MessagingContactRow(
                           key: ValueKey<String>(
-                            'messaging-contact-${entry.group.members.first.id}',
+                            'messaging-contact-${representative.target}',
                           ),
                           entry: entry,
                           selected: entry.group.members.any(
-                            (member) =>
-                                member.id == widget.selectedAgentId ||
-                                member.target == widget.selectedAgentId,
+                            (member) => member.target == widget.selectedAgentId,
                           ),
-                          onTap: () => widget.onSelectAgent(
-                            entry.group.members.first.id,
-                          ),
+                          onTap: () =>
+                              widget.onSelectAgent(representative.target),
                           onSecondaryTapDown: widget.onTogglePinned == null
                               ? null
                               : (details) => _showPinMenu(

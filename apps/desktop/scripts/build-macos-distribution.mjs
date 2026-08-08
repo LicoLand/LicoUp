@@ -230,6 +230,24 @@ function main() {
     "macos_distribution_archive_failed");
   const digest = sha256(archivePath);
   writeFileSync(`${archivePath}.sha256`, `${digest}  ${path.basename(archivePath)}\n`, "utf8");
+  const updateArchivePath = path.join(
+    distributionRoot,
+    `LicoUp-macos-${architecture}-update.tar.gz`,
+  );
+  rmSync(updateArchivePath, { force: true });
+  run("/usr/bin/tar", [
+    "-czf",
+    updateArchivePath,
+    "-C",
+    result.runnable.root,
+    "LicoUp.app",
+  ], "macos_distribution_update_archive_failed");
+  const updateDigest = sha256(updateArchivePath);
+  writeFileSync(
+    `${updateArchivePath}.sha256`,
+    `${updateDigest}  ${path.basename(updateArchivePath)}\n`,
+    "utf8",
+  );
   writeFileSync(
     path.join(distributionRoot, "manifest.json"),
     `${JSON.stringify({

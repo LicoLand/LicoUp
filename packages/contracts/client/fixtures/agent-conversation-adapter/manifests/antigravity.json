@@ -64,8 +64,8 @@
       "method": "official supervised --print turn"
     },
     "stream": {
-      "status": "unsupported",
-      "method": "print mode exposes final stdout only after process exit"
+      "status": "supported",
+      "method": "PTY print mode emits progressive text chunks"
     },
     "cancel": {
       "status": "supported",
@@ -98,7 +98,9 @@
   },
   "events": {
     "framing": "text",
-    "realtimeKinds": [],
+    "realtimeKinds": [
+      "agent.message.chunk"
+    ],
     "terminalKinds": [
       "agent.message.completed",
       "dispatch.turn.completed",
@@ -192,7 +194,7 @@
     "productUiRequired": false,
     "releaseP10Required": false,
     "liveLocalForwardingRequired": true,
-    "realtimeOutputRequired": false,
+    "realtimeOutputRequired": true,
     "sameNativeSessionRequired": true,
     "canonicalReadinessRequired": true,
     "nativeToArcRequired": false,

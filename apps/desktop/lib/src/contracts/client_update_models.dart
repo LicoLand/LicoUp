@@ -9,6 +9,7 @@ enum ClientUpdatePhase {
   verifying,
   verified,
   applyPlanned,
+  applied,
   failed,
 }
 
@@ -76,6 +77,7 @@ final class ClientUpdateStatus {
         'verifying' => ClientUpdatePhase.verifying,
         'verified' => ClientUpdatePhase.verified,
         'applyPlanned' => ClientUpdatePhase.applyPlanned,
+        'applied' => ClientUpdatePhase.applied,
         'failed' => ClientUpdatePhase.failed,
         _ => ClientUpdatePhase.idle,
       },
@@ -106,7 +108,10 @@ final class ClientUpdateStatus {
           (receipt['targetId'] as String?)?.trim() ??
           '',
       stagedBytes: (json['stagedBytes'] as num?)?.toInt() ?? 0,
-      totalBytes: (json['totalBytes'] as num?)?.toInt() ?? 0,
+      totalBytes:
+          (json['totalBytes'] as num?)?.toInt() ??
+          ((json['artifact'] as Map?)?['size'] as num?)?.toInt() ??
+          0,
       errorCode: (json['errorCode'] as String?)?.trim() ?? '',
       productionReady: json['productionReady'] == true,
       updateAvailable: json['updateAvailable'] == true,

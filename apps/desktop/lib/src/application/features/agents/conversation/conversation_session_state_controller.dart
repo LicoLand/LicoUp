@@ -169,6 +169,7 @@ mixin AgentConversationSessionStateController on AgentWorkspaceCoordinator {
     }
   }
 
+  @override
   Future<void> hydrateConversationProjectionCache() async {
     Map<String, List<AgentConversationSession>> restored;
     try {

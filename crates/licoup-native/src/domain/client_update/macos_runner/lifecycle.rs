@@ -11,7 +11,7 @@ use super::{
     filesystem::{
         checked_app_directory, copy_tree, remove_generated_directory, validate_tree_without_links,
     },
-    platform::{quit_running_client, register_application},
+    platform::{launch_application, quit_running_client, register_application},
 };
 
 pub(in crate::domain::client_update) fn apply_macos_app_bundle(
@@ -87,6 +87,7 @@ fn apply_with_install_root(
     copy_tree(&staged_app, &target_app)?;
     if !skip_platform_actions {
         register_application(&target_app);
+        launch_application(&target_app)?;
     }
     remove_generated_directory(&extraction_root)?;
     Ok(json!({

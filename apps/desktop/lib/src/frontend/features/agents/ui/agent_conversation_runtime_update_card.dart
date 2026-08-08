@@ -26,7 +26,8 @@ class AgentRuntimeUpdateCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.licoColors;
     final strings = LicoStrings.of(context);
-    final terminal = message.text == 'completed' || message.text == 'interrupted';
+    final terminal =
+        message.text == 'completed' || message.text == 'interrupted';
     final IconData leadingIcon;
     final Color leadingColor;
     if (message.text == 'completed') {
@@ -42,8 +43,8 @@ class AgentRuntimeUpdateCard extends StatelessWidget {
     final title = message.text == 'completed'
         ? strings.runtimeUpdateCompleted
         : message.text == 'interrupted'
-            ? strings.runtimeUpdateInterrupted
-            : strings.runtimeUpdateTitle;
+        ? strings.runtimeUpdateInterrupted
+        : strings.runtimeUpdateTitle;
     final subtitle = message.cardSubtitle;
 
     return Align(
@@ -53,7 +54,9 @@ class AgentRuntimeUpdateCard extends StatelessWidget {
         child: DecoratedBox(
           decoration: BoxDecoration(
             color: Colors.white.withAlpha(colors.isDark ? 14 : 18),
-            borderRadius: BorderRadius.circular(AppleControlMetrics.menuCornerRadius),
+            borderRadius: BorderRadius.circular(
+              AppleControlMetrics.menuCornerRadius,
+            ),
             border: Border.all(
               color: Colors.white.withAlpha(colors.isDark ? 42 : 64),
               width: AppleControlMetrics.hairline,

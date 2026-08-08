@@ -41,16 +41,53 @@ final class ClientUpdateController extends ChangeNotifier {
   String _publicKeysPath = '';
   String _channel = 'stable';
   String _revocationPath = '';
+  String _artifactUrl = '';
   String _artifactReceiptId = '';
   bool _artifactDownloaded = false;
   bool _artifactVerified = false;
   bool _busy = false;
+  bool _autoDownloadOverWifi = true;
 
   ClientUpdateStatus get status => _status;
   String get manifestPath => _manifestPath;
   String get publicKeysPath => _publicKeysPath;
   String get artifactReceiptId => _artifactReceiptId;
   bool get busy => _busy;
+  bool get autoDownloadOverWifi => _autoDownloadOverWifi;
+
+  Future<void> loadPreferences() async {
+    _autoDownloadOverWifi = await _gateway.autoDownloadOverWifiEnabled();
+    notifyListeners();
+  }
+
+  Future<void> setAutoDownloadOverWifi(bool enabled) async {
+    await _gateway.setAutoDownloadOverWifiEnabled(enabled);
+    _autoDownloadOverWifi = enabled;
+    notifyListeners();
+  }
+
+  Future<void> prepareInBackground() async {
+    try {
+      await loadPreferences();
+      await check();
+      if (!_status.updateAvailable || !_autoDownloadOverWifi) return;
+      if (!await _gateway.isWifiConnected()) {
+        _report(
+          '发现更新；连接 Wi-Fi 后将自动下载。',
+          'Update available; download will start when Wi-Fi is connected.',
+        );
+        return;
+      }
+      await download();
+      if (_status.phase == ClientUpdatePhase.downloaded) {
+        await verify();
+      }
+    } catch (_) {
+      // Startup update preparation is best-effort. Interactive checks still
+      // report failures, while an unavailable platform service must not block
+      // the rest of client initialization.
+    }
+  }
 
   Future<void> refresh({String channel = 'stable'}) async {
     if (!_begin()) return;
@@ -78,23 +115,9 @@ final class ClientUpdateController extends ChangeNotifier {
     }
   }
 
-  Future<void> check({
-    required String manifestPath,
-    required String publicKeysPath,
-    String channel = 'stable',
-    String revocationPath = '',
-  }) async {
+  Future<void> check({String channel = 'stable'}) async {
     if (_busy) return;
     _clearArtifactBinding();
-    if (manifestPath.trim().isEmpty || publicKeysPath.trim().isEmpty) {
-      _report(
-        '需要已签名的更新清单与公钥文件。',
-        'A signed update manifest and public keys file are required.',
-        errorCode: 'client_update_check_invalid',
-      );
-      notifyListeners();
-      return;
-    }
     _begin();
     _status = _status.copyWith(
       phase: ClientUpdatePhase.checking,
@@ -103,13 +126,11 @@ final class ClientUpdateController extends ChangeNotifier {
     _report('正在检查已签名的客户端更新。', 'Checking for a signed client update.');
     notifyListeners();
     try {
-      final checked = await _gateway.check(
+      final remote = await _gateway.check(
         agentService: _agentService,
-        manifestPath: manifestPath,
-        publicKeysPath: publicKeysPath,
         channel: channel,
-        revocationPath: revocationPath,
       );
+      final checked = remote.status;
       if (checked.updateAvailable &&
           (checked.artifactReceiptId.isEmpty ||
               checked.artifactSha256.isEmpty ||
@@ -118,10 +139,11 @@ final class ClientUpdateController extends ChangeNotifier {
         throw StateError('client_update_check_missing_artifact_receipt');
       }
       _status = checked;
-      _manifestPath = manifestPath.trim();
-      _publicKeysPath = publicKeysPath.trim();
+      _manifestPath = remote.manifestPath;
+      _publicKeysPath = remote.publicKeysPath;
+      _artifactUrl = remote.artifactUrl;
       _channel = channel.trim().isEmpty ? 'stable' : channel.trim();
-      _revocationPath = revocationPath.trim();
+      _revocationPath = '';
       _artifactReceiptId = checked.artifactReceiptId;
       _report(
         _status.updateAvailable
@@ -143,12 +165,14 @@ final class ClientUpdateController extends ChangeNotifier {
     }
   }
 
-  Future<void> download({required String sourcePath}) async {
+  Future<void> download() async {
     if (_busy) return;
-    if (!_hasCheckedArtifact || sourcePath.trim().isEmpty) {
+    if (!_hasCheckedArtifact ||
+        _artifactUrl.isEmpty ||
+        _status.totalBytes <= 0) {
       _report(
-        '请先完成更新检查并选择本地更新包。',
-        'Check an update and select its local artifact first.',
+        '请先完成在线更新检查。',
+        'Check for an online update first.',
         errorCode: 'client_update_download_invalid',
       );
       notifyListeners();
@@ -162,7 +186,8 @@ final class ClientUpdateController extends ChangeNotifier {
         agentService: _agentService,
         manifestPath: _manifestPath,
         publicKeysPath: _publicKeysPath,
-        sourcePath: sourcePath,
+        artifactUrl: _artifactUrl,
+        expectedBytes: _status.totalBytes,
         channel: _channel,
         revocationPath: _revocationPath,
       );
@@ -227,7 +252,7 @@ final class ClientUpdateController extends ChangeNotifier {
     }
   }
 
-  Future<void> planApply() async {
+  Future<void> apply() async {
     if (_busy) return;
     if (!_artifactVerified) {
       _report(
@@ -240,18 +265,18 @@ final class ClientUpdateController extends ChangeNotifier {
     }
     _begin();
     try {
-      final planned = await _gateway.applyDryRun(
+      final applied = await _gateway.apply(
         agentService: _agentService,
         manifestPath: _manifestPath,
         publicKeysPath: _publicKeysPath,
         channel: _channel,
         revocationPath: _revocationPath,
       );
-      _requireMatchingReceipt(planned, 'apply');
-      _status = planned;
+      _requireMatchingReceipt(applied, 'apply');
+      _status = applied;
       _report(
-        '已生成更新安装计划（未实际执行）。',
-        'Update install plan prepared (not executed).',
+        '更新已安装，客户端正在重新启动。',
+        'Update installed; the client is restarting.',
       );
     } catch (_) {
       _fail('client_update_apply_failed');
@@ -281,6 +306,7 @@ final class ClientUpdateController extends ChangeNotifier {
 
   void _clearArtifactBinding() {
     _artifactReceiptId = '';
+    _artifactUrl = '';
     _artifactDownloaded = false;
     _artifactVerified = false;
   }

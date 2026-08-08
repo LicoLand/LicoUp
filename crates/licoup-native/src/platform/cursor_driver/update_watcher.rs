@@ -451,8 +451,9 @@ mod tests {
         ProcessLine {
             pid,
             ppid,
-            command: "tar --strip-components=1 -xzf - -C /fixture/location/versions/.2026.08.04-aaa8809"
-                .to_string(),
+            command:
+                "tar --strip-components=1 -xzf - -C /fixture/location/versions/.2026.08.04-aaa8809"
+                    .to_string(),
         }
     }
 
@@ -665,7 +666,9 @@ mod tests {
 
     #[test]
     fn install_dir_resolution_prefers_override() {
-        let override_value = Some(std::ffi::OsString::from("/fixture/location/fake-cursor-agent"));
+        let override_value = Some(std::ffi::OsString::from(
+            "/fixture/location/fake-cursor-agent",
+        ));
         let home = Some(std::ffi::OsString::from("/path/user"));
         assert_eq!(
             resolve_install_dir(override_value.clone(), home.clone()),
