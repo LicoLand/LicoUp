@@ -52,8 +52,6 @@ jobs:
         env:
           LICO_AUDITOR_GATE_DELEGATED: "1"
         run: npm run client:gate:source
-      - name: Verify reproducible local-agent release UI contracts
-        run: npm run client:verify:agent-conversations:release-ui
 
   dependencies:
     name: Dependency policy
@@ -133,6 +131,8 @@ jobs:
           echo "LICO_MACOS_LOCAL_SIGNING_IDENTITY=$identity" >> "$GITHUB_ENV"
       - name: Build, sign and install the local-integrity app
         run: npm run client:install:macos
+      - name: Verify reproducible local-agent release UI contracts
+        run: npm run client:verify:agent-conversations:release-ui
       - name: Archive the exact verified macOS app
         run: npm run client:archive:macos-github-release
       - name: Emit consumer verification metadata
