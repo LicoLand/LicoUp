@@ -79,11 +79,15 @@ contact details is false identity information and a provenance violation; the
 local hooks and remote Rulesets reject it. The developer must review and accept
 the change personally before committing it.
 
-Every change starts on a temporary upstream branch. Use `changes/<topic>` for
-ordinary work and `release-candidate/v<version>-<target>` for a release candidate. The
-all-branch metadata Ruleset applies while either branch is created, so its
-first commit cannot evade identity enforcement. Merge temporary branches only
-into `nightly`; never write a change directly to a long-lived branch.
+Every change starts on a temporary upstream branch. Name an ordinary branch
+with an action prefix that explains its purpose: `feature/<topic>`,
+`fix/<topic>`, `docs/<topic>`, `refactor/<topic>`, `test/<topic>`, or
+`chore/<topic>`. Release candidates use
+`release-candidate/v<version>-<target>`. The all-branch metadata Ruleset applies
+while any temporary branch is created, so its first commit cannot evade
+identity enforcement. Merge a temporary branch only into `nightly` through a
+pull request that creates a merge commit. Do not rebase or squash it into
+`nightly`, and never write a change directly to a long-lived branch.
 
 ## Release preflight
 
@@ -102,7 +106,8 @@ The first command creates `release-candidate/v<version>-<target>` before changin
 file. On that temporary branch it records one release target, changes the version
 once, runs only the common and selected-platform gates required by the pull request, and creates exactly one release
 commit. Only after the temporary branch passes every declared required
-LicoUp pull-request check does it merge into `nightly`. The next two commands independently
+LicoUp pull-request check does it create a merge commit in `nightly`; release
+candidates are never rebased or squashed into `nightly`. The next two commands independently
 promote the same target through `nightly -> stable` and `stable -> release`; a
 target mismatch fails closed. The last command only
 performs artifact installation, live release acceptance, archiving and publishing,
