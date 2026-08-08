@@ -5,13 +5,12 @@ import { spawnSync } from "node:child_process";
 
 const maximumOutputBytes = 16 * 1024 * 1024;
 
-function run(command, args, timeout) {
+function run(command, args) {
   const result = spawnSync(command, args, {
     cwd: process.cwd(),
     env: process.env,
     stdio: "inherit",
     maxBuffer: maximumOutputBytes,
-    timeout,
   });
   if (result.status !== 0) {
     throw new Error("macos_install_command_failed");
@@ -26,11 +25,10 @@ function main() {
     process.env.LICO_MACOS_LOCAL_SIGNING_IDENTITY || "",
   ).trim();
   if (explicitIdentity) {
-    run("npm", ["run", "client:build:macos"], 12 * 60_000);
+    run("npm", ["run", "client:build:macos"]);
     run(
       process.execPath,
       ["tools/scripts/client-macos-local-identity-install.mjs"],
-      12 * 60_000,
     );
     return;
   }
@@ -44,7 +42,6 @@ function main() {
       "release",
       "--install",
     ],
-    12 * 60_000,
   );
 }
 
