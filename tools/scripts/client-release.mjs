@@ -100,14 +100,11 @@ function validateContract() {
   return template;
 }
 
-function versionAt(ref) {
-  const result = git(["show", `${ref}:tools/client-version.json`], { allowFailure: true });
-  if (!result.ok) return "";
-  try {
-    return JSON.parse(result.stdout).productVersion || "";
-  } catch {
-    fail("release_remote_version_invalid");
-  }
+function hasReleaseCommit(ref, version) {
+  const subject = git([
+    "log", "-1", "--format=%s", ref, "--", "tools/client-version.json",
+  ], { allowFailure: true });
+  return subject.ok && subject.stdout === `Release v${version}`;
 }
 
 function assertCleanNightly() {
@@ -123,7 +120,6 @@ function changedFiles() {
 
 function createReleaseCommit(options) {
   const manifest = loadJson("tools/client-version.json");
-  assert(manifest.productVersion !== options.version, "release_version_not_advanced");
   run("npm", ["run", "client:version:set", "--", "--version", options.version, "--build-number", String(manifest.buildNumber + 1)]);
   run("npm", ["run", "client:release:preflight", "--", "--target", options.target, "--tag", `v${options.version}`, "--allow-side-effects"]);
   const actual = changedFiles().sort();
@@ -139,7 +135,7 @@ function ensureReleaseCommit(options) {
   assertCleanNightly();
   const local = git(["rev-parse", "HEAD"]).stdout;
   const upstream = git(["rev-parse", "origin/nightly"]).stdout;
-  if (versionAt("origin/nightly") === options.version) return false;
+  if (hasReleaseCommit("origin/nightly", options.version)) return false;
   if (local === upstream) {
     createReleaseCommit(options);
     return true;
@@ -210,8 +206,8 @@ async function nightlyPullRequest(options, login) {
 
 async function promotionPullRequest({ base, head, version }) {
   run("git", ["fetch", "origin", head, base]);
-  if (versionAt(`origin/${base}`) === version) return;
-  assert(versionAt(`origin/${head}`) === version, "release_promotion_source_version_mismatch");
+  if (hasReleaseCommit(`origin/${base}`, version)) return;
+  assert(hasReleaseCommit(`origin/${head}`, version), "release_promotion_source_version_mismatch");
   const headSha = git(["rev-parse", `origin/${head}`]).stdout;
   const prs = parseArray(gh([
     "pr", "list", "--repo", repository, "--base", base, "--head", head,
