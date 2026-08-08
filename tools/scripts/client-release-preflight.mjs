@@ -23,14 +23,12 @@ function assert(condition, code) {
 }
 
 function parseArgs(argv) {
-  const options = { mode: "check", target: "macos-arm64", tag: "", allowSideEffects: false };
+  const options = { mode: "check", tag: "" };
   for (let index = 0; index < argv.length; index += 1) {
     const value = argv[index];
     if (value === "check" || value === "run") {
       options.mode = value;
-    } else if (value === "--allow-side-effects") {
-      options.allowSideEffects = true;
-    } else if (value === "--target" || value === "--tag") {
+    } else if (value === "--tag") {
       assert(index + 1 < argv.length, "release_preflight_argument_missing");
       options[value.slice(2)] = argv[index + 1];
       index += 1;
@@ -62,7 +60,7 @@ function validateTemplate() {
   assert(template.promotion?.mergeMethod === "merge", "release_promotion_merge_method_invalid");
   assert(template.promotion?.rulesetMutation === "forbidden", "release_ruleset_mutation_policy_invalid");
   assert(template.publication?.ref === "release", "release_publication_ref_invalid");
-  assert(template.localPreflight?.refPrefix === "release-candidate/", "release_preflight_ref_prefix_invalid");
+  assert(template.candidatePreflight?.refPrefix === "release-candidate/", "release_preflight_ref_prefix_invalid");
   assert(template.publication?.jobTimeoutPolicy === "github-default", "release_job_timeout_policy_invalid");
   assert(
     template.publication?.operatorMonitoringTimeoutMinutes === null,
@@ -87,17 +85,13 @@ function validateTemplate() {
     "release_promotion_ruleset_merge_method_invalid",
   );
 
-  for (const [targetId, target] of Object.entries(template.localPreflight?.targets || {})) {
-    assert(/^[a-z0-9-]+$/u.test(targetId), "release_target_id_invalid");
-    assert(typeof target.hostPlatform === "string" && target.hostPlatform.length > 0, "release_target_platform_invalid");
-    assert(Array.isArray(target.commands) && target.commands.length > 0, "release_target_commands_missing");
-    for (const step of target.commands) {
-      assert(typeof step.command === "string" && step.command.length > 0, "release_command_invalid");
-      assert(Array.isArray(step.args) && step.args.every((arg) => typeof arg === "string"), "release_command_args_invalid");
-      if (step.cwd) {
-        assert(!path.isAbsolute(step.cwd) && !step.cwd.includes(".."), "release_command_cwd_invalid");
-      }
-      if (step.stdoutFile) assert(!path.isAbsolute(step.stdoutFile) && !step.stdoutFile.includes(".."), "release_stdout_path_invalid");
+  const commands = template.candidatePreflight?.commands;
+  assert(Array.isArray(commands) && commands.length > 0, "release_candidate_commands_missing");
+  for (const step of commands) {
+    assert(typeof step.command === "string" && step.command.length > 0, "release_command_invalid");
+    assert(Array.isArray(step.args) && step.args.every((arg) => typeof arg === "string"), "release_command_args_invalid");
+    if (step.cwd) {
+      assert(!path.isAbsolute(step.cwd) && !step.cwd.includes(".."), "release_command_cwd_invalid");
     }
   }
   return { template, version };
@@ -125,17 +119,13 @@ function main() {
     process.stdout.write("release_preflight=valid\n");
     return;
   }
-  assert(options.allowSideEffects, "release_preflight_side_effects_not_allowed");
   assert(options.tag === `v${version.productVersion}`, "release_preflight_tag_mismatch");
   assert(
-    currentBranch().startsWith(template.localPreflight.refPrefix),
+    currentBranch().startsWith(template.candidatePreflight.refPrefix),
     "release_preflight_branch_invalid",
   );
-  const target = template.localPreflight.targets[options.target];
-  assert(target, "release_preflight_target_unsupported");
-  assert(process.platform === target.hostPlatform, "release_preflight_platform_mismatch");
-  for (const step of target.commands) runStep(step);
-  process.stdout.write(`release_preflight=passed target=${options.target} tag=${options.tag}\n`);
+  for (const step of template.candidatePreflight.commands) runStep(step);
+  process.stdout.write(`release_preflight=passed tag=${options.tag}\n`);
 }
 
 try {
