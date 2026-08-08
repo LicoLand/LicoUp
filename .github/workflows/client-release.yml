@@ -118,6 +118,7 @@ jobs:
             -out "$RUNNER_TEMP/lico-local-integrity.p12" \
             -passout pass:github-artifact
           security create-keychain -p github-artifact "$RUNNER_TEMP/lico-local-integrity.keychain-db"
+          security set-keychain-settings -lut 7200 "$RUNNER_TEMP/lico-local-integrity.keychain-db"
           security unlock-keychain -p github-artifact "$RUNNER_TEMP/lico-local-integrity.keychain-db"
           security list-keychains -d user -s "$RUNNER_TEMP/lico-local-integrity.keychain-db"
           security import "$RUNNER_TEMP/lico-local-integrity.p12" \
@@ -132,6 +133,7 @@ jobs:
             exit 1
           fi
           echo "LICO_MACOS_LOCAL_SIGNING_IDENTITY=$identity" >> "$GITHUB_ENV"
+          echo "LICO_MACOS_LOCAL_SIGNING_KEYCHAIN=$RUNNER_TEMP/lico-local-integrity.keychain-db" >> "$GITHUB_ENV"
       - name: Build, sign and install the local-integrity app
         run: npm run client:install:macos
       - name: Verify reproducible local-agent release UI contracts
