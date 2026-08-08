@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LicoUp README Preview</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/github-markdown-css@5/github-markdown-light.min.css">
+<style>
+  body { background: #f6f8fa; margin: 0; }
+  .toolbar {
+    position: sticky; top: 0; z-index: 10;
+    background: #ffffff; border-bottom: 1px solid #d0d7de;
+    padding: 8px 16px; font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    display: flex; gap: 8px; align-items: center;
+  }
+  .toolbar button {
+    border: 1px solid #d0d7de; background: #f6f8fa; border-radius: 6px;
+    padding: 3px 12px; cursor: pointer; font-size: 13px;
+  }
+  .toolbar button.active { background: #0969da; border-color: #0969da; color: #fff; }
+  .markdown-body {
+    box-sizing: border-box; max-width: 980px; margin: 24px auto;
+    padding: 45px; background: #fff;
+    border: 1px solid #d0d7de; border-radius: 8px;
+  }
+  @media (max-width: 767px) { .markdown-body { padding: 15px; margin: 0; border: 0; } }
+</style>
+</head>
+<body>
+<div class="toolbar">
+  <strong>README preview</strong>
+  <button id="btn-en" class="active" onclick="load('README.md', this)">English</button>
+  <button id="btn-zh" onclick="load('README.zh-CN.md', this)">简体中文</button>
+  <span style="color:#57606a;font-size:12px">approximation of GitHub rendering — alerts render as plain quotes here</span>
+</div>
+<article id="content" class="markdown-body">Loading…</article>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<script>
+  mermaid.initialize({ startOnLoad: false, theme: 'default' });
+  async function load(file, btn) {
+    document.querySelectorAll('.toolbar button').forEach(b => b.classList.remove('active'));
+    if (btn) btn.classList.add('active');
+    const res = await fetch(file);
+    const md = await res.text();
+    const article = document.getElementById('content');
+    article.innerHTML = marked.parse(md);
+    article.querySelectorAll('pre code.language-mermaid').forEach(el => {
+      const div = document.createElement('div');
+      div.className = 'mermaid';
+      div.textContent = el.textContent;
+      el.closest('pre').replaceWith(div);
+    });
+    await mermaid.run({ querySelector: '.mermaid' });
+    window.scrollTo(0, 0);
+  }
+  load('README.md', document.getElementById('btn-en'));
+</script>
+</body>
+</html>

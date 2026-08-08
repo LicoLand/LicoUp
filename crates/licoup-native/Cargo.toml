@@ -1,0 +1,111 @@
+[package]
+name = "licoup-native"
+version = "0.0.1-alpha"
+edition = "2024"
+license.workspace = true
+publish = false
+
+[features]
+default = []
+# Explicit non-production topology support. Release profiles are rejected in `lib.rs`.
+secure-mesh-acceptance-mock-kt = []
+
+[lib]
+crate-type = ["rlib", "cdylib", "staticlib"]
+
+[dependencies]
+lico-catalog-convergence = { path = "../lico-catalog-convergence" }
+anyhow = "1.0"
+base64 = "0.22"
+chacha20poly1305 = { version = "0.10", features = ["std"] }
+command-group = "5.0.1"
+directories = "6.0"
+hkdf = "0.12"
+hmac = "0.12"
+jni = "0.21"
+mime_guess = "2.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+semver = "1.0"
+sha2 = "0.10"
+subtle = "2.6"
+fs2 = "0.4"
+notify = "6.1"
+interprocess = "2.4"
+icu_segmenter = { version = "2", features = ["compiled_data", "lstm"] }
+libcrux-ml-kem = { version = "=0.0.10", default-features = false, features = ["alloc", "incremental", "mlkem1024"] }
+libcrux-sha3 = "=0.0.10"
+libcrux-traits = "=0.0.8"
+libc = "0.2"
+trash = "5.2"
+openmls = { git = "https://github.com/openmls/openmls.git", rev = "34222ef632c87df58baaa7614c8a72ac235c5f07", features = ["openmls_rust_crypto"] }
+openmls_basic_credential = { git = "https://github.com/openmls/openmls.git", rev = "34222ef632c87df58baaa7614c8a72ac235c5f07" }
+openmls_memory_storage = { git = "https://github.com/openmls/openmls.git", rev = "34222ef632c87df58baaa7614c8a72ac235c5f07", features = ["persistence"] }
+openmls_rust_crypto = { git = "https://github.com/openmls/openmls.git", rev = "34222ef632c87df58baaa7614c8a72ac235c5f07" }
+openmls_traits = { git = "https://github.com/openmls/openmls.git", rev = "34222ef632c87df58baaa7614c8a72ac235c5f07" }
+rusqlite = { version = "0.32", features = ["bundled"] }
+log = "0.4"
+env_logger = "0.11"
+time = { version = "0.3", features = ["formatting", "parsing"] }
+tokio = { version = "1.48", features = ["rt-multi-thread", "sync", "time"] }
+ureq = { version = "2.10", features = ["json"] }
+url = "2.5"
+uuid = { version = "1.11", features = ["v4", "serde"] }
+toml = "0.8"
+ed25519-dalek = { version = "2", features = ["rand_core"] }
+rand = "0.8"
+regex = "1.11"
+x25519-dalek = { version = "2.0", features = ["static_secrets", "zeroize"] }
+zeroize = "1.8"
+tar = "0.4"
+flate2 = "1.0"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+block2 = "0.6.2"
+core-foundation = "0.10.1"
+core-foundation-sys = "0.8.7"
+objc2 = "0.6.4"
+objc2-foundation = { version = "0.3.2", features = ["NSString"] }
+objc2-local-authentication = "0.3.2"
+security-framework = { version = "3.7.0", features = ["OSX_10_15"] }
+security-framework-sys = { version = "2.17.0", features = ["OSX_10_15"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+dbus-secret-service = { version = "4.1.0", features = ["crypto-rust"] }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = [
+  "Win32_Foundation",
+  "Win32_System_Threading",
+] }
+
+[target.'cfg(unix)'.dependencies]
+nix = { version = "0.27", default-features = false, features = ["fs", "user", "signal", "socket"] }
+
+[dev-dependencies]
+trybuild = { path = "../trybuild" }
+
+[[bin]]
+name = "licoup-cli"
+path = "src/bin/licoup.rs"
+
+[[bin]]
+name = "lico-subagent-mcp"
+path = "src/bin/lico-subagent-mcp.rs"
+
+[[bin]]
+name = "lico-conversation-mcp"
+path = "src/bin/lico-conversation-mcp.rs"
+
+[[bin]]
+name = "lico-llm-gateway"
+path = "src/bin/lico-llm-gateway.rs"
+
+[[bin]]
+name = "lico-agent"
+path = "src/bin/lico-agent.rs"
+
+[[bin]]
+name = "lico-secure-mesh-kt-mock"
+path = "src/bin/lico-secure-mesh-kt-mock.rs"
+required-features = ["secure-mesh-acceptance-mock-kt"]

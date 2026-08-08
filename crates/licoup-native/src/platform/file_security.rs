@@ -1,0 +1,26 @@
+mod append_lock;
+mod atomic_replace;
+mod hardening;
+mod marker;
+mod policy;
+mod sync;
+#[cfg(unix)]
+mod unix_hardening;
+mod validation;
+#[cfg(windows)]
+mod windows_acl;
+
+pub use append_lock::{append_private_line, open_private_lock_file};
+pub use atomic_replace::{atomic_write_private_text, atomic_write_private_text_bounded};
+pub use hardening::{ensure_private_dir, harden_private_path, harden_private_tree};
+pub use marker::{
+    create_private_state_marker, private_state_marker_exists, read_private_state_marker,
+    read_private_text_bounded, remove_private_state_marker,
+};
+pub(crate) use validation::{
+    validate_export_destination, validate_no_symlink_ancestors, validate_path_owner,
+    validate_private_path_ancestors,
+};
+
+#[cfg(test)]
+mod tests;

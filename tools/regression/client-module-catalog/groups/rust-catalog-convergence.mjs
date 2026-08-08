@@ -1,0 +1,64 @@
+import {
+  NATIVE_MANIFEST,
+  command,
+  defineModule,
+} from "../helpers.mjs";
+
+const CATALOG_CONVERGENCE_MANIFEST =
+  "crates/lico-catalog-convergence/Cargo.toml";
+
+const nativeLibraryCheck = () => command(
+  "cargo",
+  ["check", "--manifest-path", NATIVE_MANIFEST, "--lib"],
+  10 * 60_000,
+);
+
+export const RUST_CATALOG_CONVERGENCE_MODULES = Object.freeze([
+  defineModule({
+    id: "rust.crate.catalog-convergence",
+    kind: "rust-crate",
+    summary: "Portable catalog revision, cache, cohort, invalidation, and privacy-safe receipt engine",
+    inputs: [
+      CATALOG_CONVERGENCE_MANIFEST,
+      "crates/lico-catalog-convergence/src/lib.rs",
+      "crates/lico-catalog-convergence/src/dispatch.rs",
+      "crates/lico-catalog-convergence/src/engine.rs",
+      "crates/lico-catalog-convergence/src/model.rs",
+      "crates/lico-catalog-convergence/src/receipt.rs",
+      "crates/lico-catalog-convergence/src/store.rs",
+      "crates/lico-catalog-convergence/src/tests.rs",
+    ],
+    command: command(
+      "cargo",
+      ["test", "--manifest-path", CATALOG_CONVERGENCE_MANIFEST],
+      10 * 60_000,
+    ),
+  }),
+  defineModule({
+    id: "rust.domain.catalog-convergence-adapter",
+    kind: "rust-domain",
+    summary: "Native domain boundary re-exporting the portable catalog convergence contract",
+    inputs: [
+      "crates/licoup-native/src/domain/catalog_convergence.rs",
+    ],
+    command: nativeLibraryCheck(),
+  }),
+  defineModule({
+    id: "rust.platform.catalog-cache-store",
+    kind: "rust-platform",
+    summary: "Private local catalog-cache path and portable store composition",
+    inputs: [
+      "crates/licoup-native/src/platform/catalog_cache_store.rs",
+    ],
+    command: nativeLibraryCheck(),
+  }),
+  defineModule({
+    id: "rust.ffi.catalog-convergence",
+    kind: "rust-ffi",
+    summary: "Native catalog command registration and bounded domain dispatch bridge",
+    inputs: [
+      "crates/licoup-native/src/ffi/commands/catalog.rs",
+    ],
+    command: nativeLibraryCheck(),
+  }),
+]);

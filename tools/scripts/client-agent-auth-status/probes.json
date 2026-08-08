@@ -1,0 +1,27 @@
+{
+  "schemaVersion": "lico.agent-auth-probes.v1",
+  "probes": {
+    "claude-code": {
+      "kind": "exit-status",
+      "executable": "claude",
+      "arguments": ["auth", "status"],
+      "authenticatedExitCodes": [0],
+      "unauthenticatedExitCodes": [1],
+      "authenticatedStdoutPrefixes": [],
+      "unauthenticatedStdoutPrefixes": []
+    },
+    "codex": {
+      "kind": "exit-status",
+      "executable": "codex",
+      "arguments": ["login", "status"],
+      "authenticatedExitCodes": [0],
+      "unauthenticatedExitCodes": [1],
+      "authenticatedStdoutPrefixes": [
+        "Logged in using ChatGPT",
+        "Logged in using an API key",
+        "Logged in using Agent Identity"
+      ],
+      "unauthenticatedStdoutPrefixes": ["Not logged in"]
+    }
+  }
+}

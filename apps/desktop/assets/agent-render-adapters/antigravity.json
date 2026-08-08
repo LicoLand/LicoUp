@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 1,
+  "id": "antigravity",
+  "displayName": "Antigravity",
+  "match": {
+    "agentIds": ["antigravity"],
+    "sourceClients": ["antigravity"],
+    "adapterIds": ["antigravity"]
+  },
+  "layout": {
+    "assistant": "document",
+    "assistantMaxWidth": 820,
+    "assistantHorizontalInset": 30,
+    "assistantVerticalPadding": 18,
+    "showAssistantRoleLabel": false,
+    "showUserRoleLabel": false
+  },
+  "userBubble": {
+    "maxWidth": 650,
+    "radius": 26,
+    "paddingX": 20,
+    "paddingY": 13,
+    "tone": "neutral"
+  },
+  "markdown": {
+    "bodyFontSize": 15,
+    "bodyLineHeight": 1.6,
+    "blockSpacing": 16,
+    "heading1FontSize": 21,
+    "heading2FontSize": 18,
+    "heading3FontSize": 16,
+    "headingWeight": 800,
+    "codeFontSize": 13,
+    "codeLineHeight": 1.48,
+    "codeRadius": 18,
+    "codePadding": 18,
+    "showCodeLanguage": true,
+    "quoteRadius": 16,
+    "quotePaddingX": 16,
+    "quotePaddingY": 12,
+    "listMarkerWidth": 26,
+    "orderedListMarkerWidth": 36,
+    "listItemSpacing": 8,
+    "unorderedMarker": "\u25e6"
+  },
+  "tones": {
+    "code": "raised",
+    "quote": "surface"
+  }
+}
