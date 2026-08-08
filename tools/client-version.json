@@ -1,5 +1,6 @@
 {
-  "schemaVersion": "v0.0.1:client-version-manifest-1",
+  "schemaVersion": "v0.0.1:client-version-manifest-2",
   "productVersion": "0.1.0",
-  "buildNumber": 1
+  "buildNumber": 1,
+  "releaseTarget": null
 }
