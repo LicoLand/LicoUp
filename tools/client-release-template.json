@@ -1,5 +1,14 @@
 {
   "schemaVersion": "licoup.client-release-template.v1",
+  "entryCommand": "npm run client:release -- --version <version> --target <target>",
+  "stages": [
+    "version-and-local-preflight",
+    "single-release-commit",
+    "nightly-integration",
+    "stable-promotion",
+    "release-promotion",
+    "publication-and-monitoring"
+  ],
   "promotion": {
     "branches": ["nightly", "stable", "release"],
     "mergeMethod": "merge",

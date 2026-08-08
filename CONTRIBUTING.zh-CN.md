@@ -72,17 +72,17 @@ Agent 可以辅助开发者，但严禁替换、覆盖或抢占开发者署名�
 ## 发布前门禁
 
 发布准备由 `tools/client-release-template.json` 统一定义，严禁在失败后临时拼装并逐次
-试探远端 runner 命令。发布 macOS 版本前，必须在 `nightly` 分支本机执行完整门禁：
+试探远端 runner 命令。从干净且最新的 `nightly` 分支执行唯一入口：
 
 ```bash
-npm run client:release:preflight -- --target macos-arm64 --tag v0.1.0 --allow-side-effects
+npm run client:release -- --version 0.1.1 --target macos-arm64
 ```
 
-该命令统一运行源码、依赖和发布策略门禁，然后在本机构建、安装、检查升级相关界面、
-归档并验收 macOS 产物。之后必须通过 Pull Request 的 merge commit 严格按照
-`nightly -> stable -> release` 晋升。晋升和发布过程中严禁关闭、绕过或修改活动
-Rulesets。远程发布任务使用平台默认超时；监控方不得设置终止性超时，必须持续监控到
-明确成功或失败。
+该命令只修改一次版本号，统一运行本地门禁，构建、安装并检查升级路径，然后创建唯一
+一条发布提交。脚本随后把提交送入 `nightly`，连续完成
+`nightly -> stable -> release` 两次直接 Pull Request 合并，触发发布并持续监控到
+明确成功或失败，不设置操作者侧终止超时。失败后使用相同参数重跑，脚本会识别并复用
+已经完成的 GitHub 阶段。晋升和发布过程中严禁关闭、绕过或修改活动 Rulesets。
 
 ## 隐私规则
 
