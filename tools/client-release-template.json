@@ -20,7 +20,13 @@
     "workflow": ".github/workflows/client-release.yml",
     "ref": "release",
     "jobTimeoutPolicy": "github-default",
-    "operatorMonitoringTimeoutMinutes": null
+    "operatorMonitoringTimeoutMinutes": null,
+    "macosUpdate": {
+      "workflowArtifact": "licoup-macos-update",
+      "manifest": "LicoUp-update-stable.json",
+      "finalizer": "tools/scripts/client-update-release-finalize.mjs",
+      "privateKeyCustody": "local-only"
+    }
   },
   "candidatePreflight": {
     "refPrefix": "release-candidate/",
