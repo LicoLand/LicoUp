@@ -222,6 +222,16 @@ function validateReleaseTopology() {
   const releaseEntry = readText("tools/scripts/client-release.mjs");
   const updateFinalizer = readText("tools/scripts/client-update-release-finalize.mjs");
   const catalog = readJson("tools/client-release-targets.json");
+  assertIncludes(
+    publisher,
+    '"release",\n      "view",',
+    "draft Release asset verification must use the draft-aware gh release view command",
+  );
+  assertExcludes(
+    publisher,
+    "releases/tags/",
+    "draft Release asset verification must not use the published-tag-only REST endpoint",
+  );
   const supportedTargets = catalog.targets
     .filter((target) => target.releaseSupported === true)
     .map((target) => target.id)
