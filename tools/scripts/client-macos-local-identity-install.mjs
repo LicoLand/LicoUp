@@ -21,6 +21,7 @@ import {
 import {
   inspectBoundedMacosCodePolicy,
   listMacosNestedCodePaths,
+  normalizedMacosEntitlementsFile,
 } from "./lib/macos-code-signature.mjs";
 import {
   atomicWriteReportJson,
@@ -360,6 +361,9 @@ function main() {
     "macos_release_entitlements_ref_invalid");
   const entitlementsPath = path.join(repoRoot, entitlementsRef);
   resolveContainedExistingPath(repoRoot, entitlementsPath, { expectedKind: "file" });
+  requireValue(normalizedMacosEntitlementsFile(entitlementsPath).includes(
+    '"com.apple.security.cs.disable-library-validation":true'),
+  "macos_release_library_validation_exception_missing");
 
   const mainExecutableName = plistValue(builtApp, "CFBundleExecutable");
   const signingDeadlineMs = Date.now() + 600_000;
