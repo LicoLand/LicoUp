@@ -197,6 +197,8 @@ function workflowJobIds(workflow) {
 function validateReleaseTopology() {
   const workflow = readText(".github/workflows/client-release.yml");
   const publisher = readText("tools/scripts/client-github-release-publish.mjs");
+  const releaseEntry = readText("tools/scripts/client-release.mjs");
+  const updateFinalizer = readText("tools/scripts/client-update-release-finalize.mjs");
   const catalog = readJson("tools/client-release-targets.json");
   const supportedTargets = catalog.targets
     .filter((target) => target.releaseSupported === true)
@@ -237,6 +239,25 @@ function validateReleaseTopology() {
     "npm run client:verify:agent-conversations:release-ui",
     "macOS release build must require reproducible local-agent UI evidence",
   );
+  assertIncludes(
+    jobBlock(workflow, "build-macos"),
+    "name: licoup-macos-update",
+    "macOS release build must preserve its independently signed update artifact",
+  );
+  for (const token of [
+    "client-update-release-finalize.mjs",
+    'publish_release=${options.publish && options.target !== "macos-arm64"}',
+  ]) {
+    assertIncludes(releaseEntry, token, `release entry is missing macOS update finalization: ${token}`);
+  }
+  for (const token of [
+    "LicoUp-macos-arm64-update.tar.gz",
+    "LicoUp-update-stable.json",
+    "client-update-manifest-sign.mjs",
+    "licoup-macos-update",
+  ]) {
+    assertIncludes(updateFinalizer, token, `macOS update finalizer is missing: ${token}`);
+  }
   assertIncludes(
     workflow,
     "client-github-release-${{ inputs.release_tag }}-${{ inputs.target }}",
