@@ -100,6 +100,13 @@ function validateContract() {
   assert(template.promotion?.rulesetMutation === "forbidden", "release_ruleset_mutation_invalid");
   assert(template.publication?.operatorMonitoringTimeoutMinutes === null, "release_monitor_timeout_invalid");
   assert(
+    JSON.stringify(template.publication?.remoteValidity) === JSON.stringify({
+      strategyGroup: "tools/client-remote-release-strategies.json",
+      activeStrategyIds: ["build-success"],
+    }),
+    "release_remote_validity_strategy_invalid",
+  );
+  assert(
     JSON.stringify(template.publication?.macosUpdate) === JSON.stringify({
       workflowArtifact: "licoup-macos-update",
       manifest: "LicoUp-update-stable.json",
