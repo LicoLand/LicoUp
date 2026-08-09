@@ -66,6 +66,13 @@ function validateTemplate() {
     template.publication?.operatorMonitoringTimeoutMinutes === null,
     "release_monitoring_timeout_invalid",
   );
+  assert(
+    template.publication?.macosUpdate?.workflowArtifact === "licoup-macos-update" &&
+      template.publication?.macosUpdate?.manifest === "LicoUp-update-stable.json" &&
+      template.publication?.macosUpdate?.finalizer === "tools/scripts/client-update-release-finalize.mjs" &&
+      template.publication?.macosUpdate?.privateKeyCustody === "local-only",
+    "release_macos_update_contract_invalid",
+  );
   assert(/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/u.test(version.productVersion), "release_version_invalid");
 
   const workflowPath = path.join(repoRoot, template.publication.workflow || "");

@@ -112,6 +112,9 @@ promote the same target through `nightly -> stable` and `stable -> release`; a
 target mismatch fails closed. The last command only
 performs artifact installation, live release acceptance, archiving and publishing,
 then monitors to a terminal result without an operator-side timeout.
+For macOS, that same `publish` action also downloads the workflow's update
+artifact, signs `LicoUp-update-stable.json` with the locally held update keys,
+verifies the remote update asset set, and only then makes the Release public.
 Each command is independently resumable. Active Rulesets must not be disabled,
 bypassed, or changed during any stage.
 

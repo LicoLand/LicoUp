@@ -99,6 +99,15 @@ function validateContract() {
   assert(template.promotion?.mergeMethod === "merge", "release_promotion_method_invalid");
   assert(template.promotion?.rulesetMutation === "forbidden", "release_ruleset_mutation_invalid");
   assert(template.publication?.operatorMonitoringTimeoutMinutes === null, "release_monitor_timeout_invalid");
+  assert(
+    JSON.stringify(template.publication?.macosUpdate) === JSON.stringify({
+      workflowArtifact: "licoup-macos-update",
+      manifest: "LicoUp-update-stable.json",
+      finalizer: "tools/scripts/client-update-release-finalize.mjs",
+      privateKeyCustody: "local-only",
+    }),
+    "release_macos_update_contract_invalid",
+  );
   assert(typeof template.candidatePreflight?.targets === "object", "release_candidate_preflight_missing");
   assert(Array.isArray(template.candidatePreflight.targets["macos-arm64"]), "release_macos_preflight_missing");
   const supportedTargets = Object.keys(template.candidatePreflight.targets);
@@ -307,9 +316,21 @@ async function pushPromotion(options, template) {
 }
 
 async function publish(options, template) {
-  if (gh(["release", "view", `v${options.version}`, "--repo", repository], { allowFailure: true }).ok) {
-    process.stdout.write(`client_release=already_published version=${options.version} target=${options.target}\n`);
-    return;
+  const releaseView = gh([
+    "release", "view", `v${options.version}`, "--repo", repository, "--json", "isDraft,assets",
+  ], { allowFailure: true });
+  if (releaseView.ok) {
+    const release = JSON.parse(releaseView.stdout);
+    const names = new Set(release.assets.map(({ name }) => name));
+    const updateReady = options.target !== "macos-arm64" || [
+      "LicoUp-macos-arm64-update.tar.gz",
+      "LicoUp-macos-arm64-update.tar.gz.sha256",
+      "LicoUp-update-stable.json",
+    ].every((name) => names.has(name));
+    if (!release.isDraft && updateReady) {
+      process.stdout.write(`client_release=already_published version=${options.version} target=${options.target}\n`);
+      return;
+    }
   }
   run("git", ["fetch", "origin", "release"]);
   assert(hasTargetedRelease("origin/release", options.version, options.target), "release_publication_source_version_mismatch");
@@ -317,15 +338,16 @@ async function publish(options, template) {
   const existing = parseArray(gh([
     "run", "list", "--repo", repository, "--workflow", template.publication.workflow,
     "--event", "workflow_dispatch", "--branch", template.publication.ref,
-    "--limit", "20", "--json", "databaseId,headSha,status",
+    "--limit", "20", "--json", "databaseId,headSha,status,conclusion",
   ]).stdout);
-  let runId = existing.find(({ headSha, status }) => headSha === releaseSha && status !== "completed")?.databaseId || 0;
+  let runId = existing.find(({ headSha, status, conclusion }) =>
+    headSha === releaseSha && (status !== "completed" || conclusion === "success"))?.databaseId || 0;
   if (!runId) {
     const before = new Set(existing.map(({ databaseId }) => databaseId));
     run("gh", [
       "workflow", "run", template.publication.workflow, "--repo", repository, "--ref", template.publication.ref,
       "-f", `release_tag=v${options.version}`, "-f", `target=${options.target}`,
-      "-f", `publish_release=${options.publish}`,
+      "-f", `publish_release=${options.publish && options.target !== "macos-arm64"}`,
     ]);
     while (!runId) {
       const runs = parseArray(gh([
@@ -338,6 +360,15 @@ async function publish(options, template) {
     }
   }
   run("gh", ["run", "watch", String(runId), "--repo", repository, "--exit-status", "--interval", "10"]);
+  if (options.target === "macos-arm64") {
+    run(process.execPath, [
+      "tools/scripts/client-update-release-finalize.mjs",
+      "--run-id", String(runId),
+      "--version", options.version,
+      "--tag", `v${options.version}`,
+      "--publish", String(options.publish),
+    ]);
+  }
   run("gh", ["release", "view", `v${options.version}`, "--repo", repository]);
   process.stdout.write(`client_release=published version=${options.version} target=${options.target}\n`);
 }

@@ -152,6 +152,8 @@
     "client:release:preflight": "node tools/scripts/client-release-preflight.mjs run",
     "client:release:preflight:check": "node tools/scripts/client-release-preflight.mjs check",
     "client:update-manifest:sign": "node tools/scripts/client-update-manifest-sign.mjs",
+    "client:update-release:finalize": "node tools/scripts/client-update-release-finalize.mjs",
+    "client:update-release:finalize:self-test": "node tools/scripts/client-update-release-finalize.mjs --self-test",
     "client:verify:windows-file-security": "node tests/verify-windows-file-security-boundary.mjs",
     "client:cli:vm:list": "node tools/scripts/client-cli-vm.mjs list",
     "client:cli:vm:self-test": "node tools/scripts/client-cli-vm.mjs self-test",
