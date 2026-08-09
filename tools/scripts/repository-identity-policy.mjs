@@ -92,7 +92,7 @@ export function parseGitHubIdentity(raw) {
 }
 
 function currentGitHubIdentity() {
-  run("gh", ["auth", "status"], {
+  run("gh", ["auth", "status", "--active", "--hostname", "github.com"], {
     code: "GH_AUTH_REQUIRED",
     message: "GitHub CLI authentication is required.",
   });
