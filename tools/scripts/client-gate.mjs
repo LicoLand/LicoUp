@@ -197,6 +197,8 @@ function workflowJobIds(workflow) {
 function validateReleaseTopology() {
   const workflow = readText(".github/workflows/client-release.yml");
   const publisher = readText("tools/scripts/client-github-release-publish.mjs");
+  const releaseEntry = readText("tools/scripts/client-release.mjs");
+  const updateFinalizer = readText("tools/scripts/client-update-release-finalize.mjs");
   const catalog = readJson("tools/client-release-targets.json");
   const supportedTargets = catalog.targets
     .filter((target) => target.releaseSupported === true)
@@ -215,20 +217,47 @@ function validateReleaseTopology() {
     fail("release workflow must accept one target and bounded publication inputs");
   }
   const expectedJobs = [
-    "source",
-    "dependencies",
-    "release-policy",
+    "preflight",
     ...Object.values(CLIENT_RELEASE_TARGETS)
       .flatMap((target) => [target.buildJob, target.publishJob]),
   ].sort();
   if (JSON.stringify(workflowJobIds(workflow).sort()) !== JSON.stringify(expectedJobs)) {
     fail("release workflow jobs must match the independent target topology");
   }
+  const preflight = jobBlock(workflow, "preflight");
+  for (const command of [
+    "npm run client:release:preflight:check",
+    "npm run client:gate:source",
+    "npm run client:gate:dependencies",
+    "npm run client:gate:release-policy",
+  ]) {
+    assertIncludes(preflight, command, `unified release preflight must invoke ${command}`);
+  }
+  assertExcludes(workflow, "timeout-minutes:", "release workflow must use the platform default job timeout");
   assertIncludes(
     jobBlock(workflow, "build-macos"),
     "npm run client:verify:agent-conversations:release-ui",
     "macOS release build must require reproducible local-agent UI evidence",
   );
+  assertIncludes(
+    jobBlock(workflow, "build-macos"),
+    "name: licoup-macos-update",
+    "macOS release build must preserve its independently signed update artifact",
+  );
+  for (const token of [
+    "client-update-release-finalize.mjs",
+    'publish_release=${options.publish && options.target !== "macos-arm64"}',
+  ]) {
+    assertIncludes(releaseEntry, token, `release entry is missing macOS update finalization: ${token}`);
+  }
+  for (const token of [
+    "LicoUp-macos-arm64-update.tar.gz",
+    "LicoUp-update-stable.json",
+    "client-update-manifest-sign.mjs",
+    "licoup-macos-update",
+  ]) {
+    assertIncludes(updateFinalizer, token, `macOS update finalizer is missing: ${token}`);
+  }
   assertIncludes(
     workflow,
     "client-github-release-${{ inputs.release_tag }}-${{ inputs.target }}",
@@ -249,8 +278,8 @@ function validateReleaseTopology() {
     );
     assertIncludes(
       build,
-      "needs: [source, dependencies, release-policy]",
-      `release build ${topology.buildJob} must depend only on shared policy proofs`,
+      "needs: preflight",
+      `release build ${topology.buildJob} must depend on the unified preflight`,
     );
     assertIncludes(
       publish,
@@ -259,7 +288,7 @@ function validateReleaseTopology() {
     );
     assertIncludes(
       publish,
-      `needs: [source, dependencies, release-policy, ${topology.buildJob}]`,
+      `needs: [preflight, ${topology.buildJob}]`,
       `release publisher ${topology.publishJob} must wait only for its own build`,
     );
     assertIncludes(
@@ -422,7 +451,19 @@ function parsePlanArgs(args) {
 function planGate(args) {
   const revisions = parsePlanArgs(args);
   const paths = changedPaths(revisions);
-  const plan = classifyClientGatePaths(paths);
+  let releaseTarget = null;
+  if (paths.includes("tools/client-version.json")) {
+    const manifest = spawnSync("git", ["show", `${validateRevision(revisions.head, "head")}:tools/client-version.json`], {
+      cwd: repoRoot,
+      encoding: "utf8",
+      shell: false,
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    if (manifest.status === 0) {
+      try { releaseTarget = JSON.parse(manifest.stdout).releaseTarget || null; } catch { fail("client release target manifest is invalid"); }
+    }
+  }
+  const plan = classifyClientGatePaths(paths, { releaseTarget });
   const digest = createHash("sha256")
     .update([...new Set(paths)].sort().join("\0"))
     .digest("hex");
