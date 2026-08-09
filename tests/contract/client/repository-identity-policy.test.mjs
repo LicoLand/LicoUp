@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import {
@@ -11,11 +10,10 @@ import {
 } from "../../../tools/scripts/repository-identity-policy.mjs";
 import {
   allBranchesRulesetName,
-  branchCreationRulesetName,
   buildRulesets,
-  defaultBranchRulesetName,
   identityStatusContext,
   promotionBranchesRulesetName,
+  requiredStatusContexts,
 } from "../../../tools/scripts/repository-rulesets.mjs";
 
 const identity = Object.freeze({ login: "human-developer", id: "123456" });
@@ -79,91 +77,39 @@ test("identity-shaped Agent lines are rejected without banning product discussio
   );
 });
 
-test("remote identity policy admits only verified GitHub service commits as a committer exception", () => {
-  const workflow = readFileSync(
-    new URL("../../../.github/workflows/commit-identity.yml", import.meta.url),
-    "utf8",
-  );
-  for (const required of [
-    ".commit.committer.name == $login",
-    ".commit.committer.email == $email",
-    '.committer.login == "web-flow"',
-    '.commit.committer.name == "GitHub"',
-    '.commit.committer.email == "noreply@github.com"',
-    ".commit.verification.verified == true",
-    '.commit.verification.reason == "valid"',
-  ]) {
-    assert.match(workflow, new RegExp(required.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&"), "u"));
-  }
-  assert.doesNotMatch(workflow, /\.parents \| length/u);
-});
-
-test("Rulesets cover all branch metadata and protect the default branch without bypass", () => {
+test("two Rulesets cover identity and the complete release flow without bypass", () => {
   const integrationId = 15368;
   const rulesets = buildRulesets(integrationId);
-  assert.equal(rulesets.length, 4);
+  assert.equal(rulesets.length, 2);
   assert.deepEqual(
     rulesets.map(({ name }) => name),
-    [
-      allBranchesRulesetName,
-      branchCreationRulesetName,
-      defaultBranchRulesetName,
-      promotionBranchesRulesetName,
-    ],
+    [allBranchesRulesetName, promotionBranchesRulesetName],
   );
   for (const ruleset of rulesets) {
     assert.equal(ruleset.enforcement, "active");
     assert.deepEqual(ruleset.bypass_actors, []);
   }
 
-  const [identityRuleset, creationRuleset, defaultRuleset, promotionRuleset] = rulesets;
+  const [identityRuleset, promotionRuleset] = rulesets;
   assert.deepEqual(identityRuleset.conditions.ref_name.include, ["~ALL"]);
-  assert.ok(!identityRuleset.rules.some(({ type }) => type === "creation"));
   assert.ok(identityRuleset.rules.some(({ type }) => type === "commit_author_email_pattern"));
+  const committerRule = identityRuleset.rules.find(
+    ({ type }) => type === "committer_email_pattern",
+  );
+  const committerPattern = new RegExp(committerRule.parameters.pattern);
+  assert.equal(committerPattern.test("123+developer@users.noreply.github.com"), true);
+  assert.equal(committerPattern.test("noreply@github.com"), true);
+  assert.equal(committerPattern.test("bot@example.invalid"), false);
   assert.equal(
     identityRuleset.rules.filter(({ type }) => type === "commit_message_pattern").length,
     1,
   );
-
-  assert.deepEqual(creationRuleset.conditions.ref_name.include, ["~ALL"]);
-  assert.deepEqual(creationRuleset.conditions.ref_name.exclude, [
-    "refs/heads/feature/**/*",
-    "refs/heads/fix/**/*",
-    "refs/heads/docs/**/*",
-    "refs/heads/refactor/**/*",
-    "refs/heads/test/**/*",
-    "refs/heads/chore/**/*",
-    "refs/heads/release-candidate/**/*",
-    "refs/heads/stable",
-    "refs/heads/release",
-  ]);
-  assert.deepEqual(creationRuleset.rules, [{ type: "creation" }]);
-
-  assert.deepEqual(defaultRuleset.conditions.ref_name.include, ["~DEFAULT_BRANCH"]);
-  for (const requiredType of [
-    "deletion",
-    "non_fast_forward",
-    "pull_request",
-    "required_status_checks",
-  ]) {
-    assert.ok(defaultRuleset.rules.some(({ type }) => type === requiredType));
-  }
-  assert.ok(!defaultRuleset.rules.some(({ type }) => type === "required_linear_history"));
-  assert.deepEqual(
-    defaultRuleset.rules.find(({ type }) => type === "pull_request").parameters.allowed_merge_methods,
-    ["merge"],
+  const messageRule = identityRuleset.rules.find(
+    ({ type }) => type === "commit_message_pattern",
   );
-  const statusRule = defaultRuleset.rules.find(
-    ({ type }) => type === "required_status_checks",
-  );
-  assert.deepEqual(statusRule.parameters.required_status_checks, [
-    { context: identityStatusContext, integration_id: integrationId },
-  ]);
+  assert.match(messageRule.parameters.pattern, /co-authored-by/u);
+  assert.match(messageRule.parameters.pattern, /cursor/u);
 
-  assert.deepEqual(promotionRuleset.conditions.ref_name.include, [
-    "refs/heads/stable",
-    "refs/heads/release",
-  ]);
   for (const requiredType of [
     "deletion",
     "non_fast_forward",
@@ -172,9 +118,12 @@ test("Rulesets cover all branch metadata and protect the default branch without 
   ]) {
     assert.ok(promotionRuleset.rules.some(({ type }) => type === requiredType));
   }
-  assert.ok(!promotionRuleset.rules.some(({ type }) => type === "required_linear_history"));
-  assert.deepEqual(
-    promotionRuleset.rules.find(({ type }) => type === "pull_request").parameters.allowed_merge_methods,
-    ["merge"],
+  const statusRule = promotionRuleset.rules.find(
+    ({ type }) => type === "required_status_checks",
   );
+  assert.deepEqual(statusRule.parameters.required_status_checks,
+    requiredStatusContexts.map((context) => ({ context, integration_id: integrationId })));
+  assert.equal(identityStatusContext, "Commit identity");
+  assert.deepEqual(promotionRuleset.conditions.ref_name.include,
+    ["refs/heads/nightly", "refs/heads/stable", "refs/heads/release"]);
 });
