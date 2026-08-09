@@ -226,7 +226,7 @@ function main() {
   const architecture = process.arch === "arm64" ? "arm64" : "x64";
   const archivePath = path.join(distributionRoot, `LicoUp-macos-${architecture}.zip`);
   rmSync(archivePath, { force: true });
-  run("/usr/bin/ditto", ["-c", "-k", "--keepParent", result.runnable.root, archivePath],
+  run("/usr/bin/ditto", ["-c", "-k", "--keepParent", appPath, archivePath],
     "macos_distribution_archive_failed");
   const digest = sha256(archivePath);
   writeFileSync(`${archivePath}.sha256`, `${digest}  ${path.basename(archivePath)}\n`, "utf8");
