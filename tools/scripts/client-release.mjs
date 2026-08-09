@@ -151,6 +151,13 @@ function hasTargetedRelease(ref, version, target) {
   return hasReleaseCommit(ref, version) && releaseTargetAt(ref) === target;
 }
 
+function promotionAlreadyAdvanced({ baseRef, headRef, version, target }, dependencies = {}) {
+  const targeted = dependencies.hasTargetedRelease || hasTargetedRelease;
+  const ancestor = dependencies.isAncestor || ((candidate, descendant) =>
+    git(["merge-base", "--is-ancestor", candidate, descendant], { allowFailure: true }).ok);
+  return targeted(baseRef, version, target) && ancestor(headRef, baseRef);
+}
+
 function changedFiles() {
   const unstaged = git(["diff", "--name-only", "-z"]).stdout;
   const staged = git(["diff", "--cached", "--name-only", "-z"]).stdout;
@@ -293,7 +300,12 @@ async function pushPromotion(options, template) {
   const base = options.destination;
   const head = upstream[base];
   run("git", ["fetch", "origin", head, base]);
-  if (hasTargetedRelease(`origin/${base}`, options.version, options.target)) {
+  if (promotionAlreadyAdvanced({
+    baseRef: `origin/${base}`,
+    headRef: `origin/${head}`,
+    version: options.version,
+    target: options.target,
+  })) {
     process.stdout.write(`client_release=already_advanced destination=${base} version=${options.version}\n`);
     return;
   }
@@ -382,6 +394,13 @@ async function main() {
     assert(parseArgs(["push", "stable", "--version", "1.2.3", "--target", "macos-arm64"]).destination === "stable", "release_stable_action_invalid");
     assert(parseArgs(["push", "release", "--version", "1.2.3", "--target", "macos-arm64"]).destination === "release", "release_release_action_invalid");
     assert(parseArgs(["publish", "--version", "1.2.3", "--target", "macos-arm64"]).action === "publish", "release_publish_action_invalid");
+    const releaseFacts = { hasTargetedRelease: () => true };
+    assert(promotionAlreadyAdvanced({ baseRef: "stable", headRef: "nightly", version: "1.2.3", target: "macos-arm64" }, {
+      ...releaseFacts, isAncestor: () => true,
+    }), "release_completed_promotion_not_detected");
+    assert(!promotionAlreadyAdvanced({ baseRef: "stable", headRef: "nightly", version: "1.2.3", target: "macos-arm64" }, {
+      ...releaseFacts, isAncestor: () => false,
+    }), "release_stale_promotion_accepted");
     process.stdout.write("client_release=self_test_passed\n");
     return;
   }
