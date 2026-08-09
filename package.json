@@ -180,6 +180,7 @@
     "client:build:android:debug": "node apps/desktop/scripts/build-android-apk.mjs --debug",
     "client:verify:android-apk": "node apps/desktop/scripts/verify-android-apk.mjs",
     "client:install:macos": "node tools/scripts/client-macos-install.mjs",
+    "client:install:macos:github:self-test": "node tools/scripts/client-macos-github-installer-self-test.mjs",
     "client:install:macos:identity": "node tools/scripts/client-macos-local-identity-install.mjs",
     "client:install:macos:identity:self-test": "node tools/scripts/client-macos-local-identity-install.mjs --self-test",
     "client:linux:smoke": "node apps/desktop/scripts/smoke-linux-bundle.mjs",
