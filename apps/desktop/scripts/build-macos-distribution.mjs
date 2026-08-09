@@ -5,6 +5,7 @@ import {
   mkdirSync,
   readFileSync,
   rmSync,
+  symlinkSync,
   writeFileSync
 } from "node:fs";
 import os from "node:os";
@@ -121,7 +122,15 @@ function main() {
   const archiveCurrentLocalIntegrity = options.includes("--archive-current-local-integrity");
   const identity = platformChannelRequested
     ? requiredEnvironment("LICO_MACOS_SIGNING_IDENTITY")
-    : "";
+    : archiveCurrentLocalIntegrity
+      ? requiredEnvironment("LICO_MACOS_RELEASE_SIGNING_IDENTITY")
+      : "";
+  const signingKeychain = String(
+    process.env.LICO_MACOS_RELEASE_SIGNING_KEYCHAIN || "",
+  ).trim();
+  const signingKeychainArgs = signingKeychain
+    ? ["--keychain", signingKeychain]
+    : [];
   const keyId = platformChannelRequested ? requiredEnvironment("LICO_MACOS_NOTARY_KEY_ID") : "";
   const issuer = platformChannelRequested ? requiredEnvironment("LICO_MACOS_NOTARY_ISSUER_ID") : "";
   const keyPath = platformChannelRequested
@@ -224,30 +233,47 @@ function main() {
   });
 
   const architecture = process.arch === "arm64" ? "arm64" : "x64";
-  const archivePath = path.join(distributionRoot, `LicoUp-macos-${architecture}.zip`);
-  rmSync(archivePath, { force: true });
-  run("/usr/bin/ditto", ["-c", "-k", "--keepParent", appPath, archivePath],
-    "macos_distribution_archive_failed");
-  const digest = sha256(archivePath);
-  writeFileSync(`${archivePath}.sha256`, `${digest}  ${path.basename(archivePath)}\n`, "utf8");
   const updateArchivePath = path.join(
     distributionRoot,
-    `LicoUp-macos-${architecture}-update.tar.gz`,
+    `LicoUp-macos-${architecture}-update.zip`,
   );
   rmSync(updateArchivePath, { force: true });
-  run("/usr/bin/tar", [
-    "-czf",
-    updateArchivePath,
-    "-C",
-    result.runnable.root,
-    "LicoUp.app",
-  ], "macos_distribution_update_archive_failed");
+  run("/usr/bin/ditto", ["-c", "-k", "--keepParent", appPath, updateArchivePath],
+    "macos_distribution_archive_failed", {
+      env: { ...toolEnvironment, COPYFILE_DISABLE: "1" },
+    });
   const updateDigest = sha256(updateArchivePath);
   writeFileSync(
     `${updateArchivePath}.sha256`,
     `${updateDigest}  ${path.basename(updateArchivePath)}\n`,
     "utf8",
   );
+
+  const dmgPath = path.join(distributionRoot, `LicoUp-macos-${architecture}.dmg`);
+  const dmgStage = path.join(os.tmpdir(), `licoup-dmg-stage-${process.pid}`);
+  rmSync(dmgPath, { force: true });
+  rmSync(dmgStage, { recursive: true, force: true });
+  mkdirSync(dmgStage, { recursive: true, mode: 0o700 });
+  try {
+    run("/usr/bin/ditto", [appPath, path.join(dmgStage, "LicoUp.app")],
+      "macos_distribution_dmg_stage_failed");
+    symlinkSync("/Applications", path.join(dmgStage, "Applications"));
+    run("/usr/bin/hdiutil", [
+      "create", "-quiet", "-ov", "-format", "UDZO", "-volname", "LicoUp",
+      "-srcfolder", dmgStage, dmgPath,
+    ], "macos_distribution_dmg_create_failed");
+  } finally {
+    rmSync(dmgStage, { recursive: true, force: true });
+  }
+  run("/usr/bin/codesign", [
+    "--force", "--timestamp=none", ...signingKeychainArgs, "--sign", identity, dmgPath,
+  ], "macos_distribution_dmg_sign_failed");
+  run("/usr/bin/codesign", ["--verify", "--strict", dmgPath],
+    "macos_distribution_dmg_signature_verify_failed");
+  run("/usr/bin/hdiutil", ["verify", "-quiet", dmgPath],
+    "macos_distribution_dmg_verify_failed");
+  const digest = sha256(dmgPath);
+  writeFileSync(`${dmgPath}.sha256`, `${digest}  ${path.basename(dmgPath)}\n`, "utf8");
   writeFileSync(
     path.join(distributionRoot, "manifest.json"),
     `${JSON.stringify({
@@ -274,15 +300,17 @@ function main() {
       notarized: platformChannelRequested,
       stapled: platformChannelRequested,
       gatekeeperVerified: platformChannelRequested,
-      archive: path.basename(archivePath),
+      archive: path.basename(dmgPath),
       sha256: digest,
+      updateArchive: path.basename(updateArchivePath),
+      updateSha256: updateDigest,
       installArtifactKind: "macos-app-bundle",
       installArtifactDigest,
       bundleManifestDigest
     }, null, 2)}\n`,
     "utf8"
   );
-  console.log(`macOS distribution archive ready: ${path.relative(workspaceRoot, archivePath)}`);
+  console.log(`macOS distribution archive ready: ${path.relative(workspaceRoot, dmgPath)}`);
 }
 
 function runSelfTest() {

@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:licoup/src/application/features/agents/conversation/conversation_turn_process_state.dart';
 import 'package:licoup/src/application/features/agents/conversation/conversation_working_directory_fallback.dart';
 import 'package:licoup/src/application/features/agents/policy/conversation_session_index.dart';
 import 'package:licoup/src/application/features/agents/workspace/agent_workspace_coordinator.dart';
@@ -60,7 +61,9 @@ mixin AgentConversationSessionStateController on AgentWorkspaceCoordinator {
     // a newer turn-bound projection otherwise shadows the project directory.
     next = _conversationRecoverUsableWorkingDirectories(page.sessions, next);
     _conversationPromoteNativeTitles(agentId, page.sessions, next);
-    final liveProjection = liveConversationMessagesByAgent[agentId] ?? const [];
+    final liveProjection =
+        liveConversationMessagesByScope[conversationComposerScopeKey] ??
+        const [];
     AgentConversationSession? providerReadback;
     if (previousSelected != null && liveProjection.isNotEmpty) {
       // A completed streamed turn is already an authoritative local session.
@@ -78,10 +81,15 @@ mixin AgentConversationSessionStateController on AgentWorkspaceCoordinator {
       }
       if (matchingIndex < 0) {
         next = insertConversationSessionByUpdatedAt(next, previousSelected);
-      } else if (!_sessionCoversMessages(next[matchingIndex], liveProjection)) {
+      } else if (_conversationScopeTurnInFlight(conversationComposerScopeKey) ||
+          !_sessionCoversMessages(next[matchingIndex], liveProjection)) {
         // Keep the catalog project directory on the retained turn projection.
         // Replacing the whole session used to drop workingDirectory and force
         // the composer back onto the client-owned agent-workspace fallback.
+        // A still-streaming turn is never covered either: the native transcript
+        // only holds the pending user message, and swapping that readback in
+        // would duplicate the user message in the committed follow-up
+        // projection once the streamed turn ends.
         var retainedSession = previousSelected;
         final catalogDirectory = next[matchingIndex].workingDirectory;
         if (!isUsableLocalConversationWorkingDirectory(
@@ -169,7 +177,6 @@ mixin AgentConversationSessionStateController on AgentWorkspaceCoordinator {
     }
   }
 
-  @override
   Future<void> hydrateConversationProjectionCache() async {
     Map<String, List<AgentConversationSession>> restored;
     try {
@@ -533,28 +540,51 @@ mixin AgentConversationSessionStateController on AgentWorkspaceCoordinator {
   /// transcript shortly after the transport reports completion; clearing the
   /// live projection before that readback converges makes the reply flash and
   /// then disappear.
+  ///
+  /// A turn that is still streaming is exempt: its live projection must
+  /// survive provider readback until the blackboard reaches a terminal stage,
+  /// or every later lifecycle/evidence/reply event of that turn is dropped.
   void conversationClearLiveProjectionWhenReadBack(
     String agentId, {
     required AgentConversationSession? providerReadback,
   }) {
-    final live = liveConversationMessagesByAgent[agentId] ?? const [];
-    if (live.isEmpty) {
-      return;
-    }
     if (providerReadback == null) {
       return;
     }
-    if (!_sessionCoversMessages(providerReadback, live)) {
+    final coveredScopes = <String>[
+      for (final scopeKey in conversationLiveScopeKeysForAgent(agentId))
+        if (!_conversationScopeTurnInFlight(scopeKey) &&
+            _sessionCoversMessages(
+              providerReadback,
+              liveConversationMessagesByScope[scopeKey] ?? const [],
+            ))
+          scopeKey,
+    ];
+    if (coveredScopes.isEmpty) {
       return;
     }
-    conversationTurnProcessStateByAgent = {
-      for (final entry in conversationTurnProcessStateByAgent.entries)
-        if (entry.key != agentId) entry.key: entry.value,
+    conversationTurnProcessStateByScope = {
+      for (final entry in conversationTurnProcessStateByScope.entries)
+        if (!coveredScopes.contains(entry.key)) entry.key: entry.value,
     };
-    liveConversationMessagesByAgent = {
-      for (final entry in liveConversationMessagesByAgent.entries)
-        if (entry.key != agentId) entry.key: entry.value,
+    liveConversationMessagesByScope = {
+      for (final entry in liveConversationMessagesByScope.entries)
+        if (!coveredScopes.contains(entry.key)) entry.key: entry.value,
     };
+  }
+
+  /// Whether [scopeKey] hosts a turn whose blackboard has not reached a
+  /// terminal stage. Provider readback of a half-persisted transcript trivially
+  /// matches the pending user message while the reply is still streaming;
+  /// clearing the live projection then silently drops every later
+  /// lifecycle/evidence/reply event of that turn.
+  bool _conversationScopeTurnInFlight(String scopeKey) {
+    final state = conversationTurnProcessStateByScope[scopeKey];
+    if (state == null) {
+      return false;
+    }
+    return state.stage != ConversationTurnProcessStage.completed &&
+        state.stage != ConversationTurnProcessStage.failed;
   }
 
   bool _conversationMessageParticipatesInReadback(
@@ -692,6 +722,7 @@ mixin AgentConversationSessionStateController on AgentWorkspaceCoordinator {
       clearLiveProjectionFromProviderReadback: false,
     );
     setSelectedConversationSessionId(normalizedAgent, projectedSessionId);
+    recordLastUsedConversation();
     return _conversationPersistProjection(session);
   }
 
@@ -815,10 +846,17 @@ mixin AgentConversationSessionStateController on AgentWorkspaceCoordinator {
       updateStatus: false,
       clearLiveProjectionFromProviderReadback: false,
     );
-    liveConversationMessagesByAgent = {
-      for (final entry in liveConversationMessagesByAgent.entries)
-        if (entry.key != owner) entry.key: entry.value,
-    };
+    final clearedScopes = conversationLiveScopeKeysForAgent(owner).toSet();
+    if (clearedScopes.isNotEmpty) {
+      conversationTurnProcessStateByScope = {
+        for (final entry in conversationTurnProcessStateByScope.entries)
+          if (!clearedScopes.contains(entry.key)) entry.key: entry.value,
+      };
+      liveConversationMessagesByScope = {
+        for (final entry in liveConversationMessagesByScope.entries)
+          if (!clearedScopes.contains(entry.key)) entry.key: entry.value,
+      };
+    }
     return _conversationPersistProjection(session);
   }
 

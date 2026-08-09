@@ -15,6 +15,7 @@ import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/layout/profiles/messaging/desktop/tokens/messaging_desktop_tokens.dart';
 import 'package:licoup/src/frontend/shared/platform/client_platform.dart';
 import 'package:licoup/src/frontend/shared/ui/apple_control_metrics.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:licoup/src/frontend/shared/ui/theme_colors.dart';
 
@@ -267,7 +268,7 @@ class _DetailsTrigger extends StatelessWidget {
   Widget _buildButton({required bool open, VoidCallback? onTap}) {
     return Tooltip(
       message: strings.details,
-      waitDuration: const Duration(milliseconds: 400),
+      waitDuration: LicoMotion.tooltipWait,
       child: InkWell(
         key: const Key('messaging-details-toggle'),
         onTap: onTap,

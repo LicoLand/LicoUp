@@ -2,7 +2,8 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:licoup/src/frontend/features/skill_hub/ui/skill_hub_panel_catalog.dart';
-import 'package:licoup/src/frontend/features/skill_hub/ui/skill_hub_panel_card_support.dart';
+import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_empty_state.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -21,7 +22,17 @@ void main() {
                 selectedCategory: 'all',
                 onChanged: selected.add,
               ),
-              const Expanded(child: SkillEmptyPlaceholder()),
+              Expanded(
+                child: Builder(
+                  builder: (context) => LicoEmptyState(
+                    icon: Icons.extension_outlined,
+                    iconSize: 64,
+                    title: LicoStrings.of(context).noSkillsFound,
+                    message: LicoStrings.of(context).refreshSkillsHint,
+                    padding: const EdgeInsets.all(32),
+                  ),
+                ),
+              ),
             ],
           ),
         ),

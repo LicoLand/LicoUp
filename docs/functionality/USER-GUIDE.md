@@ -193,36 +193,6 @@ for conversation.
 
 Do not attach raw logs, histories, paths, or device details to a public issue.
 
-## Enable optional collaboration
-
-Meshrix collaboration is a separate plugin. The default client does not load
-or query it.
-
-1. Open **Plugin Management** and choose the collaboration plugin area.
-2. Choose a GitHub repository and an exact immutable commit.
-3. In a separate action, import and authenticate the expected signing key.
-4. Review the signed runner, complete package inventory, components, and local
-   target; then install and enable the plugin manually.
-5. For a local deployment, assemble the selected components and start the fixed
-   signed external runner with a separate manual action. Assembly does not start
-   the server automatically. Stop or remove it from the same area.
-6. For MCP installation, select one or more plugins and one or more local
-   agents, then review the exact local changes before applying them.
-
-The LicoUp source tree does not contain the Meshrix server runner. A client
-build therefore proves neither that a server artifact was obtained nor that a
-deployment was started.
-
-Installation or enablement never grants continuing transfer permission. If an
-MCP operation would reach an external service, its bridge first creates a
-non-transmitting preview. Review the destination, purpose, exact request, and
-each selected file in LicoUp, complete the platform authentication prompt,
-and approve only that operation. The matching preview can be claimed exactly
-once. Changing the file, destination, purpose, request body, or session makes
-the digest mismatch; cancellation, expiry, or reuse also fails closed. If
-protected platform authentication is unavailable, external transfer remains
-disabled.
-
 ## Preview a protected transfer to another client
 
 This flow uses the

@@ -29,14 +29,13 @@ pub(super) enum PromptDrainExpiration {
 
 #[derive(Clone, Copy, Debug)]
 pub(super) struct PromptDrainBudget {
-    hard_deadline: Instant,
+    hard_deadline: Option<Instant>,
     last_valid_notification_at: Instant,
     quiet_deadline: Instant,
 }
 
 impl PromptDrainBudget {
-    pub(super) fn new(prompt_response_at: Instant, hard_deadline: Instant) -> Self {
-        let prompt_response_at = prompt_response_at.min(hard_deadline);
+    pub(super) fn new(prompt_response_at: Instant, hard_deadline: Option<Instant>) -> Self {
         Self {
             hard_deadline,
             last_valid_notification_at: prompt_response_at,
@@ -45,7 +44,7 @@ impl PromptDrainBudget {
     }
 
     #[cfg(test)]
-    pub(super) fn hard_deadline(self) -> Instant {
+    pub(super) fn hard_deadline(self) -> Option<Instant> {
         self.hard_deadline
     }
 
@@ -54,8 +53,9 @@ impl PromptDrainBudget {
     }
 
     pub(super) fn observe_valid_notification(&mut self, observed_at: Instant) {
-        let observed_at = observed_at
-            .min(self.hard_deadline)
+        let observed_at = self
+            .hard_deadline
+            .map_or(observed_at, |deadline| observed_at.min(deadline))
             .max(self.last_valid_notification_at);
         self.last_valid_notification_at = observed_at;
         self.quiet_deadline = self
@@ -64,7 +64,7 @@ impl PromptDrainBudget {
     }
 
     pub(super) fn expiration_at(self, now: Instant) -> PromptDrainExpiration {
-        if now >= self.hard_deadline {
+        if self.hard_deadline.is_some_and(|deadline| now >= deadline) {
             PromptDrainExpiration::Hard
         } else if now >= self.quiet_deadline {
             PromptDrainExpiration::Quiet
@@ -74,11 +74,11 @@ impl PromptDrainBudget {
     }
 }
 
-fn quiet_deadline_after(observed_at: Instant, hard_deadline: Instant) -> Instant {
-    observed_at
+fn quiet_deadline_after(observed_at: Instant, hard_deadline: Option<Instant>) -> Instant {
+    let quiet = observed_at
         .checked_add(PROMPT_DRAIN_QUIET_DURATION)
-        .unwrap_or(hard_deadline)
-        .min(hard_deadline)
+        .unwrap_or(observed_at);
+    hard_deadline.map_or(quiet, |deadline| quiet.min(deadline))
 }
 
 pub(super) trait ProtocolLoopTransport {
@@ -283,7 +283,9 @@ pub(in crate::platform) fn execute_acp(
         );
     }
 
-    let deadline = Instant::now() + Duration::from_millis(timeout_ms);
+    // timeoutMs 0 opts out of any turn deadline (see runtime_adapters/dispatch),
+    // so only a non-zero window gets a concrete deadline.
+    let deadline = (timeout_ms != 0).then(|| Instant::now() + Duration::from_millis(timeout_ms));
     let (outcome, failure, status_code, stdout_was_truncated) = {
         let mut transport = StdioProtocolLoopTransport {
             stdin: &mut stdin,
@@ -410,7 +412,7 @@ fn pipe_failure(
 pub(super) fn run_protocol_loop<T: ProtocolLoopTransport>(
     transport: &mut T,
     protocol: &mut AcpProtocol,
-    hard_deadline: Instant,
+    hard_deadline: Option<Instant>,
 ) -> (
     Option<ProtocolOutcome>,
     Option<ProtocolFailure>,
@@ -453,18 +455,18 @@ pub(super) fn run_protocol_loop<T: ProtocolLoopTransport>(
                 }
                 PromptDrainExpiration::Pending => {}
             }
-        } else if now >= hard_deadline {
+        } else if hard_deadline.is_some_and(|deadline| now >= deadline) {
             return protocol_timeout(protocol);
         }
-        let next_deadline = drain_budget
+        let wait = drain_budget
             .map(PromptDrainBudget::next_deadline)
-            .unwrap_or(hard_deadline);
-        let wait = next_deadline
-            .saturating_duration_since(now)
+            .or(hard_deadline)
+            .map(|deadline| deadline.saturating_duration_since(now))
+            .unwrap_or(PROCESS_POLL_INTERVAL)
             .min(PROCESS_POLL_INTERVAL);
         let received = transport.recv_timeout(wait);
         let observed_at = transport.now();
-        if observed_at >= hard_deadline {
+        if hard_deadline.is_some_and(|deadline| observed_at >= deadline) {
             return protocol_timeout(protocol);
         }
         match received {

@@ -286,7 +286,7 @@ void registerAgentsWorkspaceRendererCollapseScenarios() {
     await tester.pumpAndSettle();
 
     expect(find.text('discovery worker round-05/worker-03'), findsOneWidget);
-    expect(find.text('1 step'), findsOneWidget);
+    expect(find.text('Subagent task · 1 messages'), findsOneWidget);
     expect(find.text('Worker preview line'), findsOneWidget);
     expect(find.text('Detailed worker result'), findsNothing);
 

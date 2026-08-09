@@ -4,6 +4,7 @@ import 'package:licoup/src/application/features/agents/conversation/conversation
 import 'package:licoup/src/application/features/agents/workspace/agent_workspace_coordinator.dart';
 
 mixin ClientConversationFacade on AgentWorkspaceCoordinator {
+  @override
   ConversationPresentationSignals get conversationPresentationSignals;
 
   ValueListenable<int> get conversationStructureListenable =>
@@ -12,12 +13,6 @@ mixin ClientConversationFacade on AgentWorkspaceCoordinator {
       conversationPresentationSignals.activeListenable;
   ValueListenable<int> get liveConversationListenable =>
       conversationPresentationSignals.liveListenable;
-  String get conversationComposerDraft =>
-      conversationPresentationSignals.composerDraft;
-
-  void updateConversationComposerDraft(String value) {
-    conversationPresentationSignals.replaceComposerDraft(value);
-  }
 
   void notifyClientStateChanged() {
     if (!lifecycleProjection.disposed) notifyListeners();

@@ -10,6 +10,7 @@ import 'package:licoup/src/frontend/features/mobile_relay/ui/secure_mesh_file_sy
 import 'package:licoup/src/frontend/features/mobile_relay/ui/secure_mesh_skill_sync_card.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/platform/client_platform.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_section_header.dart';
 import 'package:licoup/src/frontend/shared/ui/minimal_scan_icon.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
@@ -60,9 +61,9 @@ class _MobileRelayPanelState extends State<MobileRelayPanel> {
     return ListView(
       padding: const EdgeInsets.all(20),
       children: [
-        _MobileRelaySectionTitle(
-          iconWidget: MinimalScanIcon(color: colors.accent, size: 22),
+        LicoSectionHeader(
           title: strings.pairing,
+          leading: MinimalScanIcon(color: colors.accent, size: 22),
         ),
         const SizedBox(height: 12),
         if (mobileClient) ...[
@@ -111,34 +112,6 @@ class _MobileRelayPanelState extends State<MobileRelayPanel> {
             projection: controller.secureMeshCapabilityProjection!,
           ),
         ],
-      ],
-    );
-  }
-}
-
-class _MobileRelaySectionTitle extends StatelessWidget {
-  const _MobileRelaySectionTitle({
-    required this.iconWidget,
-    required this.title,
-  });
-
-  final Widget iconWidget;
-  final String title;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        iconWidget,
-        const SizedBox(width: 10),
-        Expanded(
-          child: Text(
-            title,
-            style: Theme.of(
-              context,
-            ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
-          ),
-        ),
       ],
     );
   }

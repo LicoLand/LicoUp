@@ -79,7 +79,6 @@ function inputBlock(workflow, inputId) {
 function validatePackageTopology() {
   const packageJson = readJson("package.json");
   const scripts = packageJson.scripts || {};
-  const remoteReleaseStrategies = readJson("tools/client-remote-release-strategies.json");
   const expectedGateCommands = {
     "client:gate:topology": "node tools/scripts/client-gate.mjs topology",
     "client:gate:self-test": "node --test tests/contract/client/client-gate-policy.test.mjs",
@@ -95,27 +94,6 @@ function validatePackageTopology() {
     if (scripts[script] !== expected) {
       fail(`package.json must bind ${script} to its canonical gate command`);
     }
-  }
-  if (
-    scripts["client:release:remote-strategy"] !==
-    "node tools/scripts/client-remote-release-strategy.mjs"
-  ) {
-    fail("package.json must bind the canonical remote release strategy command");
-  }
-  if (
-    remoteReleaseStrategies?.schemaVersion !==
-      "licoup.client-remote-release-strategies.v1" ||
-    remoteReleaseStrategies?.groupId !== "client-remote-release-validity" ||
-    JSON.stringify(remoteReleaseStrategies?.activeStrategyIds) !==
-      JSON.stringify(["build-success"]) ||
-    remoteReleaseStrategies?.strategies?.length !== 1 ||
-    remoteReleaseStrategies.strategies[0]?.id !== "build-success" ||
-    remoteReleaseStrategies.strategies[0]?.releaseValidWhen !==
-      "selected-target-build-command-succeeded" ||
-    JSON.stringify(remoteReleaseStrategies.strategies[0]?.remoteValidationCommands) !==
-      JSON.stringify([])
-  ) {
-    fail("remote release strategy group must activate only build-success");
   }
   if (
     scripts["client:verify:agent-conversations:release-ready"] !==
@@ -197,7 +175,7 @@ function validateCiTopology() {
 }
 
 function releaseOptions(workflow) {
-  return [...inputBlock(workflow, "target").matchAll(/^\s{12}- ([a-z0-9-]+)$/gmu)]
+  return [...inputBlock(workflow, "target").matchAll(/^\s{10}- ([a-z0-9-]+)$/gmu)]
     .map((match) => match[1]);
 }
 
@@ -219,20 +197,8 @@ function workflowJobIds(workflow) {
 function validateReleaseTopology() {
   const workflow = readText(".github/workflows/client-release.yml");
   const publisher = readText("tools/scripts/client-github-release-publish.mjs");
-  const releaseEntry = readText("tools/scripts/client-release.mjs");
-  const updateFinalizer = readText("tools/scripts/client-update-release-finalize.mjs");
-  const macosDistribution = readText("apps/desktop/scripts/build-macos-distribution.mjs");
   const catalog = readJson("tools/client-release-targets.json");
-  assertIncludes(
-    publisher,
-    '"release",\n      "view",',
-    "draft Release asset verification must use the draft-aware gh release view command",
-  );
-  assertExcludes(
-    publisher,
-    "releases/tags/",
-    "draft Release asset verification must not use the published-tag-only REST endpoint",
-  );
+  const versionAuthority = readJson("tools/client-version.json");
   const supportedTargets = catalog.targets
     .filter((target) => target.releaseSupported === true)
     .map((target) => target.id)
@@ -242,109 +208,37 @@ function validateReleaseTopology() {
   if (JSON.stringify(supportedTargets) !== JSON.stringify(policyTargets)) {
     fail("release target policy must exactly match releaseSupported catalog entries");
   }
-  if (JSON.stringify(options) !== JSON.stringify(policyTargets)) {
-    fail("release workflow target choice must exactly match releaseSupported targets");
+  const selectedTarget = versionAuthority.releaseTarget;
+  if (!policyTargets.includes(selectedTarget) ||
+    JSON.stringify(options) !== JSON.stringify([selectedTarget])) {
+    fail("release workflow target choice must exactly match the current version authority");
   }
-  const expectedInputs = ["release_tag", "target", "publish_release"].sort();
+  const expectedInputs = ["phase", "release_tag", "target", "correlation",
+    "prepare_run_id", "source_revision", "artifact_digest",
+    "signed_update_manifest_base64", "publish_release"].sort();
   if (JSON.stringify(releaseInputIds(workflow).sort()) !== JSON.stringify(expectedInputs)) {
     fail("release workflow must accept one target and bounded publication inputs");
   }
   const expectedJobs = [
-    "preflight",
-    ...Object.values(CLIENT_RELEASE_TARGETS)
-      .flatMap((target) => [target.buildJob, target.publishJob]),
+    "source",
+    CLIENT_RELEASE_TARGETS[selectedTarget].buildJob,
+    CLIENT_RELEASE_TARGETS[selectedTarget].publishJob,
   ].sort();
   if (JSON.stringify(workflowJobIds(workflow).sort()) !== JSON.stringify(expectedJobs)) {
     fail("release workflow jobs must match the independent target topology");
   }
-  const preflight = jobBlock(workflow, "preflight");
-  for (const command of ["npm run ", "cargo ", "flutter "]) {
-    assertExcludes(
-      preflight,
-      command,
-      `remote release request validation must not repeat local gates: ${command.trim()}`,
-    );
-  }
-  assertExcludes(workflow, "timeout-minutes:", "release workflow must use the platform default job timeout");
-  const macosJob = jobBlock(workflow, "build-macos");
-  for (const command of ["client:verify:", "client:gate:", "flutter test", "cargo test"]) {
-    assertExcludes(
-      macosJob,
-      command,
-      `GitHub-hosted macOS publication must build without repeating local validation: ${command}`,
-    );
-  }
-  assertIncludes(
-    macosJob,
-    "name: licoup-macos-update",
-    "macOS release build must preserve its independently signed update artifact",
-  );
-  for (const token of [
-    "cp tools/install-macos.sh build/apps/desktop/distribution/macos/install-macos.sh",
-    "build/apps/desktop/distribution/macos/install-macos.sh",
-  ]) {
-    assertIncludes(macosJob, token, `macOS release must publish the one-line installer: ${token}`);
-  }
-  for (const token of [
-    'keyUsage=critical,digitalSignature',
-    'sudo -n security add-trusted-cert -d -r trustRoot -p codeSign',
-    '-k /Library/Keychains/System.keychain',
-    'security find-identity -v -p codesigning',
-    '"${existing_keychains[@]}"',
-  ]) {
-    assertIncludes(
-      macosJob,
-      token,
-      `macOS release build must prepare a trusted ephemeral signing identity: ${token}`,
-    );
-  }
-  for (const token of [
-    "client-update-release-finalize.mjs",
-    'publish_release=${options.publish && options.target !== "macos-arm64"}',
-  ]) {
-    assertIncludes(releaseEntry, token, `release entry is missing macOS update finalization: ${token}`);
-  }
-  for (const token of [
-    "LicoUp-macos-arm64-update.tar.gz",
-    "LicoUp-update-stable.json",
-    "client-update-manifest-sign.mjs",
-    "licoup-macos-update",
-  ]) {
-    assertIncludes(updateFinalizer, token, `macOS update finalizer is missing: ${token}`);
-  }
-  assertIncludes(
-    macosDistribution,
-    '["-c", "-k", "--keepParent", appPath, archivePath]',
-    "macOS GitHub archive must place LicoUp.app directly at the ZIP root",
-  );
   assertExcludes(
-    macosDistribution,
-    '["-c", "-k", "--keepParent", result.runnable.root, archivePath]',
-    "macOS GitHub archive must not wrap LicoUp.app in its runnable directory",
+    jobBlock(workflow, "source"),
+    "npm run client:gate:",
+    "remote release request binding must not repeat local gates",
   );
-  for (const token of [
-    "new Map(release.assets.map((asset) => [asset.name, asset]))",
-    "existing?.digest !== sha256File(source)",
-    '...[...expectedNames, manifestName].flatMap((name) => ["--pattern", name])',
-    "update_release_command_failed_${stage}",
-  ]) {
-    assertIncludes(
-      updateFinalizer,
-      token,
-      `macOS update finalizer recovery contract is missing: ${token}`,
-    );
-  }
   assertIncludes(
     workflow,
-    "client-github-release-${{ inputs.release_tag }}-${{ inputs.target }}",
-    "release builds must be concurrent across different targets",
+    "client-github-release-${{ inputs.release_tag }}",
+    "release phases for one tag must serialize",
   );
-  const buildCommandByTarget = {
-    "macos-arm64": "npm run client:install:macos",
-    "linux-glibc-arm64": "npm run client:build:linux",
-    "android-arm64": "npm run client:build:android",
-  };
-  for (const [target, topology] of Object.entries(CLIENT_RELEASE_TARGETS)) {
+  for (const target of [selectedTarget]) {
+    const topology = CLIENT_RELEASE_TARGETS[target];
     const build = jobBlock(workflow, topology.buildJob);
     const publish = jobBlock(workflow, topology.publishJob);
     assertIncludes(
@@ -359,34 +253,9 @@ function validateReleaseTopology() {
     );
     assertIncludes(
       build,
-      "needs: preflight",
-      `release build ${topology.buildJob} must depend on the unified preflight`,
+      "needs: [source]",
+      `release build ${topology.buildJob} must depend only on request binding`,
     );
-    const buildCommand = buildCommandByTarget[target];
-    const strategyCommand =
-      "npm run client:release:remote-strategy -- --expect build-success";
-    assertIncludes(build, buildCommand,
-      `release build ${topology.buildJob} must execute its selected-target build`);
-    assertIncludes(build, strategyCommand,
-      `release build ${topology.buildJob} must apply the active build-success strategy`);
-    if (build.indexOf(strategyCommand) < build.indexOf(buildCommand)) {
-      fail(`release build ${topology.buildJob} applies its strategy before the build succeeds`);
-    }
-    for (const command of [
-      "client:verify:",
-      "client:gate:",
-      "flutter test",
-      "cargo test",
-      "gradlew test",
-      "client:linux:smoke",
-      "client:linux:gui-smoke",
-    ]) {
-      assertExcludes(
-        build,
-        command,
-        `remote release strategy build-success forbids validation command: ${command}`,
-      );
-    }
     assertIncludes(
       publish,
       `inputs.target == '${target}'`,
@@ -394,17 +263,12 @@ function validateReleaseTopology() {
     );
     assertIncludes(
       publish,
-      `needs: [preflight, ${topology.buildJob}]`,
-      `release publisher ${topology.publishJob} must wait only for its own build`,
+      "needs: [source]",
+      `release publisher ${topology.publishJob} must bind an external prepare run`,
     );
     assertIncludes(
       publish,
-      "client-github-release-publish-${{ inputs.release_tag }}",
-      `release publisher ${topology.publishJob} must serialize only same-tag metadata updates`,
-    );
-    assertIncludes(
-      publish,
-      `name: ${topology.artifactName}`,
+      topology.artifactName,
       `release publisher ${topology.publishJob} must consume only its own artifact`,
     );
     assertIncludes(
@@ -412,20 +276,14 @@ function validateReleaseTopology() {
       "client-github-release-publish.mjs",
       `release publisher ${topology.publishJob} must use the canonical append-only publisher`,
     );
-    for (const other of Object.values(CLIENT_RELEASE_TARGETS)) {
-      if (other.buildJob !== topology.buildJob) {
-        assertExcludes(
-          publish.split("\n    steps:")[0],
-          other.buildJob,
-          `release publisher ${topology.publishJob} must not wait for ${other.buildJob}`,
-        );
-      }
-    }
+    assertIncludes(publish, "client-release-workflow-binding.mjs",
+      `release publisher ${topology.publishJob} must verify its prepare binding`);
+    assertIncludes(publish, "LICO_SIGNED_UPDATE_MANIFEST_BASE64",
+      `release publisher ${topology.publishJob} must receive locally signed update metadata`);
   }
   for (const token of [
     "client-consumer-verification-manifest.mjs",
     "client-release-remote-asset-set.mjs",
-    "--clobber",
     "COPYFILE_EXCL",
     "release.targetCommitish !== sourceSha",
   ]) {
@@ -435,6 +293,8 @@ function validateReleaseTopology() {
       `canonical release publisher is missing safety token: ${token}`,
     );
   }
+  assertIncludes(workflow, "client:release:remote-strategy -- --expect build-success",
+    "remote release validity must use the active build-success strategy");
 }
 
 export function validateClientGateTopology() {
@@ -557,19 +417,7 @@ function parsePlanArgs(args) {
 function planGate(args) {
   const revisions = parsePlanArgs(args);
   const paths = changedPaths(revisions);
-  let releaseTarget = null;
-  if (paths.includes("tools/client-version.json")) {
-    const manifest = spawnSync("git", ["show", `${validateRevision(revisions.head, "head")}:tools/client-version.json`], {
-      cwd: repoRoot,
-      encoding: "utf8",
-      shell: false,
-      stdio: ["ignore", "pipe", "ignore"],
-    });
-    if (manifest.status === 0) {
-      try { releaseTarget = JSON.parse(manifest.stdout).releaseTarget || null; } catch { fail("client release target manifest is invalid"); }
-    }
-  }
-  const plan = classifyClientGatePaths(paths, { releaseTarget });
+  const plan = classifyClientGatePaths(paths);
   const digest = createHash("sha256")
     .update([...new Set(paths)].sort().join("\0"))
     .digest("hex");

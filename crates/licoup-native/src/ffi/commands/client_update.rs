@@ -13,7 +13,17 @@ pub(super) fn handle_update(command: AdmittedCommand) -> Result<CliExecution> {
             ("channel", command.option_text("channel")),
             ("manifestPath", command.option_text("manifest-path")),
             ("publicKeysPath", command.option_text("public-keys-path")),
+            ("revocationPath", command.option_text("revocation-path")),
             ("sourcePath", command.option_text("source-path")),
+            ("source", command.option_text("source")),
+            ("repo", command.option_text("repo")),
+            ("stagingRoot", command.option_text("staging-root")),
+            ("stateRoot", command.option_text("state-root")),
+            ("currentVersion", command.option_text("current-version")),
+            ("execute", command.option_text("execute")),
+            ("installRoot", command.option_text("install-root")),
+            ("guiPid", command.option_text("gui-pid")),
+            ("waitForScript", command.option_text("wait-for-script")),
         ],
         &[],
         &[],
@@ -22,4 +32,123 @@ pub(super) fn handle_update(command: AdmittedCommand) -> Result<CliExecution> {
     Ok(CliExecution::Json(crate::domain::client_update::dispatch(
         &route, &params,
     )?))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ffi::commands::{CliCommandError, execute_cli};
+
+    fn admission_code(result: &Result<CliExecution>) -> Option<&'static str> {
+        match result {
+            Err(error) => error
+                .downcast_ref::<CliCommandError>()
+                .map(|error| error.code()),
+            Ok(_) => None,
+        }
+    }
+
+    #[test]
+    fn update_status_admits_full_option_surface() {
+        let output = match execute_cli(vec![
+            "update".into(),
+            "status".into(),
+            "--channel".into(),
+            "stable".into(),
+            "--source".into(),
+            "github".into(),
+            "--repo".into(),
+            "LicoLand/LicoUp".into(),
+            "--staging-root".into(),
+            "/tmp/licoup-staging".into(),
+            "--state-root".into(),
+            "/tmp/licoup-state".into(),
+            "--current-version".into(),
+            "1.2.3".into(),
+            "--execute".into(),
+            "true".into(),
+            "--install-root".into(),
+            "/Applications".into(),
+            "--gui-pid".into(),
+            "4242".into(),
+            "--wait-for-script".into(),
+            "true".into(),
+        ]) {
+            Ok(CliExecution::Json(value)) => value,
+            _ => panic!("update status must be JSON"),
+        };
+        assert_eq!(output["ok"], true);
+        assert_eq!(output["currentVersion"], "1.2.3");
+    }
+
+    #[test]
+    fn update_check_admits_github_source_options() {
+        let result = execute_cli(vec![
+            "update".into(),
+            "check".into(),
+            "--source".into(),
+            "github".into(),
+            "--repo".into(),
+            "LicoLand/LicoUp".into(),
+            "--channel".into(),
+            "stable".into(),
+        ]);
+        // Reaches the domain layer: GitHub fetch is not expected to succeed
+        // here, so any outcome other than an admission rejection is proof of
+        // admission.
+        assert_ne!(admission_code(&result), Some("cli_option_unknown"));
+    }
+
+    #[test]
+    fn update_rollback_route_is_registered() {
+        let result = execute_cli(vec!["update".into(), "rollback".into()]);
+        // The rollback route must reach the domain layer; without a signed
+        // manifest the domain rejects it with its own error, not an admission
+        // error.
+        assert_ne!(admission_code(&result), Some("cli_operation_unsupported"));
+        assert_ne!(admission_code(&result), Some("cli_option_unknown"));
+    }
+
+    #[test]
+    fn update_rejects_unknown_options() {
+        let result = execute_cli(vec![
+            "update".into(),
+            "status".into(),
+            "--bogus-option".into(),
+            "value".into(),
+        ]);
+        assert_eq!(admission_code(&result), Some("cli_option_unknown"));
+    }
+
+    #[test]
+    fn update_rejects_source_path_combined_with_github_source() {
+        let result = execute_cli(vec![
+            "update".into(),
+            "check".into(),
+            "--source-path".into(),
+            "/tmp/artifact.zip".into(),
+            "--source".into(),
+            "github".into(),
+        ]);
+        assert_eq!(
+            admission_code(&result),
+            Some("cli_option_constraint_violation")
+        );
+    }
+
+    #[test]
+    fn update_rejects_source_path_combined_with_repo() {
+        let result = execute_cli(vec![
+            "update".into(),
+            "check".into(),
+            "--source-path".into(),
+            "/tmp/artifact.zip".into(),
+            "--repo".into(),
+            "LicoLand/LicoUp".into(),
+        ]);
+        assert_eq!(
+            admission_code(&result),
+            Some("cli_option_constraint_violation")
+        );
+    }
 }

@@ -90,6 +90,13 @@ void registerAgentsWorkspaceInteractionScenarios() {
       await tester.pumpAndSettle();
 
       expect(find.text('为保持对话流畅，其余操作已隐藏。'), findsOneWidget);
+      // Operation rows start collapsed; the first row expands on tap to
+      // reveal its recorded detail body.
+      expect(find.text('Safe operation 1', findRichText: true), findsNothing);
+      await tester.tap(
+        find.byKey(const Key('conversation-process-operation-toggle-long-event-0')),
+      );
+      await tester.pumpAndSettle();
       expect(find.text('Safe operation 1', findRichText: true), findsOneWidget);
       expect(find.text('Safe operation 129', findRichText: true), findsNothing);
       final listFinder = find
@@ -219,6 +226,15 @@ void registerAgentsWorkspaceInteractionScenarios() {
       await tester.tap(find.byKey(toggleKey));
       await tester.pump();
 
+      // The operation row is collapsed by default: the localized notice
+      // appears only after the row itself is expanded.
+      expect(find.text('调用详情已隐藏。', findRichText: true), findsNothing);
+      await tester.tap(
+        find.byKey(
+          const Key('conversation-process-operation-toggle-tool-hidden'),
+        ),
+      );
+      await tester.pump();
       expect(find.text('调用详情已隐藏。', findRichText: true), findsOneWidget);
       expect(find.text('Invocation details are hidden.'), findsNothing);
       expect(find.text('为保持对话流畅，其余操作已隐藏。'), findsOneWidget);

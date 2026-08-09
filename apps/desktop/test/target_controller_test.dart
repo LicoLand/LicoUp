@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:licoup/src/application/features/targets/controller/target_controller.dart';
 import 'package:licoup/src/application/features/targets/policy/target_policy.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
@@ -142,6 +144,88 @@ void main() {
       expect(updates.last.english, isNot(contains('private-runtime-detail')));
     },
   );
+
+  test(
+    'conversation history load failure does not fail the scan',
+    () async {
+      final updates = <TargetStatusUpdate>[];
+      final controller = TargetController(
+        gateway: _Gateway(probes: {'codex': _target('codex')}),
+        snapshotRepository: _SnapshotRepository(),
+        tabOrderRepository: _TabOrderRepository(),
+        portableData: Object(),
+        packagedTargetIds: const ['codex'],
+        isMobileRuntime: () => false,
+        scanMobileTargets: () async => const [],
+        onTargetsSettled: () {},
+        loadSelectedConversation: () async =>
+            throw StateError('native history read failed'),
+        shouldLoadSelectedConversation: () => true,
+        isOrchestrationTarget: (_) => false,
+        onStatus: updates.add,
+      );
+      addTearDown(controller.dispose);
+
+      await controller.scan(showProgress: true);
+
+      // The scan itself succeeded; the history read failure must not be
+      // reported as a scan failure nor leave the busy flag set.
+      expect(controller.lastErrorCode, isEmpty);
+      expect(
+        updates.map((update) => update.errorCode),
+        isNot(contains('target_scan_failed')),
+      );
+      expect(controller.isScanning, isFalse);
+      expect(
+        controller.targets.map((target) => target.target),
+        contains('codex'),
+      );
+    },
+  );
+
+  test('slow conversation history load does not block later scans', () async {
+    final gateway = _Gateway(probes: {'codex': _target('codex')});
+    final loadGate = Completer<void>();
+    var loadCalls = 0;
+    final controller = TargetController(
+      gateway: gateway,
+      snapshotRepository: _SnapshotRepository(),
+      tabOrderRepository: _TabOrderRepository(),
+      portableData: Object(),
+      packagedTargetIds: const ['codex'],
+      isMobileRuntime: () => false,
+      scanMobileTargets: () async => const [],
+      onTargetsSettled: () {},
+      loadSelectedConversation: () {
+        loadCalls += 1;
+        return loadGate.future;
+      },
+      shouldLoadSelectedConversation: () => true,
+      isOrchestrationTarget: (_) => false,
+      onStatus: (_) {},
+    );
+    addTearDown(controller.dispose);
+
+    final firstScan = controller.scan(showProgress: true);
+    // Wait until the first scan released the refresh gate and entered the
+    // history load.
+    await Future<void>.delayed(const Duration(milliseconds: 5));
+    final secondScan = controller.scan(
+      showProgress: true,
+      forceRescanKnown: true,
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+    loadGate.complete();
+    await Future.wait([firstScan, secondScan]);
+
+    expect(
+      gateway.scanCounts['codex'],
+      2,
+      reason: 'the history load must not hold the refresh gate',
+    );
+    expect(loadCalls, 2);
+    expect(controller.isScanning, isFalse);
+  });
 
   test('concurrent forced scans coalesce after an active quiet scan', () async {
     final gateway = _Gateway(

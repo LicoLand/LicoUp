@@ -34,7 +34,7 @@ pub(super) fn print_usage() {
   licoup agent-usage report [--agent AGENT] [--limit N] [--state-root PATH]
   licoup resource-usage scan [--state-root PATH]
   licoup mcp http preview|execute --stdin-json true  # exact-scope private input and fresh platform user-presence confirmation
-  licoup update status|check|download|verify|apply [--channel stable] [--manifest-path PATH] [--public-keys-path PATH] [--source-path PATH]
+  licoup update status|check|download|verify|apply|rollback [--channel CHANNEL] [--source local|github] [--repo OWNER/REPO] [--manifest-path PATH] [--public-keys-path PATH] [--revocation-path PATH] [--source-path PATH] [--staging-root PATH] [--state-root PATH] [--current-version VERSION] [--install-root PATH] [--gui-pid PID] [--execute true|false] [--wait-for-script true|false]
   licoup collaboration status|enable|disable|cleanup
   licoup collaboration install plan|apply|cancel [--github-url URL|--plan-id ID] [--expected-digest-sha256 SHA256] [--confirmed true]
   licoup collaboration workflow catalog

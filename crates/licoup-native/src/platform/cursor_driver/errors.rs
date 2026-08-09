@@ -37,4 +37,9 @@ impl ProtocolFailure {
         }
         self
     }
+
+    pub(in crate::platform) fn with_turn_status(mut self, turn_status: &str) -> Self {
+        self.turn_status = Some(turn_status.to_string());
+        self
+    }
 }

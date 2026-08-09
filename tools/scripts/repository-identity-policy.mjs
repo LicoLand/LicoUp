@@ -91,16 +91,31 @@ export function parseGitHubIdentity(raw) {
   return Object.freeze({ login, id });
 }
 
+export function boundedIdentityRead(operation, attempts = 3) {
+  if (typeof operation !== "function" || !Number.isSafeInteger(attempts) || attempts < 1) {
+    reject("READ_RETRY_INVALID", "The bounded identity read policy is invalid.");
+  }
+  let failure;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      return operation();
+    } catch (error) {
+      failure = error;
+      if (attempt < attempts) {
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, attempt * 250);
+      }
+    }
+  }
+  throw failure;
+}
+
 function currentGitHubIdentity() {
-  run("gh", ["auth", "status", "--active", "--hostname", "github.com"], {
-    code: "GH_AUTH_REQUIRED",
-    message: "GitHub CLI authentication is required.",
-  });
   return parseGitHubIdentity(
-    run("gh", ["api", "user", "--jq", '[.login, (.id | tostring)] | @tsv'], {
-      code: "GH_IDENTITY_UNAVAILABLE",
-      message: "The authenticated GitHub account could not be resolved.",
-    }),
+    boundedIdentityRead(() =>
+      run("gh", ["api", "user", "--jq", '[.login, (.id | tostring)] | @tsv'], {
+        code: "GH_IDENTITY_UNAVAILABLE",
+        message: "The authenticated GitHub account could not be resolved.",
+      })),
   );
 }
 

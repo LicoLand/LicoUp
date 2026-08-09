@@ -210,7 +210,7 @@ mod tests {
             "codex",
             "claude",
             SessionMode::Resume,
-            Some("/fixture/location/main.jsonl".into()),
+            Some("/tmp/main.jsonl".into()),
         );
         persist_handoff(&dir, &record).unwrap();
         let loaded = load_handoff(&dir, "handoff-1").unwrap();
@@ -219,7 +219,7 @@ mod tests {
         assert_eq!(loaded.session_mode, SessionMode::Resume);
         assert_eq!(
             loaded.main_conversation_path.as_deref(),
-            Some("/fixture/location/main.jsonl")
+            Some("/tmp/main.jsonl")
         );
         let ack = loaded.ack_receipt();
         assert_eq!(ack["accepted"], true);

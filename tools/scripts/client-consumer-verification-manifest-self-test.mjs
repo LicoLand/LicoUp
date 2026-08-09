@@ -10,15 +10,20 @@ import { fileURLToPath } from "node:url";
 const repoRoot = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const fixtureRoot = mkdtempSync(path.join(tmpdir(), "lico-consumer-manifest-"));
 const script = path.join(repoRoot, "tools/scripts/client-consumer-verification-manifest.mjs");
-const artifact = "LicoUp-macos-arm64.zip";
+const artifact = "LicoUp-macos-arm64.dmg";
+const updateArtifact = "LicoUp-macos-arm64-update.zip";
 const output = path.join(fixtureRoot, "LicoUp-consumer-verification.json");
 
 try {
   const bytes = Buffer.from("canonical-artifact-fixture", "utf8");
   const digest = createHash("sha256").update(bytes).digest("hex");
+  const updateBytes = Buffer.from("canonical-update-fixture", "utf8");
+  const updateDigest = createHash("sha256").update(updateBytes).digest("hex");
   writeFileSync(path.join(fixtureRoot, artifact), bytes);
   writeFileSync(path.join(fixtureRoot, `${artifact}.sha256`), `${digest}  ${artifact}\n`);
-  writeFileSync(path.join(fixtureRoot, "install-macos.sh"), "#!/bin/bash\n");
+  writeFileSync(path.join(fixtureRoot, updateArtifact), updateBytes);
+  writeFileSync(path.join(fixtureRoot, `${updateArtifact}.sha256`),
+    `${updateDigest}  ${updateArtifact}\n`);
   const valid = spawnSync(process.execPath, [
     script,
     "--assets", fixtureRoot,
@@ -29,8 +34,10 @@ try {
   if (valid.status !== 0) throw new Error("valid consumer manifest fixture was rejected");
   const manifest = JSON.parse(readFileSync(output, "utf8"));
   if (manifest.schemaVersion !== "licomesh.consumer-verification-manifest.v1" ||
-    manifest.artifacts?.length !== 1 || manifest.artifacts[0]?.sha256 !== digest ||
+    manifest.artifacts?.length !== 2 || manifest.artifacts[0]?.sha256 !== digest ||
     manifest.artifacts[0]?.name !== artifact ||
+    manifest.artifacts[1]?.sha256 !== updateDigest ||
+    manifest.artifacts[1]?.name !== updateArtifact ||
     Object.keys(manifest).some((key) => /publisher|account|team|tenant|device/iu.test(key))) {
     throw new Error("consumer manifest exposed invalid or non-verification metadata");
   }

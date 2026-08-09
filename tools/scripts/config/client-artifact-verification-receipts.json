@@ -19,7 +19,7 @@
     "macos-arm64": {
       "platform": "macos",
       "artifactKind": "macos-distribution-archive",
-      "artifactRef": "build/apps/desktop/distribution/macos/LicoUp-macos-arm64.zip",
+      "artifactRef": "build/apps/desktop/distribution/macos/LicoUp-macos-arm64.dmg",
       "artifactDigestKind": "file",
       "distributionManifestRef": "build/apps/desktop/distribution/macos/manifest.json",
       "evidenceArtifactKind": "macos-app-bundle",

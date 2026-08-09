@@ -11,7 +11,6 @@ import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 import 'layout/fixtures/layout_destination_presentation_fixture.dart';
-import 'fixtures/client_controller/support/fake_agent_service.dart';
 
 void main() {
   TargetCandidate targetFixture(String id, {String status = 'detected'}) {
@@ -98,7 +97,7 @@ void main() {
   });
 
   testWidgets('agent sidebar hides status lights by default', (tester) async {
-    final controller = ClientController(agentService: FakeAgentService());
+    final controller = ClientController();
     addTearDown(controller.dispose);
     controller.scannedTargets = [
       targetFixture('codex'),
@@ -123,7 +122,7 @@ void main() {
   testWidgets('agent sidebar shows yellow for approval and blue for finished', (
     tester,
   ) async {
-    final controller = ClientController(agentService: FakeAgentService());
+    final controller = ClientController();
     addTearDown(controller.dispose);
     controller.scannedTargets = [
       targetFixture('codex'),
@@ -158,7 +157,7 @@ void main() {
   testWidgets('selecting a sidebar agent clears unfinished work light only', (
     tester,
   ) async {
-    final controller = ClientController(agentService: FakeAgentService());
+    final controller = ClientController();
     addTearDown(controller.dispose);
     controller.scannedTargets = [
       targetFixture('codex'),
@@ -186,6 +185,10 @@ void main() {
     expect(
       find.byKey(const Key('agents-sidebar-activity-session-1')),
       findsNothing,
+    );
+    expect(
+      find.byKey(const Key('agents-sidebar-activity-session-2')),
+      findsOneWidget,
     );
     expect(
       controller.conversationTabActivityFor('cursor'),

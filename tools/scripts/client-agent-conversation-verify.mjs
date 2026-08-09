@@ -8,15 +8,13 @@ import {
   RELEASE_CLOSURE_CHALLENGE_ENV,
   createReleaseClosureChallenge,
 } from "./lib/release-closure-challenge.mjs";
+import { verificationModelsMap } from "./lib/agent-conversation-verification-models.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const inventoryPath = resolve(root, "crates/licoup-native/resources/agent-conversation-drivers.json");
 const readinessPath = resolve(root, "crates/licoup-native/resources/agent-conversation-readiness.json");
 const defaultReport = resolve(root, "build/reports/agent-conversation-verification.json");
-const validationModels = Object.freeze({
-  cursor: "Auto",
-  "kilo-code": "Kilo Auto Free",
-});
+const validationModels = verificationModelsMap();
 
 function parseArgs(argv) {
   const options = { agents: [], live: false, releaseUi: false, selfTest: false, output: defaultReport };

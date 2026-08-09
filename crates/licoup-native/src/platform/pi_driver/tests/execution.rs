@@ -101,6 +101,26 @@ fn fake_child_acknowledges_native_guidance_during_the_active_turn() {
 }
 
 #[test]
+fn provider_credential_error_is_not_reported_as_missing_final_message() {
+    let (directory, executable) = compile_fake_pi("lico-pi-rpc-credential");
+    let result = execute(
+        executable.to_string_lossy().as_ref(),
+        &json!({}),
+        "credential-case",
+        "",
+        Some(directory.as_path()),
+        10_000,
+        Some(1024 * 1024),
+        1024,
+    );
+    assert!(!result.ok);
+    let error = result.error.expect("typed failure");
+    assert_eq!(error.code, "pi_gateway_credentials_unavailable");
+    assert!(error.message.contains("authorized API keys"));
+    let _ = fs::remove_dir_all(directory);
+}
+
+#[test]
 fn stalled_rpc_turn_times_out_and_cleans_up_the_child_tree() {
     let (directory, executable) = compile_fake_pi("lico-pi-rpc-timeout");
     let result = execute(

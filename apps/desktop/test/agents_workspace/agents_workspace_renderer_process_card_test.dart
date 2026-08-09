@@ -354,7 +354,9 @@ void registerAgentsWorkspaceRendererProcessCardScenarios() {
     expect(find.textContaining('{"'), findsNothing);
 
     await tester.tap(find.byKey(processToggleKey));
-    await tester.pump(const Duration(milliseconds: 220));
+    // The card scrolls itself into view after expansion; settle animations
+    // and the scroll frame before probing row positions.
+    await tester.pumpAndSettle();
 
     expect(
       find.byKey(const Key('conversation-process-operation-message-tool')),
@@ -393,6 +395,57 @@ void registerAgentsWorkspaceRendererProcessCardScenarios() {
       find.text('Invocation details are hidden.', findRichText: true),
       findsNothing,
     );
+    // Operation rows start collapsed: the tool and reasoning detail bodies
+    // appear only after their rows expand.
+    expect(
+      find.textContaining(
+        'read ${['', 'workspace', 'private', 'source.rs'].join('/')}',
+        findRichText: true,
+      ),
+      findsNothing,
+    );
+    expect(
+      find.textContaining('Inspected the adapter under', findRichText: true),
+      findsNothing,
+    );
+    expect(
+      find.textContaining('Operation failed', findRichText: true),
+      findsOneWidget,
+    );
+    expect(find.textContaining('secret-value'), findsNothing);
+    // The error row expands by default and carries the failed path; the
+    // collapsed tool/reasoning rows keep their paths hidden until expanded.
+    expect(
+      find.textContaining('/workspace/private', findRichText: true),
+      findsOneWidget,
+    );
+    expect(
+      find.textContaining('private-thread', findRichText: true),
+      findsNothing,
+    );
+    expect(find.textContaining('{"', findRichText: true), findsNothing);
+
+    await tester.ensureVisible(
+      find.byKey(
+        const Key('conversation-process-operation-toggle-message-tool'),
+      ),
+    );
+    await tester.tap(
+      find.byKey(
+        const Key('conversation-process-operation-toggle-message-tool'),
+      ),
+    );
+    await tester.ensureVisible(
+      find.byKey(
+        const Key('conversation-process-operation-toggle-message-reasoning'),
+      ),
+    );
+    await tester.tap(
+      find.byKey(
+        const Key('conversation-process-operation-toggle-message-reasoning'),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 220));
     expect(
       find.textContaining(
         'read ${['', 'workspace', 'private', 'source.rs'].join('/')}',

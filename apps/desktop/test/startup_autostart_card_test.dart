@@ -103,7 +103,14 @@ void main() {
     await tester.pumpAndSettle();
     expect(
       agent.cliCalls.lastWhere((args) => args.contains('mcp')),
-      equals(['autostart', 'set', '--component', 'mcp', '--enabled', 'true']),
+      equals([
+        'autostart',
+        'set',
+        '--component',
+        'mcp',
+        '--enabled',
+        'true',
+      ]),
     );
     expect(find.text('自启动设置已保存。'), findsOneWidget);
   });
@@ -155,7 +162,10 @@ final class _AutostartAgentService extends FakeAgentService {
       'enabled': gatewayEnabled,
       'installed': gatewayEnabled,
     },
-    'mcp': {'enabled': mcpEnabled, 'installed': mcpEnabled},
+    'mcp': {
+      'enabled': mcpEnabled,
+      'installed': mcpEnabled,
+    },
   };
 
   String? _option(List<String> args, String name) {

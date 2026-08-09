@@ -60,8 +60,6 @@ jobs:
       - name: Install Node dependencies
         run: npm ci
       - name: Run Node-only source policy
-        env:
-          LICO_AUDITOR_GATE_DELEGATED: "1"
         run: npm run client:gate:source
       - name: Upload source-policy reports
         if: always()

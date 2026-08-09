@@ -32,7 +32,8 @@ final class LlmVaultAuthorization extends ChangeNotifier {
       _authorizedCredentialIds.contains(credentialId);
 
   set authorized(bool value) {
-    if (_authorized == value && (value || _authorizedCredentialIds.isEmpty)) {
+    if (_authorized == value &&
+        (value || _authorizedCredentialIds.isEmpty)) {
       return;
     }
     _authorized = value;
@@ -65,7 +66,10 @@ final class LlmVaultAuthorization extends ChangeNotifier {
     return _runExclusive(() => _clearAuthorization(runner));
   }
 
-  Future<bool> clearCredential(AgentCommandRunner runner, String credentialId) {
+  Future<bool> clearCredential(
+    AgentCommandRunner runner,
+    String credentialId,
+  ) {
     if (!isCredentialAuthorized(credentialId)) return Future.value(true);
     return _runExclusive(
       () => _clearAuthorization(runner, credentialId: credentialId),

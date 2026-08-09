@@ -321,7 +321,6 @@ fn platform_uninstall() -> Result<()> {
     bail!("llm_gateway_autostart_unsupported")
 }
 
-#[cfg(target_os = "macos")]
 fn xml_escape(value: &str) -> String {
     value
         .replace('&', "&amp;")

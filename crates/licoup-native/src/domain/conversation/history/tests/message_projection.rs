@@ -63,7 +63,7 @@ fn claude_code_adapter_preserves_mixed_text_and_tool_use_blocks() {
 }
 
 #[test]
-fn claude_code_adapter_preserves_tool_result_as_redacted_event() {
+fn claude_code_adapter_formats_tool_result_details_from_json_content() {
     let dir = temp_dir("claude-tool-result-history");
     fs::write(
         dir.join("project.jsonl"),
@@ -91,14 +91,11 @@ fn claude_code_adapter_preserves_tool_result_as_redacted_event() {
     assert_eq!(messages[1]["role"], "tool_result");
     assert_eq!(messages[1]["cardType"], "tool-result");
     assert_eq!(messages[1]["collapsed"], true);
-    assert_eq!(messages[1]["text"], "The native tool result was recorded.");
+    assert_eq!(
+        messages[1]["text"],
+        "id: client.linux.smoke\nowner: client\npackage: client\nprofiles: [\"external\"]\nrequiredServices: []"
+    );
     assert_eq!(messages[2]["role"], "agent");
-    assert!(!messages.iter().any(|message| {
-        message["text"]
-            .as_str()
-            .unwrap_or_default()
-            .contains("client.linux.smoke")
-    }));
 }
 
 #[test]
@@ -165,7 +162,10 @@ fn native_history_preserves_metadata_error_and_unknown_event_semantics() {
     assert_eq!(messages[1]["role"], "metadata");
     assert_eq!(messages[1]["cardType"], "metadata");
     assert_eq!(messages[1]["collapsed"], true);
-    assert_eq!(messages[1]["text"], "Sensitive native metadata is hidden.");
+    assert_eq!(
+        messages[1]["text"],
+        "access_token: [redacted]\ncwd: [local path hidden]"
+    );
     assert_eq!(messages[2]["role"], "error");
     assert_eq!(messages[2]["cardType"], "error");
     assert_eq!(messages[2]["collapsed"], false);

@@ -76,19 +76,22 @@ abstract final class LicoTypography {
     );
   }
 
-  /// The style for a small, all-caps section label.
+  /// The style for a small group label above a list or menu section.
   ///
   /// Eyebrows carry structure without consuming a heading level, which keeps
-  /// dense panels navigable without a second type size.
+  /// dense panels navigable without a second type size. The values are the
+  /// ones the sidebar, palette, and menu group labels converged on; they used
+  /// to be restated inline at every call site with drifting weight and
+  /// tracking.
   static TextStyle eyebrow({required Color color}) {
     return TextStyle(
       fontFamily: sansFamily,
       fontFamilyFallback: sansFallback,
       color: color,
-      fontSize: 10,
-      fontWeight: FontWeight.w700,
+      fontSize: 11,
+      fontWeight: FontWeight.w600,
       height: 1.2,
-      letterSpacing: 0.6,
+      letterSpacing: 0.4,
     );
   }
 

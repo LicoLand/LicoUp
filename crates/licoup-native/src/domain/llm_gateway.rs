@@ -88,7 +88,7 @@ pub struct PreparedGatewayRequest {
     pub stream: bool,
     pub requested_model: String,
     pub upstream_model: String,
-    history_messages: Option<Vec<Value>>,
+    pub(crate) history_messages: Option<Vec<Value>>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -321,6 +321,19 @@ impl CompiledGateway {
             .put(response_id, messages);
         Ok(())
     }
+
+    pub(crate) fn remember_stream_response(
+        &self,
+        request: &PreparedGatewayRequest,
+        upstream_sse: &[u8],
+    ) -> Result<(), GatewayError> {
+        if request.client_protocol == ClientProtocol::OpenAiResponses
+            && request.upstream_protocol == UpstreamProtocol::OpenAiChatCompletions
+        {
+            self.remember_chat_response(request, upstream_sse, true)?;
+        }
+        Ok(())
+    }
 }
 
 impl ResponseHistory {
@@ -426,11 +439,20 @@ fn anthropic_to_chat(document: &Value) -> Result<Value, GatewayError> {
             continue;
         }
         let blocks = content.as_array().ok_or(GatewayError::InvalidRequest)?;
-        let mut text = String::new();
+        let mut content_parts = Vec::new();
         let mut tool_calls = Vec::new();
         for block in blocks {
             match block.get("type").and_then(Value::as_str) {
-                Some("text") => append_text(&mut text, block.get("text").and_then(Value::as_str)),
+                Some("text") => {
+                    if let Some(text) = block.get("text").and_then(Value::as_str) {
+                        content_parts.push(json!({"type":"text","text":text}));
+                    }
+                }
+                Some("image") => {
+                    if let Some(image) = anthropic_image_to_chat(block) {
+                        content_parts.push(image);
+                    }
+                }
                 Some("tool_use") => tool_calls.push(json!({
                     "id": block.get("id"),
                     "type":"function",
@@ -447,15 +469,37 @@ fn anthropic_to_chat(document: &Value) -> Result<Value, GatewayError> {
                 _ => {}
             }
         }
-        if !text.is_empty() || !tool_calls.is_empty() {
-            let mut projected = json!({"role":role,"content":text});
+        if !content_parts.is_empty() || !tool_calls.is_empty() {
+            let content = if content_parts.len() == 1
+                && content_parts[0].get("type").and_then(Value::as_str) == Some("text")
+            {
+                content_parts[0].get("text").cloned().unwrap_or(Value::Null)
+            } else {
+                Value::Array(content_parts)
+            };
+            let mut projected = json!({"role":role,"content":content});
             if !tool_calls.is_empty() {
                 projected["tool_calls"] = Value::Array(tool_calls);
             }
             messages.push(projected);
         }
     }
-    Ok(chat_document(document, messages, anthropic_tools(document)))
+    let mut result = chat_document(document, messages, anthropic_tools(document));
+    if let Some(stop_sequences) = document.get("stop_sequences") {
+        result["stop"] = stop_sequences.clone();
+    }
+    if let Some(choice) = document.get("tool_choice") {
+        if let Some(mapped) = anthropic_tool_choice(choice) {
+            result["tool_choice"] = mapped;
+        }
+        if let Some(disabled) = choice
+            .get("disable_parallel_tool_use")
+            .and_then(Value::as_bool)
+        {
+            result["parallel_tool_calls"] = Value::Bool(!disabled);
+        }
+    }
+    Ok(result)
 }
 
 fn responses_to_chat(
@@ -486,7 +530,7 @@ fn responses_to_chat(
                         let role = item.get("role").and_then(Value::as_str).unwrap_or("user");
                         messages.push(json!({
                             "role": role,
-                            "content": content_text(item.get("content").unwrap_or(&Value::Null))
+                            "content": responses_message_content(item.get("content").unwrap_or(&Value::Null))
                         }));
                     }
                     Some("function_call") | Some("custom_tool_call") => {
@@ -516,7 +560,18 @@ fn responses_to_chat(
         }
         _ => return Err(GatewayError::InvalidRequest),
     }
-    Ok(chat_document(document, messages, responses_tools(document)))
+    let mut result = chat_document(document, messages, responses_tools(document));
+    if let Some(choice) = document.get("tool_choice") {
+        if let Some(mapped) = responses_tool_choice(choice) {
+            result["tool_choice"] = mapped;
+        }
+    }
+    if let Some(format) = document.pointer("/text/format") {
+        if let Some(mapped) = responses_text_format(format) {
+            result["response_format"] = mapped;
+        }
+    }
+    Ok(result)
 }
 
 fn chat_document(source: &Value, messages: Vec<Value>, tools: Vec<Value>) -> Value {
@@ -531,6 +586,7 @@ fn chat_document(source: &Value, messages: Vec<Value>, tools: Vec<Value>) -> Val
         "top_p",
         "stop",
         "reasoning_effort",
+        "parallel_tool_calls",
     ] {
         if let Some(value) = source.get(key) {
             result[key] = value.clone();
@@ -549,11 +605,86 @@ fn chat_document(source: &Value, messages: Vec<Value>, tools: Vec<Value>) -> Val
     }
     if !tools.is_empty() {
         result["tools"] = Value::Array(tools);
-        if let Some(choice) = source.get("tool_choice") {
-            result["tool_choice"] = choice.clone();
-        }
+    }
+    if result["stream"] == Value::Bool(true) {
+        result["stream_options"] = json!({"include_usage":true});
     }
     result
+}
+
+fn anthropic_image_to_chat(block: &Value) -> Option<Value> {
+    let source = block.get("source")?;
+    let url = match source.get("type").and_then(Value::as_str)? {
+        "base64" => format!(
+            "data:{};base64,{}",
+            source.get("media_type")?.as_str()?,
+            source.get("data")?.as_str()?
+        ),
+        "url" => source.get("url")?.as_str()?.to_owned(),
+        _ => return None,
+    };
+    Some(json!({"type":"image_url","image_url":{"url":url}}))
+}
+
+fn responses_message_content(content: &Value) -> Value {
+    let Some(items) = content.as_array() else {
+        return Value::String(content_text(content));
+    };
+    let parts = items
+        .iter()
+        .filter_map(|item| match item.get("type").and_then(Value::as_str) {
+            Some("input_text") | Some("output_text") | Some("text") => item
+                .get("text")
+                .and_then(Value::as_str)
+                .map(|text| json!({"type":"text","text":text})),
+            Some("input_image") => item
+                .get("image_url")
+                .and_then(Value::as_str)
+                .map(|url| json!({"type":"image_url","image_url":{"url":url,"detail":item.get("detail").cloned().unwrap_or(json!("auto"))}})),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    if parts.len() == 1 && parts[0].get("type").and_then(Value::as_str) == Some("text") {
+        parts[0].get("text").cloned().unwrap_or(Value::Null)
+    } else {
+        Value::Array(parts)
+    }
+}
+
+fn anthropic_tool_choice(choice: &Value) -> Option<Value> {
+    match choice.get("type").and_then(Value::as_str)? {
+        "auto" => Some(json!("auto")),
+        "any" => Some(json!("required")),
+        "none" => Some(json!("none")),
+        "tool" => Some(json!({"type":"function","function":{"name":choice.get("name")?}})),
+        _ => None,
+    }
+}
+
+fn responses_tool_choice(choice: &Value) -> Option<Value> {
+    if choice.is_string() {
+        return Some(choice.clone());
+    }
+    match choice.get("type").and_then(Value::as_str)? {
+        "function" => Some(json!({"type":"function","function":{"name":choice.get("name")?}})),
+        _ => None,
+    }
+}
+
+fn responses_text_format(format: &Value) -> Option<Value> {
+    match format.get("type").and_then(Value::as_str)? {
+        "text" => Some(json!({"type":"text"})),
+        "json_object" => Some(json!({"type":"json_object"})),
+        "json_schema" => Some(json!({
+            "type":"json_schema",
+            "json_schema":{
+                "name":format.get("name")?,
+                "schema":format.get("schema")?,
+                "strict":format.get("strict").cloned().unwrap_or(json!(false))
+            }
+        })),
+        _ => None,
+    }
 }
 
 fn anthropic_tools(document: &Value) -> Vec<Value> {
@@ -651,9 +782,13 @@ fn chat_to_responses(body: &[u8], model: &str) -> Result<Vec<u8>, GatewayError> 
         }
     }
     let usage = responses_usage(chat.get("usage"));
+    let finish_reason = chat
+        .pointer("/choices/0/finish_reason")
+        .and_then(Value::as_str);
+    let (status, incomplete_details) = responses_completion(finish_reason);
     serde_json::to_vec(&json!({
-        "id":id,"object":"response","created_at":unix_seconds(),"status":"completed",
-        "error":null,"incomplete_details":null,"model":model,"output":output,
+        "id":id,"object":"response","created_at":unix_seconds(),"status":status,
+        "error":null,"incomplete_details":incomplete_details,"model":model,"output":output,
         "parallel_tool_calls":true,"usage":usage
     }))
     .map_err(|_| GatewayError::InvalidUpstreamResponse)
@@ -673,22 +808,27 @@ fn chat_to_anthropic(body: &[u8], model: &str) -> Result<Vec<u8>, GatewayError> 
     {
         content.push(json!({"type":"text","text":text}));
     }
-    if let Some(calls) = message.get("tool_calls").and_then(Value::as_array) {
-        for call in calls {
-            let input = call
-                .pointer("/function/arguments")
-                .and_then(Value::as_str)
-                .and_then(|raw| serde_json::from_str(raw).ok())
-                .unwrap_or(Value::Object(Map::new()));
-            content.push(json!({
+    let calls = message
+        .get("tool_calls")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    for call in &calls {
+        let input = call
+            .pointer("/function/arguments")
+            .and_then(Value::as_str)
+            .and_then(|raw| serde_json::from_str(raw).ok())
+            .unwrap_or(Value::Object(Map::new()));
+        content.push(json!({
                 "type":"tool_use","id":call.get("id"),"name":call.pointer("/function/name"),"input":input
             }));
-        }
     }
     let usage = chat.get("usage").cloned().unwrap_or(json!({}));
     serde_json::to_vec(&json!({
         "id":response_id(&chat),"type":"message","role":"assistant","model":model,
-        "content":content,"stop_reason":"end_turn","stop_sequence":null,
+        "content":content,
+        "stop_reason":anthropic_stop_reason(chat.pointer("/choices/0/finish_reason").and_then(Value::as_str), !calls.is_empty()),
+        "stop_sequence":null,
         "usage":{"input_tokens":usage.get("prompt_tokens").and_then(Value::as_u64).unwrap_or(0),
                  "output_tokens":usage.get("completion_tokens").and_then(Value::as_u64).unwrap_or(0)}
     }))
@@ -797,7 +937,22 @@ fn chat_sse_to_responses(body: &[u8], model: &str) -> Result<Vec<u8>, GatewayErr
         .last()
         .map(|chunk| responses_usage(chunk.get("usage")))
         .unwrap_or_else(|| responses_usage(None));
-    events.push(sse_event(json!({"type":"response.completed","sequence_number":sequence,"response":response_shell(&id, model, "completed", output, usage)})));
+    let finish_reason = chunks.iter().rev().find_map(|chunk| {
+        chunk
+            .pointer("/choices/0/finish_reason")
+            .and_then(Value::as_str)
+    });
+    let (status, incomplete_details) = responses_completion(finish_reason);
+    let mut response = response_shell(&id, model, status, output, usage);
+    response["incomplete_details"] = incomplete_details;
+    let event_type = if status == "completed" {
+        "response.completed"
+    } else {
+        "response.incomplete"
+    };
+    events.push(sse_event(
+        json!({"type":event_type,"sequence_number":sequence,"response":response}),
+    ));
     events.push("data: [DONE]\n\n".into());
     Ok(events.concat().into_bytes())
 }
@@ -861,11 +1016,12 @@ fn chat_sse_to_anthropic(body: &[u8], model: &str) -> Result<Vec<u8>, GatewayErr
         .and_then(|value| value.get("completion_tokens"))
         .and_then(Value::as_u64)
         .unwrap_or(0);
-    let stop_reason = if calls.is_empty() {
-        "end_turn"
-    } else {
-        "tool_use"
-    };
+    let finish_reason = chunks.iter().rev().find_map(|chunk| {
+        chunk
+            .pointer("/choices/0/finish_reason")
+            .and_then(Value::as_str)
+    });
+    let stop_reason = anthropic_stop_reason(finish_reason, !calls.is_empty());
     events.push(sse_named("message_delta", json!({"type":"message_delta","delta":{"stop_reason":stop_reason,"stop_sequence":null},"usage":{"output_tokens":output_tokens}})));
     events.push(sse_named("message_stop", json!({"type":"message_stop"})));
     Ok(events.concat().into_bytes())
@@ -961,6 +1117,26 @@ fn normalize_error(status: u16, body: &[u8]) -> GatewayResponse {
     }
 }
 
+fn anthropic_stop_reason(finish_reason: Option<&str>, has_tools: bool) -> &'static str {
+    if has_tools || finish_reason == Some("tool_calls") {
+        "tool_use"
+    } else {
+        match finish_reason {
+            Some("length") => "max_tokens",
+            Some("content_filter") => "refusal",
+            _ => "end_turn",
+        }
+    }
+}
+
+fn responses_completion(finish_reason: Option<&str>) -> (&'static str, Value) {
+    match finish_reason {
+        Some("length") => ("incomplete", json!({"reason":"max_output_tokens"})),
+        Some("content_filter") => ("incomplete", json!({"reason":"content_filter"})),
+        _ => ("completed", Value::Null),
+    }
+}
+
 fn content_text(value: &Value) -> String {
     match value {
         Value::String(text) => text.clone(),
@@ -978,16 +1154,6 @@ fn content_text(value: &Value) -> String {
         other if !other.is_null() => other.to_string(),
         _ => String::new(),
     }
-}
-
-fn append_text(target: &mut String, value: Option<&str>) {
-    let Some(value) = value.filter(|value| !value.is_empty()) else {
-        return;
-    };
-    if !target.is_empty() {
-        target.push('\n');
-    }
-    target.push_str(value);
 }
 
 fn responses_usage(usage: Option<&Value>) -> Value {
@@ -1219,6 +1385,63 @@ mod tests {
     }
 
     #[test]
+    fn converted_requests_preserve_multimodal_tools_stops_and_structured_output() {
+        let gateway = gateway();
+        let anthropic = gateway
+            .prepare(
+                "/v1/messages",
+                serde_json::to_vec(&json!({
+                    "model":"visual","max_tokens":512,"stream":true,
+                    "stop_sequences":["END"],
+                    "tool_choice":{"type":"tool","name":"browser","disable_parallel_tool_use":true},
+                    "tools":[{"name":"browser","input_schema":{"type":"object"}}],
+                    "messages":[{"role":"user","content":[
+                        {"type":"text","text":"inspect"},
+                        {"type":"image","source":{"type":"url","url":"https://example.invalid/image.png"}}
+                    ]}]
+                }))
+                .unwrap()
+                .as_slice(),
+            )
+            .unwrap();
+        let body: Value = serde_json::from_slice(&anthropic.body).unwrap();
+        assert_eq!(body["stop"], json!(["END"]));
+        assert_eq!(body["parallel_tool_calls"], false);
+        assert_eq!(body["tool_choice"]["function"]["name"], "browser");
+        assert_eq!(
+            body["messages"][0]["content"][1]["image_url"]["url"],
+            "https://example.invalid/image.png"
+        );
+        assert_eq!(body["stream_options"]["include_usage"], true);
+
+        let responses = gateway
+            .prepare(
+                "/v1/responses",
+                serde_json::to_vec(&json!({
+                    "model":"k3-256k","parallel_tool_calls":false,
+                    "tool_choice":{"type":"function","name":"read_file"},
+                    "tools":[{"type":"function","name":"read_file","parameters":{"type":"object"}}],
+                    "text":{"format":{"type":"json_schema","name":"answer","schema":{"type":"object"},"strict":true}},
+                    "input":[{"type":"message","role":"user","content":[
+                        {"type":"input_text","text":"inspect"},
+                        {"type":"input_image","image_url":"https://example.invalid/image.png","detail":"high"}
+                    ]}]
+                }))
+                .unwrap()
+                .as_slice(),
+            )
+            .unwrap();
+        let body: Value = serde_json::from_slice(&responses.body).unwrap();
+        assert_eq!(body["parallel_tool_calls"], false);
+        assert_eq!(body["tool_choice"]["function"]["name"], "read_file");
+        assert_eq!(body["response_format"]["type"], "json_schema");
+        assert_eq!(
+            body["messages"][0]["content"][1]["image_url"]["detail"],
+            "high"
+        );
+    }
+
+    #[test]
     fn chat_json_is_rebuilt_as_strict_responses_shape_with_reasoning_usage() {
         let gateway = gateway();
         let request = gateway
@@ -1239,6 +1462,42 @@ mod tests {
             body["usage"]["output_tokens_details"]["reasoning_tokens"],
             0
         );
+    }
+
+    #[test]
+    fn converted_responses_preserve_incomplete_and_anthropic_stop_semantics() {
+        let gateway = gateway();
+        let responses_request = gateway
+            .prepare("/v1/responses", br#"{"model":"k3-256k","input":"hello"}"#)
+            .unwrap();
+        let response = gateway
+            .finish(
+                &responses_request,
+                200,
+                Some("application/json"),
+                br#"{"id":"chat-1","choices":[{"message":{"content":"partial"},"finish_reason":"length"}]}"#,
+            )
+            .unwrap();
+        let body: Value = serde_json::from_slice(&response.body).unwrap();
+        assert_eq!(body["status"], "incomplete");
+        assert_eq!(body["incomplete_details"]["reason"], "max_output_tokens");
+
+        let anthropic_request = gateway
+            .prepare(
+                "/v1/messages",
+                br#"{"model":"visual","max_tokens":32,"messages":[{"role":"user","content":"hello"}]}"#,
+            )
+            .unwrap();
+        let response = gateway
+            .finish(
+                &anthropic_request,
+                200,
+                Some("application/json"),
+                br#"{"id":"chat-2","choices":[{"message":{"content":"partial"},"finish_reason":"length"}]}"#,
+            )
+            .unwrap();
+        let body: Value = serde_json::from_slice(&response.body).unwrap();
+        assert_eq!(body["stop_reason"], "max_tokens");
     }
 
     #[test]

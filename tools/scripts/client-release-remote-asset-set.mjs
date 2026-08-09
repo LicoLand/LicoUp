@@ -17,12 +17,24 @@ const MAX_CHECKSUM_BYTES = 4 * 1024;
 const MAX_SIGNATURE_BYTES = 16 * 1024;
 const MAX_PUBLIC_KEY_BYTES = 64 * 1024;
 const MANIFEST_NAME = "LicoUp-consumer-verification.json";
+const UPDATE_MANIFEST_NAME = "LicoUp-update-manifest.json";
+const UPDATE_PUBLIC_KEYS_NAME = "LicoUp-update-public-keys.json";
+const UPDATE_MANIFEST_SCHEMA = "v0.0.1:client-update:manifest-1";
+const MAX_UPDATE_MANIFEST_BYTES = 1024 * 1024;
 
 const specs = Object.freeze({
-  "LicoUp-macos-arm64.zip": {
+  "LicoUp-macos-arm64.dmg": {
     platform: "macos-arm64",
-    checksum: "LicoUp-macos-arm64.zip.sha256",
-    files: ["LicoUp-macos-arm64.zip", "LicoUp-macos-arm64.zip.sha256", "install-macos.sh"],
+    checksum: "LicoUp-macos-arm64.dmg.sha256",
+    files: ["LicoUp-macos-arm64.dmg", "LicoUp-macos-arm64.dmg.sha256"],
+  },
+  "LicoUp-macos-arm64-update.zip": {
+    platform: "macos-arm64-update",
+    checksum: "LicoUp-macos-arm64-update.zip.sha256",
+    files: [
+      "LicoUp-macos-arm64-update.zip",
+      "LicoUp-macos-arm64-update.zip.sha256",
+    ],
   },
   "LicoUp-linux-arm64.tar.gz": {
     platform: "linux-glibc-arm64",
@@ -82,6 +94,94 @@ function readJson(filePath, maxBytes) {
   return parsed;
 }
 
+function stableStringify(value) {
+  if (value === null) return "null";
+  if (typeof value === "boolean") return value ? "true" : "false";
+  if (typeof value === "number") return Number.isInteger(value) ? String(value) : JSON.stringify(value);
+  if (typeof value === "string") return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(",")}]`;
+  if (typeof value === "object") {
+    const keys = Object.keys(value).sort();
+    return `{${keys
+      .map((key) => `${JSON.stringify(key)}:${stableStringify(value[key])}`)
+      .join(",")}}`;
+  }
+  fail();
+}
+
+/// Validates the optional signed update manifest + public keys assets. The
+/// release may carry them (when update signing keys are configured) or omit
+/// them; when present they must verify cryptographically against each other.
+function validateUpdateManifest(root, localByName) {
+  const manifest = readJson(localFile(root, UPDATE_MANIFEST_NAME), MAX_UPDATE_MANIFEST_BYTES);
+  const keysDocument = readJson(localFile(root, UPDATE_PUBLIC_KEYS_NAME), MAX_UPDATE_MANIFEST_BYTES);
+  const keys = keysDocument.keys;
+  if (!keys || typeof keys !== "object" || Array.isArray(keys) ||
+    Object.keys(keys).length === 0) fail();
+  const keyEntries = new Map(Object.entries(keys).map(([keyId, entry]) => [
+    keyId,
+    typeof entry === "string" ? entry : entry?.publicKey,
+  ]));
+  for (const [keyId, encoded] of keyEntries) {
+    if (typeof encoded !== "string" || !/^[A-Za-z0-9+/=]+$/u.test(encoded) ||
+      Buffer.from(encoded, "base64").length !== 32) fail();
+    if (!/^[A-Za-z0-9_.-]{1,128}$/u.test(keyId)) fail();
+  }
+  const unsigned = { ...manifest };
+  delete unsigned.signatures;
+  const payload = Buffer.from(stableStringify(unsigned), "utf8");
+  const verified = new Set();
+  if (!Array.isArray(manifest.signatures) || manifest.signatures.length < 2) fail();
+  for (const entry of manifest.signatures) {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry) ||
+      !exactKeys(entry, ["keyId", "algorithm", "signature"]) ||
+      entry.algorithm !== "Ed25519") fail();
+    const encoded = keyEntries.get(entry.keyId);
+    if (typeof encoded !== "string") fail();
+    const key = createPublicKey({
+      key: Buffer.concat([
+        Buffer.from("302a300506032b6570032100", "hex"),
+        Buffer.from(encoded, "base64"),
+      ]),
+      format: "der",
+      type: "spki",
+    });
+    if (entry.signature.length === 0 ||
+      !verify(null, payload, key, Buffer.from(entry.signature, "base64"))) fail();
+    verified.add(entry.keyId);
+  }
+  const policy = manifest.channelPolicy;
+  if (!policy || typeof policy !== "object" || Array.isArray(policy) ||
+    !exactKeys(policy, ["offlineRootKeyId", "onlineChannelKeyId", "allowDowngrade"]) ||
+    policy.allowDowngrade !== false ||
+    !verified.has(policy.offlineRootKeyId) || !verified.has(policy.onlineChannelKeyId) ||
+    policy.offlineRootKeyId === policy.onlineChannelKeyId) fail();
+  if (manifest.schemaVersion !== UPDATE_MANIFEST_SCHEMA ||
+    !exactKeys(manifest, ["schemaVersion", "channel", "channelPolicy", "releases", "signatures"]) ||
+    manifest.channel !== "stable" || !Array.isArray(manifest.releases) ||
+    manifest.releases.length < 1 || manifest.releases.length > 8) fail();
+  const artifactNames = new Set();
+  for (const release of manifest.releases) {
+    if (!release || typeof release !== "object" || Array.isArray(release) ||
+      typeof release.version !== "string" || release.version.length === 0 ||
+      typeof release.minimumSupportedVersion !== "string" ||
+      !Array.isArray(release.artifacts) || release.artifacts.length === 0) fail();
+    for (const artifact of release.artifacts) {
+      if (!artifact || typeof artifact !== "object" || Array.isArray(artifact) ||
+        typeof artifact.fileName !== "string" || artifact.fileName.length === 0 ||
+        !/^sha256:[a-f0-9]{64}$/u.test(artifact.sha256 || "") ||
+        !Number.isSafeInteger(artifact.size) || artifact.size <= 0 ||
+        !/^https:\/\//u.test(artifact.url || "") ||
+        !artifact.url.endsWith(`/${artifact.fileName}`)) fail();
+      if (artifactNames.has(artifact.fileName)) fail();
+      artifactNames.add(artifact.fileName);
+      const local = localByName.get(artifact.fileName);
+      if (!local || local.size !== artifact.size ||
+        local.digest !== artifact.sha256) fail();
+    }
+  }
+}
+
 function validateManifest(root, localByName) {
   const manifest = readJson(localFile(root, MANIFEST_NAME), MAX_MANIFEST_BYTES);
   if (!exactKeys(manifest, ["schemaVersion", "artifactName", "releaseTag", "artifacts"]) ||
@@ -138,6 +238,14 @@ function validateManifest(root, localByName) {
       if (verification.keyId !== keyId ||
         androidApkSigningCertificateKeyId(localFile(root, artifact.name)) !== keyId) fail();
     }
+  }
+  const hasUpdateManifest = localByName.has(UPDATE_MANIFEST_NAME);
+  const hasUpdateKeys = localByName.has(UPDATE_PUBLIC_KEYS_NAME);
+  if (hasUpdateManifest !== hasUpdateKeys) fail();
+  if (hasUpdateManifest) {
+    validateUpdateManifest(root, localByName);
+    expectedNames.add(UPDATE_MANIFEST_NAME);
+    expectedNames.add(UPDATE_PUBLIC_KEYS_NAME);
   }
   if (JSON.stringify([...expectedNames].sort()) !==
     JSON.stringify([...localByName.keys()].sort())) fail();

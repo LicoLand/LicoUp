@@ -13,19 +13,19 @@ void main() {
           .ensureHuman('You')
           .copyWithMainAgent('antigravity'),
       turnTaking: TurnTakingPolicy.flywheelMainDispatch,
-      transcriptPath: '/fixture/location/transcript.jsonl',
+      transcriptPath: '/tmp/transcript.jsonl',
       agentSessions: {
         'antigravity': const GroupAgentSessionBinding(
           agentId: 'antigravity',
           nativeSessionId: 'native-main',
-          sourcePath: '/fixture/location/main.json',
-          workingDirectory: '/fixture/location/project',
+          sourcePath: '/tmp/main.json',
+          workingDirectory: '/tmp/project',
           updatedAtUnixMs: 10,
         ),
         'codex': const GroupAgentSessionBinding(
           agentId: 'codex',
           nativeSessionId: 'native-peer',
-          sourcePath: '/fixture/location/peer.json',
+          sourcePath: '/tmp/peer.json',
           updatedAtUnixMs: 11,
         ),
       },
@@ -35,10 +35,7 @@ void main() {
     final restored = GroupConversationRecord.fromJson(record.toJson());
     expect(restored.lastLocalOrchestrationSessionId, 'lico-local-1');
     expect(restored.bindingFor('antigravity')?.nativeSessionId, 'native-main');
-    expect(
-      restored.bindingFor('codex')?.sourcePath,
-      '/fixture/location/peer.json',
-    );
+    expect(restored.bindingFor('codex')?.sourcePath, '/tmp/peer.json');
   });
 
   test(
@@ -64,8 +61,8 @@ void main() {
         portableData: portable,
         agentId: 'antigravity',
         nativeSessionId: 'native-42',
-        sourcePath: '/path/user/.gemini/conversations/abc',
-        workingDirectory: '/path/user/project',
+        sourcePath: '/fixture-root/gemini/conversations/abc',
+        workingDirectory: '/fixture-root/project',
         localOrchestrationSessionId: 'lico-local-9',
       );
 
@@ -73,20 +70,17 @@ void main() {
       expect(updated.bindingFor('antigravity')?.nativeSessionId, 'native-42');
       expect(
         updated.bindingFor('antigravity')?.sourcePath,
-        '/path/user/.gemini/conversations/abc',
+        '/fixture-root/gemini/conversations/abc',
       );
       expect(updated.lastLocalOrchestrationSessionId, 'lico-local-9');
 
       final peer = await store.upsertAgentSession(
         portableData: portable,
         agentId: 'codex',
-        sourcePath: '/fixture/location/codex-session.jsonl',
+        sourcePath: '/tmp/codex-session.jsonl',
       );
       expect(peer.bindingFor('antigravity')?.nativeSessionId, 'native-42');
-      expect(
-        peer.bindingFor('codex')?.sourcePath,
-        '/fixture/location/codex-session.jsonl',
-      );
+      expect(peer.bindingFor('codex')?.sourcePath, '/tmp/codex-session.jsonl');
       expect(peer.lastLocalOrchestrationSessionId, 'lico-local-9');
     },
   );

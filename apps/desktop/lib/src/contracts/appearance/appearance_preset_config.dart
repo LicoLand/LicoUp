@@ -30,21 +30,6 @@ enum AppearancePresetMode {
   }
 }
 
-enum AppearanceBrightnessSelection { light, dark, system }
-
-AppearanceBrightnessSelection appearanceBrightnessSelectionFor(
-  String selectedId,
-  List<AppearancePresetConfig> configs,
-) {
-  final selected = findAppearancePresetConfig(selectedId, configs);
-  if (selected.mode == AppearancePresetMode.system) {
-    return AppearanceBrightnessSelection.system;
-  }
-  return selected.mode == AppearancePresetMode.dark
-      ? AppearanceBrightnessSelection.dark
-      : AppearanceBrightnessSelection.light;
-}
-
 abstract final class AppearancePresetIds {
   static const defaultSystem = 'default-system';
   static const licoSoda = 'lico-soda';

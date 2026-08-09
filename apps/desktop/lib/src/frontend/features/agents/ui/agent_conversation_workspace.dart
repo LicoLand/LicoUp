@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
@@ -464,6 +465,7 @@ class _ConversationWorkspaceBodyState
       onPermissionRetryRemember: () =>
           controller.retryDeniedConversationTurn(remember: true),
       onPermissionDeny: controller.dismissDeniedConversationTurn,
+      onCopyText: controller.clientClipboardService.writeText,
       onSend: (text) async {
         if (controller.selectedConversationIsOrchestration) {
           final mentionCatalog = [
@@ -501,7 +503,6 @@ class _ConversationWorkspaceBodyState
         return controller.sendConversationMessage(text);
       },
       onSelectSession: controller.selectConversationSession,
-      onCopyText: controller.copyClientText,
       onUnblockSend: onUnblockSend,
       onChooseWorkingDirectory: workingDirectorySelectable
           ? () => unawaited(
@@ -642,14 +643,20 @@ class _ConversationWorkspaceBodyState
       color: presentation.canvasColor(context.layoutPalette),
       child: LayoutBuilder(
         builder: (context, constraints) {
-          final maxSidebarWidth =
-              (constraints.maxWidth -
-                      agentsSidebarDividerWidth -
-                      agentsFloatingMinChatWidth -
-                      presentation.sidebarOuterHorizontalExtent -
-                      presentation.detailOuterHorizontalExtent)
-                  .clamp(agentsSidebarMinWidth, agentsSidebarMaxWidth)
-                  .toDouble();
+          // Never let the upper bound fall below the minimum: a window
+          // narrower than the sidebar minimum would otherwise feed a
+          // lower-than-lower clamp and crash the build.
+          final maxSidebarWidth = math
+              .max(
+                agentsSidebarMinWidth,
+                constraints.maxWidth -
+                    agentsSidebarDividerWidth -
+                    agentsFloatingMinChatWidth -
+                    presentation.sidebarOuterHorizontalExtent -
+                    presentation.detailOuterHorizontalExtent,
+              )
+              .clamp(agentsSidebarMinWidth, agentsSidebarMaxWidth)
+              .toDouble();
           final sidebarWidth = _sidebarWidth
               .clamp(agentsSidebarMinWidth, maxSidebarWidth)
               .toDouble();
@@ -677,9 +684,7 @@ class _ConversationWorkspaceBodyState
             onRefresh: () {
               for (final target in widget.targets) {
                 if (target.isConversationAgent) {
-                  unawaited(
-                    controller.refreshConversationSessions(target.target),
-                  );
+                  unawaited(controller.refreshConversationSessions(target.id));
                 }
               }
             },

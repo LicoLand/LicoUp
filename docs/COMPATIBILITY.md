@@ -45,13 +45,13 @@ Lifecycle evidence columns describe whether the lane can emit a native receipt f
 | Agent ID | Driver mode | Readiness | Send enabled | Runtime protocol | Lane family | Exact resume | Streaming | Accepted evidence | Processing evidence | Responding evidence | Completed evidence | Native interrupt/steer |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | openclaw | conversation | unverified | no | openclaw-acp-stdio-jsonrpc | acp | yes | yes | yes | yes | yes | yes | no |
-| claude-code | conversation | unverified | no | claude-code-cli-stream-json | stream-json | yes | yes | yes | yes | yes | yes | yes |
-| codex | conversation | unverified | no | codex-app-server-stdio-jsonrpc | app-server | yes | yes | yes | yes | yes | yes | yes |
+| claude-code | conversation | ready | yes | claude-code-cli-stream-json | stream-json | yes | yes | yes | yes | yes | yes | yes |
+| codex | conversation | ready | yes | codex-app-server-stdio-jsonrpc | app-server | yes | yes | yes | yes | yes | yes | yes |
 | antigravity | conversation | unverified | no | antigravity-cli-argv-hook-v1 | cli | yes | yes | yes | no | yes | yes | no |
 | opencode | conversation | unverified | no | opencode-serve-http-v1 | serve-http | yes | yes | yes | no | yes | yes | no |
 | copilot | conversation | unverified | no | copilot-acp-v1-stdio-ndjson | acp | yes | yes | yes | yes | yes | yes | no |
 | kilo-code | conversation | unverified | no | kilo-code-serve-http-v1 | serve-http | yes | yes | yes | no | yes | yes | no |
-| cursor | conversation | unverified | no | cursor-agent-cli-v1 | cli | yes | yes | yes | no | yes | yes | no |
+| cursor | conversation | ready | yes | cursor-agent-cli-v1 | cli | yes | yes | yes | no | yes | yes | no |
 | hermes | conversation | unverified | no | hermes-acp-stdio-jsonrpc | acp | yes | yes | yes | yes | yes | yes | no |
 | kimi-code | conversation | unverified | no | kimi-code-acp-v1-stdio-ndjson | acp | yes | yes | yes | yes | yes | yes | no |
 | pi | conversation | unverified | no | pi-rpc-stdio-jsonl | rpc | yes | yes | yes | yes | yes | yes | yes |

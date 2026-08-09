@@ -18,7 +18,15 @@ fn help_text() {
 }
 
 fn create_session_id(counter: u64) -> String {
-    format!("fake-cursor-session-{counter:012x}")
+    // Test hook: a per-test tag keeps session ids unique so a parallel test
+    // can cancel its own turn without hitting another test's registered
+    // session (the active-turn registry is keyed by session id).
+    let tag = env::var("LICO_FAKE_CURSOR_AGENT_SESSION_TAG").unwrap_or_default();
+    if tag.is_empty() {
+        format!("fake-cursor-session-{counter:012x}")
+    } else {
+        format!("fake-cursor-session-{tag}-{counter:012x}")
+    }
 }
 
 fn turn_output(prompt: &str) -> (&'static str, &'static str) {
@@ -52,10 +60,28 @@ fn run_turn(args: &[String]) {
             std::thread::sleep(std::time::Duration::from_millis(delay));
         }
     }
+    // Test hook: delay the turn output independently of the update watcher.
+    // Gated on a prompt marker so a concurrent test's env vars never delay a
+    // fake spawned by another test.
+    if prompt.contains("__lico_test__") {
+        if let Ok(delay_ms) = env::var("LICO_FAKE_CURSOR_AGENT_TURN_DELAY_MS") {
+            if let Ok(delay) = delay_ms.parse::<u64>() {
+                std::thread::sleep(std::time::Duration::from_millis(delay));
+            }
+        }
+    }
     let (chunk, response) = turn_output(prompt);
     emit(&format!(
         r#"{{"type":"assistant","session_id":"{session_id}","message":{{"content":[{{"type":"text","text":"{chunk}"}}]}}}}"#
     ));
+    // Test hook: crash after the partial chunk, before any terminal result.
+    // Gated on a prompt marker so a concurrent test's env vars can never
+    // crash a fake spawned by another test.
+    if env::var("LICO_FAKE_CURSOR_AGENT_CRASH_AFTER_CHUNK").is_ok()
+        && prompt.contains("__lico_crash__")
+    {
+        std::process::exit(3);
+    }
     emit(&format!(
         r#"{{"type":"result","subtype":"success","is_error":false,"session_id":"{session_id}","result":"{response}"}}"#
     ));
@@ -72,6 +98,13 @@ fn main() {
         return;
     }
     if args == ["create-chat"] {
+        // Test hook: delay session creation so the driver can be exercised
+        // with a create-chat phase that consumes part of the turn window.
+        if let Ok(delay_ms) = env::var("LICO_FAKE_CURSOR_AGENT_CREATE_CHAT_DELAY_MS") {
+            if let Ok(delay) = delay_ms.parse::<u64>() {
+                std::thread::sleep(std::time::Duration::from_millis(delay));
+            }
+        }
         let session_id = create_session_id(1);
         println!("{session_id}");
         return;

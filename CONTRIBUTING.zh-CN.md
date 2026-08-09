@@ -66,35 +66,6 @@ Agent 可以辅助开发者，但严禁替换、覆盖或抢占开发者署名�
 其它 Agent 或 bot。把人类代码归到 Agent 联系方式名下属于虚假身份信息和来源追溯
 违规，本地 hook 与远程 Ruleset 都会拒绝。开发者必须亲自审查并接受改动后才能提交。
 
-所有改动都必须先落到上游临时分支。普通分支必须使用能说明改动目的的动作前缀，推荐
-`feature/<topic>`、`fix/<topic>`、`docs/<topic>`、`refactor/<topic>`、
-`test/<topic>` 或 `chore/<topic>`；发布候选使用
-`release-candidate/v<version>-<target>`。全分支元数据 Ruleset 在临时分支创建时同样生效，首个
-提交无法绕过身份门禁。临时分支只能通过 Pull Request 创建合并提交进入 `nightly`，严禁
-以 rebase 或 squash 方式合入，也严禁把改动直接写入长期分支。
-
-## 发布前门禁
-
-发布准备由 `tools/client-release-template.json` 统一定义，严禁在失败后临时拼装并逐次
-试探远端 runner 命令。每个阶段只执行一个有边界的命令：
-
-```bash
-npm run client:release -- push nightly --version 0.1.1 --target macos-arm64
-npm run client:release -- push stable --version 0.1.1 --target macos-arm64
-npm run client:release -- push release --version 0.1.1 --target macos-arm64
-npm run client:release -- publish --version 0.1.1 --target macos-arm64
-```
-
-第一个命令必须先创建含版本与目标平台的 `release-candidate/` 临时分支，之后记录唯一
-发布目标、修改一次版本号，只运行公共门禁和该平台对应的 Pull Request 门禁并创建唯一发布提交。临时分支通过全部
-声明为必需的 LicoUp Pull Request 校验后，必须创建合并提交进入 `nightly`，不得以 rebase
-或 squash 方式合入。后两个推送命令分别独立完成
-同一目标的 `nightly -> stable` 与 `stable -> release`，目标不一致时必须失败关闭；最后一个命令才执行该目标的安装、实时发布验收、归档和发布，并持续监控到明确
-结果，不设置操作者侧终止超时。macOS 的同一 `publish` 动作还必须下载远端构建的升级
-产物，使用仅存于本机的升级密钥签署 `LicoUp-update-stable.json`，验证远端升级资产集合后
-才公开 Release。每个命令都可以独立重跑。任何阶段都严禁关闭、绕过或
-修改活动 Rulesets。
-
 ## 隐私规则
 
 - 严禁提交秘密、本地路径、用户内容、账户数据、设备信息、日志或原始运行时报告。
@@ -131,6 +102,19 @@ Flutter 客户端与 Rust 原生核心共享两类接口：
 - 不要把本地技能或临时脚本加入仓库。
 
 ## 合并请求检查
+
+创建发布候选 Pull Request 前，使用干净、已提交且命名为
+`release-candidate/v<version>-<target>` 的分支，并在目标的真实平台运行唯一
+本地预检：
+
+```bash
+npm run client:pr:preflight -- --base origin/nightly --target <target> --full-target
+```
+
+预检会对同一候选执行构建、签名、归档、安装、更新、回滚和真实启动，然后
+写入被忽略且已脱敏的收据。pre-push Hook 只核验该收据，不会重复昂贵步骤。
+收据缺失或失效时不得创建或更新发布候选 Pull Request。Required Checks
+必须逐字为 `Branch flow`、`Commit identity`、`Client required` 和 `Auditor`。
 
 - 改动只有一个清晰范围。
 - 原生 CLI 或生成契约的改动，在同一改动内保持 Flutter 与 Rust 两侧一致。

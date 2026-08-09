@@ -76,7 +76,7 @@ void main() {
         'port': 2222,
         'user': 'agent-user',
         'remoteExecutable': 'hermes',
-        'workingDirectory': '/fixture/location/project',
+        'workingDirectory': '/srv/project',
       },
     );
     await tester.pumpWidget(
@@ -123,7 +123,7 @@ void main() {
         MessagingDetailsPanel(
           state: _panelState(
             showWorkingDirectory: true,
-            workingDirectory: '/path/user',
+            workingDirectory: '/fixture-root/project',
             workingDirectorySelectable: true,
           ),
           actions: paneTestActions(

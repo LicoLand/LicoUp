@@ -256,7 +256,8 @@ void main() {
       controller.agentWorkspacePublishNotification(
         id: 'subagent-mcp-cursor',
         messageChinese: '主智能体（cursor）不支持 Subagent MCP。',
-        messageEnglish: 'Main agent (cursor) does not support Subagent MCP.',
+        messageEnglish:
+            'Main agent (cursor) does not support Subagent MCP.',
         tone: MessagingNotificationTone.warning,
         code: 'subagent_mcp_unsupported',
       );
@@ -276,10 +277,7 @@ void main() {
         ),
         findsOneWidget,
       );
-      expect(
-        find.textContaining('does not support Subagent MCP'),
-        findsOneWidget,
-      );
+      expect(find.textContaining('does not support Subagent MCP'), findsOneWidget);
 
       // Panel is window-anchored at the top-right, not mid-content.
       final panel = tester.getTopLeft(
@@ -354,28 +352,4 @@ void main() {
     },
   );
 
-  testWidgets('tab tap closes the profile page and shows the conversation', (
-    tester,
-  ) async {
-    final fixture = await pumpMessagingApp(tester);
-    final controller = fixture.controller;
-    final agentId = controller.selectedConversationAgentId;
-    final session = controller.conversationSessionsByAgent[agentId]!.single;
-
-    // Open the profile page from the rail avatar.
-    await tester.tap(find.byKey(const Key('messaging-rail-avatar-button')));
-    await tester.pump();
-    expect(find.byKey(const Key('messaging-profile-page')), findsOneWidget);
-
-    await tester.tap(find.byKey(Key('messaging-chrome-tab-${session.id}')));
-    await tester.pump(const Duration(milliseconds: 400));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 120));
-    await tester.pump();
-
-    expect(find.byKey(const Key('messaging-profile-page')), findsNothing);
-    expect(controller.selectedConversationSession?.id, session.id);
-    expect(find.text('Layout baseline conversation'), findsWidgets);
-    expect(tester.takeException(), isNull);
-  });
 }

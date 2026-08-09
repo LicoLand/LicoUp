@@ -72,8 +72,8 @@ fn a_local_turn_republishes_only_the_resolved_workspace() {
         &json!({
             "agent": "cursor",
             "text": "hello",
-            "cwd": "/synthetic/path/user",
-            "workingDirectory": "/synthetic/path/user"
+            "cwd": "/fixture-root/resident",
+            "workingDirectory": "/fixture-root/resident"
         }),
         Path::new("/synthetic/state/agent-workspace"),
     );

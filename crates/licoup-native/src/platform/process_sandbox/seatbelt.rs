@@ -1,6 +1,4 @@
-#[cfg(target_os = "macos")]
-use anyhow::ensure;
-use anyhow::{Result, anyhow};
+use anyhow::{Result, anyhow, ensure};
 use std::path::Path;
 use std::process::Command;
 

@@ -496,6 +496,7 @@ mixin AgentConversationSessionController
     agentWorkspaceNotifyConversationStructureChanged();
     agentWorkspaceNotifyStateChanged();
     conversationAttentionContextChanged();
+    recordLastUsedConversation();
   }
 
   /// Re-open the last main/subagent-bound group thread when returning to Lico.
@@ -731,14 +732,17 @@ mixin AgentConversationSessionController
     }
     conversationClearNativeSessionPending(agent.target);
     conversationPrimeNewConversationDraft();
-    conversationTurnProcessStateByAgent = {
-      for (final entry in conversationTurnProcessStateByAgent.entries)
-        if (entry.key != agent.target) entry.key: entry.value,
-    };
-    liveConversationMessagesByAgent = {
-      for (final entry in liveConversationMessagesByAgent.entries)
-        if (entry.key != agent.target) entry.key: entry.value,
-    };
+    final clearedScopes = conversationLiveScopeKeysForAgent(agent.target).toSet();
+    if (clearedScopes.isNotEmpty) {
+      conversationTurnProcessStateByScope = {
+        for (final entry in conversationTurnProcessStateByScope.entries)
+          if (!clearedScopes.contains(entry.key)) entry.key: entry.value,
+      };
+      liveConversationMessagesByScope = {
+        for (final entry in liveConversationMessagesByScope.entries)
+          if (!clearedScopes.contains(entry.key)) entry.key: entry.value,
+      };
+    }
     selectedConversationSessionId = '';
     beginNewConversationDraft(agent.target);
     lastError = '';
@@ -750,6 +754,7 @@ mixin AgentConversationSessionController
     agentWorkspaceNotifyConversationStructureChanged();
     agentWorkspaceNotifyStateChanged();
     conversationAttentionContextChanged(immediateActive: false);
+    recordLastUsedConversation();
   }
 
   Future<void> deleteConversationSession(String sessionId) async {
@@ -791,6 +796,7 @@ mixin AgentConversationSessionController
       statusCaption = 'Agent orchestration';
       agentWorkspaceNotifyConversationStructureChanged();
       agentWorkspaceNotifyStateChanged();
+      recordLastUsedConversation();
       return;
     }
     if (normalizedAgentId.isEmpty) {
@@ -858,9 +864,11 @@ mixin AgentConversationSessionController
     if ((conversationSessionsByAgent[normalizedAgentId] ?? const [])
         .isNotEmpty) {
       conversationAttentionContextChanged();
+      recordLastUsedConversation();
       return;
     }
     await loadConversationSessions(normalizedAgentId);
+    recordLastUsedConversation();
   }
 
   Future<void> loadConversationSessions(String agentId) async {
@@ -941,11 +949,103 @@ mixin AgentConversationSessionController
     } finally {
       conversationSessionLoadingTargets.remove(normalizedAgentId);
       if (selectedConversationAgentId == normalizedAgentId) {
+        _confirmLastUsedConversationRestore(normalizedAgentId);
         agentWorkspaceNotifyConversationStructureChanged();
         agentWorkspaceNotifyStateChanged();
         conversationAttentionContextChanged(immediateActive: false);
       }
     }
+  }
+
+  /// Confirms the restored last-used session against the loaded history once
+  /// the session list arrives: reopen the restored session when it still
+  /// exists, otherwise keep the newest session the reconciliation already
+  /// selected.
+  void _confirmLastUsedConversationRestore(String agentId) {
+    final restoreSessionId = lastUsedConversationRestoreSessionId.trim();
+    if (restoreSessionId.isEmpty) {
+      return;
+    }
+    lastUsedConversationRestoreSessionId = '';
+    final sessions = conversationSessionsByAgent[agentId] ?? const [];
+    AgentConversationSession? restored;
+    for (final session in sessions) {
+      if (session.id == restoreSessionId ||
+          session.nativeSessionId.trim() == restoreSessionId) {
+        restored = session;
+        break;
+      }
+    }
+    if (restored != null) {
+      setSelectedConversationSessionId(agentId, restored.id);
+    }
+  }
+
+  /// Restores the last-used conversation persisted by the previous run.
+  ///
+  /// Called from [selectDefaultConversationAgent] before any default choice
+  /// and again once the persisted reference finishes loading. Returns true
+  /// when the restore was applied (the caller skips the default selection);
+  /// returns false when the reference is absent, still loading, or the agent
+  /// is no longer available, so the caller keeps its default behavior.
+  bool applyLastUsedConversationRestore() {
+    if (lastUsedConversationRestoreApplied) {
+      return false;
+    }
+    if (lastUsedConversationRestoreLoading) {
+      // The persisted reference has not loaded yet; a later call retries.
+      return false;
+    }
+    final ref = lastUsedConversationRestore;
+    if (ref == null || ref.agentId.trim().isEmpty) {
+      // Nothing was recorded: this launch has no restore to apply.
+      lastUsedConversationRestoreApplied = true;
+      return false;
+    }
+    final agentId = ref.agentId.trim();
+    if (isAgentOrchestrationTargetId(agentId)) {
+      if (!orchestrationAvailable) {
+        lastUsedConversationRestoreApplied = true;
+        return false;
+      }
+      final sessionId = ref.sessionId.trim();
+      if (sessionId.isNotEmpty) {
+        // The orchestration flow reopens the last group thread through
+        // `_restoreGroupConversationContinuity`.
+        groupConversationLastLocalSessionId = sessionId;
+      }
+      lastUsedConversationRestoreApplied = true;
+      unawaited(selectConversationAgent(agentId));
+      return true;
+    }
+    final visibleTargets = scannedTargets
+        .where((target) => target.isConversationAgent)
+        .where((target) => !isAgentOrchestrationTargetId(target.target))
+        .toList(growable: false);
+    if (!visibleTargets.any((target) => target.target == agentId)) {
+      // The agent is not (yet) discovered. Do not mark the restore as
+      // applied: the targets may not have settled and a later call retries.
+      return false;
+    }
+    selectedConversationAgentId = agentId;
+    lastUsedConversationRestoreApplied = true;
+    final sessionId = ref.sessionId.trim();
+    if (sessionId.isNotEmpty) {
+      final loaded = conversationSessionsByAgent[agentId] ?? const [];
+      if (loaded.any((session) => session.id == sessionId)) {
+        setSelectedConversationSessionId(agentId, sessionId);
+      } else {
+        // The restored session may live on in native history that is not
+        // cached yet: load the list and confirm (or fall back) once it
+        // arrives.
+        lastUsedConversationRestoreSessionId = sessionId;
+        unawaited(loadConversationSessions(agentId));
+      }
+    }
+    lastError = '';
+    agentWorkspaceNotifyConversationStructureChanged();
+    agentWorkspaceNotifyStateChanged();
+    return true;
   }
 
   Future<void> refreshConversationSessions(String agentId) {

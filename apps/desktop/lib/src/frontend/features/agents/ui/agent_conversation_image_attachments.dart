@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 /// Messaging-style rendering of a message's image attachments: bounded
@@ -134,7 +135,7 @@ class _ConversationImageFrameDecoration extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         color: colors.surfaceLow,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(LicoRadius.card),
         border: Border.all(color: colors.line.withAlpha(110)),
       ),
       clipBehavior: Clip.antiAlias,
