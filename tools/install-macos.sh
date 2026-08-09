@@ -134,6 +134,8 @@ main() {
     previous_moved="false"
   fi
   completed="true"
+  cleanup
+  trap - EXIT
   printf 'LicoUp %s installed in %s.\n' "$release_tag" "$applications_root"
 }
 
