@@ -61,6 +61,12 @@ in [`docs/STATUS.md`](docs/STATUS.md) and the generated
 
 LicoUp targets macOS, Windows, Linux, Android, and iOS.
 
+Install the latest Apple-silicon macOS release:
+
+```bash
+curl -fsSL https://github.com/LicoLand/LicoUp/releases/latest/download/install-macos.sh | bash
+```
+
 > [!NOTE]
 > LicoUp is in early alpha: a build target or preview feature is not the
 > same as a fully supported release. Check the
