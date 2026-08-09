@@ -12,9 +12,10 @@
     "rulesetMutation": "forbidden"
   },
   "requiredPullRequestChecks": [
-    "Branch flow policy",
+    "Branch flow",
     "Commit identity",
-    "Client required"
+    "Client required",
+    "Auditor"
   ],
   "publication": {
     "workflow": ".github/workflows/client-release.yml",
