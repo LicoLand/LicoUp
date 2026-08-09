@@ -24,7 +24,7 @@ const targetSpecs = {
   "macos-arm64": {
     platform: "macos-arm64",
     artifact: "LicoUp-macos-arm64.zip",
-    files: ["LicoUp-macos-arm64.zip", "LicoUp-macos-arm64.zip.sha256"],
+    files: ["LicoUp-macos-arm64.zip", "LicoUp-macos-arm64.zip.sha256", "install-macos.sh"],
     checksum: "LicoUp-macos-arm64.zip.sha256",
   },
   "linux-glibc-arm64": {
