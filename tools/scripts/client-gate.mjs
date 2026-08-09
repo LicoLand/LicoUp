@@ -101,6 +101,12 @@ function validatePackageTopology() {
   ) {
     fail("package.json must bind the canonical conversation release-readiness gate");
   }
+  if (
+    scripts["client:verify:agent-conversations:release-ci"] !==
+    "npm run client:verify:agent-conversation-parity && npm run client:verify:agent-conversations:self-test && npm run client:verify:agent-conversations:product-e2e:self-test"
+  ) {
+    fail("package.json must bind the canonical reproducible conversation release gate");
+  }
   for (const [lane, laneScripts] of Object.entries(CLIENT_GATE_LANES)) {
     for (const script of laneScripts) {
       if (!scripts[script]) {
@@ -237,8 +243,13 @@ function validateReleaseTopology() {
   const macosJob = jobBlock(workflow, "build-macos");
   assertIncludes(
     macosJob,
+    "npm run client:verify:agent-conversations:release-ci",
+    "macOS release build must require reproducible local-agent contract checks",
+  );
+  assertExcludes(
+    macosJob,
     "npm run client:verify:agent-conversations:release-ui",
-    "macOS release build must require reproducible local-agent UI evidence",
+    "GitHub-hosted release builds must not require machine-local third-party agent runtimes",
   );
   assertIncludes(
     macosJob,
