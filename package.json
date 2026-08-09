@@ -148,6 +148,7 @@
     "client:verify:agent-usage": "node apps/desktop/scripts/verify-client-agent-usage.mjs",
     "client:verify:update-release": "node tests/verify-client-update-release-channel.mjs",
     "client:release": "node tools/scripts/client-release.mjs",
+    "client:release:remote-strategy": "node tools/scripts/client-remote-release-strategy.mjs",
     "client:release:self-test": "node tools/scripts/client-release.mjs --self-test",
     "client:release:preflight": "node tools/scripts/client-release-preflight.mjs run",
     "client:release:preflight:check": "node tools/scripts/client-release-preflight.mjs check",
