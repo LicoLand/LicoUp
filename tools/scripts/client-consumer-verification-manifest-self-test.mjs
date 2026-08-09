@@ -18,6 +18,7 @@ try {
   const digest = createHash("sha256").update(bytes).digest("hex");
   writeFileSync(path.join(fixtureRoot, artifact), bytes);
   writeFileSync(path.join(fixtureRoot, `${artifact}.sha256`), `${digest}  ${artifact}\n`);
+  writeFileSync(path.join(fixtureRoot, "install-macos.sh"), "#!/bin/bash\n");
   const valid = spawnSync(process.execPath, [
     script,
     "--assets", fixtureRoot,
