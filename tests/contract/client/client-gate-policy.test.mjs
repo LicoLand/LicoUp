@@ -140,7 +140,7 @@ test("publisher appends one exact target and permits only identical recovery", (
       incomingRoot: incoming,
       assetsRoot: assets,
     });
-    assert.equal(first.upload.length, 2);
+    assert.equal(first.upload.length, 3);
     const recovery = mergeIncomingTarget({
       target: "macos-arm64",
       incomingRoot: incoming,
