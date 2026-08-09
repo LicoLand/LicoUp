@@ -38,6 +38,7 @@ for (const token of [
   'readonly destination="${applications_root}/LicoUp.app"',
   'case "/$entry" in',
   'previous_moved="true"',
+  'completed="true"\n  cleanup\n  trap - EXIT',
 ]) {
   requireFact(source.includes(token), `installer_contract_missing:${token}`);
 }
