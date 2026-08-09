@@ -102,8 +102,13 @@ test("two Rulesets cover identity and the complete release flow without bypass",
   assert.equal(committerPattern.test("bot@example.invalid"), false);
   assert.equal(
     identityRuleset.rules.filter(({ type }) => type === "commit_message_pattern").length,
-    2,
+    1,
   );
+  const messageRule = identityRuleset.rules.find(
+    ({ type }) => type === "commit_message_pattern",
+  );
+  assert.match(messageRule.parameters.pattern, /co-authored-by/u);
+  assert.match(messageRule.parameters.pattern, /cursor/u);
 
   for (const requiredType of [
     "deletion",

@@ -121,7 +121,7 @@ function validateContract() {
   assert(supportedTargets.length > 0, "release_targets_missing");
   assert(
     JSON.stringify(template.requiredPullRequestChecks) === JSON.stringify([
-      "Branch flow policy", "Commit identity", "Client required",
+      "Branch flow", "Commit identity", "Client required", "Auditor",
     ]),
     "release_required_checks_invalid",
   );
