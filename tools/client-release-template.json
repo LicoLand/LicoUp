@@ -21,6 +21,10 @@
     "ref": "release",
     "jobTimeoutPolicy": "github-default",
     "operatorMonitoringTimeoutMinutes": null,
+    "remoteValidity": {
+      "strategyGroup": "tools/client-remote-release-strategies.json",
+      "activeStrategyIds": ["build-success"]
+    },
     "macosUpdate": {
       "workflowArtifact": "licoup-macos-update",
       "manifest": "LicoUp-update-stable.json",
