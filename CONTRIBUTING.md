@@ -109,9 +109,15 @@ commit. Only after the temporary branch passes every declared required
 LicoUp pull-request check does it create a merge commit in `nightly`; release
 candidates are never rebased or squashed into `nightly`. The next two commands independently
 promote the same target through `nightly -> stable` and `stable -> release`; a
-target mismatch fails closed. The last command only
-performs artifact installation, live release acceptance, archiving and publishing,
-then monitors to a terminal result without an operator-side timeout.
+target mismatch fails closed. The last command makes the selected remote builder
+build the client, then signs, archives, checksums, and publishes that successful
+build while monitoring to a terminal result without an operator-side timeout.
+Functional, UI, dependency, and local-agent validation belongs to the local
+candidate gate and is not repeated on the release machine.
+Remote publication validity is selected by
+`tools/client-remote-release-strategies.json`. Its sole active strategy is
+`build-success`: a selected-platform build that exits successfully is valid for
+publication; the remote builder must not repeat the local validation gates.
 For macOS, that same `publish` action also downloads the workflow's update
 artifact, signs `LicoUp-update-stable.json` with the locally held update keys,
 verifies the remote update asset set, and only then makes the Release public.
