@@ -54,6 +54,12 @@ LicoUp 是一个开源的桌面与移动客户端，用于发现、操作并连�
 
 LicoUp 面向 macOS、Windows、Linux、Android 和 iOS。
 
+一行安装最新的 Apple 芯片 macOS 版本：
+
+```bash
+curl -fsSL https://github.com/LicoLand/LicoUp/releases/latest/download/install-macos.sh | bash
+```
+
 > [!NOTE]
 > LicoUp 仍处于早期 Alpha 阶段：可以构建或处于预览状态，不代表已经完
 > 整支持。依赖某个平台或功能之前，请先查看
