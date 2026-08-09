@@ -187,7 +187,7 @@ function isAuditorDelegationEnabled(environment = process.env) {
       (environment.GITHUB_WORKFLOW === "Client CI" && environment.GITHUB_JOB === "source") ||
       (
         environment.GITHUB_WORKFLOW === "Client GitHub release artifact" &&
-        environment.GITHUB_JOB === "source"
+        environment.GITHUB_JOB === "preflight"
       )
     )
   );
@@ -447,6 +447,15 @@ async function runSelfTest() {
       }),
       "SELF_TEST_GITHUB_AUDITOR_DELEGATION_REJECTED"
     );
+    requireSelfTest(
+      isAuditorDelegationEnabled({
+        LICO_AUDITOR_GATE_DELEGATED: "1",
+        GITHUB_ACTIONS: "true",
+        GITHUB_WORKFLOW: "Client GitHub release artifact",
+        GITHUB_JOB: "preflight"
+      }),
+      "SELF_TEST_RELEASE_AUDITOR_DELEGATION_REJECTED"
+    );
     for (const incompleteEnvironment of [
       {
         GITHUB_ACTIONS: "true",
@@ -469,6 +478,12 @@ async function runSelfTest() {
         GITHUB_ACTIONS: "true",
         GITHUB_WORKFLOW: "Client CI",
         GITHUB_JOB: "another-job"
+      },
+      {
+        LICO_AUDITOR_GATE_DELEGATED: "1",
+        GITHUB_ACTIONS: "true",
+        GITHUB_WORKFLOW: "Client GitHub release artifact",
+        GITHUB_JOB: "source"
       }
     ]) {
       requireSelfTest(
