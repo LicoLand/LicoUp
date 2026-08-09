@@ -1,4 +1,4 @@
-name: Commit identity policy
+name: Commit identity
 
 on:
   pull_request_target:
@@ -108,4 +108,4 @@ jobs:
             "$evidence_file" >/dev/null
 
           terminal_state='success'
-          terminal_description='Commit authorship matches the contributing developer.'
+          terminal_description='Commit identities match the contributing developer.'
