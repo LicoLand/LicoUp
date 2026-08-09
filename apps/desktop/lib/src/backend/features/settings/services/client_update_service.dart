@@ -15,7 +15,7 @@ class ClientUpdateService implements ClientUpdateGateway {
   static const _manifestUrl =
       'https://github.com/LicoLand/LicoUp/releases/latest/download/LicoUp-update-stable.json';
   static const _publicKeysJson =
-      '{"keys":{"licoup-update-offline-root-v1":{"publicKey":"UzcSt+Cbhl4goDS5kRMskW1HHNYHaBwsyg4R/WesWu8="},"licoup-update-online-channel-v1":{"publicKey":"VAyNzo6sz8+p9m2IpnKWg2WPVEG2LUZjP57F7bE0ZPc="}}}';
+      '{"keys":{"licoup-update-offline-root-v1":{"publicKey":"GrICHXUYU+aX7qR2UiZC90Uj/XWssMrVKDZx6vDdkgg="},"licoup-update-online-channel-v1":{"publicKey":"5OWD3HUFAlukj9Ha9ubH9864ni81eDrHfjxBrskpXU4="}}}';
   static const _maxMetadataBytes = 1024 * 1024;
   static const _maxArtifactBytes = 1024 * 1024 * 1024;
 

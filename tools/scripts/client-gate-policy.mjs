@@ -44,6 +44,9 @@ export const CLIENT_GATE_LANES = Object.freeze({
     "client:deps:audit",
   ]),
   "release-policy": freezeLane([
+    "client:release:self-test",
+    "client:update-release:finalize:self-test",
+    "client:release:preflight:check",
     "client:verify:release-artifact-io:self-test",
     "client:verify:release-dependency-receipts:self-test",
     "client:verify:source-state-digest:self-test",
@@ -188,6 +191,7 @@ function isReleasePolicyPath(file) {
   return (
     RELEASE_AUTHORITY_PATHS.has(file) ||
     file.startsWith("tools/scripts/client-release") ||
+    file.startsWith("tools/scripts/client-update-release") ||
     file.startsWith("tools/scripts/client-github-release") ||
     file.startsWith("tools/scripts/client-consumer-verification") ||
     file.startsWith("tools/scripts/client-artifact-verification") ||
@@ -203,7 +207,7 @@ function isReleasePolicyPath(file) {
   );
 }
 
-export function classifyClientGatePaths(changedPaths) {
+export function classifyClientGatePaths(changedPaths, { releaseTarget = null } = {}) {
   if (!Array.isArray(changedPaths)) {
     throw new Error("changed paths must be an array");
   }
@@ -223,6 +227,9 @@ export function classifyClientGatePaths(changedPaths) {
     if (isAndroidPath(file)) lanes.android = true;
     if (DEPENDENCY_PATHS.has(file)) lanes.dependencies = true;
     if (isReleasePolicyPath(file)) lanes["release-policy"] = true;
+  }
+  if (normalized.includes("tools/client-version.json") && releaseTarget === "android-arm64") {
+    lanes.android = true;
   }
 
   return Object.freeze({
