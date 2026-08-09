@@ -125,8 +125,8 @@ jobs:
           echo "LICO_MACOS_LOCAL_SIGNING_KEYCHAIN=$RUNNER_TEMP/lico-local-integrity.keychain-db" >> "$GITHUB_ENV"
       - name: Build, sign and install the local-integrity app
         run: npm run client:install:macos
-      - name: Verify reproducible local-agent release UI contracts
-        run: npm run client:verify:agent-conversations:release-ui
+      - name: Verify reproducible local-agent release contracts
+        run: npm run client:verify:agent-conversations:release-ci
       - name: Archive the exact verified macOS app
         run: npm run client:archive:macos-github-release
       - name: Emit consumer verification metadata
