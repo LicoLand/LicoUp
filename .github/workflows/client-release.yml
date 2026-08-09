@@ -86,6 +86,7 @@ jobs:
             -keyout "$RUNNER_TEMP/lico-local-integrity.key" \
             -out "$RUNNER_TEMP/lico-local-integrity.pem" \
             -subj "/CN=LicoUp GitHub Artifact Validation" \
+            -addext "keyUsage=critical,digitalSignature" \
             -addext "extendedKeyUsage=codeSigning"
           openssl pkcs12 -export \
             -inkey "$RUNNER_TEMP/lico-local-integrity.key" \
@@ -95,14 +96,27 @@ jobs:
           security create-keychain -p github-artifact "$RUNNER_TEMP/lico-local-integrity.keychain-db"
           security set-keychain-settings -lut 7200 "$RUNNER_TEMP/lico-local-integrity.keychain-db"
           security unlock-keychain -p github-artifact "$RUNNER_TEMP/lico-local-integrity.keychain-db"
-          security list-keychains -d user -s "$RUNNER_TEMP/lico-local-integrity.keychain-db"
+          existing_keychains=()
+          while IFS= read -r keychain; do
+            keychain="${keychain//\"/}"
+            if [[ -n "$keychain" ]]; then
+              existing_keychains+=("$keychain")
+            fi
+          done < <(security list-keychains -d user)
+          security list-keychains -d user -s \
+            "$RUNNER_TEMP/lico-local-integrity.keychain-db" \
+            "${existing_keychains[@]}"
           security import "$RUNNER_TEMP/lico-local-integrity.p12" \
             -k "$RUNNER_TEMP/lico-local-integrity.keychain-db" \
             -P github-artifact -T /usr/bin/codesign
+          security add-trusted-cert -d -r trustRoot \
+            -k "$RUNNER_TEMP/lico-local-integrity.keychain-db" \
+            "$RUNNER_TEMP/lico-local-integrity.pem"
           security set-key-partition-list -S apple-tool:,apple: -s \
             -k github-artifact "$RUNNER_TEMP/lico-local-integrity.keychain-db"
-          identity="$(security find-certificate -c "LicoUp GitHub Artifact Validation" \
-            -Z "$RUNNER_TEMP/lico-local-integrity.keychain-db" | awk '/SHA-1/{print $3; exit}')"
+          identity="$(security find-identity -v -p codesigning \
+            "$RUNNER_TEMP/lico-local-integrity.keychain-db" | \
+            awk '/LicoUp GitHub Artifact Validation/{print $2; exit}')"
           if [[ ! "$identity" =~ ^[A-F0-9]{40}$ ]]; then
             echo "Ephemeral local integrity identity was not created" >&2
             exit 1
