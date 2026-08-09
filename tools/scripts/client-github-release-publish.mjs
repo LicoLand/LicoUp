@@ -124,7 +124,7 @@ function ensureRelease({ tag, repository, sourceSha }) {
       "--title",
       tag,
       "--notes",
-      "Verified LicoUp artifacts. See LicoUp-consumer-verification.json.",
+      "Verified LicoUp artifacts. See LicoUp-consumer-verification.json.\n\nmacOS one-line install:\n\n```bash\ncurl -fsSL https://github.com/LicoLand/LicoUp/releases/latest/download/install-macos.sh | bash\n```",
       "--draft",
     ]);
     release = tryReleaseView(tag, repository);
@@ -168,7 +168,8 @@ function downloadExistingAssets({ release, tag, repository, assetsRoot }) {
 
 export function mergeIncomingTarget({ target, incomingRoot, assetsRoot }) {
   const incoming = regularFiles(incomingRoot);
-  const expected = [...CLIENT_RELEASE_TARGETS[target].files].sort();
+  const expected = [...CLIENT_RELEASE_TARGETS[target].files]
+    .sort((left, right) => left.localeCompare(right));
   const actual = incoming.map((entry) => entry.name);
   if (JSON.stringify(actual) !== JSON.stringify(expected)) {
     fail("incoming artifact set does not exactly match the selected target");
