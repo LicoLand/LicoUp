@@ -78,7 +78,9 @@ void main() {
       controller.conversationSendErrorFor('copilot'),
       'acp_protocol_timeout',
     );
-    final live = controller.liveConversationMessagesByAgent['copilot']!;
+    final live =
+        controller.liveConversationMessagesByScope[
+            controller.conversationComposerScopeKey]!;
     final markers = live.where(
       (message) =>
           message.role == 'error' &&

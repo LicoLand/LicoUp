@@ -266,7 +266,9 @@ doing the interaction job, so it became `accent`.
 Hover, pressed, and selected are **roles**, not locally invented alpha values.
 `Colors.white.withAlpha(...)` and `Colors.black.withAlpha(...)` are rejected by
 test inside `frontend/shared/ui/`, with three deliberate exemptions: the fixed
-brand mark, the macOS system menu material, and the shadow scale.
+brand mark, the macOS system menu material, and the shadow scale. In the
+feature layer the same rule is enforced as a ratchet: the existing wash count
+is budgeted and may only shrink, so new invented washes fail the build.
 
 That rule is not pedantry. Deriving fills from white alpha meant a custom light
 preset received a white haze over its own background regardless of what it

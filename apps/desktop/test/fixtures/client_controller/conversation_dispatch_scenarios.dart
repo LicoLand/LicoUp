@@ -494,11 +494,14 @@ void registerClientConversationDispatchScenarios() {
     'selected working directory survives the new-session projection',
     () async {
       final workingDirectory = Directory.systemTemp
-          .createTempSync('licoup-selected-cwd-')
+          .createTempSync('licoup-selected-workspace-')
           .path;
-      addTearDown(
-        () => Directory(workingDirectory).deleteSync(recursive: true),
-      );
+      addTearDown(() {
+        final directory = Directory(workingDirectory);
+        if (directory.existsSync()) {
+          directory.deleteSync(recursive: true);
+        }
+      });
       final service = FakeAgentService();
       final controller = ClientController(agentService: service);
       addTearDown(controller.dispose);
@@ -550,6 +553,97 @@ void registerClientConversationDispatchScenarios() {
   );
 
   test(
+    'an unusable selected workspace fails the send instead of a silent default',
+    () async {
+      final workingDirectory = Directory.systemTemp
+          .createTempSync('licoup-removed-workspace-')
+          .path;
+      addTearDown(() {
+        final directory = Directory(workingDirectory);
+        if (directory.existsSync()) {
+          directory.deleteSync(recursive: true);
+        }
+      });
+      final service = FakeAgentService();
+      final controller = ClientController(agentService: service);
+      addTearDown(controller.dispose);
+
+      await controller.scanTargets();
+      await controller.selectConversationAgent('codex');
+      controller.selectNewConversationWorkingDirectory(workingDirectory);
+
+      expect(controller.selectedConversationWorkingDirectory, workingDirectory);
+
+      Directory(workingDirectory).deleteSync(recursive: true);
+
+      await controller.sendConversationMessage('Create in this project');
+
+      expect(controller.lastError, 'conversation_working_directory_unavailable');
+      expect(service.runtimeMessageCalls, 0);
+      expect(controller.isSendingConversationMessage, isFalse);
+      expect(controller.selectedConversationSession, isNull);
+    },
+  );
+
+  test(
+    'live process card is bound to the conversation it was sent in',
+    () async {
+      final gate = Completer<void>();
+      final service = FakeAgentService()
+        ..runtimeMessageGate = gate
+        ..conversationSessions = {
+          'codex': [
+            conversationSessionJson(
+              id: 'one',
+              agentId: 'codex',
+              text: 'turn in one',
+              updatedAt: '2026-06-01T00:00:00Z',
+              workingDirectory: Directory.systemTemp
+                  .createTempSync('licoup-scope-one-')
+                  .path,
+            ),
+            conversationSessionJson(
+              id: 'two',
+              agentId: 'codex',
+              text: 'turn in two',
+              updatedAt: '2026-06-02T00:00:00Z',
+              workingDirectory: Directory.systemTemp
+                  .createTempSync('licoup-scope-two-')
+                  .path,
+            ),
+          ],
+        };
+      final controller = ClientController(agentService: service);
+      addTearDown(controller.dispose);
+
+      await controller.scanTargets();
+      await controller.selectConversationAgent('codex');
+      controller.selectConversationSession('one');
+
+      final sending = controller.sendConversationMessage('Working in one');
+      for (
+        var attempt = 0;
+        attempt < 20 && service.runtimeMessageCalls == 0;
+        attempt += 1
+      ) {
+        await Future<void>.delayed(Duration.zero);
+      }
+
+      expect(service.runtimeMessageCalls, 1);
+      expect(controller.selectedLiveConversationMessages, isNotEmpty);
+
+      controller.selectConversationSession('two');
+      expect(controller.selectedLiveConversationMessages, isEmpty);
+
+      controller.selectConversationSession('one');
+      expect(controller.selectedLiveConversationMessages, isNotEmpty);
+
+      gate.complete();
+      await sending;
+    },
+  );
+
+  test(
     'local conversation defaults to the client-owned agent workspace',
     () async {
       final home =
@@ -585,15 +679,19 @@ void registerClientConversationDispatchScenarios() {
   test(
     'new conversation reuses the newest historical working directory',
     () async {
+      final olderDirectory = Directory.systemTemp
+          .createTempSync('licoup-history-older-')
+          .path;
       final historicalDirectory = Directory.systemTemp
           .createTempSync('licoup-history-newer-')
           .path;
-      final olderHistoricalDirectory = Directory.systemTemp
-          .createTempSync('licoup-history-older-')
-          .path;
       addTearDown(() {
-        Directory(historicalDirectory).deleteSync(recursive: true);
-        Directory(olderHistoricalDirectory).deleteSync(recursive: true);
+        for (final directory in [olderDirectory, historicalDirectory]) {
+          final entry = Directory(directory);
+          if (entry.existsSync()) {
+            entry.deleteSync(recursive: true);
+          }
+        }
       });
       final service = FakeAgentService()
         ..conversationSessions = {
@@ -603,7 +701,7 @@ void registerClientConversationDispatchScenarios() {
               agentId: 'codex',
               text: 'older turn',
               updatedAt: '2026-01-01T00:00:00Z',
-              workingDirectory: olderHistoricalDirectory,
+              workingDirectory: olderDirectory,
             ),
             conversationSessionJson(
               id: 'newer',
@@ -726,7 +824,10 @@ void registerClientConversationDispatchScenarios() {
 
       await controller.scanTargets();
       await controller.selectConversationAgent('codex');
-      expect(controller.selectedConversationWorkingDirectory, projectDirectory);
+      expect(
+        controller.selectedConversationWorkingDirectory,
+        projectDirectory,
+      );
 
       await controller.conversationCommitTurnBoundNativeReadback(
         agentId: 'codex',
@@ -758,9 +859,10 @@ void registerClientConversationDispatchScenarios() {
       );
       expect(
         controller.selectedConversationSessions.any(
-          (session) => isUsableLocalConversationWorkingDirectory(
-            session.workingDirectory,
-          ),
+          (session) =>
+              isUsableLocalConversationWorkingDirectory(
+                session.workingDirectory,
+              ),
         ),
         isTrue,
       );
@@ -808,12 +910,9 @@ void registerClientConversationDispatchScenarios() {
         localConversationWorkingDirectoryFallback(agentId: 'codex'),
       );
 
-      final project = [
-        '',
-        'synthetic',
-        'workspaces',
-        'rebind-project',
-      ].join('/');
+      final project = ['', 'synthetic', 'workspaces', 'rebind-project'].join(
+        '/',
+      );
       controller.selectNewConversationWorkingDirectory(project);
       expect(controller.lastError, isEmpty);
       expect(controller.selectedConversationWorkingDirectory, project);

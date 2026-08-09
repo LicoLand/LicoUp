@@ -89,7 +89,7 @@ fn fake_child_transport_drains_ordered_chunks_sent_after_prompt_response() {
 fn prompt_drain_budget_resets_monotonically_without_extending_the_hard_deadline() {
     let prompt_response_at = Instant::now();
     let hard_deadline = prompt_response_at + Duration::from_millis(250);
-    let mut budget = PromptDrainBudget::new(prompt_response_at, hard_deadline);
+    let mut budget = PromptDrainBudget::new(prompt_response_at, Some(hard_deadline));
 
     assert_eq!(PROMPT_DRAIN_QUIET_DURATION, Duration::from_millis(100));
     assert_eq!(
@@ -100,7 +100,7 @@ fn prompt_drain_budget_resets_monotonically_without_extending_the_hard_deadline(
         budget.expiration_at(prompt_response_at + Duration::from_millis(99)),
         PromptDrainExpiration::Pending
     );
-    let quiet_budget = PromptDrainBudget::new(prompt_response_at, hard_deadline);
+    let quiet_budget = PromptDrainBudget::new(prompt_response_at, Some(hard_deadline));
     assert_eq!(
         quiet_budget.expiration_at(prompt_response_at + Duration::from_millis(100)),
         PromptDrainExpiration::Quiet
@@ -121,7 +121,7 @@ fn prompt_drain_budget_resets_monotonically_without_extending_the_hard_deadline(
     );
 
     budget.observe_valid_notification(hard_deadline + Duration::from_millis(50));
-    assert_eq!(budget.hard_deadline(), hard_deadline);
+    assert_eq!(budget.hard_deadline(), Some(hard_deadline));
     assert_eq!(budget.next_deadline(), hard_deadline);
 }
 
@@ -146,7 +146,7 @@ fn production_protocol_loop_resets_quiet_deadline_for_controlled_valid_chunks() 
     );
 
     let (outcome, failure, status_code, stdout_truncated) =
-        run_protocol_loop(&mut transport, &mut protocol, hard_deadline);
+        run_protocol_loop(&mut transport, &mut protocol, Some(hard_deadline));
 
     let outcome = outcome.expect("valid scripted prompt drain must complete");
     assert!(failure.is_none());
@@ -184,8 +184,11 @@ fn production_protocol_loop_never_extends_a_continuously_reset_hard_cap() {
         ],
     );
 
-    let (outcome, failure, status_code, stdout_truncated) =
-        run_protocol_loop(&mut transport, &mut protocol, original_request_deadline);
+    let (outcome, failure, status_code, stdout_truncated) = run_protocol_loop(
+        &mut transport,
+        &mut protocol,
+        Some(original_request_deadline),
+    );
 
     assert!(outcome.is_none());
     assert_eq!(
@@ -228,7 +231,8 @@ fn malformed_canary_content_fails_immediately_without_resetting_quiescence() {
         ],
     );
 
-    let (outcome, failure, _, _) = run_protocol_loop(&mut transport, &mut protocol, hard_deadline);
+    let (outcome, failure, _, _) =
+        run_protocol_loop(&mut transport, &mut protocol, Some(hard_deadline));
 
     assert!(outcome.is_none());
     assert_eq!(
@@ -269,7 +273,8 @@ fn malformed_notification_before_prompt_response_stops_before_later_response_and
         ],
     );
 
-    let (outcome, failure, _, _) = run_protocol_loop(&mut transport, &mut protocol, hard_deadline);
+    let (outcome, failure, _, _) =
+        run_protocol_loop(&mut transport, &mut protocol, Some(hard_deadline));
 
     assert!(outcome.is_none());
     assert_eq!(
@@ -372,5 +377,30 @@ fn prompt_drain_fails_closed_on_output_limit_process_loss_and_hard_deadline() {
         Some("acp_protocol_timeout")
     );
 
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
+fn timeout_zero_dispatch_opts_out_of_the_turn_deadline() {
+    // dispatch.rs declares timeoutMs 0 as "no turn deadline": the protocol loop
+    // must not treat it as an immediately expired window (regression for the
+    // execute_acp deadline computation).
+    let (dir, executable) = compile_fake_agent("timeout-zero");
+    let acp_driver = AcpDriverSpec::new("test-acp", &["acp"]).with_identity("test-acp", "acp");
+    let result = execute_acp(
+        acp_driver,
+        executable.to_string_lossy().as_ref(),
+        &json!({}),
+        "private-stdin-prompt",
+        "",
+        Some(dir.as_path()),
+        0,
+        Some(1024 * 1024),
+        1024,
+    );
+    assert!(result.ok, "timeoutMs 0 ACP failure: {:?}", result.error);
+    assert_eq!(result.output, "fake final");
+    assert_eq!(result.session_id, "native-fake-session");
+    assert_eq!(result.turn_status, "end_turn");
     let _ = fs::remove_dir_all(dir);
 }

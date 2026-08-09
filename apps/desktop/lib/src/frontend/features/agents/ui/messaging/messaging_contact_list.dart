@@ -10,6 +10,8 @@ import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_sessio
 import 'package:licoup/src/frontend/features/agents/ui/history_session_models.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_agent_avatar.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 /// Messaging contact list: one row per local conversation agent, like the
@@ -80,9 +82,9 @@ class _MessagingContactListState extends State<MessagingContactList> {
       if (!target.isConversationAgent) {
         continue;
       }
-      final loaded = widget.sessionsByAgent[target.target];
+      final loaded = widget.sessionsByAgent[target.id];
       if (loaded == null || loaded.isEmpty) {
-        prefetch(target.target);
+        prefetch(target.id);
       }
     }
   }
@@ -92,7 +94,7 @@ class _MessagingContactListState extends State<MessagingContactList> {
     if (check == null) {
       return false;
     }
-    return check(target.target);
+    return check(target.id) || check(target.target);
   }
 
   /// Targets that share a canonical product name collapse into one contact,
@@ -126,6 +128,7 @@ class _MessagingContactListState extends State<MessagingContactList> {
       final seenSessionIds = <String>{};
       for (final member in group.members) {
         final memberSessions =
+            widget.sessionsByAgent[member.id] ??
             widget.sessionsByAgent[member.target] ??
             const <AgentConversationSession>[];
         for (final session in memberSessions) {
@@ -143,7 +146,7 @@ class _MessagingContactListState extends State<MessagingContactList> {
           group: group,
           latestSession: latest,
           activity: group.members
-              .map((member) => widget.activityFor(member.target))
+              .map((member) => widget.activityFor(member.id))
               .firstWhere(
                 (value) => value != AgentConversationTabActivity.none,
                 orElse: () => AgentConversationTabActivity.none,
@@ -196,7 +199,26 @@ class _MessagingContactListState extends State<MessagingContactList> {
       ],
     );
     if (selected == 'toggle-pin') {
-      onToggle(entry.group.members.first.target);
+      // Toggle the member that actually carries the pinned state (the pin
+      // check keys on `id` or `target`); default to the group representative
+      // when nothing is pinned yet. Without this, a group whose pinned member
+      // is not the first one would toggle the representative instead and the
+      // row would appear stuck pinned.
+      final check = widget.isPinned;
+      String? pinnedKey;
+      if (check != null) {
+        for (final member in entry.group.members) {
+          if (check(member.id)) {
+            pinnedKey = member.id;
+            break;
+          }
+          if (check(member.target)) {
+            pinnedKey = member.target;
+            break;
+          }
+        }
+      }
+      onToggle(pinnedKey ?? entry.group.members.first.id);
     }
   }
 
@@ -254,20 +276,19 @@ class _MessagingContactListState extends State<MessagingContactList> {
                       itemCount: entries.length,
                       itemBuilder: (context, index) {
                         final entry = entries[index];
-                        final representative = entry.group.members.firstWhere(
-                          (member) => member.target == widget.selectedAgentId,
-                          orElse: () => entry.group.members.first,
-                        );
                         return _MessagingContactRow(
                           key: ValueKey<String>(
-                            'messaging-contact-${representative.target}',
+                            'messaging-contact-${entry.group.members.first.id}',
                           ),
                           entry: entry,
                           selected: entry.group.members.any(
-                            (member) => member.target == widget.selectedAgentId,
+                            (member) =>
+                                member.id == widget.selectedAgentId ||
+                                member.target == widget.selectedAgentId,
                           ),
-                          onTap: () =>
-                              widget.onSelectAgent(representative.target),
+                          onTap: () => widget.onSelectAgent(
+                            entry.group.members.first.id,
+                          ),
                           onSecondaryTapDown: widget.onTogglePinned == null
                               ? null
                               : (details) => _showPinMenu(
@@ -327,7 +348,7 @@ class _MessagingContactActionButton extends StatelessWidget {
     final colors = context.licoColors;
     return Tooltip(
       message: tooltip,
-      waitDuration: const Duration(milliseconds: 400),
+      waitDuration: LicoMotion.tooltipWait,
       child: InkWell(
         onTap: onPressed,
         customBorder: const CircleBorder(),
@@ -429,7 +450,7 @@ class _MessagingContactRow extends StatelessWidget {
         child: InkWell(
           onTap: onTap,
           onSecondaryTapDown: onSecondaryTapDown,
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(LicoRadius.floating),
           hoverColor: colors.isDark
               ? Colors.white.withAlpha(8)
               : Colors.black.withAlpha(8),
@@ -441,7 +462,7 @@ class _MessagingContactRow extends StatelessWidget {
               // Solid brand-yellow selection with dark foreground — the
               // user-chosen 黄底黑字 rule, not a muted alpha tint.
               color: selected ? colors.primary : Colors.transparent,
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(LicoRadius.floating),
             ),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.center,

@@ -5,6 +5,7 @@ import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_agent_avatar.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_conversation_overlay_glass.dart';
 import 'package:licoup/src/frontend/layout/profiles/messaging/desktop/tokens/messaging_desktop_tokens.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
 
 /// Vertical Flywheel agent roster capsule on the right edge of the
 /// conversation canvas. Human/"You" entries are omitted — only agent peers
@@ -61,7 +62,7 @@ class MessagingGroupRoster extends StatelessWidget {
                   if (i > 0) const SizedBox(height: _avatarGap),
                   Tooltip(
                     message: agents[i].displayName,
-                    waitDuration: const Duration(milliseconds: 400),
+                    waitDuration: LicoMotion.tooltipWait,
                     child: MessagingAgentAvatar(
                       target: targetsByAgentId[agents[i].agentId ?? ''],
                       size: _avatarSize,

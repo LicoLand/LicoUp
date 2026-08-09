@@ -284,7 +284,7 @@ async function sidecar() {
     openclaw: "acp", "claude-code": "stream-json", codex: "app-server",
     antigravity: "cli", opencode: "serve-http", copilot: "acp",
     "kilo-code": "serve-http", cursor: "cli", hermes: "acp",
-    "kimi-code": "acp", pi: "rpc", "lico-agent": "rpc",
+    "kimi-code": "acp", pi: "rpc",
   };
   const exactResume = true;
   const laneFamily = laneFamilies[request.agent] || "unavailable";

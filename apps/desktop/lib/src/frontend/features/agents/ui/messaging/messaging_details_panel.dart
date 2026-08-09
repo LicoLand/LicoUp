@@ -7,6 +7,7 @@ import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_parity
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_runtime_settings.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/apple_notifications.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 /// Messaging details surface: runtime settings, capability disclosure,
@@ -186,7 +187,7 @@ class MessagingDetailsPanelBody extends StatelessWidget {
                     label: strings.conversationId,
                     value: messagingDetailsConversationId(session),
                     copiedMessage: strings.conversationIdCopied,
-                    onCopy: actions.onCopyText,
+                    onCopyText: actions.onCopyText,
                   ),
                 if (session.workingDirectory.trim().isNotEmpty)
                   _MessagingDetailsInfoRow(
@@ -327,16 +328,18 @@ class _MessagingDetailsCopyRow extends StatelessWidget {
     required this.label,
     required this.value,
     required this.copiedMessage,
-    required this.onCopy,
+    required this.onCopyText,
   });
 
   final String label;
   final String value;
   final String copiedMessage;
-  final Future<void> Function(String) onCopy;
+  final Future<void> Function(String)? onCopyText;
 
   Future<void> _copy(BuildContext context) async {
-    await onCopy(value.trim());
+    final write = onCopyText;
+    if (write == null) return;
+    await write(value);
     if (!context.mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       appleGlassSnackBar(context: context, message: copiedMessage),
@@ -366,7 +369,7 @@ class _MessagingDetailsCopyRow extends StatelessWidget {
             color: Colors.transparent,
             child: InkWell(
               key: const Key('messaging-details-conversation-id'),
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.circular(LicoRadius.chip),
               onTap: () => _copy(context),
               child: Padding(
                 padding: const EdgeInsets.symmetric(vertical: 2),

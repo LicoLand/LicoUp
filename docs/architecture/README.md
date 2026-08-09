@@ -162,47 +162,6 @@ data to the native core, so an OS store must not be described as proof that
 every protocol key is hardware-backed or non-exportable. Platform support
 claims need current measured evidence.
 
-## Optional Meshrix collaboration boundary
-
-Meshrix collaboration is a separately installed plugin. It is absent from
-default startup and navigation until the user installs and enables it. Source
-selection binds a normalized GitHub repository to an exact immutable commit.
-Before package download, the user imports the trusted signing key through a
-separate action; a key bundled with the package or returned by the same download
-is never a trust root. Changing the repository, key, or fixed runner identity
-requires removal and a new direct authorization.
-
-The package signature covers the fixed runner identity and digest, contract
-versions, source commit, and a complete path/length/digest inventory. Package
-inspection and every start verify the protected trust record, signature, and
-inventory again. The authoritative record also binds the exact approved commit,
-package, inventory, runner, contracts, target, and deployment generation, so an
-older validly signed package cannot replace the approved artifact. Selected
-components are copied into an immutable snapshot; writable runtime data lives
-outside that loadable tree. The client never runs package scripts, hooks,
-user-provided arguments, or inherited environment variables.
-
-A deployment starts only after a separate manual action, using the fixed signed
-external runner on loopback. The verified runner and assembled snapshot are
-passed as locked immutable objects rather than reopened from writable paths.
-The client binds the process executable and start identity to a runtime lease
-and verified health/capability response. Stop and uninstall act only on that
-verified identity and fail closed on mismatch. The source tree does not bundle
-a Meshrix server runner: these controls establish a client deployment
-capability, not evidence that a real server artifact was obtained, started,
-released, or published.
-
-MCP external effects use a separate bounded authorization flow. The bridge may
-stage an exact preview, but it performs no exchange and cannot approve it. The
-authenticated client UI shows the destination, purpose, request body, and every
-selected file. The native command requests fresh platform user presence for the
-canonical digest and then atomically claims the matching short-lived preview
-exactly once before exchange. The digest binds the direction, destination,
-purpose, protocol revision, session, and exact request body. Caller-supplied
-flags or ordinary state files are not proof of approval. The operation fails
-closed after expiry, cancellation, reuse, mutation, rollback, or when a platform
-user-presence authority is unavailable.
-
 Installation, enablement, startup, a schedule, or an agent request cannot grant
 external-transfer permission. Each exact request and each selected local file
 that would leave the device requires its own protected one-shot approval.

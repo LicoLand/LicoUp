@@ -34,6 +34,108 @@ fn new_session_prompt_stays_on_stdio_channel() {
 }
 
 #[test]
+fn provider_error_without_assistant_text_surfaces_gateway_credential_failure() {
+    let config = ProtocolConfig::from_params(
+        &json!({}),
+        "who are you",
+        "",
+        Some(absolute_test_cwd().as_path()),
+    )
+    .unwrap();
+    let mut protocol = PiProtocol::new(config);
+    let _ = protocol.initial_request();
+    let _ = protocol.handle_message(json!({
+        "type": "response",
+        "command": "get_state",
+        "success": true,
+        "data": {"sessionId": "pi-err-1"}
+    }));
+    let _ = protocol.handle_message(json!({
+        "type": "response",
+        "command": "prompt",
+        "success": true
+    }));
+    let _ = protocol.handle_message(json!({
+        "type": "message_end",
+        "message": {
+            "role": "assistant",
+            "content": [],
+            "stopReason": "error",
+            "errorMessage": "503: {\"code\":\"gateway_credential_unavailable\",\"message\":\"gateway_credential_unavailable\"}"
+        }
+    }));
+    let settled = protocol.handle_message(json!({"type": "agent_settled"}));
+    assert!(matches!(
+        &settled[0],
+        ProtocolEffect::Send(request) if request["type"] == "get_last_assistant_text"
+    ));
+    let _ = protocol.handle_message(json!({
+        "type": "response",
+        "command": "get_last_assistant_text",
+        "success": true,
+        "data": {"text": null}
+    }));
+    let finished = protocol.handle_message(json!({
+        "type": "response",
+        "command": "get_state",
+        "success": true,
+        "data": {"sessionId": "pi-err-1"}
+    }));
+    assert!(matches!(
+        finished[0],
+        ProtocolEffect::Fail(ProtocolFailure {
+            code: "pi_gateway_credentials_unavailable",
+            ..
+        })
+    ));
+}
+
+#[test]
+fn text_end_content_recovers_when_deltas_were_missed() {
+    let config =
+        ProtocolConfig::from_params(&json!({}), "hello", "", Some(absolute_test_cwd().as_path()))
+            .unwrap();
+    let mut protocol = PiProtocol::new(config);
+    let _ = protocol.initial_request();
+    let _ = protocol.handle_message(json!({
+        "type": "response",
+        "command": "get_state",
+        "success": true,
+        "data": {"sessionId": "pi-text-end"}
+    }));
+    let _ = protocol.handle_message(json!({
+        "type": "response",
+        "command": "prompt",
+        "success": true
+    }));
+    let _ = protocol.handle_message(json!({
+        "type": "message_update",
+        "assistantMessageEvent": {
+            "type": "text_end",
+            "contentIndex": 0,
+            "content": "recovered reply"
+        }
+    }));
+    let _ = protocol.handle_message(json!({"type": "agent_settled"}));
+    let _ = protocol.handle_message(json!({
+        "type": "response",
+        "command": "get_last_assistant_text",
+        "success": true,
+        "data": {"text": null}
+    }));
+    let finished = protocol.handle_message(json!({
+        "type": "response",
+        "command": "get_state",
+        "success": true,
+        "data": {"sessionId": "pi-text-end"}
+    }));
+    let ProtocolEffect::Complete(outcome) = &finished[0] else {
+        panic!("expected complete turn");
+    };
+    assert_eq!(outcome.output, "recovered reply");
+}
+
+#[test]
 fn switched_state_must_confirm_requested_identity() {
     let config = resume_config(
         "continue",

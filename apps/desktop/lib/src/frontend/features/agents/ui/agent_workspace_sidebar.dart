@@ -8,9 +8,11 @@ import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_displa
 import 'package:licoup/src/frontend/features/agents/ui/history_session_panel.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/agent_brand_icon.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_section_header.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_icon_button.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_layout_metrics.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 
 /// Second-layer conversation list: a flat, newest-first list of every
 /// conversation across agents, grouped into muted time sections (today,
@@ -411,7 +413,12 @@ class _SidebarConversationListView extends StatelessWidget {
       }
       if (header != currentHeader) {
         currentHeader = header;
-        items.add(_SidebarTimeGroupHeader(label: header));
+        items.add(
+          LicoGroupHeader(
+            label: header,
+            padding: const EdgeInsets.fromLTRB(10, 14, 10, 4),
+          ),
+        );
       }
       items.add(
         _SidebarConversationRow(
@@ -423,116 +430,18 @@ class _SidebarConversationListView extends StatelessWidget {
       );
     }
     if (earlierHeaderIndex >= 0) {
-      items[earlierHeaderIndex] = _SidebarEarlierGroupHeader(
+      items[earlierHeaderIndex] = LicoGroupHeader(
         label: strings.earlier,
         count: earlierCount,
         expanded: earlierExpanded || earlierContainsSelected,
         onToggle: onToggleEarlier,
+        toggleKey: const Key('agents-sidebar-earlier-toggle'),
+        padding: const EdgeInsets.fromLTRB(4, 14, 4, 2),
       );
     }
     return ListView(
       padding: const EdgeInsets.fromLTRB(8, 0, 8, 16),
       children: items,
-    );
-  }
-}
-
-class _SidebarTimeGroupHeader extends StatelessWidget {
-  const _SidebarTimeGroupHeader({required this.label});
-
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.licoColors;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(10, 14, 10, 4),
-      child: Text(
-        label,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: TextStyle(
-          color: colors.textMuted,
-          fontSize: 11,
-          fontWeight: FontWeight.w600,
-          letterSpacing: 0.4,
-          height: 1,
-        ),
-      ),
-    );
-  }
-}
-
-/// The collapsible Earlier section header: chevron, label, and a row count.
-/// Collapsed by default; tapping toggles the session-scoped expansion.
-class _SidebarEarlierGroupHeader extends StatelessWidget {
-  const _SidebarEarlierGroupHeader({
-    required this.label,
-    required this.count,
-    required this.expanded,
-    required this.onToggle,
-  });
-
-  final String label;
-  final int count;
-  final bool expanded;
-  final VoidCallback onToggle;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.licoColors;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(4, 14, 4, 2),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          key: const Key('agents-sidebar-earlier-toggle'),
-          onTap: onToggle,
-          borderRadius: BorderRadius.circular(8),
-          hoverColor: colors.isDark
-              ? Colors.white.withAlpha(8)
-              : Colors.black.withAlpha(8),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-            child: Row(
-              children: [
-                Icon(
-                  expanded
-                      ? Icons.expand_more_rounded
-                      : Icons.chevron_right_rounded,
-                  size: 15,
-                  color: colors.textMuted,
-                ),
-                const SizedBox(width: 4),
-                Expanded(
-                  child: Text(
-                    label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: colors.textMuted,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      letterSpacing: 0.4,
-                      height: 1,
-                    ),
-                  ),
-                ),
-                Text(
-                  '$count',
-                  maxLines: 1,
-                  style: TextStyle(
-                    color: colors.textMuted.withAlpha(170),
-                    fontSize: 11,
-                    fontWeight: FontWeight.w500,
-                    height: 1,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
     );
   }
 }
@@ -578,7 +487,7 @@ class _SidebarConversationRow extends StatelessWidget {
         color: Colors.transparent,
         child: InkWell(
           onTap: onTap,
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(LicoRadius.floating),
           hoverColor: colors.isDark
               ? Colors.white.withAlpha(8)
               : Colors.black.withAlpha(8),
@@ -593,7 +502,7 @@ class _SidebarConversationRow extends StatelessWidget {
                         ? Colors.white.withAlpha(26)
                         : Colors.black.withAlpha(16))
                   : Colors.transparent,
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(LicoRadius.floating),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -692,7 +601,7 @@ class _NewConversationGuideButton extends StatelessWidget {
       child: InkWell(
         key: buttonKey,
         onTap: onPressed,
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(LicoRadius.floating),
         hoverColor: interactionColor,
         focusColor: interactionColor,
         splashColor: colors.primary.withAlpha(20),

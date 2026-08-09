@@ -27,7 +27,7 @@ const _scenarioFingerprints = <String, List<String>>{
       [
         "containsAll(['Hello world', 'Hello world.'])",
         "isNot(contains('Hello'))",
-        'lessThanOrEqualTo(8)',
+        'lessThanOrEqualTo(7)',
         "isNot(contains('Hello worldworld'))",
         'contains(AgentConversationMessageKind.toolCall)',
         "expect(committedSession?.id, 'native-codex-turn-bound')",
@@ -45,7 +45,7 @@ const _scenarioFingerprints = <String, List<String>>{
     "contains('2026.08.04-aaa8809')",
     "expect(card.role, 'event')",
     "expect(card.text, 'completed')",
-    "'submitted,accepted,responding,completed'",
+    "'submitted,accepted'",
   ],
 };
 

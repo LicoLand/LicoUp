@@ -22,10 +22,24 @@ if (typeof productVersion !== "string" || productVersion.length === 0) {
 }
 const targetSpecs = {
   "macos-arm64": {
-    platform: "macos-arm64",
-    artifact: "LicoUp-macos-arm64.zip",
-    files: ["LicoUp-macos-arm64.zip", "LicoUp-macos-arm64.zip.sha256", "install-macos.sh"],
-    checksum: "LicoUp-macos-arm64.zip.sha256",
+    files: [
+      "LicoUp-macos-arm64.dmg",
+      "LicoUp-macos-arm64.dmg.sha256",
+      "LicoUp-macos-arm64-update.zip",
+      "LicoUp-macos-arm64-update.zip.sha256",
+    ],
+    artifacts: [
+      {
+        platform: "macos-arm64",
+        artifact: "LicoUp-macos-arm64.dmg",
+        checksum: "LicoUp-macos-arm64.dmg.sha256",
+      },
+      {
+        platform: "macos-arm64-update",
+        artifact: "LicoUp-macos-arm64-update.zip",
+        checksum: "LicoUp-macos-arm64-update.zip.sha256",
+      },
+    ],
   },
   "linux-glibc-arm64": {
     platform: "linux-glibc-arm64",
@@ -115,8 +129,10 @@ if (actualEntries.some((entry) => !entry.isFile() || entry.isSymbolicLink()) ||
   fail("release asset set does not exactly match selected targets");
 }
 
-const artifacts = selectedIds.sort().map((id) => {
-  const spec = targetSpecs[id];
+const artifacts = selectedIds.sort().flatMap((id) => {
+  const targetSpec = targetSpecs[id];
+  const artifactSpecs = targetSpec.artifacts || [targetSpec];
+  return artifactSpecs.map((spec) => {
   const artifactPath = containedFile(assetsRoot, spec.artifact);
   const digest = sha256(artifactPath);
   const checksumPath = containedFile(assetsRoot, spec.checksum);
@@ -158,14 +174,15 @@ const artifacts = selectedIds.sort().map((id) => {
       fail("Android APK signer does not match its public verification certificate");
     }
   }
-  return {
-    name: spec.artifact,
-    version: productVersion,
-    platform: spec.platform,
-    byteSize: statSync(artifactPath).size,
-    sha256: digest,
-    verification,
-  };
+    return {
+      name: spec.artifact,
+      version: productVersion,
+      platform: spec.platform,
+      byteSize: statSync(artifactPath).size,
+      sha256: digest,
+      verification,
+    };
+  });
 });
 
 const manifest = {

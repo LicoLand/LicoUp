@@ -3,7 +3,7 @@ use ed25519_dalek::SigningKey;
 use rand::rngs::OsRng;
 use serde_json::json;
 use sha2::{Digest, Sha256};
-use time::{OffsetDateTime, format_description::well_known::Rfc3339};
+use time::OffsetDateTime;
 
 use super::super::{
     open_lifecycle_service_action_pairwise, reject_plaintext_lifecycle_service_action_transport,
@@ -139,8 +139,6 @@ fn secure_mesh_lifecycle_service_actions_seal_only_inside_pairwise_envelopes() {
             .contains("plaintext transport is forbidden")
     );
 
-    let created_at = OffsetDateTime::now_utc();
-    let expires_at = created_at + time::Duration::minutes(5);
     let context = SecureMeshContentContext::new(
         base64::engine::general_purpose::URL_SAFE_NO_PAD
             .encode(&Sha256::digest(b"env-life-1")[..24]),
@@ -149,8 +147,8 @@ fn secure_mesh_lifecycle_service_actions_seal_only_inside_pairwise_envelopes() {
         "desktop_gui:alice",
         "mobile:bob",
         alice_session.session_id.clone(),
-        created_at.format(&Rfc3339).unwrap(),
-        expires_at.format(&Rfc3339).unwrap(),
+        "2026-07-11T00:00:00Z",
+        "2026-07-11T00:10:00Z",
     );
     let envelope =
         seal_lifecycle_service_action_pairwise(&mut alice_session, &context, &params).unwrap();

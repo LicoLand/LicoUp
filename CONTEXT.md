@@ -87,3 +87,23 @@ _Avoid_: privileged trust root, mandatory backend
 A user-approved action that discloses exact content to a named external
 destination or produces an external effect.
 _Avoid_: plugin permission, background authorization
+
+**Gateway Runtime**:
+The single local process that hosts the LLM Gateway layer and the Communication
+Channel layer.
+_Avoid_: separate Telegram gateway, dual sidecars for the same runtime
+
+**LLM Gateway**:
+The lower Gateway Runtime layer: loopback HTTP model-protocol routing and
+credential handoff to upstream providers.
+_Avoid_: messaging channel, Bot API poller
+
+**Communication Channel**:
+An upper Gateway Runtime messaging adapter that admits an external chat surface
+into local Agent conversations. Telegram is the first channel.
+_Avoid_: Lico Arc peer, independent Telegram gateway product
+
+**Telegram channel**:
+The Telegram Bot API Communication Channel inside the Gateway Runtime (paired
+DMs, slash commands, conversation-lane bridge).
+_Avoid_: Telegram Gateway, OpenClaw channel clone claim, Flutter long-poller

@@ -54,14 +54,11 @@ export async function checkShellIsolationAndNativeStdio(context) {
   } = context;
   const semanticDestinations = await readDartSourceByBasename("semantic_destination.dart");
   const appSections = collectEnumValues(semanticDestinations, "ClientSection");
-  assert(sameSet(appSections, ["agents", "monitoring", "skillHub", "pluginManagement", "mobileRelay", "models", "settings"]), "ClientSection enum must contain only the current client shell modules");
+  assert(sameSet(appSections, ["agents", "monitoring", "skillHub", "pluginManagement", "mobileRelay", "settings"]), "ClientSection enum must contain only the current client shell modules");
   for (const relativePath of (await collectDartSourceFiles())
     .filter(isFlutterGuiImplementationSource)) {
     const source = await readText(relativePath);
     for (const token of guiImplementationForbiddenTokens) {
-      if (relativePath ===
-          "apps/desktop/lib/src/frontend/features/agents/ui/lico_plan_document_panel.dart" &&
-          token === "dart:io") continue;
       assert(!source.includes(token), `${relativePath} must not implement backend/platform behavior outside the platform root via ${token}`);
     }
   }

@@ -1,36 +1,26 @@
 {
   "schemaVersion": "licoup.client-release-template.v1",
-  "entryCommands": {
-    "nightly": "npm run client:release -- push nightly --version <version> --target <target>",
-    "stable": "npm run client:release -- push stable --version <version> --target <target>",
-    "release": "npm run client:release -- push release --version <version> --target <target>",
-    "publish": "npm run client:release -- publish --version <version> --target <target>"
+  "versionAuthority": {
+    "path": "tools/client-version.json"
   },
   "promotion": {
     "branches": ["nightly", "stable", "release"],
     "mergeMethod": "merge",
-    "rulesetMutation": "forbidden"
+    "rulesetMutation": "forbidden",
+    "linearHistory": false
   },
   "requiredPullRequestChecks": [
-    "Branch flow policy",
+    "Branch flow",
     "Commit identity",
-    "Client required"
+    "Client required",
+    "Auditor"
   ],
-  "publication": {
-    "workflow": ".github/workflows/client-release.yml",
-    "ref": "release",
-    "jobTimeoutPolicy": "github-default",
-    "operatorMonitoringTimeoutMinutes": null,
-    "remoteValidity": {
-      "strategyGroup": "tools/client-remote-release-strategies.json",
-      "activeStrategyIds": ["build-success"]
-    },
-    "macosUpdate": {
-      "workflowArtifact": "licoup-macos-update",
-      "manifest": "LicoUp-update-stable.json",
-      "finalizer": "tools/scripts/client-update-release-finalize.mjs",
-      "privateKeyCustody": "local-only"
-    }
+  "pullRequestPreflight": {
+    "command": "npm run client:pr:preflight -- --base origin/nightly --target <target> --full-target",
+    "receiptSchema": "licoup.release-pre-pr-receipt.v1",
+    "receiptPath": "build/reports/release-pre-pr-receipt.json",
+    "remoteMutation": "forbidden",
+    "prePushMode": "receipt-only"
   },
   "candidatePreflight": {
     "refPrefix": "release-candidate/",
@@ -38,6 +28,17 @@
       "macos-arm64": ["source", "flutter", "rust", "dependencies", "release-policy"],
       "linux-glibc-arm64": ["source", "flutter", "rust", "dependencies", "release-policy"],
       "android-arm64": ["source", "flutter", "rust", "android", "dependencies", "release-policy"]
+    }
+  },
+  "publication": {
+    "workflow": ".github/workflows/client-release.yml",
+    "ref": "release",
+    "draftOnlyUntilVerified": true,
+    "exactAssetSetRequired": true,
+    "publishOnce": true,
+    "remoteValidity": {
+      "strategyGroup": "tools/client-remote-release-strategies.json",
+      "activeStrategyIds": ["build-success"]
     }
   }
 }

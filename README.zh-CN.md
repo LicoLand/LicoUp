@@ -54,12 +54,6 @@ LicoUp 是一个开源的桌面与移动客户端，用于发现、操作并连�
 
 LicoUp 面向 macOS、Windows、Linux、Android 和 iOS。
 
-一行安装最新的 Apple 芯片 macOS 版本：
-
-```bash
-curl -fsSL https://github.com/LicoLand/LicoUp/releases/latest/download/install-macos.sh | bash
-```
-
 > [!NOTE]
 > LicoUp 仍处于早期 Alpha 阶段：可以构建或处于预览状态，不代表已经完
 > 整支持。依赖某个平台或功能之前，请先查看
@@ -101,15 +95,6 @@ flowchart LR
 加密接收方。对话页会持续显示 SSH 目标；用户点击“发送”时，只授权把该条准确
 提示发给该虚拟机。SSH 负责保护传输，虚拟机内的 OpenClaw 或 Hermes 会读取
 对话内容以生成回复。
-
-## 可选的 Meshrix 协作
-
-Meshrix 协作能力不会随默认客户端加载。只有在你主动选择 GitHub 的不可变
-提交、通过独立渠道导入其可信签名公钥，并手动安装和启用插件之后，它才可用。
-本地部署还需要一次独立的手动操作，并且只能通过固定、已签名的外部运行器启
-动。本仓库不捆绑该服务端运行器，因此只构建 LicoUp 不能证明已经部署
-Meshrix。安装、启用和启动都不等于授权对外传输数据：每个将要离开设备的准
-确请求或选中的本地文件，都必须取得一次新的、受保护的用户确认。
 
 ## 从源码构建
 

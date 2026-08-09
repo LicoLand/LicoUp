@@ -11,6 +11,7 @@ mod agent_usage;
 mod autostart;
 mod client_update;
 mod collaboration;
+mod gateway;
 mod group_conversation;
 mod llm_gateway;
 mod mcp;
@@ -792,6 +793,124 @@ fn cli_param_key(raw: &str) -> String {
     output
 }
 
+const UPDATE_ROUTE_OPTIONS: &[OptionSpec] = &[
+    OptionSpec {
+        name: "channel",
+        arity: OptionArity::Value,
+        repeatable: false,
+        value_kind: RequiredArgumentKind::Text,
+        required: false,
+    },
+    OptionSpec {
+        name: "manifest-path",
+        arity: OptionArity::Value,
+        repeatable: false,
+        value_kind: RequiredArgumentKind::Text,
+        required: false,
+    },
+    OptionSpec {
+        name: "public-keys-path",
+        arity: OptionArity::Value,
+        repeatable: false,
+        value_kind: RequiredArgumentKind::Text,
+        required: false,
+    },
+    OptionSpec {
+        name: "revocation-path",
+        arity: OptionArity::Value,
+        repeatable: false,
+        value_kind: RequiredArgumentKind::Text,
+        required: false,
+    },
+    OptionSpec {
+        name: "source-path",
+        arity: OptionArity::Value,
+        repeatable: false,
+        value_kind: RequiredArgumentKind::Text,
+        required: false,
+    },
+    OptionSpec {
+        name: "source",
+        arity: OptionArity::Value,
+        repeatable: false,
+        value_kind: RequiredArgumentKind::Text,
+        required: false,
+    },
+    OptionSpec {
+        name: "repo",
+        arity: OptionArity::Value,
+        repeatable: false,
+        value_kind: RequiredArgumentKind::Text,
+        required: false,
+    },
+    OptionSpec {
+        name: "staging-root",
+        arity: OptionArity::Value,
+        repeatable: false,
+        value_kind: RequiredArgumentKind::Text,
+        required: false,
+    },
+    OptionSpec {
+        name: "state-root",
+        arity: OptionArity::Value,
+        repeatable: false,
+        value_kind: RequiredArgumentKind::Text,
+        required: false,
+    },
+    OptionSpec {
+        name: "current-version",
+        arity: OptionArity::Value,
+        repeatable: false,
+        value_kind: RequiredArgumentKind::Text,
+        required: false,
+    },
+    OptionSpec {
+        name: "execute",
+        arity: OptionArity::Value,
+        repeatable: false,
+        value_kind: RequiredArgumentKind::Text,
+        required: false,
+    },
+    OptionSpec {
+        name: "install-root",
+        arity: OptionArity::Value,
+        repeatable: false,
+        value_kind: RequiredArgumentKind::Text,
+        required: false,
+    },
+    OptionSpec {
+        name: "gui-pid",
+        arity: OptionArity::Value,
+        repeatable: false,
+        value_kind: RequiredArgumentKind::Text,
+        required: false,
+    },
+    OptionSpec {
+        name: "wait-for-script",
+        arity: OptionArity::Value,
+        repeatable: false,
+        value_kind: RequiredArgumentKind::Text,
+        required: false,
+    },
+];
+
+const UPDATE_ROUTE_CONSTRAINTS: &[OptionConstraintSpec] = &[
+    OptionConstraintSpec {
+        kind: OptionConstraintKind::MutuallyExclusive,
+        members: &["source-path", "source"],
+        condition_option: None,
+        condition_value: None,
+        required_option: None,
+    },
+    OptionConstraintSpec {
+        kind: OptionConstraintKind::MutuallyExclusive,
+        members: &["source-path", "repo"],
+        condition_option: None,
+        condition_value: None,
+        required_option: None,
+    },
+];
+
 fn build_command_table() -> CommandTable {
     let mut table = CommandTable::new();
     table.register_command(CommandSpec {
@@ -1395,37 +1514,8 @@ fn build_command_table() -> CommandTable {
         handler_name: "handle_update",
         path: &["update", "status"],
         required_positionals: &[],
-        options: &[
-            OptionSpec {
-                name: "channel",
-                arity: OptionArity::Value,
-                repeatable: false,
-                value_kind: RequiredArgumentKind::Text,
-                required: false,
-            },
-            OptionSpec {
-                name: "manifest-path",
-                arity: OptionArity::Value,
-                repeatable: false,
-                value_kind: RequiredArgumentKind::Text,
-                required: false,
-            },
-            OptionSpec {
-                name: "public-keys-path",
-                arity: OptionArity::Value,
-                repeatable: false,
-                value_kind: RequiredArgumentKind::Text,
-                required: false,
-            },
-            OptionSpec {
-                name: "source-path",
-                arity: OptionArity::Value,
-                repeatable: false,
-                value_kind: RequiredArgumentKind::Text,
-                required: false,
-            },
-        ],
-        constraints: &[],
+        options: UPDATE_ROUTE_OPTIONS,
+        constraints: UPDATE_ROUTE_CONSTRAINTS,
         cardinality: CommandCardinality::Options,
         handler: client_update::handle_update,
         help: "",
@@ -1435,37 +1525,8 @@ fn build_command_table() -> CommandTable {
         handler_name: "handle_update",
         path: &["update", "check"],
         required_positionals: &[],
-        options: &[
-            OptionSpec {
-                name: "channel",
-                arity: OptionArity::Value,
-                repeatable: false,
-                value_kind: RequiredArgumentKind::Text,
-                required: false,
-            },
-            OptionSpec {
-                name: "manifest-path",
-                arity: OptionArity::Value,
-                repeatable: false,
-                value_kind: RequiredArgumentKind::Text,
-                required: false,
-            },
-            OptionSpec {
-                name: "public-keys-path",
-                arity: OptionArity::Value,
-                repeatable: false,
-                value_kind: RequiredArgumentKind::Text,
-                required: false,
-            },
-            OptionSpec {
-                name: "source-path",
-                arity: OptionArity::Value,
-                repeatable: false,
-                value_kind: RequiredArgumentKind::Text,
-                required: false,
-            },
-        ],
-        constraints: &[],
+        options: UPDATE_ROUTE_OPTIONS,
+        constraints: UPDATE_ROUTE_CONSTRAINTS,
         cardinality: CommandCardinality::Options,
         handler: client_update::handle_update,
         help: "",
@@ -1475,37 +1536,8 @@ fn build_command_table() -> CommandTable {
         handler_name: "handle_update",
         path: &["update", "download"],
         required_positionals: &[],
-        options: &[
-            OptionSpec {
-                name: "channel",
-                arity: OptionArity::Value,
-                repeatable: false,
-                value_kind: RequiredArgumentKind::Text,
-                required: false,
-            },
-            OptionSpec {
-                name: "manifest-path",
-                arity: OptionArity::Value,
-                repeatable: false,
-                value_kind: RequiredArgumentKind::Text,
-                required: false,
-            },
-            OptionSpec {
-                name: "public-keys-path",
-                arity: OptionArity::Value,
-                repeatable: false,
-                value_kind: RequiredArgumentKind::Text,
-                required: false,
-            },
-            OptionSpec {
-                name: "source-path",
-                arity: OptionArity::Value,
-                repeatable: false,
-                value_kind: RequiredArgumentKind::Text,
-                required: false,
-            },
-        ],
-        constraints: &[],
+        options: UPDATE_ROUTE_OPTIONS,
+        constraints: UPDATE_ROUTE_CONSTRAINTS,
         cardinality: CommandCardinality::Options,
         handler: client_update::handle_update,
         help: "",
@@ -1515,37 +1547,8 @@ fn build_command_table() -> CommandTable {
         handler_name: "handle_update",
         path: &["update", "verify"],
         required_positionals: &[],
-        options: &[
-            OptionSpec {
-                name: "channel",
-                arity: OptionArity::Value,
-                repeatable: false,
-                value_kind: RequiredArgumentKind::Text,
-                required: false,
-            },
-            OptionSpec {
-                name: "manifest-path",
-                arity: OptionArity::Value,
-                repeatable: false,
-                value_kind: RequiredArgumentKind::Text,
-                required: false,
-            },
-            OptionSpec {
-                name: "public-keys-path",
-                arity: OptionArity::Value,
-                repeatable: false,
-                value_kind: RequiredArgumentKind::Text,
-                required: false,
-            },
-            OptionSpec {
-                name: "source-path",
-                arity: OptionArity::Value,
-                repeatable: false,
-                value_kind: RequiredArgumentKind::Text,
-                required: false,
-            },
-        ],
-        constraints: &[],
+        options: UPDATE_ROUTE_OPTIONS,
+        constraints: UPDATE_ROUTE_CONSTRAINTS,
         cardinality: CommandCardinality::Options,
         handler: client_update::handle_update,
         help: "",
@@ -1555,37 +1558,19 @@ fn build_command_table() -> CommandTable {
         handler_name: "handle_update",
         path: &["update", "apply"],
         required_positionals: &[],
-        options: &[
-            OptionSpec {
-                name: "channel",
-                arity: OptionArity::Value,
-                repeatable: false,
-                value_kind: RequiredArgumentKind::Text,
-                required: false,
-            },
-            OptionSpec {
-                name: "manifest-path",
-                arity: OptionArity::Value,
-                repeatable: false,
-                value_kind: RequiredArgumentKind::Text,
-                required: false,
-            },
-            OptionSpec {
-                name: "public-keys-path",
-                arity: OptionArity::Value,
-                repeatable: false,
-                value_kind: RequiredArgumentKind::Text,
-                required: false,
-            },
-            OptionSpec {
-                name: "source-path",
-                arity: OptionArity::Value,
-                repeatable: false,
-                value_kind: RequiredArgumentKind::Text,
-                required: false,
-            },
-        ],
-        constraints: &[],
+        options: UPDATE_ROUTE_OPTIONS,
+        constraints: UPDATE_ROUTE_CONSTRAINTS,
+        cardinality: CommandCardinality::Options,
+        handler: client_update::handle_update,
+        help: "",
+    });
+    table.register_command(CommandSpec {
+        source_module: "client_update.rs",
+        handler_name: "handle_update",
+        path: &["update", "rollback"],
+        required_positionals: &[],
+        options: UPDATE_ROUTE_OPTIONS,
+        constraints: UPDATE_ROUTE_CONSTRAINTS,
         cardinality: CommandCardinality::Options,
         handler: client_update::handle_update,
         help: "",
@@ -5299,6 +5284,208 @@ fn build_command_table() -> CommandTable {
         cardinality: CommandCardinality::Exact,
         handler: autostart::handle_prepare_mcp,
         help: "Login oneshot: verify packaged local MCP binaries without silent install",
+    });
+    table.register_command(CommandSpec {
+        source_module: "gateway.rs",
+        handler_name: "handle_help",
+        path: &["gateway", "help"],
+        required_positionals: &[],
+        options: &[],
+        constraints: &[],
+        cardinality: CommandCardinality::Exact,
+        handler: gateway::handle_help,
+        help: "Describe the two-layer Gateway Runtime CLI",
+    });
+    table.register_command(CommandSpec {
+        source_module: "gateway.rs",
+        handler_name: "handle_client_token",
+        path: &["gateway", "client-token"],
+        required_positionals: &[],
+        options: &[OptionSpec {
+            name: "agent",
+            arity: OptionArity::Value,
+            repeatable: false,
+            value_kind: RequiredArgumentKind::Text,
+            required: true,
+        }],
+        constraints: &[],
+        cardinality: CommandCardinality::Options,
+        handler: gateway::handle_client_token,
+        help: "Print the private local Gateway client token for an admitted agent",
+    });
+    table.register_command(CommandSpec {
+        source_module: "gateway.rs",
+        handler_name: "handle_service_status",
+        path: &["gateway", "service", "status"],
+        required_positionals: &[],
+        options: &[OptionSpec {
+            name: "port",
+            arity: OptionArity::Value,
+            repeatable: false,
+            value_kind: RequiredArgumentKind::Text,
+            required: false,
+        }],
+        constraints: &[],
+        cardinality: CommandCardinality::Options,
+        handler: gateway::handle_service_status,
+        help: "Report Gateway Runtime state (LLM + channels)",
+    });
+    table.register_command(CommandSpec {
+        source_module: "gateway.rs",
+        handler_name: "handle_service_start",
+        path: &["gateway", "service", "start"],
+        required_positionals: &[],
+        options: &[OptionSpec {
+            name: "port",
+            arity: OptionArity::Value,
+            repeatable: false,
+            value_kind: RequiredArgumentKind::Text,
+            required: false,
+        }],
+        constraints: &[],
+        cardinality: CommandCardinality::Options,
+        handler: gateway::handle_service_start,
+        help: "Start the unified Gateway Runtime process",
+    });
+    table.register_command(CommandSpec {
+        source_module: "gateway.rs",
+        handler_name: "handle_service_stop",
+        path: &["gateway", "service", "stop"],
+        required_positionals: &[],
+        options: &[OptionSpec {
+            name: "port",
+            arity: OptionArity::Value,
+            repeatable: false,
+            value_kind: RequiredArgumentKind::Text,
+            required: false,
+        }],
+        constraints: &[],
+        cardinality: CommandCardinality::Options,
+        handler: gateway::handle_service_stop,
+        help: "Stop the unified Gateway Runtime process",
+    });
+    table.register_command(CommandSpec {
+        source_module: "gateway.rs",
+        handler_name: "handle_service_initialize",
+        path: &["gateway", "service", "initialize"],
+        required_positionals: &[],
+        options: &[OptionSpec {
+            name: "port",
+            arity: OptionArity::Value,
+            repeatable: false,
+            value_kind: RequiredArgumentKind::Text,
+            required: false,
+        }],
+        constraints: &[],
+        cardinality: CommandCardinality::Options,
+        handler: gateway::handle_service_initialize,
+        help: "Initialize the Gateway Runtime without credential authorization",
+    });
+    table.register_command(CommandSpec {
+        source_module: "gateway.rs",
+        handler_name: "handle_inventory_reload",
+        path: &["gateway", "inventory", "reload"],
+        required_positionals: &[],
+        options: &[OptionSpec {
+            name: "stdin-json",
+            arity: OptionArity::Value,
+            repeatable: false,
+            value_kind: RequiredArgumentKind::Json,
+            required: true,
+        }],
+        constraints: &[],
+        cardinality: CommandCardinality::Options,
+        handler: gateway::handle_inventory_reload,
+        help: "Hot-reload verified conversation readiness into the running Gateway",
+    });
+    table.register_command(CommandSpec {
+        source_module: "gateway.rs",
+        handler_name: "handle_channel_status",
+        path: &["gateway", "channel", "status"],
+        required_positionals: &[],
+        options: &[],
+        constraints: &[],
+        cardinality: CommandCardinality::Exact,
+        handler: gateway::handle_channel_status,
+        help: "Report Communication Channel layer status",
+    });
+    table.register_command(CommandSpec {
+        source_module: "gateway.rs",
+        handler_name: "handle_telegram_credentials_status",
+        path: &["gateway", "channel", "telegram", "credentials", "status"],
+        required_positionals: &[],
+        options: &[],
+        constraints: &[],
+        cardinality: CommandCardinality::Exact,
+        handler: gateway::handle_telegram_credentials_status,
+        help: "Report whether a Telegram bot token is configured",
+    });
+    table.register_command(CommandSpec {
+        source_module: "gateway.rs",
+        handler_name: "handle_telegram_credentials_set",
+        path: &["gateway", "channel", "telegram", "credentials", "set"],
+        required_positionals: &[],
+        options: &[OptionSpec {
+            name: "stdin-json",
+            arity: OptionArity::Value,
+            repeatable: false,
+            value_kind: RequiredArgumentKind::Json,
+            required: true,
+        }],
+        constraints: &[],
+        cardinality: CommandCardinality::Options,
+        handler: gateway::handle_telegram_credentials_set,
+        help: "Store a Telegram bot token from private stdin JSON",
+    });
+    table.register_command(CommandSpec {
+        source_module: "gateway.rs",
+        handler_name: "handle_telegram_credentials_clear",
+        path: &["gateway", "channel", "telegram", "credentials", "clear"],
+        required_positionals: &[],
+        options: &[],
+        constraints: &[],
+        cardinality: CommandCardinality::Exact,
+        handler: gateway::handle_telegram_credentials_clear,
+        help: "Remove the stored Telegram bot token",
+    });
+    table.register_command(CommandSpec {
+        source_module: "gateway.rs",
+        handler_name: "handle_telegram_pairing_list",
+        path: &["gateway", "channel", "telegram", "pairing", "list"],
+        required_positionals: &[],
+        options: &[],
+        constraints: &[],
+        cardinality: CommandCardinality::Exact,
+        handler: gateway::handle_telegram_pairing_list,
+        help: "List pending Telegram DM pairing codes",
+    });
+    table.register_command(CommandSpec {
+        source_module: "gateway.rs",
+        handler_name: "handle_telegram_pairing_approve",
+        path: &["gateway", "channel", "telegram", "pairing", "approve"],
+        required_positionals: &[RequiredArgumentSpec {
+            name: "code",
+            kind: RequiredArgumentKind::Text,
+        }],
+        options: &[],
+        constraints: &[],
+        cardinality: CommandCardinality::Exact,
+        handler: gateway::handle_telegram_pairing_approve,
+        help: "Approve a Telegram DM pairing code",
+    });
+    table.register_command(CommandSpec {
+        source_module: "gateway.rs",
+        handler_name: "handle_telegram_pairing_revoke",
+        path: &["gateway", "channel", "telegram", "pairing", "revoke"],
+        required_positionals: &[RequiredArgumentSpec {
+            name: "chat-id",
+            kind: RequiredArgumentKind::Text,
+        }],
+        options: &[],
+        constraints: &[],
+        cardinality: CommandCardinality::Exact,
+        handler: gateway::handle_telegram_pairing_revoke,
+        help: "Revoke Telegram DM access for a chat id",
     });
     table
 }

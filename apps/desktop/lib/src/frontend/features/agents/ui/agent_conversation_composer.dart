@@ -13,6 +13,7 @@ import 'package:licoup/src/frontend/shared/ui/apple_glass.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_activity_animations.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_icon_button.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
@@ -119,6 +120,26 @@ class _RuntimeMessageComposerState extends State<RuntimeMessageComposer> {
       oldWidget.mentionBridge?.unbind(_insertAgentMention);
       widget.mentionBridge?.bind(_insertAgentMention);
     }
+    // The draft is scoped per conversation: switching conversations (or a
+    // successful send clearing the current draft) replaces the text without
+    // recreating this widget. The store echoes every keystroke, so a rebuild
+    // passes the same text back and this sync stays a no-op while typing.
+    if (oldWidget.initialDraft != widget.initialDraft &&
+        widget.initialDraft != _controller.text) {
+      final restored = widget.initialDraft;
+      _controller.value = TextEditingValue(
+        text: restored,
+        selection: TextSelection.collapsed(offset: restored.length),
+      );
+      if (restored.trim().isEmpty && _mentionChips.isNotEmpty) {
+        setState(() {
+          _mentionChips.clear();
+          // The text listener ran while the chips still held the sendable
+          // state; quiet the send button now that both are empty.
+          _hasText = false;
+        });
+      }
+    }
   }
 
   @override
@@ -214,9 +235,12 @@ class _RuntimeMessageComposerState extends State<RuntimeMessageComposer> {
         offset: next.length.clamp(0, next.length),
       ),
     );
-    setState(
-      () => _mentionChips.removeWhere((item) => item.agentId == chip.agentId),
-    );
+    setState(() {
+      _mentionChips.removeWhere((item) => item.agentId == chip.agentId);
+      // The listener computed sendable while the chip was still present;
+      // recompute so removing the last chip quiets the send button.
+      _hasText = _controller.text.trim().isNotEmpty || _mentionChips.isNotEmpty;
+    });
   }
 
   void _onTextChanged() {
@@ -244,7 +268,12 @@ class _RuntimeMessageComposerState extends State<RuntimeMessageComposer> {
     final chips = List<_ComposerMentionChip>.from(_mentionChips);
     _controller.clear();
     if (_mentionChips.isNotEmpty) {
-      setState(() => _mentionChips.clear());
+      setState(() {
+        _mentionChips.clear();
+        // The clear listener computed sendable while the chips were still
+        // present; quiet the send button now that both are empty.
+        _hasText = false;
+      });
     }
     final consumed = await widget.onSend(text);
     if (!consumed && mounted && _controller.text.trim().isEmpty) {
@@ -506,7 +535,7 @@ class _ComposerAttachCapsuleButton extends StatelessWidget {
     );
     return Tooltip(
       message: tooltip,
-      waitDuration: const Duration(milliseconds: 400),
+      waitDuration: LicoMotion.tooltipWait,
       child: Semantics(
         button: true,
         enabled: enabled,

@@ -451,9 +451,8 @@ mod tests {
         ProcessLine {
             pid,
             ppid,
-            command:
-                "tar --strip-components=1 -xzf - -C /fixture/location/versions/.2026.08.04-aaa8809"
-                    .to_string(),
+            command: "tar --strip-components=1 -xzf - -C /root/versions/.2026.08.04-aaa8809"
+                .to_string(),
         }
     }
 
@@ -642,7 +641,7 @@ mod tests {
             "curl -fSL -s https://downloads.cursor.com/lab/v1/darwin/arm64/agent-cli-package.tar.gz"
         ));
         assert!(is_update_process(
-            "tar --strip-components=1 -xzf - -C /fixture/location/versions/.v1"
+            "tar --strip-components=1 -xzf - -C /root/versions/.v1"
         ));
         assert!(!is_update_process(
             "cursor-agent --print --output-format stream-json --trust --force"
@@ -666,17 +665,15 @@ mod tests {
 
     #[test]
     fn install_dir_resolution_prefers_override() {
-        let override_value = Some(std::ffi::OsString::from(
-            "/fixture/location/fake-cursor-agent",
-        ));
-        let home = Some(std::ffi::OsString::from("/path/user"));
+        let override_value = Some(std::ffi::OsString::from("/tmp/fake-cursor-agent"));
+        let home = Some(std::ffi::OsString::from("/fixture-root/tester"));
         assert_eq!(
             resolve_install_dir(override_value.clone(), home.clone()),
-            PathBuf::from("/fixture/location/fake-cursor-agent")
+            PathBuf::from("/tmp/fake-cursor-agent")
         );
         assert_eq!(
             resolve_install_dir(None, home),
-            PathBuf::from("/path/user/.local/share/cursor-agent")
+            PathBuf::from("/fixture-root/tester/.local/share/cursor-agent")
         );
         assert_eq!(resolve_install_dir(None, None), PathBuf::from(""));
     }

@@ -61,12 +61,6 @@ in [`docs/STATUS.md`](docs/STATUS.md) and the generated
 
 LicoUp targets macOS, Windows, Linux, Android, and iOS.
 
-Install the latest Apple-silicon macOS release:
-
-```bash
-curl -fsSL https://github.com/LicoLand/LicoUp/releases/latest/download/install-macos.sh | bash
-```
-
 > [!NOTE]
 > LicoUp is in early alpha: a build target or preview feature is not the
 > same as a fully supported release. Check the
@@ -118,18 +112,6 @@ runtime, not a peer-encrypted LicoUp recipient. The conversation header keeps
 its SSH destination visible, and pressing Send authorizes that exact prompt to
 that VM. SSH protects the transport, while OpenClaw or Hermes inside the VM
 receives the conversation content in order to answer.
-
-## Optional Meshrix collaboration
-
-Meshrix collaboration is not loaded by the default client. It is available
-only after you choose an immutable GitHub commit, separately import its
-trusted signing key, and install and enable the plugin manually. A local
-deployment starts only through a fixed, signed external runner after a
-separate manual action. This repository does not bundle that server runner,
-so building LicoUp alone is not proof that Meshrix was deployed.
-Installation, enablement, and startup never authorize an external data
-transfer: each exact request or selected local file that would leave the
-device requires a fresh, protected one-shot user approval.
 
 ## Build from source
 

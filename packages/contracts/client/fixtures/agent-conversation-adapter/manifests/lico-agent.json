@@ -8,28 +8,28 @@
   },
   "officialCapabilityAssessment": {
     "completedBeforeImplementation": true,
-    "sourceAuthority": "official",
-    "interfaceName": "Lico Agent RPC stdio interface",
-    "assessedVersion": "version reported by the packaged sibling binary",
+    "sourceAuthority": "first-party",
+    "interfaceName": "LicoUp-owned Lico Agent RPC stdio interface",
+    "assessedVersion": "lico-agent sibling binary",
     "versionProbe": "fixed --help probe",
     "capabilityProbe": "RPC get_state and prompt handshake",
-    "newSessionMethod": "prompt on a fresh supervised RPC process",
-    "exactResumeMethod": "parent-owned transcript reinjected by the driver",
-    "streamingMethod": "message_update text_delta events",
-    "historyMethod": "parent-owned session store under portable client state",
-    "cleanupMethod": "terminate the supervised process tree and remove its process session",
+    "newSessionMethod": "RPC prompt on fresh process",
+    "exactResumeMethod": "parent-owned transcript reinjected by driver",
+    "streamingMethod": "RPC message_update text_delta events",
+    "historyMethod": "parent-owned session store under portable client-state",
+    "cleanupMethod": "terminate supervised process tree",
     "officialReferences": [
-      "https://github.com/LicoLand/LicoUp/blob/nightly/docs/protocols/lico-agent.md"
+      "docs/protocols/lico-agent.md"
     ]
   },
   "transport": {
     "family": "rpc",
-    "origin": "official",
+    "origin": "first-party",
     "promptChannel": "json-rpc",
-    "continuityChannel": "protected-mapping",
+    "continuityChannel": "protocol-field",
     "workingDirectoryChannel": "process-cwd",
     "framing": "jsonl",
-    "sessionScope": "process",
+    "sessionScope": "ephemeral-child",
     "fixedLaunchArguments": [
       "--mode",
       "rpc"
@@ -39,165 +39,20 @@
     "binaryEnvironmentKeys": [
       "LICO_AGENT_PATH"
     ],
-    "authentication": "runtime-owned",
+    "authentication": "gateway-loopback",
     "modelSelection": "request-field",
     "reasoningSelection": "request-field",
-    "permissionSelection": "runtime-owned"
+    "permissionSelection": "profile-field"
   },
   "operations": {
-    "discover": {
-      "status": "supported",
-      "method": "fixed version and capability probes"
-    },
-    "openNew": {
-      "status": "supported",
-      "method": "prompt on a fresh supervised RPC process"
-    },
-    "exactResume": {
-      "status": "supported",
-      "method": "parent-owned transcript reinjected by the driver"
-    },
-    "send": {
-      "status": "supported",
-      "method": "RPC prompt request"
-    },
-    "stream": {
-      "status": "supported",
-      "method": "message_update text_delta events"
-    },
-    "cancel": {
-      "status": "supported",
-      "method": "terminate the active supervised process tree"
-    },
-    "interruptSteer": {
-      "status": "supported",
-      "method": "interrupt the active turn and dispatch the steer prompt through the same session authority"
-    },
-    "cleanup": {
-      "status": "supported",
-      "method": "terminate the supervised process tree and remove its process session"
-    },
-    "history": {
-      "status": "supported",
-      "method": "parent-owned session store under portable client state"
-    },
-    "approvals": {
-      "status": "unsupported",
-      "method": "client approval response bridge is not enabled"
-    },
-    "usage": {
-      "status": "unsupported",
-      "method": "official lane usage projection is not enabled"
-    },
-    "multimodal": {
-      "status": "unsupported",
-      "method": "current adapter contribution is text-only"
-    }
-  },
-  "events": {
-    "framing": "jsonl",
-    "realtimeKinds": [
-      "agent.message.chunk",
-      "agent.tool.started",
-      "agent.tool.completed"
-    ],
-    "terminalKinds": [
-      "dispatch.turn.completed",
-      "dispatch.turn.failed"
-    ],
-    "sessionOwned": true,
-    "turnOwned": true
-  },
-  "lifecycle": {
-    "supervision": "process-tree",
-    "cleanupScope": "process-session",
-    "cancelHandleScope": "active-turn",
-    "maxConcurrentTransports": 8,
-    "maxTrackedSessions": 1024
-  },
-  "privacy": {
-    "promptInArguments": false,
-    "continuityIdInArguments": false,
-    "boundedInput": true,
-    "boundedOutput": true,
-    "structuredEventProjection": true,
-    "safeCleanup": true,
-    "redactedEvidence": true
-  },
-  "routedContext": {
-    "contractVersion": "lico.routing.distillation-package.v1",
-    "deliveryChannel": "prompt-envelope",
-    "maxPackageBytes": 65536,
-    "requiredSections": [
-      "objective",
-      "currentState",
-      "decisions",
-      "constraints",
-      "openItems"
-    ],
-    "sourceReferences": "opaque-digest-only",
-    "rawConversationAllowed": false,
-    "contextDigestRequired": true,
-    "fidelityFailure": "fail-closed",
-    "finalReplyFeedsNextDistillation": true
-  },
-  "productIntegration": {
-    "dispatchLane": "AgentDispatchLane",
-    "cliUsesCanonicalReadiness": true,
-    "guiUsesCanonicalReadiness": true,
-    "routingUsesCanonicalReadiness": true,
-    "sharedNativeHistoryAuthority": true,
-    "finalReplyFeedsThreadAndDistillation": true
-  },
-  "acceptance": {
-    "coreChecks": [
-      "P-01",
-      "P-02",
-      "P-03",
-      "P-04",
-      "P-05",
-      "P-06",
-      "P-07",
-      "P-08",
-      "P-09",
-      "P-10"
-    ],
-    "conditionalChecks": [
-      "C-01",
-      "C-02",
-      "C-03",
-      "C-04",
-      "C-05",
-      "C-06"
-    ],
-    "checkSemantics": {
-      "P-01": "baseline-binding",
-      "P-02": "native-session-creation",
-      "P-03": "bidirectional-exact-resume",
-      "P-04": "deterministic-final-result",
-      "P-05": "effective-settings-parity",
-      "P-06": "history-readback-and-rendering",
-      "P-07": "error-cancel-timeout-parity",
-      "P-08": "privacy-and-process-boundary",
-      "P-09": "isolation-and-cleanup",
-      "P-10": "exact-release-product-ui",
-      "C-01": "streaming-delta",
-      "C-02": "reasoning-and-tool-trace",
-      "C-03": "approval-lifecycle",
-      "C-04": "attachments-and-multimodal",
-      "C-05": "interrupt-and-steer",
-      "C-06": "usage-and-status"
-    },
-    "minimumConsecutivePasses": 3,
-    "minimumConsecutiveReleaseUiPasses": 3,
-    "productUiRequired": true,
-    "releaseP10Required": true,
-    "liveLocalForwardingRequired": true,
-    "realtimeOutputRequired": true,
-    "sameNativeSessionRequired": true,
-    "canonicalReadinessRequired": true,
-    "nativeToArcRequired": true,
-    "arcToNativeRequired": true,
-    "exactArtifactRequired": true
+    "openNew": true,
+    "exactResume": true,
+    "streaming": true,
+    "cancel": true,
+    "structuredEvents": true,
+    "approvals": false,
+    "multimodal": false,
+    "usageStatus": false,
+    "interruptSteer": true
   }
 }

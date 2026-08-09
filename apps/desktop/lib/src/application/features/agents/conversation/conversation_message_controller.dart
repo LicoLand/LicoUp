@@ -10,7 +10,6 @@ import 'package:licoup/src/application/features/agents/conversation/conversation
 import 'package:licoup/src/application/features/agents/conversation/conversation_working_directory_fallback.dart';
 import 'package:licoup/src/application/features/agents/conversation/cursor_ide_cli_handoff.dart';
 import 'package:licoup/src/application/features/agents/group_conversation/group_conversation_controller.dart';
-import 'package:licoup/src/application/features/agents/agent_product_names.dart';
 import 'package:licoup/src/application/features/agents/orchestration/agent_orchestration_policy_controller.dart';
 import 'package:licoup/src/application/features/agents/policy/conversation_session_index.dart';
 import 'package:licoup/src/application/features/agents/workspace/agent_workspace_coordinator.dart';
@@ -19,12 +18,14 @@ import 'package:licoup/src/application/localization/client_application_strings.d
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
 import 'package:licoup/src/contracts/agent_conversation_tab_activity.dart';
 import 'package:licoup/src/contracts/agent_dispatch_lane.dart';
-import 'package:licoup/src/platform/agents/agent_conversation_projection_store.dart';
+import 'package:licoup/src/contracts/agent_orchestration_target.dart';
+import 'package:licoup/src/contracts/group_conversation_models.dart';
+import 'package:licoup/src/contracts/target_candidate.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_display_names.dart';
 import 'package:licoup/src/platform/agents/group_conversation_store.dart';
 import 'package:licoup/src/platform/agents/subagent_handoff_store.dart';
+import 'package:licoup/src/platform/agents/agent_conversation_projection_store.dart';
 import 'package:licoup/src/platform/storage/portable_data_root.dart';
-import 'package:licoup/src/contracts/agent_orchestration_target.dart';
-import 'package:licoup/src/contracts/target_candidate.dart';
 
 const _releaseConversationAcceptanceMode =
     bool.fromEnvironment('LICO_AGENT_CONVERSATION_RELEASE_LIVE')
@@ -214,6 +215,9 @@ mixin AgentConversationMessageController
       agentWorkspaceNotifyStateChanged();
       return false;
     }
+    // The message is committed to dispatch: clear only this conversation's
+    // composer draft, leaving every other conversation's draft untouched.
+    clearConversationComposerDraft();
     if (isSendingConversationMessage) {
       await _steerOrEnqueueConversationTurn(turn);
       return ConversationRuntimeResultPolicy.submissionConsumed(lastError);
@@ -347,6 +351,13 @@ mixin AgentConversationMessageController
     if (portable is! PortableDataRoot) return;
     final ownerId = agentOrchestrationTargetId.trim();
     if (ownerId.isEmpty) return;
+    // Handoff bubbles belong to the turn that is live on this scope: derive
+    // their turn id from the blackboard so stale projections of a replaced
+    // turn are dropped by the live guard instead of replayed as empty
+    // notifications.
+    final liveState =
+        conversationTurnProcessStateByScope[conversationComposerScopeKey];
+    final liveTurnId = liveState?.turnId.trim() ?? '';
     final handoffs = await SubagentHandoffStore.list(portable);
     var changed = false;
     for (final handoff in handoffs) {
@@ -419,14 +430,17 @@ mixin AgentConversationMessageController
           ),
         );
       }
-      conversationUpsertLiveReply(
-        agentId: ownerId,
-        turnId: 'handoff-${handoff.dispatchId}',
+      final applied = conversationUpsertLiveReply(
+        scopeKey: conversationComposerScopeKey,
+        turnId: liveTurnId.isEmpty
+            ? 'handoff-${handoff.dispatchId}'
+            : '$liveTurnId-handoff-${handoff.dispatchId}',
         text: text,
         participantAgentId: handoff.agentId,
         participantLabel: label,
         participantRole: 'peer-agent',
       );
+      if (!applied) continue;
       _projectedHandoffDispatchIds.add(key);
       changed = true;
     }
@@ -593,6 +607,7 @@ mixin AgentConversationMessageController
           nativeSessionId.isEmpty,
       ideHandoffComposerId: ideHandoffComposerId,
       allowedTools: allowedTools,
+      scopeKey: conversationComposerScopeKey,
     );
   }
 
@@ -809,7 +824,7 @@ mixin AgentConversationMessageController
     final liveTurnId =
         'live-${queuedTurn.agent.target}-${DateTime.now().toUtc().microsecondsSinceEpoch}';
     conversationStartLiveProjection(
-      agentId: conversationOwnerAgentId,
+      scopeKey: queuedTurn.scopeKey,
       turnId: liveTurnId,
       userText: messageText,
     );
@@ -836,7 +851,7 @@ mixin AgentConversationMessageController
         lifecycleStage = stage;
       }
       conversationUpsertLiveLifecycle(
-        agentId: conversationOwnerAgentId,
+        scopeKey: queuedTurn.scopeKey,
         turnId: liveTurnId,
         stage: stage,
         participantAgentId: queuedTurn.agent.target,
@@ -933,7 +948,7 @@ mixin AgentConversationMessageController
                     .toString()
                     .trim();
                 conversationAppendLiveProcessEvent(
-                  agentId: conversationOwnerAgentId,
+                  scopeKey: queuedTurn.scopeKey,
                   turnId: liveTurnId,
                   event: AgentDispatchEvent(
                     kind: 'agent.evidence.$evidenceKind',
@@ -994,6 +1009,7 @@ mixin AgentConversationMessageController
                     : '$liveTurnId-participant-$participantAgentId';
                 _queueLiveReplyPublish(
                   agentId: conversationOwnerAgentId,
+                  scopeKey: queuedTurn.scopeKey,
                   turnId: participantTurnId,
                   text: participantText,
                   participantAgentId: participantAgentId,
@@ -1013,7 +1029,7 @@ mixin AgentConversationMessageController
                 pendingPermissionRetryText = queuedTurn.text;
               }
               conversationAppendLiveProcessEvent(
-                agentId: conversationOwnerAgentId,
+                scopeKey: queuedTurn.scopeKey,
                 turnId: liveTurnId,
                 event: event,
                 participantAgentId: agent.target,
@@ -1058,6 +1074,7 @@ mixin AgentConversationMessageController
                   streamedText = terminalText;
                   _queueLiveReplyPublish(
                     agentId: conversationOwnerAgentId,
+                    scopeKey: queuedTurn.scopeKey,
                     turnId: liveTurnId,
                     text: streamedText,
                     participantAgentId: agent.target,
@@ -1075,7 +1092,7 @@ mixin AgentConversationMessageController
                     ? failedTurn.errorMessage.trim()
                     : failedTurn.failureCode;
                 conversationAppendLiveProcessEvent(
-                  agentId: conversationOwnerAgentId,
+                  scopeKey: queuedTurn.scopeKey,
                   turnId: liveTurnId,
                   participantAgentId: agent.target,
                   participantLabel: queuedTurn.participantLabel,
@@ -1096,7 +1113,7 @@ mixin AgentConversationMessageController
             } else if (event.kind == 'agent.runtime.updating') {
               // cursor-agent auto-update blocking the turn: one in-place card.
               conversationUpsertLiveRuntimeUpdate(
-                agentId: conversationOwnerAgentId,
+                scopeKey: queuedTurn.scopeKey,
                 turnId: liveTurnId,
                 phase: (event.payload['phase'] ?? '').toString(),
                 version: (event.payload['version'] ?? '').toString(),
@@ -1107,7 +1124,7 @@ mixin AgentConversationMessageController
               agentWorkspaceNotifyLiveConversationChanged();
             } else if (event.kind == 'agent.runtime.update.completed') {
               conversationUpsertLiveRuntimeUpdate(
-                agentId: conversationOwnerAgentId,
+                scopeKey: queuedTurn.scopeKey,
                 turnId: liveTurnId,
                 version: (event.payload['version'] ?? '').toString(),
                 terminal: 'completed',
@@ -1118,7 +1135,7 @@ mixin AgentConversationMessageController
               agentWorkspaceNotifyLiveConversationChanged();
             } else if (event.kind == 'agent.runtime.update.interrupted') {
               conversationUpsertLiveRuntimeUpdate(
-                agentId: conversationOwnerAgentId,
+                scopeKey: queuedTurn.scopeKey,
                 turnId: liveTurnId,
                 version: (event.payload['version'] ?? '').toString(),
                 terminal: 'interrupted',
@@ -1131,7 +1148,7 @@ mixin AgentConversationMessageController
             } else {
               _flushPendingLiveReply();
               conversationAppendLiveProcessEvent(
-                agentId: conversationOwnerAgentId,
+                scopeKey: queuedTurn.scopeKey,
                 turnId: liveTurnId,
                 event: event,
                 participantAgentId: agent.target,
@@ -1243,7 +1260,7 @@ mixin AgentConversationMessageController
                 ? fallbackTurn.agent.label
                 : '${fallbackTurn.agent.label} · ${fallbackTurn.model.trim()}';
             conversationAppendLiveProcessEvent(
-              agentId: conversationOwnerAgentId,
+              scopeKey: queuedTurn.scopeKey,
               turnId: liveTurnId,
               participantAgentId: fallbackTurn.agent.target,
               participantLabel: fallbackTurn.participantLabel,
@@ -1342,7 +1359,7 @@ mixin AgentConversationMessageController
                 agentId: conversationOwnerAgentId,
                 nativeSessionId: returnedSessionId,
                 messages:
-                    liveConversationMessagesByAgent[conversationOwnerAgentId] ??
+                    liveConversationMessagesByScope[queuedTurn.scopeKey] ??
                     const [],
                 mergeWithSelectedSession: sessionId.isNotEmpty,
                 workingDirectory: workingDirectory,
@@ -1427,7 +1444,7 @@ mixin AgentConversationMessageController
             conversationOwnerAgentId,
             queuedTurn.newConversationDraftToken,
           );
-          conversationClearLiveProjection(conversationOwnerAgentId);
+          conversationClearLiveProjection(queuedTurn.scopeKey);
         }
         statusCaption = 'Agent chat';
         completedSuccessfully = true;
@@ -1471,12 +1488,29 @@ mixin AgentConversationMessageController
         agentWorkspaceNotifyStateChanged();
         conversationAttentionContextChanged();
       }
-      if (completedSuccessfully &&
-          !conversationTurnCancellationRequested &&
-          !agentWorkspaceDisposed) {
+      if (agentWorkspaceDisposed) {
+        // Disposal already cleared the queue; nothing to drain or report.
+      } else if (completedSuccessfully ||
+          conversationTurnCancellationRequested) {
+        // A completed turn drains its follow-ups. A cancelled turn stops only
+        // itself: the cancel already cleared the queue, so anything enqueued
+        // afterwards is new user intent and must still drain instead of being
+        // discarded by the cancelled turn's teardown.
         _scheduleNextConversationTurn();
       } else if (!conversationTurnQueue.isEmpty) {
+        // The turn failed. Pending messages cannot keep sending on a session
+        // whose last turn did not complete, so the queue is dropped — but
+        // never silently: the user must see exactly how many messages were
+        // discarded.
+        final droppedCount = conversationTurnQueue.length;
         conversationTurnQueue.clear();
+        agentWorkspaceSetLocalizedStatusMessage(
+          '发送未完成，队列中的 $droppedCount 条消息已丢弃。',
+          'The send did not complete. $droppedCount queued '
+              '${droppedCount == 1 ? 'message was' : 'messages were'} dropped.',
+        );
+        statusCaption = 'Agent chat';
+        agentWorkspaceNotifyStateChanged();
       }
     }
   }
@@ -1485,6 +1519,7 @@ mixin AgentConversationMessageController
     required String agentId,
     required String turnId,
     required String text,
+    required String scopeKey,
     String participantAgentId = '',
     String participantLabel = '',
     String participantRole = '',
@@ -1496,6 +1531,7 @@ mixin AgentConversationMessageController
       _flushPendingLiveReply();
     }
     pendingConversationLiveReplyAgentId = agentId;
+    pendingConversationLiveReplyScopeKey = scopeKey;
     pendingConversationLiveReplyTurnId = turnId;
     pendingConversationLiveReplyText = text;
     pendingConversationLiveReplyParticipantAgentId = participantAgentId;
@@ -1516,6 +1552,7 @@ mixin AgentConversationMessageController
     conversationLiveReplyPublishTimer?.cancel();
     conversationLiveReplyPublishTimer = null;
     final agentId = pendingConversationLiveReplyAgentId;
+    final scopeKey = pendingConversationLiveReplyScopeKey;
     final turnId = pendingConversationLiveReplyTurnId;
     final text = pendingConversationLiveReplyText;
     final participantAgentId = pendingConversationLiveReplyParticipantAgentId;
@@ -1524,12 +1561,13 @@ mixin AgentConversationMessageController
     _discardPendingLiveReply();
     if (agentWorkspaceDisposed ||
         agentId.isEmpty ||
+        scopeKey.isEmpty ||
         turnId.isEmpty ||
         text.isEmpty) {
       return;
     }
     conversationUpsertLiveReply(
-      agentId: agentId,
+      scopeKey: scopeKey,
       turnId: turnId,
       text: text,
       participantAgentId: participantAgentId,
@@ -1543,6 +1581,7 @@ mixin AgentConversationMessageController
     conversationLiveReplyPublishTimer?.cancel();
     conversationLiveReplyPublishTimer = null;
     pendingConversationLiveReplyAgentId = '';
+    pendingConversationLiveReplyScopeKey = '';
     pendingConversationLiveReplyTurnId = '';
     pendingConversationLiveReplyText = '';
     pendingConversationLiveReplyParticipantAgentId = '';

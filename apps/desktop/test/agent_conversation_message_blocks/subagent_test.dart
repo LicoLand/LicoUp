@@ -1,7 +1,9 @@
+import 'package:licoup/src/contracts/agent_conversation_message.dart';
+
 import 'message_blocks_test_harness.dart';
 
 void main() {
-  test('native subagent_prompt role is classified but hidden internally', () {
+  test('native subagent_prompt role resolves to the subagent card', () {
     final message = messageBlockTestMessage(
       role: 'subagent_prompt',
       text: 'Discovery worker',
@@ -11,7 +13,7 @@ void main() {
       AgentConversationMessageKind.subagent,
     );
     expect(message.isSubagentCard, isTrue);
-    expect(message.isDisplayable, isFalse);
+    expect(message.isDisplayable, isTrue);
   });
 
   testWidgets('subagent card reveals child messages on demand', (tester) async {

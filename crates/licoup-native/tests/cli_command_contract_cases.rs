@@ -157,6 +157,18 @@ fn exact_help_is_the_only_successful_usage_dispatch() {
 }
 
 #[test]
+fn gateway_client_token_requires_a_bounded_agent_selector() {
+    let admitted = admit_cli_command(strings(["gateway", "client-token", "--agent", "codex"]))
+        .expect("the private token helper route must be admitted");
+    assert_eq!(admitted.source_module(), "gateway.rs");
+    assert_eq!(admitted.handler_name(), "handle_client_token");
+    assert_eq!(admitted.option_text("agent"), Some("codex"));
+    let error = admit_cli_command(strings(["gateway", "client-token"]))
+        .expect_err("the agent selector must be required");
+    assert_admission_error(&error, MISSING_OPTION, &[]);
+}
+
+#[test]
 fn readonly_registry_projection_exactly_matches_public_help_authority() {
     let expected = route_authorities();
     let projected = cli_command_schemas();
@@ -167,7 +179,7 @@ fn readonly_registry_projection_exactly_matches_public_help_authority() {
         .collect::<BTreeMap<_, _>>();
     assert_eq!(
         expected_by_path.len(),
-        152,
+        153,
         "public help authority must not contain duplicate routes"
     );
     let projected_by_path = projected
@@ -1808,6 +1820,15 @@ fn route_authorities() -> Vec<RouteAuthority> {
         &["llm-gateway credentials status"],
         Exact,
     );
+    routes.push(RouteAuthority {
+        module: "gateway.rs",
+        handler: "handle_client_token",
+        path: "gateway client-token",
+        required: &[],
+        cardinality: Options,
+        options: vec![value_option("agent", Text, true)],
+        constraints: &[],
+    });
     add_authority_routes(
         &mut routes,
         "llm_gateway.rs",
@@ -2220,6 +2241,7 @@ const fn boolean_option(name: &'static str) -> OptionAuthority {
 fn options_for_route(path: &str) -> Vec<OptionAuthority> {
     use RequiredArgumentKind::{Json, Text};
     let options: &[OptionAuthority] = match path {
+        "gateway client-token" => &[value_option("agent", Text, true)],
         "llm-gateway credentials authorize" | "llm-gateway credentials clear" => {
             &[value_option("credential-id", Text, false)]
         }

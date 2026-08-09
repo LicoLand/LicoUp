@@ -1140,7 +1140,7 @@ mod tests {
         assert_eq!(caps["blockerCodes"], json!([]));
         let claude = lane_capabilities(&json!({"agent": "claude-code"})).unwrap();
         assert_eq!(claude["capabilities"]["exactResume"], true);
-        assert_eq!(claude["readiness"], "unverified");
+        assert_eq!(claude["readiness"], "ready");
         assert_eq!(claude["blockerCodes"], json!([]));
     }
 

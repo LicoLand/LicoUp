@@ -4,7 +4,6 @@ import 'package:licoup/src/platform/native_client/agent_service.dart';
 
 /// Composition-only access to the native client facade.
 mixin ClientRoutingFacade on AgentWorkspaceCoordinator {
-  @override
   AgentService get agentService;
 
   @override

@@ -6,17 +6,32 @@ final class ConversationPresentationSignals {
   final ValueNotifier<int> _structureRevision = ValueNotifier<int>(0);
   final ValueNotifier<int> _activeRevision = ValueNotifier<int>(0);
   final ValueNotifier<int> _liveRevision = ValueNotifier<int>(0);
-  String _composerDraft = '';
+  Map<String, String> _composerDrafts = const {};
   bool _disposed = false;
 
   ValueListenable<int> get structureListenable => _structureRevision;
   ValueListenable<int> get activeListenable => _activeRevision;
   ValueListenable<int> get liveListenable => _liveRevision;
-  String get composerDraft => _composerDraft;
 
-  void replaceComposerDraft(String value) {
+  /// Draft text for one conversation scope. Every selected conversation (and
+  /// every new-conversation draft) keeps its own composer text; switching
+  /// conversations never leaks or overwrites another conversation's draft.
+  String composerDraftFor(String scopeKey) {
+    final normalized = scopeKey.trim();
+    return normalized.isEmpty ? '' : (_composerDrafts[normalized] ?? '');
+  }
+
+  void replaceComposerDraft(String scopeKey, String value) {
     if (_disposed) return;
-    _composerDraft = value;
+    final normalized = scopeKey.trim();
+    if (normalized.isEmpty) return;
+    final next = value;
+    final previous = _composerDrafts[normalized] ?? '';
+    if (next == previous) return;
+    _composerDrafts = {
+      ..._composerDrafts,
+      normalized: next,
+    };
   }
 
   void notifyStructureChanged({bool activeChanged = true}) {

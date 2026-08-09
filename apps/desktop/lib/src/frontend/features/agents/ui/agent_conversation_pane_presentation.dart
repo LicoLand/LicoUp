@@ -94,7 +94,6 @@ final class AgentConversationPaneActions {
     required this.onDraftChanged,
     required this.onSend,
     required this.onSelectSession,
-    required this.onCopyText,
     this.onUnblockSend,
     this.onChooseWorkingDirectory,
     this.onAttach,
@@ -105,6 +104,7 @@ final class AgentConversationPaneActions {
     this.onPermissionRetry,
     this.onPermissionRetryRemember,
     this.onPermissionDeny,
+    this.onCopyText,
   });
 
   final ValueChanged<String> onModelChanged;
@@ -112,7 +112,6 @@ final class AgentConversationPaneActions {
   final ValueChanged<String> onDraftChanged;
   final Future<bool> Function(String) onSend;
   final ValueChanged<String> onSelectSession;
-  final Future<void> Function(String) onCopyText;
   final VoidCallback? onUnblockSend;
   final VoidCallback? onChooseWorkingDirectory;
   final VoidCallback? onAttach;
@@ -123,6 +122,7 @@ final class AgentConversationPaneActions {
   final VoidCallback? onPermissionRetry;
   final VoidCallback? onPermissionRetryRemember;
   final VoidCallback? onPermissionDeny;
+  final Future<void> Function(String)? onCopyText;
 }
 
 /// Immutable identity and status projection consumed only by the header leaf.

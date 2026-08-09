@@ -35,10 +35,7 @@ void main() {
       ),
     );
     expect(find.text('Cursor Agent is updating automatically'), findsOneWidget);
-    expect(
-      find.byKey(const ValueKey('runtime-update-progress')),
-      findsOneWidget,
-    );
+    expect(find.byKey(const ValueKey('runtime-update-progress')), findsOneWidget);
     final indicator = tester.widget<LinearProgressIndicator>(
       find.byKey(const ValueKey('runtime-update-progress')),
     );

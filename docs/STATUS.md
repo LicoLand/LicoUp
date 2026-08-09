@@ -25,6 +25,7 @@ adapter support details remain authoritative in
 | Capability | Status | Current source boundary |
 | --- | --- | --- |
 | Local-agent discovery and conversation | implemented in source | Desktop and native client code contains local and explicitly configured agent adapters and conversation flows. |
+| Gateway Runtime (LLM + Communication Channel) | implemented in source | Single `lico-gateway` process hosts the LLM Gateway loopback layer and the Telegram Communication Channel (paired DMs, `/agent` `/session`, conversation lane). Verified readiness changes use partial hot-reload via `gateway inventory reload` / `inventory.sock` (new ready agents admitted; bindings/sessions preserved; no process restart). `llm-gateway` CLI remains an alias for lifecycle. DM-only channel; not verified against a live BotFather bot in release evidence. |
 | Skill, history, backup, and usage surfaces | implemented in source | Local client modules exist for these first-stage workflows. |
 | Complete Lico Arc endpoint Protocol Line | not implemented | LicoUp currently has no Lico Arc-owned Pairwise Protection, Generic Message, Reliable Exchange, negotiation, or Transport Profile to execute. The candidate outer-envelope adapter below is not that complete endpoint line. |
 | Endpoint protection | preview implementation pending direct retirement | Secure Client Mesh currently executes the client-specific `licomesh.*` endpoint profile for pairing, authenticated encryption, freshness and replay handling, and endpoint-authenticated results. It is not a Lico Arc Profile, carries no future interoperability promise, and is to be retired directly when a complete pinned Lico Arc Protocol Line replaces it. |
@@ -109,7 +110,7 @@ The current implementation is one direct client-owned path:
    and replay checks succeed.
 
 The retired client-specific station surface was removed in the same migration.
-There is no permanent dual-wire mode and no Meshrix or station translation
-gateway. The inner `licomesh.*` endpoint preview remains present today and is
+There is no permanent dual-wire mode or station translation gateway. The inner
+`licomesh.*` endpoint preview remains present today and is
 separately scheduled for direct retirement; it is not reported as already
 removed.

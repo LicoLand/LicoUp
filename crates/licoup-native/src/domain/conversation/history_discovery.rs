@@ -174,9 +174,9 @@ fn exact_session_candidate_for_id(
 ) -> bool {
     match (adapter, source_kind) {
         (HistoryAdapter::Codex, "codex-session-store" | "codex-archived-session-store") => path
-            .file_name()
+            .file_stem()
             .and_then(|name| name.to_str())
-            .is_some_and(|name| name.contains(session_id)),
+            .is_some_and(|stem| stem == session_id || stem.ends_with(&format!("-{session_id}"))),
         // Cursor and Claude Code keep one directory per conversation and put each
         // delegated task inside it under its own name, so matching only the file
         // name would drop every delegated task of the requested conversation.
@@ -185,12 +185,11 @@ fn exact_session_candidate_for_id(
         // Kimi Code keeps every agent of one conversation under
         // `<session>/agents/<id>/wire.jsonl`, so the conversation directory is the
         // only part of the path that names it.
-        (HistoryAdapter::Cursor, "cursor-cli-projects")
+        (HistoryAdapter::Cursor, "cursor-cli-chats" | "cursor-cli-projects")
         | (HistoryAdapter::ClaudeCode, "claude-project-transcripts")
-        | (HistoryAdapter::KimiCode, "kimi-code-session-store") => path
-            .components()
-            .filter_map(|component| component.as_os_str().to_str())
-            .any(|component| component.contains(session_id)),
+        | (HistoryAdapter::KimiCode, "kimi-code-session-store") => {
+            path_identity_matches(path, session_id)
+        }
         (
             HistoryAdapter::Codex,
             "codex-prompt-history"
@@ -200,6 +199,16 @@ fn exact_session_candidate_for_id(
         ) => false,
         _ => true,
     }
+}
+
+fn path_identity_matches(path: &Path, session_id: &str) -> bool {
+    path.components()
+        .filter_map(|component| component.as_os_str().to_str())
+        .any(|component| component == session_id)
+        || path
+            .file_stem()
+            .and_then(|stem| stem.to_str())
+            .is_some_and(|stem| stem == session_id)
 }
 
 fn history_file_can_exceed_byte_limit(adapter: HistoryAdapter, path: &Path) -> bool {
@@ -336,6 +345,57 @@ mod tests {
                 .and_then(|name| name.to_str())
                 .is_some_and(|name| name.contains("wanted"))
         );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn exact_codex_discovery_rejects_substring_identity_collisions() {
+        let root = temp_root("exact-codex-collision");
+        fs::create_dir_all(&root).unwrap();
+        fs::write(root.join("rollout-2026-wanted.jsonl"), b"{}\n").unwrap();
+        fs::write(root.join("rollout-2026-wanted-extra.jsonl"), b"{}\n").unwrap();
+        let discovery = discover_history_files(
+            HistoryAdapter::Codex,
+            &[HistoryRoot {
+                path: root.clone(),
+                source_kind: "codex-session-store".to_owned(),
+            }],
+            HistoryDiscoveryOptions {
+                archive_mode: false,
+                exact_session_ids: vec!["wanted".to_owned()],
+            },
+        );
+        assert_eq!(discovery.candidates.len(), 1);
+        assert_eq!(
+            discovery.candidates[0]
+                .path
+                .file_name()
+                .and_then(|name| name.to_str()),
+            Some("rollout-2026-wanted.jsonl")
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn exact_cursor_chat_discovery_matches_a_whole_session_component() {
+        let root = temp_root("exact-cursor-chat");
+        fs::create_dir_all(root.join("project/wanted")).unwrap();
+        fs::create_dir_all(root.join("project/wanted-extra")).unwrap();
+        fs::write(root.join("project/wanted/store.db"), b"fixture").unwrap();
+        fs::write(root.join("project/wanted-extra/store.db"), b"fixture").unwrap();
+        let discovery = discover_history_files(
+            HistoryAdapter::Cursor,
+            &[HistoryRoot {
+                path: root.clone(),
+                source_kind: "cursor-cli-chats".to_owned(),
+            }],
+            HistoryDiscoveryOptions {
+                archive_mode: false,
+                exact_session_ids: vec!["wanted".to_owned()],
+            },
+        );
+        assert_eq!(discovery.candidates.len(), 1);
+        assert!(discovery.candidates[0].path.ends_with("wanted/store.db"));
         fs::remove_dir_all(root).unwrap();
     }
 

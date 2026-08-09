@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_svg/flutter_svg.dart';
@@ -217,6 +218,38 @@ void main() {
     );
     expect(find.text('No available agents found'), findsOneWidget);
   });
+  testWidgets('unpin toggles the member that owns the pinned state', (
+    tester,
+  ) async {
+    final toggled = <String>[];
+    await _pumpContacts(
+      tester,
+      targets: [
+        _target('codex', 'ChatGPT Codex - CLI'),
+        _target('codex-desktop', 'Codex - Desktop'),
+      ],
+      sessionsByAgent: const {},
+      // The pinned state lives on the non-first merged member.
+      isPinned: (id) => id == 'codex-desktop',
+      onTogglePinned: toggled.add,
+    );
+
+    final row = find.byKey(const Key('messaging-contact-codex'));
+    expect(
+      find.descendant(of: row, matching: find.byIcon(Icons.push_pin_rounded)),
+      findsOneWidget,
+    );
+
+    await tester.tap(row, buttons: kSecondaryButton);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Unpin From Top'));
+    await tester.pumpAndSettle();
+
+    // The toggle targets the pinned member, not the group representative.
+    expect(toggled, ['codex-desktop']);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('selected contact renders solid accent with dark foreground', (
     tester,
   ) async {
@@ -297,6 +330,8 @@ Future<void> _pumpContacts(
   String selectedAgentId = '',
   ValueChanged<String>? onSelectAgent,
   AgentConversationTabActivity activity = AgentConversationTabActivity.none,
+  bool Function(String targetId)? isPinned,
+  ValueChanged<String>? onTogglePinned,
 }) async {
   await tester.pumpWidget(
     MaterialApp(
@@ -325,6 +360,8 @@ Future<void> _pumpContacts(
             activityFor: (_) => activity,
             onSelectAgent: onSelectAgent ?? (_) {},
             onNewConversation: () {},
+            isPinned: isPinned,
+            onTogglePinned: onTogglePinned,
           ),
         ),
       ),

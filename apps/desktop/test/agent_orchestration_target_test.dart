@@ -93,31 +93,34 @@ void main() {
     expect(seeded.dailyConversationAgents.single.modelName, 'gpt-5');
   });
 
-  test('dailyConversationMatchForCurrentConversation prefers agent+model', () {
-    const policy = AgentOrchestrationPolicy(
-      dailyConversationAgents: [
-        DailyConversationAgentAssignment(
-          id: 'dc-1',
-          agentId: 'antigravity',
-          modelName: 'gemini-3-flash',
-          fast: false,
-        ),
-        DailyConversationAgentAssignment(
-          id: 'dc-2',
-          agentId: 'antigravity',
-          modelName: 'claude-opus-4-6-thinking',
-          reasoningEffort: 'high',
-          fast: true,
-        ),
-      ],
-      commanderAgentId: 'antigravity',
-      commanderModelName: 'claude-opus-4-6-thinking',
-    );
+  test(
+    'dailyConversationMatchForCurrentConversation prefers agent+model',
+    () {
+      const policy = AgentOrchestrationPolicy(
+        dailyConversationAgents: [
+          DailyConversationAgentAssignment(
+            id: 'dc-1',
+            agentId: 'antigravity',
+            modelName: 'gemini-3-flash',
+            fast: false,
+          ),
+          DailyConversationAgentAssignment(
+            id: 'dc-2',
+            agentId: 'antigravity',
+            modelName: 'claude-opus-4-6-thinking',
+            reasoningEffort: 'high',
+            fast: true,
+          ),
+        ],
+        commanderAgentId: 'antigravity',
+        commanderModelName: 'claude-opus-4-6-thinking',
+      );
 
-    final match = policy.dailyConversationMatchForCurrentConversation();
-    expect(match?.id, 'dc-2');
-    expect(match?.fast, isTrue);
-  });
+      final match = policy.dailyConversationMatchForCurrentConversation();
+      expect(match?.id, 'dc-2');
+      expect(match?.fast, isTrue);
+    },
+  );
 
   test(
     'dailyConversationFallbackCandidatesAfterCurrent returns later unique capsules',
@@ -149,11 +152,13 @@ void main() {
         commanderModelName: 'claude-opus-4-6-thinking',
       );
 
-      final fallbacks = policy
-          .dailyConversationFallbackCandidatesAfterCurrent();
+      final fallbacks = policy.dailyConversationFallbackCandidatesAfterCurrent();
       expect(
         fallbacks.map((capsule) => '${capsule.agentId}/${capsule.modelName}'),
-        ['antigravity/gemini-3.6-flash-high', 'claude-code/claude-opus-4-6'],
+        [
+          'antigravity/gemini-3.6-flash-high',
+          'claude-code/claude-opus-4-6',
+        ],
       );
 
       const unmatched = AgentOrchestrationPolicy(
@@ -275,43 +280,49 @@ void main() {
     },
   );
 
-  test('normalize fills empty Current Conversation from Daily primary', () {
-    const policy = AgentOrchestrationPolicy(
-      dailyConversationAgents: [
-        DailyConversationAgentAssignment(
-          id: 'dc-1',
-          agentId: 'cursor',
-          modelName: 'composer-2',
-          reasoningEffort: 'medium',
-        ),
-      ],
-    );
+  test(
+    'normalize fills empty Current Conversation from Daily primary',
+    () {
+      const policy = AgentOrchestrationPolicy(
+        dailyConversationAgents: [
+          DailyConversationAgentAssignment(
+            id: 'dc-1',
+            agentId: 'cursor',
+            modelName: 'composer-2',
+            reasoningEffort: 'medium',
+          ),
+        ],
+      );
 
-    final normalized = normalizeOrchestrationPolicyForPersistence(policy);
-    expect(normalized.commanderAgentId, 'cursor');
-    expect(normalized.commanderModelName, 'composer-2');
-    expect(normalized.commanderReasoningEffort, 'medium');
-  });
+      final normalized = normalizeOrchestrationPolicyForPersistence(policy);
+      expect(normalized.commanderAgentId, 'cursor');
+      expect(normalized.commanderModelName, 'composer-2');
+      expect(normalized.commanderReasoningEffort, 'medium');
+    },
+  );
 
-  test('normalize fills blank Current Conversation model from Daily match', () {
-    const policy = AgentOrchestrationPolicy(
-      dailyConversationAgents: [
-        DailyConversationAgentAssignment(
-          id: 'dc-1',
-          agentId: 'antigravity',
-          modelName: 'claude-opus-4-6-thinking',
-          reasoningEffort: 'high',
-          fast: true,
-        ),
-      ],
-      commanderAgentId: 'antigravity',
-    );
+  test(
+    'normalize fills blank Current Conversation model from Daily match',
+    () {
+      const policy = AgentOrchestrationPolicy(
+        dailyConversationAgents: [
+          DailyConversationAgentAssignment(
+            id: 'dc-1',
+            agentId: 'antigravity',
+            modelName: 'claude-opus-4-6-thinking',
+            reasoningEffort: 'high',
+            fast: true,
+          ),
+        ],
+        commanderAgentId: 'antigravity',
+      );
 
-    final normalized = normalizeOrchestrationPolicyForPersistence(policy);
-    expect(normalized.commanderAgentId, 'antigravity');
-    expect(normalized.commanderModelName, 'claude-opus-4-6-thinking');
-    expect(normalized.commanderReasoningEffort, 'high');
-  });
+      final normalized = normalizeOrchestrationPolicyForPersistence(policy);
+      expect(normalized.commanderAgentId, 'antigravity');
+      expect(normalized.commanderModelName, 'claude-opus-4-6-thinking');
+      expect(normalized.commanderReasoningEffort, 'high');
+    },
+  );
 
   test('code engineering persists multi-capsule lists and lane projection', () {
     const designer = DailyConversationAgentAssignment(
@@ -413,11 +424,7 @@ void main() {
   test('legacy five-path code engineering migrates into capsule lists', () {
     final decoded = AgentOrchestrationPolicy.fromTomlConfig({
       'version': 1,
-      'main_agent': {
-        'agent': 'codex',
-        'model': 'gpt-5',
-        'reasoning_effort': 'high',
-      },
+      'main_agent': {'agent': 'codex', 'model': 'gpt-5', 'reasoning_effort': 'high'},
       'code_engineering': {
         'strategy': 'frontend_backend_roles',
         'designer': {

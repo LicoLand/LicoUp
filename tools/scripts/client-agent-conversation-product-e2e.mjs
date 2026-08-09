@@ -24,6 +24,7 @@ import {
   nativeContinuityDigest,
   productContinuityBindingDigest,
 } from "./lib/agent-conversation-release-binding.mjs";
+import { verificationModelsMap } from "./lib/agent-conversation-verification-models.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const desktopRoot = resolve(root, "apps/desktop");
@@ -34,10 +35,7 @@ const sentinel = "LICO_AGENT_CONVERSATION_RELEASE_UI_LIVE ";
 const defaultAgent = "codex";
 const selfTestChallengeDigest = `sha256:${"a".repeat(64)}`;
 const selfTestModel = "runtime-default";
-const validationModels = Object.freeze({
-  cursor: "Auto",
-  "kilo-code": "Kilo Auto Free",
-});
+const validationModels = verificationModelsMap();
 const interruptSteerAgents = new Set(
   JSON.parse(readFileSync(resolve(
     root,

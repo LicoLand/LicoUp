@@ -15,6 +15,7 @@ import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/layout/profiles/messaging/desktop/tokens/messaging_desktop_tokens.dart';
 import 'package:licoup/src/frontend/shared/ui/agent_brand_icon.dart';
 import 'package:licoup/src/frontend/shared/ui/apple_control_metrics.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 /// The messaging chrome-band notification bell: a badge when tab activity,
@@ -115,9 +116,9 @@ class _MessagingNotificationBellState extends State<MessagingNotificationBell> {
     return [
       for (final target in widget.controller.scannedTargets)
         if (target.isConversationAgent &&
-            widget.controller.conversationTabActivityFor(target.target) !=
+            widget.controller.conversationTabActivityFor(target.id) !=
                 AgentConversationTabActivity.none)
-          (target, widget.controller.conversationTabActivityFor(target.target)),
+          (target, widget.controller.conversationTabActivityFor(target.id)),
     ];
   }
 
@@ -129,13 +130,11 @@ class _MessagingNotificationBellState extends State<MessagingNotificationBell> {
     widget.controller.selectSection(ClientSection.agents);
     widget.onCloseAuxChromePanel?.call();
     final sessions = sortConversationSessionsByUpdatedAt(
-      widget.controller.conversationSessionsByAgent[agent.target] ??
+      widget.controller.conversationSessionsByAgent[agent.id] ??
           widget.controller.conversationSessionsByAgent[agent.target] ??
           const [],
     );
-    if (widget.controller.selectedConversationAgentId != agent.target) {
-      await widget.controller.selectConversationAgent(agent.target);
-    }
+    await widget.controller.selectConversationAgent(agent.id);
     if (sessions.isNotEmpty) {
       widget.controller.selectConversationSession(sessions.first.id);
     }
@@ -212,7 +211,7 @@ class _MessagingNotificationBellState extends State<MessagingNotificationBell> {
                     for (final (agent, activity) in active)
                       _MessagingNotificationRow(
                         key: ValueKey<String>(
-                          'messaging-notification-item-${agent.target}',
+                          'messaging-notification-item-${agent.id}',
                         ),
                         agent: agent,
                         activity: activity,
@@ -226,7 +225,7 @@ class _MessagingNotificationBellState extends State<MessagingNotificationBell> {
           (context, {required open, required toggle, required close}) {
             return Tooltip(
               message: strings.notifications,
-              waitDuration: const Duration(milliseconds: 400),
+              waitDuration: LicoMotion.tooltipWait,
               child: InkWell(
                 key: const Key('messaging-notification-bell'),
                 onTap: toggle,

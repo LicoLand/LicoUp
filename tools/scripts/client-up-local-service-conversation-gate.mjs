@@ -52,7 +52,11 @@ import {
 import { AcceptanceError, digest, requireFact } from "./client-acp-conversation-parity/errors.mjs";
 import { parityModelForAgent } from "./client-acp-conversation-parity/agent-ids.mjs";
 import { runSidecar } from "./client-acp-conversation-parity/native/acp-turn.mjs";
-import { nativeAppServerTurn } from "./client-acp-conversation-parity/native/app-server.mjs";
+import {
+  appServerFinalMessage,
+  nativeAppServerTurn,
+  withAppServer,
+} from "./client-acp-conversation-parity/native/app-server.mjs";
 import { createPrivateWrapper } from "./client-acp-conversation-parity/process.mjs";
 import {
   cleanupSession,
@@ -122,6 +126,86 @@ async function nativeTurnForAgent(context, sessionId, prompt) {
     return nativeOpenCodeHttpTurn(context, sessionId, prompt);
   }
   throw new AcceptanceError("agent_gate_unsupported");
+}
+
+/// Prove Codex in-turn `turn/steer` (C-05) against the live app-server lane.
+async function proveCodexInterruptSteer(context) {
+  const canary = `STEER_${randomUUID().replaceAll("-", "").slice(0, 10)}`;
+  const model = parityModelForAgent("codex");
+  const effort = model.toLowerCase().includes("spark") ? "low" : "";
+  const longPrompt =
+    "Begin a long numbered list from 500 down to 1. Keep writing until interrupted. Do not call tools or request permissions.";
+  const steerPrompt =
+    `Stop the active reply. Reply with exactly ${canary} and no other text. Do not call tools or request permissions.`;
+
+  return withAppServer(context, async (client) => {
+    const started = await client.request("thread/start", {
+      cwd: context.cwd,
+      ...(model ? { model } : {}),
+    });
+    const threadId = started?.thread?.id || "";
+    requireFact(typeof threadId === "string" && threadId.length > 0, "steer_thread_id_missing");
+    context.observedSessions?.add(threadId);
+
+    const turnStarted = await client.request("turn/start", {
+      threadId,
+      input: [{ type: "text", text: longPrompt }],
+      ...(model ? { model } : {}),
+      ...(effort ? { effort } : {}),
+    });
+    const turnId = turnStarted?.turn?.id || "";
+    requireFact(typeof turnId === "string" && turnId.length > 0, "steer_turn_id_missing");
+
+    // Wait until the turn is active before steering.
+    await client.waitForNotification(
+      (message) => (
+        (
+          message.method === "turn/started"
+          && message.params?.threadId === threadId
+          && message.params?.turn?.id === turnId
+        )
+        || (
+          message.method === "item/agentMessage/delta"
+          && message.params?.threadId === threadId
+        )
+      ),
+    );
+
+    await client.request("turn/steer", {
+      threadId,
+      expectedTurnId: turnId,
+      input: [{ type: "text", text: steerPrompt }],
+    });
+
+    const completed = await client.waitForNotification(
+      (message) => message.method === "turn/completed"
+        && message.params?.threadId === threadId
+        && message.params?.turn?.id === turnId,
+    );
+    const turnStatus = String(completed.params?.turn?.status || "").toLowerCase();
+    requireFact(
+      turnStatus === "completed" || turnStatus === "interrupted",
+      "steer_turn_not_terminal",
+    );
+    const completedItems = client.notifications
+      .filter((message) => message.method === "item/completed"
+        && message.params?.threadId === threadId
+        && message.params?.turnId === turnId)
+      .map((message) => message.params?.item)
+      .filter(Boolean);
+    const turn = {
+      ...(completed.params?.turn || {}),
+      items: [
+        ...(Array.isArray(completed.params?.turn?.items) ? completed.params.turn.items : []),
+        ...completedItems,
+      ],
+    };
+    const output = appServerFinalMessage(turn);
+    requireFact(output.includes(canary), "steer_final_message_missing_canary");
+    const cleaned = await cleanupSession(context, threadId, context.temporaryDirectory);
+    requireFact(cleaned === true, "steer_cleanup_failed");
+    return true;
+  });
 }
 
 function buildContext(options, agentId, config) {
@@ -281,6 +365,7 @@ function writeGateEvidence({ agentId, gate, aggregate, context }) {
   const conditionalRaw = conditionalChecksFromMatrix(driver.capabilityMatrix, {
     streaming: aggregate.streamingProven === true,
     structured: aggregate.structuredProven === true,
+    interruptSteer: aggregate.interruptSteerProven === true,
   });
   const conditionalChecks = Object.fromEntries(
     CONDITIONAL_CHECK_IDS.map((id) => [id, conditionalRaw[id]]),
@@ -418,6 +503,14 @@ export async function runArcLocalServiceConversationGate(argv = process.argv.sli
       rounds.push(result);
     }
 
+    let interruptSteerProven = true;
+    if (agentId === "codex") {
+      logStep("interrupt_steer_start");
+      interruptSteerProven = await proveCodexInterruptSteer(context);
+      logStep("interrupt_steer_done");
+      requireFact(interruptSteerProven === true, "interrupt_steer_unproven");
+    }
+
     const aggregate = {
       agent: agentId,
       nativeToArc: rounds.every((row) => row.nativeToArc),
@@ -426,6 +519,7 @@ export async function runArcLocalServiceConversationGate(argv = process.argv.sli
       finalResults: rounds.every((row) => row.outputBytes.every((value) => value > 0)),
       streamingProven: rounds.every((row) => row.streamingProven),
       structuredProven: rounds.every((row) => row.structuredProven),
+      interruptSteerProven,
       cleanupPassed: rounds.every((row) => row.cleanupPassed),
       conversationGatePassed: true,
       consecutivePasses: ROUND_COUNT,

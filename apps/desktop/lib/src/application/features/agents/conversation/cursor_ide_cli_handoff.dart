@@ -56,7 +56,9 @@ String buildIdeToCliHandoffPrompt({
     session,
     maxChars: maxAssistantChars,
   );
-  final assistantBlock = lastAssistant.isEmpty ? '(empty)' : lastAssistant;
+  final assistantBlock = lastAssistant.isEmpty
+      ? '(empty)'
+      : lastAssistant;
   return [
     '[LicoUp IDE→CLI handoff — once]',
     'composerSessionId: $composerId',

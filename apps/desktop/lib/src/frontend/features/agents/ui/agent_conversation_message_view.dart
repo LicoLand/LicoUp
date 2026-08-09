@@ -15,6 +15,7 @@ import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_parti
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_process_status_row.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 
 class AgentConversationMessageList extends StatefulWidget {
   const AgentConversationMessageList({
@@ -461,6 +462,7 @@ class AgentConversationMessageListState
         },
       ConversationLogTimelineItem(:final events) => ConversationLogEventRow(
         events: events,
+        detailsBuilder: buildAgentConversationEventDetails,
       ),
       ConversationRuntimeUpdateTimelineItem(:final message) =>
         AgentRuntimeUpdateCard(
@@ -719,7 +721,7 @@ class _ConversationArtifactsPanel extends StatelessWidget {
     return DecoratedBox(
       decoration: BoxDecoration(
         border: Border.all(color: colors.line.withAlpha(80)),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(LicoRadius.card),
       ),
       child: Padding(
         padding: const EdgeInsets.all(12),
@@ -762,14 +764,14 @@ class _ConversationDiagnosticsPanel extends StatelessWidget {
     return DecoratedBox(
       decoration: BoxDecoration(
         border: Border.all(color: colors.line.withAlpha(80)),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(LicoRadius.card),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           InkWell(
             onTap: onToggle,
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(LicoRadius.card),
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               child: Row(

@@ -6,6 +6,7 @@ import 'package:licoup/src/application/controller/client_controller.dart';
 import 'package:licoup/src/frontend/features/skill_hub/ui/skill_hub_panel_catalog.dart';
 import 'package:licoup/src/frontend/features/skill_hub/ui/skill_hub_panel_widgets.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 export 'package:licoup/src/frontend/features/skill_hub/ui/skill_hub_panel_icon_picker.dart'
@@ -84,7 +85,7 @@ class _SkillHubPanelState extends State<SkillHubPanel> {
                     ? strings.hideSkillHubSettings
                     : strings.showSkillHubSettings,
                 child: InkWell(
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(LicoRadius.chip),
                   onTap: _toggleSettingsDrawer,
                   child: Padding(
                     padding: const EdgeInsets.all(10),

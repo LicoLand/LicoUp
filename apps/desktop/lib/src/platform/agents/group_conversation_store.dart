@@ -6,8 +6,6 @@ import 'package:licoup/src/contracts/group_conversation_models.dart';
 import 'package:licoup/src/platform/mobile_relay/mobile_relay_json_store.dart';
 import 'package:licoup/src/platform/storage/portable_data_root.dart';
 
-export 'package:licoup/src/contracts/group_conversation_models.dart';
-
 const defaultLicoGroupConversationId = 'lico-group-default';
 
 enum TurnTakingPolicy {

@@ -20,7 +20,7 @@ use base64::{Engine, engine::general_purpose};
 use ed25519_dalek::SigningKey;
 use rand::rngs::OsRng;
 use sha2::{Digest, Sha256};
-use time::{Duration, OffsetDateTime, format_description::well_known::Rfc3339};
+use time::OffsetDateTime;
 
 fn binding_fixture(class: SecureMeshAcpPayloadClass) -> SecureMeshAcpEnvelopeBinding {
     let mut binding = SecureMeshAcpEnvelopeBinding::new(
@@ -49,8 +49,6 @@ fn binding_fixture(class: SecureMeshAcpPayloadClass) -> SecureMeshAcpEnvelopeBin
 }
 
 fn context_fixture(session_id: &str) -> SecureMeshContentContext {
-    let created_at = OffsetDateTime::now_utc();
-    let expires_at = created_at + Duration::minutes(5);
     SecureMeshContentContext::new(
         general_purpose::URL_SAFE_NO_PAD.encode(&Sha256::digest(b"env-acp-1")[..24]),
         "msg-acp-1",
@@ -58,8 +56,8 @@ fn context_fixture(session_id: &str) -> SecureMeshContentContext {
         "agent-source",
         "agent-target",
         session_id,
-        created_at.format(&Rfc3339).unwrap(),
-        expires_at.format(&Rfc3339).unwrap(),
+        "2026-01-01T00:00:00.000Z",
+        "2026-01-01T00:10:00.000Z",
     )
 }
 

@@ -1,5 +1,6 @@
 import 'package:licoup/src/application/features/agents/orchestration/agent_orchestration_policy_controller.dart';
 import 'package:licoup/src/application/features/agents/orchestration/orchestration_policy_editor_models.dart';
+import 'package:licoup/src/contracts/group_conversation_models.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/platform/agents/group_conversation_store.dart';
 

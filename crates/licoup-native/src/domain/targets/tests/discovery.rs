@@ -47,7 +47,11 @@ fn scan_includes_required_first_targets() {
             "kimi",
             "kimi-code",
             "pi",
-            "lico-agent"
+            "lico-agent",
+            "workbuddy",
+            "codebuddy",
+            "trae-work",
+            "trae-agent"
         ]
     );
     let _ = fs::remove_dir_all(dir);

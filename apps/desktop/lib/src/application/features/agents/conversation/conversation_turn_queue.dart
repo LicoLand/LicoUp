@@ -29,6 +29,7 @@ final class ConversationQueuedTurn {
     this.dailyQuotaFallbackAttemptedKeys = const <String>{},
     this.ideHandoffComposerId = '',
     this.allowedTools = const <String>[],
+    this.scopeKey = '',
   });
 
   final int submissionId;
@@ -60,6 +61,11 @@ final class ConversationQueuedTurn {
   /// send, the controller marks this id so the handoff is not repeated.
   final String ideHandoffComposerId;
 
+  /// Conversation scope the user was viewing when the turn was submitted
+  /// (same identity as [AgentWorkspaceCoordinator.conversationComposerScopeKey]).
+  /// The live process card renders only while the user is viewing this scope.
+  final String scopeKey;
+
   ConversationQueuedTurn bindActiveSession(String sessionId) {
     final normalized = sessionId.trim();
     if (!awaitActiveSession || normalized.isEmpty) return this;
@@ -82,6 +88,7 @@ final class ConversationQueuedTurn {
           promoteToCurrentConversationOnSuccess,
       dailyQuotaFallbackAttemptedKeys: dailyQuotaFallbackAttemptedKeys,
       ideHandoffComposerId: ideHandoffComposerId,
+      scopeKey: scopeKey,
     );
   }
 }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 /// Sanitized copy for deterministic conversation-send unavailability.
@@ -103,7 +104,7 @@ class ConversationParityDisclosurePanel extends StatelessWidget {
         elevation: const WidgetStatePropertyAll(6),
         shape: WidgetStatePropertyAll(
           RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: BorderRadius.circular(LicoRadius.floating),
             side: BorderSide(color: colors.line),
           ),
         ),

@@ -6,7 +6,7 @@ void main() {
   AgentConversationSession session({
     String sourceKind = 'cursor-global-storage',
     String nativeSessionId = 'composer-1',
-    String sourcePath = '/fixture/location/state.vscdb',
+    String sourcePath = '/tmp/state.vscdb',
     List<AgentConversationMessage> messages = const [],
   }) {
     return AgentConversationSession(
@@ -87,7 +87,7 @@ void main() {
     );
     expect(prompt, contains('[LicoUp IDE→CLI handoff — once]'));
     expect(prompt, contains('composerSessionId: composer-1'));
-    expect(prompt, contains('stateVscdbPath: /fixture/location/state.vscdb'));
+    expect(prompt, contains('stateVscdbPath: /tmp/state.vscdb'));
     expect(prompt, contains('sqliteTable: cursorDiskKV'));
     expect(prompt, contains('keyPrefixes: composerData:composer-1'));
     expect(prompt, contains('Last IDE return about quota fallback.'));
@@ -95,42 +95,39 @@ void main() {
     expect(prompt, contains('Continue from IDE'));
   });
 
-  test(
-    'shouldInject requires cursor agent, IDE kind, and unused composer id',
-    () {
-      final ide = session();
-      expect(
-        shouldInjectCursorIdeCliHandoff(
-          agentId: 'cursor',
-          session: ide,
-          handedOffComposerIds: const {},
-        ),
-        isTrue,
-      );
-      expect(
-        shouldInjectCursorIdeCliHandoff(
-          agentId: 'codex',
-          session: ide,
-          handedOffComposerIds: const {},
-        ),
-        isFalse,
-      );
-      expect(
-        shouldInjectCursorIdeCliHandoff(
-          agentId: 'cursor',
-          session: session(sourceKind: 'cursor-cli-projects'),
-          handedOffComposerIds: const {},
-        ),
-        isFalse,
-      );
-      expect(
-        shouldInjectCursorIdeCliHandoff(
-          agentId: 'cursor',
-          session: ide,
-          handedOffComposerIds: const {'composer-1'},
-        ),
-        isFalse,
-      );
-    },
-  );
+  test('shouldInject requires cursor agent, IDE kind, and unused composer id', () {
+    final ide = session();
+    expect(
+      shouldInjectCursorIdeCliHandoff(
+        agentId: 'cursor',
+        session: ide,
+        handedOffComposerIds: const {},
+      ),
+      isTrue,
+    );
+    expect(
+      shouldInjectCursorIdeCliHandoff(
+        agentId: 'codex',
+        session: ide,
+        handedOffComposerIds: const {},
+      ),
+      isFalse,
+    );
+    expect(
+      shouldInjectCursorIdeCliHandoff(
+        agentId: 'cursor',
+        session: session(sourceKind: 'cursor-cli-projects'),
+        handedOffComposerIds: const {},
+      ),
+      isFalse,
+    );
+    expect(
+      shouldInjectCursorIdeCliHandoff(
+        agentId: 'cursor',
+        session: ide,
+        handedOffComposerIds: const {'composer-1'},
+      ),
+      isFalse,
+    );
+  });
 }

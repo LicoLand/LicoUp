@@ -81,7 +81,7 @@
   "artifacts": {
     "macos-arm64": {
       "artifactKind": "macos-distribution-archive",
-      "ref": "build/apps/desktop/distribution/macos/LicoUp-macos-arm64.zip",
+      "ref": "build/apps/desktop/distribution/macos/LicoUp-macos-arm64.dmg",
       "distributionManifestRef": "build/apps/desktop/distribution/macos/manifest.json",
       "installArtifactRef": "build/apps/desktop/runnable/macos/release/LicoUp.app",
       "entitlementsRef": "build/apps/desktop/signing/macos/release/ProductionRelease.resolved.entitlements",

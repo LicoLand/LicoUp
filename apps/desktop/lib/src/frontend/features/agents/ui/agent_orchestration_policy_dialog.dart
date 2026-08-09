@@ -6,6 +6,7 @@ import 'package:licoup/src/application/features/agents/orchestration/orchestrati
 import 'package:licoup/src/frontend/features/agents/ui/agent_orchestration_code_engineering_policy_card.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_orchestration_daily_conversation_policy_card.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 final class AgentOrchestrationPolicyDialog extends StatefulWidget {
@@ -176,7 +177,9 @@ final class _AgentOrchestrationPolicyDialogState
     return Dialog(
       backgroundColor: colors.surface,
       insetPadding: const EdgeInsets.symmetric(horizontal: 48, vertical: 36),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(LicoRadius.floating),
+      ),
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 780, maxHeight: 680),
         child: Column(

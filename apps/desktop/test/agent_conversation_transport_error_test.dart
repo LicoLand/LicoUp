@@ -99,8 +99,8 @@ void main() {
           );
       expect(projectedKinds, ['user', 'lifecycle', 'assistant']);
       expect(
-        controller
-                .liveConversationMessagesByAgent[agentOrchestrationTargetId] ??
+        controller.liveConversationMessagesByScope[
+                controller.conversationComposerScopeKey] ??
             const [],
         isEmpty,
       );
@@ -130,23 +130,23 @@ void main() {
     addTearDown(controller.dispose);
 
     controller.conversationStartLiveProjection(
-      agentId: agentOrchestrationTargetId,
+      scopeKey: 'draft:orchestration:turn-1',
       turnId: 'turn-1',
       userText: 'Request',
     );
     controller.conversationUpsertLiveReply(
-      agentId: agentOrchestrationTargetId,
+      scopeKey: 'draft:orchestration:turn-1',
       turnId: 'turn-1',
       text: 'Reply',
     );
     controller.conversationUpsertLiveLifecycle(
-      agentId: agentOrchestrationTargetId,
+      scopeKey: 'draft:orchestration:turn-1',
       turnId: 'turn-1',
       stage: 'completed',
     );
 
     expect(
-      controller.liveConversationMessagesByAgent[agentOrchestrationTargetId]!
+      controller.liveConversationMessagesByScope['draft:orchestration:turn-1']!
           .map((message) => message.id),
       ['turn-1-user', 'turn-1-lifecycle', 'turn-1-assistant'],
     );
@@ -455,31 +455,29 @@ void main() {
   test(
     'cursor IDE history send injects one-time handoff and clears sessionId',
     () async {
-      final ideSession =
-          buildFakeConversationSession(
-              id: 'ide-composer-1',
-              agentId: 'cursor',
-              agentLabel: 'Cursor',
-              text: 'Earlier IDE user turn',
-            )
-            ..['nativeSessionId'] = 'ide-composer-1'
-            ..['sourceKind'] = 'cursor-global-storage'
-            ..['sourcePath'] =
-                '/fixture/location/Cursor/User/globalStorage/state.vscdb'
-            ..['messages'] = [
-              {
-                'id': 'msg-user-ide',
-                'role': 'user',
-                'text': 'Earlier IDE user turn',
-                'createdAt': '2026-08-06T00:00:00Z',
-              },
-              {
-                'id': 'msg-agent-ide',
-                'role': 'assistant',
-                'text': 'Last IDE return about quota fallback.',
-                'createdAt': '2026-08-06T00:00:01Z',
-              },
-            ];
+      final ideSession = buildFakeConversationSession(
+        id: 'ide-composer-1',
+        agentId: 'cursor',
+        agentLabel: 'Cursor',
+        text: 'Earlier IDE user turn',
+      )
+        ..['nativeSessionId'] = 'ide-composer-1'
+        ..['sourceKind'] = 'cursor-global-storage'
+        ..['sourcePath'] = '/tmp/Cursor/User/globalStorage/state.vscdb'
+        ..['messages'] = [
+          {
+            'id': 'msg-user-ide',
+            'role': 'user',
+            'text': 'Earlier IDE user turn',
+            'createdAt': '2026-08-06T00:00:00Z',
+          },
+          {
+            'id': 'msg-agent-ide',
+            'role': 'assistant',
+            'text': 'Last IDE return about quota fallback.',
+            'createdAt': '2026-08-06T00:00:01Z',
+          },
+        ];
       final service = FakeAgentService()
         ..scanTargetsResult = [_cursorTarget(runtimeBound: true)]
         ..conversationSessions['cursor'] = [ideSession];
@@ -498,8 +496,8 @@ void main() {
       await _settleAsyncProjection();
 
       expect(service.runtimeMessageCalls, 1);
-      final firstText = (service.runtimeMessageRequests.first['text'] ?? '')
-          .toString();
+      final firstText =
+          (service.runtimeMessageRequests.first['text'] ?? '').toString();
       expect(firstText, contains('[LicoUp IDE→CLI handoff — once]'));
       expect(firstText, contains('composerSessionId: ide-composer-1'));
       expect(firstText, contains('Last IDE return about quota fallback.'));
@@ -512,74 +510,76 @@ void main() {
 
       await controller.sendConversationMessage('Second CLI turn');
       expect(service.runtimeMessageCalls, 2);
-      final secondText = (service.runtimeMessageRequests.last['text'] ?? '')
-          .toString();
+      final secondText =
+          (service.runtimeMessageRequests.last['text'] ?? '').toString();
       expect(secondText, isNot(contains('[LicoUp IDE→CLI handoff — once]')));
       expect(secondText, 'Second CLI turn');
     },
   );
 
-  test('cursor IDE handoff survives a failed first send for retry', () async {
-    final ideSession =
-        buildFakeConversationSession(
-            id: 'ide-composer-2',
-            agentId: 'cursor',
-            agentLabel: 'Cursor',
-            text: 'IDE history',
-          )
-          ..['nativeSessionId'] = 'ide-composer-2'
-          ..['sourceKind'] = 'cursor-workspace-storage'
-          ..['sourcePath'] = '/fixture/location/workspace/state.vscdb'
-          ..['messages'] = [
-            {
-              'id': 'a1',
-              'role': 'assistant',
-              'text': 'Prior IDE assistant text',
-              'createdAt': '2026-08-06T00:00:01Z',
-            },
-          ];
-    final service = FakeAgentService()
-      ..scanTargetsResult = [_cursorTarget(runtimeBound: true)]
-      ..conversationSessions['cursor'] = [ideSession]
-      ..runtimeMessageResultQueue = [
-        {
-          'ok': false,
-          'error': {
-            'code': 'authorization_denied',
-            'message': 'Sign in required.',
+  test(
+    'cursor IDE handoff survives a failed first send for retry',
+    () async {
+      final ideSession = buildFakeConversationSession(
+        id: 'ide-composer-2',
+        agentId: 'cursor',
+        agentLabel: 'Cursor',
+        text: 'IDE history',
+      )
+        ..['nativeSessionId'] = 'ide-composer-2'
+        ..['sourceKind'] = 'cursor-workspace-storage'
+        ..['sourcePath'] = '/tmp/workspace/state.vscdb'
+        ..['messages'] = [
+          {
+            'id': 'a1',
+            'role': 'assistant',
+            'text': 'Prior IDE assistant text',
+            'createdAt': '2026-08-06T00:00:01Z',
           },
-        },
-      ];
-    final controller = ClientController(agentService: service);
-    addTearDown(controller.dispose);
+        ];
+      final service = FakeAgentService()
+        ..scanTargetsResult = [_cursorTarget(runtimeBound: true)]
+        ..conversationSessions['cursor'] = [ideSession]
+        ..runtimeMessageResultQueue = [
+          {
+            'ok': false,
+            'error': {
+              'code': 'authorization_denied',
+              'message': 'Sign in required.',
+            },
+          },
+        ];
+      final controller = ClientController(agentService: service);
+      addTearDown(controller.dispose);
 
-    await controller.scanTargets();
-    await controller.selectConversationAgent('cursor');
-    await controller.refreshConversationCatalogInternal(
-      'cursor',
-      foreground: true,
-    );
-    controller.selectConversationSession('ide-composer-2');
+      await controller.scanTargets();
+      await controller.selectConversationAgent('cursor');
+      await controller.refreshConversationCatalogInternal(
+        'cursor',
+        foreground: true,
+      );
+      controller.selectConversationSession('ide-composer-2');
 
-    await controller.sendConversationMessage('First attempt');
-    expect(service.runtimeMessageCalls, 1);
-    expect(
-      controller.cursorIdeCliHandoffComposerIds.contains('ide-composer-2'),
-      isFalse,
-    );
+      await controller.sendConversationMessage('First attempt');
+      expect(service.runtimeMessageCalls, 1);
+      expect(
+        controller.cursorIdeCliHandoffComposerIds.contains('ide-composer-2'),
+        isFalse,
+      );
 
-    await controller.sendConversationMessage('Retry attempt');
-    expect(service.runtimeMessageCalls, 2);
-    final retryText = (service.runtimeMessageRequests.last['text'] ?? '')
-        .toString();
-    expect(retryText, contains('[LicoUp IDE→CLI handoff — once]'));
-    expect(retryText, contains('Prior IDE assistant text'));
-    expect(retryText, contains('Retry attempt'));
-    expect(
-      controller.cursorIdeCliHandoffComposerIds.contains('ide-composer-2'),
-      isTrue,
-    );
-  });
+      await controller.sendConversationMessage('Retry attempt');
+      expect(service.runtimeMessageCalls, 2);
+      final retryText =
+          (service.runtimeMessageRequests.last['text'] ?? '').toString();
+      expect(retryText, contains('[LicoUp IDE→CLI handoff — once]'));
+      expect(retryText, contains('Prior IDE assistant text'));
+      expect(retryText, contains('Retry attempt'));
+      expect(
+        controller.cursorIdeCliHandoffComposerIds.contains('ide-composer-2'),
+        isTrue,
+      );
+    },
+  );
 
   test(
     'new conversation draft never inherits a refreshed previous session id',

@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 
 import 'package:licoup/src/application/controller/client_lifecycle_coordinator.dart';
 import 'package:licoup/src/application/features/agents/contracts/agent_conversation_gateway.dart';
+import 'package:licoup/src/application/features/agents/conversation/conversation_presentation_signals.dart';
 import 'package:licoup/src/application/features/agents/conversation/conversation_turn_process_state.dart';
 import 'package:licoup/src/application/features/agents/conversation/conversation_turn_queue.dart';
 import 'package:licoup/src/application/features/agents/policy/conversation_refresh_policy.dart';
@@ -12,9 +13,11 @@ import 'package:licoup/src/application/localization/client_application_strings.d
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
 import 'package:licoup/src/contracts/agent_conversation_projection_repository.dart';
 import 'package:licoup/src/contracts/agent_conversation_tab_activity.dart';
+import 'package:licoup/src/contracts/agent_last_used_conversation.dart';
 import 'package:licoup/src/contracts/generated/secure_mesh.g.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:licoup/src/platform/agents/group_conversation_store.dart';
+import 'package:licoup/src/platform/agents/last_used_conversation_store.dart';
 import 'package:licoup/src/platform/native_client/agent_service.dart';
 
 /// Shared feature state plus narrow composition callbacks. Concrete feature
@@ -66,6 +69,7 @@ abstract class AgentWorkspaceCoordinator extends ChangeNotifier {
     MessagingNotificationTone tone = MessagingNotificationTone.info,
     String code = '',
   });
+  ConversationPresentationSignals get conversationPresentationSignals;
   void agentWorkspaceNotifyStateChanged();
   void agentWorkspaceNotifyConversationStructureChanged({
     bool activeChanged = true,
@@ -144,6 +148,20 @@ abstract class AgentWorkspaceCoordinator extends ChangeNotifier {
   durableConversationProjectionsByAgent = const {};
   Map<String, bool> conversationSessionsHasMoreByAgent = const {};
   String selectedConversationAgentId = '';
+
+  /// The last-used conversation persisted at shutdown time, restored on
+  /// relaunch so the client reopens the conversation the user last worked in.
+  /// Null while [lastUsedConversationRestoreLoading] is still true.
+  LastUsedConversationRef? lastUsedConversationRestore;
+  bool lastUsedConversationRestoreLoading = true;
+
+  /// Whether the restore was applied (or decided not to be) this process.
+  bool lastUsedConversationRestoreApplied = false;
+
+  /// Restored session id awaiting the agent's loaded session list: the
+  /// conversation controller confirms it once history arrives and falls back
+  /// to the newest session when it no longer exists.
+  String lastUsedConversationRestoreSessionId = '';
   Map<String, String> pendingConversationNativeSessionIds = const {};
   Map<String, String> conversationModelsByAgent = const {};
   Map<String, String> conversationReasoningEffortsByAgent = const {};
@@ -156,6 +174,7 @@ abstract class AgentWorkspaceCoordinator extends ChangeNotifier {
   String sendingConversationTurnId = '';
   Timer? conversationLiveReplyPublishTimer;
   String pendingConversationLiveReplyAgentId = '';
+  String pendingConversationLiveReplyScopeKey = '';
   String pendingConversationLiveReplyTurnId = '';
   String pendingConversationLiveReplyText = '';
   String pendingConversationLiveReplyParticipantAgentId = '';
@@ -204,10 +223,13 @@ abstract class AgentWorkspaceCoordinator extends ChangeNotifier {
   /// Cursor IDE composer ids that already received a one-time IDE→CLI handoff
   /// in this process (metadata + last assistant return).
   final Set<String> cursorIdeCliHandoffComposerIds = <String>{};
-  Map<String, List<AgentConversationMessage>> liveConversationMessagesByAgent =
+  /// Live turn messages and blackboard, keyed per conversation scope so the
+  /// progress card is part of one conversation's message stream and never
+  /// leaks into another conversation's timeline.
+  Map<String, List<AgentConversationMessage>> liveConversationMessagesByScope =
       const {};
-  Map<String, ConversationTurnProcessState>
-  conversationTurnProcessStateByAgent = const {};
+  Map<String, ConversationTurnProcessState> conversationTurnProcessStateByScope =
+      const {};
   Map<String, AgentConversationTabActivity> conversationTabActivityByAgent =
       const {};
   Map<String, String> conversationSendErrorsByAgent = const {};
@@ -243,6 +265,39 @@ abstract class AgentWorkspaceCoordinator extends ChangeNotifier {
 
   String get selectedNewConversationDraftToken =>
       newConversationDraftTokenFor(selectedConversationAgentId);
+
+  /// Stable identity of the composer's conversation scope: one slot per
+  /// selected session and one slot per active new-conversation draft. The
+  /// draft token distinguishes repeated new-conversation drafts for the same
+  /// agent, so clicking "new conversation" again starts with a fresh box.
+  String get conversationComposerScopeKey {
+    final agentId = selectedConversationAgentId.trim();
+    if (agentId.isEmpty) return '';
+    final draftToken = selectedNewConversationDraftToken.trim();
+    if (draftToken.isNotEmpty) return 'draft:$agentId:$draftToken';
+    final sessionId = selectedConversationSessionId.trim();
+    if (sessionId.isEmpty) return 'new:$agentId';
+    return 'session:$agentId:$sessionId';
+  }
+
+  String get conversationComposerDraft =>
+      conversationPresentationSignals.composerDraftFor(
+        conversationComposerScopeKey,
+      );
+
+  void updateConversationComposerDraft(String value) {
+    conversationPresentationSignals.replaceComposerDraft(
+      conversationComposerScopeKey,
+      value,
+    );
+  }
+
+  void clearConversationComposerDraft() {
+    conversationPresentationSignals.replaceComposerDraft(
+      conversationComposerScopeKey,
+      '',
+    );
+  }
 
   String newConversationDraftTokenFor(String agentId) =>
       (_newConversationDraftTokensByAgent[agentId.trim()] ?? '').trim();
@@ -286,8 +341,35 @@ abstract class AgentWorkspaceCoordinator extends ChangeNotifier {
     if (agentId.isNotEmpty) setSelectedConversationSessionId(agentId, value);
   }
 
+  /// Live messages of the in-flight turn, as part of the selected
+  /// conversation's own message stream. The turn blackboard is stored per
+  /// conversation scope, so another conversation's timeline simply has no
+  /// live entries of its own; nothing is hidden or restored on switch.
   List<AgentConversationMessage> get selectedLiveConversationMessages =>
-      liveConversationMessagesByAgent[selectedConversationAgentId] ?? const [];
+      liveConversationMessagesByScope[conversationComposerScopeKey] ??
+      const [];
+
+  /// Every live-projection scope key owned by [agentId], for agent-wide
+  /// resets (new-conversation start) without touching other agents.
+  List<String> conversationLiveScopeKeysForAgent(String agentId) {
+    final normalized = agentId.trim();
+    if (normalized.isEmpty) return const [];
+    final draftPrefix = 'draft:$normalized:';
+    final sessionPrefix = 'session:$normalized:';
+    final newPrefix = 'new:$normalized';
+    return [
+      for (final key in {
+        ...liveConversationMessagesByScope.keys,
+        ...conversationTurnProcessStateByScope.keys,
+      })
+        if (key.startsWith(draftPrefix) ||
+            key.startsWith(sessionPrefix) ||
+            key == newPrefix ||
+            key.startsWith('$newPrefix:'))
+          key,
+    ];
+  }
+
   bool get isLoadingConversations => agentWorkspaceMobileRuntime
       ? conversationMobileLoading
       : conversationSessionLoadingTargets.contains(selectedConversationAgentId);
@@ -300,6 +382,52 @@ abstract class AgentWorkspaceCoordinator extends ChangeNotifier {
     value.isEmpty ? next.remove(agentId) : next[agentId] = value;
     _selectedConversationSessionIdsByAgent = Map.unmodifiable(next);
   }
+
+  /// Loads the persisted last-used conversation reference at startup. Safe to
+  /// call once before targets settle; restore application itself happens in
+  /// [AgentConversationSessionController.applyLastUsedConversationRestore]
+  /// and retries whenever [lastUsedConversationRestoreLoading] is still true.
+  Future<void> loadLastUsedConversationRestore() async {
+    try {
+      lastUsedConversationRestore = await lastUsedConversationStore.load(
+        agentWorkspacePortableData,
+      );
+    } on Object {
+      lastUsedConversationRestore = null;
+    }
+    lastUsedConversationRestoreLoading = false;
+  }
+
+  /// Persists the currently selected agent and session as the last-used
+  /// conversation. Fire-and-forget: a failed local write must never block or
+  /// change the conversation surface.
+  void recordLastUsedConversation() {
+    final agentId = selectedConversationAgentId.trim();
+    if (agentId.isEmpty) {
+      return;
+    }
+    unawaited(
+      _persistLastUsedConversation(
+        LastUsedConversationRef(
+          agentId: agentId,
+          sessionId: selectedConversationSessionId.trim(),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _persistLastUsedConversation(LastUsedConversationRef ref) async {
+    try {
+      await lastUsedConversationStore.save(agentWorkspacePortableData, ref);
+    } on Object {
+      // Local persistence failure must not surface on the conversation.
+    }
+  }
+
+  /// The store backing [loadLastUsedConversationRestore] and
+  /// [recordLastUsedConversation]. Overridable for tests.
+  LastUsedConversationStore get lastUsedConversationStore =>
+      const PlatformLastUsedConversationStore();
 
   void disposeAgentWorkspace() {
     conversationTurnCancellationRequested = true;

@@ -4,13 +4,13 @@
   "minimumConsecutivePasses": 3,
   "summary": {
     "total": 12,
-    "ready": 0,
+    "ready": 3,
     "partial": 0,
     "failed": 0,
     "blocked": 0,
-    "unverified": 12,
+    "unverified": 9,
     "historyOnly": 0,
-    "sendEnabled": 0
+    "sendEnabled": 3
   },
   "adapters": [
     {
@@ -41,34 +41,8 @@
     },
     {
       "agentId": "claude-code",
-      "status": "unverified",
-      "sendEnabled": false,
-      "officialNativeLaneProven": false,
-      "conversationGatePassed": false,
-      "cleanupPassed": false,
-      "privacyPassed": false,
-      "consecutivePasses": 0,
-      "coreChecks": {
-        "required": 10,
-        "passed": 0,
-        "failed": 0
-      },
-      "conditionalChecks": {
-        "total": 6,
-        "nativeSupported": 0,
-        "passed": 0,
-        "gaps": 0,
-        "failed": 0
-      },
-      "evidenceBinding": null,
-      "summaryCodes": [
-        "evidence_missing"
-      ]
-    },
-    {
-      "agentId": "codex",
-      "status": "unverified",
-      "sendEnabled": false,
+      "status": "ready",
+      "sendEnabled": true,
       "officialNativeLaneProven": true,
       "conversationGatePassed": true,
       "cleanupPassed": true,
@@ -86,9 +60,67 @@
         "gaps": 0,
         "failed": 0
       },
-      "evidenceBinding": null,
+      "evidenceBinding": {
+        "agentId": "claude-code",
+        "driverId": "claude-code-stream-json",
+        "runtimeProtocol": "claude-code-cli-stream-json",
+        "harnessVersion": "dispatch-lane-unified-1",
+        "runtimeVersionClass": "verified-claude-code-stream-json-gate",
+        "runtimeVersionDigest": "sha256:5a728a76198b6eca7f3c7cdbff43bab44b77b48c2108f7a3107d889773382629",
+        "capabilitySnapshotDigest": "sha256:0932fe09f7c8d9db0df7ce3dfd078e6fdb634adb7be37fc3f34217e7a495e391",
+        "adapterManifestDigest": "sha256:fbf36463a3119b9586e4e814f7843ae59775dbe613d910cee2a77e40b646b4da",
+        "releaseArtifactDigest": "sha256:a620d7a8a3eb7a2100babaf38a017e8dfbb90f66336de9be43acfa7b74f32b8c",
+        "releaseSidecarDigest": "sha256:2243467c1929ab98543495494f8767e68eb1a59fee9a7cf379ef2da3dbf50fad",
+        "productContinuityBindingDigest": "sha256:32daf752e2273bead8988d35d7e825fbf9eec00d35412e827a9c804764e35d4e",
+        "runtimeSourceClass": "discovered-binary",
+        "registryDigest": "sha256:577f55a64820aacdceb85f778547de7026f786f0a5e912fab0f66579db7850ae",
+        "driverInventoryDigest": "sha256:133f0299057897f0782df01a8aaec348e142efd0d421dd6d25b80b080f315067",
+        "evidenceDigest": "sha256:f12f70f0fd234dc52a50a4a655938e29989b0a087e40b4617abd649a7767d0e0"
+      },
       "summaryCodes": [
-        "evidence_stale_or_incomplete"
+        "all_required_evidence_passed"
+      ]
+    },
+    {
+      "agentId": "codex",
+      "status": "ready",
+      "sendEnabled": true,
+      "officialNativeLaneProven": true,
+      "conversationGatePassed": true,
+      "cleanupPassed": true,
+      "privacyPassed": true,
+      "consecutivePasses": 3,
+      "coreChecks": {
+        "required": 10,
+        "passed": 10,
+        "failed": 0
+      },
+      "conditionalChecks": {
+        "total": 6,
+        "nativeSupported": 3,
+        "passed": 3,
+        "gaps": 0,
+        "failed": 0
+      },
+      "evidenceBinding": {
+        "agentId": "codex",
+        "driverId": "codex-app-server",
+        "runtimeProtocol": "codex-app-server-stdio-jsonrpc",
+        "harnessVersion": "dispatch-lane-unified-1",
+        "runtimeVersionClass": "verified-codex-app-server-arc-gate",
+        "runtimeVersionDigest": "sha256:35d248101b211d6248ad4e6b8c1d441fe81236da87afb9f3e9ea51a049e9f179",
+        "capabilitySnapshotDigest": "sha256:421da7b0da2a1925b4d3d0c8c62956b3826461f39ecec4b6e2d2ca5ada354b81",
+        "adapterManifestDigest": "sha256:64e444bd617d31fa6b69d46c61a5b05f46c100d3d7720df99b6fedbb8eeff316",
+        "releaseArtifactDigest": "sha256:9fe34202a0bf6629d2ca1bd4365bfc3c0ce2d2be8af3790a7288953501eea90d",
+        "releaseSidecarDigest": "sha256:9a1f6b59820c8523102a3b9da50c5458877f9be4c5d2739424122e01b2b89e81",
+        "productContinuityBindingDigest": "sha256:9ebdfc3d2450e55c5b325bea4b070c41f010c88c11e36e629bf8f6cefd1372a5",
+        "runtimeSourceClass": "discovered-binary",
+        "registryDigest": "sha256:577f55a64820aacdceb85f778547de7026f786f0a5e912fab0f66579db7850ae",
+        "driverInventoryDigest": "sha256:133f0299057897f0782df01a8aaec348e142efd0d421dd6d25b80b080f315067",
+        "evidenceDigest": "sha256:cc3be441ecf3feabb18e63d8720502f7a86496b82eca587f8a0e6734dd5126d4"
+      },
+      "summaryCodes": [
+        "all_required_evidence_passed"
       ]
     },
     {
@@ -197,8 +229,8 @@
     },
     {
       "agentId": "cursor",
-      "status": "unverified",
-      "sendEnabled": false,
+      "status": "ready",
+      "sendEnabled": true,
       "officialNativeLaneProven": true,
       "conversationGatePassed": true,
       "cleanupPassed": true,
@@ -216,9 +248,25 @@
         "gaps": 0,
         "failed": 0
       },
-      "evidenceBinding": null,
+      "evidenceBinding": {
+        "agentId": "cursor",
+        "driverId": "cursor-cli",
+        "runtimeProtocol": "cursor-agent-cli-v1",
+        "harnessVersion": "dispatch-lane-unified-1",
+        "runtimeVersionClass": "verified-cursor-cli-gate",
+        "runtimeVersionDigest": "sha256:eed61c5224668c9236334c4c68936a16aecc37374b592f59e31eb50433817831",
+        "capabilitySnapshotDigest": "sha256:55b08afea3464a42294e0196e3eb80b4d28a4b2cb2ee7eb2184ba39dcf6c4350",
+        "adapterManifestDigest": "sha256:e765c100dbbe7e8c237365c8a4079fa24d7adaad04393eb517ffe0ada983d8d7",
+        "releaseArtifactDigest": "sha256:e0ce975b137ef565604d82ffbafb3575489e55d717808e0f2346cfba23124d2c",
+        "releaseSidecarDigest": "sha256:9a1f6b59820c8523102a3b9da50c5458877f9be4c5d2739424122e01b2b89e81",
+        "productContinuityBindingDigest": "sha256:e138273c10641dd232f4f977b0aa07569b9837fdf9127ca4016b092c0745f6d0",
+        "runtimeSourceClass": "discovered-binary",
+        "registryDigest": "sha256:577f55a64820aacdceb85f778547de7026f786f0a5e912fab0f66579db7850ae",
+        "driverInventoryDigest": "sha256:133f0299057897f0782df01a8aaec348e142efd0d421dd6d25b80b080f315067",
+        "evidenceDigest": "sha256:7eda4750e31e7904550cd0e079ea1a8209e3a288bc03c64391ce00613ba43a54"
+      },
       "summaryCodes": [
-        "evidence_stale_or_incomplete"
+        "all_required_evidence_passed"
       ]
     },
     {

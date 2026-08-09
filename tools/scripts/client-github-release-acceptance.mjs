@@ -21,8 +21,8 @@ const buildRoot = path.join(repoRoot, "build");
 const digestPattern = /^[a-f0-9]{64}$/u;
 const specs = {
   "macos-arm64": {
-    artifact: "build/apps/desktop/distribution/macos/LicoUp-macos-arm64.zip",
-    checksum: "build/apps/desktop/distribution/macos/LicoUp-macos-arm64.zip.sha256",
+    artifact: "build/apps/desktop/distribution/macos/LicoUp-macos-arm64.dmg",
+    checksum: "build/apps/desktop/distribution/macos/LicoUp-macos-arm64.dmg.sha256",
     manifest: "build/apps/desktop/distribution/macos/manifest.json",
     platform: "macos",
     architecture: "arm64",

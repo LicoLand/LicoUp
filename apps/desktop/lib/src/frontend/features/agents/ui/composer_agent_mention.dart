@@ -76,7 +76,11 @@ final class ComposerMentionBridge {
     required String displayLabel,
     TargetCandidate? target,
   }) {
-    _insert?.call(agentId: agentId, displayLabel: displayLabel, target: target);
+    _insert?.call(
+      agentId: agentId,
+      displayLabel: displayLabel,
+      target: target,
+    );
   }
 }
 
@@ -121,11 +125,7 @@ List<ComposerFlywheelMentionSection> buildComposerFlywheelMentionSections({
   }
 
   final sections = <ComposerFlywheelMentionSection>[];
-  void addSection(
-    String id,
-    String title,
-    List<ComposerFlywheelMentionEntry> entries,
-  ) {
+  void addSection(String id, String title, List<ComposerFlywheelMentionEntry> entries) {
     if (entries.isEmpty) return;
     sections.add(
       ComposerFlywheelMentionSection(id: id, title: title, entries: entries),
@@ -164,14 +164,18 @@ List<ComposerFlywheelMentionSection> buildComposerFlywheelMentionSections({
       final label = target != null
           ? agentConversationTargetDisplayName(target)
           : commanderId;
-      addSection('current-conversation', strings.currentConversation, [
-        ComposerFlywheelMentionEntry(
-          agentId: commanderId,
-          displayLabel: label,
-          target: target,
-          modelName: policy.commanderModelName.trim(),
-        ),
-      ]);
+      addSection(
+        'current-conversation',
+        strings.currentConversation,
+        [
+          ComposerFlywheelMentionEntry(
+            agentId: commanderId,
+            displayLabel: label,
+            target: target,
+            modelName: policy.commanderModelName.trim(),
+          ),
+        ],
+      );
     }
   }
 

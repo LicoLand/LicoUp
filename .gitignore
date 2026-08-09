@@ -13,8 +13,8 @@ Thumbs.db
 
 # Local generated and runtime assets
 *.log
-/build
-/cache
+/build/
+/cache/
 coverage/
 .cache/
 outputs/
@@ -69,11 +69,8 @@ apps/desktop/windows/flutter/ephemeral/
 test-results/
 
 # Local planning, agent, and one-off work
-/brand/
 /docs/plans/
 /docs/reports/
-/docs/plans
-/docs/reports
 /.agents/
 /.claude/
 /.codex/

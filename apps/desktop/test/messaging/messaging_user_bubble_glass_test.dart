@@ -5,9 +5,6 @@ import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_user_
 import 'package:licoup/src/frontend/layout/profiles/messaging/desktop/tokens/messaging_desktop_tokens.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
-int _alpha(Color color) => color.toARGB32() >>> 24;
-int _rgb(Color color) => color.toARGB32() & 0x00FFFFFF;
-
 void main() {
   group('MessagingDesktopMetrics userBubbleGlass', () {
     test('fill is fully transparent', () {
@@ -18,8 +15,8 @@ void main() {
         isDark: false,
       );
 
-      expect(_alpha(darkFill), 0);
-      expect(_alpha(lightFill), 0);
+      expect(darkFill.alpha, 0);
+      expect(lightFill.alpha, 0);
     });
 
     test('border tints neutral line, not brand', () {
@@ -30,10 +27,12 @@ void main() {
         isDark: true,
       );
 
-      expect(_rgb(border), _rgb(line));
-      expect(border, isNot(equals(brandBorder.withAlpha(_alpha(border)))));
+      expect(border.red, line.red);
+      expect(border.green, line.green);
+      expect(border.blue, line.blue);
+      expect(border, isNot(equals(brandBorder.withAlpha(border.alpha))));
       expect(
-        _alpha(border),
+        border.alpha,
         MessagingDesktopMetrics.userBubbleGlassBorderAlphaDark,
       );
     });
@@ -75,11 +74,13 @@ void main() {
       ),
     );
     final decoration = animated.decoration! as BoxDecoration;
-    expect(_alpha(decoration.color!), 0);
+    expect(decoration.color!.alpha, 0);
     expect(decoration.boxShadow ?? const <BoxShadow>[], isEmpty);
     expect(decoration.border, isNotNull);
     final borderColor = decoration.border!.top.color;
-    expect(_rgb(borderColor), _rgb(colors.line));
+    expect(borderColor.red, colors.line.red);
+    expect(borderColor.green, colors.line.green);
+    expect(borderColor.blue, colors.line.blue);
     expect(borderColor, isNot(equals(colors.brandBorder)));
     expect(borderColor, isNot(equals(colors.primary)));
     expect(tester.takeException(), isNull);

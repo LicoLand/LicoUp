@@ -11,6 +11,7 @@ import 'package:licoup/src/application/controller/client_target_facade.dart';
 import 'package:licoup/src/application/features/agents/workspace/agent_workspace_coordinator.dart';
 import 'package:licoup/src/application/features/agents/orchestration/agent_orchestration_policy_controller.dart';
 import 'package:licoup/src/application/features/agents/conversation/conversation_refresh_controller.dart';
+import 'package:licoup/src/application/features/agents/conversation/conversation_session_controller.dart';
 import 'package:licoup/src/application/features/agents/policy/conversation_refresh_policy.dart';
 import 'package:licoup/src/application/features/navigation/controller/client_navigation_controller.dart';
 import 'package:licoup/src/application/features/navigation/controller/client_section_preload_controller.dart';
@@ -22,6 +23,7 @@ import 'package:licoup/src/contracts/target_candidate.dart';
 mixin ClientNavigationFacade
     on
         AgentWorkspaceCoordinator,
+        AgentConversationSessionController,
         ConversationRefreshController,
         ClientConversationFacade,
         ClientPresentationFacade,
@@ -63,14 +65,12 @@ mixin ClientNavigationFacade
   void clientEnterAgentsSection() {
     var selectionChanged = false;
     if (!mobileClientRuntimePlatform && selectedConversationAgentId.isEmpty) {
-      if (orchestrationAvailable) {
-        selectedConversationAgentId = agentOrchestrationTargetId;
-      } else {
-        selectDefaultConversationAgent(preferDirectAgent: true);
-      }
+      // Section entry must run the same restore/default path as a
+      // targets-settled callback: otherwise the user first sees orchestration
+      // and a later settle flips the selection to the persisted agent.
+      selectDefaultConversationAgent();
       selectionChanged = selectedConversationAgentId.isNotEmpty;
     }
-    if (!mobileClientRuntimePlatform && selectedConversationIsOrchestration) {}
     if (selectionChanged) notifyConversationStructureChanged();
     if (scannedTargets.isEmpty) unawaited(scanTargets());
   }
@@ -117,6 +117,20 @@ mixin ClientNavigationFacade
   }
 
   void selectDefaultConversationAgent({bool preferDirectAgent = false}) {
+    // Relaunch restores the conversation the user last worked in; the default
+    // selection only applies when there is nothing to restore. The restore
+    // validates the agent itself, so it wins over `preferDirectAgent` too.
+    if (applyLastUsedConversationRestore()) {
+      return;
+    }
+    // Only an absent selection is defaulted. An existing selection (the
+    // user's active conversation) is preserved even when the agent is
+    // temporarily missing from this scan's results: a transient probe failure
+    // must not kick the user out of the conversation, and the selection
+    // reconnects once the agent is discovered again.
+    if (selectedConversationAgentId.isNotEmpty) {
+      return;
+    }
     final visibleTargets = scannedTargets
         .where((target) => target.isConversationAgent)
         .where((target) => !isAgentOrchestrationTargetId(target.target))

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import 'package:licoup/src/application/controller/client_controller.dart';
+import 'package:licoup/src/application/features/models/controller/llm_gateway_lifecycle_controller.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
@@ -87,7 +88,9 @@ final class _StartupAutostartCardState extends State<StartupAutostartCard> {
         args.addAll(['--silent', silent ? 'true' : 'false']);
       }
       if (component == 'gateway') {
-        final port = widget.controller.llmGatewayLifecycleController.port;
+        final port =
+            widget.controller.llmGatewayLifecycleController.port ??
+            defaultLlmGatewayPort;
         args.addAll(['--port', '$port']);
       }
       final payload = await widget.controller.agentService.runCli(args);

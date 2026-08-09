@@ -8,6 +8,7 @@ import 'package:licoup/src/frontend/features/agents/ui/agent_orchestration_polic
 import 'package:licoup/src/frontend/features/agents/ui/ensure_main_agent_subagent_mcp.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/agent_brand_icon.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 export 'package:licoup/src/frontend/features/agents/ui/agent_orchestration_policy_dialog.dart';
@@ -31,7 +32,7 @@ final class AgentOrchestrationPolicyHeaderControls extends StatelessWidget {
     // The whole pill is the edit affordance: one tap target, one tooltip.
     return Tooltip(
       message: strings.editMainAgent,
-      waitDuration: const Duration(milliseconds: 400),
+      waitDuration: LicoMotion.tooltipWait,
       child: Semantics(
         button: true,
         child: MouseRegion(
