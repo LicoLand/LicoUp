@@ -247,7 +247,8 @@ function validateReleaseTopology() {
   );
   for (const token of [
     'keyUsage=critical,digitalSignature',
-    'security add-trusted-cert -d -r trustRoot',
+    'sudo -n security add-trusted-cert -d -r trustRoot -p codeSign',
+    '-k /Library/Keychains/System.keychain',
     'security find-identity -v -p codesigning',
     '"${existing_keychains[@]}"',
   ]) {
