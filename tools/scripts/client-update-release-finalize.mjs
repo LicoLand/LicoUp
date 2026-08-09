@@ -37,6 +37,13 @@ function fail(code) {
 }
 
 function run(command, args, { env = process.env } = {}) {
+  const stage = command === "gh"
+    ? `gh_${String(args[0] || "unknown")}_${String(args[1] || "unknown")}`
+    : command === "git"
+      ? "git_revision"
+      : command === process.execPath
+        ? "manifest_sign"
+        : "unknown";
   const result = spawnSync(command, args, {
     cwd: repoRoot,
     env,
@@ -44,7 +51,7 @@ function run(command, args, { env = process.env } = {}) {
     stdio: ["ignore", "pipe", "pipe"],
     maxBuffer: 4 * 1024 * 1024,
   });
-  if (result.error || result.status !== 0) fail("update_release_command_failed");
+  if (result.error || result.status !== 0) fail(`update_release_command_failed_${stage}`);
   return result.stdout.trim();
 }
 
@@ -141,16 +148,13 @@ function releaseDetails(tag) {
 }
 
 function uploadMissing(tag, directory, names, release) {
-  const remote = new Set(release.assets.map(({ name }) => name));
+  const remote = new Map(release.assets.map((asset) => [asset.name, asset]));
   for (const name of names) {
     const source = regularFile(path.join(directory, name));
     if (remote.has(name)) {
-      const existingRoot = path.join(directory, "existing");
-      mkdirSync(existingRoot, { recursive: true, mode: 0o700 });
-      run("gh", ["release", "download", tag, "--repo", repository, "--pattern", name, "--dir", existingRoot]);
-      const existing = regularFile(path.join(existingRoot, name));
-      if (statSync(existing).size !== statSync(source).size ||
-          sha256File(existing) !== sha256File(source)) fail("update_release_asset_conflict");
+      const existing = remote.get(name);
+      if (existing?.size !== statSync(source).size ||
+          existing?.digest !== sha256File(source)) fail("update_release_asset_conflict");
       continue;
     }
     run("gh", ["release", "upload", tag, "--repo", repository, source]);
@@ -209,9 +213,11 @@ function finalize(options) {
     }
     const verifyRoot = path.join(root, "verify");
     mkdirSync(verifyRoot, { mode: 0o700 });
-    for (const name of [...expectedNames, manifestName]) {
-      run("gh", ["release", "download", options.tag, "--repo", repository, "--pattern", name, "--dir", verifyRoot]);
-    }
+    run("gh", [
+      "release", "download", options.tag, "--repo", repository,
+      ...[...expectedNames, manifestName].flatMap((name) => ["--pattern", name]),
+      "--dir", verifyRoot,
+    ]);
     exactFiles(verifyRoot, [...expectedNames, manifestName]);
     verifyManifest(path.join(verifyRoot, manifestName), path.join(verifyRoot, artifactName), options.version, options.tag);
     if (options.publish === "true" && release.isDraft) {
