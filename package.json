@@ -66,6 +66,7 @@
     "client:verify:agent-conversations": "node tools/scripts/client-agent-conversation-verify.mjs",
     "client:verify:agent-conversations:live": "node tools/scripts/client-agent-conversation-verify.mjs --live",
     "client:verify:agent-conversations:release-ui": "node tools/scripts/client-agent-conversation-verify.mjs --release-ui",
+    "client:verify:agent-conversations:release-ci": "npm run client:verify:agent-conversation-parity && npm run client:verify:agent-conversations:self-test && npm run client:verify:agent-conversations:product-e2e:self-test",
     "client:verify:agent-conversations:release-ready": "node tools/scripts/client-agent-conversation-parity-reducer.mjs --check --require-ready",
     "client:verify:cursor-conversation-gate": "node tools/scripts/client-cursor-conversation-gate.mjs",
     "client:verify:codex-conversation-gate": "node tools/scripts/cargo-client.mjs build --manifest-path crates/licoup-native/Cargo.toml --bin licoup-cli && node tools/scripts/client-up-local-service-conversation-gate.mjs --agent codex",
