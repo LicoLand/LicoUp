@@ -109,8 +109,8 @@ jobs:
           security import "$RUNNER_TEMP/lico-local-integrity.p12" \
             -k "$RUNNER_TEMP/lico-local-integrity.keychain-db" \
             -P github-artifact -T /usr/bin/codesign
-          security add-trusted-cert -d -r trustRoot \
-            -k "$RUNNER_TEMP/lico-local-integrity.keychain-db" \
+          sudo -n security add-trusted-cert -d -r trustRoot -p codeSign \
+            -k /Library/Keychains/System.keychain \
             "$RUNNER_TEMP/lico-local-integrity.pem"
           security set-key-partition-list -S apple-tool:,apple: -s \
             -k github-artifact "$RUNNER_TEMP/lico-local-integrity.keychain-db"
