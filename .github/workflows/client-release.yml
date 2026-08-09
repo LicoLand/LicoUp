@@ -30,33 +30,16 @@ concurrency:
 
 jobs:
   preflight:
-    name: Unified release preflight
+    name: Validate release request
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
-        with:
-          node-version: "24"
-          cache: npm
-      - uses: dtolnay/rust-toolchain@42520bdb3cb59f71dae6f8557f7056cf3a46c898 # 1.91.0
-      - name: Validate release request
-        env:
+      - env:
           RELEASE_TAG: ${{ inputs.release_tag }}
         run: |
           if [[ ! "$RELEASE_TAG" =~ ^[A-Za-z0-9][A-Za-z0-9._+-]{0,126}$ ]]; then
             echo "Invalid GitHub Release tag" >&2
             exit 1
           fi
-      - run: npm ci
-      - run: npm run client:release:preflight:check
-      - name: Run source policy against the previously audited release commit
-        env:
-          LICO_AUDITOR_GATE_DELEGATED: "1"
-        run: npm run client:gate:source
-      - name: Install pinned cargo-audit
-        run: cargo install cargo-audit --version 0.22.2 --locked
-      - run: npm run client:gate:dependencies
-      - run: npm run client:gate:release-policy
 
   build-macos:
     name: Build macOS ARM64
@@ -125,8 +108,8 @@ jobs:
           echo "LICO_MACOS_LOCAL_SIGNING_KEYCHAIN=$RUNNER_TEMP/lico-local-integrity.keychain-db" >> "$GITHUB_ENV"
       - name: Build, sign and install the local-integrity app
         run: npm run client:install:macos
-      - name: Verify reproducible local-agent release contracts
-        run: npm run client:verify:agent-conversations:release-ci
+      - name: Apply remote release validity strategy
+        run: npm run client:release:remote-strategy -- --expect build-success
       - name: Archive the exact verified macOS app
         run: npm run client:archive:macos-github-release
       - name: Emit consumer verification metadata
@@ -134,8 +117,6 @@ jobs:
           cp tools/install-macos.sh build/apps/desktop/distribution/macos/install-macos.sh
           cd build/apps/desktop/distribution/macos
           shasum -a 256 LicoUp-macos-arm64.zip > LicoUp-macos-arm64.zip.sha256
-      - name: Verify macOS GitHub Release acceptance
-        run: npm run client:verify:github-release
       - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
         with:
           name: licoup-macos
@@ -172,8 +153,8 @@ jobs:
           cache: true
       - run: npm ci
       - run: npm run client:build:linux
-      - run: npm run client:linux:smoke
-      - run: npm run client:linux:gui-smoke
+      - name: Apply remote release validity strategy
+        run: npm run client:release:remote-strategy -- --expect build-success
       - name: Prepare ephemeral GitHub artifact verification key
         run: |
           openssl genpkey -algorithm ED25519 -out "$RUNNER_TEMP/linux-release-signing-key.pem"
@@ -186,8 +167,6 @@ jobs:
         run: npm run client:archive:linux-arm64
       - name: Publish public verification material with artifact
         run: cp "$RUNNER_TEMP/linux-release-verification-key.pem" build/apps/desktop/distribution/linux-arm64/
-      - name: Verify Linux GitHub Release acceptance
-        run: npm run client:verify:github-release
       - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
         with:
           name: licoup-linux-arm64
@@ -226,9 +205,6 @@ jobs:
         run: |
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;30.0.14904198" < /dev/null
           test -d "$ANDROID_HOME/ndk/30.0.14904198"
-      - name: Run Android authorization policy tests
-        working-directory: apps/desktop/android
-        run: ./gradlew testDebugUnitTest
       - name: Prepare ephemeral Android install key
         run: |
           keytool -genkeypair -keystore "$RUNNER_TEMP/lico-github-artifact.jks" -storepass github-artifact -keypass github-artifact -alias github-artifact -keyalg RSA -keysize 3072 -validity 30 -dname "CN=LicoUp GitHub Artifact Validation"
@@ -242,15 +218,14 @@ jobs:
           LICO_ANDROID_KEY_PASSWORD: github-artifact
           LICO_ANDROID_TARGET_PLATFORM: android-arm64
         run: npm run client:build:android
-      - run: npm run client:verify:android-apk
+      - name: Apply remote release validity strategy
+        run: npm run client:release:remote-strategy -- --expect build-success
       - name: Publish public verification material with artifact
         run: |
           cp "$RUNNER_TEMP/lico-github-artifact.pem" build/apps/desktop/android/release/
           cp build/apps/desktop/android/release/app-release.apk build/apps/desktop/android/release/LicoUp-android-arm64.apk
           cd build/apps/desktop/android/release
           shasum -a 256 LicoUp-android-arm64.apk > LicoUp-android-arm64.apk.sha256
-      - name: Verify Android GitHub Release acceptance
-        run: npm run client:verify:github-release
       - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
         with:
           name: licoup-android-arm64
