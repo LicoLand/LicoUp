@@ -96,21 +96,21 @@ function validateTemplate() {
     assert(!workflow.includes(command), "release_remote_validation_forbidden");
   }
 
-  const [, , defaultRuleset, promotionRuleset] = buildRulesets(1);
+  const [, protectedReleaseRuleset] = buildRulesets(1);
   assert(
-    !defaultRuleset.rules.some(({ type }) => type === "required_linear_history"),
+    !protectedReleaseRuleset.rules.some(({ type }) => type === "required_linear_history"),
     "release_nightly_linear_history_conflict",
   );
-  const nightlyPullRequest = defaultRuleset.rules.find(({ type }) => type === "pull_request");
+  const nightlyPullRequest = protectedReleaseRuleset.rules.find(({ type }) => type === "pull_request");
   assert(
     JSON.stringify(nightlyPullRequest?.parameters?.allowed_merge_methods) === JSON.stringify(["merge"]),
     "release_nightly_ruleset_merge_method_invalid",
   );
   assert(
-    !promotionRuleset.rules.some(({ type }) => type === "required_linear_history"),
+    !protectedReleaseRuleset.rules.some(({ type }) => type === "required_linear_history"),
     "release_promotion_linear_history_conflict",
   );
-  const pullRequest = promotionRuleset.rules.find(({ type }) => type === "pull_request");
+  const pullRequest = protectedReleaseRuleset.rules.find(({ type }) => type === "pull_request");
   assert(
     JSON.stringify(pullRequest?.parameters?.allowed_merge_methods) === JSON.stringify(["merge"]),
     "release_promotion_ruleset_merge_method_invalid",
