@@ -221,6 +221,7 @@ function validateReleaseTopology() {
   const publisher = readText("tools/scripts/client-github-release-publish.mjs");
   const releaseEntry = readText("tools/scripts/client-release.mjs");
   const updateFinalizer = readText("tools/scripts/client-update-release-finalize.mjs");
+  const macosDistribution = readText("apps/desktop/scripts/build-macos-distribution.mjs");
   const catalog = readJson("tools/client-release-targets.json");
   assertIncludes(
     publisher,
@@ -310,6 +311,28 @@ function validateReleaseTopology() {
     "licoup-macos-update",
   ]) {
     assertIncludes(updateFinalizer, token, `macOS update finalizer is missing: ${token}`);
+  }
+  assertIncludes(
+    macosDistribution,
+    '["-c", "-k", "--keepParent", appPath, archivePath]',
+    "macOS GitHub archive must place LicoUp.app directly at the ZIP root",
+  );
+  assertExcludes(
+    macosDistribution,
+    '["-c", "-k", "--keepParent", result.runnable.root, archivePath]',
+    "macOS GitHub archive must not wrap LicoUp.app in its runnable directory",
+  );
+  for (const token of [
+    "new Map(release.assets.map((asset) => [asset.name, asset]))",
+    "existing?.digest !== sha256File(source)",
+    '...[...expectedNames, manifestName].flatMap((name) => ["--pattern", name])',
+    "update_release_command_failed_${stage}",
+  ]) {
+    assertIncludes(
+      updateFinalizer,
+      token,
+      `macOS update finalizer recovery contract is missing: ${token}`,
+    );
   }
   assertIncludes(
     workflow,
