@@ -153,13 +153,13 @@ function sameRepositoryPayload(base, head) {
 
 export function runSelfTest() {
   const policyCases = [
-    ["temporary to nightly", true, "nightly", "agent/security-review"],
+    ["temporary to nightly", true, "nightly", "feature/security-review"],
     ["nightly to stable", true, "stable", "nightly"],
     ["stable to release", true, "release", "stable"],
     ["stable to nightly", false, "nightly", "stable"],
-    ["temporary to stable", false, "stable", "agent/security-review"],
+    ["temporary to stable", false, "stable", "feature/security-review"],
     ["nightly to release", false, "release", "nightly"],
-    ["temporary to retired main", false, "main", "agent/security-review"],
+    ["temporary to retired main", false, "main", "feature/security-review"],
     ["retired main to nightly", false, "nightly", "main"]
   ];
   for (const [label, expected, base, head] of policyCases) {
@@ -178,12 +178,12 @@ export function runSelfTest() {
     payload: {}
   });
   if (missingIdentity.ok) throw new Error("policy fixture failed: missing repository identity");
-  const crossRepository = sameRepositoryPayload("nightly", "agent/security-review");
+  const crossRepository = sameRepositoryPayload("nightly", "feature/security-review");
   crossRepository.pull_request.head.repo.full_name = "fork/repository";
   if (!evaluateBranchFlow({
     eventName: "pull_request",
     baseRef: "nightly",
-    headRef: "agent/security-review",
+    headRef: "feature/security-review",
     payload: crossRepository
   }).ok) throw new Error("policy fixture failed: fork source to nightly");
   crossRepository.pull_request.base.ref = "stable";

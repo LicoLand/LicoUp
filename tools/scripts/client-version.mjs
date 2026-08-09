@@ -7,7 +7,8 @@ import { sanitizeError } from "./lib/sanitize-error.mjs";
 
 const repoRoot = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const versionManifestPath = path.join(repoRoot, "tools", "client-version.json");
-const versionManifestSchema = "v0.0.1:client-version-manifest-1";
+const versionManifestSchema = "v0.0.1:client-version-manifest-2";
+const releaseTargets = new Set(["macos-arm64", "linux-glibc-arm64", "android-arm64"]);
 
 function readJson(relativePath) {
   return JSON.parse(readFileSync(path.join(repoRoot, relativePath), "utf8"));
@@ -40,6 +41,9 @@ function validateManifest(manifest) {
   }
   if (!Number.isInteger(manifest.buildNumber) || manifest.buildNumber < 1) {
     throw new Error(`Invalid buildNumber in tools/client-version.json: ${manifest.buildNumber}`);
+  }
+  if (manifest.releaseTarget !== null && !releaseTargets.has(manifest.releaseTarget)) {
+    throw new Error(`Invalid releaseTarget in tools/client-version.json: ${manifest.releaseTarget}`);
   }
 }
 
@@ -323,7 +327,7 @@ function checkVersion() {
     String(manifest.buildNumber)
   ) && ok;
 
-  console.log(JSON.stringify({ ok, productVersion: manifest.productVersion, buildNumber: manifest.buildNumber, records }, null, 2));
+  console.log(JSON.stringify({ ok, productVersion: manifest.productVersion, buildNumber: manifest.buildNumber, releaseTarget: manifest.releaseTarget, records }, null, 2));
   if (!ok) {
     process.exitCode = 1;
   }
@@ -339,6 +343,9 @@ function updateManifest(argv) {
       index += 1;
     } else if (arg === "--build-number" && next) {
       manifest.buildNumber = Number(next);
+      index += 1;
+    } else if (arg === "--target" && next) {
+      manifest.releaseTarget = next;
       index += 1;
     } else {
       throw new Error(`Unknown client version option: ${arg}`);

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import {
@@ -78,6 +79,25 @@ test("identity-shaped Agent lines are rejected without banning product discussio
   );
 });
 
+test("remote identity policy admits only verified GitHub service commits as a committer exception", () => {
+  const workflow = readFileSync(
+    new URL("../../../.github/workflows/commit-identity.yml", import.meta.url),
+    "utf8",
+  );
+  for (const required of [
+    ".commit.committer.name == $login",
+    ".commit.committer.email == $email",
+    '.committer.login == "web-flow"',
+    '.commit.committer.name == "GitHub"',
+    '.commit.committer.email == "noreply@github.com"',
+    ".commit.verification.verified == true",
+    '.commit.verification.reason == "valid"',
+  ]) {
+    assert.match(workflow, new RegExp(required.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&"), "u"));
+  }
+  assert.doesNotMatch(workflow, /\.parents \| length/u);
+});
+
 test("Rulesets cover all branch metadata and protect the default branch without bypass", () => {
   const integrationId = 15368;
   const rulesets = buildRulesets(integrationId);
@@ -107,6 +127,13 @@ test("Rulesets cover all branch metadata and protect the default branch without 
 
   assert.deepEqual(creationRuleset.conditions.ref_name.include, ["~ALL"]);
   assert.deepEqual(creationRuleset.conditions.ref_name.exclude, [
+    "refs/heads/feature/**/*",
+    "refs/heads/fix/**/*",
+    "refs/heads/docs/**/*",
+    "refs/heads/refactor/**/*",
+    "refs/heads/test/**/*",
+    "refs/heads/chore/**/*",
+    "refs/heads/release-candidate/**/*",
     "refs/heads/stable",
     "refs/heads/release",
   ]);
@@ -116,12 +143,16 @@ test("Rulesets cover all branch metadata and protect the default branch without 
   for (const requiredType of [
     "deletion",
     "non_fast_forward",
-    "required_linear_history",
     "pull_request",
     "required_status_checks",
   ]) {
     assert.ok(defaultRuleset.rules.some(({ type }) => type === requiredType));
   }
+  assert.ok(!defaultRuleset.rules.some(({ type }) => type === "required_linear_history"));
+  assert.deepEqual(
+    defaultRuleset.rules.find(({ type }) => type === "pull_request").parameters.allowed_merge_methods,
+    ["merge"],
+  );
   const statusRule = defaultRuleset.rules.find(
     ({ type }) => type === "required_status_checks",
   );
@@ -136,10 +167,14 @@ test("Rulesets cover all branch metadata and protect the default branch without 
   for (const requiredType of [
     "deletion",
     "non_fast_forward",
-    "required_linear_history",
     "pull_request",
     "required_status_checks",
   ]) {
     assert.ok(promotionRuleset.rules.some(({ type }) => type === requiredType));
   }
+  assert.ok(!promotionRuleset.rules.some(({ type }) => type === "required_linear_history"));
+  assert.deepEqual(
+    promotionRuleset.rules.find(({ type }) => type === "pull_request").parameters.allowed_merge_methods,
+    ["merge"],
+  );
 });

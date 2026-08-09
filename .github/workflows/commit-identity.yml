@@ -85,10 +85,23 @@ jobs:
                 $commits[];
                 .author.login == $login and
                 .author.id == $account_id and
-                .committer.login == $login and
-                .committer.id == $account_id and
-                .commit.author.name == $login and
-                .commit.author.email == $email and
+                (
+                  (
+                    .committer.login == $login and
+                    .committer.id == $account_id and
+                    .commit.author.name == $login and
+                    .commit.author.email == $email and
+                    .commit.committer.name == $login and
+                    .commit.committer.email == $email
+                  ) or
+                  (
+                    .committer.login == "web-flow" and
+                    .commit.committer.name == "GitHub" and
+                    .commit.committer.email == "noreply@github.com" and
+                    .commit.verification.verified == true and
+                    .commit.verification.reason == "valid"
+                  )
+                ) and
                 (.commit.message | has_forbidden_attribution | not)
               )
             ' \

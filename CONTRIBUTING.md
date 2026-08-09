@@ -79,9 +79,44 @@ contact details is false identity information and a provenance violation; the
 local hooks and remote Rulesets reject it. The developer must review and accept
 the change personally before committing it.
 
-The upstream repository rejects creation of additional branches so that a
-branch's first commit cannot evade metadata enforcement. Contributors must
-push their branch to a fork and open a pull request against `nightly`.
+Every change starts on a temporary upstream branch. Name an ordinary branch
+with an action prefix that explains its purpose: `feature/<topic>`,
+`fix/<topic>`, `docs/<topic>`, `refactor/<topic>`, `test/<topic>`, or
+`chore/<topic>`. Release candidates use
+`release-candidate/v<version>-<target>`. The all-branch metadata Ruleset applies
+while any temporary branch is created, so its first commit cannot evade
+identity enforcement. Merge a temporary branch only into `nightly` through a
+pull request that creates a merge commit. Do not rebase or squash it into
+`nightly`, and never write a change directly to a long-lived branch.
+
+## Release preflight
+
+Release preparation is defined by `tools/client-release-template.json`. Do not
+reconstruct runner commands by trial and error. Run one bounded command for
+each stage:
+
+```bash
+npm run client:release -- push nightly --version 0.1.1 --target macos-arm64
+npm run client:release -- push stable --version 0.1.1 --target macos-arm64
+npm run client:release -- push release --version 0.1.1 --target macos-arm64
+npm run client:release -- publish --version 0.1.1 --target macos-arm64
+```
+
+The first command creates `release-candidate/v<version>-<target>` before changing any
+file. On that temporary branch it records one release target, changes the version
+once, runs only the common and selected-platform gates required by the pull request, and creates exactly one release
+commit. Only after the temporary branch passes every declared required
+LicoUp pull-request check does it create a merge commit in `nightly`; release
+candidates are never rebased or squashed into `nightly`. The next two commands independently
+promote the same target through `nightly -> stable` and `stable -> release`; a
+target mismatch fails closed. The last command only
+performs artifact installation, live release acceptance, archiving and publishing,
+then monitors to a terminal result without an operator-side timeout.
+For macOS, that same `publish` action also downloads the workflow's update
+artifact, signs `LicoUp-update-stable.json` with the locally held update keys,
+verifies the remote update asset set, and only then makes the Release public.
+Each command is independently resumable. Active Rulesets must not be disabled,
+bypassed, or changed during any stage.
 
 ## Privacy rules
 
