@@ -45,6 +45,7 @@ export const CLIENT_GATE_LANES = Object.freeze({
   ]),
   "release-policy": freezeLane([
     "client:release:self-test",
+    "client:update-release:finalize:self-test",
     "client:release:preflight:check",
     "client:verify:release-artifact-io:self-test",
     "client:verify:release-dependency-receipts:self-test",
@@ -190,6 +191,7 @@ function isReleasePolicyPath(file) {
   return (
     RELEASE_AUTHORITY_PATHS.has(file) ||
     file.startsWith("tools/scripts/client-release") ||
+    file.startsWith("tools/scripts/client-update-release") ||
     file.startsWith("tools/scripts/client-github-release") ||
     file.startsWith("tools/scripts/client-consumer-verification") ||
     file.startsWith("tools/scripts/client-artifact-verification") ||
