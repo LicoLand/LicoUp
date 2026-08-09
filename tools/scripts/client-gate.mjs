@@ -79,6 +79,7 @@ function inputBlock(workflow, inputId) {
 function validatePackageTopology() {
   const packageJson = readJson("package.json");
   const scripts = packageJson.scripts || {};
+  const remoteReleaseStrategies = readJson("tools/client-remote-release-strategies.json");
   const expectedGateCommands = {
     "client:gate:topology": "node tools/scripts/client-gate.mjs topology",
     "client:gate:self-test": "node --test tests/contract/client/client-gate-policy.test.mjs",
@@ -96,16 +97,31 @@ function validatePackageTopology() {
     }
   }
   if (
+    scripts["client:release:remote-strategy"] !==
+    "node tools/scripts/client-remote-release-strategy.mjs"
+  ) {
+    fail("package.json must bind the canonical remote release strategy command");
+  }
+  if (
+    remoteReleaseStrategies?.schemaVersion !==
+      "licoup.client-remote-release-strategies.v1" ||
+    remoteReleaseStrategies?.groupId !== "client-remote-release-validity" ||
+    JSON.stringify(remoteReleaseStrategies?.activeStrategyIds) !==
+      JSON.stringify(["build-success"]) ||
+    remoteReleaseStrategies?.strategies?.length !== 1 ||
+    remoteReleaseStrategies.strategies[0]?.id !== "build-success" ||
+    remoteReleaseStrategies.strategies[0]?.releaseValidWhen !==
+      "selected-target-build-command-succeeded" ||
+    JSON.stringify(remoteReleaseStrategies.strategies[0]?.remoteValidationCommands) !==
+      JSON.stringify([])
+  ) {
+    fail("remote release strategy group must activate only build-success");
+  }
+  if (
     scripts["client:verify:agent-conversations:release-ready"] !==
     "node tools/scripts/client-agent-conversation-parity-reducer.mjs --check --require-ready"
   ) {
     fail("package.json must bind the canonical conversation release-readiness gate");
-  }
-  if (
-    scripts["client:verify:agent-conversations:release-ci"] !==
-    "npm run client:verify:agent-conversation-parity && npm run client:verify:agent-conversations:self-test && npm run client:verify:agent-conversations:product-e2e:self-test"
-  ) {
-    fail("package.json must bind the canonical reproducible conversation release gate");
   }
   for (const [lane, laneScripts] of Object.entries(CLIENT_GATE_LANES)) {
     for (const script of laneScripts) {
@@ -231,26 +247,22 @@ function validateReleaseTopology() {
     fail("release workflow jobs must match the independent target topology");
   }
   const preflight = jobBlock(workflow, "preflight");
-  for (const command of [
-    "npm run client:release:preflight:check",
-    "npm run client:gate:source",
-    "npm run client:gate:dependencies",
-    "npm run client:gate:release-policy",
-  ]) {
-    assertIncludes(preflight, command, `unified release preflight must invoke ${command}`);
+  for (const command of ["npm run ", "cargo ", "flutter "]) {
+    assertExcludes(
+      preflight,
+      command,
+      `remote release request validation must not repeat local gates: ${command.trim()}`,
+    );
   }
   assertExcludes(workflow, "timeout-minutes:", "release workflow must use the platform default job timeout");
   const macosJob = jobBlock(workflow, "build-macos");
-  assertIncludes(
-    macosJob,
-    "npm run client:verify:agent-conversations:release-ci",
-    "macOS release build must require reproducible local-agent contract checks",
-  );
-  assertExcludes(
-    macosJob,
-    "npm run client:verify:agent-conversations:release-ui",
-    "GitHub-hosted release builds must not require machine-local third-party agent runtimes",
-  );
+  for (const command of ["client:verify:", "client:gate:", "flutter test", "cargo test"]) {
+    assertExcludes(
+      macosJob,
+      command,
+      `GitHub-hosted macOS publication must build without repeating local validation: ${command}`,
+    );
+  }
   assertIncludes(
     macosJob,
     "name: licoup-macos-update",
@@ -294,6 +306,11 @@ function validateReleaseTopology() {
     "client-github-release-${{ inputs.release_tag }}-${{ inputs.target }}",
     "release builds must be concurrent across different targets",
   );
+  const buildCommandByTarget = {
+    "macos-arm64": "npm run client:install:macos",
+    "linux-glibc-arm64": "npm run client:build:linux",
+    "android-arm64": "npm run client:build:android",
+  };
   for (const [target, topology] of Object.entries(CLIENT_RELEASE_TARGETS)) {
     const build = jobBlock(workflow, topology.buildJob);
     const publish = jobBlock(workflow, topology.publishJob);
@@ -312,6 +329,31 @@ function validateReleaseTopology() {
       "needs: preflight",
       `release build ${topology.buildJob} must depend on the unified preflight`,
     );
+    const buildCommand = buildCommandByTarget[target];
+    const strategyCommand =
+      "npm run client:release:remote-strategy -- --expect build-success";
+    assertIncludes(build, buildCommand,
+      `release build ${topology.buildJob} must execute its selected-target build`);
+    assertIncludes(build, strategyCommand,
+      `release build ${topology.buildJob} must apply the active build-success strategy`);
+    if (build.indexOf(strategyCommand) < build.indexOf(buildCommand)) {
+      fail(`release build ${topology.buildJob} applies its strategy before the build succeeds`);
+    }
+    for (const command of [
+      "client:verify:",
+      "client:gate:",
+      "flutter test",
+      "cargo test",
+      "gradlew test",
+      "client:linux:smoke",
+      "client:linux:gui-smoke",
+    ]) {
+      assertExcludes(
+        build,
+        command,
+        `remote release strategy build-success forbids validation command: ${command}`,
+      );
+    }
     assertIncludes(
       publish,
       `inputs.target == '${target}'`,
