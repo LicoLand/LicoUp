@@ -18,6 +18,8 @@ try {
   const checksumName = `${artifactName}.sha256`;
   const checksumBytes = Buffer.from(`${artifactSha256}  ${artifactName}\n`, "utf8");
   const name = "LicoUp-consumer-verification.json";
+  const installerName = "install-macos.sh";
+  const installerBytes = Buffer.from("#!/bin/bash\n", "utf8");
   const bytes = Buffer.from(`${JSON.stringify({
     schemaVersion: "licomesh.consumer-verification-manifest.v1",
     artifactName: "LicoUp",
@@ -33,10 +35,12 @@ try {
   })}\n`, "utf8");
   writeFileSync(path.join(root, artifactName), artifactBytes);
   writeFileSync(path.join(root, checksumName), checksumBytes);
+  writeFileSync(path.join(root, installerName), installerBytes);
   writeFileSync(path.join(root, name), bytes);
   const localAssets = [
     { name: artifactName, bytes: artifactBytes },
     { name: checksumName, bytes: checksumBytes },
+    { name: installerName, bytes: installerBytes },
     { name, bytes },
   ].map((entry) => ({
     name: entry.name,

@@ -22,7 +22,7 @@ const specs = Object.freeze({
   "LicoUp-macos-arm64.zip": {
     platform: "macos-arm64",
     checksum: "LicoUp-macos-arm64.zip.sha256",
-    files: ["LicoUp-macos-arm64.zip", "LicoUp-macos-arm64.zip.sha256"],
+    files: ["LicoUp-macos-arm64.zip", "LicoUp-macos-arm64.zip.sha256", "install-macos.sh"],
   },
   "LicoUp-linux-arm64.tar.gz": {
     platform: "linux-glibc-arm64",
