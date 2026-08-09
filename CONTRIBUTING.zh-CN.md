@@ -90,7 +90,9 @@ npm run client:release -- publish --version 0.1.1 --target macos-arm64
 声明为必需的 LicoUp Pull Request 校验后，必须创建合并提交进入 `nightly`，不得以 rebase
 或 squash 方式合入。后两个推送命令分别独立完成
 同一目标的 `nightly -> stable` 与 `stable -> release`，目标不一致时必须失败关闭；最后一个命令才执行该目标的安装、实时发布验收、归档和发布，并持续监控到明确
-结果，不设置操作者侧终止超时。每个命令都可以独立重跑。任何阶段都严禁关闭、绕过或
+结果，不设置操作者侧终止超时。macOS 的同一 `publish` 动作还必须下载远端构建的升级
+产物，使用仅存于本机的升级密钥签署 `LicoUp-update-stable.json`，验证远端升级资产集合后
+才公开 Release。每个命令都可以独立重跑。任何阶段都严禁关闭、绕过或
 修改活动 Rulesets。
 
 ## 隐私规则
