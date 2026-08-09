@@ -229,12 +229,16 @@ function buildManifest({ tag, assetsRoot }) {
 }
 
 function verifyRemoteAssets({ tag, repository, assetsRoot }) {
-  const encodedTag = encodeURIComponent(tag);
   const remote = run(
     "gh",
     [
-      "api",
-      `repos/${repository}/releases/tags/${encodedTag}`,
+      "release",
+      "view",
+      tag,
+      "--repo",
+      repository,
+      "--json",
+      "assets",
       "--jq",
       ".assets | map({name, size, digest})",
     ],
