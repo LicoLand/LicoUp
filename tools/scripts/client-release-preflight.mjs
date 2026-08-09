@@ -67,6 +67,13 @@ function validateTemplate() {
     "release_monitoring_timeout_invalid",
   );
   assert(
+    template.publication?.remoteValidity?.strategyGroup ===
+      "tools/client-remote-release-strategies.json" &&
+      JSON.stringify(template.publication?.remoteValidity?.activeStrategyIds) ===
+        JSON.stringify(["build-success"]),
+    "release_remote_validity_strategy_invalid",
+  );
+  assert(
     template.publication?.macosUpdate?.workflowArtifact === "licoup-macos-update" &&
       template.publication?.macosUpdate?.manifest === "LicoUp-update-stable.json" &&
       template.publication?.macosUpdate?.finalizer === "tools/scripts/client-update-release-finalize.mjs" &&
@@ -79,7 +86,15 @@ function validateTemplate() {
   assert(existsSync(workflowPath), "release_workflow_missing");
   const workflow = readFileSync(workflowPath, "utf8");
   assert(!workflow.includes("timeout-minutes:"), "release_workflow_timeout_forbidden");
-  assert(workflow.includes("npm run client:release:preflight:check"), "release_remote_preflight_missing");
+  assert(
+    workflow.includes(
+      "npm run client:release:remote-strategy -- --expect build-success",
+    ),
+    "release_remote_strategy_missing",
+  );
+  for (const command of ["client:gate:", "client:verify:", "flutter test", "cargo test"]) {
+    assert(!workflow.includes(command), "release_remote_validation_forbidden");
+  }
 
   const [, , defaultRuleset, promotionRuleset] = buildRulesets(1);
   assert(
