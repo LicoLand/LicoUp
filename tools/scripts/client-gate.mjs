@@ -246,6 +246,12 @@ function validateReleaseTopology() {
     "macOS release build must preserve its independently signed update artifact",
   );
   for (const token of [
+    "cp tools/install-macos.sh build/apps/desktop/distribution/macos/install-macos.sh",
+    "build/apps/desktop/distribution/macos/install-macos.sh",
+  ]) {
+    assertIncludes(macosJob, token, `macOS release must publish the one-line installer: ${token}`);
+  }
+  for (const token of [
     'keyUsage=critical,digitalSignature',
     'sudo -n security add-trusted-cert -d -r trustRoot -p codeSign',
     '-k /Library/Keychains/System.keychain',

@@ -131,6 +131,7 @@ jobs:
         run: npm run client:archive:macos-github-release
       - name: Emit consumer verification metadata
         run: |
+          cp tools/install-macos.sh build/apps/desktop/distribution/macos/install-macos.sh
           cd build/apps/desktop/distribution/macos
           shasum -a 256 LicoUp-macos-arm64.zip > LicoUp-macos-arm64.zip.sha256
       - name: Verify macOS GitHub Release acceptance
@@ -141,6 +142,7 @@ jobs:
           path: |
             build/apps/desktop/distribution/macos/LicoUp-macos-arm64.zip
             build/apps/desktop/distribution/macos/LicoUp-macos-arm64.zip.sha256
+            build/apps/desktop/distribution/macos/install-macos.sh
           if-no-files-found: error
       - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
         with:
