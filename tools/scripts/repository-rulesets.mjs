@@ -1,20 +1,25 @@
 #!/usr/bin/env node
 
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
 
 const repository = "LicoLand/LicoUp";
 const allBranchesRulesetName = "LicoUp commit identity — all branches";
-const branchCreationRulesetName = "LicoUp upstream branch creation";
-const defaultBranchRulesetName = "LicoUp protected default branch";
-const promotionBranchesRulesetName = "LicoUp protected promotion branches";
-const identityStatusContext = "LicoUp / commit identity";
+const promotionBranchesRulesetName = "LicoUp protected release flow";
+const identityStatusContext = "Commit identity";
+const requiredStatusContexts = Object.freeze([
+  "Branch flow",
+  identityStatusContext,
+  "Client required",
+  "Auditor",
+]);
 const githubNoreplyHostPattern = ["users", "noreply", "github", "com"].join("\\.");
 const canonicalNoreplyPattern = `^[0-9]+\\+[A-Za-z0-9][A-Za-z0-9-]{0,38}@${githubNoreplyHostPattern}$`;
-const agentEmailPattern =
-  "(?i)(claude|cursor|copilot|codex|chatgpt|gemini|anthropic|openai|(^|[+._-])(agent|bot)([+._-]|@))";
-const forbiddenAttributionPattern =
+const canonicalCommitterPattern =
+  `(?:${canonicalNoreplyPattern.slice(1, -1)}|noreply@github\\.com)`;
+const forbiddenCommitMessagePattern =
   "(?i)(^|\\n)[ \\t]*((co-authored-by|co-committed-by|signed-off-by|authored-by|assisted-by|generated-by|written-by|pair-programmed-by|contributed-by|reviewed-by|suggested-by|reported-by)[ \\t]*:|(claude( code)?|cursor( agent)?|github copilot|copilot|codex|chatgpt|gemini|anthropic|openai|[^\\n<]*(agent|bot))[^\\n]*<[^\\n>]+>)";
 
 class RulesetError extends Error {
@@ -67,6 +72,20 @@ function metadataRule(type, name, pattern, negate) {
   };
 }
 
+function requiredStatusChecksRule(actionsIntegrationId) {
+  return {
+    type: "required_status_checks",
+    parameters: {
+      do_not_enforce_on_create: true,
+      required_status_checks: requiredStatusContexts.map((context) => ({
+        context,
+        integration_id: actionsIntegrationId,
+      })),
+      strict_required_status_checks_policy: true,
+    },
+  };
+}
+
 export function buildRulesets(actionsIntegrationId) {
   if (!Number.isSafeInteger(actionsIntegrationId) || actionsIntegrationId <= 0) {
     reject("ACTIONS_INTEGRATION_INVALID", "The GitHub Actions integration ID is invalid.");
@@ -89,76 +108,16 @@ export function buildRulesets(actionsIntegrationId) {
         ),
         metadataRule(
           "committer_email_pattern",
-          "Committer email must not identify an Agent",
-          agentEmailPattern,
-          true,
+          "Committer must be the developer or GitHub verified merge service",
+          `^${canonicalCommitterPattern}$`,
+          false,
         ),
         metadataRule(
           "commit_message_pattern",
           "Attribution trailers and Agent-shaped identity lines are forbidden",
-          forbiddenAttributionPattern,
+          forbiddenCommitMessagePattern,
           true,
         ),
-      ],
-    },
-    {
-      name: branchCreationRulesetName,
-      target: "branch",
-      enforcement: "active",
-      bypass_actors: [],
-      conditions: {
-        ref_name: {
-          include: ["~ALL"],
-          exclude: [
-            "refs/heads/feature/**/*",
-            "refs/heads/fix/**/*",
-            "refs/heads/docs/**/*",
-            "refs/heads/refactor/**/*",
-            "refs/heads/test/**/*",
-            "refs/heads/chore/**/*",
-            "refs/heads/release-candidate/**/*",
-            "refs/heads/stable",
-            "refs/heads/release",
-          ],
-        },
-      },
-      rules: [{ type: "creation" }],
-    },
-    {
-      name: defaultBranchRulesetName,
-      target: "branch",
-      enforcement: "active",
-      bypass_actors: [],
-      conditions: {
-        ref_name: { include: ["~DEFAULT_BRANCH"], exclude: [] },
-      },
-      rules: [
-        { type: "deletion" },
-        { type: "non_fast_forward" },
-        {
-          type: "pull_request",
-          parameters: {
-            allowed_merge_methods: ["merge"],
-            dismiss_stale_reviews_on_push: true,
-            require_code_owner_review: false,
-            require_last_push_approval: false,
-            required_approving_review_count: 0,
-            required_review_thread_resolution: true,
-          },
-        },
-        {
-          type: "required_status_checks",
-          parameters: {
-            do_not_enforce_on_create: true,
-            required_status_checks: [
-              {
-                context: identityStatusContext,
-                integration_id: actionsIntegrationId,
-              },
-            ],
-            strict_required_status_checks_policy: true,
-          },
-        },
       ],
     },
     {
@@ -168,7 +127,11 @@ export function buildRulesets(actionsIntegrationId) {
       bypass_actors: [],
       conditions: {
         ref_name: {
-          include: ["refs/heads/stable", "refs/heads/release"],
+          include: [
+            "refs/heads/nightly",
+            "refs/heads/stable",
+            "refs/heads/release",
+          ],
           exclude: [],
         },
       },
@@ -186,26 +149,44 @@ export function buildRulesets(actionsIntegrationId) {
             required_review_thread_resolution: true,
           },
         },
-        {
-          type: "required_status_checks",
-          parameters: {
-            do_not_enforce_on_create: true,
-            required_status_checks: [
-              {
-                context: identityStatusContext,
-                integration_id: actionsIntegrationId,
-              },
-            ],
-            strict_required_status_checks_policy: true,
-          },
-        },
+        requiredStatusChecksRule(actionsIntegrationId),
       ],
     },
   ];
 }
 
-function assertAdministration() {
-  gh(["auth", "status"], {
+function canonicalJson(value) {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+  if (value && typeof value === "object") {
+    return `{${Object.keys(value).sort()
+      .map((key) => `${JSON.stringify(key)}:${canonicalJson(value[key])}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
+export function rulesetPayloadMatches(actual, expected) {
+  if (Array.isArray(expected)) {
+    if (!Array.isArray(actual) || actual.length !== expected.length) return false;
+    const consumed = new Set();
+    return expected.every((wanted) => {
+      const index = actual.findIndex((candidate, candidateIndex) =>
+        !consumed.has(candidateIndex) && rulesetPayloadMatches(candidate, wanted));
+      if (index < 0) return false;
+      consumed.add(index);
+      return true;
+    });
+  }
+  if (expected && typeof expected === "object") {
+    if (!actual || typeof actual !== "object" || Array.isArray(actual)) return false;
+    return Object.entries(expected).every(([key, value]) =>
+      Object.hasOwn(actual, key) && rulesetPayloadMatches(actual[key], value));
+  }
+  return Object.is(actual, expected);
+}
+
+function assertRepositoryAccess({ requireAdmin }) {
+  gh(["api", "user", "--jq", ".login"], {
     code: "GH_AUTH_REQUIRED",
     message: "GitHub CLI authentication is required.",
   });
@@ -221,7 +202,10 @@ function assertAdministration() {
     if (error instanceof RulesetError) throw error;
     reject("REPOSITORY_RESPONSE_INVALID", "The repository metadata response is invalid.");
   }
-  if (details.full_name !== repository || details.permissions?.admin !== true) {
+  if (details.full_name !== repository) {
+    reject("REPOSITORY_RESPONSE_INVALID", "The repository identity does not match policy.");
+  }
+  if (requireAdmin && details.permissions?.admin !== true) {
     reject(
       "REMOTE_ADMIN_REQUIRED",
       "The authenticated GitHub CLI account needs Administration(write) on the target repository.",
@@ -258,6 +242,25 @@ function repositoryRulesets() {
   }
 }
 
+function repositoryRuleset(id) {
+  if (!Number.isSafeInteger(id) || id <= 0) {
+    reject("RULESET_RESPONSE_INVALID", "A repository Ruleset identifier is invalid.");
+  }
+  try {
+    const value = JSON.parse(gh(["api", `repos/${repository}/rulesets/${id}`], {
+      code: "RULESETS_UNAVAILABLE",
+      message: "A repository Ruleset could not be read.",
+    }));
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      throw new Error("invalid Ruleset response");
+    }
+    return value;
+  } catch (error) {
+    if (error instanceof RulesetError) throw error;
+    reject("RULESETS_RESPONSE_INVALID", "A repository Ruleset response is invalid.");
+  }
+}
+
 function applyRuleset(payload, existing) {
   const endpoint = existing
     ? `repos/${repository}/rulesets/${existing.id}`
@@ -291,8 +294,46 @@ function removeLegacyBranchProtection(defaultBranch) {
   return "removed";
 }
 
+function assertLegacyBranchProtectionAbsent(defaultBranch) {
+  const endpoint = `repos/${repository}/branches/${encodeURIComponent(defaultBranch)}/protection`;
+  if (ghOptional(["api", endpoint, "--silent"]).ok) {
+    reject("LEGACY_PROTECTION_PRESENT",
+      "Legacy Branch Protection conflicts with the managed Ruleset contract.");
+  }
+}
+
+function rulesetDigest(desired) {
+  return createHash("sha256").update(canonicalJson(desired)).digest("hex");
+}
+
+function verify({ repositoryDetails, desired } = {}) {
+  const details = repositoryDetails || assertRepositoryAccess({ requireAdmin: false });
+  const expected = desired || buildRulesets(actionsIntegrationId());
+  const summaries = repositoryRulesets();
+  const activeBranchNames = summaries
+    .filter((ruleset) => ruleset.target === "branch" && ruleset.enforcement === "active")
+    .map((ruleset) => ruleset.name).sort();
+  const expectedNames = expected.map((ruleset) => ruleset.name).sort();
+  if (JSON.stringify(activeBranchNames) !== JSON.stringify(expectedNames)) {
+    reject("RULESET_AUTHORITY_CONFLICT",
+      "Active branch Rulesets do not exactly match the two managed authorities.");
+  }
+  for (const payload of expected) {
+    const matches = summaries.filter((ruleset) => ruleset.name === payload.name);
+    if (matches.length !== 1) {
+      reject(matches.length > 1 ? "DUPLICATE_RULESET" : "RULESET_MISSING",
+        "The managed repository Ruleset set does not exactly match local policy.");
+    }
+    if (!rulesetPayloadMatches(repositoryRuleset(matches[0].id), payload)) {
+      reject("RULESET_PARITY_FAILED", "A managed Ruleset differs from local policy.");
+    }
+  }
+  assertLegacyBranchProtectionAbsent(details.default_branch);
+  process.stdout.write(`rulesets=verified count=${expected.length} policy_digest=${rulesetDigest(expected)}\n`);
+}
+
 function apply() {
-  const repositoryDetails = assertAdministration();
+  const repositoryDetails = assertRepositoryAccess({ requireAdmin: true });
   const existing = repositoryRulesets();
   const desired = buildRulesets(actionsIntegrationId());
   for (const payload of desired) {
@@ -302,24 +343,18 @@ function apply() {
     }
     applyRuleset(payload, matches[0]);
   }
-  const activeNames = new Set(
-    repositoryRulesets()
-      .filter((ruleset) => ruleset.enforcement === "active")
-      .map((ruleset) => ruleset.name),
-  );
-  const desiredNames = desired.map(({ name }) => name);
-  if (!desiredNames.every((name) => activeNames.has(name))) {
-    reject("RULESET_VERIFICATION_FAILED", "The managed repository Rulesets are not active.");
-  }
   const legacy = removeLegacyBranchProtection(repositoryDetails.default_branch);
-  process.stdout.write(`rulesets=active count=${desired.length} legacy_branch_protection=${legacy}\n`);
+  verify({ repositoryDetails, desired });
+  process.stdout.write(`rulesets=applied count=${desired.length} legacy_branch_protection=${legacy}\n`);
 }
 
 function main() {
-  if (process.argv.length !== 2) {
-    reject("USAGE", "This command takes no arguments and targets only LicoLand/LicoUp.");
+  const [mode, ...extra] = process.argv.slice(2);
+  if (extra.length > 0 || !["apply", "verify"].includes(mode)) {
+    reject("USAGE", "Use apply or verify; the command targets only LicoLand/LicoUp.");
   }
-  apply();
+  if (mode === "apply") apply();
+  else verify();
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
@@ -336,8 +371,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
 
 export {
   allBranchesRulesetName,
-  branchCreationRulesetName,
-  defaultBranchRulesetName,
   promotionBranchesRulesetName,
   identityStatusContext,
+  requiredStatusContexts,
 };
