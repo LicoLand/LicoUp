@@ -234,16 +234,29 @@ function validateReleaseTopology() {
     assertIncludes(preflight, command, `unified release preflight must invoke ${command}`);
   }
   assertExcludes(workflow, "timeout-minutes:", "release workflow must use the platform default job timeout");
+  const macosJob = jobBlock(workflow, "build-macos");
   assertIncludes(
-    jobBlock(workflow, "build-macos"),
+    macosJob,
     "npm run client:verify:agent-conversations:release-ui",
     "macOS release build must require reproducible local-agent UI evidence",
   );
   assertIncludes(
-    jobBlock(workflow, "build-macos"),
+    macosJob,
     "name: licoup-macos-update",
     "macOS release build must preserve its independently signed update artifact",
   );
+  for (const token of [
+    'keyUsage=critical,digitalSignature',
+    'security add-trusted-cert -d -r trustRoot',
+    'security find-identity -v -p codesigning',
+    '"${existing_keychains[@]}"',
+  ]) {
+    assertIncludes(
+      macosJob,
+      token,
+      `macOS release build must prepare a trusted ephemeral signing identity: ${token}`,
+    );
+  }
   for (const token of [
     "client-update-release-finalize.mjs",
     'publish_release=${options.publish && options.target !== "macos-arm64"}',
