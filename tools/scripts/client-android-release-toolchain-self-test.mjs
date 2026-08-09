@@ -160,6 +160,7 @@ const uploadPolicyReady =
     macosJob.indexOf("run: npm run client:archive:macos-github-release") &&
   macosJob.includes("build/apps/desktop/distribution/macos/LicoUp-macos-arm64.zip") &&
   macosJob.includes("build/apps/desktop/distribution/macos/LicoUp-macos-arm64.zip.sha256") &&
+  macosJob.includes("build/apps/desktop/distribution/macos/install-macos.sh") &&
   !macosJob.includes("build/apps/desktop/runnable/macos/release/LicoUp-macos-arm64.zip") &&
   !/path:\s*build\/apps\/desktop\/runnable\/macos\/release\/\s*$/mu.test(macosJob) &&
   linuxJob.includes("build/apps/desktop/distribution/linux-arm64/LicoUp-linux-arm64.tar.gz") &&

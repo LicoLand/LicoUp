@@ -45,6 +45,7 @@ export const CLIENT_GATE_LANES = Object.freeze({
   ]),
   "release-policy": freezeLane([
     "client:release:self-test",
+    "client:install:macos:github:self-test",
     "client:update-release:finalize:self-test",
     "client:release:preflight:check",
     "client:verify:release-artifact-io:self-test",
@@ -89,6 +90,7 @@ export const CLIENT_RELEASE_TARGETS = Object.freeze({
     files: Object.freeze([
       "LicoUp-macos-arm64.zip",
       "LicoUp-macos-arm64.zip.sha256",
+      "install-macos.sh",
     ]),
   }),
   "linux-glibc-arm64": Object.freeze({
