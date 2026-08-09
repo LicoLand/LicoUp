@@ -95,7 +95,6 @@ jobs:
                     .commit.committer.email == $email
                   ) or
                   (
-                    (.parents | length) == 2 and
                     .committer.login == "web-flow" and
                     .commit.committer.name == "GitHub" and
                     .commit.committer.email == "noreply@github.com" and
