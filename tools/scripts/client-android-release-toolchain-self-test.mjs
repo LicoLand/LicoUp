@@ -185,7 +185,7 @@ for (const forbidden of [
 const pinnedCargoAudit = "cargo install cargo-audit --version 0.22.2 --locked";
 const ciSourceJob = jobBlock(ciWorkflow, "source");
 const ciDependencyJob = jobBlock(ciWorkflow, "dependencies");
-const releaseDependencyJob = jobBlock(workflow, "dependencies");
+const releaseDependencyJob = jobBlock(workflow, "preflight");
 if (
   ciSourceJob.includes(pinnedCargoAudit) ||
   !ciDependencyJob.includes(pinnedCargoAudit) ||
@@ -194,7 +194,7 @@ if (
   linuxJob.includes(pinnedCargoAudit) ||
   androidJob.includes(pinnedCargoAudit)
 ) {
-  throw new Error("Pinned cargo-audit must remain isolated to dependency policy jobs");
+  throw new Error("Pinned cargo-audit must remain isolated to dependency policy or unified preflight jobs");
 }
 if (!androidBuilder.includes("path.isAbsolute(keystorePath)") ||
   !androidGradle.includes("releaseStoreFile?.isAbsolute == true") ||
