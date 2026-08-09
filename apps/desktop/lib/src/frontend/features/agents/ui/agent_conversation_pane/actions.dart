@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 
-import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_pane_controls.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
-import 'package:licoup/src/frontend/shared/ui/theme.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_empty_state.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_icon_button.dart';
 
 class AgentConversationEmptySelection extends StatelessWidget {
   const AgentConversationEmptySelection({
@@ -16,32 +16,19 @@ class AgentConversationEmptySelection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = context.licoColors;
     final strings = LicoStrings.of(context);
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.psychology_outlined, color: colors.textMuted, size: 28),
-            const SizedBox(height: 10),
-            Text(
-              strings.selectAgentToView,
-              textAlign: TextAlign.center,
-              style: TextStyle(color: colors.textMuted),
-            ),
-            if (allowManualTargetActions) ...[
-              const SizedBox(height: 14),
-              OutlinedButton.icon(
-                onPressed: onAddTarget,
-                icon: const Icon(Icons.add, size: 18),
-                label: Text(strings.addTarget),
-              ),
-            ],
-          ],
-        ),
-      ),
+    return LicoEmptyState(
+      icon: Icons.psychology_outlined,
+      iconSize: 28,
+      padding: const EdgeInsets.all(24),
+      title: strings.selectAgentToView,
+      action: allowManualTargetActions
+          ? OutlinedButton.icon(
+              onPressed: onAddTarget,
+              icon: const Icon(Icons.add, size: 18),
+              label: Text(strings.addTarget),
+            )
+          : null,
     );
   }
 }
@@ -60,13 +47,12 @@ class ArchiveAgentConversationsButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ConversationIconButton(
+    return LicoIconButton(
       key: key,
       tooltip: tooltip,
       onPressed: busy ? null : onPressed,
       busy: busy,
-      icon: Icons.archive_outlined,
-      color: context.licoColors.textMuted,
+      icon: const Icon(Icons.archive_outlined),
     );
   }
 }
@@ -85,12 +71,14 @@ class NewAgentConversationButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ConversationIconButton(
+    // The default ghost tone — muted at rest, full text colour on hover —
+    // replaces the old lemon glyph, which violated the rule that the brand is
+    // never a text or glyph colour (it rendered at 1.40:1 on a light surface).
+    return LicoIconButton(
       key: key,
       tooltip: tooltip,
       onPressed: enabled ? onPressed : null,
-      icon: Icons.add_comment_outlined,
-      color: context.licoColors.primary,
+      icon: const Icon(Icons.add_comment_outlined),
     );
   }
 }

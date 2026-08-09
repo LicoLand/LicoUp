@@ -296,11 +296,18 @@ TargetCandidate _acceptanceEnabledCandidate(TargetCandidate source) {
 }
 
 bool _hasProgressiveAssistant(ClientController controller, String agentId) {
-  final messages =
-      controller.liveConversationMessagesByAgent[agentId] ?? const [];
-  return messages.any(
-    (message) => message.role == 'assistant' && message.text.trim().isNotEmpty,
-  );
+  final scopeKeys = controller.conversationLiveScopeKeysForAgent(agentId);
+  for (final scopeKey in scopeKeys) {
+    final messages =
+        controller.liveConversationMessagesByScope[scopeKey] ?? const [];
+    if (messages.any(
+      (message) =>
+          message.role == 'assistant' && message.text.trim().isNotEmpty,
+    )) {
+      return true;
+    }
+  }
+  return false;
 }
 
 Future<void> _submitComposer(String text) async {

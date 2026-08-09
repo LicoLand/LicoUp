@@ -4,8 +4,7 @@ English (normative) · [简体中文](README.zh-CN.md)
 
 LicoUp is a local-first open-source desktop and mobile client. Its product
 boundary is owned by [`PRODUCT.md`](../../PRODUCT.md) and
-[`CLIENT-DESKTOP.md`](../../docs/functionality/CLIENT-DESKTOP.md). Default use
-does not depend on a Meshrix server.
+[`CLIENT-DESKTOP.md`](../../docs/functionality/CLIENT-DESKTOP.md).
 
 ## Default Product Scope
 
@@ -33,8 +32,7 @@ The default interface contains only these user scenarios:
   external transfers.
 
 ACP and MCP are built-in protocol-adaptation foundations, not separate
-navigation entries. Optional Meshrix collaboration enters only through the
-default-disabled external plugin described below.
+navigation entries.
 
 `Mobile Relay` currently executes the
 [current retiring endpoint-protection Preview](../../docs/STATUS.md) and
@@ -54,23 +52,6 @@ native-conversation parity acceptance. Native drivers and the readiness
 catalog own current adapter state and project it into
 [`docs/COMPATIBILITY.md`](../../docs/COMPATIBILITY.md); an unready adapter
 fails closed.
-
-## Optional Meshrix Collaboration Plugin
-
-Meshrix collaboration is not loaded or shown in the default startup path. The
-user must enable it manually and install the optional plugin from a
-user-selected GitHub source. The plugin may provide only:
-
-1. a user-initiated download of Meshrix for a private local deployment, with
-   server capabilities and plugins selected before installation; and
-2. a user-initiated installation of selected Meshrix MCP plugins into one or
-   more local agents.
-
-Installation, startup, a schedule, or an agent request never authorizes local
-data egress. Each local file requires a separate preview of destination,
-purpose, scope, and digest plus direct approval for that operation. A changed
-destination, scope, or content invalidates approval; cancellation, expiry, or
-unverifiable binding fails closed.
 
 ## Local Data Boundary
 

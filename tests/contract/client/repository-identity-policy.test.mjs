@@ -5,16 +5,39 @@ import {
   IdentityPolicyError,
   assertCommitMessage,
   assertCommitRecord,
+  boundedIdentityRead,
   canonicalGitHubEmail,
   parseGitHubIdentity,
 } from "../../../tools/scripts/repository-identity-policy.mjs";
+
+test("identity reads retry only their bounded read operation", () => {
+  let attempts = 0;
+  assert.equal(boundedIdentityRead(() => {
+    attempts += 1;
+    if (attempts < 2) throw new Error("transient");
+    return "ready";
+  }), "ready");
+  assert.equal(attempts, 2);
+});
 import {
   allBranchesRulesetName,
   buildRulesets,
+  boundedRead,
   identityStatusContext,
   promotionBranchesRulesetName,
   requiredStatusContexts,
 } from "../../../tools/scripts/repository-rulesets.mjs";
+
+test("Ruleset reads retry transient failures without retrying mutations", () => {
+  let attempts = 0;
+  assert.equal(boundedRead(() => {
+    attempts += 1;
+    if (attempts < 3) throw new Error("transient");
+    return "ready";
+  }), "ready");
+  assert.equal(attempts, 3);
+  assert.throws(() => boundedRead(() => { throw new Error("persistent"); }, 2));
+});
 
 const identity = Object.freeze({ login: "human-developer", id: "123456" });
 
@@ -102,8 +125,13 @@ test("two Rulesets cover identity and the complete release flow without bypass",
   assert.equal(committerPattern.test("bot@example.invalid"), false);
   assert.equal(
     identityRuleset.rules.filter(({ type }) => type === "commit_message_pattern").length,
-    2,
+    1,
   );
+  const messageRule = identityRuleset.rules.find(
+    ({ type }) => type === "commit_message_pattern",
+  );
+  assert.match(messageRule.parameters.pattern, /co-authored-by/u);
+  assert.match(messageRule.parameters.pattern, /cursor/u);
 
   for (const requiredType of [
     "deletion",

@@ -7,6 +7,7 @@ use super::update_watcher::{
     AgentUpdateWatcher, UPDATE_WATCH_INTERVAL, UpdateChange, UpdatePhase, cursor_agent_install_dir,
 };
 use crate::platform::process_supervisor::{IO_THREAD_EXIT_GRACE, SupervisedChild, join_bounded};
+use crate::platform::turn_event_emit::emit_turn_event;
 use serde_json::Value;
 use std::io::{BufReader, Read};
 use std::path::{Path, PathBuf};
@@ -15,6 +16,12 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, mpsc};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+
+/// Hard bound for the session-creation phase of a new conversation. The turn
+/// itself may run without a deadline (timeoutMs 0), but `cursor-agent
+/// create-chat` must never leave the client spinning: a blocked create-chat
+/// fails with `cursor_cli_create_chat_timeout` instead.
+const CREATE_CHAT_BOUND_MS: u64 = 60_000;
 
 pub(in crate::platform) fn execute(
     executable: &str,
@@ -27,6 +34,12 @@ pub(in crate::platform) fn execute(
     max_stderr: usize,
 ) -> RunResult {
     let started_at = timestamp();
+    // timeoutMs 0 opts out of any turn deadline (see runtime_adapters/dispatch):
+    // the agent runs until the turn completes, however long that takes. A
+    // non-zero window covers the whole turn, including the session-creation
+    // phase, so create-chat time is charged against the caller's deadline
+    // instead of silently stacking on top of it.
+    let deadline = (timeout_ms != 0).then(|| Instant::now() + Duration::from_millis(timeout_ms));
     if prompt.trim().is_empty() {
         return RunResult::failed(
             ProtocolFailure::new(
@@ -55,45 +68,63 @@ pub(in crate::platform) fn execute(
     };
     let mut native_session = session_id.trim().to_string();
     if native_session.is_empty() {
-        match create_chat_session(executable, &workspace, timeout_ms, max_stdout) {
-            Ok(created) => native_session = created,
+        // The desktop dispatches turns without a deadline (timeoutMs 0), so the
+        // session-creation phase must stay independently bounded: a blocked
+        // `cursor-agent create-chat` (auto-update lock, first-run, network)
+        // must fail visibly instead of leaving the client on an empty spinner.
+        let create_bound_ms = if timeout_ms == 0 {
+            CREATE_CHAT_BOUND_MS
+        } else {
+            timeout_ms.min(CREATE_CHAT_BOUND_MS)
+        };
+        emit_turn_event(
+            "agent.turn.processing",
+            "",
+            "",
+            serde_json::json!({
+                "evidenceKind": "tool",
+                "toolName": "create-chat",
+                "text": "creating native chat session",
+            }),
+        );
+        match create_chat_session(executable, &workspace, create_bound_ms, max_stdout) {
+            Ok(created) => {
+                native_session = created;
+                emit_turn_event(
+                    "dispatch.turn.bound",
+                    &native_session,
+                    "",
+                    serde_json::json!({}),
+                );
+            }
             Err(failure) => {
                 return RunResult::failed(failure, started_at, false, false);
             }
         }
     }
-    // timeoutMs 0 opts out of the turn deadline: the agent runs until the
-    // turn completes, however long that takes.
-    let remaining_timeout_ms = if timeout_ms == 0 {
-        0
-    } else {
-        let remaining = (Instant::now() + Duration::from_millis(timeout_ms))
-            .saturating_duration_since(Instant::now())
-            .as_millis()
-            .try_into()
-            .unwrap_or(u64::MAX);
-        if remaining == 0 {
-            return RunResult::failed(
-                ProtocolFailure::new(
-                    "cursor_cli_timeout",
-                    "Cursor Agent CLI exhausted the turn timeout while creating the chat session.",
-                    "turn/execute",
-                )
-                .with_session(Some(&native_session)),
-                started_at,
-                false,
-                false,
-            );
-        }
-        remaining
-    };
+    // The turn phase may not start past the caller's deadline: if the
+    // session-creation phase consumed the whole window, fail up front instead
+    // of starting a turn that can only time out.
+    if deadline.is_some_and(|deadline| Instant::now() >= deadline) {
+        return RunResult::failed(
+            ProtocolFailure::new(
+                "cursor_cli_timeout",
+                "Cursor Agent CLI exhausted the turn timeout while creating the chat session.",
+                "turn/execute",
+            )
+            .with_session(Some(&native_session)),
+            started_at,
+            false,
+            false,
+        );
+    }
     run_turn(
         executable,
         params,
         prompt,
         &native_session,
         &workspace,
-        remaining_timeout_ms,
+        deadline,
         max_stdout,
         max_stderr,
         started_at,
@@ -230,7 +261,7 @@ fn run_turn(
     prompt: &str,
     session_id: &str,
     workspace: &Path,
-    timeout_ms: u64,
+    deadline: Option<Instant>,
     max_stdout: Option<usize>,
     max_stderr: usize,
     started_at: String,
@@ -290,11 +321,8 @@ fn run_turn(
             stderr_flag.store(true, Ordering::Relaxed);
         }
     });
-    let deadline = if timeout_ms == 0 {
-        None
-    } else {
-        Some(Instant::now() + Duration::from_millis(timeout_ms))
-    };
+    // The deadline already spans the whole turn, including any create-chat
+    // phase, so the turn phase simply keeps consuming the same window.
     let (outcome, failure, stdout_truncated) = consume_turn_stream(
         &receiver,
         session_id,
@@ -304,7 +332,10 @@ fn run_turn(
         max_stdout,
         child.pid(),
     );
-    let _ = child.finish_or_terminate_tree(Duration::from_millis(250));
+    let status = child
+        .finish_or_terminate_tree(Duration::from_millis(250))
+        .ok()
+        .flatten();
     let _ = join_bounded(stdout_handle, IO_THREAD_EXIT_GRACE);
     let _ = join_bounded(stderr_handle, IO_THREAD_EXIT_GRACE);
     clear_active_turn(session_id);
@@ -326,15 +357,52 @@ fn run_turn(
             started_at,
         };
     }
-    RunResult::failed(
-        failure.unwrap_or_else(|| {
+    if let Some(failure) = failure {
+        return RunResult::failed(failure, started_at, stdout_truncated, stderr_was_truncated);
+    }
+    // consume_turn_stream returned no outcome and no protocol failure: stdout
+    // closed before a terminal result arrived (cancel, crash, or early exit).
+    // Partial output was already streamed live as chunk events; the exit
+    // status decides how the truncated turn is reported.
+    #[cfg(unix)]
+    {
+        use libc::SIGTERM;
+        use std::os::unix::process::ExitStatusExt;
+        if status.is_some_and(|status| status.signal() == Some(SIGTERM)) {
+            return RunResult::failed(
+                ProtocolFailure::new(
+                    "cursor_cli_cancelled",
+                    "Cursor Agent CLI turn was cancelled.",
+                    "turn/cancelled",
+                )
+                .with_session(Some(session_id))
+                .with_turn_status("cancelled"),
+                started_at,
+                stdout_truncated,
+                stderr_was_truncated,
+            );
+        }
+    }
+    if !status.is_some_and(|status| status.success()) {
+        return RunResult::failed(
             ProtocolFailure::new(
                 "cursor_cli_turn_failed",
-                "Cursor Agent CLI did not complete the requested turn.",
+                "Cursor Agent CLI exited without completing the turn.",
                 "turn/completed",
             )
-            .with_session(Some(session_id))
-        }),
+            .with_session(Some(session_id)),
+            started_at,
+            stdout_truncated,
+            stderr_was_truncated,
+        );
+    }
+    RunResult::failed(
+        ProtocolFailure::new(
+            "cursor_cli_turn_failed",
+            "Cursor Agent CLI did not complete the requested turn.",
+            "turn/completed",
+        )
+        .with_session(Some(session_id)),
         started_at,
         stdout_truncated,
         stderr_was_truncated,
@@ -644,48 +712,12 @@ fn consume_turn_stream(
             }
         }
     }
-    if !output.is_empty() || !chunks.is_empty() {
-        let effective = effective_settings(params, workspace, &events);
-        let final_output = if output.is_empty() {
-            chunks.clone()
-        } else {
-            output.clone()
-        };
-        let resolved_turn_id = if turn_id.is_empty() {
-            "cursor-turn".to_string()
-        } else {
-            turn_id.clone()
-        };
-        super::super::turn_event_emit::emit_agent_message_completed(
-            &observed_session,
-            &resolved_turn_id,
-            &final_output,
-        );
-        return (
-            Some(TurnOutcome {
-                output: final_output,
-                events,
-                session_id: observed_session,
-                turn_id: resolved_turn_id,
-                turn_status: "completed".to_string(),
-                effective,
-            }),
-            None,
-            stdout_truncated,
-        );
-    }
-    (
-        None,
-        Some(
-            ProtocolFailure::new(
-                "cursor_cli_turn_failed",
-                "Cursor Agent CLI did not return a final turn result.",
-                "turn/completed",
-            )
-            .with_session(Some(&observed_session)),
-        ),
-        stdout_truncated,
-    )
+    // Stdout closed (or the transport disconnected) before a terminal result
+    // arrived: the CLI was cancelled, crashed, or exited without completing
+    // the turn. The caller classifies this from the process exit status;
+    // partial output was already streamed live as chunk events and must not
+    // be reported as a completed turn.
+    (None, None, stdout_truncated)
 }
 
 fn apply_optional_turn_flags(command: &mut Command, params: &Value) {

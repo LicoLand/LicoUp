@@ -19,10 +19,8 @@ const githubNoreplyHostPattern = ["users", "noreply", "github", "com"].join("\\.
 const canonicalNoreplyPattern = `^[0-9]+\\+[A-Za-z0-9][A-Za-z0-9-]{0,38}@${githubNoreplyHostPattern}$`;
 const canonicalCommitterPattern =
   `(?:${canonicalNoreplyPattern.slice(1, -1)}|noreply@github\\.com)`;
-const attributionTrailerPattern =
-  "(?i)(^|\\n)[ \\t]*(co-authored-by|co-committed-by|signed-off-by|authored-by|assisted-by|generated-by|written-by|pair-programmed-by|contributed-by|reviewed-by|suggested-by|reported-by)[ \\t]*:";
-const agentIdentityLinePattern =
-  "(?i)(^|\\n)[ \\t]*(claude( code)?|cursor( agent)?|github copilot|copilot|codex|chatgpt|gemini|anthropic|openai|[^\\n<]*(agent|bot))[^\\n]*<[^\\n>]+>";
+const forbiddenCommitMessagePattern =
+  "(?i)(^|\\n)[ \\t]*((co-authored-by|co-committed-by|signed-off-by|authored-by|assisted-by|generated-by|written-by|pair-programmed-by|contributed-by|reviewed-by|suggested-by|reported-by)[ \\t]*:|(claude( code)?|cursor( agent)?|github copilot|copilot|codex|chatgpt|gemini|anthropic|openai|[^\\n<]*(agent|bot))[^\\n]*<[^\\n>]+>)";
 
 class RulesetError extends Error {
   constructor(code, message) {
@@ -46,6 +44,28 @@ function gh(args, options = {}) {
   } catch {
     reject(options.code || "GH_COMMAND_FAILED", options.message || "A GitHub operation failed.");
   }
+}
+
+export function boundedRead(operation, attempts = 3) {
+  if (typeof operation !== "function" || !Number.isSafeInteger(attempts) || attempts < 1) {
+    reject("READ_RETRY_INVALID", "The bounded read retry policy is invalid.");
+  }
+  let failure;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      return operation();
+    } catch (error) {
+      failure = error;
+      if (attempt < attempts) {
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, attempt * 250);
+      }
+    }
+  }
+  throw failure;
+}
+
+function ghRead(args, options = {}) {
+  return boundedRead(() => gh(args, options));
 }
 
 function ghOptional(args) {
@@ -116,14 +136,8 @@ export function buildRulesets(actionsIntegrationId) {
         ),
         metadataRule(
           "commit_message_pattern",
-          "Attribution trailers are forbidden",
-          attributionTrailerPattern,
-          true,
-        ),
-        metadataRule(
-          "commit_message_pattern",
-          "Agent-shaped identity lines are forbidden",
-          agentIdentityLinePattern,
+          "Attribution trailers and Agent-shaped identity lines are forbidden",
+          forbiddenCommitMessagePattern,
           true,
         ),
       ],
@@ -194,14 +208,14 @@ export function rulesetPayloadMatches(actual, expected) {
 }
 
 function assertRepositoryAccess({ requireAdmin }) {
-  gh(["api", "user", "--jq", ".login"], {
+  ghRead(["api", "user", "--jq", ".login"], {
     code: "GH_AUTH_REQUIRED",
     message: "GitHub CLI authentication is required.",
   });
   let details;
   try {
     details = JSON.parse(
-      gh(["api", `repos/${repository}`], {
+      ghRead(["api", `repos/${repository}`], {
         code: "REPOSITORY_UNAVAILABLE",
         message: "The target repository is unavailable.",
       }),
@@ -223,7 +237,7 @@ function assertRepositoryAccess({ requireAdmin }) {
 }
 
 function actionsIntegrationId() {
-  const raw = gh(["api", "/apps/github-actions", "--jq", ".id"], {
+  const raw = ghRead(["api", "/apps/github-actions", "--jq", ".id"], {
     code: "ACTIONS_INTEGRATION_UNAVAILABLE",
     message: "The GitHub Actions integration identity could not be resolved.",
   });
@@ -237,7 +251,7 @@ function actionsIntegrationId() {
 function repositoryRulesets() {
   try {
     const value = JSON.parse(
-      gh(["api", `repos/${repository}/rulesets?includes_parents=false`], {
+      ghRead(["api", `repos/${repository}/rulesets?includes_parents=false`], {
         code: "RULESETS_UNAVAILABLE",
         message: "Repository Rulesets could not be listed.",
       }),
@@ -255,7 +269,7 @@ function repositoryRuleset(id) {
     reject("RULESET_RESPONSE_INVALID", "A repository Ruleset identifier is invalid.");
   }
   try {
-    const value = JSON.parse(gh(["api", `repos/${repository}/rulesets/${id}`], {
+    const value = JSON.parse(ghRead(["api", `repos/${repository}/rulesets/${id}`], {
       code: "RULESETS_UNAVAILABLE",
       message: "A repository Ruleset could not be read.",
     }));

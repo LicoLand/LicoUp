@@ -232,8 +232,7 @@ fn protocol_drift_and_incomplete_ready_claims_fail_closed() {
         .iter_mut()
         .find(|entry| entry["agentId"] == "claude-code")
         .unwrap();
-    claude["status"] = json!("ready");
-    claude["sendEnabled"] = json!(true);
+    claude["consecutivePasses"] = json!(2);
     let invalid_ready = serde_json::to_string(&readiness).unwrap();
     let profile = parse_runtime_driver_registry(DRIVER_INVENTORY_JSON, &invalid_ready)
         .ok()

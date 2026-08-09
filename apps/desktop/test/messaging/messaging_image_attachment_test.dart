@@ -17,7 +17,7 @@ void main() {
     test('parses typed entries and drops unusable ones', () {
       final images = parseAgentConversationImageAttachments([
         {'mediaType': 'image/png', 'data': _onePixelPngBase64, 'name': 'shot'},
-        {'path': '/fixture/location/screenshot.png'},
+        {'path': '/tmp/screenshot.png'},
         {'name': 'no source at all'},
         {'data': 'x' * 6000001},
         'not-a-map',
@@ -27,7 +27,7 @@ void main() {
       expect(images[0].mediaType, 'image/png');
       expect(images[0].dataBase64, _onePixelPngBase64);
       expect(images[0].name, 'shot');
-      expect(images[1].filePath, '/fixture/location/screenshot.png');
+      expect(images[1].filePath, '/tmp/screenshot.png');
       expect(images[1].mediaType, 'image/png');
     });
 

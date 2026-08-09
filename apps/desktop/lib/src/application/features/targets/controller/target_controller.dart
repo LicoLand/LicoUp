@@ -251,6 +251,10 @@ class TargetController extends ChangeNotifier {
     } else if (reportErrors) {
       _lastErrorCode = '';
     }
+    // Conversation history loading stays outside the scan critical section:
+    // a slow or failing history read must neither be reported as a scan
+    // failure nor hold the refresh gate for later scans.
+    var loadSelectedConversation = false;
     try {
       if (_isMobileRuntime()) {
         final targets = await _scanMobileTargets();
@@ -341,7 +345,7 @@ class TargetController extends ChangeNotifier {
         );
       }
       if (showProgress && _shouldLoadSelectedConversation()) {
-        await _loadSelectedConversation();
+        loadSelectedConversation = true;
       }
     } catch (_) {
       if (!_isCurrentScan(generation)) return;
@@ -364,6 +368,14 @@ class TargetController extends ChangeNotifier {
       if (identical(_refreshCompletion, refreshCompletion)) {
         _refreshCompletion = null;
         if (!refreshCompletion.isCompleted) refreshCompletion.complete();
+      }
+    }
+    if (loadSelectedConversation) {
+      try {
+        await _loadSelectedConversation();
+      } catch (_) {
+        // History load failures surface on the conversation surface only;
+        // the scan itself succeeded and must not report them.
       }
     }
   }

@@ -59,6 +59,26 @@ pub(in crate::platform) fn post_json(
     decode_json(response)
 }
 
+pub(in crate::platform) fn post_json_with_optional_timeout(
+    url: &str,
+    body: &Value,
+    timeout: Option<Duration>,
+) -> Result<Value, HttpFailure> {
+    let url = validate_url(url)?;
+    let bytes = serde_json::to_vec(body).map_err(|_| HttpFailure::Serialize)?;
+    if bytes.len() > MAX_HTTP_REQUEST_BODY_BYTES {
+        return Err(HttpFailure::BodyTooLarge);
+    }
+    let _permit = request_gate()
+        .acquire(CONCURRENCY_WAIT)
+        .map_err(map_limit_failure)?;
+    let request = agent_with_optional_timeout(timeout)
+        .post(url.as_str())
+        .set("Content-Type", "application/json");
+    let response = map_response(request.send_bytes(&bytes))?;
+    decode_json(response)
+}
+
 pub(in crate::platform) fn probe_status(url: &str, timeout: Duration) -> Result<u16, HttpFailure> {
     let url = validate_url(url)?;
     let _permit = request_gate()
@@ -116,6 +136,16 @@ fn agent(timeout: Duration) -> ureq::Agent {
         .timeout_read(timeout)
         .timeout_write(timeout)
         .build()
+}
+
+fn agent_with_optional_timeout(timeout: Option<Duration>) -> ureq::Agent {
+    let builder = ureq::AgentBuilder::new()
+        .try_proxy_from_env(false)
+        .timeout_connect(Duration::from_secs(2));
+    match timeout {
+        Some(timeout) => builder.timeout_read(timeout).timeout_write(timeout).build(),
+        None => builder.build(),
+    }
 }
 
 fn map_response(

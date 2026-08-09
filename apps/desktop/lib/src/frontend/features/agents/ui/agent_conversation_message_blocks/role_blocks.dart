@@ -4,6 +4,7 @@ import 'package:licoup/src/contracts/agent_conversation_models.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_message_blocks/disclosures.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_render_adapter.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 class AgentConversationUserMessageBlock extends StatelessWidget {
@@ -154,7 +155,7 @@ class AgentConversationAssistantBubbleBlock extends StatelessWidget {
         child: DecoratedBox(
           decoration: BoxDecoration(
             color: colors.surfaceLow,
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(LicoRadius.card),
             border: Border.all(color: colors.line),
           ),
           child: Padding(

@@ -82,14 +82,10 @@ done
 
       final pendingCommand = client.execute(const ['slow-command']);
       await _waitUntil(() => context.startCount == 1);
-      final conversationFuture = client.streamConversation(const {
-        'agent': 'claude-code',
-        'text': 'probe',
-      }).toList();
-      await _waitUntil(() => context.startCount == 2);
-      final conversation = await conversationFuture.timeout(
-        const Duration(seconds: 1),
-      );
+      final conversation = await client
+          .streamConversation(const {'agent': 'claude-code', 'text': 'probe'})
+          .toList()
+          .timeout(const Duration(seconds: 1));
 
       expect(context.startCount, 2);
       expect(conversation.last['event'], 'done');

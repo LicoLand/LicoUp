@@ -134,7 +134,7 @@ mod tests {
     use super::*;
 
     fn synthetic_home() -> PathBuf {
-        PathBuf::from("/synthetic/path/user")
+        PathBuf::from("/fixture-root/resident")
     }
 
     #[test]
@@ -143,7 +143,7 @@ mod tests {
         for unbounded in [
             PathBuf::from("/"),
             PathBuf::from("/synthetic"),
-            PathBuf::from("/synthetic/path/user"),
+            PathBuf::from("/synthetic/home"),
             home.clone(),
             home.join("."),
             home.join("Movies"),

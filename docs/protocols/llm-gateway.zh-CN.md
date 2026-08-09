@@ -2,9 +2,11 @@
 
 [English（规范版本）](llm-gateway.md)
 
-权威实现位于 `domain/llm_gateway.rs`、`platform/llm_gateway_transport.rs` 和
-`lico-llm-gateway` sidecar。Gateway 只监听回环地址，并按“客户端协议 + 请求模型”
-精确路由，不使用全局当前供应商。
+LLM Gateway 是 Gateway Runtime 的**下层**。本层权威实现位于
+`domain/llm_gateway.rs`、`platform/llm_gateway_transport.rs`，以及统一进程
+`lico-gateway`（`platform/gateway_runtime`）。下层只监听回环地址，并按
+“客户端协议 + 请求模型”精确路由，不使用全局当前供应商。消息 channel 见
+[`gateway-runtime.zh-CN.md`](gateway-runtime.zh-CN.md)。
 
 ## 能力
 
@@ -14,13 +16,15 @@
   OpenAI Chat Completions 上游。
 - Kimi、DeepSeek 与 Kilo API Key 分别存为独立的系统密钥库项目，并由 macOS 机主验证
   （Touch ID、可用时的 Face ID，或系统密码回退）保护；清单不返回密钥尾号或内容。
-- 每次启动 Gateway 时由发起启动的 `licoup-cli` 完成一次机主验证（Touch ID 或
-  系统密码回退）；sidecar 仅通过继承的文件描述符接收内存中的凭证交接，自身
-  从不读取 Keychain。不带交接 fd 独立启动的 sidecar 仍按原路径在启动时验证一次。
-  两种方式下密钥都只进入可清零的进程内租约，退出即销毁。7/30/60/90/180/365 天
-  只是单次运行进程的最长有效期，不会跳过下次启动验证。
-- 修改授权有效期不会撤销正在运行的 Gateway。当前进程继续沿用原租约，新周期从
-  下次启动 Gateway 并完成机主验证后生效。
+- 机主授权（Touch ID 或系统密码回退）在长驻的 `licoup-cli` 进程中解锁密钥。
+  冷启动 Gateway 时，通过继承的文件描述符把已解锁会话交给 sidecar；sidecar
+  自身从不读取 Keychain。若托管 Gateway 已在运行，授权与撤销会通过 Gateway
+  状态目录下的私有 Unix 控制套接字（权限 0600、同 uid）热加载更新后的租约，
+  无需重启进程。不带交接 fd 独立启动的 sidecar 以未连接状态运行，直到热加载
+  或之后带交接的启动。密钥只进入可清零的进程内租约，退出即销毁。
+  7/30/60/90/180/365 天只是单次运行进程的最长有效期，不会跳过下次机主授权。
+- 修改授权有效期不会撤销正在运行的 Gateway。当前进程继续沿用原租约；新周期在
+  下次重建交接的机主授权（热加载）或冷启动时生效。
 - Codex 与 Claude Code 的托管配置只指向本机回环 Gateway，上游 API Key 绝不复制到
   智能体配置文件。
 

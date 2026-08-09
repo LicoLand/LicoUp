@@ -62,7 +62,6 @@ AgentConversationPaneActions paneTestActions({
   onDraftChanged: (_) {},
   onSend: (_) async => true,
   onSelectSession: (_) {},
-  onCopyText: (_) async {},
   onUnblockSend: onUnblockSend,
   onChooseWorkingDirectory: onChooseWorkingDirectory,
 );

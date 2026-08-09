@@ -22,7 +22,6 @@ authority.
 ## Architecture
 
 - [Architecture](architecture/README.md) · [架构](architecture/README.zh-CN.md)
-- [ADR 0001: PTY transport for CLI lanes](adrs/0001-pty-transport-for-cli-lanes.md)
 
 ## Functionality
 
@@ -40,12 +39,6 @@ authority.
   [Lico Arc 候选通讯站 Adapter](protocols/licoarc-station-adapter.zh-CN.md)
 - [Subagent MCP](protocols/subagent-mcp.md) ·
   [下属智能体 MCP](protocols/subagent-mcp.zh-CN.md)
-- [Lico Agent integration](protocols/lico-agent.md) ·
-  [Lico Agent 集成](protocols/lico-agent.zh-CN.md)
-- [Lico Conversation MCP](protocols/lico-conversation-mcp.md) ·
-  [Lico Conversation MCP（简体中文）](protocols/lico-conversation-mcp.zh-CN.md)
-- [LLM Gateway](protocols/llm-gateway.md) ·
-  [LLM Gateway（简体中文）](protocols/llm-gateway.zh-CN.md)
 - [Semantic conversation contract](protocols/semantic-conversation.md)
 - [Client artifact verification receipts](protocols/client-artifact-verification-receipts.md)
 

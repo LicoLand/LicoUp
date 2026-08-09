@@ -115,32 +115,6 @@ class MessagingGlassMenuItem extends StatelessWidget {
   }
 }
 
-/// Optional muted section label above a group of [MessagingGlassMenuItem]s.
-class MessagingGlassMenuSectionHeader extends StatelessWidget {
-  const MessagingGlassMenuSectionHeader({super.key, required this.label});
-
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.licoColors;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 4),
-      child: Text(
-        label,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: TextStyle(
-          color: colors.textMuted,
-          fontSize: 11,
-          fontWeight: FontWeight.w600,
-          height: 14 / 11,
-        ),
-      ),
-    );
-  }
-}
-
 /// Declarative action for [showMessagingGlassMenu].
 @immutable
 final class MessagingGlassMenuAction<T> {

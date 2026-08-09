@@ -32,18 +32,13 @@ void registerClientHistoryRuntimeMessageDispatchScenarios() {
       await controller.sendConversationMessage('  Hello Codex  ');
 
       expect(service.runtimeMessageCalls, 1);
-      final fallbackWorkspace = localConversationWorkingDirectoryFallback(
-        agentId: 'codex',
-      );
       expect(service.lastRuntimeMessageRequest, {
         'agent': 'codex',
         'text': 'Hello Codex',
         'streamEvents': true,
-        'timeoutMs': 0,
         'sessionId': 'native-codex-1',
-        'permissionMode': 'bypassPermissions',
         'sessionPath': 'test-data/codex/history.jsonl',
-        'workingDirectory': fallbackWorkspace,
+        'workingDirectory': '/workspace/codex',
         'binaryPath': ['', 'opt', 'lico-test', 'bin', 'codex'].join('/'),
       });
       expect(service.conversationAppendCalls, 0);

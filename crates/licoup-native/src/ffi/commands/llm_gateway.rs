@@ -7,6 +7,15 @@ use crate::domain::llm_api_key_vault::{
 };
 use crate::platform::llm_gateway_service::providers_with_usable_saved_keys;
 
+fn local_token_helper() -> Result<std::path::PathBuf> {
+    let executable =
+        std::env::current_exe().map_err(|_| anyhow!("llm_gateway_agent_config_path_invalid"))?;
+    if !executable.is_absolute() {
+        return Err(anyhow!("llm_gateway_agent_config_path_invalid"));
+    }
+    Ok(executable)
+}
+
 pub(super) fn handle_status(_command: AdmittedCommand) -> Result<CliExecution> {
     Ok(CliExecution::Json(json!({
         "ok": true,
@@ -104,13 +113,13 @@ pub(super) fn handle_agent_plan(command: AdmittedCommand) -> Result<CliExecution
         .option_text("port")
         .unwrap_or("15722")
         .parse::<u16>()?;
-    let helper = std::path::Path::new("/usr/bin/printf");
+    let helper = local_token_helper()?;
     let available_providers = providers_with_usable_saved_keys();
     let plan = crate::domain::llm_gateway_agent_config::plan_agent_config(
         target,
         root,
         port,
-        helper,
+        &helper,
         &available_providers,
     )?;
     Ok(CliExecution::Json(serde_json::to_value(plan)?))
@@ -126,11 +135,12 @@ pub(super) fn handle_agent_apply(command: AdmittedCommand) -> Result<CliExecutio
         .unwrap_or("15722")
         .parse::<u16>()?;
     let available_providers = providers_with_usable_saved_keys();
+    let helper = local_token_helper()?;
     let plan = crate::domain::llm_gateway_agent_config::plan_agent_config(
         target,
         root,
         port,
-        std::path::Path::new("/usr/bin/printf"),
+        &helper,
         &available_providers,
     )?;
     let confirmation = command
@@ -144,7 +154,25 @@ pub(super) fn handle_agent_apply(command: AdmittedCommand) -> Result<CliExecutio
         .parent()
         .ok_or_else(|| anyhow!("llm_gateway_agent_config_path_invalid"))?;
     crate::platform::file_security::ensure_private_dir(parent)?;
-    crate::platform::file_security::atomic_write_private_text(&plan.destination, &plan.content)?;
+    let content = if plan
+        .content
+        .contains(crate::domain::llm_gateway_agent_config::LOCAL_CLIENT_TOKEN_PLACEHOLDER)
+    {
+        let token = crate::platform::llm_gateway_client_auth::ensure_default_token()?;
+        let token = token
+            .expose_utf8()
+            .map_err(|_| anyhow!("gateway_client_token_invalid"))?;
+        plan.content.replace(
+            crate::domain::llm_gateway_agent_config::LOCAL_CLIENT_TOKEN_PLACEHOLDER,
+            token,
+        )
+    } else {
+        plan.content.clone()
+    };
+    if content.contains(crate::domain::llm_gateway_agent_config::LOCAL_CLIENT_TOKEN_PLACEHOLDER) {
+        return Err(anyhow!("gateway_client_token_invalid"));
+    }
+    crate::platform::file_security::atomic_write_private_text(&plan.destination, &content)?;
     Ok(CliExecution::Json(
         json!({"ok": true, "agentId": plan.agent_id,
         "configured": true, "destination": plan.destination, "containsUpstreamSecret": false}),
@@ -152,8 +180,9 @@ pub(super) fn handle_agent_apply(command: AdmittedCommand) -> Result<CliExecutio
 }
 
 pub(super) fn handle_service_status(command: AdmittedCommand) -> Result<CliExecution> {
+    // Alias onto the unified Gateway Runtime status (LLM + channels).
     Ok(CliExecution::Json(
-        crate::platform::llm_gateway_service::service_status(service_port(&command)?)?,
+        crate::platform::gateway_runtime::service_status(service_port(&command)?)?,
     ))
 }
 
@@ -165,19 +194,19 @@ pub(super) fn handle_service_usage(_command: AdmittedCommand) -> Result<CliExecu
 
 pub(super) fn handle_service_initialize(command: AdmittedCommand) -> Result<CliExecution> {
     Ok(CliExecution::Json(
-        crate::platform::llm_gateway_service::service_initialize(service_port(&command)?)?,
+        crate::platform::gateway_runtime::service_initialize(service_port(&command)?)?,
     ))
 }
 
 pub(super) fn handle_service_start(command: AdmittedCommand) -> Result<CliExecution> {
     Ok(CliExecution::Json(
-        crate::platform::llm_gateway_service::service_start(service_port(&command)?)?,
+        crate::platform::gateway_runtime::service_start(service_port(&command)?)?,
     ))
 }
 
 pub(super) fn handle_service_stop(command: AdmittedCommand) -> Result<CliExecution> {
     Ok(CliExecution::Json(
-        crate::platform::llm_gateway_service::service_stop(service_port(&command)?)?,
+        crate::platform::gateway_runtime::service_stop(service_port(&command)?)?,
     ))
 }
 

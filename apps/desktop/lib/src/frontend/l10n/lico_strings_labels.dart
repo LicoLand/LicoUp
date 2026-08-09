@@ -26,38 +26,23 @@ extension LicoStringsLabels on LicoStrings {
   String get resourceUsageUnsupported => isChinese
       ? '当前平台不支持进程资源统计。'
       : 'Process resource statistics are not supported on this platform.';
-  String get resourceSamplingHint => isChinese
-      ? '每 5 秒采样一次，仅保留最近 15 分钟；全部保存在内存中，不会写入磁盘。'
-      : 'Sampled every 5 seconds; the last 15 minutes are kept in memory and nothing is written to disk.';
   String get memoryUsage => isChinese ? '内存占用' : 'Memory';
-  String get diskReadRate => isChinese ? '磁盘读取' : 'Disk Read';
-  String get diskWriteRate => isChinese ? '磁盘写入' : 'Disk Write';
-  String sessionTransferTotal(String read, String write) => isChinese
-      ? '本次查看累计：读取 $read · 写入 $write'
-      : 'Since opened: $read read · $write written';
-  String get agentResources => isChinese ? '智能体资源' : 'Agent Resources';
-  String get agentResourcesIdle =>
-      isChinese ? '尚未检测到运行中的智能体。' : 'No running agents detected yet.';
-  String get agentResourcesIdleDetail => isChinese
-      ? '正在运行中的本地智能体会在这里显示其实时内存与磁盘读写。'
-      : 'Running local agents appear here with live memory and disk I/O.';
-  String agentResourcesHint(int count) => isChinese
-      ? '正在检测 $count 个运行中的本地智能体，每 5 秒采样一次；仅保存在内存中。'
-      : 'Sampling $count running local agents every 5 seconds; kept in memory only.';
+  String memoryOfTotal(String total) =>
+      isChinese ? '/ $total 本机内存' : 'of $total machine';
   String get systemConfiguration => isChinese ? '系统配置' : 'System';
   String get clientUpdate => isChinese ? '客户端更新' : 'Client Update';
   String get clientUpdateHint => isChinese
-      ? '发现、下载并校验已签名的公开更新清单。不需要商店账号。'
-      : 'Discover, download, and verify signed public update manifests. No store account required.';
+      ? '从 GitHub 发布源检测并安装已签名的公开更新。不需要商店账号。'
+      : 'Detect and install signed public updates from the GitHub release source. No store account required.';
   String get checkUpdate => isChinese ? '检查更新' : 'Check Update';
   String get downloadUpdate => isChinese ? '下载更新' : 'Download Update';
   String get verifyUpdate => isChinese ? '校验更新' : 'Verify Update';
-  String get installUpdate => isChinese ? '安装并重启' : 'Install & Restart';
-  String get autoDownloadUpdatesOverWifi =>
-      isChinese ? '通过 Wi-Fi 自动下载更新' : 'Auto-download updates over Wi-Fi';
-  String get autoDownloadUpdatesOverWifiHint => isChinese
-      ? '启动时检查；下载并完成双签名与摘要校验后再提示安装。'
-      : 'Checks at startup, then verifies both signatures and the digest before offering installation.';
+  String get planUpdateInstall => isChinese ? '生成安装计划' : 'Plan Install';
+  String get applyUpdateRestart => isChinese ? '应用更新并重启' : 'Apply & Restart';
+  String get rollbackUpdate => isChinese ? '回滚更新' : 'Roll Back';
+  String get updateSource => isChinese ? '更新源' : 'Source';
+  String get updateSourceGithub => isChinese ? 'GitHub 发布源' : 'GitHub releases';
+  String get updateSourceLocal => isChinese ? '本地清单' : 'Local manifest';
   String get channel => isChinese ? '通道' : 'Channel';
   String get availableVersion => isChinese ? '可用版本' : 'Available Version';
   String get digest => isChinese ? '摘要' : 'Digest';
@@ -75,7 +60,8 @@ extension LicoStringsLabels on LicoStrings {
   String get clientUpdatePhaseVerified => isChinese ? '已校验' : 'Verified';
   String get clientUpdatePhaseApplyPlanned =>
       isChinese ? '已规划安装' : 'Install planned';
-  String get clientUpdatePhaseApplied => isChinese ? '已安装' : 'Installed';
+  String get clientUpdatePhaseApplied => isChinese ? '已应用' : 'Applied';
+  String get clientUpdatePhaseRolledBack => isChinese ? '已回滚' : 'Rolled back';
   String get clientUpdatePhaseFailed => isChinese ? '失败' : 'Failed';
   String get done => isChinese ? '完成' : 'Done';
   String get customize => isChinese ? '自定义' : 'Customize';
@@ -369,9 +355,8 @@ extension LicoStringsLabels on LicoStrings {
       ? '$count 个子任务'
       : '$count nested ${count == 1 ? 'task' : 'tasks'}';
   String get agentProcess => isChinese ? '智能体过程' : 'Agent process';
-  String get runtimeUpdateTitle => isChinese
-      ? 'Cursor Agent 正在自动更新'
-      : 'Cursor Agent is updating automatically';
+  String get runtimeUpdateTitle =>
+      isChinese ? 'Cursor Agent 正在自动更新' : 'Cursor Agent is updating automatically';
   String get runtimeUpdateCompleted => isChinese ? '更新完成' : 'Update completed';
   String get runtimeUpdateInterrupted =>
       isChinese ? '更新中断' : 'Update interrupted';
@@ -639,10 +624,12 @@ extension LicoStringsLabels on LicoStrings {
   String conversationPermissionDenied(String tool) => isChinese
       ? '$tool 的权限请求被拒绝，回复中未执行该操作。'
       : '$tool was denied permission; the action was not performed.';
-  String get conversationPermissionAllowAction => isChinese ? '允许' : 'Allow';
+  String get conversationPermissionAllowAction =>
+      isChinese ? '允许' : 'Allow';
   String get conversationPermissionAllowAndRememberAction =>
       isChinese ? '允许并加入白名单' : 'Allow and remember';
-  String get conversationPermissionDenyAction => isChinese ? '拒绝' : 'Deny';
+  String get conversationPermissionDenyAction =>
+      isChinese ? '拒绝' : 'Deny';
 
   String get llmGatewayStart => isChinese ? '启动' : 'Start';
   String get llmGatewayStarting => isChinese ? '启动中…' : 'Starting…';

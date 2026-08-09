@@ -44,10 +44,7 @@ export const CLIENT_GATE_LANES = Object.freeze({
     "client:deps:audit",
   ]),
   "release-policy": freezeLane([
-    "client:release:self-test",
-    "client:install:macos:github:self-test",
-    "client:update-release:finalize:self-test",
-    "client:release:preflight:check",
+    "client:pr:preflight:self-test",
     "client:verify:release-artifact-io:self-test",
     "client:verify:release-dependency-receipts:self-test",
     "client:verify:source-state-digest:self-test",
@@ -57,11 +54,15 @@ export const CLIENT_GATE_LANES = Object.freeze({
     "client:verify:android-release-toolchain:self-test",
     "client:verify:consumer-verification-manifest:self-test",
     "client:verify:remote-release-assets:self-test",
+    "client:verify:update-manifest:self-test",
+    "client:verify:release-workflow-binding:self-test",
     "client:verify:macos-distribution:self-test",
     "client:verify:review-signoff:self-test",
     "client:verify:release-target-evidence:self-test",
     "client:verify:release-report-schema:self-test",
     "client:verify:macos-nested-code-bounds:self-test",
+    "client:verify:macos-release-artifact:self-test",
+    "client:verify:macos-update-preflight:self-test",
     "client:verify:package-client:self-test",
     "client:native:smoke:policy:self-test",
     "client:verify:closure-producer-writer:self-test",
@@ -84,13 +85,16 @@ export const CLIENT_GATE_LANES = Object.freeze({
 
 export const CLIENT_RELEASE_TARGETS = Object.freeze({
   "macos-arm64": Object.freeze({
-    buildJob: "build-macos",
+    buildJob: "prepare-macos",
     publishJob: "publish-macos",
     artifactName: "licoup-macos",
+    installerArtifact: "LicoUp-macos-arm64.dmg",
+    updateArtifact: "LicoUp-macos-arm64-update.zip",
     files: Object.freeze([
-      "LicoUp-macos-arm64.zip",
-      "LicoUp-macos-arm64.zip.sha256",
-      "install-macos.sh",
+      "LicoUp-macos-arm64.dmg",
+      "LicoUp-macos-arm64.dmg.sha256",
+      "LicoUp-macos-arm64-update.zip",
+      "LicoUp-macos-arm64-update.zip.sha256",
     ]),
   }),
   "linux-glibc-arm64": Object.freeze({
@@ -138,6 +142,11 @@ const DEPENDENCY_PATHS = new Set([
 
 const RELEASE_AUTHORITY_PATHS = new Set([
   ".github/workflows/client-release.yml",
+  ".github/workflows/branch-flow.yml",
+  ".github/workflows/commit-identity.yml",
+  ".github/workflows/lico-auditor-gate.yml",
+  "tools/client-release-template.json",
+  "tools/client-remote-release-strategies.json",
   "tools/client-release-targets.json",
   "tools/client-version.json",
 ]);
@@ -193,7 +202,8 @@ function isReleasePolicyPath(file) {
   return (
     RELEASE_AUTHORITY_PATHS.has(file) ||
     file.startsWith("tools/scripts/client-release") ||
-    file.startsWith("tools/scripts/client-update-release") ||
+    file.startsWith("tools/scripts/client-pr-preflight") ||
+    file.startsWith("tools/scripts/client-auditor-preflight") ||
     file.startsWith("tools/scripts/client-github-release") ||
     file.startsWith("tools/scripts/client-consumer-verification") ||
     file.startsWith("tools/scripts/client-artifact-verification") ||
@@ -209,7 +219,7 @@ function isReleasePolicyPath(file) {
   );
 }
 
-export function classifyClientGatePaths(changedPaths, { releaseTarget = null } = {}) {
+export function classifyClientGatePaths(changedPaths) {
   if (!Array.isArray(changedPaths)) {
     throw new Error("changed paths must be an array");
   }
@@ -229,9 +239,6 @@ export function classifyClientGatePaths(changedPaths, { releaseTarget = null } =
     if (isAndroidPath(file)) lanes.android = true;
     if (DEPENDENCY_PATHS.has(file)) lanes.dependencies = true;
     if (isReleasePolicyPath(file)) lanes["release-policy"] = true;
-  }
-  if (normalized.includes("tools/client-version.json") && releaseTarget === "android-arm64") {
-    lanes.android = true;
   }
 
   return Object.freeze({

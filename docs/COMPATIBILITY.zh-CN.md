@@ -45,13 +45,13 @@
 | 智能体 ID | 驱动模式 | 就绪状态 | 可发送 | 运行协议 | 通道族 | 准确继续 | 流式事件 | 已接收证据 | 处理中证据 | 回复中证据 | 已完成证据 | 原生中断/steer |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | openclaw | conversation | unverified | 否 | openclaw-acp-stdio-jsonrpc | acp | 是 | 是 | 是 | 是 | 是 | 是 | 否 |
-| claude-code | conversation | unverified | 否 | claude-code-cli-stream-json | stream-json | 是 | 是 | 是 | 是 | 是 | 是 | 是 |
-| codex | conversation | unverified | 否 | codex-app-server-stdio-jsonrpc | app-server | 是 | 是 | 是 | 是 | 是 | 是 | 是 |
+| claude-code | conversation | ready | 是 | claude-code-cli-stream-json | stream-json | 是 | 是 | 是 | 是 | 是 | 是 | 是 |
+| codex | conversation | ready | 是 | codex-app-server-stdio-jsonrpc | app-server | 是 | 是 | 是 | 是 | 是 | 是 | 是 |
 | antigravity | conversation | unverified | 否 | antigravity-cli-argv-hook-v1 | cli | 是 | 是 | 是 | 否 | 是 | 是 | 否 |
 | opencode | conversation | unverified | 否 | opencode-serve-http-v1 | serve-http | 是 | 是 | 是 | 否 | 是 | 是 | 否 |
 | copilot | conversation | unverified | 否 | copilot-acp-v1-stdio-ndjson | acp | 是 | 是 | 是 | 是 | 是 | 是 | 否 |
 | kilo-code | conversation | unverified | 否 | kilo-code-serve-http-v1 | serve-http | 是 | 是 | 是 | 否 | 是 | 是 | 否 |
-| cursor | conversation | unverified | 否 | cursor-agent-cli-v1 | cli | 是 | 是 | 是 | 否 | 是 | 是 | 否 |
+| cursor | conversation | ready | 是 | cursor-agent-cli-v1 | cli | 是 | 是 | 是 | 否 | 是 | 是 | 否 |
 | hermes | conversation | unverified | 否 | hermes-acp-stdio-jsonrpc | acp | 是 | 是 | 是 | 是 | 是 | 是 | 否 |
 | kimi-code | conversation | unverified | 否 | kimi-code-acp-v1-stdio-ndjson | acp | 是 | 是 | 是 | 是 | 是 | 是 | 否 |
 | pi | conversation | unverified | 否 | pi-rpc-stdio-jsonl | rpc | 是 | 是 | 是 | 是 | 是 | 是 | 是 |

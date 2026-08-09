@@ -22,7 +22,7 @@ import 'package:licoup/src/frontend/shared/ui/theme.dart';
 /// Title sits outside, above a stadium (full-pill) shell that matches the
 /// inner assignment capsules. Collapsed: circular plus. Expanded: the shell
 /// stays a single row (chips + draft field + confirm); agent / model /
-/// reasoning cards float via a root [OverlayPortal] (flip above
+/// reasoning cards float via [OverlayPortal.targetsRootOverlay] (flip above
 /// when space below is tight) and do not resize the stadium. The draft field
 /// mirrors cascade picks: agent icon and `Agent · Model · Effort`.
 final class AgentOrchestrationMultiCapsuleSection extends StatefulWidget {
@@ -315,7 +315,7 @@ final class _AgentOrchestrationMultiCapsuleSectionState
 
     // Root overlay paints above the dialog footer so Reviewer/Worker cards
     // are not covered by Cancel/Save. Flip upward when space below is tight.
-    return OverlayPortal(
+    return OverlayPortal.targetsRootOverlay(
       controller: _cascadePortalController,
       overlayChildBuilder: (context) {
         final placement = _cascadePlacement();
@@ -1070,7 +1070,7 @@ final class _FastSwitchRow extends StatelessWidget {
           Transform.scale(
             scale: 0.78,
             child: Switch.adaptive(
-              key: Key('$keyPrefix-fast-switch'),
+              key: Key('${keyPrefix}-fast-switch'),
               value: enabled,
               onChanged: onChanged,
               materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
@@ -1317,7 +1317,7 @@ final class _SelectedAgentCapsule extends StatelessWidget {
     }
     return Tooltip(
       message: strings.currentConversation,
-      waitDuration: const Duration(milliseconds: 400),
+      waitDuration: LicoMotion.tooltipWait,
       child: chip,
     );
   }

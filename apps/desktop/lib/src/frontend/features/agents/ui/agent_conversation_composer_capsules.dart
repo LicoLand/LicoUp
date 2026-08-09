@@ -13,6 +13,8 @@ import 'package:licoup/src/frontend/layout/profiles/messaging/desktop/tokens/mes
 import 'package:licoup/src/frontend/shared/ui/agent_brand_icon.dart';
 import 'package:licoup/src/frontend/shared/ui/apple_control_metrics.dart';
 import 'package:licoup/src/frontend/shared/ui/apple_glass.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_section_header.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 /// Stadium ends for messaging composer context capsules.
@@ -141,7 +143,7 @@ class ComposerWorkspaceCapsule extends StatelessWidget {
     final base = splitAt <= 0 ? display : display.substring(splitAt + 1);
     return Tooltip(
       message: fullPath,
-      waitDuration: const Duration(milliseconds: 400),
+      waitDuration: LicoMotion.tooltipWait,
       child: Semantics(
         button: true,
         enabled: canChoose,
@@ -377,7 +379,7 @@ class _RuntimeCapsuleTrigger extends StatelessWidget {
     final colors = context.licoColors;
     return Tooltip(
       message: tooltip,
-      waitDuration: const Duration(milliseconds: 400),
+      waitDuration: LicoMotion.tooltipWait,
       child: Semantics(
         button: true,
         enabled: menuEnabled,
@@ -896,7 +898,7 @@ class ComposerFlywheelCapsule extends StatelessWidget {
               (context, {required open, required toggle, required close}) {
                 return Tooltip(
                   message: strings.mentionConfiguredAgents,
-                  waitDuration: const Duration(milliseconds: 400),
+                  waitDuration: LicoMotion.tooltipWait,
                   child: Semantics(
                     button: true,
                     label: '${strings.currentConversation}: $mainAgentLabel',
@@ -967,7 +969,7 @@ class ComposerFlywheelCapsule extends StatelessWidget {
         const SizedBox(width: 6),
         Tooltip(
           message: strings.edit,
-          waitDuration: const Duration(milliseconds: 400),
+          waitDuration: LicoMotion.tooltipWait,
           child: AppleGlassSurface(
             borderRadius: BorderRadius.circular(999),
             fillAlpha: colors.isDark ? 22 : 10,
@@ -1030,7 +1032,7 @@ class _ComposerFlywheelMentionPanel extends StatelessWidget {
     }
 
     final rows = <Widget>[
-      MessagingGlassMenuSectionHeader(label: strings.mentionConfiguredAgents),
+      LicoGroupHeader(label: strings.mentionConfiguredAgents),
       if (sections.isEmpty)
         Padding(
           padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
@@ -1041,7 +1043,7 @@ class _ComposerFlywheelMentionPanel extends StatelessWidget {
         )
       else
         for (final section in sections) ...[
-          MessagingGlassMenuSectionHeader(label: section.title),
+          LicoGroupHeader(label: section.title),
           for (final entry in section.entries) agentRow(entry),
         ],
     ];

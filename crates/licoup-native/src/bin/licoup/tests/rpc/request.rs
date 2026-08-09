@@ -76,3 +76,14 @@ fn stdio_rpc_execute_rejects_commands_that_require_external_private_stdin() {
     assert!(rpc_command_reads_external_stdin(&args));
     assert!(!rpc_command_writes_external_stdout(&args));
 }
+
+#[test]
+fn gateway_client_token_is_never_projected_over_stdio_rpc() {
+    let args = vec![
+        "gateway".to_string(),
+        "client-token".to_string(),
+        "--agent".to_string(),
+        "codex".to_string(),
+    ];
+    assert!(rpc_command_writes_external_stdout(&args));
+}

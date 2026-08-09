@@ -49,7 +49,7 @@ The accepted local-install boundary is:
 
 | Target | Required local evidence | Publication boundary |
 | --- | --- | --- |
-| `macos-arm64` | The published distribution ZIP and manifest bind the source, version, build, and exact locally signed `.app` digest; built and installed app digests match; the ephemeral local integrity signature, Hardened Runtime, normalized outer Release entitlements, and empty entitlements on every recursively discovered nested code object match; a new exact process survives the stability window with the challenge; post-launch artifact checks and sidecar smoke pass | App Store, Developer ID distribution, and notarization are not required or claimed |
+| `macos-arm64` | The published distribution ZIP and manifest bind the source, version, build, and exact locally signed `.app` digest; built and installed app digests match; the long-lived `LicoUp Release` identity is checked in memory across the app and every bounded nested code object; Hardened Runtime, normalized outer Release entitlements, and empty nested entitlements match; a new exact process survives the stability window; the real updater applies the candidate and restores the previous stable app on failure | App Store, Developer ID distribution, and notarization are not required or claimed |
 | `android-arm64` | APK package/version/debuggable/ABI/single-signer/signature-scheme/alignment facts and the exact stored ARM64 native-library digest match the current build manifest; the checked-in tool digest allowlist and controlled macOS ARM64 release-runner class match; the relay CLI is rebuilt from the same checkout before acceptance; install returns explicit success; the installed `base.apk` matches; exact activity launch consumes the challenge and nonce | Play Store and production update identity are not required or claimed; redacted receipts expose only signer-match booleans, never a stable certificate fingerprint |
 | `linux-glibc-arm64` | The published distribution TAR and manifest version/build/source/archive bindings match; the final reducer directly verifies Ed25519 over the archive SHA-256 digest using the embedded public verification key; compressed size, entry count, per-entry size, total expanded size, path type, listing time, and extraction time remain within fixed bounds; the same archive is installed on the native ARM64 release runner, starts in the supported bounded session, and passes CLI/GUI smoke | Registry or package-repository publication is not required or claimed |
 
@@ -75,18 +75,20 @@ They never expose publisher accounts, team/store identifiers, certificate
 subjects or stable fingerprints, credentials, private keys, custody details,
 or private-channel infrastructure.
 
+Before a release-candidate pull request, run the single project preflight for
+the selected target on its real platform. It binds the clean candidate HEAD,
+tree, version, target, release template and final artifact to a redacted receipt.
+The pre-push hook checks that receipt only; it never repeats build, install,
+update or launch work. The exact required checks are `Branch flow`, `Commit
+identity`, `Client required` and `Auditor`.
+
 The manual GitHub workflow requires an explicit Release tag and exactly one
-release-supported target per dispatch. Different targets build independently
-and may run concurrently for the same tag. A target publisher waits only for
-its own build; only the same-tag asset append and manifest replacement are
-serialized. The publisher creates or reuses a same-source draft or published
-Release, merges the new target with already verified target assets, rebuilds
-the canonical consumer manifest, and verifies the exact remote set. The Release
-remains a draft unless `publish_release` is selected; a later target may also
-extend an already published same-source Release. GitHub repository write
-authority is the only publication authority used by this path. Platform
-publisher identity, store accounts, notarization credentials, listing metadata,
-and private update-channel access are neither read nor accepted as prerequisites.
+release-supported target per dispatch. Remote validity currently has one active
+strategy, `build-success`: the selected target must build successfully from the
+immutable release revision. The publisher creates or reuses one same-source
+draft, refuses conflicting existing assets, verifies the exact remote set, and
+publishes at most once. Repeating the same input reuses the same Release and
+asset set without overwriting it.
 
 On Linux, automatic host selection is permitted only when glibc can be proven.
 For an ambiguous libc, set `LICO_CLIENT_RELEASE_TARGETS=linux-glibc-arm64`
@@ -106,16 +108,13 @@ capture. Any replacement between checks blocks the report. The fixed canonical
 output is removed before config parsing, so a config or producer failure cannot
 leave an older green report in place.
 
-The macOS final local-install path is `npm run client:install:macos`. In GitHub
-Release automation, a short-lived local integrity identity is generated inside
-the isolated runner; it is not a publisher identity and is never published.
-For a local developer install with no explicit identity, the command installs
-the build pipeline's already verified ad-hoc-signed app and does not select or
-modify an existing developer identity. An explicit
-`LICO_MACOS_LOCAL_SIGNING_IDENTITY` selects the identity-signed integrity path
-used by release automation.
-The installer re-signs the app, verifies the local integrity signature,
-atomically installs the exact app, and emits a redacted preparation receipt.
+The macOS release path imports the same protected, long-lived `LicoUp Release`
+certificate and private key locally and in CI. It never generates a per-run
+macOS release identity. The expected certificate fingerprint is compared only
+in memory and is never written to a receipt, report or public metadata. The
+installer re-signs every bounded nested code object before the outer app,
+verifies identity uniformity, atomically installs the exact app, and emits only
+redacted boolean conclusions.
 The subsequent macOS capability producer launches the installed app and issues
 the canonical install/launch/smoke evidence. A separately requested platform
 channel may supply its own protected signing identity, but that path is not a

@@ -4,7 +4,9 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_composer.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_runtime_settings.dart';
+import 'package:licoup/src/frontend/features/agents/ui/composer_agent_mention.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_icon_button.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 void main() {
@@ -173,6 +175,115 @@ void main() {
     expect(find.byKey(const Key('lico-top-edge-pulse-paint')), findsNothing);
     expect(find.byKey(const Key('lico-perimeter-pulse-paint')), findsNothing);
     await tester.pumpAndSettle();
+  });
+
+  testWidgets('send button quiets after a successful send with mention chips', (
+    tester,
+  ) async {
+    final submissions = <String>[];
+    final bridge = ComposerMentionBridge();
+    await tester.pumpWidget(
+      _ComposerTestApp(
+        child: RuntimeMessageComposer(
+          targetLabel: 'Fixture Agent',
+          initialDraft: '',
+          busy: false,
+          enabled: true,
+          modelOptions: const [],
+          selectedModel: '',
+          reasoningEffortOptions: const [],
+          selectedReasoningEffort: '',
+          onModelChanged: (_) {},
+          onReasoningEffortChanged: (_) {},
+          onDraftChanged: (_) {},
+          onSend: (text) async {
+            submissions.add(text);
+            return true;
+          },
+          mentionBridge: bridge,
+        ),
+      ),
+    );
+
+    final sendButton = find.byKey(
+      const Key('agent-conversation-composer-send'),
+    );
+
+    // Mention-only draft: the chip alone holds the sendable state.
+    bridge.insertMention(agentId: 'codex', displayLabel: 'Codex');
+    await tester.pump();
+    expect(tester.widget<LicoIconButton>(sendButton).onPressed, isNotNull);
+
+    await tester.tap(sendButton);
+    await tester.pump();
+
+    expect(submissions, ['@Codex']);
+    expect(
+      tester.widget<TextField>(find.byType(TextField)).controller?.text,
+      '',
+    );
+    // Regression: after a successful send the cleared text and chips must
+    // quiet the send button instead of leaving it enabled-but-dead.
+    expect(tester.widget<LicoIconButton>(sendButton).onPressed, isNull);
+
+    // Typing again re-enables sending.
+    await tester.enterText(find.byType(TextField), 'next message');
+    await tester.pump();
+    expect(tester.widget<LicoIconButton>(sendButton).onPressed, isNotNull);
+    await tester.tap(sendButton);
+    await tester.pump();
+    expect(submissions, ['@Codex', 'next message']);
+  });
+
+  testWidgets('removing the last mention chip quiets the send button', (
+    tester,
+  ) async {
+    final submissions = <String>[];
+    final bridge = ComposerMentionBridge();
+    await tester.pumpWidget(
+      _ComposerTestApp(
+        child: RuntimeMessageComposer(
+          targetLabel: 'Fixture Agent',
+          initialDraft: '',
+          busy: false,
+          enabled: true,
+          modelOptions: const [],
+          selectedModel: '',
+          reasoningEffortOptions: const [],
+          selectedReasoningEffort: '',
+          onModelChanged: (_) {},
+          onReasoningEffortChanged: (_) {},
+          onDraftChanged: (_) {},
+          onSend: (text) async {
+            submissions.add(text);
+            return true;
+          },
+          mentionBridge: bridge,
+        ),
+      ),
+    );
+
+    final sendButton = find.byKey(
+      const Key('agent-conversation-composer-send'),
+    );
+    bridge.insertMention(agentId: 'codex', displayLabel: 'Codex');
+    await tester.pump();
+    expect(tester.widget<LicoIconButton>(sendButton).onPressed, isNotNull);
+
+    await tester.tap(
+      find.byKey(const Key('composer-agent-mention-codex')),
+    );
+    await tester.pump();
+
+    // Removing the only chip empties the draft and quiets the button.
+    expect(
+      tester.widget<TextField>(find.byType(TextField)).controller?.text,
+      '',
+    );
+    expect(tester.widget<LicoIconButton>(sendButton).onPressed, isNull);
+    await tester.tap(sendButton);
+    await tester.pump();
+    expect(submissions, isEmpty);
   });
 
   testWidgets('composer restores a submission rejected before execution', (

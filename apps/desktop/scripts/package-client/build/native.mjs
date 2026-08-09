@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import process from "node:process";
@@ -15,6 +16,7 @@ export function buildNativeSidecars(selected, options) {
   ];
   if (bins.length === 0 || options.skipNativeBuild || options.dryRun) return;
   const args = [
+    path.join("tools", "scripts", "cargo-client.mjs"),
     "build",
     "--manifest-path",
     path.join("crates", "licoup-native", "Cargo.toml"),
@@ -24,15 +26,30 @@ export function buildNativeSidecars(selected, options) {
     args.push("--target", packageClientRuntime.windowsX64RustTarget);
   }
   for (const bin of bins) args.push("--bin", bin);
-  runPackageProcess("cargo", args, {
+  const environment = {
+    ...process.env,
+    RUSTFLAGS: rustFlagsWithPathRemap(),
+  };
+  if (options.mode === "release") {
+    environment.LICO_CLIENT_PRODUCT_VERSION = clientProductVersion();
+  }
+  runPackageProcess(process.execPath, args, {
     failureCode: "native_sidecar_build_failed",
     stage: "native-build",
-    env: {
-      ...process.env,
-      CARGO_TARGET_DIR: packageClientRuntime.nativeTargetRoot,
-      RUSTFLAGS: rustFlagsWithPathRemap(),
-    },
+    env: environment,
   });
+}
+
+function clientProductVersion() {
+  const manifest = JSON.parse(readFileSync(
+    path.join(packageClientRuntime.workspaceRoot, "tools", "client-version.json"),
+    "utf8",
+  ));
+  const version = String(manifest.productVersion || "").trim();
+  if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(version)) {
+    throw new Error(`Invalid productVersion in tools/client-version.json: ${version}`);
+  }
+  return version;
 }
 
 export function cargoTargetDir(mode, options = {}) {

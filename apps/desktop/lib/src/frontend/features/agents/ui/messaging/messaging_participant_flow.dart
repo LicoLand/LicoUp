@@ -436,7 +436,10 @@ class _MessagingParticipantFlowState extends State<MessagingParticipantFlow> {
           bottom: LicoContentSpacing.item,
         ),
         child: SelectionContainer.disabled(
-          child: ConversationLogEventRow(events: item.events),
+          child: ConversationLogEventRow(
+            events: item.events,
+            detailsBuilder: buildAgentConversationEventDetails,
+          ),
         ),
       ),
       MessagingFlowRuntimeUpdate(:final item) => Padding(

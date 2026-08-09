@@ -189,13 +189,6 @@ export async function checkCrateCoreAndFacadeBounds(context) {
     "crates/licoup-native/src/platform/user_presence.rs",
     "crates/licoup-native/src/platform/secure_mesh_secret_store/macos_user_presence.rs",
     "crates/licoup-native/src/platform/antigravity_driver/tests.rs"
-    ,"crates/licoup-native/src/bin/lico-llm-gateway.rs"
-    ,"crates/licoup-native/src/domain/client_update/macos_runner/filesystem.rs"
-    ,"crates/licoup-native/src/platform/client_autostart.rs"
-    ,"crates/licoup-native/src/platform/cursor_driver/tests.rs"
-    ,"crates/licoup-native/src/platform/llm_gateway_autostart.rs"
-    ,"crates/licoup-native/src/platform/llm_gateway_service.rs"
-    ,"crates/licoup-native/src/platform/pty_transport.rs"
   ]);
   const rustCliUnsafeFiles = (await collectRustUnsafeFiles(rustCliRoot))
     .filter((relativePath) => !reviewedRustUnsafeFiles.has(relativePath));

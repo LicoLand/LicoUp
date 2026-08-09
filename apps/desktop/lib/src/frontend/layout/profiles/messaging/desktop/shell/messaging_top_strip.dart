@@ -5,6 +5,7 @@ import 'package:licoup/src/frontend/layout/layout_chrome_features.dart';
 import 'package:licoup/src/frontend/layout/layout_chrome_port.dart';
 import 'package:licoup/src/frontend/layout/layout_palette.dart';
 import 'package:licoup/src/frontend/layout/profiles/messaging/desktop/tokens/messaging_desktop_tokens.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
 
 /// The Messaging desktop window-chrome band over frosted glass: traffic-light
 /// inset, the feature-owned conversation pill tabs, then the right cluster of
@@ -20,7 +21,7 @@ final class MessagingChromeBand extends StatelessWidget {
     final strings = LicoStrings.of(context);
     final features = LayoutChromeFeaturesScope.maybeOf(context);
     final dark = colors.isDark;
-    return SizedBox(
+    return Container(
       key: const Key('messaging-chrome-band'),
       height: MessagingDesktopMetrics.topBandExtent,
       // Light frosted tint only — blur is supplied by the native
@@ -156,7 +157,7 @@ class _ChromeIconAction extends StatelessWidget {
     final colors = context.layoutPalette;
     return Tooltip(
       message: tooltip,
-      waitDuration: const Duration(milliseconds: 400),
+      waitDuration: LicoMotion.tooltipWait,
       child: InkWell(
         onTap: onPressed,
         customBorder: const CircleBorder(),
