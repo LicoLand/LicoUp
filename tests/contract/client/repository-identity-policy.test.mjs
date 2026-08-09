@@ -79,7 +79,7 @@ test("identity-shaped Agent lines are rejected without banning product discussio
   );
 });
 
-test("remote identity policy admits only verified GitHub merge execution as a merge exception", () => {
+test("remote identity policy admits only verified GitHub service commits as a committer exception", () => {
   const workflow = readFileSync(
     new URL("../../../.github/workflows/commit-identity.yml", import.meta.url),
     "utf8",
@@ -87,7 +87,6 @@ test("remote identity policy admits only verified GitHub merge execution as a me
   for (const required of [
     ".commit.committer.name == $login",
     ".commit.committer.email == $email",
-    "(.parents | length) == 2",
     '.committer.login == "web-flow"',
     '.commit.committer.name == "GitHub"',
     '.commit.committer.email == "noreply@github.com"',
@@ -96,6 +95,7 @@ test("remote identity policy admits only verified GitHub merge execution as a me
   ]) {
     assert.match(workflow, new RegExp(required.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&"), "u"));
   }
+  assert.doesNotMatch(workflow, /\.parents \| length/u);
 });
 
 test("Rulesets cover all branch metadata and protect the default branch without bypass", () => {
