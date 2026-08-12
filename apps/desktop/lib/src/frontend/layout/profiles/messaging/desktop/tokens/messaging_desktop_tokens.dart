@@ -59,6 +59,20 @@ abstract final class MessagingDesktopMetrics {
   /// Drop-shadow Y offset of the floating list card.
   static const double conversationListCardShadowOffsetY = 4;
 
+  /// Empty bands between the group roster and the floating header/composer.
+  static const double groupRosterHeaderGap = 10;
+  static const double groupRosterComposerGap = 10;
+
+  /// The right-edge roster is visible only in the transcript band.
+  static const double groupRosterExtent = 64;
+  static const double groupRosterContentInset = 6;
+  static const double groupRosterScrollbarThickness = 2;
+  static const double groupRosterCurveExtent = 64;
+  static const double groupRosterMinimumVisibleExtent = 128;
+  static const double groupRosterTrailingBleed = 1;
+  static const double groupRosterSigmoidSteepness = 8;
+  static const int groupRosterSigmoidSampleCount = 24;
+
   /// Horizontal inset of the floating conversation-header capsule.
   static const double conversationHeaderCapsuleInsetH = 12;
 
@@ -126,12 +140,8 @@ abstract final class MessagingDesktopMetrics {
   /// Max height of the runtime selector hover popover (primary ± submenu).
   static const double composerRuntimeSelectorPopoverMaxHeight = 260;
 
-  /// Max height of the Flywheel agent/model hover picker (taller model lists).
-  static const double composerFlywheelSelectorPopoverMaxHeight = 360;
-
-  /// Max width of the Flywheel agent list plus detached model submenu
-  /// (agent max 260 + gap 8 + model max 240, with a little room for chrome).
-  static const double composerFlywheelSelectorPopoverMaxWidth = 520;
+  /// Max height of composer-adjacent option menus.
+  static const double composerOptionPopoverMaxHeight = 360;
 
   /// Max height of the bounded, scrollable runtime selector submenu.
   static const double composerRuntimeSelectorSubmenuMaxHeight = 220;
@@ -189,21 +199,21 @@ abstract final class MessagingDesktopMetrics {
             : userBubbleGlassBorderAlphaLight,
       );
 
-  /// Modest black veil on the notification bell popover (dark). Layered with
-  /// [conversationOverlayGlassFill] and blur so menu text stays readable
-  /// without an opaque slab. Lighter than [mainContentCardOverlayDarkAlpha].
-  static const int notificationPopoverVeilDarkAlpha = 50;
+  /// Black readability veil on floating conversation overlays (dark).
+  /// Layered with [conversationOverlayGlassFill] and blur so menus and
+  /// popovers remain distinct from live content without becoming opaque.
+  static const int conversationOverlayReadabilityVeilDarkAlpha = 84;
 
-  /// Modest black veil on the notification bell popover (light).
-  static const int notificationPopoverVeilLightAlpha = 26;
+  /// Lighter counterpart for floating overlays on the light preset.
+  static const int conversationOverlayReadabilityVeilLightAlpha = 40;
 
-  /// Black readability veil for the notification popover — use with overlay
-  /// glass, not as a standalone opaque panel.
-  static Color notificationPopoverVeilFill({required bool isDark}) =>
+  /// Shared black readability veil for floating conversation overlays — use
+  /// with overlay glass, not as a standalone opaque panel.
+  static Color conversationOverlayReadabilityVeilFill({required bool isDark}) =>
       Colors.black.withAlpha(
         isDark
-            ? notificationPopoverVeilDarkAlpha
-            : notificationPopoverVeilLightAlpha,
+            ? conversationOverlayReadabilityVeilDarkAlpha
+            : conversationOverlayReadabilityVeilLightAlpha,
       );
 
   /// Fill wash for the floating conversation-list card. Widgets must use this
@@ -253,6 +263,19 @@ abstract final class MessagingDesktopMetrics {
         ),
       ];
 
+  /// Resolves a mirrored shoulder that stays proportional on short windows.
+  static double groupRosterCurveForHeight(double height) =>
+      (height / 3).clamp(0.0, groupRosterCurveExtent).toDouble();
+
+  /// The roster uses the selected chrome-tab wash over a real backdrop blur.
+  /// This keeps it in the shell's neutral frosted-glass family instead of
+  /// introducing an opaque theme surface inside the native glass window.
+  static Color groupRosterGlassFill({required bool isDark}) =>
+      chromeTabSelectedFill(isDark: isDark);
+
+  /// Matches the native shell's reference blur strength.
+  static const double groupRosterGlassBlurSigma = chromeGlassBlurSigma;
+
   /// Window inset of the unified content card on its right and bottom
   /// edges; the card's top edge meets the chrome band and its left edge sits
   /// flush against the destination rail.
@@ -273,13 +296,12 @@ abstract final class MessagingDesktopMetrics {
   /// read as a solid slab on bright VE.
   static const int mainContentCardOverlayLightAlpha = 40;
 
-  /// Hairline border alpha on the main content card (dark).
-  static const int mainContentCardBorderAlphaDark =
-      conversationListCardBorderAlphaDark;
+  /// The unified card has no painted rim. Native glass, fill, and elevation
+  /// establish its boundary without leaving a seam beside edge-grown rails.
+  static const int mainContentCardBorderAlphaDark = 0;
 
-  /// Hairline border alpha on the main content card (light).
-  static const int mainContentCardBorderAlphaLight =
-      conversationListCardBorderAlphaLight;
+  /// Light-preset counterpart of [mainContentCardBorderAlphaDark].
+  static const int mainContentCardBorderAlphaLight = 0;
 
   /// Drop-shadow alpha on the main content card (dark).
   static const int mainContentCardShadowAlphaDark =
