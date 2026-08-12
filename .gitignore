@@ -99,6 +99,7 @@ test-results/
 # Local planning, agent, and one-off work
 /docs/plans/
 /apps/desktop/docs/plans/
+/design-qa.md
 /docs/reports/
 /.agents/
 /.claude/

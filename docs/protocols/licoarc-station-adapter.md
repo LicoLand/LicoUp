@@ -103,7 +103,7 @@ prove that an official network is operating.
 
 The retired client-specific station envelope/API, route family,
 service-session scope, configuration, fixtures, and documentation are removed.
-There is no dual station-wire compatibility mode and no Meshrix or station
-translation gateway. That completed station migration does not mean that the
+There is no dual station-wire compatibility mode or station translation
+gateway. That completed station migration does not mean that the
 current retiring endpoint-protection Preview has already been removed or
 accepted as a Lico Arc Profile.
