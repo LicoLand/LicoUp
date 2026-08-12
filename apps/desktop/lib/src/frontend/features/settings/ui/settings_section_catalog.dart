@@ -11,6 +11,7 @@ const settingsSectionIdOrder = <String>[
   'storage',
   'diagnostics',
   'startup',
+  'archived-conversations',
 ];
 
 /// One settings section's navigation identity, shared by the in-page index
@@ -47,5 +48,10 @@ List<SettingsSectionDescriptor> settingsSectionDescriptors(
     id: 'startup',
     icon: Icons.rocket_launch_outlined,
     label: strings.isChinese ? '启动' : 'Startup',
+  ),
+  (
+    id: 'archived-conversations',
+    icon: Icons.archive_outlined,
+    label: strings.archivedConversations,
   ),
 ];

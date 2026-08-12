@@ -4,8 +4,7 @@
 
 LicoUp 是本地优先的开源桌面与移动客户端。产品范围以
 [`PRODUCT.md`](../../PRODUCT.md) 和
-[`CLIENT-DESKTOP.md`](../../docs/functionality/CLIENT-DESKTOP.md) 为准；默认使用不依赖
-Meshrix 服务端。
+[`CLIENT-DESKTOP.md`](../../docs/functionality/CLIENT-DESKTOP.md) 为准。
 
 ## 默认产品范围
 
@@ -21,13 +20,12 @@ Meshrix 服务端。
 - `Agents`：并发发现本机智能体，并与本机或明确配置的 OpenClaw/Hermes
   虚拟机目标创建、列出或继续原生对话；
 - `Conversations`：检索、管理并备份全部或关键词命中的原生对话；
-- `Skill Hub`：按智能体管理技能、从显式镜像或 GitHub 来源更新、删除及统计调用频率；
+- `Skill Hub`：按智能体发现和展示本机已有技能、统计调用频率，并把选中的技能移入系统废纸篓；
 - `Usage`：按智能体或模型统计 Token，用最近 30 天作为默认窗口；
 - `Mobile Relay`：在桌面与移动端之间传递端到端加密的不透明信封；
 - `Settings`：本机设置、平台授权和外部传输审批。
 
-ACP 与 MCP 是内置协议适配基础，不占用独立导航入口。可选 Meshrix 协作只能通过下述
-默认关闭的外部插件进入。
+ACP 与 MCP 是内置协议适配基础，不占用独立导航入口。
 
 `Mobile Relay` 当前执行[正在退役的端点保护预览](../../docs/STATUS.zh-CN.md)，
 并通过已实现的候选 `licoarc.relay.v1` 外层 adapter 承载。该预览不是 Lico Arc
@@ -42,18 +40,6 @@ Kilo Code、Kimi Code、OpenClaw、OpenCode 和 Pi Agent。发现到目标、读
 当前适配状态由原生驱动与 readiness 清单负责，并投影到
 [`docs/COMPATIBILITY.md`](../../docs/COMPATIBILITY.md)；未就绪 adapter 必须保持
 fail closed。
-
-## 可选 Meshrix 协作插件
-
-Meshrix 协作能力默认不加载，也不出现在默认启动路径。用户必须先手动启用，再从其
-指定的 GitHub 来源安装可选插件。该插件只能提供：
-
-1. 将 Meshrix 下载到本机私有部署，并让用户在安装前选择服务端功能或插件；
-2. 由用户手动触发，把选中的 Meshrix MCP 插件安装到一个或多个本机智能体。
-
-插件不得因安装、启动、定时任务或智能体请求而自动传出本机数据。涉及本机文件时，
-每个文件都要单独展示目标、用途、范围与摘要，取得用户本次直接审批后才能发送；目标、
-范围或内容变化会使审批失效，取消、过期或无法验证时必须 fail closed。
 
 ## 本机数据边界
 

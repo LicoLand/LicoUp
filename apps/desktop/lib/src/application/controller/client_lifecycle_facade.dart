@@ -18,8 +18,6 @@ import 'package:licoup/src/application/features/models/controller/llm_gateway_li
 import 'package:licoup/src/application/features/skill_hub/controller/skill_hub_controller.dart';
 import 'package:licoup/src/application/features/targets/controller/target_controller.dart';
 import 'package:licoup/src/contracts/appearance/appearance_preset_config.dart';
-import 'package:licoup/src/frontend/shared/appearance/appearance_preset_config.dart'
-    as appearance_ui;
 import 'package:licoup/src/contracts/llm_vault_authorization.dart';
 import 'package:licoup/src/contracts/locale_preferences.dart';
 
@@ -47,6 +45,7 @@ mixin ClientLifecycleFacade
   CatalogConvergenceController get catalogConvergenceController;
   LlmGatewayLifecycleController get llmGatewayLifecycleController;
   LlmVaultAuthorization get llmVaultAuthorization;
+  @override
   Future<void> loadConversationSessions(String agentId);
 
   String portableDataPath = '';
@@ -95,6 +94,10 @@ mixin ClientLifecycleFacade
                   id: 'opencode_serve',
                   action: ensureOpencodeServeSilently,
                 ),
+                ClientBootstrapStep(
+                  id: 'client_update_check',
+                  action: checkClientUpdateSilently,
+                ),
               ],
         runBackgroundSteps: runBackgroundSteps,
         finalStep: ClientBootstrapStep(
@@ -115,8 +118,13 @@ mixin ClientLifecycleFacade
   Future<void> _initializeClientStorage() async {
     final dataDir = await portableData.dataDirectory();
     portableDataPath = dataDir.path;
-    await hydrateConversationProjectionCache();
     await loadConversationToolAllowlists();
+    await loadLastUsedConversationRestore();
+    if (!lastUsedConversationRestoreApplied) {
+      // Targets may have settled before the persisted reference loaded. Retry
+      // the restore once; a fresh desktop install remains unselected.
+      selectDefaultConversationAgent();
+    }
     final catalog = await appearancePresetCatalogService.loadCatalog(
       portableData,
     );
@@ -130,14 +138,12 @@ mixin ClientLifecycleFacade
         presentation?.appearancePresetId ?? AppearancePresetIds.licoSoda;
     // System-following and light themes are not ready yet, so a configured
     // brightness that lands on them falls back to the dark theme at startup.
-    final resolvedAppearancePresetId = switch (appearance_ui
-        .appearanceBrightnessSelectionFor(
-          requestedAppearancePresetId,
-          appearancePresetConfigs,
-        )) {
-      appearance_ui.AppearanceBrightnessSelection.system ||
-      appearance_ui.AppearanceBrightnessSelection.light =>
-        AppearancePresetIds.licoSoda,
+    final resolvedAppearancePresetId = switch (appearanceBrightnessSelectionFor(
+      requestedAppearancePresetId,
+      appearancePresetConfigs,
+    )) {
+      AppearanceBrightnessSelection.system ||
+      AppearanceBrightnessSelection.light => AppearancePresetIds.licoSoda,
       _ => requestedAppearancePresetId,
     };
     if (!hasAppearancePresetConfig(
@@ -154,7 +160,6 @@ mixin ClientLifecycleFacade
     );
     await targetController.loadTabOrder();
     await targetController.hydrateCache();
-    await loadAgentOrchestrationPolicy();
   }
 
   Future<void> _initializeClientCore() async {
@@ -177,6 +182,15 @@ mixin ClientLifecycleFacade
     }
   }
 
+  /// Startup auto-check: silently checks the GitHub release source once.
+  /// Failures are non-blocking and never disturb the user; when an update is
+  /// found the Settings card naturally shows the update-available state.
+  Future<void> checkClientUpdateSilently() async {
+    try {
+      await checkClientUpdateFromGithub();
+    } catch (_) {}
+  }
+
   Future<void> _finalizeClientInitialization() async {
     if (lifecycleProjection.disposed) return;
     if (!mobileClientRuntimePlatform) {
@@ -186,9 +200,8 @@ mixin ClientLifecycleFacade
       await sectionPreloadController.awaitSection(currentSection);
       if (lifecycleProjection.disposed) return;
       startAgentUsagePolling();
-      skillAutoUpdateScheduler.start();
       final agentId = selectedConversationAgentId.trim();
-      if (agentId.isNotEmpty && !selectedConversationIsOrchestration) {
+      if (agentId.isNotEmpty) {
         unawaited(loadConversationSessions(agentId));
       }
     }

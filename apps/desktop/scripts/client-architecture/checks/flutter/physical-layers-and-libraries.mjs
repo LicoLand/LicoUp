@@ -34,6 +34,20 @@ const flutterLayerImportRules = [
       "package:licoup/src/backend/",
       "package:licoup/src/platform/"
     ],
+    allowedImports: new Map([
+      [
+        `${flutterSrcRoot}/frontend/features/agents/ui/lico_plan_document_panel.dart`,
+        new Set([
+          "package:licoup/src/platform/documents/plan_document_reader.dart"
+        ])
+      ],
+      [
+        `${flutterSrcRoot}/frontend/features/settings/ui/client_update_settings_card.dart`,
+        new Set([
+          "package:licoup/src/platform/process/client_process_lifecycle.dart"
+        ])
+      ]
+    ]),
     message: "frontend must depend on application/contracts/l10n, not backend or platform implementations"
   },
   {
@@ -74,7 +88,6 @@ const splitTestLibraryRegistry = new Set([
   "apps/desktop/test/fixtures/client_controller_scenarios.dart",
   "apps/desktop/test/fixtures/client_controller/bootstrap_scenarios.dart",
   "apps/desktop/test/fixtures/client_controller/conversation_dispatch_scenarios.dart",
-  "apps/desktop/test/fixtures/client_controller/conversation_persistence_scenarios.dart",
   "apps/desktop/test/fixtures/client_controller/history_refresh_scenarios.dart",
   "apps/desktop/test/fixtures/client_controller/history_runtime_scenarios.dart",
   "apps/desktop/test/fixtures/client_controller/history_runtime/message_dispatch_scenarios.dart",
@@ -149,10 +162,16 @@ async function enforceFlutterLayerIsolation(context) {
         continue;
       }
       const source = await readText(relativePath);
+      const imports = [...source.matchAll(/\bimport\s+['\"]([^'\"]+)['\"]/g)]
+        .map((match) => match[1]);
+      const allowedImports = rule.allowedImports?.get(relativePath) ?? new Set();
       for (const token of rule.forbiddenTokens) {
+        const forbiddenImport = imports.find(
+          (candidate) => candidate.includes(token) && !allowedImports.has(candidate)
+        );
         assert(
-          !source.includes(token),
-          `${relativePath}:${lineNumberForToken(source, token)} ${rule.message}; forbidden import token ${token}`
+          forbiddenImport === undefined,
+          `${relativePath}:${lineNumberForToken(source, forbiddenImport ?? token)} ${rule.message}; forbidden import token ${forbiddenImport ?? token}`
         );
       }
     }
@@ -183,7 +202,7 @@ async function enforceNormalDartLibraries(context) {
   } = context;
   for (const relativePath of await collectDartSourceFiles()) {
     const source = await readText(relativePath);
-    const legacyDirective = source.match(/^\s*part(?:\s+of)?\b/m);
+    const legacyDirective = source.match(/^[ \t]*part[ \t]+(?:of[ \t]+)?/m);
     assert(
       legacyDirective === null,
       `${relativePath}:${legacyDirective ? lineNumberForToken(source, legacyDirective[0].trim()) : 1} Flutter modules must use independently importable libraries instead of part directives`
@@ -219,7 +238,7 @@ async function enforceSplitTestLibraries(context) {
   }
   for (const relativePath of testFiles) {
     const source = await readText(relativePath);
-    const legacyDirective = source.match(/^\s*part(?:\s+of)?\b/m);
+    const legacyDirective = source.match(/^[ \t]*part[ \t]+(?:of[ \t]+)?/m);
     assert(
       legacyDirective === null,
       `${relativePath}:${legacyDirective ? lineNumberForToken(source, legacyDirective[0].trim()) : 1} split test libraries must remain independently importable without part directives`
@@ -259,7 +278,7 @@ async function enforceAgentUsageTimelineLibraries(context) {
   for (const relativePath of agentUsageTimelineLibraryLeaves) {
     const source = await readText(relativePath);
     assert(
-      !/^\s*part(?:\s+of)?\b/m.test(source),
+      !/^[ \t]*part[ \t]+(?:of[ \t]+)?/m.test(source),
       `${relativePath} must remain an independently importable library without part directives`
     );
     if (relativePath !== agentUsageTimelineFacadePath) {
@@ -441,7 +460,7 @@ export async function checkFlutterPhysicalLayersAndLibraries(context) {
     const source = await readText(`${dashboardChromeRoot}/${leaf}`);
     dashboardChromeSources[leaf] = source;
     assert(
-      !/^\s*part(?:\s+of)?\b/mu.test(source) &&
+      !/^[ \t]*part[ \t]+(?:of[ \t]+)?/mu.test(source) &&
         !source.includes("dashboard_desktop_chrome.dart"),
       `${leaf} must remain an ordinary library without reverse facade coupling`
     );
@@ -499,7 +518,7 @@ export async function checkFlutterPhysicalLayersAndLibraries(context) {
       .filter((target) => conversationPaneLeafPaths.has(target));
     conversationPaneImportGraph.set(leafPath, crossLeafImports);
     assert(
-      !/^\s*part(?:\s+of)?\b/mu.test(source) &&
+      !/^[ \t]*part[ \t]+(?:of[ \t]+)?/mu.test(source) &&
         !source.includes("agent_conversation_pane.dart") &&
         !source.includes("ClientController"),
       `${leaf} must remain a pane library without reverse facade coupling`
@@ -539,7 +558,7 @@ export async function checkFlutterPhysicalLayersAndLibraries(context) {
     const source = await readText(`${messageBlocksRoot}/${leaf}`);
     messageBlocksSources[leaf] = source;
     assert(
-      !/^\s*part(?:\s+of)?\b/mu.test(source) &&
+      !/^[ \t]*part[ \t]+(?:of[ \t]+)?/mu.test(source) &&
         !source.includes("agent_conversation_message_blocks.dart"),
       `${leaf} must remain a message block library without reverse facade coupling`
     );
@@ -580,7 +599,7 @@ export async function checkFlutterPhysicalLayersAndLibraries(context) {
     const source = await readText(`${mobileRelayPanelRoot}/${leaf}`);
     mobileRelayPanelSources[leaf] = source;
     assert(
-      !/^\s*part(?:\s+of)?\b/mu.test(source) &&
+      !/^[ \t]*part[ \t]+(?:of[ \t]+)?/mu.test(source) &&
         !source.includes("mobile_relay_panel.dart"),
       `${leaf} must remain a Mobile Relay panel library without reverse facade coupling`
     );

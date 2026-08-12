@@ -14,13 +14,11 @@ class ConversationPaneHeader extends StatelessWidget {
     super.key,
     required this.state,
     required this.actions,
-    this.orchestrationControls,
     this.strategy = const AgentsPresentationStrategy.console(),
   });
 
   final AgentConversationHeaderState state;
   final AgentConversationHeaderActions actions;
-  final Widget? orchestrationControls;
 
   /// Layout-owned presentation strategy. The messaging header variant lands
   /// with the messaging feature step; every style currently renders the
@@ -71,13 +69,8 @@ class ConversationPaneHeader extends StatelessWidget {
                   ...conversationConnectionChipChildren(
                     target: state.target,
                     opencodeServeState: state.opencodeServeState,
-                    showParity: !state.orchestrationSelected,
+                    showParity: true,
                   ),
-                  if (state.orchestrationSelected &&
-                      orchestrationControls != null) ...[
-                    const SizedBox(width: 12),
-                    orchestrationControls!,
-                  ],
                 ],
         );
         final identity = switch (strategy.messageStyle) {

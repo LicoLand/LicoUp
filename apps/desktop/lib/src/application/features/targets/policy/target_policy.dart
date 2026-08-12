@@ -1,13 +1,10 @@
-import 'package:licoup/src/contracts/agent_orchestration_target.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
 
 class TargetPolicy {
   const TargetPolicy._();
 
   /// Default pin set for conversation contacts/tabs.
-  static const List<String> defaultPinnedConversationTargetIds = [
-    agentOrchestrationTargetId,
-  ];
+  static const List<String> defaultPinnedConversationTargetIds = [];
 
   static List<String> incrementalScanIds({
     required Iterable<String> packagedIds,
@@ -64,7 +61,7 @@ class TargetPolicy {
   }
 
   /// Resolves the effective pin list. Until the user customizes pins, the
-  /// product default (orchestration/Lico group entry) stays pinned.
+  /// product defaults stay pinned.
   static List<String> effectivePinnedConversationTargetIds({
     required Iterable<String> persistedPinnedIds,
     bool pinsInitialized = false,
@@ -81,13 +78,10 @@ class TargetPolicy {
   static List<TargetCandidate> orderedConversationTargets({
     required Iterable<TargetCandidate> targets,
     required Iterable<String> persistedOrder,
-    required bool Function(String targetId) isOrchestrationTarget,
-    TargetCandidate? orchestrationTarget,
     Iterable<String> pinnedIds = const [],
   }) {
     final visible = targets
         .where((target) => target.isConversationAgent)
-        .where((target) => !isOrchestrationTarget(target.target))
         .toList(growable: false);
     final order = persistedOrder.toList(growable: false);
     final byId = {for (final target in visible) target.target: target};
@@ -98,9 +92,8 @@ class TargetPolicy {
       for (final target in visible)
         if (used.add(target.target)) target,
     ];
-    final full = <TargetCandidate>[?orchestrationTarget, ...ordered];
     return List.unmodifiable(
-      pinOrderedConversationTargets(targets: full, pinnedIds: pinnedIds),
+      pinOrderedConversationTargets(targets: ordered, pinnedIds: pinnedIds),
     );
   }
 
@@ -137,18 +130,15 @@ class TargetPolicy {
     required List<String> persistedOrder,
     required int oldIndex,
     required int newIndex,
-    required bool Function(String targetId) isOrchestrationTarget,
   }) {
     if (oldIndex < 0 ||
         oldIndex >= visibleTargets.length ||
         newIndex < 0 ||
-        isOrchestrationTarget(visibleTargets[oldIndex].target) ||
         oldIndex == newIndex) {
       return null;
     }
     final realTargets = visibleTargets
         .where((target) => target.isConversationAgent)
-        .where((target) => !isOrchestrationTarget(target.target))
         .toList(growable: true);
     final movedId = visibleTargets[oldIndex].target;
     final oldRealIndex = realTargets.indexWhere(

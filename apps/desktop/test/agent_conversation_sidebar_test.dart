@@ -35,6 +35,33 @@ void main() {
     );
   });
 
+  test('compact conversation names use local narrow-surface defaults', () {
+    expect(
+      agentConversationTargetCompactDisplayName(
+        _target('github-copilot', 'GitHub Copilot'),
+      ),
+      'Copilot',
+    );
+    expect(
+      agentConversationTargetCompactDisplayName(
+        _target('claude-code', 'Claude Code'),
+      ),
+      'Claude',
+    );
+    expect(
+      agentConversationTargetCompactDisplayName(
+        _target('kimi-code', 'Kimi Code'),
+      ),
+      'Kimi',
+    );
+    expect(
+      agentConversationTargetCompactDisplayName(
+        _target('custom-tool', 'My Custom Tool'),
+      ),
+      'My Custom Tool',
+    );
+  });
+
   test('sidebar time groups follow local calendar boundaries', () {
     // 2026-07-30 is a Thursday; 2026-07-27 is the Monday of the same week.
     final now = DateTime(2026, 7, 30, 15);

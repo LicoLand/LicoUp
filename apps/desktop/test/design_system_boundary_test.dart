@@ -1,6 +1,10 @@
 import 'dart:io';
 
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:licoup/src/contracts/appearance/appearance_preset_config.dart';
+import 'package:licoup/src/frontend/shared/ui/conversation_visual_tokens.dart';
+import 'package:licoup/src/frontend/shared/ui/theme_colors.dart';
 
 /// Enforces the design-system rules that are easy to state and easy to break.
 ///
@@ -82,11 +86,11 @@ void main() {
   });
 
   test('feature-layer motion debt only shrinks', () {
-    // 51 inline duration literals remain outside the shared layer. Migrating
+    // 44 inline duration literals remain outside the shared layer. Migrating
     // them all in one sweep would be a blind edit across surfaces that have
     // not been reviewed, so this is a ratchet instead of a hard rule: the
     // count may fall, never rise. Lower the budget as batches land.
-    const budget = 51;
+    const budget = 44;
     final offenders = <String>[];
     for (final file in _dartFiles(frontend)) {
       final path = file.path;
@@ -158,6 +162,112 @@ void main() {
     );
   });
 
+  test('feature-layer white/black alpha debt only shrinks', () {
+    // The shared layer rejects invented white/black alpha washes outright
+    // (see the first test), but the feature layer still carries 74 of them —
+    // hover washes and rims that ignore the preset's own hoverOverlay/line
+    // roles and therefore will not follow a skin change. Replacing them all
+    // in one sweep would be a blind edit, so this is a ratchet: the count may
+    // fall, never rise. New state washes must use hoverOverlay /
+    // pressedOverlay / selectedSurface / line / lineStrong.
+    const budget = 74;
+    final offenders = <String>[];
+    for (final file in _dartFiles(frontend)) {
+      final path = file.path;
+      if (path.contains('/shared/ui/')) {
+        continue;
+      }
+      final source = file.readAsStringSync();
+      for (final match in _whiteBlackAlpha.allMatches(source)) {
+        offenders.add('$path: ${match.group(0)}');
+      }
+    }
+    expect(
+      offenders.length,
+      lessThanOrEqualTo(budget),
+      reason:
+          'New white/black alpha washes are not allowed. Use the state and '
+          'line roles.\n${offenders.join('\n')}',
+    );
+  });
+
+  test('conversation visual roles preserve their exact channel values', () {
+    final dark = licoColorsFor(AppearancePresetIds.licoSoda);
+    final light = licoColorsFor(AppearancePresetIds.licoSodaLight);
+
+    expect(
+      ConversationVisualTokens.circularIdentityWellFill(dark).toARGB32(),
+      Colors.black.toARGB32(),
+    );
+    expect(
+      ConversationVisualTokens.circularIdentityWellFill(light).toARGB32(),
+      light.surfaceLow.toARGB32(),
+    );
+    expect(
+      ConversationVisualTokens.groupIdentityMark(dark).toARGB32(),
+      dark.primary.toARGB32(),
+    );
+    expect(
+      ConversationVisualTokens.groupIdentityMark(light).toARGB32(),
+      light.primary.toARGB32(),
+    );
+    expect(
+      ConversationVisualTokens.quietRowHover(dark).toARGB32(),
+      const Color(0x08FFFFFF).toARGB32(),
+    );
+    expect(
+      ConversationVisualTokens.quietRowHover(light).toARGB32(),
+      const Color(0x08000000).toARGB32(),
+    );
+    expect(
+      ConversationVisualTokens.selectedOptionFill(dark).toARGB32(),
+      const Color(0x0AFFFFFF).toARGB32(),
+    );
+    expect(
+      ConversationVisualTokens.selectedOptionFill(light).toARGB32(),
+      const Color(0x08000000).toARGB32(),
+    );
+    expect(
+      ConversationVisualTokens.adaptiveFlywheelStadiumVeil(dark).toARGB32(),
+      const Color(0x6E000000).toARGB32(),
+    );
+    expect(
+      ConversationVisualTokens.adaptiveFlywheelStadiumVeil(light).toARGB32(),
+      const Color(0x24000000).toARGB32(),
+    );
+  });
+
+  test('feature-layer radius literal debt only shrinks', () {
+    // Outside the shared layer, 36 corners still restate the chip/floating/
+    // card values as numeric literals, where a future radius change cannot
+    // reach them. The layout layer is exempt: it is forbidden from importing
+    // shared/ui and defines its own metrics tokens. A stadium (999) is a
+    // shape choice, not a scale step, and is not counted. This is a ratchet:
+    // the count may fall, never rise.
+    const budget = 36;
+    final offenders = <String>[];
+    for (final file in _dartFiles(frontend)) {
+      final path = file.path;
+      if (path.contains('/shared/ui/') || path.contains('/layout/')) {
+        continue;
+      }
+      final source = file.readAsStringSync();
+      for (final match in _radiusLiteral.allMatches(source)) {
+        if (match.group(1) == '999') {
+          continue;
+        }
+        offenders.add('$path: ${match.group(0)}');
+      }
+    }
+    expect(
+      offenders.length,
+      lessThanOrEqualTo(budget),
+      reason:
+          'New numeric corner radii are not allowed. Use LicoRadius.chip / '
+          'floating / card / well.\n${offenders.join('\n')}',
+    );
+  });
+
   test('the composer send control is a circle', () {
     final source = File(
       'lib/src/frontend/features/agents/ui/agent_conversation_composer.dart',
@@ -222,6 +332,8 @@ final _retiredRoles = RegExp(
 );
 
 final _durationLiteral = RegExp(r'Duration\(milliseconds:\s*(\d+)\)');
+
+final _radiusLiteral = RegExp(r'BorderRadius\.circular\((\d+)\)');
 
 /// A bare brand colour, excluding `.withAlpha`/`.withValues` fills and the
 /// emphatic `primaryStrong` variant that is safe for non-text graphics.

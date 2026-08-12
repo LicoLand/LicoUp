@@ -98,6 +98,7 @@ test-results/
 
 # Local planning, agent, and one-off work
 /docs/plans/
+/apps/desktop/docs/plans/
 /docs/reports/
 /.agents/
 /.claude/

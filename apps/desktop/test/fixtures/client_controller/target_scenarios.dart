@@ -109,13 +109,12 @@ void registerClientTargetScenarios() {
 
       final visibleTabs = controller.orderedConversationTargets(targets);
       expect(visibleTabs.map((target) => target.target), [
-        agentOrchestrationTargetId,
         'claude-code',
         'codex',
         'opencode',
       ]);
 
-      await controller.reorderConversationAgentTabs(visibleTabs, 3, 1);
+      await controller.reorderConversationAgentTabs(visibleTabs, 2, 0);
 
       expect(controller.agentTabOrder, ['opencode', 'claude-code', 'codex']);
       expect(
@@ -128,12 +127,12 @@ void registerClientTargetScenarios() {
         controller
             .orderedConversationTargets(targets)
             .map((target) => target.target),
-        [agentOrchestrationTargetId, 'opencode', 'claude-code', 'codex'],
+        ['opencode', 'claude-code', 'codex'],
       );
 
       await controller.reorderConversationAgentTabs(
         controller.orderedConversationTargets(targets),
-        1,
+        0,
         3,
       );
 
@@ -152,12 +151,12 @@ void registerClientTargetScenarios() {
         reloaded
             .orderedConversationTargets(targets)
             .map((target) => target.target),
-        [agentOrchestrationTargetId, 'claude-code', 'codex', 'opencode'],
+        ['claude-code', 'codex', 'opencode'],
       );
     },
   );
 
-  test('scanTargets selects an agent and loads native agent history', () async {
+  test('scanTargets loads native agent history without selecting it', () async {
     final directory = await Directory.systemTemp.createTemp('lico-agent-chat-');
     addTearDown(() => directory.delete(recursive: true));
     final service = FakeAgentService()
@@ -200,10 +199,7 @@ void registerClientTargetScenarios() {
     addTearDown(controller.dispose);
 
     await controller.scanTargets();
-    expect(controller.selectedConversationAgentId, agentOrchestrationTargetId);
-    expect(controller.selectedConversationSessions, isEmpty);
-    expect(controller.selectedConversationSession, isNull);
-
+    expect(controller.selectedConversationAgentId, isEmpty);
     await controller.selectConversationAgent('codex');
     controller.selectConversationSession('native-codex-1');
 

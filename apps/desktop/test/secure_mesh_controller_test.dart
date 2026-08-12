@@ -8,10 +8,8 @@ void main() {
     final statuses = <MobileRelayFeatureStatus>[];
     final controller = SecureMeshController(
       gateway: _FailingSecureMeshGateway(),
-      skillInstaller: _FakeSkillInstaller(),
       operationGate: MobileRelayOperationGate(),
       onStatus: statuses.add,
-      onSkillInstallResult: (_) {},
     );
     addTearDown(controller.dispose);
 
@@ -28,10 +26,8 @@ void main() {
   test('approval state strips endpoint secrets from its public projection', () {
     final controller = SecureMeshController(
       gateway: _FailingSecureMeshGateway(),
-      skillInstaller: _FakeSkillInstaller(),
       operationGate: MobileRelayOperationGate(),
       onStatus: (_) {},
-      onSkillInstallResult: (_) {},
     );
     addTearDown(controller.dispose);
 
@@ -131,14 +127,4 @@ final class _FailingSecureMeshGateway implements SecureMeshGateway {
   @override
   Future<SecureMeshKtResponse> executeKt(SecureMeshKtRequest request) =>
       throw UnimplementedError();
-}
-
-final class _FakeSkillInstaller implements SecureMeshSkillInstallGateway {
-  @override
-  Future<Map<String, dynamic>> applyInstall({
-    required String agent,
-    required String sourcePath,
-    required String name,
-    required bool pin,
-  }) async => const {'ok': true};
 }

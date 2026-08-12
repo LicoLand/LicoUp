@@ -69,7 +69,12 @@ class NativeStdioRpcClient implements NativeStdioRpcTransport {
       return _rpcFailure('invalid_timeout');
     }
     final immutableParams = Map<String, dynamic>.unmodifiable(params);
-    final conversationMethod = stdioRpcMethodUsesConversationLane(method);
+    final unboundedClientTurn = stdioRpcMethodIsUnboundedClientTurn(
+      method,
+      immutableParams,
+    );
+    final conversationMethod =
+        stdioRpcMethodUsesConversationLane(method) || unboundedClientTurn;
     if (conversationMethod && stdioRpcMethodIsInFlightControl(method)) {
       return executeStdioRpcInFlightControl(
         method: method,
@@ -84,23 +89,25 @@ class NativeStdioRpcClient implements NativeStdioRpcTransport {
         ? _conversationOperations
         : _operations;
     final sessionManager = conversationMethod ? _chat : _sessionManager;
-    return operations.serialize(
-      priority: currentRpcPriorityToken(),
-      () =>
-          executeStdioRpcStructuredCommand(
-            method: method,
-            params: immutableParams,
-            requestId: _nextRequestId(),
-            workflowId: _workflowId,
-            sessionManager: sessionManager,
-          ).timeout(
-            _processContext.requestTimeout,
-            onTimeout: () async {
-              await sessionManager.invalidateAndDiscard();
-              throw const LicoClientRpcException('timeout');
-            },
-          ),
-    );
+    return operations.serialize(priority: currentRpcPriorityToken(), () {
+      final execution = executeStdioRpcStructuredCommand(
+        method: method,
+        params: immutableParams,
+        requestId: _nextRequestId(),
+        workflowId: _workflowId,
+        sessionManager: sessionManager,
+      );
+      if (unboundedClientTurn) {
+        return execution;
+      }
+      return execution.timeout(
+        _processContext.requestTimeout,
+        onTimeout: () async {
+          await sessionManager.invalidateAndDiscard();
+          throw const LicoClientRpcException('timeout');
+        },
+      );
+    });
   }
 
   @override

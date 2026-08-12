@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart' show ChangeNotifier, VoidCallback;
 
 import 'package:licoup/src/application/composition/built_in_layout_composition.dart';
+import 'package:licoup/src/application/composition/adaptive_flywheel_gateway_adapter.dart';
 import 'package:licoup/src/application/controller/assembly/client_catalog_convergence_component_assembly.dart';
 import 'package:licoup/src/application/controller/assembly/client_conversation_component_assembly.dart';
 import 'package:licoup/src/application/controller/assembly/client_lifecycle_component_assembly.dart';
@@ -15,6 +16,7 @@ import 'package:licoup/src/application/controller/assembly/client_usage_componen
 import 'package:licoup/src/application/controller/client_lifecycle_coordinator.dart';
 import 'package:licoup/src/application/controller/client_shell_controller.dart';
 import 'package:licoup/src/application/features/agents/contracts/agent_conversation_gateway.dart';
+import 'package:licoup/src/application/features/agents/contracts/adaptive_flywheel_gateway.dart';
 import 'package:licoup/src/application/features/catalog_convergence/controller/catalog_convergence_controller.dart';
 import 'package:licoup/src/application/features/agents/controller/agent_usage_controller.dart';
 import 'package:licoup/src/application/features/agents/conversation/conversation_presentation_signals.dart';
@@ -30,26 +32,22 @@ import 'package:licoup/src/application/features/settings/controller/directory_pa
 import 'package:licoup/src/application/features/settings/controller/optional_collaboration_controller.dart';
 import 'package:licoup/src/application/features/skill_hub/controller/skill_hub_controller.dart';
 import 'package:licoup/src/application/features/skill_hub/controller/skill_delete_controller.dart';
-import 'package:licoup/src/application/features/skill_hub/controller/skill_update_controller.dart';
 import 'package:licoup/src/application/features/skill_hub/controller/skill_usage_controller.dart';
-import 'package:licoup/src/application/features/skill_hub/services/skill_auto_update_scheduler.dart';
 import 'package:licoup/src/application/features/targets/controller/target_controller.dart';
 import 'package:licoup/src/backend/features/agents/services/agent_conversation_service.dart';
+import 'package:licoup/src/backend/features/agents/services/adaptive_flywheel_service.dart';
 import 'package:licoup/src/backend/features/agents/services/agent_usage_service.dart';
 import 'package:licoup/src/backend/features/mobile_relay/services/mobile_home_layout_service.dart';
 import 'package:licoup/src/backend/features/settings/services/client_update_service.dart';
 import 'package:licoup/src/backend/features/skill_hub/services/skill_hub_preferences_service.dart';
 import 'package:licoup/src/contracts/mobile_home_layout_repository.dart';
-import 'package:licoup/src/contracts/agent_conversation_projection_repository.dart';
 import 'package:licoup/src/contracts/catalog_convergence/catalog_convergence_gateway.dart';
 import 'package:licoup/src/contracts/optional_collaboration_gateway.dart';
 import 'package:licoup/src/contracts/presentation/presentation_preferences.dart';
 import 'package:licoup/src/contracts/skill_delete.dart';
 import 'package:licoup/src/contracts/skill_hub.dart';
-import 'package:licoup/src/contracts/skill_update.dart';
 import 'package:licoup/src/contracts/skill_usage.dart';
 import 'package:licoup/src/platform/agents/agent_tab_order_store.dart';
-import 'package:licoup/src/platform/agents/agent_conversation_projection_store.dart';
 import 'package:licoup/src/platform/agents/scanned_targets_cache_store.dart';
 import 'package:licoup/src/platform/client_clipboard_service.dart';
 import 'package:licoup/src/platform/mobile_relay/mobile_relay_service.dart';
@@ -77,8 +75,6 @@ final class ClientComponentAssembly {
     required ClientLogExportService clientLogExportService,
     required ClientClipboardService clientClipboardService,
     required RuntimePlatformBridge runtimePlatformBridge,
-    AgentConversationProjectionRepository?
-    agentConversationProjectionRepository,
     required bool Function() isMobileRuntime,
     required String Function() selectedAgentId,
     required List<TargetCandidate> Function() scannedTargets,
@@ -87,7 +83,6 @@ final class ClientComponentAssembly {
     required Future<void> Function() ensureTargetsSilently,
     required Future<void> Function(String) loadSelectedConversation,
     required bool Function() shouldLoadSelectedConversation,
-    required bool Function(String) isOrchestrationTarget,
     required Future<List<TargetCandidate>> Function({
       Map<String, dynamic>? pairingStatus,
     })
@@ -102,7 +97,6 @@ final class ClientComponentAssembly {
     required ClientSectionPreloadTaskMap sectionPreloadTasks,
     MobileHomeLayoutRepository? mobileHomeLayoutRepository,
     SkillHubGateway? skillHubGateway,
-    SkillUpdateGateway? skillUpdateGateway,
     SkillDeleteGateway? skillDeleteGateway,
     SkillUsageGateway? skillUsageGateway,
     SkillHubLocalCatalogSource? skillHubLocalCatalogSource,
@@ -111,10 +105,11 @@ final class ClientComponentAssembly {
     LayoutManager? layoutManager,
     PresentationPreferencesRepository? presentationPreferencesRepository,
     CatalogConvergenceGateway? catalogConvergenceGateway,
-  }) : _notifyStateChanged = notifyStateChanged,
-       agentConversationProjectionRepository =
-           agentConversationProjectionRepository ??
-           const PlatformAgentConversationProjectionStore() {
+  }) : _notifyStateChanged = notifyStateChanged {
+    adaptiveFlywheelGateway = AdaptiveFlywheelGatewayAdapter(
+      service: const AdaptiveFlywheelService(),
+      runner: agentService,
+    );
     presentation = ClientPresentationComponentAssembly(
       portableData: portableData,
       layoutComposition: layoutComposition,
@@ -142,7 +137,6 @@ final class ClientComponentAssembly {
       loadSelectedConversation: loadSelectedConversation,
       selectedAgentId: selectedAgentId,
       shouldLoadSelectedConversation: shouldLoadSelectedConversation,
-      isOrchestrationTarget: isOrchestrationTarget,
       reportStatus: _reportStatus,
     );
     skill = ClientSkillComponentAssembly(
@@ -153,7 +147,6 @@ final class ClientComponentAssembly {
       ensureTargets: ensureTargets,
       reportStatus: _reportStatus,
       skillHubGateway: skillHubGateway,
-      skillUpdateGateway: skillUpdateGateway,
       skillDeleteGateway: skillDeleteGateway,
       skillUsageGateway: skillUsageGateway,
       localCatalogSource: skillHubLocalCatalogSource,
@@ -182,8 +175,6 @@ final class ClientComponentAssembly {
       mobileHomeLayoutService: mobileHomeLayoutService,
       clientClipboardService: clientClipboardService,
       runtimePlatformBridge: runtimePlatformBridge,
-      skillHubGateway: skill.resolvedGateway,
-      replaceSkillInstallResult: skillHubController.replaceInstallResult,
       isMobileRuntime: isMobileRuntime,
       scannedTargets: scannedTargets,
       replaceScannedTargets: replaceScannedTargets,
@@ -215,8 +206,7 @@ final class ClientComponentAssembly {
   }
 
   final VoidCallback _notifyStateChanged;
-  final AgentConversationProjectionRepository
-  agentConversationProjectionRepository;
+  late final AdaptiveFlywheelGateway adaptiveFlywheelGateway;
   late final ClientPresentationComponentAssembly presentation;
   late final ClientLifecycleComponentAssembly lifecycle;
   late final ClientCatalogConvergenceComponentAssembly catalogConvergence;
@@ -241,9 +231,6 @@ final class ClientComponentAssembly {
       conversation.mobileConversationGateway;
   TargetController get targetController => target.controller;
   SkillHubController get skillHubController => skill.controller;
-  SkillUpdateController get skillUpdateController => skill.updateController;
-  SkillAutoUpdateScheduler get skillAutoUpdateScheduler =>
-      skill.autoUpdateScheduler;
   SkillDeleteController get skillDeleteController => skill.deleteController;
   SkillUsageController get skillUsageController => skill.usageController;
   ClientLogExportController get clientLogExportController =>

@@ -3,8 +3,28 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
+import 'package:licoup/src/contracts/conversation_image_byte_reader.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
+
+class ConversationImageByteReaderScope extends InheritedWidget {
+  const ConversationImageByteReaderScope({
+    super.key,
+    required this.reader,
+    required super.child,
+  });
+
+  final ConversationImageByteReader reader;
+
+  static ConversationImageByteReader? maybeOf(BuildContext context) => context
+      .dependOnInheritedWidgetOfExactType<ConversationImageByteReaderScope>()
+      ?.reader;
+
+  @override
+  bool updateShouldNotify(ConversationImageByteReaderScope oldWidget) =>
+      !identical(reader, oldWidget.reader);
+}
 
 /// Messaging-style rendering of a message's image attachments: bounded
 /// inline frames (rounded, aspect preserved) stacked vertically, each with a
@@ -46,7 +66,7 @@ class AgentConversationImageAttachmentList extends StatelessWidget {
 }
 
 /// One bounded image frame with loading, error, and tap-to-view behavior.
-class ConversationImageAttachmentFrame extends StatelessWidget {
+class ConversationImageAttachmentFrame extends StatefulWidget {
   const ConversationImageAttachmentFrame({
     super.key,
     required this.attachment,
@@ -58,6 +78,43 @@ class ConversationImageAttachmentFrame extends StatelessWidget {
   final double maxWidth;
   final double maxHeight;
 
+  @override
+  State<ConversationImageAttachmentFrame> createState() =>
+      _ConversationImageAttachmentFrameState();
+}
+
+class _ConversationImageAttachmentFrameState
+    extends State<ConversationImageAttachmentFrame> {
+  Future<ConversationImageReadResult>? _read;
+  Object? _readKey;
+
+  AgentConversationImageAttachment get attachment => widget.attachment;
+  double get maxWidth => widget.maxWidth;
+  double get maxHeight => widget.maxHeight;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _syncRead();
+  }
+
+  @override
+  void didUpdateWidget(covariant ConversationImageAttachmentFrame oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _syncRead();
+  }
+
+  void _syncRead() {
+    final reader = ConversationImageByteReaderScope.maybeOf(context);
+    final path = attachment.filePath.trim();
+    final key = (reader, path, attachment.mediaType);
+    if (_readKey == key) return;
+    _readKey = key;
+    _read = reader == null || path.isEmpty
+        ? null
+        : reader.read(localPath: path, mediaType: attachment.mediaType);
+  }
+
   ImageProvider? _resolveProvider() {
     if (attachment.dataBase64.isNotEmpty) {
       try {
@@ -66,8 +123,6 @@ class ConversationImageAttachmentFrame extends StatelessWidget {
         return null;
       }
     }
-    // File-path sources resolve through the platform root in a later step;
-    // frontend UI never touches the file system directly.
     return null;
   }
 
@@ -77,13 +132,41 @@ class ConversationImageAttachmentFrame extends StatelessWidget {
     final label = attachment.name.isEmpty
         ? strings.imageAttachment
         : attachment.name;
-    final provider = _resolveProvider();
-    if (provider == null) {
+    final inlineProvider = _resolveProvider();
+    if (inlineProvider != null) {
+      return _buildProvider(context, inlineProvider, label);
+    }
+    final read = _read;
+    if (read == null) {
       return ConversationImageUnavailablePlaceholder(
         maxWidth: maxWidth,
         label: label,
       );
     }
+    return FutureBuilder<ConversationImageReadResult>(
+      future: read,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState != ConnectionState.done) {
+          return ConversationImageLoadingPlaceholder(maxWidth: maxWidth);
+        }
+        final result = snapshot.data;
+        final bytes = result?.bytes;
+        if (result == null || !result.succeeded || bytes == null) {
+          return ConversationImageUnavailablePlaceholder(
+            maxWidth: maxWidth,
+            label: label,
+          );
+        }
+        return _buildProvider(context, MemoryImage(bytes), label);
+      },
+    );
+  }
+
+  Widget _buildProvider(
+    BuildContext context,
+    ImageProvider provider,
+    String label,
+  ) {
     final frame = _ConversationImageFrameDecoration(
       child: Image(
         image: provider,
@@ -134,7 +217,7 @@ class _ConversationImageFrameDecoration extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         color: colors.surfaceLow,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(LicoRadius.card),
         border: Border.all(color: colors.line.withAlpha(110)),
       ),
       clipBehavior: Clip.antiAlias,
