@@ -72,8 +72,8 @@ async function main() {
       if (!plistHasString(plist, "CFBundleName", "LicoUp")) {
         missing.push(`${appPath} CFBundleName must be LicoUp`);
       }
-      if (!plistHasString(plist, "CFBundleDisplayName", "Arc")) {
-        missing.push(`${appPath} CFBundleDisplayName must be Arc`);
+      if (!plistHasString(plist, "CFBundleDisplayName", "LicoUp")) {
+        missing.push(`${appPath} CFBundleDisplayName must be LicoUp`);
       }
     }
     for (const executableName of ["licoup"]) {

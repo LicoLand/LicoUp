@@ -1,4 +1,5 @@
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
+import 'package:licoup/src/contracts/agent_conversation_attachment.dart';
 import 'package:licoup/src/contracts/agent_dispatch_lane.dart';
 
 abstract interface class AgentConversationGateway {
@@ -28,6 +29,7 @@ abstract interface class AgentConversationGateway {
     required String agentId,
     required String text,
     required String sessionId,
+    List<ConversationAttachment> attachments = const [],
     AgentDispatchBind bind = const AgentDispatchBind(),
   });
 
@@ -35,6 +37,7 @@ abstract interface class AgentConversationGateway {
     required String agentId,
     required String text,
     required String sessionId,
+    List<ConversationAttachment> attachments = const [],
     AgentDispatchBind bind = const AgentDispatchBind(),
   });
 

@@ -116,6 +116,16 @@ void main() {
     );
     await tester.pump();
 
+    // Operation rows are collapsed by default; the detail body renders after
+    // the row itself expands.
+    expect(find.byKey(const Key('fixture-event-details')), findsNothing);
+    await tester.tap(
+      find.byKey(
+        const Key('conversation-process-operation-toggle-tool-fixture'),
+      ),
+    );
+    await tester.pump();
+
     expect(find.byKey(const Key('fixture-event-details')), findsOneWidget);
     expect(find.text('bounded fixture details'), findsOneWidget);
   });
@@ -166,7 +176,7 @@ void main() {
     ]);
   });
 
-  testWidgets('runtime logs render as a quiet row instead of a process card', (
+  testWidgets('runtime logs render as a full-width detail card', (
     tester,
   ) async {
     const events = [
@@ -188,12 +198,97 @@ void main() {
           GlobalWidgetsLocalizations.delegate,
         ],
         theme: buildLicoTheme(platformBrightness: Brightness.dark),
-        home: const Scaffold(body: ConversationLogEventRow(events: events)),
+        home: const Scaffold(
+          body: Align(
+            alignment: Alignment.topLeft,
+            child: SizedBox(
+              width: 600,
+              child: ConversationLogEventRow(events: events),
+            ),
+          ),
+        ),
       ),
     );
 
     expect(find.text('Runtime log · 1 entry'), findsOneWidget);
+    final card = tester.renderObject<RenderBox>(
+      find.byKey(const Key('conversation-runtime-log-card')),
+    );
+    expect(card.size.width, closeTo(600, 1));
     expect(find.byType(ConversationProcessCard), findsNothing);
+  });
+
+  testWidgets('runtime log expands into run records with metadata fields', (
+    tester,
+  ) async {
+    const events = [
+      AgentConversationMessage(
+        id: 'log-event',
+        role: 'event',
+        text: 'npm run verify',
+        createdAt: '2026-01-01T00:00:01Z',
+        cardType: 'provider-event',
+        cardTitle: 'Run command',
+      ),
+      AgentConversationMessage(
+        id: 'log-metadata',
+        role: 'metadata',
+        text: 'cwd: [local path hidden]\nmodel: test-model',
+        createdAt: '2026-01-01T00:00:02Z',
+        cardType: 'metadata',
+        cardTitle: 'Session metadata',
+      ),
+    ];
+    await tester.pumpWidget(
+      MaterialApp(
+        locale: const Locale('en'),
+        supportedLocales: LicoStrings.supportedLocales,
+        localizationsDelegates: const [
+          GlobalMaterialLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+        ],
+        theme: buildLicoTheme(platformBrightness: Brightness.dark),
+        home: MediaQuery(
+          data: const MediaQueryData(disableAnimations: true),
+          child: Scaffold(
+            body: ConversationLogEventRow(
+              events: events,
+              detailsBuilder:
+                  ({
+                    required data,
+                    required foreground,
+                    required accent,
+                    required codeBackground,
+                    required blockBackground,
+                    required borderColor,
+                    required renderStyle,
+                  }) => Text(data, key: const Key('fixture-log-details')),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    // Collapsed: run record details stay hidden behind the card header.
+    expect(find.text('Run command'), findsNothing);
+    expect(find.text('npm run verify'), findsNothing);
+
+    await tester.tap(find.byKey(const Key('conversation-runtime-log-toggle')));
+    await tester.pump();
+
+    expect(find.text('Run command'), findsOneWidget);
+    expect(find.text('npm run verify'), findsOneWidget);
+    expect(find.text('Session metadata'), findsOneWidget);
+    // Metadata renders as aligned key/value fields, not raw text lines.
+    expect(find.text('cwd:'), findsOneWidget);
+    expect(find.text('[local path hidden]'), findsOneWidget);
+    expect(find.text('model:'), findsOneWidget);
+    expect(find.text('test-model'), findsOneWidget);
+    expect(
+      find.text('cwd: [local path hidden]', findRichText: true),
+      findsNothing,
+    );
   });
 
   test('runtime update card is its own timeline item with a stable key', () {
@@ -230,10 +325,11 @@ void main() {
       stableIdentity: 'stable-assistant',
     );
 
-    final first = buildConversationTimelineItems(
-      const [lifecycle, updateDownloading, assistant],
-      'update-fixture',
-    );
+    final first = buildConversationTimelineItems(const [
+      lifecycle,
+      updateDownloading,
+      assistant,
+    ], 'update-fixture');
     expect(first, hasLength(3));
     expect(first[0], isA<ConversationProcessTimelineItem>());
     final card = first[1] as ConversationRuntimeUpdateTimelineItem;
@@ -241,10 +337,11 @@ void main() {
     expect(first[2], isA<ConversationMessageTimelineItem>());
 
     // Phase upserts keep the same storage key (in-place card, no churn).
-    final second = buildConversationTimelineItems(
-      const [lifecycle, updateInstalling, assistant],
-      'update-fixture',
-    );
+    final second = buildConversationTimelineItems(const [
+      lifecycle,
+      updateInstalling,
+      assistant,
+    ], 'update-fixture');
     final secondCard = second[1] as ConversationRuntimeUpdateTimelineItem;
     expect(secondCard.storageKey, card.storageKey);
     expect(secondCard.message.cardSubtitle, contains('安装中'));

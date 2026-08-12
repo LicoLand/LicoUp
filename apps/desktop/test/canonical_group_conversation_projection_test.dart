@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -211,6 +212,8 @@ void main() {
     tester,
   ) async {
     var archiveCount = 0;
+    final mentioned = <String>[];
+    final opened = <String>[];
     final conversation = ClientConversation.fromJson({
       'id': 'conversation:group',
       'title': 'Lico',
@@ -275,6 +278,9 @@ void main() {
                     child: CanonicalGroupRoster(
                       conversation: conversation,
                       targets: targets,
+                      onMentionAgent: (target) => mentioned.add(target.target),
+                      onOpenAgentConversations: (target) =>
+                          opened.add(target.target),
                     ),
                   ),
                 ),
@@ -293,6 +299,10 @@ void main() {
     expect(find.byKey(const Key('canonical-group-menu')), findsOneWidget);
     expect(find.byIcon(Icons.push_pin_rounded), findsOneWidget);
     expect(find.byKey(const Key('canonical-group-roster')), findsOneWidget);
+    final headerAvatar = tester.widget<Container>(
+      find.byKey(const Key('canonical-group-header-avatar')),
+    );
+    expect((headerAvatar.decoration! as BoxDecoration).color, Colors.black);
     expect(find.text('Codex'), findsOneWidget);
     expect(find.text('Claude'), findsOneWidget);
     expect(find.text('Claude Code'), findsNothing);
@@ -315,6 +325,30 @@ void main() {
     await tester.tap(find.byKey(const Key('messaging-glass-menu-archive')));
     await tester.pumpAndSettle();
     expect(archiveCount, 1);
+
+    final codexAvatar = find.byKey(
+      const Key('canonical-group-roster-agent-codex'),
+    );
+    await tester.tap(codexAvatar);
+    await tester.pump(kDoubleTapTimeout + const Duration(milliseconds: 1));
+    expect(mentioned, ['codex']);
+
+    mentioned.clear();
+    await tester.tap(codexAvatar);
+    await tester.pump(kDoubleTapMinTime);
+    await tester.tap(codexAvatar);
+    await tester.pumpAndSettle();
+    expect(mentioned, isEmpty);
+    expect(opened, ['codex']);
+
+    await tester.tap(codexAvatar, buttons: kSecondaryButton);
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const Key('canonical-group-roster-menu-codex')),
+      findsOneWidget,
+    );
+    expect(find.text('Mention Codex'), findsOneWidget);
+    expect(find.text('Open Codex conversations'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

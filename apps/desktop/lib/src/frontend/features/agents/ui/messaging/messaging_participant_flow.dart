@@ -431,12 +431,12 @@ class _MessagingParticipantFlowState extends State<MessagingParticipantFlow> {
         ),
       ),
       MessagingFlowLog(:final item) => Padding(
-        padding: const EdgeInsets.only(
-          left: 48,
-          bottom: LicoContentSpacing.item,
-        ),
+        padding: LicoContentSpacing.peerItem,
         child: SelectionContainer.disabled(
-          child: ConversationLogEventRow(events: item.events),
+          child: ConversationLogEventRow(
+            events: item.events,
+            detailsBuilder: buildAgentConversationEventDetails,
+          ),
         ),
       ),
       MessagingFlowRuntimeUpdate(:final item) => Padding(

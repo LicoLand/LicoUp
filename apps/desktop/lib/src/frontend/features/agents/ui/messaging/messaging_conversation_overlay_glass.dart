@@ -24,8 +24,9 @@ class MessagingConversationOverlayGlass extends StatelessWidget {
   final bool focused;
 
   /// When true, layers a black readability veil under the shared overlay-glass
-  /// wash. Defaults to [MessagingDesktopMetrics.notificationPopoverVeilFill]
-  /// unless [veilFill] is provided.
+  /// wash. Defaults to
+  /// [MessagingDesktopMetrics.conversationOverlayReadabilityVeilFill] unless
+  /// [veilFill] is provided.
   final bool readabilityVeil;
 
   /// Optional override for the black readability veil (e.g. the stronger
@@ -61,16 +62,17 @@ class MessagingConversationOverlayGlass extends StatelessWidget {
         ? Stack(
             fit: StackFit.passthrough,
             children: [
-              Positioned.fill(
-                child: ColoredBox(color: washFill),
-              ),
+              Positioned.fill(child: ColoredBox(color: washFill)),
               // Black mask above the wash so the capsule reads as veiled glass.
               Positioned.fill(
                 child: DecoratedBox(
+                  key: const Key(
+                    'messaging-conversation-overlay-readability-veil',
+                  ),
                   decoration: BoxDecoration(
                     color:
                         veilFill ??
-                        MessagingDesktopMetrics.notificationPopoverVeilFill(
+                        MessagingDesktopMetrics.conversationOverlayReadabilityVeilFill(
                           isDark: isDark,
                         ),
                     borderRadius: borderRadius,

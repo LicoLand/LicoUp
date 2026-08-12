@@ -5,6 +5,7 @@ import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_messag
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_session_presentation.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 class AgentConversationRecentSessions extends StatelessWidget {
@@ -113,7 +114,7 @@ class _RecentSessionRowState extends State<_RecentSessionRow> {
         child: InkWell(
           onTap: widget.onTap,
           onHover: (hovered) => setState(() => _hovered = hovered),
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(LicoRadius.floating),
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 120),
             width: double.infinity,
@@ -122,7 +123,7 @@ class _RecentSessionRowState extends State<_RecentSessionRow> {
               color: _hovered
                   ? (colors.isDark ? colors.surfaceLow : colors.surface)
                   : Colors.transparent,
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(LicoRadius.floating),
               border: Border.all(color: colors.line.withAlpha(80), width: 0.5),
             ),
             child: Column(

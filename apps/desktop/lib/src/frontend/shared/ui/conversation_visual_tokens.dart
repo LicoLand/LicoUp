@@ -9,6 +9,11 @@ import 'package:licoup/src/frontend/shared/ui/theme_colors.dart';
 /// both conversation projections share the same semantics without restating
 /// raw white/black overlays in feature widgets.
 abstract final class ConversationVisualTokens {
+  /// Default fill behind circular messaging identity marks. Dark messaging
+  /// surfaces use pure black; light surfaces keep the neutral recessed well.
+  static Color circularIdentityWellFill(LicoThemeColors colors) =>
+      colors.isDark ? Colors.black : colors.surfaceLow;
+
   /// Brand mark used to identify a canonical group conversation.
   static Color groupIdentityMark(LicoThemeColors colors) => colors.primary;
 

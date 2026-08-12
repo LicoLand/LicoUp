@@ -36,9 +36,13 @@ void registerClientHistoryRuntimeMessageDispatchScenarios() {
         'agent': 'codex',
         'text': 'Hello Codex',
         'streamEvents': true,
+        'timeoutMs': 0,
         'sessionId': 'native-codex-1',
+        'permissionMode': 'bypassPermissions',
         'sessionPath': 'test-data/codex/history.jsonl',
-        'workingDirectory': '/workspace/codex',
+        'workingDirectory': localConversationWorkingDirectoryFallback(
+          agentId: 'codex',
+        ),
         'binaryPath': ['', 'opt', 'lico-test', 'bin', 'codex'].join('/'),
       });
       expect(service.conversationAppendCalls, 0);

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/minimal_scan_icon.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
@@ -59,13 +60,13 @@ class _MobileScanQrOption extends StatelessWidget {
     return Material(
       key: const Key('mobile-agent-scan-qr-option'),
       color: colors.brandSurface.withAlpha(220),
-      borderRadius: BorderRadius.circular(10),
+      borderRadius: BorderRadius.circular(LicoRadius.floating),
       child: InkWell(
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(LicoRadius.floating),
         onTap: onTap,
         child: Container(
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: BorderRadius.circular(LicoRadius.floating),
             border: Border.all(color: colors.primary.withAlpha(170)),
           ),
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),

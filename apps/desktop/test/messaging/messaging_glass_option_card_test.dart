@@ -3,6 +3,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_glass_option_card.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_section_header.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 void main() {
@@ -30,14 +31,8 @@ void main() {
                       context: context,
                       globalPosition: const Offset(140, 180),
                       actions: const [
-                        MessagingGlassMenuAction(
-                          value: 'unpin',
-                          label: '取消置顶',
-                        ),
-                        MessagingGlassMenuAction(
-                          value: 'pin',
-                          label: '置顶',
-                        ),
+                        MessagingGlassMenuAction(value: 'unpin', label: '取消置顶'),
+                        MessagingGlassMenuAction(value: 'pin', label: '置顶'),
                       ],
                     );
                   },
@@ -54,7 +49,10 @@ void main() {
     await tester.tap(find.byKey(const Key('open-glass-menu')));
     await tester.pumpAndSettle();
 
-    expect(find.byKey(const Key('messaging-glass-context-menu')), findsOneWidget);
+    expect(
+      find.byKey(const Key('messaging-glass-context-menu')),
+      findsOneWidget,
+    );
     expect(find.text('取消置顶'), findsOneWidget);
 
     await tester.tap(find.text('取消置顶'));
@@ -75,7 +73,7 @@ void main() {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  MessagingGlassMenuSectionHeader(label: '当前对话'),
+                  LicoGroupHeader(label: '当前对话'),
                   MessagingGlassMenuItem(label: 'Cursor', selected: true),
                   MessagingGlassMenuItem(label: 'Codex'),
                 ],
