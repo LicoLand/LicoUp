@@ -20,12 +20,14 @@ import 'package:licoup/src/application/controller/client_target_facade.dart';
 import 'package:licoup/src/application/features/agents/archive/conversation_archive_controller.dart';
 import 'package:licoup/src/application/features/catalog_convergence/controller/catalog_convergence_controller.dart';
 import 'package:licoup/src/application/features/agents/contracts/agent_conversation_gateway.dart';
+import 'package:licoup/src/application/features/agents/contracts/adaptive_flywheel_gateway.dart';
 import 'package:licoup/src/application/features/agents/controller/agent_usage_controller.dart';
 import 'package:licoup/src/application/features/agents/conversation/conversation_presentation_signals.dart';
 import 'package:licoup/src/application/features/agents/conversation/conversation_refresh_controller.dart';
 import 'package:licoup/src/application/features/agents/conversation/conversation_selection_store.dart';
-import 'package:licoup/src/application/features/agents/orchestration/agent_orchestration_controller.dart';
+import 'package:licoup/src/application/features/agents/conversation/agent_conversation_controller.dart';
 import 'package:licoup/src/application/features/agents/policy/conversation_refresh_policy.dart';
+import 'package:licoup/src/application/features/conversations/client_conversation_controller.dart';
 import 'package:licoup/src/application/features/layout/layout_manager.dart';
 import 'package:licoup/src/application/features/mobile_relay/controller/mobile_home_layout_controller.dart';
 import 'package:licoup/src/application/features/mobile_relay/controller/mobile_relay_controller.dart';
@@ -40,9 +42,7 @@ import 'package:licoup/src/application/features/settings/controller/directory_pa
 import 'package:licoup/src/application/features/settings/controller/optional_collaboration_controller.dart';
 import 'package:licoup/src/application/features/skill_hub/controller/skill_hub_controller.dart';
 import 'package:licoup/src/application/features/skill_hub/controller/skill_delete_controller.dart';
-import 'package:licoup/src/application/features/skill_hub/controller/skill_update_controller.dart';
 import 'package:licoup/src/application/features/skill_hub/controller/skill_usage_controller.dart';
-import 'package:licoup/src/application/features/skill_hub/services/skill_auto_update_scheduler.dart';
 import 'package:licoup/src/application/features/targets/controller/target_controller.dart';
 import 'package:licoup/src/backend/features/agents/services/agent_conversation_service.dart';
 import 'package:licoup/src/backend/features/agents/services/agent_usage_service.dart';
@@ -50,22 +50,28 @@ import 'package:licoup/src/backend/features/mobile_relay/services/mobile_home_la
 import 'package:licoup/src/backend/features/settings/services/client_update_service.dart';
 import 'package:licoup/src/backend/features/skill_hub/services/skill_hub_preferences_service.dart';
 import 'package:licoup/src/contracts/llm_vault_authorization.dart';
+import 'package:licoup/src/contracts/agent_last_used_conversation.dart';
+import 'package:licoup/src/contracts/agent_tool_allowlist_repository.dart';
 import 'package:licoup/src/contracts/mobile_home_layout_repository.dart';
 import 'package:licoup/src/contracts/catalog_convergence/catalog_convergence_gateway.dart';
-import 'package:licoup/src/contracts/agent_orchestration_target.dart';
+import 'package:licoup/src/contracts/conversation_image_byte_reader.dart';
 import 'package:licoup/src/contracts/optional_collaboration_gateway.dart';
 import 'package:licoup/src/contracts/presentation/presentation_preferences.dart';
 import 'package:licoup/src/contracts/skill_delete.dart';
 import 'package:licoup/src/contracts/skill_hub.dart';
-import 'package:licoup/src/contracts/skill_update.dart';
 import 'package:licoup/src/contracts/skill_usage.dart';
 import 'package:licoup/src/platform/agents/agent_tab_order_store.dart';
+import 'package:licoup/src/platform/agents/agent_tool_allowlist_store.dart';
+import 'package:licoup/src/platform/agents/last_used_conversation_store.dart';
 import 'package:licoup/src/platform/agents/scanned_targets_cache_store.dart';
 import 'package:licoup/src/platform/appearance/appearance_preset_catalog_service.dart';
 import 'package:licoup/src/platform/client_clipboard_service.dart';
+import 'package:licoup/src/platform/conversation/conversation_image_byte_reader.dart';
+import 'package:licoup/src/platform/documents/plan_document_reader.dart';
 import 'package:licoup/src/platform/mobile_relay/mobile_home_layout_store.dart';
 import 'package:licoup/src/platform/mobile_relay/mobile_relay_service.dart';
 import 'package:licoup/src/platform/native_client/agent_service.dart';
+import 'package:licoup/src/platform/process/client_process_lifecycle.dart';
 import 'package:licoup/src/platform/runtime_platform_bridge.dart';
 import 'package:licoup/src/platform/secure_mesh/secure_mesh_capability_service.dart';
 import 'package:licoup/src/platform/skill_hub/skill_hub_preferences_store.dart';
@@ -74,7 +80,7 @@ import 'package:licoup/src/platform/storage/portable_data_root.dart';
 
 /// Stable application facade. Feature behavior and component construction live
 /// in focused facade and assembly leaves.
-class ClientController extends AgentOrchestrationController
+class ClientController extends AgentConversationController
     with
         ConversationRefreshController,
         ConversationSelectionStore,
@@ -106,19 +112,23 @@ class ClientController extends AgentOrchestrationController
     MobileHomeLayoutService? mobileHomeLayoutService,
     MobileHomeLayoutRepository? mobileHomeLayoutRepository,
     SkillHubGateway? skillHubGateway,
-    SkillUpdateGateway? skillUpdateGateway,
     SkillDeleteGateway? skillDeleteGateway,
     SkillUsageGateway? skillUsageGateway,
     SkillHubLocalCatalogSource? skillHubLocalCatalogSource,
     SkillHubPreferencesService? skillHubPreferencesService,
     AgentTabOrderStore? agentTabOrderStore,
     ScannedTargetsCacheStore? scannedTargetsCacheStore,
+    LastUsedConversationStore? lastUsedConversationStore,
+    AgentToolAllowlistRepository? agentToolAllowlistRepository,
     AppearancePresetCatalogService? appearancePresetCatalogService,
     BuiltInLayoutComposition? layoutComposition,
     LayoutManager? layoutManager,
     PresentationPreferencesRepository? presentationPreferencesRepository,
     ClientLogExportService? clientLogExportService,
     ClientClipboardService? clientClipboardService,
+    ConversationImageByteReader? conversationImageByteReader,
+    PlanDocumentReader? planDocumentReader,
+    ClientProcessLifecycle? clientProcessLifecycle,
     RuntimePlatformBridge? runtimePlatformBridge,
     this.conversationRefreshPolicy = const ConversationRefreshPolicy(),
     bool? mobileClientRuntimePlatformOverride,
@@ -153,6 +163,11 @@ class ClientController extends AgentOrchestrationController
            agentTabOrderStore ?? const PlatformAgentTabOrderStore(),
        scannedTargetsCacheStore =
            scannedTargetsCacheStore ?? const PlatformScannedTargetsCacheStore(),
+       lastUsedConversationStore =
+           lastUsedConversationStore ??
+           const PlatformLastUsedConversationStore(),
+       agentToolAllowlistRepository =
+           agentToolAllowlistRepository ?? const AgentToolAllowlistStore(),
        appearancePresetCatalogService =
            appearancePresetCatalogService ??
            const AppearancePresetCatalogService(),
@@ -160,6 +175,13 @@ class ClientController extends AgentOrchestrationController
            clientLogExportService ?? const ClientLogExportService(),
        clientClipboardService =
            clientClipboardService ?? const ClientClipboardService(),
+       conversationImageByteReader =
+           conversationImageByteReader ??
+           PlatformConversationImageByteReader.instance,
+       planDocumentReader =
+           planDocumentReader ?? const LocalPlanDocumentReader(),
+       clientProcessLifecycle =
+           clientProcessLifecycle ?? const NativeClientProcessLifecycle(),
        runtimePlatformBridge =
            runtimePlatformBridge ?? const RuntimePlatformBridge(),
        _mobileClientRuntimePlatformOverride =
@@ -190,11 +212,9 @@ class ClientController extends AgentOrchestrationController
       loadSelectedConversation: loadConversationSessions,
       shouldLoadSelectedConversation: () =>
           selectedConversationAgentId.isNotEmpty &&
-          !selectedConversationIsOrchestration &&
           !mobileClientRuntimePlatform,
-      isOrchestrationTarget: isAgentOrchestrationTargetId,
       discoverMobileTargets: discoverMobileRelayTargets,
-      onTargetsSettled: selectDefaultConversationAgent,
+      onTargetsSettled: _onTargetsSettled,
       selectDefaultConversationAgent: selectDefaultConversationAgent,
       onEnterAgents: clientEnterAgentsSection,
       onEnterMonitoring: clientEnterMonitoringSection,
@@ -204,7 +224,6 @@ class ClientController extends AgentOrchestrationController
       sectionPreloadTasks: resolveSectionPreloadTasks(),
       mobileHomeLayoutRepository: mobileHomeLayoutRepository,
       skillHubGateway: skillHubGateway,
-      skillUpdateGateway: skillUpdateGateway,
       skillDeleteGateway: skillDeleteGateway,
       skillUsageGateway: skillUsageGateway,
       skillHubLocalCatalogSource: skillHubLocalCatalogSource,
@@ -224,15 +243,19 @@ class ClientController extends AgentOrchestrationController
     )..addListener(notifyClientStateChanged);
     messagingNotificationCenter = MessagingNotificationCenter()
       ..addListener(notifyClientStateChanged);
+    clientConversationController = ClientConversationController(
+      runner: this.agentService,
+    )..addListener(notifyClientStateChanged);
   }
 
   @override
   final PortableDataRoot portableData;
   @override
-  Object get agentWorkspacePortableData => portableData;
+  final LastUsedConversationStore lastUsedConversationStore;
   @override
-  get agentConversationProjectionRepository =>
-      _components.agentConversationProjectionRepository;
+  final AgentToolAllowlistRepository agentToolAllowlistRepository;
+  @override
+  Object get agentWorkspacePortableData => portableData;
   @override
   final AgentService agentService;
   @override
@@ -250,11 +273,17 @@ class ClientController extends AgentOrchestrationController
   final AppearancePresetCatalogService appearancePresetCatalogService;
   final ClientLogExportService clientLogExportService;
   final ClientClipboardService clientClipboardService;
+  @override
+  final ConversationImageByteReader conversationImageByteReader;
+  final PlanDocumentReader planDocumentReader;
+  final ClientProcessLifecycle clientProcessLifecycle;
   final RuntimePlatformBridge runtimePlatformBridge;
   @override
   late final LlmGatewayLifecycleController llmGatewayLifecycleController;
   @override
   late final MessagingNotificationCenter messagingNotificationCenter;
+  @override
+  late final ClientConversationController clientConversationController;
   @override
   final ConversationRefreshPolicy conversationRefreshPolicy;
   final bool? _mobileClientRuntimePlatformOverride;
@@ -274,6 +303,8 @@ class ClientController extends AgentOrchestrationController
   @override
   AgentConversationGateway get conversationGateway =>
       _components.conversationGateway;
+  AdaptiveFlywheelGateway get adaptiveFlywheelGateway =>
+      _components.adaptiveFlywheelGateway;
   @override
   MobileAgentConversationGateway get mobileConversationGateway =>
       _components.mobileConversationGateway;
@@ -285,17 +316,11 @@ class ClientController extends AgentOrchestrationController
   @override
   SkillHubController get skillHubController => _components.skillHubController;
   @override
-  SkillUpdateController get skillUpdateController =>
-      _components.skillUpdateController;
-  @override
   SkillDeleteController get skillDeleteController =>
       _components.skillDeleteController;
   @override
   SkillUsageController get skillUsageController =>
       _components.skillUsageController;
-  @override
-  SkillAutoUpdateScheduler get skillAutoUpdateScheduler =>
-      _components.skillAutoUpdateScheduler;
   @override
   AgentUsageController get agentUsageController =>
       _components.agentUsageController;
@@ -347,28 +372,41 @@ class ClientController extends AgentOrchestrationController
       _mobileClientRuntimePlatformOverride ??
       runtimePlatformBridge.isMobileClientRuntime;
 
+  void _onTargetsSettled() {
+    selectDefaultConversationAgent();
+  }
+
   @override
   Future<void> agentWorkspaceOpenDirectory(
     String path, {
     String caption = '',
   }) => openDirectoryPath(path, caption: caption);
 
+  Future<void> _disposeRuntimeServices() async {
+    if (!mobileClientRuntimePlatform && opencodeServeState != null) {
+      await stopClientRuntimeServices();
+    }
+    if (_ownsAgentService) {
+      await agentService.dispose();
+    }
+  }
+
   @override
   void dispose() {
     if (lifecycleProjection.disposed) return;
     lifecycleController.dispose();
     disposeAgentWorkspace();
-    if (!mobileClientRuntimePlatform) {
-      unawaited(stopClientRuntimeServices());
-    }
+    unawaited(_disposeRuntimeServices());
     llmGatewayLifecycleController
       ..removeListener(notifyClientStateChanged)
       ..dispose();
     messagingNotificationCenter
       ..removeListener(notifyClientStateChanged)
       ..dispose();
+    clientConversationController
+      ..removeListener(notifyClientStateChanged)
+      ..dispose();
     llmVaultAuthorization.dispose();
-    if (_ownsAgentService) unawaited(agentService.dispose());
     _components.dispose();
     bootstrapController.dispose();
     snapshotRootController.dispose();

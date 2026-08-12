@@ -42,9 +42,6 @@ void main() {
     final usage = File(
       'lib/src/application/features/agents/controller/agent_usage_controller.dart',
     ).readAsStringSync();
-    final orchestration = File(
-      'lib/src/application/features/agents/orchestration/agent_orchestration_controller.dart',
-    ).readAsStringSync();
     final workspace = File(
       'lib/src/application/features/agents/workspace/agent_workspace_coordinator.dart',
     ).readAsStringSync();
@@ -60,6 +57,6 @@ void main() {
     );
     expect(usage, contains('AgentUsageGateway'));
     expect(usage, contains('acquirePollingOwner'));
-    expect(orchestration, contains('extends AgentConversationController'));
+    expect(conversation, contains('extends AgentWorkspaceCoordinator'));
   });
 }

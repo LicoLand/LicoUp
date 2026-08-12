@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:licoup/src/backend/features/agents/services/agent_conversation_archive_service.dart';
 import 'package:licoup/src/contracts/agent_command_runner.dart';
+import 'package:licoup/src/contracts/agent_conversation_attachment.dart';
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
 import 'package:licoup/src/contracts/agent_dispatch_lane.dart';
 
@@ -349,6 +350,7 @@ class AgentConversationService implements AgentConversationLane {
     required String agentId,
     required String text,
     required String sessionId,
+    List<ConversationAttachment> attachments = const [],
     AgentDispatchBind bind = const AgentDispatchBind(),
   }) async {
     AgentDispatchTurnResult? result;
@@ -357,6 +359,7 @@ class AgentConversationService implements AgentConversationLane {
       agentId: agentId,
       text: text,
       sessionId: sessionId,
+      attachments: attachments,
       bind: bind,
     )) {
       if (event.kind == 'dispatch.turn.completed' ||
@@ -401,6 +404,7 @@ class AgentConversationService implements AgentConversationLane {
     required String agentId,
     required String text,
     required String sessionId,
+    List<ConversationAttachment> attachments = const [],
     AgentDispatchBind bind = const AgentDispatchBind(),
   }) async* {
     final request = <String, dynamic>{
@@ -408,6 +412,10 @@ class AgentConversationService implements AgentConversationLane {
       'text': text,
       'streamEvents': true,
       'timeoutMs': _unboundedDispatchTimeoutMs,
+      if (attachments.isNotEmpty)
+        'attachments': [
+          for (final attachment in attachments) attachment.toJson(),
+        ],
       if (sessionId.trim().isNotEmpty) 'sessionId': sessionId.trim(),
       ..._bindDispatchFields(bind),
       ..._acceptanceDispatchFields(bind),

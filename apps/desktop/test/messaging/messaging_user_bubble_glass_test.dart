@@ -5,6 +5,11 @@ import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_user_
 import 'package:licoup/src/frontend/layout/profiles/messaging/desktop/tokens/messaging_desktop_tokens.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
+int _alpha8(Color color) => (color.toARGB32() >> 24) & 0xff;
+int _red8(Color color) => (color.toARGB32() >> 16) & 0xff;
+int _green8(Color color) => (color.toARGB32() >> 8) & 0xff;
+int _blue8(Color color) => color.toARGB32() & 0xff;
+
 void main() {
   group('MessagingDesktopMetrics userBubbleGlass', () {
     test('fill is fully transparent', () {
@@ -15,8 +20,8 @@ void main() {
         isDark: false,
       );
 
-      expect(darkFill.alpha, 0);
-      expect(lightFill.alpha, 0);
+      expect(_alpha8(darkFill), 0);
+      expect(_alpha8(lightFill), 0);
     });
 
     test('border tints neutral line, not brand', () {
@@ -27,12 +32,12 @@ void main() {
         isDark: true,
       );
 
-      expect(border.red, line.red);
-      expect(border.green, line.green);
-      expect(border.blue, line.blue);
-      expect(border, isNot(equals(brandBorder.withAlpha(border.alpha))));
+      expect(_red8(border), _red8(line));
+      expect(_green8(border), _green8(line));
+      expect(_blue8(border), _blue8(line));
+      expect(border, isNot(equals(brandBorder.withAlpha(_alpha8(border)))));
       expect(
-        border.alpha,
+        _alpha8(border),
         MessagingDesktopMetrics.userBubbleGlassBorderAlphaDark,
       );
     });
@@ -74,13 +79,13 @@ void main() {
       ),
     );
     final decoration = animated.decoration! as BoxDecoration;
-    expect(decoration.color!.alpha, 0);
+    expect(_alpha8(decoration.color!), 0);
     expect(decoration.boxShadow ?? const <BoxShadow>[], isEmpty);
     expect(decoration.border, isNotNull);
     final borderColor = decoration.border!.top.color;
-    expect(borderColor.red, colors.line.red);
-    expect(borderColor.green, colors.line.green);
-    expect(borderColor.blue, colors.line.blue);
+    expect(_red8(borderColor), _red8(colors.line));
+    expect(_green8(borderColor), _green8(colors.line));
+    expect(_blue8(borderColor), _blue8(colors.line));
     expect(borderColor, isNot(equals(colors.brandBorder)));
     expect(borderColor, isNot(equals(colors.primary)));
     expect(tester.takeException(), isNull);

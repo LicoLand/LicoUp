@@ -6,7 +6,6 @@ import 'package:licoup/src/application/features/agents/conversation/agent_conver
         conversationSessionReadbackPendingSelectionId;
 import 'package:licoup/src/application/features/agents/policy/conversation_refresh_policy.dart';
 import 'package:licoup/src/application/features/agents/workspace/agent_workspace_coordinator.dart';
-import 'package:licoup/src/contracts/agent_orchestration_target.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 
 mixin ConversationRefreshController on AgentWorkspaceCoordinator {
@@ -70,7 +69,6 @@ mixin ConversationRefreshController on AgentWorkspaceCoordinator {
     if (lifecycleProjection.disposed ||
         !lifecycleProjection.initialized ||
         agentId.isEmpty ||
-        isAgentOrchestrationTargetId(agentId) ||
         priority == ConversationRefreshPriority.suspended) {
       return;
     }
@@ -97,6 +95,17 @@ mixin ConversationRefreshController on AgentWorkspaceCoordinator {
 
   Future<void> _runScheduledActiveConversationRefresh(String agentId) async {
     if (!_conversationRefreshTargetIsCurrent(agentId)) {
+      return;
+    }
+    if (isSendingConversationMessage) {
+      // A streamed turn is in progress: the native transcript only holds the
+      // half-persisted user message, and a readback must not run under the
+      // live projection. Defer the read until the turn finishes.
+      final priority = conversationRefreshPriority;
+      _scheduleActiveConversationRefresh(
+        agentId,
+        conversationRefreshPolicy.activeDelay(priority),
+      );
       return;
     }
     final selectedSessionId = selectedConversationSessionId.trim();
@@ -132,6 +141,17 @@ mixin ConversationRefreshController on AgentWorkspaceCoordinator {
     if (!_conversationRefreshTargetIsCurrent(agentId)) {
       return;
     }
+    if (isSendingConversationMessage) {
+      // Same guard as the active-session lane: no catalog readback under a
+      // streaming turn, where the readback can only cover the pending user
+      // message.
+      final priority = conversationRefreshPriority;
+      _scheduleConversationCatalogRefresh(
+        agentId,
+        conversationRefreshPolicy.catalogDelay(priority),
+      );
+      return;
+    }
     await refreshConversationCatalogInternal(agentId, foreground: false);
     if (!_conversationRefreshTargetIsCurrent(agentId)) {
       return;
@@ -147,7 +167,6 @@ mixin ConversationRefreshController on AgentWorkspaceCoordinator {
     return !lifecycleProjection.disposed &&
         lifecycleProjection.initialized &&
         selectedConversationAgentId == agentId &&
-        !isAgentOrchestrationTargetId(agentId) &&
         conversationRefreshPriority != ConversationRefreshPriority.suspended;
   }
 

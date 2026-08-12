@@ -9,8 +9,8 @@ export async function checkPackageAndRunner({ assert, files, context }) {
     "package.json must identify the open-source client repository",
   );
   assert(
-    packageJson.license === "GPL-3.0-or-later",
-    "package.json must use GPL-3.0-or-later",
+    packageJson.license === "AGPL-3.0-or-later",
+    "package.json must use AGPL-3.0-or-later",
   );
 
   const scriptNamesByCommand = new Map();

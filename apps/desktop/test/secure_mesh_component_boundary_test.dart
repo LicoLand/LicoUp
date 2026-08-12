@@ -8,7 +8,6 @@ void main() {
     const componentFiles = [
       'secure_mesh_status_controller.dart',
       'secure_mesh_file_transfer_controller.dart',
-      'secure_mesh_skill_transfer_controller.dart',
       'secure_mesh_approval_controller.dart',
       'secure_mesh_protocol_controller.dart',
     ];
@@ -29,9 +28,6 @@ void main() {
     final file = File(
       '$root/secure_mesh_file_transfer_controller.dart',
     ).readAsStringSync();
-    final skill = File(
-      '$root/secure_mesh_skill_transfer_controller.dart',
-    ).readAsStringSync();
     final approval = File(
       '$root/secure_mesh_approval_controller.dart',
     ).readAsStringSync();
@@ -40,10 +36,7 @@ void main() {
     ).readAsStringSync();
 
     expect(status, isNot(contains('secure_mesh_file_transfer_controller')));
-    expect(file, isNot(contains('secure_mesh_skill_transfer_controller')));
     expect(file, isNot(contains('secure_mesh_approval_controller')));
-    expect(skill, contains('secure_mesh_file_transfer_controller.dart'));
-    expect(skill, isNot(contains('secure_mesh_approval_controller')));
     expect(approval, isNot(contains('secure_mesh_file_transfer_controller')));
     expect(protocol, isNot(contains('secure_mesh_file_transfer_controller')));
     expect(protocol, isNot(contains('secure_mesh_approval_controller')));

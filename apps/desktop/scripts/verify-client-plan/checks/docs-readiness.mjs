@@ -40,7 +40,7 @@ export async function checkDocsReadiness({ assert, files }) {
     "Default client scenarios do not",
     "protected one-shot user approval",
     "treats transport as untrusted",
-    "GPL-3.0-or-later",
+    "AGPL-3.0-or-later",
   ]) {
     assert(readme.includes(token), `README.md must keep public client token ${token}`);
   }

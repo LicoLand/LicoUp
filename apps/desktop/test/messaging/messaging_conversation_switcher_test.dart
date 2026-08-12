@@ -1,9 +1,5 @@
-import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
-import 'package:flutter_test/flutter_test.dart';
 
-import 'package:licoup/src/contracts/agent_conversation_models.dart';
-import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_conversation_header.dart';
 import '../agent_conversation_pane/pane_test_harness.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';

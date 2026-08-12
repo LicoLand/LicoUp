@@ -5,25 +5,24 @@ import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/layout/layout_palette.dart';
 import 'package:licoup/src/frontend/layout/profiles/messaging/desktop/shell/messaging_desktop_navigation.dart';
 import 'package:licoup/src/frontend/layout/profiles/messaging/desktop/tokens/messaging_desktop_tokens.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
 
 /// Far-left destination column on frosted glass: the page destinations
 /// (agents, skill hub, plugin management, monitoring) and the pairing page
 /// sit vertically centered as standalone rounded-rectangle buttons. A
 /// selected destination renders a brand-yellow filled tile with a black
-/// icon; unselected stays a plain muted icon with subtle hover. Avatar and
-/// settings live outside the rail (band and profile page).
+/// icon; unselected stays a plain muted icon with subtle hover. Settings
+/// anchors at the bottom of the rail.
 final class MessagingDestinationRail extends StatelessWidget {
   const MessagingDestinationRail({
     super.key,
     required this.section,
     required this.onSelectSection,
-    required this.onToggleProfile,
     required this.profileOpen,
   });
 
   final ClientSection section;
   final ValueChanged<ClientSection> onSelectSection;
-  final VoidCallback onToggleProfile;
   final bool profileOpen;
 
   @override
@@ -32,7 +31,7 @@ final class MessagingDestinationRail extends StatelessWidget {
     final strings = LicoStrings.of(context);
     final items = messagingDesktopNavigationItems(strings);
     final dark = colors.isDark;
-    return Container(
+    return SizedBox(
       key: const Key('messaging-destination-rail'),
       width: MessagingDesktopMetrics.navigationRailExtent,
       // Light frosted tint only — blur is supplied by the native
@@ -70,14 +69,6 @@ final class MessagingDestinationRail extends StatelessWidget {
                 ),
               ),
             ),
-            MessagingRailToggleButton(
-              key: const Key('messaging-rail-avatar-button'),
-              selected: profileOpen,
-              tooltip: strings.localUser,
-              icon: Icons.person_outline_rounded,
-              onPressed: onToggleProfile,
-            ),
-            const SizedBox(height: 8),
             MessagingRailToggleButton(
               key: const Key('messaging-rail-settings-button'),
               // The profile page replaces the settings destination, so
@@ -136,7 +127,7 @@ final class _MessagingRailToggleButtonState
       label: widget.tooltip,
       child: Tooltip(
         message: widget.tooltip,
-        waitDuration: const Duration(milliseconds: 400),
+        waitDuration: LicoMotion.tooltipWait,
         child: MouseRegion(
           cursor: SystemMouseCursors.click,
           onEnter: (_) => setState(() => _hovered = true),

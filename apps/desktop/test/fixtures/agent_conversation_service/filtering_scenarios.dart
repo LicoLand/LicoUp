@@ -294,7 +294,7 @@ deepseek-v4-pro[1m] is temporarily unavailable, so auto mode cannot determine th
       ],
     });
 
-    expect(session.messageCount, 3);
+    expect(session.messageCount, 4);
     expect(session.messages[1].isSubagentCard, isTrue);
     expect(
       session.messages[1].cardTitle,
@@ -304,10 +304,11 @@ deepseek-v4-pro[1m] is temporarily unavailable, so auto mode cannot determine th
       session.messages[1].childMessages.single.text,
       'Worker found one candidate finding.',
     );
-    expect(
-      session.messages.any((message) => message.role == 'subagent_prompt'),
-      isFalse,
+    final prompt = session.messages.singleWhere(
+      (message) => message.role == 'subagent_prompt',
     );
+    expect(prompt.isSubagentCard, isTrue);
+    expect(prompt.isDisplayable, isTrue);
   });
 }
 

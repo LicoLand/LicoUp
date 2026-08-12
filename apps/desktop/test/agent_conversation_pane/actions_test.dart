@@ -5,7 +5,9 @@ void main() {
     tester,
   ) async {
     var newConversationCount = 0;
-    var addTargetCount = 0;
+    var newGroupCount = 0;
+    var mobilePairingCount = 0;
+    var settingsCount = 0;
     await tester.pumpWidget(
       paneTestApp(
         Column(
@@ -21,9 +23,11 @@ void main() {
               onPressed: () {},
             ),
             Expanded(
-              child: AgentConversationEmptySelection(
-                allowManualTargetActions: true,
-                onAddTarget: () => addTargetCount += 1,
+              child: AgentConversationWelcome(
+                onNewConversation: () => newConversationCount += 1,
+                onNewGroupConversation: () => newGroupCount += 1,
+                onOpenMobilePairing: () => mobilePairingCount += 1,
+                onOpenSettings: () => settingsCount += 1,
               ),
             ),
           ],
@@ -32,11 +36,17 @@ void main() {
     );
 
     await tester.tap(find.byTooltip('New conversation'));
-    await tester.tap(find.text('Add target'));
+    await tester.tap(find.byKey(const Key('welcome-new-conversation')));
+    await tester.tap(find.byKey(const Key('welcome-new-group-conversation')));
+    await tester.tap(find.byKey(const Key('welcome-mobile-pairing')));
+    await tester.tap(find.byKey(const Key('welcome-settings')));
     await tester.pump();
 
-    expect(newConversationCount, 1);
-    expect(addTargetCount, 1);
+    expect(newConversationCount, 2);
+    expect(newGroupCount, 1);
+    expect(mobilePairingCount, 1);
+    expect(settingsCount, 1);
+    expect(find.text('Welcome'), findsOneWidget);
     expect(find.byType(CircularProgressIndicator), findsOneWidget);
   });
 }

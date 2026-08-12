@@ -152,6 +152,56 @@ done
       expect(context.startCount, 1);
     },
   );
+
+  test(
+    'structured mentioned group turn RPC is not limited by ordinary timeout',
+    () async {
+      if (Platform.isWindows) return;
+      final directory = await Directory.systemTemp.createTemp(
+        'lico-stdio-direct-turn-',
+      );
+      addTearDown(() => directory.delete(recursive: true));
+      final executable = File('${directory.path}/licoup');
+      await executable.writeAsString(r'''#!/bin/sh
+while IFS= read -r line; do
+  request_id=$(printf '%s' "$line" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p')
+  workflow_id=$(printf '%s' "$line" | sed -n 's/.*"workflowId":"\([^"]*\)".*/\1/p')
+  case "$line" in
+    *'"method":"client.conversation.execute"'*'"mentionedMembershipIds":["membership:agent"]'*)
+      sleep 1
+      printf '{"protocol":"licoup.stdio.v1","id":"%s","workflowId":"%s","ok":true,"result":{"ok":true,"directTurns":[{"state":"succeeded"}]}}\n' "$request_id" "$workflow_id"
+      ;;
+    *'"method":"shutdown"'*)
+      printf '{"protocol":"licoup.stdio.v1","id":"%s","workflowId":"%s","ok":true,"result":{}}\n' "$request_id" "$workflow_id"
+      exit 0
+      ;;
+  esac
+done
+''');
+      final chmod = await Process.run('chmod', ['+x', executable.path]);
+      expect(chmod.exitCode, 0);
+      final context = _LiveProcessContext(
+        executable,
+        requestTimeout: const Duration(milliseconds: 100),
+      );
+      final client = NativeStdioRpcClient(processContext: context);
+      addTearDown(client.dispose);
+
+      final result = await client
+          .executeStructured('client.conversation.execute', const {
+            'action': 'conversation.message.post',
+            'conversationId': 'conversation:group',
+            'authorMembershipId': 'membership:human',
+            'content': '@Agent run',
+            'mentionedMembershipIds': ['membership:agent'],
+          })
+          .timeout(const Duration(seconds: 3));
+
+      expect(result['ok'], isTrue);
+      expect(result['directTurns'], isNotEmpty);
+      expect(context.startCount, 1);
+    },
+  );
 }
 
 Future<void> _waitUntil(bool Function() predicate) async {
@@ -200,13 +250,15 @@ class _FakeProcessContext implements NativeCliProcessContext {
 }
 
 class _LiveProcessContext implements NativeCliProcessContext {
-  _LiveProcessContext(this.executable);
+  _LiveProcessContext(
+    this.executable, {
+    this.requestTimeout = const Duration(seconds: 5),
+  });
 
   final File executable;
-  var startCount = 0;
-
   @override
-  Duration get requestTimeout => const Duration(seconds: 5);
+  final Duration requestTimeout;
+  var startCount = 0;
 
   @override
   Future<Map<String, String>?> buildEnvironment() async => null;

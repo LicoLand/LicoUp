@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -49,6 +50,7 @@ void main() {
         _target('codex', 'Codex'),
         _target('claude-code', 'Claude Code'),
       ];
+      final openedAgents = <String>[];
 
       await tester.pumpWidget(
         MaterialApp(
@@ -75,6 +77,7 @@ void main() {
                       controller: controller,
                       targets: targets,
                       onCopyText: (_) async {},
+                      onOpenAgentConversations: openedAgents.add,
                       framed: false,
                     ),
                   ),
@@ -173,6 +176,22 @@ void main() {
             .map((tooltip) => tooltip.message),
         containsAll(<String>['Codex', 'Claude Code']),
       );
+
+      final codexAvatar = find.byKey(
+        const Key('canonical-group-roster-agent-codex'),
+      );
+      await tester.tap(codexAvatar);
+      await tester.pump(kDoubleTapTimeout + const Duration(milliseconds: 1));
+      expect(controller.draft, '@Codex ');
+
+      controller.updateDraft('');
+      await tester.pump();
+      await tester.tap(codexAvatar);
+      await tester.pump(kDoubleTapMinTime);
+      await tester.tap(codexAvatar);
+      await tester.pumpAndSettle();
+      expect(controller.draft, isEmpty);
+      expect(openedAgents, ['codex']);
 
       final clipper = surface.clipper as CanonicalGroupRosterClipper;
       final path = clipper.getClip(surfaceRect.size);

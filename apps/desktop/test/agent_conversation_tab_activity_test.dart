@@ -10,6 +10,7 @@ import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_worksp
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
+import 'fixtures/client_controller/support/fake_agent_service.dart';
 import 'layout/fixtures/layout_destination_presentation_fixture.dart';
 
 void main() {
@@ -97,7 +98,7 @@ void main() {
   });
 
   testWidgets('agent sidebar hides status lights by default', (tester) async {
-    final controller = ClientController();
+    final controller = ClientController(agentService: FakeAgentService());
     addTearDown(controller.dispose);
     controller.scannedTargets = [
       targetFixture('codex'),
@@ -122,7 +123,7 @@ void main() {
   testWidgets('agent sidebar shows yellow for approval and blue for finished', (
     tester,
   ) async {
-    final controller = ClientController();
+    final controller = ClientController(agentService: FakeAgentService());
     addTearDown(controller.dispose);
     controller.scannedTargets = [
       targetFixture('codex'),
@@ -157,7 +158,7 @@ void main() {
   testWidgets('selecting a sidebar agent clears unfinished work light only', (
     tester,
   ) async {
-    final controller = ClientController();
+    final controller = ClientController(agentService: FakeAgentService());
     addTearDown(controller.dispose);
     controller.scannedTargets = [
       targetFixture('codex'),
@@ -198,12 +199,13 @@ void main() {
 }
 
 AgentConversationSession _activitySession(String id, String agentId) {
+  final now = DateTime.now().toUtc().toIso8601String();
   return AgentConversationSession(
     id: id,
     agentId: agentId,
     title: 'Session',
-    createdAt: '2026-01-01T00:00:00Z',
-    updatedAt: '2026-01-01T00:00:00Z',
+    createdAt: now,
+    updatedAt: now,
     messages: const [],
   );
 }

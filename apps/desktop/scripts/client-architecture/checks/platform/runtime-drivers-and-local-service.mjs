@@ -68,9 +68,8 @@ export async function checkRuntimeDriversAndLocalService(context, {
     claudeCodeCommandSource.includes("FIXED_STREAM_ARGS") &&
       claudeCodeCommandSource.includes('"--input-format"') &&
       claudeCodeCommandSource.includes('"stream-json"') &&
-      claudeCodeCommandSource.includes('"CLAUDE_CODE_SKIP_PROMPT_HISTORY"') &&
       !claudeCodeCommandSource.includes('"--no-session-persistence"') &&
-      !claudeCodeCommandSource.includes('"--resume"') &&
+      claudeCodeCommandSource.includes('args.extend(["--resume".to_string(), session_id.clone()])') &&
       claudeCodeDriverSource.includes("MAX_POOLED_TRANSPORTS") &&
       claudeCodeDriverSource.includes("MAX_TRACKED_SESSIONS") &&
       claudeCodeDriverSource.includes("MAX_PROTOCOL_LINE_BYTES") &&
@@ -398,7 +397,7 @@ export async function checkRuntimeDriversAndLocalService(context, {
   );
   assert(
     localServiceServeSource.includes("event_session != session_id") &&
-      localServiceServeSource.includes('"message.part.updated" | "message.part.delta"') &&
+      localServiceServeSource.includes('event_type != "message.part.updated"') &&
       !localServiceServeSource.includes('"state": service_state') &&
       !localServiceServeSource.includes('"stateDir"'),
     "Local serve lifecycle must require exact-session events and never project raw local state"
