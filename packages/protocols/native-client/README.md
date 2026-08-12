@@ -33,12 +33,6 @@ does not apply to the
 
 ## Boundary Principles
 
-- Default capability binds no Meshrix address, token, discovery file, or
-  background service.
-- Optional collaboration registers only manual `collaboration` lifecycle
-  commands. Default status checks do not load the plugin. A GitHub installation
-  plan binds source and SHA-256 digest, and the plugin package contains no
-  executable or instruction payload.
 - CLI, Flutter, and mobile bridges reuse the same Rust protocol models instead
   of creating message variants.
 - Stable wire-observable Pairwise Protection, Generic Message, Reliable
@@ -53,5 +47,3 @@ does not apply to the
 - Sending user information or files beyond the device requires direct
   approval bound to that operation's destination, purpose, and exact scope.
   Cancellation, a scope mismatch, or missing approval fails closed.
-- Optional collaboration is a user-installed external plugin. It does not
-  enter the default package or change these boundaries.

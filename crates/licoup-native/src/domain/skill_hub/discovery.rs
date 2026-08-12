@@ -2,11 +2,11 @@
 
 use super::{
     PathBuf, Result, Value, absolute_lexical_path, directory_exists_no_follow, fs,
-    inspect_skill_dir, json, resolve_install_root, validate_no_symlink_ancestors,
+    inspect_skill_dir, json, resolve_skill_root, validate_no_symlink_ancestors,
 };
 
 pub(super) fn discover(agent_id: &str, params: &Value) -> Result<Vec<Value>> {
-    let root = absolute_lexical_path(&resolve_install_root(agent_id, params)?)?;
+    let root = absolute_lexical_path(&resolve_skill_root(agent_id, params)?)?;
     validate_no_symlink_ancestors(&root)?;
     if !directory_exists_no_follow(&root)? {
         return Ok(Vec::new());
@@ -38,7 +38,7 @@ pub(super) fn discover(agent_id: &str, params: &Value) -> Result<Vec<Value>> {
             "description": preview.description,
             "version": preview.version,
             "path": directory.to_string_lossy(),
-            "installRoot": root.to_string_lossy(),
+            "skillRoot": root.to_string_lossy(),
             "source": {"kind": "local-agent-skill-root"},
             "protocolStatus": "local",
             "installer": "agent-local",
@@ -75,7 +75,7 @@ mod tests {
 
         let skills = discover(
             "custom-agent",
-            &json!({"installRoot": root.to_string_lossy()}),
+            &json!({"skillRoot": root.to_string_lossy()}),
         )
         .unwrap();
         assert_eq!(skills.len(), 2);

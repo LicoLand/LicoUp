@@ -1,10 +1,12 @@
 use super::support::*;
+use serde_json::json;
+use std::fs;
 
 #[test]
 fn cli_dispatches_state_targets_and_mobile_relay() {
     let dir = temp_cli_dir("dispatch");
     {
-        let _guard = cli_env_lock().lock().unwrap();
+        let _guard = cli_env_guard();
         let _portable = set_portable_dir(&dir);
         let set_state = execute_cli(vec![
             "state".into(),
@@ -68,4 +70,24 @@ fn cli_dispatches_state_targets_and_mobile_relay() {
             "https://relay.example.test"
         );
     }
+}
+
+#[test]
+fn cli_wraps_client_conversation_results_for_the_desktop_runner() {
+    let dir = temp_cli_dir("client-conversation-cli");
+    {
+        let _guard = cli_env_guard();
+        let _portable = set_portable_dir(&dir);
+        let result = execute_cli(vec![
+            "conversation".into(),
+            "execute".into(),
+            "--stdin-json".into(),
+            r#"{"action":"conversation.list","includeArchived":false}"#.into(),
+        ])
+        .unwrap();
+        let payload = json_payload(&result);
+        assert_eq!(payload["ok"], true);
+        assert_eq!(payload["result"], json!([]));
+    }
+    let _ = fs::remove_dir_all(dir);
 }

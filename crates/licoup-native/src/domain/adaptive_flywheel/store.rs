@@ -1,0 +1,1456 @@
+use anyhow::{Result, anyhow, ensure};
+use rusqlite::{Connection, OptionalExtension, Transaction, TransactionBehavior, params};
+use serde_json::Value;
+use sha2::{Digest, Sha256};
+use std::collections::{BTreeMap, BTreeSet};
+use std::path::{Path, PathBuf};
+use uuid::Uuid;
+
+use super::{
+    BindingValue, ReducerEvent, RunCommand, RunSnapshot, STRATEGY_SCHEMA_VERSION,
+    StrategyAuthorization, StrategyDefinition, StrategyDefinitionSummary, StrategyDiagnostic,
+    StrategyProjection, StrategyRunStatus, WorkflowDefinition, compile_workflow, reduce,
+};
+
+const DATABASE_FILE: &str = "strategies.sqlite3";
+
+#[derive(Clone, Debug)]
+pub struct StrategyStore {
+    db_path: PathBuf,
+}
+
+impl StrategyStore {
+    pub fn open(portable_root: &Path) -> Result<Self> {
+        let root = portable_root.join("client-state").join("adaptive-flywheel");
+        crate::platform::file_security::ensure_private_dir(&root)?;
+        let store = Self {
+            db_path: root.join(DATABASE_FILE),
+        };
+        store.with_connection(initialize_schema)?;
+        crate::platform::file_security::harden_private_path(&store.db_path)?;
+        Ok(store)
+    }
+
+    pub fn open_in_memory() -> Result<Self> {
+        let path =
+            std::env::temp_dir().join(format!("lico-adaptive-flywheel-{}.sqlite3", Uuid::new_v4()));
+        let store = Self { db_path: path };
+        store.with_connection(initialize_schema)?;
+        Ok(store)
+    }
+
+    pub fn db_path(&self) -> &Path {
+        &self.db_path
+    }
+
+    fn with_connection<T>(
+        &self,
+        operation: impl FnOnce(&mut Connection) -> Result<T>,
+    ) -> Result<T> {
+        let mut connection = Connection::open(&self.db_path)
+            .map_err(|_| anyhow!("strategy_database_open_failed"))?;
+        configure_connection(&connection)?;
+        operation(&mut connection)
+    }
+
+    pub(crate) fn register_definition(
+        &self,
+        revision_digest: &str,
+        semantics_digest: &str,
+        workflow: &WorkflowDefinition,
+        asset_count: usize,
+        imported_at_unix_ms: i64,
+    ) -> Result<StrategyDefinition> {
+        let compiled = compile_workflow(workflow.clone())?;
+        let workflow_json = serde_json::to_string(&compiled.definition)?;
+        self.with_connection(|connection| {
+            let transaction =
+                connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+            transaction.execute(
+                "INSERT INTO strategy_definitions(
+                   definition_id, revision_digest, semantics_digest, name, version,
+                   workflow_json, asset_count, imported_at
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+                 ON CONFLICT(revision_digest) DO NOTHING",
+                params![
+                    compiled.definition.metadata.id,
+                    revision_digest,
+                    semantics_digest,
+                    compiled.definition.metadata.name,
+                    compiled.definition.metadata.version,
+                    workflow_json,
+                    asset_count as i64,
+                    imported_at_unix_ms,
+                ],
+            )?;
+            let existing: Option<(String, String)> = transaction
+                .query_row(
+                    "SELECT definition_id, semantics_digest FROM strategy_definitions
+                     WHERE revision_digest=?1",
+                    params![revision_digest],
+                    |row| Ok((row.get(0)?, row.get(1)?)),
+                )
+                .optional()?;
+            ensure!(
+                existing
+                    == Some((
+                        compiled.definition.metadata.id.clone(),
+                        semantics_digest.to_owned()
+                    )),
+                "strategy_revision_conflict"
+            );
+            transaction.commit()?;
+            self.definition_by_revision(revision_digest)
+        })
+    }
+
+    pub fn list_definitions(&self) -> Result<Vec<StrategyDefinitionSummary>> {
+        self.with_connection(|connection| {
+            let mut statement = connection.prepare(
+                "SELECT definition_id, revision_digest, semantics_digest, name, version, imported_at
+                 FROM strategy_definitions ORDER BY imported_at DESC, revision_digest ASC",
+            )?;
+            let rows = statement.query_map([], summary_from_row)?;
+            rows.collect::<rusqlite::Result<Vec<_>>>()
+                .map_err(Into::into)
+        })
+    }
+
+    pub fn definition_by_revision(&self, revision_digest: &str) -> Result<StrategyDefinition> {
+        self.with_connection(|connection| definition_by_revision(connection, revision_digest))
+    }
+
+    pub fn latest_definition(&self, definition_id: &str) -> Result<StrategyDefinition> {
+        self.with_connection(|connection| {
+            let revision: Option<String> = connection
+                .query_row(
+                    "SELECT revision_digest FROM strategy_definitions
+                     WHERE definition_id=?1 ORDER BY imported_at DESC, revision_digest ASC LIMIT 1",
+                    params![definition_id],
+                    |row| row.get(0),
+                )
+                .optional()?;
+            definition_by_revision(
+                connection,
+                revision
+                    .as_deref()
+                    .ok_or_else(|| anyhow!("strategy_definition_not_found"))?,
+            )
+        })
+    }
+
+    pub fn update_binding(
+        &self,
+        revision_digest: &str,
+        slot_id: &str,
+        value_id: &str,
+        model: &str,
+        reasoning_effort: &str,
+        expected_revision: Option<u64>,
+    ) -> Result<BindingValue> {
+        validate_opaque_id(slot_id, "strategy_binding_slot_invalid")?;
+        validate_opaque_id(value_id, "strategy_binding_value_invalid")?;
+        validate_optional_text(model, "strategy_binding_model_invalid")?;
+        validate_optional_text(
+            reasoning_effort,
+            "strategy_binding_reasoning_effort_invalid",
+        )?;
+        let definition = self.definition_by_revision(revision_digest)?;
+        ensure!(
+            definition
+                .workflow
+                .actor_slots
+                .iter()
+                .any(|slot| slot.id == slot_id),
+            "strategy_binding_slot_unknown"
+        );
+        self.with_connection(|connection| {
+            let transaction =
+                connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+            let current: Option<u64> = transaction
+                .query_row(
+                    "SELECT revision FROM strategy_bindings WHERE revision_digest=?1 AND slot_id=?2",
+                    params![revision_digest, slot_id],
+                    |row| row.get::<_, i64>(0).map(|value| value as u64),
+                )
+                .optional()?;
+            if let Some(expected) = expected_revision {
+                ensure!(current.unwrap_or(0) == expected, "strategy_revision_conflict");
+            }
+            let revision = current.unwrap_or(0) + 1;
+            transaction.execute(
+                "INSERT INTO strategy_bindings(
+                   revision_digest, slot_id, value_id, model, reasoning_effort, revision
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+                 ON CONFLICT(revision_digest, slot_id) DO UPDATE SET
+                   value_id=excluded.value_id,
+                   model=excluded.model,
+                   reasoning_effort=excluded.reasoning_effort,
+                   revision=excluded.revision",
+                params![
+                    revision_digest,
+                    slot_id,
+                    value_id,
+                    model,
+                    reasoning_effort,
+                    revision as i64
+                ],
+            )?;
+            transaction.execute(
+                "UPDATE strategy_authorizations SET active=0 WHERE revision_digest=?1 AND active=1",
+                params![revision_digest],
+            )?;
+            transaction.commit()?;
+            Ok(BindingValue {
+                slot_id: slot_id.to_owned(),
+                value_id: value_id.to_owned(),
+                model: model.to_owned(),
+                reasoning_effort: reasoning_effort.to_owned(),
+                revision,
+            })
+        })
+    }
+
+    pub fn remove_binding(
+        &self,
+        revision_digest: &str,
+        slot_id: &str,
+        expected_revision: Option<u64>,
+    ) -> Result<()> {
+        validate_opaque_id(slot_id, "strategy_binding_slot_invalid")?;
+        self.with_connection(|connection| {
+            let transaction =
+                connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+            let current: Option<u64> = transaction
+                .query_row(
+                    "SELECT revision FROM strategy_bindings
+                     WHERE revision_digest=?1 AND slot_id=?2",
+                    params![revision_digest, slot_id],
+                    |row| row.get::<_, i64>(0).map(|value| value as u64),
+                )
+                .optional()?;
+            if let Some(expected) = expected_revision {
+                ensure!(
+                    current.unwrap_or(0) == expected,
+                    "strategy_revision_conflict"
+                );
+            }
+            transaction.execute(
+                "DELETE FROM strategy_bindings WHERE revision_digest=?1 AND slot_id=?2",
+                params![revision_digest, slot_id],
+            )?;
+            transaction.execute(
+                "UPDATE strategy_authorizations SET active=0
+                 WHERE revision_digest=?1 AND active=1",
+                params![revision_digest],
+            )?;
+            transaction.commit()?;
+            Ok(())
+        })
+    }
+
+    pub fn authorization_preview(&self, revision_digest: &str) -> Result<StrategyAuthorization> {
+        let definition = self.definition_by_revision(revision_digest)?;
+        ensure!(
+            bindings_complete(&definition),
+            "strategy_binding_incomplete"
+        );
+        let binding_digest = binding_digest(&definition.bindings)?;
+        let next_revision = definition
+            .authorization
+            .as_ref()
+            .map_or(1, |authorization| authorization.revision + 1);
+        let authorization_digest = authorization_digest(
+            revision_digest,
+            &definition.summary.semantics_digest,
+            &binding_digest,
+            next_revision,
+        );
+        Ok(StrategyAuthorization {
+            definition_digest: revision_digest.to_owned(),
+            semantics_digest: definition.summary.semantics_digest,
+            binding_digest,
+            authorization_digest,
+            revision: next_revision,
+            active: false,
+        })
+    }
+
+    pub fn grant_authorization(
+        &self,
+        revision_digest: &str,
+        expected_authorization_digest: &str,
+    ) -> Result<StrategyAuthorization> {
+        self.with_connection(|connection| {
+            let transaction =
+                connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+            let definition = definition_by_revision(&transaction, revision_digest)?;
+            ensure!(
+                bindings_complete(&definition),
+                "strategy_binding_incomplete"
+            );
+            let binding_digest = binding_digest(&definition.bindings)?;
+            let next_revision = definition
+                .authorization
+                .as_ref()
+                .map_or(1, |authorization| authorization.revision + 1);
+            let authorization_digest = authorization_digest(
+                revision_digest,
+                &definition.summary.semantics_digest,
+                &binding_digest,
+                next_revision,
+            );
+            ensure!(
+                authorization_digest == expected_authorization_digest,
+                "strategy_authorization_stale"
+            );
+            transaction.execute(
+                "UPDATE strategy_authorizations SET active=0 WHERE revision_digest=?1 AND active=1",
+                params![revision_digest],
+            )?;
+            transaction.execute(
+                "INSERT INTO strategy_authorizations(
+                   revision_digest, revision, semantics_digest, binding_digest,
+                   authorization_digest, active, created_at
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, 1, ?6)",
+                params![
+                    revision_digest,
+                    next_revision as i64,
+                    definition.summary.semantics_digest,
+                    binding_digest,
+                    authorization_digest,
+                    now_ms(),
+                ],
+            )?;
+            transaction.commit()?;
+            Ok(StrategyAuthorization {
+                definition_digest: revision_digest.to_owned(),
+                semantics_digest: definition.summary.semantics_digest,
+                binding_digest,
+                authorization_digest,
+                revision: next_revision,
+                active: true,
+            })
+        })
+    }
+
+    pub fn revoke_authorization(&self, revision_digest: &str) -> Result<()> {
+        self.with_connection(|connection| {
+            connection.execute(
+                "UPDATE strategy_authorizations SET active=0 WHERE revision_digest=?1 AND active=1",
+                params![revision_digest],
+            )?;
+            Ok(())
+        })
+    }
+
+    pub fn start_run(
+        &self,
+        revision_digest: &str,
+        input: Value,
+        idempotency_key: &str,
+    ) -> Result<RunSnapshot> {
+        validate_opaque_id(idempotency_key, "strategy_idempotency_key_invalid")?;
+        let input_bytes = serde_json::to_vec(&input)?;
+        let request_digest = sha256_hex(
+            [revision_digest.as_bytes(), b"\0", input_bytes.as_slice()]
+                .concat()
+                .as_slice(),
+        );
+        self.with_connection(|connection| {
+            let transaction =
+                connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+            let existing: Option<(String, String)> = transaction
+                .query_row(
+                    "SELECT run_id, request_digest FROM strategy_runs WHERE idempotency_key=?1",
+                    params![idempotency_key],
+                    |row| Ok((row.get(0)?, row.get(1)?)),
+                )
+                .optional()?;
+            if let Some((run_id, existing_digest)) = existing {
+                ensure!(
+                    existing_digest == request_digest,
+                    "strategy_idempotency_conflict"
+                );
+                let snapshot = load_run(&transaction, &run_id)?;
+                transaction.commit()?;
+                return Ok(snapshot);
+            }
+
+            // Authorization, exact bindings, reduction, and insertion share
+            // one write transaction. A concurrent revoke or binding update
+            // therefore happens wholly before or wholly after this admission.
+            let definition = definition_by_revision(&transaction, revision_digest)?;
+            ensure!(
+                bindings_complete(&definition),
+                "strategy_binding_incomplete"
+            );
+            let authorization = current_authorization(&definition)?;
+            ensure!(
+                authorization.binding_digest == binding_digest(&definition.bindings)?,
+                "strategy_authorization_stale"
+            );
+            let semantics_digest = definition.summary.semantics_digest.clone();
+            let compiled = compile_workflow(definition.workflow)?;
+            let run_id = format!("run-{}", Uuid::new_v4());
+            let empty = RunSnapshot::empty(&run_id, revision_digest, &semantics_digest);
+            let event = ReducerEvent::Start { input };
+            let output = reduce(&compiled, &empty, event.clone())?;
+            let now = now_ms();
+            transaction.execute(
+                "INSERT INTO strategy_runs(
+                   run_id, revision_digest, semantics_digest, idempotency_key,
+                   request_digest, snapshot_json, created_at, updated_at
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7)",
+                params![
+                    run_id,
+                    revision_digest,
+                    semantics_digest,
+                    idempotency_key,
+                    request_digest,
+                    serde_json::to_string(&output.snapshot)?,
+                    now,
+                ],
+            )?;
+            persist_event_and_commands(
+                &transaction,
+                &output.snapshot,
+                &event,
+                &output.emitted_commands,
+                now,
+            )?;
+            transaction.commit()?;
+            Ok(output.snapshot)
+        })
+    }
+
+    pub fn run(&self, run_id: &str) -> Result<RunSnapshot> {
+        self.with_connection(|connection| load_run(connection, run_id))
+    }
+
+    pub fn apply_event(&self, run_id: &str, event: ReducerEvent) -> Result<RunSnapshot> {
+        self.with_connection(|connection| {
+            let transaction =
+                connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+            let previous = load_run(&transaction, run_id)?;
+            let workflow = workflow_for_revision(&transaction, &previous.definition_digest)?;
+            let compiled = compile_workflow(workflow)?;
+            let output = reduce(&compiled, &previous, event.clone())?;
+            if output.applied {
+                let now = now_ms();
+                persist_event_and_commands(
+                    &transaction,
+                    &output.snapshot,
+                    &event,
+                    &output.emitted_commands,
+                    now,
+                )?;
+                transaction.execute(
+                    "UPDATE strategy_runs SET snapshot_json=?2, updated_at=?3 WHERE run_id=?1",
+                    params![run_id, serde_json::to_string(&output.snapshot)?, now],
+                )?;
+            }
+            transaction.commit()?;
+            Ok(output.snapshot)
+        })
+    }
+
+    pub(crate) fn claim_next_command(
+        &self,
+        run_id: &str,
+        claimant: &str,
+        lease_until_unix_ms: i64,
+    ) -> Result<Option<RunCommand>> {
+        validate_opaque_id(claimant, "strategy_claimant_invalid")?;
+        let now = now_ms();
+        ensure!(lease_until_unix_ms > now, "strategy_lease_invalid");
+        self.with_connection(|connection| {
+            let transaction =
+                connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+            let active: i64 = transaction.query_row(
+                "SELECT COUNT(*) FROM strategy_commands
+                 WHERE status IN ('claimed', 'running') AND lease_until>?1",
+                params![now],
+                |row| row.get(0),
+            )?;
+            if active >= super::MAX_ACTIVE_EFFECTS as i64 {
+                transaction.commit()?;
+                return Ok(None);
+            }
+            let value: Option<String> = transaction
+                .query_row(
+                    "SELECT command_json FROM strategy_commands
+                     WHERE run_id=?1 AND status='pending' AND kind!='authorization'
+                     ORDER BY command_id ASC LIMIT 1",
+                    params![run_id],
+                    |row| row.get(0),
+                )
+                .optional()?;
+            let Some(value) = value else {
+                transaction.commit()?;
+                return Ok(None);
+            };
+            let command: RunCommand = serde_json::from_str(&value)?;
+            let previous = load_run(&transaction, run_id)?;
+            let workflow = workflow_for_revision(&transaction, &previous.definition_digest)?;
+            let compiled = compile_workflow(workflow)?;
+            let event = ReducerEvent::CommandClaimed {
+                command_id: command.id.clone(),
+                attempt_token: command.attempt_token.clone(),
+            };
+            let output = reduce(&compiled, &previous, event.clone())?;
+            ensure!(output.applied, "strategy_command_not_claimable");
+            persist_event_and_commands(
+                &transaction,
+                &output.snapshot,
+                &event,
+                &output.emitted_commands,
+                now,
+            )?;
+            transaction.execute(
+                "UPDATE strategy_runs SET snapshot_json=?2, updated_at=?3 WHERE run_id=?1",
+                params![run_id, serde_json::to_string(&output.snapshot)?, now],
+            )?;
+            transaction.execute(
+                "UPDATE strategy_commands SET status='claimed', lease_owner=?2,
+                 lease_until=?3, command_json=?4, updated_at=?5 WHERE command_id=?1",
+                params![
+                    command.id,
+                    claimant,
+                    lease_until_unix_ms,
+                    serde_json::to_string(&output.snapshot.commands[&command.id])?,
+                    now,
+                ],
+            )?;
+            let claimed = output.snapshot.commands.get(&command.id).cloned();
+            transaction.commit()?;
+            Ok(claimed)
+        })
+    }
+
+    pub(crate) fn renew_command_lease(
+        &self,
+        command_id: &str,
+        claimant: &str,
+        lease_until_unix_ms: i64,
+    ) -> Result<()> {
+        validate_opaque_id(claimant, "strategy_claimant_invalid")?;
+        ensure!(lease_until_unix_ms > now_ms(), "strategy_lease_invalid");
+        self.with_connection(|connection| {
+            let changed = connection.execute(
+                "UPDATE strategy_commands SET lease_until=?3, updated_at=?4
+                 WHERE command_id=?1 AND lease_owner=?2
+                   AND status IN ('claimed', 'running')",
+                params![command_id, claimant, lease_until_unix_ms, now_ms()],
+            )?;
+            ensure!(changed == 1, "strategy_lease_lost");
+            Ok(())
+        })
+    }
+
+    /// Revalidate the exact command and authorization immediately before an
+    /// effect permit is issued. The write lock serializes this admission with
+    /// binding updates and authorization revocation; a later revoke does not
+    /// retroactively invalidate the already-issued one-shot permit.
+    pub(crate) fn authorize_effect(
+        &self,
+        run_id: &str,
+        command_id: &str,
+        attempt_token: &str,
+        expected_authorization_digest: &str,
+    ) -> Result<()> {
+        self.with_connection(|connection| {
+            let transaction =
+                connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+            let snapshot = load_run(&transaction, run_id)?;
+            let command = snapshot
+                .commands
+                .get(command_id)
+                .filter(|command| {
+                    command.status == super::CommandStatus::Running
+                        && command.attempt_token == attempt_token
+                })
+                .ok_or_else(|| anyhow!("strategy_callback_stale"))?;
+            ensure!(command.id == command_id, "strategy_callback_stale");
+            let definition = definition_by_revision(&transaction, &snapshot.definition_digest)?;
+            ensure!(
+                definition.summary.semantics_digest == snapshot.semantics_digest,
+                "strategy_authorization_stale"
+            );
+            ensure!(
+                bindings_complete(&definition),
+                "strategy_binding_incomplete"
+            );
+            let authorization = current_authorization(&definition)?;
+            ensure!(
+                authorization.binding_digest == binding_digest(&definition.bindings)?
+                    && authorization.authorization_digest == expected_authorization_digest,
+                "strategy_authorization_stale"
+            );
+            transaction.commit()?;
+            Ok(())
+        })
+    }
+
+    /// Atomically fence and recover one expired command.
+    ///
+    /// Lease renewal and this recovery both require the same SQLite write
+    /// lock. The winner observes and commits one state transition; the loser
+    /// cannot act on a stale pre-lock observation. Claimed-before-start work
+    /// is retried in the same transaction, while expired running work is
+    /// retained as in-doubt and is never blindly retried.
+    pub(crate) fn recover_next_expired_command(&self, run_id: &str) -> Result<bool> {
+        self.with_connection(|connection| {
+            let transaction =
+                connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+            let value: Option<(String, String)> = transaction
+                .query_row(
+                    "SELECT command_json, status FROM strategy_commands
+                 WHERE run_id=?1 AND status IN ('claimed', 'running')
+                   AND lease_until IS NOT NULL AND lease_until<=?2
+                 ORDER BY command_id ASC LIMIT 1",
+                    params![run_id, now_ms()],
+                    |row| Ok((row.get(0)?, row.get(1)?)),
+                )
+                .optional()?;
+            let Some((command_json, persisted_status)) = value else {
+                transaction.commit()?;
+                return Ok(false);
+            };
+            let command: RunCommand = serde_json::from_str(&command_json)?;
+            let expected_status = enum_wire(command.status)?;
+            ensure!(
+                expected_status == persisted_status
+                    && matches!(
+                        command.status,
+                        super::CommandStatus::Claimed | super::CommandStatus::Running
+                    ),
+                "strategy_recovery_state_conflict"
+            );
+            let previous = load_run(&transaction, run_id)?;
+            ensure!(
+                previous.commands.get(&command.id).is_some_and(|current| {
+                    current.status == command.status
+                        && current.attempt_token == command.attempt_token
+                }),
+                "strategy_recovery_state_conflict"
+            );
+            let workflow = workflow_for_revision(&transaction, &previous.definition_digest)?;
+            let compiled = compile_workflow(workflow)?;
+            let (class, code) = if command.status == super::CommandStatus::Claimed {
+                (super::FailureClass::Transient, "lease_expired_before_start")
+            } else {
+                (super::FailureClass::InDoubt, "effect_outcome_unknown")
+            };
+            let failure_event = ReducerEvent::CommandFailed {
+                command_id: command.id.clone(),
+                attempt_token: command.attempt_token.clone(),
+                class,
+                code: code.to_owned(),
+            };
+            let failure = reduce(&compiled, &previous, failure_event.clone())?;
+            let now = now_ms();
+            persist_event_and_commands(
+                &transaction,
+                &failure.snapshot,
+                &failure_event,
+                &failure.emitted_commands,
+                now,
+            )?;
+            let final_snapshot = if failure
+                .snapshot
+                .commands
+                .get(&command.id)
+                .is_some_and(|current| current.status == super::CommandStatus::Retryable)
+            {
+                let retry_event = ReducerEvent::RetryRequested {
+                    command_id: command.id.clone(),
+                };
+                let retry = reduce(&compiled, &failure.snapshot, retry_event.clone())?;
+                persist_event_and_commands(
+                    &transaction,
+                    &retry.snapshot,
+                    &retry_event,
+                    &retry.emitted_commands,
+                    now,
+                )?;
+                retry.snapshot
+            } else {
+                failure.snapshot
+            };
+            transaction.execute(
+                "UPDATE strategy_runs SET snapshot_json=?2, updated_at=?3 WHERE run_id=?1",
+                params![run_id, serde_json::to_string(&final_snapshot)?, now],
+            )?;
+            transaction.execute(
+                "UPDATE strategy_commands SET lease_owner=NULL, lease_until=NULL
+                 WHERE command_id=?1",
+                params![command.id],
+            )?;
+            transaction.commit()?;
+            Ok(true)
+        })
+    }
+
+    pub fn projection_for_definition(&self, revision_digest: &str) -> Result<StrategyProjection> {
+        let definition = self.definition_by_revision(revision_digest)?;
+        let complete = bindings_complete(&definition);
+        let mut allowed = BTreeSet::from([
+            "strategy.definition.inspect".into(),
+            "strategy.binding.update".into(),
+            "strategy.authorization.preview".into(),
+        ]);
+        let status = if complete {
+            if definition
+                .authorization
+                .as_ref()
+                .is_some_and(|value| value.active)
+            {
+                allowed.extend([
+                    "strategy.authorization.revoke".into(),
+                    "strategy.run.start".into(),
+                ]);
+                StrategyRunStatus::Pending
+            } else {
+                allowed.insert("strategy.authorization.grant".into());
+                StrategyRunStatus::AuthorizationRequired
+            }
+        } else {
+            StrategyRunStatus::Pending
+        };
+        Ok(StrategyProjection {
+            schema: STRATEGY_SCHEMA_VERSION.into(),
+            definition: definition.summary,
+            run_id: None,
+            status,
+            current_states: BTreeSet::new(),
+            neighbor_states: BTreeSet::new(),
+            allowed_operations: allowed,
+            bindings: definition.bindings,
+            diagnostic: if complete {
+                None
+            } else {
+                Some(StrategyDiagnostic {
+                    code: "binding_incomplete".into(),
+                    component: "strategy_binding".into(),
+                    retryable: true,
+                    recovery: "Bind every required actor and runtime slot.".into(),
+                    arguments: BTreeMap::new(),
+                })
+            },
+            history_count: 0,
+        })
+    }
+
+    pub fn projection_for_run(&self, run_id: &str) -> Result<StrategyProjection> {
+        let snapshot = self.run(run_id)?;
+        let definition = self.definition_by_revision(&snapshot.definition_digest)?;
+        let compiled = compile_workflow(definition.workflow.clone())?;
+        let neighbors = snapshot
+            .active_states
+            .iter()
+            .flat_map(|state| {
+                compiled
+                    .outgoing(state)
+                    .map(|transition| transition.to.clone())
+            })
+            .collect();
+        let mut allowed = BTreeSet::from(["strategy.run.inspect".into()]);
+        match snapshot.status {
+            StrategyRunStatus::AuthorizationRequired
+            | StrategyRunStatus::RuntimeMissing
+            | StrategyRunStatus::Waiting => {
+                allowed.insert("strategy.run.resume".into());
+                allowed.insert("strategy.run.cancel".into());
+            }
+            StrategyRunStatus::Running => {
+                allowed.insert("strategy.run.resume".into());
+                allowed.insert("strategy.run.cancel".into());
+            }
+            StrategyRunStatus::Retryable => {
+                allowed.insert("strategy.run.retry".into());
+                allowed.insert("strategy.run.cancel".into());
+            }
+            StrategyRunStatus::CancelRequested => {
+                allowed.insert("strategy.run.inspect".into());
+            }
+            _ => {}
+        }
+        let history_count = self.with_connection(|connection| {
+            connection
+                .query_row(
+                    "SELECT COUNT(*) FROM strategy_run_events WHERE run_id=?1",
+                    params![run_id],
+                    |row| row.get::<_, i64>(0).map(|value| value as u64),
+                )
+                .map_err(Into::into)
+        })?;
+        Ok(StrategyProjection {
+            schema: STRATEGY_SCHEMA_VERSION.into(),
+            definition: definition.summary,
+            run_id: Some(run_id.to_owned()),
+            status: snapshot.status,
+            current_states: snapshot.active_states,
+            neighbor_states: neighbors,
+            allowed_operations: allowed,
+            bindings: definition.bindings,
+            diagnostic: snapshot.diagnostic_code.map(|code| StrategyDiagnostic {
+                component: "strategy_runtime".into(),
+                retryable: matches!(
+                    snapshot.status,
+                    StrategyRunStatus::Retryable
+                        | StrategyRunStatus::RuntimeMissing
+                        | StrategyRunStatus::AuthorizationRequired
+                ),
+                recovery: recovery_for_status(snapshot.status).into(),
+                code,
+                arguments: BTreeMap::new(),
+            }),
+            history_count,
+        })
+    }
+}
+
+fn initialize_schema(connection: &mut Connection) -> Result<()> {
+    connection.execute_batch(
+        "CREATE TABLE IF NOT EXISTS strategy_meta(
+           key TEXT PRIMARY KEY, value TEXT NOT NULL
+         );
+         INSERT INTO strategy_meta(key, value) VALUES ('version', '1')
+           ON CONFLICT(key) DO NOTHING;
+         CREATE TABLE IF NOT EXISTS strategy_definitions(
+           definition_id TEXT NOT NULL,
+           revision_digest TEXT PRIMARY KEY,
+           semantics_digest TEXT NOT NULL,
+           name TEXT NOT NULL,
+           version TEXT NOT NULL,
+           workflow_json TEXT NOT NULL,
+           asset_count INTEGER NOT NULL,
+           imported_at INTEGER NOT NULL
+         );
+         CREATE INDEX IF NOT EXISTS strategy_definitions_id_idx
+           ON strategy_definitions(definition_id, imported_at DESC);
+         CREATE TABLE IF NOT EXISTS strategy_bindings(
+           revision_digest TEXT NOT NULL REFERENCES strategy_definitions(revision_digest) ON DELETE CASCADE,
+           slot_id TEXT NOT NULL,
+           value_id TEXT NOT NULL,
+           model TEXT NOT NULL DEFAULT '',
+           reasoning_effort TEXT NOT NULL DEFAULT '',
+           revision INTEGER NOT NULL,
+           PRIMARY KEY(revision_digest, slot_id)
+         );
+         CREATE TABLE IF NOT EXISTS strategy_authorizations(
+           revision_digest TEXT NOT NULL REFERENCES strategy_definitions(revision_digest) ON DELETE CASCADE,
+           revision INTEGER NOT NULL,
+           semantics_digest TEXT NOT NULL,
+           binding_digest TEXT NOT NULL,
+           authorization_digest TEXT NOT NULL,
+           active INTEGER NOT NULL,
+           created_at INTEGER NOT NULL,
+           PRIMARY KEY(revision_digest, revision)
+         );
+         CREATE UNIQUE INDEX IF NOT EXISTS strategy_authorization_active_idx
+           ON strategy_authorizations(revision_digest) WHERE active=1;
+         CREATE TABLE IF NOT EXISTS strategy_runs(
+           run_id TEXT PRIMARY KEY,
+           revision_digest TEXT NOT NULL REFERENCES strategy_definitions(revision_digest),
+           semantics_digest TEXT NOT NULL,
+           idempotency_key TEXT NOT NULL UNIQUE,
+           request_digest TEXT NOT NULL,
+           snapshot_json TEXT NOT NULL,
+           created_at INTEGER NOT NULL,
+           updated_at INTEGER NOT NULL
+         );
+         CREATE INDEX IF NOT EXISTS strategy_runs_revision_idx
+           ON strategy_runs(revision_digest, updated_at DESC);
+         CREATE TABLE IF NOT EXISTS strategy_run_events(
+           run_id TEXT NOT NULL REFERENCES strategy_runs(run_id) ON DELETE CASCADE,
+           sequence INTEGER NOT NULL,
+           event_type TEXT NOT NULL,
+           event_json TEXT NOT NULL,
+           created_at INTEGER NOT NULL,
+           PRIMARY KEY(run_id, sequence)
+         );
+         CREATE TABLE IF NOT EXISTS strategy_commands(
+           command_id TEXT PRIMARY KEY,
+           run_id TEXT NOT NULL REFERENCES strategy_runs(run_id) ON DELETE CASCADE,
+           state_id TEXT NOT NULL,
+           kind TEXT NOT NULL,
+           status TEXT NOT NULL,
+           attempt INTEGER NOT NULL,
+           attempt_token TEXT NOT NULL,
+           command_json TEXT NOT NULL,
+           lease_owner TEXT,
+           lease_until INTEGER,
+           updated_at INTEGER NOT NULL
+         );
+         CREATE INDEX IF NOT EXISTS strategy_commands_ready_idx
+           ON strategy_commands(status, command_id);
+         CREATE INDEX IF NOT EXISTS strategy_commands_lease_idx
+           ON strategy_commands(lease_until) WHERE status IN ('claimed', 'running');",
+    )?;
+    ensure_column(
+        connection,
+        "strategy_bindings",
+        "model",
+        "TEXT NOT NULL DEFAULT ''",
+    )?;
+    ensure_column(
+        connection,
+        "strategy_bindings",
+        "reasoning_effort",
+        "TEXT NOT NULL DEFAULT ''",
+    )?;
+    Ok(())
+}
+
+fn configure_connection(connection: &Connection) -> Result<()> {
+    connection.execute_batch(
+        "PRAGMA foreign_keys=ON;
+         PRAGMA journal_mode=WAL;
+         PRAGMA synchronous=FULL;
+         PRAGMA busy_timeout=5000;",
+    )?;
+    Ok(())
+}
+
+fn definition_by_revision(connection: &Connection, revision: &str) -> Result<StrategyDefinition> {
+    let base: Option<(String, String, String, String, String, String, i64, i64)> = connection
+        .query_row(
+            "SELECT definition_id, revision_digest, semantics_digest, name, version,
+             workflow_json, asset_count, imported_at FROM strategy_definitions
+             WHERE revision_digest=?1",
+            params![revision],
+            |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                    row.get(5)?,
+                    row.get(6)?,
+                    row.get(7)?,
+                ))
+            },
+        )
+        .optional()?;
+    let Some((
+        definition_id,
+        revision_digest,
+        semantics_digest,
+        name,
+        version,
+        workflow_json,
+        asset_count,
+        imported_at,
+    )) = base
+    else {
+        return Err(anyhow!("strategy_definition_not_found"));
+    };
+    let workflow: WorkflowDefinition = serde_json::from_str(&workflow_json)?;
+    let bindings = load_bindings(connection, &revision_digest)?;
+    let authorization = load_authorization(connection, &revision_digest)?;
+    Ok(StrategyDefinition {
+        summary: StrategyDefinitionSummary {
+            definition_id,
+            revision_digest,
+            semantics_digest,
+            name,
+            version,
+            imported_at_unix_ms: imported_at,
+        },
+        workflow,
+        asset_count: asset_count as usize,
+        bindings,
+        authorization,
+    })
+}
+
+fn summary_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<StrategyDefinitionSummary> {
+    Ok(StrategyDefinitionSummary {
+        definition_id: row.get(0)?,
+        revision_digest: row.get(1)?,
+        semantics_digest: row.get(2)?,
+        name: row.get(3)?,
+        version: row.get(4)?,
+        imported_at_unix_ms: row.get(5)?,
+    })
+}
+
+fn load_bindings(connection: &Connection, revision: &str) -> Result<Vec<BindingValue>> {
+    let mut statement = connection.prepare(
+        "SELECT slot_id, value_id, model, reasoning_effort, revision FROM strategy_bindings
+         WHERE revision_digest=?1 ORDER BY slot_id ASC",
+    )?;
+    let rows = statement.query_map(params![revision], |row| {
+        Ok(BindingValue {
+            slot_id: row.get(0)?,
+            value_id: row.get(1)?,
+            model: row.get(2)?,
+            reasoning_effort: row.get(3)?,
+            revision: row.get::<_, i64>(4)? as u64,
+        })
+    })?;
+    rows.collect::<rusqlite::Result<Vec<_>>>()
+        .map_err(Into::into)
+}
+
+fn load_authorization(
+    connection: &Connection,
+    revision: &str,
+) -> Result<Option<StrategyAuthorization>> {
+    connection
+        .query_row(
+            "SELECT revision, semantics_digest, binding_digest, authorization_digest, active
+             FROM strategy_authorizations WHERE revision_digest=?1
+             ORDER BY revision DESC LIMIT 1",
+            params![revision],
+            |row| {
+                Ok(StrategyAuthorization {
+                    definition_digest: revision.to_owned(),
+                    revision: row.get::<_, i64>(0)? as u64,
+                    semantics_digest: row.get(1)?,
+                    binding_digest: row.get(2)?,
+                    authorization_digest: row.get(3)?,
+                    active: row.get::<_, i64>(4)? != 0,
+                })
+            },
+        )
+        .optional()
+        .map_err(Into::into)
+}
+
+fn current_authorization(definition: &StrategyDefinition) -> Result<&StrategyAuthorization> {
+    definition
+        .authorization
+        .as_ref()
+        .filter(|authorization| {
+            authorization.active
+                && authorization.definition_digest == definition.summary.revision_digest
+                && authorization.semantics_digest == definition.summary.semantics_digest
+        })
+        .ok_or_else(|| anyhow!("strategy_authorization_required"))
+}
+
+fn bindings_complete(definition: &StrategyDefinition) -> bool {
+    let bound = definition
+        .bindings
+        .iter()
+        .map(|binding| binding.slot_id.as_str())
+        .collect::<BTreeSet<_>>();
+    definition
+        .workflow
+        .actor_slots
+        .iter()
+        .filter(|slot| slot.required)
+        .all(|slot| bound.contains(slot.id.as_str()))
+}
+
+fn binding_digest(bindings: &[BindingValue]) -> Result<String> {
+    let mut sorted = bindings.to_vec();
+    sorted.sort_by(|left, right| left.slot_id.cmp(&right.slot_id));
+    Ok(sha256_hex(&serde_json::to_vec(&sorted)?))
+}
+
+fn authorization_digest(
+    revision: &str,
+    semantics: &str,
+    bindings: &str,
+    authorization_revision: u64,
+) -> String {
+    sha256_hex(
+        format!(
+            "licoup-strategy-authorization-v1\0{revision}\0{semantics}\0{bindings}\0{authorization_revision}"
+        )
+        .as_bytes(),
+    )
+}
+
+fn workflow_for_revision(connection: &Connection, revision: &str) -> Result<WorkflowDefinition> {
+    let value: String = connection
+        .query_row(
+            "SELECT workflow_json FROM strategy_definitions WHERE revision_digest=?1",
+            params![revision],
+            |row| row.get(0),
+        )
+        .optional()?
+        .ok_or_else(|| anyhow!("strategy_definition_not_found"))?;
+    serde_json::from_str(&value).map_err(Into::into)
+}
+
+fn load_run(connection: &Connection, run_id: &str) -> Result<RunSnapshot> {
+    let value: Option<String> = connection
+        .query_row(
+            "SELECT snapshot_json FROM strategy_runs WHERE run_id=?1",
+            params![run_id],
+            |row| row.get(0),
+        )
+        .optional()?;
+    serde_json::from_str(
+        value
+            .as_deref()
+            .ok_or_else(|| anyhow!("strategy_run_not_found"))?,
+    )
+    .map_err(Into::into)
+}
+
+fn persist_event_and_commands(
+    transaction: &Transaction<'_>,
+    snapshot: &RunSnapshot,
+    event: &ReducerEvent,
+    emitted: &[RunCommand],
+    now: i64,
+) -> Result<()> {
+    let event_json = serde_json::to_string(event)?;
+    let event_type = event_json.split('"').nth(3).unwrap_or("event").to_owned();
+    transaction.execute(
+        "INSERT INTO strategy_run_events(run_id, sequence, event_type, event_json, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5)",
+        params![
+            snapshot.run_id,
+            snapshot.sequence as i64,
+            event_type,
+            event_json,
+            now
+        ],
+    )?;
+    for command in emitted {
+        transaction.execute(
+            "INSERT INTO strategy_commands(
+               command_id, run_id, state_id, kind, status, attempt,
+               attempt_token, command_json, updated_at
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+            params![
+                command.id,
+                snapshot.run_id,
+                command.state_id,
+                enum_wire(command.kind)?,
+                enum_wire(command.status)?,
+                command.attempt as i64,
+                command.attempt_token,
+                serde_json::to_string(command)?,
+                now,
+            ],
+        )?;
+    }
+    for command in snapshot.commands.values() {
+        transaction.execute(
+            "UPDATE strategy_commands SET status=?2, command_json=?3, updated_at=?4
+             WHERE command_id=?1",
+            params![
+                command.id,
+                enum_wire(command.status)?,
+                serde_json::to_string(command)?,
+                now,
+            ],
+        )?;
+    }
+    Ok(())
+}
+
+fn enum_wire(value: impl serde::Serialize) -> Result<String> {
+    serde_json::to_value(value)?
+        .as_str()
+        .map(str::to_owned)
+        .ok_or_else(|| anyhow!("strategy_enum_invalid"))
+}
+
+fn validate_opaque_id(value: &str, code: &'static str) -> Result<()> {
+    ensure!(
+        value == value.trim()
+            && !value.is_empty()
+            && value.len() <= 160
+            && !value.chars().any(char::is_control),
+        code
+    );
+    Ok(())
+}
+
+fn validate_optional_text(value: &str, code: &'static str) -> Result<()> {
+    ensure!(
+        value == value.trim() && value.len() <= 160 && !value.chars().any(char::is_control),
+        code
+    );
+    Ok(())
+}
+
+fn ensure_column(
+    connection: &Connection,
+    table: &str,
+    column: &str,
+    declaration: &str,
+) -> Result<()> {
+    let mut statement = connection.prepare(&format!("PRAGMA table_info({table})"))?;
+    let existing = statement
+        .query_map([], |row| row.get::<_, String>(1))?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    if !existing.iter().any(|value| value == column) {
+        connection.execute_batch(&format!(
+            "ALTER TABLE {table} ADD COLUMN {column} {declaration}"
+        ))?;
+    }
+    Ok(())
+}
+
+fn recovery_for_status(status: StrategyRunStatus) -> &'static str {
+    match status {
+        StrategyRunStatus::AuthorizationRequired => "Review and authorize the current semantics.",
+        StrategyRunStatus::RuntimeMissing => "Bind an available verified local runtime.",
+        StrategyRunStatus::Retryable => "Retry the failed command.",
+        StrategyRunStatus::CancelInDoubt => "Inspect the external effect before continuing.",
+        _ => "Inspect the run history.",
+    }
+}
+
+fn sha256_hex(bytes: &[u8]) -> String {
+    Sha256::digest(bytes)
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
+}
+
+fn now_ms() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_millis() as i64)
+        .unwrap_or(0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::adaptive_flywheel::{
+        ActorSlot, BindingKind, GraphState, GraphStateKind, RetryPolicy, SessionPolicy, Transition,
+        WorkflowLimits, WorkflowMetadata,
+    };
+    use serde_json::json;
+
+    fn workflow() -> WorkflowDefinition {
+        WorkflowDefinition {
+            schema: super::super::WORKFLOW_SCHEMA_VERSION.into(),
+            metadata: WorkflowMetadata {
+                id: "test".into(),
+                name: "Test".into(),
+                version: "1".into(),
+                description: String::new(),
+            },
+            limits: WorkflowLimits::default(),
+            actor_slots: vec![ActorSlot {
+                id: "worker".into(),
+                kind: BindingKind::Actor,
+                label: "Worker".into(),
+                required: true,
+                session_policy: SessionPolicy::New,
+            }],
+            runtimes: vec![],
+            worksets: vec![],
+            initial: "work".into(),
+            states: vec![
+                GraphState {
+                    id: "work".into(),
+                    kind: GraphStateKind::Actor,
+                    label: "Work".into(),
+                    instruction: String::new(),
+                    binding: Some("worker".into()),
+                    runtime: None,
+                    entry: None,
+                    workset: None,
+                    retry: RetryPolicy {
+                        max_attempts: 2,
+                        transient_only: true,
+                    },
+                },
+                GraphState {
+                    id: "done".into(),
+                    kind: GraphStateKind::Succeed,
+                    label: "Done".into(),
+                    instruction: String::new(),
+                    binding: None,
+                    runtime: None,
+                    entry: None,
+                    workset: None,
+                    retry: RetryPolicy::default(),
+                },
+            ],
+            transitions: vec![Transition {
+                id: "done".into(),
+                from: "work".into(),
+                to: "done".into(),
+                event: "success".into(),
+                guard: None,
+            }],
+        }
+    }
+
+    #[test]
+    fn event_snapshot_and_outbox_commit_together() {
+        let store = StrategyStore::open_in_memory().unwrap();
+        store
+            .register_definition(
+                "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                &workflow(),
+                1,
+                1,
+            )
+            .unwrap();
+        let binding = store
+            .update_binding(
+                "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "worker",
+                "agent:test",
+                "gpt-5",
+                "high",
+                None,
+            )
+            .unwrap();
+        assert_eq!(binding.model, "gpt-5");
+        assert_eq!(binding.reasoning_effort, "high");
+        let persisted = store
+            .definition_by_revision(
+                "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            )
+            .unwrap();
+        assert_eq!(persisted.bindings[0].model, "gpt-5");
+        assert_eq!(persisted.bindings[0].reasoning_effort, "high");
+        let preview = store
+            .authorization_preview(
+                "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            )
+            .unwrap();
+        store
+            .grant_authorization(
+                "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                &preview.authorization_digest,
+            )
+            .unwrap();
+        let run = store
+            .start_run(
+                "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                json!({}),
+                "idempotency-test",
+            )
+            .unwrap();
+        assert_eq!(run.commands.len(), 1);
+        let replay = store
+            .start_run(
+                "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                json!({}),
+                "idempotency-test",
+            )
+            .unwrap();
+        assert_eq!(run, replay);
+    }
+
+    #[test]
+    fn expired_claim_recovery_is_atomic_and_retries_before_start() {
+        let store = StrategyStore::open_in_memory().unwrap();
+        let revision = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+        store
+            .register_definition(
+                revision,
+                "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                &workflow(),
+                1,
+                1,
+            )
+            .unwrap();
+        store
+            .update_binding(revision, "worker", "agent:test", "", "", None)
+            .unwrap();
+        let preview = store.authorization_preview(revision).unwrap();
+        store
+            .grant_authorization(revision, &preview.authorization_digest)
+            .unwrap();
+        let run = store
+            .start_run(revision, json!({}), "recovery-test")
+            .unwrap();
+        let claimed = store
+            .claim_next_command(&run.run_id, "claimant", now_ms() + 60_000)
+            .unwrap()
+            .unwrap();
+        let connection = Connection::open(store.db_path()).unwrap();
+        connection
+            .execute(
+                "UPDATE strategy_commands SET lease_until=0 WHERE command_id=?1",
+                params![claimed.id],
+            )
+            .unwrap();
+
+        assert!(store.recover_next_expired_command(&run.run_id).unwrap());
+        assert!(!store.recover_next_expired_command(&run.run_id).unwrap());
+        assert!(
+            store
+                .renew_command_lease(&claimed.id, "claimant", now_ms() + 60_000)
+                .is_err()
+        );
+        let recovered = store.run(&run.run_id).unwrap();
+        assert_eq!(
+            recovered.commands[&claimed.id].status,
+            super::super::CommandStatus::Retryable
+        );
+        assert!(recovered.commands.values().any(|command| {
+            command.attempt == 2 && command.status == super::super::CommandStatus::Pending
+        }));
+    }
+
+    #[test]
+    fn expired_running_effect_is_fenced_in_doubt_without_retry() {
+        let store = StrategyStore::open_in_memory().unwrap();
+        let revision = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
+        store
+            .register_definition(
+                revision,
+                "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+                &workflow(),
+                1,
+                1,
+            )
+            .unwrap();
+        store
+            .update_binding(revision, "worker", "agent:test", "", "", None)
+            .unwrap();
+        let preview = store.authorization_preview(revision).unwrap();
+        store
+            .grant_authorization(revision, &preview.authorization_digest)
+            .unwrap();
+        let run = store
+            .start_run(revision, json!({}), "running-recovery-test")
+            .unwrap();
+        let claimed = store
+            .claim_next_command(&run.run_id, "claimant", now_ms() + 60_000)
+            .unwrap()
+            .unwrap();
+        store
+            .apply_event(
+                &run.run_id,
+                ReducerEvent::CommandStarted {
+                    command_id: claimed.id.clone(),
+                    attempt_token: claimed.attempt_token.clone(),
+                },
+            )
+            .unwrap();
+        let connection = Connection::open(store.db_path()).unwrap();
+        connection
+            .execute(
+                "UPDATE strategy_commands SET lease_until=0 WHERE command_id=?1",
+                params![claimed.id],
+            )
+            .unwrap();
+
+        assert!(store.recover_next_expired_command(&run.run_id).unwrap());
+        let recovered = store.run(&run.run_id).unwrap();
+        assert_eq!(recovered.status, StrategyRunStatus::CancelInDoubt);
+        assert_eq!(
+            recovered.commands[&claimed.id].status,
+            super::super::CommandStatus::InDoubt
+        );
+        assert!(
+            !recovered
+                .commands
+                .values()
+                .any(|command| command.attempt == 2)
+        );
+    }
+}

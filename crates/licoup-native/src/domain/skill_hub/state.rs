@@ -1,38 +1,7 @@
 use super::*;
 
-pub(super) fn visible_skills(store: &ClientStateStore, agent_id: &str) -> Result<Vec<Value>> {
-    let pairing = get_approved_pairing(store, agent_id)?;
-    let policy = pairing
-        .as_ref()
-        .and_then(|p| p.get("defaultVisibilityPolicy").and_then(Value::as_str))
-        .unwrap_or("allow-all");
-
-    let document = store.read_collection("skills")?;
-    let items = document
-        .get("items")
-        .and_then(Value::as_array)
-        .cloned()
-        .unwrap_or_default();
-
-    Ok(items
-        .into_iter()
-        .filter(|item| item.get("kind").and_then(Value::as_str) == Some("skill"))
-        .filter(|item| item.get("agentId").and_then(Value::as_str) == Some(agent_id))
-        .filter(|item| {
-            let skill_id = item.get("skillId").and_then(Value::as_str).unwrap_or("");
-            if is_hidden(store, agent_id, skill_id).unwrap_or(true) {
-                return false;
-            }
-            match policy {
-                "deny-by-default" => is_explicitly_revealed(store, agent_id, skill_id),
-                _ => true,
-            }
-        })
-        .collect())
-}
-
-pub(super) fn resolve_install_root(agent_id: &str, params: &Value) -> Result<PathBuf> {
-    if let Some(root) = string_param(params, &["installRoot", "skillRoot"], 1) {
+pub(super) fn resolve_skill_root(agent_id: &str, params: &Value) -> Result<PathBuf> {
+    if let Some(root) = string_param(params, &["skillRoot"], 1) {
         return absolute_lexical_path(Path::new(&root));
     }
     match agent_id {
@@ -57,83 +26,13 @@ pub(super) fn resolve_install_root(agent_id: &str, params: &Value) -> Result<Pat
             Ok(claude_home.join("skills"))
         }
         _ => Err(anyhow!(
-            "target adapter '{agent_id}' has no built-in skill install root"
+            "target adapter '{agent_id}' has no built-in local skill root"
         )),
     }
 }
 
 pub(super) fn home_dir() -> Option<PathBuf> {
     directories::UserDirs::new().map(|dirs| dirs.home_dir().to_path_buf())
-}
-
-pub(super) fn upsert_installed_skill_record(
-    store: &ClientStateStore,
-    agent_id: &str,
-    skill_id: &str,
-    record: Value,
-) -> Result<()> {
-    let mut document = store.read_collection("skills")?;
-    let items = collection_items_mut(&mut document)?;
-    items.retain(|item| {
-        !(item.get("kind").and_then(Value::as_str) == Some("skill")
-            && item.get("agentId").and_then(Value::as_str) == Some(agent_id)
-            && item.get("skillId").and_then(Value::as_str) == Some(skill_id))
-    });
-    items.push(record);
-    upsert_policy_item(
-        items,
-        agent_id,
-        skill_id,
-        json!({
-            "agentId": agent_id,
-            "skillId": skill_id,
-            "hidden": false,
-            "visibility": "allowed",
-            "updatedAt": timestamp()
-        }),
-    );
-    store.write_collection("skills", document)?;
-    Ok(())
-}
-
-pub(super) fn remove_installed_skill_record(
-    store: &ClientStateStore,
-    agent_id: &str,
-    skill_id: &str,
-) -> Result<()> {
-    let mut document = store.read_collection("skills")?;
-    let items = collection_items_mut(&mut document)?;
-    items.retain(|item| {
-        !(item.get("kind").and_then(Value::as_str) == Some("skill")
-            && item.get("agentId").and_then(Value::as_str) == Some(agent_id)
-            && item.get("skillId").and_then(Value::as_str) == Some(skill_id)
-            && item.get("installer").and_then(Value::as_str) == Some(SKILL_INSTALLER_PROTOCOL))
-    });
-    store.write_collection("skills", document)?;
-    Ok(())
-}
-
-pub(super) fn find_installed_skill_record(
-    store: &ClientStateStore,
-    agent_id: &str,
-    skill_id: &str,
-) -> Result<Option<Value>> {
-    let document = store.read_collection("skills")?;
-    Ok(document
-        .get("items")
-        .and_then(Value::as_array)
-        .and_then(|items| {
-            items
-                .iter()
-                .find(|item| {
-                    item.get("kind").and_then(Value::as_str) == Some("skill")
-                        && item.get("agentId").and_then(Value::as_str) == Some(agent_id)
-                        && item.get("skillId").and_then(Value::as_str) == Some(skill_id)
-                        && item.get("installer").and_then(Value::as_str)
-                            == Some(SKILL_INSTALLER_PROTOCOL)
-                })
-                .cloned()
-        }))
 }
 
 pub(super) fn get_approved_pairing(
@@ -181,27 +80,6 @@ pub(super) fn is_explicitly_revealed(
             })
         })
         .unwrap_or(false)
-}
-
-pub(super) fn find_skill(
-    store: &ClientStateStore,
-    agent_id: &str,
-    skill_id: &str,
-) -> Result<Option<Value>> {
-    let document = store.read_collection("skills")?;
-    Ok(document
-        .get("items")
-        .and_then(Value::as_array)
-        .and_then(|items| {
-            items
-                .iter()
-                .find(|item| {
-                    item.get("kind").and_then(Value::as_str) == Some("skill")
-                        && item.get("agentId").and_then(Value::as_str) == Some(agent_id)
-                        && item.get("skillId").and_then(Value::as_str) == Some(skill_id)
-                })
-                .cloned()
-        }))
 }
 
 pub(super) fn is_hidden(store: &ClientStateStore, agent_id: &str, skill_id: &str) -> Result<bool> {
@@ -380,13 +258,6 @@ pub(super) fn bool_param(params: &Value, key: &str) -> Option<bool> {
     })
 }
 
-pub(super) fn local_skill_discovery_requested(params: &Value) -> bool {
-    params.get("installRoot").is_some()
-        || params.get("skillRoot").is_some()
-        || bool_param(params, "refreshLocal") == Some(true)
-        || bool_param(params, "discoverLocal") == Some(true)
-}
-
 pub(super) fn is_path_inside(parent_path: &Path, candidate_path: &Path) -> bool {
     let parent = normalize_lexical_path(parent_path);
     let candidate = normalize_lexical_path(candidate_path);
@@ -436,6 +307,7 @@ pub(super) fn directory_exists_no_follow(path: &Path) -> Result<bool> {
     }
 }
 
+#[cfg(test)]
 pub(super) fn display_path(path: PathBuf) -> String {
     path.to_string_lossy().to_string()
 }

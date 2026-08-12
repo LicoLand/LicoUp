@@ -3,8 +3,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use anyhow::{Context, Result, anyhow, ensure};
 use base64::{Engine as _, engine::general_purpose};
 use openmls::prelude::{
-    BasicCredential, Credential, GroupId, LeafNodeIndex, MlsGroup, MlsMessageBodyOut,
-    ProcessedMessage, Sender, tls_codec::Serialize as TlsSerialize,
+    BasicCredential, Credential, CredentialType, GroupId, LeafNodeIndex, MlsGroup,
+    MlsMessageBodyOut, ProcessedMessage, Sender, tls_codec::Serialize as TlsSerialize,
 };
 use openmls_traits::OpenMlsProvider;
 use sha2::{Digest, Sha256};
@@ -114,7 +114,7 @@ impl SecureMeshMlsGroup {
         &self,
         key_package: &SecureMeshMlsKeyPackage,
     ) -> Result<String> {
-        let mut transcript = Vec::new();
+        let mut transcript = Vec::with_capacity(96);
         transcript.extend_from_slice(b"LICO-SM-MLS-CAPABILITY-ADD-BASE-v1");
         append_mls_len_prefixed_bytes(
             &mut transcript,
@@ -183,10 +183,10 @@ impl SecureMeshMlsGroup {
         &self,
         participant_endpoint_id: impl Into<String>,
     ) -> Result<SecureMeshMlsGroupMetadata> {
-        let group_id = self.group.group_id().as_slice().to_vec();
+        let group_id = self.group.group_id().as_slice();
         let mut public_state = Vec::new();
         public_state.extend_from_slice(b"LICO-SM-MLS-PUBLIC-STATE-v1");
-        append_mls_len_prefixed_bytes(&mut public_state, &group_id)?;
+        append_mls_len_prefixed_bytes(&mut public_state, group_id)?;
         append_mls_len_prefixed_bytes(&mut public_state, &self.authenticated_group_context)?;
         public_state.extend_from_slice(&self.epoch().to_be_bytes());
         public_state.extend_from_slice(&self.own_leaf_index().u32().to_be_bytes());
@@ -218,7 +218,7 @@ impl SecureMeshMlsGroup {
             append_mls_len_prefixed_bytes(&mut public_state, &signing_public_key)?;
         }
         Ok(SecureMeshMlsGroupMetadata {
-            group_id_hash: hash_bytes(&group_id),
+            group_id_hash: hash_bytes(group_id),
             public_state_digest: hash_bytes(&public_state),
             epoch: self.epoch(),
             member_count: self.member_count(),
@@ -338,6 +338,9 @@ fn authenticated_group_context_bytes(
 }
 
 pub(super) fn basic_credential_identity(credential: &Credential) -> Result<Vec<u8>> {
+    if matches!(credential.credential_type(), CredentialType::Basic) {
+        return Ok(credential.serialized_content().to_vec());
+    }
     let basic = BasicCredential::try_from(credential.clone())
         .map_err(|error| anyhow!("secure mesh MLS sender credential is not basic: {error:?}"))?;
     Ok(basic.identity().to_vec())
