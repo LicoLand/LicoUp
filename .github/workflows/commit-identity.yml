@@ -1,0 +1,111 @@
+name: Commit identity
+
+on:
+  pull_request_target:
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
+
+permissions:
+  contents: read
+  pull-requests: read
+  statuses: write
+
+concurrency:
+  group: commit-identity-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  commit-identity:
+    name: Commit identity
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Verify immutable GitHub commit identities
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_LOGIN: ${{ github.event.pull_request.user.login }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          status_context='LicoUp / commit identity'
+          terminal_state='failure'
+          terminal_description='Commit identity policy rejected the contribution.'
+
+          set_status() {
+            gh api \
+              --method POST \
+              "repos/${REPOSITORY}/statuses/${HEAD_SHA}" \
+              -f state="$1" \
+              -f context="$status_context" \
+              -f description="$2" >/dev/null
+          }
+
+          settle() {
+            set_status "$terminal_state" "$terminal_description" || true
+          }
+          trap settle EXIT
+
+          set_status pending 'Commit identity policy is evaluating the contribution.'
+
+          evidence_file=$(mktemp)
+          trap 'rm -f "$evidence_file"; settle' EXIT
+          gh api \
+            --paginate \
+            --slurp \
+            "repos/${REPOSITORY}/pulls/${PR_NUMBER}/commits?per_page=100" \
+            >"$evidence_file"
+
+          expected_id=$(gh api "users/${EXPECTED_LOGIN}" --jq '.id')
+          expected_email="${expected_id}+${EXPECTED_LOGIN}@users.noreply.github.com"
+
+          jq -e \
+            --arg login "$EXPECTED_LOGIN" \
+            --argjson account_id "$expected_id" \
+            --arg email "$expected_email" \
+            '
+              def has_forbidden_attribution:
+                test(
+                  "(^|\\n)[ \\t]*(co-authored-by|co-committed-by|signed-off-by|authored-by|assisted-by|generated-by|written-by|pair-programmed-by|contributed-by|reviewed-by|suggested-by|reported-by)[ \\t]*:";
+                  "i"
+                ) or
+                test(
+                  "(^|\\n)[ \\t]*(claude( code)?|cursor( agent)?|github copilot|copilot|codex|chatgpt|gemini|anthropic|openai|[^\\n<]*(agent|bot))[^\\n]*<[^\\n>]+>";
+                  "i"
+                );
+              [.[][]] as $commits |
+              ($commits | length) > 0 and
+              all(
+                $commits[];
+                .author.login == $login and
+                .author.id == $account_id and
+                (
+                  (
+                    .committer.login == $login and
+                    .committer.id == $account_id and
+                    .commit.author.name == $login and
+                    .commit.author.email == $email and
+                    .commit.committer.name == $login and
+                    .commit.committer.email == $email
+                  ) or
+                  (
+                    .committer.login == "web-flow" and
+                    .commit.committer.name == "GitHub" and
+                    .commit.committer.email == "noreply@github.com" and
+                    .commit.verification.verified == true and
+                    .commit.verification.reason == "valid"
+                  )
+                ) and
+                (.commit.message | has_forbidden_attribution | not)
+              )
+            ' \
+            "$evidence_file" >/dev/null
+
+          terminal_state='success'
+          terminal_description='Commit identities match the contributing developer.'

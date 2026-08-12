@@ -147,14 +147,6 @@ export function reduceClientReleaseAcceptance({
           runtimeExecutableDigest: artifact.runtimeExecutableDigest,
         }), blocker: `selected_macos_same_closure_cli_evidence_not_ready:${target.id}` }
       );
-    } else if (target.platform === "linux") {
-      conditions.push(
-        { ok: releaseCliTargetEvidenceReady(reports.linuxCli, {
-          platform: "ubuntu-linux-arm64",
-          sourceStateDigest: inputIntegrity.sourceStateDigest,
-          runtimeExecutableDigest: artifact.runtimeExecutableDigest,
-        }), blocker: `selected_linux_same_closure_cli_evidence_not_ready:${target.id}` }
-      );
     } else {
       conditions.push({ ok: false, blocker: `selected_target_runtime_evidence_not_supported:${target.id}` });
     }

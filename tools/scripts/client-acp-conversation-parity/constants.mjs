@@ -128,7 +128,6 @@ export const agentConfigs = Object.freeze({
     cliTurnKind: "native-cli",
     cliReadbackKind: "native-cli",
     sameSessionGate: true,
-    parityModel: "Auto",
   }),
   openclaw: Object.freeze({
     id: "openclaw",
@@ -200,6 +199,7 @@ export const agentConfigs = Object.freeze({
     continuityScope: "process-local",
     isolatedConfigEnvironmentKey: "CLAUDE_CONFIG_DIR",
     noHistoryEnvironmentKey: "CLAUDE_CODE_SKIP_PROMPT_HISTORY",
+    sameSessionGate: true,
   }),
   antigravity: Object.freeze({
     id: "antigravity",
@@ -218,7 +218,6 @@ export const agentConfigs = Object.freeze({
     cliReadbackKind: "none",
     sameSessionGate: true,
     turnViaSidecar: true,
-    parityModel: "gemini-3.6-flash-low",
   }),
 });
 

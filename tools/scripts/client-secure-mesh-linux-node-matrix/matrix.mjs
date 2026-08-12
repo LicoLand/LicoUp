@@ -54,18 +54,22 @@ export async function runMatrix(options, phase) {
   );
   inspectLinuxTarGzipArchive(stableArchive);
   phase.set("archive_binding");
-  const distributionManifestPath = requiredFile(
-    requiredOption(options, "distributionManifest"),
-    "Linux distribution manifest"
+  const verificationManifestPath = requiredFile(
+    requiredOption(options, "verificationManifest"),
+    "Linux verification manifest"
   );
   const vmReceiptPath = requiredFile(requiredOption(options, "vmReceipt"), "Linux VM package receipt");
   const vmReceipt = JSON.parse(stableReadFile(vmReceiptPath, {
     maxBytes: 16 * 1024 * 1024,
   }).toString("utf8"));
   validateLinuxVmPackageReceipt(vmReceipt, expectedSourceDigest);
-  const distribution = JSON.parse(stableReadFile(distributionManifestPath, {
+  const distribution = JSON.parse(stableReadFile(verificationManifestPath, {
     maxBytes: 2 * 1024 * 1024,
   }).toString("utf8"));
+  assert(distribution.schemaVersion === "licomesh.client-linux.verification-carrier.v1" &&
+    distribution.mode === "verification" && distribution.verificationReady === true &&
+    distribution.publicReleaseBlocked === true,
+  "Linux verification carrier policy is invalid");
   const archiveDigest = sha256File(stableArchive);
   assert(distribution.sourceStateDigest === expectedSourceDigest,
     "Linux node archive source-state digest is stale");
