@@ -10,9 +10,9 @@
 //! (match terms), archive discovery, single-session readback, and root overrides
 //! keep the legacy full-scan path in `query.rs`.
 
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, HashSet, VecDeque};
 use std::fs;
-use std::io::{BufRead, BufReader, Read};
+use std::io::{BufRead, BufReader, Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -22,7 +22,10 @@ use serde_json::{Value, json};
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 
-use super::codex::rollout_session_id_from_filename;
+use super::codex::{
+    CodexRolloutGroup, codex_rollout_groups_to_sessions, parse_codex_rollout_line,
+    rollout_session_id_from_filename,
+};
 use super::cursor_openagent::codec::{open_read_only_connection, sqlite_table_exists};
 use super::cursor_openagent::cursor_composer_catalog;
 use super::delegated_transcripts::{
@@ -30,6 +33,7 @@ use super::delegated_transcripts::{
     delegated_task_prompt_text, transcript_conversation_id, transcript_is_delegated,
 };
 use super::project_workspace::bounded_project_workspace;
+use super::projection_cache::{HistoryProjectionCache, ProjectionCacheKey, SourceFingerprint};
 use super::query_filter::{epoch_number_to_rfc3339, system_time, title_from_text};
 use super::session_metadata::{meaningful_explicit_title, session_from_messages_with_title};
 use super::{CONVERSATION_SCHEMA_VERSION, HistoryScanConfig, finalize_history_sessions};
@@ -62,6 +66,16 @@ const MAX_STATE_FILE_BYTES: u64 = 1024 * 1024;
 const MAX_TITLE_PROBE_LINES: usize = 200;
 const MAX_TITLE_PROBE_LINE_BYTES: usize = 1024 * 1024;
 const MAX_TITLE_PROBE_BYTES: u64 = 2 * 1024 * 1024;
+/// Browse rows only render the newest messages of a content file, so oversized
+/// sources are decoded from the end instead of parsed whole. The window is the
+/// byte budget for record materialization; the absolute line scan that anchors
+/// message ids stays a separate cheap byte pass.
+const CATALOG_TAIL_BYTES: u64 = 1024 * 1024;
+/// Record budget for one tail window. The window itself bounds memory, and the
+/// ring keeps only the newest records so a pathological line-per-byte file
+/// still costs a fixed number of record parses.
+const CATALOG_TAIL_MAX_RECORDS: usize = 2_000;
+const CATALOG_TAIL_CHUNK_BYTES: u64 = 64 * 1024;
 
 #[derive(Clone, Debug)]
 pub(crate) struct CatalogSession {
@@ -123,6 +137,18 @@ pub(crate) fn conversation_list_from_catalog(
     params: &Value,
     scan_config: &HistoryScanConfig,
 ) -> Result<Value> {
+    Ok(conversation_list_from_catalog_inner(adapter, agent_id, params, scan_config).0)
+}
+
+/// Browse-mode list with bounded-work diagnostics. Tests assert sharp bounds
+/// on cache entries/bytes and tail reads through the returned counters; the
+/// public DTO is identical to [`conversation_list_from_catalog`].
+pub(crate) fn conversation_list_from_catalog_inner(
+    adapter: HistoryAdapter,
+    agent_id: &str,
+    params: &Value,
+    scan_config: &HistoryScanConfig,
+) -> (Value, BrowseWorkCounters) {
     let catalog = load_session_catalog(adapter, params, SystemTime::now());
     let total_sessions = catalog.sessions.len();
     let offset = scan_config.page.offset;
@@ -136,34 +162,54 @@ pub(crate) fn conversation_list_from_catalog(
     } else {
         catalog.sessions[offset..end].to_vec()
     };
-    let sessions = hydrate_catalog_page(adapter, &page_entries, &mut Vec::new());
+    let mut cache = HistoryProjectionCache::open(params);
+    let mut counters = BrowseWorkCounters::default();
+    let mut hydration_skipped = Vec::new();
+    let sessions = hydrate_catalog_page(
+        adapter,
+        &page_entries,
+        &mut hydration_skipped,
+        &mut cache,
+        &mut counters,
+        scan_config,
+        params,
+    );
+    counters.cache_entries = cache.entry_count();
+    counters.cache_bytes = cache.byte_count();
+    counters.cache_discards = counters.cache_discards.saturating_add(cache.discard_count);
+    cache.save();
+    let mut skipped = catalog.skipped;
+    skipped.append(&mut hydration_skipped);
     let returned_sessions = sessions.len();
     let has_more = scan_config.page.has_more(total_sessions);
 
-    Ok(json!({
-        "ok": true,
-        "schemaVersion": CONVERSATION_SCHEMA_VERSION,
-        "mode": "native-history",
-        "scanMode": "browse",
-        "importMode": "precise-adapter",
-        "readOnly": true,
-        "agentId": agent_id,
-        "adapterId": adapter.id(),
-        "adapterLabel": adapter.label(),
-        "sessions": sessions,
-        "page": {
-            "offset": offset,
-            "limit": scan_config.page.limit,
-            "returned": returned_sessions,
-            "totalSessions": total_sessions,
-            "hasMore": has_more
-        },
-        "sources": {
-            "filesSeen": catalog.files_seen,
-            "directoryEntriesSeen": catalog.directory_entries_seen,
-            "skipped": catalog.skipped
-        }
-    }))
+    (
+        json!({
+            "ok": true,
+            "schemaVersion": CONVERSATION_SCHEMA_VERSION,
+            "mode": "native-history",
+            "scanMode": "browse",
+            "importMode": "precise-adapter",
+            "readOnly": true,
+            "agentId": agent_id,
+            "adapterId": adapter.id(),
+            "adapterLabel": adapter.label(),
+            "sessions": sessions,
+            "page": {
+                "offset": offset,
+                "limit": scan_config.page.limit,
+                "returned": returned_sessions,
+                "totalSessions": total_sessions,
+                "hasMore": has_more
+            },
+            "sources": {
+                "filesSeen": catalog.files_seen,
+                "directoryEntriesSeen": catalog.directory_entries_seen,
+                "skipped": skipped
+            }
+        }),
+        counters,
+    )
 }
 
 pub(crate) fn load_session_catalog(
@@ -304,6 +350,10 @@ fn hydrate_catalog_page(
     adapter: HistoryAdapter,
     page: &[CatalogSession],
     skipped: &mut Vec<Value>,
+    cache: &mut HistoryProjectionCache,
+    counters: &mut BrowseWorkCounters,
+    scan_config: &HistoryScanConfig,
+    params: &Value,
 ) -> Vec<Value> {
     let mut units = BTreeMap::<PathBuf, (String, CatalogHydration, Vec<usize>)>::new();
     for (index, entry) in page.iter().enumerate() {
@@ -355,7 +405,40 @@ fn hydrate_catalog_page(
     let mut resolved = BTreeMap::<usize, Value>::new();
     let mut units_with_content = HashSet::<&PathBuf>::new();
     for (unit_path, (source_kind, hydration, indexes)) in &units {
-        let sessions = parse_catalog_unit(adapter, unit_path, source_kind, hydration);
+        // A hydration unit is shared by every page entry that names it. The
+        // seed conversation identity anchors the bounded-tail reader when the
+        // source header lies outside the window; it is only a fallback for the
+        // filename-derived identity the whole-file reader would use.
+        let seed_session_id = indexes
+            .first()
+            .map(|index| page[*index].native_session_id.as_str())
+            .filter(|id| !id.is_empty());
+        let key = projection_cache_key(adapter, source_kind, hydration, params);
+        let sessions = match key.as_ref().and_then(|key| cache.get(key)) {
+            Some(cached) => {
+                counters.cache_hits += 1;
+                cached
+            }
+            None => {
+                if key.is_some() {
+                    counters.cache_misses += 1;
+                }
+                let parsed = parse_catalog_unit(
+                    adapter,
+                    unit_path,
+                    source_kind,
+                    hydration,
+                    params,
+                    scan_config,
+                    seed_session_id,
+                    counters,
+                );
+                if let Some(key) = key.as_ref().filter(|_| !parsed.is_empty()) {
+                    cache.insert(key.clone(), parsed.clone());
+                }
+                parsed
+            }
+        };
         if !sessions.is_empty() {
             units_with_content.insert(unit_path);
         }
@@ -477,19 +560,53 @@ fn parse_catalog_unit(
     unit_path: &Path,
     source_kind: &str,
     hydration: &CatalogHydration,
+    params: &Value,
+    scan_config: &HistoryScanConfig,
+    seed_session_id: Option<&str>,
+    counters: &mut BrowseWorkCounters,
 ) -> Vec<Value> {
-    let scan_config = HistoryScanConfig::from_params(&json!({}));
     let mut sessions = Vec::<Value>::new();
     match hydration {
         CatalogHydration::File(path) => {
             if let Ok(metadata) = fs::metadata(path) {
-                sessions.extend(parse_history_file(
-                    adapter,
-                    path,
-                    source_kind,
-                    &metadata,
-                    scan_config.clone(),
-                ));
+                // Oversized Codex rollouts keep only a bounded tail for the
+                // browse row: the catalog entry supplies the canonical
+                // conversation identity, absolute line indices stay anchored
+                // to the file start, and every other adapter keeps the
+                // whole-file reader (their identities live in headers that can
+                // lie outside any window, and their stores are small by
+                // design). Small files parse whole so their rows are
+                // byte-identical to the pre-bounding path.
+                if adapter == HistoryAdapter::Codex && metadata.len() > CATALOG_TAIL_BYTES {
+                    let seed = rollout_session_id_from_filename(path)
+                        .or_else(|| seed_session_id.map(str::to_string));
+                    if let Some(seed) = seed {
+                        if let Some(tail) = read_bounded_tail(
+                            path,
+                            &metadata,
+                            CATALOG_TAIL_BYTES,
+                            CATALOG_TAIL_MAX_RECORDS,
+                        ) {
+                            record_tail_work(counters, Some(&tail));
+                            sessions.extend(parse_codex_unit_tail(
+                                path,
+                                source_kind,
+                                &metadata,
+                                &seed,
+                                &tail,
+                                scan_config,
+                            ));
+                        }
+                    }
+                } else {
+                    sessions.extend(parse_history_file(
+                        adapter,
+                        path,
+                        source_kind,
+                        &metadata,
+                        scan_config.clone(),
+                    ));
+                }
             }
         }
         CatalogHydration::KimiWireDirectory(directory) => {
@@ -534,7 +651,7 @@ fn parse_catalog_unit(
                     parse_history_file(adapter, child, source_kind, &metadata, scan_config.clone());
                 if let Some(parent_session_id) = delegated_parent_session_id.as_deref() {
                     let labels =
-                        declared_labels.get_or_insert_with(|| codex_delegated_labels(&json!({})));
+                        declared_labels.get_or_insert_with(|| codex_delegated_labels(params));
                     mark_declared_delegated_sessions(
                         &mut child_sessions,
                         parent_session_id,
@@ -558,7 +675,7 @@ fn parse_catalog_unit(
     if sessions.is_empty() {
         return sessions;
     }
-    finalize_history_sessions(sessions, &scan_config)
+    finalize_history_sessions(sessions, scan_config)
 }
 
 /// Mark delegated sessions whose lineage the store declares outside the
@@ -667,6 +784,238 @@ fn catalog_session_stub(adapter: HistoryAdapter, entry: &CatalogSession) -> Opti
         );
     }
     Some(session)
+}
+
+/// Bounded-work counters for one browse pass. Internal diagnostics only: the
+/// public catalog DTO is unchanged, and tests assert sharp bounds for cache
+/// entries/bytes and tail reads.
+#[derive(Clone, Copy, Debug, Default)]
+pub(crate) struct BrowseWorkCounters {
+    pub(crate) cache_hits: usize,
+    pub(crate) cache_misses: usize,
+    pub(crate) cache_entries: usize,
+    pub(crate) cache_bytes: usize,
+    pub(crate) cache_discards: usize,
+    /// Bytes materialized from the end of oversized sources.
+    pub(crate) tail_bytes: u64,
+    /// Bytes scanned before the window to anchor absolute line indices.
+    pub(crate) tail_scanned_bytes: u64,
+    /// Complete records decoded from tail windows.
+    pub(crate) tail_records: usize,
+}
+
+/// Complete records read from the end of a content file, oldest first, with
+/// absolute line indices (message ids are derived from them).
+pub(crate) struct BoundedTail {
+    pub(crate) lines: Vec<(usize, String)>,
+    pub(crate) tail_bytes: u64,
+    pub(crate) scanned_bytes: u64,
+}
+
+/// Read the newest complete records of a file within a byte budget.
+///
+/// Absolute line indices are anchored by counting newlines before the window
+/// (a byte-only pass with O(1) memory), so every record keeps the same message
+/// id the whole-file reader would assign it. A partial record straddling the
+/// window start is dropped: its beginning is outside the window and its index
+/// would be ambiguous. The dropped prefix is kept as bytes, so the window may
+/// safely start inside a multibyte code point. Every retained record is then
+/// decoded strictly; invalid complete records fail closed rather than being
+/// repaired lossily.
+pub(super) fn read_bounded_tail(
+    path: &Path,
+    metadata: &fs::Metadata,
+    max_bytes: u64,
+    max_records: usize,
+) -> Option<BoundedTail> {
+    let len = metadata.len();
+    if len == 0 || max_bytes == 0 || max_records == 0 {
+        return Some(BoundedTail {
+            lines: Vec::new(),
+            tail_bytes: 0,
+            scanned_bytes: 0,
+        });
+    }
+    let window = len.min(max_bytes);
+    let start = len - window;
+    let mut file = fs::File::open(path).ok()?;
+    let (prefix_newlines, previous_is_newline) = count_newlines_before(&mut file, start)?;
+    file.seek(SeekFrom::Start(start)).ok()?;
+    let mut window_bytes = Vec::with_capacity(window as usize);
+    file.take(window).read_to_end(&mut window_bytes).ok()?;
+    let mut lines = VecDeque::<(usize, String)>::new();
+    let mut absolute_index = prefix_newlines;
+    let mut segment_start = 0usize;
+    // The first segment of the window is a partial record unless the window
+    // starts at a line boundary (file start or right after a newline).
+    let mut skip_first = start > 0 && !previous_is_newline;
+    for (offset, &byte) in window_bytes.iter().enumerate() {
+        if byte != b'\n' {
+            continue;
+        }
+        if skip_first {
+            skip_first = false;
+            // The dropped segment completes the line the window cut into; the
+            // next complete line keeps the following absolute index.
+            absolute_index += 1;
+        } else {
+            let line = std::str::from_utf8(&window_bytes[segment_start..offset])
+                .ok()?
+                .to_owned();
+            if lines.len() == max_records {
+                lines.pop_front();
+            }
+            lines.push_back((absolute_index, line));
+            absolute_index += 1;
+        }
+        segment_start = offset + 1;
+    }
+    if !skip_first && segment_start < window_bytes.len() {
+        let line = std::str::from_utf8(&window_bytes[segment_start..])
+            .ok()?
+            .to_owned();
+        if lines.len() == max_records {
+            lines.pop_front();
+        }
+        lines.push_back((absolute_index, line));
+    }
+    Some(BoundedTail {
+        lines: lines.into_iter().collect(),
+        tail_bytes: window,
+        scanned_bytes: start,
+    })
+}
+
+/// Number of newlines in `file[0..start]` and whether `file[start - 1]` is a
+/// newline (the window starts at a line boundary when either holds).
+fn count_newlines_before(file: &mut fs::File, start: u64) -> Option<(usize, bool)> {
+    file.seek(SeekFrom::Start(0)).ok()?;
+    let mut count = 0usize;
+    let mut previous = b'\n';
+    let mut remaining = start;
+    let mut chunk = vec![0u8; CATALOG_TAIL_CHUNK_BYTES as usize];
+    while remaining > 0 {
+        let to_read = remaining.min(chunk.len() as u64) as usize;
+        let read = file.read(&mut chunk[..to_read]).ok()?;
+        if read == 0 {
+            break;
+        }
+        count += chunk[..read].iter().filter(|&&byte| byte == b'\n').count();
+        previous = chunk[read - 1];
+        remaining -= read as u64;
+    }
+    let previous_is_newline = start == 0 || previous == b'\n';
+    Some((count, previous_is_newline))
+}
+
+/// Build Codex sessions from bounded tail records. The catalog entry carries
+/// the canonical conversation identity, which doubles as the parser seed when
+/// the rollout header lies outside the window; any `session_meta` record
+/// inside the window still overrides it, exactly as in the whole-file reader.
+fn parse_codex_unit_tail(
+    path: &Path,
+    source_kind: &str,
+    metadata: &fs::Metadata,
+    seed_session_id: &str,
+    tail: &BoundedTail,
+    scan_config: &HistoryScanConfig,
+) -> Vec<Value> {
+    let mut groups = Vec::<CodexRolloutGroup>::new();
+    let mut current_session_id = Some(seed_session_id.to_string());
+    let mut saw_rollout_record = false;
+    for (index, line) in &tail.lines {
+        parse_codex_rollout_line(
+            path,
+            *index,
+            line,
+            scan_config,
+            &mut current_session_id,
+            &mut saw_rollout_record,
+            &mut groups,
+        );
+    }
+    if !saw_rollout_record {
+        return Vec::new();
+    }
+    codex_rollout_groups_to_sessions(groups, path, metadata, source_kind, scan_config)
+        .unwrap_or_default()
+}
+
+/// Counters for one bounded tail read, folded into [`BrowseWorkCounters`].
+fn record_tail_work(counters: &mut BrowseWorkCounters, tail: Option<&BoundedTail>) {
+    if let Some(tail) = tail {
+        counters.tail_bytes = counters.tail_bytes.saturating_add(tail.tail_bytes);
+        counters.tail_scanned_bytes = counters
+            .tail_scanned_bytes
+            .saturating_add(tail.scanned_bytes);
+        counters.tail_records = counters.tail_records.saturating_add(tail.lines.len());
+    }
+}
+
+/// Cache identity of one hydration unit: every source file that shaped the
+/// projection, plus the Codex thread database the parser consulted for
+/// delegated labels. A missing or unreadable source makes the key unavailable
+/// so the unit is parsed fresh instead of trusting an ambiguous cache state.
+fn projection_cache_key(
+    adapter: HistoryAdapter,
+    source_kind: &str,
+    hydration: &CatalogHydration,
+    params: &Value,
+) -> Option<ProjectionCacheKey> {
+    let adapter_id = adapter.id().to_string();
+    let source_kind = source_kind.to_string();
+    match hydration {
+        CatalogHydration::File(path) => Some(ProjectionCacheKey {
+            adapter_id,
+            source_kind,
+            kind: "file".to_string(),
+            delegated_truncated: false,
+            sources: vec![SourceFingerprint::from_path(path)?],
+            authority: None,
+        }),
+        CatalogHydration::KimiWireDirectory(directory) => {
+            let sources = kimi_wire_files(directory)
+                .into_iter()
+                .filter_map(|path| SourceFingerprint::from_path(&path))
+                .collect::<Vec<_>>();
+            if sources.is_empty() {
+                return None;
+            }
+            Some(ProjectionCacheKey {
+                adapter_id,
+                source_kind,
+                kind: "kimi-wire-directory".to_string(),
+                delegated_truncated: false,
+                sources,
+                authority: None,
+            })
+        }
+        CatalogHydration::TranscriptWithDelegatedTasks {
+            transcript,
+            delegated,
+            delegated_truncated,
+            ..
+        } => {
+            let mut sources = Vec::with_capacity(1 + delegated.len());
+            sources.push(SourceFingerprint::from_path(transcript)?);
+            for child in delegated {
+                sources.push(SourceFingerprint::from_path(child)?);
+            }
+            let authority = (adapter == HistoryAdapter::Codex)
+                .then(|| codex_state_database(params))
+                .flatten()
+                .and_then(|path| SourceFingerprint::from_path(&path));
+            Some(ProjectionCacheKey {
+                adapter_id,
+                source_kind,
+                kind: "transcript-delegated".to_string(),
+                delegated_truncated: *delegated_truncated,
+                sources,
+                authority,
+            })
+        }
+        CatalogHydration::None => None,
+    }
 }
 
 // ---------------------------------------------------------------------------

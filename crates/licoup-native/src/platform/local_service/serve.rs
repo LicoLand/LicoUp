@@ -166,6 +166,16 @@ pub(in crate::platform) fn post_json(spec: ServeSpec, url: &str, body: &Value) -
         .map_err(|failure| http_error(spec, failure))
 }
 
+pub(in crate::platform) fn post_json_with_optional_timeout(
+    spec: ServeSpec,
+    url: &str,
+    body: &Value,
+    timeout: Option<Duration>,
+) -> Result<Value> {
+    http::post_json_with_optional_timeout(url, body, timeout)
+        .map_err(|failure| http_error(spec, failure))
+}
+
 pub(in crate::platform) fn watch_session_events(
     spec: ServeSpec,
     attach_url: &str,

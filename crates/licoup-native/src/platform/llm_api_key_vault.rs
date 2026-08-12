@@ -19,9 +19,10 @@ use crate::{
         SecretStoreCallerChannel, SecretStoreKeyClass, SecureMeshSecretStore,
     },
     domain::llm_api_key_vault::{
-        GatewayCredentialChange, GatewayCredentialEpochSource, GatewayCredentialHandoff,
-        GatewayCredentialLease, GatewayCredentialLeaseDays, LlmApiKeyCredentialUpdate,
-        LlmApiKeyInventory, LlmApiKeyMetadata, LlmApiKeyProvider, MAX_LLM_API_KEYS, NewLlmApiKey,
+        GatewayCredential, GatewayCredentialChange, GatewayCredentialEpochSource,
+        GatewayCredentialHandoff, GatewayCredentialLease, GatewayCredentialLeaseDays,
+        LlmApiKeyCredentialUpdate, LlmApiKeyInventory, LlmApiKeyMetadata, LlmApiKeyProvider,
+        MAX_LLM_API_KEYS, NewLlmApiKey,
     },
     platform::{file_security, paths, secure_mesh_secret_store::PlatformSecretStore},
 };
@@ -114,7 +115,10 @@ impl PlatformLlmApiKeyVault {
             return Err(error);
         }
         self.apply_lease_revocation(GatewayCredentialChange::CredentialCreated)?;
-        self.refresh_gateway_session_credentials(&session, &updated)?;
+        #[cfg(unix)]
+        crate::platform::llm_gateway_service::reconcile_gateway_session_credentials(
+            self, &session, &updated,
+        )?;
         Ok(updated)
     }
 
@@ -153,7 +157,10 @@ impl PlatformLlmApiKeyVault {
             return Err(error);
         }
         self.apply_lease_revocation(GatewayCredentialChange::CredentialDeleted)?;
-        self.refresh_gateway_session_credentials(&session, &updated)?;
+        #[cfg(unix)]
+        crate::platform::llm_gateway_service::reconcile_gateway_session_credentials(
+            self, &session, &updated,
+        )?;
         Ok(updated)
     }
 
@@ -220,7 +227,7 @@ impl PlatformLlmApiKeyVault {
                     SecretStoreCallerChannel::GatewaySidecar,
                 ))?;
         let inventory = self.inventory_for_authorized_operation(&session)?;
-        self.gateway_handoff_from_inventory(&session, &inventory, credential_ids)
+        self.gateway_handoff_from_authorized_inventory(&session, &inventory, credential_ids)
     }
 
     pub fn unlock_gateway_handoff(&self) -> Result<GatewayCredentialHandoff> {
@@ -228,20 +235,7 @@ impl PlatformLlmApiKeyVault {
             .ok_or_else(|| anyhow!("llm_api_key_credential_unavailable"))
     }
 
-    fn refresh_gateway_session_credentials(
-        &self,
-        session: &SecretStoreAuthorizationSession,
-        inventory: &LlmApiKeyInventory,
-    ) -> Result<()> {
-        let handoff = self.gateway_handoff_from_inventory(session, inventory, None)?;
-        #[cfg(unix)]
-        crate::platform::llm_gateway_service::replace_gateway_session_credentials(handoff)?;
-        #[cfg(not(unix))]
-        let _ = handoff;
-        Ok(())
-    }
-
-    fn gateway_handoff_from_inventory(
+    pub(crate) fn gateway_handoff_from_authorized_inventory(
         &self,
         session: &SecretStoreAuthorizationSession,
         inventory: &LlmApiKeyInventory,
@@ -263,31 +257,34 @@ impl PlatformLlmApiKeyVault {
                 );
             }
         }
-        let mut credentials = BTreeMap::<LlmApiKeyProvider, Vec<SecretBytes>>::new();
+        let mut credentials = BTreeMap::<LlmApiKeyProvider, Vec<GatewayCredential>>::new();
         for entry in &inventory.entries {
-            let is_expired = entry.is_expired(now);
+            if entry.is_expired(now)
+                || selected
+                    .as_ref()
+                    .is_some_and(|ids| !ids.contains(&entry.credential_id))
+            {
+                continue;
+            }
             let key = credential_key(&entry.credential_id);
             let secret = self
                 .read_or_migrate_secret(session, &key)?
                 .ok_or_else(|| anyhow!("llm_api_key_inventory_inconsistent"))?;
-            // Re-seal every existing credential under the current native
+            // Re-seal each selected credential under the current native
             // user-presence policy while this one authorized session is live.
             // This is idempotent invariant enforcement, and it also completes
             // the one-time conversion of records that still carry a legacy
-            // per-item macOS application ACL. Expired entries are normalized
-            // too so extending their metadata cannot revive the old prompts.
+            // per-item macOS application ACL.
             let protected_copy = SecretBytes::try_from_bytes(secret.expose_bytes().to_vec())?;
             self.write_secret(session, &key, protected_copy)?;
-            if is_expired {
-                continue;
-            }
-            if selected
-                .as_ref()
-                .is_some_and(|ids| !ids.contains(&entry.credential_id))
-            {
-                continue;
-            }
-            credentials.entry(entry.provider).or_default().push(secret);
+            credentials
+                .entry(entry.provider)
+                .or_default()
+                .push(GatewayCredential::new(
+                    entry.credential_id.clone(),
+                    secret,
+                    entry.expires_at_epoch_seconds,
+                )?);
         }
         if credentials.is_empty() {
             return Ok(None);

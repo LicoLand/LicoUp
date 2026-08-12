@@ -135,8 +135,8 @@ test("complete evidence is the only route to ready", () => {
   assert.equal(codex.status, "ready");
   assert.equal(codex.sendEnabled, true);
   assert.equal(codex.coreChecks.passed, 10);
-  assert.equal(codex.conditionalChecks.nativeSupported, 3);
-  assert.equal(codex.conditionalChecks.passed, 3);
+  assert.equal(codex.conditionalChecks.nativeSupported, 4);
+  assert.equal(codex.conditionalChecks.passed, 4);
   assert.equal(codex.evidenceBinding.agentId, "codex");
   assert.equal(codex.evidenceBinding.driverId, "codex-app-server");
   assert.equal(result.summary.ready, 1);
@@ -346,6 +346,7 @@ test("inventory discloses current native transports and fail-closed capability g
     "hermes",
     "kilo-code",
     "kimi-code",
+    "lico-agent",
     "openclaw",
     "opencode",
   ]);
@@ -407,14 +408,14 @@ test("checked-in readiness is the honest canonical-evidence reduction", () => {
   });
   assert.deepEqual(result, readinessResource);
   assert.deepEqual(result.summary, {
-    total: 11,
-    ready: 1,
+    total: 12,
+    ready: 0,
     partial: 0,
     failed: 0,
     blocked: 0,
-    unverified: 10,
+    unverified: 12,
     historyOnly: 0,
-    sendEnabled: 1,
+    sendEnabled: 0,
   });
   const receipt = runCli(["--check"]);
   assert.equal(receipt.ok, true);

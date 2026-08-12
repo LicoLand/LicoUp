@@ -241,10 +241,12 @@ fn codex_adapter_extracts_rollout_payload_sessions() {
         .expect("reasoning card");
     assert_eq!(reasoning["cardType"], "reasoning");
     assert_eq!(reasoning["collapsed"], true);
-    assert_eq!(reasoning["providerSummary"], true);
-    assert_eq!(reasoning["cardSubtitle"], "Reasoning summary");
+    // Recorded chain of thought is the detail body; the provider summary
+    // becomes the collapsed headline preview instead of a separate card.
+    assert!(reasoning.get("providerSummary").is_none());
+    assert_eq!(reasoning["text"], "Private chain of thought");
     assert_eq!(
-        reasoning["text"],
+        reasoning["cardSubtitle"],
         "Checked the archive plan at [local path hidden] with authorization: [redacted] [redacted]"
     );
     let tool_call = messages
@@ -253,12 +255,19 @@ fn codex_adapter_extracts_rollout_payload_sessions() {
         .expect("tool call card");
     assert_eq!(tool_call["cardType"], "tool-call");
     assert_eq!(tool_call["cardTitle"], "exec_command");
+    assert_eq!(
+        tool_call["text"],
+        "access_token: [redacted]\ncmd: rg Pact [local path hidden]"
+    );
     let tool_result = messages
         .iter()
         .find(|message| message["role"] == "tool_result")
         .expect("tool result card");
     assert_eq!(tool_result["cardType"], "tool-result");
-    assert_eq!(tool_result["text"], "The native tool result was recorded.");
+    assert_eq!(
+        tool_result["text"],
+        "access_token: [redacted]\nok: true\npath: [local path hidden]"
+    );
     let error = messages
         .iter()
         .find(|message| message["role"] == "error")
@@ -266,7 +275,6 @@ fn codex_adapter_extracts_rollout_payload_sessions() {
     assert_eq!(error["cardType"], "error");
     assert_eq!(error["collapsed"], false);
     let serialized = serde_json::to_string(messages).unwrap();
-    assert!(!serialized.contains("Private chain of thought"));
     assert!(!serialized.contains("secret-value"));
     assert!(!serialized.contains("abcdefghijklmnopqrstuvwxyz0123456789"));
     assert!(!messages.iter().any(|message| {

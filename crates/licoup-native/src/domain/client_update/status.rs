@@ -31,7 +31,7 @@ pub fn status(params: &Value) -> Result<Value> {
         "mode": CLIENT_UPDATE_MODE,
         "phase": "idle",
         "channel": channel_name(params)?,
-        "currentVersion": product_version(),
+        "currentVersion": product_version(params)?,
         "productionReady": false,
         "publicMetadataOnly": true,
         "storeCredentialsRequired": false,

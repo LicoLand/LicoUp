@@ -165,6 +165,22 @@ fn vscode_hosted_copilot_files_keep_copilot_as_source_client() {
 }
 
 #[test]
+fn cli_provenance_labels_do_not_claim_desktop_or_ide_ownership() {
+    let cursor_source = super::super::session_metadata::source_client_for_session(
+        HistoryAdapter::Cursor,
+        std::path::Path::new(".cursor/projects/project/agent-transcripts/session/store.db"),
+        "cursor-cli-projects",
+        &[],
+    );
+    assert_eq!(cursor_source, "cursor-agent");
+    assert_eq!(
+        super::super::session_metadata::source_label("cursor", &cursor_source),
+        "cursor: cursor agent cli"
+    );
+    assert_eq!(HistoryAdapter::Codex.label(), "Codex - CLI");
+}
+
+#[test]
 fn openclaw_gateway_session_key_is_the_native_continuity_id() {
     let dir = temp_dir("openclaw-session-key");
     fs::write(

@@ -32,19 +32,23 @@ pub(crate) mod remote_acp_history;
 pub(crate) mod remote_hermes_gateway_history;
 pub(crate) mod secure_mesh_mls_store;
 pub(crate) mod skill_invocation_projection;
+pub(crate) mod strategy_runtime;
 mod turn_event_emit;
 pub(crate) mod user_presence;
 pub(crate) mod virtual_machine;
 
-pub mod agent_workflow_runtime;
 pub mod antigravity_subagent_mcp_manager;
 pub mod catalog_cache_store;
 pub mod client_autostart;
 pub mod client_state;
 pub mod codex_plugin_manager;
 pub mod file_security;
+pub mod gateway_runtime;
 pub mod llm_api_key_vault;
 pub mod llm_gateway_autostart;
+pub mod llm_gateway_client_auth;
+pub mod llm_gateway_credentials_control;
+pub mod llm_gateway_inventory_control;
 pub mod llm_gateway_server;
 pub mod llm_gateway_service;
 pub mod llm_gateway_transport;
@@ -69,4 +73,4 @@ pub use turn_event_emit::{
     emit_agent_processing, emit_turn_event, install_stdout_ndjson_sink, install_stream_sink,
 };
 
-pub(crate) use process_supervisor::run_bounded_command_output;
+pub(crate) use process_supervisor::{run_bounded_command_input, run_bounded_command_output};

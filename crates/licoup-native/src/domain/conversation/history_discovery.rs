@@ -82,6 +82,22 @@ fn discover_path(
             record_skip(discovery, path, "directory_depth_limit_reached");
             return;
         }
+        // Directed exact lookup visits only deterministic layout paths: once a
+        // tree-identity store puts conversation directories at a known depth,
+        // siblings that no requested identity can name are skipped without
+        // descending. Structural directories (`agent-transcripts`, `agents`)
+        // and every ancestor of a requested identity are always kept, so
+        // delegated tasks inside a conversation directory stay discoverable.
+        if exact_directory_can_be_pruned(
+            adapter,
+            source_kind,
+            path,
+            &options.exact_session_ids,
+            depth,
+        ) {
+            record_skip(discovery, path, "exact_session_miss");
+            return;
+        }
         let entries = match fs::read_dir(path) {
             Ok(entries) => entries,
             Err(error) => {
@@ -174,9 +190,9 @@ fn exact_session_candidate_for_id(
 ) -> bool {
     match (adapter, source_kind) {
         (HistoryAdapter::Codex, "codex-session-store" | "codex-archived-session-store") => path
-            .file_name()
+            .file_stem()
             .and_then(|name| name.to_str())
-            .is_some_and(|name| name.contains(session_id)),
+            .is_some_and(|stem| stem == session_id || stem.ends_with(&format!("-{session_id}"))),
         // Cursor and Claude Code keep one directory per conversation and put each
         // delegated task inside it under its own name, so matching only the file
         // name would drop every delegated task of the requested conversation.
@@ -185,12 +201,11 @@ fn exact_session_candidate_for_id(
         // Kimi Code keeps every agent of one conversation under
         // `<session>/agents/<id>/wire.jsonl`, so the conversation directory is the
         // only part of the path that names it.
-        (HistoryAdapter::Cursor, "cursor-cli-projects")
+        (HistoryAdapter::Cursor, "cursor-cli-chats" | "cursor-cli-projects")
         | (HistoryAdapter::ClaudeCode, "claude-project-transcripts")
-        | (HistoryAdapter::KimiCode, "kimi-code-session-store") => path
-            .components()
-            .filter_map(|component| component.as_os_str().to_str())
-            .any(|component| component.contains(session_id)),
+        | (HistoryAdapter::KimiCode, "kimi-code-session-store") => {
+            path_identity_matches(path, session_id)
+        }
         (
             HistoryAdapter::Codex,
             "codex-prompt-history"
@@ -200,6 +215,54 @@ fn exact_session_candidate_for_id(
         ) => false,
         _ => true,
     }
+}
+
+fn path_identity_matches(path: &Path, session_id: &str) -> bool {
+    path.components()
+        .filter_map(|component| component.as_os_str().to_str())
+        .any(|component| component == session_id)
+        || path
+            .file_stem()
+            .and_then(|stem| stem.to_str())
+            .is_some_and(|stem| stem == session_id)
+}
+
+/// Whether a directory cannot hold any file of the requested exact sessions
+/// and should be skipped without descending. Only tree-identity stores with a
+/// deterministic conversation-directory depth are pruned; every other adapter
+/// keeps its bounded full walk and the per-file identity predicate.
+fn exact_directory_can_be_pruned(
+    adapter: HistoryAdapter,
+    source_kind: &str,
+    path: &Path,
+    exact_session_ids: &[String],
+    depth: usize,
+) -> bool {
+    if exact_session_ids.is_empty() {
+        return false;
+    }
+    let (prunable_from, structural) = match (adapter, source_kind) {
+        (HistoryAdapter::Cursor, "cursor-cli-chats") => (2usize, &[][..]),
+        (HistoryAdapter::Cursor, "cursor-cli-projects") => (2, &["agent-transcripts"][..]),
+        (HistoryAdapter::ClaudeCode, "claude-project-transcripts") => (2, &[][..]),
+        (HistoryAdapter::KimiCode, "kimi-code-session-store") => (2, &["agents"][..]),
+        _ => return false,
+    };
+    if depth < prunable_from {
+        return false;
+    }
+    let name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or_default();
+    if structural.contains(&name) {
+        return false;
+    }
+    let any_id_in_path = path
+        .components()
+        .filter_map(|component| component.as_os_str().to_str())
+        .any(|component| exact_session_ids.iter().any(|id| component == id));
+    !any_id_in_path
 }
 
 fn history_file_can_exceed_byte_limit(adapter: HistoryAdapter, path: &Path) -> bool {
@@ -243,10 +306,10 @@ fn excluded_history_path_reason(path: &Path) -> Option<&'static str> {
 /// tasks then attach to that record instead of the conversation and disappear
 /// from it.
 fn excluded_delegated_bookkeeping_reason(path: &Path, components: &[&str]) -> Option<&'static str> {
-    if components.iter().any(|name| *name == "tool-results") {
+    if components.contains(&"tool-results") {
         return Some("excluded_raw_tool_output");
     }
-    if !components.iter().any(|name| *name == "subagents") {
+    if !components.contains(&"subagents") {
         return None;
     }
     let stem = path.file_stem().and_then(|value| value.to_str())?;
@@ -336,6 +399,57 @@ mod tests {
                 .and_then(|name| name.to_str())
                 .is_some_and(|name| name.contains("wanted"))
         );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn exact_codex_discovery_rejects_substring_identity_collisions() {
+        let root = temp_root("exact-codex-collision");
+        fs::create_dir_all(&root).unwrap();
+        fs::write(root.join("rollout-2026-wanted.jsonl"), b"{}\n").unwrap();
+        fs::write(root.join("rollout-2026-wanted-extra.jsonl"), b"{}\n").unwrap();
+        let discovery = discover_history_files(
+            HistoryAdapter::Codex,
+            &[HistoryRoot {
+                path: root.clone(),
+                source_kind: "codex-session-store".to_owned(),
+            }],
+            HistoryDiscoveryOptions {
+                archive_mode: false,
+                exact_session_ids: vec!["wanted".to_owned()],
+            },
+        );
+        assert_eq!(discovery.candidates.len(), 1);
+        assert_eq!(
+            discovery.candidates[0]
+                .path
+                .file_name()
+                .and_then(|name| name.to_str()),
+            Some("rollout-2026-wanted.jsonl")
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn exact_cursor_chat_discovery_matches_a_whole_session_component() {
+        let root = temp_root("exact-cursor-chat");
+        fs::create_dir_all(root.join("project/wanted")).unwrap();
+        fs::create_dir_all(root.join("project/wanted-extra")).unwrap();
+        fs::write(root.join("project/wanted/store.db"), b"fixture").unwrap();
+        fs::write(root.join("project/wanted-extra/store.db"), b"fixture").unwrap();
+        let discovery = discover_history_files(
+            HistoryAdapter::Cursor,
+            &[HistoryRoot {
+                path: root.clone(),
+                source_kind: "cursor-cli-chats".to_owned(),
+            }],
+            HistoryDiscoveryOptions {
+                archive_mode: false,
+                exact_session_ids: vec!["wanted".to_owned()],
+            },
+        );
+        assert_eq!(discovery.candidates.len(), 1);
+        assert!(discovery.candidates[0].path.ends_with("wanted/store.db"));
         fs::remove_dir_all(root).unwrap();
     }
 
@@ -445,6 +559,177 @@ mod tests {
         assert!(discovery.skipped.iter().any(|entry| {
             entry.get("reason").and_then(Value::as_str) == Some("directory_entry_limit_reached")
         }));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn exact_cursor_projects_prune_unrelated_project_trees() {
+        let root = temp_root("exact-prune-projects");
+        let wanted = root.join("wanted-project/agent-transcripts/session-abc");
+        fs::create_dir_all(&wanted).unwrap();
+        fs::write(wanted.join("session-abc.jsonl"), b"{}\n").unwrap();
+        let unrelated = root.join("other-project/agent-transcripts/session-xyz");
+        fs::create_dir_all(&unrelated).unwrap();
+        fs::write(unrelated.join("session-xyz.jsonl"), b"{}\n").unwrap();
+        let discovery = discover_history_files(
+            HistoryAdapter::Cursor,
+            &[HistoryRoot {
+                path: root.clone(),
+                source_kind: "cursor-cli-projects".to_owned(),
+            }],
+            HistoryDiscoveryOptions {
+                archive_mode: false,
+                exact_session_ids: vec!["session-abc".to_owned()],
+            },
+        );
+        assert_eq!(discovery.candidates.len(), 1);
+        assert!(discovery.candidates[0].path.ends_with("session-abc.jsonl"));
+        assert!(
+            discovery
+                .skipped
+                .iter()
+                .any(|entry| entry.get("reason").and_then(Value::as_str)
+                    == Some("exact_session_miss")),
+            "the unrelated conversation directory is pruned, not descended"
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn exact_claude_prunes_unrelated_project_children_only() {
+        let root = temp_root("exact-prune-claude");
+        let wanted_project = root.join("wanted-project");
+        fs::create_dir_all(wanted_project.join("wanted/subagents")).unwrap();
+        fs::write(wanted_project.join("wanted.jsonl"), b"{}\n").unwrap();
+        fs::write(
+            wanted_project.join("wanted/subagents/agent-task.jsonl"),
+            b"{}\n",
+        )
+        .unwrap();
+        fs::create_dir_all(wanted_project.join("unrelated-dir")).unwrap();
+        fs::write(wanted_project.join("unrelated-dir/nested.jsonl"), b"{}\n").unwrap();
+        let other_project = root.join("other-project");
+        fs::create_dir_all(&other_project).unwrap();
+        fs::write(other_project.join("other.jsonl"), b"{}\n").unwrap();
+        let discovery = discover_history_files(
+            HistoryAdapter::ClaudeCode,
+            &[HistoryRoot {
+                path: root.clone(),
+                source_kind: "claude-project-transcripts".to_owned(),
+            }],
+            HistoryDiscoveryOptions {
+                archive_mode: false,
+                exact_session_ids: vec!["wanted".to_owned()],
+            },
+        );
+        let mut names = discovery
+            .candidates
+            .iter()
+            .filter_map(|candidate| candidate.path.file_name())
+            .filter_map(|name| name.to_str())
+            .collect::<Vec<_>>();
+        names.sort();
+        assert_eq!(names, vec!["agent-task.jsonl", "wanted.jsonl"]);
+        assert!(
+            discovery
+                .skipped
+                .iter()
+                .any(|entry| entry.get("reason").and_then(Value::as_str)
+                    == Some("exact_session_miss")),
+            "the unrelated conversation directory is pruned"
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn exact_chats_prune_sibling_chat_dirs_but_keep_hash_ancestors() {
+        let root = temp_root("exact-prune-chats");
+        fs::create_dir_all(root.join("ab12cd34/wanted")).unwrap();
+        fs::create_dir_all(root.join("ab12cd34/other")).unwrap();
+        fs::write(root.join("ab12cd34/wanted/meta.json"), b"{}\n").unwrap();
+        fs::write(root.join("ab12cd34/other/meta.json"), b"{}\n").unwrap();
+        let discovery = discover_history_files(
+            HistoryAdapter::Cursor,
+            &[HistoryRoot {
+                path: root.clone(),
+                source_kind: "cursor-cli-chats".to_owned(),
+            }],
+            HistoryDiscoveryOptions {
+                archive_mode: false,
+                exact_session_ids: vec!["wanted".to_owned()],
+            },
+        );
+        assert_eq!(discovery.candidates.len(), 1);
+        assert!(discovery.candidates[0].path.ends_with("wanted/meta.json"));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn exact_kimi_keeps_agents_of_the_requested_session_only() {
+        let root = temp_root("exact-prune-kimi");
+        fs::create_dir_all(root.join("workdir-a/session-one/agents/agent-1")).unwrap();
+        fs::create_dir_all(root.join("workdir-a/session-two/agents/agent-1")).unwrap();
+        fs::write(
+            root.join("workdir-a/session-one/agents/agent-1/wire.jsonl"),
+            b"{}\n",
+        )
+        .unwrap();
+        fs::write(
+            root.join("workdir-a/session-two/agents/agent-1/wire.jsonl"),
+            b"{}\n",
+        )
+        .unwrap();
+        let discovery = discover_history_files(
+            HistoryAdapter::KimiCode,
+            &[HistoryRoot {
+                path: root.clone(),
+                source_kind: "kimi-code-session-store".to_owned(),
+            }],
+            HistoryDiscoveryOptions {
+                archive_mode: false,
+                exact_session_ids: vec!["session-one".to_owned()],
+            },
+        );
+        assert_eq!(discovery.candidates.len(), 1);
+        assert!(
+            discovery.candidates[0]
+                .path
+                .ends_with("session-one/agents/agent-1/wire.jsonl")
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn exact_codex_rollouts_stay_unpruned_because_sessions_are_flat_files() {
+        let root = temp_root("exact-unpruned-codex");
+        fs::create_dir_all(root.join("2026/08/01")).unwrap();
+        fs::write(
+            root.join("2026/08/01/rollout-2026-08-01T00-00-00-wanted.jsonl"),
+            b"{}\n",
+        )
+        .unwrap();
+        fs::write(
+            root.join("2026/08/01/rollout-2026-08-01T00-00-01-other.jsonl"),
+            b"{}\n",
+        )
+        .unwrap();
+        let discovery = discover_history_files(
+            HistoryAdapter::Codex,
+            &[HistoryRoot {
+                path: root.clone(),
+                source_kind: "codex-session-store".to_owned(),
+            }],
+            HistoryDiscoveryOptions {
+                archive_mode: false,
+                exact_session_ids: vec!["wanted".to_owned()],
+            },
+        );
+        assert_eq!(discovery.candidates.len(), 1);
+        assert!(
+            discovery.candidates[0]
+                .path
+                .ends_with("rollout-2026-08-01T00-00-00-wanted.jsonl")
+        );
         fs::remove_dir_all(root).unwrap();
     }
 

@@ -11,7 +11,7 @@ pub(super) fn print_usage() {
     eprintln!(
         "Usage:
   licoup rpc stdio  # licoup.stdio.v1 line-delimited JSON RPC
-  licoup state get|set <adaptive-flywheel|settings|targets|pairings|skills|pins|identities|conversation-archive-profiles|agent-usage-reports|skill-usage> [json]
+  licoup state get|set <settings|targets|pairings|skills|pins|identities|conversation-archive-profiles|agent-usage-reports|skill-usage> [json]
   licoup adapter catalog
   licoup adapter antigravity status|install|uninstall
   licoup opencode-serve ensure|start|restart|stop|status [--port 24173] [--executable PATH] [--attach-url URL]
@@ -34,7 +34,7 @@ pub(super) fn print_usage() {
   licoup agent-usage report [--agent AGENT] [--limit N] [--state-root PATH]
   licoup resource-usage scan [--state-root PATH]
   licoup mcp http preview|execute --stdin-json true  # exact-scope private input and fresh platform user-presence confirmation
-  licoup update status|check|download|verify|apply [--channel stable] [--manifest-path PATH] [--public-keys-path PATH] [--source-path PATH]
+  licoup update status|check|download|verify|apply|rollback [--channel CHANNEL] [--source local|github] [--repo OWNER/REPO] [--manifest-path PATH] [--public-keys-path PATH] [--revocation-path PATH] [--source-path PATH] [--staging-root PATH] [--state-root PATH] [--current-version VERSION] [--install-root PATH] [--gui-pid PID] [--execute true|false] [--wait-for-script true|false]
   licoup collaboration status|enable|disable|cleanup
   licoup collaboration install plan|apply|cancel [--github-url URL|--plan-id ID] [--expected-digest-sha256 SHA256] [--confirmed true]
   licoup collaboration workflow catalog
@@ -45,21 +45,14 @@ pub(super) fn print_usage() {
   licoup collaboration workflow mcp-install plan|apply --request-origin direct-user --selected-plugin-ids IDS --agent-destinations JSON [--plan-id ID --expected-plan-digest-sha256 SHA256 --expected-package-digest-sha256 SHA256 --confirmed true]
   licoup collaboration workflow cancel --request-origin direct-user --plan-id ID --expected-plan-digest-sha256 SHA256 --expected-package-digest-sha256 SHA256 --confirmed true
   licoup agent conversation open|send|steer|cancel|cleanup|capabilities|stream [--stdin-json true]
+  licoup conversation execute --stdin-json JSON
   licoup agents pair request|approve|revoke|list --agent AGENT [--target TARGET]
-  licoup skill list --agent AGENT [--refresh-local true] [--install-root PATH]
-  licoup skill get <skill-id> --agent AGENT [--discover-local true] [--install-root PATH]
-  licoup skill install plan|apply --agent AGENT --url GITHUB_URL [--install-root PATH] [--name NAME] [--overwrite true|false] [--pin true|false]
-  licoup skill install rollback --agent AGENT --snapshot-id ID
-  licoup skill update plan --agent AGENT --skill SKILL [--source-path MIRROR_DIR|--url GITHUB_URL]
-  licoup skill update apply --agent AGENT --skill SKILL --confirmation PLAN_VALUE [--source-path MIRROR_DIR|--url GITHUB_URL]
-  licoup skill auto-update set --agent AGENT --skill SKILL --enabled true|false --direct-user-action true [--source-path MIRROR_DIR|--url GITHUB_URL]
-  licoup skill auto-update run --agent AGENT --direct-user-action true [--skill SKILL]
-  licoup skill auto-update tick
-  licoup skill delete plan|apply --skill SKILL (--agent AGENT|--agents AGENT[,AGENT...]) [--confirmation PLAN_VALUE]
+  licoup skill list --agent AGENT [--skill-root PATH]
+  licoup skill get <skill-id> --agent AGENT [--skill-root PATH]
+  licoup skill delete plan|apply --skill SKILL --path PATH [--confirmation PLAN_VALUE]
   licoup skill visibility set <skill-id> --agent AGENT --hidden true|false
-  licoup skill pin set <skill-id> --agent AGENT --version VERSION
   licoup skill usage report [--agent AGENT] [--skill SKILL] [--days 1..365|--from YYYY-MM-DD] [--to YYYY-MM-DD]
-  licoup targets scan [--state-root PATH] [--include-accessible-environments true|false] [--include-history-model-catalog true|false] [--installer-scan-command PATH]
+  licoup targets scan [--state-root PATH] [--include-accessible-environments true|false] [--include-history-model-catalog true|false]
   licoup targets add --target <target> [--config-path PATH] [--binary-path PATH] [--history-root PATH] [--state-root PATH]
   licoup targets inspect <target> [--state-root PATH]
   licoup mobile relay config get|set [--use-custom-gateway true|false] [--custom-gateway-url URL] [--relay-enabled true|false]

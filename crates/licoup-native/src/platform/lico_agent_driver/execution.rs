@@ -4,14 +4,20 @@ use crate::domain::lico_agent::AgentProfileKind;
 use crate::platform::file_security::{append_private_line, ensure_private_dir};
 use crate::platform::paths::portable_data_dir;
 use crate::platform::process_sandbox::lico_agent_plan_command;
-use crate::platform::process_supervisor::SupervisedChild;
+use crate::platform::process_supervisor::{SupervisedChild, join_bounded};
 use serde_json::{Value, json};
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufRead, BufReader, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
+
+/// Upper bound for the `get_state` readiness handshake. Lico Agent is expected
+/// to answer immediately after start; a hang (auto-update, gateway startup)
+/// must fail visibly instead of blocking the send forever.
+const HANDSHAKE_BOUND: Duration = Duration::from_secs(5);
 
 pub(in crate::platform) fn execute(
     executable: &str,
@@ -20,8 +26,57 @@ pub(in crate::platform) fn execute(
     session_id: &str,
     cwd: Option<&Path>,
     timeout_ms: u64,
+    max_stdout: Option<usize>,
+    max_stderr: usize,
+) -> RunResult {
+    execute_with_handshake_bound(
+        executable,
+        params,
+        prompt,
+        session_id,
+        cwd,
+        timeout_ms,
+        max_stdout,
+        max_stderr,
+        HANDSHAKE_BOUND,
+    )
+}
+
+#[cfg(test)]
+pub(super) fn execute_with_test_handshake_bound(
+    executable: &str,
+    params: &Value,
+    prompt: &str,
+    session_id: &str,
+    cwd: Option<&Path>,
+    timeout_ms: u64,
+    max_stdout: Option<usize>,
+    max_stderr: usize,
+    handshake_bound: Duration,
+) -> RunResult {
+    execute_with_handshake_bound(
+        executable,
+        params,
+        prompt,
+        session_id,
+        cwd,
+        timeout_ms,
+        max_stdout,
+        max_stderr,
+        handshake_bound,
+    )
+}
+
+fn execute_with_handshake_bound(
+    executable: &str,
+    params: &Value,
+    prompt: &str,
+    session_id: &str,
+    cwd: Option<&Path>,
+    timeout_ms: u64,
     _max_stdout: Option<usize>,
     _max_stderr: usize,
+    handshake_bound: Duration,
 ) -> RunResult {
     let started_at = timestamp();
     let workspace = cwd
@@ -109,7 +164,7 @@ pub(in crate::platform) fn execute(
         );
     };
 
-    let mut reader = BufReader::new(stdout);
+    let reader = BufReader::new(stdout);
     if write_line(&mut stdin, &json!({"id":"lico-1","type":"get_state"})).is_err() {
         let _ = child.terminate_tree();
         return RunResult::failed(
@@ -121,9 +176,31 @@ pub(in crate::platform) fn execute(
             started_at,
         );
     }
-    let _ = read_until(&mut reader, |v| {
-        v.get("type").and_then(Value::as_str) == Some("response")
-    });
+    let mut reader = match handshake(reader, handshake_bound) {
+        Ok(reader) => reader,
+        Err(HandshakeFailure::TimedOut) => {
+            let _ = child.terminate_tree();
+            return RunResult::failed(
+                ProtocolFailure::new(
+                    "lico_agent_rpc_handshake_timeout",
+                    "Lico Agent did not answer the readiness handshake in time.",
+                    "protocol/handshake",
+                ),
+                started_at,
+            );
+        }
+        Err(HandshakeFailure::Unavailable | HandshakeFailure::Rejected) => {
+            let _ = child.terminate_tree();
+            return RunResult::failed(
+                ProtocolFailure::new(
+                    "lico_agent_rpc_handshake_failed",
+                    "Lico Agent rejected the readiness handshake.",
+                    "protocol/handshake",
+                ),
+                started_at,
+            );
+        }
+    };
 
     if write_line(
         &mut stdin,
@@ -142,11 +219,13 @@ pub(in crate::platform) fn execute(
         );
     }
 
-    let deadline = Instant::now() + Duration::from_millis(timeout_ms.max(1_000));
+    // timeoutMs 0 opts out of any turn deadline (see runtime_adapters/dispatch),
+    // so only a non-zero window gets a concrete deadline.
+    let deadline = (timeout_ms != 0).then(|| Instant::now() + Duration::from_millis(timeout_ms));
     let mut output = String::new();
     let mut events = Vec::new();
     loop {
-        if Instant::now() > deadline {
+        if deadline.is_some_and(|deadline| Instant::now() > deadline) {
             let _ = child.terminate_tree();
             return RunResult::failed(
                 ProtocolFailure::new(
@@ -318,6 +397,46 @@ fn read_until(reader: &mut impl BufRead, pred: impl Fn(&Value) -> bool) -> Optio
         }
     }
     None
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum HandshakeFailure {
+    /// The agent stayed silent past the configured handshake bound.
+    TimedOut,
+    /// The agent closed the stream before answering.
+    Unavailable,
+    /// The agent answered without `"success": true`.
+    Rejected,
+}
+
+/// Bounded `get_state` readiness handshake. The agent is expected to answer
+/// immediately; a silent or failing start fails the send instead of letting
+/// the prompt ride on top of a broken session.
+///
+/// The read itself happens on a helper thread because a hung agent would
+/// otherwise block `BufReader::read_line` forever; the bound is enforced by
+/// the caller-side join.
+fn handshake<R: Read + Send + 'static>(
+    mut reader: BufReader<R>,
+    bound: Duration,
+) -> Result<BufReader<R>, HandshakeFailure> {
+    let handle = thread::spawn(move || {
+        let response = read_until(&mut reader, |v| {
+            v.get("type").and_then(Value::as_str) == Some("response")
+        });
+        (response, reader)
+    });
+    match join_bounded(handle, bound) {
+        Ok((Some(response), reader)) => {
+            if response.get("success").and_then(Value::as_bool) == Some(true) {
+                Ok(reader)
+            } else {
+                Err(HandshakeFailure::Rejected)
+            }
+        }
+        Ok((None, _)) => Err(HandshakeFailure::Unavailable),
+        Err(_) => Err(HandshakeFailure::TimedOut),
+    }
 }
 
 fn timestamp() -> String {

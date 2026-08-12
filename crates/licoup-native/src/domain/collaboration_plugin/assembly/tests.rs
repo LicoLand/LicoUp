@@ -100,7 +100,7 @@ fn supervised_stop_does_not_depend_on_mutable_package_or_assembly_files() {
     let fixture = Fixture::new("supervised-stop");
     let record = fixture.running_record();
     assert!(!Path::new(&record.destination).exists());
-    write_records(&fixture.store, &[record.clone()]).unwrap();
+    write_records(&fixture.store, std::slice::from_ref(&record)).unwrap();
     let runtime = FakeRuntime::new(ProcessLiveness::Alive, RuntimeIdentity::Unavailable, true);
 
     let result = stop_with(&fixture.store, &record.deployment_id, &runtime).unwrap();
@@ -118,7 +118,7 @@ fn unavailable_liveness_is_quarantined_without_losing_process_identity() {
     let fixture = Fixture::new("unavailable");
     let record = fixture.running_record();
     let identity = record.runtime_process_identity.clone();
-    write_records(&fixture.store, &[record.clone()]).unwrap();
+    write_records(&fixture.store, std::slice::from_ref(&record)).unwrap();
     let runtime = FakeRuntime::new(
         ProcessLiveness::Unavailable,
         RuntimeIdentity::Unavailable,
@@ -138,7 +138,7 @@ fn unavailable_liveness_is_quarantined_without_losing_process_identity() {
 fn mismatched_identity_is_quarantined_and_never_terminated() {
     let fixture = Fixture::new("mismatch");
     let record = fixture.running_record();
-    write_records(&fixture.store, &[record.clone()]).unwrap();
+    write_records(&fixture.store, std::slice::from_ref(&record)).unwrap();
     let runtime = FakeRuntime::new(ProcessLiveness::Alive, RuntimeIdentity::Mismatched, false);
 
     assert!(stop_with(&fixture.store, &record.deployment_id, &runtime).is_err());
@@ -156,7 +156,7 @@ fn mismatched_identity_is_quarantined_and_never_terminated() {
 fn dead_process_is_reaped_from_projection_without_erasing_execution_history() {
     let fixture = Fixture::new("dead");
     let record = fixture.running_record();
-    write_records(&fixture.store, &[record.clone()]).unwrap();
+    write_records(&fixture.store, std::slice::from_ref(&record)).unwrap();
     let runtime = FakeRuntime::new(ProcessLiveness::Dead, RuntimeIdentity::Unavailable, false);
 
     let status = status_with(&fixture.store, &runtime).unwrap();

@@ -1,18 +1,15 @@
-use anyhow::{Result, bail};
+use anyhow::Result;
 use serde_json::{Value, json};
 
 use super::{
-    constants::CLIENT_UPDATE_MODE, staging::reject_artifact_overrides,
+    constants::CLIENT_UPDATE_MODE, params::bool_param, staging::reject_artifact_overrides,
     verify::verify_staged_selection,
 };
 
 pub fn apply(params: &Value) -> Result<Value> {
     reject_artifact_overrides(params)?;
     let (selection, staged_path) = verify_staged_selection(params)?;
-    let execute = params
-        .get("execute")
-        .and_then(Value::as_bool)
-        .unwrap_or(false);
+    let execute = bool_param(params, "execute")?;
     if !execute {
         return Ok(json!({
             "ok": true,
@@ -37,27 +34,13 @@ pub fn apply(params: &Value) -> Result<Value> {
             "storeCredentialsRequired": false,
         }));
     }
-    match selection.artifact.installer_strategy.as_str() {
-        "app-bundle-replacement" => {
-            super::macos_runner::apply_macos_app_bundle(&selection, &staged_path)
-        }
-        strategy => {
-            bail!("client update live apply is not enabled for installer strategy '{strategy}'")
-        }
-    }
+    super::native_runner::apply_live(&selection, &staged_path, params)
 }
 
 pub fn rollback(params: &Value) -> Result<Value> {
     reject_artifact_overrides(params)?;
     let (selection, staged_path) = verify_staged_selection(params)?;
-    match selection.artifact.installer_strategy.as_str() {
-        "app-bundle-replacement" => {
-            super::macos_runner::rollback_macos_app_bundle(&selection, &staged_path)
-        }
-        strategy => {
-            bail!("client update rollback is not enabled for installer strategy '{strategy}'")
-        }
-    }
+    super::native_runner::rollback_live(&selection, &staged_path, params)
 }
 
 pub(super) fn rollback_plan(strategy: &str, snapshot_recorded: bool) -> Value {

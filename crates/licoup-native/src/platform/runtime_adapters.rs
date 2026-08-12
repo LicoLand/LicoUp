@@ -47,6 +47,9 @@ pub(crate) use probe::probe_runtime_driver;
 pub(crate) use registry::{
     adapter_management_catalog, inventory_capability_matrix, runtime_driver_profile,
 };
+pub use registry::{
+    reload_conversation_readiness_document, reload_conversation_readiness_from_path,
+};
 
 #[cfg(test)]
 mod tests;

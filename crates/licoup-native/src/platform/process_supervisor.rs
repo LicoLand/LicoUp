@@ -62,6 +62,53 @@ pub(crate) fn run_bounded_command_output(
     })
 }
 
+/// Runs a sandboxed child with one bounded stdin document and bounded output.
+pub(crate) fn run_bounded_command_input(
+    command: &mut Command,
+    input: &[u8],
+    timeout: Duration,
+    max_output: usize,
+) -> io::Result<BoundedCommandOutput> {
+    command
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+    let mut child = SupervisedChild::spawn(command)?;
+    let mut stdin = child
+        .stdin()
+        .ok_or_else(|| io::Error::other("supervised stdin unavailable"))?;
+    stdin.write_all(input)?;
+    drop(stdin);
+    let stdout = child
+        .stdout()
+        .ok_or_else(|| io::Error::other("supervised stdout unavailable"))?;
+    let stderr = child
+        .stderr()
+        .ok_or_else(|| io::Error::other("supervised stderr unavailable"))?;
+    let stdout_handle = thread::spawn(move || read_bounded_bytes(stdout, max_output));
+    let stderr_handle = thread::spawn(move || read_bounded_bytes(stderr, max_output));
+    let deadline = Instant::now() + timeout;
+    while (!stdout_handle.is_finished() || !stderr_handle.is_finished())
+        && Instant::now() < deadline
+    {
+        thread::sleep(PROCESS_POLL_INTERVAL);
+    }
+    let timed_out = !stdout_handle.is_finished() || !stderr_handle.is_finished();
+    let status = child
+        .terminate_tree()
+        .map_err(|_| io::Error::other("supervised process cleanup failed"))?;
+    let stdout = join_bounded(stdout_handle, IO_THREAD_EXIT_GRACE)
+        .map_err(|_| io::Error::other("supervised stdout cleanup failed"))??;
+    let stderr = join_bounded(stderr_handle, IO_THREAD_EXIT_GRACE)
+        .map_err(|_| io::Error::other("supervised stderr cleanup failed"))??;
+    Ok(BoundedCommandOutput {
+        status,
+        stdout: stdout.bytes,
+        timed_out,
+        truncated: stdout.truncated || stderr.truncated,
+    })
+}
+
 struct BoundedBytes {
     bytes: Vec<u8>,
     truncated: bool,

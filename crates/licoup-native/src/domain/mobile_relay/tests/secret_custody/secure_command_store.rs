@@ -2,7 +2,7 @@ use super::super::test_support::*;
 #[test]
 fn secure_command_create_rejects_raw_runtime_e2ee_secret_overrides() {
     let dir = temp_dir("mobile-relay-secure-command-raw-runtime-e2ee-overrides");
-    let previous = set_portable_data_dir_override(Some(dir));
+    let previous = set_portable_data_dir_override(Some(dir.to_path_buf()));
 
     let mut pc_config = default_config();
     let pc_descriptor = ensure_mobile_relay_endpoint_descriptor(
@@ -132,7 +132,7 @@ fn secure_command_create_rejects_raw_runtime_e2ee_secret_overrides() {
 fn secure_command_create_uses_mobile_relay_secret_store_override_without_raw_e2ee_json() {
     let station = CanonicalStation::start(1, Vec::new());
     let dir = temp_dir("mobile-relay-secure-command-secret-store-override");
-    let previous = set_portable_data_dir_override(Some(dir));
+    let previous = set_portable_data_dir_override(Some(dir.to_path_buf()));
 
     let store = Arc::new(EphemeralSecretStore::new());
     let mut pc_config = default_config();

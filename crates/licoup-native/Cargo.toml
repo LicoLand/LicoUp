@@ -1,6 +1,6 @@
 [package]
 name = "licoup-native"
-version = "0.0.1-alpha"
+version = "0.1.0"
 edition = "2024"
 license.workspace = true
 publish = false
@@ -59,6 +59,7 @@ x25519-dalek = { version = "2.0", features = ["static_secrets", "zeroize"] }
 zeroize = "1.8"
 tar = "0.4"
 flate2 = "1.0"
+zip = { version = "2.2", default-features = false, features = ["deflate"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 block2 = "0.6.2"
@@ -76,6 +77,7 @@ dbus-secret-service = { version = "4.1.0", features = ["crypto-rust"] }
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61", features = [
   "Win32_Foundation",
+  "Win32_System_Diagnostics_ToolHelp",
   "Win32_System_Threading",
 ] }
 
@@ -84,6 +86,11 @@ nix = { version = "0.27", default-features = false, features = ["fs", "user", "s
 
 [dev-dependencies]
 trybuild = { path = "../trybuild" }
+criterion = "0.5"
+
+[[bench]]
+name = "native_backend"
+harness = false
 
 [[bin]]
 name = "licoup-cli"
@@ -96,6 +103,10 @@ path = "src/bin/lico-subagent-mcp.rs"
 [[bin]]
 name = "lico-conversation-mcp"
 path = "src/bin/lico-conversation-mcp.rs"
+
+[[bin]]
+name = "lico-gateway"
+path = "src/bin/lico-gateway.rs"
 
 [[bin]]
 name = "lico-llm-gateway"

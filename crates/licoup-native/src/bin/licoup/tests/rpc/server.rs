@@ -1,3 +1,4 @@
+use super::super::support::temp_cli_dir;
 use super::*;
 
 fn rpc_input(requests: &[Value]) -> Cursor<Vec<u8>> {
@@ -121,4 +122,36 @@ fn stdio_rpc_conversation_send_rejects_missing_agent_before_dispatch() {
     assert_eq!(frames[0]["kind"], "terminal");
     assert_eq!(frames[0]["ok"], false);
     assert_eq!(frames[0]["error"]["code"], "agent_identifier_missing");
+}
+
+#[test]
+fn stdio_rpc_executes_client_conversation_actions_on_the_bound_portable_root() {
+    let _serial = claude_process_local_test_lock::lock_claude_process_local_tests();
+    let portable = temp_cli_dir("client-conversation-rpc");
+    let input = rpc_input(&[
+        json!({
+            "protocol": STDIO_RPC_PROTOCOL,
+            "id": "request-1",
+            "workflowId": "workflow-1",
+            "method": "client.conversation.execute",
+            "params": {"action": "conversation.list", "includeArchived": false},
+            "portableDataDir": portable,
+        }),
+        json!({
+            "protocol": STDIO_RPC_PROTOCOL,
+            "id": "request-2",
+            "workflowId": "workflow-1",
+            "method": "shutdown",
+        }),
+    ]);
+    let output = serve_stdio_rpc(input, Vec::new(), |_, _| {
+        panic!("structured client conversation must not reach execute")
+    })
+    .unwrap();
+
+    let frames = rpc_output(output);
+    assert_eq!(frames[0]["ok"], true);
+    assert_eq!(frames[0]["result"]["ok"], true);
+    assert_eq!(frames[0]["result"]["result"], json!([]));
+    let _ = fs::remove_dir_all(portable);
 }

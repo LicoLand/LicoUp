@@ -15,7 +15,9 @@ use super::journal_recovery::{
     abort_empty_prepared_on_error, commit_staged_journaled_operation, current_group_metadata,
     journal_operation_identity, open_security_ledger, resume_journaled_operation,
 };
-use super::participant_runtime::{ParticipantRequirement, with_local_participant};
+use super::participant_runtime::{
+    ParticipantRequirement, group_state_store, with_local_participant,
+};
 
 pub(super) fn commit_process(params: &Value) -> Result<Value> {
     reject_caller_asserted_trust(params)?;
@@ -54,7 +56,12 @@ pub(super) fn commit_process(params: &Value) -> Result<Value> {
             !local_is_removed,
         )?;
         let committer_trust_state = trusted_roster.state_for(&committer_identity)?.clone();
-        let mut group = load_group_for_journal(runtime.participant, runtime.identity, &group_id)?;
+        let mut group = load_group_for_journal(
+            group_state_store(&mut *runtime.group_store)?,
+            runtime.participant,
+            runtime.identity,
+            &group_id,
+        )?;
         let mut security_ledger = open_security_ledger()?;
         let (operation_id, request_digest) = journal_operation_identity(
             "secure_mesh.mls.commit.process",
@@ -69,6 +76,7 @@ pub(super) fn commit_process(params: &Value) -> Result<Value> {
             OffsetDateTime::now_utc().unix_timestamp(),
         )?;
         if let Some(response) = resume_journaled_operation(
+            group_state_store(&mut *runtime.group_store)?,
             &mut security_ledger,
             operation.clone(),
             Some(&group),
@@ -89,6 +97,7 @@ pub(super) fn commit_process(params: &Value) -> Result<Value> {
         let staged_result = (|| {
             let base = current_group_metadata(&group, runtime.identity)?;
             require_group_base_current(
+                group_state_store(&mut *runtime.group_store)?,
                 Some(&base),
                 &base.group_id_hash,
                 &base.participant_endpoint_id,

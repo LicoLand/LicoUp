@@ -49,7 +49,11 @@ pub(in crate::platform) fn cancel(session_id: &str) -> ControlDisposition {
     {
         use nix::sys::signal::{Signal, kill};
         use nix::unistd::Pid;
-        if kill(Pid::from_raw(pid as i32), Signal::SIGTERM).is_ok() {
+        // The turn runs as its own process group (command_group group_spawn),
+        // so a negative pid signals the whole process tree. Descendants that
+        // hold the pty open would otherwise keep the turn alive after the
+        // root exits.
+        if kill(Pid::from_raw(-(pid as i32)), Signal::SIGTERM).is_ok() {
             clear_active_turn(session_id);
             return ControlDisposition::Accepted;
         }

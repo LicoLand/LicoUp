@@ -2,7 +2,7 @@ use super::super::test_support::*;
 #[test]
 fn legitimate_peer_identity_rotation_is_terminal_until_explicit_repair() {
     let dir = temp_dir("mobile-relay-legitimate-rotation-terminal");
-    let previous = set_portable_data_dir_override(Some(dir));
+    let previous = set_portable_data_dir_override(Some(dir.to_path_buf()));
     let store = Arc::new(EphemeralSecretStore::new());
     let mobile_store: Arc<dyn SecureMeshSecretStore> = store.clone();
     let pairwise_store: Arc<dyn SecureMeshSecretStore> = store.clone();
@@ -70,7 +70,7 @@ fn legitimate_peer_identity_rotation_is_terminal_until_explicit_repair() {
 #[test]
 fn out_of_band_mobile_response_cannot_replace_pinned_pc_identity() {
     let dir = temp_dir("out-of-band-mobile-response-pinned-pc");
-    let previous = set_portable_data_dir_override(Some(dir));
+    let previous = set_portable_data_dir_override(Some(dir.to_path_buf()));
     let mut pinned_pc_config = default_config();
     let pinned_pc_descriptor = ensure_mobile_relay_endpoint_descriptor(
         &mut pinned_pc_config,
@@ -136,7 +136,7 @@ fn out_of_band_mobile_response_cannot_replace_pinned_pc_identity() {
 #[test]
 fn tampered_mobile_relay_command_envelope_is_rejected_before_execution() {
     let dir = temp_dir("mobile-relay-tampered-command");
-    let previous = set_portable_data_dir_override(Some(dir));
+    let previous = set_portable_data_dir_override(Some(dir.to_path_buf()));
     let (mut pc_config, _mobile_config, envelope) = paired_command_envelope_fixture();
     persist_test_runtime_secret_material(stringify!(&pc_config)).unwrap();
     save_config(&mut pc_config).unwrap();
@@ -163,7 +163,7 @@ fn tampered_mobile_relay_command_envelope_is_rejected_before_execution() {
 #[test]
 fn commands_sync_redacts_malicious_station_crypto_errors() {
     let dir = temp_dir("mobile-relay-sync-redacted-crypto-error");
-    let previous = set_portable_data_dir_override(Some(dir));
+    let previous = set_portable_data_dir_override(Some(dir.to_path_buf()));
     let (mut pc_config, _mobile_config, mut envelope) = paired_command_envelope_fixture();
     let mut carrier = general_purpose::URL_SAFE_NO_PAD
         .decode(envelope["ciphertext"].as_str().unwrap())
@@ -207,7 +207,7 @@ fn commands_sync_redacts_malicious_station_crypto_errors() {
 #[test]
 fn mobile_relay_command_error_result_redacts_internal_detail() {
     let dir = temp_dir("mobile-relay-command-redacted-internal-error");
-    let previous = set_portable_data_dir_override(Some(dir));
+    let previous = set_portable_data_dir_override(Some(dir.to_path_buf()));
     let (mut pc_config, mobile_config, _envelope) = paired_command_envelope_fixture();
     persist_test_runtime_secret_material(stringify!(&pc_config)).unwrap();
     save_config(&mut pc_config).unwrap();
@@ -254,7 +254,7 @@ fn mobile_relay_command_error_result_redacts_internal_detail() {
 #[test]
 fn replayed_mobile_relay_command_envelope_does_not_execute_twice() {
     let dir = temp_dir("mobile-relay-replayed-command");
-    let previous = set_portable_data_dir_override(Some(dir));
+    let previous = set_portable_data_dir_override(Some(dir.to_path_buf()));
     let (mut pc_config, mobile_config, envelope) = paired_command_envelope_fixture();
     persist_test_runtime_secret_material(stringify!(&pc_config)).unwrap();
     save_config(&mut pc_config).unwrap();
@@ -282,7 +282,7 @@ fn replayed_mobile_relay_command_envelope_does_not_execute_twice() {
 #[test]
 fn mobile_relay_result_replay_proof_rejects_second_open_without_plaintext() {
     let dir = temp_dir("mobile-relay-result-replay-proof");
-    let previous = set_portable_data_dir_override(Some(dir));
+    let previous = set_portable_data_dir_override(Some(dir.to_path_buf()));
     let (mut pc_config, mobile_config, envelope) = paired_command_envelope_fixture();
     persist_test_runtime_secret_material(stringify!(&pc_config)).unwrap();
     save_config(&mut pc_config).unwrap();

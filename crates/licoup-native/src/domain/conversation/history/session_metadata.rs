@@ -32,7 +32,7 @@ pub(super) fn session_from_messages_with_title(
 ) -> Value {
     let updated_at = system_time(metadata.modified().unwrap_or(SystemTime::UNIX_EPOCH));
     let created_at = system_time(metadata.created().unwrap_or(SystemTime::UNIX_EPOCH));
-    let source_client = source_client_for_session(adapter, path, &messages);
+    let source_client = source_client_for_session(adapter, path, source_kind, &messages);
     let host_app = host_app_for_path(adapter, path);
     let host_app_label_value = host_app_label(&host_app);
     let source_client_label_value = source_client_label(&source_client);
@@ -454,6 +454,7 @@ pub(super) fn looks_like_generated_identity(value: &str) -> bool {
 pub(super) fn source_client_for_session(
     adapter: HistoryAdapter,
     path: &Path,
+    source_kind: &str,
     messages: &[Value],
 ) -> String {
     let evidence = source_evidence_text(path, messages);
@@ -468,6 +469,11 @@ pub(super) fn source_client_for_session(
         || evidence.contains("/kilo/")
     {
         return "kilo-code".to_string();
+    }
+    if adapter == HistoryAdapter::Cursor
+        && matches!(source_kind, "cursor-cli-chats" | "cursor-cli-projects")
+    {
+        return "cursor-agent".to_string();
     }
     adapter.id().to_string()
 }
@@ -520,9 +526,10 @@ pub(super) fn source_client_label(source_client: &str) -> &'static str {
         "antigravity" => "Antigravity",
         "claude-code" => "Claude Code",
         "code" => "VS Code",
-        "codex" => "Codex",
+        "codex" => "Codex CLI",
         "copilot" => "GitHub Copilot",
         "cursor" => "Cursor",
+        "cursor-agent" => "Cursor Agent CLI",
         "hermes" => "Hermes Agent",
         "kilo-code" => "Kilo Code",
         "kimi" => "Kimi",
@@ -560,8 +567,9 @@ pub(super) fn source_client_display(source_client: &str) -> &'static str {
         "openclaw" => "openclaw",
         "opencode" => "opencode",
         "antigravity" => "antigravity",
-        "codex" => "codex",
+        "codex" => "codex cli",
         "cursor" => "cursor",
+        "cursor-agent" => "cursor agent cli",
         "hermes" => "hermes",
         "kimi" => "kimi",
         "pi" => "pi",

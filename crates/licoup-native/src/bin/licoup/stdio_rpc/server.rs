@@ -1,5 +1,16 @@
 use super::*;
+use licoup_native::domain::client_conversation::ConversationService;
+use std::collections::VecDeque;
 
+const MAX_CONVERSATION_SERVICE_ROOTS: usize = 4;
+
+#[derive(Default)]
+struct ConversationServices {
+    entries: VecDeque<(Option<PathBuf>, ConversationService)>,
+}
+
+#[path = "server/client_conversation.rs"]
+mod client_conversation;
 #[path = "server/conversation.rs"]
 mod conversation;
 #[path = "server/state.rs"]
@@ -14,6 +25,7 @@ where
     let writer = Arc::new(Mutex::new(writer));
     let mut bound_workflow_id: Option<String> = None;
     let mut conversation_workers = Vec::new();
+    let mut conversation_services = ConversationServices::default();
     loop {
         conversation::reap_finished(&mut conversation_workers);
         let line = read_stdio_rpc_line(&mut reader, STDIO_RPC_MAX_REQUEST_BYTES)?;
@@ -151,6 +163,54 @@ where
                     )?;
                 }
             }
+            StdioRpcMethod::ClientConversation {
+                params,
+                portable_data_dir,
+            } => {
+                let service = match conversation_service(
+                    &mut conversation_services,
+                    portable_data_dir.clone(),
+                ) {
+                    Ok(service) => service,
+                    Err(error) => {
+                        write_stdio_rpc_client_error_shared(
+                            &writer,
+                            Some(&request.id),
+                            Some(&request.workflow_id),
+                            &stdio_rpc_command_error(&error),
+                        )?;
+                        continue;
+                    }
+                };
+                if client_conversation::requires_worker(&params) {
+                    if !conversation::has_capacity(&conversation_workers) {
+                        write_stdio_rpc_client_error_shared(
+                            &writer,
+                            Some(&request.id),
+                            Some(&request.workflow_id),
+                            &stdio_rpc_client_error("conversation_capacity_exhausted"),
+                        )?;
+                        continue;
+                    }
+                    conversation_workers.push(client_conversation::spawn_execute(
+                        Arc::clone(&writer),
+                        request.id,
+                        request.workflow_id,
+                        params,
+                        service,
+                        portable_data_dir,
+                    ));
+                } else {
+                    client_conversation::execute(
+                        &writer,
+                        &request.id,
+                        &request.workflow_id,
+                        params,
+                        service,
+                        portable_data_dir,
+                    )?;
+                }
+            }
             StdioRpcMethod::Catalog {
                 operation,
                 params,
@@ -252,4 +312,38 @@ where
             }
         }
     }
+}
+
+/// Open (once per portable data dir) the process-owned Conversation service.
+/// The returned handle is cloned for every request and spawned worker, so all
+/// sessions reuse one bounded SQLite pool instead of opening per-call
+/// connections. The override guard resolves the root exactly like the legacy
+/// per-request open did.
+fn conversation_service(
+    services: &mut ConversationServices,
+    portable_data_dir: Option<PathBuf>,
+) -> Result<ConversationService> {
+    if let Some(position) = services
+        .entries
+        .iter()
+        .position(|(root, _)| root == &portable_data_dir)
+    {
+        let entry = services
+            .entries
+            .remove(position)
+            .expect("conversation service position exists");
+        let service = entry.1.clone();
+        services.entries.push_back(entry);
+        return Ok(service);
+    }
+    let _guard = PortableDataDirOverrideGuard::set(portable_data_dir.clone());
+    let root = licoup_native::platform::paths::portable_data_dir()?;
+    let service = ConversationService::open(&root)?;
+    if services.entries.len() == MAX_CONVERSATION_SERVICE_ROOTS {
+        services.entries.pop_front();
+    }
+    services
+        .entries
+        .push_back((portable_data_dir, service.clone()));
+    Ok(service)
 }
