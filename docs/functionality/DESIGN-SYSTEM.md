@@ -266,7 +266,9 @@ doing the interaction job, so it became `accent`.
 Hover, pressed, and selected are **roles**, not locally invented alpha values.
 `Colors.white.withAlpha(...)` and `Colors.black.withAlpha(...)` are rejected by
 test inside `frontend/shared/ui/`, with three deliberate exemptions: the fixed
-brand mark, the macOS system menu material, and the shadow scale.
+brand mark, the macOS system menu material, and the shadow scale. In the
+feature layer the same rule is enforced as a ratchet: the existing wash count
+is budgeted and may only shrink, so new invented washes fail the build.
 
 That rule is not pedantry. Deriving fills from white alpha meant a custom light
 preset received a white haze over its own background regardless of what it
@@ -634,6 +636,16 @@ so the row does not jump. Group headers carry author identity only (no clock).
 
 Consecutive messages from one author are a headerless continuation. Group
 internal gap is `compact`; between groups it is `item`.
+
+**Circular identity wells.** Every messaging identity circle uses the shared
+`ConversationVisualTokens.circularIdentityWellFill` role. Its default fill is
+pure black (`#000000`) in dark mode and `surfaceLow` in light mode. This covers
+agent avatars in the left conversation list, the right group roster/user list,
+conversation headers, composers, message groups, and group-creation dialogs;
+the group-conversation identity icon follows the same rule. Brand marks and
+semantic activity dots keep their own colours, while an explicit selected
+state changes the surrounding row treatment but never replaces the dark-mode
+black identity well.
 
 **Process disclosure (single-turn Working).** Structured process runs render as
 `MessagingProcessStatusRow` inline under the triggering user message in the
