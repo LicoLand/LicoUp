@@ -86,12 +86,18 @@ export function validateClientSupportMatrix(raw) {
       `manual integration ${service.id} must not block a client release`);
   }
   const releaseCatalog = loadClientReleaseTargetCatalog();
-  const releaseTargetIds = releaseCatalog.targets.map((target) => target.id);
   const matrixTargetIds = raw.targets.map((target) => target.targetId);
   requireValue(new Set(matrixTargetIds).size === matrixTargetIds.length, "support matrix target ids must be unique");
-  requireValue(JSON.stringify([...matrixTargetIds].sort()) === JSON.stringify([...releaseTargetIds].sort()),
-    "support matrix must contain exactly one row for every release target");
+  const matrixTargetIdSet = new Set(matrixTargetIds);
+  requireValue(releaseCatalog.targets.every((target) =>
+    matrixTargetIdSet.has(target.runtimeTargetId)),
+  "every release package target must reference a known runtime target");
   const rows = raw.targets.map((target) => {
+    requireValue(typeof target.buildSupported === "boolean",
+      `target ${target.targetId} must declare buildSupported`);
+    requireValue(target.deviceClass === undefined ||
+      ["physical-phone", "simulator"].includes(target.deviceClass),
+    `target ${target.targetId} has an invalid deviceClass`);
     const defaults = raw.defaults?.[target.profile];
     requireValue(defaults && typeof defaults === "object", `unknown support matrix profile: ${target.profile}`);
     const statuses = { ...defaults, ...(target.overrides || {}) };
@@ -100,7 +106,12 @@ export function validateClientSupportMatrix(raw) {
     for (const id of serviceIds) {
       requireValue(allowedStatuses.has(statuses[id]), `target ${target.targetId} has invalid status for ${id}`);
     }
-    return { targetId: target.targetId, statuses };
+    return {
+      targetId: target.targetId,
+      buildSupported: target.buildSupported,
+      deviceClass: target.deviceClass || "",
+      statuses,
+    };
   });
   return { services: raw.services, releaseCatalog, rows };
 }
@@ -257,7 +268,6 @@ function capabilityRole(capabilityList, locale) {
 }
 
 function renderEnglishReport(validated, productVersion, drivers, readiness, nativeCapabilities) {
-  const targetById = new Map(validated.releaseCatalog.targets.map((target) => [target.id, target]));
   const lines = [
     "# LicoUp Compatibility",
     "",
@@ -273,15 +283,26 @@ function renderEnglishReport(validated, productVersion, drivers, readiness, nati
     "",
     "A build target is not a support claim.",
     "",
-    "| Target | Build | GitHub Release eligible | Physical/device evidence | Store publication | Client | Peer encryption | Mobile relay |",
-    "| --- | --- | --- | --- | --- | --- | --- | --- |"
+    "| Runtime target | Build | Physical/device evidence | Client | Peer encryption | Mobile relay |",
+    "| --- | --- | --- | --- | --- | --- |"
   ];
   for (const row of validated.rows) {
-    const target = targetById.get(row.targetId);
-    const deviceEvidence = target.deviceClass === "simulator"
+    const deviceEvidence = row.deviceClass === "simulator"
       ? "simulator only"
       : "not claimed";
-    lines.push(`| ${row.targetId} | ${target.supported ? "available" : "unavailable"} | ${target.releaseSupported ? "eligible" : "not eligible"} | ${deviceEvidence} | not claimed | ${selectedStatus(row, "client-shell")} | ${selectedStatus(row, "secure-mesh-pairwise")} | ${selectedStatus(row, "mobile-relay")} |`);
+    lines.push(`| ${row.targetId} | ${row.buildSupported ? "available" : "unavailable"} | ${deviceEvidence} | ${selectedStatus(row, "client-shell")} | ${selectedStatus(row, "secure-mesh-pairwise")} | ${selectedStatus(row, "mobile-relay")} |`);
+  }
+  lines.push(
+    "",
+    "## Release package targets",
+    "",
+    "Runtime targets and release packages are intentionally different authorities. Each row below is one native package for one distribution channel; selecting several rows produces several independent package directories.",
+    "",
+    "| Package target | Runtime target | Platform | Channel | Format | Architecture | Package build | Release eligible | Update authority |",
+    "| --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+  );
+  for (const target of validated.releaseCatalog.targets) {
+    lines.push(`| ${target.id} | ${target.runtimeTargetId} | ${target.platform} | ${target.channel} | ${target.packageFormat} | ${target.arch} | ${target.packageBuildSupported ? "available" : "blocked"} | ${target.releaseSupported ? "eligible" : "not eligible"} | ${target.update.kind} |`);
   }
   lines.push(
     "",
@@ -291,7 +312,8 @@ function renderEnglishReport(validated, productVersion, drivers, readiness, nati
     "- `preview` means the feature is still changing.",
     "- `unverified` means there is no current support claim.",
     "- `unsupported` means the feature must not be presented as available.",
-    "- `eligible` means a release operator may explicitly select that target; it does not mean any current release includes it.",
+    "- `eligible` means a release operator may explicitly select that exact package target; it does not mean any current release includes it.",
+    "- A generic Linux archive is an internal verification carrier, not an installable release package. Linux distribution uses native package or repository targets.",
     "- Feature status does not establish native-host, physical-device, biometric, hardware-custody, or cross-device evidence. Those claims remain `not claimed`; a simulator row proves only its simulator closure.",
     "- Store publication is not claimed by this matrix and requires a separate channel-specific result.",
     "- Peer content is encrypted by the sending client. Sensitive runtime data stays local.",
@@ -342,7 +364,6 @@ function renderEnglishReport(validated, productVersion, drivers, readiness, nati
 }
 
 function renderChineseReport(validated, productVersion, drivers, readiness, nativeCapabilities) {
-  const targetById = new Map(validated.releaseCatalog.targets.map((target) => [target.id, target]));
   const lines = [
     "# LicoUp 兼容性",
     "",
@@ -358,15 +379,26 @@ function renderChineseReport(validated, productVersion, drivers, readiness, nati
     "",
     "可以构建，不代表已经支持。",
     "",
-    "| 目标 | 构建 | 可选入 GitHub Release | 真机/设备证据 | 商店发布 | 客户端 | 对端加密 | 移动中转 |",
-    "| --- | --- | --- | --- | --- | --- | --- | --- |"
+    "| 运行目标 | 构建 | 真机/设备证据 | 客户端 | 对端加密 | 移动中转 |",
+    "| --- | --- | --- | --- | --- | --- |"
   ];
   for (const row of validated.rows) {
-    const target = targetById.get(row.targetId);
-    const deviceEvidence = target.deviceClass === "simulator"
+    const deviceEvidence = row.deviceClass === "simulator"
       ? "仅模拟器"
       : "未声明";
-    lines.push(`| ${row.targetId} | ${target.supported ? "可用" : "不可用"} | ${target.releaseSupported ? "可选入" : "不可选入"} | ${deviceEvidence} | 未声明 | ${chineseStatus[selectedStatus(row, "client-shell")]} | ${chineseStatus[selectedStatus(row, "secure-mesh-pairwise")]} | ${chineseStatus[selectedStatus(row, "mobile-relay")]} |`);
+    lines.push(`| ${row.targetId} | ${row.buildSupported ? "可用" : "不可用"} | ${deviceEvidence} | ${chineseStatus[selectedStatus(row, "client-shell")]} | ${chineseStatus[selectedStatus(row, "secure-mesh-pairwise")]} | ${chineseStatus[selectedStatus(row, "mobile-relay")]} |`);
+  }
+  lines.push(
+    "",
+    "## 发布包目标",
+    "",
+    "运行目标和发布包目标是有意分离的两套权威。下表每一行只代表一个分发渠道的一种原生包；同时选择多行时，会生成多个相互独立的发布包目录。",
+    "",
+    "| 发布包目标 | 运行目标 | 平台 | 渠道 | 格式 | 架构 | 包构建 | 可发布 | 更新权威 |",
+    "| --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+  );
+  for (const target of validated.releaseCatalog.targets) {
+    lines.push(`| ${target.id} | ${target.runtimeTargetId} | ${target.platform} | ${target.channel} | ${target.packageFormat} | ${target.arch} | ${target.packageBuildSupported ? "可用" : "阻塞"} | ${target.releaseSupported ? "可选入" : "不可选入"} | ${target.update.kind} |`);
   }
   lines.push(
     "",
@@ -376,7 +408,8 @@ function renderChineseReport(validated, productVersion, drivers, readiness, nati
     "- “预览”表示功能仍在变化。",
     "- “未验证”表示当前没有支持声明。",
     "- “不支持”表示界面不得把该功能显示为可用。",
-    "- “可选入”表示发布人员可以明确选择该目标，不表示任何当前发布已经包含它。",
+    "- “可选入”表示发布人员可以明确选择该精确发布包目标，不表示任何当前发布已经包含它。",
+    "- 通用 Linux 压缩包只可作为内部验证载体，不是可安装发布包；Linux 分发必须使用原生包或软件仓库目标。",
     "- 功能状态不能证明原生宿主、真机、生物识别、硬件密钥保管或跨设备证据；这些结论保持“未声明”，模拟器行只证明模拟器闭环。",
     "- 本矩阵不声明商店发布；商店发布必须有独立的渠道结论。",
     "- 对端内容由发送客户端加密，敏感运行时数据留在本机。",

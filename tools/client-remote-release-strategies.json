@@ -1,0 +1,12 @@
+{
+  "schemaVersion": "licoup.client-remote-release-strategies.v1",
+  "groupId": "client-remote-release-validity",
+  "activeStrategyIds": ["build-success"],
+  "strategies": [
+    {
+      "id": "build-success",
+      "releaseValidWhen": "selected-target-build-command-succeeded",
+      "remoteValidationCommands": []
+    }
+  ]
+}

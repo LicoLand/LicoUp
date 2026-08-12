@@ -24,6 +24,10 @@ import {
   nativeContinuityDigest,
   productContinuityBindingDigest,
 } from "./lib/agent-conversation-release-binding.mjs";
+import {
+  verificationModelForAgent,
+  verificationModelsMap,
+} from "./lib/agent-conversation-verification-models.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const desktopRoot = resolve(root, "apps/desktop");
@@ -33,11 +37,8 @@ const liveSourceRef = "lib/src/application/product_acceptance/agent_conversation
 const sentinel = "LICO_AGENT_CONVERSATION_RELEASE_UI_LIVE ";
 const defaultAgent = "codex";
 const selfTestChallengeDigest = `sha256:${"a".repeat(64)}`;
-const selfTestModel = "runtime-default";
-const validationModels = Object.freeze({
-  cursor: "Auto",
-  "kilo-code": "Kilo Auto Free",
-});
+const selfTestModel = verificationModelForAgent(defaultAgent);
+const validationModels = verificationModelsMap();
 const interruptSteerAgents = new Set(
   JSON.parse(readFileSync(resolve(
     root,
@@ -177,7 +178,7 @@ function encodedLiveReceipt(overrides = {}) {
     progressiveTimelineVisible: true,
     sameNativeSessionId: true,
     historyReadback: true,
-    interruptSteerProven: true,
+    interruptSteerProven: interruptSteerAgents.has(defaultAgent),
     turnCount: 2,
     invocationChallengeDigest: selfTestChallengeDigest,
     ...overrides,
@@ -236,7 +237,8 @@ function selfTest() {
     && liveSource.includes("initializeWithOptions(runBackgroundSteps: false)")
     && liveSource.includes("fixtureBackend': false")
     && liveSource.includes("agent-conversation-composer-field")
-    && liveSource.includes("liveConversationMessagesByAgent")
+    && liveSource.includes("liveConversationMessagesByScope")
+    && liveSource.includes("conversationLiveScopeKeysForAgent")
     && liveSource.includes("exact native-session readback")
     && liveSource.includes("assistantReplies.contains(firstExpected)")
     && liveSource.includes("assistantReplies.contains(secondExpected)")

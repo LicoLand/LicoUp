@@ -8,6 +8,7 @@ import { sanitizeError } from "./lib/sanitize-error.mjs";
 const repoRoot = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const versionManifestPath = path.join(repoRoot, "tools", "client-version.json");
 const versionManifestSchema = "v0.0.1:client-version-manifest-1";
+const cargoWorkspaceVersionPackages = Object.freeze(["licoup-native", "trybuild"]);
 
 function readJson(relativePath) {
   return JSON.parse(readFileSync(path.join(repoRoot, relativePath), "utf8"));
@@ -113,17 +114,20 @@ function syncCargoLock(relativePath, manifest) {
   if (!existsSync(absolutePath)) {
     return;
   }
-  const source = readText(relativePath);
-  const regex = /(\[\[package\]\]\nname = "licoup-native"\nversion = ")[^"]+(")/;
-  if (!regex.test(source)) {
-    return;
+  let source = readText(relativePath);
+  for (const packageName of cargoWorkspaceVersionPackages) {
+    const regex = new RegExp(
+      String.raw`(\[\[package\]\]\nname = "${packageName}"\nversion = ")[^"]+(")`,
+    );
+    if (!regex.test(source)) continue;
+    source = replaceExactly(
+      source,
+      regex,
+      (_, prefix, suffix) => `${prefix}${manifest.productVersion}${suffix}`,
+      `${relativePath} ${packageName} version`,
+    );
   }
-  writeText(relativePath, replaceExactly(
-    source,
-    regex,
-    (_, prefix, suffix) => `${prefix}${manifest.productVersion}${suffix}`,
-    `${relativePath} licoup-native version`
-  ));
+  writeText(relativePath, source);
 }
 
 function syncPubspec(manifest) {
@@ -232,24 +236,16 @@ function checkVersion() {
   for (const cargoLockPath of ["Cargo.lock", "crates/licoup-native/Cargo.lock"]) {
     if (existsSync(path.join(repoRoot, cargoLockPath))) {
       const source = readText(cargoLockPath);
-      const matches = [...source.matchAll(/\[\[package\]\]\nname = "licoup-native"\nversion = "([^"]+)"/g)];
-      if (matches.length > 0) {
-        if (matches.length !== 1) {
-          throw new Error(`${cargoLockPath} licoup-native version must exist at most once; found ${matches.length}.`);
+      for (const packageName of cargoWorkspaceVersionPackages) {
+        const matches = [...source.matchAll(new RegExp(
+          String.raw`\[\[package\]\]\nname = "${packageName}"\nversion = "([^"]+)"`, "g"))];
+        if (matches.length > 1) {
+          throw new Error(`${cargoLockPath} ${packageName} version must exist at most once; found ${matches.length}.`);
         }
-        ok = checkEqual(
-          records,
-          `${cargoLockPath} licoup-native version`,
-          matches[0][1],
-          manifest.productVersion
-        ) && ok;
-      } else {
-        records.push({
-          label: `${cargoLockPath} licoup-native version`,
-          expected: manifest.productVersion,
-          actual: "not present in generated lockfile",
-          ok: true
-        });
+        if (matches.length === 1) {
+          ok = checkEqual(records, `${cargoLockPath} ${packageName} version`,
+            matches[0][1], manifest.productVersion) && ok;
+        }
       }
     }
   }

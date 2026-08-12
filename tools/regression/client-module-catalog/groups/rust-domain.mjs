@@ -2,6 +2,28 @@ import { rustLayer, rustIntegrationTest, defineModule } from "../helpers.mjs";
 
 export const RUST_DOMAIN_MODULES = Object.freeze([
   defineModule({
+      id: "rust.domain.adaptive-flywheel",
+      kind: "rust-domain",
+      summary: "Immutable strategy packages, compiled Graphs, durable reducer/outbox, and authorized effects",
+      inputs: [
+        "crates/licoup-native/src/domain/adaptive_flywheel/**",
+        "crates/licoup-native/resources/adaptive_flywheel/**",
+        "crates/licoup-native/src/core/safe_archive.rs",
+        "crates/licoup-native/src/platform/process_sandbox/strategy.rs",
+        "crates/licoup-native/src/platform/strategy_runtime/**",
+      ],
+      command: rustLayer("domain::adaptive_flywheel::"),
+    }),
+  defineModule({
+      id: "rust.domain.client-conversations",
+      kind: "rust-domain",
+      summary: "Canonical Conversation messaging, membership, indexed events, direct mentions, and migration",
+      inputs: [
+        "crates/licoup-native/src/domain/client_conversation/**",
+      ],
+      command: rustLayer("domain::client_conversation::"),
+    }),
+  defineModule({
       id: "rust.domain.mcp-adapter",
       kind: "rust-domain",
       summary: "Exact-scope MCP preview-to-authorization, one-shot execution, response validation, and projection",
@@ -2196,16 +2218,6 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       command: rustLayer("domain::skill_hub::tests::pairing_catalog::"),
     }),
   defineModule({
-      id: "rust.domain.skill-hub.install",
-      kind: "rust-domain",
-      summary: "Skill installation planning, conflict policy, apply, and visible result",
-      inputs: [
-        "crates/licoup-native/src/domain/skill_hub/install.rs",
-        "crates/licoup-native/src/domain/skill_hub/tests/install.rs",
-      ],
-      command: rustLayer("domain::skill_hub::tests::install::"),
-    }),
-  defineModule({
       id: "rust.domain.skill-hub.package",
       kind: "rust-domain",
       summary: "Bounded skill package inspection, identifiers, file walks, and digests",
@@ -2215,26 +2227,6 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       command: rustLayer("domain::skill_hub::package::tests"),
     }),
   defineModule({
-      id: "rust.domain.skill-hub.rollback",
-      kind: "rust-domain",
-      summary: "Skill installation snapshots, ownership checks, and rollback boundaries",
-      inputs: [
-        "crates/licoup-native/src/domain/skill_hub/snapshot.rs",
-        "crates/licoup-native/src/domain/skill_hub/tests/rollback.rs",
-      ],
-      command: rustLayer("domain::skill_hub::tests::rollback::"),
-    }),
-  defineModule({
-      id: "rust.domain.skill-hub.transaction",
-      kind: "rust-domain",
-      summary: "Crash-safe skill install journal, commit, and recovery transaction",
-      inputs: [
-        "crates/licoup-native/src/domain/skill_hub/transaction.rs",
-        "crates/licoup-native/src/domain/skill_hub/tests/transaction.rs",
-      ],
-      command: rustLayer("domain::skill_hub::tests::transaction::"),
-    }),
-  defineModule({
       id: "rust.domain.skill-hub.discovery",
       kind: "rust-domain",
       summary: "Explicit local skill root discovery",
@@ -2242,26 +2234,6 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
         "crates/licoup-native/src/domain/skill_hub/discovery.rs",
       ],
       command: rustLayer("domain::skill_hub::discovery::tests"),
-    }),
-  defineModule({
-      id: "rust.domain.skill-hub.update",
-      kind: "rust-domain",
-      summary: "Digest-bound transactional skill update preview and apply",
-      inputs: [
-        "crates/licoup-native/src/domain/skill_hub/update.rs",
-      ],
-      command: rustLayer("domain::skill_hub::update::tests::"),
-    }),
-  defineModule({
-      id: "rust.domain.skill-hub.auto-update",
-      kind: "rust-domain",
-      summary: "User-enabled due scheduling, cross-process exclusion, and bounded skill update retries",
-      inputs: [
-        "crates/licoup-native/src/domain/skill_hub/auto_update.rs",
-        "crates/licoup-native/src/domain/skill_hub/auto_update/**",
-        "crates/licoup-native/src/ffi/commands/skill.rs",
-      ],
-      command: rustLayer("domain::skill_hub::auto_update::tests::"),
     }),
   defineModule({
       id: "rust.domain.skill-hub.delete",
@@ -2291,15 +2263,6 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
         "crates/licoup-native/tests/skill_usage_backfill_cases.rs",
       ],
       command: rustIntegrationTest("skill_usage_backfill_cases"),
-    }),
-  defineModule({
-      id: "rust.domain.skill-hub.source",
-      kind: "rust-domain",
-      summary: "Explicit local mirror and bounded GitHub skill source validation",
-      inputs: [
-        "crates/licoup-native/src/domain/skill_hub/source.rs",
-      ],
-      command: rustLayer("domain::skill_hub::source::tests"),
     }),
   defineModule({
       id: "rust.domain.optional-collaboration",

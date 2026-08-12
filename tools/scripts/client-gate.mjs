@@ -101,10 +101,59 @@ function validatePackageTopology() {
   ) {
     fail("package.json must bind the canonical conversation release-readiness gate");
   }
+  const releaseCatalog = readJson("tools/client-release-targets.json");
+  const deviceDemoPlatforms = [...new Set(releaseCatalog.targets
+    .filter((target) => target.packageBuildSupported === true)
+    .map((target) => target.platform))];
+  if (scripts["client:demo:device:self-test"] !==
+    "node tools/scripts/client-device-demo.mjs --self-test") {
+    fail("package.json must bind the canonical real-device demo self-test");
+  }
+  for (const platform of deviceDemoPlatforms) {
+    if (scripts[`client:demo:device:${platform}`] !==
+      `node tools/scripts/client-device-demo.mjs --platform ${platform}`) {
+      fail(`package.json must bind the canonical ${platform} real-device demo group`);
+    }
+  }
+  const platformNamespace = new RegExp(
+    `^client:demo:device:(?:${deviceDemoPlatforms.join("|")})(?::[a-z0-9-]+)*$`,
+    "u",
+  );
+  for (const script of Object.keys(scripts).filter((name) =>
+    name.startsWith("client:demo:device:") && name !== "client:demo:device:self-test")) {
+    if (!platformNamespace.test(script)) {
+      fail(`real-device demo command has no supported platform namespace: ${script}`);
+    }
+  }
+  const realConversationToolTokens = [
+    "client-agent-conversation-verify.mjs --release-ui",
+    "client-agent-conversation-verify.mjs --live",
+    "client-cursor-conversation-gate.mjs",
+    "client-up-local-service-conversation-gate.mjs",
+    "client-same-session-conversation-gate.mjs",
+    "client-claude-code-conversation-gate.mjs",
+    "client-antigravity-conversation-gate.mjs",
+    "client-codex-conversation-parity.mjs",
+  ];
+  for (const [script, command] of Object.entries(scripts)) {
+    const runsRealConversation = realConversationToolTokens.some((token) =>
+      command.includes(token)) ||
+      (command.includes("client-agent-conversation-product-e2e.mjs") &&
+        !command.includes("--self-test"));
+    if (runsRealConversation && !platformNamespace.test(script)) {
+      fail(`real conversation tool must stay inside a platform device demo group: ${script}`);
+    }
+  }
   for (const [lane, laneScripts] of Object.entries(CLIENT_GATE_LANES)) {
     for (const script of laneScripts) {
       if (!scripts[script]) {
         fail(`client gate lane ${lane} references missing package script ${script}`);
+      }
+      if (
+        script.startsWith("client:demo:device:") &&
+        script !== "client:demo:device:self-test"
+      ) {
+        fail(`ordinary client gate lane ${lane} must not run a real-device demo`);
       }
     }
   }
@@ -174,11 +223,6 @@ function validateCiTopology() {
   }
 }
 
-function releaseOptions(workflow) {
-  return [...inputBlock(workflow, "target").matchAll(/^\s{12}- ([a-z0-9-]+)$/gmu)]
-    .map((match) => match[1]);
-}
-
 function releaseInputIds(workflow) {
   const start = workflow.indexOf("    inputs:\n");
   const end = workflow.indexOf("\npermissions:", start);
@@ -197,100 +241,78 @@ function workflowJobIds(workflow) {
 function validateReleaseTopology() {
   const workflow = readText(".github/workflows/client-release.yml");
   const publisher = readText("tools/scripts/client-github-release-publish.mjs");
+  const preflight = readText("tools/scripts/client-pr-preflight.mjs");
   const catalog = readJson("tools/client-release-targets.json");
   const supportedTargets = catalog.targets
     .filter((target) => target.releaseSupported === true)
     .map((target) => target.id)
     .sort();
   const policyTargets = Object.keys(CLIENT_RELEASE_TARGETS).sort();
-  const options = releaseOptions(workflow).sort();
-  if (JSON.stringify(supportedTargets) !== JSON.stringify(policyTargets)) {
-    fail("release target policy must exactly match releaseSupported catalog entries");
+  const governedPolicyTargets = catalog.targets
+    .filter((target) => target.releaseSupported === true ||
+      (CLIENT_RELEASE_TARGETS[target.id]?.publicationBlocked === true &&
+        target.releaseBlockers?.includes("macos_github_release_publication_not_authorized")))
+    .map((target) => target.id)
+    .sort();
+  if (JSON.stringify(governedPolicyTargets) !== JSON.stringify(policyTargets) ||
+    supportedTargets.some((target) => CLIENT_RELEASE_TARGETS[target].publicationBlocked === true)) {
+    fail("release target policy must match publishable or explicitly local-only catalog entries");
   }
-  if (JSON.stringify(options) !== JSON.stringify(policyTargets)) {
-    fail("release workflow target choice must exactly match releaseSupported targets");
-  }
-  const expectedInputs = ["release_tag", "target", "publish_release"].sort();
+  const expectedInputs = ["phase", "release_tag", "targets", "correlation",
+    "prepare_run_id", "source_revision", "artifact_digests",
+    "signed_update_manifest_base64", "publish_release"].sort();
   if (JSON.stringify(releaseInputIds(workflow).sort()) !== JSON.stringify(expectedInputs)) {
-    fail("release workflow must accept one target and bounded publication inputs");
+    fail("release workflow must accept one or more targets and bounded publication inputs");
   }
-  const expectedJobs = [
-    "source",
-    "dependencies",
-    "release-policy",
-    ...Object.values(CLIENT_RELEASE_TARGETS)
-      .flatMap((target) => [target.buildJob, target.publishJob]),
-  ].sort();
+  const expectedJobs = ["source", "prepare", "publish"].sort();
   if (JSON.stringify(workflowJobIds(workflow).sort()) !== JSON.stringify(expectedJobs)) {
-    fail("release workflow jobs must match the independent target topology");
+    fail("release workflow jobs must match the multi-package topology");
   }
-  assertIncludes(
+  assertExcludes(
     jobBlock(workflow, "source"),
-    "npm run client:verify:agent-conversations:release-ready",
-    "release source policy must require complete local-agent conversation evidence",
+    "npm run client:gate:",
+    "remote release request binding must not repeat local gates",
   );
   assertIncludes(
     workflow,
-    "client-github-release-${{ inputs.release_tag }}-${{ inputs.target }}",
-    "release builds must be concurrent across different targets",
+    "client-github-release-${{ inputs.release_tag }}",
+    "release phases for one tag must serialize",
   );
-  for (const [target, topology] of Object.entries(CLIENT_RELEASE_TARGETS)) {
-    const build = jobBlock(workflow, topology.buildJob);
-    const publish = jobBlock(workflow, topology.publishJob);
-    assertIncludes(
-      build,
-      `inputs.target == '${target}'`,
-      `release build ${topology.buildJob} must be selected only by ${target}`,
-    );
-    assertIncludes(
-      build,
-      `LICO_CLIENT_RELEASE_TARGETS: ${target}`,
-      `release build ${topology.buildJob} must bind its target acceptance`,
-    );
-    assertIncludes(
-      build,
-      "needs: [source, dependencies, release-policy]",
-      `release build ${topology.buildJob} must depend only on shared policy proofs`,
-    );
-    assertIncludes(
-      publish,
-      `inputs.target == '${target}'`,
-      `release publisher ${topology.publishJob} must be selected only by ${target}`,
-    );
-    assertIncludes(
-      publish,
-      `needs: [source, dependencies, release-policy, ${topology.buildJob}]`,
-      `release publisher ${topology.publishJob} must wait only for its own build`,
-    );
-    assertIncludes(
-      publish,
-      "client-github-release-publish-${{ inputs.release_tag }}",
-      `release publisher ${topology.publishJob} must serialize only same-tag metadata updates`,
-    );
-    assertIncludes(
-      publish,
-      `name: ${topology.artifactName}`,
-      `release publisher ${topology.publishJob} must consume only its own artifact`,
-    );
-    assertIncludes(
-      publish,
-      "client-github-release-publish.mjs",
-      `release publisher ${topology.publishJob} must use the canonical append-only publisher`,
-    );
-    for (const other of Object.values(CLIENT_RELEASE_TARGETS)) {
-      if (other.buildJob !== topology.buildJob) {
-        assertExcludes(
-          publish.split("\n    steps:")[0],
-          other.buildJob,
-          `release publisher ${topology.publishJob} must not wait for ${other.buildJob}`,
-        );
-      }
+  const source = jobBlock(workflow, "source");
+  const prepare = jobBlock(workflow, "prepare");
+  const publish = jobBlock(workflow, "publish");
+  for (const token of ["--targets", "--artifact-digests", "--mode matrix"]) {
+    assertIncludes(source, token,
+      `release request binding is missing multi-package token: ${token}`);
+  }
+  for (const token of [
+    "matrix: ${{ fromJSON(needs.source.outputs.matrix) }}",
+    "client:release:build", "client:release:verify",
+  ]) {
+    assertIncludes(prepare, token,
+      `release prepare matrix is missing token: ${token}`);
+  }
+  for (const target of supportedTargets) {
+    assertIncludes(prepare, target,
+      `release prepare matrix has no exact build path for ${target}`);
+  }
+  for (const target of policyTargets) {
+    if (CLIENT_RELEASE_TARGETS[target].artifactName !== `licoup-${target}`) {
+      fail(`release artifact name is not target-derived: ${target}`);
     }
+  }
+  for (const token of [
+    "client-github-release-publish.mjs", "client-release-workflow-binding.mjs",
+    "--targets", "--incoming-root", "--artifact-digests",
+    "LICO_SIGNED_UPDATE_MANIFEST_BASE64",
+    '--name "licoup-$target"',
+  ]) {
+    assertIncludes(publish, token,
+      `release publisher is missing multi-package token: ${token}`);
   }
   for (const token of [
     "client-consumer-verification-manifest.mjs",
     "client-release-remote-asset-set.mjs",
-    "--clobber",
     "COPYFILE_EXCL",
     "release.targetCommitish !== sourceSha",
   ]) {
@@ -299,6 +321,14 @@ function validateReleaseTopology() {
       token,
       `canonical release publisher is missing safety token: ${token}`,
     );
+  }
+  assertIncludes(workflow, "client:release:remote-strategy -- --expect build-success",
+    "remote release validity must use the active build-success strategy");
+  const deviceDemoStages = preflight.match(
+    /npmStage\(`device-demo-\$\{platform\}`, `client:demo:device:\$\{platform\}`/gu,
+  ) || [];
+  if (deviceDemoStages.length !== 1) {
+    fail("release preflight must run each selected platform demo exactly once");
   }
 }
 

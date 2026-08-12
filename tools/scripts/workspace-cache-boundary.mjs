@@ -1,12 +1,11 @@
 #!/usr/bin/env node
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
-const workspaceRoot = path.resolve(process.env.LICO_WORKSPACE_ROOT || path.dirname(repoRoot));
 const reportPath = path.join(repoRoot, "build", "reports", "workspace-cache-boundary.json");
 
 const forbiddenAnySegment = new Set([
@@ -65,38 +64,16 @@ const versionControlledSourceDirectories = new Set([
   "apps/desktop/scripts/package-client/build"
 ]);
 
-function runGit(repo, args) {
+function runGit(args) {
   const result = spawnSync("git", args, {
-    cwd: repo,
+    cwd: repoRoot,
     encoding: "utf8",
     shell: false
   });
   if (result.status !== 0) {
-    throw new Error(`git ${args.join(" ")} failed in ${labelFor(repo)}: ${result.stderr.trim()}`);
+    throw new Error(`git ${args.join(" ")} failed: ${result.stderr.trim()}`);
   }
   return result.stdout.split(/\r?\n/).filter(Boolean);
-}
-
-function labelFor(repo) {
-  const label = path.relative(workspaceRoot, repo) || ".";
-  return label.split(path.sep).join("/");
-}
-
-function findGitRoots() {
-  const roots = [];
-  if (existsSync(path.join(workspaceRoot, ".git"))) {
-    roots.push(workspaceRoot);
-  }
-  for (const entry of readdirSync(workspaceRoot, { withFileTypes: true })) {
-    if (!entry.isDirectory()) {
-      continue;
-    }
-    const candidate = path.join(workspaceRoot, entry.name);
-    if (existsSync(path.join(candidate, ".git"))) {
-      roots.push(candidate);
-    }
-  }
-  return [...new Set(roots)].sort((a, b) => labelFor(a).localeCompare(labelFor(b)));
 }
 
 function classifyForbiddenPath(relativePath) {
@@ -156,8 +133,8 @@ function runSelfTest() {
   };
 }
 
-function scanGitignore(repo) {
-  const gitignore = path.join(repo, ".gitignore");
+function scanGitignore() {
+  const gitignore = path.join(repoRoot, ".gitignore");
   if (!existsSync(gitignore)) {
     return [];
   }
@@ -176,15 +153,14 @@ function scanGitignore(repo) {
   return findings;
 }
 
-function scanRepo(repo) {
-  const repoLabel = labelFor(repo);
+function scanRepo() {
   const findings = [];
   for (const [state, args] of [
     ["tracked", ["ls-files"]],
     ["untracked-unignored", ["ls-files", "--others", "--exclude-standard"]]
   ]) {
-    for (const relativePath of runGit(repo, args)) {
-      if (!existsSync(path.join(repo, relativePath))) {
+    for (const relativePath of runGit(args)) {
+      if (!existsSync(path.join(repoRoot, relativePath))) {
         continue;
       }
       const classification = classifyForbiddenPath(relativePath);
@@ -198,8 +174,8 @@ function scanRepo(repo) {
       });
     }
   }
-  findings.push(...scanGitignore(repo));
-  return { repo: repoLabel, findings };
+  findings.push(...scanGitignore());
+  return findings;
 }
 
 if (process.argv.slice(2).includes("--self-test")) {
@@ -213,15 +189,10 @@ if (process.argv.slice(2).includes("--self-test")) {
   process.exit();
 }
 
-const repos = findGitRoots();
-const repoReports = repos.map(scanRepo);
-const findings = repoReports.flatMap((repoReport) =>
-  repoReport.findings.map((finding) => ({ repo: repoReport.repo, ...finding }))
-);
+const findings = scanRepo();
 const report = {
   ok: findings.length === 0,
-  workspace: path.basename(workspaceRoot),
-  scannedRepos: repoReports.map((repoReport) => repoReport.repo),
+  repository: path.basename(repoRoot),
   forbiddenAnySegment: [...forbiddenAnySegment].sort(),
   forbiddenTopLevel: [...forbiddenTopLevel].sort(),
   findings
@@ -231,7 +202,7 @@ mkdirSync(path.dirname(reportPath), { recursive: true });
 writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`, "utf8");
 console.log(JSON.stringify({
   ok: report.ok,
-  scannedRepos: report.scannedRepos.length,
+  repository: report.repository,
   report: "build/reports/workspace-cache-boundary.json",
   findings
 }, null, 2));
