@@ -25,16 +25,25 @@ This is a read-only history projection. The semantic response contract is
 defined by
 [`packages/contracts/client/semantic-conversation.schema.json`](../../packages/contracts/client/semantic-conversation.schema.json).
 
-## Preview a skill installation
+## Inspect or remove a local skill
 
 ```bash
-licoup skill list --agent <agent-id>
-licoup skill get <skill-id> --agent <agent-id> --json
-licoup skill install plan --agent <agent-id> --url <public-skill-url>
+licoup skill list --agent <agent-id> [--skill-root <local-skill-root>]
+licoup skill get <skill-id> --agent <agent-id> [--skill-root <local-skill-root>]
+licoup skill delete plan --skill <skill-id> --path <exact-local-skill-path>
 ```
 
-Review the selected target, destination, package digest, and affected files
-before applying any local write. Preview never executes skill code.
+Apply removal only with the exact confirmation returned by the plan:
+
+```bash
+licoup skill delete apply \
+  --skill <skill-id> \
+  --path <exact-local-skill-path> \
+  --confirmation <plan-confirmation>
+```
+
+LicoUp never downloads or installs a skill. Removal validates the existing local
+package and moves its exact directory to the system Trash.
 
 ## Preview a local conversation backup
 
