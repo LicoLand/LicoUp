@@ -108,12 +108,76 @@ pub(super) fn create_openagent_fixture_database(path: &Path, prompt: &str) {
     }
 }
 
-pub(super) fn temp_dir(name: &str) -> PathBuf {
+pub(super) struct TestTempDir {
+    path: PathBuf,
+    cleanup_pending: bool,
+}
+
+impl TestTempDir {
+    fn new(path: PathBuf) -> Self {
+        Self {
+            path,
+            cleanup_pending: true,
+        }
+    }
+
+    pub(super) fn close(mut self) -> std::io::Result<()> {
+        let result = self.cleanup();
+        if result.is_ok() {
+            self.cleanup_pending = false;
+        }
+        result
+    }
+
+    fn cleanup(&self) -> std::io::Result<()> {
+        let Some(metadata) = fs::symlink_metadata(&self.path)
+            .map(Some)
+            .or_else(|error| {
+                (error.kind() == std::io::ErrorKind::NotFound)
+                    .then_some(None)
+                    .ok_or(error)
+            })?
+        else {
+            return Ok(());
+        };
+        if metadata.file_type().is_symlink() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "test temporary root was replaced by a symlink",
+            ));
+        }
+        fs::remove_dir_all(&self.path)
+    }
+}
+
+impl std::ops::Deref for TestTempDir {
+    type Target = PathBuf;
+
+    fn deref(&self) -> &Self::Target {
+        &self.path
+    }
+}
+
+impl AsRef<std::path::Path> for TestTempDir {
+    fn as_ref(&self) -> &std::path::Path {
+        &self.path
+    }
+}
+
+impl Drop for TestTempDir {
+    fn drop(&mut self) {
+        if self.cleanup_pending {
+            let _ = self.cleanup();
+        }
+    }
+}
+
+pub(super) fn temp_dir(name: &str) -> TestTempDir {
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_nanos();
     let dir = env::temp_dir().join(format!("licoup-client-{}-{}", name, now));
     fs::create_dir_all(&dir).unwrap();
-    dir
+    TestTempDir::new(dir)
 }

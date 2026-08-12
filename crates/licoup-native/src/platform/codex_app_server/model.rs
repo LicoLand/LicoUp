@@ -10,7 +10,10 @@ pub(in crate::platform) struct EffectiveSettings {
 }
 
 #[derive(Clone, Debug)]
-pub(in crate::platform) struct ProtocolFailure {
+pub(in crate::platform) struct ProtocolFailure(Box<ProtocolFailurePayload>);
+
+#[derive(Clone, Debug)]
+pub(in crate::platform) struct ProtocolFailurePayload {
     pub(in crate::platform) code: &'static str,
     pub(in crate::platform) message: &'static str,
     pub(in crate::platform) stage: &'static str,
@@ -20,6 +23,30 @@ pub(in crate::platform) struct ProtocolFailure {
     pub(in crate::platform) thread_id: Option<String>,
     pub(in crate::platform) turn_id: Option<String>,
     pub(in crate::platform) turn_status: Option<String>,
+}
+
+impl ProtocolFailure {
+    pub(in crate::platform) fn into_payload(self) -> ProtocolFailurePayload {
+        *self.0
+    }
+
+    pub(super) fn from_payload(payload: ProtocolFailurePayload) -> Self {
+        Self(Box::new(payload))
+    }
+}
+
+impl std::ops::Deref for ProtocolFailure {
+    type Target = ProtocolFailurePayload;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl std::ops::DerefMut for ProtocolFailure {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
 }
 
 #[derive(Debug)]
@@ -53,7 +80,7 @@ pub(super) struct ProtocolOutcome {
 #[derive(Debug)]
 pub(super) enum ProtocolEffect {
     Send(Value),
-    Complete(ProtocolOutcome),
+    Complete(Box<ProtocolOutcome>),
     Fail(ProtocolFailure),
 }
 

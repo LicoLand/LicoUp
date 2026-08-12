@@ -28,7 +28,8 @@ pub(super) fn parse_artifact(value: &Value) -> Result<VerifiedArtifact> {
     let url_text = required_text(value, "url", "client update artifact url")?;
     let url = Url::parse(url_text).map_err(|_| anyhow!("client update artifact url is invalid"))?;
     ensure!(
-        matches!(url.scheme(), "https" | "file"),
+        matches!(url.scheme(), "https" | "file")
+            || (url.scheme() == "http" && is_loopback_url(&url)),
         "client update artifact url scheme is unsupported"
     );
     let file_name = validate_relative_file_name(
@@ -88,6 +89,16 @@ pub(super) fn is_sha256(value: &str) -> bool {
         && value[7..]
             .bytes()
             .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+}
+
+fn is_loopback_url(url: &Url) -> bool {
+    use std::net::IpAddr;
+    match url.host() {
+        Some(url::Host::Ipv4(address)) => IpAddr::V4(address).is_loopback(),
+        Some(url::Host::Ipv6(address)) => IpAddr::V6(address).is_loopback(),
+        Some(url::Host::Domain(domain)) => domain.eq_ignore_ascii_case("localhost"),
+        None => false,
+    }
 }
 
 fn required_text<'a>(value: &'a Value, field: &str, label: &str) -> Result<&'a str> {

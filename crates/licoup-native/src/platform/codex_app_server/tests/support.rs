@@ -71,7 +71,7 @@ pub(super) fn completed_outcome(effects: Vec<ProtocolEffect>) -> ProtocolOutcome
     effects
         .into_iter()
         .find_map(|effect| match effect {
-            ProtocolEffect::Complete(outcome) => Some(outcome),
+            ProtocolEffect::Complete(outcome) => Some(*outcome),
             ProtocolEffect::Send(_) | ProtocolEffect::Fail(_) => None,
         })
         .expect("matching completion should finish the protocol")

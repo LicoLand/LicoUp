@@ -15,6 +15,7 @@ use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
 pub const GATEWAY_AGENT_CONFIG_SCHEMA: &str = "licoup.llm-gateway-agent-config.v1";
+pub const LOCAL_CLIENT_TOKEN_PLACEHOLDER: &str = "__LICOUP_GATEWAY_CLIENT_TOKEN__";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case")]
@@ -63,7 +64,6 @@ pub fn plan_agent_config(
     local_token_helper: &Path,
     available_providers: &BTreeSet<LlmApiKeyProvider>,
 ) -> Result<GatewayAgentConfigPlan> {
-    let sv_licoup_local = synthetic_value("licoup-local");
     ensure!(gateway_port > 0, "llm_gateway_port_invalid");
     ensure!(
         agent_config_root.is_absolute() && local_token_helper.is_absolute(),
@@ -118,7 +118,7 @@ pub fn plan_agent_config(
                         "name": "LicoUp Gateway",
                         "options": {
                             "baseURL": chat_base,
-                            "apiKey": sv_licoup_local.as_str()
+                            "apiKey": LOCAL_CLIENT_TOKEN_PLACEHOLDER
                         },
                         "models": Value::Object(model_map)
                     }
@@ -149,7 +149,7 @@ pub fn plan_agent_config(
                     "licoup-gateway": {
                         "baseUrl": chat_base,
                         "api": "openai-completions",
-                        "apiKey": sv_licoup_local.as_str(),
+                        "apiKey": LOCAL_CLIENT_TOKEN_PLACEHOLDER,
                         "authHeader": true,
                         "compat": {
                             "supportsDeveloperRole": false,
@@ -195,8 +195,6 @@ fn toml_string(value: &str) -> Result<String> {
         value.replace('\\', "\\\\").replace('"', "\\\"")
     ))
 }
-
-fn synthetic_value(label: &str) -> String { format!("{label}-{}", uuid::Uuid::new_v4()) }
 
 #[cfg(test)]
 mod tests {
@@ -246,6 +244,8 @@ mod tests {
         );
         assert!(plan.content.contains("@ai-sdk/openai-compatible"));
         assert!(plan.content.contains(format!("http://127.0.0.1:{}/v1", gateway_default_port())));
+        assert!(plan.content.contains(LOCAL_CLIENT_TOKEN_PLACEHOLDER));
+        assert!(!plan.content.contains("licoup-local"));
         assert!(plan.content.contains("kimi:k3"));
         assert!(plan.content.contains("deepseek:deepseek-v4-pro"));
         assert!(plan.content.contains("kilo:kilo-auto/frontier"));
@@ -311,6 +311,8 @@ mod tests {
         );
         assert!(plan.content.contains("openai-completions"));
         assert!(plan.content.contains(format!("http://127.0.0.1:{}/v1", gateway_default_port())));
+        assert!(plan.content.contains(LOCAL_CLIENT_TOKEN_PLACEHOLDER));
+        assert!(!plan.content.contains("licoup-local"));
         assert!(plan.content.contains("kimi:k3"));
         assert!(plan.content.contains("deepseek:deepseek-v4-flash"));
         assert!(plan.content.contains("kilo:kilo-auto/balanced"));

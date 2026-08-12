@@ -2,18 +2,18 @@
 
 use super::super::contract::{HistoryUsageSummary, MessageUsage};
 use super::super::window::UsageWindow;
+use super::cache::RefreshStatements;
 use super::models::{CumulativeSnapshot, CumulativeTotals};
 use anyhow::Result;
-use rusqlite::{OptionalExtension, Transaction, params};
 use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Clone, Debug)]
-struct Watermark {
-    session_key: String,
-    model: Option<String>,
-    day: String,
-    last: CumulativeTotals,
-    day_total: CumulativeTotals,
+pub(super) struct Watermark {
+    pub(super) session_key: String,
+    pub(super) model: Option<String>,
+    pub(super) day: String,
+    pub(super) last: CumulativeTotals,
+    pub(super) day_total: CumulativeTotals,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -24,7 +24,7 @@ pub(super) enum WatermarkProjection {
 }
 
 pub(super) fn apply_cumulative_watermarks(
-    transaction: &Transaction<'_>,
+    statements: &mut RefreshStatements<'_>,
     scope_key: &str,
     source_key: &str,
     calendar: &UsageWindow,
@@ -35,17 +35,8 @@ pub(super) fn apply_cumulative_watermarks(
     let mut states = if projection == WatermarkProjection::RebuildAllHistory {
         BTreeMap::new()
     } else {
-        load_watermarks(transaction, scope_key, source_key, snapshots)?
+        load_watermarks_batch(statements.transaction(), scope_key, source_key, snapshots)?
     };
-    let mut upsert = transaction.prepare(
-        "INSERT INTO native_usage_watermarks VALUES(
-           ?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12
-         ) ON CONFLICT(scope_key,source_key,usage_key) DO UPDATE SET
-           session_key=excluded.session_key,model=excluded.model,day=excluded.day,
-           last_prompt=excluded.last_prompt,last_cached=excluded.last_cached,
-           last_completion=excluded.last_completion,day_prompt=excluded.day_prompt,
-           day_cached=excluded.day_cached,day_completion=excluded.day_completion",
-    )?;
     let projected_snapshots = snapshots_for_projection(snapshots, projection);
     let suppressed = projected_snapshots
         .iter()
@@ -58,13 +49,7 @@ pub(super) fn apply_cumulative_watermarks(
             continue;
         }
         let (state, added) = next_watermark(states.get(&snapshot.usage_key), snapshot);
-        save_watermark(
-            &mut upsert,
-            scope_key,
-            source_key,
-            &snapshot.usage_key,
-            &state,
-        )?;
+        statements.save_watermark(scope_key, source_key, &snapshot.usage_key, &state)?;
         states.insert(snapshot.usage_key.clone(), state);
         if projection != WatermarkProjection::ReplaceCurrentDay
             && snapshot.projects_usage
@@ -192,64 +177,44 @@ fn add(left: CumulativeTotals, right: CumulativeTotals) -> CumulativeTotals {
     }
 }
 
-fn load_watermarks(
-    transaction: &Transaction<'_>,
+fn load_watermarks_batch(
+    transaction: &rusqlite::Transaction<'_>,
     scope_key: &str,
     source_key: &str,
     snapshots: &[CumulativeSnapshot],
 ) -> Result<BTreeMap<String, Watermark>> {
-    let mut statement = transaction.prepare(
-        "SELECT session_key,model,day,last_prompt,last_cached,last_completion,
-                day_prompt,day_cached,day_completion
-         FROM native_usage_watermarks
-         WHERE scope_key=?1 AND source_key=?2 AND usage_key=?3",
-    )?;
-    let mut states = BTreeMap::new();
     let usage_keys = snapshots
         .iter()
         .map(|snapshot| snapshot.usage_key.as_str())
         .collect::<BTreeSet<_>>();
-    for usage_key in usage_keys {
-        let state = statement
-            .query_row(params![scope_key, source_key, usage_key], |row| {
-                Ok(Watermark {
-                    session_key: row.get(0)?,
-                    model: row.get(1)?,
-                    day: row.get(2)?,
-                    last: totals(row.get(3)?, row.get(4)?, row.get(5)?),
-                    day_total: totals(row.get(6)?, row.get(7)?, row.get(8)?),
-                })
-            })
-            .optional()?;
-        if let Some(state) = state {
-            states.insert(usage_key.to_owned(), state);
-        }
+    if usage_keys.is_empty() {
+        return Ok(BTreeMap::new());
     }
-    Ok(states)
-}
-
-fn save_watermark(
-    statement: &mut rusqlite::Statement<'_>,
-    scope_key: &str,
-    source_key: &str,
-    usage_key: &str,
-    state: &Watermark,
-) -> Result<()> {
-    statement.execute(params![
-        scope_key,
-        source_key,
-        usage_key,
-        state.session_key,
-        state.model,
-        state.day,
-        to_i64(state.last.prompt),
-        to_i64(state.last.cached),
-        to_i64(state.last.completion),
-        to_i64(state.day_total.prompt),
-        to_i64(state.day_total.cached),
-        to_i64(state.day_total.completion),
-    ])?;
-    Ok(())
+    let placeholders = vec!["?"; usage_keys.len()].join(",");
+    let mut statement = transaction.prepare(&format!(
+        "SELECT usage_key,session_key,model,day,last_prompt,last_cached,last_completion,
+                day_prompt,day_cached,day_completion
+         FROM native_usage_watermarks
+         WHERE scope_key=?1 AND source_key=?2 AND usage_key IN ({placeholders})"
+    ))?;
+    let mut parameters = Vec::with_capacity(usage_keys.len() + 2);
+    parameters.push(scope_key);
+    parameters.push(source_key);
+    parameters.extend(usage_keys.iter().copied());
+    let rows = statement.query_map(rusqlite::params_from_iter(parameters), |row| {
+        Ok((
+            row.get::<_, String>(0)?,
+            Watermark {
+                session_key: row.get(1)?,
+                model: row.get(2)?,
+                day: row.get(3)?,
+                last: totals(row.get(4)?, row.get(5)?, row.get(6)?),
+                day_total: totals(row.get(7)?, row.get(8)?, row.get(9)?),
+            },
+        ))
+    })?;
+    rows.collect::<rusqlite::Result<BTreeMap<_, _>>>()
+        .map_err(Into::into)
 }
 
 fn totals(prompt: i64, cached: i64, completion: i64) -> CumulativeTotals {
@@ -258,10 +223,6 @@ fn totals(prompt: i64, cached: i64, completion: i64) -> CumulativeTotals {
         cached: from_i64(cached),
         completion: from_i64(completion),
     }
-}
-
-fn to_i64(value: u64) -> i64 {
-    value.min(i64::MAX as u64) as i64
 }
 
 fn from_i64(value: i64) -> u64 {

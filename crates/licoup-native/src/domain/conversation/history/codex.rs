@@ -61,6 +61,19 @@ pub(crate) fn parse_codex_rollout_sessions(
         return None;
     }
 
+    codex_rollout_groups_to_sessions(groups, path, metadata, source_kind, &scan_config)
+}
+
+/// Project parsed rollout groups into session DTOs. Shared by the whole-file
+/// parser and the bounded-tail browse reader so both paths keep identical
+/// identity, count, and truncation semantics.
+pub(super) fn codex_rollout_groups_to_sessions(
+    groups: Vec<CodexRolloutGroup>,
+    path: &Path,
+    metadata: &fs::Metadata,
+    source_kind: &str,
+    scan_config: &HistoryScanConfig,
+) -> Option<Vec<Value>> {
     Some(
         groups
             .into_iter()

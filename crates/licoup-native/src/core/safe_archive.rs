@@ -6,7 +6,7 @@
 
 use std::ffi::CString;
 use std::fs::{self, OpenOptions};
-use std::io::Write;
+use std::io::{Read, Write};
 use std::path::{Component, Path, PathBuf};
 
 #[cfg(unix)]
@@ -17,6 +17,7 @@ use std::os::unix::ffi::OsStrExt;
 use anyhow::{Context, Result, anyhow, ensure};
 use flate2::read::GzDecoder;
 use tar::{Archive, EntryType};
+use zip::ZipArchive;
 
 /// Default maximum total bytes extracted across all entries.
 const DEFAULT_MAX_TOTAL_BYTES: u64 = 512 * 1024 * 1024; // 512 MiB
@@ -26,6 +27,125 @@ const DEFAULT_MAX_ENTRIES: usize = 10_000;
 
 /// Default maximum directory depth relative to destination root.
 const DEFAULT_MAX_DEPTH: usize = 32;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ZipExtractionLimits {
+    pub max_archive_bytes: u64,
+    pub max_total_bytes: u64,
+    pub max_file_bytes: u64,
+    pub max_entries: usize,
+    pub max_depth: usize,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ZipEntryInfo {
+    pub path: PathBuf,
+    pub size: u64,
+    pub directory: bool,
+}
+
+/// Extract a ZIP from memory below one no-follow destination root.
+///
+/// All names must be UTF-8 POSIX-relative paths. Duplicate normalized names,
+/// case-colliding names, links and special entries are rejected before a file
+/// can be published outside the private staging directory.
+pub fn extract_zip_safe(
+    bytes: &[u8],
+    destination: &Path,
+    limits: ZipExtractionLimits,
+) -> Result<Vec<ZipEntryInfo>> {
+    ensure!(
+        bytes.len() as u64 <= limits.max_archive_bytes,
+        "zip_archive_byte_limit_exceeded"
+    );
+    ensure!(limits.max_entries > 0, "zip_entry_limit_invalid");
+    let cursor = std::io::Cursor::new(bytes);
+    let mut archive = ZipArchive::new(cursor).map_err(|_| anyhow!("zip_archive_invalid"))?;
+    ensure!(
+        archive.len() <= limits.max_entries,
+        "zip_entry_count_limit_exceeded"
+    );
+
+    let extraction_root = ExtractionRoot::open(destination)?;
+    let mut total_bytes = 0_u64;
+    let mut exact_names = std::collections::BTreeSet::new();
+    let mut folded_names = std::collections::BTreeSet::new();
+    let mut result = Vec::with_capacity(archive.len());
+    for index in 0..archive.len() {
+        let mut entry = archive
+            .by_index(index)
+            .map_err(|_| anyhow!("zip_entry_unreadable"))?;
+        let raw_name = entry.name_raw();
+        let name = std::str::from_utf8(raw_name).map_err(|_| anyhow!("zip_entry_name_invalid"))?;
+        ensure!(
+            !name.is_empty()
+                && !name.contains('\0')
+                && !name.contains('\\')
+                && !name.starts_with('/')
+                && !name.contains(':'),
+            "zip_entry_path_invalid"
+        );
+        let directory = entry.is_dir();
+        ensure!(directory || entry.is_file(), "zip_entry_type_unsupported");
+        if let Some(mode) = entry.unix_mode() {
+            let file_type = mode & 0o170000;
+            ensure!(
+                file_type == 0
+                    || (directory && file_type == 0o040000)
+                    || (!directory && file_type == 0o100000),
+                "zip_entry_type_unsupported"
+            );
+        }
+        let path_name = name.trim_end_matches('/');
+        ensure!(!path_name.is_empty(), "zip_entry_path_invalid");
+        let relative = sanitize_entry_path(Path::new(path_name), limits.max_depth)?;
+        let canonical = relative
+            .iter()
+            .map(|part| part.to_string_lossy())
+            .collect::<Vec<_>>()
+            .join("/");
+        ensure!(exact_names.insert(canonical.clone()), "zip_entry_duplicate");
+        ensure!(
+            folded_names.insert(canonical.to_lowercase()),
+            "zip_entry_case_collision"
+        );
+
+        if directory {
+            extraction_root.create_directory(&relative)?;
+            result.push(ZipEntryInfo {
+                path: relative,
+                size: 0,
+                directory: true,
+            });
+            continue;
+        }
+        let declared_size = entry.size();
+        ensure!(
+            declared_size <= limits.max_file_bytes,
+            "zip_file_byte_limit_exceeded"
+        );
+        let next_total = total_bytes
+            .checked_add(declared_size)
+            .ok_or_else(|| anyhow!("zip_total_byte_count_overflowed"))?;
+        ensure!(
+            next_total <= limits.max_total_bytes,
+            "zip_total_byte_limit_exceeded"
+        );
+        let mut output = extraction_root.create_file(&relative)?;
+        let mut bounded = (&mut entry).take(declared_size.saturating_add(1));
+        let written = std::io::copy(&mut bounded, &mut output)?;
+        ensure!(written == declared_size, "zip_entry_size_mismatch");
+        output.flush()?;
+        output.sync_all()?;
+        total_bytes = next_total;
+        result.push(ZipEntryInfo {
+            path: relative,
+            size: declared_size,
+            directory: false,
+        });
+    }
+    Ok(result)
+}
 
 /// Extract a `.tar.gz` byte slice to `destination` with safety bounds.
 ///
@@ -395,6 +515,59 @@ mod tests {
             encoder.finish().unwrap();
         }
         gz_buf
+    }
+
+    fn create_test_zip(entries: &[(&str, &[u8], u32)]) -> Vec<u8> {
+        let mut cursor = std::io::Cursor::new(Vec::new());
+        {
+            let mut writer = zip::ZipWriter::new(&mut cursor);
+            for (path, data, mode) in entries {
+                let options = zip::write::SimpleFileOptions::default().unix_permissions(*mode);
+                writer.start_file(path, options).unwrap();
+                writer.write_all(data).unwrap();
+            }
+            writer.finish().unwrap();
+        }
+        cursor.into_inner()
+    }
+
+    fn create_test_zip_symlink(path: &str, target: &str) -> Vec<u8> {
+        let mut cursor = std::io::Cursor::new(Vec::new());
+        {
+            let mut writer = zip::ZipWriter::new(&mut cursor);
+            writer
+                .add_symlink(path, target, zip::write::SimpleFileOptions::default())
+                .unwrap();
+            writer.finish().unwrap();
+        }
+        cursor.into_inner()
+    }
+
+    fn zip_limits() -> ZipExtractionLimits {
+        ZipExtractionLimits {
+            max_archive_bytes: 1024 * 1024,
+            max_total_bytes: 1024 * 1024,
+            max_file_bytes: 128 * 1024,
+            max_entries: 16,
+            max_depth: 4,
+        }
+    }
+
+    #[test]
+    fn zip_rejects_traversal_case_collisions_and_links() {
+        for archive in [
+            create_test_zip(&[("../outside", b"blocked", 0o600)]),
+            create_test_zip(&[
+                ("scripts/check.py", b"one", 0o600),
+                ("Scripts/check.py", b"two", 0o600),
+            ]),
+            create_test_zip_symlink("scripts/link", "target"),
+        ] {
+            let temp = temp_dir();
+            let destination = temp.join("zip-out");
+            assert!(extract_zip_safe(&archive, &destination, zip_limits()).is_err());
+            assert!(!temp.join("outside").exists());
+        }
     }
 
     /// `tar::Header::set_path` rejects hostile paths itself. Writing the raw name field ensures

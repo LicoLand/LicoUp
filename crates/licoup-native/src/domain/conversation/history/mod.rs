@@ -56,6 +56,7 @@ mod kimi;
 mod message_projection;
 mod pi_copilot;
 mod project_workspace;
+mod projection_cache;
 mod query;
 mod query_filter;
 mod session_merge;
