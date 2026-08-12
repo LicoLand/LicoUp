@@ -1,0 +1,9 @@
+#!/bin/sh
+set -eu
+
+repo_root=$(git rev-parse --show-toplevel)
+updates_file=$(mktemp "${TMPDIR:-/tmp}/licoup-pre-push.XXXXXX")
+trap 'rm -f "$updates_file"' EXIT HUP INT TERM
+cat > "$updates_file"
+node "$repo_root/tools/scripts/repository-identity-policy.mjs" pre-push "$@" < "$updates_file"
+exec node "$repo_root/tools/scripts/client-pr-preflight.mjs" hook "$@" < "$updates_file"

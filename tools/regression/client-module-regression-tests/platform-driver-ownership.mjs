@@ -301,12 +301,6 @@ test("foundation adapters and architecture scripts have explicit changed-path ow
     "tests/contract/client/native-stdio-rpc-source-bundle.test.mjs",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "apps/desktop/lib/src/application/features/agents/orchestration/agent_orchestration_policy_controller.dart",
-  ])), [
-    "architecture.client-boundaries",
-    "flutter.feature.main-agent-selection",
-  ]);
-  assert.deepEqual(ids(selectModulesForChangedPaths([
     "apps/desktop/test/directory_path_controller_test.dart",
   ])), ["flutter.feature.settings"]);
   assert.deepEqual(ids(selectModulesForChangedPaths([

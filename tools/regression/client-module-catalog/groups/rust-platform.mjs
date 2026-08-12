@@ -65,6 +65,24 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       ),
     }),
   defineModule({
+      id: "rust.ffi.adaptive-flywheel-contract",
+      kind: "rust-ffi",
+      summary: "Generated Adaptive Flywheel bridge and independent native strategy command",
+      inputs: [
+        "schemas/client_bridge/strategy.json",
+        "schemas/client_bridge/manifest.json",
+        "tools/scripts/generate-client-bridge-contracts.mjs",
+        "crates/licoup-native/src/ffi/generated/strategy.rs",
+        "crates/licoup-native/src/ffi/commands/strategy.rs",
+        "crates/licoup-native/tests/cli_command_contract_cases.rs",
+      ],
+      command: command(
+        "cargo",
+        ["check", "--manifest-path", NATIVE_MANIFEST, "--lib"],
+        10 * 60_000,
+      ),
+    }),
+  defineModule({
       id: "rust.platform.skill-invocation-projection",
       kind: "rust-platform",
       summary: "Privacy-minimal skill-call projection across native agent runtime adapters",
