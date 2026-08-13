@@ -31,7 +31,7 @@ const archivePath = path.join(repoRoot,
   "build/apps/desktop/distribution/macos/LicoUp-macos-arm64-update.zip");
 const reportRef = "reports/client-macos-update-preflight.json";
 const entitlementsPath = path.join(repoRoot,
-  "apps/desktop/macos/Runner/ProductionRelease.entitlements");
+  "build/apps/desktop/signing/macos/release/ProductionRelease.resolved.entitlements");
 let lastFailureDetail = "";
 
 function requireValue(value, code) { if (!value) throw new Error(code); }
