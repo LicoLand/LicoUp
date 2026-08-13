@@ -70,6 +70,45 @@ void main() {
   );
 
   test(
+    'selection binds immediately and reuses the loaded conversation snapshot',
+    () async {
+      final runner = _ConversationRunner();
+      final controller = ClientConversationController(runner: runner);
+
+      await controller.initialize();
+      await controller.selectConversation('conversation:group');
+      final conversationGets = runner.requests
+          .where((request) => request['action'] == 'conversation.get')
+          .length;
+      final eventPages = runner.requests
+          .where((request) => request['action'] == 'conversation.events.page')
+          .length;
+
+      controller.clearSelection();
+      final cachedSelection = controller.selectConversation(
+        'conversation:group',
+      );
+
+      expect(controller.selectedConversationId, 'conversation:group');
+      expect(controller.selectedConversation?.id, 'conversation:group');
+      expect(controller.events.single.id, 'event:existing');
+      await cachedSelection;
+      expect(
+        runner.requests
+            .where((request) => request['action'] == 'conversation.get')
+            .length,
+        conversationGets,
+      );
+      expect(
+        runner.requests
+            .where((request) => request['action'] == 'conversation.events.page')
+            .length,
+        eventPages,
+      );
+    },
+  );
+
+  test(
     'controller lifecycle performs no default-group membership writes',
     () async {
       final runner = _ConversationRunner();
