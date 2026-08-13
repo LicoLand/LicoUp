@@ -191,6 +191,10 @@ npm run client:pr:preflight -- --base origin/nightly --target <target> --full-ta
 The preflight builds, signs, archives, installs, updates, rolls back, and
 launches the exact candidate, then writes an ignored redacted receipt. The
 pre-push hook only checks that receipt. It does not repeat the expensive work.
+Keep the candidate branch local until this receipt passes for every selected
+package target. Only then may the exact verified commit be pushed or used to
+open a remote release-candidate pull request; remote branches are never a
+packaging or signing debug loop.
 Preflight is final acceptance, not a development loop. If it finds a defect
 outside the release-only diff, invalidate the candidate. Fix the canonical
 owner through an ordinary pull request, merge it to `nightly`, and cut a new

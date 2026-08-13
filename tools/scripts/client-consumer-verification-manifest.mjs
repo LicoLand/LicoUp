@@ -36,7 +36,9 @@ function selectedTargets(value) {
   const ids = String(value || "").split(",");
   if (ids.length === 0 || ids.some((id) => !id || id !== id.trim()) ||
     new Set(ids).size !== ids.length) fail("invalid target selection");
-  const targets = selectClientReleaseTargets(loadClientReleaseTargetCatalog(), ids);
+  const targets = selectClientReleaseTargets(loadClientReleaseTargetCatalog(), ids, {
+    requireReleaseSupported: false,
+  });
   if (targets.some((target) => !CLIENT_RELEASE_TARGETS[target.id])) {
     fail("target selection is not publishable");
   }
