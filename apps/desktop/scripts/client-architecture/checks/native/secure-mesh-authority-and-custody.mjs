@@ -309,6 +309,9 @@ export async function checkSecureMeshAuthorityAndCustody(context) {
   const macosUserPresenceRustSource = await readText(
     "crates/licoup-native/src/platform/secure_mesh_secret_store/macos_user_presence.rs"
   );
+  const platformUserPresenceRustSource = await readText(
+    "crates/licoup-native/src/platform/user_presence.rs"
+  );
   const secureMeshCapabilityFacadeRustSource =
     await readText("crates/licoup-native/src/core/secure_mesh_capability.rs");
   const secureMeshCapabilityProductionPaths = [
@@ -678,15 +681,13 @@ export async function checkSecureMeshAuthorityAndCustody(context) {
     "desktop custody must use direct macOS Security.framework access while unmeasured Linux or Windows storage stays fail-closed"
   );
   const localAuthenticationEvaluation =
-    macosUserPresenceRustSource.indexOf("evaluatePolicy_localizedReason_reply");
-  const localAuthenticationInvocation =
-    macosUserPresenceRustSource.indexOf("let decision = evaluate_system_authorization_once");
+    platformUserPresenceRustSource.indexOf("evaluatePolicy_localizedReason_reply");
   const interactiveContextStart =
-    macosUserPresenceRustSource.indexOf("context.setInteractionNotAllowed(false)");
-  const approvedPresenceDecision =
-    macosUserPresenceRustSource.indexOf("if decision == PresenceDecision::Approved");
+    platformUserPresenceRustSource.indexOf("context.setInteractionNotAllowed(false)");
+  const authorizationOutcome =
+    platformUserPresenceRustSource.indexOf("match receiver.recv_timeout");
   const approvedContextSeal =
-    macosUserPresenceRustSource.indexOf("context.setInteractionNotAllowed(true)");
+    platformUserPresenceRustSource.indexOf("context.setInteractionNotAllowed(true)");
   assert(
     secureMeshSecretStoreAuthorizationRustSource.includes(
       "pub struct SecretStorePresenceBatchRequest"
@@ -708,17 +709,23 @@ export async function checkSecureMeshAuthorityAndCustody(context) {
     macosUserPresenceRustSource.includes("pub struct SecurityFrameworkKeychain") &&
     macosUserPresenceRustSource.includes("pub trait MacosSecItemPort") &&
     macosUserPresenceRustSource.includes("kSecUseAuthenticationContext") &&
-    macosUserPresenceRustSource.includes("LAPolicy::DeviceOwnerAuthentication") &&
-    macosUserPresenceRustSource.includes("block2::RcBlock::new") &&
+    macosUserPresenceRustSource.includes("crate::platform::user_presence::authorize(") &&
+    platformUserPresenceRustSource.includes("APPLICATION_AUTHORIZATION") &&
+    platformUserPresenceRustSource.includes("LAPolicy::DeviceOwnerAuthenticationWithBiometrics") &&
+    platformUserPresenceRustSource.includes("password_fallback_allowed") &&
+    platformUserPresenceRustSource.includes("setLocalizedFallbackTitle") &&
+    platformUserPresenceRustSource.includes("block2::RcBlock::new") &&
     localAuthenticationEvaluation >= 0 &&
     localAuthenticationEvaluation ===
-      macosUserPresenceRustSource.lastIndexOf("evaluatePolicy_localizedReason_reply") &&
+      platformUserPresenceRustSource.lastIndexOf("evaluatePolicy_localizedReason_reply") &&
     interactiveContextStart >= 0 &&
-    interactiveContextStart < localAuthenticationInvocation &&
-    approvedPresenceDecision > localAuthenticationInvocation &&
-    approvedContextSeal > approvedPresenceDecision &&
+    interactiveContextStart < localAuthenticationEvaluation &&
+    authorizationOutcome > localAuthenticationEvaluation &&
+    approvedContextSeal > authorizationOutcome &&
     secureMeshSecretStoreAuthorizationRustSource.includes("app_password_prompt_used: false") &&
     !macosUserPresenceRustSource.includes("AUTHORIZATION_CONTEXT_CACHE") &&
+    !platformUserPresenceRustSource.includes("AUTHORIZATION_CONTEXT_CACHE") &&
+    !macosUserPresenceRustSource.includes("evaluatePolicy_localizedReason_reply") &&
     !macosUserPresenceRustSource.includes("keyring::") &&
     !await exists(
       "crates/licoup-native/src/platform/secure_mesh_secret_store/platform_backends/keyring.rs"
