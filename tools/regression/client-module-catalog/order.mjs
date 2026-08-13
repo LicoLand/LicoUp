@@ -759,6 +759,7 @@ export const CLIENT_MODULE_ID_ORDER = Object.freeze([
   "packaging.verify-client-plan",
   "packaging.android",
   "packaging.macos",
+  "packaging.macos-install-contract",
   "packaging.linux",
   "packaging.mobile-launcher",
   "packaging.windows",
