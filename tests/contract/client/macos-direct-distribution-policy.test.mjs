@@ -366,15 +366,32 @@ test("downstream macOS verifiers consume the corrected entitlement authority", (
   const distributionBuilder = readFileSync(
     path.join(repoRoot, "apps/desktop/scripts/build-macos-distribution.mjs"), "utf8",
   );
-  assert.ok(releasePreflight.includes("ProductionRelease.entitlements"));
-  assert.ok(updatePreflight.includes("ProductionRelease.entitlements"));
+  for (const verifier of [releasePreflight, updatePreflight]) {
+    assert.ok(verifier.includes(
+      "build/apps/desktop/signing/macos/release/ProductionRelease.resolved.entitlements",
+    ));
+    assert.equal(verifier.includes(
+      "apps/desktop/macos/Runner/ProductionRelease.entitlements",
+    ), false);
+  }
   assert.equal(packageManifest.includes("client:install:macos:identity"), false);
   assert.equal(localInstall.includes("client-macos-local-identity-install.mjs"), false);
   assert.deepEqual(MACOS_DIRECT_PROTECTED_ENVIRONMENT.includes(
     "LICO_MACOS_SIGNING_IDENTITY",
   ), true);
+  assert.deepEqual(MACOS_DIRECT_PROTECTED_ENVIRONMENT.includes(
+    "LICO_MACOS_NOTARY_KEYCHAIN_PROFILE",
+  ), true);
   assert.ok(distributionBuilder.includes("developerIdApplication !== true"));
   assert.ok(distributionBuilder.includes('"notarytool", "submit"'));
+  assert.ok(distributionBuilder.includes('"--keychain-profile", notaryKeychainProfile'));
+  for (const removedCredential of [
+    "LICO_MACOS_NOTARY_KEY_ID",
+    "LICO_MACOS_NOTARY_ISSUER_ID",
+    "LICO_MACOS_NOTARY_KEY_PATH",
+  ]) {
+    assert.equal(distributionBuilder.includes(removedCredential), false);
+  }
   for (const cargoNoticeControl of [
     '"metadata"',
     '"--locked"',
