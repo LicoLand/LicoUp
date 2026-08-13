@@ -63,22 +63,35 @@ jobs:
       - name: Populate the locked Flutter package cache
         working-directory: apps/desktop
         run: flutter pub get --enforce-lockfile
-      - name: Prepare ephemeral local integrity identity
+      - name: Import the stable macOS release identity
+        env:
+          RELEASE_CERTIFICATE_P12_BASE64: ${{ secrets.LICO_MACOS_RELEASE_CERTIFICATE_P12_BASE64 }}
+          RELEASE_CERTIFICATE_PASSWORD: ${{ secrets.LICO_MACOS_RELEASE_CERTIFICATE_PASSWORD }}
+          RELEASE_SIGNER_SHA256: ${{ vars.LICO_MACOS_RELEASE_SIGNER_SHA256 }}
         run: |
-          openssl req -x509 -newkey rsa:3072 -nodes -days 1 \
-            -keyout "$RUNNER_TEMP/lico-local-integrity.key" \
-            -out "$RUNNER_TEMP/lico-local-integrity.pem" \
-            -subj "/CN=LicoUp GitHub Artifact Validation" \
-            -addext "keyUsage=critical,digitalSignature" \
-            -addext "extendedKeyUsage=codeSigning"
-          openssl pkcs12 -export \
-            -inkey "$RUNNER_TEMP/lico-local-integrity.key" \
-            -in "$RUNNER_TEMP/lico-local-integrity.pem" \
-            -out "$RUNNER_TEMP/lico-local-integrity.p12" \
-            -passout pass:github-artifact
-          security create-keychain -p github-artifact "$RUNNER_TEMP/lico-local-integrity.keychain-db"
-          security set-keychain-settings -lut 7200 "$RUNNER_TEMP/lico-local-integrity.keychain-db"
-          security unlock-keychain -p github-artifact "$RUNNER_TEMP/lico-local-integrity.keychain-db"
+          set -euo pipefail
+          if [[ -z "$RELEASE_CERTIFICATE_P12_BASE64" || \
+                -z "$RELEASE_CERTIFICATE_PASSWORD" || \
+                ! "$RELEASE_SIGNER_SHA256" =~ ^(sha256:)?[a-fA-F0-9]{64}$ ]]; then
+            echo "Stable macOS release identity configuration is incomplete" >&2
+            exit 1
+          fi
+          release_keychain_password="$(openssl rand -hex 32)"
+          printf '%s' "$RELEASE_CERTIFICATE_P12_BASE64" | \
+            /usr/bin/base64 -D > "$RUNNER_TEMP/licoup-release-identity.p12"
+          chmod 600 "$RUNNER_TEMP/licoup-release-identity.p12"
+          RELEASE_CERTIFICATE_PASSWORD="$RELEASE_CERTIFICATE_PASSWORD" \
+            openssl pkcs12 \
+              -in "$RUNNER_TEMP/licoup-release-identity.p12" \
+              -clcerts -nokeys \
+              -passin env:RELEASE_CERTIFICATE_PASSWORD \
+              -out "$RUNNER_TEMP/licoup-release-identity.pem"
+          security create-keychain -p "$release_keychain_password" \
+            "$RUNNER_TEMP/licoup-release-identity.keychain-db"
+          security set-keychain-settings -lut 7200 \
+            "$RUNNER_TEMP/licoup-release-identity.keychain-db"
+          security unlock-keychain -p "$release_keychain_password" \
+            "$RUNNER_TEMP/licoup-release-identity.keychain-db"
           existing_keychains=()
           while IFS= read -r keychain; do
             keychain="${keychain//\"/}"
@@ -87,31 +100,37 @@ jobs:
             fi
           done < <(security list-keychains -d user)
           security list-keychains -d user -s \
-            "$RUNNER_TEMP/lico-local-integrity.keychain-db" \
+            "$RUNNER_TEMP/licoup-release-identity.keychain-db" \
             "${existing_keychains[@]}"
-          security import "$RUNNER_TEMP/lico-local-integrity.p12" \
-            -k "$RUNNER_TEMP/lico-local-integrity.keychain-db" \
-            -P github-artifact -T /usr/bin/codesign
+          security import "$RUNNER_TEMP/licoup-release-identity.p12" \
+            -k "$RUNNER_TEMP/licoup-release-identity.keychain-db" \
+            -P "$RELEASE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
           sudo -n security add-trusted-cert -d -r trustRoot -p codeSign \
             -k /Library/Keychains/System.keychain \
-            "$RUNNER_TEMP/lico-local-integrity.pem"
+            "$RUNNER_TEMP/licoup-release-identity.pem"
           security set-key-partition-list -S apple-tool:,apple: -s \
-            -k github-artifact "$RUNNER_TEMP/lico-local-integrity.keychain-db"
-          identity="$(security find-identity -v -p codesigning \
-            "$RUNNER_TEMP/lico-local-integrity.keychain-db" | \
-            awk '/LicoUp GitHub Artifact Validation/{print $2; exit}')"
-          if [[ ! "$identity" =~ ^[A-F0-9]{40}$ ]]; then
-            echo "Ephemeral local integrity identity was not created" >&2
+            -k "$release_keychain_password" \
+            "$RUNNER_TEMP/licoup-release-identity.keychain-db"
+          identities="$(security find-identity -v -p codesigning \
+            "$RUNNER_TEMP/licoup-release-identity.keychain-db" | \
+            awk '/^[[:space:]]*[0-9]+\)/{print $2}')"
+          identity_count="$(printf '%s\n' "$identities" | awk 'NF{count++} END{print count+0}')"
+          identity="$(printf '%s\n' "$identities" | awk 'NF{print; exit}')"
+          if [[ "$identity_count" -ne 1 || ! "$identity" =~ ^[A-F0-9]{40}$ ]]; then
+            echo "Stable macOS release identity is not unique" >&2
             exit 1
           fi
-          echo "LICO_MACOS_LOCAL_SIGNING_IDENTITY=$identity" >> "$GITHUB_ENV"
-          echo "LICO_MACOS_LOCAL_SIGNING_KEYCHAIN=$RUNNER_TEMP/lico-local-integrity.keychain-db" >> "$GITHUB_ENV"
-      - name: Build, sign and install the local-integrity app
+          echo "LICO_MACOS_RELEASE_SIGNING_IDENTITY=$identity" >> "$GITHUB_ENV"
+          echo "LICO_MACOS_RELEASE_SIGNING_KEYCHAIN=$RUNNER_TEMP/licoup-release-identity.keychain-db" >> "$GITHUB_ENV"
+          echo "LICO_MACOS_RELEASE_SIGNER_SHA256=$RELEASE_SIGNER_SHA256" >> "$GITHUB_ENV"
+      - name: Build, sign and install with the stable release identity
         run: npm run client:install:macos
       - name: Apply remote release validity strategy
         run: npm run client:release:remote-strategy -- --expect build-success
       - name: Archive the exact verified macOS app
         run: npm run client:archive:macos-github-release
+      - name: Install and launch the exact release ZIP
+        run: npm run client:verify:macos-release-artifact
       - name: Emit consumer verification metadata
         run: |
           cp tools/install-macos.sh build/apps/desktop/distribution/macos/install-macos.sh
@@ -132,6 +151,17 @@ jobs:
             build/apps/desktop/distribution/macos/LicoUp-macos-arm64-update.tar.gz
             build/apps/desktop/distribution/macos/LicoUp-macos-arm64-update.tar.gz.sha256
           if-no-files-found: error
+      - name: Remove the temporary release keychain
+        if: always()
+        run: |
+          if [[ -n "${LICO_MACOS_RELEASE_SIGNING_IDENTITY:-}" ]]; then
+            sudo -n security delete-certificate \
+              -Z "$LICO_MACOS_RELEASE_SIGNING_IDENTITY" \
+              /Library/Keychains/System.keychain >/dev/null 2>&1 || true
+          fi
+          if [[ -n "${LICO_MACOS_RELEASE_SIGNING_KEYCHAIN:-}" ]]; then
+            security delete-keychain "$LICO_MACOS_RELEASE_SIGNING_KEYCHAIN" || true
+          fi
 
   build-linux-arm64:
     name: Build Linux glibc ARM64

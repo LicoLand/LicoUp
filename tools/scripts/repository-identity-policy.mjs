@@ -19,6 +19,13 @@ const managedPolicyPaths = Object.freeze([
   ".githooks/pre-commit",
   ".githooks/commit-msg",
   ".githooks/pre-push",
+  "package.json",
+  "tools/client-release-template.json",
+  "tools/scripts/client-auditor-preflight.mjs",
+  "tools/scripts/client-gate-policy.mjs",
+  "tools/scripts/client-gate.mjs",
+  "tools/scripts/client-pr-preflight.mjs",
+  "tools/scripts/repository-rulesets.mjs",
   "tools/scripts/repository-identity-policy.mjs",
 ]);
 const prohibitedAttributionTrailer =

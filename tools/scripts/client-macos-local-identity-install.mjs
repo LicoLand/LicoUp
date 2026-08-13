@@ -22,6 +22,8 @@ import {
   inspectBoundedMacosCodePolicy,
   listMacosNestedCodePaths,
 } from "./lib/macos-code-signature.mjs";
+import { replaceInstalledAppWithRollback } from "./lib/macos-app-install.mjs";
+import { normalizedMacosReleaseSignerFingerprint } from "./lib/macos-release-identity.mjs";
 import {
   atomicWriteReportJson,
   removeContainedReportIfExists,
@@ -47,7 +49,7 @@ const canonicalPackagingConfigDigest = sha256File(path.join(
 ), { maxBytes: 2 * 1024 * 1024 });
 
 function signingKeychainArgs() {
-  const keychain = String(process.env.LICO_MACOS_LOCAL_SIGNING_KEYCHAIN || "").trim();
+  const keychain = String(process.env.LICO_MACOS_RELEASE_SIGNING_KEYCHAIN || "").trim();
   if (!keychain) return [];
   requireValue(path.isAbsolute(keychain) && existsSync(keychain),
     "macos_local_signing_keychain_invalid");
@@ -79,7 +81,8 @@ function plistValue(appPath, key) {
 }
 
 function boundedNestedCodePolicyReady(policy) {
-  return policy?.nestedSignatures?.length > 0 &&
+  return policy?.signerIdentityUniform === true &&
+    policy?.nestedSignatures?.length > 0 &&
     policy.nestedSignatures.every(({ signature }) => {
     return signature.verified === true &&
       signature.signatureKind === "local-identity-codesign" &&
@@ -94,7 +97,7 @@ function remainingDeadlineTimeout(deadlineMs) {
   return Math.min(120_000, remaining);
 }
 
-function identityManifest(manifest) {
+function identityManifest(manifest, signerFingerprint) {
   return {
     ...manifest,
     signing: {
@@ -104,6 +107,8 @@ function identityManifest(manifest) {
       entitlementProfile: "release",
       productionEntitlementsRequested: false,
       localInstallIdentity: true,
+      stableReleaseIdentity: true,
+      signerFingerprint,
       timestamped: false,
       nonBlockingDistributionGuidance: {
         blocking: false,
@@ -130,6 +135,8 @@ function validateIdentityManifest(manifest, sourceStateDigest) {
     signing.entitlementsFile === releaseEntitlementsRef &&
     signing.entitlementProfile === "release" &&
     signing.localInstallIdentity === true &&
+    signing.stableReleaseIdentity === true &&
+    digestPattern.test(String(signing.signerFingerprint || "")) &&
     signing.productionEntitlementsRequested === false &&
     signing.timestamped === false &&
     signing.nonBlockingDistributionGuidance?.blocking === false &&
@@ -150,30 +157,6 @@ function validateInputPackageManifest(manifest, sourceStateDigest) {
     signing.productionEntitlementsRequested === false;
 }
 
-function replaceInstalledAppWithRollback({
-  stagedPath,
-  installedPath,
-  backupPath,
-  operations,
-}) {
-  const hadExistingInstall = operations.exists(installedPath);
-  requireValue(!operations.exists(backupPath), "macos_local_install_backup_collision");
-  if (hadExistingInstall) {
-    operations.rename(installedPath, backupPath);
-  }
-  try {
-    operations.rename(stagedPath, installedPath);
-    requireValue(operations.verify(installedPath), "macos_installed_identity_verification_failed");
-  } catch (error) {
-    operations.remove(installedPath);
-    if (hadExistingInstall && operations.exists(backupPath)) {
-      operations.rename(backupPath, installedPath);
-    }
-    throw error;
-  }
-  operations.remove(backupPath);
-}
-
 function validateReport(report) {
   return report?.schemaVersion === schemaVersion && report?.generatedBy === producer &&
     report?.targetId === "macos-arm64" && report?.artifactKind === "macos-app-bundle" &&
@@ -183,6 +166,8 @@ function validateReport(report) {
     report.platformLocalSignatureReady === true && report.entitlementsMatch === true &&
     digestPattern.test(String(report.entitlementsDigest || "")) &&
     report.hardenedRuntime === true &&
+    report.signerIdentityUniform === true &&
+    digestPattern.test(String(report.signerFingerprint || "")) &&
     report.nestedCodeMinimalEntitlements === true &&
     report.installReady === true &&
     report.nonBlockingDistributionGuidance?.blocking === false &&
@@ -209,7 +194,7 @@ function selfTest() {
       productionEntitlementsRequested: false,
     },
   };
-  const finalized = identityManifest(baseManifest);
+  const finalized = identityManifest(baseManifest, digest);
   requireValue(validateIdentityManifest(finalized, digest), "identity_manifest_self_test_failed");
   requireValue(!validateIdentityManifest({
     ...finalized,
@@ -239,6 +224,8 @@ function selfTest() {
     entitlementsMatch: true,
     entitlementsDigest: digest,
     hardenedRuntime: true,
+    signerIdentityUniform: true,
+    signerFingerprint: digest,
     nestedCodeMinimalEntitlements: true,
     installReady: true,
     nonBlockingDistributionGuidance: {
@@ -343,8 +330,9 @@ function main() {
   }
   requireValue(process.platform === "darwin", "macos_identity_install_requires_macos");
   removeContainedReportIfExists(repoRoot, reportRef);
-  const identity = String(process.env.LICO_MACOS_LOCAL_SIGNING_IDENTITY || "").trim();
-  requireValue(identity, "macos_local_signing_identity_missing");
+  const identity = String(process.env.LICO_MACOS_RELEASE_SIGNING_IDENTITY || "").trim();
+  requireValue(identity, "macos_release_signing_identity_missing");
+  const signerFingerprint = normalizedMacosReleaseSignerFingerprint();
   const keychainArgs = signingKeychainArgs();
   requireValue(existsSync(builtApp) && existsSync(packageManifestPath),
     "macos_release_artifact_missing");
@@ -403,6 +391,7 @@ function main() {
   const builtSignature = builtPolicy.signature;
   requireValue(builtSignature.verified &&
     builtSignature.signatureKind === "local-identity-codesign" &&
+    builtSignature.signerFingerprint === signerFingerprint &&
     builtSignature.hardenedRuntime === true &&
     builtSignature.entitlementsMatch === true &&
     boundedNestedCodePolicyReady(builtPolicy),
@@ -434,6 +423,7 @@ function main() {
           return targetPolicy.artifactDigest === artifactDigest &&
             signature.verified &&
             signature.signatureKind === "local-identity-codesign" &&
+            signature.signerFingerprint === signerFingerprint &&
             signature.hardenedRuntime === true &&
             signature.entitlementsMatch === true &&
             boundedNestedCodePolicyReady(targetPolicy);
@@ -452,13 +442,14 @@ function main() {
   const installedDigest = installedPolicy.artifactDigest;
   requireValue(installedSignature.verified &&
     installedSignature.signatureKind === "local-identity-codesign" &&
+    installedSignature.signerFingerprint === signerFingerprint &&
     installedSignature.hardenedRuntime === true &&
     installedSignature.entitlementsMatch === true &&
     boundedNestedCodePolicyReady(installedPolicy) &&
     artifactDigest === installedDigest,
   "macos_installed_identity_artifact_mismatch");
 
-  const finalizedManifest = identityManifest(manifest);
+  const finalizedManifest = identityManifest(manifest, signerFingerprint);
   requireValue(validateIdentityManifest(finalizedManifest, sourceStateDigest),
     "macos_identity_manifest_invalid");
   atomicWriteReportJson(
@@ -485,6 +476,8 @@ function main() {
     entitlementsMatch: true,
     entitlementsDigest: installedSignature.entitlementsDigest,
     hardenedRuntime: true,
+    signerIdentityUniform: true,
+    signerFingerprint,
     nestedCodeMinimalEntitlements: true,
     installReady: true,
     nonBlockingDistributionGuidance: {

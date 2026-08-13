@@ -14,8 +14,27 @@
   "requiredPullRequestChecks": [
     "Branch flow policy",
     "Commit identity",
-    "Client required"
+    "Client required",
+    "lico-auditor-gate"
   ],
+  "pullRequestPreflight": {
+    "command": "npm run client:pr:preflight -- --base origin/nightly --target <target> --full-target",
+    "receiptSchema": "licoup.client-pr-preflight-receipt.v1",
+    "maximumReceiptAgeMinutes": 30,
+    "checks": [
+      "candidate-tree-clean",
+      "identity-policy",
+      "workflow-paths-and-runner-bootstrap",
+      "remote-ruleset-parity",
+      "changed-source-and-platform-gates",
+      "lico-auditor-profile",
+      "selected-target-build",
+      "stable-macos-release-identity",
+      "nested-code-identity-uniformity",
+      "exact-release-archive-install",
+      "installed-artifact-launch-stability"
+    ]
+  },
   "publication": {
     "workflow": ".github/workflows/client-release.yml",
     "ref": "release",

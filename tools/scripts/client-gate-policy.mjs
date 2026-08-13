@@ -44,6 +44,7 @@ export const CLIENT_GATE_LANES = Object.freeze({
     "client:deps:audit",
   ]),
   "release-policy": freezeLane([
+    "client:pr:preflight:self-test",
     "client:release:self-test",
     "client:install:macos:github:self-test",
     "client:update-release:finalize:self-test",
@@ -62,6 +63,7 @@ export const CLIENT_GATE_LANES = Object.freeze({
     "client:verify:release-target-evidence:self-test",
     "client:verify:release-report-schema:self-test",
     "client:verify:macos-nested-code-bounds:self-test",
+    "client:verify:macos-release-artifact:self-test",
     "client:verify:package-client:self-test",
     "client:native:smoke:policy:self-test",
     "client:verify:closure-producer-writer:self-test",
@@ -193,6 +195,8 @@ function isReleasePolicyPath(file) {
   return (
     RELEASE_AUTHORITY_PATHS.has(file) ||
     file.startsWith("tools/scripts/client-release") ||
+    file.startsWith("tools/scripts/client-pr-preflight") ||
+    file.startsWith("tools/scripts/client-auditor-preflight") ||
     file.startsWith("tools/scripts/client-update-release") ||
     file.startsWith("tools/scripts/client-github-release") ||
     file.startsWith("tools/scripts/client-consumer-verification") ||
