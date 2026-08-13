@@ -237,8 +237,20 @@ export function deviceDemoPlatformsForTargets(targets) {
 }
 
 export function targetStages(target) {
-  requireValue(target !== "macos-direct-arm64" && target !== "macos-direct-x64",
-    "audit_target_release_blocked");
+  if (target === "macos-direct-arm64" || target === "macos-direct-x64") return Object.freeze([
+    ["distribution-preflight", "client:verify:macos-distribution:preflight",
+      "audit_selected_target_build_failed"],
+    ["selected-target-build", "client:build:macos:platform-channel",
+      "audit_selected_target_build_failed", 60 * 60 * 1000],
+    ["final-artifact", "client:verify:macos-release-artifact",
+      "audit_installed_artifact_mismatch"],
+    ["update-path", "client:verify:macos-update-preflight",
+      "audit_update_path_missing"],
+    ["stage-package", "client:release:stage", "audit_archive_layout_invalid",
+      undefined, ["--", "--target", target]],
+    ["verify-package", "client:release:verify", "audit_archive_layout_invalid",
+      undefined, ["--", "--target", target]],
+  ]);
   if (target === "android-direct-arm64-v8a") return Object.freeze([
     ["selected-target-build", "client:build:android", "audit_selected_target_build_failed"],
     ["final-artifact", "client:verify:android-apk", "audit_archive_layout_invalid"],
