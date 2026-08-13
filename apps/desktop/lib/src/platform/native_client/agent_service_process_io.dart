@@ -170,7 +170,7 @@ class BoundedNativeProcessIo implements AgentCommandRunner {
         args.length >= 3 &&
         args[0] == 'agent' &&
         args[1] == 'conversation' &&
-        args[2] == 'send') {
+        (args[2] == 'send' || args[2] == 'attach')) {
       late dynamic request;
       try {
         request = jsonDecode(stdinText);
@@ -180,7 +180,10 @@ class BoundedNativeProcessIo implements AgentCommandRunner {
       if (request is! Map<String, dynamic>) {
         throw const LicoClientRpcException('invalid_request');
       }
-      yield* _stdioRpcTransport.streamConversation(request);
+      yield* _stdioRpcTransport.streamConversation({
+        ...request,
+        if (args[2] == 'attach') '_rpcOperation': 'attach',
+      });
       return;
     }
     final stdinBytes = utf8.encode(stdinText);
@@ -286,6 +289,7 @@ String? _conversationControlOperation(List<String> args) {
     'capabilities',
     'cancel',
     'steer',
+    'active',
   };
   return controls.contains(args[2]) ? args[2] : null;
 }

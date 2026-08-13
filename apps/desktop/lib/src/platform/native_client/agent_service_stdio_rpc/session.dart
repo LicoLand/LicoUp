@@ -20,7 +20,7 @@ class StdioRpcTransportFailure implements Exception {
 }
 
 class StdioRpcSession {
-  StdioRpcSession(this.process, {bool observeExit = true}) {
+  StdioRpcSession(this.process) {
     _stdoutSubscription = process.stdout.listen(
       _acceptStdoutChunk,
       onError: (Object _, StackTrace _) => _addFrameError(),
@@ -34,14 +34,12 @@ class StdioRpcSession {
       },
       cancelOnError: false,
     );
-    if (observeExit) {
-      unawaited(
-        process.exitCode.then<void>(
-          (_) => _addFrameError(),
-          onError: (Object _, StackTrace _) => _addFrameError(),
-        ),
-      );
-    }
+    unawaited(
+      process.exitCode.then<void>(
+        (_) => _addFrameError(),
+        onError: (Object _, StackTrace _) => _addFrameError(),
+      ),
+    );
   }
 
   final Process process;
