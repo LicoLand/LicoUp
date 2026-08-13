@@ -8,6 +8,7 @@ import 'package:licoup/src/application/features/agents/conversation/conversation
 import 'package:licoup/src/application/features/agents/conversation/conversation_turn_queue.dart';
 import 'package:licoup/src/application/features/agents/conversation/conversation_working_directory_fallback.dart';
 import 'package:licoup/src/application/features/agents/conversation/cursor_ide_cli_handoff.dart';
+import 'package:licoup/src/application/features/agents/contracts/agent_conversation_gateway.dart';
 import 'package:licoup/src/application/features/agents/policy/conversation_session_index.dart';
 import 'package:licoup/src/application/features/agents/workspace/agent_workspace_coordinator.dart';
 import 'package:licoup/src/application/localization/client_application_strings.dart';
@@ -30,6 +31,184 @@ mixin AgentConversationMessageController
         AgentConversationSessionController,
         AgentConversationLiveProjectionController,
         AgentConversationRelayProjectionController {
+  bool _reattachingActiveConversationTurn = false;
+  String _persistentTurnHandle = '';
+  String _persistentConversationId = '';
+  int _persistentTurnCursor = 0;
+
+  void _capturePersistentTurn(AgentDispatchEvent event) {
+    final handle = (event.payload['turnHandle'] ?? '').toString().trim();
+    final conversationId = (event.payload['conversationId'] ?? '')
+        .toString()
+        .trim();
+    final cursor = event.payload['cursor'];
+    if (handle.isNotEmpty) _persistentTurnHandle = handle;
+    if (conversationId.isNotEmpty) {
+      _persistentConversationId = conversationId;
+    }
+    if (cursor is int && cursor > _persistentTurnCursor) {
+      _persistentTurnCursor = cursor;
+    }
+  }
+
+  void _clearPersistentTurn() {
+    _persistentTurnHandle = '';
+    _persistentConversationId = '';
+    _persistentTurnCursor = 0;
+  }
+
+  @override
+  Future<bool> reattachActiveConversationTurn(
+    String agentId,
+    String sessionId,
+  ) async {
+    if (_reattachingActiveConversationTurn ||
+        isSendingConversationMessage ||
+        agentWorkspaceDisposed ||
+        agentWorkspaceMobileRuntime ||
+        conversationGateway is! PersistentAgentConversationGateway) {
+      return false;
+    }
+    final persistent =
+        conversationGateway as PersistentAgentConversationGateway;
+    final selected = selectedConversationSession;
+    final nativeSessionId = selected?.nativeSessionId.trim() ?? '';
+    final scopedSession = nativeSessionId.isNotEmpty
+        ? nativeSessionId
+        : sessionId.trim();
+    late final List<Map<String, dynamic>> active;
+    try {
+      active = await persistent.activeTurns(
+        agentId: agentId,
+        sessionId: scopedSession,
+      );
+    } on Object {
+      return false;
+    }
+    if (active.length != 1 || agentWorkspaceDisposed) return false;
+    final turn = active.single;
+    final handle = (turn['turnHandle'] ?? '').toString().trim();
+    final conversationId = (turn['conversationId'] ?? '').toString().trim();
+    if (handle.isEmpty || conversationId.isEmpty) return false;
+
+    _reattachingActiveConversationTurn = true;
+    _persistentTurnHandle = handle;
+    _persistentConversationId = conversationId;
+    _persistentTurnCursor = 0;
+    isSendingConversationMessage = true;
+    sendingConversationAgentId = agentId;
+    sendingConversationSessionId = sessionId;
+    sendingConversationNativeSessionId = (turn['sessionId'] ?? scopedSession)
+        .toString()
+        .trim();
+    sendingConversationTurnId = (turn['turnId'] ?? '').toString().trim();
+    final scopeKey = conversationComposerScopeKey;
+    final projectionTurnId = 'reattached:$handle';
+    var userText = '';
+    if (selected != null) {
+      for (final message in selected.messages.reversed) {
+        if (message.kind == AgentConversationMessageKind.user) {
+          userText = message.text;
+          break;
+        }
+      }
+    }
+    conversationStartLiveProjection(
+      scopeKey: scopeKey,
+      turnId: projectionTurnId,
+      userText: userText,
+    );
+    conversationUpsertLiveLifecycle(
+      scopeKey: scopeKey,
+      turnId: projectionTurnId,
+      stage: 'processing',
+      participantAgentId: agentId,
+      participantLabel: selectedConversationAgent?.label ?? agentId,
+    );
+    agentWorkspaceNotifyLiveConversationChanged();
+    agentWorkspaceNotifyStateChanged();
+    var reply = '';
+    var attached = false;
+    try {
+      await for (final event in persistent.attachActiveTurn(
+        turnHandle: handle,
+        conversationId: conversationId,
+        afterCursor: _persistentTurnCursor,
+      )) {
+        attached = true;
+        _capturePersistentTurn(event);
+        final eventSession = event.sessionId.trim();
+        final eventTurn = event.turnId.trim();
+        if (eventSession.isNotEmpty) {
+          sendingConversationNativeSessionId = eventSession;
+        }
+        if (eventTurn.isNotEmpty) sendingConversationTurnId = eventTurn;
+        if (event.kind == 'agent.message.chunk' ||
+            event.kind == 'agent.message.completed') {
+          reply = ConversationRuntimeResultPolicy.mergeProgressiveText(
+            reply,
+            (event.payload['text'] ?? '').toString(),
+            completed: event.kind == 'agent.message.completed',
+          );
+          conversationUpsertLiveReply(
+            scopeKey: scopeKey,
+            turnId: projectionTurnId,
+            text: reply,
+            participantAgentId: agentId,
+            participantLabel: selectedConversationAgent?.label ?? agentId,
+          );
+          conversationUpsertLiveLifecycle(
+            scopeKey: scopeKey,
+            turnId: projectionTurnId,
+            stage: 'responding',
+            participantAgentId: agentId,
+            participantLabel: selectedConversationAgent?.label ?? agentId,
+          );
+        } else if (event.kind == 'dispatch.turn.completed' ||
+            event.kind == 'dispatch.turn.failed') {
+          final ok = event.payload['ok'] == true;
+          conversationUpsertLiveLifecycle(
+            scopeKey: scopeKey,
+            turnId: projectionTurnId,
+            stage: ok ? 'completed' : 'failed',
+            participantAgentId: agentId,
+            participantLabel: selectedConversationAgent?.label ?? agentId,
+          );
+          if (!ok) {
+            final error = event.payload['error'];
+            lastError = error is Map
+                ? (error['code'] ?? 'dispatch_failed').toString()
+                : 'dispatch_failed';
+          }
+        } else {
+          conversationAppendLiveProcessEvent(
+            scopeKey: scopeKey,
+            turnId: projectionTurnId,
+            event: event,
+            participantAgentId: agentId,
+            participantLabel: selectedConversationAgent?.label ?? agentId,
+          );
+        }
+        agentWorkspaceNotifyLiveConversationChanged();
+      }
+    } on Object {
+      lastError = 'dispatch_reattach_failed';
+    } finally {
+      _reattachingActiveConversationTurn = false;
+      isSendingConversationMessage = false;
+      sendingConversationAgentId = '';
+      sendingConversationSessionId = '';
+      sendingConversationNativeSessionId = '';
+      sendingConversationTurnId = '';
+      _clearPersistentTurn();
+      agentWorkspaceNotifyStateChanged();
+    }
+    if (attached && !agentWorkspaceDisposed) {
+      await refreshConversationCatalogInternal(agentId, foreground: true);
+    }
+    return attached;
+  }
+
   Future<bool> sendConversationMessage(
     String text, {
     List<String> allowedTools = const <String>[],
@@ -294,21 +473,33 @@ mixin AgentConversationMessageController
       _enqueueConversationTurn(turn);
       return;
     }
-    final result = await conversationGateway.steer(
-      agentId: turn.agent.target,
-      text: turn.text,
-      sessionId: turn.nativeSessionId,
-      turnId: activeTurnId,
-      bind: AgentDispatchBind(
-        sessionPath: turn.session?.sourcePath ?? '',
-        workingDirectory: turn.workingDirectory,
-        binaryPath: turn.agent.binaryPath ?? '',
-        model: turn.model,
-        reasoningEffort: turn.reasoningEffort,
-        licoProfile: turn.licoProfile,
-        runtimeConnection: turn.agent.runtimeConnection,
-      ),
-    );
+    final persistent = conversationGateway is PersistentAgentConversationGateway
+        ? conversationGateway as PersistentAgentConversationGateway
+        : null;
+    final result =
+        persistent != null &&
+            _persistentTurnHandle.isNotEmpty &&
+            _persistentConversationId.isNotEmpty
+        ? await persistent.steerActiveTurn(
+            turnHandle: _persistentTurnHandle,
+            conversationId: _persistentConversationId,
+            text: turn.text,
+          )
+        : await conversationGateway.steer(
+            agentId: turn.agent.target,
+            text: turn.text,
+            sessionId: turn.nativeSessionId,
+            turnId: activeTurnId,
+            bind: AgentDispatchBind(
+              sessionPath: turn.session?.sourcePath ?? '',
+              workingDirectory: turn.workingDirectory,
+              binaryPath: turn.agent.binaryPath ?? '',
+              model: turn.model,
+              reasoningEffort: turn.reasoningEffort,
+              licoProfile: turn.licoProfile,
+              runtimeConnection: turn.agent.runtimeConnection,
+            ),
+          );
     if (agentWorkspaceDisposed) return;
     if (result.ok) {
       agentWorkspaceSetLocalizedStatusMessage(
@@ -377,13 +568,30 @@ mixin AgentConversationMessageController
     conversationTurnQueue.clear();
     final agentId = sendingConversationAgentId.trim();
     final sessionId = sendingConversationNativeSessionId.trim();
-    if (!isSendingConversationMessage || agentId.isEmpty || sessionId.isEmpty) {
+    if (!isSendingConversationMessage || agentId.isEmpty) {
       return;
     }
-    final result = await conversationGateway.cancel(
-      agentId: agentId,
-      sessionId: sessionId,
-    );
+    final persistent = conversationGateway is PersistentAgentConversationGateway
+        ? conversationGateway as PersistentAgentConversationGateway
+        : null;
+    final result =
+        persistent != null &&
+            _persistentTurnHandle.isNotEmpty &&
+            _persistentConversationId.isNotEmpty
+        ? await persistent.cancelActiveTurn(
+            turnHandle: _persistentTurnHandle,
+            conversationId: _persistentConversationId,
+          )
+        : sessionId.isEmpty
+        ? const AgentDispatchCancelResult(
+            ok: false,
+            status: 'unavailable',
+            failureCode: 'dispatch_cancel_session_missing',
+          )
+        : await conversationGateway.cancel(
+            agentId: agentId,
+            sessionId: sessionId,
+          );
     if (agentWorkspaceDisposed) return;
     if (!result.ok) {
       lastError = result.failureCode.isEmpty
@@ -463,6 +671,7 @@ mixin AgentConversationMessageController
     sendingConversationSessionId = selectedSession?.id.trim() ?? '';
     sendingConversationNativeSessionId = queuedTurn.nativeSessionId;
     sendingConversationTurnId = '';
+    _clearPersistentTurn();
     _discardPendingLiveReply();
     final liveTurnId =
         'live-${queuedTurn.agent.target}-${DateTime.now().toUtc().microsecondsSinceEpoch}';
@@ -515,6 +724,7 @@ mixin AgentConversationMessageController
         sendingConversationSessionId = selectedSession?.id.trim() ?? '';
         sendingConversationNativeSessionId = queuedTurn.nativeSessionId;
         sendingConversationTurnId = '';
+        _clearPersistentTurn();
         lastError = '';
         setConversationTabActivity(
           agent.target,
@@ -568,6 +778,7 @@ mixin AgentConversationMessageController
             // Returning here would cancel the Dart subscription and close the
             // transport that carries the already accepted Agent work.
             if (agentWorkspaceDisposed) continue;
+            _capturePersistentTurn(event);
             final eventSessionId = event.sessionId.trim();
             final eventTurnId = event.turnId.trim();
             if (eventSessionId.isNotEmpty) {
@@ -1036,6 +1247,7 @@ mixin AgentConversationMessageController
       sendingConversationSessionId = '';
       sendingConversationNativeSessionId = '';
       sendingConversationTurnId = '';
+      _clearPersistentTurn();
       if (!agentWorkspaceDisposed) {
         agentWorkspaceNotifyConversationStructureChanged();
         agentWorkspaceNotifyStateChanged();

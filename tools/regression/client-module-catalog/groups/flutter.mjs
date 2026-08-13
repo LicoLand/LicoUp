@@ -405,9 +405,13 @@ export const FLUTTER_MODULES = Object.freeze([
       summary: "Conversation dispatch, exact resume, streaming, steer, and cancel",
       inputs: [
         "apps/desktop/test/fixtures/agent_conversation_service/dispatch_resume_scenarios.dart",
+        "apps/desktop/test/native_persistent_runtime_test.dart",
+        "apps/desktop/test/agent_conversation_reattachment_test.dart",
       ],
       command: flutterTests([
         "test/fixtures/agent_conversation_service/dispatch_resume_scenarios.dart",
+        "test/native_persistent_runtime_test.dart",
+        "test/agent_conversation_reattachment_test.dart",
       ]),
     }),
   defineModule({

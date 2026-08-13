@@ -192,6 +192,9 @@ export const CAPABILITY_MATRIX_FIELDS = new Set([
   "usageStatus",
   "officialLane",
   "processLocalContinuation",
+  "hostSurvivesGuiDisconnect",
+  "activeTurnReattach",
+  "orderedCursorReplay",
 ]);
 
 export const LANE_FAMILIES = new Set([

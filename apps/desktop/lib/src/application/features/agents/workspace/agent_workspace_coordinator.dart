@@ -118,6 +118,10 @@ abstract class AgentWorkspaceCoordinator extends ChangeNotifier {
   bool canApplyConversationRequest(String agentId, int sequence);
   void conversationAttentionContextChanged({bool immediateActive = true});
   void stopConversationRefreshScheduling();
+  Future<bool> reattachActiveConversationTurn(
+    String agentId,
+    String sessionId,
+  ) async => false;
 
   bool get agentWorkspaceDisposed => lifecycleProjection.disposed;
   bool conversationMobileLoading = false;

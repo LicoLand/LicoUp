@@ -7,14 +7,12 @@ import 'package:licoup/src/platform/native_client/native_cli_ports.dart';
 class StdioRpcSessionManager {
   StdioRpcSessionManager({
     required NativeCliProcessContext processContext,
-    this.preserveActiveWork = false,
+    this.arguments = const ['rpc', 'stdio'],
   }) : _processContext = processContext;
 
   final NativeCliProcessContext _processContext;
 
-  /// Conversation work belongs to the native host after dispatch. Losing the
-  /// observing transport must close stdin without terminating that host.
-  final bool preserveActiveWork;
+  final List<String> arguments;
   StdioRpcSession? _session;
   var _generation = 0;
   var _closed = false;
@@ -29,7 +27,7 @@ class StdioRpcSessionManager {
       return current;
     }
     if (current != null) {
-      await discard(session: current, kill: !preserveActiveWork);
+      await discard(session: current, kill: true);
     }
 
     late File? cli;
@@ -48,11 +46,9 @@ class StdioRpcSessionManager {
     try {
       process = await _processContext.startProcess(
         executable,
-        const ['rpc', 'stdio'],
+        arguments,
         environment,
-        mode: preserveActiveWork
-            ? ProcessStartMode.detachedWithStdio
-            : ProcessStartMode.normal,
+        mode: ProcessStartMode.normal,
       );
     } on Object {
       throw const LicoClientRpcException('start_failed');
@@ -68,7 +64,7 @@ class StdioRpcSessionManager {
     }
     late StdioRpcSession session;
     try {
-      session = StdioRpcSession(process, observeExit: !preserveActiveWork);
+      session = StdioRpcSession(process);
     } on Object {
       process.kill();
       throw const LicoClientRpcException('transport_failed');
@@ -79,13 +75,13 @@ class StdioRpcSessionManager {
 
   Future<void> invalidateAndDiscard() {
     _generation += 1;
-    return discard(kill: !preserveActiveWork);
+    return discard(kill: true);
   }
 
   Future<void> detachAndClose() {
     _closed = true;
     _generation += 1;
-    return discard(kill: !preserveActiveWork);
+    return discard(kill: true);
   }
 
   StdioRpcSession? takeForShutdown() {
