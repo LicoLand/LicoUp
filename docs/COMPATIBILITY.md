@@ -12,11 +12,12 @@ Update with `npm run client:support-matrix:sync`; verify with `npm run client:su
 
 A build target is not a support claim.
 
+LicoUp for macOS supports Apple Silicon (`arm64`) on macOS 11 or later. Intel (`x86_64`) Macs and Rosetta are outside the supported product boundary; no Intel app or update package is produced.
+
 | Runtime target | Build | Physical/device evidence | Client | Peer encryption | Mobile relay |
 | --- | --- | --- | --- | --- | --- |
 | windows-x64 | available | not claimed | preview | preview | preview |
 | windows-arm64 | unavailable | not claimed | unverified | unverified | unverified |
-| macos-x64 | available | not claimed | supported | preview | preview |
 | macos-arm64 | available | not claimed | supported | preview | preview |
 | linux-glibc-x64 | available | not claimed | preview | preview | preview |
 | linux-glibc-arm64 | available | not claimed | preview | preview | preview |
@@ -33,7 +34,6 @@ Runtime targets and release packages are intentionally different authorities. Ea
 | Package target | Runtime target | Platform | Channel | Format | Architecture | Package build | Release eligible | Update authority |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | macos-direct-arm64 | macos-arm64 | macos | direct | dmg | arm64 | available | not eligible | signed-http-manifest |
-| macos-direct-x64 | macos-x64 | macos | direct | dmg | x64 | available | not eligible | signed-http-manifest |
 | macos-app-store-arm64 | macos-arm64 | macos | app-store | pkg | arm64 | available | not eligible | store-managed |
 | windows-direct-x64 | windows-x64 | windows | direct | msix | x64 | available | not eligible | appinstaller |
 | windows-store-x64 | windows-x64 | windows | microsoft-store | msixupload | x64 | available | not eligible | store-managed |

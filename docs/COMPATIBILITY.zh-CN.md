@@ -12,11 +12,12 @@
 
 可以构建，不代表已经支持。
 
+LicoUp macOS 客户端仅支持运行 macOS 11 或更高版本的 Apple Silicon（`arm64`）设备。Intel（`x86_64`）Mac 与 Rosetta 不在产品支持范围内，不提供 Intel 应用或更新包。
+
 | 运行目标 | 构建 | 真机/设备证据 | 客户端 | 对端加密 | 移动中转 |
 | --- | --- | --- | --- | --- | --- |
 | windows-x64 | 可用 | 未声明 | 预览 | 预览 | 预览 |
 | windows-arm64 | 不可用 | 未声明 | 未验证 | 未验证 | 未验证 |
-| macos-x64 | 可用 | 未声明 | 支持 | 预览 | 预览 |
 | macos-arm64 | 可用 | 未声明 | 支持 | 预览 | 预览 |
 | linux-glibc-x64 | 可用 | 未声明 | 预览 | 预览 | 预览 |
 | linux-glibc-arm64 | 可用 | 未声明 | 预览 | 预览 | 预览 |
@@ -33,7 +34,6 @@
 | 发布包目标 | 运行目标 | 平台 | 渠道 | 格式 | 架构 | 包构建 | 可发布 | 更新权威 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | macos-direct-arm64 | macos-arm64 | macos | direct | dmg | arm64 | 可用 | 不可选入 | signed-http-manifest |
-| macos-direct-x64 | macos-x64 | macos | direct | dmg | x64 | 可用 | 不可选入 | signed-http-manifest |
 | macos-app-store-arm64 | macos-arm64 | macos | app-store | pkg | arm64 | 可用 | 不可选入 | store-managed |
 | windows-direct-x64 | windows-x64 | windows | direct | msix | x64 | 可用 | 不可选入 | appinstaller |
 | windows-store-x64 | windows-x64 | windows | microsoft-store | msixupload | x64 | 可用 | 不可选入 | store-managed |

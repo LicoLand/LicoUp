@@ -83,7 +83,7 @@ test("release template binds one or more exact package targets", () => {
     catalog.targets.filter((target) => target.packageBuildSupported)
       .map((target) => target.id).sort(),
   );
-  assert.equal(Object.keys(template.candidatePreflight.targets).length, 18);
+  assert.equal(Object.keys(template.candidatePreflight.targets).length, 17);
 });
 
 test("dependency bootstrap is lockfile-exact without duplicate network audit", () => {
@@ -134,7 +134,6 @@ test("pre-push parser is bounded and target stages include real closure", () => 
 test("release preflight runs each selected platform demo exactly once", () => {
   assert.deepEqual(deviceDemoPlatformsForTargets([
     "macos-direct-arm64",
-    "macos-direct-x64",
     "android-direct-arm64-v8a",
     "windows-direct-x64",
     "android-play-arm64-v8a",
