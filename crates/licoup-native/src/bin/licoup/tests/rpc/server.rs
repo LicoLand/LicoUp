@@ -285,6 +285,23 @@ fn stdio_rpc_executes_client_conversation_actions_on_the_bound_portable_root() {
     let frames = rpc_output(output);
     assert_eq!(frames[0]["ok"], true);
     assert_eq!(frames[0]["result"]["ok"], true);
-    assert_eq!(frames[0]["result"]["result"], json!([]));
+    let conversations = frames[0]["result"]["result"].as_array().unwrap();
+    assert_eq!(
+        conversations.len(),
+        1,
+        "startup pins exactly one canonical Local group"
+    );
+    assert_eq!(conversations[0]["id"], "lico-group-default");
+    assert_eq!(conversations[0]["title"], "Local");
+    assert_eq!(conversations[0]["isGroup"], true);
+    assert_eq!(conversations[0]["pinned"], true);
+    assert_eq!(conversations[0]["archived"], false);
+    assert_eq!(conversations[0]["eventCount"], 0);
+    assert_eq!(conversations[0]["membershipCount"], 1);
+    assert_eq!(conversations[0]["revision"], 1);
+    assert!(
+        conversations[0].get("updatedAtUnixMs").is_some(),
+        "canonical Local projection keeps its recency fact"
+    );
     let _ = fs::remove_dir_all(portable);
 }
