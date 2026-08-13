@@ -294,6 +294,9 @@ mixin ConversationSelectionStore on AgentWorkspaceCoordinator {
 
   @override
   AgentConversationSession? get selectedConversationSession {
+    if (preparingNewConversation) {
+      return null;
+    }
     final selectedId = selectedConversationSessionId.trim();
     if (selectedId.isNotEmpty) {
       for (final session in selectedConversationSessions) {
@@ -301,9 +304,6 @@ mixin ConversationSelectionStore on AgentWorkspaceCoordinator {
           return session;
         }
       }
-      return null;
-    }
-    if (preparingNewConversation) {
       return null;
     }
     return selectedConversationSessions.isNotEmpty

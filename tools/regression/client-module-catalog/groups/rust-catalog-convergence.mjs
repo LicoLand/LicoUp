@@ -57,7 +57,7 @@ export const RUST_CATALOG_CONVERGENCE_MODULES = Object.freeze([
     kind: "rust-ffi",
     summary: "Native catalog command registration and bounded domain dispatch bridge",
     inputs: [
-      "crates/licoup-native/src/ffi/commands/catalog.rs",
+      "crates/licoup-native/src/bin/licoup/stdio_rpc/server.rs",
     ],
     command: nativeLibraryCheck(),
   }),
