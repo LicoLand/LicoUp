@@ -61,18 +61,14 @@ class MainFlutterWindow: NSWindow {
     applyTransparentLayer(to: visualEffectView)
     visualEffectView.layer?.cornerRadius = windowCornerRadius
     visualEffectView.layer?.masksToBounds = true
-    if #available(macOS 10.15, *) {
-      visualEffectView.layer?.cornerCurve = .continuous
-    }
+    visualEffectView.layer?.cornerCurve = .continuous
     flutterViewController.view.autoresizingMask = [.width, .height]
     flutterViewController.view.frame = visualEffectView.bounds
     applyTransparentLayer(to: flutterViewController.view)
     // Corner shape is owned by the visual-effect view; the Flutter view stays
     // unclipped so transparent margin gutters do not expose a black layer.
     flutterViewController.view.layer?.cornerRadius = windowCornerRadius
-    if #available(macOS 10.15, *) {
-      flutterViewController.view.layer?.cornerCurve = .continuous
-    }
+    flutterViewController.view.layer?.cornerCurve = .continuous
     visualEffectView.addSubview(flutterViewController.view)
     self.contentView = visualEffectView
     applyTransparentLayer(to: self.contentView!)
