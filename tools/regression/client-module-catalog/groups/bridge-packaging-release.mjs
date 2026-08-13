@@ -362,6 +362,20 @@ export const BRIDGE_PACKAGING_RELEASE_MODULES = Object.freeze([
       ),
     }),
   defineModule({
+      id: "packaging.macos-install-contract",
+      kind: "packaging",
+      summary: "Existing-runnable macOS installer validation, copy, exact launch, and stable-survival contract",
+      inputs: [
+        "tools/scripts/client-macos-install.mjs",
+        "tests/contract/client/client-macos-install.test.mjs",
+      ],
+      command: command(
+        "node",
+        ["--test", "tests/contract/client/client-macos-install.test.mjs"],
+        120_000,
+      ),
+    }),
+  defineModule({
       id: "packaging.linux",
       kind: "packaging",
       summary: "Linux bundle verification carrier and tar resource bounds",
