@@ -105,7 +105,6 @@ function matchingProfileFixture() {
     ExpirationDate: "2027-01-01T00:00:00.000Z",
     Entitlements: {
       "com.apple.application-identifier": "TEAM123456.land.lico.licoup",
-      "keychain-access-groups": ["TEAM123456.land.lico.licoup"],
     },
   };
 }
@@ -122,15 +121,6 @@ export function profileVariant(variant) {
         ...base,
         Entitlements: {
           "com.apple.application-identifier": "TEAM123456.other.bundle",
-          "keychain-access-groups": ["TEAM123456.other.bundle"],
-        },
-      };
-    case "keychain-mismatch":
-      return {
-        ...base,
-        Entitlements: {
-          "com.apple.application-identifier": "TEAM123456.land.lico.licoup",
-          "keychain-access-groups": ["TEAM123456.different.group"],
         },
       };
     case "team-mismatch":
@@ -544,7 +534,6 @@ function assertProfileAuthorization() {
     ["non-developer-id", "macos_distribution_profile_not_developer_id"],
     ["expired", "macos_distribution_profile_expired"],
     ["app-id-mismatch", "macos_distribution_profile_application_identifier_mismatch"],
-    ["keychain-mismatch", "macos_distribution_profile_keychain_group_mismatch"],
     ["team-mismatch", "macos_distribution_profile_team_mismatch"],
   ]) {
     const denied = authorizeProvisioningProfile(

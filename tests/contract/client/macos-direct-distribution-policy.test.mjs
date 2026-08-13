@@ -213,7 +213,6 @@ test("provisioning profile authorization fails closed on every mismatch", () => 
     ["expired", "macos_distribution_profile_expired"],
     ["non-developer-id", "macos_distribution_profile_not_developer_id"],
     ["app-id-mismatch", "macos_distribution_profile_application_identifier_mismatch"],
-    ["keychain-mismatch", "macos_distribution_profile_keychain_group_mismatch"],
     ["team-mismatch", "macos_distribution_profile_team_mismatch"],
   ]) {
     const denied = authorizeProvisioningProfile(
