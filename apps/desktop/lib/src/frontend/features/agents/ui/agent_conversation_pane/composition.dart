@@ -71,6 +71,7 @@ class AgentConversationActivePane extends StatelessWidget {
       onChooseWorkingDirectory: actions.onChooseWorkingDirectory,
       floatingMatteCapsule: !mobileClient && messagingFlow,
       onAttach: actions.onAttach,
+      onPasteImage: actions.onPasteImage,
       mentionTargets: state.participantTargets
           .where(
             (target) => state.composerMentionLabels.containsKey(target.target),
