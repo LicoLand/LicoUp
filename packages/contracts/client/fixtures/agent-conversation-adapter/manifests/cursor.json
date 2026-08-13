@@ -118,7 +118,10 @@
     "cleanupScope": "official-session",
     "cancelHandleScope": "active-turn",
     "maxConcurrentTransports": 8,
-    "maxTrackedSessions": 1024
+    "maxTrackedSessions": 1024,
+    "survivesGuiDisconnect": true,
+    "reattachScope": "activeTurn",
+    "replayMode": "orderedCursor"
   },
   "privacy": {
     "promptInArguments": true,

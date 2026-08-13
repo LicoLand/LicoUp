@@ -982,12 +982,8 @@ fn stdio_rpc_projects_every_admission_error_class_with_stable_metadata() {
         "mcp http preview",
         "mcp http execute",
         "agent conversation open",
-        "agent conversation send",
-        "agent conversation steer",
-        "agent conversation cancel",
         "agent conversation cleanup",
         "agent conversation capabilities",
-        "agent conversation stream",
     ] {
         let mut alpha = route
             .split_whitespace()
@@ -1018,6 +1014,46 @@ fn stdio_rpc_projects_every_admission_error_class_with_stable_metadata() {
             ],
         );
     }
+    let conversation_root = temporary_directory("cli-conversation-rpc-admission");
+    for route in [
+        "agent conversation send",
+        "agent conversation steer",
+        "agent conversation cancel",
+        "agent conversation stream",
+        "conversation execute",
+    ] {
+        let mut alpha = route
+            .split_whitespace()
+            .map(str::to_string)
+            .collect::<Vec<_>>();
+        alpha.extend(strings([
+            "--stdin-json",
+            r#"{"private":"private-alpha-rpc-stdin-json-731""#,
+        ]));
+        let mut bravo = route
+            .split_whitespace()
+            .map(str::to_string)
+            .collect::<Vec<_>>();
+        bravo.extend(strings([
+            "--stdin-json",
+            r#"{"private":"private-bravo-rpc-stdin-json-947""#,
+        ]));
+        assert_conversation_rpc_admission_pair(
+            &format!("{route} malformed --stdin-json"),
+            alpha,
+            bravo,
+            INVALID_JSON,
+            &[
+                "private-alpha",
+                "stdin-json-731",
+                "private-bravo",
+                "stdin-json-947",
+            ],
+            &conversation_root,
+        );
+    }
+    std::thread::sleep(std::time::Duration::from_millis(1_100));
+    let _ = fs::remove_dir_all(conversation_root);
     assert_rpc_admission_pair(
         "argument count overflow",
         counted_unknown_route(
@@ -1354,6 +1390,35 @@ fn run_lico_client_rpc(args: Vec<String>) -> Output {
         .expect("the real licoup RPC subprocess must finish")
 }
 
+fn run_lico_client_conversation_rpc(args: Vec<String>, portable_root: &Path) -> Output {
+    let mut child = Command::new(env!("CARGO_BIN_EXE_licoup-cli"))
+        .args(["rpc", "conversation"])
+        .env("LICOUP_PORTABLE_DIR", portable_root)
+        .env_remove("RUST_LOG")
+        .env_remove("RUST_BACKTRACE")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("the real persistent conversation RPC subprocess must start");
+    let request = json!({
+        "protocol": "licoup.stdio.v1",
+        "id": "cli-conversation-admission",
+        "workflowId": "cli-conversation-admission",
+        "method": "execute",
+        "args": args,
+    });
+    child
+        .stdin
+        .take()
+        .expect("RPC stdin must be piped")
+        .write_all(format!("{request}\n").as_bytes())
+        .expect("RPC request must be writable");
+    child
+        .wait_with_output()
+        .expect("the real persistent conversation RPC subprocess must finish")
+}
+
 fn rpc_response(output: &Output) -> Value {
     let line = std::str::from_utf8(&output.stdout)
         .expect("RPC stdout must be UTF-8")
@@ -1372,6 +1437,30 @@ fn assert_rpc_admission_pair(
 ) {
     let alpha = run_lico_client_rpc(alpha_args);
     let bravo = run_lico_client_rpc(bravo_args);
+    assert_eq!(alpha.stdout, bravo.stdout, "{label} stdout must be stable");
+    assert_eq!(alpha.stderr, bravo.stderr, "{label} stderr must be stable");
+    assert_process_output_redacted(&alpha, forbidden, label);
+    assert_process_output_redacted(&bravo, forbidden, label);
+    for response in [rpc_response(&alpha), rpc_response(&bravo)] {
+        assert_eq!(response["ok"], false);
+        assert_eq!(response["error"]["code"], expected.code);
+        assert_eq!(response["error"]["stage"], ADMISSION_STAGE);
+        assert_eq!(response["error"]["component"], ADMISSION_COMPONENT);
+        assert_eq!(response["error"]["retryable"], false);
+        assert_eq!(response["error"]["recovery"], expected.recovery);
+    }
+}
+
+fn assert_conversation_rpc_admission_pair(
+    label: &str,
+    alpha_args: Vec<String>,
+    bravo_args: Vec<String>,
+    expected: ExpectedAdmission,
+    forbidden: &[&str],
+    portable_root: &Path,
+) {
+    let alpha = run_lico_client_conversation_rpc(alpha_args, portable_root);
+    let bravo = run_lico_client_conversation_rpc(bravo_args, portable_root);
     assert_eq!(alpha.stdout, bravo.stdout, "{label} stdout must be stable");
     assert_eq!(alpha.stderr, bravo.stderr, "{label} stderr must be stable");
     assert_process_output_redacted(&alpha, forbidden, label);

@@ -146,6 +146,20 @@ direct confirmation and changes only LicoUp-owned files or namespaced hooks.
 Discovery and installation do not by themselves prove that an agent is ready
 for conversation.
 
+Optional collaboration remains outside the default client. Installation or
+enablement never grants continuing transfer permission. Assembly does not
+start the server automatically; importing its signing key, assembling the
+fixed signed runner, starting it on loopback, and approving any external
+effect are separate direct-user actions.
+
+For an external MCP effect, the bridge first creates a non-transmitting
+preview of the exact request or selected files. The native client then asks
+for fresh protected user presence for that preview's canonical digest; a
+matching preview can be claimed exactly once before exchange. Changing the
+request, destination, purpose, protocol revision, or session requires another
+preview and approval. If protected platform authentication is unavailable,
+external transfer remains disabled.
+
 ## Manage local data
 
 - Skill Hub only discovers skills already present in local agent directories.
