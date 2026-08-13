@@ -661,6 +661,52 @@ void registerClientConversationDispatchScenarios() {
   );
 
   test(
+    'selecting a newly discovered running conversation keeps its live projection',
+    () async {
+      final gate = Completer<void>();
+      final service = FakeAgentService()..runtimeMessageGate = gate;
+      final controller = ClientController(agentService: service);
+      addTearDown(controller.dispose);
+
+      await controller.scanTargets();
+      await controller.selectConversationAgent('codex');
+      final sending = controller.sendConversationMessage('Running turn');
+      for (
+        var attempt = 0;
+        attempt < 20 && controller.sendingConversationNativeSessionId.isEmpty;
+        attempt += 1
+      ) {
+        await Future<void>.delayed(Duration.zero);
+      }
+
+      expect(controller.sendingConversationNativeSessionId, isNotEmpty);
+      await controller.refreshConversationSessions('codex');
+      expect(controller.selectedConversationSessions, hasLength(1));
+      expect(controller.selectedLiveConversationMessages, isNotEmpty);
+      final runningSession = controller.selectedConversationSessions.single;
+      final liveScope = controller.conversationComposerScopeKey;
+
+      controller.selectConversationSession(runningSession.id);
+
+      expect(controller.selectedConversationSessions, hasLength(1));
+      expect(controller.selectedConversationSession?.id, runningSession.id);
+      expect(controller.conversationComposerScopeKey, liveScope);
+      expect(controller.selectedLiveConversationMessages, isNotEmpty);
+
+      gate.complete();
+      await sending;
+      expect(controller.preparingNewConversation, isFalse);
+      expect(controller.selectedConversationSession?.id, runningSession.id);
+      expect(
+        controller.selectedConversationSession?.messages
+            .where((message) => message.role == 'user')
+            .map((message) => message.text),
+        contains('Running turn'),
+      );
+    },
+  );
+
+  test(
     'local conversation defaults to the client-owned agent workspace',
     () async {
       final home =
