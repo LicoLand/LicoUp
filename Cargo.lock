@@ -2028,7 +2028,7 @@ dependencies = [
 
 [[package]]
 name = "licoup-native"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "base64",
@@ -3454,7 +3454,7 @@ dependencies = [
 
 [[package]]
 name = "trybuild"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "serde_json",
  "toml",
