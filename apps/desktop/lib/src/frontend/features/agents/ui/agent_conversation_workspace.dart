@@ -598,6 +598,12 @@ class _ConversationWorkspaceBodyState
       planDocumentPath: _planDocumentPath(controller),
       planDocumentReader: controller.planDocumentReader,
       participantConversationIds: participantConversationIds,
+      runningRecentSessionIds: {
+        for (final recentSession in controller.selectedConversationSessions)
+          if (_isConversationSessionRunning(controller, recentSession))
+            recentSession.id,
+      },
+      recentSessionsCached: controller.selectedConversationSessions.isNotEmpty,
     );
     final onUnblockSend = switch (gateReasonCode) {
       'native_agent_executable_not_detected' ||

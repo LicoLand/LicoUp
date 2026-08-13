@@ -27,12 +27,14 @@ class AgentConversationActivePane extends StatelessWidget {
     required this.actions,
     required this.header,
     this.framed = true,
+    this.messageScrollController,
   });
 
   final AgentConversationPaneState state;
   final AgentConversationPaneActions actions;
   final Widget header;
   final bool framed;
+  final ScrollController? messageScrollController;
 
   @override
   Widget build(BuildContext context) {
@@ -147,7 +149,8 @@ class AgentConversationActivePane extends StatelessWidget {
             state.liveMessages.isEmpty
         ? AgentConversationRecentSessions(
             sessions: state.recentSessions,
-            loading: state.loading,
+            runningSessionIds: state.runningRecentSessionIds,
+            loading: state.loading && !state.recentSessionsCached,
             hasMore: state.recentSessionsHasMore,
             loadingMore: state.recentSessionsLoadingMore,
             onNewConversation: actions.onNewConversation ?? () {},
@@ -157,6 +160,7 @@ class AgentConversationActivePane extends StatelessWidget {
             bottomOverlayInset: composerOverlayInset,
           )
         : AgentConversationMessageList(
+            scrollController: messageScrollController,
             loading: state.loading,
             session: state.session,
             target: state.target,

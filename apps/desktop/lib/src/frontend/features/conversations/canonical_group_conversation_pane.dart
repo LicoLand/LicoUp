@@ -238,6 +238,24 @@ class CanonicalGroupConversationPane extends StatefulWidget {
 class _CanonicalGroupConversationPaneState
     extends State<CanonicalGroupConversationPane> {
   bool _rosterVisible = true;
+  final ScrollController _messageScrollController = ScrollController();
+
+  @override
+  void dispose() {
+    _messageScrollController.dispose();
+    super.dispose();
+  }
+
+  void _continueConversationScroll(double overscroll) {
+    if (!_messageScrollController.hasClients || overscroll == 0) return;
+    final position = _messageScrollController.position;
+    _messageScrollController.jumpTo(
+      (position.pixels - overscroll).clamp(
+        position.minScrollExtent,
+        position.maxScrollExtent,
+      ),
+    );
+  }
 
   Future<void> _mentionAgent(
     ClientConversation conversation,
@@ -345,6 +363,7 @@ class _CanonicalGroupConversationPaneState
         onToggleRoster: () => setState(() => _rosterVisible = !_rosterVisible),
       ),
       framed: false,
+      messageScrollController: _messageScrollController,
     );
     final strategy = LayoutAgentsStrategyScope.maybeOf(context);
     final rosterFloats =
@@ -397,6 +416,7 @@ class _CanonicalGroupConversationPaneState
                                 : (target) => widget.onOpenAgentConversations!(
                                     target.id,
                                   ),
+                            onBoundaryOverscroll: _continueConversationScroll,
                           ),
                         ),
                       ),
@@ -420,6 +440,7 @@ class _CanonicalGroupConversationPaneState
                       widget.onOpenAgentConversations == null
                       ? null
                       : (target) => widget.onOpenAgentConversations!(target.id),
+                  onBoundaryOverscroll: _continueConversationScroll,
                 ),
             ],
           );
@@ -897,12 +918,14 @@ class CanonicalGroupRoster extends StatelessWidget {
     required this.targets,
     required this.onMentionAgent,
     this.onOpenAgentConversations,
+    this.onBoundaryOverscroll,
   });
 
   final ClientConversation conversation;
   final List<TargetCandidate> targets;
   final ValueChanged<TargetCandidate> onMentionAgent;
   final ValueChanged<TargetCandidate>? onOpenAgentConversations;
+  final ValueChanged<double>? onBoundaryOverscroll;
 
   Future<void> _showAgentMenu({
     required BuildContext context,
@@ -953,95 +976,106 @@ class CanonicalGroupRoster extends StatelessWidget {
       width: MessagingDesktopMetrics.groupRosterExtent,
       child: ScrollConfiguration(
         behavior: const _CanonicalGroupRosterScrollBehavior(),
-        child: ListView.separated(
-          shrinkWrap: true,
-          padding: const EdgeInsets.symmetric(
-            horizontal: MessagingDesktopMetrics.groupRosterContentInset,
-            vertical: MessagingDesktopMetrics.groupRosterVerticalInset,
-          ),
-          itemCount: targets.length,
-          separatorBuilder: (_, _) => const SizedBox(
-            height: MessagingDesktopMetrics.groupRosterMemberGap,
-          ),
-          itemBuilder: (context, index) {
-            final target = targets[index];
-            final membership =
-                membershipsByAgentId[target.target] ??
-                membershipsByAgentId[target.id];
-            final membershipLabel =
-                membership?.principal.displayName.trim() ?? '';
-            final fullLabel = membershipLabel.isEmpty
-                ? agentConversationTargetDisplayName(target)
-                : membershipLabel;
-            final compactLabel = agentConversationTargetCompactDisplayName(
-              target,
-            );
-            return Tooltip(
-              message: fullLabel,
-              waitDuration: LicoMotion.tooltipWait,
-              child: Column(
-                children: [
-                  MouseRegion(
-                    cursor: SystemMouseCursors.click,
-                    child: GestureDetector(
-                      key: Key('canonical-group-roster-agent-${target.target}'),
-                      behavior: HitTestBehavior.opaque,
-                      onTap: () => onMentionAgent(target),
-                      onDoubleTap: onOpenAgentConversations == null
-                          ? null
-                          : () => onOpenAgentConversations!(target),
-                      onSecondaryTapDown: (details) => _showAgentMenu(
-                        context: context,
-                        target: target,
-                        label: compactLabel,
-                        globalPosition: details.globalPosition,
-                      ),
-                      child: Stack(
-                        clipBehavior: Clip.none,
-                        children: [
-                          MessagingAgentAvatar(
-                            target: target,
-                            size: 42,
-                            iconSize: 24,
-                          ),
-                          Positioned(
-                            right: -1,
-                            bottom: -1,
-                            child: Container(
-                              width: 10,
-                              height: 10,
-                              decoration: BoxDecoration(
-                                color: target.canRelayRuntime
-                                    ? colors.success
-                                    : colors.textDisabled,
-                                shape: BoxShape.circle,
-                                border: Border.all(
-                                  color: colors.surface,
-                                  width: 2,
+        child: NotificationListener<OverscrollNotification>(
+          onNotification: (notification) {
+            if (notification.depth == 0) {
+              onBoundaryOverscroll?.call(notification.overscroll);
+            }
+            return false;
+          },
+          child: ListView.separated(
+            shrinkWrap: true,
+            physics: const ClampingScrollPhysics(),
+            padding: const EdgeInsets.symmetric(
+              horizontal: MessagingDesktopMetrics.groupRosterContentInset,
+              vertical: MessagingDesktopMetrics.groupRosterVerticalInset,
+            ),
+            itemCount: targets.length,
+            separatorBuilder: (_, _) => const SizedBox(
+              height: MessagingDesktopMetrics.groupRosterMemberGap,
+            ),
+            itemBuilder: (context, index) {
+              final target = targets[index];
+              final membership =
+                  membershipsByAgentId[target.target] ??
+                  membershipsByAgentId[target.id];
+              final membershipLabel =
+                  membership?.principal.displayName.trim() ?? '';
+              final fullLabel = membershipLabel.isEmpty
+                  ? agentConversationTargetDisplayName(target)
+                  : membershipLabel;
+              final compactLabel = agentConversationTargetCompactDisplayName(
+                target,
+              );
+              return Tooltip(
+                message: fullLabel,
+                waitDuration: LicoMotion.tooltipWait,
+                child: Column(
+                  children: [
+                    MouseRegion(
+                      cursor: SystemMouseCursors.click,
+                      child: GestureDetector(
+                        key: Key(
+                          'canonical-group-roster-agent-${target.target}',
+                        ),
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () => onMentionAgent(target),
+                        onDoubleTap: onOpenAgentConversations == null
+                            ? null
+                            : () => onOpenAgentConversations!(target),
+                        onSecondaryTapDown: (details) => _showAgentMenu(
+                          context: context,
+                          target: target,
+                          label: compactLabel,
+                          globalPosition: details.globalPosition,
+                        ),
+                        child: Stack(
+                          clipBehavior: Clip.none,
+                          children: [
+                            MessagingAgentAvatar(
+                              target: target,
+                              size: 42,
+                              iconSize: 24,
+                            ),
+                            Positioned(
+                              right: -1,
+                              bottom: -1,
+                              child: Container(
+                                width: 10,
+                                height: 10,
+                                decoration: BoxDecoration(
+                                  color: target.canRelayRuntime
+                                      ? colors.success
+                                      : colors.textDisabled,
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color: colors.surface,
+                                    width: 2,
+                                  ),
                                 ),
                               ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    compactLabel,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: colors.textMuted,
-                      fontSize: 9,
-                      height: 1.1,
+                    const SizedBox(height: 2),
+                    Text(
+                      compactLabel,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: colors.textMuted,
+                        fontSize: 9,
+                        height: 1.1,
+                      ),
                     ),
-                  ),
-                ],
-              ),
-            );
-          },
+                  ],
+                ),
+              );
+            },
+          ),
         ),
       ),
     );
@@ -1128,10 +1162,9 @@ List<TargetCandidate> resolveCanonicalGroupParticipantTargets(
 List<TargetCandidate> resolveCanonicalGroupOrderedParticipantTargets(
   ClientConversation conversation,
   List<TargetCandidate> targets,
-  List<String> orderedAgentIds, {
-  int limit = MessagingDesktopMetrics.groupRosterVisibleMemberCount,
-}) {
-  if (limit <= 0 || orderedAgentIds.isEmpty) return const [];
+  List<String> orderedAgentIds,
+) {
+  if (orderedAgentIds.isEmpty) return const [];
   final targetByAgentId = {
     for (final target in targets) target.target: target,
     for (final target in targets) target.id: target,
@@ -1164,7 +1197,6 @@ List<TargetCandidate> resolveCanonicalGroupOrderedParticipantTargets(
         );
       }
     }
-    if (resolved.length == limit) break;
   }
   return List<TargetCandidate>.unmodifiable(resolved);
 }

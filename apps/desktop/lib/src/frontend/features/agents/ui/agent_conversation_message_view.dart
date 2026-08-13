@@ -30,6 +30,7 @@ class AgentConversationMessageList extends StatefulWidget {
     this.participantConversationIds = const {},
     this.topOverlayInset = 0,
     this.bottomOverlayInset = 0,
+    this.scrollController,
   });
 
   final bool loading;
@@ -54,6 +55,10 @@ class AgentConversationMessageList extends StatefulWidget {
 
   /// Extra bottom padding when a floating composer overlays the transcript.
   final double bottomOverlayInset;
+
+  /// Optional owner for coordinating a floating child scroll surface with
+  /// the transcript viewport.
+  final ScrollController? scrollController;
 
   @override
   State<AgentConversationMessageList> createState() =>
@@ -312,6 +317,7 @@ class AgentConversationMessageListState
               : messagingDetailsConversationId(session);
           return SelectionArea(
             child: MessagingParticipantFlow(
+              scrollController: widget.scrollController,
               items: _timelineItems,
               adapter: adapter,
               target: widget.target,
@@ -333,6 +339,7 @@ class AgentConversationMessageListState
           child: NotificationListener<ScrollNotification>(
             onNotification: _loadEarlierOnScroll,
             child: ListView.builder(
+              controller: widget.scrollController,
               key: PageStorageKey<String>(
                 'agent-conversation-message-list-$_timelineSessionKey',
               ),
