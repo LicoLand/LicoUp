@@ -46,6 +46,7 @@ impl ConversationService {
         // Startup admission is migration-first. A failed migration is returned
         // to the transport and never falls back to the retired JSON readers.
         migrate_legacy_state(&store, portable_root)?;
+        store.ensure_default_local_group()?;
         Ok(Self::from_store(store))
     }
 
@@ -648,6 +649,47 @@ mod tests {
             .unwrap()
             .to_owned();
         (group["id"].as_str().unwrap().to_owned(), owner, agent)
+    }
+
+    #[test]
+    fn product_startup_restores_one_canonical_default_local_group() {
+        let root = std::env::temp_dir().join(format!(
+            "lico-conversation-service-default-{}",
+            uuid::Uuid::new_v4()
+        ));
+
+        let service = ConversationService::open(&root).unwrap();
+        let groups = service.store().list(false).unwrap();
+        assert_eq!(groups.len(), 1);
+        assert_eq!(groups[0].id, super::super::DEFAULT_LOCAL_AGENT_GROUP_ID);
+        assert_eq!(
+            groups[0].title,
+            super::super::DEFAULT_LOCAL_AGENT_GROUP_TITLE
+        );
+        assert!(groups[0].pinned);
+        assert!(groups[0].is_group);
+        let local = service
+            .store()
+            .get(super::super::DEFAULT_LOCAL_AGENT_GROUP_ID)
+            .unwrap();
+        assert_eq!(local.memberships.len(), 1);
+        assert_eq!(local.memberships[0].principal.id, "human:local");
+        assert_eq!(local.memberships[0].access, MembershipAccess::Owner);
+        drop(service);
+
+        let reopened = ConversationService::open(&root).unwrap();
+        assert_eq!(reopened.store().list(false).unwrap().len(), 1);
+        assert_eq!(
+            reopened
+                .store()
+                .get(super::super::DEFAULT_LOCAL_AGENT_GROUP_ID)
+                .unwrap()
+                .memberships
+                .len(),
+            1
+        );
+        drop(reopened);
+        let _ = std::fs::remove_dir_all(root);
     }
 
     #[test]
