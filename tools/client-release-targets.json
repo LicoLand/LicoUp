@@ -6,7 +6,7 @@
       "id": "macos-direct-arm64",
       "platform": "macos",
       "distributionFamily": "macos",
-      "baseline": "macos-10.15",
+      "baseline": "macos-11.0",
       "channel": "direct",
       "packageFormat": "dmg",
       "arch": "arm64",
@@ -69,78 +69,10 @@
       }
     },
     {
-      "id": "macos-direct-x64",
-      "platform": "macos",
-      "distributionFamily": "macos",
-      "baseline": "macos-10.15",
-      "channel": "direct",
-      "packageFormat": "dmg",
-      "arch": "x64",
-      "updateAuthority": "signed-http-manifest",
-      "buildHost": "darwin-x64",
-      "runtimeTargetId": "macos-x64",
-      "packageBuildSupported": true,
-      "releaseSupported": false,
-      "packageBlockers": [],
-      "releaseBlockers": [
-        "macos_x64_native_host_receipt_pending",
-        "macos_x64_consumer_verification_pending",
-        "macos_developer_id_platform_channel_local_only",
-        "macos_github_release_publication_not_authorized"
-      ],
-      "artifacts": [
-        {
-          "role": "installer",
-          "file": "LicoUp-macos-x64.dmg",
-          "source": "build/apps/desktop/native-release/macos-direct-x64/LicoUp-macos-x64.dmg"
-        },
-        {
-          "role": "checksum",
-          "file": "LicoUp-macos-x64.dmg.sha256",
-          "for": "installer"
-        },
-        {
-          "role": "update",
-          "file": "LicoUp-macos-x64-update.zip",
-          "source": "build/apps/desktop/native-release/macos-direct-x64/LicoUp-macos-x64-update.zip"
-        },
-        {
-          "role": "checksum",
-          "file": "LicoUp-macos-x64-update.zip.sha256",
-          "for": "update"
-        },
-        {
-          "role": "build-manifest",
-          "file": "LicoUp-macos-x64.build.json",
-          "source": "build/apps/desktop/native-release/macos-direct-x64/LicoUp-macos-x64.build.json"
-        }
-      ],
-      "update": {
-        "kind": "signed-http-manifest",
-        "artifactRole": "update"
-      },
-      "builder": {
-        "kind": "command",
-        "hosts": [
-          "darwin-x64"
-        ],
-        "ciRunner": [
-          "macos-15-intel"
-        ],
-        "program": "node",
-        "args": [
-          "apps/desktop/scripts/build-platform-release-package.mjs",
-          "--target",
-          "macos-direct-x64"
-        ],
-        "templates": []
-      }
-    },
-    {
       "id": "macos-app-store-arm64",
       "platform": "macos",
       "distributionFamily": "macos",
-      "baseline": "macos-10.15",
+      "baseline": "macos-11.0",
       "channel": "app-store",
       "packageFormat": "pkg",
       "arch": "arm64",

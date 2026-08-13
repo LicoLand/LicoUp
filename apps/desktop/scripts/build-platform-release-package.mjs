@@ -175,7 +175,6 @@ function recipeFor(target, version) {
 
   switch (target.id) {
     case "macos-direct-arm64":
-    case "macos-direct-x64":
       // Direct macOS distribution is local-only and must enter through the
       // explicit Developer ID platform-channel coordinator.
       break;
