@@ -1,7 +1,7 @@
 use licoup_native::domain::delivery_plan::{
     AcceptanceCriterion, DecisionOption, DecisionQuestion, DeliveryPlanEngine, DispatchBinding,
-    ExecutionPolicy, Output, Plan, PlanError, Prerequisite,
-    Requirement, Role, RoleContract, Scope, Task, TaskStatus,
+    ExecutionPolicy, Output, Plan, PlanError, Prerequisite, Requirement, Role, RoleContract, Scope,
+    Task, TaskStatus,
 };
 use serde_json::Value;
 use std::collections::BTreeMap;
