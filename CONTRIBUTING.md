@@ -148,6 +148,11 @@ the final public download, source and digest verification, public-path install,
 stable launch, and published-update checks described below, or after the
 candidate is explicitly invalidated and the release is abandoned.
 
+The project must complete 100 distinct releases before promoting any build to
+the `1.0.0` line. Every pre-1.0 release keeps its own immutable version,
+candidate evidence, and artifact receipts; skipped or replaced candidates do
+not count as releases.
+
 Work for the next version may continue during this window, but it must remain
 isolated:
 
