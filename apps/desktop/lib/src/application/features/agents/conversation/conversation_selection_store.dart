@@ -294,16 +294,32 @@ mixin ConversationSelectionStore on AgentWorkspaceCoordinator {
 
   @override
   AgentConversationSession? get selectedConversationSession {
-    if (preparingNewConversation) {
-      return null;
-    }
     final selectedId = selectedConversationSessionId.trim();
     if (selectedId.isNotEmpty) {
       for (final session in selectedConversationSessions) {
-        if (session.id == selectedId) {
+        if (session.id != selectedId) {
+          continue;
+        }
+        if (!preparingNewConversation) {
           return session;
         }
+        final activeNativeSessionId = sendingConversationNativeSessionId.trim();
+        final selectedAgentId =
+            selectedConversationAgent?.target.trim() ??
+            selectedConversationAgentId.trim();
+        final selectsActiveNewConversation =
+            isSendingConversationMessage &&
+            selectedAgentId == sendingConversationAgentId.trim() &&
+            ((sendingConversationSessionId.trim().isNotEmpty &&
+                    session.id.trim() == sendingConversationSessionId.trim()) ||
+                (activeNativeSessionId.isNotEmpty &&
+                    (session.nativeSessionId.trim() == activeNativeSessionId ||
+                        session.id.trim() == activeNativeSessionId)));
+        return selectsActiveNewConversation ? session : null;
       }
+      return null;
+    }
+    if (preparingNewConversation) {
       return null;
     }
     return selectedConversationSessions.isNotEmpty
