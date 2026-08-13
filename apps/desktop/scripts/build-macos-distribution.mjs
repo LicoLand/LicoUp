@@ -395,11 +395,9 @@ function requireProfileAuthorization(authorization) {
         ? "macos_distribution_profile_expired"
         : firstError === "macos_distribution_profile_application_identifier_mismatch"
           ? "macos_distribution_profile_application_identifier_mismatch"
-          : firstError === "macos_distribution_profile_keychain_group_mismatch"
-            ? "macos_distribution_profile_keychain_group_mismatch"
-            : firstError === "macos_distribution_profile_team_mismatch"
-              ? "macos_distribution_profile_team_mismatch"
-              : "macos_distribution_entitlements_invalid",
+          : firstError === "macos_distribution_profile_team_mismatch"
+            ? "macos_distribution_profile_team_mismatch"
+            : "macos_distribution_entitlements_invalid",
   );
 }
 
