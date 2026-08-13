@@ -517,6 +517,13 @@ impl ConversationStore {
         self.with_connection(|connection| normalize_reserved_group_after_legacy_import(connection))
     }
 
+    /// Ensure the product-owned Local group exists in the canonical
+    /// Conversation store. Legacy imports are adopted into the stable identity
+    /// instead of creating a second group or reopening the retired JSON store.
+    pub(crate) fn ensure_default_local_group(&self) -> StoreResult<Conversation> {
+        self.with_connection(ensure_default_local_group_inner)
+    }
+
     pub fn db_path(&self) -> &Path {
         &self.pool.db_path
     }
@@ -2495,6 +2502,142 @@ fn normalize_reserved_group_after_legacy_import(connection: &mut Connection) -> 
     rename_reserved_group(&transaction)?;
     transaction.commit()?;
     Ok(())
+}
+
+fn ensure_default_local_group_inner(
+    connection: &mut CountedConnection<'_>,
+) -> StoreResult<Conversation> {
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+    let canonical_exists: bool = transaction.query_row(
+        "SELECT EXISTS(SELECT 1 FROM conversations WHERE id=?1)",
+        params![DEFAULT_LOCAL_AGENT_GROUP_ID],
+        |row| row.get(0),
+    )?;
+
+    if !canonical_exists {
+        if let Some(existing_id) = reserved_group_conversation_id(&transaction)? {
+            transaction.execute(
+                "INSERT INTO conversations(
+                   id, title, archived, pinned, is_group, revision, created_at, updated_at
+                 ) SELECT ?2, title, archived, pinned, 1, revision, created_at, updated_at
+                   FROM conversations WHERE id=?1",
+                params![existing_id, DEFAULT_LOCAL_AGENT_GROUP_ID],
+            )?;
+            for table in [
+                "memberships",
+                "events",
+                "direct_turns",
+                "source_links",
+                "runtime_bindings",
+                "conversation_dispatches",
+                "migration_provenance",
+            ] {
+                transaction.execute(
+                    &format!("UPDATE {table} SET conversation_id=?2 WHERE conversation_id=?1"),
+                    params![existing_id, DEFAULT_LOCAL_AGENT_GROUP_ID],
+                )?;
+            }
+            transaction.execute(
+                "UPDATE event_search SET conversation_id=?2 WHERE conversation_id=?1",
+                params![existing_id, DEFAULT_LOCAL_AGENT_GROUP_ID],
+            )?;
+            transaction.execute(
+                "DELETE FROM conversations WHERE id=?1",
+                params![existing_id],
+            )?;
+        } else {
+            let now = now_ms();
+            transaction.execute(
+                "INSERT INTO conversations(
+                   id, title, archived, pinned, is_group, revision, created_at, updated_at
+                 ) VALUES (?1, ?2, 0, 1, 1, 0, ?3, ?3)",
+                params![
+                    DEFAULT_LOCAL_AGENT_GROUP_ID,
+                    DEFAULT_LOCAL_AGENT_GROUP_TITLE,
+                    now
+                ],
+            )?;
+        }
+    }
+
+    let now = now_ms();
+    let owner = Principal {
+        id: "human:local".into(),
+        kind: PrincipalKind::Human,
+        display_name: "Local User".into(),
+        agent_id: None,
+        created_at_unix_ms: now,
+    };
+    upsert_principal(&transaction, &owner)?;
+    let active_owner: Option<String> = transaction
+        .query_row(
+            "SELECT id FROM memberships
+             WHERE conversation_id=?1 AND principal_id=?2 AND status='active'
+             ORDER BY joined_at ASC, id ASC LIMIT 1",
+            params![DEFAULT_LOCAL_AGENT_GROUP_ID, owner.id],
+            |row| row.get(0),
+        )
+        .optional()?;
+    let membership_changed = if let Some(membership_id) = active_owner {
+        transaction.execute(
+            "UPDATE memberships SET access='owner'
+             WHERE id=?1 AND access<>'owner'",
+            params![membership_id],
+        )? > 0
+    } else {
+        let left_membership: Option<String> = transaction
+            .query_row(
+                "SELECT id FROM memberships
+                 WHERE conversation_id=?1 AND principal_id=?2 AND status='left'
+                 ORDER BY joined_at ASC, id ASC LIMIT 1",
+                params![DEFAULT_LOCAL_AGENT_GROUP_ID, owner.id],
+                |row| row.get(0),
+            )
+            .optional()?;
+        if let Some(membership_id) = left_membership {
+            transaction.execute(
+                "UPDATE memberships
+                 SET access='owner', status='active', left_at=NULL
+                 WHERE id=?1",
+                params![membership_id],
+            )?;
+        } else {
+            transaction.execute(
+                "INSERT INTO memberships(
+                   id, conversation_id, principal_id, access, status, joined_at
+                 ) VALUES (?1, ?2, ?3, 'owner', 'active', ?4)",
+                params![
+                    new_id("membership"),
+                    DEFAULT_LOCAL_AGENT_GROUP_ID,
+                    owner.id,
+                    now
+                ],
+            )?;
+        }
+        true
+    };
+    let conversation_changed = transaction.execute(
+        "UPDATE conversations
+         SET title=CASE
+               WHEN trim(title)='' OR lower(trim(title)) IN ('lico', 'lico-group-default')
+               THEN ?2 ELSE title END,
+             archived=0, pinned=1, is_group=1,
+             revision=revision+1, updated_at=?3
+         WHERE id=?1 AND (
+           trim(title)='' OR lower(trim(title)) IN ('lico', 'lico-group-default') OR
+           archived<>0 OR pinned<>1 OR is_group<>1
+         )",
+        params![
+            DEFAULT_LOCAL_AGENT_GROUP_ID,
+            DEFAULT_LOCAL_AGENT_GROUP_TITLE,
+            now
+        ],
+    )? > 0;
+    if membership_changed && !conversation_changed {
+        bump_revision(&transaction, DEFAULT_LOCAL_AGENT_GROUP_ID, now)?;
+    }
+    transaction.commit()?;
+    self::get_inner(connection, DEFAULT_LOCAL_AGENT_GROUP_ID)
 }
 
 fn reserved_group_conversation_id(connection: &Connection) -> StoreResult<Option<String>> {
@@ -4887,5 +5030,50 @@ mod tests {
         assert!(store.get(DEFAULT_LOCAL_AGENT_GROUP_ID).is_err());
         assert_eq!(schema_version(&root), "5");
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn default_local_group_adopts_legacy_identity_without_losing_content() {
+        let store = ConversationStore::open_in_memory().unwrap();
+        let legacy = store
+            .create_group_with_id("legacy-local-group", "Lico", owner())
+            .unwrap();
+        store
+            .source_link(&legacy.id, "group", DEFAULT_LOCAL_AGENT_GROUP_ID)
+            .unwrap();
+        let owner = legacy.memberships[0].id.clone();
+        store
+            .append_event(
+                &legacy.id,
+                Some(&owner),
+                EventKind::Message,
+                &[NewEventPart {
+                    id: String::new(),
+                    kind: EventPartKind::Text,
+                    content: "kept".into(),
+                }],
+                None,
+                None,
+                true,
+            )
+            .unwrap();
+
+        let local = store.ensure_default_local_group().unwrap();
+
+        assert_eq!(local.id, DEFAULT_LOCAL_AGENT_GROUP_ID);
+        assert_eq!(local.title, DEFAULT_LOCAL_AGENT_GROUP_TITLE);
+        assert_eq!(local.event_count, 1);
+        assert_eq!(local.memberships.len(), 1);
+        assert_eq!(store.list(false).unwrap().len(), 1);
+        assert!(store.get("legacy-local-group").is_err());
+        assert_eq!(
+            store
+                .page_events(DEFAULT_LOCAL_AGENT_GROUP_ID, None, 10)
+                .unwrap()
+                .events[0]
+                .parts[0]
+                .content,
+            "kept"
+        );
     }
 }
