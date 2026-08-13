@@ -13,12 +13,21 @@ final class AgentUsageDailyCache {
   final Map<String, _AgentDailySeries> _agents = <String, _AgentDailySeries>{};
   String? _lastIngestedAt;
   int _ingestedWindowDays = 0;
+  List<AgentUsageWorkflow> _workflows = const [];
+  AgentUsageTokenTotals _workflowSummary = const AgentUsageTokenTotals();
 
   bool get isEmpty => _agents.isEmpty;
 
   int get ingestedWindowDays => _ingestedWindowDays;
 
   String? get lastIngestedAt => _lastIngestedAt;
+
+  /// Workflow usage is already bounded and rolled up by the native ledger.
+  /// Keep the newest projection alongside the day cache without creating a
+  /// second store or re-attributing any token values in Dart.
+  List<AgentUsageWorkflow> get workflows => _workflows;
+
+  AgentUsageTokenTotals get workflowSummary => _workflowSummary;
 
   bool hasFullCoverage() {
     return !isEmpty &&
@@ -61,6 +70,8 @@ final class AgentUsageDailyCache {
     _agents.clear();
     _lastIngestedAt = null;
     _ingestedWindowDays = 0;
+    _workflows = const [];
+    _workflowSummary = const AgentUsageTokenTotals();
   }
 
   /// Replaces the cache when [replace] is true; otherwise merges day buckets.
@@ -107,9 +118,12 @@ final class AgentUsageDailyCache {
   }
 
   void _mergeReport(AgentUsageReport report) {
-    _lastIngestedAt = _isNewerGeneratedAt(report.generatedAt, _lastIngestedAt)
-        ? report.generatedAt
-        : _lastIngestedAt;
+    final isNewer = _isNewerGeneratedAt(report.generatedAt, _lastIngestedAt);
+    if (isNewer) {
+      _lastIngestedAt = report.generatedAt;
+      _workflows = List.unmodifiable(report.workflows);
+      _workflowSummary = report.workflowSummary;
+    }
     _ingestedWindowDays = _ingestedWindowDays < report.windowDays
         ? report.windowDays
         : _ingestedWindowDays;
@@ -147,6 +161,8 @@ final class AgentUsageDailyCache {
       mode: AgentUsageReport.currentMode,
       tokenSourceMode: AgentUsageReport.currentTokenSourceMode,
       window: {'days': normalizedDays},
+      workflows: _workflows,
+      workflowSummary: _workflowSummary,
     );
   }
 

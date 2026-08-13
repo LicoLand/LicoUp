@@ -76,12 +76,6 @@ pub fn migrate_legacy_state(
     // Conversation sources have committed successfully.
     let flywheel_path = state_root.join("adaptive-flywheel.toml");
 
-    // Former handoff files contain only transient execution bookkeeping and
-    // private runtime locations. Validate the owned directory before removing
-    // it; durable conversation facts are already sourced from the projection.
-    let handoff_root = state_root.join("subagent-handoffs");
-    let legacy_handoff_files = validate_legacy_handoff_root(&handoff_root)?;
-
     // Cleanup happens only after every source has been parsed and destination
     // writes have committed. Missing files are not errors, making restart
     // cleanup idempotent.
@@ -94,10 +88,6 @@ pub fn migrate_legacy_state(
     if group_root.is_dir() {
         fs::remove_dir_all(&group_root).map_err(|_| anyhow!("migration_cleanup_failed"))?;
         report.cleaned_files += legacy_group_files;
-    }
-    if handoff_root.is_dir() {
-        fs::remove_dir_all(&handoff_root).map_err(|_| anyhow!("migration_cleanup_failed"))?;
-        report.cleaned_files += legacy_handoff_files;
     }
     // A group adopted by the legacy import (provenance for the reserved
     // default group) is normalized and renamed by the same idempotent current
@@ -162,31 +152,6 @@ fn validate_legacy_group_root(root: &Path) -> Result<usize> {
             }
             count += 1;
         }
-    }
-    Ok(count)
-}
-
-fn validate_legacy_handoff_root(root: &Path) -> Result<usize> {
-    if !root.exists() {
-        return Ok(0);
-    }
-    if !root.is_dir() {
-        return Err(anyhow!("migration_handoff_source_invalid"));
-    }
-    let entries = fs::read_dir(root).map_err(|_| anyhow!("migration_source_unavailable"))?;
-    let mut count = 0usize;
-    for entry in entries {
-        let path = entry
-            .map_err(|_| anyhow!("migration_source_unavailable"))?
-            .path();
-        if path.extension().and_then(|value| value.to_str()) != Some("json") {
-            return Err(anyhow!("migration_handoff_source_invalid"));
-        }
-        let _ = read_json_if_present(&path)?
-            .ok_or_else(|| anyhow!("migration_handoff_source_invalid"))?;
-        count = count
-            .checked_add(1)
-            .ok_or_else(|| anyhow!("migration_handoff_source_invalid"))?;
     }
     Ok(count)
 }

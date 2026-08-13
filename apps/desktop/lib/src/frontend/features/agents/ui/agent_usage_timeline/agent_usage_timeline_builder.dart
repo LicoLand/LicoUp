@@ -57,6 +57,10 @@ AgentUsageTimelineData buildAgentUsageTimelineData(
             _addUsageValue(valuesByDay[date]!, label, model.value.totalTokens);
             addModelShare(model.key, model.value);
           }
+        case AgentUsageChartGrouping.workflow:
+          // Workflow is a peer hierarchy view, not a daily agent/model
+          // series. AgentUsageCharts routes it to the native workflow rows.
+          break;
       }
     }
   }
