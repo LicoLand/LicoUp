@@ -70,7 +70,7 @@ test("release package catalog uses exact native package targets", () => {
   const catalog = loadClientReleaseTargetCatalog();
   assert.equal(document.schemaVersion, "licomesh.client-release-target-catalog.v4");
   assert.equal(document.outputLayout, "build/releases/{version}/{targetId}");
-  assert.equal(document.targets.length, 18);
+  assert.equal(document.targets.length, 17);
 
   const requiredFields = [
     "platform", "distributionFamily", "baseline", "packageFormat", "channel",
@@ -316,15 +316,15 @@ test("builder describes owning-host recipes while keeping macOS direct local-onl
   const result = JSON.parse(described.stdout);
   assert.equal(result.ok, true);
   assert.equal(result.dryRun, true);
-  assert.equal(result.targetCount, 18);
+  assert.equal(result.targetCount, 17);
   const macosDirect = result.targets.filter((target) =>
-    ["macos-direct-arm64", "macos-direct-x64"].includes(target.targetId));
-  assert.equal(macosDirect.length, 2);
+    target.targetId === "macos-direct-arm64");
+  assert.equal(macosDirect.length, 1);
   assert.ok(macosDirect.every((target) =>
     target.commands.length === 0 && target.requiredTools.length === 0 &&
     target.credentialEnv.length === 0 && target.privatePathsIncluded === false));
   assert.ok(result.targets.filter((target) =>
-    !["macos-direct-arm64", "macos-direct-x64"].includes(target.targetId)).every((target) =>
+    target.targetId !== "macos-direct-arm64").every((target) =>
     target.commands.length > 0 && target.requiredTools.length > 0 &&
     target.outputSources.some((output) => output.role === "build-manifest") &&
     target.privatePathsIncluded === false));
@@ -383,7 +383,7 @@ test("prepare matrix accepts every package-build target while publish stays rele
     .some((target) => target.update.kind === "signed-http-manifest");
   const matrix = releaseWorkflowMatrix(packageBuildTargets.join(","));
   assert.deepEqual(matrix.include.map((entry) => entry.target), packageBuildTargets);
-  assert.equal(matrix.include.length, 18);
+  assert.equal(matrix.include.length, 17);
   for (const entry of matrix.include) {
     const target = catalog.targets.find((candidate) => candidate.id === entry.target);
     assert.deepEqual(entry.runner, [...target.builder.ciRunner].sort());

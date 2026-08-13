@@ -237,7 +237,7 @@ export function deviceDemoPlatformsForTargets(targets) {
 }
 
 export function targetStages(target) {
-  if (target === "macos-direct-arm64" || target === "macos-direct-x64") return Object.freeze([
+  if (target === "macos-direct-arm64") return Object.freeze([
     ["distribution-preflight", "client:verify:macos-distribution:preflight",
       "audit_selected_target_build_failed"],
     ["selected-target-build", "client:build:macos:platform-channel",

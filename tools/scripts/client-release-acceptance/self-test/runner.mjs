@@ -577,7 +577,7 @@ export function runSelfTest({ schemaFixture = false } = {}) {
     preflightReceiptConfig,
   ).includes(childProofRef),
   "selected closure redaction omitted macOS child proof dependency");
-  for (const targetId of ["macos-x64", "linux-musl-arm64", "windows-x64"]) {
+  for (const targetId of ["linux-musl-arm64", "windows-x64"]) {
     let rejected = false;
     try {
       validateReleaseSelectionPreflight({

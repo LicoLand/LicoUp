@@ -283,6 +283,8 @@ function renderEnglishReport(validated, productVersion, drivers, readiness, nati
     "",
     "A build target is not a support claim.",
     "",
+    "LicoUp for macOS supports Apple Silicon (`arm64`) on macOS 11 or later. Intel (`x86_64`) Macs and Rosetta are outside the supported product boundary; no Intel app or update package is produced.",
+    "",
     "| Runtime target | Build | Physical/device evidence | Client | Peer encryption | Mobile relay |",
     "| --- | --- | --- | --- | --- | --- |"
   ];
@@ -378,6 +380,8 @@ function renderChineseReport(validated, productVersion, drivers, readiness, nati
     "## 平台目标",
     "",
     "可以构建，不代表已经支持。",
+    "",
+    "LicoUp macOS 客户端仅支持运行 macOS 11 或更高版本的 Apple Silicon（`arm64`）设备。Intel（`x86_64`）Mac 与 Rosetta 不在产品支持范围内，不提供 Intel 应用或更新包。",
     "",
     "| 运行目标 | 构建 | 真机/设备证据 | 客户端 | 对端加密 | 移动中转 |",
     "| --- | --- | --- | --- | --- | --- |"
