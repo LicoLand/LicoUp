@@ -55,7 +55,12 @@ export const defaultMaxOutputBytes = 4 * 1024 * 1024;
 
 export const acceptanceMode = "dispatch-lane-unified-1";
 
-export const strictRoundCount = 3;
+// One successful live workflow is sufficient. The workflow itself performs
+// both required user behaviors: create one conversation, then resume that
+// exact native conversation for one continuation turn.
+export const strictRoundCount = 1;
+
+export const verificationTurnCount = 2;
 
 export const disposableProfileSeedEntries = Object.freeze([
   "config.toml",

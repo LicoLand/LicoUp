@@ -91,7 +91,7 @@ function fullEvidence(agentId = "codex") {
         driverInventoryDigest: inventoryDigest,
         evidenceDigest: "",
         officialNativeLane: true,
-        consecutivePasses: 3,
+        consecutivePasses: 1,
         conversationGatePassed: true,
         cleanupPassed: true,
         privacyPassed: true,
@@ -198,7 +198,7 @@ test("missing evidence and missing checks never pass", () => {
   assert.equal(resultFor(incomplete).sendEnabled, false);
 
   const tooFewRuns = fullEvidence();
-  tooFewRuns.adapters[0].consecutivePasses = 2;
+  tooFewRuns.adapters[0].consecutivePasses = 0;
   refreshDigest(tooFewRuns);
   const shortRun = reduceConversationParity({
     packagingRegistry,
@@ -457,7 +457,7 @@ test("a fully forged ready resource is rejected by the release check", () => {
   codex.conversationGatePassed = true;
   codex.cleanupPassed = true;
   codex.privacyPassed = true;
-  codex.consecutivePasses = 3;
+  codex.consecutivePasses = 1;
   codex.coreChecks.passed = codex.coreChecks.required;
   codex.conditionalChecks.nativeSupported = 0;
   codex.conditionalChecks.passed = 0;

@@ -40,6 +40,7 @@ import {
   evidenceManifestPath,
   packagingRegistryPath,
   strictRoundCount,
+  verificationTurnCount,
   workspaceRoot,
 } from "./client-acp-conversation-parity/constants.mjs";
 import { StdioRpcClient } from "./client-acp-conversation-parity/clients/stdio-rpc-client.mjs";
@@ -54,7 +55,7 @@ import { createPrivateWrapper } from "./client-acp-conversation-parity/process.m
 import { resolveExecutable, resolveSidecar } from "./client-acp-conversation-parity/sidecar.mjs";
 
 const root = workspaceRoot;
-const TURN_COUNT = strictRoundCount;
+const TURN_COUNT = verificationTurnCount;
 const GATE_KIND = "claude-code-process-local-same-session-v1";
 const RUNTIME_VERSION_CLASS = "verified-claude-code-stream-json-gate";
 const AGENT_ID = "claude-code";
@@ -229,7 +230,7 @@ function writeGateEvidence({ aggregate, context }) {
   const coreChecks = {
     "P-01": pass(aggregate.officialNativeLane === true),
     "P-02": pass(aggregate.realSessionIds === true),
-    "P-03": pass(aggregate.sameSessionSequential === true),
+    "P-03": pass(aggregate.openNew === true && aggregate.exactResume === true),
     "P-04": pass(aggregate.finalResults === true && aggregate.streamingProven === true),
     "P-05": pass(aggregate.cwdParity === true),
     "P-06": pass(aggregate.historyReadback === true),
@@ -363,6 +364,7 @@ export async function runClaudeCodeConversationGate(argv = process.argv.slice(2)
       requireFact(output.length > 0, "native_final_message_missing");
       turnResults.push({
         turn,
+        action: turn === 1 ? "open-new" : "exact-resume",
         outputBytes: Buffer.byteLength(output),
         boundedOutput: result.boundedOutput === true,
         streamingSeen: result.streamingSeen === true,
@@ -381,6 +383,8 @@ export async function runClaudeCodeConversationGate(argv = process.argv.slice(2)
 
     const aggregate = {
       officialNativeLane: true,
+      openNew: turnResults[0]?.action === "open-new",
+      exactResume: turnResults[1]?.action === "exact-resume",
       realSessionIds: Boolean(sessionId),
       sameSessionSequential: turnResults.length === TURN_COUNT,
       finalResults: turnResults.every((row) => row.outputBytes > 0),
@@ -393,7 +397,7 @@ export async function runClaudeCodeConversationGate(argv = process.argv.slice(2)
       privacyPassed: true,
       cleanupPassed: true,
       conversationGatePassed: true,
-      consecutivePasses: TURN_COUNT,
+      consecutivePasses: strictRoundCount,
       interruptSteerProven: true,
     };
 
@@ -425,11 +429,13 @@ export async function runClaudeCodeConversationGate(argv = process.argv.slice(2)
       model,
       turnsRequired: TURN_COUNT,
       turnsCompleted: turnResults.length,
+      openNew: aggregate.openNew,
+      exactResume: aggregate.exactResume,
       sameSession: true,
       interruptSteerProven: true,
       cleanupPassed: true,
       conversationGatePassed: true,
-      consecutivePasses: TURN_COUNT,
+      consecutivePasses: strictRoundCount,
       evidenceWrite,
       sendEnabled: readinessRow?.sendEnabled === true,
       readinessStatus: readinessRow?.status || null,

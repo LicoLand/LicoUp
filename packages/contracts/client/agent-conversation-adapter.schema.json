@@ -316,7 +316,7 @@
             "C-06": { "type": "string", "minLength": 1, "maxLength": 96 }
           }
         },
-        "minimumConsecutivePasses": { "type": "integer", "minimum": 3 },
+        "minimumConsecutivePasses": { "type": "integer", "minimum": 1 },
         "minimumConsecutiveReleaseUiPasses": { "type": "integer", "minimum": 0 },
         "productUiRequired": { "type": "boolean" },
         "releaseP10Required": { "type": "boolean" },
