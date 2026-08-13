@@ -8,14 +8,10 @@ import 'package:licoup/src/contracts/presentation/layout_profile.dart';
 import 'package:licoup/src/frontend/layout/layout_definition.dart';
 import 'package:licoup/src/frontend/layout/layout_registry.dart';
 import 'package:licoup/src/frontend/layout/layout_surface_bundle.dart';
-import 'package:licoup/src/frontend/layout/profiles/bubble/desktop/bubble_desktop.dart';
-import 'package:licoup/src/frontend/layout/profiles/bubble/mobile/bubble_mobile_bundle.dart';
-import 'package:licoup/src/frontend/layout/profiles/classic/desktop/classic_desktop.dart';
-import 'package:licoup/src/frontend/layout/profiles/classic/mobile/classic_mobile_bundle.dart';
-import 'package:licoup/src/frontend/layout/profiles/native/desktop/native_desktop.dart';
-import 'package:licoup/src/frontend/layout/profiles/native/mobile/native_mobile_bundle.dart';
-import 'package:licoup/src/frontend/layout/profiles/workbench/desktop/workbench_desktop.dart';
-import 'package:licoup/src/frontend/layout/profiles/workbench/mobile/workbench_mobile_bundle.dart';
+import 'package:licoup/src/frontend/layout/profiles/messaging/desktop/messaging_desktop.dart';
+import 'package:licoup/src/frontend/layout/profiles/messaging/mobile/messaging_mobile_bundle.dart';
+import 'package:licoup/src/frontend/layout/profiles/dashboard/desktop/dashboard_desktop.dart';
+import 'package:licoup/src/frontend/layout/profiles/dashboard/mobile/dashboard_mobile_bundle.dart';
 
 /// Application composition root for the immutable built-in layout product.
 ///
@@ -27,10 +23,8 @@ final class BuiltInLayoutComposition {
 
   factory BuiltInLayoutComposition() =>
       BuiltInLayoutComposition.fromDefinitions(<LayoutDefinition>[
-        LayoutDefinition([nativeDesktopBundle, nativeMobileBundle]),
-        LayoutDefinition([bubbleDesktopBundle, bubbleMobileBundle]),
-        LayoutDefinition([classicDesktopBundle, classicMobileBundle]),
-        LayoutDefinition([workbenchDesktopBundle, workbenchMobileBundle]),
+        LayoutDefinition([messagingDesktopBundle, messagingMobileBundle]),
+        LayoutDefinition([dashboardDesktopBundle, dashboardMobileBundle]),
       ]);
 
   /// Builds the immutable layout product from the registered definitions.

@@ -109,4 +109,80 @@ void main() {
       'Hello world',
     );
   });
+
+  test('quota or capacity failures match code and message markers', () {
+    expect(
+      ConversationRuntimeResultPolicy.isQuotaOrCapacityFailure({
+        'ok': false,
+        'error': {'code': 'quota_exhausted', 'message': 'done'},
+      }),
+      isTrue,
+    );
+    expect(
+      ConversationRuntimeResultPolicy.isQuotaOrCapacityFailure({
+        'ok': false,
+        'error': {
+          'code': 'provider_turn_failed',
+          'message': 'Insufficient credits for this model.',
+        },
+      }),
+      isTrue,
+    );
+    expect(
+      ConversationRuntimeResultPolicy.isQuotaOrCapacityFailure({
+        'ok': false,
+        'error': {
+          'code': 'authorization_denied',
+          'message': 'Sign in required.',
+        },
+      }),
+      isFalse,
+    );
+  });
+
+  test('driver failure codes survive outside the schema enum', () {
+    // Driver envelope codes (copilot_acp_*, hermes_gateway_*, …) are not part
+    // of the schema-bound ClientErrorCode enum; they must still surface.
+    final driverResult = <String, dynamic>{
+      'ok': false,
+      'error': <String, dynamic>{
+        'code': 'copilot_acp_session_update_invalid',
+        'message': 'The ACP protocol message could not be processed safely.',
+        'stage': 'session/update',
+        'userInteractionRequired': false,
+      },
+    };
+    expect(
+      ConversationRuntimeResultPolicy.clientError(driverResult).code.wireName,
+      isEmpty,
+    );
+    expect(
+      ConversationRuntimeResultPolicy.rawFailureCode(driverResult),
+      'copilot_acp_session_update_invalid',
+    );
+    expect(
+      ConversationRuntimeResultPolicy.surfacedFailureCode(driverResult),
+      'copilot_acp_session_update_invalid',
+    );
+
+    final schemaResult = <String, dynamic>{
+      'ok': false,
+      'error': <String, dynamic>{
+        'code': 'authorization_required',
+        'stage': 'conversation/dispatch',
+        'component': 'conversation_runtime',
+        'retryable': false,
+        'recovery': 'correct_request',
+      },
+    };
+    expect(
+      ConversationRuntimeResultPolicy.surfacedFailureCode(schemaResult),
+      'authorization_required',
+    );
+
+    expect(
+      ConversationRuntimeResultPolicy.surfacedFailureCode(const {}),
+      'terminal_result_invalid',
+    );
+  });
 }

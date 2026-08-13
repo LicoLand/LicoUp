@@ -13,7 +13,7 @@ fn stderr_is_drained_to_a_truncation_bit_without_content_projection() {
 #[test]
 fn stdout_reader_enforces_the_configured_aggregate_limit() {
     let (sender, receiver) = mpsc::channel();
-    read_protocol_messages(Cursor::new(b"{\"id\":1}\n{\"id\":2}\n"), 8, sender);
+    read_protocol_messages(Cursor::new(b"{\"id\":1}\n{\"id\":2}\n"), Some(8), sender);
     assert!(matches!(
         receiver.recv().unwrap(),
         super::super::events::TransportEvent::StdoutLimitExceeded

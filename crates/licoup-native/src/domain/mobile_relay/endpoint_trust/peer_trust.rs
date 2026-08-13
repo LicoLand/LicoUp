@@ -1,7 +1,8 @@
 use super::*;
+#[cfg(test)]
 use crate::domain::mobile_relay::secret_custody::RuntimeSecretMaterial;
 
-#[allow(dead_code)]
+#[cfg(test)]
 pub(in crate::domain::mobile_relay) fn apply_peer_secure_mesh_descriptor(
     config: &mut Value,
     secret_material: &mut RuntimeSecretMaterial,
@@ -16,7 +17,6 @@ pub(in crate::domain::mobile_relay) fn apply_peer_secure_mesh_descriptor(
     result
 }
 
-#[allow(dead_code)]
 pub(in crate::domain::mobile_relay) fn apply_peer_secure_mesh_descriptor_with_context(
     config: &mut Value,
     descriptor: &Value,
@@ -263,6 +263,8 @@ fn apply_peer_secure_mesh_descriptor_inner(
         directory_trust_state,
         DeviceTrustState::KeyChanged | DeviceTrustState::Revoked
     ) {
+        let local_identity =
+            local_endpoint_state(&candidate, &secret_context.material)?.device_identity()?;
         let terminal_state = match directory_trust_state {
             DeviceTrustState::KeyChanged => "key_changed",
             DeviceTrustState::Revoked => "revoked",
@@ -336,8 +338,6 @@ fn apply_peer_secure_mesh_descriptor_inner(
         *config = candidate;
         purge_mobile_relay_pairwise_sessions()?;
         {
-            let local_identity =
-                local_endpoint_state(config, &secret_context.material)?.device_identity()?;
             let (secret_store, authorization, namespace) = secret_context
                 .secret_store_batch
                 .authorization()?
@@ -602,7 +602,6 @@ pub(in crate::domain::mobile_relay) struct PeerEndpointState {
     pub(in crate::domain::mobile_relay) endpoint_id: String,
     pub(in crate::domain::mobile_relay) endpoint_kind: String,
     pub(in crate::domain::mobile_relay) fingerprint: String,
-    pub(in crate::domain::mobile_relay) mailbox_rotation_epoch: u64,
 }
 
 pub(in crate::domain::mobile_relay) fn peer_endpoint_state(
@@ -614,16 +613,15 @@ pub(in crate::domain::mobile_relay) fn peer_endpoint_state(
     let endpoint_id = descriptor_text(state, "peerEndpointId")?;
     let endpoint_kind = descriptor_text(state, "peerEndpointKind")?;
     let public_key = descriptor_text(state, "peerPublicKeyBase64url")?;
-    let mailbox_rotation_epoch = state
+    let _mailbox_rotation_epoch = state
         .get("peerMailboxRotationEpoch")
         .and_then(Value::as_u64)
-        .ok_or_else(|| anyhow!("secure client relay peer mailbox rotation epoch is missing"))?;
+        .ok_or_else(|| anyhow!("Lico Arc peer mailbox rotation epoch is missing"))?;
     let public_bytes = decode_key_32(&public_key, "mobile relay peer public key")?;
     Ok(PeerEndpointState {
         endpoint_id,
         endpoint_kind,
         fingerprint: public_key_fingerprint(&public_bytes),
-        mailbox_rotation_epoch,
     })
 }
 

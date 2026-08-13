@@ -16,7 +16,11 @@ final class AgentDispatchBind {
     this.sessionPath = '',
     this.model = '',
     this.reasoningEffort = '',
+    this.licoProfile = '',
     this.acceptanceMode = '',
+    this.permissionMode = '',
+    this.allowedTools = const <String>[],
+    this.runtimeConnection = const <String, dynamic>{},
   });
 
   final String workingDirectory;
@@ -24,7 +28,18 @@ final class AgentDispatchBind {
   final String sessionPath;
   final String model;
   final String reasoningEffort;
+
+  /// Lico Agent profile (`base` / `plan`). Empty leaves the runtime default.
+  final String licoProfile;
   final String acceptanceMode;
+
+  /// Native permission mode (default / acceptEdits / plan / bypassPermissions).
+  /// Empty leaves the runtime default.
+  final String permissionMode;
+
+  /// Tool allowlist for a permission-approved retry (`--allowedTools`).
+  final List<String> allowedTools;
+  final Map<String, dynamic> runtimeConnection;
 }
 
 final class AgentDispatchSession {

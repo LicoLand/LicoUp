@@ -61,6 +61,10 @@ pub struct TargetCandidate {
     pub binary_path: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub history_roots: Vec<String>,
+    #[serde(default = "local_location")]
+    pub location: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub runtime_connection: Option<Value>,
     pub manual: bool,
     pub adapter_status: String,
     pub adapter_capabilities: AdapterCapabilities,
@@ -69,6 +73,10 @@ pub struct TargetCandidate {
     pub scan_source: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model_catalog: Option<Value>,
+}
+
+fn local_location() -> String {
+    "local".to_string()
 }
 
 pub(super) fn target_supports_skill_install(target: &str) -> bool {
@@ -238,6 +246,14 @@ pub(super) fn target_defs() -> Vec<TargetDef> {
             binary_names: &["pi"],
             process_names: &["pi.exe", "pi"],
         },
+        TargetDef {
+            id: "lico-agent",
+            label: "Lico Agent - CLI",
+            kind: "cli",
+            config_hint: "LicoUp first-party Agent sessions",
+            binary_names: &["lico-agent"],
+            process_names: &["lico-agent.exe", "lico-agent"],
+        },
     ]
 }
 
@@ -257,6 +273,7 @@ pub(super) fn normalize_target(value: &str) -> String {
         "github-copilot" => "copilot".to_string(),
         "kimi_code" | "kimicode" => "kimi-code".to_string(),
         "pi-agent" | "pi_agent" | "pi-coding-agent" | "pi_coding_agent" => "pi".to_string(),
+        "lico" | "lico_agent" => "lico-agent".to_string(),
         "open-code" | "open_code" => "opencode".to_string(),
         "openclaw-kate" | "openclaw_kate" => "openclaw".to_string(),
         "hermes-agent" | "hermes_serena" | "hermes-serena" => "hermes".to_string(),

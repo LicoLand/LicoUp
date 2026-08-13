@@ -29,7 +29,8 @@ const conversationSnapshotSourceFiles = [
 ];
 const targetSourceFiles = [
   "crates/licoup-native/src/domain/targets.rs",
-  ...rustSourceBundle("crates/licoup-native/src/domain/targets"),
+  ...rustSourceBundle("crates/licoup-native/src/domain/targets")
+    .filter((ref) => !ref.endsWith("/tests.rs") && !ref.includes("/tests/")),
 ];
 const clientStateSourceFiles = [
   "crates/licoup-native/src/platform/client_state.rs",

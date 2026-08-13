@@ -22,6 +22,7 @@ String? agentProductDisplayName(String value) {
     'kilo' || 'kilo-code' => 'Kilo Code',
     'kimi' => 'Kimi',
     'kimi-code' => 'Kimi Code',
+    'lico-agent' || 'lico' => 'Lico Agent',
     'openclaw' => 'OpenClaw',
     'opencode' => 'OpenCode',
     'pi' || 'pi-agent' || 'pi-coding-agent' => 'Pi Agent',

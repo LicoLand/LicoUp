@@ -43,9 +43,11 @@ final class ClientLifecycleCoordinator extends ChangeNotifier {
     ClientLifecyclePhase.idle,
   );
   Future<void>? _initializeFuture;
+  String _lastFailureStepId = '';
   int _generation = 0;
 
   ClientLifecycleProjection get projection => _projection;
+  String get lastFailureStepId => _lastFailureStepId;
 
   Future<void> initialize({
     required List<ClientBootstrapStep> sequentialSteps,
@@ -93,8 +95,11 @@ final class ClientLifecycleCoordinator extends ChangeNotifier {
     if (!_transition(ClientLifecyclePhase.initializing, stepId: 'initialize')) {
       return;
     }
+    _lastFailureStepId = '';
+    var activeStepId = 'initialize';
     try {
       for (final step in sequentialSteps) {
+        activeStepId = step.id;
         await step.action();
         if (!_isCurrent(generation)) return;
       }
@@ -106,17 +111,19 @@ final class ClientLifecycleCoordinator extends ChangeNotifier {
       }
       if (!_isCurrent(generation)) return;
       if (finalStep != null) {
+        activeStepId = finalStep.id;
         await finalStep.action();
         if (!_isCurrent(generation)) return;
       }
       _transition(ClientLifecyclePhase.ready, stepId: 'initialize_complete');
     } catch (_) {
       if (!_isCurrent(generation)) return;
-      _transition(ClientLifecyclePhase.failed, stepId: 'initialize_failed');
+      _lastFailureStepId = _safeStepId(activeStepId);
+      _transition(ClientLifecyclePhase.failed, stepId: _lastFailureStepId);
       _report(
-        const ClientLifecycleReport(
+        ClientLifecycleReport(
           code: 'client_initialize_failed',
-          stepId: 'sequential_bootstrap',
+          stepId: _lastFailureStepId,
         ),
       );
     }

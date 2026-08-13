@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:licoup/src/frontend/shared/ui/message_markdown.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -84,7 +85,7 @@ The response above may be incomplete.
                     '# Title\n\nUse **bold**, `code`, and [link](https://example.com).\n\n1. step\n\n```sh\necho ok\n```',
                 foreground: colors.text,
                 accent: colors.primary,
-                codeBackground: colors.surfaceHigh,
+                codeBackground: colors.surfaceRaised,
                 blockBackground: colors.surface,
                 borderColor: colors.line,
                 renderStyle: const MessageMarkdownStyle(showCodeLanguage: true),
@@ -119,7 +120,7 @@ The response above may be incomplete.
                     '| server/core/ | packages/foundation/ | migration in progress | architecture-graph |\n',
                 foreground: colors.text,
                 accent: colors.primary,
-                codeBackground: colors.surfaceHigh,
+                codeBackground: colors.surfaceRaised,
                 blockBackground: colors.surface,
                 borderColor: colors.line,
               ),
@@ -133,6 +134,76 @@ The response above may be incomplete.
     expect(find.text('Old Path'), findsOneWidget);
     expect(find.text('packages/foundation/'), findsOneWidget);
     expect(find.textContaining('|----------|'), findsNothing);
+    // Tables fit the dialog inner boundary: no horizontal scroll, no overflow.
+    expect(find.byType(SingleChildScrollView), findsNothing);
+    final tableWidth = tester
+        .renderObject<RenderBox>(find.byType(Table))
+        .size
+        .width;
+    expect(tableWidth, lessThanOrEqualTo(800));
+  });
+
+  testWidgets('MessageMarkdown table wraps text to the available width', (
+    tester,
+  ) async {
+    final longCell = List.filled(2, 'wraps at word boundaries').join(' ');
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildLicoTheme(platformBrightness: Brightness.dark),
+        home: Builder(
+          builder: (context) {
+            final colors = context.licoColors;
+            return Scaffold(
+              body: Align(
+                alignment: Alignment.topLeft,
+                child: SizedBox(
+                  width: 220,
+                  child: MessageMarkdown(
+                    data:
+                        '| Wide | Short |\n'
+                        '|------|-------|\n'
+                        '| $longCell | short |\n',
+                    foreground: colors.text,
+                    accent: colors.primary,
+                    codeBackground: colors.surfaceRaised,
+                    blockBackground: colors.surface,
+                    borderColor: colors.line,
+                  ),
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+
+    expect(tester.takeException(), isNull);
+    final tableWidth = tester
+        .renderObject<RenderBox>(find.byType(Table))
+        .size
+        .width;
+    expect(tableWidth, lessThanOrEqualTo(220));
+    // A 220px container cannot hold 42 characters on a single 14px line,
+    // so a taller cell proves the text wrapped instead of overflowing.
+    final cellHeight = tester
+        .renderObject<RenderParagraph>(
+          find.textContaining(longCell, findRichText: true),
+        )
+        .size
+        .height;
+    expect(cellHeight, greaterThan(30));
+    // Narrow columns keep their intrinsic width instead of an equal share.
+    final longCellWidth = tester
+        .renderObject<RenderParagraph>(
+          find.textContaining(longCell, findRichText: true),
+        )
+        .size
+        .width;
+    final shortCellWidth = tester
+        .renderObject<RenderParagraph>(find.text('short'))
+        .size
+        .width;
+    expect(shortCellWidth, lessThan(longCellWidth));
   });
 
   testWidgets('MessageMarkdown renders runtime API warnings as alert blocks', (
@@ -151,7 +222,7 @@ The response above may be incomplete.
                     'The response above may be incomplete.',
                 foreground: colors.text,
                 accent: colors.primary,
-                codeBackground: colors.surfaceHigh,
+                codeBackground: colors.surfaceRaised,
                 blockBackground: colors.surface,
                 borderColor: colors.line,
               ),

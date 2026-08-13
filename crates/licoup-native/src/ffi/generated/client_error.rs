@@ -100,6 +100,8 @@ pub enum ClientErrorCode {
 pub enum ClientErrorStage {
     #[serde(rename = "request/validation")]
     RequestValidation,
+    #[serde(rename = "cli/admission")]
+    CliAdmission,
     #[serde(rename = "discovery/adapter")]
     DiscoveryAdapter,
     #[serde(rename = "discovery/driver")]
@@ -134,6 +136,14 @@ pub enum ClientErrorComponent {
 pub enum ClientErrorRecovery {
     #[serde(rename = "correct_request")]
     CorrectRequest,
+    #[serde(rename = "use_cli_help")]
+    UseCliHelp,
+    #[serde(rename = "correct_command_arguments")]
+    CorrectCommandArguments,
+    #[serde(rename = "provide_valid_json")]
+    ProvideValidJson,
+    #[serde(rename = "reduce_command_arguments")]
+    ReduceCommandArguments,
     #[serde(rename = "select_supported_adapter")]
     SelectSupportedAdapter,
     #[serde(rename = "install_or_retry_runtime")]

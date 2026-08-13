@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "licomesh.client-release-acceptance-report.v3",
+  "$id": "licomesh.client-release-acceptance-report.v4",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -18,7 +18,7 @@
     "scope"
   ],
   "properties": {
-    "schemaVersion": { "const": "licomesh.client-release-acceptance-report.v3" },
+    "schemaVersion": { "const": "licomesh.client-release-acceptance-report.v4" },
     "generatedAt": { "type": "string", "format": "date-time" },
     "productVersion": { "type": "string", "minLength": 1 },
     "inputIntegrity": { "$ref": "#/$defs/inputIntegrity" },
@@ -47,10 +47,10 @@
     "scope": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["clientOwnedOnly", "opaqueRelayAllowed", "externalCoreAcceptanceRequired", "optionalExternalServicesBlocking", "unselectedTargetsBlocking", "telegramLevelClaimed"],
+      "required": ["clientOwnedOnly", "untrustedStationAllowed", "externalCoreAcceptanceRequired", "optionalExternalServicesBlocking", "unselectedTargetsBlocking", "telegramLevelClaimed"],
       "properties": {
         "clientOwnedOnly": { "const": true },
-        "opaqueRelayAllowed": { "const": true },
+        "untrustedStationAllowed": { "const": true },
         "externalCoreAcceptanceRequired": { "const": false },
         "optionalExternalServicesBlocking": { "const": false },
         "unselectedTargetsBlocking": { "const": false },
@@ -145,13 +145,14 @@
     "inputIntegrity": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["ok", "productVersion", "sourceStateDigest", "sourceStateStable", "artifactInputsStable", "supportMatrixStable", "targetCatalogStable", "policyInputsStable", "closureEvidenceDigestsStable", "closureStartedAt", "closureChallengeDigest", "supportMatrixDigest", "targetCatalogDigest", "policyBindings", "reports"],
+      "required": ["ok", "productVersion", "sourceStateDigest", "sourceStateStable", "artifactInputsStable", "candidateInputsStable", "supportMatrixStable", "targetCatalogStable", "policyInputsStable", "closureEvidenceDigestsStable", "closureStartedAt", "closureChallengeDigest", "supportMatrixDigest", "targetCatalogDigest", "policyBindings", "reports"],
       "properties": {
         "ok": { "type": "boolean" },
         "productVersion": { "type": "string", "minLength": 1 },
         "sourceStateDigest": { "$ref": "#/$defs/digest" },
         "sourceStateStable": { "type": "boolean" },
         "artifactInputsStable": { "type": "boolean" },
+        "candidateInputsStable": { "type": "boolean" },
         "supportMatrixStable": { "type": "boolean" },
         "targetCatalogStable": { "type": "boolean" },
         "policyInputsStable": { "type": "boolean" },
@@ -180,6 +181,7 @@
             "properties": {
               "sourceStateStable": { "const": true },
               "artifactInputsStable": { "const": true },
+              "candidateInputsStable": { "const": true },
               "supportMatrixStable": { "const": true },
               "targetCatalogStable": { "const": true },
               "policyInputsStable": { "const": true },

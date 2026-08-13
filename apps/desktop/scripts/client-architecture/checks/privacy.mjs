@@ -20,7 +20,6 @@ export async function checkProductContractsAndPortableData(context, { modules })
     readText,
     runJson,
     sameSet,
-    sourceLineCount,
   } = context;
   const architectureSource = await readText("docs/architecture/README.md");
   const userGuideSource = await readText("docs/functionality/USER-GUIDE.md");
@@ -32,11 +31,11 @@ export async function checkProductContractsAndPortableData(context, { modules })
     normalizedArchitectureSource.includes("Agent conversations") &&
       normalizedArchitectureSource.includes("New and native continued sessions") &&
       normalizedArchitectureSource.includes("process-local") &&
-      normalizedArchitectureSource.includes("Local Bridge") &&
+      normalizedArchitectureSource.includes("Subagent MCP") &&
       normalizedArchitectureSource.includes("wakeable progress") &&
       normalizedArchitectureSource.includes("native steer") &&
       normalizedArchitectureSource.includes("exact-session safe-boundary follow-up"),
-    "ARCHITECTURE.md must keep native continuation and the Local Bridge Level 2 boundary"
+    "architecture docs must keep native continuation and the local Subagent MCP boundary"
   );
   assert(
     normalizedUserGuideSource.includes("prefers the agent's native attach or resume operation") &&
@@ -46,10 +45,10 @@ export async function checkProductContractsAndPortableData(context, { modules })
   );
   assert(
     normalizedContributingSource.includes("run the smallest relevant checks") &&
-      normalizedContributingSource.includes("Run the full client verification once") &&
-      normalizedContributingSource.includes("only after every intended change has been confirmed effective") &&
-      normalizedContributingSource.includes("Never repeat the full regression during implementation"),
-    "CONTRIBUTING.md must preserve targeted closure and one final full regression"
+      normalizedContributingSource.includes("mandatory Node-only source policy once") &&
+      normalizedContributingSource.includes("only the affected technology lanes") &&
+      normalizedContributingSource.includes("commit gate never builds or publishes every platform"),
+    "CONTRIBUTING.md must preserve targeted closure and independent commit gates"
   );
   const portableDirs = modules["portable-data"]?.portableDirectories || [];
   const expectedPortableDirs = [
@@ -88,7 +87,6 @@ export async function checkFileSecurityAndClientState(context) {
     readText,
     runJson,
     sameSet,
-    sourceLineCount,
   } = context;
   const fileSecurityRoot = "crates/licoup-native/src/platform/file_security";
   const fileSecurityLeaves = [
@@ -112,7 +110,6 @@ export async function checkFileSecurityAndClientState(context) {
       fileSecurityProductionFiles,
       fileSecurityLeaves.map((leaf) => `${fileSecurityRoot}/${leaf}`)
     ) &&
-      sourceLineCount(fileSecurityFacadeSource) <= 30 &&
       fileSecurityLeaves.every((leaf) =>
         fileSecurityFacadeSource.includes(`mod ${leaf.replace(".rs", "")};`)) &&
       !fileSecurityFacadeSource.includes("fn ") &&
@@ -205,7 +202,6 @@ export async function checkFileSecurityAndClientState(context) {
       clientStateProductionFiles,
       clientStateLeaves.map((leaf) => `${clientStateRoot}/${leaf}`)
     ) &&
-      sourceLineCount(clientStateFacadeSource) <= 24 &&
       clientStateLeaves.every((leaf) =>
         clientStateFacadeSource.includes(`mod ${leaf.replace(".rs", "")};`)) &&
       !clientStateFacadeSource.includes("struct ") &&

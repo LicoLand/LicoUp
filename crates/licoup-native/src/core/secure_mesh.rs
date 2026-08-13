@@ -1,6 +1,7 @@
 use anyhow::{Context, Result};
 use serde_json::{Value, json};
 
+use crate::core::licoarc_relay::{LICOARC_RELAY_CONTRACT_VERSION, LicoArcRelayEnvelope};
 use crate::core::secure_mesh_acp::SECURE_MESH_ACP_STATUS;
 use crate::core::secure_mesh_capability::{
     CapabilityEvaluation, CapabilityEvidenceKind, capability_catalog, mandatory_protocol_facts,
@@ -29,9 +30,6 @@ use crate::core::secure_mesh_prekey::{
     SECURE_MESH_PREKEY_PROTOCOL_VERSION, SECURE_MESH_PREKEY_STATUS,
 };
 use crate::core::secure_mesh_product_readiness::SecureMeshProductReadiness;
-use crate::core::secure_mesh_relay_envelope::{
-    SECURE_MESH_RELAY_ENVELOPE_SCHEMA, SecureMeshRelayEnvelope,
-};
 use crate::core::secure_mesh_response::{
     SECURE_MESH_ERROR_CONTENT_TYPE, SECURE_MESH_RESPONSE_CRYPTO_STATUS,
     SECURE_MESH_RESULT_CONTENT_TYPE,
@@ -256,10 +254,10 @@ fn protocol_status_with_capability_values(
 pub fn validate_envelope(envelope: &Value) -> Result<Value> {
     let wire = serde_json::to_string(envelope)
         .context("secure mesh relay envelope serialization failed")?;
-    let canonical = SecureMeshRelayEnvelope::from_json(&wire)?;
+    let canonical = LicoArcRelayEnvelope::from_json(&wire)?;
     Ok(json!({
         "ok": true,
-        "schema": SECURE_MESH_RELAY_ENVELOPE_SCHEMA,
+        "contractVersion": LICOARC_RELAY_CONTRACT_VERSION,
         "envelope": serde_json::from_str::<Value>(&canonical.to_json()?)?
     }))
 }
@@ -411,17 +409,17 @@ mod tests {
     }
 
     fn envelope_fixture() -> Value {
-        json!({
-            "schema": SECURE_MESH_RELAY_ENVELOPE_SCHEMA,
-            "deliveryId": general_purpose::URL_SAFE_NO_PAD.encode([1u8; 24]),
-            "mailboxToken": general_purpose::URL_SAFE_NO_PAD.encode([2u8; 32]),
-            "encryptedHeader": general_purpose::URL_SAFE_NO_PAD
-                .encode(vec![
-                    3u8;
-                    crate::core::secure_mesh_relay_envelope::SECURE_MESH_ENCRYPTED_HEADER_BUCKET_BYTES
-                ]),
-            "ciphertextBucket": 256,
-            "ciphertext": general_purpose::URL_SAFE_NO_PAD.encode([4u8; 256])
-        })
+        let mailbox = crate::core::licoarc_relay::SecureMeshMailboxToken::from_base64url(
+            general_purpose::URL_SAFE_NO_PAD.encode([2u8; 32]),
+        )
+        .unwrap();
+        let envelope = crate::core::licoarc_relay::LicoArcRelayEnvelope::new(
+            &mailbox,
+            "2030-01-01T00:00:00Z",
+            &[3u8; crate::core::licoarc_relay::LICOARC_ENCRYPTED_HEADER_BYTES],
+            &[4u8; 256],
+        )
+        .unwrap();
+        serde_json::from_str(&envelope.to_json().unwrap()).unwrap()
     }
 }

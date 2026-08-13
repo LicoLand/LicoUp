@@ -25,7 +25,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
 use uuid::Uuid;
 
-use super::config::{default_config, normalize_config, prepare_gateway_fields_for_persistence};
+use super::config::{default_config, normalize_config, prepare_station_fields_for_persistence};
 use super::endpoint_trust::{
     ensure_mobile_relay_endpoint_descriptor, ensure_mobile_relay_endpoint_material,
     local_endpoint_state, secure_mesh_mls_state_dir, sha256_hex,

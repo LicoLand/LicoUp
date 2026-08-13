@@ -12,7 +12,7 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-pub(super) const CACHE_SCHEMA_VERSION: i64 = 5;
+pub(super) const CACHE_SCHEMA_VERSION: i64 = 7;
 pub(super) const CACHE_FILE_NAME: &str = "agent-usage-rollups-v2.sqlite3";
 const LEGACY_CACHE_FILE_NAME: &str = "agent-usage-exact-v1.sqlite3";
 
@@ -733,16 +733,20 @@ mod tests {
     use super::*;
     use crate::domain::agent_usage::contract::MessageUsage;
     use serde_json::json;
+    use std::sync::atomic::{AtomicU64, Ordering};
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    static TEMP_DATABASE_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
     fn temp_database() -> PathBuf {
         std::env::temp_dir().join(format!(
-            "lico-native-usage-cache-{}-{}.sqlite3",
+            "lico-native-usage-cache-{}-{}-{}.sqlite3",
             std::process::id(),
             SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .unwrap()
-                .as_nanos()
+                .as_nanos(),
+            TEMP_DATABASE_SEQUENCE.fetch_add(1, Ordering::Relaxed)
         ))
     }
 

@@ -50,6 +50,13 @@ class BoundedNativeProcessIo implements AgentCommandRunner {
     if (_processContext.requestTimeout <= Duration.zero) {
       throw Exception('licoup private runtime timeout is invalid.');
     }
+    final persistentPrivateArgs = _persistentPrivateInputArgs(args, stdinText);
+    if (_persistentStdioRpcEnabled && persistentPrivateArgs != null) {
+      // LLM credentials must stay on the same process-local authorization
+      // context as inventory reads and Gateway start. The JSON remains inside
+      // the inherited stdio RPC channel and is never projected to logs.
+      return _stdioRpcTransport.execute(persistentPrivateArgs);
+    }
     final conversationOperation = _conversationControlOperation(args);
     if (_persistentStdioRpcEnabled && conversationOperation != null) {
       late dynamic request;
@@ -71,7 +78,7 @@ class BoundedNativeProcessIo implements AgentCommandRunner {
       final cli = await _processContext.resolveCliBinary();
       final environment = await _processContext.buildEnvironment();
       process = await _processContext.startProcess(
-        cli?.path ?? 'licoup',
+        cli?.path ?? 'licoup-cli',
         args,
         environment,
       );
@@ -173,7 +180,7 @@ class BoundedNativeProcessIo implements AgentCommandRunner {
       final cli = await _processContext.resolveCliBinary();
       final environment = await _processContext.buildEnvironment();
       process = await _processContext.startProcess(
-        cli?.path ?? 'licoup',
+        cli?.path ?? 'licoup-cli',
         args,
         environment,
       );
@@ -202,9 +209,7 @@ class BoundedNativeProcessIo implements AgentCommandRunner {
         }
         stdoutBytes += utf8.encode(line).length + 1;
         if (stdoutBytes > _privateRuntimeMaxStdoutBytes) {
-          throw Exception(
-            'licoup private runtime output exceeded its limit.',
-          );
+          throw Exception('licoup private runtime output exceeded its limit.');
         }
         final decoded = jsonDecode(trimmed);
         if (decoded is Map<String, dynamic>) {
@@ -231,6 +236,28 @@ class BoundedNativeProcessIo implements AgentCommandRunner {
       );
     }
   }
+}
+
+List<String>? _persistentPrivateInputArgs(List<String> args, String stdinText) {
+  final create =
+      args.length == 5 &&
+      args[0] == 'llm-gateway' &&
+      args[1] == 'credentials' &&
+      args[2] == 'create' &&
+      args[3] == '--stdin-json' &&
+      args[4] == 'true';
+  final update =
+      args.length == 6 &&
+      args[0] == 'llm-gateway' &&
+      args[1] == 'credentials' &&
+      args[2] == 'update' &&
+      args[3].isNotEmpty &&
+      args[4] == '--stdin-json' &&
+      args[5] == 'true';
+  if (!create && !update) {
+    return null;
+  }
+  return <String>[...args.take(args.length - 1), stdinText];
 }
 
 String? _conversationControlOperation(List<String> args) {

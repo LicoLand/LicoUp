@@ -11,7 +11,7 @@ const requiredInputReportKeys = Object.freeze([
   "physicalEvidenceManifest",
   "windowsImplementation",
   "reportRedaction",
-  "relayMock",
+  "stationAcceptance",
   "rustCrypto",
   "platformCrypto",
   "androidPlatformCrypto"

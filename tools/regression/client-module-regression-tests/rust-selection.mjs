@@ -314,7 +314,6 @@ test("Rust domain changes select a precise cargo-filtered slice", () => {
     "regression.relay-operations-source-bundle",
     "architecture.client-boundaries",
     "rust.domain.mobile-relay.relay-operations",
-    "rust.platform.secure-client-relay.composition",
   ]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
     "crates/licoup-native/src/domain/mobile_relay/secret_custody.rs",
@@ -784,6 +783,8 @@ test("target modules retain leaf-owned inputs and exact command filters", () => 
     ["rust.domain.targets.runtime-binding", "domain::targets::tests::runtime_binding::"],
     ["rust.domain.targets.model-catalog.antigravity",
       "domain::targets::model_catalog::tests::antigravity::"],
+    ["rust.domain.targets.model-catalog.cursor",
+      "domain::targets::model_catalog::tests::cursor::"],
     ["rust.domain.targets.model-catalog.config",
       "domain::targets::model_catalog::tests::config_"],
     ["rust.domain.targets.model-catalog.history",

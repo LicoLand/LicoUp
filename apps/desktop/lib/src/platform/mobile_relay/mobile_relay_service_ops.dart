@@ -1,5 +1,3 @@
-import 'dart:convert';
-
 import 'package:licoup/src/contracts/agent_command_runner.dart';
 import 'package:licoup/src/contracts/mobile_relay/mobile_relay_models.dart';
 import 'package:licoup/src/platform/mobile_relay/mobile_relay_config_projector.dart';
@@ -55,8 +53,7 @@ final class MobileRelayOperations {
   }) async {
     if (_dispatch.isAndroid || _dispatch.isIOS) {
       final params = <String, dynamic>{
-        'useCustomGateway': config.useCustomGateway,
-        'customGatewayUrl': config.customGatewayUrl,
+        'stationBaseUrl': config.stationBaseUrl,
         'relayEnabled': config.relayEnabled,
         'pcClientId': config.pcClientId,
         'pcClientName': config.pcClientName,
@@ -73,30 +70,23 @@ final class MobileRelayOperations {
       );
       return;
     }
-    final args = [
+    final params = <String, dynamic>{
+      'stationBaseUrl': config.stationBaseUrl,
+      'relayEnabled': config.relayEnabled,
+      'pcClientId': config.pcClientId,
+      'pcClientName': config.pcClientName,
+      'pairingId': config.pairingId,
+      'paired': config.paired,
+    };
+    if (config.mobileToken.trim().isNotEmpty) {
+      params['mobileToken'] = config.mobileToken.trim();
+    }
+    await _dispatch.runPrivateCli(agentService, const [
       'mobile',
       'relay',
       'config',
       'set',
-      '--use-custom-gateway',
-      config.useCustomGateway.toString(),
-      '--custom-gateway-url',
-      config.customGatewayUrl,
-      '--relay-enabled',
-      config.relayEnabled.toString(),
-      '--pc-client-id',
-      config.pcClientId,
-      '--pc-client-name',
-      config.pcClientName,
-      '--pairing-id',
-      config.pairingId,
-      '--paired',
-      config.paired.toString(),
-    ];
-    if (config.mobileToken.trim().isNotEmpty) {
-      args.addAll(['--mobile-token', config.mobileToken.trim()]);
-    }
-    await _dispatch.runCli(agentService, args);
+    ], params);
   }
 
   Future<MobileRelayConfig> resetPairing({
@@ -122,20 +112,16 @@ final class MobileRelayOperations {
     return _configProjector.fromOutput(output);
   }
 
-  Future<MobileRelayConfig> configureGateway({
+  Future<MobileRelayConfig> configureStation({
     required AgentCommandRunner agentService,
-    required bool useCustomGateway,
-    required String customGatewayUrl,
+    required String stationBaseUrl,
     SecureMeshMobileBridge bridge = const SecureMeshAndroidBridge(),
   }) async {
     if (_dispatch.isAndroid || _dispatch.isIOS) {
       final output = await _dispatch.runMobile(
         bridge: _dispatch.bridgeForCurrentPlatform(bridge),
         action: 'mobile.relay.config.set',
-        params: {
-          'useCustomGateway': useCustomGateway,
-          'customGatewayUrl': customGatewayUrl.trim(),
-        },
+        params: {'stationBaseUrl': stationBaseUrl.trim()},
       );
       return _configProjector.fromOutput(output);
     }
@@ -144,10 +130,8 @@ final class MobileRelayOperations {
       'relay',
       'config',
       'set',
-      '--use-custom-gateway',
-      useCustomGateway.toString(),
-      '--custom-gateway-url',
-      customGatewayUrl.trim(),
+      '--station-base-url',
+      stationBaseUrl.trim(),
     ]);
     return _configProjector.fromOutput(output);
   }
@@ -214,14 +198,11 @@ final class MobileRelayOperations {
         authorize: true,
       );
     }
-    return _dispatch.runCli(agentService, [
-      'mobile',
-      'relay',
-      'pairing',
-      'claim',
-      '--invite',
-      jsonEncode(invite),
-    ]);
+    return _dispatch.runPrivateCli(
+      agentService,
+      const ['mobile', 'relay', 'pairing', 'claim'],
+      {'invite': Map<String, dynamic>.unmodifiable(invite)},
+    );
   }
 
   Future<Map<String, dynamic>> openExternalUrl({

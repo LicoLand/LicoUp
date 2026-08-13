@@ -33,7 +33,7 @@ final class StdioRpcOperationQueue {
 
   Stream<T> serializeStream<T>({
     required Stream<T> Function() operation,
-    required Duration timeout,
+    Duration? timeout,
     required Future<void> Function() onTimeout,
   }) {
     if (_closing) {
@@ -42,7 +42,11 @@ final class StdioRpcOperationQueue {
     final controller = StreamController<T>();
     _enqueue(() async {
       try {
-        await for (final event in operation().timeout(timeout)) {
+        final events = operation();
+        // A null timeout keeps the operation unbounded (agent turns run until
+        // they complete, however long that takes).
+        await for (final event
+            in timeout == null ? events : events.timeout(timeout)) {
           controller.add(event);
         }
       } on TimeoutException catch (_, stackTrace) {

@@ -3,37 +3,38 @@ import 'package:licoup/src/contracts/skill_delete.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('multi-agent deletion uses a stable unique target set', () async {
+  test('skill trash plan normalizes required identifiers and paths', () async {
     final gateway = _Gateway();
     final service = SkillDeleteService(gateway: gateway);
 
     await service.plan(
-      agents: const ['codex', 'claude-code', 'codex'],
-      skillId: 'review',
+      skillId: ' review ',
+      path: ' /workspace/.agents/skills/review ',
     );
 
-    expect(gateway.agents, ['claude-code', 'codex']);
+    expect(gateway.skillId, 'review');
+    expect(gateway.path, '/workspace/.agents/skills/review');
   });
 }
 
 class _Gateway implements SkillDeleteGateway {
-  List<String> agents = const [];
+  String skillId = '';
+  String path = '';
 
   @override
   Future<Map<String, dynamic>> planSkillDelete({
-    required List<String> agents,
     required String skillId,
-    String installRoot = '',
+    required String path,
   }) async {
-    this.agents = agents;
+    this.skillId = skillId;
+    this.path = path;
     return {'ok': true};
   }
 
   @override
   Future<Map<String, dynamic>> applySkillDelete({
-    required List<String> agents,
     required String skillId,
+    required String path,
     required String confirmation,
-    String installRoot = '',
   }) async => {'ok': true};
 }

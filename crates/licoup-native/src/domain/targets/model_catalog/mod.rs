@@ -13,26 +13,31 @@ use std::time::{SystemTime, UNIX_EPOCH};
 mod antigravity;
 mod builtin;
 mod config;
+mod cursor;
 mod history;
 mod kilo;
 mod merge;
 mod normalization;
+mod pi;
 mod provider;
 mod reasoning;
 
 use antigravity::{
     collect_antigravity_available_models_param, collect_antigravity_cli_model_catalog,
+    remove_unsupported_antigravity_reasoning_efforts,
 };
 use builtin::apply_builtin_model_catalog_overlay;
 use config::{
     collect_model_catalog_from_config_path, collect_model_catalog_from_model_collection_path,
     extra_model_collection_paths, extra_model_config_paths, home_dir_for_model_catalog,
 };
+use cursor::collect_cursor_cli_model_catalog;
 use history::collect_model_catalog_from_history;
 use kilo::collect_kilo_code_model_catalog;
 use merge::{
     add_model_catalog_entry, add_model_catalog_entry_with_provider, build_model_catalog,
-    merge_model_catalog_value_into, model_catalog_fixture_for_target,
+    collapse_kimi_code_qualified_duplicates, merge_model_catalog_value_into,
+    model_catalog_fixture_for_target,
 };
 use normalization::{
     canonical_model_display_name, collect_model_catalog_entries_from_collection_value,
@@ -41,6 +46,7 @@ use normalization::{
     model_name_from_value, normalize_model_catalog_key, prefer_model_display_name,
     sanitize_model_name, sanitize_option_name,
 };
+use pi::collect_pi_cli_model_catalog;
 use provider::{
     provider_id_from_model_object, provider_id_from_model_value, provider_label_from_provider_id,
     provider_name_from_model_object, provider_name_from_model_value,
@@ -80,6 +86,7 @@ pub(super) fn model_catalog_for_target(
     let mut sources = BTreeSet::<String>::new();
     let mut diagnostics = Vec::<Value>::new();
     let mut default_model = None::<String>;
+    let mut authoritative_native_catalog = false;
     if let Some(fixture) = model_catalog_fixture_for_target(target, params) {
         default_model = fixture
             .get("defaultModel")
@@ -88,6 +95,30 @@ pub(super) fn model_catalog_for_target(
         merge_model_catalog_value_into(
             &fixture,
             "fixture",
+            &mut entries,
+            &mut sources,
+            &mut diagnostics,
+        );
+    }
+
+    // Codex App Server is a live projection, not an exclusive directory.
+    // Merge it with ~/.codex/models_cache.json and model-catalogs so custom
+    // providers (for example DeepSeek) and cache-only rows stay selectable.
+    if target == "codex"
+        && model_catalog_fixture_for_target(target, params).is_none()
+        && (!cfg!(test) || param_bool(params, "enableAgentCliModelLookup").unwrap_or(false))
+        && let Some(binary) = find_binary(&["codex"])
+        && let Ok(catalog) = crate::platform::codex_app_server_model_catalog(&binary)
+    {
+        if default_model.is_none() {
+            default_model = catalog
+                .get("defaultModel")
+                .map(model_name_from_value)
+                .filter(|name| !name.trim().is_empty());
+        }
+        merge_model_catalog_value_into(
+            &catalog,
+            "codex-app-server",
             &mut entries,
             &mut sources,
             &mut diagnostics,
@@ -136,11 +167,32 @@ pub(super) fn model_catalog_for_target(
 
     if target == "antigravity" {
         collect_antigravity_available_models_param(params, &mut entries, &mut diagnostics);
-        sources.insert("antigravity-cli".to_string());
-        collect_antigravity_cli_model_catalog(params, &mut entries, &mut diagnostics);
+        authoritative_native_catalog =
+            collect_antigravity_cli_model_catalog(params, &mut entries, &mut diagnostics);
+        if authoritative_native_catalog {
+            sources.clear();
+            sources.insert("antigravity-cli".to_string());
+        }
     }
 
-    if param_bool(params, "includeHistoryModelCatalog") == Some(true) {
+    if target == "cursor" {
+        let result = collect_cursor_cli_model_catalog(params, &mut entries, &mut diagnostics);
+        authoritative_native_catalog = result.authoritative;
+        if authoritative_native_catalog {
+            default_model = result.default_model;
+            sources.clear();
+            sources.insert("cursor-cli".to_string());
+        }
+    }
+
+    if target == "pi" {
+        sources.insert("pi-cli:list-models".to_string());
+        collect_pi_cli_model_catalog(params, &mut entries, &mut diagnostics);
+    }
+
+    if !authoritative_native_catalog
+        && param_bool(params, "includeHistoryModelCatalog") == Some(true)
+    {
         sources.insert("history".to_string());
         collect_model_catalog_from_history(target, params, &mut entries, &mut diagnostics);
     }
@@ -151,7 +203,32 @@ pub(super) fn model_catalog_for_target(
         }
     }
 
+    if authoritative_native_catalog
+        && default_model.as_ref().is_some_and(|configured| {
+            !entries
+                .values()
+                .any(|entry| entry.name.eq_ignore_ascii_case(configured))
+        })
+    {
+        default_model = None;
+    }
+
     apply_builtin_model_catalog_overlay(target, &mut entries, &mut sources);
+    if target == "kimi-code" {
+        collapse_kimi_code_qualified_duplicates(&mut entries);
+        if let Some(configured_default) = default_model.as_mut()
+            && let Some((provider, model)) = configured_default.split_once('/')
+            && provider.eq_ignore_ascii_case("kimi-code")
+            && entries
+                .values()
+                .any(|entry| entry.name.eq_ignore_ascii_case(model))
+        {
+            *configured_default = model.to_string();
+        }
+    }
+    if target == "antigravity" {
+        remove_unsupported_antigravity_reasoning_efforts(&mut entries);
+    }
 
     build_model_catalog(entries, sources, diagnostics, default_model)
 }

@@ -33,7 +33,7 @@ pub(in crate::platform) fn execute(
     session_id: &str,
     cwd: Option<&Path>,
     timeout_ms: u64,
-    max_stdout: usize,
+    max_stdout: Option<usize>,
     max_stderr: usize,
 ) -> RunResult {
     let _ = (max_stdout, max_stderr);
@@ -192,10 +192,6 @@ fn execute_via_serve(
             "session/prompt",
         )
         .with_session(Some(&session_id)));
-    }
-    if streamed.is_empty() {
-        super::super::turn_event_emit::emit_agent_message_chunk(&session_id, &turn_id, &output);
-        streamed.push(output.clone());
     }
     super::super::turn_event_emit::emit_agent_message_completed(&session_id, &turn_id, &output);
     let mut events = project_agent_chunks(streamed);

@@ -45,6 +45,7 @@ pub enum SecretStoreKeyClass {
     DeviceIdentity,
     PairwiseSession,
     GroupEpoch,
+    GatewayCredential,
 }
 
 impl SecretStoreKeyClass {
@@ -53,6 +54,7 @@ impl SecretStoreKeyClass {
             Self::DeviceIdentity => b"device-identity",
             Self::PairwiseSession => b"pairwise-session",
             Self::GroupEpoch => b"group-epoch",
+            Self::GatewayCredential => b"gateway-credential",
         }
     }
 }
@@ -62,6 +64,7 @@ pub enum SecretStoreCallerChannel {
     DesktopGui,
     Mobile,
     NativeCli,
+    GatewaySidecar,
 }
 
 impl SecretStoreCallerChannel {
@@ -70,6 +73,7 @@ impl SecretStoreCallerChannel {
             Self::DesktopGui => b"desktop-gui",
             Self::Mobile => b"mobile",
             Self::NativeCli => b"native-cli",
+            Self::GatewaySidecar => b"gateway-sidecar",
         }
     }
 }
@@ -143,11 +147,8 @@ impl fmt::Debug for SecretStorePresencePurpose {
 #[derive(Clone)]
 pub struct SecretStorePresenceBatchRequest {
     provider: SecretStorePresenceProvider,
-    key_class: SecretStoreKeyClass,
     operation_count: usize,
     reason: String,
-    nonce: SecretStorePresenceNonce,
-    caller_channel: SecretStoreCallerChannel,
     allow_interaction: bool,
     canonical_digest: [u8; 32],
 }
@@ -188,11 +189,8 @@ impl SecretStorePresenceBatchRequest {
         );
         Ok(Self {
             provider,
-            key_class,
             operation_count,
             reason,
-            nonce,
-            caller_channel,
             allow_interaction,
             canonical_digest,
         })
@@ -206,20 +204,12 @@ impl SecretStorePresenceBatchRequest {
         self.provider
     }
 
-    pub(crate) fn key_class(&self) -> SecretStoreKeyClass {
-        self.key_class
-    }
-
     pub(crate) fn operation_count(&self) -> usize {
         self.operation_count
     }
 
     pub(crate) fn reason(&self) -> &str {
         &self.reason
-    }
-
-    pub(crate) fn caller_channel(&self) -> SecretStoreCallerChannel {
-        self.caller_channel
     }
 
     pub(crate) fn allow_interaction(&self) -> bool {
@@ -238,7 +228,6 @@ pub struct SecretStorePresenceScope {
     operation: SecretStoreOperation,
     namespace: String,
     key: String,
-    purpose: SecretStorePresencePurpose,
     canonical_digest: [u8; 32],
 }
 
@@ -266,13 +255,8 @@ impl SecretStorePresenceScope {
             operation,
             namespace,
             key,
-            purpose,
             canonical_digest,
         })
-    }
-
-    pub(crate) fn canonical_digest(&self) -> [u8; 32] {
-        self.canonical_digest
     }
 }
 
@@ -283,7 +267,6 @@ impl fmt::Debug for SecretStorePresenceScope {
 }
 
 pub struct SecretStoreApprovedPresenceBatch {
-    request_digest: [u8; 32],
     binding_digest: [u8; 32],
     expires_at: Instant,
     operation_count: usize,
@@ -332,7 +315,6 @@ impl SecretStoreApprovedPresenceBatch {
             ],
         );
         Ok(Self {
-            request_digest: request.canonical_digest,
             binding_digest,
             expires_at,
             operation_count: request.operation_count,
@@ -370,10 +352,6 @@ impl SecretStoreApprovedPresenceBatch {
             expires_at: self.expires_at,
             state: AtomicU8::new(GRANT_AVAILABLE),
         }))
-    }
-
-    pub(crate) fn request_digest(&self) -> [u8; 32] {
-        self.request_digest
     }
 
     pub(crate) fn binding_digest(&self) -> [u8; 32] {
@@ -553,18 +531,54 @@ pub struct SecretStoreAuthorizationRequest {
     operation_count: usize,
     allow_interaction: bool,
     canonical_digest: [u8; 32],
+    key_class: SecretStoreKeyClass,
+    caller_channel: SecretStoreCallerChannel,
 }
 
 impl SecretStoreAuthorizationRequest {
     pub fn new(reason: impl Into<String>, operation_count: usize) -> Self {
-        Self::build(reason.into(), operation_count, true)
+        Self::build(
+            reason.into(),
+            operation_count,
+            true,
+            SecretStoreKeyClass::DeviceIdentity,
+            SecretStoreCallerChannel::DesktopGui,
+        )
     }
 
     pub fn noninteractive(reason: impl Into<String>, operation_count: usize) -> Self {
-        Self::build(reason.into(), operation_count, false)
+        Self::build(
+            reason.into(),
+            operation_count,
+            false,
+            SecretStoreKeyClass::DeviceIdentity,
+            SecretStoreCallerChannel::DesktopGui,
+        )
     }
 
-    fn build(reason: String, operation_count: usize, allow_interaction: bool) -> Self {
+    pub fn for_scope(
+        reason: impl Into<String>,
+        operation_count: usize,
+        allow_interaction: bool,
+        key_class: SecretStoreKeyClass,
+        caller_channel: SecretStoreCallerChannel,
+    ) -> Self {
+        Self::build(
+            reason.into(),
+            operation_count,
+            allow_interaction,
+            key_class,
+            caller_channel,
+        )
+    }
+
+    fn build(
+        reason: String,
+        operation_count: usize,
+        allow_interaction: bool,
+        key_class: SecretStoreKeyClass,
+        caller_channel: SecretStoreCallerChannel,
+    ) -> Self {
         let canonical_digest = digest_fields(
             b"licoup:secret-store-authorization-request:v1",
             [
@@ -573,6 +587,8 @@ impl SecretStoreAuthorizationRequest {
                     .unwrap_or(u64::MAX)
                     .to_be_bytes(),
                 &[u8::from(allow_interaction)],
+                key_class.tag(),
+                caller_channel.tag(),
             ],
         );
         Self {
@@ -580,6 +596,8 @@ impl SecretStoreAuthorizationRequest {
             operation_count,
             allow_interaction,
             canonical_digest,
+            key_class,
+            caller_channel,
         }
     }
 
@@ -593,6 +611,14 @@ impl SecretStoreAuthorizationRequest {
 
     pub fn allow_interaction(&self) -> bool {
         self.allow_interaction
+    }
+
+    pub fn key_class(&self) -> SecretStoreKeyClass {
+        self.key_class
+    }
+
+    pub fn caller_channel(&self) -> SecretStoreCallerChannel {
+        self.caller_channel
     }
 
     pub(crate) fn canonical_digest(&self) -> [u8; 32] {

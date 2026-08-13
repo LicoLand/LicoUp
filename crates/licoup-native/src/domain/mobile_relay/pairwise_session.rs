@@ -6,24 +6,20 @@ mod status_projection;
 mod store;
 mod transaction;
 
-#[cfg(test)]
-pub(in crate::domain::mobile_relay) use super::secret_custody::test_runtime_secret_material;
-
 pub(super) use crypto_operation::{
-    PairwiseDirectoryGate, open_mobile_relay_payload_with_pairwise_operation,
-    open_mobile_relay_payload_with_pairwise_operation_and_gate,
-    seal_mobile_relay_payload_with_pairwise_operation,
+    PairwiseDirectoryGate, open_mobile_relay_payload_deferred,
+    open_mobile_relay_payload_with_pairwise_operation_and_gate, seal_mobile_relay_payload_deferred,
     seal_mobile_relay_payload_with_pairwise_operation_and_gate,
 };
 #[cfg(test)]
 pub(super) use crypto_operation::{open_mobile_relay_payload, seal_mobile_relay_payload};
 pub(super) use handshake::initialize_mobile_relay_pairwise_session;
 pub(super) use payload::{secure_command_context, secure_command_payload};
-#[cfg(test)]
-pub(super) use response::result_envelope_replay_proof;
 pub(super) use response::{
-    result_envelope_replay_proof_with_pairwise_operation, secure_result_response_summary,
+    is_pairwise_replay_rejection_error, result_envelope_replay_proof_with_pairwise_operation,
 };
+#[cfg(test)]
+pub(super) use response::{result_envelope_replay_proof, secure_result_response_summary};
 pub(super) use status_projection::{
     AuthorizedPairwiseSessionStatus, authorized_pairwise_session_status,
 };

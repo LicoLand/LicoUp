@@ -44,7 +44,7 @@ pub(in crate::domain::mobile_relay) fn local_endpoint_state<'a>(
     let mailbox_rotation_epoch = state
         .get("mailboxRotationEpoch")
         .and_then(Value::as_u64)
-        .ok_or_else(|| anyhow!("secure client relay mailbox rotation epoch is missing"))?;
+        .ok_or_else(|| anyhow!("Lico Arc mailbox rotation epoch is missing"))?;
     let prekey_publication_version = state
         .get("prekeyPublicationVersion")
         .and_then(Value::as_u64)

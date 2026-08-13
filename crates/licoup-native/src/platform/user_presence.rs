@@ -4,7 +4,9 @@
 //! consumers receive a new OS context for every exact operation; contexts are
 //! never cached globally or inherited by background work.
 
-use anyhow::{Result, anyhow, ensure};
+#[cfg(target_os = "macos")]
+use anyhow::ensure;
+use anyhow::{Result, anyhow};
 
 #[cfg(target_os = "macos")]
 mod macos {

@@ -10,6 +10,8 @@ mixin ClientConversationFacade on AgentWorkspaceCoordinator {
       conversationPresentationSignals.structureListenable;
   ValueListenable<int> get activeConversationListenable =>
       conversationPresentationSignals.activeListenable;
+  ValueListenable<int> get liveConversationListenable =>
+      conversationPresentationSignals.liveListenable;
   String get conversationComposerDraft =>
       conversationPresentationSignals.composerDraft;
 
@@ -31,6 +33,10 @@ mixin ClientConversationFacade on AgentWorkspaceCoordinator {
     conversationPresentationSignals.notifyActiveChanged();
   }
 
+  void notifyLiveConversationChanged() {
+    conversationPresentationSignals.notifyLiveChanged();
+  }
+
   @override
   void agentWorkspaceNotifyStateChanged() => notifyClientStateChanged();
 
@@ -42,4 +48,8 @@ mixin ClientConversationFacade on AgentWorkspaceCoordinator {
   @override
   void agentWorkspaceNotifyActiveConversationChanged() =>
       notifyActiveConversationChanged();
+
+  @override
+  void agentWorkspaceNotifyLiveConversationChanged() =>
+      notifyLiveConversationChanged();
 }

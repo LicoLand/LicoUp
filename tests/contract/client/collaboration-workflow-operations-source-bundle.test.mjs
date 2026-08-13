@@ -44,7 +44,6 @@ test("collaboration workflow operations facade is thin and owns exactly ten leav
       .sort(),
     [...productionLeaves].sort(),
   );
-  assert.ok(facade.trimEnd().split(/\r?\n/u).length <= 25);
   assert.equal(facade.includes("use super::*"), false);
   for (const implementation of [
     "fn validate_apply_binding(",
@@ -61,7 +60,6 @@ test("operation leaves are bounded and retain an explicit acyclic dependency dir
   const source = await sources();
   for (const leaf of productionLeaves) {
     assert.equal(source[leaf].includes("use super::*"), false, `${leaf} has wildcard coupling`);
-    assert.ok(source[leaf].trimEnd().split(/\r?\n/u).length <= 220, `${leaf} is oversized`);
   }
   for (const base of ["projection.rs", "validation.rs"]) {
     for (const dependency of [

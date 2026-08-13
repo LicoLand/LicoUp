@@ -44,6 +44,8 @@ impl SecureMeshPairwiseDurableStore {
                     DROP TABLE IF EXISTS secure_mesh_pairwise_capability_proof_uses;
                     DROP TABLE IF EXISTS secure_mesh_pairwise_secret_cleanup;
                     DROP TABLE IF EXISTS secure_mesh_pairwise_time_guard;
+                    DROP TABLE IF EXISTS secure_mesh_pairwise_pending_deliveries;
+                    DROP TABLE IF EXISTS secure_mesh_pairwise_received_payloads;
                     PRAGMA user_version = 0;
                     "#,
                 )
@@ -170,7 +172,32 @@ impl SecureMeshPairwiseDurableStore {
                 singleton,
                 max_observed_unix_seconds
             ) VALUES (1, 0);
-            PRAGMA user_version = 10;
+            CREATE TABLE IF NOT EXISTS secure_mesh_pairwise_pending_deliveries (
+                session_id TEXT NOT NULL,
+                local_endpoint_id TEXT NOT NULL,
+                delivery_kind TEXT NOT NULL,
+                envelope_id TEXT NOT NULL,
+                expires_at TEXT NOT NULL,
+                envelope_json TEXT NOT NULL,
+                binding_json TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                PRIMARY KEY (session_id, local_endpoint_id, delivery_kind),
+                UNIQUE (envelope_id)
+            );
+            CREATE TABLE IF NOT EXISTS secure_mesh_pairwise_received_payloads (
+                session_id TEXT NOT NULL,
+                local_endpoint_id TEXT NOT NULL,
+                receipt_id TEXT NOT NULL,
+                binding_digest TEXT NOT NULL,
+                mailbox_id TEXT NOT NULL,
+                secret_store_namespace TEXT NOT NULL,
+                secret_store_key TEXT NOT NULL,
+                received_at TEXT NOT NULL,
+                PRIMARY KEY (session_id, local_endpoint_id, receipt_id),
+                UNIQUE (session_id, local_endpoint_id, binding_digest),
+                UNIQUE (secret_store_namespace, secret_store_key)
+            );
+            PRAGMA user_version = 11;
             "#,
         )?;
         if incompatible_schema {
@@ -211,6 +238,40 @@ impl SecureMeshPairwiseDurableStore {
                 }
             }
         }
+        drop(statement);
+        let received_table_exists: bool = self.connection.query_row(
+            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'secure_mesh_pairwise_received_payloads')",
+            [],
+            |row| row.get(0),
+        )?;
+        if received_table_exists {
+            let mut received_statement = self.connection.prepare(
+                r#"
+                SELECT secret_store_namespace, secret_store_key
+                FROM secure_mesh_pairwise_received_payloads
+                "#,
+            )?;
+            let received_rows = received_statement.query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })?;
+            for row in received_rows {
+                let Ok((namespace, key)) = row else {
+                    continue;
+                };
+                if namespace == self.secret_store_namespace
+                    && key.starts_with("received.v1.")
+                    && let Ok(handle) = self.secret_snapshot_handle(&namespace, &key)
+                {
+                    handles.push(handle);
+                }
+            }
+        }
+        handles.sort_by(|left, right| {
+            left.namespace()
+                .cmp(right.namespace())
+                .then_with(|| left.key().cmp(right.key()))
+        });
+        handles.dedup();
         if handles.is_empty() {
             return Ok(());
         }

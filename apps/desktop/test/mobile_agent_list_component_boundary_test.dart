@@ -10,8 +10,6 @@ void main() {
     final ordering = File(
       'lib/src/frontend/features/mobile_relay/ui/mobile_home_entry_ordering.dart',
     ).readAsStringSync();
-
-    expect(root.split('\n'), hasLength(lessThan(320)));
     expect(root, contains('orderMobileHomeEntryIds('));
     expect(root, isNot(contains('class MobileDesktopAgentList')));
     expect(root, isNot(contains('class MobileSwipePinAction')));

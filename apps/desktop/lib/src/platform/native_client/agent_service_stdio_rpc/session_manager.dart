@@ -33,7 +33,7 @@ class StdioRpcSessionManager {
     if (processGeneration != _generation) {
       throw const LicoClientRpcException('transport_failed');
     }
-    final executable = cli?.path ?? 'licoup';
+    final executable = cli?.path ?? 'licoup-cli';
     late Process process;
     try {
       process = await _processContext.startProcess(executable, const [

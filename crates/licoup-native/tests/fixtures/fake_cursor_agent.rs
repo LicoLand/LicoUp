@@ -36,12 +36,22 @@ fn turn_output(prompt: &str) -> (&'static str, &'static str) {
 }
 
 fn run_turn(args: &[String]) {
-    let resume_index = args.iter().position(|arg| arg == "--resume").expect("--resume");
+    let resume_index = args
+        .iter()
+        .position(|arg| arg == "--resume")
+        .expect("--resume");
     let session_id = args
         .get(resume_index + 1)
         .filter(|value| !value.is_empty())
         .expect("session id");
     let prompt = args.last().expect("prompt");
+    // Test hook: hold the turn open so the update watcher can observe
+    // lock/staging transitions mid-turn.
+    if let Ok(delay_ms) = env::var("LICO_FAKE_CURSOR_AGENT_UPDATE_DELAY_MS") {
+        if let Ok(delay) = delay_ms.parse::<u64>() {
+            std::thread::sleep(std::time::Duration::from_millis(delay));
+        }
+    }
     let (chunk, response) = turn_output(prompt);
     emit(&format!(
         r#"{{"type":"assistant","session_id":"{session_id}","message":{{"content":[{{"type":"text","text":"{chunk}"}}]}}}}"#

@@ -69,8 +69,12 @@ pub(super) fn watch_session_events(
 }
 
 #[cfg(test)]
-fn project_event(session_id: &str, data: &str) -> Option<String> {
-    local_service::serve::project_session_text(session_id, data)
+fn project_event(
+    projection: &mut local_service::serve::SessionEventProjection,
+    session_id: &str,
+    data: &str,
+) -> Option<String> {
+    projection.observe(session_id, data)
 }
 
 #[cfg(test)]

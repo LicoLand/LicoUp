@@ -67,7 +67,7 @@ if (contractBindingCheck) {
     routeConfigRef: routeConfig.configRef,
     routeConfigSchemaVersion: routeConfig.schemaVersion,
     authorityProofTemplateRef: routeConfig.authorityProofTemplate.ref,
-    relayMockReportRef: routeConfig.diagnosticRefs.relayMock,
+    stationAcceptanceReportRef: routeConfig.diagnosticRefs.stationAcceptance,
     canonicalBlockerCount: coverage.canonicalBlockerCount,
     evidenceRouteMissingCount: coverage.missingRouteBlockers.length
   }, null, 2));
@@ -154,11 +154,11 @@ const bundle = {
     routeConfigRef: routeConfig.configRef,
     routeConfigSchemaVersion: routeConfig.schemaVersion,
     canonicalBlockerCount: coverage.canonicalBlockerCount,
-    relayMockReportRef: routeConfig.diagnosticRefs.relayMock
+    stationAcceptanceReportRef: routeConfig.diagnosticRefs.stationAcceptance
   },
   readinessReduction: readiness,
   diagnostics: {
-    relayMockReportRef: routeConfig.diagnosticRefs.relayMock,
+    stationAcceptanceReportRef: routeConfig.diagnosticRefs.stationAcceptance,
     physicalEvidenceManifestRef: routeConfig.diagnosticRefs.physicalEvidenceManifest,
     authorityTrustRootProvided: trustRoot.provided === true,
     authorityTrustRootAccepted: trustRoot.accepted === true
@@ -185,7 +185,7 @@ const summary = {
   canonicalBlockerCount: coverage.canonicalBlockerCount,
   blockedBlockerCount: readiness.productionBlockers.length,
   evidenceRouteMissingCount: coverage.missingRouteBlockers.length,
-  relayMockReportRef: routeConfig.diagnosticRefs.relayMock,
+  stationAcceptanceReportRef: routeConfig.diagnosticRefs.stationAcceptance,
   clientVerifierAccepted: verification.accepted
 };
 console.log(JSON.stringify(summary, null, 2));

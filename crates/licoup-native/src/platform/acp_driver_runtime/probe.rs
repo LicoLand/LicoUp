@@ -21,7 +21,7 @@ pub(in crate::platform) fn probe_acp(
     executable: &str,
     cwd: &Path,
     timeout_ms: u64,
-    max_stdout: usize,
+    max_stdout: Option<usize>,
     max_stderr: usize,
 ) -> Result<CapabilityProbe, ProtocolFailure> {
     probe_acp_inner(driver, executable, cwd, timeout_ms, max_stdout, max_stderr)
@@ -33,7 +33,7 @@ fn probe_acp_inner(
     executable: &str,
     cwd: &Path,
     timeout_ms: u64,
-    max_stdout: usize,
+    max_stdout: Option<usize>,
     max_stderr: usize,
 ) -> Result<CapabilityProbe, ProtocolFailure> {
     if !cwd.is_absolute() {

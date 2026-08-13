@@ -35,7 +35,7 @@ final class MobilePairedDeviceListItem extends StatelessWidget {
       icon: Icon(
         Icons.computer_rounded,
         size: 30,
-        color: active ? colors.primary : colors.text,
+        color: active ? colors.accent : colors.text,
       ),
       title: strings.arcDesktop,
       subtitle: active ? '${strings.active} · ${device.label}' : device.label,
@@ -114,7 +114,7 @@ final class _MobileListTile extends StatelessWidget {
       pinned: pinned,
       onTogglePinned: onTogglePinned,
       child: Material(
-        color: pinned ? colors.primaryFixed.withAlpha(120) : Colors.transparent,
+        color: pinned ? colors.brandSurface.withAlpha(120) : Colors.transparent,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(8),
           side: pinned
@@ -150,7 +150,7 @@ final class _MobileListTile extends StatelessWidget {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          color: pinned ? colors.primary : colors.textMuted,
+                          color: pinned ? colors.accent : colors.textMuted,
                           fontSize: 12,
                           fontWeight: pinned
                               ? FontWeight.w700

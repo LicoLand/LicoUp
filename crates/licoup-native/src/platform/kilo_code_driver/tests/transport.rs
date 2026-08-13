@@ -8,11 +8,30 @@ fn request_body_keeps_private_values_in_http_json_not_process_metadata() {
     let mut config = test_config("private prompt", "");
     config.model = Some("provider/model".into());
     config.runtime_agent = Some("reviewer".into());
+    config.reasoning_effort = Some("high".into());
     let body = build_message_body(&config);
     assert_eq!(body["parts"][0]["text"], "private prompt");
     assert_eq!(body["model"]["providerID"], "provider");
     assert_eq!(body["model"]["modelID"], "model");
     assert_eq!(body["agent"], "reviewer");
+    assert_eq!(body["variant"], "high");
+}
+
+#[test]
+fn free_gateway_routes_keep_the_nested_kilo_model_identifier() {
+    let mut config = test_config("probe", "");
+    config.model = Some("kilo-auto/free".into());
+    let auto = build_message_body(&config);
+    assert_eq!(auto["model"]["providerID"], "kilo");
+    assert_eq!(auto["model"]["modelID"], "kilo-auto/free");
+
+    config.model = Some("nvidia/nemotron-3-super-120b-a12b:free".into());
+    let tagged = build_message_body(&config);
+    assert_eq!(tagged["model"]["providerID"], "kilo");
+    assert_eq!(
+        tagged["model"]["modelID"],
+        "nvidia/nemotron-3-super-120b-a12b:free"
+    );
 }
 
 #[test]
@@ -22,7 +41,7 @@ fn expired_deadline_prevents_http_request() {
 }
 
 #[test]
-fn exact_resume_uses_the_requested_native_session_and_projects_stream_event() {
+fn exact_resume_does_not_relabel_terminal_http_output_as_streaming() {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let port = listener.local_addr().unwrap().port();
     let server = thread::spawn(move || {
@@ -71,14 +90,12 @@ fn exact_resume_uses_the_requested_native_session_and_projects_stream_event() {
     assert_eq!(outcome.turn_status, "end_turn");
 
     let events = captured.lock().unwrap().clone();
-    assert!(events.iter().any(|event| {
+    assert!(!events.iter().any(|event| {
         event.get("event").and_then(Value::as_str) == Some("agent.message.chunk")
+    }));
+    assert!(events.iter().any(|event| {
+        event.get("event").and_then(Value::as_str) == Some("agent.message.completed")
             && event.get("sessionId").and_then(Value::as_str) == Some("existing-kilo-native")
-            && event
-                .get("payload")
-                .and_then(|payload| payload.get("text"))
-                .and_then(Value::as_str)
-                == Some("kilo resumed")
     }));
     server.join().unwrap();
 }

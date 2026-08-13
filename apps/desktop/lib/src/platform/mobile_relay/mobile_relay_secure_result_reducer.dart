@@ -16,8 +16,6 @@ Map<String, dynamic>? resolveSecureRelayPollResult({
   required Map<String, dynamic> created,
   required Map<String, dynamic> polled,
 }) {
-  final createdCommand = _secureRelayMap(created['command']);
-  final relayCommandId = (createdCommand?['commandId'] ?? '').toString().trim();
   final expectedBinding = _secureRelayMap(created['secureCommandBinding']);
   final expectedPayloadCommandId = (expectedBinding?['payloadCommandId'] ?? '')
       .toString()
@@ -28,24 +26,12 @@ Map<String, dynamic>? resolveSecureRelayPollResult({
   final expectedCommandKind = (expectedBinding?['commandKind'] ?? '')
       .toString()
       .trim();
-  if (relayCommandId.isEmpty ||
+  if (created['ok'] != true ||
       expectedPayloadCommandId.isEmpty ||
       expectedIdempotencyKey.isEmpty ||
       !_secureRelayCommandKinds.contains(expectedCommandKind)) {
     return _secureRelayFailure('secure_relay_command_binding_invalid');
   }
-  final response = _secureRelayMap(polled['response']);
-  final responseCommand = _secureRelayMap(response?['command']);
-  final responseCommandId = (responseCommand?['commandId'] ?? '')
-      .toString()
-      .trim();
-  if (responseCommandId.isNotEmpty && responseCommandId != relayCommandId) {
-    return _secureRelayFailure('secure_relay_command_binding_mismatch');
-  }
-  final responseStatus = (responseCommand?['status'] ?? '')
-      .toString()
-      .trim()
-      .toLowerCase();
   final openedValue = polled['openedResult'];
   final opened = _secureRelayMap(openedValue);
 
@@ -58,20 +44,29 @@ Map<String, dynamic>? resolveSecureRelayPollResult({
         ),
       );
     }
-    if (openedValue != null ||
-        responseStatus == 'completed' ||
-        responseStatus == 'failed') {
+    if (openedValue != null) {
       return _secureRelayFailure('secure_relay_result_invalid');
     }
-    return null;
+    if (polled['ok'] == true &&
+        polled['pending'] == true &&
+        polled['bodyRedacted'] == true) {
+      return null;
+    }
+    return _secureRelayFailure('secure_relay_result_invalid');
+  }
+  final resultReceiptId = (polled['resultReceiptId'] ?? '').toString().trim();
+  if (polled['ok'] != true ||
+      polled['pending'] != false ||
+      polled['bodyRedacted'] != true ||
+      resultReceiptId.isEmpty) {
+    return _secureRelayFailure('secure_relay_result_invalid');
   }
 
   final execution = _secureRelayMap(opened['execution']);
   if (execution == null) {
     return _secureRelayFailure('secure_relay_result_invalid');
   }
-  if (responseCommandId != relayCommandId ||
-      (execution['commandId'] ?? '').toString().trim() !=
+  if ((execution['commandId'] ?? '').toString().trim() !=
           expectedPayloadCommandId ||
       (execution['idempotencyKey'] ?? '').toString().trim() !=
           expectedIdempotencyKey) {
@@ -86,9 +81,7 @@ Map<String, dynamic>? resolveSecureRelayPollResult({
       ),
     );
   }
-  if (outcome != 'result' ||
-      polled['ok'] != true ||
-      responseStatus == 'failed') {
+  if (outcome != 'result') {
     return _secureRelayFailure('secure_relay_result_invalid');
   }
 

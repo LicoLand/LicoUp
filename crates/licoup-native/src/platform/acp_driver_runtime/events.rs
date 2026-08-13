@@ -14,7 +14,7 @@ pub(super) enum TransportEvent {
 
 pub(super) fn read_protocol_messages<R: BufRead>(
     mut reader: R,
-    max_bytes: usize,
+    max_bytes: Option<usize>,
     sender: Sender<TransportEvent>,
 ) {
     let mut total_bytes = 0usize;
@@ -39,7 +39,7 @@ pub(super) fn read_protocol_messages<R: BufRead>(
             .position(|byte| *byte == b'\n')
             .map(|index| index + 1)
             .unwrap_or(available.len());
-        if total_bytes.saturating_add(consumed) > max_bytes {
+        if max_bytes.is_some_and(|max_bytes| total_bytes.saturating_add(consumed) > max_bytes) {
             let _ = sender.send(TransportEvent::StdoutLimitExceeded);
             return;
         }

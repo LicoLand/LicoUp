@@ -115,7 +115,7 @@ final class _MobilePinSwipeButton extends StatelessWidget {
       child: Container(
         alignment: Alignment.centerRight,
         decoration: BoxDecoration(
-          color: colors.primaryFixed.withAlpha(pinned ? 80 : 140),
+          color: colors.brandSurface.withAlpha(pinned ? 80 : 140),
           borderRadius: BorderRadius.circular(8),
         ),
         child: SizedBox(
@@ -126,7 +126,7 @@ final class _MobilePinSwipeButton extends StatelessWidget {
             onPressed: onPressed,
             icon: Icon(
               pinned ? Icons.push_pin_rounded : Icons.push_pin_outlined,
-              color: colors.primary,
+              color: colors.accent,
               size: 22,
             ),
           ),

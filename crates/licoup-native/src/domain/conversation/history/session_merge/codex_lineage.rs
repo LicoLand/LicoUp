@@ -57,6 +57,16 @@ pub(super) fn codex_rollout_lineage_parents(sessions: &[Value]) -> BTreeMap<Stri
         if native_id.is_empty() {
             continue;
         }
+        // A delegated task is a separate conversation the parent spawned, not a
+        // fork continuation of it. Collapsing it as a fork would splice its
+        // messages into the parent's own transcript and drop the rest.
+        if session
+            .get("delegatedSubagent")
+            .and_then(Value::as_bool)
+            .unwrap_or(false)
+        {
+            continue;
+        }
         let Some(parent_id) = session
             .get("parentSessionId")
             .and_then(Value::as_str)

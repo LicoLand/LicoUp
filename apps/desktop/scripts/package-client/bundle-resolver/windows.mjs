@@ -27,6 +27,7 @@ export function windowsBundleLayout(root) {
     executableDir: root,
     portableDataDir: path.join(root, "portable-data"),
     moduleResourceDir: path.join(root, "modules"),
+    pluginResourceDir: path.join(root, "resources"),
     flutterExecutable: path.join(root, "licoup.exe"),
   });
 }

@@ -22,6 +22,9 @@ reports/
 tmp/
 .tmp/
 apps/desktop/test/layout/production_baseline/failures/
+# Golden comparison residue. Flutter writes these on any pixel mismatch, and
+# the layout visual-manifest verifier rejects them as generated residue.
+apps/desktop/test/**/failures/
 
 # Node / Rust / Flutter
 node_modules/
@@ -71,6 +74,8 @@ test-results/
 /.agents/
 /.claude/
 /.codex/
+/.cursor/
+/.kilo/
 /skills/
 /scripts/local/
 /tools/local/
@@ -83,3 +88,4 @@ test-results/
 # Agent entrypoints are retired; agent guidance lives in lico-dev skills.
 AGENTS.md
 AGENT.md
+CLAUDE.md

@@ -4,6 +4,7 @@ use super::paths::{
     local_appdata_dir_from_home, xdg_config_dir, xdg_config_dir_from_home, xdg_data_dir,
     xdg_data_dir_from_home,
 };
+use crate::platform::paths::portable_data_dir;
 use serde_json::Value;
 use std::env;
 use std::path::{Path, PathBuf};
@@ -23,6 +24,7 @@ pub(crate) enum HistoryAdapter {
     OpenClaw,
     OpenCode,
     Pi,
+    LicoAgent,
 }
 
 #[derive(Clone, Debug)]
@@ -47,6 +49,7 @@ impl HistoryAdapter {
             Self::OpenClaw => "openclaw",
             Self::OpenCode => "opencode",
             Self::Pi => "pi",
+            Self::LicoAgent => "lico-agent",
         }
     }
 
@@ -65,6 +68,7 @@ impl HistoryAdapter {
             Self::OpenClaw => "OpenClaw - CLI",
             Self::OpenCode => "OpenCode - CLI",
             Self::Pi => "Pi Agent - CLI",
+            Self::LicoAgent => "Lico Agent - CLI",
         }
     }
 
@@ -117,6 +121,7 @@ impl HistoryAdapter {
                 extension,
                 "jsonl" | "ndjson" | "json" | "sqlite" | "sqlite3" | "db" | "vscdb"
             ),
+            Self::LicoAgent => matches!(extension, "jsonl" | "ndjson" | "json"),
             Self::KiloCode
             | Self::OpenCode
             | Self::OpenClaw
@@ -224,6 +229,7 @@ pub(crate) fn adapter_for_agent(agent_id: &str) -> Option<HistoryAdapter> {
         "openclaw" => Some(HistoryAdapter::OpenClaw),
         "opencode" => Some(HistoryAdapter::OpenCode),
         "pi" | "pi-agent" | "pi-coding-agent" => Some(HistoryAdapter::Pi),
+        "lico-agent" | "lico" => Some(HistoryAdapter::LicoAgent),
         _ => None,
     }
 }
@@ -299,7 +305,12 @@ pub(crate) fn history_roots(adapter: HistoryAdapter, params: &Value) -> Vec<Hist
             (home.join(".claude/projects"), "claude-project-transcripts"),
             (home.join(".claude.json"), "claude-global-state"),
         ]),
+        // Chats and projects carry the conversation working directory; scan them
+        // before Application Support trees so the shared catalog walk budget is
+        // not spent on agent-cli installs and checkpoint noise first.
         HistoryAdapter::Cursor => roots(&[
+            (home.join(".cursor/chats"), "cursor-cli-chats"),
+            (home.join(".cursor/projects"), "cursor-cli-projects"),
             (
                 home.join("Library/Application Support/Cursor/User/workspaceStorage"),
                 "cursor-workspace-storage",
@@ -324,8 +335,6 @@ pub(crate) fn history_roots(adapter: HistoryAdapter, params: &Value) -> Vec<Hist
                 xdg_config.join("Cursor/User/globalStorage"),
                 "cursor-global-storage",
             ),
-            (home.join(".cursor/chats"), "cursor-cli-chats"),
-            (home.join(".cursor/projects"), "cursor-cli-projects"),
         ]),
         HistoryAdapter::Code => roots(&[
             (
@@ -439,7 +448,25 @@ pub(crate) fn history_roots(adapter: HistoryAdapter, params: &Value) -> Vec<Hist
             roots(&[(kimi_code_home.join("sessions"), "kimi-code-session-store")])
         }
         HistoryAdapter::Pi => roots(&[(pi_session_dir, "pi-session-store")]),
+        HistoryAdapter::LicoAgent => lico_agent_history_roots(params),
     }
+}
+
+fn lico_agent_history_roots(params: &Value) -> Vec<HistoryRoot> {
+    lico_agent_session_dir(params)
+        .map(|dir| roots(&[(dir, "lico-agent-session-store")]))
+        .unwrap_or_default()
+}
+
+fn lico_agent_session_dir(params: &Value) -> Option<PathBuf> {
+    text_param(params, &["licoAgentSessionDir", "licoAgentSessionsDir"])
+        .filter(|value| !value.trim().is_empty())
+        .map(|value| expand_home(&value))
+        .or_else(|| {
+            portable_data_dir()
+                .ok()
+                .map(|portable| portable.join("client-state/lico-agent/sessions"))
+        })
 }
 
 fn kimi_code_history_home(params: &Value, home: &Path, allow_environment: bool) -> PathBuf {
@@ -546,5 +573,16 @@ mod tests {
         let pi = history_roots(HistoryAdapter::Pi, &params);
         assert_eq!(pi.len(), 1);
         assert_eq!(pi[0].path, home.join(".pi/agent/sessions"));
+
+        let lico_override = json!({"licoAgentSessionDir": "/tmp/lico-agent-sessions"});
+        let lico = history_roots(HistoryAdapter::LicoAgent, &lico_override);
+        assert_eq!(lico.len(), 1);
+        assert_eq!(lico[0].path, PathBuf::from("/tmp/lico-agent-sessions"));
+        assert_eq!(lico[0].source_kind, "lico-agent-session-store");
+        assert_eq!(
+            adapter_for_agent("lico-agent"),
+            Some(HistoryAdapter::LicoAgent)
+        );
+        assert_eq!(adapter_for_agent("lico"), Some(HistoryAdapter::LicoAgent));
     }
 }

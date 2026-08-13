@@ -1,5 +1,9 @@
 #!/usr/bin/env node
 import process from "node:process";
+import {
+  CLIENT_GATE_LANES,
+  CLIENT_GATE_SCHEMA_VERSION,
+} from "../../../tools/scripts/client-gate-policy.mjs";
 import { createPlanAssertions } from "./verify-client-plan/shared/assert.mjs";
 import { createPlanContext } from "./verify-client-plan/shared/context.mjs";
 import { createPlanFileReader } from "./verify-client-plan/shared/fs.mjs";
@@ -52,7 +56,10 @@ if (failures.length > 0) {
 
 console.log(JSON.stringify({
   ok: true,
-  verifierScripts: context.requiredVerifierScripts,
+  gatePolicy: {
+    schemaVersion: CLIENT_GATE_SCHEMA_VERSION,
+    lanes: Object.keys(CLIENT_GATE_LANES),
+  },
   targets: docsReadiness.targets,
   modules: context.shellModules,
   adapterCount: docsReadiness.adapterCount,

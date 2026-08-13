@@ -18,7 +18,6 @@ export async function checkIosSecureMesh(context) {
     readText,
     runJson,
     sameSet,
-    sourceLineCount,
   } = context;
   const secureMeshIosBridgeSource = await readJoinedText([
     "apps/desktop/ios/Runner/SecureMeshIosBridge.swift",

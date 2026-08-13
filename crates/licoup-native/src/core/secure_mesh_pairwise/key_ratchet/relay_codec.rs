@@ -1,24 +1,28 @@
 use anyhow::{Context, Result, ensure};
 use base64::{Engine as _, engine::general_purpose};
+use time::{Duration, OffsetDateTime, format_description::well_known::Rfc3339};
 
 use super::super::codec::{SecureMeshPairwiseMessage, SecureMeshPairwisePrivateRelayHeader};
 use super::super::support::{SECURE_MESH_PAIRWISE_CIPHER_SUITE, parse_key_bytes};
 use super::SecureMeshPairwiseSession;
+use crate::core::licoarc_relay::{
+    LicoArcRelayEnvelope, LicoArcRelayEnvelopeDraft, open_private_relay_header,
+    seal_private_relay_header,
+};
 use crate::core::secure_mesh::SECURE_MESH_PROTOCOL_VERSION;
 use crate::core::secure_mesh_crypto::{
     OpenedSecureMeshPayload, SecureMeshContentContext, SecureMeshPayloadKind, SecureMeshPlaintext,
 };
-use crate::core::secure_mesh_relay_envelope::{
-    SecureMeshRelayEnvelope, SecureMeshRelayEnvelopeDraft, open_private_relay_header,
-    seal_private_relay_header,
-};
+
+const MAX_RELAY_PAYLOAD_LIFETIME_SECONDS: i64 = 10 * 60;
+const MAX_RELAY_PAYLOAD_CLOCK_SKEW_SECONDS: i64 = 5 * 60;
 
 impl SecureMeshPairwiseSession {
     pub fn seal_payload_envelope(
         &mut self,
         context: &SecureMeshContentContext,
         plaintext: &SecureMeshPlaintext,
-    ) -> Result<SecureMeshRelayEnvelope> {
+    ) -> Result<LicoArcRelayEnvelope> {
         self.seal_payload_envelope_with_extra_aad(context, plaintext, &[])
     }
 
@@ -27,21 +31,17 @@ impl SecureMeshPairwiseSession {
         context: &SecureMeshContentContext,
         plaintext: &SecureMeshPlaintext,
         extra_aad: &[u8],
-    ) -> Result<SecureMeshRelayEnvelope> {
-        let rollback = self.try_clone()?;
-        let result = (|| {
-            let message = self.seal_payload_with_extra_aad(context, plaintext, extra_aad)?;
-            relay_envelope_from_pairwise_message(self, context, &message)
-        })();
-        if result.is_err() {
-            *self = rollback;
-        }
-        result
+    ) -> Result<LicoArcRelayEnvelope> {
+        let mut candidate = self.try_clone()?;
+        let message = candidate.seal_payload_with_extra_aad(context, plaintext, extra_aad)?;
+        let envelope = relay_envelope_from_pairwise_message(&candidate, context, &message)?;
+        *self = candidate;
+        Ok(envelope)
     }
 
     pub fn open_payload_envelope(
         &mut self,
-        envelope: &SecureMeshRelayEnvelope,
+        envelope: &LicoArcRelayEnvelope,
         expected_kind: SecureMeshPayloadKind,
     ) -> Result<OpenedSecureMeshPayload> {
         self.open_payload_envelope_with_extra_aad(envelope, expected_kind, &[])
@@ -49,24 +49,74 @@ impl SecureMeshPairwiseSession {
 
     pub fn open_payload_envelope_with_extra_aad(
         &mut self,
-        envelope: &SecureMeshRelayEnvelope,
+        envelope: &LicoArcRelayEnvelope,
         expected_kind: SecureMeshPayloadKind,
         extra_aad: &[u8],
+    ) -> Result<OpenedSecureMeshPayload> {
+        self.open_payload_envelope_with_extra_aad_at(
+            envelope,
+            expected_kind,
+            extra_aad,
+            OffsetDateTime::now_utc(),
+        )
+    }
+
+    fn open_payload_envelope_with_extra_aad_at(
+        &mut self,
+        envelope: &LicoArcRelayEnvelope,
+        expected_kind: SecureMeshPayloadKind,
+        extra_aad: &[u8],
+        now: OffsetDateTime,
     ) -> Result<OpenedSecureMeshPayload> {
         // Reject revoked sessions before attempting header-key selection. This
         // keeps the public failure semantic stable and avoids doing any
         // attacker-controlled envelope work after local revocation.
         ensure!(!self.revoked, "secure mesh pairwise session is revoked");
         let (context, message) = pairwise_message_from_relay_envelope(self, envelope)?;
+        validate_relay_payload_freshness(&context, now)?;
         self.open_payload_with_extra_aad(&context, &message, expected_kind, extra_aad)
     }
+
+    #[cfg(test)]
+    pub(in crate::core::secure_mesh_pairwise) fn open_payload_envelope_at(
+        &mut self,
+        envelope: &LicoArcRelayEnvelope,
+        expected_kind: SecureMeshPayloadKind,
+        now: OffsetDateTime,
+    ) -> Result<OpenedSecureMeshPayload> {
+        self.open_payload_envelope_with_extra_aad_at(envelope, expected_kind, &[], now)
+    }
+}
+
+fn validate_relay_payload_freshness(
+    context: &SecureMeshContentContext,
+    now: OffsetDateTime,
+) -> Result<()> {
+    let created_at = OffsetDateTime::parse(&context.created_at, &Rfc3339)
+        .context("secure mesh pairwise relay createdAt is invalid")?;
+    let expires_at = OffsetDateTime::parse(&context.expires_at, &Rfc3339)
+        .context("secure mesh pairwise relay expiresAt is invalid")?;
+    ensure!(
+        created_at <= now + Duration::seconds(MAX_RELAY_PAYLOAD_CLOCK_SKEW_SECONDS),
+        "secure mesh pairwise relay createdAt exceeds the clock-skew allowance"
+    );
+    ensure!(
+        expires_at > now,
+        "secure mesh pairwise relay payload is expired"
+    );
+    ensure!(
+        expires_at > created_at
+            && expires_at - created_at <= Duration::seconds(MAX_RELAY_PAYLOAD_LIFETIME_SECONDS),
+        "secure mesh pairwise relay payload lifetime is invalid"
+    );
+    Ok(())
 }
 
 pub(super) fn relay_envelope_from_pairwise_message(
     session: &SecureMeshPairwiseSession,
     context: &SecureMeshContentContext,
     message: &SecureMeshPairwiseMessage,
-) -> Result<SecureMeshRelayEnvelope> {
+) -> Result<LicoArcRelayEnvelope> {
     ensure!(
         context.message_id == message.message_id
             && context.session_id == message.session_id
@@ -74,16 +124,17 @@ pub(super) fn relay_envelope_from_pairwise_message(
             && context.recipient_endpoint_id == message.recipient_endpoint_id,
         "secure mesh pairwise relay context does not match message"
     );
-    let draft = SecureMeshRelayEnvelopeDraft::from_canonical_ids(
+    let draft = LicoArcRelayEnvelopeDraft::from_contract_fields(
         &context.opaque_mailbox_id,
         &context.envelope_id,
+        &context.expires_at,
         message.ciphertext_size,
     )?;
     let private_header = SecureMeshPairwisePrivateRelayHeader {
         protocol_version: SECURE_MESH_PROTOCOL_VERSION.to_string(),
         cipher_suite: SECURE_MESH_PAIRWISE_CIPHER_SUITE.to_string(),
-        delivery_id: context.envelope_id.clone(),
-        mailbox_token: context.opaque_mailbox_id.clone(),
+        envelope_id: context.envelope_id.clone(),
+        mailbox_id: context.opaque_mailbox_id.clone(),
         message_id: context.message_id.clone(),
         session_id: context.session_id.clone(),
         sender_endpoint_id: context.sender_endpoint_id.clone(),
@@ -114,7 +165,7 @@ pub(super) fn relay_envelope_from_pairwise_message(
 
 pub(super) fn pairwise_message_from_relay_envelope(
     session: &SecureMeshPairwiseSession,
-    envelope: &SecureMeshRelayEnvelope,
+    envelope: &LicoArcRelayEnvelope,
 ) -> Result<(SecureMeshContentContext, SecureMeshPairwiseMessage)> {
     let private_header = open_private_relay_header(
         envelope,
@@ -136,8 +187,9 @@ pub(super) fn pairwise_message_from_relay_envelope(
         "secure mesh pairwise private relay protocol is unsupported"
     );
     ensure!(
-        header.delivery_id == envelope.delivery_id()
-            && header.mailbox_token == envelope.mailbox_token(),
+        header.envelope_id == envelope.envelope_id()
+            && header.mailbox_id == envelope.mailbox_id()
+            && header.expires_at == envelope.expires_at(),
         "secure mesh pairwise private relay routing binding mismatch"
     );
     ensure!(
@@ -154,15 +206,17 @@ pub(super) fn pairwise_message_from_relay_envelope(
         "relay sender ratchet public key",
     )?;
     let context = SecureMeshContentContext::new(
-        &header.delivery_id,
+        &header.envelope_id,
         &header.message_id,
-        &header.mailbox_token,
+        &header.mailbox_id,
         &header.sender_endpoint_id,
         &header.recipient_endpoint_id,
         &header.session_id,
         &header.created_at,
         &header.expires_at,
     );
+    let content_ciphertext = envelope.decoded_content_ciphertext()?;
+    let ciphertext_size = content_ciphertext.len();
     let message = SecureMeshPairwiseMessage {
         protocol_version: SECURE_MESH_PROTOCOL_VERSION.to_string(),
         cipher_suite: SECURE_MESH_PAIRWISE_CIPHER_SUITE.to_string(),
@@ -176,8 +230,8 @@ pub(super) fn pairwise_message_from_relay_envelope(
         sender_ratchet_public_key,
         sparse_pq_header: header.sparse_pq_header,
         encrypted_header: header.content_encrypted_header,
-        ciphertext: envelope.ciphertext().to_string(),
-        ciphertext_size: envelope.ciphertext_bucket(),
+        ciphertext: general_purpose::URL_SAFE_NO_PAD.encode(content_ciphertext),
+        ciphertext_size,
     };
     Ok((context, message))
 }

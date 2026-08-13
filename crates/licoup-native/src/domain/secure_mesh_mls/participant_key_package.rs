@@ -15,8 +15,7 @@ pub(super) fn participant_ensure(params: &Value) -> Result<Value> {
             json!({
                 "ok": true,
                 "participant": public_local_participant(runtime.identity, runtime.participant)?,
-                "custodyBackend": runtime.secret_store.backend(),
-                "privateKeyMaterial": "redacted"
+                "custodyBackend": runtime.secret_store.backend()
             }),
             true,
         ))
@@ -65,7 +64,6 @@ pub(super) fn key_package_create(params: &Value) -> Result<Value> {
                 "capabilityProof": proof,
                 "identity": identity_to_json(runtime.identity),
                 "createdAtUnixSeconds": now.unix_timestamp(),
-                "privateKeyMaterial": "redacted",
                 "directoryPublicationRequired": true
             }),
             true,

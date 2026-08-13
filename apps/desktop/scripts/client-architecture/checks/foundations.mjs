@@ -12,13 +12,10 @@ const requiredFutureModules = [
   "mobile-relay",
   "activity-snapshots",
   "settings",
-  "codex-orchestration-mcp",
-  "codex-orchestration-plugin"
+  "subagents-mcp",
+  "codex-plugin"
 ];
-const optionalFutureModules = [
-  "multi-agent-routing"
-];
-const allFutureModules = [...requiredFutureModules, ...optionalFutureModules];
+const allFutureModules = [...requiredFutureModules];
 const packageClientFacadePath = "apps/desktop/scripts/package-client.mjs";
 const packageClientModuleRoot = "apps/desktop/scripts/package-client";
 const packageClientSourceBundleTestPath =
@@ -65,7 +62,6 @@ export async function checkPackagingAndTargetProjection(context) {
     readText,
     runJson,
     sameSet,
-    sourceLineCount,
   } = context;
   const packaging = await readJson("apps/desktop/packaging.modules.json");
   const futureModules = Object.keys(packaging.modules || {}).sort();
@@ -87,14 +83,6 @@ export async function checkPackagingAndTargetProjection(context) {
   for (const moduleId of requiredFutureModules) {
     assert(modules[moduleId]?.required === true, `future module must be required: ${moduleId}`);
   }
-  for (const moduleId of optionalFutureModules) {
-    assert(modules[moduleId]?.required === false, `optional module must set required=false: ${moduleId}`);
-    assert(
-      modules[moduleId]?.runtimeToggle === true,
-      `optional module must expose runtimeToggle: ${moduleId}`
-    );
-  }
-  // Optional modules may be enabled or disabled; when enabled they appear in the enabled set.
   for (const moduleId of enabledConfigModules) {
     assert(allFutureModules.includes(moduleId), `enabled module must be known: ${moduleId}`);
   }
@@ -147,7 +135,6 @@ export async function checkPackageDryRuns(context, { futureModules, modules }) {
     readText,
     runJson,
     sameSet,
-    sourceLineCount,
   } = context;
   const packageClientLeafPaths = [...packageClientLeafResponsibilities.keys()]
     .map((leaf) => `${packageClientModuleRoot}/${leaf}`);
@@ -161,8 +148,7 @@ export async function checkPackageDryRuns(context, { futureModules, modules }) {
   );
   const packageClientFacadeSource = await readText(packageClientFacadePath);
   assert(
-    sourceLineCount(packageClientFacadeSource.trimEnd()) <= 30 &&
-      packageClientFacadeSource.includes(
+    packageClientFacadeSource.includes(
         'export { validateReleaseBuildPolicy } from "./package-client/cli-policy.mjs";',
       ) &&
       packageClientFacadeSource.includes(

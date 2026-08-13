@@ -44,6 +44,7 @@ String agentOrchestrationModelDisplayName(
 }
 
 List<String> agentOrchestrationReasoningEffortsFor(TargetCandidate target) {
+  if (target.target == 'antigravity') return const [];
   return _dedupe([
     ..._reasoningEffortsFromModelCatalog(target.modelCatalog),
     ..._reasoningEffortsFromMap(target.adapterCapabilities),
@@ -54,6 +55,7 @@ List<String> agentOrchestrationReasoningEffortsForModel(
   TargetCandidate target,
   String modelName,
 ) {
+  if (target.target == 'antigravity') return const [];
   final catalogEfforts = _reasoningEffortsFromModelCatalog(
     target.modelCatalog,
     modelName: modelName,
@@ -61,6 +63,46 @@ List<String> agentOrchestrationReasoningEffortsForModel(
   return catalogEfforts.isNotEmpty
       ? catalogEfforts
       : agentOrchestrationReasoningEffortsFor(target);
+}
+
+/// Catalog-declared default reasoning effort for [modelName], or the first
+/// supported effort when the catalog omits an explicit default.
+String agentOrchestrationDefaultReasoningEffortForModel(
+  TargetCandidate target,
+  String modelName,
+) {
+  if (target.target == 'antigravity') return '';
+  final efforts = agentOrchestrationReasoningEffortsForModel(target, modelName);
+  if (efforts.isEmpty) return '';
+  final fromCatalog = _defaultReasoningEffortFromModelCatalog(
+    target.modelCatalog,
+    modelName: modelName,
+  );
+  if (fromCatalog.isNotEmpty && efforts.contains(fromCatalog)) {
+    return fromCatalog;
+  }
+  return efforts.first;
+}
+
+String _defaultReasoningEffortFromModelCatalog(
+  Map<String, dynamic> catalog, {
+  required String modelName,
+}) {
+  final normalizedModel = modelName.trim();
+  for (final map in _modelCatalogEntries(catalog)) {
+    if (normalizedModel.isNotEmpty &&
+        !_modelCatalogEntryMatchesName(map, normalizedModel)) {
+      continue;
+    }
+    for (final key in const [
+      'defaultReasoningEffort',
+      'default_reasoning_effort',
+    ]) {
+      final value = map[key]?.toString().trim() ?? '';
+      if (value.isNotEmpty) return value;
+    }
+  }
+  return '';
 }
 
 String defaultAgentOrchestrationCommanderAgentId(

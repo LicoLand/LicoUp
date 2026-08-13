@@ -10,7 +10,7 @@ fn one_time_rotation_replaces_ephemeral_inventory_once() {
     let mut config = json!({});
     ensure_mobile_relay_endpoint_material(
         &mut config,
-        test_runtime_secret_material(stringify!(&mut config)),
+        &mut test_runtime_secret_material(stringify!(&mut config)),
         "desktop",
     )
     .unwrap();
@@ -26,7 +26,7 @@ fn one_time_rotation_replaces_ephemeral_inventory_once() {
 
     rotate_mobile_relay_one_time_prekeys(
         &mut config,
-        test_runtime_secret_material(stringify!(&mut config)),
+        &mut test_runtime_secret_material(stringify!(&mut config)),
     )
     .unwrap();
 

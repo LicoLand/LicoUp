@@ -1,24 +1,35 @@
 import 'dart:async';
 
+import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
+import 'package:path/path.dart' as p;
 
 import 'package:licoup/src/application/controller/client_controller.dart';
 import 'package:licoup/src/application/features/layout/layout_state_store.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/contracts/presentation/layout_state_namespace.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
+import 'package:licoup/src/frontend/layout/layout_agents_strategy.dart';
 import 'package:licoup/src/frontend/layout/layout_destination_presentation.dart';
 import 'package:licoup/src/frontend/layout/layout_palette.dart';
 import 'package:licoup/src/frontend/layout/layout_scope.dart';
+import 'package:licoup/src/application/features/agents/orchestration/orchestration_target_catalog.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_pane.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_pane_controls.dart';
 import 'package:licoup/src/frontend/features/agents/ui/conversation_archive_dialog.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_composer.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_composer_capsules.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_layout_metrics.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_message_display.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_session_presentation.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_display_names.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_orchestration_policy_controls.dart';
+import 'package:licoup/src/frontend/features/agents/ui/composer_agent_mention.dart';
+import 'package:licoup/src/frontend/features/agents/ui/ensure_main_agent_subagent_mcp.dart';
+import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_details_panel.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_workspace_sidebar.dart';
+import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_contact_list.dart';
+import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_conversation_header.dart';
 import 'package:licoup/src/frontend/shared/platform/client_platform.dart';
 import 'package:licoup/src/frontend/features/agents/ui/history_session_panel.dart';
 import 'package:licoup/src/frontend/shared/ui/panel_frame.dart';
@@ -59,6 +70,9 @@ class _AgentConversationWorkspaceState
     widget.controller.activeConversationListenable.addListener(
       _handleControllerChanged,
     );
+    widget.controller.liveConversationListenable.addListener(
+      _handleControllerChanged,
+    );
   }
 
   @override
@@ -74,11 +88,17 @@ class _AgentConversationWorkspaceState
     oldWidget.controller.activeConversationListenable.removeListener(
       _handleControllerChanged,
     );
+    oldWidget.controller.liveConversationListenable.removeListener(
+      _handleControllerChanged,
+    );
     widget.controller.addListener(_handleControllerChanged);
     widget.controller.conversationStructureListenable.addListener(
       _handleControllerChanged,
     );
     widget.controller.activeConversationListenable.addListener(
+      _handleControllerChanged,
+    );
+    widget.controller.liveConversationListenable.addListener(
       _handleControllerChanged,
     );
   }
@@ -90,6 +110,9 @@ class _AgentConversationWorkspaceState
       _handleControllerChanged,
     );
     widget.controller.activeConversationListenable.removeListener(
+      _handleControllerChanged,
+    );
+    widget.controller.liveConversationListenable.removeListener(
       _handleControllerChanged,
     );
     super.dispose();
@@ -149,6 +172,7 @@ class _ConversationWorkspaceBody extends StatefulWidget {
 
 class _ConversationWorkspaceBodyState
     extends State<_ConversationWorkspaceBody> {
+  final ComposerMentionBridge _composerMentionBridge = ComposerMentionBridge();
   bool _historyCollapsed = false;
   // Default to the narrowest usable rail; users can drag wider.
   double _sidebarWidth = agentsSidebarMinWidth;
@@ -201,6 +225,35 @@ class _ConversationWorkspaceBodyState
     );
   }
 
+  Future<void> _chooseWorkingDirectory({
+    required ClientController controller,
+    required String agentId,
+    required String draftToken,
+    required String currentDirectory,
+  }) async {
+    final selected = await getDirectoryPath(
+      initialDirectory: currentDirectory.trim().isEmpty
+          ? null
+          : currentDirectory.trim(),
+    );
+    if (!mounted ||
+        selected == null ||
+        selected.trim().isEmpty ||
+        controller.selectedConversationAgentId != agentId ||
+        controller.newConversationDraftTokenFor(agentId) != draftToken) {
+      return;
+    }
+    controller.selectNewConversationWorkingDirectory(selected);
+  }
+
+  Future<void> _pickConversationAttachments() async {
+    const imageTypes = XTypeGroup(
+      label: 'Images',
+      extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp'],
+    );
+    await openFiles(acceptedTypeGroups: [imageTypes]);
+  }
+
   Widget _activeConversationPane({
     required ClientController controller,
     required TargetCandidate target,
@@ -208,14 +261,35 @@ class _ConversationWorkspaceBodyState
     bool framed = true,
     bool showSidebarToggle = true,
   }) {
+    final strategy = LayoutAgentsStrategyScope.maybeOf(context);
     final orchestrationSelected =
         controller.selectedConversationIsOrchestration;
+    final managerTarget = orchestrationSelected
+        ? controller.agentOrchestrationManagerTarget
+        : null;
+    final configuredManagerTarget = orchestrationSelected
+        ? controller.agentOrchestrationConfiguredManagerTarget
+        : null;
+    final configuredManagerId = orchestrationSelected
+        ? controller.effectiveAgentOrchestrationPolicy.plainSendDispatchAgentId
+        : '';
+    final showWorkingDirectory =
+        !controller.mobileClientRuntimePlatform &&
+        !(orchestrationSelected
+            ? (configuredManagerTarget ?? managerTarget)
+                      ?.hasValidVirtualMachineConnection ==
+                  true
+            : target.hasValidVirtualMachineConnection);
+    final workingDirectorySelectable =
+        showWorkingDirectory &&
+        controller.canSelectNewConversationWorkingDirectory;
     final composerEnabled = orchestrationSelected
-        ? controller.agentOrchestrationPolicyConfigured &&
-              controller.orchestrationAvailableTargets.isNotEmpty
+        ? managerTarget != null
         : target.canRelayRuntime;
     final gateReasonCode = orchestrationSelected
-        ? (!controller.agentOrchestrationPolicyConfigured
+        ? (composerEnabled
+              ? controller.conversationSendErrorFor(managerTarget!.target)
+              : !controller.agentOrchestrationPolicyConfigured
               ? 'orchestration_policy_required'
               : 'orchestration_targets_unavailable')
         : (composerEnabled
@@ -230,6 +304,84 @@ class _ConversationWorkspaceBodyState
           'unavailable' => AgentConversationServeStatus.unavailable,
           _ => AgentConversationServeStatus.stopped,
         };
+    final flywheelPolicy = orchestrationSelected
+        ? controller.effectiveAgentOrchestrationPolicy
+        : null;
+    // Capsule chrome defaults to the first Daily Conversation agent (Adaptive
+    // Flywheel priority list). Current Conversation (`main_agent`) still owns
+    // send dispatch when it differs.
+    final primaryDaily = flywheelPolicy?.primaryDailyConversationAgent;
+    final flywheelAgentId =
+        (primaryDaily?.agentId.trim().isNotEmpty ?? false)
+        ? primaryDaily!.agentId.trim()
+        : configuredManagerId.trim();
+    TargetCandidate? flywheelDisplayTarget;
+    if (flywheelAgentId.isNotEmpty) {
+      for (final candidate in controller.scannedTargets) {
+        if (candidate.target == flywheelAgentId) {
+          flywheelDisplayTarget = candidate;
+          break;
+        }
+      }
+    }
+    final flywheelAgentLabel = flywheelDisplayTarget != null
+        ? agentConversationTargetDisplayName(flywheelDisplayTarget)
+        : flywheelAgentId.isNotEmpty
+        ? flywheelAgentId
+        : strings.notConfigured;
+    final flywheelModel = primaryDaily != null
+        ? primaryDaily.modelName.trim()
+        : (flywheelPolicy?.commanderModelName.trim() ?? '');
+    final flywheelEffort = primaryDaily != null
+        ? primaryDaily.reasoningEffort.trim()
+        : (flywheelPolicy?.commanderReasoningEffort.trim() ?? '');
+    final flywheelFast = primaryDaily?.fast ?? false;
+    final flywheelLabel = orchestrationSelected
+        ? composeOrchestrationAssignmentCapsuleLabel(
+            agentLabel: flywheelAgentLabel,
+            modelName: flywheelModel,
+            reasoningEffort: flywheelEffort,
+            fast: flywheelFast,
+            fastLabel: strings.fastModeLabel,
+            effortLabel: (effort) =>
+                strings.reasoningEffortOptionLabel(effort, effort),
+            modelDisplayName: flywheelDisplayTarget == null
+                ? null
+                : (model) => agentOrchestrationModelDisplayName(
+                    flywheelDisplayTarget!,
+                    model,
+                  ),
+          )
+        : flywheelAgentLabel;
+    final participantTargets = orchestrationSelected
+        ? controller.groupConversationParticipantTargets
+        : controller.scannedTargets;
+    final primaryConversationId = session == null
+        ? ''
+        : messagingDetailsConversationId(session);
+    final participantConversationIds = <String, String>{};
+    if (orchestrationSelected) {
+      for (final entry in controller.groupConversationAgentSessions.entries) {
+        final nativeId = entry.value.nativeSessionId.trim();
+        if (nativeId.isNotEmpty) {
+          participantConversationIds[entry.key] = nativeId;
+        }
+      }
+      final mainId = controller
+          .effectiveAgentOrchestrationPolicy
+          .plainSendDispatchAgentId;
+      if (mainId.isNotEmpty && primaryConversationId.isNotEmpty) {
+        participantConversationIds.putIfAbsent(
+          mainId,
+          () => primaryConversationId,
+        );
+      }
+    } else {
+      final agentId = target.target.trim();
+      if (agentId.isNotEmpty && primaryConversationId.isNotEmpty) {
+        participantConversationIds[agentId] = primaryConversationId;
+      }
+    }
     final state = AgentConversationPaneState(
       target: target,
       session: session,
@@ -244,6 +396,8 @@ class _ConversationWorkspaceBodyState
       composerEnabled: composerEnabled,
       sendGateReasonCode: gateReasonCode,
       composerDraft: controller.conversationComposerDraft,
+      // Group entry: model selection lives in Adaptive Flywheel edit, not a
+      // top-level Model capsule. The flywheel hover panel inserts @mentions.
       modelOptions: orchestrationSelected
           ? const []
           : controller.selectedConversationModelOptions,
@@ -259,6 +413,36 @@ class _ConversationWorkspaceBodyState
       selectedReasoningEffort: orchestrationSelected
           ? ''
           : controller.selectedConversationReasoningEffort,
+      defaultReasoningEffort: orchestrationSelected
+          ? ''
+          : controller.selectedConversationDefaultReasoningEffort,
+      showWorkingDirectory: showWorkingDirectory,
+      workingDirectory: showWorkingDirectory
+          ? controller.selectedConversationWorkingDirectory
+          : '',
+      workingDirectorySelectable: workingDirectorySelectable,
+      sendAuthorizeActive: controller.isAuthorizingConversationRuntime,
+      permissionRetryTool: controller.pendingPermissionRetryTool,
+      participantTargets: participantTargets,
+      flywheelMainAgentLabel: orchestrationSelected ? flywheelLabel : '',
+      flywheelMainAgentTarget: orchestrationSelected
+          ? flywheelDisplayTarget
+          : null,
+      flywheelMentionSections: orchestrationSelected && flywheelPolicy != null
+          ? buildComposerFlywheelMentionSections(
+              policy: flywheelPolicy,
+              scannedTargets: controller.scannedTargets,
+              strings: strings,
+            )
+          : const [],
+      showLicoProfileCapsule:
+          controller.selectedConversationSupportsLicoProfile,
+      selectedLicoProfile: controller.selectedConversationLicoProfile,
+      planDocumentPath: _planDocumentPath(controller),
+      groupRosterParticipants: orchestrationSelected
+          ? controller.groupConversationRosterParticipants
+          : const [],
+      participantConversationIds: participantConversationIds,
     );
     final onUnblockSend = switch (gateReasonCode) {
       'orchestration_policy_required' => () => unawaited(
@@ -269,15 +453,89 @@ class _ConversationWorkspaceBodyState
       'runtime_message_send_unavailable' => () => unawaited(
         controller.scanTargets(),
       ),
+      'antigravity_auth_required' => () => unawaited(
+        controller.authorizeSelectedConversationRuntime(),
+      ),
       _ => null,
     };
     final actions = AgentConversationPaneActions(
       onModelChanged: controller.selectConversationModel,
       onReasoningEffortChanged: controller.selectConversationReasoningEffort,
       onDraftChanged: controller.updateConversationComposerDraft,
-      onSend: controller.sendConversationMessage,
+      onPermissionRetry: () => controller.retryDeniedConversationTurn(),
+      onPermissionRetryRemember: () =>
+          controller.retryDeniedConversationTurn(remember: true),
+      onPermissionDeny: controller.dismissDeniedConversationTurn,
+      onSend: (text) async {
+        if (controller.selectedConversationIsOrchestration) {
+          final mentionCatalog = [
+            for (final participant
+                in controller.groupConversationRosterParticipants)
+              if ((participant.agentId?.trim().isNotEmpty ?? false))
+                (
+                  id: participant.agentId!.trim(),
+                  label: participant.displayName.trim().isNotEmpty
+                      ? participant.displayName.trim()
+                      : participant.agentId!.trim(),
+                ),
+          ];
+          final mentioned = parseComposerAgentMentionIds(
+            text: text,
+            agents: mentionCatalog,
+          );
+          // Plain send (no @) must match the flywheel capsule: first Daily
+          // Conversation agent. @mentions route to the named peer and do not
+          // require Subagent MCP on that peer to receive the user turn.
+          if (mentioned.isEmpty) {
+            final ensureId = controller
+                .effectiveAgentOrchestrationPolicy
+                .plainSendDispatchAgentId;
+            if (ensureId.isNotEmpty) {
+              final ready = await ensureMainAgentSubagentMcp(
+                context: context,
+                controller: controller,
+                agentId: ensureId,
+              );
+              if (!ready) return false;
+            }
+          }
+        }
+        return controller.sendConversationMessage(text);
+      },
       onSelectSession: controller.selectConversationSession,
       onUnblockSend: onUnblockSend,
+      onChooseWorkingDirectory: workingDirectorySelectable
+          ? () => unawaited(
+              _chooseWorkingDirectory(
+                controller: controller,
+                agentId: target.target,
+                draftToken: controller.selectedNewConversationDraftToken,
+                currentDirectory:
+                    controller.selectedConversationWorkingDirectory,
+              ),
+            )
+          : null,
+      onAttach:
+          strategy.messageStyle == AgentsMessageStyle.participantFlow &&
+              !controller.mobileClientRuntimePlatform
+          ? () => unawaited(_pickConversationAttachments())
+          : null,
+      onEditFlywheel: orchestrationSelected
+          ? () => unawaited(
+              showAgentOrchestrationPolicyEditor(context, controller),
+            )
+          : null,
+      onMentionFlywheelAgent: orchestrationSelected
+          ? (entry) => _composerMentionBridge.insertMention(
+              agentId: entry.agentId,
+              displayLabel: entry.displayLabel,
+              target: entry.target,
+            )
+          : null,
+      mentionBridge: orchestrationSelected ? _composerMentionBridge : null,
+      onLicoProfileChanged: controller.selectedConversationSupportsLicoProfile
+          ? controller.selectConversationLicoProfile
+          : null,
     );
     final headerState = AgentConversationHeaderState(
       target: target,
@@ -297,30 +555,66 @@ class _ConversationWorkspaceBodyState
             ),
       showSidebarToggle: showSidebarToggle,
     );
-    final policy = controller.effectiveAgentOrchestrationPolicy;
-    final policyControls = orchestrationSelected
+    // Messaging moves flywheel controls into the composer capsule row; console
+    // keeps the compact header pill.
+    final messaging =
+        strategy.messageStyle == AgentsMessageStyle.participantFlow;
+    final policyControls = orchestrationSelected && !messaging
         ? AgentOrchestrationPolicyHeaderControls(
-            policy: policy,
-            policies: List.unmodifiable(controller.agentOrchestrationPolicies),
-            policyLabel: controller.agentOrchestrationPolicyDisplayLabel,
-            onSelectPolicy: controller.selectAgentOrchestrationPolicy,
-            onEditPolicy: () => unawaited(
+            mainAgentLabel: flywheelLabel,
+            mainAgentTarget: flywheelDisplayTarget,
+            onEdit: () => unawaited(
               showAgentOrchestrationPolicyEditor(context, controller),
             ),
           )
         : null;
-    return AgentConversationActivePane(
+    final pane = AgentConversationActivePane(
       state: state,
       actions: actions,
-      header: ConversationPaneHeader(
-        state: headerState,
-        actions: AgentConversationHeaderActions(
-          onToggleHistory: _toggleHistoryCollapsed,
-        ),
-        orchestrationControls: policyControls,
-      ),
+      header: messaging
+          ? MessagingConversationHeader(
+              target: target,
+              session: session,
+              detailsState: state,
+              detailsActions: actions,
+              opencodeServeState: headerState.opencodeServeState,
+              switcherSessions: controller.selectedConversationSessions,
+              switcherSelectedSessionId:
+                  controller.selectedConversationSession?.id ?? '',
+              onSwitchConversation: controller.selectConversationSession,
+              onSwitchNewConversation: controller.startNewConversationSession,
+              switcherRunningFor: (candidate) {
+                final nativeId = candidate.nativeSessionId.trim();
+                final selectedSessionId =
+                    controller.selectedConversationSession?.id ?? '';
+                return controller.isSendingConversationMessage &&
+                    ((controller.sendingConversationSessionId.isNotEmpty &&
+                            candidate.id ==
+                                controller.sendingConversationSessionId) ||
+                        (controller
+                                .sendingConversationNativeSessionId
+                                .isNotEmpty &&
+                            nativeId ==
+                                controller
+                                    .sendingConversationNativeSessionId) ||
+                        (controller.sendingConversationSessionId.isEmpty &&
+                            controller
+                                .sendingConversationNativeSessionId
+                                .isEmpty &&
+                            candidate.id == selectedSessionId));
+              },
+            )
+          : ConversationPaneHeader(
+              state: headerState,
+              actions: AgentConversationHeaderActions(
+                onToggleHistory: _toggleHistoryCollapsed,
+              ),
+              orchestrationControls: policyControls,
+              strategy: strategy,
+            ),
       framed: framed,
     );
+    return pane;
   }
 
   Widget _detailForSelection({
@@ -360,19 +654,19 @@ class _ConversationWorkspaceBodyState
           final sidebarWidth = _sidebarWidth
               .clamp(agentsSidebarMinWidth, maxSidebarWidth)
               .toDouble();
-          final sidebar = AgentsWorkspaceSidebar(
+          final strategy = LayoutAgentsStrategyScope.maybeOf(context);
+          final agentTreeSidebar = AgentsWorkspaceSidebar(
             targets: widget.targets,
             sessionsByAgent: controller.conversationSessionsByAgent,
-            selectedAgentId: controller.selectedConversationAgentId,
             selectedSessionId: controller.selectedConversationSession?.id ?? '',
             activityFor: controller.conversationTabActivityFor,
-            onSelectAgent: (agentId) =>
-                unawaited(controller.selectConversationAgent(agentId)),
             onSelectSession: (agentId, sessionId) async {
               await controller.selectConversationAgent(agentId);
               controller.selectConversationSession(sessionId);
             },
             onNewConversation: controller.startNewConversationSession,
+            onPrefetchSessions: (agentId) =>
+                unawaited(controller.refreshConversationSessions(agentId)),
             onArchive: () => unawaited(
               showConversationArchiveDialog(
                 context,
@@ -381,80 +675,90 @@ class _ConversationWorkspaceBodyState
               ),
             ),
             onAddTarget: onAddTarget,
+            onRefresh: () {
+              for (final target in widget.targets) {
+                if (target.isConversationAgent) {
+                  unawaited(controller.refreshConversationSessions(target.id));
+                }
+              }
+            },
+            refreshing: controller.isLoadingConversations,
             allowManualTargetActions: allowManualTargetActions,
             scanning: widget.scanning,
             adding: widget.adding,
           );
+          final sidebar = switch (strategy.sidebarStyle) {
+            AgentsSidebarStyle.agentTree => agentTreeSidebar,
+            AgentsSidebarStyle.flatRecencyList => MessagingContactList(
+              targets: widget.targets,
+              sessionsByAgent: controller.conversationSessionsByAgent,
+              selectedAgentId: controller.selectedConversationAgentId,
+              activityFor: controller.conversationTabActivityFor,
+              onSelectAgent: (agentId) => unawaited(() async {
+                if (agentId == controller.selectedConversationAgentId) {
+                  // Tapping the active contact returns to its
+                  // new-conversation home.
+                  controller.startNewConversationSession();
+                  return;
+                }
+                await controller.selectConversationAgent(agentId);
+              }()),
+              onNewConversation: controller.startNewConversationSession,
+              onPrefetchSessions: (agentId) =>
+                  unawaited(controller.refreshConversationSessions(agentId)),
+              isPinned: controller.isConversationTargetPinned,
+              onTogglePinned: (agentId) =>
+                  unawaited(controller.toggleConversationTargetPinned(agentId)),
+              scanning: widget.scanning,
+              loading: controller.isLoadingConversations,
+            ),
+          };
           final detail = _detailForSelection(
             target: target,
             conversationPane: conversationPane,
           );
           final sidebarPane = Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              if (presentation.showExpandedSidebarControl)
-                Padding(
-                  padding: presentation.expandedSidebarControlPadding,
-                  child: Align(
-                    alignment: Alignment.centerRight,
-                    child: AgentsSidebarCollapseControl(
-                      key: const Key('agents-workspace-sidebar-collapse'),
-                      expanded: true,
-                      tooltip: strings.collapseAgentsSidebar,
-                      onPressed: _toggleHistoryCollapsed,
-                    ),
-                  ),
-                ),
-              Expanded(child: sidebar),
-            ],
+            children: [Expanded(child: sidebar)],
           );
-          return Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              if (_historyCollapsed && presentation.showCollapsedSidebarControl)
-                Padding(
-                  padding: presentation.collapsedSidebarControlPadding,
-                  child: Align(
-                    alignment: Alignment.topLeft,
-                    child: AgentsSidebarCollapseControl(
-                      key: const Key('agents-workspace-sidebar-expand'),
-                      expanded: false,
-                      tooltip: strings.expandAgentsSidebar,
-                      onPressed: _toggleHistoryCollapsed,
+          return presentation.frameWorkspace(
+            context,
+            key: const Key('agents-workspace-layout'),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (!_historyCollapsed)
+                  presentation.frameSidebar(
+                    context,
+                    key: const Key('agents-workspace-sidebar-card'),
+                    child: SizedBox(width: sidebarWidth, child: sidebarPane),
+                  ),
+                Expanded(
+                  child: PaneEdgeDragHandle(
+                    dragHandleKey: const Key('agents-workspace-split-divider'),
+                    width: agentsSidebarDividerWidth,
+                    enabled: !_historyCollapsed,
+                    onDragDelta: (delta) {
+                      setState(() {
+                        _sidebarWidth = (sidebarWidth + delta)
+                            .clamp(agentsSidebarMinWidth, maxSidebarWidth)
+                            .toDouble();
+                      });
+                      _writeLayoutState(
+                        LayoutStateChannels.agentsSidebar,
+                        LayoutPaneExtentState(_sidebarWidth),
+                      );
+                    },
+                    child: presentation.frameDetail(
+                      context,
+                      key: const Key('agents-workspace-detail-pane'),
+                      sidebarCollapsed: _historyCollapsed,
+                      child: detail,
                     ),
                   ),
-                )
-              else if (!_historyCollapsed)
-                presentation.frameSidebar(
-                  context,
-                  key: const Key('agents-workspace-sidebar-card'),
-                  child: SizedBox(width: sidebarWidth, child: sidebarPane),
                 ),
-              Expanded(
-                child: PaneEdgeDragHandle(
-                  dragHandleKey: const Key('agents-workspace-split-divider'),
-                  width: agentsSidebarDividerWidth,
-                  enabled: !_historyCollapsed,
-                  onDragDelta: (delta) {
-                    setState(() {
-                      _sidebarWidth = (sidebarWidth + delta)
-                          .clamp(agentsSidebarMinWidth, maxSidebarWidth)
-                          .toDouble();
-                    });
-                    _writeLayoutState(
-                      LayoutStateChannels.agentsSidebar,
-                      LayoutPaneExtentState(_sidebarWidth),
-                    );
-                  },
-                  child: presentation.frameDetail(
-                    context,
-                    key: const Key('agents-workspace-floating-card'),
-                    sidebarCollapsed: _historyCollapsed,
-                    child: detail,
-                  ),
-                ),
-              ),
-            ],
+              ],
+            ),
           );
         },
       ),
@@ -740,4 +1044,14 @@ class _ConversationWorkspaceBodyState
       },
     );
   }
+}
+
+String _planDocumentPath(ClientController controller) {
+  if (!controller.selectedConversationSupportsLicoProfile ||
+      controller.selectedConversationLicoProfile != 'plan') {
+    return '';
+  }
+  final root = controller.portableDataPath.trim();
+  if (root.isEmpty) return '';
+  return p.join(root, 'client-state', 'plans', 'active-plan.md');
 }

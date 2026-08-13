@@ -45,6 +45,13 @@ class PlatformScannedTargetsCacheStore implements ScannedTargetsCacheStore {
         continue;
       }
       final candidateJson = Map<String, dynamic>.from(item);
+      // VM connection metadata belongs only to the canonical manual-target
+      // store. Never rehydrate it from this paint-fast discovery cache, even
+      // if an older or externally modified cache contains such an entry.
+      if (candidateJson['location'] == 'virtual-machine' ||
+          candidateJson.containsKey('runtimeConnection')) {
+        continue;
+      }
       // A cache is paint-fast metadata, not executable authority. Do not stat
       // cached paths here: they may point at macOS-protected user folders or
       // network volumes and trigger privacy prompts during app startup. The
@@ -72,7 +79,10 @@ class PlatformScannedTargetsCacheStore implements ScannedTargetsCacheStore {
     final seen = <String>{};
     for (final target in targets) {
       final id = target.target.trim();
-      if (id.isEmpty || !target.visibleInClient || !seen.add(id)) {
+      if (id.isEmpty ||
+          !target.visibleInClient ||
+          target.isVirtualMachine ||
+          !seen.add(id)) {
         continue;
       }
       candidates.add(target.toJson());

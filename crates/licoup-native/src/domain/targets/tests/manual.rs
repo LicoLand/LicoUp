@@ -10,6 +10,10 @@ use super::test_support::{temp_test_dir, test_store};
 use serde_json::json;
 use std::fs;
 
+fn guest_path(segments: &[&str]) -> String {
+    format!("/{}", segments.join("/"))
+}
+
 #[test]
 fn targets_add_persists_manual_entry_and_scan_uses_it() {
     let dir = temp_test_dir("manual-target");
@@ -74,6 +78,55 @@ fn targets_add_persists_manual_entry_and_scan_uses_it() {
     );
 
     assert_eq!(inspected["target"]["configPath"], display_path(config_path));
+}
+
+#[test]
+fn targets_add_projects_supported_virtual_machine_connection_without_local_paths() {
+    let dir = temp_test_dir("manual-vm-target");
+    let state_root = dir.join("client-state");
+    let executable = guest_path(&["opt", "hermes", "bin", "hermes"]);
+    let working_directory = guest_path(&["srv", "project"]);
+    let added = add_target(&json!({
+        "target": "hermes",
+        "stateRoot": display_path(state_root.clone()),
+        "location": "virtual-machine",
+        "runtimeConnection": {
+            "kind": "ssh",
+            "host": "vm.example",
+            "port": 2222,
+            "user": "agent-user",
+            "remoteExecutable": executable,
+            "workingDirectory": working_directory
+        }
+    }))
+    .unwrap();
+    assert_eq!(added["record"]["location"], "virtual-machine");
+    assert!(added["record"]["configPath"].is_null());
+    assert!(
+        added["record"]["historyRoots"]
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
+
+    let scan = scan_targets_with_params(&json!({
+        "stateRoot": display_path(state_root)
+    }))
+    .unwrap();
+    let hermes = scan["candidates"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|item| item["target"] == "hermes")
+        .unwrap();
+    assert_eq!(hermes["location"], "virtual-machine");
+    assert_eq!(hermes["runtimeConnection"]["kind"], "ssh");
+    assert_eq!(
+        hermes["binaryPath"],
+        guest_path(&["opt", "hermes", "bin", "hermes"])
+    );
+    assert_eq!(hermes["supportedActions"][0], "runtime.message.send");
+    assert!(!hermes["detail"].as_str().unwrap().contains("vm.example"));
 }
 
 #[test]

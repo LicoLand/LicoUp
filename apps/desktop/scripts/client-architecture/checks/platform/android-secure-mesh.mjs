@@ -18,7 +18,6 @@ export async function checkAndroidSecureMesh(context) {
     readText,
     runJson,
     sameSet,
-    sourceLineCount,
   } = context;
   const secureMeshAndroidBridgeSource = await readJoinedText([
     "apps/desktop/android/app/src/main/kotlin/land/lico/licoup/MainActivity.kt",

@@ -113,7 +113,7 @@ export function verifyMacosArtifact(target, spec, clientVersion, receiptContext)
   const runtimeExecutableDigest = executablePath
     ? sha256File(resolveContainedExistingPath(
         safeInstallArtifactPath,
-        path.join(safeInstallArtifactPath, "Contents/MacOS/licoup"),
+        path.join(safeInstallArtifactPath, "Contents/MacOS/licoup-cli"),
         { expectedKind: "file" },
       ), { maxBytes: maxMacosSidecarBytes })
     : "";

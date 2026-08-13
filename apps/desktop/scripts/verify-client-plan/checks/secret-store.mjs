@@ -84,14 +84,13 @@ assert(Array.isArray(platformSecretStoreMatrixConfigJson.sourceChecks) &&
   platformSecretStoreMatrixConfigJson.nativeTestFilters.length >= 10,
   "platform secret-store matrix config must define source checks and native test filters");
 for (const token of [
-  "objc2_local_authentication::{LAContext, LAPolicy}",
+  "objc2_local_authentication::{LAContext, LAError, LAPolicy}",
   "MacosAuthorizationContext",
   "setInteractionNotAllowed",
-  "context.setInteractionNotAllowed(!request.allow_interaction())",
+  "context.setInteractionNotAllowed(false)",
+  "context.setInteractionNotAllowed(true)",
   "evaluatePolicy_localizedReason_reply",
   "block2::RcBlock::new",
-  "system_authorization_attempt_count",
-  "system_authorization_completed",
   "canEvaluatePolicy_error(LAPolicy::DeviceOwnerAuthentication)",
   "if request.allow_interaction() {",
   "secure mesh macOS user-presence authorization is unavailable",
@@ -106,14 +105,12 @@ for (const token of [
 	  "ProtectionMode::AccessibleWhenUnlockedThisDeviceOnly",
 	  "kSecAccessControlUserPresence",
   "single_system_authorization_context_verified",
-  "secure mesh native secret store read failed for",
   "pub(super) fn set_secret_with_session",
   "pub(super) fn get_secret_with_session",
   "pub(super) fn delete_secret_with_session",
-  "if session.shared_system_context_required() {",
-  "macos_user_presence::set_secret",
-  "macos_user_presence::get_secret",
-  "macos_user_presence::delete_secret"
+  "pub trait MacosKeychainEffectPort",
+  "MacosAuthorizedPresence",
+  "into_authorized_effect"
 ]) {
   assert(secureMeshSecretStoreRustSource.includes(token),
     `Rust macOS platform secret store must preserve system LocalAuthentication token ${token}`);
@@ -121,6 +118,9 @@ for (const token of [
 for (const token of [
   "SecretStoreAuthorizationSession",
   "record_secret_store_operation",
+  "shared_system_context_required",
+  "system_authorization_attempt_count",
+  "system_authorization_completed",
   "consumed_operation_count",
   "authorization_batch_within_budget",
   "app_password_prompt_used: false"

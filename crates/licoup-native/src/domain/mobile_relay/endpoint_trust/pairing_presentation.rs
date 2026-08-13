@@ -4,14 +4,6 @@ use crate::domain::mobile_relay::secret_custody::{
     MobileRelayE2eeSecretField, RuntimeSecretMaterial,
 };
 
-#[cfg(test)]
-pub(in crate::domain::mobile_relay) fn apply_out_of_band_pairing_response(
-    config: &mut Value,
-    response: &Value,
-) -> Result<()> {
-    apply_out_of_band_pairing_response_with_context(config, response, None)
-}
-
 pub(in crate::domain::mobile_relay) fn apply_out_of_band_pairing_response_with_context(
     config: &mut Value,
     response: &Value,
@@ -86,8 +78,29 @@ pub(in crate::domain::mobile_relay) fn public_config(config: &Value) -> Value {
     let mut public = config.clone();
     let pc_token_present = secret_present(config.get("pcToken"))
         || config.get("pcTokenPresent").and_then(Value::as_bool) == Some(true);
+    let selected_pairing_id = config
+        .get("pairingId")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .unwrap_or_default();
+    let selected_device_credential_present = config.get("secretStorageStatus").is_some()
+        && config
+            .get("pairedDevices")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .any(|device| {
+                !selected_pairing_id.is_empty()
+                    && device
+                        .get("pairingId")
+                        .and_then(Value::as_str)
+                        .map(str::trim)
+                        == Some(selected_pairing_id)
+                    && device.get("credentialPresent").and_then(Value::as_bool) == Some(true)
+            });
     let mobile_token_present = secret_present(config.get("mobileToken"))
-        || config.get("mobileTokenPresent").and_then(Value::as_bool) == Some(true);
+        || config.get("mobileTokenPresent").and_then(Value::as_bool) == Some(true)
+        || selected_device_credential_present;
     let secret_storage_backend = public_secret_storage_backend(config);
     public["pcToken"] = json!("");
     public["mobileToken"] = json!("");
@@ -254,7 +267,7 @@ pub(in crate::domain::mobile_relay) fn clear_mobile_relay_pairing_state(
             .and_then(Value::as_u64)
             .unwrap_or(current_mailbox_rotation_epoch()?)
             .checked_add(1)
-            .ok_or_else(|| anyhow!("secure client relay mailbox rotation epoch overflow"))?;
+            .ok_or_else(|| anyhow!("Lico Arc mailbox rotation epoch overflow"))?;
         for key in [
             "peerEndpointId",
             "peerEndpointKind",
@@ -316,13 +329,13 @@ pub(in crate::domain::mobile_relay) fn one_time_pairing_invite(
         return None;
     };
     local_endpoint_state(config, secret_material).ok().and_then(|endpoint| {
-        let gateway_url = effective_gateway_url(config).ok()?;
+        let station_base_url = effective_station_base_url(config).ok()?;
         let pc_secure_mesh = endpoint.public_descriptor().ok()?;
         Some(json!({
             "protocolVersion": MOBILE_RELAY_E2EE_PROTOCOL_VERSION,
             "oneTime": true,
             "createdAt": now_iso(),
-            "gatewayUrl": gateway_url,
+            "stationBaseUrl": station_base_url,
             "pcClientId": config.get("pcClientId").and_then(Value::as_str).unwrap_or_default(),
             "pcClientName": config.get("pcClientName").and_then(Value::as_str).unwrap_or("LicoUp"),
             "pairingId": pairing_id,
@@ -334,7 +347,7 @@ pub(in crate::domain::mobile_relay) fn one_time_pairing_invite(
     })
 }
 
-#[allow(dead_code)]
+#[cfg(test)]
 pub(in crate::domain::mobile_relay) fn apply_pairing_invite_params(
     config: &mut Value,
     params: &Value,
@@ -343,7 +356,6 @@ pub(in crate::domain::mobile_relay) fn apply_pairing_invite_params(
     apply_pairing_invite_params_with_context(config, params, Some(&mut context))
 }
 
-#[allow(dead_code)]
 pub(in crate::domain::mobile_relay) fn apply_pairing_invite_params_with_context(
     config: &mut Value,
     params: &Value,
@@ -367,12 +379,12 @@ pub(in crate::domain::mobile_relay) fn apply_pairing_invite_params_with_context(
         if !invite.is_object() {
             return Err(anyhow!("mobile relay pairing invite must be a JSON object"));
         }
-        let validated_invite_gateway = match invite.get("gatewayUrl") {
+        let validated_invite_station = match invite.get("stationBaseUrl") {
             None => None,
-            Some(Value::String(value)) => Some(validated_gateway(value)?),
+            Some(Value::String(value)) => Some(validated_station_base_url(value)?),
             Some(_) => {
                 return Err(anyhow!(
-                    "mobile relay pairing invite gateway must be a valid URL"
+                    "mobile relay pairing invite station must be a valid URL"
                 ));
             }
         };
@@ -393,10 +405,9 @@ pub(in crate::domain::mobile_relay) fn apply_pairing_invite_params_with_context(
         if let Some(pairing_code) = invite.get("pairingCode").and_then(Value::as_str) {
             config["lastPairingCode"] = json!(pairing_code);
         }
-        if let Some(gateway_url) = validated_invite_gateway {
-            config["customGatewayUrl"] = json!(gateway_url);
-            config["useCustomGateway"] = json!(true);
-            normalize_gateway_fields(config);
+        if let Some(station_base_url) = validated_invite_station {
+            config["stationBaseUrl"] = json!(station_base_url);
+            normalize_station_fields(config);
         }
         if let Some(pc_client_id) = invite.get("pcClientId").and_then(Value::as_str) {
             config["pcClientId"] = json!(pc_client_id);

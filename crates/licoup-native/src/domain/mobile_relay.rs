@@ -13,8 +13,8 @@ pub use config::{config_get, config_set};
 pub use key_transparency::{SECURE_MESH_KT_NATIVE_ACTIONS, dispatch_key_transparency_action};
 pub use pairing::{pairing_claim, pairing_create, pairing_revoke, pairing_status};
 pub use relay_operations::{
-    command_complete, command_create, command_create_secure, command_result,
-    command_result_replay_proof, command_result_secure, commands_poll, e2ee_status, pc_check_in,
+    command_create, command_create_secure, command_result, command_result_replay_proof,
+    command_result_secure, commands_poll, e2ee_status, pc_check_in,
 };
 pub use secret_custody::{
     e2ee_secret_store_cleanup, e2ee_secret_store_self_test,

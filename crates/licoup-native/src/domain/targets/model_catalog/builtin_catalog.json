@@ -209,16 +209,16 @@
         {
           "name": "gemini-3.1-pro",
           "aliases": ["gemini-3.1-pro-preview"],
-          "reasoningEfforts": ["low", "medium", "high"],
-          "source": "https://ai.google.dev/gemini-api/docs/thinking (Antigravity publishes no in-product enum)"
+          "reasoningEfforts": [],
+          "source": "Antigravity exposes effort as distinct model variants, not a configurable reasoning-effort option"
         },
         {
           "name": "gemini-3.5-flash",
-          "reasoningEfforts": ["minimal", "low", "medium", "high"],
-          "source": "https://ai.google.dev/gemini-api/docs/thinking (Antigravity publishes no in-product enum)"
+          "reasoningEfforts": [],
+          "source": "Antigravity exposes effort as distinct model variants, not a configurable reasoning-effort option"
         }
       ],
-      "notes": "Antigravity's /effort enum is not published (CLI 1.1.5); rows use the underlying Gemini API thinking_level values. Claude models under Antigravity pass through scanned data."
+      "notes": "Antigravity has no independent reasoning-effort picker; High and Medium remain part of native model variant names."
     },
     "openclaw": {
       "models": [

@@ -8,13 +8,16 @@ import 'package:flutter/material.dart';
 import 'package:licoup/app.dart';
 import 'package:licoup/src/application/controller/client_controller.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
+import 'package:licoup/src/contracts/agent_dispatch_lane.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
 
 const _sentinel = 'LICO_AGENT_CONVERSATION_RELEASE_UI_LIVE ';
 
 void runAgentConversationReleaseLive() {
   final controller = ClientController();
-  runApp(LicoApp(controllerFactory: () => controller));
+  runApp(
+    LicoApp(controllerFactory: () => controller, initializeController: false),
+  );
   WidgetsBinding.instance.addPostFrameCallback((_) {
     unawaited(_run(controller));
   });
@@ -39,16 +42,42 @@ Future<void> _run(ClientController controller) async {
       'LICO_AGENT_CONVERSATION_PRODUCT_SECOND_PROMPT',
       RegExp(r'^[A-Za-z0-9 _.,:-]{8,160}$'),
     );
+    final firstExpected = _environment(
+      'LICO_AGENT_CONVERSATION_PRODUCT_FIRST_EXPECTED',
+      RegExp(r'^[A-Za-z0-9-]{1,64}$'),
+    );
+    final secondExpected = _environment(
+      'LICO_AGENT_CONVERSATION_PRODUCT_SECOND_EXPECTED',
+      RegExp(r'^[A-Za-z0-9-]{1,64}$'),
+    );
+    final steerPrompt = _environment(
+      'LICO_AGENT_CONVERSATION_PRODUCT_STEER_PROMPT',
+      RegExp(r'^[A-Za-z0-9 _.,:-]{8,160}$'),
+    );
     final invocationChallengeDigest = _environment(
       'LICO_AGENT_CONVERSATION_PRODUCT_CHALLENGE_DIGEST',
       RegExp(r'^sha256:[a-f0-9]{64}$'),
     );
 
-    await _waitFor(
-      () => controller.lifecycleProjection.initialized,
-      reasonCode: 'release_ui_initialize_timeout',
-      timeout: const Duration(seconds: 45),
+    await controller
+        .initializeWithOptions(runBackgroundSteps: false)
+        .timeout(
+          const Duration(seconds: 45),
+          onTimeout: () => throw StateError('release_ui_initialize_timeout'),
+        );
+    _require(
+      controller.lifecycleProjection.initialized,
+      _initializeFailureReason(controller),
     );
+    // Restored presentation state may land outside Agents. Mount the actual
+    // product surface first so its one-shot post-frame discovery cannot race
+    // with and overwrite the acceptance projection below.
+    controller.currentSection = ClientSection.agents;
+    controller.updateConversationAttention(
+      lifecycleState: AppLifecycleState.resumed,
+      viewFocused: true,
+    );
+    await WidgetsBinding.instance.endOfFrame;
     await controller.scanTargets(
       showProgress: true,
       surfaceErrors: true,
@@ -70,15 +99,19 @@ Future<void> _run(ClientController controller) async {
         .firstOrNull;
     _require(scanned != null, 'release_ui_agent_runtime_unavailable');
     final enabled = _acceptanceEnabledCandidate(scanned!);
+    _require(enabled.visibleInClient, 'release_ui_agent_target_hidden');
+    _require(
+      (enabled.binaryPath ?? '').trim().isNotEmpty,
+      'release_ui_agent_binary_unavailable',
+    );
+    _require(
+      enabled.conversationDriverStatus != 'unsupported',
+      'release_ui_agent_driver_unavailable',
+    );
     controller.scannedTargets = [
       for (final target in controller.scannedTargets)
         if (target.target == agentId) enabled else target,
     ];
-    controller.currentSection = ClientSection.agents;
-    controller.updateConversationAttention(
-      lifecycleState: AppLifecycleState.resumed,
-      viewFocused: true,
-    );
     await controller.selectConversationAgent(agentId);
     await _waitFor(
       () => controller.selectedConversationAgent?.canRelayRuntime == true,
@@ -102,16 +135,17 @@ Future<void> _run(ClientController controller) async {
 
     controller.addListener(observeFirst);
     await _submitComposer(firstPrompt);
+    final firstTurnDeadline = DateTime.now().add(const Duration(minutes: 5));
     await _waitFor(
       () => firstProgressive || controller.lastError.isNotEmpty,
       reasonCode: 'release_ui_first_stream_timeout',
-      timeout: const Duration(minutes: 10),
+      timeout: _remainingUntil(firstTurnDeadline),
     );
     _require(controller.lastError.isEmpty, _safeControllerError(controller));
     await _waitFor(
       () => !controller.isSendingConversationMessage,
       reasonCode: 'release_ui_first_completion_timeout',
-      timeout: const Duration(minutes: 10),
+      timeout: _remainingUntil(firstTurnDeadline),
     );
     controller.removeListener(observeFirst);
     _require(controller.lastError.isEmpty, _safeControllerError(controller));
@@ -137,16 +171,42 @@ Future<void> _run(ClientController controller) async {
 
     controller.addListener(observeSecond);
     await _submitComposer(secondPrompt);
+    final secondTurnDeadline = DateTime.now().add(const Duration(minutes: 5));
+    // Steer must land while the turn is provably active. The bound turn id is
+    // available from the first lifecycle event; waiting for streamed chunks
+    // first would race fast models whose entire stream fits in a few seconds.
     await _waitFor(
-      () => secondProgressive || controller.lastError.isNotEmpty,
+      () =>
+          controller.sendingConversationTurnId.trim().isNotEmpty ||
+          controller.lastError.isNotEmpty,
       reasonCode: 'release_ui_second_stream_timeout',
-      timeout: const Duration(minutes: 10),
+      timeout: _remainingUntil(secondTurnDeadline),
     );
     _require(controller.lastError.isEmpty, _safeControllerError(controller));
+    var interruptSteerProven = false;
+    if (enabled.supportsNativeInterruptSteer) {
+      final activeSession = controller.selectedConversationSession;
+      final steer = await controller.conversationGateway.steer(
+        agentId: agentId,
+        text: steerPrompt,
+        sessionId: nativeSessionId,
+        turnId: controller.sendingConversationTurnId,
+        bind: AgentDispatchBind(
+          sessionPath: activeSession?.sourcePath ?? '',
+          workingDirectory: activeSession?.workingDirectory ?? '',
+          binaryPath: enabled.binaryPath ?? '',
+          model: controller.selectedConversationModel,
+          reasoningEffort: controller.selectedConversationReasoningEffort,
+          runtimeConnection: enabled.runtimeConnection,
+        ),
+      );
+      _require(steer.ok, 'release_ui_interrupt_steer_failed');
+      interruptSteerProven = true;
+    }
     await _waitFor(
       () => !controller.isSendingConversationMessage,
       reasonCode: 'release_ui_second_completion_timeout',
-      timeout: const Duration(minutes: 10),
+      timeout: _remainingUntil(secondTurnDeadline),
     );
     controller.removeListener(observeSecond);
     _require(controller.lastError.isEmpty, _safeControllerError(controller));
@@ -165,14 +225,27 @@ Future<void> _run(ClientController controller) async {
         .toSet();
     _require(
       messages.any(
-            (message) => message.role == 'user' && message.text == firstPrompt,
-          ) &&
-          messages.any(
-            (message) => message.role == 'user' && message.text == secondPrompt,
-          ) &&
-          assistantReplies.contains(_expectedReply(firstPrompt)) &&
-          assistantReplies.contains(_expectedReply(secondPrompt)),
-      'release_ui_history_readback_incomplete',
+        (message) => message.role == 'user' && message.text == firstPrompt,
+      ),
+      'release_ui_first_user_readback_missing',
+    );
+    _require(
+      messages.any(
+        (message) => message.role == 'user' && message.text == secondPrompt,
+      ),
+      'release_ui_second_user_readback_missing',
+    );
+    _require(
+      assistantReplies.contains(firstExpected),
+      _assistantMismatchReason(assistantReplies, firstExpected, turn: 'first'),
+    );
+    _require(
+      assistantReplies.contains(secondExpected),
+      _assistantMismatchReason(
+        assistantReplies,
+        secondExpected,
+        turn: 'second',
+      ),
     );
 
     _emit(<String, Object>{
@@ -192,6 +265,7 @@ Future<void> _run(ClientController controller) async {
       'progressiveTimelineVisible': firstProgressive && secondProgressive,
       'sameNativeSessionId': true,
       'historyReadback': true,
+      'interruptSteerProven': interruptSteerProven,
       'turnCount': 2,
       'invocationChallengeDigest': invocationChallengeDigest,
     });
@@ -207,14 +281,6 @@ Future<void> _run(ClientController controller) async {
     await Future<void>.delayed(const Duration(milliseconds: 100));
     exit(1);
   }
-}
-
-String _expectedReply(String prompt) {
-  const prefix = 'Reply with exactly ';
-  _require(prompt.startsWith(prefix), 'release_ui_prompt_contract_invalid');
-  final reply = prompt.substring(prefix.length).trim();
-  _require(reply.isNotEmpty, 'release_ui_prompt_contract_invalid');
-  return reply;
 }
 
 TargetCandidate _acceptanceEnabledCandidate(TargetCandidate source) {
@@ -303,6 +369,32 @@ Future<void> _waitFor(
   }
 }
 
+Duration _remainingUntil(DateTime deadline) {
+  final remaining = deadline.difference(DateTime.now());
+  return remaining.isNegative ? Duration.zero : remaining;
+}
+
+String _assistantMismatchReason(
+  Set<String> replies,
+  String expected, {
+  required String turn,
+}) {
+  if (replies.isEmpty) {
+    return 'release_ui_${turn}_assistant_readback_missing';
+  }
+  if (replies.any((reply) => reply.contains(expected))) {
+    return 'release_ui_${turn}_assistant_reply_wrapped';
+  }
+  final normalizedExpected = _normalizedMarker(expected);
+  if (replies.any((reply) => _normalizedMarker(reply) == normalizedExpected)) {
+    return 'release_ui_${turn}_assistant_reply_normalized';
+  }
+  return 'release_ui_${turn}_assistant_reply_mismatch';
+}
+
+String _normalizedMarker(String value) =>
+    value.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
+
 String _environment(String name, RegExp pattern) {
   final value = Platform.environment[name]?.trim() ?? '';
   if (!pattern.hasMatch(value)) {
@@ -316,6 +408,13 @@ String _safeControllerError(ClientController controller) {
   return RegExp(r'^[a-z0-9_-]+$').hasMatch(value)
       ? value
       : 'release_ui_agent_turn_failed';
+}
+
+String _initializeFailureReason(ClientController controller) {
+  final step = controller.lifecycleController.lastFailureStepId;
+  return RegExp(r'^[a-z][a-z0-9_-]{0,63}$').hasMatch(step)
+      ? 'release_ui_initialize_${step}_failed'
+      : 'release_ui_initialize_failed';
 }
 
 String _safeReason(Object error) {

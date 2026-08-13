@@ -2,6 +2,7 @@ use super::super::acp_driver_runtime::ActiveAcpControl;
 use super::super::process_supervisor::{
     BoundedStdinWriter, SupervisedChild, TransportFinishFailure, finish_protocol_transport,
 };
+use super::super::virtual_machine::SshRuntimeConnection;
 use super::errors::ProtocolFailure;
 use super::io::{TransportEvent, drain_stderr, read_protocol_messages, write_message};
 use super::model::{PROCESS_POLL_INTERVAL, RunResult};
@@ -17,6 +18,7 @@ use std::sync::mpsc::{self, Receiver, RecvTimeoutError};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
+#[cfg(test)]
 pub(in crate::platform) fn execute(
     executable: &str,
     params: &Value,
@@ -24,30 +26,70 @@ pub(in crate::platform) fn execute(
     session_id: &str,
     cwd: Option<&Path>,
     timeout_ms: u64,
-    max_stdout: usize,
+    max_stdout: Option<usize>,
+    max_stderr: usize,
+) -> RunResult {
+    execute_with_connection(
+        executable, None, params, prompt, session_id, cwd, timeout_ms, max_stdout, max_stderr,
+    )
+}
+
+pub(in crate::platform) fn execute_with_connection(
+    executable: &str,
+    runtime_connection: Option<&SshRuntimeConnection>,
+    params: &Value,
+    prompt: &str,
+    session_id: &str,
+    cwd: Option<&Path>,
+    timeout_ms: u64,
+    max_stdout: Option<usize>,
     max_stderr: usize,
 ) -> RunResult {
     let started_at = timestamp();
-    let config = match ProtocolConfig::from_params(params, prompt, session_id, cwd) {
+    let config = match if runtime_connection.is_some() {
+        ProtocolConfig::from_params_without_local_mcp(params, prompt, session_id, cwd)
+    } else {
+        ProtocolConfig::from_params(params, prompt, session_id, cwd)
+    } {
         Ok(config) => config,
         Err(failure) => return RunResult::failed(failure, started_at, None, false, false),
     };
-    let gateway = match resolve_gateway_endpoint(executable, params) {
-        Ok(endpoint) => endpoint,
-        Err(failure) => return RunResult::failed(failure, started_at, None, false, false),
+    let launch = if let Some(runtime_connection) = runtime_connection {
+        // The stream frame contract requires a non-empty session identity.
+        // A fresh send has no native session key yet, so the attach event is
+        // emitted only when one is already bound (resume or explicit key);
+        // fresh sends are correlated by the later `dispatch.turn.bound`.
+        if let Some(session_key) = config.native_session_key.as_deref() {
+            super::super::turn_event_emit::emit_turn_event(
+                "dispatch.gateway.attached",
+                session_key,
+                &config.turn_id,
+                json!({
+                    "wsUrlHostClass": "virtual-machine",
+                    "attachMode": "ssh-stdio"
+                }),
+            );
+        }
+        LaunchSpec::for_virtual_machine(runtime_connection, Path::new(&config.cwd))
+    } else {
+        let gateway = match resolve_gateway_endpoint(executable, params) {
+            Ok(endpoint) => endpoint,
+            Err(failure) => return RunResult::failed(failure, started_at, None, false, false),
+        };
+        if let Some(session_key) = config.native_session_key.as_deref() {
+            super::super::turn_event_emit::emit_turn_event(
+                "dispatch.gateway.attached",
+                session_key,
+                &config.turn_id,
+                json!({
+                    "wsUrlHostClass": "loopback",
+                    "port": gateway.port,
+                    "attachMode": attach_mode(gateway.port)
+                }),
+            );
+        }
+        LaunchSpec::for_gateway_attach(executable, Path::new(&config.cwd), &gateway.ws_url)
     };
-    super::super::turn_event_emit::emit_turn_event(
-        "dispatch.gateway.attached",
-        config.native_session_key.as_deref().unwrap_or(""),
-        &config.turn_id,
-        json!({
-            "wsUrlHostClass": "loopback",
-            "port": gateway.port,
-            "attachMode": attach_mode(gateway.port)
-        }),
-    );
-    let launch =
-        LaunchSpec::for_gateway_attach(executable, Path::new(&config.cwd), &gateway.ws_url);
     let mut child = match launch.spawn() {
         Ok(child) => child,
         Err(error) => {

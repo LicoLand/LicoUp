@@ -31,9 +31,6 @@ pub(crate) enum StdioRpcMethod {
         request: ClientStateSetRequest,
         portable_data_dir: Option<PathBuf>,
     },
-    Orchestrator {
-        params: Value,
-    },
     Shutdown,
 }
 

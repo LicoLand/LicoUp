@@ -32,33 +32,42 @@ pub(super) struct MlKemPreKeyMaterial {
     pub(super) expires_at: String,
 }
 
-#[allow(clippy::too_many_arguments)]
+pub(super) struct CurvePreKeyRequest<'a> {
+    pub(super) private_key: Option<&'a str>,
+    pub(super) id: Option<&'a str>,
+    pub(super) created_at: Option<&'a str>,
+    pub(super) expires_at: Option<&'a str>,
+    pub(super) signing_key: &'a SigningKey,
+    pub(super) identity: &'a DeviceTrustPublicIdentity,
+    pub(super) kind: SecureMeshPreKeyKind,
+    pub(super) id_prefix: &'a str,
+}
+
 pub(super) fn curve_prekey_material(
-    private_key: Option<&str>,
-    id: Option<&str>,
-    created_at: Option<&str>,
-    expires_at: Option<&str>,
-    signing_key: &SigningKey,
-    identity: &DeviceTrustPublicIdentity,
-    kind: SecureMeshPreKeyKind,
-    id_prefix: &str,
+    request: CurvePreKeyRequest<'_>,
 ) -> Result<CurvePreKeyMaterial> {
-    let private_key = private_key
+    let private_key = request
+        .private_key
         .map(str::to_string)
         .unwrap_or_else(|| random_base64url(MOBILE_RELAY_KEY_BYTES));
     let private_bytes = decode_key_32(&private_key, "mobile relay prekey private key")?;
     let public_key = SecureMeshPairwisePrivateKey::from_bytes(private_bytes).public_key();
-    let id = id
+    let id = request
+        .id
         .map(str::to_string)
-        .unwrap_or_else(|| format!("mrelay_{}_{}", id_prefix, Uuid::new_v4()));
-    let created_at = created_at.map(str::to_string).unwrap_or_else(now_iso);
-    let expires_at = expires_at
+        .unwrap_or_else(|| format!("mrelay_{}_{}", request.id_prefix, Uuid::new_v4()));
+    let created_at = request
+        .created_at
+        .map(str::to_string)
+        .unwrap_or_else(now_iso);
+    let expires_at = request
+        .expires_at
         .map(str::to_string)
         .unwrap_or_else(default_prekey_expiry);
     let record = sign_prekey_record(
-        signing_key,
-        identity,
-        kind,
+        request.signing_key,
+        request.identity,
+        request.kind,
         id.clone(),
         public_key,
         created_at.clone(),

@@ -30,6 +30,13 @@ pub(super) fn extra_model_collection_paths(target: &str, params: &Value) -> Vec<
     };
     let mut paths = Vec::<PathBuf>::new();
     if target == "codex" {
+        // Codex Desktop/CLI persist the full picker directory here; App Server
+        // model/list alone is a shorter live projection and must not be the
+        // only source when this cache is present.
+        let models_cache = home.join(".codex").join("models_cache.json");
+        if models_cache.is_file() {
+            paths.push(models_cache);
+        }
         collect_json_model_catalog_files(&home.join(".codex").join("model-catalogs"), &mut paths);
     }
     if target == "copilot" {

@@ -17,7 +17,7 @@ final class LayoutManager {
     required PresentationPreferences canonicalFallback,
     required LayoutEnvironment initialEnvironment,
     LayoutProfileId? preferredDefaultId,
-    this.previewTimeout = const Duration(seconds: 12),
+    this.persistenceTimeout = const Duration(seconds: 5),
   }) : _catalog = catalog,
        _preferencesRepository = preferencesRepository,
        _preferredDefaultId = preferredDefaultId ?? catalog.defaultProfile.id,
@@ -42,13 +42,17 @@ final class LayoutManager {
   final PresentationPreferencesRepository _preferencesRepository;
   final PresentationPreferences _canonicalFallback;
   final LayoutProfileId _preferredDefaultId;
-  final Duration previewTimeout;
+
+  /// Upper bound for any single repository call the manager performs. A
+  /// repository that hangs (file lock held by a rogue process, blocked I/O)
+  /// must not freeze the selection state machine: the timeout fires inside
+  /// the serialized queue so the queue tail always advances again.
+  final Duration persistenceTimeout;
   final Set<LayoutSelectionListener> _listeners = {};
 
   LayoutEnvironment _environment;
   LayoutSelectionState _state;
   PresentationPreferences? _preferences;
-  Timer? _previewTimer;
   int _epoch = 0;
   bool _needsCanonicalPersistence = false;
   bool _disposed = false;
@@ -97,7 +101,9 @@ final class LayoutManager {
       ),
     );
     try {
-      final loaded = await _preferencesRepository.load();
+      final loaded = await _preferencesRepository.load().timeout(
+        persistenceTimeout,
+      );
       if (!_isCurrent(epoch)) {
         return;
       }
@@ -127,7 +133,7 @@ final class LayoutManager {
           errorCode: error,
         ),
       );
-    } on PresentationPreferencesRepositoryException {
+    } catch (_) {
       if (_isCurrent(epoch)) {
         _preferences = _canonicalFallback;
         _needsCanonicalPersistence = true;
@@ -146,73 +152,22 @@ final class LayoutManager {
     }
   }
 
-  bool beginPreview(LayoutProfileId candidate) {
+  /// Selects a layout directly: the candidate becomes effective immediately
+  /// while the preference write commits in the background.
+  Future<bool> selectLayout(LayoutProfileId candidate) {
     _requireInitialized();
     if (_state.status == LayoutSelectionStatus.committing) {
-      return false;
+      return Future<bool>.value(false);
     }
     if (!_catalog.containsProfile(candidate)) {
       final epoch = _beginOperation();
       _emitError(LayoutSelectionErrorCode.unavailableProfile, epoch: epoch);
-      return false;
+      return Future<bool>.value(false);
     }
-    if (candidate == _state.committedId) {
-      cancelPreview();
-      return true;
-    }
-
-    final epoch = _beginOperation();
-    _emit(
-      LayoutSelectionState(
-        committedId: _state.committedId,
-        effectiveId: candidate,
-        previewId: candidate,
-        status: LayoutSelectionStatus.previewing,
-        surface: _environment.surface,
-        viewport: _environment.viewport,
-        operationEpoch: epoch,
-      ),
-    );
-    _previewTimer = Timer(previewTimeout, () {
-      if (_isCurrent(epoch) &&
-          _state.status == LayoutSelectionStatus.previewing) {
-        final timeoutEpoch = _beginOperation();
-        _emitError(
-          LayoutSelectionErrorCode.previewExpired,
-          epoch: timeoutEpoch,
-        );
-      }
-    });
-    return true;
-  }
-
-  bool beginPreviewId(String candidate) {
-    try {
-      return beginPreview(LayoutProfileId.parse(candidate));
-    } on FormatException {
-      _requireInitialized();
+    if (candidate == _state.committedId && !_needsCanonicalPersistence) {
       final epoch = _beginOperation();
-      _emitError(LayoutSelectionErrorCode.invalidProfile, epoch: epoch);
-      return false;
-    }
-  }
-
-  void cancelPreview() {
-    _requireInitialized();
-    if (_state.status == LayoutSelectionStatus.committing) {
-      return;
-    }
-    final epoch = _beginOperation();
-    _emitStable(epoch: epoch);
-  }
-
-  Future<bool> confirmPreview() async {
-    _requireInitialized();
-    final candidate = _state.status == LayoutSelectionStatus.previewing
-        ? _state.previewId
-        : null;
-    if (candidate == null) {
-      return false;
+      _emitStable(epoch: epoch);
+      return Future<bool>.value(true);
     }
     return _commit(candidate);
   }
@@ -240,7 +195,6 @@ final class LayoutManager {
     final next = LayoutSelectionState(
       committedId: _state.committedId,
       effectiveId: _state.effectiveId,
-      previewId: _state.previewId,
       status: _state.status,
       surface: environment.surface,
       viewport: environment.viewport,
@@ -278,14 +232,14 @@ final class LayoutManager {
     final canonicalLayoutId = _state.committedId;
     return _enqueuePreferenceOperation(() async {
       try {
-        var saved = await update();
+        var saved = await update().timeout(persistenceTimeout);
         if (_disposed) {
           return false;
         }
         if (saved.layoutProfileId != canonicalLayoutId) {
-          saved = await _preferencesRepository.setLayoutProfile(
-            canonicalLayoutId,
-          );
+          saved = await _preferencesRepository
+              .setLayoutProfile(canonicalLayoutId)
+              .timeout(persistenceTimeout);
           if (_disposed) {
             return false;
           }
@@ -297,7 +251,7 @@ final class LayoutManager {
           _emitStable(epoch: epoch);
         }
         return true;
-      } on PresentationPreferencesRepositoryException {
+      } catch (_) {
         return false;
       }
     });
@@ -310,7 +264,6 @@ final class LayoutManager {
       LayoutSelectionState(
         committedId: previousCommitted,
         effectiveId: candidate,
-        previewId: candidate,
         status: LayoutSelectionStatus.committing,
         surface: _environment.surface,
         viewport: _environment.viewport,
@@ -319,7 +272,9 @@ final class LayoutManager {
     );
     try {
       final saved = await _enqueuePreferenceOperation(
-        () => _preferencesRepository.setLayoutProfile(candidate),
+        () => _preferencesRepository
+            .setLayoutProfile(candidate)
+            .timeout(persistenceTimeout),
       );
       if (!_isCurrent(epoch)) {
         return false;
@@ -337,7 +292,10 @@ final class LayoutManager {
         ),
       );
       return true;
-    } on PresentationPreferencesRepositoryException {
+    } catch (_) {
+      // Any repository failure — declared persistence errors, unexpected
+      // throws, or a hung write cut off by the timeout — must end the commit
+      // so the selector never freezes in the committing state.
       if (_isCurrent(epoch)) {
         _emitError(LayoutSelectionErrorCode.persistenceFailed, epoch: epoch);
       }
@@ -350,8 +308,6 @@ final class LayoutManager {
     if (_notifyingListeners) {
       throw StateError('layout_manager_listener_reentrancy');
     }
-    _previewTimer?.cancel();
-    _previewTimer = null;
     return ++_epoch;
   }
 
@@ -441,8 +397,6 @@ final class LayoutManager {
     if (_disposed) {
       return;
     }
-    _previewTimer?.cancel();
-    _previewTimer = null;
     _epoch += 1;
     _listeners.clear();
     _disposed = true;

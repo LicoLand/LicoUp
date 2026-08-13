@@ -1,7 +1,9 @@
 use super::*;
-use licoup_native::ffi::generated::client_state::{ClientStateFailure, ClientStateFailureCode};
 
-const ORCHESTRATOR_REQUEST_METHOD: &str = "orchestrator.request";
+#[path = "server/conversation.rs"]
+mod conversation;
+#[path = "server/state.rs"]
+mod state;
 
 pub(crate) fn serve_stdio_rpc<R, W, F>(mut reader: R, writer: W, mut execute: F) -> Result<W>
 where
@@ -11,11 +13,16 @@ where
 {
     let writer = Arc::new(Mutex::new(writer));
     let mut bound_workflow_id: Option<String> = None;
+    let mut conversation_workers = Vec::new();
     loop {
+        conversation::reap_finished(&mut conversation_workers);
         let line = read_stdio_rpc_line(&mut reader, STDIO_RPC_MAX_REQUEST_BYTES)?;
         let bytes = match line {
             StdioRpcLine::Eof => {
                 licoup_native::platform::shutdown_all_conversations()?;
+                if !conversation::join_until_shutdown(&mut conversation_workers) {
+                    return Err(anyhow::anyhow!("conversation_shutdown_timeout"));
+                }
                 return recover_stdio_rpc_writer(writer);
             }
             StdioRpcLine::TooLarge => {
@@ -62,96 +69,24 @@ where
                 request: state_request,
                 portable_data_dir,
             } => {
-                let execution = catch_unwind(AssertUnwindSafe(|| {
-                    let _guard = PortableDataDirOverrideGuard::set(portable_data_dir);
-                    licoup_native::platform::client_state::state_get(state_request)
-                }));
-                match execution {
-                    Ok(Ok(result)) => write_stdio_rpc_success_shared(
-                        &writer,
-                        &request.id,
-                        &request.workflow_id,
-                        serde_json::to_value(result)?,
-                    )?,
-                    Ok(Err(_)) | Err(_) => write_stdio_rpc_client_error_shared(
-                        &writer,
-                        Some(&request.id),
-                        Some(&request.workflow_id),
-                        &stdio_rpc_state_failure(ClientStateFailure::new(
-                            ClientStateFailureCode::StateOperationFailed,
-                        )),
-                    )?,
-                }
+                state::get(
+                    &writer,
+                    &request.id,
+                    &request.workflow_id,
+                    state_request,
+                    portable_data_dir,
+                )?;
             }
             StdioRpcMethod::StateSet {
                 request: state_request,
                 portable_data_dir,
             } => {
-                let execution = catch_unwind(AssertUnwindSafe(|| {
-                    let _guard = PortableDataDirOverrideGuard::set(portable_data_dir);
-                    licoup_native::platform::client_state::state_set(state_request)
-                }));
-                match execution {
-                    Ok(Ok(result)) => write_stdio_rpc_success_shared(
-                        &writer,
-                        &request.id,
-                        &request.workflow_id,
-                        serde_json::to_value(result)?,
-                    )?,
-                    Ok(Err(_)) | Err(_) => write_stdio_rpc_client_error_shared(
-                        &writer,
-                        Some(&request.id),
-                        Some(&request.workflow_id),
-                        &stdio_rpc_state_failure(ClientStateFailure::new(
-                            ClientStateFailureCode::StateOperationFailed,
-                        )),
-                    )?,
-                }
-            }
-            StdioRpcMethod::Orchestrator { params } => {
-                debug_assert_eq!(ORCHESTRATOR_REQUEST_METHOD, "orchestrator.request");
-                use licoup_native::platform::{
-                    orchestrator_control_plane::build_desktop_orchestrator_request,
-                    orchestrator_ipc::OrchestratorIpcClient,
-                    orchestrator_service::default_orchestrator_state_root,
-                };
-                let receipt = match default_orchestrator_state_root() {
-                    Ok(root) => match super::orchestrator::desktop_orchestrator_command(
-                        &params, &root,
-                    )
-                    .and_then(build_desktop_orchestrator_request)
-                    {
-                        Ok(request) => {
-                            let timeout = request
-                                .params
-                                .get("timeoutMs")
-                                .and_then(serde_json::Value::as_u64)
-                                .map(|millis| {
-                                    std::time::Duration::from_millis(
-                                        millis.saturating_add(2_000),
-                                    )
-                                })
-                                .unwrap_or(std::time::Duration::from_secs(10));
-                            OrchestratorIpcClient::new(root)
-                                .with_client_kind("desktop")
-                                .with_timeout(timeout)
-                                .execute(&request)
-                        }
-                        Err(_) => licoup_native::platform::orchestrator_ipc::OrchestratorIpcReceipt::failure(
-                            &request.id,
-                            "invalid_request",
-                        ),
-                    },
-                    Err(_) => licoup_native::platform::orchestrator_ipc::OrchestratorIpcReceipt::failure(
-                        &request.id,
-                        "invalid_request",
-                    ),
-                };
-                write_stdio_rpc_success_shared(
+                state::set(
                     &writer,
                     &request.id,
                     &request.workflow_id,
-                    serde_json::to_value(receipt)?,
+                    state_request,
+                    portable_data_dir,
                 )?;
             }
             StdioRpcMethod::Shutdown => {
@@ -163,6 +98,15 @@ where
                         &stdio_rpc_command_error(&error),
                     )?;
                     return recover_stdio_rpc_writer(writer);
+                }
+                if !conversation::join_until_shutdown(&mut conversation_workers) {
+                    write_stdio_rpc_client_error_shared(
+                        &writer,
+                        Some(&request.id),
+                        Some(&request.workflow_id),
+                        &stdio_rpc_client_error("conversation_shutdown_timeout"),
+                    )?;
+                    return Err(anyhow::anyhow!("conversation_shutdown_timeout"));
                 }
                 write_stdio_rpc_success_shared(
                     &writer,
@@ -177,87 +121,34 @@ where
                 params,
                 portable_data_dir,
             } => {
-                let sequence = Arc::new(AtomicU64::new(0));
-                let event_write_failed = Arc::new(AtomicBool::new(false));
-                let stream_guard = (operation == "send").then(|| {
-                    let writer = Arc::clone(&writer);
-                    let request_id = request.id.clone();
-                    let workflow_id = request.workflow_id.clone();
-                    let sequence = Arc::clone(&sequence);
-                    let event_write_failed = Arc::clone(&event_write_failed);
-                    licoup_native::platform::install_stream_sink(Box::new(move |event| {
-                        if event_write_failed.load(Ordering::Acquire) {
-                            return;
-                        }
-                        let next = sequence.load(Ordering::Acquire) + 1;
-                        if write_stdio_rpc_event(&writer, &request_id, &workflow_id, next, event)
-                            .is_err()
-                        {
-                            event_write_failed.store(true, Ordering::Release);
-                        } else {
-                            sequence.store(next, Ordering::Release);
-                        }
-                    }));
-                    licoup_native::platform::StreamSinkGuard
-                });
-                let execution = catch_unwind(AssertUnwindSafe(|| {
-                    let _guard = PortableDataDirOverrideGuard::set(portable_data_dir);
-                    licoup_native::platform::dispatch_lane_operation(&operation, &params)
-                        .map(licoup_native::ffi::commands::CliExecution::Json)
-                }));
-                drop(stream_guard);
-                let terminal_sequence = sequence.fetch_add(1, Ordering::AcqRel) + 1;
-                if event_write_failed.load(Ordering::Acquire) {
-                    let error = stdio_rpc_client_error("stream_protocol_failed");
-                    write_stdio_rpc_terminal_error(
+                if operation == "send" {
+                    if !conversation::has_capacity(&conversation_workers) {
+                        write_stdio_rpc_terminal_error(
+                            &writer,
+                            &request.id,
+                            &request.workflow_id,
+                            1,
+                            &stdio_rpc_client_error("conversation_capacity_exhausted"),
+                        )?;
+                        continue;
+                    }
+                    conversation_workers.push(conversation::spawn_send(
+                        Arc::clone(&writer),
+                        request.id,
+                        request.workflow_id,
+                        params,
+                        portable_data_dir,
+                    ));
+                } else {
+                    conversation::execute(
                         &writer,
                         &request.id,
                         &request.workflow_id,
-                        terminal_sequence,
-                        &error,
+                        &operation,
+                        params,
+                        portable_data_dir,
+                        false,
                     )?;
-                    continue;
-                }
-                match execution {
-                    Ok(Ok(licoup_native::ffi::commands::CliExecution::Json(value))) => {
-                        write_stdio_rpc_terminal_success(
-                            &writer,
-                            &request.id,
-                            &request.workflow_id,
-                            terminal_sequence,
-                            value,
-                        )?;
-                    }
-                    Ok(Err(error)) => {
-                        let error = error.client_error();
-                        write_stdio_rpc_terminal_error(
-                            &writer,
-                            &request.id,
-                            &request.workflow_id,
-                            terminal_sequence,
-                            &error,
-                        )?;
-                    }
-                    Err(_) => {
-                        let error = stdio_rpc_client_error("command_panicked");
-                        write_stdio_rpc_terminal_error(
-                            &writer,
-                            &request.id,
-                            &request.workflow_id,
-                            terminal_sequence,
-                            &error,
-                        )?;
-                    }
-                    Ok(Ok(_)) => {
-                        let error = stdio_rpc_client_error("command_failed");
-                        write_stdio_rpc_terminal_error(
-                            &writer,
-                            &request.id,
-                            &request.workflow_id,
-                            terminal_sequence,
-                            &error,
-                        )?;
-                    }
                 }
             }
             StdioRpcMethod::Catalog {
