@@ -137,6 +137,57 @@ fn native_history_ignores_command_tags_and_status_titles() {
 }
 
 #[test]
+fn generated_notifications_are_collapsed_metadata_and_never_session_titles() {
+    let dir = temp_dir("native-generated-metadata");
+    fs::write(
+        dir.join("metadata-session.json"),
+        r#"{
+          "sessions": [{
+            "sessionId": "metadata-session",
+            "messages": [
+              {"role": "user", "content": "<task-notification><status>failed</status><summary>Synthetic task failed</summary></task-notification>"},
+              {"role": "user", "content": "Keep this real request"},
+              {"role": "assistant", "content": "Done"}
+            ]
+          }]
+        }"#,
+    )
+    .unwrap();
+
+    let listed = conversation_list(&json!({
+        "agent": "claude-code",
+        "root": dir.to_string_lossy()
+    }))
+    .unwrap();
+    let exact = conversation_list(&json!({
+        "agent": "claude-code",
+        "root": dir.to_string_lossy(),
+        "sessionIds": ["metadata-session"]
+    }))
+    .unwrap();
+
+    for result in [&listed, &exact] {
+        let session = &result["sessions"][0];
+        assert_eq!(session["title"], "Keep this real request");
+        let messages = session["messages"].as_array().unwrap();
+        assert_eq!(
+            messages
+                .iter()
+                .filter(|message| message["role"] == "user")
+                .count(),
+            1
+        );
+        let metadata = messages
+            .iter()
+            .find(|message| message["role"] == "metadata")
+            .unwrap();
+        assert_eq!(metadata["layer"], "execution");
+        assert_eq!(metadata["cardType"], "metadata");
+        assert_eq!(metadata["collapsed"], true);
+    }
+}
+
+#[test]
 fn vscode_hosted_copilot_files_keep_copilot_as_source_client() {
     let dir = temp_dir("vscode-hosted-copilot");
     let transcript_dir = dir.join(
