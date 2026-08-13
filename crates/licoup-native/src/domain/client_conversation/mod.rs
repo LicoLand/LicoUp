@@ -11,8 +11,8 @@ mod store;
 pub use migration::{MigrationReport, migrate_legacy_state};
 pub use service::ConversationService;
 pub use store::{
-    ConversationStore, DEFAULT_EVENT_PAGE_SIZE, MAX_EVENT_PAGE_SIZE, NewEventPart, StoreError,
-    StoreResult,
+    ConversationRuntimeScope, ConversationStore, DEFAULT_EVENT_PAGE_SIZE, MAX_EVENT_PAGE_SIZE,
+    NewEventPart, StoreError, StoreResult,
 };
 
 use serde::{Deserialize, Serialize};

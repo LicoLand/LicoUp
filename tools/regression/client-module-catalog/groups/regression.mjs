@@ -1574,6 +1574,8 @@ export const REGRESSION_MODULES = Object.freeze([
         "apps/desktop/test/native_stdio_rpc_client_test.dart",
         "apps/desktop/test/native_stdio_rpc_line_framer_test.dart",
         "apps/desktop/test/native_stdio_rpc_protocol_test.dart",
+        "apps/desktop/test/native_persistent_runtime_test.dart",
+        "apps/desktop/test/agent_conversation_reattachment_test.dart",
         "tests/contract/client/native-stdio-rpc-source-bundle.test.mjs",
       ],
       command: command(

@@ -68,14 +68,17 @@ one scenario does not reach into another scenario's storage or interface.
 | MCP adapter | Bounded MCP/JSON-RPC validation, request-ID preservation, response forwarding, and one-shot approval for external effects |
 | Agent discovery | Concurrent probes of platform application sources, package managers, executable locations, and configured agent roots; normalized results are cached locally |
 | Adapter plugin management | One native catalog for packaged native, bundled ACP, and explicitly installable LicoUp bridges; lifecycle actions are confirmed and limited to LicoUp-owned state |
-| Agent conversations | Direct and group chat share the canonical Conversation model. Human and Agent Principals participate through explicit Memberships. New and native continued sessions keep process-local, wakeable progress; an active turn uses native steer when supported, otherwise an exact-session safe-boundary follow-up. Native sessions remain adapter-owned execution details bound privately to a Membership. A local [Subagent MCP](../protocols/subagent-mcp.md) dispatches only by `conversationId + membershipId` and never exposes native continuation paths |
+| Agent conversations | Direct and group chat share the canonical Conversation model. Human and Agent Principals participate through explicit Memberships. One client-local CLI host per portable data root owns every accepted packaged-adapter turn independently of GUI lifetime over private local IPC. New and native continued sessions keep process-local, wakeable progress in that host; an active turn uses native steer when supported, otherwise an exact-session safe-boundary follow-up. Replaceable observers attach by Conversation-scoped handle and process-local cursor; committed Conversation Events provide exact replay below each active turn's disposable 16 MiB cache floor. Observer loss is not cancel or steer. Native sessions remain adapter-owned execution details bound privately to a Membership. A local [Subagent MCP](../protocols/subagent-mcp.md) dispatches only by `conversationId + membershipId` and never exposes native continuation paths |
 | Adaptive Flywheel | One small LicoUp basic strategy is registered automatically. Imported ZIP packages contain root `workflow.json` plus optional `scripts/`; the Graph decides pipeline or Agent Loop behavior. Immutable revisions own bindings and exact authorization, while durable runs expose bounded ready-frontier scheduling and explicit terminal or recovery states. There is no Better Plan installation action and no ordinal Conversation compatibility path |
 | Skill management | Read-only discovery of existing local skills, recoverable removal to the system Trash, and invocation counters grouped by time window; no download, install, update, or synchronization channel |
 | Conversation management | Indexed list/get/event paging and search plus bounded canonical import/export; third-party native history is never rewritten |
 | Usage statistics | Local token aggregation by agent or model with immutable historical day/model rollups, current-day event details, a 90-day scan cache, 30-day default display, and selectable 7/30/90 display windows |
 | Endpoint-protection Preview | Current pairing, trust, encrypted peer messages/files, replay protection, endpoint-authenticated results, and Lico Arc candidate carriage; this retiring implementation has no future compatibility promise |
 
-Optional collaboration is not part of this default composition.
+Optional collaboration is absent from default startup and navigation. The
+client imports its trusted signing key through a separate action that is never
+a trust root by itself, then verifies the immutable package source and fixed
+signed external runner on loopback before an explicit start.
 
 The current agent and platform adaptation targets are generated in
 [Compatibility](../COMPATIBILITY.md). Station-wire and operation status is
@@ -126,6 +129,11 @@ Release artifacts, and store publication are separate claims. The current
 promoting simulator or source checks into physical-device or release proof.
 Caller-supplied flags or ordinary state files are not proof of approval;
 protected operations require the platform-owned authorization session.
+
+For an external MCP effect, the bridge may stage an exact preview, but it
+performs no exchange and cannot approve it. The native command requests fresh
+platform user presence for the canonical digest, then atomically claims the
+matching short-lived preview exactly once before exchange.
 
 ## Current retiring endpoint-protection Preview layers
 

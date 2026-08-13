@@ -13,10 +13,39 @@ struct ConversationServices {
 mod client_conversation;
 #[path = "server/conversation.rs"]
 mod conversation;
+pub(crate) use conversation::PersistentConversationRuntime;
 #[path = "server/state.rs"]
 mod state;
 
-pub(crate) fn serve_stdio_rpc<R, W, F>(mut reader: R, writer: W, mut execute: F) -> Result<W>
+pub(crate) fn serve_stdio_rpc<R, W, F>(reader: R, writer: W, execute: F) -> Result<W>
+where
+    R: BufRead,
+    W: Write + Send + 'static,
+    F: FnMut(Vec<String>, Option<PathBuf>) -> Result<licoup_native::ffi::commands::CliExecution>,
+{
+    serve_stdio_rpc_inner(reader, writer, execute, None)
+}
+
+pub(crate) fn serve_stdio_rpc_with_runtime<R, W, F>(
+    reader: R,
+    writer: W,
+    execute: F,
+    conversation_runtime: PersistentConversationRuntime,
+) -> Result<W>
+where
+    R: BufRead,
+    W: Write + Send + 'static,
+    F: FnMut(Vec<String>, Option<PathBuf>) -> Result<licoup_native::ffi::commands::CliExecution>,
+{
+    serve_stdio_rpc_inner(reader, writer, execute, Some(conversation_runtime))
+}
+
+fn serve_stdio_rpc_inner<R, W, F>(
+    mut reader: R,
+    writer: W,
+    mut execute: F,
+    conversation_runtime: Option<PersistentConversationRuntime>,
+) -> Result<W>
 where
     R: BufRead,
     W: Write + Send + 'static,
@@ -119,7 +148,23 @@ where
                 params,
                 portable_data_dir,
             } => {
+                let persistent_operation = matches!(
+                    operation.as_str(),
+                    "send" | "stream" | "steer" | "cancel" | "active" | "attach"
+                );
+                if persistent_operation && conversation_runtime.is_none() {
+                    write_stdio_rpc_error_shared(
+                        &writer,
+                        Some(&request.id),
+                        Some(&request.workflow_id),
+                        "persistent_conversation_transport_required",
+                    )?;
+                    continue;
+                }
                 if operation == "send" {
+                    let runtime = conversation_runtime
+                        .as_ref()
+                        .expect("persistent operation validated");
                     if !conversation::has_capacity(&conversation_workers) {
                         write_stdio_rpc_terminal_error(
                             &writer,
@@ -130,14 +175,74 @@ where
                         )?;
                         continue;
                     }
-                    conversation_workers.push(conversation::spawn_send(
+                    match conversation::spawn_send(
                         Arc::clone(&writer),
-                        request.id,
-                        request.workflow_id,
+                        request.id.clone(),
+                        request.workflow_id.clone(),
                         params,
                         portable_data_dir,
-                    ));
+                        runtime.clone(),
+                    ) {
+                        Ok(worker) => conversation_workers.push(worker),
+                        Err(error) => write_stdio_rpc_terminal_error(
+                            &writer,
+                            &request.id,
+                            &request.workflow_id,
+                            1,
+                            &error,
+                        )?,
+                    }
+                } else if operation == "attach" {
+                    let runtime = conversation_runtime
+                        .as_ref()
+                        .expect("persistent operation validated");
+                    match conversation::spawn_attach(
+                        Arc::clone(&writer),
+                        request.id.clone(),
+                        request.workflow_id.clone(),
+                        params,
+                        runtime.clone(),
+                    ) {
+                        Ok(worker) => conversation_workers.push(worker),
+                        Err(error) => write_stdio_rpc_terminal_error(
+                            &writer,
+                            &request.id,
+                            &request.workflow_id,
+                            1,
+                            &error,
+                        )?,
+                    }
+                } else if operation == "active" {
+                    let runtime = conversation_runtime
+                        .as_ref()
+                        .expect("persistent operation validated");
+                    write_stdio_rpc_success_shared(
+                        &writer,
+                        &request.id,
+                        &request.workflow_id,
+                        runtime.active(&params),
+                    )?;
                 } else {
+                    let params = if matches!(operation.as_str(), "steer" | "cancel") {
+                        let runtime = conversation_runtime
+                            .as_ref()
+                            .expect("persistent operation validated");
+                        match runtime.scoped_control_params(&params) {
+                            Ok(params) => params,
+                            Err(error) => {
+                                write_stdio_rpc_terminal_error(
+                                    &writer,
+                                    &request.id,
+                                    &request.workflow_id,
+                                    1,
+                                    &error,
+                                )?;
+                                continue;
+                            }
+                        }
+                    } else {
+                        params
+                    };
                     conversation::execute(
                         &writer,
                         &request.id,
@@ -146,6 +251,7 @@ where
                         params,
                         portable_data_dir,
                         false,
+                        None,
                     )?;
                 }
             }
@@ -153,9 +259,19 @@ where
                 params,
                 portable_data_dir,
             } => {
+                if client_conversation::requires_worker(&params) && conversation_runtime.is_none() {
+                    write_stdio_rpc_error_shared(
+                        &writer,
+                        Some(&request.id),
+                        Some(&request.workflow_id),
+                        "persistent_conversation_transport_required",
+                    )?;
+                    continue;
+                }
                 let service = match conversation_service(
                     &mut conversation_services,
                     portable_data_dir.clone(),
+                    conversation_runtime.as_ref(),
                 ) {
                     Ok(service) => service,
                     Err(error) => {
@@ -234,6 +350,32 @@ where
                 args,
                 portable_data_dir,
             } => {
+                if rpc_args_dispatch_conversation(&args) {
+                    if conversation_runtime.is_some() {
+                        match licoup_native::ffi::commands::admit_cli_command(args) {
+                            Ok(_) => write_stdio_rpc_error_shared(
+                                &writer,
+                                Some(&request.id),
+                                Some(&request.workflow_id),
+                                "persistent_conversation_transport_required",
+                            )?,
+                            Err(error) => write_stdio_rpc_client_error_shared(
+                                &writer,
+                                Some(&request.id),
+                                Some(&request.workflow_id),
+                                &stdio_rpc_command_error(&error),
+                            )?,
+                        }
+                    } else {
+                        write_stdio_rpc_error_shared(
+                            &writer,
+                            Some(&request.id),
+                            Some(&request.workflow_id),
+                            "persistent_conversation_transport_required",
+                        )?;
+                    }
+                    continue;
+                }
                 if rpc_command_reads_external_stdin(&args) {
                     write_stdio_rpc_error_shared(
                         &writer,
@@ -300,6 +442,20 @@ where
     }
 }
 
+fn rpc_args_dispatch_conversation(args: &[String]) -> bool {
+    matches!(
+        args,
+        [domain, conversation, operation, ..]
+            if domain == "agent"
+                && conversation == "conversation"
+                && matches!(operation.as_str(), "send" | "stream" | "steer" | "cancel")
+    ) || matches!(
+        args,
+        [conversation, execute, ..]
+            if conversation == "conversation" && execute == "execute"
+    )
+}
+
 /// Open (once per portable data dir) the process-owned Conversation service.
 /// The returned handle is cloned for every request and spawned worker, so all
 /// sessions reuse one bounded SQLite pool instead of opening per-call
@@ -308,6 +464,7 @@ where
 fn conversation_service(
     services: &mut ConversationServices,
     portable_data_dir: Option<PathBuf>,
+    runtime: Option<&PersistentConversationRuntime>,
 ) -> Result<ConversationService> {
     if let Some(position) = services
         .entries
@@ -324,7 +481,14 @@ fn conversation_service(
     }
     let _guard = PortableDataDirOverrideGuard::set(portable_data_dir.clone());
     let root = licoup_native::platform::paths::portable_data_dir()?;
-    let service = ConversationService::open(&root)?;
+    let mut service = ConversationService::open(&root)?;
+    if let Some(runtime) = runtime {
+        let runtime = runtime.clone();
+        let runtime_portable_data_dir = portable_data_dir.clone();
+        service = service.with_native_turn_sender(move |params| {
+            runtime.dispatch_sync(params, runtime_portable_data_dir.clone())
+        });
+    }
     if services.entries.len() == MAX_CONVERSATION_SERVICE_ROOTS {
         services.entries.pop_front();
     }

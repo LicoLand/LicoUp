@@ -76,6 +76,17 @@ result, and error semantics. If the native interface cannot accept guidance
 during a turn, the client may project live progress but waits for that turn to
 finish before starting the next one.
 
+Every packaged desktop adapter runs accepted turns in one client-local CLI
+host per portable data root. Closing LicoUp removes only the GUI observer: it
+does not cancel, steer, truncate, or time out the active turn. A replacement
+client or stdio proxy attaches to the same Conversation-scoped turn handle
+with its process-local cursor (zero after a full GUI restart), replays committed
+frames in order, and then continues live. The host uses private client-local IPC
+only. Canonical Conversation events own durable replay; a disposable 16 MiB
+cache per active turn serves the hot suffix and a cursor below its floor
+falls back to indexed Conversation storage. The host exits after its final
+client is gone and every accepted turn is terminal.
+
 Each user message is followed by one turn lifecycle that merges with contiguous
 reasoning and tool activity. Generic provider bookkeeping is grouped into a
 quiet runtime-log row instead of appearing as another process card. Expanded
