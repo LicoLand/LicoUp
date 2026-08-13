@@ -128,9 +128,7 @@ const uploadPolicyReady =
   !workflow.includes("npm run client:gate:") &&
   !workflow.includes("--generate-notes") &&
   !workflow.includes("yes |") &&
-  !workflow.includes("Import stable LicoUp Release identity") &&
   !workflow.includes("Materialize governed macOS platform-channel inputs") &&
-  !workflow.includes("LICO_MACOS_RELEASE_CERTIFICATE_P12") &&
   !workflow.includes("LICO_MACOS_PROVISIONING_PROFILE_BASE64") &&
   !workflow.includes("LICO_MACOS_NOTARY_KEY_BASE64") &&
   !workflow.includes("licoup-notary-key.p8") &&

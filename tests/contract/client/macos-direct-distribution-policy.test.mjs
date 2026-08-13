@@ -21,6 +21,7 @@ import {
   MACOS_DIRECT_COMMAND_KINDS,
   MACOS_DIRECT_DISTRIBUTION_BUNDLE_ID,
   MACOS_DIRECT_DISTRIBUTION_PRODUCT_NAME,
+  MACOS_DIRECT_PROTECTED_ENVIRONMENT,
   MACOS_DIRECT_TOOLCHAIN,
   macosDistributionFailureCode,
   macosDistributionManifestClaims,
@@ -369,8 +370,12 @@ test("downstream macOS verifiers consume the corrected entitlement authority", (
   assert.ok(releasePreflight.includes("ProductionRelease.entitlements"));
   assert.ok(updatePreflight.includes("ProductionRelease.entitlements"));
   assert.equal(packageManifest.includes("client:install:macos:identity"), false);
-  assert.equal(localInstall.includes("LICO_MACOS_RELEASE_SIGNING_IDENTITY"), false);
   assert.equal(localInstall.includes("client-macos-local-identity-install.mjs"), false);
+  assert.deepEqual(MACOS_DIRECT_PROTECTED_ENVIRONMENT.includes(
+    "LICO_MACOS_SIGNING_IDENTITY",
+  ), true);
+  assert.ok(distributionBuilder.includes("developerIdApplication !== true"));
+  assert.ok(distributionBuilder.includes('"notarytool", "submit"'));
   for (const cargoNoticeControl of [
     '"metadata"',
     '"--locked"',

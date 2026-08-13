@@ -344,7 +344,6 @@ function assertPreflightIsolation(marker) {
     LICO_MACOS_NOTARY_KEY_ID: marker,
     LICO_MACOS_NOTARY_ISSUER_ID: marker,
     LICO_MACOS_NOTARY_KEY_PATH: marker,
-    LICO_MACOS_RELEASE_SIGNING_IDENTITY: marker,
     LICO_MACOS_RELEASE_SIGNING_KEYCHAIN: marker,
   });
   const { fs, operations } = virtualFilesystem();
@@ -703,6 +702,8 @@ export function platformChannelHarness({
     inventoryCode: () => inventory,
     inspectCodePolicy: inspectPolicy,
     inspectContainerSignature: inspectContainer,
+    hashFile: () => "a".repeat(64),
+    digestTree: () => `sha256:${"b".repeat(64)}`,
     installReleaseMaterials: (targetAppPath, fs) => {
       const resources = path.join(targetAppPath, "Contents", "Resources");
       fs.mkdir(resources, { recursive: true });
