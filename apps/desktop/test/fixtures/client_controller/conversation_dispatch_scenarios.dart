@@ -1,4 +1,4 @@
-import 'conversation_orchestration_scenarios.dart' as orchestration;
+import 'package:path/path.dart' as p;
 
 import 'support/client_controller_scenario_dependencies.dart';
 import 'support/client_controller_scenario_json.dart';
@@ -86,7 +86,9 @@ void registerClientConversationDispatchScenarios() {
       final first = controller.sendConversationMessage('First turn');
       for (
         var attempt = 0;
-        attempt < 20 && service.runtimeMessageCalls == 0;
+        attempt < 20 &&
+            (service.runtimeMessageCalls == 0 ||
+                controller.sendingConversationTurnId.isEmpty);
         attempt += 1
       ) {
         await Future<void>.delayed(Duration.zero);
@@ -97,6 +99,7 @@ void registerClientConversationDispatchScenarios() {
       expect(service.runtimeSteerCalls, 1);
       expect(service.lastRuntimeSteerRequest['agent'], 'codex');
       expect(service.lastRuntimeSteerRequest['sessionId'], 'native-session-1');
+      expect(service.lastRuntimeSteerRequest['turnId'], 'native-turn-1');
       expect(service.lastRuntimeSteerRequest['text'], 'Steer now');
       expect(service.runtimeMessageCalls, 1);
       expect(controller.queuedConversationTurnCount, 0);
@@ -130,7 +133,9 @@ void registerClientConversationDispatchScenarios() {
       final first = controller.sendConversationMessage('First turn');
       for (
         var attempt = 0;
-        attempt < 20 && service.runtimeMessageCalls == 0;
+        attempt < 20 &&
+            (service.runtimeMessageCalls == 0 ||
+                controller.sendingConversationTurnId.isEmpty);
         attempt += 1
       ) {
         await Future<void>.delayed(Duration.zero);
@@ -173,7 +178,9 @@ void registerClientConversationDispatchScenarios() {
     final first = controller.sendConversationMessage('First turn');
     for (
       var attempt = 0;
-      attempt < 20 && service.runtimeMessageCalls == 0;
+      attempt < 20 &&
+          (service.runtimeMessageCalls == 0 ||
+              controller.sendingConversationTurnId.isEmpty);
       attempt += 1
     ) {
       await Future<void>.delayed(Duration.zero);
@@ -403,6 +410,7 @@ void registerClientConversationDispatchScenarios() {
             status: 'detected',
             configured: true,
             confidence: 0.9,
+            binaryPath: '/test-bin/codex',
             adapterStatus: 'implemented',
             modelCatalog: const {
               'status': 'available',
@@ -430,6 +438,450 @@ void registerClientConversationDispatchScenarios() {
       expect(service.runtimeMessageCalls, 1);
       expect(service.lastRuntimeMessageRequest['model'], 'model-canary');
       expect(service.lastRuntimeMessageRequest['reasoningEffort'], 'high');
+    },
+  );
+
+  test(
+    'reasoning-effort catalog resolves while the model stays on the agent default',
+    () async {
+      final service = FakeAgentService()
+        ..scanTargetsResult = [
+          TargetCandidate(
+            target: 'codex',
+            label: 'Codex',
+            kind: 'cli',
+            status: 'detected',
+            configured: true,
+            confidence: 0.9,
+            binaryPath: '/test-bin/codex',
+            adapterStatus: 'implemented',
+            modelCatalog: const {
+              'status': 'available',
+              'defaultModel': 'model-canary',
+              'models': [
+                {
+                  'name': 'model-canary',
+                  'reasoningEfforts': ['low', 'high'],
+                },
+                {'name': 'model-plain'},
+              ],
+            },
+            adapterCapabilities: parityReadyAdapterCapabilities,
+            supportedActions: const ['runtime.message.send'],
+          ),
+        ];
+      final controller = ClientController(agentService: service);
+      addTearDown(controller.dispose);
+
+      await controller.scanTargets();
+      await controller.selectConversationAgent('codex');
+
+      // Model left on Auto: the composer must still offer the efforts the
+      // agent's own default model would run with.
+      expect(controller.selectedConversationModel, isEmpty);
+      expect(controller.selectedConversationReasoningEffortOptions, [
+        'low',
+        'high',
+      ]);
+
+      controller.selectConversationReasoningEffort('high');
+      expect(controller.selectedConversationReasoningEffort, 'high');
+      expect(controller.lastError, isEmpty);
+    },
+  );
+
+  test(
+    'selected working directory survives the new-session projection',
+    () async {
+      final workingDirectory = [
+        '',
+        'synthetic',
+        'workspaces',
+        'project-alpha',
+      ].join('/');
+      final service = FakeAgentService();
+      final controller = ClientController(agentService: service);
+      addTearDown(controller.dispose);
+
+      await controller.scanTargets();
+      await controller.selectConversationAgent('codex');
+      controller.selectNewConversationWorkingDirectory(workingDirectory);
+
+      expect(controller.selectedConversationWorkingDirectory, workingDirectory);
+
+      await controller.sendConversationMessage('Create in this project');
+
+      expect(
+        service.lastRuntimeMessageRequest['workingDirectory'],
+        workingDirectory,
+      );
+      expect(
+        controller.selectedConversationSession?.workingDirectory,
+        workingDirectory,
+      );
+      expect(
+        controller.selectedConversationSession?.title,
+        'Create in this project',
+      );
+
+      final nativeSessionId =
+          controller.selectedConversationSession?.nativeSessionId ?? '';
+      expect(nativeSessionId, isNotEmpty);
+      await controller.reloadSelectedConversationSessionsAfterSend(
+        'codex',
+        preferredNativeSessionId: nativeSessionId,
+      );
+
+      expect(controller.selectedConversationWorkingDirectory, workingDirectory);
+      expect(
+        controller.selectedConversationSession?.workingDirectory,
+        workingDirectory,
+      );
+
+      await controller.sendConversationMessage('Continue in this project');
+
+      expect(
+        service.runtimeMessageRequests
+            .map((request) => request['workingDirectory'])
+            .toList(),
+        [workingDirectory, workingDirectory],
+      );
+    },
+  );
+
+  test(
+    'local conversation defaults to the client-owned agent workspace',
+    () async {
+      final home =
+          (Platform.environment['HOME'] ??
+                  Platform.environment['USERPROFILE'] ??
+                  '')
+              .trim();
+      expect(home, isNotEmpty);
+      final expected = localConversationWorkingDirectoryFallback(
+        agentId: 'codex',
+      );
+      final service = FakeAgentService();
+      final controller = ClientController(agentService: service);
+      addTearDown(controller.dispose);
+
+      await controller.scanTargets();
+      await controller.selectConversationAgent('codex');
+
+      expect(controller.selectedConversationWorkingDirectory, expected);
+      expect(expected, isNot(home));
+      expect(expected, isNot('/'));
+      expect(isUnboundedLocalAgentWorkspace(expected), isFalse);
+
+      await controller.sendConversationMessage('where are we');
+
+      expect(service.lastRuntimeMessageRequest['workingDirectory'], expected);
+      // The client-owned fallback is used for the turn, but not persisted as
+      // the session's project path — relaunch must be free to bind native cwd.
+      expect(controller.selectedConversationSession?.workingDirectory, isEmpty);
+    },
+  );
+
+  test(
+    'new conversation reuses the newest historical working directory',
+    () async {
+      const historicalDirectory = '/synthetic/workspaces/history-project';
+      final service = FakeAgentService()
+        ..conversationSessions = {
+          'codex': [
+            conversationSessionJson(
+              id: 'older',
+              agentId: 'codex',
+              text: 'older turn',
+              updatedAt: '2026-01-01T00:00:00Z',
+              workingDirectory: '/synthetic/workspaces/older-project',
+            ),
+            conversationSessionJson(
+              id: 'newer',
+              agentId: 'codex',
+              text: 'newer turn',
+              updatedAt: '2026-06-01T00:00:00Z',
+              workingDirectory: historicalDirectory,
+            ),
+          ],
+        };
+      final controller = ClientController(agentService: service);
+      addTearDown(controller.dispose);
+
+      await controller.scanTargets();
+      await controller.selectConversationAgent('codex');
+
+      expect(controller.preparingNewConversation, isTrue);
+      expect(
+        controller.selectedConversationWorkingDirectory,
+        historicalDirectory,
+      );
+
+      await controller.sendConversationMessage('continue in history project');
+
+      expect(
+        service.lastRuntimeMessageRequest['workingDirectory'],
+        historicalDirectory,
+      );
+    },
+  );
+
+  test(
+    'a session stuck on agent-workspace recovers a historical project path',
+    () async {
+      final historicalDirectory = Directory.systemTemp
+          .createTempSync('licoup-history-cwd-')
+          .path;
+      addTearDown(() {
+        final directory = Directory(historicalDirectory);
+        if (directory.existsSync()) {
+          directory.deleteSync(recursive: true);
+        }
+      });
+      final fallback = localConversationWorkingDirectoryFallback(
+        agentId: 'codex',
+      );
+      final service = FakeAgentService()
+        ..conversationSessions = {
+          'codex': [
+            conversationSessionJson(
+              id: 'stuck',
+              agentId: 'codex',
+              text: 'stuck on fallback',
+              updatedAt: '2026-07-01T00:00:00Z',
+              workingDirectory: fallback,
+            ),
+            conversationSessionJson(
+              id: 'history',
+              agentId: 'codex',
+              text: 'history project',
+              updatedAt: '2026-06-01T00:00:00Z',
+              workingDirectory: historicalDirectory,
+            ),
+          ],
+        };
+      final controller = ClientController(agentService: service);
+      addTearDown(controller.dispose);
+
+      await controller.scanTargets();
+      await controller.selectConversationAgent('codex');
+      controller.selectConversationSession('stuck');
+
+      expect(controller.preparingNewConversation, isFalse);
+      expect(
+        controller.selectedConversationSession?.workingDirectory,
+        fallback,
+      );
+      expect(
+        controller.selectedConversationWorkingDirectory,
+        historicalDirectory,
+      );
+
+      await controller.sendConversationMessage('leave the fallback workspace');
+
+      expect(
+        service.lastRuntimeMessageRequest['workingDirectory'],
+        historicalDirectory,
+      );
+    },
+  );
+
+  test(
+    'turn-bound readback keeps catalog project directories for the agent',
+    () async {
+      final projectDirectory = Directory.systemTemp
+          .createTempSync('licoup-turn-cwd-')
+          .path;
+      addTearDown(() {
+        final directory = Directory(projectDirectory);
+        if (directory.existsSync()) {
+          directory.deleteSync(recursive: true);
+        }
+      });
+      const nativeSessionId = 'native-turn-cwd';
+      final service = FakeAgentService()
+        ..conversationSessions = {
+          'codex': [
+            conversationSessionJson(
+              id: 'catalog',
+              agentId: 'codex',
+              nativeSessionId: nativeSessionId,
+              text: 'catalog project',
+              updatedAt: '2026-08-01T00:00:00Z',
+              workingDirectory: projectDirectory,
+            ),
+          ],
+        };
+      final controller = ClientController(agentService: service);
+      addTearDown(controller.dispose);
+
+      await controller.scanTargets();
+      await controller.selectConversationAgent('codex');
+      expect(
+        controller.selectedConversationWorkingDirectory,
+        projectDirectory,
+      );
+
+      await controller.conversationCommitTurnBoundNativeReadback(
+        agentId: 'codex',
+        nativeSessionId: nativeSessionId,
+        messages: [
+          const AgentConversationMessage(
+            id: 'u1',
+            role: 'user',
+            text: 'follow up',
+            createdAt: '2026-08-05T00:00:00Z',
+          ),
+          const AgentConversationMessage(
+            id: 'a1',
+            role: 'assistant',
+            text: 'ok',
+            createdAt: '2026-08-05T00:00:01Z',
+          ),
+        ],
+        mergeWithSelectedSession: true,
+        workingDirectory: localConversationWorkingDirectoryFallback(
+          agentId: 'codex',
+        ),
+      );
+
+      expect(
+        controller.selectedConversationWorkingDirectory,
+        projectDirectory,
+        reason: 'composer must not fall back to agent-workspace after readback',
+      );
+      expect(
+        controller.selectedConversationSessions.any(
+          (session) =>
+              isUsableLocalConversationWorkingDirectory(
+                session.workingDirectory,
+              ),
+        ),
+        isTrue,
+      );
+    },
+  );
+
+  test(
+    'local workspace capsule stays selectable outside a new-conversation draft',
+    () async {
+      final service = FakeAgentService();
+      final controller = ClientController(agentService: service);
+      addTearDown(controller.dispose);
+
+      await controller.scanTargets();
+      await controller.selectConversationAgent('codex');
+      expect(controller.preparingNewConversation, isTrue);
+      expect(controller.canSelectNewConversationWorkingDirectory, isTrue);
+      expect(
+        controller.selectedConversationWorkingDirectory,
+        localConversationWorkingDirectoryFallback(agentId: 'codex'),
+      );
+
+      // Selecting a session abandons the new-conversation draft; the shared
+      // client-owned fallback must remain clickable so the user can rebind.
+      controller.conversationSessionsByAgent = {
+        'codex': [
+          AgentConversationSession(
+            id: 'codex-1',
+            agentId: 'codex',
+            title: 'Prior turn',
+            createdAt: '2026-01-01T00:00:00Z',
+            updatedAt: '2026-01-02T00:00:00Z',
+            messages: const [],
+            workingDirectory: localConversationWorkingDirectoryFallback(
+              agentId: 'codex',
+            ),
+          ),
+        ],
+      };
+      controller.selectConversationSession('codex-1');
+      expect(controller.preparingNewConversation, isFalse);
+      expect(controller.canSelectNewConversationWorkingDirectory, isTrue);
+      expect(
+        controller.selectedConversationWorkingDirectory,
+        localConversationWorkingDirectoryFallback(agentId: 'codex'),
+      );
+
+      final project = ['', 'synthetic', 'workspaces', 'rebind-project'].join(
+        '/',
+      );
+      controller.selectNewConversationWorkingDirectory(project);
+      expect(controller.lastError, isEmpty);
+      expect(controller.selectedConversationWorkingDirectory, project);
+    },
+  );
+
+  test('a personal tree root is refused as an agent workspace', () async {
+    final home =
+        (Platform.environment['HOME'] ??
+                Platform.environment['USERPROFILE'] ??
+                '')
+            .trim();
+    expect(home, isNotEmpty);
+    final service = FakeAgentService();
+    final controller = ClientController(agentService: service);
+    addTearDown(controller.dispose);
+
+    await controller.scanTargets();
+    await controller.selectConversationAgent('codex');
+    final defaultWorkspace = controller.selectedConversationWorkingDirectory;
+
+    controller.selectNewConversationWorkingDirectory(home);
+
+    expect(controller.lastError, 'conversation_working_directory_unbounded');
+    expect(controller.selectedConversationWorkingDirectory, defaultWorkspace);
+
+    controller.selectNewConversationWorkingDirectory(p.join(home, 'Pictures'));
+
+    expect(controller.lastError, 'conversation_working_directory_unbounded');
+    expect(controller.selectedConversationWorkingDirectory, defaultWorkspace);
+
+    final project = p.join(home, 'Documents', 'synthetic-project');
+    controller.selectNewConversationWorkingDirectory(project);
+
+    expect(controller.lastError, isEmpty);
+    expect(controller.selectedConversationWorkingDirectory, project);
+  });
+
+  test(
+    'new-conversation working directory selection persists per agent',
+    () async {
+      final directoryA = ['', 'synthetic', 'workspaces', 'project-a'].join('/');
+      final directoryB = ['', 'synthetic', 'workspaces', 'project-b'].join('/');
+      TargetCandidate fixtureTarget(String id, String label) => TargetCandidate(
+        target: id,
+        label: label,
+        kind: 'cli',
+        status: 'detected',
+        configured: true,
+        confidence: 0.9,
+        binaryPath: ['', 'opt', 'lico-test', 'bin', id].join('/'),
+        adapterStatus: 'implemented',
+        adapterCapabilities: parityReadyAdapterCapabilities,
+        supportedActions: const ['runtime.message.send'],
+      );
+      final service = FakeAgentService()
+        ..scanTargetsResult = [
+          fixtureTarget('codex', 'Codex'),
+          fixtureTarget('opencode', 'OpenCode'),
+        ];
+      final controller = ClientController(agentService: service);
+      addTearDown(controller.dispose);
+
+      await controller.scanTargets();
+      await controller.selectConversationAgent('codex');
+      controller.selectNewConversationWorkingDirectory(directoryA);
+      await controller.selectConversationAgent('opencode');
+      controller.selectNewConversationWorkingDirectory(directoryB);
+
+      expect(controller.selectedConversationWorkingDirectory, directoryB);
+
+      await controller.selectConversationAgent('codex');
+      expect(controller.selectedConversationWorkingDirectory, directoryA);
+
+      await controller.selectConversationAgent('opencode');
+      expect(controller.selectedConversationWorkingDirectory, directoryB);
     },
   );
 
@@ -519,17 +971,6 @@ void registerClientConversationDispatchScenarios() {
         'returned-session-not-yet-indexed',
       );
       expect(controller.lastError, isEmpty);
-      expect(
-        service.cliCalls.any(
-          (args) =>
-              args.length >= 2 &&
-              args[0] == 'conversations' &&
-              args.contains('--session-id') &&
-              args.contains('returned-session-not-yet-indexed'),
-        ),
-        isTrue,
-      );
-
       await controller.sendConversationMessage('continue the exact session');
 
       expect(service.runtimeMessageCalls, 2);
@@ -557,8 +998,6 @@ void registerClientConversationDispatchScenarios() {
       );
     },
   );
-
-  orchestration.registerClientConversationOrchestrationScenarios();
 }
 
 TargetCandidate _steerReadyTarget({bool interruptSteer = true}) {
@@ -569,6 +1008,7 @@ TargetCandidate _steerReadyTarget({bool interruptSteer = true}) {
     status: 'detected',
     configured: true,
     confidence: 1,
+    binaryPath: '/test-bin/codex',
     adapterStatus: 'implemented',
     adapterCapabilities: {
       ...parityReadyAdapterCapabilities,

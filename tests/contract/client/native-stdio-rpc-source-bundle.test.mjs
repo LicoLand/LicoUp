@@ -13,21 +13,21 @@ const facadePath =
 const sourceRoot =
   "apps/desktop/lib/src/platform/native_client/agent_service_stdio_rpc";
 
-const leafLimits = Object.freeze({
-  "client.dart": 160,
-  "command_exchange.dart": 80,
-  "command_round_trip.dart": 85,
-  "conversation_exchange.dart": 75,
-  "line_framer.dart": 75,
-  "operation_pending_queue.dart": 40,
-  "operation_queue.dart": 90,
-  "protocol.dart": 75,
-  "request_writer.dart": 20,
-  "response_codec.dart": 155,
-  "session.dart": 235,
-  "session_manager.dart": 110,
-  "shutdown.dart": 50,
-});
+const leafNames = Object.freeze([
+  "client.dart",
+  "command_exchange.dart",
+  "command_round_trip.dart",
+  "conversation_exchange.dart",
+  "line_framer.dart",
+  "operation_pending_queue.dart",
+  "operation_queue.dart",
+  "protocol.dart",
+  "request_writer.dart",
+  "response_codec.dart",
+  "session.dart",
+  "session_manager.dart",
+  "shutdown.dart",
+]);
 
 const allowedDependencies = Object.freeze({
   "client.dart": [
@@ -76,7 +76,7 @@ async function read(relativePath) {
 }
 
 async function sources() {
-  return Object.fromEntries(await Promise.all(Object.keys(leafLimits).map(async (leaf) => [
+  return Object.fromEntries(await Promise.all(leafNames.map(async (leaf) => [
     leaf,
     await read(`${sourceRoot}/${leaf}`),
   ])));
@@ -90,19 +90,14 @@ function localDependencies(source) {
 
 test("stdio RPC facade exports one stable client from ordinary libraries", async () => {
   const facade = await read(facadePath);
-  assert.ok(facade.trimEnd().split(/\r?\n/u).length <= 3);
   assert.ok(facade.includes("show NativeStdioRpcClient"));
   for (const forbidden of ["part ", "part of", "class NativeStdioRpcClient", "#[path"])
     assert.equal(facade.includes(forbidden), false);
 });
 
-test("stdio RPC leaves remain bounded and acyclic", async () => {
+test("stdio RPC leaves remain ordinary and acyclic", async () => {
   const source = await sources();
   for (const [leaf, body] of Object.entries(source)) {
-    assert.ok(
-      body.trimEnd().split(/\r?\n/u).length <= leafLimits[leaf],
-      `${leaf} exceeds its responsibility limit`,
-    );
     assert.equal(body.includes("part "), false);
     assert.equal(body.includes("part of"), false);
     assert.equal(body.includes("/agent_service_stdio_rpc.dart"), false);

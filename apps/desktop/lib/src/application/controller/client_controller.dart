@@ -29,6 +29,8 @@ import 'package:licoup/src/application/features/agents/policy/conversation_refre
 import 'package:licoup/src/application/features/layout/layout_manager.dart';
 import 'package:licoup/src/application/features/mobile_relay/controller/mobile_home_layout_controller.dart';
 import 'package:licoup/src/application/features/mobile_relay/controller/mobile_relay_controller.dart';
+import 'package:licoup/src/application/features/messaging/messaging_notification_center.dart';
+import 'package:licoup/src/application/features/models/controller/llm_gateway_lifecycle_controller.dart';
 import 'package:licoup/src/application/features/mobile_relay/controller/secure_mesh_controller.dart';
 import 'package:licoup/src/application/features/navigation/controller/client_navigation_controller.dart';
 import 'package:licoup/src/application/features/plugin_management/controller/adapter_plugin_controller.dart';
@@ -47,6 +49,7 @@ import 'package:licoup/src/backend/features/agents/services/agent_usage_service.
 import 'package:licoup/src/backend/features/mobile_relay/services/mobile_home_layout_service.dart';
 import 'package:licoup/src/backend/features/settings/services/client_update_service.dart';
 import 'package:licoup/src/backend/features/skill_hub/services/skill_hub_preferences_service.dart';
+import 'package:licoup/src/contracts/llm_vault_authorization.dart';
 import 'package:licoup/src/contracts/mobile_home_layout_repository.dart';
 import 'package:licoup/src/contracts/catalog_convergence/catalog_convergence_gateway.dart';
 import 'package:licoup/src/contracts/agent_orchestration_target.dart';
@@ -120,6 +123,7 @@ class ClientController extends AgentOrchestrationController
     this.conversationRefreshPolicy = const ConversationRefreshPolicy(),
     bool? mobileClientRuntimePlatformOverride,
     CatalogConvergenceGateway? catalogConvergenceGateway,
+    Duration llmGatewayMonitorInterval = const Duration(seconds: 5),
   }) : portableData = portableData ?? PortableDataRoot(),
        agentService =
            agentService ??
@@ -213,12 +217,26 @@ class ClientController extends AgentOrchestrationController
     bootstrapController.addListener(notifyClientStateChanged);
     archiveQueryController.addListener(notifyClientStateChanged);
     archiveDestinationController.addListener(notifyClientStateChanged);
+    llmGatewayLifecycleController = LlmGatewayLifecycleController(
+      agentService: this.agentService,
+      readSettings: agentWorkspaceReadSettingsState,
+      monitorInterval: llmGatewayMonitorInterval,
+    )..addListener(notifyClientStateChanged);
+    messagingNotificationCenter = MessagingNotificationCenter()
+      ..addListener(notifyClientStateChanged);
   }
 
   @override
   final PortableDataRoot portableData;
   @override
+  Object get agentWorkspacePortableData => portableData;
+  @override
+  get agentConversationProjectionRepository =>
+      _components.agentConversationProjectionRepository;
+  @override
   final AgentService agentService;
+  @override
+  final LlmVaultAuthorization llmVaultAuthorization = LlmVaultAuthorization();
   final AgentConversationService conversationService;
   final AgentUsageService agentUsageService;
   final ClientUpdateService clientUpdateService;
@@ -233,6 +251,10 @@ class ClientController extends AgentOrchestrationController
   final ClientLogExportService clientLogExportService;
   final ClientClipboardService clientClipboardService;
   final RuntimePlatformBridge runtimePlatformBridge;
+  @override
+  late final LlmGatewayLifecycleController llmGatewayLifecycleController;
+  @override
+  late final MessagingNotificationCenter messagingNotificationCenter;
   @override
   final ConversationRefreshPolicy conversationRefreshPolicy;
   final bool? _mobileClientRuntimePlatformOverride;
@@ -339,6 +361,13 @@ class ClientController extends AgentOrchestrationController
     if (!mobileClientRuntimePlatform) {
       unawaited(stopClientRuntimeServices());
     }
+    llmGatewayLifecycleController
+      ..removeListener(notifyClientStateChanged)
+      ..dispose();
+    messagingNotificationCenter
+      ..removeListener(notifyClientStateChanged)
+      ..dispose();
+    llmVaultAuthorization.dispose();
     if (_ownsAgentService) unawaited(agentService.dispose());
     _components.dispose();
     bootstrapController.dispose();

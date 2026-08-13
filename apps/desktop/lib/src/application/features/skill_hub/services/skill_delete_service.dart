@@ -7,42 +7,26 @@ final class SkillDeleteService {
   final SkillDeleteGateway _gateway;
 
   Future<Map<String, dynamic>> plan({
-    required Iterable<String> agents,
     required String skillId,
-    String installRoot = '',
+    required String path,
   }) {
     return _gateway.planSkillDelete(
-      agents: _agents(agents),
       skillId: _required(skillId, 'skillId'),
-      installRoot: installRoot.trim(),
+      path: _required(path, 'path'),
     );
   }
 
   Future<Map<String, dynamic>> apply({
-    required Iterable<String> agents,
     required String skillId,
+    required String path,
     required String confirmation,
-    String installRoot = '',
   }) {
     return _gateway.applySkillDelete(
-      agents: _agents(agents),
       skillId: _required(skillId, 'skillId'),
+      path: _required(path, 'path'),
       confirmation: _required(confirmation, 'confirmation'),
-      installRoot: installRoot.trim(),
     );
   }
-}
-
-List<String> _agents(Iterable<String> values) {
-  final result =
-      values
-          .map((value) => value.trim())
-          .where((value) => value.isNotEmpty)
-          .toSet()
-          .toList()
-        ..sort();
-  if (result.isEmpty) throw ArgumentError('Select at least one agent.');
-  return List.unmodifiable(result);
 }
 
 String _required(String value, String name) {

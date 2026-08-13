@@ -192,7 +192,11 @@ mixin AgentConversationMobileSessionController
         normalized: page.hasMore,
       };
       if (selectedConversationAgentId == normalized) {
-        conversationReconcileSelectedSession(normalized, next);
+        conversationReconcileSelectedSession(
+          normalized,
+          next,
+          previous: previous,
+        );
         agentWorkspaceSetLocalizedStatusMessage(
           page.hasMore
               ? '已读取 ${next.length} 条 $normalized 原生历史，滚动到底继续加载。'

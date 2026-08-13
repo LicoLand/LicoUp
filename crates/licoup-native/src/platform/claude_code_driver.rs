@@ -1,3 +1,4 @@
+mod approval;
 mod command;
 mod control;
 mod errors;
@@ -10,7 +11,6 @@ mod probe;
 mod protocol;
 mod supervision;
 mod transport;
-
 #[cfg(test)]
 pub(super) use super::conversation_lane;
 pub(super) use control::ControlDisposition;
@@ -23,9 +23,6 @@ pub(super) use model::{
     TransportLifecycle,
 };
 pub(super) use probe::probe;
-pub(super) use supervision::{
-    cancel, cleanup_session, has_live_session, history, shutdown_all, steer,
-};
-
+pub(super) use supervision::{cancel, cleanup_session, history, shutdown_all, steer};
 #[cfg(test)]
 mod tests;

@@ -11,7 +11,9 @@ import { loadSecureMeshPhysicalEvidenceConfig } from "./lib/secure-mesh-physical
 import { optionalReleaseInvocationBinding } from "./lib/release-closure-challenge.mjs";
 import { atomicWriteReportJson } from "./lib/safe-report-io.mjs";
 import { readSourceCheckBundle } from "./lib/source-check-bundle.mjs";
-import { secureClientRelayMockE2eReady } from "./lib/secure-client-relay-mock-e2e-report.mjs";
+import {
+  licoArcBadTowerAcceptanceCoverage,
+} from "./lib/licoarc-badtower-acceptance-report.mjs";
 import {
   ANDROID_PLATFORM_CRYPTO_NATIVE_TEST_CLASS_COUNT,
   windowsImplementationReady,
@@ -113,37 +115,15 @@ async function loadAndroidPlatformCryptoEvidence() {
   };
 }
 
-async function loadRelayMockEvidence() {
-  const report = physicalReportRefs.relayMock;
+async function loadStationAcceptanceEvidence() {
+  const report = physicalReportRefs.stationAcceptance;
   const payload = await readJsonIfPresent(report);
   const present = Boolean(payload && Object.keys(payload).length > 0);
-  const ready = present &&
-    payload?.schemaVersion === "licomesh.secure-client-relay.client-acceptance-report.v1" &&
-    payload?.ok === true &&
-    secureClientRelayMockE2eReady(payload.mock) &&
-    payload?.summary?.exactFiveOperationsObserved === true &&
-    payload?.summary?.exactSixOuterFieldsObserved === true &&
-    payload?.summary?.replayRejected === true &&
-    payload?.summary?.staleLeaseRejected === true &&
-    payload?.summary?.ackIdempotencyVerified === true &&
-    payload?.summary?.plaintextAbsentFromServerVisibleWire === true &&
-    payload?.summary?.wireBytesMeasured === true &&
-    payload?.redacted === true &&
-    payload?.rawPrivateMaterialIncluded === false &&
-    payload?.rawPlaintextIncluded === false &&
-    payload?.rawPublicWireBytesIncluded === false;
+  const coverage = licoArcBadTowerAcceptanceCoverage(payload);
   return {
     report,
     present,
-    ready,
-    exactFiveOperationsObserved: payload?.summary?.exactFiveOperationsObserved === true,
-    exactSixOuterFieldsObserved: payload?.summary?.exactSixOuterFieldsObserved === true,
-    replayRejected: payload?.summary?.replayRejected === true,
-    staleLeaseRejected: payload?.summary?.staleLeaseRejected === true,
-    ackIdempotencyVerified: payload?.summary?.ackIdempotencyVerified === true,
-    plaintextAbsentFromRelayVisibleWire:
-      payload?.summary?.plaintextAbsentFromServerVisibleWire === true,
-    wireBytesMeasured: payload?.summary?.wireBytesMeasured === true
+    ...coverage,
   };
 }
 
@@ -244,52 +224,52 @@ async function loadWindowsFileImplementationEvidence() {
   };
 }
 
-function physicalHandoffMatrix(androidPlatformCrypto, releaseBuiltDesktopFilePolicy, relayMock) {
+function physicalHandoffMatrix(androidPlatformCrypto, releaseBuiltDesktopFilePolicy, stationAcceptance) {
   const androidPlatformReady = androidPlatformCrypto.ok === true;
-  const relayProtocolReady = relayMock.ready === true;
+  const stationInteroperabilityReady = stationAcceptance.ready === true;
   const releaseBuiltReady = releaseBuiltDesktopFilePolicy.ready === true;
   const releaseBuiltMatrixSatisfied = releaseBuiltDesktopFilePolicy.matrixSatisfied === true;
   const releaseBuiltReadyPlatforms = releaseBuiltDesktopFilePolicy.readyPlatforms || [];
   return [
     {
       scenario: "Android-to-desktop-to-iPhone",
-      status: androidPlatformReady && relayProtocolReady
-        ? "android-platform-and-relay-contract-verified-partial"
+      status: androidPlatformReady && stationInteroperabilityReady
+        ? "android-platform-and-station-interoperability-verified-partial"
         : "missing",
-      evidence: androidPlatformReady && relayProtocolReady
+      evidence: androidPlatformReady && stationInteroperabilityReady
         ? [
             "Android platform custody, authorization, and Rust FFI action contracts passed.",
-            "The client-owned relay Mock passed the exact five-operation and six-field protocol.",
-            "Replay, stale lease, and idempotent ACK behavior passed without plaintext on the relay-visible wire."
+            "Two fresh endpoints completed the strict Lico Arc BadTower round trip.",
+            "The station remained non-authoritative, exposed no endpoint plaintext, and rejected non-conformant envelopes."
           ]
         : [],
-      evidenceReports: androidPlatformReady && relayProtocolReady
-        ? [androidPlatformCrypto.report, relayMock.report]
+      evidenceReports: androidPlatformReady && stationInteroperabilityReady
+        ? [androidPlatformCrypto.report, stationAcceptance.report]
         : [],
       remainingGates: [
         "Run the Android sender, desktop reseal, and physical iPhone recipient flow.",
         "Prove endpoint-specific ciphertext opens only at the intended iPhone endpoint.",
-        "Capture receive confirmation, resume, ACK, and purge receipts for the full client flow."
+        "Capture endpoint-authenticated receive confirmation and resume receipts for the full client flow."
       ]
     },
     {
       scenario: "iPhone-to-desktop-to-Android",
-      status: androidPlatformReady && relayProtocolReady
-        ? "android-platform-and-relay-contract-verified-partial"
+      status: androidPlatformReady && stationInteroperabilityReady
+        ? "android-platform-and-station-interoperability-verified-partial"
         : "missing",
-      evidence: androidPlatformReady && relayProtocolReady
+      evidence: androidPlatformReady && stationInteroperabilityReady
         ? [
             "Android platform custody, authorization, and Rust FFI action contracts passed.",
-            "The client-owned relay Mock passed opaque delivery, replay, lease, and ACK behavior."
+            "The strict Lico Arc BadTower acceptance passed with exact five-field envelopes and non-authoritative transport hints."
           ]
         : [],
-      evidenceReports: androidPlatformReady && relayProtocolReady
-        ? [androidPlatformCrypto.report, relayMock.report]
+      evidenceReports: androidPlatformReady && stationInteroperabilityReady
+        ? [androidPlatformCrypto.report, stationAcceptance.report]
         : [],
       remainingGates: [
         "Run the physical iPhone sender, desktop reseal, and Android recipient flow.",
         "Prove endpoint-specific ciphertext opens only at the intended Android endpoint.",
-        "Capture receive confirmation, resume, ACK, and purge receipts for the full client flow."
+        "Capture endpoint-authenticated receive confirmation and resume receipts for the full client flow."
       ]
     },
     {
@@ -313,9 +293,11 @@ function physicalHandoffMatrix(androidPlatformCrypto, releaseBuiltDesktopFilePol
         .concat(releaseBuiltDesktopFilePolicy.windowsLocalBlockersCleared
           ? [releaseBuiltDesktopFilePolicy.windowsImplementation.report]
           : [])
-        .concat(relayProtocolReady ? [relayMock.report] : []),
+        .concat(stationInteroperabilityReady ? [stationAcceptance.report] : []),
       remainingGates: releaseBuiltMatrixSatisfied
-        ? (relayProtocolReady ? [] : ["Run the client-owned relay protocol Mock."])
+        ? (stationInteroperabilityReady
+          ? []
+          : ["Run the strict Lico Arc BadTower interoperability acceptance."])
         : releaseBuiltReady
         ? [
             "Collect Windows-native custody and signed-artifact receipts for the implementation-ready client.",
@@ -365,11 +347,11 @@ for (const check of sourceChecks) {
 }
 const nativeResults = nativeTestFilters.map(runNativeTest);
 const androidPlatformCrypto = await loadAndroidPlatformCryptoEvidence();
-const relayMock = await loadRelayMockEvidence();
+const stationAcceptance = await loadStationAcceptanceEvidence();
 const releaseBuiltDesktopFilePolicy = await loadReleaseBuiltDesktopFilePolicyEvidence();
 const ok = sourceResults.every((check) => check.ok) &&
   nativeResults.every((check) => check.ok) &&
-  relayMock.ready === true;
+  stationAcceptance.ready === true;
 const productionReady = false;
 const checkedAt = new Date().toISOString();
 const scopeEvidence = await createSecureClientMeshE2eeRefReportScope({
@@ -381,7 +363,7 @@ const scopeEvidence = await createSecureClientMeshE2eeRefReportScope({
 const handoffMatrix = physicalHandoffMatrix(
   androidPlatformCrypto,
   releaseBuiltDesktopFilePolicy,
-  relayMock
+  stationAcceptance
 );
 const receiveConfirmationReady =
   sourceResults.every((check) => check.ok) &&
@@ -428,14 +410,13 @@ const report = {
   sourceResults,
   nativeResults,
   androidPlatformCrypto,
-  relayMock,
+  stationAcceptance,
   releaseBuiltDesktopFilePolicy,
   handoffEvidence: {
     encryptedManifestAndChunks: nativeResults.some((item) => item.id === "secure_mesh_file_manifest_and_chunk_round_trip_without_outer_metadata_leak" && item.ok),
     deliveryJsonRedacted: nativeResults.some((item) => item.id === "secure_mesh_file_delivery_json_hides_manifest_and_chunk_plaintext" && item.ok),
     ciphertextTamperRejected: nativeResults.some((item) => item.id === "secure_mesh_file_chunk_rejects_corrupted_ciphertext_hash" && item.ok),
     pathTraversalRejected: nativeResults.some((item) => item.id === "secure_mesh_file_manifest_rejects_path_traversal" && item.ok),
-    resumeAckPurgeTracked: nativeResults.some((item) => item.id === "secure_mesh_file_transfer_tracks_resume_ack_and_purge_state" && item.ok),
     boundedTransferQueueReady,
     duplicateChunkConflictRejected: nativeResults.some((item) => item.id === "secure_mesh_file_transfer_rejects_conflicting_duplicate_chunk" && item.ok),
     endpointSpecificResealProofReady: nativeResults.some((item) => item.id === "secure_mesh_file_handoff_proof_reseals_endpoint_specific_ciphertext" && item.ok),
@@ -448,14 +429,17 @@ const report = {
     mobileFfiUsesSharedRustPolicy: nativeResults.some((item) => item.id === "mobile_ffi_exposes_shared_file_route_and_receive_destination_policy" && item.ok),
     mobileFfiHandoffResealProofReady: nativeResults.some((item) => item.id === "mobile_ffi_exposes_shared_file_handoff_reseal_proof_without_plaintext" && item.ok),
     androidPlatformCryptoReady: androidPlatformCrypto.ok === true,
-    relayMockReady: relayMock.ready === true,
-    relayExactFiveOperationsObserved: relayMock.exactFiveOperationsObserved,
-    relayExactSixOuterFieldsObserved: relayMock.exactSixOuterFieldsObserved,
-    relayReplayRejected: relayMock.replayRejected,
-    relayStaleLeaseRejected: relayMock.staleLeaseRejected,
-    relayAckIdempotencyVerified: relayMock.ackIdempotencyVerified,
-    plaintextAbsentFromRelayVisibleWire: relayMock.plaintextAbsentFromRelayVisibleWire,
-    relayWireBytesMeasured: relayMock.wireBytesMeasured,
+    stationAcceptanceReady: stationAcceptance.ready === true,
+    stationAcceptanceFreshEndpointCount: stationAcceptance.freshEndpointCount,
+    stationAcceptancePositiveExchange: stationAcceptance.positiveExchange,
+    stationAcceptanceRoundTrip: stationAcceptance.roundTrip,
+    stationAcceptancePlaintextAbsent: stationAcceptance.stationPlaintextAbsent,
+    stationAcceptanceNonConformantEnvelopeRejected:
+      stationAcceptance.nonConformantEnvelopeRejected,
+    stationAcceptanceTransportHintsNonAuthoritative:
+      stationAcceptance.transportHintsNonAuthoritative,
+    stationAcceptanceExactFiveOuterFields:
+      stationAcceptance.exactFiveOuterFields,
     releaseBuiltDesktopFilePolicyReady: releaseBuiltDesktopFilePolicy.ready === true,
     releaseBuiltDesktopMatrixSatisfied: releaseBuiltDesktopFilePolicy.matrixSatisfied === true,
     releaseBuiltDesktopWindowsLocalBlockersCleared:
@@ -468,14 +452,17 @@ const report = {
     sourceCheckCount: sourceResults.length,
     nativeTestCount: nativeResults.length,
     androidPlatformCryptoReady: androidPlatformCrypto.ok === true,
-    relayMockReady: relayMock.ready === true,
-    relayExactFiveOperationsObserved: relayMock.exactFiveOperationsObserved,
-    relayExactSixOuterFieldsObserved: relayMock.exactSixOuterFieldsObserved,
-    relayReplayRejected: relayMock.replayRejected,
-    relayStaleLeaseRejected: relayMock.staleLeaseRejected,
-    relayAckIdempotencyVerified: relayMock.ackIdempotencyVerified,
-    plaintextAbsentFromRelayVisibleWire: relayMock.plaintextAbsentFromRelayVisibleWire,
-    relayWireBytesMeasured: relayMock.wireBytesMeasured,
+    stationAcceptanceReady: stationAcceptance.ready === true,
+    stationAcceptanceFreshEndpointCount: stationAcceptance.freshEndpointCount,
+    stationAcceptancePositiveExchange: stationAcceptance.positiveExchange,
+    stationAcceptanceRoundTrip: stationAcceptance.roundTrip,
+    stationAcceptancePlaintextAbsent: stationAcceptance.stationPlaintextAbsent,
+    stationAcceptanceNonConformantEnvelopeRejected:
+      stationAcceptance.nonConformantEnvelopeRejected,
+    stationAcceptanceTransportHintsNonAuthoritative:
+      stationAcceptance.transportHintsNonAuthoritative,
+    stationAcceptanceExactFiveOuterFields:
+      stationAcceptance.exactFiveOuterFields,
     releaseBuiltDesktopFilePolicyReady: releaseBuiltDesktopFilePolicy.ready === true,
     releaseBuiltDesktopMatrixSatisfied: releaseBuiltDesktopFilePolicy.matrixSatisfied === true,
     releaseBuiltDesktopWindowsLocalBlockersCleared:
@@ -500,9 +487,9 @@ const report = {
       ...(receiveConfirmationReady
         ? []
         : ["client receive confirmation with auto-preview and auto-ingestion disabled by default"]),
-      ...(relayMock.ready === true
+      ...(stationAcceptance.ready === true
         ? []
-        : ["client-owned five-operation, six-field relay Mock conformance"])
+        : ["strict Lico Arc BadTower interoperability acceptance"])
     ].filter(Boolean)
   }
 };
@@ -524,7 +511,7 @@ console.log(JSON.stringify({
   sourceCheckCount: sourceResults.length,
   nativeTestCount: nativeResults.length,
   androidPlatformCryptoReady: androidPlatformCrypto.ok === true,
-  relayMockReady: relayMock.ready === true,
+  stationAcceptanceReady: stationAcceptance.ready === true,
   releaseBuiltDesktopFilePolicyReady: releaseBuiltDesktopFilePolicy.ready === true,
   releaseBuiltDesktopMatrixSatisfied: releaseBuiltDesktopFilePolicy.matrixSatisfied === true,
   releaseBuiltDesktopWindowsLocalBlockersCleared:

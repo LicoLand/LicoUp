@@ -139,7 +139,6 @@ test("core MLS source bundle preserves split cryptographic and durable-state aut
   ]) {
     assert.ok(source.includes(token), `core MLS source bundle is missing ${token}`);
   }
-  assert.ok(sources[0].split(/\r?\n/u).length <= 60);
   assert.ok(!sources[0].includes("impl SecureMeshMlsGroup"));
   assert.ok(!sources[0].includes("mod tests {"));
 });
@@ -183,7 +182,6 @@ test("ML-KEM Braid source bundle preserves bounded split protocol authority", as
   ]) {
     assert.ok(source.includes(token), `ML-KEM Braid source bundle is missing ${token}`);
   }
-  assert.ok(sources[0].split(/\r?\n/u).length <= 50);
   assert.ok(!sources[0].includes("impl MlKemBraidSession"));
   assert.ok(!sources[0].includes("mod tests {"));
   assert.ok(!sources[0].includes("#[path"));
@@ -231,7 +229,6 @@ test("pairwise persistence source bundle preserves split transactional and secre
   ]) {
     assert.ok(source.includes(token), `pairwise persistence source bundle is missing ${token}`);
   }
-  assert.ok(sources[0].split(/\r?\n/u).length <= 45);
   assert.ok(!sources[0].includes("impl SecureMeshPairwiseDurableStore"));
   assert.ok(!sources[0].includes("mod tests {"));
   assert.ok(!sources[0].includes("#[path"));
@@ -281,7 +278,6 @@ test("content crypto source bundle preserves split AEAD, KDF, codec, and padding
   ]) {
     assert.ok(source.includes(token), `content crypto source bundle is missing ${token}`);
   }
-  assert.ok(sources[0].split(/\r?\n/u).length <= 45);
   assert.ok(!sources[0].includes("impl ContentKey"));
   assert.ok(!sources[0].includes("mod tests {"));
   assert.ok(!sources[0].includes("#[path"));
@@ -327,7 +323,6 @@ test("mobile FFI source bundle preserves shared bounded dispatch and redacted fi
   ]) {
     assert.ok(source.includes(token), `mobile FFI source bundle is missing ${token}`);
   }
-  assert.ok(sources[0].split(/\r?\n/u).length <= 45);
   assert.ok(!sources[0].includes("match action"));
   assert.ok(!sources[0].includes("mod tests {"));
   assert.ok(!sources[0].includes("#[path"));

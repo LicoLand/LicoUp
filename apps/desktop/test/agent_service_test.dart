@@ -230,7 +230,7 @@ exec sleep 5
   });
 
   test(
-    'falls back to licoup in PATH when no binary is discovered',
+    'falls back to licoup-cli in PATH when no binary is discovered',
     () async {
       final captured = <String>[];
       final agentService = AgentService(
@@ -242,7 +242,7 @@ exec sleep 5
       );
 
       await agentService.restoreSnapshot('snapshot-codex-1');
-      expect(captured.single, 'licoup');
+      expect(captured.single, 'licoup-cli');
       expect(captured.length, 1);
     },
   );

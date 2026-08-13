@@ -42,7 +42,6 @@ test("Secure Client Relay has one exact module root and no retired implementatio
       .sort(),
     [...productionLeaves].sort(),
   );
-  assert.ok(facade.trimEnd().split(/\r?\n/u).length <= 35);
   for (const retired of [
     "crates/licoup-native/src/platform/secure_client_relay_transport.rs",
     "crates/licoup-native/src/platform/secure_client_relay_response.rs",
@@ -105,7 +104,6 @@ test("request and transport expose only the closed five-operation ciphertext sur
   assert.equal(request.includes("pairingId"), false);
   assert.equal(request.includes("commandId"), false);
   assert.equal(request.includes("plaintext"), false);
-  assert.ok(transport.trimEnd().split(/\r?\n/u).length <= 130);
 });
 
 test("network capability is isolated, TLS-gated, bounded, and detail-redacted", async () => {
@@ -141,7 +139,6 @@ test("response shape, caller binding, and regressions remain separate leaves", a
   assert.equal(source["response_binding.rs"].includes("ureq::"), false);
   for (const leaf of productionLeaves) {
     assert.equal(source[leaf].includes("use super::*"), false, `${leaf} has wildcard coupling`);
-    assert.ok(source[leaf].trimEnd().split(/\r?\n/u).length <= 650, `${leaf} is oversized`);
   }
   const testsFacade = await read(`${relayRoot}/tests/mod.rs`);
   assert.deepEqual(

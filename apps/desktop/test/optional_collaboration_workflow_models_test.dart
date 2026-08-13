@@ -18,14 +18,17 @@ void main() {
 
     expect(plan.kind, OptionalCollaborationWorkflowKind.localDeployment);
     expect(plan.selectedIds, ['server-core']);
-    expect(plan.destination, 'test-data/licomesh-local');
-    expect(plan.fileChanges.single.destination, 'test-data/licomesh-local/server');
+    expect(plan.destination, '/test-data/licomesh-local');
     expect(
-      plan.matchesLocalRequest(['server-core'], 'test-data/licomesh-local'),
+      plan.fileChanges.single.destination,
+      '/test-data/licomesh-local/server',
+    );
+    expect(
+      plan.matchesLocalRequest(['server-core'], '/test-data/licomesh-local'),
       isTrue,
     );
     expect(
-      plan.matchesLocalRequest(['server-extra'], 'test-data/licomesh-local'),
+      plan.matchesLocalRequest(['server-extra'], '/test-data/licomesh-local'),
       isFalse,
     );
   });
@@ -40,7 +43,7 @@ void main() {
     ]);
     expect(
       plan.agentRegistrations.single.registration.payloadRoots.single.path,
-      'test-data/licoup-mcp/selected-mcp',
+      '/test-data/licoup-mcp/selected-mcp',
     );
   });
 
@@ -54,7 +57,7 @@ void main() {
 
     final plan = OptionalCollaborationWorkflowPlan.fromJson(_localPlanJson());
     final apply = _localApplyJson();
-    apply['destination'] = 'test-data/different';
+    apply['destination'] = '/test-data/different';
     expect(
       () => OptionalCollaborationWorkflowApplyResult.fromJson(
         apply,
@@ -102,20 +105,20 @@ Map<String, dynamic> _localPlanJson() => {
   'pluginId': 'licomesh-collaboration',
   'selectedFeatureIds': ['server-core'],
   'selectedPluginIds': null,
-  'destination': 'test-data/licomesh-local',
+  'destination': '/test-data/licomesh-local',
   'agents': <dynamic>[],
   'fileChanges': [
     {
       'selectionId': 'server-core',
       'sourceRelativePath': 'payload/server-core/server',
-      'destination': 'test-data/licomesh-local/server',
+      'destination': '/test-data/licomesh-local/server',
       'destinationRelativePath': 'server',
       'digestSha256': _fileDigest,
       'bytes': 128,
     },
   ],
   'agentRegistrations': <dynamic>[],
-  'assemblyPlan': _assemblyPlan('test-data/licomesh-local', ['server-core']),
+  'assemblyPlan': _assemblyPlan('/test-data/licomesh-local', ['server-core']),
   'expiresAtEpochSeconds': 2000000000,
   'oneTime': true,
   'cancellable': true,
@@ -142,14 +145,14 @@ Map<String, dynamic> _mcpPlanJson() => {
   'selectedPluginIds': ['selected-mcp'],
   'destination': null,
   'agents': [
-    {'agentId': 'cursor', 'installDestination': 'test-data/licoup-mcp'},
+    {'agentId': 'cursor', 'installDestination': '/test-data/licoup-mcp'},
   ],
   'fileChanges': [
     {
       'agentId': 'cursor',
       'selectionId': 'selected-mcp',
       'sourceRelativePath': 'payload/mcp-selected/server',
-      'destination': 'test-data/licoup-mcp/selected-mcp/server',
+      'destination': '/test-data/licoup-mcp/selected-mcp/server',
       'destinationRelativePath': 'selected-mcp/server',
       'digestSha256': _fileDigest,
       'bytes': 128,
@@ -159,7 +162,7 @@ Map<String, dynamic> _mcpPlanJson() => {
     {
       'agentId': 'cursor',
       'registrationId': '00000000-0000-4000-8000-000000000010',
-      'destination': 'test-data/licoup-private-registration.json',
+      'destination': '/test-data/licoup-private-registration.json',
       'digestSha256': _registrationDigest,
       'registration': {
         'schemaVersion': 'licoup.mcp-agent-registration.v2',
@@ -170,7 +173,10 @@ Map<String, dynamic> _mcpPlanJson() => {
         'packageDigestSha256': _packageDigest,
         'selectedPluginIds': ['selected-mcp'],
         'payloadRoots': [
-          {'pluginId': 'selected-mcp', 'path': 'test-data/licoup-mcp/selected-mcp'},
+          {
+            'pluginId': 'selected-mcp',
+            'path': '/test-data/licoup-mcp/selected-mcp',
+          },
         ],
         'payloadFiles': <dynamic>[],
         'servers': <dynamic>[],
@@ -209,11 +215,11 @@ Map<String, dynamic> _localApplyJson() => {
   'pluginId': 'licomesh-collaboration',
   'selectedFeatureIds': ['server-core'],
   'selectedPluginIds': null,
-  'destination': 'test-data/licomesh-local',
+  'destination': '/test-data/licomesh-local',
   'agents': <dynamic>[],
   'fileChanges': _localPlanJson()['fileChanges'],
   'agentRegistrations': <dynamic>[],
-  'localServer': _localServer('test-data/licomesh-local', ['server-core']),
+  'localServer': _localServer('/test-data/licomesh-local', ['server-core']),
   'pluginExecuted': false,
   'pluginCodeExecuted': false,
   'assemblyAdapterExecuted': true,

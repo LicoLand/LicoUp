@@ -131,10 +131,7 @@ void main() {
 
     expect(first.path, second.path);
     expect(first.path, p.join(home.path, '.lico-up'));
-    expect(
-      await File('${first.path}/.licoup-workspace.json').exists(),
-      isTrue,
-    );
+    expect(await File('${first.path}/.licoup-workspace.json').exists(), isTrue);
   });
 
   test('first launch creates only the canonical client state root', () async {
@@ -176,7 +173,7 @@ void main() {
         },
         resolvedExecutableOverride: p.join(
           Directory.systemTemp.path,
-          'Arc.app',
+          'LicoUp.app',
           'Contents',
           'MacOS',
           'licoup',

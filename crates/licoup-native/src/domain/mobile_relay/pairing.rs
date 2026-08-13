@@ -1,5 +1,5 @@
 use super::secret_custody::{MobileRelayE2eeSecretField, RuntimeSecretMaterial};
-use super::{endpoint_trust::*, relay_operations::*, support::*};
+use super::{endpoint_trust::*, support::*};
 
 fn require_pairing_secret(material: &RuntimeSecretMaterial) -> Result<()> {
     let secret = material
@@ -14,10 +14,9 @@ fn require_pairing_secret(material: &RuntimeSecretMaterial) -> Result<()> {
 
 pub fn pairing_create(params: &Value) -> Result<Value> {
     let (mut config, mut secret_context) = load_config_with_runtime_secret_context(params)?;
-    effective_gateway_url(&config)?;
+    effective_station_base_url(&config)?;
     config["relayEnabled"] = json!(true);
-    let (registration, _secure_mesh) = register_local_relay_endpoint(
-        params,
+    ensure_mobile_relay_endpoint_descriptor(
         &mut config,
         &mut secret_context.material,
         "desktop_sidecar",
@@ -30,10 +29,10 @@ pub fn pairing_create(params: &Value) -> Result<Value> {
     let response = json!({
         "ok": true,
         "schemaVersion": CONFIG_SCHEMA_VERSION,
-        "transportProtocol": SECURE_MESH_PROTOCOL_VERSION,
+        "pairingProtocol": MOBILE_RELAY_E2EE_PROTOCOL_VERSION,
+        "relayContract": crate::core::licoarc_relay::LICOARC_RELAY_CONTRACT_VERSION,
         "pairingId": pairing_id,
         "pairingCode": pairing_code,
-        "endpointRegistration": registration,
         "serverVisiblePairingState": false
     });
     let invite = one_time_pairing_invite(&config, &secret_context.material, &response);
@@ -48,7 +47,7 @@ pub fn pairing_create(params: &Value) -> Result<Value> {
 
 pub fn pairing_claim(params: &Value) -> Result<Value> {
     let (mut config, mut secret_context) = load_config_with_runtime_secret_context(params)?;
-    effective_gateway_url(&config)?;
+    effective_station_base_url(&config)?;
     config["relayEnabled"] = json!(true);
     apply_pairing_invite_params_with_context(&mut config, params, Some(&mut secret_context))?;
     let pairing_id = text_param(params, &["pairingId", "pairing_id"])
@@ -69,7 +68,7 @@ pub fn pairing_claim(params: &Value) -> Result<Value> {
                 .map(str::to_string)
         })
         .filter(|value| !value.trim().is_empty())
-        .ok_or_else(|| anyhow!("mobile relay pairing claim requires --pairing-code"))?;
+        .ok_or_else(|| anyhow!("mobile relay pairing claim requires private pairingCode input"))?;
     let pc_secure_mesh = pairing_claim_secure_mesh_descriptor_from_params(params)?
         .or_else(|| peer_secure_mesh_descriptor(&config))
         .ok_or_else(|| anyhow!("mobile relay pairing claim requires PC secure mesh invite"))?;
@@ -89,8 +88,11 @@ pub fn pairing_claim(params: &Value) -> Result<Value> {
             "mobile relay pairing code does not match the local one-time invite"
         );
     }
-    let (registration, mobile_secure_mesh) =
-        register_local_relay_endpoint(params, &mut config, &mut secret_context.material, "mobile")?;
+    let mobile_secure_mesh = ensure_mobile_relay_endpoint_descriptor(
+        &mut config,
+        &mut secret_context.material,
+        "mobile",
+    )?;
     require_pairing_secret(&secret_context.material)?;
     let claim_proof = mobile_relay_claim_proof(
         &config,
@@ -102,9 +104,9 @@ pub fn pairing_claim(params: &Value) -> Result<Value> {
     let response = json!({
         "ok": true,
         "schemaVersion": CONFIG_SCHEMA_VERSION,
-        "transportProtocol": SECURE_MESH_PROTOCOL_VERSION,
+        "pairingProtocol": MOBILE_RELAY_E2EE_PROTOCOL_VERSION,
+        "relayContract": crate::core::licoarc_relay::LICOARC_RELAY_CONTRACT_VERSION,
         "pairingId": pairing_id,
-        "endpointRegistration": registration,
         "outOfBandPairingResponse": {
             "mobileSecureMesh": mobile_secure_mesh,
             "secureMeshClaimProof": claim_proof
@@ -130,7 +132,9 @@ pub fn pairing_status(params: &Value) -> Result<Value> {
         save_config_with_runtime_secret_context(&mut config, &mut secret_context)?;
         return Ok(pairing_status_response(&config));
     }
-    let (config, _) = load_config_with_runtime_secret_overrides(params)?;
+    // Status reads are silent by default: secret hydration only runs when the
+    // caller explicitly passes `authorize`, so opening the client never prompts.
+    let (config, _) = load_config_for_read(params)?;
     Ok(pairing_status_response(&config))
 }
 
@@ -139,11 +143,9 @@ pub(super) fn pairing_status_response(config: &Value) -> Value {
         json!({
             "ok": true,
             "schemaVersion": CONFIG_SCHEMA_VERSION,
-            "transportProtocol": SECURE_MESH_PROTOCOL_VERSION,
-            "registered": config
-                .get("relayRegisteredEndpointId")
-                .and_then(Value::as_str)
-                .is_some_and(|value| !value.is_empty()),
+            "pairingProtocol": MOBILE_RELAY_E2EE_PROTOCOL_VERSION,
+            "relayContract": crate::core::licoarc_relay::LICOARC_RELAY_CONTRACT_VERSION,
+            "stationConfigured": effective_station_base_url(config).is_ok(),
             "paired": config.get("paired").and_then(Value::as_bool).unwrap_or(false),
             "serverVisiblePairingState": false
         }),
@@ -160,10 +162,9 @@ pub(super) fn refresh_pairing_status_with_context(
     let response = json!({
         "ok": true,
         "schemaVersion": CONFIG_SCHEMA_VERSION,
-        "registered": config
-            .get("relayRegisteredEndpointId")
-            .and_then(Value::as_str)
-            .is_some_and(|value| !value.is_empty()),
+        "pairingProtocol": MOBILE_RELAY_E2EE_PROTOCOL_VERSION,
+        "relayContract": crate::core::licoarc_relay::LICOARC_RELAY_CONTRACT_VERSION,
+        "stationConfigured": effective_station_base_url(config).is_ok(),
         "paired": config.get("paired").and_then(Value::as_bool).unwrap_or(false),
         "serverVisiblePairingState": false
     });
@@ -202,21 +203,6 @@ pub fn pairing_revoke(params: &Value) -> Result<Value> {
         &mut secret_context.material,
         "desktop_sidecar",
     )?;
-    let current_epoch = config
-        .get("mobileRelayE2ee")
-        .and_then(|state| state.get("mailboxRotationEpoch"))
-        .and_then(Value::as_u64)
-        .unwrap_or(current_mailbox_rotation_epoch()?);
-    let next_epoch = current_epoch
-        .checked_add(1)
-        .ok_or_else(|| anyhow!("secure client relay mailbox rotation epoch overflow"))?;
-    config["mobileRelayE2ee"]["mailboxRotationEpoch"] = json!(next_epoch);
-    let (registration, _) = register_local_relay_endpoint(
-        params,
-        &mut config,
-        &mut secret_context.material,
-        "desktop_sidecar",
-    )?;
     clear_mobile_relay_pairing_state(&mut config)?;
     save_config_with_runtime_secret_context(&mut config, &mut secret_context)?;
     Ok(with_config(
@@ -224,7 +210,6 @@ pub fn pairing_revoke(params: &Value) -> Result<Value> {
             "ok": true,
             "schemaVersion": CONFIG_SCHEMA_VERSION,
             "mailboxRotated": true,
-            "endpointRegistration": registration,
             "serverVisiblePairingState": false
         }),
         &config,
@@ -239,12 +224,12 @@ mod tests {
     #[test]
     fn pairing_module_projects_local_pairing_status() {
         let mut config = default_config();
-        config["relayRegisteredEndpointId"] = json!("endpoint-test");
+        config["stationBaseUrl"] = json!("https://station.example.test");
         config["paired"] = json!(true);
 
         let status = pairing_status_response(&config);
 
-        assert_eq!(status["registered"], true);
+        assert_eq!(status["stationConfigured"], true);
         assert_eq!(status["paired"], true);
         assert_eq!(status["serverVisiblePairingState"], false);
     }

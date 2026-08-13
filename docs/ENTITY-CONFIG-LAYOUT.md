@@ -16,7 +16,7 @@ private addresses, or runtime data.
 | Agent readiness | `crates/licoup-native/resources/agent-conversation-readiness.json` and its reducer | composer availability and verification summaries |
 | Public client DTOs | JSON Schemas under `packages/contracts/client/` | generated or validated Rust, Flutter, fixture, and protocol consumers |
 | Native client protocol DTOs | schemas under `packages/protocols/native-client/` | Rust/Flutter/mobile bridge consumers |
-| Secure Client Mesh verification policy | reviewed JSON definitions under `tools/scripts/config/` plus native protocol code | bounded verification and redacted report schemas |
+| [Retiring endpoint-protection Preview verification policy](STATUS.md) | reviewed JSON definitions under `tools/scripts/config/` plus current native implementation code | bounded verification and redacted report schemas for the current preview only; Lico Arc remains the authority for stable endpoint wire profiles |
 | Appearance presets | `apps/desktop/assets/appearance-presets/` and the Flutter appearance contract | desktop theme projections |
 | Local persisted state roots | `crates/licoup-native/src/platform/paths.rs` and `client_state.rs` | platform-specific resolved locations at runtime |
 

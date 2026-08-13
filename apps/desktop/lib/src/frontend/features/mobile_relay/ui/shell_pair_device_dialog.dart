@@ -111,7 +111,7 @@ class _PairDeviceDialogState extends State<PairDeviceDialog> {
                     padding: const EdgeInsets.fromLTRB(18, 14, 10, 10),
                     child: Row(
                       children: [
-                        Icon(Icons.add_link_outlined, color: colors.primary),
+                        Icon(Icons.add_link_outlined, color: colors.accent),
                         const SizedBox(width: 10),
                         Expanded(
                           child: Text(
@@ -161,7 +161,7 @@ class _PairDeviceDialogState extends State<PairDeviceDialog> {
                               child: DecoratedBox(
                                 decoration: BoxDecoration(
                                   border: Border.all(
-                                    color: colors.primary,
+                                    color: colors.primaryStrong,
                                     width: 2,
                                   ),
                                   borderRadius: BorderRadius.circular(14),

@@ -44,7 +44,15 @@ impl ScanContext {
 pub(super) fn target_uses_running_process_detection(target: &str) -> bool {
     matches!(
         target,
-        "claude-code" | "codex" | "code" | "cursor" | "kilo-code" | "kimi" | "kimi-code" | "pi"
+        "claude-code"
+            | "codex"
+            | "code"
+            | "cursor"
+            | "kilo-code"
+            | "kimi"
+            | "kimi-code"
+            | "pi"
+            | "lico-agent"
     )
 }
 

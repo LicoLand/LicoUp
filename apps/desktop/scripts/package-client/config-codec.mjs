@@ -95,9 +95,12 @@ export function validatePackagingConfig(
     "artifactName",
     "cargoBin",
     "category",
+    "embeddedCargoBin",
+    "embeddedCargoTarget",
     "enabled",
     "includePaths",
     "label",
+    "mappedResources",
     "packaging",
     "platforms",
     "portableDirectories",
@@ -180,6 +183,25 @@ export function validatePackagingConfig(
       packageFailure("packaging_cargo_bin_invalid");
     }
     if (
+      (moduleConfig.embeddedCargoBin === undefined) !==
+        (moduleConfig.embeddedCargoTarget === undefined) ||
+      (moduleConfig.embeddedCargoBin !== undefined &&
+        !packageClientConfigPolicy.moduleIdPattern.test(
+          moduleConfig.embeddedCargoBin,
+        ))
+    ) {
+      packageFailure("packaging_embedded_cargo_bin_invalid");
+    }
+    if (moduleConfig.embeddedCargoTarget !== undefined) {
+      safeConfigRelativePath(
+        moduleConfig.embeddedCargoTarget,
+        "packaging_embedded_cargo_target_invalid",
+      );
+      if (moduleConfig.packaging !== "module-resources") {
+        packageFailure("packaging_embedded_cargo_target_invalid");
+      }
+    }
+    if (
       moduleConfig.artifactName !== undefined &&
       !packageClientConfigPolicy.artifactNamePattern.test(
         moduleConfig.artifactName,
@@ -198,6 +220,29 @@ export function validatePackagingConfig(
         path.join(sourceRoot, includeRef),
       );
     }
+    const mappedResources = moduleConfig.mappedResources || [];
+    if (!Array.isArray(mappedResources)) {
+      packageFailure("packaging_mapped_resources_invalid");
+    }
+    for (const mapping of mappedResources) {
+      requireExactKeys(
+        mapping,
+        new Set(["source", "target"]),
+        "packaging_mapped_resources_invalid",
+      );
+      const sourceRef = safeConfigRelativePath(
+        mapping.source,
+        "packaging_resource_source_invalid",
+      );
+      safeConfigRelativePath(
+        mapping.target,
+        "packaging_module_target_path_invalid",
+      );
+      resolveContainedExistingPath(
+        sourceRoot,
+        path.join(sourceRoot, sourceRef),
+      );
+    }
     if (
       moduleConfig.profile !== undefined &&
       (typeof moduleConfig.profile !== "string" ||
@@ -205,7 +250,7 @@ export function validatePackagingConfig(
     ) {
       packageFailure("packaging_module_profile_invalid");
     }
-    if (id === "native-sidecar" && moduleConfig.cargoBin !== "licoup") {
+    if (id === "native-sidecar" && moduleConfig.cargoBin !== "licoup-cli") {
       packageFailure("packaging_native_sidecar_authority_invalid");
     }
   }

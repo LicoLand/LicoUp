@@ -124,7 +124,7 @@ LayoutEnvironment _desktopEnvironment() => LayoutEnvironment.fromConstraints(
 );
 
 PresentationPreferences _preferences() => PresentationPreferences(
-  layoutProfileId: LayoutProfileId.parse('workbench'),
+  layoutProfileId: LayoutProfileId.parse('dashboard'),
   appearancePresetId: 'default-system',
   localePreference: 'system',
 );

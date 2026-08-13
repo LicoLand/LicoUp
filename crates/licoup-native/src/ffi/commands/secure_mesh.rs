@@ -264,9 +264,16 @@ mod tests {
     }
 
     #[test]
-    fn secure_mesh_command_execute_cli_requires_confirmation_before_session_disclosure() {
-        let env = SecureMeshCommandCliTestEnv::new("session-disclosure-confirmation");
-        let result = execute_fixture(&env, command_fixture("cmd-a", "idem-a"), context_fixture());
+    fn secure_mesh_command_execute_cli_requires_confirmation_before_local_effect() {
+        let env = SecureMeshCommandCliTestEnv::new("local-effect-confirmation");
+        let mut payload = command_fixture("cmd-a", "idem-a");
+        payload["commandKind"] = json!("secure_mesh.device.verify");
+        payload["riskClass"] = json!("local_effect");
+        payload["targetBinding"]["targetAgentId"] = Value::Null;
+        payload["body"] = json!({});
+        let mut context = context_fixture();
+        context["allowedAgentIds"] = json!([]);
+        let result = execute_fixture(&env, payload, context);
         assert_eq!(result["evaluation"]["accepted"], true);
         assert_eq!(result["evaluation"]["shouldExecute"], false);
         assert_eq!(result["evaluation"]["code"], "user_confirmation_required");
@@ -296,13 +303,10 @@ mod tests {
 
         let replay = execute_fixture(
             &env,
-            message_command_fixture("cmd-a", "idem-b"),
+            message_command_fixture("cmd-a", "idem-a"),
             message_context_fixture(),
         );
-        assert_eq!(replay["evaluation"]["shouldExecute"], false);
-        assert_eq!(replay["evaluation"]["replayed"], true);
-        assert_eq!(replay["execution"]["outcome"], "error");
-        assert_eq!(replay["execution"]["errorCode"], "command_replay_rejected");
+        assert_eq!(replay, first);
     }
 
     #[test]
@@ -541,7 +545,7 @@ mod tests {
             "idempotencyKey": idempotency_key,
             "createdAt": "2026-01-01T00:00:00Z",
             "expiresAt": "2026-01-01T00:10:00Z",
-            "body": {"agent": "codex", "limit": 5}
+            "body": {"limit": 5}
         })
     }
 
@@ -551,7 +555,6 @@ mod tests {
         payload["riskClass"] = json!("safe_write");
         payload["targetBinding"]["targetAgentId"] = json!("unsupported-fixture-agent");
         payload["body"] = json!({
-            "agentId": "unsupported-fixture-agent",
             "text": "fixture message"
         });
         payload

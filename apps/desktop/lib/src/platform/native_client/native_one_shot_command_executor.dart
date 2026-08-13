@@ -35,7 +35,7 @@ class NativeOneShotCommandExecutor implements NativeCommandExecutor {
     if (cli == null) {
       try {
         final result = await _runCliExecutable(
-          'licoup',
+          'licoup-cli',
           arguments,
           environment,
         );

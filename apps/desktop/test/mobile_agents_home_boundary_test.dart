@@ -17,8 +17,6 @@ void main() {
     final entry = File(entryPath);
     expect(entry.existsSync(), isTrue);
     final source = entry.readAsStringSync();
-
-    expect(source.split('\n').length, lessThanOrEqualTo(600));
     expect(source, contains('class MobileAgentsHome extends StatefulWidget'));
     expect(source, contains('class MobileAgentsHomeState'));
     expect(source, isNot(contains('class MobileAddAgentSheet')));

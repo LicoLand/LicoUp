@@ -25,7 +25,7 @@ export function linuxProductCommand(distro, expectedSourceDigest, releaseBinding
   const nodeMatrix = "$HOME/lico-product-artifacts/secure-mesh-linux-node-matrix.json";
   const releaseCliReport =
     "$HOME/lico-up/build/apps/desktop/distribution/linux-arm64/secure-mesh-release-cli-proof.json";
-  const archivedCli = "$LICO_VM_PRODUCT_ROOT/release-cli/bundle/licoup";
+  const archivedCli = "$LICO_VM_PRODUCT_ROOT/release-cli/bundle/licoup-cli";
   const generateValidationKey = [
     "const {generateKeyPairSync}=require('node:crypto')",
     "const fs=require('node:fs')",

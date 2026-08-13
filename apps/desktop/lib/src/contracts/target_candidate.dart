@@ -16,6 +16,7 @@ class TargetCandidate {
   final List<String> supportedActions;
   final String scanSource;
   final String location;
+  final Map<String, dynamic> runtimeConnection;
   final Map<String, dynamic> modelCatalog;
 
   TargetCandidate({
@@ -36,11 +37,13 @@ class TargetCandidate {
     List<String>? supportedActions,
     this.scanSource = '',
     this.location = 'local',
+    Map<String, dynamic>? runtimeConnection,
     Map<String, dynamic>? modelCatalog,
   }) : id = id ?? target,
        historyRoots = historyRoots ?? const [],
        adapterCapabilities = adapterCapabilities ?? const {},
        supportedActions = supportedActions ?? const [],
+       runtimeConnection = Map.unmodifiable(runtimeConnection ?? const {}),
        modelCatalog = modelCatalog ?? const {};
 
   bool supportsAction(String action) {
@@ -49,7 +52,85 @@ class TargetCandidate {
 
   bool get visibleInClient => status != 'not-detected';
   bool get isConversationAgent =>
-      visibleInClient && target != 'code' && location == 'local';
+      visibleInClient &&
+      target != 'code' &&
+      (location == 'local' || hasValidVirtualMachineConnection);
+  bool get isVirtualMachine => location == 'virtual-machine';
+  bool get hasValidVirtualMachineConnection {
+    if (!isVirtualMachine || !const {'openclaw', 'hermes'}.contains(target)) {
+      return false;
+    }
+    const allowedKeys = {
+      'kind',
+      'host',
+      'port',
+      'user',
+      'remoteExecutable',
+      'workingDirectory',
+      'runtimeProtocol',
+    };
+    if (runtimeConnection.keys.any((key) => !allowedKeys.contains(key))) {
+      return false;
+    }
+    final hostValue = runtimeConnection['host'];
+    final userValue = runtimeConnection['user'];
+    final executableValue = runtimeConnection['remoteExecutable'];
+    final workingDirectoryValue = runtimeConnection['workingDirectory'];
+    final runtimeProtocolValue = runtimeConnection['runtimeProtocol'];
+    if (hostValue is! String ||
+        executableValue is! String ||
+        workingDirectoryValue is! String ||
+        (userValue != null && userValue is! String) ||
+        (runtimeProtocolValue != null && runtimeProtocolValue is! String)) {
+      return false;
+    }
+    final host = hostValue;
+    final executable = executableValue;
+    final workingDirectory = workingDirectoryValue;
+    final port = runtimeConnection['port'];
+    return runtimeConnection['kind'] == 'ssh' &&
+        host.trim() == host &&
+        host.isNotEmpty &&
+        host.length <= 255 &&
+        !host.startsWith('-') &&
+        RegExp(r'^[A-Za-z0-9._:\[\]-]+$').hasMatch(host) &&
+        (userValue == null ||
+            (userValue.isNotEmpty &&
+                userValue.length <= 255 &&
+                !userValue.startsWith('-') &&
+                RegExp(r'^[A-Za-z0-9._-]+$').hasMatch(userValue))) &&
+        executable.trim() == executable &&
+        executable.isNotEmpty &&
+        executable.length <= 1024 &&
+        !executable.startsWith('-') &&
+        !executable.contains(RegExp(r'[\r\n\u0000]')) &&
+        workingDirectory.trim() == workingDirectory &&
+        workingDirectory.length <= 4096 &&
+        workingDirectory.startsWith('/') &&
+        !workingDirectory.contains(RegExp(r'[\r\n\u0000]')) &&
+        (runtimeProtocolValue == null ||
+            (target == 'hermes' &&
+                runtimeProtocolValue == 'hermes-tui-gateway')) &&
+        (port == null || (port is int && port > 0 && port <= 65535));
+  }
+
+  String get remoteWorkingDirectory => hasValidVirtualMachineConnection
+      ? runtimeConnection['workingDirectory'].toString()
+      : '';
+
+  String get virtualMachineDestination {
+    if (!hasValidVirtualMachineConnection) {
+      return '';
+    }
+    final rawHost = runtimeConnection['host'].toString();
+    final host = rawHost.contains(':') && !rawHost.startsWith('[')
+        ? '[$rawHost]'
+        : rawHost;
+    final user = runtimeConnection['user']?.toString() ?? '';
+    final port = runtimeConnection['port'];
+    final identity = user.isEmpty ? host : '$user@$host';
+    return port is int ? '$identity:$port' : identity;
+  }
 
   String get conversationDriverStatus =>
       (adapterCapabilities['conversationDriver'] ?? 'unsupported').toString();
@@ -95,6 +176,9 @@ class TargetCandidate {
       (adapterCapabilities['conversationEvidenceAge'] ?? '').toString();
 
   String get conversationSendGateReason {
+    if (isVirtualMachine && !hasValidVirtualMachineConnection) {
+      return 'virtual_machine_connection_invalid';
+    }
     if ((binaryPath ?? '').trim().isEmpty) {
       return 'native_agent_executable_not_detected';
     }
@@ -104,13 +188,14 @@ class TargetCandidate {
     return 'runtime_message_send_unavailable';
   }
 
-  /// Local conversation agents are client-accessible by default: parity
+  /// Supported conversation targets are client-accessible by default: parity
   /// evidence (conversationReadiness) stays informational and never gates
-  /// local runtime use. Only runtimes without a driver profile or without a
-  /// detected binary are excluded. The projected supported-action list is
-  /// informational and cannot veto an execution path the client can resolve.
+  /// runtime use. Only runtimes without a driver profile, an executable
+  /// binding, or a valid explicit VM connection are excluded. The projected
+  /// supported-action list is informational and cannot veto a resolvable path.
   bool get canRelayRuntime =>
       visibleInClient &&
+      (location == 'local' || hasValidVirtualMachineConnection) &&
       (binaryPath ?? '').trim().isNotEmpty &&
       conversationDriverStatus != 'unsupported';
 
@@ -159,6 +244,9 @@ class TargetCandidate {
           : null,
       scanSource: (json['scanSource'] ?? '').toString(),
       location: (json['location'] ?? 'local').toString(),
+      runtimeConnection: json['runtimeConnection'] is Map
+          ? Map<String, dynamic>.from(json['runtimeConnection'] as Map)
+          : null,
       modelCatalog: json['modelCatalog'] is Map<String, dynamic>
           ? Map<String, dynamic>.from(json['modelCatalog'] as Map)
           : null,
@@ -184,6 +272,7 @@ class TargetCandidate {
       'supportedActions': supportedActions,
       if (scanSource.isNotEmpty) 'scanSource': scanSource,
       'location': location,
+      if (runtimeConnection.isNotEmpty) 'runtimeConnection': runtimeConnection,
       if (modelCatalog.isNotEmpty) 'modelCatalog': modelCatalog,
     };
   }

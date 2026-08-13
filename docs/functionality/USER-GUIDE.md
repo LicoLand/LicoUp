@@ -41,6 +41,22 @@ Agent history, settings, and process details stay local. LicoUp shows safe
 summaries in the interface instead of exposing raw tool input, credentials, or
 local paths.
 
+On the Messaging desktop Agents surface, the conversation composer keeps
+secondary runtime controls in glass capsules above the input:
+
+- **Workspace** — the directory the next turn will use. Prefer the selected
+  conversation’s own project path from native history; choose a specific
+  project directory when starting fresh. Personal roots such as the home folder
+  or media libraries are refused because the agent would index the whole tree.
+- **Model / reasoning effort** — open the runtime capsule to set **Model** and
+  **Reasoning Effort** as parallel rows. Leaving the model on **Auto** uses the
+  agent’s native default. Effort options follow the effective model (the
+  selected model, or that native default when Auto is selected).
+
+Hover the top-right conversation, details, or notification controls to open
+floating glass cards anchored to those icons; there is no conversation-details
+sidebar.
+
 Discovery checks the application sources appropriate to the current platform,
 including package managers and common executable/configuration locations. The
 probes run concurrently with a fixed bound. Normalized paths and configuration
@@ -51,6 +67,101 @@ When continuing a conversation, LicoUp prefers the agent's native attach or
 resume operation. If an adapter cannot accept input during a running turn, the
 client keeps projecting its live output and starts the next turn only after the
 agent has completed its reply.
+
+**Cursor** send always uses the Agent CLI lane (`cursor-agent`), not the in-app
+IDE Agent panel. Cursor IDE chats and CLI chats use separate stores; CLI
+`--resume` does not load IDE history. When you continue an IDE-listed Cursor
+conversation from LicoUp, the first send opens a **new** CLI session and injects
+a one-time handoff: the IDE composer id, `state.vscdb` path/key prefixes, and
+the last IDE assistant return, followed by your message. Later sends on that
+CLI session resume normally without repeating the handoff.
+
+The top contact **Lico** opens a LicoUp-owned **group Conversation** where each
+agent is a peer participant. The composer shows the workspace capsule, a
+Flywheel capsule for **Current Conversation**, and a circular edit control.
+Hover the Flywheel capsule to pick an agent and that agent's model (Gateway
+providers A–Z for Lico Agent; native catalogs for third-party agents). Click the
+capsule or the edit control to open the full Adaptive Flywheel editor.
+
+**Lico Agent** is a separate first-party runtime in the agent list (not the
+group entry itself). When chatting with it, choose Agent or Plan mode; Plan
+mode may only write the bound local plan file under OS sandbox. See
+[Lico Agent](../protocols/lico-agent.md).
+
+Open **Adaptive Flywheel** to choose everyday conversation agents and configure
+code-engineering roles. **Assistant** is the configured priority list; the first
+capsule is the default dispatch owner, and list order is also the automatic
+fallback chain when a Lico group Current Conversation send hits quota, credit,
+rate-limit, or provider-capacity limits. A successful fallback updates Current
+Conversation to the capsule that worked without reordering the Assistant list.
+On the Lico group composer, the flywheel **Current Conversation** picker uses
+the same agent/model choice and becomes the live dispatch owner when it differs
+from that first capsule. Saving Adaptive Flywheel again re-syncs Current
+Conversation from the first Assistant capsule. Assistant starts from a circular
+plus control that expands into a capsule search field and three horizontal
+floating cards — agent, that agent’s models, and reasoning effort plus a Fast
+switch; confirmed combinations become capsules. Remove a capsule only with its
+trailing close control; long-press and drag to reorder — list order is the
+effective priority. **Code Engineering** uses the same multi-capsule picker for
+Designer, Worker, and Reviewer (without Fast).
+Designer capsules are shared across the project; list order is priority. Worker
+and Reviewer project to backend/frontend lanes:
+the first capsule is the backend assignment, the second is frontend, and a
+single capsule covers both lanes. The saved assignments are stored in the
+private client-state file `adaptive-flywheel.toml` and projected to the local
+Subagent MCP without exposing executable paths or the raw file. Every role
+picker uses the same live target scan: a detected runnable agent is selectable
+in any role, and its model picker is populated from that agent's native model
+directory when available, then verified local configuration or cache. A static
+catalog only annotates known models and never replaces a successful native
+directory response.
+
+## Connect OpenClaw or Hermes in your VM
+
+This desktop flow is for a VM you control. Install and configure OpenClaw or
+Hermes in the VM first. OpenClaw's ACP command must be able to reach its
+configured Gateway inside the VM.
+
+Open **Agents** while your local OrbStack machines are running. LicoUp
+automatically checks the executable on `PATH` plus these install families:
+
+- OpenClaw: the installer prefix under `~/.openclaw`, the user wrapper under
+  `~/.local/bin`, common npm/pnpm/Bun/Volta/Nix user bins, and system bins.
+- Hermes: `~/.local/bin`, the installer venv under
+  `~/.hermes/hermes-agent/venv`, the Hermes/Nix user bins, and system bins.
+
+These locations follow the
+[OpenClaw installer](https://docs.openclaw.ai/install/installer) and
+[Hermes installation guide](https://github.com/NousResearch/hermes-agent/blob/main/website/docs/getting-started/installation.md).
+For Hermes, LicoUp checks the optional ACP package first. A default Hermes
+installer environment without that extra uses Hermes'
+[built-in TUI Gateway JSON-RPC](https://github.com/NousResearch/hermes-agent/blob/main/website/docs/developer-guide/programmatic-integration.md)
+instead; LicoUp does not install or change anything in the VM. Select the
+discovered VM target to list sessions, open an existing session, or create a
+new conversation.
+
+For a non-OrbStack VM or a nonstandard install:
+
+1. Configure system OpenSSH key or agent authentication for the VM and add its
+   host key to the system `known_hosts` file. LicoUp uses strict host checking
+   and noninteractive authentication, so it will not open a password, key, or
+   first-connect trust prompt.
+2. Choose **Add target**, then select **OpenClaw** or **Hermes**.
+3. Set **Runtime location** to **Virtual machine (SSH)**.
+4. Enter the VM host, optional SSH port and user, the executable name or
+   absolute executable path inside the VM, and an absolute VM working directory
+   beginning with `/`.
+5. Add and select the target.
+
+The conversation header shows the exact SSH destination before you send.
+
+LicoUp starts `openclaw acp` or `hermes acp` through the system SSH client and
+uses ACP `session/list`, `session/load`, and the native new/prompt lifecycle. It
+does not read or copy the VM's private history database. Passwords and private
+keys are not accepted as target fields, local MCP server descriptors are not
+forwarded into the VM, and automatic and manual VM connections are excluded
+from the fast discovery cache. Pressing **Send** gives the selected VM agent the
+exact prompt over the authenticated SSH transport.
 
 ## Manage agent adapter plugins
 
@@ -84,7 +195,7 @@ Do not attach raw logs, histories, paths, or device details to a public issue.
 
 ## Enable optional collaboration
 
-LicoMesh collaboration is a separate plugin. The default client does not load
+Meshrix collaboration is a separate plugin. The default client does not load
 or query it.
 
 1. Open **Plugin Management** and choose the collaboration plugin area.
@@ -98,7 +209,7 @@ or query it.
 6. For MCP installation, select one or more plugins and one or more local
    agents, then review the exact local changes before applying them.
 
-The LicoUp source tree does not contain the LicoMesh server runner. A client
+The LicoUp source tree does not contain the Meshrix server runner. A client
 build therefore proves neither that a server artifact was obtained nor that a
 deployment was started.
 
@@ -112,9 +223,15 @@ the digest mismatch; cancellation, expiry, or reuse also fails closed. If
 protected platform authentication is unavailable, external transfer remains
 disabled.
 
-## Send to another client
+## Preview a protected transfer to another client
 
-Only use the protected peer flow for user content:
+This flow uses the
+[current retiring endpoint-protection Preview](../STATUS.md). It can be
+carried through the candidate `licoarc.relay.v1` outer adapter, and one bounded
+two-fresh-endpoint scenario has been locally verified through an actual
+BadTower candidate. This does not establish a Published Lico Arc Protocol
+Line, stable neutral-station support, release, or hosted operation. Only use
+the protected peer flow for test or explicitly accepted preview content:
 
 1. Choose the receiving LicoUp client.
 2. Review the exact message or file and its destination.
@@ -122,9 +239,12 @@ Only use the protected peer flow for user content:
 4. LicoUp encrypts the content on the sending device.
 5. The receiving client verifies and decrypts it.
 
-The relay is not trusted with plaintext. LicoUp sends it only encrypted
-content and the minimum routing data needed for the transfer. Changing the peer
-or content requires a new approval.
+The current transport is not trusted with plaintext. LicoUp sends it only
+encrypted content and the minimum routing data needed for the transfer.
+Changing the peer or content requires a new approval. The current inner
+preview is not a Lico Arc Profile and has no future compatibility promise; it
+is to be retired directly when a complete pinned Lico Arc Protocol Line
+replaces it.
 
 ## Verify a release file
 

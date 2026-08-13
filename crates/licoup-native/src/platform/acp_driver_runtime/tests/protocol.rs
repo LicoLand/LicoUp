@@ -121,6 +121,53 @@ fn prompt_drain_fails_closed_when_quiescence_has_no_agent_output() {
 }
 
 #[test]
+fn pre_binding_session_updates_are_tolerated_until_the_session_response_arrives() {
+    let mut protocol = new_protocol(json!({}), "private", "");
+    protocol.handle_message(initialize_response(true, true));
+    // Real Copilot emits available_commands_update for the conversation that
+    // is still being created, before the session/new response arrives.
+    let effects = protocol.handle_message(json!({
+        "jsonrpc": "2.0", "method": "session/update",
+        "params": {"sessionId": "pending-native-session", "update": {
+            "sessionUpdate": "available_commands_update",
+            "availableCommands": [{"name": "compact", "description": "Summarize"}]
+        }}
+    }));
+    assert!(effects.is_empty());
+    assert_eq!(protocol.phase, ProtocolPhase::AwaitSession);
+
+    let effects = protocol.handle_message(json!({
+        "jsonrpc": "2.0", "id": SESSION_REQUEST_ID,
+        "result": {"sessionId": "pending-native-session", "configOptions": []}
+    }));
+    let ProtocolEffect::Send(prompt) = &effects[0] else {
+        panic!("expected the prompt request after a tolerated pre-bind update")
+    };
+    assert_eq!(prompt["method"], "session/prompt");
+    assert_eq!(
+        protocol.session_id.as_deref(),
+        Some("pending-native-session")
+    );
+}
+
+#[test]
+fn malformed_pre_binding_session_update_still_fails_closed() {
+    let mut protocol = new_protocol(json!({}), "private", "");
+    protocol.handle_message(initialize_response(true, true));
+    let effects = protocol.handle_message(json!({
+        "jsonrpc": "2.0", "method": "session/update",
+        "params": {"sessionId": "pending-native-session", "update": {
+            "sessionUpdate": "not-a-real-update-kind"
+        }}
+    }));
+    let ProtocolEffect::Fail(failure) = &effects[0] else {
+        panic!("a malformed pre-bind update must fail the protocol")
+    };
+    assert_eq!(failure.code, "acp_session_update_invalid");
+    assert_eq!(protocol.phase, ProtocolPhase::Finished);
+}
+
+#[test]
 fn prompt_drain_rejects_mismatched_and_malformed_late_notifications() {
     for (message, expected_code) in [
         (

@@ -41,13 +41,13 @@ void main() {
         findsOneWidget,
       );
       expect(find.text('工作台'), findsOneWidget);
-      expect(find.text('原生'), findsOneWidget);
+      expect(find.text('图集'), findsOneWidget);
       expect(
-        find.byKey(const Key('fixture-preview-workbench-desktop')),
+        find.byKey(const Key('fixture-preview-dashboard-desktop')),
         findsOneWidget,
       );
       expect(
-        find.byKey(const Key('fixture-preview-native-desktop')),
+        find.byKey(const Key('fixture-preview-atlas-desktop')),
         findsOneWidget,
       );
 
@@ -60,15 +60,15 @@ void main() {
       );
 
       expect(
-        find.byKey(const Key('fixture-preview-workbench-mobile')),
+        find.byKey(const Key('fixture-preview-dashboard-mobile')),
         findsOneWidget,
       );
       expect(
-        find.byKey(const Key('fixture-preview-native-mobile')),
+        find.byKey(const Key('fixture-preview-atlas-mobile')),
         findsOneWidget,
       );
       expect(
-        find.byKey(const Key('fixture-preview-workbench-desktop')),
+        find.byKey(const Key('fixture-preview-dashboard-desktop')),
         findsNothing,
       );
     },
@@ -109,7 +109,7 @@ void main() {
     }
   });
 
-  testWidgets('supports preview cancellation, confirmation, and reset', (
+  testWidgets('applies selections immediately and supports reset', (
     tester,
   ) async {
     final runtime = buildFixtureLayoutRuntime();
@@ -119,31 +119,19 @@ void main() {
     await manager.initialize();
     await _pumpSelector(tester, manager: manager, runtime: runtime);
 
-    await tester.tap(find.byKey(const Key('layout-profile-option-native')));
-    await tester.pump();
-    expect(manager.state.status, LayoutSelectionStatus.previewing);
-    expect(manager.state.effectiveId, LayoutProfileId.parse('native'));
-    expect(find.text('Previewing layout'), findsOneWidget);
-
-    await tester.tap(find.byKey(const Key('layout-selector-cancel')));
-    await tester.pump();
-    expect(manager.state.status, LayoutSelectionStatus.stable);
-    expect(manager.state.effectiveId, LayoutProfileId.parse('workbench'));
-    expect(repository.layoutWriteCount, 0);
-
-    await tester.tap(find.byKey(const Key('layout-profile-option-native')));
-    await tester.pump();
-    await tester.tap(find.byKey(const Key('layout-selector-confirm')));
+    await tester.tap(find.byKey(const Key('layout-profile-option-atlas')));
     await tester.pumpAndSettle();
-    expect(manager.state.committedId, LayoutProfileId.parse('native'));
+    expect(manager.state.status, LayoutSelectionStatus.stable);
+    expect(manager.state.committedId, LayoutProfileId.parse('atlas'));
     expect(
       repository.preferences.layoutProfileId,
-      LayoutProfileId.parse('native'),
+      LayoutProfileId.parse('atlas'),
     );
+    expect(repository.layoutWriteCount, 1);
 
     await tester.tap(find.byKey(const Key('layout-selector-reset')));
     await tester.pumpAndSettle();
-    expect(manager.state.committedId, LayoutProfileId.parse('workbench'));
+    expect(manager.state.committedId, LayoutProfileId.parse('dashboard'));
     expect(repository.layoutWriteCount, 2);
   });
 
@@ -168,9 +156,7 @@ void main() {
     repository.layoutWriteGate = Completer<void>();
     repository.failNextLayoutWrite = true;
     await tester.pump();
-    await tester.tap(find.byKey(const Key('layout-profile-option-native')));
-    await tester.pump();
-    await tester.tap(find.byKey(const Key('layout-selector-confirm')));
+    await tester.tap(find.byKey(const Key('layout-profile-option-atlas')));
     await repository.layoutWriteStarted.future;
     await tester.pump();
 
@@ -215,43 +201,46 @@ void main() {
     expect(options.every((option) => option.duration == Duration.zero), isTrue);
     expect(
       tester
-          .getSize(find.byKey(const Key('layout-profile-option-native')))
+          .getSize(find.byKey(const Key('layout-profile-option-atlas')))
           .height,
       greaterThanOrEqualTo(48),
     );
 
-    await tester.sendKeyEvent(LogicalKeyboardKey.tab);
-    await tester.pump();
+    // The Dashboard layout is disabled (not ready), so keyboard traversal
+    // skips it and lands on the next selectable option.
     await tester.sendKeyEvent(LogicalKeyboardKey.tab);
     await tester.pump();
     await tester.sendKeyEvent(LogicalKeyboardKey.enter);
-    await tester.pump();
+    await tester.pumpAndSettle();
 
-    expect(manager.state.status, LayoutSelectionStatus.previewing);
-    expect(manager.state.effectiveId, LayoutProfileId.parse('native'));
+    expect(manager.state.status, LayoutSelectionStatus.stable);
+    expect(manager.state.committedId, LayoutProfileId.parse('atlas'));
     manager.dispose();
   });
 
-  testWidgets('disposing the selector preserves an active preview', (
+  testWidgets('disposing the selector does not interrupt an in-flight commit', (
     tester,
   ) async {
     final runtime = buildFixtureLayoutRuntime();
-    final manager = _createManager(
-      runtime: runtime,
-      repository: _FakePreferencesRepository(preferences: _preferences()),
-    );
+    final repository = _FakePreferencesRepository(preferences: _preferences());
+    final manager = _createManager(runtime: runtime, repository: repository);
     addTearDown(manager.dispose);
     await manager.initialize();
     await _pumpSelector(tester, manager: manager, runtime: runtime);
 
-    await tester.tap(find.byKey(const Key('layout-profile-option-native')));
+    repository.layoutWriteGate = Completer<void>();
+    await tester.tap(find.byKey(const Key('layout-profile-option-atlas')));
+    await repository.layoutWriteStarted.future;
     await tester.pump();
-    expect(manager.state.status, LayoutSelectionStatus.previewing);
+    expect(manager.state.status, LayoutSelectionStatus.committing);
 
     await tester.pumpWidget(const SizedBox.shrink());
+    expect(manager.state.status, LayoutSelectionStatus.committing);
 
-    expect(manager.state.status, LayoutSelectionStatus.previewing);
-    expect(manager.state.effectiveId, LayoutProfileId.parse('native'));
+    repository.layoutWriteGate!.complete();
+    await tester.pump();
+    expect(manager.state.status, LayoutSelectionStatus.stable);
+    expect(manager.state.committedId, LayoutProfileId.parse('atlas'));
     manager.dispose();
   });
 }
@@ -276,7 +265,7 @@ LayoutManager _createManager({
 
 PresentationPreferences _preferences({LayoutProfileId? layout}) =>
     PresentationPreferences(
-      layoutProfileId: layout ?? LayoutProfileId.parse('workbench'),
+      layoutProfileId: layout ?? LayoutProfileId.parse('dashboard'),
       appearancePresetId: 'default-system',
       localePreference: 'system',
     );

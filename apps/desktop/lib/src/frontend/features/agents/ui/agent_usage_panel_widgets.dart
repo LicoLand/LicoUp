@@ -138,7 +138,6 @@ final class _AgentUsageChartsState extends State<AgentUsageCharts> {
     };
     return AgentUsageBarSection(
       key: const ValueKey('agent-usage-token-share'),
-      title: strings.tokenUsage,
       valueHeader: strings.tokenConsumption,
       rows: [
         if (detailRows.isNotEmpty && sectionTotal > 0)

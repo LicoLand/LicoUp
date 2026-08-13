@@ -23,8 +23,8 @@ fn agent_sessions_list_params_forward_offset_and_limit() {
     let mut raw = command_fixture();
     raw["commandKind"] = json!("agent.sessions.list");
     raw["riskClass"] = json!("read_only");
+    raw["targetBinding"]["targetAgentId"] = json!("codex");
     raw["body"] = json!({
-        "agentId": "codex",
         "limit": 20,
         "offset": 40,
     });
@@ -40,8 +40,8 @@ fn agent_sessions_describe_params_require_session_identity() {
     let mut raw = command_fixture();
     raw["commandKind"] = json!("agent.sessions.describe");
     raw["riskClass"] = json!("read_only");
+    raw["targetBinding"]["targetAgentId"] = json!("codex");
     raw["body"] = json!({
-        "agentId": "codex",
         "nativeSessionId": "codex-native-exact",
     });
     let payload = SecureCommandPayload::from_value(&raw).unwrap();
@@ -51,19 +51,18 @@ fn agent_sessions_describe_params_require_session_identity() {
     assert_eq!(params["limit"], 1);
     assert_eq!(params["offset"], 0);
 
-    raw["body"] = json!({"agentId": "codex"});
+    raw["body"] = json!({});
     let missing = SecureCommandPayload::from_value(&raw).unwrap();
     assert!(agent_sessions_describe_params(&missing).is_err());
 }
 
 #[test]
-fn secure_mesh_command_gate_requires_confirmation_before_sessions_describe() {
+fn secure_mesh_command_gate_executes_exactly_bound_read_only_sessions_describe() {
     let mut raw = command_fixture();
     raw["commandKind"] = json!("agent.sessions.describe");
     raw["riskClass"] = json!("read_only");
     raw["targetBinding"]["targetAgentId"] = json!("codex");
     raw["body"] = json!({
-        "agentId": "codex",
         "sessionId": "codex-native-exact",
     });
     let payload = SecureCommandPayload::from_value(&raw).unwrap();
@@ -73,19 +72,9 @@ fn secure_mesh_command_gate_requires_confirmation_before_sessions_describe() {
     let mut ledger = SecureCommandReplayLedger::default();
     let evaluation = evaluate_secure_command(&payload, &context, &mut ledger).unwrap();
     assert!(evaluation.accepted);
-    assert!(!evaluation.should_execute);
+    assert!(evaluation.should_execute);
     assert_eq!(evaluation.risk_class, "read_only");
-    assert_eq!(evaluation.code, "user_confirmation_required");
-
-    let mut confirmed_context = context_fixture();
-    confirmed_context["allowedAgentIds"] = json!(["codex"]);
-    confirmed_context["userConfirmed"] = json!(true);
-    let confirmed_context = SecureCommandEvaluationContext::from_value(&confirmed_context).unwrap();
-    let mut confirmed_ledger = SecureCommandReplayLedger::default();
-    let confirmed =
-        evaluate_secure_command(&payload, &confirmed_context, &mut confirmed_ledger).unwrap();
-    assert!(confirmed.should_execute);
-    assert_eq!(confirmed.code, "execute");
+    assert_eq!(evaluation.code, "execute");
 }
 
 #[test]
@@ -120,36 +109,21 @@ fn secure_mesh_command_gate_rejects_understated_command_risk() {
 
 #[test]
 fn secure_mesh_command_gate_requires_user_confirmation_for_protected_operations() {
-    for (command_kind, risk_class, body) in [
-        ("secure_mesh.device.verify", "local_effect", json!({})),
-        (
-            "agent.sessions.list",
-            "read_only",
-            json!({"agentId": "codex"}),
-        ),
-    ] {
-        let mut raw = command_fixture();
-        raw["commandKind"] = json!(command_kind);
-        raw["riskClass"] = json!(risk_class);
-        raw["targetBinding"]["targetAgentId"] = Value::Null;
-        raw["body"] = body;
-        let payload = SecureCommandPayload::from_value(&raw).unwrap();
-        let mut context = context_fixture();
-        context["allowedAgentIds"] = json!([]);
-        let context = SecureCommandEvaluationContext::from_value(&context).unwrap();
-        let mut ledger = SecureCommandReplayLedger::default();
-        let evaluation = evaluate_secure_command(&payload, &context, &mut ledger).unwrap();
+    let mut raw = command_fixture();
+    raw["commandKind"] = json!("secure_mesh.device.verify");
+    raw["riskClass"] = json!("local_effect");
+    raw["targetBinding"]["targetAgentId"] = Value::Null;
+    raw["body"] = json!({});
+    let payload = SecureCommandPayload::from_value(&raw).unwrap();
+    let mut context = context_fixture();
+    context["allowedAgentIds"] = json!([]);
+    let context = SecureCommandEvaluationContext::from_value(&context).unwrap();
+    let mut ledger = SecureCommandReplayLedger::default();
+    let evaluation = evaluate_secure_command(&payload, &context, &mut ledger).unwrap();
 
-        assert!(
-            evaluation.accepted,
-            "{command_kind} should pass identity gates"
-        );
-        assert!(
-            !evaluation.should_execute,
-            "{command_kind} must not execute without local user confirmation"
-        );
-        assert_eq!(evaluation.code, "user_confirmation_required");
-    }
+    assert!(evaluation.accepted);
+    assert!(!evaluation.should_execute);
+    assert_eq!(evaluation.code, "user_confirmation_required");
 }
 
 #[test]
@@ -273,6 +247,104 @@ fn secure_mesh_command_sqlite_ledger_survives_reopen_and_bounds_entries() {
 }
 
 #[test]
+fn secure_mesh_command_completed_outcome_is_reused_without_duplicate_execution() {
+    let mut ledger = SecureCommandReplayLedger::default();
+    let mut executor = FixtureExecutor::default();
+    let first = execute_secure_command_json(
+        &command_fixture(),
+        &context_fixture(),
+        &mut ledger,
+        &mut executor,
+        "2026-01-01T00:02:00Z",
+    )
+    .unwrap();
+    let second = execute_secure_command_json(
+        &command_fixture(),
+        &context_fixture(),
+        &mut ledger,
+        &mut executor,
+        "2026-01-01T00:03:00Z",
+    )
+    .unwrap();
+
+    assert_eq!(executor.calls, 1);
+    assert_eq!(second, first);
+    assert_eq!(second["execution"]["outcome"], "result");
+}
+
+#[test]
+fn secure_mesh_command_sqlite_completed_outcome_survives_reopen() {
+    let path = std::env::temp_dir().join(format!(
+        "lico-secure-mesh-command-completed-{}.sqlite",
+        uuid::Uuid::new_v4()
+    ));
+    let first = {
+        let mut ledger = SecureCommandSqliteReplayLedger::open(&path).unwrap();
+        let mut executor = FixtureExecutor::default();
+        let result = execute_secure_command_json(
+            &command_fixture(),
+            &context_fixture(),
+            &mut ledger,
+            &mut executor,
+            "2026-01-01T00:02:00Z",
+        )
+        .unwrap();
+        assert_eq!(executor.calls, 1);
+        result
+    };
+    let mut reopened = SecureCommandSqliteReplayLedger::open(&path).unwrap();
+    let mut executor = FixtureExecutor::default();
+    let recovered = execute_secure_command_json(
+        &command_fixture(),
+        &context_fixture(),
+        &mut reopened,
+        &mut executor,
+        "2026-01-01T00:03:00Z",
+    )
+    .unwrap();
+
+    assert_eq!(executor.calls, 0);
+    assert_eq!(recovered, first);
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
+fn secure_mesh_command_reserved_execution_fails_closed_after_reopen() {
+    let path = std::env::temp_dir().join(format!(
+        "lico-secure-mesh-command-reserved-{}.sqlite",
+        uuid::Uuid::new_v4()
+    ));
+    let payload = SecureCommandPayload::from_value(&command_fixture()).unwrap();
+    let context = SecureCommandEvaluationContext::from_value(&context_fixture()).unwrap();
+    {
+        let mut ledger = SecureCommandSqliteReplayLedger::open(&path).unwrap();
+        assert!(matches!(
+            ledger.record_execution(&payload, context.now).unwrap(),
+            SecureCommandReplayRecordStatus::Fresh
+        ));
+    }
+    let mut reopened = SecureCommandSqliteReplayLedger::open(&path).unwrap();
+    let mut executor = FixtureExecutor::default();
+    let recovered = execute_secure_command_json(
+        &command_fixture(),
+        &context_fixture(),
+        &mut reopened,
+        &mut executor,
+        "2026-01-01T00:03:00Z",
+    )
+    .unwrap();
+
+    assert_eq!(executor.calls, 0);
+    assert_eq!(recovered["evaluation"]["code"], "execution_outcome_unknown");
+    assert_eq!(
+        recovered["execution"]["errorCode"],
+        "execution_outcome_unknown"
+    );
+    assert_eq!(recovered["execution"]["retryable"], false);
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
 fn secure_mesh_command_execution_wraps_result_payload_after_gate() {
     let payload = SecureCommandPayload::from_value(&command_fixture()).unwrap();
     let context = SecureCommandEvaluationContext::from_value(&context_fixture()).unwrap();
@@ -358,7 +430,6 @@ fn secure_mesh_command_denies_unscoped_execution_fields_before_dispatch() {
         "cmd-denied-unscoped-execution-fields",
         "idem-denied-unscoped-execution-fields",
         json!({
-            "agentId": "agent-a",
             "text": "hello",
             "command": "open",
             "args": ["test-data/not-allowed"],
@@ -406,6 +477,24 @@ fn empty_agent_allowlist_never_authorizes_a_bound_agent() {
 }
 
 #[test]
+fn body_agent_selector_cannot_replace_the_authorized_target_binding() {
+    let mut raw = command_fixture();
+    raw["body"] = json!({
+        "agentId": "agent-b",
+        "message": "must not dispatch"
+    });
+    let payload = SecureCommandPayload::from_value(&raw).unwrap();
+    let context = SecureCommandEvaluationContext::from_value(&context_fixture()).unwrap();
+    let mut ledger = SecureCommandReplayLedger::default();
+
+    let evaluation = evaluate_secure_command(&payload, &context, &mut ledger).unwrap();
+
+    assert!(!evaluation.accepted);
+    assert!(!evaluation.should_execute);
+    assert_eq!(evaluation.code, "agent_selector_must_use_target_binding");
+}
+
+#[test]
 fn ready_agent_dispatch_uses_the_shared_conversation_lane() {
     let params = json!({
         "agent": "fixture-ready-agent",
@@ -444,7 +533,6 @@ fn secure_agent_deadline_is_receiver_owned_and_bounded() {
         "cmd-receiver-deadline",
         "idem-receiver-deadline",
         json!({
-            "agentId": "codex",
             "text": "fixture message",
             "model": "model-canary",
             "reasoningEffort": "high"
@@ -455,6 +543,7 @@ fn secure_agent_deadline_is_receiver_owned_and_bounded() {
     let params = agent_message_send_params(&payload).unwrap();
 
     assert_eq!(params["timeoutMs"], SECURE_AGENT_MESSAGE_TIMEOUT_MS);
+    assert_eq!(params["idempotencyKey"], "idem-receiver-deadline");
     assert_eq!(params["model"], "model-canary");
     assert_eq!(params["reasoningEffort"], "high");
 }

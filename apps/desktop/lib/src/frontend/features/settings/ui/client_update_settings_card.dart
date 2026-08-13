@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:licoup/src/application/controller/client_controller.dart';
 import 'package:licoup/src/contracts/client_update_models.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 class ClientUpdateSettingsCard extends StatelessWidget {
@@ -53,14 +54,23 @@ class ClientUpdateSettingsCard extends StatelessWidget {
 
     return Padding(
       key: const Key('client-update-settings-card'),
-      padding: const EdgeInsets.fromLTRB(16, 6, 16, 16),
+      padding: const EdgeInsets.fromLTRB(
+        LicoContentSpacing.item,
+        LicoContentSpacing.compact,
+        LicoContentSpacing.item,
+        LicoContentSpacing.item,
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Row(
             children: [
-              Icon(Icons.system_update_alt, color: colors.primary, size: 18),
-              const SizedBox(width: 10),
+              Icon(
+                Icons.system_update_alt,
+                color: colors.textSecondary,
+                size: 18,
+              ),
+              const SizedBox(width: LicoContentSpacing.compact),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -72,7 +82,7 @@ class ClientUpdateSettingsCard extends StatelessWidget {
                         fontWeight: FontWeight.w600,
                       ),
                     ),
-                    const SizedBox(height: 2),
+                    const SizedBox(height: LicoContentSpacing.inline / 2),
                     Text(
                       strings.clientUpdateHint,
                       style: TextStyle(fontSize: 11, color: colors.textMuted),
@@ -82,7 +92,7 @@ class ClientUpdateSettingsCard extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: LicoContentSpacing.item),
           _InfoLine(
             label: strings.version,
             value: status.currentVersion.isEmpty
@@ -105,10 +115,10 @@ class ClientUpdateSettingsCard extends StatelessWidget {
             label: strings.productionReady,
             value: status.productionReady ? strings.yes : strings.no,
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: LicoContentSpacing.item),
           Wrap(
-            spacing: 10,
-            runSpacing: 10,
+            spacing: LicoContentSpacing.compact,
+            runSpacing: LicoContentSpacing.compact,
             children: [
               FilledButton.tonal(
                 key: const Key('client-update-refresh-status'),
@@ -183,7 +193,7 @@ class _InfoLine extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.licoColors;
     return Padding(
-      padding: const EdgeInsets.only(bottom: 4),
+      padding: const EdgeInsets.only(bottom: LicoContentSpacing.inline),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

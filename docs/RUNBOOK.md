@@ -86,10 +86,13 @@ Common focused checks are:
 | Architecture boundaries | `npm run client:verify:architecture` |
 | Version and generated compatibility | `npm run client:version:check` |
 
-Run `npm run client:verify` only once after all focused checks for the complete
-change pass. It is the broad source verification closure, not authorization for
-live services, runtime-data capture, device installation, signing, publication,
-or store operations.
+Run `npm run client:gate:source` once after all focused checks pass. Then run
+only the affected `client:gate:flutter`, `client:gate:rust`,
+`client:gate:android`, `client:gate:dependencies`, or
+`client:gate:release-policy` lane. These lanes are independent and may run in
+parallel. Source policy is Node-only; it does not install platform toolchains
+and is not authorization for live services, runtime-data capture, device
+installation, signing, publication, or store operations.
 
 ## Diagnose a failed check
 
@@ -126,10 +129,10 @@ local assets and must never be used as the sole source for a formal release.
 
 ## Verify release source
 
-The side-effect-free release source gate is:
+The mandatory side-effect-free source policy is:
 
 ```bash
-npm run client:verify:source
+npm run client:gate:source
 ```
 
 The generated compatibility projection must be refreshed and checked whenever
@@ -145,6 +148,13 @@ Commands that install or launch on a device, use protected platform identity,
 contact a live service, create release assets, or publish through a channel are
 separate operator-authorized actions. Their success cannot be inferred from a
 source or package build.
+
+The manual GitHub Release workflow accepts exactly one `target` per dispatch.
+`macos-arm64`, `linux-glibc-arm64`, and `android-arm64` builds may advance
+concurrently for the same tag. Each target waits only for its own build. A
+same-tag concurrency group serializes only the final append, merged consumer
+manifest, and exact remote-asset verification. Existing same-source drafts or
+published Releases may be extended; no platform waits for another platform.
 
 ## Maintain documentation
 

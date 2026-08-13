@@ -132,13 +132,8 @@ mixin ClientMobileRelayFacade on AgentWorkspaceCoordinator {
       mobileRelayController.commands;
   bool get isMobileRelayBusy => mobileRelayController.busy;
   bool get isMobileRelayPolling => mobileRelayController.polling;
-  Future<void> configureMobileRelayGateway({
-    required bool useCustomGateway,
-    required String customGatewayUrl,
-  }) => mobileRelayController.configureGateway(
-    useCustomGateway: useCustomGateway,
-    customGatewayUrl: customGatewayUrl,
-  );
+  Future<void> configureMobileRelayStation({required String stationBaseUrl}) =>
+      mobileRelayController.configureStation(stationBaseUrl: stationBaseUrl);
 
   Future<void> createMobilePairing() => mobileRelayController.createPairing();
 

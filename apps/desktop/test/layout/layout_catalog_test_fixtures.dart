@@ -9,27 +9,27 @@ import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 const fixtureCatalogRevision = 1;
 
 List<LayoutProfileDescriptor> fixtureProfiles({
-  bool workbenchDefault = true,
+  bool dashboardDefault = true,
   bool nativeDefault = false,
-  int workbenchRevision = fixtureCatalogRevision,
+  int dashboardRevision = fixtureCatalogRevision,
   int nativeRevision = fixtureCatalogRevision,
 }) => [
   LayoutProfileDescriptor(
-    id: LayoutProfileId.parse('workbench'),
-    label: LayoutProfileCopy(english: 'Workbench', chinese: '工作台'),
+    id: LayoutProfileId.parse('dashboard'),
+    label: LayoutProfileCopy(english: 'Dashboard', chinese: '工作台'),
     description: LayoutProfileCopy(
-      english: 'Workbench fixture',
+      english: 'Dashboard fixture',
       chinese: '工作台夹具',
     ),
-    styleIdentity: 'spacious-card-workbench',
-    isDefault: workbenchDefault,
-    revision: workbenchRevision,
+    styleIdentity: 'spacious-card-dashboard',
+    isDefault: dashboardDefault,
+    revision: dashboardRevision,
   ),
   LayoutProfileDescriptor(
-    id: LayoutProfileId.parse('native'),
-    label: LayoutProfileCopy(english: 'Native', chinese: '原生'),
-    description: LayoutProfileCopy(english: 'Native fixture', chinese: '原生夹具'),
-    styleIdentity: 'glassy-rail-native',
+    id: LayoutProfileId.parse('atlas'),
+    label: LayoutProfileCopy(english: 'Atlas', chinese: '图集'),
+    description: LayoutProfileCopy(english: 'Atlas fixture', chinese: '图集夹具'),
+    styleIdentity: 'glassy-rail-atlas',
     isDefault: nativeDefault,
     revision: nativeRevision,
   ),
@@ -62,7 +62,7 @@ List<LayoutVariantCoverage> fixtureVariants({
 
 List<LayoutStateNamespace> fixtureStateNamespaces() => [
   LayoutStateNamespace(
-    profileId: LayoutProfileId.parse('workbench'),
+    profileId: LayoutProfileId.parse('dashboard'),
     surface: LayoutRuntimeSurface.desktop,
     destination: ClientSection.agents,
     channel: const LayoutStateChannel(
@@ -71,7 +71,7 @@ List<LayoutStateNamespace> fixtureStateNamespaces() => [
     ),
   ),
   LayoutStateNamespace(
-    profileId: LayoutProfileId.parse('workbench'),
+    profileId: LayoutProfileId.parse('dashboard'),
     surface: LayoutRuntimeSurface.mobile,
     destination: ClientSection.agents,
     channel: const LayoutStateChannel(
@@ -80,7 +80,7 @@ List<LayoutStateNamespace> fixtureStateNamespaces() => [
     ),
   ),
   LayoutStateNamespace(
-    profileId: LayoutProfileId.parse('native'),
+    profileId: LayoutProfileId.parse('atlas'),
     surface: LayoutRuntimeSurface.desktop,
     destination: ClientSection.agents,
     channel: const LayoutStateChannel(

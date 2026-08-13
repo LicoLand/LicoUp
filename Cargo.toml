@@ -3,7 +3,7 @@ members = ["crates/lico-catalog-convergence", "crates/licoup-native", "crates/tr
 resolver = "3"
 
 [workspace.package]
-version = "0.0.1-alpha"
+version = "0.1.0-alpha"
 edition = "2024"
 repository = "https://github.com/LicoLand/LicoUp.git"
 license = "GPL-3.0-or-later"
@@ -14,9 +14,3 @@ lto = true
 opt-level = "z"
 panic = "abort"
 strip = true
-
-# hpke-rs 0.6.1 still resolves its optional libcrux backend to the vulnerable
-# libcrux-chacha20poly1305 0.0.7. Pin the upstream dependency-only security fix
-# until the next crates.io release contains it.
-[patch.crates-io]
-hpke-rs-libcrux = { git = "https://github.com/cryspen/hpke-rs", rev = "654df20e5c2e6657f0ac17f2a903f179bb97a5ae" }

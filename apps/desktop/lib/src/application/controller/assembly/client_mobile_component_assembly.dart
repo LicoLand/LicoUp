@@ -1,7 +1,7 @@
 import 'package:flutter/foundation.dart' show ChangeNotifier;
 
 import 'package:licoup/src/application/composition/mobile_home_layout_repository_adapter.dart';
-import 'package:licoup/src/application/composition/mobile_relay_gateway_adapter.dart';
+import 'package:licoup/src/application/composition/mobile_relay_client_adapter.dart';
 import 'package:licoup/src/application/controller/assembly/client_component_assembly_contracts.dart';
 import 'package:licoup/src/application/features/mobile_relay/controller/mobile_home_layout_controller.dart';
 import 'package:licoup/src/application/features/mobile_relay/controller/mobile_relay_controller.dart';
@@ -47,14 +47,14 @@ final class ClientMobileComponentAssembly {
                portableData: portableData,
              ),
        ) {
-    final relayGateway = MobileRelayGatewayAdapter(
+    final relayClient = MobileRelayClientAdapter(
       relayService: mobileRelayService,
       agentService: agentService,
       capabilityService: secureMeshCapabilityService,
     );
     final operationGate = MobileRelayOperationGate();
     relayController = MobileRelayController(
-      gateway: relayGateway,
+      client: relayClient,
       operationGate: operationGate,
       isMobileRuntime: isMobileRuntime,
       isAndroid: () => runtimePlatformBridge.isAndroid,
@@ -77,7 +77,7 @@ final class ClientMobileComponentAssembly {
       },
     );
     secureMeshController = SecureMeshController(
-      gateway: relayGateway,
+      gateway: relayClient,
       skillInstaller: SecureMeshSkillInstallGatewayAdapter(skillHubGateway),
       operationGate: operationGate,
       onStatus: (update) => reportStatus(

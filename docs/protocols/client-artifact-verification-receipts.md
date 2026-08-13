@@ -75,12 +75,16 @@ They never expose publisher accounts, team/store identifiers, certificate
 subjects or stable fingerprints, credentials, private keys, custody details,
 or private-channel infrastructure.
 
-The manual GitHub workflow requires an explicit Release tag and at least one
-release-supported target. It creates or reuses a GitHub Release, runs the exact
-selected-target acceptance reducer, and publishes only the closed file allowlist
-shown above. The Release remains a draft unless `publish_release` is selected;
-publication occurs only after every selected job succeeds. GitHub repository
-write authority is the only publication authority used by this path. Platform
+The manual GitHub workflow requires an explicit Release tag and exactly one
+release-supported target per dispatch. Different targets build independently
+and may run concurrently for the same tag. A target publisher waits only for
+its own build; only the same-tag asset append and manifest replacement are
+serialized. The publisher creates or reuses a same-source draft or published
+Release, merges the new target with already verified target assets, rebuilds
+the canonical consumer manifest, and verifies the exact remote set. The Release
+remains a draft unless `publish_release` is selected; a later target may also
+extend an already published same-source Release. GitHub repository write
+authority is the only publication authority used by this path. Platform
 publisher identity, store accounts, notarization credentials, listing metadata,
 and private update-channel access are neither read nor accepted as prerequisites.
 
@@ -105,6 +109,11 @@ leave an older green report in place.
 The macOS final local-install path is `npm run client:install:macos`. In GitHub
 Release automation, a short-lived local integrity identity is generated inside
 the isolated runner; it is not a publisher identity and is never published.
+For a local developer install with no explicit identity, the command installs
+the build pipeline's already verified ad-hoc-signed app and does not select or
+modify an existing developer identity. An explicit
+`LICO_MACOS_LOCAL_SIGNING_IDENTITY` selects the identity-signed integrity path
+used by release automation.
 The installer re-signs the app, verifies the local integrity signature,
 atomically installs the exact app, and emits a redacted preparation receipt.
 The subsequent macOS capability producer launches the installed app and issues
@@ -129,7 +138,14 @@ npm run client:verify:closure-producer-writer:self-test
 npm run client:verify:client-release-acceptance:self-test
 ```
 
-Ordinary `client:verify` runs only these
-side-effect-free release tests. The real reducer, which may install, launch, or
-start a bounded platform session for the explicitly selected targets, is
-invoked through `client:verify:product-line-security` only. The GitHub artifact gate is `client:verify:github-release`; it consumes source/version-bound artifact manifests and public consumer-verification files, and it does not consume physical custody, device, KT/MLS, or independent-review evidence. The single public `LicoUp-consumer-verification.json` is generated only after the publisher has downloaded the exact selected workflow artifacts and rejected every unexpected file.
+`client:gate:release-policy` runs these side-effect-free release tests only when
+release authority changes. It is independent from the Node-only source policy
+and from all platform build lanes. The real reducer, which may install, launch,
+or start a bounded platform session for an explicitly selected target, is
+invoked through `client:verify:product-line-security` only. The GitHub artifact
+gate is `client:verify:github-release`; it consumes source/version-bound
+artifact manifests and public consumer-verification files, and it does not
+consume physical custody, device, KT/MLS, or independent-review evidence. The
+single public `LicoUp-consumer-verification.json` is rebuilt after the publisher
+has downloaded the existing same-source assets, merged exactly one target, and
+rejected every unexpected file.

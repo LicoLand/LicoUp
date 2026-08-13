@@ -4,6 +4,7 @@ import process from "node:process";
 import {
   loadClientReleaseTargetCatalog,
 } from "../../lib/client-release-targets.mjs";
+import { CLIENT_GATE_LANES } from "../../client-gate-policy.mjs";
 import {
   sha256Buffer,
   stableReadFile,
@@ -15,6 +16,9 @@ import {
 import {
   SECURE_MESH_TRUST_UX_REPORT_SCHEMA_VERSION,
 } from "../../lib/secure-mesh-trust-ux-reducer.mjs";
+import {
+  LICOARC_BADTOWER_CANDIDATE_BINDING_KEY,
+} from "../../lib/licoarc-badtower-candidate-binding.mjs";
 import { verifyLinuxArchiveDigestSignature } from "../artifacts/linux-signature.mjs";
 import {
   artifactBindingMapsEqual,
@@ -51,6 +55,7 @@ export function runSelfTest({ schemaFixture = false } = {}) {
     sourceStateDigest: `sha256:${"a".repeat(64)}`,
     sourceStateStable: true,
     artifactInputsStable: true,
+    candidateInputsStable: true,
     supportMatrixStable: true,
     targetCatalogStable: true,
     policyInputsStable: true,
@@ -111,7 +116,12 @@ export function runSelfTest({ schemaFixture = false } = {}) {
       "macos-distribution-archive",
       "3",
     ),
-    "android-arm64": readyArtifactFor("android-arm64", "android-apk", "8")
+    "android-arm64": readyArtifactFor("android-arm64", "android-apk", "8"),
+    [LICOARC_BADTOWER_CANDIDATE_BINDING_KEY]: {
+      clientCandidateDigest: `sha256:${"a".repeat(64)}`,
+      protocolCandidateDigest: `sha256:${"b".repeat(64)}`,
+      stationCandidateDigest: `sha256:${"c".repeat(64)}`,
+    },
   };
   const base = {
     selectedTargets: selected,
@@ -151,10 +161,97 @@ export function runSelfTest({ schemaFixture = false } = {}) {
     reports: selfTestReports(),
   });
   requireValue(!missingSelected.githubReleaseReady && missingSelected.blockers.some((item) => item.startsWith("selected_platform_security_not_ready:")), "selected missing evidence must block");
-  const plaintext = reduceClientReleaseAcceptance({ ...base, reports: selfTestReports({ plaintextReady: false }) });
-  requireValue(!plaintext.githubReleaseReady && plaintext.blockers.some((item) => item.includes("plaintext")), "mock relay plaintext observation must fail closed");
+  const plaintext = reduceClientReleaseAcceptance({
+    ...base,
+    reports: selfTestReports({ stationPlaintextAbsent: false }),
+  });
+  requireValue(
+    !plaintext.githubReleaseReady &&
+      plaintext.blockers.includes("station_plaintext_absence_not_verified"),
+    "station plaintext observation must fail closed",
+  );
+  for (const [field, blocker] of [
+    ["mobileFfiDispatch", "mobile_ffi_dispatch_not_verified"],
+    ["typedPendingObserved", "typed_pending_state_not_observed"],
+    [
+      "durableResultReceiptAcknowledged",
+      "durable_result_receipt_not_acknowledged",
+    ],
+  ]) {
+    const reports = selfTestReports();
+    reports.stationAcceptance.scenario[field] = false;
+    const missingFact = reduceClientReleaseAcceptance({ ...base, reports });
+    requireValue(
+      !missingFact.githubReleaseReady &&
+        missingFact.blockers.includes(blocker) &&
+        missingFact.blockers.includes("licoarc_badtower_acceptance_not_ready"),
+      `false station scenario fact must fail closed: ${field}`,
+    );
+  }
+  const missingScenarioFieldReports = selfTestReports();
+  delete missingScenarioFieldReports.stationAcceptance.scenario.mobileFfiDispatch;
+  const missingScenarioField = reduceClientReleaseAcceptance({
+    ...base,
+    reports: missingScenarioFieldReports,
+  });
+  requireValue(
+    !missingScenarioField.githubReleaseReady &&
+      missingScenarioField.blockers.includes(
+        "licoarc_badtower_acceptance_not_ready",
+      ),
+    "missing station scenario fact must fail closed",
+  );
+  const extraScenarioFieldReports = selfTestReports();
+  extraScenarioFieldReports.stationAcceptance.scenario.unknownScenarioFact =
+    true;
+  const extraScenarioField = reduceClientReleaseAcceptance({
+    ...base,
+    reports: extraScenarioFieldReports,
+  });
+  requireValue(
+    !extraScenarioField.githubReleaseReady &&
+      extraScenarioField.blockers.includes(
+        "licoarc_badtower_acceptance_not_ready",
+      ),
+    "unknown station scenario fact must fail closed",
+  );
+  for (const [option, label] of [
+    ["stationClientCandidateDigest", "client"],
+    ["stationProtocolCandidateDigest", "protocol"],
+    ["stationBinaryCandidateDigest", "station"],
+  ]) {
+    const staleCandidate = reduceClientReleaseAcceptance({
+      ...base,
+      reports: selfTestReports({
+        [option]: `sha256:${"f".repeat(64)}`,
+      }),
+    });
+    requireValue(
+      !staleCandidate.githubReleaseReady &&
+        staleCandidate.blockers.includes(
+          "licoarc_badtower_candidate_bindings_stale",
+        ),
+      `stale ${label} candidate acceptance must fail closed`,
+    );
+  }
+  const unstableCandidates = reduceClientReleaseAcceptance({
+    ...base,
+    inputIntegrity: {
+      ...readyIntegrity,
+      ok: true,
+      candidateInputsStable: false,
+    },
+    reports: selfTestReports(),
+  });
+  requireValue(
+    !unstableCandidates.githubReleaseReady &&
+      unstableCandidates.blockers.includes(
+        "licoarc_badtower_candidate_inputs_unstable",
+      ),
+    "mutated Lico Arc or BadTower candidate input must fail closed",
+  );
   const tamper = reduceClientReleaseAcceptance({ ...base, reports: selfTestReports({ tamperReady: false }) });
-  requireValue(!tamper.githubReleaseReady && tamper.blockers.includes("encrypted_relay_header_tamper_not_rejected"), "mock relay tamper must fail closed");
+  requireValue(!tamper.githubReleaseReady && tamper.blockers.includes("encrypted_private_header_tamper_not_rejected"), "E2EE private-header tamper must fail closed");
   const legacyMetadataReports = selfTestReports();
   delete legacyMetadataReports.pairwise.metadataResistanceEvidence;
   const legacyMetadata = reduceClientReleaseAcceptance({
@@ -252,6 +349,36 @@ export function runSelfTest({ schemaFixture = false } = {}) {
     nowMs: 10_010
   };
   requireValue(validateProducedReportReceipt(receiptFixture).ok, "current approved producer receipt must validate");
+  const directStationReceipt = {
+    ...receiptFixture,
+    payload: selfTestReports().stationAcceptance,
+    spec: {
+      schemaVersion: "licoup.licoarc-badtower.acceptance.v1",
+      producer: "tools/scripts/client-licoarc-badtower-acceptance.mjs",
+    },
+    directFreshOutput: true,
+  };
+  requireValue(
+    validateProducedReportReceipt(directStationReceipt).ok,
+    "fresh direct Lico Arc BadTower output must validate without a wrapper",
+  );
+  requireValue(
+    !validateProducedReportReceipt({
+      ...directStationReceipt,
+      payload: {
+        ...directStationReceipt.payload,
+        unknown: false,
+      },
+    }).ok,
+    "unknown direct acceptance fields must fail closed",
+  );
+  requireValue(
+    !validateProducedReportReceipt({
+      ...directStationReceipt,
+      generatedAtMs: 9_000,
+    }).ok,
+    "stale direct acceptance output must fail closed",
+  );
   requireValue(!validateProducedReportReceipt({
     ...receiptFixture,
     payload: { ...receiptFixture.payload, verifier: "tools/scripts/forged.mjs" }
@@ -367,19 +494,25 @@ export function runSelfTest({ schemaFixture = false } = {}) {
   }
   requireValue(privacyRejected,
     "acceptance privacy scan must reject stable signing identity digests");
-  const defaultVerifySource = stableReadFile(
-    path.join(repoRoot, "tools/run-client-verify.mjs"),
-    { maxBytes: 2 * 1024 * 1024 },
-  ).toString("utf8");
   const packageScripts = readJson(path.join(repoRoot, "package.json")).scripts;
-  requireValue(defaultVerifySource.includes("client:verify:secure-mesh-e2ee-evidence:diagnostic"), "default verification must retain the cross-product diagnostic");
-  requireValue(!defaultVerifySource.includes('["npm", ["run", "client:verify:secure-mesh-e2ee-evidence"]]'), "default verification must not run strict A10 acceptance");
-  requireValue(defaultVerifySource.includes(
+  const sourceGate = CLIENT_GATE_LANES.source;
+  const releasePolicyGate = CLIENT_GATE_LANES["release-policy"];
+  for (const forbidden of [
+    "client:verify:secure-mesh-e2ee-evidence:diagnostic",
+    "client:verify:secure-mesh-e2ee-evidence",
+    "client:verify:product-line-security",
+    "client:verify:github-release",
     "client:verify:client-release-acceptance:self-test",
-  ), "default verification must run the side-effect-free client release acceptance self-test");
-  requireValue(!defaultVerifySource.includes(
-    '["npm", ["run", "client:verify:client-release-acceptance"]]',
-  ), "default verification must not run the side-effecting client release reducer");
+  ]) {
+    requireValue(
+      !sourceGate.includes(forbidden),
+      `source policy must not consume release or cross-product evidence: ${forbidden}`,
+    );
+  }
+  requireValue(
+    packageScripts["client:verify:secure-mesh-e2ee-evidence:diagnostic"],
+    "cross-product diagnostic must remain explicitly callable",
+  );
   requireValue(packageScripts["client:verify:github-release"]?.includes(
     "client-github-release-acceptance.mjs",
   ), "explicit GitHub release must run the artifact-only GitHub reducer");
@@ -402,8 +535,10 @@ export function runSelfTest({ schemaFixture = false } = {}) {
     "client:native:smoke:policy:self-test",
     "client:verify:closure-producer-writer:self-test",
   ]) {
-    requireValue(defaultVerifySource.includes(scriptName),
-    `default verification must run ${scriptName}`);
+    requireValue(
+      releasePolicyGate.includes(scriptName),
+      `release-policy lane must run ${scriptName}`,
+    );
   }
   requireValue(packageScripts["client:verify:secure-mesh-platform-acceptance"]?.includes("client:verify:secure-mesh-e2ee-evidence"), "strict Secure Mesh platform acceptance must remain explicitly callable");
   const preflightConfig = readJson(configPath);

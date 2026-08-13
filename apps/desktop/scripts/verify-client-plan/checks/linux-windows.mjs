@@ -202,9 +202,9 @@ assert(!/const\s+reportRefs\s*=\s*Object\.freeze/u.test(physicalEvidenceManifest
 for (const token of [
   "loadSecureMeshPhysicalEvidenceConfig",
   "physicalEvidenceConfig",
-  "relayMockCoverage",
+  "stationAcceptanceCoverage",
   "androidPlatformCryptoCoverage",
-  "relayProtocolMockReady",
+  "stationAcceptanceReady",
   "androidPlatformCryptoAcceptanceReady",
   "physicalEvidenceChainReady",
   "releaseEvidenceReady",

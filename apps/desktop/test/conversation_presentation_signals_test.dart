@@ -2,7 +2,7 @@ import 'package:licoup/src/application/features/agents/conversation/conversation
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('structure and active revisions remain independently observable', () {
+  test('conversation revisions remain independently observable', () {
     final signals = ConversationPresentationSignals();
     addTearDown(signals.dispose);
 
@@ -12,8 +12,10 @@ void main() {
 
     signals.notifyStructureChanged();
     signals.notifyActiveChanged();
+    signals.notifyLiveChanged();
     expect(signals.structureListenable.value, 2);
     expect(signals.activeListenable.value, 2);
+    expect(signals.liveListenable.value, 1);
   });
 
   test('composer draft is independent from renderer lifecycle', () {

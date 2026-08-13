@@ -10,6 +10,7 @@
 
 mod assembly;
 mod authority;
+#[cfg(test)]
 mod bridge;
 mod lifecycle;
 mod manifest;
@@ -48,5 +49,6 @@ pub fn local_server_uninstall(params: &serde_json::Value) -> anyhow::Result<serd
     assembly::uninstall(params)
 }
 
+#[cfg(test)]
 pub(crate) use bridge::serve_mcp_bridge;
 pub(crate) use registration::acp_servers_for_runtime;

@@ -12,8 +12,6 @@ void main() {
   final english = LicoStrings.forLocale(const Locale('en'));
 
   test('usage and report chrome follows the selected locale', () {
-    expect(chinese.usageOverTime, '用量趋势');
-    expect(english.usageOverTime, 'Usage Over Time');
     expect(chinese.byAgent, '智能体');
     expect(chinese.byModel, '模型');
     expect(english.byAgent, 'By Agent');
@@ -44,6 +42,9 @@ void main() {
     expect(english.installFromGitHub, 'Install from GitHub');
     expect(chinese.noDescription, '暂无描述');
     expect(english.noDescription, 'No description');
+    expect(chinese.moveToSystemTrash, '移入回收站');
+    expect(english.moveToSystemTrash, 'Move to Trash');
+    expect(chinese.trashSkillMessage('示例技能'), '“示例技能” 将移入系统回收站，可在回收站中恢复。');
   });
 
   test(

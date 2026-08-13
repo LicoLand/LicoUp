@@ -4,7 +4,7 @@ use std::io::BufRead;
 use std::sync::mpsc::Sender;
 
 #[derive(Debug)]
-pub(super) enum TransportEvent {
+pub(in crate::platform) enum TransportEvent {
     Message { message: Value, bytes: usize },
     InvalidJson,
     LineLimitExceeded,
@@ -12,7 +12,10 @@ pub(super) enum TransportEvent {
     StdoutClosed,
 }
 
-pub(super) fn read_protocol_messages<R: BufRead>(mut reader: R, sender: Sender<TransportEvent>) {
+pub(in crate::platform) fn read_protocol_messages<R: BufRead>(
+    mut reader: R,
+    sender: Sender<TransportEvent>,
+) {
     let mut line = Vec::new();
     loop {
         let available = match reader.fill_buf() {
@@ -72,7 +75,7 @@ pub(super) fn response_is_error(message: &Value) -> bool {
     message.get("error").is_some()
 }
 
-pub(super) fn request_id_matches(message: &Value, expected: i64) -> bool {
+pub(in crate::platform) fn request_id_matches(message: &Value, expected: i64) -> bool {
     message.get("id").is_some_and(|id| {
         id.as_i64() == Some(expected)
             || id

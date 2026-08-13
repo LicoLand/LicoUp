@@ -1523,57 +1523,31 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       command: rustLayer("platform::hermes_driver::tests::errors::"),
     }),
   defineModule({
-      id: "rust.platform.secure-client-relay.composition",
+      id: "rust.platform.hermes-driver.tui-gateway",
       kind: "rust-platform",
-      summary: "Secure Client Relay canonical root, public surface, and migrated mobile-relay consumers",
+      summary: "Bounded Hermes TUI Gateway JSON-RPC client, turn binding, and deadline failures",
+      inputs: [
+        "crates/licoup-native/src/platform/hermes_tui_gateway.rs",
+        "crates/licoup-native/src/platform/hermes_tui_gateway_driver.rs",
+      ],
+      command: rustLayer("platform::hermes_tui_gateway"),
+    }),
+  defineModule({
+      id: "rust.platform.badtower-station",
+      kind: "rust-platform",
+      summary: "Bounded four-operation BadTower station transport with untrusted hints and redacted failures",
       inputs: [
         "crates/licoup-native/src/platform/mod.rs",
-        "crates/licoup-native/src/platform/secure_client_relay/mod.rs",
-        "crates/licoup-native/src/platform/secure_client_relay/tests/mod.rs",
-        "crates/licoup-native/src/domain/mobile_relay/support.rs",
-        "crates/licoup-native/src/domain/mobile_relay/relay_operations.rs",
-        "crates/licoup-native/src/domain/mobile_relay/tests/test_support.rs",
+        "crates/licoup-native/src/platform/badtower_station/mod.rs",
+        "crates/licoup-native/src/platform/badtower_station/contract.rs",
+        "crates/licoup-native/src/platform/badtower_station/http_io.rs",
+        "crates/licoup-native/src/platform/badtower_station/transport.rs",
+        "crates/licoup-native/src/platform/badtower_station/wire.rs",
+        "crates/licoup-native/src/platform/badtower_station/tests/mod.rs",
+        "crates/licoup-native/src/platform/badtower_station/tests/http.rs",
+        "crates/licoup-native/src/platform/badtower_station/tests/support.rs",
       ],
-      command: rustLayer("platform::secure_client_relay::tests::contract::operation_registry_is_exact_and_has_no_arbitrary_path_surface"),
-    }),
-  defineModule({
-      id: "rust.platform.secure-client-relay.contract-request",
-      kind: "rust-platform",
-      summary: "Relay contract digests, exact operations, bounded identifiers, redacted auth, TLS origin policy, and request validation",
-      inputs: [
-        "crates/licoup-native/resources/secure-client-relay-core-conformance.json",
-        "crates/licoup-native/resources/secure-client-relay-core-contract.json",
-        "crates/licoup-native/src/platform/secure_client_relay/contract.rs",
-        "crates/licoup-native/src/platform/secure_client_relay/redaction.rs",
-        "crates/licoup-native/src/platform/secure_client_relay/request.rs",
-        "crates/licoup-native/src/platform/secure_client_relay/tests/contract.rs",
-      ],
-      command: rustLayer("platform::secure_client_relay::tests::contract::"),
-    }),
-  defineModule({
-      id: "rust.platform.secure-client-relay.response",
-      kind: "rust-platform",
-      summary: "Bounded response codec, exact success and error schemas, and request-bound response projection",
-      inputs: [
-        "crates/licoup-native/src/platform/secure_client_relay/response_binding.rs",
-        "crates/licoup-native/src/platform/secure_client_relay/response_codec.rs",
-        "crates/licoup-native/src/platform/secure_client_relay/response_schema.rs",
-        "crates/licoup-native/src/platform/secure_client_relay/tests/response.rs",
-      ],
-      command: rustLayer("platform::secure_client_relay::tests::response::"),
-    }),
-  defineModule({
-      id: "rust.platform.secure-client-relay.http",
-      kind: "rust-platform",
-      summary: "Sole relay egress owner, bounded timeout and response IO, retry projection, canonical headers, and server-detail redaction",
-      inputs: [
-        "crates/licoup-native/src/platform/secure_client_relay/http_io.rs",
-        "crates/licoup-native/src/platform/secure_client_relay/status_projection.rs",
-        "crates/licoup-native/src/platform/secure_client_relay/transport.rs",
-        "crates/licoup-native/src/platform/secure_client_relay/tests/http.rs",
-        "crates/licoup-native/src/platform/secure_client_relay/tests/support.rs",
-      ],
-      command: rustLayer("platform::secure_client_relay::tests::http::"),
+      command: rustLayer("platform::badtower_station::tests::"),
     }),
   defineModule({
       id: "rust.platform.codex-app-server",
@@ -1672,6 +1646,7 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
         "crates/licoup-native/src/platform/runtime_adapters.rs",
         "crates/licoup-native/src/platform/runtime_adapters/**",
         "crates/licoup-native/resources/agent-conversation-drivers.json",
+        "crates/licoup-native/resources/agent-native-capabilities.json",
         "crates/licoup-native/resources/agent-conversation-readiness.json",
       ],
       command: rustLayer("platform::runtime_adapters::tests::"),
@@ -1685,6 +1660,7 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
         "crates/licoup-native/src/platform/runtime_adapters/registry.rs",
         "crates/licoup-native/src/platform/runtime_adapters/tests/registry.rs",
         "crates/licoup-native/resources/agent-conversation-drivers.json",
+        "crates/licoup-native/resources/agent-native-capabilities.json",
         "crates/licoup-native/resources/agent-conversation-readiness.json",
       ],
       command: rustLayer("platform::runtime_adapters::tests::registry::"),
@@ -1737,6 +1713,7 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       kind: "rust-platform",
       summary: "Remaining unsplit native platform adapters and shared utilities",
       inputs: [
+        "crates/licoup-native/src/platform/agent_workspace.rs",
         "crates/licoup-native/src/platform/antigravity_driver.rs",
         "crates/licoup-native/src/platform/conversation_lane.rs",
         "crates/licoup-native/src/platform/copilot_driver.rs",
@@ -1882,7 +1859,7 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
         "crates/licoup-native/src/bin/licoup/tests.rs",
         "crates/licoup-native/src/bin/licoup/tests/support.rs",
       ],
-      command: rustBinaryTests("licoup", "tests::"),
+      command: rustBinaryTests("licoup-cli", "tests::"),
     }),
   defineModule({
       id: "rust.bin.licoup.rpc",
@@ -1894,7 +1871,7 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
         "crates/licoup-native/src/bin/licoup/tests/rpc.rs",
         "crates/licoup-native/src/bin/licoup/tests/rpc/**",
       ],
-      command: rustBinaryTests("licoup", "tests::rpc::"),
+      command: rustBinaryTests("licoup-cli", "tests::rpc::"),
     }),
   defineModule({
       id: "rust.bin.licoup.core-commands",
@@ -1903,7 +1880,7 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       inputs: [
         "crates/licoup-native/src/bin/licoup/tests/core_commands.rs",
       ],
-      command: rustBinaryTests("licoup", "tests::core_commands::"),
+      command: rustBinaryTests("licoup-cli", "tests::core_commands::"),
     }),
   defineModule({
       id: "rust.bin.licoup.skill-commands",
@@ -1912,7 +1889,7 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       inputs: [
         "crates/licoup-native/src/bin/licoup/tests/skill_commands.rs",
       ],
-      command: rustBinaryTests("licoup", "tests::skill_commands::"),
+      command: rustBinaryTests("licoup-cli", "tests::skill_commands::"),
     }),
   defineModule({
       id: "rust.bin.licoup.conversation-commands",
@@ -1921,7 +1898,7 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       inputs: [
         "crates/licoup-native/src/bin/licoup/tests/conversation_commands.rs",
       ],
-      command: rustBinaryTests("licoup", "tests::conversation_commands::"),
+      command: rustBinaryTests("licoup-cli", "tests::conversation_commands::"),
     }),
   defineModule({
       id: "rust.bin.licoup.parsing",
@@ -1930,6 +1907,6 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       inputs: [
         "crates/licoup-native/src/bin/licoup/tests/parsing.rs",
       ],
-      command: rustBinaryTests("licoup", "tests::parsing::"),
+      command: rustBinaryTests("licoup-cli", "tests::parsing::"),
     })
 ]);

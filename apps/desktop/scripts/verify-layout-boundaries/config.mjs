@@ -30,6 +30,8 @@ export const DEFAULT_LAYOUT_BOUNDARY_CONFIG = Object.freeze({
 });
 
 export const NEUTRAL_LAYOUT_CONTRACTS = new Set([
+  "apps/desktop/lib/src/frontend/layout/layout_agents_strategy.dart",
+  "apps/desktop/lib/src/frontend/layout/layout_chrome_features.dart",
   "apps/desktop/lib/src/frontend/layout/layout_chrome_port.dart",
   "apps/desktop/lib/src/frontend/layout/layout_component_kit.dart",
   "apps/desktop/lib/src/frontend/layout/layout_destination_presentation.dart",

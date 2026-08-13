@@ -14,6 +14,7 @@ import {
   adapterManifestDigestFor,
   adapterEvidenceDigestFor,
   assertReadinessMatchesReduction,
+  assertReleaseReady,
   capabilityMatrixDigestFor,
   driverInventoryDigestFor,
   packagedAgentIds,
@@ -407,17 +408,43 @@ test("checked-in readiness is the honest canonical-evidence reduction", () => {
   assert.deepEqual(result, readinessResource);
   assert.deepEqual(result.summary, {
     total: 11,
-    ready: 0,
+    ready: 1,
     partial: 0,
     failed: 0,
     blocked: 0,
-    unverified: 11,
+    unverified: 10,
     historyOnly: 0,
-    sendEnabled: 0,
+    sendEnabled: 1,
   });
   const receipt = runCli(["--check"]);
   assert.equal(receipt.ok, true);
   assert.equal(receipt.operation, "check");
+});
+
+test("release readiness requires every packaged adapter to be ready and send-enabled", () => {
+  assert.throws(
+    () => assertReleaseReady(readinessResource),
+    (error) =>
+      error instanceof ReducerError &&
+      error.code === "release_readiness_incomplete",
+  );
+
+  const complete = structuredClone(readinessResource);
+  complete.summary = {
+    total: complete.adapters.length,
+    ready: complete.adapters.length,
+    partial: 0,
+    failed: 0,
+    blocked: 0,
+    unverified: 0,
+    historyOnly: 0,
+    sendEnabled: complete.adapters.length,
+  };
+  for (const adapter of complete.adapters) {
+    adapter.status = "ready";
+    adapter.sendEnabled = true;
+  }
+  assert.doesNotThrow(() => assertReleaseReady(complete));
 });
 
 test("a fully forged ready resource is rejected by the release check", () => {

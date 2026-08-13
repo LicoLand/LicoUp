@@ -270,6 +270,7 @@ fn persist_config_secret_material_to_secret_store_with_session(
     session: &SecretStoreAuthorizationSession,
     namespace: &str,
 ) -> Result<()> {
+    let mut persisted_any = false;
     for field in MOBILE_RELAY_NATIVE_TOKEN_SECRET_FIELDS {
         let secret = config
             .as_object_mut()
@@ -279,6 +280,7 @@ fn persist_config_secret_material_to_secret_store_with_session(
         let Some(secret) = secret else { continue };
         let handle = native_secret_store_handle_for_namespace(namespace, field)?;
         store.set_secret_with_session(session, &handle, secret)?;
+        persisted_any = true;
         config[field] = json!("");
         config[format!("{field}Present")] = json!(true);
     }
@@ -298,12 +300,14 @@ fn persist_config_secret_material_to_secret_store_with_session(
             let Some(secret) = secret else { continue };
             let handle = native_secret_store_handle_for_namespace(namespace, &handle_key)?;
             store.set_secret_with_session(session, &handle, secret)?;
+            persisted_any = true;
             device["mobileToken"] = json!("");
             device["credentialPresent"] = json!(true);
         }
     }
     let incoming = take_e2ee_bundle(config)?;
     if let Some(incoming) = incoming {
+        persisted_any = true;
         let bundle = match read_native_e2ee_secret_bundle(store, session, namespace)? {
             Some(existing) => existing.merge_replacing(incoming)?,
             None => incoming,
@@ -324,12 +328,14 @@ fn persist_config_secret_material_to_secret_store_with_session(
             e2ee.insert("secretStorageStatus".to_string(), json!(store.backend()));
         }
     }
-    config["secretStorageStatus"] = json!({
-        "tokenMaterial": "redacted",
-        "mobileRelayPrivateKeyMaterial": "redacted",
-        "selectedBackend": store.backend(),
-        "unsafePersistenceForbidden": true
-    });
+    if persisted_any {
+        config["secretStorageStatus"] = json!({
+            "tokenMaterial": "redacted",
+            "mobileRelayPrivateKeyMaterial": "redacted",
+            "selectedBackend": store.backend(),
+            "unsafePersistenceForbidden": true
+        });
+    }
     Ok(())
 }
 
@@ -366,7 +372,7 @@ fn read_native_e2ee_secret_bundle(
         .map_err(anyhow::Error::from)
 }
 
-#[allow(dead_code)]
+#[cfg(test)]
 pub(in crate::domain::mobile_relay) fn cleanup_native_secret_store_fields_for_store(
     config: &Value,
     store: &dyn SecureMeshSecretStore,

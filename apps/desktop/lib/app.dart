@@ -50,6 +50,10 @@ class _LicoAppState extends State<LicoApp> with WidgetsBindingObserver {
     );
     if (widget.initializeController) {
       unawaited(_controller.initialize());
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        unawaited(_controller.initializeLlmGateway());
+      });
     }
   }
 

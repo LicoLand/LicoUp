@@ -47,12 +47,15 @@ pub(crate) struct HistoryPageConfig {
     pub(crate) limit: Option<usize>,
 }
 
+mod catalog;
 mod codex;
 mod cursor_openagent;
+mod delegated_transcripts;
 mod generic;
 mod kimi;
 mod message_projection;
 mod pi_copilot;
+mod project_workspace;
 mod query;
 mod query_filter;
 mod session_merge;
@@ -84,17 +87,22 @@ use session_merge::collect_history_model_names;
 #[allow(unused_imports)]
 use session_metadata::*;
 
+pub(crate) use catalog::conversation_list_from_catalog;
 pub(crate) use codex::parse_codex_rollout_sessions;
 pub(crate) use cursor_openagent::parse_sqlite_sessions;
 pub(crate) use generic::{parse_json_sessions, parse_jsonl_sessions, parse_text_session};
 pub(crate) use kimi::parse_kimi_code_wire_session;
-pub(crate) use pi_copilot::{parse_copilot_transcript_session, parse_pi_session};
+pub(crate) use pi_copilot::{
+    parse_copilot_transcript_session, parse_lico_agent_session, parse_pi_session,
+};
 pub(crate) use query::{
-    conversation_append, conversation_delete, conversation_list, conversation_stream, model_catalog,
+    browse_catalog_applies, conversation_append, conversation_delete, conversation_list,
+    conversation_stream, model_catalog,
 };
 pub(crate) use session_merge::{
-    apply_codex_session_index_titles, dedupe_history_sessions, finalize_history_sessions,
-    history_session_dedupe_key, paged_history_sessions, sort_sessions_by_updated_at,
+    apply_codex_session_index_titles, collapse_sessions_by_native_identity,
+    dedupe_history_sessions, finalize_history_sessions, history_session_dedupe_key,
+    paged_history_sessions, sort_sessions_by_updated_at,
 };
 
 #[cfg(test)]

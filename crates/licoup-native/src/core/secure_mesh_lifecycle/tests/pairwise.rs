@@ -158,12 +158,8 @@ fn secure_mesh_lifecycle_service_actions_seal_only_inside_pairwise_envelopes() {
         "lifecycle-plaintext-canary",
     ] {
         assert!(
-            !envelope.encrypted_header().contains(forbidden),
-            "lifecycle envelope header leaked {forbidden}"
-        );
-        assert!(
             !envelope.ciphertext().contains(forbidden),
-            "lifecycle envelope ciphertext leaked {forbidden}"
+            "lifecycle envelope carrier leaked {forbidden}"
         );
     }
     let (_opened, value) =

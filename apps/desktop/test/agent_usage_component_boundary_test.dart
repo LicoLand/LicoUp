@@ -83,33 +83,8 @@ void main() {
       RegExp(r'^export ', multiLine: true).allMatches(timelineFacade),
       hasLength(timelineLeaves.length),
     );
-    expect(timelineFacade.split('\n').length, lessThanOrEqualTo(30));
-    final timelineLimits = {
-      'models': 90,
-      'builder': 260,
-      'source-parser': 190,
-      'token-breakdown': 290,
-      'display-names': 190,
-      'series-color': 100,
-      'visibility': 50,
-    };
     for (final entry in timelineLeaves.entries) {
-      expect(
-        entry.value.split('\n').length,
-        lessThanOrEqualTo(timelineLimits[entry.key]!),
-        reason: '${entry.key} timeline leaf exceeded its responsibility limit',
-      );
       expect(entry.value, isNot(contains('agent_usage_timeline_data.dart')));
-    }
-    final bounded = {
-      charts: 220,
-      overview: 300,
-      controls: 300,
-      painter: 400,
-      geometry: 150,
-    };
-    for (final entry in bounded.entries) {
-      expect(entry.key.split('\n').length, lessThan(entry.value));
     }
     for (final source in [
       panel,

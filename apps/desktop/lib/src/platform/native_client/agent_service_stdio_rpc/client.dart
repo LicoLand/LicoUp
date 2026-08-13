@@ -1,31 +1,26 @@
 import 'package:licoup/src/platform/native_client/agent_service_stdio_rpc/command_exchange.dart';
 import 'package:licoup/src/platform/native_client/agent_service_stdio_rpc/conversation_exchange.dart';
+import 'package:licoup/src/platform/native_client/agent_service_stdio_rpc/in_flight_control.dart';
+import 'package:licoup/src/platform/native_client/agent_service_stdio_rpc/method_policy.dart';
 import 'package:licoup/src/platform/native_client/agent_service_stdio_rpc/operation_queue.dart';
-import 'package:licoup/src/platform/native_client/agent_service_stdio_rpc/orchestrator_lane_pool.dart';
 import 'package:licoup/src/platform/native_client/agent_service_stdio_rpc/protocol.dart';
 import 'package:licoup/src/platform/native_client/agent_service_stdio_rpc/session_manager.dart';
 import 'package:licoup/src/platform/native_client/agent_service_stdio_rpc/shutdown.dart';
 import 'package:licoup/src/platform/native_client/native_cli_ports.dart';
 import 'package:licoup/src/platform/native_client/native_rpc_priority.dart';
 
+Future<Map<String, dynamic>> _rpcFailure(String code) =>
+    Future<Map<String, dynamic>>.error(LicoClientRpcException(code));
+
 class NativeStdioRpcClient implements NativeStdioRpcTransport {
   NativeStdioRpcClient({required NativeCliProcessContext processContext})
     : _processContext = processContext,
       _sessionManager = StdioRpcSessionManager(processContext: processContext),
-      _conversationSessionManager = StdioRpcSessionManager(
-        processContext: processContext,
-      ) {
-    _orchestrator = StdioRpcOrchestratorLanePool(
-      processContext: processContext,
-      nextRequestId: _nextRequestId,
-      workflowId: () => _workflowId,
-    );
-  }
+      _chat = StdioRpcSessionManager(processContext: processContext);
 
   final NativeCliProcessContext _processContext;
   final StdioRpcSessionManager _sessionManager;
-  final StdioRpcSessionManager _conversationSessionManager;
-  late final StdioRpcOrchestratorLanePool _orchestrator;
+  final StdioRpcSessionManager _chat;
   final StdioRpcOperationQueue _operations = StdioRpcOperationQueue();
   final StdioRpcOperationQueue _conversationOperations =
       StdioRpcOperationQueue();
@@ -35,19 +30,13 @@ class NativeStdioRpcClient implements NativeStdioRpcTransport {
   @override
   Future<Map<String, dynamic>> execute(List<String> args) {
     if (_operations.closing) {
-      return Future<Map<String, dynamic>>.error(
-        const LicoClientRpcException('service_disposed'),
-      );
+      return _rpcFailure('service_disposed');
     }
     if (_processContext.requestTimeout <= Duration.zero) {
-      return Future<Map<String, dynamic>>.error(
-        const LicoClientRpcException('invalid_timeout'),
-      );
+      return _rpcFailure('invalid_timeout');
     }
     if (!validStdioRpcArgs(args)) {
-      return Future<Map<String, dynamic>>.error(
-        const LicoClientRpcException('invalid_request'),
-      );
+      return _rpcFailure('invalid_request');
     }
     final requestArgs = List<String>.unmodifiable(args);
     return _operations.serialize(
@@ -73,51 +62,28 @@ class NativeStdioRpcClient implements NativeStdioRpcTransport {
     String method,
     Map<String, dynamic> params,
   ) {
-    const conversationMethods = <String>{
-      'agent.conversation.open',
-      'agent.conversation.history',
-      'agent.conversation.cleanup',
-      'agent.conversation.capabilities',
-      'agent.conversation.cancel',
-      'agent.conversation.steer',
-    };
-    const catalogMethods = <String>{
-      'catalog.status',
-      'catalog.invalidate',
-      'catalog.refresh',
-      'catalog.receipt',
-      'catalog.purge',
-      'catalog.reconnect',
-      'catalog.list',
-      'catalog.observe',
-    };
-    const orchestratorMethods = <String>{'orchestrator.request'};
-    const stateMethods = <String>{'state.get', 'state.set'};
-    if (_operations.closing ||
-        (!catalogMethods.contains(method) &&
-            !orchestratorMethods.contains(method) &&
-            !stateMethods.contains(method) &&
-            !conversationMethods.contains(method))) {
-      return Future<Map<String, dynamic>>.error(
-        const LicoClientRpcException('invalid_request'),
-      );
+    if (_operations.closing || !validStdioRpcStructuredMethod(method)) {
+      return _rpcFailure('invalid_request');
     }
     if (_processContext.requestTimeout <= Duration.zero) {
-      return Future<Map<String, dynamic>>.error(
-        const LicoClientRpcException('invalid_timeout'),
-      );
+      return _rpcFailure('invalid_timeout');
     }
     final immutableParams = Map<String, dynamic>.unmodifiable(params);
-    if (method == 'orchestrator.request') {
-      return _orchestrator.execute(immutableParams);
+    final conversationMethod = stdioRpcMethodUsesConversationLane(method);
+    if (conversationMethod && stdioRpcMethodIsInFlightControl(method)) {
+      return executeStdioRpcInFlightControl(
+        method: method,
+        params: immutableParams,
+        requestId: _nextRequestId(),
+        workflowId: _workflowId,
+        timeout: _processContext.requestTimeout,
+        sessionManager: _chat,
+      );
     }
-    final conversationMethod = conversationMethods.contains(method);
     final operations = conversationMethod
         ? _conversationOperations
         : _operations;
-    final sessionManager = conversationMethod
-        ? _conversationSessionManager
-        : _sessionManager;
+    final sessionManager = conversationMethod ? _chat : _sessionManager;
     return operations.serialize(
       priority: currentRpcPriorityToken(),
       () =>
@@ -149,10 +115,11 @@ class NativeStdioRpcClient implements NativeStdioRpcTransport {
         params: params,
         requestId: _nextRequestId(),
         workflowId: _workflowId,
-        sessionManager: _conversationSessionManager,
+        sessionManager: _chat,
       ),
-      timeout: _processContext.requestTimeout,
-      onTimeout: _conversationSessionManager.invalidateAndDiscard,
+      // Agent turns are unbounded: no end-to-end timeout on the send stream.
+      timeout: null,
+      onTimeout: _chat.invalidateAndDiscard,
     );
   }
 
@@ -170,12 +137,11 @@ class NativeStdioRpcClient implements NativeStdioRpcTransport {
       ),
       _conversationOperations.close(
         () => shutdownStdioRpcManager(
-          manager: _conversationSessionManager,
+          manager: _chat,
           requestId: _nextRequestId(),
           workflowId: _workflowId,
         ),
       ),
-      _orchestrator.dispose(),
     ]);
   }
 }

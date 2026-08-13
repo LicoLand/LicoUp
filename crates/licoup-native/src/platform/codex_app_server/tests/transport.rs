@@ -38,7 +38,7 @@ fn fake_child_proves_spawn_stdin_concurrent_drain_and_completion() {
         "",
         Some(&temp_dir),
         10_000,
-        1024 * 1024,
+        Some(1024 * 1024),
         1024,
     );
 
@@ -91,7 +91,7 @@ fn fake_child_acknowledges_native_guidance_during_the_active_turn() {
             "",
             Some(&cwd),
             10_000,
-            1024 * 1024,
+            Some(1024 * 1024),
             1024,
         )
     });

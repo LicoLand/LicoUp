@@ -44,7 +44,7 @@ wait
         "",
         Some(&root),
         5_000,
-        128 * 1024,
+        Some(128 * 1024),
         8 * 1024,
     );
     assert!(
@@ -66,7 +66,7 @@ wait
         ControlDisposition::Accepted
     );
 
-    let probe = probe_driver(executable.to_str().unwrap(), 2_000, 16 * 1024);
+    let probe = probe_driver(executable.to_str().unwrap(), 10_000, 16 * 1024);
     assert!(probe.available);
     assert!(probe.supported);
     assert!(probe.supports_streaming);

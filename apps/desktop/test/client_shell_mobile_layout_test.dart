@@ -7,6 +7,7 @@ import 'package:licoup/src/application/controller/client_controller.dart';
 import 'package:licoup/src/contracts/agent_command_runner.dart';
 import 'package:licoup/src/contracts/agent_usage_models.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_icon_button.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:licoup/src/contracts/presentation/layout_profile.dart';
 import 'package:licoup/src/contracts/presentation/presentation_preferences.dart';
@@ -69,7 +70,7 @@ void main() {
 
     await tester.pump();
     expect(
-      find.byKey(const Key('workbench-mobile-compact-navigation-trigger')),
+      find.byKey(const Key('dashboard-mobile-compact-navigation-trigger')),
       findsOneWidget,
     );
     expect(
@@ -142,8 +143,7 @@ void main() {
       addTearDown(controller.dispose);
       controller.currentSection = ClientSection.agents;
       controller.mobileRelayConfig = MobileRelayConfig.defaults().copyWith(
-        useCustomGateway: true,
-        customGatewayUrl: 'https://relay.example.test',
+        stationBaseUrl: 'https://station.example.test',
         pcClientName: 'ARC Desktop',
         pairingId: 'pairing_desktop',
         mobileTokenPresent: true,
@@ -191,7 +191,10 @@ void main() {
       expect(controller.mobileClientRuntimePlatform, isTrue);
       expect(controller.selectedConversationAgentId, 'codex');
       expect(controller.lastError, isEmpty);
-      final composer = find.widgetWithText(TextField, 'Message Codex');
+      final composer = find.descendant(
+        of: find.byKey(const Key('agent-conversation-composer-field')),
+        matching: find.byType(TextField),
+      );
       expect(composer, findsOneWidget);
 
       await tester.enterText(composer, 'hello');
@@ -200,7 +203,7 @@ void main() {
         const Key('agent-conversation-composer-send'),
       );
       expect(sendButton, findsOneWidget);
-      expect(tester.widget<InkWell>(sendButton).onTap, isNotNull);
+      expect(tester.widget<LicoIconButton>(sendButton).onPressed, isNotNull);
       await tester.tap(sendButton);
       await tester.pumpAndSettle();
 
@@ -252,7 +255,7 @@ void main() {
       await tester.pump();
       await tester.pumpAndSettle();
       expect(
-        find.byKey(const Key('workbench-mobile-medium-contextual-navigation')),
+        find.byKey(const Key('dashboard-mobile-medium-contextual-navigation')),
         findsOneWidget,
       );
       expect(find.byTooltip('Pair Device'), findsNothing);
@@ -379,8 +382,7 @@ void main() {
     controller.currentSection = ClientSection.agents;
     controller.scannedTargets = _targets;
     controller.mobileRelayConfig = MobileRelayConfig.defaults().copyWith(
-      useCustomGateway: true,
-      customGatewayUrl: 'https://relay.example.test',
+      stationBaseUrl: 'https://station.example.test',
       pcClientName: 'LicoUp',
       pairingId: 'pairing_test',
       mobileTokenPresent: true,
@@ -420,16 +422,14 @@ void main() {
     expect(find.byKey(const Key('mobile-desktop-agent-codex')), findsOneWidget);
 
     expect(
-      find.byKey(const Key('workbench-mobile-compact-navigation-trigger')),
+      find.byKey(const Key('dashboard-mobile-compact-navigation-trigger')),
       findsOneWidget,
     );
   });
 }
 
 PortableDataRoot _testPortableData() {
-  final directory = Directory.systemTemp.createTempSync(
-    'licoup-shell-layout-',
-  );
+  final directory = Directory.systemTemp.createTempSync('licoup-shell-layout-');
   addTearDown(() async {
     if (await directory.exists()) {
       await directory.delete(recursive: true);
@@ -441,7 +441,7 @@ PortableDataRoot _testPortableData() {
 final class _TestPresentationPreferencesRepository
     implements PresentationPreferencesRepository {
   PresentationPreferences _preferences = PresentationPreferences(
-    layoutProfileId: LayoutProfileId.parse('workbench'),
+    layoutProfileId: LayoutProfileId.parse('dashboard'),
     appearancePresetId: 'default-system',
     localePreference: 'system',
   );
@@ -472,8 +472,12 @@ final List<TargetCandidate> _targets = [
     status: 'detected',
     configured: false,
     confidence: 0.72,
+    binaryPath: '/test-bin/codex',
     adapterStatus: 'implemented',
-    adapterCapabilities: const {'conversationReadiness': 'ready'},
+    adapterCapabilities: const {
+      'conversationDriver': 'implemented',
+      'conversationReadiness': 'ready',
+    },
     supportedActions: ['runtime.message.send'],
   ),
 ];
@@ -555,6 +559,7 @@ class _NoopConversationService extends AgentConversationService {
     String sessionId = '',
     int? limit,
     int offset = 0,
+    AgentDispatchBind bind = const AgentDispatchBind(),
   }) {
     return const Stream.empty();
   }
@@ -566,6 +571,7 @@ class _NoopConversationService extends AgentConversationService {
     String sessionId = '',
     int? limit,
     int offset = 0,
+    AgentDispatchBind bind = const AgentDispatchBind(),
   }) async {
     return const [];
   }

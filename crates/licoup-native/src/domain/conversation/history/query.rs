@@ -1,6 +1,7 @@
 //! Read-only conversation queries, model discovery, filters, and pagination.
 
 use super::*;
+use crate::domain::conversation::parameters::text_param;
 
 impl HistoryScanConfig {
     pub(crate) fn from_params(params: &Value) -> Self {
@@ -68,12 +69,21 @@ impl HistoryScanConfig {
         self.session_ids.len() == 1
     }
 
+    /// The one requested session identity, when the caller asked for exactly one
+    /// session. Parsers use it to skip every conversation the caller did not ask
+    /// for instead of materializing a whole agent store.
+    pub(crate) fn single_session_id(&self) -> Option<&str> {
+        self.has_single_session_filter()
+            .then(|| self.session_ids[0].as_str())
+    }
+
     pub(crate) fn discovery_options(&self) -> HistoryDiscoveryOptions {
         HistoryDiscoveryOptions {
             archive_mode: self.archive_mode,
-            exact_session_id: self
+            exact_session_ids: self
                 .has_single_session_filter()
-                .then(|| self.session_ids[0].clone()),
+                .then(|| self.session_ids.clone())
+                .unwrap_or_default(),
         }
     }
 
@@ -164,13 +174,35 @@ impl HistoryPageConfig {
 }
 
 pub fn conversation_list(params: &Value) -> Result<Value> {
+    if crate::platform::remote_acp_history::has_runtime_connection(params) {
+        return crate::platform::remote_acp_history::conversation_list(params);
+    }
     let agent_id = agent_param(params)?;
     let adapter = adapter_for_agent(&agent_id)
         .ok_or_else(|| anyhow!("unsupported native history adapter: {}", agent_id))?;
     let scan_config = HistoryScanConfig::from_params(params);
+    if browse_catalog_applies(params, &scan_config) {
+        return super::catalog::conversation_list_from_catalog(
+            adapter,
+            &agent_id,
+            params,
+            &scan_config,
+        );
+    }
     let roots = history_roots(adapter, params);
     let mut sessions = Vec::<Value>::new();
-    let discovery = discover_history_files(adapter, &roots, scan_config.discovery_options());
+    let mut discovery_options = scan_config.discovery_options();
+    // Codex runs each delegated task as its own thread in its own rollout, so a
+    // single-conversation read must pull those rollouts into scope or the
+    // conversation shows none of the work it delegated.
+    if adapter == HistoryAdapter::Codex && !discovery_options.exact_session_ids.is_empty() {
+        let delegated = super::catalog::codex_delegated_thread_ids(
+            params,
+            &discovery_options.exact_session_ids,
+        );
+        discovery_options.exact_session_ids.extend(delegated);
+    }
+    let discovery = discover_history_files(adapter, &roots, discovery_options);
     let mut skipped = discovery.skipped;
     let files_seen = discovery.files_seen;
     let directory_entries_seen = discovery.directory_entries_seen;
@@ -196,6 +228,22 @@ pub fn conversation_list(params: &Value) -> Result<Value> {
     }
     if adapter == HistoryAdapter::Codex && !scan_config.has_single_session_filter() {
         apply_codex_session_index_titles(params, &mut sessions);
+    }
+    // The thread database is the only place Codex records which conversation
+    // spawned a delegated thread.
+    if adapter == HistoryAdapter::Codex {
+        super::catalog::apply_codex_spawn_lineage(params, &mut sessions);
+    }
+    // Cursor keeps one conversation in three stores, and both Cursor and Claude
+    // Code can yield a second copy of one conversation from records that carry no
+    // session field. Collapsing the copies before the delegated-task merge keeps
+    // every task attached to the conversation the user opens instead of scattering
+    // them across copies a later dedupe discards.
+    if matches!(
+        adapter,
+        HistoryAdapter::Cursor | HistoryAdapter::ClaudeCode | HistoryAdapter::Codex
+    ) {
+        sessions = collapse_sessions_by_native_identity(sessions);
     }
     let mut sessions = dedupe_history_sessions(finalize_history_sessions(sessions, &scan_config));
     sort_sessions_by_updated_at(&mut sessions);
@@ -228,6 +276,20 @@ pub fn conversation_list(params: &Value) -> Result<Value> {
             "skipped": skipped
         }
     }))
+}
+
+/// Browse-mode lists (no search terms, no explicit session selection, no root
+/// override, no archive discovery) load through the tiered metadata catalog
+/// instead of parsing every history file up front.
+///
+/// The Flutter client consumes `conversations stream`, not `list`. Stream must
+/// use this same gate so catalog metadata such as `workingDirectory` reaches
+/// the composer bind path.
+pub(crate) fn browse_catalog_applies(params: &Value, scan_config: &HistoryScanConfig) -> bool {
+    !scan_config.archive_mode
+        && scan_config.session_ids.is_empty()
+        && !scan_config.has_match_filters()
+        && text_param(params, &["root", "historyRoot"]).is_none_or(|value| value.trim().is_empty())
 }
 
 pub fn model_catalog(params: &Value) -> Result<Value> {

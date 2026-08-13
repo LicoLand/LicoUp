@@ -22,7 +22,7 @@ const _skillIconColorTokens = <String>[
 Color resolveSkillIconColor(LicoThemeColors colors, String colorToken) {
   switch (colorToken.trim()) {
     case 'info':
-      return colors.info;
+      return colors.accent;
     case 'success':
       return colors.success;
     case 'warning':

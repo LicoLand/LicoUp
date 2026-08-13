@@ -28,7 +28,7 @@ fn cleanup_detaches_before_wait_and_acknowledges_after_tree_and_io_exit() {
         "",
         Some(&directory),
         10_000,
-        1024 * 1024,
+        Some(1024 * 1024),
         1024,
     );
     assert!(first.ok, "fixture turn failed: {:?}", first.error);
@@ -50,20 +50,31 @@ fn cleanup_detaches_before_wait_and_acknowledges_after_tree_and_io_exit() {
         "cleanup crossed the deterministic transport gate before it was released"
     );
 
+    // A closing transport is never entered; resume hands off to a fresh
+    // --resume process that stays out of the deterministic transport gate.
     let resume = execute(
         &executable,
-        &json!({}),
-        "resume-must-not-enter-closing-transport",
+        &json!({
+            "model": "fake-model",
+            "reasoningEffort": "high",
+            "permissionMode": "plan"
+        }),
+        "fake-claude-private-prompt-1",
         &session_id,
         Some(&directory),
-        1_000,
-        1024,
+        5_000,
+        Some(1024),
         1024,
     );
-    assert_eq!(
-        resume.error.unwrap().code,
-        "claude_code_live_session_unavailable"
+    assert!(
+        resume.ok,
+        "resume around closing transport failed: {:?}",
+        resume.error
     );
+    assert_eq!(resume.session_id, session_id);
+    // The fresh resume transport must be released before the shared fixture
+    // session can be observed as fully cleaned up.
+    assert_eq!(cleanup_session(&session_id), ControlDisposition::Accepted);
     drop(transport_gate);
     assert_eq!(cleanup.join().unwrap(), ControlDisposition::Accepted);
     assert!(managed.lifecycle.wait_until_closed(Duration::from_secs(1)));
@@ -89,7 +100,7 @@ fn cleanup_propagates_a_poisoned_transport_shutdown_failure() {
         "",
         Some(&directory),
         10_000,
-        1024 * 1024,
+        Some(1024 * 1024),
         1024,
     );
     assert!(first.ok);
@@ -128,7 +139,7 @@ fn shutdown_all_clears_the_exact_registry_and_is_idempotent() {
         "",
         Some(&directory),
         10_000,
-        1024 * 1024,
+        Some(1024 * 1024),
         1024,
     );
     assert!(first.ok);
@@ -151,7 +162,7 @@ fn shutdown_all_clears_the_exact_registry_and_is_idempotent() {
         "",
         Some(&reclaimed_directory),
         10_000,
-        1024 * 1024,
+        Some(1024 * 1024),
         1024,
     );
     assert!(
@@ -186,7 +197,7 @@ fn bounded_pool_rejects_overflow_then_exact_cleanup_reclaims_one_slot() {
             "",
             Some(&working_directory),
             10_000,
-            1024 * 1024,
+            Some(1024 * 1024),
             1024,
         );
         assert!(
@@ -207,7 +218,7 @@ fn bounded_pool_rejects_overflow_then_exact_cleanup_reclaims_one_slot() {
         "",
         Some(&overflow_directory),
         10_000,
-        1024 * 1024,
+        Some(1024 * 1024),
         1024,
     );
     assert_eq!(
@@ -230,7 +241,7 @@ fn bounded_pool_rejects_overflow_then_exact_cleanup_reclaims_one_slot() {
         "",
         Some(&overflow_directory),
         10_000,
-        1024 * 1024,
+        Some(1024 * 1024),
         1024,
     );
     assert!(

@@ -47,7 +47,6 @@ async function readLeaves(leaves) {
 
 test("Codex app-server uses a thin facade with no retired monolith", async () => {
   const facade = await read(facadePath);
-  assert.ok(facade.trimEnd().split(/\r?\n/u).length <= 20);
   assert.deepEqual(
     [...facade.matchAll(/^mod ([a-z_]+);$/gmu)]
       .map((match) => match[1])

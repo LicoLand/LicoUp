@@ -48,7 +48,7 @@ void registerAgentConversationDispatchScenarios() {
         'model': 'gpt-5.5',
         'reasoningEffort': 'xhigh',
         'acceptanceMode': 'dispatch-lane-unified-1',
-        'timeoutMs': 600000,
+        'timeoutMs': 0,
       });
     },
   );
@@ -117,6 +117,7 @@ void registerAgentConversationDispatchScenarios() {
         agentId: 'codex',
         text: 'Follow up now',
         sessionId: 'native-1',
+        turnId: 'turn-1',
       );
       expect(steer.ok, isFalse);
       expect(steer.failureCode, 'dispatch_steer_unsupported');
@@ -131,6 +132,7 @@ void registerAgentConversationDispatchScenarios() {
         'agent': 'codex',
         'text': 'Follow up now',
         'sessionId': 'native-1',
+        'turnId': 'turn-1',
       });
 
       final cancel = await service.cancel(

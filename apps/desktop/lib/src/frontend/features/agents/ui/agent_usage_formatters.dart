@@ -19,7 +19,7 @@ String formatAgentUsageNumber(num value) {
     return '${_trimTrailingZero((value / 1000000000000).toStringAsFixed(1))}T';
   }
   if (value >= 1000000000) {
-    return '${_trimTrailingZero((value / 1000000000).toStringAsFixed(1))}G';
+    return '${_trimTrailingZero((value / 1000000000).toStringAsFixed(1))}B';
   }
   if (value >= 1000000) {
     return '${_trimTrailingZero((value / 1000000).toStringAsFixed(1))}M';

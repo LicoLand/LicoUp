@@ -36,6 +36,7 @@ fn parser_kind(adapter: HistoryAdapter, path: &Path) -> Option<HistoryParserKind
             HistoryAdapter::Codex => HistoryParserKind::CodexRollout,
             HistoryAdapter::Copilot => HistoryParserKind::CopilotTranscript,
             HistoryAdapter::Pi => HistoryParserKind::PiJsonLines,
+            HistoryAdapter::LicoAgent => HistoryParserKind::LicoAgentJsonLines,
             _ => HistoryParserKind::GenericJsonLines,
         }),
         "json" => Some(HistoryParserKind::JsonDocument),
@@ -72,6 +73,10 @@ mod tests {
             parser_kind(HistoryAdapter::Cursor, Path::new("state.vscdb")),
             Some(HistoryParserKind::SqliteDatabase)
         );
+        assert_eq!(
+            parser_kind(HistoryAdapter::LicoAgent, Path::new("session.jsonl")),
+            Some(HistoryParserKind::LicoAgentJsonLines)
+        );
     }
 
     #[test]
@@ -86,6 +91,10 @@ mod tests {
         );
         assert_eq!(
             parser_kind(HistoryAdapter::KimiCode, Path::new("wire.jsonl")),
+            None
+        );
+        assert_eq!(
+            parser_kind(HistoryAdapter::LicoAgent, Path::new("session.md")),
             None
         );
     }

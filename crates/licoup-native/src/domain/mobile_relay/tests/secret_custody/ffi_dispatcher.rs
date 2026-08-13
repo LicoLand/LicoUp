@@ -9,33 +9,34 @@ fn mobile_ffi_dispatcher_callback_store_keeps_public_reads_no_auth_until_authori
     let mut pc_config = default_config();
     let pc_descriptor = ensure_mobile_relay_endpoint_descriptor(
         &mut pc_config,
-        test_runtime_secret_material(stringify!(&mut pc_config)),
+        &mut test_runtime_secret_material(stringify!(&mut pc_config)),
         "desktop_sidecar",
     )
     .unwrap();
     let mut mobile_config = default_config();
     ensure_mobile_relay_endpoint_descriptor(
         &mut mobile_config,
-        test_runtime_secret_material(stringify!(&mut mobile_config)),
+        &mut test_runtime_secret_material(stringify!(&mut mobile_config)),
         "mobile",
     )
     .unwrap();
     apply_peer_secure_mesh_descriptor(
         &mut mobile_config,
-        test_runtime_secret_material(stringify!(&mut mobile_config)),
+        &mut test_runtime_secret_material(stringify!(&mut mobile_config)),
         &pc_descriptor,
         true,
     )
     .unwrap();
-    let secret_values: Vec<String> = MOBILE_RELAY_E2EE_NATIVE_SECRET_FIELDS
+    let secret_values = MobileRelayE2eeSecretField::ALL
         .iter()
-        .map(|(field, _)| {
-            mobile_config["mobileRelayE2ee"][*field]
-                .as_str()
-                .unwrap()
-                .to_string()
-        })
-        .collect();
+        .map(|field| test_runtime_e2ee_secret(stringify!(&mobile_config), *field))
+        .collect::<Vec<_>>();
+    for ((field, _), secret) in MOBILE_RELAY_E2EE_NATIVE_SECRET_FIELDS
+        .iter()
+        .zip(&secret_values)
+    {
+        mobile_config["mobileRelayE2ee"][*field] = json!(secret);
+    }
     save_config_raw(&mut mobile_config).unwrap();
     set_portable_data_dir_override(previous);
 

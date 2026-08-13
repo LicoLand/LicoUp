@@ -92,7 +92,7 @@ final class _AgentUsageSegmentState extends State<AgentUsageSegment> {
             widget.label,
             maxLines: 1,
             style: TextStyle(
-              color: widget.selected ? colors.primary : colors.textMuted,
+              color: widget.selected ? colors.accent : colors.textMuted,
               fontSize: 12.5,
               fontWeight: widget.selected ? FontWeight.w700 : FontWeight.w500,
               height: 1,

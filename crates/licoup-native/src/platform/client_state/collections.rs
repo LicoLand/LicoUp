@@ -35,6 +35,14 @@ impl ClientStateStore {
 
     pub fn read_collection(&self, collection: &str) -> Result<Value> {
         let path = self.collection_path(collection)?;
+        if collection == "adaptive-flywheel" {
+            let content = serialization::read_toml_or_default(
+                &path,
+                policy::MAX_COLLECTION_DOCUMENT_BYTES,
+                empty_adaptive_flywheel_content,
+            )?;
+            return Ok(wrap_collection_content(collection, content));
+        }
         serialization::read_json_or_default(&path, policy::MAX_COLLECTION_DOCUMENT_BYTES, || {
             empty_collection(collection)
         })
@@ -43,6 +51,15 @@ impl ClientStateStore {
     pub fn write_collection(&self, collection: &str, value: Value) -> Result<Value> {
         let path = self.collection_path(collection)?;
         let document = normalize_collection(collection, value);
+        if collection == "adaptive-flywheel" {
+            let content = collection_content(&document);
+            serialization::atomic_write_toml(
+                &path,
+                &content,
+                policy::MAX_COLLECTION_DOCUMENT_BYTES,
+            )?;
+            return Ok(document);
+        }
         serialization::atomic_write_json(&path, &document, policy::MAX_COLLECTION_DOCUMENT_BYTES)?;
         Ok(document)
     }
@@ -51,11 +68,19 @@ impl ClientStateStore {
         for collection in policy::COLLECTIONS {
             let path = self.collection_path(collection)?;
             if !path.try_exists()? {
-                serialization::atomic_write_json(
-                    &path,
-                    &empty_collection(collection),
-                    policy::MAX_COLLECTION_DOCUMENT_BYTES,
-                )?;
+                if *collection == "adaptive-flywheel" {
+                    serialization::atomic_write_toml(
+                        &path,
+                        &empty_adaptive_flywheel_content(),
+                        policy::MAX_COLLECTION_DOCUMENT_BYTES,
+                    )?;
+                } else {
+                    serialization::atomic_write_json(
+                        &path,
+                        &empty_collection(collection),
+                        policy::MAX_COLLECTION_DOCUMENT_BYTES,
+                    )?;
+                }
             }
         }
         Ok(())
@@ -76,6 +101,27 @@ fn empty_collection(collection: &str) -> Value {
         "collection": collection,
         "items": []
     })
+}
+
+fn empty_adaptive_flywheel_content() -> Value {
+    json!({ "version": 1 })
+}
+
+fn wrap_collection_content(collection: &str, content: Value) -> Value {
+    let mut object = content.as_object().cloned().unwrap_or_default();
+    object.insert(
+        "schemaVersion".to_string(),
+        json!(policy::STATE_SCHEMA_VERSION),
+    );
+    object.insert("collection".to_string(), json!(collection));
+    Value::Object(object)
+}
+
+fn collection_content(document: &Value) -> Value {
+    let mut object = document.as_object().cloned().unwrap_or_default();
+    object.remove("schemaVersion");
+    object.remove("collection");
+    Value::Object(object)
 }
 
 fn normalize_collection(collection: &str, value: Value) -> Value {

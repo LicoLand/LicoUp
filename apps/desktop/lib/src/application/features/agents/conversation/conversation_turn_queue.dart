@@ -19,9 +19,16 @@ final class ConversationQueuedTurn {
     required this.model,
     required this.reasoningEffort,
     required this.throughMobileRelay,
+    this.licoProfile = '',
+    this.conversationOwnerAgentId = '',
+    this.participantLabel = '',
+    this.participantRole = '',
     this.newConversationDraftToken = '',
-    this.orchestration = false,
     this.awaitActiveSession = false,
+    this.promoteToCurrentConversationOnSuccess = false,
+    this.dailyQuotaFallbackAttemptedKeys = const <String>{},
+    this.ideHandoffComposerId = '',
+    this.allowedTools = const <String>[],
   });
 
   final int submissionId;
@@ -33,9 +40,25 @@ final class ConversationQueuedTurn {
   final String model;
   final String reasoningEffort;
   final bool throughMobileRelay;
+  final String licoProfile;
+  final String conversationOwnerAgentId;
+  final String participantLabel;
+  final String participantRole;
+  final List<String> allowedTools;
   final String newConversationDraftToken;
-  final bool orchestration;
   final bool awaitActiveSession;
+
+  /// When true, a successful Lico group send persists this agent/model as
+  /// Current Conversation (Daily Conversation quota fallback).
+  final bool promoteToCurrentConversationOnSuccess;
+
+  /// `(agentId\\0model)` keys already tried for Daily Conversation quota
+  /// fallback so a chain does not retry the same capsule.
+  final Set<String> dailyQuotaFallbackAttemptedKeys;
+
+  /// IDE composer id for a one-time Cursor IDE→CLI handoff. On successful
+  /// send, the controller marks this id so the handoff is not repeated.
+  final String ideHandoffComposerId;
 
   ConversationQueuedTurn bindActiveSession(String sessionId) {
     final normalized = sessionId.trim();
@@ -50,8 +73,15 @@ final class ConversationQueuedTurn {
       model: model,
       reasoningEffort: reasoningEffort,
       throughMobileRelay: throughMobileRelay,
+      licoProfile: licoProfile,
+      conversationOwnerAgentId: conversationOwnerAgentId,
+      participantLabel: participantLabel,
+      participantRole: participantRole,
       newConversationDraftToken: newConversationDraftToken,
-      orchestration: orchestration,
+      promoteToCurrentConversationOnSuccess:
+          promoteToCurrentConversationOnSuccess,
+      dailyQuotaFallbackAttemptedKeys: dailyQuotaFallbackAttemptedKeys,
+      ideHandoffComposerId: ideHandoffComposerId,
     );
   }
 }

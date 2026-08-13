@@ -20,4 +20,14 @@ final class SkillUsageService {
       skillId: skillId.trim(),
     );
   }
+
+  Future<Map<String, dynamic>> scan({
+    String agent = '',
+    bool forceRefresh = false,
+  }) {
+    return _gateway.scanSkillUsage(
+      agent: agent.trim(),
+      forceRefresh: forceRefresh,
+    );
+  }
 }

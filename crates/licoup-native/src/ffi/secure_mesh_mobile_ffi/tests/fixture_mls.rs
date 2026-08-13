@@ -253,15 +253,14 @@ fn mobile_ffi_kt_product_chain_fails_closed_without_external_gossip_authority() 
     let configured = call("secure_mesh.kt.configureAuthority", confirm_params).unwrap();
     assert_eq!(configured["directoryResponseAccepted"], false);
     assert_eq!(configured["productionAuthority"], false);
-    assert!(
-        call(
-            "secure_mesh.kt.publicationRequest",
-            json!({"endpointKind": "mobile", "allowInteraction": true}),
-        )
-        .unwrap_err()
-        .to_string()
-        .contains("real MLS KeyPackage publication is required")
-    );
+    let missing_key_package = call(
+        "secure_mesh.kt.publicationRequest",
+        json!({"endpointKind": "mobile", "allowInteraction": true}),
+    )
+    .unwrap_err()
+    .to_string();
+    assert_eq!(missing_key_package, "native_operation_failed");
+    assert!(!missing_key_package.contains("KeyPackage"));
 
     let key_package = call(
         "secure_mesh.mls.keyPackage.create",
@@ -300,35 +299,34 @@ fn mobile_ffi_kt_product_chain_fails_closed_without_external_gossip_authority() 
     let mut mutated = response.clone();
     mutated.claim.key_material.mls_key_package_digest =
         "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff".to_string();
-    assert!(
-        call(
-            "secure_mesh.kt.provision",
-            json!({"response": mutated, "allowInteraction": true}),
-        )
-        .unwrap_err()
-        .to_string()
-        .contains("exact pending local claim")
-    );
-    assert!(
-        call(
-            "secure_mesh.kt.provision",
-            json!({
-                "response": response,
-                "pin": {"caller": "forbidden"},
-                "allowInteraction": true
-            }),
-        )
-        .unwrap_err()
-        .to_string()
-        .contains("unsupported field")
-    );
+    let mismatched_claim = call(
+        "secure_mesh.kt.provision",
+        json!({"response": mutated, "allowInteraction": true}),
+    )
+    .unwrap_err()
+    .to_string();
+    assert_eq!(mismatched_claim, "native_operation_failed");
+    assert!(!mismatched_claim.contains("pending local claim"));
+    let caller_pin = call(
+        "secure_mesh.kt.provision",
+        json!({
+            "response": response,
+            "pin": {"caller": "forbidden"},
+            "allowInteraction": true
+        }),
+    )
+    .unwrap_err()
+    .to_string();
+    assert_eq!(caller_pin, "native_operation_failed");
+    assert!(!caller_pin.contains("unsupported field"));
     let blocked = call(
         "secure_mesh.kt.provision",
         json!({"response": response, "allowInteraction": true}),
     )
     .unwrap_err()
     .to_string();
-    assert!(blocked.contains("fresh peer-gossip or witness observation is required"));
+    assert_eq!(blocked, "native_operation_failed");
+    assert!(!blocked.contains("peer-gossip"));
 
     let _ = std::fs::remove_dir_all(files_dir);
 }

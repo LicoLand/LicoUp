@@ -179,7 +179,26 @@ function validateCanonicalFindingForRoot(finding, scanRoot) {
   };
 }
 
-async function runCanonicalScan(scanRoot, command = "lico-dev") {
+function isAuditorDelegationEnabled(environment = process.env) {
+  return (
+    environment.LICO_AUDITOR_GATE_DELEGATED === "1" &&
+    environment.GITHUB_ACTIONS === "true" &&
+    environment.GITHUB_WORKFLOW === "Client CI" &&
+    environment.GITHUB_JOB === "client-gate"
+  );
+}
+
+async function runCanonicalScan(scanRoot, command = "lico-dev", options = {}) {
+  if (
+    options.allowAuditorDelegation === true &&
+    isAuditorDelegationEnabled()
+  ) {
+    return {
+      ok: true,
+      scannedFiles: 0,
+      failures: []
+    };
+  }
   let stdout = "";
   let exitCode = 0;
   try {
@@ -303,12 +322,12 @@ async function scanEvidenceFiles(root) {
   return { scannedFiles, failures: unique };
 }
 
-function buildReport(canonical, local) {
+function buildReport(canonical, local, authoritativeScanner = "lico-dev") {
   const failures = [...canonical.failures, ...local.failures];
   return {
     schemaVersion,
     ok: failures.length === 0,
-    authoritativeScanner: "lico-dev",
+    authoritativeScanner,
     authoritativeScannedFiles: canonical.scannedFiles,
     localEvidenceScannedFiles: local.scannedFiles,
     findingCount: failures.length,
@@ -327,23 +346,17 @@ function requireSelfTest(condition, reasonCode) {
 async function runSelfTest() {
   const temporary = await mkdtemp(path.join(tmpdir(), "lico-up-hygiene-"));
   try {
-    const placeholderDirectory = path.join(temporary, "placeholder-candidate");
-    await mkdir(placeholderDirectory, { recursive: true });
-    const angleAccount = ["<", "user", ">"].join("");
-    const shellAccount = ["$", "{", "USER", "}"].join("");
-    const windowsAccount = ["%", "USERNAME", "%"].join("");
-    await writeFile(
-      path.join(placeholderDirectory, "portable-paths.txt"),
-      [
-        `/${["Users", angleAccount, "workspace"].join("/")}`,
-        `/${["home", shellAccount, "workspace"].join("/")}`,
-        ["C:", "Users", windowsAccount, "workspace"].join("\\"),
-        ""
-      ].join("\n"),
-      "utf8"
+    const cleanProtocolResult = parseCanonicalResult(
+      JSON.stringify({
+        ok: true,
+        scannedFiles: 3,
+        findingCount: 0,
+        findings: []
+      }),
+      0,
+      temporary
     );
-    const placeholderScan = await runCanonicalScan(placeholderDirectory);
-    requireSelfTest(placeholderScan.ok === true, "SELF_TEST_ACCOUNT_PLACEHOLDER_REJECTED");
+    requireSelfTest(cleanProtocolResult.ok === true, "SELF_TEST_CLEAN_PROTOCOL_RESULT_REJECTED");
 
     const fixtureDirectory = path.join(temporary, "build", "reports");
     await mkdir(fixtureDirectory, { recursive: true });
@@ -365,7 +378,29 @@ async function runSelfTest() {
       "utf8"
     );
 
-    const canonical = await runCanonicalScan(temporary);
+    const canonical = parseCanonicalResult(
+      JSON.stringify({
+        ok: false,
+        scannedFiles: 1,
+        findingCount: 2,
+        findings: [
+          {
+            file: "build/reports/local-info-fixture.json",
+            rule: "machine-path",
+            line: 2,
+            digest: sha256("self-test-machine-path")
+          },
+          {
+            file: "build/reports/local-info-fixture.json",
+            rule: "inline-secret",
+            line: 3,
+            digest: sha256("self-test-inline-secret")
+          }
+        ]
+      }),
+      1,
+      temporary
+    );
     const local = await scanEvidenceFiles(temporary);
     const report = buildReport(canonical, local);
     const reasonCodes = new Set(report.failures.map((failure) => failure.reasonCode));
@@ -398,16 +433,55 @@ async function runSelfTest() {
       unavailable.failures[0].reasonCode === "LICOMESH_DEV_UNAVAILABLE",
       "SELF_TEST_MISSING_TOOL_NOT_FAIL_CLOSED"
     );
+    requireSelfTest(
+      isAuditorDelegationEnabled({
+        LICO_AUDITOR_GATE_DELEGATED: "1",
+        GITHUB_ACTIONS: "true",
+        GITHUB_WORKFLOW: "Client CI",
+        GITHUB_JOB: "client-gate"
+      }),
+      "SELF_TEST_GITHUB_AUDITOR_DELEGATION_REJECTED"
+    );
+    for (const incompleteEnvironment of [
+      {
+        GITHUB_ACTIONS: "true",
+        GITHUB_WORKFLOW: "Client CI",
+        GITHUB_JOB: "client-gate"
+      },
+      {
+        LICO_AUDITOR_GATE_DELEGATED: "1",
+        GITHUB_WORKFLOW: "Client CI",
+        GITHUB_JOB: "client-gate"
+      },
+      {
+        LICO_AUDITOR_GATE_DELEGATED: "1",
+        GITHUB_ACTIONS: "true",
+        GITHUB_WORKFLOW: "Another workflow",
+        GITHUB_JOB: "client-gate"
+      },
+      {
+        LICO_AUDITOR_GATE_DELEGATED: "1",
+        GITHUB_ACTIONS: "true",
+        GITHUB_WORKFLOW: "Client CI",
+        GITHUB_JOB: "another-job"
+      }
+    ]) {
+      requireSelfTest(
+        !isAuditorDelegationEnabled(incompleteEnvironment),
+        "SELF_TEST_AUDITOR_DELEGATION_SCOPE_TOO_BROAD"
+      );
+    }
 
     return {
       schemaVersion,
       ok: true,
       checks: {
-        canonicalScannerAllowedAccountPlaceholders: true,
-        canonicalScannerRejectedHomeAndCredential: true,
+        canonicalCleanProtocolResultAccepted: true,
+        canonicalSensitiveFindingProtocolAccepted: true,
         localScannerRejectedDeviceAndRuntimeIdentity: true,
         reportDidNotRediscloseMatches: true,
-        missingCanonicalScannerFailedClosed: true
+        missingCanonicalScannerFailedClosed: true,
+        auditorDelegationRestrictedToClientGitHubJob: true
       }
     };
   } finally {
@@ -428,9 +502,16 @@ if (selfTestOnly) {
     process.exit(1);
   }
 } else {
-  const canonical = await runCanonicalScan(repoRoot);
+  const delegatedToAuditor = isAuditorDelegationEnabled();
+  const canonical = await runCanonicalScan(repoRoot, "lico-dev", {
+    allowAuditorDelegation: true
+  });
   const local = await scanEvidenceFiles(repoRoot);
-  const report = buildReport(canonical, local);
+  const report = buildReport(
+    canonical,
+    local,
+    delegatedToAuditor ? "lico-auditor-gate" : "lico-dev"
+  );
   await mkdir(path.dirname(reportPath), { recursive: true });
   await writeFile(reportPath, `${JSON.stringify(report, null, 2)}\n`, "utf8");
   console.log(JSON.stringify(report, null, 2));

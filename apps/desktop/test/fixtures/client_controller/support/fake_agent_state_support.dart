@@ -149,6 +149,8 @@ mixin FakeAgentStateSupport on AgentService {
     String configPath = '',
     String binaryPath = '',
     String historyRoot = '',
+    String location = 'local',
+    Map<String, dynamic> runtimeConnection = const <String, dynamic>{},
   }) async {
     addTargetCalls++;
     if (throwAddTarget) {

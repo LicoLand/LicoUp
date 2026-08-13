@@ -1,0 +1,101 @@
+{
+  "schema": "licomesh.layout-visual-manifest",
+  "schemaVersion": 2,
+  "profile": "dashboard",
+  "surface": "mobile",
+  "bundleEntry": "apps/desktop/lib/src/frontend/layout/profiles/dashboard/mobile/dashboard_mobile_bundle.dart",
+  "sourceRoots": [
+    "apps/desktop/lib/src/frontend/layout/profiles/dashboard/mobile",
+    "apps/desktop/test/goldens/layout/production-baseline/dashboard/mobile",
+    "apps/desktop/test/layout/profiles/dashboard/mobile"
+  ],
+  "authorityEntries": [
+    {
+      "path": "apps/desktop/test/layout/fixtures/production_client_shell_fixture.dart",
+      "digest": "sha256:e605151ff36b846717baa90d558af6597981af63900c71ac94a6c3a631c2c537"
+    },
+    {
+      "path": "apps/desktop/test/layout/production_baseline/production_layout_baseline_test.dart",
+      "digest": "sha256:871dbd038ed71bc77bddc4666b34753a5fe6bc829938030ed14e0c16f2e47c19"
+    },
+    {
+      "path": "apps/desktop/test/layout/production_baseline/production_layout_switch_continuity_test.dart",
+      "digest": "sha256:bfc78cef3248aaefef0ac110fa1e07a5141d42d66b878faf00468e821a2812fd"
+    }
+  ],
+  "entries": [
+    {
+      "path": "apps/desktop/lib/src/frontend/layout/profiles/dashboard/mobile/dashboard_mobile_bundle.dart",
+      "digest": "sha256:92328f108e8a99ea8f8a620fc02a55bc2857abe92759a9e830683bfc57d69f25"
+    },
+    {
+      "path": "apps/desktop/lib/src/frontend/layout/profiles/dashboard/mobile/dashboard_mobile_components.dart",
+      "digest": "sha256:153e391396f5053b61c842a33b40a1aafa5d5e87746c43f52c76cd3cc685d080"
+    },
+    {
+      "path": "apps/desktop/lib/src/frontend/layout/profiles/dashboard/mobile/dashboard_mobile_preview.dart",
+      "digest": "sha256:e56051daa493f6ab0cba08931b168cd47982ce6df0f336d0393626124d447c2f"
+    },
+    {
+      "path": "apps/desktop/lib/src/frontend/layout/profiles/dashboard/mobile/dashboard_mobile_shell.dart",
+      "digest": "sha256:7d53015456f8d9b6671b1dcc698700cb01ff0e69ac393d6f3c728b9920f3d202"
+    },
+    {
+      "path": "apps/desktop/lib/src/frontend/layout/profiles/dashboard/mobile/dashboard_mobile_tokens.dart",
+      "digest": "sha256:b880b879de9ebe244d93f0f2411229e78665184199b174b2e064842f8de712fe"
+    },
+    {
+      "path": "apps/desktop/lib/src/frontend/layout/profiles/dashboard/mobile/destinations/dashboard_agents_destination.dart",
+      "digest": "sha256:4606eb73c554a5b98c462b899ce8604e4fbb641ff957696ad44cbf15177d6248"
+    },
+    {
+      "path": "apps/desktop/lib/src/frontend/layout/profiles/dashboard/mobile/destinations/dashboard_mobile_agents_presentation.dart",
+      "digest": "sha256:c344b4234bcab58a00fd70d7a6125207d10fc955ee7cdc1de27d705b1118ebb7"
+    },
+    {
+      "path": "apps/desktop/lib/src/frontend/layout/profiles/dashboard/mobile/destinations/dashboard_mobile_settings_presentation.dart",
+      "digest": "sha256:426a4a4461ed01f01d983dec0a66fdb812a51211db7a711b48c7438a35f117b1"
+    },
+    {
+      "path": "apps/desktop/lib/src/frontend/layout/profiles/dashboard/mobile/destinations/dashboard_pairing_destination.dart",
+      "digest": "sha256:bdc91dd9b4431719e66279af40ec0feed0e1d791f2580bc8580c08d12a0fa4e1"
+    },
+    {
+      "path": "apps/desktop/lib/src/frontend/layout/profiles/dashboard/mobile/destinations/dashboard_settings_destination.dart",
+      "digest": "sha256:651c01ca393ad9fce78bd7435631ccadc11dbd879331177e03329d8f025ab49e"
+    },
+    {
+      "path": "apps/desktop/test/goldens/layout/production-baseline/dashboard/mobile/agents.png",
+      "digest": "sha256:94a9802a0908056b58ce818010f6e3dcbd73a6ee2cc2ba050ef3794d35943ff6"
+    },
+    {
+      "path": "apps/desktop/test/goldens/layout/production-baseline/dashboard/mobile/settings.png",
+      "digest": "sha256:58f3ad6c973c35ea5ff43409947640bf2d4fcca63b9701f57da8d3d8e5799e69"
+    },
+    {
+      "path": "apps/desktop/test/layout/profiles/dashboard/mobile/dashboard_mobile_bundle_test.dart",
+      "digest": "sha256:f037971a96c2aed353662cfce6011544986ca9d7de29cb3d88e82ce034439b94"
+    },
+    {
+      "path": "apps/desktop/test/layout/profiles/dashboard/mobile/dashboard_mobile_golden_test.dart",
+      "digest": "sha256:f0c903297fe4e4d0bb369fd88634ede4b769cf3ecdc4dd98069a3f0909b8678f"
+    },
+    {
+      "path": "apps/desktop/test/layout/profiles/dashboard/mobile/dashboard_mobile_shell_test.dart",
+      "digest": "sha256:52426eb37158060aace1b4e10907f51b43ee0f9fc57a15649b7dc986bc04b0c4"
+    },
+    {
+      "path": "apps/desktop/test/layout/profiles/dashboard/mobile/dashboard_mobile_test_fakes.dart",
+      "digest": "sha256:06e182484c93152670caa65ee3e2760dd7805f69e10bae054adbe0c2cb2f0fb6"
+    },
+    {
+      "path": "apps/desktop/test/layout/profiles/dashboard/mobile/goldens/dashboard_mobile_preview_dark.png",
+      "digest": "sha256:d450e13f4ad195fa9c05589b93f274da3ec9a5c37a59fdb47dbbc8d96849adec"
+    },
+    {
+      "path": "apps/desktop/test/layout/profiles/dashboard/mobile/goldens/dashboard_mobile_preview_light.png",
+      "digest": "sha256:350f9cc0a533d494ba86f4253a907165f9a1dd6af81f43b078623a943ae8b0db"
+    }
+  ],
+  "manifestDigest": "sha256:e8fe93ac08fed44921a53eaf39f9df14d9b120248268b038877b01b5b6b26f07"
+}

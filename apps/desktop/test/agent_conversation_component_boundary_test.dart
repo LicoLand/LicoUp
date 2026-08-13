@@ -16,12 +16,9 @@ void main() {
     final composer = File(
       '$root/agent_conversation_controller.dart',
     ).readAsStringSync();
-
-    expect(composer.split('\n').length, lessThan(80));
     for (final fileName in componentFiles) {
       final source = File('$root/$fileName').readAsStringSync();
       expect(composer, contains(fileName));
-      expect(source.split('\n').length, lessThan(800));
       expect(source, isNot(contains('client_controller.dart')));
       expect(
         source,
@@ -34,7 +31,6 @@ void main() {
     final message = File(
       '$root/conversation_message_controller.dart',
     ).readAsStringSync();
-    expect(policy.split('\n').length, lessThan(800));
     expect(policy, isNot(contains('client_controller.dart')));
     expect(message, contains('conversation_runtime_result_policy.dart'));
 

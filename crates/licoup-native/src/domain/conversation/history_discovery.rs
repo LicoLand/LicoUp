@@ -21,7 +21,10 @@ pub(crate) struct HistoryFileCandidate {
 #[derive(Clone, Debug, Default)]
 pub(crate) struct HistoryDiscoveryOptions {
     pub(crate) archive_mode: bool,
-    pub(crate) exact_session_id: Option<String>,
+    /// Identities the caller asked for. A file matches when any of them names
+    /// it. More than one identity appears when a conversation's delegated work
+    /// lives in its own file under its own identity, as Codex records it.
+    pub(crate) exact_session_ids: Vec<String>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -154,21 +157,47 @@ fn exact_session_candidate(
     source_kind: &str,
     options: &HistoryDiscoveryOptions,
 ) -> bool {
-    let Some(session_id) = options.exact_session_id.as_deref() else {
-        return true;
-    };
-    if adapter != HistoryAdapter::Codex {
+    if options.exact_session_ids.is_empty() {
         return true;
     }
-    match source_kind {
-        "codex-session-store" | "codex-archived-session-store" => path
+    options
+        .exact_session_ids
+        .iter()
+        .any(|session_id| exact_session_candidate_for_id(adapter, path, source_kind, session_id))
+}
+
+fn exact_session_candidate_for_id(
+    adapter: HistoryAdapter,
+    path: &Path,
+    source_kind: &str,
+    session_id: &str,
+) -> bool {
+    match (adapter, source_kind) {
+        (HistoryAdapter::Codex, "codex-session-store" | "codex-archived-session-store") => path
             .file_name()
             .and_then(|name| name.to_str())
             .is_some_and(|name| name.contains(session_id)),
-        "codex-prompt-history"
-        | "codex-session-index"
-        | "codex-memory"
-        | "codex-rollout-summary" => false,
+        // Cursor and Claude Code keep one directory per conversation and put each
+        // delegated task inside it under its own name, so matching only the file
+        // name would drop every delegated task of the requested conversation.
+        // Matching any path component also keeps the read from parsing every
+        // conversation of every project.
+        // Kimi Code keeps every agent of one conversation under
+        // `<session>/agents/<id>/wire.jsonl`, so the conversation directory is the
+        // only part of the path that names it.
+        (HistoryAdapter::Cursor, "cursor-cli-projects")
+        | (HistoryAdapter::ClaudeCode, "claude-project-transcripts")
+        | (HistoryAdapter::KimiCode, "kimi-code-session-store") => path
+            .components()
+            .filter_map(|component| component.as_os_str().to_str())
+            .any(|component| component.contains(session_id)),
+        (
+            HistoryAdapter::Codex,
+            "codex-prompt-history"
+            | "codex-session-index"
+            | "codex-memory"
+            | "codex-rollout-summary",
+        ) => false,
         _ => true,
     }
 }
@@ -190,6 +219,9 @@ fn excluded_history_path_reason(path: &Path) -> Option<&'static str> {
     {
         return Some("excluded_generated_task_logs");
     }
+    if let Some(reason) = excluded_delegated_bookkeeping_reason(path, &components) {
+        return Some(reason);
+    }
     components
         .iter()
         .any(|name| {
@@ -199,6 +231,26 @@ fn excluded_history_path_reason(path: &Path) -> Option<&'static str> {
             )
         })
         .then_some("excluded_non_history_directory")
+}
+
+/// Bookkeeping an agent writes beside a delegated task.
+///
+/// Claude Code stores `<task>.meta.json`, `journal.jsonl`, and raw
+/// `tool-results/` output next to the task transcripts. None of them is a
+/// conversation, and `<task>.meta.json` is actively harmful: it carries no
+/// session field, so the generic reader falls back to the nearest conversation
+/// directory and the record claims the conversation's own identity. The delegated
+/// tasks then attach to that record instead of the conversation and disappear
+/// from it.
+fn excluded_delegated_bookkeeping_reason(path: &Path, components: &[&str]) -> Option<&'static str> {
+    if components.iter().any(|name| *name == "tool-results") {
+        return Some("excluded_raw_tool_output");
+    }
+    if !components.iter().any(|name| *name == "subagents") {
+        return None;
+    }
+    let stem = path.file_stem().and_then(|value| value.to_str())?;
+    (stem == "journal" || stem.ends_with(".meta")).then_some("excluded_delegated_task_bookkeeping")
 }
 
 fn record_skip(discovery: &mut HistoryDiscovery, path: &Path, reason: &'static str) {
@@ -273,7 +325,7 @@ mod tests {
             &roots,
             HistoryDiscoveryOptions {
                 archive_mode: false,
-                exact_session_id: Some("wanted".to_owned()),
+                exact_session_ids: vec!["wanted".to_owned()],
             },
         );
         assert_eq!(discovery.candidates.len(), 1);
@@ -284,6 +336,87 @@ mod tests {
                 .and_then(|name| name.to_str())
                 .is_some_and(|name| name.contains("wanted"))
         );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn exact_claude_discovery_only_keeps_the_requested_transcript() {
+        let root = temp_root("exact-claude");
+        fs::create_dir_all(&root).unwrap();
+        fs::write(root.join("wanted.jsonl"), b"{}\n").unwrap();
+        fs::write(root.join("other.jsonl"), b"{}\n").unwrap();
+        let roots = [HistoryRoot {
+            path: root.clone(),
+            source_kind: "claude-project-transcripts".to_owned(),
+        }];
+        let discovery = discover_history_files(
+            HistoryAdapter::ClaudeCode,
+            &roots,
+            HistoryDiscoveryOptions {
+                archive_mode: false,
+                exact_session_ids: vec!["wanted".to_owned()],
+            },
+        );
+        assert_eq!(discovery.candidates.len(), 1);
+        assert_eq!(
+            discovery.candidates[0]
+                .path
+                .file_name()
+                .and_then(|name| name.to_str()),
+            Some("wanted.jsonl")
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn exact_discovery_keeps_delegated_transcripts_of_the_requested_conversation() {
+        let root = temp_root("exact-delegated");
+        let conversation = root.join("wanted");
+        fs::create_dir_all(conversation.join("subagents")).unwrap();
+        fs::create_dir_all(root.join("other/subagents")).unwrap();
+        fs::write(root.join("wanted.jsonl"), b"{}\n").unwrap();
+        fs::write(
+            conversation.join("subagents").join("agent-task.jsonl"),
+            b"{}\n",
+        )
+        .unwrap();
+        fs::write(root.join("other.jsonl"), b"{}\n").unwrap();
+        fs::write(
+            root.join("other/subagents").join("agent-elsewhere.jsonl"),
+            b"{}\n",
+        )
+        .unwrap();
+        for adapter in [HistoryAdapter::ClaudeCode, HistoryAdapter::Cursor] {
+            let source_kind = match adapter {
+                HistoryAdapter::Cursor => "cursor-cli-projects",
+                _ => "claude-project-transcripts",
+            };
+            let roots = [HistoryRoot {
+                path: root.clone(),
+                source_kind: source_kind.to_owned(),
+            }];
+            let discovery = discover_history_files(
+                adapter,
+                &roots,
+                HistoryDiscoveryOptions {
+                    archive_mode: false,
+                    exact_session_ids: vec!["wanted".to_owned()],
+                },
+            );
+            let mut names = discovery
+                .candidates
+                .iter()
+                .filter_map(|candidate| candidate.path.file_name())
+                .filter_map(|name| name.to_str())
+                .map(str::to_string)
+                .collect::<Vec<_>>();
+            names.sort();
+            assert_eq!(
+                names,
+                vec!["agent-task.jsonl".to_string(), "wanted.jsonl".to_string()],
+                "a delegated task of the requested conversation must stay in scope"
+            );
+        }
         fs::remove_dir_all(root).unwrap();
     }
 
@@ -302,7 +435,7 @@ mod tests {
             "codex-session-store",
             &HistoryDiscoveryOptions {
                 archive_mode: false,
-                exact_session_id: Some("bound".to_owned()),
+                exact_session_ids: vec!["bound".to_owned()],
             },
             &mut discovery,
             0,

@@ -20,12 +20,14 @@ final class AgentConversationGatewayAdapter
     String sessionId = '',
     int? limit,
     int offset = 0,
+    AgentDispatchBind bind = const AgentDispatchBind(),
   }) => service.loadSessions(
     agentService: runner,
     agentId: agentId,
     sessionId: sessionId,
     limit: limit,
     offset: offset,
+    bind: bind,
   );
   @override
   Stream<AgentConversationSession> streamSessions({
@@ -33,12 +35,14 @@ final class AgentConversationGatewayAdapter
     String sessionId = '',
     int? limit,
     int offset = 0,
+    AgentDispatchBind bind = const AgentDispatchBind(),
   }) => service.streamSessions(
     agentService: runner,
     agentId: agentId,
     sessionId: sessionId,
     limit: limit,
     offset: offset,
+    bind: bind,
   );
   @override
   Future<AgentDispatchSession> openOrResume({
@@ -91,12 +95,14 @@ final class AgentConversationGatewayAdapter
     required String agentId,
     required String text,
     required String sessionId,
+    required String turnId,
     AgentDispatchBind bind = const AgentDispatchBind(),
   }) => service.steer(
     runner: runner,
     agentId: agentId,
     text: text,
     sessionId: sessionId,
+    turnId: turnId,
     bind: bind,
   );
   @override

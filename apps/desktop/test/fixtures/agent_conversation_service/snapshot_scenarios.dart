@@ -221,7 +221,13 @@ void registerAgentConversationArchiveScenarios() {
     expect(collections.single['topicKey'], 'codex-spark');
     expect(profiles.single['profileId'], 'licomesh');
     expect(captured[0], ['snapshots', 'root', 'get']);
-    expect(captured[1], ['snapshots', 'root', 'set', '--path', 'test-data/archive']);
+    expect(captured[1], [
+      'snapshots',
+      'root',
+      'set',
+      '--path',
+      'test-data/archive',
+    ]);
     expect(captured[2], ['snapshots', 'collections', 'list']);
     expect(captured[3], ['snapshots', 'profiles', 'list']);
     expect(captured[4], [

@@ -44,7 +44,10 @@ void registerClientHistoryRuntimeMessageDispatchScenarios() {
       expect(service.conversationAppendCalls, 0);
       expect(controller.selectedConversationSessions, hasLength(1));
       expect(controller.lastError, isEmpty);
-      expect(controller.statusMessage, '已通过 Codex 运行时适配器发送消息。');
+      expect(
+        controller.statusMessage,
+        'Sent the message through the Codex runtime adapter.',
+      );
       controller.localePreference = 'en';
       expect(
         controller.displayStatusMessage,

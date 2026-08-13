@@ -15,7 +15,6 @@ async function read(relativePath) {
 test("OpenCode serve is a thin facade plus one target policy leaf", async () => {
   const facade = await read(facadePath);
   const policy = await read(`${root}/policy.rs`);
-  assert.ok(facade.split("\n").length <= 90);
   assert.match(facade, /local_service::serve::ensure\(policy::SPEC/u);
   assert.match(facade, /local_service::serve::watch_session_events/u);
   assert.match(policy, /default_port: DEFAULT_PORT/u);

@@ -8,11 +8,15 @@ use std::fmt;
 mod adapter;
 mod agent_conversation;
 mod agent_usage;
+mod autostart;
 mod client_update;
 mod collaboration;
+mod group_conversation;
+mod llm_gateway;
 mod mcp;
 mod mobile;
 mod opencode_serve;
+mod resource_usage;
 mod secure_mesh;
 mod skill;
 mod snapshots;
@@ -488,6 +492,10 @@ impl AdmittedCommand {
         self.option_json.get(name)
     }
 
+    pub fn take_option_json(&mut self, name: &str) -> Option<Value> {
+        self.option_json.remove(name)
+    }
+
     fn execute(self) -> Result<CliExecution> {
         (self.handler)(self)
     }
@@ -831,6 +839,203 @@ fn build_command_table() -> CommandTable {
         help: "",
     });
     table.register_command(CommandSpec {
+        source_module: "adapter.rs",
+        handler_name: "handle_antigravity_authorize",
+        path: &["adapter", "antigravity", "authorize"],
+        required_positionals: &[],
+        options: &[OptionSpec {
+            name: "binary-path",
+            arity: OptionArity::Value,
+            repeatable: false,
+            value_kind: RequiredArgumentKind::Text,
+            required: false,
+        }],
+        constraints: &[],
+        cardinality: CommandCardinality::Options,
+        handler: adapter::handle_antigravity_authorize,
+        help: "",
+    });
+    table.register_command(CommandSpec {
+        source_module: "adapter.rs",
+        handler_name: "handle_codex_plugin_status",
+        path: &["adapter", "codex", "plugin", "status"],
+        required_positionals: &[],
+        options: &[OptionSpec {
+            name: "binary-path",
+            arity: OptionArity::Value,
+            repeatable: false,
+            value_kind: RequiredArgumentKind::Text,
+            required: true,
+        }],
+        constraints: &[],
+        cardinality: CommandCardinality::Options,
+        handler: adapter::handle_codex_plugin_status,
+        help: "Probe the managed LicoUp Codex Plugin without exposing local inventory.",
+    });
+    table.register_command(CommandSpec {
+        source_module: "adapter.rs",
+        handler_name: "handle_codex_plugin_plan",
+        path: &["adapter", "codex", "plugin", "plan"],
+        required_positionals: &[],
+        options: &[OptionSpec {
+            name: "binary-path",
+            arity: OptionArity::Value,
+            repeatable: false,
+            value_kind: RequiredArgumentKind::Text,
+            required: true,
+        }],
+        constraints: &[],
+        cardinality: CommandCardinality::Options,
+        handler: adapter::handle_codex_plugin_plan,
+        help: "Plan an explicitly confirmed GitHub LicoUp Codex Plugin installation.",
+    });
+    table.register_command(CommandSpec {
+        source_module: "adapter.rs",
+        handler_name: "handle_codex_plugin_install",
+        path: &["adapter", "codex", "plugin", "install"],
+        required_positionals: &[],
+        options: &[
+            OptionSpec {
+                name: "binary-path",
+                arity: OptionArity::Value,
+                repeatable: false,
+                value_kind: RequiredArgumentKind::Text,
+                required: true,
+            },
+            OptionSpec {
+                name: "confirmation",
+                arity: OptionArity::Value,
+                repeatable: false,
+                value_kind: RequiredArgumentKind::Text,
+                required: true,
+            },
+            OptionSpec {
+                name: "confirmed",
+                arity: OptionArity::Boolean,
+                repeatable: false,
+                value_kind: RequiredArgumentKind::Text,
+                required: true,
+            },
+        ],
+        constraints: &[],
+        cardinality: CommandCardinality::Options,
+        handler: adapter::handle_codex_plugin_install,
+        help: "Install the digest-bound LicoUp Codex Plugin after confirmation.",
+    });
+    table.register_command(CommandSpec {
+        source_module: "adapter.rs",
+        handler_name: "handle_subagent_mcp_status",
+        path: &["adapter", "subagent-mcp", "status"],
+        required_positionals: &[],
+        options: &[
+            OptionSpec {
+                name: "agent-id",
+                arity: OptionArity::Value,
+                repeatable: false,
+                value_kind: RequiredArgumentKind::Text,
+                required: true,
+            },
+            OptionSpec {
+                name: "binary-path",
+                arity: OptionArity::Value,
+                repeatable: false,
+                value_kind: RequiredArgumentKind::Text,
+                required: false,
+            },
+            OptionSpec {
+                name: "mcp-binary-path",
+                arity: OptionArity::Value,
+                repeatable: false,
+                value_kind: RequiredArgumentKind::Text,
+                required: false,
+            },
+        ],
+        constraints: &[],
+        cardinality: CommandCardinality::Options,
+        handler: adapter::handle_subagent_mcp_status,
+        help: "Probe Subagent MCP readiness for a main agent without silent install.",
+    });
+    table.register_command(CommandSpec {
+        source_module: "adapter.rs",
+        handler_name: "handle_subagent_mcp_plan",
+        path: &["adapter", "subagent-mcp", "plan"],
+        required_positionals: &[],
+        options: &[
+            OptionSpec {
+                name: "agent-id",
+                arity: OptionArity::Value,
+                repeatable: false,
+                value_kind: RequiredArgumentKind::Text,
+                required: true,
+            },
+            OptionSpec {
+                name: "binary-path",
+                arity: OptionArity::Value,
+                repeatable: false,
+                value_kind: RequiredArgumentKind::Text,
+                required: false,
+            },
+            OptionSpec {
+                name: "mcp-binary-path",
+                arity: OptionArity::Value,
+                repeatable: false,
+                value_kind: RequiredArgumentKind::Text,
+                required: false,
+            },
+        ],
+        constraints: &[],
+        cardinality: CommandCardinality::Options,
+        handler: adapter::handle_subagent_mcp_plan,
+        help: "Plan a digest-confirmed Subagent MCP install for a supported main agent.",
+    });
+    table.register_command(CommandSpec {
+        source_module: "adapter.rs",
+        handler_name: "handle_subagent_mcp_install",
+        path: &["adapter", "subagent-mcp", "install"],
+        required_positionals: &[],
+        options: &[
+            OptionSpec {
+                name: "agent-id",
+                arity: OptionArity::Value,
+                repeatable: false,
+                value_kind: RequiredArgumentKind::Text,
+                required: true,
+            },
+            OptionSpec {
+                name: "binary-path",
+                arity: OptionArity::Value,
+                repeatable: false,
+                value_kind: RequiredArgumentKind::Text,
+                required: false,
+            },
+            OptionSpec {
+                name: "mcp-binary-path",
+                arity: OptionArity::Value,
+                repeatable: false,
+                value_kind: RequiredArgumentKind::Text,
+                required: false,
+            },
+            OptionSpec {
+                name: "confirmation",
+                arity: OptionArity::Value,
+                repeatable: false,
+                value_kind: RequiredArgumentKind::Text,
+                required: true,
+            },
+            OptionSpec {
+                name: "confirmed",
+                arity: OptionArity::Boolean,
+                repeatable: false,
+                value_kind: RequiredArgumentKind::Text,
+                required: true,
+            },
+        ],
+        constraints: &[],
+        cardinality: CommandCardinality::Options,
+        handler: adapter::handle_subagent_mcp_install,
+        help: "Install Subagent MCP for a supported main agent after digest confirmation.",
+    });
+    table.register_command(CommandSpec {
         source_module: "agent_conversation.rs",
         handler_name: "handle_agent_conversation",
         path: &["agent", "conversation", "open"],
@@ -948,6 +1153,34 @@ fn build_command_table() -> CommandTable {
         cardinality: CommandCardinality::Options,
         handler: agent_conversation::handle_agent_conversation,
         help: "",
+    });
+    table.register_command(CommandSpec {
+        source_module: "group_conversation.rs",
+        handler_name: "handle_group_ensure",
+        path: &["agent", "group", "ensure"],
+        required_positionals: &[],
+        options: &[],
+        constraints: &[],
+        cardinality: CommandCardinality::Exact,
+        handler: group_conversation::handle_group_ensure,
+        help: "Ensure the default Lico group Conversation room exists.",
+    });
+    table.register_command(CommandSpec {
+        source_module: "group_conversation.rs",
+        handler_name: "handle_group_plan_turn",
+        path: &["agent", "group", "plan-turn"],
+        required_positionals: &[],
+        options: &[OptionSpec {
+            name: "stdin-json",
+            arity: OptionArity::Value,
+            repeatable: false,
+            value_kind: RequiredArgumentKind::Json,
+            required: true,
+        }],
+        constraints: &[],
+        cardinality: CommandCardinality::Options,
+        handler: group_conversation::handle_group_plan_turn,
+        help: "Plan turn-taking for a Lico group Conversation send.",
     });
     table.register_command(CommandSpec {
         source_module: "agent_conversation.rs",
@@ -1138,6 +1371,23 @@ fn build_command_table() -> CommandTable {
         constraints: &[],
         cardinality: CommandCardinality::Options,
         handler: agent_usage::handle_agent_usage_report,
+        help: "",
+    });
+    table.register_command(CommandSpec {
+        source_module: "resource_usage.rs",
+        handler_name: "handle_resource_usage_scan",
+        path: &["resource-usage", "scan"],
+        required_positionals: &[],
+        options: &[OptionSpec {
+            name: "state-root",
+            arity: OptionArity::Value,
+            repeatable: false,
+            value_kind: RequiredArgumentKind::Text,
+            required: false,
+        }],
+        constraints: &[],
+        cardinality: CommandCardinality::Options,
+        handler: resource_usage::handle_resource_usage_scan,
         help: "",
     });
     table.register_command(CommandSpec {
@@ -2010,21 +2260,14 @@ fn build_command_table() -> CommandTable {
         required_positionals: &[],
         options: &[
             OptionSpec {
-                name: "use-custom-gateway",
+                name: "authorize",
                 arity: OptionArity::Value,
                 repeatable: false,
                 value_kind: RequiredArgumentKind::Text,
                 required: false,
             },
             OptionSpec {
-                name: "custom-gateway-url",
-                arity: OptionArity::Value,
-                repeatable: false,
-                value_kind: RequiredArgumentKind::Text,
-                required: false,
-            },
-            OptionSpec {
-                name: "relay-enabled",
+                name: "hydrate-secrets",
                 arity: OptionArity::Value,
                 repeatable: false,
                 value_kind: RequiredArgumentKind::Text,
@@ -2043,14 +2286,14 @@ fn build_command_table() -> CommandTable {
         required_positionals: &[],
         options: &[
             OptionSpec {
-                name: "use-custom-gateway",
+                name: "stdin-json",
                 arity: OptionArity::Value,
                 repeatable: false,
-                value_kind: RequiredArgumentKind::Text,
+                value_kind: RequiredArgumentKind::Json,
                 required: false,
             },
             OptionSpec {
-                name: "custom-gateway-url",
+                name: "station-base-url",
                 arity: OptionArity::Value,
                 repeatable: false,
                 value_kind: RequiredArgumentKind::Text,
@@ -2058,6 +2301,41 @@ fn build_command_table() -> CommandTable {
             },
             OptionSpec {
                 name: "relay-enabled",
+                arity: OptionArity::Value,
+                repeatable: false,
+                value_kind: RequiredArgumentKind::Text,
+                required: false,
+            },
+            OptionSpec {
+                name: "pc-client-id",
+                arity: OptionArity::Value,
+                repeatable: false,
+                value_kind: RequiredArgumentKind::Text,
+                required: false,
+            },
+            OptionSpec {
+                name: "pc-client-name",
+                arity: OptionArity::Value,
+                repeatable: false,
+                value_kind: RequiredArgumentKind::Text,
+                required: false,
+            },
+            OptionSpec {
+                name: "pairing-id",
+                arity: OptionArity::Value,
+                repeatable: false,
+                value_kind: RequiredArgumentKind::Text,
+                required: false,
+            },
+            OptionSpec {
+                name: "paired",
+                arity: OptionArity::Value,
+                repeatable: false,
+                value_kind: RequiredArgumentKind::Text,
+                required: false,
+            },
+            OptionSpec {
+                name: "reset-pairing",
                 arity: OptionArity::Value,
                 repeatable: false,
                 value_kind: RequiredArgumentKind::Text,
@@ -2076,21 +2354,14 @@ fn build_command_table() -> CommandTable {
         required_positionals: &[],
         options: &[
             OptionSpec {
-                name: "pairing-code",
+                name: "stdin-json",
                 arity: OptionArity::Value,
                 repeatable: false,
-                value_kind: RequiredArgumentKind::Text,
+                value_kind: RequiredArgumentKind::Json,
                 required: false,
             },
             OptionSpec {
                 name: "pairing-id",
-                arity: OptionArity::Value,
-                repeatable: false,
-                value_kind: RequiredArgumentKind::Text,
-                required: false,
-            },
-            OptionSpec {
-                name: "mobile-token",
                 arity: OptionArity::Value,
                 repeatable: false,
                 value_kind: RequiredArgumentKind::Text,
@@ -2109,21 +2380,14 @@ fn build_command_table() -> CommandTable {
         required_positionals: &[],
         options: &[
             OptionSpec {
-                name: "pairing-code",
+                name: "stdin-json",
                 arity: OptionArity::Value,
                 repeatable: false,
-                value_kind: RequiredArgumentKind::Text,
+                value_kind: RequiredArgumentKind::Json,
                 required: false,
             },
             OptionSpec {
                 name: "pairing-id",
-                arity: OptionArity::Value,
-                repeatable: false,
-                value_kind: RequiredArgumentKind::Text,
-                required: false,
-            },
-            OptionSpec {
-                name: "mobile-token",
                 arity: OptionArity::Value,
                 repeatable: false,
                 value_kind: RequiredArgumentKind::Text,
@@ -2142,21 +2406,14 @@ fn build_command_table() -> CommandTable {
         required_positionals: &[],
         options: &[
             OptionSpec {
-                name: "pairing-code",
+                name: "stdin-json",
                 arity: OptionArity::Value,
                 repeatable: false,
-                value_kind: RequiredArgumentKind::Text,
+                value_kind: RequiredArgumentKind::Json,
                 required: false,
             },
             OptionSpec {
                 name: "pairing-id",
-                arity: OptionArity::Value,
-                repeatable: false,
-                value_kind: RequiredArgumentKind::Text,
-                required: false,
-            },
-            OptionSpec {
-                name: "mobile-token",
                 arity: OptionArity::Value,
                 repeatable: false,
                 value_kind: RequiredArgumentKind::Text,
@@ -2175,21 +2432,14 @@ fn build_command_table() -> CommandTable {
         required_positionals: &[],
         options: &[
             OptionSpec {
-                name: "pairing-code",
+                name: "stdin-json",
                 arity: OptionArity::Value,
                 repeatable: false,
-                value_kind: RequiredArgumentKind::Text,
+                value_kind: RequiredArgumentKind::Json,
                 required: false,
             },
             OptionSpec {
                 name: "pairing-id",
-                arity: OptionArity::Value,
-                repeatable: false,
-                value_kind: RequiredArgumentKind::Text,
-                required: false,
-            },
-            OptionSpec {
-                name: "mobile-token",
                 arity: OptionArity::Value,
                 repeatable: false,
                 value_kind: RequiredArgumentKind::Text,
@@ -2233,17 +2483,10 @@ fn build_command_table() -> CommandTable {
                 required: false,
             },
             OptionSpec {
-                name: "payload",
+                name: "stdin-json",
                 arity: OptionArity::Value,
                 repeatable: false,
                 value_kind: RequiredArgumentKind::Json,
-                required: false,
-            },
-            OptionSpec {
-                name: "mobile-token",
-                arity: OptionArity::Value,
-                repeatable: false,
-                value_kind: RequiredArgumentKind::Text,
                 required: false,
             },
         ],
@@ -2259,45 +2502,12 @@ fn build_command_table() -> CommandTable {
         required_positionals: &[],
         options: &[
             OptionSpec {
-                name: "command-id",
+                name: "allow-interaction",
                 arity: OptionArity::Value,
                 repeatable: false,
                 value_kind: RequiredArgumentKind::Text,
                 required: false,
             },
-            OptionSpec {
-                name: "type",
-                arity: OptionArity::Value,
-                repeatable: false,
-                value_kind: RequiredArgumentKind::Text,
-                required: false,
-            },
-            OptionSpec {
-                name: "payload",
-                arity: OptionArity::Value,
-                repeatable: false,
-                value_kind: RequiredArgumentKind::Json,
-                required: false,
-            },
-            OptionSpec {
-                name: "mobile-token",
-                arity: OptionArity::Value,
-                repeatable: false,
-                value_kind: RequiredArgumentKind::Text,
-                required: false,
-            },
-        ],
-        constraints: &[],
-        cardinality: CommandCardinality::Options,
-        handler: mobile::handle_mobile_relay,
-        help: "",
-    });
-    table.register_command(CommandSpec {
-        source_module: "mobile.rs",
-        handler_name: "handle_mobile_relay",
-        path: &["mobile", "relay", "commands", "complete"],
-        required_positionals: &[],
-        options: &[
             OptionSpec {
                 name: "command-id",
                 arity: OptionArity::Value,
@@ -2313,17 +2523,10 @@ fn build_command_table() -> CommandTable {
                 required: false,
             },
             OptionSpec {
-                name: "payload",
+                name: "stdin-json",
                 arity: OptionArity::Value,
                 repeatable: false,
                 value_kind: RequiredArgumentKind::Json,
-                required: false,
-            },
-            OptionSpec {
-                name: "mobile-token",
-                arity: OptionArity::Value,
-                repeatable: false,
-                value_kind: RequiredArgumentKind::Text,
                 required: false,
             },
         ],
@@ -2353,17 +2556,78 @@ fn build_command_table() -> CommandTable {
                 required: false,
             },
             OptionSpec {
-                name: "payload",
+                name: "stdin-json",
+                arity: OptionArity::Value,
+                repeatable: false,
+                value_kind: RequiredArgumentKind::Json,
+                required: false,
+            },
+        ],
+        constraints: &[],
+        cardinality: CommandCardinality::Options,
+        handler: mobile::handle_mobile_relay,
+        help: "",
+    });
+    table.register_command(CommandSpec {
+        source_module: "mobile.rs",
+        handler_name: "handle_mobile_relay",
+        path: &["mobile", "relay", "commands", "create-secure"],
+        required_positionals: &[],
+        options: &[
+            OptionSpec {
+                name: "client-intent-id",
+                arity: OptionArity::Value,
+                repeatable: false,
+                value_kind: RequiredArgumentKind::Text,
+                required: false,
+            },
+            OptionSpec {
+                name: "command-kind",
+                arity: OptionArity::Value,
+                repeatable: false,
+                value_kind: RequiredArgumentKind::Text,
+                required: false,
+            },
+            OptionSpec {
+                name: "target-agent-id",
+                arity: OptionArity::Value,
+                repeatable: false,
+                value_kind: RequiredArgumentKind::Text,
+                required: false,
+            },
+            OptionSpec {
+                name: "workspace-id",
+                arity: OptionArity::Value,
+                repeatable: false,
+                value_kind: RequiredArgumentKind::Text,
+                required: false,
+            },
+            OptionSpec {
+                name: "body",
                 arity: OptionArity::Value,
                 repeatable: false,
                 value_kind: RequiredArgumentKind::Json,
                 required: false,
             },
             OptionSpec {
-                name: "mobile-token",
+                name: "station-base-url",
                 arity: OptionArity::Value,
                 repeatable: false,
                 value_kind: RequiredArgumentKind::Text,
+                required: false,
+            },
+            OptionSpec {
+                name: "allow-interaction",
+                arity: OptionArity::Value,
+                repeatable: false,
+                value_kind: RequiredArgumentKind::Text,
+                required: false,
+            },
+            OptionSpec {
+                name: "stdin-json",
+                arity: OptionArity::Value,
+                repeatable: false,
+                value_kind: RequiredArgumentKind::Json,
                 required: false,
             },
         ],
@@ -2393,17 +2657,10 @@ fn build_command_table() -> CommandTable {
                 required: false,
             },
             OptionSpec {
-                name: "payload",
+                name: "stdin-json",
                 arity: OptionArity::Value,
                 repeatable: false,
                 value_kind: RequiredArgumentKind::Json,
-                required: false,
-            },
-            OptionSpec {
-                name: "mobile-token",
-                arity: OptionArity::Value,
-                repeatable: false,
-                value_kind: RequiredArgumentKind::Text,
                 required: false,
             },
         ],
@@ -2426,6 +2683,20 @@ fn build_command_table() -> CommandTable {
                 required: false,
             },
             OptionSpec {
+                name: "idempotency-key",
+                arity: OptionArity::Value,
+                repeatable: false,
+                value_kind: RequiredArgumentKind::Text,
+                required: false,
+            },
+            OptionSpec {
+                name: "acknowledge-receipt-id",
+                arity: OptionArity::Value,
+                repeatable: false,
+                value_kind: RequiredArgumentKind::Text,
+                required: false,
+            },
+            OptionSpec {
                 name: "type",
                 arity: OptionArity::Value,
                 repeatable: false,
@@ -2433,17 +2704,10 @@ fn build_command_table() -> CommandTable {
                 required: false,
             },
             OptionSpec {
-                name: "payload",
+                name: "stdin-json",
                 arity: OptionArity::Value,
                 repeatable: false,
                 value_kind: RequiredArgumentKind::Json,
-                required: false,
-            },
-            OptionSpec {
-                name: "mobile-token",
-                arity: OptionArity::Value,
-                repeatable: false,
-                value_kind: RequiredArgumentKind::Text,
                 required: false,
             },
         ],
@@ -2473,17 +2737,10 @@ fn build_command_table() -> CommandTable {
                 required: false,
             },
             OptionSpec {
-                name: "payload",
+                name: "stdin-json",
                 arity: OptionArity::Value,
                 repeatable: false,
                 value_kind: RequiredArgumentKind::Json,
-                required: false,
-            },
-            OptionSpec {
-                name: "mobile-token",
-                arity: OptionArity::Value,
-                repeatable: false,
-                value_kind: RequiredArgumentKind::Text,
                 required: false,
             },
         ],
@@ -3713,6 +3970,46 @@ fn build_command_table() -> CommandTable {
         help: "",
     });
     table.register_command(CommandSpec {
+        source_module: "skill.rs",
+        handler_name: "handle_skill_usage_scan",
+        path: &["skill", "usage", "scan"],
+        required_positionals: &[],
+        options: &[
+            OptionSpec {
+                name: "agent",
+                arity: OptionArity::Value,
+                repeatable: false,
+                value_kind: RequiredArgumentKind::Text,
+                required: false,
+            },
+            OptionSpec {
+                name: "history-root",
+                arity: OptionArity::Value,
+                repeatable: false,
+                value_kind: RequiredArgumentKind::Text,
+                required: false,
+            },
+            OptionSpec {
+                name: "home-dir",
+                arity: OptionArity::Value,
+                repeatable: false,
+                value_kind: RequiredArgumentKind::Text,
+                required: false,
+            },
+            OptionSpec {
+                name: "force-refresh",
+                arity: OptionArity::Boolean,
+                repeatable: false,
+                value_kind: RequiredArgumentKind::Text,
+                required: false,
+            },
+        ],
+        constraints: &[],
+        cardinality: CommandCardinality::Options,
+        handler: skill::handle_skill_usage_scan,
+        help: "",
+    });
+    table.register_command(CommandSpec {
         source_module: "snapshots.rs",
         handler_name: "handle_snapshots_list",
         path: &["snapshots", "list"],
@@ -4613,8 +4910,56 @@ fn build_command_table() -> CommandTable {
             name: "target",
             kind: RequiredArgumentKind::Text,
         }],
+        options: &[
+            OptionSpec {
+                name: "state-root",
+                arity: OptionArity::Value,
+                repeatable: false,
+                value_kind: RequiredArgumentKind::Text,
+                required: false,
+            },
+            OptionSpec {
+                name: "include-accessible-environments",
+                arity: OptionArity::Value,
+                repeatable: false,
+                value_kind: RequiredArgumentKind::Text,
+                required: false,
+            },
+        ],
+        constraints: &[],
+        cardinality: CommandCardinality::Options,
+        handler: targets::handle_targets_inspect,
+        help: "",
+    });
+    table.register_command(CommandSpec {
+        source_module: "llm_gateway.rs",
+        handler_name: "handle_status",
+        path: &["llm-gateway", "credentials", "status"],
+        required_positionals: &[],
+        options: &[],
+        constraints: &[],
+        cardinality: CommandCardinality::Exact,
+        handler: llm_gateway::handle_status,
+        help: "System-keyring availability and lease options",
+    });
+    table.register_command(CommandSpec {
+        source_module: "llm_gateway.rs",
+        handler_name: "handle_list",
+        path: &["llm-gateway", "credentials", "list"],
+        required_positionals: &[],
+        options: &[],
+        constraints: &[],
+        cardinality: CommandCardinality::Exact,
+        handler: llm_gateway::handle_list,
+        help: "List non-secret model API key metadata without authorization",
+    });
+    table.register_command(CommandSpec {
+        source_module: "llm_gateway.rs",
+        handler_name: "handle_authorize",
+        path: &["llm-gateway", "credentials", "authorize"],
+        required_positionals: &[],
         options: &[OptionSpec {
-            name: "state-root",
+            name: "credential-id",
             arity: OptionArity::Value,
             repeatable: false,
             value_kind: RequiredArgumentKind::Text,
@@ -4622,8 +4967,338 @@ fn build_command_table() -> CommandTable {
         }],
         constraints: &[],
         cardinality: CommandCardinality::Options,
-        handler: targets::handle_targets_inspect,
-        help: "",
+        handler: llm_gateway::handle_authorize,
+        help: "Authorize loading model API keys into the native app session",
+    });
+    table.register_command(CommandSpec {
+        source_module: "llm_gateway.rs",
+        handler_name: "handle_clear",
+        path: &["llm-gateway", "credentials", "clear"],
+        required_positionals: &[],
+        options: &[OptionSpec {
+            name: "credential-id",
+            arity: OptionArity::Value,
+            repeatable: false,
+            value_kind: RequiredArgumentKind::Text,
+            required: false,
+        }],
+        constraints: &[],
+        cardinality: CommandCardinality::Options,
+        handler: llm_gateway::handle_clear,
+        help: "Clear model API keys from the native app session without deleting vault entries",
+    });
+    table.register_command(CommandSpec {
+        source_module: "llm_gateway.rs",
+        handler_name: "handle_create",
+        path: &["llm-gateway", "credentials", "create"],
+        required_positionals: &[],
+        options: &[OptionSpec {
+            name: "stdin-json",
+            arity: OptionArity::Value,
+            repeatable: false,
+            value_kind: RequiredArgumentKind::Json,
+            required: true,
+        }],
+        constraints: &[],
+        cardinality: CommandCardinality::Options,
+        handler: llm_gateway::handle_create,
+        help: "Save a private stdin API key after system authorization",
+    });
+    table.register_command(CommandSpec {
+        source_module: "llm_gateway.rs",
+        handler_name: "handle_delete",
+        path: &["llm-gateway", "credentials", "delete"],
+        required_positionals: &[RequiredArgumentSpec {
+            name: "credential-id",
+            kind: RequiredArgumentKind::Text,
+        }],
+        options: &[],
+        constraints: &[],
+        cardinality: CommandCardinality::Exact,
+        handler: llm_gateway::handle_delete,
+        help: "Permanently delete one Keychain item",
+    });
+    table.register_command(CommandSpec {
+        source_module: "llm_gateway.rs",
+        handler_name: "handle_lease",
+        path: &["llm-gateway", "credentials", "lease"],
+        required_positionals: &[RequiredArgumentSpec {
+            name: "days",
+            kind: RequiredArgumentKind::Text,
+        }],
+        options: &[],
+        constraints: &[],
+        cardinality: CommandCardinality::Exact,
+        handler: llm_gateway::handle_lease,
+        help: "Set process lease to 7/30/60/90/180/365 days",
+    });
+    table.register_command(CommandSpec {
+        source_module: "llm_gateway.rs",
+        handler_name: "handle_update",
+        path: &["llm-gateway", "credentials", "update"],
+        required_positionals: &[RequiredArgumentSpec {
+            name: "credential-id",
+            kind: RequiredArgumentKind::Text,
+        }],
+        options: &[OptionSpec {
+            name: "stdin-json",
+            arity: OptionArity::Value,
+            repeatable: false,
+            value_kind: RequiredArgumentKind::Json,
+            required: true,
+        }],
+        constraints: &[],
+        cardinality: CommandCardinality::Options,
+        handler: llm_gateway::handle_update,
+        help: "Rename a credential or extend its validity period",
+    });
+    table.register_command(CommandSpec {
+        source_module: "llm_gateway.rs",
+        handler_name: "handle_agent_plan",
+        path: &["llm-gateway", "agent-config", "plan"],
+        required_positionals: &[
+            RequiredArgumentSpec {
+                name: "agent",
+                kind: RequiredArgumentKind::Text,
+            },
+            RequiredArgumentSpec {
+                name: "config-root",
+                kind: RequiredArgumentKind::Text,
+            },
+        ],
+        options: &[OptionSpec {
+            name: "port",
+            arity: OptionArity::Value,
+            repeatable: false,
+            value_kind: RequiredArgumentKind::Text,
+            required: false,
+        }],
+        constraints: &[],
+        cardinality: CommandCardinality::Options,
+        handler: llm_gateway::handle_agent_plan,
+        help: "Preview a secret-free Codex, Claude Code, OpenCode, or Pi Gateway configuration",
+    });
+    table.register_command(CommandSpec {
+        source_module: "llm_gateway.rs",
+        handler_name: "handle_agent_apply",
+        path: &["llm-gateway", "agent-config", "apply"],
+        required_positionals: &[
+            RequiredArgumentSpec {
+                name: "agent",
+                kind: RequiredArgumentKind::Text,
+            },
+            RequiredArgumentSpec {
+                name: "config-root",
+                kind: RequiredArgumentKind::Text,
+            },
+        ],
+        options: &[
+            OptionSpec {
+                name: "port",
+                arity: OptionArity::Value,
+                repeatable: false,
+                value_kind: RequiredArgumentKind::Text,
+                required: false,
+            },
+            OptionSpec {
+                name: "confirmation",
+                arity: OptionArity::Value,
+                repeatable: false,
+                value_kind: RequiredArgumentKind::Text,
+                required: true,
+            },
+            OptionSpec {
+                name: "confirmed",
+                arity: OptionArity::Boolean,
+                repeatable: false,
+                value_kind: RequiredArgumentKind::Text,
+                required: true,
+            },
+        ],
+        constraints: &[],
+        cardinality: CommandCardinality::Options,
+        handler: llm_gateway::handle_agent_apply,
+        help: "Apply a confirmed secret-free Gateway profile",
+    });
+    table.register_command(CommandSpec {
+        source_module: "llm_gateway.rs",
+        handler_name: "handle_service_status",
+        path: &["llm-gateway", "service", "status"],
+        required_positionals: &[],
+        options: &[OptionSpec {
+            name: "port",
+            arity: OptionArity::Value,
+            repeatable: false,
+            value_kind: RequiredArgumentKind::Text,
+            required: false,
+        }],
+        constraints: &[],
+        cardinality: CommandCardinality::Options,
+        handler: llm_gateway::handle_service_status,
+        help: "Report the local LLM Gateway service state",
+    });
+    table.register_command(CommandSpec {
+        source_module: "llm_gateway.rs",
+        handler_name: "handle_service_usage",
+        path: &["llm-gateway", "service", "usage"],
+        required_positionals: &[],
+        options: &[],
+        constraints: &[],
+        cardinality: CommandCardinality::Exact,
+        handler: llm_gateway::handle_service_usage,
+        help: "Report request counts observed by the local LLM Gateway",
+    });
+    table.register_command(CommandSpec {
+        source_module: "llm_gateway.rs",
+        handler_name: "handle_service_initialize",
+        path: &["llm-gateway", "service", "initialize"],
+        required_positionals: &[],
+        options: &[OptionSpec {
+            name: "port",
+            arity: OptionArity::Value,
+            repeatable: false,
+            value_kind: RequiredArgumentKind::Text,
+            required: false,
+        }],
+        constraints: &[],
+        cardinality: CommandCardinality::Options,
+        handler: llm_gateway::handle_service_initialize,
+        help: "Initialize the local LLM Gateway service without authorization",
+    });
+    table.register_command(CommandSpec {
+        source_module: "llm_gateway.rs",
+        handler_name: "handle_service_start",
+        path: &["llm-gateway", "service", "start"],
+        required_positionals: &[],
+        options: &[OptionSpec {
+            name: "port",
+            arity: OptionArity::Value,
+            repeatable: false,
+            value_kind: RequiredArgumentKind::Text,
+            required: false,
+        }],
+        constraints: &[],
+        cardinality: CommandCardinality::Options,
+        handler: llm_gateway::handle_service_start,
+        help: "Start the managed local LLM Gateway service",
+    });
+    table.register_command(CommandSpec {
+        source_module: "llm_gateway.rs",
+        handler_name: "handle_service_stop",
+        path: &["llm-gateway", "service", "stop"],
+        required_positionals: &[],
+        options: &[OptionSpec {
+            name: "port",
+            arity: OptionArity::Value,
+            repeatable: false,
+            value_kind: RequiredArgumentKind::Text,
+            required: false,
+        }],
+        constraints: &[],
+        cardinality: CommandCardinality::Options,
+        handler: llm_gateway::handle_service_stop,
+        help: "Stop the managed local LLM Gateway service",
+    });
+    table.register_command(CommandSpec {
+        source_module: "llm_gateway.rs",
+        handler_name: "handle_service_autostart_status",
+        path: &["llm-gateway", "service", "autostart-status"],
+        required_positionals: &[],
+        options: &[],
+        constraints: &[],
+        cardinality: CommandCardinality::Exact,
+        handler: llm_gateway::handle_service_autostart_status,
+        help: "Report whether the LLM Gateway starts at user login",
+    });
+    table.register_command(CommandSpec {
+        source_module: "llm_gateway.rs",
+        handler_name: "handle_service_autostart_enable",
+        path: &["llm-gateway", "service", "autostart-enable"],
+        required_positionals: &[],
+        options: &[OptionSpec {
+            name: "port",
+            arity: OptionArity::Value,
+            repeatable: false,
+            value_kind: RequiredArgumentKind::Text,
+            required: false,
+        }],
+        constraints: &[],
+        cardinality: CommandCardinality::Options,
+        handler: llm_gateway::handle_service_autostart_enable,
+        help: "Install login autostart for the local LLM Gateway (starts alone, no credentials)",
+    });
+    table.register_command(CommandSpec {
+        source_module: "llm_gateway.rs",
+        handler_name: "handle_service_autostart_disable",
+        path: &["llm-gateway", "service", "autostart-disable"],
+        required_positionals: &[],
+        options: &[],
+        constraints: &[],
+        cardinality: CommandCardinality::Exact,
+        handler: llm_gateway::handle_service_autostart_disable,
+        help: "Remove login autostart for the local LLM Gateway",
+    });
+    table.register_command(CommandSpec {
+        source_module: "autostart.rs",
+        handler_name: "handle_status",
+        path: &["autostart", "status"],
+        required_positionals: &[],
+        options: &[],
+        constraints: &[],
+        cardinality: CommandCardinality::Exact,
+        handler: autostart::handle_status,
+        help: "Report desktop, Gateway, and local MCP login autostart state",
+    });
+    table.register_command(CommandSpec {
+        source_module: "autostart.rs",
+        handler_name: "handle_set",
+        path: &["autostart", "set"],
+        required_positionals: &[],
+        options: &[
+            OptionSpec {
+                name: "component",
+                arity: OptionArity::Value,
+                repeatable: false,
+                value_kind: RequiredArgumentKind::Text,
+                required: true,
+            },
+            OptionSpec {
+                name: "enabled",
+                arity: OptionArity::Value,
+                repeatable: false,
+                value_kind: RequiredArgumentKind::Text,
+                required: true,
+            },
+            OptionSpec {
+                name: "silent",
+                arity: OptionArity::Value,
+                repeatable: false,
+                value_kind: RequiredArgumentKind::Text,
+                required: false,
+            },
+            OptionSpec {
+                name: "port",
+                arity: OptionArity::Value,
+                repeatable: false,
+                value_kind: RequiredArgumentKind::Text,
+                required: false,
+            },
+        ],
+        constraints: &[],
+        cardinality: CommandCardinality::Options,
+        handler: autostart::handle_set,
+        help: "Enable or disable login autostart for desktop, gateway, or mcp",
+    });
+    table.register_command(CommandSpec {
+        source_module: "autostart.rs",
+        handler_name: "handle_prepare_mcp",
+        path: &["autostart", "prepare-mcp"],
+        required_positionals: &[],
+        options: &[],
+        constraints: &[],
+        cardinality: CommandCardinality::Exact,
+        handler: autostart::handle_prepare_mcp,
+        help: "Login oneshot: verify packaged local MCP binaries without silent install",
     });
     table
 }

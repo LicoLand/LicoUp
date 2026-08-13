@@ -4,6 +4,7 @@ import 'package:licoup/src/contracts/agent_conversation_models.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_message_display.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_session_presentation.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 class AgentConversationRecentSessions extends StatelessWidget {
@@ -12,11 +13,13 @@ class AgentConversationRecentSessions extends StatelessWidget {
     required this.sessions,
     required this.loading,
     required this.onSelectSession,
+    this.topOverlayInset = 0,
   });
 
   final List<AgentConversationSession> sessions;
   final bool loading;
   final ValueChanged<String> onSelectSession;
+  final double topOverlayInset;
 
   @override
   Widget build(BuildContext context) {
@@ -43,7 +46,12 @@ class AgentConversationRecentSessions extends StatelessWidget {
     return Align(
       alignment: Alignment.topCenter,
       child: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(24, 32, 24, 24),
+        padding: EdgeInsets.fromLTRB(
+          LicoContentSpacing.section,
+          LicoContentSpacing.item + topOverlayInset,
+          LicoContentSpacing.section,
+          LicoContentSpacing.section,
+        ),
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 560),
           child: Column(

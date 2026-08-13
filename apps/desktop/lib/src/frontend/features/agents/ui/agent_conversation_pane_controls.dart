@@ -61,7 +61,7 @@ class _ConversationIconButtonState extends State<ConversationIconButton> {
                         ? Colors.white.withAlpha(12)
                         : Colors.black.withAlpha(12))
                   : Colors.transparent,
-              borderRadius: BorderRadius.circular(8),
+              shape: BoxShape.circle,
             ),
             child: widget.busy
                 ? SizedBox(
