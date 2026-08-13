@@ -55,6 +55,7 @@ import 'package:licoup/src/contracts/llm_gateway_diagnostics.dart';
 import 'package:licoup/src/contracts/agent_tool_allowlist_repository.dart';
 import 'package:licoup/src/contracts/mobile_home_layout_repository.dart';
 import 'package:licoup/src/contracts/catalog_convergence/catalog_convergence_gateway.dart';
+import 'package:licoup/src/contracts/agent_conversation_attachment.dart';
 import 'package:licoup/src/contracts/conversation_image_byte_reader.dart';
 import 'package:licoup/src/contracts/optional_collaboration_gateway.dart';
 import 'package:licoup/src/contracts/presentation/presentation_preferences.dart';
@@ -181,7 +182,7 @@ class ClientController extends AgentConversationController
        clientLogExportService =
            clientLogExportService ?? const ClientLogExportService(),
        clientClipboardService =
-           clientClipboardService ?? const ClientClipboardService(),
+           clientClipboardService ?? ClientClipboardService(),
        conversationImageByteReader =
            conversationImageByteReader ??
            PlatformConversationImageByteReader.instance,
@@ -193,6 +194,7 @@ class ClientController extends AgentConversationController
            runtimePlatformBridge ?? const RuntimePlatformBridge(),
        _mobileClientRuntimePlatformOverride =
            mobileClientRuntimePlatformOverride,
+       _ownsClientClipboardService = clientClipboardService == null,
        _ownsAgentService = agentService == null {
     _components = ClientComponentAssembly(
       portableData: this.portableData,
@@ -292,6 +294,9 @@ class ClientController extends AgentConversationController
   final ClientLogExportService clientLogExportService;
   final ClientClipboardService clientClipboardService;
   @override
+  ConversationAttachmentRelease get conversationAttachmentRelease =>
+      clientClipboardService;
+  @override
   final ConversationImageByteReader conversationImageByteReader;
   final PlanDocumentReader planDocumentReader;
   final ClientProcessLifecycle clientProcessLifecycle;
@@ -306,6 +311,7 @@ class ClientController extends AgentConversationController
   @override
   final ConversationRefreshPolicy conversationRefreshPolicy;
   final bool? _mobileClientRuntimePlatformOverride;
+  final bool _ownsClientClipboardService;
   final bool _ownsAgentService;
   late final ClientComponentAssembly _components;
 
@@ -407,6 +413,9 @@ class ClientController extends AgentConversationController
   }) => openDirectoryPath(path, caption: caption);
 
   Future<void> _disposeRuntimeServices() async {
+    if (_ownsClientClipboardService) {
+      await clientClipboardService.dispose();
+    }
     if (_ownsAgentService) {
       await agentService.dispose();
     }
