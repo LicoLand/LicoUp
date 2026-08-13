@@ -13,9 +13,13 @@ export function validateReleaseSelectionPreflight({
   const releaseSupportedIds = catalog.targets
     .filter((target) => target.releaseSupported === true)
     .map((target) => target.id);
-  requireValue(JSON.stringify([...releaseSupportedIds].sort()) ===
-    JSON.stringify([...authorityIds].sort()),
-    "release-supported catalog targets do not match selected target authority");
+  const authorityTargets = authorityIds.map((targetId) =>
+    catalog.targets.find((target) => target.id === targetId));
+  requireValue(
+    authorityTargets.every((target) => target?.packageBuildSupported === true) &&
+      releaseSupportedIds.every((targetId) => authorityIds.includes(targetId)),
+    "package acceptance authority does not cover the release-supported targets",
+  );
   requireValue(
     receiptConfig?.schemaVersion ===
       "licomesh.client-artifact-verification-receipts-config.v3" &&
@@ -35,8 +39,8 @@ export function validateReleaseSelectionPreflight({
   };
   for (const targetId of requestedTargetIds) {
     const target = catalog.targets.find((entry) => entry.id === targetId);
-    requireValue(target?.releaseSupported === true && authorityIds.includes(targetId),
-      `selected target is outside release authority: ${targetId}`);
+    requireValue(target?.packageBuildSupported === true && authorityIds.includes(targetId),
+      `selected target is outside package acceptance authority: ${targetId}`);
     const artifact = config.artifacts[targetId];
     const receipt = receiptConfig.targets[targetId];
     const evidenceId = targetEvidenceByTarget[targetId];
