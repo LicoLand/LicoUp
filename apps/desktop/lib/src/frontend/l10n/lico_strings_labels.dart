@@ -86,6 +86,62 @@ extension LicoStringsLabels on LicoStrings {
   String get customDaysHint => isChinese ? '自定义天数' : 'Custom days';
   String get byAgent => isChinese ? '智能体' : 'By Agent';
   String get byModel => isChinese ? '模型' : 'By Model';
+  String get byWorkflow => isChinese ? '工作流' : 'Workflow';
+  String get workflowUsage => isChinese ? '工作流用量' : 'Workflow Usage';
+  String get workflowPlan => isChinese ? '计划' : 'Plan';
+  String get workflowTask => isChinese ? '任务' : 'Task';
+  String get workflowDispatch => isChinese ? '派发' : 'Dispatch';
+  String get workflowMainConversation =>
+      isChinese ? '主对话' : 'Main conversation';
+  String get workflowSubordinate => isChinese ? '下属' : 'Subordinate';
+  String get workflowTotal => isChinese ? '工作流总计' : 'Workflow total';
+  String get workflowCachedInput => isChinese ? '缓存输入' : 'Cached input';
+  String get workflowPrompt => isChinese ? '提示词' : 'Prompt';
+  String get workflowCompletion => isChinese ? '补全' : 'Completion';
+  String get workflowExactCoverage => isChinese ? '精确覆盖率' : 'Exact coverage';
+  String get workflowMainShare => isChinese ? '主对话' : 'Main';
+  String get workflowSubordinateShare => isChinese ? '下属对话' : 'Subordinate';
+  String workflowCoverage(int exact, int total, int percent) => isChinese
+      ? '精确 $exact/$total（$percent%）'
+      : 'Exact $exact/$total ($percent%)';
+  String workflowPlanLabel(String planCode, int revision) => isChinese
+      ? '$planCode · 修订版 $revision'
+      : '$planCode · Revision $revision';
+  String workflowTaskLabel(String taskCode) =>
+      isChinese ? '任务 · $taskCode' : 'Task · $taskCode';
+  String workflowDispatchLabel(int ordinal) =>
+      isChinese ? '派发 $ordinal' : 'Dispatch $ordinal';
+  String workflowAgentLabel(String value) =>
+      isChinese ? '智能体 · $value' : 'Agent · $value';
+  String workflowModelLabel(String value) =>
+      isChinese ? '模型 · $value' : 'Model · $value';
+  String workflowStatusLabel(String value) {
+    final normalized = value.trim().toLowerCase();
+    return switch (normalized) {
+      'active' || 'pending' => isChinese ? '进行中' : 'Pending',
+      'completed' || 'complete' => isChinese ? '已完成' : 'Completed',
+      'failed' => isChinese ? '失败' : 'Failed',
+      'cancelled' || 'canceled' => isChinese ? '已取消' : 'Cancelled',
+      'in_doubt' || 'indoubt' => isChinese ? '待核对' : 'In doubt',
+      'ready' || 'settled' => isChinese ? '已结算' : 'Settled',
+      _ => isChinese ? '未知状态' : 'Unknown status',
+    };
+  }
+
+  String workflowRoleLabel(String value) {
+    final normalized = value.trim().toLowerCase();
+    return switch (normalized) {
+      'main' => isChinese ? '主对话' : 'Main',
+      'designer' => isChinese ? '设计者' : 'Designer',
+      'worker' => isChinese ? '执行者' : 'Worker',
+      'reviewer' => isChinese ? '审阅者' : 'Reviewer',
+      _ => isChinese ? '下属' : 'Subordinate',
+    };
+  }
+
+  String get noWorkflowUsage => isChinese ? '暂无工作流用量' : 'No workflow usage yet';
+  String get workflowUnavailable =>
+      isChinese ? '工作流报表暂不可用' : 'Workflow report unavailable';
   String dailyTokenUsage(String date) =>
       isChinese ? '$date 每日 Token 用量' : 'Daily Token Usage · $date';
   String get unknown => isChinese ? '未知' : 'Unknown';

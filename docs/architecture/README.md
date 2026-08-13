@@ -72,13 +72,24 @@ one scenario does not reach into another scenario's storage or interface.
 | Adaptive Flywheel | One small LicoUp basic strategy is registered automatically. Imported ZIP packages contain root `workflow.json` plus optional `scripts/`; the Graph decides pipeline or Agent Loop behavior. Immutable revisions own bindings and exact authorization, while durable runs expose bounded ready-frontier scheduling and explicit terminal or recovery states. There is no Better Plan installation action and no ordinal Conversation compatibility path |
 | Skill management | Read-only discovery of existing local skills, recoverable removal to the system Trash, and invocation counters grouped by time window; no download, install, update, or synchronization channel |
 | Conversation management | Indexed list/get/event paging and search plus bounded canonical import/export; third-party native history is never rewritten |
-| Usage statistics | Local token aggregation by agent or model with immutable historical day/model rollups, current-day event details, a 90-day scan cache, 30-day default display, and selectable 7/30/90 display windows |
+| Delivery Plan | Persisted Plans and Checkpoints own delivery eligibility and progression. The Conversation runtime claims the complete eligible frontier in stable order, dispatches through bounded native lanes, and advances a checkpoint only after terminal settlement. Adaptive Flywheel remains the sole Agent/model route-selection authority |
+| Usage statistics | Local token aggregation by agent or model with immutable historical day/model rollups, current-day event details, path-free Plan/Task/dispatch rollups, exact-coverage facts, a 90-day scan cache, 30-day default display, and selectable 7/30/90 display windows |
 | Endpoint-protection Preview | Current pairing, trust, encrypted peer messages/files, replay protection, endpoint-authenticated results, and Lico Arc candidate carriage; this retiring implementation has no future compatibility promise |
 
 Optional collaboration is absent from default startup and navigation. The
 client imports its trusted signing key through a separate action that is never
 a trust root by itself, then verifies the immutable package source and fixed
 signed external runner on loopback before an explicit start.
+
+The delivery view consumes one safe native ledger projection. LicoUp owns Plan
+scheduling and checkpoint progression; Adaptive Flywheel owns route selection;
+and Conversation Memberships own Agent dispatch. Native continuation locations
+remain private adapter bindings. The projection keeps only safe codes,
+localized role and state labels, Agent/model labels, numeric Token counts,
+exact-or-estimated coverage, and Plan hierarchy. It excludes prompts, replies,
+tool payloads, summaries, compaction, cache controls, and a second client-owned
+context model. Retention is bounded to active deliveries and the newest twenty
+terminal rollups.
 
 The current agent and platform adaptation targets are generated in
 [Compatibility](../COMPATIBILITY.md). Station-wire and operation status is
