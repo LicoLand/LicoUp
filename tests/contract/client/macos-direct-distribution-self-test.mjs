@@ -248,6 +248,29 @@ function syntheticExecutor({
       }
       return { status: 0, stdout: `/usr/bin/${tool}\n`, stderr: "" };
     }
+    if (base === "plutil" && args[0] === "-extract") {
+      let value;
+      try {
+        value = JSON.parse(String(options.input || "{}"));
+        for (const segment of String(args[1] || "").split(".")) {
+          if (value === null || value === undefined ||
+            !Object.hasOwn(Object(value), segment)) {
+            return { status: 1, stdout: "", stderr: "missing" };
+          }
+          value = value[segment];
+        }
+      } catch {
+        return { status: 1, stdout: "", stderr: "invalid" };
+      }
+      const format = args[2];
+      if (format === "json") {
+        return { status: 0, stdout: JSON.stringify(value), stderr: "" };
+      }
+      if (format === "raw" && ["string", "number", "boolean"].includes(typeof value)) {
+        return { status: 0, stdout: String(value), stderr: "" };
+      }
+      return { status: 1, stdout: "", stderr: "unsupported" };
+    }
     if (base === "plutil" && args[0] === "-convert" && args[1] === "json") {
       const targetIndex = args.indexOf("--");
       const target = args[targetIndex + 1];
@@ -648,6 +671,7 @@ export function platformChannelHarness({
   runnableSourceDigest = sourceDigest,
 } = {}) {
   const sequence = [];
+  const packageArguments = [];
   const profilePath = path.join(syntheticInputRoot, "licoup.provisionprofile");
   const notaryKeyPath = path.join(syntheticInputRoot, "licoup-notary-key.p8");
   const virtual = virtualFilesystem({
@@ -681,7 +705,8 @@ export function platformChannelHarness({
     executor: syntheticExecutor({ failures, profileVariantName, plists }),
     fs: virtual.fs,
     record: (entry) => sequence.push(entry),
-    packageRunnable: () => {
+    packageRunnable: (args) => {
+      packageArguments.push(...args);
       virtual.fs.writeText(runnableManifestPath, JSON.stringify({
         sourceStateDigest: runnableSourceDigest,
         sourceStateDigestProvenance: "git-worktree",
@@ -710,7 +735,7 @@ export function platformChannelHarness({
     },
     now: () => FIXED_NOW,
   });
-  return { run, sequence, virtual };
+  return { run, sequence, virtual, packageArguments };
 }
 
 function assertFinalDmgFailureClosure() {
@@ -763,6 +788,11 @@ function assertFinalDmgFailureClosure() {
   const allGreen = platformChannelHarness();
   const result = allGreen.run();
   requireValue(result.ok === true, "all_green_not_ready");
+  requireValue(JSON.stringify(allGreen.packageArguments) === JSON.stringify([
+    "--platform", "macos",
+    "--mode", "release",
+    "--production-entitlements",
+  ]), "production_entitlements_packaging_arguments_wrong");
   requireValue(allGreen.virtual.files.has(manifestPath),
     "all_green_missing_manifest");
   const manifest = JSON.parse(allGreen.virtual.files.get(manifestPath));
