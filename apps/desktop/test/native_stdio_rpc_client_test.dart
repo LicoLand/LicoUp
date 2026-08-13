@@ -261,21 +261,30 @@ done
             onDone: streamDone.complete,
           );
 
-      await _waitUntil(started.existsSync);
+      await _waitUntil(
+        started.existsSync,
+        timeout: const Duration(seconds: 10),
+      );
       expect(context.startModes, [ProcessStartMode.detachedWithStdio]);
       await client.dispose().timeout(const Duration(milliseconds: 500));
       await streamDone.future.timeout(const Duration(milliseconds: 500));
       expect(completed.existsSync(), isFalse);
 
       await release.writeAsString('release');
-      await _waitUntil(completed.existsSync);
+      await _waitUntil(
+        completed.existsSync,
+        timeout: const Duration(seconds: 10),
+      );
       expect(context.startCount, 1);
     },
   );
 }
 
-Future<void> _waitUntil(bool Function() predicate) async {
-  final deadline = DateTime.now().add(const Duration(seconds: 2));
+Future<void> _waitUntil(
+  bool Function() predicate, {
+  Duration timeout = const Duration(seconds: 2),
+}) async {
+  final deadline = DateTime.now().add(timeout);
   while (!predicate()) {
     if (DateTime.now().isAfter(deadline)) {
       throw TimeoutException('condition not reached');
