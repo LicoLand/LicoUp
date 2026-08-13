@@ -685,6 +685,8 @@ export function coordinatePlatformChannel({
   inspectContainerSignature = inspectMacosContainerSignature,
   inspectProfileCertificates = inspectProvisioningProfileCertificates,
   installReleaseMaterials = installMacosReleaseMaterials,
+  hashFile = sha256,
+  digestTree = artifactTreeDigest,
   now = Date.now,
 } = {}) {
   if (host.platform !== "darwin") {
@@ -886,7 +888,7 @@ export function coordinatePlatformChannel({
     "macos_distribution_archive_failed", {
       env: { ...toolEnvironment, COPYFILE_DISABLE: "1" },
     });
-  const updateDigest = sha256(updateArchivePath);
+  const updateDigest = hashFile(updateArchivePath);
   fs.writeText(`${updateArchivePath}.sha256`,
     `${updateDigest}  ${path.basename(updateArchivePath)}\n`);
 
@@ -990,9 +992,9 @@ export function coordinatePlatformChannel({
     sequenceReady: true,
     signingKind: "developer-id-application",
   });
-  const installArtifactDigest = artifactTreeDigest(appPath);
+  const installArtifactDigest = digestTree(appPath);
   const bundleManifestDigest = sha256Buffer(Buffer.from(finalizedRunnableManifestText, "utf8"));
-  const digest = sha256(dmgPath);
+  const digest = hashFile(dmgPath);
   fs.writeText(`${dmgPath}.sha256`, `${digest}  ${path.basename(dmgPath)}\n`);
   const manifestPayload = {
     schemaVersion: "v0.0.1:client-macos:distribution-1",
