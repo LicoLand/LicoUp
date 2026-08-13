@@ -1583,6 +1583,15 @@ export const RUST_PLATFORM_MODULES = Object.freeze([
       command: rustLayer("platform::codex_app_server::tests::"),
     }),
   defineModule({
+      id: "rust.platform.codex-runtime-observation",
+      kind: "rust-platform",
+      summary: "Read-only cross-process Codex rollout ownership observation",
+      inputs: [
+        "crates/licoup-native/src/platform/codex_runtime_observation.rs",
+      ],
+      command: rustLayer("platform::codex_runtime_observation::tests::"),
+    }),
+  defineModule({
       id: "rust.platform.codex-app-server.config",
       kind: "rust-platform",
       summary: "Fail-closed launch configuration, resume target extraction, sandbox policy, and model effort",

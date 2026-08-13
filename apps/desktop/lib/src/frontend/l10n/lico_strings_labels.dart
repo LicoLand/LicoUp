@@ -422,7 +422,7 @@ extension LicoStringsLabels on LicoStrings {
   // Messaging presentation (participant flow, details panel).
   String get agentBadge => 'AGENT';
   String get contacts => isChinese ? '对话' : 'Conversations';
-  String get conversationBack => isChinese ? '返回' : 'Back';
+  String get conversationBack => isChinese ? '返回上一级' : 'Back one level';
   String mentionAgent(String agent) =>
       isChinese ? '@ $agent' : 'Mention $agent';
   String openAgentConversations(String agent) =>
@@ -479,8 +479,6 @@ extension LicoStringsLabels on LicoStrings {
   String groupConversationFailure(String stage, String code) => isChinese
       ? '群聊操作失败（$stage：$code）'
       : 'Group conversation failed ($stage: $code)';
-  String get archiveGroupConversation =>
-      isChinese ? '归档群聊' : 'Archive group conversation';
   String get attachments => isChinese ? '附件' : 'Attachments';
   String get imageAttachment => isChinese ? '图片' : 'Image';
   String get imageUnavailable => isChinese ? '图片不可用' : 'Image unavailable';
@@ -495,6 +493,7 @@ extension LicoStringsLabels on LicoStrings {
   String get today => isChinese ? '今天' : 'Today';
   String get yesterday => isChinese ? '昨天' : 'Yesterday';
   String get earlier => isChinese ? '更早' : 'Earlier';
+  String get priority => isChinese ? '优先' : 'Priority';
 
   /// Full localized weekday name for the sidebar time groups.
   /// [weekday] follows [DateTime.weekday]: 1 is Monday, 7 is Sunday.

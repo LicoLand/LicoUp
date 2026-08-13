@@ -23,7 +23,7 @@ Future<Map<String, dynamic>> exchangeStdioRpcCommandFrame({
   try {
     responseFuture = session.expectFrame(requestId: requestId);
   } on Object {
-    await sessionManager.discard(session: session, kill: true);
+    await sessionManager.invalidateAndDiscard();
     throw const LicoClientRpcException('transport_failed');
   }
 
@@ -33,7 +33,7 @@ Future<Map<String, dynamic>> exchangeStdioRpcCommandFrame({
     await writeStdioRpcFrame(session, encoded);
   } on Object {
     session.abandonExpectedFrame(requestId);
-    await sessionManager.discard(session: session, kill: true);
+    await sessionManager.invalidateAndDiscard();
     throw const LicoClientRpcException('transport_failed');
   }
 
@@ -41,12 +41,12 @@ Future<Map<String, dynamic>> exchangeStdioRpcCommandFrame({
   try {
     responseFrame = await responseFuture;
   } on Object {
-    await sessionManager.discard(session: session, kill: true);
+    await sessionManager.invalidateAndDiscard();
     throw const LicoClientRpcException('transport_failed');
   }
   final responseBytes = responseFrame.bytes;
   if (responseBytes == null) {
-    await sessionManager.discard(session: session, kill: true);
+    await sessionManager.invalidateAndDiscard();
     throw const LicoClientRpcException('transport_failed');
   }
 
@@ -58,7 +58,7 @@ Future<Map<String, dynamic>> exchangeStdioRpcCommandFrame({
       workflowId: workflowId,
     );
   } on StdioRpcProtocolViolation {
-    await sessionManager.discard(session: session, kill: true);
+    await sessionManager.invalidateAndDiscard();
     throw const LicoClientRpcException('invalid_response');
   }
   final result = reply.result;

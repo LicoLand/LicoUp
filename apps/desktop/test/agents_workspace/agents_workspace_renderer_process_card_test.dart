@@ -1,6 +1,99 @@
 import 'support/agents_workspace_test_harness.dart';
 
+import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_message_blocks.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_process_card.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_process_operations.dart';
+
 void registerAgentsWorkspaceRendererProcessCardScenarios() {
+  testWidgets(
+    'expanded process card keeps its header above a bounded operation scroll',
+    (tester) async {
+      tester.view.physicalSize = const Size(900, 700);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final events = List<AgentConversationMessage>.generate(
+        18,
+        (index) => AgentConversationMessage(
+          id: 'bounded-process-$index',
+          role: 'tool_call',
+          cardType: 'tool-call',
+          cardTitle: 'Operation ${index + 1}',
+          text: 'Synthetic operation details ${index + 1}',
+          createdAt: '2026-08-13T00:00:${index.toString().padLeft(2, '0')}Z',
+        ),
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: buildLicoTheme(
+            platformBrightness: Brightness.dark,
+          ).copyWith(platform: TargetPlatform.macOS),
+          home: Scaffold(
+            body: Align(
+              alignment: Alignment.topCenter,
+              child: ConversationProcessCard(
+                events: events,
+                adapter: AgentRenderAdapter.fallback(),
+                detailsBuilder: buildAgentConversationEventDetails,
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      const toggleKey = ValueKey(
+        'conversation-process-toggle-bounded-process-0',
+      );
+      const scrollKey = ValueKey(
+        'conversation-process-operation-scroll-bounded-process-0',
+      );
+      await tester.tap(find.byKey(toggleKey));
+      await tester.pumpAndSettle();
+
+      final scroll = find.byKey(scrollKey);
+      expect(scroll, findsOneWidget);
+      expect(
+        tester.getSize(scroll).height,
+        lessThanOrEqualTo(conversationProcessExpandedBodyMaxHeight(700)),
+      );
+      final headerTop = tester.getTopLeft(find.byKey(toggleKey)).dy;
+      final firstOperationTop = tester
+          .getTopLeft(
+            find.byKey(
+              const ValueKey(
+                'conversation-process-operation-bounded-process-0',
+              ),
+            ),
+          )
+          .dy;
+
+      await tester.drag(scroll, const Offset(0, -280));
+      await tester.pumpAndSettle();
+
+      expect(tester.getTopLeft(find.byKey(toggleKey)).dy, headerTop);
+      expect(
+        tester
+            .getTopLeft(
+              find.byKey(
+                const ValueKey(
+                  'conversation-process-operation-bounded-process-0',
+                ),
+              ),
+            )
+            .dy,
+        lessThan(firstOperationTop),
+      );
+
+      await tester.tap(find.byKey(toggleKey));
+      await tester.pumpAndSettle();
+      expect(find.byKey(scrollKey), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('semantic artifacts and diagnostics stay behind default thread', (
     tester,
   ) async {

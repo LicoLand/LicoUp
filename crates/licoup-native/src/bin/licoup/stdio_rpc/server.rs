@@ -31,10 +31,11 @@ where
         let line = read_stdio_rpc_line(&mut reader, STDIO_RPC_MAX_REQUEST_BYTES)?;
         let bytes = match line {
             StdioRpcLine::Eof => {
-                licoup_native::platform::shutdown_all_conversations()?;
-                if !conversation::join_until_shutdown(&mut conversation_workers) {
-                    return Err(anyhow::anyhow!("conversation_shutdown_timeout"));
-                }
+                // The observer disappeared; the dispatched work did not. Keep
+                // this native host alive until every Agent reaches a terminal
+                // state. Only the explicit conversation cancel operation may
+                // interrupt a running turn.
+                conversation::join_until_completion(&mut conversation_workers);
                 return recover_stdio_rpc_writer(writer);
             }
             StdioRpcLine::TooLarge => {
@@ -102,30 +103,15 @@ where
                 )?;
             }
             StdioRpcMethod::Shutdown => {
-                if let Err(error) = licoup_native::platform::shutdown_all_conversations() {
-                    write_stdio_rpc_client_error_shared(
-                        &writer,
-                        Some(&request.id),
-                        Some(&request.workflow_id),
-                        &stdio_rpc_command_error(&error),
-                    )?;
-                    return recover_stdio_rpc_writer(writer);
-                }
-                if !conversation::join_until_shutdown(&mut conversation_workers) {
-                    write_stdio_rpc_client_error_shared(
-                        &writer,
-                        Some(&request.id),
-                        Some(&request.workflow_id),
-                        &stdio_rpc_client_error("conversation_shutdown_timeout"),
-                    )?;
-                    return Err(anyhow::anyhow!("conversation_shutdown_timeout"));
-                }
                 write_stdio_rpc_success_shared(
                     &writer,
                     &request.id,
                     &request.workflow_id,
                     json!({"status": "shutdown"}),
                 )?;
+                // Shutdown closes the RPC session, not the Agent turns it has
+                // already accepted. Acknowledge first so the client can leave.
+                conversation::join_until_completion(&mut conversation_workers);
                 return recover_stdio_rpc_writer(writer);
             }
             StdioRpcMethod::Conversation {

@@ -6,12 +6,15 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:licoup/src/application/controller/client_controller.dart';
+import 'package:licoup/src/contracts/agent_conversation_message.dart';
+import 'package:licoup/src/contracts/agent_conversation_session.dart';
 import 'package:licoup/src/contracts/presentation/layout_environment.dart';
 import 'package:licoup/src/contracts/presentation/layout_profile.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_workspace.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/layout/layout_agents_strategy.dart';
+import 'package:licoup/src/frontend/layout/profiles/messaging/desktop/tokens/messaging_desktop_tokens.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 import 'package:licoup/src/platform/native_client/agent_service.dart';
 
@@ -46,9 +49,26 @@ void main() {
       await tester.pump(const Duration(milliseconds: 120));
       await tester.pump();
 
-      // With a conversation open, tapping the active contact returns the
-      // detail to its new-conversation home and drills the sidebar into that
-      // target's conversation list.
+      expect(find.byKey(const Key('messaging-sidebar-search')), findsOneWidget);
+      expect(find.byKey(const Key('messaging-topstrip-search')), findsNothing);
+
+      final sidebarCard = tester.widget<DecoratedBox>(
+        find.byKey(const Key('agents-workspace-sidebar-card')),
+      );
+      final sidebarDecoration = sidebarCard.decoration as BoxDecoration;
+      expect(
+        sidebarDecoration.borderRadius,
+        BorderRadius.circular(
+          MessagingDesktopMetrics.conversationListCardCornerRadius,
+        ),
+      );
+      expect(
+        MessagingDesktopMetrics.mainCardCornerRadius,
+        MessagingDesktopMetrics.conversationListCardCornerRadius +
+            MessagingDesktopMetrics.conversationListCardInset,
+      );
+
+      // A restored concrete conversation starts inside its target list.
       controller.selectConversationSession(session.id);
       await tester.pump();
       expect(controller.selectedConversationSession?.id, session.id);
@@ -73,18 +93,27 @@ void main() {
       expect(controller.selectedConversationSession, isNull);
       expect(
         find.byKey(const Key('messaging-conversation-list')),
+        findsNothing,
+      );
+      expect(find.byKey(Key('messaging-contact-$agentId')), findsOneWidget);
+
+      final recentSessionRow = find.byKey(
+        Key('agent-conversation-recent-${session.id}'),
+      );
+      expect(recentSessionRow, findsOneWidget);
+
+      await tester.tap(recentSessionRow);
+      await tester.pump();
+
+      expect(controller.selectedConversationSession?.id, session.id);
+      expect(
+        find.byKey(const Key('messaging-conversation-list')),
         findsOneWidget,
       );
-      final sessionRow = find.byKey(
-        Key('agents-sidebar-conversation-${session.id}'),
+      expect(
+        find.byKey(Key('agents-sidebar-conversation-${session.id}')),
+        findsOneWidget,
       );
-      if (sessionRow.evaluate().isEmpty) {
-        await tester.tap(
-          find.byKey(const Key('agents-sidebar-earlier-toggle')),
-        );
-        await tester.pump();
-      }
-      expect(sessionRow, findsOneWidget);
       expect(find.byKey(Key('messaging-contact-$agentId')), findsNothing);
 
       await tester.tap(
@@ -206,7 +235,7 @@ void main() {
       isEmpty,
     );
     expect(
-      find.byKey(const Key('messaging-conversation-list-heading')),
+      find.byKey(const Key('messaging-conversation-list-back-label')),
       findsOneWidget,
     );
 
@@ -216,7 +245,7 @@ void main() {
     final backTooltip = tester.widget<Tooltip>(
       find.ancestor(of: backButton, matching: find.byType(Tooltip)),
     );
-    expect(backTooltip.message, '返回');
+    expect(backTooltip.message, '返回上一级');
 
     await tester.tap(backButton);
     await tester.pump();
@@ -233,11 +262,105 @@ void main() {
     expect(
       tester
           .widget<Text>(
-            find.byKey(const Key('messaging-conversation-list-heading')),
+            find.byKey(const Key('messaging-conversation-list-back-label')),
           )
           .data,
-      'Local',
+      '返回上一级',
     );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('group conversation row changes only the detail pane', (
+    tester,
+  ) async {
+    final agentService = _GroupNavigationAgentService();
+    final controller = ClientController(
+      agentService: agentService,
+      llmGatewayMonitorInterval: Duration.zero,
+    );
+    addTearDown(controller.dispose);
+    controller.scannedTargets = [_groupTarget];
+    controller.conversationSessionsByAgent = const {
+      'codex': [_groupAgentSession],
+    };
+    await controller.clientConversationController.initialize();
+    await controller.clientConversationController.selectConversation(
+      'conversation:local',
+    );
+
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(1180, 820);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+    await tester.pumpWidget(
+      MaterialApp(
+        locale: const Locale('zh'),
+        supportedLocales: LicoStrings.supportedLocales,
+        localizationsDelegates: const [
+          GlobalMaterialLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+        ],
+        theme: buildLicoTheme(
+          platformBrightness: Brightness.dark,
+        ).copyWith(platform: TargetPlatform.macOS),
+        home: Builder(
+          builder: (context) => FixtureLayoutPresentationScope(
+            child: LayoutAgentsStrategyScope(
+              strategy: const AgentsPresentationStrategy.messaging(),
+              child: Scaffold(
+                body: AgentConversationWorkspace(
+                  controller: controller,
+                  targets: controller.scannedTargets,
+                  scanning: false,
+                  adding: false,
+                  onAddTarget: () {},
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    final conversationRow = find.byKey(
+      const Key('agents-sidebar-conversation-session:codex'),
+    );
+    expect(conversationRow, findsOneWidget);
+    expect(
+      tester
+          .widget<Text>(
+            find.byKey(const Key('messaging-conversation-list-back-label')),
+          )
+          .data,
+      '返回上一级',
+    );
+
+    await tester.tap(conversationRow);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 200));
+
+    expect(
+      controller.clientConversationController.selectedConversationId,
+      'conversation:local',
+    );
+    expect(controller.selectedConversationAgentId, 'codex');
+    expect(controller.selectedConversationSession?.id, 'session:codex');
+    expect(
+      tester
+          .widget<Text>(
+            find.byKey(const Key('messaging-conversation-list-back-label')),
+          )
+          .data,
+      '返回上一级',
+    );
+    expect(conversationRow, findsOneWidget);
+    expect(
+      find.byKey(const Key('canonical-group-conversation-pane')),
+      findsNothing,
+    );
+    expect(find.text('Opened Agent detail'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }
@@ -257,6 +380,22 @@ final _groupTarget = TargetCandidate(
     'conversationReadiness': 'ready',
   },
   supportedActions: ['runtime.message.send'],
+);
+
+const _groupAgentSession = AgentConversationSession(
+  id: 'session:codex',
+  agentId: 'codex',
+  title: 'Agent detail',
+  createdAt: '2026-08-13T00:00:00Z',
+  updatedAt: '2026-08-13T00:01:00Z',
+  messages: [
+    AgentConversationMessage(
+      id: 'message:codex',
+      role: 'assistant',
+      text: 'Opened Agent detail',
+      createdAt: '2026-08-13T00:01:00Z',
+    ),
+  ],
 );
 
 final class _GroupNavigationAgentService extends AgentService {

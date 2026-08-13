@@ -450,6 +450,16 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
       command: rustLayer("domain::conversation::history::tests::query"),
     }),
   defineModule({
+      id: "rust.domain.agent-conversations.catalog",
+      kind: "rust-domain",
+      summary: "Bounded browse catalog, page hydration, and native runtime facts",
+      inputs: [
+        "crates/licoup-native/src/domain/conversation/history/catalog.rs",
+        "crates/licoup-native/src/domain/conversation/history/tests/catalog.rs",
+      ],
+      command: rustLayer("domain::conversation::history::tests::catalog::"),
+    }),
+  defineModule({
       id: "rust.domain.agent-conversations.parser-kimi",
       kind: "rust-domain",
       summary: "Kimi Code wire parser and usage records",

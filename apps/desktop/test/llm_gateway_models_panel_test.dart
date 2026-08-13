@@ -194,11 +194,14 @@ void main() {
             expires: _daysFromNow(20),
           ),
         ];
+      final serviceRunner = _FakeServiceRunner()
+        ..statusResult = _statusPayload(state: 'stopped', managed: false)
+        ..startError = StateError('synthetic start failure');
       final lifecycle = LlmGatewayLifecycleController(
-        agentService: _FakeServiceRunner()
-          ..statusResult = _statusPayload(state: 'stopped', managed: false),
+        agentService: serviceRunner,
         readSettings: () async => const {},
         monitorInterval: Duration.zero,
+        recoveryRetryDelay: Duration.zero,
       );
       await lifecycle.initialize();
       await _pumpCredentials(tester, runner, lifecycleController: lifecycle);

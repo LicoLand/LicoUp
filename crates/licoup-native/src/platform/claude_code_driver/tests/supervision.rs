@@ -125,7 +125,7 @@ fn cleanup_propagates_a_poisoned_transport_shutdown_failure() {
 }
 
 #[test]
-fn shutdown_all_clears_the_exact_registry_and_is_idempotent() {
+fn test_cleanup_clears_the_exact_registry_and_is_idempotent() {
     let _serial = process_local_test_guard();
     let (directory, executable) = compile_fake_claude("lico-claude-shutdown-all");
     let first = execute(
@@ -145,9 +145,9 @@ fn shutdown_all_clears_the_exact_registry_and_is_idempotent() {
     assert!(first.ok);
     assert!(has_live_session(&first.session_id));
 
-    assert_eq!(shutdown_all(), ControlDisposition::Accepted);
+    assert_eq!(clear_all_for_test(), ControlDisposition::Accepted);
     assert!(!has_live_session(&first.session_id));
-    assert_eq!(shutdown_all(), ControlDisposition::Accepted);
+    assert_eq!(clear_all_for_test(), ControlDisposition::Accepted);
 
     let reclaimed_directory = directory.join("capacity-reclaimed");
     fs::create_dir_all(&reclaimed_directory).unwrap();
@@ -167,10 +167,10 @@ fn shutdown_all_clears_the_exact_registry_and_is_idempotent() {
     );
     assert!(
         reclaimed.ok,
-        "shutdown_all did not reclaim transport capacity"
+        "test cleanup did not reclaim transport capacity"
     );
     assert!(has_live_session(&reclaimed.session_id));
-    assert_eq!(shutdown_all(), ControlDisposition::Accepted);
+    assert_eq!(clear_all_for_test(), ControlDisposition::Accepted);
     assert!(!has_live_session(&reclaimed.session_id));
     let _ = fs::remove_dir_all(directory);
 }
@@ -178,7 +178,7 @@ fn shutdown_all_clears_the_exact_registry_and_is_idempotent() {
 #[test]
 fn bounded_pool_rejects_overflow_then_exact_cleanup_reclaims_one_slot() {
     let _serial = process_local_test_guard();
-    assert_eq!(shutdown_all(), ControlDisposition::Accepted);
+    assert_eq!(clear_all_for_test(), ControlDisposition::Accepted);
     let (directory, executable) = compile_fake_claude("lico-claude-capacity");
     let executable = executable.to_string_lossy().to_string();
     let params = json!({
@@ -250,7 +250,7 @@ fn bounded_pool_rejects_overflow_then_exact_cleanup_reclaims_one_slot() {
     );
     assert_ne!(replacement.session_id, reclaimed_session);
     assert!(sessions.iter().all(|session| has_live_session(session)));
-    assert_eq!(shutdown_all(), ControlDisposition::Accepted);
+    assert_eq!(clear_all_for_test(), ControlDisposition::Accepted);
     assert!(sessions.iter().all(|session| !has_live_session(session)));
     assert!(!has_live_session(&replacement.session_id));
     let _ = fs::remove_dir_all(directory);

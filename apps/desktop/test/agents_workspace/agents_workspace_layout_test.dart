@@ -177,7 +177,11 @@ void registerAgentsWorkspaceLayoutScenarios() {
     await tester.pumpAndSettle();
 
     expect(find.text('Back up conversations'), findsNothing);
-    expect(find.text('New Chat'), findsNothing);
+    expect(find.text('New Chat'), findsOneWidget);
+    expect(
+      find.byKey(const Key('agent-conversation-home-new-conversation')),
+      findsOneWidget,
+    );
     expect(find.byTooltip('Expand conversation history'), findsOneWidget);
   });
 

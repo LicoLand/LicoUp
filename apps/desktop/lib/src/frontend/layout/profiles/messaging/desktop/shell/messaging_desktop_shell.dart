@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:licoup/src/contracts/presentation/layout_environment.dart';
 import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:licoup/src/frontend/layout/layout_chrome_features.dart';
+import 'package:licoup/src/frontend/layout/layout_chrome_port.dart';
 import 'package:licoup/src/frontend/layout/layout_palette.dart';
 import 'package:licoup/src/frontend/layout/layout_surface_bundle.dart';
 import 'package:licoup/src/frontend/layout/profiles/messaging/desktop/shell/messaging_content_region.dart';
@@ -112,7 +113,10 @@ final class _MessagingDesktopShellState extends State<_MessagingDesktopShell> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        MessagingChromeBand(chrome: data.chrome),
+        MessagingChromeBand(
+          chrome: data.chrome,
+          showSearch: data.activeDestination != ClientSection.agents,
+        ),
         Expanded(
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -152,7 +156,7 @@ final class _MessagingDesktopShellState extends State<_MessagingDesktopShell> {
                   _selectDestination(ClientSection.mobileRelay),
               onOpenSettings: () => _selectDestination(ClientSection.settings),
             )
-          : data.destination,
+          : LayoutChromePortScope(chrome: data.chrome, child: data.destination),
     );
   }
 }

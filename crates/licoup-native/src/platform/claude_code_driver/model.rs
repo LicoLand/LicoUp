@@ -52,6 +52,7 @@ impl TransportLifecycle {
         self.state.load(Ordering::Acquire) == TransportState::Closing as u8
     }
 
+    #[cfg(test)]
     pub(in crate::platform) fn is_closed(&self) -> bool {
         self.state.load(Ordering::Acquire) == TransportState::Closed as u8
     }

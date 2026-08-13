@@ -301,8 +301,9 @@ class _FakeProcessContext implements NativeCliProcessContext {
   Future<Process> startProcess(
     String executable,
     List<String> arguments,
-    Map<String, String>? environment,
-  ) async {
+    Map<String, String>? environment, {
+    ProcessStartMode mode = ProcessStartMode.normal,
+  }) async {
     startCount += 1;
     throw StateError('unexpected process start');
   }
@@ -360,8 +361,14 @@ class _LiveProcessContext implements NativeCliProcessContext {
   Future<Process> startProcess(
     String executable,
     List<String> arguments,
-    Map<String, String>? environment,
-  ) {
-    return Process.start(executable, arguments, environment: environment);
+    Map<String, String>? environment, {
+    ProcessStartMode mode = ProcessStartMode.normal,
+  }) {
+    return Process.start(
+      executable,
+      arguments,
+      environment: environment,
+      mode: mode,
+    );
   }
 }

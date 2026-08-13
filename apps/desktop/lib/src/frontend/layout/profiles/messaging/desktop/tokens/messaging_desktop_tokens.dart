@@ -31,7 +31,8 @@ abstract final class MessagingDesktopMetrics {
   /// main content card edges).
   static const double conversationListCardInset = 4;
 
-  /// Corner radius of the floating conversation-list glass card.
+  /// Inner radius of the floating conversation-list glass card. The outer
+  /// content radius remains inner radius + card inset: 16 = 12 + 4.
   static const double conversationListCardCornerRadius = 12;
 
   /// Translucent card fill on the dark chat canvas — same alpha family as the
@@ -63,15 +64,21 @@ abstract final class MessagingDesktopMetrics {
   static const double groupRosterHeaderGap = 10;
   static const double groupRosterComposerGap = 10;
 
-  /// The right-edge roster is visible only in the transcript band.
-  static const double groupRosterExtent = 64;
-  static const double groupRosterContentInset = 6;
+  /// Detached member capsule in the right transcript band. Its width matches
+  /// the group header capsule button (38 px avatar + 8 px vertical padding on
+  /// each side), so the two controls share one vertical axis and silhouette.
+  static const double groupRosterExtent = 54;
+  static const double groupRosterContentInset = 2;
   static const double groupRosterScrollbarThickness = 2;
-  static const double groupRosterCurveExtent = 64;
   static const double groupRosterMinimumVisibleExtent = 128;
-  static const double groupRosterTrailingBleed = 1;
-  static const double groupRosterSigmoidSteepness = 8;
-  static const int groupRosterSigmoidSampleCount = 24;
+  static const int groupRosterVisibleMemberCount = 5;
+  static const double groupRosterMemberExtent = 54;
+  static const double groupRosterMemberGap = 5;
+  static const double groupRosterVerticalInset = 5;
+  static const double groupRosterMaxVisibleExtent =
+      groupRosterVisibleMemberCount * groupRosterMemberExtent +
+      (groupRosterVisibleMemberCount - 1) * groupRosterMemberGap +
+      groupRosterVerticalInset * 2;
 
   /// Horizontal inset of the floating conversation-header capsule.
   static const double conversationHeaderCapsuleInsetH = 12;
@@ -263,19 +270,6 @@ abstract final class MessagingDesktopMetrics {
         ),
       ];
 
-  /// Resolves a mirrored shoulder that stays proportional on short windows.
-  static double groupRosterCurveForHeight(double height) =>
-      (height / 3).clamp(0.0, groupRosterCurveExtent).toDouble();
-
-  /// The roster uses the selected chrome-tab wash over a real backdrop blur.
-  /// This keeps it in the shell's neutral frosted-glass family instead of
-  /// introducing an opaque theme surface inside the native glass window.
-  static Color groupRosterGlassFill({required bool isDark}) =>
-      chromeTabSelectedFill(isDark: isDark);
-
-  /// Matches the native shell's reference blur strength.
-  static const double groupRosterGlassBlurSigma = chromeGlassBlurSigma;
-
   /// Window inset of the unified content card on its right and bottom
   /// edges; the card's top edge meets the chrome band and its left edge sits
   /// flush against the destination rail.
@@ -439,7 +433,11 @@ abstract final class MessagingDesktopMetrics {
       chromeForegroundColor.withAlpha(chromeSearchPlaceholderAlpha);
 
   static const double searchFieldHeight = 32;
-  static const double searchFieldCornerRadius = 16;
+  static const double searchFieldCornerRadius = mainCardCornerRadius;
+
+  /// Vertical rhythm between stacked primary sidebar controls and the next
+  /// semantic row. Search → action and action → group label use one gap.
+  static const double sidebarPrimaryControlGap = 14;
 
   /// Left inset of the chrome band so its content clears the macOS
   /// traffic-light cluster (same reservation as the Dashboard top bar).

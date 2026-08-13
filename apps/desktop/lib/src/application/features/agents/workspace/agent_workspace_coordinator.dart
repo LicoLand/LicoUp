@@ -13,7 +13,6 @@ import 'package:licoup/src/application/localization/client_application_strings.d
 import 'package:licoup/src/contracts/agent_conversation_attachment.dart';
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
 import 'package:licoup/src/contracts/agent_conversation_tab_activity.dart';
-import 'package:licoup/src/contracts/agent_last_used_conversation.dart';
 import 'package:licoup/src/contracts/agent_tool_allowlist_repository.dart';
 import 'package:licoup/src/contracts/conversation_image_byte_reader.dart';
 import 'package:licoup/src/contracts/generated/secure_mesh.g.dart';
@@ -40,7 +39,6 @@ abstract class AgentWorkspaceCoordinator extends ChangeNotifier {
   ClientSection get agentWorkspaceCurrentSection;
   ClientApplicationStrings get agentWorkspaceStrings;
   Object get agentWorkspacePortableData;
-  LastUsedConversationStore get lastUsedConversationStore;
   AgentToolAllowlistRepository get agentToolAllowlistRepository;
   Future<Map<String, Object?>> agentWorkspaceReadSettingsState();
   Future<void> agentWorkspaceWriteSettingsState(Map<String, Object?> content);
@@ -75,6 +73,7 @@ abstract class AgentWorkspaceCoordinator extends ChangeNotifier {
   });
   void agentWorkspaceNotifyActiveConversationChanged();
   void agentWorkspaceNotifyLiveConversationChanged();
+  void agentWorkspaceRecordCurrentAgentView();
   Future<void> agentWorkspaceOpenDirectory(String path, {String caption = ''});
   String get relaySourceClientId;
   String get relaySourceClientLabel;
@@ -127,6 +126,7 @@ abstract class AgentWorkspaceCoordinator extends ChangeNotifier {
   Map<String, String> newConversationWorkingDirectories = const {};
   Timer? conversationActiveRefreshTimer;
   Timer? conversationBackgroundRefreshTimer;
+  Timer? conversationCodexRuntimeRefreshTimer;
   final Set<String> conversationSessionLoadingTargets = <String>{};
   final Set<({String agentId, String sessionId})>
   conversationActiveRefreshTargets = <({String agentId, String sessionId})>{};
@@ -138,6 +138,7 @@ abstract class AgentWorkspaceCoordinator extends ChangeNotifier {
       ConversationLifecyclePhase.resumed;
   bool conversationViewFocused = true;
   final Set<String> conversationSessionLoadMoreTargets = <String>{};
+  Map<String, int> conversationSessionLoadMoreCountsByAgent = const {};
   Map<String, String> _selectedConversationSessionIdsByAgent = const {};
 
   Map<String, List<AgentConversationSession>> conversationSessionsByAgent =
@@ -147,19 +148,9 @@ abstract class AgentWorkspaceCoordinator extends ChangeNotifier {
   Map<String, bool> conversationSessionsHasMoreByAgent = const {};
   String selectedConversationAgentId = '';
 
-  /// The last-used conversation persisted at shutdown time, restored on
-  /// relaunch so the client reopens the conversation the user last worked in.
-  /// Null while [lastUsedConversationRestoreLoading] is still true.
-  LastUsedConversationRef? lastUsedConversationRestore;
-  bool lastUsedConversationRestoreLoading = true;
-
-  /// Whether the restore was applied (or decided not to be) this process.
-  bool lastUsedConversationRestoreApplied = false;
-
-  /// Restored session id awaiting the agent's loaded session list: the
-  /// conversation controller confirms it once history arrives and falls back
-  /// to the newest session when it no longer exists.
-  String lastUsedConversationRestoreSessionId = '';
+  /// Session identity from the global current-view snapshot. Native history
+  /// confirms it after the restored agent catalog becomes available.
+  String currentViewRestoreSessionId = '';
   Map<String, String> pendingConversationNativeSessionIds = const {};
   Map<String, String> conversationModelsByAgent = const {};
   Map<String, String> conversationReasoningEffortsByAgent = const {};
@@ -457,47 +448,6 @@ abstract class AgentWorkspaceCoordinator extends ChangeNotifier {
     final next = <String, String>{..._selectedConversationSessionIdsByAgent};
     value.isEmpty ? next.remove(agentId) : next[agentId] = value;
     _selectedConversationSessionIdsByAgent = Map.unmodifiable(next);
-  }
-
-  /// Loads the persisted last-used conversation reference at startup. Safe to
-  /// call once before targets settle; restore application itself happens in
-  /// [AgentConversationSessionController.applyLastUsedConversationRestore]
-  /// and retries whenever [lastUsedConversationRestoreLoading] is still true.
-  Future<void> loadLastUsedConversationRestore() async {
-    try {
-      lastUsedConversationRestore = await lastUsedConversationStore.load(
-        agentWorkspacePortableData,
-      );
-    } on Object {
-      lastUsedConversationRestore = null;
-    }
-    lastUsedConversationRestoreLoading = false;
-  }
-
-  /// Persists the currently selected agent and session as the last-used
-  /// conversation. Fire-and-forget: a failed local write must never block or
-  /// change the conversation surface.
-  void recordLastUsedConversation() {
-    final agentId = selectedConversationAgentId.trim();
-    if (agentId.isEmpty) {
-      return;
-    }
-    unawaited(
-      _persistLastUsedConversation(
-        LastUsedConversationRef(
-          agentId: agentId,
-          sessionId: selectedConversationSessionId.trim(),
-        ),
-      ),
-    );
-  }
-
-  Future<void> _persistLastUsedConversation(LastUsedConversationRef ref) async {
-    try {
-      await lastUsedConversationStore.save(agentWorkspacePortableData, ref);
-    } on Object {
-      // Local persistence failure must not surface on the conversation.
-    }
   }
 
   void disposeAgentWorkspace() {

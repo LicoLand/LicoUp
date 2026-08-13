@@ -20,6 +20,16 @@ effective, run the mandatory Node-only source policy once and only the affected
 technology lanes. The lanes are independent and may run in parallel. The commit
 gate never builds or publishes every platform.
 
+Starting a complete regression expands the current verification closure to
+every problem it reveals. Do not hand off with a known failure, stale golden,
+layout overflow, timeout, or flaky test from that run. Diagnose and fix its
+canonical owner, add or tighten a focused regression, and inspect visual diffs
+before updating any golden. During repair, rerun only the affected slices; when
+all reported problems are closed, run one final complete regression and require
+it to pass. If an external condition makes closure impossible, stop and obtain
+an explicit maintainer decision instead of calling the problem pre-existing or
+out of scope.
+
 ```bash
 npm run client:gate:source
 npm run client:gate:flutter         # Flutter changes only
