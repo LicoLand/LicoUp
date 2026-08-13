@@ -109,6 +109,7 @@ const MACOS_DIRECT_FINAL_DMG_KINDS = Object.freeze([
 const MACOS_DIRECT_LOCAL_ENTITLEMENT_KEYS = Object.freeze([
   "com.apple.security.network.client",
   "com.apple.security.files.user-selected.read-only",
+  "com.apple.security.cs.disable-library-validation",
 ]);
 
 const MACOS_DIRECT_PRODUCTION_ENTITLEMENT_KEYS = Object.freeze([
@@ -172,7 +173,7 @@ export function validateLocalEntitlements(entitlements) {
   if (source["get-task-allow"] === true) {
     errors.push("macos_distribution_entitlements_invalid");
   }
-  if (source["com.apple.security.cs.disable-library-validation"] === true) {
+  if (MACOS_DIRECT_LOCAL_ENTITLEMENT_KEYS.some((key) => source[key] !== true)) {
     errors.push("macos_distribution_entitlements_invalid");
   }
   for (const key of Object.keys(source)) {

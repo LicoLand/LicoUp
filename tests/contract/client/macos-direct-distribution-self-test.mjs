@@ -87,6 +87,7 @@ export const productionEntitlementsFixture = Object.freeze({
 export const localEntitlementsFixture = Object.freeze({
   "com.apple.security.network.client": true,
   "com.apple.security.files.user-selected.read-only": true,
+  "com.apple.security.cs.disable-library-validation": true,
 });
 
 const plistMetadataFixture = Object.freeze({
@@ -609,7 +610,8 @@ function assertProfileAuthorization() {
   requireValue(validateLocalEntitlements(localEntitlementsFixture).ready === true,
     "local_entitlements_rejected");
   requireValue(!validateLocalEntitlements({
-    "com.apple.security.cs.disable-library-validation": true,
+    ...localEntitlementsFixture,
+    "com.apple.security.cs.disable-library-validation": false,
   }).ready, "local_library_validation_not_rejected");
   requireValue(validateMacosDistributionMetadata({
     displayName: "LicoUp",
