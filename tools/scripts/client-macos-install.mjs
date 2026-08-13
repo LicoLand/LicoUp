@@ -22,7 +22,7 @@ function main() {
     throw new Error("macos_install_requires_macos");
   }
   const explicitIdentity = String(
-    process.env.LICO_MACOS_LOCAL_SIGNING_IDENTITY || "",
+    process.env.LICO_MACOS_RELEASE_SIGNING_IDENTITY || "",
   ).trim();
   if (explicitIdentity) {
     run("npm", ["run", "client:build:macos"]);
