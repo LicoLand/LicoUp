@@ -379,8 +379,19 @@ test("downstream macOS verifiers consume the corrected entitlement authority", (
   assert.deepEqual(MACOS_DIRECT_PROTECTED_ENVIRONMENT.includes(
     "LICO_MACOS_SIGNING_IDENTITY",
   ), true);
+  assert.deepEqual(MACOS_DIRECT_PROTECTED_ENVIRONMENT.includes(
+    "LICO_MACOS_NOTARY_KEYCHAIN_PROFILE",
+  ), true);
   assert.ok(distributionBuilder.includes("developerIdApplication !== true"));
   assert.ok(distributionBuilder.includes('"notarytool", "submit"'));
+  assert.ok(distributionBuilder.includes('"--keychain-profile", notaryKeychainProfile'));
+  for (const removedCredential of [
+    "LICO_MACOS_NOTARY_KEY_ID",
+    "LICO_MACOS_NOTARY_ISSUER_ID",
+    "LICO_MACOS_NOTARY_KEY_PATH",
+  ]) {
+    assert.equal(distributionBuilder.includes(removedCredential), false);
+  }
   for (const cargoNoticeControl of [
     '"metadata"',
     '"--locked"',

@@ -47,6 +47,31 @@ Mac App Store 兼容。
 
 远程工作流不得发布 macOS 直发产物。上传、发布页变更与对外发布必须另行取得明确授权。
 
+## 本机工具
+
+首次使用时运行一次：
+
+```sh
+npm run client:release:macos:setup
+```
+
+工具会交互式选择 Developer ID Provisioning Profile，将经过验证的 Profile 副本与
+最小签名配置保存在本机私有目录，并调用 Apple `notarytool` 把公证凭据保存到系统
+钥匙串。随后会执行一次临时签名，让操作方集中完成 `codesign` 钥匙串授权。源码、
+构建报告和终端输出均不保存证书、账户标识、密钥或本机路径。
+
+日常内测只运行：
+
+```sh
+npm run client:release:macos:beta
+```
+
+该命令要求工作区干净，并且按固定顺序执行源码门禁、发行策略门禁、工具链预检、
+Developer ID 打包、应用与 DMG 公证/装订/Gatekeeper 验收、精确 DMG 安装和稳定启动。
+最后写入绑定当前提交、源码树、版本、构建号、发行模板与产物摘要的脱敏本机收据。
+命令不会推送分支、上传产物、创建 Release 或执行任何远端发布；正式发布仍需单独
+明确授权。
+
 ## Apple 一手资料
 
 - [Developer ID 证书](https://developer.apple.com/help/account/certificates/create-developer-id-certificates)

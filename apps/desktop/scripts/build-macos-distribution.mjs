@@ -781,10 +781,10 @@ export function coordinatePlatformChannel({
   const identity = requireEnvironment(env, "LICO_MACOS_SIGNING_IDENTITY");
   const profilePath = requireEnvironment(env, "LICO_MACOS_PROVISIONING_PROFILE");
   requireContainedFile(fs, profilePath, "macos_distribution_credentials_missing");
-  const keyId = requireEnvironment(env, "LICO_MACOS_NOTARY_KEY_ID");
-  const issuer = requireEnvironment(env, "LICO_MACOS_NOTARY_ISSUER_ID");
-  const keyPath = requireEnvironment(env, "LICO_MACOS_NOTARY_KEY_PATH");
-  requireContainedFile(fs, keyPath, "macos_distribution_credentials_missing");
+  const notaryKeychainProfile = requireEnvironment(
+    env,
+    "LICO_MACOS_NOTARY_KEYCHAIN_PROFILE",
+  );
   const identifierPrefix = requireEnvironment(env, "LICO_MACOS_APP_IDENTIFIER_PREFIX");
   const signingKeychain = String(env.LICO_MACOS_RELEASE_SIGNING_KEYCHAIN || "").trim();
   const signingKeychainArgs = signingKeychain ? ["--keychain", signingKeychain] : [];
@@ -917,7 +917,7 @@ export function coordinatePlatformChannel({
   try {
     run("app-notarize", "/usr/bin/xcrun", [
       "notarytool", "submit", submissionZip,
-      "--key", keyPath, "--key-id", keyId, "--issuer", issuer, "--wait",
+      "--keychain-profile", notaryKeychainProfile, "--wait",
     ], "macos_distribution_notarization_failed", { timeout: 30 * 60 * 1000 });
   } finally {
     fs.rm(submissionZip, { force: true });
@@ -971,7 +971,7 @@ export function coordinatePlatformChannel({
   ], "macos_distribution_dmg_sign_failed");
   run("dmg-notarize", "/usr/bin/xcrun", [
     "notarytool", "submit", dmgPath,
-    "--key", keyPath, "--key-id", keyId, "--issuer", issuer, "--wait",
+    "--keychain-profile", notaryKeychainProfile, "--wait",
   ], "macos_distribution_notarization_failed", { timeout: 30 * 60 * 1000 });
   run("dmg-staple", "/usr/bin/xcrun", ["stapler", "staple", dmgPath],
     "macos_distribution_staple_failed");
@@ -1186,9 +1186,7 @@ async function runSelfTest() {
   const injected = minimalReleaseToolEnvironment({
     HOME: "/fixture-home",
     LICO_MACOS_SIGNING_IDENTITY: marker,
-    LICO_MACOS_NOTARY_KEY_PATH: marker,
-    LICO_MACOS_NOTARY_KEY_ID: marker,
-    LICO_MACOS_NOTARY_ISSUER_ID: marker,
+    LICO_MACOS_NOTARY_KEYCHAIN_PROFILE: marker,
     DYLD_INSERT_LIBRARIES: marker,
   }, { PATH: "/usr/bin:/bin:/usr/sbin:/sbin" });
   if (Object.values(injected).includes(marker) ||
