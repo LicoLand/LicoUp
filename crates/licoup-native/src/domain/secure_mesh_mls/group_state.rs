@@ -157,8 +157,7 @@ pub(super) fn group_status_json(
         "memberCount": group.member_count(),
         "active": group.is_active(),
         "capabilityNegotiated": group.require_active_capability_negotiation().is_ok(),
-        "participantScopeRedacted": true,
-        "privateKeyMaterial": "redacted"
+        "participantScopeRedacted": true
     })
 }
 

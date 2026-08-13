@@ -19,7 +19,7 @@ const _registrationContentDigest =
     'eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee';
 const _registrationId = '00000000-0000-4000-8000-000000000010';
 const _registrationDestination =
-    'test-data/licoup-state/mcp-agent-registrations/cursor/$_registrationId.json';
+    '/test-data/licoup-state/mcp-agent-registrations/cursor/$_registrationId.json';
 const _outboundPolicy = 'direct-user-exact-scope-one-shot';
 const _deploymentId = '00000000-0000-4000-8000-000000000020';
 
@@ -31,7 +31,7 @@ void main() {
       final service = OptionalCollaborationService(runner: runner);
       final plan = await service.planLocalDeployment(
         selectedFeatureIds: const ['server-core'],
-        destination: 'test-data/licomesh-local',
+        destination: '/test-data/licomesh-local',
       );
       await service.applyLocalDeployment(plan: plan, confirmed: true);
       await service.cancelWorkflow(plan: plan, confirmed: true);
@@ -47,7 +47,7 @@ void main() {
           '--selected-feature-ids',
           '["server-core"]',
           '--destination',
-          'test-data/licomesh-local',
+          '/test-data/licomesh-local',
           '--destination-confirmed',
           'true',
         ],
@@ -61,7 +61,7 @@ void main() {
           '--selected-feature-ids',
           '["server-core"]',
           '--destination',
-          'test-data/licomesh-local',
+          '/test-data/licomesh-local',
           '--destination-confirmed',
           'true',
           '--plan-id',
@@ -157,7 +157,7 @@ void main() {
       final service = OptionalCollaborationService(runner: runner);
       const destination = OptionalCollaborationAgentDestination(
         agentId: 'cursor',
-        installDestination: 'test-data/licoup-mcp',
+        installDestination: '/test-data/licoup-mcp',
       );
       final plan = await service.planMcpInstall(
         selectedPluginIds: const ['selected-mcp'],
@@ -281,7 +281,7 @@ Map<String, dynamic> _localPlanJson() => {
   'planId': '00000000-0000-4000-8000-000000000001',
   'selectedFeatureIds': ['server-core'],
   'selectedPluginIds': null,
-  'destination': 'test-data/licomesh-local',
+  'destination': '/test-data/licomesh-local',
   'agents': <dynamic>[],
   'fileChanges': [_localFile()],
   'agentRegistrations': <dynamic>[],
@@ -294,7 +294,7 @@ Map<String, dynamic> _localApplyJson() => {
   'planId': '00000000-0000-4000-8000-000000000001',
   'selectedFeatureIds': ['server-core'],
   'selectedPluginIds': null,
-  'destination': 'test-data/licomesh-local',
+  'destination': '/test-data/licomesh-local',
   'agents': <dynamic>[],
   'fileChanges': [_localFile()],
   'agentRegistrations': <dynamic>[],
@@ -380,7 +380,7 @@ Map<String, dynamic> _assemblyPlan() => {
   'serverVersion': '1.0.0',
   'packageDigestSha256': _packageDigest,
   'selectedComponentIds': ['server-core'],
-  'destination': 'test-data/licomesh-local',
+  'destination': '/test-data/licomesh-local',
   'assemblyAdapterId': 'licoup-builtin-local-http-v1',
   'assemblyManifestDigestSha256': _registrationFileDigest,
   'assemblyManifestBytes': 512,
@@ -405,7 +405,7 @@ Map<String, dynamic> _localServer({
   'serverVersion': '1.0.0',
   'packageDigestSha256': _packageDigest,
   'selectedComponentIds': ['server-core'],
-  'destination': 'test-data/licomesh-local',
+  'destination': '/test-data/licomesh-local',
   'assemblyAdapterId': 'licoup-builtin-local-http-v1',
   'assemblyManifestDigestSha256': _registrationFileDigest,
   'bindHost': '127.0.0.1',
@@ -423,7 +423,7 @@ Map<String, dynamic> _localServer({
 Map<String, dynamic> _localFile() => {
   'selectionId': 'server-core',
   'sourceRelativePath': 'payload/server-core/server',
-  'destination': 'test-data/licomesh-local/server',
+  'destination': '/test-data/licomesh-local/server',
   'destinationRelativePath': 'server',
   'digestSha256': _fileDigest,
   'bytes': 128,
@@ -433,7 +433,7 @@ Map<String, dynamic> _mcpFile() => {
   'agentId': 'cursor',
   'selectionId': 'selected-mcp',
   'sourceRelativePath': 'payload/mcp-selected/server',
-  'destination': 'test-data/licoup-mcp/selected-mcp/server',
+  'destination': '/test-data/licoup-mcp/selected-mcp/server',
   'destinationRelativePath': 'selected-mcp/server',
   'digestSha256': _fileDigest,
   'bytes': 128,
@@ -441,7 +441,7 @@ Map<String, dynamic> _mcpFile() => {
 
 Map<String, dynamic> _agent() => {
   'agentId': 'cursor',
-  'installDestination': 'test-data/licoup-mcp',
+  'installDestination': '/test-data/licoup-mcp',
 };
 
 Map<String, dynamic> _registrationPlan() => {
@@ -458,7 +458,10 @@ Map<String, dynamic> _registrationPlan() => {
     'packageDigestSha256': _packageDigest,
     'selectedPluginIds': ['selected-mcp'],
     'payloadRoots': [
-      {'pluginId': 'selected-mcp', 'path': 'test-data/licoup-mcp/selected-mcp'},
+      {
+        'pluginId': 'selected-mcp',
+        'path': '/test-data/licoup-mcp/selected-mcp',
+      },
     ],
     'payloadFiles': [
       {

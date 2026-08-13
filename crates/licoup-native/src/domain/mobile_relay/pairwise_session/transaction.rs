@@ -1,6 +1,8 @@
 use super::store::mobile_relay_pairwise_store;
 use crate::core::secure_mesh_pairwise::{
-    SecureMeshPairwiseDurableRecord, SecureMeshPairwiseDurableStore, SecureMeshPairwiseSession,
+    SecureMeshPairwiseDurableRecord, SecureMeshPairwiseDurableStore,
+    SecureMeshPairwisePendingDelivery, SecureMeshPairwiseReceivedPayload,
+    SecureMeshPairwiseSession,
 };
 use crate::domain::mobile_relay::endpoint_trust::{local_endpoint_state, now_iso, session_id};
 use crate::domain::mobile_relay::secret_custody::{
@@ -20,7 +22,7 @@ pub(in crate::domain::mobile_relay) struct MobileRelayPairwiseOperation {
 }
 
 impl MobileRelayPairwiseOperation {
-    pub(super) fn commit(&mut self) -> Result<()> {
+    pub(in crate::domain::mobile_relay) fn commit(&mut self) -> Result<()> {
         self.record = self.store.commit_session_with_authorized_session(
             &self.record,
             &self.session,
@@ -28,6 +30,86 @@ impl MobileRelayPairwiseOperation {
             &self.secret_store_session,
         )?;
         Ok(())
+    }
+
+    pub(in crate::domain::mobile_relay) fn commit_with_pending_delivery(
+        &mut self,
+        pending_delivery: &SecureMeshPairwisePendingDelivery,
+    ) -> Result<()> {
+        self.record = self
+            .store
+            .commit_session_with_authorized_session_and_pending_delivery(
+                &self.record,
+                &self.session,
+                pending_delivery,
+                now_iso(),
+                &self.secret_store_session,
+            )?;
+        Ok(())
+    }
+
+    pub(in crate::domain::mobile_relay) fn commit_with_received_payload(
+        &mut self,
+        received_payload: &SecureMeshPairwiseReceivedPayload,
+    ) -> Result<()> {
+        self.record = self
+            .store
+            .commit_session_with_authorized_session_and_received_payload(
+                &self.record,
+                &self.session,
+                received_payload,
+                now_iso(),
+                &self.secret_store_session,
+            )?;
+        Ok(())
+    }
+
+    pub(in crate::domain::mobile_relay) fn received_payload(
+        &self,
+        binding_digest: &str,
+    ) -> Result<Option<SecureMeshPairwiseReceivedPayload>> {
+        self.store.read_received_payload_with_authorized_session(
+            &self.record.session_id,
+            &self.record.local_endpoint_id,
+            binding_digest,
+            &self.secret_store_session,
+        )
+    }
+
+    pub(in crate::domain::mobile_relay) fn delete_received_payload(
+        &mut self,
+        receipt_id: &str,
+    ) -> Result<bool> {
+        self.store.delete_received_payload_with_authorized_session(
+            &self.record.session_id,
+            &self.record.local_endpoint_id,
+            receipt_id,
+            &self.secret_store_session,
+        )
+    }
+
+    pub(in crate::domain::mobile_relay) fn pending_delivery(
+        &self,
+        delivery_kind: &str,
+    ) -> Result<Option<SecureMeshPairwisePendingDelivery>> {
+        self.store.read_pending_delivery(
+            &self.record.session_id,
+            &self.record.local_endpoint_id,
+            delivery_kind,
+        )
+    }
+
+    pub(in crate::domain::mobile_relay) fn delete_pending_delivery(
+        &mut self,
+        delivery_kind: &str,
+        envelope_id: &str,
+    ) -> Result<bool> {
+        self.store.delete_pending_delivery(
+            &self.record.session_id,
+            &self.record.local_endpoint_id,
+            delivery_kind,
+            envelope_id,
+        )
     }
 }
 

@@ -8,6 +8,33 @@ import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_activity_animations.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
+/// Redacted one-line headline for a process operation (title · subtitle).
+/// Safe for inline Working summaries — never exposes raw tool args or CoT.
+({String title, String subtitle}) conversationProcessOperationHeadline(
+  AgentConversationMessage message,
+  LicoThemeColors colors,
+  LicoStrings strings,
+) {
+  final presentation = _eventPresentation(message.kind, colors, strings);
+  final defaultReasoningTitle =
+      message.kind == AgentConversationMessageKind.reasoning &&
+      message.providerSummary;
+  final rawTitle = message.cardTitle.trim();
+  final title =
+      rawTitle.isEmpty ||
+          defaultReasoningTitle ||
+          _isDefaultProcessTitle(message.kind, rawTitle)
+      ? (defaultReasoningTitle ? strings.reasoningSummary : presentation.title)
+      : rawTitle;
+  final rawSubtitle = message.cardSubtitle.trim();
+  final subtitle = defaultReasoningTitle
+      ? strings.providerSummary
+      : rawSubtitle.isEmpty || _isDefaultProcessSubtitle(rawSubtitle)
+      ? presentation.subtitle
+      : rawSubtitle;
+  return (title: title, subtitle: subtitle);
+}
+
 final class ConversationProcessOperationList extends StatelessWidget {
   const ConversationProcessOperationList({
     super.key,
@@ -260,7 +287,7 @@ _eventPresentation(
       title: strings.toolCall,
       subtitle: strings.nativeAgentActivity,
       icon: Icons.terminal_rounded,
-      accent: colors.info,
+      accent: colors.accent,
     ),
     AgentConversationMessageKind.toolResult => (
       title: strings.toolResult,
@@ -297,9 +324,9 @@ _eventPresentation(
 
 Color _toneColor(LicoThemeColors colors, String tone) {
   return switch (tone) {
-    'raised' => colors.surfaceHigh,
+    'raised' => colors.surfaceRaised,
     'surface' => colors.surface,
-    'muted' => colors.surfaceHighest,
+    'muted' => colors.surfaceLow,
     _ => colors.surfaceLow,
   };
 }

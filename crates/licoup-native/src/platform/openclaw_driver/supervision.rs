@@ -1,5 +1,6 @@
 use super::super::openclaw_gateway::{self, DEFAULT_PORT, GatewayEndpoint, VENDOR_DEFAULT_PORT};
 use super::super::process_supervisor::SupervisedChild;
+use super::super::virtual_machine::SshRuntimeConnection;
 use super::errors::ProtocolFailure;
 use super::params::text_param;
 use serde_json::Value;
@@ -14,6 +15,7 @@ pub(super) struct LaunchSpec {
     pub(super) executable: String,
     pub(super) args: Vec<String>,
     pub(super) cwd: PathBuf,
+    pub(super) runtime_connection: Option<SshRuntimeConnection>,
 }
 
 impl LaunchSpec {
@@ -26,23 +28,43 @@ impl LaunchSpec {
                 .chain(std::iter::once(gateway_ws_url.to_string()))
                 .collect(),
             cwd: cwd.to_path_buf(),
+            runtime_connection: None,
+        }
+    }
+
+    pub(super) fn for_virtual_machine(
+        runtime_connection: &SshRuntimeConnection,
+        cwd: &Path,
+    ) -> Self {
+        Self {
+            executable: "ssh".to_string(),
+            args: Vec::new(),
+            cwd: cwd.to_path_buf(),
+            runtime_connection: Some(runtime_connection.clone()),
         }
     }
 
     pub(super) fn spawn(&self) -> io::Result<SupervisedChild> {
-        let mut command = Command::new(&self.executable);
+        let mut command = match &self.runtime_connection {
+            Some(connection) => connection
+                .launch_acp_command("openclaw")
+                .map_err(io::Error::other)?,
+            None => {
+                let mut command = Command::new(&self.executable);
+                command.args(&self.args).current_dir(&self.cwd);
+                // Keep the optional token out of argv and all projected diagnostics.
+                if let Ok(token) = std::env::var("OPENCLAW_GATEWAY_TOKEN")
+                    && !token.trim().is_empty()
+                {
+                    command.env("OPENCLAW_GATEWAY_TOKEN", token);
+                }
+                command
+            }
+        };
         command
-            .args(&self.args)
-            .current_dir(&self.cwd)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
-        // Keep the optional token out of argv and all projected diagnostics.
-        if let Ok(token) = std::env::var("OPENCLAW_GATEWAY_TOKEN")
-            && !token.trim().is_empty()
-        {
-            command.env("OPENCLAW_GATEWAY_TOKEN", token);
-        }
         SupervisedChild::spawn(&mut command)
     }
 }

@@ -113,7 +113,7 @@ async function main() {
 
   const bundleDir = findLinuxBundle();
   const flutterBinary = path.join(bundleDir, "licoup");
-  const cli = path.join(bundleDir, "licoup");
+  const cli = path.join(bundleDir, "licoup-cli");
   const packagingManifest = path.join(
     bundleDir,
     "package-metadata",

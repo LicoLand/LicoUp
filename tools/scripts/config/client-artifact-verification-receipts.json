@@ -23,7 +23,7 @@
       "artifactDigestKind": "file",
       "distributionManifestRef": "build/apps/desktop/distribution/macos/manifest.json",
       "evidenceArtifactKind": "macos-app-bundle",
-      "evidenceArtifactRef": "build/apps/desktop/runnable/macos/release/Arc.app",
+      "evidenceArtifactRef": "build/apps/desktop/runnable/macos/release/LicoUp.app",
       "evidenceArtifactDigestKind": "tree",
       "evidenceRef": "build/reports/secure-mesh-macos-capabilities.json",
       "evidenceSchemaVersion": "licomesh.secure-mesh.macos-adaptive-capabilities-receipt.v3",

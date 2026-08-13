@@ -42,7 +42,7 @@ void main() {
       isNot(
         contains(
           RegExp(
-            r'^\s*Future<void> configureMobileRelayGateway\(',
+            r'^\s*Future<void> configureMobileRelayStation\(',
             multiLine: true,
           ),
         ),

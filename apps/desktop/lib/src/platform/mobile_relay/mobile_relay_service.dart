@@ -50,15 +50,13 @@ class MobileRelayService {
   }) =>
       _relayOperations.resetPairing(agentService: agentService, bridge: bridge);
 
-  Future<MobileRelayConfig> configureGateway({
+  Future<MobileRelayConfig> configureStation({
     required AgentService agentService,
-    required bool useCustomGateway,
-    required String customGatewayUrl,
+    required String stationBaseUrl,
     SecureMeshMobileBridge bridge = const SecureMeshAndroidBridge(),
-  }) => _relayOperations.configureGateway(
+  }) => _relayOperations.configureStation(
     agentService: agentService,
-    useCustomGateway: useCustomGateway,
-    customGatewayUrl: customGatewayUrl,
+    stationBaseUrl: stationBaseUrl,
     bridge: bridge,
   );
 

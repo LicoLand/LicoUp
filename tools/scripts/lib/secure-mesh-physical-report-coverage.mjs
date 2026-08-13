@@ -5,10 +5,12 @@
  * drift across those producers.
  */
 
+import {
+  licoArcBadTowerAcceptanceCoverage,
+} from "./licoarc-badtower-acceptance-report.mjs";
+
 export const ANDROID_PLATFORM_CRYPTO_ACCEPTANCE_SCHEMA =
   "licomesh.secure-mesh.android-platform-crypto-acceptance.v1";
-export const RELAY_MOCK_ACCEPTANCE_SCHEMA =
-  "licomesh.secure-client-relay.client-acceptance-report.v1";
 export const ANDROID_PLATFORM_CRYPTO_NATIVE_TEST_CLASS_COUNT = 5;
 export const UBUNTU_SECRET_SERVICE_BACKEND = "linux-secret-service-keyring";
 
@@ -60,28 +62,11 @@ export function androidPlatformCryptoCoverage(report, {
   };
 }
 
-export function relayMockCoverage(report, { reportRef = "" } = {}) {
-  const summary = report?.summary || {};
-  const ready = redactedReportReady(report) &&
-    report?.schemaVersion === RELAY_MOCK_ACCEPTANCE_SCHEMA &&
-    summary.exactFiveOperationsObserved === true &&
-    summary.exactSixOuterFieldsObserved === true &&
-    summary.replayRejected === true &&
-    summary.staleLeaseRejected === true &&
-    summary.ackIdempotencyVerified === true &&
-    summary.plaintextAbsentFromServerVisibleWire === true &&
-    summary.wireBytesMeasured === true;
+export function stationAcceptanceCoverage(report, { reportRef = "" } = {}) {
+  const coverage = licoArcBadTowerAcceptanceCoverage(report);
   return {
     report: reportRef,
-    ready,
-    exactFiveOperationsObserved: summary.exactFiveOperationsObserved === true,
-    exactSixOuterFieldsObserved: summary.exactSixOuterFieldsObserved === true,
-    replayRejected: summary.replayRejected === true,
-    staleLeaseRejected: summary.staleLeaseRejected === true,
-    ackIdempotencyVerified: summary.ackIdempotencyVerified === true,
-    plaintextAbsentFromServerVisibleWire:
-      summary.plaintextAbsentFromServerVisibleWire === true,
-    wireBytesMeasured: summary.wireBytesMeasured === true
+    ...coverage,
   };
 }
 
@@ -283,25 +268,46 @@ export function runPhysicalReportCoverageSelfTest() {
     "android_crypto_class_count_gap_accepted"
   );
 
-  const relay = redactedFixture({
-    schemaVersion: RELAY_MOCK_ACCEPTANCE_SCHEMA,
-    summary: {
-      exactFiveOperationsObserved: true,
-      exactSixOuterFieldsObserved: true,
-      replayRejected: true,
-      staleLeaseRejected: true,
-      ackIdempotencyVerified: true,
-      plaintextAbsentFromServerVisibleWire: true,
-      wireBytesMeasured: true
-    }
-  });
-  requireValue(relayMockCoverage(relay).ready === true, "relay_ready_rejected");
+  const station = {
+    schemaVersion: "licoup.licoarc-badtower.acceptance.v1",
+    ok: true,
+    protocolCandidateDigest: `sha256:${"a".repeat(64)}`,
+    stationCandidateDigest: `sha256:${"b".repeat(64)}`,
+    clientCandidateDigest: `sha256:${"c".repeat(64)}`,
+    scenario: {
+      freshEndpointCount: 2,
+      positiveExchange: true,
+      roundTrip: true,
+      stationPlaintextAbsent: true,
+      nonConformantEnvelopeRejected: true,
+      transportHintsNonAuthoritative: true,
+      exactFiveOuterFields: true,
+    },
+    privacy: {
+      redacted: true,
+      endpointContentIncluded: false,
+      ciphertextIncluded: false,
+      keyMaterialIncluded: false,
+      machineIdentityIncluded: false,
+      rawRuntimeDataIncluded: false,
+    },
+    claims: {
+      clientRelease: false,
+      protocolPublication: false,
+      stationRelease: false,
+      hostedOperation: false,
+    },
+  };
   requireValue(
-    relayMockCoverage({
-      ...relay,
-      summary: { ...relay.summary, replayRejected: false }
+    stationAcceptanceCoverage(station).ready === true,
+    "station_acceptance_ready_rejected",
+  );
+  requireValue(
+    stationAcceptanceCoverage({
+      ...station,
+      scenario: { ...station.scenario, roundTrip: false },
     }).ready !== true,
-    "relay_replay_gap_accepted"
+    "station_round_trip_gap_accepted",
   );
 
   const windows = redactedFixture({

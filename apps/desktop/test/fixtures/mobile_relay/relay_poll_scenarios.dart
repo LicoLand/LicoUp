@@ -6,18 +6,21 @@ import 'package:flutter_test/flutter_test.dart';
 var _synthSeq = 0;
 String _synth(String label) => '$label-${_synthSeq++}';
 
-final sv_relay_command_canary = _synth('relay-command-canary');
+final sv_idempotency_expected = _synth('idempotency-expected');
 final sv_idempotency_canary = _synth('idempotency-canary');
+final sv_idempotency_other = _synth('idempotency-other');
 final sv_payload_command_canary = _synth('payload-command-canary');
 
 void registerMobileRelayPollScenarios() {
   test('secure relay poll accepts a validated runtime result', () {
   final sv_relay_result_canary = _synth('relay-result-canary');
+  final sv_result_receipt_canary = _synth('result-receipt-canary');
     final polled = <String, dynamic>{
       'ok': true,
-      'response': {
-        'command': {'commandId': sv_relay_command_canary, 'status': 'completed'},
-      },
+      'schemaVersion': 2,
+      'pending': false,
+      'resultReceiptId': sv_result_receipt_canary,
+      'bodyRedacted': true,
       'openedResult': {
         'execution': {
           'commandId': sv_payload_command_canary,
@@ -35,7 +38,7 @@ void registerMobileRelayPollScenarios() {
     final completion = resolveSecureRelayPollResult(
       created:  {
         'ok': true,
-        'command': {'commandId': sv_relay_command_canary},
+        'schemaVersion': 2,
         'secureCommandBinding': {
           'payloadCommandId': sv_payload_command_canary,
           'idempotencyKey': sv_idempotency_canary,
@@ -50,12 +53,9 @@ void registerMobileRelayPollScenarios() {
   });
 
   test('secure relay poll rejects a result swapped across commands', () {
-  final sv_idempotency_other = _synth('idempotency-other');
-  final sv_idempotency_expected = _synth('idempotency-expected');
     final completion = resolveSecureRelayPollResult(
       created:  {
         'ok': true,
-        'command': {'commandId': 'relay-command-expected'},
         'secureCommandBinding': {
           'payloadCommandId': 'payload-command-expected',
           'idempotencyKey': sv_idempotency_expected,
@@ -64,12 +64,9 @@ void registerMobileRelayPollScenarios() {
       },
       polled:  {
         'ok': true,
-        'response': {
-          'command': {
-            'commandId': 'relay-command-other',
-            'status': 'completed',
-          },
-        },
+        'pending': false,
+        'resultReceiptId': 'result-receipt-other',
+        'bodyRedacted': true,
         'openedResult': {
           'execution': {
             'commandId': 'payload-command-other',
@@ -96,7 +93,6 @@ void registerMobileRelayPollScenarios() {
     final completion = resolveSecureRelayPollResult(
       created:  {
         'ok': true,
-        'command': {'commandId': sv_relay_command_canary},
         'secureCommandBinding': {
           'payloadCommandId': sv_payload_command_canary,
           'idempotencyKey': sv_idempotency_canary,
@@ -105,9 +101,9 @@ void registerMobileRelayPollScenarios() {
       },
       polled:  {
         'ok': true,
-        'response': {
-          'command': {'commandId': sv_relay_command_canary, 'status': 'failed'},
-        },
+        'pending': false,
+        'resultReceiptId': 'result-receipt-error',
+        'bodyRedacted': true,
         'openedResult': {
           'execution': {
             'commandId': sv_payload_command_canary,
@@ -135,7 +131,6 @@ void registerMobileRelayPollScenarios() {
     final completion = resolveSecureRelayPollResult(
       created:  {
         'ok': true,
-        'command': {'commandId': sv_relay_command_canary},
         'secureCommandBinding': {
           'payloadCommandId': sv_payload_command_canary,
           'idempotencyKey': sv_idempotency_canary,
@@ -144,12 +139,9 @@ void registerMobileRelayPollScenarios() {
       },
       polled:  {
         'ok': true,
-        'response': {
-          'command': {
-            'commandId': sv_relay_command_canary,
-            'status': 'completed',
-          },
-        },
+        'pending': false,
+        'resultReceiptId': 'result-receipt-runtime-error',
+        'bodyRedacted': true,
         'openedResult': {
           'execution': {
             'commandId': sv_payload_command_canary,
@@ -215,7 +207,6 @@ void registerMobileRelayPollScenarios() {
       final completion = resolveSecureRelayPollResult(
         created:  {
           'ok': true,
-          'command': {'commandId': sv_relay_command_canary},
           'secureCommandBinding': {
             'payloadCommandId': sv_payload_command_canary,
             'idempotencyKey': sv_idempotency_canary,
@@ -224,12 +215,9 @@ void registerMobileRelayPollScenarios() {
         },
         polled: {
           'ok': true,
-          'response': {
-            'command': {
-              'commandId': sv_relay_command_canary,
-              'status': 'completed',
-            },
-          },
+          'pending': false,
+          'resultReceiptId': 'result-receipt-malformed',
+          'bodyRedacted': true,
           'openedResult': openedResult,
         },
       );
@@ -240,6 +228,109 @@ void registerMobileRelayPollScenarios() {
       });
     }
   });
+
+  test('secure relay poll rejects a mismatched idempotency binding', () {
+    final completion = resolveSecureRelayPollResult(
+      created:  {
+        'ok': true,
+        'secureCommandBinding': {
+          'payloadCommandId': sv_payload_command_canary,
+          'idempotencyKey': sv_idempotency_expected,
+          'commandKind': 'agent.message.send',
+        },
+      },
+      polled:  {
+        'ok': true,
+        'pending': false,
+        'resultReceiptId': 'result-receipt-idempotency-mismatch',
+        'bodyRedacted': true,
+        'openedResult': {
+          'execution': {
+            'commandId': sv_payload_command_canary,
+            'idempotencyKey': sv_idempotency_other,
+            'outcome': 'result',
+            'output': {
+              'ok': true,
+              'commandKind': 'agent.message.send',
+              'output': {'ok': true},
+            },
+          },
+        },
+      },
+    );
+
+    expect(completion, const {
+      'ok': false,
+      'errorCode': 'secure_relay_command_binding_mismatch',
+    });
+  });
+
+  test('secure relay poll requires the native redaction marker', () {
+    final completion = resolveSecureRelayPollResult(
+      created:  {
+        'ok': true,
+        'secureCommandBinding': {
+          'payloadCommandId': sv_payload_command_canary,
+          'idempotencyKey': sv_idempotency_canary,
+          'commandKind': 'agent.message.send',
+        },
+      },
+      polled:  {
+        'ok': true,
+        'pending': false,
+        'resultReceiptId': 'result-receipt-redaction-missing',
+        'openedResult': {
+          'execution': {
+            'commandId': sv_payload_command_canary,
+            'idempotencyKey': sv_idempotency_canary,
+            'outcome': 'error',
+            'errorCode': 'private_native_detail',
+          },
+        },
+      },
+    );
+
+    expect(completion, const {
+      'ok': false,
+      'errorCode': 'secure_relay_result_invalid',
+    });
+    expect(jsonEncode(completion), isNot(contains('private_native_detail')));
+  });
+
+  test(
+    'secure relay poll keeps only an explicit typed pending result open',
+    () {
+  final sv_idempotency_pending = _synth('idempotency-pending');
+      final created = {
+        'ok': true,
+        'secureCommandBinding': {
+          'payloadCommandId': 'payload-command-pending',
+          'idempotencyKey': sv_idempotency_pending,
+          'commandKind': 'agent.message.send',
+        },
+      };
+
+      expect(
+        resolveSecureRelayPollResult(
+          created: created,
+          polled: const {
+            'ok': true,
+            'pending': true,
+            'openedResult': null,
+            'bodyRedacted': true,
+          },
+        ),
+        isNull,
+      );
+      expect(
+        resolveSecureRelayPollResult(
+          created: created,
+          polled: const {'ok': true, 'openedResult': null},
+        ),
+        const {'ok': false, 'errorCode': 'secure_relay_result_invalid'},
+      );
+    },
+  );
 }
 
 void main() {

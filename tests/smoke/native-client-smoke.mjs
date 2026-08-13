@@ -33,7 +33,7 @@ function runClient(args) {
       "--manifest-path",
       "crates/licoup-native/Cargo.toml",
       "--bin",
-      "licoup",
+      "licoup-cli",
       "--",
       ...args
     ], {
@@ -110,9 +110,9 @@ try {
   portableDir = await fs.mkdtemp(path.join(os.tmpdir(), "lico-native-client-smoke-"));
   assert.equal(optionsValid, true, "native_smoke_option_invalid");
   smokeStage = "usage";
-  const empty = await runClient([]);
-  assert.equal(empty.code, 0);
-  assert.equal(empty.stderr.includes("Usage:"), true, "native_smoke_usage_missing");
+  const help = await runClient(["help"]);
+  assert.equal(help.code, 0);
+  assert.equal(help.stderr.includes("Usage:"), true, "native_smoke_usage_missing");
 
   smokeStage = "state-settings";
   const settings = await runJson(["state", "get", "settings"], "state-settings");

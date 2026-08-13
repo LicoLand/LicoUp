@@ -1,0 +1,58 @@
+{
+  "schemaVersion": "lico.agent-conversation-adapter.v1",
+  "identity": {
+    "agentId": "lico-agent",
+    "driverId": "lico-agent-rpc",
+    "runtimeProtocol": "lico-agent-rpc-stdio-jsonl",
+    "packagingTargetId": "lico-agent"
+  },
+  "officialCapabilityAssessment": {
+    "completedBeforeImplementation": true,
+    "sourceAuthority": "first-party",
+    "interfaceName": "LicoUp-owned Lico Agent RPC stdio interface",
+    "assessedVersion": "lico-agent sibling binary",
+    "versionProbe": "fixed --help probe",
+    "capabilityProbe": "RPC get_state and prompt handshake",
+    "newSessionMethod": "RPC prompt on fresh process",
+    "exactResumeMethod": "parent-owned transcript reinjected by driver",
+    "streamingMethod": "RPC message_update text_delta events",
+    "historyMethod": "parent-owned session store under portable client-state",
+    "cleanupMethod": "terminate supervised process tree",
+    "officialReferences": [
+      "docs/protocols/lico-agent.md"
+    ]
+  },
+  "transport": {
+    "family": "rpc",
+    "origin": "first-party",
+    "promptChannel": "json-rpc",
+    "continuityChannel": "protocol-field",
+    "workingDirectoryChannel": "process-cwd",
+    "framing": "jsonl",
+    "sessionScope": "ephemeral-child",
+    "fixedLaunchArguments": [
+      "--mode",
+      "rpc"
+    ]
+  },
+  "configuration": {
+    "binaryEnvironmentKeys": [
+      "LICO_AGENT_PATH"
+    ],
+    "authentication": "gateway-loopback",
+    "modelSelection": "request-field",
+    "reasoningSelection": "request-field",
+    "permissionSelection": "profile-field"
+  },
+  "operations": {
+    "openNew": true,
+    "exactResume": true,
+    "streaming": true,
+    "cancel": true,
+    "structuredEvents": true,
+    "approvals": false,
+    "multimodal": false,
+    "usageStatus": false,
+    "interruptSteer": true
+  }
+}

@@ -3,6 +3,7 @@
 mod cache;
 mod files;
 mod models;
+mod openclaw;
 mod parser;
 mod watermark;
 
@@ -36,7 +37,7 @@ use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 use watermark::{WatermarkProjection, apply_cumulative_watermarks};
 
-pub(super) const PARSER_REVISION: &str = "native-metadata-first-daily-rollups-v6";
+pub(super) const PARSER_REVISION: &str = "native-metadata-first-daily-rollups-v8";
 const CACHE_REFRESH_INTERVAL_MS: u64 = 60_000;
 const SNAPSHOT_CACHE_REFRESH_INTERVAL_MS: u64 = 10 * 60_000;
 
@@ -52,6 +53,9 @@ pub(super) fn summarize(
     window: &UsageWindow,
     warnings: &mut Vec<Value>,
 ) -> Option<HistoryUsageSummary> {
+    if agent.id == "openclaw" {
+        return Some(openclaw::summarize(window, warnings));
+    }
     match summarize_inner(agent, scan_params, window, warnings) {
         Ok(summary) => Some(summary),
         Err(_) => {
@@ -91,6 +95,7 @@ fn summarize_inner(
         )?
     {
         let mut summary = aggregate_usage(&mut connection, &scope_key, window)?;
+        apply_source(adapter, &mut summary);
         summary.scan_cache = Some(
             ScanStats {
                 cache_fresh: true,
@@ -312,8 +317,15 @@ fn summarize_inner(
         reclaim_space(&connection)?;
     }
     let mut summary = aggregate_usage(&mut connection, &scope_key, window)?;
+    apply_source(adapter, &mut summary);
     summary.scan_cache = Some(stats.to_json());
     Ok(summary)
+}
+
+fn apply_source(adapter: HistoryAdapter, summary: &mut HistoryUsageSummary) {
+    if adapter == HistoryAdapter::Hermes {
+        summary.source = Some("hermes-gateway-usage-database");
+    }
 }
 
 fn source_unchanged(cached: &CachedSource, metadata: &SourceMetadata) -> bool {

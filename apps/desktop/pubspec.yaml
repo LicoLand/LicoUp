@@ -16,7 +16,7 @@ publish_to: 'none'
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 0.0.1-alpha+2
+version: 0.1.0-alpha+1
 
 environment:
   sdk: ^3.11.4
@@ -35,8 +35,8 @@ dependencies:
   cupertino_icons: ^1.0.8
   crypto: ^3.0.6
   desktop_drop: ^0.4.4
+  ffi: ^2.2.0
   file_selector: ^1.0.3
-  google_fonts: ^6.3.2
   http: ^1.3.0
   mime: ^2.0.0
   path: ^1.9.1
@@ -85,22 +85,28 @@ flutter:
   # For details regarding adding assets from package dependencies, see
   # https://flutter.dev/to/asset-from-package
 
-  # To add custom fonts to your application, add a fonts section here,
-  # in this "flutter" section. Each entry in this list should have a
-  # "family" key with the font family name, and a "fonts" key with a
-  # list giving the asset and other descriptors for the font. For
-  # example:
+  # Bundled typefaces. See assets/fonts/README.md before enabling: the font
+  # binaries must be vendored with their OFL license file, and this block must
+  # be uncommented in the same change that sets LicoTypography.sansFamily and
+  # monoFamily. Declaring a family with no asset makes Flutter fall back
+  # silently and inconsistently per platform.
   # fonts:
-  #   - family: Schyler
+  #   - family: Geist Sans
   #     fonts:
-  #       - asset: fonts/Schyler-Regular.ttf
-  #       - asset: fonts/Schyler-Italic.ttf
-  #         style: italic
-  #   - family: Trajan Pro
-  #     fonts:
-  #       - asset: fonts/TrajanPro.ttf
-  #       - asset: fonts/TrajanPro_Bold.ttf
+  #       - asset: assets/fonts/GeistSans-Regular.ttf
+  #         weight: 400
+  #       - asset: assets/fonts/GeistSans-Medium.ttf
+  #         weight: 500
+  #       - asset: assets/fonts/GeistSans-SemiBold.ttf
+  #         weight: 600
+  #       - asset: assets/fonts/GeistSans-Bold.ttf
   #         weight: 700
+  #   - family: Geist Mono
+  #     fonts:
+  #       - asset: assets/fonts/GeistMono-Regular.ttf
+  #         weight: 400
+  #       - asset: assets/fonts/GeistMono-Medium.ttf
+  #         weight: 500
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package

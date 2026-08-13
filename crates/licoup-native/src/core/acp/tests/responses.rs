@@ -11,7 +11,7 @@ fn initialize_response_validates_version_and_capability_types() {
                 "protocolVersion": 1,
                 "agentCapabilities": {
                     "loadSession": true,
-                    "sessionCapabilities": {"resume": {}, "close": {}},
+                    "sessionCapabilities": {"resume": {}, "close": {}, "list": {}},
                     "promptCapabilities": {"image": true},
                     "mcpCapabilities": {"http": true, "sse": false}
                 }
@@ -23,6 +23,7 @@ fn initialize_response_validates_version_and_capability_types() {
     assert!(response.capabilities.load_session);
     assert!(response.capabilities.resume_session);
     assert!(response.capabilities.close_session);
+    assert!(response.capabilities.list_sessions);
     assert!(response.capabilities.image_prompts);
     assert!(response.capabilities.mcp_http);
 
@@ -42,6 +43,64 @@ fn initialize_response_validates_version_and_capability_types() {
         1,
     );
     assert_eq!(malformed.unwrap_err(), AcpError::CapabilityInvalid);
+}
+
+#[test]
+fn session_list_response_validates_metadata_and_cursor() {
+    let response = validate_session_list_response(
+        &json!({
+            "jsonrpc": "2.0",
+            "id": 9,
+            "result": {
+                "sessions": [{
+                    "sessionId": "session-1",
+                    "cwd": "/workspace/project",
+                    "additionalDirectories": [
+                        "/workspace/shared",
+                        "/workspace/generated"
+                    ],
+                    "title": "First task",
+                    "updatedAt": "2026-07-26T00:00:00Z",
+                    "_meta": {"messageCount": 2}
+                }],
+                "nextCursor": "opaque-next"
+            }
+        }),
+        9,
+    )
+    .unwrap();
+    assert_eq!(response.sessions[0].session_id, "session-1");
+    assert_eq!(response.sessions[0].cwd, "/workspace/project");
+    assert_eq!(
+        response.sessions[0].additional_directories,
+        ["/workspace/shared", "/workspace/generated"]
+    );
+    assert_eq!(response.next_cursor.as_deref(), Some("opaque-next"));
+}
+
+#[test]
+fn session_list_response_rejects_invalid_additional_directories() {
+    for additional_directories in [
+        json!(null),
+        json!(["relative/path"]),
+        json!(["/workspace/shared", 7]),
+    ] {
+        let response = validate_session_list_response(
+            &json!({
+                "jsonrpc": "2.0",
+                "id": 9,
+                "result": {
+                    "sessions": [{
+                        "sessionId": "session-1",
+                        "cwd": "/workspace/project",
+                        "additionalDirectories": additional_directories
+                    }]
+                }
+            }),
+            9,
+        );
+        assert_eq!(response.unwrap_err(), AcpError::SessionListResponseInvalid);
+    }
 }
 
 #[test]
@@ -408,6 +467,26 @@ fn session_update_validates_notification_shape_and_session_association() {
     );
 }
 
+#[test]
+fn session_update_kind_exposes_only_lifecycle_evidence_classification() {
+    assert_eq!(
+        AcpSessionUpdateKind::AgentThoughtChunk.processing_evidence_kind(),
+        Some("reasoning")
+    );
+    assert_eq!(
+        AcpSessionUpdateKind::ToolCall.processing_evidence_kind(),
+        Some("tool")
+    );
+    assert_eq!(
+        AcpSessionUpdateKind::Plan.processing_evidence_kind(),
+        Some("plan")
+    );
+    assert_eq!(
+        AcpSessionUpdateKind::AgentMessageChunk.processing_evidence_kind(),
+        None
+    );
+}
+
 fn session_update_notification(update: serde_json::Value) -> serde_json::Value {
     json!({
         "jsonrpc": "2.0",
@@ -720,6 +799,66 @@ fn structured_session_updates_reject_missing_or_malformed_required_fields() {
 
     for payload in malformed_updates {
         let message = session_update_notification(payload);
+        assert_eq!(
+            validate_session_update(&message, Some("session-1")).unwrap_err(),
+            AcpError::SessionUpdateInvalid
+        );
+    }
+}
+
+#[test]
+fn available_commands_update_tolerates_untrimmed_vendor_display_text() {
+    // Real Copilot advertises third-party skill descriptions that are not
+    // whitespace-normalized; display text must not fail the protocol.
+    let message = session_update_notification(json!({
+        "sessionUpdate": "available_commands_update",
+        "availableCommands": [{
+            "name": "ppt-master",
+            "description": " AI-driven presentation workflow. ",
+            "input": {"hint": " deck file "}
+        }]
+    }));
+    let update = validate_session_update(&message, Some("session-1")).unwrap();
+    assert_eq!(update.kind, AcpSessionUpdateKind::AvailableCommandsUpdate);
+
+    for payload in [
+        json!({
+            "sessionUpdate": "available_commands_update",
+            "availableCommands": [{"name": " ", "description": "Review"}]
+        }),
+        json!({
+            "sessionUpdate": "available_commands_update",
+            "availableCommands": [{"name": "review", "description": ""}]
+        }),
+    ] {
+        let message = session_update_notification(payload);
+        assert_eq!(
+            validate_session_update(&message, Some("session-1")).unwrap_err(),
+            AcpError::SessionUpdateInvalid
+        );
+    }
+}
+
+#[test]
+fn select_config_options_tolerate_empty_vendor_unset_values() {
+    // Real Copilot advertises a select whose current value and default entry
+    // value are empty strings for "unset/default".
+    let option = |current: &str, value: &str| {
+        json!({
+            "sessionUpdate": "config_option_update",
+            "configOptions": [{
+                "id": "agent", "name": "Agent", "type": "select",
+                "currentValue": current,
+                "options": [{"value": value, "name": "Default"}]
+            }]
+        })
+    };
+    let message = session_update_notification(option("", ""));
+    let update = validate_session_update(&message, Some("session-1")).unwrap();
+    assert_eq!(update.kind, AcpSessionUpdateKind::ConfigOptionUpdate);
+
+    for bad in [option(" ", ""), option("", " ")] {
+        let message = session_update_notification(bad);
         assert_eq!(
             validate_session_update(&message, Some("session-1")).unwrap_err(),
             AcpError::SessionUpdateInvalid

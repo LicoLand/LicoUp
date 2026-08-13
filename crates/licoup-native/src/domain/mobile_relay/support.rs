@@ -16,14 +16,12 @@ pub(super) use time::{Duration, OffsetDateTime, format_description::well_known::
 pub(super) use uuid::Uuid;
 
 pub(super) use super::config::{
-    effective_gateway_url, normalize_gateway_fields, validated_gateway,
+    effective_station_base_url, normalize_station_fields, validated_station_base_url,
 };
 pub(super) use super::secret_custody::{
     CONFIG_SCHEMA_VERSION, RuntimeSecretContext, ensure_secure_mesh_protected_operation_allowed,
-    is_unredacted_secret, load_config_with_runtime_secret_context,
-    load_config_with_runtime_secret_overrides, load_config_without_persistence,
-    public_secret_storage_backend, save_config, save_config_with_runtime_secret_context,
-    secret_present,
+    load_config_for_read, load_config_with_runtime_secret_context, load_config_without_persistence,
+    public_secret_storage_backend, save_config_with_runtime_secret_context, secret_present,
 };
 #[cfg(test)]
 pub(super) use super::secret_custody::{
@@ -73,7 +71,6 @@ pub(super) use crate::platform::secure_mesh_secret_store::{
 
 pub(super) type MobileRelayClaimMac = Hmac<Sha256>;
 
-pub(super) const SECURE_MESH_PROTOCOL_VERSION: &str = "licomesh.secure-mesh.v1";
 pub(super) const MOBILE_RELAY_E2EE_PROTOCOL_VERSION: &str =
     "licomesh.mobile-relay.e2ee.pqxdh-mlkem1024.v1";
 pub(super) const SECURE_MESH_ENVELOPE_COMMAND: &str = "secure_mesh.envelope";
@@ -82,12 +79,6 @@ pub(super) const MOBILE_RELAY_RESULT_TTL_SECONDS: i64 = 10 * 60;
 pub(super) const MOBILE_RELAY_KEY_BYTES: usize = 32;
 pub(super) const MOBILE_RELAY_PREKEY_VALIDITY_DAYS: i64 = 30;
 pub(super) const MOBILE_RELAY_TRUST_RECORD_VALIDITY_DAYS: i64 = 90;
-#[allow(dead_code)]
-pub(super) const MOBILE_RELAY_ENVELOPE_CLOCK_SKEW_SECONDS: i64 = 5 * 60;
-#[allow(dead_code)]
-pub(super) const MOBILE_RELAY_MAX_ENVELOPE_TEXT_BYTES: usize = 4096;
-#[allow(dead_code)]
-pub(super) const MOBILE_RELAY_MAX_ENCRYPTED_HEADER_BYTES: usize = 512;
 pub(super) const SECURE_MESH_ENDPOINT_CRYPTO_RUNTIME_FAILED_CODE: &str =
     "secure_mesh_endpoint_crypto_runtime_failed";
 pub(super) const SECURE_MESH_ENDPOINT_CRYPTO_RUNTIME_FAILED_DETAIL: &str =

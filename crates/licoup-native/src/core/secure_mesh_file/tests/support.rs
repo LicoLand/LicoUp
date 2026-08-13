@@ -387,7 +387,7 @@ pub(super) fn encrypted_pairwise_file_fixture(
 pub(super) fn pairwise_file_key_envelope(
     session: &mut SecureMeshPairwiseSession,
     fixture: &EncryptedPairwiseFileFixture,
-) -> crate::core::secure_mesh_relay_envelope::SecureMeshRelayEnvelope {
+) -> crate::core::licoarc_relay::LicoArcRelayEnvelope {
     let root_key = FileRootKey::from_bytes(fixture.root_key_bytes);
     let wrap_secret = FileKeyWrapSecret::from_bytes(fixture.wrap_secret_bytes);
     let file_key_envelope =

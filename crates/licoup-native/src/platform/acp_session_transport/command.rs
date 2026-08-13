@@ -1,4 +1,6 @@
 use super::super::process_supervisor::SupervisedChild;
+use super::super::virtual_machine::SshRuntimeConnection;
+use super::super::virtual_machine::is_absolute_acp_working_directory;
 use super::capabilities::AcpSessionDriverSpec;
 use super::errors::ProtocolFailure;
 use serde_json::Value;
@@ -53,7 +55,7 @@ impl ProtocolConfig {
             ));
         }
         let cwd = cwd
-            .filter(|path| path.is_absolute())
+            .filter(|path| is_absolute_acp_working_directory(path))
             .map(|path| path.to_string_lossy().to_string())
             .ok_or_else(|| {
                 ProtocolFailure::new(
@@ -97,6 +99,7 @@ pub(in crate::platform) struct LaunchSpec {
     pub(in crate::platform) executable: String,
     pub(in crate::platform) driver: AcpSessionDriverSpec,
     pub(in crate::platform) cwd: PathBuf,
+    pub(in crate::platform) runtime_connection: Option<SshRuntimeConnection>,
 }
 
 impl LaunchSpec {
@@ -109,14 +112,30 @@ impl LaunchSpec {
             executable: executable.to_string(),
             driver,
             cwd: cwd.to_path_buf(),
+            runtime_connection: None,
         }
     }
 
+    pub(in crate::platform) fn with_runtime_connection(
+        mut self,
+        runtime_connection: Option<SshRuntimeConnection>,
+    ) -> Self {
+        self.runtime_connection = runtime_connection;
+        self
+    }
+
     pub(in crate::platform) fn spawn(&self) -> io::Result<SupervisedChild> {
-        let mut command = Command::new(&self.executable);
+        let mut command = match &self.runtime_connection {
+            Some(connection) => connection
+                .launch_acp_command(self.driver.runtime_id)
+                .map_err(io::Error::other)?,
+            None => {
+                let mut command = Command::new(&self.executable);
+                command.args(self.driver.launch_args).current_dir(&self.cwd);
+                command
+            }
+        };
         command
-            .args(self.driver.launch_args)
-            .current_dir(&self.cwd)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());

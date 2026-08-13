@@ -7,7 +7,7 @@ void main() {
   const root = 'lib/src/contracts/mobile_relay';
   const libraryNames = <String>[
     'mobile_relay_models.dart',
-    'mobile_relay_gateway.dart',
+    'mobile_relay_station.dart',
     'mobile_relay_paired_device.dart',
     'mobile_relay_trust_presentation.dart',
     'mobile_relay_config.dart',
@@ -77,11 +77,11 @@ void main() {
     });
     final trust = MobileRelayTrustPresentation.fromJson({'verified': false});
 
-    expect(config.defaultGatewayUrl, isEmpty);
+    expect(config.stationBaseUrl, isEmpty);
     expect(command.commandId, 'command-1');
     expect(trust.blocksProtectedSend, isTrue);
     expect(
-      canonicalMobileRelayGatewayOrigin('https://EXAMPLE.test:443/'),
+      canonicalMobileRelayStationOrigin('https://EXAMPLE.test:443/'),
       'https://example.test',
     );
   });

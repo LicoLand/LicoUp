@@ -10,7 +10,7 @@ fn fake_child_completes_rpc_with_bounded_stderr_and_native_session() {
         "",
         Some(directory.as_path()),
         10_000,
-        1024 * 1024,
+        Some(1024 * 1024),
         1024,
     );
     assert!(result.ok, "pi rpc failure: {:?}", result.error);
@@ -36,7 +36,7 @@ fn fake_child_emits_incremental_text_with_bound_session_identity() {
         "",
         Some(directory.as_path()),
         10_000,
-        1024 * 1024,
+        Some(1024 * 1024),
         1024,
     );
     assert!(result.ok, "pi rpc failure: {:?}", result.error);
@@ -80,7 +80,7 @@ fn fake_child_acknowledges_native_guidance_during_the_active_turn() {
             "",
             Some(working_directory.as_path()),
             10_000,
-            1024 * 1024,
+            Some(1024 * 1024),
             1024,
         )
     });
@@ -110,7 +110,7 @@ fn stalled_rpc_turn_times_out_and_cleans_up_the_child_tree() {
         "",
         Some(directory.as_path()),
         50,
-        1024 * 1024,
+        Some(1024 * 1024),
         1024,
     );
     assert!(!result.ok);

@@ -22,6 +22,45 @@ abstract final class ConversationRuntimeResultPolicy {
     });
   }
 
+  /// Driver failures carry their own precise wire code in the execution
+  /// envelope. Those codes are not part of the schema-bound [ClientErrorCode]
+  /// enum, so [ClientError.code] degrades to `unknown` for them; the raw code
+  /// must stay available or the send failure would surface as an empty code.
+  static String rawFailureCode(Map<String, dynamic> result) {
+    final nested = result['error'];
+    final raw = nested is Map ? nested['code'] : result['code'];
+    return (raw ?? '').toString().trim();
+  }
+
+  /// User-facing failure code: the schema-bound wire name when known, else
+  /// the driver-reported raw code, so a failed send never surfaces silently.
+  static String surfacedFailureCode(Map<String, dynamic> result) {
+    final wireName = clientError(result).code.wireName;
+    return wireName.isNotEmpty ? wireName : rawFailureCode(result);
+  }
+
+  /// Quota, credit, rate-limit, or provider-capacity failures that may walk the
+  /// Daily Conversation priority list. Matches Subagent MCP markers on both
+  /// raw `error.code` and `error.message` (drivers often keep a generic code).
+  static bool isQuotaOrCapacityFailure(Map<String, dynamic> result) {
+    final nested = result['error'];
+    final code = rawFailureCode(result).toLowerCase();
+    final message = nested is Map
+        ? (nested['message'] ?? '').toString().trim().toLowerCase()
+        : '';
+    const markers = <String>[
+      'quota',
+      'credit',
+      'rate_limit',
+      'rate-limit',
+      'capacity',
+      'exhaust',
+    ];
+    return markers.any(
+      (marker) => code.contains(marker) || message.contains(marker),
+    );
+  }
+
   static bool outcomeMayBeUnknown(ClientError error) {
     return error.retryable &&
         (error.stage == ClientErrorStage.conversationDispatch ||
@@ -32,6 +71,10 @@ abstract final class ConversationRuntimeResultPolicy {
     if (error.isUnknown) return true;
     return switch (error.recovery) {
       ClientErrorRecovery.correctRequest ||
+      ClientErrorRecovery.useCliHelp ||
+      ClientErrorRecovery.correctCommandArguments ||
+      ClientErrorRecovery.provideValidJson ||
+      ClientErrorRecovery.reduceCommandArguments ||
       ClientErrorRecovery.selectSupportedAdapter ||
       ClientErrorRecovery.installOrRetryRuntime ||
       ClientErrorRecovery.preserveDraftAndRetry => true,

@@ -140,6 +140,11 @@ final class SemanticDestinationCatalog {
       },
     ),
     SemanticDestinationDescriptor(
+      destination: ClientSection.models,
+      labelKey: 'destination.models',
+      surfaces: const {LayoutRuntimeSurface.desktop},
+    ),
+    SemanticDestinationDescriptor(
       destination: ClientSection.settings,
       labelKey: 'destination.settings',
       surfaces: const {

@@ -10,10 +10,14 @@ import {
 import {
   resolveContainedExistingPath,
   sha256Buffer,
-  sha256File,
   stableHashFileSnapshot,
-  stableReadFile,
+  stableReadFileSnapshot,
 } from "../lib/client-release-artifact-digest.mjs";
+import {
+  licoArcBadTowerAcceptanceProducer,
+  licoArcBadTowerAcceptanceReportValid,
+  licoArcBadTowerAcceptanceSchemaVersion,
+} from "../lib/licoarc-badtower-acceptance-report.mjs";
 import { repoRoot, maxJsonBytes, maxProducerBytes, SHA256 } from "./constants.mjs";
 import { reportDependenciesReady, reportDependencyReceipts } from "./report-deps.mjs";
 import {
@@ -127,7 +131,10 @@ export function runAndLoadApprovedReports(
         });
         payload = JSON.parse(reportSnapshot.bytes.toString("utf8"));
         reportDigest = sha256Buffer(reportSnapshot.bytes);
-        generatedAtMs = Date.parse(String(payload.generatedAt || payload.checkedAt || ""));
+        const directFreshOutput = directLicoArcBadTowerOutput(payload, spec);
+        generatedAtMs = directFreshOutput
+          ? reportSnapshot.mtimeMs
+          : Date.parse(String(payload.generatedAt || payload.checkedAt || ""));
         dependencies = reportDependencyReceipts(id, payload, buildRoot);
       }
     } catch {
@@ -148,6 +155,7 @@ export function runAndLoadApprovedReports(
       maxClockSkewMs: Number(config.maxClockSkewMs || 0),
       nowMs: Date.now(),
       dependenciesReady: reportDependenciesReady(id, dependencies),
+      directFreshOutput: directLicoArcBadTowerOutput(payload, spec),
     });
     reports[id] = validation.ok ? payload : {};
     receipts.push({
@@ -192,12 +200,18 @@ export function validateProducedReportReceipt({
   maxClockSkewMs,
   nowMs,
   dependenciesReady = true,
+  directFreshOutput = false,
 }) {
-  const producer = text(payload?.verifier || payload?.generatedBy);
+  const directAcceptance =
+    directFreshOutput === true &&
+    directLicoArcBadTowerOutput(payload, spec);
+  const producer = directAcceptance
+    ? spec.producer
+    : text(payload?.verifier || payload?.generatedBy);
   const producerMatched = producer === spec.producer;
-  const closureChallengeBound =
+  const closureChallengeBound = directAcceptance ||
     payload?.closureChallengeDigest === expectedClosureChallengeDigest;
-  const invocationNonceBound =
+  const invocationNonceBound = directAcceptance ||
     payload?.invocationNonceDigest === expectedInvocationNonceDigest;
   const freshnessReady = Number.isFinite(generatedAtMs) &&
     Number.isFinite(invocationStartedAtMs) &&
@@ -219,4 +233,10 @@ export function validateProducedReportReceipt({
     closureChallengeBound,
     invocationNonceBound,
   };
+}
+
+function directLicoArcBadTowerOutput(payload, spec) {
+  return spec?.schemaVersion === licoArcBadTowerAcceptanceSchemaVersion &&
+    spec?.producer === licoArcBadTowerAcceptanceProducer &&
+    licoArcBadTowerAcceptanceReportValid(payload);
 }

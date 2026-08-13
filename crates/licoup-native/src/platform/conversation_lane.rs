@@ -4,7 +4,6 @@
 //! executor registry. Protocol families stay selected by `RuntimeAdapter`.
 
 use anyhow::{Result, anyhow};
-use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::sync::LazyLock;
@@ -12,320 +11,328 @@ use std::sync::LazyLock;
 use super::runtime_adapters::{self, RuntimeAdapter, RuntimeAdapterError};
 
 // lico-governed-orchestration:start
-use super::runtime_adapters::protocol_selector::{
-    CapabilitySnapshot, PinnedProtocol, ProtocolKind, ProtocolPolicy, SelectionError,
-    TargetProtocolRequest, select_pinned_protocol, valid_opaque_evidence, valid_pin,
-};
+#[cfg(test)]
+mod governed {
+    use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub struct GovernedConversationRequest {
-    pub pin: PinnedProtocol,
-    pub input_artifact_handle: String,
-    pub input_digest: String,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct GovernedCoordinatorRequest {
-    pub target: TargetProtocolRequest,
-    pub input_artifact_handle: String,
-    pub input_digest: String,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct DispatchBounds {
-    pub max_events: usize,
-}
-
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub struct SemanticEvent {
-    pub sequence: u64,
-    pub kind: SemanticEventKind,
-}
-
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(tag = "kind", rename_all = "snake_case")]
-pub enum SemanticEventKind {
-    Started,
-    Progress {
-        artifact_handle: String,
-        digest: String,
-    },
-    Completed {
-        artifact_handle: String,
-        digest: String,
-    },
-    Failed {
-        artifact_handle: String,
-        digest: String,
-    },
-    Cancelled,
-}
-
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum DispatchDisposition {
-    Completed,
-    Failed,
-    Cancelled,
-    Unknown,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct AdapterDispatchOutcome {
-    pub session_binding: String,
-    pub events: Vec<SemanticEvent>,
-    pub disposition: DispatchDisposition,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct GovernedDispatchOutcome {
-    pub pin: PinnedProtocol,
-    pub events: Vec<SemanticEvent>,
-    pub disposition: DispatchDisposition,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum AdapterOperationError {
-    NoAvailableProtocol,
-    PinnedBindingMismatch,
-    UnknownOutcome,
-    InvalidSemanticEvents,
-    EventLimitExceeded,
-    SensitiveEvidenceRejected,
-    AdapterFailure,
-}
-
-pub trait GovernedConversationAdapter {
-    fn adapter_id(&self) -> &str;
-    fn protocol(&self) -> ProtocolKind;
-    fn driver_id(&self) -> &str;
-    fn executable_binding(&self) -> &str;
-    fn capability_revision(&self) -> &str;
-    fn session_binding(&self) -> &str;
-    fn dispatch(
-        &mut self,
-        request: &GovernedConversationRequest,
-    ) -> std::result::Result<AdapterDispatchOutcome, AdapterOperationError>;
-    fn cancel(&mut self) -> std::result::Result<(), AdapterOperationError>;
-    fn cleanup(&mut self) -> std::result::Result<(), AdapterOperationError>;
-}
-
-pub struct ResumeCapabilityContext<'a> {
-    pub pinned_snapshot: &'a CapabilitySnapshot,
-    pub current_snapshot: &'a CapabilitySnapshot,
-    pub current_policy: &'a ProtocolPolicy,
-}
-
-pub fn dispatch_pinned_attempt(
-    request: &GovernedConversationRequest,
-    adapter: &mut dyn GovernedConversationAdapter,
-    bounds: DispatchBounds,
-) -> std::result::Result<GovernedDispatchOutcome, AdapterOperationError> {
-    validate_request(request)?;
-    validate_adapter_binding(&request.pin, adapter)?;
-    let outcome = adapter.dispatch(request)?;
-    if !valid_opaque_evidence(&outcome.session_binding) {
-        return Err(AdapterOperationError::SensitiveEvidenceRejected);
-    }
-    if outcome.session_binding != request.pin.session_binding {
-        return Err(AdapterOperationError::PinnedBindingMismatch);
-    }
-    validate_semantic_events(&outcome.events, outcome.disposition, bounds)?;
-    Ok(GovernedDispatchOutcome {
-        pin: request.pin.clone(),
-        events: outcome.events,
-        disposition: outcome.disposition,
-    })
-}
-
-pub fn resume_pinned_attempt(
-    request: &GovernedConversationRequest,
-    context: &ResumeCapabilityContext<'_>,
-    adapter: &mut dyn GovernedConversationAdapter,
-    bounds: DispatchBounds,
-) -> std::result::Result<GovernedDispatchOutcome, AdapterOperationError> {
-    // Current evidence and policy are intentionally observed but cannot
-    // rewrite a durable attempt binding. Only its original content-bound
-    // snapshot can authorize resume.
-    let _current_context = (context.current_snapshot.revision(), context.current_policy);
-    if !context.pinned_snapshot.contains_pin(&request.pin) {
-        return Err(AdapterOperationError::PinnedBindingMismatch);
-    }
-    dispatch_pinned_attempt(request, adapter, bounds)
-}
-
-pub fn cancel_pinned_attempt(
-    pin: &PinnedProtocol,
-    adapter: &mut dyn GovernedConversationAdapter,
-) -> std::result::Result<(), AdapterOperationError> {
-    validate_adapter_binding(pin, adapter)?;
-    adapter.cancel()
-}
-
-pub fn cleanup_pinned_attempt(
-    pin: &PinnedProtocol,
-    adapter: &mut dyn GovernedConversationAdapter,
-) -> std::result::Result<(), AdapterOperationError> {
-    validate_adapter_binding(pin, adapter)?;
-    adapter.cleanup()
-}
-
-pub fn coordinate_governed_attempt(
-    request: &GovernedCoordinatorRequest,
-    capabilities: &CapabilitySnapshot,
-    policy: &ProtocolPolicy,
-    adapters: &mut [&mut dyn GovernedConversationAdapter],
-    bounds: DispatchBounds,
-) -> std::result::Result<GovernedDispatchOutcome, AdapterOperationError> {
-    if !valid_opaque_evidence(&request.input_artifact_handle)
-        || !valid_opaque_evidence(&request.input_digest)
-    {
-        return Err(AdapterOperationError::SensitiveEvidenceRejected);
-    }
-    let pin =
-        select_pinned_protocol(&request.target, capabilities, policy).map_err(
-            |error| match error {
-                SelectionError::NoAvailableProtocol => AdapterOperationError::NoAvailableProtocol,
-                SelectionError::InvalidOpaqueBinding => {
-                    AdapterOperationError::SensitiveEvidenceRejected
-                }
-            },
-        )?;
-    let selected = adapters
-        .iter_mut()
-        .find(|adapter| adapter_matches(&pin, &***adapter))
-        .ok_or(AdapterOperationError::PinnedBindingMismatch)?;
-    let dispatch_request = GovernedConversationRequest {
-        pin: pin.clone(),
-        input_artifact_handle: request.input_artifact_handle.clone(),
-        input_digest: request.input_digest.clone(),
+    use super::runtime_adapters::protocol_selector::{
+        CapabilitySnapshot, PinnedProtocol, ProtocolKind, ProtocolPolicy, SelectionError,
+        TargetProtocolRequest, select_pinned_protocol, valid_opaque_evidence, valid_pin,
     };
-    match dispatch_pinned_attempt(&dispatch_request, &mut **selected, bounds) {
-        Err(AdapterOperationError::UnknownOutcome) => Ok(GovernedDispatchOutcome {
-            pin,
-            events: Vec::new(),
-            disposition: DispatchDisposition::Unknown,
-        }),
-        result => result,
-    }
-}
 
-fn validate_request(
-    request: &GovernedConversationRequest,
-) -> std::result::Result<(), AdapterOperationError> {
-    // A pin is immutable dispatch authority. Any malformed field or failed
-    // content binding therefore means the caller no longer holds the exact
-    // pinned authority, rather than that its task payload leaked evidence.
-    if !valid_pin(&request.pin) {
-        return Err(AdapterOperationError::PinnedBindingMismatch);
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct GovernedConversationRequest {
+        pub pin: PinnedProtocol,
+        pub input_artifact_handle: String,
+        pub input_digest: String,
     }
-    if !valid_opaque_evidence(&request.input_artifact_handle)
-        || !valid_opaque_evidence(&request.input_digest)
-    {
-        return Err(AdapterOperationError::SensitiveEvidenceRejected);
-    }
-    Ok(())
-}
 
-fn validate_adapter_binding(
-    pin: &PinnedProtocol,
-    adapter: &dyn GovernedConversationAdapter,
-) -> std::result::Result<(), AdapterOperationError> {
-    if valid_pin(pin) && adapter_matches(pin, adapter) {
+    #[derive(Clone, Debug, Eq, PartialEq)]
+    pub struct GovernedCoordinatorRequest {
+        pub target: TargetProtocolRequest,
+        pub input_artifact_handle: String,
+        pub input_digest: String,
+    }
+
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+    pub struct DispatchBounds {
+        pub max_events: usize,
+    }
+
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    pub struct SemanticEvent {
+        pub sequence: u64,
+        pub kind: SemanticEventKind,
+    }
+
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    #[serde(tag = "kind", rename_all = "snake_case")]
+    pub enum SemanticEventKind {
+        Started,
+        Progress {
+            artifact_handle: String,
+            digest: String,
+        },
+        Completed {
+            artifact_handle: String,
+            digest: String,
+        },
+        Failed {
+            artifact_handle: String,
+            digest: String,
+        },
+        Cancelled,
+    }
+
+    #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+    #[serde(rename_all = "snake_case")]
+    pub enum DispatchDisposition {
+        Completed,
+        Failed,
+        Cancelled,
+        Unknown,
+    }
+
+    #[derive(Clone, Debug, Eq, PartialEq)]
+    pub struct AdapterDispatchOutcome {
+        pub session_binding: String,
+        pub events: Vec<SemanticEvent>,
+        pub disposition: DispatchDisposition,
+    }
+
+    #[derive(Clone, Debug, Eq, PartialEq)]
+    pub struct GovernedDispatchOutcome {
+        pub pin: PinnedProtocol,
+        pub events: Vec<SemanticEvent>,
+        pub disposition: DispatchDisposition,
+    }
+
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+    pub enum AdapterOperationError {
+        NoAvailableProtocol,
+        PinnedBindingMismatch,
+        UnknownOutcome,
+        InvalidSemanticEvents,
+        EventLimitExceeded,
+        SensitiveEvidenceRejected,
+    }
+
+    pub trait GovernedConversationAdapter {
+        fn adapter_id(&self) -> &str;
+        fn protocol(&self) -> ProtocolKind;
+        fn driver_id(&self) -> &str;
+        fn executable_binding(&self) -> &str;
+        fn capability_revision(&self) -> &str;
+        fn session_binding(&self) -> &str;
+        fn dispatch(
+            &mut self,
+            request: &GovernedConversationRequest,
+        ) -> std::result::Result<AdapterDispatchOutcome, AdapterOperationError>;
+        fn cancel(&mut self) -> std::result::Result<(), AdapterOperationError>;
+        fn cleanup(&mut self) -> std::result::Result<(), AdapterOperationError>;
+    }
+
+    pub struct ResumeCapabilityContext<'a> {
+        pub pinned_snapshot: &'a CapabilitySnapshot,
+        pub current_snapshot: &'a CapabilitySnapshot,
+        pub current_policy: &'a ProtocolPolicy,
+    }
+
+    pub fn dispatch_pinned_attempt(
+        request: &GovernedConversationRequest,
+        adapter: &mut dyn GovernedConversationAdapter,
+        bounds: DispatchBounds,
+    ) -> std::result::Result<GovernedDispatchOutcome, AdapterOperationError> {
+        validate_request(request)?;
+        validate_adapter_binding(&request.pin, adapter)?;
+        let outcome = adapter.dispatch(request)?;
+        if !valid_opaque_evidence(&outcome.session_binding) {
+            return Err(AdapterOperationError::SensitiveEvidenceRejected);
+        }
+        if outcome.session_binding != request.pin.session_binding {
+            return Err(AdapterOperationError::PinnedBindingMismatch);
+        }
+        validate_semantic_events(&outcome.events, outcome.disposition, bounds)?;
+        Ok(GovernedDispatchOutcome {
+            pin: request.pin.clone(),
+            events: outcome.events,
+            disposition: outcome.disposition,
+        })
+    }
+
+    pub fn resume_pinned_attempt(
+        request: &GovernedConversationRequest,
+        context: &ResumeCapabilityContext<'_>,
+        adapter: &mut dyn GovernedConversationAdapter,
+        bounds: DispatchBounds,
+    ) -> std::result::Result<GovernedDispatchOutcome, AdapterOperationError> {
+        // Current evidence and policy are intentionally observed but cannot
+        // rewrite a durable attempt binding. Only its original content-bound
+        // snapshot can authorize resume.
+        let _current_context = (context.current_snapshot.revision(), context.current_policy);
+        if !context.pinned_snapshot.contains_pin(&request.pin) {
+            return Err(AdapterOperationError::PinnedBindingMismatch);
+        }
+        dispatch_pinned_attempt(request, adapter, bounds)
+    }
+
+    pub fn cancel_pinned_attempt(
+        pin: &PinnedProtocol,
+        adapter: &mut dyn GovernedConversationAdapter,
+    ) -> std::result::Result<(), AdapterOperationError> {
+        validate_adapter_binding(pin, adapter)?;
+        adapter.cancel()
+    }
+
+    pub fn cleanup_pinned_attempt(
+        pin: &PinnedProtocol,
+        adapter: &mut dyn GovernedConversationAdapter,
+    ) -> std::result::Result<(), AdapterOperationError> {
+        validate_adapter_binding(pin, adapter)?;
+        adapter.cleanup()
+    }
+
+    pub fn coordinate_governed_attempt(
+        request: &GovernedCoordinatorRequest,
+        capabilities: &CapabilitySnapshot,
+        policy: &ProtocolPolicy,
+        adapters: &mut [&mut dyn GovernedConversationAdapter],
+        bounds: DispatchBounds,
+    ) -> std::result::Result<GovernedDispatchOutcome, AdapterOperationError> {
+        if !valid_opaque_evidence(&request.input_artifact_handle)
+            || !valid_opaque_evidence(&request.input_digest)
+        {
+            return Err(AdapterOperationError::SensitiveEvidenceRejected);
+        }
+        let pin =
+            select_pinned_protocol(&request.target, capabilities, policy).map_err(|error| {
+                match error {
+                    SelectionError::NoAvailableProtocol => {
+                        AdapterOperationError::NoAvailableProtocol
+                    }
+                    SelectionError::InvalidOpaqueBinding => {
+                        AdapterOperationError::SensitiveEvidenceRejected
+                    }
+                }
+            })?;
+        let selected = adapters
+            .iter_mut()
+            .find(|adapter| adapter_matches(&pin, &***adapter))
+            .ok_or(AdapterOperationError::PinnedBindingMismatch)?;
+        let dispatch_request = GovernedConversationRequest {
+            pin: pin.clone(),
+            input_artifact_handle: request.input_artifact_handle.clone(),
+            input_digest: request.input_digest.clone(),
+        };
+        match dispatch_pinned_attempt(&dispatch_request, &mut **selected, bounds) {
+            Err(AdapterOperationError::UnknownOutcome) => Ok(GovernedDispatchOutcome {
+                pin,
+                events: Vec::new(),
+                disposition: DispatchDisposition::Unknown,
+            }),
+            result => result,
+        }
+    }
+
+    fn validate_request(
+        request: &GovernedConversationRequest,
+    ) -> std::result::Result<(), AdapterOperationError> {
+        // A pin is immutable dispatch authority. Any malformed field or failed
+        // content binding therefore means the caller no longer holds the exact
+        // pinned authority, rather than that its task payload leaked evidence.
+        if !valid_pin(&request.pin) {
+            return Err(AdapterOperationError::PinnedBindingMismatch);
+        }
+        if !valid_opaque_evidence(&request.input_artifact_handle)
+            || !valid_opaque_evidence(&request.input_digest)
+        {
+            return Err(AdapterOperationError::SensitiveEvidenceRejected);
+        }
         Ok(())
-    } else {
-        Err(AdapterOperationError::PinnedBindingMismatch)
     }
-}
 
-fn adapter_matches(pin: &PinnedProtocol, adapter: &dyn GovernedConversationAdapter) -> bool {
-    adapter.adapter_id() == pin.adapter_id
-        && adapter.protocol() == pin.protocol
-        && adapter.driver_id() == pin.driver_id
-        && adapter.executable_binding() == pin.executable_binding
-        && adapter.capability_revision() == pin.capability_revision
-        && adapter.session_binding() == pin.session_binding
-}
-
-fn validate_semantic_events(
-    events: &[SemanticEvent],
-    disposition: DispatchDisposition,
-    bounds: DispatchBounds,
-) -> std::result::Result<(), AdapterOperationError> {
-    if bounds.max_events == 0 || events.len() > bounds.max_events {
-        return Err(AdapterOperationError::EventLimitExceeded);
-    }
-    if disposition == DispatchDisposition::Unknown {
-        return if events.is_empty() {
+    fn validate_adapter_binding(
+        pin: &PinnedProtocol,
+        adapter: &dyn GovernedConversationAdapter,
+    ) -> std::result::Result<(), AdapterOperationError> {
+        if valid_pin(pin) && adapter_matches(pin, adapter) {
             Ok(())
         } else {
-            Err(AdapterOperationError::InvalidSemanticEvents)
-        };
+            Err(AdapterOperationError::PinnedBindingMismatch)
+        }
     }
-    if events.is_empty()
-        || events
-            .iter()
-            .enumerate()
-            .any(|(index, event)| event.sequence != index as u64 + 1)
-    {
-        return Err(AdapterOperationError::InvalidSemanticEvents);
+
+    fn adapter_matches(pin: &PinnedProtocol, adapter: &dyn GovernedConversationAdapter) -> bool {
+        adapter.adapter_id() == pin.adapter_id
+            && adapter.protocol() == pin.protocol
+            && adapter.driver_id() == pin.driver_id
+            && adapter.executable_binding() == pin.executable_binding
+            && adapter.capability_revision() == pin.capability_revision
+            && adapter.session_binding() == pin.session_binding
     }
-    let mut terminal = None;
-    for (index, event) in events.iter().enumerate() {
-        match &event.kind {
-            SemanticEventKind::Started => {}
-            SemanticEventKind::Progress {
-                artifact_handle,
-                digest,
-            }
-            | SemanticEventKind::Completed {
-                artifact_handle,
-                digest,
-            }
-            | SemanticEventKind::Failed {
-                artifact_handle,
-                digest,
-            } => {
-                if !valid_opaque_evidence(artifact_handle) || !valid_opaque_evidence(digest) {
-                    return Err(AdapterOperationError::SensitiveEvidenceRejected);
+
+    fn validate_semantic_events(
+        events: &[SemanticEvent],
+        disposition: DispatchDisposition,
+        bounds: DispatchBounds,
+    ) -> std::result::Result<(), AdapterOperationError> {
+        if bounds.max_events == 0 || events.len() > bounds.max_events {
+            return Err(AdapterOperationError::EventLimitExceeded);
+        }
+        if disposition == DispatchDisposition::Unknown {
+            return if events.is_empty() {
+                Ok(())
+            } else {
+                Err(AdapterOperationError::InvalidSemanticEvents)
+            };
+        }
+        if events.is_empty()
+            || events
+                .iter()
+                .enumerate()
+                .any(|(index, event)| event.sequence != index as u64 + 1)
+        {
+            return Err(AdapterOperationError::InvalidSemanticEvents);
+        }
+        let mut terminal = None;
+        for (index, event) in events.iter().enumerate() {
+            match &event.kind {
+                SemanticEventKind::Started => {}
+                SemanticEventKind::Progress {
+                    artifact_handle,
+                    digest,
                 }
-                if matches!(
-                    event.kind,
-                    SemanticEventKind::Completed { .. } | SemanticEventKind::Failed { .. }
-                ) {
+                | SemanticEventKind::Completed {
+                    artifact_handle,
+                    digest,
+                }
+                | SemanticEventKind::Failed {
+                    artifact_handle,
+                    digest,
+                } => {
+                    if !valid_opaque_evidence(artifact_handle) || !valid_opaque_evidence(digest) {
+                        return Err(AdapterOperationError::SensitiveEvidenceRejected);
+                    }
+                    if matches!(
+                        event.kind,
+                        SemanticEventKind::Completed { .. } | SemanticEventKind::Failed { .. }
+                    ) {
+                        if terminal.replace(index).is_some() {
+                            return Err(AdapterOperationError::InvalidSemanticEvents);
+                        }
+                    }
+                }
+                SemanticEventKind::Cancelled => {
                     if terminal.replace(index).is_some() {
                         return Err(AdapterOperationError::InvalidSemanticEvents);
                     }
                 }
             }
-            SemanticEventKind::Cancelled => {
-                if terminal.replace(index).is_some() {
-                    return Err(AdapterOperationError::InvalidSemanticEvents);
-                }
-            }
         }
+        let Some(terminal_index) = terminal else {
+            return Err(AdapterOperationError::InvalidSemanticEvents);
+        };
+        if terminal_index + 1 != events.len() {
+            return Err(AdapterOperationError::InvalidSemanticEvents);
+        }
+        let disposition_matches = matches!(
+            (&events[terminal_index].kind, disposition),
+            (
+                SemanticEventKind::Completed { .. },
+                DispatchDisposition::Completed
+            ) | (
+                SemanticEventKind::Failed { .. },
+                DispatchDisposition::Failed
+            ) | (SemanticEventKind::Cancelled, DispatchDisposition::Cancelled)
+        );
+        if !disposition_matches {
+            return Err(AdapterOperationError::InvalidSemanticEvents);
+        }
+        Ok(())
     }
-    let Some(terminal_index) = terminal else {
-        return Err(AdapterOperationError::InvalidSemanticEvents);
-    };
-    if terminal_index + 1 != events.len() {
-        return Err(AdapterOperationError::InvalidSemanticEvents);
-    }
-    let disposition_matches = matches!(
-        (&events[terminal_index].kind, disposition),
-        (
-            SemanticEventKind::Completed { .. },
-            DispatchDisposition::Completed
-        ) | (
-            SemanticEventKind::Failed { .. },
-            DispatchDisposition::Failed
-        ) | (SemanticEventKind::Cancelled, DispatchDisposition::Cancelled)
-    );
-    if !disposition_matches {
-        return Err(AdapterOperationError::InvalidSemanticEvents);
-    }
-    Ok(())
 }
+#[cfg(test)]
+pub use governed::*;
 // lico-governed-orchestration:end
 
 const CONVERSATION_DRIVER_INVENTORY_JSON: &str =
@@ -393,9 +400,30 @@ fn adapter_or_err(agent_id: &str) -> Result<RuntimeAdapter> {
 pub fn open_or_resume(params: &Value) -> Result<Value> {
     let agent_id = agent_id_param(params)?;
     let adapter = adapter_or_err(&agent_id)?;
+    let runtime_connection =
+        super::virtual_machine::SshRuntimeConnection::from_params(params, adapter.id())
+            .map_err(|error| anyhow!(error.code()))?;
     let native_id = runtime_adapters::text_param_public(params, &["sessionId", "nativeSessionId"])
         .unwrap_or_default();
-    let matrix = static_capability_matrix(adapter);
+    let uses_hermes_gateway = runtime_connection
+        .as_ref()
+        .is_some_and(super::virtual_machine::SshRuntimeConnection::is_hermes_tui_gateway);
+    let mut matrix = static_capability_matrix(adapter);
+    if uses_hermes_gateway && let Some(matrix) = matrix.as_object_mut() {
+        matrix.insert("laneFamily".to_string(), json!("rpc"));
+        matrix.insert("cancel".to_string(), json!(false));
+        matrix.insert("interruptSteer".to_string(), json!(false));
+    }
+    let effective_lane_family = if uses_hermes_gateway {
+        "rpc"
+    } else {
+        lane_family(adapter)
+    };
+    let effective_runtime_protocol = if uses_hermes_gateway {
+        super::hermes_tui_gateway::RUNTIME_PROTOCOL
+    } else {
+        adapter.runtime_protocol()
+    };
     let profile = runtime_adapters::runtime_driver_profile(&agent_id);
     let blocker = profile.as_ref().and_then(|p| p.blocker.clone());
     let driver_mode = profile
@@ -403,13 +431,13 @@ pub fn open_or_resume(params: &Value) -> Result<Value> {
         .map(|p| p.driver_status.clone())
         .unwrap_or_else(|| "unknown".to_string());
 
-    if lane_family(adapter) == "unavailable" {
+    if effective_lane_family == "unavailable" {
         return Ok(json!({
             "ok": false,
             "agentId": adapter.id(),
-            "laneFamily": lane_family(adapter),
+            "laneFamily": effective_lane_family,
             "driverId": adapter.driver_id(),
-            "runtimeProtocol": adapter.runtime_protocol(),
+            "runtimeProtocol": effective_runtime_protocol,
             "capabilities": matrix,
             "error": {
                 "code": blocker.unwrap_or_else(|| "official_conversation_transport_unavailable".to_string()),
@@ -444,7 +472,7 @@ pub fn open_or_resume(params: &Value) -> Result<Value> {
             }
         }
     }
-    if adapter == RuntimeAdapter::OpenClaw {
+    if adapter == RuntimeAdapter::OpenClaw && runtime_connection.is_none() {
         // Prefer vendor Gateway attach/reuse (18789); never steal that port.
         // Disclose gateway state on open; send still fail-closes via ensure.
         gateway_status = crate::platform::openclaw_gateway::ensure(&json!({
@@ -460,6 +488,15 @@ pub fn open_or_resume(params: &Value) -> Result<Value> {
                 "vendorDefaultPort": crate::platform::openclaw_gateway::VENDOR_DEFAULT_PORT
             })
         });
+    } else if adapter == RuntimeAdapter::OpenClaw {
+        gateway_status = json!({
+            "ok": true,
+            "status": "deferred",
+            "running": false,
+            "healthy": false,
+            "attachMode": "ssh-stdio",
+            "hostClass": "virtual-machine"
+        });
     }
 
     if !native_id.is_empty() {
@@ -469,9 +506,9 @@ pub fn open_or_resume(params: &Value) -> Result<Value> {
             return Ok(json!({
                 "ok": false,
                 "agentId": adapter.id(),
-                "laneFamily": lane_family(adapter),
+                "laneFamily": effective_lane_family,
                 "driverId": adapter.driver_id(),
-                "runtimeProtocol": adapter.runtime_protocol(),
+                "runtimeProtocol": effective_runtime_protocol,
                 "capabilities": matrix,
                 "gateway": gateway_status,
                 "error": {
@@ -481,31 +518,17 @@ pub fn open_or_resume(params: &Value) -> Result<Value> {
                 }
             }));
         }
-        if adapter == RuntimeAdapter::ClaudeCode
-            && !super::claude_code_driver::has_live_session(&native_id)
-        {
-            return Ok(json!({
-                "ok": false,
-                "agentId": adapter.id(),
-                "laneFamily": lane_family(adapter),
-                "driverId": adapter.driver_id(),
-                "runtimeProtocol": adapter.runtime_protocol(),
-                "capabilities": matrix,
-                "error": {
-                    "code": "claude_code_live_session_unavailable",
-                    "stage": "session/resume",
-                    "message": "The exact Claude Code streaming process is not available in this client process."
-                }
-            }));
-        }
+        // Claude Code resumes a native conversation by launching a fresh
+        // --resume process when no process-local live transport owns it; send
+        // still fails closed on an unknown or diverged conversation.
     }
 
     Ok(json!({
         "ok": true,
         "agentId": adapter.id(),
-        "laneFamily": lane_family(adapter),
+        "laneFamily": effective_lane_family,
         "driverId": adapter.driver_id(),
-        "runtimeProtocol": adapter.runtime_protocol(),
+        "runtimeProtocol": effective_runtime_protocol,
         "nativeSessionId": native_id,
         "sessionId": native_id,
         "threadId": native_id,
@@ -568,13 +591,15 @@ pub fn cancel_turn(params: &Value) -> Result<Value> {
             RuntimeAdapter::Cursor => match super::cursor_driver::cancel(&session_id) {
                 super::cursor_driver::ControlDisposition::Accepted => 0,
                 super::cursor_driver::ControlDisposition::NoActiveTurn => 1,
-                super::cursor_driver::ControlDisposition::SessionUnavailable => 2,
+                super::cursor_driver::ControlDisposition::NotPersisted
+                | super::cursor_driver::ControlDisposition::SessionUnavailable => 2,
                 super::cursor_driver::ControlDisposition::TransportUnavailable => 3,
             },
             RuntimeAdapter::Antigravity => match super::antigravity_driver::cancel(&session_id) {
                 super::antigravity_driver::ControlDisposition::Accepted => 0,
                 super::antigravity_driver::ControlDisposition::NoActiveTurn => 1,
-                super::antigravity_driver::ControlDisposition::SessionUnavailable => 2,
+                super::antigravity_driver::ControlDisposition::NotPersisted
+                | super::antigravity_driver::ControlDisposition::SessionUnavailable => 2,
                 super::antigravity_driver::ControlDisposition::TransportUnavailable => 3,
             },
             RuntimeAdapter::Hermes => match super::hermes_driver::cancel(&session_id) {
@@ -733,12 +758,14 @@ pub fn cleanup_conversation(params: &Value) -> Result<Value> {
         },
         RuntimeAdapter::Cursor => match super::cursor_driver::cleanup_session(&session_id) {
             super::cursor_driver::ControlDisposition::Accepted => 0,
+            super::cursor_driver::ControlDisposition::NotPersisted => 3,
             super::cursor_driver::ControlDisposition::SessionUnavailable => 1,
             _ => 2,
         },
         RuntimeAdapter::Antigravity => {
             match super::antigravity_driver::cleanup_session(&session_id) {
                 super::antigravity_driver::ControlDisposition::Accepted => 0,
+                super::antigravity_driver::ControlDisposition::NotPersisted => 3,
                 super::antigravity_driver::ControlDisposition::SessionUnavailable => 1,
                 _ => 2,
             }
@@ -762,6 +789,7 @@ pub fn cleanup_conversation(params: &Value) -> Result<Value> {
             "not_found",
             json!(format!("{prefix}_session_unavailable")),
         ),
+        3 => (true, "not_persisted", Value::Null),
         _ => (
             false,
             "unavailable",
@@ -831,23 +859,13 @@ pub fn shutdown_all_conversations() -> Result<()> {
 /// alias cancel or a second send into steer; adapters must expose a native,
 /// exactly-once in-flight control channel before their inventory capability is
 /// promoted.
-pub(crate) fn native_steer_supported(agent_id: &str) -> bool {
+#[cfg(test)]
+fn native_steer_supported(agent_id: &str) -> bool {
     adapter_or_err(agent_id)
         .ok()
         .and_then(|adapter| {
             static_capability_matrix(adapter)
                 .get("interruptSteer")
-                .and_then(Value::as_bool)
-        })
-        .unwrap_or(false)
-}
-
-pub(crate) fn native_interrupt_supported(agent_id: &str) -> bool {
-    adapter_or_err(agent_id)
-        .ok()
-        .and_then(|adapter| {
-            static_capability_matrix(adapter)
-                .get("cancel")
                 .and_then(Value::as_bool)
         })
         .unwrap_or(false)
@@ -1017,17 +1035,16 @@ mod tests {
     }
 
     #[test]
-    fn open_resume_requires_a_live_claude_process_and_accepts_cursor_binding() {
+    fn open_resume_accepts_claude_and_cursor_binding() {
         let claude = open_or_resume(&json!({
             "agent": "claude-code",
             "sessionId": "native-1"
         }))
         .unwrap();
-        assert_eq!(claude["ok"], false);
-        assert_eq!(
-            claude["error"]["code"],
-            "claude_code_live_session_unavailable"
-        );
+        assert_eq!(claude["ok"], true);
+        assert_eq!(claude["openMode"], "resume");
+        assert_eq!(claude["laneFamily"], "stream-json");
+        assert_eq!(claude["capabilities"]["exactResume"], true);
         assert_eq!(claude["capabilities"]["processLocalContinuation"], true);
 
         let cursor = open_or_resume(&json!({

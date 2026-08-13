@@ -10,6 +10,7 @@ import 'package:licoup/src/contracts/presentation/layout_selection.dart';
 import 'package:licoup/src/frontend/layout/layout_destination_presentation.dart';
 import 'package:licoup/src/frontend/layout/layout_registry.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 const _eagerProfileOptionLimit = 12;
@@ -92,7 +93,7 @@ final class _LayoutProfileSelectorState extends State<LayoutProfileSelector> {
                 key: const ValueKey<String>('layout-selector-loading'),
                 label: strings.layoutLoading,
                 progress: true,
-                color: colors.info,
+                color: colors.accent,
               )
             else ...[
               if (state.errorCode case final errorCode?)
@@ -106,7 +107,7 @@ final class _LayoutProfileSelectorState extends State<LayoutProfileSelector> {
                 policy: OrderedTraversalPolicy(),
                 child: LayoutBuilder(
                   builder: (context, constraints) {
-                    const gap = 10.0;
+                    const gap = LicoContentSpacing.item;
                     final gridPadding = presentation.selectorGridPadding
                         .resolve(Directionality.of(context));
                     final available =
@@ -129,7 +130,6 @@ final class _LayoutProfileSelectorState extends State<LayoutProfileSelector> {
                           label: profiles[index].label.resolve(
                             strings.locale.languageCode,
                           ),
-                          previewHint: strings.previewLayout,
                           currentLabel: strings.currentLayout,
                           selected: identical(
                             profiles[index],
@@ -139,10 +139,16 @@ final class _LayoutProfileSelectorState extends State<LayoutProfileSelector> {
                             profiles[index],
                             committedProfile,
                           ),
-                          enabled: !committing,
+                          // The Dashboard layout is not ready yet: it stays
+                          // visible as a preview but cannot be selected.
+                          enabled:
+                              !committing &&
+                              profiles[index].id.value != 'dashboard',
                           reducedMotion: reducedMotion,
                           onPressed: () {
-                            widget.manager.beginPreview(profiles[index].id);
+                            unawaited(
+                              widget.manager.selectLayout(profiles[index].id),
+                            );
                           },
                         ),
                       ),
@@ -171,37 +177,38 @@ final class _LayoutProfileSelectorState extends State<LayoutProfileSelector> {
                   },
                 ),
               ),
-              const SizedBox(height: 12),
-              if (state.status == LayoutSelectionStatus.previewing)
-                _LayoutPreviewActions(
-                  confirmLabel: strings.confirmLayout,
-                  cancelLabel: strings.cancelLayoutPreview,
-                  statusLabel: strings.layoutPreviewing,
-                  onConfirm: () {
-                    unawaited(widget.manager.confirmPreview());
-                  },
-                  onCancel: widget.manager.cancelPreview,
-                )
-              else if (committing)
+              const SizedBox(height: LicoContentSpacing.item),
+              if (committing)
                 _LayoutSelectorStatus(
                   key: const ValueKey<String>('layout-selector-committing'),
                   label: strings.layoutCommitting,
                   progress: true,
-                  color: colors.info,
+                  color: colors.accent,
                 ),
               Padding(
                 padding: presentation.selectorActionPadding,
                 child: Align(
                   alignment: AlignmentDirectional.centerEnd,
-                  child: TextButton.icon(
+                  child: TextButton(
                     key: const ValueKey<String>('layout-selector-reset'),
                     onPressed: committing
                         ? null
                         : () {
                             unawaited(widget.manager.resetLayout());
                           },
-                    icon: const Icon(Icons.restart_alt_outlined, size: 17),
-                    label: Text(strings.resetLayout),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.restart_alt_outlined, size: 17),
+                        const SizedBox(width: LicoContentSpacing.compact),
+                        Flexible(
+                          child: Text(
+                            strings.resetLayout,
+                            textAlign: TextAlign.end,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -268,7 +275,6 @@ final class _LayoutProfileOption extends StatelessWidget {
     required this.profile,
     required this.preview,
     required this.label,
-    required this.previewHint,
     required this.currentLabel,
     required this.selected,
     required this.committed,
@@ -280,7 +286,6 @@ final class _LayoutProfileOption extends StatelessWidget {
   final LayoutProfileDescriptor profile;
   final Widget preview;
   final String label;
-  final String previewHint;
   final String currentLabel;
   final bool selected;
   final bool committed;
@@ -291,14 +296,13 @@ final class _LayoutProfileOption extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.licoColors;
-    final borderColor = selected ? colors.primary : colors.line;
+    final borderColor = selected ? colors.primaryStrong : colors.line;
     final activate = enabled ? onPressed : null;
     return Semantics(
       button: true,
       selected: selected,
       enabled: enabled,
       label: label,
-      hint: previewHint,
       child: Shortcuts(
         shortcuts: const <ShortcutActivator, Intent>{
           SingleActivator(LogicalKeyboardKey.enter): ActivateIntent(),
@@ -320,7 +324,7 @@ final class _LayoutProfileOption extends StatelessWidget {
                 : const Duration(milliseconds: 180),
             curve: Curves.easeOutCubic,
             decoration: BoxDecoration(
-              color: selected ? colors.primaryFixed : colors.surfaceLow,
+              color: selected ? colors.surface : colors.surfaceLow,
               border: Border.all(color: borderColor, width: selected ? 2 : 1),
               borderRadius: BorderRadius.circular(10),
             ),
@@ -334,25 +338,32 @@ final class _LayoutProfileOption extends StatelessWidget {
                     ? SystemMouseCursors.click
                     : SystemMouseCursors.basic,
                 child: Padding(
-                  padding: const EdgeInsets.all(8),
+                  padding: const EdgeInsets.all(LicoContentSpacing.compact),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(6),
-                        child: AspectRatio(
-                          aspectRatio: 16 / 10,
-                          child: FittedBox(
-                            fit: BoxFit.cover,
-                            alignment: Alignment.topCenter,
-                            child: SizedBox(
-                              width: 320,
-                              child: RepaintBoundary(child: preview),
+                      // Side gutters keep the thumbnail from touching the
+                      // option card edge; the canvas stays full width below.
+                      Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: LicoContentSpacing.compact,
+                        ),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(6),
+                          child: AspectRatio(
+                            aspectRatio: 16 / 8,
+                            child: FittedBox(
+                              fit: BoxFit.cover,
+                              alignment: Alignment.topCenter,
+                              child: SizedBox(
+                                width: 320,
+                                child: RepaintBoundary(child: preview),
+                              ),
                             ),
                           ),
                         ),
                       ),
-                      const SizedBox(height: 8),
+                      const SizedBox(height: LicoContentSpacing.compact),
                       Row(
                         children: [
                           Expanded(
@@ -370,7 +381,7 @@ final class _LayoutProfileOption extends StatelessWidget {
                               child: Icon(
                                 Icons.check_circle,
                                 size: 16,
-                                color: colors.success,
+                                color: colors.accent,
                                 semanticLabel: currentLabel,
                               ),
                             ),
@@ -386,46 +397,6 @@ final class _LayoutProfileOption extends StatelessWidget {
       ),
     );
   }
-}
-
-final class _LayoutPreviewActions extends StatelessWidget {
-  const _LayoutPreviewActions({
-    required this.confirmLabel,
-    required this.cancelLabel,
-    required this.statusLabel,
-    required this.onConfirm,
-    required this.onCancel,
-  });
-
-  final String confirmLabel;
-  final String cancelLabel;
-  final String statusLabel;
-  final VoidCallback onConfirm;
-  final VoidCallback onCancel;
-
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-    child: Wrap(
-      alignment: WrapAlignment.end,
-      crossAxisAlignment: WrapCrossAlignment.center,
-      spacing: 8,
-      runSpacing: 8,
-      children: [
-        Semantics(liveRegion: true, child: Text(statusLabel)),
-        OutlinedButton(
-          key: const ValueKey<String>('layout-selector-cancel'),
-          onPressed: onCancel,
-          child: Text(cancelLabel),
-        ),
-        FilledButton(
-          key: const ValueKey<String>('layout-selector-confirm'),
-          onPressed: onConfirm,
-          child: Text(confirmLabel),
-        ),
-      ],
-    ),
-  );
 }
 
 final class _LayoutSelectorStatus extends StatelessWidget {
@@ -444,19 +415,24 @@ final class _LayoutSelectorStatus extends StatelessWidget {
   Widget build(BuildContext context) => Semantics(
     liveRegion: true,
     child: Padding(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+      padding: const EdgeInsets.fromLTRB(
+        LicoContentSpacing.item,
+        LicoContentSpacing.compact,
+        LicoContentSpacing.item,
+        LicoContentSpacing.item,
+      ),
       child: Row(
         children: [
           if (progress) ...[
             SizedBox(
-              width: 16,
-              height: 16,
+              width: LicoContentSpacing.item,
+              height: LicoContentSpacing.item,
               child: CircularProgressIndicator(strokeWidth: 2, color: color),
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: LicoContentSpacing.compact),
           ] else ...[
             Icon(Icons.error_outline, size: 17, color: color),
-            const SizedBox(width: 8),
+            const SizedBox(width: LicoContentSpacing.compact),
           ],
           Expanded(child: Text(label)),
         ],

@@ -1,0 +1,105 @@
+{
+  "schema": "licomesh.layout-visual-manifest",
+  "schemaVersion": 2,
+  "profile": "messaging",
+  "surface": "desktop",
+  "bundleEntry": "apps/desktop/lib/src/frontend/layout/profiles/messaging/desktop/messaging_desktop.dart",
+  "sourceRoots": [
+    "apps/desktop/lib/src/frontend/layout/profiles/messaging/desktop",
+    "apps/desktop/test/goldens/layout/production-baseline/messaging/desktop",
+    "apps/desktop/test/layout/profiles/messaging/desktop"
+  ],
+  "authorityEntries": [
+    {
+      "path": "apps/desktop/test/layout/fixtures/production_client_shell_fixture.dart",
+      "digest": "sha256:e605151ff36b846717baa90d558af6597981af63900c71ac94a6c3a631c2c537"
+    },
+    {
+      "path": "apps/desktop/test/layout/production_baseline/production_layout_baseline_test.dart",
+      "digest": "sha256:871dbd038ed71bc77bddc4666b34753a5fe6bc829938030ed14e0c16f2e47c19"
+    },
+    {
+      "path": "apps/desktop/test/layout/production_baseline/production_layout_switch_continuity_test.dart",
+      "digest": "sha256:bfc78cef3248aaefef0ac110fa1e07a5141d42d66b878faf00468e821a2812fd"
+    }
+  ],
+  "entries": [
+    {
+      "path": "apps/desktop/lib/src/frontend/layout/profiles/messaging/desktop/components/messaging_desktop_component_kit.dart",
+      "digest": "sha256:daf7008ee06987f0cb6fc5ba1490de6d885e5d1a44513483252c5fd7b8fb484c"
+    },
+    {
+      "path": "apps/desktop/lib/src/frontend/layout/profiles/messaging/desktop/destinations/agents_destination.dart",
+      "digest": "sha256:f2c059fbd439918af33f340b8a6a4e23fec8dc0fe73c7a2c725f2b04847ae65a"
+    },
+    {
+      "path": "apps/desktop/lib/src/frontend/layout/profiles/messaging/desktop/destinations/messaging_desktop_destination_builders.dart",
+      "digest": "sha256:6260f012e9e2d87508e34afb5ec17b69587557d1e7d1a02b02538c94202058e1"
+    },
+    {
+      "path": "apps/desktop/lib/src/frontend/layout/profiles/messaging/desktop/destinations/messaging_destination_frame.dart",
+      "digest": "sha256:6cb9a836b91f6595e20fc2607e4982987d11aa13e2e24681c49f682678dd2fcf"
+    },
+    {
+      "path": "apps/desktop/lib/src/frontend/layout/profiles/messaging/desktop/destinations/single_pane_destinations.dart",
+      "digest": "sha256:b4a292e079f6d7eaf03f099bcafc8c27e3579c2db5cb8bf9d82692b1cd9e756a"
+    },
+    {
+      "path": "apps/desktop/lib/src/frontend/layout/profiles/messaging/desktop/messaging_desktop.dart",
+      "digest": "sha256:d3c91779b1aa94c3dda71bcabd9e902ff5269e877aa26146603a0eec0b539231"
+    },
+    {
+      "path": "apps/desktop/lib/src/frontend/layout/profiles/messaging/desktop/presentation/messaging_desktop_destination_presentations.dart",
+      "digest": "sha256:1e4323f0f2983955c1b14e3060f478b75804d6b2253d363fbc417bf7100d6f99"
+    },
+    {
+      "path": "apps/desktop/lib/src/frontend/layout/profiles/messaging/desktop/preview/messaging_desktop_preview.dart",
+      "digest": "sha256:0694948ed0a304cb77bc0891889e4dd64336846ae3efffc1c507ef5e7be67a9c"
+    },
+    {
+      "path": "apps/desktop/lib/src/frontend/layout/profiles/messaging/desktop/shell/messaging_desktop_navigation.dart",
+      "digest": "sha256:34db325e4224eb22a6a2184ee598a79f5bef355f0348ab3943dbc1943e20efc1"
+    },
+    {
+      "path": "apps/desktop/lib/src/frontend/layout/profiles/messaging/desktop/shell/messaging_desktop_shell.dart",
+      "digest": "sha256:080238abced93701115ba7168c7ba11418b1ddae8cfd6dc3c1b4bc8cb94198b6"
+    },
+    {
+      "path": "apps/desktop/lib/src/frontend/layout/profiles/messaging/desktop/shell/messaging_destination_rail.dart",
+      "digest": "sha256:d589aa3d27f6ebc4cdfab948d7c362835a4caab0a3732c646a3c2e7149734a09"
+    },
+    {
+      "path": "apps/desktop/lib/src/frontend/layout/profiles/messaging/desktop/shell/messaging_profile_page.dart",
+      "digest": "sha256:a906e0b5c2044dc2b2e48b121503ec46f013c61081ddab1f7de82c39ee35d322"
+    },
+    {
+      "path": "apps/desktop/lib/src/frontend/layout/profiles/messaging/desktop/shell/messaging_top_strip.dart",
+      "digest": "sha256:4d82ded89481574e92c9b2aa5b579a7ed03c75d2b3a5f0a4e17ffa97f3980535"
+    },
+    {
+      "path": "apps/desktop/lib/src/frontend/layout/profiles/messaging/desktop/tokens/messaging_desktop_tokens.dart",
+      "digest": "sha256:92d48198cf05993dec8af43d0fd2076012c4e785d8dd1553f804bc510b3385b9"
+    },
+    {
+      "path": "apps/desktop/test/goldens/layout/production-baseline/messaging/desktop/agents.png",
+      "digest": "sha256:e5956c06aa202e6080326a8139689fedb55879fc5750cb5c3ce839708e723a09"
+    },
+    {
+      "path": "apps/desktop/test/goldens/layout/production-baseline/messaging/desktop/settings.png",
+      "digest": "sha256:8454e7513d3b077d089449c6ca94814ca33fce0fe48fed06c0d04c2ba5a3e25e"
+    },
+    {
+      "path": "apps/desktop/test/layout/profiles/messaging/desktop/messaging_desktop_bundle_test.dart",
+      "digest": "sha256:e756f9abc9acafef207f45c7117657952caa079d9444760f8a94b983442ea042"
+    },
+    {
+      "path": "apps/desktop/test/layout/profiles/messaging/desktop/messaging_desktop_shell_test.dart",
+      "digest": "sha256:1a0cd5a628def8d49dd1d123f4dcc881f473f3ae1693e6180cebd7af96c2cdf0"
+    },
+    {
+      "path": "apps/desktop/test/layout/profiles/messaging/desktop/messaging_desktop_test_harness.dart",
+      "digest": "sha256:da8ce459f3afbd1d3b703ac04f860e15697c900298617c602bdc739c076aa64b"
+    }
+  ],
+  "manifestDigest": "sha256:084f9072aacbdef716b9d3fec4f5ed7ee6906d563cb6fab03042f921cb458102"
+}

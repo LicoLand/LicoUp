@@ -121,7 +121,7 @@ fn mobile_relay_public_config_redacts_secret_material() {
     config["mobileToken"] = json!("mobile-synthetic-redaction-canary");
     ensure_mobile_relay_endpoint_descriptor(
         &mut config,
-        test_runtime_secret_material(stringify!(&mut config)),
+        &mut test_runtime_secret_material(stringify!(&mut config)),
         "mobile",
     )
     .unwrap();
@@ -131,35 +131,12 @@ fn mobile_relay_public_config_redacts_secret_material() {
             "pcClientId": "pc-redacted",
             "pcClientName": "Mac",
             "pairingId": "pair-redacted",
-            "mobileToken": sv_paired_device_synthetic_.as_str(),
-            "gatewayUrl": "https://relay.example.test"
+            "mobileToken": sv_paired_device_synthetic_.as_str()
         }
     ]);
-    let private_key = config["mobileRelayE2ee"]["privateKeyBase64url"]
-        .as_str()
-        .unwrap()
-        .to_string();
-    let signing_key = config["mobileRelayE2ee"]["signingKeyBase64url"]
-        .as_str()
-        .unwrap()
-        .to_string();
-    let signed_prekey_private_key = config["mobileRelayE2ee"]["signedPrekeyPrivateKeyBase64url"]
-        .as_str()
-        .unwrap()
-        .to_string();
-    let one_time_prekey_private_key = config["mobileRelayE2ee"]["oneTimePrekeyPrivateKeyBase64url"]
-        .as_str()
-        .unwrap()
-        .to_string();
-    let one_time_mlkem1024_prekey_seed =
-        config["mobileRelayE2ee"]["oneTimeMlKem1024PrekeySeedBase64url"]
-            .as_str()
-            .unwrap()
-            .to_string();
-    let pairing_secret = config["mobileRelayE2ee"]["pairingSecretBase64url"]
-        .as_str()
-        .unwrap()
-        .to_string();
+    let runtime_secrets = MobileRelayE2eeSecretField::ALL
+        .map(|field| test_runtime_e2ee_secret(stringify!(&config), field));
+    persist_test_runtime_secret_material(stringify!(&config)).unwrap();
     save_config(&mut config).unwrap();
 
     let output = config_get(&json!({})).unwrap();
@@ -168,12 +145,12 @@ fn mobile_relay_public_config_redacts_secret_material() {
         "pc-synthetic-redaction-canary",
         "mobile-synthetic-redaction-canary",
         sv_paired_device_synthetic_.as_str(),
-        private_key.as_str(),
-        signing_key.as_str(),
-        signed_prekey_private_key.as_str(),
-        one_time_prekey_private_key.as_str(),
-        one_time_mlkem1024_prekey_seed.as_str(),
-        pairing_secret.as_str(),
+        runtime_secrets[0].as_str(),
+        runtime_secrets[1].as_str(),
+        runtime_secrets[2].as_str(),
+        runtime_secrets[3].as_str(),
+        runtime_secrets[4].as_str(),
+        runtime_secrets[5].as_str(),
     ] {
         assert!(
             !serialized.contains(secret),

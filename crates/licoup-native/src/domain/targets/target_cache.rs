@@ -71,6 +71,9 @@ pub(super) fn cached_runtime_executable(target: &str) -> Option<PathBuf> {
 }
 
 fn cache_record(candidate: &TargetCandidate, cached_at: u64) -> Option<CachedTargetRoute> {
+    if candidate.location != "local" {
+        return None;
+    }
     let binary_path = candidate.binary_path.clone();
     let config_path = (candidate.configured || candidate.manual)
         .then(|| candidate.config_path.clone())
@@ -139,6 +142,8 @@ mod tests {
             config_path,
             binary_path,
             history_roots: vec!["must-not-be-cached".to_string()],
+            location: "local".to_string(),
+            runtime_connection: None,
             manual: false,
             adapter_status: "implemented".to_string(),
             adapter_capabilities: AdapterCapabilities {

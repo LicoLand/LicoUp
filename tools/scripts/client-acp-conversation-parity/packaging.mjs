@@ -73,6 +73,7 @@ export function validateProductReceipt(path, expectedAgent) {
     "sameNativeSessionId", "historyReadback", "artifactDigest", "artifactFileCount",
     "artifactName",
     "invocationChallengeDigest",
+    "interruptSteerProven",
   ]), "release_ui_product_receipt_unbounded");
   requireFact(
     report.schemaVersion === "lico-agent-conversation-product-e2e-report-v3"
@@ -91,7 +92,8 @@ export function validateProductReceipt(path, expectedAgent) {
       && report.progressiveTimelineVisible === true
       && report.sameNativeSessionId === true
       && report.historyReadback === true
-      && report.artifactName === "Arc.app"
+      && report.interruptSteerProven === true
+      && report.artifactName === "LicoUp.app"
       && report.invocationChallengeDigest === releaseClosureChallengeDigest(
         requiredReleaseClosureChallenge(process.env),
       )
@@ -105,12 +107,14 @@ export function validateProductReceipt(path, expectedAgent) {
   requireExactFields(row, new Set([
     "agentId", "model", "turnCount", "productLivePassed", "releaseUiPassed",
     "cleanupPassed", "nativeContinuityDigest", "productContinuityBindingDigest",
+    "interruptSteerProven",
   ]), "release_ui_product_agent_receipt_unbounded");
   const expectedModel = parityModelForAgent(expectedAgent);
   requireFact(
     row.productLivePassed === true
       && row.releaseUiPassed === false
       && row.cleanupPassed === true
+      && typeof row.interruptSteerProven === "boolean"
       && row.turnCount === 2
       && (!expectedModel || row.model === expectedModel)
       && /^sha256:[a-f0-9]{64}$/u.test(row.nativeContinuityDigest)
@@ -136,5 +140,6 @@ export function validateProductReceipt(path, expectedAgent) {
   return {
     artifactDigest: artifact.digest,
     continuityBindingDigest: row.productContinuityBindingDigest,
+    interruptSteerProven: row.interruptSteerProven,
   };
 }

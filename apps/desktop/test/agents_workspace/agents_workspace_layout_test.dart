@@ -121,11 +121,10 @@ void registerAgentsWorkspaceLayoutScenarios() {
     expect(find.byKey(const Key('agents-workspace-shell')), findsOneWidget);
     expect(find.byKey(const Key('agents-workspace-sidebar')), findsOneWidget);
     expect(
-      find.byKey(const Key('agents-workspace-floating-card')),
+      find.byKey(const Key('agents-workspace-detail-pane')),
       findsOneWidget,
     );
     expect(find.byType(AgentsWorkspaceSidebar), findsOneWidget);
-    expect(find.text('GitHub Copilot'), findsWidgets);
     expect(
       find.byKey(const Key('conversation-parity-readiness')),
       findsOneWidget,
@@ -134,16 +133,15 @@ void registerAgentsWorkspaceLayoutScenarios() {
     expect(find.text('UNVERIFIED'), findsNothing);
     expect(find.text('unverified'), findsNothing);
     expect(find.text('VS Code'), findsNothing);
-    expect(find.text('Kilo Code'), findsOneWidget);
     expect(find.text('OpenClaw'), findsNothing);
     expect(find.text('Not detected'), findsNothing);
     expect(find.text('Conversation history'), findsNothing);
     expect(find.text('Search conversations'), findsNothing);
-    expect(find.byTooltip('Archive agent conversations'), findsOneWidget);
-    expect(find.byTooltip('New Conversation'), findsOneWidget);
+    expect(find.text('Back up conversations'), findsOneWidget);
+    expect(find.text('New Chat'), findsOneWidget);
     expect(
-      tester.getTopLeft(find.byTooltip('Archive agent conversations')).dx,
-      lessThan(tester.getTopLeft(find.byTooltip('New Conversation')).dx),
+      tester.getTopLeft(find.text('New Chat')).dy,
+      lessThan(tester.getTopLeft(find.text('Back up conversations')).dy),
     );
     expect(find.byTooltip('Collapse conversation history'), findsOneWidget);
     expect(find.text('key: workspace-history-with-a-long-title'), findsWidgets);
@@ -167,7 +165,7 @@ void registerAgentsWorkspaceLayoutScenarios() {
     expect(find.byType(TextField), findsOneWidget);
     expect(find.byIcon(Icons.arrow_upward_rounded), findsOneWidget);
 
-    await tester.tap(find.byTooltip('New Conversation'));
+    await tester.tap(find.byKey(const Key('agents-sidebar-new-conversation')));
     await tester.pump();
 
     expect(controller.selectedConversationSessionId, isEmpty);
@@ -176,8 +174,8 @@ void registerAgentsWorkspaceLayoutScenarios() {
     await tester.tap(find.byTooltip('Collapse conversation history'));
     await tester.pumpAndSettle();
 
-    expect(find.byTooltip('Archive agent conversations'), findsNothing);
-    expect(find.byTooltip('New Conversation'), findsNothing);
+    expect(find.text('Back up conversations'), findsNothing);
+    expect(find.text('New Chat'), findsNothing);
     expect(find.byTooltip('Expand conversation history'), findsOneWidget);
   });
 
@@ -249,7 +247,7 @@ void registerAgentsWorkspaceLayoutScenarios() {
     expect(find.byKey(const Key('agents-workspace-shell')), findsOneWidget);
     expect(find.byKey(const Key('agents-workspace-sidebar')), findsOneWidget);
     expect(
-      find.byKey(const Key('agents-workspace-floating-card')),
+      find.byKey(const Key('agents-workspace-detail-pane')),
       findsOneWidget,
     );
     expect(find.byType(AgentsWorkspaceSidebar), findsOneWidget);

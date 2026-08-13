@@ -18,6 +18,15 @@ class StdioRpcCommandReply {
   final ClientError? error;
 }
 
+String? stdioRpcEnvelopeRequestId(Uint8List bytes) {
+  try {
+    final requestId = _decodeEnvelope(bytes)['id'];
+    return requestId is String && requestId.isNotEmpty ? requestId : null;
+  } on StdioRpcProtocolViolation {
+    return null;
+  }
+}
+
 StdioRpcCommandReply decodeStdioRpcCommandReply(
   Uint8List bytes, {
   required String requestId,

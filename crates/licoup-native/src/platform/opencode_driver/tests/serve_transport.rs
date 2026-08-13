@@ -9,7 +9,7 @@ fn wrapper_namespaces_structured_failures_without_exposing_private_values() {
         "private-session",
         Some(Path::new("relative")),
         10,
-        10,
+        Some(10),
         10,
     );
     assert_eq!(result.driver_id, "opencode-serve");

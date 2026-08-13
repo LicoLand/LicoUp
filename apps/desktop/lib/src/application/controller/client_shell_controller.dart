@@ -8,7 +8,7 @@ import 'package:licoup/src/contracts/locale_preferences.dart';
 /// report stable codes and messages; they do not mutate shell fields directly.
 final class ClientShellController extends ChangeNotifier {
   ClientShellController({
-    String appearancePresetId = AppearancePresetIds.defaultSystem,
+    String appearancePresetId = AppearancePresetIds.licoSoda,
     List<AppearancePresetConfig> appearancePresetConfigs =
         builtInAppearancePresetConfigs,
     String localePreference = LocalePreference.system,
@@ -44,6 +44,17 @@ final class ClientShellController extends ChangeNotifier {
   String get appearancePresetId => _appearancePresetId;
   List<AppearancePresetConfig> get appearancePresetConfigs =>
       _appearancePresetConfigs;
+
+  /// The presets offered as picker choices: fixed light and dark themes only.
+  /// System-following and resolution-only built-ins stay out of the picker.
+  List<AppearancePresetConfig> get selectableAppearancePresetConfigs =>
+      _appearancePresetConfigs
+          .where(
+            (config) =>
+                !AppearancePresetIds.resolutionOnly.contains(config.id) &&
+                config.mode != AppearancePresetMode.system,
+          )
+          .toList(growable: false);
   String get appearancePresetDirectoryPath => _appearancePresetDirectoryPath;
   List<String> get appearancePresetLoadErrors => _appearancePresetLoadErrors;
   String get localePreference => _localePreference;
@@ -68,7 +79,7 @@ final class ClientShellController extends ChangeNotifier {
     final normalized =
         hasAppearancePresetConfig(value, _appearancePresetConfigs)
         ? value
-        : AppearancePresetIds.defaultSystem;
+        : AppearancePresetIds.licoSoda;
     if (_appearancePresetId == normalized) return false;
     _appearancePresetId = normalized;
     _notifyPresentationChanged();
@@ -100,7 +111,7 @@ final class ClientShellController extends ChangeNotifier {
       _appearancePresetConfigs,
     );
     if (fellBack) {
-      _appearancePresetId = AppearancePresetIds.defaultSystem;
+      _appearancePresetId = AppearancePresetIds.licoSoda;
     }
     _notifyPresentationChanged();
     return fellBack;

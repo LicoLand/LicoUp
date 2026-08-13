@@ -72,7 +72,7 @@ fn fake_child_transport_drains_ordered_chunks_sent_after_prompt_response() {
         "",
         Some(dir.as_path()),
         10_000,
-        1024 * 1024,
+        Some(1024 * 1024),
         1024,
     );
     assert!(result.ok, "fake ACP failure: {:?}", result.error);
@@ -297,7 +297,7 @@ fn prompt_drain_fails_closed_on_output_limit_process_loss_and_hard_deadline() {
         "",
         Some(dir.as_path()),
         10_000,
-        1024 * 1024,
+        Some(1024 * 1024),
         1024,
     );
     assert!(!empty_output.ok);
@@ -317,7 +317,7 @@ fn prompt_drain_fails_closed_on_output_limit_process_loss_and_hard_deadline() {
         "",
         Some(dir.as_path()),
         10_000,
-        4 * 1024,
+        Some(4 * 1024),
         1024,
     );
     assert!(!output_limit.ok);
@@ -328,6 +328,8 @@ fn prompt_drain_fails_closed_on_output_limit_process_loss_and_hard_deadline() {
             .map(|failure| failure.code.as_str()),
         Some("acp_protocol_output_limit")
     );
+    assert_eq!(output_limit.session_id, "native-fake-session");
+    assert_eq!(output_limit.thread_id, "native-fake-session");
     assert!(output_limit.stdout_truncated);
 
     let process_loss = execute_acp(
@@ -338,7 +340,7 @@ fn prompt_drain_fails_closed_on_output_limit_process_loss_and_hard_deadline() {
         "",
         Some(dir.as_path()),
         10_000,
-        1024 * 1024,
+        Some(1024 * 1024),
         1024,
     );
     assert!(!process_loss.ok);
@@ -358,7 +360,7 @@ fn prompt_drain_fails_closed_on_output_limit_process_loss_and_hard_deadline() {
         "",
         Some(dir.as_path()),
         1_000,
-        1024 * 1024,
+        Some(1024 * 1024),
         1024,
     );
     assert!(!hard_deadline.ok);

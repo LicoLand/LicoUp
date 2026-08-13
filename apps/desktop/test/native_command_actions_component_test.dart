@@ -1,3 +1,6 @@
+import 'dart:convert';
+
+import 'package:licoup/src/contracts/agent_command_runner.dart';
 import 'package:licoup/src/platform/native_client/agent_service_actions.dart';
 import 'package:licoup/src/platform/native_client/native_cli_ports.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -80,9 +83,9 @@ void main() {
     await actions.runConfiguredSkillUpdates(agent: 'codex', skillId: 'review');
     await actions.runDueSkillUpdates();
     await actions.applySkillDelete(
-      agents: const ['claude-code', 'codex'],
       skillId: 'review',
-      confirmation: 'delete:review:claude-code,codex',
+      path: '/workspace/.agents/skills/review',
+      confirmation: 'trash:review:plan-digest',
     );
 
     expect(
@@ -111,14 +114,62 @@ void main() {
     expect(
       executor.calls[3],
       containsAllInOrder([
-        '--agents',
-        'claude-code,codex',
+        '--path',
+        '/workspace/.agents/skills/review',
         '--confirmation',
-        'delete:review:claude-code,codex',
+        'trash:review:plan-digest',
       ]),
     );
   });
+
+  test(
+    'VM targets use private stdin and never place connection data in argv',
+    () async {
+      final executor = _RecordingExecutor({'ok': true});
+      final privateRunner = _RecordingRunner();
+      final workingDirectory = _guestPath(['srv', 'project']);
+      final actions = NativeCommandActions(
+        commandExecutor: executor,
+        concurrentCommandExecutor: executor,
+        privateRunner: privateRunner,
+      );
+
+      await actions.addTarget(
+        target: 'hermes',
+        location: 'virtual-machine',
+        runtimeConnection: {
+          'kind': 'ssh',
+          'host': 'vm.example',
+          'remoteExecutable': 'hermes',
+          'workingDirectory': workingDirectory,
+        },
+      );
+
+      expect(executor.calls, isEmpty);
+      expect(privateRunner.arguments.single, [
+        'targets',
+        'add',
+        '--target',
+        'hermes',
+        '--stdin-json',
+        'true',
+      ]);
+      expect(
+        privateRunner.arguments.single.join(' '),
+        isNot(contains('vm.example')),
+      );
+      final payload =
+          jsonDecode(privateRunner.stdin.single) as Map<String, dynamic>;
+      expect(payload['location'], 'virtual-machine');
+      expect(
+        (payload['runtimeConnection'] as Map<String, dynamic>)['host'],
+        'vm.example',
+      );
+    },
+  );
 }
+
+String _guestPath(List<String> segments) => ['', ...segments].join('/');
 
 class _RecordingExecutor implements NativeCommandExecutor {
   _RecordingExecutor(this.response);
@@ -131,4 +182,33 @@ class _RecordingExecutor implements NativeCommandExecutor {
     calls.add(List<String>.unmodifiable(arguments));
     return response;
   }
+}
+
+class _RecordingRunner implements AgentCommandRunner {
+  final List<List<String>> arguments = [];
+  final List<String> stdin = [];
+
+  @override
+  Future<Map<String, dynamic>> runCli(List<String> args) =>
+      throw UnsupportedError('runCli');
+
+  @override
+  Future<Map<String, dynamic>> runCliWithStdin(
+    List<String> args,
+    String stdinText,
+  ) async {
+    arguments.add(List<String>.unmodifiable(args));
+    stdin.add(stdinText);
+    return const {'ok': true};
+  }
+
+  @override
+  Stream<Map<String, dynamic>> streamCliJsonLines(List<String> args) =>
+      const Stream.empty();
+
+  @override
+  Stream<Map<String, dynamic>> streamCliJsonLinesWithStdin(
+    List<String> args,
+    String stdinText,
+  ) => const Stream.empty();
 }

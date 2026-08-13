@@ -2,6 +2,7 @@ use super::{AcpError, DEFAULT_MAX_MESSAGE_BYTES};
 use serde_json::{Map, Value};
 
 pub(super) const MAX_SESSION_ID_BYTES: usize = 1024;
+pub(super) const MAX_CURSOR_BYTES: usize = 4096;
 
 pub(super) fn validated_session_id(session_id: &str) -> Result<&str, AcpError> {
     normalized_text(session_id, MAX_SESSION_ID_BYTES, AcpError::SessionIdInvalid)?;

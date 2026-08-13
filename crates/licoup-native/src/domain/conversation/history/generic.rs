@@ -1,6 +1,13 @@
 //! Service-neutral JSON, JSONL, embedded JSON, and text parsers.
 
 use super::*;
+use std::collections::HashMap;
+
+struct JsonlSessionAccumulator {
+    native_session_id: String,
+    messages: Vec<Value>,
+    working_directory: Option<String>,
+}
 
 pub(crate) fn parse_jsonl_sessions(
     adapter: HistoryAdapter,
@@ -9,7 +16,8 @@ pub(crate) fn parse_jsonl_sessions(
     metadata: &fs::Metadata,
     scan_config: HistoryScanConfig,
 ) -> Vec<Value> {
-    let mut grouped = Vec::<(String, Vec<Value>)>::new();
+    let mut grouped = Vec::<JsonlSessionAccumulator>::new();
+    let mut indexes = HashMap::<String, usize>::new();
     if scan_config.archive_mode {
         let file = match fs::File::open(path) {
             Ok(file) => file,
@@ -20,7 +28,7 @@ pub(crate) fn parse_jsonl_sessions(
             let Ok(line) = line else {
                 continue;
             };
-            push_jsonl_message(adapter, path, index, &line, &mut grouped);
+            push_jsonl_record(adapter, path, index, &line, &mut grouped, &mut indexes);
         }
     } else {
         let raw = match fs::read_to_string(path) {
@@ -28,41 +36,188 @@ pub(crate) fn parse_jsonl_sessions(
             Err(_) => return Vec::new(),
         };
         for (index, line) in raw.lines().enumerate() {
-            push_jsonl_message(adapter, path, index, line, &mut grouped);
+            push_jsonl_record(adapter, path, index, line, &mut grouped, &mut indexes);
         }
     }
     grouped
         .into_iter()
-        .map(|(native_session_id, messages)| {
-            session_from_messages(
+        .filter(|session| !session.messages.is_empty())
+        .map(|session| {
+            let mut messages = session.messages;
+            backfill_transcript_message_times(&mut messages, path);
+            let mut projection = session_from_messages(
                 adapter,
                 path,
                 metadata,
                 source_kind,
-                native_session_id,
+                session.native_session_id,
                 messages,
-            )
+            );
+            if let (Some(object), Some(working_directory)) =
+                (projection.as_object_mut(), session.working_directory)
+            {
+                object.insert(
+                    "workingDirectory".to_string(),
+                    Value::String(working_directory),
+                );
+            }
+            // Cursor CLI transcripts carry neither a session field nor a working
+            // directory: identity, delegated lineage, and the project directory
+            // all come from the transcript's place in the project tree.
+            if adapter == HistoryAdapter::Cursor
+                && let (Some(workspace), Some(object)) = (
+                    super::delegated_transcripts::cursor_transcript_project_workspace(path),
+                    projection.as_object_mut(),
+                )
+            {
+                object
+                    .entry("workingDirectory".to_string())
+                    .or_insert_with(|| Value::String(workspace));
+            }
+            // Cursor and Claude Code both store a delegated task beside its
+            // conversation under the conversation's own identity. Marking it here
+            // makes every read path fold it into the conversation instead of
+            // listing it as its own conversation.
+            if matches!(adapter, HistoryAdapter::Cursor | HistoryAdapter::ClaudeCode) {
+                super::delegated_transcripts::apply_transcript_identity(&mut projection, path);
+                super::delegated_transcripts::mark_delegated_transcript_session(
+                    &mut projection,
+                    path,
+                );
+            }
+            projection
         })
         .collect()
 }
 
-pub(super) fn push_jsonl_message(
+/// Transcript records often carry no timestamp (Cursor and Claude Code write
+/// plain role/message lines). Without a stable per-message key, delegated-task
+/// cards cannot rejoin their conversation at the real position and collapse at
+/// the end instead. The transcript directory records when the conversation
+/// started and the file when it last wrote, so missing message times are
+/// interpolated across that interval in record order: monotonic, stable across
+/// rescans, and close to the real flow.
+pub(super) fn backfill_transcript_message_times(messages: &mut [Value], path: &Path) {
+    if messages.is_empty() {
+        return;
+    }
+    let Some(start_ms) = path
+        .parent()
+        .and_then(|directory| directory.metadata().ok())
+        .and_then(|metadata| metadata.modified().ok())
+        .and_then(|time| time.duration_since(SystemTime::UNIX_EPOCH).ok())
+        .map(|duration| duration.as_millis() as i128)
+    else {
+        return;
+    };
+    let Some(end_ms) = fs::metadata(path)
+        .ok()
+        .and_then(|metadata| metadata.modified().ok())
+        .and_then(|time| time.duration_since(SystemTime::UNIX_EPOCH).ok())
+        .map(|duration| duration.as_millis() as i128)
+    else {
+        return;
+    };
+    let count = messages.len();
+    if end_ms < start_ms {
+        // The directory mtime can be later than the file's: a `subagents/`
+        // directory records when its last task file appeared, not when this
+        // task started. Degrade to the file mtime as a single anchor so the
+        // messages still carry a stable, real key instead of parse time.
+        for message in messages.iter_mut() {
+            let already_timed = message
+                .get("createdAt")
+                .and_then(Value::as_str)
+                .is_some_and(|value| !value.trim().is_empty());
+            if !already_timed && let Some(formatted) = epoch_millis_to_rfc3339(end_ms) {
+                message["createdAt"] = json!(formatted);
+            }
+        }
+        return;
+    }
+    for (index, message) in messages.iter_mut().enumerate() {
+        let already_timed = message
+            .get("createdAt")
+            .and_then(Value::as_str)
+            .is_some_and(|value| !value.trim().is_empty());
+        if already_timed {
+            continue;
+        }
+        let offset = if count > 1 {
+            (end_ms - start_ms) * index as i128 / (count.saturating_sub(1)) as i128
+        } else {
+            0
+        };
+        if let Some(formatted) = epoch_millis_to_rfc3339(start_ms + offset) {
+            message["createdAt"] = json!(formatted);
+        }
+    }
+}
+
+fn epoch_millis_to_rfc3339(millis: i128) -> Option<String> {
+    use time::{OffsetDateTime, format_description::well_known::Rfc3339};
+    OffsetDateTime::from_unix_timestamp(i64::try_from(millis / 1000).ok()?)
+        .ok()
+        .and_then(|time| time.format(&Rfc3339).ok())
+}
+
+fn push_jsonl_record(
     adapter: HistoryAdapter,
     path: &Path,
     index: usize,
     line: &str,
-    grouped: &mut Vec<(String, Vec<Value>)>,
+    grouped: &mut Vec<JsonlSessionAccumulator>,
+    indexes: &mut HashMap<String, usize>,
 ) {
     let trimmed = line.trim();
     if trimmed.is_empty() {
         return;
     }
     if let Ok(value) = serde_json::from_str::<Value>(trimmed) {
-        let session_id = extract_native_session_id(&value).unwrap_or_else(|| "file".to_string());
-        for message in messages_from_json(adapter, path, index, &value) {
-            push_grouped_message(grouped, session_id.clone(), message);
+        let session_id = native_session_id_or_path(&value, path);
+        let group_index = match indexes.get(&session_id).copied() {
+            Some(group_index) => group_index,
+            None => {
+                let group_index = grouped.len();
+                indexes.insert(session_id.clone(), group_index);
+                grouped.push(JsonlSessionAccumulator {
+                    native_session_id: session_id,
+                    messages: Vec::new(),
+                    working_directory: None,
+                });
+                group_index
+            }
+        };
+        let group = &mut grouped[group_index];
+        if group.working_directory.is_none() {
+            group.working_directory = claude_launch_working_directory(adapter, &value);
         }
+        group
+            .messages
+            .extend(messages_from_json(adapter, path, index, &value));
     }
+}
+
+fn claude_launch_working_directory(adapter: HistoryAdapter, value: &Value) -> Option<String> {
+    if adapter != HistoryAdapter::ClaudeCode {
+        return None;
+    }
+    let object = value.as_object()?;
+    let directory = ["cwd", "workingDirectory", "projectPath"]
+        .iter()
+        .find_map(|key| object.get(*key).and_then(Value::as_str))?
+        .trim();
+    if directory.is_empty()
+        || directory.len() > 4096
+        || !Path::new(directory).is_absolute()
+        || directory.chars().any(char::is_control)
+    {
+        return None;
+    }
+    // Claude Code records the directory it was launched in, which is often the
+    // home directory. An unbounded personal root must not reach the client as a
+    // conversation's project directory.
+    super::project_workspace::bounded_project_workspace(directory)
 }
 
 pub(crate) fn parse_json_sessions(
@@ -93,7 +248,7 @@ pub(crate) fn parse_json_sessions(
         path,
         metadata,
         source_kind,
-        extract_native_session_id(&value).unwrap_or_else(|| "file".to_string()),
+        native_session_id_or_path(&value, path),
         messages,
         extract_conversation_title(&value),
     )]
@@ -385,4 +540,123 @@ pub(super) fn native_content_semantic(value: &Value) -> String {
         })
         .unwrap_or_default()
         .to_string()
+}
+
+/// Directory-layout stores (for example Antigravity
+/// `brain/<conversation-uuid>/…/transcript.jsonl`) carry the conversation
+/// identity in the path rather than in the records. Falling back to the
+/// literal "file" collapses every conversation of the agent into a single
+/// native identity, which breaks dedupe and open-session refresh targeting.
+fn native_session_id_or_path(value: &Value, path: &Path) -> String {
+    extract_native_session_id(value)
+        .or_else(|| directory_component_session_id(path))
+        .unwrap_or_else(|| "file".to_string())
+}
+
+fn directory_component_session_id(path: &Path) -> Option<String> {
+    path.components().rev().skip(1).find_map(|component| {
+        let value = component.as_os_str().to_str()?;
+        is_conversation_uuid_component(value).then(|| value.to_string())
+    })
+}
+
+fn is_conversation_uuid_component(value: &str) -> bool {
+    let bytes = value.as_bytes();
+    bytes.len() == 36
+        && bytes.iter().enumerate().all(|(index, byte)| {
+            if matches!(index, 8 | 13 | 18 | 23) {
+                *byte == b'-'
+            } else {
+                byte.is_ascii_hexdigit()
+            }
+        })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs::File;
+    use std::time::{Duration, SystemTime};
+
+    #[test]
+    fn missing_message_times_interpolate_across_the_transcript_interval() {
+        let directory =
+            std::env::temp_dir().join(format!("lico-transcript-times-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&directory);
+        fs::create_dir_all(&directory).unwrap();
+        let path = directory.join("conversation.jsonl");
+        fs::write(&path, "ignored\n").unwrap();
+        let start = SystemTime::UNIX_EPOCH + Duration::from_secs(1_784_000_000);
+        let end = start + Duration::from_secs(600);
+        File::create(&path).unwrap().set_modified(end).unwrap();
+        let directory_handle = File::open(&directory).unwrap();
+        directory_handle.set_modified(start).unwrap();
+        drop(directory_handle);
+
+        let session = json!({
+            "nativeSessionId": "conversation",
+            "messages": [
+                {"role": "user", "text": "Start"},
+                {"role": "agent", "text": "Working"},
+                {"role": "user", "text": "Delegate"},
+                {"role": "agent", "text": "Done"}
+            ]
+        });
+        let mut messages = session["messages"].as_array().unwrap().clone();
+        backfill_transcript_message_times(&mut messages, &path);
+        let messages = messages;
+        let keys = messages
+            .iter()
+            .map(|message| {
+                message["createdAt"]
+                    .as_str()
+                    .unwrap()
+                    .parse::<i128>()
+                    .unwrap_or_else(|_| {
+                        OffsetDateTime::parse(
+                            message["createdAt"].as_str().unwrap(),
+                            &time::format_description::well_known::Rfc3339,
+                        )
+                        .unwrap()
+                        .unix_timestamp() as i128
+                    })
+            })
+            .collect::<Vec<_>>();
+        assert!(keys.windows(2).all(|pair| pair[0] < pair[1]));
+        assert_eq!(keys[0], 1_784_000_000);
+        assert_eq!(keys[3], 1_784_000_600);
+        let _ = fs::remove_dir_all(&directory);
+    }
+
+    #[test]
+    fn messages_with_their_own_timestamps_are_left_alone() {
+        let directory =
+            std::env::temp_dir().join(format!("lico-transcript-keep-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&directory);
+        fs::create_dir_all(&directory).unwrap();
+        let path = directory.join("conversation.jsonl");
+        fs::write(&path, "ignored\n").unwrap();
+        let start = SystemTime::UNIX_EPOCH + Duration::from_secs(1_784_000_000);
+        let end = start + Duration::from_secs(600);
+        File::create(&path).unwrap().set_modified(end).unwrap();
+        File::open(&directory).unwrap().set_modified(start).unwrap();
+
+        let session = json!({
+            "nativeSessionId": "conversation",
+            "messages": [
+                {"role": "user", "text": "Keep me", "createdAt": "2026-07-20T00:00:00Z"},
+                {"role": "agent", "text": "Backfilled"}
+            ]
+        });
+        let mut messages = session["messages"].as_array().unwrap().clone();
+        backfill_transcript_message_times(&mut messages, &path);
+        assert_eq!(messages[0]["createdAt"], "2026-07-20T00:00:00Z");
+        assert!(
+            messages[1]["createdAt"]
+                .as_str()
+                .is_some_and(|v| !v.is_empty())
+        );
+        assert_ne!(messages[1]["createdAt"], "2026-07-20T00:00:00Z");
+        let _ = fs::remove_dir_all(&directory);
+    }
 }

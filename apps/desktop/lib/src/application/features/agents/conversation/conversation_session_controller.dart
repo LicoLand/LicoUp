@@ -1,13 +1,19 @@
 import 'dart:async';
 
+import 'package:path/path.dart' as p;
+
 import 'package:licoup/src/application/features/agents/conversation/agent_conversation_read_only_policy.dart';
 import 'package:licoup/src/application/features/agents/conversation/conversation_mobile_session_controller.dart';
 import 'package:licoup/src/application/features/agents/conversation/conversation_session_state_controller.dart';
+import 'package:licoup/src/application/features/agents/conversation/conversation_working_directory_fallback.dart';
 import 'package:licoup/src/application/features/agents/policy/conversation_session_index.dart';
 import 'package:licoup/src/application/features/agents/workspace/agent_workspace_coordinator.dart';
+import 'package:licoup/src/application/features/agents/group_conversation/group_conversation_controller.dart';
 import 'package:licoup/src/application/features/agents/orchestration/agent_orchestration_policy_controller.dart';
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
+import 'package:licoup/src/contracts/agent_dispatch_lane.dart';
 import 'package:licoup/src/contracts/agent_orchestration_target.dart';
+import 'package:licoup/src/contracts/target_candidate.dart';
 
 /// Desktop history paging plus user-driven session and agent selection.
 mixin AgentConversationSessionController
@@ -15,7 +21,8 @@ mixin AgentConversationSessionController
         AgentWorkspaceCoordinator,
         AgentConversationSessionStateController,
         AgentConversationMobileSessionController,
-        AgentOrchestrationPolicyController {
+        AgentOrchestrationPolicyController,
+        GroupConversationController {
   @override
   Future<void> refreshConversationCatalogInternal(
     String agentId, {
@@ -87,7 +94,8 @@ mixin AgentConversationSessionController
       );
       AgentConversationSession? refreshed;
       for (final session in page.sessions) {
-        if (session.id == sessionId) {
+        if (session.id == sessionId ||
+            session.nativeSessionId.trim() == sessionId) {
           refreshed = session;
           break;
         }
@@ -104,14 +112,15 @@ mixin AgentConversationSessionController
       if (conversationSessionListsEquivalent(previous, next)) {
         return;
       }
-      conversationSessionsByAgent = {
-        ...conversationSessionsByAgent,
-        agentId: next,
-      };
-      if (selectedConversationAgentId == agentId &&
-          selectedConversationSessionId == sessionId) {
-        agentWorkspaceNotifyActiveConversationChanged();
-      }
+      conversationCommitCatalog(
+        agentId,
+        ConversationSessionPage(
+          sessions: next,
+          hasMore: conversationSessionsHasMoreByAgent[agentId] ?? false,
+        ),
+        replaceAll: true,
+        updateStatus: false,
+      );
     } catch (_) {
       // Exact-session refresh is best effort. The catalog lane repairs misses.
     } finally {
@@ -133,15 +142,23 @@ mixin AgentConversationSessionController
     required int pageSize,
     ConversationSessionProgressCallback? onProgress,
   }) async {
+    final bind = _historyBindFor(agentId);
+    // The sidebar hands over the display id, while the native reader matches
+    // the stable native session id. Resolving against the local catalog keeps
+    // an exact-session read on the full transcript instead of falling back to
+    // the 50-message browse preview (which drops cards placed mid-conversation).
+    final resolvedSessionId =
+        _resolveNativeSessionIdForRead(agentId, sessionId) ?? sessionId;
     try {
       final streamedByIdentity = <String, AgentConversationSession>{};
       var hasMore = false;
       var nextMilestoneIndex = 0;
       await for (final session in conversationGateway.streamSessions(
         agentId: agentId,
-        sessionId: sessionId,
-        limit: pageSize + (sessionId.isEmpty ? 1 : 0),
+        sessionId: resolvedSessionId,
+        limit: pageSize + (resolvedSessionId.isEmpty ? 1 : 0),
         offset: offset,
+        bind: bind,
       )) {
         final identity = session.nativeSessionId.trim().isNotEmpty
             ? 'native:${session.nativeSessionId.trim()}'
@@ -180,9 +197,10 @@ mixin AgentConversationSessionController
       final loaded = sortConversationSessionsByUpdatedAt(
         await conversationGateway.loadSessions(
           agentId: agentId,
-          sessionId: sessionId,
-          limit: pageSize + (sessionId.isEmpty ? 1 : 0),
+          sessionId: resolvedSessionId,
+          limit: pageSize + (resolvedSessionId.isEmpty ? 1 : 0),
           offset: offset,
+          bind: bind,
         ),
       );
       return ConversationSessionPage(
@@ -190,6 +208,23 @@ mixin AgentConversationSessionController
         hasMore: sessionId.isEmpty && loaded.length > pageSize,
       );
     }
+  }
+
+  AgentDispatchBind _historyBindFor(String agentId) {
+    TargetCandidate? candidate;
+    for (final target in scannedTargets) {
+      if (target.target == agentId) {
+        candidate = target;
+        break;
+      }
+    }
+    if (candidate?.hasValidVirtualMachineConnection != true) {
+      return const AgentDispatchBind();
+    }
+    return AgentDispatchBind(
+      workingDirectory: candidate!.remoteWorkingDirectory,
+      runtimeConnection: candidate.runtimeConnection,
+    );
   }
 
   Future<void> loadMoreConversationSessions(String agentId) async {
@@ -240,7 +275,11 @@ mixin AgentConversationSessionController
         normalized: page.hasMore,
       };
       if (selectedConversationAgentId == normalized) {
-        conversationReconcileSelectedSession(normalized, next);
+        conversationReconcileSelectedSession(
+          normalized,
+          next,
+          previous: previous,
+        );
         agentWorkspaceSetLocalizedStatusMessage(
           page.hasMore
               ? '已读取 ${next.length} 条 $normalized 原生历史，滚动到底继续加载。'
@@ -268,11 +307,23 @@ mixin AgentConversationSessionController
     String preferredNativeSessionId = '',
   }) async {
     final preferred = preferredNativeSessionId.trim();
-    bool stillOwnsActiveSelection() =>
-        preferred.isEmpty ||
-        (selectedConversationAgentId == agentId &&
-            newConversationDraftTokenFor(agentId).isEmpty &&
-            selectedConversationSessionId.trim() == preferred);
+    bool stillOwnsActiveSelection() {
+      if (preferred.isEmpty) return true;
+      if (selectedConversationAgentId != agentId ||
+          newConversationDraftTokenFor(agentId).isNotEmpty) {
+        return false;
+      }
+      final selectedId = selectedConversationSessionId.trim();
+      if (selectedId.isEmpty) return false;
+      if (selectedId == preferred) return true;
+      for (final session in conversationSessionsByAgent[agentId] ?? const []) {
+        if (session.id != selectedId) continue;
+        final nativeId = session.nativeSessionId.trim();
+        return nativeId.isNotEmpty && nativeId == preferred;
+      }
+      return false;
+    }
+
     const retryDelays = <Duration>[
       Duration.zero,
       Duration(milliseconds: 200),
@@ -321,6 +372,7 @@ mixin AgentConversationSessionController
           replaceAll: true,
           updateStatus: false,
         );
+        await conversationFlushProjectionPersistence();
         return true;
       } catch (_) {
         // Durable history may still be committing. Retry without changing the
@@ -330,35 +382,346 @@ mixin AgentConversationSessionController
     return false;
   }
 
+  /// Reads one provider-native session back into both catalogs: the provider
+  /// keeps its ordinary native history entry, and the LicoUp orchestration
+  /// owner receives a cleaned participant-aware mirror of the same session.
+  Future<bool> reloadDualConversationSessionsAfterSend({
+    required String ownerAgentId,
+    required String localSessionId,
+    required String nativeAgentId,
+    required String nativeSessionId,
+    required String nativeAgentLabel,
+  }) async {
+    final owner = ownerAgentId.trim();
+    final localId = localSessionId.trim();
+    final nativeAgent = nativeAgentId.trim();
+    final nativeId = nativeSessionId.trim();
+    if (owner.isEmpty ||
+        localId.isEmpty ||
+        nativeAgent.isEmpty ||
+        nativeId.isEmpty) {
+      return false;
+    }
+    const retryDelays = <Duration>[
+      Duration.zero,
+      Duration(milliseconds: 200),
+      Duration(milliseconds: 400),
+      Duration(milliseconds: 800),
+      Duration(milliseconds: 1600),
+      Duration(milliseconds: 3200),
+    ];
+    for (final delay in retryDelays) {
+      if (delay > Duration.zero) {
+        await Future<void>.delayed(delay);
+      }
+      if (agentWorkspaceDisposed) return false;
+      try {
+        final page = await readConversationSessionPage(
+          nativeAgent,
+          sessionId: nativeId,
+          offset: 0,
+          pageSize: 1,
+        );
+        AgentConversationSession? nativeSession;
+        for (final session in page.sessions) {
+          final sessionNativeId = session.nativeSessionId.trim().isNotEmpty
+              ? session.nativeSessionId.trim()
+              : session.id.trim();
+          if (sessionNativeId == nativeId) {
+            nativeSession = session;
+            break;
+          }
+        }
+        if (nativeSession == null) continue;
+
+        conversationCommitCatalog(
+          nativeAgent,
+          ConversationSessionPage(
+            sessions: mergeConversationSessionsByUpdatedAt(
+              conversationSessionsByAgent[nativeAgent] ?? const [],
+              [nativeSession],
+            ),
+            hasMore: conversationSessionsHasMoreByAgent[nativeAgent] ?? false,
+          ),
+          replaceAll: true,
+          updateStatus: false,
+        );
+        final mirrored = await conversationCommitOrchestrationMirror(
+          ownerAgentId: owner,
+          localSessionId: localId,
+          nativeSession: nativeSession,
+          mainAgentId: nativeAgent,
+          mainAgentLabel: nativeAgentLabel,
+        );
+        await conversationFlushProjectionPersistence();
+        return mirrored;
+      } catch (_) {
+        // Provider history may be committed shortly after the turn result.
+        // The already visible local turn remains usable during bounded retry.
+      }
+    }
+    return false;
+  }
+
   void selectConversationSession(String sessionId) {
     conversationClearNativeSessionPending(selectedConversationAgentId);
     abandonNewConversationDraft(selectedConversationAgentId);
+    clearConversationWorkingDirectoryOverride();
     selectedConversationSessionId = sessionId;
+    if (selectedConversationIsOrchestration) {
+      final session = selectedConversationSession;
+      final mainId =
+          groupConversationRoster.mainAgentId?.trim().isNotEmpty == true
+          ? groupConversationRoster.mainAgentId!.trim()
+          : effectiveAgentOrchestrationPolicy.plainSendDispatchAgentId;
+      if (session != null && mainId.isNotEmpty) {
+        unawaited(
+          rememberGroupAgentSession(
+            agentId: mainId,
+            nativeSessionId: session.nativeSessionId,
+            sourcePath: session.sourcePath,
+            workingDirectory: session.workingDirectory,
+            localOrchestrationSessionId: session.id,
+          ),
+        );
+      } else if (sessionId.trim().isNotEmpty) {
+        unawaited(
+          rememberGroupAgentSession(
+            agentId: '',
+            localOrchestrationSessionId: sessionId,
+          ),
+        );
+      }
+    }
     agentWorkspaceNotifyConversationStructureChanged();
     agentWorkspaceNotifyStateChanged();
     conversationAttentionContextChanged();
   }
 
+  /// Re-open the last main/subagent-bound group thread when returning to Lico.
+  Future<void> _restoreGroupConversationContinuity() async {
+    if (!selectedConversationIsOrchestration) return;
+    final owner = agentOrchestrationTargetId;
+    final sessions = conversationSessionsByAgent[owner] ?? const [];
+    final localId = groupConversationLastLocalSessionId.trim();
+    if (localId.isNotEmpty) {
+      for (final session in sessions) {
+        if (session.id.trim() != localId) continue;
+        abandonNewConversationDraft(owner);
+        clearConversationWorkingDirectoryOverride();
+        selectedConversationSessionId = localId;
+        agentWorkspaceNotifyConversationStructureChanged();
+        return;
+      }
+    }
+    final mainId =
+        groupConversationRoster.mainAgentId?.trim().isNotEmpty == true
+        ? groupConversationRoster.mainAgentId!.trim()
+        : effectiveAgentOrchestrationPolicy.plainSendDispatchAgentId;
+    final nativeId =
+        groupConversationBindingFor(mainId)?.nativeSessionId.trim() ?? '';
+    if (nativeId.isEmpty) return;
+    for (final session in sessions) {
+      if (session.nativeSessionId.trim() != nativeId) continue;
+      abandonNewConversationDraft(owner);
+      clearConversationWorkingDirectoryOverride();
+      selectedConversationSessionId = session.id;
+      agentWorkspaceNotifyConversationStructureChanged();
+      return;
+    }
+  }
+
+  String get selectedConversationWorkingDirectory {
+    final agent = selectedConversationIsOrchestration
+        ? (agentOrchestrationManagerTarget ??
+              agentOrchestrationConfiguredManagerTarget)
+        : selectedConversationAgent;
+    if (agent == null) {
+      return selectedConversationIsOrchestration
+          ? localConversationWorkingDirectoryFallback(
+              agentId: agentOrchestrationTargetId,
+            )
+          : '';
+    }
+    if (agent.hasValidVirtualMachineConnection) {
+      return agent.remoteWorkingDirectory.trim();
+    }
+    final agentSessions = conversationSessionsByAgent[agent.target] ?? const [];
+    // Explicit user bind for the next turn wins over session provenance and
+    // the shared client-owned fallback.
+    final draftDirectory =
+        (newConversationWorkingDirectories[agent.target] ?? '').trim();
+    if (isBoundableConversationWorkingDirectory(draftDirectory)) {
+      return draftDirectory;
+    }
+    if (!preparingNewConversation) {
+      final sessionDirectory =
+          selectedConversationSession?.workingDirectory.trim() ?? '';
+      if (isUsableLocalConversationWorkingDirectory(sessionDirectory)) {
+        return sessionDirectory;
+      }
+      // Same native identity may appear twice (turn projection + catalog).
+      // Prefer the catalog copy's project directory before agent-wide history.
+      final selectedNativeId =
+          selectedConversationSession?.nativeSessionId.trim() ?? '';
+      if (selectedNativeId.isNotEmpty) {
+        for (final session in agentSessions) {
+          if (session.nativeSessionId.trim() != selectedNativeId) {
+            continue;
+          }
+          final directory = session.workingDirectory.trim();
+          if (isUsableLocalConversationWorkingDirectory(directory)) {
+            return directory;
+          }
+        }
+      }
+    }
+    final historicalDirectory = historicalConversationWorkingDirectory(
+      agentSessions,
+    );
+    if (historicalDirectory.isNotEmpty) {
+      return historicalDirectory;
+    }
+    final remoteDirectory = agent.remoteWorkingDirectory.trim();
+    if (isUsableLocalConversationWorkingDirectory(remoteDirectory)) {
+      return remoteDirectory;
+    }
+    return localConversationWorkingDirectoryFallback(agentId: agent.target);
+  }
+
+  /// Local desktop agents may always rebind the next-turn working directory.
+  /// The composer defaults to the shared client-owned `agent-workspace` and
+  /// must stay clickable — never locked — so the user can pick a project.
+  /// Sending a turn does not lock the capsule; the bind applies to later turns.
+  bool get canSelectNewConversationWorkingDirectory {
+    final agent = selectedConversationIsOrchestration
+        ? (agentOrchestrationManagerTarget ??
+              agentOrchestrationConfiguredManagerTarget)
+        : selectedConversationAgent;
+    return agent != null &&
+        !agentWorkspaceMobileRuntime &&
+        !agent.hasValidVirtualMachineConnection;
+  }
+
+  void selectNewConversationWorkingDirectory(String path) {
+    final agent = selectedConversationIsOrchestration
+        ? (agentOrchestrationManagerTarget ??
+              agentOrchestrationConfiguredManagerTarget)
+        : selectedConversationAgent;
+    if (agent == null || !canSelectNewConversationWorkingDirectory) {
+      return;
+    }
+    final normalized = path.trim();
+    if (isUnboundedLocalAgentWorkspace(normalized)) {
+      lastError = 'conversation_working_directory_unbounded';
+      agentWorkspaceSetLocalizedStatusMessage(
+        '所选目录是个人目录树的根，代理会索引其中全部文件，请改选具体项目目录。',
+        'The selected directory is the root of a personal tree that the agent '
+            'would index in full. Choose a specific project directory instead.',
+      );
+      statusCaption = 'Agent chat';
+      agentWorkspaceNotifyActiveConversationChanged();
+      agentWorkspaceNotifyStateChanged();
+      return;
+    }
+    if (!_validLocalConversationWorkingDirectory(normalized)) {
+      lastError = 'conversation_working_directory_invalid';
+      agentWorkspaceSetLocalizedStatusMessage(
+        '所选工作目录无效，已保留当前选择。',
+        'The selected working directory is invalid. The current selection was kept.',
+      );
+      statusCaption = 'Agent chat';
+      agentWorkspaceNotifyActiveConversationChanged();
+      agentWorkspaceNotifyStateChanged();
+      return;
+    }
+    newConversationWorkingDirectories = {
+      ...newConversationWorkingDirectories,
+      agent.target: normalized,
+    };
+    lastError = '';
+    agentWorkspaceSetLocalizedStatusMessage(
+      '已更新工作目录。',
+      'Updated the working directory.',
+    );
+    statusCaption = 'Agent chat';
+    agentWorkspaceNotifyActiveConversationChanged();
+    agentWorkspaceNotifyStateChanged();
+  }
+
+  /// Drops a pending next-turn working-directory bind for the selected agent
+  /// (manager agent when orchestration is selected).
+  void clearConversationWorkingDirectoryOverride() {
+    final agent = selectedConversationIsOrchestration
+        ? (agentOrchestrationManagerTarget ??
+              agentOrchestrationConfiguredManagerTarget)
+        : selectedConversationAgent;
+    final key = agent?.target.trim() ?? '';
+    if (key.isEmpty || !newConversationWorkingDirectories.containsKey(key)) {
+      return;
+    }
+    newConversationWorkingDirectories = {
+      for (final entry in newConversationWorkingDirectories.entries)
+        if (entry.key != key) entry.key: entry.value,
+    };
+  }
+
   /// Primes the new-conversation draft for the selected agent: the first sent
-  /// message creates its session in the current session's working directory.
-  /// Must run before the selection is cleared or a new draft token is minted,
-  /// because it reads `selectedConversationSession`.
+  /// message creates its session in a historical working directory.
+  ///
+  /// Prefer the currently selected session's cwd, then the newest usable cwd
+  /// across that agent's loaded history. Desktop selects an agent before its
+  /// session list finishes loading, so [conversationCommitCatalog] re-invokes
+  /// this once history arrives when the draft is still empty.
   void conversationPrimeNewConversationDraft() {
     final agent = selectedConversationAgent;
     if (agent == null) {
       return;
     }
-    final previousWorkingDirectory =
+    final existingDraft =
+        (newConversationWorkingDirectories[agent.target] ?? '').trim();
+    if (isBoundableConversationWorkingDirectory(existingDraft)) {
+      return;
+    }
+    final selectedDirectory =
         selectedConversationSession?.workingDirectory.trim() ?? '';
+    final previousWorkingDirectory =
+        isUsableLocalConversationWorkingDirectory(selectedDirectory)
+        ? selectedDirectory
+        : historicalConversationWorkingDirectory(
+            conversationSessionsByAgent[agent.target] ?? const [],
+          );
+    if (previousWorkingDirectory.isEmpty) {
+      return;
+    }
     newConversationWorkingDirectories = {
       ...newConversationWorkingDirectories,
-      if (previousWorkingDirectory.isNotEmpty)
-        agent.target: previousWorkingDirectory,
+      agent.target: previousWorkingDirectory,
     };
-    if (previousWorkingDirectory.isEmpty) {
-      newConversationWorkingDirectories = {...newConversationWorkingDirectories}
-        ..remove(agent.target);
+  }
+
+  @override
+  bool conversationCommitCatalog(
+    String agentId,
+    ConversationSessionPage page, {
+    required bool replaceAll,
+    required bool updateStatus,
+    bool notifyChanges = true,
+    bool clearLiveProjectionFromProviderReadback = true,
+  }) {
+    final changed = super.conversationCommitCatalog(
+      agentId,
+      page,
+      replaceAll: replaceAll,
+      updateStatus: updateStatus,
+      notifyChanges: notifyChanges,
+      clearLiveProjectionFromProviderReadback:
+          clearLiveProjectionFromProviderReadback,
+    );
+    if (selectedConversationAgentId == agentId && preparingNewConversation) {
+      conversationPrimeNewConversationDraft();
     }
+    return changed;
   }
 
   void startNewConversationSession() {
@@ -368,6 +731,10 @@ mixin AgentConversationSessionController
     }
     conversationClearNativeSessionPending(agent.target);
     conversationPrimeNewConversationDraft();
+    conversationTurnProcessStateByAgent = {
+      for (final entry in conversationTurnProcessStateByAgent.entries)
+        if (entry.key != agent.target) entry.key: entry.value,
+    };
     liveConversationMessagesByAgent = {
       for (final entry in liveConversationMessagesByAgent.entries)
         if (entry.key != agent.target) entry.key: entry.value,
@@ -408,6 +775,15 @@ mixin AgentConversationSessionController
       acknowledgeConversationTabWorkFinished(agentOrchestrationTargetId);
       selectedConversationAgentId = agentOrchestrationTargetId;
       stopConversationRefreshScheduling();
+      unawaited(
+        ensureGroupConversationReady().then((_) async {
+          if (agentWorkspaceDisposed) return;
+          await _restoreGroupConversationContinuity();
+          if (!agentWorkspaceDisposed) {
+            agentWorkspaceNotifyStateChanged();
+          }
+        }),
+      );
       agentWorkspaceSetLocalizedStatusMessage(
         '已切换到默认智能体编排。',
         'Switched to the default agent orchestration.',
@@ -422,6 +798,30 @@ mixin AgentConversationSessionController
     }
     if (normalizedAgentId == selectedConversationAgentId &&
         selectedConversationSessions.isNotEmpty) {
+      if (!agentWorkspaceMobileRuntime) {
+        await agentWorkspaceEnsureConversationRuntimeBinding(normalizedAgentId);
+        if (agentWorkspaceDisposed ||
+            selectedConversationAgentId != normalizedAgentId) {
+          return;
+        }
+      }
+      // Cached/durable sessions often lack a real project cwd (or still carry
+      // the retired agent-workspace fallback). Refresh native history so the
+      // composer can bind the trusted workspace path from Cursor projects.
+      final hasUsableWorkingDirectory =
+          (conversationSessionsByAgent[normalizedAgentId] ?? const []).any(
+            (session) => isUsableLocalConversationWorkingDirectory(
+              session.workingDirectory,
+            ),
+          );
+      if (!hasUsableWorkingDirectory) {
+        await loadConversationSessions(normalizedAgentId);
+        if (agentWorkspaceDisposed ||
+            selectedConversationAgentId != normalizedAgentId) {
+          return;
+        }
+        conversationPrimeNewConversationDraft();
+      }
       acknowledgeConversationTabWorkFinished(normalizedAgentId);
       conversationAttentionContextChanged();
       agentWorkspaceNotifyStateChanged();
@@ -450,6 +850,11 @@ mixin AgentConversationSessionController
     beginNewConversationDraft(normalizedAgentId);
     agentWorkspaceNotifyConversationStructureChanged();
     agentWorkspaceNotifyStateChanged();
+    await agentWorkspaceEnsureConversationRuntimeBinding(normalizedAgentId);
+    if (agentWorkspaceDisposed ||
+        selectedConversationAgentId != normalizedAgentId) {
+      return;
+    }
     if ((conversationSessionsByAgent[normalizedAgentId] ?? const [])
         .isNotEmpty) {
       conversationAttentionContextChanged();
@@ -546,4 +951,31 @@ mixin AgentConversationSessionController
   Future<void> refreshConversationSessions(String agentId) {
     return refreshConversationCatalogInternal(agentId.trim(), foreground: true);
   }
+
+  /// Maps a display session id to the stable native session id the native
+  /// reader matches, when the local catalog knows the mapping. Returns null
+  /// when [sessionId] is empty or the session has no native identity, so the
+  /// caller keeps using the display id (catalog browse path).
+  String? _resolveNativeSessionIdForRead(String agentId, String sessionId) {
+    if (sessionId.isEmpty) {
+      return null;
+    }
+    final sessions =
+        conversationSessionsByAgent[agentId] ??
+        const <AgentConversationSession>[];
+    for (final session in sessions) {
+      if (session.id == sessionId) {
+        final nativeId = session.nativeSessionId.trim();
+        return nativeId.isNotEmpty ? nativeId : null;
+      }
+    }
+    return null;
+  }
+}
+
+bool _validLocalConversationWorkingDirectory(String value) {
+  return value.isNotEmpty &&
+      value.length <= 4096 &&
+      p.isAbsolute(value) &&
+      !value.contains(RegExp(r'[\u0000-\u001f\u007f]'));
 }

@@ -65,8 +65,19 @@ impl SecureMeshPairwiseDurableStore {
         if !missing_secret {
             return Ok(0);
         }
-        self.connection
+        let tx = self
+            .connection
+            .transaction()
+            .context("secure mesh unrecoverable memory-only session purge transaction failed")?;
+        tx.execute("DELETE FROM secure_mesh_pairwise_pending_deliveries", [])
+            .context("secure mesh unrecoverable pending delivery purge failed")?;
+        tx.execute("DELETE FROM secure_mesh_pairwise_received_payloads", [])
+            .context("secure mesh unrecoverable received payload purge failed")?;
+        let deleted = tx
             .execute("DELETE FROM secure_mesh_pairwise_sessions", [])
-            .context("secure mesh unrecoverable memory-only session purge failed")
+            .context("secure mesh unrecoverable memory-only session purge failed")?;
+        tx.commit()
+            .context("secure mesh unrecoverable memory-only session purge commit failed")?;
+        Ok(deleted)
     }
 }

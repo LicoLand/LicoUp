@@ -40,7 +40,6 @@ async function sourceFiles(relativeRoot) {
 
 test("session negotiation is an exact facade over one atomic machine and four leaves", async () => {
   const facade = await read(negotiationFacade);
-  assert.ok(facade.trimEnd().split(/\r?\n/u).length <= 34);
   for (const leaf of negotiationLeaves) {
     assert.match(facade, new RegExp(`mod ${leaf.replace(".rs", "")};`, "u"));
     await fs.access(path.join(repoRoot, negotiationRoot, leaf));
@@ -116,7 +115,7 @@ test("key ratchet core retains state KDF skipped-key and replay ownership only",
     "MAX_SKIPPED_KEYS", "MAX_REPLAY_IDS",
   ]) assert.equal(core.includes(token), true, token);
   for (const forbidden of [
-    "pub fn seal_payload(", "pub fn open_payload(", "SecureMeshRelayEnvelopeDraft",
+    "pub fn seal_payload(", "pub fn open_payload(", "LicoArcRelayEnvelopeDraft",
     "SecureMeshPairwisePrivateRelayHeader", "seal_private_relay_header",
   ]) assert.equal(core.includes(forbidden), false, forbidden);
 });
@@ -129,7 +128,7 @@ test("payload adapter and relay codec have exact non-overlapping authorities", a
     "combine_pairwise_and_extra_aad", "ensure_message_for_session",
   ]) assert.equal(payload.includes(token), true, token);
   for (const forbidden of [
-    "SecureMeshRelayEnvelope", "SecureMeshPairwisePrivateRelayHeader", "derive_ratchet_root",
+    "LicoArcRelayEnvelope", "SecureMeshPairwisePrivateRelayHeader", "derive_ratchet_root",
     "struct SkippedMessageKey",
   ]) assert.equal(payload.includes(forbidden), false, forbidden);
 

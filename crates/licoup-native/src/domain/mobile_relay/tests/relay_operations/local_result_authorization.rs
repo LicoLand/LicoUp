@@ -1,6 +1,27 @@
 use super::super::test_support::*;
 fn synthetic_value(label: &str) -> String { format!("{label}-{}", uuid::Uuid::new_v4()) }
 
+
+fn secure_command_create_test_params(client_intent_id: &str, text: &str) -> Value {
+    with_station_params(json!({
+        "clientIntentId": client_intent_id,
+        "commandKind": "agent.message.send",
+        "targetAgentId": "codex",
+        "workspaceId": "default",
+        "body": {
+            "text": text
+        },
+        "secretOverrideTransport": RUNTIME_SECRET_OVERRIDE_TRANSPORT,
+        "secretOverrides": {
+            "mobileRelayE2eeSecretStore": {
+                "contract": "rust_secure_mesh_secret_store_handle_v1",
+                "namespace": MOBILE_RELAY_PLATFORM_SECRET_STORE_NAMESPACE,
+                "rawJsonSecretOverridesUsed": false
+            }
+        }
+    }))
+}
+
 #[test]
 fn mobile_relay_encrypted_local_effect_command_requires_local_confirmation() {
     let sv_idem_mobile_relay_local_ = synthetic_value("idem_mobile_relay_local_effect");
@@ -10,18 +31,10 @@ fn mobile_relay_encrypted_local_effect_command_requires_local_confirmation() {
     let mut pc_config = default_config();
     let mut mobile_config = default_config();
     pair_mobile_relay_configs(&mut pc_config, &mut mobile_config);
-    let mobile_endpoint = local_endpoint_state(
-        &mobile_config,
-        test_runtime_secret_material(stringify!(&mobile_config)),
-    )
-    .unwrap();
-    let pc_endpoint = local_endpoint_state(
-        &pc_config,
-        test_runtime_secret_material(stringify!(&pc_config)),
-    )
-    .unwrap();
-    save_config(&mut pc_config).unwrap();
-
+    let mobile_material = test_runtime_secret_material(stringify!(&mobile_config));
+    let pc_material = test_runtime_secret_material(stringify!(&pc_config));
+    let mobile_endpoint = local_endpoint_state(&mobile_config, &mobile_material).unwrap();
+    let pc_endpoint = local_endpoint_state(&pc_config, &pc_material).unwrap();
     let command_payload = json!({
         "schema": crate::core::secure_mesh::SECURE_MESH_COMMAND_PROTOCOL_VERSION,
         "commandId": "cmd_mobile_relay_local_effect",
@@ -46,9 +59,13 @@ fn mobile_relay_encrypted_local_effect_command_requires_local_confirmation() {
             "privateCanary": sv_local_effect_body_canary.as_str()
         }
     });
+    drop(mobile_material);
+    drop(pc_material);
+    persist_test_runtime_secret_material(stringify!(&pc_config)).unwrap();
+    save_config(&mut pc_config).unwrap();
     let envelope = seal_mobile_relay_payload(
         &mobile_config,
-        test_runtime_secret_material(stringify!(&mobile_config)),
+        &mut test_runtime_secret_material(stringify!(&mobile_config)),
         crate::core::secure_mesh_crypto::SecureMeshPayloadKind::Command,
         &command_payload,
     )
@@ -76,6 +93,7 @@ fn mobile_relay_encrypted_local_effect_command_requires_local_confirmation() {
 
 #[test]
 fn command_result_secure_consumes_canonical_sync_and_acks_after_open() {
+    let sv_idem_canonical_result = synthetic_value("idem-canonical-result");
     let sv_encrypted_result_canary = synthetic_value("encrypted-result-canary");
     let sv_mobile_synthetic_canonic = synthetic_value("mobile-synthetic-canonical-result-sync");
     let dir = temp_dir("mobile-relay-secure-result-canonical-sync");
@@ -83,53 +101,82 @@ fn command_result_secure_consumes_canonical_sync_and_acks_after_open() {
     let (pc_config, mut mobile_config, _envelope) = paired_command_envelope_fixture();
     let result_envelope = seal_mobile_relay_payload(
         &pc_config,
-        test_runtime_secret_material(stringify!(&pc_config)),
+        &mut test_runtime_secret_material(stringify!(&pc_config)),
         crate::core::secure_mesh_crypto::SecureMeshPayloadKind::ResultPayload,
         &json!({
             "ok": true,
             "result": sv_encrypted_result_canary.as_str(),
+            "evaluation": {
+                "commandId": "cmd-canonical-result"
+            },
+            "execution": {
+                "commandId": "cmd-canonical-result",
+                "idempotencyKey": sv_idem_canonical_result.as_str()
+            },
             "bodyRedacted": true
         }),
     )
     .unwrap();
-    let expected_delivery_id = result_envelope["deliveryId"].clone();
-    let gateway = CanonicalRelayGateway::start(2, vec![result_envelope]);
+    let expected_envelope_id = result_envelope["envelopeId"].as_str().unwrap().to_string();
+    let station = CanonicalStation::start(5, vec![result_envelope]);
     mobile_config["pairingId"] = json!("pair_canonical_result_sync");
     mobile_config["mobileToken"] = json!(sv_mobile_synthetic_canonic.as_str());
     mobile_config["relayEnabled"] = json!(true);
-    mobile_config["useCustomGateway"] = json!(true);
-    mobile_config["customGatewayUrl"] = json!(gateway.url());
+    mobile_config["stationBaseUrl"] = json!(station.url());
+    persist_test_runtime_secret_material(stringify!(&mobile_config)).unwrap();
     save_config(&mut mobile_config).unwrap();
 
-    let output = command_result_secure(&with_canonical_relay_params(json!({}))).unwrap();
+    let result_params = with_station_params(json!({
+        "commandId": "cmd-canonical-result",
+        "idempotencyKey": sv_idem_canonical_result.as_str()
+    }));
+    let output = command_result_secure(&result_params).unwrap();
 
     assert_eq!(output["ok"], true);
     assert_eq!(output["bodyRedacted"], true);
-    assert_eq!(output["response"]["bodyRedacted"], true);
-    assert_eq!(output["response"]["command"]["resultEnvelopePresent"], true);
-    assert!(
-        output["response"]["command"]
-            .get("resultEnvelope")
-            .is_none()
-    );
     assert_eq!(output["openedResult"]["result"], sv_encrypted_result_canary.as_str());
+    assert_eq!(
+        output["transportHint"]["lease"]["stationReportedLeased"],
+        true
+    );
+    assert_eq!(
+        output["transportHint"]["delete"]["stationReportedAcknowledged"],
+        true
+    );
+    let receipt_id = output["resultReceiptId"].as_str().unwrap().to_string();
+    let recovered_after_response_loss = command_result_secure(&result_params).unwrap();
+    assert_eq!(
+        recovered_after_response_loss["openedResult"],
+        output["openedResult"]
+    );
+    assert_eq!(recovered_after_response_loss["resultReceiptId"], receipt_id);
+    assert!(recovered_after_response_loss.get("transportHint").is_none());
+    for _ in 0..2 {
+        let acknowledged = command_result_secure(&with_station_params(json!({
+            "acknowledgeReceiptId": receipt_id
+        })))
+        .unwrap();
+        assert_eq!(acknowledged["ok"], true);
+        assert_eq!(acknowledged["acknowledged"], true);
+    }
     let serialized = serde_json::to_string(&output).unwrap();
     assert!(!serialized.contains(sv_mobile_synthetic_canonic.as_str()));
-    assert_eq!(
-        serde_json::from_str::<Value>(&gateway.request_body(1)).unwrap()["deliveryId"],
-        expected_delivery_id
-    );
-    gateway.assert_operations(&[
-        SecureClientRelayOperation::EnvelopeSync,
-        SecureClientRelayOperation::EnvelopeAck,
+    assert!(station.request_path(4).ends_with(&expected_envelope_id));
+    station.assert_operations(&[
+        BadTowerStationOperation::LeaseMailbox,
+        BadTowerStationOperation::ReceiveEnvelopes,
+        BadTowerStationOperation::LeaseMailbox,
+        BadTowerStationOperation::ReceiveEnvelopes,
+        BadTowerStationOperation::DeleteEnvelope,
     ]);
 
-    gateway.join();
+    station.join();
     set_portable_data_dir_override(previous);
 }
 
 #[test]
 fn command_result_secure_reuses_single_operation_auth_batch_for_fetch_and_result_open() {
+    let sv_idem_single_auth_result = synthetic_value("idem-single-auth-result");
     let sv_mobile_synthetic_secure_ = synthetic_value("mobile-synthetic-secure-result-single-auth");
     let sv_single_auth_result_canar = synthetic_value("single-auth-result-canary");
     let dir = temp_dir("mobile-relay-secure-result-single-operation-auth-batch");
@@ -143,20 +190,27 @@ fn command_result_secure_reuses_single_operation_auth_batch_for_fetch_and_result
             let (pc_config, mut mobile_config, _envelope) = paired_command_envelope_fixture();
             let result_envelope = seal_mobile_relay_payload(
                 &pc_config,
-                test_runtime_secret_material(stringify!(&pc_config)),
+                &mut test_runtime_secret_material(stringify!(&pc_config)),
                 crate::core::secure_mesh_crypto::SecureMeshPayloadKind::ResultPayload,
                 &json!({
                     "ok": true,
                     "result": sv_single_auth_result_canar.as_str(),
+                    "evaluation": {
+                        "commandId": "cmd-single-auth-result"
+                    },
+                    "execution": {
+                        "commandId": "cmd-single-auth-result",
+                        "idempotencyKey": sv_idem_single_auth_result.as_str()
+                    },
                     "bodyRedacted": true
                 }),
             )?;
-            let gateway = CanonicalRelayGateway::start(2, vec![result_envelope]);
+            let station = CanonicalStation::start(5, vec![result_envelope]);
             mobile_config["pairingId"] = json!("pair_secure_result_single_auth_batch");
             mobile_config["mobileToken"] = json!(sv_mobile_synthetic_secure_.as_str());
             mobile_config["relayEnabled"] = json!(true);
-            mobile_config["useCustomGateway"] = json!(true);
-            mobile_config["customGatewayUrl"] = json!(gateway.url());
+            mobile_config["stationBaseUrl"] = json!(station.url());
+            persist_test_runtime_secret_material(stringify!(&mobile_config))?;
             persist_config_secret_material_to_secret_store(
                 &mut mobile_config,
                 secret_store.as_ref(),
@@ -165,7 +219,10 @@ fn command_result_secure_reuses_single_operation_auth_batch_for_fetch_and_result
             save_config(&mut mobile_config)?;
             let baseline_session_count = secret_store.authorization_session_count();
 
-            let output = command_result_secure(&with_canonical_relay_params(json!({})))?;
+            let output = command_result_secure(&with_station_params(json!({
+                "commandId": "cmd-single-auth-result",
+                "idempotencyKey": sv_idem_single_auth_result.as_str()
+            })))?;
 
             assert_eq!(output["ok"], true);
             assert_eq!(
@@ -180,11 +237,14 @@ fn command_result_secure_reuses_single_operation_auth_batch_for_fetch_and_result
                 secret_store.authorization_session_reasons()[baseline_session_count],
                 "Mobile Relay secure result operation authorization batch"
             );
-            gateway.assert_operations(&[
-                SecureClientRelayOperation::EnvelopeSync,
-                SecureClientRelayOperation::EnvelopeAck,
+            station.assert_operations(&[
+                BadTowerStationOperation::LeaseMailbox,
+                BadTowerStationOperation::ReceiveEnvelopes,
+                BadTowerStationOperation::LeaseMailbox,
+                BadTowerStationOperation::ReceiveEnvelopes,
+                BadTowerStationOperation::DeleteEnvelope,
             ]);
-            gateway.join();
+            station.join();
             Ok(())
         })
     })
@@ -194,10 +254,111 @@ fn command_result_secure_reuses_single_operation_auth_batch_for_fetch_and_result
 }
 
 #[test]
+fn command_result_secure_returns_typed_pending_when_station_has_no_result() {
+    let sv_idem_pending_result = synthetic_value("idem-pending-result");
+    let dir = temp_dir("mobile-relay-secure-result-pending");
+    let previous = set_portable_data_dir_override(Some(dir));
+    let (_pc_config, mut mobile_config, _envelope) = paired_command_envelope_fixture();
+    let station = CanonicalStation::start(4, Vec::new());
+    mobile_config["pairingId"] = json!("pair_secure_result_pending");
+    mobile_config["relayEnabled"] = json!(true);
+    mobile_config["stationBaseUrl"] = json!(station.url());
+    persist_test_runtime_secret_material(stringify!(&mobile_config)).unwrap();
+    save_config(&mut mobile_config).unwrap();
+
+    let output = command_result_secure(&with_station_params(json!({
+        "commandId": "cmd-pending-result",
+        "idempotencyKey": sv_idem_pending_result.as_str()
+    })))
+    .unwrap();
+
+    assert_eq!(output["ok"], true);
+    assert_eq!(output["pending"], true);
+    assert_eq!(output["openedResult"], Value::Null);
+    assert_eq!(output["bodyRedacted"], true);
+    station.assert_operations(&[
+        BadTowerStationOperation::LeaseMailbox,
+        BadTowerStationOperation::ReceiveEnvelopes,
+        BadTowerStationOperation::LeaseMailbox,
+        BadTowerStationOperation::ReceiveEnvelopes,
+    ]);
+    station.join();
+    set_portable_data_dir_override(previous);
+}
+
+#[test]
+fn command_result_secure_caches_unmatched_results_without_head_of_line_blocking() {
+    let sv_idem_out_of_order_11 = synthetic_value("idem-out-of-order-11");
+    let sv_idem_out_of_order_0 = synthetic_value("idem-out-of-order-0");
+    let dir = temp_dir("mobile-relay-secure-result-out-of-order-inbox");
+    let previous = set_portable_data_dir_override(Some(dir));
+    let (pc_config, mut mobile_config, _envelope) = paired_command_envelope_fixture();
+    let mut results = Vec::new();
+    for index in 0..12 {
+        results.push(
+            seal_mobile_relay_payload(
+                &pc_config,
+                &mut test_runtime_secret_material(stringify!(&pc_config)),
+                crate::core::secure_mesh_crypto::SecureMeshPayloadKind::ResultPayload,
+                &json!({
+                    "ok": true,
+                    "result": format!("out-of-order-result-{index}"),
+                    "evaluation": {
+                        "commandId": format!("cmd-out-of-order-{index}")
+                    },
+                    "execution": {
+                        "commandId": format!("cmd-out-of-order-{index}"),
+                        "idempotencyKey": format!("idem-out-of-order-{index}")
+                    },
+                    "bodyRedacted": true
+                }),
+            )
+            .unwrap(),
+        );
+    }
+    let station = CanonicalStation::start(16, results);
+    mobile_config["pairingId"] = json!("pair_secure_result_out_of_order");
+    mobile_config["relayEnabled"] = json!(true);
+    mobile_config["stationBaseUrl"] = json!(station.url());
+    persist_test_runtime_secret_material(stringify!(&mobile_config)).unwrap();
+    save_config(&mut mobile_config).unwrap();
+
+    let target = command_result_secure(&with_station_params(json!({
+        "commandId": "cmd-out-of-order-11",
+        "idempotencyKey": sv_idem_out_of_order_11.as_str()
+    })))
+    .unwrap();
+    assert_eq!(target["pending"], false);
+    assert_eq!(target["openedResult"]["result"], "out-of-order-result-11");
+
+    let first_cached = command_result_secure(&with_station_params(json!({
+        "commandId": "cmd-out-of-order-0",
+        "idempotencyKey": sv_idem_out_of_order_0.as_str()
+    })))
+    .unwrap();
+    assert_eq!(first_cached["pending"], false);
+    assert_eq!(
+        first_cached["openedResult"]["result"],
+        "out-of-order-result-0"
+    );
+    assert!(first_cached.get("transportHint").is_none());
+    assert_eq!(
+        station
+            .operations()
+            .iter()
+            .filter(|operation| **operation == BadTowerStationOperation::DeleteEnvelope)
+            .count(),
+        12
+    );
+    station.join();
+    set_portable_data_dir_override(previous);
+}
+
+#[test]
 fn command_create_secure_reuses_single_operation_auth_batch_for_hydrate_and_seal() {
     let sv_single_auth_create_canar = synthetic_value("single-auth-create-canary");
     let sv_mobile_synthetic_single_ = synthetic_value("mobile-synthetic-single-auth-create");
-    let gateway = CanonicalRelayGateway::start(1, Vec::new());
+    let station = CanonicalStation::start(1, Vec::new());
     let dir = temp_dir("mobile-relay-secure-command-create-single-auth-batch");
     let previous = set_portable_data_dir_override(Some(dir));
     let secret_store = Arc::new(EphemeralSecretStore::new());
@@ -212,8 +373,8 @@ fn command_create_secure_reuses_single_operation_auth_batch_for_hydrate_and_seal
             mobile_config["pairingId"] = json!("pair_secure_command_create_single_auth_batch");
             mobile_config["mobileToken"] = json!(sv_mobile_synthetic_single_.as_str());
             mobile_config["relayEnabled"] = json!(true);
-            mobile_config["useCustomGateway"] = json!(true);
-            mobile_config["customGatewayUrl"] = json!(gateway.url());
+            mobile_config["stationBaseUrl"] = json!(station.url());
+            persist_test_runtime_secret_material(stringify!(&mobile_config))?;
             persist_config_secret_material_to_secret_store(
                 &mut mobile_config,
                 secret_store.as_ref(),
@@ -222,12 +383,11 @@ fn command_create_secure_reuses_single_operation_auth_batch_for_hydrate_and_seal
             save_config(&mut mobile_config)?;
             let baseline_session_count = secret_store.authorization_session_count();
 
-            let output = command_create_secure(&with_canonical_relay_params(json!({
+            let output = command_create_secure(&with_station_params(json!({
                 "commandKind": "agent.message.send",
                 "targetAgentId": "codex",
                 "workspaceId": "default",
                 "body": {
-                    "agentId": "codex",
                     "text": sv_single_auth_create_canar.as_str()
                 },
                 "secretOverrideTransport": RUNTIME_SECRET_OVERRIDE_TRANSPORT,
@@ -268,20 +428,138 @@ fn command_create_secure_reuses_single_operation_auth_batch_for_hydrate_and_seal
                 mobile_relay_e2ee_secret_store_authorization_batch_operation_count()
                     .saturating_add(3)
             );
-            let request = gateway.request_body(0);
+            let request = station.request_body(0);
             let request_body = serde_json::from_str::<Value>(&request).unwrap();
-            assert!(request_body["envelope"].is_object());
+            assert_eq!(
+                request_body
+                    .as_object()
+                    .unwrap()
+                    .keys()
+                    .map(String::as_str)
+                    .collect::<std::collections::BTreeSet<_>>(),
+                [
+                    "ciphertext",
+                    "contractVersion",
+                    "envelopeId",
+                    "expiresAt",
+                    "mailboxId",
+                ]
+                .into_iter()
+                .collect()
+            );
             assert!(!request.contains(SECURE_MESH_ENVELOPE_COMMAND));
             assert!(!request.contains(sv_single_auth_create_canar.as_str()));
             assert!(!request.contains(sv_mobile_synthetic_single_.as_str()));
             assert!(!request.contains("commandId"));
-            gateway.assert_operations(&[SecureClientRelayOperation::EnvelopeSend]);
-            gateway.join();
+            station.assert_operations(&[BadTowerStationOperation::SendEnvelope]);
+            station.join();
             Ok(())
         })
     })
     .unwrap();
 
+    set_portable_data_dir_override(previous);
+}
+
+#[test]
+fn command_create_secure_retries_the_exact_pending_envelope_after_lost_response() {
+    let sv_exact_pending_retry_cana = synthetic_value("exact-pending-retry-canary");
+    let station = CanonicalStation::start_with_first_send_response_dropped(2);
+    let dir = temp_dir("mobile-relay-secure-command-exact-pending-retry");
+    let previous = set_portable_data_dir_override(Some(dir));
+    let secret_store = Arc::new(EphemeralSecretStore::new());
+    let mobile_store_override: Arc<dyn SecureMeshSecretStore> = secret_store.clone();
+    let pairwise_store_override: Arc<dyn SecureMeshSecretStore> = secret_store.clone();
+
+    with_mobile_relay_secret_store_override(mobile_store_override, || {
+        with_pairwise_secret_store_override(pairwise_store_override, || {
+            let mut pc_config = default_config();
+            let mut mobile_config = default_config();
+            pair_mobile_relay_configs(&mut pc_config, &mut mobile_config);
+            mobile_config["pairingId"] = json!("pair_secure_command_exact_pending_retry");
+            mobile_config["relayEnabled"] = json!(true);
+            mobile_config["stationBaseUrl"] = json!(station.url());
+            persist_test_runtime_secret_material(stringify!(&mobile_config))?;
+            persist_config_secret_material_to_secret_store(
+                &mut mobile_config,
+                secret_store.as_ref(),
+                MOBILE_RELAY_PLATFORM_SECRET_STORE_NAMESPACE,
+            )?;
+            save_config(&mut mobile_config)?;
+            let params = secure_command_create_test_params(
+                "intent_exact_pending_retry",
+                sv_exact_pending_retry_cana.as_str(),
+            );
+
+            let first_error = command_create_secure(&params).unwrap_err().to_string();
+            assert!(first_error.contains("transport_outcome_unknown"));
+            let recovered = command_create_secure(&params)?;
+
+            assert_eq!(recovered["ok"], true);
+            assert_eq!(
+                recovered["secureCommandBinding"]["recoveredPendingDelivery"],
+                true
+            );
+            assert_eq!(recovered["transportHint"]["stationReportedDuplicate"], true);
+            assert_eq!(station.request_body(0), station.request_body(1));
+            station.assert_operations(&[
+                BadTowerStationOperation::SendEnvelope,
+                BadTowerStationOperation::SendEnvelope,
+            ]);
+            station.join();
+            Ok(())
+        })
+    })
+    .unwrap();
+    set_portable_data_dir_override(previous);
+}
+
+#[test]
+fn command_create_secure_never_substitutes_a_different_pending_intent() {
+    let station = CanonicalStation::start_with_first_send_response_dropped(1);
+    let dir = temp_dir("mobile-relay-secure-command-distinct-pending-intent");
+    let previous = set_portable_data_dir_override(Some(dir));
+    let secret_store = Arc::new(EphemeralSecretStore::new());
+    let mobile_store_override: Arc<dyn SecureMeshSecretStore> = secret_store.clone();
+    let pairwise_store_override: Arc<dyn SecureMeshSecretStore> = secret_store.clone();
+
+    with_mobile_relay_secret_store_override(mobile_store_override, || {
+        with_pairwise_secret_store_override(pairwise_store_override, || {
+            let mut pc_config = default_config();
+            let mut mobile_config = default_config();
+            pair_mobile_relay_configs(&mut pc_config, &mut mobile_config);
+            mobile_config["pairingId"] = json!("pair_secure_command_distinct_pending_intent");
+            mobile_config["relayEnabled"] = json!(true);
+            mobile_config["stationBaseUrl"] = json!(station.url());
+            persist_test_runtime_secret_material(stringify!(&mobile_config))?;
+            persist_config_secret_material_to_secret_store(
+                &mut mobile_config,
+                secret_store.as_ref(),
+                MOBILE_RELAY_PLATFORM_SECRET_STORE_NAMESPACE,
+            )?;
+            save_config(&mut mobile_config)?;
+
+            let first_error = command_create_secure(&secure_command_create_test_params(
+                "intent_pending_a",
+                "pending-intent-a",
+            ))
+            .unwrap_err()
+            .to_string();
+            assert!(first_error.contains("transport_outcome_unknown"));
+            let second_error = command_create_secure(&secure_command_create_test_params(
+                "intent_pending_b",
+                "pending-intent-b",
+            ))
+            .unwrap_err()
+            .to_string();
+
+            assert!(second_error.contains("a different secure command delivery is pending"));
+            assert_eq!(station.operations().len(), 1);
+            station.join();
+            Ok(())
+        })
+    })
+    .unwrap();
     set_portable_data_dir_override(previous);
 }
 
@@ -299,7 +577,7 @@ fn command_result_replay_proof_reuses_single_operation_auth_batch_for_fetch_and_
             let (pc_config, mut mobile_config, _envelope) = paired_command_envelope_fixture();
             let result_envelope = seal_mobile_relay_payload(
                 &pc_config,
-                test_runtime_secret_material(stringify!(&pc_config)),
+                &mut test_runtime_secret_material(stringify!(&pc_config)),
                 crate::core::secure_mesh_crypto::SecureMeshPayloadKind::ResultPayload,
                 &json!({
                     "ok": true,
@@ -312,12 +590,12 @@ fn command_result_replay_proof_reuses_single_operation_auth_batch_for_fetch_and_
                     "bodyRedacted": true
                 }),
             )?;
-            let gateway = CanonicalRelayGateway::start(1, vec![result_envelope]);
+            let station = CanonicalStation::start(5, vec![result_envelope]);
             mobile_config["pairingId"] = json!("pair_result_replay_single_auth_batch");
             mobile_config["mobileToken"] = json!(sv_mobile_synthetic_result_.as_str());
             mobile_config["relayEnabled"] = json!(true);
-            mobile_config["useCustomGateway"] = json!(true);
-            mobile_config["customGatewayUrl"] = json!(gateway.url());
+            mobile_config["stationBaseUrl"] = json!(station.url());
+            persist_test_runtime_secret_material(stringify!(&mobile_config))?;
             persist_config_secret_material_to_secret_store(
                 &mut mobile_config,
                 secret_store.as_ref(),
@@ -326,10 +604,14 @@ fn command_result_replay_proof_reuses_single_operation_auth_batch_for_fetch_and_
             save_config(&mut mobile_config)?;
             let baseline_session_count = secret_store.authorization_session_count();
 
-            let proof = command_result_replay_proof(&with_canonical_relay_params(json!({})))?;
+            let proof = command_result_replay_proof(&with_station_params(json!({})))?;
 
             assert_eq!(proof["ok"], true);
             assert_eq!(proof["replayRejected"], true);
+            assert_eq!(
+                proof["transportHint"]["delete"]["stationReportedAcknowledged"],
+                true
+            );
             assert_eq!(
                 secret_store.authorization_session_count(),
                 baseline_session_count + 1
@@ -338,8 +620,14 @@ fn command_result_replay_proof_reuses_single_operation_auth_batch_for_fetch_and_
                 secret_store.authorization_session_reasons()[baseline_session_count],
                 "Mobile Relay secure result replay proof authorization batch"
             );
-            gateway.assert_operations(&[SecureClientRelayOperation::EnvelopeSync]);
-            gateway.join();
+            station.assert_operations(&[
+                BadTowerStationOperation::LeaseMailbox,
+                BadTowerStationOperation::ReceiveEnvelopes,
+                BadTowerStationOperation::LeaseMailbox,
+                BadTowerStationOperation::ReceiveEnvelopes,
+                BadTowerStationOperation::DeleteEnvelope,
+            ]);
+            station.join();
             Ok(())
         })
     })
@@ -352,7 +640,7 @@ fn command_result_replay_proof_reuses_single_operation_auth_batch_for_fetch_and_
 fn mobile_relay_commands_sync_reuses_single_operation_auth_batch_for_secure_commands() {
     let sv_pc_synthetic_commands_sy = synthetic_value("pc-synthetic-commands-sync-single-auth");
     let dir = temp_dir("mobile-relay-commands-sync-single-operation-auth-batch");
-    let previous = set_portable_data_dir_override(Some(dir));
+    let previous = set_portable_data_dir_override(Some(dir.clone()));
     let secret_store = Arc::new(EphemeralSecretStore::new());
     let mobile_store_override: Arc<dyn SecureMeshSecretStore> = secret_store.clone();
     let pairwise_store_override: Arc<dyn SecureMeshSecretStore> = secret_store.clone();
@@ -366,28 +654,27 @@ fn mobile_relay_commands_sync_reuses_single_operation_auth_batch_for_secure_comm
             for index in 0..2 {
                 let payload = secure_command_payload(
                     &mobile_config,
-                    test_runtime_secret_material(stringify!(&mobile_config)),
+                    &mut test_runtime_secret_material(stringify!(&mobile_config)),
                     "agent.sessions.list",
-                    None,
+                    Some("codex"),
                     "default",
                     json!({
-                        "agent": "codex",
                         "limit": index + 1
                     }),
                 )?;
                 envelopes.push(seal_mobile_relay_payload(
                     &mobile_config,
-                    test_runtime_secret_material(stringify!(&mobile_config)),
+                    &mut test_runtime_secret_material(stringify!(&mobile_config)),
                     crate::core::secure_mesh_crypto::SecureMeshPayloadKind::Command,
                     &payload,
                 )?);
             }
-            let gateway = CanonicalRelayGateway::start(7, envelopes);
+            let station = CanonicalStation::start(10, envelopes);
             pc_config["pairingId"] = json!("pair_commands_sync_single_auth_batch");
             pc_config["pcToken"] = json!(sv_pc_synthetic_commands_sy.as_str());
             pc_config["relayEnabled"] = json!(true);
-            pc_config["useCustomGateway"] = json!(true);
-            pc_config["customGatewayUrl"] = json!(gateway.url());
+            pc_config["stationBaseUrl"] = json!(station.url());
+            persist_test_runtime_secret_material(stringify!(&pc_config))?;
             persist_config_secret_material_to_secret_store(
                 &mut pc_config,
                 secret_store.as_ref(),
@@ -396,11 +683,17 @@ fn mobile_relay_commands_sync_reuses_single_operation_auth_batch_for_secure_comm
             save_config(&mut pc_config)?;
             let baseline_session_count = secret_store.authorization_session_count();
 
-            let output = commands_sync(&with_canonical_relay_params(json!({
-                "targets": [],
-                "limit": 2,
-                "allowInteraction": false
-            })))?;
+            let output =
+                crate::domain::secure_mesh_command_runtime::with_secure_command_test_history_home(
+                    &dir,
+                    || {
+                        commands_sync(&with_station_params(json!({
+                            "targets": [],
+                            "limit": 2,
+                            "allowInteraction": false
+                        })))
+                    },
+                )?;
 
             assert_eq!(output["ok"], true);
             let completed = output["completed"].as_array().unwrap();
@@ -417,16 +710,103 @@ fn mobile_relay_commands_sync_reuses_single_operation_auth_batch_for_secure_comm
             assert!(
                 !secret_store.authorization_session_allow_interactions()[baseline_session_count]
             );
-            gateway.assert_operations(&[
-                SecureClientRelayOperation::EndpointChallenge,
-                SecureClientRelayOperation::EndpointRegister,
-                SecureClientRelayOperation::EnvelopeSync,
-                SecureClientRelayOperation::EnvelopeSend,
-                SecureClientRelayOperation::EnvelopeAck,
-                SecureClientRelayOperation::EnvelopeSend,
-                SecureClientRelayOperation::EnvelopeAck,
+            station.assert_operations(&[
+                BadTowerStationOperation::LeaseMailbox,
+                BadTowerStationOperation::LeaseMailbox,
+                BadTowerStationOperation::LeaseMailbox,
+                BadTowerStationOperation::ReceiveEnvelopes,
+                BadTowerStationOperation::LeaseMailbox,
+                BadTowerStationOperation::ReceiveEnvelopes,
+                BadTowerStationOperation::SendEnvelope,
+                BadTowerStationOperation::DeleteEnvelope,
+                BadTowerStationOperation::SendEnvelope,
+                BadTowerStationOperation::DeleteEnvelope,
             ]);
-            gateway.join();
+            station.join();
+            Ok(())
+        })
+    })
+    .unwrap();
+
+    set_portable_data_dir_override(previous);
+}
+
+#[test]
+fn commands_sync_recovers_the_exact_result_outbox_after_lost_station_response() {
+    let dir = temp_dir("mobile-relay-commands-sync-result-outbox-recovery");
+    let previous = set_portable_data_dir_override(Some(dir.clone()));
+    let secret_store = Arc::new(EphemeralSecretStore::new());
+    let mobile_store_override: Arc<dyn SecureMeshSecretStore> = secret_store.clone();
+    let pairwise_store_override: Arc<dyn SecureMeshSecretStore> = secret_store.clone();
+
+    with_mobile_relay_secret_store_override(mobile_store_override, || {
+        with_pairwise_secret_store_override(pairwise_store_override, || {
+            let mut pc_config = default_config();
+            let mut mobile_config = default_config();
+            pair_mobile_relay_configs(&mut pc_config, &mut mobile_config);
+            let payload = secure_command_payload(
+                &mobile_config,
+                &mut test_runtime_secret_material(stringify!(&mobile_config)),
+                "agent.sessions.list",
+                Some("codex"),
+                "default",
+                json!({"limit": 1}),
+            )?;
+            let command_envelope = seal_mobile_relay_payload(
+                &mobile_config,
+                &mut test_runtime_secret_material(stringify!(&mobile_config)),
+                crate::core::secure_mesh_crypto::SecureMeshPayloadKind::Command,
+                &payload,
+            )?;
+            let station =
+                CanonicalStation::start_with_envelopes_and_first_send_response_dropped(
+                    16,
+                    vec![command_envelope],
+                );
+            pc_config["pairingId"] = json!("pair_commands_sync_result_outbox_recovery");
+            pc_config["relayEnabled"] = json!(true);
+            pc_config["stationBaseUrl"] = json!(station.url());
+            persist_test_runtime_secret_material(stringify!(&pc_config))?;
+            persist_config_secret_material_to_secret_store(
+                &mut pc_config,
+                secret_store.as_ref(),
+                MOBILE_RELAY_PLATFORM_SECRET_STORE_NAMESPACE,
+            )?;
+            save_config(&mut pc_config)?;
+            let sync_params = with_station_params(json!({
+                "targets": [],
+                "limit": 1,
+                "allowInteraction": false
+            }));
+
+            let first =
+                crate::domain::secure_mesh_command_runtime::with_secure_command_test_history_home(
+                    &dir,
+                    || commands_sync(&sync_params),
+                )?;
+            assert_eq!(
+                first["completed"][0]["completion"]["code"],
+                "mobile_relay_result_delivery_pending"
+            );
+            let recovered =
+                crate::domain::secure_mesh_command_runtime::with_secure_command_test_history_home(
+                    &dir,
+                    || commands_sync(&sync_params),
+                )?;
+
+            assert_eq!(recovered["completed"].as_array().unwrap().len(), 1);
+            assert_eq!(recovered["completed"][0]["ok"], true);
+            assert_eq!(
+                recovered["completed"][0]["completion"]["code"],
+                "mobile_relay_pending_result_recovered"
+            );
+            assert_eq!(
+                recovered["completed"][0]["completion"]["transportHint"]["result"]
+                    ["stationReportedDuplicate"],
+                true
+            );
+            assert_eq!(station.request_body(6), station.request_body(9));
+            station.join();
             Ok(())
         })
     })
@@ -445,6 +825,7 @@ fn mobile_relay_secure_command_execute_reuses_single_operation_auth_batch_for_op
 
     with_pairwise_secret_store_override(store_override, || {
         let (mut pc_config, mobile_config, envelope) = paired_command_envelope_fixture();
+        persist_test_runtime_secret_material(stringify!(&pc_config))?;
         save_config(&mut pc_config).unwrap();
         let baseline_session_count = secret_store.authorization_session_count();
 
@@ -469,8 +850,8 @@ fn mobile_relay_secure_command_execute_reuses_single_operation_auth_batch_for_op
             5
         );
         let result = opened_result_payload(&mobile_config, &result_envelope);
-        assert_eq!(result["evaluation"]["code"], "user_confirmation_required");
-        assert_eq!(result["execution"]["outcome"], "error");
+        assert_eq!(result["evaluation"]["code"], "execute");
+        assert_eq!(result["execution"]["outcome"], "result");
         Ok(())
     })
     .unwrap();

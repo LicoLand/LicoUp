@@ -12,10 +12,10 @@ void main() {
   test('catalog materializes one deterministic exact product', () {
     final catalog = fixtureLayoutCatalog();
 
-    expect(catalog.defaultProfile.id, LayoutProfileId.parse('workbench'));
+    expect(catalog.defaultProfile.id, LayoutProfileId.parse('dashboard'));
     expect(catalog.profiles.map((profile) => profile.id), [
-      LayoutProfileId.parse('workbench'),
-      LayoutProfileId.parse('native'),
+      LayoutProfileId.parse('dashboard'),
+      LayoutProfileId.parse('atlas'),
     ]);
     final expectedVariantsPerProfile = LayoutRuntimeSurface.values.fold<int>(
       0,
@@ -47,12 +47,12 @@ void main() {
   test('desktop and mobile medium keys cannot collide', () {
     final catalog = fixtureLayoutCatalog();
     final desktopMedium = LayoutVariantKey(
-      profileId: LayoutProfileId.parse('workbench'),
+      profileId: LayoutProfileId.parse('dashboard'),
       surface: LayoutRuntimeSurface.desktop,
       viewport: LayoutViewportClass.medium,
     );
     final mobileMedium = LayoutVariantKey(
-      profileId: LayoutProfileId.parse('workbench'),
+      profileId: LayoutProfileId.parse('dashboard'),
       surface: LayoutRuntimeSurface.mobile,
       viewport: LayoutViewportClass.medium,
     );
@@ -71,7 +71,7 @@ void main() {
     expect(
       () => fixtureLayoutCatalog(
         profiles: fixtureProfiles(
-          workbenchDefault: false,
+          dashboardDefault: false,
           nativeDefault: false,
         ),
       ),
@@ -79,7 +79,7 @@ void main() {
     );
     expect(
       () => fixtureLayoutCatalog(
-        profiles: fixtureProfiles(workbenchDefault: true, nativeDefault: true),
+        profiles: fixtureProfiles(dashboardDefault: true, nativeDefault: true),
       ),
       throwsA(isA<FormatException>()),
     );
@@ -96,7 +96,7 @@ void main() {
         profiles: fixtureProfiles(nativeRevision: 2),
       );
       expect(
-        mixedRevision.profile(LayoutProfileId.parse('native'))?.revision,
+        mixedRevision.profile(LayoutProfileId.parse('atlas'))?.revision,
         2,
       );
       final variants = fixtureVariants();
@@ -115,7 +115,7 @@ void main() {
     final variants = fixtureVariants();
     final unsupported = LayoutVariantCoverage(
       key: LayoutVariantKey(
-        profileId: LayoutProfileId.parse('workbench'),
+        profileId: LayoutProfileId.parse('dashboard'),
         surface: LayoutRuntimeSurface.desktop,
         viewport: LayoutViewportClass.compact,
       ),
@@ -176,7 +176,7 @@ void main() {
         stateNamespaces: [
           ...namespaces,
           LayoutStateNamespace(
-            profileId: LayoutProfileId.parse('workbench'),
+            profileId: LayoutProfileId.parse('dashboard'),
             surface: LayoutRuntimeSurface.mobile,
             destination: ClientSection.skillHub,
             channel: const LayoutStateChannel(

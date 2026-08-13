@@ -11,13 +11,13 @@ class MobileRelayPairingQrFrame extends StatelessWidget {
     super.key,
     required this.inviteText,
     required this.busy,
-    required this.gatewayConfigured,
+    required this.stationConfigured,
     required this.onGenerate,
   });
 
   final String inviteText;
   final bool busy;
-  final bool gatewayConfigured;
+  final bool stationConfigured;
   final Future<void> Function() onGenerate;
 
   @override
@@ -37,7 +37,7 @@ class MobileRelayPairingQrFrame extends StatelessWidget {
           color: Colors.transparent,
           child: InkWell(
             key: const Key('pairing-qr-frame'),
-            onTap: busy || !gatewayConfigured
+            onTap: busy || !stationConfigured
                 ? null
                 : () => unawaited(onGenerate()),
             borderRadius: BorderRadius.circular(12),

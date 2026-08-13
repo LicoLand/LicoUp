@@ -1,12 +1,12 @@
 use super::model::{MAX_SESSION_ID_LEN, MIN_SESSION_ID_LEN};
 use std::collections::HashMap;
-use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(in crate::platform) enum ControlDisposition {
     Accepted,
+    NotPersisted,
     NoActiveTurn,
     SessionUnavailable,
     TransportUnavailable,
@@ -65,7 +65,8 @@ pub(in crate::platform) fn cleanup_session(session_id: &str) -> ControlDispositi
         return ControlDisposition::SessionUnavailable;
     }
     match remove_antigravity_brain(session_id) {
-        Ok(_) => ControlDisposition::Accepted,
+        Ok(true) => ControlDisposition::Accepted,
+        Ok(false) => ControlDisposition::NotPersisted,
         Err(_) => ControlDisposition::TransportUnavailable,
     }
 }
@@ -98,7 +99,7 @@ fn remove_antigravity_brain(session_id: &str) -> Result<bool, ()> {
     if !brain.exists() {
         return Ok(false);
     }
-    fs::remove_dir_all(&brain).map_err(|_| ())?;
+    trash::delete(&brain).map_err(|_| ())?;
     Ok(true)
 }
 

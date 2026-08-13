@@ -4,6 +4,11 @@ import 'package:licoup/src/platform/secure_mesh/secure_mesh_mobile_bridge.dart';
 
 typedef FakeRelayCliHandler =
     Future<Map<String, dynamic>> Function(List<String> arguments);
+typedef FakeRelayPrivateCliHandler =
+    Future<Map<String, dynamic>> Function(
+      List<String> arguments,
+      Map<String, dynamic> params,
+    );
 typedef FakeRelayMobileHandler =
     Future<Map<String, dynamic>> Function({
       required String action,
@@ -49,6 +54,7 @@ final class FakeMobileRelayDispatch implements MobileRelayNativeDispatch {
     this.mobileResult = const {'ok': true},
     this.externalResult = const {'ok': true, 'status': 'opened'},
     this.onRunCli,
+    this.onRunPrivateCli,
     this.onRunMobile,
   });
 
@@ -62,9 +68,12 @@ final class FakeMobileRelayDispatch implements MobileRelayNativeDispatch {
   Map<String, dynamic> mobileResult;
   Map<String, dynamic> externalResult;
   final FakeRelayCliHandler? onRunCli;
+  final FakeRelayPrivateCliHandler? onRunPrivateCli;
   final FakeRelayMobileHandler? onRunMobile;
 
   final List<List<String>> cliCalls = [];
+  final List<({List<String> arguments, Map<String, dynamic> params})>
+  privateCliCalls = [];
   final List<({String action, Map<String, dynamic> params, bool authorize})>
   mobileCalls = [];
   final List<Uri> externalCalls = [];
@@ -82,6 +91,19 @@ final class FakeMobileRelayDispatch implements MobileRelayNativeDispatch {
     final captured = List<String>.unmodifiable(arguments);
     cliCalls.add(captured);
     return onRunCli?.call(captured) ?? Map<String, dynamic>.from(cliResult);
+  }
+
+  @override
+  Future<Map<String, dynamic>> runPrivateCli(
+    AgentCommandRunner runner,
+    List<String> arguments,
+    Map<String, dynamic> params,
+  ) async {
+    final capturedArguments = List<String>.unmodifiable(arguments);
+    final capturedParams = Map<String, dynamic>.unmodifiable(params);
+    privateCliCalls.add((arguments: capturedArguments, params: capturedParams));
+    return onRunPrivateCli?.call(capturedArguments, capturedParams) ??
+        Map<String, dynamic>.from(cliResult);
   }
 
   @override

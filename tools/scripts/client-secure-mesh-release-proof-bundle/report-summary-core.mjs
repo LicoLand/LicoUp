@@ -16,8 +16,8 @@ export function buildReleaseProofSummaryCore({
   physicalEvidenceManifestContractReadiness,
   reportRedactionProof,
   redactionFreshnessSelfTest,
-  clientRelayCryptoInputs,
-  clientRelayCryptoInputsReadinessSelfTest,
+  clientLicoArcCryptoInputs,
+  clientLicoArcCryptoInputsReadinessSelfTest,
   physicalMatrixReport,
   androidPhysicalInstallLaunchReport,
   ubuntuLinuxPackageUpdateReady,
@@ -119,61 +119,87 @@ export function buildReleaseProofSummaryCore({
       reportRedactionProof.redactionRunIdMatched === true,
     releaseInputRedactionDigestCount:
       reportRedactionProof.scannedRefDigestCount,
-    clientRelayCryptoInputsReady: clientRelayCryptoInputs.ready === true,
-    clientRelayCryptoInputsReadinessSelfTestReady:
-      clientRelayCryptoInputsReadinessSelfTest.ok === true,
-    completeClientRelayCryptoEvidenceAccepted:
-      clientRelayCryptoInputsReadinessSelfTest.completeEvidenceAccepted === true,
-    invalidRelayOperationCountRejected:
-      clientRelayCryptoInputsReadinessSelfTest.invalidOperationCountRejected === true,
-    invalidRelayOuterFieldCountRejected:
-      clientRelayCryptoInputsReadinessSelfTest.invalidOuterFieldCountRejected === true,
-    relayReplayAcceptanceRejected:
-      clientRelayCryptoInputsReadinessSelfTest.replayAcceptanceRejected === true,
-    relayStaleLeaseAcceptanceRejected:
-      clientRelayCryptoInputsReadinessSelfTest.staleLeaseAcceptanceRejected === true,
-    relayNonIdempotentAckRejected:
-      clientRelayCryptoInputsReadinessSelfTest.nonIdempotentAckRejected === true,
-    relayPlaintextWireRejected:
-      clientRelayCryptoInputsReadinessSelfTest.plaintextWireRejected === true,
-    unmeasuredRelayWireBytesRejected:
-      clientRelayCryptoInputsReadinessSelfTest.unmeasuredWireBytesRejected === true,
+    clientLicoArcCryptoInputsReady:
+      clientLicoArcCryptoInputs.ready === true,
+    clientLicoArcCryptoInputsReadinessSelfTestReady:
+      clientLicoArcCryptoInputsReadinessSelfTest.ok === true,
+    completeClientLicoArcCryptoEvidenceAccepted:
+      clientLicoArcCryptoInputsReadinessSelfTest.completeEvidenceAccepted === true,
+    invalidFreshEndpointCountRejected:
+      clientLicoArcCryptoInputsReadinessSelfTest
+        .invalidFreshEndpointCountRejected === true,
+    missingPositiveExchangeRejected:
+      clientLicoArcCryptoInputsReadinessSelfTest
+        .missingPositiveExchangeRejected === true,
+    missingRoundTripRejected:
+      clientLicoArcCryptoInputsReadinessSelfTest.missingRoundTripRejected === true,
+    stationPlaintextPresenceRejected:
+      clientLicoArcCryptoInputsReadinessSelfTest
+        .stationPlaintextPresenceRejected === true,
+    nonConformantEnvelopeAcceptanceRejected:
+      clientLicoArcCryptoInputsReadinessSelfTest
+        .nonConformantEnvelopeAcceptanceRejected === true,
+    transportHintAuthorityRejected:
+      clientLicoArcCryptoInputsReadinessSelfTest
+        .transportHintAuthorityRejected === true,
+    invalidOuterFieldContractRejected:
+      clientLicoArcCryptoInputsReadinessSelfTest
+        .invalidOuterFieldContractRejected === true,
+    stationReleaseClaimRejected:
+      clientLicoArcCryptoInputsReadinessSelfTest.releaseClaimRejected === true,
+    stationPrivacyLeakRejected:
+      clientLicoArcCryptoInputsReadinessSelfTest.privacyLeakRejected === true,
+    staleClientCandidateRejected:
+      clientLicoArcCryptoInputsReadinessSelfTest
+        .staleClientCandidateRejected === true,
+    tamperedProtocolCandidateRejected:
+      clientLicoArcCryptoInputsReadinessSelfTest
+        .tamperedProtocolCandidateRejected === true,
+    mutatedStationInputRejected:
+      clientLicoArcCryptoInputsReadinessSelfTest
+        .mutatedStationInputRejected === true,
     rawRustCryptoPlaintextRejected:
-      clientRelayCryptoInputsReadinessSelfTest.rawRustPlaintextRejected === true,
+      clientLicoArcCryptoInputsReadinessSelfTest.rawRustPlaintextRejected === true,
     rawAndroidCryptoPrivateMaterialRejected:
-      clientRelayCryptoInputsReadinessSelfTest.rawAndroidPrivateMaterialRejected === true,
+      clientLicoArcCryptoInputsReadinessSelfTest.rawAndroidPrivateMaterialRejected === true,
     legacyPlatformCryptoSchemaRejected:
-      clientRelayCryptoInputsReadinessSelfTest.legacyPlatformCryptoSchemaRejected === true,
+      clientLicoArcCryptoInputsReadinessSelfTest.legacyPlatformCryptoSchemaRejected === true,
     releaseInputRedactionCoversClientRefs:
-      clientRelayCryptoInputs.releaseInputRedactionCoversClientRefs === true,
-    relayMockContractReady:
-      clientRelayCryptoInputs.relayMockContractReady === true,
-    relayMockExactFiveOperationsReady:
-      clientRelayCryptoInputs.relayMockExactFiveOperationsReady === true,
-    relayMockExactSixOuterFieldsReady:
-      clientRelayCryptoInputs.relayMockExactSixOuterFieldsReady === true,
-    relayMockReplayRejected:
-      clientRelayCryptoInputs.relayMockReplayRejected === true,
-    relayMockStaleLeaseRejected:
-      clientRelayCryptoInputs.relayMockStaleLeaseRejected === true,
-    relayMockAckIdempotencyReady:
-      clientRelayCryptoInputs.relayMockAckIdempotencyReady === true,
-    relayMockPlaintextWireReady:
-      clientRelayCryptoInputs.relayMockPlaintextWireReady === true,
-    relayMockWireBytesSemanticsReady:
-      clientRelayCryptoInputs.relayMockWireBytesSemanticsReady === true,
+      clientLicoArcCryptoInputs.releaseInputRedactionCoversClientRefs === true,
+    stationAcceptanceContractReady:
+      clientLicoArcCryptoInputs.stationAcceptanceContractReady === true,
+    stationCandidateBindingsReady:
+      clientLicoArcCryptoInputs.stationCandidateBindingsReady === true,
+    stationCandidateInputsStable:
+      clientLicoArcCryptoInputs.stationCandidateInputsStable === true,
+    stationAcceptanceFreshEndpointCount:
+      clientLicoArcCryptoInputs.stationAcceptanceFreshEndpointCount,
+    stationAcceptancePositiveExchange:
+      clientLicoArcCryptoInputs.stationAcceptancePositiveExchange === true,
+    stationAcceptanceRoundTrip:
+      clientLicoArcCryptoInputs.stationAcceptanceRoundTrip === true,
+    stationAcceptancePlaintextAbsent:
+      clientLicoArcCryptoInputs.stationAcceptancePlaintextAbsent === true,
+    stationAcceptanceNonConformantEnvelopeRejected:
+      clientLicoArcCryptoInputs
+        .stationAcceptanceNonConformantEnvelopeRejected === true,
+    stationAcceptanceTransportHintsNonAuthoritative:
+      clientLicoArcCryptoInputs
+        .stationAcceptanceTransportHintsNonAuthoritative === true,
+    stationAcceptanceExactFiveOuterFields:
+      clientLicoArcCryptoInputs.stationAcceptanceExactFiveOuterFields === true,
     rustCryptoReportReady:
-      clientRelayCryptoInputs.rustCryptoReportReady === true,
+      clientLicoArcCryptoInputs.rustCryptoReportReady === true,
     rustCryptoNativeTestsReady:
-      clientRelayCryptoInputs.rustCryptoNativeTestsReady === true,
+      clientLicoArcCryptoInputs.rustCryptoNativeTestsReady === true,
     rustCryptoVectorCorpusReady:
-      clientRelayCryptoInputs.rustCryptoVectorCorpusReady === true,
+      clientLicoArcCryptoInputs.rustCryptoVectorCorpusReady === true,
     rustCryptoReviewReady:
-      clientRelayCryptoInputs.rustCryptoReviewReady === true,
+      clientLicoArcCryptoInputs.rustCryptoReviewReady === true,
     platformCryptoReportReady:
-      clientRelayCryptoInputs.platformCryptoReportReady === true,
+      clientLicoArcCryptoInputs.platformCryptoReportReady === true,
     androidPlatformCryptoReportReady:
-      clientRelayCryptoInputs.androidPlatformCryptoReportReady === true,
+      clientLicoArcCryptoInputs.androidPlatformCryptoReportReady === true,
 			    physicalEvidenceManifestLocalReadyDiagnostic:
 			      physicalEvidenceManifest.localReadyDiagnostic === true,
 		    physicalEvidenceManifestInputIntegrityReady:

@@ -51,8 +51,7 @@ pub(super) fn payload_seal(params: &Value) -> Result<Value> {
                 "ok": true,
                 "messageBase64url": encode_base64url(&message),
                 "payloadKind": plaintext.kind.as_str(),
-                "bodyRedacted": true,
-                "privateKeyMaterial": "redacted"
+                "bodyRedacted": true
             }),
             true,
         ))
@@ -98,8 +97,7 @@ pub(super) fn payload_open(params: &Value) -> Result<Value> {
                 "bodyBase64url": encode_base64url(&opened.body),
                 "contentType": opened.content_type,
                 "createdAt": opened.created_at,
-                "expiresAt": opened.expires_at,
-                "privateKeyMaterial": "redacted"
+                "expiresAt": opened.expires_at
             }),
             true,
         ))

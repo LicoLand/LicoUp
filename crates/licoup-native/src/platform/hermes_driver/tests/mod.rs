@@ -16,10 +16,11 @@ pub(super) use super::{
     HERMES_SESSION_DRIVER, RUNTIME_PROTOCOL, cancel, cleanup_session, execute,
     resolve_parked_permission,
 };
+pub(super) use crate::platform::acp_session_transport::errors::ProtocolFailure;
 pub(super) use crate::platform::acp_session_transport::{
     ControlDisposition, INITIALIZE_REQUEST_ID, LaunchSpec, MODEL_REQUEST_ID, PROMPT_REQUEST_ID,
-    ProtocolConfig, ProtocolEffect, ProtocolFailure, ProtocolPhase, SESSION_REQUEST_ID,
-    SessionProtocol, drain_stderr, read_bounded,
+    ProtocolConfig, ProtocolEffect, ProtocolPhase, SESSION_REQUEST_ID, SessionProtocol,
+    drain_stderr, read_bounded,
 };
 pub(super) use serde_json::{Value, json};
 pub(super) use std::fs;

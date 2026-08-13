@@ -24,7 +24,7 @@ final class ClientApplicationStrings {
 
   final bool isChinese;
 
-  String get defaultLabel => isChinese ? '默认' : 'Default';
+  String get defaultLabel => isChinese ? 'Lico' : 'Lico';
   String get defaultPolicy => isChinese ? '默认策略' : 'Default Policy';
   String get notConfigured => isChinese ? '未配置' : 'Not configured';
   String get newConversation => isChinese ? '新对话' : 'New Conversation';

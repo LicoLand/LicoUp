@@ -122,13 +122,6 @@
       ],
       "allowedMatches": [
         {
-          "file": "apps/desktop/lib/src/backend/features/routing/services/route_session_binding_store.dart",
-          "tokens": [
-            "package:crypto/crypto.dart"
-          ],
-          "reason": "Route-history privacy uses SHA-256 only to derive non-secret lookup digests; this store does not implement Secure Mesh payload cryptography."
-        },
-        {
           "file": "apps/desktop/lib/src/platform/storage/portable_data_root.dart",
           "tokens": [
             "package:crypto/crypto.dart"
@@ -749,21 +742,32 @@
       ]
     },
     {
-      "id": "client-relay-mock-keeps-a-bounded-opaque-protocol-surface",
-      "file": "tools/scripts/client-secure-client-relay-mock-e2e.mjs",
+      "id": "licoarc-badtower-acceptance-keeps-a-strict-non-authoritative-station-surface",
+      "files": [
+        "tools/scripts/client-licoarc-badtower-acceptance.mjs",
+        "tools/scripts/lib/licoarc-badtower-acceptance-report.mjs",
+        "tools/scripts/lib/licoarc-v1-bundle-validator.mjs",
+        "tools/scripts/lib/licoarc-badtower-candidate-binding.mjs"
+      ],
       "tokens": [
-        "exactFiveOperationsObserved",
-        "exactSixOuterFieldsObserved",
-        "replayRejected",
-        "staleLeaseRejected",
-        "ackIdempotencyVerified",
-        "plaintextAbsentFromServerVisibleWire",
-        "wireBytesMeasured"
+        "licoup.licoarc-badtower.acceptance.v1",
+        "freshEndpointCount",
+        "positiveExchange",
+        "roundTrip",
+        "stationPlaintextAbsent",
+        "nonConformantEnvelopeRejected",
+        "transportHintsNonAuthoritative",
+        "exactFiveOuterFields",
+        "validateLicoArcV1BundleBytes",
+        "candidateBindingsReady",
+        "createBadTowerStationEnvironment"
       ],
       "forbiddenTokens": [
-        "rawPrivateMaterialIncluded: true",
-        "rawPlaintextIncluded: true",
-        "rawPublicWireBytesIncluded: true"
+        "endpointContentIncluded: true",
+        "ciphertextIncluded: true",
+        "keyMaterialIncluded: true",
+        "machineIdentityIncluded: true",
+        "rawRuntimeDataIncluded: true"
       ]
     },
     {

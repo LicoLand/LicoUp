@@ -7,6 +7,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:licoup/src/application/controller/client_controller.dart';
 import 'package:licoup/src/backend/features/agents/services/agent_conversation_service.dart';
 import 'package:licoup/src/contracts/agent_usage_models.dart';
+import 'package:licoup/src/contracts/generated/client_state.g.dart';
 import 'package:licoup/src/contracts/locale_preferences.dart';
 import 'package:licoup/src/contracts/mobile_relay/mobile_relay_models.dart';
 import 'package:licoup/src/contracts/presentation/layout_environment.dart';
@@ -44,9 +45,9 @@ final class ProductionClientShellFixture {
     required Brightness brightness,
   }) async {
     final composition = BuiltInLayoutComposition();
-    final appearancePresetId = brightness == Brightness.dark
-        ? 'lico-crystal'
-        : 'geek-light-blue';
+    // The production baseline renders the out-of-box preference: the
+    // system-following preset, which resolves per platform brightness.
+    const appearancePresetId = 'default-system';
     final preferences = InMemoryPresentationPreferencesRepository(
       PresentationPreferences(
         layoutProfileId: profileId,
@@ -69,6 +70,7 @@ final class ProductionClientShellFixture {
       presentationPreferencesRepository: preferences,
       mobileClientRuntimePlatformOverride:
           surface == LayoutRuntimeSurface.mobile,
+      llmGatewayMonitorInterval: Duration.zero,
     );
 
     controller
@@ -244,6 +246,17 @@ final class _FixtureAgentService extends AgentService {
     }
     return const {'ok': true};
   }
+
+  @override
+  Future<ClientStateGetResult> getClientState(
+    ClientStateGetRequest request,
+  ) async => ClientStateGetResult(
+    collection: request.collection,
+    document: ClientStateDocument(
+      schemaVersion: clientStateSchemaVersion,
+      collection: request.collection,
+    ),
+  );
 }
 
 final class _FixtureConversationService extends AgentConversationService {
@@ -256,6 +269,7 @@ final class _FixtureConversationService extends AgentConversationService {
     String sessionId = '',
     int? limit,
     int offset = 0,
+    AgentDispatchBind bind = const AgentDispatchBind(),
   }) async => const [];
 
   @override
@@ -265,6 +279,7 @@ final class _FixtureConversationService extends AgentConversationService {
     String sessionId = '',
     int? limit,
     int offset = 0,
+    AgentDispatchBind bind = const AgentDispatchBind(),
   }) => const Stream.empty();
 }
 
@@ -286,6 +301,7 @@ List<TargetCandidate> _fixtureTargets() {
         status: id == primaryId ? 'detected' : 'not-detected',
         configured: id == primaryId,
         confidence: id == primaryId ? 1 : 0,
+        binaryPath: id == primaryId ? '/test-bin/$id' : '',
         adapterStatus: 'implemented',
         adapterCapabilities: const {
           'conversationDriver': 'implemented',
@@ -324,9 +340,7 @@ AgentConversationSession _fixtureConversation(TargetCandidate target) =>
 
 MobileRelayConfig _fixtureMobileRelayConfig() => const MobileRelayConfig(
   schemaVersion: MobileRelayConfig.currentSchemaVersion,
-  defaultGatewayUrl: '',
-  useCustomGateway: false,
-  customGatewayUrl: '',
+  stationBaseUrl: '',
   pcClientId: '',
   pcClientName: 'Fixture Desktop',
   pairingId: '',

@@ -141,25 +141,20 @@ class _AgentConversationSearchPaletteState
 
   void _applyQuery() {
     final query = _queryController.text;
-    final featureHits =
-        [
-            for (final feature in widget.features)
-              if (feature.matchScore(query) > 0) feature,
-          ]
-          ..sort(
-            (a, b) => b.matchScore(query).compareTo(a.matchScore(query)),
-          );
+    final featureHits = [
+      for (final feature in widget.features)
+        if (feature.matchScore(query) > 0) feature,
+    ]..sort((a, b) => b.matchScore(query).compareTo(a.matchScore(query)));
     final skillHits =
         [
-            for (final skill in widget.controller.skillHubSkills)
-              if (scoreSkillSearchEntry(skill, query) > 0) skill,
-          ]
-          ..sort(
-            (a, b) => scoreSkillSearchEntry(
-              b,
-              query,
-            ).compareTo(scoreSkillSearchEntry(a, query)),
-          );
+          for (final skill in widget.controller.skillHubSkills)
+            if (scoreSkillSearchEntry(skill, query) > 0) skill,
+        ]..sort(
+          (a, b) => scoreSkillSearchEntry(
+            b,
+            query,
+          ).compareTo(scoreSkillSearchEntry(a, query)),
+        );
     final hits = _index.search(query);
     setState(() {
       _featureHits = featureHits;
@@ -191,8 +186,7 @@ class _AgentConversationSearchPaletteState
     if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
       if (_resultCount > 0) {
         setState(() {
-          _selectedIndex =
-              (_selectedIndex - 1 + _resultCount) % _resultCount;
+          _selectedIndex = (_selectedIndex - 1 + _resultCount) % _resultCount;
         });
       }
       return KeyEventResult.handled;
@@ -220,9 +214,7 @@ class _AgentConversationSearchPaletteState
       controller.selectSection(ClientSection.skillHub);
       return;
     }
-    unawaited(
-      _activate(_hits[skillIndex - _skillHits.length]),
-    );
+    unawaited(_activate(_hits[skillIndex - _skillHits.length]));
   }
 
   Future<void> _activate(AgentConversationSearchHit hit) async {
@@ -365,9 +357,8 @@ double scoreSkillSearchEntry(Map<String, dynamic> skill, String query) {
   if (author.contains(normalized)) {
     score += 2;
   }
-  for (final term in normalized
-      .split(RegExp(r'\s+'))
-      .where((term) => term.isNotEmpty)) {
+  for (final term
+      in normalized.split(RegExp(r'\s+')).where((term) => term.isNotEmpty)) {
     if (title.contains(term)) {
       score += 2;
     } else if (skillId.contains(term)) {
@@ -435,9 +426,7 @@ class _GroupedHitList extends StatelessWidget {
         final selected = index == selectedIndex;
         rows.add(
           Material(
-            color: selected
-                ? colors.surfaceHigh.withAlpha(160)
-                : Colors.transparent,
+            color: selected ? colors.selectedSurface : Colors.transparent,
             child: InkWell(
               onTap: () => onActivateAt(index),
               child: Padding(
@@ -487,9 +476,7 @@ class _GroupedHitList extends StatelessWidget {
         final description = (skill['description'] ?? '').toString();
         rows.add(
           Material(
-            color: selected
-                ? colors.surfaceHigh.withAlpha(160)
-                : Colors.transparent,
+            color: selected ? colors.selectedSurface : Colors.transparent,
             child: InkWell(
               onTap: () => onActivateAt(flatIndex),
               child: Padding(
@@ -557,9 +544,7 @@ class _GroupedHitList extends StatelessWidget {
         final selected = flatIndex == selectedIndex;
         rows.add(
           Material(
-            color: selected
-                ? colors.surfaceHigh.withAlpha(160)
-                : Colors.transparent,
+            color: selected ? colors.selectedSurface : Colors.transparent,
             child: InkWell(
               onTap: () => onActivateAt(flatIndex),
               child: Padding(

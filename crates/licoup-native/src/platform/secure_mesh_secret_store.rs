@@ -1,10 +1,15 @@
+// Linux capability reporting includes fail-closed states that are exercised by
+// platform verification even when the production backend is unavailable.
+#[cfg_attr(target_os = "linux", allow(dead_code))]
 mod capability;
 mod ephemeral;
 #[cfg(any(target_os = "linux", test))]
+#[cfg_attr(target_os = "linux", allow(dead_code))]
 mod linux_secret_service;
 #[cfg(target_os = "macos")]
 pub(crate) mod macos_user_presence;
 mod platform_backends;
+#[cfg_attr(target_os = "linux", allow(dead_code))]
 mod platform_store;
 mod selection;
 

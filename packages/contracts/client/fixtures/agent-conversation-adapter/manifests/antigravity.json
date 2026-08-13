@@ -15,7 +15,7 @@
     "capabilityProbe": "fixed help probe for --print, --conversation, --model, and --effort",
     "newSessionMethod": "agy --print=<prompt> plus Stop/PreInvocation hook conversationId receipt",
     "exactResumeMethod": "--conversation=<id> with caller-supplied native id in launch arguments",
-    "streamingMethod": "print-mode final stdout projected as message chunk events",
+    "streamingMethod": "unsupported; print mode exposes final stdout only after process exit",
     "historyMethod": "read-only native history is outside the send lane",
     "cleanupMethod": "delete local antigravity-cli brain leaf for the exact conversation id",
     "officialReferences": [
@@ -64,8 +64,8 @@
       "method": "official supervised --print turn"
     },
     "stream": {
-      "status": "supported",
-      "method": "print-mode final stdout projected as message chunk events"
+      "status": "unsupported",
+      "method": "print mode exposes final stdout only after process exit"
     },
     "cancel": {
       "status": "supported",
@@ -98,9 +98,7 @@
   },
   "events": {
     "framing": "text",
-    "realtimeKinds": [
-      "agent.message.chunk"
-    ],
+    "realtimeKinds": [],
     "terminalKinds": [
       "agent.message.completed",
       "dispatch.turn.completed",
@@ -194,7 +192,7 @@
     "productUiRequired": false,
     "releaseP10Required": false,
     "liveLocalForwardingRequired": true,
-    "realtimeOutputRequired": true,
+    "realtimeOutputRequired": false,
     "sameNativeSessionRequired": true,
     "canonicalReadinessRequired": true,
     "nativeToArcRequired": false,

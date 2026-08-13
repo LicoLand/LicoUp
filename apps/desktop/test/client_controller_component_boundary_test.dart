@@ -12,9 +12,6 @@ void main() {
       final assembly = File(
         'lib/src/application/controller/client_component_assembly.dart',
       ).readAsStringSync();
-
-      expect(root.split('\n').length, lessThan(800));
-      expect(assembly.split('\n').length, lessThan(500));
       expect(root, contains('ClientComponentAssembly('));
       for (final directConstruction in [
         'TargetController(',

@@ -161,14 +161,13 @@ fn readonly_registry_projection_exactly_matches_public_help_authority() {
     let expected = route_authorities();
     let projected = cli_command_schemas();
     assert_eq!(projected.len(), expected.len());
-
     let expected_by_path = expected
         .into_iter()
         .map(|route| (route.path, route))
         .collect::<BTreeMap<_, _>>();
     assert_eq!(
         expected_by_path.len(),
-        120,
+        152,
         "public help authority must not contain duplicate routes"
     );
     let projected_by_path = projected
@@ -210,6 +209,7 @@ fn stdin_json_routes_freeze_value_json_admission() {
         ("agent conversation cleanup", false),
         ("agent conversation capabilities", false),
         ("agent conversation stream", false),
+        ("agent group plan-turn", true),
     ] {
         let route = route_authorities()
             .into_iter()
@@ -232,8 +232,8 @@ fn every_authoritative_route_is_admitted_without_executing_its_handler() {
     let authority = route_authorities();
     assert_eq!(
         authority.len(),
-        120,
-        "the public presentation help must expand to exactly 120 routes"
+        152,
+        "the public presentation help must expand to exactly 152 routes"
     );
 
     for route in authority {
@@ -287,8 +287,12 @@ fn every_authoritative_route_is_admitted_without_executing_its_handler() {
         for option in &present_options {
             append_option(&mut valid, *option);
         }
-        let admitted = admit_cli_command(valid.clone())
-            .expect("the route's documented minimum schema must be admitted");
+        let admitted = admit_cli_command(valid.clone()).unwrap_or_else(|error| {
+            panic!(
+                "the route's documented minimum schema must be admitted for {}: {error}",
+                route.path
+            )
+        });
         assert_admitted_route(&admitted, &route, &required_values, &present_options);
 
         for required in route.options.iter().filter(|option| option.required) {
@@ -915,17 +919,29 @@ fn stdio_rpc_projects_every_admission_error_class_with_stable_metadata() {
         "option constraint",
         strings([
             "skill",
-            "delete",
+            "update",
             "plan",
+            "--agent",
+            "codex",
             "--skill",
             "private-alpha-rpc-constraint-731",
+            "--source-path",
+            "private-alpha-rpc-source-731",
+            "--url",
+            "private-alpha-rpc-url-731",
         ]),
         strings([
             "skill",
-            "delete",
+            "update",
             "plan",
+            "--agent",
+            "codex",
             "--skill",
             "private-bravo-rpc-constraint-947",
+            "--source-path",
+            "private-bravo-rpc-source-947",
+            "--url",
+            "private-bravo-rpc-url-947",
         ]),
         OPTION_CONSTRAINT,
         &[
@@ -1258,17 +1274,6 @@ fn assert_admission_error(error: &Error, expected: ExpectedAdmission, forbidden_
     }
 }
 
-fn assert_typed_admission_failure(error: &Error) {
-    let typed = error
-        .downcast_ref::<CliCommandError>()
-        .expect("CLI admission failures must be downcastable to CliCommandError");
-    assert_eq!(typed.stage(), ADMISSION_STAGE);
-    assert_eq!(typed.component(), ADMISSION_COMPONENT);
-    assert!(!typed.retryable());
-    assert!(!typed.code().is_empty());
-    assert!(!typed.recovery().is_empty());
-}
-
 fn assert_private_failure_pair(
     label: &str,
     alpha_args: Vec<String>,
@@ -1305,7 +1310,7 @@ fn public_error_surfaces(error: &Error) -> (String, String, String) {
 }
 
 fn run_lico_client(args: &[String]) -> Output {
-    Command::new(env!("CARGO_BIN_EXE_lico-client"))
+    Command::new(env!("CARGO_BIN_EXE_licoup-cli"))
         .args(args)
         .env_remove("RUST_LOG")
         .env_remove("RUST_BACKTRACE")
@@ -1314,7 +1319,7 @@ fn run_lico_client(args: &[String]) -> Output {
 }
 
 fn run_lico_client_rpc(args: Vec<String>) -> Output {
-    let mut child = Command::new(env!("CARGO_BIN_EXE_lico-client"))
+    let mut child = Command::new(env!("CARGO_BIN_EXE_licoup-cli"))
         .args(["rpc", "stdio"])
         .env_remove("RUST_LOG")
         .env_remove("RUST_BACKTRACE")
@@ -1391,13 +1396,23 @@ fn assert_projected_schema(actual: &CliCommandSchema, expected: &RouteAuthority)
         actual.path(),
         expected.path.split_ascii_whitespace().collect::<Vec<_>>()
     );
-    assert_eq!(actual.cardinality(), expected.cardinality);
+    assert_eq!(
+        actual.cardinality(),
+        expected.cardinality,
+        "cardinality mismatch for {}",
+        expected.path
+    );
     assert_eq!(actual.required_positionals().len(), expected.required.len());
     for (actual, (name, kind)) in actual.required_positionals().iter().zip(expected.required) {
         assert_eq!(actual.name(), *name);
         assert_eq!(actual.kind(), *kind);
     }
-    assert_eq!(actual.options().len(), expected.options.len());
+    assert_eq!(
+        actual.options().len(),
+        expected.options.len(),
+        "option count mismatch for {}",
+        expected.path
+    );
     for (actual, expected) in actual.options().iter().zip(&expected.options) {
         assert_eq!(actual.name(), expected.name);
         assert_eq!(actual.arity(), expected.arity);
@@ -1432,7 +1447,12 @@ fn assert_admitted_route(
     assert_eq!(admitted.path(), expected_path);
     assert_eq!(admitted.required_positionals(), expected_required);
     assert_eq!(admitted.cardinality(), expected.cardinality);
-    assert_eq!(admitted.option_specs().len(), expected.options.len());
+    assert_eq!(
+        admitted.option_specs().len(),
+        expected.options.len(),
+        "admitted option count mismatch for {}",
+        expected.path
+    );
     for (actual, option) in admitted.option_specs().iter().zip(&expected.options) {
         assert_eq!(actual.name(), option.name);
         assert_eq!(actual.arity(), option.arity);
@@ -1571,6 +1591,57 @@ fn route_authorities() -> Vec<RouteAuthority> {
         &["adapter antigravity uninstall"],
         Exact,
     );
+    routes.push(RouteAuthority {
+        module: "adapter.rs",
+        handler: "handle_antigravity_authorize",
+        path: "adapter antigravity authorize",
+        required: &[],
+        cardinality: Options,
+        options: vec![value_option("binary-path", Text, false)],
+        constraints: &[],
+    });
+    add_authority_routes(
+        &mut routes,
+        "adapter.rs",
+        "handle_codex_plugin_status",
+        &["adapter codex plugin status"],
+        Options,
+    );
+    add_authority_routes(
+        &mut routes,
+        "adapter.rs",
+        "handle_codex_plugin_plan",
+        &["adapter codex plugin plan"],
+        Options,
+    );
+    add_authority_routes(
+        &mut routes,
+        "adapter.rs",
+        "handle_codex_plugin_install",
+        &["adapter codex plugin install"],
+        Options,
+    );
+    add_authority_routes(
+        &mut routes,
+        "adapter.rs",
+        "handle_subagent_mcp_status",
+        &["adapter subagent-mcp status"],
+        Options,
+    );
+    add_authority_routes(
+        &mut routes,
+        "adapter.rs",
+        "handle_subagent_mcp_plan",
+        &["adapter subagent-mcp plan"],
+        Options,
+    );
+    add_authority_routes(
+        &mut routes,
+        "adapter.rs",
+        "handle_subagent_mcp_install",
+        &["adapter subagent-mcp install"],
+        Options,
+    );
     add_authority_routes(
         &mut routes,
         "agent_conversation.rs",
@@ -1586,6 +1657,22 @@ fn route_authorities() -> Vec<RouteAuthority> {
         ],
         Options,
     );
+    add_authority_routes(
+        &mut routes,
+        "group_conversation.rs",
+        "handle_group_ensure",
+        &["agent group ensure"],
+        Exact,
+    );
+    routes.push(RouteAuthority {
+        module: "group_conversation.rs",
+        handler: "handle_group_plan_turn",
+        path: "agent group plan-turn",
+        required: &[],
+        cardinality: Options,
+        options: vec![value_option("stdin-json", Json, true)],
+        constraints: &[],
+    });
     add_authority_routes(
         &mut routes,
         "agent_conversation.rs",
@@ -1610,6 +1697,13 @@ fn route_authorities() -> Vec<RouteAuthority> {
         "agent_usage.rs",
         "handle_agent_usage_report",
         &["agent-usage report"],
+        Options,
+    );
+    add_authority_routes(
+        &mut routes,
+        "resource_usage.rs",
+        "handle_resource_usage_scan",
+        &["resource-usage scan"],
         Options,
     );
     add_authority_routes(
@@ -1698,8 +1792,8 @@ fn route_authorities() -> Vec<RouteAuthority> {
             "mobile relay pc check-in",
             "mobile relay commands poll",
             "mobile relay commands sync",
-            "mobile relay commands complete",
             "mobile relay commands create",
+            "mobile relay commands create-secure",
             "mobile relay commands result",
             "mobile relay commands result-secure",
             "mobile relay commands result-replay-proof",
@@ -1707,6 +1801,174 @@ fn route_authorities() -> Vec<RouteAuthority> {
         ],
         Options,
     );
+    add_authority_routes(
+        &mut routes,
+        "llm_gateway.rs",
+        "handle_status",
+        &["llm-gateway credentials status"],
+        Exact,
+    );
+    add_authority_routes(
+        &mut routes,
+        "llm_gateway.rs",
+        "handle_list",
+        &["llm-gateway credentials list"],
+        Exact,
+    );
+    routes.push(RouteAuthority {
+        module: "llm_gateway.rs",
+        handler: "handle_authorize",
+        path: "llm-gateway credentials authorize",
+        required: &[],
+        cardinality: Exact,
+        options: vec![],
+        constraints: &[],
+    });
+    routes.push(RouteAuthority {
+        module: "llm_gateway.rs",
+        handler: "handle_clear",
+        path: "llm-gateway credentials clear",
+        required: &[],
+        cardinality: Exact,
+        options: vec![],
+        constraints: &[],
+    });
+    routes.push(RouteAuthority {
+        module: "llm_gateway.rs",
+        handler: "handle_create",
+        path: "llm-gateway credentials create",
+        required: &[],
+        cardinality: Options,
+        options: vec![value_option("stdin-json", Json, true)],
+        constraints: &[],
+    });
+    routes.push(RouteAuthority {
+        module: "llm_gateway.rs",
+        handler: "handle_delete",
+        path: "llm-gateway credentials delete",
+        required: &[("credential-id", Text)],
+        cardinality: Exact,
+        options: vec![],
+        constraints: &[],
+    });
+    routes.push(RouteAuthority {
+        module: "llm_gateway.rs",
+        handler: "handle_lease",
+        path: "llm-gateway credentials lease",
+        required: &[("days", Text)],
+        cardinality: Exact,
+        options: vec![],
+        constraints: &[],
+    });
+    routes.push(RouteAuthority {
+        module: "llm_gateway.rs",
+        handler: "handle_update",
+        path: "llm-gateway credentials update",
+        required: &[("credential-id", Text)],
+        cardinality: Options,
+        options: vec![value_option("stdin-json", Json, true)],
+        constraints: &[],
+    });
+    routes.push(RouteAuthority {
+        module: "llm_gateway.rs",
+        handler: "handle_agent_plan",
+        path: "llm-gateway agent-config plan",
+        required: &[("agent", Text), ("config-root", Text)],
+        cardinality: Options,
+        options: vec![value_option("port", Text, false)],
+        constraints: &[],
+    });
+    routes.push(RouteAuthority {
+        module: "llm_gateway.rs",
+        handler: "handle_agent_apply",
+        path: "llm-gateway agent-config apply",
+        required: &[("agent", Text), ("config-root", Text)],
+        cardinality: Options,
+        options: vec![
+            value_option("port", Text, false),
+            value_option("confirmation", Text, true),
+            OptionAuthority {
+                name: "confirmed",
+                arity: OptionArity::Boolean,
+                repeatable: false,
+                value_kind: Text,
+                required: true,
+            },
+        ],
+        constraints: &[],
+    });
+    for (path, handler) in [
+        ("llm-gateway service status", "handle_service_status"),
+        (
+            "llm-gateway service initialize",
+            "handle_service_initialize",
+        ),
+        ("llm-gateway service start", "handle_service_start"),
+        ("llm-gateway service stop", "handle_service_stop"),
+        (
+            "llm-gateway service autostart-enable",
+            "handle_service_autostart_enable",
+        ),
+    ] {
+        routes.push(RouteAuthority {
+            module: "llm_gateway.rs",
+            handler,
+            path,
+            required: &[],
+            cardinality: Options,
+            options: vec![value_option("port", Text, false)],
+            constraints: &[],
+        });
+    }
+    add_authority_routes(
+        &mut routes,
+        "llm_gateway.rs",
+        "handle_service_usage",
+        &["llm-gateway service usage"],
+        Exact,
+    );
+    add_authority_routes(
+        &mut routes,
+        "llm_gateway.rs",
+        "handle_service_autostart_status",
+        &["llm-gateway service autostart-status"],
+        Exact,
+    );
+    add_authority_routes(
+        &mut routes,
+        "llm_gateway.rs",
+        "handle_service_autostart_disable",
+        &["llm-gateway service autostart-disable"],
+        Exact,
+    );
+    add_authority_routes(
+        &mut routes,
+        "autostart.rs",
+        "handle_status",
+        &["autostart status"],
+        Exact,
+    );
+    add_authority_routes(
+        &mut routes,
+        "autostart.rs",
+        "handle_prepare_mcp",
+        &["autostart prepare-mcp"],
+        Exact,
+    );
+    routes.push(RouteAuthority {
+        module: "autostart.rs",
+        handler: "handle_set",
+        path: "autostart set",
+        required: &[],
+        cardinality: Options,
+        options: vec![
+            value_option("component", Text, true),
+            value_option("enabled", Text, true),
+            value_option("silent", Text, false),
+            value_option("port", Text, false),
+        ],
+        constraints: &[],
+    });
     add_authority_routes(
         &mut routes,
         "opencode_serve.rs",
@@ -1757,6 +2019,7 @@ fn route_authorities() -> Vec<RouteAuthority> {
         ("skill visibility set", "handle_skill_visibility"),
         ("skill pin set", "handle_skill_pin"),
         ("skill usage report", "handle_skill_usage_report"),
+        ("skill usage scan", "handle_skill_usage_scan"),
     ] {
         add_authority_routes(&mut routes, "skill.rs", handler, &[path], Options);
     }
@@ -1957,6 +2220,35 @@ const fn boolean_option(name: &'static str) -> OptionAuthority {
 fn options_for_route(path: &str) -> Vec<OptionAuthority> {
     use RequiredArgumentKind::{Json, Text};
     let options: &[OptionAuthority] = match path {
+        "llm-gateway credentials authorize" | "llm-gateway credentials clear" => {
+            &[value_option("credential-id", Text, false)]
+        }
+        "llm-gateway credentials create" | "llm-gateway credentials update" => {
+            &[value_option("stdin-json", Json, true)]
+        }
+        "llm-gateway agent-config plan" => &[value_option("port", Text, false)],
+        "llm-gateway agent-config apply" => &[
+            value_option("port", Text, false),
+            value_option("confirmation", Text, true),
+            OptionAuthority {
+                name: "confirmed",
+                arity: OptionArity::Boolean,
+                repeatable: false,
+                value_kind: Text,
+                required: true,
+            },
+        ],
+        "llm-gateway service status"
+        | "llm-gateway service initialize"
+        | "llm-gateway service start"
+        | "llm-gateway service stop"
+        | "llm-gateway service autostart-enable" => &[value_option("port", Text, false)],
+        "autostart set" => &[
+            value_option("component", Text, true),
+            value_option("enabled", Text, true),
+            value_option("silent", Text, false),
+            value_option("port", Text, false),
+        ],
         "opencode-serve ensure"
         | "opencode-serve start"
         | "opencode-serve stop"
@@ -2017,10 +2309,14 @@ fn options_for_route(path: &str) -> Vec<OptionAuthority> {
             value_option("topic", Text, true),
             value_option("agent", Text, false),
         ],
-        "conversations list"
-        | "conversations append"
-        | "conversations delete"
-        | "conversations stream" => &[
+        "conversations list" | "conversations stream" => &[
+            value_option("agent", Text, true),
+            value_option("limit", Text, false),
+            value_option("offset", Text, false),
+            value_option("session-id", Text, false),
+            value_option("text", Text, false),
+        ],
+        "conversations append" | "conversations delete" => &[
             value_option("agent", Text, true),
             value_option("limit", Text, false),
             value_option("offset", Text, false),
@@ -2039,6 +2335,40 @@ fn options_for_route(path: &str) -> Vec<OptionAuthority> {
             value_option("agent", Text, false),
             value_option("limit", Text, false),
             value_option("state-root", Text, false),
+        ],
+        "resource-usage scan" => &[value_option("state-root", Text, false)],
+        "adapter antigravity authorize" => &[value_option("binary-path", Text, false)],
+        "adapter codex plugin status" | "adapter codex plugin plan" => {
+            &[value_option("binary-path", Text, true)]
+        }
+        "adapter codex plugin install" => &[
+            value_option("binary-path", Text, true),
+            value_option("confirmation", Text, true),
+            OptionAuthority {
+                name: "confirmed",
+                arity: OptionArity::Boolean,
+                repeatable: false,
+                value_kind: Text,
+                required: true,
+            },
+        ],
+        "adapter subagent-mcp status" | "adapter subagent-mcp plan" => &[
+            value_option("agent-id", Text, true),
+            value_option("binary-path", Text, false),
+            value_option("mcp-binary-path", Text, false),
+        ],
+        "adapter subagent-mcp install" => &[
+            value_option("agent-id", Text, true),
+            value_option("binary-path", Text, false),
+            value_option("mcp-binary-path", Text, false),
+            value_option("confirmation", Text, true),
+            OptionAuthority {
+                name: "confirmed",
+                arity: OptionArity::Boolean,
+                repeatable: false,
+                value_kind: Text,
+                required: true,
+            },
         ],
         "mcp http preview" | "mcp http execute" => &[value_option("stdin-json", Json, true)],
         "update status" | "update check" | "update download" | "update verify" | "update apply" => {
@@ -2105,6 +2435,7 @@ fn options_for_route(path: &str) -> Vec<OptionAuthority> {
         | "agent conversation cleanup"
         | "agent conversation capabilities"
         | "agent conversation stream" => &[value_option("stdin-json", Json, false)],
+        "agent group plan-turn" => &[value_option("stdin-json", Json, true)],
         "agents pair request"
         | "agents pair approve"
         | "agents pair revoke"
@@ -2181,6 +2512,12 @@ fn options_for_route(path: &str) -> Vec<OptionAuthority> {
             value_option("from", Text, false),
             value_option("to", Text, false),
         ],
+        "skill usage scan" => &[
+            value_option("agent", Text, false),
+            value_option("history-root", Text, false),
+            value_option("home-dir", Text, false),
+            boolean_option("force-refresh"),
+        ],
         "targets scan" => &[
             value_option("state-root", Text, false),
             value_option("include-accessible-environments", Text, false),
@@ -2194,31 +2531,64 @@ fn options_for_route(path: &str) -> Vec<OptionAuthority> {
             value_option("history-root", Text, false),
             value_option("state-root", Text, false),
         ],
-        "targets inspect" => &[value_option("state-root", Text, false)],
-        "mobile relay config get" | "mobile relay config set" => &[
-            value_option("use-custom-gateway", Text, false),
-            value_option("custom-gateway-url", Text, false),
+        "targets inspect" => &[
+            value_option("state-root", Text, false),
+            value_option("include-accessible-environments", Text, false),
+        ],
+        "mobile relay config get" => &[
+            value_option("authorize", Text, false),
+            value_option("hydrate-secrets", Text, false),
+        ],
+        "mobile relay config set" => &[
+            value_option("stdin-json", Json, false),
+            value_option("station-base-url", Text, false),
             value_option("relay-enabled", Text, false),
+            value_option("pc-client-id", Text, false),
+            value_option("pc-client-name", Text, false),
+            value_option("pairing-id", Text, false),
+            value_option("paired", Text, false),
+            value_option("reset-pairing", Text, false),
         ],
         "mobile relay pairing create"
         | "mobile relay pairing status"
-        | "mobile relay pairing claim"
         | "mobile relay pairing revoke" => &[
-            value_option("pairing-code", Text, false),
+            value_option("stdin-json", Json, false),
             value_option("pairing-id", Text, false),
-            value_option("mobile-token", Text, false),
+        ],
+        "mobile relay pairing claim" => &[
+            value_option("stdin-json", Json, false),
+            value_option("pairing-id", Text, false),
         ],
         "mobile relay commands poll"
-        | "mobile relay commands sync"
-        | "mobile relay commands complete"
         | "mobile relay commands create"
         | "mobile relay commands result"
-        | "mobile relay commands result-secure"
         | "mobile relay commands result-replay-proof" => &[
             value_option("command-id", Text, false),
             value_option("type", Text, false),
-            value_option("payload", Json, false),
-            value_option("mobile-token", Text, false),
+            value_option("stdin-json", Json, false),
+        ],
+        "mobile relay commands create-secure" => &[
+            value_option("client-intent-id", Text, false),
+            value_option("command-kind", Text, false),
+            value_option("target-agent-id", Text, false),
+            value_option("workspace-id", Text, false),
+            value_option("body", Json, false),
+            value_option("station-base-url", Text, false),
+            value_option("allow-interaction", Text, false),
+            value_option("stdin-json", Json, false),
+        ],
+        "mobile relay commands result-secure" => &[
+            value_option("command-id", Text, false),
+            value_option("idempotency-key", Text, false),
+            value_option("acknowledge-receipt-id", Text, false),
+            value_option("type", Text, false),
+            value_option("stdin-json", Json, false),
+        ],
+        "mobile relay commands sync" => &[
+            value_option("allow-interaction", Text, false),
+            value_option("command-id", Text, false),
+            value_option("type", Text, false),
+            value_option("stdin-json", Json, false),
         ],
         "mobile relay e2ee secret-store-cleanup" => &[value_option("disposable-proof", Text, true)],
         "secure-mesh status"
@@ -2296,15 +2666,6 @@ fn constraints_for_route(path: &str) -> &'static [ConstraintAuthority] {
             condition_value: None,
             required_option: None,
         }],
-        "skill update plan" | "skill update apply" | "skill auto-update set" => {
-            &[ConstraintAuthority {
-                kind: MutuallyExclusive,
-                members: &["source-path", "url"],
-                condition_option: None,
-                condition_value: None,
-                required_option: None,
-            }]
-        }
         "skill delete plan" | "skill delete apply" => &[
             ConstraintAuthority {
                 kind: AtLeastOne,
@@ -2321,6 +2682,15 @@ fn constraints_for_route(path: &str) -> &'static [ConstraintAuthority] {
                 required_option: None,
             },
         ],
+        "skill update plan" | "skill update apply" | "skill auto-update set" => {
+            &[ConstraintAuthority {
+                kind: MutuallyExclusive,
+                members: &["source-path", "url"],
+                condition_option: None,
+                condition_value: None,
+                required_option: None,
+            }]
+        }
         "skill usage report" => &[ConstraintAuthority {
             kind: MutuallyExclusive,
             members: &["days", "from"],

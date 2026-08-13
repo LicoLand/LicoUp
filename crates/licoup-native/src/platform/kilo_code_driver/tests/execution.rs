@@ -10,7 +10,7 @@ fn empty_executable_fails_closed_without_session_fallback() {
         "existing-kilo-native",
         Some(&cwd),
         1_000,
-        1024,
+        Some(1024),
         1024,
     );
     assert!(!result.ok);

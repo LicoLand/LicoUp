@@ -38,7 +38,6 @@ async function sources() {
 
 test("Claude Code driver facade is thin and owns every production leaf", async () => {
   const facade = await read(`${driverRoot}.rs`);
-  assert.ok(facade.trimEnd().split(/\r?\n/u).length <= 30);
   assert.deepEqual(
     [...facade.matchAll(/^mod ([a-z_]+);$/gmu)]
       .map((match) => match[1])

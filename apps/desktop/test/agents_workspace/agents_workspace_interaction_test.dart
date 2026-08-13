@@ -28,11 +28,14 @@ void registerAgentsWorkspaceInteractionScenarios() {
             createdAt: '2026-06-15T00:00:00Z',
             updatedAt: '2026-06-15T00:02:09Z',
             messages: [
+              // Tool calls converge into a process card; plain `event`
+              // records are provider bookkeeping and render as a quiet
+              // runtime-log row under the evidence-driven presentation.
               for (var index = 0; index < 130; index++)
                 AgentConversationMessage(
                   id: 'long-event-$index',
-                  role: 'event',
-                  cardType: 'event',
+                  role: 'tool_call',
+                  cardType: 'tool-call',
                   text: 'Safe operation ${index + 1}',
                   createdAt: DateTime.utc(
                     2026,
@@ -79,8 +82,8 @@ void registerAgentsWorkspaceInteractionScenarios() {
       const toggleKey = Key('conversation-process-toggle-long-event-0');
       await tester.ensureVisible(find.byKey(toggleKey, skipOffstage: false));
       await tester.pump();
-      expect(find.text('处理了 2分钟 9秒'), findsOneWidget);
-      expect(find.text('130 个步骤'), findsOneWidget);
+      expect(find.text('工具执行'), findsOneWidget);
+      expect(find.text('处理了 2分钟 9秒 · 130 个步骤'), findsOneWidget);
       expect(find.text('Safe operation 1', findRichText: true), findsNothing);
 
       await tester.tap(find.byKey(toggleKey));
@@ -246,6 +249,7 @@ void registerAgentsWorkspaceInteractionScenarios() {
         status: 'detected',
         configured: true,
         confidence: 0.9,
+        binaryPath: '/test-bin/codex',
         adapterStatus: 'implemented',
         adapterCapabilities: const {
           'conversationDriver': 'implemented',
@@ -290,7 +294,7 @@ void registerAgentsWorkspaceInteractionScenarios() {
 
     await tester.tap(find.byKey(const ValueKey('conversation-model-select')));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Model · model-canary').last);
+    await tester.tap(find.text('model-canary').last);
     await tester.pumpAndSettle();
     await tester.tap(
       find.byKey(const ValueKey('conversation-reasoning-select')),
@@ -351,11 +355,81 @@ void registerAgentsWorkspaceInteractionScenarios() {
       find.byKey(const Key('agents-sidebar-new-conversation')),
       findsOneWidget,
     );
-    expect(find.byKey(const Key('agents-sidebar-archive')), findsOneWidget);
+    expect(find.byKey(const Key('agents-sidebar-archive')), findsNothing);
+    expect(
+      find.byKey(const Key('agents-sidebar-backup-conversations')),
+      findsOneWidget,
+    );
     expect(find.byKey(const Key('agents-sidebar-add-target')), findsOneWidget);
     expect(find.byKey(const Key('agents-sidebar-nav-skills')), findsNothing);
     expect(find.byKey(const Key('agents-sidebar-nav-stats')), findsNothing);
   });
+
+  testWidgets(
+    'available main agent keeps the composer enabled without a send error',
+    (tester) async {
+      final controller = ClientController();
+      addTearDown(controller.dispose);
+      controller.scannedTargets = [
+        TargetCandidate(
+          target: 'codex',
+          label: 'Codex',
+          kind: 'cli',
+          status: 'detected',
+          configured: true,
+          confidence: 1,
+          binaryPath: '/synthetic/bin/codex',
+          adapterStatus: 'implemented',
+          adapterCapabilities: const {'conversationDriver': 'implemented'},
+        ),
+      ];
+      controller.orchestrationPolicyDraft = const <String, Object?>{
+        'version': 1,
+        'main_agent': <String, Object?>{
+          'agent': 'codex',
+          'model': '',
+          'reasoning_effort': '',
+        },
+      };
+      controller.selectedConversationAgentId = 'lico-default-orchestrator';
+
+      await tester.pumpWidget(
+        MaterialApp(
+          builder: (context, child) =>
+              FixtureLayoutPresentationScope(child: child!),
+          locale: const Locale('zh'),
+          supportedLocales: LicoStrings.supportedLocales,
+          localizationsDelegates: const [
+            GlobalMaterialLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+          ],
+          theme: buildLicoTheme(
+            platformBrightness: Brightness.dark,
+          ).copyWith(platform: TargetPlatform.macOS),
+          home: Scaffold(
+            body: SizedBox(
+              width: 900,
+              height: 520,
+              child: AgentConversationWorkspace(
+                controller: controller,
+                targets: controller.scannedTargets,
+                scanning: false,
+                adding: false,
+                onAddTarget: () {},
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('发送失败：当前策略没有可用的发送目标。'), findsNothing);
+      expect(tester.widget<TextField>(find.byType(TextField)).enabled, isTrue);
+      expect(find.text('Codex'), findsWidgets);
+      expect(tester.takeException(), isNull);
+    },
+  );
 }
 
 void main() => registerAgentsWorkspaceInteractionScenarios();

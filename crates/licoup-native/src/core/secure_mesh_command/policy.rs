@@ -89,6 +89,18 @@ pub fn evaluate_secure_command(
     ) {
         return Ok(reject(payload, "workspace_binding_rejected"));
     }
+    if command_requires_agent_binding(&payload.command_kind) {
+        if payload.target_binding.target_agent_id.is_none() {
+            return Ok(reject(payload, "agent_binding_required"));
+        }
+        if payload.body().as_object().is_some_and(|body| {
+            AGENT_RESOURCE_SELECTOR_FIELDS
+                .iter()
+                .any(|field| body.contains_key(*field))
+        }) {
+            return Ok(reject(payload, "agent_selector_must_use_target_binding"));
+        }
+    }
     if !binding_allowed(
         payload.target_binding.target_agent_id.as_deref(),
         &context.allowed_agent_ids,
@@ -162,12 +174,15 @@ fn minimum_risk_class(command_kind: &str) -> Option<SecureCommandRiskClass> {
     }
 }
 
+fn command_requires_agent_binding(command_kind: &str) -> bool {
+    matches!(
+        command_kind,
+        "agent.sessions.list" | "agent.sessions.describe" | "agent.message.send"
+    )
+}
+
 fn confirmation_required(payload: &SecureCommandPayload) -> bool {
     payload.requires_user_confirmation
-        || matches!(
-            payload.command_kind.as_str(),
-            "agent.sessions.list" | "agent.sessions.describe"
-        )
         || matches!(
             payload.risk_class,
             SecureCommandRiskClass::LocalEffect | SecureCommandRiskClass::HighRisk

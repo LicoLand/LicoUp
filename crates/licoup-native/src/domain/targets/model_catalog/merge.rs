@@ -137,6 +137,43 @@ pub(super) fn add_model_catalog_entry_with_provider(
     entry.extend_reasoning_efforts(reasoning_efforts);
 }
 
+/// Kimi history may store the same native selector as `kimi-code/<id>` while
+/// the official Kimi Code catalog exposes `<id>`. Fold the history spelling
+/// into the official selector instead of presenting two equivalent rows.
+pub(super) fn collapse_kimi_code_qualified_duplicates(
+    entries: &mut BTreeMap<String, ModelCatalogEntry>,
+) {
+    let canonical_keys = entries
+        .iter()
+        .filter(|(_, entry)| !entry.name.contains('/'))
+        .map(|(key, entry)| (entry.name.to_ascii_lowercase(), key.clone()))
+        .collect::<BTreeMap<_, _>>();
+    let duplicates = entries
+        .iter()
+        .filter_map(|(key, entry)| {
+            let (provider, model) = entry.name.split_once('/')?;
+            if !provider.eq_ignore_ascii_case("kimi-code") {
+                return None;
+            }
+            canonical_keys
+                .get(&model.to_ascii_lowercase())
+                .cloned()
+                .map(|canonical_key| (key.clone(), canonical_key))
+        })
+        .collect::<Vec<_>>();
+
+    for (duplicate_key, canonical_key) in duplicates {
+        let Some(duplicate) = entries.remove(&duplicate_key) else {
+            continue;
+        };
+        let Some(canonical) = entries.get_mut(&canonical_key) else {
+            continue;
+        };
+        canonical.sources.extend(duplicate.sources);
+        canonical.extend_reasoning_efforts(duplicate.reasoning_efforts);
+    }
+}
+
 pub(super) fn build_model_catalog(
     entries: BTreeMap<String, ModelCatalogEntry>,
     sources: BTreeSet<String>,

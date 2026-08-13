@@ -1,5 +1,6 @@
 use super::{AdmittedCommand, CliExecution, admitted_params};
-use anyhow::Result;
+use anyhow::{Result, ensure};
+use serde_json::Value;
 
 pub(super) fn handle_snapshots_list(command: AdmittedCommand) -> Result<CliExecution> {
     let params = admitted_params(&[("target", command.option_text("target"))], &[], &[]);
@@ -139,7 +140,7 @@ pub(super) fn handle_conversations(command: AdmittedCommand) -> Result<CliExecut
         ["conversations", action] => *action,
         _ => unreachable!("admission only registers concrete conversation routes"),
     };
-    let params = admitted_params(
+    let mut params = admitted_params(
         &[
             ("agent", command.option_text("agent")),
             ("limit", command.option_text("limit")),
@@ -150,6 +151,35 @@ pub(super) fn handle_conversations(command: AdmittedCommand) -> Result<CliExecut
         &[],
         &[],
     );
+    if let Some(private) = command.option_json("stdin-json") {
+        let private = private
+            .as_object()
+            .ok_or_else(|| anyhow::anyhow!("conversation_private_input_invalid"))?;
+        let public_agent = params
+            .get("agent")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        if let Some(private_agent) = private.get("agent").and_then(Value::as_str) {
+            ensure!(
+                private_agent == public_agent,
+                "conversation_private_input_mismatch"
+            );
+        }
+        let object = params
+            .as_object_mut()
+            .ok_or_else(|| anyhow::anyhow!("conversation_private_input_invalid"))?;
+        for key in [
+            "limit",
+            "offset",
+            "sessionId",
+            "runtimeConnection",
+            "workingDirectory",
+        ] {
+            if let Some(value) = private.get(key) {
+                object.insert(key.to_string(), value.clone());
+            }
+        }
+    }
     let result = match action {
         "list" => crate::domain::conversations::conversation_list(&params)?,
         "stream" => {

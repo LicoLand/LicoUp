@@ -137,7 +137,6 @@ pub(super) fn key_transparency_self_monitor(params: &Value) -> Result<Value> {
         "authorizationDigest": authorized.authorization_digest(),
         "mlsKeyPackageAuthorizationDigest": mls_key_package_authorized
             .as_ref()
-            .map(AuthorizedDirectoryLeaf::authorization_digest),
-        "privateKeyMaterial": "redacted"
+            .map(AuthorizedDirectoryLeaf::authorization_digest)
     }))
 }

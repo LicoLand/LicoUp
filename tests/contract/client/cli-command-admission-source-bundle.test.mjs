@@ -254,7 +254,6 @@ addRoutes("mobile.rs", "handle_mobile_relay", [
   "mobile relay pc check-in",
   "mobile relay commands poll",
   "mobile relay commands sync",
-  "mobile relay commands complete",
   "mobile relay commands create",
   "mobile relay commands result",
   "mobile relay commands result-secure",

@@ -38,8 +38,12 @@ class AgentConversationMessage {
     this.collapsed = true,
     this.providerSummary = false,
     this.stableIdentity = '',
+    this.participantAgentId = '',
+    this.participantLabel = '',
+    this.participantRole = '',
     this.childMessagesTruncated = false,
     this.childMessages = const [],
+    this.images = const [],
   });
 
   final String id;
@@ -53,8 +57,18 @@ class AgentConversationMessage {
   final bool collapsed;
   final bool providerSummary;
   final String stableIdentity;
+  final String participantAgentId;
+  final String participantLabel;
+  final String participantRole;
   final bool childMessagesTruncated;
   final List<AgentConversationMessage> childMessages;
+
+  /// Typed image attachments carried by the message (for example a pasted
+  /// screenshot in a native agent history). Rendered locally only — inline
+  /// base64 payloads decode in memory; file-path sources currently render a
+  /// graceful unavailable placeholder until a platform-root byte provider
+  /// exists. Nothing is fetched over the network.
+  final List<AgentConversationImageAttachment> images;
 
   AgentConversationMessageKind get kind =>
       agentConversationMessageKindFor(role: role, cardType: cardType);
@@ -87,6 +101,7 @@ class AgentConversationMessage {
 
   bool get isDisplayable =>
       (!_messageRoleIsInternal(role) ||
+          isSubagentCard ||
           (isStructuredEvent && cardType.trim().isNotEmpty)) &&
       (text.trim().isNotEmpty || isSubagentCard || isStructuredEvent);
 
@@ -100,6 +115,49 @@ class AgentConversationMessage {
       isStructuredEvent ||
       isSubagentCard;
 
+  AgentConversationMessage withParticipantDefaults({
+    required String agentId,
+    required String label,
+    required String role,
+  }) {
+    if (kind == AgentConversationMessageKind.user || isSubagentCard) {
+      return this;
+    }
+    final resolvedAgentId = participantAgentId.trim().isNotEmpty
+        ? participantAgentId
+        : agentId.trim();
+    final resolvedLabel = participantLabel.trim().isNotEmpty
+        ? participantLabel
+        : label.trim();
+    final resolvedRole = participantRole.trim().isNotEmpty
+        ? participantRole
+        : role.trim();
+    if (resolvedAgentId == participantAgentId &&
+        resolvedLabel == participantLabel &&
+        resolvedRole == participantRole) {
+      return this;
+    }
+    return AgentConversationMessage(
+      id: id,
+      role: this.role,
+      text: text,
+      createdAt: createdAt,
+      layer: layer,
+      cardType: cardType,
+      cardTitle: cardTitle,
+      cardSubtitle: cardSubtitle,
+      collapsed: collapsed,
+      providerSummary: providerSummary,
+      stableIdentity: stableIdentity,
+      participantAgentId: resolvedAgentId,
+      participantLabel: resolvedLabel,
+      participantRole: resolvedRole,
+      childMessagesTruncated: childMessagesTruncated,
+      childMessages: childMessages,
+      images: images,
+    );
+  }
+
   Map<String, dynamic> toJson() {
     return {
       'id': id,
@@ -112,9 +170,69 @@ class AgentConversationMessage {
       if (cardSubtitle.isNotEmpty) 'cardSubtitle': cardSubtitle,
       if (!collapsed) 'collapsed': collapsed,
       if (providerSummary) 'providerSummary': true,
+      if (participantAgentId.isNotEmpty)
+        'participantAgentId': participantAgentId,
+      if (participantLabel.isNotEmpty) 'participantLabel': participantLabel,
+      if (participantRole.isNotEmpty) 'participantRole': participantRole,
       if (childMessagesTruncated) 'childMessagesTruncated': true,
+      if (images.isNotEmpty)
+        'images': [for (final image in images) image.toJson()],
       if (childMessages.isNotEmpty)
         'messages': childMessages.map((message) => message.toJson()).toList(),
+    };
+  }
+}
+
+/// Parses a conversation message timestamp from ISO-8601 or numeric epoch
+/// strings. Native history adapters often store millisecond epochs that
+/// [DateTime.tryParse] cannot read.
+DateTime? parseAgentConversationTimestamp(String raw) {
+  final trimmed = raw.trim();
+  if (trimmed.isEmpty) {
+    return null;
+  }
+  final iso = DateTime.tryParse(trimmed);
+  if (iso != null) {
+    return iso.toLocal();
+  }
+  final epoch = int.tryParse(trimmed);
+  if (epoch == null || epoch <= 0) {
+    return null;
+  }
+  final absolute = epoch.abs();
+  final seconds = absolute >= 1000000000000000
+      ? epoch ~/ 1000000
+      : absolute >= 10000000000
+      ? epoch ~/ 1000
+      : epoch;
+  return DateTime.fromMillisecondsSinceEpoch(
+    seconds * 1000,
+    isUtc: true,
+  ).toLocal();
+}
+
+/// One typed image attachment on a conversation message. Exactly one of
+/// [dataBase64] (inline payload) or [filePath] (local file) carries the
+/// image source; both may be empty when the source is unavailable.
+final class AgentConversationImageAttachment {
+  const AgentConversationImageAttachment({
+    this.mediaType = 'image/png',
+    this.dataBase64 = '',
+    this.filePath = '',
+    this.name = '',
+  });
+
+  final String mediaType;
+  final String dataBase64;
+  final String filePath;
+  final String name;
+
+  Map<String, dynamic> toJson() {
+    return {
+      if (mediaType.isNotEmpty) 'mediaType': mediaType,
+      if (dataBase64.isNotEmpty) 'data': dataBase64,
+      if (filePath.isNotEmpty) 'path': filePath,
+      if (name.isNotEmpty) 'name': name,
     };
   }
 }
@@ -127,7 +245,10 @@ AgentConversationMessageKind agentConversationMessageKindFor({
   final normalizedCard = _normalizeConversationSemantic(cardType);
   final normalizedRole = _normalizeConversationSemantic(role);
   final semantic = normalizedCard.isEmpty ? normalizedRole : normalizedCard;
-  if (semantic == 'subagent') {
+  // The native adapter reports delegated subagent prompts with the internal
+  // role "subagent_prompt" (normalized "subagent-prompt"); both spellings
+  // resolve to the subagent card.
+  if (semantic == 'subagent' || semantic == 'subagent-prompt') {
     return AgentConversationMessageKind.subagent;
   }
   if (_toolResultConversationSemantic(semantic) ||

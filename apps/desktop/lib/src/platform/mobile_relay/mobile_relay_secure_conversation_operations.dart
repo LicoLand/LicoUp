@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math';
 
 import 'package:licoup/src/contracts/agent_command_runner.dart';
 import 'package:licoup/src/platform/mobile_relay/mobile_relay_native_dispatch.dart';
@@ -117,16 +118,11 @@ final class MobileRelaySecureConversationOperations {
       };
     }
     final params = {
+      'clientIntentId': _newSecureRelayClientIntentId(),
       'commandKind': 'agent.sessions.list',
       'targetAgentId': normalizedAgent,
       'workspaceId': 'default',
-      'body': {
-        'agent': normalizedAgent,
-        'agentId': normalizedAgent,
-        'target': normalizedAgent,
-        'limit': limit,
-        'offset': offset,
-      },
+      'body': {'limit': limit, 'offset': offset},
     };
     SecureMeshMobileBridge mobileBridge;
     if (_dispatch.isAndroid) {
@@ -139,11 +135,9 @@ final class MobileRelaySecureConversationOperations {
         'errorCode': 'secure_agent_sessions_mobile_only',
       };
     }
-    final created = await _runMobileRelayNative(
+    final created = await _createSecureRelayCommand(
       bridge: mobileBridge,
-      action: 'mobile.relay.commands.createSecure',
       params: params,
-      authorize: true,
     );
     final completed = await _waitForSecureRelayResult(
       bridge: mobileBridge,
@@ -176,13 +170,11 @@ final class MobileRelaySecureConversationOperations {
       };
     }
     final params = {
+      'clientIntentId': _newSecureRelayClientIntentId(),
       'commandKind': 'agent.sessions.describe',
       'targetAgentId': normalizedAgent,
       'workspaceId': 'default',
       'body': {
-        'agent': normalizedAgent,
-        'agentId': normalizedAgent,
-        'target': normalizedAgent,
         'sessionId': normalizedSession,
         'nativeSessionId': normalizedSession,
       },
@@ -198,11 +190,9 @@ final class MobileRelaySecureConversationOperations {
         'errorCode': 'secure_agent_sessions_mobile_only',
       };
     }
-    final created = await _runMobileRelayNative(
+    final created = await _createSecureRelayCommand(
       bridge: mobileBridge,
-      action: 'mobile.relay.commands.createSecure',
       params: params,
-      authorize: true,
     );
     final completed = await _waitForSecureRelayResult(
       bridge: mobileBridge,
@@ -225,8 +215,6 @@ final class MobileRelaySecureConversationOperations {
     required SecureMeshMobileBridge bridge,
   }) async {
     final body = {
-      'agentId': agentId,
-      'target': agentId,
       'text': text,
       if (sessionId.trim().isNotEmpty) 'sessionId': sessionId.trim(),
       if (model.trim().isNotEmpty) 'model': model.trim(),
@@ -234,35 +222,34 @@ final class MobileRelaySecureConversationOperations {
         'reasoningEffort': reasoningEffort.trim(),
     };
     final params = {
+      'clientIntentId': _newSecureRelayClientIntentId(),
       'commandKind': 'agent.message.send',
       'targetAgentId': agentId,
       'workspaceId': 'default',
       'body': body,
     };
     if (_dispatch.isAndroid) {
-      final created = await _runMobileRelayNative(
+      final created = await _createSecureRelayCommand(
         bridge: bridge,
-        action: 'mobile.relay.commands.createSecure',
         params: params,
-        authorize: true,
       );
       return _waitForSecureRelayResult(bridge: bridge, created: created);
     }
     if (_dispatch.isIOS) {
       final iosBridge = const SecureMeshIosBridge();
-      final created = await _runMobileRelayNative(
+      final created = await _createSecureRelayCommand(
         bridge: iosBridge,
-        action: 'mobile.relay.commands.createSecure',
         params: params,
-        authorize: true,
       );
       return _waitForSecureRelayResult(bridge: iosBridge, created: created);
     }
-    return _dispatch.runCli(agentService, [
+    return _createSecureRelayCommandViaCli(agentService, [
       'mobile',
       'relay',
       'commands',
       'create-secure',
+      '--client-intent-id',
+      params['clientIntentId'] as String,
       '--command-kind',
       'agent.message.send',
       '--target-agent-id',
@@ -272,6 +259,43 @@ final class MobileRelaySecureConversationOperations {
       '--body',
       jsonEncode(body),
     ]);
+  }
+
+  Future<Map<String, dynamic>> _createSecureRelayCommand({
+    required SecureMeshMobileBridge bridge,
+    required Map<String, dynamic> params,
+  }) async {
+    for (var attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        return await _runMobileRelayNative(
+          bridge: bridge,
+          action: 'mobile.relay.commands.createSecure',
+          params: params,
+          authorize: true,
+        );
+      } on Object {
+        if (attempt == 1) {
+          rethrow;
+        }
+      }
+    }
+    throw StateError('secure relay create retry exhausted');
+  }
+
+  Future<Map<String, dynamic>> _createSecureRelayCommandViaCli(
+    AgentCommandRunner agentService,
+    List<String> arguments,
+  ) async {
+    for (var attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        return await _dispatch.runCli(agentService, arguments);
+      } on Object {
+        if (attempt == 1) {
+          rethrow;
+        }
+      }
+    }
+    throw StateError('secure relay CLI create retry exhausted');
   }
 
   Future<Map<String, dynamic>> _secureMeshStatus({
@@ -336,14 +360,17 @@ final class MobileRelaySecureConversationOperations {
     required SecureMeshMobileBridge bridge,
     required Map<String, dynamic> created,
   }) async {
-    final command = created['command'];
-    final commandId = command is Map
-        ? (command['commandId'] ?? '').toString()
+    final binding = created['secureCommandBinding'];
+    final commandId = binding is Map
+        ? (binding['payloadCommandId'] ?? '').toString().trim()
         : '';
-    if (commandId.trim().isEmpty) {
+    final idempotencyKey = binding is Map
+        ? (binding['idempotencyKey'] ?? '').toString().trim()
+        : '';
+    if (created['ok'] != true || commandId.isEmpty || idempotencyKey.isEmpty) {
       return const {
         'ok': false,
-        'errorCode': 'secure_relay_command_id_missing',
+        'errorCode': 'secure_relay_command_binding_invalid',
       };
     }
     for (
@@ -355,7 +382,7 @@ final class MobileRelaySecureConversationOperations {
       final result = await _runMobileRelayNative(
         bridge: bridge,
         action: 'mobile.relay.commands.resultSecure',
-        params: {'commandId': commandId},
+        params: {'commandId': commandId, 'idempotencyKey': idempotencyKey},
         authorize: true,
       );
       final completion = resolveSecureRelayPollResult(
@@ -363,9 +390,44 @@ final class MobileRelaySecureConversationOperations {
         polled: result,
       );
       if (completion != null) {
-        return completion;
+        if (completion['ok'] != true) {
+          return completion;
+        }
+        final receiptId = (result['resultReceiptId'] ?? '').toString().trim();
+        if (receiptId.isEmpty) {
+          return const {
+            'ok': false,
+            'errorCode': 'secure_relay_result_receipt_invalid',
+          };
+        }
+        for (var ackAttempt = 0; ackAttempt < 3; ackAttempt += 1) {
+          try {
+            final acknowledged = await _runMobileRelayNative(
+              bridge: bridge,
+              action: 'mobile.relay.commands.resultSecure',
+              params: {'acknowledgeReceiptId': receiptId},
+              authorize: true,
+            );
+            if (acknowledged['ok'] == true &&
+                acknowledged['acknowledged'] == true) {
+              return {...completion, 'resultReceiptAcknowledged': true};
+            }
+          } on Object {
+            // The native acknowledgement is idempotent; retry the same receipt.
+          }
+        }
+        return const {
+          'ok': false,
+          'errorCode': 'secure_relay_result_ack_failed',
+        };
       }
     }
     return const {'ok': false, 'errorCode': 'secure_relay_result_timeout'};
   }
+}
+
+String _newSecureRelayClientIntentId() {
+  final random = Random.secure();
+  final bytes = List<int>.generate(24, (_) => random.nextInt(256));
+  return base64UrlEncode(bytes).replaceAll('=', '');
 }

@@ -11,7 +11,7 @@ pub(in crate::platform) fn capability_probe(
     executable: &str,
     cwd: &Path,
     timeout_ms: u64,
-    max_stdout: usize,
+    max_stdout: Option<usize>,
     max_stderr: usize,
 ) -> Result<CapabilityProbe, ProtocolFailure> {
     let _ = (max_stdout, max_stderr);

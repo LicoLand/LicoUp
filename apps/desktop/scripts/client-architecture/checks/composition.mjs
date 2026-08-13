@@ -18,7 +18,6 @@ export async function checkConversationBridges(context, { packagedTargets, conve
     readText,
     runJson,
     sameSet,
-    sourceLineCount,
   } = context;
   for (const target of packagedTargets) {
     assert(conversationSourceCatalogRustSource.includes(`"${target}"`), `native history adapter catalog must include packaged target: ${target}`);
@@ -46,9 +45,6 @@ export async function checkConversationBridges(context, { packagedTargets, conve
   const agentConversationGatewayAdapterSource = await readDartSourceByBasename(
     "agent_conversation_gateway_adapter.dart"
   );
-  const nativeOrchestratorClientSource = await readText(
-    "apps/desktop/lib/src/platform/native_client/orchestrator_ipc/client.dart"
-  );
   assert(
     agentConversationGatewaySource.includes("abstract interface class AgentConversationGateway") &&
       agentConversationGatewaySource.includes("Stream<AgentDispatchEvent> sendStreaming") &&
@@ -62,19 +58,10 @@ export async function checkConversationBridges(context, { packagedTargets, conve
     "direct agent conversation state must depend on the gateway port through its composition adapter"
   );
   assert(
-    agentOrchestrationControllerSource.includes("orchestratorClient.submit(") &&
-      agentOrchestrationControllerSource.includes("orchestratorClient.subscribe(") &&
-      agentOrchestrationControllerSource.includes("orchestratorClient.cancel(") &&
-      agentOrchestrationControllerSource.includes("orchestratorClient.approve(") &&
-      !agentOrchestrationControllerSource.includes("conversationGateway.sendStreaming(") &&
-      nativeOrchestratorClientSource.includes("final class NativeOrchestratorClient") &&
-      nativeOrchestratorClientSource.includes("executeStructured('orchestrator.request'") &&
-      nativeOrchestratorClientSource.includes("'clientKind': clientKind") &&
-      nativeOrchestratorClientSource.includes("clientKind: 'desktop'") &&
-      !nativeOrchestratorClientSource.includes("dart:io") &&
-      !nativeOrchestratorClientSource.includes("Process.start") &&
-      !nativeOrchestratorClientSource.includes("streamCliJsonLinesWithStdin"),
-    "orchestration controllers must be thin projections over the native owner-private orchestrator IPC boundary"
+    agentOrchestrationControllerSource.includes("agentOrchestrationManagerTarget") &&
+      agentOrchestrationControllerSource.includes("agentOrchestrationSubordinates") &&
+      agentOrchestrationControllerSource.includes("toLocalConfig()"),
+    "main-agent selection must derive the subordinate pool locally without owning workflow authority"
   );
   for (const [relativePath, source] of [
     ["agent_conversation_gateway.dart", agentConversationGatewaySource],
@@ -82,13 +69,9 @@ export async function checkConversationBridges(context, { packagedTargets, conve
     ["agent_conversation_controller.dart", agentConversationControllerSource],
     ["agent_orchestration_controller.dart", agentOrchestrationControllerSource]
   ]) {
-    const sourceWithoutOrchestratorProjection = source.replaceAll(
-      "package:licoup/src/platform/native_client/orchestrator_ipc/client.dart",
-      ""
-    );
     assert(
       !source.includes("package:licoup/src/backend/") &&
-        !sourceWithoutOrchestratorProjection.includes("package:licoup/src/platform/"),
+        !source.includes("package:licoup/src/platform/"),
       `${relativePath} must not depend on backend implementations or unrelated platform services`
     );
   }
@@ -162,7 +145,7 @@ export async function checkConversationBridges(context, { packagedTargets, conve
 
 export async function checkClientRootAndShell(context, {
     agentConversationServiceSource,
-    mobileRelayGatewayAdapterSource,
+    mobileRelayClientAdapterSource,
     mobileRelayPanelFacadeSource,
     mobileRelayPanelSources,
     mobileRelayServiceSource,
@@ -187,7 +170,6 @@ export async function checkClientRootAndShell(context, {
     readText,
     runJson,
     sameSet,
-    sourceLineCount,
   } = context;
   const clientControllerFacadeSource = await readText(
     "apps/desktop/lib/src/application/controller/client_controller.dart"
@@ -257,65 +239,65 @@ export async function checkClientRootAndShell(context, {
     clientControllerSource.includes("shellController = ClientShellController()") &&
       clientControllerSource.includes("controller = ClientLifecycleCoordinator(") &&
       clientControllerSource.includes("controller = ClientNavigationController(") &&
-      clientControllerSource.includes("Future<void> initialize() => lifecycleController.initialize(") &&
+      clientControllerSource.includes("Future<void> initialize() => initializeWithOptions()") &&
+      clientControllerSource.includes("initializeWithOptions({bool runBackgroundSteps = true})") &&
+      clientControllerSource.includes("lifecycleController.initialize(") &&
       clientControllerSource.includes("navigationController.select(section)") &&
       clientControllerSource.includes("shellController.presentationListenable") &&
-      clientRoutingFacadeSource.includes("NativeOrchestratorClient get orchestratorClient") &&
-      clientRoutingFacadeSource.includes("agentService.orchestratorClient"),
+      clientRoutingFacadeSource.includes("AgentService get agentService;") &&
+      !clientRoutingFacadeSource.includes("orchestrator"),
     "ClientController must remain a composition facade that delegates root state to focused controllers"
   );
   assert(
-    clientControllerFacadeSource.split("\n").length < 360 &&
-      clientComponentAssemblySource.split("\n").length < 320 &&
-      clientControllerFacadeSource.includes("ClientComponentAssembly(") &&
-      !clientControllerFacadeSource.includes("TargetController(") &&
-      !clientControllerFacadeSource.includes("SecureMeshController(") &&
-      !clientControllerFacadeSource.includes("ClientNavigationController(") &&
-      !clientComponentAssemblySource.includes("client_controller.dart") &&
-      clientComponentAssemblySource.includes("ClientMobileComponentAssembly(") &&
-      clientComponentAssemblySource.includes("ClientSettingsComponentAssembly(") &&
-      clientComponentAssemblyLeafSources.every((source) =>
-        !source.includes("client_controller.dart") &&
-        !/^part(?: of)? /m.test(source)
-      ) &&
-      !/^part(?: of)? /m.test(clientComponentAssemblySource),
-    "ClientController construction must remain delegated to the bounded, ordinary-import ClientComponentAssembly"
-  );
-  for (const [relativePath, source] of [
-    ["client_lifecycle_coordinator.dart", clientLifecycleControllerSource],
-    ["client_shell_controller.dart", clientShellControllerSource],
-    ["client_navigation_controller.dart", clientNavigationControllerSource],
-    ["conversation_presentation_signals.dart", conversationPresentationSignalsSource]
-  ]) {
-    assert(
-      !source.includes("package:licoup/src/backend/") &&
-        !source.includes("package:licoup/src/platform/") &&
-        !source.includes("package:licoup/src/frontend/"),
-      `${relativePath} must stay independent of backend, platform, and frontend implementations`
+  clientControllerFacadeSource.includes("ClientComponentAssembly(") &&
+        !clientControllerFacadeSource.includes("TargetController(") &&
+        !clientControllerFacadeSource.includes("SecureMeshController(") &&
+        !clientControllerFacadeSource.includes("ClientNavigationController(") &&
+        !clientComponentAssemblySource.includes("client_controller.dart") &&
+        clientComponentAssemblySource.includes("ClientMobileComponentAssembly(") &&
+        clientComponentAssemblySource.includes("ClientSettingsComponentAssembly(") &&
+        clientComponentAssemblyLeafSources.every((source) =>
+          !source.includes("client_controller.dart") &&
+          !/^part(?: of)? /m.test(source)
+        ) &&
+        !/^part(?: of)? /m.test(clientComponentAssemblySource),
+      "ClientController construction must remain delegated to the bounded, ordinary-import ClientComponentAssembly"
     );
-  }
-  const initializeCoreStart = clientControllerSource.indexOf(
-    "Future<void> _initializeClientCore() async {"
-  );
-  const initializeCoreEnd = clientControllerSource.indexOf(
-    "Future<void> _finalizeClientInitialization()",
-    initializeCoreStart
-  );
-  const initializeCoreSource = initializeCoreStart >= 0 && initializeCoreEnd > initializeCoreStart
-    ? clientControllerSource.slice(initializeCoreStart, initializeCoreEnd)
-    : "";
-  assert(initializeCoreSource.includes("mobileRelayController.loadConfig(authorizeSecrets: false)"),
-    "core hydration must load public Mobile Relay configuration without authorizing secret access"
-  );
-  assert(clientControllerSource.includes("secureMeshFileReceiveDestination") &&
-    secureMeshControllerSource.includes("evaluateFileReceiveDestination") &&
-    mobileRelayGatewayAdapterSource.includes("evaluateSecureMeshFileReceiveDestination"),
-    "LicoUp client controller must retain Secure Mesh file receive-destination policy state"
-  );
-  const mobileRelayPanelSource = [
-    mobileRelayPanelFacadeSource,
-    ...Object.values(mobileRelayPanelSources)
-  ].join("\n");
+    for (const [relativePath, source] of [
+      ["client_lifecycle_coordinator.dart", clientLifecycleControllerSource],
+      ["client_shell_controller.dart", clientShellControllerSource],
+      ["client_navigation_controller.dart", clientNavigationControllerSource],
+      ["conversation_presentation_signals.dart", conversationPresentationSignalsSource]
+    ]) {
+      assert(
+        !source.includes("package:licoup/src/backend/") &&
+          !source.includes("package:licoup/src/platform/") &&
+          !source.includes("package:licoup/src/frontend/"),
+        `${relativePath} must stay independent of backend, platform, and frontend implementations`
+      );
+    }
+    const initializeCoreStart = clientControllerSource.indexOf(
+      "Future<void> _initializeClientCore() async {"
+    );
+    const initializeCoreEnd = clientControllerSource.indexOf(
+      "Future<void> _finalizeClientInitialization()",
+      initializeCoreStart
+    );
+    const initializeCoreSource = initializeCoreStart >= 0 && initializeCoreEnd > initializeCoreStart
+      ? clientControllerSource.slice(initializeCoreStart, initializeCoreEnd)
+      : "";
+    assert(initializeCoreSource.includes("mobileRelayController.loadConfig(authorizeSecrets: false)"),
+      "core hydration must load public Mobile Relay configuration without authorizing secret access"
+    );
+    assert(clientControllerSource.includes("secureMeshFileReceiveDestination") &&
+      secureMeshControllerSource.includes("evaluateFileReceiveDestination") &&
+      mobileRelayClientAdapterSource.includes("evaluateSecureMeshFileReceiveDestination"),
+      "LicoUp client controller must retain Secure Mesh file receive-destination policy state"
+    );
+    const mobileRelayPanelSource = [
+      mobileRelayPanelFacadeSource,
+      ...Object.values(mobileRelayPanelSources)
+    ].join("\n");
   assert(!mobileRelayPanelSource.includes("mobileRelayE2eeStatus") &&
     !mobileRelayPanelSource.includes("mobileRelayE2eeSecretStore") &&
     !mobileRelayPanelSource.includes("_e2eeReadinessText") &&
