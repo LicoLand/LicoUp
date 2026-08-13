@@ -325,6 +325,10 @@ async function sidecar() {
     }
     process.stdout.write(JSON.stringify(payload));
   };
+  const reportedSessionId = (sessionId) =>
+    process.env.LICO_FAKE_RESUME_ID_DRIFT === "1" && request.sessionId
+      ? sessionId + "-drift"
+      : sessionId;
   if (request.agent === "cursor") {
     let sessionId = request.sessionId || "";
     if (!sessionId) {
@@ -356,6 +360,7 @@ async function sidecar() {
         }
       } catch {}
     }
+    sessionId = reportedSessionId(sessionId);
     writeFinal({
       ok: true,
       schemaVersion: 3,
@@ -410,6 +415,7 @@ async function sidecar() {
       setTimeout(() => { clearInterval(timer); resolve(); }, 200);
     });
     child.kill();
+    sessionId = reportedSessionId(sessionId);
     writeFinal({
       ok: true,
       schemaVersion: 3,
@@ -453,6 +459,7 @@ async function sidecar() {
     "kimi-code": ["kimi-code-acp", "kimi-code-acp-v1-stdio-ndjson"],
     opencode: ["opencode-serve", "opencode-serve-http-v1"],
   }[request.agent] || ["opencode-serve", "opencode-serve-http-v1"];
+  sessionId = reportedSessionId(sessionId);
   writeFinal({
     ok: true,
     schemaVersion: 3,

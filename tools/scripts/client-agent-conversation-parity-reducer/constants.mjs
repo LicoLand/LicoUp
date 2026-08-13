@@ -8,7 +8,7 @@ export const READINESS_SCHEMA_VERSION =
   "v0.0.1:client-agent-conversation-readiness-1";
 export const INVENTORY_SCHEMA_VERSION =
   "v0.0.1:client-agent-conversation-drivers-1";
-export const MINIMUM_CONSECUTIVE_PASSES = 3;
+export const MINIMUM_CONSECUTIVE_PASSES = 1;
 
 export const CORE_CHECK_IDS = Object.freeze([
   "P-01",

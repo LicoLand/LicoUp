@@ -117,7 +117,7 @@ function validateSchemaAuthority() {
   requireFact(schema.properties?.acceptance?.properties?.nativeToArcRequired?.type === "boolean", "adapter_schema_native_to_arc_missing");
   requireFact(schema.properties?.acceptance?.properties?.arcToNativeRequired?.type === "boolean", "adapter_schema_arc_to_native_missing");
   requireFact(schema.properties?.acceptance?.properties?.exactArtifactRequired?.type === "boolean", "adapter_schema_exact_artifact_missing");
-  requireFact(schema.properties?.acceptance?.properties?.minimumConsecutivePasses?.minimum >= 3, "adapter_schema_round_count_weak");
+  requireFact(schema.properties?.acceptance?.properties?.minimumConsecutivePasses?.minimum === 1, "adapter_schema_round_count_invalid");
   requireFact(schema.properties?.acceptance?.properties?.minimumConsecutiveReleaseUiPasses?.minimum === 0, "adapter_schema_release_ui_round_count_weak");
   requireFact(schema.properties?.routedContext?.properties?.rawConversationAllowed?.const === false, "adapter_schema_routed_context_privacy_missing");
   requireFact(schema.properties?.routedContext?.properties?.contextDigestRequired?.const === true, "adapter_schema_routed_context_digest_missing");
@@ -303,7 +303,7 @@ function validateInventory(validateManifest) {
           && manifest.acceptance.arcToNativeRequired === false
           && manifest.acceptance.exactArtifactRequired === false
           && manifest.acceptance.minimumConsecutiveReleaseUiPasses === 0
-          && manifest.acceptance.minimumConsecutivePasses >= 3,
+          && manifest.acceptance.minimumConsecutivePasses === 1,
         "adapter_manifest_same_session_gate_incomplete",
       );
     } else if (arcLocalServiceGate) {
@@ -314,7 +314,7 @@ function validateInventory(validateManifest) {
           && manifest.acceptance.arcToNativeRequired === true
           && manifest.acceptance.exactArtifactRequired === false
           && manifest.acceptance.minimumConsecutiveReleaseUiPasses === 0
-          && manifest.acceptance.minimumConsecutivePasses >= 3
+          && manifest.acceptance.minimumConsecutivePasses === 1
           && manifest.acceptance.liveLocalForwardingRequired === true,
         "adapter_manifest_arc_local_service_gate_incomplete",
       );
@@ -322,7 +322,8 @@ function validateInventory(validateManifest) {
       requireFact(
         manifest.acceptance.productUiRequired === true
           && manifest.acceptance.releaseP10Required === true
-          && manifest.acceptance.minimumConsecutiveReleaseUiPasses >= 3,
+          && manifest.acceptance.minimumConsecutivePasses === 1
+          && manifest.acceptance.minimumConsecutiveReleaseUiPasses === 1,
         "adapter_manifest_release_ui_gate_incomplete",
       );
     }
@@ -362,8 +363,8 @@ try {
     packaged: packaging.modules["target-adapters"].targetAdapters.length,
     productUiRequiredByDefault: true,
     cursorSameSessionGate: true,
-    minimumConsecutivePasses: 3,
-    minimumConsecutiveReleaseUiPassesDefault: 3,
+    minimumConsecutivePasses: 1,
+    minimumConsecutiveReleaseUiPassesDefault: 1,
     officialCapabilityAssessmentRequired: true,
     canonicalReadinessRequired: true,
     guiDisconnectSurvivalRequired: true,

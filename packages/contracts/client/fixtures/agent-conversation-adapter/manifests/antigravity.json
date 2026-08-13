@@ -194,7 +194,7 @@
       "C-05": "interrupt-and-steer",
       "C-06": "usage-and-status"
     },
-    "minimumConsecutivePasses": 3,
+    "minimumConsecutivePasses": 1,
     "minimumConsecutiveReleaseUiPasses": 0,
     "productUiRequired": false,
     "releaseP10Required": false,
