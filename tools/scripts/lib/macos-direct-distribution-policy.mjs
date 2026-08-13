@@ -44,7 +44,6 @@ export const MACOS_DIRECT_FAILURE_CODES = Object.freeze([
   "macos_distribution_profile_not_developer_id",
   "macos_distribution_profile_expired",
   "macos_distribution_profile_application_identifier_mismatch",
-  "macos_distribution_profile_keychain_group_mismatch",
   "macos_distribution_profile_team_mismatch",
   "macos_distribution_package_missing",
   "macos_distribution_camera_plugin_present",
@@ -260,9 +259,6 @@ export function normalizeProvisioningProfile(profile, { certificateEvidence = []
   const teamIdentifiers = Array.isArray(source.TeamIdentifier)
     ? source.TeamIdentifier.map((value) => String(value).trim()).filter(Boolean)
     : [];
-  const keychainAccessGroups = Array.isArray(entitlements["keychain-access-groups"])
-    ? entitlements["keychain-access-groups"].map((value) => String(value).trim())
-    : [];
   const expirationMs = Number(new Date(String(source.ExpirationDate || "")).getTime());
   const developerCertificates = Array.isArray(source.DeveloperCertificates)
     ? source.DeveloperCertificates
@@ -286,7 +282,6 @@ export function normalizeProvisioningProfile(profile, { certificateEvidence = []
     applicationIdentifier: String(
       entitlements["com.apple.application-identifier"] || "",
     ).trim(),
-    keychainAccessGroups: Object.freeze(keychainAccessGroups),
     expirationMs,
   });
 }
@@ -310,12 +305,6 @@ export function authorizeProvisioningProfile(
   }
   if (normalized.applicationIdentifier !== identity.applicationIdentifier) {
     errors.push("macos_distribution_profile_application_identifier_mismatch");
-  }
-  const groupsMatch = identity.keychainAccessGroups.length === 1 &&
-    normalized.keychainAccessGroups.length === 1 &&
-    normalized.keychainAccessGroups[0] === identity.keychainAccessGroups[0];
-  if (!groupsMatch) {
-    errors.push("macos_distribution_profile_keychain_group_mismatch");
   }
   if (identity.teamPrefix && normalized.teamIdentifier !== identity.teamPrefix) {
     errors.push("macos_distribution_profile_team_mismatch");
