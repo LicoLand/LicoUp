@@ -76,6 +76,7 @@ flutter:
     - assets/appearance-presets/
     - assets/agent-icons/
     - assets/agent-render-adapters/
+    - assets/brand/
     - assets/provider-icons/
     - assets/skill-category-icons/
 
