@@ -176,6 +176,27 @@ void main() {
     ]);
   });
 
+  test('generated metadata stays outside participant message bubbles', () {
+    const metadata = AgentConversationMessage(
+      id: 'generated-metadata',
+      role: 'metadata',
+      text: 'Status: complete',
+      createdAt: '2026-01-01T00:00:00Z',
+      layer: AgentConversationSemanticLayer.execution,
+      cardType: 'metadata',
+      cardTitle: 'Task notification',
+      collapsed: true,
+    );
+
+    final items = buildConversationTimelineItems(const [
+      metadata,
+    ], 'metadata-fixture');
+
+    expect(items, hasLength(1));
+    expect(items.single, isA<ConversationLogTimelineItem>());
+    expect(items.whereType<ConversationMessageTimelineItem>(), isEmpty);
+  });
+
   testWidgets('runtime logs render as a full-width detail card', (
     tester,
   ) async {

@@ -13,7 +13,7 @@ pub(in crate::domain::conversation::history) use antigravity::{
 };
 pub(in crate::domain::conversation::history) use generated_context::{
     background_context_prompt_text, extract_user_image_attachments, generated_control_text,
-    strip_generated_context_blocks,
+    normalize_generated_metadata_message, strip_generated_context_blocks,
 };
 pub(in crate::domain::conversation::history) use json_extract::{
     extract_native_model, extract_native_session_id, extract_role, extract_text, extract_timestamp,

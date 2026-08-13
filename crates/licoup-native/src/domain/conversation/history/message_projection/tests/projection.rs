@@ -2,6 +2,7 @@ use std::path::Path;
 
 use serde_json::json;
 
+use super::super::generated_context::normalize_generated_metadata_message;
 use super::super::projection::{
     clean_native_message_text, plain_history_message, structured_history_message,
 };
@@ -30,6 +31,26 @@ fn plain_projection_keeps_thread_semantics_and_filters_generated_context() {
         )
         .is_none()
     );
+}
+
+#[test]
+fn generated_agent_notifications_project_as_collapsed_metadata() {
+    let mut message = json!({
+        "id": "synthetic-message",
+        "role": "user",
+        "text": "<task-notification>\n<task-id>synthetic-task</task-id>\n<output-file>/fixture/private.output</output-file>\n<status>failed</status>\n<summary>Synthetic background action failed</summary>\n</task-notification>",
+        "createdAt": "2026-01-01T00:00:00Z",
+        "layer": "thread"
+    });
+
+    assert!(normalize_generated_metadata_message(&mut message));
+
+    assert_eq!(message["role"], "metadata");
+    assert_eq!(message["layer"], "execution");
+    assert_eq!(message["cardType"], "metadata");
+    assert_eq!(message["cardTitle"], "Task notification");
+    assert_eq!(message["collapsed"], true);
+    assert!(!message.to_string().contains("private.output"));
 }
 
 #[test]
