@@ -36,6 +36,78 @@ import 'package:licoup/src/frontend/shared/ui/theme.dart';
   return (title: title, subtitle: subtitle);
 }
 
+double conversationProcessExpandedBodyMaxHeight(double viewportHeight) {
+  return (viewportHeight * 0.52).clamp(240.0, 560.0);
+}
+
+void pinConversationProcessHeaderBelowOverlay(
+  BuildContext headerContext,
+  double topOverlayInset,
+) {
+  final scrollable = Scrollable.maybeOf(headerContext);
+  final headerBox = headerContext.findRenderObject();
+  final viewportBox = scrollable?.context.findRenderObject();
+  if (scrollable == null ||
+      headerBox is! RenderBox ||
+      viewportBox is! RenderBox ||
+      !headerBox.hasSize ||
+      !viewportBox.hasSize) {
+    return;
+  }
+  final viewportTop = viewportBox.localToGlobal(Offset.zero).dy;
+  final desiredTop =
+      viewportTop +
+      (topOverlayInset > 0 ? topOverlayInset : viewportBox.size.height * 0.08);
+  final physicalDelta = headerBox.localToGlobal(Offset.zero).dy - desiredTop;
+  if (physicalDelta.abs() < 0.5) return;
+  final position = scrollable.position;
+  final pixelDelta = switch (position.axisDirection) {
+    AxisDirection.down => physicalDelta,
+    AxisDirection.up => -physicalDelta,
+    _ => 0.0,
+  };
+  if (pixelDelta == 0) return;
+  position.jumpTo(
+    (position.pixels + pixelDelta).clamp(
+      position.minScrollExtent,
+      position.maxScrollExtent,
+    ),
+  );
+}
+
+final class ConversationProcessOperationViewport extends StatelessWidget {
+  const ConversationProcessOperationViewport({
+    super.key,
+    required this.processId,
+    required this.controller,
+    required this.child,
+  });
+
+  final String processId;
+  final ScrollController controller;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return ConstrainedBox(
+      constraints: BoxConstraints(
+        maxHeight: conversationProcessExpandedBodyMaxHeight(
+          MediaQuery.sizeOf(context).height,
+        ),
+      ),
+      child: Scrollbar(
+        controller: controller,
+        child: SingleChildScrollView(
+          key: ValueKey('conversation-process-operation-scroll-$processId'),
+          controller: controller,
+          primary: false,
+          child: child,
+        ),
+      ),
+    );
+  }
+}
+
 final class ConversationProcessOperationList extends StatelessWidget {
   const ConversationProcessOperationList({
     super.key,

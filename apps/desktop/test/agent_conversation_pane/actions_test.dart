@@ -49,4 +49,31 @@ void main() {
     expect(find.text('Welcome'), findsOneWidget);
     expect(find.byType(CircularProgressIndicator), findsOneWidget);
   });
+
+  testWidgets('welcome actions fit a compact window at 200% text scale', (
+    tester,
+  ) async {
+    tester.platformDispatcher.textScaleFactorTestValue = 2;
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+
+    await tester.pumpWidget(
+      paneTestApp(
+        AgentConversationWelcome(
+          onNewConversation: () {},
+          onNewGroupConversation: () {},
+          onOpenMobilePairing: () {},
+          onOpenSettings: () {},
+        ),
+        width: 360,
+        height: 300,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const Key('agent-conversation-welcome-actions')),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
 }

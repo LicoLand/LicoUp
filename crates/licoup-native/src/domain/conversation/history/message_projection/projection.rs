@@ -5,8 +5,8 @@ use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
 use super::antigravity;
 use super::generated_context::{
-    background_context_prompt_text, extract_user_authored_text, generated_control_text,
-    strip_generated_context_blocks,
+    background_context_prompt_text, extract_user_authored_text, extract_user_image_attachments,
+    generated_control_text, strip_generated_context_blocks,
 };
 use super::semantic::{
     HistoryMessageKind, delegated_subagent_prompt_title, humanize_history_semantic,
@@ -28,14 +28,27 @@ pub(in crate::domain::conversation::history) fn plain_history_message(
     text: &str,
     created_at: Option<String>,
 ) -> Option<Value> {
-    let text = clean_native_message_text(adapter, role, text)?;
+    let images = if matches!(role, "user" | "human") {
+        extract_user_image_attachments(text)
+    } else {
+        Vec::new()
+    };
+    let text = clean_native_message_text(adapter, role, text);
+    if text.is_none() && images.is_empty() {
+        return None;
+    }
     let mut message = json!({
         "id": native_history_message_id(adapter, path, index, block_index),
         "role": role,
-        "text": text,
+        "text": text.unwrap_or_default(),
         "createdAt": created_at.unwrap_or_default(),
         "sourcePath": display_path(path)
     });
+    if !images.is_empty()
+        && let Some(object) = message.as_object_mut()
+    {
+        object.insert("images".to_string(), json!(images));
+    }
     crate::domain::conversation_semantic::annotate_message_layer(
         &mut message,
         crate::domain::conversation_semantic::SemanticLayer::Thread,

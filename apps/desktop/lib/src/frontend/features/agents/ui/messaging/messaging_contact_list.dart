@@ -14,9 +14,12 @@ import 'package:licoup/src/frontend/features/agents/ui/history_session_models.da
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_agent_avatar.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_glass_option_card.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/layout/profiles/messaging/desktop/components/messaging_search_capsule.dart';
+import 'package:licoup/src/frontend/layout/profiles/messaging/desktop/tokens/messaging_desktop_tokens.dart';
 import 'package:licoup/src/frontend/shared/ui/conversation_visual_tokens.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_typography.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 /// Messaging contact list: one row per local conversation agent, like the
@@ -35,6 +38,8 @@ class MessagingContactList extends StatefulWidget {
     required this.activityFor,
     required this.onSelectAgent,
     required this.onNewConversation,
+    this.onSearch,
+    this.runningFor,
     this.groupConversations = const [],
     this.selectedGroupConversationId = '',
     this.onSelectGroupConversation,
@@ -42,7 +47,7 @@ class MessagingContactList extends StatefulWidget {
     this.onNewGroupConversation,
     this.onOpenWelcome,
     this.onAdaptiveFlywheel,
-    this.conversationListTitle,
+    this.showConversationList = false,
     this.conversationListTargets = const [],
     this.selectedSessionId = '',
     this.showConversationAgentIcons = false,
@@ -64,6 +69,8 @@ class MessagingContactList extends StatefulWidget {
   /// conversations stay reachable through the recent list and the switcher.
   final ValueChanged<String> onSelectAgent;
   final VoidCallback onNewConversation;
+  final VoidCallback? onSearch;
+  final bool Function(AgentConversationSession session)? runningFor;
   final List<ClientConversationSummary> groupConversations;
   final String selectedGroupConversationId;
   final ValueChanged<String>? onSelectGroupConversation;
@@ -72,7 +79,7 @@ class MessagingContactList extends StatefulWidget {
   final VoidCallback? onNewGroupConversation;
   final VoidCallback? onOpenWelcome;
   final VoidCallback? onAdaptiveFlywheel;
-  final String? conversationListTitle;
+  final bool showConversationList;
   final List<TargetCandidate> conversationListTargets;
   final String selectedSessionId;
   final bool showConversationAgentIcons;
@@ -299,8 +306,7 @@ class _MessagingContactListState extends State<MessagingContactList> {
   Widget build(BuildContext context) {
     final colors = context.licoColors;
     final strings = LicoStrings.of(context);
-    final conversationListTitle = widget.conversationListTitle;
-    if (conversationListTitle != null) {
+    if (widget.showConversationList) {
       final conversationEntries = flattenSidebarConversations(
         targets: widget.conversationListTargets,
         sessionsByAgent: widget.sessionsByAgent,
@@ -312,55 +318,73 @@ class _MessagingContactListState extends State<MessagingContactList> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            if (widget.onSearch != null)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(8, 10, 8, 0),
+                child: MessagingSearchCapsule(
+                  key: const Key('messaging-sidebar-search'),
+                  onTap: widget.onSearch!,
+                ),
+              ),
             Padding(
-              padding: const EdgeInsets.fromLTRB(8, 12, 8, 6),
+              padding: EdgeInsets.fromLTRB(
+                8,
+                widget.onSearch == null
+                    ? 12
+                    : MessagingDesktopMetrics.sidebarPrimaryControlGap,
+                8,
+                0,
+              ),
               child: SizedBox(
                 height: 36,
                 child: Row(
                   children: [
                     Expanded(
-                      child: Tooltip(
-                        message: strings.conversationBack,
-                        waitDuration: LicoMotion.tooltipWait,
-                        child: Material(
-                          color: Colors.transparent,
-                          child: InkWell(
-                            key: const Key('messaging-conversation-list-back'),
-                            onTap: widget.onBack,
-                            borderRadius: BorderRadius.circular(
-                              LicoRadius.floating,
-                            ),
-                            hoverColor: ConversationVisualTokens.quietRowHover(
-                              colors,
-                            ),
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 6,
+                      child: SizedBox.expand(
+                        child: Tooltip(
+                          message: strings.conversationBack,
+                          waitDuration: LicoMotion.tooltipWait,
+                          child: Material(
+                            color: Colors.transparent,
+                            child: InkWell(
+                              key: const Key(
+                                'messaging-conversation-list-back',
                               ),
-                              child: Row(
-                                children: [
-                                  Icon(
-                                    Icons.arrow_back_rounded,
-                                    size: 18,
-                                    color: colors.textMuted,
+                              onTap: widget.onBack,
+                              borderRadius: BorderRadius.circular(
+                                LicoRadius.floating,
+                              ),
+                              hoverColor:
+                                  ConversationVisualTokens.quietRowHover(
+                                    colors,
                                   ),
-                                  const SizedBox(width: 10),
-                                  Expanded(
-                                    child: Text(
-                                      conversationListTitle,
-                                      key: const Key(
-                                        'messaging-conversation-list-heading',
-                                      ),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: TextStyle(
-                                        color: colors.text,
-                                        fontSize: 15,
-                                        fontWeight: FontWeight.w700,
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 6,
+                                ),
+                                child: Row(
+                                  children: [
+                                    Icon(
+                                      Icons.arrow_back_rounded,
+                                      size: 18,
+                                      color: colors.textMuted,
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: Text(
+                                        strings.conversationBack,
+                                        key: const Key(
+                                          'messaging-conversation-list-back-label',
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: LicoTypography.actionLabel(
+                                          color: colors.text,
+                                        ),
                                       ),
                                     ),
-                                  ),
-                                ],
+                                  ],
+                                ),
                               ),
                             ),
                           ),
@@ -384,6 +408,7 @@ class _MessagingContactListState extends State<MessagingContactList> {
                 selectedSessionId: widget.selectedSessionId,
                 earlierExpanded: _earlierExpanded,
                 showAgentIcons: widget.showConversationAgentIcons,
+                runningFor: widget.runningFor,
                 onToggleEarlier: () =>
                     setState(() => _earlierExpanded = !_earlierExpanded),
                 onSelectSession: widget.onSelectSession ?? (_, _) {},
@@ -401,8 +426,21 @@ class _MessagingContactListState extends State<MessagingContactList> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          if (widget.onSearch != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(8, 10, 8, 0),
+              child: MessagingSearchCapsule(
+                key: const Key('messaging-sidebar-search'),
+                onTap: widget.onSearch!,
+              ),
+            ),
           Padding(
-            padding: const EdgeInsets.fromLTRB(14, 12, 6, 6),
+            padding: EdgeInsets.fromLTRB(
+              14,
+              widget.onSearch == null ? 12 : 6,
+              6,
+              6,
+            ),
             child: SizedBox(
               height: 36,
               child: Row(
@@ -774,31 +812,35 @@ class _MessagingContactListEmpty extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.licoColors;
     final strings = LicoStrings.of(context);
-    return Padding(
+    return ListView(
       key: const Key('messaging-contact-list-empty'),
       padding: const EdgeInsets.fromLTRB(18, 24, 18, 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(Icons.people_outline_rounded, size: 22, color: colors.textMuted),
-          const SizedBox(height: 10),
-          Text(
-            scanning || loading
-                ? strings.scanningLocalAgents
-                : strings.noLocalAgentsFound,
-            style: TextStyle(
-              color: colors.textMuted,
-              fontSize: 12.5,
-              fontWeight: FontWeight.w600,
-            ),
+      children: [
+        Align(
+          alignment: Alignment.centerLeft,
+          child: Icon(
+            Icons.people_outline_rounded,
+            size: 22,
+            color: colors.textMuted,
           ),
-          const SizedBox(height: 4),
-          Text(
-            strings.messagingEmptyConversationGuide,
-            style: TextStyle(color: colors.textMuted, fontSize: 12),
+        ),
+        const SizedBox(height: 10),
+        Text(
+          scanning || loading
+              ? strings.scanningLocalAgents
+              : strings.noLocalAgentsFound,
+          style: TextStyle(
+            color: colors.textMuted,
+            fontSize: 12.5,
+            fontWeight: FontWeight.w600,
           ),
-        ],
-      ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          strings.messagingEmptyConversationGuide,
+          style: TextStyle(color: colors.textMuted, fontSize: 12),
+        ),
+      ],
     );
   }
 }

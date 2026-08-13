@@ -11,10 +11,46 @@ import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_contact_list.dart';
 import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_glass_option_card.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/layout/layout_palette.dart';
+import 'package:licoup/src/frontend/layout/profiles/messaging/desktop/tokens/messaging_desktop_tokens.dart';
+import 'package:licoup/src/frontend/shell/layout_palette_projection.dart';
 import 'package:licoup/src/frontend/shared/ui/agent_brand_icon.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 void main() {
+  testWidgets('search capsule is the first sidebar control', (tester) async {
+    var searchCount = 0;
+    await _pumpContacts(
+      tester,
+      sessionsByAgent: const {},
+      onSearch: () => searchCount += 1,
+    );
+
+    final search = find.byKey(const Key('messaging-sidebar-search'));
+    final heading = find.byKey(const Key('messaging-contact-list-heading'));
+    expect(search, findsOneWidget);
+    expect(
+      tester.getTopLeft(search).dy,
+      lessThan(tester.getTopLeft(heading).dy),
+    );
+
+    final decoration = tester.widget<DecoratedBox>(
+      find.descendant(of: search, matching: find.byType(DecoratedBox)),
+    );
+    expect(
+      (decoration.decoration as BoxDecoration).borderRadius,
+      BorderRadius.circular(MessagingDesktopMetrics.mainCardCornerRadius),
+    );
+    final content = tester.widget<Row>(
+      find.descendant(of: search, matching: find.byType(Row)),
+    );
+    expect(content.mainAxisAlignment, MainAxisAlignment.center);
+
+    await tester.tap(search);
+    await tester.pump();
+    expect(searchCount, 1);
+  });
+
   testWidgets('dark circular identity wells use pure black', (tester) async {
     await _pumpContacts(
       tester,
@@ -68,22 +104,46 @@ void main() {
             ),
           ],
         },
-        conversationListTitle: 'Claude',
+        showConversationList: true,
         conversationListTargets: [claude],
         selectedSessionId: 'session-claude',
         onSelectSession: (agentId, sessionId) {
           selectedSessions.add('$agentId/$sessionId');
         },
         onBack: () => backCount += 1,
+        onSearch: () {},
+        locale: const Locale('zh'),
       );
 
       expect(
         find.byKey(const Key('messaging-conversation-list')),
         findsOneWidget,
       );
-      expect(find.text('Claude'), findsOneWidget);
+      expect(find.text('返回上一级'), findsOneWidget);
+      expect(find.text('Claude'), findsNothing);
       expect(find.text('Refactor list'), findsOneWidget);
       expect(find.byType(AgentBrandIcon), findsNothing);
+
+      final searchRect = tester.getRect(
+        find.byKey(const Key('messaging-sidebar-search')),
+      );
+      final backRect = tester.getRect(
+        find.byKey(const Key('messaging-conversation-list-back')),
+      );
+      final todayRect = tester.getRect(find.text('今天'));
+      expect(
+        backRect.top - searchRect.bottom,
+        MessagingDesktopMetrics.sidebarPrimaryControlGap,
+      );
+      expect(
+        todayRect.top - backRect.bottom,
+        MessagingDesktopMetrics.sidebarPrimaryControlGap,
+      );
+      final backLabel = tester.widget<Text>(
+        find.byKey(const Key('messaging-conversation-list-back-label')),
+      );
+      expect(backLabel.style?.fontSize, 13);
+      expect(backLabel.style?.fontWeight, FontWeight.w600);
 
       await tester.tap(
         find.byKey(const Key('agents-sidebar-conversation-session-claude')),
@@ -125,12 +185,14 @@ void main() {
           ),
         ],
       },
-      conversationListTitle: 'Local',
+      showConversationList: true,
       conversationListTargets: [codex, claude],
       showConversationAgentIcons: true,
+      locale: const Locale('zh'),
     );
 
-    expect(find.text('Local'), findsOneWidget);
+    expect(find.text('返回上一级'), findsOneWidget);
+    expect(find.text('Local'), findsNothing);
     expect(find.text('Codex thread'), findsOneWidget);
     expect(find.text('Claude thread'), findsOneWidget);
     expect(find.byType(AgentBrandIcon), findsNWidgets(2));
@@ -688,8 +750,9 @@ Future<void> _pumpContacts(
   void Function(String conversationId, bool pinned)?
   onSetGroupConversationPinned,
   VoidCallback? onNewConversation,
+  VoidCallback? onSearch,
   VoidCallback? onNewGroupConversation,
-  String? conversationListTitle,
+  bool showConversationList = false,
   List<TargetCandidate> conversationListTargets = const [],
   String selectedSessionId = '',
   bool showConversationAgentIcons = false,
@@ -708,37 +771,43 @@ Future<void> _pumpContacts(
         GlobalWidgetsLocalizations.delegate,
       ],
       theme: buildLicoTheme(platformBrightness: Brightness.dark),
-      home: Scaffold(
-        body: SizedBox(
-          width: 320,
-          height: 600,
-          child: MessagingContactList(
-            targets:
-                targets ??
-                [
-                  _target('codex', 'Codex'),
-                  _target('claude-code', 'Claude Code'),
-                  _target('kimi-code', 'Kimi Code'),
-                ],
-            sessionsByAgent: sessionsByAgent,
-            selectedAgentId: selectedAgentId,
-            activityFor: (_) => activity,
-            onSelectAgent: onSelectAgent ?? (_) {},
-            onNewConversation: onNewConversation ?? () {},
-            onNewGroupConversation: onNewGroupConversation,
-            groupConversations: groupConversations,
-            selectedGroupConversationId: selectedGroupConversationId,
-            onSelectGroupConversation: onSelectGroupConversation,
-            onSetGroupConversationPinned: onSetGroupConversationPinned,
-            isPinned: isPinned,
-            onTogglePinned: onTogglePinned,
-            conversationListTitle: conversationListTitle,
-            conversationListTargets: conversationListTargets,
-            selectedSessionId: selectedSessionId,
-            showConversationAgentIcons: showConversationAgentIcons,
-            onSelectSession: onSelectSession,
-            onBack: onBack,
-            onPrefetchSessions: onPrefetchSessions,
+      home: Builder(
+        builder: (context) => LayoutPaletteScope(
+          palette: layoutPaletteFromColors(context.licoColors),
+          child: Scaffold(
+            body: SizedBox(
+              width: 320,
+              height: 600,
+              child: MessagingContactList(
+                targets:
+                    targets ??
+                    [
+                      _target('codex', 'Codex'),
+                      _target('claude-code', 'Claude Code'),
+                      _target('kimi-code', 'Kimi Code'),
+                    ],
+                sessionsByAgent: sessionsByAgent,
+                selectedAgentId: selectedAgentId,
+                activityFor: (_) => activity,
+                onSelectAgent: onSelectAgent ?? (_) {},
+                onNewConversation: onNewConversation ?? () {},
+                onSearch: onSearch,
+                onNewGroupConversation: onNewGroupConversation,
+                groupConversations: groupConversations,
+                selectedGroupConversationId: selectedGroupConversationId,
+                onSelectGroupConversation: onSelectGroupConversation,
+                onSetGroupConversationPinned: onSetGroupConversationPinned,
+                isPinned: isPinned,
+                onTogglePinned: onTogglePinned,
+                showConversationList: showConversationList,
+                conversationListTargets: conversationListTargets,
+                selectedSessionId: selectedSessionId,
+                showConversationAgentIcons: showConversationAgentIcons,
+                onSelectSession: onSelectSession,
+                onBack: onBack,
+                onPrefetchSessions: onPrefetchSessions,
+              ),
+            ),
           ),
         ),
       ),

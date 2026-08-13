@@ -636,7 +636,6 @@ done
         'history',
         'send',
         'cleanup',
-        'shutdown',
       ]);
       expect(
         operations.map((row) => row.split(':').last).toSet(),

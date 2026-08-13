@@ -1,3 +1,8 @@
+use std::collections::BTreeSet;
+use std::path::Path;
+
+use serde_json::{Value, json};
+
 use super::antigravity::system_boilerplate_text;
 use super::semantic::looks_like_delegated_agent_prompt;
 
@@ -5,12 +10,84 @@ pub(super) fn extract_user_authored_text(text: &str) -> String {
     let request_text = if let Some(index) = find_case_insensitive(text, "## My request for Codex:")
     {
         &text[index + "## My request for Codex:".len()..]
+    } else if let Some(index) = find_case_insensitive(text, "## My request:") {
+        &text[index + "## My request:".len()..]
     } else if let Some(index) = find_case_insensitive(text, "My request for Codex:") {
         &text[index + "My request for Codex:".len()..]
     } else {
         text
     };
     strip_generated_context_blocks(request_text)
+}
+
+pub(in crate::domain::conversation::history) fn extract_user_image_attachments(
+    text: &str,
+) -> Vec<Value> {
+    if find_case_insensitive(text, "## My request for Codex:").is_none()
+        && find_case_insensitive(text, "## My request:").is_none()
+        && find_case_insensitive(text, "My request for Codex:").is_none()
+    {
+        return Vec::new();
+    }
+
+    let mut paths = BTreeSet::<String>::new();
+    let mut attachments = Vec::<Value>::new();
+    for line in text.lines() {
+        if attachments.len() >= 4 || !line.trim_start().to_ascii_lowercase().starts_with("<image") {
+            continue;
+        }
+        let Some(path) = tag_attribute(line, "path").filter(|path| !path.trim().is_empty()) else {
+            continue;
+        };
+        let Some(media_type) = image_media_type(&path) else {
+            continue;
+        };
+        if !paths.insert(path.clone()) {
+            continue;
+        }
+        let name = Path::new(&path)
+            .file_name()
+            .and_then(|value| value.to_str())
+            .unwrap_or_default();
+        attachments.push(json!({
+            "mediaType": media_type,
+            "path": path,
+            "name": name,
+        }));
+    }
+    attachments
+}
+
+fn tag_attribute(line: &str, attribute: &str) -> Option<String> {
+    let lower = line.to_ascii_lowercase();
+    let needle = format!("{attribute}=");
+    let index = lower.find(&needle)?;
+    let remainder = line[index + needle.len()..].trim_start();
+    let first = remainder.chars().next()?;
+    let value = if matches!(first, '\"' | '\'') {
+        remainder[1..].split(first).next()?
+    } else if first == '[' {
+        remainder[1..].split(']').next()?
+    } else {
+        remainder
+            .split(|character: char| character.is_whitespace() || character == '>')
+            .next()?
+    };
+    Some(value.trim().to_string())
+}
+
+fn image_media_type(path: &str) -> Option<&'static str> {
+    let extension = Path::new(path)
+        .extension()
+        .and_then(|value| value.to_str())?
+        .to_ascii_lowercase();
+    match extension.as_str() {
+        "png" => Some("image/png"),
+        "jpg" | "jpeg" => Some("image/jpeg"),
+        "gif" => Some("image/gif"),
+        "webp" => Some("image/webp"),
+        _ => None,
+    }
 }
 
 pub(in crate::domain::conversation::history) fn strip_generated_context_blocks(

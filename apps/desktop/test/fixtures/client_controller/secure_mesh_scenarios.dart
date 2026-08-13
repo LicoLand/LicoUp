@@ -128,6 +128,7 @@ void registerClientSecureMeshScenarios() {
     final controller = ClientController(
       agentService: FakeAgentService(),
       mobileRelayService: relayService,
+      mobileClientRuntimePlatformOverride: true,
     );
     addTearDown(controller.dispose);
 

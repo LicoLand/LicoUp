@@ -24,6 +24,7 @@ pub fn thread_wire_message_from_tagged(message: &Value) -> Option<Value> {
     });
     if let Some(object) = out.as_object_mut() {
         for key in [
+            "images",
             "usage",
             "usageScope",
             "model",

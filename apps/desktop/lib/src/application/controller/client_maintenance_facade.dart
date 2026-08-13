@@ -88,14 +88,6 @@ mixin ClientMaintenanceFacade {
     }
   }
 
-  Future<void> stopClientRuntimeServices() async {
-    try {
-      opencodeServeState = await agentService.stopOpencodeServe();
-    } catch (_) {
-      debugPrint('OpenCode serve shutdown failed.');
-    }
-  }
-
   /// Coordinator-facing runtime authorization entry; satisfies
   /// [AgentWorkspaceCoordinator] once mixed into the root controller.
   Future<Map<String, dynamic>> agentWorkspaceAuthorizeRuntime(

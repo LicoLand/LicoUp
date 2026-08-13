@@ -5,8 +5,9 @@ import 'package:licoup/src/application/features/agents/workspace/agent_workspace
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
 import 'package:licoup/src/contracts/agent_conversation_context_projection.dart';
 
-const int conversationSessionPageSize = 50;
-const List<int> conversationInitialProgressiveMilestones = [3, 10, 20];
+const int conversationSessionPageSize = 10;
+const List<int> conversationSessionLoadMorePageSizes = [20, 50, 100];
+const List<int> conversationInitialProgressiveMilestones = [3, 10];
 const String conversationCatalogRefreshKey = '__lico_catalog_refresh__';
 const int mobileConversationSessionLimit = 20;
 const String mobileConversationSessionLoadFailedSelectionId =
@@ -28,6 +29,13 @@ final class ConversationSessionPage {
 
 typedef ConversationSessionProgressCallback =
     void Function(ConversationSessionPage page);
+
+int conversationSessionLoadMorePageSize(int completedLoadMoreCount) {
+  final index = completedLoadMoreCount
+      .clamp(0, conversationSessionLoadMorePageSizes.length - 1)
+      .toInt();
+  return conversationSessionLoadMorePageSizes[index];
+}
 
 /// Owns deterministic session-list reconciliation and native identity binding.
 mixin AgentConversationSessionStateController on AgentWorkspaceCoordinator {
@@ -156,6 +164,8 @@ mixin AgentConversationSessionStateController on AgentWorkspaceCoordinator {
         );
         statusCaption = 'Agent chat';
       }
+    } else if (notifyChanges && (sessionsChanged || hasMoreChanged)) {
+      agentWorkspaceNotifyConversationStructureChanged(activeChanged: false);
     }
     return sessionsChanged;
   }
@@ -333,7 +343,10 @@ mixin AgentConversationSessionStateController on AgentWorkspaceCoordinator {
   ) {
     if (previous.length != next.length) return true;
     for (var index = 0; index < previous.length; index += 1) {
-      if (previous[index].id != next[index].id) return true;
+      if (previous[index].id != next[index].id ||
+          previous[index].running != next[index].running) {
+        return true;
+      }
     }
     return false;
   }
@@ -427,17 +440,14 @@ mixin AgentConversationSessionStateController on AgentWorkspaceCoordinator {
     List<AgentConversationSession> previous,
     List<AgentConversationSession> refreshedHead,
   ) {
-    if (previous.length <= conversationSessionPageSize) {
+    if (previous.length <= refreshedHead.length) {
       return refreshedHead;
     }
-    final refreshedIds = refreshedHead.map((session) => session.id).toSet();
-    final retainedTail = previous
-        .skip(conversationSessionPageSize)
-        .where((session) => !refreshedIds.contains(session.id));
-    return sortConversationSessionsByUpdatedAt([
-      ...refreshedHead,
-      ...retainedTail,
-    ]);
+    // A catalog refresh replaces facts for the newest page but must retain
+    // every already-loaded tail row. Dropping a fixed-size slice creates a
+    // paging gap as soon as a new conversation arrives at the head because
+    // the next native offset then skips one conversation permanently.
+    return mergeConversationSessionsByUpdatedAt(previous, refreshedHead);
   }
 
   String conversationPendingNativeSessionId(String agentId) {
@@ -648,7 +658,7 @@ mixin AgentConversationSessionStateController on AgentWorkspaceCoordinator {
       clearLiveProjectionFromProviderReadback: false,
     );
     setSelectedConversationSessionId(normalizedAgent, projectedSessionId);
-    recordLastUsedConversation();
+    agentWorkspaceRecordCurrentAgentView();
     return _conversationPersistProjection(session);
   }
 

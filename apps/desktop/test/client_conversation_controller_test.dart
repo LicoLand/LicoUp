@@ -102,6 +102,51 @@ void main() {
   );
 
   test(
+    'an explicit roster mention adds a newly discovered Agent once',
+    () async {
+      final runner = _ConversationRunner();
+      final controller = ClientConversationController(runner: runner);
+
+      await controller.initialize();
+      await controller.selectConversation('conversation:group');
+
+      expect(
+        await controller.ensureSelectedAgentMembership(
+          agentId: 'new-agent',
+          displayName: 'New Agent',
+        ),
+        isTrue,
+      );
+      expect(
+        controller.selectedConversation!.activeAgentMemberships.map(
+          (membership) => membership.principal.agentId,
+        ),
+        contains('new-agent'),
+      );
+      expect(
+        runner.requests.where(
+          (request) => request['action'] == 'conversation.membership.add',
+        ),
+        hasLength(1),
+      );
+
+      expect(
+        await controller.ensureSelectedAgentMembership(
+          agentId: 'new-agent',
+          displayName: 'New Agent',
+        ),
+        isTrue,
+      );
+      expect(
+        runner.requests.where(
+          (request) => request['action'] == 'conversation.membership.add',
+        ),
+        hasLength(1),
+      );
+    },
+  );
+
+  test(
     'initialization is single-flight and late disposal stays silent',
     () async {
       final gate = Completer<void>();
@@ -182,6 +227,7 @@ final class _ConversationRunner implements AgentCommandRunner {
   bool groupPinned = true;
   bool groupArchived;
   final Completer<void>? gate;
+  final Map<String, String> addedAgents = {};
 
   @override
   Future<Map<String, dynamic>> runCliWithStdin(
@@ -199,6 +245,11 @@ final class _ConversationRunner implements AgentCommandRunner {
     if (action == 'conversation.archive') {
       groupArchived = request['archived'] == true;
     }
+    if (action == 'conversation.membership.add') {
+      final principal = Map<String, dynamic>.from(request['principal'] as Map);
+      addedAgents[(principal['agentId'] ?? '').toString()] =
+          (principal['displayName'] ?? '').toString();
+    }
     return {
       'ok': true,
       'result': switch (action) {
@@ -206,6 +257,7 @@ final class _ConversationRunner implements AgentCommandRunner {
         'conversation.create' => _conversation('conversation:created'),
         'conversation.get' => _conversation(
           (request['conversationId'] ?? 'conversation:group').toString(),
+          addedAgents: addedAgents,
         ),
         'conversation.events.page' => {
           'events': request['conversationId'] == 'conversation:created'
@@ -220,6 +272,7 @@ final class _ConversationRunner implements AgentCommandRunner {
           'event': _event(),
           'directTurns': <Map<String, dynamic>>[],
         },
+        'conversation.membership.add' => <String, dynamic>{},
         _ => <String, dynamic>{},
       },
     };
@@ -272,7 +325,10 @@ Map<String, dynamic> _summary({
   'eventCount': 1,
 };
 
-Map<String, dynamic> _conversation(String id) => {
+Map<String, dynamic> _conversation(
+  String id, {
+  Map<String, String> addedAgents = const {},
+}) => {
   'id': id,
   'title': id == 'conversation:created' ? 'Review room' : 'Lico',
   'archived': false,
@@ -304,6 +360,14 @@ Map<String, dynamic> _conversation(String id) => {
       label: 'Claude Code',
       agentId: 'claude-code',
     ),
+    for (final entry in addedAgents.entries)
+      _membership(
+        id: 'membership:${entry.key}',
+        principalId: 'agent:${entry.key}',
+        kind: 'agent',
+        label: entry.value,
+        agentId: entry.key,
+      ),
   ],
 };
 

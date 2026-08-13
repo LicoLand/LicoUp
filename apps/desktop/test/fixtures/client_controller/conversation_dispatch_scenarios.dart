@@ -229,11 +229,25 @@ void registerClientConversationDispatchScenarios() {
       expect(controller.queuedConversationTurnCount, 0);
 
       gate.complete();
-      await first;
+      expect(await first, isTrue);
       await Future<void>.delayed(Duration.zero);
       expect(service.runtimeMessageCalls, 1);
     },
   );
+
+  test('dispose leaves detached Agent runtime services running', () async {
+    final service = FakeAgentService();
+    final controller = ClientController(agentService: service)
+      ..opencodeServeState = const <String, dynamic>{
+        'ok': true,
+        'status': 'running',
+      };
+
+    controller.dispose();
+    await Future<void>.delayed(Duration.zero);
+
+    expect(service.stopOpencodeServeCalls, 0);
+  });
 
   test('cancel clears FIFO and stays bound to the active agent', () async {
     final gate = Completer<void>();

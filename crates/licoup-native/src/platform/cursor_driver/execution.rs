@@ -98,6 +98,25 @@ pub(in crate::platform) fn execute(
                 );
             }
             Err(failure) => {
+                // A caller deadline that expires during create-chat still
+                // belongs to the whole turn. Preserve the create-specific
+                // timeout only for the independent 60s safety bound; when
+                // the caller's own deadline fired, report the same turn
+                // timeout used by the execution phase.
+                if failure.code == "cursor_cli_create_chat_timeout"
+                    && deadline.is_some_and(|deadline| Instant::now() >= deadline)
+                {
+                    return RunResult::failed(
+                        ProtocolFailure::new(
+                            "cursor_cli_timeout",
+                            "Cursor Agent CLI exhausted the turn timeout while creating the chat session.",
+                            "turn/execute",
+                        ),
+                        started_at,
+                        false,
+                        false,
+                    );
+                }
                 return RunResult::failed(failure, started_at, false, false);
             }
         }

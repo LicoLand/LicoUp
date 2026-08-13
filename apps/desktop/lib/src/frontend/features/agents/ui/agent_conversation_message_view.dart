@@ -449,6 +449,7 @@ class AgentConversationMessageListState
             adapter: adapter,
             detailsBuilder: buildAgentConversationEventDetails,
             active: item.storageKey == _activeProcessStorageKey,
+            topOverlayInset: widget.topOverlayInset,
           ),
           AgentsProcessStyle.inlineStatus => MessagingProcessStatusRow(
             events: events,

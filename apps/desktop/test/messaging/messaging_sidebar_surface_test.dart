@@ -9,6 +9,7 @@ import 'package:licoup/src/application/features/conversations/client_conversatio
 import 'package:licoup/src/contracts/agent_command_runner.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_composer.dart';
+import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_conversation_overlay_glass.dart';
 import 'package:licoup/src/frontend/features/conversations/canonical_group_conversation_pane.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/layout/layout_agents_strategy.dart';
@@ -18,22 +19,8 @@ import 'package:licoup/src/frontend/shell/layout_palette_projection.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 void main() {
-  test('group roster sigmoid is normalized, symmetric, and shoulder-flat', () {
-    final curve = CanonicalGroupRosterSigmoidCurve(
-      steepness: MessagingDesktopMetrics.groupRosterSigmoidSteepness,
-    );
-
-    expect(curve.transform(0), 0);
-    expect(curve.transform(0.5), closeTo(0.5, 0.000001));
-    expect(curve.transform(1), 1);
-    expect(curve.transform(0.25) + curve.transform(0.75), closeTo(1, 0.000001));
-    final shoulderDelta = curve.transform(0.1) - curve.transform(0.05);
-    final middleDelta = curve.transform(0.525) - curve.transform(0.475);
-    expect(middleDelta, greaterThan(shoulderDelta * 4));
-  });
-
   testWidgets(
-    'group roster floats between the full-width header and composer',
+    'group roster is a centered capsule controlled by the header button',
     (tester) async {
       tester.view.devicePixelRatio = 1;
       tester.view.physicalSize = const Size(900, 640);
@@ -102,12 +89,20 @@ void main() {
       final surfaceFinder = find.byKey(
         const Key('canonical-group-roster-surface'),
       );
+      final rosterToggleFinder = find.byKey(
+        const Key('canonical-group-roster-toggle'),
+      );
+      final rosterToggleCapsuleFinder = find.byKey(
+        const Key('canonical-group-roster-toggle-capsule'),
+      );
       expect(paneFinder, findsOneWidget);
       expect(headerFinder, findsOneWidget);
       expect(composerFinder, findsOneWidget);
       expect(composerFieldFinder, findsOneWidget);
       expect(rosterFinder, findsOneWidget);
       expect(surfaceFinder, findsOneWidget);
+      expect(rosterToggleFinder, findsOneWidget);
+      expect(rosterToggleCapsuleFinder, findsOneWidget);
       expect(tester.takeException(), isNull);
 
       final paneRect = tester.getRect(paneFinder);
@@ -115,28 +110,31 @@ void main() {
       final composerRect = tester.getRect(composerFinder);
       final composerFieldRect = tester.getRect(composerFieldFinder);
       final surfaceRect = tester.getRect(surfaceFinder);
+      final toggleCapsuleRect = tester.getRect(rosterToggleCapsuleFinder);
+      final headerGlass = find.descendant(
+        of: headerFinder,
+        matching: find.byType(MessagingConversationOverlayGlass),
+      );
+      expect(headerGlass, findsNWidgets(2));
+      final identityCapsuleRect = tester.getRect(headerGlass.first);
       expect(headerRect.left, closeTo(paneRect.left, 0.1));
       expect(headerRect.right, closeTo(paneRect.right, 0.1));
       expect(composerRect.left, closeTo(paneRect.left, 0.1));
       expect(composerRect.right, closeTo(paneRect.right, 0.1));
       expect(composerFieldRect.right, closeTo(paneRect.right - 12, 0.1));
+      expect(toggleCapsuleRect.width, closeTo(toggleCapsuleRect.height, 0.1));
       expect(
-        surfaceRect.right,
-        closeTo(
-          paneRect.right + MessagingDesktopMetrics.groupRosterTrailingBleed,
-          0.1,
-        ),
+        toggleCapsuleRect.height,
+        closeTo(identityCapsuleRect.height, 0.1),
       );
+      expect(surfaceRect.width, closeTo(toggleCapsuleRect.width, 0.1));
+      expect(surfaceRect.right, closeTo(toggleCapsuleRect.right, 0.1));
+      expect(surfaceRect.center.dy, closeTo(paneRect.center.dy, 8));
       expect(surfaceRect.top, greaterThan(headerRect.bottom));
       expect(surfaceRect.bottom, lessThan(composerFieldRect.top));
 
-      final surface = tester.widget<ClipPath>(surfaceFinder);
-      final palette = LayoutPaletteScope.of(tester.element(paneFinder));
       expect(
-        find.descendant(
-          of: surfaceFinder,
-          matching: find.byType(PhysicalShape),
-        ),
+        find.descendant(of: surfaceFinder, matching: find.byType(ClipPath)),
         findsNothing,
       );
       expect(
@@ -146,26 +144,39 @@ void main() {
         ),
         findsOneWidget,
       );
-      final glass = tester.widget<ColoredBox>(
-        find.byKey(const Key('canonical-group-roster-glass')),
-      );
       expect(
-        glass.color,
-        MessagingDesktopMetrics.chromeTabSelectedFill(isDark: palette.isDark),
+        tester.widget(find.byKey(const Key('canonical-group-roster-glass'))),
+        isA<MessagingConversationOverlayGlass>(),
       );
-      expect(surface.clipper, isA<CanonicalGroupRosterClipper>());
-      final rosterScrollbar = tester.widget<Scrollbar>(
+      final actualRosterScrollbar = tester.widget<Scrollbar>(
         find.byKey(const Key('canonical-group-roster-scrollbar')),
       );
       expect(
-        rosterScrollbar.thickness,
+        actualRosterScrollbar.thickness,
         MessagingDesktopMetrics.groupRosterScrollbarThickness,
       );
+      expect(surfaceRect.width, MessagingDesktopMetrics.groupRosterExtent);
       expect(
-        surfaceRect.width,
-        MessagingDesktopMetrics.groupRosterExtent +
-            MessagingDesktopMetrics.groupRosterTrailingBleed,
+        tester
+            .widget<MessagingConversationOverlayGlass>(
+              rosterToggleCapsuleFinder,
+            )
+            .borderRadius,
+        BorderRadius.circular(999),
       );
+      expect(find.byIcon(Icons.keyboard_arrow_up_rounded), findsOneWidget);
+
+      await tester.tap(rosterToggleFinder);
+      await tester.pump();
+      expect(surfaceFinder, findsOneWidget);
+      await tester.pumpAndSettle();
+      expect(surfaceFinder, findsNothing);
+      expect(find.byIcon(Icons.keyboard_arrow_down_rounded), findsOneWidget);
+
+      await tester.tap(rosterToggleFinder);
+      await tester.pumpAndSettle();
+      expect(surfaceFinder, findsOneWidget);
+      expect(find.byIcon(Icons.keyboard_arrow_up_rounded), findsOneWidget);
 
       expect(find.text('Codex'), findsOneWidget);
       expect(find.text('Claude'), findsOneWidget);
@@ -192,28 +203,6 @@ void main() {
       await tester.pumpAndSettle();
       expect(controller.draft, isEmpty);
       expect(openedAgents, ['codex']);
-
-      final clipper = surface.clipper as CanonicalGroupRosterClipper;
-      final path = clipper.getClip(surfaceRect.size);
-      final curve = MessagingDesktopMetrics.groupRosterCurveForHeight(
-        surfaceRect.height,
-      );
-      expect(path.contains(const Offset(1, 1)), isFalse);
-      expect(path.contains(Offset(1, curve + 1)), isTrue);
-      expect(path.contains(Offset(1, surfaceRect.height - curve - 1)), isTrue);
-      expect(path.contains(Offset(1, surfaceRect.height - 1)), isFalse);
-      expect(
-        path.contains(Offset(surfaceRect.width - 0.01, surfaceRect.height / 2)),
-        isTrue,
-      );
-      for (final y in <double>[4, 14, 28, 42]) {
-        for (final x in <double>[8, 20, 36, 52, 70]) {
-          expect(
-            path.contains(Offset(x, y)),
-            path.contains(Offset(x, surfaceRect.height - y)),
-          );
-        }
-      }
 
       await expectLater(
         find.byKey(const Key('messaging-group-roster-qa-boundary')),

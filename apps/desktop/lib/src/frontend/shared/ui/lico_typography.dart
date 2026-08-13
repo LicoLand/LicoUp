@@ -95,6 +95,23 @@ abstract final class LicoTypography {
     );
   }
 
+  /// The compact label for a text action in a sidebar or toolbar.
+  ///
+  /// Action labels identify commands and navigation controls, not content
+  /// headings. Keeping this role separate prevents a new text action from
+  /// inheriting title emphasis merely because it occupies a prominent row.
+  static TextStyle actionLabel({required Color color}) {
+    return TextStyle(
+      fontFamily: sansFamily,
+      fontFamilyFallback: sansFallback,
+      color: color,
+      fontSize: 13,
+      fontWeight: FontWeight.w600,
+      height: 1.3,
+      letterSpacing: 0.1,
+    );
+  }
+
   /// The style for a large metric value in a monitoring tile.
   static TextStyle metric({required Color color, double fontSize = 24}) {
     return TextStyle(

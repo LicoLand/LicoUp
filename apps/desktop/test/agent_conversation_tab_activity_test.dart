@@ -155,6 +155,29 @@ void main() {
     expect((finishedDot.decoration as BoxDecoration).color, colors.accent);
   });
 
+  testWidgets('workspace binds the active send to its sidebar conversation', (
+    tester,
+  ) async {
+    final controller = ClientController(agentService: FakeAgentService());
+    addTearDown(controller.dispose);
+    controller.scannedTargets = [targetFixture('codex')];
+    controller.selectedConversationAgentId = 'codex';
+    controller.selectedConversationSessionId = 'session-running';
+    controller.conversationSessionsByAgent = {
+      'codex': [_activitySession('session-running', 'codex')],
+    };
+    controller.isSendingConversationMessage = true;
+    controller.sendingConversationSessionId = 'session-running';
+
+    await pumpWorkspace(tester, controller);
+
+    expect(
+      find.byKey(const Key('agents-sidebar-running-session-running')),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('selecting a sidebar agent clears unfinished work light only', (
     tester,
   ) async {

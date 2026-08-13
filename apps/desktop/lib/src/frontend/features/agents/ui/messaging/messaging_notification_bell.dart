@@ -20,7 +20,8 @@ import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 /// The messaging chrome-band notification bell: a badge when tab activity,
 /// Gateway lifecycle, or operation feedback is present. New operation notices
-/// auto-open the panel, which is pinned to the window's top-right corner.
+/// and runtime Gateway recovery auto-open the panel. Cold-start Gateway work
+/// never opens over the restored user view.
 class MessagingNotificationBell extends StatefulWidget {
   const MessagingNotificationBell({
     super.key,
@@ -44,14 +45,15 @@ class _MessagingNotificationBellState extends State<MessagingNotificationBell> {
   final GlobalKey<MessagingHoverPopoverState> _popoverKey =
       GlobalKey<MessagingHoverPopoverState>();
   int _seenOperationRevision = 0;
-  LlmGatewayNoticeKind? _seenGatewayNotice;
+  int _seenGatewayAutoRevealRevision = 0;
 
   @override
   void initState() {
     super.initState();
     _seenOperationRevision =
         widget.controller.messagingNotificationCenter.revision;
-    _seenGatewayNotice = widget.controller.llmGatewayLifecycleController.notice;
+    _seenGatewayAutoRevealRevision =
+        widget.controller.llmGatewayLifecycleController.autoRevealRevision;
     widget.controller.messagingNotificationCenter.addListener(
       _onNotificationSourcesChanged,
     );
@@ -76,6 +78,10 @@ class _MessagingNotificationBellState extends State<MessagingNotificationBell> {
     widget.controller.llmGatewayLifecycleController.addListener(
       _onNotificationSourcesChanged,
     );
+    _seenOperationRevision =
+        widget.controller.messagingNotificationCenter.revision;
+    _seenGatewayAutoRevealRevision =
+        widget.controller.llmGatewayLifecycleController.autoRevealRevision;
   }
 
   @override
@@ -92,16 +98,16 @@ class _MessagingNotificationBellState extends State<MessagingNotificationBell> {
   void _onNotificationSourcesChanged() {
     if (!mounted) return;
     final center = widget.controller.messagingNotificationCenter;
-    final gatewayNotice =
-        widget.controller.llmGatewayLifecycleController.notice;
+    final gatewayAutoRevealRevision =
+        widget.controller.llmGatewayLifecycleController.autoRevealRevision;
     final operationArrived = center.revision > _seenOperationRevision;
     final gatewayArrived =
-        gatewayNotice != null && gatewayNotice != _seenGatewayNotice;
+        gatewayAutoRevealRevision > _seenGatewayAutoRevealRevision;
     if (operationArrived) {
       _seenOperationRevision = center.revision;
     }
     if (gatewayArrived) {
-      _seenGatewayNotice = gatewayNotice;
+      _seenGatewayAutoRevealRevision = gatewayAutoRevealRevision;
     }
     if (operationArrived || gatewayArrived) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -152,13 +158,15 @@ class _MessagingNotificationBellState extends State<MessagingNotificationBell> {
     final operationNotices =
         widget.controller.messagingNotificationCenter.items;
     final badgeColor =
-        gatewayNotice != null ||
+        gatewayNotice == LlmGatewayNoticeKind.recoveryFailed ||
             widget.controller.messagingNotificationCenter.hasWarningOrFailure ||
             active.any(
               (entry) => entry.$2 == AgentConversationTabActivity.needsApproval,
             )
         ? colors.warning
-        : active.isNotEmpty || operationNotices.isNotEmpty
+        : gatewayNotice != null ||
+              active.isNotEmpty ||
+              operationNotices.isNotEmpty
         ? colors.accent
         : null;
     final menuRadius = BorderRadius.circular(
@@ -363,15 +371,16 @@ final class LlmGatewayNotificationRow extends StatelessWidget {
     if (notice == null) return const SizedBox.shrink();
     final colors = context.licoColors;
     final chinese = Localizations.localeOf(context).languageCode == 'zh';
+    final recovering = notice == LlmGatewayNoticeKind.recovering;
     final message = switch (notice) {
-      LlmGatewayNoticeKind.initializationFailed =>
-        chinese ? 'LLM Gateway 本地服务启动失败。' : 'LLM Gateway failed to start.',
-      LlmGatewayNoticeKind.unexpectedExit =>
-        chinese ? 'LLM Gateway 已意外停止。' : 'LLM Gateway stopped unexpectedly.',
-      LlmGatewayNoticeKind.monitorUnavailable =>
-        chinese ? '暂时无法确认网关运行状态。' : 'Gateway status is unavailable.',
-      LlmGatewayNoticeKind.restartFailed =>
-        chinese ? 'LLM Gateway 重启失败。' : 'LLM Gateway failed to restart.',
+      LlmGatewayNoticeKind.recovering =>
+        chinese
+            ? 'LLM Gateway 正在自动恢复（${controller.recoveryAttempt}/${LlmGatewayLifecycleController.maxRecoveryAttempts}）…'
+            : 'Recovering LLM Gateway (${controller.recoveryAttempt}/${LlmGatewayLifecycleController.maxRecoveryAttempts})…',
+      LlmGatewayNoticeKind.recoveryFailed =>
+        chinese
+            ? 'LLM Gateway 自动恢复失败，诊断已记录。'
+            : 'LLM Gateway recovery failed. Diagnostics recorded.',
     };
     return Semantics(
       liveRegion: true,
@@ -382,7 +391,21 @@ final class LlmGatewayNotificationRow extends StatelessWidget {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            Icon(Icons.warning_amber_rounded, size: 20, color: colors.warning),
+            if (recovering)
+              SizedBox.square(
+                key: const Key('llm-gateway-recovery-spinner'),
+                dimension: 20,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: colors.accent,
+                ),
+              )
+            else
+              Icon(
+                Icons.warning_amber_rounded,
+                size: 20,
+                color: colors.warning,
+              ),
             const SizedBox(width: 10),
             Expanded(
               child: Text(
@@ -396,22 +419,16 @@ final class LlmGatewayNotificationRow extends StatelessWidget {
                 ),
               ),
             ),
-            const SizedBox(width: 8),
-            TextButton(
-              key: const Key('llm-gateway-restart-action'),
-              onPressed: controller.busy
-                  ? null
-                  : () => unawaited(controller.restart()),
-              child: Text(
-                controller.busy
-                    ? chinese
-                          ? '重启中…'
-                          : 'Restarting…'
-                    : chinese
-                    ? '重启'
-                    : 'Restart',
+            if (!recovering) ...[
+              const SizedBox(width: 8),
+              TextButton(
+                key: const Key('llm-gateway-restart-action'),
+                onPressed: controller.busy
+                    ? null
+                    : () => unawaited(controller.restart()),
+                child: Text(chinese ? '重试' : 'Retry'),
               ),
-            ),
+            ],
           ],
         ),
       ),

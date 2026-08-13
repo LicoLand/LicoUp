@@ -272,13 +272,7 @@ class _DetailsTrigger extends StatelessWidget {
       child: InkWell(
         key: const Key('messaging-details-toggle'),
         onTap: onTap,
-        customBorder: capsuleButtons
-            ? RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(
-                  MessagingDesktopMetrics.conversationHeaderCapsuleCornerRadius,
-                ),
-              )
-            : const CircleBorder(),
+        customBorder: const CircleBorder(),
         hoverColor: colors.isDark
             ? Colors.white.withAlpha(10)
             : Colors.black.withAlpha(12),
@@ -326,9 +320,7 @@ class _DetailsTrigger extends StatelessWidget {
   }
 }
 
-/// Square glass control whose height matches the identity capsule
-/// ([IntrinsicHeight] + stretch) and whose corner radius uses the same
-/// [MessagingDesktopMetrics.conversationHeaderCapsuleCornerRadius].
+/// Circular glass control whose diameter matches the identity capsule height.
 class _HeaderCapsuleButton extends StatelessWidget {
   const _HeaderCapsuleButton({required this.child});
 
@@ -336,9 +328,7 @@ class _HeaderCapsuleButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final radius = BorderRadius.circular(
-      MessagingDesktopMetrics.conversationHeaderCapsuleCornerRadius,
-    );
+    final radius = BorderRadius.circular(999);
     return AspectRatio(
       aspectRatio: 1,
       child: MessagingConversationOverlayGlass(
