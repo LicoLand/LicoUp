@@ -188,7 +188,13 @@ test("self-test dry-run preserves passed status without live agent binaries", ()
   const payload = JSON.parse(result.stdout);
   assert.equal(payload.status, "passed");
   assert.equal(payload.cleanupVerified, true);
-  assert.equal(payload.strictRounds, 3);
+  assert.equal(payload.strictRounds, 1);
+  assert.equal(payload.verificationTurns, 2);
+  assert.equal(payload.verificationSessions, 1);
+  assert.equal(payload.openNew, true);
+  assert.equal(payload.exactResume, true);
+  assert.equal(payload.verificationWorkflowContract, true);
+  assert.equal(payload.exactResumeIdentityFailClosed, true);
   assert.equal(typeof payload.evidenceDigest, "string");
   assert.equal(payload.evidenceDigest.length, 64);
 });

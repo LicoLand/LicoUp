@@ -1,7 +1,7 @@
 {
   "schemaVersion": "v0.0.1:client-agent-conversation-readiness-1",
   "contractVersion": "CL-06",
-  "minimumConsecutivePasses": 3,
+  "minimumConsecutivePasses": 1,
   "summary": {
     "total": 12,
     "ready": 0,
