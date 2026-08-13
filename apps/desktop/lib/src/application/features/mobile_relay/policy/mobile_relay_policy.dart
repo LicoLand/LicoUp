@@ -21,7 +21,7 @@ abstract final class MobileRelayPolicy {
             credentialPresent:
                 device.credentialPresent ||
                 device.mobileToken.trim().isNotEmpty,
-            gatewayUrl: device.gatewayUrl,
+            stationBaseUrl: device.stationBaseUrl,
           ),
       ],
     );
@@ -57,7 +57,7 @@ abstract final class MobileRelayPolicy {
               pairingId: device.pairingId,
               mobileToken: previousDevices[device.pairingId]!.mobileToken,
               credentialPresent: device.credentialPresent,
-              gatewayUrl: device.gatewayUrl,
+              stationBaseUrl: device.stationBaseUrl,
             ),
       ],
     );

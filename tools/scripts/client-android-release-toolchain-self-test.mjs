@@ -2,6 +2,11 @@
 
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { validateClientGateTopology } from "./client-gate.mjs";
+import {
+  CLIENT_GATE_LANES,
+  CLIENT_RELEASE_TARGETS,
+} from "./client-gate-policy.mjs";
 import { findAndroidAdbTool } from "./lib/android-apk-facts.mjs";
 import { stableReadFile } from "./lib/client-release-artifact-digest.mjs";
 import { minimalReleaseToolEnvironment } from "./lib/release-tool-environment.mjs";
@@ -24,8 +29,8 @@ const ciWorkflow = stableReadFile(
   path.join(repoRoot, ".github/workflows/client-ci.yml"),
   { maxBytes: 2 * 1024 * 1024 },
 ).toString("utf8");
-const sourceVerify = stableReadFile(
-  path.join(repoRoot, "tools/run-client-source-verify.mjs"),
+const publisher = stableReadFile(
+  path.join(repoRoot, "tools/scripts/client-github-release-publish.mjs"),
   { maxBytes: 2 * 1024 * 1024 },
 ).toString("utf8");
 const androidBuilder = stableReadFile(
@@ -66,6 +71,16 @@ const acceptanceBinding = stableReadFile(
   path.join(repoRoot, "tools/scripts/lib/android-release-acceptance-binding.mjs"),
   { maxBytes: 2 * 1024 * 1024 },
 ).toString("utf8");
+
+function jobBlock(source, jobId) {
+  const match = new RegExp(`^  ${jobId}:\\s*$`, "mu").exec(source);
+  if (!match) throw new Error(`workflow job is missing: ${jobId}`);
+  const remainder = source.slice(match.index + match[0].length);
+  const next = remainder.search(/\n  [a-z0-9][a-z0-9-]*:\s*(?:\n|$)/u);
+  return next < 0
+    ? source.slice(match.index)
+    : source.slice(match.index, match.index + match[0].length + next);
+}
 const requiredDigests = [
   "adb",
   "aapt2",
@@ -82,73 +97,44 @@ if (manifest.schemaVersion !== "licomesh.android-release-toolchain-allowlist.v1"
     ))) {
   throw new Error("Android release toolchain allowlist is incomplete");
 }
-const androidJob = workflow.split(/\n  android-arm64:/u)[1]?.split(/\n  publish:/u)[0] || "";
-if (!androidJob.includes("runs-on: [self-hosted, macOS, ARM64, lico-release, android]") ||
-  androidJob.includes("runs-on: ubuntu")) {
-  throw new Error("Android release workflow is not pinned to an approved host class");
-}
-if (!androidJob.includes("LICO_CLIENT_RELEASE_TARGETS: android-arm64") ||
-  !androidJob.includes("LICO_ANDROID_TARGET_PLATFORM: android-arm64") ||
-  androidJob.indexOf("Build same-source macOS relay CLI prerequisite") < 0 ||
-  androidJob.indexOf("Build same-source macOS relay CLI prerequisite") >
-    androidJob.indexOf("Verify Android GitHub Release acceptance") ||
-  !androidJob.includes("run: npm run client:verify:github-release")) {
-  throw new Error("Android GitHub Release acceptance is not bound to same-source prerequisites");
-}
-const macosJob = workflow.split(/\n  macos:/u)[1]?.split(/\n  linux-arm64:/u)[0] || "";
-const linuxJob = workflow.split(/\n  linux-arm64:/u)[1]?.split(/\n  android-arm64:/u)[0] || "";
-const publishJob = workflow.split(/\n  publish:/u)[1] || "";
-if (!macosJob.includes("LICO_CLIENT_RELEASE_TARGETS: macos-arm64") ||
-  !macosJob.includes("Verify macOS GitHub Release acceptance") ||
-  !macosJob.includes("run: npm run client:verify:github-release") ||
-  !linuxJob.includes("LICO_CLIENT_RELEASE_TARGETS: linux-glibc-arm64") ||
-  !linuxJob.includes("Verify Linux GitHub Release acceptance") ||
-  !linuxJob.includes("run: npm run client:verify:github-release") ||
-  workflow.includes("windows_x64:") ||
-  workflow.includes("\n  windows-x64:")) {
-  throw new Error("GitHub Release jobs are not bound to selected-target acceptance");
+validateClientGateTopology();
+const prepareJob = jobBlock(workflow, "prepare");
+const publishJob = jobBlock(workflow, "publish");
+if (!workflow.includes("One or more comma-separated exact package targets") ||
+  !workflow.includes("client-release-workflow-binding.mjs") ||
+  !workflow.includes("--mode matrix --targets \"$TARGETS\"") ||
+  prepareJob.includes("LICO_CLIENT_RELEASE_TARGETS:") ||
+  !prepareJob.includes("matrix.target == 'android-direct-arm64-v8a'") ||
+  !prepareJob.includes("client:release:build -- --target \"$TARGET\"") ||
+  !prepareJob.includes("client:release:verify -- --target \"$TARGET\"") ||
+  !publishJob.includes("--targets \"${{ inputs.targets }}\"") ||
+  !publishJob.includes("Publish selected package set")) {
+  throw new Error("GitHub Release workflow is not bound to exact one-or-many package targets");
 }
 const uploadPolicyReady =
   workflow.includes("permissions:\n  contents: read") &&
-  (workflow.match(/contents: write/gu) || []).length === 2 &&
-  workflow.includes('gh release create "$RELEASE_TAG"') &&
-  workflow.includes('gh release edit "$RELEASE_TAG"') &&
-  (workflow.match(/gh release upload/gu) || []).length === 1 &&
-  publishJob.includes("client-consumer-verification-manifest.mjs") &&
-  publishJob.includes("LicoUp-consumer-verification.json") &&
-  !publishJob.includes("build/release-assets/*") &&
-  publishJob.includes("client-release-remote-asset-set.mjs") &&
-  publishJob.includes(".assets | map({name, size, digest})") &&
-  !macosJob.includes("GH_TOKEN:") &&
-  !linuxJob.includes("GH_TOKEN:") &&
-  !androidJob.includes("GH_TOKEN:") &&
-  !workflow.includes("run: npm run client:verify\n") &&
-  (workflow.match(/run: npm run client:verify:source/gu) || []).length === 3 &&
-  workflow.includes("persist-credentials: false") &&
+  (workflow.match(/contents: write/gu) || []).length === 1 &&
+  publisher.includes('"release",\n      "create"') &&
+  publisher.includes('"release", "edit"') &&
+  publisher.includes('"release",\n      "upload"') &&
+  publisher.includes("client-consumer-verification-manifest.mjs") &&
+  publisher.includes("LicoUp-consumer-verification.json") &&
+  publisher.includes("client-release-remote-asset-set.mjs") &&
+  publisher.includes(".assets | map({name, size, digest})") &&
+  publisher.includes("COPYFILE_EXCL") &&
+  publishJob.includes("client-github-release-publish.mjs") &&
+  publishJob.includes("persist-credentials: false") &&
+  !prepareJob.includes("GH_TOKEN:") &&
+  !workflow.includes("npm run client:gate:") &&
   !workflow.includes("--generate-notes") &&
   !workflow.includes("yes |") &&
-  workflow.includes("Prepare ephemeral local integrity identity") &&
-  !workflow.includes("LICO_MACOS_SIGNING_IDENTITY") &&
-  !workflow.includes("LICO_MACOS_NOTARY_") &&
-  androidJob.includes("build/apps/desktop/android/release/LicoUp-android-arm64.apk") &&
-  androidJob.includes("build/apps/desktop/android/release/LicoUp-android-arm64.apk.sha256") &&
-  androidJob.includes("build/apps/desktop/android/release/lico-github-artifact.pem") &&
-  !androidJob.includes("build/apps/desktop/android/release/build-manifest.json") &&
-  !/path:\s*build\/apps\/desktop\/android\/release\/\s*$/mu.test(androidJob) &&
-  macosJob.indexOf("Prepare ephemeral local integrity identity") <
-    macosJob.indexOf("run: npm run client:install:macos") &&
-  macosJob.indexOf("run: npm run client:install:macos") <
-    macosJob.indexOf("run: npm run client:archive:macos-github-release") &&
-  macosJob.includes("build/apps/desktop/distribution/macos/LicoUp-macos-arm64.zip") &&
-  macosJob.includes("build/apps/desktop/distribution/macos/LicoUp-macos-arm64.zip.sha256") &&
-  !macosJob.includes("build/apps/desktop/runnable/macos/release/LicoUp-macos-arm64.zip") &&
-  !/path:\s*build\/apps\/desktop\/runnable\/macos\/release\/\s*$/mu.test(macosJob) &&
-  linuxJob.includes("build/apps/desktop/distribution/linux-arm64/LicoUp-linux-arm64.tar.gz") &&
-  linuxJob.includes("build/apps/desktop/distribution/linux-arm64/LicoUp-linux-arm64.tar.gz.sha256") &&
-  linuxJob.includes("build/apps/desktop/distribution/linux-arm64/LicoUp-linux-arm64.tar.gz.sig") &&
-  linuxJob.includes("build/apps/desktop/distribution/linux-arm64/linux-release-verification-key.pem") &&
-  !linuxJob.includes("build/apps/desktop/distribution/linux-arm64/manifest.json") &&
-  !/path:\s*build\/apps\/desktop\/distribution\/linux-arm64\/\s*$/mu.test(linuxJob);
+  !workflow.includes("Import stable LicoUp Release identity") &&
+  !workflow.includes("Materialize governed macOS platform-channel inputs") &&
+  !workflow.includes("LICO_MACOS_RELEASE_CERTIFICATE_P12") &&
+  !workflow.includes("LICO_MACOS_PROVISIONING_PROFILE_BASE64") &&
+  !workflow.includes("LICO_MACOS_NOTARY_KEY_BASE64") &&
+  !workflow.includes("licoup-notary-key.p8") &&
+  prepareJob.includes("build/releases/${{ needs.source.outputs.version }}/${{ matrix.target }}/*");
 if (!uploadPolicyReady) {
   throw new Error("GitHub Release upload policy exposes more than consumer verification artifacts");
 }
@@ -159,15 +145,20 @@ for (const forbidden of [
   "client:verify:product-line-security",
   "client:verify:android-physical-install-launch",
 ]) {
-  if (sourceVerify.includes(forbidden)) {
+  if (CLIENT_GATE_LANES.source.includes(forbidden)) {
     throw new Error("GitHub source gate consumes product-line or physical evidence");
   }
 }
 const pinnedCargoAudit = "cargo install cargo-audit --version 0.22.2 --locked";
-if (!ciWorkflow.includes(pinnedCargoAudit) ||
-  (workflow.match(/cargo install cargo-audit --version 0\.22\.2 --locked/gu) || [])
-    .length !== 3) {
-  throw new Error("Client CI release jobs do not install the pinned cargo-audit tool");
+const ciSourceJob = jobBlock(ciWorkflow, "source");
+const ciDependencyJob = jobBlock(ciWorkflow, "dependencies");
+if (
+  ciSourceJob.includes(pinnedCargoAudit) ||
+  !ciDependencyJob.includes(pinnedCargoAudit) ||
+  workflow.includes(pinnedCargoAudit) ||
+  prepareJob.includes(pinnedCargoAudit)
+) {
+  throw new Error("Pinned cargo-audit must remain isolated to dependency policy jobs");
 }
 if (!androidBuilder.includes("path.isAbsolute(keystorePath)") ||
   !androidGradle.includes("releaseStoreFile?.isAbsolute == true") ||
@@ -267,10 +258,8 @@ if (sanitizedEnvironment.HOME !== "/fixture-home" ||
 }
 console.log(JSON.stringify({
   ok: true,
-  approvedHostClassCovered: true,
-  explicitAndroidReleaseTargetSelected: true,
-  sameSourceRelayCliPrerequisiteBound: true,
-  pinnedCargoAuditInstalled: true,
+  oneOrManyExactPackageTargetsReady: true,
+  pinnedDependencyAuditIsolated: true,
   toolDigestAllowlistReady: true,
   environmentInjectionRejected: true,
   absoluteSigningPathRequired: true,

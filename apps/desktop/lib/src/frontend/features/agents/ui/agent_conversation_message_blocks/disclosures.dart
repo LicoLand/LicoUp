@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'package:licoup/src/contracts/agent_conversation_message.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_image_attachments.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_message_display.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/apple_control_metrics.dart';
@@ -16,6 +18,7 @@ class AgentConversationMessageContent extends StatelessWidget {
     required this.blockBackground,
     required this.borderColor,
     required this.renderStyle,
+    this.images = const [],
   });
 
   final String data;
@@ -26,13 +29,17 @@ class AgentConversationMessageContent extends StatelessWidget {
   final Color borderColor;
   final MessageMarkdownStyle renderStyle;
 
+  /// Typed image attachments rendered below the message body (local-only).
+  final List<AgentConversationImageAttachment> images;
+
   @override
   Widget build(BuildContext context) {
     final display = splitMessageDisplayBlocks(data);
     final hasBody = display.body.trim().isNotEmpty;
     final hasDetails = display.metadataBlocks.isNotEmpty;
     final hasRecommendedPlugins = display.recommendedPluginsBlocks.isNotEmpty;
-    if (!hasBody && !hasDetails && !hasRecommendedPlugins) {
+    final hasImages = images.isNotEmpty;
+    if (!hasBody && !hasDetails && !hasRecommendedPlugins && !hasImages) {
       return MessageMarkdown(
         data: '',
         foreground: foreground,
@@ -77,6 +84,11 @@ class AgentConversationMessageContent extends StatelessWidget {
             renderStyle: renderStyle,
           ),
         ],
+        if (hasImages) ...[
+          if (hasBody || hasRecommendedPlugins || hasDetails)
+            SizedBox(height: renderStyle.blockSpacing),
+          AgentConversationImageAttachmentList(images: images),
+        ],
       ],
     );
   }
@@ -112,9 +124,9 @@ Color agentConversationMessageForeground(LicoThemeColors colors, String role) {
 
 Color agentConversationToneColor(LicoThemeColors colors, String tone) {
   return switch (tone) {
-    'raised' => colors.surfaceHigh,
+    'raised' => colors.surfaceRaised,
     'surface' => colors.surface,
-    'muted' => colors.surfaceHighest,
+    'muted' => colors.surfaceLow,
     _ => colors.surfaceLow,
   };
 }
@@ -156,7 +168,7 @@ class _MessageDetailsDisclosureState extends State<_MessageDetailsDisclosure> {
       child: MessageMarkdown(
         data: widget.details,
         foreground: colors.textMuted,
-        accent: colors.info,
+        accent: colors.accent,
         codeBackground: widget.codeBackground,
         blockBackground: widget.blockBackground,
         borderColor: Colors.white.withAlpha(colors.isDark ? 36 : 56),
@@ -206,7 +218,7 @@ class _RecommendedPluginsDisclosureState
       child: MessageMarkdown(
         data: widget.blocks.join('\n\n'),
         foreground: colors.text,
-        accent: colors.info,
+        accent: colors.accent,
         codeBackground: widget.codeBackground,
         blockBackground: widget.blockBackground,
         borderColor: Colors.white.withAlpha(colors.isDark ? 36 : 56),

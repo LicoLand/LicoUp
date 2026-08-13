@@ -9,23 +9,25 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   test('layout profile identities are semantic, ordered, and safe', () {
     expect(
-      LayoutProfileId.parse('workbench'),
-      LayoutProfileId.parse('workbench'),
+      LayoutProfileId.parse('dashboard'),
+      LayoutProfileId.parse('dashboard'),
     );
-    expect(LayoutProfileId.parse('native'), LayoutProfileId.parse('native'));
-    expect(LayoutProfileId.parse('classic'), LayoutProfileId.parse('classic'));
     expect(
-      [LayoutProfileId.parse('native'), LayoutProfileId.parse('workbench')]
+      LayoutProfileId.parse('messaging'),
+      LayoutProfileId.parse('messaging'),
+    );
+    expect(
+      [LayoutProfileId.parse('messaging'), LayoutProfileId.parse('dashboard')]
         ..sort(),
-      [LayoutProfileId.parse('native'), LayoutProfileId.parse('workbench')],
+      [LayoutProfileId.parse('dashboard'), LayoutProfileId.parse('messaging')],
     );
 
     for (final invalid in [
       'numeric-2',
       'legacy',
-      'workbench-v-two',
-      'native-compatibility',
-      'Native',
+      'dashboard-v-two',
+      'messaging-compatibility',
+      'Messaging',
     ]) {
       Object? failure;
       try {
@@ -38,35 +40,35 @@ void main() {
     }
   });
 
-  test('platform preferred defaults map Native vs LicoUp fallback', () {
+  test('platform preferred defaults map Default vs Dashboard fallback', () {
     expect(
       LayoutProfileDefaults.preferredForPlatform(TargetPlatform.macOS),
-      LayoutProfileId.parse('native'),
+      LayoutProfileId.parse('messaging'),
     );
     expect(
       LayoutProfileDefaults.preferredForPlatform(TargetPlatform.windows),
-      LayoutProfileId.parse('native'),
+      LayoutProfileId.parse('messaging'),
     );
     expect(
       LayoutProfileDefaults.preferredForPlatform(TargetPlatform.linux),
-      LayoutProfileId.parse('workbench'),
+      LayoutProfileId.parse('dashboard'),
     );
   });
 
   test('profile descriptor owns validated localized copy', () {
     final descriptor = LayoutProfileDescriptor(
-      id: LayoutProfileId.parse('workbench'),
-      label: LayoutProfileCopy(english: 'Workbench', chinese: '工作台'),
+      id: LayoutProfileId.parse('dashboard'),
+      label: LayoutProfileCopy(english: 'Dashboard', chinese: '仪表盘'),
       description: LayoutProfileCopy(
-        english: 'Workbench layout',
-        chinese: '工作台布局',
+        english: 'Dashboard layout',
+        chinese: '仪表盘布局',
       ),
-      styleIdentity: 'spacious-card-workbench',
+      styleIdentity: 'spacious-card-dashboard',
       isDefault: true,
     );
 
-    expect(descriptor.label.resolve('en'), 'Workbench');
-    expect(descriptor.label.resolve('zh'), '工作台');
+    expect(descriptor.label.resolve('en'), 'Dashboard');
+    expect(descriptor.label.resolve('zh'), '仪表盘');
     expect(descriptor.revision, 1);
     expect(
       () => LayoutProfileCopy(english: 'Valid', chinese: '\n'),
@@ -152,12 +154,12 @@ void main() {
 
   test('surface is part of deterministic variant identity and ordering', () {
     final desktopMedium = LayoutVariantKey(
-      profileId: LayoutProfileId.parse('workbench'),
+      profileId: LayoutProfileId.parse('dashboard'),
       surface: LayoutRuntimeSurface.desktop,
       viewport: LayoutViewportClass.medium,
     );
     final mobileMedium = LayoutVariantKey(
-      profileId: LayoutProfileId.parse('workbench'),
+      profileId: LayoutProfileId.parse('dashboard'),
       surface: LayoutRuntimeSurface.mobile,
       viewport: LayoutViewportClass.medium,
     );
@@ -165,28 +167,27 @@ void main() {
     expect(desktopMedium, isNot(mobileMedium));
     expect({desktopMedium, mobileMedium}, hasLength(2));
     expect(desktopMedium.compareTo(mobileMedium), lessThan(0));
-    expect(desktopMedium.toString(), 'workbench/desktop/medium');
-    expect(mobileMedium.toString(), 'workbench/mobile/medium');
+    expect(desktopMedium.toString(), 'dashboard/desktop/medium');
+    expect(mobileMedium.toString(), 'dashboard/mobile/medium');
   });
 
   test('selection state rejects impossible candidate and error states', () {
-    final previewing = LayoutSelectionState(
-      committedId: LayoutProfileId.parse('workbench'),
-      effectiveId: LayoutProfileId.parse('native'),
-      previewId: LayoutProfileId.parse('native'),
-      status: LayoutSelectionStatus.previewing,
+    final committing = LayoutSelectionState(
+      committedId: LayoutProfileId.parse('dashboard'),
+      effectiveId: LayoutProfileId.parse('atlas'),
+      status: LayoutSelectionStatus.committing,
       surface: LayoutRuntimeSurface.desktop,
       viewport: LayoutViewportClass.medium,
       operationEpoch: 1,
     );
     expect(
-      previewing.effectiveVariantKey.profileId,
-      LayoutProfileId.parse('native'),
+      committing.effectiveVariantKey.profileId,
+      LayoutProfileId.parse('atlas'),
     );
     expect(
       () => LayoutSelectionState(
-        committedId: LayoutProfileId.parse('workbench'),
-        effectiveId: LayoutProfileId.parse('native'),
+        committedId: LayoutProfileId.parse('dashboard'),
+        effectiveId: LayoutProfileId.parse('atlas'),
         status: LayoutSelectionStatus.stable,
         surface: LayoutRuntimeSurface.desktop,
         viewport: LayoutViewportClass.medium,
@@ -196,8 +197,8 @@ void main() {
     );
     expect(
       () => LayoutSelectionState(
-        committedId: LayoutProfileId.parse('workbench'),
-        effectiveId: LayoutProfileId.parse('workbench'),
+        committedId: LayoutProfileId.parse('dashboard'),
+        effectiveId: LayoutProfileId.parse('dashboard'),
         status: LayoutSelectionStatus.error,
         surface: LayoutRuntimeSurface.desktop,
         viewport: LayoutViewportClass.medium,
@@ -211,13 +212,13 @@ void main() {
     'presentation preferences persist only semantic presentation fields',
     () {
       final fallback = PresentationPreferences(
-        layoutProfileId: LayoutProfileId.parse('workbench'),
+        layoutProfileId: LayoutProfileId.parse('dashboard'),
         appearancePresetId: 'default-system',
         localePreference: 'system',
       );
       final decoded = PresentationPreferences.fromJson({
         'schemaVersion': 1,
-        'layoutProfileId': 'native',
+        'layoutProfileId': 'atlas',
         'appearancePresetId': 'dark',
         'localePreference': 'zh',
         'transientPanelId': 'runtime-only-value',
@@ -225,10 +226,10 @@ void main() {
         'viewport': 'compact',
       }, fallback: fallback);
 
-      expect(decoded.layoutProfileId, LayoutProfileId.parse('native'));
+      expect(decoded.layoutProfileId, LayoutProfileId.parse('atlas'));
       expect(decoded.toJson(), {
         'schemaVersion': 1,
-        'layoutProfileId': 'native',
+        'layoutProfileId': 'atlas',
         'appearancePresetId': 'dark',
         'localePreference': 'zh',
       });

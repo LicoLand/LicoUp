@@ -1,231 +1,165 @@
-# Product
+# LicoUp Product
 
 English (normative) · [简体中文（本地化）](PRODUCT.zh-CN.md)
 
-## Product North Star
+LicoUp is an open-source, local-first human-agent conversation client.
 
-LicoUp is intended to become an open-source, local-first interactive
-ecosystem in which people, agents, service providers, and independent trust
-parties interact under one governed trust fabric. The destination is neither a
-social messaging product nor an agent marketplace: it is a durable, verifiable
-interaction fabric for human and agent principals, entered through one secure
-conversation experience. People, local agents, remote agents, and approved
-service-backed agents meet in that conversation experience instead of separate
-chat products. Infrastructure, provider selection, cryptography, and execution
-details remain inspectable without becoming the primary navigation.
+Its durable destination is one secure conversation experience in which people
+and visible agents participate under user-controlled identity, approval,
+disclosure, and local-effect boundaries. Infrastructure, providers,
+cryptography, and execution details remain inspectable without becoming the
+primary navigation.
 
-Platform adaptation is a release target, not a product capability gate.
-Ecosystem capabilities are designed once, platform-neutrally; macOS, Windows,
-Linux, Android, and iOS then adapt, verify, and publish through independent
-per-platform release lanes. A capability becomes release-eligible on a platform
-as soon as that platform's own physical evidence exists, without waiting for
-the remaining platforms.
+Current implementation, verification, release, support, and operation facts
+are recorded only in [`docs/STATUS.md`](docs/STATUS.md) and the generated
+[`docs/COMPATIBILITY.md`](docs/COMPATIBILITY.md). Repository vocabulary is
+defined in [`CONTEXT.md`](CONTEXT.md).
 
-This section records the approved destination. It does not claim that every
-capability is available today. The [compatibility matrix](docs/COMPATIBILITY.md)
-and the current boundary below remain the authority for implemented and
-verified support.
+## Product promise
 
-### Project family
+Users can communicate with their own agents, peer endpoints, and explicitly
+admitted external capabilities while retaining control of protected content,
+keys, approval, and local effects.
 
-Three independently maintained projects carry the ecosystem. LicoUp is the
-client and remains the authority for keys, plaintext, and local effects.
-LicoTower is the federation pillar: independently built and released relay
-infrastructure that routes only opaque envelopes, coordinates bounded
-service-side delivery, and holds no client cryptographic or trust authority.
-LicoMesh is the optional platform pillar, owning the Provider Trust Kernel,
-Operation Permission, and the plugin host; the default client experience never
-depends on it.
+The product remains useful as a local-agent client before human messaging,
+federation, recovery, notary, and multi-device goals are delivered. Those
+goals become current capability only after their owning implementation and
+verification close.
 
-### One conversation model
+## One conversation model
 
-The long-term model has stable principals, endpoints, conversations,
-memberships, and signed conversation events:
+The long-term model uses one visible Conversation for people and Agents:
 
-- Human direct messages and groups use the same encrypted, multi-device
-  history. Signed handles and invitations support message requests, explicit
-  group-history visibility, membership administration, replies, edits,
-  retractions, reactions, threads, files, media, receipts, and notifications.
-- The default `@Agent` interaction creates an on-demand Operation. Only the
-  explicit question and user-selected context are disclosed. Its result enters
-  the timeline as a caller-authorized `via Agent` event. Any external side
-  effect remains a separate Operation and requires its own approval.
-- An agent may instead join as a visible, revocable group member. Its history
-  access follows the invitation policy. Its wake mode, budget, model provider,
-  region, retention policy, and sponsor are disclosed so that continuous
-  participation is an informed choice rather than a hidden background cost.
-- Search is built after local decryption from a rebuildable encrypted-at-rest
-  index. The service is never given plaintext merely to provide search.
+- a User can start, continue, search, organize, and preserve conversations;
+- a local or remote Agent participates through an explicitly admitted
+  interface and never becomes an implicit authority;
+- a human or Agent participant receives only the history and context granted
+  by the conversation membership policy;
+- every external disclosure or effect remains visible, bounded, and
+  independently approved;
+- local search and projections are built after endpoint-controlled
+  decryption.
 
-The interaction model borrows the useful invitation, permission, message
-request, and explicit bot-participation ideas of modern messaging products. It
-does not inherit their server-readable trust model.
+Provider-native histories may be projected into the experience, but they do
+not silently become the canonical LicoUp conversation authority.
 
-### Two-layer authority
+## Endpoint responsibility and protocol execution
 
-Conversation durability uses two complementary authorities:
+LicoUp owns:
 
-- The selected service provider is authoritative only for accepted ciphertext
-  entries, their order, synchronization cursors, retention or deletion state,
-  and verifiable receipts.
-- LicoUp is authoritative for keys, decryption, plaintext meaning, authorship
-  verification, and the user's local projection.
+- endpoint identity material, private-key custody, and local cryptographic
+  Provider selection and invocation;
+- decrypted plaintext, conversation history, local search projections, and
+  user-selected backups;
+- conforming execution of one pinned Lico Arc Protocol Line;
+- endpoint admission, the User's peer-trust decision, approval, protected
+  disclosure, and local effects;
+- local persistence and enforcement of protocol-defined freshness, replay,
+  recovery, and endpoint-evidence transitions;
+- client configuration, native bridges, platform adaptation, packaging, and
+  user experience.
 
-The client encrypts every event before egress. Each event has a separate
-content-encryption key protected by the conversation key schedule, so selective
-disclosure can reveal one event, its author proof, and its ledger-inclusion
-proof without revealing a conversation epoch key.
+Endpoint protection is independent of any station or gateway implementation.
+A station response, lease, timestamp, queue state, acknowledgement, or
+delivery claim is only an untrusted operational hint.
 
-An event is shown as sent only after ciphertext is durably stored in two
-independent provider failure domains and a fixed Lico notary committee has
-issued a majority receipt. Until then it remains in a durable local outbox.
-Quota exhaustion blocks new uploads instead of silently evicting history.
-Deletion uses a signed tombstone, a short recovery window, ciphertext
-purging, and only irreversible integrity and audit facts afterward.
+LicoUp does not own an alternative cryptographic protocol that it may
+unilaterally fork. Wire-observable Pairwise Protection, Generic Message,
+Reliable Exchange, negotiation, Transport Profile, and protocol-transition
+semantics remain governed by versioned Lico Arc Protocol Lines. LicoUp selects
+a supported line, holds the endpoint keys and local state, executes that line,
+and fails closed when it cannot conform.
 
-This division provides verifiable cloud history and recovery while preventing
-the provider from reading user content. A regulator or other reviewer can
-receive a user-created selective disclosure bundle, but cannot obtain plaintext
-from the provider without the user's key material.
+## Federation boundary
 
-Recovery uses two of three independent factor classes: a user recovery secret,
-a still-trusted device, and a guardian factor formed by any two of at least
-three appointed guardians. An account service may authenticate a download of an
-encrypted recovery capsule; it never receives the capability to decrypt it.
+Lico Arc Protocol is external to LicoUp and is the implementation-neutral
+authority for stable wire-observable endpoint communication. It owns
+versioned Pairwise Protection, Generic Message, Reliable Exchange,
+negotiation, Transport Profile, station-facing contracts, conformance corpora,
+and neutral federation governance. It receives no private keys, local Provider
+configuration, plaintext, conversation history, backups, user-trust decision,
+approval authority, or local-effect authority.
 
-### Provider trust and federation
+BadTower is the independently versioned single-node Station product. When
+released on its own lifecycle, it stores and forwards only opaque Lico Arc
+envelopes and remains potentially malicious from the endpoint perspective. It
+is not a LicoUp backend and never defines endpoint identity, cryptography,
+approval, peer trust, or user experience. Compatibility is established only
+through a named Lico Arc Protocol Line and independent conformance evidence;
+it never requires a product-specific protocol, linked implementation, or
+synchronized release.
 
-The client does not decide that a provider is trustworthy merely because an
-endpoint is reachable. LicoMesh Core owns a general Provider Trust Kernel;
-communication is its first profile. LicoUp consumes a signed, versioned,
-expiry-aware directory, applies local admission policy, and displays the
-resulting trust state.
+## Trust partition
 
-Third-party providers progress through control of their domain and root key,
-synthetic-data sandboxing, an open conformance suite, organization review, and
-independent higher-assurance Trust Marks. Continuous probes can renew, degrade,
-make read-only, or revoke a deployment. Appeals do not automatically restore
-production eligibility. Public directory entries expose only the minimum
-identity, revision, profile, issuer, evidence-digest, validity, and status
-facts; raw operational and audit material remains controlled.
+- Lico Arc Protocol owns wire-observable Pairwise Protection, Generic Message,
+  Reliable Exchange, negotiation, Transport Profile, federation governance,
+  and protocol compatibility.
+- LicoUp holds private keys, selects and invokes local Providers, executes a
+  pinned Protocol Line, and owns plaintext, history, backups, endpoint
+  admission, approval, local effects, and the User's final trust decision.
+- A Station owns no trust decision.
 
-The Lico official provider principal is an explicit privileged disaster-
-recovery trust root and is exempt from third-party admission and Trust Mark
-revocation. Its deployments, keys, nodes, and routes are still versioned,
-rotatable, and health-gated. A failed official deployment stops receiving
-traffic even though the built-in disaster-recovery identity remains.
+These states must remain distinct and must never collapse into a generic
+cross-product trust verdict.
 
-Provider servers own their internal high availability and leader election.
-The Lico notary committee confirms durable ledger checkpoints; it does not run
-the provider's storage cluster or elect its leader. If a provider root is
-compromised, migration starts from the last pre-revocation notarized checkpoint
-and does not require the compromised provider to approve recovery.
+## Official network boundary
 
-### Delivery order
+A LicoLand-operated LicoUp network may become a replaceable convenience
+default only after independent release and operation evidence exists. It
+receives no cryptographic, identity, admission, certification, revocation,
+routing, or disaster-recovery privilege. The client remains usable without
+that network. LicoLand Network Host owns only that operator's fleet
+deployment and operation evidence; LicoUp continues to own client
+default-entry selection and every endpoint trust decision.
 
-The existing client foundation is completed before the unified communication
-portfolio becomes release-eligible: agent orchestration, workspace convergence,
-adapter plugin management, the one-time project refactor, exact incremental
-usage accounting, and bounded resource discipline close first. Communication
-then proceeds through identity and encryption, provider-trust consumption,
-ciphertext-ledger synchronization, human messaging, agent participation, and
-recovery and selective disclosure. Platform acceptance then runs as five
-independent per-platform release lanes: each platform proves the same frozen
-corpus on its own physical evidence and publishes independently, so one
-platform's release never waits for another's lane.
+## External operation boundary
 
-Real accounts, external authorization, production services, signing identities,
-and physical devices are release evidence, not facts that can be inferred from
-simulators or synthetic tests.
+An External Operation requires fresh direct approval bound to the exact
+destination, purpose, scope, and content. Installation, enablement, startup,
+scheduling, agent intent, or a prior approval never authorizes a later
+external disclosure or effect.
 
-## Current Product Boundary
+Transport protection does not prevent the approved destination from reading
+the exact content deliberately sent to it. A Protected Transfer to a Peer
+Endpoint is distinct from an external service request.
 
-LicoUp is a local-first, open-source desktop and mobile client for discovering,
-operating, and securely reaching a user's own agents. The client does not depend
-on a LicoMesh installation for its default product experience.
+A Communication Channel on the Gateway Runtime is an admitted external channel.
+Enabling the runtime and approving a Telegram DM pairing grants a scoped bridge
+authorization for that bot and Telegram user to exchange ordinary turns with a
+bound local Agent. Revoking pairing ends the grant. Content sent through
+Telegram remains readable by Telegram.
 
-The built-in foundation is limited to:
+## Platform and release model
 
-- a lightweight Rust task queue for bounded local work;
-- an ACP adapter for local agent execution and encrypted remote relay;
-- an MCP adapter for client-originated requests and response forwarding;
-- platform adapters for macOS, Windows, Ubuntu, Android, and iOS.
+LicoUp targets desktop and mobile platforms through independent adaptation and
+release lanes. Development, source verification, platform build,
+physical-device verification, packaging, GitHub Release, and every platform
+store are separate claims. Evidence from one platform or channel never
+promotes another.
 
-## Current Product Scenarios
+## Non-goals
 
-The default product exposes only these scenarios:
+LicoUp does not:
 
-1. Concurrent desktop discovery of local agents from application registries,
-   package managers, executable search locations, and other platform-owned
-   locations, followed by a local cache registration.
-2. Desktop conversations with local agents, including new conversations and
-   exact continuation through an official native interface where available.
-   When mid-turn injection is unavailable, the client may stream the active turn
-   and start the next turn only after the native reply completes.
-3. Desktop skill management across one or more agents: list, install, update from
-   an explicitly configured mirror or GitHub repository, delete, and aggregate
-   usage counts by time window.
-4. Desktop conversation management: browse native conversations and back up all
-   or keyword-selected conversations to a user-selected local directory.
-5. Desktop token-usage reporting by agent or model, defaulting to the latest
-   thirty days with a selectable time window.
-6. Desktop-and-mobile end-to-end encrypted communication and mobile relay over
-   the independently maintained LicoTower relay infrastructure, which can route
-   only opaque envelopes and cannot decrypt payloads.
+- delegate endpoint security or trust to a station, service, plugin, or
+  website;
+- define, stabilize, or silently fork a product-specific endpoint wire
+  protocol;
+- make an official network a mandatory or privileged trust root;
+- treat build availability, preview status, generated artifacts, or plans as
+  release or support evidence;
+- preserve a retired product-specific station wire as a permanent
+  compatibility surface.
 
-## Current Optional LicoMesh Collaboration
+## Experience principles
 
-LicoMesh collaboration is not bundled into the default navigation or startup
-path. It becomes available only after the user explicitly enables the capability
-and installs its plugin from a user-selected GitHub source.
+- Conversation first; infrastructure stays outside primary navigation.
+- Local first; protected client data remains endpoint-controlled.
+- Native-agent fidelity is required for every enabled Agent adapter.
+- External destinations and effects remain explicit.
+- Accessibility targets clear focus, reduced-motion-safe transitions, strong
+  contrast, and touch-sized controls.
 
-The optional plugin may provide two workflows:
+## License
 
-- download LicoMesh for a user-controlled local deployment and let the user
-  select the server feature/plugin set before installation;
-- manually install selected LicoMesh MCP plugins into one or more selected local
-  agents.
-
-Neither workflow runs automatically. An MCP plugin operation involving a local
-file requires a separate user approval for that exact file transfer.
-
-## Current External Data Approval Contract
-
-Local files, conversation content, configuration, diagnostics, paths, device
-facts, agent history, and usage records stay local by default. Every operation
-that transfers user or client information outside the current device must:
-
-1. be initiated or directly approved by the user for that single operation;
-2. show the destination, purpose, exact data or file scope, and affected agents;
-3. remain cancellable until the external transfer is committed;
-4. invalidate approval when the destination, scope, digest, or operation changes;
-5. fail closed when approval is absent, expired, cancelled, or unverifiable.
-
-Approval is never inferred from startup, a prior operation, a plugin being
-enabled, an agent request, or a background schedule. A user pressing Send for an
-explicitly addressed encrypted message authorizes only that message and target.
-
-## Experience Principles
-
-- Conversation first; infrastructure stays out of the primary navigation.
-- Discovery is concurrent, bounded, cache-backed, and locally observable.
-- Native-agent fidelity is required for every enabled conversation adapter.
-- Provider process events are rendered as safe summaries; raw reasoning, tool
-  arguments, credentials, native identifiers, and local paths stay hidden.
-- Platform-owned biometrics and secure stores protect credentials and key
-  material; the app never collects the system password itself.
-- Accessibility targets WCAG AA contrast, clear focus, reduced-motion-safe
-  transitions, and 44 px minimum touch targets.
-
-## Current Readiness
-
-Every agent adapter is accepted independently. A detected or history-readable
-agent is not automatically a conversation-capable agent. Only adapters that pass
-the canonical native-conversation parity contract may enable the normal
-composer. Current platform and adapter projections are generated in
-[`docs/COMPATIBILITY.md`](docs/COMPATIBILITY.md) from the owning catalogs.
-
-Development, ordinary verification, packaging, GitHub Release publication, and
-platform-store publication are separate claims. Public artifacts disclose only
-minimum consumer-verification metadata and never include user or client runtime
-information.
+LicoUp uses AGPL-3.0-or-later. See [`LICENSE`](LICENSE).

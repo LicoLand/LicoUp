@@ -3,7 +3,8 @@ import { requireValue, text } from "../util.mjs";
 
 export function validateMacosEvidence(payload, context) {
   const receipt = Array.isArray(payload.receipts)
-    ? payload.receipts.find((entry) => entry?.targetId === context.targetId)
+    ? payload.receipts.find((entry) =>
+      entry?.targetId === context.spec.evidenceTargetId)
     : null;
   const dependency = Array.isArray(payload.dependencies) && payload.dependencies.length === 1
     ? payload.dependencies[0]
@@ -15,7 +16,8 @@ export function validateMacosEvidence(payload, context) {
     "macos_evidence_contains_raw_data");
   requireValue(payload.sourceStateDigest === context.sourceStateDigest,
     "evidence_source_digest_mismatch");
-  requireValue(receipt?.targetId === context.targetId, "evidence_target_mismatch");
+  requireValue(receipt?.targetId === context.spec.evidenceTargetId,
+    "evidence_target_mismatch");
   requireValue(receipt?.productVersion === context.productVersion, "evidence_version_mismatch");
   requireValue(receipt?.buildNumber === context.buildNumber, "evidence_build_number_mismatch");
   requireValue(context.artifactLineageReady === true &&

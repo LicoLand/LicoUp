@@ -6,9 +6,9 @@ import 'package:licoup/src/application/controller/client_controller.dart';
 import 'package:licoup/src/contracts/mobile_relay/mobile_relay_models.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/frontend/features/mobile_relay/ui/mobile_agent_list_items.dart';
-import 'package:licoup/src/frontend/features/mobile_relay/ui/mobile_agents_empty_state.dart';
 import 'package:licoup/src/frontend/features/mobile_relay/ui/mobile_home_entry_ordering.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_empty_state.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 export 'package:licoup/src/frontend/features/mobile_relay/ui/mobile_desktop_agent_list.dart';
@@ -94,9 +94,20 @@ final class _MobileAgentListState extends State<MobileAgentList> {
           if (entries.isEmpty)
             SliverFillRemaining(
               hasScrollBody: false,
-              child: MobileAgentsEmptyState(
-                scanning: widget.controller.isScanningTargets,
-                onAddAgent: widget.onAddAgent,
+              child: LicoEmptyState(
+                icon: Icons.psychology_outlined,
+                iconSize: 34,
+                title: widget.controller.isScanningTargets
+                    ? strings.scanningLocalAgents
+                    : strings.noLocalAgentsFound,
+                action: widget.controller.isScanningTargets
+                    ? null
+                    : OutlinedButton.icon(
+                        key: const Key('mobile-empty-add-agent-button'),
+                        onPressed: widget.onAddAgent,
+                        icon: const Icon(Icons.add_rounded, size: 18),
+                        label: Text(strings.addAgent),
+                      ),
               ),
             )
           else

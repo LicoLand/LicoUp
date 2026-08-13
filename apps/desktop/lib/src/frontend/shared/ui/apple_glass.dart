@@ -61,18 +61,26 @@ class AppleGlassSurface extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.licoColors;
-    final dark = colors.isDark;
-    final fill = dark
-        ? Colors.white.withAlpha(fillAlpha ?? (focused ? 36 : 22))
-        : Colors.black.withAlpha(fillAlpha ?? (focused ? 18 : 10));
+    // Fills and rims come from the neutral ramp rather than white/black alpha
+    // so a preset with an unusual background does not get a foreign haze laid
+    // over it. `fillAlpha`/`borderAlpha` remain honoured for callers that need
+    // a specific translucency over live blurred content.
+    final fill = fillAlpha != null
+        ? colors.text.withAlpha(fillAlpha!)
+        : (focused ? colors.surfaceRaised : colors.surfaceLow);
+    // Focus is an interaction: the ring is the accent. The brand-focus variant
+    // exists only for the search capsule, which is a brand-owned surface.
     final accent =
-        focusColor ?? (_brandFocusDefault ? colors.primaryStrong : colors.info);
+        focusColor ??
+        (_brandFocusDefault ? colors.primaryStrong : colors.accent);
     final border = focused
-        ? accent.withAlpha(borderAlpha ?? 200)
+        ? (borderAlpha == null ? accent : accent.withAlpha(borderAlpha!))
         : (idleBorderColor ??
-              Colors.white.withAlpha(borderAlpha ?? (dark ? 48 : 70)));
+              (borderAlpha == null
+                  ? colors.line
+                  : colors.lineStrong.withAlpha(borderAlpha!)));
     final borderWidth = focused
-        ? (focusedBorderWidth ?? AppleControlMetrics.hairline)
+        ? (focusedBorderWidth ?? AppleControlMetrics.searchFocusRingWidth)
         : AppleControlMetrics.hairline;
 
     return Material(
@@ -97,15 +105,14 @@ BoxDecoration appleGlassControlDecoration({
   bool enabled = true,
   bool emphasized = false,
 }) {
-  final dark = colors.isDark;
   final fill = emphasized
-      ? Colors.white.withAlpha(dark ? 40 : 28)
-      : Colors.white.withAlpha(dark ? (enabled ? 22 : 12) : (enabled ? 14 : 8));
+      ? colors.surfaceRaised
+      : (enabled
+            ? colors.surfaceLow
+            : colors.surfaceLow.withValues(alpha: 0.5));
   final border = emphasized
-      ? colors.info.withAlpha(140)
-      : Colors.white.withAlpha(
-          dark ? (enabled ? 52 : 28) : (enabled ? 70 : 36),
-        );
+      ? colors.accentBorder
+      : (enabled ? colors.line : colors.line.withValues(alpha: 0.5));
   return BoxDecoration(
     color: fill,
     borderRadius: borderRadius,

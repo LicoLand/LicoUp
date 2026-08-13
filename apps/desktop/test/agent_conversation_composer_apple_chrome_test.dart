@@ -83,10 +83,14 @@ void main() {
           matching: find.byType(TextField),
         ),
       );
-      final colors = buildLicoTheme(
-        platformBrightness: Brightness.dark,
-      ).extension<LicoThemeColors>()!;
-      expect(field.cursorColor, colors.info);
+      final theme = buildLicoTheme(platformBrightness: Brightness.dark);
+      final colors = theme.extension<LicoThemeColors>()!;
+      // The caret and selection are interaction state, so they come from the
+      // accent. They are set once on textSelectionTheme rather than overridden
+      // per field, so every input in the client agrees.
+      expect(field.cursorColor, isNull);
+      expect(theme.textSelectionTheme.cursorColor, colors.accent);
+      expect(theme.textSelectionTheme.selectionHandleColor, colors.accent);
       expect(field.decoration?.filled, isFalse);
     },
   );

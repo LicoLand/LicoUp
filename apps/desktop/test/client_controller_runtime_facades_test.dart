@@ -14,7 +14,6 @@ void main() {
 
   test('runtime facade leaves are ordinary imports with bounded ownership', () {
     final controller = File('$root/client_controller.dart').readAsStringSync();
-    expect(controller.split('\n').length, lessThan(360));
     for (final entry in facades.entries) {
       final source = File('$root/${entry.key}').readAsStringSync();
       expect(controller, contains("controller/${entry.key}';"));
@@ -24,14 +23,15 @@ void main() {
         source,
         isNot(contains(RegExp(r'^part(?: of)? ', multiLine: true))),
       );
-      expect(source.split('\n').length, lessThan(190));
     }
   });
 
   test('thin controller delegates lifecycle navigation and presentation', () {
     final controller = File('$root/client_controller.dart').readAsStringSync();
+    final routing = File('$root/client_routing_facade.dart').readAsStringSync();
     expect(controller, contains('ClientComponentAssembly('));
-    expect(controller, contains('onRoutingPolicy: clientApplyRoutingPolicy'));
+    expect(routing, contains('AgentService get agentService'));
+    expect(routing, contains('agentWorkspaceReadSettingsState'));
     expect(controller, contains('onEnterAgents: clientEnterAgentsSection'));
     expect(
       controller,

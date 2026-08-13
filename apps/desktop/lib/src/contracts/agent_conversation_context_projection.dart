@@ -208,6 +208,12 @@ String _extractUserAuthoredText(String text) {
       text.substring(codexRequestIndex + '## My request for Codex:'.length),
     );
   }
+  final requestIndex = _findCaseInsensitive(text, '## My request:');
+  if (requestIndex >= 0) {
+    return _stripGeneratedContextBlocks(
+      text.substring(requestIndex + '## My request:'.length),
+    );
+  }
   final plainRequestIndex = _findCaseInsensitive(text, 'My request for Codex:');
   if (plainRequestIndex >= 0) {
     return _stripGeneratedContextBlocks(
@@ -219,6 +225,7 @@ String _extractUserAuthoredText(String text) {
 
 String _stripGeneratedContextBlocks(String text) {
   final lines = text
+      .replaceAll(_userSettingsChangeBlockPattern, '')
       .replaceAll('\r\n', '\n')
       .replaceAll('\r', '\n')
       .split('\n');
@@ -257,6 +264,12 @@ String _stripGeneratedContextBlocks(String text) {
   return visible.join('\n');
 }
 
+final RegExp _userSettingsChangeBlockPattern = RegExp(
+  r'<user[_\-\s]*settings[_\-\s]*change\b[^>]*>.*?</user[_\-\s]*settings[_\-\s]*change\s*>',
+  caseSensitive: false,
+  dotAll: true,
+);
+
 String? _trailingTextAfterContextClose(String line, String closeMarker) {
   final lower = line.toLowerCase();
   final close = closeMarker.toLowerCase();
@@ -290,6 +303,8 @@ const _generatedContextBlockCloseMarkers = <String, String>{
   '<plugins_instructions': '</plugins_instructions>',
   '<recommended_plugins': '</recommended_plugins>',
   '<additional_metadata': '</additional_metadata>',
+  '<user_settings_change': '</user_settings_change>',
+  '<usersettingschange': '</usersettingschange>',
   '<collaboration_mode': '</collaboration_mode>',
   '<permissions instructions': '</permissions instructions>',
   '<system': '</system>',
@@ -327,6 +342,8 @@ bool _generatedControlText(String text) {
       lower.startsWith('<apps-instructions>') ||
       lower.startsWith('<recommended_plugins') ||
       lower.startsWith('<additional_metadata') ||
+      lower.startsWith('<user_settings_change') ||
+      lower.startsWith('<usersettingschange') ||
       lower.startsWith('<plugins_instructions') ||
       _generatedOperationalNoticeText(text) ||
       _generatedStructuredResultText(text) ||

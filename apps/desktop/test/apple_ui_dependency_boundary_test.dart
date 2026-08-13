@@ -47,16 +47,13 @@ void main() {
         .where((file) => file.path.endsWith('.dart'));
     for (final file in dartFiles) {
       final source = file.readAsStringSync();
+      final fileName = file.uri.pathSegments.last;
       if (!source.contains('AppleControlMetrics') ||
           source.contains('class AppleControlMetrics') ||
           source.trimLeft().startsWith('part of ')) {
         continue;
       }
-      expect(
-        source,
-        contains('/apple_control_metrics.dart'),
-        reason: file.uri.pathSegments.last,
-      );
+      expect(source, contains('/apple_control_metrics.dart'), reason: fileName);
     }
   });
 }

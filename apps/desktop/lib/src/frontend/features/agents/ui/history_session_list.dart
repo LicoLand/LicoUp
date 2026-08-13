@@ -4,6 +4,7 @@ import 'package:flutter/rendering.dart';
 import 'package:licoup/src/frontend/features/agents/ui/history_session_models.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_activity_animations.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 final class HistorySessionList extends StatelessWidget {
@@ -154,7 +155,7 @@ final class HistorySessionLoadMoreRow extends StatelessWidget {
                 height: 14,
                 child: CircularProgressIndicator(
                   strokeWidth: 2,
-                  color: colors.primary,
+                  color: colors.accent,
                 ),
               ),
               const SizedBox(width: 8),
@@ -229,19 +230,16 @@ final class HistorySessionGroupedRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.licoColors;
     final strings = LicoStrings.of(context);
-    final background = item.active
-        ? (Color.lerp(colors.surface, colors.primary, 0.14) ??
-              colors.surfaceHigh)
-        : Colors.transparent;
+    final background = item.active ? colors.brandSurface : Colors.transparent;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
       child: Material(
         key: Key('history-session-row-${item.id}'),
         color: background,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(LicoRadius.chip),
         child: InkWell(
           onTap: item.disabled ? null : () => onSelect(item.id),
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(LicoRadius.chip),
           child: SizedBox(
             height: historySessionGroupedRowHeight,
             child: Padding(
@@ -311,9 +309,7 @@ final class HistorySessionRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.licoColors;
     final strings = LicoStrings.of(context);
-    final background = item.active
-        ? Color.lerp(colors.surface, colors.primary, 0.10) ?? colors.surfaceHigh
-        : colors.surface;
+    final background = item.active ? colors.brandSurface : colors.surface;
     return Material(
       key: Key('history-session-row-${item.id}'),
       color: background,

@@ -4,7 +4,7 @@ use std::sync::RwLock;
 use anyhow::{Context, Result, anyhow, ensure};
 use base64::{Engine as _, engine::general_purpose};
 use openmls_rust_crypto::{MemoryStorage, RustCrypto};
-use zeroize::Zeroize;
+use zeroize::{Zeroize, Zeroizing};
 
 use crate::core::secure_mesh_pqxdh::{
     ML_KEM_1024_KEY_GENERATION_SEED_BYTES, SecureMeshMlKem1024PreKeySeed,
@@ -28,18 +28,21 @@ impl SecureMeshOpenMlsProvider {
         let session = secret_store.begin_authorized_session(
             &SecretStoreAuthorizationRequest::new("Secure Mesh MLS provider secret-store load", 1),
         )?;
-        Self::load_secret_store_with_session(secret_store, handle, &session)
+        Self::load_secret_store_optional_with_session(secret_store, handle, &session)?
+            .ok_or_else(|| anyhow!("secure mesh MLS provider secret-store entry is missing"))
     }
 
-    pub(super) fn load_secret_store_with_session(
+    pub(super) fn load_secret_store_optional_with_session(
         secret_store: &dyn SecureMeshSecretStore,
         handle: &SecretStoreHandle,
         session: &SecretStoreAuthorizationSession,
-    ) -> Result<Self> {
+    ) -> Result<Option<Self>> {
         let persisted_json = secret_store
             .get_secret_with_session(session, handle)
-            .context("secure mesh MLS provider secret-store read failed")?
-            .ok_or_else(|| anyhow!("secure mesh MLS provider secret-store entry is missing"))?;
+            .context("secure mesh MLS provider secret-store read failed")?;
+        let Some(persisted_json) = persisted_json else {
+            return Ok(None);
+        };
         let persisted: PersistedMlsProviderSecrets =
             serde_json::from_slice(persisted_json.expose_bytes())
                 .context("secure mesh MLS provider secret-store payload deserialization failed")?;
@@ -52,25 +55,28 @@ impl SecureMeshOpenMlsProvider {
                 || persisted.secret_class == MLS_RECOVERY_SECRET_STORE_CLASS,
             "secure mesh MLS provider secret-store class is unsupported"
         );
-        let storage_bytes = general_purpose::URL_SAFE_NO_PAD
-            .decode(&persisted.storage_base64url)
-            .context("secure mesh MLS provider secret-store payload is not base64url")?;
+        let storage_bytes = Zeroizing::new(
+            general_purpose::URL_SAFE_NO_PAD
+                .decode(&persisted.storage_base64url)
+                .context("secure mesh MLS provider secret-store payload is not base64url")?,
+        );
         let storage = deserialize_storage_from_bytes(&storage_bytes)?;
-        let mut seed_bytes = general_purpose::URL_SAFE_NO_PAD
-            .decode(&persisted.mlkem1024_seed_base64url)
-            .context("secure mesh MLS ML-KEM-1024 custody seed is not base64url")?;
+        let seed_bytes = Zeroizing::new(
+            general_purpose::URL_SAFE_NO_PAD
+                .decode(&persisted.mlkem1024_seed_base64url)
+                .context("secure mesh MLS ML-KEM-1024 custody seed is not base64url")?,
+        );
         ensure!(
             seed_bytes.len() == ML_KEM_1024_KEY_GENERATION_SEED_BYTES,
             "secure mesh MLS ML-KEM-1024 custody seed length is invalid"
         );
         let mut fixed_seed = [0u8; ML_KEM_1024_KEY_GENERATION_SEED_BYTES];
         fixed_seed.copy_from_slice(&seed_bytes);
-        seed_bytes.zeroize();
-        Ok(Self {
+        Ok(Some(Self {
             crypto: RustCrypto::default(),
             storage,
             mlkem1024_seed: SecureMeshMlKem1024PreKeySeed::from_bytes(fixed_seed),
-        })
+        }))
     }
 
     pub fn save_secret_store(
@@ -105,16 +111,19 @@ impl SecureMeshOpenMlsProvider {
                 || secret_class == MLS_RECOVERY_SECRET_STORE_CLASS,
             "secure mesh MLS provider secret-store class is unsupported"
         );
-        let storage_bytes = self.serialize_storage_to_bytes()?;
-        let persisted = PersistedMlsProviderSecrets {
+        let storage_bytes = Zeroizing::new(self.serialize_storage_to_bytes()?);
+        let mut persisted = PersistedMlsProviderSecrets {
             schema_version: MLS_PROVIDER_SECRET_SCHEMA_VERSION,
             secret_class: secret_class.to_string(),
-            storage_base64url: general_purpose::URL_SAFE_NO_PAD.encode(storage_bytes),
+            storage_base64url: general_purpose::URL_SAFE_NO_PAD.encode(storage_bytes.as_slice()),
             mlkem1024_seed_base64url: general_purpose::URL_SAFE_NO_PAD
                 .encode(self.mlkem1024_seed.expose_for_secret_store()),
         };
         let persisted_json = serde_json::to_string(&persisted)
             .context("secure mesh MLS provider secret-store payload serialization failed")?;
+        persisted.secret_class.zeroize();
+        persisted.storage_base64url.zeroize();
+        persisted.mlkem1024_seed_base64url.zeroize();
         secret_store
             .set_secret_with_session(
                 session,

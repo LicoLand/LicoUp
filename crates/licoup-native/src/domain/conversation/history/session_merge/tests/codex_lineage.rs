@@ -63,3 +63,24 @@ fn lineage_merge_prefers_tip_and_deduplicates_replayed_thread_messages() {
     assert_eq!(merged[0]["messages"].as_array().unwrap().len(), 2);
     assert!(merged[0].get("parentSessionId").is_none());
 }
+
+#[test]
+fn active_lineage_member_marks_the_collapsed_conversation_running() {
+    let root = codex_session(
+        "root",
+        None,
+        "1",
+        vec![json!({"role": "user", "text": "Start"})],
+    );
+    let mut tip = codex_session(
+        "tip",
+        Some("root"),
+        "2",
+        vec![json!({"role": "assistant", "text": "Working"})],
+    );
+    tip["running"] = json!(true);
+
+    let merged = merge_codex_rollout_lineage_sessions(vec![root, tip]);
+    assert_eq!(merged.len(), 1);
+    assert_eq!(merged[0]["running"], true);
+}

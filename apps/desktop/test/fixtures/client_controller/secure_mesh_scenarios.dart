@@ -128,11 +128,12 @@ void registerClientSecureMeshScenarios() {
     final controller = ClientController(
       agentService: FakeAgentService(),
       mobileRelayService: relayService,
+      mobileClientRuntimePlatformOverride: true,
     );
     addTearDown(controller.dispose);
 
     final invite = {
-      'gatewayUrl': 'https://relay.example.test',
+      'stationBaseUrl': 'https://station.example.test',
       'pairingId': 'pair-1',
       'pairingCode': '1234-5678',
       'pcClientId': 'pc-1',
@@ -150,7 +151,7 @@ void registerClientSecureMeshScenarios() {
     expect(relayService.lastPairingInvite?['pairingId'], 'pair-1');
     expect(controller.mobileRelayConfig.paired, isTrue);
     expect(controller.scannedTargets.single.target, 'codex');
-    expect(controller.selectedConversationAgentId, agentOrchestrationTargetId);
+    expect(controller.selectedConversationAgentId, 'codex');
   });
 
   test('refreshes secure mesh status for the relay adapter panel', () async {
@@ -303,61 +304,6 @@ void registerClientSecureMeshScenarios() {
         'secure_mesh.file_receive.write',
       );
       expect(controller.statusMessage, '安全网格文件接收位置已评估。');
-    },
-  );
-
-  test(
-    'skill-sync layers file-sync confirmation then Skill Hub install handoff',
-    () async {
-      final directory = await Directory.systemTemp.createTemp(
-        'lico-secure-mesh-skill-sync-',
-      );
-      addTearDown(() => directory.delete(recursive: true));
-      final agentService = FakeAgentService()
-        ..skillInstallApplyResult = {
-          'ok': true,
-          'skillId': 'demo-skill',
-          'status': 'installed',
-        };
-      final relayService = FakeMobileRelayService();
-      final controller = ClientController(
-        portableData: PortableDataRoot(dataDirectoryOverride: directory),
-        agentService: agentService,
-        mobileRelayService: relayService,
-      );
-      controller.localePreference = 'en';
-      addTearDown(controller.dispose);
-
-      controller.beginSecureMeshSkillSyncDraft(
-        skillId: 'demo-skill',
-        version: '1.0.0',
-        sourceAgentId: 'codex',
-        targetAgentId: 'claude-code',
-        packageDigest:
-            '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
-        packageFileName: 'demo-skill.zip',
-        packageSize: 32,
-      );
-      controller.setSecureMeshFileSyncDestination(directory.path);
-      await controller.prepareSecureMeshSkillSyncTransfer();
-      expect(
-        controller.secureMeshSkillSyncDraft?.status,
-        SecureMeshSkillSyncStatus.awaitingInstall,
-      );
-
-      await controller.confirmSecureMeshSkillSyncInstall(userConfirmed: true);
-
-      expect(agentService.applySkillInstallCalls, 1);
-      expect(agentService.installedSkillAgent, 'claude-code');
-      expect(agentService.installedSkillName, 'demo-skill');
-      expect(
-        controller.secureMeshSkillSyncDraft?.status,
-        SecureMeshSkillSyncStatus.installed,
-      );
-      expect(
-        controller.secureMeshSkillSyncDraft?.toManifest()['protocolVersion'],
-        'secure_mesh.skill_sync.v1',
-      );
     },
   );
 
@@ -536,8 +482,7 @@ void registerClientSecureMeshScenarios() {
     addTearDown(() => deleteTempDirectory(directory));
     final relayService = FakeMobileRelayService()
       ..config = MobileRelayConfig.defaults().copyWith(
-        useCustomGateway: true,
-        customGatewayUrl: 'https://relay.example.test',
+        stationBaseUrl: 'https://station.example.test',
         pairingId: 'pair-1',
         pcClientId: 'pc-1',
         pcClientName: 'MacBook Pro',

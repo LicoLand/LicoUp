@@ -14,6 +14,6 @@ fn challenge_projection_exposes_only_confirmation_metadata() {
     let response = authority_challenge_response(&challenge, CONFIG_SCHEMA_VERSION);
     assert_eq!(response["status"], json!("confirmation_required"));
     assert_eq!(response["requiresUserPresence"], json!(true));
-    assert_eq!(response["privateKeyMaterial"], json!("redacted"));
+    assert!(response.get("privateKeyMaterial").is_none());
     assert!(response.get("confirmationSecret").is_none());
 }

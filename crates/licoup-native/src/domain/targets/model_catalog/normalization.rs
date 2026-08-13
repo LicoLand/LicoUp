@@ -78,18 +78,33 @@ pub(super) fn normalize_model_catalog_key(key: &str) -> String {
 
 /// Extracts the configured default model from a parsed agent config document.
 /// Only top-level scalar keys that mean "the model in use" count, in priority
-/// order; collection keys and nested profiles never become the default.
+/// order. Native settings may also expose an explicit default/current model in
+/// nested settings or environment objects; profile and workspace branches are
+/// excluded so an optional profile never becomes the agent-wide default.
 pub(super) fn default_model_name_from_config_document(document: &Value) -> Option<String> {
     let object = document.as_object()?;
-    for wanted in [
-        "model",
-        "defaultmodel",
-        "currentmodel",
-        "selectedmodel",
-        "activemodel",
-    ] {
+    if let Some(name) = model_name_for_normalized_keys(
+        object,
+        &[
+            "model",
+            "defaultmodel",
+            "currentmodel",
+            "selectedmodel",
+            "activemodel",
+        ],
+    ) {
+        return Some(name);
+    }
+    explicit_nested_default_model(document, 0).or_else(|| flagged_default_model(document, 0, false))
+}
+
+fn model_name_for_normalized_keys(
+    object: &Map<String, Value>,
+    wanted_keys: &[&str],
+) -> Option<String> {
+    for wanted in wanted_keys {
         for (key, child) in object {
-            if normalize_model_catalog_key(key) != wanted {
+            if normalize_model_catalog_key(key) != *wanted {
                 continue;
             }
             let name = model_name_from_value(child);
@@ -99,6 +114,112 @@ pub(super) fn default_model_name_from_config_document(document: &Value) -> Optio
         }
     }
     None
+}
+
+fn explicit_nested_default_model(value: &Value, depth: usize) -> Option<String> {
+    if depth > 8 {
+        return None;
+    }
+    match value {
+        Value::Object(object) => {
+            if depth > 0 {
+                if let Some(name) = model_name_for_normalized_keys(
+                    object,
+                    &[
+                        "defaultmodel",
+                        "currentmodel",
+                        "selectedmodel",
+                        "activemodel",
+                        "anthropicmodel",
+                        "anthropicdefaultmodel",
+                        "claudecodemodel",
+                        "openaimodel",
+                        "googlemodel",
+                        "geminimodel",
+                        "kimimodel",
+                    ],
+                ) {
+                    return Some(name);
+                }
+            }
+            for (key, child) in object {
+                if nested_default_branch_is_scoped(&normalize_model_catalog_key(key)) {
+                    continue;
+                }
+                if let Some(name) = explicit_nested_default_model(child, depth + 1) {
+                    return Some(name);
+                }
+            }
+            None
+        }
+        Value::Array(items) => items
+            .iter()
+            .find_map(|item| explicit_nested_default_model(item, depth + 1)),
+        _ => None,
+    }
+}
+
+fn flagged_default_model(value: &Value, depth: usize, model_context: bool) -> Option<String> {
+    if depth > 8 {
+        return None;
+    }
+    match value {
+        Value::Object(object) => {
+            let flagged = [
+                "default",
+                "isdefault",
+                "current",
+                "iscurrent",
+                "selected",
+                "isselected",
+                "active",
+                "isactive",
+            ]
+            .iter()
+            .any(|wanted| {
+                object.iter().any(|(key, child)| {
+                    normalize_model_catalog_key(key) == *wanted && child.as_bool() == Some(true)
+                })
+            });
+            if flagged && model_context {
+                if let Some(name) = model_name_from_object(object) {
+                    return Some(name);
+                }
+            }
+            for (key, child) in object {
+                let normalized_key = normalize_model_catalog_key(key);
+                if nested_default_branch_is_scoped(&normalized_key) {
+                    continue;
+                }
+                if let Some(name) = flagged_default_model(
+                    child,
+                    depth + 1,
+                    model_context || is_model_collection_key(&normalized_key),
+                ) {
+                    return Some(name);
+                }
+            }
+            None
+        }
+        Value::Array(items) => items
+            .iter()
+            .find_map(|item| flagged_default_model(item, depth + 1, model_context)),
+        _ => None,
+    }
+}
+
+fn nested_default_branch_is_scoped(key: &str) -> bool {
+    matches!(
+        key,
+        "profile"
+            | "profiles"
+            | "workspace"
+            | "workspaces"
+            | "project"
+            | "projects"
+            | "subagent"
+            | "subagents"
+    )
 }
 
 pub(super) fn is_model_scalar_key(key: &str) -> bool {
@@ -281,6 +402,17 @@ pub(super) fn collect_model_catalog_entries_from_collection_value(
             if !model_catalog_object_is_selectable(object) {
                 return;
             }
+            // Codex `models_cache.json` (and similar) wrap the directory in a
+            // `models` array beside metadata scalars such as `fetched_at` /
+            // `etag` / `client_version`. Prefer that collection and do not
+            // treat the metadata strings as model ids.
+            if let Some((_, models)) = object.iter().find(|(key, child)| {
+                is_model_collection_key(&key.to_ascii_lowercase())
+                    && (child.is_array() || child.is_object())
+            }) {
+                collect_model_catalog_entries_from_collection_value(models, source, entries);
+                return;
+            }
             if let Some(name) = model_name_from_object(object) {
                 let display_name = model_display_name_from_object(object, &name);
                 add_model_catalog_entry_with_provider(
@@ -343,8 +475,22 @@ pub(super) fn sanitize_model_name(value: &str) -> Option<String> {
         || trimmed.starts_with('$')
         || trimmed.starts_with("http://")
         || trimmed.starts_with("https://")
+        || trimmed.starts_with("W/\"")
         || trimmed.to_ascii_lowercase().contains("api_key")
     {
+        return None;
+    }
+    // Reject cache metadata that previously leaked in as model ids when a
+    // models_cache document was walked as a generic object tree.
+    if trimmed.contains('T')
+        && trimmed.contains(':')
+        && trimmed
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '-' | ':' | '.' | 'T' | 'Z' | '+'))
+    {
+        return None;
+    }
+    if trimmed.chars().all(|ch| ch.is_ascii_digit() || ch == '.') && trimmed.contains('.') {
         return None;
     }
     Some(trimmed.to_string())

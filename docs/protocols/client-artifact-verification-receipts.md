@@ -9,7 +9,7 @@ an independent receipt contract.
 The canonical selected-target receipt is produced by:
 
 ```bash
-LICO_CLIENT_RELEASE_TARGETS=macos-arm64,android-arm64,linux-glibc-arm64 \
+LICO_CLIENT_RELEASE_TARGETS=macos-direct-arm64,android-direct-arm64-v8a \
   npm run client:verify:artifact-verification-receipts
 ```
 
@@ -18,9 +18,8 @@ an unselected or deferred target is not an implicit blocker. In one release
 closure, the reducer creates a random closure challenge and a distinct random
 invocation nonce for every selected target, deletes any previous target report,
 and directly invokes the approved platform producer. Therefore selecting
-Android can install and launch on the authorized phone, selecting macOS can
-launch the installed app, and selecting Linux can install and exercise the
-canonical distribution archive on the approved native ARM64 release runner.
+Android can install and launch on the authorized phone, and selecting macOS can
+launch the installed app.
 Only an exit-zero producer result generated after that invocation and bound to
 both digests can be accepted; a producer failure can never reuse an older green
 JSON file. Report modification time is not an authority.
@@ -32,7 +31,7 @@ mutation during hashing, escaping bundle symlinks, output traversal, and
 symlinked output paths fail closed. The receipt binds current source digest,
 product version and build number, exact target, exact artifact digest, producer
 source digest, report digest, closure challenge, and per-invocation nonce.
-For macOS and Linux it also binds the exact distribution-manifest digest; the
+For macOS it also binds the exact distribution-manifest digest; the
 receipt and final acceptance reducer must name the same artifact kind, archive,
 and manifest.
 Each ready target also binds the exact packaged runtime executable digest. The
@@ -49,9 +48,8 @@ The accepted local-install boundary is:
 
 | Target | Required local evidence | Publication boundary |
 | --- | --- | --- |
-| `macos-arm64` | The published distribution ZIP and manifest bind the source, version, build, and exact locally signed `.app` digest; built and installed app digests match; the ephemeral local integrity signature, Hardened Runtime, normalized outer Release entitlements, and empty entitlements on every recursively discovered nested code object match; a new exact process survives the stability window with the challenge; post-launch artifact checks and sidecar smoke pass | App Store, Developer ID distribution, and notarization are not required or claimed |
-| `android-arm64` | APK package/version/debuggable/ABI/single-signer/signature-scheme/alignment facts and the exact stored ARM64 native-library digest match the current build manifest; the checked-in tool digest allowlist and controlled macOS ARM64 release-runner class match; the relay CLI is rebuilt from the same checkout before acceptance; install returns explicit success; the installed `base.apk` matches; exact activity launch consumes the challenge and nonce | Play Store and production update identity are not required or claimed; redacted receipts expose only signer-match booleans, never a stable certificate fingerprint |
-| `linux-glibc-arm64` | The published distribution TAR and manifest version/build/source/archive bindings match; the final reducer directly verifies Ed25519 over the archive SHA-256 digest using the embedded public verification key; compressed size, entry count, per-entry size, total expanded size, path type, listing time, and extraction time remain within fixed bounds; the same archive is installed on the native ARM64 release runner, starts in the supported bounded session, and passes CLI/GUI smoke | Registry or package-repository publication is not required or claimed |
+| `macos-direct-arm64` | A locally produced DMG and update ZIP bind source, version, build, and exact `.app` digest; every nested executable and the outer app pass Developer ID, Hardened Runtime, secure-timestamp, notarization-ticket, and Gatekeeper checks; the updater requires the exact installed designated requirement and team before replacement | Local-only Developer ID channel. Remote/GitHub publication and Mac App Store submission remain blocked and are not authorized by the receipt |
+| `android-direct-arm64-v8a` | APK package/version/debuggable/ABI/single-signer/signature-scheme/alignment facts and the exact stored ARM64 native-library digest match the current build and package manifests; the controlled release-runner class matches; install returns explicit success; the installed `base.apk` matches; exact activity launch consumes the challenge and nonce | Google Play publication is a separate `android-play-arm64-v8a` AAB target; the current direct APK update authority is manual/system installation |
 
 Android certificate material is process-local verification input, not release
 evidence. The APK build manifest, distribution manifest, and physical
@@ -59,9 +57,8 @@ install/launch receipt publish only `signerIdentityVerified` and
 `signingPolicySatisfied` conclusions. They never serialize a certificate
 digest, fingerprint, subject, or other stable signing-identity value.
 
-Local identity and validation signatures authenticate an artifact only within
-their declared verification policy; they do not imply a production platform
-publisher. When a named platform channel is explicitly requested, a separate
+Validation signatures authenticate an artifact only within their declared
+verification policy. When the macOS Developer ID platform channel is explicitly requested, a separate
 non-public channel-status receipt reports only bounded pass/fail proof classes
 for publication and continuity; it omits the publisher identity and protected
 channel metadata. An absent or failing channel receipt does not block
@@ -75,18 +72,39 @@ They never expose publisher accounts, team/store identifiers, certificate
 subjects or stable fingerprints, credentials, private keys, custody details,
 or private-channel infrastructure.
 
-The manual GitHub workflow requires an explicit Release tag and at least one
-release-supported target. It creates or reuses a GitHub Release, runs the exact
-selected-target acceptance reducer, and publishes only the closed file allowlist
-shown above. The Release remains a draft unless `publish_release` is selected;
-publication occurs only after every selected job succeeds. GitHub repository
-write authority is the only publication authority used by this path. Platform
-publisher identity, store accounts, notarization credentials, listing metadata,
-and private update-channel access are neither read nor accepted as prerequisites.
+Before a release-candidate pull request, run the single project preflight for
+the selected package target set on its real platform. It binds the clean
+candidate HEAD, tree, version, ordered target set, release template and every
+final installer digest to one redacted receipt.
+The pre-push hook checks that receipt only; it never repeats build, install,
+update or launch work. The exact required checks are `Branch flow`, `Commit
+identity`, `Client required` and `Auditor`.
 
-On Linux, automatic host selection is permitted only when glibc can be proven.
-For an ambiguous libc, set `LICO_CLIENT_RELEASE_TARGETS=linux-glibc-arm64`
-explicitly after confirming the intended target.
+The receipt proves only its bound evidence; it does not approve an arbitrary
+candidate scope. Before preflight, review the complete diff from the latest
+verified `nightly`. Product, refactor, migration, release-tooling, workflow,
+Ruleset, identity, and Auditor changes must already be merged through ordinary
+pull requests. The candidate may contain only canonical version, build, target,
+and release-manifest changes. A known gate failure, unfinished migration,
+unexpected path, or deterministic preflight defect invalidates the candidate
+and returns work to an ordinary branch; preflight is never a development loop.
+
+The manual GitHub workflow requires an explicit Release tag and one or more
+release-supported package targets per dispatch. Remote validity currently has
+one active strategy, `build-success`: every selected package must build
+successfully from the immutable release revision. The publisher creates or
+reuses one same-source draft, refuses conflicting existing assets, verifies the
+complete remote set, and publishes at most once. Repeating the same input reuses
+the same Release and asset set without overwriting it.
+
+`build-success` is only the remote reproduction claim. Overall release
+acceptance additionally requires downloading the final public assets,
+verifying their bound source and digests, installing through the public path,
+observing stable launch, and verifying the published update path. Draft assets
+may reconcile before publication. After publication, the tag, source revision,
+and asset set are immutable. A damaged public Release requires a separately
+approved corrective-release plan with a new verified source and a new build or
+version; an existing public asset is never overwritten in place.
 
 The canonical output schema is
 `tools/scripts/config/client-artifact-verification-receipts-report.schema.json`.
@@ -102,15 +120,14 @@ capture. Any replacement between checks blocks the report. The fixed canonical
 output is removed before config parsing, so a config or producer failure cannot
 leave an older green report in place.
 
-The macOS final local-install path is `npm run client:install:macos`. In GitHub
-Release automation, a short-lived local integrity identity is generated inside
-the isolated runner; it is not a publisher identity and is never published.
-The installer re-signs the app, verifies the local integrity signature,
-atomically installs the exact app, and emits a redacted preparation receipt.
-The subsequent macOS capability producer launches the installed app and issues
-the canonical install/launch/smoke evidence. A separately requested platform
-channel may supply its own protected signing identity, but that path is not a
-GitHub Release prerequisite.
+The supported macOS direct-distribution path is a separately authorized,
+local-only Developer ID platform channel. It verifies every nested executable
+and the outer app for the expected Developer ID team, Hardened Runtime, secure
+timestamp and bounded entitlements, then requires notarization, stapling and
+Gatekeeper acceptance for the final artifacts. Protected signing and
+notarization inputs are never materialized by GitHub Actions, and both macOS
+direct targets are rejected by the generic remote publication workflow. The
+legacy self-signed install/archive entry points are disabled.
 
 Run the side-effect-free negative suite with:
 
@@ -129,7 +146,15 @@ npm run client:verify:closure-producer-writer:self-test
 npm run client:verify:client-release-acceptance:self-test
 ```
 
-Ordinary `client:verify` runs only these
-side-effect-free release tests. The real reducer, which may install, launch, or
-start a bounded platform session for the explicitly selected targets, is
-invoked through `client:verify:product-line-security` only. The GitHub artifact gate is `client:verify:github-release`; it consumes source/version-bound artifact manifests and public consumer-verification files, and it does not consume physical custody, device, KT/MLS, or independent-review evidence. The single public `LicoUp-consumer-verification.json` is generated only after the publisher has downloaded the exact selected workflow artifacts and rejected every unexpected file.
+`client:gate:release-policy` runs these side-effect-free release tests only when
+release authority changes. It is independent from the Node-only source policy
+and from all platform build lanes. The real reducer, which may install, launch,
+or start a bounded platform session for an explicitly selected target, is
+invoked through `client:verify:product-line-security` only. The GitHub artifact
+gate is `client:verify:github-release`; it consumes source/version-bound
+artifact manifests and public consumer-verification files, and it does not
+consume physical custody, device, KT/MLS, or independent-review evidence. The
+single public `LicoUp-consumer-verification.json` is rebuilt after the publisher
+has downloaded the existing same-source draft assets, merged exactly one
+explicitly selected target before publication, and rejected every unexpected
+file. It is never rebuilt to extend an already public Release.

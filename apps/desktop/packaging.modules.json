@@ -31,7 +31,7 @@
       ]
     },
     "target-adapters": {
-      "label": "Target adapters for Antigravity, Claude Code, Codex, Cursor, GitHub Copilot, Hermes Agent, Kilo Code, Kimi Code, OpenClaw, OpenCode, and Pi Agent",
+      "label": "Target adapters for Antigravity, Claude Code, Codex, Cursor, GitHub Copilot, Hermes Agent, Kilo Code, Kimi Code, Lico Agent, OpenClaw, OpenCode, and Pi Agent",
       "category": "agents",
       "enabled": true,
       "required": true,
@@ -56,7 +56,8 @@
         "cursor",
         "hermes",
         "kimi-code",
-        "pi"
+        "pi",
+        "lico-agent"
       ]
     },
     "local-task-queue": {
@@ -164,30 +165,6 @@
       ],
       "packaging": "flutter-app"
     },
-    "multi-agent-routing": {
-      "label": "Multi-agent routing and context distillation",
-      "category": "routing",
-      "enabled": true,
-      "required": false,
-      "platforms": [
-        "macos",
-        "linux",
-        "windows"
-      ],
-      "packaging": "runtime-capability",
-      "requires": [
-        "target-adapters",
-        "portable-data"
-      ],
-      "runtimeToggle": true,
-      "stateDirectories": [
-        "licoup/routing"
-      ],
-      "settingsKeys": [
-        "routing.enabled",
-        "routing.policyPath"
-      ]
-    },
     "native-sidecar": {
       "label": "Rust LicoUp client CLI sidecar",
       "category": "core",
@@ -199,38 +176,88 @@
         "windows"
       ],
       "packaging": "sidecar-binary",
-      "cargoBin": "licoup"
+      "cargoBin": "licoup-cli"
     },
-    "codex-orchestration-mcp": {
-      "label": "LicoUp local Codex MCP control plane",
+    "subagents-mcp": {
+      "label": "LicoUp local subagent MCP",
       "category": "agents",
       "enabled": true,
       "required": true,
       "platforms": [
         "macos",
-        "linux"
+        "linux",
+        "windows"
       ],
       "packaging": "sidecar-binary",
-      "cargoBin": "lico-codex-mcp",
+      "cargoBin": "lico-subagent-mcp",
       "requires": [
         "native-sidecar"
       ]
     },
-    "codex-orchestration-plugin": {
-      "label": "LicoUp Codex plugin bundle",
+    "conversations-mcp": {
+      "label": "LicoUp canonical Conversation MCP",
       "category": "agents",
       "enabled": true,
       "required": true,
       "platforms": [
         "macos",
-        "linux"
+        "linux",
+        "windows"
+      ],
+      "packaging": "sidecar-binary",
+      "cargoBin": "lico-conversation-mcp",
+      "requires": [
+        "native-sidecar"
+      ]
+    },
+    "gateway-sidecar": {
+      "label": "LicoUp Gateway Runtime (LLM Gateway + Communication Channels)",
+      "category": "agents",
+      "enabled": true,
+      "required": true,
+      "platforms": [
+        "macos",
+        "linux",
+        "windows"
+      ],
+      "packaging": "sidecar-binary",
+      "cargoBin": "lico-gateway",
+      "requires": [
+        "native-sidecar"
+      ]
+    },
+    "lico-agent-sidecar": {
+      "label": "LicoUp first-party Agent runtime (Gateway + Plan profile)",
+      "category": "agents",
+      "enabled": true,
+      "required": true,
+      "platforms": [
+        "macos",
+        "linux",
+        "windows"
+      ],
+      "packaging": "sidecar-binary",
+      "cargoBin": "lico-agent",
+      "requires": [
+        "native-sidecar",
+        "gateway-sidecar"
+      ]
+    },
+    "codex-plugin": {
+      "label": "LicoUp Codex Plugin companion runtime",
+      "category": "agents",
+      "enabled": true,
+      "required": true,
+      "platforms": [
+        "macos",
+        "linux",
+        "windows"
       ],
       "packaging": "module-resources",
-      "includePaths": [
-        "plugins/lico-up-codex"
-      ],
+      "embeddedCargoBin": "lico-subagent-mcp",
+      "embeddedCargoTarget": "plugins/lico-up-codex/bin/lico-subagent-mcp",
       "requires": [
-        "codex-orchestration-mcp"
+        "subagents-mcp"
       ]
     }
   },

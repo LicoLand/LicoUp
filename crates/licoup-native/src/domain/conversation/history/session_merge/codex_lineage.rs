@@ -57,6 +57,16 @@ pub(super) fn codex_rollout_lineage_parents(sessions: &[Value]) -> BTreeMap<Stri
         if native_id.is_empty() {
             continue;
         }
+        // A delegated task is a separate conversation the parent spawned, not a
+        // fork continuation of it. Collapsing it as a fork would splice its
+        // messages into the parent's own transcript and drop the rest.
+        if session
+            .get("delegatedSubagent")
+            .and_then(Value::as_bool)
+            .unwrap_or(false)
+        {
+            continue;
+        }
         let Some(parent_id) = session
             .get("parentSessionId")
             .and_then(Value::as_str)
@@ -144,6 +154,9 @@ pub(super) fn collapse_codex_rollout_lineage_group(root: String, mut members: Ve
         .map(history_session_native_id)
         .filter(|value| !value.is_empty())
         .collect::<BTreeSet<_>>();
+    let running = members
+        .iter()
+        .any(|session| session.get("running").and_then(Value::as_bool) == Some(true));
 
     let mut collapsed = tip;
     if let Some(object) = collapsed.as_object_mut() {
@@ -158,6 +171,11 @@ pub(super) fn collapse_codex_rollout_lineage_group(root: String, mut members: Ve
             "lineageSessionIds".to_string(),
             json!(member_ids.into_iter().collect::<Vec<_>>()),
         );
+        if running {
+            object.insert("running".to_string(), json!(true));
+        } else {
+            object.remove("running");
+        }
         object.remove("parentSessionId");
         object.remove("delegatedSubagent");
         object.remove("subagentTitle");

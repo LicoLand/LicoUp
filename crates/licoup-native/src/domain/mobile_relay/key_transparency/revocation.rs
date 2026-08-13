@@ -62,7 +62,6 @@ pub(super) fn key_transparency_revocation_request(params: &Value) -> Result<Valu
         "schemaVersion": CONFIG_SCHEMA_VERSION,
         "authorityOperation": "publish-directory-revocation",
         "claim": claim,
-        "derivedPurpose": DirectoryAuthorizationPurpose::Revocation.stable_code(),
-        "privateKeyMaterial": "redacted"
+        "derivedPurpose": DirectoryAuthorizationPurpose::Revocation.stable_code()
     }))
 }

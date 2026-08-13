@@ -21,12 +21,23 @@ function parseStreamLine(message, state) {
 }
 
 function extractStreamSummary(stdout, fallback) {
-  const state = { output: "", cwd: fallback.cwd, model: fallback.model };
+  const state = {
+    output: "",
+    cwd: fallback.cwd,
+    model: fallback.model,
+    streamingSeen: false,
+    structuredSeen: false,
+  };
   for (const line of String(stdout || "").split(/\r?\n/u)) {
     const trimmed = line.trim();
     if (!trimmed) continue;
     try {
-      parseStreamLine(JSON.parse(trimmed), state);
+      const message = JSON.parse(trimmed);
+      parseStreamLine(message, state);
+      if (message?.type === "assistant" || message?.type === "content_block_delta") {
+        state.streamingSeen = true;
+      }
+      if (message?.type === "result") state.structuredSeen = true;
     } catch {
       continue;
     }
@@ -41,6 +52,8 @@ function extractStreamSummary(stdout, fallback) {
       runtimeAgent: null,
       allowAll: null,
     },
+    streamingSeen: state.streamingSeen,
+    structuredSeen: state.structuredSeen,
   };
 }
 
@@ -101,6 +114,8 @@ export async function nativeCursorCliTurn(context, requestedSessionId, prompt) {
     permissionRequests: 0,
     unsupportedRequests: 0,
     boundedOutput: run.stdoutBytes <= context.maxOutputBytes && run.stderrBytes <= context.maxOutputBytes,
+    streamingSeen: summary.streamingSeen,
+    structuredSeen: summary.structuredSeen,
   };
 }
 

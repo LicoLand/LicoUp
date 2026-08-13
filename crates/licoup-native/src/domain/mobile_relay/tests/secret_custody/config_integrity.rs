@@ -3,7 +3,7 @@ use super::super::test_support::*;
 #[test]
 fn mobile_relay_existing_corrupt_config_fails_closed_without_replacement() {
     let dir = temp_dir("mobile-relay-corrupt-config-fails-closed");
-    let previous = set_portable_data_dir_override(Some(dir));
+    let previous = set_portable_data_dir_override(Some(dir.to_path_buf()));
     let path = config_path().unwrap();
     fs::create_dir_all(path.parent().unwrap()).unwrap();
     #[cfg(unix)]
@@ -32,7 +32,7 @@ fn mobile_relay_existing_insecure_config_permissions_fail_closed() {
     use std::os::unix::fs::PermissionsExt;
 
     let dir = temp_dir("mobile-relay-insecure-config-permissions");
-    let previous = set_portable_data_dir_override(Some(dir));
+    let previous = set_portable_data_dir_override(Some(dir.to_path_buf()));
     let path = config_path().unwrap();
     fs::create_dir_all(path.parent().unwrap()).unwrap();
     fs::set_permissions(path.parent().unwrap(), fs::Permissions::from_mode(0o700)).unwrap();
@@ -52,7 +52,7 @@ fn mobile_relay_existing_insecure_config_permissions_fail_closed() {
 #[test]
 fn mobile_relay_stale_config_snapshot_cannot_overwrite_newer_commit() {
     let dir = temp_dir("mobile-relay-stale-config-cas");
-    let previous = set_portable_data_dir_override(Some(dir));
+    let previous = set_portable_data_dir_override(Some(dir.to_path_buf()));
     let mut winner = load_config().unwrap();
     let mut stale = winner.clone();
     winner["pcClientName"] = json!("winner");
@@ -86,7 +86,7 @@ fn mobile_relay_concurrent_config_writers_commit_exactly_one_snapshot() {
         let mut candidate = snapshot.clone();
         candidate["pcClientName"] = json!(label);
         handles.push(thread::spawn(move || {
-            let prior = set_portable_data_dir_override(Some(root));
+            let prior = set_portable_data_dir_override(Some(root.to_path_buf()));
             barrier.wait();
             let result = save_config(&mut candidate).map(|_| label.to_string());
             set_portable_data_dir_override(prior);
@@ -111,14 +111,14 @@ fn mobile_relay_concurrent_config_writers_commit_exactly_one_snapshot() {
 #[test]
 fn mobile_relay_public_config_redacts_secret_material() {
     let dir = temp_dir("mobile-relay-redacted-config");
-    let previous = set_portable_data_dir_override(Some(dir));
+    let previous = set_portable_data_dir_override(Some(dir.to_path_buf()));
     let mut config = default_config();
     config["pairingId"] = json!("pair-redacted");
     config["pcToken"] = json!("pc-token-redaction-canary");
     config["mobileToken"] = json!("mobile-token-redaction-canary");
     ensure_mobile_relay_endpoint_descriptor(
         &mut config,
-        test_runtime_secret_material(stringify!(&mut config)),
+        &mut test_runtime_secret_material(stringify!(&mut config)),
         "mobile",
     )
     .unwrap();
@@ -128,35 +128,12 @@ fn mobile_relay_public_config_redacts_secret_material() {
             "pcClientId": "pc-redacted",
             "pcClientName": "Mac",
             "pairingId": "pair-redacted",
-            "mobileToken": "paired-device-token-redaction-canary",
-            "gatewayUrl": "https://relay.example.test"
+            "mobileToken": "paired-device-token-redaction-canary"
         }
     ]);
-    let private_key = config["mobileRelayE2ee"]["privateKeyBase64url"]
-        .as_str()
-        .unwrap()
-        .to_string();
-    let signing_key = config["mobileRelayE2ee"]["signingKeyBase64url"]
-        .as_str()
-        .unwrap()
-        .to_string();
-    let signed_prekey_private_key = config["mobileRelayE2ee"]["signedPrekeyPrivateKeyBase64url"]
-        .as_str()
-        .unwrap()
-        .to_string();
-    let one_time_prekey_private_key = config["mobileRelayE2ee"]["oneTimePrekeyPrivateKeyBase64url"]
-        .as_str()
-        .unwrap()
-        .to_string();
-    let one_time_mlkem1024_prekey_seed =
-        config["mobileRelayE2ee"]["oneTimeMlKem1024PrekeySeedBase64url"]
-            .as_str()
-            .unwrap()
-            .to_string();
-    let pairing_secret = config["mobileRelayE2ee"]["pairingSecretBase64url"]
-        .as_str()
-        .unwrap()
-        .to_string();
+    let runtime_secrets = MobileRelayE2eeSecretField::ALL
+        .map(|field| test_runtime_e2ee_secret(stringify!(&config), field));
+    persist_test_runtime_secret_material(stringify!(&config)).unwrap();
     save_config(&mut config).unwrap();
 
     let output = config_get(&json!({})).unwrap();
@@ -165,12 +142,12 @@ fn mobile_relay_public_config_redacts_secret_material() {
         "pc-token-redaction-canary",
         "mobile-token-redaction-canary",
         "paired-device-token-redaction-canary",
-        private_key.as_str(),
-        signing_key.as_str(),
-        signed_prekey_private_key.as_str(),
-        one_time_prekey_private_key.as_str(),
-        one_time_mlkem1024_prekey_seed.as_str(),
-        pairing_secret.as_str(),
+        runtime_secrets[0].as_str(),
+        runtime_secrets[1].as_str(),
+        runtime_secrets[2].as_str(),
+        runtime_secrets[3].as_str(),
+        runtime_secrets[4].as_str(),
+        runtime_secrets[5].as_str(),
     ] {
         assert!(
             !serialized.contains(secret),

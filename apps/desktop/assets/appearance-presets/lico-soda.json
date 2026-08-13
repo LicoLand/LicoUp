@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 2,
+  "id": "lico-soda",
+  "label": {
+    "en": "LicoUp Dark",
+    "zh-CN": "LicoUp 暗黑"
+  },
+  "mode": "dark",
+  "tokens": {
+    "bg-inset": "#040405",
+    "bg-base": "#0e0f12",
+    "bg-surface": "#1c1c20",
+    "bg-subtle": "#2a2a2f",
+    "bg-raised": "#3a3a3f",
+    "border-subtle": "#323337",
+    "border-strong": "#56565b",
+    "text-primary": "#f4f4f7",
+    "text-secondary": "#cccdd0",
+    "text-muted": "#a6a7aa",
+    "text-disabled": "#6c6c70",
+    "brand": "#e1ec28",
+    "brand-strong": "#f3fe4f",
+    "brand-subtle": "#2e2f21",
+    "brand-border": "#878d24",
+    "text-on-brand": "#171800",
+    "accent": "#21dcf1",
+    "accent-strong": "#87effe",
+    "accent-surface": "#1d3339",
+    "accent-border": "#1e838f",
+    "text-on-accent": "#00191e",
+    "success": "#2be18e",
+    "warning": "#feae36",
+    "danger": "#fb5f5b",
+    "hover-overlay": "rgba(244, 244, 247, 0.07)",
+    "pressed-overlay": "rgba(244, 244, 247, 0.12)",
+    "selected-surface": "#2a2a2f",
+    "brand-glow": "rgba(225, 236, 40, 0.22)",
+    "accent-glow": "rgba(33, 220, 241, 0.26)",
+    "skeleton-base": "#2a2a2f",
+    "skeleton-highlight": "#3a3a3f"
+  }
+}

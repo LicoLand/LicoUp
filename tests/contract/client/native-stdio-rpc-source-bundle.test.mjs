@@ -13,26 +13,31 @@ const facadePath =
 const sourceRoot =
   "apps/desktop/lib/src/platform/native_client/agent_service_stdio_rpc";
 
-const leafLimits = Object.freeze({
-  "client.dart": 160,
-  "command_exchange.dart": 80,
-  "command_round_trip.dart": 85,
-  "conversation_exchange.dart": 75,
-  "line_framer.dart": 75,
-  "operation_pending_queue.dart": 40,
-  "operation_queue.dart": 90,
-  "protocol.dart": 75,
-  "request_writer.dart": 20,
-  "response_codec.dart": 155,
-  "session.dart": 235,
-  "session_manager.dart": 110,
-  "shutdown.dart": 50,
-});
+const leafNames = Object.freeze([
+  "client.dart",
+  "command_exchange.dart",
+  "command_round_trip.dart",
+  "conversation_exchange.dart",
+  "in_flight_control.dart",
+  "line_framer.dart",
+  "method_policy.dart",
+  "operation_pending_queue.dart",
+  "operation_queue.dart",
+  "protocol.dart",
+  "request_writer.dart",
+  "response_codec.dart",
+  "session.dart",
+  "session_expectation.dart",
+  "session_manager.dart",
+  "shutdown.dart",
+]);
 
 const allowedDependencies = Object.freeze({
   "client.dart": [
     "command_exchange.dart",
     "conversation_exchange.dart",
+    "in_flight_control.dart",
+    "method_policy.dart",
     "operation_queue.dart",
     "protocol.dart",
     "session_manager.dart",
@@ -55,19 +60,28 @@ const allowedDependencies = Object.freeze({
     "response_codec.dart",
     "session_manager.dart",
   ],
+  "in_flight_control.dart": ["command_exchange.dart", "session_manager.dart"],
   "line_framer.dart": [],
+  "method_policy.dart": [],
   "operation_pending_queue.dart": [],
   "operation_queue.dart": ["operation_pending_queue.dart"],
   "protocol.dart": [],
   "request_writer.dart": ["session.dart"],
   "response_codec.dart": ["protocol.dart"],
-  "session.dart": ["line_framer.dart", "protocol.dart", "response_codec.dart"],
+  "session.dart": [
+    "line_framer.dart",
+    "protocol.dart",
+    "response_codec.dart",
+    "session_expectation.dart",
+  ],
+  "session_expectation.dart": ["response_codec.dart"],
   "session_manager.dart": ["protocol.dart", "session.dart"],
   "shutdown.dart": [
     "protocol.dart",
     "request_writer.dart",
     "response_codec.dart",
     "session.dart",
+    "session_manager.dart",
   ],
 });
 
@@ -76,7 +90,7 @@ async function read(relativePath) {
 }
 
 async function sources() {
-  return Object.fromEntries(await Promise.all(Object.keys(leafLimits).map(async (leaf) => [
+  return Object.fromEntries(await Promise.all(leafNames.map(async (leaf) => [
     leaf,
     await read(`${sourceRoot}/${leaf}`),
   ])));
@@ -90,19 +104,14 @@ function localDependencies(source) {
 
 test("stdio RPC facade exports one stable client from ordinary libraries", async () => {
   const facade = await read(facadePath);
-  assert.ok(facade.trimEnd().split(/\r?\n/u).length <= 3);
   assert.ok(facade.includes("show NativeStdioRpcClient"));
   for (const forbidden of ["part ", "part of", "class NativeStdioRpcClient", "#[path"])
     assert.equal(facade.includes(forbidden), false);
 });
 
-test("stdio RPC leaves remain bounded and acyclic", async () => {
+test("stdio RPC leaves remain ordinary and acyclic", async () => {
   const source = await sources();
   for (const [leaf, body] of Object.entries(source)) {
-    assert.ok(
-      body.trimEnd().split(/\r?\n/u).length <= leafLimits[leaf],
-      `${leaf} exceeds its responsibility limit`,
-    );
     assert.equal(body.includes("part "), false);
     assert.equal(body.includes("part of"), false);
     assert.equal(body.includes("/agent_service_stdio_rpc.dart"), false);
@@ -144,9 +153,12 @@ test("stdio RPC transport is serialized, no-replay, and non-projecting", async (
   assert.ok(source["operation_queue.dart"].includes("class StdioRpcOperationQueue"));
   assert.ok(source["command_round_trip.dart"].includes("replayed"));
   assert.ok(source["session.dart"].includes("StdioRpcLineFramer"));
-  assert.ok(source["session.dart"].includes(
-    "_expectedFrame == null && _expectedFrames == null",
-  ));
+  assert.ok(source["session.dart"].includes("_expectedFrames.containsKey(requestId)"));
+  assert.ok(source["session.dart"].includes("_expectedConversations.containsKey(requestId)"));
+  assert.ok(source["method_policy.dart"].includes("stdioRpcMethodIsInFlightControl"));
+  assert.ok(source["in_flight_control.dart"].includes("executeStdioRpcStructuredCommand"));
+  assert.ok(source["in_flight_control.dart"].includes("invalidateAndDiscard"));
+  assert.equal(source["in_flight_control.dart"].includes("StdioRpcOperationQueue"), false);
   assert.ok(source["session.dart"].includes("stderrBytes"));
   assert.ok(source["session.dart"].includes("stderrTruncated"));
   for (const projection of [

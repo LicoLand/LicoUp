@@ -89,6 +89,7 @@ const usagePanel = await readJoinedText([
   "apps/desktop/lib/src/frontend/features/agents/ui/agent_usage_panel.dart",
   "apps/desktop/lib/src/frontend/features/agents/ui/agent_usage_panel_widgets.dart",
   "apps/desktop/lib/src/frontend/features/agents/ui/agent_usage_summary_widgets.dart",
+  "apps/desktop/lib/src/frontend/features/agents/ui/agent_usage_wave_overview.dart",
   "apps/desktop/lib/src/frontend/features/agents/ui/agent_usage_timeline_data.dart",
   "apps/desktop/lib/src/frontend/features/agents/ui/agent_usage_formatters.dart",
   "apps/desktop/lib/src/frontend/features/agents/ui/agent_usage_timeline/agent_usage_timeline_models.dart",
@@ -170,10 +171,12 @@ assertIncludes(
   "Codex local usage cache"
 );
 
-assert(
-  commandMod.includes("agent_usage::register_commands"),
-  "command table must register local agent usage commands"
-);
+const commandTableExposesAgentUsage =
+  commandMod.includes('path: &["agent-usage", "scan"]') &&
+  commandMod.includes("handler: agent_usage::handle_agent_usage_scan") &&
+  commandMod.includes('path: &["agent-usage", "report"]') &&
+  commandMod.includes("handler: agent_usage::handle_agent_usage_report");
+assert(commandTableExposesAgentUsage, "command table must register local agent usage commands");
 assertIncludes(
   nativeUsageCache,
   [
@@ -185,8 +188,8 @@ assertIncludes(
     "parse_cursor_usage_database",
     "parse_hermes_usage_database",
     "append_guard_matches",
-    "seal_source",
-    "compact_source_days_before",
+    "pub(super) fn seal(",
+    "pub(super) fn compact(",
     "apply_cumulative_watermarks",
     "incremental_vacuum",
     "estimated_records",
@@ -199,8 +202,10 @@ for (const forbidden of ["raw_content", "message_content"]) {
   assert(!nativeUsageCache.includes(forbidden), `native usage cache must exclude ${forbidden}`);
 }
 assert(
-  commandUsage.includes('"agent-usage", "scan"') &&
-    commandUsage.includes('"agent-usage", "report"'),
+  commandUsage.includes("fn handle_agent_usage_scan") &&
+    commandUsage.includes("fn handle_agent_usage_report") &&
+    commandUsage.includes("crate::domain::agent_usage::scan") &&
+    commandUsage.includes("crate::domain::agent_usage::report"),
   "native command adapter must expose scan and report"
 );
 assert(
@@ -370,7 +375,7 @@ const report = {
   evidence: {
     nativeAggregation: failures.every((failure) => !failure.startsWith("native")),
     boundedLocalCache: codexUsageCache.includes("append_guard"),
-    commandBoundary: commandMod.includes("agent_usage::register_commands"),
+    commandBoundary: commandTableExposesAgentUsage,
     strictFlutterEnvelope: usageModels.includes("validateEnvelope"),
     singleFlightController: usageController.includes("_scanFuture"),
     independentUiComponents: componentTest.includes("one-way normal-library graph"),

@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:licoup/src/backend/features/agents/services/agent_conversation_archive_service.dart';
 import 'package:licoup/src/contracts/agent_command_runner.dart';
+import 'package:licoup/src/contracts/agent_conversation_attachment.dart';
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
 import 'package:licoup/src/contracts/agent_dispatch_lane.dart';
 
@@ -10,8 +11,9 @@ export 'package:licoup/src/contracts/agent_dispatch_lane.dart';
 export 'package:licoup/src/backend/features/agents/services/agent_conversation_archive_service.dart'
     show AgentConversationArchiveService;
 
-/// Matches CL-06 live parity default when `LICO_ACP_PARITY_TIMEOUT_MS` is unset.
-const _acceptanceDispatchTimeoutMs = 600000;
+/// Every dispatch opts out of a turn deadline (timeoutMs 0): the agent runs
+/// until the turn completes, however long that takes.
+const _unboundedDispatchTimeoutMs = 0;
 
 Map<String, dynamic> _acceptanceDispatchFields(AgentDispatchBind bind) {
   final acceptanceMode = bind.acceptanceMode.trim();
@@ -20,7 +22,28 @@ Map<String, dynamic> _acceptanceDispatchFields(AgentDispatchBind bind) {
   }
   return {
     'acceptanceMode': acceptanceMode,
-    'timeoutMs': _acceptanceDispatchTimeoutMs,
+    'timeoutMs': _unboundedDispatchTimeoutMs,
+  };
+}
+
+Map<String, dynamic> _bindDispatchFields(AgentDispatchBind bind) {
+  return <String, dynamic>{
+    if (bind.permissionMode.trim().isNotEmpty)
+      'permissionMode': bind.permissionMode.trim(),
+    if (bind.allowedTools.isNotEmpty)
+      'allowedTools': List<String>.unmodifiable(bind.allowedTools),
+    if (bind.sessionPath.trim().isNotEmpty)
+      'sessionPath': bind.sessionPath.trim(),
+    if (bind.workingDirectory.trim().isNotEmpty)
+      'workingDirectory': bind.workingDirectory.trim(),
+    if (bind.binaryPath.trim().isNotEmpty) 'binaryPath': bind.binaryPath.trim(),
+    if (bind.model.trim().isNotEmpty) 'model': bind.model.trim(),
+    if (bind.reasoningEffort.trim().isNotEmpty)
+      'reasoningEffort': bind.reasoningEffort.trim(),
+    if (bind.licoProfile.trim().isNotEmpty)
+      'licoProfile': bind.licoProfile.trim(),
+    if (bind.runtimeConnection.isNotEmpty)
+      'runtimeConnection': bind.runtimeConnection,
   };
 }
 
@@ -199,15 +222,30 @@ class AgentConversationService implements AgentConversationLane {
     String sessionId = '',
     int? limit,
     int offset = 0,
+    AgentDispatchBind bind = const AgentDispatchBind(),
   }) async {
-    final output = await agentService.runCli([
-      'conversations',
-      'list',
-      '--agent',
-      agentId,
-      if (sessionId.trim().isNotEmpty) ...['--session-id', sessionId.trim()],
-      ..._paginationArgs(limit: limit, offset: offset),
-    ]);
+    final arguments = ['conversations', 'list', '--agent', agentId];
+    final output = bind.runtimeConnection.isNotEmpty
+        ? await agentService.runCliWithStdin(
+            [...arguments, '--stdin-json', 'true'],
+            jsonEncode(
+              _remoteHistoryRequest(
+                agentId: agentId,
+                sessionId: sessionId,
+                limit: limit,
+                offset: offset,
+                bind: bind,
+              ),
+            ),
+          )
+        : await agentService.runCli([
+            ...arguments,
+            if (sessionId.trim().isNotEmpty) ...[
+              '--session-id',
+              sessionId.trim(),
+            ],
+            ..._paginationArgs(limit: limit, offset: offset),
+          ]);
     return _sessionsFromOutput(output);
   }
 
@@ -217,15 +255,31 @@ class AgentConversationService implements AgentConversationLane {
     String sessionId = '',
     int? limit,
     int offset = 0,
+    AgentDispatchBind bind = const AgentDispatchBind(),
   }) async* {
-    await for (final event in agentService.streamCliJsonLines([
-      'conversations',
-      'stream',
-      '--agent',
-      agentId,
-      if (sessionId.trim().isNotEmpty) ...['--session-id', sessionId.trim()],
-      ..._paginationArgs(limit: limit, offset: offset),
-    ])) {
+    final arguments = ['conversations', 'stream', '--agent', agentId];
+    final events = bind.runtimeConnection.isNotEmpty
+        ? agentService.streamCliJsonLinesWithStdin(
+            [...arguments, '--stdin-json', 'true'],
+            jsonEncode(
+              _remoteHistoryRequest(
+                agentId: agentId,
+                sessionId: sessionId,
+                limit: limit,
+                offset: offset,
+                bind: bind,
+              ),
+            ),
+          )
+        : agentService.streamCliJsonLines([
+            ...arguments,
+            if (sessionId.trim().isNotEmpty) ...[
+              '--session-id',
+              sessionId.trim(),
+            ],
+            ..._paginationArgs(limit: limit, offset: offset),
+          ]);
+    await for (final event in events) {
       final eventName = (event['event'] ?? '').toString();
       if ((eventName == 'session' || eventName == 'session-preview') &&
           event['session'] is Map<String, dynamic>) {
@@ -258,15 +312,7 @@ class AgentConversationService implements AgentConversationLane {
       jsonEncode(<String, dynamic>{
         'agent': normalizedAgent,
         if (normalizedSession.isNotEmpty) 'sessionId': normalizedSession,
-        if (bind.sessionPath.trim().isNotEmpty)
-          'sessionPath': bind.sessionPath.trim(),
-        if (bind.workingDirectory.trim().isNotEmpty)
-          'workingDirectory': bind.workingDirectory.trim(),
-        if (bind.binaryPath.trim().isNotEmpty)
-          'binaryPath': bind.binaryPath.trim(),
-        if (bind.model.trim().isNotEmpty) 'model': bind.model.trim(),
-        if (bind.reasoningEffort.trim().isNotEmpty)
-          'reasoningEffort': bind.reasoningEffort.trim(),
+        ..._bindDispatchFields(bind),
       }),
     );
     if (result['ok'] != true) {
@@ -304,6 +350,7 @@ class AgentConversationService implements AgentConversationLane {
     required String agentId,
     required String text,
     required String sessionId,
+    List<ConversationAttachment> attachments = const [],
     AgentDispatchBind bind = const AgentDispatchBind(),
   }) async {
     AgentDispatchTurnResult? result;
@@ -312,6 +359,7 @@ class AgentConversationService implements AgentConversationLane {
       agentId: agentId,
       text: text,
       sessionId: sessionId,
+      attachments: attachments,
       bind: bind,
     )) {
       if (event.kind == 'dispatch.turn.completed' ||
@@ -356,22 +404,20 @@ class AgentConversationService implements AgentConversationLane {
     required String agentId,
     required String text,
     required String sessionId,
+    List<ConversationAttachment> attachments = const [],
     AgentDispatchBind bind = const AgentDispatchBind(),
   }) async* {
     final request = <String, dynamic>{
       'agent': agentId,
       'text': text,
       'streamEvents': true,
+      'timeoutMs': _unboundedDispatchTimeoutMs,
+      if (attachments.isNotEmpty)
+        'attachments': [
+          for (final attachment in attachments) attachment.toJson(),
+        ],
       if (sessionId.trim().isNotEmpty) 'sessionId': sessionId.trim(),
-      if (bind.sessionPath.trim().isNotEmpty)
-        'sessionPath': bind.sessionPath.trim(),
-      if (bind.workingDirectory.trim().isNotEmpty)
-        'workingDirectory': bind.workingDirectory.trim(),
-      if (bind.binaryPath.trim().isNotEmpty)
-        'binaryPath': bind.binaryPath.trim(),
-      if (bind.model.trim().isNotEmpty) 'model': bind.model.trim(),
-      if (bind.reasoningEffort.trim().isNotEmpty)
-        'reasoningEffort': bind.reasoningEffort.trim(),
+      ..._bindDispatchFields(bind),
       ..._acceptanceDispatchFields(bind),
     };
 
@@ -421,14 +467,17 @@ class AgentConversationService implements AgentConversationLane {
     required String agentId,
     required String text,
     required String sessionId,
+    required String turnId,
     AgentDispatchBind bind = const AgentDispatchBind(),
   }) async {
     final normalizedAgent = agentId.trim();
     final normalizedText = text.trim();
     final normalizedSession = sessionId.trim();
+    final normalizedTurn = turnId.trim();
     if (normalizedAgent.isEmpty ||
         normalizedText.isEmpty ||
-        normalizedSession.isEmpty) {
+        normalizedSession.isEmpty ||
+        normalizedTurn.isEmpty) {
       return AgentDispatchTurnResult(
         ok: false,
         sessionId: normalizedSession,
@@ -443,15 +492,8 @@ class AgentConversationService implements AgentConversationLane {
           'agent': normalizedAgent,
           'text': normalizedText,
           'sessionId': normalizedSession,
-          if (bind.sessionPath.trim().isNotEmpty)
-            'sessionPath': bind.sessionPath.trim(),
-          if (bind.workingDirectory.trim().isNotEmpty)
-            'workingDirectory': bind.workingDirectory.trim(),
-          if (bind.binaryPath.trim().isNotEmpty)
-            'binaryPath': bind.binaryPath.trim(),
-          if (bind.model.trim().isNotEmpty) 'model': bind.model.trim(),
-          if (bind.reasoningEffort.trim().isNotEmpty)
-            'reasoningEffort': bind.reasoningEffort.trim(),
+          'turnId': normalizedTurn,
+          ..._bindDispatchFields(bind),
         }),
       );
       final ok = result['ok'] == true;
@@ -593,13 +635,14 @@ class AgentConversationService implements AgentConversationLane {
   }) async {
     final normalizedAgent = agentId.trim();
     try {
-      final result = await runner.runCliWithStdin(const [
-        'agent',
-        'conversation',
-        'capabilities',
-        '--stdin-json',
-        'true',
-      ], jsonEncode({'agent': normalizedAgent}));
+      final result = await runner.runCliWithStdin(
+        const ['agent', 'conversation', 'capabilities', '--stdin-json', 'true'],
+        jsonEncode({
+          'agent': normalizedAgent,
+          if (bind.runtimeConnection.isNotEmpty)
+            'runtimeConnection': bind.runtimeConnection,
+        }),
+      );
       if (result['ok'] != true || result['capabilities'] is! Map) {
         throw const FormatException('native capabilities unavailable');
       }
@@ -649,5 +692,23 @@ class AgentConversationService implements AgentConversationLane {
       if (limit != null) ...['--limit', '$limit'],
       if (offset > 0) ...['--offset', '$offset'],
     ];
+  }
+
+  Map<String, dynamic> _remoteHistoryRequest({
+    required String agentId,
+    required String sessionId,
+    required int? limit,
+    required int offset,
+    required AgentDispatchBind bind,
+  }) {
+    return <String, dynamic>{
+      'agent': agentId,
+      if (sessionId.trim().isNotEmpty) 'sessionId': sessionId.trim(),
+      'limit': ?limit,
+      if (offset > 0) 'offset': offset,
+      if (bind.workingDirectory.trim().isNotEmpty)
+        'workingDirectory': bind.workingDirectory.trim(),
+      'runtimeConnection': bind.runtimeConnection,
+    };
   }
 }

@@ -13,14 +13,24 @@ use super::acp_driver_runtime::{AcpDriverSpec, execute_acp, probe_acp};
 pub(super) use super::acp_driver_runtime::{CapabilityProbe, ProtocolFailure, RunResult};
 
 pub(super) const RUNTIME_PROTOCOL: &str = "kimi-code-acp-v1-stdio-ndjson";
-const KIMI_CODE_DRIVER: AcpDriverSpec =
-    AcpDriverSpec::new(RUNTIME_PROTOCOL, &["acp"]).with_identity("kimi-code-acp", "kimi_code_acp");
+const KIMI_CODE_DRIVER: AcpDriverSpec = AcpDriverSpec::new(RUNTIME_PROTOCOL, &["acp"])
+    .with_identity("kimi-code-acp", "kimi_code_acp")
+    .with_launch_settings(
+        "--model",
+        "KIMI_MODEL_THINKING_EFFORT",
+        &["low", "high", "max"],
+    )
+    // ACP subagents have no interactive user attached. Kimi's `--yolo`
+    // auto-approves regular tools but may still open permission questions;
+    // `--auto` is the documented fully autonomous mode and is therefore the
+    // only launch flag that preserves an explicit `allowAll: true` request.
+    .with_allow_all_argument("--auto");
 
 pub(super) fn capability_probe(
     executable: &str,
     cwd: &Path,
     timeout_ms: u64,
-    max_stdout: usize,
+    max_stdout: Option<usize>,
     max_stderr: usize,
 ) -> Result<CapabilityProbe, ProtocolFailure> {
     probe_acp(
@@ -40,7 +50,7 @@ pub(super) fn execute(
     session_id: &str,
     cwd: Option<&Path>,
     timeout_ms: u64,
-    max_stdout: usize,
+    max_stdout: Option<usize>,
     max_stderr: usize,
 ) -> RunResult {
     execute_acp(
@@ -73,6 +83,16 @@ mod tests {
         assert_eq!(KIMI_CODE_DRIVER.agent_id, "kimi-code-acp");
         assert_eq!(KIMI_CODE_DRIVER.error_prefix, "kimi_code_acp");
         assert_eq!(KIMI_CODE_DRIVER.launch_args, &["acp"]);
+        assert_eq!(KIMI_CODE_DRIVER.launch_model_arg, Some("--model"));
+        assert_eq!(
+            KIMI_CODE_DRIVER.launch_reasoning_env,
+            Some("KIMI_MODEL_THINKING_EFFORT")
+        );
+        assert_eq!(
+            KIMI_CODE_DRIVER.launch_reasoning_values,
+            &["low", "high", "max"]
+        );
+        assert_eq!(KIMI_CODE_DRIVER.launch_allow_all_arg, Some("--auto"));
     }
 
     #[test]
@@ -95,7 +115,7 @@ mod tests {
             "private-session",
             Some(Path::new("relative")),
             10,
-            1024,
+            Some(1024),
             1024,
         );
         assert!(!result.ok);

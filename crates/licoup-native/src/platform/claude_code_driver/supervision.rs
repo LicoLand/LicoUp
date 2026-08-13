@@ -94,7 +94,7 @@ pub(super) fn bind_session(
     registry
         .sessions
         .retain(|_, transport| transport.strong_count() > 0);
-    if registry.transports.get(&managed.id).is_none()
+    if !registry.transports.contains_key(&managed.id)
         || registry.sessions.get(session_id).is_some_and(|existing| {
             existing
                 .upgrade()
@@ -151,6 +151,7 @@ pub(super) fn lookup_session_transport(session_id: &str) -> Option<Arc<ManagedTr
     let managed = registry.sessions.get(session_id)?.upgrade()?;
     managed.lifecycle.is_live().then_some(managed)
 }
+#[cfg(test)]
 pub(in crate::platform) fn has_live_session(session_id: &str) -> bool {
     lookup_session_transport(session_id).is_some()
 }
@@ -306,7 +307,8 @@ pub(in crate::platform) fn cleanup_session(session_id: &str) -> ControlDispositi
     ControlDisposition::Accepted
 }
 
-pub(in crate::platform) fn shutdown_all() -> ControlDisposition {
+#[cfg(test)]
+pub(in crate::platform) fn clear_all_for_test() -> ControlDisposition {
     let managed = {
         let Ok(mut registry) = supervisor().lock() else {
             return ControlDisposition::TransportUnavailable;

@@ -1,3 +1,4 @@
+use super::approval::{await_external_approval, permission_request_details};
 use super::control::{ControlRequest, denied_control_response, interrupt_request, steer_message};
 use super::errors::{ProtocolFailure, requires_transport_reset, supervisor_failure};
 use super::io::{TransportEvent, write_message};
@@ -23,7 +24,7 @@ pub(in crate::platform) fn execute(
     session_id: &str,
     cwd: Option<&Path>,
     timeout_ms: u64,
-    max_stdout: usize,
+    max_stdout: Option<usize>,
     max_stderr: usize,
 ) -> RunResult {
     let started_at = timestamp();
@@ -36,36 +37,28 @@ pub(in crate::platform) fn execute(
             Ok(managed) => managed,
             Err(failure) => return RunResult::failed(failure, started_at, false, false),
         }
-    } else {
-        let Some(managed) = lookup_session_transport(&config.requested_session_id) else {
-            return RunResult::failed(
-                ProtocolFailure::new(
-                    "claude_code_live_session_unavailable",
-                    "The exact Claude Code streaming process is no longer available in this client process.",
-                    "session/resume",
-                )
-                .with_session(Some(&config.requested_session_id))
-                .with_turn(&config.turn_id),
-                started_at,
-                false,
-                false,
-            );
-        };
+    } else if let Some(managed) = lookup_session_transport(&config.requested_session_id) {
         if !managed.identity.compatible_with(executable, &config, cwd) {
-            return RunResult::failed(
-                ProtocolFailure::new(
-                    "claude_code_session_configuration_mismatch",
-                    "The requested controls do not match the live Claude Code streaming process.",
-                    "session/resume",
-                )
-                .with_session(Some(&config.requested_session_id))
-                .with_turn(&config.turn_id),
-                started_at,
-                false,
-                false,
-            );
+            // The live process is pinned to its launch configuration (model,
+            // effort, permission mode, cwd, allowlist). A configuration change
+            // never fails the turn: release the old process and launch a fresh
+            // one that resumes the same conversation with the new settings.
+            remove_transport(&managed, true);
+            match spawn_transport(executable, &config, cwd, max_stderr) {
+                Ok(managed) => managed,
+                Err(failure) => return RunResult::failed(failure, started_at, false, false),
+            }
+        } else {
+            managed
         }
-        managed
+    } else {
+        // No live process owns this conversation in the client process: launch
+        // a fresh Claude Code process that resumes the persisted transcript via
+        // --resume. The turn loop verifies the returned conversation identity.
+        match spawn_transport(executable, &config, cwd, max_stderr) {
+            Ok(managed) => managed,
+            Err(failure) => return RunResult::failed(failure, started_at, false, false),
+        }
     };
     let mut transport = match managed.transport.lock() {
         Ok(transport) => transport,
@@ -80,7 +73,9 @@ pub(in crate::platform) fn execute(
         .ok()
         .and_then(|value| value.clone());
     if !config.requested_session_id.is_empty()
-        && known_session.as_deref() != Some(config.requested_session_id.as_str())
+        && known_session
+            .as_deref()
+            .is_some_and(|known| known != config.requested_session_id.as_str())
     {
         drop(transport);
         remove_transport(&managed, true);
@@ -97,7 +92,12 @@ pub(in crate::platform) fn execute(
             false,
         );
     }
-    set_active_session(&managed, Some(known_session.clone().unwrap_or_default()));
+    // A freshly launched resume transport has no bound session yet; the turn
+    // loop verifies the CLI returns the requested conversation before binding.
+    let expected_session = known_session.clone().or_else(|| {
+        (!config.requested_session_id.is_empty()).then(|| config.requested_session_id.clone())
+    });
+    set_active_session(&managed, expected_session.clone());
     let message = match config.stdin_message() {
         Ok(message) => message,
         Err(_) => {
@@ -131,12 +131,19 @@ pub(in crate::platform) fn execute(
             false,
         )
     } else {
+        let deadline = if timeout_ms == 0 {
+            // timeoutMs 0 opts out of the turn deadline entirely; the agent
+            // runs until the turn completes, however long that takes.
+            None
+        } else {
+            Some(Instant::now() + Duration::from_millis(timeout_ms))
+        };
         run_turn_loop(
             &mut transport,
             &managed,
             &config,
-            known_session,
-            Instant::now() + Duration::from_millis(timeout_ms),
+            expected_session,
+            deadline,
             max_stdout,
         )
     };
@@ -189,8 +196,8 @@ fn run_turn_loop(
     managed: &Arc<ManagedTransport>,
     config: &DriverConfig,
     known_session: Option<String>,
-    deadline: Instant,
-    max_stdout: usize,
+    deadline: Option<Instant>,
+    max_stdout: Option<usize>,
 ) -> (Option<TurnOutcome>, Option<ProtocolFailure>, bool) {
     let mut state = TurnState::new(config, &managed.identity, known_session);
     let mut observed_bytes = 0usize;
@@ -210,7 +217,7 @@ fn run_turn_loop(
             );
         }
         let now = Instant::now();
-        if now >= deadline {
+        if deadline.is_some_and(|deadline| now >= deadline) {
             let mut failure = state.failure(
                 "claude_code_timeout",
                 "Claude Code timed out before the turn completed.",
@@ -219,24 +226,58 @@ fn run_turn_loop(
             failure.turn_status = Some("timeout".to_string());
             return (None, Some(failure), false);
         }
-        match transport
-            .receiver
-            .recv_timeout((deadline - now).min(PROCESS_POLL_INTERVAL))
-        {
+        let wait = deadline
+            .map(|deadline| (deadline - now).min(PROCESS_POLL_INTERVAL))
+            .unwrap_or(PROCESS_POLL_INTERVAL);
+        match transport.receiver.recv_timeout(wait) {
             Ok(TransportEvent::Message { message, bytes }) => {
-                observed_bytes = observed_bytes.saturating_add(bytes);
-                if observed_bytes > max_stdout {
-                    return (
-                        None,
-                        Some(state.failure(
-                            "claude_code_output_limit",
-                            "Claude Code exceeded the configured structured output limit.",
-                            "protocol/read",
-                        )),
-                        true,
-                    );
+                if let Some(max_stdout) = max_stdout {
+                    observed_bytes = observed_bytes.saturating_add(bytes);
+                    if observed_bytes > max_stdout {
+                        return (
+                            None,
+                            Some(state.failure(
+                                "claude_code_output_limit",
+                                "Claude Code exceeded the configured structured output limit.",
+                                "protocol/read",
+                            )),
+                            true,
+                        );
+                    }
                 }
                 if message.get("type").and_then(Value::as_str) == Some("control_request") {
+                    // A permission request suspends the turn until the client
+                    // resolves the parked approval; it never fails the turn on
+                    // its own. Allowed decisions resume the loop, denied
+                    // decisions end the turn with an interaction failure.
+                    if let Some(request) = permission_request_details(&message) {
+                        let session_id = state
+                            .observed_session_id
+                            .as_deref()
+                            .or(state.expected_session_id.as_deref())
+                            .unwrap_or_default();
+                        match await_external_approval(
+                            transport,
+                            session_id,
+                            &config.turn_id,
+                            &request,
+                        ) {
+                            Ok(true) => continue,
+                            Ok(false) => {
+                                state.interaction_failure = true;
+                                return (
+                                    None,
+                                    Some(state.failure(
+                                        "claude_code_user_interaction_required",
+                                        "Claude Code requires user interaction before this turn can continue.",
+                                        "permission/request",
+                                    )),
+                                    false,
+                                );
+                            }
+                            Err(failure) => return (None, Some(failure), false),
+                        }
+                    }
                     state.interaction_failure = true;
                     if let Some(response) = denied_control_response(&message)
                         && write_message(&mut transport.stdin, &response).is_err()

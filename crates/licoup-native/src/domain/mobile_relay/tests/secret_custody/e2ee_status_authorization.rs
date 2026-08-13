@@ -2,63 +2,36 @@ use super::super::test_support::*;
 #[test]
 fn e2ee_status_accepts_memory_only_custody_but_does_not_overclaim_missing_session() {
     let dir = temp_dir("mobile-relay-e2ee-status-platform-secret-store");
-    let previous = set_portable_data_dir_override(Some(dir));
+    let previous = set_portable_data_dir_override(Some(dir.to_path_buf()));
     let store = Arc::new(EphemeralSecretStore::new());
     let mut pc_config = default_config();
     let pc_descriptor = ensure_mobile_relay_endpoint_descriptor(
         &mut pc_config,
-        test_runtime_secret_material(stringify!(&mut pc_config)),
+        &mut test_runtime_secret_material(stringify!(&mut pc_config)),
         "desktop_sidecar",
     )
     .unwrap();
     let mut mobile_config = default_config();
     ensure_mobile_relay_endpoint_descriptor(
         &mut mobile_config,
-        test_runtime_secret_material(stringify!(&mut mobile_config)),
+        &mut test_runtime_secret_material(stringify!(&mut mobile_config)),
         "mobile",
     )
     .unwrap();
     apply_peer_secure_mesh_descriptor(
         &mut mobile_config,
-        test_runtime_secret_material(stringify!(&mut mobile_config)),
+        &mut test_runtime_secret_material(stringify!(&mut mobile_config)),
         &pc_descriptor,
         true,
     )
     .unwrap();
-    let private_key = mobile_config["mobileRelayE2ee"]["privateKeyBase64url"]
-        .as_str()
-        .unwrap()
-        .to_string();
-    let signing_key = mobile_config["mobileRelayE2ee"]["signingKeyBase64url"]
-        .as_str()
-        .unwrap()
-        .to_string();
-    let signed_prekey_private_key =
-        mobile_config["mobileRelayE2ee"]["signedPrekeyPrivateKeyBase64url"]
-            .as_str()
-            .unwrap()
-            .to_string();
-    let one_time_prekey_private_key =
-        mobile_config["mobileRelayE2ee"]["oneTimePrekeyPrivateKeyBase64url"]
-            .as_str()
-            .unwrap()
-            .to_string();
-    let one_time_mlkem1024_prekey_seed =
-        mobile_config["mobileRelayE2ee"]["oneTimeMlKem1024PrekeySeedBase64url"]
-            .as_str()
-            .unwrap()
-            .to_string();
-    let pairing_secret = mobile_config["mobileRelayE2ee"]["pairingSecretBase64url"]
-        .as_str()
-        .unwrap()
-        .to_string();
-    persist_config_secret_material_to_secret_store(
-        &mut mobile_config,
-        store.as_ref(),
-        MOBILE_RELAY_PLATFORM_SECRET_STORE_NAMESPACE,
-    )
+    let runtime_secrets = MobileRelayE2eeSecretField::ALL
+        .map(|field| test_runtime_e2ee_secret(stringify!(&mobile_config), field));
+    let setup_store_override: Arc<dyn SecureMeshSecretStore> = store.clone();
+    with_mobile_relay_secret_store_override(setup_store_override, || {
+        save_test_config_with_runtime_secret_context(&mut mobile_config, stringify!(&mobile_config))
+    })
     .unwrap();
-    save_config(&mut mobile_config).unwrap();
     assert_eq!(store.authorization_session_count(), 1);
     assert_eq!(
         store.authorization_session_operation_counts()[0],
@@ -127,12 +100,9 @@ fn e2ee_status_accepts_memory_only_custody_but_does_not_overclaim_missing_sessio
         mobile_relay_e2ee_secret_store_authorization_batch_operation_count().saturating_add(2)
     );
     let serialized = serde_json::to_string(&status).unwrap();
-    assert!(!serialized.contains(&private_key));
-    assert!(!serialized.contains(&signing_key));
-    assert!(!serialized.contains(&signed_prekey_private_key));
-    assert!(!serialized.contains(&one_time_prekey_private_key));
-    assert!(!serialized.contains(&one_time_mlkem1024_prekey_seed));
-    assert!(!serialized.contains(&pairing_secret));
+    for secret in runtime_secrets {
+        assert!(!serialized.contains(&secret));
+    }
 
     set_portable_data_dir_override(previous);
 }
@@ -140,19 +110,17 @@ fn e2ee_status_accepts_memory_only_custody_but_does_not_overclaim_missing_sessio
 #[test]
 fn e2ee_status_reports_only_confirmed_negotiated_durable_session() {
     let dir = temp_dir("mobile-relay-e2ee-status-confirmed-session");
-    let previous = set_portable_data_dir_override(Some(dir));
+    let previous = set_portable_data_dir_override(Some(dir.to_path_buf()));
     let store = Arc::new(EphemeralSecretStore::new());
     let store_override: Arc<dyn SecureMeshSecretStore> = store.clone();
     with_mobile_relay_secret_store_override(store_override, || {
         let mut pc_config = default_config();
         let mut mobile_config = default_config();
         pair_mobile_relay_configs(&mut pc_config, &mut mobile_config);
-        persist_config_secret_material_to_secret_store(
+        save_test_config_with_runtime_secret_context(
             &mut mobile_config,
-            store.as_ref(),
-            MOBILE_RELAY_PLATFORM_SECRET_STORE_NAMESPACE,
+            stringify!(&mobile_config),
         )?;
-        save_config(&mut mobile_config)?;
 
         let status = e2ee_status(&json!({"authorize": true}))?;
         assert_eq!(status["secureSessionEstablished"], true);
@@ -183,7 +151,7 @@ fn e2ee_status_reports_only_confirmed_negotiated_durable_session() {
 #[test]
 fn public_config_get_does_not_begin_secret_store_authorization_session() {
     let dir = temp_dir("mobile-relay-public-config-no-authorization");
-    let previous = set_portable_data_dir_override(Some(dir));
+    let previous = set_portable_data_dir_override(Some(dir.to_path_buf()));
     let store = Arc::new(EphemeralSecretStore::new());
     let mut config = default_config();
     config["pairingId"] = json!("pair-public-no-auth");
@@ -191,7 +159,7 @@ fn public_config_get_does_not_begin_secret_store_authorization_session() {
     config["mobileToken"] = json!("mobile-token-public-no-auth-canary");
     ensure_mobile_relay_endpoint_descriptor(
         &mut config,
-        test_runtime_secret_material(stringify!(&mut config)),
+        &mut test_runtime_secret_material(stringify!(&mut config)),
         "mobile",
     )
     .unwrap();
@@ -231,40 +199,38 @@ fn public_config_get_does_not_begin_secret_store_authorization_session() {
 #[test]
 fn e2ee_status_without_authorization_does_not_begin_secret_store_session() {
     let dir = temp_dir("mobile-relay-e2ee-status-no-authorization");
-    let previous = set_portable_data_dir_override(Some(dir));
+    let previous = set_portable_data_dir_override(Some(dir.to_path_buf()));
     let store = Arc::new(EphemeralSecretStore::new());
     let mut pc_config = default_config();
     let pc_descriptor = ensure_mobile_relay_endpoint_descriptor(
         &mut pc_config,
-        test_runtime_secret_material(stringify!(&mut pc_config)),
+        &mut test_runtime_secret_material(stringify!(&mut pc_config)),
         "desktop_sidecar",
     )
     .unwrap();
     let mut mobile_config = default_config();
     ensure_mobile_relay_endpoint_descriptor(
         &mut mobile_config,
-        test_runtime_secret_material(stringify!(&mut mobile_config)),
+        &mut test_runtime_secret_material(stringify!(&mut mobile_config)),
         "mobile",
     )
     .unwrap();
     apply_peer_secure_mesh_descriptor(
         &mut mobile_config,
-        test_runtime_secret_material(stringify!(&mut mobile_config)),
+        &mut test_runtime_secret_material(stringify!(&mut mobile_config)),
         &pc_descriptor,
         true,
     )
     .unwrap();
-    let private_key = mobile_config["mobileRelayE2ee"]["privateKeyBase64url"]
-        .as_str()
-        .unwrap()
-        .to_string();
-    persist_config_secret_material_to_secret_store(
-        &mut mobile_config,
-        store.as_ref(),
-        MOBILE_RELAY_PLATFORM_SECRET_STORE_NAMESPACE,
-    )
+    let private_key = test_runtime_e2ee_secret(
+        stringify!(&mobile_config),
+        MobileRelayE2eeSecretField::PrivateKey,
+    );
+    let setup_store_override: Arc<dyn SecureMeshSecretStore> = store.clone();
+    with_mobile_relay_secret_store_override(setup_store_override, || {
+        save_test_config_with_runtime_secret_context(&mut mobile_config, stringify!(&mobile_config))
+    })
     .unwrap();
-    save_config_raw(&mut mobile_config).unwrap();
     let baseline_session_count = store.authorization_session_count();
 
     let store_override: Arc<dyn SecureMeshSecretStore> = store.clone();

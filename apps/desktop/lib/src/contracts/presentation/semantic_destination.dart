@@ -9,6 +9,7 @@ enum ClientSection {
   skillHub,
   pluginManagement,
   mobileRelay,
+  models,
   settings,
 }
 

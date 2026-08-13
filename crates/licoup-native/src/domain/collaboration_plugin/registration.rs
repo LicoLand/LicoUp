@@ -11,7 +11,9 @@ use uuid::Uuid;
 use crate::platform::client_state::ClientStateStore;
 
 use super::authority::AuthorityRegistration;
-use super::lifecycle::{InstalledWorkflowPlugin, collaboration_root, installed_workflow_plugin};
+#[cfg(test)]
+use super::lifecycle::installed_workflow_plugin;
+use super::lifecycle::{InstalledWorkflowPlugin, collaboration_root};
 use super::package::{SelectedPayloadFile, WorkflowChoice};
 
 pub(super) const REGISTRATION_SCHEMA: &str = "licoup.mcp-agent-registration.v2";
@@ -449,6 +451,7 @@ pub(crate) fn acp_servers_in(store: &ClientStateStore, agent_id: &str) -> Result
     Ok(Vec::new())
 }
 
+#[cfg(test)]
 pub(crate) fn load_bridge_registration(
     store: &ClientStateStore,
     agent_id: &str,
@@ -502,6 +505,7 @@ pub(in crate::domain::collaboration_plugin) fn canonical_agent_id(
     Some(canonical.to_owned())
 }
 
+#[cfg(test)]
 fn read_record(path: &Path) -> Result<McpAgentRegistration> {
     let metadata = fs::symlink_metadata(path)
         .map_err(|_| anyhow!("collaboration_mcp_registration_missing"))?;
@@ -658,6 +662,7 @@ fn authority_binding_for_record(
     })
 }
 
+#[cfg(test)]
 fn loaded_authority_binding(
     store: &ClientStateStore,
     record: &McpAgentRegistration,

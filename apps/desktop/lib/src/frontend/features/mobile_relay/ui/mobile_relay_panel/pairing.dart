@@ -8,19 +8,21 @@ import 'package:licoup/src/contracts/mobile_relay/mobile_relay_models.dart';
 import 'package:licoup/src/frontend/features/mobile_relay/ui/mobile_relay_panel/qr.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/apple_notifications.dart';
+import 'package:licoup/src/frontend/shared/ui/endpoint_configuration.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 class MobileRelayPairingWorkspaceCard extends StatelessWidget {
   const MobileRelayPairingWorkspaceCard({
     super.key,
     required this.controller,
-    required this.customUrlController,
+    required this.stationBaseUrlController,
     required this.presentation,
     required this.onGenerate,
   });
 
   final ClientController controller;
-  final TextEditingController customUrlController;
+  final TextEditingController stationBaseUrlController;
   final MobilePairingPresentation? presentation;
   final Future<void> Function() onGenerate;
 
@@ -33,11 +35,8 @@ class MobileRelayPairingWorkspaceCard extends StatelessWidget {
     final expiresAt = config.lastPairingExpiresAt.trim().isNotEmpty
         ? config.lastPairingExpiresAt
         : (controller.mobileRelayActionResult?['expiresAt']?.toString() ?? '');
-    final gateway = canonicalMobileRelayGatewayOrigin(
-      config.effectiveGatewayUrl,
-    );
-    final gatewayConfigured =
-        gateway != null && !mobileRelayGatewayIsEphemeralCustom(gateway);
+    final station = canonicalMobileRelayStationOrigin(config.stationBaseUrl);
+    final stationConfigured = station != null;
 
     return Container(
       key: const Key('pairing-qr-workspace-card'),
@@ -45,14 +44,14 @@ class MobileRelayPairingWorkspaceCard extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: colors.surfaceLow,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(LicoRadius.card),
         border: Border.all(color: colors.line.withAlpha(90)),
       ),
       child: LayoutBuilder(
         builder: (context, constraints) {
           final info = _MobileRelayPairingInfoPane(
             controller: controller,
-            customUrlController: customUrlController,
+            stationBaseUrlController: stationBaseUrlController,
             paired: config.paired,
             pairingCode: pairingCode,
             expiresAt: expiresAt,
@@ -60,7 +59,7 @@ class MobileRelayPairingWorkspaceCard extends StatelessWidget {
           final qr = MobileRelayPairingQrFrame(
             inviteText: inviteText,
             busy: controller.isMobileRelayBusy,
-            gatewayConfigured: gatewayConfigured,
+            stationConfigured: stationConfigured,
             onGenerate: onGenerate,
           );
           if (constraints.maxWidth < 720) {
@@ -90,14 +89,14 @@ class MobileRelayPairingWorkspaceCard extends StatelessWidget {
 class _MobileRelayPairingInfoPane extends StatelessWidget {
   const _MobileRelayPairingInfoPane({
     required this.controller,
-    required this.customUrlController,
+    required this.stationBaseUrlController,
     required this.paired,
     required this.pairingCode,
     required this.expiresAt,
   });
 
   final ClientController controller;
-  final TextEditingController customUrlController;
+  final TextEditingController stationBaseUrlController;
   final bool paired;
   final String pairingCode;
   final String expiresAt;
@@ -113,33 +112,24 @@ class _MobileRelayPairingInfoPane extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          strings.gateway,
+          strings.station,
           style: Theme.of(context).textTheme.titleSmall?.copyWith(
             color: colors.textMuted,
             fontWeight: FontWeight.w700,
           ),
         ),
         const SizedBox(height: 12),
-        TextField(
-          key: const Key('mobile-relay-explicit-gateway-field'),
-          controller: customUrlController,
+        EndpointUrlField(
+          key: const Key('mobile-relay-station-base-url-field'),
+          controller: stationBaseUrlController,
           enabled: !busy,
-          keyboardType: TextInputType.url,
-          decoration: InputDecoration(
-            prefixIcon: const Icon(Icons.link_outlined),
-            hintText: 'https://relay.example.com',
-            suffixIcon: IconButton(
-              tooltip: strings.saveGateway,
-              icon: const Icon(Icons.save_outlined),
-              onPressed: busy
-                  ? null
-                  : () => unawaited(
-                      _saveGateway(controller, customUrlController),
-                    ),
-            ),
-          ),
-          onSubmitted: (_) =>
-              unawaited(_saveGateway(controller, customUrlController)),
+          hintText: 'https://station.example.com',
+          saveTooltip: strings.saveStation,
+          onSave: busy
+              ? null
+              : () => unawaited(
+                  _saveStation(controller, stationBaseUrlController),
+                ),
         ),
         const SizedBox(height: 16),
         MobileRelayPairingInfoRow(
@@ -165,8 +155,8 @@ class _MobileRelayPairingInfoPane extends StatelessWidget {
             width: double.infinity,
             padding: const EdgeInsets.fromLTRB(14, 10, 6, 10),
             decoration: BoxDecoration(
-              color: colors.surfaceHigh,
-              borderRadius: BorderRadius.circular(8),
+              color: colors.surfaceLow,
+              borderRadius: BorderRadius.circular(LicoRadius.chip),
               border: Border.all(color: colors.line.withAlpha(80)),
             ),
             child: Row(
@@ -188,7 +178,7 @@ class _MobileRelayPairingInfoPane extends StatelessWidget {
                         pairingCode,
                         style: Theme.of(context).textTheme.titleMedium
                             ?.copyWith(
-                              color: colors.primary,
+                              color: colors.accent,
                               fontWeight: FontWeight.w800,
                             ),
                       ),
@@ -198,7 +188,7 @@ class _MobileRelayPairingInfoPane extends StatelessWidget {
                 IconButton(
                   tooltip: strings.copyPairingCode,
                   icon: const Icon(Icons.copy_outlined),
-                  color: colors.primary,
+                  color: colors.accent,
                   onPressed: () => unawaited(
                     _copyPairingCode(context, controller, strings, pairingCode),
                   ),
@@ -212,48 +202,20 @@ class _MobileRelayPairingInfoPane extends StatelessWidget {
   }
 }
 
-class MobileRelayPairingInfoRow extends StatelessWidget {
+class MobileRelayPairingInfoRow extends EndpointStatusRow {
   const MobileRelayPairingInfoRow({
     super.key,
-    required this.label,
-    required this.value,
+    required super.label,
+    required super.value,
   });
-
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.licoColors;
-    final display = value.trim().isEmpty ? '-' : value.trim();
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 5),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 112,
-            child: Text(label, style: TextStyle(color: colors.textMuted)),
-          ),
-          Expanded(
-            child: SelectableText(
-              display,
-              style: TextStyle(color: colors.text),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 }
 
-Future<void> _saveGateway(
+Future<void> _saveStation(
   ClientController controller,
-  TextEditingController customUrlController,
+  TextEditingController stationBaseUrlController,
 ) {
-  return controller.configureMobileRelayGateway(
-    useCustomGateway: true,
-    customGatewayUrl: customUrlController.text,
+  return controller.configureMobileRelayStation(
+    stationBaseUrl: stationBaseUrlController.text,
   );
 }
 

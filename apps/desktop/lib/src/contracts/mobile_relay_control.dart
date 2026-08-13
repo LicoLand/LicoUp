@@ -62,13 +62,10 @@ final class SecureMeshProtocolActionState {
   final String errorCode;
 }
 
-abstract interface class MobileRelayGateway {
+abstract interface class MobileRelayClient {
   Future<MobileRelayConfig> loadConfig({bool authorizeSecrets = false});
   Future<void> saveConfig(MobileRelayConfig config);
-  Future<MobileRelayConfig> configureGateway({
-    required bool useCustomGateway,
-    required String customGatewayUrl,
-  });
+  Future<MobileRelayConfig> configureStation({required String stationBaseUrl});
   Future<Map<String, dynamic>> createPairing();
   Future<Map<String, dynamic>> refreshPairingStatus();
   Future<Map<String, dynamic>> claimPairing(Map<String, dynamic> invite);
@@ -121,13 +118,4 @@ abstract interface class SecureMeshGateway {
   });
   Future<SecureMeshMlsResponse> executeMls(SecureMeshMlsRequest request);
   Future<SecureMeshKtResponse> executeKt(SecureMeshKtRequest request);
-}
-
-abstract interface class SecureMeshSkillInstallGateway {
-  Future<Map<String, dynamic>> applyInstall({
-    required String agent,
-    required String sourcePath,
-    required String name,
-    required bool pin,
-  });
 }

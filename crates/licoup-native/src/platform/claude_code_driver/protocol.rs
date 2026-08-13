@@ -1,9 +1,11 @@
 use super::command::LaunchIdentity;
 use super::errors::ProtocolFailure;
-use super::events::{partial_text_delta, project_event};
+use super::events::{
+    partial_text_delta, processing_evidence_kind, processing_tool_name, project_event,
+};
 use super::model::EffectiveSettings;
 use super::params::DriverConfig;
-use serde_json::Value;
+use serde_json::{Value, json};
 
 #[derive(Debug)]
 pub(super) struct TurnOutcome {
@@ -93,8 +95,47 @@ impl<'a> TurnState<'a> {
                 text,
             );
         }
+        // Real Claude Code 2.x print streams deliver whole assistant messages
+        // instead of content_block_delta events: each tool-call round arrives
+        // as one assistant message whose content text blocks carry the reply.
+        // Surface every text block as a chunk so the client renders progress
+        // turn by turn instead of waiting for the final result.
+        if message.get("type").and_then(Value::as_str) == Some("assistant")
+            && let Some(blocks) = message
+                .pointer("/message/content")
+                .and_then(Value::as_array)
+        {
+            for block in blocks {
+                if block.get("type").and_then(Value::as_str) == Some("text")
+                    && let Some(text) = block
+                        .get("text")
+                        .and_then(Value::as_str)
+                        .filter(|text| !text.trim().is_empty())
+                {
+                    super::super::turn_event_emit::emit_agent_message_chunk(
+                        self.observed_session_id
+                            .as_deref()
+                            .or(self.expected_session_id.as_deref())
+                            .unwrap_or_default(),
+                        &self.config.turn_id,
+                        text,
+                    );
+                }
+            }
+        }
         self.events
             .extend(super::super::skill_invocation_projection::project_skill_invocations(&message));
+        if let Some(evidence_kind) = processing_evidence_kind(&message) {
+            super::super::turn_event_emit::emit_agent_processing(
+                self.observed_session_id
+                    .as_deref()
+                    .or(self.expected_session_id.as_deref())
+                    .unwrap_or_default(),
+                &self.config.turn_id,
+                evidence_kind,
+                processing_tool_name(&message),
+            );
+        }
         if let Some(projected) = project_event(&message) {
             self.events.push(projected);
         }
@@ -130,10 +171,10 @@ impl<'a> TurnState<'a> {
         self.observed_session_id = Some(value.to_string());
         if !self.started_emitted {
             super::super::turn_event_emit::emit_turn_event(
-                "dispatch.turn.started",
+                "agent.turn.accepted",
                 value,
                 &self.config.turn_id,
-                serde_json::json!({"transport": "claude-code-cli-stream-json"}),
+                serde_json::json!({"evidenceKind": "stream-init"}),
             );
             self.started_emitted = true;
         }
@@ -152,17 +193,48 @@ impl<'a> TurnState<'a> {
                     "session/open",
                 )
             })?;
-        let denied = terminal
+        // Permission denials are rendered honestly, never failed: the CLI
+        // already answered the denial and completed the turn. Each denied
+        // tool is surfaced as a permission.denied event so the client can show
+        // an approval card with a retry affordance.
+        if let Some(denials) = terminal
             .get("permission_denials")
             .and_then(Value::as_array)
-            .is_some_and(|values| !values.is_empty());
+            .filter(|values| !values.is_empty())
+        {
+            for denial in denials {
+                let tool_name = denial
+                    .get("tool_name")
+                    .and_then(Value::as_str)
+                    .unwrap_or("tool");
+                let tool_use_id = denial
+                    .get("tool_use_id")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default();
+                let session_id = self
+                    .observed_session_id
+                    .as_deref()
+                    .or(self.expected_session_id.as_deref())
+                    .unwrap_or_default();
+                super::super::turn_event_emit::emit_turn_event(
+                    "permission.denied",
+                    session_id,
+                    &self.config.turn_id,
+                    json!({
+                        "toolName": tool_name,
+                        "toolUseId": tool_use_id,
+                        "text": format!("{tool_name} was denied permission."),
+                    }),
+                );
+            }
+        }
         let deferred = terminal.get("deferred_tool_use").is_some()
             || terminal
                 .get("terminal_reason")
                 .or_else(|| terminal.get("stop_reason"))
                 .and_then(Value::as_str)
                 == Some("tool_deferred");
-        if self.interaction_failure || denied || deferred {
+        if self.interaction_failure || deferred {
             let mut failure = self.failure(
                 "claude_code_user_interaction_required",
                 "Claude Code requires user interaction before this turn can continue.",
@@ -177,11 +249,15 @@ impl<'a> TurnState<'a> {
             .get("subtype")
             .and_then(Value::as_str)
             .unwrap_or("failed");
+        // The CLI reports tool errors as `error_during_execution` even when
+        // the turn completed with a real reply. Only an explicit is_error
+        // (or a missing flag on a plain failure) fails the turn; the honest
+        // reply stays visible.
         let is_error = terminal
             .get("is_error")
             .and_then(Value::as_bool)
-            .unwrap_or(subtype != "success");
-        if is_error || subtype != "success" {
+            .unwrap_or(subtype == "failed");
+        if is_error {
             if matches!(subtype, "authentication_required" | "authentication_failed") {
                 return Err(self
                     .failure(

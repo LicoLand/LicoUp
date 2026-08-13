@@ -11,17 +11,17 @@ void main() {
   test('state store accepts only declared bounded presentation values', () {
     final catalog = fixtureLayoutCatalog();
     final store = LayoutStateStore(catalog);
-    final workbench = fixtureStateNamespaces().first;
+    final dashboard = fixtureStateNamespaces().first;
     final native = fixtureStateNamespaces().last;
 
-    store.write(workbench, LayoutScrollState(128));
+    store.write(dashboard, LayoutScrollState(128));
     store.write(native, LayoutScrollState(64));
-    expect((store.read(workbench) as LayoutScrollState).offset, 128);
+    expect((store.read(dashboard) as LayoutScrollState).offset, 128);
     expect((store.read(native) as LayoutScrollState).offset, 64);
     expect(store.length, 2);
 
-    store.resetProfile(LayoutProfileId.parse('workbench'));
-    expect(store.read(workbench), isNull);
+    store.resetProfile(LayoutProfileId.parse('dashboard'));
+    expect(store.read(dashboard), isNull);
     expect((store.read(native) as LayoutScrollState).offset, 64);
     expect(store.length, 1);
     store.resetAll();
@@ -31,7 +31,7 @@ void main() {
   test('state store rejects undeclared keys and mismatched value kinds', () {
     final store = LayoutStateStore(fixtureLayoutCatalog());
     final unregistered = LayoutStateNamespace(
-      profileId: LayoutProfileId.parse('workbench'),
+      profileId: LayoutProfileId.parse('dashboard'),
       surface: LayoutRuntimeSurface.desktop,
       destination: ClientSection.settings,
       channel: const LayoutStateChannel(

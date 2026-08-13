@@ -113,7 +113,6 @@ pub(super) fn key_transparency_provision(params: &Value) -> Result<Value> {
         "purpose": purpose.stable_code(),
         "treeSize": authorized.signed_tree_head().tree_size,
         "authorizationDigest": authorized.authorization_digest(),
-        "mlsKeyPackageAuthorizationDigest": mls_key_package_authorized,
-        "privateKeyMaterial": "redacted"
+        "mlsKeyPackageAuthorizationDigest": mls_key_package_authorized
     }))
 }

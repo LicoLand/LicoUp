@@ -1,61 +1,13 @@
 use super::*;
 use licoup_native::ffi::generated::client_error::ClientError;
-use serde_json::{Value, json};
+use serde_json::Value;
+
+#[path = "error/cases.rs"]
+mod cases;
 
 #[test]
 fn typed_client_error_metadata_survives_command_and_terminal_rpc_frames() {
-    let expected_errors = [
-        json!({
-            "code": "invalid_request",
-            "stage": "request/validation",
-            "component": "stdio_rpc",
-            "retryable": false,
-            "recovery": "correct_request",
-            "presentationArgs": {"field": "method"}
-        }),
-        json!({
-            "code": "agent_runtime_unsupported",
-            "stage": "discovery/adapter",
-            "component": "runtime_adapter",
-            "retryable": false,
-            "recovery": "select_supported_adapter",
-            "presentationArgs": {"agentLabel": "Fixture Agent"}
-        }),
-        json!({
-            "code": "native_agent_executable_unavailable",
-            "stage": "process/launch",
-            "component": "runtime_process",
-            "retryable": true,
-            "recovery": "install_or_retry_runtime",
-            "presentationArgs": {"runtimeLabel": "Fixture Runtime"}
-        }),
-        json!({
-            "code": "agent_conversation_dispatch_failed",
-            "stage": "conversation/dispatch",
-            "component": "conversation_runtime",
-            "retryable": true,
-            "recovery": "preserve_draft_and_retry",
-            "presentationArgs": {"agentLabel": "Fixture Agent"}
-        }),
-        json!({
-            "code": "stream_protocol_failed",
-            "stage": "conversation/stream_receive",
-            "component": "stdio_rpc",
-            "retryable": true,
-            "recovery": "preserve_draft_and_retry",
-            "presentationArgs": {"sequence": "7"}
-        }),
-        json!({
-            "code": "terminal_result_invalid",
-            "stage": "conversation/terminal_result",
-            "component": "conversation_runtime",
-            "retryable": false,
-            "recovery": "review_terminal_result",
-            "presentationArgs": {"resultKind": "terminal"}
-        }),
-    ];
-
-    for (index, expected) in expected_errors.into_iter().enumerate() {
+    for (index, expected) in cases::expected_errors().into_iter().enumerate() {
         let error: ClientError = serde_json::from_value(expected.clone()).unwrap();
         let request_id = format!("request-{index}");
 

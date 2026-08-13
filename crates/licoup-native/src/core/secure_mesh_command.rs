@@ -32,8 +32,8 @@ mod schema;
 pub use codec::{evaluate_secure_command_json, execute_secure_command_json};
 pub use policy::{SecureCommandEvaluation, evaluate_secure_command};
 pub use replay::{
-    SecureCommandReplayLedger, SecureCommandReplayRecordStatus, SecureCommandReplayStore,
-    SecureCommandSqliteReplayLedger,
+    SecureCommandPriorExecution, SecureCommandReplayLedger, SecureCommandReplayRecordStatus,
+    SecureCommandReplayStore, SecureCommandSqliteReplayLedger,
 };
 pub use runtime::{
     SecureCommandExecutionOutcome, SecureCommandLocalExecutor, execute_evaluated_secure_command,
@@ -63,9 +63,6 @@ const LOCAL_EXECUTION_FAILED_REMOTE_DETAIL: &str =
     "local command execution failed; details are not exposed over secure mesh";
 const SECURE_AGENT_MESSAGE_TIMEOUT_MS: u64 = 90_000;
 const AGENT_MESSAGE_SEND_PAYLOAD_FIELDS: &[&str] = &[
-    "agent",
-    "agentId",
-    "target",
     "text",
     "message",
     "prompt",
@@ -76,10 +73,9 @@ const AGENT_MESSAGE_SEND_PAYLOAD_FIELDS: &[&str] = &[
     "sessionId",
     "nativeSessionId",
 ];
-const AGENT_SESSIONS_LIST_PAYLOAD_FIELDS: &[&str] =
-    &["agent", "agentId", "target", "limit", "offset"];
-const AGENT_SESSIONS_DESCRIBE_PAYLOAD_FIELDS: &[&str] =
-    &["agent", "agentId", "target", "sessionId", "nativeSessionId"];
+const AGENT_SESSIONS_LIST_PAYLOAD_FIELDS: &[&str] = &["limit", "offset"];
+const AGENT_SESSIONS_DESCRIBE_PAYLOAD_FIELDS: &[&str] = &["sessionId", "nativeSessionId"];
+const AGENT_RESOURCE_SELECTOR_FIELDS: &[&str] = &["agent", "agentId", "target"];
 const COMMAND_BODY_DENIED_EXECUTION_FIELDS: &[&str] = &[
     "command",
     "args",

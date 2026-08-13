@@ -24,7 +24,7 @@ pub(in crate::platform) fn execute(
     session_id: &str,
     cwd: Option<&Path>,
     timeout_ms: u64,
-    max_stdout: usize,
+    max_stdout: Option<usize>,
     max_stderr: usize,
 ) -> RunResult {
     let started_at = timestamp();
@@ -112,7 +112,11 @@ pub(in crate::platform) fn execute(
         );
     }
 
-    let deadline = Instant::now() + Duration::from_millis(timeout_ms);
+    let deadline = if timeout_ms == 0 {
+        None
+    } else {
+        Some(Instant::now() + Duration::from_millis(timeout_ms))
+    };
     let (outcome, failure, status_code, stdout_was_truncated) = run_protocol_loop(
         &mut stdin,
         &receiver,

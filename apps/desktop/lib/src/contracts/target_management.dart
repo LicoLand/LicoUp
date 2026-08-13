@@ -9,6 +9,8 @@ abstract interface class TargetManagementGateway {
     String configPath = '',
     String binaryPath = '',
     String historyRoot = '',
+    String location = 'local',
+    Map<String, dynamic> runtimeConnection = const <String, dynamic>{},
   });
 
   Future<Map<String, dynamic>> inspectTarget(String target);
@@ -23,9 +25,16 @@ abstract interface class TargetSnapshotRepository {
   Future<void> save(Object portableData, List<TargetCandidate> targets);
 }
 
-/// Durable ordering boundary for conversation target tabs.
+/// Durable ordering and pin boundary for conversation target tabs/contacts.
 abstract interface class TargetTabOrderRepository {
   Future<List<String>> load(Object portableData);
 
   Future<void> save(Object portableData, List<String> order);
+
+  Future<List<String>> loadPinned(Object portableData);
+
+  Future<void> savePinned(Object portableData, List<String> pinned);
+
+  /// True when the store has an explicit pin document (including an empty list).
+  Future<bool> hasCustomPinnedIds(Object portableData);
 }

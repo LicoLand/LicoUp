@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/minimal_scan_icon.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
@@ -58,14 +59,14 @@ class _MobileScanQrOption extends StatelessWidget {
     final strings = LicoStrings.of(context);
     return Material(
       key: const Key('mobile-agent-scan-qr-option'),
-      color: colors.primaryFixed.withAlpha(220),
-      borderRadius: BorderRadius.circular(10),
+      color: colors.brandSurface.withAlpha(220),
+      borderRadius: BorderRadius.circular(LicoRadius.floating),
       child: InkWell(
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(LicoRadius.floating),
         onTap: onTap,
         child: Container(
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: BorderRadius.circular(LicoRadius.floating),
             border: Border.all(color: colors.primary.withAlpha(170)),
           ),
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
@@ -75,7 +76,7 @@ class _MobileScanQrOption extends StatelessWidget {
                 dimension: 48,
                 child: Center(
                   child: MinimalScanIcon(
-                    color: colors.primary,
+                    color: colors.accent,
                     size: 30,
                     strokeWidth: 2.2,
                   ),
@@ -101,7 +102,7 @@ class _MobileScanQrOption extends StatelessWidget {
                   ],
                 ),
               ),
-              Icon(Icons.chevron_right_rounded, color: colors.primary),
+              Icon(Icons.chevron_right_rounded, color: colors.accent),
             ],
           ),
         ),

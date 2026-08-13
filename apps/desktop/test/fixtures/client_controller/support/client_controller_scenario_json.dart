@@ -14,6 +14,7 @@ Map<String, dynamic> conversationSessionJson({
   String createdAt = '2026-06-12T00:00:00Z',
   String updatedAt = '2026-06-12T00:00:01Z',
   String workingDirectory = '',
+  bool running = false,
 }) {
   return {
     'id': id,
@@ -32,6 +33,7 @@ Map<String, dynamic> conversationSessionJson({
     'updatedAt': updatedAt,
     'native': true,
     'readOnly': true,
+    if (running) 'running': true,
     'messageCount': 2,
     'messages': [
       {

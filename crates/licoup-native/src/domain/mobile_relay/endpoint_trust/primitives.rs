@@ -82,7 +82,7 @@ pub(in crate::domain::mobile_relay) fn mobile_relay_claim_proof_matches(
 }
 
 pub(in crate::domain::mobile_relay) fn mobile_relay_claim_proof_mac(
-    config: &Value,
+    _config: &Value,
     secret_material: &RuntimeSecretMaterial,
     pairing_id: &str,
     mobile_descriptor: &Value,
@@ -239,6 +239,16 @@ pub(in crate::domain::mobile_relay) fn now_iso() -> String {
 
 pub(in crate::domain::mobile_relay) fn timestamp_after_seconds(seconds: i64) -> Result<String> {
     Ok((OffsetDateTime::now_utc() + Duration::seconds(seconds)).format(&Rfc3339)?)
+}
+
+pub(in crate::domain::mobile_relay) fn bounded_time_window(
+    lifetime_seconds: i64,
+) -> Result<(String, String)> {
+    let created_at = OffsetDateTime::now_utc();
+    Ok((
+        created_at.format(&Rfc3339)?,
+        (created_at + Duration::seconds(lifetime_seconds)).format(&Rfc3339)?,
+    ))
 }
 
 #[cfg(test)]

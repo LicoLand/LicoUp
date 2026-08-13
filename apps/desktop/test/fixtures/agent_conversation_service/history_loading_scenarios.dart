@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:licoup/src/backend/features/agents/services/agent_conversation_service.dart';
+import 'package:licoup/src/contracts/agent_command_runner.dart';
 import 'package:licoup/src/platform/native_client/agent_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -48,6 +49,56 @@ void registerAgentConversationHistoryLoadingScenarios() {
       expect(sessions.single.sourcePath, 'test-data/codex/history.jsonl');
       expect(sessions.single.messageCount, 2);
       expect(captured.single, ['conversations', 'list', '--agent', 'codex']);
+    },
+  );
+
+  test(
+    'VM history queries keep connection and session identity on stdin',
+    () async {
+      final runner = _PrivateHistoryRunner();
+      const service = AgentConversationService();
+      final workingDirectory = _guestPath(['srv', 'project']);
+      final bind = AgentDispatchBind(
+        workingDirectory: workingDirectory,
+        runtimeConnection: {
+          'kind': 'ssh',
+          'host': 'vm.example',
+          'remoteExecutable': 'openclaw',
+          'workingDirectory': workingDirectory,
+        },
+      );
+
+      await service.loadSessions(
+        agentService: runner,
+        agentId: 'openclaw',
+        sessionId: 'remote-session-1',
+        limit: 1,
+        bind: bind,
+      );
+      await service
+          .streamSessions(
+            agentService: runner,
+            agentId: 'openclaw',
+            sessionId: 'remote-session-1',
+            limit: 1,
+            bind: bind,
+          )
+          .toList();
+
+      expect(runner.arguments, hasLength(2));
+      for (final arguments in runner.arguments) {
+        expect(arguments, containsAll(['--stdin-json', 'true']));
+        expect(arguments.join(' '), isNot(contains('vm.example')));
+        expect(arguments.join(' '), isNot(contains('remote-session-1')));
+      }
+      for (final stdin in runner.stdin) {
+        final payload = jsonDecode(stdin) as Map<String, dynamic>;
+        expect(payload['sessionId'], 'remote-session-1');
+        expect(
+          (payload['runtimeConnection'] as Map<String, dynamic>)['host'],
+          'vm.example',
+        );
+      }
     },
   );
 
@@ -194,6 +245,8 @@ void registerAgentConversationHistoryLoadingScenarios() {
   );
 }
 
+String _guestPath(List<String> segments) => ['', ...segments].join('/');
+
 void main() => registerAgentConversationHistoryLoadingScenarios();
 
 Map<String, dynamic> _sessionJson(String id, String text) {
@@ -241,5 +294,38 @@ class _StreamingAgentService extends AgentService {
     for (final event in events) {
       yield event;
     }
+  }
+}
+
+class _PrivateHistoryRunner implements AgentCommandRunner {
+  final List<List<String>> arguments = [];
+  final List<String> stdin = [];
+
+  @override
+  Future<Map<String, dynamic>> runCli(List<String> args) =>
+      throw UnsupportedError('public argv transport is not expected');
+
+  @override
+  Future<Map<String, dynamic>> runCliWithStdin(
+    List<String> args,
+    String stdinText,
+  ) async {
+    arguments.add(List<String>.unmodifiable(args));
+    stdin.add(stdinText);
+    return const {'ok': true, 'sessions': <Map<String, dynamic>>[]};
+  }
+
+  @override
+  Stream<Map<String, dynamic>> streamCliJsonLines(List<String> args) =>
+      throw UnsupportedError('public argv transport is not expected');
+
+  @override
+  Stream<Map<String, dynamic>> streamCliJsonLinesWithStdin(
+    List<String> args,
+    String stdinText,
+  ) async* {
+    arguments.add(List<String>.unmodifiable(args));
+    stdin.add(stdinText);
+    yield const {'event': 'done', 'ok': true};
   }
 }

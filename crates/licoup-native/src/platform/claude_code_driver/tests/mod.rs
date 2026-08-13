@@ -32,7 +32,7 @@ use super::params::DriverConfig;
 use super::probe::probe;
 use super::protocol::TurnState;
 use super::supervision::{
-    cancel, cleanup_session, has_live_session, lookup_session_transport, shutdown_all, steer,
+    cancel, cleanup_session, clear_all_for_test, has_live_session, lookup_session_transport, steer,
 };
 use super::transport::PersistentTransport;
 use serde_json::{Value, json};

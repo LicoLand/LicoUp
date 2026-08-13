@@ -36,27 +36,33 @@ is unavailable. Stop an interactive development client through its normal
 platform UI or the foreground process that launched it. Do not treat a
 successful development launch as package, store, or release evidence.
 
-## Build a package
+## Build a client or release package
 
-Preview packaging before producing an artifact:
+Platform build commands produce runnable client build output:
 
 ```bash
 npm run client:package:plan
-```
-
-Then select one target:
-
-```bash
 npm run client:build:macos
 npm run client:build:windows
 npm run client:build:linux
 npm run client:build:android
 ```
 
-Generated packages remain under `build/`. A local build is not a formal release
-artifact. Formal artifacts are generated from an exact Git candidate by the
-controlled release workflow and are bound to source, target, immutable digest,
-and generation metadata.
+To plan one or several exact native release packages, use the shared selector:
+
+```bash
+npm run client:release:plan -- --target macos-direct-arm64
+npm run client:release:plan -- \
+  --targets macos-direct-arm64,android-direct-arm64-v8a
+```
+
+The same selector is accepted by `client:release:build`,
+`client:release:stage`, and `client:release:verify`. Canonical package leaves
+are written under `build/releases/<version>/<package-target>/`; no universal
+outer archive is created. A local build is not a formal release artifact.
+Formal artifacts come from an exact Git candidate in the controlled release
+workflow and bind source, package target, immutable digest, and generation
+metadata.
 
 ## Run focused verification
 
@@ -86,10 +92,13 @@ Common focused checks are:
 | Architecture boundaries | `npm run client:verify:architecture` |
 | Version and generated compatibility | `npm run client:version:check` |
 
-Run `npm run client:verify` only once after all focused checks for the complete
-change pass. It is the broad source verification closure, not authorization for
-live services, runtime-data capture, device installation, signing, publication,
-or store operations.
+Run `npm run client:gate:source` once after all focused checks pass. Then run
+only the affected `client:gate:flutter`, `client:gate:rust`,
+`client:gate:android`, `client:gate:dependencies`, or
+`client:gate:release-policy` lane. These lanes are independent and may run in
+parallel. Source policy is Node-only; it does not install platform toolchains
+and is not authorization for live services, runtime-data capture, device
+installation, signing, publication, or store operations.
 
 ## Diagnose a failed check
 
@@ -106,6 +115,15 @@ or store operations.
    side-effecting command.
 
 ## Recover local generated state
+
+Package commands automatically remove their own current staging directory and,
+before a later run starts, retire older exact project-owned staging names whose
+owner process is no longer active. They do not select runnable bundles,
+`build/releases/<version>/<package-target>/`, legacy or unknown names,
+dependency caches, SDKs, toolchains, user data, installed applications, or
+worktrees. Unsafe entries and cleanup failures stop the package flow with the
+stable `flutter-clean-build-*` or `release-package-*` stage instead of exposing
+a local path.
 
 Compiler output managed by the repository lifecycle can be previewed before
 reclaim:
@@ -126,10 +144,10 @@ local assets and must never be used as the sole source for a formal release.
 
 ## Verify release source
 
-The side-effect-free release source gate is:
+The mandatory side-effect-free source policy is:
 
 ```bash
-npm run client:verify:source
+npm run client:gate:source
 ```
 
 The generated compatibility projection must be refreshed and checked whenever
@@ -145,6 +163,17 @@ Commands that install or launch on a device, use protected platform identity,
 contact a live service, create release assets, or publish through a channel are
 separate operator-authorized actions. Their success cannot be inferred from a
 source or package build.
+
+The manual GitHub Release workflow accepts one or more comma-separated exact
+package `targets` per dispatch. The prepare phase builds each selected package
+in an independent matrix job. The publish phase downloads the complete package
+set from the same source-bound prepare run, validates every package directory
+and installer digest, reconciles the draft once, generates the merged consumer
+manifest, verifies the exact remote asset set, and publishes once. See
+[Release packages](RELEASE-PACKAGES.md) for the canonical target and output
+model. A same-source draft may be resumed; an already public Release may not be
+extended or altered. A damaged public asset requires a corrective build or
+version.
 
 ## Maintain documentation
 

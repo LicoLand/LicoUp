@@ -33,7 +33,7 @@ pub(in crate::platform) fn execute(
     session_id: &str,
     cwd: Option<&Path>,
     timeout_ms: u64,
-    max_stdout: usize,
+    max_stdout: Option<usize>,
     max_stderr: usize,
 ) -> RunResult {
     let _ = (max_stdout, max_stderr);
@@ -79,7 +79,9 @@ pub(in crate::platform) fn execute(
         }
     };
 
-    let deadline = Instant::now() + Duration::from_millis(timeout_ms.max(1_000));
+    // timeoutMs 0 opts out of any turn deadline (see runtime_adapters/dispatch),
+    // so only a non-zero window gets a concrete deadline.
+    let deadline = (timeout_ms != 0).then(|| Instant::now() + Duration::from_millis(timeout_ms));
     match execute_via_serve(&endpoint, &config, deadline) {
         Ok(outcome) => RunResult {
             ok: true,
@@ -115,7 +117,7 @@ pub(in crate::platform) fn execute(
 fn execute_via_serve(
     endpoint: &super::super::opencode_serve::ServeEndpoint,
     config: &ProtocolConfig,
-    deadline: Instant,
+    deadline: Option<Instant>,
 ) -> Result<ServeOutcome, ProtocolFailure> {
     let session_id = open_serve_session(endpoint, config, deadline)?;
     let message_body = build_serve_message_body(config);
@@ -193,10 +195,6 @@ fn execute_via_serve(
         )
         .with_session(Some(&session_id)));
     }
-    if streamed.is_empty() {
-        super::super::turn_event_emit::emit_agent_message_chunk(&session_id, &turn_id, &output);
-        streamed.push(output.clone());
-    }
     super::super::turn_event_emit::emit_agent_message_completed(&session_id, &turn_id, &output);
     let mut events = project_agent_chunks(streamed);
     events.extend(super::super::skill_invocation_projection::project_skill_invocations(&response));
@@ -243,20 +241,41 @@ pub(super) fn build_serve_message_body(config: &ProtocolConfig) -> Value {
 pub(super) fn wait_post_json(
     url: &str,
     body: &Value,
-    deadline: Instant,
+    deadline: Option<Instant>,
 ) -> Result<Value, ProtocolFailure> {
-    if Instant::now() >= deadline {
-        return Err(ProtocolFailure::new(
-            "acp_protocol_timeout",
-            "The ACP agent timed out before the turn completed.",
-            "session/prompt",
-        ));
+    let timeout = remaining_turn_timeout(deadline)?;
+    super::super::opencode_serve::post_json_with_optional_timeout(url, body, timeout).map_err(
+        |_| {
+            if deadline.is_some_and(|deadline| Instant::now() >= deadline) {
+                turn_timeout_failure()
+            } else {
+                ProtocolFailure::new(
+                    "acp_protocol_write_failed",
+                    "The ACP agent stopped accepting protocol messages.",
+                    "serve/http",
+                )
+            }
+        },
+    )
+}
+
+pub(super) fn remaining_turn_timeout(
+    deadline: Option<Instant>,
+) -> Result<Option<Duration>, ProtocolFailure> {
+    match deadline {
+        None => Ok(None),
+        Some(deadline) => deadline
+            .checked_duration_since(Instant::now())
+            .filter(|remaining| !remaining.is_zero())
+            .map(Some)
+            .ok_or_else(turn_timeout_failure),
     }
-    super::super::opencode_serve::post_json(url, body).map_err(|_| {
-        ProtocolFailure::new(
-            "acp_protocol_write_failed",
-            "The ACP agent stopped accepting protocol messages.",
-            "serve/http",
-        )
-    })
+}
+
+pub(super) fn turn_timeout_failure() -> ProtocolFailure {
+    ProtocolFailure::new(
+        "acp_protocol_timeout",
+        "The ACP agent timed out before the turn completed.",
+        "session/prompt",
+    )
 }

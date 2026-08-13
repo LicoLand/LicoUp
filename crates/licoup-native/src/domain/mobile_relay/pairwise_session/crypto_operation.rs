@@ -1,17 +1,17 @@
 use super::transaction::MobileRelayPairwiseOperation;
 #[cfg(test)]
 use super::transaction::mobile_relay_pairwise_operation;
+use crate::core::licoarc_relay::LicoArcRelayEnvelope;
 use crate::core::secure_mesh_crypto::{
     SecureMeshContentContext, SecureMeshPayloadKind, SecureMeshPlaintext,
 };
-use crate::core::secure_mesh_relay_envelope::SecureMeshRelayEnvelope;
 use crate::domain::mobile_relay::endpoint_trust::{
-    ensure_peer_authorized_for_protected_send, ensure_peer_trust_authorized_for_protected_send,
-    local_endpoint_state, now_iso, peer_endpoint_state, protected_send_kind_from_payload,
-    session_id, timestamp_after_seconds,
+    bounded_time_window, ensure_peer_authorized_for_protected_send,
+    ensure_peer_trust_authorized_for_protected_send, local_endpoint_state, peer_endpoint_state,
+    protected_send_kind_from_payload, session_id,
 };
 use crate::domain::mobile_relay::relay_operations::{
-    canonical_mailbox_token, validate_secure_envelope,
+    canonical_mailbox_token, current_mailbox_rotation_epoch, validate_secure_envelope,
 };
 use crate::domain::mobile_relay::secret_custody::{
     RuntimeSecretMaterial, ensure_secure_mesh_protected_operation_allowed,
@@ -47,6 +47,7 @@ pub(in crate::domain::mobile_relay) fn seal_mobile_relay_payload(
     )
 }
 
+#[cfg(test)]
 pub(in crate::domain::mobile_relay) fn seal_mobile_relay_payload_with_pairwise_operation(
     config: &Value,
     secret_material: &RuntimeSecretMaterial,
@@ -54,13 +55,32 @@ pub(in crate::domain::mobile_relay) fn seal_mobile_relay_payload_with_pairwise_o
     payload: &Value,
     pairwise_operation: &mut MobileRelayPairwiseOperation,
 ) -> Result<Value> {
-    seal_mobile_relay_payload_with_pairwise_operation_and_gate(
+    seal_mobile_relay_payload_with_pairwise_operation_and_gate_and_commit(
         config,
         secret_material,
         kind,
         payload,
         pairwise_operation,
         PairwiseDirectoryGate::Required,
+        true,
+    )
+}
+
+pub(in crate::domain::mobile_relay) fn seal_mobile_relay_payload_deferred(
+    config: &Value,
+    secret_material: &RuntimeSecretMaterial,
+    kind: SecureMeshPayloadKind,
+    payload: &Value,
+    pairwise_operation: &mut MobileRelayPairwiseOperation,
+) -> Result<Value> {
+    seal_mobile_relay_payload_with_pairwise_operation_and_gate_and_commit(
+        config,
+        secret_material,
+        kind,
+        payload,
+        pairwise_operation,
+        PairwiseDirectoryGate::Required,
+        false,
     )
 }
 
@@ -71,6 +91,26 @@ pub(in crate::domain::mobile_relay) fn seal_mobile_relay_payload_with_pairwise_o
     payload: &Value,
     pairwise_operation: &mut MobileRelayPairwiseOperation,
     directory_gate: PairwiseDirectoryGate,
+) -> Result<Value> {
+    seal_mobile_relay_payload_with_pairwise_operation_and_gate_and_commit(
+        config,
+        secret_material,
+        kind,
+        payload,
+        pairwise_operation,
+        directory_gate,
+        true,
+    )
+}
+
+fn seal_mobile_relay_payload_with_pairwise_operation_and_gate_and_commit(
+    config: &Value,
+    secret_material: &RuntimeSecretMaterial,
+    kind: SecureMeshPayloadKind,
+    payload: &Value,
+    pairwise_operation: &mut MobileRelayPairwiseOperation,
+    directory_gate: PairwiseDirectoryGate,
+    commit: bool,
 ) -> Result<Value> {
     ensure_secure_mesh_protected_operation_allowed()?;
     let payload_kind = protected_send_kind_from_payload(kind);
@@ -84,8 +124,7 @@ pub(in crate::domain::mobile_relay) fn seal_mobile_relay_payload_with_pairwise_o
     };
     let endpoint = local_endpoint_state(config, secret_material)?;
     let peer = peer_endpoint_state(config)?;
-    let created_at = now_iso();
-    let expires_at = timestamp_after_seconds(match kind {
+    let (created_at, expires_at) = bounded_time_window(match kind {
         SecureMeshPayloadKind::ResultPayload | SecureMeshPayloadKind::Error => {
             MOBILE_RELAY_RESULT_TTL_SECONDS
         }
@@ -99,7 +138,7 @@ pub(in crate::domain::mobile_relay) fn seal_mobile_relay_payload_with_pairwise_o
         secret_material,
         &peer.endpoint_id,
         &peer.endpoint_kind,
-        peer.mailbox_rotation_epoch,
+        current_mailbox_rotation_epoch()?,
     )?;
     let context = SecureMeshContentContext::new(
         &envelope_id,
@@ -116,7 +155,9 @@ pub(in crate::domain::mobile_relay) fn seal_mobile_relay_payload_with_pairwise_o
         &context,
         &SecureMeshPlaintext::new(kind, body).with_content_type("application/json"),
     )?;
-    pairwise_operation.commit()?;
+    if commit {
+        pairwise_operation.commit()?;
+    }
     serde_json::from_str(&envelope.to_json()?)
         .context("mobile relay secure envelope serialization failed")
 }
@@ -150,13 +191,32 @@ pub(in crate::domain::mobile_relay) fn open_mobile_relay_payload_with_pairwise_o
     kind: SecureMeshPayloadKind,
     pairwise_operation: &mut MobileRelayPairwiseOperation,
 ) -> Result<Vec<u8>> {
-    open_mobile_relay_payload_with_pairwise_operation_and_gate(
+    open_mobile_relay_payload_with_pairwise_operation_and_gate_and_commit(
         config,
         secret_material,
         envelope,
         kind,
         pairwise_operation,
         PairwiseDirectoryGate::Required,
+        true,
+    )
+}
+
+pub(in crate::domain::mobile_relay) fn open_mobile_relay_payload_deferred(
+    config: &Value,
+    secret_material: &RuntimeSecretMaterial,
+    envelope: &Value,
+    kind: SecureMeshPayloadKind,
+    pairwise_operation: &mut MobileRelayPairwiseOperation,
+) -> Result<Vec<u8>> {
+    open_mobile_relay_payload_with_pairwise_operation_and_gate_and_commit(
+        config,
+        secret_material,
+        envelope,
+        kind,
+        pairwise_operation,
+        PairwiseDirectoryGate::Required,
+        false,
     )
 }
 
@@ -167,6 +227,26 @@ pub(in crate::domain::mobile_relay) fn open_mobile_relay_payload_with_pairwise_o
     kind: SecureMeshPayloadKind,
     pairwise_operation: &mut MobileRelayPairwiseOperation,
     directory_gate: PairwiseDirectoryGate,
+) -> Result<Vec<u8>> {
+    open_mobile_relay_payload_with_pairwise_operation_and_gate_and_commit(
+        config,
+        _secret_material,
+        envelope,
+        kind,
+        pairwise_operation,
+        directory_gate,
+        true,
+    )
+}
+
+fn open_mobile_relay_payload_with_pairwise_operation_and_gate_and_commit(
+    config: &Value,
+    _secret_material: &RuntimeSecretMaterial,
+    envelope: &Value,
+    kind: SecureMeshPayloadKind,
+    pairwise_operation: &mut MobileRelayPairwiseOperation,
+    directory_gate: PairwiseDirectoryGate,
+    commit: bool,
 ) -> Result<Vec<u8>> {
     ensure_secure_mesh_protected_operation_allowed()?;
     let payload_kind = protected_send_kind_from_payload(kind);
@@ -181,11 +261,13 @@ pub(in crate::domain::mobile_relay) fn open_mobile_relay_payload_with_pairwise_o
     validate_secure_envelope(envelope)?;
     let wire = serde_json::to_string(envelope)
         .context("mobile relay secure envelope serialization failed")?;
-    let pairwise_envelope = SecureMeshRelayEnvelope::from_json(&wire)?;
+    let pairwise_envelope = LicoArcRelayEnvelope::from_json(&wire)?;
     let opened = pairwise_operation
         .session
         .open_payload_envelope(&pairwise_envelope, kind)?;
-    pairwise_operation.commit()?;
+    if commit {
+        pairwise_operation.commit()?;
+    }
     Ok(opened.body)
 }
 

@@ -33,7 +33,7 @@ impl PersistentTransport {
         launch: &LaunchSpec,
         control_receiver: Receiver<ControlRequest>,
         timeout_ms: u64,
-        max_stdout: usize,
+        max_stdout: Option<usize>,
         max_stderr: usize,
     ) -> Result<Self, ProtocolFailure> {
         let mut child = launch.spawn().map_err(|error| {
@@ -94,7 +94,7 @@ impl PersistentTransport {
     pub(super) fn initialize(
         &mut self,
         timeout_ms: u64,
-        max_stdout: usize,
+        max_stdout: Option<usize>,
     ) -> Result<(), ProtocolFailure> {
         let request = SessionProtocol::new(ProtocolConfig {
             prompt: String::new(),
@@ -112,7 +112,11 @@ impl PersistentTransport {
                 "initialize",
             )
         })?;
-        let deadline = Instant::now() + Duration::from_millis(timeout_ms);
+        let deadline = if timeout_ms == 0 {
+            None
+        } else {
+            Some(Instant::now() + Duration::from_millis(timeout_ms))
+        };
         let mut observed_bytes = 0usize;
         loop {
             if self.stdin.check_health().is_err() {
@@ -123,25 +127,27 @@ impl PersistentTransport {
                 ));
             }
             let now = Instant::now();
-            if now >= deadline {
+            if deadline.is_some_and(|deadline| now >= deadline) {
                 return Err(ProtocolFailure::new(
                     "hermes_acp_timeout",
                     "Hermes ACP timed out during initialization.",
                     "initialize",
                 ));
             }
-            match self
-                .receiver
-                .recv_timeout((deadline - now).min(PROCESS_POLL_INTERVAL))
-            {
+            let wait = deadline
+                .map(|deadline| (deadline - now).min(PROCESS_POLL_INTERVAL))
+                .unwrap_or(PROCESS_POLL_INTERVAL);
+            match self.receiver.recv_timeout(wait) {
                 Ok(TransportEvent::Message { message, bytes }) => {
-                    observed_bytes = observed_bytes.saturating_add(bytes);
-                    if observed_bytes > max_stdout {
-                        return Err(ProtocolFailure::new(
-                            "hermes_acp_output_limit",
-                            "Hermes ACP exceeded the configured protocol output limit.",
-                            "initialize",
-                        ));
+                    if let Some(max_stdout) = max_stdout {
+                        observed_bytes = observed_bytes.saturating_add(bytes);
+                        if observed_bytes > max_stdout {
+                            return Err(ProtocolFailure::new(
+                                "hermes_acp_output_limit",
+                                "Hermes ACP exceeded the configured protocol output limit.",
+                                "initialize",
+                            ));
+                        }
                     }
                     if !request_id_matches(&message, INITIALIZE_REQUEST_ID) {
                         continue;

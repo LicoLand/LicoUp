@@ -4,7 +4,6 @@ import '../support/fake_agent_service.dart';
 
 void registerClientHistoryRuntimeStreamingProjectionScenarios() {
   TestWidgetsFlutterBinding.ensureInitialized();
-
   test(
     'sendConversationMessage projects progressive reply and process events in the active conversation',
     () async {
@@ -20,6 +19,18 @@ void registerClientHistoryRuntimeStreamingProjectionScenarios() {
         ..runtimeNativeSessionIdResult = 'native-codex-turn-bound'
         ..runtimeMessageStreamEventQueue = [
           [
+            {
+              'event': 'dispatch.turn.bound',
+              'sessionId': 'native-codex-turn-bound',
+              'turnId': 'turn-1',
+              'payload': {'nativeSteer': true},
+            },
+            {
+              'event': 'agent.turn.processing',
+              'sessionId': 'native-codex-turn-bound',
+              'turnId': 'turn-1',
+              'payload': {'evidenceKind': 'tool'},
+            },
             {
               'event': 'agent.message.chunk',
               'payload': {'text': 'Hello'},
@@ -44,19 +55,18 @@ void registerClientHistoryRuntimeStreamingProjectionScenarios() {
         ];
       final controller = ClientController(agentService: service);
       addTearDown(controller.dispose);
-
       await controller.scanTargets();
       await controller.selectConversationAgent('codex');
       final readbackGate = Completer<void>();
       service.conversationStreamGates['codex'] = readbackGate;
       addTearDown(() {
-        if (!readbackGate.isCompleted) {
-          readbackGate.complete();
-        }
+        if (!readbackGate.isCompleted) readbackGate.complete();
       });
       final observedReplies = <String>[];
       final observedProcessKinds = <AgentConversationMessageKind>[];
-      controller.addListener(() {
+      var liveProjectionUpdates = 0;
+      controller.liveConversationListenable.addListener(() {
+        liveProjectionUpdates += 1;
         final live = controller.selectedLiveConversationMessages;
         observedReplies.addAll(
           live
@@ -69,24 +79,21 @@ void registerClientHistoryRuntimeStreamingProjectionScenarios() {
               .map((message) => message.kind),
         );
       });
-
       await controller.sendConversationMessage('Show live progress');
-
-      expect(
-        observedReplies,
-        containsAll(['Hello', 'Hello world', 'Hello world.']),
-      );
+      expect(observedReplies, containsAll(['Hello world', 'Hello world.']));
+      expect(observedReplies, isNot(contains('Hello')));
       expect(observedReplies, isNot(contains('Hello worldworld')));
+      // Evidence-driven budget: one live projection update per observable
+      // native advance — accepted, processing, responding, the coalesced
+      // reply publish, the tool step, the final reply, commit, and completed.
+      // The 32ms reply-publish timer keeps chunk bursts below this bound; a
+      // per-chunk publish storm would exceed it.
+      expect(liveProjectionUpdates, lessThanOrEqualTo(8));
       expect(
         observedProcessKinds,
         contains(AgentConversationMessageKind.toolCall),
       );
-      expect(
-        controller.selectedLiveConversationMessages
-            .where((message) => message.role == 'assistant')
-            .map((message) => message.text),
-        contains('Hello world.'),
-      );
+      expect(controller.selectedLiveConversationMessages, isEmpty);
       final committedSession = controller.selectedConversationSession;
       expect(committedSession?.id, 'native-codex-turn-bound');
       expect(committedSession?.nativeSessionId, 'native-codex-turn-bound');
@@ -102,88 +109,130 @@ void registerClientHistoryRuntimeStreamingProjectionScenarios() {
             .map((message) => message.text),
         contains('Hello world.'),
       );
+      expect(
+        committedSession?.messages
+            .where((message) => message.cardType == 'lifecycle')
+            .single
+            .cardSubtitle,
+        'submitted,accepted,processing,responding,completed',
+      );
     },
   );
 
   test(
-    'completed streamed reply remains visible until native history catches up',
+    'runtime update events project one in-place runtime-update card',
     () async {
-      final staleSession = conversationSessionJson(
-        id: 'claude-native-session',
-        nativeSessionId: 'claude-native-session',
-        agentId: 'claude-code',
-        text: 'Existing native history',
-      );
       final service = FakeAgentService()
-        ..scanTargetsResult = [
-          TargetCandidate(
-            target: 'claude-code',
-            label: 'Claude Code',
-            kind: 'cli',
-            status: 'detected',
-            configured: true,
-            confidence: 1,
-            binaryPath: '/synthetic/bin/claude',
-            adapterStatus: 'implemented',
-            adapterCapabilities: parityReadyAdapterCapabilities,
-            supportedActions: const ['runtime.message.send'],
+        ..conversationSessions['codex'] = [
+          conversationSessionJson(
+            id: 'native-codex-live',
+            agentId: 'codex',
+            text: 'Existing native Codex history',
           ),
         ]
-        ..conversationSessions['claude-code'] = [staleSession]
-        ..runtimeSessionIdResult = 'claude-native-session'
-        ..runtimeNativeSessionIdResult = 'claude-native-session'
+        ..runtimeSessionIdResult = 'native-codex-turn-bound'
+        ..runtimeNativeSessionIdResult = 'native-codex-turn-bound'
         ..runtimeMessageStreamEventQueue = [
           [
             {
+              'event': 'dispatch.turn.bound',
+              'sessionId': 'native-codex-turn-bound',
+              'turnId': 'turn-1',
+              'payload': {'nativeSteer': true},
+            },
+            {
+              'event': 'agent.runtime.updating',
+              'sessionId': 'native-codex-turn-bound',
+              'turnId': 'turn-1',
+              'payload': {
+                'artifact': 'cursor-agent',
+                'version': '2026.08.04-aaa8809',
+                'phase': 'downloading',
+              },
+            },
+            {
+              'event': 'agent.runtime.updating',
+              'sessionId': 'native-codex-turn-bound',
+              'turnId': 'turn-1',
+              'payload': {
+                'artifact': 'cursor-agent',
+                'version': '2026.08.04-aaa8809',
+                'phase': 'installing',
+              },
+            },
+            {
+              'event': 'agent.runtime.update.completed',
+              'sessionId': 'native-codex-turn-bound',
+              'turnId': 'turn-1',
+              'payload': {
+                'artifact': 'cursor-agent',
+                'version': '2026.08.04-aaa8809',
+              },
+            },
+            {
+              'event': 'agent.message.chunk',
+              'payload': {'text': 'Hello world.'},
+            },
+            {
               'event': 'agent.message.completed',
-              'payload': {'text': 'Synthetic Claude reply'},
+              'payload': {'text': 'Hello world.'},
             },
           ],
-        ]
-        ..recordRuntimeMessageInHistory = false;
+        ];
       final controller = ClientController(agentService: service);
       addTearDown(controller.dispose);
-
       await controller.scanTargets();
-      await controller.selectConversationAgent('claude-code');
-      controller.selectConversationSession('claude-native-session');
-
-      await controller.sendConversationMessage('Synthetic Claude prompt');
-
-      expect(
-        controller.selectedLiveConversationMessages
-            .where((message) => message.role == 'assistant')
-            .map((message) => message.text),
-        contains('Synthetic Claude reply'),
-      );
-
-      service.conversationSessions['claude-code'] = [
-        {
-          ...staleSession,
-          'messages': [
-            ...(staleSession['messages'] as List),
-            {
-              'id': 'persisted-user',
-              'role': 'user',
-              'text': 'Synthetic Claude prompt',
-            },
-            {
-              'id': 'persisted-assistant',
-              'role': 'assistant',
-              'text': 'Synthetic Claude reply',
-            },
-          ],
-        },
-      ];
-
-      await controller.refreshConversationSessions('claude-code');
-
+      await controller.selectConversationAgent('codex');
+      final readbackGate = Completer<void>();
+      service.conversationStreamGates['codex'] = readbackGate;
+      addTearDown(() {
+        if (!readbackGate.isCompleted) readbackGate.complete();
+      });
+      var updateCardCounts = <int>[];
+      var updateCardSubtitles = <String>[];
+      controller.liveConversationListenable.addListener(() {
+        final live = controller.selectedLiveConversationMessages;
+        final cards = live.where(
+          (message) => message.cardType == 'runtime-update',
+        );
+        updateCardCounts.add(cards.length);
+        updateCardSubtitles.addAll(
+          cards.map((message) => message.cardSubtitle),
+        );
+      });
+      await controller.sendConversationMessage('Send while updating');
+      // One in-place card per turn at every revision (upsert, not append).
+      // The live projection clears after the turn commits, so later revisions
+      // may observe zero cards; never more than one.
+      expect(updateCardCounts, isNotEmpty);
+      expect(updateCardCounts.any((count) => count == 1), isTrue);
+      expect(updateCardCounts.every((count) => count <= 1), isTrue);
+      // The turn-bound readback is the durable owner after commit; the live
+      // projection is cleared once the committed catalog entry is selected.
       expect(controller.selectedLiveConversationMessages, isEmpty);
+      final cards = controller.selectedConversationSession!.messages
+          .where((message) => message.cardType == 'runtime-update')
+          .toList();
+      expect(cards, hasLength(1));
+      final card = cards.single;
+      expect(card.id, endsWith('-runtime-update'));
+      expect(card.role, 'event');
+      expect(card.text, 'completed');
+      // Phase text surfaced before completion, version preserved.
+      expect(updateCardSubtitles, anyElement(contains('下载中')));
+      expect(card.cardSubtitle, contains('2026.08.04-aaa8809'));
+      // Update events must not advance the turn lifecycle beyond accepted;
+      // the later message events advance it to responding/completed as usual.
+      final lifecycle = controller.selectedConversationSession!.messages
+          .where((message) => message.cardType == 'lifecycle')
+          .single;
+      expect(lifecycle.cardSubtitle, 'submitted,accepted,responding,completed');
+      // The turn itself still converges.
       expect(
-        controller.selectedConversationSession?.messages
+        controller.selectedConversationSession!.messages
             .where((message) => message.role == 'assistant')
             .map((message) => message.text),
-        contains('Synthetic Claude reply'),
+        contains('Hello world.'),
       );
     },
   );

@@ -14,6 +14,7 @@ import { printLiveGateChecklist, readyCandidateAgentIds } from "../live-gate.mjs
 import { acceptanceMode, agentConfigs, dispatchLaneHarnessVersion, driversInventoryPath, strictRoundCount } from "../constants.mjs";
 import { AcceptanceError, digest } from "../errors.mjs";
 import {
+  conditionalChecksFromMatrix,
   coreChecksFromAggregate,
   createSanitizedSelfTestEvidenceReceipt,
   writeReleaseUiAdapterEvidence,
@@ -1509,6 +1510,24 @@ export async function runSelfTest() {
       && cursorLiveGate?.cleanupReady === true
       && !cursorLiveGate?.remainingLiveGate?.includes("implement_safe_cleanup")
       && liveGate.cl06Ready === false;
+    const interruptSteerSupportedPass = conditionalChecksFromMatrix(
+      { interruptSteer: true },
+      { interruptSteer: true },
+    )["C-05"];
+    const interruptSteerSupportedMissing = conditionalChecksFromMatrix(
+      { interruptSteer: true },
+    )["C-05"];
+    const interruptSteerUnsupported = conditionalChecksFromMatrix(
+      { interruptSteer: false },
+      { interruptSteer: true },
+    )["C-05"];
+    const interruptSteerEvidenceFailClosed =
+      interruptSteerSupportedPass.nativeSupport === "supported"
+      && interruptSteerSupportedPass.result === "pass"
+      && interruptSteerSupportedMissing.nativeSupport === "supported"
+      && interruptSteerSupportedMissing.result === "unverified"
+      && interruptSteerUnsupported.nativeSupport === "unsupported"
+      && interruptSteerUnsupported.result === "unsupported-by-native";
     const remaining = await listSessions(context);
     const dispatchLaneProbe = probeDispatchLaneFamilies(fakeBinary);
     let evidenceWrite = null;
@@ -1563,6 +1582,7 @@ export async function runSelfTest() {
         && cursorInventoryAligned
         && cursorSessionLoadOk
         && liveGateReadyCandidates
+        && interruptSteerEvidenceFailClosed
         && productFixtureReceiptRejected
         && disposableProfileSeedSafe
         && remaining.size === 0
@@ -1643,6 +1663,7 @@ export async function runSelfTest() {
       cursorInventoryAligned,
       cursorSessionLoadOk,
       liveGateReadyCandidates,
+      interruptSteerEvidenceFailClosed,
       productFixtureReceiptRejected,
       disposableProfileSeedSafe,
       dispatchLaneContract: dispatchLaneProbe.ok,

@@ -12,7 +12,7 @@ import { createPlanFileReader } from "../../../../apps/desktop/scripts/verify-cl
 const repoRoot = path.resolve(fileURLToPath(new URL("../../../..", import.meta.url)));
 const scriptRoot = path.join(repoRoot, "apps/desktop/scripts/verify-client-plan/checks");
 const fixtures = Object.freeze([
-  ["package-and-runner.mjs", "checkPackageAndRunner", "tools/run-client-verify.mjs"],
+  ["package-and-runner.mjs", "checkPackageAndRunner", "tools/scripts/client-gate-policy.mjs"],
   ["client-boundary.mjs", "checkClientBoundary", "secure-mesh-client-boundary.json"],
   ["evidence-routing.mjs", "checkEvidenceRouting", "secure-mesh-e2ee-evidence-routes.json"],
   ["crypto-redaction-handoff.mjs", "checkCryptoRedactionHandoff", "secure-mesh-encrypted-file-handoff.json"],
@@ -21,7 +21,7 @@ const fixtures = Object.freeze([
   ["android-ios.mjs", "checkAndroidIos", "SecureMeshIosBridge.swift"],
   ["linux-windows.mjs", "checkLinuxWindows", "client-secure-mesh-windows-implementation.mjs"],
   ["trust-release.mjs", "checkTrustRelease", "secure-mesh-release-proof.json"],
-  ["docs-readiness.mjs", "checkDocsReadiness", "agent-conversation-readiness.json"],
+  ["docs-readiness.mjs", "checkDocsReadiness", "agent-conversation-drivers.json"],
 ]);
 
 test("every leaf imports without side effects and owns its fixture family", async () => {
@@ -37,7 +37,7 @@ test("every leaf imports without side effects and owns its fixture family", asyn
 test("shared file reader accepts repository fixtures and rejects traversal", async () => {
   const files = createPlanFileReader(repoRoot);
   const packageJson = await files.readJson("package.json");
-  assert.equal(packageJson.license, "GPL-3.0-or-later");
+  assert.equal(packageJson.license, "AGPL-3.0-or-later");
   await assert.rejects(
     files.readText("../outside.json"),
     /escapes the repository root/u,

@@ -1,14 +1,18 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:licoup/src/application/controller/client_controller.dart';
+import 'package:licoup/src/contracts/agent_conversation_models.dart';
 import 'package:licoup/src/platform/agents/scanned_targets_cache_store.dart';
+import 'package:licoup/src/platform/mobile_relay/mobile_relay_json_store.dart';
 import 'package:licoup/src/platform/native_client/agent_service.dart';
 import 'package:licoup/src/platform/storage/portable_data_root.dart';
 
 void main() {
   test('scanned targets cache round-trips visible agents only', () async {
+    final workingDirectory = _guestPath(['srv', 'project']);
     final directory = await Directory.systemTemp.createTemp(
       'lico-scanned-targets-cache-',
     );
@@ -38,12 +42,76 @@ void main() {
         confidence: 0,
         adapterStatus: 'unsupported',
       ),
+      TargetCandidate(
+        target: 'openclaw',
+        label: 'OpenClaw VM',
+        kind: 'cli',
+        status: 'configured',
+        configured: true,
+        confidence: 1,
+        binaryPath: 'openclaw',
+        adapterStatus: 'implemented',
+        location: 'virtual-machine',
+        runtimeConnection: {
+          'kind': 'ssh',
+          'host': 'vm.example',
+          'remoteExecutable': 'openclaw',
+          'workingDirectory': workingDirectory,
+        },
+      ),
     ]);
 
     final loaded = await store.load(portable);
     expect(loaded, hasLength(1));
     expect(loaded.single.target, 'codex');
   });
+
+  test(
+    'scanned targets cache rejects persisted VM connection metadata',
+    () async {
+      final workingDirectory = _guestPath(['srv', 'project']);
+      final directory = await Directory.systemTemp.createTemp(
+        'lico-vm-scanned-targets-cache-',
+      );
+      addTearDown(() async {
+        if (await directory.exists()) {
+          await directory.delete(recursive: true);
+        }
+      });
+      final portable = PortableDataRoot(dataDirectoryOverride: directory);
+      await const MobileRelayJsonStore().write(
+        portable,
+        'scanned-targets-cache.json',
+        {
+          'schemaVersion': 2,
+          'candidates': [
+            {
+              'target': 'openclaw',
+              'label': 'OpenClaw VM',
+              'kind': 'vm-cli',
+              'status': 'configured',
+              'configured': true,
+              'confidence': 1,
+              'adapterStatus': 'implemented',
+              'location': 'virtual-machine',
+              'runtimeConnection': {
+                'kind': 'ssh',
+                'host': 'vm.example',
+                'remoteExecutable': 'openclaw',
+                'workingDirectory': workingDirectory,
+              },
+            },
+          ],
+        },
+        lock: true,
+      );
+
+      final loaded = await const PlatformScannedTargetsCacheStore().load(
+        portable,
+      );
+      expect(loaded, isEmpty);
+    },
+  );
 
   test(
     'scanned targets cache restores metadata without touching binary authority',
@@ -118,6 +186,13 @@ void main() {
     await controller.scanTargets(showProgress: false, forceRescanKnown: false);
 
     expect(service.scannedIds.contains('codex'), isTrue);
+    expect(
+      service.conversationActions,
+      isEmpty,
+      reason:
+          'cache hydration and availability scans must never write '
+          'conversation memberships',
+    );
     expect(service.scannedIds, isNotEmpty);
     expect(
       service.maxInFlight,
@@ -126,8 +201,137 @@ void main() {
     );
   });
 
+  test('reopening a cached agent refreshes its executable binding', () async {
+    final directory = await Directory.systemTemp.createTemp(
+      'lico-reopen-cached-target-',
+    );
+    addTearDown(() async {
+      if (await directory.exists()) {
+        await directory.delete(recursive: true);
+      }
+    });
+    final portable = PortableDataRoot(dataDirectoryOverride: directory);
+    const cache = PlatformScannedTargetsCacheStore();
+    final runtimeTarget = TargetCandidate(
+      target: 'claude-code',
+      label: 'Claude Code',
+      kind: 'cli',
+      status: 'detected',
+      configured: true,
+      confidence: 1,
+      binaryPath: '/synthetic/bin/claude',
+      adapterStatus: 'implemented',
+      adapterCapabilities: const {'conversationDriver': 'implemented'},
+    );
+    await cache.save(portable, [runtimeTarget]);
+
+    final service = _SlowPerAgentService(
+      results: {'claude-code': runtimeTarget},
+    );
+    final controller = ClientController(
+      portableData: portable,
+      agentService: service,
+      scannedTargetsCacheStore: cache,
+    );
+    addTearDown(controller.dispose);
+
+    await controller.targetController.hydrateCache();
+    controller.selectedConversationAgentId = 'claude-code';
+    controller.conversationSessionsByAgent = const {
+      'claude-code': [
+        AgentConversationSession(
+          id: 'synthetic-session',
+          agentId: 'claude-code',
+          title: 'Synthetic session',
+          createdAt: '2026-01-01T00:00:00Z',
+          updatedAt: '2026-01-01T00:00:00Z',
+          messages: [],
+        ),
+      ],
+    };
+    expect(controller.selectedConversationAgent?.canRelayRuntime, isFalse);
+
+    await Future.wait([
+      controller.selectConversationAgent('claude-code'),
+      controller.selectConversationAgent('claude-code'),
+    ]);
+
+    expect(service.scannedIds, ['claude-code']);
+    expect(controller.selectedConversationAgent?.canRelayRuntime, isTrue);
+
+    await controller.scanTargets(showProgress: false);
+
+    expect(
+      service.scannedIds.where((id) => id == 'claude-code'),
+      hasLength(1),
+      reason: 'the restored binding must not be probed again by a quiet scan',
+    );
+  });
+
   test(
-    'force rescan upserts agents as each concurrent probe returns',
+    'failed cached-agent rebind keeps history and the composer draft',
+    () async {
+      final directory = await Directory.systemTemp.createTemp(
+        'lico-reopen-missing-target-',
+      );
+      addTearDown(() async {
+        if (await directory.exists()) {
+          await directory.delete(recursive: true);
+        }
+      });
+      final portable = PortableDataRoot(dataDirectoryOverride: directory);
+      const cache = PlatformScannedTargetsCacheStore();
+      await cache.save(portable, [
+        TargetCandidate(
+          target: 'claude-code',
+          label: 'Claude Code',
+          kind: 'cli',
+          status: 'detected',
+          configured: true,
+          confidence: 1,
+          binaryPath: '/synthetic/bin/claude',
+          adapterStatus: 'implemented',
+          adapterCapabilities: const {'conversationDriver': 'implemented'},
+        ),
+      ]);
+      final service = _SlowPerAgentService();
+      final controller = ClientController(
+        portableData: portable,
+        agentService: service,
+        scannedTargetsCacheStore: cache,
+      );
+      addTearDown(controller.dispose);
+
+      await controller.targetController.hydrateCache();
+      controller.selectedConversationAgentId = 'claude-code';
+      controller.conversationSessionsByAgent = const {
+        'claude-code': [
+          AgentConversationSession(
+            id: 'synthetic-session',
+            agentId: 'claude-code',
+            title: 'Synthetic session',
+            createdAt: '2026-01-01T00:00:00Z',
+            updatedAt: '2026-01-01T00:00:00Z',
+            messages: [],
+          ),
+        ],
+      };
+      controller.updateConversationComposerDraft('synthetic draft');
+
+      await controller.selectConversationAgent('claude-code');
+
+      expect(service.scannedIds, ['claude-code']);
+      expect(controller.selectedConversationSessions, hasLength(1));
+      expect(
+        controller.selectedConversationAgent?.conversationSendGateReason,
+        'native_agent_executable_not_detected',
+      );
+      expect(controller.conversationComposerDraft, 'synthetic draft');
+    },
+  );
+
+  test(
+    'force rescan publishes agents after concurrent probes settle',
     () async {
       final directory = await Directory.systemTemp.createTemp(
         'lico-incremental-force-',
@@ -185,15 +389,15 @@ void main() {
         containsAll(['codex', 'claude-code']),
       );
       expect(
-        observed.any(
-          (ids) => ids.contains('claude-code') && !ids.contains('codex'),
-        ),
-        isTrue,
-        reason: 'faster probe should appear in the sidebar before slower ones',
+        observed.where((ids) => ids.isNotEmpty),
+        everyElement(containsAll(['codex', 'claude-code'])),
+        reason: 'the sidebar should receive only complete scan projections',
       );
     },
   );
 }
+
+String _guestPath(List<String> segments) => ['', ...segments].join('/');
 
 class _SlowPerAgentService extends AgentService {
   _SlowPerAgentService({this.results = const {}, this.delays = const {}})
@@ -202,8 +406,19 @@ class _SlowPerAgentService extends AgentService {
   final Map<String, TargetCandidate> results;
   final Map<String, Duration> delays;
   final List<String> scannedIds = <String>[];
+  final List<String> conversationActions = <String>[];
   var _inFlight = 0;
   var maxInFlight = 0;
+
+  @override
+  Future<Map<String, dynamic>> runCliWithStdin(
+    List<String> args,
+    String stdinText,
+  ) async {
+    final request = Map<String, dynamic>.from(jsonDecode(stdinText) as Map);
+    conversationActions.add((request['action'] as String?) ?? '');
+    return {'ok': true, 'result': <String, dynamic>{}};
+  }
 
   @override
   Future<TargetCandidate?> scanOneTarget(String targetId) async {

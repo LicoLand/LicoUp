@@ -17,7 +17,7 @@ typedef MobileRelayTargetDiscovery =
 /// Owns Mobile Relay configuration, pairing, polling, and command projection.
 final class MobileRelayController extends ChangeNotifier {
   MobileRelayController({
-    required MobileRelayGateway gateway,
+    required MobileRelayClient client,
     required MobileRelayOperationGate operationGate,
     required bool Function() isMobileRuntime,
     required bool Function() isAndroid,
@@ -26,7 +26,7 @@ final class MobileRelayController extends ChangeNotifier {
     required MobileRelayFeatureStatusSink onStatus,
     required Future<void> Function() ensureTargets,
     required MobileRelayTargetDiscovery discoverTargets,
-  }) : _gateway = gateway,
+  }) : _client = client,
        _operationGate = operationGate,
        _isMobileRuntime = isMobileRuntime,
        _isAndroid = isAndroid,
@@ -36,7 +36,7 @@ final class MobileRelayController extends ChangeNotifier {
        _ensureTargets = ensureTargets,
        _discoverTargets = discoverTargets;
 
-  final MobileRelayGateway _gateway;
+  final MobileRelayClient _client;
   final MobileRelayOperationGate _operationGate;
   final bool Function() _isMobileRuntime;
   final bool Function() _isAndroid;
@@ -68,7 +68,7 @@ final class MobileRelayController extends ChangeNotifier {
 
   Future<void> loadConfig({bool authorizeSecrets = false}) async {
     _replaceHydratedConfig(
-      await _gateway.loadConfig(authorizeSecrets: authorizeSecrets),
+      await _client.loadConfig(authorizeSecrets: authorizeSecrets),
     );
     notifyListeners();
   }
@@ -84,38 +84,30 @@ final class MobileRelayController extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> configureGateway({
-    required bool useCustomGateway,
-    required String customGatewayUrl,
-  }) async {
-    final gateway = canonicalMobileRelayGatewayOrigin(customGatewayUrl);
-    if (!useCustomGateway ||
-        gateway == null ||
-        mobileRelayGatewayIsEphemeralCustom(gateway)) {
+  Future<void> configureStation({required String stationBaseUrl}) async {
+    final station = canonicalMobileRelayStationOrigin(stationBaseUrl);
+    if (station == null) {
       _report(
-        '请先配置有效的移动中转网关。',
-        'Configure a valid mobile relay gateway first.',
-        errorCode: 'mobile_relay_gateway_required',
+        '请先配置有效的移动中转站。',
+        'Configure a valid mobile relay station first.',
+        errorCode: 'mobile_relay_station_required',
       );
       notifyListeners();
       return;
     }
     if (!_operationGate.tryAcquire()) return;
-    _report('正在保存移动中转网关配置。', 'Saving the mobile relay gateway configuration.');
+    _report('正在保存移动中转站配置。', 'Saving the mobile relay station configuration.');
     notifyListeners();
     try {
       _replaceHydratedConfig(
-        await _gateway.configureGateway(
-          useCustomGateway: useCustomGateway,
-          customGatewayUrl: gateway,
-        ),
+        await _client.configureStation(stationBaseUrl: station),
       );
-      _report('已保存移动中转网关配置。', 'Mobile relay gateway configuration saved.');
+      _report('已保存移动中转站配置。', 'Mobile relay station configuration saved.');
     } catch (_) {
       _report(
-        '移动中转网关配置失败。',
-        'Failed to configure the mobile relay gateway.',
-        errorCode: 'mobile_relay_gateway_configuration_failed',
+        '移动中转站配置失败。',
+        'Failed to configure the mobile relay station.',
+        errorCode: 'mobile_relay_station_configuration_failed',
       );
     } finally {
       _operationGate.release();
@@ -132,7 +124,7 @@ final class MobileRelayController extends ChangeNotifier {
       notifyListeners();
       return;
     }
-    if (!_requireConfiguredGateway()) return;
+    if (!_requireConfiguredStation()) return;
     if (!_operationGate.tryAcquire()) return;
     _actionResult = null;
     _pairingPresentation = null;
@@ -140,10 +132,10 @@ final class MobileRelayController extends ChangeNotifier {
     _report('正在创建手机配对码。', 'Creating a phone pairing code.');
     notifyListeners();
     try {
-      final rawResult = await _gateway.createPairing();
+      final rawResult = await _client.createPairing();
       _pairingPresentation = MobilePairingPolicy.presentation(rawResult);
       _actionResult = MobilePairingPolicy.actionProjection(rawResult);
-      _replaceHydratedConfig(await _gateway.loadConfig());
+      _replaceHydratedConfig(await _client.loadConfig());
       await _ensureTargets();
       startPolling();
       _report('已创建一次性手机配对码。', 'One-time phone pairing code created.');
@@ -192,18 +184,18 @@ final class MobileRelayController extends ChangeNotifier {
 
   Future<void> refreshPairingStatus() async {
     if (!_config.hasPairing ||
-        !_requireConfiguredGateway() ||
+        !_requireConfiguredStation() ||
         !_operationGate.tryAcquire()) {
       return;
     }
     _report('正在刷新手机配对状态。', 'Refreshing phone pairing status.');
     notifyListeners();
     try {
-      final rawResult = await _gateway.refreshPairingStatus();
+      final rawResult = await _client.refreshPairingStatus();
       if (_pairingPresentation == null) {
         _actionResult = MobilePairingPolicy.actionProjection(rawResult);
       }
-      _replaceHydratedConfig(await _gateway.loadConfig());
+      _replaceHydratedConfig(await _client.loadConfig());
       _report(
         _config.paired ? '手机已配对。' : '等待手机配对。',
         _config.paired ? 'Phone paired.' : 'Waiting for phone pairing.',
@@ -235,14 +227,14 @@ final class MobileRelayController extends ChangeNotifier {
       notifyListeners();
       return;
     }
-    final gateway = canonicalMobileRelayGatewayOrigin(
-      (invite['gatewayUrl'] ?? '').toString(),
+    final station = canonicalMobileRelayStationOrigin(
+      (invite['stationBaseUrl'] ?? '').toString(),
     );
-    if (gateway == null || mobileRelayGatewayIsEphemeralCustom(gateway)) {
+    if (station == null) {
       _report(
-        '配对信息缺少有效的移动中转网关。',
-        'The pairing invite does not contain a valid mobile relay gateway.',
-        errorCode: 'mobile_relay_gateway_required',
+        '配对信息缺少有效的移动中转站。',
+        'The pairing invite does not contain a valid mobile relay station.',
+        errorCode: 'mobile_relay_station_required',
       );
       notifyListeners();
       return;
@@ -251,13 +243,13 @@ final class MobileRelayController extends ChangeNotifier {
     _report('正在配对设备。', 'Pairing the device.');
     notifyListeners();
     try {
-      final rawResult = await _gateway.claimPairing({
+      final rawResult = await _client.claimPairing({
         ...invite,
-        'gatewayUrl': gateway,
+        'stationBaseUrl': station,
       });
       _actionResult = MobilePairingPolicy.actionProjection(rawResult);
       _pairingPresentation = null;
-      _replaceHydratedConfig(await _gateway.loadConfig());
+      _replaceHydratedConfig(await _client.loadConfig());
       final pairingStatus = await _refreshPairingStatusForDiscovery();
       await _discoverTargets(pairingStatus);
       _report('设备已配对。', 'Device paired.');
@@ -289,13 +281,13 @@ final class MobileRelayController extends ChangeNotifier {
       _operationGate.release();
       return;
     }
-    final gateway = canonicalMobileRelayGatewayOrigin(selected.gatewayUrl);
-    if (gateway == null || mobileRelayGatewayIsEphemeralCustom(gateway)) {
+    final station = canonicalMobileRelayStationOrigin(selected.stationBaseUrl);
+    if (station == null) {
       _operationGate.release();
       _report(
-        '配对设备缺少有效的移动中转网关。',
-        'The paired device does not have a valid mobile relay gateway.',
-        errorCode: 'mobile_relay_gateway_required',
+        '配对设备缺少有效的移动中转站。',
+        'The paired device does not have a valid mobile relay station.',
+        errorCode: 'mobile_relay_station_required',
       );
       notifyListeners();
       return;
@@ -311,11 +303,9 @@ final class MobileRelayController extends ChangeNotifier {
         mobileTokenPresent:
             selected.credentialPresent || selected.mobileToken.isNotEmpty,
         paired: true,
-        defaultGatewayUrl: '',
-        useCustomGateway: true,
-        customGatewayUrl: gateway,
+        stationBaseUrl: station,
       );
-      await _gateway.saveConfig(_config);
+      await _client.saveConfig(_config);
       await _discoverTargets(null);
       _report('已切换到 ${selected.label}。', 'Switched to ${selected.label}.');
     } catch (_) {
@@ -336,16 +326,16 @@ final class MobileRelayController extends ChangeNotifier {
     if (pairingStatus != null) {
       return _config.hasPairing ? pairingStatus : null;
     }
-    _replaceHydratedConfig(await _gateway.loadConfig());
-    if (!_config.hasPairing || !_hasConfiguredGateway) return null;
-    final status = await _gateway.refreshPairingStatus();
-    _replaceHydratedConfig(await _gateway.loadConfig());
+    _replaceHydratedConfig(await _client.loadConfig());
+    if (!_config.hasPairing || !_hasConfiguredStation) return null;
+    final status = await _client.refreshPairingStatus();
+    _replaceHydratedConfig(await _client.loadConfig());
     notifyListeners();
     return status;
   }
 
   void startPolling() {
-    if (!_config.hasPairing || !_requireConfiguredGateway()) return;
+    if (!_config.hasPairing || !_requireConfiguredStation()) return;
     _timer?.cancel();
     _timer = null;
     if (_isIos()) {
@@ -381,7 +371,7 @@ final class MobileRelayController extends ChangeNotifier {
     }
     if (_polling ||
         !_config.hasPairing ||
-        !_hasConfiguredGateway ||
+        !_hasConfiguredStation ||
         !_operationGate.tryAcquire()) {
       return;
     }
@@ -392,7 +382,7 @@ final class MobileRelayController extends ChangeNotifier {
       notifyListeners();
     }
     try {
-      final rawResult = await _gateway.syncCommands(
+      final rawResult = await _client.syncCommands(
         allowInteraction: showProgress,
       );
       _authorizationRequired = false;
@@ -455,7 +445,7 @@ final class MobileRelayController extends ChangeNotifier {
         continue;
       }
       try {
-        final result = await _gateway.executeSecureMeshCommand(
+        final result = await _client.executeSecureMeshCommand(
           payload: request.payload,
           context: request.context,
         );
@@ -482,12 +472,12 @@ final class MobileRelayController extends ChangeNotifier {
   }
 
   Future<Map<String, dynamic>?> _refreshPairingStatusForDiscovery() async {
-    if (!_isMobileRuntime() || !_config.hasPairing || !_hasConfiguredGateway) {
+    if (!_isMobileRuntime() || !_config.hasPairing || !_hasConfiguredStation) {
       return null;
     }
     try {
-      final status = await _gateway.refreshPairingStatus();
-      _replaceHydratedConfig(await _gateway.loadConfig());
+      final status = await _client.refreshPairingStatus();
+      _replaceHydratedConfig(await _client.loadConfig());
       return status;
     } catch (_) {
       return null;
@@ -496,7 +486,7 @@ final class MobileRelayController extends ChangeNotifier {
 
   Future<void> _saveConfigSilently() async {
     try {
-      await _gateway.saveConfig(_config);
+      await _client.saveConfig(_config);
     } catch (_) {
       // Timer lifecycle persistence is best-effort; user-triggered operations
       // surface their own stable error codes.
@@ -507,19 +497,17 @@ final class MobileRelayController extends ChangeNotifier {
     _config = MobileRelayPolicy.mergeHydratedSecrets(_config, value);
   }
 
-  bool get _hasConfiguredGateway {
-    final gateway = canonicalMobileRelayGatewayOrigin(
-      _config.effectiveGatewayUrl,
-    );
-    return gateway != null && !mobileRelayGatewayIsEphemeralCustom(gateway);
+  bool get _hasConfiguredStation {
+    final station = canonicalMobileRelayStationOrigin(_config.stationBaseUrl);
+    return station != null;
   }
 
-  bool _requireConfiguredGateway() {
-    if (_hasConfiguredGateway) return true;
+  bool _requireConfiguredStation() {
+    if (_hasConfiguredStation) return true;
     _report(
-      '请先配置移动中转网关。',
-      'Configure the mobile relay gateway first.',
-      errorCode: 'mobile_relay_gateway_required',
+      '请先配置移动中转站。',
+      'Configure the mobile relay station first.',
+      errorCode: 'mobile_relay_station_required',
     );
     notifyListeners();
     return false;

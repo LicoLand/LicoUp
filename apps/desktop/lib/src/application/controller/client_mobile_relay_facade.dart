@@ -83,20 +83,6 @@ mixin ClientMobileRelayFacade on AgentWorkspaceCoordinator {
     secureMeshController.replaceFileDraft(value);
   }
 
-  List<SecureMeshSkillSyncTransfer> get secureMeshSkillSyncTransfers =>
-      secureMeshController.skillTransfers;
-
-  set secureMeshSkillSyncTransfers(List<SecureMeshSkillSyncTransfer> value) {
-    secureMeshController.replaceSkillTransfers(value);
-  }
-
-  SecureMeshSkillSyncTransfer? get secureMeshSkillSyncDraft =>
-      secureMeshController.skillDraft;
-
-  set secureMeshSkillSyncDraft(SecureMeshSkillSyncTransfer? value) {
-    secureMeshController.replaceSkillDraft(value);
-  }
-
   @override
   List<SecureMeshApprovalRequest> get secureMeshApprovalInbox =>
       secureMeshController.approvalInbox;
@@ -132,13 +118,8 @@ mixin ClientMobileRelayFacade on AgentWorkspaceCoordinator {
       mobileRelayController.commands;
   bool get isMobileRelayBusy => mobileRelayController.busy;
   bool get isMobileRelayPolling => mobileRelayController.polling;
-  Future<void> configureMobileRelayGateway({
-    required bool useCustomGateway,
-    required String customGatewayUrl,
-  }) => mobileRelayController.configureGateway(
-    useCustomGateway: useCustomGateway,
-    customGatewayUrl: customGatewayUrl,
-  );
+  Future<void> configureMobileRelayStation({required String stationBaseUrl}) =>
+      mobileRelayController.configureStation(stationBaseUrl: stationBaseUrl);
 
   Future<void> createMobilePairing() => mobileRelayController.createPairing();
 
@@ -223,35 +204,6 @@ mixin ClientMobileRelayFacade on AgentWorkspaceCoordinator {
   Future<void> confirmSecureMeshFileSyncReceive({
     required bool userConfirmed,
   }) => secureMeshController.confirmFileReceive(userConfirmed: userConfirmed);
-
-  void beginSecureMeshSkillSyncDraft({
-    required String skillId,
-    required String version,
-    required String sourceAgentId,
-    required String targetAgentId,
-    required String packageDigest,
-    required String packageFileName,
-    required int packageSize,
-    String mimeType = 'application/zip',
-    bool activate = false,
-  }) => secureMeshController.beginSkillDraft(
-    skillId: skillId,
-    version: version,
-    sourceAgentId: sourceAgentId,
-    targetAgentId: targetAgentId,
-    packageDigest: packageDigest,
-    packageFileName: packageFileName,
-    packageSize: packageSize,
-    mimeType: mimeType,
-    activate: activate,
-  );
-
-  Future<void> prepareSecureMeshSkillSyncTransfer() =>
-      secureMeshController.prepareSkillTransfer();
-
-  Future<void> confirmSecureMeshSkillSyncInstall({
-    required bool userConfirmed,
-  }) => secureMeshController.confirmSkillInstall(userConfirmed: userConfirmed);
 
   Future<void> ingestSecureMeshApprovalRequest({
     required String pendingOperationId,

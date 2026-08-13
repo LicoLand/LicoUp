@@ -6,7 +6,7 @@ const schemaVersion = "licomesh.secure-mesh.physical-evidence-config.v2";
 const requiredLinkedReportKeys = Object.freeze([
   "androidPlatformCrypto",
   "androidInstallLaunch",
-  "relayMock",
+  "stationAcceptance",
   "ubuntuVmSecretStore",
   "macosReleaseCliProof",
   "macosUserPresenceProof",

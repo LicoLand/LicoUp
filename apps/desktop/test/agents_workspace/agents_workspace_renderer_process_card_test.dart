@@ -1,6 +1,99 @@
 import 'support/agents_workspace_test_harness.dart';
 
+import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_message_blocks.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_process_card.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_process_operations.dart';
+
 void registerAgentsWorkspaceRendererProcessCardScenarios() {
+  testWidgets(
+    'expanded process card keeps its header above a bounded operation scroll',
+    (tester) async {
+      tester.view.physicalSize = const Size(900, 700);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final events = List<AgentConversationMessage>.generate(
+        18,
+        (index) => AgentConversationMessage(
+          id: 'bounded-process-$index',
+          role: 'tool_call',
+          cardType: 'tool-call',
+          cardTitle: 'Operation ${index + 1}',
+          text: 'Synthetic operation details ${index + 1}',
+          createdAt: '2026-08-13T00:00:${index.toString().padLeft(2, '0')}Z',
+        ),
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: buildLicoTheme(
+            platformBrightness: Brightness.dark,
+          ).copyWith(platform: TargetPlatform.macOS),
+          home: Scaffold(
+            body: Align(
+              alignment: Alignment.topCenter,
+              child: ConversationProcessCard(
+                events: events,
+                adapter: AgentRenderAdapter.fallback(),
+                detailsBuilder: buildAgentConversationEventDetails,
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      const toggleKey = ValueKey(
+        'conversation-process-toggle-bounded-process-0',
+      );
+      const scrollKey = ValueKey(
+        'conversation-process-operation-scroll-bounded-process-0',
+      );
+      await tester.tap(find.byKey(toggleKey));
+      await tester.pumpAndSettle();
+
+      final scroll = find.byKey(scrollKey);
+      expect(scroll, findsOneWidget);
+      expect(
+        tester.getSize(scroll).height,
+        lessThanOrEqualTo(conversationProcessExpandedBodyMaxHeight(700)),
+      );
+      final headerTop = tester.getTopLeft(find.byKey(toggleKey)).dy;
+      final firstOperationTop = tester
+          .getTopLeft(
+            find.byKey(
+              const ValueKey(
+                'conversation-process-operation-bounded-process-0',
+              ),
+            ),
+          )
+          .dy;
+
+      await tester.drag(scroll, const Offset(0, -280));
+      await tester.pumpAndSettle();
+
+      expect(tester.getTopLeft(find.byKey(toggleKey)).dy, headerTop);
+      expect(
+        tester
+            .getTopLeft(
+              find.byKey(
+                const ValueKey(
+                  'conversation-process-operation-bounded-process-0',
+                ),
+              ),
+            )
+            .dy,
+        lessThan(firstOperationTop),
+      );
+
+      await tester.tap(find.byKey(toggleKey));
+      await tester.pumpAndSettle();
+      expect(find.byKey(scrollKey), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('semantic artifacts and diagnostics stay behind default thread', (
     tester,
   ) async {
@@ -304,8 +397,12 @@ void registerAgentsWorkspaceRendererProcessCardScenarios() {
     );
 
     expect(find.byKey(processKey), findsOneWidget);
-    expect(find.text('Worked for 5s'), findsOneWidget);
-    expect(find.text('6 steps · 2 issues'), findsOneWidget);
+    // Provider bookkeeping (metadata, lifecycle_notice) is not agent
+    // activity: it renders as a quiet runtime-log row, and the process card
+    // converges only the tool call, reasoning, and error.
+    expect(find.text('Agent activity'), findsOneWidget);
+    expect(find.text('Worked for 3s · 3 steps · 1 issue'), findsOneWidget);
+    expect(find.text('Runtime log · 2 entries'), findsOneWidget);
     expect(find.text('Inspect and validate the workspace.'), findsOneWidget);
     expect(find.text('Validation completed.'), findsWidgets);
     expect(
@@ -315,7 +412,8 @@ void registerAgentsWorkspaceRendererProcessCardScenarios() {
     expect(
       tester.getSemantics(find.byKey(processSemanticsKey)),
       isSemantics(
-        label: 'Agent process. Worked for 5s. 6 steps · 2 issues.',
+        label:
+            'Agent process. Agent activity. Worked for 3s · 3 steps · 1 issue.',
         hint: 'Expand process details',
         isButton: true,
         isFocusable: true,
@@ -349,7 +447,9 @@ void registerAgentsWorkspaceRendererProcessCardScenarios() {
     expect(find.textContaining('{"'), findsNothing);
 
     await tester.tap(find.byKey(processToggleKey));
-    await tester.pump(const Duration(milliseconds: 220));
+    // The card scrolls itself into view after expansion; settle animations
+    // and the scroll frame before probing row positions.
+    await tester.pumpAndSettle();
 
     expect(
       find.byKey(const Key('conversation-process-operation-message-tool')),
@@ -360,34 +460,90 @@ void registerAgentsWorkspaceRendererProcessCardScenarios() {
       findsOneWidget,
     );
     expect(
-      find.byKey(const Key('conversation-process-operation-message-metadata')),
-      findsOneWidget,
-    );
-    expect(
       find.byKey(const Key('conversation-process-operation-message-error')),
       findsOneWidget,
     );
+    // Bookkeeping events stay out of the expanded card: they belong to the
+    // runtime-log row, not to process operations.
+    expect(
+      find.byKey(const Key('conversation-process-operation-message-metadata')),
+      findsNothing,
+    );
     expect(
       find.byKey(const Key('conversation-process-operation-message-event')),
-      findsOneWidget,
+      findsNothing,
     );
     expect(
       find.byKey(
         const Key('conversation-process-operation-message-nested-error'),
       ),
-      findsOneWidget,
+      findsNothing,
     );
     expect(find.text('exec_command'), findsOneWidget);
     expect(find.text('Reasoning summary'), findsOneWidget);
-    expect(find.text('Metadata'), findsOneWidget);
-    expect(find.text('Error'), findsNWidgets(2));
-    expect(find.text('Native event'), findsOneWidget);
+    expect(find.text('Metadata'), findsNothing);
+    expect(find.text('Error'), findsOneWidget);
+    expect(find.text('Native event'), findsNothing);
     expect(
       find.text('Invocation details are hidden.', findRichText: true),
       findsNothing,
     );
+    // Operation rows start collapsed: the tool and reasoning detail bodies
+    // appear only after their rows expand.
     expect(
-      find.textContaining('read workspace-source.rs', findRichText: true),
+      find.textContaining(
+        'read ${['', 'workspace', 'private', 'source.rs'].join('/')}',
+        findRichText: true,
+      ),
+      findsNothing,
+    );
+    expect(
+      find.textContaining('Inspected the adapter under', findRichText: true),
+      findsNothing,
+    );
+    expect(
+      find.textContaining('Operation failed', findRichText: true),
+      findsOneWidget,
+    );
+    expect(find.textContaining('secret-value'), findsNothing);
+    // The error row expands by default and carries the failed path; the
+    // collapsed tool/reasoning rows keep their paths hidden until expanded.
+    expect(
+      find.textContaining('/workspace/private', findRichText: true),
+      findsOneWidget,
+    );
+    expect(
+      find.textContaining('private-thread', findRichText: true),
+      findsNothing,
+    );
+    expect(find.textContaining('{"', findRichText: true), findsNothing);
+
+    await tester.ensureVisible(
+      find.byKey(
+        const Key('conversation-process-operation-toggle-message-tool'),
+      ),
+    );
+    await tester.tap(
+      find.byKey(
+        const Key('conversation-process-operation-toggle-message-tool'),
+      ),
+    );
+    await tester.ensureVisible(
+      find.byKey(
+        const Key('conversation-process-operation-toggle-message-reasoning'),
+      ),
+    );
+    await tester.tap(
+      find.byKey(
+        const Key('conversation-process-operation-toggle-message-reasoning'),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 220));
+    expect(
+      find.textContaining(
+        'read ${['', 'workspace', 'private', 'source.rs'].join('/')}',
+        findRichText: true,
+      ),
       findsWidgets,
     );
     expect(
@@ -405,7 +561,7 @@ void registerAgentsWorkspaceRendererProcessCardScenarios() {
     );
     expect(
       find.textContaining('private-thread', findRichText: true),
-      findsWidgets,
+      findsNothing,
     );
     expect(find.textContaining('{"', findRichText: true), findsWidgets);
     expect(

@@ -46,7 +46,7 @@ sleep 30
         "",
         Some(&root),
         5_000,
-        64 * 1024,
+        Some(64 * 1024),
         8 * 1024,
     );
     assert!(
@@ -73,7 +73,7 @@ sleep 30
         &first.session_id,
         Some(&root),
         5_000,
-        64 * 1024,
+        Some(64 * 1024),
         8 * 1024,
     );
     assert!(follow_up.ok, "exact resume follow-up should succeed");
@@ -143,7 +143,7 @@ sleep 30
         "",
         Some(&root),
         5_000,
-        64 * 1024,
+        Some(64 * 1024),
         8 * 1024,
     );
     assert!(
@@ -167,7 +167,7 @@ sleep 30
             &session_for_turn,
             Some(&root_for_turn),
             5_000,
-            64 * 1024,
+            Some(64 * 1024),
             8 * 1024,
         )
     });

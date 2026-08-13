@@ -8,7 +8,7 @@ abstract interface class LayoutDestinationPresentation {}
 /// Profile-owned visual decisions used by the shared Agents business surface.
 ///
 /// The shared feature remains responsible for business state and interaction
-/// orchestration. Every color, inset, frame, and profile-specific visibility
+/// coordination. Every color, inset, frame, and profile-specific visibility
 /// decision is supplied by the active profile implementation.
 abstract interface class LayoutAgentsPresentation
     implements LayoutDestinationPresentation {
@@ -21,6 +21,12 @@ abstract interface class LayoutAgentsPresentation
   bool get showExpandedSidebarControl;
   bool get showCollapsedSidebarControl;
   bool get showConversationSidebarControl;
+
+  Widget frameWorkspace(
+    BuildContext context, {
+    required Key key,
+    required Widget child,
+  });
 
   Widget frameSidebar(
     BuildContext context, {
@@ -39,6 +45,12 @@ abstract interface class LayoutAgentsPresentation
 /// Profile-owned visual decisions used by the shared Settings business surface.
 abstract interface class LayoutSettingsPresentation
     implements LayoutDestinationPresentation {
+  /// True when the profile's shell navigation hosts the settings section
+  /// index (for example as expandable sub-items under the Settings
+  /// destination). The settings panel then renders its content full width and
+  /// keeps the section tab channel as the shared selection source.
+  bool get indexHostedByNavigation;
+
   EdgeInsetsGeometry get contentPadding;
   EdgeInsetsGeometry get indexPadding;
   EdgeInsetsGeometry get sectionHeaderPadding;

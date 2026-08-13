@@ -14,6 +14,7 @@ import {
   adapterManifestDigestFor,
   adapterEvidenceDigestFor,
   assertReadinessMatchesReduction,
+  assertReleaseReady,
   capabilityMatrixDigestFor,
   driverInventoryDigestFor,
   packagedAgentIds,
@@ -134,8 +135,8 @@ test("complete evidence is the only route to ready", () => {
   assert.equal(codex.status, "ready");
   assert.equal(codex.sendEnabled, true);
   assert.equal(codex.coreChecks.passed, 10);
-  assert.equal(codex.conditionalChecks.nativeSupported, 3);
-  assert.equal(codex.conditionalChecks.passed, 3);
+  assert.equal(codex.conditionalChecks.nativeSupported, 4);
+  assert.equal(codex.conditionalChecks.passed, 4);
   assert.equal(codex.evidenceBinding.agentId, "codex");
   assert.equal(codex.evidenceBinding.driverId, "codex-app-server");
   assert.equal(result.summary.ready, 1);
@@ -345,6 +346,7 @@ test("inventory discloses current native transports and fail-closed capability g
     "hermes",
     "kilo-code",
     "kimi-code",
+    "lico-agent",
     "openclaw",
     "opencode",
   ]);
@@ -406,18 +408,44 @@ test("checked-in readiness is the honest canonical-evidence reduction", () => {
   });
   assert.deepEqual(result, readinessResource);
   assert.deepEqual(result.summary, {
-    total: 11,
+    total: 12,
     ready: 0,
     partial: 0,
     failed: 0,
     blocked: 0,
-    unverified: 11,
+    unverified: 12,
     historyOnly: 0,
     sendEnabled: 0,
   });
   const receipt = runCli(["--check"]);
   assert.equal(receipt.ok, true);
   assert.equal(receipt.operation, "check");
+});
+
+test("release readiness requires every packaged adapter to be ready and send-enabled", () => {
+  assert.throws(
+    () => assertReleaseReady(readinessResource),
+    (error) =>
+      error instanceof ReducerError &&
+      error.code === "release_readiness_incomplete",
+  );
+
+  const complete = structuredClone(readinessResource);
+  complete.summary = {
+    total: complete.adapters.length,
+    ready: complete.adapters.length,
+    partial: 0,
+    failed: 0,
+    blocked: 0,
+    unverified: 0,
+    historyOnly: 0,
+    sendEnabled: complete.adapters.length,
+  };
+  for (const adapter of complete.adapters) {
+    adapter.status = "ready";
+    adapter.sendEnabled = true;
+  }
+  assert.doesNotThrow(() => assertReleaseReady(complete));
 });
 
 test("a fully forged ready resource is rejected by the release check", () => {

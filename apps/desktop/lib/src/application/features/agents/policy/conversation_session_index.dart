@@ -122,6 +122,7 @@ bool conversationSessionsEquivalent(
       left.workingDirectory != right.workingDirectory ||
       left.native != right.native ||
       left.readOnly != right.readOnly ||
+      left.running != right.running ||
       left.messageCount != right.messageCount ||
       left.sourceMessageCount != right.sourceMessageCount ||
       left.historyTruncated != right.historyTruncated ||

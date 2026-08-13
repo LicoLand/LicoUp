@@ -21,7 +21,7 @@ void main() {
     );
     portableData = PortableDataRoot(dataDirectoryOverride: temporaryRoot);
     fallback = PresentationPreferences(
-      layoutProfileId: LayoutProfileId.parse('workbench'),
+      layoutProfileId: LayoutProfileId.parse('dashboard'),
       appearancePresetId: 'default-system',
       localePreference: 'system',
     );
@@ -40,13 +40,13 @@ void main() {
     );
 
     await Future.wait([
-      repository.setLayoutProfile(LayoutProfileId.parse('native')),
+      repository.setLayoutProfile(LayoutProfileId.parse('atlas')),
       repository.setAppearancePreset('dark'),
       repository.setLocalePreference('zh'),
     ]);
 
     final loaded = await repository.load();
-    expect(loaded.preferences.layoutProfileId, LayoutProfileId.parse('native'));
+    expect(loaded.preferences.layoutProfileId, LayoutProfileId.parse('atlas'));
     expect(loaded.preferences.appearancePresetId, 'dark');
     expect(loaded.preferences.localePreference, 'zh');
   });
@@ -56,7 +56,7 @@ void main() {
     await file.writeAsString(
       jsonEncode({
         'schemaVersion': 1,
-        'layoutProfileId': 'workbench',
+        'layoutProfileId': 'dashboard',
         'appearancePresetId': 'default-system',
         'localePreference': 'system',
         'transientPanelId': 'runtime-only-value',
@@ -69,7 +69,7 @@ void main() {
       fallback: fallback,
     );
 
-    await repository.setLayoutProfile(LayoutProfileId.parse('native'));
+    await repository.setLayoutProfile(LayoutProfileId.parse('atlas'));
     final decoded = jsonDecode(await file.readAsString()) as Map;
 
     expect(decoded.keys.toSet(), {
@@ -78,7 +78,7 @@ void main() {
       'appearancePresetId',
       'localePreference',
     });
-    expect(decoded['layoutProfileId'], 'native');
+    expect(decoded['layoutProfileId'], 'atlas');
   });
 
   test('corrupt documents recover to fallback and converge on write', () async {
@@ -96,7 +96,7 @@ void main() {
 
     await repository.setLocalePreference('en');
     final converged = jsonDecode(await file.readAsString()) as Map;
-    expect(converged['layoutProfileId'], 'workbench');
+    expect(converged['layoutProfileId'], 'dashboard');
     expect(converged['localePreference'], 'en');
   });
 
@@ -141,7 +141,7 @@ void main() {
         portableData: portableData,
         fallback: fallback,
       );
-      await initial.setLayoutProfile(LayoutProfileId.parse('workbench'));
+      await initial.setLayoutProfile(LayoutProfileId.parse('dashboard'));
       File? attemptedTemporary;
       final repository = FilePresentationPreferencesRepository(
         portableData: portableData,
@@ -154,7 +154,7 @@ void main() {
 
       Object? failure;
       try {
-        await repository.setLayoutProfile(LayoutProfileId.parse('native'));
+        await repository.setLayoutProfile(LayoutProfileId.parse('atlas'));
       } catch (error) {
         failure = error;
       }
@@ -163,7 +163,7 @@ void main() {
       expect(await attemptedTemporary!.exists(), isFalse);
       expect(
         (await initial.load()).preferences.layoutProfileId,
-        LayoutProfileId.parse('workbench'),
+        LayoutProfileId.parse('dashboard'),
       );
     },
   );

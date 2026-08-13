@@ -14,9 +14,6 @@ mixin FakeAgentStateSupport on AgentService {
   int approvePairingCalls = 0;
   int revokePairingCalls = 0;
   int listSkillsCalls = 0;
-  int planSkillInstallCalls = 0;
-  int applySkillInstallCalls = 0;
-  int rollbackSkillInstallCalls = 0;
   int requestSkillHubCalls = 0;
   int refreshSkillHubCalls = 0;
 
@@ -36,15 +33,6 @@ mixin FakeAgentStateSupport on AgentService {
   String addedHistoryRoot = '';
 
   String pairedAgent = '';
-  String installedSkillAgent = '';
-  String installedSkillUrl = '';
-  String installedSkillRoot = '';
-  String installedSkillName = '';
-  String rolledBackSkillInstallSnapshotId = '';
-
-  bool installedSkillOverwrite = false;
-  bool installedSkillPin = false;
-
   List<TargetCandidate> scanTargetsResult = [
     TargetCandidate(
       target: 'codex',
@@ -73,28 +61,6 @@ mixin FakeAgentStateSupport on AgentService {
   List<Map<String, dynamic>> skills = [
     {'skillId': 'review', 'version': '1.0.0'},
   ];
-  Map<String, dynamic> skillInstallPlanResult = {
-    'ok': true,
-    'status': 'planned',
-    'skillId': 'review-helper',
-    'installDir': 'test-data/codex-skills/review-helper',
-    'packageDigestSha256': 'abc123',
-  };
-  Map<String, dynamic> skillInstallApplyResult = {
-    'ok': true,
-    'status': 'installed',
-    'skillId': 'review-helper',
-    'installDir': 'test-data/codex-skills/review-helper',
-    'rollbackSnapshotId': 'skill-install-snapshot-1',
-    'packageDigestSha256': 'abc123',
-  };
-  Map<String, dynamic> skillInstallRollbackResult = {
-    'ok': true,
-    'status': 'rolled_back',
-    'skillId': 'review-helper',
-    'snapshotId': 'skill-install-snapshot-1',
-  };
-
   Map<String, dynamic> opencodeServeStatusResult = {
     'ok': true,
     'status': 'running',
@@ -149,6 +115,8 @@ mixin FakeAgentStateSupport on AgentService {
     String configPath = '',
     String binaryPath = '',
     String historyRoot = '',
+    String location = 'local',
+    Map<String, dynamic> runtimeConnection = const <String, dynamic>{},
   }) async {
     addTargetCalls++;
     if (throwAddTarget) {
@@ -233,66 +201,6 @@ mixin FakeAgentStateSupport on AgentService {
       return [];
     }
     return skills;
-  }
-
-  @override
-  Future<Map<String, dynamic>> planSkillInstall({
-    required String agent,
-    String url = '',
-    String sourcePath = '',
-    String installRoot = '',
-    String name = '',
-    bool overwrite = false,
-  }) async {
-    planSkillInstallCalls++;
-    installedSkillAgent = agent;
-    installedSkillUrl = url;
-    installedSkillRoot = installRoot;
-    installedSkillName = name;
-    installedSkillOverwrite = overwrite;
-    return skillInstallPlanResult;
-  }
-
-  @override
-  Future<Map<String, dynamic>> applySkillInstall({
-    required String agent,
-    String url = '',
-    String sourcePath = '',
-    String installRoot = '',
-    String name = '',
-    bool overwrite = false,
-    bool pin = false,
-  }) async {
-    applySkillInstallCalls++;
-    installedSkillAgent = agent;
-    installedSkillUrl = url;
-    installedSkillRoot = installRoot;
-    installedSkillName = name;
-    installedSkillOverwrite = overwrite;
-    installedSkillPin = pin;
-    skills = [
-      {
-        'skillId': skillInstallApplyResult['skillId'],
-        'version': '1.2.3',
-        'protocolStatus': 'installed',
-      },
-    ];
-    return skillInstallApplyResult;
-  }
-
-  @override
-  Future<Map<String, dynamic>> rollbackSkillInstall({
-    required String agent,
-    required String snapshotId,
-  }) async {
-    rollbackSkillInstallCalls++;
-    rolledBackSkillInstallSnapshotId = snapshotId;
-    skills = const [];
-    return {
-      ...skillInstallRollbackResult,
-      'agentId': agent,
-      'snapshotId': snapshotId,
-    };
   }
 
   bool skillHubPairingsRequiresRefresh = false;

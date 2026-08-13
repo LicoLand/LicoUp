@@ -3,7 +3,7 @@ use super::params::timestamp;
 use super::{RUNTIME_SCHEMA_VERSION, RuntimeAdapter};
 use crate::platform::{
     acp_driver_runtime, antigravity_driver, claude_code_driver, codex_app_server, hermes_driver,
-    openclaw_driver, pi_driver,
+    lico_agent_driver, openclaw_driver, pi_driver,
 };
 use serde_json::{Value, json};
 
@@ -94,16 +94,19 @@ pub(super) fn normalize_codex(execution: codex_app_server::RunResult) -> Normali
             "structuredEvents": true,
             "interactiveApprovalBridge": false
         }),
-        error: execution.error.map(|failure| NormalizedFailure {
-            code: failure.code.to_string(),
-            message: failure.message.to_string(),
-            stage: failure.stage.to_string(),
-            user_interaction_required: failure.user_interaction_required,
-            request_method: failure.request_method,
-            session_id: failure.session_id,
-            thread_id: failure.thread_id,
-            turn_id: failure.turn_id,
-            turn_status: failure.turn_status,
+        error: execution.error.map(|failure| {
+            let failure = failure.into_payload();
+            NormalizedFailure {
+                code: failure.code.to_string(),
+                message: failure.message.to_string(),
+                stage: failure.stage.to_string(),
+                user_interaction_required: failure.user_interaction_required,
+                request_method: failure.request_method,
+                session_id: failure.session_id,
+                thread_id: failure.thread_id,
+                turn_id: failure.turn_id,
+                turn_status: failure.turn_status,
+            }
         }),
         session_id: execution.session_id,
         thread_id: execution.thread_id,
@@ -141,16 +144,19 @@ pub(super) fn normalize_antigravity(
             "promptInArguments": true,
             "continuityIdInArguments": true
         }),
-        error: execution.error.map(|failure| NormalizedFailure {
-            code: failure.code.to_string(),
-            message: failure.message.to_string(),
-            stage: failure.stage.to_string(),
-            user_interaction_required: failure.user_interaction_required,
-            request_method: failure.request_method,
-            session_id: failure.session_id,
-            thread_id: failure.thread_id,
-            turn_id: failure.turn_id,
-            turn_status: failure.turn_status,
+        error: execution.error.map(|failure| {
+            let failure = failure.into_payload();
+            NormalizedFailure {
+                code: failure.code.to_string(),
+                message: failure.message.to_string(),
+                stage: failure.stage.to_string(),
+                user_interaction_required: failure.user_interaction_required,
+                request_method: failure.request_method,
+                session_id: failure.session_id,
+                thread_id: failure.thread_id,
+                turn_id: failure.turn_id,
+                turn_status: failure.turn_status,
+            }
         }),
         session_id: execution.session_id,
         thread_id: execution.thread_id,
@@ -186,16 +192,19 @@ pub(super) fn normalize_claude(execution: claude_code_driver::RunResult) -> Norm
             "interactiveApprovalBridge": false,
             "processLocalContinuation": true
         }),
-        error: execution.error.map(|failure| NormalizedFailure {
-            code: failure.code.to_string(),
-            message: failure.message.to_string(),
-            stage: failure.stage.to_string(),
-            user_interaction_required: failure.user_interaction_required,
-            request_method: failure.request_method,
-            session_id: failure.session_id,
-            thread_id: failure.thread_id,
-            turn_id: failure.turn_id,
-            turn_status: failure.turn_status,
+        error: execution.error.map(|failure| {
+            let failure = failure.into_payload();
+            NormalizedFailure {
+                code: failure.code.to_string(),
+                message: failure.message.to_string(),
+                stage: failure.stage.to_string(),
+                user_interaction_required: failure.user_interaction_required,
+                request_method: failure.request_method,
+                session_id: failure.session_id,
+                thread_id: failure.thread_id,
+                turn_id: failure.turn_id,
+                turn_status: failure.turn_status,
+            }
         }),
         session_id: execution.session_id,
         thread_id: execution.thread_id,
@@ -234,16 +243,19 @@ pub(super) fn normalize_cursor(
             "promptInArguments": true,
             "continuityIdInArguments": true
         }),
-        error: execution.error.map(|failure| NormalizedFailure {
-            code: failure.code.to_string(),
-            message: failure.message.to_string(),
-            stage: failure.stage.to_string(),
-            user_interaction_required: failure.user_interaction_required,
-            request_method: failure.request_method,
-            session_id: failure.session_id,
-            thread_id: failure.thread_id,
-            turn_id: failure.turn_id,
-            turn_status: failure.turn_status,
+        error: execution.error.map(|failure| {
+            let failure = failure.into_payload();
+            NormalizedFailure {
+                code: failure.code.to_string(),
+                message: failure.message.to_string(),
+                stage: failure.stage.to_string(),
+                user_interaction_required: failure.user_interaction_required,
+                request_method: failure.request_method,
+                session_id: failure.session_id,
+                thread_id: failure.thread_id,
+                turn_id: failure.turn_id,
+                turn_status: failure.turn_status,
+            }
         }),
         session_id: execution.session_id,
         thread_id: execution.thread_id,
@@ -288,16 +300,19 @@ pub(super) fn normalize_acp(
         output: execution.output,
         events: execution.events,
         capabilities,
-        error: execution.error.map(|failure| NormalizedFailure {
-            code: failure.code,
-            message: failure.message.to_string(),
-            stage: failure.stage.to_string(),
-            user_interaction_required: failure.user_interaction_required,
-            request_method: failure.request_method,
-            session_id: failure.session_id,
-            thread_id: failure.thread_id,
-            turn_id: failure.turn_id,
-            turn_status: failure.turn_status,
+        error: execution.error.map(|failure| {
+            let failure = failure.into_payload();
+            NormalizedFailure {
+                code: failure.code,
+                message: failure.message.to_string(),
+                stage: failure.stage.to_string(),
+                user_interaction_required: failure.user_interaction_required,
+                request_method: failure.request_method,
+                session_id: failure.session_id,
+                thread_id: failure.thread_id,
+                turn_id: failure.turn_id,
+                turn_status: failure.turn_status,
+            }
         }),
         session_id: execution.session_id,
         thread_id: execution.thread_id,
@@ -328,6 +343,7 @@ pub(super) fn normalize_acp(
 
 pub(super) fn normalize_openclaw(execution: openclaw_driver::RunResult) -> NormalizedExecution {
     let error = execution.error.map(|failure| {
+        let failure = failure.into_payload();
         let thread_id = failure.session_id.clone();
         NormalizedFailure {
             code: failure.code.to_string(),
@@ -376,8 +392,12 @@ pub(super) fn normalize_openclaw(execution: openclaw_driver::RunResult) -> Norma
     }
 }
 
-pub(super) fn normalize_hermes(execution: hermes_driver::RunResult) -> NormalizedExecution {
+pub(super) fn normalize_hermes_with_protocol(
+    execution: hermes_driver::RunResult,
+    runtime_protocol: &'static str,
+) -> NormalizedExecution {
     let error = execution.error.map(|failure| {
+        let failure = failure.into_payload();
         let thread_id = failure.session_id.clone();
         NormalizedFailure {
             code: failure.code.to_string(),
@@ -421,13 +441,14 @@ pub(super) fn normalize_hermes(execution: hermes_driver::RunResult) -> Normalize
         stdout_truncated: execution.stdout_truncated,
         stderr_truncated: execution.stderr_truncated,
         started_at: execution.started_at,
-        runtime_protocol: hermes_driver::RUNTIME_PROTOCOL,
+        runtime_protocol,
         driver_id: "hermes-acp",
     }
 }
 
 pub(super) fn normalize_pi(execution: pi_driver::RunResult) -> NormalizedExecution {
     let error = execution.error.map(|failure| {
+        let failure = failure.into_payload();
         let thread_id = failure.session_id.clone();
         NormalizedFailure {
             code: failure.code.to_string(),
@@ -474,5 +495,57 @@ pub(super) fn normalize_pi(execution: pi_driver::RunResult) -> NormalizedExecuti
         started_at: execution.started_at,
         runtime_protocol: pi_driver::RUNTIME_PROTOCOL,
         driver_id: "pi-rpc",
+    }
+}
+
+pub(super) fn normalize_lico_agent(execution: lico_agent_driver::RunResult) -> NormalizedExecution {
+    let error = execution.error.map(|failure| {
+        let failure = failure.into_payload();
+        let thread_id = failure.session_id.clone();
+        NormalizedFailure {
+            code: failure.code.to_string(),
+            message: failure.message.to_string(),
+            stage: failure.stage.to_string(),
+            user_interaction_required: failure.user_interaction_required,
+            request_method: failure.request_method,
+            session_id: failure.session_id,
+            thread_id,
+            turn_id: failure.turn_id,
+            turn_status: failure.turn_status,
+        }
+    });
+    NormalizedExecution {
+        ok: execution.ok,
+        output: execution.output,
+        events: execution.events,
+        capabilities: json!({
+            "newSession": true,
+            "resumeSession": true,
+            "structuredEvents": true,
+            "tools": true,
+            "interactiveApprovalBridge": false,
+            "modelOverride": true,
+            "reasoningOverride": true
+        }),
+        error,
+        session_id: execution.session_id,
+        thread_id: execution.thread_id,
+        turn_id: execution.turn_id,
+        turn_status: execution.turn_status,
+        effective: NormalizedEffectiveSettings {
+            cwd: execution.effective.cwd,
+            model: execution.effective.model,
+            reasoning_effort: execution.effective.reasoning_effort,
+            permission_mode: execution.effective.permission_mode,
+            sandbox: execution.effective.sandbox,
+            approval_policy: execution.effective.approval_policy,
+            ..NormalizedEffectiveSettings::default()
+        },
+        status_code: execution.status_code,
+        stdout_truncated: execution.stdout_truncated,
+        stderr_truncated: execution.stderr_truncated,
+        started_at: execution.started_at,
+        runtime_protocol: lico_agent_driver::RUNTIME_PROTOCOL,
+        driver_id: "lico-agent-rpc",
     }
 }

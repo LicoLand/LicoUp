@@ -1,6 +1,7 @@
 import 'package:licoup/src/application/features/agents/contracts/agent_conversation_gateway.dart';
 import 'package:licoup/src/backend/features/agents/services/agent_conversation_service.dart';
 import 'package:licoup/src/contracts/agent_command_runner.dart';
+import 'package:licoup/src/contracts/agent_conversation_attachment.dart';
 import 'package:licoup/src/platform/mobile_relay/mobile_relay_service.dart';
 import 'package:licoup/src/platform/native_client/agent_service.dart';
 
@@ -20,12 +21,14 @@ final class AgentConversationGatewayAdapter
     String sessionId = '',
     int? limit,
     int offset = 0,
+    AgentDispatchBind bind = const AgentDispatchBind(),
   }) => service.loadSessions(
     agentService: runner,
     agentId: agentId,
     sessionId: sessionId,
     limit: limit,
     offset: offset,
+    bind: bind,
   );
   @override
   Stream<AgentConversationSession> streamSessions({
@@ -33,12 +36,14 @@ final class AgentConversationGatewayAdapter
     String sessionId = '',
     int? limit,
     int offset = 0,
+    AgentDispatchBind bind = const AgentDispatchBind(),
   }) => service.streamSessions(
     agentService: runner,
     agentId: agentId,
     sessionId: sessionId,
     limit: limit,
     offset: offset,
+    bind: bind,
   );
   @override
   Future<AgentDispatchSession> openOrResume({
@@ -56,12 +61,14 @@ final class AgentConversationGatewayAdapter
     required String agentId,
     required String text,
     required String sessionId,
+    List<ConversationAttachment> attachments = const [],
     AgentDispatchBind bind = const AgentDispatchBind(),
   }) => service.send(
     runner: runner,
     agentId: agentId,
     text: text,
     sessionId: sessionId,
+    attachments: attachments,
     bind: bind,
   );
   @override
@@ -69,6 +76,7 @@ final class AgentConversationGatewayAdapter
     required String agentId,
     required String text,
     required String sessionId,
+    List<ConversationAttachment> attachments = const [],
     AgentDispatchBind bind = const AgentDispatchBind(),
   }) async* {
     try {
@@ -77,6 +85,7 @@ final class AgentConversationGatewayAdapter
         agentId: agentId,
         text: text,
         sessionId: sessionId,
+        attachments: attachments,
         bind: bind,
       )) {
         yield event;
@@ -91,12 +100,14 @@ final class AgentConversationGatewayAdapter
     required String agentId,
     required String text,
     required String sessionId,
+    required String turnId,
     AgentDispatchBind bind = const AgentDispatchBind(),
   }) => service.steer(
     runner: runner,
     agentId: agentId,
     text: text,
     sessionId: sessionId,
+    turnId: turnId,
     bind: bind,
   );
   @override

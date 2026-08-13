@@ -7,6 +7,8 @@ use anyhow::{Result, anyhow};
 use serde_json::{Value, json};
 use std::fs;
 use std::path::PathBuf;
+#[cfg(test)]
+use std::{cell::RefCell, path::Path};
 
 use crate::core::secure_mesh_command::{
     SecureAgentDispatchFailure, SecureCommandLocalExecutor, SecureCommandPayload,
@@ -16,6 +18,12 @@ use crate::core::secure_mesh_command::{
 
 const SECURE_MESH_COMMAND_LEDGER_PATH: &str = "licoup/secure-mesh/command-replay.sqlite";
 
+#[cfg(test)]
+thread_local! {
+    static SECURE_COMMAND_HISTORY_HOME_OVERRIDE: RefCell<Option<PathBuf>> =
+        const { RefCell::new(None) };
+}
+
 #[derive(Default)]
 pub(crate) struct SecureCommandRuntimeExecutor;
 
@@ -23,10 +31,14 @@ impl SecureCommandLocalExecutor for SecureCommandRuntimeExecutor {
     fn execute_secure_command(&mut self, payload: &SecureCommandPayload) -> Result<Value> {
         match payload.command_kind.as_str() {
             "agent.sessions.list" => {
-                super::conversations::conversation_list(&agent_sessions_list_params(payload)?)
+                let mut params = agent_sessions_list_params(payload)?;
+                apply_test_history_home(&mut params);
+                super::conversations::conversation_list(&params)
             }
             "agent.sessions.describe" => {
-                super::conversations::conversation_list(&agent_sessions_describe_params(payload)?)
+                let mut params = agent_sessions_describe_params(payload)?;
+                apply_test_history_home(&mut params);
+                super::conversations::conversation_list(&params)
             }
             "agent.message.send" => {
                 let mut params = agent_message_send_params(payload)?;
@@ -56,6 +68,38 @@ impl SecureCommandLocalExecutor for SecureCommandRuntimeExecutor {
         }
     }
 }
+
+#[cfg(test)]
+pub(crate) fn with_secure_command_test_history_home<T>(
+    home: &Path,
+    operation: impl FnOnce() -> T,
+) -> T {
+    struct Reset(Option<PathBuf>);
+    impl Drop for Reset {
+        fn drop(&mut self) {
+            SECURE_COMMAND_HISTORY_HOME_OVERRIDE.with(|slot| {
+                slot.replace(self.0.take());
+            });
+        }
+    }
+
+    let previous =
+        SECURE_COMMAND_HISTORY_HOME_OVERRIDE.with(|slot| slot.replace(Some(home.to_path_buf())));
+    let _reset = Reset(previous);
+    operation()
+}
+
+#[cfg(test)]
+fn apply_test_history_home(params: &mut Value) {
+    SECURE_COMMAND_HISTORY_HOME_OVERRIDE.with(|slot| {
+        if let Some(home) = slot.borrow().as_ref() {
+            params["homeDir"] = json!(home.to_string_lossy());
+        }
+    });
+}
+
+#[cfg(not(test))]
+fn apply_test_history_home(_params: &mut Value) {}
 
 pub(crate) fn default_secure_command_ledger_path() -> Result<PathBuf> {
     let path = crate::platform::paths::portable_data_dir()?.join(SECURE_MESH_COMMAND_LEDGER_PATH);
@@ -104,7 +148,6 @@ mod tests {
             "createdAt": "2026-01-01T00:00:00Z",
             "expiresAt": "2026-01-01T00:10:00Z",
             "body": {
-                "agentId": "unsupported-fixture-agent",
                 "text": "fixture message"
             }
         }))

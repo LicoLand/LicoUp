@@ -18,7 +18,6 @@ export async function checkCommandAndFileTransport(context, { secureMeshMobileFf
     readText,
     runJson,
     sameSet,
-    sourceLineCount,
   } = context;
   const secureMeshCommandRustSource = await readJoinedText([
     "crates/licoup-native/src/core/secure_mesh_command.rs",

@@ -7,6 +7,7 @@ use std::sync::{Mutex, OnceLock};
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(in crate::platform) enum ControlDisposition {
     Accepted,
+    NotPersisted,
     NoActiveTurn,
     SessionUnavailable,
     TransportUnavailable,
@@ -48,7 +49,11 @@ pub(in crate::platform) fn cancel(session_id: &str) -> ControlDisposition {
     {
         use nix::sys::signal::{Signal, kill};
         use nix::unistd::Pid;
-        if kill(Pid::from_raw(pid as i32), Signal::SIGTERM).is_ok() {
+        // The turn runs as its own process group (command_group group_spawn),
+        // so a negative pid signals the whole process tree. Descendants that
+        // hold the pty open would otherwise keep the turn alive after the
+        // root exits.
+        if kill(Pid::from_raw(-(pid as i32)), Signal::SIGTERM).is_ok() {
             clear_active_turn(session_id);
             return ControlDisposition::Accepted;
         }
@@ -66,7 +71,8 @@ pub(in crate::platform) fn cleanup_session(session_id: &str) -> ControlDispositi
     }
     let removed = remove_cursor_chat_storage(session_id);
     match removed {
-        Ok(true) | Ok(false) => ControlDisposition::Accepted,
+        Ok(true) => ControlDisposition::Accepted,
+        Ok(false) => ControlDisposition::NotPersisted,
         Err(_) => ControlDisposition::TransportUnavailable,
     }
 }
@@ -95,7 +101,7 @@ fn remove_cursor_chat_storage(session_id: &str) -> Result<bool, ()> {
     }
     let projects_root = home.join(".cursor").join("projects");
     if projects_root.is_dir() {
-        removed_any |= remove_matching_transcript_dirs(&projects_root, session_id, 8)?;
+        removed_any |= remove_matching_transcript_dirs(&projects_root, session_id)?;
     }
     Ok(removed_any)
 }
@@ -111,53 +117,39 @@ fn remove_matching_chat_leaves(chats_root: &Path, session_id: &str) -> Result<bo
         }
         let leaf = path.join(session_id);
         if is_safe_chat_leaf(&home_dir().unwrap_or_default(), &leaf, session_id) && leaf.is_dir() {
-            fs::remove_dir_all(&leaf).map_err(|_| ())?;
+            trash::delete(&leaf).map_err(|_| ())?;
             removed = true;
         }
     }
     Ok(removed)
 }
 
-fn remove_matching_transcript_dirs(
-    root: &Path,
-    session_id: &str,
-    max_depth: usize,
-) -> Result<bool, ()> {
+fn remove_matching_transcript_dirs(root: &Path, session_id: &str) -> Result<bool, ()> {
     let mut removed = false;
-    remove_transcript_dirs_recursive(root, session_id, max_depth, &mut removed)?;
-    Ok(removed)
-}
-
-fn remove_transcript_dirs_recursive(
-    current: &Path,
-    session_id: &str,
-    remaining_depth: usize,
-    removed: &mut bool,
-) -> Result<(), ()> {
-    if remaining_depth == 0 {
-        return Ok(());
-    }
-    let entries = fs::read_dir(current).map_err(|_| ())?;
+    removed |= remove_transcript_leaf(&root.join("agent-transcripts"), session_id)?;
+    let entries = fs::read_dir(root).map_err(|_| ())?;
     for entry in entries {
         let entry = entry.map_err(|_| ())?;
         let path = entry.path();
-        if path.file_name().and_then(|name| name.to_str()) == Some("agent-transcripts")
-            && path.is_dir()
+        if path.is_dir()
+            && path.file_name().and_then(|name| name.to_str()) != Some("agent-transcripts")
         {
-            let target = path.join(session_id);
-            if target.is_dir()
-                && is_safe_transcript_dir(&home_dir().unwrap_or_default(), &target, session_id)
-            {
-                fs::remove_dir_all(&target).map_err(|_| ())?;
-                *removed = true;
-            }
-            continue;
-        }
-        if path.is_dir() {
-            remove_transcript_dirs_recursive(&path, session_id, remaining_depth - 1, removed)?;
+            removed |= remove_transcript_leaf(&path.join("agent-transcripts"), session_id)?;
         }
     }
-    Ok(())
+    Ok(removed)
+}
+
+fn remove_transcript_leaf(transcripts: &Path, session_id: &str) -> Result<bool, ()> {
+    let target = transcripts.join(session_id);
+    if !target.is_dir() {
+        return Ok(false);
+    }
+    if !is_safe_transcript_dir(&home_dir().unwrap_or_default(), &target, session_id) {
+        return Err(());
+    }
+    trash::delete(&target).map_err(|_| ())?;
+    Ok(true)
 }
 
 fn is_safe_chat_leaf(home: &Path, leaf: &Path, session_id: &str) -> bool {

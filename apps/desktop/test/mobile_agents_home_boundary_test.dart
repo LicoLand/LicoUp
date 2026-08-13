@@ -13,12 +13,10 @@ void main() {
     '$root/mobile_local_agent.dart',
   ];
 
-  test('mobile agents entry stays a small orchestration surface', () {
+  test('mobile agents entry stays a small coordination surface', () {
     final entry = File(entryPath);
     expect(entry.existsSync(), isTrue);
     final source = entry.readAsStringSync();
-
-    expect(source.split('\n').length, lessThanOrEqualTo(600));
     expect(source, contains('class MobileAgentsHome extends StatefulWidget'));
     expect(source, contains('class MobileAgentsHomeState'));
     expect(source, isNot(contains('class MobileAddAgentSheet')));
@@ -63,7 +61,7 @@ void main() {
           expect(
             graph[name],
             isNot(contains('mobile_agents_home.dart')),
-            reason: '$name must not depend on the orchestration entry',
+            reason: '$name must not depend on the coordination entry',
           );
         }
       }

@@ -1,5 +1,5 @@
 use command_group::{CommandGroup, GroupChild};
-use std::io::{self, Write};
+use std::io::{self, Read, Write};
 use std::process::{ChildStderr, ChildStdin, ChildStdout, Command, ExitStatus};
 use std::sync::mpsc::{self, Receiver, SyncSender, TryRecvError, TrySendError};
 use std::thread::{self, JoinHandle};
@@ -10,6 +10,120 @@ const PROCESS_GRACEFUL_EXIT_GRACE: Duration = Duration::from_millis(100);
 pub(super) const IO_THREAD_EXIT_GRACE: Duration = Duration::from_secs(1);
 const PROCESS_POLL_INTERVAL: Duration = Duration::from_millis(10);
 const STDIN_QUEUE_CAPACITY: usize = 8;
+
+#[derive(Debug)]
+pub(crate) struct BoundedCommandOutput {
+    pub(crate) status: Option<ExitStatus>,
+    pub(crate) stdout: Vec<u8>,
+    pub(crate) timed_out: bool,
+    pub(crate) truncated: bool,
+}
+
+/// Runs a batch command with a hard deadline, bounded captured output, and
+/// process-tree cleanup. This is intended for optional local capability probes
+/// whose executables are outside LicoUp's control.
+pub(crate) fn run_bounded_command_output(
+    command: &mut Command,
+    timeout: Duration,
+    max_output: usize,
+) -> io::Result<BoundedCommandOutput> {
+    command
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+    let mut child = SupervisedChild::spawn(command)?;
+    let stdout = child
+        .stdout()
+        .ok_or_else(|| io::Error::other("supervised stdout unavailable"))?;
+    let stderr = child
+        .stderr()
+        .ok_or_else(|| io::Error::other("supervised stderr unavailable"))?;
+    let stdout_handle = thread::spawn(move || read_bounded_bytes(stdout, max_output));
+    let stderr_handle = thread::spawn(move || read_bounded_bytes(stderr, max_output));
+    let deadline = Instant::now() + timeout;
+    while (!stdout_handle.is_finished() || !stderr_handle.is_finished())
+        && Instant::now() < deadline
+    {
+        thread::sleep(PROCESS_POLL_INTERVAL);
+    }
+    let timed_out = !stdout_handle.is_finished() || !stderr_handle.is_finished();
+    let status = child
+        .terminate_tree()
+        .map_err(|_| io::Error::other("supervised process cleanup failed"))?;
+    let stdout = join_bounded(stdout_handle, IO_THREAD_EXIT_GRACE)
+        .map_err(|_| io::Error::other("supervised stdout cleanup failed"))??;
+    let stderr = join_bounded(stderr_handle, IO_THREAD_EXIT_GRACE)
+        .map_err(|_| io::Error::other("supervised stderr cleanup failed"))??;
+    Ok(BoundedCommandOutput {
+        status,
+        stdout: stdout.bytes,
+        timed_out,
+        truncated: stdout.truncated || stderr.truncated,
+    })
+}
+
+/// Runs a sandboxed child with one bounded stdin document and bounded output.
+pub(crate) fn run_bounded_command_input(
+    command: &mut Command,
+    input: &[u8],
+    timeout: Duration,
+    max_output: usize,
+) -> io::Result<BoundedCommandOutput> {
+    command
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+    let mut child = SupervisedChild::spawn(command)?;
+    let mut stdin = child
+        .stdin()
+        .ok_or_else(|| io::Error::other("supervised stdin unavailable"))?;
+    stdin.write_all(input)?;
+    drop(stdin);
+    let stdout = child
+        .stdout()
+        .ok_or_else(|| io::Error::other("supervised stdout unavailable"))?;
+    let stderr = child
+        .stderr()
+        .ok_or_else(|| io::Error::other("supervised stderr unavailable"))?;
+    let stdout_handle = thread::spawn(move || read_bounded_bytes(stdout, max_output));
+    let stderr_handle = thread::spawn(move || read_bounded_bytes(stderr, max_output));
+    let deadline = Instant::now() + timeout;
+    while (!stdout_handle.is_finished() || !stderr_handle.is_finished())
+        && Instant::now() < deadline
+    {
+        thread::sleep(PROCESS_POLL_INTERVAL);
+    }
+    let timed_out = !stdout_handle.is_finished() || !stderr_handle.is_finished();
+    let status = child
+        .terminate_tree()
+        .map_err(|_| io::Error::other("supervised process cleanup failed"))?;
+    let stdout = join_bounded(stdout_handle, IO_THREAD_EXIT_GRACE)
+        .map_err(|_| io::Error::other("supervised stdout cleanup failed"))??;
+    let stderr = join_bounded(stderr_handle, IO_THREAD_EXIT_GRACE)
+        .map_err(|_| io::Error::other("supervised stderr cleanup failed"))??;
+    Ok(BoundedCommandOutput {
+        status,
+        stdout: stdout.bytes,
+        timed_out,
+        truncated: stdout.truncated || stderr.truncated,
+    })
+}
+
+struct BoundedBytes {
+    bytes: Vec<u8>,
+    truncated: bool,
+}
+
+fn read_bounded_bytes(reader: impl Read, max_output: usize) -> io::Result<BoundedBytes> {
+    let read_limit = u64::try_from(max_output)
+        .unwrap_or(u64::MAX - 1)
+        .saturating_add(1);
+    let mut bytes = Vec::with_capacity(max_output.min(8192));
+    reader.take(read_limit).read_to_end(&mut bytes)?;
+    let truncated = bytes.len() > max_output;
+    bytes.truncate(max_output);
+    Ok(BoundedBytes { bytes, truncated })
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum LifecycleFailure {

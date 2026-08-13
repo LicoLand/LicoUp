@@ -15,6 +15,12 @@ import {
   metadataResistanceEvidenceReady,
 } from "./evidence.mjs";
 import { SHA256 } from "./constants.mjs";
+import {
+  licoArcBadTowerAcceptanceCoverage,
+} from "../lib/licoarc-badtower-acceptance-report.mjs";
+import {
+  LICOARC_BADTOWER_CANDIDATE_BINDING_KEY,
+} from "../lib/licoarc-badtower-candidate-binding.mjs";
 
 export function reduceClientReleaseAcceptance({
   selectedTargets,
@@ -36,10 +42,22 @@ export function reduceClientReleaseAcceptance({
     "secure_mesh_pairwise_cli_desktop_command_result_relay_round_trip",
     "secure_mesh_pairwise_agent_host_command_result_relay_round_trip"
   ].every((id) => hasPassedNativeTest(reports.pairwise, id));
+  const stationCandidateBindings =
+    artifactBindings[LICOARC_BADTOWER_CANDIDATE_BINDING_KEY] || {};
+  const stationAcceptance = licoArcBadTowerAcceptanceCoverage(
+    reports.stationAcceptance,
+    {
+      clientCandidateDigest: inputIntegrity.sourceStateDigest,
+      protocolCandidateDigest:
+        stationCandidateBindings.protocolCandidateDigest,
+      stationCandidateDigest: stationCandidateBindings.stationCandidateDigest,
+    },
+  );
   const trustV2 = validateSecureMeshTrustUxV2Report(reports.trust);
   const gates = [
     result("input-integrity", [
-      { ok: inputIntegrity.ok === true, blocker: "release_input_provenance_not_ready" }
+      { ok: inputIntegrity.ok === true, blocker: "release_input_provenance_not_ready" },
+      { ok: inputIntegrity.candidateInputsStable === true, blocker: "licoarc_badtower_candidate_inputs_unstable" },
     ]),
     result("support-matrix", [
       { ok: supportMatrixReady === true, blocker: "support_matrix_missing_or_stale" }
@@ -48,23 +66,27 @@ export function reduceClientReleaseAcceptance({
       { ok: reports.pairwise?.summary?.verificationPassed === true, blocker: "pairwise_client_evidence_not_ready" },
       { ok: reports.pairwise?.summary?.metadataResistanceReady === true, blocker: "metadata_resistance_not_ready" },
       { ok: metadataResistanceEvidenceReady(reports.pairwise, inputIntegrity.sourceStateDigest), blocker: "canonical_wire_residual_metadata_topology_evidence_not_ready" },
-      { ok: pairwiseTamperRejected, blocker: "encrypted_relay_header_tamper_not_rejected" },
+      { ok: pairwiseTamperRejected, blocker: "encrypted_private_header_tamper_not_rejected" },
       { ok: reports.pairwise?.summary?.reviewSignoffReady === true, blocker: "independent_cryptographic_review_signature_not_ready" },
       { ok: reports.pairwise?.summary?.reviewerSignatureVerified === true, blocker: "independent_reviewer_signature_invalid" },
       { ok: reports.pairwise?.summary?.releaseOwnerSignatureVerified === true, blocker: "release_owner_signature_invalid" }
     ]),
-    result("opaque-relay-protocol", [
-      { ok: reports.relayMock?.summary?.ok === true, blocker: "relay_mock_evidence_not_ready" },
-      { ok: reports.relayMock?.summary?.exactFiveOperationsObserved === true, blocker: "relay_operation_contract_not_exact" },
-      { ok: reports.relayMock?.summary?.exactSixOuterFieldsObserved === true, blocker: "relay_envelope_contract_not_exact" },
-      { ok: reports.relayMock?.summary?.plaintextAbsentFromServerVisibleWire === true, blocker: "relay_wire_exposed_plaintext" },
-      { ok: reports.relayMock?.summary?.wireBytesMeasured === true, blocker: "relay_wire_traffic_not_measured" }
+    result("licoarc-badtower-interoperability", [
+      { ok: stationAcceptance.reportValid, blocker: "licoarc_badtower_acceptance_not_ready" },
+      { ok: stationAcceptance.candidateBindingsReady, blocker: "licoarc_badtower_candidate_bindings_stale" },
+      { ok: stationAcceptance.freshEndpointCount === 2, blocker: "fresh_endpoint_pair_not_verified" },
+      { ok: stationAcceptance.positiveExchange, blocker: "positive_exchange_not_verified" },
+      { ok: stationAcceptance.roundTrip, blocker: "round_trip_not_verified" },
+      { ok: stationAcceptance.stationPlaintextAbsent, blocker: "station_plaintext_absence_not_verified" },
+      { ok: stationAcceptance.nonConformantEnvelopeRejected, blocker: "non_conformant_envelope_not_rejected" },
+      { ok: stationAcceptance.transportHintsNonAuthoritative, blocker: "transport_hints_authority_not_rejected" },
+      { ok: stationAcceptance.exactFiveOuterFields, blocker: "licoarc_outer_field_contract_not_exact" },
+      { ok: stationAcceptance.mobileFfiDispatch, blocker: "mobile_ffi_dispatch_not_verified" },
+      { ok: stationAcceptance.typedPendingObserved, blocker: "typed_pending_state_not_observed" },
+      { ok: stationAcceptance.durableResultReceiptAcknowledged, blocker: "durable_result_receipt_not_acknowledged" },
     ]),
-    result("client-transport", [
+    result("client-e2ee", [
       { ok: commandResultMatrixReady, blocker: "client_command_result_matrix_missing" },
-      { ok: reports.relayMock?.summary?.replayRejected === true, blocker: "relay_replay_not_rejected" },
-      { ok: reports.relayMock?.summary?.staleLeaseRejected === true, blocker: "relay_stale_lease_not_rejected" },
-      { ok: reports.relayMock?.summary?.ackIdempotencyVerified === true, blocker: "relay_ack_idempotency_not_verified" }
     ]),
     result("client-file", [
       { ok: reports.file?.summary?.verificationPassed === true, blocker: "encrypted_file_client_evidence_not_ready" },
@@ -125,14 +147,6 @@ export function reduceClientReleaseAcceptance({
           runtimeExecutableDigest: artifact.runtimeExecutableDigest,
         }), blocker: `selected_macos_same_closure_cli_evidence_not_ready:${target.id}` }
       );
-    } else if (target.platform === "linux") {
-      conditions.push(
-        { ok: releaseCliTargetEvidenceReady(reports.linuxCli, {
-          platform: "ubuntu-linux-arm64",
-          sourceStateDigest: inputIntegrity.sourceStateDigest,
-          runtimeExecutableDigest: artifact.runtimeExecutableDigest,
-        }), blocker: `selected_linux_same_closure_cli_evidence_not_ready:${target.id}` }
-      );
     } else {
       conditions.push({ ok: false, blocker: `selected_target_runtime_evidence_not_supported:${target.id}` });
     }
@@ -145,7 +159,7 @@ export function reduceClientReleaseAcceptance({
   });
   const blockers = [...new Set([...gates, ...targetResults].flatMap((item) => item.blockers))].sort();
   return {
-    schemaVersion: "licomesh.client-release-acceptance-report.v3",
+    schemaVersion: "licomesh.client-release-acceptance-report.v4",
     ok: blockers.length === 0,
     githubReleaseReady: blockers.length === 0,
     nonBlockingDistributionGuidance: {
@@ -166,7 +180,7 @@ export function reduceClientReleaseAcceptance({
     blockers,
     scope: {
       clientOwnedOnly: true,
-      opaqueRelayAllowed: true,
+      untrustedStationAllowed: true,
       externalCoreAcceptanceRequired: false,
       optionalExternalServicesBlocking: false,
       unselectedTargetsBlocking: false,

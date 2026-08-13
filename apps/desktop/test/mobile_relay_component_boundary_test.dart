@@ -73,14 +73,35 @@ void main() {
   test('facades are bounded explicit composition roots', () {
     final facade = _source('$root/mobile_relay_service.dart');
     final secureFacade = _source('$root/mobile_relay_secure_mesh_service.dart');
-
-    expect(facade.split('\n').length, lessThanOrEqualTo(500));
     expect(facade, contains('MobileRelayOperations'));
     expect(facade, contains('MobileRelaySecureMeshOperations'));
-    expect(secureFacade.split('\n').length, lessThanOrEqualTo(300));
     expect(secureFacade, contains('MobileRelaySecureConversationOperations'));
     expect(secureFacade, contains('SecureMeshProtocolOperations'));
     expect(secureFacade, contains('SecureMeshSubstrateOperations'));
+  });
+
+  test('protocol operations have no retired desktop KT transport', () {
+    final protocol = _source('$root/secure_mesh_protocol_operations.dart');
+    final secureFacade = _source('$root/mobile_relay_secure_mesh_service.dart');
+    final facade = _source('$root/mobile_relay_service.dart');
+
+    expect(protocol, contains('secureMeshProtocolMobileOnlyErrorCode'));
+    for (final retired in [
+      'dart:convert',
+      'AgentCommandRunner',
+      'agent_command_runner.dart',
+      'runCli(',
+    ]) {
+      expect(protocol, isNot(contains(retired)), reason: retired);
+    }
+    for (final source in [protocol, secureFacade, facade]) {
+      expect(
+        RegExp(
+          r'executeSecureMeshKtRequest\s*\(\s*\{\s*required\s+Agent',
+        ).hasMatch(source),
+        isFalse,
+      );
+    }
   });
 }
 

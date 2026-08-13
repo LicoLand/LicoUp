@@ -4,6 +4,194 @@ import 'package:licoup/src/contracts/agent_command_runner.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test('catalog parses native capabilities and adapter plugin entries', () {
+    final catalog = AdapterPluginCatalog.fromJson({
+      'ok': true,
+      'schemaVersion': adapterPluginCatalogSchema,
+      'adapters': [
+        _descriptor(
+            agentId: 'codex',
+            managementKind: 'native',
+            actions: const [],
+          )
+          ..['nativeCapabilities'] = [
+            {'kind': 'desktop', 'detected': true},
+            {
+              'kind': 'cli',
+              'detected': true,
+              'running': true,
+              'pid': 42189,
+              'processName': 'codex',
+            },
+            {
+              'kind': 'local-server',
+              'detected': false,
+              'running': true,
+              'pid': 34279,
+              'processName': 'opencode',
+              'port': 24173,
+            },
+          ]
+          ..['adapterPlugins'] = [
+            {
+              'id': 'lico-up-codex',
+              'label': 'LicoUp Codex Plugin',
+              'detail': 'lico-subagent-mcp',
+              'installationState': 'not-installed',
+              'lifecycleActions': <String>[],
+            },
+          ],
+      ],
+    });
+
+    final codex = catalog.adapters.single;
+    expect(codex.nativeCapabilities, hasLength(3));
+    expect(
+      codex.nativeCapabilities.first.kind,
+      AdapterNativeCapabilityKind.desktop,
+    );
+    expect(codex.nativeCapabilities.first.detected, isTrue);
+    expect(
+      codex.nativeCapabilities.last.kind,
+      AdapterNativeCapabilityKind.localServer,
+    );
+    expect(codex.nativeCapabilities.last.detected, isFalse);
+    expect(codex.nativeCapabilities.first.running, isFalse);
+    final runningCli = codex.nativeCapabilities[1];
+    expect(runningCli.running, isTrue);
+    expect(runningCli.pid, 42189);
+    expect(runningCli.processName, 'codex');
+    expect(runningCli.port, isNull);
+    final runningServer = codex.nativeCapabilities.last;
+    expect(runningServer.port, 24173);
+    final plugin = codex.plugins.single;
+    expect(plugin.id, 'lico-up-codex');
+    expect(plugin.label, 'LicoUp Codex Plugin');
+    expect(plugin.detail, 'lico-subagent-mcp');
+    expect(plugin.installationState, 'not-installed');
+    expect(plugin.lifecycleActions, isEmpty);
+  });
+
+  test('catalog defaults missing capability and plugin lists to empty', () {
+    final catalog = AdapterPluginCatalog.fromJson({
+      'ok': true,
+      'schemaVersion': adapterPluginCatalogSchema,
+      'adapters': [
+        _descriptor(
+          agentId: 'codex',
+          managementKind: 'native',
+          actions: const [],
+        ),
+      ],
+    });
+
+    expect(catalog.adapters.single.nativeCapabilities, isEmpty);
+    expect(catalog.adapters.single.plugins, isEmpty);
+  });
+
+  test('catalog preserves protocol-specific ACP and Web Server kinds', () {
+    final catalog = AdapterPluginCatalog.fromJson({
+      'ok': true,
+      'schemaVersion': adapterPluginCatalogSchema,
+      'adapters': [
+        _descriptor(
+            agentId: 'kimi-code',
+            managementKind: 'bundled-acp',
+            actions: const [],
+          )
+          ..['nativeCapabilities'] = [
+            {'kind': 'acp', 'detected': true, 'running': false},
+            {
+              'kind': 'web-server',
+              'detected': true,
+              'running': true,
+              'pid': 58627,
+              'processName': 'kimi',
+              'port': 58627,
+            },
+          ],
+      ],
+    });
+
+    final capabilities = catalog.adapters.single.nativeCapabilities;
+    expect(capabilities.map((capability) => capability.kind), [
+      AdapterNativeCapabilityKind.acp,
+      AdapterNativeCapabilityKind.webServer,
+    ]);
+    expect(capabilities.last.port, 58627);
+    expect(
+      AdapterNativeCapabilityKind.parse('app-server'),
+      AdapterNativeCapabilityKind.appServer,
+    );
+    expect(
+      AdapterNativeCapabilityKind.parse('tui-gateway'),
+      AdapterNativeCapabilityKind.tuiGateway,
+    );
+  });
+
+  test('catalog rejects duplicate capability kinds and plugin ids', () {
+    expect(
+      () => AdapterPluginCatalog.fromJson({
+        'ok': true,
+        'schemaVersion': adapterPluginCatalogSchema,
+        'adapters': [
+          _descriptor(
+              agentId: 'codex',
+              managementKind: 'native',
+              actions: const [],
+            )
+            ..['nativeCapabilities'] = [
+              {'kind': 'cli', 'detected': true},
+              {'kind': 'cli', 'detected': false},
+            ],
+        ],
+      }),
+      throwsA(
+        isA<FormatException>().having(
+          (error) => error.message,
+          'message',
+          'adapter_native_capability_duplicate',
+        ),
+      ),
+    );
+    expect(
+      () => AdapterPluginCatalog.fromJson({
+        'ok': true,
+        'schemaVersion': adapterPluginCatalogSchema,
+        'adapters': [
+          _descriptor(
+              agentId: 'codex',
+              managementKind: 'native',
+              actions: const [],
+            )
+            ..['adapterPlugins'] = [
+              {
+                'id': 'acp-bridge',
+                'label': 'ACP Bridge',
+                'detail': '',
+                'installationState': 'installed',
+                'lifecycleActions': <String>[],
+              },
+              {
+                'id': 'acp-bridge',
+                'label': 'ACP Bridge',
+                'detail': '',
+                'installationState': 'not-installed',
+                'lifecycleActions': <String>[],
+              },
+            ],
+        ],
+      }),
+      throwsA(
+        isA<FormatException>().having(
+          (error) => error.message,
+          'message',
+          'adapter_plugin_entry_duplicate',
+        ),
+      ),
+    );
+  });
+
   test('catalog rejects lifecycle actions on built-in lanes', () {
     expect(
       () => AdapterPluginCatalog.fromJson({

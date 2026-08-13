@@ -57,10 +57,6 @@ export function packageClient(
   const options = parsePackageClientArgs(argv);
   const config = loadPackagingConfig(options.configPath, options);
   const { selected, skipped } = selectPackagingModules(config, options);
-  options.routingModuleIncluded = selected.some(
-    (moduleConfig) => moduleConfig.id === "multi-agent-routing",
-  );
-
   if (options.dryRun) {
     emit(packagePlanRecord(config, selected, skipped, options));
     return null;

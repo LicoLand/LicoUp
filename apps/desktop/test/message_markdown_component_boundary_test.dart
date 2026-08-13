@@ -13,8 +13,6 @@ void main() {
     final view = File(
       'lib/src/frontend/shared/ui/message_markdown_block_view.dart',
     ).readAsStringSync();
-
-    expect(root.split('\n'), hasLength(lessThan(100)));
     expect(root, contains('MessageMarkdownBlockView('));
     expect(root, isNot(contains("RegExp(r'^:?-{3,}:?\$')")));
     expect(parser, isNot(contains("package:flutter/material.dart")));

@@ -33,14 +33,11 @@ class GlobalSearchFeatureEntry {
     if (lowerLabel.contains(normalized)) {
       score += 6;
     }
-    if (keywords.any(
-      (keyword) => keyword.toLowerCase().contains(normalized),
-    )) {
+    if (keywords.any((keyword) => keyword.toLowerCase().contains(normalized))) {
       score += 3;
     }
-    for (final term in normalized
-        .split(RegExp(r'\s+'))
-        .where((term) => term.isNotEmpty)) {
+    for (final term
+        in normalized.split(RegExp(r'\s+')).where((term) => term.isNotEmpty)) {
       if (lowerLabel.contains(term)) {
         score += 2;
       } else if (keywords.any(
@@ -98,6 +95,15 @@ List<GlobalSearchFeatureEntry> buildGlobalSearchFeatures({
       Icons.phonelink_outlined,
       const ['mobile', 'relay', 'pair', '配对'],
     ),
+    section(ClientSection.models, strings.keys, Icons.key_outlined, const [
+      'model',
+      'api',
+      'key',
+      'gateway',
+      '模型',
+      '密钥',
+      '网关',
+    ]),
     section(
       ClientSection.settings,
       strings.settings,

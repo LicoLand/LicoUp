@@ -181,9 +181,14 @@ fn kimi_code_subagent_wires_collapse_into_main_session_cards() {
         .iter()
         .map(|card| card["cardTitle"].as_str().unwrap_or_default())
         .collect::<BTreeSet<_>>();
+    // A delegated agent with no declared swarm label is titled by its own task
+    // instruction rather than a generic placeholder.
     assert_eq!(
         titles,
-        BTreeSet::from(["Subagent task", "Survey the first synthetic subtask"])
+        BTreeSet::from([
+            "Subtask synthetic prompt",
+            "Survey the first synthetic subtask"
+        ])
     );
     let titled = cards
         .iter()
@@ -232,7 +237,7 @@ fn kimi_code_wire_readback_preserves_session_and_structured_order() {
     fs::create_dir_all(wire.parent().unwrap()).unwrap();
     fs::write(
         session_root.join("state.json"),
-        r#"{"title":"Synthetic Kimi Code session"}"#,
+        r#"{"title":"Synthetic Kimi Code session","workDir":"/workspace/kimi-project"}"#,
     )
     .unwrap();
     let reasoning_canary = "PRIVATE_REASONING_CANARY";
@@ -262,6 +267,7 @@ fn kimi_code_wire_readback_preserves_session_and_structured_order() {
     assert_eq!(sessions[0]["adapterId"], "kimi-code");
     assert_eq!(sessions[0]["adapterLabel"], "Kimi Code - CLI");
     assert_eq!(sessions[0]["nativeSessionId"], "native-session-42");
+    assert_eq!(sessions[0]["workingDirectory"], "/workspace/kimi-project");
 
     let messages = sessions[0]["messages"].as_array().unwrap();
     let roles = messages
@@ -273,10 +279,13 @@ fn kimi_code_wire_readback_preserves_session_and_structured_order() {
         vec!["user", "reasoning", "tool_call", "tool_result", "agent"]
     );
     assert_eq!(messages[0]["text"], "Kimi Code synthetic prompt");
-    assert_eq!(messages[1]["text"], "Reasoning details are redacted.");
+    assert_eq!(
+        messages[1]["text"],
+        "PRIVATE_REASONING_CANARY second private chunk"
+    );
     assert!(messages[1].get("providerSummary").is_none());
     assert_eq!(messages[2]["cardType"], "tool-call");
-    assert_eq!(messages[2]["text"], "Invocation details are hidden.");
+    assert_eq!(messages[2]["text"], "command: api_key: [redacted]");
     assert_eq!(messages[3]["cardType"], "tool-result");
     assert_eq!(messages[4]["text"], "Final answer");
     assert_eq!(
@@ -294,6 +303,7 @@ fn kimi_code_wire_readback_preserves_session_and_structured_order() {
         1
     );
     let serialized = serde_json::to_string(messages).unwrap();
-    assert!(!serialized.contains(reasoning_canary));
+    // Reasoning detail is shown locally, but secret argument values stay
+    // redacted in the projected tool call.
     assert!(!serialized.contains(argument_canary));
 }

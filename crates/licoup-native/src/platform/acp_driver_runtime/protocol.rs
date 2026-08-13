@@ -31,7 +31,7 @@ pub(super) struct ProtocolOutcome {
 #[derive(Debug)]
 pub(super) enum ProtocolEffect {
     Send(Value),
-    Complete(ProtocolOutcome),
+    Complete(Box<ProtocolOutcome>),
     Fail(ProtocolFailure),
 }
 
@@ -317,11 +317,23 @@ impl AcpProtocol {
             return Vec::new();
         }
         let Some(expected_session_id) = self.session_id.as_deref() else {
-            self.phase = ProtocolPhase::Finished;
-            return vec![ProtocolEffect::Fail(ProtocolFailure::from_acp(
-                acp::AcpError::SessionMismatch,
-                acp::SESSION_UPDATE_METHOD,
-            ))];
+            // ACP agents may emit session/update notifications for the
+            // conversation that is still being created: real Copilot sends
+            // available_commands_update before the session/new response.
+            // The update necessarily concerns the pending session of this
+            // single-session process, so validate its shape and drop it
+            // instead of failing the turn. Output accumulation stays gated
+            // to the prompt phases, where binding is strictly enforced.
+            return match acp::validate_session_update(message, None) {
+                Ok(_) => Vec::new(),
+                Err(error) => {
+                    self.phase = ProtocolPhase::Finished;
+                    vec![ProtocolEffect::Fail(ProtocolFailure::from_acp(
+                        error,
+                        acp::SESSION_UPDATE_METHOD,
+                    ))]
+                }
+            };
         };
         let update = match acp::validate_session_update(message, Some(expected_session_id)) {
             Ok(update) => update,
@@ -347,21 +359,28 @@ impl AcpProtocol {
         ) {
             return Vec::new();
         }
-        let text = update.agent_message_text().map(str::to_owned);
+        if let Some(evidence_kind) = update.kind().processing_evidence_kind() {
+            super::super::turn_event_emit::emit_agent_processing(
+                self.session_id.as_deref().unwrap_or_default(),
+                &self.turn_id,
+                evidence_kind,
+                None,
+            );
+        }
+        if let Some(text) = update.agent_message_text() {
+            self.output.push_str(text);
+            super::super::turn_event_emit::emit_agent_message_chunk(
+                self.session_id.as_deref().unwrap_or_default(),
+                &self.turn_id,
+                text,
+            );
+        }
         let skill_events =
             super::super::skill_invocation_projection::project_skill_invocations(update.payload());
         if skill_events.is_empty() {
             self.events.push(update.into_payload());
         } else {
             self.events.extend(skill_events);
-        }
-        if let Some(text) = text {
-            self.output.push_str(&text);
-            super::super::turn_event_emit::emit_agent_message_chunk(
-                self.session_id.as_deref().unwrap_or_default(),
-                &self.turn_id,
-                &text,
-            );
         }
         Vec::new()
     }
@@ -394,6 +413,20 @@ impl AcpProtocol {
                         .with_session(self.session_id.as_deref()),
                     ),
                 ];
+            }
+            if self.config.allow_all_authorized
+                && let Some(option_id) = one_shot_permission_option(message)
+            {
+                return vec![ProtocolEffect::Send(json!({
+                    "jsonrpc": "2.0",
+                    "id": id,
+                    "result": {
+                        "outcome": {
+                            "outcome": "selected",
+                            "optionId": option_id
+                        }
+                    }
+                }))];
             }
             self.interaction_failure = Some(ProtocolFailure::user_interaction(
                 method,
@@ -513,7 +546,7 @@ impl AcpProtocol {
             failure.turn_id = Some(self.turn_id.clone());
             return vec![ProtocolEffect::Fail(failure)];
         }
-        vec![ProtocolEffect::Complete(ProtocolOutcome {
+        vec![ProtocolEffect::Complete(Box::new(ProtocolOutcome {
             output: std::mem::take(&mut self.output),
             events: std::mem::take(&mut self.events),
             session_id: self.session_id.clone().unwrap_or_default(),
@@ -522,8 +555,25 @@ impl AcpProtocol {
             turn_status: stop_reason,
             effective: effective_settings(&self.config, &self.config_options, self.modes.as_ref()),
             capabilities: self.capabilities.clone(),
-        })]
+        }))]
     }
+}
+
+fn one_shot_permission_option(message: &Value) -> Option<&str> {
+    let options = message.get("params")?.get("options")?.as_array()?;
+    ["allow_once", "allow"]
+        .into_iter()
+        .find_map(|expected_kind| {
+            options.iter().find_map(|option| {
+                let kind = option.get("kind")?.as_str()?;
+                let option_id = option.get("optionId")?.as_str()?.trim();
+                (kind == expected_kind
+                    && !option_id.is_empty()
+                    && option_id.len() <= 256
+                    && !option_id.contains('\0'))
+                .then_some(option_id)
+            })
+        })
 }
 
 pub(super) fn request_id_matches(message: &Value, id: i64) -> bool {

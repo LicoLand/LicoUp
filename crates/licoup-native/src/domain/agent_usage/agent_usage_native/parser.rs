@@ -2,7 +2,9 @@ mod cursor;
 mod hermes;
 mod openagent;
 
-use super::super::attribution::{estimated_message_usage, message_usage, summarize_sessions};
+use super::super::attribution::{
+    estimated_message_usage, message_usage, summarize_sessions, summarize_sessions_exact_only,
+};
 use super::super::contract::{HistoryUsageSummary, MessageUsage, text_field};
 use super::super::window::UsageWindow;
 use super::models::{CumulativeSnapshot, CumulativeTotals, ParseResult};
@@ -89,7 +91,11 @@ pub(super) fn parse_append_source(
             );
             continue;
         }
-        if let Some(parsed) = estimated_usage_event(adapter, &event, calendar) {
+        if !matches!(
+            adapter,
+            HistoryAdapter::Kimi | HistoryAdapter::OpenClaw | HistoryAdapter::Hermes
+        ) && let Some(parsed) = estimated_usage_event(adapter, &event, calendar)
+        {
             record_append_usage(
                 parsed,
                 &mut summary,
@@ -151,15 +157,22 @@ pub(super) fn parse_snapshot_source(
     }
     if adapter == HistoryAdapter::Hermes
         && matches!(extension(path).as_str(), "sqlite" | "sqlite3" | "db")
-        && let Some(mut parsed) = parse_hermes_usage_database(path, calendar)
     {
+        let mut parsed = parse_hermes_usage_database(path, calendar).unwrap_or_default();
         parsed.parsed_bytes = metadata.len();
         parsed.session_increment = parsed.summary.session_count;
         return Ok(parsed);
     }
     let config = HistoryScanConfig::from_params(&json!({"archiveMode": true}));
     let sessions = parse_history_file(adapter, path, source_kind, metadata, config);
-    let summary = summarize_sessions(&sessions, calendar);
+    let summary = if matches!(
+        adapter,
+        HistoryAdapter::Kimi | HistoryAdapter::OpenClaw | HistoryAdapter::Hermes
+    ) {
+        summarize_sessions_exact_only(&sessions, calendar)
+    } else {
+        summarize_sessions(&sessions, calendar)
+    };
     let session_increment = summary.session_count;
     Ok(ParseResult {
         summary,
@@ -249,6 +262,8 @@ fn append_message_envelope(
                     .pointer("/message/role")
                     .and_then(Value::as_str)
                     .map(str::to_owned)
+            } else if adapter == HistoryAdapter::LicoAgent && event_type == "message" {
+                event.get("role").and_then(Value::as_str).map(str::to_owned)
             } else {
                 None
             }
@@ -336,12 +351,15 @@ fn explicit_usage_event(
     let usage_scope = text_field(event, &["usageScope", "usage_scope"])
         .unwrap_or_default()
         .to_ascii_lowercase();
-    // Kimi wire logs emit exact turn usage alongside a session cumulative
-    // snapshot. The turn records are the non-overlapping authority.
-    if adapter == HistoryAdapter::KimiCode && usage_scope == "session" {
+    let kimi_usage_record = adapter == HistoryAdapter::KimiCode && event_type == "usage.record";
+    // Legacy Kimi status streams may expose a session-wide snapshot. Current
+    // `usage.record` entries are different: both `turn` and `session` scopes
+    // are exact, additive model calls, while the scope only controls the live
+    // current-turn projection.
+    if adapter == HistoryAdapter::KimiCode && usage_scope == "session" && !kimi_usage_record {
         return None;
     }
-    let is_cumulative = usage_scope == "session"
+    let is_cumulative = (usage_scope == "session" && !kimi_usage_record)
         || event.get("total_usage").is_some()
         || event.get("totalUsage").is_some()
         || event.pointer("/conversation/total_usage").is_some()
@@ -389,15 +407,6 @@ fn sqlite_table_exists(connection: &Connection, table: &str) -> bool {
             |_| Ok(()),
         )
         .is_ok()
-}
-
-fn select_column(columns: &BTreeSet<String>, candidates: &[&str]) -> String {
-    candidates
-        .iter()
-        .find(|candidate| columns.contains(**candidate))
-        .copied()
-        .unwrap_or("NULL")
-        .to_owned()
 }
 
 fn event_type(value: &Value) -> String {
@@ -566,7 +575,49 @@ mod tests {
     }
 
     #[test]
-    fn kimi_status_and_gemini_usage_metadata_are_exact() {
+    fn kimi_desktop_append_parser_uses_only_native_counters() {
+        let path = temp_file("kimi-desktop-append");
+        fs::write(
+            &path,
+            [
+                r#"{"type":"user.message","timestamp":"2026-07-15T10:00:00Z","message":"history text is not usage"}"#,
+                r#"{"type":"assistant.message","timestamp":"2026-07-15T10:00:01Z","message":"response text is not usage"}"#,
+                r#"{"type":"StatusUpdate","time":"2026-07-15T10:00:02Z","model":"kimi-test","token_usage":{"input_other":80,"input_cache_read":20,"input_cache_creation":5,"output":15}}"#,
+            ]
+            .join("\n"),
+        )
+        .unwrap();
+
+        let parsed = parse_append_source(HistoryAdapter::Kimi, &path, 0, &window(), false).unwrap();
+        assert_eq!(parsed.summary.total_tokens(), 120);
+        assert_eq!(parsed.summary.explicit_records, 1);
+        assert_eq!(parsed.summary.estimated_records, 0);
+        fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn openclaw_append_parser_does_not_estimate_gateway_consumption_from_text() {
+        let path = temp_file("openclaw-gateway-append");
+        fs::write(
+            &path,
+            [
+                r#"{"type":"user.message","timestamp":"2026-07-15T10:00:00Z","sessionId":"synthetic-session","message":"history text is not gateway usage"}"#,
+                r#"{"type":"assistant.message","timestamp":"2026-07-15T10:00:01Z","sessionId":"synthetic-session","message":"response text is not gateway usage"}"#,
+            ]
+            .join("\n"),
+        )
+        .unwrap();
+
+        let parsed =
+            parse_append_source(HistoryAdapter::OpenClaw, &path, 0, &window(), false).unwrap();
+        assert_eq!(parsed.summary.total_tokens(), 0);
+        assert_eq!(parsed.summary.explicit_records, 0);
+        assert_eq!(parsed.summary.estimated_records, 0);
+        fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn kimi_exact_usage_scopes_and_gemini_usage_metadata_are_normalized() {
         let kimi = explicit_usage_event(
             HistoryAdapter::KimiCode,
             &json!({
@@ -584,6 +635,29 @@ mod tests {
         )
         .unwrap();
         assert_eq!(kimi.usage.total_tokens, 120);
+
+        let kimi_session = explicit_usage_event(
+            HistoryAdapter::KimiCode,
+            &json!({
+                "type": "usage.record",
+                "time": "2026-07-15T10:01:00Z",
+                "model": "kimi-test",
+                "usageScope": "session",
+                "usage": {
+                    "inputOther": 40,
+                    "inputCacheRead": 10,
+                    "inputCacheCreation": 3,
+                    "output": 12
+                }
+            }),
+            &window(),
+        )
+        .unwrap();
+        assert_eq!(kimi_session.usage.prompt_tokens, 53);
+        assert_eq!(kimi_session.usage.cached_input_tokens, 10);
+        assert_eq!(kimi_session.usage.completion_tokens, 12);
+        assert_eq!(kimi_session.usage.total_tokens, 65);
+        assert!(kimi_session.cumulative_key.is_none());
 
         let gemini = explicit_usage_event(
             HistoryAdapter::Antigravity,

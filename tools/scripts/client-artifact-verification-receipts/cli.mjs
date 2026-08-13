@@ -31,10 +31,8 @@ export function parseArgs(argv) {
 }
 
 export function defaultTargetId() {
-  if (process.platform === "darwin" && process.arch === "arm64") return "macos-arm64";
-  if (process.platform === "linux" && process.arch === "arm64") {
-    const glibcVersion = text(process.report?.getReport?.()?.header?.glibcVersionRuntime);
-    if (glibcVersion) return "linux-glibc-arm64";
+  if (process.platform === "darwin" && process.arch === "arm64") {
+    return "macos-direct-arm64";
   }
   throw new ReceiptValidationError("receipt_explicit_target_selection_required");
 }

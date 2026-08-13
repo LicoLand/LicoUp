@@ -1,4 +1,5 @@
 use super::super::material_mutation::ensure_mobile_relay_endpoint_material;
+use crate::domain::mobile_relay::secret_custody::MobileRelayE2eeSecretField;
 use crate::domain::mobile_relay::test_runtime_secret_material;
 use serde_json::json;
 
@@ -6,27 +7,18 @@ use serde_json::json;
 fn endpoint_material_builds_complete_pqxdh_inventory() {
     let mut config = json!({});
 
-    ensure_mobile_relay_endpoint_material(
-        &mut config,
-        test_runtime_secret_material(stringify!(&mut config)),
-        "desktop",
-    )
-    .unwrap();
+    let mut material = test_runtime_secret_material(stringify!(&mut config));
+    ensure_mobile_relay_endpoint_material(&mut config, &mut material, "desktop").unwrap();
 
     let state = config["mobileRelayE2ee"].as_object().unwrap();
     for field in [
-        "privateKeyBase64url",
         "publicKeyBase64url",
-        "signingKeyBase64url",
         "signingPublicKeyBase64url",
         "signedPrekeyId",
-        "signedPrekeyPrivateKeyBase64url",
         "signedPrekeyPublicKeyBase64url",
         "oneTimePrekeyId",
-        "oneTimePrekeyPrivateKeyBase64url",
         "oneTimePrekeyPublicKeyBase64url",
         "oneTimeMlKem1024PrekeyId",
-        "oneTimeMlKem1024PrekeySeedBase64url",
         "oneTimeMlKem1024PrekeyPublicKeyBase64url",
     ] {
         assert!(
@@ -35,6 +27,24 @@ fn endpoint_material_builds_complete_pqxdh_inventory() {
                 .and_then(|value| value.as_str())
                 .is_some_and(|value| !value.is_empty()),
             "missing local material field: {field}"
+        );
+    }
+    for field in [
+        MobileRelayE2eeSecretField::PrivateKey,
+        MobileRelayE2eeSecretField::SigningKey,
+        MobileRelayE2eeSecretField::SignedPrekeyPrivateKey,
+        MobileRelayE2eeSecretField::OneTimePrekeyPrivateKey,
+        MobileRelayE2eeSecretField::OneTimeMlKem1024PrekeySeed,
+    ] {
+        assert!(
+            material.e2ee_secret(field).is_some(),
+            "missing runtime-only local secret field: {}",
+            field.config_field()
+        );
+        assert!(
+            state.get(field.config_field()).is_none(),
+            "runtime-only local secret leaked into public config: {}",
+            field.config_field()
         );
     }
     assert_eq!(state["prekeyPublicationVersion"], 1);

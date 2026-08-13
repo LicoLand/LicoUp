@@ -71,7 +71,6 @@ pub(super) fn key_transparency_status(params: &Value) -> Result<Value> {
             "issuedAtEpochSeconds": checkpoint.issued_at_epoch_seconds,
             "rootCommitted": true,
             "mapRootCommitted": true
-        })),
-        "privateKeyMaterial": "redacted"
+        }))
     }))
 }

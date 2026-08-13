@@ -4,15 +4,17 @@ use super::super::contract::HistoryUsageSummary;
 use super::super::window::UsageWindow;
 use super::models::{CachedSource, SourceMetadata};
 use anyhow::{Context, Result};
-use rusqlite::{Connection, OptionalExtension, Transaction, TransactionBehavior, params};
-use std::collections::BTreeMap;
+use rusqlite::{
+    Connection, OptionalExtension, Statement, Transaction, TransactionBehavior, params,
+};
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-pub(super) const CACHE_SCHEMA_VERSION: i64 = 5;
+pub(super) const CACHE_SCHEMA_VERSION: i64 = 7;
 pub(super) const CACHE_FILE_NAME: &str = "agent-usage-rollups-v2.sqlite3";
 const LEGACY_CACHE_FILE_NAME: &str = "agent-usage-exact-v1.sqlite3";
 
@@ -184,10 +186,10 @@ pub(super) fn cache_has_baseline(connection: &Connection, scope_key: &str) -> Re
 }
 
 pub(super) fn load_sources(
-    transaction: &Transaction<'_>,
+    connection: &Connection,
     scope_key: &str,
 ) -> Result<BTreeMap<String, CachedSource>> {
-    let mut statement = transaction.prepare(
+    let mut statement = connection.prepare(
         "SELECT source_key, modified_ns, size, file_id, parsed_bytes, append_guard,
                 session_count, sealed
          FROM native_usage_sources WHERE scope_key=?1",
@@ -210,52 +212,400 @@ pub(super) fn load_sources(
         .map_err(Into::into)
 }
 
-pub(super) fn replace_source_rollup(
-    transaction: &Transaction<'_>,
+pub(super) fn load_compaction_targets(
+    connection: &Connection,
     scope_key: &str,
-    source_key: &str,
-    summary: &HistoryUsageSummary,
-) -> Result<()> {
-    transaction.execute(
-        "DELETE FROM native_usage_source_days WHERE scope_key=?1 AND source_key=?2",
-        params![scope_key, source_key],
+    before_day: &str,
+) -> Result<BTreeSet<String>> {
+    let mut statement = connection.prepare(
+        "SELECT DISTINCT source_key FROM native_usage_source_days
+         WHERE scope_key=?1 AND day<?2",
     )?;
-    transaction.execute(
-        "DELETE FROM native_usage_source_models WHERE scope_key=?1 AND source_key=?2",
-        params![scope_key, source_key],
-    )?;
-    add_source_rollup(transaction, scope_key, source_key, summary)
+    let rows = statement.query_map(params![scope_key, before_day], |row| {
+        row.get::<_, String>(0)
+    })?;
+    rows.collect::<rusqlite::Result<BTreeSet<_>>>()
+        .map_err(Into::into)
 }
 
-pub(super) fn add_source_rollup(
-    transaction: &Transaction<'_>,
-    scope_key: &str,
-    source_key: &str,
-    summary: &HistoryUsageSummary,
-) -> Result<()> {
-    for (day, usage) in &summary.daily_usage {
-        if usage.total_tokens == 0
-            || usage
-                .explicit_records
-                .saturating_add(usage.estimated_records)
-                == 0
-        {
-            continue;
+/// One set of prepared mutation statements shared by the whole refresh
+/// transaction. Every SQL invocation is counted so the scan report can prove
+/// that statement volume scales with batches instead of per-day or per-model
+/// rows.
+pub(super) struct RefreshStatements<'a> {
+    transaction: &'a Transaction<'a>,
+    compact_count: Statement<'a>,
+    compact_first_day: Statement<'a>,
+    compact_totals: Statement<'a>,
+    compact_models: Statement<'a>,
+    compact_session: Statement<'a>,
+    compact_delete_days: Statement<'a>,
+    compact_delete_models: Statement<'a>,
+    compact_zero: Statement<'a>,
+    seal_first_day: Statement<'a>,
+    seal_totals: Statement<'a>,
+    seal_models: Statement<'a>,
+    seal_session: Statement<'a>,
+    seal_delete_days: Statement<'a>,
+    seal_delete_models: Statement<'a>,
+    seal_mark: Statement<'a>,
+    source_upsert: Statement<'a>,
+    day_upsert: Statement<'a>,
+    model_upsert: Statement<'a>,
+    replace_delete_days: Statement<'a>,
+    replace_delete_models: Statement<'a>,
+    watermark_upsert: Statement<'a>,
+    mark_scan: Statement<'a>,
+    executed: u64,
+}
+
+impl<'a> RefreshStatements<'a> {
+    pub(super) fn prepare(transaction: &'a Transaction<'a>) -> Result<Self> {
+        Ok(Self {
+            transaction,
+            compact_count: transaction.prepare(
+                "SELECT COUNT(*) FROM native_usage_source_days
+                 WHERE scope_key=?1 AND source_key=?2 AND day<?3",
+            )?,
+            compact_first_day: transaction.prepare(
+                "SELECT MIN(day) FROM native_usage_source_days
+                 WHERE scope_key=?1 AND source_key=?2 AND day<?3",
+            )?,
+            compact_totals: transaction.prepare(
+                "INSERT INTO native_usage_daily_totals
+                   SELECT scope_key, day, prompt_tokens, cached_input_tokens,
+                          completion_tokens, estimated_prompt_tokens,
+                          estimated_completion_tokens, explicit_records,
+                          estimated_records, message_count, 0
+                   FROM native_usage_source_days
+                   WHERE scope_key=?1 AND source_key=?2 AND day<?3
+                 ON CONFLICT(scope_key,day) DO UPDATE SET
+                   prompt_tokens=prompt_tokens+excluded.prompt_tokens,
+                   cached_input_tokens=cached_input_tokens+excluded.cached_input_tokens,
+                   completion_tokens=completion_tokens+excluded.completion_tokens,
+                   estimated_prompt_tokens=estimated_prompt_tokens+excluded.estimated_prompt_tokens,
+                   estimated_completion_tokens=estimated_completion_tokens+excluded.estimated_completion_tokens,
+                   explicit_records=explicit_records+excluded.explicit_records,
+                   estimated_records=estimated_records+excluded.estimated_records,
+                   message_count=message_count+excluded.message_count",
+            )?,
+            compact_models: transaction.prepare(
+                "INSERT INTO native_usage_daily_models
+                   SELECT scope_key, day, model, prompt_tokens, cached_input_tokens,
+                          completion_tokens, total_tokens, estimated_prompt_tokens,
+                          estimated_completion_tokens
+                   FROM native_usage_source_models
+                   WHERE scope_key=?1 AND source_key=?2 AND day<?3
+                 ON CONFLICT(scope_key,day,model) DO UPDATE SET
+                   prompt_tokens=prompt_tokens+excluded.prompt_tokens,
+                   cached_input_tokens=cached_input_tokens+excluded.cached_input_tokens,
+                   completion_tokens=completion_tokens+excluded.completion_tokens,
+                   total_tokens=total_tokens+excluded.total_tokens,
+                   estimated_prompt_tokens=estimated_prompt_tokens+excluded.estimated_prompt_tokens,
+                   estimated_completion_tokens=estimated_completion_tokens+excluded.estimated_completion_tokens",
+            )?,
+            compact_session: transaction.prepare(
+                "UPDATE native_usage_daily_totals
+                 SET session_count=session_count+?3
+                 WHERE scope_key=?1 AND day=?2",
+            )?,
+            compact_delete_days: transaction.prepare(
+                "DELETE FROM native_usage_source_days
+                 WHERE scope_key=?1 AND source_key=?2 AND day<?3",
+            )?,
+            compact_delete_models: transaction.prepare(
+                "DELETE FROM native_usage_source_models
+                 WHERE scope_key=?1 AND source_key=?2 AND day<?3",
+            )?,
+            compact_zero: transaction.prepare(
+                "UPDATE native_usage_sources SET session_count=0
+                 WHERE scope_key=?1 AND source_key=?2",
+            )?,
+            seal_first_day: transaction.prepare(
+                "SELECT MIN(day) FROM native_usage_source_days
+                 WHERE scope_key=?1 AND source_key=?2",
+            )?,
+            seal_totals: transaction.prepare(
+                "INSERT INTO native_usage_daily_totals
+                   SELECT scope_key, day, prompt_tokens, cached_input_tokens,
+                          completion_tokens, estimated_prompt_tokens,
+                          estimated_completion_tokens, explicit_records,
+                          estimated_records, message_count, 0
+                   FROM native_usage_source_days WHERE scope_key=?1 AND source_key=?2
+                 ON CONFLICT(scope_key,day) DO UPDATE SET
+                   prompt_tokens=prompt_tokens+excluded.prompt_tokens,
+                   cached_input_tokens=cached_input_tokens+excluded.cached_input_tokens,
+                   completion_tokens=completion_tokens+excluded.completion_tokens,
+                   estimated_prompt_tokens=estimated_prompt_tokens+excluded.estimated_prompt_tokens,
+                   estimated_completion_tokens=estimated_completion_tokens+excluded.estimated_completion_tokens,
+                   explicit_records=explicit_records+excluded.explicit_records,
+                   estimated_records=estimated_records+excluded.estimated_records,
+                   message_count=message_count+excluded.message_count",
+            )?,
+            seal_models: transaction.prepare(
+                "INSERT INTO native_usage_daily_models
+                   SELECT scope_key, day, model, prompt_tokens, cached_input_tokens,
+                          completion_tokens, total_tokens, estimated_prompt_tokens,
+                          estimated_completion_tokens
+                   FROM native_usage_source_models WHERE scope_key=?1 AND source_key=?2
+                 ON CONFLICT(scope_key,day,model) DO UPDATE SET
+                   prompt_tokens=prompt_tokens+excluded.prompt_tokens,
+                   cached_input_tokens=cached_input_tokens+excluded.cached_input_tokens,
+                   completion_tokens=completion_tokens+excluded.completion_tokens,
+                   total_tokens=total_tokens+excluded.total_tokens,
+                   estimated_prompt_tokens=estimated_prompt_tokens+excluded.estimated_prompt_tokens,
+                   estimated_completion_tokens=estimated_completion_tokens+excluded.estimated_completion_tokens",
+            )?,
+            seal_session: transaction.prepare(
+                "UPDATE native_usage_daily_totals
+                 SET session_count=session_count+?3
+                 WHERE scope_key=?1 AND day=?2",
+            )?,
+            seal_delete_days: transaction.prepare(
+                "DELETE FROM native_usage_source_days WHERE scope_key=?1 AND source_key=?2",
+            )?,
+            seal_delete_models: transaction.prepare(
+                "DELETE FROM native_usage_source_models WHERE scope_key=?1 AND source_key=?2",
+            )?,
+            seal_mark: transaction.prepare(
+                "UPDATE native_usage_sources SET sealed=1
+                 WHERE scope_key=?1 AND source_key=?2",
+            )?,
+            source_upsert: transaction.prepare(
+                "INSERT INTO native_usage_sources VALUES(
+                   ?1,?2,?3,?4,?5,?6,?7,?8,?9
+                 ) ON CONFLICT(scope_key,source_key) DO UPDATE SET
+                   modified_ns=excluded.modified_ns,
+                   size=excluded.size,
+                   file_id=excluded.file_id,
+                   parsed_bytes=excluded.parsed_bytes,
+                   append_guard=excluded.append_guard,
+                   session_count=excluded.session_count,
+                   sealed=excluded.sealed",
+            )?,
+            day_upsert: transaction.prepare(
+                "INSERT INTO native_usage_source_days VALUES(
+                   ?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11
+                 )
+                 ON CONFLICT(scope_key,source_key,day) DO UPDATE SET
+                   prompt_tokens=prompt_tokens+excluded.prompt_tokens,
+                   cached_input_tokens=cached_input_tokens+excluded.cached_input_tokens,
+                   completion_tokens=completion_tokens+excluded.completion_tokens,
+                   estimated_prompt_tokens=estimated_prompt_tokens+excluded.estimated_prompt_tokens,
+                   estimated_completion_tokens=estimated_completion_tokens+excluded.estimated_completion_tokens,
+                   explicit_records=explicit_records+excluded.explicit_records,
+                   estimated_records=estimated_records+excluded.estimated_records,
+                   message_count=message_count+excluded.message_count",
+            )?,
+            model_upsert: transaction.prepare(
+                "INSERT INTO native_usage_source_models VALUES(
+                   ?1,?2,?3,?4,?5,?6,?7,?8,?9,?10
+                 )
+                 ON CONFLICT(scope_key,source_key,day,model) DO UPDATE SET
+                   prompt_tokens=prompt_tokens+excluded.prompt_tokens,
+                   cached_input_tokens=cached_input_tokens+excluded.cached_input_tokens,
+                   completion_tokens=completion_tokens+excluded.completion_tokens,
+                   total_tokens=total_tokens+excluded.total_tokens,
+                   estimated_prompt_tokens=estimated_prompt_tokens+excluded.estimated_prompt_tokens,
+                   estimated_completion_tokens=estimated_completion_tokens+excluded.estimated_completion_tokens",
+            )?,
+            replace_delete_days: transaction.prepare(
+                "DELETE FROM native_usage_source_days WHERE scope_key=?1 AND source_key=?2",
+            )?,
+            replace_delete_models: transaction.prepare(
+                "DELETE FROM native_usage_source_models WHERE scope_key=?1 AND source_key=?2",
+            )?,
+            watermark_upsert: transaction.prepare(
+                "INSERT INTO native_usage_watermarks VALUES(
+                   ?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12
+                 ) ON CONFLICT(scope_key,source_key,usage_key) DO UPDATE SET
+                   session_key=excluded.session_key,model=excluded.model,day=excluded.day,
+                   last_prompt=excluded.last_prompt,last_cached=excluded.last_cached,
+                   last_completion=excluded.last_completion,day_prompt=excluded.day_prompt,
+                   day_cached=excluded.day_cached,day_completion=excluded.day_completion",
+            )?,
+            mark_scan: transaction.prepare(
+                "INSERT INTO native_usage_scans(scope_key,last_scan_ms) VALUES(?1,?2)
+                 ON CONFLICT(scope_key) DO UPDATE SET last_scan_ms=excluded.last_scan_ms",
+            )?,
+            executed: 0,
+        })
+    }
+
+    pub(super) fn transaction(&self) -> &Transaction<'a> {
+        self.transaction
+    }
+
+    pub(super) fn executed(&self) -> u64 {
+        self.executed
+    }
+
+    fn count(&mut self) {
+        self.executed = self.executed.saturating_add(1);
+    }
+
+    /// Reduces every completed local day for a still-live source into the
+    /// shared agent/day/model tables. Only the current day's source rows
+    /// remain mutable.
+    pub(super) fn compact(
+        &mut self,
+        scope_key: &str,
+        source_key: &str,
+        before_day: &str,
+        session_count: u64,
+    ) -> Result<u64> {
+        let counted = self
+            .compact_count
+            .query_row(params![scope_key, source_key, before_day], |row| {
+                row.get::<_, i64>(0)
+            });
+        self.count();
+        let compacted_days = counted?;
+        if compacted_days <= 0 {
+            return Ok(0);
         }
-        transaction.execute(
-            "INSERT INTO native_usage_source_days VALUES(
-               ?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11
-             )
-             ON CONFLICT(scope_key,source_key,day) DO UPDATE SET
-               prompt_tokens=prompt_tokens+excluded.prompt_tokens,
-               cached_input_tokens=cached_input_tokens+excluded.cached_input_tokens,
-               completion_tokens=completion_tokens+excluded.completion_tokens,
-               estimated_prompt_tokens=estimated_prompt_tokens+excluded.estimated_prompt_tokens,
-               estimated_completion_tokens=estimated_completion_tokens+excluded.estimated_completion_tokens,
-               explicit_records=explicit_records+excluded.explicit_records,
-               estimated_records=estimated_records+excluded.estimated_records,
-               message_count=message_count+excluded.message_count",
-            params![
+        let first = self
+            .compact_first_day
+            .query_row(params![scope_key, source_key, before_day], |row| {
+                row.get::<_, Option<String>>(0)
+            });
+        self.count();
+        let first_day = first?;
+        let totals = self
+            .compact_totals
+            .execute(params![scope_key, source_key, before_day]);
+        self.count();
+        totals?;
+        let models = self
+            .compact_models
+            .execute(params![scope_key, source_key, before_day]);
+        self.count();
+        models?;
+        if let Some(first_day) = first_day {
+            let session =
+                self.compact_session
+                    .execute(params![scope_key, first_day, to_i64(session_count),]);
+            self.count();
+            session?;
+        }
+        let days = self
+            .compact_delete_days
+            .execute(params![scope_key, source_key, before_day]);
+        self.count();
+        days?;
+        let models = self
+            .compact_delete_models
+            .execute(params![scope_key, source_key, before_day]);
+        self.count();
+        models?;
+        let zero = self.compact_zero.execute(params![scope_key, source_key]);
+        self.count();
+        zero?;
+        Ok(from_i64(compacted_days))
+    }
+
+    pub(super) fn seal(
+        &mut self,
+        scope_key: &str,
+        source_key: &str,
+        session_count: u64,
+    ) -> Result<()> {
+        let first = self
+            .seal_first_day
+            .query_row(params![scope_key, source_key], |row| {
+                row.get::<_, Option<String>>(0)
+            });
+        self.count();
+        let first_day = first?;
+        let totals = self.seal_totals.execute(params![scope_key, source_key]);
+        self.count();
+        totals?;
+        let models = self.seal_models.execute(params![scope_key, source_key]);
+        self.count();
+        models?;
+        if let Some(first_day) = first_day {
+            let session =
+                self.seal_session
+                    .execute(params![scope_key, first_day, to_i64(session_count),]);
+            self.count();
+            session?;
+        }
+        let days = self
+            .seal_delete_days
+            .execute(params![scope_key, source_key]);
+        self.count();
+        days?;
+        let models = self
+            .seal_delete_models
+            .execute(params![scope_key, source_key]);
+        self.count();
+        models?;
+        let mark = self.seal_mark.execute(params![scope_key, source_key]);
+        self.count();
+        mark?;
+        Ok(())
+    }
+
+    pub(super) fn save_source(
+        &mut self,
+        scope_key: &str,
+        source_key: &str,
+        metadata: &SourceMetadata,
+        parsed_bytes: u64,
+        append_guard: &str,
+        session_count: u64,
+    ) -> Result<()> {
+        let saved = self.source_upsert.execute(params![
+            scope_key,
+            source_key,
+            to_i64(metadata.modified_ns),
+            to_i64(metadata.size),
+            metadata.file_id,
+            to_i64(parsed_bytes),
+            append_guard,
+            to_i64(session_count),
+            i64::from(false),
+        ]);
+        self.count();
+        saved?;
+        Ok(())
+    }
+
+    pub(super) fn replace_rollup(
+        &mut self,
+        scope_key: &str,
+        source_key: &str,
+        summary: &HistoryUsageSummary,
+    ) -> Result<()> {
+        let days = self
+            .replace_delete_days
+            .execute(params![scope_key, source_key]);
+        self.count();
+        days?;
+        let models = self
+            .replace_delete_models
+            .execute(params![scope_key, source_key]);
+        self.count();
+        models?;
+        self.add_rollup(scope_key, source_key, summary)
+    }
+
+    pub(super) fn add_rollup(
+        &mut self,
+        scope_key: &str,
+        source_key: &str,
+        summary: &HistoryUsageSummary,
+    ) -> Result<()> {
+        for (day, usage) in &summary.daily_usage {
+            if usage.total_tokens == 0
+                || usage
+                    .explicit_records
+                    .saturating_add(usage.estimated_records)
+                    == 0
+            {
+                continue;
+            }
+            let day_saved = self.day_upsert.execute(params![
                 scope_key,
                 source_key,
                 day,
@@ -267,21 +617,11 @@ pub(super) fn add_source_rollup(
                 to_i64(usage.explicit_records),
                 to_i64(usage.estimated_records),
                 to_i64(usage.message_count),
-            ],
-        )?;
-        for (model, model_usage) in &usage.model_usage {
-            transaction.execute(
-                "INSERT INTO native_usage_source_models VALUES(
-                   ?1,?2,?3,?4,?5,?6,?7,?8,?9,?10
-                 )
-                 ON CONFLICT(scope_key,source_key,day,model) DO UPDATE SET
-                   prompt_tokens=prompt_tokens+excluded.prompt_tokens,
-                   cached_input_tokens=cached_input_tokens+excluded.cached_input_tokens,
-                   completion_tokens=completion_tokens+excluded.completion_tokens,
-                   total_tokens=total_tokens+excluded.total_tokens,
-                   estimated_prompt_tokens=estimated_prompt_tokens+excluded.estimated_prompt_tokens,
-                   estimated_completion_tokens=estimated_completion_tokens+excluded.estimated_completion_tokens",
-                params![
+            ]);
+            self.count();
+            day_saved?;
+            for (model, model_usage) in &usage.model_usage {
+                let model_saved = self.model_upsert.execute(params![
                     scope_key,
                     source_key,
                     day,
@@ -296,212 +636,46 @@ pub(super) fn add_source_rollup(
                     to_i64(model_usage.total_tokens),
                     to_i64(model_usage.estimated_prompt_tokens),
                     to_i64(model_usage.estimated_completion_tokens),
-                ],
-            )?;
+                ]);
+                self.count();
+                model_saved?;
+            }
         }
+        Ok(())
     }
-    Ok(())
-}
 
-#[allow(clippy::too_many_arguments)]
-pub(super) fn save_source(
-    transaction: &Transaction<'_>,
-    scope_key: &str,
-    source_key: &str,
-    metadata: &SourceMetadata,
-    parsed_bytes: u64,
-    append_guard: &str,
-    session_count: u64,
-    sealed: bool,
-) -> Result<()> {
-    transaction.execute(
-        "INSERT INTO native_usage_sources VALUES(
-           ?1,?2,?3,?4,?5,?6,?7,?8,?9
-         ) ON CONFLICT(scope_key,source_key) DO UPDATE SET
-           modified_ns=excluded.modified_ns,
-           size=excluded.size,
-           file_id=excluded.file_id,
-           parsed_bytes=excluded.parsed_bytes,
-           append_guard=excluded.append_guard,
-           session_count=excluded.session_count,
-           sealed=excluded.sealed",
-        params![
+    pub(super) fn save_watermark(
+        &mut self,
+        scope_key: &str,
+        source_key: &str,
+        usage_key: &str,
+        state: &super::watermark::Watermark,
+    ) -> Result<()> {
+        let saved = self.watermark_upsert.execute(params![
             scope_key,
             source_key,
-            to_i64(metadata.modified_ns),
-            to_i64(metadata.size),
-            metadata.file_id,
-            to_i64(parsed_bytes),
-            append_guard,
-            to_i64(session_count),
-            i64::from(sealed),
-        ],
-    )?;
-    Ok(())
-}
-
-pub(super) fn seal_source(
-    transaction: &Transaction<'_>,
-    scope_key: &str,
-    source_key: &str,
-    session_count: u64,
-) -> Result<()> {
-    let first_day = transaction.query_row(
-        "SELECT MIN(day) FROM native_usage_source_days
-             WHERE scope_key=?1 AND source_key=?2",
-        params![scope_key, source_key],
-        |row| row.get::<_, Option<String>>(0),
-    )?;
-    transaction.execute(
-        "INSERT INTO native_usage_daily_totals
-           SELECT scope_key, day, prompt_tokens, cached_input_tokens,
-                  completion_tokens, estimated_prompt_tokens,
-                  estimated_completion_tokens, explicit_records,
-                  estimated_records, message_count, 0
-           FROM native_usage_source_days WHERE scope_key=?1 AND source_key=?2
-         ON CONFLICT(scope_key,day) DO UPDATE SET
-           prompt_tokens=prompt_tokens+excluded.prompt_tokens,
-           cached_input_tokens=cached_input_tokens+excluded.cached_input_tokens,
-           completion_tokens=completion_tokens+excluded.completion_tokens,
-           estimated_prompt_tokens=estimated_prompt_tokens+excluded.estimated_prompt_tokens,
-           estimated_completion_tokens=estimated_completion_tokens+excluded.estimated_completion_tokens,
-           explicit_records=explicit_records+excluded.explicit_records,
-           estimated_records=estimated_records+excluded.estimated_records,
-           message_count=message_count+excluded.message_count",
-        params![scope_key, source_key],
-    )?;
-    transaction.execute(
-        "INSERT INTO native_usage_daily_models
-           SELECT scope_key, day, model, prompt_tokens, cached_input_tokens,
-                  completion_tokens, total_tokens, estimated_prompt_tokens,
-                  estimated_completion_tokens
-           FROM native_usage_source_models WHERE scope_key=?1 AND source_key=?2
-         ON CONFLICT(scope_key,day,model) DO UPDATE SET
-           prompt_tokens=prompt_tokens+excluded.prompt_tokens,
-           cached_input_tokens=cached_input_tokens+excluded.cached_input_tokens,
-           completion_tokens=completion_tokens+excluded.completion_tokens,
-           total_tokens=total_tokens+excluded.total_tokens,
-           estimated_prompt_tokens=estimated_prompt_tokens+excluded.estimated_prompt_tokens,
-           estimated_completion_tokens=estimated_completion_tokens+excluded.estimated_completion_tokens",
-        params![scope_key, source_key],
-    )?;
-    if let Some(first_day) = first_day {
-        transaction.execute(
-            "UPDATE native_usage_daily_totals
-             SET session_count=session_count+?3
-             WHERE scope_key=?1 AND day=?2",
-            params![scope_key, first_day, to_i64(session_count)],
-        )?;
+            usage_key,
+            state.session_key,
+            state.model,
+            state.day,
+            to_i64(state.last.prompt),
+            to_i64(state.last.cached),
+            to_i64(state.last.completion),
+            to_i64(state.day_total.prompt),
+            to_i64(state.day_total.cached),
+            to_i64(state.day_total.completion),
+        ]);
+        self.count();
+        saved?;
+        Ok(())
     }
-    transaction.execute(
-        "DELETE FROM native_usage_source_days WHERE scope_key=?1 AND source_key=?2",
-        params![scope_key, source_key],
-    )?;
-    transaction.execute(
-        "DELETE FROM native_usage_source_models WHERE scope_key=?1 AND source_key=?2",
-        params![scope_key, source_key],
-    )?;
-    transaction.execute(
-        "UPDATE native_usage_sources SET sealed=1
-         WHERE scope_key=?1 AND source_key=?2",
-        params![scope_key, source_key],
-    )?;
-    Ok(())
-}
 
-/// Reduces every completed local day for a still-live source into the shared
-/// agent/day/model tables. Only the current day's source rows remain mutable.
-/// The source fingerprint and append cursor stay available to avoid rescans.
-pub(super) fn compact_source_days_before(
-    transaction: &Transaction<'_>,
-    scope_key: &str,
-    source_key: &str,
-    before_day: &str,
-    session_count: u64,
-) -> Result<u64> {
-    let compacted_days = transaction.query_row(
-        "SELECT COUNT(*) FROM native_usage_source_days
-         WHERE scope_key=?1 AND source_key=?2 AND day<?3",
-        params![scope_key, source_key, before_day],
-        |row| row.get::<_, i64>(0),
-    )?;
-    if compacted_days <= 0 {
-        return Ok(0);
+    pub(super) fn mark_scan(&mut self, scope_key: &str, now_ms: u64) -> Result<()> {
+        let marked = self.mark_scan.execute(params![scope_key, to_i64(now_ms)]);
+        self.count();
+        marked?;
+        Ok(())
     }
-    let first_day = transaction.query_row(
-        "SELECT MIN(day) FROM native_usage_source_days
-         WHERE scope_key=?1 AND source_key=?2 AND day<?3",
-        params![scope_key, source_key, before_day],
-        |row| row.get::<_, Option<String>>(0),
-    )?;
-    transaction.execute(
-        "INSERT INTO native_usage_daily_totals
-           SELECT scope_key, day, prompt_tokens, cached_input_tokens,
-                  completion_tokens, estimated_prompt_tokens,
-                  estimated_completion_tokens, explicit_records,
-                  estimated_records, message_count, 0
-           FROM native_usage_source_days
-           WHERE scope_key=?1 AND source_key=?2 AND day<?3
-         ON CONFLICT(scope_key,day) DO UPDATE SET
-           prompt_tokens=prompt_tokens+excluded.prompt_tokens,
-           cached_input_tokens=cached_input_tokens+excluded.cached_input_tokens,
-           completion_tokens=completion_tokens+excluded.completion_tokens,
-           estimated_prompt_tokens=estimated_prompt_tokens+excluded.estimated_prompt_tokens,
-           estimated_completion_tokens=estimated_completion_tokens+excluded.estimated_completion_tokens,
-           explicit_records=explicit_records+excluded.explicit_records,
-           estimated_records=estimated_records+excluded.estimated_records,
-           message_count=message_count+excluded.message_count",
-        params![scope_key, source_key, before_day],
-    )?;
-    transaction.execute(
-        "INSERT INTO native_usage_daily_models
-           SELECT scope_key, day, model, prompt_tokens, cached_input_tokens,
-                  completion_tokens, total_tokens, estimated_prompt_tokens,
-                  estimated_completion_tokens
-           FROM native_usage_source_models
-           WHERE scope_key=?1 AND source_key=?2 AND day<?3
-         ON CONFLICT(scope_key,day,model) DO UPDATE SET
-           prompt_tokens=prompt_tokens+excluded.prompt_tokens,
-           cached_input_tokens=cached_input_tokens+excluded.cached_input_tokens,
-           completion_tokens=completion_tokens+excluded.completion_tokens,
-           total_tokens=total_tokens+excluded.total_tokens,
-           estimated_prompt_tokens=estimated_prompt_tokens+excluded.estimated_prompt_tokens,
-           estimated_completion_tokens=estimated_completion_tokens+excluded.estimated_completion_tokens",
-        params![scope_key, source_key, before_day],
-    )?;
-    if let Some(first_day) = first_day {
-        transaction.execute(
-            "UPDATE native_usage_daily_totals
-             SET session_count=session_count+?3
-             WHERE scope_key=?1 AND day=?2",
-            params![scope_key, first_day, to_i64(session_count)],
-        )?;
-    }
-    transaction.execute(
-        "DELETE FROM native_usage_source_days
-         WHERE scope_key=?1 AND source_key=?2 AND day<?3",
-        params![scope_key, source_key, before_day],
-    )?;
-    transaction.execute(
-        "DELETE FROM native_usage_source_models
-         WHERE scope_key=?1 AND source_key=?2 AND day<?3",
-        params![scope_key, source_key, before_day],
-    )?;
-    transaction.execute(
-        "UPDATE native_usage_sources SET session_count=0
-         WHERE scope_key=?1 AND source_key=?2",
-        params![scope_key, source_key],
-    )?;
-    Ok(from_i64(compacted_days))
-}
-
-pub(super) fn mark_scan(transaction: &Transaction<'_>, scope_key: &str, now_ms: u64) -> Result<()> {
-    transaction.execute(
-        "INSERT INTO native_usage_scans(scope_key,last_scan_ms) VALUES(?1,?2)
-         ON CONFLICT(scope_key) DO UPDATE SET last_scan_ms=excluded.last_scan_ms",
-        params![scope_key, to_i64(now_ms)],
-    )?;
-    Ok(())
 }
 
 pub(super) fn aggregate_usage(
@@ -733,16 +907,20 @@ mod tests {
     use super::*;
     use crate::domain::agent_usage::contract::MessageUsage;
     use serde_json::json;
+    use std::sync::atomic::{AtomicU64, Ordering};
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    static TEMP_DATABASE_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
     fn temp_database() -> PathBuf {
         std::env::temp_dir().join(format!(
-            "lico-native-usage-cache-{}-{}.sqlite3",
+            "lico-native-usage-cache-{}-{}-{}.sqlite3",
             std::process::id(),
             SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .unwrap()
-                .as_nanos()
+                .as_nanos(),
+            TEMP_DATABASE_SEQUENCE.fetch_add(1, Ordering::Relaxed)
         ))
     }
 
@@ -775,6 +953,7 @@ mod tests {
         let path = temp_database();
         let mut connection = open_cache_database(&path).unwrap();
         let transaction = connection.transaction().unwrap();
+        let mut statements = RefreshStatements::prepare(&transaction).unwrap();
         let mut summary = HistoryUsageSummary::default();
         summary.add(
             MessageUsage {
@@ -787,23 +966,22 @@ mod tests {
             },
             Some("2026-07-14".to_owned()),
         );
-        add_source_rollup(&transaction, "scope", "source", &summary).unwrap();
-        save_source(
-            &transaction,
-            "scope",
-            "source",
-            &SourceMetadata {
-                modified_ns: 1,
-                size: 1,
-                file_id: None,
-            },
-            1,
-            "guard",
-            1,
-            false,
-        )
-        .unwrap();
-        seal_source(&transaction, "scope", "source", 1).unwrap();
+        statements.add_rollup("scope", "source", &summary).unwrap();
+        statements
+            .save_source(
+                "scope",
+                "source",
+                &SourceMetadata {
+                    modified_ns: 1,
+                    size: 1,
+                    file_id: None,
+                },
+                1,
+                "guard",
+                1,
+            )
+            .unwrap();
+        statements.seal("scope", "source", 1).unwrap();
         assert_eq!(
             transaction
                 .query_row("SELECT COUNT(*) FROM native_usage_source_days", [], |row| {
@@ -812,6 +990,7 @@ mod tests {
                 .unwrap(),
             0
         );
+        drop(statements);
         transaction.commit().unwrap();
         let window = UsageWindow::from_params(&json!({
             "now": "2026-07-15T12:00:00Z",
@@ -835,6 +1014,7 @@ mod tests {
         let path = temp_database();
         let mut connection = open_cache_database(&path).unwrap();
         let transaction = connection.transaction().unwrap();
+        let mut statements = RefreshStatements::prepare(&transaction).unwrap();
         let mut summary = HistoryUsageSummary::default();
         for (day, prompt, completion) in [("2026-07-14", 10, 2), ("2026-07-15", 20, 3)] {
             summary.add(
@@ -849,25 +1029,26 @@ mod tests {
                 Some(day.to_owned()),
             );
         }
-        add_source_rollup(&transaction, "scope", "source", &summary).unwrap();
-        save_source(
-            &transaction,
-            "scope",
-            "source",
-            &SourceMetadata {
-                modified_ns: 1,
-                size: 1,
-                file_id: None,
-            },
-            1,
-            "guard",
-            1,
-            false,
-        )
-        .unwrap();
+        statements.add_rollup("scope", "source", &summary).unwrap();
+        statements
+            .save_source(
+                "scope",
+                "source",
+                &SourceMetadata {
+                    modified_ns: 1,
+                    size: 1,
+                    file_id: None,
+                },
+                1,
+                "guard",
+                1,
+            )
+            .unwrap();
 
         assert_eq!(
-            compact_source_days_before(&transaction, "scope", "source", "2026-07-15", 1,).unwrap(),
+            statements
+                .compact("scope", "source", "2026-07-15", 1)
+                .unwrap(),
             1
         );
         assert_eq!(
@@ -887,6 +1068,7 @@ mod tests {
                 .unwrap(),
             "2026-07-14"
         );
+        drop(statements);
         transaction.commit().unwrap();
         let window = UsageWindow::from_params(&json!({
             "now": "2026-07-15T12:00:00Z",

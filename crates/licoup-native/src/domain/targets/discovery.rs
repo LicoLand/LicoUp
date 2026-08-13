@@ -6,6 +6,8 @@ use super::processes::ScanContext;
 use super::scan_merge::scan_target_with_manual;
 use super::support::client_state_store;
 use super::target_cache::{persist_discovery_cache, upsert_discovery_cache};
+use super::virtual_machine_discovery::{AutomaticVmTarget, discover_virtual_machine_targets};
+use crate::platform::client_state::ClientStateStore;
 use anyhow::Result;
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
@@ -14,6 +16,7 @@ use std::collections::BTreeMap;
 struct TargetProbe {
     def: TargetDef,
     manual: Option<ManualTarget>,
+    automatic_vm: Option<AutomaticVmTarget>,
     scan_context: ScanContext,
     params: Value,
 }
@@ -24,16 +27,24 @@ pub(super) fn scan_targets() -> Result<Value> {
 
 pub(super) fn scan_targets_with_params(params: &Value) -> Result<Value> {
     let store = client_state_store(params)?;
-    let manual_targets = manual_targets(&store)?;
+    scan_targets_with_store(params, &store)
+}
+
+pub(super) fn scan_targets_with_store(params: &Value, store: &ClientStateStore) -> Result<Value> {
+    let manual_targets = manual_targets(store)?;
     let manual_by_target = manual_targets
         .into_iter()
         .map(|target| (target.target.clone(), target))
         .collect::<BTreeMap<_, _>>();
     let process_snapshot = ScanContext::snapshot_from_params(params);
-    let probes = target_defs()
+    let definitions = target_defs();
+    let requested_targets = definitions.iter().map(|def| def.id).collect::<Vec<_>>();
+    let automatic_vm = discover_virtual_machine_targets(params, &requested_targets);
+    let probes = definitions
         .into_iter()
         .map(|def| TargetProbe {
             manual: manual_by_target.get(def.id).cloned(),
+            automatic_vm: automatic_vm.targets.get(def.id).cloned(),
             def,
             scan_context: process_snapshot.clone(),
             params: params.clone(),
@@ -44,17 +55,28 @@ pub(super) fn scan_targets_with_params(params: &Value) -> Result<Value> {
         scan_target_with_manual(
             &probe.def,
             probe.manual.as_ref(),
+            probe.automatic_vm.as_ref(),
             &mut probe.scan_context,
             &probe.params,
         )
     })?;
-    persist_discovery_cache(&store, &candidates)?;
+    persist_discovery_cache(store, &candidates)?;
+    let mut scan_scopes = vec![
+        "application-store",
+        "package-manager",
+        "executable-path",
+        "local-configuration",
+        "running-process",
+    ];
+    if automatic_vm.scope_available {
+        scan_scopes.push("virtual-machine-orbstack");
+    }
     Ok(json!({
         "ok": true,
         "schemaVersion": 1,
         "source": "target-adapters",
-        "scanScopes": ["application-store", "package-manager", "executable-path", "local-configuration", "running-process"],
-        "diagnostics": [],
+        "scanScopes": scan_scopes,
+        "diagnostics": automatic_vm.diagnostics,
         "candidates": candidates,
     }))
 }
@@ -69,11 +91,19 @@ pub(super) fn inspect_target_with_params(params: &Value) -> Result<Value> {
     let store = client_state_store(params)?;
     let manual_targets = manual_targets(&store)?;
     let manual = manual_targets.iter().find(|item| item.target == def.id);
+    let automatic_vm = discover_virtual_machine_targets(params, &[def.id]);
     let mut scan_context = ScanContext::from_params(params);
-    let candidate = scan_target_with_manual(&def, manual, &mut scan_context, params)?;
+    let candidate = scan_target_with_manual(
+        &def,
+        manual,
+        automatic_vm.targets.get(def.id),
+        &mut scan_context,
+        params,
+    )?;
     upsert_discovery_cache(&store, &candidate)?;
     Ok(json!({
         "ok": true,
+        "diagnostics": automatic_vm.diagnostics,
         "target": candidate
     }))
 }

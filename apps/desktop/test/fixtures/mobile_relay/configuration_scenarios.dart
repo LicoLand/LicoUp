@@ -32,35 +32,21 @@ void registerMobileRelayConfigurationScenarios() {
     expect(loaded.pinnedEntryIds, {'target:codex'});
   });
 
-  test('keeps an empty persisted gateway unconfigured', () {
-    final config = MobileRelayConfig.fromJson(const {
-      'defaultGatewayUrl': '   ',
-      'customGatewayUrl': '',
-      'useCustomGateway': false,
-    });
+  test('keeps an empty persisted station unconfigured', () {
+    final config = MobileRelayConfig.fromJson(const {'stationBaseUrl': '   '});
 
-    expect(config.defaultGatewayUrl, isEmpty);
-    expect(config.effectiveGatewayUrl, isEmpty);
+    expect(config.stationBaseUrl, isEmpty);
   });
 
-  test('disables stale ephemeral custom relay gateway', () {
+  test('canonicalizes the single station base URL', () {
     final config = MobileRelayConfig.fromJson(const {
-      'defaultGatewayUrl': 'https://relay.example.test',
-      'customGatewayUrl': 'https://old-relay.trycloudflare.com/',
-      'useCustomGateway': true,
+      'stationBaseUrl': 'HTTPS://Station.Example.Test:443/',
     });
 
-    expect(config.useCustomGateway, isFalse);
-    expect(config.customGatewayUrl, isEmpty);
-    expect(config.effectiveGatewayUrl, 'https://relay.example.test');
+    expect(config.stationBaseUrl, 'https://station.example.test');
 
-    final copied = config.copyWith(
-      useCustomGateway: true,
-      customGatewayUrl: 'https://next-relay.trycloudflare.com/',
-    );
-    expect(copied.useCustomGateway, isFalse);
-    expect(copied.customGatewayUrl, isEmpty);
-    expect(copied.effectiveGatewayUrl, 'https://relay.example.test');
+    final copied = config.copyWith(stationBaseUrl: 'http://127.0.0.1:8787/');
+    expect(copied.stationBaseUrl, 'http://127.0.0.1:8787');
   });
 }
 

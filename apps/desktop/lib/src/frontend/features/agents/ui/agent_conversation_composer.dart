@@ -1,12 +1,24 @@
-import 'package:flutter/material.dart';
+import 'dart:math' as math;
 
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+
+import 'package:licoup/src/contracts/target_candidate.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_display_names.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_runtime_settings.dart';
+import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_agent_avatar.dart';
+import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_conversation_overlay_glass.dart';
+import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_glass_option_card.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/layout/layout_focus_coordinator.dart';
+import 'package:licoup/src/frontend/layout/profiles/messaging/desktop/tokens/messaging_desktop_tokens.dart';
 import 'package:licoup/src/frontend/shared/platform/client_platform.dart';
-import 'package:licoup/src/frontend/shared/ui/apple_control_metrics.dart';
 import 'package:licoup/src/frontend/shared/ui/apple_glass.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_activity_animations.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_icon_button.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 class RuntimeMessageComposer extends StatefulWidget {
@@ -14,6 +26,7 @@ class RuntimeMessageComposer extends StatefulWidget {
     super.key,
     required this.targetLabel,
     required this.initialDraft,
+    this.hasAttachments = false,
     required this.busy,
     required this.enabled,
     required this.modelOptions,
@@ -25,10 +38,21 @@ class RuntimeMessageComposer extends StatefulWidget {
     required this.onDraftChanged,
     required this.onSend,
     this.defaultModel = '',
+    this.defaultReasoningEffort = '',
+    this.showRuntimeSettings = true,
+    this.showWorkingDirectory = false,
+    this.workingDirectory = '',
+    this.workingDirectorySelectable = false,
+    this.onChooseWorkingDirectory,
+    this.floatingMatteCapsule = false,
+    this.onAttach,
+    this.mentionTargets = const [],
+    this.mentionLabels = const {},
   });
 
   final String targetLabel;
   final String initialDraft;
+  final bool hasAttachments;
   final bool busy;
   final bool enabled;
   final List<String> modelOptions;
@@ -40,6 +64,32 @@ class RuntimeMessageComposer extends StatefulWidget {
   final ValueChanged<String> onDraftChanged;
   final Future<bool> Function(String) onSend;
   final String defaultModel;
+  final String defaultReasoningEffort;
+
+  /// Whether the composer embeds the runtime settings bar above the input
+  /// row. Layout presentation strategies that relocate runtime settings keep
+  /// the input row and hide the bar through this port.
+  final bool showRuntimeSettings;
+  final bool showWorkingDirectory;
+  final String workingDirectory;
+  final bool workingDirectorySelectable;
+  final VoidCallback? onChooseWorkingDirectory;
+
+  /// Messaging desktop: floating matte glass capsule over the transcript
+  /// (blur + lower-transparency fill). Console keeps [AppleGlassSurface].
+  final bool floatingMatteCapsule;
+
+  /// Optional attach affordance shown as a separate overlay-glass capsule to
+  /// the left of [floatingMatteCapsule] composer fields.
+  final VoidCallback? onAttach;
+
+  /// Active group members available to the composer's @ mention picker.
+  /// Ordinary one-to-one conversations leave this empty.
+  final List<TargetCandidate> mentionTargets;
+
+  /// Agent id to the exact membership display name recognized by the group
+  /// dispatch parser. The visible compact product name remains local UI copy.
+  final Map<String, String> mentionLabels;
 
   @override
   State<RuntimeMessageComposer> createState() => _RuntimeMessageComposerState();
@@ -51,6 +101,10 @@ class _RuntimeMessageComposerState extends State<RuntimeMessageComposer> {
   LayoutFocusCoordinator? _layoutFocusCoordinator;
   bool _focused = false;
   late bool _hasText;
+  int? _mentionStart;
+  String _mentionQuery = '';
+  int _mentionSelection = 0;
+  final ScrollController _mentionScrollController = ScrollController();
 
   @override
   void initState() {
@@ -59,6 +113,23 @@ class _RuntimeMessageComposerState extends State<RuntimeMessageComposer> {
     _hasText = widget.initialDraft.trim().isNotEmpty;
     _controller.addListener(_onTextChanged);
     _focusNode.addListener(_onFocusChanged);
+  }
+
+  @override
+  void didUpdateWidget(covariant RuntimeMessageComposer oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // The draft is scoped per conversation: switching conversations (or a
+    // successful send clearing the current draft) replaces the text without
+    // recreating this widget. The store echoes every keystroke, so a rebuild
+    // passes the same text back and this sync stays a no-op while typing.
+    if (oldWidget.initialDraft != widget.initialDraft &&
+        widget.initialDraft != _controller.text) {
+      final restored = widget.initialDraft;
+      _controller.value = TextEditingValue(
+        text: restored,
+        selection: TextSelection.collapsed(offset: restored.length),
+      );
+    }
   }
 
   @override
@@ -88,6 +159,7 @@ class _RuntimeMessageComposerState extends State<RuntimeMessageComposer> {
     _controller
       ..removeListener(_onTextChanged)
       ..dispose();
+    _mentionScrollController.dispose();
     _focusNode
       ..removeListener(_onFocusChanged)
       ..dispose();
@@ -97,10 +169,146 @@ class _RuntimeMessageComposerState extends State<RuntimeMessageComposer> {
   void _onTextChanged() {
     widget.onDraftChanged(_controller.text);
     final next = _controller.text.trim().isNotEmpty;
-    if (next == _hasText || !mounted) {
-      return;
-    }
+    final mentionChanged = _syncMentionQuery();
+    if (!mounted || (next == _hasText && !mentionChanged)) return;
     setState(() => _hasText = next);
+  }
+
+  bool _syncMentionQuery() {
+    final previousStart = _mentionStart;
+    final previousQuery = _mentionQuery;
+    final selection = _controller.selection;
+    _mentionStart = null;
+    _mentionQuery = '';
+    if (widget.mentionTargets.isNotEmpty &&
+        selection.isValid &&
+        selection.isCollapsed) {
+      final caret = selection.extentOffset;
+      final beforeCaret = _controller.text.substring(0, caret);
+      final match = RegExp(r'(^|\s)@([^\s@]*)$').firstMatch(beforeCaret);
+      if (match != null) {
+        _mentionStart = match.start + (match.group(1)?.length ?? 0);
+        _mentionQuery = match.group(2) ?? '';
+      }
+    }
+    if (_mentionStart != previousStart || _mentionQuery != previousQuery) {
+      _mentionSelection = 0;
+      _resetMentionScroll();
+      return true;
+    }
+    return false;
+  }
+
+  List<TargetCandidate> get _mentionSuggestions {
+    if (_mentionStart == null) return const [];
+    final query = _mentionQuery.toLowerCase();
+    return widget.mentionTargets
+        .where((target) {
+          if (query.isEmpty) return true;
+          final membershipLabel = widget.mentionLabels[target.target] ?? '';
+          return membershipLabel.toLowerCase().contains(query) ||
+              agentConversationTargetDisplayName(
+                target,
+              ).toLowerCase().contains(query) ||
+              agentConversationTargetCompactDisplayName(
+                target,
+              ).toLowerCase().contains(query) ||
+              target.target.toLowerCase().contains(query);
+        })
+        .toList(growable: false);
+  }
+
+  KeyEventResult _handleMentionKey(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent) return KeyEventResult.ignored;
+    final suggestions = _mentionSuggestions;
+    if (suggestions.isEmpty) return KeyEventResult.ignored;
+    if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+      setState(() {
+        _mentionSelection = (_mentionSelection + 1) % suggestions.length;
+      });
+      _revealMentionSelection(suggestions);
+      return KeyEventResult.handled;
+    }
+    if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+      setState(() {
+        _mentionSelection =
+            (_mentionSelection - 1 + suggestions.length) % suggestions.length;
+      });
+      _revealMentionSelection(suggestions);
+      return KeyEventResult.handled;
+    }
+    if (event.logicalKey == LogicalKeyboardKey.enter ||
+        event.logicalKey == LogicalKeyboardKey.tab) {
+      _insertMention(suggestions[_mentionSelection]);
+      return KeyEventResult.handled;
+    }
+    if (event.logicalKey == LogicalKeyboardKey.escape) {
+      setState(() {
+        _mentionStart = null;
+        _mentionQuery = '';
+      });
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
+  }
+
+  void _resetMentionScroll() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_mentionScrollController.hasClients) {
+        _mentionScrollController.jumpTo(0);
+      }
+    });
+  }
+
+  void _revealMentionSelection(List<TargetCandidate> suggestions) {
+    final selectedIndex = _mentionSelection;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted ||
+          selectedIndex >= suggestions.length ||
+          !_mentionScrollController.hasClients) {
+        return;
+      }
+      const rowExtent = _ComposerMentionSuggestions.rowExtent;
+      final position = _mentionScrollController.position;
+      final itemStart = selectedIndex * rowExtent;
+      final itemEnd = itemStart + rowExtent;
+      final viewportStart = position.pixels;
+      final viewportEnd = viewportStart + position.viewportDimension;
+      final targetOffset = switch ((itemStart, itemEnd)) {
+        _ when itemStart < viewportStart => itemStart,
+        _ when itemEnd > viewportEnd => itemEnd - position.viewportDimension,
+        _ => viewportStart,
+      };
+      final bounded = targetOffset
+          .clamp(position.minScrollExtent, position.maxScrollExtent)
+          .toDouble();
+      if ((bounded - viewportStart).abs() < 0.5) return;
+      _mentionScrollController.animateTo(
+        bounded,
+        duration: context.motion(LicoMotion.short),
+        curve: LicoMotion.standard,
+      );
+    });
+  }
+
+  void _insertMention(TargetCandidate target) {
+    final start = _mentionStart;
+    final selection = _controller.selection;
+    if (start == null || !selection.isValid || !selection.isCollapsed) return;
+    final label = (widget.mentionLabels[target.target] ?? '').trim().isEmpty
+        ? agentConversationTargetDisplayName(target)
+        : widget.mentionLabels[target.target]!.trim();
+    final replacement = '@$label ';
+    final caret = selection.extentOffset;
+    final text = _controller.text;
+    final next = text.replaceRange(start, caret, replacement);
+    _controller.value = TextEditingValue(
+      text: next,
+      selection: TextSelection.collapsed(offset: start + replacement.length),
+    );
+    _mentionStart = null;
+    _mentionQuery = '';
+    _focusNode.requestFocus();
   }
 
   void _onFocusChanged() {
@@ -113,7 +321,7 @@ class _RuntimeMessageComposerState extends State<RuntimeMessageComposer> {
 
   Future<void> _submit() async {
     final text = _controller.text.trim();
-    if (text.isEmpty || !widget.enabled) {
+    if ((text.isEmpty && !widget.hasAttachments) || !widget.enabled) {
       return;
     }
     _controller.clear();
@@ -128,24 +336,107 @@ class _RuntimeMessageComposerState extends State<RuntimeMessageComposer> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     final colors = context.licoColors;
     final strings = LicoStrings.of(context);
     final mobileClient = isMobileClientPlatform(context);
     final interactive = widget.enabled;
-    final canSend = interactive && _hasText;
+    final canSend = interactive && (_hasText || widget.hasAttachments);
     final fieldRadius = BorderRadius.circular(
-      AppleControlMetrics.controlCornerRadius,
+      widget.floatingMatteCapsule
+          ? MessagingDesktopMetrics.conversationComposerCapsuleCornerRadius
+          : LicoRadius.composerField,
     );
+    final fieldBody = Padding(
+      padding: const EdgeInsets.all(LicoRadius.composerInset),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(8, 6, 4, 6),
+                  child: Focus(
+                    onKeyEvent: _handleMentionKey,
+                    child: TextField(
+                      controller: _controller,
+                      focusNode: _focusNode,
+                      minLines: 1,
+                      maxLines: 4,
+                      textInputAction: TextInputAction.send,
+                      onSubmitted: (_) => _submit(),
+                      enabled: interactive,
+                      style: theme.textTheme.bodyLarge,
+                      decoration: InputDecoration(
+                        hintText: interactive
+                            ? strings.messageTarget(widget.targetLabel)
+                            : null,
+                        hintStyle: theme.textTheme.bodyLarge?.copyWith(
+                          color: colors.textDisabled,
+                        ),
+                        isDense: true,
+                        filled: false,
+                        border: InputBorder.none,
+                        enabledBorder: InputBorder.none,
+                        focusedBorder: InputBorder.none,
+                        disabledBorder: InputBorder.none,
+                        contentPadding: EdgeInsets.zero,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: LicoContentSpacing.compact),
+              _ComposerSendButton(
+                canSend: canSend,
+                busy: widget.busy,
+                onTap: canSend ? _submit : null,
+                tooltip: strings.send,
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+    final field = widget.floatingMatteCapsule
+        ? Material(
+            key: const Key('agent-conversation-composer-field'),
+            color: Colors.transparent,
+            child: MessagingConversationOverlayGlass(
+              borderRadius: fieldRadius,
+              focused: _focused && interactive,
+              child: fieldBody,
+            ),
+          )
+        : AppleGlassSurface(
+            key: const Key('agent-conversation-composer-field'),
+            borderRadius: fieldRadius,
+            focused: _focused && interactive,
+            child: fieldBody,
+          );
+    final mentionSuggestions = _mentionSuggestions;
     return Padding(
       padding: mobileClient
           ? const EdgeInsets.fromLTRB(12, 10, 12, 12)
+          : widget.floatingMatteCapsule
+          ? const EdgeInsets.fromLTRB(
+              MessagingDesktopMetrics.conversationComposerCapsuleInsetH,
+              8,
+              MessagingDesktopMetrics.conversationComposerCapsuleInsetH,
+              MessagingDesktopMetrics.conversationComposerCapsuleInsetV,
+            )
           : const EdgeInsets.fromLTRB(12, 8, 12, 10),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          if (widget.modelOptions.isNotEmpty ||
-              widget.reasoningEffortOptions.isNotEmpty) ...[
+          if (widget.showRuntimeSettings &&
+              (widget.modelOptions.isNotEmpty ||
+                  widget.reasoningEffortOptions.isNotEmpty ||
+                  widget.showWorkingDirectory)) ...[
             ConversationRuntimeSettingsBar(
               enabled: interactive,
               modelOptions: widget.modelOptions,
@@ -155,83 +446,39 @@ class _RuntimeMessageComposerState extends State<RuntimeMessageComposer> {
               onModelChanged: widget.onModelChanged,
               onReasoningEffortChanged: widget.onReasoningEffortChanged,
               defaultModel: widget.defaultModel,
+              defaultReasoningEffort: widget.defaultReasoningEffort,
+              showWorkingDirectory: widget.showWorkingDirectory,
+              workingDirectory: widget.workingDirectory,
+              workingDirectorySelectable: widget.workingDirectorySelectable,
+              onChooseWorkingDirectory: widget.onChooseWorkingDirectory,
+            ),
+            const SizedBox(height: 8),
+          ],
+          if (mentionSuggestions.isNotEmpty) ...[
+            _ComposerMentionSuggestions(
+              targets: mentionSuggestions,
+              labels: widget.mentionLabels,
+              selectedIndex: _mentionSelection,
+              scrollController: _mentionScrollController,
+              onSelected: _insertMention,
             ),
             const SizedBox(height: 8),
           ],
           Row(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              Expanded(
-                child: LicoPerimeterPulse(
-                  key: const Key('agent-conversation-composer-running-border'),
-                  enabled: widget.busy,
-                  borderRadius: fieldRadius,
-                  color: colors.primaryStrong,
-                  child: AppleGlassSurface(
-                    key: const Key('agent-conversation-composer-field'),
-                    borderRadius: fieldRadius,
-                    focused: _focused && interactive,
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(12, 4, 4, 4),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          Expanded(
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(vertical: 4),
-                              child: TextField(
-                                controller: _controller,
-                                focusNode: _focusNode,
-                                minLines: 1,
-                                maxLines: 4,
-                                textInputAction: TextInputAction.send,
-                                onSubmitted: (_) => _submit(),
-                                enabled: interactive,
-                                cursorColor: colors.info,
-                                cursorWidth: 1.2,
-                                style: TextStyle(
-                                  color: colors.text.withAlpha(235),
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w400,
-                                  letterSpacing: -0.08,
-                                  height: 1.35,
-                                ),
-                                decoration: InputDecoration(
-                                  hintText: interactive
-                                      ? strings.messageTarget(
-                                          widget.targetLabel,
-                                        )
-                                      : null,
-                                  hintStyle: TextStyle(
-                                    color: colors.textMuted.withAlpha(150),
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w400,
-                                    letterSpacing: -0.08,
-                                  ),
-                                  isDense: true,
-                                  filled: false,
-                                  border: InputBorder.none,
-                                  enabledBorder: InputBorder.none,
-                                  focusedBorder: InputBorder.none,
-                                  disabledBorder: InputBorder.none,
-                                  contentPadding: EdgeInsets.zero,
-                                ),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 6),
-                          _ComposerSendButton(
-                            canSend: canSend,
-                            busy: widget.busy,
-                            onTap: canSend ? _submit : null,
-                            tooltip: strings.send,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
+              if (widget.floatingMatteCapsule && widget.onAttach != null) ...[
+                _ComposerAttachCapsuleButton(
+                  enabled: interactive,
+                  tooltip: strings.attachments,
+                  onPressed: widget.onAttach,
                 ),
-              ),
+                const SizedBox(
+                  width: MessagingDesktopMetrics
+                      .conversationHeaderCapsuleButtonGap,
+                ),
+              ],
+              Expanded(child: field),
             ],
           ),
         ],
@@ -240,9 +487,188 @@ class _RuntimeMessageComposerState extends State<RuntimeMessageComposer> {
   }
 }
 
-/// The composer's embedded send affordance: a quiet ghost while idle and a
-/// solid brand circle the moment a real message can go out — the one
-/// control that must always read as immediately usable.
+class _ComposerMentionSuggestions extends StatelessWidget {
+  const _ComposerMentionSuggestions({
+    required this.targets,
+    required this.labels,
+    required this.selectedIndex,
+    required this.scrollController,
+    required this.onSelected,
+  });
+
+  static const double rowExtent = 54;
+
+  final List<TargetCandidate> targets;
+  final Map<String, String> labels;
+  final int selectedIndex;
+  final ScrollController scrollController;
+  final ValueChanged<TargetCandidate> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final height = math.min(targets.length * rowExtent + 8, 224.0);
+    return MessagingGlassOptionCard(
+      key: const Key('agent-conversation-mention-suggestions'),
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      constraints: BoxConstraints(maxHeight: height),
+      child: SizedBox(
+        height: height,
+        child: ListView.builder(
+          key: const Key('agent-conversation-mention-list'),
+          controller: scrollController,
+          padding: EdgeInsets.zero,
+          itemExtent: rowExtent,
+          itemCount: targets.length,
+          itemBuilder: (context, index) {
+            final target = targets[index];
+            return _ComposerMentionSuggestionRow(
+              key: Key('agent-conversation-mention-${target.target}'),
+              target: target,
+              label: (labels[target.target] ?? '').trim().isEmpty
+                  ? agentConversationTargetDisplayName(target)
+                  : labels[target.target]!.trim(),
+              selected: index == selectedIndex,
+              onTap: () => onSelected(target),
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+class _ComposerMentionSuggestionRow extends StatelessWidget {
+  const _ComposerMentionSuggestionRow({
+    super.key,
+    required this.target,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final TargetCandidate target;
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.licoColors;
+    return Material(
+      key: Key('agent-conversation-mention-surface-${target.target}'),
+      color: selected
+          ? (colors.isDark
+                ? Colors.white.withAlpha(24)
+                : Colors.black.withAlpha(18))
+          : Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        child: SizedBox(
+          height: 54,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: Row(
+              children: [
+                MessagingAgentAvatar(target: target, size: 36, iconSize: 20),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: colors.text,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 1),
+                      Text(
+                        '@${target.target}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: colors.textMuted,
+                          fontSize: 11.5,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// External attach control for messaging desktop floating composer rows.
+/// Matches header capsule icon buttons — square overlay glass, shared radius.
+class _ComposerAttachCapsuleButton extends StatelessWidget {
+  const _ComposerAttachCapsuleButton({
+    required this.enabled,
+    required this.tooltip,
+    required this.onPressed,
+  });
+
+  final bool enabled;
+  final String tooltip;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.licoColors;
+    final radius = BorderRadius.circular(
+      MessagingDesktopMetrics.conversationComposerCapsuleCornerRadius,
+    );
+    return Tooltip(
+      message: tooltip,
+      waitDuration: LicoMotion.tooltipWait,
+      child: Semantics(
+        button: true,
+        enabled: enabled,
+        label: tooltip,
+        child: SizedBox.square(
+          dimension:
+              MessagingDesktopMetrics.conversationHeaderCapsuleButtonExtent,
+          child: MessagingConversationOverlayGlass(
+            borderRadius: radius,
+            child: InkWell(
+              key: const Key('agent-conversation-composer-attach'),
+              onTap: enabled ? onPressed : null,
+              customBorder: RoundedRectangleBorder(borderRadius: radius),
+              hoverColor: colors.isDark
+                  ? Colors.white.withAlpha(10)
+                  : Colors.black.withAlpha(12),
+              child: Icon(
+                Icons.attach_file_rounded,
+                size: 19,
+                color: enabled
+                    ? colors.textMuted
+                    : colors.textMuted.withAlpha(120),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The composer's embedded send affordance.
+///
+/// Quiet while there is nothing to send, brand-filled the moment a real
+/// message can go out. Because lemon appears only in the sendable state, the
+/// brand color stays scarce in a surface the user stares at all day.
+///
+/// The control is a perfect circle — a deliberate accent inside the rounded
+/// field capsule, not a concentric nested square.
 class _ComposerSendButton extends StatelessWidget {
   const _ComposerSendButton({
     required this.canSend,
@@ -259,42 +685,20 @@ class _ComposerSendButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.licoColors;
-    return Tooltip(
-      message: tooltip,
-      waitDuration: const Duration(milliseconds: 400),
-      child: Material(
-        color: Colors.transparent,
-        shape: const CircleBorder(),
-        child: InkWell(
-          key: const Key('agent-conversation-composer-send'),
-          customBorder: const CircleBorder(),
-          onTap: onTap,
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 140),
-            width: 30,
-            height: 30,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: canSend ? colors.primary : colors.surfaceLow,
-            ),
-            child: Center(
-              child: busy
-                  ? LicoSpinningRefreshIcon(
-                      size: 14,
-                      strokeWidth: 1.8,
-                      color: canSend ? colors.textOnPrimary : colors.textMuted,
-                    )
-                  : Icon(
-                      Icons.arrow_upward_rounded,
-                      size: 16,
-                      color: canSend
-                          ? colors.textOnPrimary
-                          : colors.textMuted.withAlpha(140),
-                    ),
-            ),
-          ),
-        ),
-      ),
+    return LicoIconButton(
+      key: const Key('agent-conversation-composer-send'),
+      tooltip: tooltip,
+      onPressed: onTap,
+      size: LicoIconButtonSize.medium,
+      shape: LicoIconButtonShape.circle,
+      tone: canSend ? LicoIconButtonTone.brand : LicoIconButtonTone.ghost,
+      icon: busy
+          ? LicoSpinningRefreshIcon(
+              size: 15,
+              strokeWidth: 1.8,
+              color: canSend ? colors.textOnPrimary : colors.textMuted,
+            )
+          : const Icon(Icons.arrow_upward_rounded),
     );
   }
 }
@@ -306,6 +710,7 @@ class InactiveRuntimeMessageComposer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     final colors = context.licoColors;
     final strings = LicoStrings.of(context);
     return Padding(
@@ -315,10 +720,7 @@ class InactiveRuntimeMessageComposer extends StatelessWidget {
         children: [
           Expanded(
             child: AppleGlassSurface(
-              borderRadius: BorderRadius.circular(
-                AppleControlMetrics.controlCornerRadius,
-              ),
-              fillAlpha: 14,
+              borderRadius: BorderRadius.circular(LicoRadius.composerField),
               child: Padding(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 12,
@@ -326,11 +728,8 @@ class InactiveRuntimeMessageComposer extends StatelessWidget {
                 ),
                 child: Text(
                   strings.messageTarget(targetLabel),
-                  style: TextStyle(
-                    color: colors.textMuted.withAlpha(140),
-                    fontSize: 14,
-                    fontWeight: FontWeight.w400,
-                    letterSpacing: -0.08,
+                  style: theme.textTheme.bodyLarge?.copyWith(
+                    color: colors.textDisabled,
                   ),
                 ),
               ),

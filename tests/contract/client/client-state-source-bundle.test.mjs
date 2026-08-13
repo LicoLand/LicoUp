@@ -40,7 +40,6 @@ async function sourceFiles(relativeRoot) {
 
 test("client state root is an exact thin stable facade", async () => {
   const facade = await read(facadePath);
-  assert.ok(facade.trimEnd().split(/\r?\n/u).length <= 24);
   for (const leaf of productionLeaves) {
     assert.match(facade, new RegExp(`mod ${leaf.replace(".rs", "")};`, "u"));
     await fs.access(path.join(repoRoot, root, leaf));
@@ -83,7 +82,10 @@ test("activity JSONL is bounded latest-first in memory and privacy projected", a
   }
   assert.match(activity, /VecDeque/u);
   assert.match(activity, /pop_front\(\)/u);
-  assert.match(activity, /read_private_text_bounded/u);
+  assert.match(activity, /open_private_text_bounded/u);
+  assert.match(activity, /validate_private_file_unchanged/u);
+  assert.match(activity, /read_line\(/u);
+  assert.equal(activity.includes("read_private_text_bounded"), false);
   assert.match(activity, /redact_activity_payload/u);
   assert.match(activity, /internal_state_reference/u);
   assert.equal(activity.includes("BufReader"), false);

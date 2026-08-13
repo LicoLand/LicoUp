@@ -19,16 +19,61 @@ pub fn execute_secure_command_json(
 ) -> Result<Value> {
     let payload = SecureCommandPayload::from_value(payload)?;
     let context = SecureCommandEvaluationContext::from_value(context)?;
+    match ledger.prior_execution(&payload)? {
+        SecureCommandPriorExecution::Completed(outcome) => return Ok(outcome),
+        SecureCommandPriorExecution::Reserved => {
+            return Ok(reserved_execution_outcome(&payload));
+        }
+        SecureCommandPriorExecution::Conflict => {
+            bail!("secure mesh command replay binding conflicts with reserved execution");
+        }
+        SecureCommandPriorExecution::Missing => {}
+    }
     let evaluation = evaluate_secure_command(&payload, &context, ledger)?;
+    let execution_reserved = evaluation.should_execute;
     let outcome =
         execute_evaluated_secure_command(&payload, &evaluation, executor, completed_at.into())?;
-    Ok(json!({
+    let result = json!({
         "ok": true,
         "protocolVersion": SECURE_MESH_COMMAND_PROTOCOL_VERSION,
         "evaluation": evaluation.to_json(),
         "execution": command_execution_outcome_json(outcome),
         "bodyRedacted": true,
-    }))
+    });
+    if execution_reserved {
+        ledger.record_completed_outcome(&payload, &result)?;
+    }
+    Ok(result)
+}
+
+fn reserved_execution_outcome(payload: &SecureCommandPayload) -> Value {
+    json!({
+        "ok": true,
+        "protocolVersion": SECURE_MESH_COMMAND_PROTOCOL_VERSION,
+        "evaluation": {
+            "ok": true,
+            "protocolVersion": SECURE_MESH_COMMAND_PROTOCOL_VERSION,
+            "accepted": true,
+            "shouldExecute": false,
+            "replayed": true,
+            "code": "execution_outcome_unknown",
+            "reason": "secure mesh command execution was reserved before an interrupted outcome",
+            "commandId": payload.command_id,
+            "commandKind": payload.command_kind,
+            "riskClass": payload.risk_class.as_str(),
+            "requiresUserConfirmation": payload.requires_user_confirmation,
+            "bodyRedacted": true,
+        },
+        "execution": {
+            "outcome": "error",
+            "commandId": payload.command_id,
+            "idempotencyKey": payload.idempotency_key,
+            "errorCode": "execution_outcome_unknown",
+            "retryable": false,
+            "errorDetail": LOCAL_EXECUTION_FAILED_REMOTE_DETAIL,
+        },
+        "bodyRedacted": true,
+    })
 }
 
 fn command_execution_outcome_json(outcome: SecureCommandExecutionOutcome) -> Value {

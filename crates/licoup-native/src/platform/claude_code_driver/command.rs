@@ -14,6 +14,8 @@ pub(super) const FIXED_STREAM_ARGS: &[&str] = &[
     "--output-format",
     "stream-json",
     "--verbose",
+    // Token-level streaming: the CLI emits content_block_delta events so the
+    // client renders replies progressively instead of whole messages.
     "--include-partial-messages",
 ];
 
@@ -24,6 +26,13 @@ pub(super) struct LaunchIdentity {
     pub(super) model: Option<String>,
     pub(super) reasoning_effort: Option<String>,
     pub(super) permission_mode: Option<String>,
+    /// Comma-joined tool allowlist passed via `--allowedTools` so an approved
+    /// retry does not re-trigger a permission denial.
+    pub(super) allowed_tools: Option<String>,
+    /// Native conversation to resume in a freshly launched process via
+    /// `--resume`. Only set when no process-local live transport owns the
+    /// session; the CLI loads the persisted transcript itself.
+    pub(super) resume_session_id: Option<String>,
 }
 
 impl LaunchIdentity {
@@ -34,6 +43,9 @@ impl LaunchIdentity {
             model: config.model.clone(),
             reasoning_effort: config.reasoning_effort.clone(),
             permission_mode: config.permission_mode.clone(),
+            allowed_tools: config.allowed_tools.clone(),
+            resume_session_id: (!config.requested_session_id.is_empty())
+                .then(|| config.requested_session_id.clone()),
         }
     }
 
@@ -57,6 +69,10 @@ impl LaunchIdentity {
                 .permission_mode
                 .as_ref()
                 .is_none_or(|value| self.permission_mode.as_ref() == Some(value))
+            && config
+                .allowed_tools
+                .as_ref()
+                .is_none_or(|value| self.allowed_tools.as_ref() == Some(value))
     }
 
     pub(super) fn args(&self) -> Vec<String> {
@@ -64,6 +80,9 @@ impl LaunchIdentity {
             .iter()
             .map(|value| (*value).to_string())
             .collect::<Vec<_>>();
+        if let Some(session_id) = self.resume_session_id.as_ref() {
+            args.extend(["--resume".to_string(), session_id.clone()]);
+        }
         if let Some(model) = self.model.as_ref() {
             args.extend(["--model".to_string(), model.clone()]);
         }
@@ -73,6 +92,9 @@ impl LaunchIdentity {
         if let Some(permission_mode) = self.permission_mode.as_ref() {
             args.extend(["--permission-mode".to_string(), permission_mode.clone()]);
         }
+        if let Some(allowed_tools) = self.allowed_tools.as_ref() {
+            args.extend(["--allowedTools".to_string(), allowed_tools.clone()]);
+        }
         args
     }
 
@@ -80,7 +102,6 @@ impl LaunchIdentity {
         let mut command = Command::new(&self.executable);
         command
             .args(self.args())
-            .env("CLAUDE_CODE_SKIP_PROMPT_HISTORY", "1")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());

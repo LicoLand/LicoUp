@@ -65,6 +65,7 @@ enum ClientErrorCode {
 
 enum ClientErrorStage {
   requestValidation("request/validation"),
+  cliAdmission("cli/admission"),
   discoveryAdapter("discovery/adapter"),
   discoveryDriver("discovery/driver"),
   processLaunch("process/launch"),
@@ -114,6 +115,10 @@ enum ClientErrorComponent {
 
 enum ClientErrorRecovery {
   correctRequest("correct_request"),
+  useCliHelp("use_cli_help"),
+  correctCommandArguments("correct_command_arguments"),
+  provideValidJson("provide_valid_json"),
+  reduceCommandArguments("reduce_command_arguments"),
   selectSupportedAdapter("select_supported_adapter"),
   installOrRetryRuntime("install_or_retry_runtime"),
   preserveDraftAndRetry("preserve_draft_and_retry"),
