@@ -17,7 +17,7 @@ void main() {
     test('parses typed entries and drops unusable ones', () {
       final images = parseAgentConversationImageAttachments([
         {'mediaType': 'image/png', 'data': _onePixelPngBase64, 'name': 'shot'},
-        {'path': '/tmp/screenshot.png'},
+        {'path': '/fixture-root/screenshot.png'},
         {'name': 'no source at all'},
         {'data': 'x' * 6000001},
         'not-a-map',
@@ -27,7 +27,7 @@ void main() {
       expect(images[0].mediaType, 'image/png');
       expect(images[0].dataBase64, _onePixelPngBase64);
       expect(images[0].name, 'shot');
-      expect(images[1].filePath, '/tmp/screenshot.png');
+      expect(images[1].filePath, '/fixture-root/screenshot.png');
       expect(images[1].mediaType, 'image/png');
     });
 
@@ -56,6 +56,22 @@ void main() {
 
       expect(message.images, hasLength(1));
       expect(message.images.single.dataBase64, _onePixelPngBase64);
+    });
+
+    test('keeps an image-only user message displayable', () {
+      final message = parseAgentConversationMessage({
+        'id': 'image-only',
+        'role': 'user',
+        'text': '',
+        'createdAt': '2026-07-20T10:00:00',
+        'images': [
+          {'path': '/fixture-root/screenshot.png'},
+        ],
+      });
+
+      expect(message.text, isEmpty);
+      expect(message.images, hasLength(1));
+      expect(message.isDisplayable, isTrue);
     });
   });
 
@@ -172,7 +188,9 @@ void main() {
     await tester.pump(const Duration(milliseconds: 200));
     expect(find.byKey(const Key('conversation-image-viewer')), findsOneWidget);
 
-    await tester.tap(find.byKey(const Key('conversation-image-viewer')));
+    await tester.tap(
+      find.byKey(const Key('conversation-image-viewer-dismiss')),
+    );
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 200));
     expect(find.byKey(const Key('conversation-image-viewer')), findsNothing);

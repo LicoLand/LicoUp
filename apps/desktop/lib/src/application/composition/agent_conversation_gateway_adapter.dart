@@ -1,6 +1,7 @@
 import 'package:licoup/src/application/features/agents/contracts/agent_conversation_gateway.dart';
 import 'package:licoup/src/backend/features/agents/services/agent_conversation_service.dart';
 import 'package:licoup/src/contracts/agent_command_runner.dart';
+import 'package:licoup/src/contracts/agent_conversation_attachment.dart';
 import 'package:licoup/src/platform/mobile_relay/mobile_relay_service.dart';
 import 'package:licoup/src/platform/native_client/agent_service.dart';
 
@@ -60,12 +61,14 @@ final class AgentConversationGatewayAdapter
     required String agentId,
     required String text,
     required String sessionId,
+    List<ConversationAttachment> attachments = const [],
     AgentDispatchBind bind = const AgentDispatchBind(),
   }) => service.send(
     runner: runner,
     agentId: agentId,
     text: text,
     sessionId: sessionId,
+    attachments: attachments,
     bind: bind,
   );
   @override
@@ -73,6 +76,7 @@ final class AgentConversationGatewayAdapter
     required String agentId,
     required String text,
     required String sessionId,
+    List<ConversationAttachment> attachments = const [],
     AgentDispatchBind bind = const AgentDispatchBind(),
   }) async* {
     try {
@@ -81,6 +85,7 @@ final class AgentConversationGatewayAdapter
         agentId: agentId,
         text: text,
         sessionId: sessionId,
+        attachments: attachments,
         bind: bind,
       )) {
         yield event;

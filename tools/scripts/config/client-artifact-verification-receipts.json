@@ -16,10 +16,11 @@
     "tools"
   ],
   "targets": {
-    "macos-arm64": {
+    "macos-direct-arm64": {
+      "evidenceTargetId": "macos-arm64",
       "platform": "macos",
       "artifactKind": "macos-distribution-archive",
-      "artifactRef": "build/apps/desktop/distribution/macos/LicoUp-macos-arm64.zip",
+      "artifactRef": "build/apps/desktop/distribution/macos/LicoUp-macos-arm64.dmg",
       "artifactDigestKind": "file",
       "distributionManifestRef": "build/apps/desktop/distribution/macos/manifest.json",
       "evidenceArtifactKind": "macos-app-bundle",
@@ -37,7 +38,8 @@
         "timeoutMs": 180000
       }
     },
-    "android-arm64": {
+    "android-direct-arm64-v8a": {
+      "evidenceTargetId": "android-arm64",
       "platform": "android",
       "artifactKind": "android-apk",
       "artifactRef": "build/apps/desktop/android/release/app-release.apk",
@@ -52,26 +54,6 @@
         "script": "tools/scripts/client-android-physical-install-launch.mjs",
         "args": ["--install", "--launch", "--apk", "build/apps/desktop/android/release/app-release.apk"],
         "timeoutMs": 600000
-      }
-    },
-    "linux-glibc-arm64": {
-      "platform": "linux",
-      "artifactKind": "linux-tar-archive",
-      "artifactRef": "build/apps/desktop/distribution/linux-arm64/LicoUp-linux-arm64.tar.gz",
-      "artifactDigestKind": "file",
-      "distributionManifestRef": "build/apps/desktop/distribution/linux-arm64/manifest.json",
-      "evidenceRef": "build/reports/secure-mesh-linux-vm-package-receipt.json",
-      "evidenceSchema": "licomesh.secure-mesh.linux-vm-package-receipt",
-      "evidenceSchemaVersion": 2,
-      "evidenceProducer": "tools/scripts/client-secure-mesh-linux-vm-package-receipt.mjs",
-      "evidenceProducerField": "producer",
-      "evidenceProducerValue": "linux-vm-package-receipt",
-      "freshnessKind": "generated-at",
-      "consumerVerificationPolicy": "provenance-or-verifiable-signature",
-      "evidenceInvocation": {
-        "script": "tools/scripts/client-secure-mesh-linux-vm-package-receipt.mjs",
-        "args": ["--archive", "{artifactRef}", "--distribution-manifest", "{distributionManifestRef}", "--expected-source-digest", "{sourceStateDigest}", "--report", "{evidenceRef}"],
-        "timeoutMs": 900000
       }
     }
   }

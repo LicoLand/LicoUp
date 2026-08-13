@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:licoup/app.dart';
 import 'package:licoup/src/contracts/locale_preferences.dart';
+import 'package:licoup/src/contracts/presentation/layout_profile.dart';
+import 'package:licoup/src/contracts/presentation/presentation_preferences.dart';
+import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
 import 'package:licoup/src/application/controller/client_controller.dart';
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/panel_frame.dart';
@@ -14,6 +18,41 @@ import 'fixtures/client_controller/support/fake_agent_service.dart';
 import 'layout/fixtures/layout_destination_presentation_fixture.dart';
 
 void main() {
+  testWidgets('language picker switches and persists the application locale', (
+    tester,
+  ) async {
+    final preferences = _SettingsPresentationPreferencesRepository();
+    final controller = ClientController(
+      agentService: FakeAgentService(),
+      presentationPreferencesRepository: preferences,
+    );
+    await controller.layoutManager.initialize();
+    controller
+      ..localePreference = LocalePreference.chinese
+      ..currentSection = ClientSection.settings;
+    await tester.binding.setSurfaceSize(const Size(1280, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await tester.pumpWidget(
+      LicoApp(controllerFactory: () => controller, initializeController: false),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('语言'), findsOneWidget);
+    await tester.tap(find.byType(DropdownButtonFormField<String>).first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('英文').last);
+    await tester.pumpAndSettle();
+
+    expect(controller.localePreference, LocalePreference.english);
+    expect(preferences.value.localePreference, LocalePreference.english);
+    expect(find.text('Language'), findsOneWidget);
+    expect(find.text('语言'), findsNothing);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+  });
+
   testWidgets(
     'settings selects appearance and language without duplicate labels',
     (tester) async {
@@ -313,15 +352,14 @@ void main() {
         .where((decoration) => decoration.color == colors.primary);
     expect(selectedContainer, isNotEmpty);
 
-    // Scroll to the bottom: the spy selection follows into the diagnostics
-    // section (the last one, with the resource usage card), away from
-    // Appearance.
+    // Scroll to the bottom: the spy selection follows into the archived
+    // conversations section, away from Appearance.
     final scrollable = find.byKey(const Key('settings-content-scroll'));
     await tester.drag(scrollable, const Offset(0, -3200));
     for (var i = 0; i < 20; i++) {
       await tester.pump(const Duration(milliseconds: 100));
     }
-    expect(indexForeground('Diagnostics'), colors.textOnPrimary);
+    expect(indexForeground('Archived'), colors.textOnPrimary);
     expect(indexForeground('Storage'), isNot(colors.textOnPrimary));
     expect(indexForeground('Appearance'), isNot(colors.textOnPrimary));
 
@@ -334,4 +372,30 @@ void main() {
     expect(indexForeground('Appearance'), colors.textOnPrimary);
     expect(tester.takeException(), isNull);
   });
+}
+
+final class _SettingsPresentationPreferencesRepository
+    implements PresentationPreferencesRepository {
+  PresentationPreferences value = PresentationPreferences(
+    layoutProfileId: LayoutProfileId.parse('dashboard'),
+    appearancePresetId: 'lico-soda',
+    localePreference: LocalePreference.chinese,
+  );
+
+  @override
+  Future<PresentationPreferencesLoadResult> load() async =>
+      PresentationPreferencesLoadResult(preferences: value);
+
+  @override
+  Future<PresentationPreferences> setAppearancePreset(String id) async =>
+      value = value.copyWith(appearancePresetId: id);
+
+  @override
+  Future<PresentationPreferences> setLayoutProfile(LayoutProfileId id) async =>
+      value = value.copyWith(layoutProfileId: id);
+
+  @override
+  Future<PresentationPreferences> setLocalePreference(
+    String preference,
+  ) async => value = value.copyWith(localePreference: preference);
 }

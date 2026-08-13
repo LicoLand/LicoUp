@@ -55,8 +55,12 @@ pub(super) fn get_json(url: &str) -> Result<Value> {
     local_service::serve::get_json(policy::SPEC, url)
 }
 
-pub(super) fn post_json(url: &str, body: &Value) -> Result<Value> {
-    local_service::serve::post_json(policy::SPEC, url, body)
+pub(super) fn post_json_with_optional_timeout(
+    url: &str,
+    body: &Value,
+    timeout: Option<std::time::Duration>,
+) -> Result<Value> {
+    local_service::serve::post_json_with_optional_timeout(policy::SPEC, url, body, timeout)
 }
 
 pub(super) fn watch_session_events(

@@ -19,8 +19,7 @@ final class ConversationProcessTimelineItem extends ConversationTimelineItem {
 }
 
 /// Provider runtime records that are useful for inspection but are not agent
-/// reasoning or tool execution. They intentionally render below the visual
-/// hierarchy of a process item.
+/// reasoning or tool execution. They render in a dedicated collapsible card.
 final class ConversationLogTimelineItem extends ConversationTimelineItem {
   const ConversationLogTimelineItem(super.storageKey, this.events);
 
@@ -29,7 +28,7 @@ final class ConversationLogTimelineItem extends ConversationTimelineItem {
 
 /// One in-place card describing an agent runtime auto-update (e.g.
 /// cursor-agent) blocking the turn. Stands alone: it must not render as a
-/// process operation nor as a runtime log row.
+/// process operation nor as a runtime log card.
 final class ConversationRuntimeUpdateTimelineItem
     extends ConversationTimelineItem {
   const ConversationRuntimeUpdateTimelineItem(super.storageKey, this.message);

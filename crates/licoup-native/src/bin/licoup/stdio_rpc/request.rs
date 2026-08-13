@@ -136,6 +136,17 @@ pub(crate) fn parse_stdio_rpc_request(
                 portable_data_dir,
             }
         }
+        "client.conversation.execute" => {
+            let params = object.get("params").cloned().unwrap_or_else(|| json!({}));
+            if !params.is_object() {
+                return Err(invalid("invalid_params"));
+            }
+            let portable_data_dir = parse_portable_data_dir(object, &invalid)?;
+            StdioRpcMethod::ClientConversation {
+                params,
+                portable_data_dir,
+            }
+        }
         "shutdown" => StdioRpcMethod::Shutdown,
         _ => return Err(invalid("invalid_method")),
     };

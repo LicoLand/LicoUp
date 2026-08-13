@@ -9,7 +9,6 @@ import 'package:licoup/src/application/features/mobile_relay/controller/secure_m
 import 'package:licoup/src/backend/features/mobile_relay/services/mobile_home_layout_service.dart';
 import 'package:licoup/src/contracts/mobile_home_layout_repository.dart';
 import 'package:licoup/src/contracts/mobile_relay_control.dart';
-import 'package:licoup/src/contracts/skill_hub.dart';
 import 'package:licoup/src/platform/client_clipboard_service.dart';
 import 'package:licoup/src/platform/mobile_relay/mobile_relay_service.dart';
 import 'package:licoup/src/platform/native_client/agent_service.dart';
@@ -26,8 +25,6 @@ final class ClientMobileComponentAssembly {
     required MobileHomeLayoutService mobileHomeLayoutService,
     required ClientClipboardService clientClipboardService,
     required RuntimePlatformBridge runtimePlatformBridge,
-    required SkillHubGateway skillHubGateway,
-    required void Function(Map<String, dynamic>?) replaceSkillInstallResult,
     required bool Function() isMobileRuntime,
     required List<TargetCandidate> Function() scannedTargets,
     required void Function(List<TargetCandidate>) replaceScannedTargets,
@@ -78,7 +75,6 @@ final class ClientMobileComponentAssembly {
     );
     secureMeshController = SecureMeshController(
       gateway: relayClient,
-      skillInstaller: SecureMeshSkillInstallGatewayAdapter(skillHubGateway),
       operationGate: operationGate,
       onStatus: (update) => reportStatus(
         chinese: update.chinese,
@@ -86,7 +82,6 @@ final class ClientMobileComponentAssembly {
         caption: update.caption,
         errorCode: update.errorCode,
       ),
-      onSkillInstallResult: replaceSkillInstallResult,
     );
   }
 

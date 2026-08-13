@@ -224,10 +224,11 @@ final class LayoutManager {
 
   Future<bool> _updatePresentationPreferences(
     Future<PresentationPreferences> Function() update,
-  ) {
+  ) async {
     _requireInitialized();
-    if (_state.status == LayoutSelectionStatus.committing) {
-      return Future<bool>.value(false);
+    if (_state.status == LayoutSelectionStatus.committing &&
+        !await _waitForLayoutCommit()) {
+      return false;
     }
     final canonicalLayoutId = _state.committedId;
     return _enqueuePreferenceOperation(() async {
@@ -255,6 +256,31 @@ final class LayoutManager {
         return false;
       }
     });
+  }
+
+  Future<bool> _waitForLayoutCommit() async {
+    if (_state.status != LayoutSelectionStatus.committing) return true;
+    final settled = Completer<void>();
+    void handleSelection(LayoutSelectionState state) {
+      if (state.status != LayoutSelectionStatus.committing &&
+          !settled.isCompleted) {
+        settled.complete();
+      }
+    }
+
+    addListener(handleSelection);
+    try {
+      if (_state.status == LayoutSelectionStatus.committing) {
+        try {
+          await settled.future.timeout(persistenceTimeout);
+        } on TimeoutException {
+          return false;
+        }
+      }
+      return !_disposed;
+    } finally {
+      removeListener(handleSelection);
+    }
   }
 
   Future<bool> _commit(LayoutProfileId candidate) async {

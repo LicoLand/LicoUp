@@ -414,7 +414,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "set -eu\n\nif [ \"${ACTION:-}\" = \"clean\" ]; then\n  exit 0\nfi\n\nif [ \"${LICO_CLIENT_SKIP_XCODE_SIDECAR_BUNDLE:-}\" = \"1\" ]; then\n  exit 0\nfi\n\nREPO_ROOT=\"$(cd \"$PROJECT_DIR/../../..\" && pwd)\"\nMANIFEST=\"$REPO_ROOT/crates/licoup-native/Cargo.toml\"\nTARGET_ROOT=\"$REPO_ROOT/build/crates/licoup-native/target\"\nPROFILE_DIR=\"debug\"\nRELEASE_FLAG=\"\"\n\nif [ \"${CONFIGURATION:-Debug}\" != \"Debug\" ]; then\n  PROFILE_DIR=\"release\"\n  RELEASE_FLAG=\"--release\"\nfi\n\nif ! command -v cargo >/dev/null 2>&1; then\n  echo \"error: cargo is required to build bundled LicoUp sidecars.\" >&2\n  exit 1\nfi\n\nCARGO_TARGET_DIR=\"$TARGET_ROOT\" cargo build --manifest-path \"$MANIFEST\" $RELEASE_FLAG --bin licoup-cli --bin lico-llm-gateway\n\nfor BINARY in licoup-cli lico-llm-gateway; do\n  SOURCE=\"$TARGET_ROOT/$PROFILE_DIR/$BINARY\"\n  DESTINATION=\"$TARGET_BUILD_DIR/$EXECUTABLE_FOLDER_PATH/$BINARY\"\n  if [ ! -x \"$SOURCE\" ]; then\n    echo \"error: sidecar build did not produce $SOURCE.\" >&2\n    exit 1\n  fi\n  mkdir -p \"$(dirname \"$DESTINATION\")\"\n  install -m 755 \"$SOURCE\" \"$DESTINATION\"\ndone\n";
+			shellScript = "set -eu\n\nif [ \"${ACTION:-}\" = \"clean\" ]; then\n  exit 0\nfi\n\nif [ \"${LICO_CLIENT_SKIP_XCODE_SIDECAR_BUNDLE:-}\" = \"1\" ]; then\n  exit 0\nfi\n\nREPO_ROOT=\"$(cd \"$PROJECT_DIR/../../..\" && pwd)\"\nMANIFEST=\"$REPO_ROOT/crates/licoup-native/Cargo.toml\"\nTARGET_ROOT=\"$REPO_ROOT/build/crates/licoup-native/target\"\nPROFILE_DIR=\"debug\"\nRELEASE_FLAG=\"\"\n\nif [ \"${CONFIGURATION:-Debug}\" != \"Debug\" ]; then\n  PROFILE_DIR=\"release\"\n  RELEASE_FLAG=\"--release\"\nfi\n\nif ! command -v cargo >/dev/null 2>&1; then\n  echo \"error: cargo is required to build bundled LicoUp sidecars.\" >&2\n  exit 1\nfi\nif ! command -v node >/dev/null 2>&1; then\n  echo \"error: node is required to acquire the managed Cargo artifact lease.\" >&2\n  exit 1\nfi\n\nnode \"$REPO_ROOT/tools/scripts/cargo-client.mjs\" build --manifest-path \"$MANIFEST\" $RELEASE_FLAG --bin licoup-cli --bin lico-llm-gateway\n\nfor BINARY in licoup-cli lico-llm-gateway; do\n  SOURCE=\"$TARGET_ROOT/$PROFILE_DIR/$BINARY\"\n  DESTINATION=\"$TARGET_BUILD_DIR/$EXECUTABLE_FOLDER_PATH/$BINARY\"\n  if [ ! -x \"$SOURCE\" ]; then\n    echo \"error: sidecar build did not produce $SOURCE.\" >&2\n    exit 1\n  fi\n  mkdir -p \"$(dirname \"$DESTINATION\")\"\n  install -m 755 \"$SOURCE\" \"$DESTINATION\"\ndone\n";
 		};
 		938324C1C8945BF7F72D2938 /* [CP] Embed Pods Frameworks */ = {
 			isa = PBXShellScriptBuildPhase;
@@ -509,9 +509,9 @@
 			baseConfigurationReference = 47214510D6AD2B5867A4540F /* Pods-RunnerTests.debug.xcconfig */;
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				GENERATE_INFOPLIST_FILE = YES;
-				MARKETING_VERSION = 0.1.0-alpha;
+				MARKETING_VERSION = 0.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = land.lico.licoup.RunnerTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;
@@ -524,9 +524,9 @@
 			baseConfigurationReference = D941B4FAE09E1BD99C80B2B2 /* Pods-RunnerTests.release.xcconfig */;
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				GENERATE_INFOPLIST_FILE = YES;
-				MARKETING_VERSION = 0.1.0-alpha;
+				MARKETING_VERSION = 0.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = land.lico.licoup.RunnerTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;
@@ -539,9 +539,9 @@
 			baseConfigurationReference = 11A22FCB36B9519B9DE37A8F /* Pods-RunnerTests.profile.xcconfig */;
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				GENERATE_INFOPLIST_FILE = YES;
-				MARKETING_VERSION = 0.1.0-alpha;
+				MARKETING_VERSION = 0.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = land.lico.licoup.RunnerTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;

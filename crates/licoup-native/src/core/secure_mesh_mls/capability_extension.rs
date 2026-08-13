@@ -55,7 +55,7 @@ pub(crate) enum SecureMeshMlsCapabilityExtension {
         activated_at_epoch: u64,
         previous_extension_digest: Option<String>,
         committer_endpoint_id: String,
-        roster_transition: SecureMeshMlsRosterTransition,
+        roster_transition: Box<SecureMeshMlsRosterTransition>,
         member_capability_proofs: BTreeMap<String, SecureMeshMlsMemberCapabilityProof>,
         group_negotiated_protocol_capabilities: BTreeSet<SecurityCapability>,
     },

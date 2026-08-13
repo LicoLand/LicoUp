@@ -18,12 +18,14 @@ final class ConversationProcessCard extends StatefulWidget {
     required this.adapter,
     required this.detailsBuilder,
     this.active = false,
+    this.topOverlayInset = 0,
   }) : assert(events.length > 0);
 
   final List<AgentConversationMessage> events;
   final AgentRenderAdapter adapter;
   final ConversationEventDetailsBuilder detailsBuilder;
   final bool active;
+  final double topOverlayInset;
 
   @override
   State<ConversationProcessCard> createState() =>
@@ -35,6 +37,7 @@ final class _ConversationProcessCardState
   final FocusNode _headerFocusNode = FocusNode(
     debugLabel: 'conversation-process-header',
   );
+  final ScrollController _operationScrollController = ScrollController();
   bool _expanded = false;
   bool _focused = false;
 
@@ -43,36 +46,26 @@ final class _ConversationProcessCardState
   @override
   void dispose() {
     _headerFocusNode.dispose();
+    _operationScrollController.dispose();
     super.dispose();
   }
 
   void _toggleExpanded() {
     final expanding = !_expanded;
     setState(() => _expanded = expanding);
-    if (!expanding) return;
-    final delay = MediaQuery.disableAnimationsOf(context)
-        ? Duration.zero
-        : const Duration(milliseconds: 210);
-    void scheduleEnsureVisible() {
-      if (!mounted || !_expanded) return;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted || !_expanded) return;
-        final headerContext = _headerFocusNode.context;
-        if (headerContext == null || !headerContext.mounted) return;
-        Scrollable.ensureVisible(
-          headerContext,
-          alignment: 0.08,
-          duration: Duration.zero,
-        );
-      });
-      WidgetsBinding.instance.scheduleFrame();
-    }
+    if (expanding) _pinHeaderBelowOverlay();
+  }
 
-    if (delay == Duration.zero) {
-      scheduleEnsureVisible();
-    } else {
-      Future<void>.delayed(delay, scheduleEnsureVisible);
-    }
+  void _pinHeaderBelowOverlay() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_expanded) return;
+      final headerContext = _headerFocusNode.context;
+      if (headerContext == null || !headerContext.mounted) return;
+      pinConversationProcessHeaderBelowOverlay(
+        headerContext,
+        widget.topOverlayInset,
+      );
+    });
   }
 
   @override
@@ -113,6 +106,11 @@ final class _ConversationProcessCardState
       detailsBuilder: widget.detailsBuilder,
       truncated: projection.renderTruncated,
       activeStepIndex: widget.active ? operations.length - 1 : -1,
+    );
+    final expandedBody = ConversationProcessOperationViewport(
+      processId: _processId,
+      controller: _operationScrollController,
+      child: operationList,
     );
 
     return Align(
@@ -266,13 +264,14 @@ final class _ConversationProcessCardState
                   ),
                 ),
                 if (motionDisabled)
-                  _expanded ? operationList : const SizedBox.shrink()
+                  _expanded ? expandedBody : const SizedBox.shrink()
                 else
                   AnimatedSize(
                     duration: sizeDuration,
                     curve: Curves.easeOutCubic,
                     alignment: Alignment.topCenter,
-                    child: _expanded ? operationList : const SizedBox.shrink(),
+                    onEnd: _pinHeaderBelowOverlay,
+                    child: _expanded ? expandedBody : const SizedBox.shrink(),
                   ),
               ],
             ),

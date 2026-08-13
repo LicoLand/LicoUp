@@ -1,8 +1,10 @@
 use super::super::*;
-use std::time::{Duration, Instant};
+use std::time::Duration;
+#[cfg(test)]
+use std::time::Instant;
 
 pub(super) const MAX_CONCURRENT_SENDS: usize = 16;
-const SHUTDOWN_GRACE_PERIOD: Duration = Duration::from_secs(1);
+const SHUTDOWN_POLL_INTERVAL: Duration = Duration::from_millis(5);
 
 pub(super) fn spawn_send<W>(
     writer: Arc<Mutex<W>>,
@@ -116,10 +118,16 @@ pub(super) fn has_capacity(workers: &[std::thread::JoinHandle<()>]) -> bool {
     workers.len() < MAX_CONCURRENT_SENDS
 }
 
-pub(super) fn join_until_shutdown(workers: &mut Vec<std::thread::JoinHandle<()>>) -> bool {
-    join_until(workers, SHUTDOWN_GRACE_PERIOD)
+pub(super) fn join_until_completion(workers: &mut Vec<std::thread::JoinHandle<()>>) {
+    while !workers.is_empty() {
+        reap_finished(workers);
+        if !workers.is_empty() {
+            std::thread::sleep(SHUTDOWN_POLL_INTERVAL);
+        }
+    }
 }
 
+#[cfg(test)]
 fn join_until(workers: &mut Vec<std::thread::JoinHandle<()>>, timeout: Duration) -> bool {
     let deadline = Instant::now() + timeout;
     loop {
@@ -179,5 +187,25 @@ mod tests {
         assert!(!join_until(&mut workers, Duration::from_millis(20)));
         release.send(()).unwrap();
         assert!(join_until(&mut workers, Duration::from_secs(1)));
+    }
+
+    #[test]
+    fn detached_conversation_host_waits_for_active_work_to_complete() {
+        let (release, wait) = std::sync::mpsc::channel::<()>();
+        let (joined, joined_rx) = std::sync::mpsc::channel::<()>();
+        let worker = std::thread::spawn(move || {
+            let _ = wait.recv();
+        });
+
+        let host = std::thread::spawn(move || {
+            let mut workers = vec![worker];
+            join_until_completion(&mut workers);
+            joined.send(()).unwrap();
+        });
+
+        assert!(joined_rx.recv_timeout(Duration::from_millis(20)).is_err());
+        release.send(()).unwrap();
+        joined_rx.recv_timeout(Duration::from_secs(1)).unwrap();
+        host.join().unwrap();
     }
 }

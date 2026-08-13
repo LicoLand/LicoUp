@@ -984,11 +984,6 @@ export const RUST_CORE_MODULES = Object.freeze([
       ],
     }),
   secureMeshModule({
-      id: "rust.core.secure-mesh.skill-sync",
-      summary: "Explicitly approved encrypted skill synchronization",
-      source: "secure_mesh_skill_sync",
-    }),
-  secureMeshModule({
       id: "rust.core.secure-mesh.sparse-pq-ratchet",
       summary: "Sparse post-quantum ratchet scheduling and recovery",
       source: "secure_mesh_sparse_pq_ratchet",

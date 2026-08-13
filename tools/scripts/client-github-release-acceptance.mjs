@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { createHash, createPublicKey, verify, X509Certificate } from "node:crypto";
+import { createHash, X509Certificate } from "node:crypto";
 import { existsSync, lstatSync, readFileSync, realpathSync, statSync } from "node:fs";
 import path from "node:path";
 import process from "node:process";
@@ -15,19 +15,23 @@ import {
   androidApkSignerIdentityKeyId,
   inspectAndroidApkFacts,
 } from "./lib/android-apk-facts.mjs";
+import {
+  loadClientReleaseTargetCatalog,
+  selectClientReleaseTargets,
+} from "./lib/client-release-targets.mjs";
 
 const repoRoot = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const buildRoot = path.join(repoRoot, "build");
 const digestPattern = /^[a-f0-9]{64}$/u;
 const specs = {
-  "macos-arm64": {
-    artifact: "build/apps/desktop/distribution/macos/LicoUp-macos-arm64.zip",
-    checksum: "build/apps/desktop/distribution/macos/LicoUp-macos-arm64.zip.sha256",
+  "macos-direct-arm64": {
+    artifact: "build/apps/desktop/distribution/macos/LicoUp-macos-arm64.dmg",
+    checksum: "build/apps/desktop/distribution/macos/LicoUp-macos-arm64.dmg.sha256",
     manifest: "build/apps/desktop/distribution/macos/manifest.json",
     platform: "macos",
     architecture: "arm64",
   },
-  "android-arm64": {
+  "android-direct-arm64-v8a": {
     artifact: "build/apps/desktop/android/release/app-release.apk",
     publishedArtifact: "build/apps/desktop/android/release/LicoUp-android-arm64.apk",
     checksum: "build/apps/desktop/android/release/LicoUp-android-arm64.apk.sha256",
@@ -35,15 +39,6 @@ const specs = {
     publicKey: "build/apps/desktop/android/release/lico-github-artifact.pem",
     platform: "android",
     architecture: "arm64-v8a",
-  },
-  "linux-glibc-arm64": {
-    artifact: "build/apps/desktop/distribution/linux-arm64/LicoUp-linux-arm64.tar.gz",
-    checksum: "build/apps/desktop/distribution/linux-arm64/LicoUp-linux-arm64.tar.gz.sha256",
-    signature: "build/apps/desktop/distribution/linux-arm64/LicoUp-linux-arm64.tar.gz.sig",
-    publicKey: "build/apps/desktop/distribution/linux-arm64/linux-release-verification-key.pem",
-    manifest: "build/apps/desktop/distribution/linux-arm64/manifest.json",
-    platform: "linux",
-    architecture: "arm64",
   },
 };
 
@@ -77,10 +72,12 @@ function json(ref) {
 function selectedTargetIds() {
   const ids = String(process.env.LICO_CLIENT_RELEASE_TARGETS || "")
     .split(",").map((value) => value.trim()).filter(Boolean);
-  if (ids.length === 0 || ids.length !== new Set(ids).size || ids.some((id) => !specs[id])) {
+  if (ids.length === 0 || ids.length !== new Set(ids).size) {
     throw new Error("release target selection invalid");
   }
-  return Object.keys(specs).filter((id) => ids.includes(id));
+  return selectClientReleaseTargets(loadClientReleaseTargetCatalog(), ids, {
+    requireReleaseSupported: true,
+  });
 }
 
 function verifyChecksum(spec, artifactDigest) {
@@ -89,24 +86,9 @@ function verifyChecksum(spec, artifactDigest) {
   return readRegular(spec.checksum, 4096).toString("utf8") === expected;
 }
 
-function verifyLinuxSignature(spec, manifest, digest) {
-  const keyBytes = readRegular(spec.publicKey, 64 * 1024);
-  const key = createPublicKey(keyBytes);
-  const spki = key.export({ type: "spki", format: "der" });
-  const signatureText = readRegular(spec.signature, 4096).toString("utf8").trim();
-  const signature = Buffer.from(signatureText, "base64");
-  return key.asymmetricKeyType === "ed25519" && signature.length === 64 &&
-    manifest.signature?.algorithm === "Ed25519" &&
-    manifest.signature?.payload === "archive-sha256-digest" &&
-    manifest.signature?.keyId === "linux-vm-acceptance" &&
-    manifest.signature?.file === path.basename(spec.signature) &&
-    manifest.signature?.publicKeySpkiBase64 === spki.toString("base64") &&
-    manifest.signature?.publicKeyFingerprint === `sha256:${sha256(spki)}` &&
-    verify(null, Buffer.from(digest, "hex"), key, signature);
-}
-
-function validateTarget(targetId, clientVersion, sourceStateDigest) {
-  const spec = specs[targetId];
+function validateTarget(target, clientVersion, sourceStateDigest) {
+  const spec = specs[target.id];
+  if (!spec) throw new Error("release target validator missing");
   const artifactPath = regularPath(spec.artifact);
   const artifactDigest = sha256File(artifactPath, { maxBytes: 1024 * 1024 * 1024 })
     .slice("sha256:".length);
@@ -117,11 +99,11 @@ function validateTarget(targetId, clientVersion, sourceStateDigest) {
     manifest.sourceStateDigest === sourceStateDigest;
   let buildReady = false;
   let publicVerificationReady = verifyChecksum(spec, artifactDigest);
-  if (targetId === "macos-arm64") {
-    buildReady = manifest.targetId === targetId && manifest.platform === spec.platform &&
+  if (target.platform === "macos") {
+    buildReady = manifest.targetId === target.runtimeTargetId && manifest.platform === spec.platform &&
       manifest.architecture === spec.architecture && manifest.sha256 === artifactDigest &&
       manifest.archive === path.basename(spec.artifact) && manifest.artifactReady === true;
-  } else if (targetId === "android-arm64") {
+  } else if (target.platform === "android") {
     const publishedPath = regularPath(spec.publishedArtifact);
     const publishedDigest = sha256File(publishedPath, { maxBytes: 1024 * 1024 * 1024 })
       .slice("sha256:".length);
@@ -134,7 +116,7 @@ function validateTarget(targetId, clientVersion, sourceStateDigest) {
     const signerKeyId = androidApkSignerIdentityKeyId(publishedFacts);
     const certificateKeyId = `sha256:${sha256(new X509Certificate(certificate).raw)}`;
     buildReady = artifactDigest === publishedDigest &&
-      manifest.targetId === targetId && manifest.mode === "release" &&
+      manifest.targetId === target.runtimeTargetId && manifest.mode === "release" &&
       manifest.productVersion === clientVersion.productVersion &&
       manifest.buildNumber === clientVersion.buildNumber &&
       manifest.artifact?.digest === `sha256:${artifactDigest}` &&
@@ -159,19 +141,13 @@ function validateTarget(targetId, clientVersion, sourceStateDigest) {
       certificate.includes("-----BEGIN CERTIFICATE-----") &&
       certificate.includes("-----END CERTIFICATE-----");
     publicVerificationReady = publicVerificationReady && buildReady;
-  } else {
-    buildReady = manifest.targetId === targetId && manifest.platform === spec.platform &&
-      manifest.architecture === spec.architecture && manifest.sha256 === artifactDigest &&
-      manifest.archive === path.basename(spec.artifact) && manifest.artifactReady === true;
-    publicVerificationReady = publicVerificationReady &&
-      verifyLinuxSignature(spec, manifest, artifactDigest);
   }
   const blockers = [];
   if (!commonReady) blockers.push("artifact_source_or_version_binding_not_ready");
   if (!buildReady) blockers.push("artifact_build_contract_not_ready");
   if (!publicVerificationReady) blockers.push("consumer_verification_metadata_not_ready");
   return {
-    targetId,
+    targetId: target.id,
     ready: blockers.length === 0,
     artifact: path.basename(spec.publishedArtifact || spec.artifact),
     sha256: artifactDigest,
@@ -181,23 +157,17 @@ function validateTarget(targetId, clientVersion, sourceStateDigest) {
 }
 
 function main() {
-  const targetCatalog = JSON.parse(
-    readFileSync(path.join(repoRoot, "tools/client-release-targets.json"), "utf8"),
-  );
   const selected = selectedTargetIds();
-  const authorized = targetCatalog.targets
-    .filter((target) => target.releaseSupported === true).map((target) => target.id);
-  if (selected.some((id) => !authorized.includes(id))) throw new Error("unsupported release target");
   const clientVersion = JSON.parse(readFileSync(path.join(repoRoot, "tools/client-version.json"), "utf8"));
   const sourceStateDigest = clientSourceStateDigest(repoRoot, CANONICAL_CLIENT_SOURCE_ROOTS);
-  const targets = selected.map((id) => validateTarget(id, clientVersion, sourceStateDigest));
+  const targets = selected.map((target) => validateTarget(target, clientVersion, sourceStateDigest));
   const blockers = targets.flatMap((target) => target.blockers.map((item) => `${target.targetId}:${item}`));
   const report = {
     schemaVersion: "licomesh.client-github-release-acceptance.v1",
     generatedAt: new Date().toISOString(),
     productVersion: clientVersion.productVersion,
     sourceStateDigest,
-    selectedTargetIds: selected,
+    selectedTargetIds: selected.map((target) => target.id),
     githubReleaseReady: blockers.length === 0,
     targets,
     blockers,
@@ -208,7 +178,7 @@ function main() {
     },
   };
   atomicWriteReportJson(buildRoot, "reports/client-github-release-acceptance.json", report);
-  console.log(JSON.stringify({ ok: report.githubReleaseReady, selectedTargetIds: selected, blockerCount: blockers.length }));
+  console.log(JSON.stringify({ ok: report.githubReleaseReady, selectedTargetIds: report.selectedTargetIds, blockerCount: blockers.length }));
   if (!report.githubReleaseReady) process.exitCode = 1;
 }
 

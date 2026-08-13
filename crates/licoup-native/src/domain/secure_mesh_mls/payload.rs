@@ -12,7 +12,9 @@ use super::input_codec::{
     PayloadSealRequest, decode_base64url, encode_base64url, parse_params, parse_payload_kind,
     reject_caller_asserted_trust, trusted_roster,
 };
-use super::participant_runtime::{ParticipantRequirement, with_local_participant};
+use super::participant_runtime::{
+    ParticipantRequirement, group_state_store, with_local_participant,
+};
 
 pub(super) fn payload_seal(params: &Value) -> Result<Value> {
     reject_caller_asserted_trust(params)?;
@@ -35,7 +37,12 @@ pub(super) fn payload_seal(params: &Value) -> Result<Value> {
     with_local_participant(params, ParticipantRequirement::Required, |runtime| {
         let trusted_roster =
             trusted_roster(&request.trusted_roster, runtime.config, runtime.identity)?;
-        let mut group = load_group_checked(runtime.participant, runtime.identity, &group_id)?;
+        let mut group = load_group_checked(
+            group_state_store(&mut *runtime.group_store)?,
+            runtime.participant,
+            runtime.identity,
+            &group_id,
+        )?;
         let sender_state = trusted_roster.state_for(runtime.identity)?;
         let message = seal_product_payload_message(
             &mut group,
@@ -78,7 +85,12 @@ pub(super) fn payload_open(params: &Value) -> Result<Value> {
         let trusted_roster =
             trusted_roster(&request.trusted_roster, runtime.config, runtime.identity)?;
         let trusted_sender_state = trusted_roster.state_for(&trusted_sender_identity)?.clone();
-        let mut group = load_group_checked(runtime.participant, runtime.identity, &group_id)?;
+        let mut group = load_group_checked(
+            group_state_store(&mut *runtime.group_store)?,
+            runtime.participant,
+            runtime.identity,
+            &group_id,
+        )?;
         let opened = open_product_payload_message(
             &mut group,
             runtime.participant,

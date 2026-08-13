@@ -851,7 +851,7 @@
         "_timer = Timer.periodic(interval, (_) => unawaited(pollOnce()))",
         "Future<void> pollOnce({bool showProgress = false})",
         "else if (_authorizationRequired)",
-        "final rawResult = await _gateway.syncCommands(",
+        "final rawResult = await _client.syncCommands(",
         "allowInteraction: showProgress",
         "on MobileRelayAuthorizationRequired",
         "_authorizationRequired = true",

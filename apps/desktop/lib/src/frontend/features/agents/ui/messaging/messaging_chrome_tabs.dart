@@ -12,6 +12,7 @@ import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_sessio
 import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/layout/profiles/messaging/desktop/tokens/messaging_desktop_tokens.dart';
 import 'package:licoup/src/frontend/shared/ui/agent_brand_icon.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 /// Most tabs hosted at once in the chrome band (permanent first, the
@@ -48,6 +49,7 @@ class MessagingConversationTabStrip extends StatefulWidget {
 class _MessagingConversationTabStripState
     extends State<MessagingConversationTabStrip> {
   final List<String> _pinnedIds = <String>[];
+  final Set<String> _userClosedIds = <String>{};
   String _previewId = '';
   bool _previewSuppressed = false;
   String _lastHandledSelectionId = '';
@@ -73,6 +75,7 @@ class _MessagingConversationTabStripState
       controller.addListener(_sync);
       controller.conversationStructureListenable.addListener(_sync);
       _pinnedIds.clear();
+      _userClosedIds.clear();
       _previewId = '';
       _previewSuppressed = false;
       _lastHandledSelectionId = '';
@@ -87,9 +90,7 @@ class _MessagingConversationTabStripState
     super.dispose();
   }
 
-  /// Same conversation-agent catalog the workspace sidebar uses, including
-  /// the synthetic default orchestration contact that is not part of
-  /// [ClientController.scannedTargets].
+  /// Same conversation-agent catalog the workspace sidebar uses.
   List<TargetCandidate> _conversationTabTargets() {
     return controller.orderedConversationTargets(
       controller.scannedTargets.where((target) => target.visibleInClient),
@@ -125,6 +126,7 @@ class _MessagingConversationTabStripState
     }
     setState(() {
       _pinnedIds.add(sessionId);
+      _userClosedIds.remove(sessionId);
       if (_previewId == sessionId) {
         _previewId = '';
       }
@@ -135,6 +137,10 @@ class _MessagingConversationTabStripState
     final selectedId = controller.selectedConversationSession?.id.trim() ?? '';
     setState(() {
       _pinnedIds.remove(sessionId);
+      // An explicit close wins over the in-flight auto-pin: the tab must not
+      // be re-added by the next controller notification while this session
+      // is still sending.
+      _userClosedIds.add(sessionId);
       // Closing the open conversation's tab hides it without reviving the
       // preview slot until the user opens another conversation.
       if (sessionId == selectedId) {
@@ -155,6 +161,9 @@ class _MessagingConversationTabStripState
     if (selectedId != _lastHandledSelectionId) {
       _lastHandledSelectionId = selectedId;
       nextSuppressed = false;
+      // Reopening a conversation restores its auto-pin rights: only a close
+      // while the tab is hidden counts as user intent to keep it hidden.
+      _userClosedIds.remove(selectedId);
       if (selectedId.isEmpty || _pinnedIds.contains(selectedId)) {
         nextPreview = '';
       } else if (selectedId == sendingId) {
@@ -169,7 +178,9 @@ class _MessagingConversationTabStripState
     }
 
     var pinnedChanged = false;
-    if (sendingId.isNotEmpty && !_pinnedIds.contains(sendingId)) {
+    if (sendingId.isNotEmpty &&
+        !_pinnedIds.contains(sendingId) &&
+        !_userClosedIds.contains(sendingId)) {
       pinnedChanged = true;
     }
     final previewChanged =
@@ -247,7 +258,11 @@ class _MessagingConversationTabStripState
       ..._pinnedIds,
       if (_previewId.isNotEmpty && !_pinnedIds.contains(_previewId)) _previewId,
     ];
-    final selectedAgentId = controller.selectedConversationAgentId.trim();
+    // Highlight follows the selected session, not the agent: several tabs of
+    // one agent must not all light up, and a selected session without a
+    // rendered tab (suppressed preview or closed tab) highlights nothing.
+    final selectedSessionId =
+        controller.selectedConversationSession?.id.trim() ?? '';
     final canStartNew = controller.selectedConversationAgent != null;
     return SizedBox(
       key: const Key('messaging-chrome-tab-strip'),
@@ -262,7 +277,7 @@ class _MessagingConversationTabStripState
                 key: ValueKey<String>('messaging-chrome-tab-$sessionId'),
                 entry: entry,
                 pinned: _pinnedIds.contains(sessionId),
-                selected: entry.owner.id == selectedAgentId,
+                selected: sessionId == selectedSessionId,
                 onTap: () => unawaited(_open(entry)),
                 onDoubleTap: _pinnedIds.contains(sessionId)
                     ? null
@@ -297,7 +312,9 @@ class _MessagingConversationTabStripState
     }
     controller.selectSection(ClientSection.agents);
     widget.onCloseAuxChromePanel?.call();
-    await controller.selectConversationAgent(entry.owner.id);
+    if (controller.selectedConversationAgentId != entry.owner.target) {
+      await controller.selectConversationAgent(entry.owner.id);
+    }
     controller.selectConversationSession(resolvedId);
   }
 
@@ -380,7 +397,7 @@ class _MessagingChromeTabState extends State<_MessagingChromeTab> {
         : session.title;
     return Tooltip(
       message: title,
-      waitDuration: const Duration(milliseconds: 400),
+      waitDuration: LicoMotion.tooltipWait,
       child: MouseRegion(
         onEnter: (_) => setState(() => _hovered = true),
         onExit: (_) => setState(() => _hovered = false),
@@ -485,7 +502,7 @@ class _MessagingChromeNewTabButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return Tooltip(
       message: tooltip,
-      waitDuration: const Duration(milliseconds: 400),
+      waitDuration: LicoMotion.tooltipWait,
       child: InkWell(
         onTap: onPressed,
         customBorder: const CircleBorder(),

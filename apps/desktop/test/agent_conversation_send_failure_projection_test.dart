@@ -1,6 +1,7 @@
 import 'package:licoup/src/application/controller/client_controller.dart';
 import 'package:licoup/src/backend/features/agents/services/agent_conversation_service.dart';
 import 'package:licoup/src/contracts/agent_command_runner.dart';
+import 'package:licoup/src/contracts/agent_conversation_attachment.dart';
 import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -16,6 +17,7 @@ class _FailingConversationService extends AgentConversationService {
     required String agentId,
     required String text,
     required String sessionId,
+    List<ConversationAttachment> attachments = const [],
     AgentDispatchBind bind = const AgentDispatchBind(),
   }) async* {
     yield const AgentDispatchEvent(
@@ -78,7 +80,9 @@ void main() {
       controller.conversationSendErrorFor('copilot'),
       'acp_protocol_timeout',
     );
-    final live = controller.liveConversationMessagesByAgent['copilot']!;
+    final live =
+        controller.liveConversationMessagesByScope[controller
+            .conversationComposerScopeKey]!;
     final markers = live.where(
       (message) =>
           message.role == 'error' &&

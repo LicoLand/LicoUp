@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 
 import 'package:licoup/src/application/controller/client_controller.dart';
@@ -14,35 +13,26 @@ class ClientUpdateSettingsCard extends StatelessWidget {
 
   final ClientController controller;
 
-  Future<void> _pickManifestAndCheck() async {
-    final manifest = await openFile(
-      acceptedTypeGroups: [
-        const XTypeGroup(label: 'JSON', extensions: ['json']),
-      ],
-    );
-    if (manifest == null) {
-      return;
-    }
-    final keys = await openFile(
-      acceptedTypeGroups: [
-        const XTypeGroup(label: 'JSON', extensions: ['json']),
-      ],
-    );
-    if (keys == null) {
-      return;
-    }
-    await controller.checkClientUpdate(
-      manifestPath: manifest.path,
-      publicKeysPath: keys.path,
+  void _checkFromGithub() {
+    unawaited(controller.checkClientUpdateFromGithub());
+  }
+
+  void _downloadFromGithub() {
+    unawaited(controller.downloadClientUpdateFromGithub());
+  }
+
+  void _applyAndRestart() {
+    unawaited(
+      controller.applyClientUpdateThenExit(() {
+        // The detached native update script replaces the installation and
+        // relaunches the new version after this process exits.
+        controller.clientProcessLifecycle.exitSuccess();
+      }),
     );
   }
 
-  Future<void> _pickArtifactAndDownload() async {
-    final artifact = await openFile();
-    if (artifact == null) {
-      return;
-    }
-    await controller.downloadClientUpdateArtifact(sourcePath: artifact.path);
+  void _rollback() {
+    unawaited(controller.rollbackClientUpdate());
   }
 
   @override
@@ -101,6 +91,12 @@ class ClientUpdateSettingsCard extends StatelessWidget {
           ),
           _InfoLine(label: strings.channel, value: status.channel),
           _InfoLine(
+            label: strings.updateSource,
+            value: controller.clientUpdateSource == 'github'
+                ? strings.updateSourceGithub
+                : strings.updateSourceLocal,
+          ),
+          _InfoLine(
             label: strings.status,
             value: _phaseLabel(strings, status.phase),
           ),
@@ -128,17 +124,15 @@ class ClientUpdateSettingsCard extends StatelessWidget {
                 child: Text(strings.refresh),
               ),
               FilledButton(
-                key: const Key('client-update-check'),
-                onPressed: busy
-                    ? null
-                    : () => unawaited(_pickManifestAndCheck()),
+                key: const Key('client-update-check-github'),
+                onPressed: busy ? null : _checkFromGithub,
                 child: Text(strings.checkUpdate),
               ),
               OutlinedButton(
-                key: const Key('client-update-download'),
+                key: const Key('client-update-download-github'),
                 onPressed: busy || !status.updateAvailable
                     ? null
-                    : () => unawaited(_pickArtifactAndDownload()),
+                    : _downloadFromGithub,
                 child: Text(strings.downloadUpdate),
               ),
               OutlinedButton(
@@ -159,6 +153,23 @@ class ClientUpdateSettingsCard extends StatelessWidget {
                     : () => unawaited(controller.planClientUpdateApply()),
                 child: Text(strings.planUpdateInstall),
               ),
+              FilledButton(
+                key: const Key('client-update-apply-restart'),
+                onPressed:
+                    busy ||
+                        (status.phase != ClientUpdatePhase.verified &&
+                            status.phase != ClientUpdatePhase.applied)
+                    ? null
+                    : _applyAndRestart,
+                child: Text(strings.applyUpdateRestart),
+              ),
+              OutlinedButton(
+                key: const Key('client-update-rollback'),
+                onPressed: busy || status.phase != ClientUpdatePhase.rolledBack
+                    ? null
+                    : _rollback,
+                child: Text(strings.rollbackUpdate),
+              ),
             ],
           ),
         ],
@@ -178,6 +189,8 @@ class ClientUpdateSettingsCard extends StatelessWidget {
       ClientUpdatePhase.verifying => strings.clientUpdatePhaseVerifying,
       ClientUpdatePhase.verified => strings.clientUpdatePhaseVerified,
       ClientUpdatePhase.applyPlanned => strings.clientUpdatePhaseApplyPlanned,
+      ClientUpdatePhase.applied => strings.clientUpdatePhaseApplied,
+      ClientUpdatePhase.rolledBack => strings.clientUpdatePhaseRolledBack,
       ClientUpdatePhase.failed => strings.clientUpdatePhaseFailed,
     };
   }

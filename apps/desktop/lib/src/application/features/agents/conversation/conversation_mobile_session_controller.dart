@@ -2,7 +2,6 @@ import 'package:licoup/src/application/features/agents/conversation/conversation
 import 'package:licoup/src/application/features/agents/policy/conversation_session_index.dart';
 import 'package:licoup/src/application/features/agents/workspace/agent_workspace_coordinator.dart';
 import 'package:licoup/src/contracts/agent_conversation_models.dart';
-import 'package:licoup/src/contracts/agent_orchestration_target.dart';
 
 String mobileConversationSessionErrorCode(Map<String, dynamic> result) {
   final candidate = (result['errorCode'] ?? result['code'] ?? '')
@@ -148,7 +147,6 @@ mixin AgentConversationMobileSessionController
   Future<void> loadMoreMobileConversationSessions(String agentId) async {
     final normalized = agentId.trim();
     if (normalized.isEmpty ||
-        isAgentOrchestrationTargetId(normalized) ||
         conversationMobileLoading ||
         conversationSessionLoadMoreTargets.contains(normalized) ||
         !(conversationSessionsHasMoreByAgent[normalized] ?? false)) {

@@ -4,6 +4,7 @@ import 'package:licoup/src/contracts/target_candidate.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_pane_presentation.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_parity_disclosure.dart';
 import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_virtual_machine_destination.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 /// Splicable row children rendering the conversation connection affordances:
@@ -68,7 +69,7 @@ class OpencodeServeStatusChip extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(LicoRadius.chip),
         border: Border.all(color: color.withValues(alpha: 0.35)),
       ),
       child: Text(

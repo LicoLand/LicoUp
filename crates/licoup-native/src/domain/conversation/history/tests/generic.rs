@@ -121,8 +121,17 @@ fn antigravity_history_decodes_protocol_wrapped_messages() {
     assert_eq!(messages[0]["text"], "请找到本项目的开发规则文档入口");
     assert_eq!(messages[1]["role"], "tool_call");
     assert_eq!(messages[1]["cardTitle"], "View file");
+    // Activity details are expandable: the recorded command content and file
+    // view stay available on the tool call card.
+    assert!(
+        messages[1]["text"]
+            .as_str()
+            .unwrap()
+            .contains("coverageContribution")
+    );
     assert_eq!(messages[2]["role"], "tool_call");
     assert_eq!(messages[2]["cardTitle"], "Run command");
+    assert_eq!(messages[2]["text"], "npm run verify\nPASS 133 tests");
     assert_eq!(
         messages[3]["text"],
         "开发规则入口在仓库根目录的 AGENTS.md。"
@@ -132,9 +141,6 @@ fn antigravity_history_decodes_protocol_wrapped_messages() {
         text.contains("<USER_REQUEST>")
             || text.contains("<SYSTEM_MESSAGE>")
             || text.contains("not actually sent by the user")
-            || text.contains("coverageContribution")
-            || text.contains("npm run verify")
-            || text.contains("2255")
     }));
 }
 

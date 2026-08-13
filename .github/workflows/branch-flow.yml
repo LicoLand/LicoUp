@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   branch-flow:
-    name: Branch flow policy
+    name: Branch flow
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:

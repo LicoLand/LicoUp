@@ -1,6 +1,6 @@
 //! Digest-confirmed registration of Subagent MCP into Antigravity mcp_config.
 
-use crate::domain::agent_workflow_loop::CodexPluginState;
+use crate::domain::integration_state::IntegrationState;
 use directories::UserDirs;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -113,26 +113,26 @@ pub struct AntigravitySubagentMcpReceipt {
     pub plugin_ready_for_new_conversations: bool,
 }
 
-pub fn status(mcp_binary: &Path) -> CodexPluginState {
+pub fn status(mcp_binary: &Path) -> IntegrationState {
     let Ok(mcp_binary) = canonical_executable(mcp_binary) else {
-        return CodexPluginState::Unavailable;
+        return IntegrationState::Unavailable;
     };
     let Some(config_path) = antigravity_mcp_config_path() else {
-        return CodexPluginState::Unavailable;
+        return IntegrationState::Unavailable;
     };
     match read_config(&config_path) {
         Ok(config) => {
             if entry_is_ready(&config, &mcp_binary) {
-                CodexPluginState::Ready
+                IntegrationState::Ready
             } else {
-                CodexPluginState::Missing
+                IntegrationState::Missing
             }
         }
         Err(_) => {
             if config_path.exists() {
-                CodexPluginState::Unavailable
+                IntegrationState::Unavailable
             } else {
-                CodexPluginState::Missing
+                IntegrationState::Missing
             }
         }
     }

@@ -8,31 +8,34 @@ import 'package:licoup/src/contracts/generated/secure_mesh.g.dart';
 
 /// Ephemeral message/process projection for an in-flight native turn.
 ///
-/// One [ConversationTurnProcessState] per agent is the blackboard of the
-/// active turn: stream events only advance the state machine, and the live
-/// message list is re-derived from the state on every transition. The
-/// frontend card is bound to the turn id, so it stays pinned on the interface
-/// and only its content advances.
+/// One [ConversationTurnProcessState] per conversation scope is the blackboard
+/// of that conversation's active turn: stream events only advance the state
+/// machine, and the live message list is re-derived from the state on every
+/// transition. The live messages are part of the owning conversation's message
+/// stream; other conversations have no live entries of their own. The
+/// frontend card is bound to the turn id, so it stays pinned in the flow and
+/// only its content advances.
 mixin AgentConversationLiveProjectionController on AgentWorkspaceCoordinator {
   void conversationStartLiveProjection({
-    required String agentId,
+    required String scopeKey,
     required String turnId,
     required String userText,
   }) {
     final now = DateTime.now().toUtc().toIso8601String();
-    conversationTurnProcessStateByAgent = {
-      ...conversationTurnProcessStateByAgent,
-      agentId: ConversationTurnProcessState(
+    conversationTurnProcessStateByScope = {
+      ...conversationTurnProcessStateByScope,
+      scopeKey: ConversationTurnProcessState(
         turnId: turnId,
         userText: userText,
         createdAt: now,
+        scopeKey: scopeKey,
       ),
     };
-    _projectConversationTurnMessages(agentId);
+    _projectConversationTurnMessages(scopeKey);
   }
 
   void conversationUpsertLiveLifecycle({
-    required String agentId,
+    required String scopeKey,
     required String turnId,
     required String stage,
     String participantAgentId = '',
@@ -41,7 +44,7 @@ mixin AgentConversationLiveProjectionController on AgentWorkspaceCoordinator {
   }) {
     final normalizedStage = stage.trim().toLowerCase();
     if (normalizedStage.isEmpty) return;
-    final state = conversationTurnProcessStateByAgent[agentId];
+    final state = conversationTurnProcessStateByScope[scopeKey];
     if (state == null || state.turnId != turnId) return;
     state.recordParticipant(
       participantAgentId: participantAgentId,
@@ -49,13 +52,13 @@ mixin AgentConversationLiveProjectionController on AgentWorkspaceCoordinator {
       participantRole: participantRole,
     );
     state.advanceStage(normalizedStage);
-    _projectConversationTurnMessages(agentId);
+    _projectConversationTurnMessages(scopeKey);
   }
 
   /// One in-place card per turn describing a cursor-agent auto-update that
   /// blocks the turn (stable id, same position, only text/terminal change).
   void conversationUpsertLiveRuntimeUpdate({
-    required String agentId,
+    required String scopeKey,
     required String turnId,
     String phase = '',
     String version = '',
@@ -65,7 +68,7 @@ mixin AgentConversationLiveProjectionController on AgentWorkspaceCoordinator {
     String participantLabel = '',
     String participantRole = '',
   }) {
-    final state = conversationTurnProcessStateByAgent[agentId];
+    final state = conversationTurnProcessStateByScope[scopeKey];
     if (state == null || state.turnId != turnId) return;
     final phaseLabel = switch (phase.trim()) {
       'preparing' => '准备中',
@@ -97,35 +100,52 @@ mixin AgentConversationLiveProjectionController on AgentWorkspaceCoordinator {
       participantRole: participantRole,
     );
     state.setRuntimeUpdate(updateMessage);
-    _projectConversationTurnMessages(agentId);
+    _projectConversationTurnMessages(scopeKey);
   }
 
-  void conversationUpsertLiveReply({
-    required String agentId,
+  /// Whether the reply landed on the current turn blackboard. False when the
+  /// scope has no live turn or the turn id belongs to a replaced turn (a
+  /// stale stream event or an old handoff projection); callers must not
+  /// report dropped content as projected.
+  bool conversationUpsertLiveReply({
+    required String scopeKey,
     required String turnId,
     required String text,
     String participantAgentId = '',
     String participantLabel = '',
     String participantRole = '',
   }) {
-    final state = conversationTurnProcessStateByAgent[agentId];
-    if (state == null || state.turnId != turnId) return;
+    final state = conversationTurnProcessStateByScope[scopeKey];
+    if (state == null) return false;
+    final participantKey = state.participantReplyKey(
+      turnId: turnId,
+      participantAgentId: participantAgentId,
+      participantRole: participantRole,
+    );
+    if (participantKey == null) return false;
     final visibleText = visibleConversationMessageText(
       'assistant',
       text,
       kind: AgentConversationMessageKind.assistant,
       agentId: participantAgentId,
     );
-    state.recordParticipant(
+    if (state.isPrimaryReplyKey(participantKey)) {
+      state.recordParticipant(
+        participantAgentId: participantAgentId,
+        participantLabel: participantLabel,
+        participantRole: participantRole,
+      );
+    }
+    state.setReplyText(
+      visibleText,
+      createdAt: DateTime.now().toUtc().toIso8601String(),
+      participantKey: participantKey,
       participantAgentId: participantAgentId,
       participantLabel: participantLabel,
       participantRole: participantRole,
     );
-    state.setReplyText(
-      visibleText,
-      createdAt: DateTime.now().toUtc().toIso8601String(),
-    );
-    _projectConversationTurnMessages(agentId);
+    _projectConversationTurnMessages(scopeKey);
+    return true;
   }
 
   Future<void> conversationHandleNativeApprovalNeeded({
@@ -197,7 +217,7 @@ mixin AgentConversationLiveProjectionController on AgentWorkspaceCoordinator {
   }
 
   void conversationAppendLiveProcessEvent({
-    required String agentId,
+    required String scopeKey,
     required String turnId,
     required AgentDispatchEvent event,
     String participantAgentId = '',
@@ -208,7 +228,7 @@ mixin AgentConversationLiveProjectionController on AgentWorkspaceCoordinator {
     if (kind.isEmpty || kind == 'dispatch.turn.started') {
       return;
     }
-    final state = conversationTurnProcessStateByAgent[agentId];
+    final state = conversationTurnProcessStateByScope[scopeKey];
     if (state == null || state.turnId != turnId) return;
     final rawText =
         (event.payload['text'] ??
@@ -250,20 +270,19 @@ mixin AgentConversationLiveProjectionController on AgentWorkspaceCoordinator {
             .trim(),
       ),
     );
-    _projectConversationTurnMessages(agentId);
+    _projectConversationTurnMessages(scopeKey);
   }
 
-  void conversationClearLiveProjection(String agentId) {
-    conversationTurnProcessStateByAgent = {
-      for (final entry in conversationTurnProcessStateByAgent.entries)
-        if (entry.key != agentId) entry.key: entry.value,
+  void conversationClearLiveProjection(String scopeKey) {
+    final normalized = scopeKey.trim();
+    if (normalized.isEmpty) return;
+    conversationTurnProcessStateByScope = {
+      for (final entry in conversationTurnProcessStateByScope.entries)
+        if (entry.key != normalized) entry.key: entry.value,
     };
-    if (!liveConversationMessagesByAgent.containsKey(agentId)) {
-      return;
-    }
-    liveConversationMessagesByAgent = {
-      for (final entry in liveConversationMessagesByAgent.entries)
-        if (entry.key != agentId) entry.key: entry.value,
+    liveConversationMessagesByScope = {
+      for (final entry in liveConversationMessagesByScope.entries)
+        if (entry.key != normalized) entry.key: entry.value,
     };
   }
 
@@ -271,8 +290,8 @@ mixin AgentConversationLiveProjectionController on AgentWorkspaceCoordinator {
   /// lifecycle stages card, optional runtime-update card, evidence
   /// operations, then the streamed reply. The messages are a projection of
   /// the state, never a second source of truth.
-  void _projectConversationTurnMessages(String agentId) {
-    final state = conversationTurnProcessStateByAgent[agentId];
+  void _projectConversationTurnMessages(String scopeKey) {
+    final state = conversationTurnProcessStateByScope[scopeKey];
     if (state == null) {
       return;
     }
@@ -306,25 +325,32 @@ mixin AgentConversationLiveProjectionController on AgentWorkspaceCoordinator {
       messages.add(runtimeUpdate);
     }
     messages.addAll(state.evidence);
-    if (state.replyText.trim().isNotEmpty) {
+    // One assistant message per participant: the turn's own participant first
+    // (plain `-assistant` identity), then peer replies and handoff bubbles in
+    // arrival order, each with a stable per-participant identity.
+    for (final reply in state.replies) {
+      final primary = state.isPrimaryReplyKey(reply.key);
+      final participantIdentity = primary
+          ? '${state.turnId}-assistant'
+          : '${state.turnId}-assistant-${reply.participantAgentId.trim()}-${reply.participantRole.trim()}';
       messages.add(
         AgentConversationMessage(
-          id: '${state.turnId}-assistant',
+          id: participantIdentity,
           role: 'assistant',
-          text: state.replyText,
-          createdAt: state.replyCreatedAt.isEmpty
+          text: reply.text,
+          createdAt: reply.createdAt.isEmpty
               ? DateTime.now().toUtc().toIso8601String()
-              : state.replyCreatedAt,
-          stableIdentity: '${state.turnId}-assistant',
-          participantAgentId: state.participantAgentId,
-          participantLabel: state.participantLabel,
-          participantRole: state.participantRole,
+              : reply.createdAt,
+          stableIdentity: participantIdentity,
+          participantAgentId: reply.participantAgentId,
+          participantLabel: reply.participantLabel,
+          participantRole: reply.participantRole,
         ),
       );
     }
-    liveConversationMessagesByAgent = {
-      ...liveConversationMessagesByAgent,
-      agentId: List<AgentConversationMessage>.unmodifiable(messages),
+    liveConversationMessagesByScope = {
+      ...liveConversationMessagesByScope,
+      scopeKey: List<AgentConversationMessage>.unmodifiable(messages),
     };
   }
 }

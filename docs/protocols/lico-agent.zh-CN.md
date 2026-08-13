@@ -7,8 +7,8 @@
 同步更新本文。
 
 Lico Agent 是 LicoUp **自研**运行时，在智能体列表中作为普通一项
-（`lico-agent`），与 Pi、Codex 等第三方适配器同级。它**不是**顶部「Lico」
-群聊入口本身。
+（`lico-agent`），与 Pi、Codex 等第三方适配器同级。它不是特殊 Conversation、
+角色或编排权威。
 
 ## 能力
 
@@ -22,8 +22,9 @@ Lico Agent 是 LicoUp **自研**运行时，在智能体列表中作为普通一
 - 会话状态由父进程保存在 `{portable}/client-state/lico-agent/`；子进程不落盘
   会话库。
 
-## 与「Lico」群聊入口的关系
+## 与统一 Conversation 的关系
 
-联系人 **Lico**（原「默认」）打开 LicoUp 自有**群聊 Conversation**。适应性
-飞轮选择参与智能体（可包含 Lico Agent）。默认发言权为飞轮主智能体调度、对等
-气泡呈现。Composer 中飞轮悬停选择器与圆形编辑按钮见 USER-GUIDE 投影。
+统一 Conversation 后端可以像接纳其它可运行集成一样，通过普通 Agent Membership
+接纳 Lico Agent。用户定义的 Conversation Role 可以包含该 Membership，显式启动的
+适应性飞轮可从 Role 的有序候选池中选择它。模型中没有内建主智能体槽、自动群聊轮转
+或专用 Lico 群聊身份；当前交付也不宣称已经提供桌面群聊或飞轮编辑器。

@@ -10,6 +10,15 @@ pub enum RuntimeAdapterError {
     AgentIdentifierMissing,
     MessageMissing,
     MessageInputLimit,
+    AttachmentUnsupportedForAdapter { agent_label: String },
+    AttachmentListExceeded,
+    AttachmentInvalid,
+    AttachmentRemoteUnsupported,
+    AttachmentMediaUnsupported,
+    AttachmentSymlinkRejected,
+    AttachmentFileUnavailable,
+    AttachmentSizeLimit,
+    AttachmentSignatureMismatch,
     UnsupportedAdapter { agent_label: String },
     RuntimeProfileUnavailable,
     ExecutableUnavailable,
@@ -43,6 +52,78 @@ impl RuntimeAdapterError {
                 ClientErrorRecovery::CorrectRequest,
             )
             .with_presentation_arg("field", "message"),
+            Self::AttachmentUnsupportedForAdapter { agent_label } => ClientError::new(
+                ClientErrorCode::AgentRuntimeUnsupported,
+                ClientErrorStage::DiscoveryAdapter,
+                ClientErrorComponent::RuntimeAdapter,
+                false,
+                ClientErrorRecovery::SelectSupportedAdapter,
+            )
+            .with_presentation_arg("agentLabel", agent_label),
+            Self::AttachmentListExceeded => ClientError::new(
+                ClientErrorCode::AgentMessageInputLimit,
+                ClientErrorStage::RequestValidation,
+                ClientErrorComponent::RuntimeAdapter,
+                false,
+                ClientErrorRecovery::CorrectRequest,
+            )
+            .with_presentation_arg("field", "attachments")
+            .with_presentation_arg("limit", "4"),
+            Self::AttachmentInvalid => ClientError::new(
+                ClientErrorCode::InvalidRequest,
+                ClientErrorStage::RequestValidation,
+                ClientErrorComponent::RuntimeAdapter,
+                false,
+                ClientErrorRecovery::CorrectRequest,
+            )
+            .with_presentation_arg("field", "attachments"),
+            Self::AttachmentRemoteUnsupported => ClientError::new(
+                ClientErrorCode::InvalidRequest,
+                ClientErrorStage::RequestValidation,
+                ClientErrorComponent::RuntimeAdapter,
+                false,
+                ClientErrorRecovery::CorrectRequest,
+            )
+            .with_presentation_arg("field", "attachments"),
+            Self::AttachmentMediaUnsupported => ClientError::new(
+                ClientErrorCode::InvalidRequest,
+                ClientErrorStage::RequestValidation,
+                ClientErrorComponent::RuntimeAdapter,
+                false,
+                ClientErrorRecovery::CorrectRequest,
+            )
+            .with_presentation_arg("field", "mediaType"),
+            Self::AttachmentSymlinkRejected => ClientError::new(
+                ClientErrorCode::InvalidRequest,
+                ClientErrorStage::RequestValidation,
+                ClientErrorComponent::RuntimeAdapter,
+                false,
+                ClientErrorRecovery::CorrectRequest,
+            )
+            .with_presentation_arg("field", "attachments"),
+            Self::AttachmentFileUnavailable => ClientError::new(
+                ClientErrorCode::AgentConversationDispatchFailed,
+                ClientErrorStage::ConversationDispatch,
+                ClientErrorComponent::ConversationRuntime,
+                true,
+                ClientErrorRecovery::PreserveDraftAndRetry,
+            ),
+            Self::AttachmentSizeLimit => ClientError::new(
+                ClientErrorCode::AgentMessageInputLimit,
+                ClientErrorStage::RequestValidation,
+                ClientErrorComponent::RuntimeAdapter,
+                false,
+                ClientErrorRecovery::CorrectRequest,
+            )
+            .with_presentation_arg("field", "attachments"),
+            Self::AttachmentSignatureMismatch => ClientError::new(
+                ClientErrorCode::InvalidRequest,
+                ClientErrorStage::RequestValidation,
+                ClientErrorComponent::RuntimeAdapter,
+                false,
+                ClientErrorRecovery::CorrectRequest,
+            )
+            .with_presentation_arg("field", "mediaType"),
             Self::UnsupportedAdapter { agent_label } => ClientError::new(
                 ClientErrorCode::AgentRuntimeUnsupported,
                 ClientErrorStage::DiscoveryAdapter,
@@ -84,6 +165,25 @@ impl fmt::Display for RuntimeAdapterError {
             }
             Self::MessageMissing => "agent message request requires message text",
             Self::MessageInputLimit => "agent message request exceeds the input limit",
+            Self::AttachmentUnsupportedForAdapter { .. } => {
+                "image attachments are not supported by this runtime adapter"
+            }
+            Self::AttachmentListExceeded => {
+                "agent message request exceeds the image attachment limit"
+            }
+            Self::AttachmentInvalid => "agent message request contains an invalid image attachment",
+            Self::AttachmentRemoteUnsupported => {
+                "image attachments must be local files, not remote URLs"
+            }
+            Self::AttachmentMediaUnsupported => "image attachment media type is not supported",
+            Self::AttachmentSymlinkRejected => {
+                "image attachment must be a regular file, not a symbolic link"
+            }
+            Self::AttachmentFileUnavailable => "image attachment file is unavailable",
+            Self::AttachmentSizeLimit => "image attachment exceeds the size limit",
+            Self::AttachmentSignatureMismatch => {
+                "image attachment content does not match its declared media type"
+            }
             Self::UnsupportedAdapter { .. } => "unsupported runtime adapter",
             Self::RuntimeProfileUnavailable => "native agent runtime profile is unavailable",
             Self::ExecutableUnavailable => "native agent executable is unavailable",

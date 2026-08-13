@@ -388,17 +388,8 @@ test("Rust domain changes select a precise cargo-filtered slice", () => {
     "crates/licoup-native/src/domain/skill_hub/usage.rs",
   ])), ["architecture.client-boundaries", "rust.domain.skill-hub.usage"]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/licoup-native/src/domain/skill_hub/update.rs",
-  ])), ["architecture.client-boundaries", "rust.domain.skill-hub.update"]);
-  assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/licoup-native/src/domain/skill_hub/auto_update.rs",
-  ])), ["architecture.client-boundaries", "rust.domain.skill-hub.auto-update"]);
-  assert.deepEqual(ids(selectModulesForChangedPaths([
     "crates/licoup-native/src/domain/skill_hub/delete.rs",
   ])), ["architecture.client-boundaries", "rust.domain.skill-hub.delete"]);
-  assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/licoup-native/src/domain/skill_hub/source.rs",
-  ])), ["architecture.client-boundaries", "rust.domain.skill-hub.source"]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
     "crates/licoup-native/src/domain/skill_hub/catalog.rs",
   ])), ["architecture.client-boundaries", "rust.domain.skill-hub.pairing-catalog"]);
@@ -406,17 +397,8 @@ test("Rust domain changes select a precise cargo-filtered slice", () => {
     "crates/licoup-native/src/domain/skill_hub/pairing.rs",
   ])), ["architecture.client-boundaries", "rust.domain.skill-hub.pairing-catalog"]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/licoup-native/src/domain/skill_hub/install.rs",
-  ])), ["architecture.client-boundaries", "rust.domain.skill-hub.install"]);
-  assert.deepEqual(ids(selectModulesForChangedPaths([
     "crates/licoup-native/src/domain/skill_hub/package.rs",
   ])), ["architecture.client-boundaries", "rust.domain.skill-hub.package"]);
-  assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/licoup-native/src/domain/skill_hub/snapshot.rs",
-  ])), ["architecture.client-boundaries", "rust.domain.skill-hub.rollback"]);
-  assert.deepEqual(ids(selectModulesForChangedPaths([
-    "crates/licoup-native/src/domain/skill_hub/transaction.rs",
-  ])), ["architecture.client-boundaries", "rust.domain.skill-hub.transaction"]);
   assert.deepEqual(ids(selectModulesForChangedPaths([
     "crates/licoup-native/src/domain/skill_hub/state.rs",
   ])), ["architecture.client-boundaries", "rust.domain.skill-hub"]);
@@ -553,8 +535,6 @@ test("foundation and security modules retain exact narrow command filters", () =
     "platform::secure_mesh_mls_store::tests::");
   assert.equal(commandFilter("rust.core.secure-mesh.pairwise-persistence.schema-reset"),
     "core::secure_mesh_pairwise::tests::persistence_schema_reset::");
-  assert.equal(commandFilter("rust.domain.skill-hub.source"),
-    "domain::skill_hub::source::tests");
   assert.equal(commandFilter("rust.core.task-queue"), "core::task_queue::tests");
   assert.equal(commandFilter("rust.core.secure-mesh.command"),
     "core::secure_mesh_command::tests");
@@ -587,7 +567,6 @@ test("foundation and security modules retain exact narrow command filters", () =
     ["rust.core.acp.codec", "crates/licoup-native/src/core/acp.rs"],
     ["rust.core.mcp.wire", "crates/licoup-native/src/core/mcp.rs"],
     ["rust.core.mcp.transfer", "crates/licoup-native/src/core/mcp.rs"],
-    ["rust.domain.skill-hub.source", "crates/licoup-native/src/domain/skill_hub.rs"],
   ]) {
     const module = CLIENT_MODULE_CATALOG.find((candidate) => candidate.id === id);
     assert.equal(module.inputs.includes(sharedFacade), false,
@@ -745,19 +724,10 @@ test("skill hub modules retain leaf-owned inputs and exact command filters", () 
   const filters = new Map([
     ["rust.domain.skill-hub.pairing-catalog",
       "domain::skill_hub::tests::pairing_catalog::"],
-    ["rust.domain.skill-hub.install",
-      "domain::skill_hub::tests::install::"],
     ["rust.domain.skill-hub.package", "domain::skill_hub::package::tests"],
-    ["rust.domain.skill-hub.rollback",
-      "domain::skill_hub::tests::rollback::"],
-    ["rust.domain.skill-hub.transaction",
-      "domain::skill_hub::tests::transaction::"],
     ["rust.domain.skill-hub.discovery", "domain::skill_hub::discovery::tests"],
-    ["rust.domain.skill-hub.update", "domain::skill_hub::update::tests::"],
-    ["rust.domain.skill-hub.auto-update", "domain::skill_hub::auto_update::tests::"],
     ["rust.domain.skill-hub.delete", "domain::skill_hub::delete::tests::"],
     ["rust.domain.skill-hub.usage", "domain::skill_hub::usage::"],
-    ["rust.domain.skill-hub.source", "domain::skill_hub::source::tests"],
   ]);
   for (const [id, filter] of filters) {
     const module = CLIENT_MODULE_CATALOG.find((candidate) => candidate.id === id);

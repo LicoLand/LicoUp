@@ -4,6 +4,7 @@ import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/layout/layout_destination_presentation.dart';
 import 'package:licoup/src/frontend/shared/appearance/appearance_preset_config.dart';
 import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 const _appearanceSegmentLabelWidth = 72.0;
@@ -139,7 +140,7 @@ class SettingsDayNightToggleRow extends StatelessWidget {
         key: const Key('appearance-day-night-toggle'),
         decoration: BoxDecoration(
           color: colors.surfaceLow,
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(LicoRadius.chip),
           border: Border.all(color: colors.line),
         ),
         child: Row(

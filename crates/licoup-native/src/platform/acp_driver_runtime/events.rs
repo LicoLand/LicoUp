@@ -1,7 +1,9 @@
 use crate::core::acp;
 use serde_json::{Value, json};
 use std::io::BufRead;
-use std::sync::mpsc::Sender;
+use std::sync::mpsc::SyncSender;
+
+pub(super) const ACP_EVENT_CHANNEL_CAPACITY: usize = 64;
 
 #[derive(Debug)]
 pub(super) enum TransportEvent {
@@ -15,7 +17,7 @@ pub(super) enum TransportEvent {
 pub(super) fn read_protocol_messages<R: BufRead>(
     mut reader: R,
     max_bytes: Option<usize>,
-    sender: Sender<TransportEvent>,
+    sender: SyncSender<TransportEvent>,
 ) {
     let mut total_bytes = 0usize;
     let mut line = Vec::new();
@@ -43,6 +45,10 @@ pub(super) fn read_protocol_messages<R: BufRead>(
             let _ = sender.send(TransportEvent::StdoutLimitExceeded);
             return;
         }
+        if line.len().saturating_add(consumed) > acp::MAX_JSON_LINE_BYTES {
+            let _ = sender.send(TransportEvent::StdoutLimitExceeded);
+            return;
+        }
         let completed_line = available.get(consumed.saturating_sub(1)) == Some(&b'\n');
         line.extend_from_slice(&available[..consumed]);
         reader.consume(consumed);
@@ -59,7 +65,10 @@ pub(super) fn read_protocol_messages<R: BufRead>(
     }
 }
 
-pub(super) fn send_protocol_line(line: &[u8], sender: &Sender<TransportEvent>) -> Result<(), ()> {
+pub(super) fn send_protocol_line(
+    line: &[u8],
+    sender: &SyncSender<TransportEvent>,
+) -> Result<(), ()> {
     match acp::decode_json_line(line) {
         Ok(message) => sender
             .send(TransportEvent::Message(message))

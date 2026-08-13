@@ -103,7 +103,10 @@ class AgentConversationMessage {
       (!_messageRoleIsInternal(role) ||
           isSubagentCard ||
           (isStructuredEvent && cardType.trim().isNotEmpty)) &&
-      (text.trim().isNotEmpty || isSubagentCard || isStructuredEvent);
+      (text.trim().isNotEmpty ||
+          images.isNotEmpty ||
+          isSubagentCard ||
+          isStructuredEvent);
 
   bool get isDefaultThreadVisible =>
       resolvedLayer == AgentConversationSemanticLayer.thread &&

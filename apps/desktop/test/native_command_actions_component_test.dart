@@ -67,21 +67,13 @@ void main() {
     },
   );
 
-  test('skill management mutations encode explicit user intent', () async {
+  test('local skill removal encodes exact path and confirmation', () async {
     final executor = _RecordingExecutor({'ok': true});
     final actions = NativeCommandActions(
       commandExecutor: executor,
       concurrentCommandExecutor: executor,
     );
 
-    await actions.configureSkillAutoUpdate(
-      agent: 'codex',
-      skillId: 'review',
-      enabled: true,
-      sourcePath: ' /mirror/review ',
-    );
-    await actions.runConfiguredSkillUpdates(agent: 'codex', skillId: 'review');
-    await actions.runDueSkillUpdates();
     await actions.applySkillDelete(
       skillId: 'review',
       path: '/workspace/.agents/skills/review',
@@ -89,30 +81,7 @@ void main() {
     );
 
     expect(
-      executor.calls[0],
-      containsAllInOrder([
-        'skill',
-        'auto-update',
-        'set',
-        '--direct-user-action',
-        'true',
-        '--source-path',
-        '/mirror/review',
-      ]),
-    );
-    expect(
-      executor.calls[1],
-      containsAllInOrder([
-        'skill',
-        'auto-update',
-        'run',
-        '--direct-user-action',
-        'true',
-      ]),
-    );
-    expect(executor.calls[2], equals(['skill', 'auto-update', 'tick']));
-    expect(
-      executor.calls[3],
+      executor.calls.single,
       containsAllInOrder([
         '--path',
         '/workspace/.agents/skills/review',

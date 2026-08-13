@@ -192,7 +192,7 @@ void main() {
   );
 
   testWidgets(
-    'settings gear opens a floating drawer with a minimal installer',
+    'skill hub omits the retired installer while preserving the local catalog',
     (tester) async {
       final controller = _skillHubController()
         ..skillHubPairings = const [
@@ -206,28 +206,19 @@ void main() {
         locale: const Locale('zh'),
       );
 
-      // Drawer closed: no settings content, filter chips stay in the top row.
+      // Installation is no longer part of the local Skill Hub. The catalog
+      // and its filters remain available without a settings drawer.
       expect(find.text('GitHub URL'), findsNothing);
       expect(find.text('全部技能'), findsOneWidget);
-
-      await tester.tap(find.byTooltip('显示技能设置'));
-      await tester.pump();
-
-      expect(find.text('设置'), findsOneWidget);
-      expect(find.text('GitHub URL'), findsOneWidget);
-      expect(find.text('安装'), findsOneWidget);
+      expect(find.byTooltip('显示技能设置'), findsNothing);
+      expect(find.text('安装'), findsNothing);
       // Pairing bookkeeping and retired settings rows stay out of the UI.
       expect(find.text('配对记录'), findsNothing);
       expect(find.text('多智能体删除'), findsNothing);
       expect(find.text('手动更新与自动更新'), findsNothing);
       expect(find.text('本机调用频率'), findsNothing);
-      // The page behind is untouched and still listed.
+      // The existing local catalog stays visible.
       expect(find.text('Public Reviewer'), findsOneWidget);
-
-      await tester.tap(find.byIcon(Icons.close));
-      await tester.pump();
-
-      expect(find.text('GitHub URL'), findsNothing);
       expect(tester.takeException(), isNull);
     },
   );
