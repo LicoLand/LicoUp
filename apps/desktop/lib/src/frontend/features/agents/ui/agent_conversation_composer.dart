@@ -46,6 +46,7 @@ class RuntimeMessageComposer extends StatefulWidget {
     this.onChooseWorkingDirectory,
     this.floatingMatteCapsule = false,
     this.onAttach,
+    this.onPasteImage,
     this.mentionTargets = const [],
     this.mentionLabels = const {},
   });
@@ -83,6 +84,10 @@ class RuntimeMessageComposer extends StatefulWidget {
   /// the left of [floatingMatteCapsule] composer fields.
   final VoidCallback? onAttach;
 
+  /// Tries to consume the active paste as an image attachment. Returning
+  /// false delegates to Flutter's native text paste unchanged.
+  final Future<bool> Function()? onPasteImage;
+
   /// Active group members available to the composer's @ mention picker.
   /// Ordinary one-to-one conversations leave this empty.
   final List<TargetCandidate> mentionTargets;
@@ -105,6 +110,7 @@ class _RuntimeMessageComposerState extends State<RuntimeMessageComposer> {
   String _mentionQuery = '';
   int _mentionSelection = 0;
   final ScrollController _mentionScrollController = ScrollController();
+  late final _ComposerPasteAction _pasteAction;
 
   @override
   void initState() {
@@ -113,6 +119,9 @@ class _RuntimeMessageComposerState extends State<RuntimeMessageComposer> {
     _hasText = widget.initialDraft.trim().isNotEmpty;
     _controller.addListener(_onTextChanged);
     _focusNode.addListener(_onFocusChanged);
+    _pasteAction = _ComposerPasteAction(
+      () => widget.onPasteImage?.call() ?? Future<bool>.value(false),
+    );
   }
 
   @override
@@ -359,31 +368,36 @@ class _RuntimeMessageComposerState extends State<RuntimeMessageComposer> {
               Expanded(
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(8, 6, 4, 6),
-                  child: Focus(
-                    onKeyEvent: _handleMentionKey,
-                    child: TextField(
-                      controller: _controller,
-                      focusNode: _focusNode,
-                      minLines: 1,
-                      maxLines: 4,
-                      textInputAction: TextInputAction.send,
-                      onSubmitted: (_) => _submit(),
-                      enabled: interactive,
-                      style: theme.textTheme.bodyLarge,
-                      decoration: InputDecoration(
-                        hintText: interactive
-                            ? strings.messageTarget(widget.targetLabel)
-                            : null,
-                        hintStyle: theme.textTheme.bodyLarge?.copyWith(
-                          color: colors.textDisabled,
+                  child: Actions(
+                    actions: widget.onPasteImage == null
+                        ? const <Type, Action<Intent>>{}
+                        : <Type, Action<Intent>>{PasteTextIntent: _pasteAction},
+                    child: Focus(
+                      onKeyEvent: _handleMentionKey,
+                      child: TextField(
+                        controller: _controller,
+                        focusNode: _focusNode,
+                        minLines: 1,
+                        maxLines: 4,
+                        textInputAction: TextInputAction.send,
+                        onSubmitted: (_) => _submit(),
+                        enabled: interactive,
+                        style: theme.textTheme.bodyLarge,
+                        decoration: InputDecoration(
+                          hintText: interactive
+                              ? strings.messageTarget(widget.targetLabel)
+                              : null,
+                          hintStyle: theme.textTheme.bodyLarge?.copyWith(
+                            color: colors.textDisabled,
+                          ),
+                          isDense: true,
+                          filled: false,
+                          border: InputBorder.none,
+                          enabledBorder: InputBorder.none,
+                          focusedBorder: InputBorder.none,
+                          disabledBorder: InputBorder.none,
+                          contentPadding: EdgeInsets.zero,
                         ),
-                        isDense: true,
-                        filled: false,
-                        border: InputBorder.none,
-                        enabledBorder: InputBorder.none,
-                        focusedBorder: InputBorder.none,
-                        disabledBorder: InputBorder.none,
-                        contentPadding: EdgeInsets.zero,
                       ),
                     ),
                   ),
@@ -485,6 +499,37 @@ class _RuntimeMessageComposerState extends State<RuntimeMessageComposer> {
       ),
     );
   }
+}
+
+final class _ComposerPasteAction extends Action<PasteTextIntent> {
+  _ComposerPasteAction(this.onPasteImage);
+
+  final Future<bool> Function() onPasteImage;
+  bool _pending = false;
+
+  @override
+  Object? invoke(PasteTextIntent intent) {
+    if (_pending) return null;
+    final nativePaste = callingAction;
+    _pending = true;
+    onPasteImage()
+        .then((consumed) {
+          if (!consumed) nativePaste?.invoke(intent);
+        })
+        .onError((_, _) {
+          nativePaste?.invoke(intent);
+        })
+        .whenComplete(() => _pending = false);
+    return null;
+  }
+
+  @override
+  bool isEnabled(PasteTextIntent intent) =>
+      !_pending && (callingAction?.isEnabled(intent) ?? false);
+
+  @override
+  bool consumesKey(PasteTextIntent intent) =>
+      callingAction?.consumesKey(intent) ?? true;
 }
 
 class _ComposerMentionSuggestions extends StatelessWidget {

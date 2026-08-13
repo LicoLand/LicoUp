@@ -394,13 +394,6 @@ class _ConversationWorkspaceBodyState
         );
         return;
       }
-      if (current.length + picked.length > maxConversationImageAttachments) {
-        controller.replaceConversationComposerAttachments(
-          current,
-          statusCode: conversationAttachmentStatusLimit,
-        );
-        return;
-      }
       final sequence = DateTime.now().toUtc().microsecondsSinceEpoch;
       final additions = <ConversationAttachment>[];
       for (var index = 0; index < picked.length; index += 1) {
@@ -424,36 +417,110 @@ class _ConversationWorkspaceBodyState
           ),
         );
       }
-      var totalBytes = 0;
-      for (final attachment in [...current, ...additions]) {
-        final read = await controller.conversationImageByteReader.read(
-          localPath: attachment.path,
-          mediaType: attachment.mediaType,
-        );
-        if (!scopeIsCurrent()) return;
-        if (!read.succeeded) {
-          controller.replaceConversationComposerAttachments(
-            current,
-            statusCode: read.failureCode,
-          );
-          return;
-        }
-        totalBytes += read.bytes!.length;
-        if (totalBytes > maxConversationImageBytesTotal) {
-          controller.replaceConversationComposerAttachments(
-            current,
-            statusCode: conversationAttachmentFailureSizeLimit,
-          );
-          return;
-        }
-      }
-      controller.replaceConversationComposerAttachments([
-        ...current,
-        ...additions,
-      ]);
+      await _appendConversationAttachments(
+        controller: controller,
+        scopeIsCurrent: scopeIsCurrent,
+        current: current,
+        additions: additions,
+      );
     } finally {
       _pickingConversationAttachments = false;
     }
+  }
+
+  Future<bool> _pasteConversationImage(ClientController controller) async {
+    if (_pickingConversationAttachments) return true;
+    _pickingConversationAttachments = true;
+    final scopeKey = controller.conversationComposerScopeKey;
+    bool scopeIsCurrent() =>
+        mounted &&
+        identical(controller, widget.controller) &&
+        controller.conversationComposerScopeKey == scopeKey;
+    try {
+      final current = controller.conversationComposerAttachments;
+      if (current.length >= maxConversationImageAttachments) {
+        controller.replaceConversationComposerAttachments(
+          current,
+          statusCode: conversationAttachmentStatusLimit,
+        );
+        return true;
+      }
+      final result = await controller.clientClipboardService
+          .readImageAttachment();
+      if (!result.consumed) return false;
+      final attachment = result.attachment;
+      if (!scopeIsCurrent()) {
+        if (attachment != null) {
+          await controller.conversationAttachmentRelease.releaseAttachments([
+            attachment,
+          ]);
+        }
+        return true;
+      }
+      if (!result.succeeded || attachment == null) {
+        controller.replaceConversationComposerAttachments(
+          current,
+          statusCode: result.failureCode,
+        );
+        return true;
+      }
+      await _appendConversationAttachments(
+        controller: controller,
+        scopeIsCurrent: scopeIsCurrent,
+        current: current,
+        additions: [attachment],
+      );
+      return true;
+    } finally {
+      _pickingConversationAttachments = false;
+    }
+  }
+
+  Future<bool> _appendConversationAttachments({
+    required ClientController controller,
+    required bool Function() scopeIsCurrent,
+    required List<ConversationAttachment> current,
+    required List<ConversationAttachment> additions,
+  }) async {
+    Future<bool> reject(String statusCode) async {
+      await controller.conversationAttachmentRelease.releaseAttachments(
+        additions,
+      );
+      if (scopeIsCurrent()) {
+        controller.replaceConversationComposerAttachments(
+          current,
+          statusCode: statusCode,
+        );
+      }
+      return false;
+    }
+
+    if (current.length + additions.length > maxConversationImageAttachments) {
+      return reject(conversationAttachmentStatusLimit);
+    }
+    var totalBytes = 0;
+    for (final attachment in [...current, ...additions]) {
+      final read = await controller.conversationImageByteReader.read(
+        localPath: attachment.path,
+        mediaType: attachment.mediaType,
+      );
+      if (!scopeIsCurrent()) {
+        await controller.conversationAttachmentRelease.releaseAttachments(
+          additions,
+        );
+        return false;
+      }
+      if (!read.succeeded) return reject(read.failureCode);
+      totalBytes += read.bytes!.length;
+      if (totalBytes > maxConversationImageBytesTotal) {
+        return reject(conversationAttachmentFailureSizeLimit);
+      }
+    }
+    controller.replaceConversationComposerAttachments([
+      ...current,
+      ...additions,
+    ]);
+    return true;
   }
 
   Widget _activeConversationPane({
@@ -576,6 +643,11 @@ class _ConversationWorkspaceBodyState
           strategy.messageStyle == AgentsMessageStyle.participantFlow &&
               controller.selectedConversationSupportsImageAttachments
           ? () => unawaited(_pickConversationAttachments(controller))
+          : null,
+      onPasteImage:
+          strategy.messageStyle == AgentsMessageStyle.participantFlow &&
+              controller.selectedConversationSupportsImageAttachments
+          ? () => _pasteConversationImage(controller)
           : null,
       onLicoProfileChanged: controller.selectedConversationSupportsLicoProfile
           ? controller.selectConversationLicoProfile

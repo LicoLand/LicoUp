@@ -1814,11 +1814,13 @@ export const FLUTTER_MODULES = Object.freeze([
         "apps/desktop/lib/src/platform/storage/**",
         "apps/desktop/lib/src/platform/client_clipboard_service.dart",
         "apps/desktop/lib/src/platform/runtime_platform_bridge.dart",
+        "apps/desktop/test/client_clipboard_service_test.dart",
         "apps/desktop/test/client_log_export_service_test.dart",
         "apps/desktop/test/client_workspace_manifest_component_test.dart",
         "apps/desktop/test/portable_data_root_test.dart",
       ],
       command: flutterTests([
+        "test/client_clipboard_service_test.dart",
         "test/client_log_export_service_test.dart",
         "test/client_workspace_manifest_component_test.dart",
         "test/portable_data_root_test.dart",

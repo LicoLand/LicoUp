@@ -10,6 +10,98 @@ import 'package:licoup/src/frontend/l10n/lico_strings.dart';
 import 'package:licoup/src/frontend/shared/ui/theme.dart';
 
 void main() {
+  testWidgets('image paste consumes the native text paste action', (
+    tester,
+  ) async {
+    var imagePasteCount = 0;
+    await tester.pumpWidget(
+      _ComposerTestApp(
+        child: RuntimeMessageComposer(
+          targetLabel: 'Fixture Agent',
+          initialDraft: '',
+          busy: false,
+          enabled: true,
+          modelOptions: const [],
+          selectedModel: '',
+          reasoningEffortOptions: const [],
+          selectedReasoningEffort: '',
+          onModelChanged: (_) {},
+          onReasoningEffortChanged: (_) {},
+          onDraftChanged: (_) {},
+          onSend: (_) async => true,
+          onPasteImage: () async {
+            imagePasteCount += 1;
+            return true;
+          },
+        ),
+      ),
+    );
+
+    await tester.tap(find.byType(TextField));
+    await tester.pump();
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyV);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+    await tester.pump();
+
+    expect(imagePasteCount, 1);
+    expect(
+      tester.widget<TextField>(find.byType(TextField)).controller!.text,
+      '',
+    );
+  });
+
+  testWidgets('non-image paste delegates to Flutter text paste', (
+    tester,
+  ) async {
+    final messenger =
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    messenger.setMockMethodCallHandler(SystemChannels.platform, (call) async {
+      if (call.method == 'Clipboard.getData') {
+        return <String, dynamic>{'text': 'pasted text'};
+      }
+      if (call.method == 'Clipboard.hasStrings') {
+        return <String, dynamic>{'value': true};
+      }
+      return null;
+    });
+    addTearDown(
+      () => messenger.setMockMethodCallHandler(SystemChannels.platform, null),
+    );
+    await tester.pumpWidget(
+      _ComposerTestApp(
+        child: RuntimeMessageComposer(
+          targetLabel: 'Fixture Agent',
+          initialDraft: '',
+          busy: false,
+          enabled: true,
+          modelOptions: const [],
+          selectedModel: '',
+          reasoningEffortOptions: const [],
+          selectedReasoningEffort: '',
+          onModelChanged: (_) {},
+          onReasoningEffortChanged: (_) {},
+          onDraftChanged: (_) {},
+          onSend: (_) async => true,
+          onPasteImage: () async => false,
+        ),
+      ),
+    );
+
+    await tester.tap(find.byType(TextField));
+    await tester.pump();
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyV);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+    await tester.pump();
+    await tester.pump();
+
+    expect(
+      tester.widget<TextField>(find.byType(TextField)).controller!.text,
+      'pasted text',
+    );
+  });
+
   testWidgets('composer owns draft lifecycle and emits trimmed submissions', (
     tester,
   ) async {
