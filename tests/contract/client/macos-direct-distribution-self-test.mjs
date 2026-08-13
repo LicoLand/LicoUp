@@ -354,9 +354,7 @@ function assertPreflightIsolation(marker) {
     TMPDIR: "fixture-tmp",
     LICO_MACOS_SIGNING_IDENTITY: marker,
     LICO_MACOS_PROVISIONING_PROFILE: marker,
-    LICO_MACOS_NOTARY_KEY_ID: marker,
-    LICO_MACOS_NOTARY_ISSUER_ID: marker,
-    LICO_MACOS_NOTARY_KEY_PATH: marker,
+    LICO_MACOS_NOTARY_KEYCHAIN_PROFILE: marker,
     LICO_MACOS_RELEASE_SIGNING_KEYCHAIN: marker,
   });
   const { fs, operations } = virtualFilesystem();
@@ -673,7 +671,6 @@ export function platformChannelHarness({
   const sequence = [];
   const packageArguments = [];
   const profilePath = path.join(syntheticInputRoot, "licoup.provisionprofile");
-  const notaryKeyPath = path.join(syntheticInputRoot, "licoup-notary-key.p8");
   const virtual = virtualFilesystem({
     [appPath]: "",
     [resolvedEntitlementsPath]: JSON.stringify(productionEntitlementsFixture),
@@ -687,7 +684,6 @@ export function platformChannelHarness({
       },
     }),
     [profilePath]: "der-profile",
-    [notaryKeyPath]: "notary-key",
     [manifestPath]: "stale-ready-manifest",
   });
   const env = Object.freeze({
@@ -695,9 +691,7 @@ export function platformChannelHarness({
     LICO_MACOS_SIGNING_IDENTITY: "Developer ID Application: LicoUp (TEAM123456)",
     LICO_MACOS_APP_IDENTIFIER_PREFIX: "TEAM123456.",
     LICO_MACOS_PROVISIONING_PROFILE: profilePath,
-    LICO_MACOS_NOTARY_KEY_ID: "NOTARY-KEY-ID",
-    LICO_MACOS_NOTARY_ISSUER_ID: "ISSUER-ID",
-    LICO_MACOS_NOTARY_KEY_PATH: notaryKeyPath,
+    LICO_MACOS_NOTARY_KEYCHAIN_PROFILE: "licoup-macos-release",
   });
   const run = () => requiredAdapter("coordinatePlatformChannel")({
     env,

@@ -58,6 +58,7 @@ export const CLIENT_GATE_LANES = Object.freeze({
     "client:verify:update-manifest:self-test",
     "client:verify:release-workflow-binding:self-test",
     "client:release:packages:self-test",
+    "client:release:macos:self-test",
     "client:verify:macos-distribution:self-test",
     "client:verify:macos-distribution-policy:self-test",
     "client:verify:review-signoff:self-test",

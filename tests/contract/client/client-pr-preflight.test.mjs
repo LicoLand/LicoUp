@@ -151,10 +151,18 @@ test("release preflight runs each selected platform demo exactly once", () => {
 });
 
 test("DMG and launch oracles reject extra entries and process replacement", () => {
+  const canonicalLayout = [
+    "Applications",
+    "LicoUp License.txt",
+    "LicoUp Open Source Notice.txt",
+    "LicoUp Privacy Policy.html",
+    "LicoUp.app",
+    "Third-Party Notices.txt",
+  ];
   assert.equal(validateMacosDmgLayout(
-    ["Applications", "LicoUp.app"], "/Applications"), true);
+    canonicalLayout, "/Applications"), true);
   assert.throws(() => validateMacosDmgLayout(
-    ["Applications", "LicoUp.app", "outside.txt"], "/Applications"));
+    [...canonicalLayout, "outside.txt"], "/Applications"));
   assert.equal(stableLaunchSnapshots([[7], [7], [7, 8]]), true);
   assert.equal(stableLaunchSnapshots([[7], [8]]), false);
 });
