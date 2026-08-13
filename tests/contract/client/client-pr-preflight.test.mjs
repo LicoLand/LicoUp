@@ -118,7 +118,17 @@ test("pre-push parser is bounded and target stages include real closure", () => 
     `refs/heads/release-candidate/v1.2.3-macos-arm64 ${"0".repeat(40)}\n`;
   assert.equal(parsePushUpdates(line).length, 1);
   assert.throws(() => parsePushUpdates("malformed"));
-  assert.throws(() => targetStages("macos-direct-arm64"));
+  assert.deepEqual(
+    targetStages("macos-direct-arm64").map(([id]) => id),
+    [
+      "distribution-preflight",
+      "selected-target-build",
+      "final-artifact",
+      "update-path",
+      "stage-package",
+      "verify-package",
+    ],
+  );
 });
 
 test("release preflight runs each selected platform demo exactly once", () => {
