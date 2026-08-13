@@ -18,17 +18,17 @@ export const REGRESSION_MODULES = Object.freeze([
   defineModule({
       id: "regression.subagent-mcp",
       kind: "regression-infrastructure",
-      summary: "Framework-neutral subordinate delegation, pinned Codex plugin installation, packaged runtime, and role-contract boundary",
+      summary: "Native delivery lifecycle, exact conversation admission, Adaptive Flywheel routing, and packaged runtime",
       inputs: [
         "crates/licoup-native/src/bin/lico-subagent-mcp.rs",
-        "crates/licoup-native/src/domain/agent_workflow_loop.rs",
-        "crates/licoup-native/src/domain/provider_model_pricing.rs",
-        "crates/licoup-native/src/domain/provider_model_pricing/pricing_snapshot.json",
-        "crates/licoup-native/src/platform/cursor_driver/control.rs",
-        "crates/licoup-native/src/platform/antigravity_driver/control.rs",
+        "crates/licoup-native/src/domain/delivery_workflow.rs",
+        "crates/licoup-native/src/domain/subagent_handoff.rs",
+        "crates/licoup-native/src/platform/delivery_workflow_runtime.rs",
         "crates/licoup-native/src/platform/codex_plugin_manager.rs",
         "docs/protocols/subagent-mcp.md",
         "docs/protocols/subagent-mcp.zh-CN.md",
+        "docs/functionality/USER-GUIDE.md",
+        "docs/functionality/USER-GUIDE.zh-CN.md",
         "apps/desktop/packaging.modules.json",
         "apps/desktop/scripts/package-client/resource-assembly.mjs",
         "apps/desktop/scripts/package-client/bundle-resolver/**",
@@ -1527,5 +1527,22 @@ export const REGRESSION_MODULES = Object.freeze([
         ["--test", "tests/contract/client/native-stdio-rpc-source-bundle.test.mjs"],
         60_000,
       ),
-    })
+    }),
+  defineModule({
+    id: "regression.delivery-plan-contract",
+    kind: "regression-infrastructure",
+    summary: "Native Better Plan semantic record, checkpoint authority, authorization digest, graph frontier, and exact Brief contract",
+    inputs: [
+      "crates/licoup-native/src/domain/delivery_plan/**",
+      "crates/licoup-native/src/domain/mod.rs",
+      "crates/licoup-native/tests/delivery_plan_contract.rs",
+      "tests/contract/client/lico-delivery-plan.test.mjs",
+      "tools/regression/client-module-catalog/groups/regression.mjs",
+    ],
+    command: command(
+      "node",
+      ["--test", "tests/contract/client/lico-delivery-plan.test.mjs"],
+      60_000,
+    ),
+  })
 ]);

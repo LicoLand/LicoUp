@@ -60,7 +60,8 @@ pub(super) fn handle_codex_plugin_plan(command: AdmittedCommand) -> Result<CliEx
             "marketplaceSource": crate::platform::codex_plugin_manager::CodexPluginInstallPlan::source(),
             "marketplaceRelease": crate::platform::codex_plugin_manager::CodexPluginInstallPlan::release(),
             "requiresConfirmation": true,
-            "fallbackOwner": "licoup",
+            "deliveryAuthority": "licoup",
+            "routeSelectionAuthority": "adaptive-flywheel",
         }),
         Err(error) => codex_plugin_error(error),
     }))
@@ -71,17 +72,20 @@ pub(super) fn handle_codex_plugin_status(command: AdmittedCommand) -> Result<Cli
         .option_text("binary-path")
         .map(Path::new)
         .map(crate::platform::codex_plugin_manager::status)
-        .unwrap_or(crate::domain::agent_workflow_loop::CodexPluginState::Unavailable);
+        .unwrap_or(crate::platform::codex_plugin_manager::CodexPluginState::Unavailable);
     let (state_label, ready) = match state {
-        crate::domain::agent_workflow_loop::CodexPluginState::Ready => ("ready", true),
-        crate::domain::agent_workflow_loop::CodexPluginState::Missing => ("missing", false),
-        crate::domain::agent_workflow_loop::CodexPluginState::Unavailable => ("unavailable", false),
+        crate::platform::codex_plugin_manager::CodexPluginState::Ready => ("ready", true),
+        crate::platform::codex_plugin_manager::CodexPluginState::Missing => ("missing", false),
+        crate::platform::codex_plugin_manager::CodexPluginState::Unavailable => {
+            ("unavailable", false)
+        }
     };
     Ok(CliExecution::Json(serde_json::json!({
         "ok": true,
         "state": state_label,
         "ready": ready,
-        "orchestrationOwner": if ready { "main-agent-plugin" } else { "licoup" },
+        "deliveryAuthority": "licoup",
+        "routeSelectionAuthority": "adaptive-flywheel",
     })))
 }
 
@@ -99,7 +103,8 @@ pub(super) fn handle_codex_plugin_install(command: AdmittedCommand) -> Result<Cl
             "ok": true,
             "installed": receipt.installed,
             "pluginReadyForNewConversations": receipt.plugin_ready_for_new_conversations,
-            "orchestrationOwner": "main-agent-plugin",
+            "deliveryAuthority": "licoup",
+            "routeSelectionAuthority": "adaptive-flywheel",
         }),
         Err(error) => codex_plugin_error(error),
     }))
@@ -133,7 +138,6 @@ fn codex_plugin_error(
                     | crate::platform::codex_plugin_manager::CodexPluginInstallError::InstallFailed
             ),
         },
-        "fallbackOwner": "licoup",
     })
 }
 
@@ -147,7 +151,8 @@ pub(super) fn handle_subagent_mcp_status(command: AdmittedCommand) -> Result<Cli
         "agentId": agent_id,
         "state": state.as_str(),
         "ready": state.ready(),
-        "orchestrationOwner": if state.ready() { "main-agent-plugin" } else { "licoup" },
+        "deliveryAuthority": "licoup",
+        "routeSelectionAuthority": "adaptive-flywheel",
     })))
 }
 
@@ -165,7 +170,8 @@ pub(super) fn handle_subagent_mcp_plan(command: AdmittedCommand) -> Result<CliEx
                 "marketplaceSource": plan.source,
                 "marketplaceRelease": plan.release,
                 "requiresConfirmation": plan.requires_confirmation,
-                "fallbackOwner": "licoup",
+                "deliveryAuthority": "licoup",
+                "routeSelectionAuthority": "adaptive-flywheel",
             }),
             Err(error) => subagent_mcp_error(error),
         },
@@ -191,7 +197,8 @@ pub(super) fn handle_subagent_mcp_install(command: AdmittedCommand) -> Result<Cl
                 "agentId": agent_id,
                 "installed": installed,
                 "pluginReadyForNewConversations": ready,
-                "orchestrationOwner": "main-agent-plugin",
+                "deliveryAuthority": "licoup",
+                "routeSelectionAuthority": "adaptive-flywheel",
             }),
             Err(error) => subagent_mcp_error(error),
         },
@@ -213,7 +220,6 @@ fn subagent_mcp_error(
                     | crate::platform::subagent_mcp_ensure::SubagentMcpEnsureError::InstallFailed
             ),
         },
-        "fallbackOwner": "licoup",
     })
 }
 
@@ -300,18 +306,18 @@ mod tests {
     }
 
     #[test]
-    fn codex_plugin_failures_are_redacted_and_select_fallback() {
+    fn codex_plugin_failures_are_redacted_and_keep_delivery_authority() {
         let result = codex_plugin_error(
             crate::platform::codex_plugin_manager::CodexPluginInstallError::InstallFailed,
         );
         assert_eq!(result["ok"], false);
-        assert_eq!(result["fallbackOwner"], "licoup");
+        assert!(!result.get("deliveryAuthority").is_some());
         assert_eq!(result["error"]["code"], "codex_plugin_install_failed");
         assert!(!result.to_string().contains("private"));
     }
 
     #[test]
-    fn missing_codex_binary_projects_only_unavailable_fallback_state() {
+    fn missing_codex_binary_projects_only_unavailable_plugin_state() {
         let CliExecution::Json(result) = crate::ffi::commands::execute_cli(vec![
             "adapter".into(),
             "codex".into(),
@@ -326,7 +332,8 @@ mod tests {
         assert_eq!(result["ok"], true);
         assert_eq!(result["state"], "unavailable");
         assert_eq!(result["ready"], false);
-        assert_eq!(result["orchestrationOwner"], "licoup");
+        assert_eq!(result["deliveryAuthority"], "licoup");
+        assert_eq!(result["routeSelectionAuthority"], "adaptive-flywheel");
         assert!(!result.to_string().contains("synthetic"));
     }
 }

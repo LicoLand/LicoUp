@@ -50,6 +50,7 @@ class AgentUsageService {
         output['tokenSourceMode'] != AgentUsageReport.currentTokenSourceMode) {
       throw const FormatException('Unsupported agent usage reports envelope.');
     }
+    _validateWorkflowProjection(output);
     final reports = output['reports'];
     if (reports is! List) {
       throw const FormatException('Invalid agent usage reports payload.');
@@ -63,6 +64,33 @@ class AgentUsageService {
         })
         .toList(growable: false);
   }
+}
+
+/// Retained-report responses carry the native workflow projection beside the
+/// report list. Validate it at the service boundary even when no retained
+/// entry is returned, so an unknown generation cannot silently reach a cache
+/// or controller.
+void _validateWorkflowProjection(Map<String, dynamic> output) {
+  if (!output.containsKey('workflow') &&
+      !output.containsKey('workflows') &&
+      !output.containsKey('workflowSummary')) {
+    return;
+  }
+  final payload = <String, dynamic>{
+    'schemaVersion': AgentUsageReport.currentSchemaVersion,
+    'mode': AgentUsageReport.currentMode,
+    'tokenSourceMode': AgentUsageReport.currentTokenSourceMode,
+    'generatedAt': '',
+    'summary': const <String, dynamic>{},
+    'agents': const <Map<String, dynamic>>[],
+    if (output.containsKey('workflow')) 'workflow': output['workflow'],
+    if (!output.containsKey('workflow') && output.containsKey('workflows'))
+      'workflows': output['workflows'],
+    if (!output.containsKey('workflow') &&
+        output.containsKey('workflowSummary'))
+      'workflowSummary': output['workflowSummary'],
+  };
+  AgentUsageReport.fromJson(payload);
 }
 
 List<Map<String, int>> _localTimezoneTransitions(int historyDays) {

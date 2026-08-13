@@ -2,77 +2,72 @@
 
 [English（规范版本）](subagent-mcp.md) · 简体中文（本地化） · [架构](../architecture/README.zh-CN.md)
 
-权威来源：`crates/licoup-native/src/bin/lico-subagent-mcp.rs`、原生目标扫描器和共享
-对话通道。实现或验证变化时应同步更新本文档。
+权威实现：`crates/licoup-native/src/bin/lico-subagent-mcp.rs`、
+`domain/delivery_workflow.rs` 与 `platform/delivery_workflow_runtime.rs`。
+本文档描述当前原生交付契约，不定义第二个调度器。
 
-LicoUp 向一个主智能体提供下属智能体能力。安装 Codex 插件后，主智能体负责规划、
-并遵循“适应性飞轮”保存的角色分配。代码工程使用一个前后端共享的 Designer，
-以及两条明确工作线：后端 Worker 到后端 Reviewer、前端 Worker 到前端 Reviewer。
-插件缺失或不可用时，LicoUp 本机回退调度器执行同样的 Designer 与两组
-Worker-to-Reviewer 执行拓扑。两条路径都只把本机对话文件位置作为跨智能体的续接标识。
+## 交付生命周期
 
-“适应性飞轮”只有一个持久化权威：私有客户端状态中的 `adaptive-flywheel.toml`。
-桌面编辑器和 MCP 读取同一份 TOML，保存的模型选择必须通过当前目标扫描验证。Codex
-读取 App Server 的 `model/list`；Cursor 和 Pi 调用各自的原生模型列举命令；其它适配器
-读取经过验证的本机配置、供应商缓存或专用原生扫描器。历史观察仅在显式启用时补充
-目录，不能覆盖成功的原生响应。
+MCP 只是薄调用面。交付仅暴露四个操作：
 
-## 已实现契约
+- `lico_delivery_start` 创建或恢复持久化 Plan。
+- `lico_delivery_authorize` 授权当前 Plan 摘要。
+- `lico_delivery_status` 读取持久化状态和 Plan 的下一动作。
+- `lico_delivery_cancel` 显式取消工作流，并把取消请求转给活动原生对话。
 
-钢铁规则：主智能体不负责探测子智能体，子智能体也不直接反馈主智能体。主智能体只向
-LicoUp 发出诉求；LicoUp 确认收到后主线程立即停止；由 LicoUp 转接子智能体、检测完成、
-在群聊中投影 peer 气泡，并回调原先主智能体对话线程。
+调用方不能提交 frontier、绑定 Worker、选择 route、接受 Task 或打开 Reviewer。
+原生调度器从当前 `DeliveryPlanEngine` 获取完整 eligible frontier，按稳定顺序排列，
+再通过有界原生通道派发。不同工作流可以并发；同一工作流、Task attempt 与原生会话
+保持有序。等待终态事件不占用消息通道。
 
-```mermaid
-flowchart TD
-  U["用户提示词"] --> M["已选主智能体"]
-  M -->|"lico_subagents_list"| S["LicoUp 目标扫描器"]
-  M -->|"委派 / 续接请求"| P["本地下属 MCP"]
-  P -->|"accepted + dispatchId"| Stop["主线程停止"]
-  Stop --> L["LicoUp 运行下属通道"]
-  L --> C["指定下属智能体"]
-  C --> Detect["LicoUp 检测线程结束"]
-  Detect --> Resume["回调原主对话线程"]
-```
+每次派发都按以下持久化顺序进行：
 
-- `lico_subagents_list` 返回当前支持 `runtime.message.send` 的扫描目标，供主智能体选择
-  诉求对象；就绪探测仍由 LicoUp 拥有。主智能体框架可通过 `sameFramework: true` 出现；
-  选择它会新建独立下属对话，绝不会续接已挂起的主对话。
-- `lico_subagent_probe` 是 LicoUp 拥有的一次性就绪探测；主智能体不得用它驱动下属。
-- `lico_subagent_delegate` 接受 LicoUp 拥有的 handoff，并立即返回 `accepted: true`、
-  `dispatchId`、`sessionMode` 与 `state: accepted`。主智能体用 `sessionMode` 选择：
-  `new`（默认，新建下属会话，不得带 `conversationPath`）或 `resume`（续接，必须带
-  `conversationPath`）。`lico_subagent_continue` 是 resume 别名。不等待下属完成，
-  也不复制下属输出。LicoUp 在后台运行下属、写入 handoff 状态、在 Lico 群线程投影
-  peer 气泡，再通过 `mainConversationPath` 或可解析的主会话回调原主对话。
-- 委派与续接仍要求生命周期 `role`（`designer` / `worker` / `reviewer`），并可指定
-  `backend` / `frontend` 工作线；Reviewer 提示词仍注入探针与清理验收约束。
-- `lico_subagent_cancel` 通过指定适配器的原生控制面请求取消。
-- MCP 可从客户端名称推断主智能体；需要显式绑定时，打包启动配置可设置
-  `LICOUP_MAIN_AGENT_ID`。Codex 与 Antigravity 可通过 digest 确认安装 Subagent MCP；
-  Antigravity 写入 `~/.gemini/config/mcp_config.json`（与 Hook/ACP Bridge 分条管理）。
+1. 适应性飞轮选择角色与难度 route。
+2. LicoUp 冻结 agent、model、reasoning effort 与 route authority receipt。
+3. workflow ledger 记录 token baseline 与对话绑定。
+4. 通过原生通道发送准确 Plan brief 和已准入的原生对话位置。
+5. 只有确定的终态事件才结算用量；沉默或耗时仍保持 pending。
+6. 终态回调幂等执行，并只推进一次 Plan checkpoint。
 
-## 有界并发
+Plan 与 Checkpoints 是唯一生命周期权威。插件是否就绪只影响适配器准备，不会改变
+交付归属、eligible frontier 或 route 选择。
 
-| 边界 | 已实现上限 |
+## 直接一次性操作
+
+`lico_subagents_list`、`lico_subagent_delegate`、`lico_subagent_continue` 和
+`lico_subagent_cancel` 仅用于非交付的一次性下属回合。它们不会创建交付角色、Plan
+checkpoint，也不会形成第二个交付调度器。续接必须使用目录准入步骤产生的准确原生
+对话位置。
+
+## 对话准入
+
+每个交付对话都必须通过原生目标暴露的准确目录条目准入。位置必须是 canonical、绝对、
+有界、位于目录条目内，并且不能是文件系统根目录、home 目录或客户端工作区。相对、
+缺失、越界、歧义和无界位置分别返回不同的派发前错误；没有继承或相对工作目录兜底。
+
+交接中唯一携带上下文的值是已准入的原生对话位置。Brief 只包含稳定控制事实、仓库
+相对引用和原生位置引用，不包含下属输出或生成摘要。
+
+## Receipt 与失败
+
+公开 receipt 不携带路径和正文，只暴露 schema 或 operation、有限标识、stage、component、
+retryability、recovery action 以及安全生命周期状态。原始命令、prompt、reply、路径、
+runtime 行和异常都保持私有。不确定的原生效果报告为 `in_doubt`，重试前必须 reconcile
+准确对话。某一派发分支出现有类型终态失败时，无关分支继续执行。
+
+交付归属始终是 `licoup`，route 选择始终是 `adaptive-flywheel`。两者与可选适配器插件
+是否就绪相互独立。
+
+## 有界契约
+
+| 边界 | 上限 |
 | --- | --- |
 | MCP 输入帧 | 64 KiB |
-| 委派提示词 | 48 KiB |
-| 对话文件位置 | 4 KiB |
-| 下属智能体单轮 | 1 秒至 30 分钟 |
-| 原生 stdout 事件预算 | 64 KiB 至 64 MiB |
-| 原生 stderr 事件预算 | 16 KiB 至 4 MiB |
-| MCP 执行 | 8 个工作线程 |
+| Brief 或一次性 prompt | 48 KiB |
+| 对话位置 | 4 KiB |
+| 工作目录 | 4 KiB |
+| MCP 工作线程 | 8 |
 | 待处理工具调用 | 32 |
-| 回退候选 | 8 个 |
-| 额度冷却记录 | 64 条 |
 
-不同工具调用可以并发执行；主智能体在收到 ACK 后停止本轮，由 LicoUp 在完成后回调主线程。
-
-## 隐私与失败语义
-
-提示词和下属输出只留在本地会话与原生通道内。MCP 工具回执不携带下属全文；群聊 peer
-气泡由 LicoUp 读取本机 handoff / 下属会话后投影。列表投影不暴露可执行路径、账户数据
-或原始配置。队列满、目标不可用或原生传输失败都会返回有类型且有界的错误。
-
-逐智能体机制由原生驱动清单投影到[兼容性文档](../COMPATIBILITY.zh-CN.md#智能体适配目标)。
+原生调度器在发送前持久化 dispatch intent。重启恢复会 reconcile 任意 pending 对话，
+不会创建重复派发。

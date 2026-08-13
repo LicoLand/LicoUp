@@ -8,6 +8,7 @@ use super::contract::{
 };
 use super::persistence::{persist_report, read_retained_reports};
 use super::window::UsageWindow;
+use super::workflow_ledger;
 use crate::domain::conversation::parameters::{number_param, text_param};
 use crate::domain::targets;
 use anyhow::Result;
@@ -56,6 +57,9 @@ pub fn scan(params: &Value) -> Result<Value> {
         }));
     }
 
+    let workflow_report_value = workflow_ledger::workflow_report(params)
+        .map_err(|error| anyhow::anyhow!(error.to_string()))?;
+
     let report = json!({
         "ok": true,
         "schemaVersion": AGENT_USAGE_SCHEMA_VERSION,
@@ -89,6 +93,15 @@ pub fn scan(params: &Value) -> Result<Value> {
                 "maxReports": MAX_REPORTS
             }
         },
+        "workflow": workflow_report_value,
+        "workflows": workflow_report_value
+            .get("workflows")
+            .cloned()
+            .unwrap_or_else(|| json!([])),
+        "workflowSummary": workflow_report_value
+            .get("summary")
+            .cloned()
+            .unwrap_or_else(|| json!({})),
         "warnings": warnings
     });
     persist_report(params, &report)?;
@@ -100,13 +113,16 @@ pub fn report(params: &Value) -> Result<Value> {
         text_param(params, &["agent", "target"]).map(|value| normalize_agent_id(&value));
     let limit = number_param(params, "limit").unwrap_or(10) as usize;
     let reports = read_retained_reports(params, agent_filter.as_deref(), limit)?;
+    let workflow_report_value = workflow_ledger::workflow_report(params)
+        .map_err(|error| anyhow::anyhow!(error.to_string()))?;
     Ok(json!({
         "ok": true,
         "schemaVersion": AGENT_USAGE_SCHEMA_VERSION,
         "mode": AGENT_USAGE_MODE,
         "tokenSourceMode": AGENT_USAGE_TOKEN_SOURCE_MODE,
         "resultKind": "retained-reports",
-        "reports": reports
+        "reports": reports,
+        "workflow": workflow_report_value
     }))
 }
 

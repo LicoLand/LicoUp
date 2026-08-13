@@ -62,10 +62,17 @@ flowchart TB
 | 智能体对话 | 新建和原生继续本机会话；通过 SSH stdio 访问自动发现或明确配置的 OpenClaw/Hermes 虚拟机会话；并通过本地[下属智能体 MCP](../protocols/subagent-mcp.zh-CN.md)让一个已选主智能体发现并直接调用其余所有可运行智能体。客户端从不截断或限制智能体输出：LicoUp 等待智能体并持续展示其产生的全部内容。显式的按调用 `maxStdoutBytes` 仅作为调用方自己的有界请求存在，默认从不生效 |
 | 技能管理 | 本机安装、更新、删除，已配置来源的定时检查，以及按时间窗口统计真实调用次数 |
 | 对话管理 | 把全部对话或准确关键词匹配结果备份到用户选择的本地目录 |
-| 用量统计 | 依据本机记录按智能体或模型聚合 Token；默认 30 天并支持自选窗口 |
+| 用量统计 | 依据本机记录按智能体、模型或原生工作流聚合 Token；包含无路径 Plan/Task/dispatch 汇总和精确覆盖率，默认 30 天并支持 7/30/90 天窗口 |
 | 端点保护预览 | 当前配对、信任、对端消息/文件加密、防重放、端点认证结果与 Lico Arc 候选承载；该退役中实现不承诺未来兼容 |
 
 可选协作不属于默认组合。
+
+工作流 peer view 只消费一个当前代原生报表。LicoUp 负责 Plan 调度与 checkpoint 推进，
+Adaptive Flywheel 仍是唯一的 agent 与 model route 选择权威。原生对话位置只作为私有适配器
+交接。报表和界面只保留安全 code、本地化 role/status、agent/model label、数字 prompt、
+cached-input、completion、total、精确/估算计数、覆盖率与层级。prompt、reply、tool payload、
+摘要、压缩、cache 控件以及客户端 context 投影都明确排除；原生 ledger 有界保留活动工作流
+和最新二十份终态汇总。
 
 当前智能体与平台适配目标由[兼容性文档](../COMPATIBILITY.zh-CN.md)生成。
 通讯站线路与运营状态由[状态文档](../STATUS.zh-CN.md)记录。

@@ -89,32 +89,23 @@ mode may only write the bound local plan file under OS sandbox. See
 [Lico Agent](../protocols/lico-agent.md).
 
 Open **Adaptive Flywheel** to choose everyday conversation agents and configure
-code-engineering roles. **Assistant** is the configured priority list; the first
-capsule is the default dispatch owner, and list order is also the automatic
-fallback chain when a Lico group Current Conversation send hits quota, credit,
-rate-limit, or provider-capacity limits. A successful fallback updates Current
-Conversation to the capsule that worked without reordering the Assistant list.
-On the Lico group composer, the flywheel **Current Conversation** picker uses
-the same agent/model choice and becomes the live dispatch owner when it differs
-from that first capsule. Saving Adaptive Flywheel again re-syncs Current
-Conversation from the first Assistant capsule. Assistant starts from a circular
-plus control that expands into a capsule search field and three horizontal
-floating cards — agent, that agent’s models, and reasoning effort plus a Fast
-switch; confirmed combinations become capsules. Remove a capsule only with its
-trailing close control; long-press and drag to reorder — list order is the
-effective priority. **Code Engineering** uses the same multi-capsule picker for
-Designer, Worker, and Reviewer (without Fast).
-Designer capsules are shared across the project; list order is priority. Worker
-and Reviewer project to backend/frontend lanes:
-the first capsule is the backend assignment, the second is frontend, and a
-single capsule covers both lanes. The saved assignments are stored in the
-private client-state file `adaptive-flywheel.toml` and projected to the local
-Subagent MCP without exposing executable paths or the raw file. Every role
-picker uses the same live target scan: a detected runnable agent is selectable
-in any role, and its model picker is populated from that agent's native model
-directory when available, then verified local configuration or cache. A static
-catalog only annotates known models and never replaces a successful native
-directory response.
+the delivery route table. The flywheel is the only route-selection authority:
+each delivery role and difficulty resolves to one agent, model, and reasoning
+effort, and LicoUp freezes that decision in the dispatch receipt. Delivery
+ownership remains native LicoUp even when an optional adapter plugin is ready.
+
+The native delivery scheduler consumes the persisted Plan and Checkpoints. It
+selects the complete eligible frontier, preserves stable order and bounded
+native lanes, and advances checkpoints only after terminal settlement. The MCP
+caller can start, authorize, inspect, or explicitly cancel a workflow; it cannot
+submit tasks, choose routes, bind conversations, or accept a Reviewer. Independent
+workflows can run concurrently while each workflow and Task attempt stays
+ordered.
+
+Assistant still controls the everyday conversation picker. Its model and
+reasoning controls remain separate from delivery role routing. Save Adaptive
+Flywheel after changing a route so the native scheduler reads the new persisted
+state; the client does not expose the state file or executable paths.
 
 ## Connect OpenClaw or Hermes in your VM
 
@@ -172,7 +163,8 @@ when neither category applies. Install or uninstall appears only when its
 catalog entry declares a real lifecycle action. Each bridge action requires
 direct confirmation and changes only LicoUp-owned files or namespaced hooks.
 Discovery and installation do not by themselves prove that an agent is ready
-for conversation.
+for conversation. Plugin readiness is reported separately from the native
+delivery and Adaptive Flywheel authorities.
 
 ## Manage local data
 
@@ -186,8 +178,14 @@ for conversation.
   conversations or an exact keyword filter before previewing and starting the
   local backup job.
 - Token usage views are calculated from local records. The default window is
-  the latest 30 days; choose the agent or model dimension and a custom window
-  when needed.
+  the latest 30 days; choose the Agent, Model, or Workflow dimension and a
+  custom window when needed. Workflow shows the native Plan → Task → dispatch
+  hierarchy, exact coverage, and the main-versus-subordinate split using
+  numeric-only ledger facts. LicoUp owns scheduling, Adaptive Flywheel owns
+  route selection, and raw native conversation locations remain a private
+  handoff. The view does not expose prompts, replies, tool payloads, summaries,
+  compaction, or cache controls; active work plus the newest twenty terminal
+  rollups are bounded by the native ledger.
 - Logs and diagnostics stay local unless the user saves an explicit, redacted
   copy.
 
