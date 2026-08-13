@@ -14,7 +14,7 @@ export function plistValue(appPath, key) {
 
 export function parseProcessRecords(executablePath) {
   const escapedExecutable = executablePath.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
-  const lookup = run("/usr/bin/pgrep", ["-f", `^${escapedExecutable}(?: |$)`], {
+  const lookup = run("/usr/bin/pgrep", ["-f", `^${escapedExecutable}( |$)`], {
     timeout: 5_000,
   });
   if (lookup.status === 1) return [];
