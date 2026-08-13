@@ -2,43 +2,43 @@
   "schemaVersion": "lico-macos-app-icon-source-v1",
   "source": {
     "path": "apps/desktop/assets/brand/lico-app-icon.png",
-    "digest": "sha256:6f60b4e6daca5d5a59e391d36a17218b46a1df98b5ccf8c51df3f9e4b2736c56"
+    "digest": "sha256:b660680c245cdb1394161ab9256e431bb64cd3451f29f950a4b77694168c1181"
   },
   "icons": [
     {
       "size": 16,
       "path": "app_icon_16.png",
-      "digest": "sha256:9a0837498adfab20357e70fc7c1981d8496a238f54aa081f36e504443387bf0b"
+      "digest": "sha256:90c473f51d7c06eba50eb9ca4a1bf856913d30b3bc0931b25cb4471ea8a43970"
     },
     {
       "size": 32,
       "path": "app_icon_32.png",
-      "digest": "sha256:866dc0786ab4c1c8f41745e898894bf154ad588386018bfb449b3dd4e5f5031f"
+      "digest": "sha256:7a0c60c64cdaa8de57d11491b308cc09284caa85b6beb1321df7e0ecd1c4a8ee"
     },
     {
       "size": 64,
       "path": "app_icon_64.png",
-      "digest": "sha256:3411b784636d7294625d6370b1c6c213f1c8236179438729152248e5403a3a34"
+      "digest": "sha256:54ab7ee5a1f7ce0b5289886d2a6b05c75dbe4d1a0e84ff0073b6fd7317d432d6"
     },
     {
       "size": 128,
       "path": "app_icon_128.png",
-      "digest": "sha256:bf0e4a7927ba4990206e5ea94f3902a2e023f3dcb9f4b92eec3ced67de075be0"
+      "digest": "sha256:4eee71d5a759815a7c739fa1ea292798a4dcd00707956ea29bc35686a96a160a"
     },
     {
       "size": 256,
       "path": "app_icon_256.png",
-      "digest": "sha256:894afe222546877f584fecb48b183073c9a3f7020a3233e9dcc7671cf5f677c7"
+      "digest": "sha256:49e4b5dc3f9cbb58d7e520003ed63b40df886729d02094ec35d3fbce23585f38"
     },
     {
       "size": 512,
       "path": "app_icon_512.png",
-      "digest": "sha256:27ae39b4fb2fbfc3b4e8829d80a105d29de77721bfa04bdbb1da8b88e9d7b87c"
+      "digest": "sha256:cbd781ca1cd599673fd5432548630c37ad8c539de697eef1d237b6df388960c1"
     },
     {
       "size": 1024,
       "path": "app_icon_1024.png",
-      "digest": "sha256:6f60b4e6daca5d5a59e391d36a17218b46a1df98b5ccf8c51df3f9e4b2736c56"
+      "digest": "sha256:b660680c245cdb1394161ab9256e431bb64cd3451f29f950a4b77694168c1181"
     }
   ]
 }

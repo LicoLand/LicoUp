@@ -19,8 +19,6 @@ void main() {
     // the expected brightness gets a foreign haze laid over it, and it is why
     // every control used to look identical.
     const allowed = <String>{
-      // Paints the fixed brand mark, which is deliberately palette-independent.
-      'licoup_logo.dart',
       // Reproduces the macOS system menu material, which is specified in
       // absolute colors by the platform.
       'apple_popup_select.dart',
