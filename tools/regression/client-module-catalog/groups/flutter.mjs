@@ -578,11 +578,13 @@ export const FLUTTER_MODULES = Object.freeze([
         "apps/desktop/lib/src/frontend/features/agents/ui/agent_conversation_recent_sessions.dart",
         "apps/desktop/lib/src/frontend/features/agents/ui/agent_conversation_workspace.dart",
         "apps/desktop/test/agent_conversation_recent_sessions_test.dart",
+        "apps/desktop/test/lico_activity_animations_test.dart",
         "apps/desktop/test/agent_conversation_pane/composition_test.dart",
         "apps/desktop/test/agent_conversation_pane/pane_test_harness.dart",
       ],
       command: flutterTests([
         "test/agent_conversation_recent_sessions_test.dart",
+        "test/lico_activity_animations_test.dart",
         "test/agent_conversation_pane/composition_test.dart",
       ]),
     }),

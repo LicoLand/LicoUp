@@ -998,17 +998,40 @@ fn now_ms() -> i64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::atomic::{AtomicU64, Ordering};
 
     fn root() -> PathBuf {
-        static NEXT: AtomicU64 = AtomicU64::new(0);
         let path = std::env::temp_dir().join(format!(
             "lico-strategy-service-test-{}",
-            NEXT.fetch_add(1, Ordering::Relaxed)
+            uuid::Uuid::new_v4()
         ));
-        let _ = fs::remove_dir_all(&path);
         fs::create_dir_all(&path).unwrap();
         path
+    }
+
+    fn remove_root(path: PathBuf) {
+        let mut stack = vec![path.clone()];
+        while let Some(current) = stack.pop() {
+            if let Ok(metadata) = fs::symlink_metadata(&current) {
+                make_writable(&current, metadata.permissions());
+                if metadata.is_dir()
+                    && let Ok(entries) = fs::read_dir(&current)
+                {
+                    stack.extend(entries.flatten().map(|entry| entry.path()));
+                }
+            }
+        }
+        fs::remove_dir_all(path).unwrap();
+    }
+
+    fn make_writable(path: &Path, mut permissions: fs::Permissions) {
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            permissions.set_mode(permissions.mode() | 0o200);
+        }
+        #[cfg(not(unix))]
+        permissions.set_readonly(false);
+        fs::set_permissions(path, permissions).unwrap();
     }
 
     #[test]
@@ -1043,6 +1066,6 @@ mod tests {
         };
         assert!(reopened.validate_import_identity(&forged).is_err());
 
-        let _ = fs::remove_dir_all(root);
+        remove_root(root);
     }
 }
