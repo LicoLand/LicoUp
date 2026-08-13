@@ -99,6 +99,7 @@ final class AgentConversationPaneActions {
     this.onUnblockSend,
     this.onChooseWorkingDirectory,
     this.onAttach,
+    this.onPasteImage,
     this.onLicoProfileChanged,
     this.onPermissionRetry,
     this.onPermissionRetryRemember,
@@ -116,6 +117,7 @@ final class AgentConversationPaneActions {
   final VoidCallback? onUnblockSend;
   final VoidCallback? onChooseWorkingDirectory;
   final VoidCallback? onAttach;
+  final Future<bool> Function()? onPasteImage;
   final ValueChanged<String>? onLicoProfileChanged;
   final VoidCallback? onPermissionRetry;
   final VoidCallback? onPermissionRetryRemember;
