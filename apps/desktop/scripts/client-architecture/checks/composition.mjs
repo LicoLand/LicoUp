@@ -62,10 +62,9 @@ export async function checkConversationBridges(context, { packagedTargets, conve
     "direct and group collaboration must share the generated canonical Conversation contract"
   );
   assert(
-    (await collectSourceFiles(
-      "apps/desktop/lib/src/application/features/agents/orchestration",
-      ".dart"
-    )).length === 0 &&
+    !await exists(
+      "apps/desktop/lib/src/application/features/agents/orchestration"
+    ) &&
       !await exists("apps/desktop/lib/src/contracts/agent_orchestration_target.dart"),
     "retired Flutter orchestration owners must stay removed"
   );
