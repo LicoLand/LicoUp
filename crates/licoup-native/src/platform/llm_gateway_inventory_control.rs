@@ -232,7 +232,7 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs();
-        let root = PathBuf::from(format!("/tmp/lgw-inv-{stamp}"));
+        let root = PathBuf::from(format!("/fixture-root/lgw-inv-{stamp}"));
         std::fs::create_dir_all(&root).unwrap();
         std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o700)).unwrap();
         let socket = control_socket_path(&root);
