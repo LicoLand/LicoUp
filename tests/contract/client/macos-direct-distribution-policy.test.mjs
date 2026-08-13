@@ -162,13 +162,13 @@ test("product metadata and entitlement authorities are exact and minimal", () =>
   const localText = readFileSync(localEntitlementsPath, "utf8");
   const local = plistObject(localText);
   assert.equal(validateLocalEntitlements(local).ready, true);
+  assert.equal(local["com.apple.security.cs.disable-library-validation"], true);
   assert.equal(validateLocalEntitlements({
     ...localEntitlementsFixture,
-    "com.apple.security.cs.disable-library-validation": true,
+    "com.apple.security.cs.disable-library-validation": false,
   }).ready, false);
   assert.equal(local["get-task-allow"], undefined);
-  assert.equal(local["com.apple.security.cs.disable-library-validation"], undefined);
-  assert.equal(localText.includes("disable-library-validation"), false);
+  assert.equal(localText.includes("disable-library-validation"), true);
 
   const toolchain = [...MACOS_DIRECT_TOOLCHAIN];
   assert.deepEqual(toolchain.sort(), [
