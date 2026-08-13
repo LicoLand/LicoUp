@@ -212,11 +212,24 @@ cancellation, and round-trip restore-read validation where supported.
 Usage reporting defaults to the latest thirty days and supports a manually chosen
 time window. Reports aggregate locally recorded token counts by agent or model
 from supported agents' authoritative local histories, with explicit source and
-deduplication boundaries.
+deduplication boundaries. The Workflow peer view consumes the current native
+delivery ledger projection: one Plan summary expands to Task and dispatch rows,
+with the named main conversation kept separate from subordinate totals. It
+shows numeric prompt, cached-input, completion, total, and exact-coverage facts
+only.
 
-No raw prompt, response, account, local path, or native identifier enters the
-report. Missing history, timezone changes, overlapping records, counter resets,
-or unknown model attribution remain explicit rather than silently fabricated.
+LicoUp is the scheduling authority and Adaptive Flywheel is the route-selection
+authority. A raw native conversation location is handed to a selected adapter
+privately; it is never part of the desktop report. The native ledger keeps active
+workflows and the newest twenty terminal rollups, while the client adds no second
+workflow store or token arithmetic.
+
+No raw prompt, response, account, local path, native identifier, summary,
+compaction detail, cache control, or tool payload enters the report or UI.
+Missing history, timezone changes, overlapping records, counter resets, or
+unknown model attribution remain explicit rather than silently fabricated. An
+empty workflow collection has a localized empty state while Agent and Model
+views remain available.
 
 Regression: agent/model dimensions, default and custom windows, timezone
 transitions, deduplication, cache invalidation, redaction, and empty/partial local

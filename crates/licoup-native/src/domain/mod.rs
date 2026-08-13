@@ -1,7 +1,6 @@
 pub mod agent_intelligence_catalog;
 pub mod agent_resource_usage;
 pub mod agent_usage;
-pub mod agent_workflow_loop;
 pub mod catalog_convergence;
 pub mod client_update;
 pub mod collaboration_plugin;
@@ -10,6 +9,8 @@ pub mod conversation_archive_jobs;
 pub mod conversation_semantic;
 pub mod conversation_snapshots;
 pub mod conversations;
+pub mod delivery_plan;
+pub mod delivery_workflow;
 pub mod group_conversation;
 pub mod lico_agent;
 pub mod llm_api_key_vault;

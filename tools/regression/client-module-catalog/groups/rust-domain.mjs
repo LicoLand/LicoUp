@@ -35,8 +35,9 @@ export const RUST_DOMAIN_MODULES = Object.freeze([
         "crates/licoup-native/src/domain/agent_usage/contract.rs",
         "crates/licoup-native/src/domain/agent_usage/persistence.rs",
         "crates/licoup-native/src/domain/agent_usage/tests.rs",
+        "crates/licoup-native/src/domain/agent_usage/workflow_ledger.rs",
       ],
-      command: rustLayer("domain::agent_usage::tests::"),
+      command: rustLayer("domain::agent_usage::"),
     }),
   defineModule({
       id: "rust.domain.agent-usage.window",

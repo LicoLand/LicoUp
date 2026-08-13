@@ -1,6 +1,6 @@
 //! Digest-confirmed registration of Subagent MCP into Antigravity mcp_config.
 
-use crate::domain::agent_workflow_loop::CodexPluginState;
+use crate::platform::codex_plugin_manager::CodexPluginState;
 use directories::UserDirs;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};

@@ -1,6 +1,6 @@
 //! Agent-agnostic Subagent MCP status/plan/install dispatcher.
 
-use crate::domain::agent_workflow_loop::CodexPluginState;
+use crate::platform::codex_plugin_manager::CodexPluginState;
 use crate::platform::{antigravity_subagent_mcp_manager, codex_plugin_manager};
 use std::path::Path;
 

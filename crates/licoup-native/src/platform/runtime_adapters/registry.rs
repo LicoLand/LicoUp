@@ -593,7 +593,7 @@ pub(super) fn codex_plugin_lifecycle_actions(installation_state: &str) -> Vec<&'
 }
 
 fn codex_plugin_installation_state(cli_executable: Option<&Path>) -> &'static str {
-    use crate::domain::agent_workflow_loop::CodexPluginState;
+    use crate::platform::codex_plugin_manager::CodexPluginState;
     let Some(executable) = cli_executable else {
         return "unavailable";
     };
