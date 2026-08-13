@@ -40,6 +40,8 @@ final class AgentConversationPaneState {
     this.planDocumentPath = '',
     this.planDocumentReader = const UnavailablePlanDocumentReader(),
     Map<String, String> participantConversationIds = const {},
+    Set<String> runningRecentSessionIds = const {},
+    this.recentSessionsCached = false,
   }) : liveMessages = List.unmodifiable(liveMessages),
        recentSessions = List.unmodifiable(recentSessions),
        modelOptions = List.unmodifiable(modelOptions),
@@ -48,7 +50,8 @@ final class AgentConversationPaneState {
        composerMentionLabels = Map.unmodifiable(composerMentionLabels),
        participantConversationIds = Map.unmodifiable(
          participantConversationIds,
-       );
+       ),
+       runningRecentSessionIds = Set.unmodifiable(runningRecentSessionIds);
 
   final TargetCandidate target;
   final AgentConversationSession? session;
@@ -84,6 +87,8 @@ final class AgentConversationPaneState {
 
   /// Agent id → that agent's conversation id for bubble hover metadata.
   final Map<String, String> participantConversationIds;
+  final Set<String> runningRecentSessionIds;
+  final bool recentSessionsCached;
 }
 
 /// Typed commands available to the conversation body.

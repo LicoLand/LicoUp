@@ -29,6 +29,7 @@ AgentConversationPaneState paneTestState({
   String selectedModel = '',
   String defaultModel = '',
   bool sendAuthorizeActive = false,
+  bool recentSessionsCached = false,
 }) => AgentConversationPaneState(
   target: paneTestTarget(),
   session: session,
@@ -49,6 +50,7 @@ AgentConversationPaneState paneTestState({
   workingDirectory: workingDirectory,
   workingDirectorySelectable: workingDirectorySelectable,
   sendAuthorizeActive: sendAuthorizeActive,
+  recentSessionsCached: recentSessionsCached,
 );
 
 AgentConversationPaneActions paneTestActions({
