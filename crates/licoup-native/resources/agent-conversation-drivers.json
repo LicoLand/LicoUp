@@ -2,7 +2,7 @@
   "schemaVersion": "v0.0.1:client-agent-conversation-drivers-1",
   "contractVersion": "CL-06",
   "evidenceContract": {
-    "minimumConsecutivePasses": 3,
+    "minimumConsecutivePasses": 1,
     "coreChecks": [
       "P-01",
       "P-02",

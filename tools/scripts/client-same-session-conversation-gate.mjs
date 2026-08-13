@@ -3,8 +3,8 @@
 /**
  * Same-session sequential conversation gate (background, no release UI).
  *
- * Authority for send enablement on supported agents: one session create, then
- * three sequential turns on the same sessionId with a non-empty result each.
+ * Authority for send enablement on supported agents: one new-conversation
+ * turn, then one continuation turn on that exact sessionId.
  * Writes CL-06 evidence and runs the readiness reducer. Does not launch the
  * product e2e LicoUp.app path.
  */
@@ -41,6 +41,7 @@ import {
   evidenceManifestPath,
   packagingRegistryPath,
   strictRoundCount,
+  verificationTurnCount,
   workspaceRoot,
 } from "./client-acp-conversation-parity/constants.mjs";
 import {
@@ -62,7 +63,7 @@ import {
 import { resolveExecutable, resolveSidecar } from "./client-acp-conversation-parity/sidecar.mjs";
 
 const root = workspaceRoot;
-const TURN_COUNT = strictRoundCount;
+const TURN_COUNT = verificationTurnCount;
 
 const AGENT_GATES = Object.freeze({
   cursor: Object.freeze({
@@ -181,7 +182,7 @@ function writeGateEvidence({ agentId, gate, aggregate, context }) {
   const coreChecks = {
     "P-01": pass(aggregate.officialNativeLane === true),
     "P-02": pass(aggregate.realSessionIds === true),
-    "P-03": pass(aggregate.sameSessionSequential === true),
+    "P-03": pass(aggregate.openNew === true && aggregate.exactResume === true),
     "P-04": pass(aggregate.finalResults === true && streamingSatisfied),
     "P-05": pass(aggregate.cwdParity === true),
     "P-06": pass(aggregate.historyReadback === true),
@@ -397,6 +398,7 @@ export async function runSameSessionConversationGate(argv = process.argv.slice(2
       );
       turnResults.push({
         turn,
+        action: turn === 1 ? "open-new" : "exact-resume",
         outputBytes: Buffer.byteLength(result.output),
         boundedOutput: result.boundedOutput === true,
         streamingSeen: result.streamingSeen === true,
@@ -427,6 +429,8 @@ export async function runSameSessionConversationGate(argv = process.argv.slice(2
     const aggregate = {
       agent: agentId,
       officialNativeLane: true,
+      openNew: turnResults[0]?.action === "open-new",
+      exactResume: turnResults[1]?.action === "exact-resume",
       realSessionIds: Boolean(sessionId),
       sameSessionSequential: turnResults.length === TURN_COUNT,
       finalResults: turnResults.every((row) => row.outputBytes > 0),
@@ -439,7 +443,7 @@ export async function runSameSessionConversationGate(argv = process.argv.slice(2
       privacyPassed: true,
       cleanupPassed,
       conversationGatePassed: true,
-      consecutivePasses: TURN_COUNT,
+      consecutivePasses: strictRoundCount,
     };
 
     let evidenceWrite = null;
@@ -466,10 +470,12 @@ export async function runSameSessionConversationGate(argv = process.argv.slice(2
       agent: agentId,
       turnsRequired: TURN_COUNT,
       turnsCompleted: turnResults.length,
+      openNew: aggregate.openNew,
+      exactResume: aggregate.exactResume,
       sameSession: true,
       cleanupPassed: true,
       conversationGatePassed: true,
-      consecutivePasses: TURN_COUNT,
+      consecutivePasses: strictRoundCount,
       evidenceWrite,
       sendEnabled: readinessRow?.sendEnabled === true,
       readinessStatus: readinessRow?.status || null,

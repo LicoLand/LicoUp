@@ -59,7 +59,7 @@ export function printLiveGateChecklist() {
           : `node tools/scripts/client-acp-conversation-parity.mjs --agent ${agentId} --strict --release-ui`,
         arcLocal || sameSession
           ? null
-          : "repeat release-ui paired runs until consecutivePasses=3 (both directions each run)",
+          : "verify one new conversation and one exact continuation on the same native session",
         arcLocal || sameSession
           ? null
           : "node tools/scripts/client-agent-conversation-parity-reducer.mjs --write",
