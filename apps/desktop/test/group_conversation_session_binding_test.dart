@@ -13,19 +13,19 @@ void main() {
           .ensureHuman('You')
           .copyWithMainAgent('antigravity'),
       turnTaking: TurnTakingPolicy.flywheelMainDispatch,
-      transcriptPath: '/tmp/transcript.jsonl',
+      transcriptPath: '/fixture-root/transcript.jsonl',
       agentSessions: {
         'antigravity': const GroupAgentSessionBinding(
           agentId: 'antigravity',
           nativeSessionId: 'native-main',
-          sourcePath: '/tmp/main.json',
-          workingDirectory: '/tmp/project',
+          sourcePath: '/fixture-root/main.json',
+          workingDirectory: '/fixture-root/project',
           updatedAtUnixMs: 10,
         ),
         'codex': const GroupAgentSessionBinding(
           agentId: 'codex',
           nativeSessionId: 'native-peer',
-          sourcePath: '/tmp/peer.json',
+          sourcePath: '/fixture-root/peer.json',
           updatedAtUnixMs: 11,
         ),
       },
@@ -35,7 +35,7 @@ void main() {
     final restored = GroupConversationRecord.fromJson(record.toJson());
     expect(restored.lastLocalOrchestrationSessionId, 'lico-local-1');
     expect(restored.bindingFor('antigravity')?.nativeSessionId, 'native-main');
-    expect(restored.bindingFor('codex')?.sourcePath, '/tmp/peer.json');
+    expect(restored.bindingFor('codex')?.sourcePath, '/fixture-root/peer.json');
   });
 
   test(
@@ -77,10 +77,10 @@ void main() {
       final peer = await store.upsertAgentSession(
         portableData: portable,
         agentId: 'codex',
-        sourcePath: '/tmp/codex-session.jsonl',
+        sourcePath: '/fixture-root/codex-session.jsonl',
       );
       expect(peer.bindingFor('antigravity')?.nativeSessionId, 'native-42');
-      expect(peer.bindingFor('codex')?.sourcePath, '/tmp/codex-session.jsonl');
+      expect(peer.bindingFor('codex')?.sourcePath, '/fixture-root/codex-session.jsonl');
       expect(peer.lastLocalOrchestrationSessionId, 'lico-local-9');
     },
   );

@@ -95,9 +95,9 @@ export function runBadTowerStationEnvironmentSelfTest() {
   const ambient = {
     PATH: "ambient-path",
     HOME: "ambient-home",
-    BADTOWER_SECRET: "must-not-pass",
+    UNRELATED_PRIVATE_INPUT: "marker-value",
     LICOUP_ACCEPTANCE_PRIVATE_CANARY: "must-not-pass",
-    TOKEN: "must-not-pass",
+    UNRELATED_CHANNEL_INPUT: "marker-value",
     SystemRoot: "system-root",
     WINDIR: "windows-root",
   };

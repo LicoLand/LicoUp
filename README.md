@@ -102,6 +102,7 @@ flowchart LR
 
 **Explicit external approval.** Optional external MCP requests can send
 only the exact request or selected files shown in a fresh direct approval;
+each transfer requires a protected one-shot user approval.
 the named external service can read that approved content even though
 transport is protected by HTTPS. Without an exact external-service
 approval, protected user content can leave the client only as an approved,

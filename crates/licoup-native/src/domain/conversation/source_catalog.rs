@@ -620,10 +620,13 @@ mod tests {
         assert_eq!(pi.len(), 1);
         assert_eq!(pi[0].path, home.join(".pi/agent/sessions"));
 
-        let lico_override = json!({"licoAgentSessionDir": "/tmp/lico-agent-sessions"});
+        let lico_override = json!({"licoAgentSessionDir": "/fixture-root/lico-agent-sessions"});
         let lico = history_roots(HistoryAdapter::LicoAgent, &lico_override);
         assert_eq!(lico.len(), 1);
-        assert_eq!(lico[0].path, PathBuf::from("/tmp/lico-agent-sessions"));
+        assert_eq!(
+            lico[0].path,
+            PathBuf::from("/fixture-root/lico-agent-sessions")
+        );
         assert_eq!(lico[0].source_kind, "lico-agent-session-store");
         assert_eq!(
             adapter_for_agent("lico-agent"),

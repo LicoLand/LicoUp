@@ -2609,13 +2609,13 @@ mod tests {
         );
         assert!(validate_tool_arguments(
             "lico_subagent_probe",
-            &json!({"agentId": "worker", "workingDirectory": "/private/project"})
+            &json!({"agentId": "worker", "workingDirectory": "/fixture-root/project"})
         ));
         assert!(!validate_tool_arguments(
             "lico_subagent_probe",
             &json!({
                 "agentId": "worker",
-                "workingDirectory": "/private/project",
+                "workingDirectory": "/fixture-root/project",
                 "exactReasoningEffort": "low"
             })
         ));
@@ -2864,30 +2864,32 @@ mod tests {
             "invalid_conversation_location"
         );
         let codex = session_id_candidates(std::path::Path::new(
-            "/private/sessions/rollout-2026-08-02T03-23-02-019fbec7-a57b-7612-b817-9c990936846d.jsonl",
+            "/fixture-root/sessions/rollout-2026-08-02T03-23-02-019fbec7-a57b-7612-b817-9c990936846d.jsonl",
         ));
         assert_eq!(
             codex.first().map(String::as_str),
             Some("019fbec7-a57b-7612-b817-9c990936846d")
         );
         let kimi = session_id_candidates(std::path::Path::new(
-            "/private/sessions/session_5ba759f6-100a-4d23-ac3a-adbe0b66ed59/agents/main/wire.jsonl",
+            "/fixture-root/sessions/session_5ba759f6-100a-4d23-ac3a-adbe0b66ed59/agents/main/wire.jsonl",
         ));
         assert!(
             kimi.iter()
                 .any(|value| value == "session_5ba759f6-100a-4d23-ac3a-adbe0b66ed59")
         );
-        assert!(session_id_candidates(std::path::Path::new("/private/opaque.jsonl")).len() <= 16);
+        assert!(
+            session_id_candidates(std::path::Path::new("/fixture-root/opaque.jsonl")).len() <= 16
+        );
     }
 
     #[test]
     fn exact_conversation_lookup_revalidates_the_full_source_path() {
-        let expected = "/private/conversations/exact.jsonl";
+        let expected = "/fixture-root/conversations/exact.jsonl";
         let response = json!({
             "sessions": [{
                 "sourcePath": expected,
                 "nativeSessionId": "native-exact",
-                "workingDirectory": "/private/project"
+                "workingDirectory": "/fixture-root/project"
             }]
         });
         assert_eq!(
@@ -2898,11 +2900,12 @@ mod tests {
             exact_resume_target_for_path(&response, expected).unwrap(),
             Some(ConversationResumeTarget {
                 session_id: "native-exact".into(),
-                working_directory: Some("/private/project".into()),
+                working_directory: Some("/fixture-root/project".into()),
             })
         );
         assert_eq!(
-            exact_session_id_for_path(&response, "/private/conversations/other.jsonl").unwrap(),
+            exact_session_id_for_path(&response, "/fixture-root/conversations/other.jsonl")
+                .unwrap(),
             None
         );
     }
@@ -2980,7 +2983,7 @@ mod tests {
             "lico_subagent_continue",
             &json!({
                 "agentId": "worker",
-                "conversationPath": "/private/conversation.jsonl",
+                "conversationPath": "/fixture-root/conversation.jsonl",
                 "role": "worker",
                 "prompt": "continue",
                 "timeoutMs": MAX_SUBAGENT_TIMEOUT_MS + 1
@@ -3024,7 +3027,7 @@ mod tests {
     #[test]
     fn recoverable_failures_can_return_only_the_private_handoff_location() {
         let error = ToolFailure::new("subagent_output_limit", true)
-            .with_conversation_path(Some("/private/conversation.jsonl".into()));
+            .with_conversation_path(Some("/fixture-root/conversation.jsonl".into()));
         let projected = tool_error(&error);
         assert_eq!(
             projected["structuredContent"]["reasonCode"],
@@ -3033,7 +3036,7 @@ mod tests {
         assert_eq!(projected["structuredContent"]["retryable"], true);
         assert_eq!(
             projected["structuredContent"]["conversationPath"],
-            "/private/conversation.jsonl"
+            "/fixture-root/conversation.jsonl"
         );
         assert!(projected.get("sessionId").is_none());
         assert!(projected.get("output").is_none());

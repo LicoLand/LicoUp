@@ -167,7 +167,7 @@ function selfTest() {
   for (const [entries, link] of [
     [["LicoUp.app"], "/Applications"],
     [["Applications", "LicoUp.app", "unexpected.txt"], "/Applications"],
-    [["Applications", "LicoUp.app"], "/tmp/Applications"],
+    [["Applications", "LicoUp.app"], "/fixture-root/Applications"],
   ]) {
     let rejected = false;
     try { validateMacosDmgLayout(entries, link); } catch { rejected = true; }

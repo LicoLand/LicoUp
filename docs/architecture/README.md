@@ -119,6 +119,8 @@ Source support, ordinary builds, physical-device security evidence, GitHub
 Release artifacts, and store publication are separate claims. The current
 [compatibility matrix](../COMPATIBILITY.md) records them without
 promoting simulator or source checks into physical-device or release proof.
+Caller-supplied flags or ordinary state files are not proof of approval;
+protected operations require the platform-owned authorization session.
 
 ## Current retiring endpoint-protection Preview layers
 

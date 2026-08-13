@@ -135,8 +135,8 @@ mod tests {
             GroupAgentSessionBinding {
                 agent_id: "antigravity".into(),
                 native_session_id: "native-1".into(),
-                source_path: "/tmp/conversation.json".into(),
-                working_directory: "/tmp/project".into(),
+                source_path: "/fixture-root/conversation.json".into(),
+                working_directory: "/fixture-root/project".into(),
                 updated_at_unix_ms: 1,
             },
         );

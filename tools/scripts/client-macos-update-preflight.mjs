@@ -130,7 +130,7 @@ function execute() {
   const temporaryRoot = mkdtempSync(path.join(os.tmpdir(), "licoup-update-preflight-"));
   const installRoot = path.join(temporaryRoot, "Applications");
   const installedApp = path.join(installRoot, "LicoUp.app");
-  const assetsRoot = path.join(repoRoot, "build/tmp/release-pre-pr-update-assets");
+  const assetsRoot = path.join(repoRoot, "build/fixture-root/release-pre-pr-update-assets");
   const stagingRoot = path.join(temporaryRoot, "staging");
   const manifestPath = path.join(assetsRoot, "LicoUp-update-manifest.json");
   const publicKeysPath = path.join(assetsRoot, "LicoUp-update-public-keys.json");

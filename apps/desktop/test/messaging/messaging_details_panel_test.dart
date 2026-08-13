@@ -76,7 +76,7 @@ void main() {
         'port': 2222,
         'user': 'agent-user',
         'remoteExecutable': 'hermes',
-        'workingDirectory': '/srv/project',
+        'workingDirectory': '/fixture-root/project',
       },
     );
     await tester.pumpWidget(

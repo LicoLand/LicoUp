@@ -463,7 +463,7 @@ void main() {
       )
         ..['nativeSessionId'] = 'ide-composer-1'
         ..['sourceKind'] = 'cursor-global-storage'
-        ..['sourcePath'] = '/tmp/Cursor/User/globalStorage/state.vscdb'
+        ..['sourcePath'] = '/fixture-root/Cursor/User/globalStorage/state.vscdb'
         ..['messages'] = [
           {
             'id': 'msg-user-ide',
@@ -528,7 +528,7 @@ void main() {
       )
         ..['nativeSessionId'] = 'ide-composer-2'
         ..['sourceKind'] = 'cursor-workspace-storage'
-        ..['sourcePath'] = '/tmp/workspace/state.vscdb'
+        ..['sourcePath'] = '/fixture-root/workspace/state.vscdb'
         ..['messages'] = [
           {
             'id': 'a1',
